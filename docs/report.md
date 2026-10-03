@@ -123,6 +123,24 @@ PMOIRED's conventions against our references; virgil enters at Stage 1.
 | `spatial kernel` | Gaussian blur transform | Analytic + PMOIRED | 1e-7 |
 | `az ampN`, `az projangN`: in-plane azimuth, relative to `projang` (3 other readings fail) | annulus quadrature | Quadrature + PMOIRED | 1e-8 (V²), 2e-6° (CP) |
 
+## External packages: virgil vs PMOIRED (Stage 1)
+
+PMOIRED evaluates each scene on one of our files and reports the uv
+coordinates of every sample and triangle; virgil is evaluated at exactly
+those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
+30 samples per baseline, the most for which PMOIRED's rings are exact
+(problem P3 in [pmoired_notes.md](pmoired_notes.md)).
+
+| virgil | PMOIRED | Tag | Agreement |
+| --- | --- | --- | --- |
+| `BinaryModelCartesian`, `BinaryModelAngular` | two `ud: 0` components | PMOIRED | 1e-12 (V²), 1e-9° |
+| `System(UniformDisk, PointSource)` | `ud` + point | PMOIRED | same |
+| `System(PointSource, EllipticalGaussian)` | `fwhm`, `incl` = arccos(ratio), `projang` | PMOIRED | same |
+| `Resolved` in a `System` | component with no size | PMOIRED | 1e-12 |
+| binary at masking scales (7 holes, 150 mas) | same | PMOIRED | 1e-12, 1e-9° |
+| 3 random constellations of 24 points, Gaussians, elliptical Gaussians and disks | one dictionary of 24 components | PMOIRED | 1e-12, 1e-8° |
+| `ModulatedGaussianRim` (inclined, m = 1, 2) | annulus of fractional width w + `spatial kernel`, `az projangN` = `az_pas` − `pa` | PMOIRED + Quadrature | differs as w² (2.8e-2 at w = 0.4 to 3.0e-5 at 0.0125); Richardson extrapolation to w = 0 matches virgil to 4e-7, from 1.2e-4. PMOIRED's annulus itself matches our quadrature to 1e-9–1e-12. |
+
 ## Findings
 
 | # | virgil | Finding | Status |
