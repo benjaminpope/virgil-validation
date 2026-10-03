@@ -24,7 +24,8 @@ by a chain of independent checks.
     * **mature external packages** written and used by people:
       [dLux](https://github.com/LouisDesdoigts/dLux),
       [PMOIRED](https://github.com/amerand/PMOIRED),
-      [CANDID](https://github.com/amerand/CANDID);
+      [CANDID](https://github.com/amerand/CANDID),
+      [fouriever](https://github.com/kammerje/fouriever) (Jens Kammerer);
     * **statistics**: ensembles of simulations whose distribution is known
       (pulls of fit − truth over σ must be N(0, 1)).
 2. **Our own reference code is a link, not a root.** `crosscheck` is also
@@ -98,7 +99,7 @@ flowchart BT
     subgraph R["Roots of trust"]
         M["Mathematics"]:::root
         S["Standards"]:::root
-        X["dLux, PMOIRED, CANDID"]:::root
+        X["dLux, PMOIRED,<br/>CANDID, fouriever"]:::root
         Q["Statistics"]:::root
     end
 
@@ -123,7 +124,7 @@ flowchart BT
     end
 
     subgraph L4["virgil: inference products"]
-        UN["Laplace<br/>errors"]:::part
+        UN["Laplace<br/>errors"]:::done
         IG["Dirty image,<br/>beam"]:::done
         GR["Grids,<br/>limits"]:::todo
         HM["Sampling"]:::todo
@@ -154,7 +155,7 @@ What is trusted now, and from which root. Details and numbers are in the
 
 - [x] `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk`, binaries: 1e-15 (mathematics), 1e-12 against PMOIRED (external)
 - [x] Random 24-component constellations: 1e-12 (mathematics, external)
-- [x] `ModulatedGaussianRim`: 1e-16 (quadrature); zero-width limit of PMOIRED's annulus (external). Docstring finding 1, fixed in [virgil#134](https://github.com/benjaminpope/virgil/pull/134).
+- [x] `ModulatedGaussianRim`: 1e-12 (quadrature), with the in-plane blur of virgil#139; unmodulated rims match PMOIRED's blurred-ring profile to 1e-9 (external). Docstring finding 1, fixed in [virgil#134](https://github.com/benjaminpope/virgil/pull/134).
 - [x] `GaussianArc`: full-circle arc weight, 1e-5 (quadrature); finding 2 fixed in [virgil#134](https://github.com/benjaminpope/virgil/pull/134)
 - [x] `Image` orientation and transforms; rotated-lattice MFT (1e-12)
 - [x] `Rotated`, `Resolved`, nested `System`s
@@ -168,13 +169,14 @@ What is trusted now, and from which root. Details and numbers are in the
 
 - [x] Closure-phase whitening: pulls N(0, 1) with correlated noise (statistics)
 - [x] LM fits recover injected truth to 1e-10 noise-free, 0.02σ bias from dLux masking data
+- [ ] Optimiser choice and convergence edge cases (findings 6 and 7; fixes in progress)
 - [ ] L-BFGS and Adam fits, regularisers
 - [ ] Fits against PMOIRED and CANDID on identical files (plan Stage 2)
 
 ### virgil: inference products
 
 - [x] Laplace uncertainties for scalar parameters calibrated (statistics)
-- [ ] Laplace uncertainties with array-valued parameters (finding 5; fix in [virgil#135](https://github.com/benjaminpope/virgil/pull/135))
+- [x] Laplace uncertainties with array-valued parameters: finding 5 fixed in [virgil#135](https://github.com/benjaminpope/virgil/pull/135); rim pulls added
 - [x] Dirty image, beam, Nyquist pixel, field of view, beam convolution (mathematics)
 - [ ] Grid search and detection limits against CANDID (plan Stage 3)
 - [ ] Sampling: simulation-based calibration of `numpyro_model` posteriors (statistics)
@@ -183,7 +185,7 @@ What is trusted now, and from which root. Details and numbers are in the
 ### People
 
 - [ ] Conventions pages ([PMOIRED](pmoired_conventions.md); CANDID to come) checked by a person
-- [ ] Findings reviewed and their fixes merged in virgil (1–3 merged; 5 open)
+- [ ] Findings reviewed and their fixes merged in virgil (1–5 merged)
 
 ## Making it traceable and auditable
 

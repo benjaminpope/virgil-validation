@@ -35,6 +35,6 @@ nav:
   - Report: report.md
   - Results: results.md
   - External packages:
-      - "Plan: CANDID and PMOIRED": plan_candid_pmoired.md
+      - "Plan: external packages": plan_external.md
       - PMOIRED conventions: pmoired_conventions.md
       - PMOIRED problems: pmoired_notes.md

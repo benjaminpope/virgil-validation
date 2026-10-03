@@ -6,15 +6,6 @@ import pytest
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 
-def pytest_configure(config):
-    config.addinivalue_line("markers", "x64: run virgil in float64")
-    config.addinivalue_line("markers", "float32: run virgil in float32")
-    config.addinivalue_line("markers", "slow: long simulation")
-    config.addinivalue_line(
-        "markers", "external: needs another package (PMOIRED, CANDID)"
-    )
-
-
 @pytest.fixture(autouse=True)
 def _precision(request):
     """float64 for tests marked x64 (and any unmarked test that simulates

@@ -69,7 +69,7 @@ def test_noise_free_recovery(tmp_path, make):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("make", vb.SCENES[:3], ids=lambda f: f.__name__)
+@pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
 @pytest.mark.parametrize("phase_noise", ["baseline", "triangle"])
 def test_noisy_pulls_are_unit_normal(tmp_path, make, phase_noise):
     scene = make()
@@ -92,21 +92,65 @@ def test_noisy_pulls_are_unit_normal(tmp_path, make, phase_noise):
     assert np.all((pulls.std(0) > 0.7) & (pulls.std(0) < 1.35))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="laplace_cov cannot mix array-valued parameter paths (the rim's "
-    "az_amps, az_pas) with scalar ones",
-)
 def test_laplace_cov_with_array_parameters(tmp_path):
-    from virgil.inference import laplace_cov
-
+    """Finding 5, fixed in virgil#135: the rim's array-valued az_amps and
+    az_pas beside scalar paths give a full, positive-definite covariance."""
     scene = vb.star_rim()
     path = tmp_path / "s.fits"
     simulate.observe(
         path, scene.vis, UTS, hour_angles_h=HA, wavelengths=WL, dec_deg=DEC,
         sigma_v2=0.02, sigma_cp_deg=1.0,
     )
-    data = vb.load(path)
-    values = vb.flat_truth(scene)
-    cov = laplace_cov(values, list(scene.truth), data, scene.template)
-    assert np.all(np.isfinite(np.diag(np.asarray(cov))))
+    _, cov = vb.fit_scene(scene, vb.load(path), start=scene.truth)
+    n = vb.flat_truth(scene).size
+    assert cov.shape == (n, n)
+    assert np.all(np.isfinite(cov))
+    np.testing.assert_allclose(cov, cov.T, rtol=1e-8, atol=1e-14)
+    assert np.all(np.linalg.eigvalsh(cov) > 0)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="finding 7: an .expand()ed prior switches fit from LM to L-BFGS",
+)
+def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path):
+    """fit documents LM as the default whenever the objective has a
+    least-squares form; Uniform(0, 1).expand([1]) is the same prior as an
+    array-shaped Uniform, which does get LM."""
+    import numpyro.distributions as dist
+
+    from virgil.fitting import fit
+
+    scene = vb.star_rim()
+    path = tmp_path / "s.fits"
+    simulate.observe(
+        path, scene.vis, UTS, hour_angles_h=HA, wavelengths=WL, dec_deg=DEC,
+        sigma_v2=0.02, sigma_cp_deg=1.0, rng=np.random.default_rng(3),
+    )
+    priors = dict(scene.priors)
+    priors["rim.az_amps"] = dist.Uniform(0, 1).expand([1])
+    priors["rim.az_pas"] = dist.Uniform(0, 360).expand([1])
+    assert fit(scene.template, priors, vb.load(path)).info["method"] == "lm"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="finding 6: a fit started at an exact zero-residual optimum "
+    "reports non-convergence",
+)
+@pytest.mark.parametrize("method", ["lm", "lbfgs"])
+def test_fit_from_the_exact_optimum_converges(tmp_path, method):
+    import warnings
+
+    from virgil.fitting import fit
+
+    scene = vb.binary()
+    path = tmp_path / "s.fits"
+    simulate.observe(
+        path, scene.vis, UTS, hour_angles_h=HA, wavelengths=WL, dec_deg=DEC,
+        sigma_v2=0.02, sigma_cp_deg=1.0,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = fit(scene.template, scene.priors, vb.load(path), method=method)
+    assert result.info["converged"] and result.info["steps"] < 50
