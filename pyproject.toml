@@ -5,6 +5,10 @@ description = "Independent validation of virgil against first-principles and dLu
 requires-python = ">=3.11"
 dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil-astro", "pytest"]
 
+[project.optional-dependencies]
+# Other people's packages, pinned: updating a pin is a deliberate PR.
+external = ["pmoired==26.10.1"]
+
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
