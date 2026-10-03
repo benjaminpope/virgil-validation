@@ -1,0 +1,949 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Independent validation of virgil against first principles, dLux and other packages">
+      
+      
+      
+        <link rel="canonical" href="https://benjaminpope.github.io/virgil-validation/">
+      
+      
+      
+        <link rel="next" href="design/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>virgil-validation</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#virgil-validation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="virgil-validation" class="md-header__button md-logo" aria-label="virgil-validation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            virgil-validation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Home
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/benjaminpope/virgil-validation" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="virgil-validation" class="md-nav__button md-logo" aria-label="virgil-validation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    virgil-validation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/benjaminpope/virgil-validation" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-checked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is checked
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Findings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requesting-other-validations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requesting other validations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design: bootstrapping trust
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    External packages
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    External packages
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="plan_candid_pmoired/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan: CANDID and PMOIRED
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pmoired_conventions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PMOIRED conventions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="pmoired_notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PMOIRED problems
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-checked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is checked
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Findings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#requesting-other-validations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requesting other validations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!-- Generated from README.md by scripts/build_docs_index.py. -->
+<h1 id="virgil-validation">virgil-validation<a class="headerlink" href="#virgil-validation" title="Permanent link">&para;</a></h1>
+<p>Documentation: <a href="https://benjaminpope.github.io/virgil-validation/">https://benjaminpope.github.io/virgil-validation/</a></p>
+<p>Independent checks of <a href="https://github.com/benjaminpope/virgil">virgil</a>
+(<code>pip install virgil-astro</code>), the interferometry package formerly called
+drpangloss.</p>
+<p>virgil's own test suite was written mostly by AI agents, and mostly checks
+virgil against other parts of virgil. A sign convention, a factor of two or
+a misread paper can then be consistent everywhere and still wrong. This
+repository simulates data with code that shares nothing with virgil, and only
+lets virgil <em>read, model and fit</em> the result:</p>
+<ul>
+<li><strong>Geometric primitives</strong> (<code>src/crosscheck/sky.py</code>): every shape is a
+  point cloud from a quadrature rule over its brightness (Gauss–Legendre,
+  Gauss–Hermite, trapezoid in azimuth), and where one exists a textbook
+  closed form evaluated with SciPy (<code>2 J1(x)/x</code> for disks, Gaussians,
+  shifts). The two routes agree with each other to 1e-15 before either is
+  compared with virgil.</li>
+<li><strong>Long-baseline interferometry</strong> (<code>array.py</code>, <code>oifits_writer.py</code>,
+  <code>simulate.py</code>): uv tracks from station coordinates by Earth rotation
+  (Thompson, Moran &amp; Swenson eqs. 4.1–4.4), V² and closure phases formed
+  from our visibilities, written to OIFITS v2 by our own astropy writer, and
+  read back by virgil's reader.</li>
+<li><strong>Aperture masking</strong> (<code>nrm.py</code>): each scene is imaged through a
+  NIRISS-like 7-hole mask both by <a href="https://github.com/LouisDesdoigts/dLux">dLux</a>
+  and by the closed-form interferogram (Airy envelope × fringes), point by
+  point. Observables are the image's Fourier transform at the baselines
+  divided by a point-source calibrator's.</li>
+<li><strong>Imaging machinery</strong>: virgil's dirty image, beam, Nyquist pixel, field of
+  view, beam convolution, rendering and rotated-lattice matrix Fourier
+  transform, against analytic answers.</li>
+</ul>
+<p>The independent side (<code>src/crosscheck</code>) may not import virgil; a test
+enforces it. <code>src/virgil_bridge</code> is the only code that does.</p>
+<h2 id="what-is-checked">What is checked<a class="headerlink" href="#what-is-checked" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Check</th>
+<th>Agreement</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Visibilities</td>
+<td><code>PointSource</code>, <code>GaussianDisk</code>, <code>EllipticalGaussian</code>, <code>UniformDisk</code> (through four Airy nulls), binaries, <code>ModulatedGaussianRim</code> (inclined, m = 1, 2), <code>Image</code> orientation, <code>Rotated</code>, <code>Resolved</code>, nested <code>System</code>s</td>
+<td>1e-15 (float64)</td>
+</tr>
+<tr>
+<td>Visibilities</td>
+<td>5 random constellations of 24 points, Gaussians, elliptical Gaussians and disks at random positions and fluxes, plus a nested group</td>
+<td>1e-12 (float64), 3e-5 (float32)</td>
+</tr>
+<tr>
+<td>uv geometry</td>
+<td>our Earth-rotation tracks vs <code>virgil.coverage.vlti_oidata</code></td>
+<td>1e-9 m</td>
+</tr>
+<tr>
+<td>OIFITS</td>
+<td>our file → <code>OIData</code> → <code>data.model(...)</code> reproduces what we wrote (V², T3 orientation, signs, units)</td>
+<td>1e-16</td>
+</tr>
+<tr>
+<td>Recovery (VLTI)</td>
+<td>noise-free fits of a binary, a uniform-disk star with a companion, a star with an elliptical envelope and a star with a modulated rim</td>
+<td>1e-10 to 1e-13 relative (rim: 1e-7, optimiser tolerance)</td>
+</tr>
+<tr>
+<td>Uncertainties</td>
+<td>pulls (fit − truth)/σ over noisy realisations, with closure phases correlated through shared baselines or independent</td>
+<td>200 draws per case: means within ±0.17, sds 0.89–1.10 (<a href="results/">results</a>)</td>
+</tr>
+<tr>
+<td>Masking (dLux)</td>
+<td>calibrated visibilities vs the exact scene</td>
+<td>1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5</td>
+</tr>
+<tr>
+<td>Masking (dLux)</td>
+<td>virgil fits to noise-free dLux observables</td>
+<td>bias ≤ 0.02 σ for realistic errors (1° closure phases)</td>
+</tr>
+<tr>
+<td>Dirty image</td>
+<td>uniform uv disk → Airy beam centred on the source, East left</td>
+<td>3e-3 (sampling of the disk)</td>
+</tr>
+<tr>
+<td>Beam</td>
+<td>filled uv disk and ellipse → FWHM 2.355/(π q), PA perpendicular to the coverage</td>
+<td>1e-4</td>
+</tr>
+<tr>
+<td>Grids</td>
+<td><code>nyquist_pixel_scale</code>, <code>field_of_view</code>, <code>convolve_beam</code> (second moments), <code>render</code> orientation and sampling, <code>Image.from_model</code>, <code>Image.model_on_grid</code> on rotated lattices vs direct DFT</td>
+<td>1e-9 to 1e-12</td>
+</tr>
+</tbody>
+</table>
+<p>The strategy (trust bootstrapped from mathematics, standards and
+human-written packages, never from LLM-written code):
+<a href="design/">docs/design.md</a>. Every check, and whether it is against an analytic result, our own
+quadrature, first principles or dLux: <a href="report/">docs/report.md</a>.
+Full numbers and figures: <a href="results/">docs/results.md</a>, regenerated by
+<code>scripts/report.py</code>. Next: <a href="plan_candid_pmoired/">validating against CANDID and
+PMOIRED</a>; PMOIRED's conventions are pinned
+(<a href="pmoired_conventions/">Stage 0</a>).</p>
+<h2 id="findings">Findings<a class="headerlink" href="#findings" title="Permanent link">&para;</a></h2>
+<p>Disagreements are kept as tests: one pinned to what virgil does, and a
+<code>strict</code> xfail stating what is wrong, which will start failing (and so be
+noticed) once virgil changes.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>virgil</th>
+<th>Finding</th>
+<th>Severity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>ModulatedGaussianRim</code></td>
+<td>The azimuthal modulation of an inclined rim is defined in the <strong>disk plane</strong> (in-plane azimuth, counted from the major axis at <code>pa</code>), not in on-sky position angle as the docstring's "polar image coordinates" formula reads. With that reading virgil agrees to 1e-16; with the literal one the visibilities differ by 4e-2. Documented in <a href="https://github.com/benjaminpope/virgil/pull/134">virgil#134</a>.</td>
+<td>docs</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>GaussianArc</code></td>
+<td>The arc-length weight is cut at ±3.5σ and renormalised, dropping 0.05 % of the flux and giving ~1e-3 visibility errors that no <code>nodes</code> setting removes. Once the length FWHM exceeds about half the circumference the weight wraps round the circle more than once; which definition is meant is undocumented. <a href="https://github.com/benjaminpope/virgil/pull/134">virgil#134</a> spans ±min(6σ, πR) (a Gaussian wrapped once round the circle); the strict xfail is now a passing test.</td>
+<td>minor</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>OIData.uv_grid</code></td>
+<td>Documented as set "when the samples lie on a regular lattice", but only AMIGO DISCO records get one, so ordinary OIFITS data on a lattice never use <code>Image</code>'s fast lattice transform. The transform itself is exact (1e-12) when given the grid. <a href="https://github.com/benjaminpope/virgil/pull/134">virgil#134</a> corrects the docstring and documents opting in with <code>find_uv_grid</code>.</td>
+<td>docs / performance</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>Image.from_model</code></td>
+<td>The default <code>floor=1e-6</code> adds ~1e-5 of spurious flux over a large field (documented; noted here because it limits round-trip tests).</td>
+<td>note</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>inference.laplace_cov</code></td>
+<td>Fails (<code>TypeError: Cannot concatenate arrays with different numbers of dimensions</code>) when any parameter path is array-valued, e.g. <code>ModulatedGaussianRim</code>'s <code>az_amps</code>/<code>az_pas</code> beside scalar ones, so a rim fit has no Laplace errors.</td>
+<td>bug</td>
+</tr>
+</tbody>
+</table>
+<p>Nothing else disagreed: every primitive, convention (East, North, position
+angle, OIFITS sign, T3 orientation), the OIFITS reader, the fitter and the
+Laplace uncertainties passed.</p>
+<h2 id="requesting-other-validations">Requesting other validations<a class="headerlink" href="#requesting-other-validations" title="Permanent link">&para;</a></h2>
+<p>If you would like something else validated, please
+<a href="https://github.com/benjaminpope/virgil-validation/issues">open an Issue</a>
+detailing the request: the model or function, the analytic or independent
+result it should match, and the precision you expect.</p>
+<p>Not yet covered: <code>GravityDarkenedStar</code>, the flared-disk models,
+<code>HarmonixModel</code>, spectral (<code>virgil.spectra</code>) fluxes and bandwidth smearing,
+AMIGO DISCO mode bases, grid searches and contrast limits.</p>
+<h2 id="running">Running<a class="headerlink" href="#running" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>venv<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.12<span class="w"> </span>.venv
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--python<span class="w"> </span>.venv/bin/python<span class="w"> </span>-e<span class="w"> </span>.<span class="w">        </span><span class="c1"># virgil-astro from PyPI</span>
+.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-m<span class="w"> </span><span class="s2">"not slow"</span><span class="w">             </span><span class="c1"># ~1 min</span>
+.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w">                           </span><span class="c1"># + dLux and noisy pulls, ~10 min</span>
+.venv/bin/python<span class="w"> </span>scripts/report.py<span class="w">                   </span><span class="c1"># docs/results.md and figures</span>
+</code></pre></div>
+<p>To test a local virgil checkout, install it editable instead
+(<code>uv pip install --python .venv/bin/python -e ../virgil -e .</code>). CI runs the
+fast tests on every push and everything weekly against virgil's <code>main</code>.</p>
+<h2 id="references">References<a class="headerlink" href="#references" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Pauls, Young, Cotton &amp; Monnier 2005, PASP 117, 1255 (OIFITS)</li>
+<li>Duvert, Young &amp; Hummel 2017, A&amp;A 597, A8 (OIFITS v2)</li>
+<li>Thompson, Moran &amp; Swenson 2017, <em>Interferometry and Synthesis in Radio
+  Astronomy</em>, 3rd ed., ch. 4</li>
+<li>Berger &amp; Segransan 2007, New Astron. Rev. 51, 576</li>
+<li>Desdoigts, Pope, Dennis &amp; Tuthill 2023, JATIS 9, 028007 (dLux)</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.sections", "content.code.copy"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
