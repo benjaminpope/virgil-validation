@@ -32,11 +32,24 @@ jobs:
       - name: all tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: .venv/bin/python -m pytest -v --evidence evidence.jsonl
+      - name: virgil's own evidence
+        # weekly and manual runs: the JUnit evidence from virgil's latest
+        # successful CI run on main (the float64 Linux job)
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r run sha <<< "$(gh run list -R benjaminpope/virgil -w tests.yml -b main -s success -L 1 --json databaseId,headSha --jq '.[0] | "\(.databaseId) \(.headSha)"')"
+          gh run download "$run" -R benjaminpope/virgil -n virgil-evidence-ubuntu-latest-py3.12-x641 -D virgil-ci
+          .venv/bin/python scripts/ingest_virgil_evidence.py virgil-ci/junit-evidence.xml virgil-evidence.jsonl \
+            --commit "$sha" --run-url "https://github.com/benjaminpope/virgil/actions/runs/$run"
       - name: evidence table
         if: always()
         run: |
           if [ -f evidence.jsonl ]; then
-            .venv/bin/python scripts/evidence_table.py evidence.jsonl evidence.md
+            .venv/bin/python scripts/evidence_table.py evidence.jsonl evidence.md \
+              $( [ -f virgil-evidence.jsonl ] && echo virgil-evidence.jsonl )
             cat evidence.md >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: upload evidence
@@ -46,5 +59,6 @@ jobs:
           name: evidence-${{ github.event_name }}-${{ github.run_id }}
           path: |
             evidence.jsonl
+            virgil-evidence.jsonl
             evidence.md
           if-no-files-found: ignore

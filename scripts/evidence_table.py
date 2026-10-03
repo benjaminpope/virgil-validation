@@ -1,6 +1,10 @@
 """Render an evidence file (pytest --evidence) as a docs page.
 
-    .venv/bin/python scripts/evidence_table.py evidence.jsonl docs/evidence.md
+    .venv/bin/python scripts/evidence_table.py evidence.jsonl docs/evidence.md \
+        [virgil-evidence.jsonl]
+
+The optional third file holds virgil's own CI evidence
+(scripts/ingest_virgil_evidence.py); its checks are counted in brackets.
 
 One row per validated object; one column per root of trust; each cell
 counts the checks that passed (and flags any that failed). Findings and
@@ -16,18 +20,23 @@ from evidence import ROOTS
 STRONG = [r for r in ROOTS if r != "self-consistency"]
 
 
-def main(src, dst):
+def main(src, dst, virgil_src=None):
     lines = [json.loads(line) for line in open(src)]
     run, tests = lines[0], lines[1:]
+    virgil_run = None
+    if virgil_src:
+        vlines = [json.loads(line) for line in open(virgil_src)]
+        virgil_run, tests = vlines[0], tests + vlines[1:]
     cells = collections.defaultdict(lambda: collections.Counter())
     issues = []
     for t in tests:
         if t["kind"] in ("finding", "upstream"):
             issues.append(t)
             continue
+        tag = "virgil" if t.get("source") == "virgil-ci" else "ours"
         for obj in t["objects"]:
             for root in t["roots"]:
-                cells[(obj, root)][t["outcome"]] += 1
+                cells[(obj, root)][(tag, t["outcome"])] += 1
     objects = sorted({o for o, _ in cells}, key=lambda o: (not o.startswith("virgil"), o))
     roots = [r for r in STRONG + ["self-consistency"] if any((o, r) in cells for o in objects)]
     roots += sorted({r for _, r in cells} - set(roots))
@@ -35,9 +44,15 @@ def main(src, dst):
     def cell(c):
         if not c:
             return ""
-        bad = c["failed"] + c["xpassed"] + c["error"]
-        good = c["passed"] + c["xfailed"]
-        return (f"✗ {bad} failed, " if bad else "") + f"✓ {good}"
+        parts = []
+        for tag in ("ours", "virgil"):
+            bad = sum(c[(tag, o)] for o in ("failed", "xpassed", "error"))
+            good = sum(c[(tag, o)] for o in ("passed", "xfailed"))
+            if not bad and not good:
+                continue
+            text = (f"✗ {bad} failed, " if bad else "") + f"✓ {good}"
+            parts.append(text if tag == "ours" else f"({text} in virgil)")
+        return " ".join(parts)
 
     v = run["virgil"]
     out = [
@@ -49,6 +64,17 @@ def main(src, dst):
         f"`{(v['commit'] or 'unknown')[:10]}`, virgil-validation at "
         f"`{(run['validation_commit'] or 'unknown')[:10]}`.",
         "Packages: " + ", ".join(f"{k} {val}" for k, val in run["versions"].items() if val) + ".",
+        *(
+            [
+                "",
+                f"Counts in brackets are virgil's own tests (its `validates` markers), "
+                f"from virgil's CI at `{(virgil_run['virgil']['commit'] or '')[:10]}`"
+                + (f" ([run]({virgil_run['run_url']}))" if virgil_run.get("run_url") else "")
+                + ".",
+            ]
+            if virgil_run
+            else []
+        ),
         "",
         "Each cell counts the tests that check the object against that root of",
         "trust (see [design](design.md)); negative controls and checks of our own",
@@ -68,4 +94,4 @@ def main(src, dst):
 
 
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    main(*sys.argv[1:4])
