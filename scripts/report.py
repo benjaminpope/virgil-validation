@@ -99,8 +99,8 @@ def vlti(n_pulls):
     out("With 200 draws the sampling sd of a mean is 0.07 and of an sd 0.05. virgil whitens closure phases as a correlated group, as they are when formed from baseline phases, so the `baseline` rows test the realistic case; with independent noise per triangle (`triangle`) its errors are slightly conservative.\n")
     out("| scene | CP noise | parameter | mean | sd |")
     out("| --- | --- | --- | --- | --- |")
-    fig, axes = plt.subplots(2, 3, figsize=(11, 6), sharex=True)
-    for col, make in enumerate(vb.SCENES[:3]):
+    fig, axes = plt.subplots(2, 4, figsize=(14, 6), sharex=True)
+    for col, make in enumerate(vb.SCENES):
         s = make()
         for row, mode in enumerate(["baseline", "triangle"]):
             rng = np.random.default_rng(100 + col)

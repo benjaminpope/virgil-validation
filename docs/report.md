@@ -72,7 +72,7 @@ Four VLTI UTs, 7 hour angles, 6 channels in H–K, declination −50°
 | our OIFITS file read by `OIData`; `data.model(...)` vs the V² and closure phases we wrote, for 4 scenes | our writer, our closure phases (T3 = V12 V23 V13*) | First principles | 5e-16 |
 | noise-free fit recovery: binary; uniform-disk star + companion; star + elliptical envelope; star + modulated rim | injected truth | First principles + Analytic | 1e-10 to 1e-13 relative (rim 1e-7, optimiser tolerance) |
 | pulls (fit − truth)/σ over 200 noisy realisations per case, closure-phase noise per baseline (correlated) or per triangle | N(0, 1) | Statistical | means within ±0.17, sds 0.89–1.10 (sampling sd 0.05) |
-| `laplace_cov` with array-valued parameters (rim `az_amps`) | should return a covariance | — | raises `TypeError` (finding 5) |
+| `laplace_cov` with array-valued parameters (rim `az_amps`, `az_pas`) | a finite, symmetric, positive-definite covariance over the flattened parameters | Mathematics | passes since virgil#135 (finding 5); the rim now has Laplace σ and joins the pull tests |
 
 ## Aperture masking
 
@@ -87,7 +87,7 @@ source (`tests/test_nrm.py`).
 | point clouds vs exact scene visibilities | closed forms | Quadrature | ≤ 1e-8 |
 | dLux image vs closed-form interferogram (Airy envelope × fringes) | each other | dLux + Analytic | calibrated visibilities agree to 1e-5 |
 | calibrated visibilities vs exact: binary, disk star + companion, star + envelope, star + rim | closed forms | dLux / Analytic | 1e-4 to 8e-4 at 256 px (7.7″), from 1e-3 at 128 px: light falling off the detector |
-| virgil fits to the noise-free dLux observables, written by our OIFITS writer | injected truth | dLux | bias ≤ 0.02 σ for σ(CP) = 1°, σ(V²) = 0.02; rim parameters within 0.6 % (no σ: finding 5) |
+| virgil fits to the noise-free dLux observables, written by our OIFITS writer | injected truth | dLux | bias ≤ 0.05 σ for σ(CP) = 1°, σ(V²) = 0.02 (the rim, the most extended scene, is the largest; the test accepts 0.1 σ) |
 
 ## Imaging and grid machinery
 
