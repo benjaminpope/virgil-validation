@@ -123,12 +123,14 @@ def test_binaries(uvw):
 @pytest.mark.parametrize(
     "amps,pas", [((), ()), ((0.4,), (200.0,)), ((0.4, 0.25), (40.0, 110.0))]
 )
-def test_modulated_rim_in_plane_azimuth(uvw, inc, amps, pas):
-    """virgil's modulation azimuth is the in-plane (deprojected) one."""
+def test_modulated_rim_in_plane_azimuth_and_blur(uvw, inc, amps, pas):
+    """virgil's rim (since virgil#139): a thin ring modulated in in-plane
+    azimuth, blurred by a Gaussian isotropic in the rim's own plane, then
+    inclined."""
     u, v, wl = uvw
     ring = sky.inclined_ring(4.0, inc, 30.0, amps, pas, "disk", 0.3, -0.2)
-    ours = sky.visibility(ring, u, v, wl) * sky.gaussian_blur_factor(
-        u, v, wl, 0.8
+    ours = sky.visibility(ring, u, v, wl) * sky.in_plane_blur_factor(
+        u, v, wl, 0.8, inc, 30.0
     )
     theirs = vm.ModulatedGaussianRim(
         4.0, 0.8, inc, 30.0, np.array(amps), np.array(pas), dra=0.3, ddec=-0.2
@@ -139,17 +141,32 @@ def test_modulated_rim_in_plane_azimuth(uvw, inc, amps, pas):
 @pytest.mark.x64
 def test_modulated_rim_is_not_modulated_in_sky_angle(uvw):
     """Modulating in on-sky position angle is a different model: virgil's
-    az_pas are in-plane azimuths, as its docstring now states."""
+    az_pas are in-plane azimuths, as its docstring states."""
     u, v, wl = uvw
     ring = sky.inclined_ring(4.0, 50.0, 30.0, (0.4, 0.25), (40.0, 110.0), "sky")
-    ours = sky.visibility(ring, u, v, wl) * sky.gaussian_blur_factor(
-        u, v, wl, 0.8
+    ours = sky.visibility(ring, u, v, wl) * sky.in_plane_blur_factor(
+        u, v, wl, 0.8, 50.0, 30.0
     )
     theirs = vm.ModulatedGaussianRim(
         4.0, 0.8, 50.0, 30.0, np.array([0.4, 0.25]), np.array([40.0, 110.0])
     )
     err = np.max(np.abs(ours - virgil_vis(theirs, u, v, wl)))
     assert err > 1e-3
+
+
+@pytest.mark.x64
+def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
+    """The definition before virgil#139 (blur round on the sky) is a
+    different model once the rim is inclined; face-on they coincide."""
+    u, v, wl = uvw
+    for inc, differs in [(0.0, False), (60.0, True)]:
+        ring = sky.inclined_ring(4.0, inc, 30.0, (), (), "disk")
+        old = sky.visibility(ring, u, v, wl) * sky.gaussian_blur_factor(
+            u, v, wl, 0.8
+        )
+        theirs = vm.ModulatedGaussianRim(4.0, 0.8, inc, 30.0)
+        err = np.max(np.abs(old - virgil_vis(theirs, u, v, wl)))
+        assert (err > 1e-3) if differs else (err < 1e-12)
 
 
 @pytest.mark.x64

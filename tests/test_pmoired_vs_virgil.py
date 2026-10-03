@@ -9,7 +9,7 @@ pinned in Stage 0 (docs/pmoired_conventions.md).
 import numpy as np
 import pytest
 
-from crosscheck import nrm, simulate, array
+from crosscheck import array, nrm, simulate, sky
 
 pytest.importorskip("pmoired")
 vm = pytest.importorskip("virgil.models")
@@ -188,50 +188,76 @@ def test_random_constellation(vlti_file, seed):
 # --------------------------------------------------------------- rim
 
 RIM = dict(diam=6.0, fwhm=1.0, inc=45.0, pa=30.0)
-RIM_AMPS, RIM_PAS = np.array([0.5, 0.2]), np.array([120.0, 75.0])
+SIGMA = RIM["fwhm"] / FWHM
 
 
-def _annulus_params(width):
-    """PMOIRED's nearest shape to virgil's rim: an annulus of fractional
-    width ``width`` about the rim's diameter, blurred by the spatial kernel
-    (which blurs every component, so the rim is alone), modulation angles
-    mapped from virgil's absolute to PMOIRED's relative ones."""
-    d = RIM["diam"]
-    return {
-        "diamin": d * (1 - width / 2), "diamout": d * (1 + width / 2),
-        "incl": RIM["inc"], "projang": RIM["pa"], "spatial kernel": RIM["fwhm"],
-        "az amp1": RIM_AMPS[0], "az projang1": RIM_PAS[0] - RIM["pa"],
-        "az amp2": RIM_AMPS[1], "az projang2": RIM_PAS[1] - RIM["pa"],
+def _blurred_ring_profile(r):
+    """Radial profile of a thin ring of radius r0 convolved with a 2D
+    Gaussian of width sigma: exp(-(r^2 + r0^2) / 2 sigma^2) I0(r r0 / sigma^2)."""
+    from scipy.special import i0
+
+    r0 = RIM["diam"] / 2
+    return np.exp(-(r**2 + r0**2) / (2 * SIGMA**2)) * i0(r * r0 / SIGMA**2)
+
+
+def _pmoired_rim(amps=(), pas=()):
+    """PMOIRED ring with the blurred-ring profile, defined in the disk plane
+    and inclined (so the blur is isotropic in that plane, as virgil's since
+    virgil#139); modulation angles relative to projang."""
+    r0, s = RIM["diam"] / 2, SIGMA
+    params = {
+        "diamin": max(RIM["diam"] - 12 * s, 0.0),
+        "diamout": RIM["diam"] + 12 * s,
+        "profile": f"np.exp(-($R**2+{r0}**2)/(2*{s}**2))*np.i0($R*{r0}/{s}**2)",
+        "incl": RIM["inc"],
+        "projang": RIM["pa"],
     }
+    for k, (a, p) in enumerate(zip(amps, pas), start=1):
+        params[f"az amp{k}"] = a
+        params[f"az projang{k}"] = p - RIM["pa"]
+    return params
 
 
-def test_rim_is_the_thin_annulus_limit(vlti_file):
-    """virgil's ModulatedGaussianRim (a thin ring convolved with a
-    Gaussian) is the zero-width limit of PMOIRED's blurred annulus: the
-    difference falls as width^2, and Richardson extrapolation of PMOIRED
-    to zero width lands on virgil."""
+def test_unmodulated_rim_matches_pmoired_blurred_ring_profile(vlti_file):
+    """An unmodulated, inclined rim blurred in its own plane is a ring with
+    the Bessel-I0 radial profile: PMOIRED and virgil agree exactly. This
+    checks virgil#139's in-plane blur against another package."""
     scene = vm.ModulatedGaussianRim(
-        RIM["diam"], RIM["fwhm"], RIM["inc"], RIM["pa"], RIM_AMPS, RIM_PAS
+        RIM["diam"], RIM["fwhm"], RIM["inc"], RIM["pa"]
     )
-    setup = {"Nr": 2000}
-    w = 0.05
-    s1 = model_samples(vlti_file, _annulus_params(w), setup)
-    s2 = model_samples(vlti_file, _annulus_params(w / 2), setup)
-    v2 = np.abs(np.asarray(scene.model(s1["u"], s1["v"], 1e-6))) ** 2
-    d1, d2 = np.max(np.abs(s1["v2"] - v2)), np.max(np.abs(s2["v2"] - v2))
-    assert 3.8 < d1 / d2 < 4.2  # second order in the width
-    extrapolated = (4 * s2["v2"] - s1["v2"]) / 3
-    assert np.max(np.abs(extrapolated - v2)) < 1e-6  # from 1.2e-4 at w / 2
-    t1, t2 = s1["t3phi"], s2["t3phi"]
-    extrapolated_cp = (4 * t2 - t1) / 3
-    dv, dcp, cp_max = compare(vlti_file, scene, _annulus_params(w / 2), setup)
-    assert cp_max > 30
-    # virgil's closure phases from the same samples
-    def vis(u, v):
-        return np.asarray(scene.model(u, v, 1e-6))
-    t3 = vis(s1["u1"], s1["v1"]) * vis(s1["u2"], s1["v2_"]) * np.conj(
-        vis(s1["u1"] + s1["u2"], s1["v1"] + s1["v2_"])
+    dv2, dcp, _ = compare(vlti_file, scene, _pmoired_rim(), {"Nr": 3000})
+    assert dv2 < 1e-8 and dcp < 1e-6
+
+
+class _Cloud:
+    def __init__(self, cloud):
+        self.cloud = cloud
+
+    def model(self, u, v, wl):
+        return sky.visibility(self.cloud, u, v, wl)
+
+
+def test_modulated_rim_definitions_differ(vlti_file):
+    """With modulation the two packages define different things, both
+    exactly. PMOIRED multiplies the radial profile by (1 + A cos m phi);
+    virgil blurs the modulated thin ring, which gives harmonic m the
+    profile I_m instead of I_0. PMOIRED matches our quadrature of its
+    definition; virgil matches ours of its own (tests/test_visibilities.py);
+    the two differ at O(m^2 sigma^2 / r0^2). Ruled a difference of
+    definition (docs/pmoired_conventions.md)."""
+    amps, pas = (0.5, 0.2), (120.0, 75.0)
+    r0, s = RIM["diam"] / 2, SIGMA
+    separable = sky.inclined_annulus(
+        max(RIM["diam"] - 12 * s, 0.0), RIM["diam"] + 12 * s,
+        RIM["inc"], RIM["pa"], amps, pas, "disk",
+        n_r=96, n_phi=1024, profile=_blurred_ring_profile,
     )
-    cp = np.rad2deg(np.angle(t3))
-    err_cp = np.max(np.abs((extrapolated_cp - cp + 180) % 360 - 180))
-    assert err_cp < 1e-2 * dcp, (err_cp, dcp)
+    params = _pmoired_rim(amps, pas)
+    dv2, dcp, cp_max = compare(vlti_file, _Cloud(separable), params, {"Nr": 3000})
+    assert cp_max > 30 and dv2 < 1e-8 and dcp < 1e-5
+    scene = vm.ModulatedGaussianRim(
+        RIM["diam"], RIM["fwhm"], RIM["inc"], RIM["pa"],
+        np.array(amps), np.array(pas),
+    )
+    dv2, dcp, _ = compare(vlti_file, scene, params, {"Nr": 3000})
+    assert 1e-4 < dv2 < 1e-2  # (m sigma / r0)^2 ~ 0.02 times the modulated part

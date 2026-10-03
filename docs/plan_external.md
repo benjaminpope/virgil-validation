@@ -1,4 +1,4 @@
-# Plan: validating virgil against CANDID and PMOIRED
+# Plan: validating virgil against PMOIRED, CANDID and fouriever
 
 ## Why
 
@@ -12,6 +12,19 @@ files we simulate, is the strongest outside check available. Where the three
 codes disagree, our analytic references decide which is right.
 
 ## Packages
+
+[fouriever](https://github.com/kammerje/fouriever) (Jens Kammerer;
+Kammerer et al. 2019, 2020, 2023) joins as a third external package: CANDID-style
+χ² maps and detection limits that can account for correlated observables,
+bandwidth smearing, and a focus on JWST NIRISS aperture masking and kernel
+phase. It is on PyPI (0.4.3) but states no licence, so, like CANDID, it is
+installed and called, never vendored or copied; its `pymultinest`
+dependency means it gets its own environment, called through a subprocess.
+It ships test data (AB Dor NIRISS AMI, AX Cir PIONIER, β Pic GRAVITY) that
+serve the reader checks. Its stages: conventions and binary forward model
+alongside CANDID (Stage 7 of the roadmap), closure-phase correlations
+against virgil's whitening (7b), and detection limits three ways (8).
+
 
 | | CANDID | PMOIRED |
 | --- | --- | --- |

@@ -91,7 +91,8 @@ def star_rim(diam=6.0, fwhm=1.0, inc=45.0, pa=30.0, amp=0.5, az_pa=120.0, flux=0
     ring = sky.inclined_ring(diam, inc, pa, (amp,), (az_pa,), "disk")
 
     def vis(u, v, w):
-        rim = sky.visibility(ring, u, v, w) * sky.gaussian_blur_factor(u, v, w, fwhm)
+        # virgil >= #139 blurs the rim isotropically in its own plane
+        rim = sky.visibility(ring, u, v, w) * sky.in_plane_blur_factor(u, v, w, fwhm, inc, pa)
         return (sky.vis_point(u, v, w) + flux * rim) / (1 + flux)
 
     template = vm.System(
@@ -107,8 +108,10 @@ def star_rim(diam=6.0, fwhm=1.0, inc=45.0, pa=30.0, amp=0.5, az_pa=120.0, flux=0
     }
     priors = {
         "rim.diam": _u(0.2 * diam, 3 * diam), "rim.fwhm": _u(0.01 * diam, diam), "rim.inc": _u(0, 85),
-        "rim.pa": _u(-90, 180), "rim.az_amps": _u(0, 1).expand([1]),
-        "rim.az_pas": _u(0, 360).expand([1]), "rim.flux": _u(0, 5),
+        # array-shaped bounds, not .expand([1]): expanded priors switch
+        # virgil's fit from LM to L-BFGS (finding 7)
+        "rim.pa": _u(-90, 180), "rim.az_amps": _u(np.zeros(1), np.ones(1)),
+        "rim.az_pas": _u(np.zeros(1), np.full(1, 360.0)), "rim.flux": _u(0, 5),
     }
     start = {
         "rim.diam": 0.92 * diam, "rim.fwhm": 1.2 * fwhm, "rim.inc": inc - 5.0,
@@ -119,6 +122,8 @@ def star_rim(diam=6.0, fwhm=1.0, inc=45.0, pa=30.0, amp=0.5, az_pa=120.0, flux=0
         sky.inclined_ring(diam, inc, pa, (amp,), (az_pa,), "disk", n_phi=128),
         fwhm,
         n=5,
+        inc=inc,
+        pa=pa,
     )
     return Scene(
         "star + modulated rim", vis, template, truth, priors, start,
@@ -141,22 +146,22 @@ def masking_scenes():
 
 
 def fit_scene(scene, data, start=None):
-    """MAP fit from ``start`` (default ``scene.start``); returns values and
-    the Laplace covariance at the optimum, both keyed by path."""
+    """MAP fit from ``start`` (default ``scene.start``). Returns the
+    FitResult and the Laplace covariance at the optimum, over the flattened
+    parameters in the order of ``flat_truth``."""
     start = scene.start if start is None else start
     template = scene.template
     for path, value in start.items():
         template = template.set(path, np.asarray(value, float))
     result = fit(template, scene.priors, data)
-    paths = list(scene.truth)
-    flat_vals, flat_names = [], []
-    for p in paths:
-        for k, x in enumerate(np.atleast_1d(np.asarray(result.values[p]))):
-            flat_vals.append(float(x))
-            flat_names.append(p)
+    # laplace_cov takes every path's elements flattened in order, as
+    # flat_values gives them (array-valued paths since virgil#135)
     cov = np.asarray(
-        laplace_cov(np.array(flat_vals), paths, data, result.model)
-    ) if all(np.ndim(scene.truth[p]) == 0 for p in paths) else None
+        laplace_cov(
+            flat_values(scene, result.values), list(scene.truth), data,
+            result.model,
+        )
+    )
     return result, cov
 
 

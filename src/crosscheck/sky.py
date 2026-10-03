@@ -192,10 +192,14 @@ def inclined_annulus(
     ddec=0.0,
     n_r=48,
     n_phi=512,
+    profile=None,
 ):
-    """A uniformly bright annulus, inclined and rotated like
-    ``inclined_ring`` (major axis along ``pa``, minor axis shortened by
-    cos(inc)), with the same two readings of the azimuthal modulation.
+    """An annulus, inclined and rotated like ``inclined_ring`` (major axis
+    along ``pa``, minor axis shortened by cos(inc)), with the same two
+    readings of the azimuthal modulation.
+
+    Its brightness is ``profile(r)`` (uniform if None) times the
+    modulation, separably, between the two radii, in the plane of the disk.
 
     Quadrature: Gauss-Legendre in r with the area element r dr between the
     radii, trapezoid in the in-plane azimuth.
@@ -205,7 +209,8 @@ def inclined_annulus(
     r = r_in + (r_out - r_in) * (x + 1.0) / 2.0
     phi = 2.0 * np.pi * np.arange(n_phi) / n_phi
     rr, pp = np.meshgrid(r, phi)
-    wr = np.broadcast_to(w * r, rr.shape)
+    radial = w * r if profile is None else w * r * profile(r)
+    wr = np.broadcast_to(radial, rr.shape)
     a = rr * np.cos(pp)
     b = rr * np.sin(pp) * np.cos(np.deg2rad(inc))
     p = np.deg2rad(pa)
@@ -236,9 +241,16 @@ def vis_annulus(u, v, wavel, diam_in, diam_out, dra=0.0, ddec=0.0):
     ) / (a_out - a_in)
 
 
-def blurred(cloud, fwhm, n=12):
-    """Convolve a cloud with an isotropic Gaussian (as a product cloud)."""
-    g = gaussian(fwhm / FWHM_PER_SIGMA, n=n)
+def blurred(cloud, fwhm, n=12, inc=0.0, pa=0.0):
+    """Convolve a cloud with a Gaussian (as a product cloud).
+
+    With ``inc = 0`` the Gaussian is isotropic on the sky. Otherwise it is
+    isotropic in the plane of an inclined disk: inclining a convolution
+    compresses both factors alike, so on the sky it is an elliptical
+    Gaussian with FWHM ``fwhm`` along the major axis (position angle
+    ``pa``) and ``fwhm * cos(inc)`` along the minor axis.
+    """
+    g = elliptical_gaussian(fwhm, np.cos(np.deg2rad(inc)), pa, n=n)
     east = (cloud.east[:, None] + g.east[None, :]).ravel()
     north = (cloud.north[:, None] + g.north[None, :]).ravel()
     weight = (cloud.weight[:, None] * g.weight[None, :]).ravel()
@@ -319,3 +331,13 @@ def vis_uniform_disk(u, v, wavel, diam, dra=0.0, ddec=0.0):
 def gaussian_blur_factor(u, v, wavel, fwhm):
     """Fourier transform of a unit isotropic Gaussian of FWHM ``fwhm``."""
     return vis_gaussian(u, v, wavel, fwhm / FWHM_PER_SIGMA)
+
+
+def in_plane_blur_factor(u, v, wavel, fwhm, inc, pa):
+    """Fourier transform of a Gaussian of FWHM ``fwhm`` that is isotropic in
+    the plane of a disk inclined by ``inc`` with major axis at ``pa``: on
+    the sky, an elliptical Gaussian of axis ratio cos(inc) (see
+    ``blurred``)."""
+    return vis_elliptical_gaussian(
+        u, v, wavel, fwhm, np.cos(np.deg2rad(inc)), pa
+    )

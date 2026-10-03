@@ -41,7 +41,7 @@ code calling PMOIRED (`src/external_bridge/`) cannot import virgil.
 | `EllipticalGaussian(fwhm, ratio, pa)` | `{'fwhm': fwhm, 'incl': degrees(arccos(ratio)), 'projang': pa}` |
 | `Resolved(flux)` | `{'f': flux}` with no size key |
 | `System` weights | per-component `f` (both are total fluxes) |
-| `ModulatedGaussianRim(diam, fwhm, inc, pa, az_amps, az_pas)` | no exact equivalent: PMOIRED's thin-ring limit is `diamin` → `diamout`, and its `spatial kernel` blurs every component. Modulation maps as `az ampN` = `az_amps[N-1]`, `az projangN` = `az_pas[N-1]` − `pa`: virgil's angles are absolute, PMOIRED's relative. |
+| `ModulatedGaussianRim(diam, fwhm, inc, pa, az_amps, az_pas)` (blur isotropic in the rim plane since virgil#139) | unmodulated: exactly a ring with the blurred-ring radial profile `exp(-(R² + r0²)/2σ²) I0(R r0/σ²)` over `diamin`/`diamout` = `diam` ∓ 12σ, with `incl`, `projang` (agree to 1e-9). Modulated: PMOIRED's modulation multiplies the radial profile, while virgil blurs the modulated ring (harmonic m gets I_m in place of I0), a **difference of definition** of order (mσ/r0)²; each matches our quadrature of its own definition. Angles map as `az projangN` = `az_pas[N-1]` − `pa` (virgil absolute, PMOIRED relative). `spatial kernel` blurs isotropically on the sky, so it no longer matches. |
 
 Both packages put the modulation in the disk plane. That is virgil's
 behaviour (finding 1) and PMOIRED's, and neither documented it before this

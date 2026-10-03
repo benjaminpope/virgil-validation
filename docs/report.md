@@ -37,7 +37,7 @@ They are guarded against by:
   tolerance to loosen.
 
 External packages written by other people (CANDID, PMOIRED) would be a
-stronger check still: see the [plan](plan_candid_pmoired.md).
+stronger check still: see the [plan](plan_external.md).
 
 ## Model visibilities
 
@@ -52,7 +52,7 @@ stronger check still: see the [plan](plan_candid_pmoired.md).
 | `EllipticalGaussian` (PA 0, 35, 123, 300°) | anisotropic Gaussian transform | Analytic | 5e-16 |
 | `UniformDisk` (0.5, 3, 12 mas; through the 4th null) | `2 J1(x)/x` with SciPy | Analytic | 4e-16 |
 | `BinaryModelAngular`, `BinaryModelCartesian` | sum of shifted points | Analytic | 4e-16 |
-| `ModulatedGaussianRim` (inc 0, 50, 80°; m = 0, 1, 2) | thin inclined ring by trapezoid quadrature × Gaussian blur transform | Quadrature + Analytic | 5e-16, with the in-plane reading of the modulation azimuth (finding 1) |
+| `ModulatedGaussianRim` (inc 0, 50, 80°; m = 0, 1, 2) | thin inclined ring by trapezoid quadrature × the Fourier transform of a Gaussian isotropic in the rim plane (an elliptical Gaussian of axis ratio cos inc on the sky) | Quadrature + Analytic | 1e-12, with the in-plane azimuth (finding 1) and the in-plane blur of virgil#139; the earlier blur, round on the sky, now differs (negative control) |
 | `ModulatedGaussianRim`, on-sky reading of the azimuth | same | Quadrature | differs by 4e-2: confirms the convention (finding 1) |
 | `GaussianArc` (R, L) = (5, 4), (15, 20), (5, 40) mas | full-circle arc-length quadrature × Gaussian blur | Quadrature + Analytic | 8e-4 before the fix for finding 2; 1e-5 required after |
 | `Image` (random 7 × 10, off-centre) | direct transform of pixel centres, row 0 North, column 0 East | Analytic | 3e-16 |
@@ -139,7 +139,8 @@ those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
 | `Resolved` in a `System` | component with no size | PMOIRED | 1e-12 |
 | binary at masking scales (7 holes, 150 mas) | same | PMOIRED | 1e-12, 1e-9° |
 | 3 random constellations of 24 points, Gaussians, elliptical Gaussians and disks | one dictionary of 24 components | PMOIRED | 1e-12, 1e-8° |
-| `ModulatedGaussianRim` (inclined, m = 1, 2) | annulus of fractional width w + `spatial kernel`, `az projangN` = `az_pas` − `pa` | PMOIRED + Quadrature | differs as w² (2.8e-2 at w = 0.4 to 3.0e-5 at 0.0125); Richardson extrapolation to w = 0 matches virgil to 4e-7, from 1.2e-4. PMOIRED's annulus itself matches our quadrature to 1e-9–1e-12. |
+| `ModulatedGaussianRim`, inclined, unmodulated | ring with the blurred-ring radial profile exp(−(R² + r0²)/2σ²) I0(R r0/σ²), `incl`, `projang` | PMOIRED | 1e-9: confirms virgil#139's in-plane blur |
+| `ModulatedGaussianRim`, inclined, m = 1, 2 | same profile with `az ampN`, `az projangN` = `az_pas` − `pa` | PMOIRED + Quadrature | a difference of definition, of order (mσ/r0)² (PMOIRED modulates the profile; virgil blurs the modulated ring); PMOIRED matches our quadrature of its own definition to 1e-8 |
 
 ## Findings
 
@@ -149,7 +150,15 @@ those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
 | 2 | `GaussianArc` | Arc-length weight cut at ±3.5 σ (~1e-3 visibility error); wrapping undocumented for long arcs. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
 | 3 | `OIData.uv_grid` | Set only for AMIGO DISCO records, contrary to its docstring. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
 | 4 | `Image.from_model` | The default brightness floor adds ~1e-5 flux on large fields (documented). | note |
-| 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | fix in [virgil#135](https://github.com/benjaminpope/virgil/pull/135) |
+| 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | fixed, [virgil#135](https://github.com/benjaminpope/virgil/pull/135) |
+| 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fix in progress |
+| 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fix in progress |
+
+### Definition changes in virgil
+
+| virgil PR | Change | Our response |
+| --- | --- | --- |
+| [#139](https://github.com/benjaminpope/virgil/pull/139) (T. De Prins) | `ModulatedGaussianRim` blurs the rim with a Gaussian isotropic in the rim's own plane, not on the sky; `fwhm` is now the in-plane FWHM | references follow the documented definition (`sky.in_plane_blur_factor`); the old definition is kept as a negative control; confirmed independently by PMOIRED's blurred-ring profile (1e-9) |
 
 ## Not yet covered
 

@@ -7,6 +7,11 @@ on:
     - cron: "0 3 * * 1"  # weekly, against virgil's main branch
   workflow_dispatch:
 
+env:
+  # The virgil commit that pull requests and pushes test against. Bump it
+  # deliberately; the weekly and manual runs test virgil's main instead.
+  VIRGIL_REF: eee65eca534f0b8718d8f10896ac2058d57a2eeb
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -16,8 +21,11 @@ jobs:
       - name: environment
         run: |
           uv venv --python 3.12 .venv
+          ref="$VIRGIL_REF"
+          if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; fi
+          echo "Testing virgil at $ref"
           uv pip install --python .venv/bin/python -e ".[external]" \
-            "virgil-astro @ git+https://github.com/benjaminpope/virgil@main"
+            "virgil-astro @ git+https://github.com/benjaminpope/virgil@$ref"
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: .venv/bin/python -m pytest -m "not slow" -v
