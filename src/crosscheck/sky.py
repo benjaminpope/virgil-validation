@@ -180,6 +180,62 @@ def inclined_ring(
     return Cloud(east + dra, north + ddec, weight)
 
 
+def inclined_annulus(
+    diam_in,
+    diam_out,
+    inc=0.0,
+    pa=0.0,
+    az_amps=(),
+    az_pas=(),
+    modulation="disk",
+    dra=0.0,
+    ddec=0.0,
+    n_r=48,
+    n_phi=512,
+):
+    """A uniformly bright annulus, inclined and rotated like
+    ``inclined_ring`` (major axis along ``pa``, minor axis shortened by
+    cos(inc)), with the same two readings of the azimuthal modulation.
+
+    Quadrature: Gauss-Legendre in r with the area element r dr between the
+    radii, trapezoid in the in-plane azimuth.
+    """
+    x, w = roots_legendre(n_r)
+    r_in, r_out = diam_in / 2.0, diam_out / 2.0
+    r = r_in + (r_out - r_in) * (x + 1.0) / 2.0
+    phi = 2.0 * np.pi * np.arange(n_phi) / n_phi
+    rr, pp = np.meshgrid(r, phi)
+    wr = np.broadcast_to(w * r, rr.shape)
+    a = rr * np.cos(pp)
+    b = rr * np.sin(pp) * np.cos(np.deg2rad(inc))
+    p = np.deg2rad(pa)
+    east = a * np.sin(p) + b * np.cos(p)
+    north = a * np.cos(p) - b * np.sin(p)
+    if modulation == "sky":
+        theta = np.arctan2(east, north)
+    elif modulation == "disk":
+        theta = pp + p
+    else:
+        raise ValueError(modulation)
+    bright = np.ones_like(rr)
+    for m, (amp, pa_m) in enumerate(zip(az_amps, az_pas), start=1):
+        bright = bright + amp * np.cos(m * (theta - np.deg2rad(pa_m)))
+    weight = (wr * bright).ravel()
+    return Cloud(
+        east.ravel() + dra, north.ravel() + ddec, weight / weight.sum()
+    )
+
+
+def vis_annulus(u, v, wavel, diam_in, diam_out, dra=0.0, ddec=0.0):
+    """Face-on uniform annulus: the difference of two uniform disks,
+    weighted by their areas."""
+    a_out, a_in = diam_out**2, diam_in**2
+    return (
+        a_out * vis_uniform_disk(u, v, wavel, diam_out, dra, ddec)
+        - a_in * vis_uniform_disk(u, v, wavel, diam_in, dra, ddec)
+    ) / (a_out - a_in)
+
+
 def blurred(cloud, fwhm, n=12):
     """Convolve a cloud with an isotropic Gaussian (as a product cloud)."""
     g = gaussian(fwhm / FWHM_PER_SIGMA, n=n)

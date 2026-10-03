@@ -16,6 +16,7 @@ Each check is tagged with the kind of reference virgil is compared with:
 | **First principles** | Our own implementation of a standard: uv tracks from Earth rotation (Thompson, Moran & Swenson ch. 4), closure phases and the OIFITS v2 format (Pauls et al. 2005; Duvert et al. 2017). |
 | **dLux** | An independent optical simulator written by other people (Desdoigts et al. 2023), propagating wavefronts through a sampled pupil. |
 | **Statistical** | Ensembles of noisy simulations testing that virgil's uncertainties are calibrated. |
+| **PMOIRED** | Another package's model of the same file (Mérand 2022), evaluated at mapped parameters. |
 | **virgil (internal)** | Agreement between two virgil code paths. Listed only where the other path is itself validated here. |
 
 ## What this does and does not establish
@@ -106,7 +107,22 @@ source (`tests/test_nrm.py`).
 | `find_uv_grid` on rotated lattices (0, 17, −38°) | the lattice we built | Analytic | rotation to 1e-6° |
 | `Image.model_on_grid` (two-sided matrix Fourier transform) and `Image.model` on those lattices | direct sum over rotated pixel centres | Quadrature | 1e-12 |
 
-## Findings
+## External packages: PMOIRED conventions (Stage 0)
+
+PMOIRED 26.10.1 evaluates its models on our noise-free OIFITS files
+(`tests/test_pmoired_conventions.py`; details in
+[pmoired_conventions.md](pmoired_conventions.md)). These checks pin
+PMOIRED's conventions against our references; virgil enters at Stage 1.
+
+| Check | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `x` East, `y` North; closure-phase sign; flux `f` (binary, CP up to 33°; mirrored truth fails) | sum of shifted points | Analytic + PMOIRED | 1e-15 (V²), 6e-14° |
+| `ud`, `fwhm` | `2 J1(x)/x`, Gaussian | Analytic + PMOIRED | 1e-13 |
+| `incl`, `projang` (major axis; rotated mapping fails) | elliptical Gaussian | Analytic + PMOIRED | 4e-16 |
+| `diamin`/`diamout`, `diam`/`thick` rings | two-Airy annulus | Analytic + PMOIRED | Nr⁻²: 1e-5 at Nr = 100, 1e-8 at 3000 |
+| `spatial kernel` | Gaussian blur transform | Analytic + PMOIRED | 1e-7 |
+| `az ampN`, `az projangN`: in-plane azimuth, relative to `projang` (3 other readings fail) | annulus quadrature | Quadrature + PMOIRED | 1e-8 (V²), 2e-6° (CP) |
+
 
 | # | virgil | Finding | Status |
 | --- | --- | --- | --- |

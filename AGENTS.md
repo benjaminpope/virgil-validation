@@ -21,6 +21,11 @@ read, model and fit them.
   docstring. Bessel and other special functions come from SciPy.
 - `src/virgil_bridge/` is the only code that imports virgil: scene
   definitions pairing our truth with the virgil model to fit.
+- `src/external_bridge/` calls other people's packages (PMOIRED, later
+  CANDID). It may not import virgil either. Pin their conventions from
+  their documentation and our references first (`docs/*_conventions.md`),
+  and only then compare them with virgil. Never copy their code (CANDID
+  states no licence).
 - Read virgil's *documentation* (docstrings, docs site) to learn its
   parameter conventions; do not read its source to learn how to compute
   something. When the documentation is ambiguous, implement the readings
@@ -50,6 +55,7 @@ uv pip install --python .venv/bin/python -e ../drpangloss -e .   # local virgil 
 | Task | Command |
 | --- | --- |
 | Fast tests | `.venv/bin/python -m pytest -m "not slow"` |
+| External packages (PMOIRED) | `uv pip install --python .venv/bin/python -e ".[external]"`, then `.venv/bin/python -m pytest -m external` |
 | Everything (dLux masking, noisy pulls; ~10 min) | `.venv/bin/python -m pytest` |
 | Regenerate the report and figures | `.venv/bin/python scripts/report.py` |
 | Build the docs site | `uv pip install --python .venv/bin/python mkdocs-material`, `.venv/bin/python scripts/build_docs_index.py`, `.venv/bin/mkdocs build --strict` |

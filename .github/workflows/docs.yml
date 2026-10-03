@@ -23,7 +23,7 @@ jobs:
       - name: build
         run: |
           uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python mkdocs-material
+          uv pip install --python .venv/bin/python "mkdocs<2" mkdocs-material
           .venv/bin/python scripts/build_docs_index.py
           .venv/bin/mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3

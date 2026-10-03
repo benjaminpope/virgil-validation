@@ -27,11 +27,13 @@ deliberate PR that reruns everything.
 
 ## Stage 0: install, read, and pin conventions (1 day)
 
+**PMOIRED: done**, see [pmoired_conventions.md](pmoired_conventions.md). CANDID: to do.
+
 1. Install both in the validation venv and record the versions in
    `docs/results.md`.
 2. Read each package's documentation, not its code, for its parameter
    conventions, as we did for virgil. Write a mapping table in
-   `src/external_bridge/conventions.md`. Each convention below is
+   `docs/<package>_conventions.md`. Each convention below is
    unverified until a test pins it:
    * position: CANDID `x, y` and PMOIRED `x, y`. Which axis is East, and
      the sign;
@@ -55,6 +57,8 @@ The package code lives in a new `src/external_bridge/`, which may import
 CANDID and PMOIRED but not virgil. Comparisons go in tests, as now.
 
 ## Stage 1: forward models on identical files (2 days)
+
+**PMOIRED: done** (`tests/test_pmoired_vs_virgil.py`). CANDID: to do.
 
 For every shape the packages share with virgil, evaluate the model
 observables of each package on the same OIFITS file (ours) at the same
