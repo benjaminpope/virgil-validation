@@ -1,0 +1,26 @@
+name: validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"  # weekly, against virgil's main branch
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: environment
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e . \
+            "virgil-astro @ git+https://github.com/benjaminpope/virgil@main"
+      - name: fast tests
+        if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        run: .venv/bin/python -m pytest -m "not slow" -v
+      - name: all tests
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: .venv/bin/python -m pytest -v
