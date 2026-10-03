@@ -6,8 +6,13 @@ documentation (the bundled notebook *Model definitions and examples*), then
 **pinned** by `tests/test_pmoired_conventions.py`: each test writes a
 noise-free OIFITS file from our references (`crosscheck.sky`), has PMOIRED
 read it and evaluate its model at the parameters we think correspond, and
-requires a match to rounding error. Each test also requires the deliberately
-wrong mapping to fail, so a match can't be an accident of symmetry. The
+requires a match. Analytic shapes must match to rounding error; rings, which
+PMOIRED computes from a sampled radial profile, to tolerances set by its
+`Nr` (see the table). The ambiguous mappings (position axes and
+closure-phase sign, which axis `projang` is, what a component with no size
+is, and the modulation angle) also have negative controls: the plausible
+wrong mapping must fail. The others (`ud`, `fwhm`, ring forms,
+`spatial kernel`) are positive checks only. The
 code calling PMOIRED (`src/external_bridge/`) cannot import virgil.
 
 ## Pinned conventions
