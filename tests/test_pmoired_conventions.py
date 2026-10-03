@@ -1,10 +1,17 @@
 """Stage 0: pin PMOIRED's conventions on our OIFITS files.
 
 Each test writes a noise-free file from our references (crosscheck.sky)
-and asks PMOIRED for its model at the parameters we think correspond. A
-match to rounding error pins the mapping; each mapping is also shown to
-fail when deliberately mis-specified, so a match cannot be an accident of
-symmetry. See docs/pmoired_conventions.md.
+and asks PMOIRED for its model at the parameters we think correspond.
+Analytic shapes (points, disks, Gaussians) must match to rounding error
+(1e-12 in V^2, 1e-10 deg in closure phase). Rings come from PMOIRED's
+sampled radial profile, so they are held to tolerances set by its `Nr`
+(2e-5 at 100 points, 2e-7 at 1000, 3e-8 at 3000).
+
+The ambiguous mappings (position axes and closure-phase sign, which axis
+`projang` is, what a component without a size is, and the azimuthal
+modulation's angle) also have negative controls: the plausible wrong
+mapping must fail. The others (`ud`, `fwhm`, ring forms, `spatial kernel`)
+are positive checks only. See docs/pmoired_conventions.md.
 """
 
 import numpy as np
@@ -99,7 +106,7 @@ def test_projang_is_the_major_axis(observe):
     assert dv2 > 0.1
 
 
-@pytest.mark.parametrize("nr,tol", [(100, 2e-5), (1000, 2e-7)])
+@pytest.mark.parametrize("nr,tol", [(100, 2e-5), (1000, 2e-7), (3000, 3e-8)])
 def test_annulus_converges_with_nr(observe, nr, tol):
     """Rings are computed from a sampled radial profile: the error falls as
     Nr^-2 (1e-5 at Nr = 100, 1e-8 at 3000)."""
