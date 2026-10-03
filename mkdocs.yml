@@ -1,0 +1,40 @@
+site_name: virgil-validation
+site_description: Independent validation of virgil against first principles, dLux and other packages
+site_url: https://benjaminpope.github.io/virgil-validation/
+repo_url: https://github.com/benjaminpope/virgil-validation
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/brightness-4, name: Light mode}
+
+markdown_extensions:
+  - tables
+  - admonition
+  - toc: {permalink: true}
+  - pymdownx.tasklist: {custom_checkbox: true}
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.arithmatex: {generic: true}
+
+nav:
+  - Home: index.md
+  - "Design: bootstrapping trust": design.md
+  - Report: report.md
+  - Results: results.md
+  - External packages:
+      - "Plan: CANDID and PMOIRED": plan_candid_pmoired.md
+      - PMOIRED conventions: pmoired_conventions.md
+      - PMOIRED problems: pmoired_notes.md

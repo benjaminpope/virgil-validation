@@ -16,7 +16,7 @@ jobs:
       - name: environment
         run: |
           uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python -e . \
+          uv pip install --python .venv/bin/python -e ".[external]" \
             "virgil-astro @ git+https://github.com/benjaminpope/virgil@main"
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'

@@ -16,6 +16,7 @@ Each check is tagged with the kind of reference virgil is compared with:
 | **First principles** | Our own implementation of a standard: uv tracks from Earth rotation (Thompson, Moran & Swenson ch. 4), closure phases and the OIFITS v2 format (Pauls et al. 2005; Duvert et al. 2017). |
 | **dLux** | An independent optical simulator written by other people (Desdoigts et al. 2023), propagating wavefronts through a sampled pupil. |
 | **Statistical** | Ensembles of noisy simulations testing that virgil's uncertainties are calibrated. |
+| **PMOIRED** | Another package's model of the same file (Mérand 2022), evaluated at mapped parameters. |
 | **virgil (internal)** | Agreement between two virgil code paths. Listed only where the other path is itself validated here. |
 
 ## What this does and does not establish
@@ -106,15 +107,49 @@ source (`tests/test_nrm.py`).
 | `find_uv_grid` on rotated lattices (0, 17, −38°) | the lattice we built | Analytic | rotation to 1e-6° |
 | `Image.model_on_grid` (two-sided matrix Fourier transform) and `Image.model` on those lattices | direct sum over rotated pixel centres | Quadrature | 1e-12 |
 
+## External packages: PMOIRED conventions (Stage 0)
+
+PMOIRED 26.10.1 evaluates its models on our noise-free OIFITS files
+(`tests/test_pmoired_conventions.py`; details in
+[pmoired_conventions.md](pmoired_conventions.md)). These checks pin
+PMOIRED's conventions against our references; virgil enters at Stage 1.
+
+| Check | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `x` East, `y` North; closure-phase sign; flux `f` (binary, CP up to 33°; mirrored truth fails) | sum of shifted points | Analytic + PMOIRED | 1e-15 (V²), 6e-14° |
+| `ud`, `fwhm` | `2 J1(x)/x`, Gaussian | Analytic + PMOIRED | 1e-13 |
+| `incl`, `projang` (major axis; rotated mapping fails) | elliptical Gaussian | Analytic + PMOIRED | 4e-16 |
+| `diamin`/`diamout`, `diam`/`thick` rings | two-Airy annulus | Analytic + PMOIRED | Nr⁻²: 1e-5 at Nr = 100, 1e-8 at 3000 |
+| `spatial kernel` | Gaussian blur transform | Analytic + PMOIRED | 1e-7 |
+| `az ampN`, `az projangN`: in-plane azimuth, relative to `projang` (3 other readings fail) | annulus quadrature | Quadrature + PMOIRED | 1e-8 (V²), 2e-6° (CP) |
+
+## External packages: virgil vs PMOIRED (Stage 1)
+
+PMOIRED evaluates each scene on one of our files and reports the uv
+coordinates of every sample and triangle; virgil is evaluated at exactly
+those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
+30 samples per baseline, the most for which PMOIRED's rings are exact
+(problem P3 in [pmoired_notes.md](pmoired_notes.md)).
+
+| virgil | PMOIRED | Tag | Agreement |
+| --- | --- | --- | --- |
+| `BinaryModelCartesian`, `BinaryModelAngular` | two `ud: 0` components | PMOIRED | 1e-12 (V²), 1e-9° |
+| `System(UniformDisk, PointSource)` | `ud` + point | PMOIRED | same |
+| `System(PointSource, EllipticalGaussian)` | `fwhm`, `incl` = arccos(ratio), `projang` | PMOIRED | same |
+| `Resolved` in a `System` | component with no size | PMOIRED | 1e-12 |
+| binary at masking scales (7 holes, 150 mas) | same | PMOIRED | 1e-12, 1e-9° |
+| 3 random constellations of 24 points, Gaussians, elliptical Gaussians and disks | one dictionary of 24 components | PMOIRED | 1e-12, 1e-8° |
+| `ModulatedGaussianRim` (inclined, m = 1, 2) | annulus of fractional width w + `spatial kernel`, `az projangN` = `az_pas` − `pa` | PMOIRED + Quadrature | differs as w² (2.8e-2 at w = 0.4 to 3.0e-5 at 0.0125); Richardson extrapolation to w = 0 matches virgil to 4e-7, from 1.2e-4. PMOIRED's annulus itself matches our quadrature to 1e-9–1e-12. |
+
 ## Findings
 
 | # | virgil | Finding | Status |
 | --- | --- | --- | --- |
-| 1 | `ModulatedGaussianRim` | The modulation azimuth of an inclined rim is the in-plane one, not on-sky position angle as the docstring formula read. | docstring fix in progress |
-| 2 | `GaussianArc` | Arc-length weight cut at ±3.5 σ (~1e-3 visibility error); wrapping undocumented for long arcs. | fix in progress |
-| 3 | `OIData.uv_grid` | Set only for AMIGO DISCO records, contrary to its docstring. | fix in progress |
+| 1 | `ModulatedGaussianRim` | The modulation azimuth of an inclined rim is the in-plane one, not on-sky position angle as the docstring formula read. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
+| 2 | `GaussianArc` | Arc-length weight cut at ±3.5 σ (~1e-3 visibility error); wrapping undocumented for long arcs. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
+| 3 | `OIData.uv_grid` | Set only for AMIGO DISCO records, contrary to its docstring. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
 | 4 | `Image.from_model` | The default brightness floor adds ~1e-5 flux on large fields (documented). | note |
-| 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | open |
+| 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | fix in [virgil#135](https://github.com/benjaminpope/virgil/pull/135) |
 
 ## Not yet covered
 
