@@ -126,11 +126,11 @@ PMOIRED's conventions against our references; virgil enters at Stage 1.
 
 | # | virgil | Finding | Status |
 | --- | --- | --- | --- |
-| 1 | `ModulatedGaussianRim` | The modulation azimuth of an inclined rim is the in-plane one, not on-sky position angle as the docstring formula read. | docstring fix in progress |
-| 2 | `GaussianArc` | Arc-length weight cut at ±3.5 σ (~1e-3 visibility error); wrapping undocumented for long arcs. | fix in progress |
-| 3 | `OIData.uv_grid` | Set only for AMIGO DISCO records, contrary to its docstring. | fix in progress |
+| 1 | `ModulatedGaussianRim` | The modulation azimuth of an inclined rim is the in-plane one, not on-sky position angle as the docstring formula read. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
+| 2 | `GaussianArc` | Arc-length weight cut at ±3.5 σ (~1e-3 visibility error); wrapping undocumented for long arcs. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
+| 3 | `OIData.uv_grid` | Set only for AMIGO DISCO records, contrary to its docstring. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
 | 4 | `Image.from_model` | The default brightness floor adds ~1e-5 flux on large fields (documented). | note |
-| 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | open |
+| 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | fix in [virgil#135](https://github.com/benjaminpope/virgil/pull/135) |
 
 ## Not yet covered
 
