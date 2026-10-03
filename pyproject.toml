@@ -5,6 +5,9 @@ description = "Independent validation of virgil against first-principles and dLu
 requires-python = ">=3.11"
 dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil-astro", "pytest"]
 
+[project.optional-dependencies]
+docs = ["mkdocs-material"]
+
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
