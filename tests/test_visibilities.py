@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from crosscheck import sky
+from evidence.plugin import record
 
 vm = pytest.importorskip("virgil.models")
 
@@ -34,7 +35,7 @@ def virgil_vis(model, u, v, wl):
 
 
 def assert_close(ours, theirs, tol=TOL64):
-    err = np.max(np.abs(np.asarray(ours) - np.asarray(theirs)))
+    err = record("max_abs_dV", np.max(np.abs(np.asarray(ours) - np.asarray(theirs))))
     assert err < tol, f"max |dV| = {err:.3e}"
 
 
@@ -43,6 +44,7 @@ def assert_close(ours, theirs, tol=TOL64):
 # cannot be blamed on our quadrature.
 
 
+@pytest.mark.validates("crosscheck.sky", roots=["mathematics"], kind="reference")
 def test_our_disk_quadrature_matches_airy(uvw):
     u, v, wl = uvw
     assert_close(
@@ -51,6 +53,7 @@ def test_our_disk_quadrature_matches_airy(uvw):
     )
 
 
+@pytest.mark.validates("crosscheck.sky", roots=["mathematics"], kind="reference")
 def test_our_gaussian_quadrature_matches_closed_form(uvw):
     u, v, wl = uvw
     assert_close(
@@ -63,6 +66,7 @@ def test_our_gaussian_quadrature_matches_closed_form(uvw):
 
 
 @pytest.mark.x64
+@pytest.mark.validates("virgil.models.PointSource", roots=["mathematics"])
 def test_point_source(uvw):
     u, v, wl = uvw
     assert_close(
@@ -73,6 +77,7 @@ def test_point_source(uvw):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("sigma", [0.3, 1.2, 6.0])
+@pytest.mark.validates("virgil.models.GaussianDisk", roots=["mathematics"])
 def test_gaussian_disk(uvw, sigma):
     u, v, wl = uvw
     assert_close(
@@ -83,6 +88,7 @@ def test_gaussian_disk(uvw, sigma):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("pa", [0.0, 35.0, 123.0, 300.0])
+@pytest.mark.validates("virgil.models.EllipticalGaussian", roots=["mathematics"])
 def test_elliptical_gaussian(uvw, pa):
     u, v, wl = uvw
     assert_close(
@@ -95,6 +101,7 @@ def test_elliptical_gaussian(uvw, pa):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("diam", [0.5, 3.0, 12.0])
+@pytest.mark.validates("virgil.models.UniformDisk", roots=["mathematics"])
 def test_uniform_disk_through_nulls(uvw, diam):
     # 12 mas at 130 m / 1.5 um reaches the 4th null of the Airy pattern
     u, v, wl = uvw
@@ -105,6 +112,7 @@ def test_uniform_disk_through_nulls(uvw, diam):
 
 
 @pytest.mark.x64
+@pytest.mark.validates("virgil.models.BinaryModelAngular", "virgil.models.BinaryModelCartesian", roots=["mathematics"])
 def test_binaries(uvw):
     u, v, wl = uvw
     sep, pa, f = 5.0, 70.0, 0.1
@@ -123,6 +131,7 @@ def test_binaries(uvw):
 @pytest.mark.parametrize(
     "amps,pas", [((), ()), ((0.4,), (200.0,)), ((0.4, 0.25), (40.0, 110.0))]
 )
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["mathematics"])
 def test_modulated_rim_in_plane_azimuth_and_blur(uvw, inc, amps, pas):
     """virgil's rim (since virgil#139): a thin ring modulated in in-plane
     azimuth, blurred by a Gaussian isotropic in the rim's own plane, then
@@ -139,6 +148,7 @@ def test_modulated_rim_in_plane_azimuth_and_blur(uvw, inc, amps, pas):
 
 
 @pytest.mark.x64
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["mathematics"], kind="control")
 def test_modulated_rim_is_not_modulated_in_sky_angle(uvw):
     """Modulating in on-sky position angle is a different model: virgil's
     az_pas are in-plane azimuths, as its docstring states."""
@@ -155,6 +165,7 @@ def test_modulated_rim_is_not_modulated_in_sky_angle(uvw):
 
 
 @pytest.mark.x64
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["mathematics"], kind="control")
 def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
     """The definition before virgil#139 (blur round on the sky) is a
     different model once the rim is inclined; face-on they coincide."""
@@ -173,6 +184,7 @@ def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
 @pytest.mark.parametrize(
     "radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)]
 )
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"])
 def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
     """The arc weight is a Gaussian in arc length wrapped once round the
     circle, including when the length FWHM exceeds pi R (virgil >= the
@@ -186,6 +198,7 @@ def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
 
 
 @pytest.mark.x64
+@pytest.mark.validates("virgil.models.Image", roots=["standards", "mathematics"])
 def test_image_orientation_and_centre(uvw):
     """Row 0 North, column 0 East, centre at ((n-1)/2, (m-1)/2): a
     non-square, odd-by-even random image catches any flip or half-pixel."""
@@ -199,6 +212,7 @@ def test_image_orientation_and_centre(uvw):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("angle", [0.0, 70.0, 200.0])
+@pytest.mark.validates("virgil.models.Rotated", roots=["mathematics"])
 def test_rotated_scene(uvw, angle):
     u, v, wl = uvw
     scene = vm.System(
@@ -215,6 +229,7 @@ def test_rotated_scene(uvw, angle):
 
 
 @pytest.mark.x64
+@pytest.mark.validates("virgil.models.Resolved", "virgil.models.System", roots=["mathematics"])
 def test_resolved_flux_dilutes(uvw):
     u, v, wl = uvw
     cloud = sky.mix([sky.uniform_disk(1.0)], [1.0], resolved_flux=0.3)
@@ -277,6 +292,7 @@ def _random_constellation(seed):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("seed", range(5))
+@pytest.mark.validates("virgil.models.System", "virgil.models.PointSource", "virgil.models.GaussianDisk", "virgil.models.EllipticalGaussian", "virgil.models.UniformDisk", roots=["mathematics"])
 def test_random_constellation(uvw, seed):
     u, v, wl = uvw
     vis, scene = _random_constellation(seed)
@@ -285,6 +301,7 @@ def test_random_constellation(uvw, seed):
 
 @pytest.mark.float32
 @pytest.mark.parametrize("seed", range(3))
+@pytest.mark.validates("virgil.models.System", roots=["mathematics"])
 def test_random_constellation_float32(uvw, seed):
     """virgil's default precision: float32 throughout."""
     u, v, wl = uvw

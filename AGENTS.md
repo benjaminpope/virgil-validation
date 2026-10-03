@@ -36,6 +36,26 @@ read, model and fit them.
   `pytest.mark.xfail(strict=True)` test stating what is wrong, so that it
   flips when virgil is fixed. Record it in the README's findings table.
 
+## Evidence records
+
+Every test declares what it validates, against which roots of trust:
+
+```python
+@pytest.mark.validates("virgil.models.UniformDisk", roots=["mathematics"])
+```
+
+`kind` is `check` (the default), `control` (a wrong mapping that must fail),
+`finding` (strict xfail: a known virgil problem), `upstream` (strict xfail: a
+known problem elsewhere), `reference` (checks our own reference code) or
+`guard`; `tier` is `A` (every PR, the default), `B` (weekly) or `C`
+(campaigns). A test without the marker fails collection
+(`--require-validates` in pyproject). Helpers record the numbers they check
+with `evidence.plugin.record(name, value)`. `pytest --evidence PATH` writes
+the records, after a header naming the exact virgil commit and package
+versions; `scripts/evidence_table.py` renders them (`docs/evidence.md`, and
+the CI job summary). Roots are listed in `src/evidence/__init__.py`;
+`self-consistency` is the weakest and never enough on its own.
+
 ## Requesting other validations
 
 If you want something validated that is not covered here, open an Issue on

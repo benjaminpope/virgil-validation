@@ -20,10 +20,12 @@ PIX = 30.0
 UV = array.pupil_uv(nrm.HOLES)
 
 
+@pytest.mark.validates("crosscheck.nrm", roots=["mathematics"], kind="reference")
 def test_mask_is_non_redundant():
     assert nrm.is_non_redundant(nrm.HOLES, nrm.HOLE_DIAM)
 
 
+@pytest.mark.validates("crosscheck.nrm", roots=["dlux"], kind="reference")
 def test_dlux_orientation():
     """dLux images a source offset by (x, y) at larger column and row
     respectively, centred on pixel (n - 1) / 2: the convention nrm.py uses.
@@ -62,6 +64,7 @@ def _scene_ids():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("k", range(4), ids=_scene_ids())
+@pytest.mark.validates("crosscheck.nrm", roots=["dlux", "mathematics"], kind="reference", tier="B")
 def test_calibrated_visibilities(images, k):
     scene = vb.masking_scenes()[k]
     exact = scene.vis(*UV, WL)
@@ -79,6 +82,7 @@ def test_calibrated_visibilities(images, k):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("k", range(4), ids=_scene_ids())
+@pytest.mark.validates("virgil.fitting.fit", "virgil.oifits.read_oifits", "virgil.models.System", roots=["dlux"], tier="B")
 def test_dlux_injection_recovery(images, tmp_path, k):
     """Noise-free dLux observables, fitted by virgil: the bias left by the
     field edge must be far below realistic errors (1 deg closure phases,

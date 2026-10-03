@@ -34,6 +34,7 @@ def _annulus_file(path, n_ha, n_wl):
 
 
 @pytest.mark.xfail(strict=True, reason="P1: auto wl kernel gives NaN models")
+@pytest.mark.validates("pmoired", roots=["mathematics"], kind="upstream")
 def test_p1_default_setup_gives_finite_models(tmp_path):
     import pmoired.oimodels as om
 
@@ -47,6 +48,7 @@ def test_p1_default_setup_gives_finite_models(tmp_path):
 
 
 @pytest.mark.xfail(strict=True, reason="P2: default ring sampling is not Nr = 100")
+@pytest.mark.validates("pmoired", roots=["mathematics"], kind="upstream")
 def test_p2_default_nr_is_100(tmp_path):
     path = _annulus_file(tmp_path / "p2.fits", 3, 4)
     default, _, _ = model_minus_data(path, ANNULUS)
@@ -54,6 +56,7 @@ def test_p2_default_nr_is_100(tmp_path):
     assert np.isclose(default, nr100, rtol=0.1)
 
 
+@pytest.mark.validates("pmoired", roots=["mathematics"], kind="reference")
 def test_p3_rings_exact_up_to_30_samples(tmp_path):
     """The control: 1 epoch x 30 channels is exact."""
     path = _annulus_file(tmp_path / "p3a.fits", 1, 30)
@@ -65,6 +68,7 @@ def test_p3_rings_exact_up_to_30_samples(tmp_path):
     strict=True, reason="P3: rings stop at ~1e-4 beyond 30 samples per baseline"
 )
 @pytest.mark.parametrize("n_ha,n_wl", [(1, 35), (7, 6)])
+@pytest.mark.validates("pmoired", roots=["mathematics"], kind="upstream")
 def test_p3_rings_exact_beyond_30_samples(tmp_path, n_ha, n_wl):
     path = _annulus_file(tmp_path / "p3b.fits", n_ha, n_wl)
     dv2, _, _ = model_minus_data(path, ANNULUS, {"Nr": 3000})

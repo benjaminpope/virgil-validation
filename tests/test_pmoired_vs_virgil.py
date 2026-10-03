@@ -14,6 +14,7 @@ from crosscheck import array, nrm, simulate, sky
 pytest.importorskip("pmoired")
 vm = pytest.importorskip("virgil.models")
 from external_bridge.pmoired_models import model_samples  # noqa: E402
+from evidence.plugin import record  # noqa: E402
 
 pytestmark = [pytest.mark.external, pytest.mark.x64]
 
@@ -68,9 +69,9 @@ def compare(path, scene, params, setup=None):
     )
     dcp = (np.rad2deg(np.angle(t3)) - s["t3phi"] + 180.0) % 360.0 - 180.0
     return (
-        np.max(np.abs(v2 - s["v2"])),
-        np.max(np.abs(dcp)),
-        np.max(np.abs(s["t3phi"])),
+        record("max_abs_dV2", np.max(np.abs(v2 - s["v2"]))),
+        record("max_abs_dCP_deg", np.max(np.abs(dcp))),
+        record("max_abs_CP_deg", np.max(np.abs(s["t3phi"]))),
     )
 
 
@@ -99,6 +100,7 @@ def pm_egauss(name, fwhm, ratio, pa, flux=1.0, dra=0.0, ddec=0.0):
 # ------------------------------------------------------------ scenes
 
 
+@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"])
 def test_binary(vlti_file):
     scene = vm.BinaryModelCartesian(4.97, -3.36, 0.05)
     params = {**pm_point("A"), **pm_point("B", 0.05, 4.97, -3.36)}
@@ -106,6 +108,7 @@ def test_binary(vlti_file):
     assert cp_max > 5 and dv2 < 1e-12 and dcp < 1e-9
 
 
+@pytest.mark.validates("virgil.models.BinaryModelAngular", roots=["pmoired"])
 def test_binary_angular(vlti_file):
     sep, pa = 6.0, 124.0
     scene = vm.BinaryModelAngular(sep, pa, 0.05)
@@ -117,6 +120,7 @@ def test_binary_angular(vlti_file):
     assert dv2 < 1e-12 and dcp < 1e-9
 
 
+@pytest.mark.validates("virgil.models.UniformDisk", "virgil.models.PointSource", "virgil.models.System", roots=["pmoired"])
 def test_disk_star_and_companion(vlti_file):
     scene = vm.System(
         star=vm.UniformDisk(1.8), comp=vm.PointSource(0.02, -12.0, 8.0)
@@ -126,6 +130,7 @@ def test_disk_star_and_companion(vlti_file):
     assert dv2 < 1e-12 and dcp < 1e-9
 
 
+@pytest.mark.validates("virgil.models.EllipticalGaussian", "virgil.models.System", roots=["pmoired"])
 def test_star_and_elliptical_envelope(vlti_file):
     scene = vm.System(
         star=vm.PointSource(), env=vm.EllipticalGaussian(4.0, 0.5, 60.0, 0.4, 0.7, -0.3)
@@ -135,6 +140,7 @@ def test_star_and_elliptical_envelope(vlti_file):
     assert cp_max > 1 and dv2 < 1e-12 and dcp < 1e-9
 
 
+@pytest.mark.validates("virgil.models.Resolved", roots=["pmoired"])
 def test_resolved_flux(vlti_file):
     scene = vm.System(star=vm.UniformDisk(2.0), halo=vm.Resolved(0.3))
     params = {**pm_ud("star", 2.0), "halo,f": 0.3}
@@ -142,6 +148,7 @@ def test_resolved_flux(vlti_file):
     assert dv2 < 1e-12
 
 
+@pytest.mark.validates("virgil.models.BinaryModelCartesian", roots=["pmoired"])
 def test_masking_binary(mask_file):
     """The same mapping at masking scales: 150 mas, 7 holes."""
     scene = vm.BinaryModelCartesian(124.4, -83.9, 0.05)
@@ -177,6 +184,7 @@ def _random_scene(seed):
 
 
 @pytest.mark.parametrize("seed", range(3))
+@pytest.mark.validates("virgil.models.System", "virgil.models.PointSource", "virgil.models.GaussianDisk", "virgil.models.EllipticalGaussian", "virgil.models.UniformDisk", roots=["pmoired"])
 def test_random_constellation(vlti_file, seed):
     """24 points, Gaussians, elliptical Gaussians and disks at random
     positions and fluxes: one dictionary of 24 PMOIRED components."""
@@ -218,6 +226,7 @@ def _pmoired_rim(amps=(), pas=()):
     return params
 
 
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"])
 def test_unmodulated_rim_matches_pmoired_blurred_ring_profile(vlti_file):
     """An unmodulated, inclined rim blurred in its own plane is a ring with
     the Bessel-I0 radial profile: PMOIRED and virgil agree exactly. This
@@ -237,6 +246,7 @@ class _Cloud:
         return sky.visibility(self.cloud, u, v, wl)
 
 
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control")
 def test_modulated_rim_definitions_differ(vlti_file):
     """With modulation the two packages define different things, both
     exactly. PMOIRED multiplies the radial profile by (1 + A cos m phi);

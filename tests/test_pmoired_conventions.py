@@ -50,6 +50,7 @@ def _cloud(c):
 POINT = {"ud": 0.0}  # a component with no size key is fully resolved
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_position_east_and_closure_phase_sign(observe):
     """x is East, y North (mas); fluxes are total, per component; the
     closure-phase sign agrees with OIFITS and ours."""
@@ -66,6 +67,7 @@ def test_position_east_and_closure_phase_sign(observe):
     assert dcp > 10
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_component_without_size_is_resolved(observe):
     """{'f': 1} alone has zero visibility: point sources need ud = 0."""
     dv2, _, _ = observe(
@@ -74,6 +76,7 @@ def test_component_without_size_is_resolved(observe):
     assert dv2 > 0.5
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_uniform_disk_and_offsets(observe):
     dv2, dcp, _ = observe(
         lambda u, v, w: sky.vis_uniform_disk(u, v, w, 2.0, 0.5, -0.3),
@@ -82,6 +85,7 @@ def test_uniform_disk_and_offsets(observe):
     assert dv2 < 1e-12 and dcp < 1e-10
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_gaussian_fwhm(observe):
     dv2, _, _ = observe(
         lambda u, v, w: sky.vis_gaussian(u, v, w, 1.5 / sky.FWHM_PER_SIGMA),
@@ -90,6 +94,7 @@ def test_gaussian_fwhm(observe):
     assert dv2 < 1e-12
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_projang_is_the_major_axis(observe):
     """incl compresses by cos(incl) perpendicular to projang (N to E)."""
     params = {"fwhm": 2.0, "incl": 60.0, "projang": 30.0}
@@ -107,6 +112,7 @@ def test_projang_is_the_major_axis(observe):
 
 
 @pytest.mark.parametrize("nr,tol", [(100, 2e-5), (1000, 2e-7), (3000, 3e-8)])
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_annulus_converges_with_nr(observe, nr, tol):
     """Rings are computed from a sampled radial profile: the error falls as
     Nr^-2 (1e-5 at Nr = 100, 1e-8 at 3000)."""
@@ -118,6 +124,7 @@ def test_annulus_converges_with_nr(observe, nr, tol):
     assert dv2 < tol
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_diam_thick_is_an_annulus(observe):
     """{'diam': D, 'thick': t} is the annulus from D (1 - t) to D."""
     dv2, _, _ = observe(
@@ -128,6 +135,7 @@ def test_diam_thick_is_an_annulus(observe):
     assert dv2 < 1e-6
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_spatial_kernel_is_a_gaussian_blur(observe):
     dv2, _, _ = observe(
         lambda u, v, w: sky.vis_annulus(u, v, w, 2.0, 4.0)
@@ -142,6 +150,7 @@ def test_spatial_kernel_is_a_gaussian_blur(observe):
     "modulation,relative,match",
     [("disk", True, True), ("disk", False, False), ("sky", True, False), ("sky", False, False)],
 )
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_azimuthal_modulation_convention(observe, modulation, relative, match):
     """'az projangN' is an in-plane azimuth measured from the global
     projang: the same convention as virgil's ModulatedGaussianRim, except
@@ -160,6 +169,7 @@ def test_azimuthal_modulation_convention(observe, modulation, relative, match):
         assert dcp > 5
 
 
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
 def test_two_harmonics(observe):
     ring = sky.inclined_annulus(
         2.0, 4.0, 50.0, -20.0, (0.4, 0.3), (-20.0 + 40.0, -20.0 + 100.0), "disk"

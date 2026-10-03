@@ -5,6 +5,8 @@ import pytest
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
+pytest_plugins = ["evidence.plugin"]
+
 
 @pytest.fixture(autouse=True)
 def _precision(request):
