@@ -123,6 +123,7 @@ PMOIRED's conventions against our references; virgil enters at Stage 1.
 | `spatial kernel` | Gaussian blur transform | Analytic + PMOIRED | 1e-7 |
 | `az ampN`, `az projangN`: in-plane azimuth, relative to `projang` (3 other readings fail) | annulus quadrature | Quadrature + PMOIRED | 1e-8 (V²), 2e-6° (CP) |
 
+## Findings
 
 | # | virgil | Finding | Status |
 | --- | --- | --- | --- |
