@@ -62,3 +62,27 @@ jobs:
             virgil-evidence.jsonl
             evidence.md
           if-no-files-found: ignore
+
+  report:
+    # The full report (scripts/report.py: 200-draw pulls, dLux images) is
+    # too heavy for every PR; weekly and manual runs regenerate it and
+    # upload docs/results.md and the figures, to be committed by hand.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: environment
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e ".[external]" \
+            "virgil-astro @ git+https://github.com/benjaminpope/virgil@main"
+      - name: report
+        run: .venv/bin/python scripts/report.py --pulls 200
+      - uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ github.run_id }}
+          path: |
+            docs/results.md
+            docs/*.png
