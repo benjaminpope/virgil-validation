@@ -347,7 +347,6 @@ In dependency order, each with the root it would rest on:
 | Gap | Root |
 | --- | --- |
 | OIFITS reader on real files | PMOIRED's and CANDID's readers on ESO archive data (GRAVITY, PIONIER, MATISSE) |
-| `GaussianArc` (after the fix) | mathematics (full-circle quadrature) |
 | Spectra, bandwidth smearing | mathematics (channel integrals of closed forms); PMOIRED's spectra |
 | `GravityDarkenedStar` | the non-rotating limit (a limb-darkened disk, closed form); Shashank Dholakia's original code (golden values already in virgil) |
 | `HarmonixModel` | harmonix/starry spherical-harmonic maps against direct surface quadrature |
