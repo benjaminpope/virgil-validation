@@ -58,6 +58,8 @@ CANDID and PMOIRED but not virgil. Comparisons go in tests, as now.
 
 ## Stage 1: forward models on identical files (2 days)
 
+**PMOIRED: done** (`tests/test_pmoired_vs_virgil.py`). CANDID: to do.
+
 For every shape the packages share with virgil, evaluate the model
 observables of each package on the same OIFITS file (ours) at the same
 parameters, and compare V² and closure phases:

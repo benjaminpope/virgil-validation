@@ -47,22 +47,12 @@ Both packages put the modulation in the disk plane. That is virgil's
 behaviour (finding 1) and PMOIRED's, and neither documented it before this
 check.
 
-## Observations to raise (not yet reported upstream)
+## Problems found
 
-* `setupFit` with the default `auto=True` sets `'wl kernel': 0.0` for our
-  files (four channels with a nominal 1 nm `EFF_BAND`), and every model
-  observable is then NaN. `auto=False` avoids it. A real instrument file
-  would rarely look like this, but NaN models with no warning are worth
-  reporting.
-* Rings with the default radial sampling disagree with the analytic annulus
-  at 4e-5, but at 1e-5 with an explicit `'Nr': 100`, which the docstring
-  gives as the default.
+Behaviour that looks wrong on PMOIRED's side is listed, with reproducers, in
+[pmoired_notes.md](pmoired_notes.md), to be raised upstream in a batch.
 
-Neither affects the conventions. Both are to be reported to PMOIRED only
-with Ben's approval (see the plan's Stage 5).
+## Stage 1
 
-## Next (Stage 1)
-
-Evaluate virgil and PMOIRED on the same files at mapped parameters, shape
-by shape, using the table above; for the rim, compare each package with our
-quadrature of its own definition.
+Done: see `tests/test_pmoired_vs_virgil.py` and the Stage 1 section of
+[report.md](report.md).
