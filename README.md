@@ -46,7 +46,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Recovery (VLTI) | noise-free fits of a binary, a uniform-disk star with a companion, a star with an elliptical envelope and a star with a modulated rim | 1e-10 to 1e-13 relative (rim: 1e-7, optimiser tolerance) |
 | Uncertainties | pulls (fit − truth)/σ over noisy realisations, with closure phases correlated through shared baselines or independent | 200 draws per case: means within ±0.17, sds 0.89–1.10 ([results](docs/results.md)) |
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
-| Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.02 σ for realistic errors (1° closure phases) |
+| Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.05 σ for realistic errors (1° closure phases; largest for the rim) |
 | Dirty image | uniform uv disk → Airy beam centred on the source, East left | 3e-3 (sampling of the disk) |
 | Beam | filled uv disk and ellipse → FWHM 2.355/(π q), PA perpendicular to the coverage | 1e-4 |
 | Grids | `nyquist_pixel_scale`, `field_of_view`, `convolve_beam` (second moments), `render` orientation and sampling, `Image.from_model`, `Image.model_on_grid` on rotated lattices vs direct DFT | 1e-9 to 1e-12 |
