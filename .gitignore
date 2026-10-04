@@ -6,3 +6,4 @@
 __pycache__/
 docs/index.md
 site/
+.claude/
