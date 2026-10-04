@@ -66,7 +66,7 @@ def test_likelihood_grid_is_minus_half_chi2(dataset):
     assert np.max(np.abs(diff)) < 1e-9
 
 
-@pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"])
+@pytest.mark.validates("virgil.limits.nsigma", roots=["mathematics"])
 @pytest.mark.parametrize(
     "ratio,ndof", [(1.2, 50), (2.0, 300), (1.05, 2000), (5.0, 400), (1.0, 100)]
 )
