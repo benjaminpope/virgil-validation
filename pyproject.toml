@@ -3,7 +3,7 @@ name = "virgil-validation"
 version = "0.1.0"
 description = "Independent validation of virgil against first-principles and dLux simulations"
 requires-python = ">=3.11"
-dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil-astro", "pytest"]
+dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil-astro", "pytest", "pyyaml", "mpmath"]
 
 [project.optional-dependencies]
 # Other people's packages, pinned: updating a pin is a deliberate PR.
