@@ -222,8 +222,8 @@ NACO SAM data on binaries with published orbits (ESO `dbo.raw`, template
 | HD 136164 Ab | 2011-06-11, 2012-08-01 | L′ | Balmer et al. 2024 (posterior) | ~100–260 mas | well resolved; the posterior is in the summary JSON; two epochs 14 months apart |
 | 9 Sgr | 2011-03-09/10, 2012-06-19, 2013-07-31 | H, Ks | Fabry et al. 2021 (P = 9.1 yr) | ~15 mas | three epochs on a known orbit, below λ/2B: tests separation–contrast degeneracy |
 | HD 150136 | 2011-03-08, 2012-06-18, 2013-07-31 | H, Ks | Mahy et al. 2018 (P = 8.6 yr) | ~17 mas | as 9 Sgr |
-| δ Vel Aa–Ab | 2009-01-07 | IB 2.12, NB 1.64 | Mérand et al. 2011; Kellerer et al. 2007 (P = 45 d) | ~16 mas | a precise orbit; very bright (K = 1.7), so check for saturation |
-| GG Tau Ab | 2012-12-07/08 | H, Ks, L′ | Di Folco et al. 2024 | ~30 mas | circumbinary dust: a model-misspecification case, last |
+| δ Vel Aa–Ab | 2009-01-07 | IB 2.12, NB 1.64 | Mérand et al. 2011; Kervella et al. 2013 (P = 45 d) | ~16 mas | a precise orbit; very bright (K = 1.7), so check for saturation |
+| GG Tau Ab | 2012-12-07/08 | H, Ks, L′ | 2024A&A...686A.188D | ~30 mas | circumbinary dust: a model-misspecification case, last |
 
 The 9 Sgr, HD 150136 and HD 152233/HD 93250/HD 167971 data are SMASH+
 (Sana et al. 2014) snapshots of O stars, with the survey's calibrators in the
