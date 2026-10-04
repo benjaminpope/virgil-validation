@@ -108,8 +108,8 @@ def star_rim(diam=6.0, fwhm=1.0, inc=45.0, pa=30.0, amp=0.5, az_pa=120.0, flux=0
     }
     priors = {
         "rim.diam": _u(0.2 * diam, 3 * diam), "rim.fwhm": _u(0.01 * diam, diam), "rim.inc": _u(0, 85),
-        # array-shaped bounds, not .expand([1]): expanded priors switch
-        # virgil's fit from LM to L-BFGS (finding 7)
+        # array-shaped bounds; .expand([1]) priors now get LM too (finding 7,
+        # fixed in virgil#142, checked in tests/test_vlti.py)
         "rim.pa": _u(-90, 180), "rim.az_amps": _u(np.zeros(1), np.ones(1)),
         "rim.az_pas": _u(np.zeros(1), np.full(1, 360.0)), "rim.flux": _u(0, 5),
     }

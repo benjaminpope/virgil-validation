@@ -170,7 +170,7 @@ What is trusted now, and from which root. Details and numbers are in the
 - [x] Closure-phase whitening: pulls N(0, 1) with correlated noise (statistics)
 - [x] Derivatives of the geometric models (flared disks and `HarmonixModel` still to do), the image pixels, the residuals and the log-likelihood (and its Hessian) match finite differences (mathematics)
 - [x] LM fits recover injected truth to 1e-10 noise-free, 0.02σ bias from dLux masking data
-- [ ] Optimiser choice and convergence edge cases (findings 6 and 7; fixes in progress)
+- [x] Optimiser choice and convergence edge cases: findings 6 and 7 fixed in [virgil#144](https://github.com/benjaminpope/virgil/pull/144) and [virgil#142](https://github.com/benjaminpope/virgil/pull/142)
 - [ ] L-BFGS and Adam fits, regularisers
 - [ ] Fits against PMOIRED and CANDID on identical files (plan Stage 2)
 
@@ -186,7 +186,7 @@ What is trusted now, and from which root. Details and numbers are in the
 ### People
 
 - [ ] Conventions pages ([PMOIRED](pmoired_conventions.md); CANDID to come) checked by a person
-- [ ] Findings reviewed and their fixes merged in virgil (1–5 merged)
+- [ ] Findings reviewed and their fixes merged in virgil (1–7 merged)
 
 ## Making it traceable and auditable
 

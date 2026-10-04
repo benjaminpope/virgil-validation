@@ -114,15 +114,13 @@ def test_laplace_cov_with_array_parameters(tmp_path):
     assert np.all(np.linalg.eigvalsh(cov) > 0)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding 7: an .expand()ed prior switches fit from LM to L-BFGS",
-)
-@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"], kind="finding")
-def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path):
+@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"])
+@pytest.mark.parametrize("wrap", ["expand", "expand_to_event"])
+def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path, wrap):
     """fit documents LM as the default whenever the objective has a
     least-squares form; Uniform(0, 1).expand([1]) is the same prior as an
-    array-shaped Uniform, which does get LM."""
+    array-shaped Uniform, which does get LM (finding 7, fixed in
+    virgil#142)."""
     import numpyro.distributions as dist
 
     from virgil.fitting import fit
@@ -134,19 +132,18 @@ def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path):
         sigma_v2=0.02, sigma_cp_deg=1.0, rng=np.random.default_rng(3),
     )
     priors = dict(scene.priors)
-    priors["rim.az_amps"] = dist.Uniform(0, 1).expand([1])
-    priors["rim.az_pas"] = dist.Uniform(0, 360).expand([1])
+    amps, pas = dist.Uniform(0, 1).expand([1]), dist.Uniform(0, 360).expand([1])
+    if wrap == "expand_to_event":
+        amps, pas = amps.to_event(1), pas.to_event(1)
+    priors["rim.az_amps"], priors["rim.az_pas"] = amps, pas
     assert fit(scene.template, priors, vb.load(path)).info["method"] == "lm"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding 6: a fit started at an exact zero-residual optimum "
-    "reports non-convergence",
-)
 @pytest.mark.parametrize("method", ["lm", "lbfgs"])
-@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
 def test_fit_from_the_exact_optimum_converges(tmp_path, method):
+    """A fit started exactly at a zero-residual optimum is converged at
+    once (finding 6, fixed in virgil#144)."""
     import warnings
 
     from virgil.fitting import fit
@@ -157,7 +154,11 @@ def test_fit_from_the_exact_optimum_converges(tmp_path, method):
         path, scene.vis, UTS, hour_angles_h=HA, wavelengths=WL, dec_deg=DEC,
         sigma_v2=0.02, sigma_cp_deg=1.0,
     )
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         result = fit(scene.template, scene.priors, vb.load(path), method=method)
-    assert result.info["converged"] and result.info["steps"] < 50
+    assert not [w for w in caught if "converge" in str(w.message)]
+    assert result.info["converged"]
+    # L-BFGS tests the starting gradient before stepping; LM may take a
+    # step or two of rounding noise (virgil#144's own bounds)
+    assert result.info["steps"] == 0 if method == "lbfgs" else result.info["steps"] <= 3

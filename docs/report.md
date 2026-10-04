@@ -164,8 +164,8 @@ those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
 | 3 | `OIData.uv_grid` | Set only for AMIGO DISCO records, contrary to its docstring. | fixed, [virgil#134](https://github.com/benjaminpope/virgil/pull/134) |
 | 4 | `Image.from_model` | The default brightness floor adds ~1e-5 flux on large fields (documented). | note |
 | 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | fixed, [virgil#135](https://github.com/benjaminpope/virgil/pull/135) |
-| 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fix in progress |
-| 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fix in progress |
+| 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fixed, [virgil#144](https://github.com/benjaminpope/virgil/pull/144) |
+| 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fixed, [virgil#142](https://github.com/benjaminpope/virgil/pull/142) |
 
 ### Definition changes in virgil
 
