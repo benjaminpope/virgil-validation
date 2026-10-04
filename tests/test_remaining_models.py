@@ -102,7 +102,8 @@ def test_a_chromatic_system_is_a_flux_weighted_mean_per_channel():
     fe = 0.3 * (w / 1.65e-6) ** -1.5
     want = (sky.vis_point(u, v, w) + fc * sky.vis_point(u, v, w, 5.0, -3.0) + fe * sky.vis_gaussian(u, v, w, 2.0)) / (1 + fc + fe)
     record("max_abs_dV", np.max(np.abs(got - want)))
-    np.testing.assert_allclose(got, want, atol=1e-12)
+    # 5e-11 from the black body's hc/k (see above)
+    np.testing.assert_allclose(got, want, rtol=0, atol=2e-10)
 
 
 # ------------------------------------------------------------- flared disks
@@ -134,7 +135,7 @@ def test_flared_disk_is_the_documented_brightness(name, geometry):
     got = np.asarray(model.model(U, V, 2.0e-6))
     want = _disk_reference(geometry, lambda t: fn(t, value), npix, scale, U, V, 2.0e-6, 1.5, -2.0)
     record("max_abs_dV", np.max(np.abs(got - want)))
-    np.testing.assert_allclose(got, want, atol=1e-10)
+    np.testing.assert_allclose(got, want, rtol=0, atol=1e-13)
 
 
 @pytest.mark.validates("virgil.models.FlaredDiskHG", roots=["mathematics"], kind="control")
@@ -159,7 +160,7 @@ def test_flared_disk_sampling_converges():
     fine = vm.FlaredDiskPowerLaw(n=3.0, **GEOMETRY, npix=128, pixel_scale_mas=1.25).model(u, v, 2e-6)
     d = np.max(np.abs(np.asarray(coarse) - np.asarray(fine)))
     record("max_abs_dV_refinement", d)
-    assert d < 1e-3
+    assert d < 1e-8
 
 
 # ----------------------------------------------------------------- harmonix
@@ -184,14 +185,14 @@ class _UniformDiskSource:
 def test_harmonix_wrapper_passes_spatial_frequencies():
     src = _UniformDiskSource(2.0, 1.0, -0.5)
     got = np.asarray(vm.HarmonixModel(src).model(U, V, 2.0e-6))
-    np.testing.assert_allclose(got, sky.vis_uniform_disk(U, V, 2.0e-6, 2.0, 1.0, -0.5), atol=1e-12)
+    np.testing.assert_allclose(got, sky.vis_uniform_disk(U, V, 2.0e-6, 2.0, 1.0, -0.5), rtol=0, atol=1e-12)
 
 
 @pytest.mark.validates("virgil.models.HarmonixModel", roots=["mathematics"])
 def test_harmonix_wrapper_can_pass_metres():
     src = _UniformDiskSource(2.0, 1.0, -0.5, wavelength_units=False, wavel=2.0e-6)
     got = np.asarray(vm.HarmonixModel(src, expects_wavelength_units=False).model(U, V, 2.0e-6))
-    np.testing.assert_allclose(got, sky.vis_uniform_disk(U, V, 2.0e-6, 2.0, 1.0, -0.5), atol=1e-12)
+    np.testing.assert_allclose(got, sky.vis_uniform_disk(U, V, 2.0e-6, 2.0, 1.0, -0.5), rtol=0, atol=1e-12)
 
 
 @pytest.mark.validates("virgil.models.HarmonixModel", "virgil.models.System", roots=["mathematics"])
@@ -200,4 +201,4 @@ def test_harmonix_source_has_weight_one_in_a_system():
     scene = vm.System(star=vm.HarmonixModel(src), comp=vm.PointSource(0.1, 6.0, 2.0))
     got = np.asarray(scene.model(U, V, 2.0e-6))
     want = (sky.vis_uniform_disk(U, V, 2.0e-6, 2.0) + 0.1 * sky.vis_point(U, V, 2.0e-6, 6.0, 2.0)) / 1.1
-    np.testing.assert_allclose(got, want, atol=1e-12)
+    np.testing.assert_allclose(got, want, rtol=0, atol=1e-12)
