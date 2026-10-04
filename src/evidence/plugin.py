@@ -113,11 +113,27 @@ def _outcome(report):
 
 
 def pytest_runtest_logreport(report):
+    """One record per test, finished only at teardown, so that a failure
+    in any phase decides the outcome as pytest's own summary does: a
+    failing setup or teardown is an error even if the body passed."""
     claims = getattr(report, "validates", None)
     if not claims:
         return
-    # one record per test: the call phase, or setup if it was skipped/failed
-    if report.when == "call" or (report.when == "setup" and report.outcome != "passed"):
+    pending = _CONFIG.setdefault("pending", {})
+    if report.when == "setup":
+        if report.outcome != "passed":
+            pending[report.nodeid] = (
+                "error" if report.failed else _outcome(report),
+                report,
+            )
+    elif report.when == "call":
+        pending[report.nodeid] = (_outcome(report), report)
+    elif report.when == "teardown":
+        outcome, decisive = pending.pop(report.nodeid, (None, None))
+        if outcome is None:
+            return
+        if report.failed:
+            outcome = "error"
         records = _CONFIG["config"].stash[_RECORDS]
         for claim in claims:
             records.append(
@@ -125,8 +141,9 @@ def pytest_runtest_logreport(report):
                     "record": "test",
                     "test": report.nodeid,
                     **claim,
-                    "outcome": _outcome(report),
-                    "duration_s": round(report.duration, 3),
+                    "outcome": outcome,
+                    "duration_s": round(decisive.duration, 3),
+                    # the teardown report carries every recorded property
                     "metrics": dict(report.user_properties),
                 }
             )

@@ -46,7 +46,7 @@ def main(src, dst, virgil_src=None):
             return ""
         parts = []
         for tag in ("ours", "virgil"):
-            bad = sum(c[(tag, o)] for o in ("failed", "xpassed", "error"))
+            bad = sum(c[(tag, o)] for o in ("failed", "xpassed", "error"))  # error: setup or teardown failed
             good = sum(c[(tag, o)] for o in ("passed", "xfailed"))
             if not bad and not good:
                 continue
