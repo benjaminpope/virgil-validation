@@ -213,27 +213,31 @@ stays as an optional orbit-fitting test.
 
 ### Stage E4: masking anchors with NACO SAM (AMICAL; about 3 h, then 2 h per target)
 
-NACO SAM data on binaries with published orbits (ESO `dbo.raw`, template
-`NACO_sam_obs_GenericOffset`, checked 2026-10-04). The data are all from
-2009–2013, so they are public. Each target needs about 0.2–3 GB.
+NACO SAM data on binaries with published orbits. These are from ESO `dbo.raw`
+(template `NACO_sam_obs_GenericOffset`), matched **by target name**, and were
+checked against the frame headers on 2026-10-04. Each target has one epoch:
 
-| System | SAM epochs | Filters | Orbit | Separation then | Why |
-|---|---|---|---|---|---|
-| HD 136164 Ab | 2011-06-11, 2012-08-01 | L′ | Balmer et al. 2024 (posterior) | ~100–260 mas | well resolved; the posterior is in the summary JSON; two epochs 14 months apart |
-| 9 Sgr | 2011-03-09/10, 2012-06-19, 2013-07-31 | H, Ks | Fabry et al. 2021 (P = 9.1 yr) | ~15 mas | three epochs on a known orbit, below λ/2B: tests separation–contrast degeneracy |
-| HD 150136 | 2011-03-08, 2012-06-18, 2013-07-31 | H, Ks | Mahy et al. 2018 (P = 8.6 yr) | ~17 mas | as 9 Sgr |
-| δ Vel Aa–Ab | 2009-01-07 | IB 2.12, NB 1.64 | Mérand et al. 2011; Kervella et al. 2013 (P = 45 d) | ~16 mas | a precise orbit; very bright (K = 1.7), so check for saturation |
-| GG Tau Ab | 2012-12-07/08 | H, Ks, L′ | 2024A&A...686A.188D | ~30 mas | circumbinary dust: a model-misspecification case, last |
+| System | Epoch | Mask, filter | Calibrators | Orbit | Separation then | Why |
+|---|---|---|---|---|---|---|
+| HD 136164 Ab (HIP 75056) | 2012-08-01 | L′ | HIP 74479, HIP 74865 | Balmer et al. 2024 (posterior) | ~100–260 mas | well resolved; the posterior is in the summary JSON |
+| 9 Sgr | 2011-03-10 | 7 holes, Ks | HD 152249 | Fabry et al. 2021 (P = 9.1 yr) | ~15 mas | below λ/2B: tests the separation–contrast degeneracy, which an orbit prior breaks |
+| δ Vel Aa–Ab | 2009-01-07 | 18 holes, NB 1.64 and IB 2.12 | δ Phe, Achernar | Mérand et al. 2011; Kervella et al. 2013 (P = 45 d) | ~16 mas | a precise orbit; very bright (K = 1.7), so check for saturation |
 
-The 9 Sgr, HD 150136 and HD 152233/HD 93250/HD 167971 data are SMASH+
-(Sana et al. 2014) snapshots of O stars, with the survey's calibrators in the
-same programmes. Start with HD 136164 Ab, the cleanest test. Then 9 Sgr and
-HD 150136 test the regime below the diffraction limit, where only an orbit
-prior can break the separation–contrast degeneracy, which makes it a natural
-joint-fit test for E3. Reduce with AMICAL, fit with virgil, and compare
-separation and PA with each orbit's prediction at the epoch. Compute the
-predictions with `crosscheck/orbits.py`, from elements copied from the
-papers' tables. This covers the masking anchor of the orbit note's §5.3.2.
+**The catalogue's NACO rows were matched by coordinates and are unreliable.**
+NACO header and `dbo.raw` coordinates scatter by up to degrees between cubes of
+one star, so a coordinate box picks up other stars. The earlier version of this
+table therefore listed 9 Sgr nights in 2012 and 2013 and a 2011 epoch for
+HD 136164, all of which were other stars. HD 150136 (HIP 81702) has no SAM data
+under any name. GG Tau's programme observed no calibrator star, so it is
+dropped. The download and survey jobs (OzSTAR `eso_binaries_dl`,
+`eso_binaries_naco`) now select by name.
+
+Start with HD 136164 Ab, the cleanest test. Reduce with AMICAL, fit with virgil,
+and compare separation and PA with each orbit's prediction at the epoch. Compute
+the predictions with `crosscheck/orbits.py`, from elements copied from the papers'
+tables. This covers the masking anchor of the orbit note's §5.3.2. With one epoch
+per target, these are per-epoch tests only. Each check is of position (and of
+flux ratio where it is published), not of a joint orbit.
 
 ### Stage E5: reporting (1–2 h)
 
@@ -272,5 +276,6 @@ E1, starting with two or three of the Araucaria GRAVITY SB2s.
 ## Order of work
 
 E0 → E1 now, on virgil main (neither needs 6a.1). E2 Route 1 and E4 can run
-in parallel. E3 waits for virgil's Stage 6a.1. In total about 20–25 agent
+in parallel. Data for E1 and E4 are downloaded to OzSTAR
+(`/fred/oz440/bpope/eso_binaries/data`). E3 waits for virgil's Stage 6a.1. In total about 20–25 agent
 hours without Route 2 or Track B.
