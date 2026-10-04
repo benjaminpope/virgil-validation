@@ -49,6 +49,7 @@ def _disk_uv(q_max_m, n_r=48, n_t=96, ratio=1.0, pa_deg=0.0):
 # ------------------------------------------------------------- dirty image
 
 
+@pytest.mark.validates("virgil.imaging.dirty_image", roots=["mathematics"])
 def test_dirty_image_of_point_is_airy_at_the_source():
     """Uniform coverage of a uv disk of radius q (cycles/rad): the dirty
     beam is 2 J1(2 pi q r) / (2 pi q r), centred on the source."""
@@ -73,6 +74,7 @@ def test_dirty_image_of_point_is_airy_at_the_source():
 # ------------------------------------------------------------------- beam
 
 
+@pytest.mark.validates("virgil.imaging.beam", roots=["mathematics"])
 def test_beam_of_filled_disk():
     """<u u^T> = q^2 / 4 for a filled disk, so FWHM = 2 sqrt(2 ln 2) / (pi q)."""
     bmax = 100.0
@@ -86,6 +88,7 @@ def test_beam_of_filled_disk():
 
 
 @pytest.mark.parametrize("uv_pa", [0.0, 30.0, 100.0])
+@pytest.mark.validates("virgil.imaging.beam", roots=["mathematics"])
 def test_beam_of_filled_ellipse(uv_pa):
     """Coverage elongated along PA p (axes q, q*ratio) gives a beam
     elongated along p + 90, with FWHMs in inverse ratio."""
@@ -101,6 +104,7 @@ def test_beam_of_filled_ellipse(uv_pa):
     assert min(d, 180.0 - d) < 0.05
 
 
+@pytest.mark.validates("virgil.imaging.nyquist_pixel_scale", "virgil.imaging.field_of_view", roots=["mathematics"])
 def test_nyquist_and_field_of_view():
     u = np.array([3.0, 40.0, -120.0])
     v = np.array([4.0, 0.0, 50.0])
@@ -118,6 +122,7 @@ def test_nyquist_and_field_of_view():
 
 
 @pytest.mark.parametrize("pa", [0.0, 35.0, 120.0])
+@pytest.mark.validates("virgil.imaging.convolve_beam", roots=["mathematics"])
 def test_convolve_beam_of_delta_is_the_beam(pa):
     npix, pix = 101, 0.25
     delta = np.zeros((npix, npix))
@@ -145,6 +150,7 @@ def test_convolve_beam_of_delta_is_the_beam(pa):
 # ---------------------------------------------------------------- render
 
 
+@pytest.mark.validates("virgil.models.SourceModel.render", roots=["standards"])
 def test_render_point_lands_on_its_pixel():
     """East left, North up: a source at (+dra, +ddec) sits left of and above
     the centre."""
@@ -155,6 +161,7 @@ def test_render_point_lands_on_its_pixel():
     assert np.isclose(img.sum(), 1.0)
 
 
+@pytest.mark.validates("virgil.models.SourceModel.render", roots=["mathematics"])
 def test_render_gaussian_matches_its_visibility():
     """The rendered image's DFT (our pixel convention) reproduces the
     analytic Gaussian visibility on baselines well inside the pixel
@@ -169,6 +176,7 @@ def test_render_gaussian_matches_its_visibility():
     assert np.max(np.abs(ours - sky.vis_gaussian(u, v, WL, 3.0, 2.0, -1.5))) < 1e-9
 
 
+@pytest.mark.validates("virgil.models.Image.from_model", "virgil.models.Image", roots=["mathematics"])
 def test_image_from_model_round_trip():
     """Pixelising a Gaussian and transforming it back gives the Gaussian's
     visibility (an Image is exact for its pixels). The default brightness
@@ -186,6 +194,7 @@ def test_image_from_model_round_trip():
 
 
 @pytest.mark.parametrize("rotation", [0.0, 17.0, -38.0])
+@pytest.mark.validates("virgil.oidata.find_uv_grid", "virgil.models.Image.model_on_grid", roots=["mathematics"])
 def test_lattice_transform_matches_direct_dft(rotation):
     """An Image whose pixel grid is rotated like its data's uv lattice is
     transformed by a two-sided matrix Fourier transform on the lattice.

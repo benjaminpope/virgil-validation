@@ -25,6 +25,7 @@ WL = np.linspace(1.5e-6, 2.4e-6, 6)
 DEC = -50.0
 
 
+@pytest.mark.validates("virgil.coverage.vlti_oidata", roots=["standards"])
 def test_uv_tracks_match_virgil_coverage():
     ha, wl = [-3.0, -1.5, 0.0, 1.5, 3.0], np.array([3.0e-6, 3.5e-6, 4.0e-6])
     data = vlti_oidata(
@@ -39,6 +40,7 @@ def test_uv_tracks_match_virgil_coverage():
 
 
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"])
 def test_file_reproduces_virgil_model(tmp_path, make):
     """virgil's reader + model reproduce what we wrote, sample by sample:
     the OIFITS sign of u, v, the T3 orientation and the units agree."""
@@ -55,6 +57,7 @@ def test_file_reproduces_virgil_model(tmp_path, make):
 
 
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
 def test_noise_free_recovery(tmp_path, make):
     scene = make()
     path = tmp_path / "s.fits"
@@ -71,6 +74,7 @@ def test_noise_free_recovery(tmp_path, make):
 @pytest.mark.slow
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
 @pytest.mark.parametrize("phase_noise", ["baseline", "triangle"])
+@pytest.mark.validates("virgil.fitting.fit", "virgil.inference.laplace_cov", "virgil.likelihood.whitened_residuals", roots=["statistics"], tier="B")
 def test_noisy_pulls_are_unit_normal(tmp_path, make, phase_noise):
     scene = make()
     rng = np.random.default_rng(11)
@@ -92,6 +96,7 @@ def test_noisy_pulls_are_unit_normal(tmp_path, make, phase_noise):
     assert np.all((pulls.std(0) > 0.7) & (pulls.std(0) < 1.35))
 
 
+@pytest.mark.validates("virgil.inference.laplace_cov", roots=["mathematics"])
 def test_laplace_cov_with_array_parameters(tmp_path):
     """Finding 5, fixed in virgil#135: the rim's array-valued az_amps and
     az_pas beside scalar paths give a full, positive-definite covariance."""
@@ -113,6 +118,7 @@ def test_laplace_cov_with_array_parameters(tmp_path):
     strict=True,
     reason="finding 7: an .expand()ed prior switches fit from LM to L-BFGS",
 )
+@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"], kind="finding")
 def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path):
     """fit documents LM as the default whenever the objective has a
     least-squares form; Uniform(0, 1).expand([1]) is the same prior as an
@@ -139,6 +145,7 @@ def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path):
     "reports non-convergence",
 )
 @pytest.mark.parametrize("method", ["lm", "lbfgs"])
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], kind="finding")
 def test_fit_from_the_exact_optimum_converges(tmp_path, method):
     import warnings
 

@@ -28,7 +28,61 @@ jobs:
             "virgil-astro @ git+https://github.com/benjaminpope/virgil@$ref"
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
-        run: .venv/bin/python -m pytest -m "not slow" -v
+        run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl
       - name: all tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        run: .venv/bin/python -m pytest -v
+        run: .venv/bin/python -m pytest -v --evidence evidence.jsonl
+      - name: virgil's own evidence
+        # weekly and manual runs: the JUnit evidence from virgil's latest
+        # successful CI run on main (the float64 Linux job)
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r run sha <<< "$(gh run list -R benjaminpope/virgil -w tests.yml -b main -s success -L 1 --json databaseId,headSha --jq '.[0] | "\(.databaseId) \(.headSha)"')"
+          gh run download "$run" -R benjaminpope/virgil -n virgil-evidence-ubuntu-latest-py3.12-x641 -D virgil-ci
+          .venv/bin/python scripts/ingest_virgil_evidence.py virgil-ci/junit-evidence.xml virgil-evidence.jsonl \
+            --commit "$sha" --run-url "https://github.com/benjaminpope/virgil/actions/runs/$run"
+      - name: evidence table
+        if: always()
+        run: |
+          if [ -f evidence.jsonl ]; then
+            .venv/bin/python scripts/evidence_table.py evidence.jsonl evidence.md \
+              $( [ -f virgil-evidence.jsonl ] && echo virgil-evidence.jsonl )
+            cat evidence.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-${{ github.event_name }}-${{ github.run_id }}
+          path: |
+            evidence.jsonl
+            virgil-evidence.jsonl
+            evidence.md
+          if-no-files-found: ignore
+
+  report:
+    # The full report (scripts/report.py: 200-draw pulls, dLux images) is
+    # too heavy for every PR; weekly and manual runs regenerate it and
+    # upload docs/results.md and the figures, to be committed by hand.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: environment
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e ".[external]" \
+            "virgil-astro @ git+https://github.com/benjaminpope/virgil@main"
+      - name: report
+        run: .venv/bin/python scripts/report.py --pulls 200
+      - uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ github.run_id }}
+          path: |
+            docs/results.md
+            docs/*.png

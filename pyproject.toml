@@ -19,7 +19,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+addopts = "--strict-markers --require-validates"
 markers = [
     "x64: run virgil in float64 (the default in tests/conftest.py)",
     "float32: run virgil in float32",
