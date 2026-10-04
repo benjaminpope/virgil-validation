@@ -90,6 +90,11 @@ TASKS = [
 
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
 
+# Tasks whose field must be larger than virgil's default, which stops at the
+# interferometric field of view λ/B_min: in 2004 data2 the companion is 10 mas
+# out, beyond it. These start from a flat image over the published field.
+FORCE_FIELD = {"2004_data2"}
+
 
 def image_of(model, star, halo=False):
     return model.env if (star or halo) else model
@@ -97,6 +102,7 @@ def image_of(model, star, halo=False):
 
 def run(task, data_dir, out_dir, smoke=False, halo=False):
     label, files, largest, star = TASKS[task]
+    force_field = label in FORCE_FIELD and largest is not None
     if halo:
         label += "_halo"
     t0 = time.time()
@@ -111,6 +117,12 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
         kwargs["hole_mas"] = 0.5 * resolution.minor_mas
     start = starting_image(data, **kwargs)
     img0 = image_of(start, star)
+    pixel0 = float(img0.pixel_scale_mas)
+    if force_field and int(np.shape(img0.log_brightness)[0]) * pixel0 < largest:
+        n = int(np.ceil(largest / pixel0)) | 1
+        flat = vm.Image(jnp.zeros((n, n)), pixel0, flux=img0.flux)
+        start = vm.System(star=start.star, env=flat) if star else flat
+        img0 = flat
     if halo:
         # A fully resolved component (zero visibility on every baseline) for
         # flux in structure larger than the shortest baseline sees: e.g. the
@@ -122,7 +134,10 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
     fov = npix * pixel
 
     path = "env" if (star or halo) else None
-    priors = image_priors(start) | ({"env.flux": dist.Uniform(0.0, 1.0)} if star else {})
+    # With a star, the image flux is relative to it; starting_image can start
+    # it well above 1 (5.8 for 2022 GRAVITY), so the prior must reach beyond.
+    flux_cap = max(100.0, 10 * float(img0.flux))
+    priors = image_priors(start) | ({"env.flux": dist.Uniform(0.0, flux_cap)} if star else {})
     if halo:
         priors |= {"halo.flux": dist.Uniform(0.0, 1000.0)}
     others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
@@ -157,21 +172,6 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
         chosen=json.dumps(chosen), index=json.dumps(index),
     )
 
-    fig, axes = plt.subplots(1, 4, figsize=(20, 4.6))
-    axes[0].plot(curve.penalty, curve.chi2, "o-", ms=4)
-    for (name, k), m in zip(index.items(), ("s", "^")):
-        axes[0].plot(curve.penalty[k], curve.chi2[k], m, ms=11, mfc="none", mew=2, label=f"{name}: w = {chosen[name]:.3g}")
-    axes[0].axhline(npts, color="k", ls=":", lw=1, label="χ² = N")
-    axes[0].set(xscale="log", yscale="log", xlabel="negative entropy", ylabel="χ²", title=label)
-    axes[0].legend(frameon=False, fontsize=8)
-    axes[0].xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
-    plot_model(img0, fov_mas=fov, npix=npix, ax=axes[1], beam=resolution, title="starting image")
-    for ax, name in zip(axes[2:], ("corner", "discrepancy")):
-        r = curve.results[index[name]]
-        plot_model(image_of(r.model, star, halo), fov_mas=fov, npix=npix, ax=ax, beam=resolution,
-                   title=f"{name}: w = {float(curve.weights[index[name]]):.3g}, χ²/N = {float(np.sum(r.info['chi2_red'])):.2f}")
-    plt.tight_layout()
-    fig.savefig(out_dir / f"{label}.png", dpi=110)
 
     best = curve.results[index["discrepancy"]].model
     report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], path=path), *others])
@@ -188,6 +188,27 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
     )
     (out_dir / f"{label}.txt").write_text(summary)
     print(summary)
+    plot(label, curve, index, chosen, npts, img0, star, halo, fov, npix, resolution, out_dir)
+
+
+def plot(label, curve, index, chosen, npts, img0, star, halo, fov, npix, resolution, out_dir):
+    fig, axes = plt.subplots(1, 4, figsize=(20, 4.6))
+    axes[0].plot(curve.penalty, curve.chi2, "o-", ms=4)
+    for (name, k), m in zip(index.items(), ("s", "^")):
+        axes[0].plot(curve.penalty[k], curve.chi2[k], m, ms=11, mfc="none", mew=2, label=f"{name}: w = {chosen[name]:.3g}")
+    axes[0].axhline(npts, color="k", ls=":", lw=1, label="χ² = N")
+    positive = np.all(np.asarray(curve.penalty) > 0) and np.all(np.asarray(curve.chi2) > 0)
+    scale = "log" if positive else "linear"  # NaN or zero values cannot go on log axes
+    axes[0].set(xscale=scale, yscale=scale, xlabel="negative entropy", ylabel="χ²", title=label)
+    axes[0].legend(frameon=False, fontsize=8)
+    axes[0].xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+    plot_model(img0, fov_mas=fov, npix=npix, ax=axes[1], beam=resolution, title="starting image")
+    for ax, name in zip(axes[2:], ("corner", "discrepancy")):
+        r = curve.results[index[name]]
+        plot_model(image_of(r.model, star, halo), fov_mas=fov, npix=npix, ax=ax, beam=resolution,
+                   title=f"{name}: w = {float(curve.weights[index[name]]):.3g}, χ²/N = {float(np.sum(r.info['chi2_red'])):.2f}")
+    plt.tight_layout()
+    fig.savefig(out_dir / f"{label}.png", dpi=110)
 
 
 def main():

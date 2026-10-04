@@ -150,6 +150,35 @@ First results (2026-10-04, OzSTAR jobs 17998336 and 17998363, 2006):
   0.001–0.002° and V² errors of about 1e-4. χ²/N ≈ 1 may be out of reach
   for a grey image.
 
+Baseline run (2026-10-04, job 17998393, virgil `ec4cf51`, all 15 tasks
+except 2022 AMI, which is still running):
+
+| Dataset | χ²/N at the chosen weight | Result |
+|---|---|---|
+| 2004 data1 (LkHα 101 model) | 1.83 | an asymmetric shell with a bright north-west rim |
+| 2004 data2 (spotted star and companion) | 179 | **failed**: virgil's default field (±6.9 mas, from λ/B_min) excludes the companion 10 mas East |
+| 2006 | 22–134 | **failed**: flux over-resolved (see above) |
+| 2008 AGB, J/H/K | 1.2–1.4 at the corner | ring- or shell-like; the discrepancy weight over-fits in J and H |
+| 2008 AGN, J/H/K | 1.3–2.9 | an elongated core with extended features; K is worst |
+| 2010 Low HK | 13 353 | **failed**: the image never moved; V² errors are all 1e-4, and the source is chromatic across H and K |
+| 2022 GRAVITY, 2024 Obj2 GRAVITY | NaN | **script bug**: the star-flux prior was Uniform(0, 1), but the start was 5.8 and 1.1 |
+| 2024 Obj1 PIONIER / GRAVITY | 1.23 / 1.15 | a compact bar with arc fragments (Obj1 GRAVITY has most of its closure phases flagged) |
+| 2024 Obj2 PIONIER | 2.0 | — |
+
+Many L-BFGS fits stop on "line search ran out of float64 precision"
+without converging, and χ² sometimes rises from one weight to the next.
+Both are worth a look once the images are compared with the papers.
+
+Fixes, smoke-tested locally on virgil `ec4cf51`:
+
+- 2004 data2 starts from a flat image over the published 24 mas field
+  (`FORCE_FIELD`); χ²/N fell from 4693 to 447 in 50 steps.
+- The star-flux prior now reaches max(100, 10× the start).
+- The L-curve plot falls back to linear axes, and the text summary is
+  written before plotting.
+- 2010 with `--halo` reaches χ²/N ≈ 5700 in a smoke run, against 13 400
+  without; it really needs C3 (per-band images, with the organisers' SEDs).
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
