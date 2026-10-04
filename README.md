@@ -47,6 +47,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Recovery (VLTI) | noise-free fits of a binary, a uniform-disk star with a companion, a star with an elliptical envelope and a star with a modulated rim | 1e-10 to 1e-13 relative (rim: 1e-7, optimiser tolerance) |
 | Uncertainties | pulls (fit − truth)/σ over noisy realisations, with closure phases correlated through shared baselines or independent | 200 draws per case, four scenes including the rim: means within ±0.17, sds 0.87–1.10 ([results](docs/results.md)) |
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
+| Fits against PMOIRED | the same files fitted by both; best fits, uncertainties, 200-draw pulls | best fits < 0.25 σ apart; errors equal with 3 telescopes; PMOIRED's errors ~10 % small with correlated closure phases (it treats them as independent) |
 | Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.05 σ for realistic errors (1° closure phases; largest for the rim) |
 | Dirty image | uniform uv disk → Airy beam centred on the source, East left | 3e-3 (sampling of the disk) |
 | Beam | filled uv disk and ellipse → FWHM 2.355/(π q), PA perpendicular to the coverage | 1e-4 |
@@ -80,6 +81,7 @@ noticed) once virgil changes.
 | 5 | `inference.laplace_cov` | Fails (`TypeError: Cannot concatenate arrays with different numbers of dimensions`) when any parameter path is array-valued, e.g. `ModulatedGaussianRim`'s `az_amps`/`az_pas` beside scalar ones, so a rim fit has no Laplace errors. | bug | fixed, virgil#135 |
 | 6 | `fitting.fit` | Started exactly at a zero-residual optimum (noise-free data, truth as the start), LM runs to `max_steps` and L-BFGS stops after one step, both reporting non-convergence with a warning; any noise or offset start converges in a few steps. | minor | fixed, virgil#144 |
 | 7 | `fitting.fit` | The documented default (LM whenever the objective is least squares) depends on how a prior is written: `Uniform(0, 1).expand([1])` or `.to_event(1)` silently selects L-BFGS, while the equivalent array-shaped `Uniform` gets LM. In rim pull tests one of 120 L-BFGS fits then failed to converge in 20000 steps. | bug | fixed, virgil#142 |
+| 8 | `oidata.OIData` | Data with every closure phase flagged (e.g. an OIFITS file whose OI_T3 FLAG is all set) crash inside the closure-phase whitening with `ValueError: zero-size array to reduction operation maximum`, instead of the clear "no phase data" error virgil gives for files without OI_T3. | bug | fix in progress |
 
 Nothing else disagreed: every primitive, convention (East, North, position
 angle, OIFITS sign, T3 orientation), the OIFITS reader, the fitter and the

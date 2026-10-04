@@ -81,3 +81,37 @@ def model_samples(path, params, setup=None):
         "v2_": np.concatenate([per_wl(t["v2"]) for t in t3]),
         "t3phi": np.concatenate([t["T3PHI"].ravel() for t in t3]),
     }
+
+
+def fit(path, params, free, obs=("V2", "T3PHI"), setup=None):
+    """PMOIRED's least-squares fit (``OI.doFit``) of ``params`` to a file,
+    varying only ``free``.
+
+    Returns ``best`` and ``sigma`` (dicts over ``free``), ``cov`` (matrix in
+    the order of ``free``) and ``chi2_red``. PMOIRED reports uncertainties
+    "normalized", i.e. multiplied by sqrt(reduced chi^2); ``sigma`` and
+    ``cov`` here undo that, so they are the plain curvature errors that
+    virgil's Laplace covariance also gives. ``sigma_reported`` keeps
+    PMOIRED's own numbers.
+    """
+    import pmoired
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        oi = pmoired.OI(str(path), verbose=False)
+        oi.setupFit({"obs": list(obs), **(setup or {})}, auto=False)
+        oi.doFit(
+            dict(params),
+            doNotFit=[k for k in params if k not in free],
+            verbose=0,
+        )
+    b = oi.bestfit
+    chi2 = float(b["chi2"])
+    scale = np.sqrt(chi2) if b.get("normalized uncertainties", False) else 1.0
+    cov = np.array([[b["covd"][i][j] for j in free] for i in free]) / scale**2
+    return {
+        "best": {k: float(b["best"][k]) for k in free},
+        "sigma": {k: float(b["uncer"][k]) / scale for k in free},
+        "sigma_reported": {k: float(b["uncer"][k]) for k in free},
+        "cov": cov,
+        "chi2_red": chi2,
+    }

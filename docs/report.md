@@ -155,6 +155,20 @@ those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
 | `ModulatedGaussianRim`, inclined, unmodulated | ring with the blurred-ring radial profile exp(−(R² + r0²)/2σ²) I0(R r0/σ²), `incl`, `projang` | PMOIRED | 1e-9: confirms virgil#139's in-plane blur |
 | `ModulatedGaussianRim`, inclined, m = 1, 2 | same profile with `az ampN`, `az projangN` = `az_pas` − `pa` | PMOIRED + Quadrature | a difference of definition, of order (mσ/r0)² (PMOIRED modulates the profile; virgil blurs the modulated ring); PMOIRED matches our quadrature of its own definition to 1e-8 |
 
+## External packages: fits with virgil and PMOIRED (Stage 2)
+
+Both packages fit the same simulated files (`tests/test_pmoired_fits.py`;
+binary and disk star + companion; 30 samples per baseline).
+
+| Check | Tag | Result |
+| --- | --- | --- |
+| noise-free fits reach the injected truth | PMOIRED | virgil 1e-6, PMOIRED 1e-4 relative |
+| best fits on noisy data, both closure-phase noise models | PMOIRED | agree to < 0.25 σ (typically < 0.1 σ) |
+| uncertainties with 3 telescopes (one closure phase per snapshot), after undoing PMOIRED's √(reduced χ²) normalisation | PMOIRED | agree to < 4 % (0.3–2 % typical) |
+| uncertainties with 4 telescopes | PMOIRED | PMOIRED's are 4–6 % smaller: it counts 4 closure phases per snapshot as independent, where virgil whitens them as 3 correlated ones (a difference of definition) |
+| pulls over 200 shared realisations, closure-phase noise from baseline phases (realistic) | PMOIRED + Statistics | virgil sd 1.04 (calibrated); PMOIRED sd 1.10 (errors ~10 % small) |
+| the same with independent noise per triangle | PMOIRED + Statistics | virgil sd 0.95 (conservative); PMOIRED sd 0.98 |
+
 ## Findings
 
 | # | virgil | Finding | Status |
@@ -166,6 +180,7 @@ those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
 | 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | fixed, [virgil#135](https://github.com/benjaminpope/virgil/pull/135) |
 | 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fixed, [virgil#144](https://github.com/benjaminpope/virgil/pull/144) |
 | 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fixed, [virgil#142](https://github.com/benjaminpope/virgil/pull/142) |
+| 8 | `oidata.OIData` | With every closure phase flagged it crashes inside the closure-phase whitening (`ValueError: zero-size array`), instead of the clear "no phase data" error it gives for a file without OI_T3. | fix in progress |
 
 ### Definition changes in virgil
 

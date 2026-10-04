@@ -172,7 +172,7 @@ What is trusted now, and from which root. Details and numbers are in the
 - [x] LM fits recover injected truth to 1e-10 noise-free, 0.02σ bias from dLux masking data
 - [x] Optimiser choice and convergence edge cases: findings 6 and 7 fixed in [virgil#144](https://github.com/benjaminpope/virgil/pull/144) and [virgil#142](https://github.com/benjaminpope/virgil/pull/142)
 - [ ] L-BFGS and Adam fits, regularisers
-- [ ] Fits against PMOIRED and CANDID on identical files (plan Stage 2)
+- [x] Fits against PMOIRED on identical files: best fits agree; uncertainties agree once PMOIRED's χ² normalisation and closure-phase independence are accounted for (CANDID, fouriever to do)
 
 ### virgil: inference products
 
