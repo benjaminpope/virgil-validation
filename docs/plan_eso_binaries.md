@@ -147,7 +147,10 @@ Each stage is a separate PR with its own tests and evidence records, as in
    tests (energy/period, symmetries). Then pin the whereistheplanet
    conventions: predict separation and PA on a grid of epochs from posterior
    samples and match `whereistheplanet`'s own predictions to 0.1 mas and
-   0.01°. A deliberately wrong mapping (ω + 180°, Ω + 180°) is a `control`.
+   0.01°. Two deliberately wrong mappings, ω + 180° alone (which reflects
+   the companion through the primary) and Ω + 180° alone, are `control`s that
+   must fail. Shifting both together is the usual visual-orbit degeneracy,
+   with the same sky positions, and is a `check` that they agree.
 
 ### Stage E1: Gl 229 Ba–Bb, one epoch at a time (3–4 h; virgil main)
 
