@@ -67,7 +67,8 @@ root of trust, test by test, on exactly which virgil commit:
 PMOIRED](docs/plan_external.md); PMOIRED's conventions are pinned
 ([Stage 0](docs/pmoired_conventions.md)). Planned: [binaries in the ESO
 archive with published orbits](docs/plan_eso_binaries.md), per epoch and
-jointly with virgil's Stage 6a.1 orbits.
+jointly with virgil's Stage 6a.1 orbits; and [the SPIE imaging contests'
+blind datasets](docs/plan_imaging_contests.md) for image reconstruction.
 
 ## Findings
 
