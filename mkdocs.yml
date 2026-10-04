@@ -40,4 +40,5 @@ nav:
       - "Plan: external packages": plan_external.md
       - PMOIRED conventions: pmoired_conventions.md
       - PMOIRED problems: pmoired_notes.md
+      - CANDID: candid_notes.md
   - "Plan: ESO binaries": plan_eso_binaries.md

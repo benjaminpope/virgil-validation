@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: 8e87c04dc19f788019ae4182b13e75ad40606ff8
+  VIRGIL_REF: efa881056a8a3b051a8fc55570a0c967908ac7c7
 
 jobs:
   validate:
@@ -26,6 +26,8 @@ jobs:
           echo "Testing virgil at $ref"
           uv pip install --python .venv/bin/python -e ".[external]" \
             "virgil-astro @ git+https://github.com/benjaminpope/virgil@$ref"
+      - name: CANDID (own environment, pinned commit)
+        run: bash scripts/setup_candid.sh
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl

@@ -122,8 +122,29 @@ Ruffio et al. (2018), written with SciPy and mpmath.
 | `ruffio_upperlimit` (means from 20σ above to 30σ below zero) | truncated-Gaussian quantile at 50 digits (mpmath) | Mathematics | 1.5e-12 relative |
 | flux at the true position over 200 noisy realisations | N(0, 1) pulls | Statistics | mean −0.13, sd 1.09 |
 
-Not yet: a second, external root (CANDID or fouriever maps and limits), and
-campaigns for the false-alarm rate and contrast-limit calibration.
+### Against CANDID
+
+The second root for these steps is CANDID, the code virgil's grid search
+follows. It is run on the same files in its own environment
+(`tests/test_candid.py`; conventions and problems in
+[CANDID](candid_notes.md)). The files: the same three-telescope VLTI
+setup, a 0.8 mas uniform-disk primary, with and without a 3 % companion at
+(6, −4) mas, with V² and closure phases or V² alone. CANDID's closure-phase
+residual is the plain difference and virgil's the chord (ledger D5), so
+V²-only files test the shared definition exactly.
+
+| virgil | CANDID | Tag | Agreement |
+| --- | --- | --- | --- |
+| χ² (`whitened_residuals`, `model_loglike`) at 21 random binaries, V² only | `_chi2Func` × number of data points | CANDID | 1.3e-7 (the file is float32) |
+| the same with closure phases | CANDID equals our plain-residual χ² (8e-8); virgil equals the chord one, up to 6e-4 lower far from the data | CANDID + Mathematics | definition D5 |
+| `nsigma` (eight cases, 1–27σ) | `_nSigmas` | CANDID | 1e-12 relative |
+| `likelihood_grid` as χ²(binary)/χ²(star) over a 32 × 32 map, 2–12 mas | `chi2Map` at 3 % (its fitted diameter) | CANDID | 1.6e-7 (V²), 8e-4 (with closure phases, D5); same minimum, East = +x |
+| `absil_limits` (3σ, six positions) | CANDID's Absil criterion solved exactly with its own χ² and nσ | CANDID | 2e-7 (V²), 4e-6 (with closure phases) |
+| — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (problem P4) |
+| `fit` and `laplace_cov` (diameter, position, flux) | `fitMap`, with its √χ²_r scaling of the errors undone | CANDID | best fits 4e-4 σ apart; errors within 1.6 % |
+
+Not yet: the false-alarm and contrast-limit simulation campaigns, and CANDID's
+injection method of detection limits, which virgil does not have.
 
 ## Spectra, flared disks and the harmonix wrapper
 
@@ -282,9 +303,9 @@ Jacobian of that mapping.
 ## Not yet covered
 
 `GravityDarkenedStar` against an independent root, harmonix's maps,
-bandwidth smearing, AMIGO DISCO mode bases, an external second root for
-grid searches and contrast limits, regularised imaging
-and sampling (`numpyro_model`). To ask for any of these, or anything else,
+bandwidth smearing, AMIGO DISCO mode bases, false-alarm and contrast-limit
+campaigns, regularised imaging (including the sparse regularisers
+`Laplacian`, `StarletL1` and `LogSum`) and sampling (`numpyro_model`). To ask for any of these, or anything else,
 open an Issue at
 <https://github.com/benjaminpope/virgil-validation/issues> describing the
 model or function, the independent result it should match, and the

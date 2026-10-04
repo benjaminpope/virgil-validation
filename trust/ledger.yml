@@ -137,6 +137,16 @@
   evidence: [tests/test_pmoired_fits.py::test_uncertainties_agree_without_closure_redundancy]
   status: documented
 
+- id: D5
+  title: CANDID's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2)
+  objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
+  ruling: definition
+  referee: mathematics (both chi-squareds computed independently); equal on V2-only files to 1e-7
+  evidence:
+    - tests/test_candid.py::test_closure_phase_residual_definitions
+    - tests/test_candid.py::test_chi2_matches_candid_on_v2
+  status: documented
+
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
   objects: [external_bridge.pmoired_models]
@@ -171,3 +181,14 @@
   evidence: [tests/test_pmoired_fits.py::test_uncertainties_agree_without_closure_redundancy]
   status: fixed
   links: [https://github.com/benjaminpope/virgil-validation/pull/11]
+
+- id: P4
+  title: CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation)
+  objects: [candid]
+  ruling: external:candid
+  kind: numerics (optimistic by ~0.01 mag; negligible in practice)
+  referee: mathematics (CANDID's criterion solved exactly with Brent's method)
+  evidence:
+    - tests/test_candid.py::test_candid_public_limits_are_within_their_interpolation
+    - tests/test_candid.py::test_p4_candid_public_limits_solve_its_criterion
+  status: to-raise

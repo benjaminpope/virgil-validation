@@ -104,6 +104,7 @@ nodes:
     depends: [virgil.likelihood.model_loglike]
   virgil.grid_fit.likelihood_grid:
     layer: inference
+    roots: 2  # mathematics and CANDID
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
     depends: [virgil.likelihood.model_loglike]
   virgil.grid_fit.optimized_flux_grid:
@@ -116,9 +117,11 @@ nodes:
     depends: [virgil.likelihood.model_loglike]
   virgil.limits.nsigma:
     layer: inference
+    roots: 2  # mathematics and CANDID
     source: [src/virgil/limits.py]
   virgil.limits.absil_limits:
     layer: inference
+    roots: 2  # mathematics and CANDID
     source: [src/virgil/limits.py, src/virgil/_grid.py]
     depends: [virgil.likelihood.model_loglike, virgil.limits.nsigma]
   virgil.limits.ruffio_upperlimit:
@@ -140,6 +143,9 @@ nodes:
   virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.TV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.MaxEntropy: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.Laplacian: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.StarletL1: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.LogSum: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.l_curve:
     layer: imaging
     source: [src/virgil/imaging.py]
@@ -158,6 +164,8 @@ nodes:
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
+  candid: {layer: references}  # the external package itself (problem P4)
+  external_bridge.candid_bridge: {layer: references}
 
 pipelines:
   synthetic-vlti-fit:
