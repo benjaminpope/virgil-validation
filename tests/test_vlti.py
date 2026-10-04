@@ -114,15 +114,12 @@ def test_laplace_cov_with_array_parameters(tmp_path):
     assert np.all(np.linalg.eigvalsh(cov) > 0)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding 7: an .expand()ed prior switches fit from LM to L-BFGS",
-)
-@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"], kind="finding")
+@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"])
 def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path):
     """fit documents LM as the default whenever the objective has a
     least-squares form; Uniform(0, 1).expand([1]) is the same prior as an
-    array-shaped Uniform, which does get LM."""
+    array-shaped Uniform, which does get LM (finding 7, fixed in
+    virgil#142)."""
     import numpyro.distributions as dist
 
     from virgil.fitting import fit
@@ -139,14 +136,11 @@ def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path):
     assert fit(scene.template, priors, vb.load(path)).info["method"] == "lm"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding 6: a fit started at an exact zero-residual optimum "
-    "reports non-convergence",
-)
 @pytest.mark.parametrize("method", ["lm", "lbfgs"])
-@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
 def test_fit_from_the_exact_optimum_converges(tmp_path, method):
+    """A fit started exactly at a zero-residual optimum is converged at
+    once (finding 6, fixed in virgil#144)."""
     import warnings
 
     from virgil.fitting import fit
