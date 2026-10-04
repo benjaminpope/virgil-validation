@@ -84,10 +84,14 @@ nodes:
   virgil.spectra.Tabulated: {layer: models, source: [src/virgil/spectra.py]}
 
   # ----------------------------------------------------------- likelihood
+  virgil.oidata.OIData.cp_noise:  # correlated closure phases (Kammerer et al. 2020)
+    layer: likelihood
+    source: [src/virgil/_closure.py]
+    roots: 2  # mathematics and fouriever
   virgil.likelihood.whitened_residuals:
     layer: likelihood
     source: [src/virgil/likelihood.py, src/virgil/_closure.py]
-    depends: [virgil.oidata.OIData]
+    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise]
   virgil.likelihood.model_loglike:
     layer: likelihood
     source: [src/virgil/likelihood.py]

@@ -251,6 +251,21 @@ chain rule.
 Not yet: regularised image reconstructions end to end against eht-imaging's
 imager on the same files.
 
+## Correlated closure phases against fouriever
+
+`tests/test_fouriever.py`; conventions in [fouriever](fouriever_notes.md).
+These checks use a four-UT VLTI file (five snapshots, four channels, a 3 %
+companion), plus a copy whose closure-phase errors are scaled by random
+factors from 0.5 to 2.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `OIData.cp_noise` correlation matrix | fouriever's `CPCOV` / σσ; our T Tᵀ/3 from the file's station indices | fouriever + Mathematics | exact (1e-16) |
+| χ² with correlated closure phases, equal errors, 12 binaries | fouriever `chi2_bin(cov=True)`, which equals our plain-residual rᵀC⁺r to 1e-15; virgil equals the chord form to 1e-15 | fouriever + Mathematics | 5e-6 at the truth (definition D5 elsewhere) |
+| the same, unequal errors | each code's own generalised inverse, written independently | fouriever + Mathematics | 1e-15 each; the two differ by 2–7 % (definition D6) |
+| control: fouriever without its covariance | — | fouriever | differs by 6–12 %, as it should |
+| which inverse is calibrated, on closures of baseline-phase noise | mean χ² of the independent combinations (3 for four telescopes) | Statistics | virgil's form 2.94–2.98, the pseudo-inverse 2.75–2.92, exact 2.99 |
+
 ## External packages: PMOIRED conventions (Stage 0)
 
 PMOIRED 26.10.1 evaluates its models on our noise-free OIFITS files
