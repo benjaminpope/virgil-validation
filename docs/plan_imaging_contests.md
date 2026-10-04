@@ -66,7 +66,7 @@ read as they are.
   (`AMBER-LR_OB01`). The two `OI_WAVELENGTH` tables are identical, which
   the OIFITS standard allows. virgil pairs triangles with baselines only
   under the same `INSNAME`, and its error message says the wavelengths
-  differ, which is wrong. A virgil PR is open for this. Once it merges, the
+  differ, which is wrong. [virgil#167](https://github.com/benjaminpope/virgil/pull/167) fixes it: it matches by wavelength table, and also supports reversed T3 legs (the 2006 V² store (2,0) where the triangle needs (0,2)), which virgil also did not support. Once it merges, the
   bug will be recorded as a ledger entry ruled `virgil`.
 
 ### C1. The organisers' test binaries (done)
@@ -90,7 +90,7 @@ from limb-darkened components or from the simulators' noise models; the
 binary (`2006-double.fits`) has no published parameters; it will be fitted
 once C0 is fixed and compared with the image.
 
-### C2. Grey reconstructions (next)
+### C2. Grey reconstructions (in progress)
 
 This stage reconstructs a grey image from each contest dataset that is
 grey or nearly so:
@@ -123,6 +123,12 @@ convolved and aligned as in the paper's metric.
 Compute: these are 64² to 128² images on 10² to 10⁴ points. They run on
 OzSTAR (`ozstar_scripts`, CPU nodes), one job per dataset, not on the
 laptop. Outputs go back to `results/` and then into the evidence records.
+
+`scripts/contest_images.py` does this, with one task per dataset (`--list`
+shows the 16). The OzSTAR job is `contest_imaging` in `ozstar_scripts`.
+Its results come back to `~/data/imaging_contests/results/<virgil commit>/`.
+A smoke run on 2004 data1 (three weights, 50 steps each) already shows an
+asymmetric shell 6 mas across, at χ²/N = 3.6.
 
 ### C3. Chromatic data
 
