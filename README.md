@@ -41,7 +41,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | --- | --- | --- |
 | Visibilities | `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk` (through four Airy nulls), binaries, `ModulatedGaussianRim` (inclined, m = 1, 2, blurred in the rim plane as since virgil#139), `Image` orientation, `Rotated`, `Resolved`, nested `System`s | 1e-15 (float64) |
 | Visibilities | 5 random constellations of 24 points, Gaussians, elliptical Gaussians and disks at random positions and fluxes, plus a nested group | 1e-12 (float64), 3e-5 (float32) |
-| Derivatives | the visibilities of every geometric model (not yet the flared disks or `HarmonixModel`), `Image` pixels, `whitened_residuals`, `model_loglike` and its Hessian, against finite differences | 1e-5 (check_grads); Hessian < 1e-7 (Richardson) |
+| Derivatives | the visibilities of every geometric model (including the flared disks; not `HarmonixModel`), `Image` pixels, `whitened_residuals`, `model_loglike` and its Hessian, against finite differences | 1e-5 (check_grads); Hessian < 1e-7 (Richardson) |
 | uv geometry | our Earth-rotation tracks vs `virgil.coverage.vlti_oidata` | 1e-9 m |
 | OIFITS | our file → `OIData` → `data.model(...)` reproduces what we wrote (V², T3 orientation, signs, units) | 1e-16 |
 | Recovery (VLTI) | noise-free fits of a binary, a uniform-disk star with a companion, a star with an elliptical envelope and a star with a modulated rim | 1e-10 to 1e-13 relative (rim: 1e-7, optimiser tolerance) |
@@ -49,6 +49,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
 | Visibility-only data | V²-only files read and fitted (virgil#158): diameters against the truth, PMOIRED and 200-draw pulls | 1e-6 noise-free; 2e-4 σ from PMOIRED; pulls sd 1.01 |
 | Grids and limits | `likelihood_grid`, `nsigma`, best flux and its error per position, `absil_limits`, `ruffio_upperlimit` against our own chi-squared, Absil et al. 2011 and Ruffio et al. 2018 (SciPy, mpmath) | 5e-12 to 5e-7; flux pulls sd 1.09 |
+| Spectra, flared disks, harmonix wrapper | `PowerLaw`, `BlackBody`, `Tabulated`, chromatic `System`s; `FlaredDiskHG`/`Gaussian`/`PowerLaw` against a direct sum of the documented brightness (Blakely et al. 2024); `HarmonixModel` units and weight | 1e-15 (disks), 1e-12 (spectra; black body 9e-9) |
 | Fits against PMOIRED | the same files fitted by both; best fits, uncertainties, 200-draw pulls | best fits < 0.25 σ apart; errors equal with 3 telescopes; PMOIRED's errors ~10 % small with correlated closure phases (it treats them as independent) |
 | Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.05 σ for realistic errors (1° closure phases; largest for the rim) |
 | Dirty image | uniform uv disk → Airy beam centred on the source, East left | 3e-3 (sampling of the disk) |
@@ -96,9 +97,10 @@ If you would like something else validated, please
 detailing the request: the model or function, the analytic or independent
 result it should match, and the precision you expect.
 
-Not yet covered: `GravityDarkenedStar`, the flared-disk models,
-`HarmonixModel`, spectral (`virgil.spectra`) fluxes and bandwidth smearing,
-AMIGO DISCO mode bases, grid searches and contrast limits.
+Not yet covered: `GravityDarkenedStar` against an independent root,
+harmonix's maps, bandwidth smearing, AMIGO DISCO mode bases, regularised
+imaging, sampling, and an external second root for grid searches and
+limits.
 
 ## Running
 

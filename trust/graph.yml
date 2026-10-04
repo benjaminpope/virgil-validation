@@ -68,6 +68,7 @@ nodes:
   virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py]}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.Tabulated: {layer: models, source: [src/virgil/spectra.py]}
 
   # ----------------------------------------------------------- likelihood
   virgil.likelihood.whitened_residuals:

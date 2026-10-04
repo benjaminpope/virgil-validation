@@ -129,6 +129,17 @@ CASES = {
     ),
 }
 
+_DISK = dict(radius=40.0, fwhm=20.0, inc=50.0, pa=30.0, skew=1.5, aspect=0.1,
+             flaring=1.25, symmetric=0.3, npix=24, pixel_scale_mas=6.0, dra=1.0, ddec=-0.5)
+_DISK_PATHS = ["radius", "fwhm", "inc", "pa", "skew", "aspect", "flaring", "symmetric", "dra", "ddec"]
+for _name, _key, _value in [("FlaredDiskHG", "g", 0.4), ("FlaredDiskGaussian", "sigma_theta", 40.0),
+                            ("FlaredDiskPowerLaw", "n", 3.0)]:
+    CASES[_name] = (
+        [M + _name],
+        lambda _name=_name, _key=_key, _value=_value: getattr(vm, _name)(**{_key: _value}, **_DISK),
+        [_key, *_DISK_PATHS],
+    )
+
 
 @pytest.mark.parametrize(
     "name",
@@ -140,7 +151,7 @@ CASES = {
     ],
 )
 def test_model_visibility_gradients(name):
-    """Flared disks and HarmonixModel are not covered yet."""
+    """HarmonixModel is not covered: its derivatives are harmonix's."""
     _, factory, paths = CASES[name]
     template = factory()
     assert jnp.asarray(template.get(paths[0])).dtype == jnp.float64

@@ -69,7 +69,7 @@ virgil's own tests only check that they are finite.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
-| visibilities of `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk`, `ModulatedGaussianRim` (array `az_amps`, `az_pas`), `GaussianArc`, both binaries, a `System` with `Resolved`, `Rotated`, `GravityDarkenedStar`, with respect to every geometric parameter (flared disks and `HarmonixModel` not yet) | central finite differences (`jax.test_util.check_grads`, forward and reverse mode) | Mathematics | within check_grads' default tolerance (1e-5) |
+| visibilities of `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk`, `ModulatedGaussianRim` (array `az_amps`, `az_pas`), `GaussianArc`, both binaries, a `System` with `Resolved`, `Rotated`, `GravityDarkenedStar`, the three flared disks, with respect to every geometric parameter (`HarmonixModel` not: its derivatives are harmonix's) | central finite differences (`jax.test_util.check_grads`, forward and reverse mode) | Mathematics | within check_grads' default tolerance (1e-5) |
 | `Image` visibilities with respect to every log-brightness pixel (softmax-coupled) | same | Mathematics | same |
 | `whitened_residuals` and `model_loglike` on noisy V² and closure phases (correlated whitening included) | same | Mathematics | same |
 | Hessian of `model_loglike` (used by Laplace covariances and Fisher matrices) | Richardson-extrapolated central difference of the gradient | Mathematics | < 1e-7 relative to the diagonal |
@@ -93,6 +93,28 @@ Ruffio et al. (2018), written with SciPy and mpmath.
 
 Not yet: a second, external root (CANDID or fouriever maps and limits), and
 campaigns for the false-alarm rate and contrast-limit calibration.
+
+## Spectra, flared disks and the harmonix wrapper
+
+`tests/test_remaining_models.py`. The flared-disk reference is
+`crosscheck.disks`, written from the brightness distribution in virgil's
+documentation (Blakely et al. 2024, eqs. 2–9): the scattering surface,
+the three phase functions and the skewed Gaussian ring, evaluated at the
+documented pixel centres and summed directly in Fourier space.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `spectra.PowerLaw` | (λ/λ₀)^index | Mathematics | 1e-12 relative |
+| `spectra.BlackBody` | Planck ratio with SciPy's CODATA constants; Rayleigh–Jeans limit | Mathematics | 9e-9 relative (virgil carries hc/k to ~10 digits) |
+| `spectra.Tabulated` | linear interpolation, constant beyond the end nodes | Mathematics | 1e-12; finding 9 (reference flux) |
+| chromatic `System` (black-body companion, power-law envelope) | flux-weighted mean of closed-form visibilities, channel by channel | Mathematics | 5e-11 |
+| `FlaredDiskHG`, `FlaredDiskGaussian`, `FlaredDiskPowerLaw` (face-on and flat, inclined, inclined at PA 200°, offset) | direct Fourier sum of our brightness | Mathematics | 1e-15 |
+| near side of the flared disks | the disk rotated by 180° (near side at PA + 270) | Mathematics (control) | differs by > 1e-2, as it should |
+| default flared-disk sampling | the same disk at twice the pixel density, on baselines that resolve the ring | Mathematics | 1e-9 |
+| `HarmonixModel` wrapper | stand-in sources with closed-form visibilities, in cycles per radian and in metres; weight 1 inside a `System` | Mathematics | 1e-12 |
+
+The harmonix maps themselves are harmonix's to validate (against starry or
+a direct surface quadrature); here only virgil's wrapper is checked.
 
 ## Long-baseline interferometry
 
@@ -217,6 +239,7 @@ Jacobian of that mapping.
 | 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fixed, [virgil#144](https://github.com/benjaminpope/virgil/pull/144) |
 | 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fixed, [virgil#142](https://github.com/benjaminpope/virgil/pull/142) |
 | 8 | `oidata.OIData` | With every closure phase flagged it crashed inside the closure-phase whitening (`ValueError: zero-size array`). | fixed, [virgil#155](https://github.com/benjaminpope/virgil/pull/155); now visibility-only data, [virgil#158](https://github.com/benjaminpope/virgil/pull/158) |
+| 9 | `spectra.reference_flux` | For `Tabulated` it returns every node, not the reference flux the class documents (the node mean, which `spectrum(None)` returns). Harmless inside virgil, which uses it to check that fluxes are non-negative. | open, fix in progress |
 
 ### Definition changes in virgil
 
@@ -226,9 +249,9 @@ Jacobian of that mapping.
 
 ## Not yet covered
 
-`GravityDarkenedStar`, the flared-disk models, `HarmonixModel`, chromatic
-fluxes (`virgil.spectra`) and bandwidth smearing, AMIGO DISCO mode bases,
-grid searches (`grid_fit`), contrast limits (`limits`), regularised imaging
+`GravityDarkenedStar` against an independent root, harmonix's maps,
+bandwidth smearing, AMIGO DISCO mode bases, an external second root for
+grid searches and contrast limits, regularised imaging
 and sampling (`numpyro_model`). To ask for any of these, or anything else,
 open an Issue at
 <https://github.com/benjaminpope/virgil-validation/issues> describing the
