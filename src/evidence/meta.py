@@ -50,6 +50,16 @@ def own_commit():
         return None
 
 
+def candid():
+    """The CANDID the tests run (it lives in its own environment, so it is
+    not among the installed packages): see external_bridge.candid_bridge."""
+    try:
+        from external_bridge import candid_bridge
+    except ImportError:
+        return None
+    return candid_bridge.provenance()
+
+
 def run_header():
     return {
         "record": "run",
@@ -59,6 +69,7 @@ def run_header():
         "virgil": {"version": _version("virgil-astro"), **virgil_source()},
         "validation_commit": own_commit(),
         "versions": {p: _version(p) for p in PACKAGES},
+        "candid": candid(),
         "python": platform.python_version(),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") else "local",
         "run_url": (

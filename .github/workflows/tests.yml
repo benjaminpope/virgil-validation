@@ -33,6 +33,8 @@ jobs:
           key: contests-${{ hashFiles('contests/manifest.yml') }}
       - name: imaging-contest data (test binaries)
         run: .venv/bin/python scripts/fetch_contests.py --year 2004 2006 2008 2010
+      - name: CANDID (own environment, pinned commit)
+        run: bash scripts/setup_candid.sh
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl
