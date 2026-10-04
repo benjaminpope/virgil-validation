@@ -49,6 +49,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
 | Visibility-only data | V²-only files read and fitted (virgil#158): diameters against the truth, PMOIRED and 200-draw pulls | 1e-6 noise-free; 2e-4 σ from PMOIRED; pulls sd 1.01 |
 | Grids and limits | `likelihood_grid`, `nsigma`, best flux and its error per position, `absil_limits`, `ruffio_upperlimit` against our own chi-squared, Absil et al. 2011 and Ruffio et al. 2018 (SciPy, mpmath) | 5e-12 to 5e-7; flux pulls sd 1.09 |
+| Against CANDID | χ², `nsigma`, χ² maps, Absil limits and fits on the same files, CANDID in its own environment ([notes](docs/candid_notes.md)) | 2e-7 on V²-only files; with closure phases, the chord/plain residual difference (≤ 8e-4 on maps); fits 4e-4 σ apart |
 | Spectra, flared disks, harmonix wrapper | `PowerLaw`, `BlackBody`, `Tabulated`, chromatic `System`s; `FlaredDiskHG`/`Gaussian`/`PowerLaw` against a direct sum of the documented brightness (Blakely et al. 2024); `HarmonixModel` units and weight | 1e-15 (disks), 1e-12 (spectra; black body 9e-9) |
 | Fits against PMOIRED | the same files fitted by both; best fits, uncertainties, 200-draw pulls | best fits < 0.25 σ apart; errors equal with 3 telescopes; PMOIRED's errors ~10 % small with correlated closure phases (it treats them as independent) |
 | Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.05 σ for realistic errors (1° closure phases; largest for the rim) |
@@ -99,14 +100,15 @@ result it should match, and the precision you expect.
 
 Not yet covered: `GravityDarkenedStar` against an independent root,
 harmonix's maps, bandwidth smearing, AMIGO DISCO mode bases, regularised
-imaging, sampling, and an external second root for grid searches and
-limits.
+imaging (including virgil's new sparse regularisers), sampling, and
+false-alarm and contrast-limit simulation campaigns.
 
 ## Running
 
 ```bash
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -e .        # virgil-astro from PyPI
+uv pip install --python .venv/bin/python -e ".[external]"   # virgil-astro from PyPI, PMOIRED
+bash scripts/setup_candid.sh                         # CANDID, in its own .venv-candid
 .venv/bin/python -m pytest -m "not slow"             # ~1 min
 .venv/bin/python -m pytest                           # + dLux and noisy pulls, ~10 min
 .venv/bin/python scripts/report.py                   # docs/results.md and figures
@@ -122,5 +124,6 @@ fast tests on every push and everything weekly against virgil's `main`.
 * Duvert, Young & Hummel 2017, A&A 597, A8 (OIFITS v2)
 * Thompson, Moran & Swenson 2017, *Interferometry and Synthesis in Radio
   Astronomy*, 3rd ed., ch. 4
+* Absil et al. 2011, A&A 535, A68; Gallenne et al. 2015, A&A 579, A68 (CANDID)
 * Berger & Segransan 2007, New Astron. Rev. 51, 576
 * Desdoigts, Pope, Dennis & Tuthill 2023, JATIS 9, 028007 (dLux)

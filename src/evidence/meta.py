@@ -50,6 +50,19 @@ def own_commit():
         return None
 
 
+def candid_commit():
+    """The CANDID commit scripts/setup_candid.sh checked out (CANDID runs in
+    its own environment, so it is not among the installed packages)."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    try:
+        return subprocess.check_output(
+            ["git", "-C", os.path.join(root, ".external", "candid-src"), "rev-parse", "HEAD"],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
 def run_header():
     return {
         "record": "run",
@@ -58,7 +71,7 @@ def run_header():
         ),
         "virgil": {"version": _version("virgil-astro"), **virgil_source()},
         "validation_commit": own_commit(),
-        "versions": {p: _version(p) for p in PACKAGES},
+        "versions": {p: _version(p) for p in PACKAGES} | {"candid": candid_commit()},
         "python": platform.python_version(),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") else "local",
         "run_url": (

@@ -289,7 +289,7 @@ In dependency order, each with the root it would rest on:
 | `HarmonixModel` | harmonix/starry spherical-harmonic maps against direct surface quadrature |
 | Flared disks | direct quadrature of the documented brightness distribution (done) |
 | Fits with other optimisers | statistics (pulls), PMOIRED's fits (plan Stage 2) |
-| Grid search, detection limits | CANDID (plan Stage 3); injection-recovery detection rates (statistics) |
+| Grid search, detection limits | CANDID (done: maps, significance, Absil limits, fits); injection-recovery detection rates (statistics) |
 | Sampling | simulation-based calibration (rank statistics uniform) |
 | AMIGO DISCO records | the AMIGO package's own forward model on a common scene |
 | Regularised imaging | recovery statistics on simulated scenes; an external imager (e.g. MiRA or SQUEEZE) on the same files |
