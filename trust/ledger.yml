@@ -96,7 +96,7 @@
   referee: mathematics (Tabulated documents its reference flux as the node mean)
   evidence: [tests/test_remaining_models.py::test_tabulated_reference_flux_is_the_documented_mean]
   status: open
-  links: []
+  links: [https://github.com/benjaminpope/virgil/pull/163]
 
 - id: D1
   title: ModulatedGaussianRim blurs in the rim plane (changed by virgil#139)

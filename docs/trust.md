@@ -200,7 +200,7 @@ Every mismatch found, and its ruling: `virgil`, `external:<package>`, `definitio
 | F6 | virgil | fixed | fit started at an exact zero-residual optimum reported non-convergence | mathematics (chi-squared at the start is zero) | [144](https://github.com/benjaminpope/virgil/pull/144) |
 | F7 | virgil | fixed | .expand()ed priors switched fit from LM to L-BFGS | self-consistency (equivalent priors must choose the same method) | [142](https://github.com/benjaminpope/virgil/pull/142) |
 | F8 | virgil | fixed | OIData crashed when every closure phase was flagged | standards (the same V² without OI_T3) | [155](https://github.com/benjaminpope/virgil/pull/155) [158](https://github.com/benjaminpope/virgil/pull/158) [160](https://github.com/benjaminpope/virgil/pull/160) |
-| F9 | virgil | open | reference_flux returns every Tabulated node, not the documented mean | mathematics (Tabulated documents its reference flux as the node mean) |  |
+| F9 | virgil | open | reference_flux returns every Tabulated node, not the documented mean | mathematics (Tabulated documents its reference flux as the node mean) | [163](https://github.com/benjaminpope/virgil/pull/163) |
 | D1 | definition | documented | ModulatedGaussianRim blurs in the rim plane (changed by virgil#139) | mathematics (in-plane blur transform); PMOIRED (blurred-ring profile, 1e-9) | [139](https://github.com/benjaminpope/virgil/pull/139) |
 | D2 | definition | documented | Modulated rims differ between virgil and PMOIRED (blurred modulated ring vs modulated profile) | mathematics (our quadrature of each definition) |  |
 | D3 | definition | documented | PMOIRED treats closure phases as independent; virgil whitens them as a correlated group | statistics (200-draw pulls with both noise models) |  |

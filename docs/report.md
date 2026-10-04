@@ -239,7 +239,7 @@ Jacobian of that mapping.
 | 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fixed, [virgil#144](https://github.com/benjaminpope/virgil/pull/144) |
 | 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fixed, [virgil#142](https://github.com/benjaminpope/virgil/pull/142) |
 | 8 | `oidata.OIData` | With every closure phase flagged it crashed inside the closure-phase whitening (`ValueError: zero-size array`). | fixed, [virgil#155](https://github.com/benjaminpope/virgil/pull/155); now visibility-only data, [virgil#158](https://github.com/benjaminpope/virgil/pull/158) |
-| 9 | `spectra.reference_flux` | For `Tabulated` it returns every node, not the reference flux the class documents (the node mean, which `spectrum(None)` returns). Harmless inside virgil, which uses it to check that fluxes are non-negative. | open, fix in progress |
+| 9 | `spectra.reference_flux` | For `Tabulated` it returns every node, not the reference flux the class documents (the node mean, which `spectrum(None)` returns). Harmless inside virgil, which uses it to check that fluxes are non-negative. | open, fix in [virgil#163](https://github.com/benjaminpope/virgil/pull/163) |
 
 ### Definition changes in virgil
 
