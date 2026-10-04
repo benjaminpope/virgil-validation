@@ -23,7 +23,7 @@ Pinned by `tests/test_candid.py`.
 | bandwidth smearing | on, from `EFF_BAND` (3-point top hat or Gaussian) | off |
 | χ²_r | mean of squared normalised residuals | χ² / number of data points |
 | closure-phase residual | plain difference Δ | chord 2 sin(Δ/2) |
-| significance | χ² tail in linear space, two-sided Gaussian | the same, in log space |
+| significance | χ² tail (`chi2.sf`, then `chdtri`), two-sided Gaussian | the same (`gammaincc`, then `ndtri`); saturates instead of `inf` |
 | degrees of freedom (Absil) | number of data points | the same |
 | fit uncertainties | scaled by √χ²_r, χ²_r = χ²/(N − n_fit + 1) | not scaled |
 
@@ -38,10 +38,11 @@ the two codes agree to the float32 precision of the file.
   to O(Δ³). Near a good fit the two χ² values match to ~1e-6. Far from the
   data, where model closure phases are tens of degrees off, they differ by
   up to 1e-3.
-* **Significance saturates.** CANDID takes the χ² tail probability in
-  linear space, so a strong detection (above ~8σ) comes out as `inf`.
-  virgil's `nsigma` works in log space and stays finite to ~37σ in
-  float64. Below 8σ the two agree to 2e-13σ.
+* **Significance at the float64 limit.** Both take the two-sided Gaussian
+  equivalent of the χ² tail and agree to 1e-12 relative up to 27σ. Beyond
+  ~37σ, where the tail probability underflows, CANDID returns `inf` (as
+  `fitMap` reports for a strong detection) and virgil's `nsigma`
+  saturates at 37.5σ.
 
 ## Problems to raise (with approval)
 

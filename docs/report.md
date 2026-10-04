@@ -106,7 +106,7 @@ V²-only files test the shared definition exactly.
 | --- | --- | --- | --- |
 | χ² (`whitened_residuals`, `model_loglike`) at 21 random binaries, V² only | `_chi2Func` × number of data points | CANDID | 1.3e-7 (the file is float32) |
 | the same with closure phases | CANDID equals our plain-residual χ² (8e-8); virgil equals the chord one, up to 6e-4 lower far from the data | CANDID + Mathematics | definition D5 |
-| `nsigma` (six cases up to 8σ) | `_nSigmas` | CANDID | 2e-13 σ |
+| `nsigma` (eight cases, 1–27σ) | `_nSigmas` | CANDID | 1e-12 relative |
 | `likelihood_grid` as χ²(binary)/χ²(star) over a 32 × 32 map, 2–12 mas | `chi2Map` at 3 % (its fitted diameter) | CANDID | 1.6e-7 (V²), 8e-4 (with closure phases, D5); same minimum, East = +x |
 | `absil_limits` (3σ, six positions) | CANDID's Absil criterion solved exactly with its own χ² and nσ | CANDID | 2e-7 (V²), 4e-6 (with closure phases) |
 | — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (problem P4) |

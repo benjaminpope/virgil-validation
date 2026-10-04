@@ -22,11 +22,38 @@ def python():
 
 
 def available():
-    exe = python()
-    if not pathlib.Path(exe).exists():
+    """Whether the configured interpreter (a path or a command on PATH)
+    can import CANDID."""
+    try:
+        out = subprocess.run([python(), "-c", "import candid"], capture_output=True)
+    except OSError:
         return False
-    out = subprocess.run([exe, "-c", "import candid"], capture_output=True)
     return out.returncode == 0
+
+
+def provenance():
+    """What CANDID the tests run: the interpreter, CANDID's version string
+    and file, and the pinned commit when it is the managed environment of
+    scripts/setup_candid.sh with a clean checkout (otherwise None)."""
+    code = "import candid, json; print(json.dumps([candid.__version__, candid.__file__]))"
+    try:
+        out = subprocess.run([python(), "-c", code], capture_output=True, text=True)
+    except OSError:
+        return None
+    if out.returncode != 0:
+        return None
+    version, path = json.loads(out.stdout.strip().splitlines()[-1])
+    managed = ROOT / ".venv-candid"
+    commit = None
+    if pathlib.Path(path).resolve().is_relative_to(managed.resolve()):
+        src = ROOT / ".external" / "candid-src"
+        try:
+            head = subprocess.check_output(["git", "-C", str(src), "rev-parse", "HEAD"], text=True).strip()
+            dirty = subprocess.check_output(["git", "-C", str(src), "status", "--porcelain"], text=True).strip()
+            commit = None if dirty else head
+        except (OSError, subprocess.CalledProcessError):
+            commit = None
+    return {"python": python(), "version": version, "file": path, "commit": commit}
 
 
 def run(task, timeout=3600):

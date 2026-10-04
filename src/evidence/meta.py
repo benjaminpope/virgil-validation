@@ -50,17 +50,14 @@ def own_commit():
         return None
 
 
-def candid_commit():
-    """The CANDID commit scripts/setup_candid.sh checked out (CANDID runs in
-    its own environment, so it is not among the installed packages)."""
-    root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+def candid():
+    """The CANDID the tests run (it lives in its own environment, so it is
+    not among the installed packages): see external_bridge.candid_bridge."""
     try:
-        return subprocess.check_output(
-            ["git", "-C", os.path.join(root, ".external", "candid-src"), "rev-parse", "HEAD"],
-            text=True, stderr=subprocess.DEVNULL,
-        ).strip()
-    except (OSError, subprocess.CalledProcessError):
+        from external_bridge import candid_bridge
+    except ImportError:
         return None
+    return candid_bridge.provenance()
 
 
 def run_header():
@@ -71,7 +68,8 @@ def run_header():
         ),
         "virgil": {"version": _version("virgil-astro"), **virgil_source()},
         "validation_commit": own_commit(),
-        "versions": {p: _version(p) for p in PACKAGES} | {"candid": candid_commit()},
+        "versions": {p: _version(p) for p in PACKAGES},
+        "candid": candid(),
         "python": platform.python_version(),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") else "local",
         "run_url": (

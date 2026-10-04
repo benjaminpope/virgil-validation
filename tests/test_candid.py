@@ -152,15 +152,17 @@ def test_closure_phase_residual_definitions(files):
 
 @pytest.mark.validates("virgil.limits.nsigma", roots=["candid"])
 def test_nsigma_matches_candid():
-    """Where CANDID's significance is finite (it takes the chi-squared
-    tail in linear space, so it overflows to inf above ~8 sigma)."""
-    cases = [(1.2, 50), (1.25, 300), (1.05, 2000), (1.3, 168), (1.0, 100), (1.5, 126)]
+    """Both take the two-sided Gaussian equivalent of the chi-squared tail
+    (CANDID with chi2.sf and chdtri, virgil with gammaincc and ndtri), up
+    to 27 sigma. Beyond ~37 sigma the tail underflows: CANDID returns inf,
+    virgil saturates."""
+    cases = [(1.2, 50), (1.25, 300), (1.05, 2000), (1.3, 168), (1.0, 100), (1.5, 126), (3.0, 300), (5.0, 300)]
     got = np.array([float(nsigma(r, 1.0, n)) for r, n in cases])
     want = np.array(cb.run({"task": "nsigma", "cases": cases})["nsigma"])
-    assert np.all(want < 8.0)
-    worst = np.max(np.abs(got - want))
-    record("max_abs_dsigma", worst)
-    assert worst < 1e-6
+    worst = np.max(np.abs(got / want - 1))
+    record("max_rel_dsigma", worst)
+    assert want.max() > 25.0
+    assert worst < 1e-10
 
 
 # -------------------------------------------------------------------- maps
