@@ -41,7 +41,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | --- | --- | --- |
 | Visibilities | `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk` (through four Airy nulls), binaries, `ModulatedGaussianRim` (inclined, m = 1, 2, blurred in the rim plane as since virgil#139), `Image` orientation, `Rotated`, `Resolved`, nested `System`s | 1e-15 (float64) |
 | Visibilities | 5 random constellations of 24 points, Gaussians, elliptical Gaussians and disks at random positions and fluxes, plus a nested group | 1e-12 (float64), 3e-5 (float32) |
-| Derivatives | every model's visibility, `Image` pixels, `whitened_residuals`, `model_loglike` and its Hessian, against finite differences | 1e-5 (check_grads); Hessian < 1e-7 (Richardson) |
+| Derivatives | the visibilities of every geometric model (not yet the flared disks or `HarmonixModel`), `Image` pixels, `whitened_residuals`, `model_loglike` and its Hessian, against finite differences | 1e-5 (check_grads); Hessian < 1e-7 (Richardson) |
 | uv geometry | our Earth-rotation tracks vs `virgil.coverage.vlti_oidata` | 1e-9 m |
 | OIFITS | our file → `OIData` → `data.model(...)` reproduces what we wrote (V², T3 orientation, signs, units) | 1e-16 |
 | Recovery (VLTI) | noise-free fits of a binary, a uniform-disk star with a companion, a star with an elliptical envelope and a star with a modulated rim | 1e-10 to 1e-13 relative (rim: 1e-7, optimiser tolerance) |

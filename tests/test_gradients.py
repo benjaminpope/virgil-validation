@@ -52,41 +52,58 @@ def _check(template, paths, **tol):
     check_grads(f, (x0,), order=1, modes=("fwd", "rev"), **tol)
 
 
+M = "virgil.models."
+
+# (objects credited, factory, paths). Factories run inside each test, so
+# the templates are built in float64 (tests/conftest.py's x64 context).
 CASES = {
-    "PointSource": (vm.PointSource(dra=3.0, ddec=-2.0), ["dra", "ddec"]),
+    "PointSource": (
+        [M + "PointSource"],
+        lambda: vm.PointSource(dra=3.0, ddec=-2.0),
+        ["dra", "ddec"],
+    ),
     "GaussianDisk": (
-        vm.GaussianDisk(1.3, dra=0.4, ddec=-0.7),
+        [M + "GaussianDisk"],
+        lambda: vm.GaussianDisk(1.3, dra=0.4, ddec=-0.7),
         ["sigma", "dra", "ddec"],
     ),
     "EllipticalGaussian": (
-        vm.EllipticalGaussian(3.0, 0.4, 35.0, dra=1.0, ddec=2.0),
+        [M + "EllipticalGaussian"],
+        lambda: vm.EllipticalGaussian(3.0, 0.4, 35.0, dra=1.0, ddec=2.0),
         ["fwhm", "ratio", "pa", "dra", "ddec"],
     ),
     "UniformDisk": (
-        vm.UniformDisk(3.0, dra=0.4, ddec=-0.7),
+        [M + "UniformDisk"],
+        lambda: vm.UniformDisk(3.0, dra=0.4, ddec=-0.7),
         ["diam", "dra", "ddec"],
     ),
     "ModulatedGaussianRim": (
-        vm.ModulatedGaussianRim(
-            4.0, 0.8, 50.0, 30.0, np.array([0.4, 0.25]), np.array([40.0, 110.0]),
-            dra=0.3, ddec=-0.2,
+        [M + "ModulatedGaussianRim"],
+        lambda: vm.ModulatedGaussianRim(
+            4.0, 0.8, 50.0, 30.0, np.array([0.4, 0.25]),
+            np.array([40.0, 110.0]), dra=0.3, ddec=-0.2,
         ),
         ["diam", "fwhm", "inc", "pa", "az_amps", "az_pas", "dra", "ddec"],
     ),
     "GaussianArc": (
-        vm.GaussianArc(5.0, 0.6, 4.0, 250.0, dra=0.5, ddec=0.3),
+        [M + "GaussianArc"],
+        lambda: vm.GaussianArc(5.0, 0.6, 4.0, 250.0, dra=0.5, ddec=0.3),
         ["radius", "width", "length", "pa", "dra", "ddec"],
     ),
     "BinaryModelCartesian": (
-        vm.BinaryModelCartesian(4.97, -3.36, 0.05),
+        [M + "BinaryModelCartesian"],
+        lambda: vm.BinaryModelCartesian(4.97, -3.36, 0.05),
         ["dra", "ddec", "flux"],
     ),
     "BinaryModelAngular": (
-        vm.BinaryModelAngular(6.0, 124.0, 0.05),
+        [M + "BinaryModelAngular"],
+        lambda: vm.BinaryModelAngular(6.0, 124.0, 0.05),
         ["sep", "pa", "flux"],
     ),
     "System": (
-        vm.System(
+        [M + "System", M + "Resolved", M + "UniformDisk", M + "PointSource",
+         M + "GaussianDisk"],
+        lambda: vm.System(
             star=vm.UniformDisk(1.8),
             comp=vm.PointSource(0.02, -12.0, 8.0),
             env=vm.GaussianDisk(2.0, flux=0.3),
@@ -96,29 +113,38 @@ CASES = {
          "env.sigma", "halo.flux"],
     ),
     "Rotated": (
-        vm.Rotated(
-            vm.System(a=vm.GaussianDisk(1.0, ddec=3.0), b=vm.PointSource(0.5, dra=1.0)),
+        [M + "Rotated"],
+        lambda: vm.Rotated(
+            vm.System(
+                a=vm.GaussianDisk(1.0, ddec=3.0), b=vm.PointSource(0.5, dra=1.0)
+            ),
             70.0,
         ),
         ["rotation_deg"],
     ),
     "GravityDarkenedStar": (
-        vm.GravityDarkenedStar(1.0, omega=0.7, inc=50.0, pa=30.0, n_lat=16),
+        [M + "GravityDarkenedStar"],
+        lambda: vm.GravityDarkenedStar(1.0, omega=0.7, inc=50.0, pa=30.0, n_lat=16),
         ["diam_eq", "omega", "inc", "pa"],
     ),
 }
 
 
-@pytest.mark.parametrize("name", list(CASES))
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param(
+            name, marks=pytest.mark.validates(*objs, roots=["mathematics"])
+        )
+        for name, (objs, _, _) in CASES.items()
+    ],
+)
 def test_model_visibility_gradients(name):
-    template, paths = CASES[name]
+    """Flared disks and HarmonixModel are not covered yet."""
+    _, factory, paths = CASES[name]
+    template = factory()
+    assert jnp.asarray(template.get(paths[0])).dtype == jnp.float64
     _check(template, paths)
-
-
-# tag each case with its object (markers cannot depend on parameters)
-test_model_visibility_gradients = pytest.mark.validates(
-    *[f"virgil.models.{n}" for n in CASES], roots=["mathematics"]
-)(test_model_visibility_gradients)
 
 
 @pytest.mark.validates("virgil.models.Image", roots=["mathematics"])
@@ -145,11 +171,15 @@ def _noisy_data(model):
     return data.with_model(model, key=jax.random.PRNGKey(2))
 
 
-@pytest.mark.validates(
-    "virgil.likelihood.whitened_residuals", "virgil.likelihood.model_loglike",
-    roots=["mathematics"],
+@pytest.mark.parametrize(
+    "which",
+    [
+        pytest.param(
+            w, marks=pytest.mark.validates(f"virgil.likelihood.{w}", roots=["mathematics"])
+        )
+        for w in ("whitened_residuals", "model_loglike")
+    ],
 )
-@pytest.mark.parametrize("which", ["whitened_residuals", "model_loglike"])
 def test_likelihood_gradients(which):
     """The residual vector every fit uses, and the log-likelihood, with
     respect to model parameters, on noisy data with closure phases (so the

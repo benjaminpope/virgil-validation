@@ -69,7 +69,7 @@ virgil's own tests only check that they are finite.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
-| visibilities of `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk`, `ModulatedGaussianRim` (array `az_amps`, `az_pas`), `GaussianArc`, both binaries, a `System` with `Resolved`, `Rotated`, `GravityDarkenedStar`, with respect to every geometric parameter | central finite differences (`jax.test_util.check_grads`, forward and reverse mode) | Mathematics | within check_grads' default tolerance (1e-5) |
+| visibilities of `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk`, `ModulatedGaussianRim` (array `az_amps`, `az_pas`), `GaussianArc`, both binaries, a `System` with `Resolved`, `Rotated`, `GravityDarkenedStar`, with respect to every geometric parameter (flared disks and `HarmonixModel` not yet) | central finite differences (`jax.test_util.check_grads`, forward and reverse mode) | Mathematics | within check_grads' default tolerance (1e-5) |
 | `Image` visibilities with respect to every log-brightness pixel (softmax-coupled) | same | Mathematics | same |
 | `whitened_residuals` and `model_loglike` on noisy V² and closure phases (correlated whitening included) | same | Mathematics | same |
 | Hessian of `model_loglike` (used by Laplace covariances and Fisher matrices) | Richardson-extrapolated central difference of the gradient | Mathematics | < 1e-7 relative to the diagonal |

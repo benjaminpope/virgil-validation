@@ -168,7 +168,7 @@ What is trusted now, and from which root. Details and numbers are in the
 ### virgil: composition, likelihood, fitting
 
 - [x] Closure-phase whitening: pulls N(0, 1) with correlated noise (statistics)
-- [x] Derivatives of every model, the image pixels, the residuals and the log-likelihood (and its Hessian) match finite differences (mathematics)
+- [x] Derivatives of the geometric models (flared disks and `HarmonixModel` still to do), the image pixels, the residuals and the log-likelihood (and its Hessian) match finite differences (mathematics)
 - [x] LM fits recover injected truth to 1e-10 noise-free, 0.02σ bias from dLux masking data
 - [ ] Optimiser choice and convergence edge cases (findings 6 and 7; fixes in progress)
 - [ ] L-BFGS and Adam fits, regularisers
