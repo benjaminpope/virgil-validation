@@ -28,7 +28,7 @@ contests:
   "2004":
     bibcode: 2004SPIE.5491..886L
     doi: 10.1117/12.550710
-    organisers: [Peter Lawson (JPL, chair), Bill Cotton (NRAO, test data), Christian Hummel (ESO, simulated the data with OYSTER)]
+    organisers: ["Peter Lawson (JPL, chair)", "Bill Cotton (NRAO, test data)", "Christian Hummel (ESO, simulated the data with OYSTER)"]
     instrument: NPOI, 6 stations, simulated; one channel at 550 nm
     targets:
       data1: model of LkHa 101 (star in an asymmetric shell), image by Peter Tuthill; 242x242 pixels of 0.05 mas
@@ -47,7 +47,7 @@ contests:
   "2006":
     bibcode: 2006SPIE.6268E..1UL
     doi: 10.1117/12.670409
-    organisers: [Peter Lawson (JPL, chair), Bill Cotton (NRAO, referee), Christian Hummel (ESO, simulated the data)]
+    organisers: ["Peter Lawson (JPL, chair)", "Bill Cotton (NRAO, referee)", "Christian Hummel (ESO, simulated the data)"]
     instrument: VLTI/AMBER on the four UTs (3 beams), simulated; 4 nights; 8 channels 1.08-1.34 um, no chromatic structure
     targets:
       MIR0001: thin-disk model by Olivier Chesneau, 301x301 pixels of 0.35 mas
@@ -64,7 +64,7 @@ contests:
   "2008":
     bibcode: 2008SPIE.7013E..1NC
     doi: 10.1117/12.788903
-    organisers: [Bill Cotton (NRAO)]
+    organisers: ["Bill Cotton (NRAO)"]
     instrument: CHARA (MIRC-like), simulated; J, H and K, 8 sub-bands each; the model changes between bands
     targets:
       Alp_Vic: an AGB star
@@ -86,7 +86,7 @@ contests:
     bibcode: 2010SPIE.7734E..2NM
     doi: 10.1117/12.857066
     arxiv: "1007.4473"
-    organisers: [Fabien Malbet (JMMC/LAOG, organiser), Gilles Duvert (JMMC/LAOG, simulated the data with ASPRO), Bill Cotton (NRAO, judge), Peter Lawson (JPL, host)]
+    organisers: ["Fabien Malbet (JMMC/LAOG, organiser)", "Gilles Duvert (JMMC/LAOG, simulated the data with ASPRO)", "Bill Cotton (NRAO, judge)", "Peter Lawson (JPL, host)"]
     instrument: VLTI/AMBER, 3 ATs, simulated; polychromatic
     targets:
       Mystery: CO5BOLD/OPTIM3D red-supergiant surface (Chiavassa et al. 2009), about 20 mas, with a companion 5 mag fainter at 84.28 mas, PA 261.31 deg
@@ -108,7 +108,7 @@ contests:
     bibcode: 2012SPIE.8445E..1EB
     doi: 10.1117/12.924907
     arxiv: "1207.7141"
-    organisers: [Fabien Baron (Michigan, chair and data), Alicia Aarnio (Michigan, TORUS disk model), Bill Cotton (NRAO, judge), Peter Lawson (JPL, host)]
+    organisers: ["Fabien Baron (Michigan, chair and data)", "Alicia Aarnio (Michigan, TORUS disk model)", "Bill Cotton (NRAO, judge)", "Peter Lawson (JPL, host)"]
     instrument: CHARA/MIRC-6T, simulated; low-resolution H band, 8 channels, grey
     targets:
       Alp_Fak: T Tauri star and disk (TORUS), loosely after V1295 Aql
@@ -122,7 +122,7 @@ contests:
   "2014":
     bibcode: 2014SPIE.9146E..1QM
     doi: 10.1117/12.2057312
-    organisers: [John Monnier (Michigan), Jean-Philippe Berger (ESO), Jean-Baptiste Le Bouquin (reduction with pndrs)]
+    organisers: ["John Monnier (Michigan)", "Jean-Philippe Berger (ESO)", "Jean-Baptiste Le Bouquin (reduction with pndrs)"]
     instrument: VLTI/PIONIER, real data; H band, 3 channels; three AT quadruplets, 2014-01-22 to 2014-02-02
     targets:
       VY_CMa: red supergiant
@@ -136,7 +136,7 @@ contests:
   "2016":
     bibcode: 2016SPIE.9907E..1DS
     doi: 10.1117/12.2231982
-    organisers: [Joel Sanchez-Bermudez (MPIA), Eric Thiebaut (CRAL)]
+    organisers: ["Joel Sanchez-Bermudez (MPIA)", "Eric Thiebaut (CRAL)"]
     instrument: VLTI GRAVITY (medium resolution) and MATISSE (low resolution, N band), simulated; chromatic; OIFITS2
     targets:
       Object1: GRAVITY, with an OI_FLUX spectrum
@@ -149,7 +149,7 @@ contests:
   "2018":
     bibcode: 2018SPIE10701E..1UM
     doi: 10.1117/12.2500674
-    organisers: [Antoine Merand (ESO)]
+    organisers: ["Antoine Merand (ESO)"]
     instrument: CHARA/MIRC 6T and three VLTI/PIONIER AT configurations, simulated with Aspro; grey, R~50; V2 and closure phases
     targets:
       star-disk-planet: analytic model, a 0.4 mas uniform-disk star (65%), an inner disk with a bright rim (29%), a planet at 3.75 mas, PA 27 deg (2%), and an outer disk to 20 mas
@@ -161,7 +161,7 @@ contests:
   "2022":
     bibcode: 2022SPIE12183E..1GS
     doi: 10.1117/12.2629430
-    organisers: [Joel Sanchez-Bermudez (UNAM), Antoine Merand (ESO), Steph Sallum (UC Irvine)]
+    organisers: ["Joel Sanchez-Bermudez (UNAM)", "Antoine Merand (ESO)", "Steph Sallum (UC Irvine)"]
     instrument: VLTI/GRAVITY K band (11 channels, three AT configurations) and JWST/NIRISS AMI (3.8 um, one snapshot), simulated
     targets:
       Mysterious_Obj1: GRAVITY, high-contrast test
@@ -178,7 +178,7 @@ contests:
     bibcode: 2024SPIE13095E..14M
     doi: 10.1117/12.3019243
     arxiv: "2609.35064"
-    organisers: [Florentin Millour, Mathis Houlle, Jeremy Perdigon, Alexis Matter (Lagrange/OCA), Ferreol Soulez, Eric Thiebaut (CRAL)]
+    organisers: ["Florentin Millour", "Mathis Houlle", "Jeremy Perdigon", "Alexis Matter (Lagrange/OCA)", "Ferreol Soulez", "Eric Thiebaut (CRAL)"]
     instrument: VLTI PIONIER (H), GRAVITY (K), MATISSE (L and N), simulated with Aspro; polychromatic, with noise and calibration biases
     targets:
       Obj1: Wolf-Rayet binary pinwheel spiral (AMHRA), first turn about 10 mas, 3 turns
@@ -201,6 +201,6 @@ contests:
   "2026":
     doi: 10.1117/12.3099386
     title: Optical interferometry imaging contest XI (Proc. SPIE 14148, 1414811)
-    organisers: [probably Julien Drevon, Ferreol Soulez, Jean-Francois Gonzalez]
+    organisers: ["probably Julien Drevon", "Ferreol Soulez", "Jean-Francois Gonzalez"]
     notes: "Not yet on ADS or OiDB (checked 2026-10-04)."
     files: []

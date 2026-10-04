@@ -137,6 +137,15 @@
   evidence: [tests/test_pmoired_fits.py::test_uncertainties_agree_without_closure_redundancy]
   status: documented
 
+- id: F10
+  title: OIData rejects OIFITS whose OI_T3 and OI_VIS2 use different INSNAMEs (identical wavelengths) or reversed baselines
+  objects: [virgil.oifits.read_oifits, virgil.oidata.OIData]
+  ruling: virgil
+  referee: standards (OIFITS v1/v2 link each table to OI_WAVELENGTH by INSNAME; nothing requires T3 and VIS2 to share one)
+  evidence: [tests/test_contest_binaries.py::test_2006_files_with_separate_t3_insname_are_read]
+  status: open
+  links: [https://github.com/benjaminpope/virgil/pull/167]
+
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
   objects: [external_bridge.pmoired_models]

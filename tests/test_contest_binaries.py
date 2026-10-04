@@ -8,9 +8,10 @@ come from the contest pages, so these test virgil's reading of real-world
 OIFITS conventions (East, PA, which star is which, closure-phase sign)
 against the literature.
 
-Each fit starts at the published position and at its mirror image (180°
-away, the position a closure-phase sign error would prefer); the published
-side must fit the data far better.
+After the fit, the companion is moved to its mirror image (180° away, where
+a sign error in East, PA or closure phase would put it) and held there while
+the fluxes and diameters are refitted; that hypothesis must fit the data far
+worse.
 
 The data are not in the repository: run scripts/fetch_contests.py first
 (or set CONTEST_DATA). The tests skip when the files are absent.
@@ -47,12 +48,13 @@ BINARIES = {
 }
 
 
-def _scene(sep, pa, flux, diams):
-    dra, ddec = sep * np.sin(np.deg2rad(pa)), sep * np.cos(np.deg2rad(pa))
+def _scene(dra, ddec, flux, diams, sep, fixed_position=False):
     span = dist.Uniform(-5 * sep, 5 * sep)
     if diams is None:
         model = vm.BinaryModelCartesian(dra, ddec, flux)
-        priors = {"dra": span, "ddec": span, "flux": dist.Uniform(0, 1)}
+        priors = {"flux": dist.Uniform(0, 1)}
+        if not fixed_position:
+            priors |= {"dra": span, "ddec": span}
         return model, priors, ("dra", "ddec", "flux")
     model = vm.System(
         a=vm.UniformDisk(diams[0]),
@@ -61,19 +63,29 @@ def _scene(sep, pa, flux, diams):
     priors = {
         "a.diam": dist.Uniform(0, 5 * max(diams)),
         "b.diam": dist.Uniform(0, 5 * max(diams)),
-        "b.dra": span,
-        "b.ddec": span,
         "b.flux": dist.Uniform(0, 1),
     }
+    if not fixed_position:
+        priors |= {"b.dra": span, "b.ddec": span}
     return model, priors, ("b.dra", "b.ddec", "b.flux")
 
 
+def _chi2(model, data):
+    return float(np.sum(np.asarray(whitened_residuals(model, data)) ** 2))
+
+
 def _fit(data, sep, pa, flux, diams):
-    model, priors, keys = _scene(sep, pa, flux, diams)
+    """Fit from the published parameters; then hold the companion at the
+    mirror image of the fitted position and refit the rest."""
+    dra, ddec = sep * np.sin(np.deg2rad(pa)), sep * np.cos(np.deg2rad(pa))
+    model, priors, keys = _scene(dra, ddec, flux, diams, sep)
     result = fit(model, priors, data)
-    chi2 = float(np.sum(np.asarray(whitened_residuals(result.model, data)) ** 2))
     dra, ddec, f = (float(result.values[k]) for k in keys)
-    return np.hypot(dra, ddec), np.rad2deg(np.arctan2(dra, ddec)) % 360, f, chi2
+    d = None if diams is None else tuple(float(result.values[k]) for k in ("a.diam", "b.diam"))
+    mirror, mirror_priors, _ = _scene(-dra, -ddec, f, d, sep, fixed_position=True)
+    mirrored = fit(mirror, mirror_priors, data)
+    sep_fit, pa_fit = np.hypot(dra, ddec), np.rad2deg(np.arctan2(dra, ddec)) % 360
+    return sep_fit, pa_fit, f, _chi2(result.model, data), _chi2(mirrored.model, data)
 
 
 @pytest.mark.validates(
@@ -89,8 +101,7 @@ def test_contest_binary_matches_published_parameters(year):
     data = OIData(str(path))
     n = np.asarray(whitened_residuals(vm.PointSource(), data)).size
 
-    s, p, f, chi2 = _fit(data, sep, pa, flux, diams)
-    _, _, _, chi2_mirror = _fit(data, sep, (pa + 180) % 360, flux, diams)
+    s, p, f, chi2, chi2_mirror = _fit(data, sep, pa, flux, diams)
     record(f"{year}_sep_mas", s)
     record(f"{year}_pa_deg", p)
     record(f"{year}_flux_ratio", f)
@@ -100,4 +111,21 @@ def test_contest_binary_matches_published_parameters(year):
     assert s == pytest.approx(sep, rel=0.02)
     assert (p - pa + 180) % 360 - 180 == pytest.approx(0, abs=2.0)
     assert f == pytest.approx(flux, rel=0.2)
-    assert chi2_mirror - chi2 > 25  # the published side is preferred by > 5 sigma
+    assert chi2_mirror - chi2 > 25  # the mirror image is rejected at > 5 sigma
+
+
+@pytest.mark.xfail(strict=True, reason="F10: T3 and VIS2 under different INSNAMEs, reversed legs (virgil#167)")
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], kind="finding")
+def test_2006_files_with_separate_t3_insname_are_read():
+    """The 2006 contest files (simulated AMBER, OIFITS v1) keep their closure
+    phases under INSNAMEs like AMBER-LR_TR01_OB01 and their V² under
+    AMBER-LR_OB01, with identical OI_WAVELENGTH tables, and store baseline
+    (2, 0) where the triangle's leg is (0, 2). The standard allows both;
+    virgil raised ValueError until virgil#167."""
+    path = DATA / "2006/2006-03-03.fits"
+    if not path.exists():
+        pytest.skip(f"{path} absent: run scripts/fetch_contests.py")
+    data = OIData(str(path))
+    v2 = np.asarray(data.model(vm.PointSource()))
+    assert np.isfinite(v2).all()
+    assert np.asarray(whitened_residuals(vm.PointSource(), data)).size >= 648 + 216

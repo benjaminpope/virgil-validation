@@ -7,14 +7,17 @@ Files land in <dest>/<year>/ and are checked against the sha256 in the
 manifest; a mismatch is an error (the hosts have changed files before: the
 OiDB copies of the 2004 data differ from the OLBIN originals in their
 headers). Gzipped OIFITS are unpacked next to the archive. The data are
-small (about 15 MB in all) and are never committed.
+small (about 19 MB in all) and are never committed.
 """
 
 import argparse
 import gzip
 import hashlib
+import os
 import pathlib
+import re
 import shutil
+import tempfile
 import urllib.request
 
 import yaml
@@ -34,9 +37,17 @@ def file_url(manifest, contest, name):
 
 
 def fetch(url, path):
+    """Download to a temporary sibling and rename only when complete, so an
+    interrupted download never leaves a partial file under the final name."""
     request = urllib.request.Request(url, headers={"User-Agent": "virgil-validation"})
-    with urllib.request.urlopen(request, timeout=120) as response, open(path, "wb") as out:
-        shutil.copyfileobj(response, out)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response, os.fdopen(fd, "wb") as out:
+            shutil.copyfileobj(response, out)
+        os.replace(tmp, path)
+    except BaseException:
+        pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def main():
@@ -72,10 +83,15 @@ def main():
 
     if args.record:
         # Edit the text, not the parsed YAML, so that comments and layout survive.
+        # Existing sha256s are replaced, missing ones inserted.
         lines = []
         for line in text.splitlines():
             for name, digest in hashes.items():
-                if f"{{name: {name}," in line and "sha256" not in line:
+                if f"{{name: {name}," not in line:
+                    continue
+                if "sha256:" in line:
+                    line = re.sub(r"sha256: [0-9a-f]+", f"sha256: {digest}", line)
+                else:
                     line = line.replace(f"{{name: {name},", f"{{name: {name}, sha256: {digest},")
             lines.append(line)
         MANIFEST.write_text("\n".join(lines) + "\n")

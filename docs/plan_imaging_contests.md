@@ -66,8 +66,10 @@ read as they are.
   (`AMBER-LR_OB01`). The two `OI_WAVELENGTH` tables are identical, which
   the OIFITS standard allows. virgil pairs triangles with baselines only
   under the same `INSNAME`, and its error message says the wavelengths
-  differ, which is wrong. [virgil#167](https://github.com/benjaminpope/virgil/pull/167) fixes it: it matches by wavelength table, and also supports reversed T3 legs (the 2006 V² store (2,0) where the triangle needs (0,2)), which virgil also did not support. Once it merges, the
-  bug will be recorded as a ledger entry ruled `virgil`.
+  differ, which is wrong. [virgil#167](https://github.com/benjaminpope/virgil/pull/167) fixes it: it matches by wavelength table, and also supports reversed T3 legs (the 2006 V² store (2,0) where the triangle needs (0,2)), which virgil also did not support. It is finding F10 in the ledger and
+  README, pinned by a strict xfail
+  (`test_2006_files_with_separate_t3_insname_are_read`) that flips when
+  virgil#167 merges. CI fetches the 2006 files so the test runs.
 
 ### C1. The organisers' test binaries (done)
 
@@ -185,15 +187,19 @@ regularisers → image scored against the published entries), is added as
 against `literature`, the second root they need alongside eht-imaging or
 MPoL (`rml-imaging`).
 
+## Decisions
+
+- **No other codes run here** (Ben, 2026-10-04). virgil's images are
+  compared only with the truth images, where we have them, and with the
+  quantitative comparisons of the other pipelines published in the contest
+  papers (score tables, metrics, figures). MiRA, SQUEEZE and the rest are
+  not run on the data.
+
 ## Open decisions for Ben
 
-1. **External comparison codes.** Running MiRA (Julia) or SQUEEZE ourselves
-   on the same files would give a same-data comparison stronger than the
-   papers' figures. That would add packages to the root pool. Should it
-   wait for C2's results?
-2. **2024 truths.** Should we ask Millour or Soulez for the 2024 truth
+1. **2024 truths.** Should we ask Millour or Soulez for the 2024 truth
    images? With ImageMetrics, that is the quickest route to a quantitative
    score.
-3. **Chromatic imaging in virgil.** If C3 shows that per-band images are
+2. **Chromatic imaging in virgil.** If C3 shows that per-band images are
    not enough, should a cross-wavelength regulariser go into virgil (a
    design note first)?
