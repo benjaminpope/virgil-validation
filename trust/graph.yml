@@ -92,14 +92,25 @@ nodes:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
     depends: [virgil.likelihood.model_loglike]
+  virgil.grid_fit.optimized_flux_grid:
+    layer: inference
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.grid_fit.laplace_flux_uncertainty_grid:
+    layer: inference
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/inference.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.limits.nsigma:
+    layer: inference
+    source: [src/virgil/limits.py]
   virgil.limits.absil_limits:
     layer: inference
     source: [src/virgil/limits.py, src/virgil/_grid.py]
-    depends: [virgil.likelihood.model_loglike]
+    depends: [virgil.likelihood.model_loglike, virgil.limits.nsigma]
   virgil.limits.ruffio_upperlimit:
     layer: inference
-    source: [src/virgil/limits.py, src/virgil/_grid.py]
-    depends: [virgil.likelihood.model_loglike]
+    source: [src/virgil/limits.py]
+    depends: [virgil.grid_fit.optimized_flux_grid, virgil.grid_fit.laplace_flux_uncertainty_grid]
   virgil.likelihood.numpyro_model:
     layer: inference
     source: [src/virgil/likelihood.py]

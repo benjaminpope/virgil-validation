@@ -74,6 +74,26 @@ virgil's own tests only check that they are finite.
 | `whitened_residuals` and `model_loglike` on noisy V² and closure phases (correlated whitening included) | same | Mathematics | same |
 | Hessian of `model_loglike` (used by Laplace covariances and Fisher matrices) | Richardson-extrapolated central difference of the gradient | Mathematics | < 1e-7 relative to the diagonal |
 
+## Grid search and detection limits
+
+`tests/test_grids_limits.py`: simulated 3-telescope VLTI data (one closure
+phase per snapshot), with and without a companion. Our chi-squared
+(`crosscheck.chi2`) reads the file with astropy and uses closed-form binary
+visibilities; the significance and limits follow Absil et al. (2011) and
+Ruffio et al. (2018), written with SciPy and mpmath.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `likelihood_grid` (9 × 9 positions) | −½ χ² from our own reading of the file | Mathematics | 5e-12 in log-likelihood |
+| `nsigma` | χ² upper tail as a two-sided Gaussian significance (SciPy, in log space) | Mathematics | 2e-13 σ |
+| `optimized_flux_grid`, `laplace_flux_uncertainty_grid` | our best flux (Brent) and the curvature of our χ² | Mathematics | < 1e-3 σ and 0.1 % |
+| `absil_limits` (3σ, companion-free data, 12 positions) | root of nsigma(χ²(f)/χ²(0)) = 3 with the number of data points as degrees of freedom | Mathematics | 5e-7 relative |
+| `ruffio_upperlimit` (means from 20σ above to 30σ below zero) | truncated-Gaussian quantile at 50 digits (mpmath) | Mathematics | 1.5e-12 relative |
+| flux at the true position over 200 noisy realisations | N(0, 1) pulls | Statistics | mean −0.13, sd 1.09 |
+
+Not yet: a second, external root (CANDID or fouriever maps and limits), and
+campaigns for the false-alarm rate and contrast-limit calibration.
+
 ## Long-baseline interferometry
 
 Four VLTI UTs, 7 hour angles, 6 channels in H–K, declination −50°

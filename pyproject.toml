@@ -3,12 +3,17 @@ name = "virgil-validation"
 version = "0.1.0"
 description = "Independent validation of virgil against first-principles and dLux simulations"
 requires-python = ">=3.11"
-dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil-astro", "pytest"]
+dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil-astro", "pytest", "pyyaml", "mpmath"]
 
 [project.optional-dependencies]
 # Other people's packages, pinned: updating a pin is a deliberate PR.
 external = ["pmoired==26.10.1"]
 docs = ["mkdocs<2", "mkdocs-material"]
+
+# The evidence plugin loads whenever the package is installed, so its options
+# (--evidence, --require-validates) parse whatever the order of arguments.
+[project.entry-points.pytest11]
+evidence = "evidence.plugin"
 
 [build-system]
 requires = ["setuptools>=64"]

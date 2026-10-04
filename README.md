@@ -48,6 +48,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Uncertainties | pulls (fit − truth)/σ over noisy realisations, with closure phases correlated through shared baselines or independent | 200 draws per case, four scenes including the rim: means within ±0.17, sds 0.87–1.10 ([results](docs/results.md)) |
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
 | Visibility-only data | V²-only files read and fitted (virgil#158): diameters against the truth, PMOIRED and 200-draw pulls | 1e-6 noise-free; 2e-4 σ from PMOIRED; pulls sd 1.01 |
+| Grids and limits | `likelihood_grid`, `nsigma`, best flux and its error per position, `absil_limits`, `ruffio_upperlimit` against our own chi-squared, Absil et al. 2011 and Ruffio et al. 2018 (SciPy, mpmath) | 5e-12 to 5e-7; flux pulls sd 1.09 |
 | Fits against PMOIRED | the same files fitted by both; best fits, uncertainties, 200-draw pulls | best fits < 0.25 σ apart; errors equal with 3 telescopes; PMOIRED's errors ~10 % small with correlated closure phases (it treats them as independent) |
 | Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.05 σ for realistic errors (1° closure phases; largest for the rim) |
 | Dirty image | uniform uv disk → Airy beam centred on the source, East left | 3e-3 (sampling of the disk) |
