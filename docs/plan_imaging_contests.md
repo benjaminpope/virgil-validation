@@ -179,6 +179,30 @@ Fixes, smoke-tested locally on virgil `ec4cf51`:
 - 2010 with `--halo` reaches χ²/N ≈ 5700 in a smoke run, against 13 400
   without; it really needs C3 (per-band images, with the organisers' SEDs).
 
+Second run (2026-10-04/05, jobs 17999358 for the three fixed tasks and
+17999361 for all 16 with `--halo`, virgil `1057928`, cluster JAX 0.11.2):
+
+| Dataset | χ²/N | Result |
+|---|---|---|
+| 2004 data2 (field forced to 24 mas) | 29 (was 179) | **structure right**: an elliptical spotted star and a compact companion about 10 mas East of it, as in the published model; χ² is still high |
+| 2022 AMI (+halo) | 1.45 at the discrepancy weight | **works**: a bright arc about 150 mas from the star, curving round the north and east |
+| 2006 (+halo) | 11.6 | **still failing**: halo flux about 1.4 (V² ≈ 1e-3 needs ~30); edge flux 15%; mostly empty image |
+| 2022 GRAVITY, 2024 Obj2 GRAVITY (star) | 462 and 296 at every weight | **stuck**: no NaN now, but χ² is the same at all 13 weights, and the strongest-weight image is a scatter of single pixels, which is not a MaxEnt solution |
+| 2010 (+halo) | 5750 at every weight | stuck; needs C3 |
+| others with `--halo` | unchanged | the halo flux fits to ~0 everywhere except 2006 (1.4) and 2008 AGN K (0.02) |
+
+**The stalls.** On the cluster, 6–13 of the 13 L-BFGS fits per task stop
+with "line search ran out of float64 precision". Wherever χ² is flat
+across all weights, the first fit stalled and the warm start carried that
+on to every weight. The cluster's `virgil` env has JAX 0.11.2, against
+0.9.1 locally and in CI, and another session found gradient failures under
+0.11.2. None of the logs shows its error signatures
+(`RuntimeProgramInputMismatch`, "Expected cotangent"), but the stalls
+could still be numerical.
+
+The next diagnostic is task 10's first weight (w = 1e4), run under JAX
+0.9.1 and under 0.11.2. That is a cluster job, not a laptop run.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
