@@ -187,4 +187,5 @@ def test_all_closure_phases_flagged_leaves_the_visibilities(tmp_path):
         data = OIData(str(flagged))
     assert not data.has_phases
     probe = scene.template.set("flux", 0.04)
-    assert np.isclose(model_loglike(probe, data), model_loglike(probe, OIData(str(plain))))
+    # exactly: the flagged phases must contribute nothing at all
+    assert float(model_loglike(probe, data)) == float(model_loglike(probe, OIData(str(plain))))

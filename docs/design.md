@@ -159,7 +159,7 @@ What is trusted now, and from which root. Details and numbers are in the
 - [x] `GaussianArc`: full-circle arc weight, 1e-5 (quadrature); finding 2 fixed in [virgil#134](https://github.com/benjaminpope/virgil/pull/134)
 - [x] `Image` orientation and transforms; rotated-lattice MFT (1e-12)
 - [x] `Rotated`, `Resolved`, nested `System`s
-- [x] OIFITS reader on our files (5e-16), including V²-only files (virgil#158)
+- [x] OIFITS reader on our files (5e-16), and V²-only files (virgil#158; 1e-12)
 - [ ] OIFITS reader on real instrument files (GRAVITY, PIONIER, MATISSE, NIRISS AMI), against PMOIRED's and CANDID's readers
 - [ ] `GravityDarkenedStar`, flared disks, `HarmonixModel`
 - [ ] Chromatic fluxes (`virgil.spectra`) and bandwidth smearing

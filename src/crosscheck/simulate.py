@@ -60,7 +60,7 @@ def observe(
             u, v = map(np.asarray, fixed_uv)
         mjd = 60000.0 + k / 24.0
 
-        if rng is not None and phase_noise == "baseline":
+        if rng is not None and phase_noise == "baseline" and closure_phases:
             noise = np.exp(
                 1j * np.deg2rad(sigma_cp_deg / np.sqrt(3.0))
                 * rng.standard_normal((len(u), len(wl)))
@@ -84,6 +84,10 @@ def observe(
         v2_rec["v"].append(v)
         v2_rec["sta"].append(pairs)
         v2_rec["mjd"].append(np.full(len(u), mjd))
+        if not closure_phases:
+            # V² alone: no triangles are formed (a two-telescope array has
+            # none) and no phase noise is drawn.
+            continue
         cp, u1, v1, u2, v2 = array.closure_phase(noisy, u, v, n_tel)
         clean_cp, *_ = array.closure_phase(at, u, v, n_tel)
         t3_rec.setdefault("clean", []).append(np.rad2deg(clean_cp))
@@ -96,19 +100,24 @@ def observe(
         t3_rec["mjd"].append(np.full(len(u1), mjd))
 
     v2 = {k: np.concatenate(x) for k, x in v2_rec.items()}
-    t3 = {k: np.concatenate(x) for k, x in t3_rec.items()}
-    clean = (v2["vis2"].copy(), t3.pop("clean"))
+    if closure_phases:
+        t3 = {k: np.concatenate(x) for k, x in t3_rec.items()}
+        clean_cp = t3.pop("clean")
+    else:
+        t3, clean_cp = None, np.zeros((0, len(wl)))
+    clean = (v2["vis2"].copy(), clean_cp)
     if rng is not None:
         v2["vis2"] = v2["vis2"] + sigma_v2 * rng.standard_normal(v2["vis2"].shape)
-        if phase_noise == "triangle":
+        if t3 is not None and phase_noise == "triangle":
             t3["phi"] = clean[1] + sigma_cp_deg * rng.standard_normal(t3["phi"].shape)
     v2["err"] = np.full(v2["vis2"].shape, max(sigma_v2, 1e-6))
-    t3["err"] = np.full(t3["phi"].shape, max(sigma_cp_deg, 1e-6))
+    if t3 is not None:
+        t3["err"] = np.full(t3["phi"].shape, max(sigma_cp_deg, 1e-6))
     oifits_writer.write(
         path,
         wavelengths=wl,
         stations_xyz=stations_enu,
         vis2=v2,
-        t3=t3 if closure_phases else None,
+        t3=t3,
     )
     return clean

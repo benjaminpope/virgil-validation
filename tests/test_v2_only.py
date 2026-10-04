@@ -95,3 +95,19 @@ def test_v2_only_diameter_pulls(tmp_path):
     record("pull_sd", pulls.std())
     assert abs(pulls.mean()) < 3 / np.sqrt(n)
     assert abs(pulls.std() - 1) < 3 / np.sqrt(2 * n)
+
+
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"])
+def test_two_telescopes_give_v2_alone(tmp_path):
+    """A two-telescope array has no closure phases at all."""
+    path = tmp_path / "two.fits"
+    simulate.observe(
+        path, lambda u, v, w: sky.vis_uniform_disk(u, v, w, DIAM), UTS[:2],
+        hour_angles_h=HA, wavelengths=WL, dec_deg=-50.0, sigma_v2=0.01,
+        sigma_cp_deg=1.0, closure_phases=False,
+    )
+    data = OIData(str(path))
+    assert not data.has_phases
+    assert data.flatten_data()[0].size == HA.size * WL.size
+    _, d, _ = _virgil_fit(path)
+    assert abs(d - DIAM) < 1e-6 * DIAM
