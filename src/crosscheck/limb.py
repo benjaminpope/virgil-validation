@@ -84,14 +84,18 @@ def kipping_square_root_q(c, d):
     return (c + d) ** 2, d / (2.0 * (c + d))
 
 
-def quadratic_is_physical(u1, u2):
-    """Kipping (2013) eq. 8: positive everywhere and decreasing to the limb."""
-    return (u1 + u2 < 1.0) & (u1 > 0.0) & (u1 + 2.0 * u2 > 0.0)
+def quadratic_is_physical(u1, u2, strict=True):
+    """Kipping (2013) eq. 8: positive everywhere and decreasing to the limb.
+    ``strict=False`` admits the boundary (zero limb intensity, a uniform
+    disk, a flat centre), where each inequality may hold with equality."""
+    eps = 0.0 if strict else 1e-12
+    return (u1 + u2 < 1.0 + eps) & (u1 > -eps) & (u1 + 2.0 * u2 > -eps)
 
 
-def square_root_is_physical(c, d):
-    """Kipping (2013) eqs. 20-22."""
-    return (c + d < 1.0) & (d > 0.0) & (2.0 * c + d > 0.0)
+def square_root_is_physical(c, d, strict=True):
+    """Kipping (2013) eqs. 20-22; ``strict`` as for the quadratic law."""
+    eps = 0.0 if strict else 1e-12
+    return (c + d < 1.0 + eps) & (d > -eps) & (2.0 * c + d > -eps)
 
 
 # ------------------------------------------------------------ visibility

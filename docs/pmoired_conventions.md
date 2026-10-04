@@ -42,7 +42,9 @@ code calling PMOIRED (`src/external_bridge/`) cannot import virgil.
 | `EllipticalGaussian(fwhm, ratio, pa)` | `{'fwhm': fwhm, 'incl': degrees(arccos(ratio)), 'projang': pa}` |
 | `Resolved(flux)` | `{'f': flux}` with no size key |
 | `System` weights | per-component `f` (both are total fluxes) |
-| `QuadraticLimbDarkenedDisk(diam, q1, q2)`, `SquareRootLimbDarkenedDisk(diam, q1, q2)`, `LimbDarkenedDisk(diam, u)` | `{'diamin': 0, 'diamout': diam, 'profile': '1 - u1*(1-$MU) - u2*(1-$MU)**2'}` with u1, u2 (or c, d) from Kipping's maps; set `Nr` in `setupFit` (10000 for 1e-6) |
+| `QuadraticLimbDarkenedDisk(diam, q1, q2)` | `{'diamin': 0, 'diamout': diam, 'profile': '1 - u1*(1-$MU) - u2*(1-$MU)**2'}`, with u1 = 2√q1 q2, u2 = √q1 (1 − 2q2) (the model's `u1`, `u2`) |
+| `SquareRootLimbDarkenedDisk(diam, q1, q2)` | `{'diamin': 0, 'diamout': diam, 'profile': '1 - c*(1-$MU) - d*(1-np.sqrt($MU))'}`, with c = √q1 (1 − 2q2), d = 2√q1 q2 (the model's `c`, `d`) |
+| `LimbDarkenedDisk(diam, u)` | `{'diamin': 0, 'diamout': diam, 'profile': '1 - u[0]*(1-$MU) - u[1]*(1-$MU)**2 - …'}`, one term `u[n-1]*(1-$MU)**n` per coefficient (not tested against PMOIRED; the two above are). For all three, set `Nr` in `setupFit` (10000 for ~1e-6 in V²) |
 | `ModulatedGaussianRim(diam, fwhm, inc, pa, az_amps, az_pas)` (blur isotropic in the rim plane since virgil#139) | unmodulated: exactly a ring with the blurred-ring radial profile `exp(-(R² + r0²)/2σ²) I0(R r0/σ²)` over `diamin`/`diamout` = `diam` ∓ 12σ, with `incl`, `projang` (agree to 1e-9). Modulated: PMOIRED's modulation multiplies the radial profile, while virgil blurs the modulated ring (harmonic m gets I_m in place of I0), a **difference of definition** of order (mσ/r0)²; each matches our quadrature of its own definition. Angles map as `az projangN` = `az_pas[N-1]` − `pa` (virgil absolute, PMOIRED relative). `spatial kernel` blurs isotropically on the sky, so it no longer matches. |
 
 Both packages put the modulation in the disk plane. That is virgil's

@@ -290,8 +290,19 @@ def pm_profile_disk(name, diam, profile, flux=1.0, dra=0.0, ddec=0.0):
 LIMB_TOL = {"quadratic": (1e-6, 2e-3), "square-root": (1e-5, 2e-2)}
 
 
-@pytest.mark.parametrize("law", list(LIMB_TOL))
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.SquareRootLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"])
+@pytest.mark.parametrize(
+    "law",
+    [
+        pytest.param(
+            "quadratic",
+            marks=pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"]),
+        ),
+        pytest.param(
+            "square-root",
+            marks=pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"]),
+        ),
+    ],
+)
 def test_limb_darkened_star_and_companion(vlti_file, law):
     """PMOIRED integrates a sampled radial profile; it converges on virgil's
     analytic visibility as the sampling is refined (|dV^2| ~ Nr^-1.5 for the

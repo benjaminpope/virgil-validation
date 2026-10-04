@@ -180,15 +180,20 @@ def test_cvis_refuses_undocumented_powers():
 @pytest.mark.parametrize(
     "model, profile",
     [
-        (lambda: vm.LimbDarkenedDisk(6.0, u=[0.35, 0.25]), limb.polynomial([0.35, 0.25])),
-        (
+        pytest.param(
+            lambda: vm.LimbDarkenedDisk(6.0, u=[0.35, 0.25]),
+            limb.polynomial([0.35, 0.25]),
+            id="quadratic",
+            marks=pytest.mark.validates("virgil.models.LimbDarkenedDisk", roots=["mathematics"]),
+        ),
+        pytest.param(
             lambda: vm.SquareRootLimbDarkenedDisk(6.0, 0.64, 0.375),
             limb.square_root(*limb.kipping_square_root_cd(0.64, 0.375)),
+            id="square-root",
+            marks=pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics"]),
         ),
     ],
-    ids=["quadratic", "square-root"],
 )
-@pytest.mark.validates("virgil.models.LimbDarkenedDisk", "virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics"])
 def test_float32(uvw, model, profile):
     u, v, wl = uvw
     assert_close(
@@ -202,6 +207,10 @@ def test_float32(uvw, model, profile):
 
 
 Q_GRID = [(a, b) for a in np.linspace(0.01, 0.99, 9) for b in np.linspace(0.01, 0.99, 9)]
+# the square's edges: q1 = 0 is a uniform disk (q2 then has no effect),
+# q1 = 1 has zero limb intensity, q2 = 0 or 1 a flat centre or a zero slope
+# at the limb; each meets one of Kipping's constraints with equality
+Q_EDGES = [(a, b) for a in np.linspace(0.0, 1.0, 5) for b in np.linspace(0.0, 1.0, 5)]
 
 
 @pytest.mark.x64
@@ -234,21 +243,32 @@ def test_square_root_maps_both_ways():
 @pytest.mark.parametrize(
     "cls, coeffs, physical",
     [
-        ("QuadraticLimbDarkenedDisk", lambda s: (s.u1, s.u2), limb.quadratic_is_physical),
-        ("SquareRootLimbDarkenedDisk", lambda s: (s.c, s.d), limb.square_root_is_physical),
+        pytest.param(
+            "QuadraticLimbDarkenedDisk", lambda s: (s.u1, s.u2), limb.quadratic_is_physical,
+            id="quadratic",
+            marks=pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["literature"]),
+        ),
+        pytest.param(
+            "SquareRootLimbDarkenedDisk", lambda s: (s.c, s.d), limb.square_root_is_physical,
+            id="square-root",
+            marks=pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["literature"]),
+        ),
     ],
-    ids=["quadratic", "square-root"],
 )
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.SquareRootLimbDarkenedDisk", roots=["literature"])
 def test_unit_square_is_exactly_the_physical_laws(cls, coeffs, physical):
     """Inside the square, virgil's coefficients satisfy Kipping's
-    constraints and virgil calls the model physical; just outside, they
-    break a constraint and virgil calls it unphysical."""
+    constraints strictly; on its edges (inclusive, as virgil documents),
+    with equality allowed; in both cases virgil calls the model physical.
+    Just outside, they break a constraint and virgil calls it unphysical."""
     model = getattr(vm, cls)
     for q1, q2 in Q_GRID:
         star = model(3.0, q1, q2)
         assert physical(*map(float, coeffs(star)))
         assert bool(star.is_physical())
+    for q1, q2 in Q_EDGES:
+        star = model(3.0, q1, q2)
+        assert physical(*map(float, coeffs(star)), strict=False), (q1, q2)
+        assert bool(star.is_physical()), (q1, q2)
     for q1, q2 in [(1.2, 0.5), (0.5, -0.05), (0.5, 1.05), (1.02, 0.02)]:
         star = model(3.0, q1, q2)
         assert not physical(*map(float, coeffs(star)))
