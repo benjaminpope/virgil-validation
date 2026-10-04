@@ -87,6 +87,19 @@ Four VLTI UTs, 7 hour angles, 6 channels in H–K, declination −50°
 | pulls (fit − truth)/σ over 200 noisy realisations per case, closure-phase noise per baseline (correlated) or per triangle | N(0, 1) | Statistical | four scenes including the rim; means within ±0.17, sds 0.87–1.10 (sampling sd 0.05) |
 | `laplace_cov` with array-valued parameters (rim `az_amps`, `az_pas`) | a finite, symmetric, positive-definite covariance over the flattened parameters | Mathematics | passes since virgil#135 (finding 5); the rim now has Laplace σ and joins the pull tests |
 
+## Visibility-only data
+
+virgil#158 lets virgil read and fit data with no phases
+(`tests/test_v2_only.py`). Our simulator writes V² alone (no OI_T3).
+
+| Check | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| a V²-only file read by `OIData`: no phase block, model equals what we wrote | our writer | Standards | 1e-12 |
+| uniform-disk diameter fitted from noise-free V² alone | injected truth | Mathematics | 1e-6 relative |
+| the same file fitted by PMOIRED (`ud`, V² only) | PMOIRED | PMOIRED | best fits 2e-4 σ apart; σ equal to 4e-4 (no closure phases, so no difference of definition) |
+| diameter pulls over 200 noisy V²-only files | N(0, 1) | Statistics | mean 0.03, sd 1.01 |
+| every closure phase flagged | the same V² without OI_T3 | Standards | warns, then exactly the V²-only likelihood (finding 8, superseded by virgil#158) |
+
 ## Aperture masking
 
 NIRISS-like 7-hole mask (0.8 m circular holes on the 1.32 m hexagonal
@@ -183,7 +196,7 @@ Jacobian of that mapping.
 | 5 | `inference.laplace_cov` | Fails when any parameter path is array-valued. | fixed, [virgil#135](https://github.com/benjaminpope/virgil/pull/135) |
 | 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fixed, [virgil#144](https://github.com/benjaminpope/virgil/pull/144) |
 | 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fixed, [virgil#142](https://github.com/benjaminpope/virgil/pull/142) |
-| 8 | `oidata.OIData` | With every closure phase flagged it crashes inside the closure-phase whitening (`ValueError: zero-size array`), instead of the clear "no phase data" error it gives for a file without OI_T3. | fix in progress |
+| 8 | `oidata.OIData` | With every closure phase flagged it crashed inside the closure-phase whitening (`ValueError: zero-size array`). | fixed, [virgil#155](https://github.com/benjaminpope/virgil/pull/155); now visibility-only data, [virgil#158](https://github.com/benjaminpope/virgil/pull/158) |
 
 ### Definition changes in virgil
 

@@ -164,27 +164,27 @@ def test_fit_from_the_exact_optimum_converges(tmp_path, method):
     assert result.info["steps"] == 0 if method == "lbfgs" else result.info["steps"] <= 3
 
 
-@pytest.mark.validates("virgil.oidata.OIData", roots=["standards"], kind="finding")
-@pytest.mark.xfail(
-    strict=True,
-    reason="finding 8: every closure phase flagged crashes the whitening "
-    "(zero-size array) instead of the clear no-phase-data error",
-)
-def test_all_closure_phases_flagged_gives_a_clear_error(tmp_path):
-    """A file whose OI_T3 FLAG is all set has no usable phases: virgil
-    refuses phase-less data with a clear ValueError (as for a file without
-    OI_T3), not a crash in the closure-phase whitening."""
+@pytest.mark.validates("virgil.oidata.OIData", roots=["standards"])
+def test_all_closure_phases_flagged_leaves_the_visibilities(tmp_path):
+    """Finding 8, fixed in virgil#155 and superseded by virgil#158: a file
+    whose OI_T3 FLAG is all set warns and is fitted as visibility-only data,
+    with exactly the likelihood of the same V² without a T3 table."""
     from astropy.io import fits
 
+    from virgil.likelihood import model_loglike
     from virgil.oidata import OIData
 
     scene = vb.binary()
-    path = tmp_path / "s.fits"
-    simulate.observe(
-        path, scene.vis, UTS, hour_angles_h=[0.0], wavelengths=[2.0e-6],
-        dec_deg=DEC, sigma_v2=0.02, sigma_cp_deg=1.0,
-    )
-    with fits.open(path, mode="update") as h:
+    flagged, plain = tmp_path / "flagged.fits", tmp_path / "plain.fits"
+    for path, phases in [(flagged, True), (plain, False)]:
+        simulate.observe(
+            path, scene.vis, UTS, hour_angles_h=[0.0], wavelengths=[2.0e-6],
+            dec_deg=DEC, sigma_v2=0.02, sigma_cp_deg=1.0, closure_phases=phases,
+        )
+    with fits.open(flagged, mode="update") as h:
         h["OI_T3"].data["FLAG"][:] = True
-    with pytest.raises(ValueError, match="phase"):
-        OIData(str(path))
+    with pytest.warns(UserWarning, match="closure phase"):
+        data = OIData(str(flagged))
+    assert not data.has_phases
+    probe = scene.template.set("flux", 0.04)
+    assert np.isclose(model_loglike(probe, data), model_loglike(probe, OIData(str(plain))))

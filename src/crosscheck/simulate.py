@@ -19,6 +19,7 @@ def observe(
     rng=None,
     fixed_uv=None,
     phase_noise="baseline",
+    closure_phases=True,
 ):
     """Simulate and write one OIFITS file.
 
@@ -26,6 +27,8 @@ def observe(
     Telescopes move with Earth rotation unless ``fixed_uv`` gives the
     baselines directly (a pupil mask, (u, v) for each pair i < j), in which
     case ``hour_angles_h`` only sets the number of snapshots.
+
+    With ``closure_phases=False`` the file holds V² alone (no OI_T3).
 
     Errors written to the file are ``sigma_v2`` and ``sigma_cp_deg`` (made
     at least 1e-6 so the file stays valid); noise is added only if ``rng``.
@@ -106,6 +109,6 @@ def observe(
         wavelengths=wl,
         stations_xyz=stations_enu,
         vis2=v2,
-        t3=t3,
+        t3=t3 if closure_phases else None,
     )
     return clean
