@@ -25,7 +25,12 @@ by a chain of independent checks.
       [dLux](https://github.com/LouisDesdoigts/dLux),
       [PMOIRED](https://github.com/amerand/PMOIRED),
       [CANDID](https://github.com/amerand/CANDID),
-      [fouriever](https://github.com/kammerje/fouriever) (Jens Kammerer);
+      [fouriever](https://github.com/kammerje/fouriever) (Jens Kammerer),
+      and for image reconstruction
+      [eht-imaging](https://github.com/achael/eht-imaging) and
+      [MPoL](https://github.com/MPoL-dev/MPoL);
+    * **literature**: published results, reproduced from the authors' own
+      data;
     * **statistics**: ensembles of simulations whose distribution is known
       (pulls of fit − truth over σ must be N(0, 1)).
 2. **Our own reference code is a link, not a root.** `crosscheck` is also
@@ -83,110 +88,39 @@ Where each kind of check lives:
 | External parity (expensive: dLux images, CANDID maps) | here, `campaigns/` | weekly, or on demand |
 | Monte Carlo statistics of retrievals | here, `campaigns/`, using only virgil | weekly (small), before releases and on OzSTAR (large) |
 
-## The flow
+## The flow and its status
 
-Trust flows upwards, from the roots at the bottom. Green boxes are trusted
-(checked against a root, with trusted inputs), amber ones have an open
-finding, and grey dashed ones are not yet checked.
+The flow of trust, from the roots up through virgil's objects, and its
+current state are generated from the evidence rather than written by hand:
+see **[Trust](trust.md)**. Its chart colours every object trusted, partial,
+stale, open, failing or unchecked, and its tables give each object's roots,
+tests and the virgil commit the evidence ran on.
 
-```mermaid
-flowchart BT
-    classDef root fill:#1b5e20,color:#fff,stroke:#1b5e20
-    classDef done fill:#c8e6c9,stroke:#2e7d32,color:#000
-    classDef part fill:#fff3c4,stroke:#b28704,color:#000
-    classDef todo fill:#eeeeee,stroke:#9e9e9e,color:#555,stroke-dasharray: 5 5
+### Roots are a pool
 
-    subgraph R["Roots of trust"]
-        M["Mathematics"]:::root
-        S["Standards"]:::root
-        X["dLux, PMOIRED,<br/>CANDID, fouriever"]:::root
-        Q["Statistics"]:::root
-    end
+The roots of trust are one pool: mathematics, standards, statistics,
+**literature** (published results reproduced from the authors' own data), and
+the trusted packages: dLux, PMOIRED, CANDID, fouriever, and, for image
+reconstruction, [eht-imaging](https://github.com/achael/eht-imaging) and
+[MPoL](https://github.com/MPoL-dev/MPoL). Any link in the graph may be
+validated against whichever root suits it; no stage needs every package.
+A node asks only for a number of *distinct* roots (two for conventions, where
+a single reference could share a mistake).
 
-    subgraph L1["Independent references"]
-        CF["Closed forms<br/>+ quadrature"]:::done
-        UV["uv tracks,<br/>OIFITS writer"]:::done
-        NI["Masking images"]:::done
-    end
+### Units and pipelines
 
-    subgraph L2["virgil: models and data"]
-        PR["Primitives,<br/>Image"]:::done
-        AR["GaussianArc"]:::done
-        RD["OIFITS<br/>reader"]:::part
-        AD["Advanced models,<br/>spectra, DISCO"]:::todo
-    end
-
-    subgraph L3["virgil: composition, likelihood, fitting"]
-        SY["System,<br/>Rotated"]:::done
-        LK["Likelihood"]:::done
-        FT["fit (LM)"]:::done
-        FO["Other optimisers,<br/>regularisers"]:::todo
-    end
-
-    subgraph L4["virgil: inference products"]
-        UN["Laplace<br/>errors"]:::done
-        IG["Dirty image,<br/>beam"]:::done
-        GR["Grids,<br/>limits"]:::todo
-        HM["Sampling"]:::todo
-        RI["Regularised<br/>imaging"]:::todo
-    end
-
-    R --> L1
-    L1 --> L2
-    R -- "external packages" --> L2
-    L2 --> L3
-    L3 --> L4
-    R -- "Monte Carlo in virgil, CANDID" --> L4
-```
-
-## Status
-
-What is trusted now, and from which root. Details and numbers are in the
-[report](report.md).
-
-### Independent references
-
-- [x] Closed-form visibilities agree with our quadrature (1e-15) (mathematics)
-- [x] Earth-rotation uv tracks, closure phases (standards)
-- [x] OIFITS writer: read correctly by both virgil and PMOIRED (standards, external)
-- [x] Masking images: dLux and the closed-form interferogram agree (1e-5) (external, mathematics)
-
-### virgil: models and data
-
-- [x] `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk`, binaries: 1e-15 (mathematics), 1e-12 against PMOIRED (external)
-- [x] Random 24-component constellations: 1e-12 (mathematics, external)
-- [x] `ModulatedGaussianRim`: 1e-12 (quadrature), with the in-plane blur of virgil#139; unmodulated rims match PMOIRED's blurred-ring profile to 1e-9 (external). Docstring finding 1, fixed in [virgil#134](https://github.com/benjaminpope/virgil/pull/134).
-- [x] `GaussianArc`: full-circle arc weight, 1e-5 (quadrature); finding 2 fixed in [virgil#134](https://github.com/benjaminpope/virgil/pull/134)
-- [x] `Image` orientation and transforms; rotated-lattice MFT (1e-12)
-- [x] `Rotated`, `Resolved`, nested `System`s
-- [x] OIFITS reader on our files (5e-16), and V²-only files (virgil#158; 1e-12)
-- [ ] OIFITS reader on real instrument files (GRAVITY, PIONIER, MATISSE, NIRISS AMI), against PMOIRED's and CANDID's readers
-- [ ] `GravityDarkenedStar`, flared disks, `HarmonixModel`
-- [ ] Chromatic fluxes (`virgil.spectra`) and bandwidth smearing
-- [ ] AMIGO DISCO mode bases
-
-### virgil: composition, likelihood, fitting
-
-- [x] Closure-phase whitening: pulls N(0, 1) with correlated noise (statistics)
-- [x] Derivatives of the geometric models (flared disks and `HarmonixModel` still to do), the image pixels, the residuals and the log-likelihood (and its Hessian) match finite differences (mathematics)
-- [x] LM fits recover injected truth to 1e-10 noise-free, 0.02σ bias from dLux masking data
-- [x] Optimiser choice and convergence edge cases: findings 6 and 7 fixed in [virgil#144](https://github.com/benjaminpope/virgil/pull/144) and [virgil#142](https://github.com/benjaminpope/virgil/pull/142)
-- [ ] L-BFGS and Adam fits, regularisers
-- [ ] Fits against PMOIRED on identical files: best fits, sigmas and correlations agree once PMOIRED's χ² normalisation and closure-phase independence are accounted for (three scenes done; rim and bootstrap to do; CANDID, fouriever to do)
-
-### virgil: inference products
-
-- [x] Laplace uncertainties for scalar parameters calibrated (statistics)
-- [x] Laplace uncertainties with array-valued parameters: finding 5 fixed in [virgil#135](https://github.com/benjaminpope/virgil/pull/135); rim pulls added
-- [x] Dirty image, beam, Nyquist pixel, field of view, beam convolution (mathematics)
-- [ ] Grid search and detection limits against CANDID (plan Stage 3)
-- [ ] Sampling: simulation-based calibration of `numpyro_model` posteriors (statistics)
-- [ ] Regularised imaging (RML, GP) against an external imager and recovery statistics
-
-### People
-
-- [ ] Conventions pages ([PMOIRED](pmoired_conventions.md); CANDID to come) checked by a person
-- [ ] Findings reviewed and their fixes merged in virgil (1–7 merged)
+Most evidence is **unit** evidence: one object against one root, which says
+*where* something is right or wrong. **Pipeline** evidence checks a whole
+chain at once: reading OIFITS, building `OIData`, a model, the fit, its
+uncertainties, a grid search and limits. Reproducing a **published binary**
+from the authors' archival data is the strongest such check (root:
+literature): independent people, pipeline and data, with real-data quirks no
+simulation has. A pipeline counts as validated when its own evidence passes
+and every step is trusted on its own; if the end-to-end check fails while
+every unit passes, the fault is in the joins between them, which is itself a
+finding. The graph lists the pipelines checked so far (simulated VLTI fits,
+dLux masking fits, identical fits with PMOIRED) and the ones planned
+(published binaries, regularised imaging against eht-imaging or MPoL).
 
 ## Making it traceable and auditable
 
@@ -327,14 +261,14 @@ changes, or the release notes say which ones remain and why.
 
 ## Order of work
 
-1. **Evidence records**: the `validates` marker and plugin here, tagging
+1. ✅ **Evidence records**: the `validates` marker and plugin here, tagging
    the existing tests; the same marker in virgil's `conftest.py`, with
    virgil's CI uploading its records as an artifact that our weekly job
    downloads. (2 days)
-2. **Trust graph**: `trust/graph.yml` with dependencies and source paths;
+2. ✅ **Trust graph**: `trust/graph.yml` with dependencies and source paths;
    `scripts/trust.py` for propagation and staleness; this page's chart and
    checklists generated from it. (2 days)
-3. **Ledger**: `ledger.yml` with the existing findings (virgil 1–5,
+3. ✅ **Ledger**: `trust/ledger.yml` with the existing findings (virgil 1–5,
    PMOIRED P1–P3) and its rendered page. (half a day)
 4. **Campaign runner**: move the pulls into `campaigns/`, add interval
    coverage, and an OzSTAR job template. (2 days)

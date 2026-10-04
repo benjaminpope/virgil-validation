@@ -56,6 +56,25 @@ versions; `scripts/evidence_table.py` renders them (`docs/evidence.md`, and
 the CI job summary). Roots are listed in `src/evidence/__init__.py`;
 `self-consistency` is the weakest and never enough on its own.
 
+## Trust graph and ledger
+
+- `trust/graph.yml`: virgil's objects (with their virgil source files,
+  dependencies and how many distinct roots they need) and the end-to-end
+  pipelines. Every object a test's `validates` marker names must be a node or
+  a `pipeline:<name>` (`tests/test_trust_graph.py`).
+- `trust/ledger.yml`: every mismatch, ruled `virgil`, `external:<package>`,
+  `definition` or `crosscheck`, with the tests that pin it. Add an entry with
+  every finding.
+- `trust/evidence/`: evidence records (`latest.jsonl` from our suite,
+  `virgil.jsonl` from virgil's own CI). Regenerate with
+  `.venv/bin/python -m pytest --evidence trust/evidence/latest.jsonl`.
+- `scripts/trust.py --evidence ... --virgil <virgil checkout> --out docs/trust.md`
+  writes the Trust page (statuses, chart, pipelines, ledger); weekly CI does
+  the same against virgil's main.
+- Roots are a pool (mathematics, standards, statistics, literature, dLux,
+  PMOIRED, CANDID, fouriever, eht-imaging, MPoL): validate any link against
+  whichever suits it. Do not claim a root a test does not really exercise.
+
 ## Requesting other validations
 
 If you want something validated that is not covered here, open an Issue on

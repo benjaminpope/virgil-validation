@@ -87,7 +87,10 @@ def _observe(path, scene, stations, rng=None, mode="baseline"):
     )
 
 
-@pytest.mark.validates("virgil.fitting.fit", roots=["pmoired"])
+# Both packages read the file with their own OIFITS reader: agreement
+# would fail if virgil misread uv signs, closure-phase orientation or
+# errors, so these also validate read_oifits against PMOIRED's reader.
+@pytest.mark.validates("virgil.fitting.fit", "virgil.oifits.read_oifits", roots=["pmoired"])
 @pytest.mark.parametrize("maker", SCENES, ids=lambda m: m.__name__)
 def test_noise_free_fits_reach_the_truth(tmp_path, maker):
     scene = maker()
@@ -101,7 +104,7 @@ def test_noise_free_fits_reach_the_truth(tmp_path, maker):
     np.testing.assert_allclose(pm["best"], truth, rtol=1e-4, atol=1e-6)
 
 
-@pytest.mark.validates("virgil.fitting.fit", "virgil.inference.laplace_cov", roots=["pmoired"])
+@pytest.mark.validates("pipeline:pmoired-identical-fits", "virgil.fitting.fit", "virgil.inference.laplace_cov", "virgil.oifits.read_oifits", roots=["pmoired"])
 @pytest.mark.parametrize("maker", SCENES, ids=lambda m: m.__name__)
 @pytest.mark.parametrize("mode", ["baseline", "triangle"])
 def test_best_fits_agree_on_noisy_data(tmp_path, maker, mode):
@@ -159,7 +162,7 @@ def test_independent_closure_phases_shrink_pmoired_errors(tmp_path):
 
 
 @pytest.mark.slow
-@pytest.mark.validates("virgil.inference.laplace_cov", "virgil.fitting.fit", roots=["pmoired", "statistics"], tier="B")
+@pytest.mark.validates("pipeline:pmoired-identical-fits", "virgil.inference.laplace_cov", "virgil.fitting.fit", roots=["pmoired", "statistics"], tier="B")
 @pytest.mark.parametrize("mode", ["baseline", "triangle"])
 def test_pull_campaign_against_pmoired(tmp_path, mode):
     """Both packages fit the same 200 noisy realisations of the binary;
