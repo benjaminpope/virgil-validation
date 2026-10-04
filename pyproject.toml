@@ -29,5 +29,5 @@ markers = [
     "x64: run virgil in float64 (the default in tests/conftest.py)",
     "float32: run virgil in float32",
     "slow: long simulation (weekly job only)",
-    "external: needs another package (PMOIRED; CANDID via scripts/setup_candid.sh; fouriever to come)",
+    "external: needs another package (PMOIRED; CANDID, eht-imaging, MPoL via scripts/setup_candid.sh and setup_external.sh; fouriever to come)",
 ]
