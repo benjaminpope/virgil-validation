@@ -292,7 +292,7 @@ In dependency order, each with the root it would rest on:
 | Grid search, detection limits | CANDID (done: maps, significance, Absil limits, fits); injection-recovery detection rates (statistics) |
 | Sampling | simulation-based calibration (rank statistics uniform) |
 | AMIGO DISCO records | the AMIGO package's own forward model on a common scene |
-| Regularised imaging | recovery statistics on simulated scenes; an external imager (e.g. MiRA or SQUEEZE) on the same files |
+| Regularised imaging | regularisers against eht-imaging and MPoL (done); reconstructions against eht-imaging's imager on the same files; recovery statistics on simulated scenes |
 
 
 Related: virgil's own note on [matching PMOIRED's

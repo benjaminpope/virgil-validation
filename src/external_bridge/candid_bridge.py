@@ -8,27 +8,22 @@ use another interpreter.
 """
 
 import json
-import os
 import pathlib
 import subprocess
-import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parents[2]
-WORKER = pathlib.Path(__file__).with_name("candid_worker.py")
+from . import _subprocess
+
+ROOT = _subprocess.ROOT
 
 
 def python():
-    return os.environ.get("CANDID_PYTHON", str(ROOT / ".venv-candid" / "bin" / "python"))
+    return _subprocess.python("candid")
 
 
 def available():
     """Whether the configured interpreter (a path or a command on PATH)
     can import CANDID."""
-    try:
-        out = subprocess.run([python(), "-c", "import candid"], capture_output=True)
-    except OSError:
-        return False
-    return out.returncode == 0
+    return _subprocess.available("candid")
 
 
 def provenance():
@@ -59,14 +54,4 @@ def provenance():
 def run(task, timeout=3600):
     """Run one worker task (a dict with "task" and its arguments) and return
     its result. Raises with CANDID's output if the worker fails."""
-    with tempfile.TemporaryDirectory() as tmp:
-        src, dst = pathlib.Path(tmp, "task.json"), pathlib.Path(tmp, "result.json")
-        src.write_text(json.dumps({k: (str(v) if k == "path" else v) for k, v in task.items()}))
-        env = {**os.environ, "MPLBACKEND": "Agg"}
-        out = subprocess.run(
-            [python(), str(WORKER), str(src), str(dst)],
-            capture_output=True, text=True, timeout=timeout, env=env,
-        )
-        if out.returncode != 0:
-            raise RuntimeError(f"CANDID worker failed:\n{out.stdout[-3000:]}\n{out.stderr[-3000:]}")
-        return json.loads(dst.read_text())
+    return _subprocess.run("candid", "candid_worker.py", task, timeout=timeout)
