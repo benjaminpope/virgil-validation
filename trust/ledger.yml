@@ -88,6 +88,16 @@
     - https://github.com/benjaminpope/virgil/pull/158
     - https://github.com/benjaminpope/virgil/pull/160
 
+- id: F9
+  title: reference_flux returns every Tabulated node, not the documented mean
+  objects: [virgil.spectra.Tabulated]
+  ruling: virgil
+  kind: documentation
+  referee: mathematics (Tabulated documents its reference flux as the node mean)
+  evidence: [tests/test_remaining_models.py::test_tabulated_reference_flux_is_the_documented_mean]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/163]
+
 - id: D1
   title: ModulatedGaussianRim blurs in the rim plane (changed by virgil#139)
   objects: [virgil.models.ModulatedGaussianRim]

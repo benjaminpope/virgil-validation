@@ -287,7 +287,7 @@ In dependency order, each with the root it would rest on:
 | Spectra, bandwidth smearing | mathematics (channel integrals of closed forms); PMOIRED's spectra |
 | `GravityDarkenedStar` | the non-rotating limit (a limb-darkened disk, closed form); Shashank Dholakia's original code (golden values already in virgil) |
 | `HarmonixModel` | harmonix/starry spherical-harmonic maps against direct surface quadrature |
-| Flared disks | direct quadrature of the documented brightness distribution |
+| Flared disks | direct quadrature of the documented brightness distribution (done) |
 | Fits with other optimisers | statistics (pulls), PMOIRED's fits (plan Stage 2) |
 | Grid search, detection limits | CANDID (plan Stage 3); injection-recovery detection rates (statistics) |
 | Sampling | simulation-based calibration (rank statistics uniform) |
