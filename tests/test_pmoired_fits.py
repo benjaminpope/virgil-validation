@@ -33,27 +33,50 @@ UTS = np.array(
 HA = np.linspace(-3, 3, 5)
 WL = np.linspace(1.5e-6, 2.4e-6, 6)
 
-# virgil path -> (PMOIRED key, transform virgil value -> PMOIRED value)
+IDENT = (lambda x: x, lambda y: y, lambda y: 1.0)
+# ratio = cos(incl): virgil's axis ratio against PMOIRED's inclination
+RATIO = (
+    lambda r: float(np.rad2deg(np.arccos(r))),
+    lambda i: float(np.cos(np.deg2rad(i))),
+    lambda i: float(-np.sin(np.deg2rad(i)) * np.pi / 180),  # d ratio / d incl
+)
+
+# per scene: fixed PMOIRED parameters, and virgil path -> (PMOIRED key,
+# (to PMOIRED, back to virgil, derivative of the way back))
 MAPS = {
     "binary": (
         {"A,ud": 0.0, "A,f": 1.0, "B,ud": 0.0},
-        {"dra": "B,x", "ddec": "B,y", "flux": "B,f"},
+        {"dra": ("B,x", IDENT), "ddec": ("B,y", IDENT), "flux": ("B,f", IDENT)},
     ),
     "resolved_star_companion": (
         {"star,f": 1.0, "comp,ud": 0.0},
-        {"star.diam": "star,ud", "comp.dra": "comp,x", "comp.ddec": "comp,y", "comp.flux": "comp,f"},
+        {"star.diam": ("star,ud", IDENT), "comp.dra": ("comp,x", IDENT),
+         "comp.ddec": ("comp,y", IDENT), "comp.flux": ("comp,f", IDENT)},
+    ),
+    "star_envelope": (
+        {"star,ud": 0.0, "star,f": 1.0},
+        {"env.fwhm": ("env,fwhm", IDENT), "env.ratio": ("env,incl", RATIO),
+         "env.pa": ("env,projang", IDENT), "env.flux": ("env,f", IDENT)},
     ),
 }
-SCENES = [vb.binary, vb.resolved_star_companion]
+SCENES = [vb.binary, vb.resolved_star_companion, vb.star_envelope]
 
 
 def _pmoired(scene, maker, path):
+    """PMOIRED's fit, returned in virgil's parameters and order: best
+    values, sigmas and covariance (through the Jacobian of the mapping)."""
     fixed, keys = MAPS[maker.__name__]
     start = dict(fixed)
-    for path_v, key in keys.items():
-        start[key] = float(scene.start[path_v])
-    free = [keys[p] for p in scene.truth]
-    return pmoired_fit(path, start, free), free
+    for path_v, (key, (to_pm, _, _)) in keys.items():
+        start[key] = to_pm(float(scene.start[path_v]))
+    free = [keys[p][0] for p in scene.truth]
+    pm = pmoired_fit(path, start, free)
+    back = [keys[p][1] for p in scene.truth]
+    best = np.array([b[1](pm["best"][k]) for k, b in zip(free, back)])
+    jac = np.diag([b[2](pm["best"][k]) for k, b in zip(free, back)])
+    cov = jac @ pm["cov"] @ jac
+    sigma = np.array([abs(b[2](pm["best"][k])) * pm["sigma"][k] for k, b in zip(free, back)])
+    return {"best": best, "sigma": sigma, "cov": cov, "raw": pm}, free
 
 
 def _observe(path, scene, stations, rng=None, mode="baseline"):
@@ -74,9 +97,8 @@ def test_noise_free_fits_reach_the_truth(tmp_path, maker):
     res, _ = vb.fit_scene(scene, vb.load(path))
     truth = vb.flat_truth(scene)
     got_v = vb.flat_values(scene, res.values)
-    got_p = np.array([pm["best"][k] for k in free])
     np.testing.assert_allclose(got_v, truth, rtol=1e-6, atol=1e-8)
-    np.testing.assert_allclose(got_p, truth, rtol=1e-4, atol=1e-6)
+    np.testing.assert_allclose(pm["best"], truth, rtol=1e-4, atol=1e-6)
 
 
 @pytest.mark.validates("virgil.fitting.fit", "virgil.inference.laplace_cov", roots=["pmoired"])
@@ -89,7 +111,7 @@ def test_best_fits_agree_on_noisy_data(tmp_path, maker, mode):
     pm, free = _pmoired(scene, maker, path)
     res, cov = vb.fit_scene(scene, vb.load(path))
     sigma = np.sqrt(np.diag(cov))
-    diff = (np.array([pm["best"][k] for k in free]) - vb.flat_values(scene, res.values)) / sigma
+    diff = (pm["best"] - vb.flat_values(scene, res.values)) / sigma
     record("max_abs_dbest_sigma", np.max(np.abs(diff)))
     assert np.all(np.abs(diff) < 0.25), diff
 
@@ -98,15 +120,26 @@ def test_best_fits_agree_on_noisy_data(tmp_path, maker, mode):
 @pytest.mark.parametrize("maker", SCENES, ids=lambda m: m.__name__)
 def test_uncertainties_agree_without_closure_redundancy(tmp_path, maker):
     """Three telescopes: one closure phase per snapshot, nothing to
-    correlate, so the two packages' curvature errors must agree."""
+    correlate, so the two packages' curvature errors and parameter
+    correlations must agree."""
     scene = maker()
     path = tmp_path / "f.fits"
     _observe(path, scene, UTS[:3], np.random.default_rng(1))
-    pm, free = _pmoired(scene, maker, path)
+    pm, _ = _pmoired(scene, maker, path)
     _, cov = vb.fit_scene(scene, vb.load(path))
-    ratio = np.array([pm["sigma"][k] for k in free]) / np.sqrt(np.diag(cov))
+    # the bridge's covariance is consistent with its sigmas, in order
+    np.testing.assert_allclose(np.sqrt(np.diag(pm["cov"])), pm["sigma"], rtol=1e-6)
+    ratio = pm["sigma"] / np.sqrt(np.diag(cov))
     record("max_abs_sigma_ratio_minus_1", np.max(np.abs(ratio - 1)))
     np.testing.assert_allclose(ratio, 1.0, atol=0.04)
+
+    def corr(c):
+        d = np.sqrt(np.diag(c))
+        return c / np.outer(d, d)
+
+    dcorr = np.max(np.abs(corr(pm["cov"]) - corr(cov)))
+    record("max_abs_correlation_difference", dcorr)
+    assert dcorr < 0.05, dcorr
 
 
 @pytest.mark.validates("virgil.inference.laplace_cov", roots=["pmoired"], kind="control")
@@ -118,9 +151,9 @@ def test_independent_closure_phases_shrink_pmoired_errors(tmp_path):
     scene = vb.binary()
     path = tmp_path / "f.fits"
     _observe(path, scene, UTS, np.random.default_rng(1))
-    pm, free = _pmoired(scene, vb.binary, path)
+    pm, _ = _pmoired(scene, vb.binary, path)
     _, cov = vb.fit_scene(scene, vb.load(path))
-    ratio = np.array([pm["sigma"][k] for k in free]) / np.sqrt(np.diag(cov))
+    ratio = pm["sigma"] / np.sqrt(np.diag(cov))
     record("mean_sigma_ratio", np.mean(ratio))
     assert np.all((ratio > 0.85) & (ratio < 0.995)), ratio
 
@@ -144,17 +177,23 @@ def test_pull_campaign_against_pmoired(tmp_path, mode):
         pm, free = _pmoired(scene, vb.binary, path)
         res, cov = vb.fit_scene(scene, vb.load(path), start=scene.truth)
         pv.append((vb.flat_values(scene, res.values) - truth) / np.sqrt(np.diag(cov)))
-        pp.append((np.array([pm["best"][k] for k in free]) - truth) / np.array([pm["sigma"][k] for k in free]))
+        pp.append((pm["best"] - truth) / pm["sigma"])
     pv, pp = np.array(pv), np.array(pp)
     record("virgil_pull_sd_mean", pv.std(0).mean())
     record("pmoired_pull_sd_mean", pp.std(0).mean())
     # N = 200: a mean has sd 0.07, an sd has sd 0.05
-    assert np.all(np.abs(pv.mean(0)) < 3 / np.sqrt(n))
     band = 3 / np.sqrt(2 * n)
+    for p in (pv, pp):
+        assert np.all(np.abs(p.mean(0)) < 3 / np.sqrt(n)), p.mean(0)
     if mode == "baseline":
-        # correlated closure phases, as virgil assumes: calibrated
+        # correlated closure phases, as virgil assumes: virgil calibrated;
+        # PMOIRED, treating them as independent, overconfident but by a
+        # bounded amount (measured ~1.10)
         assert np.all(np.abs(pv.std(0) - 1) < band), pv.std(0)
+        assert np.all((pp.std(0) > 1 - band) & (pp.std(0) < 1.25 + band)), pp.std(0)
+        assert pp.std(0).mean() > pv.std(0).mean()
     else:
-        # independent closure phases: virgil is conservative, not overconfident
+        # independent closure phases, as PMOIRED assumes: PMOIRED
+        # calibrated; virgil conservative, never overconfident
+        assert np.all(np.abs(pp.std(0) - 1) < band), pp.std(0)
         assert np.all((pv.std(0) < 1 + band) & (pv.std(0) > 0.75)), pv.std(0)
-    assert np.all(np.isfinite(pp))

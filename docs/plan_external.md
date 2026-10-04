@@ -92,7 +92,7 @@ profile), compare each with our quadrature of its own definition instead.
 
 ## Stage 2: fits on identical files (2 days)
 
-**PMOIRED: done** (`tests/test_pmoired_fits.py`). CANDID, fouriever: to do.
+**PMOIRED: in progress** (`tests/test_pmoired_fits.py`). Done: binary, disk star + companion and star + envelope (best fits, sigmas, correlations, 200-draw pulls with acceptance bands for both packages). To do: the modulated rim (a difference of definition, see the conventions page) and PMOIRED's bootstrap errors. CANDID, fouriever: to do.
 
 Fit each scene from `virgil_bridge.SCENES`, written by our simulator,
 with each package from the same starting point and priors as close as

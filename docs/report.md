@@ -158,16 +158,19 @@ those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
 ## External packages: fits with virgil and PMOIRED (Stage 2)
 
 Both packages fit the same simulated files (`tests/test_pmoired_fits.py`;
-binary and disk star + companion; 30 samples per baseline).
+binary, disk star + companion and star + elliptical envelope; 30 samples
+per baseline). PMOIRED's results are mapped into virgil's parameters
+(e.g. axis ratio = cos(incl)), with the covariance carried through the
+Jacobian of that mapping.
 
 | Check | Tag | Result |
 | --- | --- | --- |
 | noise-free fits reach the injected truth | PMOIRED | virgil 1e-6, PMOIRED 1e-4 relative |
 | best fits on noisy data, both closure-phase noise models | PMOIRED | agree to < 0.25 σ (typically < 0.1 σ) |
-| uncertainties with 3 telescopes (one closure phase per snapshot), after undoing PMOIRED's √(reduced χ²) normalisation | PMOIRED | agree to < 4 % (0.3–2 % typical) |
+| uncertainties with 3 telescopes (one closure phase per snapshot), after undoing PMOIRED's √(reduced χ²) normalisation | PMOIRED | sigmas agree to < 4 % (0.5–3 % measured); parameter correlations to < 0.05 (≤ 0.011 measured) |
 | uncertainties with 4 telescopes | PMOIRED | PMOIRED's are 4–6 % smaller: it counts 4 closure phases per snapshot as independent, where virgil whitens them as 3 correlated ones (a difference of definition) |
-| pulls over 200 shared realisations, closure-phase noise from baseline phases (realistic) | PMOIRED + Statistics | virgil sd 1.04 (calibrated); PMOIRED sd 1.10 (errors ~10 % small) |
-| the same with independent noise per triangle | PMOIRED + Statistics | virgil sd 0.95 (conservative); PMOIRED sd 0.98 |
+| pulls over 200 shared realisations, closure-phase noise from baseline phases (realistic) | PMOIRED + Statistics | virgil sd 1.04 (calibrated, within 1 ± 0.15); PMOIRED sd 1.10 (errors ~10 % small; accepted range 0.85–1.40) |
+| the same with independent noise per triangle | PMOIRED + Statistics | PMOIRED sd 0.98 (calibrated, within 1 ± 0.15); virgil sd 0.95 (conservative) |
 
 ## Findings
 
