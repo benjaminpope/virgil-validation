@@ -200,8 +200,25 @@ on to every weight. The cluster's `virgil` env has JAX 0.11.2, against
 (`RuntimeProgramInputMismatch`, "Expected cotangent"), but the stalls
 could still be numerical.
 
-The next diagnostic is task 10's first weight (w = 1e4), run under JAX
-0.9.1 and under 0.11.2. That is a cluster job, not a laptop run.
+The laptop's virgil-validation environment also has JAX 0.11.2 (the latest
+on PyPI), so cluster and laptop agree. The aim is correct results on the
+latest JAX, so the stalls are being debugged there, not by going back to an
+older version. Only virgil's own lockfile pins 0.9.1, which means virgil's
+CI never sees the JAX its users install.
+
+`scripts/diagnose_stall.py` takes each stalled fit at its strongest weight
+(cases: 2022 GRAVITY, 2024 Obj2 GRAVITY, 2010, 2006 with halo). It records:
+
+- snapshots after 10 to 20 000 steps (χ², effective and dead pixels);
+- JAX against finite-difference gradients at the stall, and a loss scan
+  along −grad;
+- remedies: a step cap of 0.2 and 0.05, Adam, and the image flux held fixed.
+
+A 10-step local smoke run on 2022 GRAVITY already shows two things.
+Gradients agree with finite differences to 1e-10 under JAX 0.11.2 (early
+in the fit). Holding `env.flux` fixed reaches χ²/N 1623 in 10 steps,
+against 5091 with it free, which points at the flux parameter's coupling
+to the pixels. The full runs go to OzSTAR (`--diagnose`).
 
 ### C3. Chromatic data
 

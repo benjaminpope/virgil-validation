@@ -100,12 +100,13 @@ def image_of(model, star, halo=False):
     return model.env if (star or halo) else model
 
 
-def run(task, data_dir, out_dir, smoke=False, halo=False):
+def setup(task, data_dir, halo=False):
+    """The data, starting model, priors and fixed regularisers for one task
+    (shared with scripts/diagnose_stall.py)."""
     label, files, largest, star = TASKS[task]
     force_field = label in FORCE_FIELD and largest is not None
     if halo:
         label += "_halo"
-    t0 = time.time()
     paths = [str(data_dir / f) for f in files]
     data = OIData(paths[0]) if len(paths) == 1 else [OIData(p) for p in paths]
     datasets = data if isinstance(data, list) else [data]
@@ -141,6 +142,17 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
     if halo:
         priors |= {"halo.flux": dist.Uniform(0.0, 1000.0)}
     others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
+    return dict(label=label, files=files, star=star, halo=halo, data=data, npts=npts,
+                resolution=resolution, start=start, img0=img0, npix=npix, pixel=pixel, fov=fov,
+                path=path, priors=priors, others=others)
+
+
+def run(task, data_dir, out_dir, smoke=False, halo=False):
+    t0 = time.time()
+    s = setup(task, data_dir, halo)
+    label, files, star, data, npts = s["label"], s["files"], s["star"], s["data"], s["npts"]
+    resolution, start, img0, npix, pixel, fov = (s[k] for k in ("resolution", "start", "img0", "npix", "pixel", "fov"))
+    path, priors, others = s["path"], s["priors"], s["others"]
     weights = WEIGHTS[[0, 6, -1]] if smoke else WEIGHTS
     options = {"max_steps": 50} if smoke else {"max_steps": 200_000}
     curve = l_curve(start, priors, data, MaxEntropy(1.0, path=path), jnp.asarray(weights), others, **options)
