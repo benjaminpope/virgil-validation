@@ -5,7 +5,10 @@ import pytest
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
-pytest_plugins = ["evidence.plugin"]
+# float64 from import time, so that module- and session-scoped fixtures (built
+# before the function-scoped context below) are in float64 too; tests marked
+# float32 switch it off locally.
+jax.config.update("jax_enable_x64", True)
 
 
 @pytest.fixture(autouse=True)

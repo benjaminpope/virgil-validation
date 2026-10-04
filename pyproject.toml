@@ -10,6 +10,11 @@ dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil
 external = ["pmoired==26.10.1"]
 docs = ["mkdocs<2", "mkdocs-material"]
 
+# The evidence plugin loads whenever the package is installed, so its options
+# (--evidence, --require-validates) parse whatever the order of arguments.
+[project.entry-points.pytest11]
+evidence = "evidence.plugin"
+
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
