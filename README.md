@@ -44,7 +44,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | uv geometry | our Earth-rotation tracks vs `virgil.coverage.vlti_oidata` | 1e-9 m |
 | OIFITS | our file → `OIData` → `data.model(...)` reproduces what we wrote (V², T3 orientation, signs, units) | 1e-16 |
 | Recovery (VLTI) | noise-free fits of a binary, a uniform-disk star with a companion, a star with an elliptical envelope and a star with a modulated rim | 1e-10 to 1e-13 relative (rim: 1e-7, optimiser tolerance) |
-| Uncertainties | pulls (fit − truth)/σ over noisy realisations, with closure phases correlated through shared baselines or independent | 200 draws per case: means within ±0.17, sds 0.89–1.10 ([results](docs/results.md)) |
+| Uncertainties | pulls (fit − truth)/σ over noisy realisations, with closure phases correlated through shared baselines or independent | 200 draws per case, four scenes including the rim: means within ±0.17, sds 0.87–1.10 ([results](docs/results.md)) |
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
 | Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.05 σ for realistic errors (1° closure phases; largest for the rim) |
 | Dirty image | uniform uv disk → Airy beam centred on the source, East left | 3e-3 (sampling of the disk) |

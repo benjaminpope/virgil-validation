@@ -8,16 +8,17 @@ External packages: PMOIRED 26.10.1 (conventions in
 
 | virgil model | our route | max abs(ΔV) |
 | --- | --- | --- |
-| PointSource | exact phase | 3.5e-15 |
-| GaussianDisk | closed form | 2.8e-16 |
-| EllipticalGaussian | closed form | 4.8e-16 |
-| UniformDisk (12 mas, 4 nulls) | SciPy J1 | 4.4e-16 |
+| PointSource | exact phase | 3.6e-15 |
+| GaussianDisk | closed form | 2.5e-16 |
+| EllipticalGaussian | closed form | 5.1e-16 |
+| UniformDisk (12 mas, 4 nulls) | SciPy J1 | 3.3e-16 |
 | BinaryModelAngular | exact | 3.6e-16 |
-| ModulatedGaussianRim, in-plane azimuth | ring quadrature x Gaussian | 4.9e-16 |
+| ModulatedGaussianRim, in-plane azimuth and blur | ring quadrature x in-plane Gaussian | 9.0e-16 |
 | ModulatedGaussianRim, sky azimuth | (other reading of the docs) | 3.9e-02 |
-| GaussianArc (default nodes) | full-circle quadrature | 8.4e-04 |
-| Image (7x10 random, orientation) | pixel DFT | 3.4e-16 |
-| Resolved dilution | quadrature | 1.2e-15 |
+| ModulatedGaussianRim, blur round on the sky (before virgil#139) | (old definition) | 8.3e-02 |
+| GaussianArc (default nodes) | full-circle quadrature | 3.9e-09 |
+| Image (7x10 random, orientation) | pixel DFT | 4.5e-16 |
+| Resolved dilution | quadrature | 7.8e-16 |
 
 ## Long-baseline injection and recovery (4 UTs, 7 hour angles, 6 channels)
 
@@ -26,7 +27,7 @@ External packages: PMOIRED 26.10.1 (conventions in
 | binary | 5.0e-16 | 3.4e-12 |
 | disk star + companion | 8.9e-16 | 1.8e-10 |
 | star + elliptical envelope | 4.4e-16 | 4.2e-10 |
-| star + modulated rim | 5.6e-16 | 3.6e-08 |
+| star + modulated rim | 6.9e-16 | 8.9e-10 |
 
 ### Pulls over 200 noisy realisations (σ(V²) = 0.02, σ(CP) = 1°)
 
@@ -58,6 +59,20 @@ With 200 draws the sampling sd of a mean is 0.07 and of an sd 0.05. virgil white
 | star + elliptical envelope | triangle | `env.ratio` | +0.10 | 1.05 |
 | star + elliptical envelope | triangle | `env.pa` | -0.01 | 0.99 |
 | star + elliptical envelope | triangle | `env.flux` | -0.02 | 1.03 |
+| star + modulated rim | baseline | `rim.diam` | +0.03 | 1.04 |
+| star + modulated rim | baseline | `rim.fwhm` | +0.06 | 0.90 |
+| star + modulated rim | baseline | `rim.inc` | -0.00 | 0.93 |
+| star + modulated rim | baseline | `rim.pa` | -0.05 | 1.00 |
+| star + modulated rim | baseline | `rim.az_amps` | -0.09 | 1.07 |
+| star + modulated rim | baseline | `rim.az_pas` | -0.03 | 0.95 |
+| star + modulated rim | baseline | `rim.flux` | +0.04 | 0.96 |
+| star + modulated rim | triangle | `rim.diam` | +0.03 | 0.95 |
+| star + modulated rim | triangle | `rim.fwhm` | +0.05 | 0.93 |
+| star + modulated rim | triangle | `rim.inc` | +0.06 | 0.95 |
+| star + modulated rim | triangle | `rim.pa` | -0.03 | 0.93 |
+| star + modulated rim | triangle | `rim.az_amps` | -0.08 | 0.90 |
+| star + modulated rim | triangle | `rim.az_pas` | +0.01 | 0.87 |
+| star + modulated rim | triangle | `rim.flux` | +0.17 | 0.96 |
 
 ![pulls](vlti_pulls.png)
 
@@ -89,14 +104,14 @@ Bias in units of the Laplace σ for realistic errors (σ(CP) = 1°, σ(V²) = 0.
 | star + elliptical envelope | `env.ratio` | 0.5 | 0.4998 | -0.007 |
 | star + elliptical envelope | `env.pa` | 60 | 60.04 | +0.022 |
 | star + elliptical envelope | `env.flux` | 0.4 | 0.4003 | +0.008 |
-| star + modulated rim | `rim.diam` | 240 | 240 | — (see finding 5) |
-| star + modulated rim | `rim.fwhm` | 40 | 39.77 | — (see finding 5) |
-| star + modulated rim | `rim.inc` | 45 | 44.95 | — (see finding 5) |
-| star + modulated rim | `rim.pa` | 30 | 30.09 | — (see finding 5) |
-| star + modulated rim | `rim.az_amps` | 0.5 | 0.4993 | — (see finding 5) |
-| star + modulated rim | `rim.az_pas` | 120 | 120 | — (see finding 5) |
-| star + modulated rim | `rim.flux` | 0.8 | 0.7991 | — (see finding 5) |
+| star + modulated rim | `rim.diam` | 240 | 240.5 | +0.012 |
+| star + modulated rim | `rim.fwhm` | 40 | 38.75 | -0.015 |
+| star + modulated rim | `rim.inc` | 45 | 44.97 | -0.022 |
+| star + modulated rim | `rim.pa` | 30 | 30.08 | +0.051 |
+| star + modulated rim | `rim.az_amps` | 0.5 | 0.4978 | -0.016 |
+| star + modulated rim | `rim.az_pas` | 120 | 120 | -0.012 |
+| star + modulated rim | `rim.flux` | 0.8 | 0.796 | -0.015 |
 
 ![masking images](nrm_images.png)
 
-_Run time 376 s._
+_Run time 449 s._
