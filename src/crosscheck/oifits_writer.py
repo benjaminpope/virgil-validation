@@ -31,7 +31,8 @@ def write(
     vis2 : dict of arrays per record (n_rec, n_wl): ``vis2``, ``err``,
         ``u``, ``v`` (n_rec,), ``sta`` (n_rec, 2), optional ``mjd``.
     t3 : dict: ``phi`` and ``err`` in degrees (n_rec, n_wl), ``u1``,
-        ``v1``, ``u2``, ``v2`` (n_rec,), ``sta`` (n_rec, 3), optional ``mjd``.
+        ``v1``, ``u2``, ``v2`` (n_rec,), ``sta`` (n_rec, 3), optional ``mjd``;
+        or None for a file of visibilities alone (no OI_T3 table).
     """
     wavelengths = np.atleast_1d(np.asarray(wavelengths, float))
     n_wl = wavelengths.size
@@ -117,6 +118,11 @@ def write(
         OI_REVN=2, DATE_OBS="2026-10-03", ARRNAME=arrname, INSNAME=insname
     )
 
+    tables = [primary, target_hdu, array_hdu, wl_hdu, v2_hdu]
+    if t3 is None:
+        fits.HDUList(tables).writeto(path, overwrite=True)
+        return
+
     n = len(t3["u1"])
     t3_hdu = fits.BinTableHDU.from_columns(
         common(t3, n)
@@ -138,6 +144,4 @@ def write(
         OI_REVN=2, DATE_OBS="2026-10-03", ARRNAME=arrname, INSNAME=insname
     )
 
-    fits.HDUList(
-        [primary, target_hdu, array_hdu, wl_hdu, v2_hdu, t3_hdu]
-    ).writeto(path, overwrite=True)
+    fits.HDUList(tables + [t3_hdu]).writeto(path, overwrite=True)
