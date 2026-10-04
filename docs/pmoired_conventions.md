@@ -47,6 +47,13 @@ Both packages put the modulation in the disk plane. That is virgil's
 behaviour (finding 1) and PMOIRED's, and neither documented it before this
 check.
 
+## Fits (Stage 2)
+
+| Quantity | PMOIRED | virgil | How they relate |
+| --- | --- | --- | --- |
+| reported uncertainties | `bestfit["uncer"]`, multiplied by √(reduced χ²) (`"normalized uncertainties": True`) | Laplace covariance, the plain curvature | divide PMOIRED's by √χ²_red (`external_bridge.pmoired_models.fit` does) |
+| closure-phase errors | each closure phase independent, with its own σ | the closure phases of a snapshot whitened as a correlated group (baseline-phase noise) | equal with 3 telescopes; with 4, PMOIRED's errors are 4–6 % smaller and, for noise from baseline phases, ~10 % too small in pulls. PMOIRED's `oicorr` module may model the correlations; not yet explored |
+
 ## Problems found
 
 Behaviour that looks wrong on PMOIRED's side is listed, with reproducers, in
