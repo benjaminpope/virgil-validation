@@ -13,7 +13,7 @@ from virgil.fitting import fit
 from virgil.inference import laplace_cov
 from virgil.oidata import OIData
 
-from crosscheck import sky
+from crosscheck import limb, sky
 
 
 @dataclass
@@ -131,7 +131,51 @@ def star_rim(diam=6.0, fwhm=1.0, inc=45.0, pa=30.0, amp=0.5, az_pa=120.0, flux=0
     )
 
 
+def limb_darkened_star_companion(
+    diam=6.0, q1=0.36, q2=0.29, dra=0.7, ddec=-0.4, comp=(-14.0, 9.0), flux=0.03
+):
+    """An off-centre star with Kipping-parametrized quadratic limb darkening,
+    large enough that VLTI baselines reach its second lobe, and a companion.
+    The star's offset is held fixed; its diameter and q1, q2 are fitted."""
+    u1, u2 = limb.kipping_quadratic_u(q1, q2)
+    profile = limb.polynomial([u1, u2])
+    star = limb.disk(diam, profile, dra, ddec)
+
+    def vis(u, v, w):
+        return (sky.visibility(star, u, v, w) + flux * sky.vis_point(u, v, w, *comp)) / (1 + flux)
+
+    r = np.hypot(*comp)
+    template = vm.System(
+        star=vm.QuadraticLimbDarkenedDisk(diam, q1, q2, dra=dra, ddec=ddec),
+        comp=vm.PointSource(flux, *comp),
+    )
+    truth = {
+        "star.diam": diam, "star.q1": q1, "star.q2": q2,
+        "comp.dra": comp[0], "comp.ddec": comp[1], "comp.flux": flux,
+    }
+    return Scene(
+        "limb-darkened star + companion",
+        vis,
+        template,
+        truth,
+        {
+            "star.diam": _u(0, 3 * diam), "star.q1": _u(0, 1), "star.q2": _u(0, 1),
+            "comp.dra": _u(-10 * r, 10 * r), "comp.ddec": _u(-10 * r, 10 * r), "comp.flux": _u(0, 1),
+        },
+        {
+            "star.diam": 0.95 * diam, "star.q1": 0.5, "star.q2": 0.5,
+            "comp.dra": comp[0] + 0.03 * r, "comp.ddec": comp[1] - 0.02 * r, "comp.flux": 0.75 * flux,
+        },
+        sky.mix([limb.disk(diam, profile, dra, ddec, n_t=24, n_theta=64), sky.point(*comp)], [1.0, flux]),
+    )
+
+
 SCENES = [binary, resolved_star_companion, star_envelope, star_rim]
+# Not in SCENES: the noisy-pulls test (sigma_v2 = 0.02) assumes a Gaussian
+# Laplace posterior, which weakly constrained q1, q2 near the unit square's
+# edges do not give. tests/test_limb_darkening.py runs its own end-to-end
+# checks on it.
+LIMB_SCENES = [limb_darkened_star_companion]
 
 
 def masking_scenes():

@@ -271,3 +271,50 @@ def test_modulated_rim_definitions_differ(vlti_file):
     )
     dv2, dcp, _ = compare(vlti_file, scene, params, {"Nr": 3000})
     assert 1e-4 < dv2 < 1e-2  # (m sigma / r0)^2 ~ 0.02 times the modulated part
+
+
+# ------------------------------------------------------ limb darkening
+
+
+def pm_profile_disk(name, diam, profile, flux=1.0, dra=0.0, ddec=0.0):
+    """A disk with brightness ``profile`` (a PMOIRED expression in $MU) is a
+    ring from 0 to ``diam`` whose $MU = sqrt(1 - (2r / diamout)^2)."""
+    return {
+        f"{name},diamin": 0.0, f"{name},diamout": diam, f"{name},profile": profile,
+        f"{name},f": flux, f"{name},x": dra, f"{name},y": ddec,
+    }
+
+
+# measured at Nr = 10000: quadratic 3e-7 in V^2 and 6e-4 deg in closure
+# phase, square-root 2.5e-6 and 4.5e-3 deg
+LIMB_TOL = {"quadratic": (1e-6, 2e-3), "square-root": (1e-5, 2e-2)}
+
+
+@pytest.mark.parametrize("law", list(LIMB_TOL))
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.SquareRootLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"])
+def test_limb_darkened_star_and_companion(vlti_file, law):
+    """PMOIRED integrates a sampled radial profile; it converges on virgil's
+    analytic visibility as the sampling is refined (|dV^2| ~ Nr^-1.5 for the
+    quadratic law, a little slower for the square-root law, whose
+    derivative is singular at the limb). The diameter (``diamout`` = the
+    limb-darkened diameter) and mu agree. A companion makes the closure
+    phases informative."""
+    diam, dra, ddec = 6.0, 0.7, -0.4
+    if law == "quadratic":
+        star = vm.QuadraticLimbDarkenedDisk(diam, 0.36, 0.29, dra=dra, ddec=ddec)
+        u1, u2 = float(star.u1), float(star.u2)
+        profile = f"1 - {u1!r}*(1-$MU) - {u2!r}*(1-$MU)**2"
+    else:
+        star = vm.SquareRootLimbDarkenedDisk.from_cd(diam, 0.1, 0.6, dra=dra, ddec=ddec)
+        profile = "1 - 0.1*(1-$MU) - 0.6*(1-np.sqrt($MU))"
+    scene = vm.System(star=star, comp=vm.PointSource(0.03, -14.0, 9.0))
+    params = {
+        **pm_profile_disk("star", diam, profile, dra=dra, ddec=ddec),
+        **pm_point("comp", 0.03, -14.0, 9.0),
+    }
+    coarse, _, _ = compare(vlti_file, scene, params, {"Nr": 1000})
+    dv2, dcp, cp = compare(vlti_file, scene, params, {"Nr": 10000})
+    record("convergence_1000_to_10000", coarse / dv2)
+    assert coarse / dv2 > 10  # the difference is PMOIRED's sampling
+    tol_v2, tol_cp = LIMB_TOL[law]
+    assert dv2 < tol_v2 and dcp < tol_cp and cp > 1.0

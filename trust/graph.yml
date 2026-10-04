@@ -62,6 +62,19 @@ nodes:
     layer: models
     source: [src/virgil/models.py, src/virgil/_elr.py]
     depends: [virgil._elr]
+  virgil.models.cvis_limb_darkened_disk: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.LimbDarkenedDisk:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.cvis_limb_darkened_disk]
+  virgil.models.QuadraticLimbDarkenedDisk:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.cvis_limb_darkened_disk]
+  virgil.models.SquareRootLimbDarkenedDisk:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.cvis_limb_darkened_disk]
   virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py]}
   virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py]}
   virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py]}
@@ -138,6 +151,7 @@ nodes:
   # --------------------------------------------- our references (links)
   crosscheck: {layer: references}
   crosscheck.sky: {layer: references}
+  crosscheck.limb: {layer: references}
   crosscheck.nrm: {layer: references}
   external_bridge: {layer: references}
   external_bridge.pmoired_models: {layer: references}
