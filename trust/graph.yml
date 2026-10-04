@@ -1,0 +1,159 @@
+# The trust graph (docs/design.md, "Making it traceable").
+#
+# nodes: virgil objects (and our own references). For each:
+#   layer:    for the chart (models, data, likelihood, inference, imaging, references)
+#   source:   virgil source files it depends on: evidence measured on a
+#             virgil commit older than the last change to these is stale
+#   depends:  other nodes it is built on; trust propagates upwards only
+#   roots:    how many independent strong roots it needs (default 1;
+#             2 for conventions a model could get wrong in a correlated way).
+#             Roots come from one pool (src/evidence/__init__.py): mathematics,
+#             standards, statistics, literature, and the trusted packages
+#             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL). Any of
+#             them may validate any link; no node needs a particular package.
+#
+# pipelines: chains of nodes validated end to end, e.g. by reproducing a
+# published result from the authors' own data (root: literature). A
+# pipeline is validated when its own evidence passes and every step is
+# trusted on its own; end-to-end failure with trusted steps points at the
+# joins between them.
+
+nodes:
+  # ---------------------------------------------------------------- data
+  virgil.oifits.read_oifits:
+    layer: data
+    source: [src/virgil/oifits.py]
+    roots: 2  # OIFITS conventions: standards and another reader
+  virgil.oidata.OIData:
+    layer: data
+    source: [src/virgil/oidata.py, src/virgil/_closure.py]
+    depends: [virgil.oifits.read_oifits]
+  virgil.oidata.find_uv_grid:
+    layer: data
+    source: [src/virgil/_geometry.py]
+  virgil.coverage.vlti_oidata:
+    layer: data
+    source: [src/virgil/coverage.py]
+  virgil.amigo.load_oi_data:
+    layer: data
+    source: [src/virgil/amigo.py]
+    depends: [virgil.oidata.OIData]
+
+  # -------------------------------------------------------------- models
+  virgil.models.PointSource: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.GaussianDisk: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.EllipticalGaussian: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.UniformDisk: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.ModulatedGaussianRim: {layer: models, source: [src/virgil/models.py], roots: 2}
+  virgil.models.GaussianArc: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.BinaryModelCartesian: {layer: models, source: [src/virgil/models.py], roots: 2}
+  virgil.models.BinaryModelAngular: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.Image.model_on_grid: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image]}
+  virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
+  virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.Rotated: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.System:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.PointSource, virgil.models.GaussianDisk, virgil.models.UniformDisk]
+  virgil.models.GravityDarkenedStar:
+    layer: models
+    source: [src/virgil/models.py, src/virgil/_elr.py]
+    depends: [virgil._elr]
+  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py]}
+  virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
+
+  # ----------------------------------------------------------- likelihood
+  virgil.likelihood.whitened_residuals:
+    layer: likelihood
+    source: [src/virgil/likelihood.py, src/virgil/_closure.py]
+    depends: [virgil.oidata.OIData]
+  virgil.likelihood.model_loglike:
+    layer: likelihood
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.whitened_residuals]
+  virgil.fitting.fit:
+    layer: likelihood
+    source: [src/virgil/fitting.py, src/virgil/_precision.py]
+    depends: [virgil.likelihood.model_loglike]
+
+  # ------------------------------------------------------------ inference
+  virgil.inference.laplace_cov:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.grid_fit.likelihood_grid:
+    layer: inference
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.limits.absil_limits:
+    layer: inference
+    source: [src/virgil/limits.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.limits.ruffio_upperlimit:
+    layer: inference
+    source: [src/virgil/limits.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.likelihood.numpyro_model:
+    layer: inference
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.model_loglike]
+
+  # -------------------------------------------------------------- imaging
+  virgil.imaging.dirty_image: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
+  virgil.imaging.beam: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
+  virgil.imaging.nyquist_pixel_scale: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.field_of_view: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.convolve_beam: {layer: imaging, source: [src/virgil/imaging.py]}
+  # regularised imaging: natural roots are eht-imaging and MPoL
+  virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.TV: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.MaxEntropy: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.l_curve:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.fitting.fit]
+
+  virgil._elr:
+    layer: models
+    source: [src/virgil/_elr.py]
+
+  # --------------------------------------------- our references (links)
+  crosscheck: {layer: references}
+  crosscheck.sky: {layer: references}
+  crosscheck.nrm: {layer: references}
+  external_bridge: {layer: references}
+  external_bridge.pmoired_models: {layer: references}
+  evidence: {layer: references}
+  pmoired: {layer: references}  # the external package itself (problems P1-P3)
+
+pipelines:
+  synthetic-vlti-fit:
+    title: Simulated VLTI data, OIFITS to fitted parameters and uncertainties
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.System,
+            virgil.likelihood.whitened_residuals, virgil.fitting.fit, virgil.inference.laplace_cov]
+  dlux-masking-fit:
+    title: Aperture-masking images from dLux, calibrated and fitted
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.System,
+            virgil.fitting.fit, virgil.inference.laplace_cov]
+  pmoired-identical-fits:
+    title: The same files fitted by virgil and PMOIRED
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
+            virgil.fitting.fit, virgil.inference.laplace_cov]
+  rml-imaging:
+    title: Regularised image reconstruction against eht-imaging or MPoL on the same data
+    planned: true
+    steps: [virgil.oidata.OIData, virgil.models.Image, virgil.imaging.TSV,
+            virgil.imaging.MaxEntropy, virgil.fitting.fit]
+  published-binary:
+    title: Reproduce published binary detections from the authors' archival data
+    planned: true
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
+            virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,
+            virgil.limits.absil_limits]

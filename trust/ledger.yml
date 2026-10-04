@@ -1,0 +1,163 @@
+# The mismatch ledger (docs/design.md): every disagreement found, its ruling
+# and how it was refereed.
+#
+# ruling: virgil | external:<package> | definition | crosscheck
+#   virgil       virgil was wrong (code or documentation)
+#   external:X   the other package was wrong (raise upstream in batches,
+#                with Ben's approval)
+#   definition   both right, defined differently: the mapping is documented
+#   crosscheck   our own reference or test code was wrong
+# status: fixed | open | documented | to-raise | raised
+# evidence: test ids (file::name) that pin the behaviour
+
+- id: F1
+  title: ModulatedGaussianRim modulation azimuth is in-plane, not on-sky
+  objects: [virgil.models.ModulatedGaussianRim]
+  ruling: virgil
+  kind: documentation
+  referee: mathematics (ring quadrature, both readings)
+  evidence:
+    - tests/test_visibilities.py::test_modulated_rim_in_plane_azimuth_and_blur
+    - tests/test_visibilities.py::test_modulated_rim_is_not_modulated_in_sky_angle
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/134]
+
+- id: F2
+  title: GaussianArc truncated its arc-length weight at ±3.5σ
+  objects: [virgil.models.GaussianArc]
+  ruling: virgil
+  referee: mathematics (full-circle quadrature)
+  evidence: [tests/test_visibilities.py::test_gaussian_arc_matches_untruncated_arc]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/134]
+
+- id: F3
+  title: OIData.uv_grid documented as automatic but set only for AMIGO records
+  objects: [virgil.oidata.OIData]
+  ruling: virgil
+  kind: documentation
+  referee: mathematics (lattice transform against a direct sum)
+  evidence: [tests/test_grids.py::test_lattice_transform_matches_direct_dft]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/134]
+
+- id: F4
+  title: Image.from_model's brightness floor adds ~1e-5 of flux on large fields
+  objects: [virgil.models.Image.from_model]
+  ruling: definition
+  referee: mathematics (Gaussian transform)
+  evidence: [tests/test_grids.py::test_image_from_model_round_trip]
+  status: documented
+
+- id: F5
+  title: laplace_cov failed with array-valued parameters
+  objects: [virgil.inference.laplace_cov]
+  ruling: virgil
+  referee: mathematics (finite-difference Hessian, in virgil#135); statistics (rim pulls)
+  evidence: [tests/test_vlti.py::test_laplace_cov_with_array_parameters]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/135]
+
+- id: F6
+  title: fit started at an exact zero-residual optimum reported non-convergence
+  objects: [virgil.fitting.fit]
+  ruling: virgil
+  referee: mathematics (chi-squared at the start is zero)
+  evidence: [tests/test_vlti.py::test_fit_from_the_exact_optimum_converges]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/144]
+
+- id: F7
+  title: .expand()ed priors switched fit from LM to L-BFGS
+  objects: [virgil.fitting.fit]
+  ruling: virgil
+  referee: self-consistency (equivalent priors must choose the same method)
+  evidence: [tests/test_vlti.py::test_fit_uses_lm_for_expanded_uniform_priors]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/142]
+
+- id: F8
+  title: OIData crashed when every closure phase was flagged
+  objects: [virgil.oidata.OIData]
+  ruling: virgil
+  referee: standards (the same V² without OI_T3)
+  evidence: [tests/test_vlti.py::test_all_closure_phases_flagged_leaves_the_visibilities]
+  status: fixed
+  links:
+    - https://github.com/benjaminpope/virgil/pull/155
+    - https://github.com/benjaminpope/virgil/pull/158
+    - https://github.com/benjaminpope/virgil/pull/160
+
+- id: D1
+  title: ModulatedGaussianRim blurs in the rim plane (changed by virgil#139)
+  objects: [virgil.models.ModulatedGaussianRim]
+  ruling: definition
+  kind: definition change in virgil
+  referee: mathematics (in-plane blur transform); PMOIRED (blurred-ring profile, 1e-9)
+  evidence:
+    - tests/test_visibilities.py::test_modulated_rim_in_plane_azimuth_and_blur
+    - tests/test_visibilities.py::test_modulated_rim_is_not_blurred_isotropically_on_the_sky
+    - tests/test_pmoired_vs_virgil.py::test_unmodulated_rim_matches_pmoired_blurred_ring_profile
+  status: documented
+  links: [https://github.com/benjaminpope/virgil/pull/139]
+
+- id: D2
+  title: Modulated rims differ between virgil and PMOIRED (blurred modulated ring vs modulated profile)
+  objects: [virgil.models.ModulatedGaussianRim, external_bridge.pmoired_models]
+  ruling: definition
+  referee: mathematics (our quadrature of each definition)
+  evidence: [tests/test_pmoired_vs_virgil.py::test_modulated_rim_definitions_differ]
+  status: documented
+
+- id: D3
+  title: PMOIRED treats closure phases as independent; virgil whitens them as a correlated group
+  objects: [virgil.likelihood.whitened_residuals, virgil.inference.laplace_cov]
+  ruling: definition
+  referee: statistics (200-draw pulls with both noise models)
+  evidence:
+    - tests/test_pmoired_fits.py::test_independent_closure_phases_shrink_pmoired_errors
+    - tests/test_pmoired_fits.py::test_pull_campaign_against_pmoired
+  status: documented
+
+- id: D4
+  title: PMOIRED reports uncertainties scaled by sqrt(reduced chi-squared)
+  objects: [external_bridge.pmoired_models]
+  ruling: definition
+  referee: PMOIRED's documentation (normalized uncertainties)
+  evidence: [tests/test_pmoired_fits.py::test_uncertainties_agree_without_closure_redundancy]
+  status: documented
+
+- id: P1
+  title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
+  objects: [external_bridge.pmoired_models]
+  ruling: external:pmoired
+  referee: mathematics (finite models expected)
+  evidence: [tests/test_pmoired_problems.py::test_p1_default_setup_gives_finite_models]
+  status: to-raise
+
+- id: P2
+  title: PMOIRED's default ring sampling is not its documented Nr = 100
+  objects: [external_bridge.pmoired_models]
+  ruling: external:pmoired
+  referee: mathematics (two-Airy annulus)
+  evidence: [tests/test_pmoired_problems.py::test_p2_default_nr_is_100]
+  status: to-raise
+
+- id: P3
+  title: PMOIRED's rings stop at ~1e-4 precision beyond 30 samples per baseline
+  objects: [external_bridge.pmoired_models]
+  ruling: external:pmoired
+  referee: mathematics (two-Airy annulus)
+  evidence:
+    - tests/test_pmoired_problems.py::test_p3_rings_exact_up_to_30_samples
+    - tests/test_pmoired_problems.py::test_p3_rings_exact_beyond_30_samples
+  status: to-raise
+
+- id: C1
+  title: Our PMOIRED parameter mapping had the wrong sign of d(ratio)/d(incl)
+  objects: [external_bridge.pmoired_models]
+  ruling: crosscheck
+  referee: PMOIRED and virgil correlations (they agreed once fixed)
+  evidence: [tests/test_pmoired_fits.py::test_uncertainties_agree_without_closure_redundancy]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil-validation/pull/11]

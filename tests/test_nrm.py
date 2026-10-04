@@ -83,7 +83,7 @@ def test_calibrated_visibilities(images, k):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("k", range(4), ids=_scene_ids())
-@pytest.mark.validates("virgil.fitting.fit", "virgil.oifits.read_oifits", "virgil.models.System", roots=["dlux"], tier="B")
+@pytest.mark.validates("pipeline:dlux-masking-fit", "virgil.fitting.fit", "virgil.models.System", roots=["dlux"], tier="B")
 def test_dlux_injection_recovery(images, tmp_path, k):
     """Noise-free dLux observables, fitted by virgil: the bias left by the
     field edge must be far below realistic errors (1 deg closure phases,

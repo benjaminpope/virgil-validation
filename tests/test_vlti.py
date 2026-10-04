@@ -57,7 +57,7 @@ def test_file_reproduces_virgil_model(tmp_path, make):
 
 
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
-@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", roots=["mathematics"])
 def test_noise_free_recovery(tmp_path, make):
     scene = make()
     path = tmp_path / "s.fits"
@@ -74,7 +74,7 @@ def test_noise_free_recovery(tmp_path, make):
 @pytest.mark.slow
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
 @pytest.mark.parametrize("phase_noise", ["baseline", "triangle"])
-@pytest.mark.validates("virgil.fitting.fit", "virgil.inference.laplace_cov", "virgil.likelihood.whitened_residuals", roots=["statistics"], tier="B")
+@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", "virgil.inference.laplace_cov", "virgil.likelihood.whitened_residuals", roots=["statistics"], tier="B")
 def test_noisy_pulls_are_unit_normal(tmp_path, make, phase_noise):
     scene = make()
     rng = np.random.default_rng(11)

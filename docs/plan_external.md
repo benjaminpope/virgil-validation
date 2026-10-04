@@ -1,4 +1,4 @@
-# Plan: validating virgil against PMOIRED, CANDID and fouriever
+# Plan: validating virgil against other packages
 
 ## Why
 
@@ -10,6 +10,24 @@ are mature, human-written packages in daily use on VLTI data, and
 virgil's binary search was modelled on CANDID. Agreement with them, on
 files we simulate, is the strongest outside check available. Where the three
 codes disagree, our analytic references decide which is right.
+
+## A pool of trusted packages
+
+The external packages are a pool, not a checklist: any link in the
+[trust graph](trust.md) may be validated against whichever of them suits it,
+and no stage needs every package. Natural pairings:
+
+| Link in virgil | Packages that suit it |
+| --- | --- |
+| parametric models, OIFITS reading, fits and their uncertainties | PMOIRED (done: Stages 0–2), CANDID |
+| binary detection maps and contrast limits | CANDID, fouriever |
+| closure-phase correlations | fouriever (Kammerer et al. 2020) |
+| aperture masking | dLux (done), fouriever |
+| image reconstruction: regularisers, RML imaging, image Fourier transforms | [eht-imaging](https://github.com/achael/eht-imaging) (Chael et al.), [MPoL](https://github.com/MPoL-dev/MPoL) (Czekala et al.) |
+| a whole pipeline | published results reproduced from the authors' data (root: literature) |
+
+The stages below are the plan for each package where it is used; doing them
+for every package is not the goal.
 
 ## Packages
 

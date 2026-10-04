@@ -10,6 +10,8 @@ and may record numbers with the ``metric`` fixture. Run pytest with
 describing the run (virgil commit, package versions, runner).
 """
 
+# The pool of roots: any link in the trust graph may be validated against
+# whichever of these suits it; no stage needs every package.
 ROOTS = (
     "mathematics",  # closed forms, checked numerically with SciPy/NumPy
     "standards",  # OIFITS, Thompson-Moran-Swenson uv geometry
@@ -17,6 +19,9 @@ ROOTS = (
     "pmoired",
     "candid",
     "fouriever",
+    "ehtim",  # eht-imaging (Chael et al.): imaging and its regularisers
+    "mpol",  # MPoL (Czekala et al.): RML imaging, gridding, Fourier transforms
+    "literature",  # a published result, reproduced from the authors' data
     "statistics",  # ensembles with a known distribution
     "self-consistency",  # virgil against virgil: the weakest
 )
