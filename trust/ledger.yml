@@ -95,7 +95,7 @@
   kind: documentation
   referee: mathematics (Tabulated documents its reference flux as the node mean)
   evidence: [tests/test_remaining_models.py::test_tabulated_reference_flux_is_the_documented_mean]
-  status: open
+  status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/163]
 
 - id: D1

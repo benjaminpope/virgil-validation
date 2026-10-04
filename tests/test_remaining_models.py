@@ -72,12 +72,11 @@ def test_tabulated_interpolates_linearly_and_holds_its_ends():
     assert np.isclose(float(s(None)), ratio.mean())
 
 
-@pytest.mark.validates("virgil.spectra.Tabulated", roots=["mathematics"], kind="finding")
-@pytest.mark.xfail(strict=True, reason="F9: reference_flux returns every node, not the documented mean")
+@pytest.mark.validates("virgil.spectra.Tabulated", roots=["mathematics"])
 def test_tabulated_reference_flux_is_the_documented_mean():
-    """Tabulated documents its reference flux as the mean over the nodes,
-    and s(None) returns it, but the public reference_flux returns the
-    whole ratio array."""
+    """Tabulated documents its reference flux as the mean over the nodes.
+    Finding F9: reference_flux returned the whole ratio array (fixed in
+    virgil#163)."""
     s = spectra.Tabulated(np.array([0.2, 0.4, 0.1]), np.array([2.0e-6, 2.2e-6, 2.5e-6]))
     assert np.ndim(spectra.reference_flux(s)) == 0
     assert np.isclose(float(spectra.reference_flux(s)), float(s(None)))

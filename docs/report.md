@@ -106,7 +106,7 @@ documented pixel centres and summed directly in Fourier space.
 | --- | --- | --- | --- |
 | `spectra.PowerLaw` | (λ/λ₀)^index | Mathematics | 1e-12 relative |
 | `spectra.BlackBody` | Planck ratio with SciPy's CODATA constants; Rayleigh–Jeans limit | Mathematics | 9e-9 relative (virgil carries hc/k to ~10 digits) |
-| `spectra.Tabulated` | linear interpolation, constant beyond the end nodes | Mathematics | 1e-12; finding 9 (reference flux) |
+| `spectra.Tabulated` | linear interpolation, constant beyond the end nodes | Mathematics | 1e-12; reference flux after finding 9 |
 | chromatic `System` (black-body companion, power-law envelope) | flux-weighted mean of closed-form visibilities, channel by channel | Mathematics | 5e-11 |
 | `FlaredDiskHG`, `FlaredDiskGaussian`, `FlaredDiskPowerLaw` (face-on and flat, inclined, inclined at PA 200°, offset) | direct Fourier sum of our brightness | Mathematics | 1e-15 |
 | near side of the flared disks | the disk rotated by 180° (near side at PA + 270) | Mathematics (control) | differs by > 1e-2, as it should |
@@ -239,7 +239,7 @@ Jacobian of that mapping.
 | 6 | `fitting.fit` | A fit started at an exact zero-residual optimum reports non-convergence. | fixed, [virgil#144](https://github.com/benjaminpope/virgil/pull/144) |
 | 7 | `fitting.fit` | `.expand()`ed or `.to_event()` priors silently switch the default optimiser from LM to L-BFGS. | fixed, [virgil#142](https://github.com/benjaminpope/virgil/pull/142) |
 | 8 | `oidata.OIData` | With every closure phase flagged it crashed inside the closure-phase whitening (`ValueError: zero-size array`). | fixed, [virgil#155](https://github.com/benjaminpope/virgil/pull/155); now visibility-only data, [virgil#158](https://github.com/benjaminpope/virgil/pull/158) |
-| 9 | `spectra.reference_flux` | For `Tabulated` it returns every node, not the reference flux the class documents (the node mean, which `spectrum(None)` returns). Harmless inside virgil, which uses it to check that fluxes are non-negative. | open, fix in [virgil#163](https://github.com/benjaminpope/virgil/pull/163) |
+| 9 | `spectra.reference_flux` | For `Tabulated` it returns every node, not the reference flux the class documents (the node mean, which `spectrum(None)` returns). Harmless inside virgil, which uses it to check that fluxes are non-negative. | fixed, [virgil#163](https://github.com/benjaminpope/virgil/pull/163) |
 
 ### Definition changes in virgil
 
