@@ -181,9 +181,9 @@ Each stage is a separate PR with its own tests and evidence records, as in
   The instrument-specific part belongs in virgil-vlti, and a generic
   phase-referenced likelihood in core only if it proves general.
 
-Route 1 first. Route 2 only if dual-field astrometry is wanted as a virgil
-capability anyway (exoplanets and brown dwarfs), and not merely to validate
-virgil.
+**Decided (Ben, 2026-10-04): Route 2 is out.** Phase referencing against
+the other fibre is not worth the effort just to validate virgil. Route 1
+stays as an optional orbit-fitting test.
 
 ### Stage E3: joint orbits with Stage 6a.1 (after virgil 6a.1; 6–8 h)
 
@@ -211,14 +211,29 @@ virgil.
    intervals must cover the truth at their nominal rates. This is a Monte
    Carlo campaign in the sense of `design.md`.
 
-### Stage E4: a masking anchor (3–4 h; AMICAL)
+### Stage E4: masking anchors with NACO SAM (AMICAL; about 3 h, then 2 h per target)
 
-HD 136164 Ab was observed with NACO SAM in L′ (2011 and 2012, Ireland's
-programmes). Its separation is about 100–260 mas, which is inside the range
-where masking is sensitive. Reduce with AMICAL, fit with virgil, and compare
-the PA and separation with Balmer et al. 2024's predictions at those epochs.
-This is the masking anchor of the orbit note's §5.3.2. First check that the
-companion's L′ contrast is detectable with SAM.
+NACO SAM data on binaries with published orbits (ESO `dbo.raw`, template
+`NACO_sam_obs_GenericOffset`, checked 2026-10-04). The data are all from
+2009–2013, so they are public. Each target needs about 0.2–3 GB.
+
+| System | SAM epochs | Filters | Orbit | Separation then | Why |
+|---|---|---|---|---|---|
+| HD 136164 Ab | 2011-06-11, 2012-08-01 | L′ | Balmer et al. 2024 (posterior) | ~100–260 mas | well resolved; the posterior is in the summary JSON; two epochs 14 months apart |
+| 9 Sgr | 2011-03-09/10, 2012-06-19, 2013-07-31 | H, Ks | Fabry et al. 2021 (P = 9.1 yr) | ~15 mas | three epochs on a known orbit, below λ/2B: tests separation–contrast degeneracy |
+| HD 150136 | 2011-03-08, 2012-06-18, 2013-07-31 | H, Ks | Mahy et al. 2018 (P = 8.6 yr) | ~17 mas | as 9 Sgr |
+| δ Vel Aa–Ab | 2009-01-07 | IB 2.12, NB 1.64 | Mérand et al. 2011; Kellerer et al. 2007 (P = 45 d) | ~16 mas | a precise orbit; very bright (K = 1.7), so check for saturation |
+| GG Tau Ab | 2012-12-07/08 | H, Ks, L′ | Di Folco et al. 2024 | ~30 mas | circumbinary dust: a model-misspecification case, last |
+
+The 9 Sgr, HD 150136 and HD 152233/HD 93250/HD 167971 data are SMASH+
+(Sana et al. 2014) snapshots of O stars, with the survey's calibrators in the
+same programmes. Start with HD 136164 Ab, the cleanest test. Then 9 Sgr and
+HD 150136 test the regime below the diffraction limit, where only an orbit
+prior can break the separation–contrast degeneracy, which makes it a natural
+joint-fit test for E3. Reduce with AMICAL, fit with virgil, and compare
+separation and PA with each orbit's prediction at the epoch. Compute the
+predictions with `crosscheck/orbits.py`, from elements copied from the
+papers' tables. This covers the masking anchor of the orbit note's §5.3.2.
 
 ### Stage E5: reporting (1–2 h)
 
