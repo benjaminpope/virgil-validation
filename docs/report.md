@@ -61,6 +61,19 @@ stronger check still: see the [plan](plan_external.md).
 | 5 random constellations: 24 points, Gaussians, elliptical Gaussians and disks at random positions and fluxes, plus a nested, shifted, weighted `System` | sums of closed forms | Analytic | 1e-12 |
 | the same in float32 (virgil's default precision) | same | Analytic | 3e-5 |
 
+## Derivatives
+
+`tests/test_gradients.py`, float64. Every fit, Laplace covariance and
+posterior depends on JAX's derivatives of virgil's models and likelihood;
+virgil's own tests only check that they are finite.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| visibilities of `PointSource`, `GaussianDisk`, `EllipticalGaussian`, `UniformDisk`, `ModulatedGaussianRim` (array `az_amps`, `az_pas`), `GaussianArc`, both binaries, a `System` with `Resolved`, `Rotated`, `GravityDarkenedStar`, with respect to every geometric parameter (flared disks and `HarmonixModel` not yet) | central finite differences (`jax.test_util.check_grads`, forward and reverse mode) | Mathematics | within check_grads' default tolerance (1e-5) |
+| `Image` visibilities with respect to every log-brightness pixel (softmax-coupled) | same | Mathematics | same |
+| `whitened_residuals` and `model_loglike` on noisy V² and closure phases (correlated whitening included) | same | Mathematics | same |
+| Hessian of `model_loglike` (used by Laplace covariances and Fisher matrices) | Richardson-extrapolated central difference of the gradient | Mathematics | < 1e-7 relative to the diagonal |
+
 ## Long-baseline interferometry
 
 Four VLTI UTs, 7 hour angles, 6 channels in H–K, declination −50°
