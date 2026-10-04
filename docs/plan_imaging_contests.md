@@ -67,9 +67,8 @@ read as they are.
   the OIFITS standard allows. virgil pairs triangles with baselines only
   under the same `INSNAME`, and its error message says the wavelengths
   differ, which is wrong. [virgil#167](https://github.com/benjaminpope/virgil/pull/167) fixes it: it matches by wavelength table, and also supports reversed T3 legs (the 2006 V² store (2,0) where the triangle needs (0,2)), which virgil also did not support. It is finding F10 in the ledger and
-  README, pinned by a strict xfail
-  (`test_2006_files_with_separate_t3_insname_are_read`) that flips when
-  virgil#167 merges. CI fetches the 2006 files so the test runs.
+  README, fixed by virgil#167 (merged 2026-10-04) and now checked by
+  `test_2006_files_with_separate_t3_insname_are_read`. CI fetches the 2006 files so the test runs.
 
 ### C1. The organisers' test binaries (done)
 

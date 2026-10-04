@@ -63,7 +63,7 @@ TASKS = [
     ("2004_data1", ["2004/2004-data1.fits"], 12.0, False),
     ("2004_data2", ["2004/2004-data2.fits"], 24.0, False),
     # 2006: AMBER on the UTs, four nights; Chesneau's disk (301 x 0.35 mas).
-    # Needs virgil's INSNAME fix (submit with --ref on that branch).
+    # Needs virgil#167 (merged 2026-10-04) to read.
     ("2006_disk", [f"2006/2006-03-0{n}.fits" for n in (3, 4, 5, 6)], 105.0, False),
     # 2008: CHARA; the field is tapered by a 15 mas FWHM Gaussian; each band
     # is a different model, so each is imaged alone.

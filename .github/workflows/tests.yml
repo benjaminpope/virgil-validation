@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: 8e87c04dc19f788019ae4182b13e75ad40606ff8
+  VIRGIL_REF: ec4cf51530fb528f17d61dc75a5d89df8f5568fd
 
 jobs:
   validate:

@@ -114,14 +114,13 @@ def test_contest_binary_matches_published_parameters(year):
     assert chi2_mirror - chi2 > 25  # the mirror image is rejected at > 5 sigma
 
 
-@pytest.mark.xfail(strict=True, reason="F10: T3 and VIS2 under different INSNAMEs, reversed legs (virgil#167)")
-@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], kind="finding")
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"])
 def test_2006_files_with_separate_t3_insname_are_read():
     """The 2006 contest files (simulated AMBER, OIFITS v1) keep their closure
     phases under INSNAMEs like AMBER-LR_TR01_OB01 and their V² under
     AMBER-LR_OB01, with identical OI_WAVELENGTH tables, and store baseline
     (2, 0) where the triangle's leg is (0, 2). The standard allows both;
-    virgil raised ValueError until virgil#167."""
+    virgil raised ValueError until virgil#167 (finding F10, now fixed)."""
     path = DATA / "2006/2006-03-03.fits"
     if not path.exists():
         pytest.skip(f"{path} absent: run scripts/fetch_contests.py")
