@@ -131,6 +131,25 @@ Its results come back to `~/data/imaging_contests/results/<virgil commit>/`.
 A smoke run on 2004 data1 (three weights, 50 steps each) already shows an
 asymmetric shell 6 mas across, at χ²/N = 3.6.
 
+First results (2026-10-04, OzSTAR jobs 17998336 and 17998363, 2006):
+
+- **2006 failed in the baseline run**, identically on virgil `dd06e9f` and
+  `ec4cf51`. The fit never moved: χ² was the same at all 13 weights, χ²/N
+  was 22–134 per night, and the image was stripes.
+- **The cause is the data, not the fitter.** The target is almost entirely
+  resolved on the UT baselines: V² is at most 0.03 and typically 1e-3, with
+  errors of 1e-4. The truth model is 105 mas across, while λ/B_min is at
+  most 18 mas. A unit-flux image inside 18 mas cannot produce V² ≈ 1e-3.
+- **The fix is a resolved component.** `--halo` adds a fully resolved
+  `Resolved` component with a free flux. In a smoke run its flux came out
+  about 2 (relative to the image), and χ² then fell with weight. Most
+  datasets have short-baseline V² below 1 (0.16 for 2024 Obj1, 0.34 for
+  2010, 0.5–0.6 for 2004 and 2008), so the halo variant will be run for
+  every task after the baseline run, with labels suffixed `_halo`.
+- **2022 AMI has extreme signal-to-noise**: closure-phase errors of about
+  0.001–0.002° and V² errors of about 1e-4. χ²/N ≈ 1 may be out of reach
+  for a grey image.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,

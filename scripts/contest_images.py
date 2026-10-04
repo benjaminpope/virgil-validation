@@ -43,6 +43,7 @@ import numpy as np  # noqa: E402
 import numpyro.distributions as dist  # noqa: E402
 
 import virgil  # noqa: E402
+import virgil.models as vm  # noqa: E402
 from virgil.imaging import (  # noqa: E402
     Centroid,
     MaxEntropy,
@@ -90,12 +91,14 @@ TASKS = [
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
 
 
-def image_of(model, star):
-    return model.env if star else model
+def image_of(model, star, halo=False):
+    return model.env if (star or halo) else model
 
 
-def run(task, data_dir, out_dir, smoke=False):
+def run(task, data_dir, out_dir, smoke=False, halo=False):
     label, files, largest, star = TASKS[task]
+    if halo:
+        label += "_halo"
     t0 = time.time()
     paths = [str(data_dir / f) for f in files]
     data = OIData(paths[0]) if len(paths) == 1 else [OIData(p) for p in paths]
@@ -108,13 +111,21 @@ def run(task, data_dir, out_dir, smoke=False):
         kwargs["hole_mas"] = 0.5 * resolution.minor_mas
     start = starting_image(data, **kwargs)
     img0 = image_of(start, star)
+    if halo:
+        # A fully resolved component (zero visibility on every baseline) for
+        # flux in structure larger than the shortest baseline sees: e.g. the
+        # 2006 disk, whose V² is ~1e-3 on every UT baseline.
+        parts = {"star": start.star, "env": start.env} if star else {"env": start}
+        start = vm.System(**parts, halo=vm.Resolved(1.0))
     npix = int(np.shape(img0.log_brightness)[0])
     pixel = float(img0.pixel_scale_mas)
     fov = npix * pixel
 
-    path = "env" if star else None
+    path = "env" if (star or halo) else None
     priors = image_priors(start) | ({"env.flux": dist.Uniform(0.0, 1.0)} if star else {})
-    others = () if star else (Centroid(0.1 * resolution.minor_mas, path=None),)
+    if halo:
+        priors |= {"halo.flux": dist.Uniform(0.0, 1000.0)}
+    others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
     weights = WEIGHTS[[0, 6, -1]] if smoke else WEIGHTS
     options = {"max_steps": 50} if smoke else {"max_steps": 200_000}
     curve = l_curve(start, priors, data, MaxEntropy(1.0, path=path), jnp.asarray(weights), others, **options)
@@ -129,7 +140,7 @@ def run(task, data_dir, out_dir, smoke=False):
     chosen = {"discrepancy": corner if discrepancy is None else float(discrepancy), "corner": corner}
     reached = discrepancy is not None
     index = {k: int(np.argmin(np.abs(np.log(curve.weights) - np.log(w)))) for k, w in chosen.items()}
-    images = np.stack([np.asarray(image_of(r.model, star).render(npix, fov)) for r in curve.results])
+    images = np.stack([np.asarray(image_of(r.model, star, halo).render(npix, fov)) for r in curve.results])
     # V² and closure phases have no absolute phases, so no dirty image:
     # show the starting image instead.
     first = np.asarray(img0.render(npix, fov))
@@ -141,6 +152,7 @@ def run(task, data_dir, out_dir, smoke=False):
         chi2_red=np.asarray(curve.chi2_red), penalty=np.asarray(curve.penalty),
         images=images, start=first, pixel_scale_mas=pixel, npix=npix,
         beam=np.array([resolution.major_mas, resolution.minor_mas, resolution.pa_deg]),
+        halo_flux=np.array([float(r.model.halo.flux) if halo else 0.0 for r in curve.results]),
         converged=np.array([bool(r.info.get("converged", False)) for r in curve.results]),
         chosen=json.dumps(chosen), index=json.dumps(index),
     )
@@ -156,7 +168,7 @@ def run(task, data_dir, out_dir, smoke=False):
     plot_model(img0, fov_mas=fov, npix=npix, ax=axes[1], beam=resolution, title="starting image")
     for ax, name in zip(axes[2:], ("corner", "discrepancy")):
         r = curve.results[index[name]]
-        plot_model(image_of(r.model, star), fov_mas=fov, npix=npix, ax=ax, beam=resolution,
+        plot_model(image_of(r.model, star, halo), fov_mas=fov, npix=npix, ax=ax, beam=resolution,
                    title=f"{name}: w = {float(curve.weights[index[name]]):.3g}, χ²/N = {float(np.sum(r.info['chi2_red'])):.2f}")
     plt.tight_layout()
     fig.savefig(out_dir / f"{label}.png", dpi=110)
@@ -164,12 +176,13 @@ def run(task, data_dir, out_dir, smoke=False):
     best = curve.results[index["discrepancy"]].model
     report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], path=path), *others])
     summary = (
-        f"task={task} label={label} files={files} star={star}\n"
+        f"task={task} label={label} files={files} star={star} halo={halo}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
         f"beam={resolution.major_mas:.3g}x{resolution.minor_mas:.3g} mas\n"
         f"weights={np.asarray(curve.weights).round(4).tolist()}\n"
         f"chi2_red={np.asarray(curve.chi2_red).round(3).tolist()}\n"
+        f"halo_flux={[round(float(r.model.halo.flux), 4) for r in curve.results] if halo else None}\n"
         f"chosen={chosen} discrepancy_reached={reached}\nconverged={[bool(r.info.get('converged', False)) for r in curve.results]}\n"
         f"elapsed={time.time() - t0:.0f}s\n\n{report}\n"
     )
@@ -183,13 +196,14 @@ def main():
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--data", default="~/data/imaging_contests")
     parser.add_argument("--out", default="contest_images")
+    parser.add_argument("--halo", action="store_true", help="add a fully resolved component (labels get _halo)")
     parser.add_argument("--smoke", action="store_true", help="three weights, 50 steps: check that it runs")
     args = parser.parse_args()
     if args.list:
         for i, (label, files, largest, star) in enumerate(TASKS):
             print(f"{i:2d}  {label:20s} fov<={largest}  star={star}  {files}")
         return
-    run(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke)
+    run(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke, args.halo)
 
 
 if __name__ == "__main__":
