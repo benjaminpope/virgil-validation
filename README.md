@@ -45,6 +45,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | uv geometry | our Earth-rotation tracks vs `virgil.coverage.vlti_oidata` | 1e-9 m |
 | OIFITS | our file → `OIData` → `data.model(...)` reproduces what we wrote (V², T3 orientation, signs, units) | 1e-16 |
 | Recovery (VLTI) | noise-free fits of a binary, a uniform-disk star with a companion, a star with an elliptical envelope and a star with a modulated rim | 1e-10 to 1e-13 relative (rim: 1e-7, optimiser tolerance) |
+| Limb darkening ([#12](https://github.com/benjaminpope/virgil-validation/issues/12)) | `LimbDarkenedDisk` (uniform to order 22), `QuadraticLimbDarkenedDisk`, `SquareRootLimbDarkenedDisk` and `cvis_limb_darkened_disk` with fractional powers, through four nulls, against our quadrature cloud, which agrees with a direct Hankel transform and Hanbury Brown et al.'s (1974) linear-law closed form to 1e-14; Kipping (2013) maps both ways and the unit square ↔ physical laws; `is_physical`; `render`; an oversampled pixel image of an off-centre star with a companion through OIFITS; noise-free recovery of diameter and q₁, q₂; PMOIRED's sampled profiles | 2e-14 (order 22: 7e-12, binomial cancellation); float32 2e-7; pixels 7e-5 in V²; recovery 7e-10 relative; PMOIRED 3e-7 (quadratic) and 2.5e-6 (square root) in V² at `Nr` = 10000, converging as Nr⁻¹·⁵ |
 | Uncertainties | pulls (fit − truth)/σ over noisy realisations, with closure phases correlated through shared baselines or independent | 200 draws per case, four scenes including the rim: means within ±0.17, sds 0.87–1.10 ([results](docs/results.md)) |
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
 | Visibility-only data | V²-only files read and fitted (virgil#158): diameters against the truth, PMOIRED and 200-draw pulls | 1e-6 noise-free; 2e-4 σ from PMOIRED; pulls sd 1.01 |
@@ -123,4 +124,7 @@ fast tests on every push and everything weekly against virgil's `main`.
 * Thompson, Moran & Swenson 2017, *Interferometry and Synthesis in Radio
   Astronomy*, 3rd ed., ch. 4
 * Berger & Segransan 2007, New Astron. Rev. 51, 576
+* Hanbury Brown, Davis, Lake & Thompson 1974, MNRAS 167, 475 (linear
+  limb darkening)
+* Kipping 2013, MNRAS 435, 2152 (q₁, q₂ for two-parameter laws)
 * Desdoigts, Pope, Dennis & Tuthill 2023, JATIS 9, 028007 (dLux)
