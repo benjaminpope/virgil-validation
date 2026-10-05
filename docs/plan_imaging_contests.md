@@ -529,6 +529,63 @@ before submitting.
 4. Scoring 2018, then 2004 data2.
 5. Parametric comparisons for AMI.
 
+### C2f. A synthetic benchmark before more campaigns
+
+χ²/N says the data are fitted, not that the image is right, and only
+2004 data2 has a truth we can score against numerically. Campaign 1 scored
+σ/peak 0.250 there, third of four (BSMEM 0.116, WISARD 0.163, MIRA 0.532,
+VLBMEM 0.798). With the truth's unpublished details fitted to the data it
+scores 0.260, and even that truth fits only at V² χ²/N ≈ 50: the 2004
+data carry calibration errors. So, before more contest campaigns, every
+method choice is tested on **known phantoms observed with the real contest
+uv coverages** (Ben, 2026-10-06).
+
+- **Phantoms** (`src/crosscheck/phantoms.py`, NumPy only). These are
+  generic families matching each contest's *pre-submission* description:
+  - a spotted elliptical limb-darkened star with a companion (2004);
+  - a thin flared disk (2006);
+  - a core in a clumpy envelope (2008 AGB);
+  - a star, ring disk with gap, and a planet (2018);
+  - a binary with a dust spiral (2024 Obj1).
+
+  Sizes are in beams and parameters are random. They are never the
+  published truths, so methods are not tuned to the answers.
+- **Simulation** (`scripts/contest_bench.py simulate`). V² and closure
+  phases come from a direct DFT (`crosscheck.sky`) on each contest file's uv
+  points, with noise from its quoted errors. Closure noise is drawn from
+  shared baseline phases per (MJD, TIME) frame and topped up to each
+  triangle's quoted variance. In tests, virgil fits noiseless simulations
+  exactly, fits noisy ones at χ²/N within 30% of 1, and fits the inverted
+  image far worse.
+- **Metrics** (`src/crosscheck/image_metrics.py`):
+  - the 2004 σ/peak;
+  - the RMS after convolution ×10⁶;
+  - the 2024 L1 with the optimal flux scale;
+  - NCC (normalised cross-correlation).
+
+  Alignment uses a padded, zero-filled whole-pixel shift; inversion is
+  allowed only for V²-only data.
+- **Arms** (`contest_bench.CONFIGS`). Each changes one factor against
+  `baseline`, the campaign-1 CLEAN-started GP with no star:
+  - `point_star`, `disk_star`, `halo`;
+  - fields of 1× and 4×;
+  - `half_beam_mean`: the GP starts from CLEAN components restored with
+    half a beam;
+  - `mem`: MaxEnt with the CLEAN image as its default model, the winners'
+    own method.
+
+  Arms from the virgil PRs follow once they merge:
+  - a parametric elliptical limb-darkened start (#250);
+  - multi-scale CLEAN (#252);
+  - converged-only evidence and Laplace σ maps (#251);
+  - per-observable error scales (#247).
+- **Adoption rule.** A change is adopted only if it raises the median score
+  of its target family without lowering the others beyond the scatter
+  between noise draws.
+- **Status.** The smoke run of the first six arms (job 18097494) ran clean
+  in 1–7 minutes per task. Next: smoke the two new arms, then the full
+  benchmark of 60 datasets × 8 arms on OzSTAR (`bench.sbatch`).
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
