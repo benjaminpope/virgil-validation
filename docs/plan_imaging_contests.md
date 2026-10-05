@@ -274,6 +274,15 @@ from the papers; those values have been removed.
 | 2022 | nothing found; the GRAVITY OI_TARGET names the real star, probably by accident | treated as blind; the header is ignored. An analytic star is inferred from the data (an unresolved source dominates), which a contestant could also have seen |
 | 2024 | "a hot star with an environment" / "a young star", suspected companion; uncalibrated OI_FLUX; cubes required | analytic star in both; grey images per instrument as a first look; cubes in C3 |
 
+**Central stars** are common in these targets, so every dataset is also
+imaged both with and without an analytic central star (Ben, 2026-10-05:
+choosing between them from the data is not misusing information).
+`--star on|off` overrides a task's default, and labels get
+`_star`/`_nostar`. virgil's `log_evidence` applies only to Gaussian-field
+images, so for these MaxEnt images the choice is made on the L-curves: the
+χ² reached at equal entropy, and whether the star-free image builds a
+compact central peak to imitate a star.
+
 **Data-chosen fields** start from virgil's `starting_image`, whose field
 is limited by λ/B_min. They grow ×1.5, at most three times, while that
 lowers χ² by more than 10% in a 3000-step probe fit at w = 100.

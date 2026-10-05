@@ -137,12 +137,19 @@ def select_channels(path, wavel, tmp_dir):
     return str(out)
 
 
-def setup(task, data_dir, halo=False, grow=1.0):
+def setup(task, data_dir, halo=False, grow=1.0, star=None):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data."""
     spec = TASKS[task]
-    label, files, star = spec["label"], spec["files"], spec.get("star", False)
+    # star=None keeps the task's default; True/False override it, so any
+    # dataset can be imaged with and without a central star and compared
+    # (labels get _star / _nostar).
+    label, files = spec["label"], spec["files"]
+    if star is None:
+        star = spec.get("star", False)
+    else:
+        label += "_star" if star else "_nostar"
     field, prior_spec = spec.get("field"), spec.get("prior")
     if halo:
         label += "_halo"
@@ -200,9 +207,9 @@ def setup(task, data_dir, halo=False, grow=1.0):
                 field_source=spec.get("field_source", "data" + (f" x{grow:g}" if grow > 1 else "")))
 
 
-def run(task, data_dir, out_dir, smoke=False, halo=False):
+def run(task, data_dir, out_dir, smoke=False, halo=False, star=None):
     t0 = time.time()
-    s = setup(task, data_dir, halo)
+    s = setup(task, data_dir, halo, star=star)
     # A field chosen from the data grows (x1.5) while doing so lowers χ² by
     # more than 10% in a probe fit at a middle weight: what a contestant would
     # try. (Flux at the image edge is not a usable trigger here: the support
@@ -218,7 +225,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
         grow, chi2 = 1.0, probe(s)
         growth.append((round(s["fov"], 3), round(chi2, 3)))
         for _ in range(GROWTHS):
-            bigger = setup(task, data_dir, halo, grow * 1.5)
+            bigger = setup(task, data_dir, halo, grow * 1.5, star=star)
             chi2_big = probe(bigger)
             growth.append((round(bigger["fov"], 3), round(chi2_big, 3)))
             if chi2_big > 0.9 * chi2:
@@ -305,6 +312,7 @@ def main():
     parser.add_argument("--data", default="~/data/imaging_contests")
     parser.add_argument("--out", default="contest_images")
     parser.add_argument("--halo", action="store_true", help="add a fully resolved component (labels get _halo)")
+    parser.add_argument("--star", choices=("on", "off"), help="override the task's central star (labels get _star/_nostar)")
     parser.add_argument("--smoke", action="store_true", help="three weights, 50 steps: check that it runs")
     args = parser.parse_args()
     if args.list:
@@ -312,7 +320,8 @@ def main():
             print(f"{i:2d}  {spec['label']:20s} field={spec.get('field')}  prior={spec.get('prior')}  "
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
-    run(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke, args.halo)
+    run(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke, args.halo,
+        None if args.star is None else args.star == "on")
 
 
 if __name__ == "__main__":
