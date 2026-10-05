@@ -198,7 +198,7 @@ COMPONENTS = {
 
 
 @pytest.mark.parametrize("name", list(COMPONENTS))
-@pytest.mark.validates("virgil.models.SourceModel", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.SourceModel", "virgil.models.System", roots=["mathematics"])
 def test_source_model_invariants(name):
     comp = COMPONENTS[name]()
     u, v = baselines(seed=5)
