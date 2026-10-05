@@ -211,5 +211,6 @@
   kind: bug (near-equal binaries with noisy closure phases near 180 deg)
   referee: mathematics (closure phases are angles; virgil's chord is 2 pi periodic)
   evidence: [tests/test_fouriever.py::test_p5_residual_wraps_across_the_phase_cut]
-  status: to-raise
+  status: raised
+  links: [https://github.com/kammerje/fouriever/issues/26]
 

@@ -102,7 +102,7 @@ Differences with other packages (all in the [ledger](docs/trust.md#ledger)):
 | D6 | fouriever | With unequal closure-phase errors within a group, different generalised inverses of the singular covariance (virgil's is the better calibrated) | definition |
 | P1–P3 | PMOIRED | NaN models with `auto`, ring sampling not the documented Nr, a ~1e-4 ring precision floor ([notes](docs/pmoired_notes.md)) | to raise |
 | P4 | CANDID | Absil limits from `detectionLimit` ~1 % low against its own criterion solved exactly ([notes](docs/candid_notes.md)) | to raise |
-| P5 | fouriever | Closure-phase residual not wrapped: data straddling ±180° give a ~2π residual at the true binary ([notes](docs/fouriever_notes.md)) | to raise |
+| P5 | fouriever | Closure-phase residual not wrapped: data straddling ±180° give a ~2π residual at the true binary ([notes](docs/fouriever_notes.md)) | raised, [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 
 Nothing else disagreed: every primitive, convention (East, North, position
 angle, OIFITS sign, T3 orientation), the OIFITS reader, the fitter, the

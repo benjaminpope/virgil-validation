@@ -44,11 +44,11 @@ Pinned by `tests/test_fouriever.py`.
     noisier, the means are 2.94 (virgil) and 2.75 (fouriever) against 3,
     and the exact model gives 2.99.
 
-## Problems to raise (with approval)
+## Problems raised upstream
 
 | # | fouriever | Problem | Evidence | Severity |
 | --- | --- | --- | --- | --- |
-| P5 | 0.4.3 | The closure-phase residual is `data − model`, with the model the sum of the three baseline phases and nothing wrapped. Take a near-equal binary (flux ratio 0.99, inside its fitting range) whose closure phase is 178°. A measurement 3° away is stored as −179°, so the residual is 357° instead of 3°, and the true binary gets a huge χ². Measurements this close to ±180° are common for near-equal binaries with a few degrees of noise. | `test_p5_residual_wraps_across_the_phase_cut` (strict xfail); `test_plain_residual_across_the_phase_cut` pins the unwrapped definition | medium: wrong fits near ±180° |
+| P5 | 0.4.3 | The closure-phase residual is `data − model`, with the model the sum of the three baseline phases and nothing wrapped. Take a near-equal binary (flux ratio 0.99, inside its fitting range) whose closure phase is 178°. A measurement 3° away is stored as −179°, so the residual is 357° instead of 3°, and the true binary gets a huge χ². Measurements this close to ±180° are common for near-equal binaries with a few degrees of noise. | `test_p5_residual_wraps_across_the_phase_cut` (strict xfail); `test_plain_residual_across_the_phase_cut` pins the unwrapped definition | medium: wrong fits near ±180°; raised as [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 
 ## Reading requirements
 
