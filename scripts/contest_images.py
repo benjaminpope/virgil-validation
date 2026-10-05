@@ -440,7 +440,7 @@ def oriented_template(template, pa_deg, pixel, n):
     return best[1]
 
 
-# Ensemble members (--member m of --members M): one CLEAN-started GP fit each,
+# Ensemble members (--member m, one per array task): one CLEAN-started GP fit each,
 # with a randomised start, as the 2012 random-start entries, the 2018 winner's
 # chains and PYRA/MYTHRA (2022-24) did. Members alternate the analytic star
 # on and off, so the evidence compares the two on the same data.
@@ -464,12 +464,19 @@ def member_setup(task, data_dir, member, smoke=False):
     settings = member_settings(task, member)
     opts = dict(star=settings["star"], init="clean", clean_iters=50 if smoke else 3000,
                 oversample=settings["oversample"], clean_gain=settings["clean_gain"])
-    grow = settings["field"] if TASKS[task].get("field") is None else 1.0
-    s = setup(task, data_dir, False, grow, **opts)
-    # The common grid: twice the base field (moments start, no CLEAN), odd size.
-    base = setup(task, data_dir, False, 1.0, star=settings["star"], init="moments")
-    s["ref_fov"] = 2.0 * base["fov"]
+    if TASKS[task].get("field") is not None:
+        settings["field"] = 1.0  # a contest-given field is used as given
+    s = setup(task, data_dir, False, settings["field"], **opts)
+    s["ref_fov"] = reference_fov(task, data_dir)
     return s, settings
+
+
+def reference_fov(task, data_dir):
+    """The common grid's field for all members of a task: twice the base field
+    of the task's own configuration (its default star, a moments start), so it
+    does not depend on any member's random settings or star choice."""
+    base = setup(task, data_dir, False, 1.0, star=None, init="moments")
+    return 2.0 * base["fov"]
 
 
 def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None):

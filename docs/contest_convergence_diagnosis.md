@@ -120,7 +120,7 @@ The winners, taken together, did five things:
 4. treated unresolved stars and companions parametrically;
 5. imaged multi-channel data per band, starting from a grey default.
 
-The OzSTAR campaign in `scripts/contest_images.py` (`--members`) does the same:
+The OzSTAR campaign in `scripts/contest_images.py` (`--member k`, one array task per member) does the same:
 - an **ensemble of CLEAN-started GP fits** per dataset, randomising the
   start (CLEAN gain, field 1–2× and pixel scale) and the star or no-star
   choice;

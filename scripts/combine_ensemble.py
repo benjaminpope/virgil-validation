@@ -57,7 +57,37 @@ def load(results):
     return groups
 
 
+def resample(image, fov, common_fov):
+    """``image`` (unit-sum, ``fov`` across) on a grid of the same size spanning
+    ``common_fov``, by bilinear interpolation, renormalised to unit sum.
+    Members written before contest_images.reference_fov fixed the common
+    grid (job 18073823) have one of two fields, depending on their star
+    setting; resampling makes them comparable pixel by pixel."""
+    from scipy.ndimage import gaussian_filter, map_coordinates
+
+    n = image.shape[0]
+    ratio = common_fov / fov
+    if ratio > 1:
+        # Larger new pixels: smooth over about one of them first, so that
+        # point sampling cannot step over a compact feature (anti-aliasing).
+        image = gaussian_filter(image, sigma=0.5 * ratio, mode="constant")
+    centre = (n - 1) / 2
+    # Pixel k of the common grid sits at (k - centre) * common_fov / n mas,
+    # which is pixel centre + (k - centre) * common_fov / fov of the old one.
+    k = centre + (np.arange(n) - centre) * ratio
+    rows, cols = np.meshgrid(k, k, indexing="ij")
+    out = map_coordinates(image, [rows, cols], order=1, mode="constant", cval=0.0)
+    return out / out.sum()
+
+
 def combine(label, members, out):
+    # Members share one grid since contest_images.reference_fov; older ones
+    # are resampled onto the largest field among them.
+    common = max(m["fov"] for m in members)
+    for m in members:
+        if not np.isclose(m["fov"], common, rtol=1e-9):
+            m["image"] = resample(m["image"] / m["image"].sum(), m["fov"], common)
+            m["fov"] = common
     chi2 = np.array([m["chi2"] for m in members])
     finite = np.isfinite(chi2)
     best = np.nanmin(chi2[finite]) if finite.any() else np.nan
