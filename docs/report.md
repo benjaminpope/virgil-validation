@@ -260,6 +260,33 @@ three-telescope files with and without a companion.
 | `detection.gaussian_null`, error scale 1 and 1.5 | simulated minus predicted, over the errors, is 𝒩(0, scale²) (mean, sd, KS) | Statistics | within 4σ |
 | `limits.flux_to_contrast`, `flux_to_delta_mag` and inverses | their formulae | Mathematics | 1e-14 |
 
+## Cones, Gaussian fields and model invariants
+
+`tests/test_cone_field.py`.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `models.TruncatedCone`, four geometries (side-on, wide with negative tilt and a stretched cross-section, seen down its axis, in the sky plane), with an offset | a direct Fourier sum over a 3-D cloud on the cone's walls, built from the documented geometry and projected onto the sky (Gauss–Legendre in slant distance, trapezoid in azimuth), blurred by the shell's Gaussian | Mathematics | 2e-6 in V at 1024 rings; doubling 64 → 128 rings cuts the error by 4.0, the documented second order |
+| `TruncatedCone` tilt sign | ±tilt give the same visibilities (optically thin) | Mathematics | 1e-14 |
+| `fields.GaussianField`, `field_spectrum`, orders 1–3, isotropic and anisotropic | the field's covariance (from its response to each latent) against our dense Π(κ² + L)^(−order)Π, with L the reflecting-boundary Laplacian built from second differences, scaled to a pixel-averaged variance σ² | Mathematics | 2e-14 |
+| `GaussianField`, order 1 | ½\|z\|² is proportional to \|η\|²/ℓ² plus the squared neighbour differences over h² | Mathematics | 1e-10 |
+| `GaussianField` with a template, inside an `Image` | SciPy's orthonormal inverse DCT-II plus log(μ/max μ + ε); the image is the softmax of the field | Mathematics | 1e-12 |
+| `SourceModel` invariants, six analytic components | V(0) = 1, V(−u, −v) = V(u, v)*, the shift theorem, and `System` mixing | Mathematics | 1e-12 |
+
+## Small helpers
+
+`tests/test_helpers.py`: light checks of helpers that need little trust,
+against our own χ².
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `grid_fit.best_grid_point` | NumPy's `nanargmax` | Mathematics | exact |
+| `likelihood.build_model`, `likelihood.loglike` | a class and a template build the same scene; loglike differences are −½ our χ² differences | Mathematics | 1e-8 |
+| `likelihood.inflated_errors`, relative to the model or the data, quadrature or maximum | the formulae in its docstring | Mathematics | 1e-14 |
+| `inference.fisher` | the Hessian of ½ our χ² by central differences | Mathematics | 1e-5 |
+| `simulate.simulate` | noiseless: our V²; noisy: V² pulls are 𝒩(0, noise_scale²) (sd, KS) | Mathematics, statistics | 1e-12; within 4σ |
+| `simulate.bias_test` | each entry is the fit to the simulation drawn with that key | Self-consistency | 1e-10 |
+
 ## Long-baseline interferometry
 
 Four VLTI UTs, 7 hour angles, 6 channels in H–K, declination −50°

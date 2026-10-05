@@ -173,6 +173,32 @@ nodes:
     depends: [virgil.oidata.OIData]
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
   virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
+  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
+  virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
+  virgil.fields.GaussianField:
+    layer: priors
+    source: [src/virgil/fields.py]
+    depends: [virgil.fields.field_spectrum]
+  virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
+  virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}
+  virgil.likelihood.loglike:
+    layer: likelihood
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.model_loglike, virgil.likelihood.build_model]
+  virgil.likelihood.inflated_errors: {layer: likelihood, source: [src/virgil/likelihood.py, src/virgil/_utils.py], depends: [virgil.oidata.OIData]}
+  virgil.inference.fisher:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.simulate.simulate:
+    layer: data
+    source: [src/virgil/simulate.py, src/virgil/oidata.py]
+    depends: [virgil.oidata.OIData]
+  virgil.simulate.bias_test:
+    layer: inference
+    source: [src/virgil/simulate.py]
+    depends: [virgil.simulate.simulate, virgil.fitting.fit]
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
     source: [src/virgil/_linear.py]
