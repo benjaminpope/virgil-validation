@@ -154,7 +154,8 @@
   evidence:
     - tests/test_closure_continuity.py::test_four_telescope_chi2_is_continuous
     - tests/test_closure_continuity.py::test_three_telescope_chi2_is_continuous
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/174]
 
 - id: F12
   title: imaging.clean returns NaN on some grids with correlated closure phases (regression from virgil#174)
@@ -167,7 +168,7 @@
   status: open
 
 - id: D5
-  title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2)
+  title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
   ruling: definition
   referee: mathematics (both chi-squareds computed independently); equal on V2-only files to 1e-7
@@ -238,8 +239,17 @@
   objects: [fouriever]
   ruling: external:fouriever
   kind: bug (near-equal binaries with noisy closure phases near 180 deg)
-  referee: mathematics (closure phases are angles; virgil's chord is 2 pi periodic)
+  referee: mathematics (closure phases are angles; virgil's residuals are 2 pi periodic)
   evidence: [tests/test_fouriever.py::test_p5_residual_wraps_across_the_phase_cut]
   status: raised
   links: [https://github.com/kammerje/fouriever/issues/26]
+
+- id: P6
+  title: eht-imaging's Obsdata.tlist/bllist return tuples under NumPy 2 when every time group has the same size, so closure phases fail
+  objects: [ehtim]
+  ruling: external:ehtim
+  kind: bug (np.array(list_of_equal_length_record_arrays, dtype=object) is 2-D in NumPy 2; any data with the same baselines at every time, e.g. all simulated data)
+  referee: mathematics (NumPy's documented behaviour)
+  evidence: [tests/test_ehtim_reconstruction.py::test_p6_closure_phases_with_equal_time_groups]
+  status: to-raise
 

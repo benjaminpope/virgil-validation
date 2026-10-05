@@ -68,9 +68,10 @@ def test_three_telescope_chi2_is_continuous(tmp_path):
     assert ratio < 200
 
 
-@pytest.mark.xfail(strict=True, reason="F11: correlated closure-phase chords jump at Δ = ±π")
-@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"])
 def test_four_telescope_chi2_is_continuous(tmp_path):
+    """Finding F11: correlated closure-phase chords jumped at Δ = ±π;
+    fixed in virgil#174 (sines whitened together, plus a periodic penalty)."""
     ratio = _largest_step_ratio(_file(tmp_path, UTS))
     record("max_step_over_median_4t", ratio)
     assert ratio < 200

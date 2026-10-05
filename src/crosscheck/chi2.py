@@ -61,13 +61,22 @@ def triangle_matrix(stations):
     return T
 
 
-def chi2(d, vis, correlated=False, chord=True):
+def chi2(d, vis, correlated=False, chord=True, sine=False, whitened=False):
     """Chi-squared of ``vis(u, v, wavel)`` against the loaded data.
 
     Closure-phase residuals are chords 2 sin(delta/2) (virgil's) or, with
     ``chord=False``, plain, unwrapped differences between the sum of the
     model's baseline phases and the data; ``correlated`` as in the module
-    docstring."""
+    docstring.
+
+    With ``correlated=True``:
+
+    * ``sine=True`` is virgil's continuous form (since virgil#174): the
+      sines sin(delta) are correlated, and each closure phase adds an
+      uncorrelated periodic penalty ((1 - cos delta) / sigma)^2;
+    * ``whitened=True`` uses the generalised inverse D^-1/2 R^+ D^-1/2
+      (residuals divided by sigma, then R's pseudo-inverse) instead of C^+;
+      the two agree when a group's errors are equal."""
     model_v2 = np.abs(vis(d["u"], d["v"], d["wl"])) ** 2
     total = np.sum(((model_v2 - d["v2"]) / d["dv2"]) ** 2)
     if "cp" in d:
@@ -82,6 +91,9 @@ def chi2(d, vis, correlated=False, chord=True):
         )
         delta = model - d["cp"]
         r = 2.0 * np.sin(delta / 2.0) if chord else delta
+        if correlated and sine:
+            r = np.sin(delta)
+            total += np.sum(((1.0 - np.cos(delta)) / d["dcp"]) ** 2)
         if not correlated:
             total += np.sum((r / d["dcp"]) ** 2)
         else:
@@ -91,6 +103,10 @@ def chi2(d, vis, correlated=False, chord=True):
                 R = T @ T.T / 3.0
                 for k in range(r.shape[1]):  # one channel at a time
                     s = d["dcp"][rows, k]
-                    C = s[:, None] * R * s[None, :]
-                    total += r[rows, k] @ np.linalg.pinv(C, rcond=1e-10) @ r[rows, k]
+                    if whitened:
+                        x = r[rows, k] / s
+                        total += x @ np.linalg.pinv(R, rcond=1e-10) @ x
+                    else:
+                        C = s[:, None] * R * s[None, :]
+                        total += r[rows, k] @ np.linalg.pinv(C, rcond=1e-10) @ r[rows, k]
     return float(total)
