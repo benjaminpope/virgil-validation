@@ -1,4 +1,4 @@
-"""OIFITS v1 snapshots told apart by TIME, not MJD (finding F13).
+"""OIFITS v1 snapshots told apart by TIME, not MJD (finding F13, fixed in virgil#203).
 
 OIFITS v1 (Pauls et al. 2005) gives each row a TIME (UTC seconds) and an
 MJD. Some writers set MJD to the night's date only and put the snapshot in
@@ -73,8 +73,7 @@ def test_simulated_snapshots_have_distinct_mjd(tmp_path):
     assert distinct.n_independent - np.asarray(distinct.vis).size == 7 * 3  # three independent per snapshot
 
 
-@pytest.mark.xfail(strict=True, reason="F13: frames grouped by MJD only; TIME ignored")
-@pytest.mark.validates("virgil.oidata.OIData", roots=["standards"], kind="finding")
+@pytest.mark.validates("virgil.oidata.OIData", roots=["standards"])
 def test_snapshots_in_time_column_are_separate_frames(tmp_path):
     distinct, shared = _files(tmp_path)
     assert shared.n_independent == distinct.n_independent

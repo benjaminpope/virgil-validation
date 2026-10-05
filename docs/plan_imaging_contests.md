@@ -207,8 +207,13 @@ latest JAX, so the stalls are being debugged there, not by going back to an
 older version. Only virgil's own lockfile pins 0.9.1, which means virgil's
 CI never sees the JAX its users install.
 
-`scripts/diagnose_stall.py` takes each stalled fit at its strongest weight
-(cases: 2022 GRAVITY, 2024 Obj2 GRAVITY, 2010, 2006 with halo). It records:
+`scripts/diagnose_stall.py` takes each stalled fit at its strongest weight.
+Its case numbers change as fits are fixed. In the first diagnosis below
+(job 18019122) they were 0 = 2022 GRAVITY, 1 = 2024 Obj2 GRAVITY,
+2 = 2010 and 3 = 2006 with halo. They are now 0 = 2008 AGB J (task 3),
+1 = 2008 AGN K (task 8), 2 = 2022 GRAVITY (task 10) and 3 = 2024 Obj2
+GRAVITY (task 15), the fits still stuck on virgil 98eaf86, after #174.
+It records:
 
 - snapshots after 10 to 20 000 steps (χ², effective and dead pixels);
 - JAX against finite-difference gradients at the stall, and a loss scan
@@ -221,7 +226,7 @@ in the fit). Holding `env.flux` fixed reaches χ²/N 1623 in 10 steps,
 against 5091 with it free, which points at the flux parameter's coupling
 to the pixels. The full runs go to OzSTAR (`--diagnose`).
 
-**Diagnosis (job 18019122, virgil `760c720`, JAX 0.11.2): finding F11.**
+**First diagnosis (job 18019122, virgil `760c720`, JAX 0.11.2; the old case numbering): finding F11.**
 The two worst stalls sit on a discontinuity in virgil's likelihood, not a
 JAX problem.
 
