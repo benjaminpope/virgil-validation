@@ -1,0 +1,111 @@
+"""Combine the ensemble members of the contest campaign (PYRA-style).
+
+    python scripts/combine_ensemble.py RESULTS_DIR [--out DIR]
+
+For each dataset, read the members' `<label>_m<k>.npz` files, written by
+`scripts/contest_images.py --member k`. Each member is a CLEAN-started GP fit
+with a randomised start, rendered onto a common grid (twice the base field,
+129 pixels). Then:
+
+1. **χ² filter.** Keep the members whose χ²/N, with the quoted errors, is
+   within 1.5x of the best member's. This drops starts that stayed in a poor
+   basin, as PYRA/MYTHRA and the 2012 random-start entries did.
+2. **Average.** Take the mean and the per-pixel standard deviation of the
+   kept members' unit-sum images. A feature that is real survives the
+   average; one that comes from a single start's artefact is diluted and
+   shows up in σ.
+3. **Star or no star.** Compare the best log evidence among star members
+   with the best among no-star members: same data, same errors.
+
+Writes `<label>_ensemble.npz` and `<label>_ensemble.png`, plus `ensemble.md`,
+a table over all datasets. NumPy and matplotlib only, so it runs on a laptop.
+"""
+
+import argparse
+import collections
+import pathlib
+import re
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+
+KEEP = 1.5  # members within this factor of the best χ²/N are kept
+
+
+def load(results):
+    groups = collections.defaultdict(list)
+    for path in sorted(pathlib.Path(results).glob("*_m[0-9]*.npz")):
+        match = re.match(r"(.+)_m(\d+)\.npz$", path.name)
+        if not match:
+            continue
+        d = np.load(path)
+        if "ref_image" not in d:
+            continue
+        groups[match.group(1)].append({
+            "member": int(match.group(2)),
+            "image": np.asarray(d["ref_image"], float),
+            "fov": float(d["ref_fov"]),
+            "star": bool(d["star"]),
+            "log_z": float(d["best_log_z"]),
+            "chi2": float(d["best_chi2_red"]),
+            "scale": float(d["error_scale"]),
+            "flip": float(d["flip_dchi2"]),
+        })
+    return groups
+
+
+def combine(label, members, out):
+    chi2 = np.array([m["chi2"] for m in members])
+    finite = np.isfinite(chi2)
+    best = np.nanmin(chi2[finite]) if finite.any() else np.nan
+    kept = [m for m, c in zip(members, chi2) if np.isfinite(c) and c <= KEEP * best]
+    stack = np.array([m["image"] / m["image"].sum() for m in kept])
+    mean, sigma = stack.mean(0), stack.std(0)
+    star = [m["log_z"] for m in members if m["star"] and np.isfinite(m["log_z"])]
+    nostar = [m["log_z"] for m in members if not m["star"] and np.isfinite(m["log_z"])]
+    dlogz = (max(star) - max(nostar)) if star and nostar else np.nan
+    fov = kept[0]["fov"]
+    np.savez_compressed(out / f"{label}_ensemble.npz", mean=mean, sigma=sigma, fov=fov,
+                        kept=np.array([m["member"] for m in kept]),
+                        members=np.array([m["member"] for m in members]), chi2=chi2, star_minus_nostar_log_z=dlogz)
+
+    n = len(members)
+    fig, axes = plt.subplots(1, 2 + n, figsize=(3.2 * (2 + n), 3.4))
+    extent = [fov / 2, -fov / 2, -fov / 2, fov / 2]  # East left, North up
+    for ax, img, title in ((axes[0], mean, f"mean of {len(kept)}/{n}"), (axes[1], sigma, "σ")):
+        ax.imshow(img, origin="upper", extent=extent, cmap="magma")
+        ax.set(title=title, xlabel="ΔRA (mas)", ylabel="ΔDec (mas)")
+    for ax, m in zip(axes[2:], sorted(members, key=lambda m: m["member"])):
+        ax.imshow(m["image"], origin="upper", extent=extent, cmap="magma")
+        mark = "" if any(k is m for k in kept) else " (dropped)"
+        ax.set(title=f"m{m['member']} {'star' if m['star'] else 'no star'}\nχ²/N {m['chi2']:.3g}{mark}", xticks=[], yticks=[])
+    fig.suptitle(label)
+    plt.tight_layout()
+    fig.savefig(out / f"{label}_ensemble.png", dpi=90)
+    plt.close(fig)
+    scales = [m["scale"] for m in kept]
+    return (f"| {label} | {len(kept)}/{n} | {best:.3g} | {np.median([m['chi2'] for m in kept]):.3g} | "
+            f"{min(scales):.2f}–{max(scales):.2f} | {dlogz:+.4g} |")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("results")
+    parser.add_argument("--out", default=None)
+    args = parser.parse_args()
+    out = pathlib.Path(args.out or args.results)
+    out.mkdir(parents=True, exist_ok=True)
+    rows = ["| dataset | kept | best χ²/N | median kept χ²/N | error scale (kept) | ΔlogZ star − no star |",
+            "|---|---|---|---|---|---|"]
+    for label, members in sorted(load(args.results).items()):
+        rows.append(combine(label, members, out))
+    table = "\n".join(rows) + "\n"
+    (out / "ensemble.md").write_text(table)
+    print(table)
+
+
+if __name__ == "__main__":
+    main()

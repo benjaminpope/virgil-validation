@@ -408,6 +408,23 @@ Planned options for `contest_images.py`, in order:
 5. C3: grey-then-per-channel with a median combine; SPARCO-style star with
    `PowerLaw`.
 
+### C2d. The convergence diagnosis and the ensemble campaign
+
+`docs/contest_convergence_diagnosis.md` separates the causes of the
+non-converging fits: optimiser and conditioning, likelihood, regularisation
+and hyperparameters, and initialisation. Initialisation and the image
+parameterisation dominate. The campaign follows the winners' methods taken
+together:
+- CLEAN-started GP fits in an ensemble of 8 randomised starts per dataset
+  (`--member`);
+- star on and off alternating;
+- evidence-chosen σ, ℓ and isotropy;
+- an `error_scale` refit when the errors are off by more than 1.3x;
+- `scripts/combine_ensemble.py`: χ² filter, mean and σ maps, and the star
+  evidence.
+
+It covers 22 datasets, including the 2024 MATISSE L and N bands.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
