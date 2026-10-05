@@ -586,14 +586,36 @@ a 400 × 800 midpoint grid on the surface. virgil sums its mesh of
 | `GravityDarkenedStar` (grey), ω = 0.6–0.95, inclinations 0° (pole-on), 30°, 60°, 85° and 90° (equator-on), five position angles | the reference's visibilities | Mathematics | 1.4–3.4e-4 at `n_lat` 128; each doubling of `n_lat` cuts the error by 3.8–4.4 (second order) |
 | `GravityDarkenedStar` (chromatic, `t_pole` = 9000 K, ω = 0.9, inclination 50°), 0.7, 1.65 and 2.2 µm | the same, each point radiating B_λ(T) with T⁴ ∝ F | Mathematics | 1.3–1.4e-4 at `n_lat` 128 |
 
+## Sampling: simulation-based calibration
+
+`scripts/sbc_numpyro.py`, run on OzSTAR (job 18077226, virgil `4afc5b8`):
+the method of Talts et al. (2018), with 500 replicates. Each replicate draws a
+binary from Jeffreys priors: log-uniform diameter, flux ratio, separation and
+V² error scale, and a uniform position angle sampled as an `AngleVector`. Our
+own simulator makes three-UT data from it, and NUTS (4 × 1000 draws) samples
+`numpyro_model`'s posterior. Each truth is ranked among 99 thinned draws.
+`tests/test_sbc_numpyro.py` reads the committed summary
+(`trust/campaigns/sbc_numpyro_model.json`), and its evidence is in
+`trust/evidence/campaigns.jsonl`, under the commit the campaign ran on.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `likelihood.numpyro_model`: diameter, flux, separation, PA (`AngleVector`), `noise.vis_scale` | rank uniformity, χ² over 20 bins, Bonferroni family-wise 1 % (each p > 0.002) | Statistics | p = 0.035, 0.50, 0.54, 0.14, 0.35 |
+| the same | 68 % and 95 % central-interval coverage, within the 99 % binomial band | Statistics | 64.6–68.0 % and 92.0–94.2 %, all within |
+
+Sampler health is reported, not tested. The median replicate had 28
+divergent transitions in 4000 draws. 65 of 500 replicates had a split R̂ above
+1.01, and 59 had a bulk ESS below 400, mostly in `vis_scale` and `flux`, the
+parameters whose log-uniform priors have hard bounds that the posterior
+reaches. A few chains were stuck (worst R̂ 3.2). The ranks are uniform
+nonetheless, so `numpyro_model`'s density is calibrated; the divergences
+concern NUTS's geometry near those bounds.
+
 ## Not yet covered
 
 harmonix's maps (harmonix's to validate), bandwidth smearing (not modelled
 by virgil), AMIGO DISCO mode bases, regularised reconstructions end to end
-and `l_curve`. Sampling
-(`numpyro_model`) has a simulation-based calibration campaign written
-(`scripts/sbc_numpyro.py`, 500 replicates on OzSTAR; `tests/test_sbc_numpyro.py`
-reads its summary) but not yet run. To ask for any of these, or anything else,
+and `l_curve`. To ask for any of these, or anything else,
 open an Issue at
 <https://github.com/benjaminpope/virgil-validation/issues> describing the
 model or function, the independent result it should match, and the
