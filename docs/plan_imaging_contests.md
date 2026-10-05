@@ -612,9 +612,11 @@ MPoL (`rml-imaging`).
 
 ## Open decisions for Ben
 
-1. **2024 truths.** Should we ask Millour or Soulez for the 2024 truth
-   images? With ImageMetrics, that is the quickest route to a quantitative
-   score.
+1. **2024 truths** (decided by Ben, 2026-10-06). He will ask Millour or
+   Soulez later, not yet. Until then, 2024 is assessed on the data alone
+   (χ²/N, residuals, agreement within the ensemble) and is left out of the
+   comparison with the winners. It is recorded as pending in
+   `docs/contest_scoring_sources.md`.
 2. **Chromatic imaging in virgil.** If C3 shows that per-band images are
    not enough, should a cross-wavelength regulariser go into virgil (a
    design note first)?
