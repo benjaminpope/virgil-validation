@@ -307,7 +307,7 @@ def cp_file(tmp_path_factory):
 
 @pytest.mark.parametrize(
     "kw",
-    [pytest.param(k, id=i, marks=pytest.mark.validates("virgil.gains.closure_offsets", roots=["mathematics"]))
+    [pytest.param(k, id=i, marks=pytest.mark.validates("virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"]))
      for i, k in [("baseline", dict(baseline=0.02)), ("triangle", dict(triangle=0.03)),
                   ("both", dict(baseline=0.02, triangle=0.03))]],
 )
@@ -319,7 +319,7 @@ def test_closure_offsets_match_a_dense_gaussian(cp_file, kw):
     assert abs(got - want) < 1e-9 * max(1.0, abs(want))
 
 
-@pytest.mark.validates("virgil.gains.closure_offsets", roots=["mathematics"])
+@pytest.mark.validates("virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"])
 def test_supplied_closure_offset_modes(cp_file):
     """Supplied modes, one value per closure phase of ``data.phi`` (the
     file's (row, channel) order), each within one frame."""
