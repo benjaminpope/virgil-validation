@@ -178,6 +178,7 @@ integration.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
+| `virgil._linear` (`LinearMarginal`, `posterior`, `whiten_cholesky`, `whiten_rank_one`, `whiten_blocks`), the shared helper since virgil#217: random designs, diagonal and full priors, rank-deficient designs, both whitening methods | dense 𝒩(m + Aμ, D + AΛAᵀ) from SciPy: log density, Mahalanobis distance and log-determinant; the whitening matrix M with MᵀM = C⁻¹; blocks with spanning columns; the conditional posterior by direct conditioning; the narrow-prior and flat-prior limits; gradients against finite differences at equal columns and zero width | Mathematics | 1e-10 to 1e-12 |
 | `OIData.with_gains`: telescope, baseline and chromatic groups, alone and together, four UTs, V² | Δ log-likelihood = log 𝒩(r; 0, D + UUᵀ) − log 𝒩(r; 0, D), with U = 2V²_model τ m and the modes as documented (chromatic shape (λ_ref/λ)², λ_ref the median wavelength) | Mathematics | 1e-12 |
 | the same with supplied modes, one value per sample in file order | the same | Mathematics | 1e-11 |
 | the same on amplitudes (`OI_VIS` `VISAMP`) | U = \|V\|_model τ m | Mathematics | 1e-12 |
@@ -193,6 +194,118 @@ To come: the `OI_FLUX` grey scale (for a fixed prior: virgil's default
 prior on k is centred on the data's own mean level, which uses the data
 twice and is expected to change), the `VISPHI` continuum operator, and the
 shared `LinearMarginal` helper.
+
+## Priors, angles and the MAP
+
+`tests/test_priors_angles.py`. virgil's default priors are the Jeffreys
+(invariant) measures, and `fit` optimises each in the coordinate where it
+is flat ("Priors and the MAP" in virgil's conventions).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `IsotropicInclination` (density ∝ sin i, degrees), full, half, narrow and polar ranges | closed forms written without cancellation (cos a − cos b = 2 sin((a+b)/2) sin((b−a)/2)); SciPy quadrature of the density and mean; the quantile function inverts the CDF; Kolmogorov–Smirnov on 20 000 samples | Mathematics + Statistics | 1e-9 (density), 1e-8 (CDF, norm, mean) |
+| `IsotropicLatitude` (∝ cos lat, radians) | the same | Mathematics + Statistics | 1e-8 |
+| their flat coordinates | the CDF is affine in cos i and in sin lat | Mathematics | 1e-12 |
+| `AngleVector`: uniform, von Mises and axial, two ring widths | normalised over the plane; the angle's marginal is the stated density (SciPy's von Mises); half the squared residuals is −log p up to a constant; samples' angles and radii (KS) | Mathematics + Statistics | 1e-6 (quadrature), 1e-10 |
+| `fit` with `LogUniform` priors on a diameter and a flux | the likelihood maximum by direct (Nelder–Mead) search on the same residuals | Mathematics | MAP within 1e-3 σ of it |
+| control: a tight `Normal` prior | — | Mathematics | moves the MAP, as it should (no flat coordinate) |
+
+## Spectra, observables and the OIFITS writer
+
+`tests/test_spectra_more.py` and `tests/test_observables_io.py`.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `spectra.Nodes`, linear | `numpy.interp`; values held, or a fixed number, outside the nodes | Mathematics | 1e-14 |
+| `spectra.Nodes`, cubic | SciPy `CubicSpline(bc_type="natural")` | Mathematics | 1e-13 |
+| `Nodes.is_physical` with positive nodes and overshoot between them | a dense evaluation of SciPy's spline | Mathematics | same verdict |
+| `GaussianLine`, `LorentzianLine` | profiles, half maxima, and the documented integrals by quadrature | Mathematics | 1e-13; integrals 1e-8 |
+| `spectra.Sum` | the sum of its parts; reference flux at `wavel0` | Mathematics | 1e-14 |
+| `oifits.write_oifits` (V², closure phases, triple amplitudes, `OI_VIS` with `AMPTYP`/`PHITYP`, `OI_FLUX`) | read back with astropy and with our own reader | Standards | exact (float32 `EFF_WAVE`) |
+| `VisibilityAmplitude`, `TripleAmplitude` (`extras=`) | the χ² each adds equals Σ((model − data)/σ)² with our own closed-form visibilities | Mathematics + Standards | 1e-6 |
+| `observables.continuum_operator`, orders 0 and 1 | the least-squares fit of 1, 1/λ over the continuum channels, by the normal equations | Mathematics | 1e-10 |
+
+`FluxSpectrum` and `DifferentialPhase` are checked below, under
+[Grey-scaled spectra and differential phases](#grey-scaled-spectra-and-differential-phases),
+now that virgil#217 states the grey scale's prior rather than taking it
+from the data.
+
+## Orbits
+
+`tests/test_orbits_more.py`, against our own textbook Kepler code
+(`crosscheck.orbits`: Newton's method on Kepler's equation and the
+visual-binary projection) and SciPy. orbitize! covers `KeplerOrbit`,
+`ThieleInnesOrbit`, `StateVectorOrbit`, `RVData` and the posterior
+(`tests/test_orbitize.py`).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `KeplerOrbit.relative`, three orbits (e = 0 to 0.75, i near 90°, retrograde) | `crosscheck.orbits` | Mathematics | 1e-12 of a |
+| `AxialVonMises` | exp(κ cos 2(θ − μ))/(360 I₀(κ)); θ and θ + 180° equal; normalised; KS on samples | Mathematics + Statistics | 1e-12 |
+| `orientation_from_varpi`, `orientation_priors` | ϖ = Ω + ω; Ω in [0°, 180°) from 2Ω; the documented keys | Mathematics | 1e-9 |
+| `position_angle_log_jacobian` | log|∂M/∂θ| by finite differences of our projection; integral over a turn is 2π | Mathematics | 1e-6; 1e-8 |
+| `starting_orbits` | each grid point's χ² equals our own weighted least squares in the unit orbit (X, Y); the best orbit is the one the positions came from | Mathematics | 1e-8 |
+| `models.Attached` (a companion on an orbit) | the static binary with the companion at our orbit position, at three times | Mathematics | 1e-12 |
+
+## Detection statistics and injection limits
+
+`tests/test_detection.py`, against our own χ² (`crosscheck.chi2`) on
+three-telescope files with and without a companion.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `limits.injection_limits` (3σ, the injection method of Gallenne et al. 2015) | Brent's method on nsigma(χ²_null(data + signal(f))/χ²_null(data)) = 3 with our χ² | Mathematics | 1e-4 (bisection precision) |
+| `detection.detection_statistics`: `delta_chi2`, `log_bayes_factor`, `max_snr` on a 7 × 7 × 60 grid | each rebuilt from our χ²: the best improvement with flux ≥ 0; a log-sum-exp with trapezoid weights in each axis's index; best flux over its curvature error | Mathematics | 1e-5; 1e-8; 1e-3 |
+| `detection.local_nsigma` | the one-sided tail of ½χ²₁, √Δχ² | Mathematics | 1e-9 |
+| `linear_flux_grid` with `LogUniform(f_min, f_max)` (the Jeffreys prior on a flux ratio) | the evidence ratio and posterior mean and sd by adaptive quadrature in ln f (not virgil's fixed 256-node rule), two bounds, with and without a companion | Mathematics | 1e-6; 1e-5 |
+| `detection.gaussian_null`, error scale 1 and 1.5 | simulated minus predicted, over the errors, is 𝒩(0, scale²) (mean, sd, KS) | Statistics | within 4σ |
+| `limits.flux_to_contrast`, `flux_to_delta_mag` and inverses | their formulae | Mathematics | 1e-14 |
+
+## Cones, Gaussian fields and model invariants
+
+`tests/test_cone_field.py`.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `models.TruncatedCone`, four geometries (side-on, wide with negative tilt and a stretched cross-section, seen down its axis, in the sky plane), with an offset | a direct Fourier sum over a 3-D cloud on the cone's walls, built from the documented geometry and projected onto the sky (Gauss–Legendre in slant distance, trapezoid in azimuth), blurred by the shell's Gaussian | Mathematics | 2e-6 in V at 1024 rings; doubling 64 → 128 rings cuts the error by 4.0, the documented second order |
+| `TruncatedCone` tilt sign | ±tilt give the same visibilities (optically thin) | Mathematics | 1e-14 |
+| `fields.GaussianField`, `field_spectrum`, orders 1–3, isotropic and anisotropic | the field's covariance (from its response to each latent) against our dense Π(κ² + L)^(−order)Π, with L the reflecting-boundary Laplacian built from second differences, scaled to a pixel-averaged variance σ² | Mathematics | 2e-14 |
+| `GaussianField`, order 1 | ½\|z\|² is proportional to \|η\|²/ℓ² plus the squared neighbour differences over h² | Mathematics | 1e-10 |
+| `GaussianField` with a template, inside an `Image` | SciPy's orthonormal inverse DCT-II plus log(μ/max μ + ε); the image is the softmax of the field | Mathematics | 1e-12 |
+| `SourceModel` invariants and `System` mixing, six analytic components | V(0) = 1, V(−u, −v) = V(u, v)*, the shift theorem, and `System` mixing | Mathematics | 1e-12 |
+
+## Small helpers
+
+`tests/test_helpers.py`: light checks of helpers that need little trust,
+against our own χ².
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `grid_fit.best_grid_point` | NumPy's `nanargmax` | Mathematics | exact |
+| `likelihood.build_model`, `likelihood.loglike` | a class and a template build the same scene; loglike differences are −½ our χ² differences | Mathematics | 1e-8 |
+| `likelihood.inflated_errors`, relative to the model or the data, quadrature or maximum | the formulae in its docstring | Mathematics | 1e-14 |
+| `inference.fisher` | the Hessian of ½ our χ² by central differences | Mathematics | 1e-5 |
+| `simulate.simulate` | noiseless: our V² and closure phases; noisy: V² pulls are 𝒩(0, noise_scale²) (sd, KS) | Mathematics, statistics | 1e-12; within 4σ |
+| `simulate.bias_test` | each entry is the fit to the simulation drawn with that key | Self-consistency | 1e-10 |
+
+## Grey-scaled spectra and differential phases
+
+`tests/test_flux_visphi.py`, on a four-telescope file with a Brγ-like line
+(unequal phase errors), written by `oifits.write_oifits`. The references
+use the values the file holds (EFF_WAVE is float32).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `observables.FluxSpectrum` (`"flux"`), one scale per dataset or per station, polynomial orders 0–2, the stated prior `scale=(mean, sd)` of virgil#217 | SciPy's multivariate normal about μ t with covariance D + Σ c_j c_jᵀ (c₀ = s t, c_j = τ μ t x^j), t the total spectrum over its group mean | Mathematics | 1e-8 in log L |
+| `FluxSpectrum` (`"nflux"`), default prior (1, 0.1) | the same, with t the total spectrum over its continuum mean per row | Mathematics | 1e-8 |
+| `FluxSpectrum` without a stated prior | refuses rather than taking it from the data | Mathematics | — |
+| `observables.DifferentialPhase`, the pipeline's projection, with windows | SciPy's multivariate normal of (Qᵀ ⊗ N_line) φ, with Q from our own incidence matrix and N = I − L our own continuum fit | Mathematics | 1e-7 in log L |
+| `DifferentialPhase`: the projection is restricted maximum likelihood (its docstring's claim), with and without windows | differences between models of −½ rᵀPr, P the D-weighted projector off nuisances we build ourselves: closure directions in every channel and, per baseline, offsets and delays or every pattern the line rows of N miss | Mathematics, statistics | 1e-7 relative |
+| `DifferentialPhase` with `prior_width` | SciPy's multivariate normal of the closure-free phases, with every baseline's offset and slope (centred wavenumber spanning 1) added to the covariance | Mathematics | 1e-7 |
+| `DifferentialPhase`, very wide priors, no windows | tends to the projection (its flat limit) | Mathematics | 1e-6 relative at width 1e5 |
+
+`DifferentialPhase` will be rechecked when virgil#232, which caches its
+Cholesky factors, lands.
 
 ## Long-baseline interferometry
 
@@ -427,8 +540,10 @@ i = 0° to 179.9°, 121 epochs each.
 
 `GravityDarkenedStar` against an independent root, harmonix's maps,
 bandwidth smearing, AMIGO DISCO mode bases, false-alarm and contrast-limit
-campaigns, regularised reconstructions end to end, `l_curve` and sampling
-(`numpyro_model`). To ask for any of these, or anything else,
+campaigns, regularised reconstructions end to end and `l_curve`. Sampling
+(`numpyro_model`) has a simulation-based calibration campaign written
+(`scripts/sbc_numpyro.py`, 500 replicates on OzSTAR; `tests/test_sbc_numpyro.py`
+reads its summary) but not yet run. To ask for any of these, or anything else,
 open an Issue at
 <https://github.com/benjaminpope/virgil-validation/issues> describing the
 model or function, the independent result it should match, and the

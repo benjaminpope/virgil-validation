@@ -129,14 +129,98 @@ nodes:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
     depends: [virgil.likelihood.whitened_residuals]
+  virgil.priors.IsotropicInclination: {layer: priors, source: [src/virgil/priors.py]}
+  virgil.priors.IsotropicLatitude: {layer: priors, source: [src/virgil/priors.py]}
+  virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py]}
+  virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
+  virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
+  virgil.observables.VisibilityAmplitude:
+    layer: likelihood
+    source: [src/virgil/observables.py]
+    depends: [virgil.oidata.OIData]
+  virgil.observables.TripleAmplitude:
+    layer: likelihood
+    source: [src/virgil/observables.py]
+    depends: [virgil.oidata.OIData]
+  virgil.spectra.Nodes: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.GaussianLine: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.LorentzianLine: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.Sum: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.orbits.starting_orbits:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.PositionData]
+  virgil.orbits.AxialVonMises: {layer: orbits, source: [src/virgil/orbits.py]}
+  virgil.orbits.orientation_priors: {layer: orbits, source: [src/virgil/orbits.py], depends: [virgil.angles.AngleVector]}
+  virgil.orbits.orientation_from_varpi: {layer: orbits, source: [src/virgil/orbits.py]}
+  virgil.orbits.position_angle_log_jacobian: {layer: orbits, source: [src/virgil/orbits.py]}
+  virgil.models.Attached:
+    layer: models
+    source: [src/virgil/models.py, src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.limits.injection_limits:
+    layer: inference
+    source: [src/virgil/limits.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike, virgil.limits.nsigma]
+  virgil.detection.detection_statistics:
+    layer: inference
+    source: [src/virgil/detection.py, src/virgil/grid_fit.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.detection.local_nsigma: {layer: inference, source: [src/virgil/detection.py], depends: [virgil.limits.nsigma]}
+  virgil.detection.gaussian_null:
+    layer: inference
+    source: [src/virgil/detection.py, src/virgil/oidata.py]
+    depends: [virgil.oidata.OIData]
+  virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
+  virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
+  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
+  virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
+  virgil.fields.GaussianField:
+    layer: priors
+    source: [src/virgil/fields.py]
+    depends: [virgil.fields.field_spectrum]
+  virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
+  virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}
+  virgil.likelihood.loglike:
+    layer: likelihood
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.model_loglike, virgil.likelihood.build_model]
+  virgil.likelihood.inflated_errors: {layer: likelihood, source: [src/virgil/likelihood.py, src/virgil/_utils.py], depends: [virgil.oidata.OIData]}
+  virgil.inference.fisher:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.simulate.simulate:
+    layer: data
+    source: [src/virgil/simulate.py, src/virgil/oidata.py]
+    depends: [virgil.oidata.OIData]
+  virgil.simulate.bias_test:
+    layer: inference
+    source: [src/virgil/simulate.py]
+    depends: [virgil.simulate.simulate, virgil.fitting.fit]
+  virgil.observables.FluxSpectrum:
+    layer: likelihood
+    source: [src/virgil/observables.py, src/virgil/_linear.py]
+    depends: [virgil.oidata.OIData, virgil._linear]
+  virgil.oidata.OIData.with_flux_scale: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.FluxSpectrum]}
+  virgil.observables.DifferentialPhase:
+    layer: likelihood
+    # recheck when virgil#232 (cached Cholesky) lands
+    source: [src/virgil/observables.py, src/virgil/_linear.py]
+    depends: [virgil.oidata.OIData, virgil.observables.continuum_operator, virgil._linear]
+  virgil.oidata.OIData.with_continuum: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.DifferentialPhase]}
+  virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
+    layer: likelihood
+    source: [src/virgil/_linear.py]
   virgil.gains.gain_modes:  # analytic marginalisation of calibration gains
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
-    depends: [virgil.oidata.OIData]
+    depends: [virgil.oidata.OIData, virgil._linear]
   virgil.gains.closure_offsets:  # analytic marginalisation of closure-phase offsets
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
-    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise]
+    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise, virgil._linear]
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
@@ -204,7 +288,7 @@ nodes:
   virgil.orbits.RVData:
     layer: orbits
     source: [src/virgil/orbits.py]
-    depends: [virgil.orbits.KeplerOrbit]
+    depends: [virgil.orbits.KeplerOrbit, virgil._linear]
     roots: 2  # RV signs: orbitize! and mathematics
 
   virgil._elr:
