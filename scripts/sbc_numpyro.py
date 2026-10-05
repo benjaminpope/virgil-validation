@@ -178,7 +178,7 @@ def replicate(seed, warmup, samples, chains):
     return out
 
 
-def run(args):
+def run(args, replicate_fn=None):
     import jax
 
     jax.config.update("jax_enable_x64", True)
@@ -186,23 +186,47 @@ def run(args):
 
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    results, start = [], time.time()
-    for k in range(args.replicates):
-        seed = args.seed_base + args.task * args.replicates + k
-        t0 = time.time()
-        results.append(replicate(seed, args.warmup, args.samples, args.chains))
-        print(f"replicate seed={seed} elapsed={time.time() - t0:.1f}s ranks={results[-1]['ranks']}", flush=True)
     commit = virgil_commit()
     if not commit:
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
-    record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "virgil_commit": commit,
-              "criteria_hash": criteria_hash(),
-              "settings": {"warmup": args.warmup, "samples": args.samples, "chains": args.chains},
-              "replicates": results, "elapsed_s": time.time() - start}
     path = out_dir / f"task_{args.task:04d}.json"
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(record, indent=1))
-    tmp.rename(path)
+    settings = {"warmup": args.warmup, "samples": args.samples, "chains": args.chains}
+    results, start = [], time.time()
+    if path.exists():
+        # resume a task stopped by its time limit: keep its replicates when
+        # they were made the same way, and run only the seeds still missing
+        old = json.loads(path.read_text())
+        same = (old.get("virgil_commit") == commit and old.get("criteria_hash") == criteria_hash()
+                and old.get("settings") == settings and old.get("replicates_planned", args.replicates) == args.replicates)
+        if not same:
+            raise SystemExit(f"{path} was made with another commit, criteria or settings: move it before rerunning")
+        results = list(old["replicates"])
+    done = {r["seed"] for r in results}
+    replicate_fn = replicate_fn or replicate
+
+    def write(complete):
+        # after every replicate, so a task stopped by its time limit keeps
+        # what it finished; "complete" marks a task that ran every replicate
+        record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "virgil_commit": commit,
+                  "criteria_hash": criteria_hash(), "replicates_planned": args.replicates, "complete": complete,
+                  "settings": settings,
+                  "replicates": results, "elapsed_s": time.time() - start}
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(record, indent=1))
+        tmp.rename(path)
+
+    seeds = [args.seed_base + args.task * args.replicates + k for k in range(args.replicates)]
+    if done:
+        print(f"resuming {path}: {len(done)} of {len(seeds)} replicates already done", flush=True)
+    for seed in seeds:
+        if seed in done:
+            continue
+        t0 = time.time()
+        results.append(replicate_fn(seed, args.warmup, args.samples, args.chains))
+        write(complete=len(results) == len(seeds))
+        print(f"replicate seed={seed} elapsed={time.time() - t0:.1f}s ranks={results[-1]['ranks']}", flush=True)
+    if len(results) == len(seeds):
+        write(complete=True)
     print(f"wrote {path} elapsed={time.time() - start:.0f}s")
 
 
@@ -217,13 +241,18 @@ def aggregate(args):
     from scipy import stats
 
     reps, hashes, versions, commits = [], set(), set(), set()
-    for d in args.dirs:
-        for f in sorted(pathlib.Path(d).glob("task_*.json")):
-            r = json.loads(f.read_text())
-            hashes.add(r["criteria_hash"])
-            versions.add(r["virgil"])
-            commits.add(r.get("virgil_commit"))
-            reps += r["replicates"]
+    files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("task_*.json"))]
+    if not files:
+        raise SystemExit(f"no results found (no task_*.json) in {', '.join(map(str, args.dirs))}: "
+                         "the tasks may still be running, or they stopped before a replicate finished")
+    partial = 0
+    for f in files:
+        r = json.loads(f.read_text())
+        partial += not r.get("complete", True)
+        hashes.add(r["criteria_hash"])
+        versions.add(r["virgil"])
+        commits.add(r.get("virgil_commit"))
+        reps += r["replicates"]
     if hashes != {criteria_hash()}:
         raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
     if len(commits) != 1 or None in commits:
@@ -233,7 +262,8 @@ def aggregate(args):
         raise SystemExit(f"{len(seeds) - len(set(seeds))} replicates repeat a seed: each must be counted once")
     n, L, bins = len(reps), CRITERIA["draws_per_replicate"], CRITERIA["rank_bins"]
     alpha = CRITERIA["family_alpha"] / len(PARAMS)
-    summary = {"replicates": n, "virgil": sorted(versions), "virgil_commit": commits.pop(), "criteria": CRITERIA,
+    print(f"{len(files)} task files ({partial} incomplete), {n} replicates", file=sys.stderr)
+    summary = {"replicates": n, "tasks": len(files), "incomplete_tasks": partial, "virgil": sorted(versions), "virgil_commit": commits.pop(), "criteria": CRITERIA,
                "criteria_hash": criteria_hash(),
                "parameters": {}}
     ok = n >= CRITERIA["min_replicates"]

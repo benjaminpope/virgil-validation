@@ -82,6 +82,47 @@ def test_sbc_aggregate_refuses_repeats_and_mixed_commits(tmp_path):
     (other / "task_0001.json").write_text(json.dumps({**task, "virgil_commit": "b" * 40,
                                                       "replicates": [{**rep, "seed": 2}]}))
     assert "different or unknown virgil commits" in run(tmp_path, other).stderr
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert "no results found" in run(empty).stderr
     L = s.CRITERIA["draws_per_replicate"]
     accepted = sum(abs(r - L / 2) < 0.95 * (L + 1) / 2 for r in range(L + 1))
     assert accepted == 94  # so the 95% interval's null coverage is 0.94, not 0.95
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_sbc_tasks_write_incrementally_and_resume(tmp_path, monkeypatch):
+    """A task writes its file after every replicate and is marked complete
+    only at the end; rerun after a stop, it keeps what was done and runs
+    only the missing seeds (a stub stands in for NUTS)."""
+    import argparse
+
+    s = script()
+    monkeypatch.setenv("PIN_COMMIT", "c" * 40)
+    calls = []
+
+    class TimeLimit(Exception):
+        pass
+
+    stop = {"after": 2}
+
+    def stub(seed, *_):
+        if stop["after"] is not None and len(calls) == stop["after"]:
+            raise TimeLimit  # the time limit, after two replicates
+        calls.append(seed)
+        return {"seed": seed, "truth": {}, "ranks": {p: 1 for p in s.PARAMS}, "ess": {}, "rhat": {}, "divergences": 0}
+
+    args = argparse.Namespace(task=3, replicates=4, seed_base=100, warmup=1, samples=1, chains=1, out=str(tmp_path))
+    with pytest.raises(TimeLimit):
+        s.run(args, replicate_fn=stub)
+    saved = json.loads((tmp_path / "task_0003.json").read_text())
+    assert [r["seed"] for r in saved["replicates"]] == [112, 113] and saved["complete"] is False
+    calls.clear()
+    stop["after"] = None
+    s.run(args, replicate_fn=stub)
+    saved = json.loads((tmp_path / "task_0003.json").read_text())
+    assert calls == [114, 115]  # only the missing seeds
+    assert [r["seed"] for r in saved["replicates"]] == [112, 113, 114, 115] and saved["complete"] is True
+    monkeypatch.setenv("PIN_COMMIT", "d" * 40)
+    with pytest.raises(SystemExit, match="another commit"):
+        s.run(args, replicate_fn=stub)
