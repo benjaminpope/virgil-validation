@@ -23,6 +23,7 @@ from evidence.plugin import record
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SUMMARY = ROOT / "trust" / "campaigns" / "sbc_numpyro_model.json"
+PREREGISTERED = 1000  # docs/design.md, "Monte Carlo campaigns for retrievals"
 
 
 def script():
@@ -44,6 +45,10 @@ def test_sbc_ranks_are_uniform():
     for name, p in summary["parameters"].items():
         record(f"chi2_p_{name}", p["chi2_p"])
     record("replicates", summary["replicates"])
+    # docs/design.md registered 1000 posteriors for this campaign before it ran;
+    # the script's own minimum (400) came later and does not override it
+    if summary["replicates"] < PREREGISTERED:
+        pytest.skip(f"campaign incomplete: {summary['replicates']} of the {PREREGISTERED} preregistered replicates")
     assert summary["replicates"] >= summary["criteria"]["min_replicates"]
     failing = [k for k, p in summary["parameters"].items() if not p["pass"]]
     assert not failing, f"ranks not uniform or coverage off for {failing}"

@@ -1,0 +1,266 @@
+{
+ "replicates": 500,
+ "tasks": 50,
+ "incomplete_tasks": 0,
+ "virgil": [
+  "0.2.0"
+ ],
+ "virgil_commit": "4afc5b816012f66c472c871fa9644f360b73aa4d",
+ "criteria": {
+  "draws_per_replicate": 99,
+  "rank_bins": 20,
+  "family_alpha": 0.01,
+  "coverage_levels": [
+   0.68,
+   0.95
+  ],
+  "coverage_band": 0.99,
+  "min_bulk_ess": 400,
+  "max_rhat": 1.01,
+  "min_replicates": 400
+ },
+ "criteria_hash": "31efb581ab14b912",
+ "parameters": {
+  "diam": {
+   "chi2_p": 0.03465205739180015,
+   "alpha": 0.002,
+   "coverage": {
+    "0.68": {
+     "coverage": 0.68,
+     "expected": 0.68,
+     "band": [
+      0.626,
+      0.732
+     ],
+     "pass": true
+    },
+    "0.95": {
+     "coverage": 0.92,
+     "expected": 0.94,
+     "band": [
+      0.912,
+      0.966
+     ],
+     "pass": true
+    }
+   },
+   "pass": true,
+   "counts": [
+    25,
+    21,
+    19,
+    30,
+    20,
+    27,
+    21,
+    22,
+    24,
+    16,
+    43,
+    30,
+    18,
+    32,
+    19,
+    20,
+    29,
+    27,
+    25,
+    32
+   ]
+  },
+  "flux": {
+   "chi2_p": 0.49588501122323014,
+   "alpha": 0.002,
+   "coverage": {
+    "0.68": {
+     "coverage": 0.656,
+     "expected": 0.68,
+     "band": [
+      0.626,
+      0.732
+     ],
+     "pass": true
+    },
+    "0.95": {
+     "coverage": 0.942,
+     "expected": 0.94,
+     "band": [
+      0.912,
+      0.966
+     ],
+     "pass": true
+    }
+   },
+   "pass": true,
+   "counts": [
+    25,
+    33,
+    31,
+    21,
+    25,
+    19,
+    21,
+    24,
+    21,
+    21,
+    29,
+    33,
+    25,
+    30,
+    17,
+    29,
+    17,
+    28,
+    26,
+    25
+   ]
+  },
+  "sep": {
+   "chi2_p": 0.5438994246556005,
+   "alpha": 0.002,
+   "coverage": {
+    "0.68": {
+     "coverage": 0.68,
+     "expected": 0.68,
+     "band": [
+      0.626,
+      0.732
+     ],
+     "pass": true
+    },
+    "0.95": {
+     "coverage": 0.94,
+     "expected": 0.94,
+     "band": [
+      0.912,
+      0.966
+     ],
+     "pass": true
+    }
+   },
+   "pass": true,
+   "counts": [
+    19,
+    37,
+    25,
+    23,
+    33,
+    30,
+    22,
+    20,
+    23,
+    25,
+    26,
+    23,
+    27,
+    28,
+    25,
+    26,
+    17,
+    21,
+    21,
+    29
+   ]
+  },
+  "pa": {
+   "chi2_p": 0.14412819580324587,
+   "alpha": 0.002,
+   "coverage": {
+    "0.68": {
+     "coverage": 0.676,
+     "expected": 0.68,
+     "band": [
+      0.626,
+      0.732
+     ],
+     "pass": true
+    },
+    "0.95": {
+     "coverage": 0.926,
+     "expected": 0.94,
+     "band": [
+      0.912,
+      0.966
+     ],
+     "pass": true
+    }
+   },
+   "pass": true,
+   "counts": [
+    30,
+    19,
+    26,
+    18,
+    20,
+    18,
+    22,
+    36,
+    34,
+    27,
+    17,
+    25,
+    32,
+    25,
+    26,
+    24,
+    20,
+    21,
+    34,
+    26
+   ]
+  },
+  "vis_scale": {
+   "chi2_p": 0.3524765187725577,
+   "alpha": 0.002,
+   "coverage": {
+    "0.68": {
+     "coverage": 0.646,
+     "expected": 0.68,
+     "band": [
+      0.626,
+      0.732
+     ],
+     "pass": true
+    },
+    "0.95": {
+     "coverage": 0.938,
+     "expected": 0.94,
+     "band": [
+      0.912,
+      0.966
+     ],
+     "pass": true
+    }
+   },
+   "pass": true,
+   "counts": [
+    23,
+    22,
+    25,
+    34,
+    25,
+    26,
+    30,
+    21,
+    18,
+    20,
+    16,
+    26,
+    22,
+    20,
+    29,
+    26,
+    22,
+    36,
+    28,
+    31
+   ]
+  }
+ },
+ "sampler": {
+  "low_ess": 59,
+  "high_rhat": 65,
+  "with_divergences": 489
+ },
+ "pass": true
+}
