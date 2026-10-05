@@ -273,6 +273,28 @@ def test_modulated_rim_definitions_differ(vlti_file):
     assert 1e-4 < dv2 < 1e-2  # (m sigma / r0)^2 ~ 0.02 times the modulated part
 
 
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense")
+def test_modulation_sense_agrees_with_pmoired(vlti_file):
+    """The definitions differ only at O(m^2 sigma^2 / r0^2) (D-code above),
+    so the sense of the modulation can still be checked against PMOIRED:
+    virgil's rim at the same amplitudes and angles is 10 times closer to
+    PMOIRED's than with the bright side turned by 180 degrees, or reflected
+    about the rim's major axis (the other sense of azimuth)."""
+    amps, pas = (0.5, 0.2), (120.0, 75.0)
+    params = _pmoired_rim(amps, pas)
+
+    def rim(angles):
+        return vm.ModulatedGaussianRim(RIM["diam"], RIM["fwhm"], RIM["inc"], RIM["pa"], np.array(amps), np.array(angles))
+
+    _, dcp, cp_max = compare(vlti_file, rim(pas), params, {"Nr": 3000})
+    _, turned, _ = compare(vlti_file, rim([p + 180.0 for p in pas]), params, {"Nr": 3000})
+    _, reflected, _ = compare(vlti_file, rim([2 * RIM["pa"] - p for p in pas]), params, {"Nr": 3000})
+    record("dcp_ratio_turned", turned / dcp)
+    record("dcp_ratio_reflected", reflected / dcp)
+    assert cp_max > 30
+    assert turned > 10 * dcp and reflected > 10 * dcp
+
+
 # ------------------------------------------------------ limb darkening
 
 
