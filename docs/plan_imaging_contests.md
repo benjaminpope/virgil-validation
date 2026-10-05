@@ -220,6 +220,38 @@ in the fit). Holding `env.flux` fixed reaches χ²/N 1623 in 10 steps,
 against 5091 with it free, which points at the flux parameter's coupling
 to the pixels. The full runs go to OzSTAR (`--diagnose`).
 
+**Diagnosis (job 18019122, virgil `760c720`, JAX 0.11.2): finding F11.**
+The two worst stalls sit on a discontinuity in virgil's likelihood, not a
+JAX problem.
+
+- In 2022 GRAVITY (case 0) and 2010 (case 2), JAX gradients and central
+  finite differences disagree by 10²–10⁴ at the stall. The
+  finite-difference value scales as 1/ε, so the loss jumps by a fixed
+  amount: Δχ² ≈ 2 × 426 for GRAVITY, ≈ 2 × 6000 for 2010.
+- The loss rises along −grad at every step size, so the line search has
+  nowhere to go.
+- The cause is virgil's correlated closure-phase likelihood (4+ telescopes):
+  wrapped residuals → chords 2 sin(Δ/2) → whitened together. A chord flips
+  sign across ±π, and the cross terms make χ² jump. In a smooth sweep on our
+  own 4T file the largest step is 860× the median, against 48× with three
+  telescopes (`tests/test_closure_continuity.py`, strict xfail).
+- A virgil PR making that likelihood continuous is being written (Sonnet
+  agent).
+- 2024 Obj2 GRAVITY (case 1) is different: gradients agree with finite
+  differences to 1e-7, and descent continues. It is converging slowly
+  (χ²/N 310 after 20 000 L-BFGS steps; Adam reaches 254). That is a
+  question of initialisation and conditioning, not a bug.
+- Case 3 (2006 with halo) crashed on a bug in the diagnostic (multi-night
+  data), now fixed.
+
+**Initialisation.** Every task starts from `starting_image(start="moments")`,
+a Gaussian sized by a quick parametric fit. A dirty-image start is
+impossible without absolute phases. A residual near ±π, which is what
+triggers F11, needs a poor start. Next: use everything the contestants had
+before submitting (clue images, readmes, rules, suggested fields and pixel
+scales, SEDs, test binaries) to initialise and set priors. A research agent
+is compiling that per contest.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,

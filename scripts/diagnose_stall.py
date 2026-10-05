@@ -81,8 +81,9 @@ def pixel_loss(model, data, regs, star, halo):
 
     def loss(x):
         m = eqx.tree_at(where, model, x)
-        r = whitened_residuals(m, data)
-        return 0.5 * jnp.sum(r**2) + sum(reg.value(m) for reg in regs)
+        datasets = data if isinstance(data, list) else [data]
+        chi2 = sum(jnp.sum(whitened_residuals(m, d) ** 2) for d in datasets)
+        return 0.5 * chi2 + sum(reg.value(m) for reg in regs)
 
     return loss, where(model)
 

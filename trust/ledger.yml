@@ -146,6 +146,16 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/167]
 
+- id: F11
+  title: chi-squared of correlated (4+ telescope) closure phases jumps where a residual crosses ±π
+  objects: [virgil.likelihood.whitened_residuals]
+  ruling: virgil
+  referee: mathematics (a likelihood must be continuous in the model parameters; the 3-telescope path is)
+  evidence:
+    - tests/test_closure_continuity.py::test_four_telescope_chi2_is_continuous
+    - tests/test_closure_continuity.py::test_three_telescope_chi2_is_continuous
+  status: open
+
 - id: D5
   title: CANDID's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
