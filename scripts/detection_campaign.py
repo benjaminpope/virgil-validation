@@ -17,18 +17,15 @@ Parts, each an OzSTAR array (``run --part P --task T --draws N``):
 * ``virgil``: virgil's own null simulations (injection_recovery with
   gaussian_null) of the same template, saved as a DetectionMC.
 
-``aggregate`` applies the criteria registered in CRITERIA (hash recorded):
-
-1. Chernoff (1954), as detection_statistics documents: at a fixed position
-   the null delta_chi2 is 0 with probability 1/2 and chi2_1 otherwise.
-2. virgil's null simulator gives the distributions of ours (two-sample KS
-   on delta_chi2, log_bayes_factor and max_snr).
-3. DetectionMC's false-alarm probabilities equal the documented (k + 1)/(n + 1)
-   from our counts, their intervals SciPy's exact binomial interval, and
-   its thresholds our empirical quantiles.
-4. Injected companions: delta_chi2 at the true position is noncentral
-   chi2_1(lambda), tested by the probability integral transform (uniform
-   under the claim) where lambda >= 9 (the flux constraint then rarely binds).
+``aggregate`` applies the criteria registered in design/detection_v2.yml
+(its SHA-256 is recorded in the summary; rationale in design/detection_v2.md):
+Chernoff's mixture at a fixed position (zero fraction, positive part, mean);
+our simulator against virgil's gaussian_null (k-sample Anderson-Darling and
+Fisher's exact test of the exceedances above virgil's 1e-2 threshold);
+DetectionMC's bookkeeping against our counts; and delta_chi2 at an injected
+companion's true position against max(0, sqrt(lambda) + Z)^2 (randomized
+PIT and standardized mean), lambda our own noiseless chi-squared. One Holm
+family over every p-value. Version 1 (brighter companions) is superseded.
 """
 
 import argparse
@@ -48,26 +45,23 @@ UTS4 = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306
 OBS = dict(hour_angles_h=np.linspace(-3, 3, 5), wavelengths=np.linspace(1.5e-6, 2.4e-6, 4), dec_deg=-50.0,
            sigma_v2=0.01, sigma_cp_deg=0.5)
 GRID = {"dra": np.linspace(-20.0, 20.0, 17), "ddec": np.linspace(-20.0, 20.0, 17),
-        "flux": np.geomspace(1e-4, 0.1, 40)}
+        "flux": np.geomspace(1e-5, 0.1, 40)}
 FIXED = (6.0, -4.0)
 SEPS = np.array([5.0, 10.0, 15.0])
-FLUXES = np.array([0.004, 0.008, 0.016])
+FLUXES = np.geomspace(3e-4, 3e-3, 4)  # lambda ~ 1-80: near the detection threshold
 
-CRITERIA = {
-    "alpha": 1e-3,  # every p-value and band below, per test
-    "chernoff_zero_band": 0.999,  # binomial band on the fraction of zeros (p = 1/2)
-    "ks_statistics": ["delta_chi2", "log_bayes_factor", "max_snr"],
-    "fap_values": [1e-2, 3e-3, 1e-3],  # bookkeeping: DetectionMC against our counts
-    "noncentral_min_lambda": 9.0,
-    "min_null": 5000,
-    "min_injected": 5000,
-    "min_virgil": 5000,
-}
-VIRGIL_CHUNK = 100  # virgil's draws per saved chunk, so a stopped task resumes
+CRITERIA_FILE = ROOT / "design" / "detection_v2.yml"
+VIRGIL_CHUNK = 1000  # virgil's draws per saved chunk, so a stopped task resumes
+
+
+def criteria():
+    import yaml
+
+    return yaml.safe_load(CRITERIA_FILE.read_text())
 
 
 def criteria_hash():
-    return hashlib.sha256(json.dumps(CRITERIA, sort_keys=True).encode()).hexdigest()[:16]
+    return hashlib.sha256(CRITERIA_FILE.read_bytes()).hexdigest()
 
 
 def design_hash():
@@ -258,76 +252,102 @@ def aggregate(args):
         seeds = [r["seed"] for r in parts[p]]
         if len(set(seeds)) != len(seeds):
             raise SystemExit(f"{p}: repeated seeds")
-    a = CRITERIA["alpha"]
-    out = {"virgil_commit": commits.pop(), "criteria": CRITERIA, "criteria_hash": criteria_hash(),
-           "design_hash": design_hash(), "checks": {}}
+    spec = criteria()
+    out = {"version": 2, "virgil_commit": commits.pop(), "criteria_hash": criteria_hash(),
+           "design_hash": design_hash(), "pvalues": {}, "must_hold": {}, "reported": {}}
     null, inj = parts["null"], parts["inject"]
-    checks = out["checks"]
+    pv = out["pvalues"]
+    mc = DetectionMC.concatenate(parts["virgil"]) if parts["virgil"] else None
+    statistics = ["delta_chi2", "log_bayes_factor", "max_snr"]
 
-    # 1. Chernoff at a fixed position
+    # null at a fixed position: (1/2) delta_0 + (1/2) chi2_1
     fixed = np.array([r["fixed"] for r in null])
     zero = fixed <= 1e-9
-    lo, hi = stats.binom.interval(CRITERIA["chernoff_zero_band"], fixed.size, 0.5)
-    ks = stats.kstest(fixed[~zero], stats.chi2(1).cdf).pvalue if (~zero).any() else 0.0
-    checks["chernoff"] = {"n": int(fixed.size), "zero_fraction": float(zero.mean()), "band": [lo / fixed.size, hi / fixed.size],
-                          "ks_p_positive_vs_chi2_1": float(ks),
-                          "pass": bool(lo <= zero.sum() <= hi and ks > a)}
+    pv["chernoff_zero_fraction"] = float(stats.binomtest(int(zero.sum()), fixed.size, 0.5).pvalue)
+    pv["chernoff_positive"] = float(stats.kstest(fixed[~zero], stats.chi2(1).cdf).pvalue) if (~zero).any() else 0.0
+    z = (fixed.mean() - 0.5) / np.sqrt(1.25 / fixed.size)
+    pv["chernoff_mean"] = float(2 * stats.norm.sf(abs(z)))
 
-    # 2. virgil's simulator against ours
-    mc = DetectionMC.concatenate(parts["virgil"]) if parts["virgil"] else None
-    sim = {}
-    for s in CRITERIA["ks_statistics"]:
-        mine = np.array([r["grid"][s] for r in null])
-        theirs = np.asarray(mc.null[s]) if mc is not None else np.array([])
-        p = float(stats.ks_2samp(mine, theirs).pvalue) if theirs.size else 0.0
-        sim[s] = {"p": p, "ours_mean": float(mine.mean()), "virgil_mean": float(theirs.mean()) if theirs.size else None}
-    checks["simulators"] = {"n_ours": len(null), "n_virgil": int(mc.n_null) if mc is not None else 0, "stats": sim,
-                            "pass": all(v["p"] > a / len(sim) for v in sim.values())}
+    # our simulator against virgil's, in the bulk and in the tail
+    ratio = {}
+    for s_ in statistics:
+        mine = np.array([r["grid"][s_] for r in null])
+        theirs = np.asarray(mc.null[s_]) if mc is not None else np.array([])
+        if not theirs.size:
+            pv[f"simulators_ad_{s_}"] = pv[f"simulators_tail_{s_}"] = 0.0
+            continue
+        pv[f"simulators_ad_{s_}"] = float(stats.anderson_ksamp([mine, theirs], method=stats.PermutationMethod(
+            n_resamples=999, random_state=0)).pvalue)
+        thr = np.quantile(theirs, 1 - 1e-2)
+        table = [[int(np.sum(mine >= thr)), int(np.sum(mine < thr))], [int(np.sum(theirs >= thr)), int(np.sum(theirs < thr))]]
+        pv[f"simulators_tail_{s_}"] = float(stats.fisher_exact(table).pvalue)
+        for fap in (1e-2, 1e-3):  # reported: the precision validated, a 95% interval on the rate ratio
+            t = np.quantile(theirs, 1 - fap)
+            k1, k2 = int(np.sum(mine >= t)), int(np.sum(theirs >= t))
+            lo, hi = stats.binomtest(k1, k1 + k2).proportion_ci(0.95, method="exact") if k1 + k2 else (0.0, 1.0)
+            scale = theirs.size / mine.size  # odds k1/k2 -> rate ratio
+            ratio[f"{s_}@{fap:g}"] = {"ours": k1, "virgil": k2,
+                                      "rate_ratio_ci": [lo / (1 - lo) * scale if lo < 1 else float("inf"),
+                                                        hi / (1 - hi) * scale if hi < 1 else float("inf")]}
+    out["reported"]["exceedance_ratio_ci"] = ratio
 
-    # 3. DetectionMC bookkeeping against our counts, on virgil's null draws
+    # DetectionMC's bookkeeping against our counts, on virgil's own draws
     book = {}
     if mc is not None:
-        for s in CRITERIA["ks_statistics"]:
-            v = np.sort(np.asarray(mc.null[s]))
+        for s_ in statistics:
+            v = np.sort(np.asarray(mc.null[s_]))
             n = v.size
-            for fap in CRITERIA["fap_values"]:
+            for fap in (1e-2, 3e-3, 1e-3):
                 value = float(np.quantile(v, 1 - fap))
                 k = int(np.sum(v >= value))
-                # the documented Monte Carlo p-value (k + 1)/(n + 1), and the exact
-                # binomial interval for P(null >= value) from SciPy's binomtest
                 ci = stats.binomtest(k, n).proportion_ci(confidence_level=0.95, method="exact")
-                got, lo, hi = (float(np.asarray(x)) for x in mc.false_alarm_probability(s, value))
-                thr, _ = mc.threshold(s, fap, n_boot=0)
-                equal = (abs(got - (k + 1) / (n + 1)) < 1e-12 and abs(lo - ci.low) < 1e-9
-                         and abs(hi - ci.high) < 1e-9 and abs(thr - value) < 1e-12)
-                book[f"{s}@{fap}"] = {"k": k, "n": n, "fap": got, "ci": [lo, hi], "threshold": float(thr),
-                                      "equal": bool(equal)}
-    checks["bookkeeping"] = {"cases": book, "pass": bool(book) and all(c["equal"] for c in book.values())}
+                got, lo, hi = (float(np.asarray(x)) for x in mc.false_alarm_probability(s_, value))
+                thr_, _ = mc.threshold(s_, fap, n_boot=0)
+                book[f"{s_}@{fap}"] = bool(abs(got - (k + 1) / (n + 1)) < 1e-12 and abs(lo - ci.low) < 1e-9
+                                           and abs(hi - ci.high) < 1e-9 and abs(thr_ - value) < 1e-12)
+    out["must_hold"]["bookkeeping"] = {"cases": book, "pass": bool(book) and all(book.values())}
 
-    # 4. noncentral chi2_1 at the true position
+    # injected companions at the true position: max(0, sqrt(lambda) + Z)^2
     lam = np.array([r["lam"] for r in inj])
     true = np.array([r["true"] for r in inj])
-    keep = lam >= CRITERIA["noncentral_min_lambda"]
-    u = stats.ncx2.cdf(true[keep], 1, lam[keep])
-    p = float(stats.kstest(u, "uniform").pvalue) if keep.any() else 0.0
-    checks["noncentral"] = {"n": int(keep.sum()), "lambda_range": [float(lam[keep].min()), float(lam[keep].max())] if keep.any() else None,
-                            "ks_p_pit": p, "pass": p > a}
+    root = np.sqrt(lam)
+    atom = stats.norm.cdf(-root)
+    rng = np.random.default_rng(0)
+    pit = np.where(true <= 1e-9, rng.uniform(0, 1, true.size) * atom, stats.norm.cdf(np.sqrt(np.maximum(true, 0)) - root))
+    pv["boundary_pit"] = float(stats.kstest(pit, "uniform").pvalue) if inj else 0.0
+    # moments of X = max(0, m + Z)^2: E = (m^2 + 1) Phi(m) + m phi(m), E[X^2] from the truncated normal
+    m = root
+    e1 = (m**2 + 1) * stats.norm.cdf(m) + m * stats.norm.pdf(m)
+    e2 = (m**4 + 6 * m**2 + 3) * stats.norm.cdf(m) + (m**3 + 5 * m) * stats.norm.pdf(m)
+    zb = np.sum(true - e1) / np.sqrt(np.sum(e2 - e1**2)) if inj else np.inf
+    pv["boundary_mean"] = float(2 * stats.norm.sf(abs(zb)))
+    out["reported"]["lambda_range"] = [float(lam.min()), float(lam.max())] if inj else None
 
-    # reported, not criteria: completeness of the grid search at the 0.1 % FAP threshold
-    if mc is not None and inj:
+    # Holm over the whole family
+    names = sorted(pv, key=pv.get)
+    reject, k = {}, len(names)
+    for rank, name in enumerate(names):
+        reject[name] = pv[name] <= spec["family_alpha"] / (k - rank)
+        if not reject[name]:
+            for rest in names[rank + 1:]:
+                reject[rest] = False
+            break
+    out["rejected"] = sorted(n for n, r in reject.items() if r)
+
+    if mc is not None and inj:  # reported: completeness at virgil's 1e-3 threshold
         thr = float(np.quantile(np.asarray(mc.null["delta_chi2"]), 1 - 1e-3))
         comp = {}
         for sep in SEPS:
             for f in FLUXES:
-                sel = [r for r in inj if r["sep"] == sep and r["flux"] == f]
+                sel = [r for r in inj if r["sep"] == sep and np.isclose(r["flux"], f)]
                 if sel:
-                    comp[f"{sep:g}mas_{f:g}"] = float(np.mean([r["grid"]["delta_chi2"] > thr for r in sel]))
-        out["completeness_at_fap_1e-3"] = {"threshold_delta_chi2": thr, "by_sep_flux": comp}
+                    comp[f"{sep:g}mas_{f:.2g}"] = float(np.mean([r["grid"]["delta_chi2"] > thr for r in sel]))
+        out["reported"]["completeness"] = {"threshold_delta_chi2": thr, "by_sep_flux": comp}
     n_virgil = int(mc.n_null) if mc is not None else 0
-    enough = (len(null) >= CRITERIA["min_null"] and len(inj) >= CRITERIA["min_injected"]
-              and n_virgil >= CRITERIA["min_virgil"])
-    out["counts"] = {"null": len(null), "inject": len(inj), "virgil": int(mc.n_null) if mc is not None else 0}
-    out["pass"] = bool(enough and all(c["pass"] for c in checks.values()))
+    c = spec["counts"]
+    out["counts"] = {"null": len(null), "inject": len(inj), "virgil": n_virgil}
+    enough = len(null) >= c["min_null"] and len(inj) >= c["min_injected"] and n_virgil >= c["min_virgil"]
+    out["pass"] = bool(enough and not out["rejected"] and out["must_hold"]["bookkeeping"]["pass"])
     text = json.dumps(out, indent=1)
     if args.summary:
         pathlib.Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
