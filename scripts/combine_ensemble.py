@@ -1,6 +1,9 @@
 """Combine the ensemble members of the contest campaign (PYRA-style).
 
-    python scripts/combine_ensemble.py RESULTS_DIR [--out DIR]
+    python scripts/combine_ensemble.py RESULTS_DIR [RESULTS_DIR ...] [--out DIR]
+
+With several directories (e.g. a campaign and a rerun of some of its
+members), a member in a later one replaces the same member in an earlier one.
 
 For each dataset, read the members' `<label>_m<k>.npz` files, written by
 `scripts/contest_images.py --member k`. Each member is a CLEAN-started GP fit
@@ -38,10 +41,14 @@ import numpy as np  # noqa: E402
 KEEP = 1.5  # members within this factor of max(best χ²/N, 1) are kept
 
 
-def load(results):
+def load(*results):
+    latest = {}  # file name -> path; later directories win
+    for directory in results:
+        for path in pathlib.Path(directory).glob("*_m[0-9]*.npz"):
+            latest[path.name] = path
     groups = collections.defaultdict(list)
-    for path in sorted(pathlib.Path(results).glob("*_m[0-9]*.npz")):
-        match = re.match(r"(.+)_m(\d+)\.npz$", path.name)
+    for name, path in sorted(latest.items()):
+        match = re.match(r"(.+)_m(\d+)\.npz$", name)
         if not match:
             continue
         d = np.load(path)
@@ -127,14 +134,14 @@ def combine(label, members, out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("results")
+    parser.add_argument("results", nargs="+")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
-    out = pathlib.Path(args.out or args.results)
+    out = pathlib.Path(args.out or args.results[-1])
     out.mkdir(parents=True, exist_ok=True)
     rows = ["| dataset | kept | best χ²/N | median kept χ²/N | error scale (kept) | ΔlogZ star − no star |",
             "|---|---|---|---|---|---|"]
-    for label, members in sorted(load(args.results).items()):
+    for label, members in sorted(load(*args.results).items()):
         rows.append(combine(label, members, out))
     table = "\n".join(rows) + "\n"
     (out / "ensemble.md").write_text(table)

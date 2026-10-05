@@ -63,6 +63,20 @@ def test_an_overfitting_best_member_does_not_set_the_cutoff(tmp_path):
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_a_rerun_replaces_the_same_member(tmp_path):
+    a, b, _ = _images()
+    first, rerun = tmp_path / "first", tmp_path / "rerun"
+    first.mkdir()
+    rerun.mkdir()
+    _member(first / "w_m0.npz", a, 1.0, -10.0, True)
+    _member(first / "w_m1.npz", a, 9.0, -50.0, False)
+    _member(rerun / "w_m1.npz", b, 1.2, -11.0, False)
+    members = combine_ensemble.load(first, rerun)["w"]
+    assert sorted(m["member"] for m in members) == [0, 1]
+    assert [m["chi2"] for m in members if m["member"] == 1] == [1.2]
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
 def test_missing_cohort_and_resampled_grid(tmp_path):
     a, b, _ = _images()
     _member(tmp_path / "y_m0.npz", a, 1.0, -10.0, True)
