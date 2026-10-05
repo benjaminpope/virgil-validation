@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: ec4cf51530fb528f17d61dc75a5d89df8f5568fd
+  VIRGIL_REF: 10579286fa4f3dbfdc2ac4382c06dfb4e397032f
 
 jobs:
   validate:
@@ -35,6 +35,8 @@ jobs:
         run: .venv/bin/python scripts/fetch_contests.py --year 2004 2006 2008 2010
       - name: CANDID (own environment, pinned commit)
         run: bash scripts/setup_candid.sh
+      - name: eht-imaging and MPoL (own environments, pinned versions)
+        run: bash scripts/setup_external.sh ehtim mpol
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl

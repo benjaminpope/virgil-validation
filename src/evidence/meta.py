@@ -60,6 +60,15 @@ def candid():
     return candid_bridge.provenance()
 
 
+def external():
+    """Versions of the packages that run in their own environments."""
+    try:
+        from external_bridge import _subprocess
+    except ImportError:
+        return None
+    return {name: _subprocess.version(name) for name in ("ehtim", "mpol", "fouriever")}
+
+
 def run_header():
     return {
         "record": "run",
@@ -70,6 +79,7 @@ def run_header():
         "validation_commit": own_commit(),
         "versions": {p: _version(p) for p in PACKAGES},
         "candid": candid(),
+        "external": external(),
         "python": platform.python_version(),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") else "local",
         "run_url": (

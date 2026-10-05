@@ -227,6 +227,30 @@ source (`tests/test_nrm.py`).
 | `find_uv_grid` on rotated lattices (0, 17, −38°) | the lattice we built | Analytic | rotation to 1e-6° |
 | `Image.model_on_grid` (two-sided matrix Fourier transform) and `Image.model` on those lattices | direct sum over rotated pixel centres | Quadrature | 1e-12 |
 
+### Regularisers
+
+`tests/test_imaging_regularisers.py`. eht-imaging 1.3.2 (`imager_utils`,
+normalisation off) and MPoL 0.3.1 (`losses`) run in their own
+environments. The test images are random, on a circular support, so their
+outer ring of pixels is zero. With that, the three codes' different edge
+conventions give the same sums; the mapping (signs, flips, the softening's
+square, the cells each code counts) is in the test's docstring. Gradients
+are virgil's, with respect to the log-brightness, against eht-imaging's
+hand-written and MPoL's autograd pixel gradients through the softmax
+chain rule.
+
+| virgil | Reference | Tag | Agreement (value and gradient) |
+| --- | --- | --- | --- |
+| `TSV` | `stv2` (eht-imaging), `TSV` (MPoL) | eht-imaging, MPoL | 1e-15 |
+| `TV` | `stv` and `TV_image` averaged over the four flips, plus the softening of the extra edge cells | eht-imaging, MPoL | 1e-15 |
+| `MaxEntropy`, flat and random default image | `ssimple` (eht-imaging); `entropy` (MPoL, no support) | eht-imaging, MPoL | 1e-15 |
+| `Laplacian` | SciPy's five-point Laplacian of the zero-padded image | Mathematics | 1e-15 |
+| `StarletL1` and `starlet` (1, 3, 4 scales) | à-trous B3-spline transform written with SciPy (Starck, Murtagh & Fadili 2010) | Mathematics | 1e-15; details + coarse = image |
+| `LogSum` | its formula and pixel gradient | Mathematics | 1e-15 |
+
+Not yet: regularised image reconstructions end to end against eht-imaging's
+imager on the same files.
+
 ## External packages: PMOIRED conventions (Stage 0)
 
 PMOIRED 26.10.1 evaluates its models on our noise-free OIFITS files
@@ -304,8 +328,8 @@ Jacobian of that mapping.
 
 `GravityDarkenedStar` against an independent root, harmonix's maps,
 bandwidth smearing, AMIGO DISCO mode bases, false-alarm and contrast-limit
-campaigns, regularised imaging (including the sparse regularisers
-`Laplacian`, `StarletL1` and `LogSum`) and sampling (`numpyro_model`). To ask for any of these, or anything else,
+campaigns, regularised reconstructions end to end, `l_curve` and sampling
+(`numpyro_model`). To ask for any of these, or anything else,
 open an Issue at
 <https://github.com/benjaminpope/virgil-validation/issues> describing the
 model or function, the independent result it should match, and the
