@@ -51,6 +51,7 @@ import virgil.models as vm  # noqa: E402
 from virgil.fields import GaussianField  # noqa: E402
 from virgil.imaging import (  # noqa: E402
     clean,
+    error_scale,
     log_evidence,
     Centroid,
     MaxEntropy,
@@ -114,10 +115,20 @@ TASKS = [
         "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits",
         "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits",
         "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits"]),
+    # 2024 MATISSE L and N bands (the files contestants had; grey per band).
+    dict(label="2024_obj1_matisseL", files=["2024/Obj1_MATISSE_2.9-4.2.fits"], star=True,
+         star_source="contest page: a hot star with an environment"),
+    dict(label="2024_obj1_matisseN", files=["2024/Obj1_MATISSE_8-13.fits"], star=True,
+         star_source="contest page: a hot star with an environment"),
+    dict(label="2024_obj2_matisseL", files=["2024/Obj2_MATISSE_2.9-4.0.fits"], star=True,
+         star_source="contest page: a young star"),
+    dict(label="2024_obj2_matisseN", files=["2024/Obj2_MATISSE_8-13.fits"], star=True,
+         star_source="contest page: a young star"),
 ]
 
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
 MAX_PIX = 256  # pixels on a side; larger fields get coarser pixels
+JACOBIAN_BUDGET = 2.0e8  # data points x pixels, about 3 GB per complex128 Jacobian
 CLEAN_MAX_PIX = 65  # CLEAN runs on at most this grid (see setup())
 FLUX_FLOOR = 1e-4  # lower bound of the log-uniform (Jeffreys) flux priors, relative to the star
 GROWTHS = 3  # data-chosen fields grow at most three times (see run())
@@ -143,7 +154,8 @@ def select_channels(path, wavel, tmp_dir):
     return str(out)
 
 
-def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000):
+def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
+          oversample=4.0, clean_gain=0.1):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data."""
@@ -170,21 +182,26 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     npts = sum(np.asarray(d.flatten_data()[0]).size for d in datasets)
     resolution = beam(data)
 
-    kwargs = {"star": star}
+    kwargs = {"star": star, "oversample": oversample}
     if star:
         kwargs["hole_mas"] = 0.5 * resolution.minor_mas
     start = starting_image(data, **kwargs)
     img0 = image_of(start, star)
     pixel0 = float(img0.pixel_scale_mas)
     n0 = int(np.shape(img0.log_brightness)[0])
+    # The evidence Jacobian (and CLEAN's columns) are data points x pixels:
+    # cap the grid so that product stays within JACOBIAN_BUDGET. MATISSE's
+    # 8-26k points on 255^2 pixels needed 432 GB on an 80 GB A100 (job
+    # 18073823). The cap only bites for the largest datasets.
+    max_pix = min(MAX_PIX, int(np.sqrt(JACOBIAN_BUDGET / max(npts, 1))))
     want = field if field is not None else (n0 * pixel0 * grow if grow > 1 else None)
-    if want is None and n0 > MAX_PIX:  # starting_image's own grid can exceed the cap
+    if want is None and n0 > max_pix:  # starting_image's own grid can exceed the cap
         want = n0 * pixel0
     q = None
     if want is not None:
         n = int(np.ceil(want / pixel0)) | 1
-        if n > MAX_PIX:  # the largest odd size within the cap, coarser pixels
-            n = MAX_PIX - 1 if MAX_PIX % 2 == 0 else MAX_PIX
+        if n > max_pix:  # the largest odd size within the cap, coarser pixels
+            n = max_pix - 1 if max_pix % 2 == 0 else max_pix
         pixel = want / n if n * pixel0 < want else pixel0
         x = (np.arange(n) - (n - 1) / 2) * pixel
         if prior_spec:
@@ -214,7 +231,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
 
             support_c = ndimage.zoom(np.asarray(support, float), n_c / n_img, order=0) > 0.5
         cleaned = clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
-                        max_iterations=clean_iters, target_chi2_red=1.0)
+                        max_iterations=clean_iters, target_chi2_red=1.0, gain=clean_gain)
         restored = np.clip(np.asarray(cleaned.restored(resolution)), 0.0, None)
         if n_c != n_img:
             from scipy import ndimage
@@ -429,10 +446,55 @@ def oriented_template(template, pa_deg, pixel, n):
     return best[1]
 
 
-def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments"):
+# Ensemble members (--member m, one per array task): one CLEAN-started GP fit each,
+# with a randomised start, as the 2012 random-start entries, the 2018 winner's
+# chains and PYRA/MYTHRA (2022-24) did. Members alternate the analytic star
+# on and off, so the evidence compares the two on the same data.
+MEMBER_FIELDS = (1.0, 1.5, 2.0)  # x the data-chosen field (contest-given fields stay fixed)
+MEMBER_OVERSAMPLE = (2.0, 3.0, 4.0)  # pixels per Nyquist pixel
+MEMBER_GAINS = (0.05, 0.1, 0.2)  # CLEAN loop gain
+REF_NPIX = 129  # the common grid members are rendered onto, 2x the base field
+
+
+def member_settings(task, member):
+    rng = np.random.default_rng(1000 * task + member)
+    return {
+        "star": member % 2 == 0,
+        "field": float(rng.choice(MEMBER_FIELDS)),
+        "oversample": float(rng.choice(MEMBER_OVERSAMPLE)),
+        "clean_gain": float(rng.choice(MEMBER_GAINS)),
+    }
+
+
+def member_setup(task, data_dir, member, smoke=False):
+    settings = member_settings(task, member)
+    opts = dict(star=settings["star"], init="clean", clean_iters=50 if smoke else 3000,
+                oversample=settings["oversample"], clean_gain=settings["clean_gain"])
+    if TASKS[task].get("field") is not None:
+        settings["field"] = 1.0  # a contest-given field is used as given
+    s = setup(task, data_dir, False, settings["field"], **opts)
+    s["ref_fov"] = reference_fov(task, data_dir)
+    return s, settings
+
+
+def reference_fov(task, data_dir):
+    """The common grid's field for all members of a task: twice the base field
+    of the task's own configuration (its default star, a moments start), so it
+    does not depend on any member's random settings or star choice."""
+    base = setup(task, data_dir, False, 1.0, star=None, init="moments")
+    return 2.0 * base["fov"]
+
+
+def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None):
     t0 = time.time()
-    s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
-    label = s["label"] + "_gp"
+    settings = None
+    if member is None:
+        s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
+        label = s["label"] + "_gp"
+    else:
+        s, settings = member_setup(task, data_dir, member, smoke)
+        growth, init = [], "clean"
+        label = f"{TASKS[task]['label']}_m{member}"
     data, star, res = s["data"], s["star"], s["resolution"]
     img0, n, pixel = s["img0"], s["npix"], s["pixel"]
     fov = n * pixel
@@ -477,10 +539,46 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                key=lambda k: log_z[k[0]][k[1], k[2]])
     winner = results[best]
 
+    # Error-scale check (MacKay's fixed point, virgil.imaging.error_scale): the
+    # evidence assumes correct error bars, which several contest datasets
+    # break on purpose. Far from 1, refit the winner with rescaled errors.
+    datasets = data if isinstance(data, list) else [data]
+    scale = float(error_scale(winner.model, data))
+    rescaled = None
+    if not 1 / 1.3 < scale < 1.3:
+        data_s = [d.with_error_scale(scale) for d in datasets]
+        data_s = data_s if isinstance(data, list) else data_s[0]
+        name, i, j = best
+        mean, rotation, lens = variants[name]
+        field = GaussianField(np.zeros((n, n)), sigmas[j], lens(lengths[i]), mean=mean)
+        sc = scene(field, rotation)
+        rr = fit(sc, image_priors(sc) | extra, data_s, others, init=winner.values, **options)
+        rescaled = {"scale": scale, "log_z": float(log_evidence(rr, data_s)),
+                    "chi2_red": float(np.sum(rr.info["chi2_red"])), "result": rr}
+
     out_dir.mkdir(parents=True, exist_ok=True)
     best_of = {name: max(((i, j) for (i, j), _ in np.ndenumerate(g)), key=lambda k: g[k]) for name, g in log_z.items()}
     images = {name: np.asarray(results[(name, *ij)].model.env.render(n, fov)) for name, ij in best_of.items()}
-    np.savez_compressed(out_dir / f"{label}.npz", **{f"log_z_{k}": v for k, v in log_z.items()},
+    final = rescaled["result"] if rescaled else winner
+    member_extra = {}
+    if settings is not None:
+        ref_fov = s["ref_fov"]
+        member_extra = dict(
+            # The whole scene (star included) on the common grid, so that star and
+            # no-star members compare like with like; the environment alone too.
+            ref_image=np.asarray(final.model.render(REF_NPIX, ref_fov)),
+            ref_env=np.asarray(final.model.env.render(REF_NPIX, ref_fov)), ref_fov=ref_fov,
+            star=settings["star"], field_factor=settings["field"], oversample=settings["oversample"],
+            clean_gain=settings["clean_gain"], env_flux=float(final.model.env.flux),
+            best_log_z=float(log_z[best[0]][best[1], best[2]]),
+            best_chi2_red=float(np.sum(winner.info["chi2_red"])),
+            error_scale=scale,
+            rescaled_log_z=rescaled["log_z"] if rescaled else np.nan,
+            rescaled_chi2_red=rescaled["chi2_red"] if rescaled else np.nan,
+            flip_dchi2=float(np.ravel(diagnose(final.model, data if not rescaled else data_s,
+                                                list(others)).checks["flip_dchi2"])[0]),
+        )
+    np.savez_compressed(out_dir / f"{label}.npz", **member_extra, **{f"log_z_{k}": v for k, v in log_z.items()},
                         **{f"image_{k}": v for k, v in images.items()}, sigmas=np.asarray(sigmas),
                         lengths_mas=np.asarray(lengths), ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
                         template=template)
@@ -494,6 +592,9 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         rr = results[(name, i, j)]
         lines.append(f"best {name}: ℓ={lengths[i]:.4g} σ={sigmas[j]} log_z={g[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
     lines.append(f"residuals of the winner={residual_diagnostics(winner.model, data)}")
+    lines.append(f"error_scale={scale:.3f}" + (f" -> refit with rescaled errors: log_z={rescaled['log_z']:.2f} chi2/N={rescaled['chi2_red']:.3f}" if rescaled else " (within 1.3x: kept)"))
+    if settings is not None:
+        lines.append(f"member settings={settings}")
     lines.append(f"WINNER: {best[0]} ℓ={lengths[best[1]]:.4g} σ={sigmas[best[2]]} log_z={log_z[best[0]][best[1], best[2]]:.2f}")
     lines.append(f"elapsed={time.time() - t0:.0f}s\n\n{diagnose(winner.model, data, list(others))}")
     text = "\n".join(lines) + "\n"
@@ -525,6 +626,7 @@ def main():
     parser.add_argument("--star", choices=("on", "off"), help="override the task's central star (labels get _star/_nostar)")
     parser.add_argument("--init", choices=("moments", "clean"), default="moments", help="starting image (labels get _clean)")
     parser.add_argument("--prior", choices=("mem", "gp"), default="mem", help="MaxEnt L-curve, or Gaussian-process fits chosen by evidence (labels get _gp)")
+    parser.add_argument("--member", type=int, help="ensemble member (CLEAN-started GP with a randomised start)")
     parser.add_argument("--smoke", action="store_true", help="three weights, 50 steps: check that it runs")
     args = parser.parse_args()
     if args.list:
@@ -533,6 +635,10 @@ def main():
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     star = None if args.star is None else args.star == "on"
+    if args.member is not None:
+        run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
+               member=args.member)
+        return
     runner = run_gp if args.prior == "gp" else run
     runner(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
            args.halo, star, args.init)
