@@ -51,9 +51,10 @@ def pytest_runtest_call(item):
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
-        "validates(obj, *more, roots, kind='check', tier='A'): the virgil "
-        "objects (or our references) this test validates, and against which "
-        "roots of trust",
+        "validates(obj, *more, roots, kind='check', tier='A', headline=None): "
+        "the virgil objects (or our references) this test validates, against "
+        "which roots of trust, and optionally which recorded metric "
+        "summarises it on the Trust page",
     )
     config.stash[_RECORDS] = []
     _CONFIG["config"] = config
@@ -66,6 +67,7 @@ def _claims(item):
         roots = list(mark.kwargs.get("roots", ()))
         kind = mark.kwargs.get("kind", "check")
         tier = mark.kwargs.get("tier", "A")
+        headline = mark.kwargs.get("headline")
         if not objects or not roots:
             raise pytest.UsageError(f"{item.nodeid}: validates needs objects and roots")
         bad = [r for r in roots if r not in ROOTS and not r.startswith("golden:")]
@@ -73,7 +75,10 @@ def _claims(item):
             raise pytest.UsageError(
                 f"{item.nodeid}: unknown roots {bad}, kind {kind!r} or tier {tier!r}"
             )
-        claims.append({"objects": objects, "roots": roots, "kind": kind, "tier": tier})
+        claim = {"objects": objects, "roots": roots, "kind": kind, "tier": tier}
+        if headline is not None:
+            claim["headline"] = str(headline)
+        claims.append(claim)
     return claims
 
 
@@ -104,6 +109,15 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
     report.validates = _claims(item)
+    report.validates_where = _where(item)
+
+
+def _where(item):
+    """The test's line (1-based) and the first paragraph of its docstring,
+    for the Trust page's description of each check."""
+    doc = getattr(getattr(item, "function", None), "__doc__", None) or ""
+    first = " ".join(doc.strip().split("\n\n")[0].split())
+    return {"line": item.location[1] + 1, "doc": first}
 
 
 def _outcome(report):
@@ -145,6 +159,7 @@ def pytest_runtest_logreport(report):
                     "duration_s": round(decisive.duration, 3),
                     # the teardown report carries every recorded property
                     "metrics": dict(report.user_properties),
+                    **getattr(report, "validates_where", {}),
                 }
             )
 

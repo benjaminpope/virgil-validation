@@ -8,7 +8,7 @@ dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil
 [project.optional-dependencies]
 # Other people's packages, pinned: updating a pin is a deliberate PR.
 external = ["pmoired==26.10.1"]
-docs = ["mkdocs<2", "mkdocs-material"]
+docs = ["mkdocs<2", "mkdocs-material", "zensical>=0.0.62,<0.1"]  # built with Zensical, as virgil is
 
 # The evidence plugin loads whenever the package is installed, so its options
 # (--evidence, --require-validates) parse whatever the order of arguments.

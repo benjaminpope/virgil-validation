@@ -16,7 +16,13 @@
 # published result from the authors' own data (root: literature). A
 # pipeline is validated when its own evidence passes and every step is
 # trusted on its own; end-to-end failure with trusted steps points at the
-# joins between them.
+# joins between them. For the Trust page, each also has:
+#   data:      real (observations, reproducing a published result) or simulated
+#   dataset:   what the data are, in a few words
+#   reference: what it is compared with (a paper, a package, the truth)
+#   url:       optional link for the reference
+#   headline:  what agreement means, shown until evidence gives the number
+#   state:     planned or running, while there is no evidence yet
 
 nodes:
   # ---------------------------------------------------------------- data
@@ -225,28 +231,54 @@ nodes:
 pipelines:
   synthetic-vlti-fit:
     title: Simulated VLTI data, OIFITS to fitted parameters and uncertainties
+    data: simulated
+    dataset: four UTs, binaries, disks and rims with noise
+    reference: the injected truth
+    headline: fits recover the truth; error bars calibrated (pulls)
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.System,
             virgil.likelihood.whitened_residuals, virgil.fitting.fit, virgil.inference.laplace_cov]
   dlux-masking-fit:
     title: Aperture-masking images from dLux, calibrated and fitted
+    data: simulated
+    dataset: dLux images of a 7-hole mask
+    reference: the injected truth
+    headline: biases of at most 0.05 σ
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.System,
             virgil.fitting.fit, virgil.inference.laplace_cov]
   pmoired-identical-fits:
     title: The same files fitted by virgil and PMOIRED
+    data: simulated
+    dataset: VLTI files, three telescopes
+    reference: PMOIRED fits of the same files
+    headline: best fits within 0.25 σ
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.fitting.fit, virgil.inference.laplace_cov]
   rml-imaging:
     title: Regularised image reconstruction against eht-imaging or MPoL on the same data
+    data: simulated
+    dataset: three VLTI UTs, noisy visibilities of a two-Gaussian scene
+    reference: eht-imaging's imager on the same visibilities
+    headline: the same minimum, images equal to 1e-7
     steps: [virgil.oidata.OIData, virgil.models.Image, virgil.imaging.TSV,
             virgil.fitting.fit]  # TSV; other regularisers are alternatives, checked alone
   contest-imaging:
     title: Blind images from the SPIE imaging contests' data, against the published entries and truths
-    planned: true
+    data: real
+    dataset: SPIE interferometric imaging contests, 2004–2024
+    reference: the contests' truth images and published entries
+    url: plan_imaging_contests.md
+    headline: images compared with the truths and entries
+    state: running
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.Image,
             virgil.imaging.TSV, virgil.imaging.MaxEntropy, virgil.imaging.l_curve, virgil.fitting.fit]
   published-binary:
     title: Reproduce published binary detections from the authors' archival data
-    planned: true
+    data: real
+    dataset: ESO archive, e.g. Gl 229 Ba–Bb and NACO aperture-masking binaries
+    reference: the published separations, angles and contrasts
+    url: plan_eso_binaries.md
+    headline: separation, angle and contrast against the papers
+    state: running
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,
             virgil.limits.absil_limits]

@@ -69,6 +69,16 @@ def test_ledger_entries_point_at_real_tests_and_nodes():
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_pipelines_describe_their_data():
+    """The Trust page shows real-data and simulated pipelines apart: each
+    says which it is, and real ones say what they reproduce."""
+    for name, p in GRAPH.get("pipelines", {}).items():
+        assert p.get("data") in ("real", "simulated"), name
+        assert p.get("dataset") and p.get("reference"), name
+        assert p.get("state", "planned") in ("planned", "running"), name
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_graph_and_ledger_have_no_duplicate_keys():
     """YAML keeps the last of two equal keys silently, so a node or entry
     added by two branches at once would vanish without this check."""

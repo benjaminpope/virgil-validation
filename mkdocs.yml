@@ -29,10 +29,15 @@ markdown_extensions:
           format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.arithmatex: {generic: true}
 
+extra_css:
+  - assets/trust.css
+extra_javascript:
+  - assets/trust.js
+
 nav:
-  - Home: index.md
+  - Trust: index.md
+  - Overview: overview.md
   - "Design: bootstrapping trust": design.md
-  - Trust: trust.md
   - Report: report.md
   - Results: results.md
   - Evidence: evidence.md
@@ -45,3 +50,4 @@ nav:
       - orbitize!: orbitize_notes.md
   - "Plan: ESO binaries": plan_eso_binaries.md
   - "Plan: imaging contests": plan_imaging_contests.md
+  - "Plan: trust page": plan_trust_page.md
