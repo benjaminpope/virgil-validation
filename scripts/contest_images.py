@@ -50,6 +50,7 @@ import numpyro.distributions as dist  # noqa: E402
 import virgil  # noqa: E402
 import virgil.models as vm  # noqa: E402
 from virgil.fields import GaussianField  # noqa: E402
+from virgil.imaging import Beam as vm_beam  # noqa: E402
 from virgil.imaging import (  # noqa: E402
     clean,
     error_scale,
@@ -183,12 +184,14 @@ def select_channels(path, wavel, tmp_dir):
 
 
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
-          oversample=4.0, clean_gain=0.1, star_model="point", sparco=False):
+          oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data. With a star, ``star_model`` is "point" (unresolved) or
     "disk" (a uniform disk whose diameter is fitted); ``sparco`` gives the
-    image a power-law spectrum relative to the star's."""
+    image a power-law spectrum relative to the star's. ``mean_blur`` scales
+    the beam that restores CLEAN's components into the starting image (1:
+    the beam; 0.5 keeps detail finer than a beam)."""
     spec = spec_of(task)
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
@@ -279,7 +282,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
                         base_priors={k.removeprefix("star."): v for k, v in star_priors.items()} or None)
         if star_priors:  # the diameter CLEAN fitted along with the components
             start = vm.System(star=cleaned.model.base, env=start.env)
-        restored = np.clip(np.asarray(cleaned.restored(resolution)), 0.0, None)
+        restore = vm_beam(resolution.major_mas * mean_blur, resolution.minor_mas * mean_blur, resolution.pa_deg)
+        restored = np.clip(np.asarray(cleaned.restored(restore)), 0.0, None)
         if n_c != n_img:
             from scipy import ndimage
 
@@ -374,10 +378,23 @@ def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=Fal
     return s, growth
 
 
-def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments"):
+def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", settings=None, label=None):
+    """MaxEnt L-curve. With ``settings`` (scripts/contest_bench.py's "mem"
+    arm) the field, pixels and CLEAN start follow those settings, as for a GP
+    member, and the default model of the entropy is the CLEAN starting image
+    (as BSMEM and MiRA use a prior image); the chosen image is also rendered
+    on the common reference grid (``ref_image``) for scoring."""
     t0 = time.time()
-    s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
+    if settings is None:
+        s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
+    else:
+        s, settings = member_setup(task, data_dir, None, smoke, settings)
+        growth, init, halo = [], "clean", s["halo"]
+        template = np.asarray(s["img0"].brightness).reshape(s["npix"], s["npix"])
+        s["q"] = template / template.sum()
+    label_ = label
     label, files, star, data, npts = s["label"], s["files"], s["star"], s["data"], s["npts"]
+    label = label_ or label
     resolution, start, img0, npix, pixel, fov = (s[k] for k in ("resolution", "start", "img0", "npix", "pixel", "fov"))
     path, priors, others = s["path"], s["priors"], s["others"]
     weights = WEIGHTS[[0, 6, -1]] if smoke else WEIGHTS
@@ -400,8 +417,14 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     first = np.asarray(img0.render(npix, fov))
 
     out_dir.mkdir(parents=True, exist_ok=True)
+    reference = {}
+    if settings is not None:
+        chosen_model = curve.results[index["discrepancy"]].model
+        reference = dict(ref_image=np.asarray(chosen_model.render(REF_NPIX, s["ref_fov"])), ref_fov=s["ref_fov"],
+                         best_chi2_red=float(np.asarray(curve.chi2_red)[index["discrepancy"]]), error_scale=np.nan,
+                         star=bool(star), best_log_z=np.nan, flip_dchi2=np.nan)
     np.savez_compressed(
-        out_dir / f"{label}.npz",
+        out_dir / f"{label}.npz", **reference,
         weights=np.asarray(curve.weights), chi2=np.asarray(curve.chi2),
         chi2_red=np.asarray(curve.chi2_red), penalty=np.asarray(curve.penalty),
         images=images, start=first, pixel_scale_mas=pixel, npix=npix,
@@ -542,7 +565,8 @@ def member_setup(task, data_dir, member, smoke=False, settings=None):
     settings = dict(settings) if settings is not None else member_settings(task, member)
     opts = dict(star=settings["star"], init="clean", clean_iters=50 if smoke else 3000,
                 oversample=settings["oversample"], clean_gain=settings["clean_gain"],
-                star_model=settings["star_model"], sparco=settings["sparco"])
+                star_model=settings["star_model"], sparco=settings["sparco"],
+                mean_blur=settings.get("mean_blur", 1.0))
     if spec_of(task).get("field") is not None:
         settings["field"] = 1.0  # a contest-given field is used as given
     s = setup(task, data_dir, settings["halo"], settings["field"], **opts)

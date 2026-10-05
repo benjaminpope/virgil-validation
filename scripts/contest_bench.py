@@ -56,8 +56,8 @@ PIXELS_PER_BEAM = 10  # truth grid resolution
 # Pipeline configurations (benchmark arms). Each is the settings dict that
 # contest_images.member_setup takes; change one factor at a time against
 # "baseline" (the first campaign's CLEAN-started GP with no star).
-BASE = {"star": False, "star_model": "none", "halo": False, "sparco": False,
-        "field": 2.0, "oversample": 3.0, "clean_gain": 0.1}
+BASE = {"method": "gp", "star": False, "star_model": "none", "halo": False, "sparco": False,
+        "field": 2.0, "oversample": 3.0, "clean_gain": 0.1, "mean_blur": 1.0}
 CONFIGS = {
     "baseline": BASE,
     "point_star": BASE | {"star": True, "star_model": "point"},
@@ -65,6 +65,12 @@ CONFIGS = {
     "halo": BASE | {"halo": True},
     "field_1x": BASE | {"field": 1.0},
     "field_4x": BASE | {"field": 4.0},
+    # GP mean from CLEAN components restored with half a beam (detail finer
+    # than a beam survives into the start).
+    "half_beam_mean": BASE | {"mean_blur": 0.5},
+    # The winners' own method: MaxEnt with the CLEAN image as default model,
+    # weight by the discrepancy principle (contest_images.run).
+    "mem": BASE | {"method": "mem"},
 }
 DROP = ("OI_VIS", "OI_FLUX")
 
@@ -206,8 +212,9 @@ def run(bench, out, dataset_id, config_names, smoke=False):
     config = config_names[dataset_id % len(config_names)]
     meta = json.loads((bench / name / "meta.json").read_text())
     spec = {"label": name, "files": [str(bench / name / f) for f in meta["files"]]}
-    contest_images.run_gp(spec, pathlib.Path("/"), out, smoke=smoke, settings=CONFIGS[config],
-                          label=f"{name}__{config}")
+    settings = CONFIGS[config]
+    runner = contest_images.run if settings["method"] == "mem" else contest_images.run_gp
+    runner(spec, pathlib.Path("/"), out, smoke=smoke, settings=settings, label=f"{name}__{config}")
     return name, config
 
 
