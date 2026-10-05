@@ -688,8 +688,8 @@ def beta_pic_model(pos):
 
 @pytest.mark.slow
 @pytest.mark.campaign
-@pytest.mark.skipif(os.environ.get("VALIDATION_CAMPAIGNS") != "1",
-                    reason="campaign (hours): opt in with VALIDATION_CAMPAIGNS=1")
+@pytest.mark.skipif(os.environ.get("VALIDATION_CAMPAIGNS") not in ("1", "smoke"),
+                    reason="campaign (hours): opt in with VALIDATION_CAMPAIGNS=1 (or =smoke for a minutes-long dry run)")
 @pytest.mark.validates("pipeline:orbitize-posterior", "virgil.orbits.PositionData", "virgil.orbits.KeplerOrbit",
                        roots=["orbitize"], tier="C")
 def test_beta_pic_posterior_matches_orbitize(tmp_path):
@@ -709,19 +709,25 @@ def test_beta_pic_posterior_matches_orbitize(tmp_path):
     linearised into (dra, ddec), which matters only where sep * sigma_PA is
     not small against the curvature of the arc."""
     import jax.random
-    from numpyro.infer import MCMC, NUTS
+    from numpyro.infer import MCMC, NUTS, init_to_median
 
+    # VALIDATION_CAMPAIGNS=smoke: the same pipeline at toy settings, to check
+    # an OzSTAR job end to end in minutes; it records but does not assert
+    smoke = os.environ.get("VALIDATION_CAMPAIGNS") == "smoke"
     path, pos = _beta_pic_positions(tmp_path)
     r = ob.run({
         "task": "posterior", "path": str(path), "algorithm": "MCMC", "tau_ref_epoch": REF,
         "mtot": PRIORS["mtot"][0], "mtot_err": PRIORS["mtot"][1],
         "plx": PRIORS["plx"][0], "plx_err": PRIORS["plx"][1], "priors": PRIORS,
-        "mcmc_kwargs": {"num_temps": 20, "num_walkers": 1000, "num_threads": 1},
-        "n": 2_000_000, "burn": 5000, "thin": 10,
+        "mcmc_kwargs": {"num_temps": 2 if smoke else 20, "num_walkers": 100 if smoke else 1000, "num_threads": 1},
+        "n": 20_000 if smoke else 2_000_000, "burn": 50 if smoke else 5000, "thin": 10,
     }, timeout=48 * 3600)
     theirs = {k: np.asarray(v) for k, v in r.items() if isinstance(v, list)}
 
-    mcmc = MCMC(NUTS(beta_pic_model(pos)), num_warmup=2000, num_samples=5000, num_chains=4, chain_method="sequential")
+    # start at the prior medians: numpyro's default draws each unconstrained
+    # site uniformly on (-2, 2), which can give a negative total mass
+    mcmc = MCMC(NUTS(beta_pic_model(pos), init_strategy=init_to_median), num_warmup=200 if smoke else 2000, num_samples=200 if smoke else 5000,
+                num_chains=1 if smoke else 4, chain_method="sequential", progress_bar=False)
     mcmc.run(jax.random.PRNGKey(2020))
     s = {k: np.asarray(v) for k, v in mcmc.get_samples().items()}
     ours = {"a_mas": np.exp(s["log_sma"]) * s["plx"], "e": s["ecc"], "i": np.degrees(np.arccos(s["cosi"])), "P": s["period"]}
@@ -735,4 +741,7 @@ def test_beta_pic_posterior_matches_orbitize(tmp_path):
         dq = np.abs(np.percentile(ours[k], q) - np.percentile(ref[k], q)) / np.std(ref[k])
         record(f"max_dquantile_over_sd_{k}", np.max(dq))
         worst = max(worst, np.max(dq))
+    record("smoke", float(smoke))
+    if smoke:
+        pytest.skip(f"smoke run: settings too small to compare (worst {worst:.2f} sd)")
     assert worst < 0.15
