@@ -194,7 +194,7 @@
   title: With unequal closure-phase errors in a group, fouriever uses r^T C^+ r and virgil r^T D^-1/2 R^+ D^-1/2 r (different generalised inverses of the singular C)
   objects: [virgil.oidata.OIData.cp_noise, virgil.likelihood.whitened_residuals]
   ruling: definition
-  referee: mathematics (each form written independently, 1e-12); statistics (on closures of baseline-phase noise virgil's form is closer to the nominal chi-squared, e.g. 2.94 vs 2.75 against 3)
+  referee: mathematics (each form written independently, 1e-12); statistics (on closures of baseline-phase noise with unequal errors neither form is calibrated, virgil's is the closer, e.g. 2.94 vs 2.75 against 3; with equal errors virgil's is calibrated, tests/test_fouriever.py::test_whitening_is_calibrated_on_equal_baseline_noise)
   evidence:
     - tests/test_fouriever.py::test_unequal_errors_use_different_generalised_inverses
     - tests/test_fouriever.py::test_whitened_form_is_better_calibrated_on_baseline_noise
