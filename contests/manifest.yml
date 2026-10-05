@@ -1,0 +1,206 @@
+# The optical/IR interferometric imaging contests ("Imaging Beauty Contest",
+# later "Optical Interferometry Imaging Contest" / I2C), held at SPIE
+# Astronomical Telescopes + Instrumentation every two years since 2004.
+#
+# Data files are not committed: scripts/fetch_contests.py downloads them into
+# a data directory (default ~/data/imaging_contests) and checks each sha256.
+# Papers were found on ADS (queried 2026-10-04); data locations, organisers
+# and winners were read from the papers, the archived contest pages and the
+# OiDB collections. See docs/plan_imaging_contests.md.
+#
+# Per contest:
+#   bibcode, doi, arxiv  the contest paper
+#   organisers           who made the data (and their institutes then)
+#   instrument           the real or simulated instrument(s)
+#   targets              what the data are of
+#   winner               winner and code; runners-up in `notes`
+#   truth                where the truth image is, if anywhere
+#   files                name, url, sha256, role (contest | test | doc)
+#
+# Roles: `contest` files are the blind data; `test` files are the binaries
+# the organisers handed out to check conventions before the contest; `doc`
+# files are readmes and rules.
+
+jmmc: &jmmc https://apps.jmmc.fr/oidata/BeautyContest
+oidb: &oidb https://oidb.jmmc.fr/exist/apps/oidb-data/oifits/staging
+
+contests:
+  "2004":
+    bibcode: 2004SPIE.5491..886L
+    doi: 10.1117/12.550710
+    organisers: ["Peter Lawson (JPL, chair)", "Bill Cotton (NRAO, test data)", "Christian Hummel (ESO, simulated the data with OYSTER)"]
+    instrument: NPOI, 6 stations, simulated; one channel at 550 nm
+    targets:
+      data1: model of LkHa 101 (star in an asymmetric shell), image by Peter Tuthill; 242x242 pixels of 0.05 mas
+      data2: binary, A a limb-darkened elliptical disk 5.5 mas across with a bright spot, B a 0.5 mas disk, 10 mas at PA 90 deg
+    winner: BSMEM (Thorsteinsson & Young, Cambridge)
+    notes: "Scores (sum of sigma/peak, lower better): BSMEM 0.50, WISARD 1.68, VLBMEM 1.87, MiRA 5.98."
+    truth: not posted; data2 is analytic and can be rebuilt from the paper
+    files:
+      - {name: 2004-data1.fits, sha256: 75ab3f7d369e57840e2a2de4acd26f7acd7ab8266cfb6ede03d19b39e53d8210, role: contest}
+      - {name: 2004-data2.fits, sha256: f994d31ae4850f1004a06857f1615377eab814ecb67639ebebbddcdd4c09d3a5, role: contest}
+      - {name: 2004-BSC1948I.fits, sha256: 31799c0ad3add2d71f17aa60e7a8df3e7301515566d2e113b789c9242a0e369e, role: test}
+      - {name: 2004-FKV1137.fits, sha256: 3765282ff435f95744ade177017640a8237d88ca2dd7e2af01bb4fd83a0256c9, role: test}
+      - {name: 2004-data1.txt, sha256: a5a4335254d85fa63dcc3e4b800d094290d53b44a9bf47a9c1b19907965deb31, role: doc}
+      - {name: 2004-beauty_contest.html, sha256: 09525f2bfd4f57ba4c957617bfe51a4d9c1386f6fa63dfe09abb9e9792a5acf1, role: doc}
+
+  "2006":
+    bibcode: 2006SPIE.6268E..1UL
+    doi: 10.1117/12.670409
+    organisers: ["Peter Lawson (JPL, chair)", "Bill Cotton (NRAO, referee)", "Christian Hummel (ESO, simulated the data)"]
+    instrument: VLTI/AMBER on the four UTs (3 beams), simulated; 4 nights; 8 channels 1.08-1.34 um, no chromatic structure
+    targets:
+      MIR0001: thin-disk model by Olivier Chesneau, 301x301 pixels of 0.35 mas
+    winner: BSMEM (Baron & Young)
+    notes: "Entries: BSMEM, Building Block Method (MPIfR), MACIM, MiRA, Recursive Phase Reconstruction."
+    truth: not posted
+    files:
+      - {name: 2006-03-03.fits, sha256: 8f3ac4ccea0b8393dd4616d9008abbfda958244b2946d695492a4611ed9ae3b1, role: contest}
+      - {name: 2006-03-04.fits, sha256: 01bb2a50d17f0aa837240130551d8b020b4ec57b3073bfe469b63ee831148116, role: contest}
+      - {name: 2006-03-05.fits, sha256: 90fbd07cbbabf255d3d484f2e738de4a2559ea1e8f0275fe80a6e7e6d912bbc5, role: contest}
+      - {name: 2006-03-06.fits, sha256: bdecfe5a77abf03822203026b33322a24691d9a090cdd1d3a9bd3f80e20c2f57, role: contest}
+      - {name: 2006-double.fits, sha256: 5246572bd085333eed64af63f6403a461462f925a246ddab9c3db242306e94e2, role: test}
+
+  "2008":
+    bibcode: 2008SPIE.7013E..1NC
+    doi: 10.1117/12.788903
+    organisers: ["Bill Cotton (NRAO)"]
+    instrument: CHARA (MIRC-like), simulated; J, H and K, 8 sub-bands each; the model changes between bands
+    targets:
+      Alp_Vic: an AGB star
+      Bet_Vic: an AGN
+      Gam_Vic: test binary, 5.0 mas at PA 30 deg, flux ratio 8.9
+    winner: MiRA (Thiebaut)
+    truth: not posted
+    files:
+      - {name: 2008-Contest1_J.oifits, sha256: 26293327301c69cce4d9817a0ab2c6b9411ce760175e978ec97574d575cc31b4, role: contest}
+      - {name: 2008-Contest1_H.oifits, sha256: e787bcbbfacccf9b84c703414eb517e30a4d6ddc05a01b5d5a7dc0a6f0f6b237, role: contest}
+      - {name: 2008-Contest1_K.oifits, sha256: ffe59bdf561a4b753baf5639dfa9670d5f6fc78905b4cb560ffc92ee95a065ff, role: contest}
+      - {name: 2008-Contest2_J.oifits, sha256: 333e7d88bd60b78555bae47f84ea8460648cbce2ebeaad160c19f38fb1e08856, role: contest}
+      - {name: 2008-Contest2_H.oifits, sha256: 7c431bc526cf14fcb1fa5c3d99e02e9224810de7a23484be68ce3a902df2c063, role: contest}
+      - {name: 2008-Contest2_K.oifits, sha256: 2b6940829c17d6f1c12a2be00bdf92dd5790b1a50e15e4098258a0325354b424, role: contest}
+      - {name: 2008-Contest_Binary.oifits, sha256: 2476bd412d25ddf9af3ee7002f8998a1e1e6f9fbbfbc60310b7412310c235005, role: test}
+      - {name: 2008-readme, sha256: 7fbb2cc87a44cba931f0ceb122b427aac370305babeded23780840e4894765f9, role: doc}
+
+  "2010":
+    bibcode: 2010SPIE.7734E..2NM
+    doi: 10.1117/12.857066
+    arxiv: "1007.4473"
+    organisers: ["Fabien Malbet (JMMC/LAOG, organiser)", "Gilles Duvert (JMMC/LAOG, simulated the data with ASPRO)", "Bill Cotton (NRAO, judge)", "Peter Lawson (JPL, host)"]
+    instrument: VLTI/AMBER, 3 ATs, simulated; polychromatic
+    targets:
+      Mystery: CO5BOLD/OPTIM3D red-supergiant surface (Chiavassa et al. 2009), about 20 mas, with a companion 5 mag fainter at 84.28 mas, PA 261.31 deg
+    winner: BSMEM (Baron)
+    notes: "Ranking BSMEM, SQUEEZE, WISARD, RPR. Judged as grey images and as spectral cubes."
+    truth: not posted (model by Andrea Chiavassa)
+    base: *jmmc
+    subdir: challenge2010Rev1
+    files:
+      - {name: Mystery-Low_HK.oifits.gz, sha256: a9309298fbf1ec3ac8eff49e99e2048b2656c5e974e5b339e71baa7e89787d76, role: contest}
+      - {name: Mystery-Med_H-AmberVISPHI.oifits.gz, sha256: 96f96432f0900e3857594d83d49deb12b0a30c8167f0b618820285aa78b9b8f4, role: contest}
+      - {name: Binary-test-Med_H.oifits.gz, sha256: fbcdc46a7da2eb3da7b48cb6f30b5a2ec9dca6dc71656f98825240fa1ed422e1, role: test}
+      - {name: Challenge.txt, sha256: 844d294ab51e811d4f5a2c4a8b0901a02704c24fcf9dd4f73468195a84ec6cc6, role: doc}
+      - {name: sed-Low_HK.dat, sha256: 4c1884c8bc461df8a41b8aaf4e75365c4514539b2d61fdb66c4c6370bd3d6532, role: doc}
+      - {name: sed-Med_H.dat, sha256: 691f5c8e93312c1acf322ff46b0b1175fc44e8dfd5c8bd39a0e563ea139c5821, role: doc}
+      - {name: Differential_visibilities.pdf, sha256: 6dfb72456a191323065e4a73af04a308dd38d799e076be29fee8191d2bc824b8, role: doc}
+
+  "2012":
+    bibcode: 2012SPIE.8445E..1EB
+    doi: 10.1117/12.924907
+    arxiv: "1207.7141"
+    organisers: ["Fabien Baron (Michigan, chair and data)", "Alicia Aarnio (Michigan, TORUS disk model)", "Bill Cotton (NRAO, judge)", "Peter Lawson (JPL, host)"]
+    instrument: CHARA/MIRC-6T, simulated; low-resolution H band, 8 channels, grey
+    targets:
+      Alp_Fak: T Tauri star and disk (TORUS), loosely after V1295 Aql
+      Bet_Fak: spotted red supergiant, a MIRC image of AZ Cyg with that night's real uv coverage
+    winner: MACIM (Monnier)
+    notes: "Totals: MACIM 280, IRS 313, MiRA (Millour & Vannier) 327, MiRA (Thiebaut & Soulez) 362, MIROIRS 411, BSMEM (Young) 700, BSMEM (Millour & Vannier) 903, CASA 1327, Rengaswamy 1872."
+    truth: listed on OLBIN (Alp_Fak_MIRC6T_LowH_truth_p005_w128.fits, Bet_Fak_MIRC6T_LowH_truth_p015_w64.fits) but never archived
+    missing: data and truth lost with OLBIN; ask Fabien Baron
+    files: []
+
+  "2014":
+    bibcode: 2014SPIE.9146E..1QM
+    doi: 10.1117/12.2057312
+    organisers: ["John Monnier (Michigan)", "Jean-Philippe Berger (ESO)", "Jean-Baptiste Le Bouquin (reduction with pndrs)"]
+    instrument: VLTI/PIONIER, real data; H band, 3 channels; three AT quadruplets, 2014-01-22 to 2014-02-02
+    targets:
+      VY_CMa: red supergiant
+      R_Car: Mira
+    winner: Joel Sanchez-Bermudez (BSMEM; IAA-CSIC)
+    notes: "Real data, so no truth: entries were judged against crowd-sourced median images. ESO programme 60.A-9237(A); raw frames only."
+    truth: none (real data)
+    missing: contest OIFITS not hosted; re-reduce the raw frames or ask John Monnier
+    files: []
+
+  "2016":
+    bibcode: 2016SPIE.9907E..1DS
+    doi: 10.1117/12.2231982
+    organisers: ["Joel Sanchez-Bermudez (MPIA)", "Eric Thiebaut (CRAL)"]
+    instrument: VLTI GRAVITY (medium resolution) and MATISSE (low resolution, N band), simulated; chromatic; OIFITS2
+    targets:
+      Object1: GRAVITY, with an OI_FLUX spectrum
+      Object2: MATISSE N band, a protoplanetary disk with one gap
+    winner: Karl-Heinz Hofmann and the MPIfR group (probably IRBis)
+    truth: not posted
+    missing: files on opticalinterferometry.com were never archived; ask Joel Sanchez-Bermudez
+    files: []
+
+  "2018":
+    bibcode: 2018SPIE10701E..1UM
+    doi: 10.1117/12.2500674
+    organisers: ["Antoine Merand (ESO)"]
+    instrument: CHARA/MIRC 6T and three VLTI/PIONIER AT configurations, simulated with Aspro; grey, R~50; V2 and closure phases
+    targets:
+      star-disk-planet: analytic model, a 0.4 mas uniform-disk star (65%), an inner disk with a bright rim (29%), a planet at 3.75 mas, PA 27 deg (2%), and an outer disk to 20 mas
+    winner: Sanchez-Bermudez, Alberdi & Schodel (SQUEEZE, then BSMEM)
+    truth: analytic; parameters in the paper
+    missing: data not hosted; ask Antoine Merand
+    files: []
+
+  "2022":
+    bibcode: 2022SPIE12183E..1GS
+    doi: 10.1117/12.2629430
+    organisers: ["Joel Sanchez-Bermudez (UNAM)", "Antoine Merand (ESO)", "Steph Sallum (UC Irvine)"]
+    instrument: VLTI/GRAVITY K band (11 channels, three AT configurations) and JWST/NIRISS AMI (3.8 um, one snapshot), simulated
+    targets:
+      Mysterious_Obj1: GRAVITY, high-contrast test
+      Mysterious_Obj2: JWST AMI, high-contrast test
+    winner: John Young (BSMEM); honourable mention Jacques Kluska
+    truth: not posted
+    base: *oidb
+    subdir: a32dd179-bcf9-40ab-add1-79bcf9a0abc3
+    files:
+      - {name: c_imaging_contest1.fits, sha256: b8ec8a7ef36998e6024ca76d9329d1055cdc0099487cc215a0d53751b142b772, role: contest}
+      - {name: c_imaging_contest2.fits, sha256: b98e64325f840bf67a5f558460a60fe6a9b2a18342e7a803b34d5628e92888db, role: contest}
+
+  "2024":
+    bibcode: 2024SPIE13095E..14M
+    doi: 10.1117/12.3019243
+    arxiv: "2609.35064"
+    organisers: ["Florentin Millour", "Mathis Houlle", "Jeremy Perdigon", "Alexis Matter (Lagrange/OCA)", "Ferreol Soulez", "Eric Thiebaut (CRAL)"]
+    instrument: VLTI PIONIER (H), GRAVITY (K), MATISSE (L and N), simulated with Aspro; polychromatic, with noise and calibration biases
+    targets:
+      Obj1: Wolf-Rayet binary pinwheel spiral (AMHRA), first turn about 10 mas, 3 turns
+      Obj2: Herbig disk at 184 pc, four rings and three gaps, i = 70 deg, two planets and a brown dwarf (ExoREM spectra)
+    winner: Julien Drevon (MiRA); special mention Ryan Norris (SQUEEZE + OITOOLS.jl)
+    notes: "Scored with https://github.com/JMMC-OpenDev/ImageMetrics (L1 distance minimised over shift and flux scale per wavelength)."
+    truth: not public (ImageMetrics demos load it from the organisers' disks); ask Florentin Millour or Ferreol Soulez
+    base: *oidb
+    subdir: d70d1bc2-f68b-4b71-8d1b-c2f68b5b717d
+    files:
+      - {name: Obj1_PIONIER_1.5-1.8.fits, sha256: 21c5a0d6939c2d80d34c8476886553b12aef7682ba4cd0442c0dc1f308da8dbc, role: contest}
+      - {name: Obj1_GRAVITY_2.0-2.5.fits, sha256: a6255937efc4d4a0d843a3b87c61d8353b7ed6770d80362eea073fd08e50738f, role: contest}
+      - {name: Obj1_MATISSE_2.9-4.2.fits, sha256: ca51439fc2750e83024ddd106b50fc90b160833a033fd202ba0c562754191801, role: contest}
+      - {name: Obj1_MATISSE_8-13.fits, sha256: 6df29295a00144f647ef64a6403c39787c699f1fdf82e5ea56915a4f6ca533bd, role: contest}
+      - {name: Obj2_PIONIER_1.5-1.8.fits, sha256: 6c90dc14a7bd960bade32d1fb193fdf4839c6d15721ae95b7feaddf75ca339e9, role: contest}
+      - {name: Obj2_GRAVITY_2.0-2.5.fits, sha256: 7cc98d484868ef49cd24eb80298978b4e87e61acfce0ef2e4be894370c1f23b6, role: contest}
+      - {name: Obj2_MATISSE_2.9-4.0.fits, sha256: 00a871d10a9315510c0016085c6b5ef5e91502dfea039b670d4e0f8d6337becf, role: contest}
+      - {name: Obj2_MATISSE_8-13.fits, sha256: 4ad23c1f6a58813029c9c1951b8203ffc198d61e9d97febb2c7bd68ac70ad019, role: contest}
+
+  "2026":
+    doi: 10.1117/12.3099386
+    title: Optical interferometry imaging contest XI (Proc. SPIE 14148, 1414811)
+    organisers: ["probably Julien Drevon", "Ferreol Soulez", "Jean-Francois Gonzalez"]
+    notes: "Not yet on ADS or OiDB (checked 2026-10-04)."
+    files: []

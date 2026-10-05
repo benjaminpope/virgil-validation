@@ -1,0 +1,325 @@
+# Plan: the interferometric imaging contests
+
+## Why
+
+Every two years since 2004 the optical/IR interferometry community has held
+a blind image-reconstruction contest at SPIE Astronomical Telescopes +
+Instrumentation. It started as the "Interferometry Imaging Beauty Contest"
+and is now the "Optical Interferometry Imaging Contest" (I2C). The
+organisers simulate data from a truth image that the contestants do not
+see. Teams reconstruct images with their own codes (BSMEM, MiRA, WISARD,
+MACIM, SQUEEZE, IRBis and others), and the organisers score the results
+against the truth.
+
+For virgil these contests are the natural external root for **image
+reconstruction**, which the trust graph lists as unchecked:
+`virgil.imaging.TSV`, `TV`, `MaxEntropy`, `l_curve` and the `Image` fits
+behind them. Three things make them a good root:
+
+- **Independent data.** The OIFITS files were written by other people's
+  simulators: OYSTER (Hummel), ASPRO (JMMC), Cotton's CHARA simulator, and
+  Aspro2 for the recent editions. They carry real-world conventions and
+  quirks.
+- **A published score to compare with.** Each paper reports the winning
+  reconstructions, and often a full score table, so virgil can be placed
+  among the established codes.
+- **A truth, sometimes.** Where the truth image or model is available,
+  virgil's image can be scored with the contest's own metric.
+
+## The contests
+
+The ADS search was run on 2026-10-04. Details for each contest, including
+URLs, checksums, organisers and winners, are in `contests/manifest.yml`.
+`scripts/fetch_contests.py` downloads the data, about 19 MB, into
+`~/data/imaging_contests`. The data are never committed.
+
+| Year | Paper | Data | Instrument | Truth | Winner |
+|---|---|---|---|---|---|
+| 2004 | [2004SPIE.5491..886L](https://ui.adsabs.harvard.edu/abs/2004SPIE.5491..886L) | ✅ JMMC | NPOI 6T at 550 nm, simulated | data2 is analytic (paper); data1 from Tuthill | BSMEM |
+| 2006 | [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1UL) | ✅ JMMC (needs a virgil reader fix, see C0) | AMBER on the UTs, J/H/K, 48 channels, grey | Chesneau's disk model, not posted | BSMEM |
+| 2008 | [2008SPIE.7013E..1NC](https://ui.adsabs.harvard.edu/abs/2008SPIE.7013E..1NC) | ✅ JMMC | CHARA 6T, J/H/K, model differs per band | not posted | MiRA |
+| 2010 | [2010SPIE.7734E..2NM](https://ui.adsabs.harvard.edu/abs/2010SPIE.7734E..2NM) | ✅ JMMC | AMBER 3T on ATs; Low HK (20 channels) and Med H (512 channels, 94k V²) | Chiavassa's CO5BOLD model, not posted | BSMEM |
+| 2012 | [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB) | ❌ lost with OLBIN | CHARA/MIRC-6T, H band | was posted, lost | MACIM |
+| 2014 | [2014SPIE.9146E..1QM](https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM) | ❌ raw frames only (60.A-9237(A)) | PIONIER, **real** data on VY CMa and R Car | none (real data) | BSMEM (Sanchez-Bermudez) |
+| 2016 | [2016SPIE.9907E..1DS](https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1DS) | ❌ not archived | GRAVITY and MATISSE, chromatic | not posted | IRBis? (Hofmann) |
+| 2018 | [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM) | ❌ not hosted | CHARA and PIONIER, grey | analytic, parameters in the paper | SQUEEZE then BSMEM |
+| 2022 | [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1GS) | ✅ OiDB | GRAVITY K (11 channels) and JWST/NIRISS AMI | not posted | BSMEM (Young) |
+| 2024 | [2024SPIE13095E..14M](https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M) | ✅ OiDB | PIONIER, GRAVITY, MATISSE L and N; chromatic, with calibration biases | not public (ImageMetrics) | MiRA (Drevon) |
+| 2026 | Proc. SPIE 14148, 1414811 | not yet | ? | ? | ? |
+
+Ben has written to Fabien Baron (2012), Joel Sanchez-Bermudez (2016, and
+the 2014 and 2022 truth) and Antoine Mérand (2018) to ask for the missing
+data. The 2024 truth images are with Florentin Millour and Ferréol Soulez.
+
+## What the stages test
+
+The stages run in order of what they need from virgil: reading the files,
+then grey imaging, then chromatic imaging, then scoring against truths.
+
+### C0. Reading the files (done)
+
+Every contest file is read by `virgil.oidata.OIData`. 24 of 29 data files
+read as they are.
+
+- **The 2006 files fail, and this is a virgil bug.** Their closure phases
+  sit under a different `INSNAME` (`AMBER-LR_TR01_OB01`) from their V²
+  (`AMBER-LR_OB01`). The two `OI_WAVELENGTH` tables are identical, which
+  the OIFITS standard allows. virgil pairs triangles with baselines only
+  under the same `INSNAME`, and its error message says the wavelengths
+  differ, which is wrong. [virgil#167](https://github.com/benjaminpope/virgil/pull/167) fixes it: it matches by wavelength table, and also supports reversed T3 legs (the 2006 V² store (2,0) where the triangle needs (0,2)), which virgil also did not support. It is finding F10 in the ledger and
+  README, fixed by virgil#167 (merged 2026-10-04) and now checked by
+  `test_2006_files_with_separate_t3_insname_are_read`. CI fetches the 2006 files so the test runs.
+
+### C1. The organisers' test binaries (done)
+
+Before each contest the organisers released a binary with published
+parameters. These tests fit three of them (`tests/test_contest_binaries.py`,
+root `literature`). Each fit starts both from the published position and
+from its mirror image. The published side must win by more than 5σ, so a
+sign error in East, PA or closure phase would fail the test.
+
+| Contest | Separation (mas) | PA (°) | faint/bright | Δχ², mirror − published | reduced χ² |
+|---|---|---|---|---|---|
+| 2004 (OYSTER, NPOI) | 21.23 vs 21.2 | 341.5 vs 341.6 | 0.173 vs 0.174 | 649 | 3.9 |
+| 2008 (CHARA, J/H/K) | 4.995 vs 5.0 | 30.00 vs 30 | 0.107 vs 0.112 | 4.0×10⁵ | 3.9 |
+| 2010 (ASPRO, AMBER) | 18.000 vs 18 | 128.00 vs 128 | 0.1000 vs 0.1 | 2.0×10⁷ | 0.45 |
+
+Two open questions remain. Reduced χ² near 4 in 2004 and 2008 may come
+from limb-darkened components or from the simulators' noise models; the
+2008 binary is also chromatic between sub-bands. LM did not converge in
+1000 steps for 2008 and 2010, although the answers are right. The 2006
+binary (`2006-double.fits`) has no published parameters; it will be fitted
+once C0 is fixed and compared with the image.
+
+### C2. Grey reconstructions (in progress)
+
+This stage reconstructs a grey image from each contest dataset that is
+grey or nearly so:
+
+- 2004 data1 and data2
+- 2006 (once C0 is fixed)
+- 2008, each band separately
+- 2010 Low HK, each band treated as grey
+- 2022 object 1 (GRAVITY) and object 2 (AMI)
+
+virgil's standard recipe is `starting_image` followed by `fit` with `TSV`
+or `MaxEntropy`, choosing the weight by `l_curve` or the discrepancy
+principle; the GP prior (`fields.GaussianField`) is the alternative. Where
+a star is clearly unresolved, the analytic-star composite (imaging part 4)
+is used.
+
+The outputs are:
+
+1. images and residual maps;
+2. reduced χ² for V² and for closure phases separately;
+3. a side-by-side comparison with the published winning images.
+
+Without truths the comparison is qualitative: are the structures the
+papers describe present? Examples are the LkHα 101 shell, Chesneau's disk,
+the AGB star and the AGN, and the companion in 2010. That gives evidence
+of kind `check`, root `literature`, tier `C`. Where a truth is analytic,
+scoring is quantitative: 2004 data2 is rebuilt from the paper, then
+convolved and aligned as in the paper's metric.
+
+Compute: these are 64² to 128² images on 10² to 10⁴ points. They run on
+OzSTAR (`ozstar_scripts`, CPU nodes), one job per dataset, not on the
+laptop. Outputs go back to `results/` and then into the evidence records.
+
+`scripts/contest_images.py` does this, with one task per dataset (`--list`
+shows the 16). The OzSTAR job is `contest_imaging` in `ozstar_scripts`.
+Its results come back to `~/data/imaging_contests/results/<virgil commit>/`.
+A smoke run on 2004 data1 (three weights, 50 steps each) already shows an
+asymmetric shell 6 mas across, at χ²/N = 3.6.
+
+First results (2026-10-04, OzSTAR jobs 17998336 and 17998363, 2006):
+
+- **2006 failed in the baseline run**, identically on virgil `dd06e9f` and
+  `ec4cf51`. The fit never moved: χ² was the same at all 13 weights, χ²/N
+  was 22–134 per night, and the image was stripes.
+- **The cause is the data, not the fitter.** The target is almost entirely
+  resolved on the UT baselines: V² is at most 0.03 and typically 1e-3, with
+  errors of 1e-4. The truth model is 105 mas across, while λ/B_min is at
+  most 18 mas. A unit-flux image inside 18 mas cannot produce V² ≈ 1e-3.
+- **The fix is a resolved component.** `--halo` adds a fully resolved
+  `Resolved` component with a free flux. In a smoke run its flux came out
+  about 2 (relative to the image), and χ² then fell with weight. Most
+  datasets have short-baseline V² below 1 (0.16 for 2024 Obj1, 0.34 for
+  2010, 0.5–0.6 for 2004 and 2008), so the halo variant will be run for
+  every task after the baseline run, with labels suffixed `_halo`.
+- **2022 AMI has extreme signal-to-noise**: closure-phase errors of about
+  0.001–0.002° and V² errors of about 1e-4. χ²/N ≈ 1 may be out of reach
+  for a grey image.
+
+Baseline run (2026-10-04, job 17998393, virgil `ec4cf51`, all 15 tasks
+except 2022 AMI, which is still running):
+
+| Dataset | χ²/N at the chosen weight | Result |
+|---|---|---|
+| 2004 data1 (LkHα 101 model) | 1.83 | an asymmetric shell with a bright north-west rim |
+| 2004 data2 (spotted star and companion) | 179 | **failed**: virgil's default field (±6.9 mas, from λ/B_min) excludes the companion 10 mas East |
+| 2006 | 22–134 | **failed**: flux over-resolved (see above) |
+| 2008 AGB, J/H/K | 1.2–1.4 at the corner | ring- or shell-like; the discrepancy weight over-fits in J and H |
+| 2008 AGN, J/H/K | 1.3–2.9 | an elongated core with extended features; K is worst |
+| 2010 Low HK | 13 353 | **failed**: the image never moved; V² errors are all 1e-4, and the source is chromatic across H and K |
+| 2022 GRAVITY, 2024 Obj2 GRAVITY | NaN | **script bug**: the star-flux prior was Uniform(0, 1), but the start was 5.8 and 1.1 |
+| 2024 Obj1 PIONIER / GRAVITY | 1.23 / 1.15 | a compact bar with arc fragments (Obj1 GRAVITY has most of its closure phases flagged) |
+| 2024 Obj2 PIONIER | 2.0 | — |
+
+Many L-BFGS fits stop on "line search ran out of float64 precision"
+without converging, and χ² sometimes rises from one weight to the next.
+Both are worth a look once the images are compared with the papers.
+
+Fixes, smoke-tested locally on virgil `ec4cf51`:
+
+- 2004 data2 starts from a flat image over the published 24 mas field
+  (`FORCE_FIELD`); χ²/N fell from 4693 to 447 in 50 steps.
+- The star-flux prior now reaches max(100, 10× the start).
+- The L-curve plot falls back to linear axes, and the text summary is
+  written before plotting.
+- 2010 with `--halo` reaches χ²/N ≈ 5700 in a smoke run, against 13 400
+  without; it really needs C3 (per-band images, with the organisers' SEDs).
+
+Second run (2026-10-04/05, jobs 17999358 for the three fixed tasks and
+17999361 for all 16 with `--halo`, virgil `1057928`, cluster JAX 0.11.2):
+
+| Dataset | χ²/N | Result |
+|---|---|---|
+| 2004 data2 (field forced to 24 mas) | 29 (was 179) | **structure right**: an elliptical spotted star and a compact companion about 10 mas East of it, as in the published model; χ² is still high |
+| 2022 AMI (+halo) | 1.45 at the discrepancy weight | **works**: a bright arc about 150 mas from the star, curving round the north and east |
+| 2006 (+halo) | 11.6 | **still failing**: halo flux about 1.4 (V² ≈ 1e-3 needs ~30); edge flux 15%; mostly empty image |
+| 2022 GRAVITY, 2024 Obj2 GRAVITY (star) | 462 and 296 at every weight | **stuck**: no NaN now, but χ² is the same at all 13 weights, and the strongest-weight image is a scatter of single pixels, which is not a MaxEnt solution |
+| 2010 (+halo) | 5750 at every weight | stuck; needs C3 |
+| others with `--halo` | unchanged | the halo flux fits to ~0 everywhere except 2006 (1.4) and 2008 AGN K (0.02) |
+
+**The stalls.** On the cluster, 6–13 of the 13 L-BFGS fits per task stop
+with "line search ran out of float64 precision". Wherever χ² is flat
+across all weights, the first fit stalled and the warm start carried that
+on to every weight. The cluster's `virgil` env has JAX 0.11.2, against
+0.9.1 locally and in CI, and another session found gradient failures under
+0.11.2. None of the logs shows its error signatures
+(`RuntimeProgramInputMismatch`, "Expected cotangent"), but the stalls
+could still be numerical.
+
+The laptop's virgil-validation environment also has JAX 0.11.2 (the latest
+on PyPI), so cluster and laptop agree. The aim is correct results on the
+latest JAX, so the stalls are being debugged there, not by going back to an
+older version. Only virgil's own lockfile pins 0.9.1, which means virgil's
+CI never sees the JAX its users install.
+
+`scripts/diagnose_stall.py` takes each stalled fit at its strongest weight
+(cases: 2022 GRAVITY, 2024 Obj2 GRAVITY, 2010, 2006 with halo). It records:
+
+- snapshots after 10 to 20 000 steps (χ², effective and dead pixels);
+- JAX against finite-difference gradients at the stall, and a loss scan
+  along −grad;
+- remedies: a step cap of 0.2 and 0.05, Adam, and the image flux held fixed.
+
+A 10-step local smoke run on 2022 GRAVITY already shows two things.
+Gradients agree with finite differences to 1e-10 under JAX 0.11.2 (early
+in the fit). Holding `env.flux` fixed reaches χ²/N 1623 in 10 steps,
+against 5091 with it free, which points at the flux parameter's coupling
+to the pixels. The full runs go to OzSTAR (`--diagnose`).
+
+**Diagnosis (job 18019122, virgil `760c720`, JAX 0.11.2): finding F11.**
+The two worst stalls sit on a discontinuity in virgil's likelihood, not a
+JAX problem.
+
+- In 2022 GRAVITY (case 0) and 2010 (case 2), JAX gradients and central
+  finite differences disagree by 10²–10⁴ at the stall. The
+  finite-difference value scales as 1/ε, so the loss jumps by a fixed
+  amount: Δχ² ≈ 2 × 426 for GRAVITY, ≈ 2 × 6000 for 2010.
+- The loss rises along −grad at every step size, so the line search has
+  nowhere to go.
+- The cause is virgil's correlated closure-phase likelihood (4+ telescopes):
+  wrapped residuals → chords 2 sin(Δ/2) → whitened together. A chord flips
+  sign across ±π, and the cross terms make χ² jump. In a smooth sweep on our
+  own 4T file the largest step is 860× the median, against 48× with three
+  telescopes (`tests/test_closure_continuity.py`, strict xfail).
+- A virgil PR making that likelihood continuous is being written (Sonnet
+  agent).
+- 2024 Obj2 GRAVITY (case 1) is different: gradients agree with finite
+  differences to 1e-7, and descent continues. It is converging slowly
+  (χ²/N 310 after 20 000 L-BFGS steps; Adam reaches 254). That is a
+  question of initialisation and conditioning, not a bug.
+- Case 3 (2006 with halo) crashed on a bug in the diagnostic (multi-night
+  data), now fixed.
+
+**Initialisation.** Every task starts from `starting_image(start="moments")`,
+a Gaussian sized by a quick parametric fit. A dirty-image start is
+impossible without absolute phases. A residual near ±π, which is what
+triggers F11, needs a poor start. Next: use everything the contestants had
+before submitting (clue images, readmes, rules, suggested fields and pixel
+scales, SEDs, test binaries) to initialise and set priors. A research agent
+is compiling that per contest.
+
+### C3. Chromatic data
+
+The 2010 Med H data (512 channels, with differential phases), all of 2024,
+and the 2016 data (if they arrive) have structure that changes with
+wavelength. This is where virgil has a known gap.
+
+- `Image` is grey: its shape cannot change with wavelength. Spectra only
+  weight components (design note `chromatic_sources.md`).
+- The SPARCO-style composite already works: a parametric star with a
+  `PowerLaw` spectrum, plus a grey environment image with its own spectral
+  index. That suits 2024 Obj2 (a disk around a Herbig star) and the 2010
+  supergiant with its companion.
+- Truly chromatic morphology, such as the 2024 Wolf-Rayet spiral across
+  H to N bands, needs one image per channel or per band, regularised
+  together across wavelength (as MiRA-3D and the 2016 entries do). The
+  first step is independent images per band, then joint fits. If joint
+  fits are needed, that becomes a virgil design issue, not a workaround
+  here.
+- 2010 Med H has 94k V² against an image DFT, which is the case the
+  removed NUFFT backend was for (virgil issue #75). Bin it in wavelength
+  first; whether the full set is ever needed is a decision for later.
+
+### C4. Scoring against truths
+
+When truth images arrive, this stage scores virgil's images with each
+contest's own metric:
+
+- the σ/peak sums (2004);
+- RMS pixel differences after convolution (2008, 2010, 2012);
+- the 2024 L1 distance minimised over shift and flux scale per wavelength,
+  from [JMMC ImageMetrics](https://github.com/JMMC-OpenDev/ImageMetrics),
+  used as an external package in `src/external_bridge`, never vendored.
+
+Each metric is also written independently in `src/crosscheck` from the
+paper's definition and checked against the published score tables, so the
+metric itself is validated first. Then virgil's scores are placed in each
+year's table. This is root `literature` (the published scores), and also
+`golden:ImageMetrics`.
+
+### C5. 2014: real data
+
+If Joel or John Monnier have the reduced OIFITS, virgil's images of VY CMa
+and R Car can be compared with the published crowd-sourced median images.
+Otherwise the raw frames would need reducing with pndrs. That is a larger
+job, and it would also test calibration, so it is out of scope until the
+other stages are done.
+
+## Trust graph
+
+A new pipeline, `contest-imaging` (published blind data → `Image` fit with
+regularisers → image scored against the published entries), is added as
+`planned`. Once C2 and C4 produce evidence, it validates the imaging nodes
+against `literature`, the second root they need alongside eht-imaging or
+MPoL (`rml-imaging`).
+
+## Decisions
+
+- **No other codes run here** (Ben, 2026-10-04). virgil's images are
+  compared only with the truth images, where we have them, and with the
+  quantitative comparisons of the other pipelines published in the contest
+  papers (score tables, metrics, figures). MiRA, SQUEEZE and the rest are
+  not run on the data.
+
+## Open decisions for Ben
+
+1. **2024 truths.** Should we ask Millour or Soulez for the 2024 truth
+   images? With ImageMetrics, that is the quickest route to a quantitative
+   score.
+2. **Chromatic imaging in virgil.** If C3 shows that per-band images are
+   not enough, should a cross-wavelength regulariser go into virgil (a
+   design note first)?

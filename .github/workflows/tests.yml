@@ -26,6 +26,13 @@ jobs:
           echo "Testing virgil at $ref"
           uv pip install --python .venv/bin/python -e ".[external]" \
             "virgil-astro @ git+https://github.com/benjaminpope/virgil@$ref"
+      - name: imaging-contest data cache
+        uses: actions/cache@v4
+        with:
+          path: ~/data/imaging_contests
+          key: contests-${{ hashFiles('contests/manifest.yml') }}
+      - name: imaging-contest data (test binaries)
+        run: .venv/bin/python scripts/fetch_contests.py --year 2004 2006 2008 2010
       - name: CANDID (own environment, pinned commit)
         run: bash scripts/setup_candid.sh
       - name: eht-imaging, MPoL and fouriever (own environments, pinned versions)

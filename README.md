@@ -72,7 +72,8 @@ root of trust, test by test, on exactly which virgil commit:
 PMOIRED](docs/plan_external.md); PMOIRED's conventions are pinned
 ([Stage 0](docs/pmoired_conventions.md)). Planned: [binaries in the ESO
 archive with published orbits](docs/plan_eso_binaries.md), per epoch and
-jointly with virgil's Stage 6a.1 orbits.
+jointly with virgil's Stage 6a.1 orbits; and [the SPIE imaging contests'
+blind datasets](docs/plan_imaging_contests.md) for image reconstruction.
 
 ## Findings
 
@@ -91,6 +92,8 @@ noticed) once virgil changes.
 | 7 | `fitting.fit` | The documented default (LM whenever the objective is least squares) depends on how a prior is written: `Uniform(0, 1).expand([1])` or `.to_event(1)` silently selects L-BFGS, while the equivalent array-shaped `Uniform` gets LM. In rim pull tests one of 120 L-BFGS fits then failed to converge in 20000 steps. | bug | fixed, virgil#142 |
 | 8 | `oidata.OIData` | Data with every closure phase flagged (e.g. an OIFITS file whose OI_T3 FLAG is all set) crash inside the closure-phase whitening with `ValueError: zero-size array to reduction operation maximum`, instead of the clear "no phase data" error virgil gives for files without OI_T3. | bug | fixed, virgil#155; visibility-only since virgil#158 |
 | 9 | `spectra.reference_flux` | For `Tabulated` it returned every node rather than the documented reference flux (the node mean, which `spectrum(None)` returns). Harmless inside virgil, which used it only to check fluxes are non-negative. | minor | fixed, virgil#163 |
+| 10 | `oidata.OIData` | The 2006 imaging-contest files (simulated AMBER, OIFITS v1) keep closure phases under a different `INSNAME` (`AMBER-LR_TR01_OB01`) from their V² (`AMBER-LR_OB01`), with identical wavelength tables, and store some baselines reversed relative to the triangles' legs. The standard allows both; virgil raised `ValueError` ("needs baseline (0, 1), which is not in the visibility table with the same wavelengths", which was untrue). | bug | fixed, [virgil#167](https://github.com/benjaminpope/virgil/pull/167) |
+| 11 | `likelihood.whitened_residuals` | For closure phases from four or more telescopes, residuals are wrapped into [-π, π), taken as chords 2 sin(Δ/2) and whitened together. A chord changes sign under Δ → Δ + 2π, so the correlated cross terms make χ² **jump** wherever a residual crosses ±π: in a smooth one-parameter sweep the largest step is 860× the median (48× with three telescopes). Image fits on high-S/N 4T data (2022 GRAVITY, 2010 AMBER contest data) stall on these jumps, where JAX gradients and finite differences disagree by 10²–10⁴. | bug | open |
 
 Differences with other packages (all in the [ledger](docs/trust.md#ledger)):
 
