@@ -171,6 +171,11 @@ nodes:
     layer: inference
     source: [src/virgil/detection.py, src/virgil/oidata.py]
     depends: [virgil.oidata.OIData]
+  virgil.detection.injection_recovery:
+    layer: inference
+    source: [src/virgil/detection.py]
+    depends: [virgil.detection.detection_statistics, virgil.detection.gaussian_null]
+  virgil.detection.DetectionMC: {layer: inference, source: [src/virgil/detection.py]}
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
   virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
   virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}
