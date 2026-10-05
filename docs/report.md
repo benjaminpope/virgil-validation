@@ -162,8 +162,24 @@ for JWST NIRISS AMI) with a 1 % companion.
 | `likelihood_grid` on the seven-hole mask, correlated closure phases | `chi2_bin` with its covariance, as Δχ² from the null over a 9 × 9 map | fouriever | 5e-5, same minimum |
 | — | fouriever's public `detlim` | Mathematics | fails under NumPy 2 and SciPy 1.18 (problem P8, pinned) |
 
-Not yet: the false-alarm and contrast-calibration campaigns on virgil's
-`detection` Monte Carlo (virgil#221), drafted next for OzSTAR.
+### False-alarm and contrast calibration (campaign)
+
+`scripts/detection_campaign.py` (OzSTAR job `detection_mc`): 10⁴
+companion-free and 10⁴ injected four-UT files from our own simulator, and
+10⁴ of virgil's own null simulations. `tests/test_detection_campaign.py`
+reads its summary, under criteria registered in the script:
+
+- under the null, Δχ² at a fixed position is ½δ₀ + ½χ²₁ (Chernoff 1954), as
+  `detection_statistics` documents;
+- virgil's `gaussian_null` gives our simulator's distributions of `delta_chi2`,
+  `log_bayes_factor` and `max_snr` (two-sample KS);
+- `DetectionMC`'s false-alarm probabilities are the documented (k + 1)/(n + 1),
+  with SciPy's exact binomial interval, and its thresholds are our quantiles;
+- at the true position of an injected companion, Δχ² is noncentral χ²₁(λ), with
+  λ our own noiseless χ² (probability integral transform).
+
+Written and smoke-tested on the laptop (3 + 3 + 20 draws, all four checks
+pass); not yet run at full size.
 
 ## Spectra, flared disks and the harmonix wrapper
 
