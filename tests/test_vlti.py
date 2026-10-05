@@ -9,7 +9,8 @@ distributed as N(0, 1), with sigma virgil's Laplace uncertainty.
 import numpy as np
 import pytest
 
-from crosscheck import array, simulate
+from crosscheck import array, simulate, sky
+from evidence.plugin import record
 
 vb = pytest.importorskip("virgil_bridge")
 from virgil.coverage import vlti_oidata  # noqa: E402
@@ -37,6 +38,30 @@ def test_uv_tracks_match_virgil_coverage():
     # virgil orders (baseline, wavelength); ours (baseline) per snapshot
     np.testing.assert_allclose(np.asarray(data.u)[:: len(wl)], u, atol=1e-9)
     np.testing.assert_allclose(np.asarray(data.v)[:: len(wl)], v, atol=1e-9)
+
+
+@pytest.mark.validates("virgil.coverage.vlti_oidata", roots=["standards", "mathematics"])
+def test_wavelengths_and_closure_triangles_match_ours():
+    """Each baseline carries every channel in order, and the closure phases
+    of a binary in virgil's simulated data are ours: T3 = V(ab) V(bc)
+    conj(V(ac)) over the triangles a < b < c of each snapshot, from our own
+    uv tracks and closed-form binary visibilities."""
+    import virgil.models as vm
+
+    ha, wl = [-1.0, 2.0], np.array([3.0e-6, 3.5e-6])
+    data = vlti_oidata(stations=UTS, declination_deg=DEC, hour_angles_h=ha, wavelengths_m=wl)
+    np.testing.assert_array_equal(np.asarray(data.wavel), np.tile(wl, len(data.wavel) // len(wl)))
+    got = np.asarray(data.with_model(vm.BinaryModelCartesian(6.0, -4.0, 0.3)).phi)
+
+    def vis(u, v):
+        w = wl[None, :]
+        return (sky.vis_point(u[:, None], v[:, None], w)
+                + 0.3 * sky.vis_point(u[:, None], v[:, None], w, 6.0, -4.0)) / 1.3
+
+    want = np.concatenate([array.closure_phase(vis, *array.snapshot_uv(UTS, h, DEC, -24.6276), len(UTS))[0]
+                           for h in ha]).ravel()
+    err = record("max_abs_dcp_rad", float(np.max(np.abs(got - want))))
+    assert err < 1e-9 and np.max(np.abs(want)) > 0.1  # a scene with real closure phases
 
 
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
