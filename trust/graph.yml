@@ -172,6 +172,7 @@ nodes:
   external_bridge.candid_bridge: {layer: references}
   external_bridge.fouriever_worker: {layer: references}
   fouriever: {layer: references}  # the external package itself (problem P5)
+  ehtim: {layer: references}  # the external package itself (problem P6)
 
 pipelines:
   synthetic-vlti-fit:
@@ -188,7 +189,6 @@ pipelines:
             virgil.fitting.fit, virgil.inference.laplace_cov]
   rml-imaging:
     title: Regularised image reconstruction against eht-imaging or MPoL on the same data
-    planned: true
     steps: [virgil.oidata.OIData, virgil.models.Image, virgil.imaging.TSV,
             virgil.imaging.MaxEntropy, virgil.fitting.fit]
   contest-imaging:

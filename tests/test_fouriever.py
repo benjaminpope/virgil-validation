@@ -11,7 +11,8 @@ reader.
 Two differences of definition, both pinned here:
 
 * D5 (as with CANDID): fouriever's closure-phase residual is the plain
-  difference, virgil's the chord 2 sin(delta/2).
+  difference, virgil's (since virgil#174) the sine sin(delta), correlated,
+  plus a periodic penalty (1 - cos delta) / sigma per closure phase.
 * D6: C is singular, and the two codes use different generalised inverses.
   fouriever takes the pseudo-inverse, r^T C^+ r; virgil whitens by sigma
   first, r^T D^-1/2 R^+ D^-1/2 r. They agree whenever r is in C's column
@@ -127,22 +128,23 @@ def test_closure_phase_correlation_matches_fouriever(files):
     roots=["fouriever", "mathematics"],
 )
 def test_correlated_chi2_matches_fouriever(files):
-    """Equal errors: fouriever equals our plain-residual r^T C^+ r and
-    virgil our chord one, to rounding; near the truth, virgil and fouriever
-    agree directly (the residuals are small, so chord and plain coincide)."""
+    """Equal errors: fouriever equals our plain-residual r^T C^+ r, and
+    virgil our sine form (sin Δ correlated, plus the periodic penalty), to
+    rounding; near the truth, virgil and fouriever agree directly (the
+    residuals are small, so the forms coincide to O(Δ³))."""
     path = files["equal"]
     ps = params()
     res = fouriever(path, ps)
     got_f = np.array(res["chi2"])
     d = ours.load(path)
     plain = np.array([ours.chi2(d, binary_vis(*p), correlated=True, chord=False) for p in ps])
-    chord = np.array([ours.chi2(d, binary_vis(*p), correlated=True) for p in ps])
+    sine = np.array([ours.chi2(d, binary_vis(*p), correlated=True, sine=True) for p in ps])
     got_v = virgil_chi2(path, ps)
     record("rel_fouriever_vs_plain", np.max(np.abs(got_f / plain - 1)))
-    record("rel_virgil_vs_chord", np.max(np.abs(got_v / chord - 1)))
+    record("rel_virgil_vs_sine", np.max(np.abs(got_v / sine - 1)))
     record("rel_virgil_vs_fouriever_at_truth", abs(got_v[0] / got_f[0] - 1))
     assert np.max(np.abs(got_f / plain - 1)) < 1e-12
-    assert np.max(np.abs(got_v / chord - 1)) < 1e-12
+    assert np.max(np.abs(got_v / sine - 1)) < 1e-12
     assert abs(got_v[0] / got_f[0] - 1) < 1e-4
 
 
@@ -192,7 +194,7 @@ def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
     reported as -178.6 deg. Its residual against the true model is 3 deg
     (0.04 of the chi-squared budget below), but fouriever takes the plain
     difference of 357 deg, so the true binary scores a huge chi-squared.
-    virgil's chord is 2 pi periodic and scores it correctly."""
+    virgil's residuals are 2 pi periodic and score it correctly."""
     path = tmp_path / "cut.fits"
     f = 0.99
     simulate.observe(path, binary_vis(f, DRA, DDEC), UTS, hour_angles_h=np.linspace(-3, 3, 5),
@@ -205,23 +207,6 @@ def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
         h["OI_T3"].data["T3PHI"] = cp
     assert virgil_chi2(path, [[f, DRA, DDEC]])[0] < 100
     assert fouriever(path, [[f, DRA, DDEC]])["chi2"][0] < 100
-
-
-def whitened_form(d, vis):
-    """virgil's documented generalised inverse, written independently:
-    r^T D^-1/2 R^+ D^-1/2 r per snapshot and channel, chord residuals."""
-    t3 = (vis(d["u1"], d["v1"], d["wl3"]) * vis(d["u2"], d["v2_"], d["wl3"])
-          * np.conj(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"])))
-    r = 2 * np.sin(np.angle(np.exp(1j * (np.angle(t3) - d["cp"]))) / 2)
-    total = np.sum(((np.abs(vis(d["u"], d["v"], d["wl"])) ** 2 - d["v2"]) / d["dv2"]) ** 2)
-    for mjd in np.unique(d["t3_mjd"]):
-        rows = np.flatnonzero(d["t3_mjd"] == mjd)
-        T = ours.triangle_matrix(d["t3_sta"][rows])
-        Rp = np.linalg.pinv(T @ T.T / 3.0, rcond=1e-10)
-        for k in range(r.shape[1]):
-            x = r[rows, k] / d["dcp"][rows, k]
-            total += x @ Rp @ x
-    return float(total)
 
 
 @pytest.mark.validates(
@@ -238,7 +223,7 @@ def test_unequal_errors_use_different_generalised_inverses(files):
     got_v = virgil_chi2(path, ps)
     d = ours.load(path)
     pinv_plain = np.array([ours.chi2(d, binary_vis(*p), correlated=True, chord=False) for p in ps])
-    whitened = np.array([whitened_form(d, binary_vis(*p)) for p in ps])
+    whitened = np.array([ours.chi2(d, binary_vis(*p), correlated=True, sine=True, whitened=True) for p in ps])
     record("rel_virgil_vs_fouriever", np.max(np.abs(got_v / got_f - 1)))
     assert np.max(np.abs(got_f / pinv_plain - 1)) < 1e-12
     assert np.max(np.abs(got_v / whitened - 1)) < 1e-12
