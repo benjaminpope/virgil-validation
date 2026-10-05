@@ -540,8 +540,10 @@ i = 0° to 179.9°, 121 epochs each.
 
 `GravityDarkenedStar` against an independent root, harmonix's maps,
 bandwidth smearing, AMIGO DISCO mode bases, false-alarm and contrast-limit
-campaigns, regularised reconstructions end to end, `l_curve` and sampling
-(`numpyro_model`). To ask for any of these, or anything else,
+campaigns, regularised reconstructions end to end and `l_curve`. Sampling
+(`numpyro_model`) has a simulation-based calibration campaign written
+(`scripts/sbc_numpyro.py`, 500 replicates on OzSTAR; `tests/test_sbc_numpyro.py`
+reads its summary) but not yet run. To ask for any of these, or anything else,
 open an Issue at
 <https://github.com/benjaminpope/virgil-validation/issues> describing the
 model or function, the independent result it should match, and the
