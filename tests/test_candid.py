@@ -271,7 +271,12 @@ def test_injection_limits_match_candids_criterion(files, cps):
                                           "comp.flux": np.logspace(-4, -1, 8)}, sigma=3.0)).ravel()[0])
         for x, y in POSITIONS
     ])
-    worst = np.max(np.abs(got / want - 1))
+    unbounded = np.array([  # searched upward from the axis's smallest flux, without bounds (virgil#235)
+        float(np.asarray(injection_limits(data, template(DIAM, 0.01), {"comp.dra": [x], "comp.ddec": [y],
+                                          "comp.flux": [1e-4]}, sigma=3.0, flux_bounds=None)).ravel()[0])
+        for x, y in POSITIONS
+    ])
+    worst = max(np.max(np.abs(got / want - 1)), np.max(np.abs(unbounded / want - 1)))
     record("max_rel_limit_difference", worst)
     record("mean_rel_candid_refit_vs_held", float(np.mean(refit / want - 1)))
     assert worst < 3e-4  # virgil's bisection; D5 at the small closure phases of a limit

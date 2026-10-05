@@ -21,6 +21,7 @@ Hogg 2017) in virgil, against dense Gaussians and brute force.
   as f), so it is not the default detection statistic.
 """
 
+import numpyro.distributions as dist
 import numpy as np
 import pytest
 from astropy.io import fits
@@ -161,7 +162,8 @@ def binary_vis(f, x, y):
 
 
 XS, YS = np.array([6.0, -3.0]), np.array([-4.0, 7.0])
-PRIOR = (0.0, 0.02)
+PRIOR_MEAN, PRIOR_SD = 0.0, 0.02
+PRIOR = dist.Normal(PRIOR_MEAN, PRIOR_SD)  # a bare (mean, sd) tuple is an error since virgil#234
 
 
 def flux_file(tmp_path, flux, seed=8):
@@ -189,7 +191,7 @@ def test_linear_flux_and_gaussian_prior_evidence(tmp_path, flux):
     prior."""
     d, data = flux_file(tmp_path, flux)
     out = linear_flux_grid(data, vm.BinaryModelCartesian, {"dra": XS, "ddec": YS, "flux": [1e-3]}, prior=PRIOR)
-    m, sd = PRIOR
+    m, sd = PRIOR_MEAN, PRIOR_SD
     worst_f = worst_b = 0.0
     for i, x in enumerate(XS):
         for j, y in enumerate(YS):
@@ -217,7 +219,7 @@ def test_gaussian_prior_evidence_is_the_true_one_without_a_companion(tmp_path):
     the true likelihood (measured 1.5e-3)."""
     d, data = flux_file(tmp_path, 0.0)
     out = linear_flux_grid(data, vm.BinaryModelCartesian, {"dra": XS, "ddec": YS, "flux": [1e-3]}, prior=PRIOR)
-    m, sd = PRIOR
+    m, sd = PRIOR_MEAN, PRIOR_SD
     worst = 0.0
     for i, x in enumerate(XS):
         for j, y in enumerate(YS):
