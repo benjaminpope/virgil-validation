@@ -595,6 +595,9 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         s, settings = member_setup(task, data_dir, member, smoke)
         growth, init = [], "clean"
         label = f"{TASKS[task]['label']}_m{member}"
+    # A member's halo comes from its settings (setup's flag), not this
+    # function's argument.
+    halo = s["halo"]
     data, star, res = s["data"], s["star"], s["resolution"]
     img0, n, pixel = s["img0"], s["npix"], s["pixel"]
     fov = n * pixel

@@ -42,3 +42,19 @@ def test_a_perfect_entry_scores_zero():
     box = np.ones_like(ref, bool)
     assert score_2004.sigma_over_peak(ref, ref, box)[0] == pytest.approx(0.0, abs=1e-12)
     assert score_2004.sigma_over_peak(np.roll(ref, 5, axis=1), ref, box)[0] > 0.1
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_alignment_keeps_emission_a_shift_brings_into_view():
+    # The truth on a wider canvas, translated 38 pixels east: aligning it back
+    # must recover the truth exactly, companion included (no cropping, no wrap).
+    ref = score_2004.truth_image(0.1)
+    pad = score_2004.MAX_SHIFT
+    wide = score_2004.shifted(np.pad(ref, pad), (0, -38))
+    moved, shift = score_2004.aligned(wide, ref)
+    assert shift == (0, 38)
+    np.testing.assert_allclose(moved, ref, atol=1e-15)
+    # Zero-filled translation: flux leaving an edge is dropped, not wrapped.
+    edge = np.zeros((5, 5))
+    edge[2, 4] = 1.0
+    assert score_2004.shifted(edge, (0, 1)).sum() == 0.0
