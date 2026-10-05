@@ -198,6 +198,35 @@ def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
 
 
 @pytest.mark.x64
+@pytest.mark.parametrize("radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)])
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"])
+def test_gaussian_arc_at_its_default_nodes(uvw, radius, length):
+    """At virgil's default 128 nodes, within its documented range (node
+    spacing below half the shortest fringe, here 0.84 mas for 184 m at
+    1.5 um), the arc agrees with our dense curve to 1e-4."""
+    u, v, wl = uvw
+    sigma = length / (2 * np.sqrt(2 * np.log(2)))
+    spacing = 2 * min(6 * sigma, np.pi * radius) / 127
+    fringe = np.rad2deg(wl.min() / (2 * np.hypot(u, v).max())) * 3.6e6
+    assert spacing < fringe
+    ours = sky.visibility(sky.arc_curve(radius, length, 250.0), u, v, wl) * sky.gaussian_blur_factor(u, v, wl, 0.6)
+    assert_close(ours, virgil_vis(vm.GaussianArc(radius, 0.6, length, 250.0), u, v, wl), tol=1e-4)
+
+
+@pytest.mark.x64
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"], kind="control")
+def test_gaussian_arc_outside_its_documented_range_is_inaccurate(uvw):
+    """A control: an arc whose node spacing (3 mas) exceeds half the
+    shortest fringe misses our curve by far more than 1e-4."""
+    u, v, wl = uvw
+    ours = sky.visibility(sky.arc_curve(60.0, 80.0, 250.0), u, v, wl) * sky.gaussian_blur_factor(u, v, wl, 0.6)
+    dense = np.max(np.abs(ours - virgil_vis(vm.GaussianArc(60.0, 0.6, 80.0, 250.0, nodes=8192), u, v, wl)))
+    assert dense < 1e-4  # our curve is right here: the miss is virgil's sampling
+    err = np.max(np.abs(ours - virgil_vis(vm.GaussianArc(60.0, 0.6, 80.0, 250.0), u, v, wl)))
+    assert err > 1e-2
+
+
+@pytest.mark.x64
 @pytest.mark.validates("virgil.models.Image", roots=["standards", "mathematics"])
 def test_image_orientation_and_centre(uvw):
     """Row 0 North, column 0 East, centre at ((n-1)/2, (m-1)/2): a
