@@ -115,7 +115,7 @@ def test_gains_match_a_dense_gaussian_on_v2(v2_file, groups):
     assert abs(got - want) < 1e-9 * max(1.0, abs(want))
 
 
-@pytest.mark.validates("virgil.gains.gain_modes", roots=["mathematics"])
+@pytest.mark.validates("virgil.gains.gain_modes", "virgil.likelihood.model_loglike", roots=["mathematics"])
 def test_supplied_modes_are_in_sample_order(v2_file):
     """Supplied modes, one value per sample in the order of the file's
     (row, channel) samples (virgil's ``u``)."""
@@ -129,7 +129,7 @@ def test_supplied_modes_are_in_sample_order(v2_file):
     assert abs(got - want) < 1e-9 * max(1.0, abs(want))
 
 
-@pytest.mark.validates("virgil.gains.gain_modes", roots=["mathematics"])
+@pytest.mark.validates("virgil.gains.gain_modes", "virgil.likelihood.model_loglike", roots=["mathematics"])
 def test_gains_on_amplitudes_use_the_amplitude_jacobian(tmp_path):
     """For |V| data (OI_VIS VISAMP) the Jacobian is |V|_model."""
     path = tmp_path / "amp.fits"
@@ -211,8 +211,10 @@ def test_linear_flux_and_gaussian_prior_evidence(tmp_path, flux):
 
 @pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"])
 def test_gaussian_prior_evidence_is_the_true_one_without_a_companion(tmp_path):
-    """With no companion the likelihood is linear in f over the posterior,
-    so the closed-form log B is the integral of the true likelihood too."""
+    """With no companion the likelihood is nearly linear in f over the
+    posterior (it is not exactly: the binary's V² and closure phases are
+    nonlinear in f), so the closed-form log B is close to the integral of
+    the true likelihood (measured 1.5e-3)."""
     d, data = flux_file(tmp_path, 0.0)
     out = linear_flux_grid(data, vm.BinaryModelCartesian, {"dra": XS, "ddec": YS, "flux": [1e-3]}, prior=PRIOR)
     m, sd = PRIOR
