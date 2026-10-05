@@ -119,6 +119,19 @@ nodes:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/inference.py]
     depends: [virgil.likelihood.model_loglike]
+  virgil.orbits.KeplerOrbit: {layer: models, source: [src/virgil/orbits.py]}
+  virgil.orbits.ThieleInnesOrbit: {layer: models, source: [src/virgil/orbits.py]}
+  virgil.orbits.StateVectorOrbit: {layer: models, source: [src/virgil/orbits.py]}
+  virgil.orbits.total_mass: {layer: models, source: [src/virgil/orbits.py]}
+  virgil.orbits.distance_pc: {layer: models, source: [src/virgil/orbits.py]}
+  virgil.orbits.PositionData:
+    layer: likelihood
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.RVData:
+    layer: likelihood
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
@@ -169,6 +182,8 @@ nodes:
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
+  orbitize: {layer: references}  # the external package itself (problem P7)
+  external_bridge.orbitize_bridge: {layer: references}
   candid: {layer: references}  # the external package itself (problem P4)
   external_bridge.candid_bridge: {layer: references}
   external_bridge.fouriever_worker: {layer: references}
@@ -203,3 +218,6 @@ pipelines:
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,
             virgil.limits.absil_limits]
+  orbitize-posterior:
+    title: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors
+    steps: [virgil.orbits.PositionData, virgil.orbits.KeplerOrbit, virgil.likelihood.numpyro_model]
