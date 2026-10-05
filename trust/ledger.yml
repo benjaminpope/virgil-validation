@@ -168,6 +168,16 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/190]
 
+- id: F13
+  title: OIData groups closure-phase frames by MJD alone; OIFITS v1 snapshots told apart by TIME are merged into one frame
+  objects: [virgil.oidata.OIData]
+  ruling: virgil
+  referee: standards (OIFITS v1 gives each row a TIME and an MJD; correlation is only within a snapshot)
+  evidence:
+    - tests/test_frames_from_time.py::test_snapshots_in_time_column_are_separate_frames
+    - tests/test_frames_from_time.py::test_simulated_snapshots_have_distinct_mjd
+  status: open
+
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
