@@ -66,3 +66,26 @@ def test_ledger_entries_point_at_real_tests_and_nodes():
             assert t in tests, (e["id"], t)
     ids = [e["id"] for e in LEDGER]
     assert len(ids) == len(set(ids))
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_graph_and_ledger_have_no_duplicate_keys():
+    """YAML keeps the last of two equal keys silently, so a node or entry
+    added by two branches at once would vanish without this check."""
+    import collections
+
+    class Strict(yaml.SafeLoader):
+        pass
+
+    def mapping(loader, node, deep=False):
+        keys = [loader.construct_object(k, deep=deep) for k, _ in node.value]
+        dupes = [k for k, n in collections.Counter(keys).items() if n > 1]
+        assert not dupes, dupes
+        return yaml.SafeLoader.construct_mapping(loader, node, deep)
+
+    Strict.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
+    yaml.load(open(ROOT / "trust" / "graph.yml"), Loader=Strict)
+    ledger = yaml.load(open(ROOT / "trust" / "ledger.yml"), Loader=Strict)
+    ids = [entry["id"] for entry in ledger]
+    assert len(ids) == len(set(ids)), [i for i, n in collections.Counter(ids).items() if n > 1]
+

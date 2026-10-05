@@ -247,3 +247,130 @@ def test_gauss_newton_refinement_reaches_the_optimum(tmp_path):
             worst = max(worst, abs(flux[i, j] / best - 1))
     record("max_rel_flux_difference", worst)
     assert worst < 1e-5
+
+
+# ----------------------------------------------------- closure-phase offsets
+
+
+def closure_offsets_reference(d, s, baseline=None, triangle=None, modes=None):
+    """Δ log-likelihood of closure-phase offsets, written from virgil's docs
+    (virgil.gains.ClosureOffsets, likelihood._whiten): per frame, the sines
+    s = sin Δ divided by σ and projected on an orthonormal basis Q of the
+    column space of the triangle matrix T of each channel, are Gaussian
+    with covariance Qᵀ R Q per channel (R = T Tᵀ / 3), and offsets common to
+    a frame's channels add modes: T e per baseline, one per triangle, or
+    given shapes; Δ = log N(y; 0, Σ0 + V Vᵀ) - log N(y; 0, Σ0)."""
+    sig = d["dcp"]
+    nrow, nw = s.shape
+    total = 0.0
+    for mjd in np.unique(d["t3_mjd"]):
+        rows = np.flatnonzero(d["t3_mjd"] == mjd)
+        T = ours.triangle_matrix(d["t3_sta"][rows])
+        R = T @ T.T / 3
+        left, values, _ = np.linalg.svd(T, full_matrices=False)
+        Q = left[:, values > 1e-9 * values.max()]
+        k = Q.shape[1]
+        P = [Q.T @ np.diag(1 / sig[rows, c]) for c in range(nw)]
+        y = np.concatenate([P[c] @ s[rows, c] for c in range(nw)])
+        S0 = np.zeros((k * nw, k * nw))
+        for c in range(nw):
+            S0[c * k:(c + 1) * k, c * k:(c + 1) * k] = Q.T @ R @ Q
+        cols = []
+        if baseline:
+            cols += [np.concatenate([P[c] @ (baseline * T[:, b]) for c in range(nw)]) for b in range(T.shape[1])]
+        if triangle:
+            for t in range(len(rows)):
+                e = np.zeros(len(rows))
+                e[t] = triangle
+                cols.append(np.concatenate([P[c] @ e for c in range(nw)]))
+        for mode in [] if modes is None else modes:
+            shape = mode.reshape(nrow, nw)
+            cols.append(np.concatenate([P[c] @ shape[rows, c] for c in range(nw)]))
+        V = np.array(cols).T
+        zero = np.zeros(y.size)
+        total += stats.multivariate_normal(zero, S0 + V @ V.T).logpdf(y) - stats.multivariate_normal(zero, S0).logpdf(y)
+    return total
+
+
+@pytest.fixture(scope="module")
+def cp_file(tmp_path_factory):
+    path = tmp_path_factory.mktemp("offsets") / "cp4.fits"
+    simulate.observe(path, binary_vis(0.05, 6.0, -4.0), UTS, hour_angles_h=[-2.0, 0.0, 2.0],
+                     wavelengths=np.linspace(1.6e-6, 2.4e-6, 4), dec_deg=-50.0, sigma_v2=0.01, sigma_cp_deg=1.0,
+                     rng=np.random.default_rng(5))
+    d = ours.load(path)
+    vis = binary_vis(0.045, 6.2, -3.9)
+    model_cp = (np.angle(vis(d["u1"], d["v1"], d["wl3"])) + np.angle(vis(d["u2"], d["v2_"], d["wl3"]))
+                - np.angle(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"])))
+    return d, OIData(str(path)), np.sin(model_cp - d["cp"]), vm.BinaryModelCartesian(6.2, -3.9, 0.045)
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [pytest.param(k, id=i, marks=pytest.mark.validates("virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"]))
+     for i, k in [("baseline", dict(baseline=0.02)), ("triangle", dict(triangle=0.03)),
+                  ("both", dict(baseline=0.02, triangle=0.03))]],
+)
+def test_closure_offsets_match_a_dense_gaussian(cp_file, kw):
+    d, data, s, model = cp_file
+    got = float(model_loglike(model, data.with_closure_offsets(**kw))) - float(model_loglike(model, data))
+    want = closure_offsets_reference(d, s, **kw)
+    record("abs_dloglike", abs(got - want))
+    assert abs(got - want) < 1e-9 * max(1.0, abs(want))
+
+
+@pytest.mark.validates("virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"])
+def test_supplied_closure_offset_modes(cp_file):
+    """Supplied modes, one value per closure phase of ``data.phi`` (the
+    file's (row, channel) order), each within one frame."""
+    d, data, s, model = cp_file
+    nrow, nw = s.shape
+    epochs = np.unique(d["t3_mjd"])
+    modes = np.zeros((2, nrow * nw))
+    for k, (epoch, scale) in enumerate([(epochs[0], None), (epochs[1], 0.03)]):
+        rows = np.flatnonzero(d["t3_mjd"] == epoch)
+        shape = np.zeros((nrow, nw))
+        shape[rows, :] = np.random.default_rng(1).normal(size=(len(rows), nw)) * 0.02 if scale is None else scale
+        modes[k] = shape.ravel()
+    got = float(model_loglike(model, data.with_closure_offsets(modes=modes))) - float(model_loglike(model, data))
+    want = closure_offsets_reference(d, s, modes=modes)
+    assert abs(got - want) < 1e-9 * max(1.0, abs(want))
+
+
+# --------------------------------------------------------- RV zero points
+
+
+@pytest.mark.parametrize("jitter", [0.0, 0.8], ids=["no jitter", "jitter"])
+@pytest.mark.validates("virgil.orbits.RVData", roots=["mathematics"])
+def test_rv_zero_points_match_a_dense_gaussian_and_its_conditional(jitter):
+    """Given virgil's Keplerian model m (validated elsewhere), the
+    zero-point-marginalised density is N(rv; m + A μ, C + A Λ Aᵀ), with A
+    the instrument indicator, C = diag(d_rv² + jitter²), Λ = diag(sd²); the
+    zero points' posterior is the Gaussian conditional of w given rv."""
+    vo = pytest.importorskip("virgil.orbits")
+    pytest.importorskip("jaxoplanet")
+    rng = np.random.default_rng(2)
+    n = 24
+    mjd = np.sort(rng.uniform(59000, 60500, n))
+    inst = np.array(["A"] * 10 + ["B"] * 8 + ["C"] * 6)
+    orbit = vo.KeplerOrbit(800.0, 120.0, 0.3, 60.0, 40.0, 110.0, 25.0, t_ref=59000.0)
+    q, gamma, dist = 0.7, 0.0, 120.0
+    d_rv = rng.uniform(0.2, 0.6, n)
+    m = np.asarray(vo.RVData(mjd, np.zeros(n), d_rv, instrument=inst).model(orbit, q, gamma, dist))
+    offsets = {"A": 5.0, "B": -3.0, "C": 12.0}
+    rv = m + np.array([offsets[i] for i in inst]) + rng.normal(size=n) * d_rv
+    data = vo.RVData(mjd, rv, d_rv, instrument=inst)
+    A = np.array([[1.0 if i == label else 0.0 for label in data.instruments] for i in inst])
+    mean, sd = np.array([1.0, -2.0, 3.0]), np.array([20.0, 10.0, 30.0])
+    C, Lam = np.diag(d_rv**2 + jitter**2), np.diag(sd**2)
+    want = stats.multivariate_normal(m + A @ mean, C + A @ Lam @ A.T).logpdf(rv)
+    got = float(data.marginal_loglike(orbit, q, gamma, dist, jitter=jitter, prior=(mean, sd)))
+    S_dd, S_wd = C + A @ Lam @ A.T, Lam @ A.T
+    post_mean = mean + S_wd @ np.linalg.solve(S_dd, rv - m - A @ mean)
+    post_cov = Lam - S_wd @ np.linalg.solve(S_dd, S_wd.T)
+    got_mean, got_cov = (np.asarray(x) for x in data.zero_point_posterior(orbit, q, gamma, dist, jitter=jitter,
+                                                                          prior=(mean, sd)))
+    record("abs_dloglike", abs(got - want))
+    assert abs(got - want) < 1e-9 * max(1.0, abs(want))
+    np.testing.assert_allclose(got_mean, post_mean, atol=1e-10)
+    np.testing.assert_allclose(got_cov, post_cov, atol=1e-10)
