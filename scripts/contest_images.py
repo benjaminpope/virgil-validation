@@ -119,6 +119,7 @@ TASKS = [
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
 MAX_PIX = 256  # pixels on a side; larger fields get coarser pixels
 CLEAN_MAX_PIX = 65  # CLEAN runs on at most this grid (see setup())
+FLUX_FLOOR = 1e-4  # lower bound of the log-uniform (Jeffreys) flux priors, relative to the star
 GROWTHS = 3  # data-chosen fields grow at most three times (see run())
 
 
@@ -240,9 +241,11 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     # With a star, the image flux is relative to it; starting_image can start
     # it well above 1 (5.8 for 2022 GRAVITY), so the prior must reach beyond.
     flux_cap = max(100.0, 10 * float(img0.flux))
-    priors = image_priors(start) | ({"env.flux": dist.Uniform(0.0, flux_cap)} if star else {})
+    # Jeffreys priors (Ben, 2026-10-05): fluxes are scale parameters, so
+    # log-uniform, with stated bounds.
+    priors = image_priors(start) | ({"env.flux": dist.LogUniform(FLUX_FLOOR, flux_cap)} if star else {})
     if halo:
-        priors |= {"halo.flux": dist.Uniform(0.0, 1000.0)}
+        priors |= {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)}
     others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
     return dict(label=label, files=files, star=star, halo=halo, data=data, npts=npts,
                 resolution=resolution, start=start, img0=img0, npix=npix, pixel=pixel, fov=fov,
@@ -397,10 +400,10 @@ def fit_ellipse(s):
     for pa0 in (0.0, 45.0, 90.0, 135.0):
         env = vm.EllipticalGaussian(0.3 * fov, 0.7, pa0, flux=float(s["img0"].flux) if star else 1.0)
         scene = vm.System(star=s["start"].star, env=env) if star else vm.System(env=env)
-        priors = {"env.fwhm": dist.Uniform(0.01, fov), "env.ratio": dist.Uniform(0.05, 1.0),
+        priors = {"env.fwhm": dist.LogUniform(0.01, fov), "env.ratio": dist.LogUniform(0.05, 1.0),
                   "env.pa": dist.Uniform(pa0 - 90.0, pa0 + 90.0)}
         if star:
-            priors["env.flux"] = dist.Uniform(0.0, max(100.0, 10 * float(s["img0"].flux)))
+            priors["env.flux"] = dist.LogUniform(FLUX_FLOOR, max(100.0, 10 * float(s["img0"].flux)))
         r = fit(scene, priors, s["data"])
         chi2 = float(np.sum(r.info["chi2_red"]))
         if best is None or chi2 < best[0]:
@@ -450,7 +453,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         return vm.System(**parts)
 
     others = () if star else (Centroid(0.1 * res.minor_mas, path="env"),)
-    extra = ({"env.flux": dist.Uniform(0.0, flux_cap)} if star else {}) | ({"halo.flux": dist.Uniform(0.0, 1000.0)} if halo else {})
+    extra = ({"env.flux": dist.LogUniform(FLUX_FLOOR, flux_cap)} if star else {}) | ({"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {})
     variants = {"iso": (template, 0.0, lambda length: length)}
     if ell[1] < 0.9:  # elongated enough for an anisotropic field to differ
         r = ell[1]
