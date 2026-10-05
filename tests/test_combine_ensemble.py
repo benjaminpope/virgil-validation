@@ -1,7 +1,8 @@
 """The contest campaign's ensemble combiner (scripts/combine_ensemble.py).
 
 Synthetic member files with known images, χ² and evidences: the χ² cutoff
-(members within 1.5x of the best are kept, the boundary included), the mean
+(members within 1.5x of the best, or of 1 if the best over-fits, are kept,
+the boundary included), the mean
 and σ of the kept unit-sum images, the star minus no-star evidence, and NaN
 when one cohort is missing.
 """
@@ -49,6 +50,16 @@ def test_cutoff_mean_sigma_and_star_evidence(tmp_path):
     # The best star member against the best no-star member, dropped ones included.
     assert float(out["star_minus_nostar_log_z"]) == pytest.approx(-10.0 - (-5.0))
     assert row.startswith("| x | 2/3 |")
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_an_overfitting_best_member_does_not_set_the_cutoff(tmp_path):
+    a, b, c = _images()
+    _member(tmp_path / "z_m0.npz", a, 0.02, -10.0, False)  # over-fits
+    _member(tmp_path / "z_m1.npz", b, 1.5, -12.0, False)  # 1.5 x max(0.02, 1): kept
+    _member(tmp_path / "z_m2.npz", c, 1.6, -5.0, False)  # dropped
+    combine_ensemble.combine("z", combine_ensemble.load(tmp_path)["z"], tmp_path)
+    assert sorted(np.load(tmp_path / "z_ensemble.npz")["kept"]) == [0, 1]
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")

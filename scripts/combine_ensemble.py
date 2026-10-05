@@ -8,8 +8,11 @@ with a randomised start, rendered onto a common grid (twice the base field,
 129 pixels). Then:
 
 1. **χ² filter.** Keep the members whose χ²/N, with the quoted errors, is
-   within 1.5x of the best member's. This drops starts that stayed in a poor
-   basin, as PYRA/MYTHRA and the 2012 random-start entries did.
+   within 1.5x of the best member's, or of 1 if the best is below 1. This
+   drops starts that stayed in a poor basin, as PYRA/MYTHRA and the 2012
+   random-start entries did. The floor at 1 stops a member that over-fits
+   (χ²/N ≪ 1, e.g. 2022 AMI at 0.02) from rejecting the ones that fit to
+   the noise.
 2. **Average.** Take the mean and the per-pixel standard deviation of the
    kept members' unit-sum images. A feature that is real survives the
    average; one that comes from a single start's artefact is diluted and
@@ -32,7 +35,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-KEEP = 1.5  # members within this factor of the best χ²/N are kept
+KEEP = 1.5  # members within this factor of max(best χ²/N, 1) are kept
 
 
 def load(results):
@@ -91,7 +94,8 @@ def combine(label, members, out):
     chi2 = np.array([m["chi2"] for m in members])
     finite = np.isfinite(chi2)
     best = np.nanmin(chi2[finite]) if finite.any() else np.nan
-    kept = [m for m, c in zip(members, chi2) if np.isfinite(c) and c <= KEEP * best]
+    cutoff = KEEP * max(best, 1.0)  # an over-fitting best member must not set the bar
+    kept = [m for m, c in zip(members, chi2) if np.isfinite(c) and c <= cutoff]
     stack = np.array([m["image"] / m["image"].sum() for m in kept])
     mean, sigma = stack.mean(0), stack.std(0)
     star = [m["log_z"] for m in members if m["star"] and np.isfinite(m["log_z"])]
