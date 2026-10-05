@@ -34,13 +34,28 @@ def _binary(u, v, w):
 
 
 def _files(tmp_path):
+    generated = tmp_path / "generated.fits"
     distinct = tmp_path / "distinct_mjd.fits"
     simulate.observe(
-        distinct, _binary, UTS, hour_angles_h=np.linspace(-3, 3, 7),
+        generated, _binary, UTS, hour_angles_h=np.linspace(-3, 3, 7),
         wavelengths=np.array([1.65e-6]), dec_deg=-30.0, sigma_v2=0.01, sigma_cp_deg=1.0,
     )
     shared = tmp_path / "shared_mjd.fits"
-    with fits.open(distinct) as h:
+    with fits.open(generated) as h:
+        h[0].header["CONTENT"] = "OIFITS"
+        for x in h:
+            if "OI_REVN" in x.header:
+                x.header["OI_REVN"] = 1
+            if x.name == "OI_ARRAY":
+                h[h.index_of(x.name)] = fits.BinTableHDU.from_columns(
+                    [column for column in x.columns if column.name not in {"FOV", "FOVTYPE"}],
+                    header=x.header,
+                )
+        array = h["OI_ARRAY"]
+        assert h[0].header["CONTENT"] == "OIFITS"
+        assert all(x.header["OI_REVN"] == 1 for x in h if "OI_REVN" in x.header)
+        assert not {"FOV", "FOVTYPE"} & set(array.columns.names)
+        h.writeto(distinct)
         for x in h:
             if x.name in ("OI_VIS2", "OI_VIS", "OI_T3"):
                 mjd = np.array(x.data["MJD"], dtype=float)
