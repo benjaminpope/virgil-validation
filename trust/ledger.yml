@@ -250,6 +250,6 @@
   ruling: external:ehtim
   kind: bug (np.array(list_of_equal_length_record_arrays, dtype=object) is 2-D in NumPy 2; any data with the same baselines at every time, e.g. all simulated data)
   referee: mathematics (NumPy's documented behaviour)
-  evidence: [tests/test_ehtim_reconstruction.py::test_reconstruction_matches_ehtim_in_one_basin]
+  evidence: [tests/test_ehtim_reconstruction.py::test_p6_closure_phases_with_equal_time_groups]
   status: to-raise
 

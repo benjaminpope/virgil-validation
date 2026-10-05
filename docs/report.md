@@ -119,7 +119,7 @@ Ruffio et al. (2018), written with SciPy and mpmath.
 | `nsigma` | χ² upper tail as a two-sided Gaussian significance (SciPy, in log space) | Mathematics | 2e-13 σ |
 | `optimized_flux_grid`, `laplace_flux_uncertainty_grid` | our best flux (Brent) and the curvature of our χ² | Mathematics | < 1e-3 σ and 0.1 % |
 | `absil_limits` (3σ, companion-free data, 12 positions) | root of nsigma(χ²(f)/χ²(0)) = 3 with the number of data points as degrees of freedom | Mathematics | 1e-4 (bisection precision since virgil#191) |
-| `absil_limits` from a single start far below, far above and at saturation (virgil#191) | the same root | Mathematics | 1.4e-4 |
+| `absil_limits` from a single start far below, far above and at saturation (virgil#191) | the same root | Mathematics | 7.0e-5 (half a bisection step) |
 | `ruffio_upperlimit` (means from 20σ above to 30σ below zero) | truncated-Gaussian quantile at 50 digits (mpmath) | Mathematics | 1.5e-12 relative |
 | flux at the true position over 200 noisy realisations | N(0, 1) pulls | Statistics | mean −0.13, sd 1.09 |
 

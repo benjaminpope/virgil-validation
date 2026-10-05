@@ -104,7 +104,7 @@ Differences with other packages (all in the [ledger](docs/trust.md#ledger)):
 | D2 | PMOIRED | Modulated rims: PMOIRED modulates the profile, virgil blurs a modulated ring | definition |
 | D3 | PMOIRED | PMOIRED treats closure phases as independent; virgil whitens them as a correlated group (virgil's pulls calibrated, PMOIRED's errors ~10 % small) | definition |
 | D4 | PMOIRED, CANDID | Both scale fit uncertainties by √χ²_r | definition |
-| D5 | CANDID, fouriever | Closure-phase residual: plain difference in CANDID, chord 2 sin(Δ/2) in virgil (equal to O(Δ³); identical on V²-only data) | definition |
+| D5 | CANDID, fouriever | Closure-phase residual: plain difference in CANDID and fouriever; in virgil the chord 2 sin(Δ/2) for independent closure phases, and sin Δ plus a periodic penalty (1 − cos Δ)/σ for correlated ones (since virgil#174). All agree to O(Δ³); identical on V²-only data | definition |
 | D6 | fouriever | With unequal closure-phase errors within a group, different generalised inverses of the singular covariance (virgil's is the better calibrated) | definition |
 | P1–P3 | PMOIRED | NaN models with `auto`, ring sampling not the documented Nr, a ~1e-4 ring precision floor ([notes](docs/pmoired_notes.md)) | to raise |
 | P4 | CANDID | Absil limits from `detectionLimit` ~1 % low against its own criterion solved exactly ([notes](docs/candid_notes.md)) | to raise |

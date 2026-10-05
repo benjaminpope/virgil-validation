@@ -131,3 +131,15 @@ def test_reconstruction_matches_ehtim_in_one_basin(problem):
     assert (loss_e - loss_v) / loss_e < 1e-6
     assert rel < 1e-4
     assert corr > 1 - 1e-6
+
+
+@pytest.mark.xfail(strict=True, reason="P6: eht-imaging's tlist returns tuples under NumPy 2 for equal-sized time groups")
+@pytest.mark.validates("ehtim", roots=["mathematics"], kind="upstream")
+def test_p6_closure_phases_with_equal_time_groups():
+    """Unpatched eht-imaging: three sites at two times (equal-sized time
+    groups) should give two closure phases. Under NumPy 2 it raises
+    TypeError instead; the reconstruction above works around it."""
+    res = sp.run("ehtim", "ehtim_worker.py", {"task": "p6_probe"})
+    assert res["ok"], res["error"]
+    assert res["n_cphase"] == 2
+

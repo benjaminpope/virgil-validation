@@ -239,9 +239,10 @@ def test_absil_limits_match_candids_criterion(files, cps):
     ])
     worst = np.max(np.abs(got / want - 1))
     record("max_rel_limit_difference", worst)
-    # virgil bisects 14 times in log flux after bracketing by decades
-    # (virgil#191), so its limit is within 10^(1/2^14) - 1 = 1.4e-4
-    assert worst < 2e-4
+    # virgil bisects a log-flux decade 14 times after bracketing (virgil#191)
+    # and returns the midpoint, so its limit is within half a step,
+    # 10^(1/2^15) - 1 = 7.0e-5, of the root
+    assert worst < 1e-4
 
 
 def _public_vs_exact(path, cps):
