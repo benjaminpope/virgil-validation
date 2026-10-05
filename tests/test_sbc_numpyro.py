@@ -50,6 +50,8 @@ def test_sbc_ranks_are_uniform():
     if summary["replicates"] < PREREGISTERED:
         pytest.skip(f"campaign incomplete: {summary['replicates']} of the {PREREGISTERED} preregistered replicates")
     assert summary["replicates"] >= summary["criteria"]["min_replicates"]
+    # the analysis addendum registered before tasks 50-99 were seen (design/sbc_addendum.yml)
+    assert summary["addendum"]["sha256"] == script().addendum_hash(), "addendum changed after the campaign ran"
     failing = [k for k, p in summary["parameters"].items() if not p["pass"]]
     assert not failing, f"ranks not uniform or coverage off for {failing}"
 
@@ -131,3 +133,22 @@ def test_sbc_tasks_write_incrementally_and_resume(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_COMMIT", "d" * 40)
     with pytest.raises(SystemExit, match="another commit"):
         s.run(args, replicate_fn=stub)
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_sbc_addendum_statistics():
+    """Holm's step-down procedure and the addendum's rank tests: no
+    rejection on uniform ranks, and a 0.2-sigma bias is caught."""
+    import numpy as np
+    from scipy import stats
+
+    s = script()
+    assert s.holm({"a": 0.001, "b": 0.02, "c": 0.5}, 0.05) == {"a": True, "b": True, "c": False}
+    assert s.holm({"a": 0.04, "b": 0.03}, 0.05) == {"a": False, "b": False}  # 0.03 > 0.05/2 stops it
+    rng = np.random.default_rng(3)
+    tests = ["chi2_bins", "coverage_68", "coverage_95", "mean_rank", "ecdf"]
+    null = s.rank_pvalues(rng.integers(0, 100, 1000), 99, 20, tests, sims=300)
+    assert min(null.values()) > 1e-3
+    biased = rng.binomial(99, stats.norm.cdf(rng.normal(size=1000) + 0.2))
+    p = s.rank_pvalues(biased, 99, 20, tests, sims=300)
+    assert p["mean_rank"] < 1e-4 and p["chi2_bins"] < 1e-3
