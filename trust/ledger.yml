@@ -137,6 +137,25 @@
   evidence: [tests/test_pmoired_fits.py::test_uncertainties_agree_without_closure_redundancy]
   status: documented
 
+- id: F10
+  title: OIData rejects OIFITS whose OI_T3 and OI_VIS2 use different INSNAMEs (identical wavelengths) or reversed baselines
+  objects: [virgil.oifits.read_oifits, virgil.oidata.OIData]
+  ruling: virgil
+  referee: standards (OIFITS v1/v2 link each table to OI_WAVELENGTH by INSNAME; nothing requires T3 and VIS2 to share one)
+  evidence: [tests/test_contest_binaries.py::test_2006_files_with_separate_t3_insname_are_read]
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/167]
+
+- id: F11
+  title: chi-squared of correlated (4+ telescope) closure phases jumps where a residual crosses ±π
+  objects: [virgil.likelihood.whitened_residuals]
+  ruling: virgil
+  referee: mathematics (a likelihood must be continuous in the model parameters; the 3-telescope path is)
+  evidence:
+    - tests/test_closure_continuity.py::test_four_telescope_chi2_is_continuous
+    - tests/test_closure_continuity.py::test_three_telescope_chi2_is_continuous
+  status: open
+
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]

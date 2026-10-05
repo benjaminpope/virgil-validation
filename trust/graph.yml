@@ -191,6 +191,11 @@ pipelines:
     planned: true
     steps: [virgil.oidata.OIData, virgil.models.Image, virgil.imaging.TSV,
             virgil.imaging.MaxEntropy, virgil.fitting.fit]
+  contest-imaging:
+    title: Blind images from the SPIE imaging contests' data, against the published entries and truths
+    planned: true
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.Image,
+            virgil.imaging.TSV, virgil.imaging.MaxEntropy, virgil.imaging.l_curve, virgil.fitting.fit]
   published-binary:
     title: Reproduce published binary detections from the authors' archival data
     planned: true
