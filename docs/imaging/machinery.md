@@ -37,3 +37,20 @@ chain rule.
 | `StarletL1` and `starlet` (1, 3, 4 scales) | à-trous B3-spline transform written with SciPy (Starck, Murtagh & Fadili 2010) | Mathematics | 1e-15; details + coarse = image |
 | `LogSum` | its formula and pixel gradient | Mathematics | 1e-15 |
 
+## CLEAN
+
+`imaging.clean`, virgil's gradient CLEAN, must keep its χ² finite. Test:
+[`test_clean_finite.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_clean_finite.py), on four-UT files
+(correlated closure phases) and three-UT controls, at 40, 41 and 60 pixels
+of 0.4 mas.
+
+| virgil | Reference | Agreement |
+| --- | --- | --- |
+| `imaging.clean` without a base scene, three and four UTs | χ² finite at every iteration | finite |
+
+Without a base scene, `clean` seeds the central pixel, where the Jacobian
+column |J e_p| is zero. On even grids that pixel sits half a pixel off the
+origin, so rounding left |J e_p|² near 1e-24; its score won and its step was
+infinite, giving a NaN χ² on every even size from 34 to 68 pixels
+([F12](../index.md#F12)). virgil#190 treats such pixels as dead.
+

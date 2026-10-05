@@ -67,8 +67,8 @@ Behaviour that looks wrong on PMOIRED's side is listed, with reproducers, in
 
 ### Stage 1
 
-Done: see `tests/test_pmoired_vs_virgil.py` and the Stage 1 section of
-[report.md](index.md).
+Done: see `tests/test_pmoired_vs_virgil.py` and
+[virgil vs PMOIRED (Stage 1)](#virgil-vs-pmoired-stage-1) below.
 
 ## Problems to raise upstream
 
