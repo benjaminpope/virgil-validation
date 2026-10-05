@@ -16,24 +16,37 @@ of (sma, mtot).
 Tolerances (float64). Positions agree to 1e-12 of the semimajor axis: both
 codes evaluate the same closed form, orbitize!'s Kepler solve is set to
 1e-14 rad in E (its default, 1e-9, would dominate), and mean anomalies of a
-few orbits carry ~1e-15 of rounding; the margin of ~100 covers libm
-differences between platforms. Radial velocities agree to 1e-12 of the
-semi-amplitude for the same reason; through orbitize!'s System, which
-solves Kepler's equation at its default 1e-9, to 1e-8. Finite-difference
-velocities (five-point stencil, h = P/2000, on orbits with e <= 0.6) agree
-to 1e-6 of 2 pi a / P.
+few orbits carry ~1e-15 of rounding; the margin of ~100 over the 1e-14
+observed covers libm differences between platforms. Radial velocities agree
+to 1e-12 of the semi-amplitude for the same reason; through orbitize!'s
+System, which solves Kepler's equation at its default 1e-9, to 1e-8.
+Finite-difference velocities (five-point stencil, h = P/2000, on orbits
+with e <= 0.6) agree to 1e-6 of 2 pi a / P (truncation error ~1e-10).
 
-Findings (ledger): F14, virgil's total_mass uses a³/P² with P in Julian
-years, which is Kepler's third law only to 3.8e-5; P7, orbitize! adds the
-instrument's gamma to companion RVs when primary RVs are present, although
-its documentation asks for companion RVs relative to the barycentre.
+orbitize! takes ~10 s to import, so every orbitize! number the fast tests
+use comes from one worker process (the ``runs`` fixture). Its epochs are
+chosen from our own Kepler's-law period, which equals orbitize!'s to 1e-14
+(test_orbitize_period_is_keplers_third_law); virgil's elements use
+orbitize!'s returned period. virgil is evaluated jit-compiled and vmapped
+over orbits (eager JAX costs ~0.5 s per orbit and call).
+
+Findings (ledger): F14, total_mass uses a³/P² with P in Julian years, 3.8e-5
+from Kepler's third law; F15, ThieleInnesOrbit.to_kepler can return
+Omega = 180.0; F16, StateVectorOrbit.to_kepler loses the inclination of
+nearly face-on orbits (i = 0.01° comes back as 0.0106°); P7, orbitize!
+adds the instrument's gamma to companion RVs when primary RVs are present,
+although its documentation asks for companion RVs relative to the
+barycentre.
 """
 
 import math
 
+import equinox as eqx
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
-from astropy import constants, units
+from astropy import constants
 
 from evidence.plugin import record
 from external_bridge import orbitize_bridge as ob
@@ -54,12 +67,19 @@ TOL_SYSTEM = 1e-8  # through orbitize.system.System (Kepler solve at 1e-9)
 AU_KM = 149597870.7  # IAU 2012 Resolution B2
 GM_SUN = 1.3271244e20  # m^3 s^-2, IAU 2015 Resolution B3 (nominal)
 JULIAN_YEAR_D = 365.25
+N_EPOCHS = 121
+STENCIL = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+
+
+def kepler_period(sma, mtot):
+    """P (days) = 2 pi sqrt(a³ / (G M)), IAU constants."""
+    return 2 * np.pi * np.sqrt((np.asarray(sma) * AU_KM * 1e3) ** 3 / (GM_SUN * np.asarray(mtot))) / 86400.0
 
 
 def _grid():
     """Element sets (orbitize!'s standard basis, radians) over e, i, omega,
     Omega and phase, with the edge cases: e = 0 and ~0, e up to 0.95,
-    i = 0, ~0, ~90, 90 and above 90."""
+    i = 0, ~0, ~90, 90 and above 90; and cardinal angles."""
     rng = np.random.default_rng(14)
     out = []
     for e in (0.0, 1e-7, 0.1, 0.5, 0.8, 0.95):
@@ -69,62 +89,187 @@ def _grid():
                 "aop": float(rng.uniform(0, 2 * np.pi)), "pan": float(rng.uniform(0, 2 * np.pi)),
                 "tau": float(rng.uniform()), "plx": float(rng.uniform(5, 100)), "mtot": float(rng.uniform(0.3, 5)),
             })
-    for aop, pan in ((0, 0), (90, 0), (0, 90), (180, 270), (270, 180)):  # cardinal angles
+    for aop, pan in ((0, 0), (90, 0), (0, 90), (180, 270), (270, 180)):
         out.append({"sma": 5.0, "ecc": 0.3, "inc": math.radians(60), "aop": math.radians(aop),
                     "pan": math.radians(pan), "tau": 0.0, "plx": 20.0, "mtot": 1.0})
     return out
 
 
 GRID = _grid()
+EPOCHS = np.stack([REF - 0.3 * p + np.linspace(0, 1.6 * p, N_EPOCHS)
+                   for p in kepler_period([e["sma"] for e in GRID], [e["mtot"] for e in GRID])])
+
+# radial velocities: masses m0 (primary) and m1 (companion)
+RV_ORBITS = [
+    {"sma": 3.0, "ecc": 0.4, "inc": math.radians(60), "aop": math.radians(40), "pan": math.radians(110),
+     "tau": 0.3, "plx": 40.0, "m0": 1.4, "m1": 0.6},
+    {"sma": 12.0, "ecc": 0.9, "inc": math.radians(140), "aop": math.radians(250), "pan": math.radians(300),
+     "tau": 0.8, "plx": 15.0, "m0": 2.5, "m1": 1.9},
+    {"sma": 0.8, "ecc": 0.0, "inc": math.radians(89.5), "aop": 0.0, "pan": math.radians(20),
+     "tau": 0.5, "plx": 120.0, "m0": 0.9, "m1": 0.05},
+]
+for _el in RV_ORBITS:
+    _el["mtot"] = _el["m0"] + _el["m1"]
+RV_EPOCHS = [REF + np.linspace(-0.2, 1.3, 80) * kepler_period(e["sma"], e["mtot"]) for e in RV_ORBITS]
+RV_GAMMA, SYSTEM_GAMMA = -3.7, 7.0
+
+# finite-difference stencils for velocities
+SV_USE = [j for j, e in enumerate(GRID) if e["ecc"] <= 0.6]
+SYM_USE = [j for j, e in enumerate(GRID) if e["ecc"] <= 0.6 and 0.01 < math.degrees(e["inc"]) < 89.0]
+VARIANTS = {
+    "base": lambda e: e,
+    "twin": lambda e: dict(e, aop=e["aop"] + np.pi, pan=e["pan"] + np.pi),  # (Omega, omega) + 180°
+    "flip": lambda e: dict(e, aop=e["aop"] + np.pi),  # omega + 180°
+    "mirror": lambda e: dict(e, inc=np.pi - e["inc"]),  # i -> 180° - i
+}
+
+
+def _h(j):
+    return kepler_period(GRID[j]["sma"], GRID[j]["mtot"]) / 2000.0
+
+
+def _sym_epochs(j):
+    return (EPOCHS[j, ::10][:, None] + _h(j) * STENCIL).ravel()  # 13 epochs x 5
+
+
+def _std(el):
+    return {k: el[k] for k in ("sma", "ecc", "inc", "aop", "pan", "tau", "plx", "mtot")}
+
+
+def _at(orbits, epochs):
+    """Orbit j at its own epochs[j] in one ephemeris task (the worker takes
+    one epoch list: concatenate, and slice the result with _slice)."""
+    return ob.ephemeris_task(orbits, np.concatenate(epochs), REF)
+
+
+def _slice(result, n):
+    return {k: np.stack([np.asarray(r[k])[j * n:(j + 1) * n] for j, r in enumerate(result["results"])])
+            for k in ("raoff", "deoff", "vz", "sep", "pa")}
 
 
 @pytest.fixture(scope="module")
-def grid():
-    """orbitize!'s periods and ephemerides over 1.6 periods of each orbit
-    (121 epochs), and virgil's KeplerOrbit at the mapped elements."""
-    periods = ob.periods([(el["sma"], el["mtot"]) for el in GRID])
-    out = []
-    for el, p in zip(GRID, periods):
-        epochs = REF - 0.3 * p + np.linspace(0, 1.6 * p, 121)
-        out.append((el, p, epochs))
-    # one worker call per distinct epoch set is wasteful: ask for all at once
-    # on a common unit-phase grid instead, by evaluating each orbit separately
-    results = [ob.ephemeris([el], epochs, REF)[0] for el, _, epochs in out] if len(out) < 4 else None
-    if results is None:
-        results = _batched(out)
-    return [(el, p, epochs, r, vo.KeplerOrbit(**ob.to_virgil(el, p, REF))) for (el, p, epochs), r in zip(out, results)]
+def runs():
+    """Every orbitize! number the fast tests use, from one worker process."""
+    tasks = {
+        "period_check": {"task": "period", "cases": [[1.0, 1.0], [10.0, 1.7], [0.05, 0.3], [300.0, 20.0]]},
+        "periods": {"task": "period", "cases": [[e["sma"], e["mtot"]] for e in GRID + RV_ORBITS]},
+        "grid": _at(GRID, list(EPOCHS)),
+        "state": _at([dict(GRID[j], mass_for_Kamp=GRID[j]["mtot"]) for j in SV_USE],
+                     [REF + _h(j) * STENCIL for j in SV_USE]),
+        **{f"sym_{name}": _at([change(GRID[j]) for j in SYM_USE], [_sym_epochs(j) for j in SYM_USE])
+           for name, change in VARIANTS.items()},
+        **{f"rv_{k}": _at([dict(_std(e), mass_for_Kamp=e["m0"]), dict(_std(e), mass_for_Kamp=e["m1"])], [t, t])
+           for k, (e, t) in enumerate(zip(RV_ORBITS, RV_EPOCHS))},
+        **{f"system_{name}": {"task": "system_rv", "epochs": RV_EPOCHS[0].tolist(), "tau_ref_epoch": REF,
+                              "orbit": RV_ORBITS[0], "gamma": SYSTEM_GAMMA, "objects": objects}
+           for name, objects in (("both", [0, 1]), ("alone", [1]))},
+    }
+    out = ob.batch(tasks)
+    out["periods"] = np.array([r["period_day"] for r in out["periods"]["results"]])
+    out["grid"] = _slice(out["grid"], N_EPOCHS)
+    out["state"] = _slice(out["state"], 5)
+    for name in VARIANTS:
+        out[f"sym_{name}"] = {k: v.reshape(len(SYM_USE), -1, 5)
+                              for k, v in _slice(out[f"sym_{name}"], 13 * 5).items()}
+    for k in range(len(RV_ORBITS)):
+        out[f"rv_{k}"] = _slice(out[f"rv_{k}"], len(RV_EPOCHS[k]))
+    return out
 
 
-def _batched(items):
-    """One orbitize! call for every orbit, each at its own epochs (the
-    worker takes one epoch list, so concatenate and slice)."""
-    epochs = np.concatenate([e for _, _, e in items])
-    res = ob.ephemeris([el for el, _, _ in items], epochs, REF)
-    n = len(items[0][2])
-    return [{k: np.asarray(r[k])[j * n:(j + 1) * n] for k in ("raoff", "deoff", "vz", "sep", "pa")}
-            for j, r in enumerate(res)]
+# ---------------------------------------------------------------- virgil side
 
 
-def _sky_error(dra, ddec, r, a):
-    return max(np.max(np.abs(np.asarray(dra) - r["raoff"])), np.max(np.abs(np.asarray(ddec) - r["deoff"]))) / a
+def _params(el, p):
+    """virgil KeplerOrbit arguments (without t_ref), as a list."""
+    v = ob.to_virgil(el, p, REF)
+    return [v[k] for k in ("period", "dt_peri", "ecc", "inc", "omega", "Omega", "a_mas")]
+
+
+def _evaluate(prm, t):
+    """Everything the tests read from virgil for one orbit."""
+    o = vo.KeplerOrbit(*prm, t_ref=REF)
+    s = vo.StateVectorOrbit.from_kepler(o)
+    k = s.to_kepler()
+    return {
+        "rel": jnp.stack(o.relative(t)), "seppa": jnp.stack(o.separation_pa(t)),
+        "vel": jnp.stack(o.relative_velocity(t)), "ti": jnp.stack(o.thiele_innes()),
+        "sv_rel": jnp.stack(s.relative(t)), "sv": jnp.stack([s.vra, s.vdec, s.vz, s.mu]),
+        "sv_kepler": jnp.stack([k.period, k.dt_peri, k.ecc, k.inc, k.omega, k.Omega, k.a_mas]),
+    }
+
+
+def _evaluate_ti(prm, abfg, t):
+    """A ThieleInnesOrbit from given constants: its sky positions and its
+    to_kepler elements."""
+    ti = vo.ThieleInnesOrbit(prm[0], prm[1], prm[2], *abfg, t_ref=REF)
+    k = ti.to_kepler()
+    return {"sky": jnp.stack(ti.sky(t)),
+            "kepler": jnp.stack([k.period, k.dt_peri, k.ecc, k.inc, k.omega, k.Omega, k.a_mas])}
+
+
+EVALUATE = jax.jit(jax.vmap(_evaluate))
+EVALUATE_TI = jax.jit(jax.vmap(_evaluate_ti))
+
+
+@eqx.filter_jit
+def _rv_model(data, prm, q, gamma, distance_pc):
+    return data.model(vo.KeplerOrbit(*prm, t_ref=REF), q, gamma, distance_pc)
+
+
+def virgil_rv(prm, epochs, star, q, distance_pc, gamma):
+    """RVData.model (km/s) for the KeplerOrbit with arguments ``prm``."""
+    z = np.zeros_like(epochs)
+    data = vo.RVData(epochs, z, z + 1.0, star=star, t_ref=REF)
+    return np.asarray(_rv_model(data, jnp.asarray(prm), q, gamma, distance_pc))
+
+
+@pytest.fixture(scope="module")
+def grid(runs):
+    """The element grid: orbitize!'s periods and ephemerides over 1.6
+    periods of each orbit (121 epochs), and virgil's at the mapped elements."""
+    periods = runs["periods"][:len(GRID)]
+    prm = np.array([_params(el, p) for el, p in zip(GRID, periods)])
+    return {
+        "els": GRID, "periods": periods, "epochs": EPOCHS, "prm": prm,
+        "a": np.array([el["sma"] * el["plx"] for el in GRID]),
+        "orbitize": runs["grid"],
+        "virgil": {k: np.asarray(v) for k, v in EVALUATE(prm, EPOCHS).items()},
+    }
+
+
+def _sky_error(dra, ddec, ra, dec, a):
+    """Largest position difference over the semimajor axis."""
+    a = np.reshape(a, (-1,) + (1,) * (np.ndim(dra) - 1))
+    return np.max(np.maximum(np.abs(dra - ra), np.abs(ddec - dec)) / a)
+
+
+def _dangle(x, y):
+    """x - y wrapped to [-180, 180) degrees."""
+    return ((np.asarray(x) - y + 180.0) % 360.0) - 180.0
+
+
+def _derivative(f, h):
+    """Five-point central difference from samples at t + h * STENCIL."""
+    return (-f[..., 4] + 8 * f[..., 3] - 8 * f[..., 1] + f[..., 0]) / (12 * h)
 
 
 # ------------------------------------------------------------ orbitize! itself
 
 
 @pytest.mark.validates("orbitize", "external_bridge.orbitize_bridge", roots=["standards", "mathematics"], kind="reference")
-def test_orbitize_period_is_keplers_third_law():
+def test_orbitize_period_is_keplers_third_law(runs):
     """orbitize!'s period of (sma, mtot) is P = 2 pi sqrt(a³ / (G M)) with
-    the IAU nominal GM_sun (astropy's G * M_sun) and the IAU au, and its
-    year is the Julian year (astropy's), so the mapping's P is exact."""
-    cases = [(1.0, 1.0), (10.0, 1.7), (0.05, 0.3), (300.0, 20.0)]
-    r = ob.run({"task": "period", "cases": [list(c) for c in cases]})
+    the IAU nominal GM_sun (astropy's G * M_sun) and the IAU au; its year is
+    the Julian year (astropy's); its Period basis inverts it. So the
+    mapping's P is exact, and our epochs (from kepler_period) are
+    orbitize!'s."""
+    r = runs["period_check"]
     assert r["year_days"] == JULIAN_YEAR_D
     assert abs(float((constants.G * constants.M_sun).to_value("m3 s-2")) / GM_SUN - 1) < 1e-15
-    worst = 0.0
-    for (sma, mtot), res in zip(cases, r["results"]):
-        expect = 2 * np.pi * np.sqrt((sma * AU_KM * 1e3) ** 3 / (GM_SUN * mtot)) / 86400.0
-        worst = max(worst, abs(res["period_day"] / expect - 1), abs(res["sma_back"] / sma - 1))
+    cases = [(1.0, 1.0), (10.0, 1.7), (0.05, 0.3), (300.0, 20.0)] + [(e["sma"], e["mtot"]) for e in GRID]
+    results = r["results"] + [{"period_day": p, "sma_back": e["sma"]} for e, p in zip(GRID, runs["periods"])]
+    worst = max(max(abs(res["period_day"] / kepler_period(*c) - 1), abs(res["sma_back"] / c[0] - 1))
+                for c, res in zip(cases, results))
     record("max_rel_period", worst)
     assert worst < 1e-14
 
@@ -137,20 +282,15 @@ def test_relative_astrometry_matches_orbitize(grid):
     """KeplerOrbit.relative (dra, ddec) and separation_pa against
     orbitize!'s calc_orbit and radec2seppa over the element grid (47 orbits,
     121 epochs each over 1.6 periods)."""
-    worst_pos = worst_sep = worst_pa = 0.0
-    for el, p, epochs, r, orbit in grid:
-        a = el["sma"] * el["plx"]
-        dra, ddec, _ = orbit.relative(epochs)
-        worst_pos = max(worst_pos, _sky_error(dra, ddec, r, a))
-        sep, pa = (np.asarray(x) for x in orbit.separation_pa(epochs))
-        worst_sep = max(worst_sep, np.max(np.abs(sep - r["sep"])) / a)
-        dpa = (pa - np.asarray(r["pa"]) + 180.0) % 360.0 - 180.0
-        # an angle error times the separation: a length, well defined at sep -> 0
-        worst_pa = max(worst_pa, np.max(np.abs(np.radians(dpa)) * sep) / a)
-    record("max_rel_position", worst_pos)
-    record("max_rel_separation", worst_sep)
-    record("max_rel_pa_times_sep", worst_pa)
-    assert worst_pos < TOL_POS and worst_sep < TOL_POS and worst_pa < TOL_POS
+    o, v, a = grid["orbitize"], grid["virgil"], grid["a"][:, None]
+    pos = _sky_error(v["rel"][:, 0], v["rel"][:, 1], o["raoff"], o["deoff"], a)
+    sep = np.max(np.abs(v["seppa"][:, 0] - o["sep"]) / a)
+    # an angle error times the separation: a length, well defined at sep -> 0
+    pa = np.max(np.abs(np.radians(_dangle(v["seppa"][:, 1], o["pa"]))) * v["seppa"][:, 0] / a)
+    record("max_rel_position", pos)
+    record("max_rel_separation", sep)
+    record("max_rel_pa_times_sep", pa)
+    assert pos < TOL_POS and sep < TOL_POS and pa < TOL_POS
 
 
 @pytest.mark.validates("virgil.orbits.KeplerOrbit", "external_bridge.orbitize_bridge", roots=["orbitize"], kind="control")
@@ -159,16 +299,35 @@ def test_wrong_mappings_fail(grid):
     of the orbit: the primary's argument of periastron (omega + 180°, as in
     jaxoplanet and spectroscopy), a node counted counterclockwise from East
     (90° - Omega), and the opposite sense of rotation (180° - inc)."""
-    el, p, epochs, r, _ = grid[30]  # e = 0.8, i = 35°
-    a = el["sma"] * el["plx"]
-    good = ob.to_virgil(el, p, REF)
-    for change in ({"omega": good["omega"] + 180.0},
-                   {"Omega": (90.0 - good["Omega"]) % 360.0},
-                   {"inc": 180.0 - good["inc"]}):
-        dra, ddec, _ = vo.KeplerOrbit(**{**good, **change}).relative(epochs)
-        err = _sky_error(dra, ddec, r, a)
-        record("min_rel_error_" + next(iter(change)), err)
-        assert err > 0.1, change
+    j = 30  # e = 0.8, i = 35°
+    base = grid["prm"][j]
+    wrong = np.array([base, base, base])
+    wrong[0, 4] += 180.0
+    wrong[1, 5] = (90.0 - base[5]) % 360.0
+    wrong[2, 3] = 180.0 - base[3]
+    rel = np.asarray(EVALUATE(wrong, np.stack([EPOCHS[j]] * 3))["rel"])
+    o = grid["orbitize"]
+    for k, name in enumerate(("omega", "Omega", "inc")):
+        err = _sky_error(rel[k, 0], rel[k, 1], o["raoff"][j], o["deoff"][j], grid["a"][j])
+        record("min_rel_error_" + name, err)
+        assert err > 0.1, name
+
+
+def _design_note_constants(grid):
+    """A, B, F, G from virgil's design note §2.4, written out here."""
+    a = grid["a"]
+    w, W, i = (np.array([e[k] for e in grid["els"]]) for k in ("aop", "pan", "inc"))
+    return np.stack([
+        a * (np.cos(w) * np.cos(W) - np.sin(w) * np.sin(W) * np.cos(i)),
+        a * (np.cos(w) * np.sin(W) + np.sin(w) * np.cos(W) * np.cos(i)),
+        a * (-np.sin(w) * np.cos(W) - np.cos(w) * np.sin(W) * np.cos(i)),
+        a * (-np.sin(w) * np.sin(W) + np.cos(w) * np.cos(W) * np.cos(i)),
+    ], axis=1)
+
+
+def _well_posed(el):
+    """Orbits whose elements positions determine (not circular, not face-on)."""
+    return el["ecc"] > 1e-3 and 1.0 < math.degrees(el["inc"]) < 179.0
 
 
 @pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["orbitize", "mathematics"])
@@ -176,239 +335,224 @@ def test_thiele_innes_orbit_matches_orbitize(grid):
     """A ThieleInnesOrbit built from the constants of virgil's design note
     §2.4 (A = a(cos w cos W - sin w sin W cos i), ...) reproduces orbitize!'s
     positions; KeplerOrbit.thiele_innes gives those constants; and
-    to_kepler returns orbitize!'s elements, with Omega in [0°, 180°) and
-    the documented (Omega + 180°, omega + 180°) twin."""
-    worst_pos = worst_const = worst_el = 0.0
-    for el, p, epochs, r, orbit in grid:
-        a, w, W, i = el["sma"] * el["plx"], el["aop"], el["pan"], el["inc"]
-        A = a * (math.cos(w) * math.cos(W) - math.sin(w) * math.sin(W) * math.cos(i))
-        B = a * (math.cos(w) * math.sin(W) + math.sin(w) * math.cos(W) * math.cos(i))
-        F = a * (-math.sin(w) * math.cos(W) - math.cos(w) * math.sin(W) * math.cos(i))
-        G = a * (-math.sin(w) * math.sin(W) + math.cos(w) * math.cos(W) * math.cos(i))
-        ti = vo.ThieleInnesOrbit(p, el["tau"] * p, el["ecc"], A, B, F, G, t_ref=REF)
-        dra, ddec = ti.sky(epochs)
-        worst_pos = max(worst_pos, _sky_error(dra, ddec, r, a))
-        worst_const = max(worst_const, np.max(np.abs(np.asarray(orbit.thiele_innes()[:4]) - [A, B, F, G])) / a)
-        if el["ecc"] > 1e-3 and 1.0 < math.degrees(i) < 179.0:
-            k = ti.to_kepler()
-            Om, om = math.degrees(W) % 360.0, math.degrees(w)
-            if Om >= 180.0:
-                Om, om = Om - 180.0, om - 180.0
-            d_ang = [((float(x) - y + 180.0) % 360.0) - 180.0
-                     for x, y in ((k.Omega, Om), (k.omega, om), (k.inc, math.degrees(i)))]
-            worst_el = max(worst_el, np.max(np.abs(d_ang)), abs(float(k.a_mas) / a - 1) * 180)
-    record("max_rel_position", worst_pos)
-    record("max_rel_constants", worst_const)
-    record("max_element_error_deg", worst_el)
-    assert worst_pos < TOL_POS and worst_const < 1e-14
-    assert worst_el < 1e-6  # degrees: angles from atan2 of the constants
+    to_kepler returns orbitize!'s elements or their documented twin
+    (Omega + 180°, omega + 180°)."""
+    abfg = _design_note_constants(grid)
+    a = grid["a"]
+    out = {k: np.asarray(v) for k, v in EVALUATE_TI(grid["prm"], abfg, EPOCHS).items()}
+    o = grid["orbitize"]
+    pos = _sky_error(out["sky"][:, 0], out["sky"][:, 1], o["raoff"], o["deoff"], a[:, None])
+    const = np.max(np.abs(grid["virgil"]["ti"][:, :4] - abfg) / a[:, None])
+    ok = np.array([_well_posed(e) for e in grid["els"]])
+    k, want = out["kepler"][ok], grid["prm"][ok]
+    # either solution of the documented pair (the range of Omega: F15)
+    d_node = np.minimum(*[np.maximum(np.abs(_dangle(k[:, 5], want[:, 5] + s)), np.abs(_dangle(k[:, 4], want[:, 4] + s)))
+                          for s in (0.0, 180.0)])
+    el_err = max(np.max(d_node), np.max(np.abs(_dangle(k[:, 3], want[:, 3]))), np.max(np.abs(k[:, 6] / want[:, 6] - 1)))
+    record("max_rel_position", pos)
+    record("max_rel_constants", const)
+    record("max_element_error", el_err)
+    assert pos < TOL_POS and const < 1e-14
+    assert el_err < 1e-9  # degrees (and relative a): atan2 of the constants
 
 
-def _fd(fun, t, h):
-    """Five-point central difference."""
-    return (-fun(t + 2 * h) + 8 * fun(t + h) - 8 * fun(t - h) + fun(t - 2 * h)) / (12 * h)
+@pytest.mark.xfail(strict=True, reason="F15: ThieleInnesOrbit.to_kepler can return Omega = 180.0, outside its documented [0, 180)")
+@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["mathematics"], kind="finding")
+def test_f15_thiele_innes_node_in_documented_range(grid):
+    """to_kepler documents 0 <= Omega < 180. For a node at 180°, whose
+    constants carry sin(180°) ~ 1e-16, it returns 180.0 exactly:
+    KeplerOrbit(1000, 0, 0.3, 60, 270, 180, 100).to_thiele_innes().to_kepler()
+    has Omega == 180.0 (the same sky orbit as Omega = 0, omega = 90, which
+    the test above accepts)."""
+    omegas = np.asarray(EVALUATE_TI(grid["prm"], grid["virgil"]["ti"][:, :4], EPOCHS)["kepler"])[:, 5]
+    record("max_Omega", np.max(omegas))
+    assert np.all((omegas >= 0.0) & (omegas < 180.0))
+
+
+def _state_errors(grid):
+    """Position and inclination errors of StateVectorOrbit.from_kepler's
+    round trip, per orbit."""
+    v, o = grid["virgil"], grid["orbitize"]
+    pos = np.max(np.maximum(np.abs(v["sv_rel"][:, 0] - o["raoff"]), np.abs(v["sv_rel"][:, 1] - o["deoff"])), axis=1)
+    inc = np.abs(_dangle(v["sv_kepler"][:, 3], grid["prm"][:, 3]))
+    return pos / grid["a"], inc
 
 
 @pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize"])
-def test_state_vector_orbit_matches_orbitize(grid):
-    """StateVectorOrbit.from_kepler: its positions follow orbitize!'s; its
-    sky velocity (mas/yr) equals the time derivative of orbitize!'s
-    positions; its line-of-sight velocity equals orbitize!'s relative RV
-    (calc_orbit with mass_for_Kamp = mtot, km/s) at t_ref, converted with
-    the distance 1000/plx; mu = 4 pi² a³ / P² (P in Julian years); and
-    to_kepler returns orbitize!'s elements with the node fixed absolutely
-    (no 180° ambiguity: the state carries dz)."""
-    worst_pos = worst_v = worst_vz = worst_el = worst_mu = 0.0
-    sub = [g for g in grid if g[0]["ecc"] <= 0.6 and 1e-3 < g[0]["inc"]]
-    for el, p, epochs, r, orbit in sub:
-        a = el["sma"] * el["plx"]
-        state = vo.StateVectorOrbit.from_kepler(orbit)
-        dra, ddec, _ = state.relative(epochs)
-        worst_pos = max(worst_pos, _sky_error(dra, ddec, r, a))
-        h = p / 2000.0
-        stencil = REF + h * np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
-        rr = ob.ephemeris([dict(el, mass_for_Kamp=el["mtot"])], stencil, REF)[0]
-        ra, de = np.asarray(rr["raoff"]), np.asarray(rr["deoff"])
-        d = lambda f: (-f[4] + 8 * f[3] - 8 * f[1] + f[0]) / (12 * h) * JULIAN_YEAR_D  # noqa: E731
-        scale = 2 * np.pi * a / (p / JULIAN_YEAR_D)
-        worst_v = max(worst_v, abs(float(state.vra) - d(ra)) / scale, abs(float(state.vdec) - d(de)) / scale)
-        vz_kms = float(state.vz) * (1000.0 / el["plx"]) * AU_KM / 1000.0 / (JULIAN_YEAR_D * 86400.0)
-        worst_vz = max(worst_vz, abs(vz_kms - rr["vz"][2]) / (scale * (1000.0 / el["plx"]) * AU_KM / 1000.0
-                                                             / (JULIAN_YEAR_D * 86400.0)))
-        worst_mu = max(worst_mu, abs(float(state.mu) / (4 * np.pi**2 * a**3 / (p / JULIAN_YEAR_D) ** 2) - 1))
-        if el["ecc"] > 1e-3 and 1.0 < math.degrees(el["inc"]) < 179.0:
-            k = state.to_kepler()
-            d_ang = [((float(x) - math.degrees(y) + 180.0) % 360.0) - 180.0
-                     for x, y in ((k.Omega, el["pan"]), (k.omega, el["aop"]), (k.inc, el["inc"]))]
-            worst_el = max(worst_el, np.max(np.abs(d_ang)), abs(float(k.period) / p - 1),
-                           abs(float(k.a_mas) / a - 1), abs(float(k.ecc) - el["ecc"]))
-    record("max_rel_position", worst_pos)
-    record("max_rel_sky_velocity", worst_v)
-    record("max_rel_los_velocity", worst_vz)
-    record("max_rel_mu", worst_mu)
-    record("max_element_error", worst_el)
-    assert worst_pos < TOL_POS and worst_vz < TOL_RV and worst_mu < 1e-13
-    assert worst_v < 1e-6
-    assert worst_el < 1e-8
+def test_state_vector_orbit_matches_orbitize(grid, runs):
+    """StateVectorOrbit.from_kepler: its sky velocity (mas/yr) at t_ref
+    equals the time derivative of orbitize!'s positions; its line-of-sight
+    velocity equals orbitize!'s relative RV (calc_orbit with mass_for_Kamp
+    = mtot, km/s) converted with the distance 1000/plx and the Julian year;
+    mu = 4 pi² a³ / P² (P in Julian years); its positions follow orbitize!'s
+    (to 1e-12 of a except near face-on or circular orbits: F16, pinned at
+    1e-7); and to_kepler returns orbitize!'s elements with the node fixed
+    absolutely (the state carries dz), for well-posed orbits."""
+    p, a, v = grid["periods"], grid["a"], grid["virgil"]
+    pos, inc = _state_errors(grid)
+    well = np.array([_well_posed(e) and 5.0 < math.degrees(e["inc"]) < 175.0 for e in GRID])
+    rr, h = runs["state"], np.array([_h(j) for j in SV_USE])
+    sv, A, P = v["sv"][SV_USE], a[SV_USE], p[SV_USE]
+    year = JULIAN_YEAR_D
+    scale = 2 * np.pi * A / (P / year)  # mas/yr
+    vel = max(np.max(np.abs(sv[:, 0] - _derivative(rr["raoff"], h) * year) / scale),
+              np.max(np.abs(sv[:, 1] - _derivative(rr["deoff"], h) * year) / scale))
+    kms = (1000.0 / np.array([GRID[j]["plx"] for j in SV_USE])) * AU_KM / 1000.0 / (year * 86400.0)
+    vz = np.max(np.abs(sv[:, 2] * kms - rr["vz"][:, 2]) / (scale * kms))
+    mu = np.max(np.abs(v["sv"][:, 3] / (4 * np.pi**2 * a**3 / (p / year) ** 2) - 1))
+    k, want = v["sv_kepler"][well], grid["prm"][well]
+    el_err = max(np.max(np.abs(_dangle(k[:, 3:6], want[:, 3:6]))), np.max(np.abs(k[:, 0] / want[:, 0] - 1)),
+                 np.max(np.abs(k[:, 6] / want[:, 6] - 1)), np.max(np.abs(k[:, 2] - want[:, 2])),
+                 np.max(np.abs(_dangle(360 * k[:, 1] / want[:, 0], 360 * want[:, 1] / want[:, 0]))))
+    record("max_rel_position", np.max(pos))
+    record("max_rel_position_well_posed", np.max(pos[well]))
+    record("max_rel_sky_velocity", vel)
+    record("max_rel_los_velocity", vz)
+    record("max_rel_mu", mu)
+    record("max_element_error_well_posed", el_err)
+    assert vz < TOL_RV and mu < 1e-13 and vel < 1e-6
+    assert np.max(pos[well]) < TOL_POS and el_err < 1e-9
+    assert np.max(pos) < 1e-7  # F16
+
+
+@pytest.mark.xfail(strict=True, reason="F16: StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits")
+@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"], kind="finding")
+def test_f16_state_vector_round_trip_keeps_float64_precision(grid):
+    """The state (dra, ddec, vra, vdec, dz, vz, mu) fixes the orbit as
+    precisely face-on as edge-on: the inclination is atan2(|h_xy|, h_z) of
+    the angular momentum, good to ~1e-16 rad. virgil's to_kepler returns
+    i = 0.0106° for 0.01° and 0° for 1e-4°, as an arccos of h_z/|h| near 1
+    would (error ~ sqrt(eps) in the angle), and the positions then drift by
+    up to 2e-8 of a. Reproducer:
+    StateVectorOrbit.from_kepler(KeplerOrbit(1000, 100, 0.3, 0.01, 30, 60, 100)).to_kepler().inc
+    is 0.010646, not 0.01."""
+    pos, inc = _state_errors(grid)
+    o = vo.StateVectorOrbit.from_kepler(vo.KeplerOrbit(1000.0, 100.0, 0.3, 0.01, 30.0, 60.0, 100.0)).to_kepler()
+    record("max_rel_position", np.max(pos))
+    record("inc_back_for_0.01deg", float(o.inc))
+    assert np.max(pos) < TOL_POS and abs(float(o.inc) - 0.01) < 1e-10
 
 
 # -------------------------------------------------------------- radial velocities
 
-RV_ORBITS = [
-    {"sma": 3.0, "ecc": 0.4, "inc": math.radians(60), "aop": math.radians(40), "pan": math.radians(110),
-     "tau": 0.3, "plx": 40.0, "m0": 1.4, "m1": 0.6},
-    {"sma": 12.0, "ecc": 0.9, "inc": math.radians(140), "aop": math.radians(250), "pan": math.radians(300),
-     "tau": 0.8, "plx": 15.0, "m0": 2.5, "m1": 1.9},
-    {"sma": 0.8, "ecc": 0.0, "inc": math.radians(89.5), "aop": 0.0, "pan": math.radians(20),
-     "tau": 0.5, "plx": 120.0, "m0": 0.9, "m1": 0.05},
-]
-
-
-def _rv_case(el):
-    mtot = el["m0"] + el["m1"]
-    p = ob.periods([(el["sma"], mtot)])[0]
-    epochs = REF + np.linspace(-0.2 * p, 1.3 * p, 80)
-    std = {k: el[k] for k in ("sma", "ecc", "inc", "aop", "pan", "tau", "plx")} | {"mtot": mtot}
-    orbit = vo.KeplerOrbit(**ob.to_virgil(std, p, REF))
-    return std, p, epochs, orbit
-
-
-def _virgil_rv(orbit, epochs, star, el, gamma):
-    z = np.zeros_like(epochs)
-    return np.asarray(vo.RVData(epochs, z, z + 1.0, star=star).model(orbit, el["m1"] / el["m0"], gamma, 1000.0 / el["plx"]))
-
 
 @pytest.mark.validates("virgil.orbits.RVData", "virgil.orbits.KeplerOrbit", roots=["orbitize"])
 @pytest.mark.parametrize("case", range(len(RV_ORBITS)))
-def test_radial_velocities_match_orbitize(case):
+def test_radial_velocities_match_orbitize(runs, case):
     """RVData.model for the primary and the secondary against orbitize!'s
     calc_orbit: the companion's barycentric RV is calc_orbit with
     mass_for_Kamp = m0, and the primary's is minus calc_orbit with
     mass_for_Kamp = m1 (orbitize!'s manual: omega_* = omega_p + 180°; its
     System uses -m1/m0 times the companion's). q = m1/m0, distance 1000/plx;
     gamma adds to both."""
-    el = RV_ORBITS[case]
-    std, p, epochs, orbit = _rv_case(el)
-    sec, pri = ob.ephemeris([dict(std, mass_for_Kamp=el["m0"]), dict(std, mass_for_Kamp=el["m1"])], epochs, REF)
-    gamma = -3.7
-    k = np.max(np.abs(sec["vz"])) + np.max(np.abs(pri["vz"]))
-    d_sec = np.max(np.abs(_virgil_rv(orbit, epochs, "secondary", el, gamma) - gamma - np.asarray(sec["vz"]))) / k
-    d_pri = np.max(np.abs(_virgil_rv(orbit, epochs, "primary", el, gamma) - gamma + np.asarray(pri["vz"]))) / k
+    el, t = RV_ORBITS[case], RV_EPOCHS[case]
+    prm = _params(el, runs["periods"][len(GRID) + case])
+    sec, pri = runs[f"rv_{case}"]["vz"]
+    q, d = el["m1"] / el["m0"], 1000.0 / el["plx"]
+    k = np.max(np.abs(sec)) + np.max(np.abs(pri))
+    d_sec = np.max(np.abs(virgil_rv(prm, t, "secondary", q, d, RV_GAMMA) - RV_GAMMA - sec)) / k
+    d_pri = np.max(np.abs(virgil_rv(prm, t, "primary", q, d, RV_GAMMA) - RV_GAMMA + pri)) / k
     record("max_rel_rv_secondary", d_sec)
     record("max_rel_rv_primary", d_pri)
     assert d_sec < TOL_RV and d_pri < TOL_RV
 
 
-@pytest.fixture(scope="module")
-def system_rvs():
-    """orbitize!'s System.compute_model for the first RV orbit, with RVs of
-    both bodies from one instrument, and with companion RVs only."""
-    el = RV_ORBITS[0]
-    std, p, epochs, orbit = _rv_case(el)
-    task = {"task": "system_rv", "epochs": epochs.tolist(), "tau_ref_epoch": REF, "orbit": el, "gamma": 7.0}
-    both = ob.run({**task, "objects": [0, 1]})
-    alone = ob.run({**task, "objects": [1]})
-    return el, orbit, epochs, both, alone
-
-
 @pytest.mark.validates("virgil.orbits.RVData", roots=["orbitize"])
-def test_radial_velocities_match_orbitize_system(system_rvs):
+def test_radial_velocities_match_orbitize_system(runs):
     """Through orbitize!'s own System (fit_secondary_mass=True), as a fit
     would see it. With primary RVs present, orbitize! fits the instrument's
     gamma and adds it to every RV of that instrument, the companion's too:
     both equal virgil's model with the same gamma. With companion RVs alone
-    it fits no gamma (the companion's RVs are barycentric, as its
-    read_input documents), and they equal virgil's with gamma = 0."""
-    el, orbit, epochs, both, alone = system_rvs
+    it fits no gamma (companion RVs barycentric, as its read_input
+    documents), and they equal virgil's with gamma = 0."""
+    el, t = RV_ORBITS[0], RV_EPOCHS[0]
+    prm = _params(el, runs["periods"][len(GRID)])
+    both, alone = runs["system_both"], runs["system_alone"]
+    q, d = el["m1"] / el["m0"], 1000.0 / el["plx"]
     k = np.max(np.abs(both["primary"])) + np.max(np.abs(both["secondary"]))
-    d = [
-        np.max(np.abs(np.asarray(both["primary"]) - _virgil_rv(orbit, epochs, "primary", el, 7.0))) / k,
-        np.max(np.abs(np.asarray(both["secondary"]) - _virgil_rv(orbit, epochs, "secondary", el, 7.0))) / k,
-        np.max(np.abs(np.asarray(alone["secondary"]) - _virgil_rv(orbit, epochs, "secondary", el, 0.0))) / k,
+    diffs = [
+        np.max(np.abs(np.asarray(both["primary"]) - virgil_rv(prm, t, "primary", q, d, SYSTEM_GAMMA))) / k,
+        np.max(np.abs(np.asarray(both["secondary"]) - virgil_rv(prm, t, "secondary", q, d, SYSTEM_GAMMA))) / k,
+        np.max(np.abs(np.asarray(alone["secondary"]) - virgil_rv(prm, t, "secondary", q, d, 0.0))) / k,
     ]
-    record("max_rel_primary", d[0])
-    record("max_rel_secondary_with_primary", d[1])
-    record("max_rel_secondary_alone", d[2])
+    record("max_rel_primary", diffs[0])
+    record("max_rel_secondary_with_primary", diffs[1])
+    record("max_rel_secondary_alone", diffs[2])
     assert "gamma_spec" in both["labels"] and "gamma_spec" not in alone["labels"]
-    assert max(d) < TOL_SYSTEM
+    assert max(diffs) < TOL_SYSTEM
 
 
 @pytest.mark.xfail(strict=True, reason="P7: orbitize! adds gamma to companion RVs when primary RVs are present")
 @pytest.mark.validates("orbitize", roots=["mathematics"], kind="upstream")
-def test_p7_companion_rvs_are_barycentric_as_documented(system_rvs):
-    """orbitize!'s read_input: 'RV measurements of objects that are not the
-    primary should be relative to the barycenter RV'. The model of such
-    data should then not depend on whether primary RVs are also given.
-    It does: with primary RVs present the companion's model gains the
-    fitted gamma (here 7 km/s)."""
-    _, _, _, both, alone = system_rvs
-    d = np.max(np.abs(np.asarray(both["secondary"]) - np.asarray(alone["secondary"])))
-    record("companion_model_shift_kms", d)
-    assert d < 1e-6
+def test_p7_companion_rvs_are_barycentric_as_documented(runs):
+    """orbitize!'s read_input asks for the RVs of non-primary bodies
+    relative to the barycentre's RV. The model of such data should then not
+    depend on whether primary RVs are also given. It does: with primary RVs
+    present the companion's model gains the fitted gamma (here 7 km/s)."""
+    shift = np.max(np.abs(np.asarray(runs["system_both"]["secondary"]) - np.asarray(runs["system_alone"]["secondary"])))
+    record("companion_model_shift_kms", shift)
+    assert shift < 1e-6
 
 
 # ------------------------------------------------------------------ symmetries
 
 
 @pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.orbits.RVData", roots=["orbitize", "mathematics"])
-def test_symmetries_in_both_codes(grid):
-    """The documented symmetries, in each code separately:
+def test_symmetries_in_both_codes(grid, runs):
+    """The documented symmetries, in each code separately, on the grid's
+    orbits with e <= 0.6 and 0.01° < i < 89°:
 
     1. (Omega + 180°, omega + 180°): the same sky positions; virgil's dz
        and both codes' radial velocities change sign.
     2. omega + 180° alone: r -> -r (the same as swapping the stars).
     3. i -> 180° - i: the sense of rotation reverses. With i < 90° the
-       position angle increases (dPA/dt > 0) in both codes: virgil's from
-       relative_velocity, orbitize!'s from finite differences of its
-       positions, which also match virgil's rates.
+       position angle increases (dPA/dt > 0) in both codes: virgil's rate
+       from relative_velocity, orbitize!'s from finite differences of its
+       positions; and the two rates agree.
     """
-    worst = {"sym1_pos": 0.0, "sym1_dz": 0.0, "sym1_rv": 0.0, "sym2": 0.0, "rate": 0.0}
-    sub = [g for g in grid if g[0]["ecc"] <= 0.6 and 0.01 < math.degrees(g[0]["inc"]) < 89.0]
-    assert len(sub) >= 6
-    for el, p, epochs, r, orbit in sub:
-        a = el["sma"] * el["plx"]
-        twin = dict(el, aop=el["aop"] + np.pi, pan=el["pan"] + np.pi)
-        flip = dict(el, aop=el["aop"] + np.pi)
-        mirror = dict(el, inc=np.pi - el["inc"])
-        o_twin, o_flip, o_mirror = (vo.KeplerOrbit(**ob.to_virgil(x, p, REF)) for x in (twin, flip, mirror))
-        h = p / 2000.0
-        stencil = (epochs[::10][:, None] + h * np.array([-2.0, -1.0, 0.0, 1.0, 2.0])).ravel()
-        rs = ob.ephemeris([el, twin, flip, mirror], stencil, REF)
-        base = {k: np.asarray(rs[0][k]).reshape(-1, 5) for k in ("raoff", "deoff", "vz")}
-        t = epochs[::10]
-        # 1. in orbitize! and in virgil
-        tw = {k: np.asarray(rs[1][k]).reshape(-1, 5) for k in ("raoff", "deoff", "vz")}
-        worst["sym1_pos"] = max(worst["sym1_pos"], np.max(np.abs(tw["raoff"] - base["raoff"])) / a,
-                                np.max(np.abs(tw["deoff"] - base["deoff"])) / a)
-        kv = np.max(np.abs(base["vz"]))
-        worst["sym1_rv"] = max(worst["sym1_rv"], np.max(np.abs(tw["vz"] + base["vz"])) / kv)
-        x0, y0, z0 = (np.asarray(v) for v in orbit.relative(t))
-        x1, y1, z1 = (np.asarray(v) for v in o_twin.relative(t))
-        worst["sym1_pos"] = max(worst["sym1_pos"], np.max(np.abs(x1 - x0)) / a, np.max(np.abs(y1 - y0)) / a)
-        worst["sym1_dz"] = max(worst["sym1_dz"], np.max(np.abs(z1 + z0)) / a)
-        el_rv = {"m0": 1.0, "m1": 0.5, "plx": el["plx"]}
-        rv0, rv1 = (_virgil_rv(o, t, "primary", el_rv, 0.0) for o in (orbit, o_twin))
-        worst["sym1_rv"] = max(worst["sym1_rv"], np.max(np.abs(rv1 + rv0)) / np.max(np.abs(rv0)))
-        # 2.
-        fl = {k: np.asarray(rs[2][k]).reshape(-1, 5) for k in ("raoff", "deoff")}
-        x2, y2, _ = (np.asarray(v) for v in o_flip.relative(t))
-        worst["sym2"] = max(worst["sym2"], np.max(np.abs(fl["raoff"] + base["raoff"])) / a,
-                            np.max(np.abs(fl["deoff"] + base["deoff"])) / a,
-                            np.max(np.abs(x2 + x0)) / a, np.max(np.abs(y2 + y0)) / a)
-        # 3. dPA/dt = (ddec * vra - dra * vdec) / sep²
-        mi = {k: np.asarray(rs[3][k]).reshape(-1, 5) for k in ("raoff", "deoff")}
-        for code_pos, o in ((base, orbit), (mi, o_mirror)):
-            ra, de = code_pos["raoff"], code_pos["deoff"]
-            vra = (-ra[:, 4] + 8 * ra[:, 3] - 8 * ra[:, 1] + ra[:, 0]) / (12 * h)
-            vde = (-de[:, 4] + 8 * de[:, 3] - 8 * de[:, 1] + de[:, 0]) / (12 * h)
-            rate_orbitize = (de[:, 2] * vra - ra[:, 2] * vde) / (ra[:, 2] ** 2 + de[:, 2] ** 2)
-            xv, yv, _ = (np.asarray(v) for v in o.relative(t))
-            vx, vy, _ = (np.asarray(v) for v in o.relative_velocity(t))
-            rate_virgil = (yv * vx - xv * vy) / (xv**2 + yv**2)
-            sign = 1.0 if o is orbit else -1.0
-            assert np.all(sign * rate_orbitize > 0) and np.all(sign * rate_virgil > 0), (el, sign)
-            worst["rate"] = max(worst["rate"], np.max(np.abs(rate_virgil - rate_orbitize)) / (2 * np.pi / p)
-                                * np.min(np.hypot(xv, yv)) / a)
+    assert len(SYM_USE) >= 6
+    p, a = grid["periods"][SYM_USE], grid["a"][SYM_USE]
+    t = EPOCHS[SYM_USE][:, ::10]
+    h = np.array([_h(j) for j in SYM_USE])[:, None]
+    orb, vir = {}, {}
+    for name, change in VARIANTS.items():
+        els = [change(GRID[j]) for j in SYM_USE]
+        prm = np.array([_params(e, pj) for e, pj in zip(els, p)])
+        orb[name] = runs[f"sym_{name}"]
+        vir[name] = {k: np.asarray(x) for k, x in EVALUATE(prm, t).items()}
+        vir[name]["rv"] = np.array([virgil_rv(q, tt, "primary", 0.5, 1000.0 / GRID[j]["plx"], 0.0)
+                                    for q, tt, j in zip(prm, t, SYM_USE)])
+    A = a[:, None, None]
+    worst = {}
+    # 1. orbitize! and virgil, each against itself
+    worst["sym1_pos"] = max(
+        np.max(np.abs(orb["twin"]["raoff"] - orb["base"]["raoff"]) / A),
+        np.max(np.abs(orb["twin"]["deoff"] - orb["base"]["deoff"]) / A),
+        np.max(np.abs(vir["twin"]["rel"][:, :2] - vir["base"]["rel"][:, :2]) / A),
+    )
+    worst["sym1_dz"] = np.max(np.abs(vir["twin"]["rel"][:, 2] + vir["base"]["rel"][:, 2]) / A[:, 0])
+    k_o = np.max(np.abs(orb["base"]["vz"]), axis=(1, 2))[:, None, None]
+    k_v = np.max(np.abs(vir["base"]["rv"]), axis=1)[:, None]
+    worst["sym1_rv"] = max(np.max(np.abs(orb["twin"]["vz"] + orb["base"]["vz"]) / k_o),
+                           np.max(np.abs(vir["twin"]["rv"] + vir["base"]["rv"]) / k_v))
+    # 2.
+    worst["sym2"] = max(
+        np.max(np.abs(orb["flip"]["raoff"] + orb["base"]["raoff"]) / A),
+        np.max(np.abs(orb["flip"]["deoff"] + orb["base"]["deoff"]) / A),
+        np.max(np.abs(vir["flip"]["rel"] + vir["base"]["rel"]) / A),
+    )
+    # 3. dPA/dt = (ddec * vra - dra * vdec) / sep²
+    worst["rate"] = 0.0
+    for name, sign in (("base", 1.0), ("mirror", -1.0)):
+        ra, de = orb[name]["raoff"], orb[name]["deoff"]
+        rate_o = (de[..., 2] * _derivative(ra, h) - ra[..., 2] * _derivative(de, h)) / (ra[..., 2] ** 2 + de[..., 2] ** 2)
+        x, y = vir[name]["rel"][:, 0], vir[name]["rel"][:, 1]
+        vx, vy = vir[name]["vel"][:, 0], vir[name]["vel"][:, 1]
+        rate_v = (y * vx - x * vy) / (x**2 + y**2)
+        assert np.all(sign * rate_o > 0) and np.all(sign * rate_v > 0), name
+        # the rate error as a velocity error, over 2 pi a / P
+        err = np.abs(rate_v - rate_o) * np.hypot(x, y) / (2 * np.pi * A[:, 0] / p[:, None])
+        worst["rate"] = max(worst["rate"], np.max(err))
     for k, v in worst.items():
         record("max_rel_" + k, v)
     assert worst["sym1_pos"] < TOL_POS and worst["sym1_dz"] < TOL_POS and worst["sym2"] < TOL_POS
@@ -420,19 +564,18 @@ def test_symmetries_in_both_codes(grid):
 
 
 def _mass_cases(grid):
-    return [(el, orbit) for el, _, _, _, orbit in grid[::4]]
+    return [(el, vo.KeplerOrbit(*prm, t_ref=REF)) for el, prm in zip(grid["els"][::4], grid["prm"][::4])]
 
 
 @pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"])
 def test_total_mass_and_distance_against_orbitize(grid):
     """total_mass(orbit, 1000/plx) recovers orbitize!'s mtot, and
-    distance_pc(orbit, mtot) its distance, to the 3.8e-5 (mass) and 1.3e-5
-    (distance) of ledger F14: virgil computes the documented a³/P² with P in
-    Julian years (pinned here to 1e-13), which equals the exact
-    4 pi² a³ / (G M_sun P²) of orbitize! (and of the IAU constants) only
-    times (365.25 d / Y)², with Y = 2 pi sqrt(au³ / GM_sun) = 365.2569 d."""
-    year_gauss = 2 * np.pi * np.sqrt((AU_KM * 1e3) ** 3 / GM_SUN) / 86400.0
-    factor = (JULIAN_YEAR_D / year_gauss) ** 2
+    distance_pc(orbit, mtot) its distance, up to the factor of ledger F14:
+    virgil computes the documented a³/P² with P in Julian years (pinned here
+    to 1e-13), which equals the exact 4 pi² a³ / (G M_sun P²) of orbitize!
+    (and of the IAU constants) times (365.25 d / Y)² = 1 - 3.78e-5, with
+    Y = 2 pi sqrt(au³ / GM_sun) = 365.2569 d (the Gaussian year)."""
+    factor = (JULIAN_YEAR_D / kepler_period(1.0, 1.0)) ** 2
     worst_doc = worst_mass = worst_dist = worst_round = 0.0
     for el, orbit in _mass_cases(grid):
         d = 1000.0 / el["plx"]

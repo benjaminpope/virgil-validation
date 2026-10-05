@@ -44,6 +44,18 @@ def run(task, timeout=3600):
     return _subprocess.run(NAME, "orbitize_worker.py", task, timeout=timeout)
 
 
+def batch(tasks, timeout=3600):
+    """Run several worker tasks (a dict name -> task) in one orbitize!
+    process, since importing orbitize! takes ~10 s; results by name."""
+    return run({"task": "batch", "tasks": tasks}, timeout=timeout)["results"]
+
+
+def ephemeris_task(orbits, epochs, tau_ref_epoch, tolerance=1e-14):
+    """The worker task of :func:`ephemeris`, for :func:`batch`."""
+    return {"task": "ephemeris", "orbits": list(orbits), "epochs": [float(t) for t in epochs],
+            "tau_ref_epoch": float(tau_ref_epoch), "tolerance": tolerance}
+
+
 def periods(cases):
     """orbitize!'s periods (days) of a list of (sma au, mtot M_sun)."""
     return [r["period_day"] for r in run({"task": "period", "cases": [list(c) for c in cases]})["results"]]
@@ -53,9 +65,7 @@ def ephemeris(orbits, epochs, tau_ref_epoch, tolerance=1e-14):
     """orbitize!'s calc_orbit for each element dict at ``epochs`` (MJD).
     ``tolerance`` is the Kepler solver's absolute tolerance on E (radians;
     orbitize!'s default is 1e-9)."""
-    task = {"task": "ephemeris", "orbits": list(orbits), "epochs": [float(t) for t in epochs],
-            "tau_ref_epoch": float(tau_ref_epoch), "tolerance": tolerance}
-    return run(task)["results"]
+    return run(ephemeris_task(orbits, epochs, tau_ref_epoch, tolerance))["results"]
 
 
 def to_virgil(el, period_day, tau_ref_epoch):

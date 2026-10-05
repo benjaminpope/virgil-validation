@@ -147,9 +147,15 @@ def posterior(task):
     return {k.rstrip("1"): samples[:, lab[k]].tolist() for k in names}
 
 
+def batch(task):
+    """Several tasks in one process (importing orbitize! takes ~10 s):
+    ``tasks`` maps names to tasks; returns the results by name."""
+    return {"results": {name: TASKS[t["task"]](t) for name, t in task["tasks"].items()}}
+
+
 YEAR_DAYS = None  # set in main: astropy's year (orbitize!'s period unit), in days
 
-TASKS = {"ephemeris": ephemeris, "period": period, "system_rv": system_rv, "posterior": posterior}
+TASKS = {"ephemeris": ephemeris, "period": period, "system_rv": system_rv, "posterior": posterior, "batch": batch}
 
 
 def main():
