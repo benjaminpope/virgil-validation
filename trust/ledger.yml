@@ -264,3 +264,19 @@
   evidence: [tests/test_ehtim_reconstruction.py::test_p6_closure_phases_with_equal_time_groups]
   status: to-raise
 
+- id: F14
+  title: orbits.total_mass and distance_pc use a³/P² with P in Julian years, 3.8e-5 from Kepler's third law with the IAU nominal GM_sun and au
+  objects: [virgil.orbits.total_mass, virgil.orbits.distance_pc]
+  ruling: virgil
+  referee: standards (IAU 2015 B3 nominal GM_sun, IAU 2012 au); orbitize! computes the same law
+  evidence: [tests/test_orbitize.py::test_f14_total_mass_is_keplers_third_law]
+  status: open
+
+- id: P7
+  title: orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre
+  objects: [orbitize]
+  ruling: external:orbitize
+  referee: orbitize!'s own documentation (read_input)
+  evidence: [tests/test_orbitize.py::test_p7_companion_rvs_are_barycentric_as_documented]
+  status: to-raise
+
