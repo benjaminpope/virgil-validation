@@ -29,7 +29,8 @@ Before any result of tasks 50–99 was seen, we registered the analyses in
    Bonferroni at 1% and the coverage bands) also passes.
 2. **Confirmatory.** The diameter hint is tested on tasks 50–99 alone,
    which were unseen when it arose: χ² and 95% coverage for replicates with
-   a true diameter below 0.9 mas, Holm at 1%.
+   a true diameter below 0.9 mas, Holm at 1%. A rejection fails the
+   campaign and is filed in the ledger as a finding against virgil.
 3. **Descriptive** (reported, not pass/fail): the same tests without
    unhealthy replicates (any divergence, R̂ > 1.01 or bulk ESS < 400), and
    the correlation of divergences with each true parameter. The first 500

@@ -19,7 +19,7 @@ confirmatory:             # tasks 50-99 only (replicates not seen when registere
     tasks: [50, 99]
     truth: {parameter: diam, below: 0.9}   # mas
     tests: [chi2_bins, coverage_95]
-    alpha: 0.01                            # Holm within these two
+    alpha: 0.01                            # Holm within these two; a rejection fails the campaign
 descriptive:              # reported, never pass/fail
   - exclude_unhealthy     # the same tests without replicates with divergences, R-hat > 1.01 or bulk ESS < 400
   - divergences_vs_truth  # Spearman correlation of divergences with each true parameter
