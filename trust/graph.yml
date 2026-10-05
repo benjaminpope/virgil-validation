@@ -119,6 +119,14 @@ nodes:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/inference.py]
     depends: [virgil.likelihood.model_loglike]
+  virgil.grid_fit.linear_flux_grid:
+    layer: inference
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.whitened_residuals]
+  virgil.gains.gain_modes:  # analytic marginalisation of calibration gains
+    layer: likelihood
+    source: [src/virgil/gains.py, src/virgil/likelihood.py]
+    depends: [virgil.oidata.OIData]
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
