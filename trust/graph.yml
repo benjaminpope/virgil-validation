@@ -304,6 +304,7 @@ nodes:
   crosscheck: {layer: references}
   crosscheck.sky: {layer: references}
   crosscheck.limb: {layer: references}
+  crosscheck.elr: {layer: references}
   crosscheck.nrm: {layer: references}
   external_bridge: {layer: references}
   external_bridge.pmoired_models: {layer: references}

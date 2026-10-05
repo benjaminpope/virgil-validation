@@ -570,11 +570,27 @@ i = 0° to 179.9°, 121 epochs each.
 | --- | --- | --- |
 | [#139](https://github.com/benjaminpope/virgil/pull/139) (T. De Prins) | `ModulatedGaussianRim` blurs the rim with a Gaussian isotropic in the rim's own plane, not on the sky; `fwhm` is now the in-plane FWHM | references follow the documented definition (`sky.in_plane_blur_factor`); the old definition is kept as a negative control; confirmed independently by PMOIRED's blurred-ring profile (1e-9) |
 
+## Rapid rotators
+
+`tests/test_gravity_darkened_independent.py`. The reference,
+`crosscheck.elr`, is written from Espinosa Lara & Rieutord (2011) rather
+than from virgil or from Dholakia's code, whose golden values virgil's own
+tests use. It covers the Roche surface, the effective gravity and the ELR11
+flux, F = |g| tan²ϑ / tan²θ. It integrates F times the projected area over
+a 400 × 800 midpoint grid on the surface. virgil sums its mesh of
+`n_lat` latitude rings.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| — | the reference: ω = 0 is a uniform disk; ELR11's polar and equatorial fluxes, e^(2ω²r_p³/3)/r_p² and (1 − ω²)^(1/3); the surface normal along g | Mathematics, literature | 2e-5; 1e-6 and 1e-3; 1e-10 |
+| `GravityDarkenedStar` (grey), ω = 0.6–0.95, pole-on to equator-on, four position angles | the reference's visibilities | Mathematics | 1.4–3.4e-4 at `n_lat` 128; the error falls by 4 per doubling of `n_lat` (second order) |
+| `GravityDarkenedStar` (chromatic, `t_pole` = 9000 K), 0.7, 1.65 and 2.2 µm | the same, each point radiating B_λ(T) with T⁴ ∝ F | Mathematics | 1.3–1.4e-4 at `n_lat` 128 |
+
 ## Not yet covered
 
-`GravityDarkenedStar` against an independent root, harmonix's maps,
-bandwidth smearing, AMIGO DISCO mode bases, false-alarm and contrast-limit
-campaigns, regularised reconstructions end to end and `l_curve`. Sampling
+harmonix's maps (harmonix's to validate), bandwidth smearing (not modelled
+by virgil), AMIGO DISCO mode bases, regularised reconstructions end to end
+and `l_curve`. Sampling
 (`numpyro_model`) has a simulation-based calibration campaign written
 (`scripts/sbc_numpyro.py`, 500 replicates on OzSTAR; `tests/test_sbc_numpyro.py`
 reads its summary) but not yet run. To ask for any of these, or anything else,
