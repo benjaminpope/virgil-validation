@@ -344,6 +344,7 @@ They are guarded against by:
 * treating every disagreement as a finding to be explained, never a
   tolerance to loosen.
 
-External packages written by other people (CANDID, PMOIRED) would be a
-stronger check still: see the [plan](https://github.com/benjaminpope/virgil-validation/blob/main/design/plan_external.md).
+External packages written by other people (PMOIRED, CANDID, fouriever,
+orbitize!, eht-imaging, MPoL) are a stronger check still; each has its own
+page under Method.
 

@@ -10,3 +10,4 @@ site/
 .claude/
 .external/
 .venv-*/
+docs/method/coverage.md

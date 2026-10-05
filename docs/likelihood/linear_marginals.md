@@ -15,12 +15,10 @@ integration.
 | `linear_flux_grid` with a Gaussian prior on f: log Bayes factor (Gaussian-prior evidence, not the default; virgil's defaults are Jeffreys priors) | quadrature over f of the linearised likelihood times the prior | Mathematics | 1e-7 |
 | the same, no companion | quadrature of the true likelihood | Mathematics | 2e-3 (with a strong companion the closed form differs by ~0.4 in log B ~ 100–400, the nonlinearity its docs warn of) |
 | `linear_flux_grid(n_iter=5)` with a bright companion (0.3) | a direct optimiser of our own χ² | Mathematics | 1e-6 |
-
 | `OIData.with_closure_offsets`: per-baseline (T e), per-triangle and supplied offsets common to a frame's channels, four UTs | the sines over σ, projected on an orthonormal basis of each channel's triangle column space, against 𝒩(y; 0, QᵀRQ + VVᵀ) | Mathematics | 1e-13 |
 | `RVData.marginal_loglike` and `zero_point_posterior` (three instruments, with and without jitter), given virgil's Keplerian model | 𝒩(m + Aμ, C + AΛAᵀ); the Gaussian conditional of the zero points | Mathematics | 1e-11; 1e-13 |
 
-To come: the `OI_FLUX` grey scale (for a fixed prior: virgil's default
-prior on k is centred on the data's own mean level, which uses the data
-twice and is expected to change), the `VISPHI` continuum operator, and the
-shared `LinearMarginal` helper.
+The `OI_FLUX` grey scale and differential phases are on
+[Flux spectra and differential phases](spectra_phases.md); the continuum
+operator is on [OIFITS writing and observables](../data/oifits_observables.md).
 
