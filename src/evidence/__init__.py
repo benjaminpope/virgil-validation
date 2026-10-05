@@ -19,6 +19,7 @@ ROOTS = (
     "pmoired",
     "candid",
     "fouriever",
+    "orbitize",  # orbitize! (Blunt et al. 2020, 2024): Keplerian orbits, RVs
     "ehtim",  # eht-imaging (Chael et al.): imaging and its regularisers
     "mpol",  # MPoL (Czekala et al.): RML imaging, gridding, Fourier transforms
     "literature",  # a published result, reproduced from the authors' data
