@@ -23,6 +23,7 @@
       if (map) map.classList.add("vt-dim");
       var v = verdicts[n.verdict];
       var html = "<h4>" + esc(n.id) + "</h4><div><strong>" + esc(v[0]) + "</strong>: " + esc(v[1]) + ".</div>";
+      if (n.doc) html += '<div class="vt-read"><a href="' + esc(n.doc) + '">Read how it was checked →</a></div>';
       if (n.findings.length) html += "<div>Open: " + n.findings.map(function (f) { return '<a href="#' + esc(f) + '">' + esc(f) + "</a>"; }).join(", ") + "</div>";
       if (n.because.length) html += "<div>" + (n.verdict.indexOf("relies") === 0 ? "Relies on " : "Also relies on ") + n.because.map(function (b) {
         return "<code>" + esc(b.id) + "</code>" + (b.findings.length ? " (" + b.findings.map(function (f) { return '<a href="#' + esc(f) + '">' + esc(f) + "</a>"; }).join(", ") + ")" : "");
@@ -32,6 +33,7 @@
       if (n.changed && n.changed.length) html += '<div class="vt-muted">virgil has changed ' + n.changed.map(function (f) { return "<code>" + esc(f) + "</code>"; }).join(", ") + " since this evidence.</div>";
       var checks = n.checks.filter(function (c) { return c.kind !== "guard" && c.outcome !== "skipped"; });
       if (checks.length) {
+        html += '<details class="vt-source"><summary>Tests (' + checks.length + ")</summary>";
         html += '<ul class="vt-checks">' + checks.slice(0, 12).map(function (c) {
           var out = c.outcome === "passed" ? "" : " <em>(" + esc(c.outcome) + ")</em>";
           var val = c.headline ? " — " + esc(c.headline) + " = " + fmt(c.value) : "";
@@ -39,6 +41,7 @@
           return "<li>" + name + out + val + (c.doc ? '<div class="vt-muted">' + esc(c.doc) + "</div>" : "") + "</li>";
         }).join("") + "</ul>";
         if (checks.length > 12) html += '<div class="vt-muted">and ' + (checks.length - 12) + " more in the table below.</div>";
+        html += "</details>";
       }
       panel.innerHTML = html;
     }

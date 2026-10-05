@@ -29,7 +29,6 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python "mkdocs<2" mkdocs-material "zensical>=0.0.62,<0.1" pyyaml
-          .venv/bin/python scripts/build_docs_index.py
           # the Trust page from the committed evidence, graph and ledger
           # campaigns.jsonl: OzSTAR campaigns' summaries, each read under the virgil
           # commit the campaign ran on (freshness against the pin is a note)

@@ -5,6 +5,8 @@
 #   source:   virgil source files it depends on: evidence measured on a
 #             virgil commit older than the last change to these is stale
 #   depends:  other nodes it is built on; trust propagates upwards only
+#   doc:      optional page (and #section) of the docs that explains its checks;
+#             otherwise scripts/trust.py finds the topic page that mentions it most
 #   roots:    how many independent strong roots it needs (default 1;
 #             2 for conventions a model could get wrong in a correlated way).
 #             Roots come from one pool (src/evidence/__init__.py): mathematics,
@@ -30,6 +32,7 @@ nodes:
     layer: data
     source: [src/virgil/oifits.py]
     roots: 2  # OIFITS conventions: standards and another reader
+    doc: data/long_baseline.md
   virgil.oidata.OIData:
     layer: data
     source: [src/virgil/oidata.py, src/virgil/_closure.py]
@@ -44,6 +47,7 @@ nodes:
     layer: data
     source: [src/virgil/amigo.py]
     depends: [virgil.oidata.OIData]
+    doc: method/coverage.md
 
   # -------------------------------------------------------------- models
   virgil.models.PointSource: {layer: models, source: [src/virgil/models.py]}
@@ -84,7 +88,7 @@ nodes:
   virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py]}
   virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py]}
   virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/disks_spectra.md}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.Tabulated: {layer: models, source: [src/virgil/spectra.py]}
@@ -98,14 +102,17 @@ nodes:
     layer: likelihood
     source: [src/virgil/likelihood.py, src/virgil/_closure.py]
     depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise]
+    doc: likelihood/closure_phases.md
   virgil.likelihood.model_loglike:
     layer: likelihood
     source: [src/virgil/likelihood.py]
     depends: [virgil.likelihood.whitened_residuals]
+    doc: likelihood/linear_marginals.md
   virgil.fitting.fit:
     layer: likelihood
     source: [src/virgil/fitting.py, src/virgil/_precision.py]
     depends: [virgil.likelihood.model_loglike]
+    doc: data/long_baseline.md
 
   # ------------------------------------------------------------ inference
   virgil.inference.laplace_cov:
@@ -131,7 +138,7 @@ nodes:
     depends: [virgil.likelihood.whitened_residuals]
   virgil.priors.IsotropicInclination: {layer: priors, source: [src/virgil/priors.py]}
   virgil.priors.IsotropicLatitude: {layer: priors, source: [src/virgil/priors.py]}
-  virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py]}
+  virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py], doc: likelihood/priors.md}
   virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
   virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
   virgil.observables.VisibilityAmplitude:
@@ -166,15 +173,18 @@ nodes:
     layer: inference
     source: [src/virgil/detection.py, src/virgil/grid_fit.py, src/virgil/_grid.py]
     depends: [virgil.likelihood.model_loglike]
+    doc: inference/detection.md
   virgil.detection.local_nsigma: {layer: inference, source: [src/virgil/detection.py], depends: [virgil.limits.nsigma]}
   virgil.detection.gaussian_null:
     layer: inference
     source: [src/virgil/detection.py, src/virgil/oidata.py]
     depends: [virgil.oidata.OIData]
+    doc: inference/detection.md
   virgil.detection.injection_recovery:
     layer: inference
     source: [src/virgil/detection.py]
     depends: [virgil.detection.detection_statistics, virgil.detection.gaussian_null, virgil.detection.DetectionMC]
+    doc: inference/grid_limits.md#false-alarm-and-contrast-calibration-campaign
   virgil.detection.DetectionMC: {layer: inference, source: [src/virgil/detection.py]}
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
   virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
@@ -208,13 +218,13 @@ nodes:
     layer: likelihood
     source: [src/virgil/observables.py, src/virgil/_linear.py]
     depends: [virgil.oidata.OIData, virgil._linear]
-  virgil.oidata.OIData.with_flux_scale: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.FluxSpectrum]}
+  virgil.oidata.OIData.with_flux_scale: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.FluxSpectrum], doc: likelihood/spectra_phases.md}
   virgil.observables.DifferentialPhase:
     layer: likelihood
     # recheck when virgil#232 (cached Cholesky) lands
     source: [src/virgil/observables.py, src/virgil/_linear.py]
     depends: [virgil.oidata.OIData, virgil.observables.continuum_operator, virgil._linear]
-  virgil.oidata.OIData.with_continuum: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.DifferentialPhase]}
+  virgil.oidata.OIData.with_continuum: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.DifferentialPhase], doc: likelihood/spectra_phases.md}
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
     source: [src/virgil/_linear.py]
@@ -222,10 +232,12 @@ nodes:
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
     depends: [virgil.oidata.OIData, virgil._linear]
+    doc: likelihood/linear_marginals.md
   virgil.gains.closure_offsets:  # analytic marginalisation of closure-phase offsets
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
     depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise, virgil._linear]
+    doc: likelihood/linear_marginals.md
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
@@ -251,7 +263,7 @@ nodes:
   virgil.imaging.field_of_view: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.convolve_beam: {layer: imaging, source: [src/virgil/imaging.py]}
   # regularised imaging: natural roots are eht-imaging and MPoL
-  virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals]}
+  virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals], doc: imaging/machinery.md}
   virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.TV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.MaxEntropy: {layer: imaging, source: [src/virgil/imaging.py]}
@@ -290,6 +302,7 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit]
+    doc: orbits/kepler.md
   virgil.orbits.RVData:
     layer: orbits
     source: [src/virgil/orbits.py]
@@ -299,6 +312,7 @@ nodes:
   virgil._elr:
     layer: models
     source: [src/virgil/_elr.py]
+    doc: models/rapid_rotators.md
 
   # --------------------------------------------- our references (links)
   crosscheck: {layer: references}
@@ -356,7 +370,7 @@ pipelines:
     data: real
     dataset: SPIE interferometric imaging contests, 2004–2024
     reference: the contests' truth images and published entries
-    url: plan_imaging_contests.md
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/plan_imaging_contests.md
     headline: images compared with the truths and entries
     state: running
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.Image,
@@ -366,7 +380,7 @@ pipelines:
     data: real
     dataset: ESO archive, e.g. Gl 229 Ba–Bb and NACO aperture-masking binaries
     reference: the published separations, angles and contrasts
-    url: plan_eso_binaries.md
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/plan_eso_binaries.md
     headline: separation, angle and contrast against the papers
     state: running
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,

@@ -3,7 +3,7 @@
 [CANDID](https://github.com/amerand/CANDID) (A. Mérand and A. Gallenne;
 Gallenne et al. 2015) is the binary-search code that virgil's grid search
 and Absil limits follow. It is one of the external roots of trust for those
-steps (see [design](design.md)). It has no PyPI release and states no
+steps (see [design](index.md)). It has no PyPI release and states no
 licence, so `scripts/setup_candid.sh` installs it at a pinned commit
 (`c255e90`, version 1.1.0) into its own environment, and
 `src/external_bridge/candid_bridge.py` runs it in a subprocess with JSON in
