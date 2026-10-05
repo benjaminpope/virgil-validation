@@ -27,6 +27,7 @@ seconds-long check that the script runs.
 import argparse
 import json
 import pathlib
+import tempfile
 import time
 
 import jax
@@ -53,81 +54,120 @@ from virgil.imaging import (  # noqa: E402
     l_curve,
     starting_image,
 )
+from virgil.fitting import fit  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.plotting import plot_model  # noqa: E402
 
-# label, files (relative to the data directory), largest field of view (mas;
-# None: virgil's default from the data), analytic star at the centre.
+# One task per dataset. Everything here is what contestants had before they
+# submitted (contests/manifest.yml, "presubmission"); nothing revealed in the
+# papers afterwards is used (docs/plan_imaging_contests.md, "Initialisation").
+#   field:   field of view in mas, when the contest gave one (with its source);
+#            None: chosen from the data, enlarged while flux reaches the edge
+#   prior:   ("gauss", FWHM mas): the MaxEnt default image and the start
+#   star:    an analytic star at the centre, when the contest announced one
+#   wavel:   (min, max) in µm: keep only these channels (flag the rest)
 TASKS = [
-    # 2004: NPOI at 550 nm. data1 is Tuthill's LkHa 101 model (242 x 0.05 mas);
-    # data2 a spotted elliptical star and a companion 10 mas East.
-    ("2004_data1", ["2004/2004-data1.fits"], 12.0, False),
-    ("2004_data2", ["2004/2004-data2.fits"], 24.0, False),
-    # 2006: AMBER on the UTs, four nights; Chesneau's disk (301 x 0.35 mas).
-    # Needs virgil#167 (merged 2026-10-04) to read.
-    ("2006_disk", [f"2006/2006-03-0{n}.fits" for n in (3, 4, 5, 6)], 105.0, False),
-    # 2008: CHARA; the field is tapered by a 15 mas FWHM Gaussian; each band
-    # is a different model, so each is imaged alone.
-    ("2008_agb_J", ["2008/2008-Contest1_J.oifits"], 30.0, False),
-    ("2008_agb_H", ["2008/2008-Contest1_H.oifits"], 30.0, False),
-    ("2008_agb_K", ["2008/2008-Contest1_K.oifits"], 30.0, False),
-    ("2008_agn_J", ["2008/2008-Contest2_J.oifits"], 30.0, False),
-    ("2008_agn_H", ["2008/2008-Contest2_H.oifits"], 30.0, False),
-    ("2008_agn_K", ["2008/2008-Contest2_K.oifits"], 30.0, False),
-    # 2010: AMBER low resolution, H and K treated as grey (a first pass; the
-    # supergiant is about 20 mas, its companion at 84 mas).
-    ("2010_lowHK", ["2010/Mystery-Low_HK.oifits"], None, False),
-    # 2022: high-contrast tests; a star with faint structure around it.
-    ("2022_gravity", ["2022/c_imaging_contest1.fits"], None, True),
-    ("2022_ami", ["2022/c_imaging_contest2.fits"], None, True),
-    # 2024: chromatic; grey images per instrument are only a first look
-    # (Stage C3 does them properly). Obj1 is a WR pinwheel, Obj2 a Herbig disk.
-    ("2024_obj1_pionier", ["2024/Obj1_PIONIER_1.5-1.8.fits"], None, False),
-    ("2024_obj1_gravity", ["2024/Obj1_GRAVITY_2.0-2.5.fits"], None, False),
-    ("2024_obj2_pionier", ["2024/Obj2_PIONIER_1.5-1.8.fits"], None, True),
-    ("2024_obj2_gravity", ["2024/Obj2_GRAVITY_2.0-2.5.fits"], None, True),
+    # 2004: released blind; nothing about field or target.
+    dict(label="2004_data1", files=["2004/2004-data1.fits"]),
+    dict(label="2004_data2", files=["2004/2004-data2.fits"]),
+    # 2006: the clue image (the model at 10 mas resolution) spans 106 mas; the
+    # rules allow it only for the field of view, not as a prior.
+    dict(label="2006_disk", files=[f"2006/2006-03-0{n}.fits" for n in (3, 4, 5, 6)],
+         field=106.0, field_source="2006 clue.10.fits"),
+    # 2008: "tapered with a 15 mas FWHM Gaussian" (readme); grey per band.
+    *[dict(label=f"2008_{o}_{b}", files=[f"2008/2008-Contest{k}_{b}.oifits"], field=30.0,
+           field_source="2008 readme: 15 mas FWHM taper", prior=("gauss", 15.0))
+      for k, o in ((1, "agb"), (2, "agn")) for b in "JHK"],
+    # 2010: a bright source; the grey category was judged as separate images of
+    # Low HK channels 1-10 (H) and 11-20 (K) (Contest10.html).
+    dict(label="2010_lowH", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.4, 1.9)),
+    # 2022: no description found; a star announced nowhere, but the GRAVITY and
+    # AMI data are dominated by an unresolved source (V² ~0.9 on short baselines).
+    dict(label="2022_gravity", files=["2022/c_imaging_contest1.fits"], star=True),
+    dict(label="2022_ami", files=["2022/c_imaging_contest2.fits"], star=True),
+    # 2024: Obj1 "a hot star with an environment", Obj2 "a young star" with a
+    # suspected companion (contest page). Grey per instrument is only a first
+    # look: the rules ask for cubes (Stage C3).
+    dict(label="2024_obj1_pionier", files=["2024/Obj1_PIONIER_1.5-1.8.fits"], star=True),
+    dict(label="2024_obj1_gravity", files=["2024/Obj1_GRAVITY_2.0-2.5.fits"], star=True),
+    dict(label="2024_obj2_pionier", files=["2024/Obj2_PIONIER_1.5-1.8.fits"], star=True),
+    dict(label="2024_obj2_gravity", files=["2024/Obj2_GRAVITY_2.0-2.5.fits"], star=True),
+    # New tasks go at the end, so that earlier indices keep their meaning.
+    dict(label="2010_lowK", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.9, 2.6)),
+    # 2018: "a young star's disk, with a planet" (readme): a star plus an image.
+    dict(label="2018_disk", star=True, files=[
+        "2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits",
+        "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits",
+        "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits",
+        "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits"]),
 ]
 
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
-
-# Tasks whose field must be larger than virgil's default, which stops at the
-# interferometric field of view λ/B_min: in 2004 data2 the companion is 10 mas
-# out, beyond it. These start from a flat image over the published field.
-FORCE_FIELD = {"2004_data2"}
+MAX_PIX = 256  # pixels on a side; larger fields get coarser pixels
+GROWTHS = 3  # data-chosen fields grow at most three times (see run())
 
 
 def image_of(model, star, halo=False):
     return model.env if (star or halo) else model
 
 
-def setup(task, data_dir, halo=False):
+def select_channels(path, wavel, tmp_dir):
+    """A copy of an OIFITS file with every channel outside ``wavel`` (µm)
+    flagged, since OIData reads FLAG but cannot select channels itself."""
+    from astropy.io import fits
+
+    out = pathlib.Path(tmp_dir) / f"{pathlib.Path(path).stem}_{wavel[0]}-{wavel[1]}um.fits"
+    with fits.open(path) as h:
+        keep = {x.header["INSNAME"]: (x.data["EFF_WAVE"] >= wavel[0] * 1e-6) & (x.data["EFF_WAVE"] <= wavel[1] * 1e-6)
+                for x in h if x.name == "OI_WAVELENGTH"}
+        for x in h:
+            if x.name in ("OI_VIS2", "OI_VIS", "OI_T3", "OI_FLUX") and "FLAG" in x.columns.names:
+                x.data["FLAG"] |= ~keep[x.header["INSNAME"]][None, :]
+        h.writeto(out, overwrite=True)
+    return str(out)
+
+
+def setup(task, data_dir, halo=False, grow=1.0):
     """The data, starting model, priors and fixed regularisers for one task
-    (shared with scripts/diagnose_stall.py)."""
-    label, files, largest, star = TASKS[task]
-    force_field = label in FORCE_FIELD and largest is not None
+    (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
+    from the data."""
+    spec = TASKS[task]
+    label, files, star = spec["label"], spec["files"], spec.get("star", False)
+    field, prior_spec = spec.get("field"), spec.get("prior")
     if halo:
         label += "_halo"
     paths = [str(data_dir / f) for f in files]
+    if spec.get("wavel"):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="contest_"))
+        paths = [select_channels(p, spec["wavel"], tmp) for p in paths]
     data = OIData(paths[0]) if len(paths) == 1 else [OIData(p) for p in paths]
     datasets = data if isinstance(data, list) else [data]
     npts = sum(np.asarray(d.flatten_data()[0]).size for d in datasets)
     resolution = beam(data)
 
-    kwargs = {"star": star, "largest_mas": largest}
+    kwargs = {"star": star}
     if star:
         kwargs["hole_mas"] = 0.5 * resolution.minor_mas
     start = starting_image(data, **kwargs)
     img0 = image_of(start, star)
     pixel0 = float(img0.pixel_scale_mas)
-    if force_field and int(np.shape(img0.log_brightness)[0]) * pixel0 < largest:
-        n = int(np.ceil(largest / pixel0)) | 1
-        flat = vm.Image(jnp.zeros((n, n)), pixel0, flux=img0.flux)
-        start = vm.System(star=start.star, env=flat) if star else flat
-        img0 = flat
+    n0 = int(np.shape(img0.log_brightness)[0])
+    want = field if field is not None else (n0 * pixel0 * grow if grow > 1 else None)
+    q = None
+    if want is not None:
+        pixel = max(pixel0, want / MAX_PIX)
+        n = int(np.ceil(want / pixel)) | 1
+        x = (np.arange(n) - (n - 1) / 2) * pixel
+        if prior_spec:
+            sigma = prior_spec[1] / 2.3548
+            q = np.exp(-0.5 * (x[None, :] ** 2 + x[:, None] ** 2) / sigma**2)
+            log_start = jnp.asarray(np.log(q))
+        else:
+            log_start = jnp.zeros((n, n))
+        new = vm.Image(log_start, pixel, flux=img0.flux)
+        start = vm.System(star=start.star, env=new) if star else new
+        img0 = new
     if halo:
-        # A fully resolved component (zero visibility on every baseline) for
-        # flux in structure larger than the shortest baseline sees: e.g. the
-        # 2006 disk, whose V² is ~1e-3 on every UT baseline.
         parts = {"star": start.star, "env": start.env} if star else {"env": start}
         start = vm.System(**parts, halo=vm.Resolved(1.0))
     npix = int(np.shape(img0.log_brightness)[0])
@@ -144,18 +184,40 @@ def setup(task, data_dir, halo=False):
     others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
     return dict(label=label, files=files, star=star, halo=halo, data=data, npts=npts,
                 resolution=resolution, start=start, img0=img0, npix=npix, pixel=pixel, fov=fov,
-                path=path, priors=priors, others=others)
+                path=path, priors=priors, others=others, q=q, adaptive=field is None,
+                field_source=spec.get("field_source", "data" + (f" x{grow:g}" if grow > 1 else "")))
 
 
 def run(task, data_dir, out_dir, smoke=False, halo=False):
     t0 = time.time()
     s = setup(task, data_dir, halo)
+    # A field chosen from the data grows (x1.5) while doing so lowers χ² by
+    # more than 10% in a probe fit at a middle weight: what a contestant would
+    # try. (Flux at the image edge is not a usable trigger here: the support
+    # and centroid prior keep it off the edge even when the field is too small.)
+    growth = []
+    if s["adaptive"]:
+        def probe(setup_dict):
+            r = fit(setup_dict["start"], setup_dict["priors"], setup_dict["data"],
+                    [MaxEntropy(float(WEIGHTS[6]), prior=setup_dict["q"], path=setup_dict["path"]), *setup_dict["others"]],
+                    max_steps=50 if smoke else 3000)
+            return float(np.sum(r.info["chi2_red"]))
+
+        grow, chi2 = 1.0, probe(s)
+        growth.append((round(s["fov"], 3), round(chi2, 3)))
+        for _ in range(GROWTHS):
+            bigger = setup(task, data_dir, halo, grow * 1.5)
+            chi2_big = probe(bigger)
+            growth.append((round(bigger["fov"], 3), round(chi2_big, 3)))
+            if chi2_big > 0.9 * chi2:
+                break
+            grow, chi2, s = grow * 1.5, chi2_big, bigger
     label, files, star, data, npts = s["label"], s["files"], s["star"], s["data"], s["npts"]
     resolution, start, img0, npix, pixel, fov = (s[k] for k in ("resolution", "start", "img0", "npix", "pixel", "fov"))
     path, priors, others = s["path"], s["priors"], s["others"]
     weights = WEIGHTS[[0, 6, -1]] if smoke else WEIGHTS
     options = {"max_steps": 50} if smoke else {"max_steps": 200_000}
-    curve = l_curve(start, priors, data, MaxEntropy(1.0, path=path), jnp.asarray(weights), others, **options)
+    curve = l_curve(start, priors, data, MaxEntropy(1.0, prior=s["q"], path=path), jnp.asarray(weights), others, **options)
 
     # discrepancy() is None when no weight reaches χ² = N (the data are then
     # under-fitted at every weight: worth a note); corner() needs >= 3 points.
@@ -186,9 +248,10 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
 
 
     best = curve.results[index["discrepancy"]].model
-    report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], path=path), *others])
+    report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], prior=s["q"], path=path), *others])
     summary = (
         f"task={task} label={label} files={files} star={star} halo={halo}\n"
+        f"field_source={s['field_source']} prior={TASKS[task].get('prior')} wavel={TASKS[task].get('wavel')} growth(fov, chi2/N)={growth}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
         f"beam={resolution.major_mas:.3g}x{resolution.minor_mas:.3g} mas\n"
@@ -233,8 +296,9 @@ def main():
     parser.add_argument("--smoke", action="store_true", help="three weights, 50 steps: check that it runs")
     args = parser.parse_args()
     if args.list:
-        for i, (label, files, largest, star) in enumerate(TASKS):
-            print(f"{i:2d}  {label:20s} fov<={largest}  star={star}  {files}")
+        for i, spec in enumerate(TASKS):
+            print(f"{i:2d}  {spec['label']:20s} field={spec.get('field')}  prior={spec.get('prior')}  "
+                  f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     run(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke, args.halo)
 

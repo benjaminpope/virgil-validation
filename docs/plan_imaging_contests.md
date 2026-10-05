@@ -252,6 +252,42 @@ before submitting (clue images, readmes, rules, suggested fields and pixel
 scales, SEDs, test binaries) to initialise and set priors. A research agent
 is compiling that per contest.
 
+### Initialisation: only what contestants had
+
+Each task's settings in `scripts/contest_images.py` (`TASKS`) come only from
+what the contests published before the deadline (manifest `presubmission`
+entries; pre-submission files are in `~/data/imaging_contests/<year>/pre_submission/`).
+Truths, model parameters and target identities revealed in the papers are
+not used.
+
+An earlier version broke this rule. It took the 2004 fields (12 and 24 mas)
+from the papers; those values have been removed.
+
+| Contest | Given before the deadline | Used as |
+|---|---|---|
+| 2004 | nothing (data released blind; OI_TARGET names are decoys) | field chosen from the data |
+| 2006 | clue image (the model at 10 mas resolution, 106 mas field); the rules allow the field of view only | field 106 mas, flat start; no morphology prior |
+| 2008 | "an AGB star" / "an AGN"; "tapered with a 15 mas FWHM Gaussian" | field 30 mas; that Gaussian as the start and the MaxEnt default image |
+| 2010 | a bright source; SEDs; grey category judged as Low HK channels 1–10 and 11–20 | separate H and K images (the other channels flagged); SEDs kept for C3 |
+| 2018 | "a young star's disk, with a planet" | analytic star plus image; data recovered from the organiser's live page |
+| 2022 | nothing found; the GRAVITY OI_TARGET names the real star, probably by accident | treated as blind; the header is ignored |
+| 2024 | "a hot star with an environment" / "a young star", suspected companion; uncalibrated OI_FLUX; cubes required | analytic star in both; grey images per instrument as a first look; cubes in C3 |
+
+**Data-chosen fields** start from virgil's `starting_image`, whose field
+is limited by λ/B_min. They grow ×1.5, at most three times, while that
+lowers χ² by more than 10% in a 3000-step probe fit at w = 100.
+
+Flux at the image edge is not a usable trigger: the support and the
+centroid prior keep it off the edge even when the field is too small. On
+2004 data2 the χ² rule picks 20.6 mas (χ²/N 228 → 38; growing again
+gives 363), wide enough for the companion, without using the paper.
+
+**Test binaries.** The 2006 test binary is now checked too (published
+10 mas, PA 30°, Δm = 1, UD 3 and 1 mas). virgil recovers 10.000 mas,
+29.99°, ratio 0.399 (10^-0.4 = 0.398), χ²/N 0.94. That file needs
+virgil#167 (different INSNAMEs, reversed legs), so this also checks the
+fix against the literature.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
