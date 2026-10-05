@@ -60,7 +60,8 @@ nav:
       - "Geometric visibilities": models/visibilities.md
       - "Limb-darkened disks": models/limb_darkening.md
       - "Rapid rotators": models/rapid_rotators.md
-      - "Flared disks, spectra and harmonix": models/disks_spectra.md
+      - "Flared disks and harmonix": models/flared_disks.md
+      - "Spectra": models/spectra.md
       - "Cones, fields and invariants": models/cones_fields.md
   - Likelihood:
       - "Correlated closure phases": likelihood/closure_phases.md

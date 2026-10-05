@@ -88,7 +88,7 @@ nodes:
   virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py]}
   virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py]}
   virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/disks_spectra.md}
+  virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md#the-harmonix-wrapper}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.Tabulated: {layer: models, source: [src/virgil/spectra.py]}
