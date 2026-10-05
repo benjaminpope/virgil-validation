@@ -178,7 +178,7 @@ def replicate(seed, warmup, samples, chains):
     return out
 
 
-def run(args):
+def run(args, replicate_fn=None):
     import jax
 
     jax.config.update("jax_enable_x64", True)
@@ -190,25 +190,43 @@ def run(args):
     if not commit:
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
     path = out_dir / f"task_{args.task:04d}.json"
+    settings = {"warmup": args.warmup, "samples": args.samples, "chains": args.chains}
     results, start = [], time.time()
+    if path.exists():
+        # resume a task stopped by its time limit: keep its replicates when
+        # they were made the same way, and run only the seeds still missing
+        old = json.loads(path.read_text())
+        same = (old.get("virgil_commit") == commit and old.get("criteria_hash") == criteria_hash()
+                and old.get("settings") == settings and old.get("replicates_planned", args.replicates) == args.replicates)
+        if not same:
+            raise SystemExit(f"{path} was made with another commit, criteria or settings: move it before rerunning")
+        results = list(old["replicates"])
+    done = {r["seed"] for r in results}
+    replicate_fn = replicate_fn or replicate
 
     def write(complete):
         # after every replicate, so a task stopped by its time limit keeps
         # what it finished; "complete" marks a task that ran every replicate
         record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "virgil_commit": commit,
                   "criteria_hash": criteria_hash(), "replicates_planned": args.replicates, "complete": complete,
-                  "settings": {"warmup": args.warmup, "samples": args.samples, "chains": args.chains},
+                  "settings": settings,
                   "replicates": results, "elapsed_s": time.time() - start}
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(record, indent=1))
         tmp.rename(path)
 
-    for k in range(args.replicates):
-        seed = args.seed_base + args.task * args.replicates + k
+    seeds = [args.seed_base + args.task * args.replicates + k for k in range(args.replicates)]
+    if done:
+        print(f"resuming {path}: {len(done)} of {len(seeds)} replicates already done", flush=True)
+    for seed in seeds:
+        if seed in done:
+            continue
         t0 = time.time()
-        results.append(replicate(seed, args.warmup, args.samples, args.chains))
-        write(complete=k == args.replicates - 1)
+        results.append(replicate_fn(seed, args.warmup, args.samples, args.chains))
+        write(complete=len(results) == len(seeds))
         print(f"replicate seed={seed} elapsed={time.time() - t0:.1f}s ranks={results[-1]['ranks']}", flush=True)
+    if len(results) == len(seeds):
+        write(complete=True)
     print(f"wrote {path} elapsed={time.time() - start:.0f}s")
 
 
