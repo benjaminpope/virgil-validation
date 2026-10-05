@@ -169,6 +169,28 @@ documented pixel centres and summed directly in Fourier space.
 The harmonix maps themselves are harmonix's to validate (against starry or
 a direct surface quadrature); here only virgil's wrapper is checked.
 
+## Analytic marginalisation of linear parameters
+
+`tests/test_linear_marginals.py`. virgil is adopting Luger, Foreman-Mackey
+& Hogg (2017) across the code. Each use is checked against a dense Gaussian
+built with NumPy from our own reading of the file, or against brute-force
+integration.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `OIData.with_gains`: telescope, baseline and chromatic groups, alone and together, four UTs, V² | Δ log-likelihood = log 𝒩(r; 0, D + UUᵀ) − log 𝒩(r; 0, D), with U = 2V²_model τ m and the modes as documented (chromatic shape (λ_ref/λ)², λ_ref the median wavelength) | Mathematics | 1e-12 |
+| the same with supplied modes, one value per sample in file order | the same | Mathematics | 1e-11 |
+| the same on amplitudes (`OI_VIS` `VISAMP`) | U = \|V\|_model τ m | Mathematics | 1e-12 |
+| `linear_flux_grid`: closed-form flux and its error | a Gauss–Newton step on our own whitened residual vector | Mathematics | 1e-9 |
+| `linear_flux_grid` with a prior: log Bayes factor | quadrature over f of the linearised likelihood times the prior | Mathematics | 1e-9 |
+| the same, no companion | quadrature of the true likelihood | Mathematics | 2e-3 (with a strong companion the closed form differs by ~0.4 in log B ~ 100–400, the nonlinearity its docs warn of) |
+| `linear_flux_grid(n_iter=5)` with a bright companion (0.3) | a direct optimiser of our own χ² | Mathematics | 1e-6 |
+
+To come, as each lands in virgil: closure-phase offsets, radial-velocity
+zero points (with the conditional mean and covariance), the `OI_FLUX`
+grey scale and `VISPHI` continuum, and the shared `LinearMarginal`
+helper.
+
 ## Long-baseline interferometry
 
 Four VLTI UTs, 7 hour angles, 6 channels in H–K, declination −50°
