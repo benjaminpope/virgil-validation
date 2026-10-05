@@ -208,7 +208,7 @@ def max_likelihood(data, template, paths, start):
     return res.x
 
 
-@pytest.mark.validates("virgil.fitting.fit", "virgil.priors.IsotropicInclination", roots=["mathematics"])
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
 def test_map_with_flat_coordinate_priors_is_the_likelihood_maximum(binary_file):
     """LogUniform priors on the diameter and the companion flux: their
     densities 1/x would pull a fit in x towards zero; in log x they are

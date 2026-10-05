@@ -61,7 +61,7 @@ def significance(ratio, ndof):
 @pytest.mark.validates("virgil.limits.injection_limits", roots=["mathematics"])
 def test_injection_limits_by_root_finding(dataset):
     kind, data, d = dataset
-    if kind != "null":
+    if kind != 0.0:
         pytest.skip("limits are for companion-free data")
     xs, ys = np.array([-8.0, 5.0]), np.array([-7.0, 6.0])
     got = np.asarray(lim.injection_limits(data, vm.BinaryModelCartesian, {"dra": xs, "ddec": ys, "flux": [1e-3]}, sigma=3.0))
