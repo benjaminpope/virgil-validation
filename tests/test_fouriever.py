@@ -26,6 +26,7 @@ paper's model with either residual.
 
 import shutil
 
+import jax
 import numpy as np
 import pytest
 from astropy.io import fits
@@ -157,6 +158,55 @@ def test_independent_closure_phases_overcount(files):
     assert np.min(np.abs(got_v / got_f - 1)) > 0.01
 
 
+@pytest.mark.validates("external_bridge.fouriever_worker", roots=["fouriever", "mathematics"], kind="reference")
+def test_plain_residual_across_the_phase_cut(tmp_path):
+    """A companion brighter than the primary (flux ratio 1.5, so baseline
+    phases reach beyond +-90 deg) puts summed baseline phases beyond +-180
+    deg, where an unwrapped plain residual and a wrapped one differ by 2 pi.
+    fouriever's model closure phase is that sum, not wrapped; our reference
+    must (and does) follow it there."""
+    path = tmp_path / "bright.fits"
+    simulate.observe(
+        path, binary_vis(1.5, DRA, DDEC), UTS, hour_angles_h=np.linspace(-3, 3, 5),
+        wavelengths=np.linspace(1.5e-6, 2.4e-6, 4), dec_deg=-50.0, sigma_v2=0.01,
+        sigma_cp_deg=0.5, rng=np.random.default_rng(9),
+    )
+    d = ours.load(path)
+    ps = [[1.5, DRA, DDEC], [1.4, DRA + 0.2, DDEC - 0.1], [2.0, -DRA, DDEC]]
+    for p in ps:  # the summed baseline phases leave (-pi, pi] somewhere
+        vis = binary_vis(*p)
+        summed = (np.angle(vis(d["u1"], d["v1"], d["wl3"])) + np.angle(vis(d["u2"], d["v2_"], d["wl3"]))
+                  - np.angle(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"])))
+        assert np.max(np.abs(summed)) > np.pi
+    got = np.array(fouriever(path, ps)["chi2"])
+    plain = np.array([ours.chi2(d, binary_vis(*p), correlated=True, chord=False) for p in ps])
+    record("rel_fouriever_vs_plain", np.max(np.abs(got / plain - 1)))
+    assert np.max(np.abs(got / plain - 1)) < 1e-12
+
+
+@pytest.mark.xfail(strict=True, reason="P5: fouriever's closure-phase residual is not wrapped")
+@pytest.mark.validates("fouriever", roots=["mathematics"], kind="upstream")
+def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
+    """A near-equal binary (flux ratio 0.99, within fouriever's fitting
+    range) has a closure phase of 178.4 deg. A measurement 3 deg away is
+    reported as -178.6 deg. Its residual against the true model is 3 deg
+    (0.04 of the chi-squared budget below), but fouriever takes the plain
+    difference of 357 deg, so the true binary scores a huge chi-squared.
+    virgil's chord is 2 pi periodic and scores it correctly."""
+    path = tmp_path / "cut.fits"
+    f = 0.99
+    simulate.observe(path, binary_vis(f, DRA, DDEC), UTS, hour_angles_h=np.linspace(-3, 3, 5),
+                     wavelengths=np.linspace(1.5e-6, 2.4e-6, 4), dec_deg=-50.0, sigma_v2=0.01, sigma_cp_deg=0.5)
+    with fits.open(path, mode="update") as h:
+        cp = h["OI_T3"].data["T3PHI"]
+        row, col = np.unravel_index(np.argmax(np.abs(cp)), cp.shape)
+        assert abs(cp[row, col]) > 178
+        cp[row, col] = (cp[row, col] + np.sign(cp[row, col]) * 3.0 + 180) % 360 - 180  # across the cut
+        h["OI_T3"].data["T3PHI"] = cp
+    assert virgil_chi2(path, [[f, DRA, DDEC]])[0] < 100
+    assert fouriever(path, [[f, DRA, DDEC]])["chi2"][0] < 100
+
+
 def whitened_form(d, vis):
     """virgil's documented generalised inverse, written independently:
     r^T D^-1/2 R^+ D^-1/2 r per snapshot and channel, chord residuals."""
@@ -195,32 +245,39 @@ def test_unequal_errors_use_different_generalised_inverses(files):
     assert np.max(np.abs(got_v / got_f - 1)) > 0.01
 
 
-@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["statistics"], kind="reference")
-def test_whitened_form_is_better_calibrated_on_baseline_noise():
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["statistics"])
+@pytest.mark.parametrize("which", ["one noisy baseline", "random"])
+def test_whitened_form_is_better_calibrated_on_baseline_noise(tmp_path, which):
     """True closure-phase noise is the closure T b of baseline-phase noise
     b. With unequal baseline errors and the reported errors
     sqrt(diag(T S T^T)), the mean chi-squared of four telescopes' closure
-    phases should be 3 (independent combinations). Virgil's whitened form
-    is closer to it than the pseudo-inverse of C (the exact T S T^T is the
-    control)."""
-    T = ours.triangle_matrix([(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)])
-    R = T @ T.T / 3
+    phases should be 3 (the independent combinations). On a one-snapshot,
+    one-channel file with those errors, virgil's whitening
+    (OIData.cp_noise.whiten) gives a mean closer to 3 than the
+    pseudo-inverse of C; the exact model T S T^T is the control."""
+    path = tmp_path / "one.fits"
+    simulate.observe(path, binary_vis(0.0, 0.0, 0.0), UTS, hour_angles_h=[0.0], wavelengths=[2.0e-6],
+                     dec_deg=-50.0, sigma_v2=0.01, sigma_cp_deg=1.0)
+    d = ours.load(path)
+    T = ours.triangle_matrix(d["t3_sta"])
     rng = np.random.default_rng(0)
-    n = 200_000
-    for s_base in (np.array([1, 1, 1, 1, 1, 3.0]), rng.uniform(0.5, 2.0, 6)):
-        S = np.diag(s_base**2)
-        sig = np.sqrt(np.diag(T @ S @ T.T))
-        C = sig[:, None] * R * sig[None, :]
-        r = (rng.normal(size=(n, 6)) * s_base) @ T.T
-        means = {}
-        for name, G in {
-            "pinv": np.linalg.pinv(C, rcond=1e-10),
-            "whitened": np.diag(1 / sig) @ np.linalg.pinv(R, rcond=1e-10) @ np.diag(1 / sig),
-            "exact": np.linalg.pinv(T @ S @ T.T, rcond=1e-10),
-        }.items():
-            means[name] = float(np.mean(np.einsum("ni,ij,nj->n", r, G, r)))
-        for name, value in means.items():
-            record(f"mean_{name}_{s_base.max():.1f}", value)
-        tol = 4 * np.sqrt(2 * 3 / n)  # 4 sigma on the mean of chi2_3
-        assert abs(means["exact"] - 3) < tol
-        assert abs(means["whitened"] - 3) < abs(means["pinv"] - 3)
+    s_base = np.array([1, 1, 1, 1, 1, 3.0]) if which != "random" else rng.uniform(0.5, 2.0, 6)
+    s_base = np.deg2rad(s_base)
+    S = np.diag(s_base**2)
+    sig = np.sqrt(np.diag(T @ S @ T.T))
+    with fits.open(path, mode="update") as h:
+        h["OI_T3"].data["T3PHIERR"] = np.rad2deg(sig).reshape(h["OI_T3"].data["T3PHIERR"].shape)
+    data = OIData(str(path))
+    n = 100_000
+    r = (rng.normal(size=(n, s_base.size)) * s_base) @ T.T
+    whiten = jax.jit(jax.vmap(lambda x: data.cp_noise.whiten(x, data.d_phi)[0]))
+    virgil = float(np.mean(np.sum(np.asarray(whiten(r)) ** 2, axis=1)))
+    C = sig[:, None] * (T @ T.T / 3) * sig[None, :]
+    pinv = float(np.mean(np.einsum("ni,ij,nj->n", r, np.linalg.pinv(C, rcond=1e-10), r)))
+    exact = float(np.mean(np.einsum("ni,ij,nj->n", r, np.linalg.pinv(T @ S @ T.T, rcond=1e-10), r)))
+    record("mean_virgil", virgil)
+    record("mean_pinv", pinv)
+    record("mean_exact", exact)
+    tol = 4 * np.sqrt(2 * 3 / n)  # 4 sigma on the mean of chi2_3
+    assert abs(exact - 3) < tol
+    assert abs(virgil - 3) < abs(pinv - 3)

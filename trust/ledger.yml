@@ -203,3 +203,13 @@
     - tests/test_candid.py::test_candid_public_limits_are_within_their_interpolation
     - tests/test_candid.py::test_p4_candid_public_limits_solve_its_criterion
   status: to-raise
+
+- id: P5
+  title: fouriever's closure-phase residual is not wrapped, so data straddling +-180 deg give a ~2 pi residual at the true parameters
+  objects: [fouriever]
+  ruling: external:fouriever
+  kind: bug (near-equal binaries with noisy closure phases near 180 deg)
+  referee: mathematics (closure phases are angles; virgil's chord is 2 pi periodic)
+  evidence: [tests/test_fouriever.py::test_p5_residual_wraps_across_the_phase_cut]
+  status: to-raise
+

@@ -20,12 +20,14 @@ Pinned by `tests/test_fouriever.py`.
 | closure-phase correlation | R = T Tᵀ / 3 per snapshot, identity across channels (`intercorr.add_cpcov`) | the same, per snapshot and channel |
 | covariance | C = D^½ R D^½, written to a `CPCOV` extension | the same |
 | χ² with correlations | rᵀ C⁺ r (pseudo-inverse) | rᵀ D^−½ R⁺ D^−½ r (whitened, then projected) |
-| closure-phase residual | plain difference | chord 2 sin(Δ/2) |
+| closure-phase residual | plain difference from the sum of the baseline phases, not wrapped | chord 2 sin(Δ/2), 2π periodic |
 | bandwidth smearing | off by default | off |
 
 ## Differences that are not errors
 
-* **D5, closure-phase residual.** The same difference as with CANDID.
+* **D5, closure-phase residual.** The same difference as with CANDID,
+  except that CANDID wraps the model closure phase into (−π, π] while
+  fouriever does not (problem P5).
   fouriever's χ² equals our plain-residual form to 1e-15, and virgil's
   equals the chord form to 1e-15. Near the true companion the two codes
   agree to 5e-6.
@@ -41,6 +43,12 @@ Pinned by `tests/test_fouriever.py`.
     nominal value. For four telescopes with one baseline three times
     noisier, the means are 2.94 (virgil) and 2.75 (fouriever) against 3,
     and the exact model gives 2.99.
+
+## Problems to raise (with approval)
+
+| # | fouriever | Problem | Evidence | Severity |
+| --- | --- | --- | --- | --- |
+| P5 | 0.4.3 | The closure-phase residual is `data − model`, with the model the sum of the three baseline phases and nothing wrapped. Take a near-equal binary (flux ratio 0.99, inside its fitting range) whose closure phase is 178°. A measurement 3° away is stored as −179°, so the residual is 357° instead of 3°, and the true binary gets a huge χ². Measurements this close to ±180° are common for near-equal binaries with a few degrees of noise. | `test_p5_residual_wraps_across_the_phase_cut` (strict xfail); `test_plain_residual_across_the_phase_cut` pins the unwrapped definition | medium: wrong fits near ±180° |
 
 ## Reading requirements
 

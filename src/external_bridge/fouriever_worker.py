@@ -29,10 +29,9 @@ from fouriever import intercorr, util, uvfit  # noqa: E402
 
 
 def _load(path, cov):
-    tmp = tempfile.mkdtemp()
     name = os.path.basename(path)
-    shutil.copy(path, os.path.join(tmp, name))
-    with contextlib.redirect_stdout(io.StringIO()):
+    with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+        shutil.copy(path, os.path.join(tmp, name))
         if cov:
             intercorr.data(tmp, [name]).add_cpcov(os.path.join(tmp, "cov"))
             u = uvfit.data(os.path.join(tmp, "cov"), [name])

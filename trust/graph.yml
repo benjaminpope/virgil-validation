@@ -170,6 +170,8 @@ nodes:
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
   candid: {layer: references}  # the external package itself (problem P4)
   external_bridge.candid_bridge: {layer: references}
+  external_bridge.fouriever_worker: {layer: references}
+  fouriever: {layer: references}  # the external package itself (problem P5)
 
 pipelines:
   synthetic-vlti-fit:

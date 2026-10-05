@@ -65,17 +65,22 @@ def chi2(d, vis, correlated=False, chord=True):
     """Chi-squared of ``vis(u, v, wavel)`` against the loaded data.
 
     Closure-phase residuals are chords 2 sin(delta/2) (virgil's) or, with
-    ``chord=False``, plain differences; ``correlated`` as in the module
+    ``chord=False``, plain, unwrapped differences between the sum of the
+    model's baseline phases and the data; ``correlated`` as in the module
     docstring."""
     model_v2 = np.abs(vis(d["u"], d["v"], d["wl"])) ** 2
     total = np.sum(((model_v2 - d["v2"]) / d["dv2"]) ** 2)
     if "cp" in d:
-        t3 = (
-            vis(d["u1"], d["v1"], d["wl3"])
-            * vis(d["u2"], d["v2_"], d["wl3"])
-            * np.conj(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"]))
+        # the model closure phase as the sum of the three baseline phases,
+        # each in (-pi, pi], so it may lie beyond +-pi; the chord is 2 pi
+        # periodic, the plain difference is not wrapped (as in CANDID and
+        # fouriever)
+        model = (
+            np.angle(vis(d["u1"], d["v1"], d["wl3"]))
+            + np.angle(vis(d["u2"], d["v2_"], d["wl3"]))
+            - np.angle(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"]))
         )
-        delta = np.angle(np.exp(1j * (np.angle(t3) - d["cp"])))  # wrapped
+        delta = model - d["cp"]
         r = 2.0 * np.sin(delta / 2.0) if chord else delta
         if not correlated:
             total += np.sum((r / d["dcp"]) ** 2)
