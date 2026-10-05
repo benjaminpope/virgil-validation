@@ -24,9 +24,9 @@
       var v = verdicts[n.verdict];
       var html = "<h4>" + esc(n.id) + "</h4><div><strong>" + esc(v[0]) + "</strong>: " + esc(v[1]) + ".</div>";
       if (n.findings.length) html += "<div>Open: " + n.findings.map(function (f) { return '<a href="#' + esc(f) + '">' + esc(f) + "</a>"; }).join(", ") + "</div>";
-      if (n.because.length) html += "<div>Relies on " + n.because.map(function (b) {
+      if (n.because.length) html += "<div>" + (n.verdict.indexOf("relies") === 0 ? "Relies on " : "Also relies on ") + n.because.map(function (b) {
         return "<code>" + esc(b.id) + "</code>" + (b.findings.length ? " (" + b.findings.map(function (f) { return '<a href="#' + esc(f) + '">' + esc(f) + "</a>"; }).join(", ") + ")" : "");
-      }).join(", ") + "; it counts as verified once that is fixed.</div>";
+      }).join(", ") + (n.verdict.indexOf("relies") === 0 ? "; it counts as verified once that is fixed." : "; fixing that alone would not verify it.") + "</div>";
       var rs = n.strong.concat(n.weak);
       html += "<div>Checked against: " + (rs.length ? rs.map(function (r) { return '<span class="vt-root">' + esc(roots[r] || r) + "</span>"; }).join("") : "nothing yet") + "</div>";
       if (n.changed && n.changed.length) html += '<div class="vt-muted">virgil has changed ' + n.changed.map(function (f) { return "<code>" + esc(f) + "</code>"; }).join(", ") + " since this evidence.</div>";

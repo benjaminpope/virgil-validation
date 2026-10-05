@@ -42,7 +42,7 @@ REPO = "https://github.com/benjaminpope/virgil-validation"
 WEAK = {"self-consistency"}
 BAD = {"failed", "error", "xpassed"}
 GOOD = {"passed", "xfailed"}
-LAYERS = ["imaging", "inference", "likelihood", "models", "data"]  # top first
+LAYER_ORDER = ["imaging", "inference", "orbits", "likelihood", "models", "data", "references"]  # top first
 
 VERDICTS = {
     "verified": ("Verified", "independent checks agree, and so does everything it relies on"),
@@ -59,7 +59,9 @@ ROOT_NAMES = {
     "fouriever": "fouriever", "ehtim": "eht-imaging", "mpol": "MPoL", "orbitize": "orbitize!",
     "self-consistency": "virgil itself",
 }
-AGREEMENT = re.compile(r"(rel|abs|diff|err|dv|dsigma|max_|worst|chi2|loglike|logb)", re.I)
+# metric names that state a difference or error (raw statistics such as a
+# reduced chi-squared need an explicit headline=)
+AGREEMENT = re.compile(r"(^|_)(rel|abs|diff|difference|err|error|dv|dv2|dsigma|dloglike|dlogb)(_|$)", re.I)
 
 
 # ------------------------------------------------------------------ inputs
@@ -187,9 +189,8 @@ def build(graph, ledger, records, runs, virgil=None):
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        causes = []
+        causes = sorted(problems(name, set()))
         if verdict == "ok":
-            causes = sorted(problems(name, set()))
             if not causes:
                 verdict = "verified"
             elif any(own[c]["status"] == "bug" for c in causes):
@@ -311,7 +312,8 @@ def _chain(p, nodes):
     for s in p["steps"]:
         n = nodes.get(s)
         v = n["verdict"] if n else "unchecked"
-        steps.append(f'<span class="vt-step vt-{v}" data-node="{e(s)}" title="{e(s)}: {e(VERDICTS[v][0])}">{e(n["label"] if n else s)}</span>')
+        steps.append(f'<button type="button" class="vt-step vt-{v}" data-node="{e(s)}" title="{e(s)}: {e(VERDICTS[v][0])}">'
+                     f'<span aria-hidden="true">{ICON[v]}</span> {e(n["label"] if n else s)}</button>')
     good = [c for c in p["checks"] if c["outcome"] in GOOD and c["value"] is not None]
     result = e(p.get("headline") or p["status"])
     if good:
@@ -327,13 +329,20 @@ def _tooltip(n):
     if n["strong"] or n["weak"]:
         lines.append("checked against " + ", ".join(ROOT_NAMES.get(r, r) for r in n["strong"] + n["weak"]))
     for b in n["because"]:
-        lines.append("relies on " + b["id"] + (" (" + ", ".join(b["findings"]) + ")" if b["findings"] else ""))
+        lines.append(("relies on " if n["verdict"].startswith("relies") else "also relies on ")
+                     + b["id"] + (" (" + ", ".join(b["findings"]) + ")" if b["findings"] else ""))
     return " · ".join(lines)
+
+
+def layers(nodes):
+    """Every layer in the graph, top first: the known order, then any other."""
+    present = {n["layer"] for n in nodes.values()}
+    return [layer for layer in LAYER_ORDER if layer in present] + sorted(present - set(LAYER_ORDER))
 
 
 def _map(nodes):
     rows = []
-    for layer in LAYERS:
+    for layer in layers(nodes):
         chips = [n for n in nodes.values() if n["layer"] == layer]
         if not chips:
             continue
@@ -355,7 +364,7 @@ def _matrix(nodes):
     cols += sorted(r for r in roots if r.startswith("golden:"))
     head = "".join(f'<th scope="col"><span>{e(ROOT_NAMES.get(c, c.replace("golden:", "reference code: ")))}</span></th>' for c in cols)
     body = []
-    for layer in reversed(LAYERS):
+    for layer in reversed(layers(nodes)):
         for n in (n for n in nodes.values() if n["layer"] == layer and (n["strong"] or n["weak"])):
             cells = "".join(f'<td>{"●" if c in n["strong"] else ""}</td>' for c in cols)
             body.append(f'<tr><th scope="row"><span class="vt-sw vt-{n["verdict"]}" title="{e(VERDICTS[n["verdict"]][0])}">{ICON[n["verdict"]]}</span>{e(n["label"])}</th>{cells}</tr>')
@@ -401,7 +410,7 @@ def _precision(nodes):
     if not pts:
         return ""
     lo, hi = -16.5, 0
-    rows = [layer for layer in LAYERS if any(p[1] == layer for p in pts)]
+    rows = [layer for layer in layers(nodes) if any(p[1] == layer for p in pts)]
     h = 24 * len(rows) + 30
     out = [f'<svg class="vt-prec" viewBox="0 0 640 {h}" role="img" aria-label="agreement of each check, log scale">']
     for k in range(-16, 1, 2):

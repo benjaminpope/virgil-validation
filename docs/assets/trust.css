@@ -25,7 +25,8 @@
 .vt-chain { display: grid; grid-template-columns: 14rem 1fr 14rem; align-items: center; gap: .3rem .8rem; padding: .3rem 0; border-bottom: 1px solid var(--md-default-fg-color--lightest); }
 .vt-chain-r { font-size: .75rem; }
 .vt-chain-t { color: var(--md-default-fg-color--light); }
-.vt-step { padding: .05rem .4rem; border-radius: 4px; cursor: pointer; }
+.vt-step { font: inherit; font-size: .75rem; color: inherit; border: 1px solid transparent; padding: .05rem .4rem; border-radius: 4px; cursor: pointer; }
+.vt-step:hover, .vt-step:focus-visible, .vt-step.vt-sel { border-color: var(--md-default-fg-color); }
 .vt-row { display: flex; gap: .6rem; align-items: flex-start; margin: .35rem 0; }
 .vt-layer { flex: 0 0 5.5rem; color: var(--md-default-fg-color--light); font-size: .8rem; padding-top: .2rem; }
 .vt-chips { display: flex; flex-wrap: wrap; gap: .25rem; }

@@ -133,8 +133,8 @@ The goal: any claim about virgil's correctness, such as "`UniformDisk` is
 right to 1e-15", can be followed to the evidence behind it. That means the
 test or campaign, the exact virgil commit and package versions it ran
 against, the seed, the numbers, the criterion it had to meet, and the
-command to rerun it. The chart and checklists above should then be
-generated from that evidence, never written by hand.
+command to rerun it. The Trust page is then generated from that
+evidence, never written by hand.
 
 ### Evidence records
 
@@ -185,20 +185,25 @@ assets, or kept on OzSTAR `/fred` with a checksum in the record.
 * the **roots** they need: two independent roots for anything a model
   could get wrong in a correlated way, conventions above all.
 
-`scripts/trust.py` joins the graph with the latest evidence and marks each
-node:
+`scripts/trust.py` joins the graph with the latest evidence and gives
+each node a **verdict**, from the evidence at the virgil commit it ran on:
 
-* **trusted**: passing evidence from its required roots, measured on a
-  virgil commit after which its source paths have not changed, and every
-  dependency trusted;
-* **stale**: trusted once, but virgil's source has since changed under it
-  (found with `git log <commit>..main -- <paths>` on virgil);
-* **open finding**: failing evidence with a ledger entry (below);
-* **unchecked**: no evidence.
+* **verified**: passing evidence from its required roots, and every node
+  it relies on verified;
+* **works, but relies on a known bug** (or on a part not yet verified):
+  its own evidence passes, but something below it does not; the page
+  names the part at the bottom of the chain and its open finding;
+* **known bug, fix pending**: a ledger entry against virgil is open;
+* **partly checked**: evidence from too few independent roots;
+* **check failing**: a check of it fails;
+* **not yet checked**: no evidence.
 
-It writes the Mermaid chart and the checklists on this page, and each
-checkbox links to its evidence records. "Verified at virgil `5239a70` on
-2026-10-04" is then a statement anyone can audit.
+**Freshness** is reported separately, never folded into the verdict:
+whether virgil's source under a node has changed since that commit (from
+`git diff <commit> origin/main -- <paths>` on virgil). The page (the site's
+home page) shows the verdicts as a layered map with a detail panel per
+node, linking each check's evidence and test. "Verified at virgil
+`5239a70` on 2026-10-04" is then a statement anyone can audit.
 
 ### The mismatch ledger: ours, theirs, or definition
 
@@ -254,15 +259,16 @@ a 60-draw smoke version left in CI.
 | B | weekly, against virgil `main` | ~1 h on CI | dLux images, PMOIRED fits, campaigns at modest N |
 | C | before a virgil release, or on demand | hours on OzSTAR | campaigns at full N, CANDID maps and limits |
 
-A tier B or C result counts until virgil's code under its node changes,
-which makes it stale (above). So the expensive runs need repeating only
-where virgil has actually changed.
+A tier B or C result counts until virgil's code under its node changes;
+the page then marks the node as changed since its evidence (above). So the
+expensive runs need repeating only where virgil has actually changed.
 
 ### Release gate
 
-virgil's release checklist gains one item: the trust page shows no
-**stale**, **open finding** or **unchecked** node for anything the release
-changes, or the release notes say which ones remain and why.
+virgil's release checklist gains one item: for anything the release
+changes, the trust page shows no node that is changed since its evidence,
+has a known bug, is failing or is not yet checked, or the release notes say
+which ones remain and why.
 
 ## Order of work
 
@@ -271,8 +277,9 @@ changes, or the release notes say which ones remain and why.
    virgil's CI uploading its records as an artifact that our weekly job
    downloads. (2 days)
 2. ✅ **Trust graph**: `trust/graph.yml` with dependencies and source paths;
-   `scripts/trust.py` for propagation and staleness; this page's chart and
-   checklists generated from it. (2 days)
+   `scripts/trust.py` for propagation and freshness; the Trust page
+   generated from it (rebuilt as the site's home page, `plan_trust_page.md`).
+   (2 days)
 3. ✅ **Ledger**: `trust/ledger.yml` with the existing findings (virgil 1–5,
    PMOIRED P1–P3) and its rendered page. (half a day)
 4. **Campaign runner**: move the pulls into `campaigns/`, add interval
