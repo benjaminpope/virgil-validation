@@ -126,6 +126,13 @@ def test_simulated_noise_uv_and_errors(tmp_path):
     record("max_abs_dcorr", float(np.max(np.abs(corr - want))))
     assert np.allclose(np.diag(np.cov(x.T)), scp**2, rtol=0.35)
     assert np.max(np.abs(corr - want)) < 4 / np.sqrt(len(x))
+    # whitened by our own covariance scp^2 T T^T / 3 (rank 3: four triangles of four
+    # telescopes close on three independent phases), each snapshot and channel is chi-squared of 3
+    x = np.array(cps).reshape(len(cps), -1, 4, 2).transpose(0, 1, 3, 2).reshape(-1, 4)
+    q = np.einsum("ni,ij,nj->n", x, np.linalg.pinv(scp**2 * want), x)
+    record("mean_chi2_per_dof", float(q.mean() / 3))
+    assert stats.kstest(q, stats.chi2(3).cdf).pvalue > 1e-3
+    assert stats.kstest(q, stats.chi2(4).cdf).pvalue < 1e-3  # four independent phases would not fit: a control
 
 
 @pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="reference")
