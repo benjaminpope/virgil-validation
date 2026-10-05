@@ -228,7 +228,7 @@ def test_ruffio_upperlimit_is_the_truncated_gaussian_quantile(mean, sigma, perce
 
 
 @pytest.mark.slow
-@pytest.mark.validates("virgil.grid_fit.optimized_flux_grid", "virgil.grid_fit.laplace_flux_uncertainty_grid", roots=["statistics"], tier="B")
+@pytest.mark.validates("virgil.grid_fit.optimized_flux_grid", "virgil.grid_fit.laplace_flux_uncertainty_grid", roots=["statistics"], tier="B", kind="regression")
 def test_flux_pulls_at_the_true_position(tmp_path):
     """Over 200 noisy realisations, the best flux at the true position, in
     units of its Laplace uncertainty, is N(0, 1)."""
