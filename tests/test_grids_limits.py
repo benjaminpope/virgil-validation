@@ -134,8 +134,8 @@ def test_absil_limits_from_a_single_bad_start(dataset, start):
     """The flux axis only sets the start (virgil#191): a single value far
     below or far above the limit, where the significance saturates (a
     flat loss), must still give the root of nsigma = 3. virgil brackets by
-    decades and bisects 14 times in log flux, so its limit is within
-    10^(1/2^14) - 1 = 1.4e-4 of the root."""
+    decades, bisects 14 times in log flux and returns the midpoint, so its
+    limit is within 10^(1/2^15) - 1 = 7.0e-5 of the root."""
     kind, data, d = dataset
     if kind != "none":
         pytest.skip("limits are for companion-free data")
@@ -155,7 +155,7 @@ def test_absil_limits_from_a_single_bad_start(dataset, start):
             want = optimize.brentq(lambda f: significance(f, x, y) - 3.0, 1e-6, 1.0, xtol=1e-12)
             worst = max(worst, abs(got[i, j] / want - 1))
     record("max_rel_limit_difference", worst)
-    assert worst < 2e-4
+    assert worst < 1e-4
 
 
 @pytest.mark.validates("virgil.limits.ruffio_upperlimit", roots=["mathematics"])

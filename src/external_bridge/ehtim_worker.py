@@ -160,7 +160,36 @@ def reconstruct(task):
     return {"image": out.imarr().tolist(), "cost": cost, "scores": other, "n_amp": int(n_amp), "n_cphase": int(n_cp)}
 
 
-TASKS = {"regularisers": regularisers, "ft": ft, "chisq_cphase": chisq_cphase, "reconstruct": reconstruct}
+def p6_probe(task):
+    """P6 reproducer, with eht-imaging unpatched: three sites at two times
+    (equal-sized time groups); can Obsdata.c_phases run?"""
+    import contextlib
+    import io
+
+    import ehtim as eh
+    from ehtim import const_def as ehc
+
+    tarr = np.zeros(3, dtype=ehc.DTARR)
+    tarr["site"] = ["A", "B", "C"]
+    tarr["x"] = [1.0, 2.0, 3.0]
+    tarr["sefdr"] = tarr["sefdl"] = 1.0
+    rows = [(t, a, b) for t in (0.0, 1.0) for a, b in (("A", "B"), ("A", "C"), ("B", "C"))]
+    table = np.zeros(len(rows), dtype=ehc.DTPOL_STOKES)
+    for k, (time, a, b) in enumerate(rows):
+        table[k]["time"], table[k]["tint"], table[k]["t1"], table[k]["t2"] = time, 1.0, a, b
+        table[k]["u"], table[k]["v"] = 1e6 * (k + 1), 2e6
+        table[k]["vis"], table[k]["sigma"] = 0.5 + 0.1j, 0.01
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            obs = eh.obsdata.Obsdata(0.0, -50.0, 230e9, 1e9, table, tarr, polrep="stokes")
+            n = len(obs.c_phases(count="min"))
+        return {"ok": True, "n_cphase": int(n), "error": None}
+    except Exception as e:  # noqa: BLE001 - report what upstream raises
+        return {"ok": False, "n_cphase": 0, "error": f"{type(e).__name__}: {e}"}
+
+
+TASKS = {"regularisers": regularisers, "ft": ft, "chisq_cphase": chisq_cphase, "reconstruct": reconstruct,
+         "p6_probe": p6_probe}
 
 if __name__ == "__main__":
     task = json.load(open(sys.argv[1]))

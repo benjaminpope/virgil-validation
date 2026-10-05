@@ -199,7 +199,7 @@ pipelines:
   rml-imaging:
     title: Regularised image reconstruction against eht-imaging or MPoL on the same data
     steps: [virgil.oidata.OIData, virgil.models.Image, virgil.imaging.TSV,
-            virgil.imaging.MaxEntropy, virgil.fitting.fit]
+            virgil.fitting.fit]  # TSV; other regularisers are alternatives, checked alone
   contest-imaging:
     title: Blind images from the SPIE imaging contests' data, against the published entries and truths
     planned: true

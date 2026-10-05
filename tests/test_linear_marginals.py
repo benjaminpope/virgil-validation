@@ -15,7 +15,10 @@ Hogg 2017) in virgil, against dense Gaussians and brute force.
   refinement against a direct optimiser of our own chi-squared; the log
   Bayes factor against brute-force integration over the flux, exactly in
   the linear model, and against the true chi-squared where the model is
-  linear (no companion).
+  linear (no companion). This is the evidence under a Gaussian prior on f
+  (``prior=(mean, sd)``), pinned as "Gaussian-prior evidence": virgil's
+  default priors are Jeffreys/invariant ones (log-uniform for a scale such
+  as f), so it is not the default detection statistic.
 """
 
 import numpy as np
@@ -180,7 +183,7 @@ def gauss_newton(d, x, y, at=0.0, h=1e-7):
 
 @pytest.mark.parametrize("flux", [0.0, 0.01], ids=["no companion", "companion"])
 @pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"])
-def test_linear_flux_and_bayes_factor(tmp_path, flux):
+def test_linear_flux_and_gaussian_prior_evidence(tmp_path, flux):
     """Closed form (no refinement): f = -(g.r0)/(g.g), sigma = (g.g)^-1/2,
     and log B by quadrature over f of the linearised likelihood times the
     prior."""
@@ -207,7 +210,7 @@ def test_linear_flux_and_bayes_factor(tmp_path, flux):
 
 
 @pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"])
-def test_bayes_factor_is_the_true_one_without_a_companion(tmp_path):
+def test_gaussian_prior_evidence_is_the_true_one_without_a_companion(tmp_path):
     """With no companion the likelihood is linear in f over the posterior,
     so the closed-form log B is the integral of the true likelihood too."""
     d, data = flux_file(tmp_path, 0.0)

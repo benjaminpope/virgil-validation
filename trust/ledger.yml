@@ -158,13 +158,24 @@
   links: [https://github.com/benjaminpope/virgil/pull/174]
 
 - id: F12
-  title: imaging.clean returns NaN on some grids with correlated closure phases (regression from virgil#174)
+  title: imaging.clean returns NaN on even grids without a base scene (near-zero |J e_p| at the off-centre seed; exposed by virgil#174)
   objects: [virgil.imaging.clean]
   ruling: virgil
   referee: mathematics (a finite χ² on finite data; bisected to the merge of virgil#174)
   evidence:
     - tests/test_clean_finite.py::test_clean_is_finite_with_four_telescopes
     - tests/test_clean_finite.py::test_clean_is_finite_with_three_telescopes
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/190]
+
+- id: F13
+  title: OIData groups closure-phase frames by MJD alone; OIFITS v1 snapshots told apart by TIME are merged into one frame
+  objects: [virgil.oidata.OIData]
+  ruling: virgil
+  referee: standards (OIFITS v1 gives each row a TIME and an MJD; correlation is only within a snapshot)
+  evidence:
+    - tests/test_frames_from_time.py::test_snapshots_in_time_column_are_separate_frames
+    - tests/test_frames_from_time.py::test_simulated_snapshots_have_distinct_mjd
   status: open
 
 - id: D5
@@ -250,6 +261,6 @@
   ruling: external:ehtim
   kind: bug (np.array(list_of_equal_length_record_arrays, dtype=object) is 2-D in NumPy 2; any data with the same baselines at every time, e.g. all simulated data)
   referee: mathematics (NumPy's documented behaviour)
-  evidence: [tests/test_ehtim_reconstruction.py::test_reconstruction_matches_ehtim_in_one_basin]
+  evidence: [tests/test_ehtim_reconstruction.py::test_p6_closure_phases_with_equal_time_groups]
   status: to-raise
 

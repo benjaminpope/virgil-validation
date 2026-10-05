@@ -61,6 +61,7 @@ from virgil.imaging import (  # noqa: E402
     starting_image,
 )
 from virgil.fitting import fit  # noqa: E402
+from virgil.likelihood import whitened_residuals  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.plotting import plot_model  # noqa: E402
 
@@ -211,18 +212,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             from scipy import ndimage
 
             support_c = ndimage.zoom(np.asarray(support, float), n_c / n_img, order=0) > 0.5
-        seed = None
-        if not star:
-            # Workaround for finding F12: since virgil#174, clean() without a
-            # base scene returns NaN at its first iteration on some even grids
-            # with correlated (4+ telescope) closure phases. Seeding a faint
-            # uniform floor beside the central component avoids it.
-            seed = np.full((n_c, n_c), 1e-6)
-            seed[(n_c - 1) // 2, (n_c - 1) // 2] = 1.0
-            if support_c is not None:
-                seed = np.where(np.asarray(support_c), seed, 0.0)
         cleaned = clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
-                        max_iterations=clean_iters, target_chi2_red=1.0, init=seed)
+                        max_iterations=clean_iters, target_chi2_red=1.0)
         restored = np.clip(np.asarray(cleaned.restored(resolution)), 0.0, None)
         if n_c != n_img:
             from scipy import ndimage
@@ -258,6 +249,30 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
                 path=path, priors=priors, others=others, q=q, adaptive=field is None,
                 field_source=spec.get("field_source", "data" + (f" x{grow:g}" if grow > 1 else "")),
                 clean_info=clean_info)
+
+
+def residual_diagnostics(model, data):
+    """Per dataset: χ² per point for V² and for closure phases separately,
+    and the mean whitened V² residual on the shortest 20% of spatial
+    frequencies (near 0 when short baselines are not traded for long ones;
+    MACIM's selection test in the 2012 contest). Residuals come in the order
+    V², whitened closure phases, then (for correlated closure phases) one
+    periodic penalty per phase; both closure-phase components contribute to χ²."""
+    out = []
+    for d in data if isinstance(data, list) else [data]:
+        r = np.asarray(whitened_residuals(model, d))
+        nv = int(np.asarray(d.vis).size)
+        n_cp = int(d.n_independent) - nv
+        freq = np.hypot(np.asarray(d.u)[:nv], np.asarray(d.v)[:nv]) / np.asarray(d.wavel).ravel()[:nv] if np.asarray(d.wavel).size >= nv \
+            else np.hypot(np.asarray(d.u)[:nv], np.asarray(d.v)[:nv]) / float(np.ravel(d.wavel)[0])
+        short = freq <= np.quantile(freq, 0.2)
+        out.append({
+            "chi2_v2": float(np.sum(r[:nv] ** 2) / max(nv, 1)),
+            "chi2_cp": float(np.sum(r[nv:] ** 2) / n_cp) if n_cp > 0 else None,
+            "short_mean": float(np.mean(r[:nv][short])),
+            "n_v2": nv, "n_cp_indep": n_cp,
+        })
+    return out
 
 
 def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=False):
@@ -338,6 +353,8 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         f"chi2_red={np.asarray(curve.chi2_red).round(3).tolist()}\n"
         f"halo_flux={[round(float(r.model.halo.flux), 4) for r in curve.results] if halo else None}\n"
         f"chosen={chosen} discrepancy_reached={reached}\nconverged={[bool(r.info.get('converged', False)) for r in curve.results]}\n"
+        f"residuals at the discrepancy weight={residual_diagnostics(best, data)}\n"
+        f"residuals at the corner weight={residual_diagnostics(curve.results[index['corner']].model, data)}\n"
         f"elapsed={time.time() - t0:.0f}s\n\n{report}\n"
     )
     (out_dir / f"{label}.txt").write_text(summary)
@@ -473,6 +490,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         i, j = best_of[name]
         rr = results[(name, i, j)]
         lines.append(f"best {name}: ℓ={lengths[i]:.4g} σ={sigmas[j]} log_z={g[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
+    lines.append(f"residuals of the winner={residual_diagnostics(winner.model, data)}")
     lines.append(f"WINNER: {best[0]} ℓ={lengths[best[1]]:.4g} σ={sigmas[best[2]]} log_z={log_z[best[0]][best[1], best[2]]:.2f}")
     lines.append(f"elapsed={time.time() - t0:.0f}s\n\n{diagnose(winner.model, data, list(others))}")
     text = "\n".join(lines) + "\n"

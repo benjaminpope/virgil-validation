@@ -119,7 +119,7 @@ Ruffio et al. (2018), written with SciPy and mpmath.
 | `nsigma` | χ² upper tail as a two-sided Gaussian significance (SciPy, in log space) | Mathematics | 2e-13 σ |
 | `optimized_flux_grid`, `laplace_flux_uncertainty_grid` | our best flux (Brent) and the curvature of our χ² | Mathematics | < 1e-3 σ and 0.1 % |
 | `absil_limits` (3σ, companion-free data, 12 positions) | root of nsigma(χ²(f)/χ²(0)) = 3 with the number of data points as degrees of freedom | Mathematics | 1e-4 (bisection precision since virgil#191) |
-| `absil_limits` from a single start far below, far above and at saturation (virgil#191) | the same root | Mathematics | 1.4e-4 |
+| `absil_limits` from a single start far below, far above and at saturation (virgil#191) | the same root | Mathematics | 7.0e-5 (half a bisection step) |
 | `ruffio_upperlimit` (means from 20σ above to 30σ below zero) | truncated-Gaussian quantile at 50 digits (mpmath) | Mathematics | 1.5e-12 relative |
 | flux at the true position over 200 noisy realisations | N(0, 1) pulls | Statistics | mean −0.13, sd 1.09 |
 
@@ -182,7 +182,7 @@ integration.
 | the same with supplied modes, one value per sample in file order | the same | Mathematics | 1e-11 |
 | the same on amplitudes (`OI_VIS` `VISAMP`) | U = \|V\|_model τ m | Mathematics | 1e-12 |
 | `linear_flux_grid`: closed-form flux and its error | a Gauss–Newton step on our own whitened residual vector | Mathematics | 1e-9 |
-| `linear_flux_grid` with a prior: log Bayes factor | quadrature over f of the linearised likelihood times the prior | Mathematics | 1e-9 |
+| `linear_flux_grid` with a Gaussian prior on f: log Bayes factor (Gaussian-prior evidence, not the default; virgil's defaults are Jeffreys priors) | quadrature over f of the linearised likelihood times the prior | Mathematics | 1e-9 |
 | the same, no companion | quadrature of the true likelihood | Mathematics | 2e-3 (with a strong companion the closed form differs by ~0.4 in log B ~ 100–400, the nonlinearity its docs warn of) |
 | `linear_flux_grid(n_iter=5)` with a bright companion (0.3) | a direct optimiser of our own χ² | Mathematics | 1e-6 |
 

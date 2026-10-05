@@ -1,7 +1,8 @@
 """A likelihood must be continuous in the model parameters (finding F11).
 
-Found by the imaging-contest stalls (docs/plan_imaging_contests.md). For
-closure phases from four or more telescopes, virgil wraps each residual
+Found by the imaging-contest stalls (docs/plan_imaging_contests.md) and
+fixed in virgil#174. Before the fix, for closure phases from four or more
+telescopes, virgil wrapped each residual
 into [-π, π), takes its chord 2 sin(Δ/2), then whitens the chords
 together. A chord changes sign under Δ → Δ + 2π. That is harmless in a
 single square, but cross terms then make χ² jump wherever a residual
