@@ -181,7 +181,9 @@ def test_flux_spectrum_is_a_dense_gaussian(written, per, poly_order):
     for params in (TRUTH, OTHER):
         got = block(scene(*params), data, base)
         want = flux_reference(tables, params, scale, per, poly_order, 0.05)
-        worst = max(worst, abs(got - want))
+        gap = abs(got - want)
+        assert np.isfinite(gap), (got, want)
+        worst = max(worst, gap)
     record("max_abs_dloglike", worst)
     assert worst < 1e-8
 
@@ -195,7 +197,9 @@ def test_normalised_flux_is_a_dense_gaussian(written):
     for params in (TRUTH, OTHER):
         got = block(scene(*params), data, base)
         want = flux_reference(tables, params, (1.0, 0.1), "dataset", 0, 0.1, kind="nflux")
-        worst = max(worst, abs(got - want))
+        gap = abs(got - want)
+        assert np.isfinite(gap), (got, want)
+        worst = max(worst, gap)
     record("max_abs_dloglike", worst)
     assert worst < 1e-8
 
@@ -314,7 +318,9 @@ def test_differential_phase_projection_is_a_dense_gaussian(written):
         for r, var, pairs in frames(tables, params):
             M = np.kron(linalg.orth(incidence(pairs)).T, N_line)
             want += stats.multivariate_normal(np.zeros(M.shape[0]), M @ np.diag(var.ravel()) @ M.T).logpdf(M @ r.ravel())
-        worst = max(worst, abs(got - want))
+        gap = abs(got - want)
+        assert np.isfinite(gap), (got, want)
+        worst = max(worst, gap)
     record("max_abs_dloglike", worst)
     assert worst < 1e-7
 
@@ -344,7 +350,10 @@ def test_differential_phase_with_finite_priors_is_a_dense_gaussian(written):
     worst = 0.0
     for params in (TRUTH, OTHER):
         got = block(scene(*params), data, base)
-        worst = max(worst, abs(got - prior_reference(tables, params, widths)))
+        want = prior_reference(tables, params, widths)
+        gap = abs(got - want)
+        assert np.isfinite(gap), (got, want)
+        worst = max(worst, gap)
     record("max_abs_dloglike", worst)
     assert worst < 1e-7
 

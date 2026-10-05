@@ -71,6 +71,16 @@ CRITERIA = {
 }
 
 
+def virgil_commit():
+    """The virgil commit the campaign runs: the OzSTAR job's pinned snapshot
+    (PIN_COMMIT, from its submit.sh), else the installed package's record."""
+    import os
+
+    from evidence.meta import virgil_source
+
+    return os.environ.get("PIN_COMMIT") or virgil_source()["commit"]
+
+
 def criteria_hash():
     return hashlib.sha256(json.dumps(CRITERIA, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -180,7 +190,11 @@ def run(args):
         t0 = time.time()
         results.append(replicate(seed, args.warmup, args.samples, args.chains))
         print(f"replicate seed={seed} elapsed={time.time() - t0:.1f}s ranks={results[-1]['ranks']}", flush=True)
-    record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "criteria_hash": criteria_hash(),
+    commit = virgil_commit()
+    if not commit:
+        raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
+    record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "virgil_commit": commit,
+              "criteria_hash": criteria_hash(),
               "settings": {"warmup": args.warmup, "samples": args.samples, "chains": args.chains},
               "replicates": results, "elapsed_s": time.time() - start}
     path = out_dir / f"task_{args.task:04d}.json"
@@ -200,18 +214,25 @@ def binomial_band(n, p, level):
 def aggregate(args):
     from scipy import stats
 
-    reps, hashes, versions = [], set(), set()
+    reps, hashes, versions, commits = [], set(), set(), set()
     for d in args.dirs:
         for f in sorted(pathlib.Path(d).glob("task_*.json")):
             r = json.loads(f.read_text())
             hashes.add(r["criteria_hash"])
             versions.add(r["virgil"])
+            commits.add(r.get("virgil_commit"))
             reps += r["replicates"]
     if hashes != {criteria_hash()}:
         raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
+    if len(commits) != 1 or None in commits:
+        raise SystemExit(f"the tasks ran on different or unknown virgil commits: {commits}")
+    seeds = [r["seed"] for r in reps]
+    if len(set(seeds)) != len(seeds):
+        raise SystemExit(f"{len(seeds) - len(set(seeds))} replicates repeat a seed: each must be counted once")
     n, L, bins = len(reps), CRITERIA["draws_per_replicate"], CRITERIA["rank_bins"]
     alpha = CRITERIA["family_alpha"] / len(PARAMS)
-    summary = {"replicates": n, "virgil": sorted(versions), "criteria": CRITERIA, "criteria_hash": criteria_hash(),
+    summary = {"replicates": n, "virgil": sorted(versions), "virgil_commit": commits.pop(), "criteria": CRITERIA,
+               "criteria_hash": criteria_hash(),
                "parameters": {}}
     ok = n >= CRITERIA["min_replicates"]
     for name in PARAMS:
@@ -222,9 +243,12 @@ def aggregate(args):
         for level in CRITERIA["coverage_levels"]:
             # truth inside the central interval: rank within its middle fraction
             half = level * (L + 1) / 2
-            inside = np.mean(np.abs(ranks - L / 2) < half)
-            lo, hi = binomial_band(n, level, CRITERIA["coverage_band"])
-            cov[str(level)] = {"coverage": float(inside), "band": [lo, hi], "pass": bool(lo <= inside <= hi)}
+            accepted = np.abs(np.arange(L + 1) - L / 2) < half
+            p_null = float(np.mean(accepted))  # exact: ranks are uniform on 0..L under the null
+            inside = np.mean(accepted[ranks])
+            lo, hi = binomial_band(n, p_null, CRITERIA["coverage_band"])
+            cov[str(level)] = {"coverage": float(inside), "expected": p_null, "band": [lo, hi],
+                               "pass": bool(lo <= inside <= hi)}
         passed = p_value > alpha and all(c["pass"] for c in cov.values())
         ok &= passed
         summary["parameters"][name] = {"chi2_p": p_value, "alpha": alpha, "coverage": cov, "pass": passed,

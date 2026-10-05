@@ -18,6 +18,7 @@ import pathlib
 
 import pytest
 
+from evidence.meta import virgil_source
 from evidence.plugin import record
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -36,6 +37,10 @@ def script():
 def test_sbc_ranks_are_uniform():
     summary = json.loads(SUMMARY.read_text())
     assert summary["criteria_hash"] == script().criteria_hash(), "criteria changed after the campaign ran"
+    installed = virgil_source()["commit"]
+    if summary.get("virgil_commit") != installed:
+        pytest.skip(f"the campaign ran on virgil {str(summary.get('virgil_commit'))[:7]}, not the installed "
+                    f"{str(installed)[:7]}: rerun it")
     for name, p in summary["parameters"].items():
         record(f"chi2_p_{name}", p["chi2_p"])
     record("replicates", summary["replicates"])
@@ -52,3 +57,31 @@ def test_sbc_ranks_and_criteria_are_well_formed():
     assert s.circular_rank([350.0, 355.0, 5.0, 10.0], 359.0) == 2
     assert s.circular_rank([170.0, 180.0, 190.0], 200.0) == 3
     assert s.CRITERIA["draws_per_replicate"] == 99 and s.CRITERIA["family_alpha"] == 0.01
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_sbc_aggregate_refuses_repeats_and_mixed_commits(tmp_path):
+    """Replicates are counted once each, from one virgil commit, and the
+    coverage band uses the exact null probability of the accepted ranks."""
+    import argparse
+    import subprocess
+    import sys
+
+    s = script()
+    rep = {"seed": 1, "truth": {}, "ranks": {p: 50 for p in s.PARAMS}, "ess": {p: 1e3 for p in s.PARAMS},
+           "rhat": {p: 1.0 for p in s.PARAMS}, "divergences": 0}
+    task = {"task": 0, "virgil": "x", "virgil_commit": "a" * 40, "criteria_hash": s.criteria_hash(),
+            "replicates": [rep]}
+    (tmp_path / "task_0000.json").write_text(json.dumps(task))
+    run = lambda *dirs: subprocess.run([sys.executable, str(ROOT / "scripts" / "sbc_numpyro.py"), "aggregate",  # noqa: E731
+                                        *map(str, dirs)], capture_output=True, text=True)
+    assert run(tmp_path).returncode == 0
+    assert "repeat a seed" in run(tmp_path, tmp_path).stderr
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "task_0001.json").write_text(json.dumps({**task, "virgil_commit": "b" * 40,
+                                                      "replicates": [{**rep, "seed": 2}]}))
+    assert "different or unknown virgil commits" in run(tmp_path, other).stderr
+    L = s.CRITERIA["draws_per_replicate"]
+    accepted = sum(abs(r - L / 2) < 0.95 * (L + 1) / 2 for r in range(L + 1))
+    assert accepted == 94  # so the 95% interval's null coverage is 0.94, not 0.95
