@@ -248,8 +248,19 @@ chain rule.
 | `StarletL1` and `starlet` (1, 3, 4 scales) | à-trous B3-spline transform written with SciPy (Starck, Murtagh & Fadili 2010) | Mathematics | 1e-15; details + coarse = image |
 | `LogSum` | its formula and pixel gradient | Mathematics | 1e-15 |
 
+### Against eht-imaging's transform and data term
+
+`tests/test_ehtim_imaging.py`. eht-imaging has no OIFITS reader, so it is
+given arrays read from our files with astropy.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `Image.model` (16², 15², 20² random images; three pixel sizes) | eht-imaging's `ftmatrix`, delta pixel response: virgil's visibility is its complex conjugate (eht-imaging's transform has the opposite sign; same pixel orientation, North row 0, East column 0) | eht-imaging | 1e-13 |
+| control | flipped images, or no conjugate | eht-imaging | differ by > 1e-2 |
+| closure-phase χ² of random images, three-telescope file, 2° noise | `chisq_cphase` × N (its 2(1 − cos Δ) is virgil's chord²) | eht-imaging | 1e-10 |
+
 Not yet: regularised image reconstructions end to end against eht-imaging's
-imager on the same files.
+imager on the same data.
 
 ## Correlated closure phases against fouriever
 

@@ -42,7 +42,45 @@ def _scatter(values, mask, ny, nx):
     return full.reshape(ny, nx).tolist()
 
 
-TASKS = {"regularisers": regularisers}
+def ft(task):
+    """eht-imaging's direct Fourier transform (obs_helpers.ftmatrix) of an
+    image (ny, nx; row 0 and column 0 as eht-imaging stores them) with
+    pixel size pdim (rad) at spatial frequencies uv (wavelengths), with the
+    delta-function pixel response (no pixel smoothing)."""
+    from ehtim.observing import obs_helpers, pulses
+
+    im = np.asarray(task["image"], float)
+    ny, nx = im.shape
+    A = obs_helpers.ftmatrix(float(task["pdim"]), nx, ny, np.asarray(task["uv"], float),
+                             pulse=pulses.deltaPulse2D)
+    vis = A @ im.ravel()
+    return {"re": vis.real.tolist(), "im": vis.imag.tolist()}
+
+
+def chisq_cphase(task):
+    """eht-imaging's closure-phase chi-squared (imager_utils.chisq_cphase,
+    (2/N) sum (1 - cos(data - model)) / sigma^2) of an image, for triangles
+    given by their first two baselines (u1, v1), (u2, v2) in wavelengths,
+    OIFITS convention, closure phases and errors in degrees.
+
+    eht-imaging's transform uses exp(+2 pi i (u x + v y)); for a real image
+    that is the OIFITS visibility at (-u, -v), so the baselines are negated
+    here, and the triangle closes with (u3, v3) = -(u1 + u2, v1 + v2)."""
+    from ehtim.imaging import imager_utils as iu
+    from ehtim.observing import obs_helpers, pulses
+
+    im = np.asarray(task["image"], float)
+    ny, nx = im.shape
+    uv1 = -np.asarray(task["uv1"], float)
+    uv2 = -np.asarray(task["uv2"], float)
+    uv3 = -uv1 - uv2
+    A = [obs_helpers.ftmatrix(float(task["pdim"]), nx, ny, uv, pulse=pulses.deltaPulse2D) for uv in (uv1, uv2, uv3)]
+    cp, sigma = np.asarray(task["cp_deg"], float), np.asarray(task["sigma_deg"], float)
+    value = iu.chisq_cphase(im.ravel(), A, cp, sigma)
+    return {"chisq": float(value), "n": int(cp.size)}
+
+
+TASKS = {"regularisers": regularisers, "ft": ft, "chisq_cphase": chisq_cphase}
 
 if __name__ == "__main__":
     task = json.load(open(sys.argv[1]))
