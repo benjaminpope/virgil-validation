@@ -200,9 +200,9 @@ def test_linear_flux_and_gaussian_prior_evidence(tmp_path, flux):
                 return np.exp(-0.5 * (np.sum((r0 + g * f) ** 2) - np.sum(r0**2))) * stats.norm.pdf(f, m, sd)
 
             log_b = np.log(integrate.quad(integrand, m - 15 * sd, m + 15 * sd, points=[f_hat], limit=500)[0])
-            worst_f = max(worst_f, abs(float(out["flux"][i, j]) - f_hat) / s_hat,
-                          abs(float(out["flux_error"][i, j]) / s_hat - 1))
-            worst_b = max(worst_b, abs(float(out["log_bayes_factor"][i, j]) - log_b))
+            worst_f = max(worst_f, abs(float(out.flux[i, j]) - f_hat) / s_hat,
+                          abs(float(out.flux_error[i, j]) / s_hat - 1))
+            worst_b = max(worst_b, abs(float(out.log_bayes_factor[i, j]) - log_b))
     record("max_flux_difference_in_sigma", worst_f)
     record("max_abs_dlogB_linear_model", worst_b)
     assert worst_f < 1e-5
@@ -227,7 +227,7 @@ def test_gaussian_prior_evidence_is_the_true_one_without_a_companion(tmp_path):
                 return np.exp(-0.5 * (ours.chi2(d, binary_vis(f, x, y)) - null)) * stats.norm.pdf(f, m, sd)
 
             log_b = np.log(integrate.quad(integrand, m - 15 * sd, m + 15 * sd, limit=500)[0])
-            worst = max(worst, abs(float(out["log_bayes_factor"][i, j]) - log_b))
+            worst = max(worst, abs(float(out.log_bayes_factor[i, j]) - log_b))
     record("max_abs_dlogB_true", worst)
     assert worst < 0.01
 
