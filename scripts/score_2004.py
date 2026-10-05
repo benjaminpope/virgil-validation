@@ -31,6 +31,15 @@ cross-correlation, and also score the inversion through the origin (the
 closure phases fix the orientation, so the unflipped score is the one that
 counts; the flipped one is reported as a check).
 
+The unpublished details, fitted to the data (V² and closure phases, a
+Nelder-Mead fit, for scoring only), give u = 0.78, a spot contrast of 7.1 and
+B/A = 0.096 (``FITTED``). Even then the truth fits at V² χ²/N ≈ 50 and closure
+χ²/N ≈ 9, so the data carry errors beyond their quoted noise: the 2004 rules
+allowed calibration errors. Other readings of the geometry (PA 120° as the
+minor axis, 5.5 mas as the minor diameter, the spot at PA −30°) fit far worse
+(V² χ²/N 100-1100). Our score moves little between the two truths (campaign
+1: 0.250 published, 0.260 fitted); both are reported.
+
 Published data2 σ/peak (Table 2): BSMEM 0.116, WISARD 0.163, MIRA 0.532,
 VLBMEM 0.798.
 """
@@ -47,6 +56,7 @@ PIXEL = 0.08  # mas
 NPIX = 301  # 24 mas across: A at the centre and B 10 mas east both inside
 U_LD = 0.5  # linear limb darkening at 550 nm for a 7000 K, log g 4 star (assumed)
 WAVEL = 5.5e-7
+FITTED = {"u_ld": 0.78, "spot_contrast": 7.06, "ratio": 0.096}  # see the module docstring
 PUBLISHED = {"BSMEM": 0.116, "WISARD": 0.163, "MIRA": 0.532, "VLBMEM": 0.798}
 MAS = np.pi / 180 / 3600e3
 
@@ -72,7 +82,7 @@ def offset(pa_deg, sep):
     return sep * np.sin(pa), sep * np.cos(pa)
 
 
-def truth_parts(u_ld=U_LD, npix=NPIX, pixel=PIXEL):
+def truth_parts(u_ld=U_LD, npix=NPIX, pixel=PIXEL, spot_contrast=None):
     """A (with its spot) and B, each normalised to unit sum, on the grid."""
     x, y = grid(npix, pixel)
     # A's frame: along the major axis (PA 120°) and across it.
@@ -86,7 +96,8 @@ def truth_parts(u_ld=U_LD, npix=NPIX, pixel=PIXEL):
     star = np.where(inside, 1.0 - u_ld * (1.0 - mu), 0.0)
     sx, sy = offset(150.0, 2.5)
     spot = inside & ((x - sx) ** 2 + (y - sy) ** 2 < 0.5**2)
-    star = np.where(spot, star * planck_ratio(1.5 * 7000.0, 7000.0), star)
+    contrast = planck_ratio(1.5 * 7000.0, 7000.0) if spot_contrast is None else spot_contrast
+    star = np.where(spot, star * contrast, star)
     bx, by = offset(90.0, 10.0)
     companion = (((x - bx) ** 2 + (y - by) ** 2) < 0.25**2).astype(float)
     return star / star.sum(), companion / companion.sum()
@@ -141,8 +152,8 @@ def closure_chi2(image, t3):
     return out
 
 
-def truth_image(ratio, u_ld=U_LD):
-    star, companion = truth_parts(u_ld)
+def truth_image(ratio, u_ld=U_LD, spot_contrast=None):
+    star, companion = truth_parts(u_ld, spot_contrast=spot_contrast)
     img = star + ratio * companion
     return img / img.sum()
 
@@ -238,6 +249,13 @@ def main():
                      f"(inverted truth {cp_inv:.2f}), ref peak={ref.max():.3e} (published 3.07e-3)")
         for name, (sp, s, peak, shift) in scores.items():
             lines.append(f"  {name:9s} σ/peak={sp:.3f} σ={s:.2e} shift={shift}")
+    ref = truth_image(FITTED["ratio"], FITTED["u_ld"], FITTED["spot_contrast"])
+    box = np.zeros_like(ref, bool)
+    rows, cols = np.nonzero(ref > 0)
+    box[rows.min() - 10 : rows.max() + 11, cols.min() - 10 : cols.max() + 11] = True
+    moved, shift = aligned(resample(entry, fov, NPIX + 2 * MAX_SHIFT), ref)
+    lines.append(f"fitted truth (u_ld={FITTED['u_ld']}, spot contrast {FITTED['spot_contrast']}, B/A={FITTED['ratio']}): "
+                 f"σ/peak={sigma_over_peak(moved, ref, box)[0]:.3f} shift={shift}")
     lines.append("published data2 σ/peak: " + ", ".join(f"{k} {v}" for k, v in PUBLISHED.items()))
     text = "\n".join(lines)
     print(text)
