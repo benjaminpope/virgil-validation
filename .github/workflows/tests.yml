@@ -35,8 +35,8 @@ jobs:
         run: .venv/bin/python scripts/fetch_contests.py --year 2004 2006 2008 2010
       - name: CANDID (own environment, pinned commit)
         run: bash scripts/setup_candid.sh
-      - name: eht-imaging, MPoL and fouriever (own environments, pinned versions)
-        run: bash scripts/setup_external.sh ehtim mpol fouriever
+      - name: eht-imaging, MPoL, fouriever and orbitize! (own environments, pinned versions)
+        run: bash scripts/setup_external.sh ehtim mpol fouriever orbitize
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl

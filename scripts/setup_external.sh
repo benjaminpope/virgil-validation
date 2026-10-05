@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Install the external packages that live in their own environments
-# (.venv-<name>), each at a pinned version: eht-imaging (GPL-3), MPoL (MIT)
-# and fouriever (no licence stated). They are called through
+# (.venv-<name>), each at a pinned version: eht-imaging (GPL-3), MPoL (MIT),
+# fouriever (no licence stated) and orbitize! (BSD-3-Clause; a C extension
+# and a long dependency list: astropy, h5py, ptemcee, rebound, dynesty...). They are called through
 # src/external_bridge/_subprocess.py, never imported here or vendored.
 # CANDID (no PyPI release) has scripts/setup_candid.sh.
-#   bash scripts/setup_external.sh [ehtim] [mpol] [fouriever]
+#   bash scripts/setup_external.sh [ehtim] [mpol] [fouriever] [orbitize]
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 pin() {
@@ -12,10 +13,11 @@ pin() {
     ehtim) echo "ehtim==1.3.2" ;;
     mpol) echo "mpol==0.3.1" ;;
     fouriever) echo "fouriever==0.4.3" ;;
+    orbitize) echo "orbitize==3.4.0" ;;
     *) echo "unknown package: $1" >&2; exit 1 ;;
   esac
 }
-[ $# -eq 0 ] && set -- ehtim mpol fouriever
+[ $# -eq 0 ] && set -- ehtim mpol fouriever orbitize
 for name in "$@"; do
   spec=$(pin "$name")
   uv venv -q --allow-existing --python 3.12 "$ROOT/.venv-$name"
