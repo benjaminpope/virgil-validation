@@ -339,11 +339,10 @@ the rounding, which is why the bisection pointed at it. virgil#190 treats
 pixels with |J e_p|² below (100 ε)² of the maximum as dead. The
 contest script's workaround seed is removed.
 
-Bisected: none on #174's parent (53dd4b5), 18/100 on its merge (2b2df8c).
-So it comes from the new correlated closure-phase residuals (whitened sin Δ
-plus the uncorrelated penalty) as seen by CLEAN's per-pixel Jacobian
-norms. The script seeds CLEAN with a faint uniform floor beside the central
-component, which avoids it, until virgil is fixed.
+Bisection on simulated 4T data found no NaN grids on #174's parent
+(53dd4b5) and 18/100 on its merge (2b2df8c). The root cause above is the
+seed pixel's near-zero |J e_p|; #174 changed only the rounding that
+decided whether that pixel won.
 
 ### C3. Chromatic data
 

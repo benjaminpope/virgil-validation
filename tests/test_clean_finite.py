@@ -1,12 +1,11 @@
-"""Gradient CLEAN must stay finite (finding F12, a regression from virgil#174).
+"""Gradient CLEAN must stay finite (finding F12, fixed in virgil#190).
 
-Since virgil#174 (continuous likelihood for correlated closure phases),
-``virgil.imaging.clean`` without a base scene returns a NaN χ² at its first
-iteration on some grids when the closure phases are correlated (four or
-more telescopes). The file is from our simulator: four VLTI UTs, a binary,
-seven snapshots. On #174's parent no grid failed; on its merge, every even
-size from 34 to 68 at 0.4 mas did. Three telescopes (uncorrelated closure
-phases) never fail and are the control.
+Before virgil#190, ``virgil.imaging.clean`` without a base scene returned
+a NaN χ² at its first iteration on some grids when the closure phases were
+correlated (four or more telescopes). The file is from our simulator: four
+VLTI UTs, a binary, seven snapshots. On #174's parent no grid failed; from
+its merge until #190, every even size from 34 to 68 at 0.4 mas did. Three
+telescopes (uncorrelated closure phases) never failed and are the control.
 """
 
 import numpy as np
