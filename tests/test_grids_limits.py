@@ -128,6 +128,36 @@ def test_absil_limits_by_root_finding(dataset):
     assert worst < 1e-3
 
 
+@pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"])
+@pytest.mark.parametrize("start", [1e-6, 0.5, 0.95], ids=["far-below", "far-above", "saturated"])
+def test_absil_limits_from_a_single_bad_start(dataset, start):
+    """The flux axis only sets the start (virgil#191): a single value far
+    below or far above the limit, where the significance saturates (a
+    flat loss), must still give the root of nsigma = 3. virgil brackets by
+    decades and bisects 14 times in log flux, so its limit is within
+    10^(1/2^14) - 1 = 1.4e-4 of the root."""
+    kind, data, d = dataset
+    if kind != "none":
+        pytest.skip("limits are for companion-free data")
+    xs, ys = np.array([-12.0, 5.0]), np.array([-9.0, 8.0])
+    samples = {"dra": xs, "ddec": ys, "flux": [start]}
+    got = np.asarray(absil_limits(data, vm.BinaryModelCartesian, samples, sigma=3.0))
+    ndof = ours.n_data(d)
+    null = ours.chi2(d, binary_vis(0.0, 0.0, 0.0))
+
+    def significance(f, x, y):
+        ratio = ours.chi2(d, binary_vis(x, y, f)) / null
+        return -special.ndtri_exp(stats.chi2.logsf(ndof * ratio, ndof) - np.log(2.0))
+
+    worst = 0.0
+    for i, x in enumerate(xs):
+        for j, y in enumerate(ys):
+            want = optimize.brentq(lambda f: significance(f, x, y) - 3.0, 1e-6, 1.0, xtol=1e-12)
+            worst = max(worst, abs(got[i, j] / want - 1))
+    record("max_rel_limit_difference", worst)
+    assert worst < 2e-4
+
+
 @pytest.mark.validates("virgil.limits.ruffio_upperlimit", roots=["mathematics"])
 @pytest.mark.parametrize("mean,sigma", [(0.01, 0.01), (0.0, 0.02), (-0.05, 0.01), (-0.3, 0.01), (0.2, 0.01)])
 @pytest.mark.parametrize("percentile", [0.5, 0.84, stats.norm.cdf(2.0), 0.999])

@@ -226,7 +226,8 @@ def test_absil_limits_match_candids_criterion(files, cps):
     """virgil's 3-sigma Absil limits against CANDID's own criterion (its
     chi-squared, its significance, its number of data points) solved
     exactly at each position, on companion-free data with the diameter
-    fixed."""
+    fixed. Before virgil#191 the two agreed to 2e-7 (V²) and 4e-6; since,
+    to virgil's documented bisection precision."""
     path = files[False, cps]
     want = np.array(cb.run({"task": "absil_exact", "path": path, "diam": DIAM, "positions": POSITIONS,
                             "observables": observables(cps)})["f3"]) / 100
@@ -238,7 +239,9 @@ def test_absil_limits_match_candids_criterion(files, cps):
     ])
     worst = np.max(np.abs(got / want - 1))
     record("max_rel_limit_difference", worst)
-    assert worst < (1e-6 if not cps else 1e-5)
+    # virgil bisects 14 times in log flux after bracketing by decades
+    # (virgil#191), so its limit is within 10^(1/2^14) - 1 = 1.4e-4
+    assert worst < 2e-4
 
 
 def _public_vs_exact(path, cps):

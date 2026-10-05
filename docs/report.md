@@ -118,7 +118,8 @@ Ruffio et al. (2018), written with SciPy and mpmath.
 | `likelihood_grid` (9 × 9 positions) | −½ χ² from our own reading of the file | Mathematics | 5e-12 in log-likelihood |
 | `nsigma` | χ² upper tail as a two-sided Gaussian significance (SciPy, in log space) | Mathematics | 2e-13 σ |
 | `optimized_flux_grid`, `laplace_flux_uncertainty_grid` | our best flux (Brent) and the curvature of our χ² | Mathematics | < 1e-3 σ and 0.1 % |
-| `absil_limits` (3σ, companion-free data, 12 positions) | root of nsigma(χ²(f)/χ²(0)) = 3 with the number of data points as degrees of freedom | Mathematics | 5e-7 relative |
+| `absil_limits` (3σ, companion-free data, 12 positions) | root of nsigma(χ²(f)/χ²(0)) = 3 with the number of data points as degrees of freedom | Mathematics | 1e-4 (bisection precision since virgil#191) |
+| `absil_limits` from a single start far below, far above and at saturation (virgil#191) | the same root | Mathematics | 1.4e-4 |
 | `ruffio_upperlimit` (means from 20σ above to 30σ below zero) | truncated-Gaussian quantile at 50 digits (mpmath) | Mathematics | 1.5e-12 relative |
 | flux at the true position over 200 noisy realisations | N(0, 1) pulls | Statistics | mean −0.13, sd 1.09 |
 
@@ -139,7 +140,7 @@ V²-only files test the shared definition exactly.
 | the same with closure phases | CANDID equals our plain-residual χ² (8e-8); virgil equals the chord one, up to 6e-4 lower far from the data | CANDID + Mathematics | definition D5 |
 | `nsigma` (eight cases, 1–27σ) | `_nSigmas` | CANDID | 1e-12 relative |
 | `likelihood_grid` as χ²(binary)/χ²(star) over a 32 × 32 map, 2–12 mas | `chi2Map` at 3 % (its fitted diameter) | CANDID | 1.6e-7 (V²), 8e-4 (with closure phases, D5); same minimum, East = +x |
-| `absil_limits` (3σ, six positions) | CANDID's Absil criterion solved exactly with its own χ² and nσ | CANDID | 2e-7 (V²), 4e-6 (with closure phases) |
+| `absil_limits` (3σ, six positions) | CANDID's Absil criterion solved exactly with its own χ² and nσ | CANDID | 6e-5, virgil's bisection precision since virgil#191 (2e-7 and 4e-6 before) |
 | — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (problem P4) |
 | `fit` and `laplace_cov` (diameter, position, flux) | `fitMap`, with its √χ²_r scaling of the errors undone | CANDID | best fits 4e-4 σ apart; errors within 1.6 % |
 
@@ -259,8 +260,36 @@ given arrays read from our files with astropy.
 | control | flipped images, or no conjugate | eht-imaging | differ by > 1e-2 |
 | closure-phase χ² of random images, three-telescope file, 2° noise | `chisq_cphase` × N (its 2(1 − cos Δ) is virgil's chord²) | eht-imaging | 1e-10 |
 
-Not yet: regularised image reconstructions end to end against eht-imaging's
-imager on the same data.
+### Reconstructions against eht-imaging's imager
+
+`tests/test_ehtim_reconstruction.py`. The two codes get the same simulated
+data: three VLTI UTs, 13 snapshots and 6 channels, with complex Gaussian
+noise on the visibilities of a two-Gaussian scene.
+`crosscheck.simulate.observe_visibilities` writes these for virgil as
+amplitudes (`OI_VIS` `VISAMP`) plus closure phases from the same
+visibilities, and gives the visibilities themselves to eht-imaging.
+
+The weights make the two objectives the same function of the image: ½χ² of
+amplitudes and closure phases plus w Σ(Δb)², using eht-imaging's α_d = N_d/2
+and unnormalised `tv2`. Two small differences of definition remain: the
+edge steps in TSV, and the total flux, which virgil fixes exactly and
+eht-imaging only softly.
+
+| virgil | eht-imaging | Tag | Agreement |
+| --- | --- | --- | --- |
+| `fit` with `TSV`, started from eht-imaging's reconstruction | `Imager.make_image_I` (amplitudes, closure phases, `tv2`, flux) | eht-imaging | virgil's objective no lower than eht-imaging's minimum by more than 5e-8 relative; images equal to 1e-7 (L2), correlation 1 − 1e-14 |
+
+The objective is not convex. From the same smooth start, the two codes'
+parameterisations (softmax against log pixels) can end in different local
+minima, and which one is lower depends on the data. So the comparison is
+made in one basin. The problem is also stiff: the gradient at the shared
+minimum is large, yet any step along it raises the loss.
+
+Problem **P6** (eht-imaging, to raise with approval): under NumPy 2,
+`Obsdata.tlist` and `bllist` turn records into tuples whenever every time
+has the same baselines, which is true of all simulated data, and closure
+phases then fail. Our worker works around it inside eht-imaging's
+`obsdata` module only.
 
 ## Correlated closure phases against fouriever
 
@@ -272,7 +301,7 @@ factors from 0.5 to 2.
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `OIData.cp_noise` correlation matrix | fouriever's `CPCOV` / σσ; our T Tᵀ/3 from the file's station indices | fouriever + Mathematics | exact (1e-16) |
-| χ² with correlated closure phases, equal errors, 12 binaries | fouriever `chi2_bin(cov=True)`, which equals our plain-residual rᵀC⁺r to 1e-15; virgil equals the chord form to 1e-15 | fouriever + Mathematics | 5e-6 at the truth (definition D5 elsewhere) |
+| χ² with correlated closure phases, equal errors, 12 binaries | fouriever `chi2_bin(cov=True)`, which equals our plain-residual rᵀC⁺r to 1e-15; virgil equals its sine-plus-penalty form (since virgil#174) to 1e-15 | fouriever + Mathematics | 5e-6 at the truth (definition D5 elsewhere) |
 | the same, unequal errors | each code's own generalised inverse, written independently | fouriever + Mathematics | 1e-15 each; the two differ by 2–7 % (definition D6) |
 | control: fouriever without its covariance | — | fouriever | differs by 6–12 %, as it should |
 | our plain reference across the ±180° cut (companion brighter than the primary) | fouriever's unwrapped residual | fouriever + Mathematics | 1e-15 (a wrapped reference would be off by up to 100 %) |
