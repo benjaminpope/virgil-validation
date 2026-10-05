@@ -14,7 +14,7 @@ codes disagree, our analytic references decide which is right.
 ## A pool of trusted packages
 
 The external packages are a pool, not a checklist: any link in the
-[trust graph](trust.md) may be validated against whichever of them suits it,
+[trust graph](../docs/trust.md) may be validated against whichever of them suits it,
 and no stage needs every package. Natural pairings:
 
 | Link in virgil | Packages that suit it |
@@ -58,7 +58,7 @@ deliberate PR that reruns everything.
 
 ## Stage 0: install, read, and pin conventions (1 day)
 
-**PMOIRED: done**, see [pmoired_conventions.md](pmoired_conventions.md). **CANDID: done**, see [candid_notes.md](candid_notes.md). **fouriever: done** for correlated closure phases, see [fouriever_notes.md](fouriever_notes.md).
+**PMOIRED: done**, see [pmoired_conventions.md](../docs/method/pmoired.md). **CANDID: done**, see [candid_notes.md](../docs/method/candid.md). **fouriever: done** for correlated closure phases, see [fouriever_notes.md](../docs/method/fouriever.md).
 
 1. Install both in the validation venv and record the versions in
    `docs/results.md`.
@@ -134,7 +134,7 @@ This is the main comparison with CANDID, the code virgil's binary search
 was modelled on.
 
 **CANDID: done** for χ² maps, significance, Absil limits and fits
-(`tests/test_candid.py`, [report](report.md#against-candid)). Still to do:
+(`tests/test_candid.py`, [report](../docs/method/index.md#against-candid)). Still to do:
 the injection method and our own injection-recovery campaigns.
 
 1. χ² maps: CANDID's fit map vs `virgil.grid_fit` (`likelihood_grid`
@@ -161,7 +161,7 @@ matters if not switched off.
 
 ## Stage 5: reporting and CI (1 day)
 
-* Add an "External packages" section to [`report.md`](report.md) with the
+* Add an "External packages" section to [`report.md`](../docs/method/index.md) with the
   tag **CANDID** or **PMOIRED** for each check, and the versions used.
 * `scripts/report.py --external` writes the comparison tables and a
   three-way contrast-curve figure.

@@ -132,6 +132,108 @@ def _check(record):
     }
 
 
+# Reference nodes (our code and other packages) and the page that describes each.
+REFERENCE_DOCS = {
+    "crosscheck": "method/index.md", "crosscheck.sky": "models/visibilities.md",
+    "crosscheck.limb": "models/limb_darkening.md", "crosscheck.elr": "models/rapid_rotators.md",
+    "crosscheck.nrm": "data/masking.md", "external_bridge": "method/index.md", "evidence": "method/index.md",
+    "external_bridge.pmoired_models": "method/pmoired.md", "pmoired": "method/pmoired.md",
+    "orbitize": "method/orbitize.md", "external_bridge.orbitize_bridge": "method/orbitize.md",
+    "candid": "method/candid.md", "external_bridge.candid_bridge": "method/candid.md",
+    "external_bridge.fouriever_worker": "method/fouriever.md", "fouriever": "method/fouriever.md",
+    "ehtim": "imaging/ehtim.md",
+}
+# Pages that are not about one topic: never the explanation of a part.
+NOT_TOPIC_PAGES = {"index.md", "trust.md", "evidence.md", "results.md"}
+
+
+def slugify(text):
+    """The heading anchor Zensical (Python-Markdown's toc) gives a heading."""
+    import unicodedata
+
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    text = re.sub(r"[^\w\s-]", "", text).strip().lower()
+    return re.sub(r"[-\s]+", "-", text)
+
+
+def nav_pages(mkdocs=ROOT / "mkdocs.yml"):
+    """The site's pages in navigation order (docs-relative paths)."""
+    out = []
+
+    def walk(items):
+        for item in items:
+            for value in (item.values() if isinstance(item, dict) else [item]):
+                if isinstance(value, list):
+                    walk(value)
+                elif isinstance(value, str) and value.endswith(".md"):
+                    out.append(value)
+
+    walk(yaml.load(open(mkdocs), Loader=yaml.BaseLoader)["nav"])
+    return out
+
+
+def page_sections(path, docs=ROOT / "docs"):
+    """[(anchor, text)] for each heading of a page, the text running to the next heading."""
+    sections, anchor, buf = [], "", []
+    for line in (docs / path).read_text().splitlines():
+        m = re.match(r"^(#{1,4}) (.+?)\s*$", line)
+        if m:
+            sections.append((anchor, "\n".join(buf)))
+            anchor, buf = ("" if m.group(1) == "#" else slugify(m.group(2))), []
+        else:
+            buf.append(line)
+    sections.append((anchor, "\n".join(buf)))
+    return sections
+
+
+def _mentions(text, dotted, last):
+    """Backticked mentions of a part: `models.X`, `X`, `X(...)`, `virgil.models.X`, `obj.X`."""
+    n = 0
+    for tok in re.findall(r"`([^`]+)`", text):
+        tok = tok.strip()
+        if tok in (dotted, last, "virgil." + dotted) or tok.endswith("." + last) or tok.startswith(last + "("):
+            n += 1
+    return n
+
+
+def resolve_docs(graph, docs=ROOT / "docs", mkdocs=ROOT / "mkdocs.yml"):
+    """Each node's page and section: an explicit `doc:` in the graph, the
+    reference pages above, or the topic page that mentions the part most
+    (its section with the first mention). {node: "path.md#anchor"}."""
+    pages = [p for p in nav_pages(mkdocs) if p not in NOT_TOPIC_PAGES and (docs / p).exists()]
+    sections = {p: page_sections(p, docs) for p in pages}
+    out = {}
+    for name, node in graph["nodes"].items():
+        if node.get("doc"):
+            out[name] = node["doc"]
+            continue
+        if name in REFERENCE_DOCS:
+            out[name] = REFERENCE_DOCS[name]
+            continue
+        dotted = name.removeprefix("virgil.")
+        last = dotted.rsplit(".", 1)[-1]
+        best = None
+        # the topic sections first; the method pages only for parts no topic covers
+        for tier in ([p for p in pages if not p.startswith("method/")], [p for p in pages if p.startswith("method/")]):
+            for p in tier:
+                counts = [(a, _mentions(t, dotted, last)) for a, t in sections[p]]
+                total = sum(c for _, c in counts)
+                if total and (best is None or total > best[0]):
+                    best = (total, p, next(a for a, c in counts if c))
+            if best:
+                break
+        if best:
+            out[name] = best[1] + (f"#{best[2]}" if best[2] else "")
+    return out
+
+
+def doc_url(doc):
+    """docs-relative "path.md#anchor" as the site's directory URL."""
+    path, _, anchor = doc.partition("#")
+    url = path[:-len("index.md")] if path.endswith("index.md") else path[:-3] + "/"
+    return url + (f"#{anchor}" if anchor else "")
+
+
 def build(graph, ledger, records, runs, virgil=None):
     nodes = graph["nodes"]
     by_obj = collections.defaultdict(list)
@@ -437,7 +539,7 @@ def _tables(model):
     return "\n".join(lines)
 
 
-def render(model):
+def render(model, base=""):
     nodes = model["nodes"]
     total = len(nodes)
     counts = model["counts"]
@@ -449,6 +551,7 @@ def render(model):
     real = [p for p in model["pipelines"] if p["data"] == "real"]
     sim = [p for p in model["pipelines"] if p["data"] != "real"]
     slim = {k: {f: n[f] for f in ("id", "verdict", "strong", "weak", "findings", "because", "depends", "dependents", "changed")}
+                | {"doc": base + doc_url(model["docs"][k]) if model.get("docs", {}).get(k) else None}
                 | {"checks": [{f: c[f] for f in ("name", "doc", "outcome", "kind", "headline", "value", "url")} for c in n["checks"]]}
             for k, n in nodes.items()}
     data = json.dumps({"nodes": slim, "verdicts": {k: list(v) for k, v in VERDICTS.items()}, "roots": ROOT_NAMES},
@@ -458,7 +561,7 @@ def render(model):
         "# Can virgil be trusted?\n",
         "virgil's calculations, checked part by part against mathematics, published standards and "
         "independent packages written by other people, then whole chains end to end. "
-        "[How this works](design.md).\n",
+        "[How this works](method/index.md).\n",
         '<div class="vt">',
         f'<div class="vt-head"><div><span class="vt-big">{counts.get("verified", 0)}</span> of {total} parts verified '
         f'<span class="vt-muted">at virgil <code>{e(pin)}</code></span></div><div class="vt-muted">{fresh}</div></div>',
@@ -508,10 +611,13 @@ def main():
     runs, records = load_evidence(args.evidence)
     virgil = args.virgil.expanduser() if args.virgil else None
     model = build(graph, ledger, records, runs, virgil)
-    page = render(model)
-    pathlib.Path(args.out).write_text(page)
-    if args.index:
-        pathlib.Path(args.index).write_text(page)
+    model["docs"] = resolve_docs(graph)
+    out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None
+    docs_root = ROOT / "docs"
+    for path in [out] + ([index] if index else []):
+        # links in the embedded data are resolved by the browser from the page's own URL
+        depth = 0 if path.name == "index.md" and path.parent.resolve() == docs_root.resolve() else 1
+        path.write_text(render(model, "../" * depth))
     if args.json:
         pathlib.Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.json).write_text(json.dumps(model, indent=1, default=str))

@@ -1,4 +1,4 @@
-# Design: bootstrapping trust
+# How trust is built
 
 virgil is largely written by language models (Claude and Copilot), and so are
 most of its tests, which mostly check virgil against other parts of
@@ -45,7 +45,7 @@ by a chain of independent checks.
    only as trustworthy as the model and the data reader.
 4. **When roots disagree, mathematics wins.** If PMOIRED and virgil
    disagree, our analytic references decide which is wrong (as with
-   PMOIRED's ring precision, [P3](pmoired_notes.md)).
+   PMOIRED's ring precision, [P3](pmoired.md)).
 5. **Disagreements are findings, never tolerances.** Each one is kept as a
    test (pinned behaviour plus a strict `xfail` for the fix), fixed in
    virgil by a PR, or reported upstream.
@@ -94,7 +94,7 @@ Where each kind of check lives:
 
 The flow of trust, from the roots up through virgil's objects, and its
 current state are generated from the evidence rather than written by hand:
-see **[Trust](index.md)**, the site's home page. It keeps two questions
+see **[Trust](../index.md)**, the site's home page. It keeps two questions
 apart. The verdict, from the evidence at the virgil commit it ran on, is
 one of: verified; works, but relies on a known bug (or on a part not yet
 verified); known bug, fix pending; partly checked; check failing; or not
@@ -211,7 +211,7 @@ node, linking each check's evidence and test. "Verified at virgil
 ### The mismatch ledger: ours, theirs, or definition
 
 `ledger.yml` replaces the separate findings tables (virgil's findings in
-the README, PMOIRED's in [pmoired_notes.md](pmoired_notes.md)). Every
+the README, PMOIRED's in [pmoired_notes.md](pmoired.md)). Every
 disagreement gets an entry, ruled by a fixed procedure:
 
 1. **Reproduce minimally**: the smallest scene and file that shows it, as a
@@ -312,3 +312,38 @@ In dependency order, each with the root it would rest on:
 
 Related: virgil's own note on [matching PMOIRED's
 features](https://github.com/benjaminpope/virgil/blob/main/design/pmoired_parity.md).
+
+## Kinds of reference
+
+Each check is tagged with the kind of reference virgil is compared with:
+
+| Tag | Meaning |
+| --- | --- |
+| **Analytic** | A closed-form result from a textbook or the physics (Airy pattern `2 J1(x)/x`, Gaussian transforms, the shift theorem, second moments), evaluated with NumPy/SciPy. |
+| **Quadrature** | Our own numerical integral of the brightness distribution: Gauss–Legendre, Gauss–Hermite or trapezoid rules over a point cloud, summed directly. It is checked against the analytic form wherever both exist. |
+| **First principles** | Our own implementation of a standard: uv tracks from Earth rotation (Thompson, Moran & Swenson ch. 4), closure phases and the OIFITS v2 format (Pauls et al. 2005; Duvert et al. 2017). |
+| **dLux** | An independent optical simulator written by other people (Desdoigts et al. 2023), propagating wavefronts through a sampled pupil. |
+| **Statistical** | Ensembles of noisy simulations testing that virgil's uncertainties are calibrated. |
+| **PMOIRED** | Another package's model of the same file (Mérand 2022), evaluated at mapped parameters. |
+| **virgil (internal)** | Agreement between two virgil code paths. Listed only where the other path is itself validated here. |
+
+## What this does and does not establish
+
+The independent code was written by an AI agent (Claude), the same kind of
+author as most of virgil. It reads virgil's *documentation* to learn
+parameter conventions, never its implementation, and `src/crosscheck` cannot
+import virgil (a test enforces it). Shared misconceptions are still possible.
+They are guarded against by:
+
+* checking each of our numerical routes against an analytic form before it
+  is used to judge virgil;
+* taking conventions from external standards (OIFITS sign and orientation,
+  position angle North through East), not from virgil;
+* simulating masking data two ways, by dLux (human-written, by other
+  authors) and by a closed-form interferogram, and requiring them to agree;
+* treating every disagreement as a finding to be explained, never a
+  tolerance to loosen.
+
+External packages written by other people (CANDID, PMOIRED) would be a
+stronger check still: see the [plan](https://github.com/benjaminpope/virgil-validation/blob/main/design/plan_external.md).
+

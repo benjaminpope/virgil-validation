@@ -5,7 +5,7 @@
 direct-imaging community, written and used by people. It is the external
 root of trust for `virgil.orbits`: ephemerides, radial velocities, the
 symmetries of visual orbits, and masses and distances from Kepler's third
-law (see [design](design.md)).
+law (see [design](index.md)).
 
 orbitize! is BSD-3-Clause, but it has a C extension (its Kepler solver) and
 a long dependency list (astropy, h5py, emcee, ptemcee, rebound, dynesty,

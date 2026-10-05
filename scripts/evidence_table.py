@@ -77,7 +77,7 @@ def main(src, dst, virgil_src=None):
         ),
         "",
         "Each cell counts the tests that check the object against that root of",
-        "trust (see [design](design.md)); negative controls and checks of our own",
+        "trust (see [How trust is built](method/index.md)); negative controls and checks of our own",
         "references are included under the object they concern.",
         "",
         "| object | " + " | ".join(roots) + " |",
