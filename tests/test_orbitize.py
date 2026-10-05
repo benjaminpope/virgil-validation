@@ -40,6 +40,7 @@ barycentre.
 """
 
 import math
+import os
 
 import equinox as eqx
 import jax
@@ -675,7 +676,9 @@ def beta_pic_model(pos):
         plx = numpyro.sample("plx", dist.Normal(*PRIORS["plx"]))
         mtot = numpyro.sample("mtot", dist.Normal(*PRIORS["mtot"]))
         sma = jnp.exp(log_sma)
-        period = numpyro.deterministic("period", kepler_period(sma, mtot))
+        # kepler_period with jax.numpy, so that NUTS can trace it
+        period = numpyro.deterministic(
+            "period", 2 * jnp.pi * jnp.sqrt((sma * AU_KM * 1e3) ** 3 / (GM_SUN * mtot)) / 86400.0)
         orbit = vo.KeplerOrbit(period, tau * period, ecc, jnp.degrees(jnp.arccos(cosi)), omega, Omega,
                                sma * plx, t_ref=REF)
         numpyro.factor("positions", data.loglike(orbit))
@@ -684,6 +687,9 @@ def beta_pic_model(pos):
 
 
 @pytest.mark.slow
+@pytest.mark.campaign
+@pytest.mark.skipif(os.environ.get("VALIDATION_CAMPAIGNS") != "1",
+                    reason="campaign (hours): opt in with VALIDATION_CAMPAIGNS=1")
 @pytest.mark.validates("pipeline:orbitize-posterior", "virgil.orbits.PositionData", "virgil.orbits.KeplerOrbit",
                        roots=["orbitize"], tier="C")
 def test_beta_pic_posterior_matches_orbitize(tmp_path):
@@ -694,7 +700,8 @@ def test_beta_pic_posterior_matches_orbitize(tmp_path):
     thinned by 10). The 16th, 50th and 84th percentiles of a_mas, e, i,
     Omega and omega (folded to Omega < 180°) and P must agree within 0.15
     of orbitize!'s posterior standard deviation. Hours of CPU: an OzSTAR
-    campaign (tier C), not CI; written but not yet run.
+    campaign (tier C), run only with VALIDATION_CAMPAIGNS=1 (so not by the
+    weekly CI's unfiltered pytest); written but not yet run.
 
     Definition difference to expect: orbitize!'s sep/PA likelihood treats
     sep and PA as independent Gaussians (PA residual wrapped);

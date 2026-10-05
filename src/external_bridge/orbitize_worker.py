@@ -121,33 +121,39 @@ def posterior(task):
     * ecc: UniformPrior(lo, hi);
     * inc, aop, pan, tau: orbitize!'s defaults, which are the invariant ones
       asked for: SinPrior on [0, pi] (uniform in cos i), and uniform on
-      [0, 2 pi), [0, 2 pi) and [0, 1) (checked and returned);
-    * plx, mtot: the Gaussians of Driver's plx_err and mass_err.
+      [0, 2 pi), [0, 2 pi) and [0, 1) (returned, as the sampler holds them);
+    * plx, mtot: Gaussians (plx_err, mass_err).
+
+    As orbitize!'s "Modifying Priors" tutorial says, a sampler copies the
+    system's priors when it is made, so the System is built and its priors
+    replaced first, and the sampler made from it afterwards (not through
+    Driver, which makes both at once).
 
     Returns the samples of sma, ecc, inc, aop, pan, tau, plx and mtot, and
-    the priors orbitize! used, by name."""
-    from orbitize import driver, priors
+    the priors the sampler used, by name."""
+    from orbitize import priors, read_input, sampler
 
-    d = driver.Driver(task["path"], task["algorithm"], 1, task["mtot"], task["plx"],
-                      mass_err=task["mtot_err"], plx_err=task["plx_err"],
-                      system_kwargs={"tau_ref_epoch": task["tau_ref_epoch"]},
-                      mcmc_kwargs=task.get("mcmc_kwargs") or None)
-    s = d.system
+    data = read_input.read_file(task["path"])
+    s = system.System(1, data, task["mtot"], task["plx"], mass_err=task["mtot_err"], plx_err=task["plx_err"],
+                      tau_ref_epoch=task["tau_ref_epoch"])
     lab = s.param_idx
     pr = task["priors"]
     s.sys_priors[lab["sma1"]] = priors.LogUniformPrior(*pr["sma"])
     assert pr["ecc"][0] == "uniform"
     s.sys_priors[lab["ecc1"]] = priors.UniformPrior(*pr["ecc"][1:])
-    used = {k: repr(s.sys_priors[lab[k]]) for k in ("sma1", "ecc1", "inc1", "aop1", "pan1", "tau1", "plx", "mtot")}
-    if task["algorithm"] == "OFTI":
-        samples = d.sampler.run_sampler(int(task["n"]))
-    else:
-        d.sampler.run_sampler(int(task["n"]), burn_steps=int(task.get("burn", 0)), thin=int(task.get("thin", 1)))
-        samples = d.sampler.results.post
-    samples = np.asarray(samples)
     names = ["sma1", "ecc1", "inc1", "aop1", "pan1", "tau1", "plx", "mtot"]
+    if task["algorithm"] == "OFTI":
+        smp = sampler.OFTI(s)
+        samples = smp.run_sampler(int(task["n"]))
+        used = s.sys_priors
+    else:
+        smp = sampler.MCMC(s, **(task.get("mcmc_kwargs") or {}))
+        smp.run_sampler(int(task["n"]), burn_steps=int(task.get("burn", 0)), thin=int(task.get("thin", 1)))
+        samples = smp.results.post
+        used = smp.priors  # the sampler's own copy (fixed parameters dropped; none here)
+    samples = np.asarray(samples)
     out = {k.rstrip("1"): samples[:, lab[k]].tolist() for k in names}
-    out["priors"] = used
+    out["priors"] = {k: f"{used[lab[k]]!r} {getattr(used[lab[k]], '__dict__', '')}" for k in names}
     return out
 
 

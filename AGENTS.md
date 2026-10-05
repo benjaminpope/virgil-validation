@@ -97,6 +97,7 @@ uv pip install --python .venv/bin/python -e ../drpangloss -e .   # local virgil 
 | Fast tests | `.venv/bin/python -m pytest -m "not slow"` |
 | External packages (PMOIRED) | `uv pip install --python .venv/bin/python -e ".[external]"`, then `.venv/bin/python -m pytest -m external` |
 | Everything (dLux masking, noisy pulls; ~10 min) | `.venv/bin/python -m pytest` |
+| Campaigns (hours; OzSTAR), e.g. the orbitize! posterior | `VALIDATION_CAMPAIGNS=1 .venv/bin/python -m pytest -m campaign` |
 | Regenerate the report and figures | `.venv/bin/python scripts/report.py` |
 | Build the docs site | `uv pip install --python .venv/bin/python mkdocs-material`, `.venv/bin/python scripts/build_docs_index.py`, `.venv/bin/mkdocs build --strict` |
 

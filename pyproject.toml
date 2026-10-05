@@ -29,5 +29,6 @@ markers = [
     "x64: run virgil in float64 (the default in tests/conftest.py)",
     "float32: run virgil in float32",
     "slow: long simulation (weekly job only)",
+    "campaign: hours-long campaign (OzSTAR); skipped unless VALIDATION_CAMPAIGNS=1",
     "external: needs another package (PMOIRED; CANDID via scripts/setup_candid.sh; eht-imaging, MPoL, fouriever, orbitize! via setup_external.sh)",
 ]
