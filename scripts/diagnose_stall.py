@@ -54,7 +54,7 @@ from virgil.likelihood import whitened_residuals  # noqa: E402
 from virgil.plotting import plot_model  # noqa: E402
 
 # (task in contest_images.TASKS, halo): the fits that stalled.
-CASES = [(10, False), (15, False), (9, False), (2, True)]
+CASES = [(3, False), (8, False), (10, False), (15, False)]  # stuck on virgil 98eaf86 (after #174)
 SNAPSHOTS = (10, 30, 100, 300, 1000, 3000, 20000)
 
 
