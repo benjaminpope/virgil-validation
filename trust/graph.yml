@@ -323,7 +323,7 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit, virgil._linear]
-    roots: 2  # RV signs: orbitize! and a closed form (to come)
+    roots: 2  # RV curve and sign: orbitize! and the textbook closed form
     properties: {rv_curve: 2}
 
   virgil._elr:

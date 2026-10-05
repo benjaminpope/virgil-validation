@@ -15,7 +15,8 @@ by a different route, a statistical law, or a published standard.
 * crosscheck.simulate: the noise it draws (V² Gaussian, closure phases
   formed from per-baseline phases) has the stated distributions and
   correlations, and the file holds the uv and errors it was given.
-* crosscheck.orbits: Kepler's equation is solved, and positions equal the
+* crosscheck.orbits: Kepler's equation is solved, the radial velocity is
+  the rate of change of depth, and positions equal the
   Thiele-Innes form of the textbook visual binary, which uses the
   eccentric anomaly and never the true anomaly.
 * crosscheck.disks: the Henyey-Greenstein phase function is normalized with
@@ -150,6 +151,25 @@ def test_kepler_and_thiele_innes():
     # face-on circular orbit: prograde means position angle increases (North through East)
     dra, ddec = orbits.sky_position(np.array([0.0, 0.1]), 0.0, 0.0, 0.0, 0.0)
     assert np.arctan2(dra[1], ddec[1]) > np.arctan2(dra[0], ddec[0])
+
+
+@pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="reference")
+def test_radial_velocity_is_the_rate_of_recession():
+    """The closed-form RV is the time derivative of z (by central differences
+    of our own positions), and the companion recedes through the ascending node."""
+    worst = 0.0
+    for period, t_peri, e, i, w in [(800.0, 120.0, 0.3, 60.0, 40.0), (40.0, 3.0, 0.75, 130.0, 300.0), (90.0, 0.0, 0.0, 35.0, 0.0)]:
+        t, h = np.linspace(0.0, 2 * period, 97), 1e-5 * period
+        mean = [np.mod(2 * np.pi * (tt - t_peri) / period + np.pi, 2 * np.pi) - np.pi for tt in (t - h, t + h)]
+        z = [orbits.depth(orbits.true_anomaly(m, e), e, i, w, 3.0) for m in mean]
+        numeric = (z[1] - z[0]) / (2 * h)
+        rv = orbits.radial_velocity(t, period, t_peri, e, i, w, 3.0)
+        worst = max(worst, np.max(np.abs(rv - numeric)) / np.max(np.abs(rv)))
+    record("max_rel_drv", worst)
+    assert worst < 1e-5
+    # circular orbit, omega = 0: at periastron (u = 0, the ascending node) z = 0 and rising
+    assert orbits.radial_velocity(np.array([0.0]), 90.0, 0.0, 0.0, 35.0, 0.0, 1.0)[0] > 0
+    assert orbits.depth(np.array([0.1]), 0.0, 35.0, 0.0)[0] > 0
 
 
 @pytest.mark.validates("crosscheck.disks", roots=["mathematics"], kind="reference")

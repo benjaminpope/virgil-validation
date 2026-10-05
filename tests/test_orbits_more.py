@@ -3,6 +3,8 @@ against our own textbook Kepler code (crosscheck.orbits) and SciPy.
 
 * KeplerOrbit.relative: positions from crosscheck.orbits (Newton's method
   on Kepler's equation, the visual-binary projection).
+* RVData.model: the textbook radial velocity from crosscheck.orbits, shared
+  between the stars by mass ratio, in km/s by astropy's units.
 * AxialVonMises: exp(kappa cos 2(t - mean)) / (360 I0(kappa)) per degree,
   normalised on [0, 360); t and t + 180 equally likely; samples by KS.
 * orientation_from_varpi, orientation_priors: varpi = Omega + omega, the
@@ -22,6 +24,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from astropy import units as u
 from scipy import integrate, optimize, special, stats
 
 from crosscheck import orbits as co, sky
@@ -50,6 +53,28 @@ def test_kepler_positions_from_the_textbook(elements):
     worst = max(np.max(np.abs(got[0] - dra)), np.max(np.abs(got[1] - ddec))) / elements[-1]
     record("max_rel_position", worst)
     assert worst < 1e-12
+
+
+@pytest.mark.parametrize("elements", ORBITS)
+@pytest.mark.parametrize("star", ["primary", "secondary"])
+@pytest.mark.validates("virgil.orbits.RVData", "virgil.orbits.KeplerOrbit", roots=["mathematics"], property="rv_curve")
+def test_radial_velocities_from_the_textbook(elements, star):
+    """RVData.model against v = gamma + share * K (cos(omega + f) + e cos omega),
+    K = 2 pi a sin i / (P sqrt(1 - e^2)), positive receding, with the
+    primary's share -q/(1+q) and the secondary's 1/(1+q) of the relative
+    velocity, and mas/day at d pc turned into km/s with astropy's units."""
+    period, t_peri, e, inc, omega, Omega, a = elements
+    q, gamma, d = 0.4, -7.5, 48.0
+    o = vo.KeplerOrbit(*elements, t_ref=59000.0)
+    t = np.linspace(59000.0, 59000.0 + 1.7 * period, 41)
+    data = vo.RVData(t, np.zeros_like(t), 1.0, star=star, t_ref=59000.0)
+    got = np.asarray(data.model(o, q, gamma, d))
+    kms = (1 * u.mas / u.day * d * u.pc).to(u.km / u.s, equivalencies=u.dimensionless_angles()).value
+    share = -q / (1 + q) if star == "primary" else 1 / (1 + q)
+    want = gamma + share * kms * co.radial_velocity(t - 59000.0, period, t_peri, e, inc, omega, a)
+    worst = np.max(np.abs(got - want)) / max(np.max(np.abs(want - gamma)), 1e-12)
+    record("max_rel_rv", worst)
+    assert worst < 1e-9
 
 
 @pytest.mark.parametrize("mean,kappa", [(30.0, 0.5), (130.0, 4.0), (350.0, 20.0)])
