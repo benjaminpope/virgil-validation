@@ -211,18 +211,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             from scipy import ndimage
 
             support_c = ndimage.zoom(np.asarray(support, float), n_c / n_img, order=0) > 0.5
-        seed = None
-        if not star:
-            # Workaround for finding F12: since virgil#174, clean() without a
-            # base scene returns NaN at its first iteration on some even grids
-            # with correlated (4+ telescope) closure phases. Seeding a faint
-            # uniform floor beside the central component avoids it.
-            seed = np.full((n_c, n_c), 1e-6)
-            seed[(n_c - 1) // 2, (n_c - 1) // 2] = 1.0
-            if support_c is not None:
-                seed = np.where(np.asarray(support_c), seed, 0.0)
         cleaned = clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
-                        max_iterations=clean_iters, target_chi2_red=1.0, init=seed)
+                        max_iterations=clean_iters, target_chi2_red=1.0)
         restored = np.clip(np.asarray(cleaned.restored(resolution)), 0.0, None)
         if n_c != n_img:
             from scipy import ndimage

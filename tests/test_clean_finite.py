@@ -1,12 +1,11 @@
-"""Gradient CLEAN must stay finite (finding F12, a regression from virgil#174).
+"""Gradient CLEAN must stay finite (finding F12, fixed in virgil#190).
 
-Since virgil#174 (continuous likelihood for correlated closure phases),
-``virgil.imaging.clean`` without a base scene returns a NaN χ² at its first
-iteration on some grids when the closure phases are correlated (four or
-more telescopes). The file is from our simulator: four VLTI UTs, a binary,
-seven snapshots. On #174's parent no grid failed; on its merge, every even
-size from 34 to 68 at 0.4 mas did. Three telescopes (uncorrelated closure
-phases) never fail and are the control.
+Before virgil#190, ``virgil.imaging.clean`` without a base scene returned
+a NaN χ² at its first iteration on some grids when the closure phases were
+correlated (four or more telescopes). The file is from our simulator: four
+VLTI UTs, a binary, seven snapshots. On #174's parent no grid failed; from
+its merge until #190, every even size from 34 to 68 at 0.4 mas did. Three
+telescopes (uncorrelated closure phases) never failed and are the control.
 """
 
 import numpy as np
@@ -49,8 +48,7 @@ def test_clean_is_finite_with_three_telescopes(tmp_path):
     assert all(_finite(data, n) for n in (40, 41, 60))
 
 
-@pytest.mark.xfail(strict=True, reason="F12: clean NaN on even grids with correlated closure phases (virgil#174)")
-@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"])
 def test_clean_is_finite_with_four_telescopes(tmp_path):
     data = _data(tmp_path, UTS)
     assert all(_finite(data, n) for n in (40, 41, 60))
