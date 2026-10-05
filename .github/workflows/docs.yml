@@ -34,7 +34,8 @@ jobs:
           # commit the campaign ran on (freshness against the pin is a note)
           .venv/bin/python scripts/trust.py --evidence trust/evidence/latest.jsonl \
             --evidence trust/evidence/virgil.jsonl --evidence trust/evidence/campaigns.jsonl --virgil virgil-src \
-            --out docs/trust.md --index docs/index.md --json docs/assets/trust.json
+            --out docs/trust.md --index docs/index.md --json docs/assets/trust.json \
+            --findings docs/method/findings.md
           # Zensical, as virgil (it reads mkdocs.yml); strict fails on warnings
           .venv/bin/zensical build --clean --strict
       - uses: actions/upload-pages-artifact@v3

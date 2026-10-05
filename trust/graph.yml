@@ -1,4 +1,4 @@
-# The trust graph (docs/design.md, "Making it traceable").
+# The trust graph (docs/method/index.md, "Making it traceable").
 #
 # nodes: virgil objects (and our own references). For each:
 #   layer:    for the chart (models, orbits, data, likelihood, inference, imaging, references)

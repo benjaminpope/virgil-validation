@@ -6,7 +6,7 @@ which a companion would be ruled out at sigma, and the injection method of
 Gallenne et al. (2015), the flux at which an injected companion would be
 detected at sigma. It runs in its own environment through
 src/external_bridge/fouriever_worker.py and reads our files with its own
-reader; conventions in docs/fouriever_notes.md.
+reader; conventions in docs/method/fouriever.md.
 
 * nsigma: fouriever's util.nsigma, with SciPy and with mpmath, against
   virgil.limits.nsigma.
@@ -23,7 +23,7 @@ reader; conventions in docs/fouriever_notes.md.
   independent, as for JWST NIRISS AMI) with fouriever's covariance against
   virgil's correlated likelihood_grid.
 
-Differences of definition (docs/fouriever_notes.md, the ledger): D7, the
+Differences of definition (docs/method/fouriever.md, the ledger): D7, the
 degrees of freedom of correlated closure phases (fouriever counts all of
 them, virgil the independent ones), 3 % in the four-UT limits, so the
 comparison uses virgil's count in fouriever's criteria; D5, the closure-phase

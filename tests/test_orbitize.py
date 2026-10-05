@@ -6,7 +6,7 @@ the direct-imaging community, written and used by people. It runs in its
 own environment (scripts/setup_external.sh) through
 src/external_bridge/orbitize_bridge.py; virgil never depends on it.
 
-The mapping between the two (docs/orbitize_notes.md, with sources) is the
+The mapping between the two (docs/method/orbitize.md, with sources) is the
 identity on the angles: both arguments of periastron are the companion's,
 and both ascending nodes are the node where the companion recedes. Lengths
 and times map as a_mas = sma * plx, distance_pc = 1000 / plx,

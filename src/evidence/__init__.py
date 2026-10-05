@@ -1,5 +1,5 @@
 """Evidence records: what each test validates, against which roots of
-trust, on exactly which code (docs/design.md, "Making it traceable").
+trust, on exactly which code (docs/method/index.md, "Making it traceable").
 
 Tests declare their claim with a marker::
 

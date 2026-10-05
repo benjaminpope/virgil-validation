@@ -37,3 +37,15 @@ def test_every_part_links_to_a_docs_section():
             bad.append((node, doc, "no such section"))
     record("parts", len(docs))
     assert not bad, bad
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_findings_page_is_the_ledger():
+    """docs/method/findings.md is generated from trust/ledger.yml and lists
+    every finding (regenerate with scripts/trust.py --findings)."""
+    t = trust()
+    ledger = yaml.safe_load(open(ROOT / "trust" / "ledger.yml"))
+    page = (ROOT / "docs" / "method" / "findings.md").read_text()
+    assert page == t.render_findings(ledger), "stale: rerun scripts/trust.py --findings docs/method/findings.md"
+    missing = [x["id"] for x in ledger if f'id="{x["id"]}"' not in page]
+    assert not missing, missing

@@ -1,4 +1,4 @@
-# The mismatch ledger (docs/design.md): every disagreement found, its ruling
+# The mismatch ledger (docs/method/index.md): every disagreement found, its ruling
 # and how it was refereed.
 #
 # ruling: virgil | external:<package> | definition | crosscheck

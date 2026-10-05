@@ -87,7 +87,7 @@ def pytest_collection_modifyitems(config, items):
     missing = [item.nodeid for item in items if not _claims(item)]
     if missing and config.getoption("--require-validates"):
         raise pytest.UsageError(
-            "tests without a validates marker (docs/design.md):\n  "
+            "tests without a validates marker (docs/method/index.md):\n  "
             + "\n  ".join(missing)
         )
 

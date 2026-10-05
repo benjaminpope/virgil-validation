@@ -3,7 +3,7 @@
 PMOIRED reads one of our OIFITS files and returns its model V^2 and closure
 phases with the uv coordinates it used for each sample; virgil is evaluated
 at exactly those coordinates. Parameters are mapped with the conventions
-pinned in Stage 0 (docs/pmoired_conventions.md).
+pinned in Stage 0 (docs/method/pmoired.md).
 """
 
 import numpy as np
@@ -29,7 +29,7 @@ def vlti_file(tmp_path_factory):
     """A carrier file: 4 UTs, 5 hour angles, 6 channels. Its values do not
     matter (both codes are compared at the file's coordinates). PMOIRED
     computes rings exactly only up to 30 samples per baseline (epochs x
-    channels); beyond that they carry ~1e-4 errors (docs/pmoired_notes.md),
+    channels); beyond that they carry ~1e-4 errors (docs/method/pmoired.md),
     so this file stays at 30."""
     path = tmp_path_factory.mktemp("s1") / "vlti.fits"
     simulate.observe(
@@ -254,7 +254,7 @@ def test_modulated_rim_definitions_differ(vlti_file):
     profile I_m instead of I_0. PMOIRED matches our quadrature of its
     definition; virgil matches ours of its own (tests/test_visibilities.py);
     the two differ at O(m^2 sigma^2 / r0^2). Ruled a difference of
-    definition (docs/pmoired_conventions.md)."""
+    definition (docs/method/pmoired.md)."""
     amps, pas = (0.5, 0.2), (120.0, 75.0)
     r0, s = RIM["diam"] / 2, SIGMA
     separable = sky.inclined_annulus(

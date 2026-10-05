@@ -11,7 +11,7 @@ The ambiguous mappings (position axes and closure-phase sign, which axis
 `projang` is, what a component without a size is, and the azimuthal
 modulation's angle) also have negative controls: the plausible wrong
 mapping must fail. The others (`ud`, `fwhm`, ring forms, `spatial kernel`)
-are positive checks only. See docs/pmoired_conventions.md.
+are positive checks only. See docs/method/pmoired.md.
 """
 
 import numpy as np

@@ -8,7 +8,7 @@ astrometry and radial velocities. It is installed at a pinned version by
 scripts/setup_external.sh and called, never vendored. This worker imports
 only orbitize!, NumPy, astropy and the standard library.
 
-Elements are orbitize!'s standard basis (docs/orbitize_notes.md): ``sma``
+Elements are orbitize!'s standard basis (docs/method/orbitize.md): ``sma``
 (au), ``ecc``, ``inc``, ``aop``, ``pan`` (radians; ``aop`` is the
 companion's argument of periastron), ``tau`` (periastron epoch as a fraction
 of the period after ``tau_ref_epoch``), ``plx`` (mas) and ``mtot`` (M_sun).
