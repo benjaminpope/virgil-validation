@@ -1,7 +1,8 @@
 """A likelihood must be continuous in the model parameters (finding F11).
 
-Found by the imaging-contest stalls (docs/plan_imaging_contests.md). For
-closure phases from four or more telescopes, virgil wraps each residual
+Found by the imaging-contest stalls (docs/plan_imaging_contests.md) and
+fixed in virgil#174. Before the fix, for closure phases from four or more
+telescopes, virgil wrapped each residual
 into [-π, π), takes its chord 2 sin(Δ/2), then whitens the chords
 together. A chord changes sign under Δ → Δ + 2π. That is harmless in a
 single square, but cross terms then make χ² jump wherever a residual
@@ -68,8 +69,7 @@ def test_three_telescope_chi2_is_continuous(tmp_path):
     assert ratio < 200
 
 
-@pytest.mark.xfail(strict=True, reason="F11: correlated closure-phase chords jump at Δ = ±π")
-@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"])
 def test_four_telescope_chi2_is_continuous(tmp_path):
     ratio = _largest_step_ratio(_file(tmp_path, UTS))
     record("max_step_over_median_4t", ratio)

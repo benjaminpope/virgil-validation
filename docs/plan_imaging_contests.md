@@ -330,13 +330,14 @@ and `--halo`:
   `starting_image`'s own: 2018 asked for 386, and CLEAN's per-pixel setup
   cost scales as npix⁴ × N.
 
-**Finding F12 (a regression from virgil#174).** `clean` without a base
-scene returns NaN χ² at its first iteration on some grids when the closure
-phases are correlated (4+ telescopes):
-- the 2004 NPOI data at even sizes with 0.4 mas pixels;
-- simulated 4T data on 18 of 100 grids (every even size from 34 to 68 at
-  0.4 mas);
-- never with three telescopes.
+**Finding F12 (fixed in virgil#190).** Without a base scene, `clean` seeds
+the central pixel, where |J e_p| = 0. On even grids that pixel is half a
+pixel off the origin, so rounding left |J e_p|² ~ 1e-24 instead of
+exactly 0. Its score g²/|J e|² won, and its step (−g over a zero
+curvature) was infinite, so the next χ² was NaN. virgil#174 only changed
+the rounding, which is why the bisection pointed at it. virgil#190 treats
+pixels with |J e_p|² below (100 ε)² of the maximum as dead. The
+contest script's workaround seed is removed.
 
 Bisected: none on #174's parent (53dd4b5), 18/100 on its merge (2b2df8c).
 So it comes from the new correlated closure-phase residuals (whitened sin Δ

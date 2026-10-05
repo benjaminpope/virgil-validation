@@ -49,8 +49,7 @@ def test_clean_is_finite_with_three_telescopes(tmp_path):
     assert all(_finite(data, n) for n in (40, 41, 60))
 
 
-@pytest.mark.xfail(strict=True, reason="F12: clean NaN on even grids with correlated closure phases (virgil#174)")
-@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"])
 def test_clean_is_finite_with_four_telescopes(tmp_path):
     data = _data(tmp_path, UTS)
     assert all(_finite(data, n) for n in (40, 41, 60))
