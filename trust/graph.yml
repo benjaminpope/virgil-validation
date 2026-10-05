@@ -318,6 +318,8 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit]
+    properties: {likelihood: 1, calibration: 1}
+    convention: [calibration]  # the sign of north_angle is virgil's definition
     doc: orbits/kepler.md
   virgil.orbits.RVData:
     layer: orbits
