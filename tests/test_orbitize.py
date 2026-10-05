@@ -358,7 +358,7 @@ def test_thiele_innes_orbit_matches_orbitize(grid):
     assert el_err < 1e-9  # degrees (and relative a): atan2 of the constants
 
 
-@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["mathematics"])
 def test_f15_thiele_innes_node_in_documented_range(grid):
     """to_kepler documents 0 <= Omega < 180. For a node at 180°, whose
     constants carry sin(180°) ~ 1e-16, it returns 180.0 exactly:
@@ -416,7 +416,7 @@ def test_state_vector_orbit_matches_orbitize(grid, runs):
     assert np.max(pos) < 1e-12  # face-on and circular too, since F16's fix
 
 
-@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"], kind="finding")
+@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"])
 def test_f16_state_vector_round_trip_keeps_float64_precision(grid):
     """The state (dra, ddec, vra, vdec, dz, vz, mu) fixes the orbit as
     precisely face-on as edge-on (the inclination is atan2(|h_xy|, h_z) of
@@ -586,7 +586,7 @@ def test_total_mass_and_distance_against_orbitize(grid):
     assert max(worst_mass, worst_dist, worst_round) < 1e-12
 
 
-@pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"], kind="finding")
+@pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"])
 def test_f14_total_mass_is_keplers_third_law(grid):
     """The total mass and dynamical distance of Kepler's third law with the
     IAU nominal GM_sun and au, as orbitize! computes them."""

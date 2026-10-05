@@ -47,7 +47,7 @@ Thiele–Innes constants). Pinned by `tests/test_orbitize.py`.
 | companion RV | `calc_orbit(..., mass_for_Kamp=m0)`: barycentric, positive receding (km/s) | `RVData(star="secondary").model(orbit, q, γ, D)` − γ | identical, with `q = m1 / m0` |
 | primary RV | −`calc_orbit(..., mass_for_Kamp=m1)`; in `System`, −(m₁/m₀) × the companion's | `RVData(star="primary").model(...)` − γ | identical |
 | relative RV | `calc_orbit(..., mass_for_Kamp=mtot)` (the default) | `StateVectorOrbit.vz` (mas/yr) | `vz · D · au / Julian year` |
-| total mass | `mtot` (M☉), with G | `total_mass(orbit, distance_pc)` = a³/P² (au, Julian years) | equal times (365.25 d / 365.2569 d)² = 1 − 3.78e-5 (F14) |
+| total mass | `mtot` (M☉), with G | `total_mass(orbit, distance_pc)` = 4π²a³/(GM☉ P²), a in metres and P in seconds (since virgil#229; before it a³/P² in au and Julian years, F14) | equal to 1e-12 |
 | γ | per instrument, `gamma_<inst>`, fitted only with primary RVs present, then added to every RV row of that instrument | `gamma`, added to every RV | equal when both stars' RVs are given; see P7 |
 
 Positions alone fix the node only modulo 180°. orbitize!'s manual states the
