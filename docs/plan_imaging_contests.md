@@ -298,6 +298,45 @@ gives 363), wide enough for the companion, without using the paper.
 virgil#167 (different INSNAMEs, reversed legs), so this also checks the
 fix against the literature.
 
+### C2b. CLEAN starts and Gaussian-process priors
+
+Two further options in `scripts/contest_images.py`, combinable with `--star`
+and `--halo`:
+
+- **`--init clean`.** virgil's gradient CLEAN (`imaging.clean`, which works
+  on V² and closure phases) runs on a grid of at most 65 pixels over the
+  same field, relative to the analytic star if there is one. Its components,
+  convolved with the beam, become the starting image, resampled to the fine
+  grid. A start with the right layout keeps closure-phase residuals away
+  from ±π (F11) and places far components, such as the 2004 companion or
+  the 2010 one at about 84 mas. On 2004 data2, CLEAN puts 6% of the flux
+  more than 5 mas East and 2% more than 5 mas West, matching the published
+  layout. It fits much better than its inversion (χ² 35 395 vs 57 960).
+- **`--prior gp`.** `GaussianField` log-brightness about the template (the
+  moments or CLEAN image), fitted on a grid of σ ∈ {1, 2, 4} and
+  ℓ ∈ {0.5, 1, 2} × beam minor axis. The fits are compared by
+  `log_evidence`:
+  - *Isotropic*: one correlation length.
+  - *Anisotropic*: lengths (ℓ/√r, ℓ√r) along and across a position angle,
+    via `Image(rotation_deg=PA)`. The axis ratio r and PA come from an
+    elliptical-Gaussian fit to the data. The template is resampled onto the
+    rotated grid, with the rotation's sign checked numerically against
+    virgil's rendering.
+  - Unlike the MaxEnt L-curves, the evidence also compares runs with and
+    without a star on the same data.
+  - Smoke runs: 2022 AMI prefers isotropic (log Z −198 vs −208); 2004
+    data2 with a CLEAN start prefers anisotropic (−27 444 vs −27 451).
+- **Grid cap.** Every grid is capped at 255 pixels, including
+  `starting_image`'s own: 2018 asked for 386, and CLEAN's per-pixel setup
+  cost scales as npix⁴ × N.
+
+**Finding F12.** Without a base scene, `clean` seeds one component at the
+central pixel. There |J e_p| = 0, because more flux on the only component
+leaves normalised visibilities unchanged, so the step score g²/|J e|² is
+0/0. On some grids (2004 data2, 60 px at 0.4 mas) χ² becomes NaN at the
+first iteration. A faint uniform floor added to the seed avoids it; the
+script uses that until virgil is fixed.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
