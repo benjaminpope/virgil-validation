@@ -176,7 +176,8 @@
   evidence:
     - tests/test_frames_from_time.py::test_snapshots_in_time_column_are_separate_frames
     - tests/test_frames_from_time.py::test_simulated_snapshots_have_distinct_mjd
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/203]
 
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)

@@ -248,5 +248,10 @@ pipelines:
             virgil.limits.absil_limits]
   orbitize-posterior:
     title: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors
+    data: real
+    dataset: beta Pic b relative astrometry (orbitize! example data; Nielsen et al. 2020)
+    reference: orbitize!'s posteriors with matched priors
+    headline: percentiles of a, e, i, Omega, omega and P within 0.15 posterior sd
+    state: running
     planned: true  # written (tests/test_orbitize.py, tier C), not yet run: hours, for OzSTAR
     steps: [virgil.orbits.PositionData, virgil.orbits.KeplerOrbit]
