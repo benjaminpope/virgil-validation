@@ -120,6 +120,25 @@ def test_binary_angular(vlti_file):
     assert dv2 < 1e-12 and dcp < 1e-9
 
 
+@pytest.mark.validates("virgil.models.Rotated", roots=["pmoired"], property="rotation_sense")
+@pytest.mark.parametrize("angle", [35.0, 250.0])
+def test_rotation_is_by_position_angle_in_pmoired(vlti_file, angle):
+    """Rotated by an angle, a scene with a companion at position angle 20
+    degrees matches PMOIRED's scene with the companion at 20 + angle (x
+    East, y North): rotation runs North through East."""
+    sep, pa = 7.0, 20.0
+    scene = vm.Rotated(vm.System(star=vm.UniformDisk(1.8), comp=vm.PointSource(0.05, *_east_north(sep, pa))), angle)
+    params = {**pm_ud("star", 1.8), **pm_point("comp", 0.05, *_east_north(sep, pa + angle))}
+    dv2, dcp, cp_max = compare(vlti_file, scene, params)
+    assert cp_max > 1 and dv2 < 1e-10 and dcp < 1e-6
+    wrong = {**pm_ud("star", 1.8), **pm_point("comp", 0.05, *_east_north(sep, pa - angle))}
+    assert compare(vlti_file, scene, wrong)[1] > 100 * max(dcp, 1e-8)  # the other sense: a control
+
+
+def _east_north(sep, pa):
+    return sep * np.sin(np.deg2rad(pa)), sep * np.cos(np.deg2rad(pa))
+
+
 @pytest.mark.validates("virgil.models.UniformDisk", "virgil.models.PointSource", "virgil.models.System", roots=["pmoired"])
 def test_disk_star_and_companion(vlti_file):
     scene = vm.System(
