@@ -127,6 +127,13 @@ nodes:
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
     depends: [virgil.oidata.OIData]
+  virgil.gains.closure_offsets:  # analytic marginalisation of closure-phase offsets
+    layer: likelihood
+    source: [src/virgil/gains.py, src/virgil/likelihood.py]
+    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise]
+  virgil.orbits.RVData:  # RV zero points marginalised (the Keplerian model is its own question)
+    layer: likelihood
+    source: [src/virgil/orbits.py]
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
