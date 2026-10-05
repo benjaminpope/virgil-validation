@@ -3,8 +3,12 @@
 Read directly with astropy (not with virgil's reader): V² as Gaussian
 residuals, closure phases as the chord 2 sin(Δ/2) / σ, the residual
 virgil documents for unprojected phases. Closure phases are taken as
-independent, which is exact for a three-telescope array (one triangle per
-snapshot); use such files for comparisons.
+independent by default, which is exact for a three-telescope array (one
+triangle per snapshot). With ``correlated=True`` they are not: closure
+phases of one snapshot and channel that share baselines are correlated as
+in Kammerer et al. (2020, A&A 644, A110, sec. 2.2), with covariance
+C = D^1/2 (T T^T / 3) D^1/2 (T the triangle-by-baseline matrix of +1, +1,
+-1, D the reported variances) and chi-squared r^T C^+ r.
 """
 
 import numpy as np
@@ -33,6 +37,8 @@ def load(path):
                 wl3=np.broadcast_to(wl, shape),
                 cp=np.deg2rad(np.asarray(t3["T3PHI"], float)),
                 dcp=np.deg2rad(np.asarray(t3["T3PHIERR"], float)),
+                t3_mjd=np.asarray(t3["MJD"], float),
+                t3_sta=np.asarray(t3["STA_INDEX"], int),
             )
     return out
 
@@ -41,16 +47,50 @@ def n_data(d):
     return d["v2"].size + (d["cp"].size if "cp" in d else 0)
 
 
-def chi2(d, vis):
-    """Chi-squared of ``vis(u, v, wavel)`` against the loaded data."""
+def triangle_matrix(stations):
+    """T for triangles (a, b, c) given as station triples: rows +1 on ab,
+    +1 on bc, -1 on ac (the closure phase phi_ab + phi_bc - phi_ac), over
+    the baselines they use, each as a sorted station pair."""
+    stations = [tuple(int(s) for s in tri) for tri in stations]
+    baselines = sorted({tuple(sorted(p)) for a, b, c in stations for p in ((a, b), (b, c), (a, c))})
+    index = {b: k for k, b in enumerate(baselines)}
+    T = np.zeros((len(stations), len(baselines)))
+    for row, (a, b, c) in enumerate(stations):
+        for (i, j), sign in (((a, b), 1.0), ((b, c), 1.0), ((a, c), -1.0)):
+            T[row, index[tuple(sorted((i, j)))]] += sign if i < j else -sign
+    return T
+
+
+def chi2(d, vis, correlated=False, chord=True):
+    """Chi-squared of ``vis(u, v, wavel)`` against the loaded data.
+
+    Closure-phase residuals are chords 2 sin(delta/2) (virgil's) or, with
+    ``chord=False``, plain, unwrapped differences between the sum of the
+    model's baseline phases and the data; ``correlated`` as in the module
+    docstring."""
     model_v2 = np.abs(vis(d["u"], d["v"], d["wl"])) ** 2
     total = np.sum(((model_v2 - d["v2"]) / d["dv2"]) ** 2)
     if "cp" in d:
-        t3 = (
-            vis(d["u1"], d["v1"], d["wl3"])
-            * vis(d["u2"], d["v2_"], d["wl3"])
-            * np.conj(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"]))
+        # the model closure phase as the sum of the three baseline phases,
+        # each in (-pi, pi], so it may lie beyond +-pi; the chord is 2 pi
+        # periodic, the plain difference is not wrapped (as in CANDID and
+        # fouriever)
+        model = (
+            np.angle(vis(d["u1"], d["v1"], d["wl3"]))
+            + np.angle(vis(d["u2"], d["v2_"], d["wl3"]))
+            - np.angle(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"]))
         )
-        chord = 2.0 * np.sin((np.angle(t3) - d["cp"]) / 2.0) / d["dcp"]
-        total += np.sum(chord**2)
+        delta = model - d["cp"]
+        r = 2.0 * np.sin(delta / 2.0) if chord else delta
+        if not correlated:
+            total += np.sum((r / d["dcp"]) ** 2)
+        else:
+            for mjd in np.unique(d["t3_mjd"]):
+                rows = np.flatnonzero(d["t3_mjd"] == mjd)
+                T = triangle_matrix(d["t3_sta"][rows])
+                R = T @ T.T / 3.0
+                for k in range(r.shape[1]):  # one channel at a time
+                    s = d["dcp"][rows, k]
+                    C = s[:, None] * R * s[None, :]
+                    total += r[rows, k] @ np.linalg.pinv(C, rcond=1e-10) @ r[rows, k]
     return float(total)

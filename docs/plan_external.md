@@ -58,7 +58,7 @@ deliberate PR that reruns everything.
 
 ## Stage 0: install, read, and pin conventions (1 day)
 
-**PMOIRED: done**, see [pmoired_conventions.md](pmoired_conventions.md). **CANDID: done**, see [candid_notes.md](candid_notes.md).
+**PMOIRED: done**, see [pmoired_conventions.md](pmoired_conventions.md). **CANDID: done**, see [candid_notes.md](candid_notes.md). **fouriever: done** for correlated closure phases, see [fouriever_notes.md](fouriever_notes.md).
 
 1. Install both in the validation venv and record the versions in
    `docs/results.md`.

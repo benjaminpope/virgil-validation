@@ -51,6 +51,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Visibility-only data | V²-only files read and fitted (virgil#158): diameters against the truth, PMOIRED and 200-draw pulls | 1e-6 noise-free; 2e-4 σ from PMOIRED; pulls sd 1.01 |
 | Grids and limits | `likelihood_grid`, `nsigma`, best flux and its error per position, `absil_limits`, `ruffio_upperlimit` against our own chi-squared, Absil et al. 2011 and Ruffio et al. 2018 (SciPy, mpmath) | 5e-12 to 5e-7; flux pulls sd 1.09 |
 | Image regularisers | `TSV`, `TV`, `MaxEntropy` against eht-imaging and MPoL; `Laplacian`, `StarletL1`, `LogSum` against SciPy; values and gradients | 1e-15 |
+| Correlated closure phases | `OIData.cp_noise` and the correlated χ² against fouriever (Kammerer et al. 2020's own code) and our own implementation of that model ([notes](docs/fouriever_notes.md)) | correlation exact; χ² 1e-15 against each code's definition |
 | Against CANDID | χ², `nsigma`, χ² maps, Absil limits and fits on the same files, CANDID in its own environment ([notes](docs/candid_notes.md)) | 2e-7 on V²-only files; with closure phases, the chord/plain residual difference (≤ 8e-4 on maps); fits 4e-4 σ apart |
 | Spectra, flared disks, harmonix wrapper | `PowerLaw`, `BlackBody`, `Tabulated`, chromatic `System`s; `FlaredDiskHG`/`Gaussian`/`PowerLaw` against a direct sum of the documented brightness (Blakely et al. 2024); `HarmonixModel` units and weight | 1e-15 (disks), 1e-12 (spectra; black body 9e-9) |
 | Fits against PMOIRED | the same files fitted by both; best fits, uncertainties, 200-draw pulls | best fits < 0.25 σ apart; errors equal with 3 telescopes; PMOIRED's errors ~10 % small with correlated closure phases (it treats them as independent) |
@@ -97,9 +98,11 @@ Differences with other packages (all in the [ledger](docs/trust.md#ledger)):
 | D2 | PMOIRED | Modulated rims: PMOIRED modulates the profile, virgil blurs a modulated ring | definition |
 | D3 | PMOIRED | PMOIRED treats closure phases as independent; virgil whitens them as a correlated group (virgil's pulls calibrated, PMOIRED's errors ~10 % small) | definition |
 | D4 | PMOIRED, CANDID | Both scale fit uncertainties by √χ²_r | definition |
-| D5 | CANDID | Closure-phase residual: plain difference in CANDID, chord 2 sin(Δ/2) in virgil (equal to O(Δ³); identical on V²-only data) | definition |
+| D5 | CANDID, fouriever | Closure-phase residual: plain difference in CANDID, chord 2 sin(Δ/2) in virgil (equal to O(Δ³); identical on V²-only data) | definition |
+| D6 | fouriever | With unequal closure-phase errors within a group, different generalised inverses of the singular covariance (virgil's is the better calibrated) | definition |
 | P1–P3 | PMOIRED | NaN models with `auto`, ring sampling not the documented Nr, a ~1e-4 ring precision floor ([notes](docs/pmoired_notes.md)) | to raise |
 | P4 | CANDID | Absil limits from `detectionLimit` ~1 % low against its own criterion solved exactly ([notes](docs/candid_notes.md)) | to raise |
+| P5 | fouriever | Closure-phase residual not wrapped: data straddling ±180° give a ~2π residual at the true binary ([notes](docs/fouriever_notes.md)) | raised, [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 
 Nothing else disagreed: every primitive, convention (East, North, position
 angle, OIFITS sign, T3 orientation), the OIFITS reader, the fitter, the
@@ -142,6 +145,7 @@ fast tests on every push and everything weekly against virgil's `main`.
 * Absil et al. 2011, A&A 535, A68; Gallenne et al. 2015, A&A 579, A68 (CANDID)
 * Chael et al. 2016, ApJ 829, 11; Chael et al. 2018, ApJ 857, 23 (eht-imaging)
 * Zawadzki et al. 2023, PASP 135, 064503 (MPoL)
+* Kammerer et al. 2020, A&A 644, A110 (fouriever; correlated closure phases)
 * Starck, Murtagh & Fadili 2010, *Sparse Image and Signal Processing* (starlets)
 * Berger & Segransan 2007, New Astron. Rev. 51, 576
 * Hanbury Brown, Davis, Lake & Thompson 1974, MNRAS 167, 475 (linear
