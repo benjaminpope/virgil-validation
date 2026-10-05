@@ -60,10 +60,10 @@ def test_reference_star_limits():
         assert np.max(np.abs(cross)) < 1e-10
 
 
-CASES = [(0.6, 60.0, 30.0), (0.9, 85.0, 120.0), (0.95, 30.0, 300.0), (0.8, 0.0, 0.0)]
+CASES = [(0.6, 60.0, 30.0), (0.9, 85.0, 120.0), (0.95, 30.0, 300.0), (0.8, 0.0, 0.0), (0.7, 90.0, 45.0)]
 
 
-@pytest.mark.parametrize("omega,inc,pa", CASES, ids=["0.6-i60", "0.9-i85", "0.95-i30", "0.8-pole-on"])
+@pytest.mark.parametrize("omega,inc,pa", CASES, ids=["0.6-i60", "0.9-i85", "0.95-i30", "0.8-pole-on", "0.7-equator-on"])
 @pytest.mark.validates("virgil.models.GravityDarkenedStar", roots=["mathematics"])
 def test_gravity_darkened_star_against_elr11(omega, inc, pa):
     u, v = baselines()
@@ -76,7 +76,10 @@ def test_gravity_darkened_star_against_elr11(omega, inc, pa):
     for n, e in errs.items():
         record(f"max_abs_dV_nlat{n}", e)
     assert errs[128] < 2e-3
-    assert errs[128] < errs[32]  # the mesh converges towards the reference
+    # second order: each doubling of n_lat cuts the error by about 4
+    for coarse, fine in ((32, 64), (64, 128)):
+        record(f"convergence_ratio_{coarse}_{fine}", errs[coarse] / errs[fine])
+        assert 3.0 < errs[coarse] / errs[fine] < 5.0, (coarse, errs)
 
 
 @pytest.mark.parametrize("wavel", [0.7e-6, 1.65e-6, 2.2e-6])
