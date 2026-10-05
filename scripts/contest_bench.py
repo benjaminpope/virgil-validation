@@ -71,6 +71,11 @@ CONFIGS = {
     # The winners' own method: MaxEnt with the CLEAN image as default model,
     # weight by the discrepancy principle (contest_images.run).
     "mem": BASE | {"method": "mem"},
+    # Parametric starts from pre-submission information: an elliptical
+    # limb-darkened star (needs virgil#250) and a point star, each with a
+    # companion search (linear flux map) before CLEAN and the GP.
+    "ellipse_star": BASE | {"star": True, "star_model": "ellipse"},
+    "companion": BASE | {"star": True, "star_model": "point_companion"},
 }
 DROP = ("OI_VIS", "OI_FLUX")
 

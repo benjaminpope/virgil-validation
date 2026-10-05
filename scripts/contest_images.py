@@ -152,6 +152,66 @@ def spec_of(task):
     return task if isinstance(task, dict) else TASKS[task]
 
 
+COMPANION_SNR = 5.0  # a companion is kept when the linear flux map's peak SNR reaches this
+
+
+def fit_primary(data, resolution, star_model, start):
+    """The primary alone, as a parametric model, and its priors (paths
+    relative to the primary). "ellipse": an elliptical limb-darkened disk
+    (linear law, u = 0.5 held fixed: a starting model, the image takes the
+    rest), diameter log-uniform from 0.05 beam to half the starting field,
+    axis ratio and position angle uniform. "point_companion": a point."""
+    if star_model == "point_companion":
+        return vm.PointSource(), {}
+    if not hasattr(vm, "EllipticalLimbDarkenedDisk"):
+        raise RuntimeError("star_model='ellipse' needs virgil with EllipticalLimbDarkenedDisk (virgil#250)")
+    field = float(start.env.pixel_scale_mas * np.shape(start.env.log_brightness)[0])
+    priors = {"diam": dist.LogUniform(0.05 * resolution.minor_mas, 0.5 * field),
+              "ratio": dist.Uniform(0.2, 1.0), "pa": dist.Uniform(0.0, 180.0)}
+    best = None
+    for pa0 in (0.0, 60.0, 120.0):
+        disk = vm.EllipticalLimbDarkenedDisk(resolution.major_mas, ratio=0.8, pa=pa0, u=(0.5,))
+        r = fit(disk, priors, data)
+        chi2 = float(np.sum(r.info["chi2_red"]))
+        if best is None or chi2 < best[0]:
+            best = (chi2, r.model)
+    return best[1], priors
+
+
+def companion_search(data, resolution, primary, primary_priors, start):
+    """Search a linear flux map (virgil.grid_fit.linear_flux_grid) for a
+    companion to ``primary`` over the starting field, a third of a beam per
+    step; datasets are combined by inverse variance. Returns the base (the
+    primary, or System(star=primary, comp=...) refitted) and its priors with
+    paths relative to the scene ("star.<...>"). Positions are uniform within
+    a beam of the peak, the flux ratio log-uniform."""
+    from virgil.grid_fit import linear_flux_grid
+
+    field = float(start.env.pixel_scale_mas * np.shape(start.env.log_brightness)[0])
+    axis = np.arange(-0.5 * field, 0.5 * field + 1e-9, resolution.minor_mas / 3)
+    template = vm.System(star=primary, comp=vm.PointSource(1e-3))
+    samples = {"comp.dra": axis, "comp.ddec": axis, "comp.flux": np.array([1e-3])}
+    datasets = data if isinstance(data, list) else [data]
+    num = den = 0.0
+    for d in datasets:
+        g = linear_flux_grid(d, template, samples)
+        w = 1.0 / np.asarray(g.flux_error) ** 2
+        num, den = num + np.nan_to_num(np.asarray(g.flux) * w), den + np.nan_to_num(w)
+    flux, snr = num / den, num / np.sqrt(den)
+    snr = np.where(flux > 0, snr, 0.0)  # emission only
+    i, j = np.unravel_index(np.argmax(snr), snr.shape)
+    priors = {f"star.{k}": v for k, v in primary_priors.items()}
+    if snr[i, j] < COMPANION_SNR:
+        return primary, priors
+    dra, ddec, beam_ = axis[i], axis[j], resolution.major_mas
+    pair = vm.System(star=primary, comp=vm.PointSource(float(max(flux[i, j], 1e-4)), dra=dra, ddec=ddec))
+    pair_priors = {f"star.{k}": v for k, v in primary_priors.items()} | {
+        "comp.dra": dist.Uniform(dra - beam_, dra + beam_), "comp.ddec": dist.Uniform(ddec - beam_, ddec + beam_),
+        "comp.flux": dist.LogUniform(FLUX_FLOOR, 1.0)}
+    pair = fit(pair, pair_priors, data).model
+    return pair, {f"star.{k}": v for k, v in pair_priors.items()}
+
+
 def flux_priors(flux_cap, sparco=False):
     """Priors on the image's flux relative to the star: log-uniform (a scale),
     and with SPARCO a uniform power-law index (a location on log flux against
@@ -228,8 +288,16 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         alone = fit(vm.UniformDisk(0.5 * resolution.minor_mas), {"diam": diam_prior}, data)
         start = vm.System(star=alone.model, env=start.env)
         star_priors = {"star.diam": diam_prior}
+    elif star and star_model in ("ellipse", "point_companion"):
+        # A parametric start from what contestants were told (2004: "a limb
+        # darkened star with one or more spots"; 2024 Obj2: "a young star with
+        # a suspected companion"): the primary alone, then a companion search,
+        # with the GP image left for the spots and the rest.
+        primary, primary_priors = fit_primary(data, resolution, star_model, start)
+        base, star_priors = companion_search(data, resolution, primary, primary_priors, start)
+        start = vm.System(star=base, env=start.env)
     elif star and star_model != "point":
-        raise ValueError(f"star_model must be 'point' or 'disk', not {star_model!r}")
+        raise ValueError(f"star_model must be 'point', 'disk', 'ellipse' or 'point_companion', not {star_model!r}")
     wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel)) for d in datasets])))
     img0 = image_of(start, star)
     pixel0 = float(img0.pixel_scale_mas)
@@ -280,8 +348,13 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         cleaned = clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
                         max_iterations=clean_iters, target_chi2_red=1.0, gain=clean_gain,
                         base_priors={k.removeprefix("star."): v for k, v in star_priors.items()} or None)
-        if star_priors:  # the diameter CLEAN fitted along with the components
-            start = vm.System(star=cleaned.model.base, env=start.env)
+        if star_priors:  # the base's parameters CLEAN fitted along with the components
+            fitted = cleaned.model
+            if isinstance(start.star, vm.System):  # a System base: its parts are siblings of "clean"
+                fitted_base = vm.System(**{k: v for k, v in fitted.components.items() if k != "clean"})
+            else:
+                fitted_base = fitted.base
+            start = vm.System(star=fitted_base, env=start.env)
         restore = vm_beam(resolution.major_mas * mean_blur, resolution.minor_mas * mean_blur, resolution.pa_deg)
         restored = np.clip(np.asarray(cleaned.restored(restore)), 0.0, None)
         if n_c != n_img:
