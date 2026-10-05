@@ -1,7 +1,7 @@
 # The trust graph (docs/design.md, "Making it traceable").
 #
 # nodes: virgil objects (and our own references). For each:
-#   layer:    for the chart (models, data, likelihood, inference, imaging, references)
+#   layer:    for the chart (models, orbits, data, likelihood, inference, imaging, references)
 #   source:   virgil source files it depends on: evidence measured on a
 #             virgil commit older than the last change to these is stale
 #   depends:  other nodes it is built on; trust propagates upwards only
@@ -9,7 +9,7 @@
 #             2 for conventions a model could get wrong in a correlated way).
 #             Roots come from one pool (src/evidence/__init__.py): mathematics,
 #             standards, statistics, literature, and the trusted packages
-#             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL). Any of
+#             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!). Any of
 #             them may validate any link; no node needs a particular package.
 #
 # pipelines: chains of nodes validated end to end, e.g. by reproducing a
@@ -133,6 +133,10 @@ nodes:
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
     depends: [virgil.oidata.OIData]
+  virgil.gains.closure_offsets:  # analytic marginalisation of closure-phase offsets
+    layer: likelihood
+    source: [src/virgil/gains.py, src/virgil/likelihood.py]
+    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise]
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
@@ -170,6 +174,39 @@ nodes:
     source: [src/virgil/imaging.py]
     depends: [virgil.fitting.fit]
 
+  # -------------------------------------------------------------- orbits
+  # Grounded on orbitize! (Blunt et al. 2020, 2024) and on mathematics (the
+  # documented symmetries) and standards (IAU constants): tests/test_orbitize.py
+  virgil.orbits.KeplerOrbit:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    roots: 2  # conventions (omega, Omega, sense of rotation, dz): orbitize! and mathematics
+  virgil.orbits.ThieleInnesOrbit:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.StateVectorOrbit:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.total_mass:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.distance_pc:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.PositionData:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.RVData:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+    roots: 2  # RV signs: orbitize! and mathematics
+
   virgil._elr:
     layer: models
     source: [src/virgil/_elr.py]
@@ -183,6 +220,8 @@ nodes:
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
+  orbitize: {layer: references}  # the external package itself (problem P7)
+  external_bridge.orbitize_bridge: {layer: references}
   candid: {layer: references}  # the external package itself (problem P4)
   external_bridge.candid_bridge: {layer: references}
   external_bridge.fouriever_worker: {layer: references}
@@ -243,3 +282,12 @@ pipelines:
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,
             virgil.limits.absil_limits]
+  orbitize-posterior:
+    title: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors
+    data: real
+    dataset: beta Pic b relative astrometry (orbitize! example data; Nielsen et al. 2020)
+    reference: orbitize!'s posteriors with matched priors
+    headline: percentiles of a, e, i, Omega, omega and P within 0.15 posterior sd
+    state: running
+    planned: true  # written (tests/test_orbitize.py, tier C), not yet run: hours, for OzSTAR
+    steps: [virgil.orbits.PositionData, virgil.orbits.KeplerOrbit]

@@ -186,10 +186,13 @@ integration.
 | the same, no companion | quadrature of the true likelihood | Mathematics | 2e-3 (with a strong companion the closed form differs by ~0.4 in log B ~ 100–400, the nonlinearity its docs warn of) |
 | `linear_flux_grid(n_iter=5)` with a bright companion (0.3) | a direct optimiser of our own χ² | Mathematics | 1e-6 |
 
-To come, as each lands in virgil: closure-phase offsets, radial-velocity
-zero points (with the conditional mean and covariance), the `OI_FLUX`
-grey scale and `VISPHI` continuum, and the shared `LinearMarginal`
-helper.
+| `OIData.with_closure_offsets`: per-baseline (T e), per-triangle and supplied offsets common to a frame's channels, four UTs | the sines over σ, projected on an orthonormal basis of each channel's triangle column space, against 𝒩(y; 0, QᵀRQ + VVᵀ) | Mathematics | 1e-13 |
+| `RVData.marginal_loglike` and `zero_point_posterior` (three instruments, with and without jitter), given virgil's Keplerian model | 𝒩(m + Aμ, C + AΛAᵀ); the Gaussian conditional of the zero points | Mathematics | 1e-11; 1e-13 |
+
+To come: the `OI_FLUX` grey scale (for a fixed prior: virgil's default
+prior on k is centred on the data's own mean level, which uses the data
+twice and is expected to change), the `VISPHI` continuum operator, and the
+shared `LinearMarginal` helper.
 
 ## Long-baseline interferometry
 
@@ -382,6 +385,23 @@ Jacobian of that mapping.
 | uncertainties with 4 telescopes | PMOIRED | PMOIRED's are 4–6 % smaller: it counts 4 closure phases per snapshot as independent, where virgil whitens them as 3 correlated ones (a difference of definition) |
 | pulls over 200 shared realisations, closure-phase noise from baseline phases (realistic) | PMOIRED + Statistics | virgil sd 1.04 (calibrated, within 1 ± 0.15); PMOIRED sd 1.10 (errors ~10 % small; accepted range 0.85–1.40) |
 | the same with independent noise per triangle | PMOIRED + Statistics | PMOIRED sd 0.98 (calibrated, within 1 ± 0.15); virgil sd 0.95 (conservative) |
+
+## Orbits against orbitize!
+
+`virgil.orbits` against orbitize! 3.4.0 (Blunt et al. 2020, 2024), in its
+own environment (`tests/test_orbitize.py`; conventions and mapping in
+[orbitize_notes.md](orbitize_notes.md)). 47 orbits over e = 0 to 0.95 and
+i = 0° to 179.9°, 121 epochs each.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| orbitize!'s period (self-check) | 2π√(a³/GM☉), IAU constants | Analytic | 2e-15 |
+| `KeplerOrbit.relative`, `separation_pa` | `calc_orbit`, `radec2seppa` | orbitize! | 1e-14 of a |
+| `ThieleInnesOrbit` (design-note constants), `to_kepler` | `calc_orbit` | orbitize! | 1e-14 of a; elements 6e-14° up to the documented twin |
+| `StateVectorOrbit` velocities, μ, positions (well-posed orbits) | finite differences of `calc_orbit`, its relative RV | orbitize! | 1e-9 (finite differences), 1e-15, 2e-14 of a; near face-on 2e-8 (F16) |
+| `RVData`, primary and secondary | `calc_orbit` with `mass_for_Kamp`; `System.compute_model` | orbitize! | 2e-15 of K; 3e-10 through `System` (its Kepler tolerance) |
+| (Ω+180°, ω+180°), ω+180°, i → 180°−i | each code against itself | Analytic, orbitize! | 3e-15; sense of rotation at every epoch |
+| `total_mass`, `distance_pc` | orbitize!'s `mtot`, `plx` | orbitize!, standards | 3.78e-5 and 1.26e-5 (F14) |
 
 ## Findings
 

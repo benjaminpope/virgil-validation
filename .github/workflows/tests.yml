@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: 4eb3fe5e08b7955a13e1b0d575afd617d70ef366
+  VIRGIL_REF: 60c0e226a0ca4e957b3536a19234ab4cf1bb565e
 
 jobs:
   validate:
@@ -25,7 +25,7 @@ jobs:
           if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; fi
           echo "Testing virgil at $ref"
           uv pip install --python .venv/bin/python -e ".[external]" \
-            "virgil-astro @ git+https://github.com/benjaminpope/virgil@$ref"
+            "virgil-astro[orbits] @ git+https://github.com/benjaminpope/virgil@$ref"
       - name: imaging-contest data cache
         uses: actions/cache@v4
         with:
@@ -35,8 +35,8 @@ jobs:
         run: .venv/bin/python scripts/fetch_contests.py --year 2004 2006 2008 2010
       - name: CANDID (own environment, pinned commit)
         run: bash scripts/setup_candid.sh
-      - name: eht-imaging, MPoL and fouriever (own environments, pinned versions)
-        run: bash scripts/setup_external.sh ehtim mpol fouriever
+      - name: eht-imaging, MPoL, fouriever and orbitize! (own environments, pinned versions)
+        run: bash scripts/setup_external.sh ehtim mpol fouriever orbitize
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl
@@ -105,7 +105,7 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python -e ".[external]" \
-            "virgil-astro @ git+https://github.com/benjaminpope/virgil@main"
+            "virgil-astro[orbits] @ git+https://github.com/benjaminpope/virgil@main"
       - name: report
         run: .venv/bin/python scripts/report.py --pulls 200
       - uses: actions/upload-artifact@v4
