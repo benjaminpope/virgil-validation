@@ -208,6 +208,14 @@
   evidence: [tests/test_fouriever_limits.py::test_limits_match_fouriever_exactly]
   status: documented
 
+- id: D8
+  title: CANDID's and fouriever's injection limits refit the primary's uniform-disk diameter to the injected data; virgil's hold every parameter but the flux
+  objects: [virgil.limits.injection_limits]
+  ruling: definition
+  referee: mathematics (with the diameter held, virgil equals CANDID's criterion solved exactly to 6e-6; refitting can only lower chi2_UD, so the limit rises, by 20-34 % here)
+  evidence: [tests/test_candid.py::test_injection_limits_match_candids_criterion]
+  status: documented
+
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
   objects: [external_bridge.pmoired_models]
