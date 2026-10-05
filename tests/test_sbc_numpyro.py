@@ -82,6 +82,9 @@ def test_sbc_aggregate_refuses_repeats_and_mixed_commits(tmp_path):
     (other / "task_0001.json").write_text(json.dumps({**task, "virgil_commit": "b" * 40,
                                                       "replicates": [{**rep, "seed": 2}]}))
     assert "different or unknown virgil commits" in run(tmp_path, other).stderr
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert "no results found" in run(empty).stderr
     L = s.CRITERIA["draws_per_replicate"]
     accepted = sum(abs(r - L / 2) < 0.95 * (L + 1) / 2 for r in range(L + 1))
     assert accepted == 94  # so the 95% interval's null coverage is 0.94, not 0.95
