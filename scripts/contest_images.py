@@ -37,6 +37,7 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 
+import equinox as eqx  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 import matplotlib  # noqa: E402
 import matplotlib.ticker  # noqa: E402
@@ -65,6 +66,7 @@ from virgil.fitting import fit  # noqa: E402
 from virgil.likelihood import whitened_residuals  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.plotting import plot_model  # noqa: E402
+from virgil.spectra import PowerLaw  # noqa: E402
 
 # One task per dataset. Everything here is what contestants had before they
 # submitted (contests/manifest.yml, "presubmission"); nothing revealed in the
@@ -78,7 +80,9 @@ from virgil.plotting import plot_model  # noqa: E402
 TASKS = [
     # 2004: released blind; nothing about field or target.
     dict(label="2004_data1", files=["2004/2004-data1.fits"]),
-    dict(label="2004_data2", files=["2004/2004-data2.fits"]),
+    # The contest page listed "compact source with extended envelope" among the
+    # possible targets, so data2's members also try a halo.
+    dict(label="2004_data2", files=["2004/2004-data2.fits"], halo_members=True),
     # 2006: the clue image (the model at 10 mas resolution) spans 106 mas; the
     # rules allow it only for the field of view, not as a prior.
     dict(label="2006_disk", files=[f"2006/2006-03-0{n}.fits" for n in (3, 4, 5, 6)],
@@ -89,7 +93,9 @@ TASKS = [
       for k, o in ((1, "agb"), (2, "agn")) for b in "JHK"],
     # 2010: a bright source; the grey category was judged as separate images of
     # Low HK channels 1-10 (H) and 11-20 (K) (Contest10.html).
-    dict(label="2010_lowH", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.4, 1.9)),
+    # Challenge.txt gave each channel's SED, so a star and an image with
+    # different spectra (SPARCO) is information contestants had.
+    dict(label="2010_lowH", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.4, 1.9), sparco=True, halo_members=True),
     # 2022: no description found, so the star is inferred from the data, as a
     # contestant could: both are dominated by an unresolved source.
     dict(label="2022_gravity", files=["2022/c_imaging_contest1.fits"], star=True,
@@ -103,12 +109,12 @@ TASKS = [
          star_source="contest page: a hot star with an environment"),
     dict(label="2024_obj1_gravity", files=["2024/Obj1_GRAVITY_2.0-2.5.fits"], star=True,
          star_source="contest page: a hot star with an environment"),
-    dict(label="2024_obj2_pionier", files=["2024/Obj2_PIONIER_1.5-1.8.fits"], star=True,
+    dict(label="2024_obj2_pionier", sparco=True, halo_members=True, files=["2024/Obj2_PIONIER_1.5-1.8.fits"], star=True,
          star_source="contest page: a young star"),
-    dict(label="2024_obj2_gravity", files=["2024/Obj2_GRAVITY_2.0-2.5.fits"], star=True,
+    dict(label="2024_obj2_gravity", sparco=True, halo_members=True, files=["2024/Obj2_GRAVITY_2.0-2.5.fits"], star=True,
          star_source="contest page: a young star"),
     # New tasks go at the end, so that earlier indices keep their meaning.
-    dict(label="2010_lowK", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.9, 2.6)),
+    dict(label="2010_lowK", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.9, 2.6), sparco=True, halo_members=True),
     # 2018: "a young star's disk, with a planet" (readme): a star plus an image.
     dict(label="2018_disk", star=True, star_source="readme: a young star's disk", files=[
         "2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits",
@@ -138,6 +144,21 @@ def image_of(model, star, halo=False):
     return model.env if (star or halo) else model
 
 
+def flux_priors(flux_cap, sparco=False):
+    """Priors on the image's flux relative to the star: log-uniform (a scale),
+    and with SPARCO a uniform power-law index (a location on log flux against
+    log wavelength), relative to the star's: -8 to 8 spans a cool disk against
+    a hot star's Rayleigh-Jeans slope and the reverse."""
+    if sparco:
+        return {"env.flux.ratio": dist.LogUniform(FLUX_FLOOR, flux_cap), "env.flux.index": dist.Uniform(-8.0, 8.0)}
+    return {"env.flux": dist.LogUniform(FLUX_FLOOR, flux_cap)}
+
+
+def flux_value(flux):
+    """A component's flux as a number: a spectrum's ratio at its wavel0."""
+    return float(np.ravel(getattr(flux, "ratio", flux))[0])
+
+
 def select_channels(path, wavel, tmp_dir):
     """A copy of an OIFITS file with every channel outside ``wavel`` (µm)
     flagged, since OIData reads FLAG but cannot select channels itself."""
@@ -155,10 +176,12 @@ def select_channels(path, wavel, tmp_dir):
 
 
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
-          oversample=4.0, clean_gain=0.1):
+          oversample=4.0, clean_gain=0.1, star_model="point", sparco=False):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
-    from the data."""
+    from the data. With a star, ``star_model`` is "point" (unresolved) or
+    "disk" (a uniform disk whose diameter is fitted); ``sparco`` gives the
+    image a power-law spectrum relative to the star's."""
     spec = TASKS[task]
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
@@ -186,6 +209,18 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     if star:
         kwargs["hole_mas"] = 0.5 * resolution.minor_mas
     start = starting_image(data, **kwargs)
+    star_priors = {}
+    if star and star_model == "disk":
+        # Diameter: a scale parameter, so log-uniform, from a twentieth of the
+        # beam (unresolved) to the beam's major axis (beyond that, flux belongs
+        # in the image). Started from a fit of the disk alone.
+        diam_prior = dist.LogUniform(0.05 * resolution.minor_mas, resolution.major_mas)
+        alone = fit(vm.UniformDisk(0.5 * resolution.minor_mas), {"diam": diam_prior}, data)
+        start = vm.System(star=alone.model, env=start.env)
+        star_priors = {"star.diam": diam_prior}
+    elif star and star_model != "point":
+        raise ValueError(f"star_model must be 'point' or 'disk', not {star_model!r}")
+    wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel)) for d in datasets])))
     img0 = image_of(start, star)
     pixel0 = float(img0.pixel_scale_mas)
     n0 = int(np.shape(img0.log_brightness)[0])
@@ -213,6 +248,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         new = vm.Image(log_start, pixel, flux=img0.flux)
         start = vm.System(star=start.star, env=new) if star else new
         img0 = new
+    if sparco and init != "clean":
+        raise ValueError("sparco needs init='clean' (the image's spectrum is set on the CLEAN start)")
     if init == "clean":
         # Gradient CLEAN (virgil.imaging.clean) on the same grid, relative to
         # the analytic star if there is one; its components convolved with
@@ -231,7 +268,10 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
 
             support_c = ndimage.zoom(np.asarray(support, float), n_c / n_img, order=0) > 0.5
         cleaned = clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
-                        max_iterations=clean_iters, target_chi2_red=1.0, gain=clean_gain)
+                        max_iterations=clean_iters, target_chi2_red=1.0, gain=clean_gain,
+                        base_priors={k.removeprefix("star."): v for k, v in star_priors.items()} or None)
+        if star_priors:  # the diameter CLEAN fitted along with the components
+            start = vm.System(star=cleaned.model.base, env=start.env)
         restored = np.clip(np.asarray(cleaned.restored(resolution)), 0.0, None)
         if n_c != n_img:
             from scipy import ndimage
@@ -242,6 +282,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         restored = restored / restored.max() + 1e-3  # a floor, so no pixel starts switched off
         flux = float(np.sum(cleaned.components)) if star else float(img0.flux)
         new = vm.Image(jnp.asarray(np.log(restored)), pix_img, support=support, flux=max(flux, 1e-3))
+        if sparco and star:
+            new = eqx.tree_at(lambda m: m.flux, new, PowerLaw(max(flux, 1e-3), 0.0, wavel0))
         start = vm.System(star=start.star, env=new) if star else new
         img0 = new
         clean_info = (cleaned.stop, float(np.ravel(cleaned.chi2_red)[-1]))
@@ -257,14 +299,16 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     path = "env" if (star or halo) else None
     # With a star, the image flux is relative to it; starting_image can start
     # it well above 1 (5.8 for 2022 GRAVITY), so the prior must reach beyond.
-    flux_cap = max(100.0, 10 * float(img0.flux))
+    flux_cap = max(100.0, 10 * flux_value(img0.flux))
     # Jeffreys priors (Ben, 2026-10-05): fluxes are scale parameters, so
     # log-uniform, with stated bounds.
-    priors = image_priors(start) | ({"env.flux": dist.LogUniform(FLUX_FLOOR, flux_cap)} if star else {})
+    priors = image_priors(start) | (flux_priors(flux_cap, sparco) if star else {}) | star_priors
     if halo:
         priors |= {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)}
     others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
     return dict(label=label, files=files, star=star, halo=halo, data=data, npts=npts,
+                star_model=star_model if star else "none", star_priors=star_priors, sparco=bool(sparco and star),
+                wavel0=wavel0,
                 resolution=resolution, start=start, img0=img0, npix=npix, pixel=pixel, fov=fov,
                 path=path, priors=priors, others=others, q=q, adaptive=field is None,
                 field_source=spec.get("field_source", "data" + (f" x{grow:g}" if grow > 1 else "")),
@@ -407,6 +451,14 @@ def plot(label, curve, index, chosen, npts, img0, star, halo, fov, npix, resolut
 # anisotropic fields, and runs with against without a star (same data).
 GP_SIGMAS = (1.0, 2.0, 4.0)
 GP_LENGTHS = (0.5, 1.0, 2.0)
+# When the evidence's best point lies on an edge of the grid, the grid grows by
+# a factor of 2 in that direction (log-spaced: σ and ℓ are scale parameters),
+# up to GP_GROWTHS times and within these limits (ℓ in beam minor axes). In the
+# first campaign 2004 data2 and 2024 Obj2 GRAVITY chose σ = 4 and ℓ = 0.5 beam,
+# both edges.
+GP_SIGMA_LIMITS = (0.25, 16.0)
+GP_LENGTH_LIMITS = (0.125, 8.0)
+GP_GROWTHS = 3
 
 
 def fit_ellipse(s):
@@ -415,12 +467,12 @@ def fit_ellipse(s):
     fov, star = s["fov"], s["star"]
     best = None
     for pa0 in (0.0, 45.0, 90.0, 135.0):
-        env = vm.EllipticalGaussian(0.3 * fov, 0.7, pa0, flux=float(s["img0"].flux) if star else 1.0)
+        env = vm.EllipticalGaussian(0.3 * fov, 0.7, pa0, flux=flux_value(s["img0"].flux) if star else 1.0)
         scene = vm.System(star=s["start"].star, env=env) if star else vm.System(env=env)
         priors = {"env.fwhm": dist.LogUniform(0.01, fov), "env.ratio": dist.LogUniform(0.05, 1.0),
                   "env.pa": dist.Uniform(pa0 - 90.0, pa0 + 90.0)}
         if star:
-            priors["env.flux"] = dist.LogUniform(FLUX_FLOOR, max(100.0, 10 * float(s["img0"].flux)))
+            priors["env.flux"] = dist.LogUniform(FLUX_FLOOR, max(100.0, 10 * flux_value(s["img0"].flux)))
         r = fit(scene, priors, s["data"])
         chi2 = float(np.sum(r.info["chi2_red"]))
         if best is None or chi2 < best[0]:
@@ -448,18 +500,29 @@ def oriented_template(template, pa_deg, pixel, n):
 
 # Ensemble members (--member m, one per array task): one CLEAN-started GP fit each,
 # with a randomised start, as the 2012 random-start entries, the 2018 winner's
-# chains and PYRA/MYTHRA (2022-24) did. Members alternate the analytic star
-# on and off, so the evidence compares the two on the same data.
-MEMBER_FIELDS = (1.0, 1.5, 2.0)  # x the data-chosen field (contest-given fields stay fixed)
+# chains and PYRA/MYTHRA (2022-24) did. Members cycle the central source through
+# none, an unresolved star and a resolved (uniform-disk) star, so the evidence
+# compares them on the same data: the 2004 contest page listed "a limb darkened
+# star with one or more spots" among the possible targets, and a point star fits
+# a resolved one badly (2004 data2, first campaign: χ²/N 1300 against 21).
+# Tasks with halo_members=True also try an over-resolved halo (members 4-7);
+# tasks with sparco=True give the image its own spectral index.
+MEMBER_STARS = ("point", "none", "disk", "none")
+MEMBER_FIELDS = (1.0, 2.0, 4.0)  # x the data-chosen field (contest-given fields stay fixed)
 MEMBER_OVERSAMPLE = (2.0, 3.0, 4.0)  # pixels per Nyquist pixel
 MEMBER_GAINS = (0.05, 0.1, 0.2)  # CLEAN loop gain
-REF_NPIX = 129  # the common grid members are rendered onto, 2x the base field
+REF_NPIX = 257  # the common grid members are rendered onto, max(MEMBER_FIELDS) x the base field
 
 
 def member_settings(task, member):
+    spec = TASKS[task]
     rng = np.random.default_rng(1000 * task + member)
+    star_model = MEMBER_STARS[member % len(MEMBER_STARS)]
     return {
-        "star": member % 2 == 0,
+        "star": star_model != "none",
+        "star_model": star_model,
+        "halo": bool(spec.get("halo_members", False)) and member % 8 >= 4,
+        "sparco": bool(spec.get("sparco", False)),
         "field": float(rng.choice(MEMBER_FIELDS)),
         "oversample": float(rng.choice(MEMBER_OVERSAMPLE)),
         "clean_gain": float(rng.choice(MEMBER_GAINS)),
@@ -469,20 +532,57 @@ def member_settings(task, member):
 def member_setup(task, data_dir, member, smoke=False):
     settings = member_settings(task, member)
     opts = dict(star=settings["star"], init="clean", clean_iters=50 if smoke else 3000,
-                oversample=settings["oversample"], clean_gain=settings["clean_gain"])
+                oversample=settings["oversample"], clean_gain=settings["clean_gain"],
+                star_model=settings["star_model"], sparco=settings["sparco"])
     if TASKS[task].get("field") is not None:
         settings["field"] = 1.0  # a contest-given field is used as given
-    s = setup(task, data_dir, False, settings["field"], **opts)
+    s = setup(task, data_dir, settings["halo"], settings["field"], **opts)
     s["ref_fov"] = reference_fov(task, data_dir)
     return s, settings
 
 
 def reference_fov(task, data_dir):
-    """The common grid's field for all members of a task: twice the base field
+    """The common grid's field for all members of a task: max(MEMBER_FIELDS) x the base field
     of the task's own configuration (its default star, a moments start), so it
     does not depend on any member's random settings or star choice."""
     base = setup(task, data_dir, False, 1.0, star=None, init="moments")
-    return 2.0 * base["fov"]
+    return max(MEMBER_FIELDS) * base["fov"]
+
+
+def grow_grid(evaluate, lengths, sigmas, length_limits, sigma_limits, growths):
+    """Evaluate ``evaluate(ℓ, σ)`` (a log evidence) on the grid ``lengths`` x
+    ``sigmas``. While the best point lies on an edge that can move (within the
+    limits), add a row or column a factor of 2 beyond it, up to ``growths``
+    times. Returns the sorted axes and a dict of values keyed by (ℓ, σ)."""
+    ls, ss = sorted(lengths), sorted(sigmas)
+    values = {}
+
+    def fill():
+        for ell_ in ls:
+            for sig in ss:
+                if (ell_, sig) not in values:
+                    values[ell_, sig] = evaluate(ell_, sig)
+
+    fill()
+    for _ in range(growths):
+        ell_, sig = max(values, key=lambda k: values[k] if np.isfinite(values[k]) else -np.inf)
+        grew = False
+        if ell_ == ls[0] and ell_ / 2 >= length_limits[0]:
+            ls.insert(0, ell_ / 2)
+            grew = True
+        elif ell_ == ls[-1] and ell_ * 2 <= length_limits[1]:
+            ls.append(ell_ * 2)
+            grew = True
+        if sig == ss[0] and sig / 2 >= sigma_limits[0]:
+            ss.insert(0, sig / 2)
+            grew = True
+        elif sig == ss[-1] and sig * 2 <= sigma_limits[1]:
+            ss.append(sig * 2)
+            grew = True
+        if not grew:
+            break
+        fill()
+    return ls, ss, values
 
 
 def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None):
@@ -500,11 +600,12 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     fov = n * pixel
     template = np.asarray(img0.brightness).reshape(n, n)
     support = getattr(img0, "support", None)
-    flux0 = float(img0.flux)
-    flux_cap = max(100.0, 10 * flux0)
+    flux0 = img0.flux  # a number, or with SPARCO a PowerLaw
+    flux_cap = max(100.0, 10 * flux_value(flux0))
     ell = fit_ellipse(s)  # (chi2, ratio, pa, fwhm)
-    sigmas = GP_SIGMAS[1:2] if smoke else GP_SIGMAS
-    lengths = [f * res.minor_mas for f in (GP_LENGTHS[1:2] if smoke else GP_LENGTHS)]
+    sigmas0 = GP_SIGMAS[1:2] if smoke else GP_SIGMAS
+    lengths0 = [f * res.minor_mas for f in (GP_LENGTHS[1:2] if smoke else GP_LENGTHS)]
+    length_limits = [f * res.minor_mas for f in GP_LENGTH_LIMITS]
     options = {"max_steps": 50} if smoke else {}
 
     def scene(field, rotation):
@@ -515,50 +616,64 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         return vm.System(**parts)
 
     others = () if star else (Centroid(0.1 * res.minor_mas, path="env"),)
-    extra = ({"env.flux": dist.LogUniform(FLUX_FLOOR, flux_cap)} if star else {}) | ({"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {})
+    extra = ((flux_priors(flux_cap, s["sparco"]) | s["star_priors"]) if star else {}) | (
+        {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {})
     variants = {"iso": (template, 0.0, lambda length: length)}
     if ell[1] < 0.9:  # elongated enough for an anisotropic field to differ
         r = ell[1]
         variants["aniso"] = (oriented_template(template, ell[2], pixel, n), ell[2],
                              lambda length: (length / np.sqrt(r), length * np.sqrt(r)))
-    results, log_z = {}, {}
+    results, log_z, axes = {}, {}, {}  # results[name, ℓ, σ]; log_z[name][i, j] over axes[name] = (ℓs, σs)
     for name, (mean, rotation, lens) in variants.items():
-        grid = np.full((len(lengths), len(sigmas)), np.nan)
         previous = None
-        for i, length in enumerate(lengths):
-            for j, sigma in enumerate(sigmas):
-                field = GaussianField(np.zeros((n, n)), sigma, lens(length), mean=mean)
-                sc = scene(field, rotation)
-                r_ = fit(sc, image_priors(sc) | extra, data, others,
-                         init=None if previous is None else previous.values, **options)
-                previous = r_
-                grid[i, j] = float(log_evidence(r_, data))
-                results[name, i, j] = r_
-        log_z[name] = grid
-    best = max(((name, i, j) for name, g in log_z.items() for (i, j), _ in np.ndenumerate(g)),
-               key=lambda k: log_z[k[0]][k[1], k[2]])
-    winner = results[best]
+
+        def evaluate(length, sigma, name=name, mean=mean, rotation=rotation, lens=lens):
+            nonlocal previous
+            field = GaussianField(np.zeros((n, n)), sigma, lens(length), mean=mean)
+            sc = scene(field, rotation)
+            r_ = fit(sc, image_priors(sc) | extra, data, others,
+                     init=None if previous is None else previous.values, **options)
+            previous = r_
+            results[name, length, sigma] = r_
+            return float(log_evidence(r_, data))
+
+        ls, ss, values = grow_grid(evaluate, lengths0, sigmas0, length_limits, GP_SIGMA_LIMITS,
+                                   0 if smoke else GP_GROWTHS)
+        axes[name] = (ls, ss)
+        log_z[name] = np.array([[values[ell_, sig] for sig in ss] for ell_ in ls])
+    best_of = {name: np.unravel_index(np.nanargmax(g), g.shape) for name, g in log_z.items()}
+    best_name = max(log_z, key=lambda k: np.nanmax(log_z[k]))
+    i_b, j_b = best_of[best_name]
+    best_length, best_sigma = axes[best_name][0][i_b], axes[best_name][1][j_b]
+    winner = results[best_name, best_length, best_sigma]
+    best_log_z = float(log_z[best_name][i_b, j_b])
 
     # Error-scale check (MacKay's fixed point, virgil.imaging.error_scale): the
     # evidence assumes correct error bars, which several contest datasets
     # break on purpose. Far from 1, refit the winner with rescaled errors.
     datasets = data if isinstance(data, list) else [data]
     scale = float(error_scale(winner.model, data))
+    # MacKay's effective number of parameters, from s² = χ²/(N − γ).
+    n_indep = sum(d.n_independent for d in datasets)
+    chi2_winner = float(np.sum(np.asarray(winner.info["chi2_red"]) * np.asarray([d.n_independent for d in datasets])))
+    gamma = n_indep - chi2_winner / scale**2
     rescaled = None
     if not 1 / 1.3 < scale < 1.3:
         data_s = [d.with_error_scale(scale) for d in datasets]
         data_s = data_s if isinstance(data, list) else data_s[0]
-        name, i, j = best
-        mean, rotation, lens = variants[name]
-        field = GaussianField(np.zeros((n, n)), sigmas[j], lens(lengths[i]), mean=mean)
+        mean, rotation, lens = variants[best_name]
+        field = GaussianField(np.zeros((n, n)), best_sigma, lens(best_length), mean=mean)
         sc = scene(field, rotation)
         rr = fit(sc, image_priors(sc) | extra, data_s, others, init=winner.values, **options)
         rescaled = {"scale": scale, "log_z": float(log_evidence(rr, data_s)),
                     "chi2_red": float(np.sum(rr.info["chi2_red"])), "result": rr}
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    best_of = {name: max(((i, j) for (i, j), _ in np.ndenumerate(g)), key=lambda k: g[k]) for name, g in log_z.items()}
-    images = {name: np.asarray(results[(name, *ij)].model.env.render(n, fov)) for name, ij in best_of.items()}
+    def best_result(name):
+        i, j = best_of[name]
+        return results[name, axes[name][0][i], axes[name][1][j]]
+
+    images = {name: np.asarray(best_result(name).model.env.render(n, fov)) for name in log_z}
     final = rescaled["result"] if rescaled else winner
     member_extra = {}
     if settings is not None:
@@ -568,9 +683,13 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
             # no-star members compare like with like; the environment alone too.
             ref_image=np.asarray(final.model.render(REF_NPIX, ref_fov)),
             ref_env=np.asarray(final.model.env.render(REF_NPIX, ref_fov)), ref_fov=ref_fov,
-            star=settings["star"], field_factor=settings["field"], oversample=settings["oversample"],
-            clean_gain=settings["clean_gain"], env_flux=float(final.model.env.flux),
-            best_log_z=float(log_z[best[0]][best[1], best[2]]),
+            star=settings["star"], star_model=settings["star_model"], halo=settings["halo"],
+            sparco=settings["sparco"], field_factor=settings["field"], oversample=settings["oversample"],
+            clean_gain=settings["clean_gain"], env_flux=flux_value(final.model.env.flux),
+            env_index=float(np.ravel(getattr(final.model.env.flux, "index", np.nan))[0]),
+            star_diam=float(np.ravel(getattr(final.model.star, "diam", np.nan))[0]) if settings["star"] else np.nan,
+            n_independent=n_indep, gamma=gamma,
+            best_log_z=best_log_z,
             best_chi2_red=float(np.sum(winner.info["chi2_red"])),
             error_scale=scale,
             rescaled_log_z=rescaled["log_z"] if rescaled else np.nan,
@@ -579,39 +698,45 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                                                 list(others)).checks["flip_dchi2"])[0]),
         )
     np.savez_compressed(out_dir / f"{label}.npz", **member_extra, **{f"log_z_{k}": v for k, v in log_z.items()},
-                        **{f"image_{k}": v for k, v in images.items()}, sigmas=np.asarray(sigmas),
-                        lengths_mas=np.asarray(lengths), ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
+                        **{f"image_{k}": v for k, v in images.items()},
+                        **{f"sigmas_{k}": np.asarray(a[1]) for k, a in axes.items()},
+                        **{f"lengths_mas_{k}": np.asarray(a[0]) for k, a in axes.items()},
+                        ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
                         template=template)
     lines = [f"task={task} label={label} star={star} halo={halo} init={init} field_source={s['field_source']} growth={growth}",
              f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas",
              f"ellipse fit: chi2={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
-             f"sigmas={list(sigmas)} lengths_mas={[round(x, 4) for x in lengths]}"]
+             f"star_model={s['star_model']} sparco={s['sparco']} wavel0={s['wavel0']:.4g}"]
     for name, g in log_z.items():
+        ls, ss = axes[name]
+        lines.append(f"{name}: sigmas={list(ss)} lengths_mas={[round(x, 4) for x in ls]}")
         lines.append(f"log_z[{name}] (rows ℓ, cols σ):\n{np.array2string(g, precision=2)}")
         i, j = best_of[name]
-        rr = results[(name, i, j)]
-        lines.append(f"best {name}: ℓ={lengths[i]:.4g} σ={sigmas[j]} log_z={g[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
+        rr = best_result(name)
+        lines.append(f"best {name}: ℓ={ls[i]:.4g} σ={ss[j]} log_z={g[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
     lines.append(f"residuals of the winner={residual_diagnostics(winner.model, data)}")
+    lines.append(f"N={n_indep} gamma={gamma:.1f} N-gamma={n_indep - gamma:.1f}")
     lines.append(f"error_scale={scale:.3f}" + (f" -> refit with rescaled errors: log_z={rescaled['log_z']:.2f} chi2/N={rescaled['chi2_red']:.3f}" if rescaled else " (within 1.3x: kept)"))
     if settings is not None:
         lines.append(f"member settings={settings}")
-    lines.append(f"WINNER: {best[0]} ℓ={lengths[best[1]]:.4g} σ={sigmas[best[2]]} log_z={log_z[best[0]][best[1], best[2]]:.2f}")
+    lines.append(f"WINNER: {best_name} ℓ={best_length:.4g} σ={best_sigma} log_z={best_log_z:.2f}")
     lines.append(f"elapsed={time.time() - t0:.0f}s\n\n{diagnose(winner.model, data, list(others))}")
     text = "\n".join(lines) + "\n"
     (out_dir / f"{label}.txt").write_text(text)
     print(text)
 
-    fig, axes = plt.subplots(1, 1 + len(images) + len(log_z), figsize=(4.6 * (1 + len(images) + len(log_z)), 4.4))
-    plot_model(vm.Image(jnp.asarray(np.log(template + 1e-12)), pixel), fov_mas=fov, npix=n, ax=axes[0], beam=res,
+    fig, panels = plt.subplots(1, 1 + len(images) + len(log_z), figsize=(4.6 * (1 + len(images) + len(log_z)), 4.4))
+    plot_model(vm.Image(jnp.asarray(np.log(template + 1e-12)), pixel), fov_mas=fov, npix=n, ax=panels[0], beam=res,
                title=f"template ({init})")
-    for ax, (name, im) in zip(axes[1:], images.items()):
+    for ax, (name, im) in zip(panels[1:], images.items()):
         i, j = best_of[name]
-        plot_model(results[(name, i, j)].model.env, fov_mas=fov, npix=n, ax=ax, beam=res,
-                   title=f"GP {name}: ℓ={lengths[i]:.2g} mas, σ={sigmas[j]:g}, logZ={log_z[name][i, j]:.0f}")
-    for ax, (name, g) in zip(axes[1 + len(images):], log_z.items()):
+        plot_model(best_result(name).model.env, fov_mas=fov, npix=n, ax=ax, beam=res,
+                   title=f"GP {name}: ℓ={axes[name][0][i]:.2g} mas, σ={axes[name][1][j]:g}, logZ={log_z[name][i, j]:.0f}")
+    for ax, (name, g) in zip(panels[1 + len(images):], log_z.items()):
+        ls, ss = axes[name]
         ax.imshow(g - np.nanmax(g), origin="lower", cmap="viridis", aspect="auto")
-        ax.set(xticks=range(len(sigmas)), xticklabels=sigmas, yticks=range(len(lengths)),
-               yticklabels=[f"{x:.2g}" for x in lengths], xlabel="σ", ylabel="ℓ (mas)", title=f"log Z − max ({name})")
+        ax.set(xticks=range(len(ss)), xticklabels=ss, yticks=range(len(ls)),
+               yticklabels=[f"{x:.2g}" for x in ls], xlabel="σ", ylabel="ℓ (mas)", title=f"log Z − max ({name})")
     plt.tight_layout()
     fig.savefig(out_dir / f"{label}.png", dpi=100)
 
