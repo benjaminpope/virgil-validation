@@ -268,15 +268,43 @@
   title: orbits.total_mass and distance_pc use a³/P² with P in Julian years, 3.8e-5 from Kepler's third law with the IAU nominal GM_sun and au
   objects: [virgil.orbits.total_mass, virgil.orbits.distance_pc]
   ruling: virgil
-  referee: standards (IAU 2015 B3 nominal GM_sun, IAU 2012 au); orbitize! computes the same law
-  evidence: [tests/test_orbitize.py::test_f14_total_mass_is_keplers_third_law]
+  kind: precision (the documented formula is the au/yr approximation; exact only for the Gaussian year, 365.2569 d)
+  referee: standards (IAU 2015 B3 nominal GM_sun, IAU 2012 au); orbitize! computes the exact law
+  evidence:
+    - tests/test_orbitize.py::test_total_mass_and_distance_against_orbitize
+    - tests/test_orbitize.py::test_f14_total_mass_is_keplers_third_law
+  status: open
+
+- id: F15
+  title: ThieleInnesOrbit.to_kepler returns Omega = 180.0 for a node at 180°, outside its documented [0, 180)
+  objects: [virgil.orbits.ThieleInnesOrbit]
+  ruling: virgil
+  kind: edge case (the same sky orbit as Omega = 0, omega + 180°)
+  referee: mathematics (the documented range)
+  evidence:
+    - tests/test_orbitize.py::test_thiele_innes_orbit_matches_orbitize
+    - tests/test_orbitize.py::test_f15_thiele_innes_node_in_documented_range
+  status: open
+
+- id: F16
+  title: StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits (0.01° returns 0.0106°), so positions drift by up to 2e-8 of a
+  objects: [virgil.orbits.StateVectorOrbit]
+  ruling: virgil
+  kind: numerics (consistent with an arccos of h_z/|h| near 1; atan2(|h_xy|, h_z) keeps float64 precision)
+  referee: orbitize! (positions to 1e-14 of a on well-posed orbits); mathematics (the state fixes i to ~1e-16 rad)
+  evidence:
+    - tests/test_orbitize.py::test_state_vector_orbit_matches_orbitize
+    - tests/test_orbitize.py::test_f16_state_vector_round_trip_keeps_float64_precision
   status: open
 
 - id: P7
   title: orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre
   objects: [orbitize]
   ruling: external:orbitize
-  referee: orbitize!'s own documentation (read_input)
-  evidence: [tests/test_orbitize.py::test_p7_companion_rvs_are_barycentric_as_documented]
+  kind: documentation or code (physically, adding gamma is right for absolute companion RVs from the same instrument)
+  referee: orbitize!'s own documentation (read_input) against its System.compute_model
+  evidence:
+    - tests/test_orbitize.py::test_radial_velocities_match_orbitize_system
+    - tests/test_orbitize.py::test_p7_companion_rvs_are_barycentric_as_documented
   status: to-raise
 

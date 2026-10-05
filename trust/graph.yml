@@ -1,7 +1,7 @@
 # The trust graph (docs/design.md, "Making it traceable").
 #
 # nodes: virgil objects (and our own references). For each:
-#   layer:    for the chart (models, data, likelihood, inference, imaging, references)
+#   layer:    for the chart (models, orbits, data, likelihood, inference, imaging, references)
 #   source:   virgil source files it depends on: evidence measured on a
 #             virgil commit older than the last change to these is stale
 #   depends:  other nodes it is built on; trust propagates upwards only
@@ -9,7 +9,7 @@
 #             2 for conventions a model could get wrong in a correlated way).
 #             Roots come from one pool (src/evidence/__init__.py): mathematics,
 #             standards, statistics, literature, and the trusted packages
-#             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL). Any of
+#             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!). Any of
 #             them may validate any link; no node needs a particular package.
 #
 # pipelines: chains of nodes validated end to end, e.g. by reproducing a
@@ -119,19 +119,6 @@ nodes:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/inference.py]
     depends: [virgil.likelihood.model_loglike]
-  virgil.orbits.KeplerOrbit: {layer: models, source: [src/virgil/orbits.py]}
-  virgil.orbits.ThieleInnesOrbit: {layer: models, source: [src/virgil/orbits.py]}
-  virgil.orbits.StateVectorOrbit: {layer: models, source: [src/virgil/orbits.py]}
-  virgil.orbits.total_mass: {layer: models, source: [src/virgil/orbits.py]}
-  virgil.orbits.distance_pc: {layer: models, source: [src/virgil/orbits.py]}
-  virgil.orbits.PositionData:
-    layer: likelihood
-    source: [src/virgil/orbits.py]
-    depends: [virgil.orbits.KeplerOrbit]
-  virgil.orbits.RVData:
-    layer: likelihood
-    source: [src/virgil/orbits.py]
-    depends: [virgil.orbits.KeplerOrbit]
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
@@ -168,6 +155,39 @@ nodes:
     layer: imaging
     source: [src/virgil/imaging.py]
     depends: [virgil.fitting.fit]
+
+  # -------------------------------------------------------------- orbits
+  # Grounded on orbitize! (Blunt et al. 2020, 2024) and on mathematics (the
+  # documented symmetries) and standards (IAU constants): tests/test_orbitize.py
+  virgil.orbits.KeplerOrbit:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    roots: 2  # conventions (omega, Omega, sense of rotation, dz): orbitize! and mathematics
+  virgil.orbits.ThieleInnesOrbit:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.StateVectorOrbit:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.total_mass:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.distance_pc:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.PositionData:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.RVData:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
+    roots: 2  # RV signs: orbitize! and mathematics
 
   virgil._elr:
     layer: models
@@ -220,4 +240,5 @@ pipelines:
             virgil.limits.absil_limits]
   orbitize-posterior:
     title: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors
-    steps: [virgil.orbits.PositionData, virgil.orbits.KeplerOrbit, virgil.likelihood.numpyro_model]
+    planned: true  # written (tests/test_orbitize.py, tier C), not yet run: hours, for OzSTAR
+    steps: [virgil.orbits.PositionData, virgil.orbits.KeplerOrbit]

@@ -610,73 +610,61 @@ def test_f14_total_mass_is_keplers_third_law(grid):
 
 # ------------------------------------------------- posterior (campaign, not CI)
 
-PRIORS = {
-    # matched on both sides; invariant where the coordinator asked for it:
-    "sma": (1.0, 100.0),  # au, log-uniform (log-uniform in P at fixed mtot)
-    "ecc": ("uniform", 0.0, 1.0),  # stated explicitly: uniform on [0, 1)
-    # inc uniform in cos i on [0°, 180°]; omega, Omega uniform on [0°, 360°);
-    # tau (the periastron time, as a fraction of P) uniform on [0, 1)
-    "plx": (51.44, 0.12),  # mas, Gaussian (orbitize!'s beta Pic tutorials)
-    "mtot": (1.75, 0.05),  # M_sun, Gaussian
-}
+# Matched invariant priors, the same variables on both sides:
+#   a (sma, au): log-uniform on [1, 100]. With M_tot known to 3 %, log P =
+#     1.5 log a - 0.5 log M is then log-uniform too, up to the ends; both
+#     codes sample the same (log a, M_tot), so the priors match exactly.
+#   e: uniform on [0, 1) (stated explicitly; orbitize!'s default).
+#   i: uniform in cos i on [0°, 180°] (orbitize!'s SinPrior).
+#   omega, Omega: uniform on [0°, 360°); the periastron time: uniform over
+#     one period (orbitize!'s tau uniform on [0, 1)).
+#   parallax and M_tot: Gaussians, 51.44 +- 0.12 mas and 1.75 +- 0.05 M_sun
+#     (orbitize!'s beta Pic tutorials).
+PRIORS = {"sma": (1.0, 100.0), "ecc": ("uniform", 0.0, 1.0), "plx": (51.44, 0.12), "mtot": (1.75, 0.05)}
 
 
-def _beta_pic_positions(path):
+def _beta_pic_positions(tmp_path):
     """The sep/PA rows of orbitize!'s betaPic.csv (Nielsen et al. 2020,
-    Table 1), without its single companion RV, so that both codes see
-    positions only (and Omega is known modulo 180°)."""
-    rows = [line.split(",") for line in open(path).read().splitlines() if line and not line.startswith("#")]
-    head, rows = rows[0], rows[1:]
+    Table 1) without its one companion RV, so that both codes fit positions
+    only (Omega then known modulo 180°): a copy for orbitize!, and arrays."""
+    src = _example_data("betaPic.csv")
+    lines = [line for line in open(src).read().splitlines() if line and not line.startswith("#")]
+    head = lines[0].split(",")
     col = {k: head.index(k) for k in ("epoch", "sep", "sep_err", "pa", "pa_err")}
-    keep = [r for r in rows if r[col["sep"]].strip()]
-    return {k: np.array([float(r[c]) for r in keep]) for k, c in col.items()}, head, keep
+    keep = [line for line in lines[1:] if line.split(",")[col["sep"]].strip()]
+    path = tmp_path / "betaPic_positions.csv"
+    path.write_text("\n".join([lines[0], *keep]) + "\n")
+    pos = {k: np.array([float(line.split(",")[c]) for line in keep]) for k, c in col.items()}
+    return path, pos
+
+
+def _example_data(name):
+    """A file of orbitize!'s example_data (in its own environment)."""
+    import json
+    import subprocess
+
+    from external_bridge import _subprocess as sp
+
+    code = "import orbitize, os, json; print(json.dumps(os.path.join(os.path.dirname(orbitize.__file__), 'example_data')))"
+    out = subprocess.run([sp.python("orbitize"), "-W", "ignore", "-c", code], capture_output=True, text=True, check=True)
+    return f"{json.loads(out.stdout.strip().splitlines()[-1])}/{name}"
 
 
 def _fold(omega, Omega):
-    """Positions fix Omega modulo 180°: report (Omega, omega) with
-    Omega in [0°, 180°), moving omega with it."""
+    """Positions fix Omega modulo 180°: report (omega, Omega) with Omega in
+    [0°, 180°), moving omega with it."""
     flip = Omega % 360.0 >= 180.0
     return (omega - 180.0 * flip) % 360.0, Omega % 180.0
 
 
-@pytest.mark.slow
-@pytest.mark.validates("pipeline:orbitize-posterior", "virgil.orbits.PositionData", "virgil.orbits.KeplerOrbit",
-                       roots=["orbitize"], tier="C")
-def test_beta_pic_posterior_matches_orbitize(tmp_path):
-    """Posteriors of beta Pic b's orbit from orbitize!'s example data, with
-    matched priors (PRIORS): virgil (PositionData.from_sep_pa likelihood,
-    NumPyro NUTS on the same variables: log sma, ecc, cos i, omega, Omega,
-    tau, plx, mtot) against orbitize! (parallel-tempered MCMC, ptemcee).
-    The 16th, 50th and 84th percentiles of a_mas, e, i, Omega and omega
-    (folded to Omega < 180°) and P must agree within 0.15 of the posterior
-    standard deviation. Heavy (hours): for OzSTAR, not CI.
-
-    Definition difference: orbitize!'s sep/PA likelihood treats sep and PA
-    as independent Gaussians; from_sep_pa's documented "independent errors
-    on each" is used on virgil's side, so any linearisation there shows up
-    as a small shift at the widest PA errors."""
-    import jax
-    import jax.numpy as jnp
+def beta_pic_model(pos):
+    """The virgil side: PositionData.from_sep_pa's likelihood of
+    KeplerOrbit, with PRIORS on (log a, e, cos i, omega, Omega, tau, plx,
+    M_tot) and orbitize!'s period P = 2 pi sqrt(a³ / (G M))."""
     import numpyro
     import numpyro.distributions as dist
-    from numpyro.infer import MCMC, NUTS
-
-    src = pathlib_example("betaPic.csv")
-    pos, head, keep = _beta_pic_positions(src)
-    csv = tmp_path / "betaPic_positions.csv"
-    csv.write_text(",".join(head) + "\n" + "\n".join(",".join(r) for r in keep) + "\n")
-
-    r = ob.run({
-        "task": "posterior", "path": str(csv), "algorithm": "MCMC", "tau_ref_epoch": REF,
-        "mtot": PRIORS["mtot"][0], "mtot_err": PRIORS["mtot"][1],
-        "plx": PRIORS["plx"][0], "plx_err": PRIORS["plx"][1], "priors": PRIORS,
-        "mcmc_kwargs": {"num_temps": 20, "num_walkers": 1000, "num_threads": 1},
-        "n": 2_000_000, "burn": 5000, "thin": 10,
-    }, timeout=48 * 3600)
-    ours = {k: np.asarray(v) for k, v in r.items() if isinstance(v, list)}
 
     data = vo.PositionData.from_sep_pa(pos["epoch"], pos["sep"], pos["pa"], pos["sep_err"], pos["pa_err"], t_ref=REF)
-    gm = GM_SUN  # orbitize!'s period: P = 2 pi sqrt(a³ / (G M))
 
     def model():
         log_sma = numpyro.sample("log_sma", dist.Uniform(*np.log(PRIORS["sma"])))
@@ -688,37 +676,57 @@ def test_beta_pic_posterior_matches_orbitize(tmp_path):
         plx = numpyro.sample("plx", dist.Normal(*PRIORS["plx"]))
         mtot = numpyro.sample("mtot", dist.Normal(*PRIORS["mtot"]))
         sma = jnp.exp(log_sma)
-        period = 2 * jnp.pi * jnp.sqrt((sma * AU_KM * 1e3) ** 3 / (gm * mtot)) / 86400.0
+        period = numpyro.deterministic("period", kepler_period(sma, mtot))
         orbit = vo.KeplerOrbit(period, tau * period, ecc, jnp.degrees(jnp.arccos(cosi)), omega, Omega,
                                sma * plx, t_ref=REF)
-        numpyro.deterministic("period", period)
         numpyro.factor("positions", data.loglike(orbit))
 
-    mcmc = MCMC(NUTS(model), num_warmup=2000, num_samples=5000, num_chains=4, chain_method="sequential")
+    return model
+
+
+@pytest.mark.slow
+@pytest.mark.validates("pipeline:orbitize-posterior", "virgil.orbits.PositionData", "virgil.orbits.KeplerOrbit",
+                       roots=["orbitize"], tier="C")
+def test_beta_pic_posterior_matches_orbitize(tmp_path):
+    """Posteriors of beta Pic b's orbit from orbitize!'s example data, with
+    matched invariant priors (PRIORS): virgil (PositionData likelihood,
+    NumPyro NUTS, 4 x 5000 draws) against orbitize! (ptemcee, 20
+    temperatures x 1000 walkers, 2e6 orbits after 5000 burn-in steps,
+    thinned by 10). The 16th, 50th and 84th percentiles of a_mas, e, i,
+    Omega and omega (folded to Omega < 180°) and P must agree within 0.15
+    of orbitize!'s posterior standard deviation. Hours of CPU: an OzSTAR
+    campaign (tier C), not CI; written but not yet run.
+
+    Definition difference to expect: orbitize!'s sep/PA likelihood treats
+    sep and PA as independent Gaussians (PA residual wrapped);
+    from_sep_pa's documented "independent errors on each" may be
+    linearised into (dra, ddec), which matters only where sep * sigma_PA is
+    not small against the curvature of the arc."""
+    import jax.random
+    from numpyro.infer import MCMC, NUTS
+
+    path, pos = _beta_pic_positions(tmp_path)
+    r = ob.run({
+        "task": "posterior", "path": str(path), "algorithm": "MCMC", "tau_ref_epoch": REF,
+        "mtot": PRIORS["mtot"][0], "mtot_err": PRIORS["mtot"][1],
+        "plx": PRIORS["plx"][0], "plx_err": PRIORS["plx"][1], "priors": PRIORS,
+        "mcmc_kwargs": {"num_temps": 20, "num_walkers": 1000, "num_threads": 1},
+        "n": 2_000_000, "burn": 5000, "thin": 10,
+    }, timeout=48 * 3600)
+    theirs = {k: np.asarray(v) for k, v in r.items() if isinstance(v, list)}
+
+    mcmc = MCMC(NUTS(beta_pic_model(pos)), num_warmup=2000, num_samples=5000, num_chains=4, chain_method="sequential")
     mcmc.run(jax.random.PRNGKey(2020))
     s = {k: np.asarray(v) for k, v in mcmc.get_samples().items()}
-    virgil_post = {"a_mas": np.exp(s["log_sma"]) * s["plx"], "e": s["ecc"], "i": np.degrees(np.arccos(s["cosi"])),
-                   "P": s["period"]}
-    virgil_post["omega"], virgil_post["Omega"] = _fold(s["omega"], s["Omega"])
-    orb_period = 2 * np.pi * np.sqrt((ours["sma"] * AU_KM * 1e3) ** 3 / (gm * ours["mtot"])) / 86400.0
-    orbitize_post = {"a_mas": ours["sma"] * ours["plx"], "e": ours["ecc"], "i": np.degrees(ours["inc"]), "P": orb_period}
-    orbitize_post["omega"], orbitize_post["Omega"] = _fold(np.degrees(ours["aop"]), np.degrees(ours["pan"]))
+    ours = {"a_mas": np.exp(s["log_sma"]) * s["plx"], "e": s["ecc"], "i": np.degrees(np.arccos(s["cosi"])), "P": s["period"]}
+    ours["omega"], ours["Omega"] = _fold(s["omega"], s["Omega"])
+    ref = {"a_mas": theirs["sma"] * theirs["plx"], "e": theirs["ecc"], "i": np.degrees(theirs["inc"]),
+           "P": kepler_period(theirs["sma"], theirs["mtot"])}
+    ref["omega"], ref["Omega"] = _fold(np.degrees(theirs["aop"]), np.degrees(theirs["pan"]))
     worst = 0.0
-    for k in virgil_post:
-        sd = np.std(orbitize_post[k])
-        dq = np.abs(np.percentile(virgil_post[k], [16, 50, 84]) - np.percentile(orbitize_post[k], [16, 50, 84])) / sd
+    for k in ours:
+        q = [16, 50, 84]
+        dq = np.abs(np.percentile(ours[k], q) - np.percentile(ref[k], q)) / np.std(ref[k])
         record(f"max_dquantile_over_sd_{k}", np.max(dq))
         worst = max(worst, np.max(dq))
     assert worst < 0.15
-
-
-def pathlib_example(name):
-    """A file from orbitize!'s example_data, in its own environment."""
-    import json
-    import subprocess
-
-    from external_bridge import _subprocess as sp
-
-    code = "import orbitize, os, json; print(json.dumps(os.path.join(os.path.dirname(orbitize.__file__), 'example_data')))"
-    out = subprocess.run([sp.python("orbitize"), "-W", "ignore", "-c", code], capture_output=True, text=True, check=True)
-    return f"{json.loads(out.stdout.strip().splitlines()[-1])}/{name}"

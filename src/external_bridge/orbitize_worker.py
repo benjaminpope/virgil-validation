@@ -113,38 +113,42 @@ def system_rv(task):
 
 
 def posterior(task):
-    """Posterior samples for the first companion of an orbitize! data file
-    (e.g. orbitize/example_data/betaPic.csv), with priors set as the task
-    says, by OFTI or ptemcee. Returns the samples of sma, ecc, inc, aop,
-    pan, tau, plx and mtot."""
-    import os
+    """Posterior samples for the companion of an orbitize! data file (e.g.
+    the sep/PA rows of orbitize/example_data/betaPic.csv) by ptemcee
+    ("MCMC") or OFTI, with the priors of task["priors"]:
 
+    * sma: LogUniformPrior(lo, hi) (au);
+    * ecc: UniformPrior(lo, hi);
+    * inc, aop, pan, tau: orbitize!'s defaults, which are the invariant ones
+      asked for: SinPrior on [0, pi] (uniform in cos i), and uniform on
+      [0, 2 pi), [0, 2 pi) and [0, 1) (checked and returned);
+    * plx, mtot: the Gaussians of Driver's plx_err and mass_err.
+
+    Returns the samples of sma, ecc, inc, aop, pan, tau, plx and mtot, and
+    the priors orbitize! used, by name."""
     from orbitize import driver, priors
 
-    path = task["path"]
-    if not os.path.isabs(path):
-        path = os.path.join(os.path.dirname(orbitize.__file__), "example_data", path)
-    d = driver.Driver(path, task["algorithm"], 1, task["mtot"], task["plx"],
+    d = driver.Driver(task["path"], task["algorithm"], 1, task["mtot"], task["plx"],
                       mass_err=task["mtot_err"], plx_err=task["plx_err"],
                       system_kwargs={"tau_ref_epoch": task["tau_ref_epoch"]},
-                      mcmc_kwargs=task.get("mcmc_kwargs", {}))
+                      mcmc_kwargs=task.get("mcmc_kwargs") or None)
     s = d.system
-    lab = s.basis.param_idx
+    lab = s.param_idx
     pr = task["priors"]
     s.sys_priors[lab["sma1"]] = priors.LogUniformPrior(*pr["sma"])
-    if pr["ecc"][0] == "uniform":
-        s.sys_priors[lab["ecc1"]] = priors.UniformPrior(*pr["ecc"][1:])
-    # inc: orbitize!'s default SinPrior is uniform in cos i; aop, pan and tau
-    # default to uniform; plx and mtot are the Gaussians given above.
+    assert pr["ecc"][0] == "uniform"
+    s.sys_priors[lab["ecc1"]] = priors.UniformPrior(*pr["ecc"][1:])
+    used = {k: repr(s.sys_priors[lab[k]]) for k in ("sma1", "ecc1", "inc1", "aop1", "pan1", "tau1", "plx", "mtot")}
     if task["algorithm"] == "OFTI":
         samples = d.sampler.run_sampler(int(task["n"]))
     else:
-        d.sampler.run_sampler(int(task["n"]), burn_steps=int(task.get("burn", 0)),
-                              thin=int(task.get("thin", 1)))
+        d.sampler.run_sampler(int(task["n"]), burn_steps=int(task.get("burn", 0)), thin=int(task.get("thin", 1)))
         samples = d.sampler.results.post
     samples = np.asarray(samples)
     names = ["sma1", "ecc1", "inc1", "aop1", "pan1", "tau1", "plx", "mtot"]
-    return {k.rstrip("1"): samples[:, lab[k]].tolist() for k in names}
+    out = {k.rstrip("1"): samples[:, lab[k]].tolist() for k in names}
+    out["priors"] = used
+    return out
 
 
 def batch(task):
