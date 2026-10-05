@@ -68,6 +68,7 @@ jobs:
         run: |
           extra=$( [ -f virgil-evidence.jsonl ] && echo "--evidence virgil-evidence.jsonl" )
           .venv/bin/python scripts/trust.py --evidence evidence.jsonl $extra \
+            --evidence trust/evidence/campaigns.jsonl \
             --virgil virgil-src --out trust.md --json trust.json
           cat trust.md >> "$GITHUB_STEP_SUMMARY"
       - name: evidence table
