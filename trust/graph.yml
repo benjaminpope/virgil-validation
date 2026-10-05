@@ -316,12 +316,16 @@ nodes:
     doc: models/rapid_rotators.md
 
   # --------------------------------------------- our references (links)
-  crosscheck: {layer: references}
   crosscheck.sky: {layer: references}
   crosscheck.limb: {layer: references}
+  crosscheck.array: {layer: references}
+  crosscheck.chi2: {layer: references}
+  crosscheck.oifits_writer: {layer: references}
+  crosscheck.simulate: {layer: references, depends: [crosscheck.array, crosscheck.oifits_writer]}
+  crosscheck.orbits: {layer: references}
+  crosscheck.disks: {layer: references}
   crosscheck.elr: {layer: references}
   crosscheck.nrm: {layer: references}
-  external_bridge: {layer: references}
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)

@@ -1,6 +1,8 @@
 """pytest plugin: the ``validates`` marker, the ``metric`` fixture and the
 ``--evidence PATH`` option (see evidence/__init__.py)."""
 
+import ast
+import functools
 import json
 import math
 
@@ -60,6 +62,36 @@ def pytest_configure(config):
     _CONFIG["config"] = config
 
 
+# Our reference code: a check that goes through one of these counts only if
+# that module is itself verified. _subprocess only runs other code.
+_REFERENCE_PACKAGES = ("crosscheck", "external_bridge")
+_PLUMBING = {"external_bridge._subprocess"}
+
+
+@functools.lru_cache(maxsize=None)
+def _module_via(path):
+    """Reference modules a test file imports, anywhere in it."""
+    try:
+        tree = ast.parse(open(path).read())
+    except (OSError, SyntaxError):
+        return ()
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in _REFERENCE_PACKAGES and "." in alias.name:
+                    found.add(alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            top = node.module.split(".")[0]
+            if top not in _REFERENCE_PACKAGES:
+                continue
+            if node.module == top:  # from crosscheck import sky, chi2
+                found |= {f"{top}.{alias.name}" for alias in node.names}
+            else:  # from crosscheck.sky import vis_point
+                found.add(node.module)
+    return tuple(sorted(found - _PLUMBING))
+
+
 def _claims(item):
     claims = []
     for mark in item.iter_markers("validates"):
@@ -75,7 +107,9 @@ def _claims(item):
             raise pytest.UsageError(
                 f"{item.nodeid}: unknown roots {bad}, kind {kind!r} or tier {tier!r}"
             )
-        claim = {"objects": objects, "roots": roots, "kind": kind, "tier": tier}
+        via = set(_module_via(str(item.path))) | set(mark.kwargs.get("via", ()))
+        claim = {"objects": objects, "roots": roots, "kind": kind, "tier": tier,
+                 "via": sorted(via - set(objects))}
         if headline is not None:
             claim["headline"] = str(headline)
         claims.append(claim)

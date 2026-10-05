@@ -121,3 +121,23 @@ def test_a_part_relying_on_an_unverified_part_is_not_verified(trust, tmp_path):
     graph = {"nodes": {"virgil.a": {"layer": "models", "depends": ["virgil.b"]}, "virgil.b": {"layer": "models"}}}
     got, _ = verdicts(trust, tmp_path, [record("t::x", "virgil.a")], graph)
     assert got == {"virgil.a": "relies-unverified", "virgil.b": "unchecked"}
+
+
+def test_a_check_through_unverified_reference_code_does_not_verify(trust, tmp_path):
+    graph = {"nodes": {"virgil.a": {"layer": "models"}, "crosscheck.r": {"layer": "references"}}}
+    rec = record("t::x", "virgil.a", via=["crosscheck.r"])
+    got, model = verdicts(trust, tmp_path, [rec], graph)
+    assert got["virgil.a"] == "relies-unverified"
+    assert [c["id"] for c in model["nodes"]["virgil.a"]["because"]] == ["crosscheck.r"]
+    got, _ = verdicts(trust, tmp_path, [rec, record("t::r", "crosscheck.r", kind="reference")], graph)
+    assert got["virgil.a"] == "verified"
+    # a reference relying on an unverified reference is not trusted either
+    graph["nodes"]["crosscheck.r"]["depends"] = ["crosscheck.s"]
+    graph["nodes"]["crosscheck.s"] = {"layer": "references"}
+    got, _ = verdicts(trust, tmp_path, [rec, record("t::r", "crosscheck.r", kind="reference")], graph)
+    assert got["virgil.a"] == "relies-unverified"
+
+
+def test_reference_code_missing_from_the_graph_is_not_trusted(trust, tmp_path):
+    got, model = verdicts(trust, tmp_path, [record("t::x", "virgil.a", via=["crosscheck.nowhere"])])
+    assert got["virgil.a"] == "relies-unverified"

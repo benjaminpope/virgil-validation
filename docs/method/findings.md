@@ -41,9 +41,9 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 
 | | Part | Finding | Status |
 | --- | --- | --- | --- |
-| <span id="P1">P1</span> | `external_bridge.pmoired_models` | PMOIRED setupFit(auto=True) gives NaN models on files with few channels | to-raise |
-| <span id="P2">P2</span> | `external_bridge.pmoired_models` | PMOIRED's default ring sampling is not its documented Nr = 100 | to-raise |
-| <span id="P3">P3</span> | `external_bridge.pmoired_models` | PMOIRED's rings stop at ~1e-4 precision beyond 30 samples per baseline | to-raise |
+| <span id="P1">P1</span> | `pmoired` | PMOIRED setupFit(auto=True) gives NaN models on files with few channels | to-raise |
+| <span id="P2">P2</span> | `pmoired` | PMOIRED's default ring sampling is not its documented Nr = 100 | to-raise |
+| <span id="P3">P3</span> | `pmoired` | PMOIRED's rings stop at ~1e-4 precision beyond 30 samples per baseline | to-raise |
 | <span id="P4">P4</span> | `candid` | CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation) | to-raise |
 | <span id="P5">P5</span> | `fouriever` | fouriever's closure-phase residual is not wrapped, so data straddling +-180 deg give a ~2 pi residual at the true parameters | raised [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 | <span id="P6">P6</span> | `ehtim` | eht-imaging's Obsdata.tlist/bllist return tuples under NumPy 2 when every time group has the same size, so closure phases fail | to-raise |
@@ -55,6 +55,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | | Part | Finding | Status |
 | --- | --- | --- | --- |
 | <span id="C1">C1</span> | `external_bridge.pmoired_models` | Our PMOIRED parameter mapping had the wrong sign of d(ratio)/d(incl) | fixed [virgil-validation#11](https://github.com/benjaminpope/virgil-validation/pull/11) |
+| <span id="C2">C2</span> | `crosscheck.oifits_writer` | Our OIFITS writer wrote DATE_OBS (a Python keyword argument) instead of the DATE-OBS keyword OIFITS v2 requires, with a fixed date | fixed |
 
 ## Definition changes in virgil
 

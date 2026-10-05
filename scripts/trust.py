@@ -187,6 +187,9 @@ REFERENCE_DOCS = {
     "candid": "method/candid.md", "external_bridge.candid_bridge": "method/candid.md",
     "external_bridge.fouriever_worker": "method/fouriever.md", "fouriever": "method/fouriever.md",
     "ehtim": "imaging/ehtim.md",
+    "crosscheck.array": "data/long_baseline.md", "crosscheck.chi2": "method/index.md",
+    "crosscheck.oifits_writer": "data/oifits_observables.md", "crosscheck.simulate": "data/long_baseline.md",
+    "crosscheck.orbits": "orbits/kepler.md", "crosscheck.disks": "models/flared_disks.md",
 }
 # Pages that are not about one topic: never the explanation of a part.
 NOT_TOPIC_PAGES = {"index.md", "trust.md", "evidence.md", "results.md"}
@@ -302,18 +305,30 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                 external_open[obj].append(e["id"])
 
     own = {}
-    for name, node in nodes.items():
+
+    def own_status(name, trusted_references=None):
+        """A part's own verdict from its own checks. For parts of virgil,
+        a check that went through our reference code (its ``via``) counts
+        only if every such reference is in ``trusted_references``; checks
+        blocked that way are returned so the part can say what it relies on."""
+        node = nodes[name]
         recs = by_obj.get(name, [])
         reference_node = node.get("layer", "references") == "references"
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         counted = [r for r in recs if r["kind"] in agreeing or r["kind"] == "regression"]
         failing = [r for r in recs if r["kind"] not in ("finding", "upstream") and r["outcome"] in BAD]
         good = [r for r in counted if r["outcome"] == "passed"]
-        strong, weak = set(), set()
+        strong, weak, blocked_roots, blocked_by = set(), set(), set(), set()
         for r in good:
             s_, w_ = roots_of(r, golden)
-            if r["kind"] in agreeing:
+            untrusted = set()
+            if trusted_references is not None and r["kind"] in agreeing:
+                untrusted = {v for v in r.get("via", []) if v not in trusted_references}
+            if r["kind"] in agreeing and not untrusted:
                 strong |= s_
+            elif r["kind"] in agreeing:
+                blocked_roots |= s_
+                blocked_by |= untrusted
             weak |= w_ | (s_ if r["kind"] not in agreeing else set())
         strong, weak = sorted(strong), sorted(weak - set(strong))
         need = node.get("roots", 1)
@@ -323,10 +338,32 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             status = "bug"
         elif len(strong) >= need and not external_open.get(name):
             status = "ok"
-        elif strong or weak:
+        elif len(set(strong) | blocked_roots) >= need and not external_open.get(name):
+            status = "ok-via"  # its checks pass, but through reference code not yet verified
+        elif strong or weak or blocked_roots:
             status = "partly"
         else:
             status = "unchecked"
+        return status, strong, weak, need, recs, good, sorted(blocked_by)
+
+    def reference_verdicts():
+        """Our reference nodes, decided first: verified only if their own
+        checks pass and every reference they rely on is verified too."""
+        refs = [n for n, node in nodes.items() if node.get("layer", "references") == "references"]
+        status = {n: own_status(n)[0] for n in refs}
+
+        def ok(n, seen):
+            if status.get(n) != "ok":
+                return False
+            return all(d not in status or (d in seen or ok(d, seen | {d})) for d in nodes[n].get("depends", []))
+
+        return {n for n in refs if ok(n, {n})}
+
+    trusted = reference_verdicts()
+    for name, node in nodes.items():
+        reference_node = node.get("layer", "references") == "references"
+        status, strong, weak, need, recs, good, blocked_by = own_status(name, None if reference_node else trusted)
+        agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         commits = sorted({r["_commit"] for r in good if r["_commit"]})
         changes = [changed_files(virgil, c, node.get("source", [])) for c in commits]
         changed = None if not changes or any(c is None for c in changes) else sorted({f for c in changes for f in c})
@@ -335,6 +372,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "checks": [_check(r) for r in recs], "commits": commits, "changed": changed,
             "findings": open_findings.get(name, []) + external_open.get(name, []),
             "skipped": sum(1 for r in recs if r["outcome"] == "skipped" and r["kind"] in agreeing),
+            "via_blocked": blocked_by,
         }
 
     # verdicts: a part whose own checks pass is verified only if everything
@@ -363,11 +401,13 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        causes = sorted(problems(name, set()))
+        causes = sorted(problems(name, set()) | set(o["via_blocked"]))
+        if verdict == "ok-via":
+            verdict = "ok"
         if verdict == "ok":
             if not causes:
                 verdict = "verified"
-            elif any(own[c]["status"] == "bug" for c in causes):
+            elif any(own.get(c, {}).get("status") == "bug" for c in causes):
                 verdict = "relies"
             else:
                 verdict = "relies-unverified"
@@ -380,7 +420,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "verdict_label": VERDICTS[verdict][0],
             "strong": o["strong"], "weak": o["weak"], "need": o["need"],
             "findings": o["findings"],
-            "because": [{"id": c, "findings": own[c]["findings"], "status": own[c]["status"]} for c in causes],
+            "because": [{"id": c, "findings": own.get(c, {}).get("findings", []),
+                         "status": own.get(c, {}).get("status", "unchecked")} for c in causes],
             "depends": node.get("depends", []), "dependents": dependents,
             "checks": o["checks"], "commits": o["commits"],
             "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set())),
