@@ -146,6 +146,18 @@ nodes:
   virgil.spectra.GaussianLine: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.LorentzianLine: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.Sum: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.orbits.starting_orbits:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.PositionData]
+  virgil.orbits.AxialVonMises: {layer: orbits, source: [src/virgil/orbits.py]}
+  virgil.orbits.orientation_priors: {layer: orbits, source: [src/virgil/orbits.py], depends: [virgil.angles.AngleVector]}
+  virgil.orbits.orientation_from_varpi: {layer: orbits, source: [src/virgil/orbits.py]}
+  virgil.orbits.position_angle_log_jacobian: {layer: orbits, source: [src/virgil/orbits.py]}
+  virgil.models.Attached:
+    layer: models
+    source: [src/virgil/models.py, src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit]
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
     source: [src/virgil/_linear.py]
