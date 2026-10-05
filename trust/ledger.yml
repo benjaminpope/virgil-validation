@@ -200,6 +200,14 @@
     - tests/test_fouriever.py::test_whitened_form_is_better_calibrated_on_baseline_noise
   status: documented
 
+- id: D7
+  title: For correlated closure phases fouriever counts every closure phase as a degree of freedom in the Absil and injection significance; virgil counts the independent ones (OIData.n_independent)
+  objects: [virgil.limits.absil_limits, virgil.limits.injection_limits, virgil.limits.nsigma]
+  ruling: definition
+  referee: statistics (with a covariance of rank r the chi-squared has r degrees of freedom, 3 of the 4 closure phases of four telescopes per snapshot and channel, as tests/test_fouriever.py::test_whitened_form_is_better_calibrated_on_baseline_noise measures)
+  evidence: [tests/test_fouriever_limits.py::test_limits_match_fouriever_exactly]
+  status: documented
+
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
   objects: [external_bridge.pmoired_models]
@@ -312,3 +320,11 @@
     - tests/test_orbitize.py::test_p7_companion_rvs_are_barycentric_as_documented
   status: to-raise
 
+- id: P8
+  title: fouriever's uvfit.detlim fails under NumPy 2 and SciPy 1.18 (fouriever 0.4.3); its L-BFGS-B objectives return 1-element arrays, and with V² it %-formats a 1-element array
+  objects: [fouriever]
+  ruling: external:fouriever
+  kind: 'bug (TypeError "only 0-dimensional arrays can be converted to Python scalars", in lim_absil''s minimize and in the print of the fitted diameter)'
+  referee: mathematics (fouriever's own criteria, solved exactly with its own chi-squared and nsigma, work, in tests/test_fouriever_limits.py::test_limits_match_fouriever_exactly)
+  evidence: [tests/test_fouriever_limits.py::test_fouriever_public_detlim_against_its_exact_criteria]
+  status: to-raise

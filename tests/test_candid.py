@@ -31,7 +31,7 @@ vm = pytest.importorskip("virgil.models")
 import virgil_bridge as vb  # noqa: E402
 from virgil.grid_fit import likelihood_grid  # noqa: E402
 from virgil.likelihood import model_loglike, whitened_residuals  # noqa: E402
-from virgil.limits import absil_limits, nsigma  # noqa: E402
+from virgil.limits import absil_limits, injection_limits, nsigma  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 
 pytestmark = [
@@ -243,6 +243,39 @@ def test_absil_limits_match_candids_criterion(files, cps):
     # and returns the midpoint, so its limit is within half a step,
     # 10^(1/2^15) - 1 = 7.0e-5, of the root
     assert worst < 1e-4
+
+
+@pytest.mark.parametrize(
+    "cps",
+    [
+        pytest.param(c, id=i, marks=pytest.mark.validates("virgil.limits.injection_limits", roots=["candid"]))
+        for c, i in [(False, "v2"), (True, "v2+cp")]
+    ],
+)
+def test_injection_limits_match_candids_criterion(files, cps):
+    """virgil's 3-sigma injection limits (Gallenne et al. 2015) against
+    CANDID's own injection criterion (_detectLimit: the companion injected
+    with its _injectCompanionData, then nsigma(chi2_UD / chi2_BIN) on the
+    injected data) solved exactly at each position, with the diameter held,
+    as virgil holds every parameter but the flux. CANDID refits the
+    diameter to the injected data (definition D8); that variant is
+    recorded beside it."""
+    path = files[False, cps]
+    task = {"task": "injection_exact", "path": path, "diam": DIAM, "positions": POSITIONS,
+            "observables": observables(cps)}
+    want = np.array(cb.run(task)["f3"]) / 100
+    refit = np.array(cb.run({**task, "refit": True})["f3"]) / 100
+    data = OIData(str(path))
+    got = np.array([
+        float(np.asarray(injection_limits(data, template(DIAM, 0.01), {"comp.dra": [x], "comp.ddec": [y],
+                                          "comp.flux": np.logspace(-4, -1, 8)}, sigma=3.0)).ravel()[0])
+        for x, y in POSITIONS
+    ])
+    worst = np.max(np.abs(got / want - 1))
+    record("max_rel_limit_difference", worst)
+    record("mean_rel_candid_refit_vs_held", float(np.mean(refit / want - 1)))
+    assert worst < 3e-4  # virgil's bisection; D5 at the small closure phases of a limit
+    assert np.all(refit >= want * (1 - 1e-6))  # refitting the diameter can only absorb signal
 
 
 def _public_vs_exact(path, cps):
