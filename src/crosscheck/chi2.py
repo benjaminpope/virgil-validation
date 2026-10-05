@@ -25,6 +25,8 @@ def load(path):
             "wl": np.broadcast_to(wl, v2["VIS2DATA"].shape),
             "v2": np.asarray(v2["VIS2DATA"], float),
             "dv2": np.asarray(v2["VIS2ERR"], float),
+            "v2_mjd": np.asarray(v2["MJD"], float),
+            "v2_sta": np.asarray(v2["STA_INDEX"], int),
         }
         if "OI_T3" in [x.name for x in h]:
             t3 = h["OI_T3"].data
@@ -110,3 +112,19 @@ def chi2(d, vis, correlated=False, chord=True, sine=False, whitened=False):
                         C = s[:, None] * R * s[None, :]
                         total += r[rows, k] @ np.linalg.pinv(C, rcond=1e-10) @ r[rows, k]
     return float(total)
+
+
+def residuals(d, vis):
+    """The whitened residual vector of ``vis`` against the loaded data,
+    independent closure phases (a three-telescope file): (model V² − V²)/σ,
+    then the chords 2 sin(Δ/2)/σ. Its squared norm is ``chi2(d, vis)``."""
+    model_v2 = np.abs(vis(d["u"], d["v"], d["wl"])) ** 2
+    r = [((model_v2 - d["v2"]) / d["dv2"]).ravel()]
+    if "cp" in d:
+        model = (
+            np.angle(vis(d["u1"], d["v1"], d["wl3"]))
+            + np.angle(vis(d["u2"], d["v2_"], d["wl3"]))
+            - np.angle(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"]))
+        )
+        r.append((2.0 * np.sin((model - d["cp"]) / 2.0) / d["dcp"]).ravel())
+    return np.concatenate(r)
