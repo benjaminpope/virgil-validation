@@ -344,6 +344,65 @@ Bisection on simulated 4T data found no NaN grids on #174's parent
 seed pixel's near-zero |J e_p|; #174 changed only the rounding that
 decided whether that pixel won.
 
+### C2c. Methods from the winning entries (methods only, not results)
+
+From the contest papers and the codes' method papers (BSMEM, MiRA, MACIM,
+SQUEEZE, IRBis, SPARCO, PYRA/MYTHRA). Results are excluded. The papers
+also describe their truth models, so **blindness is enforced by rules in
+`contest_images.py`, not by what the author of a run happens to know.**
+Every setting must be justified from the pre-submission information or
+from the data.
+
+Methods that recur among winners:
+
+- **Iterate the default model** (BSMEM, every year it won). Start flat or
+  from a Gaussian fitted to V², reconstruct, then smooth and threshold the
+  image into a new MaxEnt default and reconstruct again. A fit that stalls
+  above χ² = N signals a default that is too narrow.
+- **Grey first, then per channel** (2010 and 2022 BSMEM; the 2024
+  organisers). Make a grey image from binned channels, use it as the
+  default for each channel, and combine the channels with a median or a
+  thresholded mean, since artefacts appear in one channel only.
+- **Ensembles with an L-curve window** (2012 random starts; 2022 and 2024
+  Millour/Drevon, PYRA/MYTHRA):
+  - randomise μ, pixel, field (1–2× the interferometric one), start and
+    regulariser parameters;
+  - keep the window just before the L-curve turnover and drop χ² outliers;
+  - re-solve on a common grid, and add images only while χ² on V² *and* CP
+    does not worsen;
+  - output the mean and a per-pixel σ map.
+- **Locate features first, then refine** (2018 winner: 10 SQUEEZE chains,
+  mask compact sources on beam sidelobes, refine each with BSMEM,
+  average). This is what our CLEAN start already does.
+- **Parametric star plus image** (SPARCO; MACIM's unregularised point;
+  2018 and 2022 entries). Choose the flux ratio by total cost or evidence
+  on a grid, then free it. Use a `PowerLaw` spectral weight for chromatic
+  data.
+- **Model selection on residual diagnostics, not total χ² alone** (MACIM,
+  MiRA 2012):
+  - χ² on V² and CP separately, each near 1;
+  - mean residual on short baselines near 0, so that long baselines are not
+    overfitted at the expense of short ones.
+- **Match the regulariser to the morphology** (2012 organisers; Renard et
+  al. 2011 found TV best overall and compactness second). Compare TV,
+  MaxEnt/TSV and StarletL1; features that change between them are suspect.
+- **Systematics** (2014, 2018, 2024): cut low-SNR points, inflate errors,
+  fit an over-resolved flux. Do not trust automatic hyperparameters
+  (including Laplace evidence) when the data are biased, and cross-check
+  with the L-curve.
+
+Planned options for `contest_images.py`, in order:
+
+1. Residual diagnostics in every summary: χ²/N for V² and CP separately,
+   and the mean whitened residual on the shortest 20% of baselines.
+2. `--default iterate`: one or two BSMEM-style default-model iterations.
+3. `--regulariser tv|tsv|starlet` beside MaxEnt, for artefact comparison.
+4. `--ensemble N`: randomised settings, L-curve-window selection, mean and
+   σ map (PYRA-style); one OzSTAR array task per member, plus a combiner
+   job.
+5. C3: grey-then-per-channel with a median combine; SPARCO-style star with
+   `PowerLaw`.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
