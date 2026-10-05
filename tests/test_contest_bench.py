@@ -50,8 +50,10 @@ def test_metrics_perfect_shifted_and_inverted_entries():
     assert best["rms_e6"] == pytest.approx(0.0, abs=1e-6)
     assert best["l1"] == pytest.approx(1.0, abs=1e-9)
     assert best["ncc"] == pytest.approx(1.0, abs=1e-12)
-    shifted = image_metrics.score(np.roll(ref, (2, -3), axis=(0, 1)), fov, ref, pixel, beam_mas=2.0)
-    assert shifted["shift"] == (-2, 3) and shifted["ncc"] == pytest.approx(1.0, abs=1e-9)
+    moved = image_metrics.score(image_metrics.shifted(ref, (2, -3)), fov, ref, pixel, beam_mas=2.0)
+    assert moved["shift"] == (-2, 3)
+    # Zero-filled translation drops a sliver at the edge; nothing wraps.
+    assert moved["ncc"] > 0.999
     inverted = ref[::-1, ::-1]
     with_cp = image_metrics.score(inverted, fov, ref, pixel, beam_mas=2.0)
     v2_only = image_metrics.score(inverted, fov, ref, pixel, beam_mas=2.0, v2_only=True)

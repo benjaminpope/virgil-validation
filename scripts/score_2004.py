@@ -147,12 +147,13 @@ def truth_image(ratio, u_ld=U_LD):
     return img / img.sum()
 
 
-def resample(image, fov):
-    """An image ``fov`` mas across onto the truth grid (bilinear), unit sum."""
+def resample(image, fov, npix=NPIX):
+    """An image ``fov`` mas across onto an ``npix`` grid of PIXEL mas
+    (bilinear), unit sum."""
     from scipy.ndimage import map_coordinates
 
     n = image.shape[0]
-    x, y = grid()
+    x, y = grid(npix)
     # Pixel (row, col) of the entry at each truth pixel; same conventions.
     c = (n - 1) / 2
     col = c - x / (fov / n)
@@ -169,17 +170,36 @@ def sigma_over_peak(entry, ref, box):
     return float(sigma / r.max()), float(sigma), float(r.max())
 
 
-def aligned(entry, ref, max_shift=40):
-    """``entry`` shifted by the whole-pixel offset that best correlates it with
-    ``ref`` (the contest aligned entries on a feature by hand)."""
+def shifted(image, shift):
+    """``image`` translated by whole pixels (rows, columns), zero-filled: flux
+    leaving one edge does not wrap onto the other."""
+    out = np.zeros_like(image)
+    (di, dj), (n, m) = shift, image.shape
+    out[max(di, 0) : n + min(di, 0), max(dj, 0) : m + min(dj, 0)] = image[
+        max(-di, 0) : n + min(-di, 0), max(-dj, 0) : m + min(-dj, 0)
+    ]
+    return out
+
+
+MAX_SHIFT = 40  # pixels (3.2 mas): the alignment search's range
+
+
+def aligned(entry, ref, max_shift=MAX_SHIFT):
+    """``entry``, on a grid ``max_shift`` pixels wider than ``ref`` on every
+    side, translated by the whole-pixel offset that best correlates it with
+    ``ref`` and cropped to ``ref``'s grid (the contest aligned entries on a
+    feature by hand). The padding keeps emission that the shift brings into
+    view; nothing wraps."""
     from scipy.signal import fftconvolve
 
-    corr = fftconvolve(ref, entry[::-1, ::-1], mode="same")
+    padded = np.pad(ref, max_shift)
+    corr = fftconvolve(padded, entry[::-1, ::-1], mode="same")
     c = np.array(corr.shape) // 2
     window = corr[c[0] - max_shift : c[0] + max_shift + 1, c[1] - max_shift : c[1] + max_shift + 1]
     di, dj = np.unravel_index(np.argmax(window), window.shape)
-    shift = (di - max_shift, dj - max_shift)
-    return np.roll(entry, shift, axis=(0, 1)), shift
+    shift = (int(di - max_shift), int(dj - max_shift))
+    moved = shifted(entry, shift)[max_shift:-max_shift, max_shift:-max_shift]
+    return moved, shift
 
 
 def score(entry, fov, ratio, u_ld=U_LD):
@@ -191,7 +211,7 @@ def score(entry, fov, ratio, u_ld=U_LD):
     box[rows.min() - 10 : rows.max() + 11, cols.min() - 10 : cols.max() + 11] = True
     out = {}
     for name, img in (("as imaged", entry), ("inverted", entry[::-1, ::-1])):
-        moved, shift = aligned(resample(img, fov), ref)
+        moved, shift = aligned(resample(img, fov, NPIX + 2 * MAX_SHIFT), ref)
         out[name] = (*sigma_over_peak(moved, ref, box), shift)
     return out, ref
 

@@ -100,3 +100,21 @@ def test_resampling_keeps_a_point_at_its_sky_position():
     row, col = np.unravel_index(np.argmax(out), out.shape)
     assert (row - centre, col - centre) == (-8, 8)
     assert out.sum() == pytest.approx(1.0)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_members_with_different_pixel_counts_are_stacked(tmp_path):
+    # A first-campaign member (9 pixels over 10 mas) and a later one (17 pixels
+    # over 20 mas) of the same scene: both are resampled onto 17 pixels over 20 mas.
+    small = np.zeros((9, 9))
+    small[4, 4] = 1.0
+    large = np.zeros((17, 17))
+    large[8, 8] = 1.0
+    _member(tmp_path / "v_m0.npz", small, 1.0, -10.0, True, fov=10.0)
+    _member(tmp_path / "v_m1.npz", large, 1.0, -11.0, False, fov=20.0)
+    combine_ensemble.combine("v", combine_ensemble.load(tmp_path)["v"], tmp_path)
+    out = np.load(tmp_path / "v_ensemble.npz")
+    assert out["mean"].shape == (17, 17) and float(out["fov"]) == 20.0
+    assert np.unravel_index(np.argmax(out["mean"]), (17, 17)) == (8, 8)
+    assert sorted(out["kept"]) == [0, 1]
+

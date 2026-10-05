@@ -54,18 +54,32 @@ def resample(image, fov, npix, pixel):
     return out / total if total > 0 else out
 
 
-def align(entry, ref, max_shift=None):
-    """``entry`` rolled by the whole-pixel shift maximising its
-    cross-correlation with ``ref``, and that shift (rows, columns)."""
-    n = ref.shape[0]
-    max_shift = n // 4 if max_shift is None else max_shift
-    corr = fftconvolve(ref, entry[::-1, ::-1], mode="same")
+def shifted(image, shift):
+    """``image`` translated by whole pixels (rows, columns), zero-filled: flux
+    leaving one edge does not wrap onto the other."""
+    out = np.zeros_like(image)
+    (di, dj), (n, m) = shift, image.shape
+    out[max(di, 0) : n + min(di, 0), max(dj, 0) : m + min(dj, 0)] = image[
+        max(-di, 0) : n + min(-di, 0), max(-dj, 0) : m + min(-dj, 0)
+    ]
+    return out
+
+
+def align(entry, ref, max_shift):
+    """``entry`` (on a grid ``max_shift`` pixels wider than ``ref`` on every
+    side) translated by the whole-pixel offset that maximises its
+    cross-correlation with ``ref``, cropped to ``ref``'s grid, and that shift
+    (rows, columns). The padding keeps emission a shift brings into view;
+    translation is zero-filled, so nothing wraps."""
+    padded = np.pad(ref, max_shift)
+    corr = fftconvolve(padded, entry[::-1, ::-1], mode="same")
     c = np.array(corr.shape) // 2
-    lo = c - max_shift
-    window = corr[lo[0] : c[0] + max_shift + 1, lo[1] : c[1] + max_shift + 1]
+    window = corr[c[0] - max_shift : c[0] + max_shift + 1, c[1] - max_shift : c[1] + max_shift + 1]
     di, dj = np.unravel_index(np.argmax(window), window.shape)
     shift = (int(di - max_shift), int(dj - max_shift))
-    return np.roll(entry, shift, axis=(0, 1)), shift
+    if max_shift == 0:
+        return entry, shift
+    return shifted(entry, shift)[max_shift:-max_shift, max_shift:-max_shift], shift
 
 
 def _unit(image, box=None):
@@ -122,10 +136,11 @@ def ncc(entry, ref):
     return float(np.dot(e, r) / np.sqrt(np.dot(e, e) * np.dot(r, r)))
 
 
-def score(entry, fov, ref, pixel, beam_mas, v2_only=False, box_margin_mas=None):
+def score(entry, fov, ref, pixel, beam_mas, v2_only=False, box_margin_mas=None, max_shift=None):
     """Every metric for ``entry`` (``fov`` mas across) against ``ref`` (on a
     grid of ``pixel`` mas). Resolution for the convolved metrics: the beam,
-    λ/B_max in mas. Returns a dict; with ``v2_only`` the better of the image
+    λ/B_max in mas. Alignment searches ``max_shift`` pixels (default n/4) on a
+    grid padded by as much. Returns a dict; with ``v2_only`` the better of the image
     and its inversion (by NCC) is kept and ``inverted`` says which."""
     n = ref.shape[0]
     ref = _unit(ref)
@@ -134,12 +149,13 @@ def score(entry, fov, ref, pixel, beam_mas, v2_only=False, box_margin_mas=None):
     m = int(np.ceil(margin / pixel))
     box = np.zeros_like(ref, bool)
     box[max(rows.min() - m, 0) : rows.max() + m + 1, max(cols.min() - m, 0) : cols.max() + m + 1] = True
+    max_shift = n // 4 if max_shift is None else max_shift
     candidates = [("as imaged", np.asarray(entry, float))]
     if v2_only:
         candidates.append(("inverted", np.asarray(entry, float)[::-1, ::-1]))
     results = []
     for name, img in candidates:
-        moved, shift = align(resample(img, fov, n, pixel), ref)
+        moved, shift = align(resample(img, fov, n + 2 * max_shift, pixel), ref, max_shift)
         fwhm_pix = beam_mas / pixel
         results.append({
             "orientation": name,

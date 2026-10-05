@@ -67,36 +67,39 @@ def load(*results):
     return groups
 
 
-def resample(image, fov, common_fov):
-    """``image`` (unit-sum, ``fov`` across) on a grid of the same size spanning
-    ``common_fov``, by bilinear interpolation, renormalised to unit sum.
-    Members written before contest_images.reference_fov fixed the common
-    grid (job 18073823) have one of two fields, depending on their star
-    setting; resampling makes them comparable pixel by pixel."""
+def resample(image, fov, common_fov, npix=None):
+    """``image`` (unit-sum, ``fov`` across) on an ``npix`` grid (default: its
+    own size) spanning ``common_fov``, by bilinear interpolation, renormalised
+    to unit sum. Members of different campaigns can differ in both field and
+    pixel count (job 18073823 used 129 pixels over 2x the base field, later
+    campaigns 257 over 4x); resampling makes them comparable pixel by pixel."""
     from scipy.ndimage import gaussian_filter, map_coordinates
 
     n = image.shape[0]
-    ratio = common_fov / fov
+    npix = n if npix is None else int(npix)
+    # Size of a new pixel in old pixels.
+    ratio = (common_fov / npix) / (fov / n)
     if ratio > 1:
         # Larger new pixels: smooth over about one of them first, so that
         # point sampling cannot step over a compact feature (anti-aliasing).
         image = gaussian_filter(image, sigma=0.5 * ratio, mode="constant")
-    centre = (n - 1) / 2
-    # Pixel k of the common grid sits at (k - centre) * common_fov / n mas,
-    # which is pixel centre + (k - centre) * common_fov / fov of the old one.
-    k = centre + (np.arange(n) - centre) * ratio
+    # Pixel k of the new grid sits at (k - c_new) * common_fov / npix mas from
+    # the centre, which is pixel c_old + that / (fov / n) of the old one.
+    k = (n - 1) / 2 + (np.arange(npix) - (npix - 1) / 2) * ratio
     rows, cols = np.meshgrid(k, k, indexing="ij")
     out = map_coordinates(image, [rows, cols], order=1, mode="constant", cval=0.0)
     return out / out.sum()
 
 
 def combine(label, members, out):
-    # Members share one grid since contest_images.reference_fov; older ones
-    # are resampled onto the largest field among them.
+    # Members of one campaign share a grid (contest_images.reference_fov);
+    # members of different campaigns are resampled onto the largest field
+    # and the largest pixel count among them.
     common = max(m["fov"] for m in members)
+    npix = max(m["image"].shape[0] for m in members)
     for m in members:
-        if not np.isclose(m["fov"], common, rtol=1e-9):
-            m["image"] = resample(m["image"] / m["image"].sum(), m["fov"], common)
+        if not np.isclose(m["fov"], common, rtol=1e-9) or m["image"].shape[0] != npix:
+            m["image"] = resample(m["image"] / m["image"].sum(), m["fov"], common, npix)
             m["fov"] = common
     chi2 = np.array([m["chi2"] for m in members])
     finite = np.isfinite(chi2)
