@@ -198,7 +198,7 @@ def render(graph, ledger, info, pipes, runs):
     layers = collections.defaultdict(list)
     for name, node in graph["nodes"].items():
         layers[node.get("layer", "other")].append(name)
-    for layer in ["references", "data", "models", "likelihood", "inference", "imaging"]:
+    for layer in ["references", "data", "models", "orbits", "likelihood", "inference", "imaging"]:
         if layer not in layers:
             continue
         lines.append(f'    subgraph {layer}["{layer}"]')

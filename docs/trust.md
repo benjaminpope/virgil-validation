@@ -5,7 +5,7 @@
 - Evidence from local on 2026-10-05T05:44:51+00:00, virgil `4eb3fe5e08`
 - Evidence from virgil-ci on 2026-10-04T03:34:49+00:00, virgil `ec4cf51530` ([run](https://github.com/benjaminpope/virgil/actions/runs/37173979477))
 
-Statuses: ✅ trusted 53, 🟡 partial 14, 🔶 open 1, ⬜ unchecked 5.
+Statuses: ✅ trusted 53, 🟡 partial 14, 🔶 open 5, ⬜ unchecked 10.
 
 A node is **trusted** when it passes checks against enough distinct strong roots
 (mathematics, standards, statistics, literature, or a trusted package) and every
@@ -21,19 +21,21 @@ flowchart BT
     classDef bad fill:#ffcdd2,stroke:#c62828,color:#000
     classDef todo fill:#eeeeee,stroke:#9e9e9e,color:#555,stroke-dasharray: 5 5
     subgraph references["references"]
-        n60["crosscheck"]:::done
-        n61["crosscheck.sky"]:::done
-        n62["crosscheck.limb"]:::done
-        n63["crosscheck.nrm"]:::done
-        n64["external_bridge"]:::done
-        n65["external_bridge.pmoired_models"]:::done
-        n66["evidence"]:::done
-        n67["pmoired"]:::done
-        n68["candid"]:::done
-        n69["external_bridge.candid_bridge"]:::done
-        n70["external_bridge.fouriever_worker"]:::done
-        n71["fouriever"]:::todo
-        n72["ehtim"]:::todo
+        n67["crosscheck"]:::done
+        n68["crosscheck.sky"]:::done
+        n69["crosscheck.limb"]:::done
+        n70["crosscheck.nrm"]:::done
+        n71["external_bridge"]:::done
+        n72["external_bridge.pmoired_models"]:::done
+        n73["evidence"]:::done
+        n74["pmoired"]:::done
+        n75["orbitize"]:::todo
+        n76["external_bridge.orbitize_bridge"]:::todo
+        n77["candid"]:::done
+        n78["external_bridge.candid_bridge"]:::done
+        n79["external_bridge.fouriever_worker"]:::done
+        n80["fouriever"]:::todo
+        n81["ehtim"]:::todo
     end
     subgraph data["data"]
         n0["oifits.read_oifits"]:::done
@@ -70,7 +72,16 @@ flowchart BT
         n29["spectra.PowerLaw"]:::done
         n30["spectra.BlackBody"]:::done
         n31["spectra.Tabulated"]:::done
-        n59["_elr"]:::done
+        n66["_elr"]:::done
+    end
+    subgraph orbits["orbits"]
+        n59["orbits.KeplerOrbit"]:::todo
+        n60["orbits.ThieleInnesOrbit"]:::part
+        n61["orbits.StateVectorOrbit"]:::part
+        n62["orbits.total_mass"]:::part
+        n63["orbits.distance_pc"]:::part
+        n64["orbits.PositionData"]:::todo
+        n65["orbits.RVData"]:::todo
     end
     subgraph likelihood["likelihood"]
         n32["oidata.OIData.cp_noise"]:::done
@@ -112,7 +123,7 @@ flowchart BT
     n5 --> n19
     n6 --> n19
     n8 --> n19
-    n59 --> n20
+    n66 --> n20
     n21 --> n22
     n21 --> n23
     n21 --> n24
@@ -135,6 +146,12 @@ flowchart BT
     n1 --> n47
     n33 --> n51
     n35 --> n58
+    n59 --> n60
+    n59 --> n61
+    n59 --> n62
+    n59 --> n63
+    n59 --> n64
+    n59 --> n65
 ```
 
 ## Objects
@@ -200,6 +217,13 @@ flowchart BT
 | `virgil.imaging.StarletL1` | ✅ trusted | mathematics (1) |  | 6 | 4eb3fe5 |
 | `virgil.imaging.LogSum` | ✅ trusted | mathematics (1) |  | 2 | 4eb3fe5 |
 | `virgil.imaging.l_curve` | ⬜ unchecked | — (1) |  | 0 |  |
+| `virgil.orbits.KeplerOrbit` | ⬜ unchecked | — (2) |  | 0 |  |
+| `virgil.orbits.ThieleInnesOrbit` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.StateVectorOrbit` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.total_mass` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.distance_pc` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.PositionData` | ⬜ unchecked | — (1) |  | 0 |  |
+| `virgil.orbits.RVData` | ⬜ unchecked | — (2) |  | 0 |  |
 | `virgil._elr` | ✅ trusted | golden:dholakia, mathematics (1) |  | 22 | ec4cf51 |
 | `crosscheck` | ✅ trusted | standards (1) |  | 1 | 4eb3fe5 |
 | `crosscheck.sky` | ✅ trusted | mathematics (1) |  | 2 | 4eb3fe5 |
@@ -209,6 +233,8 @@ flowchart BT
 | `external_bridge.pmoired_models` | ✅ trusted | mathematics, pmoired (1) |  | 15 | 4eb3fe5 |
 | `evidence` | ✅ trusted | standards (1) |  | 4 | 4eb3fe5 |
 | `pmoired` | ✅ trusted | mathematics (1) |  | 5 | 4eb3fe5 |
+| `orbitize` | ⬜ unchecked | — (1) |  | 0 |  |
+| `external_bridge.orbitize_bridge` | ⬜ unchecked | — (1) |  | 0 |  |
 | `candid` | ✅ trusted | mathematics (1) |  | 2 | 4eb3fe5 |
 | `external_bridge.candid_bridge` | ✅ trusted | candid, mathematics (1) |  | 1 | 4eb3fe5 |
 | `external_bridge.fouriever_worker` | ✅ trusted | fouriever, mathematics (1) |  | 1 | 4eb3fe5 |
@@ -227,6 +253,7 @@ End-to-end chains, validated when their own evidence passes and every step is tr
 | **rml-imaging**: Regularised image reconstruction against eht-imaging or MPoL on the same data | 🟡 end-to-end only | ehtim | 1 | `virgil.oidata.OIData`, `virgil.fitting.fit` |
 | **contest-imaging**: Blind images from the SPIE imaging contests' data, against the published entries and truths | ⬜ planned | — | 0 | `virgil.oidata.OIData`, `virgil.imaging.l_curve`, `virgil.fitting.fit` |
 | **published-binary**: Reproduce published binary detections from the authors' archival data | ⬜ planned | — | 0 | `virgil.oidata.OIData`, `virgil.grid_fit.likelihood_grid`, `virgil.fitting.fit`, `virgil.inference.laplace_cov`, `virgil.limits.absil_limits` |
+| **orbitize-posterior**: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors | ⬜ planned | — | 0 | `virgil.orbits.PositionData`, `virgil.orbits.KeplerOrbit` |
 
 ## Ledger
 
@@ -260,3 +287,7 @@ Every mismatch found, and its ruling: `virgil`, `external:<package>`, `definitio
 | P4 | external:candid | to-raise | CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation) | mathematics (CANDID's criterion solved exactly with Brent's method) |  |
 | P5 | external:fouriever | raised | fouriever's closure-phase residual is not wrapped, so data straddling +-180 deg give a ~2 pi residual at the true parameters | mathematics (closure phases are angles; virgil's residuals are 2 pi periodic) | [26](https://github.com/kammerje/fouriever/issues/26) |
 | P6 | external:ehtim | to-raise | eht-imaging's Obsdata.tlist/bllist return tuples under NumPy 2 when every time group has the same size, so closure phases fail | mathematics (NumPy's documented behaviour) |  |
+| F14 | virgil | open | orbits.total_mass and distance_pc use a³/P² with P in Julian years, 3.8e-5 from Kepler's third law with the IAU nominal GM_sun and au | standards (IAU 2015 B3 nominal GM_sun, IAU 2012 au); orbitize! computes the exact law |  |
+| F15 | virgil | open | ThieleInnesOrbit.to_kepler returns Omega = 180.0 for a node at 180°, outside its documented [0, 180) | mathematics (the documented range) |  |
+| F16 | virgil | open | StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits (0.01° returns 0.0106°), so positions drift by up to 2e-8 of a | orbitize! (positions to 1e-14 of a on well-posed orbits); mathematics (the state fixes i to ~1e-16 rad) |  |
+| P7 | external:orbitize | to-raise | orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre | orbitize!'s own documentation (read_input) against its System.compute_model |  |

@@ -56,6 +56,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Correlated closure phases | `OIData.cp_noise` and the correlated χ² against fouriever (Kammerer et al. 2020's own code) and our own implementation of that model ([notes](docs/fouriever_notes.md)) | correlation exact; χ² 1e-15 against each code's definition |
 | Linear marginals | calibration gains (`with_gains`) against a dense Gaussian with C + UUᵀ; `linear_flux_grid` flux, error and Bayes factor against Gauss–Newton and brute-force integration | 1e-12 (gains); flux map 1e-8 σ, log B 1e-7 (linear model) |
 | Against CANDID | χ², `nsigma`, χ² maps, Absil limits and fits on the same files, CANDID in its own environment ([notes](docs/candid_notes.md)) | 2e-7 on V²-only files; with closure phases, the chord/plain residual difference (≤ 8e-4 on maps); fits 4e-4 σ apart |
+| Orbits against orbitize! | `KeplerOrbit` positions, sep/PA, `ThieleInnesOrbit`, `StateVectorOrbit`, `RVData` (primary and secondary, also through orbitize!'s `System`), the (Ω+180°, ω+180°), ω+180° and i → 180°−i symmetries in both codes, `total_mass` and `distance_pc`, over e = 0 to 0.95 and i = 0° to 179.9°; orbitize! (Blunt et al. 2020, 2024) in its own environment ([notes](docs/orbitize_notes.md)) | positions 1e-14 of a; RVs 2e-15 of K (3e-10 through `System`, its Kepler tolerance); masses 3.8e-5 (F14); near face-on state vectors 2e-8 (F16) |
 | Spectra, flared disks, harmonix wrapper | `PowerLaw`, `BlackBody`, `Tabulated`, chromatic `System`s; `FlaredDiskHG`/`Gaussian`/`PowerLaw` against a direct sum of the documented brightness (Blakely et al. 2024); `HarmonixModel` units and weight | 1e-15 (disks), 1e-12 (spectra; black body 9e-9) |
 | Fits against PMOIRED | the same files fitted by both; best fits, uncertainties, 200-draw pulls | best fits < 0.25 σ apart; errors equal with 3 telescopes; PMOIRED's errors ~10 % small with correlated closure phases (it treats them as independent) |
 | Masking (dLux) | virgil fits to noise-free dLux observables | bias ≤ 0.05 σ for realistic errors (1° closure phases; largest for the rim) |
@@ -98,6 +99,9 @@ noticed) once virgil changes.
 | 11 | `likelihood.whitened_residuals` | For closure phases from four or more telescopes, residuals are wrapped into [-π, π), taken as chords 2 sin(Δ/2) and whitened together. A chord changes sign under Δ → Δ + 2π, so the correlated cross terms make χ² **jump** wherever a residual crosses ±π: in a smooth one-parameter sweep the largest step is 860× the median (48× with three telescopes). Image fits on high-S/N 4T data (2022 GRAVITY, 2010 AMBER contest data) stall on these jumps, where JAX gradients and finite differences disagree by 10²–10⁴. | bug | fixed, [virgil#174](https://github.com/benjaminpope/virgil/pull/174) |
 | 12 | `imaging.clean` | Without a base scene, CLEAN seeds the central pixel, whose \|J e_p\| is zero. On even grids that pixel sits half a pixel off the origin, so rounding left \|J e_p\|² ~ 1e-24. Its score won, and its step (−g over a zero curvature) was infinite, giving NaN χ²: every even size from 34 to 68 at 0.4 mas on simulated 4T data. Exposed by virgil#174, which only changed the rounding. | bug | fixed, [virgil#190](https://github.com/benjaminpope/virgil/pull/190) |
 | 13 | `oidata.OIData` | Closure-phase frames are grouped by `MJD` alone. OIFITS v1 files that give a night one MJD and tell snapshots apart by `TIME` (the 2004 imaging-contest files, from OYSTER) are merged into one frame, so closure phases from different snapshots are treated as correlated through "shared" baselines: the 2004 data2 file's 130 closure phases whiten to 10 independent combinations instead of 130; on our simulated 4T file, 3 instead of 21. | bug | fixed, [virgil#203](https://github.com/benjaminpope/virgil/pull/203) |
+| 14 | `orbits.total_mass`, `distance_pc` | M = a³/P² with a in au and P in **Julian** years, as documented, is Kepler's third law only for the Gaussian year (2π√(au³/GM☉) = 365.2569 d): masses are 3.78e-5 low and dynamical distances 1.26e-5 high against orbitize! and the IAU nominal GM☉. Negligible against today's mass errors, but systematic. | minor | open |
+| 15 | `orbits.ThieleInnesOrbit.to_kepler` | Returns Ω = 180.0 exactly, outside its documented [0°, 180°), for a node at 180° (`KeplerOrbit(1000, 0, 0.3, 60, 270, 180, 100).to_thiele_innes().to_kepler()`). The same sky orbit as Ω = 0, ω + 180°. | edge case | open |
+| 16 | `orbits.StateVectorOrbit.to_kepler` | Loses the inclination of nearly face-on orbits: from `from_kepler`, i = 0.001° comes back as 0°, 0.01° as 0.0106°, 0.1° as 0.099997°, 179.99° as 179.9894°; positions then drift by up to 2e-8 of a (well-posed orbits: 2e-14). The state fixes i to float64 precision (e.g. atan2(\|h_xy\|, h_z) of the angular momentum). | minor (numerics) | open |
 
 Differences with other packages (all in the [ledger](docs/trust.md#ledger)):
 
@@ -112,10 +116,13 @@ Differences with other packages (all in the [ledger](docs/trust.md#ledger)):
 | P4 | CANDID | Absil limits from `detectionLimit` ~1 % low against its own criterion solved exactly ([notes](docs/candid_notes.md)) | to raise |
 | P5 | fouriever | Closure-phase residual not wrapped: data straddling ±180° give a ~2π residual at the true binary ([notes](docs/fouriever_notes.md)) | raised, [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 | P6 | eht-imaging | Under NumPy 2, closure phases fail when every time has the same baselines (all simulated data); worked around in our worker | to raise |
+| P7 | orbitize! | Its `read_input` asks for companion RVs relative to the barycentre, but `System.compute_model` adds the fitted γ to them whenever primary RVs from the same instrument are present (and not otherwise): the companion's model moves by γ ([notes](docs/orbitize_notes.md)) | to raise |
 
 Nothing else disagreed: every primitive, convention (East, North, position
 angle, OIFITS sign, T3 orientation), the OIFITS reader, the fitter, the
-Laplace uncertainties, the grid search and the detection limits passed.
+Laplace uncertainties, the grid search and the detection limits passed; and against orbitize!,
+every orbit convention (ω of the companion, the receding node, the sense of
+rotation, the third axis, the RV signs of both stars).
 
 ## Requesting other validations
 
@@ -135,14 +142,16 @@ false-alarm and contrast-limit simulation campaigns.
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[external]"   # virgil-astro from PyPI, PMOIRED
 bash scripts/setup_candid.sh                         # CANDID, in its own .venv-candid
-bash scripts/setup_external.sh                       # eht-imaging, MPoL, fouriever, each in its own .venv-<name>
+bash scripts/setup_external.sh                       # eht-imaging, MPoL, fouriever, orbitize!, each in its own .venv-<name>
 .venv/bin/python -m pytest -m "not slow"             # ~1 min
 .venv/bin/python -m pytest                           # + dLux and noisy pulls, ~10 min
 .venv/bin/python scripts/report.py                   # docs/results.md and figures
 ```
 
 To test a local virgil checkout, install it editable instead
-(`uv pip install --python .venv/bin/python -e ../virgil -e .`). CI runs the
+(`uv pip install --python .venv/bin/python -e "../virgil[orbits]" -e .`; the
+`orbits` extra brings jaxoplanet, which `virgil.orbits` needs, and the orbit
+tests skip without it). CI runs the
 fast tests on every push and everything weekly against virgil's `main`.
 
 ## References
@@ -161,3 +170,6 @@ fast tests on every push and everything weekly against virgil's `main`.
   limb darkening)
 * Kipping 2013, MNRAS 435, 2152 (q₁, q₂ for two-parameter laws)
 * Desdoigts, Pope, Dennis & Tuthill 2023, JATIS 9, 028007 (dLux)
+* Blunt et al. 2020, AJ 159, 89; Blunt et al. 2024, JOSS 9, 6756 (orbitize!,
+  BSD-3-Clause; called in its own environment, never vendored)
+* Nielsen et al. 2020, AJ 159, 71 (β Pic b astrometry, orbitize!'s example data)
