@@ -129,14 +129,17 @@ nodes:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
     depends: [virgil.likelihood.whitened_residuals]
+  virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
+    layer: likelihood
+    source: [src/virgil/_linear.py]
   virgil.gains.gain_modes:  # analytic marginalisation of calibration gains
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
-    depends: [virgil.oidata.OIData]
+    depends: [virgil.oidata.OIData, virgil._linear]
   virgil.gains.closure_offsets:  # analytic marginalisation of closure-phase offsets
     layer: likelihood
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
-    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise]
+    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise, virgil._linear]
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
@@ -204,7 +207,7 @@ nodes:
   virgil.orbits.RVData:
     layer: orbits
     source: [src/virgil/orbits.py]
-    depends: [virgil.orbits.KeplerOrbit]
+    depends: [virgil.orbits.KeplerOrbit, virgil._linear]
     roots: 2  # RV signs: orbitize! and mathematics
 
   virgil._elr:

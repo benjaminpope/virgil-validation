@@ -178,6 +178,7 @@ integration.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
+| `virgil._linear` (`LinearMarginal`, `posterior`, `whiten_cholesky`, `whiten_rank_one`, `whiten_blocks`), the shared helper since virgil#217: random designs, diagonal and full priors, rank-deficient designs, both whitening methods | dense 𝒩(m + Aμ, D + AΛAᵀ) from SciPy: log density, Mahalanobis distance and log-determinant; the whitening matrix M with MᵀM = C⁻¹; blocks with spanning columns; the conditional posterior by direct conditioning; the narrow-prior and flat-prior limits; gradients against finite differences at equal columns and zero width | Mathematics | 1e-10 to 1e-12 |
 | `OIData.with_gains`: telescope, baseline and chromatic groups, alone and together, four UTs, V² | Δ log-likelihood = log 𝒩(r; 0, D + UUᵀ) − log 𝒩(r; 0, D), with U = 2V²_model τ m and the modes as documented (chromatic shape (λ_ref/λ)², λ_ref the median wavelength) | Mathematics | 1e-12 |
 | the same with supplied modes, one value per sample in file order | the same | Mathematics | 1e-11 |
 | the same on amplitudes (`OI_VIS` `VISAMP`) | U = \|V\|_model τ m | Mathematics | 1e-12 |
