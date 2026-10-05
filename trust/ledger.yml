@@ -290,7 +290,7 @@
   title: StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits (0.01° returns 0.0106°), so positions drift by up to 2e-8 of a
   objects: [virgil.orbits.StateVectorOrbit]
   ruling: virgil
-  kind: numerics (consistent with an arccos of h_z/|h| near 1; atan2(|h_xy|, h_z) keeps float64 precision)
+  kind: numerics (i = 0.001° returns 0°, 0.01° returns 0.0106°, 179.99° returns 179.9894°; the state fixes i to float64 precision)
   referee: orbitize! (positions to 1e-14 of a on well-posed orbits); mathematics (the state fixes i to ~1e-16 rad)
   evidence:
     - tests/test_orbitize.py::test_state_vector_orbit_matches_orbitize

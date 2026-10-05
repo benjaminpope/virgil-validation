@@ -28,7 +28,9 @@ by a chain of independent checks.
       [fouriever](https://github.com/kammerje/fouriever) (Jens Kammerer),
       and for image reconstruction
       [eht-imaging](https://github.com/achael/eht-imaging) and
-      [MPoL](https://github.com/MPoL-dev/MPoL);
+      [MPoL](https://github.com/MPoL-dev/MPoL), and for orbits
+      [orbitize!](https://github.com/sblunt/orbitize) (Blunt et al. 2020,
+      2024);
     * **literature**: published results, reproduced from the authors' own
       data;
     * **statistics**: ensembles of simulations whose distribution is known
@@ -102,7 +104,8 @@ The roots of trust are one pool: mathematics, standards, statistics,
 **literature** (published results reproduced from the authors' own data), and
 the trusted packages: dLux, PMOIRED, CANDID, fouriever, and, for image
 reconstruction, [eht-imaging](https://github.com/achael/eht-imaging) and
-[MPoL](https://github.com/MPoL-dev/MPoL). Any link in the graph may be
+[MPoL](https://github.com/MPoL-dev/MPoL), and for Keplerian orbits and radial
+velocities [orbitize!](https://github.com/sblunt/orbitize). Any link in the graph may be
 validated against whichever root suits it; no stage needs every package.
 A node asks only for a number of *distinct* roots (two for conventions, where
 a single reference could share a mistake).

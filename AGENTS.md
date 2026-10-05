@@ -21,8 +21,9 @@ read, model and fit them.
   docstring. Bessel and other special functions come from SciPy.
 - `src/virgil_bridge/` is the only code that imports virgil: scene
   definitions pairing our truth with the virgil model to fit.
-- `src/external_bridge/` calls other people's packages (PMOIRED, later
-  CANDID). It may not import virgil either. Pin their conventions from
+- `src/external_bridge/` calls other people's packages (PMOIRED, CANDID,
+  fouriever, eht-imaging, MPoL, orbitize!), the heavy ones in their own
+  environments through a worker script. It may not import virgil either. Pin their conventions from
   their documentation and our references first (`docs/*_conventions.md`),
   and only then compare them with virgil. Never copy their code (CANDID
   states no licence).
@@ -72,7 +73,7 @@ the CI job summary). Roots are listed in `src/evidence/__init__.py`;
   writes the Trust page (statuses, chart, pipelines, ledger); weekly CI does
   the same against virgil's main.
 - Roots are a pool (mathematics, standards, statistics, literature, dLux,
-  PMOIRED, CANDID, fouriever, eht-imaging, MPoL): validate any link against
+  PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!): validate any link against
   whichever suits it. Do not claim a root a test does not really exercise.
 
 ## Requesting other validations

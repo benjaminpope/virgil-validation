@@ -66,7 +66,7 @@ def external():
         from external_bridge import _subprocess
     except ImportError:
         return None
-    return {name: _subprocess.version(name) for name in ("ehtim", "mpol", "fouriever")}
+    return {name: _subprocess.version(name) for name in ("ehtim", "mpol", "fouriever", "orbitize")}
 
 
 def run_header():

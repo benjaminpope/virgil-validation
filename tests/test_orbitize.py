@@ -419,11 +419,10 @@ def test_state_vector_orbit_matches_orbitize(grid, runs):
 @pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"], kind="finding")
 def test_f16_state_vector_round_trip_keeps_float64_precision(grid):
     """The state (dra, ddec, vra, vdec, dz, vz, mu) fixes the orbit as
-    precisely face-on as edge-on: the inclination is atan2(|h_xy|, h_z) of
-    the angular momentum, good to ~1e-16 rad. virgil's to_kepler returns
-    i = 0.0106° for 0.01° and 0° for 1e-4°, as an arccos of h_z/|h| near 1
-    would (error ~ sqrt(eps) in the angle), and the positions then drift by
-    up to 2e-8 of a. Reproducer:
+    precisely face-on as edge-on (the inclination is atan2(|h_xy|, h_z) of
+    the angular momentum, good to ~1e-16 rad). virgil's to_kepler returns
+    i = 0° for 0.001°, 0.0106° for 0.01° and 179.9894° for 179.99°, and
+    the positions then drift by up to 2e-8 of a. Reproducer:
     StateVectorOrbit.from_kepler(KeplerOrbit(1000, 100, 0.3, 0.01, 30, 60, 100)).to_kepler().inc
     is 0.010646, not 0.01."""
     pos, inc = _state_errors(grid)

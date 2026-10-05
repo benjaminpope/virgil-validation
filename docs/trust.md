@@ -5,7 +5,7 @@
 - Evidence from local on 2026-10-05T02:41:27+00:00, virgil `321d4bbcad`
 - Evidence from virgil-ci on 2026-10-04T03:34:49+00:00, virgil `ec4cf51530` ([run](https://github.com/benjaminpope/virgil/actions/runs/37173979477))
 
-Statuses: ✅ trusted 43, 🟡 partial 1, 🕒 stale 21, 🔶 open 1, ⬜ unchecked 5.
+Statuses: ✅ trusted 18, 🟡 partial 1, 🕒 stale 45, 🔶 open 5, ⬜ unchecked 11.
 
 A node is **trusted** when it passes checks against enough distinct strong roots
 (mathematics, standards, statistics, literature, or a trusted package) and every
@@ -21,56 +21,67 @@ flowchart BT
     classDef bad fill:#ffcdd2,stroke:#c62828,color:#000
     classDef todo fill:#eeeeee,stroke:#9e9e9e,color:#555,stroke-dasharray: 5 5
     subgraph references["references"]
-        n58["crosscheck"]:::done
-        n59["crosscheck.sky"]:::done
-        n60["crosscheck.limb"]:::done
-        n61["crosscheck.nrm"]:::done
-        n62["external_bridge"]:::done
-        n63["external_bridge.pmoired_models"]:::done
-        n64["evidence"]:::done
-        n65["pmoired"]:::done
-        n66["candid"]:::done
-        n67["external_bridge.candid_bridge"]:::done
-        n68["external_bridge.fouriever_worker"]:::done
-        n69["fouriever"]:::todo
-        n70["ehtim"]:::todo
+        n65["crosscheck"]:::done
+        n66["crosscheck.sky"]:::done
+        n67["crosscheck.limb"]:::done
+        n68["crosscheck.nrm"]:::done
+        n69["external_bridge"]:::done
+        n70["external_bridge.pmoired_models"]:::done
+        n71["evidence"]:::done
+        n72["pmoired"]:::done
+        n73["orbitize"]:::todo
+        n74["external_bridge.orbitize_bridge"]:::todo
+        n75["candid"]:::done
+        n76["external_bridge.candid_bridge"]:::done
+        n77["external_bridge.fouriever_worker"]:::done
+        n78["fouriever"]:::todo
+        n79["ehtim"]:::todo
     end
     subgraph data["data"]
-        n0["oifits.read_oifits"]:::done
+        n0["oifits.read_oifits"]:::part
         n1["oidata.OIData"]:::part
         n2["oidata.find_uv_grid"]:::done
         n3["coverage.vlti_oidata"]:::done
         n4["amigo.load_oi_data"]:::todo
     end
     subgraph models["models"]
-        n5["PointSource"]:::done
-        n6["GaussianDisk"]:::done
-        n7["EllipticalGaussian"]:::done
-        n8["UniformDisk"]:::done
-        n9["ModulatedGaussianRim"]:::done
-        n10["GaussianArc"]:::done
-        n11["BinaryModelCartesian"]:::done
-        n12["BinaryModelAngular"]:::done
-        n13["Image"]:::done
-        n14["Image.model_on_grid"]:::done
-        n15["Image.from_model"]:::done
-        n16["SourceModel.render"]:::done
-        n17["Resolved"]:::done
-        n18["Rotated"]:::done
-        n19["System"]:::done
-        n20["GravityDarkenedStar"]:::done
-        n21["cvis_limb_darkened_disk"]:::done
-        n22["LimbDarkenedDisk"]:::done
-        n23["QuadraticLimbDarkenedDisk"]:::done
-        n24["SquareRootLimbDarkenedDisk"]:::done
-        n25["FlaredDiskGaussian"]:::done
-        n26["FlaredDiskHG"]:::done
-        n27["FlaredDiskPowerLaw"]:::done
-        n28["HarmonixModel"]:::done
+        n5["PointSource"]:::part
+        n6["GaussianDisk"]:::part
+        n7["EllipticalGaussian"]:::part
+        n8["UniformDisk"]:::part
+        n9["ModulatedGaussianRim"]:::part
+        n10["GaussianArc"]:::part
+        n11["BinaryModelCartesian"]:::part
+        n12["BinaryModelAngular"]:::part
+        n13["Image"]:::part
+        n14["Image.model_on_grid"]:::part
+        n15["Image.from_model"]:::part
+        n16["SourceModel.render"]:::part
+        n17["Resolved"]:::part
+        n18["Rotated"]:::part
+        n19["System"]:::part
+        n20["GravityDarkenedStar"]:::part
+        n21["cvis_limb_darkened_disk"]:::part
+        n22["LimbDarkenedDisk"]:::part
+        n23["QuadraticLimbDarkenedDisk"]:::part
+        n24["SquareRootLimbDarkenedDisk"]:::part
+        n25["FlaredDiskGaussian"]:::part
+        n26["FlaredDiskHG"]:::part
+        n27["FlaredDiskPowerLaw"]:::part
+        n28["HarmonixModel"]:::part
         n29["spectra.PowerLaw"]:::done
         n30["spectra.BlackBody"]:::done
         n31["spectra.Tabulated"]:::done
-        n57["_elr"]:::done
+        n64["_elr"]:::done
+    end
+    subgraph orbits["orbits"]
+        n57["orbits.KeplerOrbit"]:::todo
+        n58["orbits.ThieleInnesOrbit"]:::part
+        n59["orbits.StateVectorOrbit"]:::part
+        n60["orbits.total_mass"]:::part
+        n61["orbits.distance_pc"]:::part
+        n62["orbits.PositionData"]:::todo
+        n63["orbits.RVData"]:::todo
     end
     subgraph likelihood["likelihood"]
         n32["oidata.OIData.cp_noise"]:::done
@@ -94,7 +105,7 @@ flowchart BT
         n46["imaging.nyquist_pixel_scale"]:::part
         n47["imaging.field_of_view"]:::part
         n48["imaging.convolve_beam"]:::part
-        n49["imaging.clean"]:::part
+        n49["imaging.clean"]:::todo
         n50["imaging.TSV"]:::part
         n51["imaging.TV"]:::part
         n52["imaging.MaxEntropy"]:::part
@@ -110,7 +121,7 @@ flowchart BT
     n5 --> n19
     n6 --> n19
     n8 --> n19
-    n57 --> n20
+    n64 --> n20
     n21 --> n22
     n21 --> n23
     n21 --> n24
@@ -131,41 +142,47 @@ flowchart BT
     n1 --> n45
     n33 --> n49
     n35 --> n56
+    n57 --> n58
+    n57 --> n59
+    n57 --> n60
+    n57 --> n61
+    n57 --> n62
+    n57 --> n63
 ```
 
 ## Objects
 
 | object | status | strong roots (needed) | weak | tests | evidence on virgil |
 | --- | --- | --- | --- | --- | --- |
-| `virgil.oifits.read_oifits` | ✅ trusted | literature, mathematics, pmoired, standards (2) |  | 20 | 321d4bb |
-| `virgil.oidata.OIData` | 🕒 stale | literature, mathematics, standards (1) | self-consistency | 20 | 321d4bb, ec4cf51 |
+| `virgil.oifits.read_oifits` | 🕒 stale | literature, mathematics, pmoired, standards (2) |  | 20 | 321d4bb |
+| `virgil.oidata.OIData` | 🔶 open | literature, mathematics, standards (1) | self-consistency | 20 | 321d4bb, ec4cf51 |
 | `virgil.oidata.find_uv_grid` | ✅ trusted | mathematics (1) |  | 3 | 321d4bb |
 | `virgil.coverage.vlti_oidata` | ✅ trusted | standards (1) |  | 1 | 321d4bb |
 | `virgil.amigo.load_oi_data` | ⬜ unchecked | — (1) |  | 0 |  |
-| `virgil.models.PointSource` | ✅ trusted | candid, mathematics, pmoired (1) |  | 13 | 321d4bb |
-| `virgil.models.GaussianDisk` | ✅ trusted | mathematics, pmoired (1) |  | 13 | 321d4bb |
-| `virgil.models.EllipticalGaussian` | ✅ trusted | mathematics, pmoired (1) |  | 14 | 321d4bb |
-| `virgil.models.UniformDisk` | ✅ trusted | candid, mathematics, pmoired (1) |  | 18 | 321d4bb, ec4cf51 |
-| `virgil.models.ModulatedGaussianRim` | ✅ trusted | mathematics, pmoired (2) |  | 17 | 321d4bb, ec4cf51 |
-| `virgil.models.GaussianArc` | ✅ trusted | mathematics (1) |  | 4 | 321d4bb |
-| `virgil.models.BinaryModelCartesian` | ✅ trusted | mathematics, pmoired (2) |  | 4 | 321d4bb |
-| `virgil.models.BinaryModelAngular` | ✅ trusted | mathematics, pmoired (1) |  | 3 | 321d4bb |
-| `virgil.models.Image` | ✅ trusted | ehtim, mathematics, standards (1) |  | 8 | 321d4bb, ec4cf51 |
-| `virgil.models.Image.model_on_grid` | ✅ trusted | mathematics (1) | self-consistency | 9 | 321d4bb, ec4cf51 |
-| `virgil.models.Image.from_model` | ✅ trusted | mathematics (1) |  | 1 | 321d4bb |
-| `virgil.models.SourceModel.render` | ✅ trusted | mathematics, standards (1) | self-consistency | 18 | 321d4bb, ec4cf51 |
-| `virgil.models.Resolved` | ✅ trusted | mathematics, pmoired (1) |  | 3 | 321d4bb |
-| `virgil.models.Rotated` | ✅ trusted | mathematics (1) |  | 4 | 321d4bb |
-| `virgil.models.System` | ✅ trusted | candid, dlux, mathematics, pmoired, standards (1) |  | 26 | 321d4bb |
-| `virgil.models.GravityDarkenedStar` | ✅ trusted | golden:dholakia, mathematics (1) |  | 3 | 321d4bb, ec4cf51 |
-| `virgil.models.cvis_limb_darkened_disk` | ✅ trusted | mathematics (1) |  | 5 | 321d4bb |
-| `virgil.models.LimbDarkenedDisk` | ✅ trusted | mathematics (1) |  | 22 | 321d4bb |
-| `virgil.models.QuadraticLimbDarkenedDisk` | ✅ trusted | literature, mathematics, pmoired, standards (1) |  | 11 | 321d4bb |
-| `virgil.models.SquareRootLimbDarkenedDisk` | ✅ trusted | literature, mathematics, pmoired (1) |  | 8 | 321d4bb |
-| `virgil.models.FlaredDiskGaussian` | ✅ trusted | mathematics (1) |  | 4 | 321d4bb |
-| `virgil.models.FlaredDiskHG` | ✅ trusted | mathematics (1) |  | 5 | 321d4bb |
-| `virgil.models.FlaredDiskPowerLaw` | ✅ trusted | mathematics (1) |  | 5 | 321d4bb |
-| `virgil.models.HarmonixModel` | ✅ trusted | mathematics (1) | self-consistency | 4 | 321d4bb, ec4cf51 |
+| `virgil.models.PointSource` | 🕒 stale | candid, mathematics, pmoired (1) |  | 13 | 321d4bb |
+| `virgil.models.GaussianDisk` | 🕒 stale | mathematics, pmoired (1) |  | 13 | 321d4bb |
+| `virgil.models.EllipticalGaussian` | 🕒 stale | mathematics, pmoired (1) |  | 14 | 321d4bb |
+| `virgil.models.UniformDisk` | 🕒 stale | candid, mathematics, pmoired (1) |  | 18 | 321d4bb, ec4cf51 |
+| `virgil.models.ModulatedGaussianRim` | 🕒 stale | mathematics, pmoired (2) |  | 17 | 321d4bb, ec4cf51 |
+| `virgil.models.GaussianArc` | 🕒 stale | mathematics (1) |  | 4 | 321d4bb |
+| `virgil.models.BinaryModelCartesian` | 🕒 stale | mathematics, pmoired (2) |  | 4 | 321d4bb |
+| `virgil.models.BinaryModelAngular` | 🕒 stale | mathematics, pmoired (1) |  | 3 | 321d4bb |
+| `virgil.models.Image` | 🕒 stale | ehtim, mathematics, standards (1) |  | 8 | 321d4bb, ec4cf51 |
+| `virgil.models.Image.model_on_grid` | 🕒 stale | mathematics (1) | self-consistency | 9 | 321d4bb, ec4cf51 |
+| `virgil.models.Image.from_model` | 🕒 stale | mathematics (1) |  | 1 | 321d4bb |
+| `virgil.models.SourceModel.render` | 🕒 stale | mathematics, standards (1) | self-consistency | 18 | 321d4bb, ec4cf51 |
+| `virgil.models.Resolved` | 🕒 stale | mathematics, pmoired (1) |  | 3 | 321d4bb |
+| `virgil.models.Rotated` | 🕒 stale | mathematics (1) |  | 4 | 321d4bb |
+| `virgil.models.System` | 🕒 stale | candid, dlux, mathematics, pmoired, standards (1) |  | 26 | 321d4bb |
+| `virgil.models.GravityDarkenedStar` | 🕒 stale | golden:dholakia, mathematics (1) |  | 3 | 321d4bb, ec4cf51 |
+| `virgil.models.cvis_limb_darkened_disk` | 🕒 stale | mathematics (1) |  | 5 | 321d4bb |
+| `virgil.models.LimbDarkenedDisk` | 🕒 stale | mathematics (1) |  | 22 | 321d4bb |
+| `virgil.models.QuadraticLimbDarkenedDisk` | 🕒 stale | literature, mathematics, pmoired, standards (1) |  | 11 | 321d4bb |
+| `virgil.models.SquareRootLimbDarkenedDisk` | 🕒 stale | literature, mathematics, pmoired (1) |  | 8 | 321d4bb |
+| `virgil.models.FlaredDiskGaussian` | 🕒 stale | mathematics (1) |  | 4 | 321d4bb |
+| `virgil.models.FlaredDiskHG` | 🕒 stale | mathematics (1) |  | 5 | 321d4bb |
+| `virgil.models.FlaredDiskPowerLaw` | 🕒 stale | mathematics (1) |  | 5 | 321d4bb |
+| `virgil.models.HarmonixModel` | 🕒 stale | mathematics (1) | self-consistency | 4 | 321d4bb, ec4cf51 |
 | `virgil.spectra.PowerLaw` | ✅ trusted | mathematics (1) |  | 4 | 321d4bb |
 | `virgil.spectra.BlackBody` | ✅ trusted | mathematics (1) |  | 5 | 321d4bb |
 | `virgil.spectra.Tabulated` | ✅ trusted | mathematics (1) |  | 2 | 321d4bb |
@@ -186,7 +203,7 @@ flowchart BT
 | `virgil.imaging.nyquist_pixel_scale` | 🕒 stale | mathematics (1) |  | 1 | 321d4bb |
 | `virgil.imaging.field_of_view` | 🕒 stale | mathematics (1) |  | 1 | 321d4bb |
 | `virgil.imaging.convolve_beam` | 🕒 stale | mathematics (1) |  | 3 | 321d4bb |
-| `virgil.imaging.clean` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.imaging.clean` | ⬜ unchecked | — (1) |  | 0 |  |
 | `virgil.imaging.TSV` | 🕒 stale | ehtim, mpol (1) |  | 5 | 321d4bb |
 | `virgil.imaging.TV` | 🕒 stale | ehtim, mpol (1) |  | 4 | 321d4bb |
 | `virgil.imaging.MaxEntropy` | 🕒 stale | ehtim, mpol (1) |  | 3 | 321d4bb |
@@ -194,6 +211,13 @@ flowchart BT
 | `virgil.imaging.StarletL1` | 🕒 stale | mathematics (1) |  | 6 | 321d4bb |
 | `virgil.imaging.LogSum` | 🕒 stale | mathematics (1) |  | 2 | 321d4bb |
 | `virgil.imaging.l_curve` | ⬜ unchecked | — (1) |  | 0 |  |
+| `virgil.orbits.KeplerOrbit` | ⬜ unchecked | — (2) |  | 0 |  |
+| `virgil.orbits.ThieleInnesOrbit` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.StateVectorOrbit` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.total_mass` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.distance_pc` | 🔶 open | — (1) |  | 0 |  |
+| `virgil.orbits.PositionData` | ⬜ unchecked | — (1) |  | 0 |  |
+| `virgil.orbits.RVData` | ⬜ unchecked | — (2) |  | 0 |  |
 | `virgil._elr` | ✅ trusted | golden:dholakia, mathematics (1) |  | 22 | ec4cf51 |
 | `crosscheck` | ✅ trusted | standards (1) |  | 1 | 321d4bb |
 | `crosscheck.sky` | ✅ trusted | mathematics (1) |  | 2 | 321d4bb |
@@ -203,6 +227,8 @@ flowchart BT
 | `external_bridge.pmoired_models` | ✅ trusted | mathematics, pmoired (1) |  | 15 | 321d4bb |
 | `evidence` | ✅ trusted | standards (1) |  | 4 | 321d4bb |
 | `pmoired` | ✅ trusted | mathematics (1) |  | 5 | 321d4bb |
+| `orbitize` | ⬜ unchecked | — (1) |  | 0 |  |
+| `external_bridge.orbitize_bridge` | ⬜ unchecked | — (1) |  | 0 |  |
 | `candid` | ✅ trusted | mathematics (1) |  | 2 | 321d4bb |
 | `external_bridge.candid_bridge` | ✅ trusted | candid, mathematics (1) |  | 1 | 321d4bb |
 | `external_bridge.fouriever_worker` | ✅ trusted | fouriever, mathematics (1) |  | 1 | 321d4bb |
@@ -215,12 +241,13 @@ End-to-end chains, validated when their own evidence passes and every step is tr
 
 | pipeline | status | roots | tests | steps not yet trusted |
 | --- | --- | --- | --- | --- |
-| **synthetic-vlti-fit**: Simulated VLTI data, OIFITS to fitted parameters and uncertainties | 🟡 end-to-end only | mathematics, statistics | 13 | `virgil.oidata.OIData`, `virgil.likelihood.whitened_residuals`, `virgil.fitting.fit`, `virgil.inference.laplace_cov` |
-| **dlux-masking-fit**: Aperture-masking images from dLux, calibrated and fitted | 🟡 end-to-end only | dlux | 4 | `virgil.oidata.OIData`, `virgil.fitting.fit`, `virgil.inference.laplace_cov` |
-| **pmoired-identical-fits**: The same files fitted by virgil and PMOIRED | 🟡 end-to-end only | pmoired, statistics | 8 | `virgil.oidata.OIData`, `virgil.fitting.fit`, `virgil.inference.laplace_cov` |
-| **rml-imaging**: Regularised image reconstruction against eht-imaging or MPoL on the same data | 🟡 end-to-end only | ehtim | 1 | `virgil.oidata.OIData`, `virgil.imaging.TSV`, `virgil.imaging.MaxEntropy`, `virgil.fitting.fit` |
-| **contest-imaging**: Blind images from the SPIE imaging contests' data, against the published entries and truths | ⬜ planned | — | 0 | `virgil.oidata.OIData`, `virgil.imaging.TSV`, `virgil.imaging.MaxEntropy`, `virgil.imaging.l_curve`, `virgil.fitting.fit` |
-| **published-binary**: Reproduce published binary detections from the authors' archival data | ⬜ planned | — | 0 | `virgil.oidata.OIData`, `virgil.grid_fit.likelihood_grid`, `virgil.fitting.fit`, `virgil.inference.laplace_cov`, `virgil.limits.absil_limits` |
+| **synthetic-vlti-fit**: Simulated VLTI data, OIFITS to fitted parameters and uncertainties | 🟡 end-to-end only | mathematics, statistics | 13 | `virgil.oifits.read_oifits`, `virgil.oidata.OIData`, `virgil.models.System`, `virgil.likelihood.whitened_residuals`, `virgil.fitting.fit`, `virgil.inference.laplace_cov` |
+| **dlux-masking-fit**: Aperture-masking images from dLux, calibrated and fitted | 🟡 end-to-end only | dlux | 4 | `virgil.oifits.read_oifits`, `virgil.oidata.OIData`, `virgil.models.System`, `virgil.fitting.fit`, `virgil.inference.laplace_cov` |
+| **pmoired-identical-fits**: The same files fitted by virgil and PMOIRED | 🟡 end-to-end only | pmoired, statistics | 8 | `virgil.oifits.read_oifits`, `virgil.oidata.OIData`, `virgil.models.BinaryModelCartesian`, `virgil.fitting.fit`, `virgil.inference.laplace_cov` |
+| **rml-imaging**: Regularised image reconstruction against eht-imaging or MPoL on the same data | 🟡 end-to-end only | ehtim | 1 | `virgil.oidata.OIData`, `virgil.models.Image`, `virgil.imaging.TSV`, `virgil.fitting.fit` |
+| **contest-imaging**: Blind images from the SPIE imaging contests' data, against the published entries and truths | ⬜ planned | — | 0 | `virgil.oifits.read_oifits`, `virgil.oidata.OIData`, `virgil.models.Image`, `virgil.imaging.TSV`, `virgil.imaging.MaxEntropy`, `virgil.imaging.l_curve`, `virgil.fitting.fit` |
+| **published-binary**: Reproduce published binary detections from the authors' archival data | ⬜ planned | — | 0 | `virgil.oifits.read_oifits`, `virgil.oidata.OIData`, `virgil.models.BinaryModelCartesian`, `virgil.grid_fit.likelihood_grid`, `virgil.fitting.fit`, `virgil.inference.laplace_cov`, `virgil.limits.absil_limits` |
+| **orbitize-posterior**: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors | ⬜ planned | — | 0 | `virgil.orbits.PositionData`, `virgil.orbits.KeplerOrbit` |
 
 ## Ledger
 
@@ -243,7 +270,8 @@ Every mismatch found, and its ruling: `virgil`, `external:<package>`, `definitio
 | D4 | definition | documented | PMOIRED reports uncertainties scaled by sqrt(reduced chi-squared) | PMOIRED's documentation (normalized uncertainties) |  |
 | F10 | virgil | fixed | OIData rejects OIFITS whose OI_T3 and OI_VIS2 use different INSNAMEs (identical wavelengths) or reversed baselines | standards (OIFITS v1/v2 link each table to OI_WAVELENGTH by INSNAME; nothing requires T3 and VIS2 to share one) | [167](https://github.com/benjaminpope/virgil/pull/167) |
 | F11 | virgil | fixed | chi-squared of correlated (4+ telescope) closure phases jumps where a residual crosses ±π | mathematics (a likelihood must be continuous in the model parameters; the 3-telescope path is) | [174](https://github.com/benjaminpope/virgil/pull/174) |
-| F12 | virgil | open | imaging.clean returns NaN on some grids with correlated closure phases (regression from virgil#174) | mathematics (a finite χ² on finite data; bisected to the merge of virgil#174) |  |
+| F12 | virgil | fixed | imaging.clean returns NaN on even grids without a base scene (near-zero |J e_p| at the off-centre seed; exposed by virgil#174) | mathematics (a finite χ² on finite data; bisected to the merge of virgil#174) | [190](https://github.com/benjaminpope/virgil/pull/190) |
+| F13 | virgil | open | OIData groups closure-phase frames by MJD alone; OIFITS v1 snapshots told apart by TIME are merged into one frame | standards (OIFITS v1 gives each row a TIME and an MJD; correlation is only within a snapshot) |  |
 | D5 | definition | documented | CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174) | mathematics (both chi-squareds computed independently); equal on V2-only files to 1e-7 |  |
 | D6 | definition | documented | With unequal closure-phase errors in a group, fouriever uses r^T C^+ r and virgil r^T D^-1/2 R^+ D^-1/2 r (different generalised inverses of the singular C) | mathematics (each form written independently, 1e-12); statistics (on closures of baseline-phase noise virgil's form is closer to the nominal chi-squared, e.g. 2.94 vs 2.75 against 3) |  |
 | P1 | external:pmoired | to-raise | PMOIRED setupFit(auto=True) gives NaN models on files with few channels | mathematics (finite models expected) |  |
@@ -253,3 +281,7 @@ Every mismatch found, and its ruling: `virgil`, `external:<package>`, `definitio
 | P4 | external:candid | to-raise | CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation) | mathematics (CANDID's criterion solved exactly with Brent's method) |  |
 | P5 | external:fouriever | raised | fouriever's closure-phase residual is not wrapped, so data straddling +-180 deg give a ~2 pi residual at the true parameters | mathematics (closure phases are angles; virgil's residuals are 2 pi periodic) | [26](https://github.com/kammerje/fouriever/issues/26) |
 | P6 | external:ehtim | to-raise | eht-imaging's Obsdata.tlist/bllist return tuples under NumPy 2 when every time group has the same size, so closure phases fail | mathematics (NumPy's documented behaviour) |  |
+| F14 | virgil | open | orbits.total_mass and distance_pc use a³/P² with P in Julian years, 3.8e-5 from Kepler's third law with the IAU nominal GM_sun and au | standards (IAU 2015 B3 nominal GM_sun, IAU 2012 au); orbitize! computes the exact law |  |
+| F15 | virgil | open | ThieleInnesOrbit.to_kepler returns Omega = 180.0 for a node at 180°, outside its documented [0, 180) | mathematics (the documented range) |  |
+| F16 | virgil | open | StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits (0.01° returns 0.0106°), so positions drift by up to 2e-8 of a | orbitize! (positions to 1e-14 of a on well-posed orbits); mathematics (the state fixes i to ~1e-16 rad) |  |
+| P7 | external:orbitize | to-raise | orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre | orbitize!'s own documentation (read_input) against its System.compute_model |  |

@@ -1,7 +1,7 @@
 """Run a worker script in another package's own environment, JSON in and out.
 
 Packages with heavy, conflicting or unlicensed dependencies (CANDID,
-eht-imaging, MPoL, fouriever) live in their own virtual environments,
+eht-imaging, MPoL, fouriever, orbitize!) live in their own virtual environments,
 .venv-<name>, made by scripts/setup_candid.sh and scripts/setup_external.sh.
 Each has a worker script here that imports only that package, NumPy and the
 standard library. ``<NAME>_PYTHON`` overrides the interpreter.
