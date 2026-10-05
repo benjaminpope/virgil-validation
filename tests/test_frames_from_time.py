@@ -50,7 +50,7 @@ def _files(tmp_path):
     return OIData(str(distinct)), OIData(str(shared))
 
 
-@pytest.mark.validates("virgil.oidata.OIData", roots=["standards"], kind="reference")
+@pytest.mark.validates("virgil.oidata.OIData", roots=["standards"])
 def test_simulated_snapshots_have_distinct_mjd(tmp_path):
     distinct, _ = _files(tmp_path)
     n_cp = np.asarray(distinct.phi).size
