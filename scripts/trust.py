@@ -42,7 +42,7 @@ REPO = "https://github.com/benjaminpope/virgil-validation"
 WEAK = {"self-consistency"}
 BAD = {"failed", "error", "xpassed"}
 GOOD = {"passed", "xfailed"}
-LAYER_ORDER = ["imaging", "inference", "orbits", "likelihood", "models", "data", "references"]  # top first
+LAYER_ORDER = ["imaging", "inference", "orbits", "likelihood", "priors", "models", "data", "references"]  # top first
 
 VERDICTS = {
     "verified": ("Verified", "independent checks agree, and so does everything it relies on"),
