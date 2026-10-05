@@ -42,14 +42,15 @@ URLs, checksums, organisers and winners, are in `contests/manifest.yml`.
 | 2012 | [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB) | ❌ lost with OLBIN | CHARA/MIRC-6T, H band | was posted, lost | MACIM |
 | 2014 | [2014SPIE.9146E..1QM](https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM) | ❌ raw frames only (60.A-9237(A)) | PIONIER, **real** data on VY CMa and R Car | none (real data) | BSMEM (Sanchez-Bermudez) |
 | 2016 | [2016SPIE.9907E..1DS](https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1DS) | ❌ not archived | GRAVITY and MATISSE, chromatic | not posted | IRBis? (Hofmann) |
-| 2018 | [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM) | ❌ not hosted | CHARA and PIONIER, grey | analytic, parameters in the paper | SQUEEZE then BSMEM |
+| 2018 | [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM) | ✅ organiser's page (eso.org/~amerand) | CHARA and PIONIER, grey | analytic, parameters in the paper | SQUEEZE then BSMEM |
 | 2022 | [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1GS) | ✅ OiDB | GRAVITY K (11 channels) and JWST/NIRISS AMI | not posted | BSMEM (Young) |
 | 2024 | [2024SPIE13095E..14M](https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M) | ✅ OiDB | PIONIER, GRAVITY, MATISSE L and N; chromatic, with calibration biases | not public (ImageMetrics) | MiRA (Drevon) |
 | 2026 | Proc. SPIE 14148, 1414811 | not yet | ? | ? | ? |
 
 Ben has written to Fabien Baron (2012), Joel Sanchez-Bermudez (2016, and
 the 2014 and 2022 truth) and Antoine Mérand (2018) to ask for the missing
-data. The 2024 truth images are with Florentin Millour and Ferréol Soulez.
+data. The 2018 data have since been found, still served on Mérand's ESO
+page, and are in the manifest; only the 2018 truth model is needed from him. The 2024 truth images are with Florentin Millour and Ferréol Soulez.
 
 ## What the stages test
 
@@ -270,7 +271,7 @@ from the papers; those values have been removed.
 | 2008 | "an AGB star" / "an AGN"; "tapered with a 15 mas FWHM Gaussian" | field 30 mas; that Gaussian as the start and the MaxEnt default image |
 | 2010 | a bright source; SEDs; grey category judged as Low HK channels 1–10 and 11–20 | separate H and K images (the other channels flagged); SEDs kept for C3 |
 | 2018 | "a young star's disk, with a planet" | analytic star plus image; data recovered from the organiser's live page |
-| 2022 | nothing found; the GRAVITY OI_TARGET names the real star, probably by accident | treated as blind; the header is ignored |
+| 2022 | nothing found; the GRAVITY OI_TARGET names the real star, probably by accident | treated as blind; the header is ignored. An analytic star is inferred from the data (an unresolved source dominates), which a contestant could also have seen |
 | 2024 | "a hot star with an environment" / "a young star", suspected companion; uncalibrated OI_FLUX; cubes required | analytic star in both; grey images per instrument as a first look; cubes in C3 |
 
 **Data-chosen fields** start from virgil's `starting_image`, whose field

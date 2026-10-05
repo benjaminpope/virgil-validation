@@ -15,9 +15,12 @@ principle (χ² = N) and the L-curve corner. It writes, into --out:
   and discrepancy weights, East left and North up, beam shown;
 - <label>.txt: the run summary and virgil's `diagnose` report.
 
-The settings come from the contest papers, not from looking at the
-answers: the field of view is the published truth image's when known, and a
-central star is put in analytically only where the organisers describe one.
+The settings use only what contestants had before the deadline (TASKS;
+manifest "presubmission"), never the truths or parameters published
+afterwards. A field given by the contest is used as given; otherwise it is
+chosen from the data and grown while that lowers χ² (run()). An analytic
+central star is used where the contest described a star, or where the data
+show an unresolved source dominates (each task's "star_source").
 The images are compared with the published entries in
 docs/plan_imaging_contests.md (Stage C2). This is heavy: run it on OzSTAR
 (ozstar_scripts job `contest_imaging`), not on a laptop; --smoke is a
@@ -64,7 +67,8 @@ from virgil.plotting import plot_model  # noqa: E402
 #   field:   field of view in mas, when the contest gave one (with its source);
 #            None: chosen from the data, enlarged while flux reaches the edge
 #   prior:   ("gauss", FWHM mas): the MaxEnt default image and the start
-#   star:    an analytic star at the centre, when the contest announced one
+#   star:    an analytic star at the centre, with star_source saying why: the
+#            contest's description, or the data (an unresolved source dominates)
 #   wavel:   (min, max) in µm: keep only these channels (flag the rest)
 TASKS = [
     # 2004: released blind; nothing about field or target.
@@ -81,21 +85,27 @@ TASKS = [
     # 2010: a bright source; the grey category was judged as separate images of
     # Low HK channels 1-10 (H) and 11-20 (K) (Contest10.html).
     dict(label="2010_lowH", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.4, 1.9)),
-    # 2022: no description found; a star announced nowhere, but the GRAVITY and
-    # AMI data are dominated by an unresolved source (V² ~0.9 on short baselines).
-    dict(label="2022_gravity", files=["2022/c_imaging_contest1.fits"], star=True),
-    dict(label="2022_ami", files=["2022/c_imaging_contest2.fits"], star=True),
+    # 2022: no description found, so the star is inferred from the data, as a
+    # contestant could: both are dominated by an unresolved source.
+    dict(label="2022_gravity", files=["2022/c_imaging_contest1.fits"], star=True,
+         star_source="data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux"),
+    dict(label="2022_ami", files=["2022/c_imaging_contest2.fits"], star=True,
+         star_source="data: V² ~0.9 on every baseline"),
     # 2024: Obj1 "a hot star with an environment", Obj2 "a young star" with a
     # suspected companion (contest page). Grey per instrument is only a first
     # look: the rules ask for cubes (Stage C3).
-    dict(label="2024_obj1_pionier", files=["2024/Obj1_PIONIER_1.5-1.8.fits"], star=True),
-    dict(label="2024_obj1_gravity", files=["2024/Obj1_GRAVITY_2.0-2.5.fits"], star=True),
-    dict(label="2024_obj2_pionier", files=["2024/Obj2_PIONIER_1.5-1.8.fits"], star=True),
-    dict(label="2024_obj2_gravity", files=["2024/Obj2_GRAVITY_2.0-2.5.fits"], star=True),
+    dict(label="2024_obj1_pionier", files=["2024/Obj1_PIONIER_1.5-1.8.fits"], star=True,
+         star_source="contest page: a hot star with an environment"),
+    dict(label="2024_obj1_gravity", files=["2024/Obj1_GRAVITY_2.0-2.5.fits"], star=True,
+         star_source="contest page: a hot star with an environment"),
+    dict(label="2024_obj2_pionier", files=["2024/Obj2_PIONIER_1.5-1.8.fits"], star=True,
+         star_source="contest page: a young star"),
+    dict(label="2024_obj2_gravity", files=["2024/Obj2_GRAVITY_2.0-2.5.fits"], star=True,
+         star_source="contest page: a young star"),
     # New tasks go at the end, so that earlier indices keep their meaning.
     dict(label="2010_lowK", files=["2010/Mystery-Low_HK.oifits"], wavel=(1.9, 2.6)),
     # 2018: "a young star's disk, with a planet" (readme): a star plus an image.
-    dict(label="2018_disk", star=True, files=[
+    dict(label="2018_disk", star=True, star_source="readme: a young star's disk", files=[
         "2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits",
         "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits",
         "2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits",
@@ -155,8 +165,10 @@ def setup(task, data_dir, halo=False, grow=1.0):
     want = field if field is not None else (n0 * pixel0 * grow if grow > 1 else None)
     q = None
     if want is not None:
-        pixel = max(pixel0, want / MAX_PIX)
-        n = int(np.ceil(want / pixel)) | 1
+        n = int(np.ceil(want / pixel0)) | 1
+        if n > MAX_PIX:  # the largest odd size within the cap, coarser pixels
+            n = MAX_PIX - 1 if MAX_PIX % 2 == 0 else MAX_PIX
+        pixel = want / n if n * pixel0 < want else pixel0
         x = (np.arange(n) - (n - 1) / 2) * pixel
         if prior_spec:
             sigma = prior_spec[1] / 2.3548
@@ -251,7 +263,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False):
     report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], prior=s["q"], path=path), *others])
     summary = (
         f"task={task} label={label} files={files} star={star} halo={halo}\n"
-        f"field_source={s['field_source']} prior={TASKS[task].get('prior')} wavel={TASKS[task].get('wavel')} growth(fov, chi2/N)={growth}\n"
+        f"field_source={s['field_source']} star_source={TASKS[task].get('star_source')} prior={TASKS[task].get('prior')} wavel={TASKS[task].get('wavel')} growth(fov, chi2/N)={growth}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
         f"beam={resolution.major_mas:.3g}x{resolution.minor_mas:.3g} mas\n"
