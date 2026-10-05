@@ -157,6 +157,16 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/174]
 
+- id: F12
+  title: imaging.clean returns NaN on some grids with correlated closure phases (regression from virgil#174)
+  objects: [virgil.imaging.clean]
+  ruling: virgil
+  referee: mathematics (a finite χ² on finite data; bisected to the merge of virgil#174)
+  evidence:
+    - tests/test_clean_finite.py::test_clean_is_finite_with_four_telescopes
+    - tests/test_clean_finite.py::test_clean_is_finite_with_three_telescopes
+  status: open
+
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]

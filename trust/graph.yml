@@ -144,6 +144,7 @@ nodes:
   virgil.imaging.field_of_view: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.convolve_beam: {layer: imaging, source: [src/virgil/imaging.py]}
   # regularised imaging: natural roots are eht-imaging and MPoL
+  virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals]}
   virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.TV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.MaxEntropy: {layer: imaging, source: [src/virgil/imaging.py]}

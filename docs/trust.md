@@ -5,7 +5,7 @@
 - Evidence from local on 2026-10-05T02:41:27+00:00, virgil `321d4bbcad`
 - Evidence from virgil-ci on 2026-10-04T03:34:49+00:00, virgil `ec4cf51530` ([run](https://github.com/benjaminpope/virgil/actions/runs/37173979477))
 
-Statuses: ✅ trusted 43, 🟡 partial 1, 🕒 stale 21, ⬜ unchecked 5.
+Statuses: ✅ trusted 43, 🟡 partial 1, 🕒 stale 21, 🔶 open 1, ⬜ unchecked 5.
 
 A node is **trusted** when it passes checks against enough distinct strong roots
 (mathematics, standards, statistics, literature, or a trusted package) and every
@@ -21,19 +21,19 @@ flowchart BT
     classDef bad fill:#ffcdd2,stroke:#c62828,color:#000
     classDef todo fill:#eeeeee,stroke:#9e9e9e,color:#555,stroke-dasharray: 5 5
     subgraph references["references"]
-        n57["crosscheck"]:::done
-        n58["crosscheck.sky"]:::done
-        n59["crosscheck.limb"]:::done
-        n60["crosscheck.nrm"]:::done
-        n61["external_bridge"]:::done
-        n62["external_bridge.pmoired_models"]:::done
-        n63["evidence"]:::done
-        n64["pmoired"]:::done
-        n65["candid"]:::done
-        n66["external_bridge.candid_bridge"]:::done
-        n67["external_bridge.fouriever_worker"]:::done
-        n68["fouriever"]:::todo
-        n69["ehtim"]:::todo
+        n58["crosscheck"]:::done
+        n59["crosscheck.sky"]:::done
+        n60["crosscheck.limb"]:::done
+        n61["crosscheck.nrm"]:::done
+        n62["external_bridge"]:::done
+        n63["external_bridge.pmoired_models"]:::done
+        n64["evidence"]:::done
+        n65["pmoired"]:::done
+        n66["candid"]:::done
+        n67["external_bridge.candid_bridge"]:::done
+        n68["external_bridge.fouriever_worker"]:::done
+        n69["fouriever"]:::todo
+        n70["ehtim"]:::todo
     end
     subgraph data["data"]
         n0["oifits.read_oifits"]:::done
@@ -70,7 +70,7 @@ flowchart BT
         n29["spectra.PowerLaw"]:::done
         n30["spectra.BlackBody"]:::done
         n31["spectra.Tabulated"]:::done
-        n56["_elr"]:::done
+        n57["_elr"]:::done
     end
     subgraph likelihood["likelihood"]
         n32["oidata.OIData.cp_noise"]:::done
@@ -94,13 +94,14 @@ flowchart BT
         n46["imaging.nyquist_pixel_scale"]:::part
         n47["imaging.field_of_view"]:::part
         n48["imaging.convolve_beam"]:::part
-        n49["imaging.TSV"]:::part
-        n50["imaging.TV"]:::part
-        n51["imaging.MaxEntropy"]:::part
-        n52["imaging.Laplacian"]:::part
-        n53["imaging.StarletL1"]:::part
-        n54["imaging.LogSum"]:::part
-        n55["imaging.l_curve"]:::todo
+        n49["imaging.clean"]:::part
+        n50["imaging.TSV"]:::part
+        n51["imaging.TV"]:::part
+        n52["imaging.MaxEntropy"]:::part
+        n53["imaging.Laplacian"]:::part
+        n54["imaging.StarletL1"]:::part
+        n55["imaging.LogSum"]:::part
+        n56["imaging.l_curve"]:::todo
     end
     n0 --> n1
     n1 --> n4
@@ -109,7 +110,7 @@ flowchart BT
     n5 --> n19
     n6 --> n19
     n8 --> n19
-    n56 --> n20
+    n57 --> n20
     n21 --> n22
     n21 --> n23
     n21 --> n24
@@ -128,7 +129,8 @@ flowchart BT
     n34 --> n43
     n1 --> n44
     n1 --> n45
-    n35 --> n55
+    n33 --> n49
+    n35 --> n56
 ```
 
 ## Objects
@@ -184,6 +186,7 @@ flowchart BT
 | `virgil.imaging.nyquist_pixel_scale` | 🕒 stale | mathematics (1) |  | 1 | 321d4bb |
 | `virgil.imaging.field_of_view` | 🕒 stale | mathematics (1) |  | 1 | 321d4bb |
 | `virgil.imaging.convolve_beam` | 🕒 stale | mathematics (1) |  | 3 | 321d4bb |
+| `virgil.imaging.clean` | 🔶 open | — (1) |  | 0 |  |
 | `virgil.imaging.TSV` | 🕒 stale | ehtim, mpol (1) |  | 5 | 321d4bb |
 | `virgil.imaging.TV` | 🕒 stale | ehtim, mpol (1) |  | 4 | 321d4bb |
 | `virgil.imaging.MaxEntropy` | 🕒 stale | ehtim, mpol (1) |  | 3 | 321d4bb |
@@ -240,6 +243,7 @@ Every mismatch found, and its ruling: `virgil`, `external:<package>`, `definitio
 | D4 | definition | documented | PMOIRED reports uncertainties scaled by sqrt(reduced chi-squared) | PMOIRED's documentation (normalized uncertainties) |  |
 | F10 | virgil | fixed | OIData rejects OIFITS whose OI_T3 and OI_VIS2 use different INSNAMEs (identical wavelengths) or reversed baselines | standards (OIFITS v1/v2 link each table to OI_WAVELENGTH by INSNAME; nothing requires T3 and VIS2 to share one) | [167](https://github.com/benjaminpope/virgil/pull/167) |
 | F11 | virgil | fixed | chi-squared of correlated (4+ telescope) closure phases jumps where a residual crosses ±π | mathematics (a likelihood must be continuous in the model parameters; the 3-telescope path is) | [174](https://github.com/benjaminpope/virgil/pull/174) |
+| F12 | virgil | open | imaging.clean returns NaN on some grids with correlated closure phases (regression from virgil#174) | mathematics (a finite χ² on finite data; bisected to the merge of virgil#174) |  |
 | D5 | definition | documented | CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174) | mathematics (both chi-squareds computed independently); equal on V2-only files to 1e-7 |  |
 | D6 | definition | documented | With unequal closure-phase errors in a group, fouriever uses r^T C^+ r and virgil r^T D^-1/2 R^+ D^-1/2 r (different generalised inverses of the singular C) | mathematics (each form written independently, 1e-12); statistics (on closures of baseline-phase noise virgil's form is closer to the nominal chi-squared, e.g. 2.94 vs 2.75 against 3) |  |
 | P1 | external:pmoired | to-raise | PMOIRED setupFit(auto=True) gives NaN models on files with few channels | mathematics (finite models expected) |  |

@@ -41,6 +41,8 @@ BINARIES = {
     # 2004 contest page: "rho=21.2 mas and pa=341.6 deg, flux ratio 5.75,
     # component diameters of 0.6 mas"
     "2004": ("2004/2004-BSC1948I.fits", 21.2, 341.6, 1 / 5.75, (0.6, 0.6)),
+    # 2006 contest page: "10 mas sep., PA=30, Dm=1, theta1=3 mas, theta2=1 mas"
+    "2006": ("2006/2006-double.fits", 10.0, 30.0, 10 ** -0.4, (3.0, 1.0)),
     # 2008 readme: 5.0 mas, PA 30 (bright to faint), ratio 8.9, UD 1.2 and 0.75 mas
     "2008": ("2008/2008-Contest_Binary.oifits", 5.0, 30.0, 1 / 8.9, (1.2, 0.75)),
     # 2010 Challenge.txt: flux ratio 0.1, 18 mas at PA 128 (point sources)
