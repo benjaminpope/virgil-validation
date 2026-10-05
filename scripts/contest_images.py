@@ -128,6 +128,7 @@ TASKS = [
 
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
 MAX_PIX = 256  # pixels on a side; larger fields get coarser pixels
+JACOBIAN_BUDGET = 2.0e8  # data points x pixels, about 3 GB per complex128 Jacobian
 CLEAN_MAX_PIX = 65  # CLEAN runs on at most this grid (see setup())
 FLUX_FLOOR = 1e-4  # lower bound of the log-uniform (Jeffreys) flux priors, relative to the star
 GROWTHS = 3  # data-chosen fields grow at most three times (see run())
@@ -188,14 +189,19 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     img0 = image_of(start, star)
     pixel0 = float(img0.pixel_scale_mas)
     n0 = int(np.shape(img0.log_brightness)[0])
+    # The evidence Jacobian (and CLEAN's columns) are data points x pixels:
+    # cap the grid so that product stays within JACOBIAN_BUDGET. MATISSE's
+    # 8-26k points on 255^2 pixels needed 432 GB on an 80 GB A100 (job
+    # 18073823). The cap only bites for the largest datasets.
+    max_pix = min(MAX_PIX, int(np.sqrt(JACOBIAN_BUDGET / max(npts, 1))))
     want = field if field is not None else (n0 * pixel0 * grow if grow > 1 else None)
-    if want is None and n0 > MAX_PIX:  # starting_image's own grid can exceed the cap
+    if want is None and n0 > max_pix:  # starting_image's own grid can exceed the cap
         want = n0 * pixel0
     q = None
     if want is not None:
         n = int(np.ceil(want / pixel0)) | 1
-        if n > MAX_PIX:  # the largest odd size within the cap, coarser pixels
-            n = MAX_PIX - 1 if MAX_PIX % 2 == 0 else MAX_PIX
+        if n > max_pix:  # the largest odd size within the cap, coarser pixels
+            n = max_pix - 1 if max_pix % 2 == 0 else max_pix
         pixel = want / n if n * pixel0 < want else pixel0
         x = (np.arange(n) - (n - 1) / 2) * pixel
         if prior_spec:
