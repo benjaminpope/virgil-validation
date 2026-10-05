@@ -76,9 +76,11 @@ def virgil_commit():
     (PIN_COMMIT, from its submit.sh), else the installed package's record."""
     import os
 
+    if os.environ.get("PIN_COMMIT"):
+        return os.environ["PIN_COMMIT"]
     from evidence.meta import virgil_source
 
-    return os.environ.get("PIN_COMMIT") or virgil_source()["commit"]
+    return virgil_source()["commit"]
 
 
 def criteria_hash():
