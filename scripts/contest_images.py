@@ -144,6 +144,13 @@ def image_of(model, star, halo=False):
     return model.env if (star or halo) else model
 
 
+def spec_of(task):
+    """A task's spec: ``TASKS[task]`` for an index, or a spec dict as given
+    (scripts/contest_bench.py passes simulated datasets this way, with
+    absolute ``files``)."""
+    return task if isinstance(task, dict) else TASKS[task]
+
+
 def flux_priors(flux_cap, sparco=False):
     """Priors on the image's flux relative to the star: log-uniform (a scale),
     and with SPARCO a uniform power-law index (a location on log flux against
@@ -182,7 +189,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     from the data. With a star, ``star_model`` is "point" (unresolved) or
     "disk" (a uniform disk whose diameter is fitted); ``sparco`` gives the
     image a power-law spectrum relative to the star's."""
-    spec = TASKS[task]
+    spec = spec_of(task)
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
     # (labels get _star / _nostar).
@@ -409,7 +416,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], prior=s["q"], path=path), *others])
     summary = (
         f"task={task} label={label} files={files} star={star} halo={halo}\n"
-        f"field_source={s['field_source']} clean={s['clean_info']} star_source={TASKS[task].get('star_source')} prior={TASKS[task].get('prior')} wavel={TASKS[task].get('wavel')} growth(fov, chi2/N)={growth}\n"
+        f"field_source={s['field_source']} clean={s['clean_info']} star_source={spec_of(task).get('star_source')} prior={spec_of(task).get('prior')} wavel={spec_of(task).get('wavel')} growth(fov, chi2/N)={growth}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
         f"beam={resolution.major_mas:.3g}x{resolution.minor_mas:.3g} mas\n"
@@ -515,7 +522,7 @@ REF_NPIX = 257  # the common grid members are rendered onto, max(MEMBER_FIELDS) 
 
 
 def member_settings(task, member):
-    spec = TASKS[task]
+    spec = spec_of(task)
     rng = np.random.default_rng(1000 * task + member)
     star_model = MEMBER_STARS[member % len(MEMBER_STARS)]
     return {
@@ -529,12 +536,14 @@ def member_settings(task, member):
     }
 
 
-def member_setup(task, data_dir, member, smoke=False):
-    settings = member_settings(task, member)
+def member_setup(task, data_dir, member, smoke=False, settings=None):
+    """One member's setup. ``settings`` (a dict like member_settings's) fixes
+    the configuration instead of drawing it from the member's seed."""
+    settings = dict(settings) if settings is not None else member_settings(task, member)
     opts = dict(star=settings["star"], init="clean", clean_iters=50 if smoke else 3000,
                 oversample=settings["oversample"], clean_gain=settings["clean_gain"],
                 star_model=settings["star_model"], sparco=settings["sparco"])
-    if TASKS[task].get("field") is not None:
+    if spec_of(task).get("field") is not None:
         settings["field"] = 1.0  # a contest-given field is used as given
     s = setup(task, data_dir, settings["halo"], settings["field"], **opts)
     s["ref_fov"] = reference_fov(task, data_dir)
@@ -585,16 +594,20 @@ def grow_grid(evaluate, lengths, sigmas, length_limits, sigma_limits, growths):
     return ls, ss, values
 
 
-def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None):
+def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
+           settings=None, label=None):
+    """GP fits chosen by evidence. With ``member`` (or ``settings``, a fixed
+    configuration as used by scripts/contest_bench.py) a CLEAN-started
+    ensemble member; otherwise a grown-field run. ``label`` names the
+    outputs."""
     t0 = time.time()
-    settings = None
-    if member is None:
+    if member is None and settings is None:
         s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
-        label = s["label"] + "_gp"
+        label = label or s["label"] + "_gp"
     else:
-        s, settings = member_setup(task, data_dir, member, smoke)
+        s, settings = member_setup(task, data_dir, member, smoke, settings)
         growth, init = [], "clean"
-        label = f"{TASKS[task]['label']}_m{member}"
+        label = label or f"{spec_of(task)['label']}_m{member}"
     data, star, res = s["data"], s["star"], s["resolution"]
     img0, n, pixel = s["img0"], s["npix"], s["pixel"]
     fov = n * pixel

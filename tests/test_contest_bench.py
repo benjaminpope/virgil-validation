@@ -115,3 +115,31 @@ def test_closure_noise_has_the_quoted_variance():
     ratio = draws.std(axis=0) / err
     assert np.median(ratio) == pytest.approx(1.0, abs=0.05)
     assert np.all((ratio > 0.8) & (ratio < 1.2))
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_score_tabulates_results_against_their_truths(tmp_path):
+    import json
+
+    bench, out = tmp_path / "bench", tmp_path / "out"
+    out.mkdir()
+    params, image, pixel = _phantom()
+    (bench / "x_p0_d0").mkdir(parents=True)
+    np.savez(bench / "x_p0_d0" / "truth.npz", image=image, pixel=pixel, npix=image.shape[0], beam=2.0)
+    (bench / "x_p0_d0" / "meta.json").write_text(json.dumps({"family": params["family"], "coverage": "x"}))
+    fov = image.shape[0] * pixel
+    np.savez(out / "x_p0_d0__baseline.npz", ref_image=image, ref_fov=fov, best_chi2_red=1.0, error_scale=1.0)
+    np.savez(out / "x_p0_d0__halo.npz", ref_image=image_metrics.gaussian_filter(image, 4.0), ref_fov=fov,
+             best_chi2_red=1.0, error_scale=1.0)
+    rows = {r["config"]: r for r in contest_bench.score(bench, out)}
+    assert rows["baseline"]["ncc"] == pytest.approx(1.0) and rows["baseline"]["lawson"] == pytest.approx(0.0, abs=1e-9)
+    assert rows["halo"]["ncc"] < rows["baseline"]["ncc"]
+    assert "| baseline | 1 |" in (out / "bench_scores.md").read_text()
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_run_ids_cover_every_dataset_and_config():
+    configs = list(contest_bench.CONFIGS)
+    pairs = {(i // len(configs), configs[i % len(configs)]) for i in range(3 * len(configs))}
+    assert len(pairs) == 3 * len(configs)
+    assert all(set(contest_bench.CONFIGS[c]) == set(contest_bench.BASE) for c in configs)

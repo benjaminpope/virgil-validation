@@ -3,6 +3,8 @@ uv coverages, so that each method choice is judged against a truth.
 
     python scripts/contest_bench.py simulate [--data DIR] [--out DIR] [--phantoms 6] [--draws 2]
     python scripts/contest_bench.py list [--out DIR]
+    python scripts/contest_bench.py run --id N [--bench DIR] [--out DIR] [--configs a,b,...] [--smoke]
+    python scripts/contest_bench.py score [--bench DIR] [--out DIR]
 
 ``simulate`` takes each coverage's contest OIFITS as a template (uv points,
 wavelengths, error bars, flags) and replaces V² and closure phases with those
@@ -13,6 +15,13 @@ drawn from the quoted errors. The visibilities are a direct NumPy sum
 read but that the phantom does not define (OI_VIS, OI_FLUX) are dropped.
 Each dataset is written as ``<coverage>_p<k>_d<j>/`` holding the FITS files,
 ``truth.npz`` (image, pixel scale, parameters) and ``meta.json``.
+
+``run`` images dataset ``N // len(configs)`` with configuration
+``N % len(configs)`` (one OzSTAR array task each) through the contest code
+path (``contest_images.run_gp`` with fixed settings), writing
+``<dataset>__<config>.npz``. ``score`` compares every result with its truth
+(``crosscheck.image_metrics.score``) and writes ``bench_scores.md`` (median
+per configuration, overall and per family) and ``bench_scores.json``.
 
 Optional calibration errors (``--cal``) follow the 2018 readme: a random
 multiplicative V² offset per baseline and pointing, and a random closure
@@ -43,6 +52,20 @@ COVERAGES = {
     "2024_obj1_pionier": (["2024/Obj1_PIONIER_1.5-1.8.fits"], "spiral"),
 }
 PIXELS_PER_BEAM = 10  # truth grid resolution
+
+# Pipeline configurations (benchmark arms). Each is the settings dict that
+# contest_images.member_setup takes; change one factor at a time against
+# "baseline" (the first campaign's CLEAN-started GP with no star).
+BASE = {"star": False, "star_model": "none", "halo": False, "sparco": False,
+        "field": 2.0, "oversample": 3.0, "clean_gain": 0.1}
+CONFIGS = {
+    "baseline": BASE,
+    "point_star": BASE | {"star": True, "star_model": "point"},
+    "disk_star": BASE | {"star": True, "star_model": "disk"},
+    "halo": BASE | {"halo": True},
+    "field_1x": BASE | {"field": 1.0},
+    "field_4x": BASE | {"field": 4.0},
+}
 DROP = ("OI_VIS", "OI_FLUX")
 
 
@@ -173,6 +196,56 @@ def simulate(data_dir, out_dir, n_phantoms, n_draws, seed=0, cal=None, coverages
     return made
 
 
+def run(bench, out, dataset_id, config_names, smoke=False):
+    """Image one simulated dataset with one configuration (array task id)."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import contest_images
+
+    index = json.loads((bench / "index.json").read_text())
+    name = index[dataset_id // len(config_names)]
+    config = config_names[dataset_id % len(config_names)]
+    meta = json.loads((bench / name / "meta.json").read_text())
+    spec = {"label": name, "files": [str(bench / name / f) for f in meta["files"]]}
+    contest_images.run_gp(spec, pathlib.Path("/"), out, smoke=smoke, settings=CONFIGS[config],
+                          label=f"{name}__{config}")
+    return name, config
+
+
+def score(bench, out):
+    """Every result against its truth; medians per configuration and family."""
+    from crosscheck import image_metrics
+
+    rows = []
+    for path in sorted(out.glob("*__*.npz")):
+        name, config = path.stem.split("__")
+        d = np.load(path)
+        if "ref_image" not in d:
+            continue
+        truth = np.load(bench / name / "truth.npz")
+        meta = json.loads((bench / name / "meta.json").read_text())
+        s = image_metrics.score(d["ref_image"], float(d["ref_fov"]), truth["image"], float(truth["pixel"]),
+                                float(truth["beam"]))
+        rows.append({"dataset": name, "config": config, "family": meta["family"], "coverage": meta["coverage"],
+                     "chi2_red": float(d["best_chi2_red"]), "error_scale": float(d["error_scale"]),
+                     **{k: s[k] for k in ("lawson", "rms_e6", "l1", "ncc")}})
+    (out / "bench_scores.json").write_text(json.dumps(rows, indent=1))
+    metrics = ("lawson", "rms_e6", "l1", "ncc", "chi2_red")
+    lines = ["# Benchmark scores (medians; lawson and rms lower is better, l1 and ncc higher)", "",
+             "| config | n | " + " | ".join(metrics) + " |", "|---|---|" + "---|" * len(metrics)]
+    configs = sorted({r["config"] for r in rows}, key=lambda c: list(CONFIGS).index(c) if c in CONFIGS else 99)
+    for c in configs:
+        sel = [r for r in rows if r["config"] == c]
+        lines.append(f"| {c} | {len(sel)} | " + " | ".join(f"{np.median([r[m] for r in sel]):.4g}" for m in metrics) + " |")
+    for fam in sorted({r["family"] for r in rows}):
+        lines += ["", f"## {fam}", "", "| config | n | " + " | ".join(metrics) + " |", "|---|---|" + "---|" * len(metrics)]
+        for c in configs:
+            sel = [r for r in rows if r["config"] == c and r["family"] == fam]
+            if sel:
+                lines.append(f"| {c} | {len(sel)} | " + " | ".join(f"{np.median([r[m] for r in sel]):.4g}" for m in metrics) + " |")
+    (out / "bench_scores.md").write_text("\n".join(lines) + "\n")
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -186,7 +259,24 @@ def main():
     s.add_argument("--cal", default=None, help="calibration offsets 'v2_rel,cp_deg', e.g. 0.02,1.0")
     ls = sub.add_parser("list")
     ls.add_argument("--out", default="~/data/imaging_contests/bench")
+    r = sub.add_parser("run")
+    r.add_argument("--id", type=int, required=True, help="dataset index x len(configs) + config index")
+    r.add_argument("--bench", default="~/data/imaging_contests/bench")
+    r.add_argument("--out", default="bench_results")
+    r.add_argument("--configs", default=",".join(CONFIGS), help="comma-separated configuration names")
+    r.add_argument("--smoke", action="store_true")
+    sc = sub.add_parser("score")
+    sc.add_argument("--bench", default="~/data/imaging_contests/bench")
+    sc.add_argument("--out", default="bench_results")
     args = parser.parse_args()
+    if args.cmd == "run":
+        print(run(pathlib.Path(args.bench).expanduser(), pathlib.Path(args.out).expanduser(), args.id,
+                  args.configs.split(","), args.smoke))
+        return
+    if args.cmd == "score":
+        rows = score(pathlib.Path(args.bench).expanduser(), pathlib.Path(args.out).expanduser())
+        print((pathlib.Path(args.out).expanduser() / "bench_scores.md").read_text(), f"{len(rows)} results")
+        return
     if args.cmd == "simulate":
         cal = None
         if args.cal:
