@@ -158,6 +158,21 @@ nodes:
     layer: models
     source: [src/virgil/models.py, src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit]
+  virgil.limits.injection_limits:
+    layer: inference
+    source: [src/virgil/limits.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike, virgil.limits.nsigma]
+  virgil.detection.detection_statistics:
+    layer: inference
+    source: [src/virgil/detection.py, src/virgil/grid_fit.py, src/virgil/_grid.py]
+    depends: [virgil.likelihood.model_loglike]
+  virgil.detection.local_nsigma: {layer: inference, source: [src/virgil/detection.py], depends: [virgil.limits.nsigma]}
+  virgil.detection.gaussian_null:
+    layer: inference
+    source: [src/virgil/detection.py, src/virgil/oidata.py]
+    depends: [virgil.oidata.OIData]
+  virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
+  virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
     source: [src/virgil/_linear.py]
