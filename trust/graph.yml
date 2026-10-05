@@ -274,6 +274,7 @@ nodes:
     layer: imaging
     source: [src/virgil/imaging.py]
     depends: [virgil.fitting.fit]
+    doc: method/coverage.md  # not yet checked: listed on the generated Not yet covered page
 
   # -------------------------------------------------------------- orbits
   # Grounded on orbitize! (Blunt et al. 2020, 2024) and on mathematics (the
