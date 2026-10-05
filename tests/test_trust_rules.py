@@ -31,11 +31,11 @@ def evidence(tmp_path, name, records, date="2026-10-06T00:00:00+00:00", commit="
     return path
 
 
-def verdicts(trust, tmp_path, records, graph=None, ledger=(), files=None, golden=frozenset()):
+def verdicts(trust, tmp_path, records, graph=None, ledger=(), files=None, golden=frozenset(), signoffs=None):
     graph = graph or {"nodes": {"virgil.a": {"layer": "models"}}}
     paths = files or [evidence(tmp_path, "latest.jsonl", records)]
     runs, recs = trust.load_evidence(paths)
-    model = trust.build(graph, list(ledger), recs, runs, None, golden=set(golden))
+    model = trust.build(graph, list(ledger), recs, runs, None, golden=set(golden), signoffs=signoffs or {})
     return {k: v["verdict"] for k, v in model["nodes"].items()}, model
 
 
@@ -141,3 +141,29 @@ def test_a_check_through_unverified_reference_code_does_not_verify(trust, tmp_pa
 def test_reference_code_missing_from_the_graph_is_not_trusted(trust, tmp_path):
     got, model = verdicts(trust, tmp_path, [record("t::x", "virgil.a", via=["crosscheck.nowhere"])])
     assert got["virgil.a"] == "relies-unverified"
+
+
+def test_each_property_needs_its_own_independent_roots(trust, tmp_path):
+    """Two roots on a part are not enough if they check different things."""
+    graph = {"nodes": {"virgil.a": {"layer": "models", "roots": 2, "properties": {"sense": 2}}}}
+    recs = [record("t::x", "virgil.a", roots=["mathematics"], properties=["sense"]),
+            record("t::y", "virgil.a", roots=["pmoired"], properties=["amplitude"])]
+    got, model = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.a"] == "partly"
+    assert model["nodes"]["virgil.a"]["properties"]["sense"] == {"need": 2, "roots": ["mathematics"]}
+    recs[1]["properties"] = ["sense"]
+    got, _ = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.a"] == "verified"
+
+
+@pytest.mark.parametrize("roots,signoffs,verdict", [
+    (["mathematics"], {}, "convention"),  # our own transcription of virgil's docs confirms nothing
+    (["pmoired"], {}, "verified"),  # another code agrees on the convention
+    (["mathematics"], {"virgil.a": {"sense": {"by": "Ben Pope", "date": "2026-10-06"}}}, "verified"),
+])
+def test_a_convention_from_virgils_docs_needs_outside_confirmation(trust, tmp_path, roots, signoffs, verdict):
+    graph = {"nodes": {"virgil.a": {"layer": "models", "convention": ["sense"]}}}
+    rec = record("t::x", "virgil.a", roots=roots, properties=["sense"])
+    got, model = verdicts(trust, tmp_path, [rec], graph, signoffs=signoffs)
+    assert got["virgil.a"] == verdict
+    assert model["nodes"]["virgil.a"]["unconfirmed"] == (["sense"] if verdict == "convention" else [])

@@ -81,7 +81,7 @@ def cone_reference(u, v, c, dra=0.0, ddec=0.0):
 
 
 @pytest.mark.parametrize("c", CONES, ids=["side", "wide-negative-tilt", "down-axis", "in-sky"])
-@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"], property="tilt_sign")
 def test_truncated_cone_against_a_3d_cloud(c):
     u, v = baselines()
     want = cone_reference(u, v, c, dra=1.5, ddec=-2.0)
@@ -96,7 +96,7 @@ def test_truncated_cone_against_a_3d_cloud(c):
         assert 2.5 < errs[64] / errs[128] < 6.0
 
 
-@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"], property="tilt_sign")
 def test_truncated_cone_tilt_sign_does_not_change_the_image():
     u, v = baselines()
     c = dict(CONES[1])

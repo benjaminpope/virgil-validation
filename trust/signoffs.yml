@@ -1,0 +1,18 @@
+# Conventions confirmed outside virgil (trust/graph.yml, "convention").
+#
+# A convention taken from virgil's own documentation is only partly checked:
+# our code was written from the same documentation, so agreement shows the
+# two codes match, not that the convention is the one astronomers use. An
+# entry here confirms one convention of one part, by either
+#   citation: a paper, equation and page that defines it, or
+#   by, date, commit: Ben's sign-off after reading the code at that virgil commit.
+#
+# node:
+#   property:
+#     citation: "Author et al. (year), eq. N, p. M"
+#     -- or --
+#     by: Benjamin Pope
+#     date: YYYY-MM-DD
+#     commit: <full virgil commit hash>
+#     note: what was checked
+{}

@@ -9,6 +9,13 @@
 #             otherwise scripts/trust.py finds the topic page that mentions it most
 #   roots:    how many independent strong roots it needs (default 1;
 #             2 for conventions a model could get wrong in a correlated way).
+#   properties: {name: n}, for parts whose checks test different things:
+#             each property needs n independent roots of its own, counted
+#             from checks marked property="name".
+#   convention: properties defined only by virgil's own documentation. The
+#             part stays "convention from virgil's docs" until a check from
+#             another code or published result confirms each one, or
+#             trust/signoffs.yml records a paper equation or Ben's sign-off.
 #             Roots come from one pool (src/evidence/__init__.py): mathematics,
 #             standards, statistics, literature, and the trusted packages
 #             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!). Any of
@@ -54,8 +61,13 @@ nodes:
   virgil.models.GaussianDisk: {layer: models, source: [src/virgil/models.py]}
   virgil.models.EllipticalGaussian: {layer: models, source: [src/virgil/models.py]}
   virgil.models.UniformDisk: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.ModulatedGaussianRim: {layer: models, source: [src/virgil/models.py], roots: 2}
-  virgil.models.GaussianArc: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.ModulatedGaussianRim:
+    layer: models
+    source: [src/virgil/models.py]
+    roots: 2
+    properties: {profile: 2, modulation_sense: 1}  # PMOIRED's rim is modulated differently (D-code control)
+    convention: [modulation_sense]
+  virgil.models.GaussianArc: {layer: models, source: [src/virgil/models.py], convention: [orientation]}
   virgil.models.BinaryModelCartesian: {layer: models, source: [src/virgil/models.py], roots: 2}
   virgil.models.BinaryModelAngular: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
@@ -63,7 +75,7 @@ nodes:
   virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
   virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.Rotated: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.Rotated: {layer: models, source: [src/virgil/models.py], convention: [rotation_sense]}
   virgil.models.System:
     layer: models
     source: [src/virgil/models.py]
@@ -72,6 +84,7 @@ nodes:
     layer: models
     source: [src/virgil/models.py, src/virgil/_elr.py]
     depends: [virgil._elr]
+    convention: [pole_pa]  # the pole's position angle on the sky
   virgil.models.cvis_limb_darkened_disk: {layer: models, source: [src/virgil/models.py]}
   virgil.models.LimbDarkenedDisk:
     layer: models
@@ -85,9 +98,9 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     depends: [virgil.models.cvis_limb_darkened_disk]
-  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], convention: [brightness]}
+  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], convention: [brightness]}
+  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], convention: [brightness]}
   virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md#the-harmonix-wrapper}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
@@ -98,6 +111,7 @@ nodes:
     layer: likelihood
     source: [src/virgil/_closure.py]
     roots: 2  # mathematics and fouriever
+    properties: {correlation: 2, calibration: 1}
   virgil.likelihood.whitened_residuals:
     layer: likelihood
     source: [src/virgil/likelihood.py, src/virgil/_closure.py]
@@ -188,7 +202,7 @@ nodes:
   virgil.detection.DetectionMC: {layer: inference, source: [src/virgil/detection.py]}
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
   virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
-  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py], convention: [tilt_sign]}
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
   virgil.fields.GaussianField:
@@ -283,6 +297,7 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     roots: 2  # conventions (omega, Omega, sense of rotation, dz): orbitize! and mathematics
+    properties: {sky_position: 2}
   virgil.orbits.ThieleInnesOrbit:
     layer: orbits
     source: [src/virgil/orbits.py]
@@ -308,7 +323,8 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit, virgil._linear]
-    roots: 2  # RV signs: orbitize! and mathematics
+    roots: 2  # RV signs: orbitize! and a closed form (to come)
+    properties: {rv_curve: 2}
 
   virgil._elr:
     layer: models

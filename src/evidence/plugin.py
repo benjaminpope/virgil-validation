@@ -108,8 +108,10 @@ def _claims(item):
                 f"{item.nodeid}: unknown roots {bad}, kind {kind!r} or tier {tier!r}"
             )
         via = set(_module_via(str(item.path))) | set(mark.kwargs.get("via", ()))
+        prop = mark.kwargs.get("property", ())
         claim = {"objects": objects, "roots": roots, "kind": kind, "tier": tier,
-                 "via": sorted(via - set(objects))}
+                 "via": sorted(via - set(objects)),
+                 "properties": [prop] if isinstance(prop, str) else list(prop)}
         if headline is not None:
             claim["headline"] = str(headline)
         claims.append(claim)

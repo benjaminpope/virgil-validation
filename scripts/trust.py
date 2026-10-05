@@ -58,6 +58,8 @@ VERDICTS = {
     "relies-unverified": ("Works, but relies on an unverified part", "its own checks pass, but it uses a part not yet verified"),
     "bug": ("Known bug, fix pending", "the checks found a mistake in virgil that is not fixed yet"),
     "partly": ("Partly checked", "it needs another independent check"),
+    "convention": ("Convention from virgil's docs", "its checks agree, but a convention they rest on is taken from "
+                   "virgil's own documentation and is not yet confirmed by another code, a paper or a sign-off"),
     "failing": ("Check failing", "a check of it fails"),
     "unchecked": ("Not yet checked", "no independent check yet"),
 }
@@ -283,11 +285,21 @@ def doc_url(doc):
 
 
 UNFIXED = {"open", "to-raise", "raised"}
+# Roots that can confirm a convention taken from virgil's documentation: code
+# or results written by other people. Mathematics and standards are our own
+# transcriptions, so they cannot.
+EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "dlux", "literature"}
 
 
-def build(graph, ledger, records, runs, virgil=None, golden=None):
+def load_signoffs(path=ROOT / "trust" / "signoffs.yml"):
+    """{node: {property: entry}}: conventions confirmed by a cited paper or Ben's sign-off."""
+    return (yaml.safe_load(open(path)) or {}) if pathlib.Path(path).exists() else {}
+
+
+def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None):
     nodes = graph["nodes"]
     golden = load_golden() if golden is None else golden
+    signoffs = load_signoffs() if signoffs is None else signoffs
     by_obj = collections.defaultdict(list)
     for r in records:
         for obj in r["objects"]:
@@ -319,6 +331,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         failing = [r for r in recs if r["kind"] not in ("finding", "upstream") and r["outcome"] in BAD]
         good = [r for r in counted if r["outcome"] == "passed"]
         strong, weak, blocked_roots, blocked_by = set(), set(), set(), set()
+        prop_roots = collections.defaultdict(set)
         for r in good:
             s_, w_ = roots_of(r, golden)
             untrusted = set()
@@ -326,6 +339,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                 untrusted = {v for v in r.get("via", []) if v not in trusted_references}
             if r["kind"] in agreeing and not untrusted:
                 strong |= s_
+                for prop in r.get("properties", []):
+                    prop_roots[prop] |= s_
             elif r["kind"] in agreeing:
                 blocked_roots |= s_
                 blocked_by |= untrusted
@@ -336,6 +351,10 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             status = "failing"
         elif name in open_findings:
             status = "bug"
+        elif len(strong) >= need and not external_open.get(name) and properties_short(name, prop_roots):
+            status = "partly"  # agreement overall, but a property needs more independent roots
+        elif len(strong) >= need and not external_open.get(name) and unconfirmed_conventions(name, prop_roots):
+            status = "convention"
         elif len(strong) >= need and not external_open.get(name):
             status = "ok"
         elif len(set(strong) | blocked_roots) >= need and not external_open.get(name):
@@ -344,7 +363,17 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             status = "partly"
         else:
             status = "unchecked"
-        return status, strong, weak, need, recs, good, sorted(blocked_by)
+        return status, strong, weak, need, recs, good, sorted(blocked_by), prop_roots
+
+    def properties_short(name, prop_roots):
+        """Properties of a part with fewer independent roots than it needs."""
+        return sorted(p for p, n in (nodes[name].get("properties") or {}).items() if len(prop_roots.get(p, ())) < n)
+
+    def unconfirmed_conventions(name, prop_roots):
+        """Conventions taken from virgil's docs with no external root and no sign-off."""
+        signed = signoffs.get(name) or {}
+        return sorted(p for p in nodes[name].get("convention") or []
+                      if not (prop_roots.get(p, set()) & EXTERNAL) and p not in signed)
 
     def reference_verdicts():
         """Our reference nodes, decided first: verified only if their own
@@ -362,7 +391,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     trusted = reference_verdicts()
     for name, node in nodes.items():
         reference_node = node.get("layer", "references") == "references"
-        status, strong, weak, need, recs, good, blocked_by = own_status(name, None if reference_node else trusted)
+        status, strong, weak, need, recs, good, blocked_by, prop_roots = own_status(
+            name, None if reference_node else trusted)
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         commits = sorted({r["_commit"] for r in good if r["_commit"]})
         changes = [changed_files(virgil, c, node.get("source", [])) for c in commits]
@@ -373,6 +403,9 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "findings": open_findings.get(name, []) + external_open.get(name, []),
             "skipped": sum(1 for r in recs if r["outcome"] == "skipped" and r["kind"] in agreeing),
             "via_blocked": blocked_by,
+            "properties": {p: {"need": n, "roots": sorted(prop_roots.get(p, ()))}
+                           for p, n in (node.get("properties") or {}).items()},
+            "unconfirmed": unconfirmed_conventions(name, prop_roots),
         }
 
     # verdicts: a part whose own checks pass is verified only if everything
@@ -423,6 +456,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "because": [{"id": c, "findings": own.get(c, {}).get("findings", []),
                          "status": own.get(c, {}).get("status", "unchecked")} for c in causes],
             "depends": node.get("depends", []), "dependents": dependents,
+            "properties": o["properties"], "unconfirmed": o["unconfirmed"],
             "checks": o["checks"], "commits": o["commits"],
             "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set())),
             "skipped": o["skipped"],
@@ -465,10 +499,12 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
 
 # ------------------------------------------------------------------ render
 
-ICON = {"verified": "✓", "relies": "↧", "relies-unverified": "↧", "bug": "!", "partly": "◐", "failing": "✗", "unchecked": "–"}
-ORDER = ["verified", "relies", "relies-unverified", "partly", "bug", "failing", "unchecked"]
+ICON = {"verified": "✓", "relies": "↧", "relies-unverified": "↧", "bug": "!", "partly": "◐", "convention": "◑",
+        "failing": "✗", "unchecked": "–"}
+ORDER = ["verified", "relies", "relies-unverified", "convention", "partly", "bug", "failing", "unchecked"]
 COLOURS = {  # Okabe–Ito based, readable on light and dark
     "verified": "#2e9e5b", "relies": "#e0a526", "relies-unverified": "#c9b458", "partly": "#56b4e9",
+    "convention": "#cc79a7",
     "bug": "#d55e00", "failing": "#b0003a", "unchecked": "#9e9e9e",
 }
 
@@ -675,6 +711,12 @@ def render_coverage(model, extra=ROOT / "trust" / "not_covered.md"):
                 why.append("relies on " + ", ".join(f"`{b['id'].removeprefix('virgil.')}`" for b in n["because"]))
             if verdict == "unchecked" and not why:
                 why.append("no check yet")
+            if verdict == "convention":
+                why.append("convention " + ", ".join(f"`{p}`" for p in n["unconfirmed"]) + " from virgil's docs only")
+            short = [p for p, v in n["properties"].items() if len(v["roots"]) < v["need"]]
+            if verdict == "partly" and short:
+                why.append("; ".join(f"`{p}`: {len(n['properties'][p]['roots'])} of {n['properties'][p]['need']} "
+                                     "independent references" for p in short))
             elif verdict == "partly" and not why:
                 why.append("only checked against itself" if not n["strong"]
                            else f"{len(n['strong'])} of {n['need']} independent references")

@@ -41,7 +41,7 @@ ORBITS = [
 
 
 @pytest.mark.parametrize("elements", ORBITS)
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["mathematics"])
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["mathematics"], property="sky_position")
 def test_kepler_positions_from_the_textbook(elements):
     o = vo.KeplerOrbit(*elements, t_ref=59000.0)
     t = np.linspace(59000.0, 59000.0 + 2.3 * elements[0], 37)

@@ -131,7 +131,7 @@ def test_binaries(uvw):
 @pytest.mark.parametrize(
     "amps,pas", [((), ()), ((0.4,), (200.0,)), ((0.4, 0.25), (40.0, 110.0))]
 )
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["mathematics"], property=["profile", "modulation_sense"])
 def test_modulated_rim_in_plane_azimuth_and_blur(uvw, inc, amps, pas):
     """virgil's rim (since virgil#139): a thin ring modulated in in-plane
     azimuth, blurred by a Gaussian isotropic in the rim's own plane, then
@@ -184,7 +184,7 @@ def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
 @pytest.mark.parametrize(
     "radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)]
 )
-@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"], property="orientation")
 def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
     """The arc weight is a Gaussian in arc length wrapped once round the
     circle, including when the length FWHM exceeds pi R (virgil >= the
@@ -212,7 +212,7 @@ def test_image_orientation_and_centre(uvw):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("angle", [0.0, 70.0, 200.0])
-@pytest.mark.validates("virgil.models.Rotated", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.Rotated", roots=["mathematics"], property="rotation_sense")
 def test_rotated_scene(uvw, angle):
     u, v, wl = uvw
     scene = vm.System(

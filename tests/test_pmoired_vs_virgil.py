@@ -226,7 +226,7 @@ def _pmoired_rim(amps=(), pas=()):
     return params
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="profile")
 def test_unmodulated_rim_matches_pmoired_blurred_ring_profile(vlti_file):
     """An unmodulated, inclined rim blurred in its own plane is a ring with
     the Bessel-I0 radial profile: PMOIRED and virgil agree exactly. This

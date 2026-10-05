@@ -97,8 +97,8 @@ current state are generated from the evidence rather than written by hand:
 see **[Trust](../index.md)**, the site's home page. It keeps two questions
 apart. The verdict, from the evidence at the virgil commit it ran on, is
 one of: verified; works, but relies on a known bug (or on a part not yet
-verified); known bug, fix pending; partly checked; check failing; or not
-yet checked. Freshness is separate: whether virgil's source under a part
+verified); convention from virgil's docs; known bug, fix pending; partly
+checked; check failing; or not yet checked. Freshness is separate: whether virgil's source under a part
 has changed since. The page also shows the end-to-end results on real and
 simulated data, which roots check which parts, every finding, and how
 precisely each check agrees.
@@ -197,7 +197,15 @@ each node a **verdict**, from the evidence at the virgil commit it ran on:
   its own evidence passes, but something below it does not; the page
   names the part at the bottom of the chain and its open finding;
 * **known bug, fix pending**: a ledger entry against virgil is open;
-* **partly checked**: evidence from too few independent roots;
+* **convention from virgil's docs**: the checks agree, but a convention
+  they test (a rotation sense, which side of a disk is near) is defined only
+  by virgil's documentation, which our code was written from too. It needs
+  another code or a published result to agree, or an entry in
+  `trust/signoffs.yml` (a paper equation, or Ben's sign-off at a commit);
+* **partly checked**: evidence from too few independent roots, overall or
+  for one of the properties the graph lists for the part (a model's
+  profile and its modulation sense are separate properties, each with its
+  own count);
 * **check failing**: a check of it fails;
 * **not yet checked**: no evidence.
 

@@ -99,3 +99,41 @@ def test_graph_and_ledger_have_no_duplicate_keys():
     ids = [entry["id"] for entry in ledger]
     assert len(ids) == len(set(ids)), [i for i, n in collections.Counter(ids).items() if n > 1]
 
+
+
+def _marker_properties():
+    """(objects, properties) for every validates marker that names a property."""
+    found = []
+    for path in (ROOT / "tests").glob("test_*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "validates":
+                kw = {k.arg: k.value for k in node.keywords}
+                if "property" in kw:
+                    prop = ast.literal_eval(kw["property"])
+                    objs = {a.value for a in node.args if isinstance(a, ast.Constant)}
+                    found.append((path.name, objs, [prop] if isinstance(prop, str) else list(prop)))
+    return found
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_properties_named_by_tests_are_declared_in_the_graph():
+    """A misspelt property would silently count for nothing."""
+    nodes, found = GRAPH["nodes"], _marker_properties()
+    assert found
+    for where, objs, props in found:
+        if not objs:  # computed names (f-strings), as in _validates_objects
+            continue
+        declared = {p for o in objs if o in nodes
+                    for p in [*(nodes[o].get("properties") or {}), *(nodes[o].get("convention") or [])]}
+        assert set(props) <= declared, (where, sorted(objs), props)
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_signoffs_confirm_declared_conventions():
+    signoffs = yaml.safe_load(open(ROOT / "trust" / "signoffs.yml")) or {}
+    for node, entries in signoffs.items():
+        for prop, entry in entries.items():
+            assert prop in (GRAPH["nodes"][node].get("convention") or []), (node, prop)
+            by_paper = bool(entry.get("citation"))
+            by_ben = entry.get("by") and entry.get("date") and len(str(entry.get("commit", ""))) == 40
+            assert by_paper or by_ben, (node, prop)

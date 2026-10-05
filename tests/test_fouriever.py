@@ -95,7 +95,7 @@ def fouriever(path, ps, cov=True):
     return sp.run("fouriever", "fouriever_worker.py", {"task": "chi2", "path": path, "params": ps, "cov": cov})
 
 
-@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"])
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"], property="correlation")
 def test_closure_phase_correlation_matches_fouriever(files):
     """virgil's correlation matrix of the closure phases, fouriever's
     (its CPCOV divided by the errors) and ours (T T^T / 3 per snapshot and
@@ -125,7 +125,7 @@ def test_closure_phase_correlation_matches_fouriever(files):
 
 @pytest.mark.validates(
     "virgil.likelihood.whitened_residuals", "virgil.oidata.OIData.cp_noise",
-    roots=["fouriever", "mathematics"],
+    roots=["fouriever", "mathematics"], property="correlation",
 )
 def test_correlated_chi2_matches_fouriever(files):
     """Equal errors: fouriever equals our plain-residual r^T C^+ r, and
@@ -230,7 +230,7 @@ def test_unequal_errors_use_different_generalised_inverses(files):
     assert np.max(np.abs(got_v / got_f - 1)) > 0.01
 
 
-@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["statistics"])
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["statistics"], property="calibration")
 @pytest.mark.parametrize("which", ["one noisy baseline", "random"])
 def test_whitened_form_is_better_calibrated_on_baseline_noise(tmp_path, which):
     """True closure-phase noise is the closure T b of baseline-phase noise
