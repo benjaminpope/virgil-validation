@@ -14,6 +14,8 @@ Settings common to every task, so CANDID computes what virgil documents:
 * one core, no progress bar, no run-time guard.
 """
 
+import contextlib
+import io
 import json
 import sys
 
@@ -136,7 +138,41 @@ def absil_exact(task):
     return {"f3": out, "ndata": int(ndata)}  # percent
 
 
-TASKS = {"chi2": chi2, "nsigma": nsigma, "chi2map": chi2map, "limits": limits, "absil_exact": absil_exact, "fitmap": fitmap}
+def injection_exact(task):
+    """CANDID's own injection criterion (_detectLimit, method "injection"):
+    the companion injected with _injectCompanionData, then
+    _nSigmas(chi2_UD(injected) / chi2_BIN(injected, truth)) = sigma, solved
+    exactly (Brent) at each position. With "refit": true the uniform disk's
+    diameter is refitted to the injected data, as CANDID does (_fitFunc);
+    otherwise it is held at "diam"."""
+    from scipy import optimize
+
+    o = _open(task)
+    ndata = sum(c[-1].size for c in o._chi2Data if c[0].split(";")[0] in o.observables)
+    base = {"diam*": float(task["diam"])}
+    sigma = task.get("sigma", 3.0)
+    refit = bool(task.get("refit", False))
+
+    def excess(f, x, y):
+        param = _params(o, {**base, "x": x, "y": y, "f": f})
+        data = [[v if i == 0 else v.copy() for i, v in enumerate(d)] for d in o._chi2Data]
+        data = candid._injectCompanionData(data, o._delta, param)
+        ud = {k: (param[k] if k != "f" else 0.0) for k in param}
+        if refit:
+            with contextlib.redirect_stdout(io.StringIO()):
+                a = candid._fitFunc(ud, data, o.observables, o.instruments,
+                                    doNotFit=[k for k in ud if k != "diam*"])["chi2"]
+        else:
+            a = candid._chi2Func(ud, data, o.observables, o.instruments)
+        b = candid._chi2Func(param, data, o.observables, o.instruments)
+        return candid._nSigmas(a, b, ndata) - sigma
+
+    out = [optimize.brentq(excess, 1e-4, 100.0, args=(x, y), xtol=1e-10) for x, y in task["positions"]]
+    return {"f3": out, "ndata": int(ndata)}  # percent
+
+
+TASKS = {"chi2": chi2, "nsigma": nsigma, "chi2map": chi2map, "limits": limits, "absil_exact": absil_exact,
+         "injection_exact": injection_exact, "fitmap": fitmap}
 
 if __name__ == "__main__":
     task = json.load(open(sys.argv[1]))

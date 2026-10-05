@@ -144,8 +144,26 @@ V²-only files test the shared definition exactly.
 | — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (problem P4) |
 | `fit` and `laplace_cov` (diameter, position, flux) | `fitMap`, with its √χ²_r scaling of the errors undone | CANDID | best fits 4e-4 σ apart; errors within 1.6 % |
 
-Not yet: the false-alarm and contrast-limit simulation campaigns, and CANDID's
-injection method of detection limits, which virgil does not have.
+| `injection_limits` (3σ, six positions, V² and V² + CP) | CANDID's injection criterion (`_detectLimit`: its `_injectCompanionData`, then nσ(χ²_UD / χ²_BIN)) solved exactly, the diameter held as virgil holds it; also with no flux bounds (virgil#235) | CANDID | 1.2e-7 (V²), 5.8e-6 (with closure phases) |
+| — | the same criterion with the diameter refitted to the injected data, as CANDID does | CANDID | limits 20–34 % higher (definition D8: a refitted disk absorbs part of the companion's V² signal) |
+
+### Against fouriever
+
+`tests/test_fouriever_limits.py`, in fouriever's own environment. Files: three
+and four UTs (five snapshots, four channels) without a companion, and a
+seven-hole aperture mask (35 closure phases per snapshot, 15 independent, as
+for JWST NIRISS AMI) with a 1 % companion.
+
+| virgil | fouriever | Tag | Agreement |
+| --- | --- | --- | --- |
+| `nsigma`, 15 cases | `util.nsigma` (Absil et al. 2011, eq. 1), with SciPy and mpmath | fouriever | 1e-12; fouriever's SciPy branch saturates near 8σ, virgil's log-space form does not |
+| `absil_limits`, `injection_limits`, three UTs | its `lim_absil` and `lim_injection` criteria (with `inj_companion`) solved exactly | fouriever | 4.7e-5 and 2.3e-6 |
+| the same, four UTs with correlated closure phases | the same, with fouriever's closure-phase covariance | fouriever | 6.5e-5 and 4e-10 with the same degrees of freedom; 3 % apart with fouriever's own count (definition D7) |
+| `likelihood_grid` on the seven-hole mask, correlated closure phases | `chi2_bin` with its covariance, as Δχ² from the null over a 9 × 9 map | fouriever | 5e-5, same minimum |
+| — | fouriever's public `detlim` | Mathematics | fails under NumPy 2 and SciPy 1.18 (problem P8, pinned) |
+
+Not yet: the false-alarm and contrast-calibration campaigns on virgil's
+`detection` Monte Carlo (virgil#221), drafted next for OzSTAR.
 
 ## Spectra, flared disks and the harmonix wrapper
 
