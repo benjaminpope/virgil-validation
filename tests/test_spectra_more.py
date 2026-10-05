@@ -67,10 +67,11 @@ def test_cubic_is_physical_sees_overshoot_between_nodes(values):
 
 
 @pytest.mark.parametrize("cls,integral", [
-    ("GaussianLine", lambda a, f: a * f * np.sqrt(np.pi / (4 * np.log(2)))),
-    ("LorentzianLine", lambda a, f: a * np.pi * f / 2),
+    pytest.param("GaussianLine", lambda a, f: a * f * np.sqrt(np.pi / (4 * np.log(2))), id="GaussianLine",
+                 marks=pytest.mark.validates("virgil.spectra.GaussianLine", roots=["mathematics"])),
+    pytest.param("LorentzianLine", lambda a, f: a * np.pi * f / 2, id="LorentzianLine",
+                 marks=pytest.mark.validates("virgil.spectra.LorentzianLine", roots=["mathematics"])),
 ])
-@pytest.mark.validates("virgil.spectra.GaussianLine", "virgil.spectra.LorentzianLine", roots=["mathematics"])
 def test_lines_and_their_integrals(cls, integral):
     amp, centre, fwhm = 0.4, 2.1661e-6, 1.0e-9
     line = getattr(sp, cls)(amp, line_wavel=centre, fwhm=fwhm)

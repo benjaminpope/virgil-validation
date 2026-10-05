@@ -182,15 +182,25 @@ def test_rank_one_gradients_are_smooth_at_degenerate_columns_and_zero_width():
     def f(sd):
         return L.LinearMarginal(A, mu, prior_sd=sd, method="rank_one").loglike(resid, sigma)
 
-    def dense(sd):
-        return dense_logpdf(A, sigma, mu, np.diag(np.asarray(sd) ** 2), resid)[0]
+    def dense_var(var):
+        return dense_logpdf(A, sigma, mu, np.diag(var), resid)[0]
 
     for sd in (np.array([0.7, 1.3, 2.0]), np.array([0.7, 1.3, 1e-12])):
         g = np.asarray(jax.grad(f)(jnp.asarray(sd)))
         assert np.all(np.isfinite(g))
-        h = 1e-6
-        fd = np.array([(dense(sd + h * e) - dense(sd - h * e)) / (2 * h) for e in np.eye(3)])
-        np.testing.assert_allclose(g, fd, rtol=1e-5, atol=1e-7)
+        # d/dsd = 2 sd d/dvar: central differences in the variance, forward
+        # from zero where the width is tiny (a central step in sd would
+        # straddle zero, where the density is even in sd, leaving roundoff)
+        var = np.asarray(sd) ** 2
+        fd = np.empty(3)
+        for n, e in enumerate(np.eye(3)):
+            h = 1e-6 * max(var[n], 1e-6)
+            if var[n] > h:
+                dv = (dense_var(var + h * e) - dense_var(var - h * e)) / (2 * h)
+            else:
+                dv = (dense_var(var + h * e) - dense_var(var)) / h
+            fd[n] = 2 * sd[n] * dv
+        np.testing.assert_allclose(g, fd, rtol=1e-5, atol=1e-9)
 
 
 @pytest.mark.validates(NODE, roots=["mathematics"], kind="control")
