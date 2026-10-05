@@ -1,0 +1,32 @@
+# Criteria for the detection campaign, version 2 (scripts/detection_campaign.py).
+# Registered on 2026-10-06, before any v2 draw was run. Version 1 (OzSTAR job
+# detection_mc, submitted 2026-10-06) is superseded and never credited: its
+# companions were far too bright (lambda 146-2582) for its noncentral test to
+# say anything near the detection threshold, and its tail tests had no power
+# at false-alarm probabilities near 1e-3. Rationale: design/detection_v2.md.
+# The aggregator records this file's SHA-256 in the summary, and
+# tests/test_detection_campaign.py checks it against the committed file.
+
+family_alpha: 0.01      # Holm over every p-value below
+tests:
+  # null, delta_chi2 at one fixed position: Chernoff's (1/2) delta_0 + (1/2) chi2_1
+  chernoff_zero_fraction: exact two-sided binomial test of P(delta_chi2 = 0) = 1/2
+  chernoff_positive: KS of the positive values against chi2_1
+  chernoff_mean: z-test of mean 1/2, with the mixture's variance 5/4
+  # null, the three grid statistics, our simulator against virgil's gaussian_null
+  simulators_ad: k-sample Anderson-Darling, one per statistic
+  simulators_tail: Fisher's exact test of exceedance counts above virgil's 1e-2 quantile, one per statistic
+  # injected companions, delta_chi2 at the true position, every lambda: with the
+  # flux constrained >= 0 it is max(0, sqrt(lambda) + Z)^2 in the linear regime,
+  # tested by the randomized probability integral transform (KS against uniform)
+  boundary_pit: KS of the randomized PIT
+  boundary_mean: z-test of the standardized mean of (delta_chi2 - E) / sd over all draws
+must_hold:              # not p-values: each must be exactly true
+  - bookkeeping         # DetectionMC's FAPs, exact intervals and thresholds equal ours from the counts
+counts:
+  min_null: 20000
+  min_injected: 20000
+  min_virgil: 100000
+reported:               # never pass/fail
+  - exceedance_ratio_ci # 95% CI on (our exceedance rate / virgil's) at FAP 1e-2 and 1e-3: the precision validated
+  - completeness        # fraction detected at virgil's 1e-3 threshold, by separation and flux

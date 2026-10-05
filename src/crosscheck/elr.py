@@ -100,7 +100,7 @@ def planck(wavel, temperature):
     return 1.0 / (wavel**5 * np.expm1(h * c / (wavel * k * temperature)))
 
 
-def cloud(diam_eq, omega, inc_deg, pa_deg, n_theta=400, n_phi=800, t_pole=None, wavel=None):
+def cloud(diam_eq, omega, inc_deg, pa_deg, n_theta=400, n_phi=800, t_pole=None, wavel=None, t_exponent=0.25):
     """The star's image as a weighted point cloud (East, North in mas).
 
     The observer is at inclination inc from the rotation pole (0: pole-on);
@@ -110,7 +110,8 @@ def cloud(diam_eq, omega, inc_deg, pa_deg, n_theta=400, n_phi=800, t_pole=None, 
 
     With t_pole, each point radiates B_lambda(T) at ``wavel`` instead of the
     bolometric flux, with T = t_pole (F / F_pole)^(1/4) (T_eff^4 is
-    proportional to F)."""
+    proportional to F). ``t_exponent`` other than 1/4 is a wrong law, for
+    controls."""
     i, p = np.deg2rad(inc_deg), np.deg2rad(pa_deg)
     X, dA, F, _ = surface(omega, n_theta, n_phi)
     los = np.array([np.sin(i), 0.0, np.cos(i)])
@@ -120,7 +121,7 @@ def cloud(diam_eq, omega, inc_deg, pa_deg, n_theta=400, n_phi=800, t_pole=None, 
     if t_pole is not None:
         r_p = radius(np.array([1e-9]), omega)[0]
         f_pole = np.exp(2 / 3 * omega**2 * r_p**3) / r_p**2  # ELR11's polar limit (1/r_p² at omega = 0)
-        F = planck(wavel, t_pole * (F / f_pole) ** 0.25)
+        F = planck(wavel, t_pole * (F / f_pole) ** t_exponent)
     w = np.where(proj > 0, F * proj, 0.0).ravel()
     a, b = (X @ up).ravel(), (X @ side).ravel()
     scale = diam_eq / 2.0

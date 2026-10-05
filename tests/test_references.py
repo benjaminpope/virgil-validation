@@ -31,7 +31,7 @@ import pytest
 from astropy.io import fits
 from scipy import integrate, stats
 
-from crosscheck import array, chi2, disks, oifits_writer, orbits, simulate
+from crosscheck import array, chi2, disks, oifits_writer, orbits, simulate, sky
 from evidence.plugin import record
 
 UTS4 = np.array([[-9.925, -20.335, 0.0], [14.887, 30.502, 0.0], [44.915, 66.183, 0.0], [103.306, 43.999, 0.0]])
@@ -177,6 +177,26 @@ def test_radial_velocity_is_the_rate_of_recession():
     # circular orbit, omega = 0: at periastron (u = 0, the ascending node) z = 0 and rising
     assert orbits.radial_velocity(np.array([0.0]), 90.0, 0.0, 0.0, 35.0, 0.0, 1.0)[0] > 0
     assert orbits.depth(np.array([0.1]), 0.0, 35.0, 0.0)[0] > 0
+
+
+@pytest.mark.validates("crosscheck.disks", roots=["mathematics"], kind="reference")
+def test_scattered_ring_render():
+    """Isotropic scattering, or a face-on ring, gives a centrosymmetric image
+    (real visibilities); forward scattering brightens the near side, at
+    pa + 90; and the flux-weighted inclined ring keeps the major axis's
+    extent and shrinks the minor one by cos i."""
+    u, v = np.random.default_rng(1).uniform(-100, 100, (2, 200))
+    iso = disks.scattered_ring(40.0, 5.0, 50.0, 30.0, lambda t: np.ones_like(t))
+    face = disks.scattered_ring(40.0, 5.0, 0.0, 30.0, lambda t: disks.phase_hg(t, 0.6))
+    for e, n, w in (iso, face):
+        assert np.max(np.abs(sky.visibility(sky.Cloud(e, n, w), u, v, 2e-6).imag)) < 1e-10
+    e, n, w = disks.scattered_ring(40.0, 5.0, 50.0, 30.0, lambda t: disks.phase_hg(t, 0.6))
+    near = np.array([np.cos(np.deg2rad(30.0)), -np.sin(np.deg2rad(30.0))])
+    assert np.sum(w * (e * near[0] + n * near[1])) > 0
+    e, n, w = iso
+    major = np.array([np.sin(np.deg2rad(30.0)), np.cos(np.deg2rad(30.0))])
+    a, b = e * major[0] + n * major[1], e * near[0] + n * near[1]
+    assert np.sqrt(np.sum(w * b**2) / np.sum(w * a**2)) == pytest.approx(np.cos(np.deg2rad(50.0)), rel=1e-6)
 
 
 @pytest.mark.validates("crosscheck.disks", roots=["mathematics"], kind="reference")

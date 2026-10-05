@@ -14,6 +14,7 @@ describing the run (virgil commit, package versions, runner).
 # whichever of these suits it; no stage needs every package.
 ROOTS = (
     "mathematics",  # closed forms, checked numerically with SciPy/NumPy
+    "render",  # an image drawn from the physical geometry (sky conventions: East = +RA, PA North through East), Fourier-transformed numerically
     "standards",  # OIFITS, Thompson-Moran-Swenson uv geometry
     "dlux",
     "pmoired",

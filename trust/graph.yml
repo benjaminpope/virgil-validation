@@ -98,9 +98,9 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     depends: [virgil.models.cvis_limb_darkened_disk]
-  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], convention: [brightness]}
-  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], convention: [brightness]}
-  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], convention: [brightness]}
+  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
+  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
+  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
   virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md#the-harmonix-wrapper}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
@@ -202,7 +202,7 @@ nodes:
   virgil.detection.DetectionMC: {layer: inference, source: [src/virgil/detection.py]}
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
   virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
-  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py], convention: [tilt_sign]}
+  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
   virgil.fields.GaussianField:

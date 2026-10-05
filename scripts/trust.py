@@ -65,7 +65,7 @@ VERDICTS = {
 }
 ROOT_NAMES = {
     "mathematics": "mathematics", "standards": "standards", "statistics": "statistics",
-    "literature": "published result", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
+    "literature": "published result", "render": "independent render", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
     "fouriever": "fouriever", "ehtim": "eht-imaging", "mpol": "MPoL", "orbitize": "orbitize!",
     "self-consistency": "virgil itself",
 }
@@ -313,9 +313,11 @@ def doc_url(doc):
 
 UNFIXED = {"open", "to-raise", "raised"}
 # Roots that can confirm a convention taken from virgil's documentation: code
-# or results written by other people. Mathematics and standards are our own
-# transcriptions, so they cannot.
-EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "dlux", "literature"}
+# or results written by other people, or an image we render from the physical
+# geometry (what the convention means on the sky) rather than from virgil's
+# formula. Mathematics and standards are our own transcriptions of the
+# documented formula, so they cannot.
+EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "dlux", "literature", "render"}
 
 
 def load_signoffs(path=ROOT / "trust" / "signoffs.yml"):

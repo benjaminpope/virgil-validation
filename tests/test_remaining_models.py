@@ -6,7 +6,9 @@
 * Flared disks (Blakely et al. 2024): crosscheck.disks evaluates the
   documented brightness at the documented pixel centres; its direct Fourier
   sum is the reference. Separately, refining the grid shows virgil's
-  default sampling converges.
+  default sampling converges, and a ring rendered in 3-D with the true
+  scattering angle (crosscheck.disks.scattered_ring) is brighter on the
+  side virgil calls near whenever it scatters forwards.
 * HarmonixModel: stand-in sources with exactly known visibilities check
   the wrapper's units, normalisation and weight inside a System.
 """
@@ -124,7 +126,7 @@ def _disk_reference(geometry, phase, npix, scale, u, v, w, dra=0.0, ddec=0.0):
 
 @pytest.mark.parametrize(
     "name",
-    [pytest.param(n, marks=pytest.mark.validates(f"virgil.models.{n}", roots=["mathematics"], property="brightness")) for n in PHASES],
+    [pytest.param(n, marks=pytest.mark.validates(f"virgil.models.{n}", roots=["mathematics"])) for n in PHASES],
 )
 @pytest.mark.parametrize("geometry", [GEOMETRY, {**GEOMETRY, "inc": 0.0, "aspect": 0.0, "skew": 0.0, "symmetric": 0.0}, {**GEOMETRY, "inc": 70.0, "pa": 200.0}])
 def test_flared_disk_is_the_documented_brightness(name, geometry):
@@ -147,6 +149,32 @@ def test_flared_disk_near_side_is_at_pa_plus_90():
     flipped = {**GEOMETRY, "pa": GEOMETRY["pa"] + 180.0}
     wrong = _disk_reference(flipped, lambda t: disks.phase_hg(t, 0.6), npix, scale, U, V, 2.0e-6)
     assert np.max(np.abs(got - wrong)) > 1e-2
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [pytest.param(n, v, marks=pytest.mark.validates(f"virgil.models.{n}", roots=["render"], property="near_side"))
+     for n, v in [("FlaredDiskHG", 0.6), ("FlaredDiskHG", -0.4), ("FlaredDiskGaussian", 40.0), ("FlaredDiskPowerLaw", 3.0)]],
+)
+def test_flared_disk_bright_side_follows_the_scattering(name, value):
+    """Against crosscheck.disks.scattered_ring, a flat ring rendered in 3-D
+    with each phase function of the true scattering angle (not Blakely et
+    al.'s azimuthal form, so the two differ in detail): the asymmetric part
+    of the image, the imaginary part of the visibilities, correlates with
+    virgil's above 0.9, for forward and backward scattering; virgil's disk
+    turned by 180 degrees anticorrelates (a control)."""
+    key, _, fn = PHASES[name]
+    flat = {**GEOMETRY, "skew": 0.0, "aspect": 0.0, "symmetric": 0.0}
+    ref = sky.visibility(sky.Cloud(*disks.scattered_ring(flat["radius"], flat["fwhm"], flat["inc"], flat["pa"],
+                                                          lambda t: fn(t, value))), U, V, 2.0e-6)
+
+    def corr(pa):
+        got = np.asarray(getattr(vm, name)(**{key: value}, **{**flat, "pa": pa}, npix=64, pixel_scale_mas=2.5)
+                         .model(U, V, 2.0e-6))
+        return np.corrcoef(got.imag, ref.imag)[0, 1]
+
+    same, turned = record("imag_correlation", corr(flat["pa"])), corr(flat["pa"] + 180.0)
+    assert same > 0.9 and turned < -0.9
 
 
 @pytest.mark.validates("virgil.models.FlaredDiskPowerLaw", roots=["mathematics"])
