@@ -330,12 +330,19 @@ and `--halo`:
   `starting_image`'s own: 2018 asked for 386, and CLEAN's per-pixel setup
   cost scales as npix⁴ × N.
 
-**Finding F12.** Without a base scene, `clean` seeds one component at the
-central pixel. There |J e_p| = 0, because more flux on the only component
-leaves normalised visibilities unchanged, so the step score g²/|J e|² is
-0/0. On some grids (2004 data2, 60 px at 0.4 mas) χ² becomes NaN at the
-first iteration. A faint uniform floor added to the seed avoids it; the
-script uses that until virgil is fixed.
+**Finding F12 (a regression from virgil#174).** `clean` without a base
+scene returns NaN χ² at its first iteration on some grids when the closure
+phases are correlated (4+ telescopes):
+- the 2004 NPOI data at even sizes with 0.4 mas pixels;
+- simulated 4T data on 18 of 100 grids (every even size from 34 to 68 at
+  0.4 mas);
+- never with three telescopes.
+
+Bisected: none on #174's parent (53dd4b5), 18/100 on its merge (2b2df8c).
+So it comes from the new correlated closure-phase residuals (whitened sin Δ
+plus the uncorrelated penalty) as seen by CLEAN's per-pixel Jacobian
+norms. The script seeds CLEAN with a faint uniform floor beside the central
+component, which avoids it, until virgil is fixed.
 
 ### C3. Chromatic data
 

@@ -213,10 +213,10 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             support_c = ndimage.zoom(np.asarray(support, float), n_c / n_img, order=0) > 0.5
         seed = None
         if not star:
-            # Without a base scene, clean() seeds one component at the centre,
-            # where |J e_p| = 0 (more flux on the only component leaves the
-            # normalised visibilities unchanged): 0/0 and NaN on some grids
-            # (virgil-validation finding F12). A faint uniform floor avoids it.
+            # Workaround for finding F12: since virgil#174, clean() without a
+            # base scene returns NaN at its first iteration on some even grids
+            # with correlated (4+ telescope) closure phases. Seeding a faint
+            # uniform floor beside the central component avoids it.
             seed = np.full((n_c, n_c), 1e-6)
             seed[(n_c - 1) // 2, (n_c - 1) // 2] = 1.0
             if support_c is not None:
