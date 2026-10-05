@@ -103,20 +103,17 @@ class _ObjectArrayNumpy:
         return np.array(obj, *args, **kwargs)
 
 
-def reconstruct(task):
-    """An eht-imaging reconstruction (Imager.make_image_I) from complex
-    visibilities given row by row: time (one per snapshot and channel, so
-    triangles close within a channel), stations t1, t2, (u, v) in
-    wavelengths already in eht-imaging's sign convention, vis and sigma.
+def _imager(task, init_image, flux_weight):
+    """An eht-imaging Imager for complex visibilities given row by row: time
+    (one per snapshot and channel, so triangles close within a channel),
+    stations t1, t2, (u, v) in wavelengths already in eht-imaging's sign
+    convention, vis and sigma.
 
     Data terms: amplitudes and closure phases, weights alpha_amp and
     alpha_cphase; regularisers: squared TV (tv2) with weight beta_tv2,
     unnormalised (norm_reg=False), and the total flux held at 1 by a
-    'flux' term. Direct Fourier transform, delta-function pixels. Returns
-    the image (ny, nx; row 0 North, column 0 East) and the cost."""
-    import contextlib
-    import io
-
+    'flux' term of weight flux_weight. Direct Fourier transform,
+    delta-function pixels, log-pixel optimisation."""
     import ehtim as eh
     from ehtim import const_def as ehc
     from ehtim import obsdata as eh_obsdata
@@ -138,26 +135,86 @@ def reconstruct(task):
         table[k]["vis"] = re + 1j * im
         for s in ("sigma", "qsigma", "usigma", "vsigma"):
             table[k][s] = sigma
+    obs = eh.obsdata.Obsdata(0.0, -50.0, 230e9, 1e9, table, tarr, polrep="stokes")
+    init = eh.image.Image(np.asarray(init_image, float), float(task["pdim"]), 0.0, -50.0,
+                          rf=230e9, pulse=pulses.deltaPulse2D)
+    imager = eh.imager.Imager(
+        obs, init, prior_im=init, flux=1.0,
+        data_term={"amp": float(task["alpha_amp"]), "cphase": float(task["alpha_cphase"])},
+        reg_term={"tv2": float(task["beta_tv2"]), "flux": float(flux_weight)},
+        maxit=int(task.get("maxit", 2000)), stop=float(task.get("stop", 1e-12)),
+        ttype="direct", norm_reg=False, transform=["log"], debias=False,
+    )
+    return obs, imager
+
+
+def _counts(obs):
+    return int(len(obs.unpack(["amp"]))), int(len(obs.c_phases(count="min")))
+
+
+def objective(task):
+    """eht-imaging's own cost (Imager.objfunc) and its terms, unweighted, at
+    each given image (ny, nx; row 0 North, any total flux): chi2_amp and
+    chi2_cphase as imager_utils defines them (normalised by the number of
+    data), the 'tv2' and 'flux' regulariser values (signs as they enter the
+    cost), the total cost, and the cost's gradient with respect to log
+    pixel values (Imager.objgrad)."""
+    import contextlib
+    import io
+
+    images = [np.asarray(im, float) for im in task["images"]]
+    out = []
     with contextlib.redirect_stdout(io.StringIO()):
-        obs = eh.obsdata.Obsdata(0.0, -50.0, 230e9, 1e9, table, tarr, polrep="stokes")
-        init = eh.image.Image(np.asarray(task["init"], float), float(task["pdim"]), 0.0, -50.0,
-                              rf=230e9, pulse=pulses.deltaPulse2D)
-        imager = eh.imager.Imager(
-            obs, init, prior_im=init, flux=1.0,
-            data_term={"amp": float(task["alpha_amp"]), "cphase": float(task["alpha_cphase"])},
-            reg_term={"tv2": float(task["beta_tv2"]), "flux": float(task.get("flux_weight", 1e4))},
-            maxit=int(task.get("maxit", 2000)), stop=float(task.get("stop", 1e-12)),
-            ttype="direct", norm_reg=False, transform=["log"], debias=False,
-        )
-        imager.make_image_I(grads=True, show_updates=False)
-        out = imager.out_last()
-        cost = float(imager.objfunc(np.log(out.imvec)))
-        # the same cost at other images (row 0 North), e.g. virgil's
+        obs, imager = _imager(task, images[0], task.get("flux_weight", 1e4))
+        imager.check_params()
+        imager.check_limits()
+        imager.init_imager()
+        for im in images:
+            vec = im.ravel()
+            chi2 = imager.make_chisq_dict(vec)
+            reg = imager.make_reg_dict(vec)
+            x = np.log(vec)
+            out.append({
+                "chi2_amp": float(chi2["amp"]), "chi2_cphase": float(chi2["cphase"]),
+                "tv2": float(reg["tv2"]), "flux": float(reg["flux"]),
+                "cost": float(imager.objfunc(x)), "grad_log": imager.objgrad(x).reshape(im.shape).tolist(),
+            })
+        n_amp, n_cp = _counts(obs)
+    return {"results": out, "n_amp": n_amp, "n_cphase": n_cp}
+
+
+def reconstruct(task):
+    """An eht-imaging reconstruction (Imager.make_image_I, L-BFGS-B) from
+    the image init, run to convergence in stages: for each flux weight in
+    flux_weights (a continuation that pins the total flux to 1), restart
+    from the last image until a run ends without improving the cost
+    (at most max_restarts runs per stage). Returns the image (ny, nx; row 0
+    North, column 0 East), its cost, total flux, the norm of the cost's
+    gradient with respect to log pixels, and the L-BFGS-B messages."""
+    import contextlib
+    import io
+
+    image = np.asarray(task["init"], float)
+    log = []
+    with contextlib.redirect_stdout(io.StringIO()):
+        for mu in task.get("flux_weights", [task.get("flux_weight", 1e4)]):
+            last = np.inf
+            for _ in range(int(task.get("max_restarts", 1))):
+                obs, imager = _imager(task, image, mu)
+                imager.make_image_I(grads=True, show_updates=False)
+                image = imager.out_last().imarr()
+                x = np.log(image.ravel())
+                cost = float(imager.objfunc(x))
+                gnorm = float(np.linalg.norm(imager.objgrad(x)))
+                log.append({"flux_weight": mu, "cost": cost, "grad_log_norm": gnorm, "flux": float(image.sum())})
+                if cost >= last:
+                    break
+                last = cost
         other = [float(imager.objfunc(np.log(np.maximum(np.asarray(im, float).ravel(), 1e-300))))
                  for im in task.get("score", [])]
-    n_amp = len(obs.unpack(["amp"]))
-    n_cp = len(obs.c_phases(count="min"))
-    return {"image": out.imarr().tolist(), "cost": cost, "scores": other, "n_amp": int(n_amp), "n_cphase": int(n_cp)}
+        n_amp, n_cp = _counts(obs)
+    return {"image": image.tolist(), "cost": cost, "grad_log_norm": gnorm, "flux": float(image.sum()),
+            "log": log, "scores": other, "n_amp": n_amp, "n_cphase": n_cp}
 
 
 def p6_probe(task):
@@ -188,7 +245,8 @@ def p6_probe(task):
         return {"ok": False, "n_cphase": 0, "error": f"{type(e).__name__}: {e}"}
 
 
-TASKS = {"regularisers": regularisers, "ft": ft, "chisq_cphase": chisq_cphase, "reconstruct": reconstruct,
+TASKS = {"regularisers": regularisers, "ft": ft, "chisq_cphase": chisq_cphase, "objective": objective,
+         "reconstruct": reconstruct,
          "p6_probe": p6_probe}
 
 if __name__ == "__main__":
