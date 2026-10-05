@@ -4,9 +4,14 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_run:  # rebuild when a validation run on main finishes, with its evidence
+    workflows: [validation]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
+  actions: read  # to download the validation runs' evidence
 
 concurrency:
   group: pages-${{ github.ref }}
@@ -17,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # to check that each run's commit is in this branch's history
       - uses: actions/checkout@v4
         # virgil's history, so the Trust page can say what changed since
         # the evidence was measured
@@ -26,14 +33,19 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
       - name: build
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python "mkdocs<2" mkdocs-material "zensical>=0.0.62,<0.1" pyyaml
-          # the Trust page from the committed evidence, graph and ledger
-          # campaigns.jsonl: OzSTAR campaigns' summaries, each read under the virgil
-          # commit the campaign ran on (freshness against the pin is a note)
-          .venv/bin/python scripts/trust.py --evidence trust/evidence/latest.jsonl \
-            --evidence trust/evidence/virgil.jsonl --evidence trust/evidence/campaigns.jsonl --virgil virgil-src \
+          # the Trust page from CI's evidence only (scripts/fetch_ci_evidence.sh):
+          # the newest run on main and the newest weekly or manual run, each test
+          # keeping its newest outcome. campaigns.jsonl: OzSTAR campaigns' summaries,
+          # each read under the virgil commit the campaign ran on.
+          scripts/fetch_ci_evidence.sh ci
+          extra=$(for f in ci/full/evidence.jsonl ci/full/virgil-evidence.jsonl; do [ -f "$f" ] && echo "--evidence $f"; done)
+          .venv/bin/python scripts/trust.py --strict-provenance --evidence ci/push/evidence.jsonl $extra \
+            --evidence trust/evidence/campaigns.jsonl --virgil virgil-src \
             --out docs/index.md --json docs/assets/trust.json \
             --findings docs/method/findings.md --coverage docs/method/coverage.md
           # Zensical, as virgil (it reads mkdocs.yml); strict fails on warnings

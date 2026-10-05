@@ -77,15 +77,39 @@ AGREEMENT = re.compile(r"(^|_)(rel|abs|diff|difference|err|error|dv|dv2|dsigma|d
 # ------------------------------------------------------------------ inputs
 
 
-def load_evidence(paths):
+def provenance_problem(run, repo=ROOT):
+    """Why a run's evidence cannot be published, or None: it ran on
+    uncommitted code here or in virgil, or on a commit of this repository
+    that is not in the history of the one building the page."""
+    if run.get("validation_dirty"):
+        return "ran on uncommitted changes to virgil-validation"
+    if (run.get("virgil") or {}).get("dirty"):
+        return "ran on uncommitted changes to virgil"
+    commit = run.get("validation_commit")
+    if not commit:
+        return "does not say which commit of virgil-validation it ran on"
+    try:
+        ok = subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", commit, "HEAD"],
+                            capture_output=True).returncode == 0
+    except OSError:
+        return None
+    return None if ok else f"ran on {commit[:7]}, which is not in this branch's history"
+
+
+def load_evidence(paths, strict=False):
     """Runs and test records. A test that appears in several runs keeps only
     its newest outcome, so an old pass cannot outlive a newer skip or failure;
     the exception is a campaign summary (files named campaigns*.jsonl), which
-    an ordinary run skips because it ran on another virgil commit."""
+    an ordinary run skips because it ran on another virgil commit.
+
+    With ``strict``, a run with a provenance problem is left out entirely."""
     runs, by_test = [], {}
     for path in paths:
         lines = [json.loads(line) for line in open(path)]
         run, tests = lines[0], lines[1:]
+        if strict and (why := provenance_problem(run)):
+            print(f"left out {path}: {why}")
+            continue
         runs.append(run)
         campaign = pathlib.Path(path).name.startswith("campaigns")
         for t in tests:
@@ -93,6 +117,7 @@ def load_evidence(paths):
             t["_source"] = t.get("source", "ours")
             t["_date"] = run.get("date") or ""
             t["_campaign"] = campaign
+            t["_validation_commit"] = run.get("validation_commit")
             by_test.setdefault(t["test"], []).append(t)
     records = []
     for recs in by_test.values():
@@ -174,7 +199,9 @@ def _check(record):
         "outcome": record["outcome"],
         "headline": name,
         "value": value,
-        "url": f"{REPO}/blob/main/{path}" + (f"#L{line}" if line else "") if record["_source"] == "ours" else None,
+        # the test as it was when the evidence was measured
+        "url": f"{REPO}/blob/{record.get('_validation_commit') or 'main'}/{path}" + (f"#L{line}" if line else "")
+        if record["_source"] == "ours" else None,
         "source": record["_source"],
     }
 
@@ -844,6 +871,8 @@ def main():
     ap.add_argument("--graph", default=ROOT / "trust" / "graph.yml")
     ap.add_argument("--ledger", default=ROOT / "trust" / "ledger.yml")
     ap.add_argument("--virgil", type=pathlib.Path, default=None)
+    ap.add_argument("--strict-provenance", action="store_true",
+                    help="leave out runs on uncommitted code or on commits outside this branch (the published page)")
     ap.add_argument("--out", default=ROOT / "docs" / "index.md")
     ap.add_argument("--index", default=None, help="also write the page here (the site's home page)")
     ap.add_argument("--json", default=None)
@@ -852,7 +881,7 @@ def main():
     args = ap.parse_args()
     graph = yaml.safe_load(open(args.graph))
     ledger = yaml.safe_load(open(args.ledger))
-    runs, records = load_evidence(args.evidence)
+    runs, records = load_evidence(args.evidence, strict=args.strict_provenance)
     virgil = args.virgil.expanduser() if args.virgil else None
     model = build(graph, ledger, records, runs, virgil)
     model["docs"] = resolve_docs(graph)

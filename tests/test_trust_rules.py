@@ -167,3 +167,19 @@ def test_a_convention_from_virgils_docs_needs_outside_confirmation(trust, tmp_pa
     got, model = verdicts(trust, tmp_path, [rec], graph, signoffs=signoffs)
     assert got["virgil.a"] == verdict
     assert model["nodes"]["virgil.a"]["unconfirmed"] == (["sense"] if verdict == "convention" else [])
+
+
+def test_runs_on_uncommitted_or_foreign_code_are_left_out_of_the_page(trust, tmp_path):
+    import subprocess
+    head = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    good = {"validation_commit": head, "virgil": {"commit": "c" * 40, "dirty": False}}
+    assert trust.provenance_problem(good) is None
+    assert "uncommitted" in trust.provenance_problem(good | {"validation_dirty": True})
+    assert "virgil" in trust.provenance_problem(good | {"virgil": {"commit": "c" * 40, "dirty": True}})
+    assert "history" in trust.provenance_problem(good | {"validation_commit": "0" * 40})
+    path = evidence(tmp_path, "latest.jsonl", [record("t::x", "virgil.a")])
+    lines = path.read_text().splitlines()
+    lines[0] = json.dumps(json.loads(lines[0]) | {"validation_commit": head, "validation_dirty": True})
+    path.write_text("\n".join(lines) + "\n")
+    assert len(trust.load_evidence([path])[1]) == 1
+    assert trust.load_evidence([path], strict=True) == ([], [])

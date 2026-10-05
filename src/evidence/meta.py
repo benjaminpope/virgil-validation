@@ -17,9 +17,20 @@ def _version(name):
         return None
 
 
+def _dirty(path, ignore=()):
+    """Whether a git checkout has uncommitted changes (None if it cannot be told)."""
+    try:
+        out = subprocess.check_output(["git", "-C", path, "status", "--porcelain"], text=True,
+                                      stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return any(not line[3:].startswith(ignore) for line in out.splitlines())
+
+
 def virgil_source():
     """The virgil commit under test: from the installer's record (PEP 610)
-    for a git install, or the checkout's HEAD for a local editable one."""
+    for a git install, or the checkout's HEAD for a local editable one, which
+    is then also marked dirty if it has uncommitted changes."""
     try:
         dist = metadata.distribution("virgil-astro")
     except metadata.PackageNotFoundError:
@@ -27,8 +38,10 @@ def virgil_source():
     info = json.loads(dist.read_text("direct_url.json") or "{}")
     url = info.get("url")
     commit = info.get("vcs_info", {}).get("commit_id")
-    if commit is None and url and url.startswith("file://"):
+    dirty = False
+    if url and url.startswith("file://"):
         path = url[len("file://"):]
+        dirty = _dirty(path)
         try:
             commit = subprocess.check_output(
                 ["git", "-C", path, "rev-parse", "HEAD"], text=True,
@@ -36,11 +49,14 @@ def virgil_source():
             ).strip()
         except (OSError, subprocess.CalledProcessError):
             commit = None
-    return {"commit": commit, "url": url}
+    return {"commit": commit, "url": url, "dirty": dirty}
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 
 def own_commit():
-    root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    root = ROOT
     try:
         return subprocess.check_output(
             ["git", "-C", root, "rev-parse", "HEAD"], text=True,
@@ -77,6 +93,8 @@ def run_header():
         ),
         "virgil": {"version": _version("virgil-astro"), **virgil_source()},
         "validation_commit": own_commit(),
+        # uncommitted changes, other than evidence files being written
+        "validation_dirty": _dirty(ROOT, ignore=("trust/evidence/",)),
         "versions": {p: _version(p) for p in PACKAGES},
         "candid": candid(),
         "external": external(),
