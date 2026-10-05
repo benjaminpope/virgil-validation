@@ -121,7 +121,8 @@ def test_chi2_matches_candid_on_v2(files):
     assert worst < 1e-6
 
 
-@pytest.mark.validates("virgil.likelihood.whitened_residuals", "external_bridge.candid_bridge", roots=["candid", "mathematics"])
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", "external_bridge.candid_bridge", roots=["candid", "mathematics"],
+                        kind="definition")  # D5: asserts the codes differ
 def test_closure_phase_residual_definitions(files):
     """D5: CANDID's chi-squared is the plain-difference one (computed
     independently here), virgil's the chord one; far from the data they

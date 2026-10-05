@@ -32,7 +32,7 @@ def baselines(n=40, b_max=220.0, seed=0):
     return r * np.sin(t), r * np.cos(t)
 
 
-@pytest.mark.validates("crosscheck.elr", roots=["literature", "mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.elr", roots=["mathematics"], kind="reference")
 def test_reference_star_limits():
     """The reference against closed forms: a sphere is a uniform disk;
     ELR11's flux is exp(2/3 omega² r_p³) / r_p² at the pole and
@@ -64,7 +64,7 @@ CASES = [(0.6, 60.0, 30.0), (0.9, 85.0, 120.0), (0.95, 30.0, 300.0), (0.8, 0.0, 
 
 
 @pytest.mark.parametrize("omega,inc,pa", CASES, ids=["0.6-i60", "0.9-i85", "0.95-i30", "0.8-pole-on", "0.7-equator-on"])
-@pytest.mark.validates("virgil.models.GravityDarkenedStar", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.GravityDarkenedStar", "virgil._elr", roots=["mathematics"])
 def test_gravity_darkened_star_against_elr11(omega, inc, pa):
     u, v = baselines()
     want = sky.visibility(elr.cloud(2.0, omega, inc, pa), u, v, WL)
@@ -83,7 +83,7 @@ def test_gravity_darkened_star_against_elr11(omega, inc, pa):
 
 
 @pytest.mark.parametrize("wavel", [0.7e-6, 1.65e-6, 2.2e-6])
-@pytest.mark.validates("virgil.models.GravityDarkenedStar", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.GravityDarkenedStar", "virgil._elr", roots=["mathematics"])
 def test_chromatic_gravity_darkened_star_against_elr11(wavel):
     """t_pole set: every point radiates B_lambda(T) with T from the ELR11
     flux, T_eff^4 proportional to F, so the hot pole outweighs the cool

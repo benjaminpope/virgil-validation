@@ -96,7 +96,7 @@ def test_noisy_pulls_are_unit_normal(tmp_path, make, phase_noise):
     assert np.all((pulls.std(0) > 0.7) & (pulls.std(0) < 1.35))
 
 
-@pytest.mark.validates("virgil.inference.laplace_cov", roots=["mathematics"])
+@pytest.mark.validates("virgil.inference.laplace_cov", roots=["mathematics"], kind="regression")  # shape, symmetry, PD only
 def test_laplace_cov_with_array_parameters(tmp_path):
     """Finding 5, fixed in virgil#135: the rim's array-valued az_amps and
     az_pas beside scalar paths give a full, positive-definite covariance."""

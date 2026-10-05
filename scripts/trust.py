@@ -42,7 +42,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 REPO = "https://github.com/benjaminpope/virgil-validation"
 WEAK = {"self-consistency"}
 BAD = {"failed", "error", "xpassed"}
-GOOD = {"passed", "xfailed"}
+GOOD = {"passed", "xfailed"}  # xfailed is good only for finding/upstream records, which never count as agreement
+# Kinds that count as agreement: a check of virgil; for our reference nodes,
+# also the checks of our own reference code. Guards, controls, regressions
+# and definition differences never verify anything.
+AGREEING = {"check"}
+AGREEING_FOR_REFERENCES = {"check", "reference"}
+VIRGIL_CI = "virgil's own tests"  # weak: written inside virgil, by authors who can read its implementation
+GOLDEN = "golden"  # every registered golden source together counts as this one root
 LAYER_ORDER = ["imaging", "inference", "orbits", "likelihood", "priors", "models", "data", "references"]  # top first
 
 VERDICTS = {
@@ -69,16 +76,53 @@ AGREEMENT = re.compile(r"(^|_)(rel|abs|diff|difference|err|error|dv|dv2|dsigma|d
 
 
 def load_evidence(paths):
-    runs, records = [], []
+    """Runs and test records. A test that appears in several runs keeps only
+    its newest outcome, so an old pass cannot outlive a newer skip or failure;
+    the exception is a campaign summary (files named campaigns*.jsonl), which
+    an ordinary run skips because it ran on another virgil commit."""
+    runs, by_test = [], {}
     for path in paths:
         lines = [json.loads(line) for line in open(path)]
         run, tests = lines[0], lines[1:]
         runs.append(run)
+        campaign = pathlib.Path(path).name.startswith("campaigns")
         for t in tests:
             t["_commit"] = (run.get("virgil") or {}).get("commit")
             t["_source"] = t.get("source", "ours")
-            records.append(t)
+            t["_date"] = run.get("date") or ""
+            t["_campaign"] = campaign
+            by_test.setdefault(t["test"], []).append(t)
+    records = []
+    for recs in by_test.values():
+        recs.sort(key=lambda r: r["_date"])
+        newest = recs[-1]
+        if newest["outcome"] == "skipped":
+            ran = [r for r in recs if r["_campaign"] and r["outcome"] != "skipped"]
+            newest = ran[-1] if ran else newest
+        records.append(newest)
     return runs, records
+
+
+def load_golden(path=ROOT / "trust" / "golden.yml"):
+    return set(yaml.safe_load(open(path)) or {}) if pathlib.Path(path).exists() else set()
+
+
+def roots_of(record, golden):
+    """(strong, weak) roots a passing record contributes."""
+    if record["_source"] != "ours":
+        return set(), {VIRGIL_CI}
+    if record["kind"] == "regression":
+        return set(), {"regression"}
+    strong, weak = set(), set()
+    for root in record["roots"]:
+        if root in WEAK:
+            weak.add(root)
+        elif root.startswith("golden:"):
+            if root.split(":", 1)[1] in golden:
+                strong.add(GOLDEN)
+        else:
+            strong.add(root)
+    return strong, weak
 
 
 def changed_files(virgil, commit, paths):
@@ -235,32 +279,49 @@ def doc_url(doc):
     return url + (f"#{anchor}" if anchor else "")
 
 
-def build(graph, ledger, records, runs, virgil=None):
+UNFIXED = {"open", "to-raise", "raised"}
+
+
+def build(graph, ledger, records, runs, virgil=None, golden=None):
     nodes = graph["nodes"]
+    golden = load_golden() if golden is None else golden
     by_obj = collections.defaultdict(list)
     for r in records:
         for obj in r["objects"]:
             by_obj[obj].append(r)
-    open_findings = collections.defaultdict(list)
+    open_findings = collections.defaultdict(list)  # unfixed bugs in virgil
+    external_open = collections.defaultdict(list)  # unfixed problems in another package
     for e in ledger:
-        if e["ruling"] == "virgil" and e["status"] == "open":
+        if e["status"] not in UNFIXED:
+            continue
+        if e["ruling"] == "virgil":
             for obj in e["objects"]:
                 open_findings[obj].append(e["id"])
+        elif e["ruling"].startswith("external"):
+            for obj in e["objects"]:
+                external_open[obj].append(e["id"])
 
     own = {}
     for name, node in nodes.items():
         recs = by_obj.get(name, [])
-        counted = [r for r in recs if r["kind"] not in ("finding", "upstream")]
-        failing = [r for r in counted if r["outcome"] in BAD]
-        good = [r for r in counted if r["outcome"] in GOOD]
-        strong = sorted({root for r in good for root in r["roots"] if root not in WEAK})
-        weak = sorted({root for r in good for root in r["roots"] if root in WEAK})
+        reference_node = node.get("layer", "references") == "references"
+        agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
+        counted = [r for r in recs if r["kind"] in agreeing or r["kind"] == "regression"]
+        failing = [r for r in recs if r["kind"] not in ("finding", "upstream") and r["outcome"] in BAD]
+        good = [r for r in counted if r["outcome"] == "passed"]
+        strong, weak = set(), set()
+        for r in good:
+            s_, w_ = roots_of(r, golden)
+            if r["kind"] in agreeing:
+                strong |= s_
+            weak |= w_ | (s_ if r["kind"] not in agreeing else set())
+        strong, weak = sorted(strong), sorted(weak - set(strong))
         need = node.get("roots", 1)
         if failing:
             status = "failing"
         elif name in open_findings:
             status = "bug"
-        elif len(strong) >= need:
+        elif len(strong) >= need and not external_open.get(name):
             status = "ok"
         elif strong or weak:
             status = "partly"
@@ -272,7 +333,8 @@ def build(graph, ledger, records, runs, virgil=None):
         own[name] = {
             "status": status, "strong": strong, "weak": weak, "need": need,
             "checks": [_check(r) for r in recs], "commits": commits, "changed": changed,
-            "findings": open_findings.get(name, []),
+            "findings": open_findings.get(name, []) + external_open.get(name, []),
+            "skipped": sum(1 for r in recs if r["outcome"] == "skipped" and r["kind"] in agreeing),
         }
 
     # verdicts: a part whose own checks pass is verified only if everything
@@ -286,6 +348,15 @@ def build(graph, ledger, records, runs, virgil=None):
             if own[dep]["status"] != "ok":
                 found.add(dep)
             found |= problems(dep, seen)
+        return found
+
+    def changed_below(name, seen):
+        """virgil files changed under this part or anything it relies on."""
+        found = set(own[name]["changed"] or [])
+        for dep in nodes[name].get("depends", []):
+            if dep in nodes and dep not in seen:
+                seen.add(dep)
+                found |= changed_below(dep, seen)
         return found
 
     out_nodes = {}
@@ -311,15 +382,17 @@ def build(graph, ledger, records, runs, virgil=None):
             "findings": o["findings"],
             "because": [{"id": c, "findings": own[c]["findings"], "status": own[c]["status"]} for c in causes],
             "depends": node.get("depends", []), "dependents": dependents,
-            "checks": o["checks"], "commits": o["commits"], "changed": o["changed"],
+            "checks": o["checks"], "commits": o["commits"],
+            "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set())),
+            "skipped": o["skipped"],
             "source": node.get("source", []),
         }
 
     pipelines = []
     for name, p in graph.get("pipelines", {}).items():
-        recs = by_obj.get(f"pipeline:{name}", [])
+        recs = [r for r in by_obj.get(f"pipeline:{name}", []) if r["kind"] in AGREEING]
         bad = [r for r in recs if r["outcome"] in BAD]
-        good = [r for r in recs if r["outcome"] in GOOD]
+        good = [r for r in recs if r["outcome"] == "passed"]
         unverified = [s for s in p["steps"] if out_nodes.get(s, {}).get("verdict") != "verified"]
         if bad:
             status = "failing"
@@ -612,10 +685,24 @@ def _tables(model):
     return "\n".join(lines)
 
 
+def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
+    """The headline: parts of virgil only, staleness in the count itself."""
+    since = f", {stale} of them since changed in virgil" if stale else ""
+    where = ", ".join(f"<code>{e(c)}</code>" for c in commits)
+    return (f'<div class="vt-head"><div><span class="vt-big">{verified}</span> of {total} parts of virgil verified{since} '
+            f'<span class="vt-muted">(evidence from virgil {where})</span></div>'
+            f'<div class="vt-muted">Our own reference code and the packages we compare with: '
+            f'{refs_ok} of {refs_total} verified.</div></div>')
+
+
 def render(model, base=""):
     nodes = model["nodes"]
-    total = len(nodes)
-    counts = model["counts"]
+    ours_nodes = [n for n in nodes.values() if n["id"].startswith("virgil.")]
+    total = len(ours_nodes)
+    counts = collections.Counter(n["verdict"] for n in ours_nodes)
+    stale = sum(1 for n in ours_nodes if n["verdict"] == "verified" and n["changed"])
+    refs = [n for n in nodes.values() if not n["id"].startswith("virgil.")]
+    refs_ok = sum(1 for n in refs if n["verdict"] == "verified")
     commits = sorted({r["virgil"][:7] for r in model["runs"] if r.get("virgil")})
     ours = [r for r in model["runs"] if r.get("runner") != "virgil-ci"]
     pin = (ours[0]["virgil"] or "")[:7] if ours and ours[0].get("virgil") else ", ".join(commits)
@@ -636,8 +723,7 @@ def render(model, base=""):
         "independent packages written by other people, then whole chains end to end. "
         "[How this works](method/index.md).\n",
         '<div class="vt">',
-        f'<div class="vt-head"><div><span class="vt-big">{counts.get("verified", 0)}</span> of {total} parts verified '
-        f'<span class="vt-muted">at virgil <code>{e(pin)}</code></span></div><div class="vt-muted">{fresh}</div></div>',
+        _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
         _bar(counts, total),
         _legend(counts),
         '<h2 id="real-data">On real data: does virgil reproduce published results?</h2>',

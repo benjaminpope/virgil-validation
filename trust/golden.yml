@@ -1,0 +1,7 @@
+# Reference values from someone else's code ("golden:<name>" roots). A golden
+# root counts only if listed here, and all golden sources together count as
+# one root: they are values, not an independent method.
+dholakia:
+  what: GravityDarkenedStar visibilities and ELR11 fluxes
+  produced_by: Shashank Dholakia's jax-interferometry ELR_Model, commit 70689ed
+  used_in: virgil's own tests (tests/test_elr.py, tests/test_gravity_darkened_star.py), so they arrive through virgil's CI evidence

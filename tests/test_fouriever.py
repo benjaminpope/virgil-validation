@@ -211,7 +211,7 @@ def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
 
 @pytest.mark.validates(
     "virgil.likelihood.whitened_residuals", "virgil.oidata.OIData.cp_noise",
-    roots=["fouriever", "mathematics"],
+    roots=["fouriever", "mathematics"], kind="definition",  # D6: asserts the codes differ
 )
 def test_unequal_errors_use_different_generalised_inverses(files):
     """D6: with unequal errors in a group, fouriever's r^T C^+ r and virgil's

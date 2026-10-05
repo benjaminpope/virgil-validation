@@ -94,7 +94,7 @@ def test_page_sections_links_and_embedded_data(model):
     page = trust.render(model)
     for anchor in ("real-data", "simulated-data", "parts", "roots", "ledger", "precision"):
         assert f'id="{anchor}"' in page
-    assert re.search(r'class="vt-big">1</span> of 7 parts verified', page)
+    assert re.search(r'class="vt-big">1</span> of 7 parts of virgil verified', page)  # parts of virgil only
     assert ">virgil#7<" in page  # ledger links read repo#number
     assert 'href="https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_x.py#L3"' not in page  # links live in the data
     data = json.loads(re.search(r'<script type="application/json" id="vt-data">(.*?)</script>', page, re.S).group(1))

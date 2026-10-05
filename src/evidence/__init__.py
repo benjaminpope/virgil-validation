@@ -22,7 +22,7 @@ ROOTS = (
     "orbitize",  # orbitize! (Blunt et al. 2020, 2024): Keplerian orbits, RVs
     "ehtim",  # eht-imaging (Chael et al.): imaging and its regularisers
     "mpol",  # MPoL (Czekala et al.): RML imaging, gridding, Fourier transforms
-    "literature",  # a published result, reproduced from the authors' data
+    "literature",  # published numbers reproduced from the authors' data (not a formula we transcribed: that is mathematics)
     "statistics",  # ensembles with a known distribution
     "self-consistency",  # virgil against virgil: the weakest
 )
@@ -35,4 +35,6 @@ KINDS = (
     "upstream",  # strict xfail: a known problem in an external package
     "reference",  # checks our own reference code (crosscheck, bridges)
     "guard",  # repository rules, e.g. independence
+    "regression",  # finite/shape/no-crash guards of virgil: weak, never independent
+    "definition",  # documents that two codes define something differently: never agreement
 )
