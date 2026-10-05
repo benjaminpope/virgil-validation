@@ -25,6 +25,8 @@ def load(path):
             "wl": np.broadcast_to(wl, v2["VIS2DATA"].shape),
             "v2": np.asarray(v2["VIS2DATA"], float),
             "dv2": np.asarray(v2["VIS2ERR"], float),
+            "v2_mjd": np.asarray(v2["MJD"], float),
+            "v2_sta": np.asarray(v2["STA_INDEX"], int),
         }
         if "OI_T3" in [x.name for x in h]:
             t3 = h["OI_T3"].data
