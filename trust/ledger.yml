@@ -274,7 +274,8 @@
   evidence:
     - tests/test_orbitize.py::test_total_mass_and_distance_against_orbitize
     - tests/test_orbitize.py::test_f14_total_mass_is_keplers_third_law
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/229]
 
 - id: F15
   title: ThieleInnesOrbit.to_kepler returns Omega = 180.0 for a node at 180°, outside its documented [0, 180)
@@ -285,7 +286,8 @@
   evidence:
     - tests/test_orbitize.py::test_thiele_innes_orbit_matches_orbitize
     - tests/test_orbitize.py::test_f15_thiele_innes_node_in_documented_range
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/229]
 
 - id: F16
   title: StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits (0.01° returns 0.0106°), so positions drift by up to 2e-8 of a
@@ -296,7 +298,8 @@
   evidence:
     - tests/test_orbitize.py::test_state_vector_orbit_matches_orbitize
     - tests/test_orbitize.py::test_f16_state_vector_round_trip_keeps_float64_precision
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/229]
 
 - id: P7
   title: orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre

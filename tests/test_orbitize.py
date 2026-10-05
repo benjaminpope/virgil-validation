@@ -30,10 +30,11 @@ chosen from our own Kepler's-law period, which equals orbitize!'s to 1e-14
 orbitize!'s returned period. virgil is evaluated jit-compiled and vmapped
 over orbits (eager JAX costs ~0.5 s per orbit and call).
 
-Findings (ledger): F14, total_mass uses a³/P² with P in Julian years, 3.8e-5
-from Kepler's third law; F15, ThieleInnesOrbit.to_kepler can return
-Omega = 180.0; F16, StateVectorOrbit.to_kepler loses the inclination of
-nearly face-on orbits (i = 0.01° comes back as 0.0106°); P7, orbitize!
+Findings (ledger), fixed in virgil#229 and now checked as ordinary tests:
+F14, total_mass used a³/P² with P in Julian years, 3.8e-5 from Kepler's
+third law; F15, ThieleInnesOrbit.to_kepler could return Omega = 180.0; F16,
+StateVectorOrbit.to_kepler lost the inclination of nearly face-on orbits
+(i = 0.01° came back as 0.0106°). Open: P7, orbitize!
 adds the instrument's gamma to companion RVs when primary RVs are present,
 although its documentation asks for companion RVs relative to the
 barycentre.
@@ -357,8 +358,7 @@ def test_thiele_innes_orbit_matches_orbitize(grid):
     assert el_err < 1e-9  # degrees (and relative a): atan2 of the constants
 
 
-@pytest.mark.xfail(strict=True, reason="F15: ThieleInnesOrbit.to_kepler can return Omega = 180.0, outside its documented [0, 180)")
-@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["mathematics"])
 def test_f15_thiele_innes_node_in_documented_range(grid):
     """to_kepler documents 0 <= Omega < 180. For a node at 180°, whose
     constants carry sin(180°) ~ 1e-16, it returns 180.0 exactly:
@@ -386,8 +386,8 @@ def test_state_vector_orbit_matches_orbitize(grid, runs):
     velocity equals orbitize!'s relative RV (calc_orbit with mass_for_Kamp
     = mtot, km/s) converted with the distance 1000/plx and the Julian year;
     mu = 4 pi² a³ / P² (P in Julian years); its positions follow orbitize!'s
-    (to 1e-12 of a except near face-on or circular orbits: F16, pinned at
-    1e-7); and to_kepler returns orbitize!'s elements with the node fixed
+    (to 1e-12 of a, near face-on and circular orbits included since
+    virgil#229 fixed F16); and to_kepler returns orbitize!'s elements with the node fixed
     absolutely (the state carries dz), for well-posed orbits."""
     p, a, v = grid["periods"], grid["a"], grid["virgil"]
     pos, inc = _state_errors(grid)
@@ -413,11 +413,10 @@ def test_state_vector_orbit_matches_orbitize(grid, runs):
     record("max_element_error_well_posed", el_err)
     assert vz < TOL_RV and mu < 1e-13 and vel < 1e-6
     assert np.max(pos[well]) < TOL_POS and el_err < 1e-9
-    assert np.max(pos) < 1e-7  # F16
+    assert np.max(pos) < 1e-12  # face-on and circular too, since F16's fix
 
 
-@pytest.mark.xfail(strict=True, reason="F16: StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits")
-@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"], kind="finding")
+@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["orbitize", "mathematics"])
 def test_f16_state_vector_round_trip_keeps_float64_precision(grid):
     """The state (dra, ddec, vra, vdec, dz, vz, mu) fixes the orbit as
     precisely face-on as edge-on (the inclination is atan2(|h_xy|, h_z) of
@@ -570,33 +569,24 @@ def _mass_cases(grid):
 @pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"])
 def test_total_mass_and_distance_against_orbitize(grid):
     """total_mass(orbit, 1000/plx) recovers orbitize!'s mtot, and
-    distance_pc(orbit, mtot) its distance, up to the factor of ledger F14:
-    virgil computes the documented a³/P² with P in Julian years (pinned here
-    to 1e-13), which equals the exact 4 pi² a³ / (G M_sun P²) of orbitize!
-    (and of the IAU constants) times (365.25 d / Y)² = 1 - 3.78e-5, with
-    Y = 2 pi sqrt(au³ / GM_sun) = 365.2569 d (the Gaussian year)."""
-    factor = (JULIAN_YEAR_D / kepler_period(1.0, 1.0)) ** 2
-    worst_doc = worst_mass = worst_dist = worst_round = 0.0
+    distance_pc(orbit, mtot) its distance, both with Kepler's third law and
+    the IAU nominal GM_sun and au, since virgil#229 fixed ledger F14 (the
+    old a³/P² in Julian years was low by 3.78e-5); and they invert each
+    other."""
+    worst_mass = worst_dist = worst_round = 0.0
     for el, orbit in _mass_cases(grid):
         d = 1000.0 / el["plx"]
-        m = float(vo.total_mass(orbit, d))
-        doc = (float(orbit.a_mas) * d / 1000.0) ** 3 / (float(orbit.period) / JULIAN_YEAR_D) ** 2
-        worst_doc = max(worst_doc, abs(m / doc - 1))
-        worst_mass = max(worst_mass, abs(m / (el["mtot"] * factor) - 1))
+        worst_mass = max(worst_mass, abs(float(vo.total_mass(orbit, d)) / el["mtot"] - 1))
         dist = float(vo.distance_pc(orbit, el["mtot"]))
-        worst_dist = max(worst_dist, abs(dist / (d * factor ** (-1 / 3)) - 1))
+        worst_dist = max(worst_dist, abs(dist / d - 1))
         worst_round = max(worst_round, abs(float(vo.total_mass(orbit, dist)) / el["mtot"] - 1))
-    record("mass_factor_minus_1", factor - 1)
-    record("max_rel_vs_julian_year_formula", worst_doc)
-    record("max_rel_vs_orbitize_times_factor", worst_mass)
-    record("max_rel_distance_vs_orbitize_times_factor", worst_dist)
+    record("max_rel_mass_vs_orbitize", worst_mass)
+    record("max_rel_distance_vs_orbitize", worst_dist)
     record("max_rel_round_trip", worst_round)
-    assert abs(factor - 1 + 3.777e-5) < 1e-8
-    assert max(worst_doc, worst_mass, worst_dist, worst_round) < 1e-13
+    assert max(worst_mass, worst_dist, worst_round) < 1e-12
 
 
-@pytest.mark.xfail(strict=True, reason="F14: total_mass uses a³/P² in Julian years, 3.8e-5 from Kepler's third law")
-@pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"], kind="finding")
+@pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["orbitize", "standards"])
 def test_f14_total_mass_is_keplers_third_law(grid):
     """The total mass and dynamical distance of Kepler's third law with the
     IAU nominal GM_sun and au, as orbitize! computes them."""
