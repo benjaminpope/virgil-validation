@@ -92,9 +92,14 @@ Where each kind of check lives:
 
 The flow of trust, from the roots up through virgil's objects, and its
 current state are generated from the evidence rather than written by hand:
-see **[Trust](trust.md)**. Its chart colours every object trusted, partial,
-stale, open, failing or unchecked, and its tables give each object's roots,
-tests and the virgil commit the evidence ran on.
+see **[Trust](index.md)**, the site's home page. It keeps two questions
+apart. The verdict, from the evidence at the virgil commit it ran on, is
+one of: verified; works, but relies on a known bug (or on a part not yet
+verified); known bug, fix pending; partly checked; check failing; or not
+yet checked. Freshness is separate: whether virgil's source under a part
+has changed since. The page also shows the end-to-end results on real and
+simulated data, which roots check which parts, every finding, and how
+precisely each check agrees.
 
 ### Roots are a pool
 

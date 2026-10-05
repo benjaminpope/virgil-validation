@@ -68,7 +68,7 @@ the CI job summary). Roots are listed in `src/evidence/__init__.py`;
 - `trust/evidence/`: evidence records (`latest.jsonl` from our suite,
   `virgil.jsonl` from virgil's own CI). Regenerate with
   `.venv/bin/python -m pytest --evidence trust/evidence/latest.jsonl`.
-- `scripts/trust.py --evidence ... --virgil <virgil checkout> --out docs/trust.md`
+- `scripts/trust.py --evidence ... --virgil <virgil checkout> --out docs/trust.md --index docs/index.md` (the site's home page; the docs workflow regenerates both at deploy)
   writes the Trust page (statuses, chart, pipelines, ledger); weekly CI does
   the same against virgil's main.
 - Roots are a pool (mathematics, standards, statistics, literature, dLux,
@@ -97,13 +97,14 @@ uv pip install --python .venv/bin/python -e ../drpangloss -e .   # local virgil 
 | External packages (PMOIRED) | `uv pip install --python .venv/bin/python -e ".[external]"`, then `.venv/bin/python -m pytest -m external` |
 | Everything (dLux masking, noisy pulls; ~10 min) | `.venv/bin/python -m pytest` |
 | Regenerate the report and figures | `.venv/bin/python scripts/report.py` |
-| Build the docs site | `uv pip install --python .venv/bin/python mkdocs-material`, `.venv/bin/python scripts/build_docs_index.py`, `.venv/bin/mkdocs build --strict` |
+| Build the docs site | `uv pip install --python .venv/bin/python -e ".[docs]"`, `.venv/bin/python scripts/build_docs_index.py`, `.venv/bin/python scripts/trust.py --evidence trust/evidence/latest.jsonl --evidence trust/evidence/virgil.jsonl --out docs/trust.md --index docs/index.md`, `.venv/bin/zensical build --clean --strict` (Zensical, as virgil) |
 
 The site (https://benjaminpope.github.io/virgil-validation/) is built from
 `docs/` by `.github/workflows/docs.yml` and deployed on every push to
 `main`; pull requests build it in strict mode. Add new pages to `nav` in
-`mkdocs.yml`. `docs/index.md` is generated from `README.md`: edit the
-README.
+`mkdocs.yml`. The home page, `docs/index.md`, is the Trust page and
+`docs/overview.md` is generated from `README.md` (edit the README); both
+are regenerated at deploy, so they are git-ignored.
 
 Tests run virgil in float64 (`tests/conftest.py`) unless marked
 `float32`. Heavy dLux runs use one process: do not run them in parallel

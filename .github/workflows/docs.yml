@@ -17,13 +17,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        # virgil's history, so the Trust page can say what changed since
+        # the evidence was measured
+        with:
+          repository: benjaminpope/virgil
+          path: virgil-src
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
       - name: build
         run: |
           uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python "mkdocs<2" mkdocs-material
+          uv pip install --python .venv/bin/python "mkdocs<2" mkdocs-material "zensical>=0.0.62,<0.1" pyyaml
           .venv/bin/python scripts/build_docs_index.py
-          .venv/bin/mkdocs build --strict
+          # the Trust page from the committed evidence, graph and ledger
+          .venv/bin/python scripts/trust.py --evidence trust/evidence/latest.jsonl \
+            --evidence trust/evidence/virgil.jsonl --virgil virgil-src \
+            --out docs/trust.md --index docs/index.md --json docs/assets/trust.json
+          # Zensical, as virgil (it reads mkdocs.yml); strict fails on warnings
+          .venv/bin/zensical build --clean --strict
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'
         with:
