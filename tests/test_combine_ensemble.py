@@ -118,3 +118,19 @@ def test_members_with_different_pixel_counts_are_stacked(tmp_path):
     assert np.unravel_index(np.argmax(out["mean"]), (17, 17)) == (8, 8)
     assert sorted(out["kept"]) == [0, 1]
 
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_model_classes_and_evidence_weighted_mean(tmp_path):
+    a, b, c = _images()
+    for k, (img, log_z, star_model) in enumerate(((a, -10.0, "disk"), (b, -10.0 - np.log(3.0), "disk"),
+                                                  (c, -40.0, "point"))):
+        np.savez(tmp_path / f"w_m{k}.npz", ref_image=img, ref_fov=10.0, star=star_model != "none",
+                 star_model=star_model, halo=False, sparco=False, best_log_z=log_z, best_chi2_red=1.0,
+                 error_scale=1.0, flip_dchi2=100.0)
+    combine_ensemble.combine("w", combine_ensemble.load(tmp_path)["w"], tmp_path)
+    out = np.load(tmp_path / "w_ensemble.npz")
+    assert str(out["best_class"]) == "disk"
+    # Weights 3:1 from the evidence ratio; the point member is another class.
+    np.testing.assert_allclose(out["bma"], 0.75 * a / a.sum() + 0.25 * b / b.sum())
+    assert combine_ensemble.evidence_weights([0.0, -np.inf, np.nan]).tolist() == [1.0, 0.0, 0.0]
+

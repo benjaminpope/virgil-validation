@@ -29,6 +29,7 @@ a table over all datasets. NumPy and matplotlib only, so it runs on a laptop.
 
 import argparse
 import collections
+import json
 import pathlib
 import re
 
@@ -63,8 +64,24 @@ def load(*results):
             "chi2": float(d["best_chi2_red"]),
             "scale": float(d["error_scale"]),
             "flip": float(d["flip_dchi2"]),
+            "model": model_class(d),
         })
     return groups
+
+
+def model_class(d):
+    """A member's model class: its central source ("none", "point", "disk"),
+    plus "+halo" and "+sparco" when used. Members from before the classes
+    were recorded (job 18073823) have only ``star``."""
+    star = str(d["star_model"]) if "star_model" in d else ("point" if bool(d["star"]) else "none")
+    return star + ("+halo" if "halo" in d and bool(d["halo"]) else "") + ("+sparco" if "sparco" in d and bool(d["sparco"]) else "")
+
+
+def evidence_weights(log_z):
+    """Normalised exp(log Z − max) over finite entries (zero elsewhere)."""
+    log_z = np.asarray(log_z, float)
+    w = np.where(np.isfinite(log_z), np.exp(log_z - np.nanmax(log_z)), 0.0)
+    return w / w.sum()
 
 
 def resample(image, fov, common_fov, npix=None):
@@ -111,8 +128,25 @@ def combine(label, members, out):
     star = [m["log_z"] for m in members if m["star"] and np.isfinite(m["log_z"])]
     nostar = [m["log_z"] for m in members if not m["star"] and np.isfinite(m["log_z"])]
     dlogz = (max(star) - max(nostar)) if star and nostar else np.nan
+    # Model classes: the best log Z of each, and an evidence-weighted mean of
+    # the kept members of the best class (Bayesian model averaging within it;
+    # across classes the evidence is reported, not averaged). With wrong error
+    # bars the evidence mostly measures misfit, so this weighting is only as
+    # good as the error scales (see error_scale and plan section C2e).
+    classes = {}
+    for m in members:
+        if np.isfinite(m["log_z"]):
+            classes[m["model"]] = max(classes.get(m["model"], -np.inf), m["log_z"])
+    best_class = max(classes, key=classes.get) if classes else None
+    in_class = [m for m in kept if m["model"] == best_class]
+    if in_class:
+        w = evidence_weights([m["log_z"] for m in in_class])
+        bma = np.tensordot(w, np.array([m["image"] / m["image"].sum() for m in in_class]), axes=1)
+    else:
+        bma = mean
     fov = kept[0]["fov"]
-    np.savez_compressed(out / f"{label}_ensemble.npz", mean=mean, sigma=sigma, fov=fov,
+    np.savez_compressed(out / f"{label}_ensemble.npz", mean=mean, sigma=sigma, fov=fov, bma=bma,
+                        best_class=str(best_class), classes=json.dumps(classes),
                         kept=np.array([m["member"] for m in kept]),
                         members=np.array([m["member"] for m in members]), chi2=chi2, star_minus_nostar_log_z=dlogz)
 
@@ -132,7 +166,7 @@ def combine(label, members, out):
     plt.close(fig)
     scales = [m["scale"] for m in kept]
     return (f"| {label} | {len(kept)}/{n} | {best:.3g} | {np.median([m['chi2'] for m in kept]):.3g} | "
-            f"{min(scales):.2f}–{max(scales):.2f} | {dlogz:+.4g} |")
+            f"{min(scales):.2f}–{max(scales):.2f} | {dlogz:+.4g} | {best_class} |")
 
 
 def main():
@@ -142,8 +176,8 @@ def main():
     args = parser.parse_args()
     out = pathlib.Path(args.out or args.results[-1])
     out.mkdir(parents=True, exist_ok=True)
-    rows = ["| dataset | kept | best χ²/N | median kept χ²/N | error scale (kept) | ΔlogZ star − no star |",
-            "|---|---|---|---|---|---|"]
+    rows = ["| dataset | kept | best χ²/N | median kept χ²/N | error scale (kept) | ΔlogZ star − no star | best class |",
+            "|---|---|---|---|---|---|---|"]
     for label, members in sorted(load(*args.results).items()):
         rows.append(combine(label, members, out))
     table = "\n".join(rows) + "\n"
