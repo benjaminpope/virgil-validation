@@ -337,6 +337,24 @@ metric itself is validated first. Then virgil's scores are placed in each
 year's table. This is root `literature` (the published scores), and also
 `golden:ImageMetrics`.
 
+**Inversion symmetry in scoring.** Visibility amplitudes are unchanged
+when the image is inverted through the origin, I(x, y) → I(−x, −y), by
+Hermitian symmetry. In two dimensions that inversion *is* a 180°
+rotation, for any image. Mirror reflections (x → −x) are not a symmetry:
+V² changes by ~20% for an asymmetric test image. The two coincide only
+for a binary, which is symmetric about its own axis. Fourier phases change
+sign under inversion, so closure phases break the degeneracy, by an
+amount that depends on their S/N. The scoring rules are:
+
+- **V²-only data:** score both I and its inversion against the truth, and
+  keep the better, reporting both.
+- **Data with closure phases** (every contest set we have): do not flip,
+  but report the flip Δχ² (`diagnose`'s `flip_dchi2`). A small value means
+  the orientation is barely constrained, and the score should say so.
+- **Inversion centre:** invert about the true origin. On a pixel grid
+  that is (N − 1)/2, which `[::-1, ::-1]` gives exactly for odd N, so
+  scoring grids are kept odd.
+
 ### C5. 2014: real data
 
 If Joel or John Monnier have the reduced OIFITS, virgil's images of VY CMa
