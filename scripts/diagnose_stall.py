@@ -99,7 +99,7 @@ def run(case, data_dir, out_dir, smoke=False):
     t0 = time.time()
     s = setup(task, data_dir, halo)
     w = float(WEIGHTS[0])
-    regs = [MaxEntropy(w, path=s["path"]), *s["others"]]
+    regs = [MaxEntropy(w, prior=s["q"], path=s["path"]), *s["others"]]
     lines = [f"case={case} task={task} label={s['label']} weight={w:g} jax={jax.__version__} points={s['npts']} npix={s['npix']}"]
     shown = {}
 

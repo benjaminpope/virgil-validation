@@ -42,14 +42,15 @@ URLs, checksums, organisers and winners, are in `contests/manifest.yml`.
 | 2012 | [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB) | ❌ lost with OLBIN | CHARA/MIRC-6T, H band | was posted, lost | MACIM |
 | 2014 | [2014SPIE.9146E..1QM](https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM) | ❌ raw frames only (60.A-9237(A)) | PIONIER, **real** data on VY CMa and R Car | none (real data) | BSMEM (Sanchez-Bermudez) |
 | 2016 | [2016SPIE.9907E..1DS](https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1DS) | ❌ not archived | GRAVITY and MATISSE, chromatic | not posted | IRBis? (Hofmann) |
-| 2018 | [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM) | ❌ not hosted | CHARA and PIONIER, grey | analytic, parameters in the paper | SQUEEZE then BSMEM |
+| 2018 | [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM) | ✅ organiser's page (eso.org/~amerand) | CHARA and PIONIER, grey | analytic, parameters in the paper | SQUEEZE then BSMEM |
 | 2022 | [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1GS) | ✅ OiDB | GRAVITY K (11 channels) and JWST/NIRISS AMI | not posted | BSMEM (Young) |
 | 2024 | [2024SPIE13095E..14M](https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M) | ✅ OiDB | PIONIER, GRAVITY, MATISSE L and N; chromatic, with calibration biases | not public (ImageMetrics) | MiRA (Drevon) |
 | 2026 | Proc. SPIE 14148, 1414811 | not yet | ? | ? | ? |
 
 Ben has written to Fabien Baron (2012), Joel Sanchez-Bermudez (2016, and
 the 2014 and 2022 truth) and Antoine Mérand (2018) to ask for the missing
-data. The 2024 truth images are with Florentin Millour and Ferréol Soulez.
+data. The 2018 data have since been found, still served on Mérand's ESO
+page, and are in the manifest; only the 2018 truth model is needed from him. The 2024 truth images are with Florentin Millour and Ferréol Soulez.
 
 ## What the stages test
 
@@ -252,6 +253,97 @@ before submitting (clue images, readmes, rules, suggested fields and pixel
 scales, SEDs, test binaries) to initialise and set priors. A research agent
 is compiling that per contest.
 
+### Initialisation: only what contestants had
+
+Each task's settings in `scripts/contest_images.py` (`TASKS`) come only from
+what the contests published before the deadline (manifest `presubmission`
+entries; pre-submission files are in `~/data/imaging_contests/<year>/pre_submission/`).
+Truths, model parameters and target identities revealed in the papers are
+not used.
+
+An earlier version broke this rule. It took the 2004 fields (12 and 24 mas)
+from the papers; those values have been removed.
+
+| Contest | Given before the deadline | Used as |
+|---|---|---|
+| 2004 | nothing (data released blind; OI_TARGET names are decoys) | field chosen from the data |
+| 2006 | clue image (the model at 10 mas resolution, 106 mas field); the rules allow the field of view only | field 106 mas, flat start; no morphology prior |
+| 2008 | "an AGB star" / "an AGN"; "tapered with a 15 mas FWHM Gaussian" | field 30 mas; that Gaussian as the start and the MaxEnt default image |
+| 2010 | a bright source; SEDs; grey category judged as Low HK channels 1–10 and 11–20 | separate H and K images (the other channels flagged); SEDs kept for C3 |
+| 2018 | "a young star's disk, with a planet" | analytic star plus image; data recovered from the organiser's live page |
+| 2022 | nothing found; the GRAVITY OI_TARGET names the real star, probably by accident | treated as blind; the header is ignored. An analytic star is inferred from the data (an unresolved source dominates), which a contestant could also have seen |
+| 2024 | "a hot star with an environment" / "a young star", suspected companion; uncalibrated OI_FLUX; cubes required | analytic star in both; grey images per instrument as a first look; cubes in C3 |
+
+**Central stars** are common in these targets, so every dataset is also
+imaged both with and without an analytic central star (Ben, 2026-10-05:
+choosing between them from the data is not misusing information).
+`--star on|off` overrides a task's default, and labels get
+`_star`/`_nostar`. virgil's `log_evidence` applies only to Gaussian-field
+images, so for these MaxEnt images the choice is made on the L-curves: the
+χ² reached at equal entropy, and whether the star-free image builds a
+compact central peak to imitate a star.
+
+**Data-chosen fields** start from virgil's `starting_image`, whose field
+is limited by λ/B_min. They grow ×1.5, at most three times, while that
+lowers χ² by more than 10% in a 3000-step probe fit at w = 100.
+
+Flux at the image edge is not a usable trigger: the support and the
+centroid prior keep it off the edge even when the field is too small. On
+2004 data2 the χ² rule picks 20.6 mas (χ²/N 228 → 38; growing again
+gives 363), wide enough for the companion, without using the paper.
+
+**Test binaries.** The 2006 test binary is now checked too (published
+10 mas, PA 30°, Δm = 1, UD 3 and 1 mas). virgil recovers 10.000 mas,
+29.99°, ratio 0.399 (10^-0.4 = 0.398), χ²/N 0.94. That file needs
+virgil#167 (different INSNAMEs, reversed legs), so this also checks the
+fix against the literature.
+
+### C2b. CLEAN starts and Gaussian-process priors
+
+Two further options in `scripts/contest_images.py`, combinable with `--star`
+and `--halo`:
+
+- **`--init clean`.** virgil's gradient CLEAN (`imaging.clean`, which works
+  on V² and closure phases) runs on a grid of at most 65 pixels over the
+  same field, relative to the analytic star if there is one. Its components,
+  convolved with the beam, become the starting image, resampled to the fine
+  grid. A start with the right layout keeps closure-phase residuals away
+  from ±π (F11) and places far components, such as the 2004 companion or
+  the 2010 one at about 84 mas. On 2004 data2, CLEAN puts 6% of the flux
+  more than 5 mas East and 2% more than 5 mas West, matching the published
+  layout. It fits much better than its inversion (χ² 35 395 vs 57 960).
+- **`--prior gp`.** `GaussianField` log-brightness about the template (the
+  moments or CLEAN image), fitted on a grid of σ ∈ {1, 2, 4} and
+  ℓ ∈ {0.5, 1, 2} × beam minor axis. The fits are compared by
+  `log_evidence`:
+  - *Isotropic*: one correlation length.
+  - *Anisotropic*: lengths (ℓ/√r, ℓ√r) along and across a position angle,
+    via `Image(rotation_deg=PA)`. The axis ratio r and PA come from an
+    elliptical-Gaussian fit to the data. The template is resampled onto the
+    rotated grid, with the rotation's sign checked numerically against
+    virgil's rendering.
+  - Unlike the MaxEnt L-curves, the evidence also compares runs with and
+    without a star on the same data.
+  - Smoke runs: 2022 AMI prefers isotropic (log Z −198 vs −208); 2004
+    data2 with a CLEAN start prefers anisotropic (−27 444 vs −27 451).
+- **Grid cap.** Every grid is capped at 255 pixels, including
+  `starting_image`'s own: 2018 asked for 386, and CLEAN's per-pixel setup
+  cost scales as npix⁴ × N.
+
+**Finding F12 (a regression from virgil#174).** `clean` without a base
+scene returns NaN χ² at its first iteration on some grids when the closure
+phases are correlated (4+ telescopes):
+- the 2004 NPOI data at even sizes with 0.4 mas pixels;
+- simulated 4T data on 18 of 100 grids (every even size from 34 to 68 at
+  0.4 mas);
+- never with three telescopes.
+
+Bisected: none on #174's parent (53dd4b5), 18/100 on its merge (2b2df8c).
+So it comes from the new correlated closure-phase residuals (whitened sin Δ
+plus the uncorrelated penalty) as seen by CLEAN's per-pixel Jacobian
+norms. The script seeds CLEAN with a faint uniform floor beside the central
+component, which avoids it, until virgil is fixed.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
@@ -290,6 +382,24 @@ paper's definition and checked against the published score tables, so the
 metric itself is validated first. Then virgil's scores are placed in each
 year's table. This is root `literature` (the published scores), and also
 `golden:ImageMetrics`.
+
+**Inversion symmetry in scoring.** Visibility amplitudes are unchanged
+when the image is inverted through the origin, I(x, y) → I(−x, −y), by
+Hermitian symmetry. In two dimensions that inversion *is* a 180°
+rotation, for any image. Mirror reflections (x → −x) are not a symmetry:
+V² changes by ~20% for an asymmetric test image. The two coincide only
+for a binary, which is symmetric about its own axis. Fourier phases change
+sign under inversion, so closure phases break the degeneracy, by an
+amount that depends on their S/N. The scoring rules are:
+
+- **V²-only data:** score both I and its inversion against the truth, and
+  keep the better, reporting both.
+- **Data with closure phases** (every contest set we have): do not flip,
+  but report the flip Δχ² (`diagnose`'s `flip_dchi2`). A small value means
+  the orientation is barely constrained, and the score should say so.
+- **Inversion centre:** invert about the true origin. On a pixel grid
+  that is (N − 1)/2, which `[::-1, ::-1]` gives exactly for odd N, so
+  scoring grids are kept odd.
 
 ### C5. 2014: real data
 
