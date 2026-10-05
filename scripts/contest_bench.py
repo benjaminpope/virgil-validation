@@ -204,6 +204,9 @@ def simulate(data_dir, out_dir, n_phantoms, n_draws, seed=0, cal=None, coverages
 
 def run(bench, out, dataset_id, config_names, smoke=False):
     """Image one simulated dataset with one configuration (array task id)."""
+    import faulthandler
+
+    faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)  # see contest_images.main
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     import contest_images
 
