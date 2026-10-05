@@ -132,6 +132,20 @@ nodes:
   virgil.priors.IsotropicInclination: {layer: priors, source: [src/virgil/priors.py]}
   virgil.priors.IsotropicLatitude: {layer: priors, source: [src/virgil/priors.py]}
   virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py]}
+  virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
+  virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
+  virgil.observables.VisibilityAmplitude:
+    layer: likelihood
+    source: [src/virgil/observables.py]
+    depends: [virgil.oidata.OIData]
+  virgil.observables.TripleAmplitude:
+    layer: likelihood
+    source: [src/virgil/observables.py]
+    depends: [virgil.oidata.OIData]
+  virgil.spectra.Nodes: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.GaussianLine: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.LorentzianLine: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.spectra.Sum: {layer: models, source: [src/virgil/spectra.py]}
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
     source: [src/virgil/_linear.py]
