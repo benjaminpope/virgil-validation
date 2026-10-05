@@ -79,7 +79,8 @@ def test_build_model_and_loglike_against_our_chi2(dataset):
         assert abs(got - want) < 1e-8 * max(1.0, abs(want))
 
 
-@pytest.mark.parametrize("where,combine", [("model", "quadrature"), ("data", "quadrature"), ("data", "max")])
+@pytest.mark.parametrize("where,combine", [("model", "quadrature"), ("data", "quadrature"), ("model", "max"),
+                                           ("data", "max")])
 @pytest.mark.validates("virgil.likelihood.inflated_errors", roots=["mathematics"])
 def test_inflated_errors(dataset, where, combine):
     data, _ = dataset
@@ -124,6 +125,10 @@ def test_simulate_noiseless_and_noisy(dataset):
     vis = binary_vis(4.0, 3.0, 0.05)
     np.testing.assert_allclose(np.asarray(clean.vis).ravel(), np.abs(vis(d["u"], d["v"], d["wl"])).ravel() ** 2,
                                atol=1e-12)
+    t3 = vis(d["u1"], d["v1"], d["wl3"]) * vis(d["u2"], d["v2_"], d["wl3"]) * np.conj(
+        vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"]))
+    gap = np.angle(np.exp(1j * (np.asarray(clean.phi).ravel() - np.angle(t3).ravel())))
+    assert np.max(np.abs(gap)) < 1e-10
     np.testing.assert_array_equal(np.asarray(clean.d_vis), np.asarray(data.d_vis))
     for scale in (1.0, 2.0):
         pulls = np.concatenate([
