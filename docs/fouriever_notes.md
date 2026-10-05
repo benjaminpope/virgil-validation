@@ -20,7 +20,7 @@ Pinned by `tests/test_fouriever.py`.
 | closure-phase correlation | R = T Tᵀ / 3 per snapshot, identity across channels (`intercorr.add_cpcov`) | the same, per snapshot and channel |
 | covariance | C = D^½ R D^½, written to a `CPCOV` extension | the same |
 | χ² with correlations | rᵀ C⁺ r (pseudo-inverse) | rᵀ D^−½ R⁺ D^−½ r (whitened, then projected) |
-| closure-phase residual | plain difference from the sum of the baseline phases, not wrapped | chord 2 sin(Δ/2), 2π periodic |
+| closure-phase residual | plain difference from the sum of the baseline phases, not wrapped | sin Δ, correlated, plus an uncorrelated periodic penalty (1 − cos Δ)/σ per closure phase (since virgil#174; continuous and 2π periodic) |
 | bandwidth smearing | off by default | off |
 
 ## Differences that are not errors
@@ -29,7 +29,7 @@ Pinned by `tests/test_fouriever.py`.
   except that CANDID wraps the model closure phase into (−π, π] while
   fouriever does not (problem P5).
   fouriever's χ² equals our plain-residual form to 1e-15, and virgil's
-  equals the chord form to 1e-15. Near the true companion the two codes
+  equals its sine-plus-penalty form to 1e-15. Near the true companion the two codes
   agree to 5e-6.
 * **D6, generalised inverse.** C is singular: with N telescopes only
   (N−1)(N−2)/2 combinations of a snapshot's closure phases are independent.

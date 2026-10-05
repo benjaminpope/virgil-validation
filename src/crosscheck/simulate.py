@@ -121,3 +121,72 @@ def observe(
         t3=t3,
     )
     return clean
+
+
+def observe_visibilities(path, vis_fn, stations_enu, *, hour_angles_h, wavelengths, dec_deg=-30.0,
+                         latitude_deg=-24.6276, sigma=0.0, rng=None):
+    """Simulate complex visibilities with complex Gaussian noise (``sigma``
+    on each of the real and imaginary parts) and write them as visibility
+    amplitudes (``OI_VIS`` ``VISAMP``, error ``sigma``, ``AMPTYP``
+    absolute) plus closure phases (``OI_T3``) formed from the same noisy
+    visibilities, with errors propagated to first order,
+    sqrt(sum (sigma / |V|)^2) over the triangle's baselines. No ``OI_VIS2``.
+
+    For codes that fit complex visibilities rather than files (e.g.
+    eht-imaging): returns, per baseline row and channel, the MJD, station
+    pair (1-based), u, v (m), wavelength (m) and the noisy visibility, as a
+    dict of arrays of shape (n_row, n_channel)."""
+    from astropy.io import fits
+
+    observe(path, vis_fn, stations_enu, hour_angles_h=hour_angles_h, wavelengths=wavelengths,
+            dec_deg=dec_deg, latitude_deg=latitude_deg)
+    with fits.open(path) as h:
+        v2h, t3d = h["OI_VIS2"], h["OI_T3"].data.copy()
+        d = v2h.data
+        wl = np.asarray(h["OI_WAVELENGTH"].data["EFF_WAVE"], float)
+        u, v, sta, mjd = d["UCOORD"], d["VCOORD"], d["STA_INDEX"], d["MJD"]
+        clean = vis_fn(u[:, None], v[:, None], wl[None, :])
+        noise = np.zeros(clean.shape, complex)
+        if rng is not None:
+            noise = sigma * (rng.standard_normal(clean.shape) + 1j * rng.standard_normal(clean.shape))
+        noisy = clean + noise
+        amp = np.abs(noisy)
+
+        def baseline(m, i, j):
+            k = np.flatnonzero((mjd == m) & (((sta[:, 0] == i) & (sta[:, 1] == j)) | ((sta[:, 0] == j) & (sta[:, 1] == i))))[0]
+            return (noisy[k] if sta[k, 0] == i else np.conj(noisy[k])), amp[k]
+
+        phi, err = [], []
+        for row in range(len(t3d)):
+            a, b, c = t3d["STA_INDEX"][row]
+            m = t3d["MJD"][row]
+            (vab, aab), (vbc, abc), (vac, aac) = baseline(m, a, b), baseline(m, b, c), baseline(m, a, c)
+            phi.append(np.rad2deg(np.angle(vab * vbc * np.conj(vac))))
+            err.append(np.rad2deg(np.sqrt((sigma / aab) ** 2 + (sigma / abc) ** 2 + (sigma / aac) ** 2)))
+        t3d["T3PHI"] = np.array(phi)
+        t3d["T3PHIERR"] = np.maximum(np.array(err), 1e-6)
+        n, nw = amp.shape
+        keep = ("TARGET_ID", "TIME", "MJD", "INT_TIME", "UCOORD", "VCOORD", "STA_INDEX", "FLAG")
+        cols = [fits.Column(name=c.name, format=c.format, unit=c.unit, array=d[c.name]) for c in v2h.columns if c.name in keep]
+        cols += [
+            fits.Column(name="VISAMP", format=f"{nw}D", array=amp),
+            fits.Column(name="VISAMPERR", format=f"{nw}D", array=np.full(amp.shape, max(sigma, 1e-6))),
+            fits.Column(name="VISPHI", format=f"{nw}D", unit="deg", array=np.zeros(amp.shape)),
+            fits.Column(name="VISPHIERR", format=f"{nw}D", unit="deg", array=np.ones(amp.shape)),
+        ]
+        vis_hdu = fits.BinTableHDU.from_columns(cols)
+        for key in ("OI_REVN", "DATE-OBS", "ARRNAME", "INSNAME"):
+            if key in v2h.header:
+                vis_hdu.header[key] = v2h.header[key]
+        vis_hdu.header["EXTNAME"] = "OI_VIS"
+        vis_hdu.header["AMPTYP"] = "absolute"
+        vis_hdu.header["PHITYP"] = "absolute"
+        t3_hdu = fits.BinTableHDU(data=t3d, header=h["OI_T3"].header)
+        hdus = [x.copy() for x in h if x.name not in ("OI_VIS2", "OI_T3")] + [vis_hdu, t3_hdu]
+    fits.HDUList(hdus).writeto(path, overwrite=True)
+    shape = noisy.shape
+    return {
+        "mjd": np.broadcast_to(mjd[:, None], shape), "sta": sta,
+        "u": np.broadcast_to(u[:, None], shape), "v": np.broadcast_to(v[:, None], shape),
+        "wl": np.broadcast_to(wl[None, :], shape), "vis": noisy,
+    }

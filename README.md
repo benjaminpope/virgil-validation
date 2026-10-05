@@ -50,6 +50,7 @@ enforces it. `src/virgil_bridge` is the only code that does.
 | Masking (dLux) | calibrated visibilities vs the exact scene | 1e-4 to 8e-4 at a 256-pixel (7.7″) field, falling from 1e-3 at 128 pixels: light lost off the detector. dLux and the closed-form imager agree to 1e-5 |
 | Visibility-only data | V²-only files read and fitted (virgil#158): diameters against the truth, PMOIRED and 200-draw pulls | 1e-6 noise-free; 2e-4 σ from PMOIRED; pulls sd 1.01 |
 | Grids and limits | `likelihood_grid`, `nsigma`, best flux and its error per position, `absil_limits`, `ruffio_upperlimit` against our own chi-squared, Absil et al. 2011 and Ruffio et al. 2018 (SciPy, mpmath) | 5e-12 to 5e-7; flux pulls sd 1.09 |
+| Image reconstruction | `fit` with `TSV` against eht-imaging's imager on the same simulated visibilities (amplitudes + closure phases), objectives matched | minima agree: loss 5e-8, image 1e-7 |
 | Image model, closure-phase term | `Image.model` against eht-imaging's transform (opposite Fourier sign, same orientation); closure-phase χ² against `chisq_cphase` | 1e-13; 1e-10 |
 | Image regularisers | `TSV`, `TV`, `MaxEntropy` against eht-imaging and MPoL; `Laplacian`, `StarletL1`, `LogSum` against SciPy; values and gradients | 1e-15 |
 | Correlated closure phases | `OIData.cp_noise` and the correlated χ² against fouriever (Kammerer et al. 2020's own code) and our own implementation of that model ([notes](docs/fouriever_notes.md)) | correlation exact; χ² 1e-15 against each code's definition |
@@ -103,11 +104,12 @@ Differences with other packages (all in the [ledger](docs/trust.md#ledger)):
 | D2 | PMOIRED | Modulated rims: PMOIRED modulates the profile, virgil blurs a modulated ring | definition |
 | D3 | PMOIRED | PMOIRED treats closure phases as independent; virgil whitens them as a correlated group (virgil's pulls calibrated, PMOIRED's errors ~10 % small) | definition |
 | D4 | PMOIRED, CANDID | Both scale fit uncertainties by √χ²_r | definition |
-| D5 | CANDID, fouriever | Closure-phase residual: plain difference in CANDID, chord 2 sin(Δ/2) in virgil (equal to O(Δ³); identical on V²-only data) | definition |
+| D5 | CANDID, fouriever | Closure-phase residual: plain difference in CANDID and fouriever; in virgil the chord 2 sin(Δ/2) for independent closure phases, and sin Δ plus a periodic penalty (1 − cos Δ)/σ for correlated ones (since virgil#174). All agree to O(Δ³); identical on V²-only data | definition |
 | D6 | fouriever | With unequal closure-phase errors within a group, different generalised inverses of the singular covariance (virgil's is the better calibrated) | definition |
 | P1–P3 | PMOIRED | NaN models with `auto`, ring sampling not the documented Nr, a ~1e-4 ring precision floor ([notes](docs/pmoired_notes.md)) | to raise |
 | P4 | CANDID | Absil limits from `detectionLimit` ~1 % low against its own criterion solved exactly ([notes](docs/candid_notes.md)) | to raise |
 | P5 | fouriever | Closure-phase residual not wrapped: data straddling ±180° give a ~2π residual at the true binary ([notes](docs/fouriever_notes.md)) | raised, [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
+| P6 | eht-imaging | Under NumPy 2, closure phases fail when every time has the same baselines (all simulated data); worked around in our worker | to raise |
 
 Nothing else disagreed: every primitive, convention (East, North, position
 angle, OIFITS sign, T3 orientation), the OIFITS reader, the fitter, the
