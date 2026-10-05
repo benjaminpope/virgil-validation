@@ -257,7 +257,7 @@ def residual_diagnostics(model, data):
     frequencies (near 0 when short baselines are not traded for long ones;
     MACIM's selection test in the 2012 contest). Residuals come in the order
     V², whitened closure phases, then (for correlated closure phases) one
-    periodic penalty per phase, which is left out here."""
+    periodic penalty per phase; both closure-phase components contribute to χ²."""
     out = []
     for d in data if isinstance(data, list) else [data]:
         r = np.asarray(whitened_residuals(model, d))
@@ -268,7 +268,7 @@ def residual_diagnostics(model, data):
         short = freq <= np.quantile(freq, 0.2)
         out.append({
             "chi2_v2": float(np.sum(r[:nv] ** 2) / max(nv, 1)),
-            "chi2_cp": float(np.sum(r[nv:nv + n_cp] ** 2) / max(n_cp, 1)) if n_cp > 0 else None,
+            "chi2_cp": float(np.sum(r[nv:] ** 2) / n_cp) if n_cp > 0 else None,
             "short_mean": float(np.mean(r[:nv][short])),
             "n_v2": nv, "n_cp_indep": n_cp,
         })
