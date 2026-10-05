@@ -199,6 +199,17 @@ nodes:
     layer: inference
     source: [src/virgil/simulate.py]
     depends: [virgil.simulate.simulate, virgil.fitting.fit]
+  virgil.observables.FluxSpectrum:
+    layer: likelihood
+    source: [src/virgil/observables.py, src/virgil/_linear.py]
+    depends: [virgil.oidata.OIData, virgil._linear]
+  virgil.oidata.OIData.with_flux_scale: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.FluxSpectrum]}
+  virgil.observables.DifferentialPhase:
+    layer: likelihood
+    # recheck when virgil#232 (cached Cholesky) lands
+    source: [src/virgil/observables.py, src/virgil/_linear.py]
+    depends: [virgil.oidata.OIData, virgil.observables.continuum_operator, virgil._linear]
+  virgil.oidata.OIData.with_continuum: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.DifferentialPhase]}
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
     source: [src/virgil/_linear.py]

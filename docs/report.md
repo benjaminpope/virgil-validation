@@ -225,9 +225,10 @@ is flat ("Priors and the MAP" in virgil's conventions).
 | `VisibilityAmplitude`, `TripleAmplitude` (`extras=`) | the χ² each adds equals Σ((model − data)/σ)² with our own closed-form visibilities | Mathematics + Standards | 1e-6 |
 | `observables.continuum_operator`, orders 0 and 1 | the least-squares fit of 1, 1/λ over the continuum channels, by the normal equations | Mathematics | 1e-10 |
 
-`FluxSpectrum` and `DifferentialPhase` wait for virgil's refactor of their
-priors: today `FluxSpectrum`'s prior is centred on the data's own mean,
-which the planned change removes.
+`FluxSpectrum` and `DifferentialPhase` are checked below, under
+[Grey-scaled spectra and differential phases](#grey-scaled-spectra-and-differential-phases),
+now that virgil#217 states the grey scale's prior rather than taking it
+from the data.
 
 ## Orbits
 
@@ -286,6 +287,25 @@ against our own χ².
 | `inference.fisher` | the Hessian of ½ our χ² by central differences | Mathematics | 1e-5 |
 | `simulate.simulate` | noiseless: our V² and closure phases; noisy: V² pulls are 𝒩(0, noise_scale²) (sd, KS) | Mathematics, statistics | 1e-12; within 4σ |
 | `simulate.bias_test` | each entry is the fit to the simulation drawn with that key | Self-consistency | 1e-10 |
+
+## Grey-scaled spectra and differential phases
+
+`tests/test_flux_visphi.py`, on a four-telescope file with a Brγ-like line
+(unequal phase errors), written by `oifits.write_oifits`. The references
+use the values the file holds (EFF_WAVE is float32).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `observables.FluxSpectrum` (`"flux"`), one scale per dataset or per station, polynomial orders 0–2, the stated prior `scale=(mean, sd)` of virgil#217 | SciPy's multivariate normal about μ t with covariance D + Σ c_j c_jᵀ (c₀ = s t, c_j = τ μ t x^j), t the total spectrum over its group mean | Mathematics | 1e-8 in log L |
+| `FluxSpectrum` (`"nflux"`), default prior (1, 0.1) | the same, with t the total spectrum over its continuum mean per row | Mathematics | 1e-8 |
+| `FluxSpectrum` without a stated prior | refuses rather than taking it from the data | Mathematics | — |
+| `observables.DifferentialPhase`, the pipeline's projection, with windows | SciPy's multivariate normal of (Qᵀ ⊗ N_line) φ, with Q from our own incidence matrix and N = I − L our own continuum fit | Mathematics | 1e-7 in log L |
+| `DifferentialPhase`: the projection is restricted maximum likelihood (its docstring's claim), with and without windows | differences between models of −½ rᵀPr, P the D-weighted projector off nuisances we build ourselves: closure directions in every channel and, per baseline, offsets and delays or every pattern the line rows of N miss | Mathematics, statistics | 1e-7 relative |
+| `DifferentialPhase` with `prior_width` | SciPy's multivariate normal of the closure-free phases, with every baseline's offset and slope (centred wavenumber spanning 1) added to the covariance | Mathematics | 1e-7 |
+| `DifferentialPhase`, very wide priors, no windows | tends to the projection (its flat limit) | Mathematics | 1e-6 relative at width 1e5 |
+
+`DifferentialPhase` will be rechecked when virgil#232, which caches its
+Cholesky factors, lands.
 
 ## Long-baseline interferometry
 
