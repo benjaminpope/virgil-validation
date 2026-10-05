@@ -157,13 +157,24 @@
   status: open
 
 - id: D5
-  title: CANDID's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2)
+  title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
   ruling: definition
   referee: mathematics (both chi-squareds computed independently); equal on V2-only files to 1e-7
   evidence:
     - tests/test_candid.py::test_closure_phase_residual_definitions
     - tests/test_candid.py::test_chi2_matches_candid_on_v2
+    - tests/test_fouriever.py::test_correlated_chi2_matches_fouriever
+  status: documented
+
+- id: D6
+  title: With unequal closure-phase errors in a group, fouriever uses r^T C^+ r and virgil r^T D^-1/2 R^+ D^-1/2 r (different generalised inverses of the singular C)
+  objects: [virgil.oidata.OIData.cp_noise, virgil.likelihood.whitened_residuals]
+  ruling: definition
+  referee: mathematics (each form written independently, 1e-12); statistics (on closures of baseline-phase noise virgil's form is closer to the nominal chi-squared, e.g. 2.94 vs 2.75 against 3)
+  evidence:
+    - tests/test_fouriever.py::test_unequal_errors_use_different_generalised_inverses
+    - tests/test_fouriever.py::test_whitened_form_is_better_calibrated_on_baseline_noise
   status: documented
 
 - id: P1
@@ -211,3 +222,14 @@
     - tests/test_candid.py::test_candid_public_limits_are_within_their_interpolation
     - tests/test_candid.py::test_p4_candid_public_limits_solve_its_criterion
   status: to-raise
+
+- id: P5
+  title: fouriever's closure-phase residual is not wrapped, so data straddling +-180 deg give a ~2 pi residual at the true parameters
+  objects: [fouriever]
+  ruling: external:fouriever
+  kind: bug (near-equal binaries with noisy closure phases near 180 deg)
+  referee: mathematics (closure phases are angles; virgil's chord is 2 pi periodic)
+  evidence: [tests/test_fouriever.py::test_p5_residual_wraps_across_the_phase_cut]
+  status: raised
+  links: [https://github.com/kammerje/fouriever/issues/26]
+

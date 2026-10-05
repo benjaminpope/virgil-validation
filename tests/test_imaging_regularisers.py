@@ -230,9 +230,20 @@ def test_starlet_l1_matches_the_a_trous_transform(scene, scales):
     assert np.max(np.abs(got_details.sum(0) + got_coarse - b)) < 1e-15
     eps = EPS_FRACTION / b.size
     want = WEIGHT * np.sum(np.sqrt(details**2 + eps**2))
-    value, _ = virgil_value_and_grad(vi.StarletL1(WEIGHT, scales=scales, epsilon=EPS_FRACTION), eta, support)
+    value, grad = virgil_value_and_grad(vi.StarletL1(WEIGHT, scales=scales, epsilon=EPS_FRACTION), eta, support)
+    # the transform is linear, s = A b: its matrix from unit images, and the
+    # pixel gradient A^T (w s / sqrt(s^2 + eps^2))
+    columns = []
+    for k in range(b.size):
+        unit = np.zeros(b.size)
+        unit[k] = 1.0
+        columns.append(starlet_reference(unit.reshape(b.shape), scales)[0].ravel())
+    A = np.array(columns).T
+    g_b = (A.T @ (WEIGHT * details.ravel() / np.sqrt(details.ravel() ** 2 + eps**2))).reshape(b.shape)
     record("rel_value", abs(value / want - 1))
+    record("rel_grad", rel(grad, chain(b, support, g_b)))
     assert abs(value / want - 1) < 1e-12
+    assert rel(grad, chain(b, support, g_b)) < 1e-12
 
 
 @pytest.mark.validates("virgil.imaging.LogSum", roots=["mathematics"])
