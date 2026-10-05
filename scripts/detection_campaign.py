@@ -61,11 +61,30 @@ CRITERIA = {
     "noncentral_min_lambda": 9.0,
     "min_null": 5000,
     "min_injected": 5000,
+    "min_virgil": 5000,
 }
+VIRGIL_CHUNK = 100  # virgil's draws per saved chunk, so a stopped task resumes
 
 
 def criteria_hash():
     return hashlib.sha256(json.dumps(CRITERIA, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def design_hash():
+    """The experiment, apart from the criteria: the array, grid, injections
+    and draw code here, and the sources of the simulator and reference
+    chi-squared they use. Rows are combined only when it matches."""
+    import inspect
+
+    config = {"UTS4": UTS4.tolist(), "OBS": {k: np.asarray(v).tolist() for k, v in OBS.items()},
+              "GRID": {k: v.tolist() for k, v in GRID.items()}, "FIXED": FIXED, "SEPS": SEPS.tolist(),
+              "FLUXES": FLUXES.tolist(), "VIRGIL_CHUNK": VIRGIL_CHUNK}
+    h = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
+    for fn in (vis_fn, observe, stats_of, one_position, draw):
+        h.update(inspect.getsource(fn).encode())
+    for name in ("simulate.py", "sky.py", "array.py", "chi2.py"):
+        h.update((ROOT / "src" / "crosscheck" / name).read_bytes())
+    return h.hexdigest()[:16]
 
 
 def vis_fn(f, x, y):
@@ -147,7 +166,7 @@ def run(args):
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
     seed0 = args.seed_base + {"null": 0, "inject": 10_000_000, "virgil": 20_000_000}[args.part] + args.task * args.draws
     head = {"part": args.part, "task": args.task, "draws": args.draws, "seed0": seed0, "virgil_commit": commit,
-            "criteria_hash": criteria_hash()}
+            "criteria_hash": criteria_hash(), "design_hash": design_hash()}
     start = time.time()
     if args.part == "virgil":
         from virgil import detection, models
@@ -157,12 +176,30 @@ def run(args):
             path = pathlib.Path(tmp) / "template.fits"
             observe(path, 0.0, 0.0, 0.0, None)
             template = OIData(str(path))
-        mc = detection.injection_recovery(template, models.BinaryModelCartesian(0.0, 0.0, 0.0),
-                                          models.BinaryModelCartesian, GRID, seed0, n_null=args.draws,
-                                          progress=False)
-        mc.save(out_dir / f"virgil_{args.task:04d}.npz")
-        (out_dir / f"virgil_{args.task:04d}.json").write_text(json.dumps({**head, "elapsed_s": time.time() - start}))
-        print(f"virgil task={args.task} draws={args.draws} elapsed={time.time() - start:.0f}s")
+        meta = out_dir / f"virgil_{args.task:04d}.json"
+        chunks = []
+        if meta.exists():  # resume: keep the chunks already saved
+            old = json.loads(meta.read_text())
+            if {k: old.get(k) for k in head} != head:
+                raise SystemExit(f"{meta} was made differently: move it before rerunning")
+            chunks = old["chunks"]
+        n_chunks = -(-args.draws // VIRGIL_CHUNK)
+        for c in range(n_chunks):
+            name = f"virgil_{args.task:04d}_{c:03d}.npz"
+            if name in chunks:
+                continue
+            n = min(VIRGIL_CHUNK, args.draws - c * VIRGIL_CHUNK)
+            # chunk c's key is seed0 + c * VIRGIL_CHUNK: distinct from every other chunk and task
+            mc = detection.injection_recovery(template, models.BinaryModelCartesian(0.0, 0.0, 0.0),
+                                              models.BinaryModelCartesian, GRID, seed0 + c * VIRGIL_CHUNK,
+                                              n_null=n, progress=False)
+            mc.save(out_dir / name)
+            chunks.append(name)
+            tmp_meta = meta.with_suffix(".tmp")
+            tmp_meta.write_text(json.dumps({**head, "complete": len(chunks) == n_chunks, "chunks": chunks,
+                                            "elapsed_s": time.time() - start}))
+            tmp_meta.rename(meta)
+            print(f"virgil task={args.task} chunk={c} draws={n} elapsed={time.time() - start:.0f}s", flush=True)
         return
     path = out_dir / f"{args.part}_{args.task:04d}.json"
     rows = []
@@ -192,20 +229,29 @@ def aggregate(args):
     from virgil.detection import DetectionMC
 
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("*_*.json"))]
+    if len({f.resolve() for f in files}) != len(files):
+        raise SystemExit("a results directory is given twice")
     if not files:
         raise SystemExit(f"no results found in {', '.join(map(str, args.dirs))}")
     parts = {"null": [], "inject": [], "virgil": []}
-    commits, hashes = set(), set()
+    commits, hashes, designs, keys = set(), set(), set(), []
     for f in files:
         r = json.loads(f.read_text())
         commits.add(r["virgil_commit"])
         hashes.add(r["criteria_hash"])
+        designs.add(r.get("design_hash"))
         if r["part"] == "virgil":
-            parts["virgil"].append(DetectionMC.load(f.with_suffix(".npz")))
+            for c in r["chunks"]:
+                keys.append(r["seed0"] + int(c.rsplit("_", 1)[1].split(".")[0]) * VIRGIL_CHUNK)
+                parts["virgil"].append(DetectionMC.load(f.parent / c))
         else:
             parts[r["part"]] += r["rows"]
     if hashes != {criteria_hash()}:
         raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
+    if designs != {design_hash()}:
+        raise SystemExit(f"the experiment changed since the runs (design {designs} vs {design_hash()})")
+    if len(set(keys)) != len(keys):
+        raise SystemExit("virgil: repeated chunk keys")
     if len(commits) != 1:
         raise SystemExit(f"the parts ran on different virgil commits: {commits}")
     for p in ("null", "inject"):
@@ -213,7 +259,8 @@ def aggregate(args):
         if len(set(seeds)) != len(seeds):
             raise SystemExit(f"{p}: repeated seeds")
     a = CRITERIA["alpha"]
-    out = {"virgil_commit": commits.pop(), "criteria": CRITERIA, "criteria_hash": criteria_hash(), "checks": {}}
+    out = {"virgil_commit": commits.pop(), "criteria": CRITERIA, "criteria_hash": criteria_hash(),
+           "design_hash": design_hash(), "checks": {}}
     null, inj = parts["null"], parts["inject"]
     checks = out["checks"]
 
@@ -276,7 +323,9 @@ def aggregate(args):
                 if sel:
                     comp[f"{sep:g}mas_{f:g}"] = float(np.mean([r["grid"]["delta_chi2"] > thr for r in sel]))
         out["completeness_at_fap_1e-3"] = {"threshold_delta_chi2": thr, "by_sep_flux": comp}
-    enough = len(null) >= CRITERIA["min_null"] and len(inj) >= CRITERIA["min_injected"]
+    n_virgil = int(mc.n_null) if mc is not None else 0
+    enough = (len(null) >= CRITERIA["min_null"] and len(inj) >= CRITERIA["min_injected"]
+              and n_virgil >= CRITERIA["min_virgil"])
     out["counts"] = {"null": len(null), "inject": len(inj), "virgil": int(mc.n_null) if mc is not None else 0}
     out["pass"] = bool(enough and all(c["pass"] for c in checks.values()))
     text = json.dumps(out, indent=1)

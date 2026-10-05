@@ -49,6 +49,8 @@ def test_detection_campaign_meets_its_criteria():
     record("chernoff_zero_fraction", summary["checks"]["chernoff"]["zero_fraction"])
     assert summary["counts"]["null"] >= summary["criteria"]["min_null"]
     assert summary["counts"]["inject"] >= summary["criteria"]["min_injected"]
+    assert summary["counts"]["virgil"] >= summary["criteria"]["min_virgil"]
+    assert summary["design_hash"] == script().design_hash(), "the experiment changed after the campaign ran"
     failing = [k for k, c in summary["checks"].items() if not c["pass"]]
     assert not failing, failing
 
@@ -62,9 +64,22 @@ def test_detection_campaign_refuses_empty_and_mixed_runs(tmp_path):
     run = lambda *d: subprocess.run([sys.executable, str(ROOT / "scripts" / "detection_campaign.py"), "aggregate",  # noqa: E731
                                      *map(str, d)], capture_output=True, text=True)
     assert "no results found" in run(tmp_path).stderr
-    head = {"part": "null", "draws": 1, "criteria_hash": s.criteria_hash(), "complete": True,
-            "rows": [{"seed": 1, "grid": {}, "fixed": 0.0}]}
+    head = {"part": "null", "draws": 1, "criteria_hash": s.criteria_hash(), "design_hash": s.design_hash(),
+            "complete": True, "rows": [{"seed": 1, "grid": {}, "fixed": 0.0}]}
     (tmp_path / "null_0000.json").write_text(json.dumps({**head, "task": 0, "seed0": 1, "virgil_commit": "a" * 40}))
     (tmp_path / "null_0001.json").write_text(json.dumps({**head, "task": 1, "seed0": 2, "virgil_commit": "b" * 40,
                                                          "rows": [{"seed": 2, "grid": {}, "fixed": 0.0}]}))
     assert "different virgil commits" in run(tmp_path).stderr
+    # the same experiments counted twice: one directory given twice, or a copied task file
+    same = tmp_path / "same"
+    same.mkdir()
+    (same / "null_0000.json").write_text(json.dumps({**head, "task": 0, "seed0": 1, "virgil_commit": "a" * 40}))
+    assert "given twice" in run(same, same).stderr
+    (same / "null_0001.json").write_text(json.dumps({**head, "task": 1, "seed0": 1, "virgil_commit": "a" * 40}))
+    assert "repeated seeds" in run(same).stderr
+    # another experiment design is refused
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "null_0000.json").write_text(json.dumps({**head, "task": 0, "seed0": 1, "virgil_commit": "a" * 40,
+                                                      "design_hash": "0" * 16}))
+    assert "experiment changed" in run(other).stderr
