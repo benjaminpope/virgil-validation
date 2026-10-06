@@ -183,11 +183,11 @@ def edge_sum(b):
     return b[0, :] @ b[0, :] + b[:, 0] @ b[:, 0]
 
 
-def _logit_gradients(b, data, weight):
+def _logit_gradients(b, data, weight, edges=True):
     """Gradients with respect to virgil's logits of its data term and of
     TSV(weight) minus weight * edge_sum, i.e. of the regulariser
-    eht-imaging minimises. Softmax logits: already projected onto images
-    of unit flux."""
+    eht-imaging minimises (TSV(weight) alone if not edges). Softmax
+    logits: already projected onto images of unit flux."""
     import jax
     import jax.numpy as jnp
 
@@ -196,9 +196,9 @@ def _logit_gradients(b, data, weight):
 
     def reg_term(z):
         image = vm.Image(z, PIXEL)
-        return vi.TSV(weight).value(image) - weight * edge_sum(image.brightness)
+        return vi.TSV(weight).value(image) - (weight * edge_sum(image.brightness) if edges else 0.0)
 
-    z = jnp.log(jnp.asarray(b))
+    z = jnp.log(jnp.maximum(jnp.asarray(b), 1e-300))
     return np.asarray(jax.grad(data_term)(z)), np.asarray(jax.grad(reg_term)(z))
 
 
@@ -267,6 +267,18 @@ def ehtim_converged(well_posed):
     return out
 
 
+def _rel_gradient(b, data, weight, edges=True):
+    """|g_data + g_reg| / |g_data| at image b for regulariser weight
+    weight, with or without the edge_sum correction."""
+    g_data, g_reg = _logit_gradients(b, data, weight, edges)
+    return np.linalg.norm(g_data + g_reg) / np.linalg.norm(g_data), np.linalg.norm(g_data)
+
+
+def _image(res):
+    b = np.array(res["image"])
+    return b / b.sum()
+
+
 @pytest.mark.validates(
     "virgil.imaging.TSV", "virgil.models.Image", "virgil.likelihood.whitened_residuals", "pipeline:rml-imaging",
     roots=["ehtim"],
@@ -274,28 +286,44 @@ def ehtim_converged(well_posed):
 @pytest.mark.parametrize("factor", [1, 2])
 def test_ehtim_minimum_is_stationary_on_a_well_posed_problem(well_posed, ehtim_converged, factor):
     """eht-imaging's minimum for weight w is a stationary point of virgil's
-    objective (with the edge_sum correction) for weight w, and not for 2w or
-    w/2 (controls; at a stationary point the gradient left over is then
-    exactly 1 or 1/2 of the data gradient). The measure is the gradient
-    with respect to virgil's logits, relative to the data term's; its floor
-    is eht-imaging's own convergence (L-BFGS-B stops with a log-pixel
-    gradient ~1e-3 of the data term's), which is recorded alongside."""
-    data, rows, _, n_amp, n_cp = well_posed
+    objective (with the edge_sum correction) for weight w. The measure is
+    the gradient with respect to virgil's logits, relative to the data
+    term's; its floor is eht-imaging's own convergence (L-BFGS-B stops with
+    a log-pixel gradient ~1e-3 of the data term's), recorded alongside.
+    The controls are test_stationarity_controls."""
+    data = well_posed[0]
     weight = factor * WEIGHT_HI
     res = ehtim_converged[weight]
-    b = np.array(res["image"])
-    b = b / b.sum()
-    g_data, g_reg = _logit_gradients(b, data, weight)
-    scale = np.linalg.norm(g_data)
-    rel = {c: np.linalg.norm(g_data + c * g_reg) / scale for c in (1.0, 2.0, 0.5)}
+    rel, scale = _rel_gradient(_image(res), data, weight)
     record("flux_minus_one", res["flux"] - 1)
     record("ehtim_rel_log_gradient", res["grad_log_norm"] / scale)
-    record("rel_gradient_at_ehtim_minimum", rel[1.0])
-    record("rel_gradient_with_weight_doubled", rel[2.0])
-    record("rel_gradient_with_weight_halved", rel[0.5])
+    record("rel_gradient_at_ehtim_minimum", rel)
     assert abs(res["flux"] - 1) < 1e-5
-    assert rel[1.0] < 5e-3
-    assert abs(rel[2.0] - 1) < 0.05 and abs(rel[0.5] - 0.5) < 0.05
+    assert rel < 5e-3
+
+
+@pytest.mark.validates(
+    "virgil.imaging.TSV", "virgil.models.Image", "virgil.likelihood.whitened_residuals", roots=["ehtim"],
+    kind="control",
+)
+def test_stationarity_controls(well_posed, ehtim_converged):
+    """Wrong mappings that the stationarity measure must reject, each at an
+    image other than the one it would be stationary for: eht-imaging's
+    minimum for 2w scored with virgil's weight w, and the minimum for w
+    scored with 2w (stationarity in the matched test implies ~0.5 and ~1;
+    anything below 0.1 means the measure cannot tell the weights apart).
+    The edge_sum correction left out at the minimum for w is recorded: it
+    shows how much the edge convention matters on this scene."""
+    data = well_posed[0]
+    w = WEIGHT_HI
+    at_2w_scored_w, _ = _rel_gradient(_image(ehtim_converged[2 * w]), data, w)
+    at_w_scored_2w, _ = _rel_gradient(_image(ehtim_converged[w]), data, 2 * w)
+    without_edges, _ = _rel_gradient(_image(ehtim_converged[w]), data, w, edges=False)
+    record("rel_gradient_2w_minimum_scored_with_w", at_2w_scored_w)
+    record("rel_gradient_w_minimum_scored_with_2w", at_w_scored_2w)
+    record("rel_gradient_without_edge_correction", without_edges)
+    assert at_2w_scored_w > 0.1
+    assert at_w_scored_2w > 0.1
 
 
 @pytest.mark.validates("virgil.fitting.fit", "virgil.imaging.TSV", "virgil.models.Image", roots=["ehtim"], kind="regression")

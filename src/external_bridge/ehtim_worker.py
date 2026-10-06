@@ -153,12 +153,12 @@ def _counts(obs):
 
 
 def objective(task):
-    """eht-imaging's own cost (Imager.objfunc) and its terms, unweighted, at
-    each given image (ny, nx; row 0 North, any total flux): chi2_amp and
-    chi2_cphase as imager_utils defines them (normalised by the number of
-    data), the 'tv2' and 'flux' regulariser values (signs as they enter the
-    cost), the total cost, and the cost's gradient with respect to log
-    pixel values (Imager.objgrad)."""
+    """eht-imaging's cost and its terms at each given image (ny, nx; row 0
+    North, any total flux). Unweighted: chi2_amp and chi2_cphase as
+    imager_utils defines them (normalised by the number of data) and the
+    'tv2' and 'flux' regulariser values (signs as they enter the cost).
+    Weighted: the total cost (Imager.objfunc) and its gradient with respect
+    to log pixel values (Imager.objgrad)."""
     import contextlib
     import io
 
@@ -187,29 +187,35 @@ def reconstruct(task):
     """An eht-imaging reconstruction (Imager.make_image_I, L-BFGS-B) from
     the image init, run to convergence in stages: for each flux weight in
     flux_weights (a continuation that pins the total flux to 1), restart
-    from the last image until a run ends without improving the cost
-    (at most max_restarts runs per stage). Returns the image (ny, nx; row 0
-    North, column 0 East), its cost, total flux, the norm of the cost's
-    gradient with respect to log pixels, and the L-BFGS-B messages."""
+    from the last image until a run ends without improving the cost (at
+    most max_restarts runs per stage); the stage's best image starts the
+    next. Returns the final stage's best image (ny, nx; row 0 North, column
+    0 East), its cost, total flux and the norm of the cost's gradient with
+    respect to log pixels, and a log of every run."""
     import contextlib
     import io
 
+    flux_weights = task.get("flux_weights", [task.get("flux_weight", 1e4)])
+    if not flux_weights:
+        raise ValueError("flux_weights must name at least one flux weight")
     image = np.asarray(task["init"], float)
     log = []
     with contextlib.redirect_stdout(io.StringIO()):
-        for mu in task.get("flux_weights", [task.get("flux_weight", 1e4)]):
-            last = np.inf
+        for mu in flux_weights:
+            best = None
             for _ in range(int(task.get("max_restarts", 1))):
                 obs, imager = _imager(task, image, mu)
                 imager.make_image_I(grads=True, show_updates=False)
-                image = imager.out_last().imarr()
-                x = np.log(image.ravel())
+                trial = imager.out_last().imarr()
+                x = np.log(trial.ravel())
                 cost = float(imager.objfunc(x))
                 gnorm = float(np.linalg.norm(imager.objgrad(x)))
-                log.append({"flux_weight": mu, "cost": cost, "grad_log_norm": gnorm, "flux": float(image.sum())})
-                if cost >= last:
+                log.append({"flux_weight": mu, "cost": cost, "grad_log_norm": gnorm, "flux": float(trial.sum())})
+                if best is not None and cost >= best[1]:
                     break
-                last = cost
+                best = (trial, cost, gnorm)
+                image = trial
+            image, cost, gnorm = best  # the best run of this stage starts the next
         other = [float(imager.objfunc(np.log(np.maximum(np.asarray(im, float).ravel(), 1e-300))))
                  for im in task.get("score", [])]
         n_amp, n_cp = _counts(obs)

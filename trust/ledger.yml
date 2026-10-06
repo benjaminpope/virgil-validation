@@ -216,6 +216,14 @@
   evidence: [tests/test_candid.py::test_injection_limits_match_candids_criterion]
   status: documented
 
+- id: D9
+  title: eht-imaging's squared TV (stv2) counts only the steps out of the last row and column; virgil's TSV counts the steps across all four edges
+  objects: [virgil.imaging.TSV]
+  ruling: definition
+  referee: mathematics (TSV(w) = w (-stv2 + sum b[0,:]^2 + sum b[:,0]^2), exact to 1e-16 on random images)
+  evidence: [tests/test_ehtim_reconstruction.py::test_objective_matches_ehtim]
+  status: documented
+
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
   objects: [pmoired]
