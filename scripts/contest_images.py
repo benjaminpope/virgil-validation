@@ -201,6 +201,8 @@ def companion_search(data, resolution, primary, primary_priors, start):
     snr = np.where(flux > 0, snr, 0.0)  # emission only
     i, j = np.unravel_index(np.argmax(snr), snr.shape)
     priors = {f"star.{k}": v for k, v in primary_priors.items()}
+    print(f"companion search: peak SNR {float(snr[i, j]):.2f} at ({float(axis[i]):.3g}, {float(axis[j]):.3g}) mas, "
+          f"flux {float(flux[i, j]):.3g}: {'kept' if snr[i, j] >= COMPANION_SNR else 'below threshold'}", flush=True)
     if snr[i, j] < COMPANION_SNR:
         return primary, priors
     dra, ddec, beam_ = axis[i], axis[j], resolution.major_mas
