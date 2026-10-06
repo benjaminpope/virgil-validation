@@ -52,9 +52,13 @@ Read-only, on 2026-10-07, for one small collection (Gl 229 B, 22 files):
   was not checked.
 - Collections list "granules" (one row per target × instrument × night) and
   "OIFITS files"; the file count is the one that matters for downloads.
-- Search by target is JavaScript-only and no TAP service was found, so
-  whether a given star is inside a big collection (PIONIER L2, 10 982 files)
-  is still unverified.
+- Search is rendered on the server (corrected in O0, 2026-10-07; an earlier
+  draft said JavaScript-only): `search.html?collection=~<id>&perpage=100&page=P`
+  lists a collection's granules, each row carrying `data-access_url`,
+  `data-calib_level`, `data-bib_reference` and the dataPI, and the same form
+  takes a cone search (`cs_position`, `cs_radius`, `cs_radius_unit`), so
+  whether a star is inside a big collection (PIONIER L2, 10 982 files) can be
+  checked without downloading. No TAP service was found.
 
 So the download mechanism is: scrape the collection pages, follow each
 `get-data.html` redirect with a GET, and stream the staging URL. Nothing was
