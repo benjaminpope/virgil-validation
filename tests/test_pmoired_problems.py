@@ -1,4 +1,4 @@
-"""Reproducers for the PMOIRED problems in docs/pmoired_notes.md.
+"""Reproducers for the PMOIRED problems in docs/method/pmoired.md.
 
 Each is a strict xfail stating the behaviour we expect: if PMOIRED changes
 so that it passes, the test fails and the note must be updated.

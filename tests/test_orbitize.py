@@ -6,7 +6,7 @@ the direct-imaging community, written and used by people. It runs in its
 own environment (scripts/setup_external.sh) through
 src/external_bridge/orbitize_bridge.py; virgil never depends on it.
 
-The mapping between the two (docs/orbitize_notes.md, with sources) is the
+The mapping between the two (docs/method/orbitize.md, with sources) is the
 identity on the angles: both arguments of periastron are the companion's,
 and both ascending nodes are the node where the companion recedes. Lengths
 and times map as a_mas = sma * plx, distance_pc = 1000 / plx,
@@ -279,7 +279,7 @@ def test_orbitize_period_is_keplers_third_law(runs):
 # ----------------------------------------------------------------- ephemerides
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["orbitize"])
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["orbitize"], property="sky_position")
 def test_relative_astrometry_matches_orbitize(grid):
     """KeplerOrbit.relative (dra, ddec) and separation_pa against
     orbitize!'s calc_orbit and radec2seppa over the element grid (47 orbits,
@@ -435,7 +435,7 @@ def test_f16_state_vector_round_trip_keeps_float64_precision(grid):
 # -------------------------------------------------------------- radial velocities
 
 
-@pytest.mark.validates("virgil.orbits.RVData", "virgil.orbits.KeplerOrbit", roots=["orbitize"])
+@pytest.mark.validates("virgil.orbits.RVData", "virgil.orbits.KeplerOrbit", roots=["orbitize"], property="rv_curve")
 @pytest.mark.parametrize("case", range(len(RV_ORBITS)))
 def test_radial_velocities_match_orbitize(runs, case):
     """RVData.model for the primary and the secondary against orbitize!'s
@@ -456,7 +456,7 @@ def test_radial_velocities_match_orbitize(runs, case):
     assert d_sec < TOL_RV and d_pri < TOL_RV
 
 
-@pytest.mark.validates("virgil.orbits.RVData", roots=["orbitize"])
+@pytest.mark.validates("virgil.orbits.RVData", roots=["orbitize"], property="rv_curve")
 def test_radial_velocities_match_orbitize_system(runs):
     """Through orbitize!'s own System (fit_secondary_mass=True), as a fit
     would see it. With primary RVs present, orbitize! fits the instrument's

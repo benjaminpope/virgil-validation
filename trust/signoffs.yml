@@ -1,0 +1,28 @@
+# Conventions confirmed outside virgil (trust/graph.yml, "convention").
+#
+# A convention taken from virgil's own documentation is only partly checked:
+# our code was written from the same documentation, so agreement shows the
+# two codes match, not that the convention is the one astronomers use. An
+# entry here confirms one convention of one part, by either
+#   citation: a paper, equation and page that defines it, or
+#   by, date, commit: Ben's sign-off after reading the code at that virgil commit.
+#
+# node:
+#   property:
+#     citation: "Author et al. (year), eq. N, p. M"
+#     -- or --
+#     by: Benjamin Pope
+#     date: YYYY-MM-DD
+#     commit: <full virgil commit hash>
+#     note: what was checked
+virgil.orbits.PositionData:
+  calibration:
+    by: Benjamin Pope
+    date: 2026-10-06
+    commit: 96631b925f53287cf818fa0a2d065136aa97fdf9
+    note: >-
+      north_angle is the error added to every measured position angle (a
+      companion at true PA theta is measured at theta + north_angle), as in
+      OIData.with_north_angle; checked by
+      tests/test_orbits_more.py::test_north_angle_adds_to_the_measured_position_angle.
+      Approved by Ben in the validation session.

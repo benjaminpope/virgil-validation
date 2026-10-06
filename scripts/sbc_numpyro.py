@@ -230,6 +230,93 @@ def run(args, replicate_fn=None):
     print(f"wrote {path} elapsed={time.time() - start:.0f}s")
 
 
+ADDENDUM = ROOT / "design" / "sbc_addendum.yml"
+
+
+def addendum_hash():
+    return hashlib.sha256(ADDENDUM.read_bytes()).hexdigest()
+
+
+def rank_pvalues(ranks, L, bins, tests, sims=10000, seed=0):
+    """p-values of the addendum's tests of uniform ranks on 0..L."""
+    from scipy import stats
+
+    n = ranks.size
+    out = {}
+    if "chi2_bins" in tests:
+        out["chi2_bins"] = float(stats.chisquare(np.histogram(ranks, bins=bins, range=(-0.5, L + 0.5))[0]).pvalue)
+    for level in (68, 95):
+        if f"coverage_{level}" in tests:
+            accepted = np.abs(np.arange(L + 1) - L / 2) < level / 100 * (L + 1) / 2
+            k = int(accepted[ranks].sum())
+            out[f"coverage_{level}"] = float(stats.binomtest(k, n, float(accepted.mean())).pvalue)
+    if "mean_rank" in tests:
+        var = ((L + 1) ** 2 - 1) / 12.0  # discrete uniform on 0..L
+        z = (ranks.mean() - L / 2) / np.sqrt(var / n)
+        out["mean_rank"] = float(2 * stats.norm.sf(abs(z)))
+    if "ecdf" in tests:
+        grid = np.arange(L + 1)
+        cdf = (grid + 1) / (L + 1)
+
+        def gap(r):
+            return np.max(np.abs(np.searchsorted(np.sort(r), grid, side="right") / r.size - cdf))
+
+        d = gap(ranks)
+        rng = np.random.default_rng(seed)
+        sim = np.array([gap(rng.integers(0, L + 1, n)) for _ in range(sims)])
+        out["ecdf"] = float((np.sum(sim >= d) + 1) / (sims + 1))
+    return out
+
+
+def holm(pvalues, alpha):
+    """{name: rejected} under Holm's step-down procedure."""
+    names = sorted(pvalues, key=pvalues.get)
+    m, rejected, stop = len(names), {}, False
+    for i, name in enumerate(names):
+        stop = stop or pvalues[name] > alpha / (m - i)
+        rejected[name] = not stop
+    return rejected
+
+
+def apply_addendum(reps, tasks, L, bins):
+    """The analyses registered in design/sbc_addendum.yml (hash recorded)."""
+    import yaml
+    from scipy import stats
+
+    spec = yaml.safe_load(ADDENDUM.read_text())
+    out = {"sha256": addendum_hash(), "primary": {}, "confirmatory": {}, "descriptive": {}}
+    pv = {}
+    for name in PARAMS:
+        ranks = np.array([r["ranks"][name] for r in reps])
+        p = rank_pvalues(ranks, L, bins, spec["primary"], spec["ecdf_simulations"], spec["ecdf_seed"])
+        out["primary"][name] = p
+        pv.update({f"{name}:{t}": v for t, v in p.items()})
+    rejected = holm(pv, spec["family_alpha"])
+    out["primary_rejected"] = sorted(k for k, v in rejected.items() if v)
+    ok = not out["primary_rejected"]
+    for label, c in spec["confirmatory"].items():
+        lo, hi = c["tasks"]
+        sel = [r for r, t in zip(reps, tasks) if lo <= t <= hi
+               and r["truth"].get(c["truth"]["parameter"], float("inf")) < c["truth"]["below"]]
+        ranks = np.array([r["ranks"][c["truth"]["parameter"]] for r in sel], dtype=int)
+        p = rank_pvalues(ranks, L, bins, c["tests"], spec["ecdf_simulations"], spec["ecdf_seed"]) if ranks.size else {}
+        rej = holm(p, c["alpha"]) if p else {}
+        out["confirmatory"][label] = {"n": int(ranks.size), "p": p, "rejected": sorted(k for k, v in rej.items() if v)}
+        ok &= ranks.size > 0 and not any(rej.values())
+    healthy = [r for r in reps if r["divergences"] == 0 and max(r["rhat"].values()) <= CRITERIA["max_rhat"]
+               and min(r["ess"].values()) >= CRITERIA["min_bulk_ess"]]
+    out["descriptive"]["exclude_unhealthy"] = {
+        "n": len(healthy),
+        "p": {name: rank_pvalues(np.array([r["ranks"][name] for r in healthy]), L, bins, ["chi2_bins", "mean_rank"])
+              for name in PARAMS} if healthy else {}}
+    div = np.array([r["divergences"] for r in reps])
+    out["descriptive"]["divergences_vs_truth"] = {
+        name: float(stats.spearmanr(div, [r["truth"][name] for r in reps]).statistic)
+        for name in PARAMS if len(reps) > 2 and all(name in r["truth"] for r in reps)}
+    out["pass"] = bool(ok)
+    return out
+
+
 def binomial_band(n, p, level):
     from scipy import stats
 
@@ -240,7 +327,7 @@ def binomial_band(n, p, level):
 def aggregate(args):
     from scipy import stats
 
-    reps, hashes, versions, commits = [], set(), set(), set()
+    reps, tasks, hashes, versions, commits = [], [], set(), set(), set()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("task_*.json"))]
     if not files:
         raise SystemExit(f"no results found (no task_*.json) in {', '.join(map(str, args.dirs))}: "
@@ -253,6 +340,7 @@ def aggregate(args):
         versions.add(r["virgil"])
         commits.add(r.get("virgil_commit"))
         reps += r["replicates"]
+        tasks += [r["task"]] * len(r["replicates"])
     if hashes != {criteria_hash()}:
         raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
     if len(commits) != 1 or None in commits:
@@ -290,7 +378,9 @@ def aggregate(args):
         "high_rhat": int(sum(max(r["rhat"].values()) > CRITERIA["max_rhat"] for r in reps)),
         "with_divergences": int(sum(r["divergences"] > 0 for r in reps)),
     }
-    summary["pass"] = bool(ok)
+    summary["original_rule_pass"] = bool(ok)
+    summary["addendum"] = apply_addendum(reps, tasks, L, bins)
+    summary["pass"] = bool(ok and summary["addendum"]["pass"])
     text = json.dumps(summary, indent=1)
     if args.summary:
         pathlib.Path(args.summary).parent.mkdir(parents=True, exist_ok=True)

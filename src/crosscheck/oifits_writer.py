@@ -34,6 +34,10 @@ def write(
         ``v1``, ``u2``, ``v2`` (n_rec,), ``sta`` (n_rec, 3), optional ``mjd``;
         or None for a file of visibilities alone (no OI_T3 table).
     """
+    from astropy.time import Time
+
+    # OIFITS v2 requires DATE-OBS (UTC date of the first observation)
+    date_obs = Time(float(np.min(np.atleast_1d(vis2.get("mjd", mjd)))), format="mjd").isot[:10]
     wavelengths = np.atleast_1d(np.asarray(wavelengths, float))
     n_wl = wavelengths.size
     n_sta = len(stations_xyz)
@@ -114,9 +118,8 @@ def write(
         ],
         name="OI_VIS2",
     )
-    v2_hdu.header.update(
-        OI_REVN=2, DATE_OBS="2026-10-03", ARRNAME=arrname, INSNAME=insname
-    )
+    v2_hdu.header.update(OI_REVN=2, ARRNAME=arrname, INSNAME=insname)
+    v2_hdu.header["DATE-OBS"] = date_obs  # a hyphen: not a Python keyword argument
 
     tables = [primary, target_hdu, array_hdu, wl_hdu, v2_hdu]
     if t3 is None:
@@ -140,8 +143,7 @@ def write(
         ],
         name="OI_T3",
     )
-    t3_hdu.header.update(
-        OI_REVN=2, DATE_OBS="2026-10-03", ARRNAME=arrname, INSNAME=insname
-    )
+    t3_hdu.header.update(OI_REVN=2, ARRNAME=arrname, INSNAME=insname)
+    t3_hdu.header["DATE-OBS"] = date_obs
 
     fits.HDUList(tables + [t3_hdu]).writeto(path, overwrite=True)

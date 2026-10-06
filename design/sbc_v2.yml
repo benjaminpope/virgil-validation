@@ -1,0 +1,75 @@
+# Criteria and design for the numpyro_model SBC, version 2 (scripts/sbc_v2.py).
+# Registered on 2026-10-06, before any v2 replicate was run.
+# Version 1 (scripts/sbc_numpyro.py; trust/campaigns/sbc_numpyro_model.json)
+# stays as it is. What v2 adds, and why:
+#   * chains start from virgil's own grid search and fit on each replicate's
+#     data, jittered per chain, not at the truth: it tests the pipeline a user
+#     runs, and sampling when the start is not exactly in the mode;
+#   * a dense mass matrix on (pa_vec, sep, flux), the correlated block, and a
+#     narrower AngleVector ring (the ring width does not change the prior on
+#     the angle, so SBC stays valid);
+#   * a low-SNR regime whose posteriors reach the lower flux bound, alongside
+#     the v1 bright regime;
+#   * a joint test quantity, the log-likelihood of the data, whose rank at the
+#     truth among its values at the posterior draws is uniform if the
+#     posterior is right (Modrak et al. 2023, Bayesian Analysis).
+# The scripts record this file's SHA-256 (criteria_hash) in each task output
+# and in the summary; the aggregator refuses outputs made under another hash.
+# Every number the experiment depends on is here, so the hash covers the design.
+
+draws_per_replicate: 99      # L: ranks take values 0..99
+rank_bins: 20
+quantities: [diam, flux, sep, pa, vis_scale, loglike]   # loglike: the joint quantity
+
+sampler:
+  warmup: 500
+  samples: 1000
+  chains: 4
+  dense_mass: [pa_vec, sep, flux]   # one dense block; the other sites stay diagonal
+  ring_width: 0.1                   # AngleVector ring width (virgil's default is 0.25)
+  start: grid_fit                   # virgil.grid_fit.likelihood_grid, then virgil.fitting.fit
+  grid:
+    diam: {lo: 0.5, hi: 3.0, n: 7, spacing: log}
+    flux: {lo: 1.0e-3, hi: 0.1, n: 13, spacing: log}
+    offset_mas: {half_width: 26.0, n: 53}   # dra and ddec, 1 mas steps
+  jitter:                           # per chain, around the fit: lognormal sd (log units) or normal sd (degrees)
+    diam: 0.05
+    flux: 0.2
+    sep: 0.05
+    pa_deg: 2.0
+    vis_scale: 0.05
+
+generative:                         # the v1 model, apart from the flux bounds per regime
+  diam: {lo: 0.5, hi: 3.0}          # mas, log-uniform
+  sep: {lo: 5.0, hi: 25.0}          # mas, log-uniform
+  vis_scale: {lo: 0.7, hi: 1.5}     # log-uniform
+  pa: uniform on [0, 360) degrees, sampled as an AngleVector
+  sigma_v2: 0.005
+  sigma_cp_deg: 0.3
+
+regimes:                            # each is analysed on its own, then Holm runs over all of them
+  bright: {flux_lo: 0.02, flux_hi: 0.1, tasks: 128, replicates_per_task: 8}    # the v1 regime
+  low:    {flux_lo: 1.0e-3, flux_hi: 2.0e-2, tasks: 128, replicates_per_task: 8}  # reaches the flux >= 0 end
+
+counts:
+  min_replicates_per_regime: 1000   # complete replicates; 128 x 8 = 1024 are planned
+
+rank_tests:                         # per regime and quantity; scripts/sbc_numpyro.py's definitions
+  - chi2_bins                       # chi-squared of the 20-bin rank histogram
+  - coverage_68                     # exact two-sided binomial test of the central 68% interval
+  - coverage_95                     # exact two-sided binomial test of the central 95% interval
+  - mean_rank                       # z-test of the mean rank (bias)
+  - ecdf                            # sup |ECDF - uniform|, p-value by 10^4 simulations (Sailynoja et al. 2022)
+ecdf_simulations: 10000
+ecdf_seed: 20261007
+family_alpha: 0.01                  # Holm over every p-value: 2 regimes x 6 quantities x 5 tests = 60
+
+sampler_health:                     # a replicate is unhealthy if any of the first three holds
+  max_divergent_draws: 0            # any divergent transition
+  max_rhat: 1.01                    # worst split R-hat over the sampled quantities
+  min_bulk_ess: 400                 # smallest bulk ESS over the sampled quantities
+  max_unhealthy_fraction: 0.05      # per regime; above it the regime fails, whatever its ranks say
+  max_divergent_fraction: 0.02      # per regime: replicates with any divergence
+descriptive:                        # reported, never pass/fail
+  - exclude_unhealthy               # chi2_bins and mean_rank on the healthy replicates only
+  - fit_converged                   # fraction of replicates whose start fit reported convergence

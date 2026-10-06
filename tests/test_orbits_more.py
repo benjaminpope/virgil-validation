@@ -3,6 +3,11 @@ against our own textbook Kepler code (crosscheck.orbits) and SciPy.
 
 * KeplerOrbit.relative: positions from crosscheck.orbits (Newton's method
   on Kepler's equation, the visual-binary projection).
+* PositionData: the Gaussian density of our own positions (SciPy), with
+  separation/PA errors carried by our own Jacobian; north_angle adds to the
+  measured position angle and plate_scale multiplies the separation.
+* RVData.model: the textbook radial velocity from crosscheck.orbits, shared
+  between the stars by mass ratio, in km/s by astropy's units.
 * AxialVonMises: exp(kappa cos 2(t - mean)) / (360 I0(kappa)) per degree,
   normalised on [0, 360); t and t + 180 equally likely; samples by KS.
 * orientation_from_varpi, orientation_priors: varpi = Omega + omega, the
@@ -22,6 +27,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from astropy import units as u
 from scipy import integrate, optimize, special, stats
 
 from crosscheck import orbits as co, sky
@@ -41,7 +47,7 @@ ORBITS = [
 
 
 @pytest.mark.parametrize("elements", ORBITS)
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["mathematics"])
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["mathematics"], property="sky_position")
 def test_kepler_positions_from_the_textbook(elements):
     o = vo.KeplerOrbit(*elements, t_ref=59000.0)
     t = np.linspace(59000.0, 59000.0 + 2.3 * elements[0], 37)
@@ -50,6 +56,88 @@ def test_kepler_positions_from_the_textbook(elements):
     worst = max(np.max(np.abs(got[0] - dra)), np.max(np.abs(got[1] - ddec))) / elements[-1]
     record("max_rel_position", worst)
     assert worst < 1e-12
+
+
+@pytest.mark.parametrize("elements", ORBITS)
+@pytest.mark.parametrize("star", ["primary", "secondary"])
+@pytest.mark.validates("virgil.orbits.RVData", "virgil.orbits.KeplerOrbit", roots=["mathematics"], property="rv_curve")
+def test_radial_velocities_from_the_textbook(elements, star):
+    """RVData.model against v = gamma + share * K (cos(omega + f) + e cos omega),
+    K = 2 pi a sin i / (P sqrt(1 - e^2)), positive receding, with the
+    primary's share -q/(1+q) and the secondary's 1/(1+q) of the relative
+    velocity, and mas/day at d pc turned into km/s with astropy's units."""
+    period, t_peri, e, inc, omega, Omega, a = elements
+    q, gamma, d = 0.4, -7.5, 48.0
+    o = vo.KeplerOrbit(*elements, t_ref=59000.0)
+    t = np.linspace(59000.0, 59000.0 + 1.7 * period, 41)
+    data = vo.RVData(t, np.zeros_like(t), 1.0, star=star, t_ref=59000.0)
+    got = np.asarray(data.model(o, q, gamma, d))
+    kms = (1 * u.mas / u.day * d * u.pc).to(u.km / u.s, equivalencies=u.dimensionless_angles()).value
+    share = -q / (1 + q) if star == "primary" else 1 / (1 + q)
+    want = gamma + share * kms * co.radial_velocity(t - 59000.0, period, t_peri, e, inc, omega, a)
+    worst = np.max(np.abs(got - want)) / max(np.max(np.abs(want - gamma)), 1e-12)
+    record("max_rel_rv", worst)
+    assert worst < 1e-9
+
+
+def _pa_sep(dra, ddec):
+    return np.rad2deg(np.arctan2(dra, ddec)) % 360, np.hypot(dra, ddec)
+
+
+@pytest.mark.validates("virgil.orbits.PositionData", roots=["mathematics", "statistics"], property="likelihood")
+def test_position_likelihood_is_the_gaussian_density():
+    """PositionData.loglike, from separations and position angles and from a
+    correlated covariance, against SciPy's multivariate normal density of our
+    own positions; the separation/PA errors are carried to (dRA, dDec) by a
+    finite-difference Jacobian of our own."""
+    elements = ORBITS[0]
+    o = vo.KeplerOrbit(*elements, t_ref=59000.0)
+    mjd = np.linspace(59010.0, 59700.0, 7)
+    dra0, ddec0 = co.position(mjd - 59000.0, *elements)
+    rng = np.random.default_rng(3)
+    pa, sep = _pa_sep(dra0, ddec0)
+    sep, pa = sep + rng.normal(0, 0.2, 7), pa + rng.normal(0, 1.5, 7)
+    sep_err, pa_err = np.full(7, 0.2), np.full(7, 1.5)  # strongly anisotropic in (dRA, dDec)
+
+    def to_xy(s_, p_):
+        return np.array([s_ * np.sin(np.deg2rad(p_)), s_ * np.cos(np.deg2rad(p_))])
+
+    want = 0.0
+    for k in range(7):
+        h = 1e-6
+        jac = np.column_stack([(to_xy(sep[k] + h, pa[k]) - to_xy(sep[k] - h, pa[k])) / (2 * h),
+                               (to_xy(sep[k], pa[k] + h) - to_xy(sep[k], pa[k] - h)) / (2 * h)])
+        cov = jac @ np.diag([sep_err[k] ** 2, pa_err[k] ** 2]) @ jac.T
+        want += stats.multivariate_normal(to_xy(sep[k], pa[k]), cov).logpdf([dra0[k], ddec0[k]])
+    got = float(vo.PositionData.from_sep_pa(mjd, sep, pa, sep_err, pa_err, t_ref=59000.0).loglike(o))
+    record("dloglike_sep_pa", abs(got - want))
+    assert abs(got - want) < 1e-6
+
+    covs = np.array([[[0.3, 0.2 * np.cos(k)], [0.2 * np.cos(k), 0.5 + 0.1 * k]] for k in range(7)])
+    dra, ddec = dra0 + rng.normal(0, 0.5, 7), ddec0 + rng.normal(0, 0.5, 7)
+    want = sum(stats.multivariate_normal([dra[k], ddec[k]], covs[k]).logpdf([dra0[k], ddec0[k]]) for k in range(7))
+    got = float(vo.PositionData(mjd, dra, ddec, covs, t_ref=59000.0).loglike(o))
+    record("dloglike_cov", abs(got - want))
+    assert abs(got - want) < 1e-6
+
+
+@pytest.mark.parametrize("delta", [7.0, -12.0])
+@pytest.mark.validates("virgil.orbits.PositionData", roots=["mathematics"], property="calibration")
+def test_north_angle_adds_to_the_measured_position_angle(delta):
+    """With north_angle = delta and plate_scale = m, a companion at PA theta
+    and separation rho is measured at theta + delta and m rho (our own
+    positions and arctan2); the opposite sign misses by 2 delta (a control)."""
+    elements = ORBITS[0]
+    o = vo.KeplerOrbit(*elements, t_ref=59000.0)
+    mjd = np.linspace(59010.0, 59700.0, 9)
+    pa, sep = _pa_sep(*co.position(mjd - 59000.0, *elements))
+    data = vo.PositionData(mjd, np.zeros(9), np.zeros(9), np.tile(np.eye(2), (9, 1, 1)), t_ref=59000.0)
+    got_pa, got_sep = _pa_sep(*map(np.asarray, data.model(o, north_angle=delta, plate_scale=1.03)))
+    miss = np.abs((got_pa - pa - delta + 180) % 360 - 180)
+    record("max_dpa_deg", float(np.max(miss)))
+    assert np.max(miss) < 1e-9 and np.allclose(got_sep, 1.03 * sep, rtol=1e-12)
+    wrong = np.abs((got_pa - pa + delta + 180) % 360 - 180)
+    assert np.min(wrong) > 1.9 * abs(delta)
 
 
 @pytest.mark.parametrize("mean,kappa", [(30.0, 0.5), (130.0, 4.0), (350.0, 20.0)])

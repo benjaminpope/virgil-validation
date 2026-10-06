@@ -95,7 +95,7 @@ def fouriever(path, ps, cov=True):
     return sp.run("fouriever", "fouriever_worker.py", {"task": "chi2", "path": path, "params": ps, "cov": cov})
 
 
-@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"])
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"], property="correlation")
 def test_closure_phase_correlation_matches_fouriever(files):
     """virgil's correlation matrix of the closure phases, fouriever's
     (its CPCOV divided by the errors) and ours (T T^T / 3 per snapshot and
@@ -125,7 +125,7 @@ def test_closure_phase_correlation_matches_fouriever(files):
 
 @pytest.mark.validates(
     "virgil.likelihood.whitened_residuals", "virgil.oidata.OIData.cp_noise",
-    roots=["fouriever", "mathematics"],
+    roots=["fouriever", "mathematics"], property="correlation",
 )
 def test_correlated_chi2_matches_fouriever(files):
     """Equal errors: fouriever equals our plain-residual r^T C^+ r, and
@@ -211,7 +211,7 @@ def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
 
 @pytest.mark.validates(
     "virgil.likelihood.whitened_residuals", "virgil.oidata.OIData.cp_noise",
-    roots=["fouriever", "mathematics"],
+    roots=["fouriever", "mathematics"], kind="definition",  # D6: asserts the codes differ
 )
 def test_unequal_errors_use_different_generalised_inverses(files):
     """D6: with unequal errors in a group, fouriever's r^T C^+ r and virgil's
@@ -230,7 +230,47 @@ def test_unequal_errors_use_different_generalised_inverses(files):
     assert np.max(np.abs(got_v / got_f - 1)) > 0.01
 
 
-@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["statistics"])
+def _whitened_means(tmp_path, s_base_deg, rng, n=100_000):
+    """Mean chi-squared of four telescopes' closures of baseline-phase noise
+    with errors s_base_deg (one snapshot, one channel, reported errors
+    sqrt(diag(T S T^T))): virgil's whitening, the pseudo-inverse of C, and
+    the exact model T S T^T."""
+    path = tmp_path / "one.fits"
+    simulate.observe(path, binary_vis(0.0, 0.0, 0.0), UTS, hour_angles_h=[0.0], wavelengths=[2.0e-6],
+                     dec_deg=-50.0, sigma_v2=0.01, sigma_cp_deg=1.0)
+    d = ours.load(path)
+    T = ours.triangle_matrix(d["t3_sta"])
+    s_base = np.deg2rad(s_base_deg)
+    S = np.diag(s_base**2)
+    sig = np.sqrt(np.diag(T @ S @ T.T))
+    with fits.open(path, mode="update") as h:
+        h["OI_T3"].data["T3PHIERR"] = np.rad2deg(sig).reshape(h["OI_T3"].data["T3PHIERR"].shape)
+    data = OIData(str(path))
+    r = (rng.normal(size=(n, s_base.size)) * s_base) @ T.T
+    whiten = jax.jit(jax.vmap(lambda x: data.cp_noise.whiten(x, data.d_phi)[0]))
+    virgil = float(np.mean(np.sum(np.asarray(whiten(r)) ** 2, axis=1)))
+    C = sig[:, None] * (T @ T.T / 3) * sig[None, :]
+    pinv = float(np.mean(np.einsum("ni,ij,nj->n", r, np.linalg.pinv(C, rcond=1e-10), r)))
+    exact = float(np.mean(np.einsum("ni,ij,nj->n", r, np.linalg.pinv(T @ S @ T.T, rcond=1e-10), r)))
+    return virgil, pinv, exact
+
+
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["statistics"], property="calibration")
+def test_whitening_is_calibrated_on_equal_baseline_noise(tmp_path):
+    """With equal baseline-phase errors, the model virgil assumes, the mean
+    chi-squared of four telescopes' closure phases is 3 (the independent
+    combinations), within 4 sigma of the mean of 100 000 draws."""
+    n = 100_000
+    virgil, _, exact = _whitened_means(tmp_path, np.full(6, 1.5), np.random.default_rng(1), n)
+    record("mean_virgil", virgil)
+    tol = 4 * np.sqrt(2 * 3 / n)
+    assert abs(exact - 3) < tol
+    assert abs(virgil - 3) < tol
+
+
+# Not a calibration check: with unequal baseline errors virgil's mean is
+# about 2% below 3 (D6); this records how it compares with fouriever's form.
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["statistics"], kind="definition")
 @pytest.mark.parametrize("which", ["one noisy baseline", "random"])
 def test_whitened_form_is_better_calibrated_on_baseline_noise(tmp_path, which):
     """True closure-phase noise is the closure T b of baseline-phase noise
@@ -240,26 +280,10 @@ def test_whitened_form_is_better_calibrated_on_baseline_noise(tmp_path, which):
     one-channel file with those errors, virgil's whitening
     (OIData.cp_noise.whiten) gives a mean closer to 3 than the
     pseudo-inverse of C; the exact model T S T^T is the control."""
-    path = tmp_path / "one.fits"
-    simulate.observe(path, binary_vis(0.0, 0.0, 0.0), UTS, hour_angles_h=[0.0], wavelengths=[2.0e-6],
-                     dec_deg=-50.0, sigma_v2=0.01, sigma_cp_deg=1.0)
-    d = ours.load(path)
-    T = ours.triangle_matrix(d["t3_sta"])
     rng = np.random.default_rng(0)
     s_base = np.array([1, 1, 1, 1, 1, 3.0]) if which != "random" else rng.uniform(0.5, 2.0, 6)
-    s_base = np.deg2rad(s_base)
-    S = np.diag(s_base**2)
-    sig = np.sqrt(np.diag(T @ S @ T.T))
-    with fits.open(path, mode="update") as h:
-        h["OI_T3"].data["T3PHIERR"] = np.rad2deg(sig).reshape(h["OI_T3"].data["T3PHIERR"].shape)
-    data = OIData(str(path))
     n = 100_000
-    r = (rng.normal(size=(n, s_base.size)) * s_base) @ T.T
-    whiten = jax.jit(jax.vmap(lambda x: data.cp_noise.whiten(x, data.d_phi)[0]))
-    virgil = float(np.mean(np.sum(np.asarray(whiten(r)) ** 2, axis=1)))
-    C = sig[:, None] * (T @ T.T / 3) * sig[None, :]
-    pinv = float(np.mean(np.einsum("ni,ij,nj->n", r, np.linalg.pinv(C, rcond=1e-10), r)))
-    exact = float(np.mean(np.einsum("ni,ij,nj->n", r, np.linalg.pinv(T @ S @ T.T, rcond=1e-10), r)))
+    virgil, pinv, exact = _whitened_means(tmp_path, s_base, rng, n)
     record("mean_virgil", virgil)
     record("mean_pinv", pinv)
     record("mean_exact", exact)

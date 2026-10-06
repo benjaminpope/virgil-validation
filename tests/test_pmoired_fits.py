@@ -162,7 +162,7 @@ def test_independent_closure_phases_shrink_pmoired_errors(tmp_path):
 
 
 @pytest.mark.slow
-@pytest.mark.validates("pipeline:pmoired-identical-fits", "virgil.inference.laplace_cov", "virgil.fitting.fit", roots=["pmoired", "statistics"], tier="B")
+@pytest.mark.validates("pipeline:pmoired-identical-fits", "virgil.inference.laplace_cov", "virgil.fitting.fit", roots=["pmoired", "statistics"], tier="B", kind="regression")
 @pytest.mark.parametrize("mode", ["baseline", "triangle"])
 def test_pull_campaign_against_pmoired(tmp_path, mode):
     """Both packages fit the same 200 noisy realisations of the binary;

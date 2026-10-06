@@ -9,7 +9,7 @@ version) and runs in a subprocess (orbitize_worker.py), JSON in and out.
 It is called, never vendored. Set ORBITIZE_PYTHON to use another
 interpreter.
 
-The mapping (docs/orbitize_notes.md, with sources): orbitize!'s standard
+The mapping (docs/method/orbitize.md, with sources): orbitize!'s standard
 basis (sma au, ecc, inc, aop, pan, tau, plx mas, mtot M_sun) gives virgil's
 KeplerOrbit as
 

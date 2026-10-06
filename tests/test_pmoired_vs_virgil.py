@@ -3,7 +3,7 @@
 PMOIRED reads one of our OIFITS files and returns its model V^2 and closure
 phases with the uv coordinates it used for each sample; virgil is evaluated
 at exactly those coordinates. Parameters are mapped with the conventions
-pinned in Stage 0 (docs/pmoired_conventions.md).
+pinned in Stage 0 (docs/method/pmoired.md).
 """
 
 import numpy as np
@@ -29,7 +29,7 @@ def vlti_file(tmp_path_factory):
     """A carrier file: 4 UTs, 5 hour angles, 6 channels. Its values do not
     matter (both codes are compared at the file's coordinates). PMOIRED
     computes rings exactly only up to 30 samples per baseline (epochs x
-    channels); beyond that they carry ~1e-4 errors (docs/pmoired_notes.md),
+    channels); beyond that they carry ~1e-4 errors (docs/method/pmoired.md),
     so this file stays at 30."""
     path = tmp_path_factory.mktemp("s1") / "vlti.fits"
     simulate.observe(
@@ -118,6 +118,25 @@ def test_binary_angular(vlti_file):
     }
     dv2, dcp, _ = compare(vlti_file, scene, params)
     assert dv2 < 1e-12 and dcp < 1e-9
+
+
+@pytest.mark.validates("virgil.models.Rotated", roots=["pmoired"], property="rotation_sense")
+@pytest.mark.parametrize("angle", [35.0, 250.0])
+def test_rotation_is_by_position_angle_in_pmoired(vlti_file, angle):
+    """Rotated by an angle, a scene with a companion at position angle 20
+    degrees matches PMOIRED's scene with the companion at 20 + angle (x
+    East, y North): rotation runs North through East."""
+    sep, pa = 7.0, 20.0
+    scene = vm.Rotated(vm.System(star=vm.UniformDisk(1.8), comp=vm.PointSource(0.05, *_east_north(sep, pa))), angle)
+    params = {**pm_ud("star", 1.8), **pm_point("comp", 0.05, *_east_north(sep, pa + angle))}
+    dv2, dcp, cp_max = compare(vlti_file, scene, params)
+    assert cp_max > 1 and dv2 < 1e-10 and dcp < 1e-6
+    wrong = {**pm_ud("star", 1.8), **pm_point("comp", 0.05, *_east_north(sep, pa - angle))}
+    assert compare(vlti_file, scene, wrong)[1] > 100 * max(dcp, 1e-8)  # the other sense: a control
+
+
+def _east_north(sep, pa):
+    return sep * np.sin(np.deg2rad(pa)), sep * np.cos(np.deg2rad(pa))
 
 
 @pytest.mark.validates("virgil.models.UniformDisk", "virgil.models.PointSource", "virgil.models.System", roots=["pmoired"])
@@ -226,7 +245,7 @@ def _pmoired_rim(amps=(), pas=()):
     return params
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="profile")
 def test_unmodulated_rim_matches_pmoired_blurred_ring_profile(vlti_file):
     """An unmodulated, inclined rim blurred in its own plane is a ring with
     the Bessel-I0 radial profile: PMOIRED and virgil agree exactly. This
@@ -254,7 +273,7 @@ def test_modulated_rim_definitions_differ(vlti_file):
     profile I_m instead of I_0. PMOIRED matches our quadrature of its
     definition; virgil matches ours of its own (tests/test_visibilities.py);
     the two differ at O(m^2 sigma^2 / r0^2). Ruled a difference of
-    definition (docs/pmoired_conventions.md)."""
+    definition (docs/method/pmoired.md)."""
     amps, pas = (0.5, 0.2), (120.0, 75.0)
     r0, s = RIM["diam"] / 2, SIGMA
     separable = sky.inclined_annulus(
@@ -271,6 +290,28 @@ def test_modulated_rim_definitions_differ(vlti_file):
     )
     dv2, dcp, _ = compare(vlti_file, scene, params, {"Nr": 3000})
     assert 1e-4 < dv2 < 1e-2  # (m sigma / r0)^2 ~ 0.02 times the modulated part
+
+
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense")
+def test_modulation_sense_agrees_with_pmoired(vlti_file):
+    """The definitions differ only at O(m^2 sigma^2 / r0^2) (D-code above),
+    so the sense of the modulation can still be checked against PMOIRED:
+    virgil's rim at the same amplitudes and angles is 10 times closer to
+    PMOIRED's than with the bright side turned by 180 degrees, or reflected
+    about the rim's major axis (the other sense of azimuth)."""
+    amps, pas = (0.5, 0.2), (120.0, 75.0)
+    params = _pmoired_rim(amps, pas)
+
+    def rim(angles):
+        return vm.ModulatedGaussianRim(RIM["diam"], RIM["fwhm"], RIM["inc"], RIM["pa"], np.array(amps), np.array(angles))
+
+    _, dcp, cp_max = compare(vlti_file, rim(pas), params, {"Nr": 3000})
+    _, turned, _ = compare(vlti_file, rim([p + 180.0 for p in pas]), params, {"Nr": 3000})
+    _, reflected, _ = compare(vlti_file, rim([2 * RIM["pa"] - p for p in pas]), params, {"Nr": 3000})
+    record("dcp_ratio_turned", turned / dcp)
+    record("dcp_ratio_reflected", reflected / dcp)
+    assert cp_max > 30
+    assert turned > 10 * dcp and reflected > 10 * dcp
 
 
 # ------------------------------------------------------ limb darkening

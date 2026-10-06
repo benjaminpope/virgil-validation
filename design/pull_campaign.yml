@@ -1,0 +1,53 @@
+# Criteria and design for the pull campaign (scripts/pull_campaign.py).
+# Registered on 2026-10-06, before any draw was run. The pull tests of a few
+# hundred draws (tests/test_pmoired_fits.py, test_v2_only.py,
+# test_grids_limits.py) are regression smoke tests: at N = 200 an sd has a
+# standard error of 0.05, so their bands cannot see a 10% error in the
+# uncertainties. This campaign carries the calibration claim.
+# The script records this file's SHA-256 (criteria_hash) in every task output
+# and in the summary; the aggregator refuses outputs made under another hash.
+#
+# A pull is (fitted value - truth) / (virgil's Laplace sigma) for one
+# parameter of one fit. If the fit is unbiased and its sigma is right the
+# pulls over noise realisations are N(0, 1).
+
+cells:                         # scene x fitter; every parameter of the scene is tested
+  binary_fit:                  {scene: binary, fitter: fit_laplace}
+  resolved_star_companion_fit: {scene: resolved_star_companion, fitter: fit_laplace}
+  star_envelope_fit:           {scene: star_envelope, fitter: fit_laplace}
+  star_rim_fit:                {scene: star_rim, fitter: fit_laplace}
+  binary_grid_flux:            {scene: binary, fitter: grid_laplace}   # flux at the true position
+  uniform_disk_v2_fit:         {scene: uniform_disk, fitter: fit_laplace}   # V2 only, no closure phases
+fitters:
+  fit_laplace: virgil.fitting.fit (from the scene's start) and virgil.inference.laplace_cov at the optimum
+  grid_laplace: virgil.grid_fit.optimized_flux_grid and laplace_flux_uncertainty_grid at the true position
+data:                          # our simulator, crosscheck.simulate.observe; phase noise per baseline, as virgil assumes
+  fit_laplace_scenes: {stations: 4 UTs, hour_angles_h: [-3, 3, 5], wavelengths_um: [1.5, 2.4, 6], dec_deg: -50, sigma_v2: 0.02, sigma_cp_deg: 1.0}
+  binary_grid_flux: {stations: 3 UTs, hour_angles_h: [-3, 3, 7], wavelengths_um: [1.5, 2.4, 6], dec_deg: -50, sigma_v2: 0.01, sigma_cp_deg: 0.5, position_mas: [6.0, -4.0], flux: 0.03}
+  uniform_disk_v2_fit: {stations: 4 UTs, hour_angles_h: [-3, 3, 5], wavelengths_um: [1.5, 2.4, 6], dec_deg: -50, sigma_v2: 0.02, closure_phases: false, diameter_mas: 1.8}
+
+counts:
+  draws_per_task: 125
+  tasks_per_cell: 10           # 1250 planned per cell
+  min_draws_per_cell: 1000     # finite pulls required for a cell to count
+
+# Sizing. A pull sample of N has sd of its mean 1/sqrt(N) and, if the pulls
+# are Gaussian, sd of its sd 1/sqrt(2N). A 10% error in the uncertainties
+# moves the pull sd to 1.1 or 0.9: 0.1 sqrt(2N) standard errors.
+#   N = 900: with a 3-sigma band, power 0.89 (about 90%).
+#   N = 1250 (planned): 0.1 sqrt(2N) = 5.0 standard errors, so at the Holm
+#     threshold of the least stringent family member (alpha/m, m = 40 tests,
+#     z = 3.66) power is 0.91; at N = 1000 (the minimum) it is 0.79.
+#   A bias of 0.1 sigma in the mean needs N = 1830 for 90% power at 3 sigma:
+#     the mean tests detect a bias of 0.14 sigma at N = 1250 (90% power at
+#     3.66 sigma), reported in the summary as the detectable bias.
+tests:
+  mean: z = mean(pull) sqrt(N), two-sided normal p-value
+  sd: z = (sd(pull) - 1) sqrt(2N), two-sided normal p-value (Gaussian-theory standard error)
+family_alpha: 0.01             # Holm over every p-value of every parameter of every cell (40 expected)
+bands_sigma: 3                 # reported: mean within 3/sqrt(N), sd within 1 +- 3/sqrt(2N)
+fit_failures:
+  max_nonfinite_fraction: 0.01 # per cell: draws whose pull is not finite (failed fit or covariance); such draws are dropped and counted
+reported:                      # never pass/fail
+  - kurtosis                   # of each parameter's pulls: the sd test assumes about 3
+  - detectable_bias            # smallest bias in the mean detectable at 90% power at the Holm threshold

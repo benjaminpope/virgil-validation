@@ -5,9 +5,9 @@
 .venv/
 __pycache__/
 docs/index.md
-docs/overview.md
 docs/assets/trust.json
 site/
 .claude/
 .external/
 .venv-*/
+docs/method/coverage.md
