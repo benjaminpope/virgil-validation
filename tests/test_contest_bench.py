@@ -145,3 +145,14 @@ def test_run_ids_cover_every_dataset_and_config():
     pairs = {(i // len(configs), configs[i % len(configs)]) for i in range(3 * len(configs))}
     assert len(pairs) == 3 * len(configs)
     assert all(set(contest_bench.CONFIGS[c]) == set(contest_bench.BASE) for c in configs)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_opt_in_arms_keep_the_default_task_numbering():
+    # Job 18107553 ran the ten default arms with task id = dataset x 10 + arm;
+    # opt-in arms (the ensemble) must not shift that numbering.
+    assert contest_bench.DEFAULT_CONFIGS == [
+        "baseline", "point_star", "disk_star", "halo", "field_1x", "field_4x", "half_beam_mean", "mem",
+        "ellipse_star", "companion"]
+    assert set(contest_bench.OPT_IN) <= set(contest_bench.CONFIGS)
+    assert not set(contest_bench.OPT_IN) & set(contest_bench.DEFAULT_CONFIGS)

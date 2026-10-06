@@ -3,7 +3,7 @@ uv coverages, so that each method choice is judged against a truth.
 
     python scripts/contest_bench.py simulate [--data DIR] [--out DIR] [--phantoms 6] [--draws 2]
     python scripts/contest_bench.py list [--out DIR]
-    python scripts/contest_bench.py run --id N [--bench DIR] [--out DIR] [--configs a,b,...] [--smoke]
+    python scripts/contest_bench.py run --id N [--bench DIR] [--out DIR] [--configs a,b,...] [--smoke] [--seed S]
     python scripts/contest_bench.py score [--bench DIR] [--out DIR]
 
 ``simulate`` takes each coverage's contest OIFITS as a template (uv points,
@@ -19,7 +19,9 @@ Each dataset is written as ``<coverage>_p<k>_d<j>/`` holding the FITS files,
 ``run`` images dataset ``N // len(configs)`` with configuration
 ``N % len(configs)`` (one OzSTAR array task each) through the contest code
 path (``contest_images.run_gp`` with fixed settings), writing
-``<dataset>__<config>.npz``. ``score`` compares every result with its truth
+``<dataset>__<config>.npz``. The opt-in ``ensemble`` arm (``--configs
+ensemble``) runs ``virgil.ensemble`` instead and also saves its standard
+deviation map (``std``, and ``ref_std`` on the reference grid). ``score`` compares every result with its truth
 (``crosscheck.image_metrics.score``) and writes ``bench_scores.md`` (median
 per configuration, overall and per family) and ``bench_scores.json``.
 
@@ -76,7 +78,22 @@ CONFIGS = {
     # companion search (linear flux map) before CLEAN and the GP.
     "ellipse_star": BASE | {"star": True, "star_model": "ellipse"},
     "companion": BASE | {"star": True, "star_model": "point_companion"},
+    # Not one pipeline but many: virgil.ensemble (Drevon et al. 2025's
+    # PYRA/MYTHRA) draws regulariser families (TV, TSV, MaxEnt, starlet L1),
+    # weights, pixel sizes, fields and starts at random, keeps the members
+    # that fit and averages them while the mean still fits. No star, as in
+    # the baseline. Opt-in (not in DEFAULT_CONFIGS), so that the ten-arm
+    # task numbering of earlier runs is unchanged.
+    "ensemble": BASE | {"method": "ensemble"},
 }
+OPT_IN = ("ensemble",)
+DEFAULT_CONFIGS = [c for c in CONFIGS if c not in OPT_IN]
+# The ensemble arm: groups (each one L-curve of ENSEMBLE_WEIGHTS weights, one
+# family, geometry and start) and virgil.ensemble.EnsembleSpec's defaults
+# otherwise (fields 0.5-1 x field_of_view, moments/flat starts, members within
+# 2x the best χ² per dataset, a window 1 dex above each L-curve's corner).
+ENSEMBLE_GROUPS = 12
+ENSEMBLE_WEIGHTS = 6
 DROP = ("OI_VIS", "OI_FLUX")
 
 
@@ -207,7 +224,84 @@ def simulate(data_dir, out_dir, n_phantoms, n_draws, seed=0, cal=None, coverages
     return made
 
 
-def run(bench, out, dataset_id, config_names, smoke=False):
+def run_ensemble(spec, out, label, seed=0, smoke=False):
+    """The ``ensemble`` arm: ``virgil.ensemble.ensemble`` on the dataset's
+    files, written in the other arms' format (``ref_image`` on the common
+    reference grid, ``ref_fov``, ``best_chi2_red``, ``error_scale``) plus the
+    ensemble's standard deviation map. Reads only the OIFITS files (blind:
+    never ``truth.npz``)."""
+    import time
+
+    import contest_images  # sets jax_enable_x64, as for the other arms
+    import jax
+    import matplotlib.pyplot as plt
+    from virgil.ensemble import EnsembleSpec, ensemble
+    from virgil.imaging import beam
+    from virgil.metrics import resample
+    from virgil.oidata import OIData
+
+    t0 = time.time()
+    data = [OIData(f) for f in spec["files"]]
+    data = data[0] if len(data) == 1 else data
+    settings = CONFIGS["ensemble"]
+    n_groups, n_weights = (2, 3) if smoke else (ENSEMBLE_GROUPS, ENSEMBLE_WEIGHTS)
+    options = {"max_steps": 50} if smoke else {}
+    ens_spec = EnsembleSpec(n_weights=n_weights)
+    result = ensemble(data, n_groups, jax.random.PRNGKey(seed), spec=ens_spec, star=settings["star"], **options)
+
+    # The other arms' common grid: max(MEMBER_FIELDS) x the data-chosen field.
+    ref_fov = contest_images.reference_fov(spec, pathlib.Path("/"))
+    n_ref = contest_images.REF_NPIX
+    scale = float(result.mean.pixel_scale_mas)
+    std = np.asarray(result.std, float)
+    mean = np.asarray(result.mean.brightness, float)
+    # Flux-conserving resampling of the std map onto the reference grid: exact
+    # for the mean, an area-weighted approximation for a spread.
+    ref_std = np.asarray(resample(std, scale, n_ref, ref_fov / n_ref))
+    kept = result.kept
+    reasons = {}
+    for m in result.members:
+        if not m.kept:
+            reasons[m.reason] = reasons.get(m.reason, 0) + 1
+    resolution = beam(data)
+    out.mkdir(parents=True, exist_ok=True)
+    arrays = dict(
+        ref_image=np.asarray(result.model.render(n_ref, ref_fov)), ref_fov=ref_fov, ref_std=ref_std,
+        best_chi2_red=float(np.sum(result.chi2_red)), error_scale=np.nan, best_log_z=np.nan, flip_dchi2=np.nan,
+        star=bool(settings["star"]), mean=mean, std=std, pixel_scale_mas=scale, npix=mean.shape[0],
+        chi2_red=np.asarray(result.chi2_red), trace=np.asarray(result.trace),
+        best_member_chi2_red=np.asarray(result.trace[0]), n_members=len(result.members), n_kept=len(kept),
+        n_groups=n_groups, n_weights=n_weights, seed=seed,
+        beam=np.array([resolution.major_mas, resolution.minor_mas, resolution.pa_deg]),
+        dropped=json.dumps(reasons),
+    )
+    # Atomic: a reader (score, a download) never sees half a file.
+    tmp = out / f".{label}.npz.part"
+    with open(tmp, "wb") as f:
+        np.savez_compressed(f, **arrays)
+    tmp.replace(out / f"{label}.npz")
+
+    summary = (f"label={label} files={spec['files']} seed={seed} groups={n_groups} weights={n_weights} "
+               f"star={settings['star']} smoke={smoke}\nref_fov={ref_fov:.4g} mas npix={mean.shape[0]} "
+               f"pixel={scale:.4g} mas beam={resolution.major_mas:.3g}x{resolution.minor_mas:.3g} mas\n"
+               f"{result.summary()}\nelapsed={time.time() - t0:.0f}s\n")
+    (out / f"{label}.txt").write_text(summary)
+    print(summary)
+
+    fov = mean.shape[0] * scale
+    extent = [fov / 2, -fov / 2, -fov / 2, fov / 2]
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.4))
+    for ax, img, title in zip(axes, (mean, std), ("ensemble mean", "ensemble std")):
+        im = ax.imshow(img, origin="upper", extent=extent, cmap="inferno")
+        ax.set(title=f"{label}: {title}", xlabel="ΔRA (mas)", ylabel="ΔDec (mas)")
+        fig.colorbar(im, ax=ax, shrink=0.8)
+    fig.tight_layout()
+    fig.savefig(out / f"{label}.png", dpi=90)
+    plt.close(fig)
+    return result
+
+
+def run(bench, out, dataset_id, config_names, smoke=False, seed=0):
     """Image one simulated dataset with one configuration (array task id)."""
     import faulthandler
 
@@ -221,6 +315,9 @@ def run(bench, out, dataset_id, config_names, smoke=False):
     meta = json.loads((bench / name / "meta.json").read_text())
     spec = {"label": name, "files": [str(bench / name / f) for f in meta["files"]]}
     settings = CONFIGS[config]
+    if settings["method"] == "ensemble":
+        run_ensemble(spec, out, f"{name}__{config}", seed=seed, smoke=smoke)
+        return name, config
     runner = contest_images.run if settings["method"] == "mem" else contest_images.run_gp
     runner(spec, pathlib.Path("/"), out, smoke=smoke, settings=settings, label=f"{name}__{config}")
     return name, config
@@ -278,15 +375,17 @@ def main():
     r.add_argument("--id", type=int, required=True, help="dataset index x len(configs) + config index")
     r.add_argument("--bench", default="~/data/imaging_contests/bench")
     r.add_argument("--out", default="bench_results")
-    r.add_argument("--configs", default=",".join(CONFIGS), help="comma-separated configuration names")
+    r.add_argument("--configs", default=",".join(DEFAULT_CONFIGS),
+                   help=f"comma-separated configuration names (opt-in: {', '.join(OPT_IN)})")
     r.add_argument("--smoke", action="store_true")
+    r.add_argument("--seed", type=int, default=0, help="random key of the ensemble arm")
     sc = sub.add_parser("score")
     sc.add_argument("--bench", default="~/data/imaging_contests/bench")
     sc.add_argument("--out", default="bench_results")
     args = parser.parse_args()
     if args.cmd == "run":
         print(run(pathlib.Path(args.bench).expanduser(), pathlib.Path(args.out).expanduser(), args.id,
-                  args.configs.split(","), args.smoke))
+                  args.configs.split(","), args.smoke, args.seed))
         return
     if args.cmd == "score":
         rows = score(pathlib.Path(args.bench).expanduser(), pathlib.Path(args.out).expanduser())
