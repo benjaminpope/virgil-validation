@@ -7,11 +7,12 @@ of each truth among the posterior draws is uniform. Script:
 [`scripts/sbc_numpyro.py`](https://github.com/benjaminpope/virgil-validation/blob/main/scripts/sbc_numpyro.py); test:
 [`tests/test_sbc_numpyro.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_sbc_numpyro.py).
 
-**Status: interim. `numpyro_model` is not yet counted as checked.** The
-campaign was registered at 1000 replicates before it ran, and only 500 are in.
-The analyses are fixed in advance in
-[`design/sbc_addendum.yml`](https://github.com/benjaminpope/virgil-validation/blob/main/design/sbc_addendum.yml), registered before the
-second 500 were seen.
+**Status: passes its registered criteria; not yet counted as checked.** All
+1000 registered replicates are in, and every test fixed in advance in
+[`design/sbc_addendum.yml`](https://github.com/benjaminpope/virgil-validation/blob/main/design/sbc_addendum.yml)
+passes. The campaign ran on virgil 4afc5b8, so it counts only once a CI job
+evaluates it against that commit. The sampler was rarely healthy (below), and
+a second campaign is planned to fix that.
 
 ## Design
 
@@ -28,29 +29,33 @@ cannot reveal failures to find the right mode. And every companion is bright,
 so the posteriors are nearly Gaussian. A second campaign is planned without
 either limit.
 
-## Interim results (500 of 1000 replicates)
+## Results (1000 replicates)
 
-| Parameter | χ² of ranks (p) | Mean rank (p) | 68% coverage | 95% coverage |
-| --- | --- | --- | --- | --- |
-| diameter | 0.035 | 0.20 | 0.680 | 0.920 |
-| flux ratio | 0.50 | 0.80 | 0.656 | 0.942 |
-| separation | 0.54 | 0.30 | 0.680 | 0.940 |
-| position angle | 0.14 | 0.45 | 0.676 | 0.926 |
-| V² error scale | 0.35 | 0.28 | 0.646 | 0.938 |
+| Parameter | χ² of ranks (p) | Mean rank (p) | ECDF (p) | 68% coverage | 95% coverage |
+| --- | --- | --- | --- | --- | --- |
+| diameter | 0.036 | 0.87 | 0.68 | 0.681 | 0.936 |
+| flux ratio | 0.55 | 0.15 | 0.24 | 0.668 | 0.944 |
+| separation | 0.70 | 0.13 | 0.38 | 0.687 | 0.944 |
+| position angle | 0.55 | 0.52 | 0.31 | 0.685 | 0.941 |
+| V² error scale | 0.064 | 0.75 | 0.31 | 0.666 | 0.932 |
 
 The expected coverages are 0.68 and 0.94: with 99 draws, the central 95%
-window holds 94 of the 100 possible ranks.
+window holds 94 of the 100 possible ranks. The pass rule is a Holm correction
+over all 25 tests at a family-wise rate of 1%; the smallest p-value, 0.036, is
+far from rejection.
 
-No departure from uniform is detected at this size, but the test is not yet
-sensitive. At 500 replicates it would detect a posterior 10% too narrow only
-about 60% of the time, and a 0.2σ bias only about 40%.
+- **Diameter near the prior bound.** The 500 replicates seen first suggested
+  low 95% coverage for true diameters below 0.9 mas. The registered
+  confirmatory test on the unseen second 500 alone (163 replicates) does not
+  reproduce it (χ² p = 0.25, coverage p = 0.51).
+- **Divergences.** 978 of the 1000 replicates had at least one divergent
+  transition (median 29 in 4000 draws). They rise with the companion's flux
+  (Spearman ρ = 0.38), not with nearness to the prior bounds. The likely cause
+  is the narrow position-angle posterior on the `AngleVector` ring. 111
+  replicates had R̂ above 1.01 (worst 3.2). Only 11 replicates were fully
+  healthy, too few to test on their own.
 
-Two observations are being followed up:
-- **Diameter.** For true diameters below 0.9 mas, near the 0.5 mas prior
-  bound, the 95% coverage was 0.88 (p = 0.003, not significant after about 30
-  looks). It is tested on the unseen second 500 alone.
-- **Divergences.** Of the 500 replicates, 489 had at least one divergent
-  transition (median 28 in 4000 draws). They rise with the companion's flux
-  (Spearman ρ = 0.40), not with nearness to the prior bounds. The likely cause
-  is the narrow position-angle posterior on the `AngleVector` ring. 65
-  replicates had R̂ above 1.01, and a few chains were stuck (worst R̂ 3.2).
+The ranks are uniform despite the divergences, but a calibration resting on
+unhealthy chains is weak. The second campaign changes the mass matrix and the
+ring width to remove them, starts chains away from the truth, and adds faint
+companions.
