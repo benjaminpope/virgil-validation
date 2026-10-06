@@ -22,8 +22,16 @@ This plan uses OiDB for three goals:
 - **(c) Rapid rotators.** Planned separately, because the results are for a
   paper and stay out of this repository (see "Rapid rotators" below).
 
-Licence: OiDB content is CC BY-NC-SA 4.0. Ben has accepted OiDB's terms of
-use. Data files are never committed here (see "Data handling").
+Terms (read from <https://oidb.jmmc.fr/doc.html>, sections 2, 3 and 9, on
+2026-10-07; Ben has accepted them): the portal and its contents are under
+CC BY-NC-SA 4.0, **and** the terms of use add obligations that depend on the
+data's calibration level. Use is for public astronomical research only.
+For **L2** (unpublished) data the user must contact the dataPI *before*
+presenting any work using them and agree the citation, acknowledgement or
+collaboration policy. For **L3** (published) data the user must at least
+thank the dataPI (the paper's first author) and cite the original paper.
+Any publication should also carry OiDB's acknowledgement sentence. Data
+files are never committed here (see "Data handling").
 
 ## Access: what was checked
 
@@ -60,8 +68,10 @@ downloaded for this plan.
   needs to inspect, never in git. `<collection-id>` is OiDB's id with `/`
   replaced by `_` for the VizieR ones.
 - **Manifest.** `oidb/manifest.yml`, in the style of `contests/manifest.yml`:
-  per collection the id, title, bibcode, instrument, licence and
-  attribution line, and per file the name, granule id, staging URL, bytes
+  per collection the id, title, bibcode, instrument, **calibration level
+  (L2 or L3), dataPI, the terms that follow from them** (L3: thank the
+  dataPI and cite the paper; L2: dataPI contacted, date, and the agreed
+  policy) and the attribution line, and per file the name, granule id, staging URL, bytes
   and sha256. The sha256 is recorded on the first fetch and checked on every
   later one; a changed file is a failure, not an update.
 - **Fetcher.** `scripts/fetch_oidb.py`, stdlib only (it runs on trevor):
@@ -220,8 +230,11 @@ Write `scripts/fetch_oidb.py` and `oidb/manifest.yml` for the Stage O1
 collections; fetch Gl 229 B (≈10 MB) on trevor and record sha256s; read the
 first-stage papers' tables into `oidb/references/<collection>.json` (the
 "(O0)" numbers above), with page and table numbers. Check the redirect of
-one VizieR collection. Tests: manifest schema; every reference value carries
-a source.
+one VizieR collection. Record each collection's calibration level, dataPI
+and resulting terms in the manifest, and list the L2 collections whose
+dataPIs must be contacted before results are presented. Tests: manifest
+schema (level, dataPI and terms required); every reference value carries a
+source.
 
 ### Stage O1: first targets (about 12 h)
 
@@ -282,15 +295,20 @@ Trust-graph edits, made before the first test names them
   the regularisers and `l_curve`;
 
 both in state `running` until O1 passes. Ledger entries for every
-mismatch; a results page per goal on the docs site, with
-the CC BY-NC-SA attribution for each collection.
+mismatch; a results page per goal on the docs site, carrying for each collection
+the terms recorded in the manifest (thanks to the dataPI, the paper, the
+OiDB acknowledgement and the CC BY-NC-SA notice). Results from an L2
+collection are not published on the site until its dataPI has been
+contacted and has agreed the policy.
 
 ## Questions for Ben
 
-1. **Licence of derived products.** OiDB is CC BY-NC-SA 4.0 and this
-   repository has no licence file. Is it fine to publish derived numbers and
-   figures here with per-collection attribution and a ShareAlike note, or
-   should figures from OiDB data stay off the public site?
+1. **Terms per collection.** Most collections here are L3 (behind a paper),
+   so thanks and citation suffice; any L2 ones (O0 finds out: e.g. R136
+   GRAVITY+, WR 104, κ Tuc P111, PIONIER L2) need the dataPI contacted
+   before results go public. Who should write to L2 dataPIs, and is the
+   ShareAlike clause acceptable for figures on this repository's site (it
+   has no licence file)?
 2. **Scope of (a).** All 28 binary collections, or stop after O1 and the
    orbit systems in O2? The surveys (WR, Be, A-type) are the most work.
 3. **User-Agent.** OiDB refuses non-browser clients. Use a browser string
