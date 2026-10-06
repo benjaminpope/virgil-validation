@@ -214,9 +214,10 @@
       272.45,
       1.95
     ],
-    "T_peri_mjd": [
+    "T_peri_unstated_system": [
       52997.4686,
-      0.19
+      0.19,
+      "Anugu+2020 Table 3 does not state the time system (MJD or RJD = MJD+0.5); fix it against the RV ephemeris before use"
     ],
     "K1": null,
     "K2": null,

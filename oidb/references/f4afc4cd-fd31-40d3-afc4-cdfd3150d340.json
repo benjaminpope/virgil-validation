@@ -27,12 +27,14 @@
       "date": "2023-11-26",
       "mjd": 60274.33,
       "rho_mas": [
-        10.9,
-        0.1
+        10.886,
+        0.082,
+        "derived: mean and sample sd over the four calibration strategies' (dE, dN); the paper quotes 10.9 +/- 0.1"
       ],
       "pa_deg": [
-        26.35,
-        0.43
+        26.34,
+        0.7,
+        "derived: mean and sample sd over the four strategies (dE and dN are anticorrelated across them, so the uncorrelated +/-0.43 deg was too tight)"
       ],
       "flux_ratio": [
         0.83,
@@ -70,7 +72,19 @@
           "dE_mas": 0.005,
           "dN_mas": 0.008
         },
-        "note": "rho = 10.9+/-0.1 mas is quoted in the paper (Sect. 3, p. 3). PA and its error are DERIVED by me from dE,dN (and the dE,dN errors uncorrelated); the paper does not quote a PA. Measured position, not posterior prediction."
+        "note": "rho = 10.9+/-0.1 mas is quoted in the paper (Sect. 3, p. 3). PA and its error are DERIVED by me from dE,dN (and the dE,dN errors uncorrelated); the paper does not quote a PA. Measured position, not posterior prediction.",
+        "rho_per_calibration_derived": [
+          11.008,
+          10.855,
+          10.836,
+          10.843
+        ],
+        "pa_deg_per_calibration_derived": [
+          25.29,
+          26.64,
+          26.68,
+          26.76
+        ]
       },
       "used_in_orbit_fit": true,
       "source": "Table 1, p. 3; Sect. 3, p. 3 (dE, dN, rho); Sect. 2, p. 2 (date, MJD)"

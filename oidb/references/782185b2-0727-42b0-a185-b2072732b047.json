@@ -7,7 +7,8 @@
     "journal": "Nature 634, 1070-1074",
     "bibcode": "2024Natur.634.1070X",
     "doi": "10.1038/s41586-024-08064-x",
-    "arxiv": "2410.11953"
+    "arxiv": "2410.11953",
+    "table": "Table 1 (orbit fits) and Methods (orbit fits; coordinate conventions)"
   },
   "publication_status": {
     "status": "published",
@@ -30,11 +31,14 @@
       "2024-03-29",
       "2024-04-29"
     ],
-    "in_collection_not_in_paper": [
-      "2024-12-19",
-      "2025-02-12"
-    ],
-    "note": "check against the OiDB file list (22 files) which nights are present"
+    "note": "All 22 files of this OiDB collection are from these five nights (manifest).",
+    "not_in_this_collection": {
+      "dates": [
+        "2024-12-19",
+        "2025-02-12"
+      ],
+      "source": "ESO archive raw GRAVITY data, programmes 112.25RU.001 and 112.26Z1.001 (Gl 229 B = HD 42581 B), reduced by us; not in OiDB and not in the paper. Out-of-sample checks on them belong to the ESO binaries validation, not to O1."
+    }
   },
   "orbit": {
     "pmoired_frequentist": {
@@ -148,7 +152,7 @@
   },
   "notes": [
     "secondary ~5 mas south of the primary, flux ratio ~0.5, moving ~4.6 mas/day nearly perpendicular to the separation over the 2.5 h window",
-    "Values copied from ~/data/eso_binaries/gravity/reference/xuan2024_table1.json, transcribed from the paper's Table 1 for the ESO binaries validation; fit_nights.py/LinearBinary is to be ported in O1.",
-    "Two Table 1 variants differ in flux ratio (0.47+/-0.03 vs 0.53+/-0.02): compare against both and say which."
+    "Two Table 1 variants differ in flux ratio (0.47+/-0.03 vs 0.53+/-0.02): compare against both and say which.",
+    "Orbit values transcribed from Xuan et al. 2024, Nature 634, 1070, Table 1. fit_nights.py/LinearBinary is to be ported in O1."
   ]
 }

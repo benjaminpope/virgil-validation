@@ -379,9 +379,9 @@
       "omega_Be"
     ],
     "T_peri_mjd": [
-      53220.6,
+      53220.1,
       1.0,
-      "T0 given as RJD=JD-2400000, i.e. MJD+0.5 offset: T0_MJD = 53220.1; paper gives RJD only"
+      "converted from the paper's T0 = 53220.6 RJD (RJD = JD-2400000 = MJD+0.5)"
     ],
     "a_AU": [
       0.38,

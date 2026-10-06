@@ -182,7 +182,7 @@ def parse_search_page(page):
                 "level": int(attrs["calib_level"]),
                 "target": attrs.get("target_name", ""),
                 "bibcode": attrs.get("bib_reference") or None,
-                "get_data": attrs["access_url"],
+                "get_data": urllib.parse.urljoin(BASE + "/", attrs["access_url"]),
                 "file": urllib.parse.parse_qs(urllib.parse.urlparse(attrs["access_url"]).query)["name"][0].lstrip("/"),
                 "t_min": cells[4] if len(cells) > 4 else None,
                 "instrument": cells[5] if len(cells) > 5 else None,
@@ -258,20 +258,41 @@ def download(url, dest, expected_bytes):
     os.replace(part, dest)
 
 
+def _problem(path, f):
+    """Why a file on disk can't be the manifest's file (size, FITS header), or None."""
+    if f.get("bytes") is not None and path.stat().st_size != f["bytes"]:
+        return f"{path.stat().st_size} bytes, manifest says {f['bytes']}"
+    with open(path, "rb") as fh:
+        if fh.read(6) != b"SIMPLE":
+            return "not a FITS file"
+    return None
+
+
 def check(c, dest, fetch):
-    """Download (if fetch) and hash every file; return (sums, problems)."""
+    """Download (if fetch) and check every file; return (sums, problems).
+
+    A file already on disk is reused only if its sha256 matches one recorded
+    in the manifest; with no recorded sum it is downloaded again, so the first
+    ``record`` can only trust files fetched from OiDB in this run. Every file,
+    reused or not, must have the manifest's size and a FITS header.
+    """
     dest.mkdir(parents=True, exist_ok=True)
     sums, problems = {}, []
     for f in c["files"]:
         path = dest / f["name"]
         try:
-            if fetch and not (path.exists() and path.stat().st_size == f["bytes"]):
+            reuse = path.exists() and f.get("sha256") and sha256(path) == f["sha256"]
+            if fetch and not reuse:
                 # staging URLs may expire: resolve get-data.html afresh
                 _retry(lambda: download(staging_url(f["get_data"]), path, f.get("bytes")))
                 time.sleep(PAUSE)
             if not path.exists():
                 problems.append(f"{f['name']}: missing")
                 continue
+            why = _problem(path, f)
+            if why:
+                problems.append(f"{f['name']}: {why}")
+                continue  # never hashed into sha256sums.txt, so never recorded
             digest = sha256(path)
             sums[f["name"]] = digest
             if f.get("sha256") and f["sha256"] != digest:
