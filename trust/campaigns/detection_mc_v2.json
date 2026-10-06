@@ -1,0 +1,115 @@
+{
+ "version": 2,
+ "virgil_commit": "0726734a1032cf95a2248d0678b72bbb35b395e4",
+ "criteria_hash": "f725b11fcd58ff1e854abf3e086239ed0a0999441b78c4609aff67447b714076",
+ "design_hash": "1236184bf46aec1b",
+ "pvalues": {
+  "chernoff_zero_fraction": 0.5656354584355998,
+  "chernoff_positive": 0.7691706863466512,
+  "chernoff_mean": 0.2960349536187368,
+  "simulators_ad_delta_chi2": 0.166,
+  "simulators_tail_delta_chi2": 0.006351463630705148,
+  "simulators_ad_log_bayes_factor": 0.122,
+  "simulators_tail_log_bayes_factor": 0.04169946153589411,
+  "simulators_ad_max_snr": 0.153,
+  "simulators_tail_max_snr": 0.006351463630705148,
+  "boundary_pit": 0.25455745820319453,
+  "boundary_mean": 0.32116876833149277
+ },
+ "must_hold": {
+  "bookkeeping": {
+   "cases": {
+    "delta_chi2@0.01": true,
+    "delta_chi2@0.003": true,
+    "delta_chi2@0.001": true,
+    "log_bayes_factor@0.01": true,
+    "log_bayes_factor@0.003": true,
+    "log_bayes_factor@0.001": true,
+    "max_snr@0.01": true,
+    "max_snr@0.003": true,
+    "max_snr@0.001": true
+   },
+   "pass": true
+  }
+ },
+ "reported": {
+  "exceedance_ratio_ci": {
+   "delta_chi2@0.01": {
+    "ours": 288,
+    "virgil": 1200,
+    "rate_ratio_ci": [
+     1.051501952595936,
+     1.3658192578462405
+    ]
+   },
+   "delta_chi2@0.001": {
+    "ours": 25,
+    "virgil": 120,
+    "rate_ratio_ci": [
+     0.6484067158528534,
+     1.6129421912004878
+    ]
+   },
+   "log_bayes_factor@0.01": {
+    "ours": 275,
+    "virgil": 1200,
+    "rate_ratio_ci": [
+     1.0014355725914255,
+     1.3073357433922888
+    ]
+   },
+   "log_bayes_factor@0.001": {
+    "ours": 24,
+    "virgil": 120,
+    "rate_ratio_ci": [
+     0.6167292736999112,
+     1.559621527328162
+    ]
+   },
+   "max_snr@0.01": {
+    "ours": 288,
+    "virgil": 1200,
+    "rate_ratio_ci": [
+     1.051501952595936,
+     1.3658192578462405
+    ]
+   },
+   "max_snr@0.001": {
+    "ours": 25,
+    "virgil": 120,
+    "rate_ratio_ci": [
+     0.6484067158528534,
+     1.6129421912004878
+    ]
+   }
+  },
+  "lambda_range": [
+   0.5937448663953698,
+   101.98493268898922
+  ],
+  "completeness": {
+   "threshold_delta_chi2": 19.02910746293623,
+   "by_sep_flux": {
+    "5mas_0.0003": 0.008370260955194485,
+    "5mas_0.00065": 0.06769537083125933,
+    "5mas_0.0014": 0.5686080947680158,
+    "5mas_0.003": 0.9985322896281801,
+    "10mas_0.0003": 0.007901234567901235,
+    "10mas_0.00065": 0.033466533466533464,
+    "10mas_0.0014": 0.4174129353233831,
+    "10mas_0.003": 0.9994952044422009,
+    "15mas_0.0003": 0.006746237675142709,
+    "15mas_0.00065": 0.04534130543099153,
+    "15mas_0.0014": 0.4367699339766379,
+    "15mas_0.003": 0.9994921279837481
+   }
+  }
+ },
+ "rejected": [],
+ "counts": {
+  "null": 24000,
+  "inject": 24000,
+  "virgil": 120000
+ },
+ "pass": true
+}
