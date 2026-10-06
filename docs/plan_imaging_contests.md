@@ -39,13 +39,13 @@ URLs, checksums, organisers and winners, are in `contests/manifest.yml`.
 | 2006 | [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1UL) | ✅ JMMC (needs a virgil reader fix, see C0) | AMBER on the UTs, J/H/K, 48 channels, grey | Chesneau's disk model, not posted | BSMEM |
 | 2008 | [2008SPIE.7013E..1NC](https://ui.adsabs.harvard.edu/abs/2008SPIE.7013E..1NC) | ✅ JMMC | CHARA 6T, J/H/K, model differs per band | not posted | MiRA |
 | 2010 | [2010SPIE.7734E..2NM](https://ui.adsabs.harvard.edu/abs/2010SPIE.7734E..2NM) | ✅ JMMC | AMBER 3T on ATs; Low HK (20 channels) and Med H (512 channels, 94k V²) | Chiavassa's CO5BOLD model, not posted | BSMEM |
-| 2012 | [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB) | ❌ lost with OLBIN | CHARA/MIRC-6T, H band | was posted, lost | MACIM |
-| 2014 | [2014SPIE.9146E..1QM](https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM) | ❌ raw frames only (60.A-9237(A)) | PIONIER, **real** data on VY CMa and R Car | none (real data) | BSMEM (Sanchez-Bermudez) |
-| 2016 | [2016SPIE.9907E..1DS](https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1DS) | ❌ not archived | GRAVITY and MATISSE, chromatic | not posted | IRBis? (Hofmann) |
+| 2012 | [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB) | ✅ John Young (Alp, Bet; C4b) | CHARA/MIRC-6T, H band | was posted, lost | MACIM |
+| 2014 | [2014SPIE.9146E..1QM](https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM) | ✅ John Young, reduced (C4b); R Car fails virgil 0.3.0's reader | PIONIER, **real** data on VY CMa and R Car | none (real data) | BSMEM (Sanchez-Bermudez) |
+| 2016 | [2016SPIE.9907E..1DS](https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1DS) | ✅ John Young (Objects 1, 2; C4b) | GRAVITY and MATISSE, chromatic | not posted | IRBis? (Hofmann) |
 | 2018 | [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM) | ✅ organiser's page (eso.org/~amerand) | CHARA and PIONIER, grey | analytic, parameters in the paper | SQUEEZE then BSMEM |
 | 2022 | [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1GS) | ✅ OiDB | GRAVITY K (11 channels) and JWST/NIRISS AMI | not posted | BSMEM (Young) |
 | 2024 | [2024SPIE13095E..14M](https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M) | ✅ OiDB | PIONIER, GRAVITY, MATISSE L and N; chromatic, with calibration biases | not public (ImageMetrics) | MiRA (Drevon) |
-| 2026 | Proc. SPIE 14148, 1414811 | not yet | ? | ? | ? |
+| 2026 | Proc. SPIE 14148, 1414811 | not yet | K, LM, N (from the truth cubes) | ✅ truth cubes, a globular-cluster simulation (John Young; C4b) | ? |
 
 Ben has written to Fabien Baron (2012), Joel Sanchez-Bermudez (2016, and
 the 2014 and 2022 truth) and Antoine Mérand (2018) to ask for the missing
