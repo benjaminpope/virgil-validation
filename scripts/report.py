@@ -196,7 +196,7 @@ def main():
         from importlib.metadata import version
 
         out(f"External packages: PMOIRED {version('pmoired')} (conventions in")
-        out("[pmoired_conventions.md](pmoired_conventions.md)).\n")
+        out("[the PMOIRED page](method/pmoired.md)).\n")
     except Exception:
         out("External packages: PMOIRED not installed.\n")
     parity()

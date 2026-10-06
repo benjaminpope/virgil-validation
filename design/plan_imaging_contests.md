@@ -410,7 +410,7 @@ Planned options for `contest_images.py`, in order:
 
 ### C2d. The convergence diagnosis and the ensemble campaign
 
-`docs/contest_convergence_diagnosis.md` separates the causes of the
+`design/contest_convergence_diagnosis.md` separates the causes of the
 non-converging fits: optimiser and conditioning, likelihood, regularisation
 and hyperparameters, and initialisation. Initialisation and the image
 parameterisation dominate. The campaign follows the winners' methods taken
@@ -518,7 +518,7 @@ before submitting.
 - *Which first.* 2018 already fits (χ²/N 1.11), so it is the first case to
   score.
 - *Sources.* The metric definitions and published score tables are
-  collected in `docs/contest_scoring_sources.md`.
+  collected in `design/contest_scoring_sources.md`.
 
 **Order of work.**
 1. Per-block error scales (virgil PR).
@@ -616,7 +616,7 @@ MPoL (`rml-imaging`).
    Soulez later, not yet. Until then, 2024 is assessed on the data alone
    (χ²/N, residuals, agreement within the ensemble) and is left out of the
    comparison with the winners. It is recorded as pending in
-   `docs/contest_scoring_sources.md`.
+   `design/contest_scoring_sources.md`.
 2. **Chromatic imaging in virgil.** If C3 shows that per-band images are
    not enough, should a cross-wavelength regulariser go into virgil (a
    design note first)?

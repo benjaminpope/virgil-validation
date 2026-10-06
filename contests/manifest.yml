@@ -6,7 +6,7 @@
 # a data directory (default ~/data/imaging_contests) and checks each sha256.
 # Papers were found on ADS (queried 2026-10-04); data locations, organisers
 # and winners were read from the papers, the archived contest pages and the
-# OiDB collections. See docs/plan_imaging_contests.md.
+# OiDB collections. See design/plan_imaging_contests.md.
 #
 # Per contest:
 #   bibcode, doi, arxiv  the contest paper

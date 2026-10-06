@@ -46,3 +46,26 @@ def pixel_centres(npix, pixel_scale):
     c = (np.arange(npix) - (npix - 1) / 2.0) * pixel_scale
     east, north = np.meshgrid(c, c)
     return east.ravel(), north.ravel()
+
+
+def scattered_ring(radius, fwhm, inc, pa, phase, n_r=300, n_phi=1440):
+    """A flat ring of dust lit by the central star, rendered in 3-D from
+    first principles rather than from Blakely et al.'s azimuthal form: each
+    point of the mid-plane (Gaussian in radius) scatters starlight towards
+    the observer with ``phase`` of the true scattering angle, the angle
+    between the star-to-point and point-to-observer directions. The
+    mid-plane's near side (towards the observer) is labelled by position
+    angle pa + 90, as virgil labels it. Returns (east, north, weight)."""
+    sigma = fwhm / FWHM_PER_SIGMA
+    r = np.linspace(max(radius - 4 * sigma, 1e-6), radius + 4 * sigma, n_r)
+    phi = np.linspace(0.0, 2 * np.pi, n_phi, endpoint=False)
+    R, P = np.meshgrid(r, phi)
+    x, y = R * np.sin(P), R * np.cos(P)  # along the major axis, towards the near side
+    i, p = np.deg2rad(inc), np.deg2rad(pa)
+    major, near = np.array([np.sin(p), np.cos(p)]), np.array([np.cos(p), -np.sin(p)])
+    east = x * major[0] + y * np.cos(i) * near[0]
+    north = x * major[1] + y * np.cos(i) * near[1]
+    towards_observer = y * np.sin(i)
+    scattering = np.arccos(np.clip(towards_observer / R, -1.0, 1.0))
+    w = np.exp(-((R - radius) ** 2) / (2 * sigma**2)) * phase(scattering) * R  # R: the area element
+    return east.ravel(), north.ravel(), (w / w.sum()).ravel()

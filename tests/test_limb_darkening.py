@@ -81,7 +81,7 @@ def test_our_cloud_matches_our_hankel_transform(uvw, profile, diam):
     )
 
 
-@pytest.mark.validates("crosscheck.limb", roots=["literature", "mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference")
 def test_our_cloud_matches_hanbury_brown_linear_law(uvw):
     u, v, wl = uvw
     assert_close(
@@ -119,7 +119,7 @@ def test_polynomial_laws(uvw, law, diam):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("q1, q2", [(0.36, 0.29), (0.9, 0.1), (0.05, 0.8), (0.5, 0.5)])
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics", "literature"])
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics"])
 def test_kipping_quadratic(uvw, q1, q2):
     u, v, wl = uvw
     profile = limb.polynomial(limb.kipping_quadratic_u(q1, q2))
@@ -131,7 +131,7 @@ def test_kipping_quadratic(uvw, q1, q2):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("q1, q2", [(0.36, 0.29), (0.9, 0.1), (0.05, 0.8), (0.5, 0.5)])
-@pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics", "literature"])
+@pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics"])
 def test_kipping_square_root(uvw, q1, q2):
     u, v, wl = uvw
     profile = limb.square_root(*limb.kipping_square_root_cd(q1, q2))
@@ -214,7 +214,7 @@ Q_EDGES = [(a, b) for a in np.linspace(0.0, 1.0, 5) for b in np.linspace(0.0, 1.
 
 
 @pytest.mark.x64
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["literature"])
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics"])
 def test_quadratic_maps_both_ways():
     for q1, q2 in Q_GRID:
         star = vm.QuadraticLimbDarkenedDisk(3.0, q1, q2)
@@ -227,7 +227,7 @@ def test_quadratic_maps_both_ways():
 
 
 @pytest.mark.x64
-@pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["literature"])
+@pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics"])
 def test_square_root_maps_both_ways():
     for q1, q2 in Q_GRID:
         star = vm.SquareRootLimbDarkenedDisk(3.0, q1, q2)
@@ -246,12 +246,12 @@ def test_square_root_maps_both_ways():
         pytest.param(
             "QuadraticLimbDarkenedDisk", lambda s: (s.u1, s.u2), limb.quadratic_is_physical,
             id="quadratic",
-            marks=pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["literature"]),
+            marks=pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics"]),
         ),
         pytest.param(
             "SquareRootLimbDarkenedDisk", lambda s: (s.c, s.d), limb.square_root_is_physical,
             id="square-root",
-            marks=pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["literature"]),
+            marks=pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", roots=["mathematics"]),
         ),
     ],
 )

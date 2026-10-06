@@ -1,5 +1,5 @@
 """Evidence records: what each test validates, against which roots of
-trust, on exactly which code (docs/design.md, "Making it traceable").
+trust, on exactly which code (docs/method/index.md, "Making it traceable").
 
 Tests declare their claim with a marker::
 
@@ -14,6 +14,7 @@ describing the run (virgil commit, package versions, runner).
 # whichever of these suits it; no stage needs every package.
 ROOTS = (
     "mathematics",  # closed forms, checked numerically with SciPy/NumPy
+    "render",  # an image drawn from the physical geometry (sky conventions: East = +RA, PA North through East), Fourier-transformed numerically
     "standards",  # OIFITS, Thompson-Moran-Swenson uv geometry
     "dlux",
     "pmoired",
@@ -22,7 +23,7 @@ ROOTS = (
     "orbitize",  # orbitize! (Blunt et al. 2020, 2024): Keplerian orbits, RVs
     "ehtim",  # eht-imaging (Chael et al.): imaging and its regularisers
     "mpol",  # MPoL (Czekala et al.): RML imaging, gridding, Fourier transforms
-    "literature",  # a published result, reproduced from the authors' data
+    "literature",  # published numbers reproduced from the authors' data (not a formula we transcribed: that is mathematics)
     "statistics",  # ensembles with a known distribution
     "self-consistency",  # virgil against virgil: the weakest
 )
@@ -35,4 +36,6 @@ KINDS = (
     "upstream",  # strict xfail: a known problem in an external package
     "reference",  # checks our own reference code (crosscheck, bridges)
     "guard",  # repository rules, e.g. independence
+    "regression",  # finite/shape/no-crash guards of virgil: weak, never independent
+    "definition",  # documents that two codes define something differently: never agreement
 )

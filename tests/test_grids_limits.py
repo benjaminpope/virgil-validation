@@ -80,6 +80,49 @@ def test_nsigma_matches_the_chi2_tail(ratio, ndof):
     assert abs(got - want) < 1e-6 * max(1.0, want)
 
 
+@pytest.mark.validates("virgil.limits.nsigma", roots=["mathematics"])
+@pytest.mark.parametrize("true", [0.7, 1.8])
+def test_nsigma_uses_the_ratio_to_the_true_chi2(true):
+    """With chi2r_true != 1 the significance is that of the ratio
+    chi2r_test / chi2r_true; ignoring chi2r_true would give another answer
+    (a control)."""
+    ratio, ndof = 1.2, 200
+    want = -special.ndtri_exp(stats.chi2.logsf(ndof * ratio, ndof) - np.log(2.0))
+    got = float(nsigma(ratio * true, true, ndof))
+    record("abs_dsigma", abs(got - want))
+    assert abs(got - want) < 1e-6 * max(1.0, want)
+    assert abs(float(nsigma(ratio * true, 1.0, ndof)) - want) > 0.5
+
+
+@pytest.mark.validates("virgil.inference.laplace_cov", roots=["mathematics"])
+def test_laplace_cov_is_the_inverse_hessian_of_half_chi2(dataset):
+    """laplace_cov of the binary at (dra, ddec, flux) against the inverse of
+    the Hessian of chi2/2 from our own chi-squared, by central differences."""
+    which, data, d = dataset
+    if which != "companion":
+        pytest.skip("with no companion this point is not a minimum, and the Hessian is not positive-definite")
+    from virgil.inference import laplace_cov
+
+    x0 = np.array([DRA, DDEC, FLUX])
+    got = np.asarray(laplace_cov(x0, ["dra", "ddec", "flux"], data, vm.BinaryModelCartesian))
+
+    def half_chi2(x):
+        return 0.5 * ours.chi2(d, binary_vis(*x))
+
+    h = np.array([1e-3, 1e-3, 1e-5])
+    hess = np.empty((3, 3))
+    for i in range(3):
+        for j in range(3):
+            ei, ej = np.eye(3)[i] * h[i], np.eye(3)[j] * h[j]
+            hess[i, j] = (half_chi2(x0 + ei + ej) - half_chi2(x0 + ei - ej)
+                          - half_chi2(x0 - ei + ej) + half_chi2(x0 - ei - ej)) / (4 * h[i] * h[j])
+    want = np.linalg.inv(0.5 * (hess + hess.T))
+    scale = np.sqrt(np.outer(np.diag(want), np.diag(want)))
+    worst = float(np.max(np.abs(got - want) / scale))
+    record("max_rel_dcov", worst)
+    assert worst < 1e-4
+
+
 @pytest.mark.validates("virgil.grid_fit.optimized_flux_grid", "virgil.grid_fit.laplace_flux_uncertainty_grid", roots=["mathematics"])
 def test_best_flux_and_its_curvature_at_fixed_positions(dataset):
     _, data, d = dataset
@@ -185,7 +228,7 @@ def test_ruffio_upperlimit_is_the_truncated_gaussian_quantile(mean, sigma, perce
 
 
 @pytest.mark.slow
-@pytest.mark.validates("virgil.grid_fit.optimized_flux_grid", "virgil.grid_fit.laplace_flux_uncertainty_grid", roots=["statistics"], tier="B")
+@pytest.mark.validates("virgil.grid_fit.optimized_flux_grid", "virgil.grid_fit.laplace_flux_uncertainty_grid", roots=["statistics"], tier="B", kind="regression")
 def test_flux_pulls_at_the_true_position(tmp_path):
     """Over 200 noisy realisations, the best flux at the true position, in
     units of its Laplace uncertainty, is N(0, 1)."""

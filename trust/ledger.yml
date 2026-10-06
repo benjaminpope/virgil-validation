@@ -1,4 +1,4 @@
-# The mismatch ledger (docs/design.md): every disagreement found, its ruling
+# The mismatch ledger (docs/method/index.md): every disagreement found, its ruling
 # and how it was refereed.
 #
 # ruling: virgil | external:<package> | definition | crosscheck
@@ -194,7 +194,7 @@
   title: With unequal closure-phase errors in a group, fouriever uses r^T C^+ r and virgil r^T D^-1/2 R^+ D^-1/2 r (different generalised inverses of the singular C)
   objects: [virgil.oidata.OIData.cp_noise, virgil.likelihood.whitened_residuals]
   ruling: definition
-  referee: mathematics (each form written independently, 1e-12); statistics (on closures of baseline-phase noise virgil's form is closer to the nominal chi-squared, e.g. 2.94 vs 2.75 against 3)
+  referee: mathematics (each form written independently, 1e-12); statistics (on closures of baseline-phase noise with unequal errors neither form is calibrated, virgil's is the closer, e.g. 2.94 vs 2.75 against 3; with equal errors virgil's is calibrated, tests/test_fouriever.py::test_whitening_is_calibrated_on_equal_baseline_noise)
   evidence:
     - tests/test_fouriever.py::test_unequal_errors_use_different_generalised_inverses
     - tests/test_fouriever.py::test_whitened_form_is_better_calibrated_on_baseline_noise
@@ -218,7 +218,7 @@
 
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
-  objects: [external_bridge.pmoired_models]
+  objects: [pmoired]
   ruling: external:pmoired
   referee: mathematics (finite models expected)
   evidence: [tests/test_pmoired_problems.py::test_p1_default_setup_gives_finite_models]
@@ -226,7 +226,7 @@
 
 - id: P2
   title: PMOIRED's default ring sampling is not its documented Nr = 100
-  objects: [external_bridge.pmoired_models]
+  objects: [pmoired]
   ruling: external:pmoired
   referee: mathematics (two-Airy annulus)
   evidence: [tests/test_pmoired_problems.py::test_p2_default_nr_is_100]
@@ -234,7 +234,7 @@
 
 - id: P3
   title: PMOIRED's rings stop at ~1e-4 precision beyond 30 samples per baseline
-  objects: [external_bridge.pmoired_models]
+  objects: [pmoired]
   ruling: external:pmoired
   referee: mathematics (two-Airy annulus)
   evidence:
@@ -250,6 +250,14 @@
   evidence: [tests/test_pmoired_fits.py::test_uncertainties_agree_without_closure_redundancy]
   status: fixed
   links: [https://github.com/benjaminpope/virgil-validation/pull/11]
+
+- id: C2
+  title: Our OIFITS writer wrote DATE_OBS (a Python keyword argument) instead of the DATE-OBS keyword OIFITS v2 requires, with a fixed date
+  objects: [crosscheck.oifits_writer]
+  ruling: crosscheck
+  referee: the OIFITS v2 standard (Duvert et al. 2017), checked with astropy
+  evidence: [tests/test_references.py::test_oifits_writer_meets_the_v2_standard]
+  status: fixed
 
 - id: P4
   title: CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation)

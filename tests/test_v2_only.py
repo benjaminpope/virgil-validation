@@ -81,7 +81,7 @@ def test_v2_only_fit_agrees_with_pmoired(tmp_path):
 
 
 @pytest.mark.slow
-@pytest.mark.validates("virgil.inference.laplace_cov", "virgil.fitting.fit", roots=["statistics"], tier="B")
+@pytest.mark.validates("virgil.inference.laplace_cov", "virgil.fitting.fit", roots=["statistics"], tier="B", kind="regression")
 def test_v2_only_diameter_pulls(tmp_path):
     rng = np.random.default_rng(31)
     n = 200

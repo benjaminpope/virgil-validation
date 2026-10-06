@@ -7,8 +7,15 @@ of motion, u = omega + f the argument of latitude, and
     dDec = r (cos Omega cos u - sin Omega sin u cos i)
     dRA  = r (sin Omega cos u + cos Omega sin u cos i)
 
-so for i < 90 deg the position angle increases with time. Kepler's equation
-M = E - e sin E is solved by Newton's method in SciPy.
+so for i < 90 deg the position angle increases with time. Along the line
+of sight, z = r sin u sin i is positive away from the observer: the
+ascending node is the one where the companion recedes. Its radial velocity
+relative to the primary is then the textbook
+
+    v_z = 2 pi a sin i / (P sqrt(1 - e^2)) (cos u + e cos omega),
+
+positive receding. Kepler's equation M = E - e sin E is solved by Newton's
+method in SciPy.
 """
 
 import numpy as np
@@ -47,3 +54,18 @@ def position_angle(f, ecc, inc, omega, Omega):
     """Position angle (radians, North through East) at true anomaly f."""
     dra, ddec = sky_position(f, ecc, inc, omega, Omega)
     return np.arctan2(dra, ddec)
+
+
+def depth(f, ecc, inc, omega, a=1.0):
+    """z, positive away from the observer, at true anomaly f (radians)."""
+    r = a * (1 - ecc**2) / (1 + ecc * np.cos(f))
+    return r * np.sin(np.deg2rad(omega) + f) * np.sin(np.deg2rad(inc))
+
+
+def radial_velocity(t, period, t_peri, ecc, inc, omega, a):
+    """dz/dt of the companion relative to the primary (a's units per day,
+    positive receding) at times t (days)."""
+    mean = 2 * np.pi * (np.asarray(t, float) - t_peri) / period
+    f = true_anomaly(np.mod(mean + np.pi, 2 * np.pi) - np.pi, ecc)
+    k = 2 * np.pi * a * np.sin(np.deg2rad(inc)) / (period * np.sqrt(1 - ecc**2))
+    return k * (np.cos(np.deg2rad(omega) + f) + ecc * np.cos(np.deg2rad(omega)))

@@ -22,7 +22,7 @@ chosen from the data and grown while that lowers χ² (run()). An analytic
 central star is used where the contest described a star, or where the data
 show an unresolved source dominates (each task's "star_source").
 The images are compared with the published entries in
-docs/plan_imaging_contests.md (Stage C2). This is heavy: run it on OzSTAR
+design/plan_imaging_contests.md (Stage C2). This is heavy: run it on OzSTAR
 (ozstar_scripts job `contest_imaging`), not on a laptop; --smoke is a
 seconds-long check that the script runs.
 """
@@ -70,7 +70,7 @@ from virgil.spectra import PowerLaw  # noqa: E402
 
 # One task per dataset. Everything here is what contestants had before they
 # submitted (contests/manifest.yml, "presubmission"); nothing revealed in the
-# papers afterwards is used (docs/plan_imaging_contests.md, "Initialisation").
+# papers afterwards is used (design/plan_imaging_contests.md, "Initialisation").
 #   field:   field of view in mas, when the contest gave one (with its source);
 #            None: chosen from the data, enlarged while flux reaches the edge
 #   prior:   ("gauss", FWHM mas): the MaxEnt default image and the start

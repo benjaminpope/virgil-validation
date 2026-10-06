@@ -8,7 +8,7 @@ Packages: virgil-astro 0.2.0, jax 0.11.2, numpy 2.5.3, scipy 1.18.1, dLux 0.15.1
 Counts in brackets are virgil's own tests (its `validates` markers), from virgil's CI at `ec4cf51530` ([run](https://github.com/benjaminpope/virgil/actions/runs/37173979477)).
 
 Each cell counts the tests that check the object against that root of
-trust (see [design](design.md)); negative controls and checks of our own
+trust (see [design](method/index.md)); negative controls and checks of our own
 references are included under the object they concern.
 
 | object | mathematics | standards | dlux | pmoired | candid | literature | statistics | self-consistency | golden:dholakia |

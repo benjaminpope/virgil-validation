@@ -1,7 +1,7 @@
 # Why the contest reconstructions do not converge
 
 A diagnosis of the stalled and poor image fits in the imaging-contest work
-(`docs/plan_imaging_contests.md`, Stage C2). The evidence comes from our own
+(`design/plan_imaging_contests.md`, Stage C2). The evidence comes from our own
 OzSTAR runs on virgil `b73ff6a`, `98eaf86` and `02aad5e` (results in
 `~/data/imaging_contests/results/<commit>/`). The methods come from the
 contest papers and the winning codes' own method papers. Only **methods**

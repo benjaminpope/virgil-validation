@@ -3,7 +3,7 @@
     python scripts/score_2004.py ENSEMBLE_NPZ [--data DIR] [--out DIR]
 
 The truth is rebuilt from the model published *after* the contest
-(docs/contest_scoring_sources.md, "data2 truth model"). It is used here for
+(design/contest_scoring_sources.md, "data2 truth model"). It is used here for
 scoring only, never for imaging. The model:
 
 - A: an elliptical limb-darkened disk, 5.5 mas major axis, axis ratio 0.7,
