@@ -23,7 +23,7 @@ This plan uses OiDB for three goals:
   paper and stay out of this repository (see "Rapid rotators" below).
 
 Terms (read from <https://oidb.jmmc.fr/doc.html>, sections 2, 3 and 9, on
-2026-10-07; Ben has accepted them): the portal and its contents are under
+2026-10-07; Ben has accepted them; decision 1 below): the portal and its contents are under
 CC BY-NC-SA 4.0, **and** the terms of use add obligations that depend on the
 data's calibration level. Use is for public astronomical research only.
 For **L2** (unpublished) data the user must contact the dataPI *before*
@@ -194,18 +194,26 @@ The JWST AMI files are already calibrated OIFITS, so the masking rule
 Three Be-star collections that the OiDB spreadsheet tags as rapid rotators
 are planned privately with the rapid rotators (see "Rapid rotators" below).
 
-Further binaries from the OiDB spreadsheet (`~/data/oidb/oidb_collections.csv`,
-2026-10-07), all Stage O2, one line each (published result and model read in
-O0; cross-check is the published values unless stated):
+**Clean binaries are the validation targets.** A system with significant
+circumstellar or circumbinary material can fail a binary fit for reasons
+that have nothing to do with virgil, so it is never a binary pass/fail
+check. Rows above flagged **not clean** are fitted as binary + disk/dust
+models at low priority and reported, not scored: κ Tuc A (hot exozodiacal
+dust), the SPHERE SAM transition disks, SS Lep (circumbinary dust),
+γ² Vel (colliding winds), HR 6819 (Be decretion disk; see O1), T CrA
+(Herbig disk), the massive YSOs, the symbiotics (accretion, nebula) and
+WR 137 (dust). The WR survey is scored only on companions the paper
+reports as point-like.
 
-- `3722c1a7-469d-4701-a2c1-a7469d870133`: post-AGB binaries, MATISSE, 32 files (Corporaal+2023 A&A 674, A151): circumbinary disk inner rims; `ModulatedGaussianRim` + point star; OC.
-- `557172ab-bfbf-43f9-b172-abbfbf33f9a6`: IRAS 08544-4431 post-AGB binary, MATISSE, 22 files (Corporaal+2021): binary + circumbinary rim; OC.
-- `bf01675e-7069-4d06-8167-5e70697d068a`: post-AGB binaries, re-reduced MATISSE, 23 files (Corporaal): rim sizes vs the paper; OC.
-- `J/A+A/559/A111`: 89 Her post-AGB binary, AMBER/CHARA/PTI/VEGA/IOTA, 14 files (Hillen+2013 A&A 559, A111): circumbinary disk size and flux fractions; OC.
-- `512015b1-fb46-4cde-a015-b1fb46ccdec6`: ρ Oph A, GRAVITY, 8 files (Klement+2025, bibcode O0): binary position and magnetosphere offset; binary + `GaussianDisk`; OC.
-- `76557b92-ec46-4158-957b-92ec461158a9`: ε Aur 1997–2011, PTI/NPOI/CHARA, 51 files (Kloppenborg+2015 ApJS 220, 14): eclipsing disk geometry over the eclipse; `UniformDisk` + `EllipticalGaussian`; OC.
-- `J/A+A/544/A91`: ε Aur, VEGA, 63 files (Mourard+2012 A&A 544, A91): F-star diameter and disk during eclipse; same model; OC.
-- `c5a5d133-a178-4949-a5d1-33a1781949e5`: WR 104, MATISSE, 121 files (paper O0): pinwheel dust; parametric spiral first, images in O3; OC/OG.
+Further binary from the OiDB spreadsheet (`~/data/oidb/oidb_collections.csv`,
+2026-10-07), Stage O2 (published result and model read in O0):
+
+- **not clean** `512015b1-fb46-4cde-a015-b1fb46ccdec6`: ρ Oph A, GRAVITY, 8 files (Klement+2025, bibcode O0): binary position and magnetosphere offset; binary + `GaussianDisk`; OC.
+
+Excluded (2026-10-07): the post-AGB binaries (`3722c1a7-…`, `557172ab-…`,
+`bf01675e-…`) and 89 Her (`J/A+A/559/A111`), whose circumbinary disks make
+them unclean; ε Aur (`76557b92-…`, `J/A+A/544/A91`), the system eclipsed by
+a disk. WR 104 moves to O3 imaging.
 
 Also tagged by the spreadsheet and already covered elsewhere: the imaging
 contest collections (`7f7fb9ed-…`, `3e71bedc-…`, `6df579f8-…`), which belong
@@ -238,6 +246,9 @@ Further imaging targets from the spreadsheet, all Stage O3, one line each
 - `3d64620d-a152-4e75-9bc4-c68735d293b1`: CL Lac, MIRC-X, 36 files (Chiavassa+, bibcode O0): convective surface structure; LD diameter baseline.
 - `f87fdde1-c4b6-4de7-bfdd-e1c4b69de708`: Arcturus, IOTA/IONIC, 9 files (Lacour+2008 A&A 485, 561): limb-darkened disk image; a near-featureless control for the residual-image test.
 - `f9418307-0127-49cf-8183-070127f9cf08`: Betelgeuse, MATISSE 2018–20, 361 files (Drevon+2024 MNRAS 527, L88): surface images; Drevon is the PYRA author, so the most direct check of `virgil.ensemble` if his images used PYRA (O0).
+- `c5a5d133-a178-4949-a5d1-33a1781949e5`: WR 104, MATISSE, 121 files (status O0): colliding-wind WR binary with a pinwheel dust nebula; image deconvolution and the PYRA/ensemble comparison, not a binary fit.
+- `12803c68-6124-40ad-803c-68612470ad3d`: R Scl, MATISSE, 236 files (Drevon+2022 A&A 665, A32): a PYRA comparison target (Drevon's own data).
+- Drevon's Betelgeuse MATISSE runs, PYRA comparison targets with `f9418307-…` above: `5866421b-f263-46c0-a642-1bf263a6c0bd` (2018-12 commissioning, 111 files), `6c5e6803-f7af-4f0e-9e68-03f7afcf0e18` (2020-02, 18 files), `07f92587-f7ef-4f04-b925-87f7ef3f04c1` (2020-12, 54 files); publication status O0.
 - `706d923a-657a-44bb-ad92-3a657a34bb1f`: Betelgeuse, SPHERE-IRDIS SAM during the Great Dimming, 2 files (Montargès, paper O0): asymmetric photosphere; calibrated OIFITS, no AMICAL needed.
 
 ### Rapid rotators (goal c): in elr-pavo-paper, not here
@@ -282,33 +293,46 @@ In order:
    own esorex reduction of the same exposures is a reduction check with
    virgil on both sides, recorded as `self-consistency` only. The 2024-12
    and 2025-02 nights stay out-of-sample.
-2. **CHARA Imaging Workshop 2023.** ι Peg and σ Ori as binaries (positions
+2. **HR 6819, GRAVITY dynamical masses** (`696baf06-6c3c-424d-abaf-066c3c324d99`,
+   12 files). Per-epoch positions of the stripped star relative to the Be
+   star and the orbit vs Klement+2025 (A&A 694, A208), with the paper's
+   priors and data for the posterior comparison. The Be star's decretion
+   disk is resolved, so the model is binary + disk (`EllipticalGaussian`
+   or `GaussianDisk` around the Be star), and the check is labelled
+   **not clean**: positions are scored only against the paper's own
+   binary + disk solution, never as a clean-binary pass.
+3. **CHARA Imaging Workshop 2023.** ι Peg and σ Ori as binaries (positions
    vs orbits) and as images (goal b). Eight files, two goals.
-3. **ι Peg, Anugu's collection.** Five epochs and an orbit; the
+4. **ι Peg, Anugu's collection.** Five epochs and an orbit; the
    2018-10-22 night is also in the workshop set, so the two files of that
    night should give the same position (O0 checks whether they are the same
    reduction).
-4. **A-star companions (MIRC-X).** CANDID was the paper's tool: compare
+5. **A-star companions (MIRC-X).** CANDID was the paper's tool: compare
    with the published numbers (`literature`) and with CANDID re-run on the
    same files through the bridge (`candid`).
-5. **HD 45166.** One night, seven files.
-6. **π¹ Gru.** One file: the cheapest imaging target, and a first ensemble
+6. **HD 45166.** One night, seven files.
+7. **π¹ Gru.** One file: the cheapest imaging target, and a first ensemble
    run on real data.
 
 ### Stage O2: the remaining binaries (about 2 h per small collection, 6 h per survey; OC)
 
-Orbits first (GG Tau Ab, κ Tuc A, TZ For, θ¹ Ori C, γ² Vel, HD 174881,
-HR 6819, Polaris Ab, SS Lep), then surveys with limits (WR survey,
-A-type accelerators, SPHERE SAM, M17, massive YSOs), then the circumbinary
-and disk binaries (post-AGB ×3, 89 Her, ε Aur ×2, ρ Oph A, WR 104), then the
-Gaia BH3 limit-depth check with its injection controls, T CrA, R136 and the symbiotics.
+Orbit systems first, clean ones scored: GG Tau Ab, TZ For, θ¹ Ori C,
+HD 174881, Polaris Ab, HD 123999; then the not-clean orbit systems,
+reported but not scored: κ Tuc A, γ² Vel, SS Lep. **Decide after the
+orbits:** the detection-limit surveys (WR survey, A-type accelerators,
+SPHERE SAM, M17, massive YSOs) and the Gaia BH3 limit-depth check with its
+injection controls. Last, low priority and not clean: ρ Oph A, T CrA, R136
+and the symbiotics.
 
 ### Stage O3: imaging (about 4 h per target plus OzSTAR GPU time; OG)
 
 R Car, then Polaris, then R Dor (chromatic; needs C3-style chromatic
 imaging from the contest plan), then the further targets listed above
 (Arcturus first as the featureless control, Betelgeuse MATISSE once O0 has
-settled the PYRA question). Each with the four steps above.
+checked which runs Drevon's papers used; WR 104, R Scl and Drevon's
+Betelgeuse sets as PYRA comparisons). Images are compared with the
+published figures and quoted values only: we do not ask authors for FITS
+images, and we do not run MiRA or SQUEEZE. Each with the four steps above.
 
 ### Stage O4: reporting (2 h)
 
@@ -333,33 +357,39 @@ OiDB acknowledgement and the CC BY-NC-SA notice). Results from an L2
 collection are not published on the site until its dataPI has been
 contacted and has agreed the policy.
 
-## Questions for Ben
+## Decisions (2026-10-07)
 
-1. **Terms per collection.** Most collections here are L3 (behind a paper),
-   so thanks and citation suffice; any L2 ones (O0 finds out: e.g. R136
-   GRAVITY+, WR 104, κ Tuc P111, PIONIER L2) need the dataPI contacted
-   before results go public. Who should write to L2 dataPIs, and is the
-   ShareAlike clause acceptable for figures on this repository's site (it
-   has no licence file)?
-2. **Scope of (a).** All 28 binary collections, or stop after O1 and the
-   orbit systems in O2? The surveys (WR, Be, A-type) are the most work.
-3. **User-Agent.** OiDB refuses non-browser clients. Use a browser string
-   in the fetcher, or ask JMMC whether a descriptive agent is allowed?
-4. **Big collections.** Search PIONIER L2 (10 982 files) for extra epochs of
-   these binaries? It needs a
-   target-search route; OiDB search is JavaScript-only.
-5. **Published images.** May we email the authors (Paladini, Rosales-Guzmán,
-   Ohnaka, Evans) for FITS images to compare against, or compare only with
-   the papers' figures and quoted numbers?
-6. **No other imagers.** Keep the contest rule (no MiRA/SQUEEZE runs) for
-   these real-data images too?
-7. **Drevon's own data.** OiDB has Drevon's R Scl and Betelgeuse MATISSE
-   collections; if any of his PYRA/MYTHRA images used them, they would be the
-   most direct check of `virgil.ensemble`. Add them?
+Ben's answers to the open questions on PR #69:
+
+1. **Licence and attribution.** Derived numbers and figures go on the public
+   site with attribution. `DATA_ATTRIBUTION.md` records OiDB's CC BY-NC-SA
+   4.0 licence, the L3 obligation (thank the dataPI, cite the paper), the L2
+   obligation (contact the dataPI before presenting) and OiDB's
+   acknowledgement sentence; its per-collection entries are filled in as O0
+   runs.
+2. **Scope.** Systems with orbits first: O1, then the O2 orbit systems. The
+   detection-limit surveys (WR survey, A-type accelerators, SPHERE SAM, M17,
+   massive YSOs, Gaia BH3) stay in the plan, marked "decide after the
+   orbits".
+3. **User-Agent.** The fetcher keeps a browser-like User-Agent string; JMMC
+   is not asked.
+4. **PIONIER L2 search.** Deferred until O1 works.
+5. **Published images.** Authors are not emailed for FITS images; image
+   checks compare with the published figures and quoted values, and Ben
+   compares the images himself.
+6. **Other imagers.** MiRA, SQUEEZE and the like are not run here either.
+7. **Drevon's data.** R Scl and Drevon's Betelgeuse MATISSE sets are O3
+   PYRA comparison targets.
+8. **Rapid rotators.** Kept out of this repository (see "Rapid rotators").
+9. **Clean binaries only** for pass/fail: post-AGB binaries and 89 Her
+   dropped, ε Aur excluded, WR 104 moved to O3 imaging, and other systems
+   with circumstellar material flagged "not clean".
+10. **GRAVITY dynamical masses** (HR 6819, `696baf06-…`) moves into O1,
+    straight after Gl 229.
 
 ## Order of work
 
-O0 → O1 (items 1–6 in order) now, on virgil main. O2 and O3 can run in
+O0 → O1 (items 1–7 in order) now, on virgil main. O2 and O3 can run in
 parallel once O1 has passed. Downloads only from trevor via `scripts/oidb_dl`;
 fits only on OzSTAR. About 40–50 agent hours for everything, of which O0–O1
 is about 15.
