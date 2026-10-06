@@ -82,13 +82,23 @@ downloaded for this plan.
 ## Independence and ground truth
 
 - Same files, different code: virgil reads the authors' OIFITS and fits
-  them. The published number is a `golden:<paper>` root; since both analyses
-  use the same data, they should agree to well within the published σ, and
-  a large difference is a finding.
-- Out-of-sample checks are stronger where they exist: an orbit fitted to
-  some epochs predicting another (Gl 229, κ Tuc A, σ Ori, Polaris Ab),
-  or one night in two collections (ι Peg on 2018-10-22 is in both the
-  workshop data and Anugu's collection, a check of the two calibrations).
+  them. The published number is the `literature` root ("published numbers
+  reproduced from the authors' data"), not `golden:`, which is reserved for
+  reference values from someone's code registered in `trust/golden.yml`.
+  Since both analyses use the same data, they should agree to well within
+  the published σ, and a large difference is a finding.
+- **In-sample vs out-of-sample, per epoch.** O0 records, for every epoch in
+  `oidb/references/<collection>.json`, whether the paper's orbit used it.
+  An epoch the paper used is a same-data `literature` check with the tight
+  tolerance below, not a prediction. "Out-of-sample" is kept for epochs
+  that are really new: Gl 229's 2024-12 and 2025-02 nights, and any κ Tuc A,
+  σ Ori or Polaris Ab epoch O0 shows the paper did not use. The ι Peg
+  2018-10-22 night (workshop and Anugu's collection), the σ Ori 2011-09-29
+  night (very probably in Schaefer+2016) and the Polaris epochs Evans+2024
+  used are in-sample until O0 shows otherwise.
+- **Roots are claimed only when exercised.** A published CANDID or PMOIRED
+  number is `literature`; the `candid` or `pmoired` root needs that code
+  re-run by us on the same files through `src/external_bridge/`.
 - Reference positions from published elements come from the NumPy Kepler
   evaluator in `src/crosscheck/orbits.py`; diameters from the SciPy
   uniform and limb-darkened disk visibilities in `src/crosscheck/limb.py`.
@@ -107,20 +117,27 @@ downloaded for this plan.
   the relevant group: log-uniform separations, flux ratios, diameters,
   periods, semi-major axes and error scales; uniform PAs, positions, Ω, ω
   and time of periastron; uniform cos i; eccentricity uniform on [0, 1)
-  (a stated choice, no group acts on it). All bounds are stated.
+  (a stated choice, no group acts on it). All bounds are stated. These are
+  the priors of virgil's own headline fits. A comparison with a *published
+  posterior* instead uses the paper's priors and the paper's data set, in
+  the style of `orbitize-posterior` (RVs included where the paper used
+  them, or the comparison stated as astrometry-only with ω taken mod 180°),
+  so that a prior or data mismatch cannot pass or fail the check.
 
 ### Pass criteria (defaults; a dataset may tighten them)
 
 | Check | Pass |
 |---|---|
-| Per-epoch binary on the authors' files | Δρ, ΔPA, Δ(flux ratio) each ≤ 1σ_pub (same data); raw χ²/N reported, flagged if > 3 |
-| Same files, virgil vs CANDID or PMOIRED | best fits within 0.25σ (as `pmoired-identical-fits`), once conventions are pinned |
-| Orbit from the authors' files | each element within 2σ of the published posterior; out-of-sample positions within 2σ_pred |
-| Detection limits | virgil's 5σ contrast curve within 0.1 mag of the published one (CANDID's Absil limits run ~1% low, P4) |
+| Per-epoch binary on the authors' files (in-sample, `literature`) | Δρ, ΔPA, Δ(flux ratio) each ≤ 0.25σ_pub, against the statistical-only part of σ_pub where the paper states a systematic term (wavelength scale, error rescaling, bootstrap over nights); the flux-ratio definition (secondary/primary, primary/total, band) recorded in `oidb/references/*.json` and matched; raw χ²/N reported, flagged if > 3 |
+| Same files, virgil vs CANDID or PMOIRED re-run through the bridge (`candid`, `pmoired`) | best fits within 0.25σ (as `pmoired-identical-fits`), once conventions are pinned |
+| Orbit vs a published posterior | paper's priors and data set (above); percentiles of each element within 0.15 posterior sd (as `orbitize-posterior`) |
+| Orbit, virgil's headline fit (Jeffreys priors) | reported, not a pass/fail against the paper; out-of-sample positions within 2σ_pred |
+| Detection limits (`literature`) | virgil's 5σ contrast curve within 0.1 mag of the published one (CANDID's Absil limits run ~1% low, P4) |
+| Injection controls on the same files | a companion injected 0.5 mag above the published limit is detected; one 0.5 mag below is not |
 | Diameter / parametric | within 2σ_pub; raw χ²/N reported |
-| Image | raw χ²/N of the image on the given errors ≤ the published reconstruction's (or ≤ 1.5 when unstated); normalised cross-correlation ≥ 0.9 with the published image after convolving both to one beam; named features (below) recovered |
+| Image | the baseline is the best-fit `LimbDarkenedDisk` (step 1). The reconstruction must beat it in raw χ²/N on the given errors by a stated margin (fixed per target before the run), and the *residual* images (image − best-fit disk, both convolved to one beam) must have normalised cross-correlation ≥ 0.5 with the published residual; named features (below) recovered. Raw χ²/N also ≤ the published reconstruction's where stated |
 | Image vs eht-imaging, same data and regulariser | the same minimum (as `rml-imaging`) |
-| Ensemble (MYTHRA mean) | raw χ²/N ≤ the best single member's × 1.1; features inside the ensemble's 1σ spread map |
+| Ensemble (MYTHRA mean) | raw χ²/N ≤ the best single member's × 1.1; **spread bounded**: median spread over the stellar disk ≤ 0.3 × the contrast of the features it is used to judge; **spread calibrated**: on the workshop ι Peg/σ Ori data (known answer) and on a simulated twin of each real target's uv coverage, the 1σ spread map covers the truth at 68% ± 15% of pixels inside the disk, not much more |
 
 Thresholds are fixed and hashed before each OzSTAR run (`CRITERIA_HASH`).
 
@@ -135,10 +152,10 @@ read from the paper's tables in Stage O0, not from memory or abstracts.
 
 | Collection id | Target, instrument | Files | Reference | Published result to match | virgil model | Cross-check | Compute |
 |---|---|---|---|---|---|---|---|
-| 782185b2-0727-42b0-a185-b2072732b047 | Gl 229 Ba–Bb, GRAVITY (dual-field, SC on B) | 22 | Xuan+2024 Nature 634, 1070 | orbit P = 12.134 d, e ≈ 0.23, flux ratio 0.47±0.03; CPs only, 2.05–2.18 µm | `LinearBinary`-style per night, then `KeplerOrbit` + `Attached` on visibilities | our own esorex reduction of the same exposures (E1); `crosscheck.orbits`; PMOIRED (the authors' tool) | OC |
-| 647a22a9-5047-4220-ba22-a95047022072 | CHARA Imaging Workshop 2023: ι Peg (MIRC-X, 7 files, 2018-10-22) and σ Ori (MIRC, 1 file, 2011-09-29) | 8 | Workshop; ι Peg orbit (Anugu+2020, arXiv:2007.12320); σ Ori Aa–Ab (Schaefer+2016 AJ 152, 213) | position predicted by each orbit at the epoch; flux ratio (O0) | `BinaryModelAngular` (+ `UniformDisk` primary); also imaging, below | `crosscheck.orbits`; CANDID | OC |
+| 782185b2-0727-42b0-a185-b2072732b047 | Gl 229 Ba–Bb, GRAVITY (dual-field, SC on B) | 22 | Xuan+2024 Nature 634, 1070 | orbit P = 12.134 d, e ≈ 0.23, flux ratio 0.47±0.03; CPs only, 2.05–2.18 µm | per night: a linearly moving binary (the `LinearBinary` SourceModel in `fit_nights.py`, see O1), then `KeplerOrbit` + `Attached` on visibilities | Xuan's per-night positions (`literature`); `crosscheck.orbits`; PMOIRED was the authors' tool, so `literature` unless re-run through the bridge (`pmoired`); our esorex reduction (`self-consistency` only) | OC |
+| 647a22a9-5047-4220-ba22-a95047022072 | CHARA Imaging Workshop 2023: ι Peg (MIRC-X, 7 files, 2018-10-22) and σ Ori (MIRC, 1 file, 2011-09-29) | 8 | Workshop; ι Peg orbit (Anugu+2020, arXiv:2007.12320); σ Ori Aa–Ab (Schaefer+2016 AJ 152, 213) | position predicted by each orbit at the epoch; flux ratio (O0) | `BinaryModelAngular` (+ `UniformDisk` primary); also imaging, below | `crosscheck.orbits`; CANDID via the bridge; in-sample unless O0 shows otherwise | OC |
 | fac164e1-d9d0-4500-8164-e1d9d0450099 | ι Peg, MIRC-X GRISM-190 | 24 | Anugu+2020 (MIRC-X instrument paper) | 5-epoch positions and SB2 orbit, P ≈ 10.2 d (O0) | per epoch, then `KeplerOrbit` | CANDID; workshop files of 2018-10-22 | OC |
-| bda75673-61c6-49f0-a756-7361c699f0c4 | A-star companions, MIRC-X | 28 | De Furio+2022 ApJ 941, 118 | detections (ρ, PA, contrast) and limits | `linear_flux_grid`, `fit`, `absil_limits` | CANDID (used in the paper) | OC |
+| bda75673-61c6-49f0-a756-7361c699f0c4 | A-star companions, MIRC-X | 28 | De Furio+2022 ApJ 941, 118 | detections (ρ, PA, contrast) and limits | `linear_flux_grid`, `fit`, `absil_limits` | published CANDID numbers (`literature`) and CANDID re-run through the bridge (`candid`) | OC |
 | f4afc4cd-fd31-40d3-afc4-cdfd3150d340 | HD 45166, GRAVITY, one night | 7 | Deshmukh+2025 A&A 695, L20 | ρ, PA, flux ratio (O0) | `BinaryModelAngular` | CANDID; PMOIRED | OC |
 | 855397ef-dca8-4125-9397-efdca851259d | κ Tuc A, MATISSE (2019–24) + GRAVITY (2024) | 136 | Stuber+2026 AJ 171, 1 | per-epoch positions and orbit of the low-mass companion; hot-dust disk (O0) | chromatic binary (`spectra.PowerLaw` flux ratio) + `GaussianDisk` dust; `KeplerOrbit` | CANDID per epoch; published | OC |
 | 1e9bab59-54c9-416d-9bab-5954c9416db7 | GG Tau Ab1–Ab2, PIONIER | 3 | Duchêne+2024 (arXiv:2404.02469) | relative positions feeding the full orbit (O0) | `BinaryModelAngular` | `crosscheck.orbits`; CANDID | OC |
@@ -155,7 +172,7 @@ read from the paper's tables in Stage O0, not from memory or abstracts.
 | 648ec766-3046-4bd1-8ec7-6630463bd1f9 | newborn Be binaries, GRAVITY + MIRC-X/MYSTIC | 26 | Rivinius+2025 A&A 694, A172 | companion positions/flux ratios | binary + disk | published | OC |
 | ddf733ce-758e-43c4-b733-ce758e33c4f3 | Be stars, MIRC-X/MYSTIC | 134 | Klement+2024 ApJ 962, 70 | detected companions and limits | grid + `fit` + limits | CANDID | OC |
 | f9cf0622-5fb3-410c-8f06-225fb3e10c5d | T CrA B, MATISSE | 32 | Varga+2025 | first companion detection | chromatic binary + disk | published | OC |
-| 89aec164-3796-4f59-aec1-6437969f59c4 | Gaia BH3, GRAVITY | 13 | Kervella+2025 A&A 695, L1 | **null**: NIR upper limit | `absil_limits` (a control: no detection allowed) | CANDID | OC |
+| 89aec164-3796-4f59-aec1-6437969f59c4 | Gaia BH3, GRAVITY | 13 | Kervella+2025 A&A 695, L1 | NIR upper limit | `absil_limits`: a `check` of the limit *depth* against the paper (`literature`), plus injection controls on these files 0.5 mag above (must detect) and below (must not) the published limit; "no detection" alone tests nothing | CANDID via the bridge | OC |
 | 1b17307c-9691-4fea-9730-7c96917feaa9 | M17 young O stars, GRAVITY | 8 | Bordier+2021 | multiplicity, companion positions | grid + `fit` | CANDID | OC |
 | 544cd41c-6a2b-4374-8cd4-1c6a2bf374aa | massive YSOs, GRAVITY | 16 | Koumpia+2021 A&A 654, A109 | binarity at au scales | grid + `fit` | CANDID | OC |
 | 52853bac-9dbe-44d4-853b-ac9dbee4d480 | R136 central stars, GRAVITY+ | 3 | Millour (unpublished?) | (O0: is there a paper?) | grid | CANDID | OC |
@@ -175,10 +192,10 @@ Not planned as binaries: the post-AGB circumbinary disks (Corporaal, 89 Her),
 | Collection id | Target, instrument | Files | Reference | Published result | Features to recover | Compute |
 |---|---|---|---|---|---|---|
 | 647a22a9-5047-4220-ba22-a95047022072 | CHARA Workshop 2023 (ι Peg, σ Ori) | 8 | workshop; orbits above | two point sources with known ρ, PA, flux ratio | peak positions within 0.1 beam of the orbit; flux ratio within 10% | OG |
-| 19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245 | π¹ Gru, PIONIER H | 1 | Paladini+2018 Nature 553, 310 | H-band image with a few large granulation cells; diameter | diameter within 2σ; number and size of cells within the ensemble spread | OG |
+| 19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245 | π¹ Gru, PIONIER H | 1 | Paladini+2018 Nature 553, 310 | H-band image with a few large granulation cells; diameter | diameter within 2σ; number and size of cells in the residual image (after the best-fit disk) match the paper, with the bounded, calibrated spread | OG |
 | 7e5740b8-745c-40bd-9740-b8745cd0bd52 | R Car (Mira), GRAVITY | 15 | Rosales-Guzmán+2024 A&A | K-band images (continuum and CO) | diameter; brightness asymmetry; chromatic change | OG |
 | 6cfa202a-e35c-458c-837e-c512e73c3e45 | R Dor (AGB), AMBER HR | 75 | Ohnaka, Weigelt & Hofmann 2019 ApJ 883, 89 | MiRA images in continuum and CO lines | continuum diameter; line-vs-continuum size; asymmetry | OG |
-| 337cfbf7-5327-4875-bcfb-f753270875d0 | Polaris, MIRC/MIRC-X | 28 | Evans+2024 ApJ 971, 190 | spotted surface images; LD diameter | diameter; spot positions within the ensemble spread | OG |
+| 337cfbf7-5327-4875-bcfb-f753270875d0 | Polaris, MIRC/MIRC-X | 28 | Evans+2024 ApJ 971, 190 | spotted surface images; LD diameter | diameter; spot positions in the residual image match the paper, with the bounded, calibrated spread | OG |
 
 For each: (1) a parametric fit (diameter, limb darkening) against the paper
 and `crosscheck.limb`; (2) single TSV/MaxEntropy reconstructions with an
@@ -210,19 +227,28 @@ a source.
 
 In order:
 
-1. **Gl 229 Ba–Bb, authors' files.** Run the existing `fit_nights` recipe on
-   Xuan's 22 files: per-night positions vs our own esorex reduction of the
-   same exposures (a reduction check we cannot get otherwise), and the joint
-   orbit on the five Xuan epochs vs Xuan's posterior. Extends the E1/E3
-   anchor; the 2024-12 and 2025-02 nights stay out-of-sample.
+1. **Gl 229 Ba–Bb, authors' files.** The per-night recipe is not in this
+   repository yet: `fit_nights.py` (with its `LinearBinary` SourceModel, a
+   binary moving linearly within a night) and `fit_orbit.py` live in the
+   E1 analysis folder `~/data/eso_binaries/gravity/scripts/`, outside git.
+   O1 first ports them into `scripts/` here (or rewrites them from the E1
+   description), then runs them on Xuan's 22 files. The virgil checks are
+   per-night positions vs Xuan's published ones (`literature`, in-sample)
+   and vs `crosscheck.orbits`, and the orbit vs Xuan's posterior with
+   Xuan's priors and data (CPs + CRIRES+ RVs; astrometry-only with ω mod
+   180° if the RVs are not used). Positions from Xuan's files vs from our
+   own esorex reduction of the same exposures is a reduction check with
+   virgil on both sides, recorded as `self-consistency` only. The 2024-12
+   and 2025-02 nights stay out-of-sample.
 2. **CHARA Imaging Workshop 2023.** ι Peg and σ Ori as binaries (positions
    vs orbits) and as images (goal b). Eight files, two goals.
 3. **ι Peg, Anugu's collection.** Five epochs and an orbit; the
    2018-10-22 night is also in the workshop set, so the two files of that
    night should give the same position (O0 checks whether they are the same
    reduction).
-4. **A-star companions (MIRC-X).** CANDID was the paper's tool, so this
-   gives the CANDID root on real data with published numbers.
+4. **A-star companions (MIRC-X).** CANDID was the paper's tool: compare
+   with the published numbers (`literature`) and with CANDID re-run on the
+   same files through the bridge (`candid`).
 5. **HD 45166.** One night, seven files.
 6. **π¹ Gru.** One file: the cheapest imaging target, and a first ensemble
    run on real data.
@@ -232,7 +258,7 @@ In order:
 Orbits first (GG Tau Ab, κ Tuc A, TZ For, θ¹ Ori C, γ² Vel, HD 174881,
 κ Dra, HR 6819, Polaris Ab, SS Lep), then surveys with limits (WR survey,
 A-type accelerators, Be stars, SPHERE SAM, M17, massive YSOs), then the
-Gaia BH3 null control, T CrA, R136 and the symbiotics.
+Gaia BH3 limit-depth check with its injection controls, T CrA, R136 and the symbiotics.
 
 ### Stage O3: imaging (about 4 h per target plus OzSTAR GPU time; OG)
 
@@ -241,9 +267,22 @@ imaging from the contest plan). Each with the four steps above.
 
 ### Stage O4: reporting (2 h)
 
-Evidence records under the `published-binary` and a new `published-image`
-pipeline in `trust/graph.yml` (state `running` until O1 passes); ledger
-entries for every mismatch; a results page per goal on the docs site, with
+Trust-graph edits, made before the first test names them
+(`tests/test_trust_graph.py`):
+
+- a new `oidb-binary` pipeline (dataset: OiDB authors' calibrated OIFITS;
+  reference: the papers; url: this plan) with the steps actually exercised:
+  `read_oifits`, `OIData`, `BinaryModelAngular`, `BinaryModelCartesian`,
+  `LimbDarkenedDisk`, `likelihood_grid`/`linear_flux_grid`, `fit`,
+  `laplace_cov`, `absil_limits`, and for orbits `KeplerOrbit`, `Attached`
+  and `PositionData` (adding any missing nodes). `published-binary` stays
+  the ESO-archive pipeline of `plan_eso_binaries.md`;
+- `virgil.ensemble.draw_groups`, `run_group`, `combine` and `ensemble` as
+  nodes, then a new `published-image` pipeline using them with `Image`,
+  the regularisers and `l_curve`;
+
+both in state `running` until O1 passes. Ledger entries for every
+mismatch; a results page per goal on the docs site, with
 the CC BY-NC-SA attribution for each collection.
 
 ## Questions for Ben
