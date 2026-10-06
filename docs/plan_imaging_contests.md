@@ -643,13 +643,49 @@ amount that depends on their S/N. The scoring rules are:
   that is (N − 1)/2, which `[::-1, ::-1]` gives exactly for odd N, so
   scoring grids are kept odd.
 
+### C4b. Data from John Young (2026-10-07)
+
+John Young sent Ben a folder of contest datasets. It is filed under
+`~/data/imaging_contests/`, with SHA-256 sums in
+`sources/john_young_2026-10-06/SHA256SUMS`. None of it is in a repository.
+
+- **New data:**
+  - 2012: `2012_Alp_Fak_MIRC6T_LowH.oifits` and
+    `2012_Bet_Fak_MIRC6T_LowH.oifits`, CHARA/MIRC-6T, 8 channels.
+  - 2014: `2014_R_CAR_all.fits` and `2014_VY_CMA_all.fits`, reduced
+    PIONIER OIFITS. These unblock C5.
+  - 2016: `2016_Object1-v3.oifits` and `2016_Object2-v3.fits`, chromatic,
+    with `OI_VIS` and `OI_FLUX`.
+- **Truth cubes for the 2026 contest:** `2026/truth/{K,LM,N}_homogenized*.fits`.
+  The headers say "Globular cluster simulation file for IIC 2026".
+  - Each frame is unit-sum and non-negative.
+  - K band: 233 channels from 1.97 µm, 256² pixels of 1 mas.
+  - LM and N bands: 62 and 119 channels, 711² pixels of 0.125 mas.
+  - The 2026 contest data are not in the folder or in OiDB yet. These cubes
+    are truths, so they are used only for scoring. They are not phantoms for
+    the benchmark (the independence rule).
+- **Copies of files we already had:** 2004 contests 1 and 2, the 2008
+  merged JHK files and 2010.
+  - The 2010 files are identical to ours.
+  - The 2004 files carry real per-frame times, and contest 2 adds an
+    `OI_VIS` table. The fitted 2004 truth gives the same χ² on both copies
+    (V² 50.1, closure phase 9.0), so the poor fit of the rebuilt truth is
+    not caused by a corrupt copy.
+- **Still missing:** the 2012 and 2016 truths. Neither collection is in
+  JMMC OiDB, whose contest collections (2004–2010, 2022, 2024) match our
+  files byte for byte.
+
+The 2012, 2014 and 2016 datasets join `TASKS` in `contest_images.py` once
+the uploaded files unfreeze (bench job 18107553 is downloading). The 2012
+and 2016 entries are scored by data fit only until their truths arrive.
+
 ### C5. 2014: real data
 
-If Joel or John Monnier have the reduced OIFITS, virgil's images of VY CMa
-and R Car can be compared with the published crowd-sourced median images.
-Otherwise the raw frames would need reducing with pndrs. That is a larger
-job, and it would also test calibration, so it is out of scope until the
-other stages are done.
+The reduced OIFITS arrived from John Young (C4b), so this no longer needs
+pndrs reductions.
+
+virgil's images of VY CMa and R Car are compared with the published
+crowd-sourced median images.
 
 ## Trust graph
 

@@ -590,6 +590,7 @@ that higher is better.
   requested yet. Until they arrive, 2024 is assessed on the data alone
   (χ²/N, residuals, agreement within the ensemble) and kept out of the
   comparison with the winners.
+- **2026:** the truth cubes are in hand (John Young, 2026-10-07); the data are not yet.
 - **2006, 2008, 2010, 2012, 2016, 2022:** need either the organisers'
   truth images or the closed-access score tables. Each year's `missing`
   note in the manifest records which.
