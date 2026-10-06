@@ -1,0 +1,421 @@
+{
+ "version": 1,
+ "virgil_commit": "0726734a1032cf95a2248d0678b72bbb35b395e4",
+ "criteria_hash": "75fa91a25fa8dc1d3faefa7a6e5fcf064b842ec7aeb5694384577082460a6439",
+ "design_hash": "cce7d9530d6281b1",
+ "tasks": 60,
+ "incomplete_tasks": 0,
+ "criteria": {
+  "cells": {
+   "binary_fit": {
+    "scene": "binary",
+    "fitter": "fit_laplace"
+   },
+   "resolved_star_companion_fit": {
+    "scene": "resolved_star_companion",
+    "fitter": "fit_laplace"
+   },
+   "star_envelope_fit": {
+    "scene": "star_envelope",
+    "fitter": "fit_laplace"
+   },
+   "star_rim_fit": {
+    "scene": "star_rim",
+    "fitter": "fit_laplace"
+   },
+   "binary_grid_flux": {
+    "scene": "binary",
+    "fitter": "grid_laplace"
+   },
+   "uniform_disk_v2_fit": {
+    "scene": "uniform_disk",
+    "fitter": "fit_laplace"
+   }
+  },
+  "fitters": {
+   "fit_laplace": "virgil.fitting.fit (from the scene's start) and virgil.inference.laplace_cov at the optimum",
+   "grid_laplace": "virgil.grid_fit.optimized_flux_grid and laplace_flux_uncertainty_grid at the true position"
+  },
+  "data": {
+   "fit_laplace_scenes": {
+    "stations": "4 UTs",
+    "hour_angles_h": [
+     -3,
+     3,
+     5
+    ],
+    "wavelengths_um": [
+     1.5,
+     2.4,
+     6
+    ],
+    "dec_deg": -50,
+    "sigma_v2": 0.02,
+    "sigma_cp_deg": 1.0
+   },
+   "binary_grid_flux": {
+    "stations": "3 UTs",
+    "hour_angles_h": [
+     -3,
+     3,
+     7
+    ],
+    "wavelengths_um": [
+     1.5,
+     2.4,
+     6
+    ],
+    "dec_deg": -50,
+    "sigma_v2": 0.01,
+    "sigma_cp_deg": 0.5,
+    "position_mas": [
+     6.0,
+     -4.0
+    ],
+    "flux": 0.03
+   },
+   "uniform_disk_v2_fit": {
+    "stations": "4 UTs",
+    "hour_angles_h": [
+     -3,
+     3,
+     5
+    ],
+    "wavelengths_um": [
+     1.5,
+     2.4,
+     6
+    ],
+    "dec_deg": -50,
+    "sigma_v2": 0.02,
+    "closure_phases": false,
+    "diameter_mas": 1.8
+   }
+  },
+  "counts": {
+   "draws_per_task": 125,
+   "tasks_per_cell": 10,
+   "min_draws_per_cell": 1000
+  },
+  "tests": {
+   "mean": "z = mean(pull) sqrt(N), two-sided normal p-value",
+   "sd": "z = (sd(pull) - 1) sqrt(2N), two-sided normal p-value (Gaussian-theory standard error)"
+  },
+  "family_alpha": 0.01,
+  "bands_sigma": 3,
+  "fit_failures": {
+   "max_nonfinite_fraction": 0.01
+  },
+  "reported": [
+   "kurtosis",
+   "detectable_bias"
+  ]
+ },
+ "cells": {
+  "binary_fit": {
+   "draws": 1250,
+   "finite": 1250,
+   "nonfinite_fraction": 0.0,
+   "enough": true,
+   "params": {
+    "dra": {
+     "mean": 0.01185642557212364,
+     "sd": 0.9786881270164568,
+     "kurtosis": 3.0706305175010726,
+     "mean_p": 0.6750787807371175,
+     "sd_p": 0.2866073713196141,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "ddec": {
+     "mean": -0.04272958650278162,
+     "sd": 0.9927160004246927,
+     "kurtosis": 2.911494963429063,
+     "mean_p": 0.13086005470838505,
+     "sd_p": 0.7157086828436888,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "flux": {
+     "mean": -0.038225570329700004,
+     "sd": 0.9970015425085821,
+     "kurtosis": 2.8926149108288954,
+     "mean_p": 0.1765423626784728,
+     "sd_p": 0.8808254643867681,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    }
+   },
+   "failures_ok": true
+  },
+  "binary_grid_flux": {
+   "draws": 1250,
+   "finite": 1250,
+   "nonfinite_fraction": 0.0,
+   "enough": true,
+   "params": {
+    "flux": {
+     "mean": 0.002207525360449646,
+     "sd": 0.9989623256181406,
+     "kurtosis": 2.9453857666805994,
+     "mean_p": 0.937790023978948,
+     "sd_p": 0.9586213470836851,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    }
+   },
+   "failures_ok": true
+  },
+  "resolved_star_companion_fit": {
+   "draws": 1250,
+   "finite": 1250,
+   "nonfinite_fraction": 0.0,
+   "enough": true,
+   "params": {
+    "star.diam": {
+     "mean": -0.008894304410893727,
+     "sd": 0.9901574806979022,
+     "kurtosis": 2.972341699576171,
+     "mean_p": 0.7531708201560269,
+     "sd_p": 0.6226302977648164,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "comp.dra": {
+     "mean": -0.03597676349297493,
+     "sd": 0.9954320812369014,
+     "kurtosis": 2.8362305913786607,
+     "mean_p": 0.20338353995970948,
+     "sd_p": 0.8193384468970653,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "comp.ddec": {
+     "mean": 0.01259513587264201,
+     "sd": 1.020899229107303,
+     "kurtosis": 2.9029931062922105,
+     "mean_p": 0.6560991387656852,
+     "sd_p": 0.29604078438741566,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "comp.flux": {
+     "mean": 0.03388410865869202,
+     "sd": 1.0017210047960545,
+     "kurtosis": 3.0717530932208126,
+     "mean_p": 0.2309231873826708,
+     "sd_p": 0.9314264797132906,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    }
+   },
+   "failures_ok": true
+  },
+  "star_envelope_fit": {
+   "draws": 1250,
+   "finite": 1250,
+   "nonfinite_fraction": 0.0,
+   "enough": true,
+   "params": {
+    "env.fwhm": {
+     "mean": -0.032631529913754925,
+     "sd": 0.9966114953732222,
+     "kurtosis": 2.8451510482563624,
+     "mean_p": 0.24862367436941113,
+     "sd_p": 0.8654621786424643,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "env.ratio": {
+     "mean": 0.0038972532487585214,
+     "sd": 0.969066422076642,
+     "kurtosis": 3.088793431248224,
+     "mean_p": 0.8904074073535891,
+     "sd_p": 0.12194069444611529,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "env.pa": {
+     "mean": -0.007977312074173034,
+     "sd": 0.9853384345390255,
+     "kurtosis": 3.2994981267986643,
+     "mean_p": 0.7779123997259607,
+     "sd_p": 0.46351069086627894,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "env.flux": {
+     "mean": 0.02893659271089001,
+     "sd": 0.989866605428026,
+     "kurtosis": 2.825297756886751,
+     "mean_p": 0.30627803758052086,
+     "sd_p": 0.6123865739920675,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    }
+   },
+   "failures_ok": true
+  },
+  "star_rim_fit": {
+   "draws": 1250,
+   "finite": 1250,
+   "nonfinite_fraction": 0.0,
+   "enough": true,
+   "params": {
+    "rim.diam": {
+     "mean": 0.018313367633482142,
+     "sd": 1.0153474439009662,
+     "kurtosis": 2.9196417361180425,
+     "mean_p": 0.5173243611381845,
+     "sd_p": 0.4428602553161942,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "rim.fwhm": {
+     "mean": 0.005900527390255374,
+     "sd": 0.9935542716326181,
+     "kurtosis": 3.0821869221009393,
+     "mean_p": 0.83474868552276,
+     "sd_p": 0.7472357212607916,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "rim.inc": {
+     "mean": 0.05634732340893969,
+     "sd": 1.0147302690824629,
+     "kurtosis": 2.78640198933634,
+     "mean_p": 0.046351451749478266,
+     "sd_p": 0.4614182828170641,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "rim.pa": {
+     "mean": 0.0047909924384431975,
+     "sd": 0.960344858096566,
+     "kurtosis": 3.208280734588118,
+     "mean_p": 0.8654921207632151,
+     "sd_p": 0.0473945686176961,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "rim.az_amps": {
+     "mean": 0.017938155540662064,
+     "sd": 0.9749148651442504,
+     "kurtosis": 2.9981924158576807,
+     "mean_p": 0.5259440620629655,
+     "sd_p": 0.2097487012991347,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "rim.az_pas": {
+     "mean": 0.030226165448176273,
+     "sd": 1.024412901763788,
+     "kurtosis": 2.789074947477651,
+     "mean_p": 0.2852245570362697,
+     "sd_p": 0.2222204270110819,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    },
+    "rim.flux": {
+     "mean": 0.01798403562601947,
+     "sd": 1.0544349394499801,
+     "kurtosis": 3.054816114314848,
+     "mean_p": 0.5248861382988805,
+     "sd_p": 0.00649378419365377,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    }
+   },
+   "failures_ok": true
+  },
+  "uniform_disk_v2_fit": {
+   "draws": 1250,
+   "finite": 1250,
+   "nonfinite_fraction": 0.0,
+   "enough": true,
+   "params": {
+    "diam": {
+     "mean": -0.020140849487097472,
+     "sd": 1.0213951259556926,
+     "kurtosis": 2.9548389974943987,
+     "mean_p": 0.4764111747270956,
+     "sd_p": 0.28472901822381247,
+     "mean_band": 0.0848528137423857,
+     "sd_band": 0.06,
+     "within_bands": true
+    }
+   },
+   "failures_ok": true
+  }
+ },
+ "pvalues": {
+  "binary_fit:dra:mean": 0.6750787807371175,
+  "binary_fit:dra:sd": 0.2866073713196141,
+  "binary_fit:ddec:mean": 0.13086005470838505,
+  "binary_fit:ddec:sd": 0.7157086828436888,
+  "binary_fit:flux:mean": 0.1765423626784728,
+  "binary_fit:flux:sd": 0.8808254643867681,
+  "binary_grid_flux:flux:mean": 0.937790023978948,
+  "binary_grid_flux:flux:sd": 0.9586213470836851,
+  "resolved_star_companion_fit:star.diam:mean": 0.7531708201560269,
+  "resolved_star_companion_fit:star.diam:sd": 0.6226302977648164,
+  "resolved_star_companion_fit:comp.dra:mean": 0.20338353995970948,
+  "resolved_star_companion_fit:comp.dra:sd": 0.8193384468970653,
+  "resolved_star_companion_fit:comp.ddec:mean": 0.6560991387656852,
+  "resolved_star_companion_fit:comp.ddec:sd": 0.29604078438741566,
+  "resolved_star_companion_fit:comp.flux:mean": 0.2309231873826708,
+  "resolved_star_companion_fit:comp.flux:sd": 0.9314264797132906,
+  "star_envelope_fit:env.fwhm:mean": 0.24862367436941113,
+  "star_envelope_fit:env.fwhm:sd": 0.8654621786424643,
+  "star_envelope_fit:env.ratio:mean": 0.8904074073535891,
+  "star_envelope_fit:env.ratio:sd": 0.12194069444611529,
+  "star_envelope_fit:env.pa:mean": 0.7779123997259607,
+  "star_envelope_fit:env.pa:sd": 0.46351069086627894,
+  "star_envelope_fit:env.flux:mean": 0.30627803758052086,
+  "star_envelope_fit:env.flux:sd": 0.6123865739920675,
+  "star_rim_fit:rim.diam:mean": 0.5173243611381845,
+  "star_rim_fit:rim.diam:sd": 0.4428602553161942,
+  "star_rim_fit:rim.fwhm:mean": 0.83474868552276,
+  "star_rim_fit:rim.fwhm:sd": 0.7472357212607916,
+  "star_rim_fit:rim.inc:mean": 0.046351451749478266,
+  "star_rim_fit:rim.inc:sd": 0.4614182828170641,
+  "star_rim_fit:rim.pa:mean": 0.8654921207632151,
+  "star_rim_fit:rim.pa:sd": 0.0473945686176961,
+  "star_rim_fit:rim.az_amps:mean": 0.5259440620629655,
+  "star_rim_fit:rim.az_amps:sd": 0.2097487012991347,
+  "star_rim_fit:rim.az_pas:mean": 0.2852245570362697,
+  "star_rim_fit:rim.az_pas:sd": 0.2222204270110819,
+  "star_rim_fit:rim.flux:mean": 0.5248861382988805,
+  "star_rim_fit:rim.flux:sd": 0.00649378419365377,
+  "uniform_disk_v2_fit:diam:mean": 0.4764111747270956,
+  "uniform_disk_v2_fit:diam:sd": 0.28472901822381247
+ },
+ "rejected": [],
+ "tests": 40,
+ "detectable_at_90pct_power": {
+  "z_threshold": 3.6622599308877013,
+  "n": 1250,
+  "bias_in_mean_sigma": 0.13983210536141175,
+  "sd_miss_fraction": 0.09887622992864603
+ },
+ "pass": true
+}

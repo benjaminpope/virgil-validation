@@ -131,13 +131,21 @@ def start_from_fit(data, regime):
               "sep": dist.LogUniform(gen["sep"]["lo"], gen["sep"]["hi"]),
               "pa": AngleVector(ring_width=s["sampler"]["ring_width"])}
     noise = {"vis_scale": dist.LogUniform(gen["vis_scale"]["lo"], gen["vis_scale"]["hi"])}
-    init = {"diam": best["star.diam"], "flux": best["comp.flux"], "sep": max(sep, gen["sep"]["lo"]), "pa": pa,
-            "noise.vis_scale": 1.0}
+    # the grid's end points are the priors' bounds, where the unconstrained
+    # transform is infinite: start the fit strictly inside the support
+    bounds = {"diam": (gen["diam"]["lo"], gen["diam"]["hi"]), "flux": (rr["flux_lo"], rr["flux_hi"]),
+              "sep": (gen["sep"]["lo"], gen["sep"]["hi"])}
+    raw = {"diam": best["star.diam"], "flux": best["comp.flux"], "sep": sep}
+    init = {k: float(np.clip(x, bounds[k][0] * 1.001, bounds[k][1] / 1.001)) for k, x in raw.items()}
+    init |= {"pa": pa, "noise.vis_scale": 1.0}
     result = fit(scene, priors, data, noise=noise, init=init)
     v = result.values
     values = {"diam": float(v["diam"]), "flux": float(v["flux"]), "sep": float(v["sep"]), "pa": float(v["pa"]),
               "vis_scale": float(v["noise.vis_scale"])}
-    return values, bool(result.info.get("converged")), {"grid": {k: float(x) for k, x in best.items()}}
+    info = {"grid": {k: float(x) for k, x in best.items()}, "fit_finite": bool(np.all(np.isfinite(list(values.values()))))}
+    if not info["fit_finite"]:  # fall back to the grid's point rather than start the chains at NaN
+        values = {k: init[k] for k in ("diam", "flux", "sep", "pa")} | {"vis_scale": 1.0}
+    return values, bool(result.info.get("converged")), info
 
 
 def scene(diam, flux, sep, pa):

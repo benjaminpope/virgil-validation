@@ -233,3 +233,23 @@ def test_sbc_v2_smoke_run_makes_a_well_formed_replicate(tmp_path, monkeypatch):
     assert all(0 <= v <= 99 for v in rep["ranks"].values())
     assert rep["fit_converged"] and 1e-3 <= rep["truth"]["flux"] <= 2e-2
     assert "smoke run" in _run(tmp_path).stderr
+
+
+@pytest.mark.validates("virgil.likelihood.numpyro_model", roots=["statistics"], kind="regression")
+def test_sbc_v2_start_is_finite_when_the_grid_peaks_on_a_prior_bound(tmp_path):
+    """Replicate 20261008 (bright) of the first run: the grid's best point
+    sits at the edge of the offset grid, outside the separation prior, and
+    the fit started there returned NaN, so every transition diverged. The
+    start is now clipped inside the support, and the chains never start at NaN."""
+    pytest.importorskip("virgil")
+    from virgil.oidata import OIData
+
+    m = script()
+    rng = np.random.default_rng(20261008)
+    truth = m.draw_truth(rng, "bright")
+    m.observe(tmp_path / "sbc.fits", truth, rng)
+    start, _, info = m.start_from_fit(OIData(str(tmp_path / "sbc.fits")), "bright")
+    assert np.hypot(info["grid"]["comp.dra"], info["grid"]["comp.ddec"]) > 25.0
+    assert all(np.isfinite(v) for v in start.values())
+    inits = m.jittered_inits(start, "bright", rng, 4)
+    assert all(np.all(np.isfinite(v)) for c in inits for v in c.values())
