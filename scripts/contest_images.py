@@ -494,7 +494,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     if settings is not None:
         chosen_model = curve.results[index["discrepancy"]].model
         reference = dict(ref_image=np.asarray(chosen_model.render(REF_NPIX, s["ref_fov"])), ref_fov=s["ref_fov"],
-                         best_chi2_red=float(np.asarray(curve.chi2_red)[index["discrepancy"]]), error_scale=np.nan,
+                         best_chi2_red=float(np.sum(np.asarray(curve.chi2_red)[index["discrepancy"]])), error_scale=np.nan,
                          star=bool(star), best_log_z=np.nan, flip_dchi2=np.nan)
     np.savez_compressed(
         out_dir / f"{label}.npz", **reference,
@@ -568,15 +568,19 @@ def fit_ellipse(s):
     """Elongation and position angle from the data: an elliptical Gaussian
     (with the analytic star, if any), from a few starting angles."""
     fov, star = s["fov"], s["star"]
+    # Start at a few beams, not a fraction of the field: in a 4x field, 0.3 fov
+    # is so broad that V² ≈ 0 on every baseline, and LM crawled on 2010 low-H
+    # past the 30-min watchdog (campaign 18098742 tasks 75/77/79).
+    fwhm0 = min(0.3 * fov, 3.0 * s["resolution"].major_mas)
     best = None
     for pa0 in (0.0, 45.0, 90.0, 135.0):
-        env = vm.EllipticalGaussian(0.3 * fov, 0.7, pa0, flux=flux_value(s["img0"].flux) if star else 1.0)
+        env = vm.EllipticalGaussian(fwhm0, 0.7, pa0, flux=flux_value(s["img0"].flux) if star else 1.0)
         scene = vm.System(star=s["start"].star, env=env) if star else vm.System(env=env)
         priors = {"env.fwhm": dist.LogUniform(0.01, fov), "env.ratio": dist.LogUniform(0.05, 1.0),
                   "env.pa": dist.Uniform(pa0 - 90.0, pa0 + 90.0)}
         if star:
             priors["env.flux"] = dist.LogUniform(FLUX_FLOOR, max(100.0, 10 * flux_value(s["img0"].flux)))
-        r = fit(scene, priors, s["data"])
+        r = fit(scene, priors, s["data"], max_steps=300)
         chi2 = float(np.sum(r.info["chi2_red"]))
         if best is None or chi2 < best[0]:
             best = (chi2, float(r.values["env.ratio"]), float(r.values["env.pa"]) % 180.0, float(r.values["env.fwhm"]))
