@@ -267,7 +267,6 @@ def test_rms_convolved_normalisation_and_relative():
 
 
 @pytest.mark.validates("virgil.metrics.rms_convolved", roots=["literature"], kind="finding")
-@pytest.mark.xfail(strict=True, raises=ValueError, reason="F17: docs say pixel_scale_mas is needed only with a beam; arrays without a beam raise")
 def test_rms_convolved_array_without_beam_needs_no_pixel_scale():
     truth = scene()
     from virgil.metrics import rms_convolved

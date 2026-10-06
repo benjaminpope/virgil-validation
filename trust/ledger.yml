@@ -345,7 +345,8 @@
   referee: mathematics (the plain rms of two unit-sum images needs no pixel size)
   evidence:
     - tests/test_metrics.py::test_rms_convolved_array_without_beam_needs_no_pixel_scale
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/274]
 
 - id: F18
   title: metrics.l1_score sets negative image pixels to zero, so on images with negative pixels it is not 1 - min_a sum|a e - r| / sum r of the image given (documented clipping)
@@ -358,11 +359,12 @@
   status: documented
 
 - id: F19
-  title: metrics.lawson_sigma_over_peak normalises over the whole image, not over a comparison box, so entry flux outside the truth's emission raises sigma/peak through the normalisation (the docstring says errors in the empty sky do not count)
+  title: metrics.lawson_sigma_over_peak normalises over the whole image, not over a comparison box, so entry flux outside the truth's emission changes sigma/peak through the normalisation (it can raise or lower it; the docstring says so since virgil#274)
   objects: [virgil.metrics.lawson_sigma_over_peak]
   ruling: definition
   referee: literature (Lawson et al. 2004 Eq. 2 sums over a box that holds the emission; the normalisation is not stated, docs/contest_scoring_sources.md)
   evidence:
     - tests/test_metrics.py::test_lawson_normalises_over_the_whole_image
     - tests/test_metrics.py::test_lawson_with_flux_outside_the_comparison_box
-  status: open
+  status: documented
+  links: [https://github.com/benjaminpope/virgil/pull/274]
