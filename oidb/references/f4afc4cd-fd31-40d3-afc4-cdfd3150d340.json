@@ -1,0 +1,175 @@
+{
+  "collection_id": "f4afc4cd-fd31-40d3-afc4-cdfd3150d340",
+  "target": "HD 45166 (qWR/helium star + B7 V)",
+  "paper": {
+    "authors": "Deshmukh et al.",
+    "year": 2025,
+    "journal": "A&A 695, L20",
+    "bibcode": "2025A&A...695L..20D (constructed from journal/volume/page, not looked up in ADS)",
+    "doi": "10.1051/0004-6361/202553692",
+    "arxiv": "2503.00981"
+  },
+  "publication_status": {
+    "status": "published",
+    "evidence": "arXiv API (https://export.arxiv.org/api/query?id_list=2503.00981) journal_ref field 'A&A 695, L20 (2025)' with DOI 10.1051/0004-6361/202553692; Crossref confirms volume 695, issued 2025-03; DOI redirects (302) to https://www.aanda.org/10.1051/0004-6361/202553692 (403 to curl). Values are from arXiv v1 (A&A proofs)."
+  },
+  "method": "Single GRAVITY snapshot (UTs, medium resolution R=500, 2023-11-26, MJD 60274.33, 18 min). PMOIRED v1.2.10 binary grid search (Delta E, Delta N in -20..+20 mas) on V2, T3PHI and NFLUX; component 1 unresolved with emission lines and free flux f1, component 2 unresolved, f2=1-f1, no lines. The calibrator TYC 732-806-1 was itself a binary, so four calibration strategies (CAL-FREE, CAL-PRIOR, SCI-FREE, SCI-PRIOR; transfer function fitted, with priors from 32 single-star calibrators) were used and the mean adopted. Orbit: 3D orbit combining Shenar et al. 2023 RVs with this one position and distance 991+/-37 pc, bootstrapped 10,000 times (Sect. 2-3, pp. 2-3).",
+  "flux_ratio_definition": "f2/f1 = flux of the B7 V component over the qWR component, K band continuum, 'the flux ratio of secondary to primary f2/f1' (Table 1 notes, p. 3). Primary = qWR (f1, at origin, with emission lines), secondary = B7 V. f2 = 1 - f1. Adopted 0.83 +/- 0.02.",
+  "uncertainties": "Statistical errors are 'very small ... much smaller than the systematics introduced by the uncertainties on the calibration' (Sect. 3, p. 3). Quoted adopted values are the mean of four calibration strategies with 1-sigma = dispersion (Table 1 notes: 'adopted (mean) value with 1 sigma errors'), i.e. dominated by calibration systematics. Statistical: f2/f1 0.003, dE 0.005 mas, dN 0.008 mas (Table 1, p. 3).",
+  "conventions": {
+    "PA": "Not stated in the paper. Positions are given as Delta E, Delta N of B7 V secondary relative to qWR primary, so PA (N through E) = atan2(dE, dN).",
+    "omega": "'argument of periapsis' of the orbit from the bootstrap; whose star is not stated (Fig. B.2 caption). Not stated.",
+    "Omega": "'longitude of ascending node'; convention (receding/approaching, which star) not stated in the paper. i=129 deg is >90, i.e. retrograde.",
+    "other": "q = mass ratio of secondary (B7 V) to primary (qWR) = M2/M1 = 1.72 (+0.25,-0.21), Fig. B.1. Distance 991+/-37 pc (adopted, from earlier work, cited in text). Adopted values with 1-sigma = 68% intervals."
+  },
+  "epochs": [
+    {
+      "date": "2023-11-26",
+      "mjd": 60274.33,
+      "rho_mas": [
+        10.9,
+        0.1
+      ],
+      "pa_deg": [
+        26.35,
+        0.43
+      ],
+      "flux_ratio": [
+        0.83,
+        0.02
+      ],
+      "other": {
+        "dE_mas": [
+          4.83,
+          0.07
+        ],
+        "dN_mas": [
+          9.75,
+          0.12
+        ],
+        "dE_per_calibration_CAL-FREE_CAL-PRIOR_SCI-FREE_SCI-PRIOR": [
+          4.702,
+          4.867,
+          4.866,
+          4.882
+        ],
+        "dN_per_calibration": [
+          9.953,
+          9.703,
+          9.682,
+          9.682
+        ],
+        "f2_f1_per_calibration": [
+          0.846,
+          0.844,
+          0.805,
+          0.812
+        ],
+        "statistical_errors": {
+          "f2_f1": 0.003,
+          "dE_mas": 0.005,
+          "dN_mas": 0.008
+        },
+        "note": "rho = 10.9+/-0.1 mas is quoted in the paper (Sect. 3, p. 3). PA and its error are DERIVED by me from dE,dN (and the dE,dN errors uncorrelated); the paper does not quote a PA. Measured position, not posterior prediction."
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table 1, p. 3; Sect. 3, p. 3 (dE, dN, rho); Sect. 2, p. 2 (date, MJD)"
+    }
+  ],
+  "orbit": {
+    "note": "Orbit is mostly the spectroscopic orbit of Shenar et al. 2023 (RVs); the single GRAVITY position + distance constrains only Omega and the total mass/a. Reported values are bootstrap medians with 68% intervals, given as [value, -err, +err].",
+    "P_day": [
+      8209.08,
+      -69.87,
+      76.98
+    ],
+    "a_mas": null,
+    "e": [
+      0.49,
+      -0.09,
+      0.15
+    ],
+    "i_deg": [
+      129.23,
+      -6.9,
+      4.74
+    ],
+    "Omega_deg": [
+      299.06,
+      -10.25,
+      16.01
+    ],
+    "omega_deg": [
+      130.51,
+      -11.88,
+      12.23
+    ],
+    "T_peri_mjd": [
+      66325.79,
+      -389.52,
+      490.49,
+      "this is T_0,n, the NEXT periastron (MJD 66325.79), not the last; the paper gives no past T0"
+    ],
+    "masses": {
+      "M_total_Msun": [
+        5.35,
+        -1.36,
+        1.72
+      ],
+      "M1_qWR_Msun": [
+        1.96,
+        -0.54,
+        0.74
+      ],
+      "M2_B7V_Msun": [
+        3.39,
+        -0.83,
+        1.0
+      ],
+      "q_M2_over_M1": [
+        1.72,
+        -0.21,
+        0.25
+      ]
+    },
+    "periastron_distance_au": [
+      7.25,
+      -2.51,
+      1.57
+    ],
+    "source": "Fig. B.1 and B.2 panel titles, p. 7 (values read from the plot images, not a table); M1, M2, a(1-e), T_0,n also in text p. 3"
+  },
+  "other_results": {
+    "projected separation": [
+      10.8,
+      0.4,
+      "au",
+      "Sect. 3, p. 3 (10.9+/-0.1 mas at 991+/-37 pc)"
+    ],
+    "absolute K mag qWR": [
+      0.17,
+      0.08,
+      "mag",
+      "Sect. 3, p. 3"
+    ],
+    "absolute K mag B7 V": [
+      0.37,
+      0.08,
+      "mag",
+      "Sect. 3, p. 3"
+    ],
+    "distance": [
+      991,
+      37,
+      "pc",
+      "Sect. 3, p. 3 (adopted, not measured here)"
+    ],
+    "T_1,n and T_2,n (true anomaly = -omega, pi-omega)": [
+      null,
+      null,
+      "MJD",
+      "T_1,n=65334 (+634,-360), T_2,n=66695 (+293,-318), Appendix B p. 5; labelled by me; paper writes T_{1,n}=65334+634-360 and T_{2,n}=66695+293-318"
+    ]
+  },
+  "notes": "Only one epoch, so there is no astrometric orbit fit; do not validate a visual orbit. The paper has no a_mas value (a is mentioned but not tabulated; null). Primary and secondary labels follow the paper: primary=qWR. Orbit values in Fig. B.2 titles are read from a 400 dpi render; i and T_0,n zoomed and verified, the others read at lower zoom (re-check last digits if precision matters). Mean-of-four-calibrations f2/f1 = 0.827, rounded by authors to 0.83."
+}

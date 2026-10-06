@@ -1,0 +1,741 @@
+{
+  "collection_id": "696baf06-6c3c-424d-abaf-066c3c324d99",
+  "target": "HR 6819 (HD 167128; Be star + bloated pre-subdwarf)",
+  "paper": {
+    "authors": "Klement et al.",
+    "year": 2025,
+    "journal": "A&A 694, A208",
+    "bibcode": "2025A&A...694A.208K (constructed from journal/volume/article number, not looked up in ADS)",
+    "doi": "10.1051/0004-6361/202453248",
+    "arxiv": "2501.04103"
+  },
+  "publication_status": {
+    "status": "published",
+    "evidence": "Crossref API (https://api.crossref.org/works/10.1051/0004-6361/202453248) returns A&A volume 694, issued 2025-02 for this title; DOI redirects (302) to https://www.aanda.org/10.1051/0004-6361/202453248 (publisher returned 403 to curl). arXiv 2501.04103 has no journal_ref field, only 'Accepted to A&A'. Article number A208 is from the task statement, not verified in Crossref (article-number field empty). Values below are from the arXiv v1 PDF, which is the A&A proof ('aa53248-24corr'); the final published version might differ."
+  },
+  "method": "PMOIRED geometrical model fit to 12 GRAVITY (high resolution, K band) snapshots, using a 16 nm region around Br-gamma, fitting normalized line profile, T3PHI, DPHI and |V| simultaneously. Model: two uniform disks (both fixed at 0.15 mas) plus a Keplerian disk at the Be star position (contributes only in the line). Free: v_orb sin i_disk, RV_Be, dRA, dDec, f_pre-sd, FWHM_disk, i_disk, PA_disk, EW. Orbits fitted to the 12 positions with IDL orbfit-lib (Newton-Raphson); combined solution adds FEROS RVs from Gies & Wang 2020. No priors stated beyond fixed parameters (Sect. 3.1, p. 3; Sect. 4.1, p. 4).",
+  "flux_ratio_definition": "f_pre-sd 'parameterized as the contribution of the pre-sd star to the total continuum flux' (Sect. 3.1, p. 3); Table A.1 column f_pre-sd,tot 'total flux fraction of the pre-sd star'. K-band, around Br-gamma (2.166 um), normalized so Be star + disk + pre-sd sum to 1 in the continuum. Weighted mean f_pre-sd = 0.439 +/- 0.013 (p. 4). The conventional contrast pre-sd/Be would be f/(1-f) (about 0.78), but that is NOT stated in the paper; derived by caller if needed.",
+  "uncertainties": "Per-epoch errors from PMOIRED bootstrapping; 'the errors do not include contributions from possible systematics such as small-scale miscalibration of the data due to rapidly changing atmospheric conditions during observations' (Sect. 3.1, p. 4). So statistical only. Astrometric orbit residuals rms 19-25 uas (Table 3). RV errors have an added 12 km/s (21 km/s for 2021 Sep 05) wavelength-calibration term, but that affects only the GRAVITY RVs, not the astrometry.",
+  "conventions": {
+    "PA": "north to east (Table A.1 notes, p. 11); dRA, dDec = pre-sd star relative to the Be star (Be star treated as primary), east and north",
+    "omega": "omega_pre-sd in the astrometric-only fits (Table 2); omega_Be in the combined fits (Table 3). Table 3 note: 'longitude of the periastron (fixed at 90 deg for circular orbits)'. Hence omega_Be=111.9 and omega_pre-sd would differ by 180 deg in the usual convention, but Table 2 omega_pre-sd=117.6 (astrometry only) is close to Table 3 omega_Be=111.9, so the paper's labelling is not self-evidently consistent; check before use. The paper does not state which star's orbit the relative astrometry follows beyond 'companion relative to primary'.",
+    "Omega": "'longitude of the ascending node'; 'position angle of the line of nodes' (Sect. 4.1, p. 5). Not stated whether the ascending node is the receding one; Omega=25 deg is close to PA_disk (27.9+/-5.5 deg), which the paper says should be parallel to the line of nodes.",
+    "other": "T0 = epoch of periastron (eccentric) or of superior conjunction (circular), in RJD = JD-2400000 (Table 2 note). q = M_pre-sd/M_Be. Primary = Be star. Distance 296.0+/-8.0 pc from dynamical parallax."
+  },
+  "epochs": [
+    {
+      "date": "2021-09-05",
+      "hjd_mean_minus_2400000": 59463.625,
+      "mjd": 59463.125,
+      "rho_mas": [
+        1.066,
+        null
+      ],
+      "pa_deg": [
+        57.202,
+        null
+      ],
+      "flux_ratio": [
+        0.481,
+        0.021
+      ],
+      "other": {
+        "dRA_mas": 0.896,
+        "dDec_mas": 0.577,
+        "err_ellipse_major_mas": 0.017,
+        "err_ellipse_minor_mas": 0.011,
+        "err_ellipse_PA_deg": 101.5,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)",
+        "caveat": "2021 split-polarimetric-mode dataset; does not fit orbit within 3 sigma (Sect. 4.1, p. 5)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2021-09-18",
+      "hjd_mean_minus_2400000": 59476.538,
+      "mjd": 59476.038,
+      "rho_mas": [
+        1.072,
+        null
+      ],
+      "pa_deg": [
+        192.472,
+        null
+      ],
+      "flux_ratio": [
+        0.54,
+        0.028
+      ],
+      "other": {
+        "dRA_mas": -0.231,
+        "dDec_mas": -1.047,
+        "err_ellipse_major_mas": 0.048,
+        "err_ellipse_minor_mas": 0.028,
+        "err_ellipse_PA_deg": 162.0,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)",
+        "caveat": "2021 split-polarimetric-mode dataset; does not fit orbit within 3 sigma (Sect. 4.1, p. 5)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2022-05-06",
+      "hjd_mean_minus_2400000": 59706.711,
+      "mjd": 59706.211,
+      "rho_mas": [
+        1.102,
+        null
+      ],
+      "pa_deg": [
+        71.504,
+        null
+      ],
+      "flux_ratio": [
+        0.468,
+        0.011
+      ],
+      "other": {
+        "dRA_mas": 1.045,
+        "dDec_mas": 0.35,
+        "err_ellipse_major_mas": 0.015,
+        "err_ellipse_minor_mas": 0.007,
+        "err_ellipse_PA_deg": 122.8,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-04-23",
+      "hjd_mean_minus_2400000": 60058.76,
+      "mjd": 60058.26,
+      "rho_mas": [
+        1.134,
+        null
+      ],
+      "pa_deg": [
+        350.192,
+        null
+      ],
+      "flux_ratio": [
+        0.429,
+        0.015
+      ],
+      "other": {
+        "dRA_mas": -0.193,
+        "dDec_mas": 1.117,
+        "err_ellipse_major_mas": 0.049,
+        "err_ellipse_minor_mas": 0.014,
+        "err_ellipse_PA_deg": 127.0,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-05-01",
+      "hjd_mean_minus_2400000": 60066.747,
+      "mjd": 60066.247,
+      "rho_mas": [
+        1.269,
+        null
+      ],
+      "pa_deg": [
+        48.653,
+        null
+      ],
+      "flux_ratio": [
+        0.445,
+        0.002
+      ],
+      "other": {
+        "dRA_mas": 0.953,
+        "dDec_mas": 0.838,
+        "err_ellipse_major_mas": 0.033,
+        "err_ellipse_minor_mas": 0.009,
+        "err_ellipse_PA_deg": 131.3,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)",
+        "caveat": "|V| discarded (calibrated |V|>1); one of three points not fitting orbit within 3 sigma (Sect. 4.1, p. 5)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-05-20",
+      "hjd_mean_minus_2400000": 60085.861,
+      "mjd": 60085.361,
+      "rho_mas": [
+        1.245,
+        null
+      ],
+      "pa_deg": [
+        223.548,
+        null
+      ],
+      "flux_ratio": [
+        0.429,
+        0.006
+      ],
+      "other": {
+        "dRA_mas": -0.858,
+        "dDec_mas": -0.902,
+        "err_ellipse_major_mas": 0.024,
+        "err_ellipse_minor_mas": 0.011,
+        "err_ellipse_PA_deg": 5.0,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-06-20",
+      "hjd_mean_minus_2400000": 60116.635,
+      "mjd": 60116.135,
+      "rho_mas": [
+        1.077,
+        null
+      ],
+      "pa_deg": [
+        147.109,
+        null
+      ],
+      "flux_ratio": [
+        0.376,
+        0.018
+      ],
+      "other": {
+        "dRA_mas": 0.585,
+        "dDec_mas": -0.904,
+        "err_ellipse_major_mas": 0.054,
+        "err_ellipse_minor_mas": 0.015,
+        "err_ellipse_PA_deg": 119.5,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-07-17",
+      "hjd_mean_minus_2400000": 60143.57,
+      "mjd": 60143.07,
+      "rho_mas": [
+        1.307,
+        null
+      ],
+      "pa_deg": [
+        18.601,
+        null
+      ],
+      "flux_ratio": [
+        0.442,
+        0.003
+      ],
+      "other": {
+        "dRA_mas": 0.417,
+        "dDec_mas": 1.239,
+        "err_ellipse_major_mas": 0.014,
+        "err_ellipse_minor_mas": 0.007,
+        "err_ellipse_PA_deg": 137.5,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-08-16",
+      "hjd_mean_minus_2400000": 60173.624,
+      "mjd": 60173.124,
+      "rho_mas": [
+        1.017,
+        null
+      ],
+      "pa_deg": [
+        289.855,
+        null
+      ],
+      "flux_ratio": [
+        0.411,
+        0.007
+      ],
+      "other": {
+        "dRA_mas": -0.957,
+        "dDec_mas": 0.345,
+        "err_ellipse_major_mas": 0.01,
+        "err_ellipse_minor_mas": 0.004,
+        "err_ellipse_PA_deg": 13.2,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-08-20",
+      "hjd_mean_minus_2400000": 60177.572,
+      "mjd": 60177.072,
+      "rho_mas": [
+        1.138,
+        null
+      ],
+      "pa_deg": [
+        330.386,
+        null
+      ],
+      "flux_ratio": [
+        0.447,
+        0.014
+      ],
+      "other": {
+        "dRA_mas": -0.562,
+        "dDec_mas": 0.989,
+        "err_ellipse_major_mas": 0.044,
+        "err_ellipse_minor_mas": 0.011,
+        "err_ellipse_PA_deg": 8.7,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-09-07",
+      "hjd_mean_minus_2400000": 60195.505,
+      "mjd": 60195.005,
+      "rho_mas": [
+        0.961,
+        null
+      ],
+      "pa_deg": [
+        123.769,
+        null
+      ],
+      "flux_ratio": [
+        0.423,
+        0.005
+      ],
+      "other": {
+        "dRA_mas": 0.798,
+        "dDec_mas": -0.534,
+        "err_ellipse_major_mas": 0.027,
+        "err_ellipse_minor_mas": 0.006,
+        "err_ellipse_PA_deg": 0.1,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    },
+    {
+      "date": "2023-09-08",
+      "hjd_mean_minus_2400000": 60196.598,
+      "mjd": 60196.098,
+      "rho_mas": [
+        0.992,
+        null
+      ],
+      "pa_deg": [
+        137.46,
+        null
+      ],
+      "flux_ratio": [
+        0.4,
+        0.013
+      ],
+      "other": {
+        "dRA_mas": 0.67,
+        "dDec_mas": -0.731,
+        "err_ellipse_major_mas": 0.051,
+        "err_ellipse_minor_mas": 0.009,
+        "err_ellipse_PA_deg": 30.5,
+        "note": "rho/PA errors not tabulated; only error ellipse (sigma-a, sigma-b, sigma-PA). flux_ratio is f_pre-sd,tot = pre-sd flux / TOTAL K continuum flux (not pre-sd/Be)"
+      },
+      "used_in_orbit_fit": true,
+      "source": "Table A.1, p. 11 (arXiv v1 PDF numbering; A&A proofs)"
+    }
+  ],
+  "orbit": {
+    "headline": "eccentric, astro + RVs (both stars) solution, the one quoted in the abstract (e, a, d, M_Be)",
+    "P_day": [
+      40.3261,
+      0.0013
+    ],
+    "a_mas": [
+      1.284,
+      0.015
+    ],
+    "e": [
+      0.0289,
+      0.0058
+    ],
+    "i_deg": [
+      39.37,
+      0.95
+    ],
+    "Omega_deg": [
+      25.4,
+      2.1
+    ],
+    "omega_deg": [
+      111.9,
+      9.0,
+      "omega_Be"
+    ],
+    "T_peri_mjd": [
+      53220.6,
+      1.0,
+      "T0 given as RJD=JD-2400000, i.e. MJD+0.5 offset: T0_MJD = 53220.1; paper gives RJD only"
+    ],
+    "a_AU": [
+      0.38,
+      0.0093
+    ],
+    "d_pc": [
+      296.0,
+      8.0
+    ],
+    "K_Be_km_s": [
+      3.9,
+      0.27
+    ],
+    "K_pre_sd_km_s": [
+      61.15,
+      0.88
+    ],
+    "gamma_km_s": [
+      7.57,
+      0.19
+    ],
+    "q": [
+      0.0638,
+      0.0044
+    ],
+    "masses": {
+      "M_total_Msun": [
+        4.51,
+        0.33
+      ],
+      "M_Be_Msun": [
+        4.24,
+        0.31
+      ],
+      "M_pre_sd_Msun": [
+        0.27,
+        0.027
+      ],
+      "M_pre_sd_abstract_Msun": [
+        0.27,
+        0.056
+      ],
+      "note": "Table 3 prints 0.270+/-0.027 for eccentric astro+RVs but 0.270+/-0.056 for eccentric astro+RV_pre-sd+K_Be; the abstract quotes 0.270+/-0.056 alongside the astro+RVs values for e, a. 0.027 is consistent with q and M_Be error propagation (0.270*sqrt((0.0044/0.0638)^2+(0.31/4.24)^2)=0.027). Possible inconsistency in the paper."
+    },
+    "rms_astrometry_uas": 19,
+    "source": "Table 3, p. 9 (column 4); abstract p. 1",
+    "all_solutions": {
+      "Table 3 columns (P d, T0 RJD, e, a mas, i, Omega, omega, a AU, d pc, M_Be, M_pre-sd)": {
+        "circular_astro+RVpre-sd+K_Be": [
+          [
+            40.327,
+            0.0012
+          ],
+          [
+            53117.276,
+            0.073
+          ],
+          [
+            0.0,
+            null
+          ],
+          [
+            1.298,
+            0.013
+          ],
+          [
+            39.86,
+            0.84
+          ],
+          [
+            26.0,
+            2.0
+          ],
+          [
+            90,
+            null
+          ],
+          [
+            0.3728,
+            0.0086
+          ],
+          [
+            287.3,
+            7.2
+          ],
+          [
+            4.0,
+            0.26
+          ],
+          [
+            0.258,
+            0.054
+          ]
+        ],
+        "circular_astro+RVs": [
+          [
+            40.3266,
+            0.0016
+          ],
+          [
+            53117.295,
+            0.094
+          ],
+          [
+            0.0,
+            null
+          ],
+          [
+            1.299,
+            0.017
+          ],
+          [
+            39.9,
+            1.2
+          ],
+          [
+            25.5,
+            2.7
+          ],
+          [
+            90,
+            null
+          ],
+          [
+            0.374,
+            0.011
+          ],
+          [
+            287.6,
+            8.9
+          ],
+          [
+            4.03,
+            0.34
+          ],
+          [
+            0.27,
+            0.056
+          ]
+        ],
+        "eccentric_astro+RVpre-sd+K_Be": [
+          [
+            40.3264,
+            0.00094
+          ],
+          [
+            53220.49,
+            0.74
+          ],
+          [
+            0.0288,
+            0.0043
+          ],
+          [
+            1.283,
+            0.011
+          ],
+          [
+            39.38,
+            0.69
+          ],
+          [
+            25.7,
+            1.5
+          ],
+          [
+            111.2,
+            6.6
+          ],
+          [
+            0.3794,
+            0.0079
+          ],
+          [
+            295.6,
+            6.6
+          ],
+          [
+            4.22,
+            0.25
+          ],
+          [
+            0.27,
+            0.056
+          ]
+        ],
+        "eccentric_astro+RVs": [
+          [
+            40.3261,
+            0.0013
+          ],
+          [
+            53220.6,
+            1.0
+          ],
+          [
+            0.0289,
+            0.0058
+          ],
+          [
+            1.284,
+            0.015
+          ],
+          [
+            39.37,
+            0.95
+          ],
+          [
+            25.4,
+            2.1
+          ],
+          [
+            111.9,
+            9.0
+          ],
+          [
+            0.38,
+            0.0093
+          ],
+          [
+            296.0,
+            8.0
+          ],
+          [
+            4.24,
+            0.31
+          ],
+          [
+            0.27,
+            0.027
+          ]
+        ]
+      },
+      "astrometry_only (Table 2, p. 5; omega is omega_pre-sd)": {
+        "circular": {
+          "P_day": [
+            40.305,
+            0.012
+          ],
+          "T0_RJD": [
+            60073.36,
+            0.33
+          ],
+          "e": 0.0,
+          "a_mas": [
+            1.29,
+            0.019
+          ],
+          "i_deg": [
+            38.8,
+            1.4
+          ],
+          "Omega_deg": [
+            23.6,
+            3.1
+          ],
+          "omega_deg": 90,
+          "rms_uas": 25
+        },
+        "eccentric": {
+          "P_day": [
+            40.329,
+            0.011
+          ],
+          "T0_RJD": [
+            60076.41,
+            0.97
+          ],
+          "e": [
+            0.0306,
+            0.0071
+          ],
+          "a_mas": [
+            1.288,
+            0.015
+          ],
+          "i_deg": [
+            39.5,
+            1.0
+          ],
+          "Omega_deg": [
+            23.1,
+            2.1
+          ],
+          "omega_deg": [
+            117.6,
+            8.9
+          ],
+          "rms_uas": 19
+        }
+      }
+    }
+  },
+  "other_results": {
+    "mean flux ratio f_pre-sd (weighted)": [
+      0.439,
+      0.013,
+      "fraction of total K continuum",
+      "Sect. 3.1, p. 4"
+    ],
+    "f_pre-sd individual min": [
+      0.376,
+      0.018,
+      "fraction",
+      "Sect. 3.1, p. 4 (2023 Jun 20)"
+    ],
+    "f_pre-sd individual max": [
+      0.54,
+      0.028,
+      "fraction",
+      "Sect. 3.1, p. 4 (2021 Sep 18)"
+    ],
+    "Br-gamma disk FWHM (weighted mean)": [
+      0.481,
+      0.046,
+      "mas",
+      "Table 1, p. 4; full range [0.375,0.621]"
+    ],
+    "disk inclination (weighted mean)": [
+      28.9,
+      5.7,
+      "deg",
+      "Table 1, p. 4; full range [19.6,40.9]"
+    ],
+    "disk PA (weighted mean)": [
+      27.9,
+      5.5,
+      "deg",
+      "Table 1, p. 4; full range [3.4,66.7]"
+    ],
+    "v_orb sin i_disk (weighted mean)": [
+      242,
+      12,
+      "km/s",
+      "Table 1, p. 4"
+    ],
+    "EW Br-gamma disk": [
+      0.702,
+      0.052,
+      "nm",
+      "Table 1, p. 4"
+    ],
+    "UD diameters of both stars (fixed, not measured)": [
+      0.15,
+      null,
+      "mas",
+      "Sect. 3.1, p. 3"
+    ],
+    "calibrator": [
+      "HD 161420",
+      null,
+      "UD diameter 0.321+/-0.008 mas",
+      "Sect. 2, p. 3"
+    ]
+  },
+  "notes": "Table A.1 gives positions without rho/PA errors (error ellipses only); rho and PA are the measured PMOIRED positions (not posterior predictions). All 12 positions used in all orbit fits (the three 3-sigma outliers were tested by exclusion with parameters staying within 1 sigma). Headline per abstract: eccentric astro+RVs. Per-epoch disk values are in Table A.2 (p. 11), not transcribed here. Table A.2 header says v_orb sin i in [mas], clearly a typo for km/s. Mean disk inclination is ~2 sigma below orbital i; paper judges the difference not significant. MJD column here = HJD_mean - 2400000.5 (derived by me; paper lists HJD-2400000). The paper does not state a dRA/dDec to rho/PA consistency check; rho and PA are as printed."
+}

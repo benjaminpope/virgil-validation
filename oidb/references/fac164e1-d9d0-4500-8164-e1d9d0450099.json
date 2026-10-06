@@ -1,0 +1,258 @@
+{
+  "collection_id": "fac164e1-d9d0-4500-8164-e1d9d0450099",
+  "target": "iota Peg (HD 210027)",
+  "paper": {
+    "authors": "Anugu, N.; Le Bouquin, J.-B.; Monnier, J. D.; Kraus, S.; Setterholm, B. R.; Labdon, A.; Davies, C. L.; Lanthermann, C.; Gardner, T.; Ennis, J.; Johnson, K. J. C.; ten Brummelaar, T.; Schaefer, G.; Sturmann, J.",
+    "year": 2020,
+    "journal": "The Astronomical Journal 160, 158",
+    "bibcode": "2020AJ....160..158A (constructed from volume/page; not looked up in ADS)",
+    "doi": "10.3847/1538-3881/aba957",
+    "arxiv": "2007.12320"
+  },
+  "publication_status": {
+    "status": "published",
+    "evidence": "arXiv abs page 2007.12320 has no journal_ref field, only comment 'accepted for publication in The Astronomical Journal'. Published version confirmed via Crossref API https://api.crossref.org/works/10.3847/1538-3881/aba957 : container 'The Astronomical Journal', vol 160, issue 4, page 158, issued 2020-09-10, title 'MIRC-X: A Highly Sensitive Six-telescope Interferometric Imager at the CHARA Array'."
+  },
+  "method": "Sec. 5.6 (pp. 21-22): three methods: (i) squeeze model-independent image reconstruction (regularizer weight 1000, 5 chains x 500 iterations, 256x256 grid, ~0.1 mas/pixel, chi2~2); (ii) CANDID binary detection (confirms parameters within 3.4 sigma); (iii) in-house model fitting (software 'available upon request'), initialised from squeeze results, with bandwidth smearing, stellar diameters fixed at 1.05 and 0.6 mas. Orbit: least-squares fit of Campbell elements to the five astrometric points (Fig. 25, Table 3). Priors not stated. Calibrator gamma Peg (H diameter 0.3719123 +/- 0.02 mas, JSDC), App. C p. 26.",
+  "flux_ratio_definition": "'F_pri/sec' = flux ratio of primary to secondary (Table 2 header; text p. 22: 'flux ratio of primary to secondary F_pri/sec of 4.6 +/- 0.1'). H band implied (MIRC-X H-band data) but band not explicitly stated in the passage. NB primary/secondary, i.e. >1; invert for secondary/primary (~0.217).",
+  "uncertainties": "Table 2 errors are the fit errors; no mention of inflation. Table 3: semi-major axis footnote '* 0.5% uncertainty in the semi-major due to uncertain absolute wavelength calibration' (i.e. the quoted +/-0.0038 mas is statistical only, 0.5% systematic additional). Median orbit residual 6.65 uas (Fig. 25 caption). Model-fit vs CANDID differences up to 3.3 sigma (Table 2 last columns).",
+  "conventions": {
+    "PA": "North up, East to the left in images (Fig. 24/25); PA of secondary relative to primary presumed east of north, not stated explicitly in the text read",
+    "omega": "Table 3 'Longitude of the periastron'; whose component not stated",
+    "Omega": "Table 3 footnote: 'Our orbit Omega is not in J2000, apparent North-East precession.' (i.e. epoch-of-date frame)",
+    "other": "Table 3 T_peri unit not stated in the table (value 52997.4686, presumably MJD). Epoch MJDs not given in the paper (null here)."
+  },
+  "epochs": [
+    {
+      "date": "2018-10-22",
+      "mjd": null,
+      "rho_mas": [
+        10.0352,
+        0.0176
+      ],
+      "pa_deg": [
+        354.7005,
+        0.019
+      ],
+      "flux_ratio": [
+        4.55,
+        0.04
+      ],
+      "error_ellipse": null,
+      "used_in_orbit_fit": true,
+      "source": "Table 2 (squeeze+model fitting columns; CANDID columns in canndid_alt), p. 24 of arXiv:2007.12320 PDF; orbit-fit use inferred from Fig. 25 (all five epochs plotted), p. 25",
+      "candid_alt": {
+        "flux_ratio": [
+          4.68,
+          0.08
+        ],
+        "rho_mas": [
+          10.0206,
+          0.0051
+        ],
+        "pa_deg": [
+          354.6822,
+          0.0137
+        ]
+      }
+    },
+    {
+      "date": "2018-10-23",
+      "mjd": null,
+      "rho_mas": [
+        6.5705,
+        0.0103
+      ],
+      "pa_deg": [
+        348.914,
+        0.007
+      ],
+      "flux_ratio": [
+        4.6,
+        0.03
+      ],
+      "error_ellipse": null,
+      "used_in_orbit_fit": true,
+      "source": "Table 2 (squeeze+model fitting columns; CANDID columns in canndid_alt), p. 24 of arXiv:2007.12320 PDF; orbit-fit use inferred from Fig. 25 (all five epochs plotted), p. 25",
+      "candid_alt": {
+        "flux_ratio": [
+          4.62,
+          0.09
+        ],
+        "rho_mas": [
+          6.5555,
+          0.0019
+        ],
+        "pa_deg": [
+          348.8865,
+          0.0094
+        ]
+      }
+    },
+    {
+      "date": "2018-11-21",
+      "mjd": null,
+      "rho_mas": [
+        10.1793,
+        0.0269
+      ],
+      "pa_deg": [
+        357.2094,
+        0.029
+      ],
+      "flux_ratio": [
+        4.6,
+        0.01
+      ],
+      "error_ellipse": null,
+      "used_in_orbit_fit": true,
+      "source": "Table 2 (squeeze+model fitting columns; CANDID columns in canndid_alt), p. 24 of arXiv:2007.12320 PDF; orbit-fit use inferred from Fig. 25 (all five epochs plotted), p. 25",
+      "candid_alt": {
+        "flux_ratio": [
+          4.5,
+          0.08
+        ],
+        "rho_mas": [
+          10.1523,
+          0.0017
+        ],
+        "pa_deg": [
+          357.1934,
+          0.0132
+        ]
+      }
+    },
+    {
+      "date": "2019-07-31",
+      "mjd": null,
+      "rho_mas": [
+        4.979,
+        0.007
+      ],
+      "pa_deg": [
+        165.5565,
+        0.007
+      ],
+      "flux_ratio": [
+        4.77,
+        0.02
+      ],
+      "error_ellipse": null,
+      "used_in_orbit_fit": true,
+      "source": "Table 2 (squeeze+model fitting columns; CANDID columns in canndid_alt), p. 24 of arXiv:2007.12320 PDF; orbit-fit use inferred from Fig. 25 (all five epochs plotted), p. 25",
+      "candid_alt": {
+        "flux_ratio": [
+          4.59,
+          0.05
+        ],
+        "rho_mas": [
+          4.9549,
+          0.0023
+        ],
+        "pa_deg": [
+          165.3923,
+          0.0234
+        ]
+      }
+    },
+    {
+      "date": "2019-08-06",
+      "mjd": null,
+      "rho_mas": [
+        1.1297,
+        0.0075
+      ],
+      "pa_deg": [
+        244.4933,
+        0.005
+      ],
+      "flux_ratio": [
+        4.54,
+        0.03
+      ],
+      "error_ellipse": null,
+      "used_in_orbit_fit": true,
+      "source": "Table 2 (squeeze+model fitting columns; CANDID columns in canndid_alt), p. 24 of arXiv:2007.12320 PDF; orbit-fit use inferred from Fig. 25 (all five epochs plotted), p. 25",
+      "candid_alt": {
+        "flux_ratio": [
+          4.49,
+          0.05
+        ],
+        "rho_mas": [
+          1.1229,
+          0.0061
+        ],
+        "pa_deg": [
+          244.4312,
+          0.01813
+        ]
+      }
+    }
+  ],
+  "orbit": {
+    "P_day": [
+      10.21277,
+      0.00021
+    ],
+    "a_mas": [
+      10.3609,
+      0.0038
+    ],
+    "e": [
+      0.0052,
+      0.0011
+    ],
+    "i_deg": [
+      95.865,
+      0.01
+    ],
+    "Omega_deg": [
+      176.194,
+      0.015
+    ],
+    "omega_deg": [
+      272.45,
+      1.95
+    ],
+    "T_peri_mjd": [
+      52997.4686,
+      0.19
+    ],
+    "K1": null,
+    "K2": null,
+    "masses": null,
+    "comparison_orbit_Konacki2010": {
+      "a_mas": [
+        10.329,
+        0.016
+      ],
+      "P_day": [
+        10.2130253,
+        1.6e-06
+      ],
+      "e": [
+        0.001764,
+        6.3e-05
+      ],
+      "T": [
+        52997.378,
+        0.052
+      ],
+      "omega_deg": [
+        272.8,
+        1.8
+      ],
+      "Omega_deg": [
+        176.262,
+        0.075
+      ],
+      "i_deg": [
+        95.865,
+        0.011
+      ]
+    },
+    "source": "Table 3, p. 24; compared with Konacki et al. (2010) spectroscopic+interferometric orbit; text p. 22: 'The best-fit parameters very well match with spectroscopic observations Konacki et al. (2010)'. Flux ratio: 'We estimate a flux ratio of primary to secondary Fpri/sec of 4.6 +/- 0.1 ... compared with 5.0 +/- 0.5 reported by Konacki et al. (2010)', p. 22."
+  },
+  "other_papers": "Searched arXiv/web: Gardner et al. 2022 (ARMADA II, arXiv:2209.00669, AJ doi 10.3847/1538-3881/ac8eae) mentions MIRC-X wavelength correction factor 1.0054 +/- 0.0006 but its text contains no iota Peg orbit/epochs (grep for 'Peg' found nothing relevant). The MIRC-X paper says the etalon wavelength calibration is 'Gardner et al., in prep'. No separate published iota Peg orbit using these five epochs found.",
+  "notes": "Headline result: Table 2 squeeze+model fitting (not CANDID) is the basis for the orbit. Flux ratio 4.6 +/- 0.1 is a summary value in text. Page numbers refer to the printed AJ layout as reproduced in the arXiv PDF (journal pagination 'N. Anugu et al.' headers). Orbit only constrains MIRC-X astrometry; wavelength-scale systematic 0.5% on separations not included in Table 2."
+}

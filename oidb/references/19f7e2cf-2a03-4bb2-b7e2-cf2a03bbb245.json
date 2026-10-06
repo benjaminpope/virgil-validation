@@ -1,0 +1,117 @@
+{
+ "collection_id": "19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245",
+ "target": "pi1 Gruis (S5,7 giant)",
+ "paper": {
+  "authors": "Paladini, Baron, Jorissen, Le Bouquin, Freytag, Van Eck, Wittkowski, Hron, Chiavassa, Berger, Siopis, Mayer, Sadowski, Kravchenko, Shetye, Kerschbaum, Kluska, Ramstedt",
+  "year": 2018,
+  "journal": "Nature 553, 310-312 (online 2017-12-20; print issue 2018 Jan)",
+  "bibcode": null,
+  "doi": "10.1038/nature25001",
+  "arxiv": null
+ },
+ "publication_status": {
+  "status": "published",
+  "evidence": "Nature page https://www.nature.com/articles/nature25001 (Letter, published 20 Dec 2017, vol 553, pp 310-312) and Crossref doi 10.1038/nature25001. Full text is paywalled; numerical values below come from the ESO-hosted author manuscript https://elt.eso.org/public/archives/releases/sciencepapers/eso1741/eso1741a.pdf (title 'Convective pattern on the surface of the giant star pi1 Gruis', 8 pages), which may differ in small details from the final Nature text. No arXiv version found. bibcode not verified, left null."
+ },
+ "method": "PIONIER (4 ATs, H band, 3 spectral channels) at VLTI, nights 2014 Sep 25 and 29. Model-independent images via SQUEEZE (MCMC regularized ML) and MiRA, channel by channel. UD diameter fitted to visibilities with LitPro. Granule size from power spectral density of images (square-masked 24x24 px region); contrast = dI_rms/<I> after limb-darkening correction. (Main text pp.1-2; Methods pp.5-6 of manuscript.)",
+ "flux_ratio_definition": null,
+ "uncertainties": "Contrast errors are statistical only: standard deviation over the SQUEEZE MCMC images; the text states systematic errors (seeing, limited resolution) are difficult to assess and expected to lower the observed contrast (p.2). Data carry an added 5% systematic relative uncertainty (Methods, Data, p.5). Granule size error = standard deviation of the three channel PSD peaks.",
+ "conventions": {
+  "channels_um": [
+   1.625,
+   1.678,
+   1.73
+  ],
+  "filter_width_um": 0.0483,
+  "spectral_resolution": 35,
+  "observing_nights": "2014-09-25, 2014-09-29",
+  "baseline_max_m": 90,
+  "resolution": "lambda/2B ~ 2 mas",
+  "data": "303 spectrally dispersed visibilities and 201 closure phases",
+  "calibrators": "HD 209688 (2.62+-0.03 mas), HD 215104 (1.7+-0.1 mas), via SearchCal",
+  "reduction": "pndrs, calibrated data average of 5 consecutive files per OB, 5% systematic relative uncertainty added",
+  "parallax_mas": "6.13 +- 0.76 (van Leeuwen 2007)",
+  "stellar_params_MARCS": "Teff=3200 K, log g=-0.44 (text elsewhere writes -0.4), solar metallicity, [s/Fe]=+1, C/O=0.991; literature Teff 3100 K, L 7200 Lsun, M 1.5 Msun"
+ },
+ "results": [
+  {
+   "name": "equivalent uniform-disk diameter",
+   "value": 18.37,
+   "err": 0.18,
+   "unit": "mas",
+   "band": "H (PIONIER visibilities, LitPro)",
+   "source": "Methods, Stellar parameters, p.6 (manuscript)"
+  },
+  {
+   "name": "UD diameter in solar units",
+   "value": 658,
+   "unit": "Rsun diameter",
+   "source": "Methods, p.6, parallax 6.13 mas"
+  },
+  {
+   "name": "intensity contrast 1.625 um",
+   "value": 13.1,
+   "err": 0.2,
+   "unit": "%",
+   "band": "1.625 um",
+   "source": "main text p.2"
+  },
+  {
+   "name": "intensity contrast 1.678 um",
+   "value": 12.3,
+   "err": 0.4,
+   "unit": "%",
+   "band": "1.678 um",
+   "source": "main text p.2"
+  },
+  {
+   "name": "intensity contrast 1.730 um",
+   "value": 11.9,
+   "err": 0.4,
+   "unit": "%",
+   "band": "1.730 um",
+   "source": "main text p.2"
+  },
+  {
+   "name": "average intensity contrast",
+   "value": 12,
+   "unit": "%",
+   "source": "Abstract"
+  },
+  {
+   "name": "characteristic granule size (angular)",
+   "value": 5.3,
+   "err": 0.5,
+   "unit": "mas",
+   "band": "H",
+   "source": "main text p.2"
+  },
+  {
+   "name": "characteristic granule size (linear)",
+   "value": 120000000000.0,
+   "err": 20000000000.0,
+   "unit": "m",
+   "source": "Abstract / p.2; 27% of stellar diameter"
+  }
+ ],
+ "epochs": [],
+ "limits": [],
+ "image": {
+  "code": "SQUEEZE (primary; Baron et al. 2010) and MiRA (Thiebaut 2008)",
+  "regulariser": "SQUEEZE: spot regulariser + l0 sparsity in image plane (chosen by simulation on spotless/spotted LD discs with OIFITS-SIM); channel-by-channel (polychromatic with total-variation trans-spectral regulariser tried, no major difference). MiRA: smoothness regulariser, no prior image; hyperparameter mu from L-curve.",
+  "pixel_mas": 0.45,
+  "fov_mas": 28.8,
+  "fov_note": "64x64 pixels at 0.45 mas/pixel (computed 64*0.45 = 28.8 mas; FOV not quoted directly)",
+  "chi2": "reduced chi2 ~1.3 for final SQUEEZE image",
+  "procedure": "50 parallel simulated-annealing MCMC chains at 16x16 (1.8 mas/px), then 32x32 (0.9 mas/px) initialised from the mean, then 64x64 (0.45 mas/px); final image = mean over 64x64 chains",
+  "figures": [
+   "Fig. 1 (SQUEEZE a-c, MiRA a'-c' images, three channels)",
+   "Fig. 2 (power spectral density)",
+   "Fig. 3 (granule size vs theory)",
+   "Extended Data Fig. 1 (data, uv coverage, FT of image)",
+   "Extended Data Fig. 2 (mean +-1 sigma SQUEEZE images)",
+   "Extended Data Fig. 3 (SED / MARCS)"
+  ]
+ },
+ "notes": "Limb-darkening law: no parametric LD law fitted; diameter is a UD fit, justified because MARCS intensity profiles are close to a UD in the first visibility lobe (Methods p.6). Number of cells: NOT given in the manuscript (null); only characteristic size and contrast. MiRA chi2 not given. SQUEEZE reduced chi2 ~1.3 is the only chi2 quoted. Limb-darkened-disc profile used for contrast correction is not specified numerically. Page numbers refer to the ESO manuscript PDF, not Nature pages. Data statement: reduced PIONIER data in oidb.jmmc.fr. The ESO manuscript text title differs from the published title."
+}
