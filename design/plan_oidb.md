@@ -86,8 +86,8 @@ downloaded for this plan.
   the small numbers (positions, elements, χ², image metrics) are committed,
   as evidence records.
 - **Sizes.** Most collections here are 1–30 MB. The largest planned ones are
-  R Dor AMBER (75 files), Klement+2024 Be stars (134) and κ Tuc A (136); all
-  well under a few GB.
+  R Dor AMBER (75 files), WR 104 (121), κ Tuc A (136) and Betelgeuse MATISSE (361);
+  O0 sizes each from `Content-Length` before any fetch.
 
 ## Independence and ground truth
 
@@ -177,10 +177,7 @@ read from the paper's tables in Stage O0, not from memory or abstracts.
 | J/A+A/536/A55 | SS Lep, AMBER + PIONIER | 8 | Blind+2011 A&A 536, A55 | 8-epoch positions, P ≈ 260 d, Roche-filling giant (O0) | `UniformDisk` + point; also images | published | OC |
 | 534fbba6-b715-4b41-9278-b6bd0de9f674 | γ² Vel, AMBER | 43 | Lamberts+2017 MNRAS 468, 2655 | binary positions on the known orbit (North+2007); wind-collision zone | binary + `GaussianDisk` | `crosscheck.orbits`; published | OC |
 | 45840351-f65e-446c-8403-51f65e546c16 | HD 174881 (HR 7112), CHARA | 2 | Torres+2025 ApJ (bibcode O0) | positions on the published orbit | `BinaryModelAngular` | `crosscheck.orbits` | OC |
-| 222e5f53-71ed-4956-ae5f-5371edc956c4 | κ Dra (Be), MIRC/MIRC-X/MYSTIC | 7 | Klement+2022 ApJ 940, 86 | binary orbit + disk geometry | binary + `EllipticalGaussian` disk; `KeplerOrbit` | published | OC |
 | 696baf06-6c3c-424d-abaf-066c3c324d99 | HR 6819 (Be + stripped star), GRAVITY HR | 12 | Klement+2025 A&A 694, A208 | orbit, dynamical masses | binary + disk; `KeplerOrbit` | published | OC |
-| 648ec766-3046-4bd1-8ec7-6630463bd1f9 | newborn Be binaries, GRAVITY + MIRC-X/MYSTIC | 26 | Rivinius+2025 A&A 694, A172 | companion positions/flux ratios | binary + disk | published | OC |
-| ddf733ce-758e-43c4-b733-ce758e33c4f3 | Be stars, MIRC-X/MYSTIC | 134 | Klement+2024 ApJ 962, 70 | detected companions and limits | grid + `fit` + limits | CANDID | OC |
 | f9cf0622-5fb3-410c-8f06-225fb3e10c5d | T CrA B, MATISSE | 32 | Varga+2025 | first companion detection | chromatic binary + disk | published | OC |
 | 89aec164-3796-4f59-aec1-6437969f59c4 | Gaia BH3, GRAVITY | 13 | Kervella+2025 A&A 695, L1 | NIR upper limit | `absil_limits`: a `check` of the limit *depth* against the paper (`literature`), plus injection controls on these files 0.5 mag above (must detect) and below (must not) the published limit; "no detection" alone tests nothing | CANDID via the bridge | OC |
 | 1b17307c-9691-4fea-9730-7c96917feaa9 | M17 young O stars, GRAVITY | 8 | Bordier+2021 | multiplicity, companion positions | grid + `fit` | CANDID | OC |
@@ -194,8 +191,25 @@ read from the paper's tables in Stage O0, not from memory or abstracts.
 The JWST AMI files are already calibrated OIFITS, so the masking rule
 (AMICAL only for ground-based masking, never on JWST) is not touched.
 
-Not planned as binaries: the post-AGB circumbinary disks (Corporaal, 89 Her),
-ε Aur, and WR 104 (a dust pinwheel, better as an imaging target later).
+Three Be-star collections that the OiDB spreadsheet tags as rapid rotators
+are planned privately with the rapid rotators (see "Rapid rotators" below).
+
+Further binaries from the OiDB spreadsheet (`~/data/oidb/oidb_collections.csv`,
+2026-10-07), all Stage O2, one line each (published result and model read in
+O0; cross-check is the published values unless stated):
+
+- `3722c1a7-469d-4701-a2c1-a7469d870133`: post-AGB binaries, MATISSE, 32 files (Corporaal+2023 A&A 674, A151): circumbinary disk inner rims; `ModulatedGaussianRim` + point star; OC.
+- `557172ab-bfbf-43f9-b172-abbfbf33f9a6`: IRAS 08544-4431 post-AGB binary, MATISSE, 22 files (Corporaal+2021): binary + circumbinary rim; OC.
+- `bf01675e-7069-4d06-8167-5e70697d068a`: post-AGB binaries, re-reduced MATISSE, 23 files (Corporaal): rim sizes vs the paper; OC.
+- `J/A+A/559/A111`: 89 Her post-AGB binary, AMBER/CHARA/PTI/VEGA/IOTA, 14 files (Hillen+2013 A&A 559, A111): circumbinary disk size and flux fractions; OC.
+- `512015b1-fb46-4cde-a015-b1fb46ccdec6`: ρ Oph A, GRAVITY, 8 files (Klement+2025, bibcode O0): binary position and magnetosphere offset; binary + `GaussianDisk`; OC.
+- `76557b92-ec46-4158-957b-92ec461158a9`: ε Aur 1997–2011, PTI/NPOI/CHARA, 51 files (Kloppenborg+2015 ApJS 220, 14): eclipsing disk geometry over the eclipse; `UniformDisk` + `EllipticalGaussian`; OC.
+- `J/A+A/544/A91`: ε Aur, VEGA, 63 files (Mourard+2012 A&A 544, A91): F-star diameter and disk during eclipse; same model; OC.
+- `c5a5d133-a178-4949-a5d1-33a1781949e5`: WR 104, MATISSE, 121 files (paper O0): pinwheel dust; parametric spiral first, images in O3; OC/OG.
+
+Also tagged by the spreadsheet and already covered elsewhere: the imaging
+contest collections (`7f7fb9ed-…`, `3e71bedc-…`, `6df579f8-…`), which belong
+to `plan_imaging_contests.md`.
 
 ### Imaging (goal b)
 
@@ -215,6 +229,17 @@ to the MYTHRA mean and spread map; (4) eht-imaging on the same data and
 regulariser. Published images are asked for as FITS from the authors where
 they are not in the papers' supplementary data (question 5).
 
+Further imaging targets from the spreadsheet, all Stage O3, one line each
+(the four imaging steps above apply; compute OG):
+
+- `093ff33b-dca8-4f5a-bff3-3bdca81f5a16`: SU Aur, MIRC-X + PIONIER, 29 files (Labdon+2023 A&A 678, A6): warped disk wind image and disk inclination/PA.
+- `cb5b2fd1-e23a-4c6c-9b2f-d1e23aec6c95`: HD 163296, MIRC-X + PIONIER, 13 files (Setterholm+, status O0): inner-disk images and rim geometry.
+- `f89ea077-14c6-49db-9ea0-7714c6d9db0f`: HD 190073, MIRC-X + PIONIER, 2 files (Ibrahim+2023 ApJ 947, 68): inner-au disk image.
+- `3d64620d-a152-4e75-9bc4-c68735d293b1`: CL Lac, MIRC-X, 36 files (Chiavassa+, bibcode O0): convective surface structure; LD diameter baseline.
+- `f87fdde1-c4b6-4de7-bfdd-e1c4b69de708`: Arcturus, IOTA/IONIC, 9 files (Lacour+2008 A&A 485, 561): limb-darkened disk image; a near-featureless control for the residual-image test.
+- `f9418307-0127-49cf-8183-070127f9cf08`: Betelgeuse, MATISSE 2018–20, 361 files (Drevon+2024 MNRAS 527, L88): surface images; Drevon is the PYRA author, so the most direct check of `virgil.ensemble` if his images used PYRA (O0).
+- `706d923a-657a-44bb-ad92-3a657a34bb1f`: Betelgeuse, SPHERE-IRDIS SAM during the Great Dimming, 2 files (Montargès, paper O0): asymmetric photosphere; calibrated OIFITS, no AMICAL needed.
+
 ### Rapid rotators (goal c): in elr-pavo-paper, not here
 
 The rotator *results* are for Ben's paper and live privately in
@@ -230,7 +255,11 @@ Write `scripts/fetch_oidb.py` and `oidb/manifest.yml` for the Stage O1
 collections; fetch Gl 229 B (≈10 MB) on trevor and record sha256s; read the
 first-stage papers' tables into `oidb/references/<collection>.json` (the
 "(O0)" numbers above), with page and table numbers. Check the redirect of
-one VizieR collection. Record each collection's calibration level, dataPI
+one VizieR collection. **Confirm each collection's publication status**
+(journal version of arXiv-only rows; the spreadsheet's status is not
+trusted: e.g. ι Peg's bibcode is an arXiv one, the R Car, GG Tau,
+HD 163296 and symbiotics papers are marked preprint or unverified, and the
+A-type and workshop collections unknown). Record each collection's calibration level, dataPI
 and resulting terms in the manifest, and list the L2 collections whose
 dataPIs must be contacted before results are presented. Tests: manifest
 schema (level, dataPI and terms required); every reference value carries a
@@ -269,14 +298,17 @@ In order:
 ### Stage O2: the remaining binaries (about 2 h per small collection, 6 h per survey; OC)
 
 Orbits first (GG Tau Ab, κ Tuc A, TZ For, θ¹ Ori C, γ² Vel, HD 174881,
-κ Dra, HR 6819, Polaris Ab, SS Lep), then surveys with limits (WR survey,
-A-type accelerators, Be stars, SPHERE SAM, M17, massive YSOs), then the
+HR 6819, Polaris Ab, SS Lep), then surveys with limits (WR survey,
+A-type accelerators, SPHERE SAM, M17, massive YSOs), then the circumbinary
+and disk binaries (post-AGB ×3, 89 Her, ε Aur ×2, ρ Oph A, WR 104), then the
 Gaia BH3 limit-depth check with its injection controls, T CrA, R136 and the symbiotics.
 
 ### Stage O3: imaging (about 4 h per target plus OzSTAR GPU time; OG)
 
 R Car, then Polaris, then R Dor (chromatic; needs C3-style chromatic
-imaging from the contest plan). Each with the four steps above.
+imaging from the contest plan), then the further targets listed above
+(Arcturus first as the featureless control, Betelgeuse MATISSE once O0 has
+settled the PYRA question). Each with the four steps above.
 
 ### Stage O4: reporting (2 h)
 
@@ -314,7 +346,7 @@ contacted and has agreed the policy.
 3. **User-Agent.** OiDB refuses non-browser clients. Use a browser string
    in the fetcher, or ask JMMC whether a descriptive agent is allowed?
 4. **Big collections.** Search PIONIER L2 (10 982 files) for extra epochs of
-   these binaries and rotators (e.g. Achernar, Regulus)? It needs a
+   these binaries? It needs a
    target-search route; OiDB search is JavaScript-only.
 5. **Published images.** May we email the authors (Paladini, Rosales-Guzmán,
    Ohnaka, Evans) for FITS images to compare against, or compare only with
