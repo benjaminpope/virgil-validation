@@ -36,6 +36,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D6">D6</span> | `oidata.OIData.cp_noise`, `likelihood.whitened_residuals` | With unequal closure-phase errors in a group, fouriever uses r^T C^+ r and virgil r^T D^-1/2 R^+ D^-1/2 r (different generalised inverses of the singular C) | documented |
 | <span id="D7">D7</span> | `limits.absil_limits`, `limits.injection_limits`, `limits.nsigma` | For correlated closure phases fouriever counts every closure phase as a degree of freedom in the Absil and injection significance; virgil counts the independent ones (OIData.n_independent) | documented |
 | <span id="D8">D8</span> | `limits.injection_limits` | CANDID's and fouriever's injection limits refit the primary's uniform-disk diameter to the injected data; virgil's hold every parameter but the flux | documented |
+| <span id="D9">D9</span> | `imaging.TSV` | eht-imaging's squared TV (stv2) counts only the steps out of the last row and column; virgil's TSV counts the steps across all four edges | documented |
 
 ## Problems found in other packages
 

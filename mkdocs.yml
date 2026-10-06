@@ -88,5 +88,6 @@ nav:
           - CANDID: method/candid.md
           - fouriever: method/fouriever.md
           - orbitize!: method/orbitize.md
+          - eht-imaging: method/ehtim.md
       - "Evidence table": evidence.md
       - "Generated results": results.md
