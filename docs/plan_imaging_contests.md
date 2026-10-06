@@ -586,6 +586,108 @@ uv coverages** (Ben, 2026-10-06).
   in 1–7 minutes per task. Next: smoke the two new arms, then the full
   benchmark of 60 datasets × 8 arms on OzSTAR (`bench.sbatch`).
 
+### C2g. Starts for the star arms (2026-10-07)
+
+The partial benchmark scores (job 18107553, virgil v0.3.0, 371 of 600
+tasks) showed that the four arms with a parametric star (`point_star`,
+`disk_star`, `ellipse_star`, `companion`) failed on the scenes they were
+meant to help: χ²/N of 300–5000 on the spotted star, and up to 10⁶ on the
+2006 thin disk.
+
+**Diagnosis** (from the logs and npz files):
+
+1. **Flux runaway in CLEAN** (`point_star`, `disk_star`).
+   `clean(base=star)` fits normalized visibilities with the star's flux
+   fixed at 1. When the data want little or no compact star, the
+   components' total grows without bound: `env_flux` reached
+   10¹⁵⁶–10¹⁶³. `setup` copied that total into the start, and the flux
+   prior's upper bound was 10× the start, so it moved with the runaway and
+   bounded nothing. The GP then ended at a flat image, and the two arms
+   gave identical χ² because the star had in effect vanished.
+2. **Starts on prior bounds.** `fit_primary` started the PA at 0 on its
+   U(0, 180) prior, and LM took no steps. `fit_ellipse` stalled at its
+   fixed start (ratio 0.7, PA 0).
+3. **A blind, unguarded companion search.** The flux map spanned only the
+   starting image (±6.9 mas on 2004), so it missed a 10 mas companion and
+   found the spot instead (vv#70). On 2006 it reported SNR ≈ 35,000
+   against a broken primary and kept the result.
+4. **No sanity guard.** A star model that fitted far worse than no star
+   was still handed on to the GP.
+
+**Fixes** (`scripts/contest_images.py`, `src/crosscheck/starts.py`):
+
+- **Linear and closed-form starts** (`crosscheck.starts`, NumPy only):
+  - `second_moments`: a weighted linear least squares of −ln V² on the
+    quadratic form in (u, v) over the short baselines (V² ≥ 0.3), giving
+    the Gaussian σ along both axes and the PA;
+  - `disk_diameter_from_sigma`: the uniform (D = 4σ) or limb-darkened disk
+    with that second moment;
+  - `star_fraction`: the exact minimum of the quartic χ²(f) for
+    V² = |f V_s + (1 − f) V_e|² on [0, 1], or the long-baseline plateau
+    when V_e is unknown.
+
+  On the twelve 2004 benchmark datasets the moments give the diameter
+  within 21%, and the PA within 15° on the companion-free ones. On the
+  twelve 2006 datasets the plateau gives the star fraction within 0.05.
+  The moments' PA is poor for near-round stars, with a companion, and on
+  four of the six 2006 disks (where too few short-baseline points pass and
+  the estimator falls back to a circular Gaussian). So they are starts for
+  the parametric fits, which still run, not replacements for them.
+- **A bounded star fraction.** After CLEAN with a star, the components'
+  total Σc gives f = 1/(1 + Σc). Below F_MIN = 0.01 the star is treated as
+  absent: the arm is imaged without it and records
+  `star_rejected="clean_flux"`. Otherwise the env/star start comes from
+  `star_fraction` with the CLEAN image as V_e. The env/star prior is
+  log-uniform (a scale) with fixed bounds [10⁻⁴, 1/F_MIN − 1 = 99], in
+  `setup`, `run_gp` and `fit_ellipse` alike.
+- **The hole under the star.** `starting_image`'s `hole_mas` (half the
+  beam's minor axis) was lost when `setup` regridded the image to a larger
+  field, as every benchmark member does. The hole is now kept in the
+  support of the new grid, so CLEAN and the GP cannot trade flux between
+  the star and the envelope next to it.
+- **Starts inside the priors, and a multistart.** `multistart_fit` fits
+  each start and keeps the lowest χ²/N, recording the spread and whether
+  the best fit converged. Starts are jittered about the moments and moved
+  at least 5% of each prior's range (in log for scales) from its bounds;
+  16 starts, or 4 in smoke runs. PAs have a U(−90, 270) prior, treated as
+  periodic and wrapped into [0, 180) on output, so no plausible PA lies
+  near a bound. (Fitting (e cos 2θ, e sin 2θ) instead would have no bounds
+  at all, but needs a reparameterized model; the wide window is simpler
+  with virgil's models as they are.) `fit_primary` also scans the diameter
+  from 0.5× to 2× the moments' value first, to pick the right branch of
+  the visibility null. `disk_star` starts from the moments' diameter and
+  from half a beam.
+- **The companion search** (`companion_map`, from vv#70) covers ±λ/B_min,
+  with the primary's disk left out, whatever the starting image's field.
+  It runs only when the primary's χ²/N is within 10× the no-star ellipse's,
+  and keeps a companion only at SNR ≥ 5 *and* when the refitted pair lowers
+  χ² by at least 25 (three extra parameters). The log gives the peak SNR
+  and both χ² values. The brightest CLEAN component cluster more than 1.5
+  beams out is logged as a cross-check, not used to decide.
+- **The sanity guard.** Before the GP, the star start plus an elliptical
+  Gaussian environment is compared with that Gaussian alone. If the star
+  model is worse by more than 2× in χ²/N, or the star's own parametric fit
+  did not converge, the arm runs as the baseline and records
+  `star_rejected` (`chi2` or `not_converged`) in its npz and log. The
+  environment's own convergence is not required, since next to a faint
+  star its parameters are often degenerate.
+- **Small fixes.** `image_metrics.l1_score` no longer overflows on the
+  denormal tails of a blurred entry. Log lines lead with χ²/N against the
+  quoted errors, then the error scale. `contest_bench.py score` counts
+  `star_rejected` per arm and family.
+- **New tasks.** 2012 (alpha and beta), 2014 VY CMa, and 2016 Objects 1
+  and 2 (with the fields suggested on the contest page) join `TASKS`.
+  2014 R Car is left out for now, because virgil 0.3.0's reader refuses
+  it: a closure triangle needs a baseline that is in no V² table at the
+  same time.
+
+**Next.** Once job 18107553 has finished and been downloaded, smoke the
+four star arms on datasets 0, 12, 24, 36 and 48, then rerun those arms (a
+240-task array, into a separate `--out`). The success criteria are no
+star arm with a median χ²/N above 2 on any family; on its target family,
+each star arm's median NCC at least the baseline's, or a rejection by the
+guard; and the rejection counts reported.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
@@ -675,9 +777,9 @@ John Young sent Ben a folder of contest datasets. It is filed under
   JMMC OiDB, whose contest collections (2004–2010, 2022, 2024) match our
   files byte for byte.
 
-The 2012, 2014 and 2016 datasets join `TASKS` in `contest_images.py` once
-the uploaded files unfreeze (bench job 18107553 is downloading). The 2012
-and 2016 entries are scored by data fit only until their truths arrive.
+The 2012, 2014 and 2016 datasets have joined `TASKS` in `contest_images.py`
+(C2g; R Car waits for a virgil reader fix). The 2012 and 2016 entries are
+scored by data fit only until their truths arrive.
 
 ### C5. 2014: real data
 

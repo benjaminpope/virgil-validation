@@ -339,21 +339,27 @@ def score(bench, out):
                                 float(truth["beam"]))
         rows.append({"dataset": name, "config": config, "family": meta["family"], "coverage": meta["coverage"],
                      "chi2_red": float(d["best_chi2_red"]), "error_scale": float(d["error_scale"]),
+                     # Why a star arm's star was dropped (contest_images.setup's guards), or "".
+                     "star_rejected": str(d["star_rejected"]) if "star_rejected" in d else "",
                      **{k: s[k] for k in ("lawson", "rms_e6", "l1", "ncc")}})
     (out / "bench_scores.json").write_text(json.dumps(rows, indent=1))
     metrics = ("lawson", "rms_e6", "l1", "ncc", "chi2_red")
     lines = ["# Benchmark scores (medians; lawson and rms lower is better, l1 and ncc higher)", "",
-             "| config | n | " + " | ".join(metrics) + " |", "|---|---|" + "---|" * len(metrics)]
+             "star_rejected: results whose star the guards dropped (imaged without it).", "",
+             "| config | n | " + " | ".join(metrics) + " | star_rejected |", "|---|---|" + "---|" * (len(metrics) + 1)]
     configs = sorted({r["config"] for r in rows}, key=lambda c: list(CONFIGS).index(c) if c in CONFIGS else 99)
     for c in configs:
         sel = [r for r in rows if r["config"] == c]
-        lines.append(f"| {c} | {len(sel)} | " + " | ".join(f"{np.median([r[m] for r in sel]):.4g}" for m in metrics) + " |")
+        lines.append(f"| {c} | {len(sel)} | " + " | ".join(f"{np.median([r[m] for r in sel]):.4g}" for m in metrics)
+                     + f" | {sum(bool(r['star_rejected']) for r in sel)} |")
     for fam in sorted({r["family"] for r in rows}):
-        lines += ["", f"## {fam}", "", "| config | n | " + " | ".join(metrics) + " |", "|---|---|" + "---|" * len(metrics)]
+        lines += ["", f"## {fam}", "", "| config | n | " + " | ".join(metrics) + " | star_rejected |",
+                  "|---|---|" + "---|" * (len(metrics) + 1)]
         for c in configs:
             sel = [r for r in rows if r["config"] == c and r["family"] == fam]
             if sel:
-                lines.append(f"| {c} | {len(sel)} | " + " | ".join(f"{np.median([r[m] for r in sel]):.4g}" for m in metrics) + " |")
+                lines.append(f"| {c} | {len(sel)} | " + " | ".join(f"{np.median([r[m] for r in sel]):.4g}" for m in metrics)
+                             + f" | {sum(bool(r['star_rejected']) for r in sel)} |")
     (out / "bench_scores.md").write_text("\n".join(lines) + "\n")
     return rows
 

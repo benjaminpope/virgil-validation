@@ -126,7 +126,7 @@ from virgil.likelihood import whitened_residuals  # noqa: E402
 from virgil.priors import IsotropicLatitude  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from contest_images import COMPANION_SNR, FLUX_FLOOR, fit_primary  # noqa: E402
+from contest_images import COMPANION_SNR, FLUX_FLOOR, companion_map, fit_primary  # noqa: E402
 
 CONFIGS = ("spots1", "spots2", "map")
 DEFAULT_YDEG = {"spots1": 12, "spots2": 12, "map": 6}
@@ -382,43 +382,26 @@ def run_starts(scene, priors, data, starts, max_steps=None):
     return records, best
 
 
-COMPANION_FIELD = 1.0  # search half-width, in units of the data's largest scale λ/B_min
 
 
 def find_companion(data):
     """The contest pipeline's primary (``fit_primary``: an elliptical
-    limb-darkened disk) and the ``companion_search`` approach: a linear flux
-    map (virgil.grid_fit.linear_flux_grid) a third of a beam per step, emission
-    only, a companion kept at SNR >= ``COMPANION_SNR``. Two changes, both from
-    the data alone: the map spans ±λ/B_min (the largest scale the data probe)
-    rather than the starting image's field, which for data2 is 13.7 mas
-    across and so reaches only 6.9 mas along the axes; and positions on the
-    primary's disk (within its major radius plus half a beam) are left out,
-    since there the map's peak is the spot, not a companion. Returns the
-    companion (or None), the beam, the starting field and the search's peak."""
-    from virgil.grid_fit import linear_flux_grid
+    limb-darkened disk) and companion map (``companion_map``: a linear flux
+    map over ±λ/B_min, emission only, with the primary's disk left out; it
+    began here and moved into scripts/contest_images.py), a companion kept at
+    SNR >= ``COMPANION_SNR``. Returns the companion (or None), the beam, the
+    starting field and the search's peak."""
     from virgil.imaging import beam, starting_image
 
     resolution = beam(data)
     start = starting_image(data, star=True, oversample=4.0, hole_mas=0.5 * resolution.minor_mas)
     field = float(start.env.pixel_scale_mas * np.shape(start.env.log_brightness)[0])
-    primary, _ = fit_primary(data, resolution, "ellipse", start)
-    mas = np.pi / 180 / 3600e3
-    half = COMPANION_FIELD / float(np.min(np.hypot(data.u, data.v) / np.max(data.wavel))) / mas
-    axis = np.arange(-half, half + 1e-9, resolution.minor_mas / 3)
-    template = vm.System(star=primary, comp=vm.PointSource(1e-3))
-    g = linear_flux_grid(data, template, {"comp.dra": axis, "comp.ddec": axis, "comp.flux": np.array([1e-3])})
-    flux, err = np.asarray(g.flux), np.asarray(g.flux_error)
-    snr = np.where(flux > 0, flux / err, 0.0)
-    dra, ddec = np.meshgrid(axis, axis, indexing="ij")  # as linear_flux_grid's axes: dra first
-    on_disk = np.hypot(dra, ddec) < 0.5 * float(primary.diam) + 0.5 * resolution.minor_mas
-    snr = np.nan_to_num(np.where(on_disk, 0.0, snr))
-    i, j = np.unravel_index(np.argmax(snr), snr.shape)
-    peak = {"dra": float(axis[i]), "ddec": float(axis[j]), "flux": float(flux[i, j]), "snr": float(snr[i, j])}
+    primary, _, _ = fit_primary(data, resolution, "ellipse", start)
+    peak = companion_map(data, resolution, primary)
     kept = peak["snr"] >= COMPANION_SNR
-    print(f"companion search (±{half:.1f} mas, disk < {0.5 * float(primary.diam) + 0.5 * resolution.minor_mas:.2f} mas "
-          f"excluded): peak SNR {peak['snr']:.2f} at ({peak['dra']:.3g}, {peak['ddec']:.3g}) mas, "
-          f"flux {peak['flux']:.3g}: {'kept' if kept else 'below threshold'}", flush=True)
+    print(f"companion search (±{peak['half']:.1f} mas, disk < {peak['hole']:.2f} mas excluded): peak SNR "
+          f"{peak['snr']:.2f} at ({peak['dra']:.3g}, {peak['ddec']:.3g}) mas, flux {peak['flux']:.3g}: "
+          f"{'kept' if kept else 'below threshold'}", flush=True)
     companion = {k: peak[k] for k in ("dra", "ddec", "flux")} if kept else None
     return companion, resolution, field, peak
 

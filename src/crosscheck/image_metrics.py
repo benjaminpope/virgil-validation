@@ -124,7 +124,10 @@ def l1_score(entry, ref, fwhm_pix=None):
         s = fwhm_pix / FWHM_PER_SIGMA
         e = gaussian_filter(e, s, mode="constant")
         r = gaussian_filter(r, s, mode="constant")
-    keep = e > 0
+    # Pixels with no entry flux carry no weight in the median; a relative
+    # floor also drops the denormal tails of a blurred entry, whose ratios
+    # r/e overflowed (C2g).
+    keep = e > 1e-12 * e.max() if e.size and e.max() > 0 else np.zeros(e.shape, bool)
     a = max(_weighted_median(r[keep] / e[keep], e[keep]), 0.0) if keep.any() else 0.0
     return float(1.0 - np.sum(np.abs(a * e - r)) / np.sum(r))
 
