@@ -55,10 +55,13 @@ Read-only, on 2026-10-07, for one small collection (Gl 229 B, 22 files):
 - Search is rendered on the server (corrected in O0, 2026-10-07; an earlier
   draft said JavaScript-only): `search.html?collection=~<id>&perpage=100&page=P`
   lists a collection's granules, each row carrying `data-access_url`,
-  `data-calib_level`, `data-bib_reference` and the dataPI, and the same form
-  takes a cone search (`cs_position`, `cs_radius`, `cs_radius_unit`), so
-  whether a star is inside a big collection (PIONIER L2, 10 982 files) can be
-  checked without downloading. No TAP service was found.
+  `data-calib_level`, `data-bib_reference` and the dataPI. A cone search is
+  `search.html?conesearch=<name or hh:mm:ss +dd:mm:ss>,J2000,<radius>,<arcmin|arcsec|deg>`
+  (names resolved by Sesame; combinable with `collection=`; the form's
+  `cs_position` fields are ignored over GET), so whether a star is inside a
+  big collection (PIONIER L2, 10 982 files) can be checked without
+  downloading. L0 rows are observation logs, not data. No TAP service was
+  found.
 
 So the download mechanism is: scrape the collection pages, follow each
 `get-data.html` redirect with a GET, and stream the staging URL. Nothing was
