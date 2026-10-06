@@ -10,6 +10,7 @@ must fall back to imaging without the star when the star start fails. The
 virgil parts are a few small fits on the 2004 coverage.
 """
 
+import importlib
 import importlib.util
 import pathlib
 import warnings
@@ -23,6 +24,10 @@ ROOT = pathlib.Path(__file__).parents[1]
 DATA = pathlib.Path("~/data/imaging_contests").expanduser()
 TEMPLATE = DATA / "2004" / "2004-data2.fits"
 needs_2004 = pytest.mark.skipif(not TEMPLATE.exists(), reason="contest data not fetched")
+needs_ellipse = pytest.mark.skipif(
+    importlib.util.find_spec("virgil") is None
+    or not hasattr(importlib.import_module("virgil.models"), "EllipticalLimbDarkenedDisk"),
+    reason="needs virgil with EllipticalLimbDarkenedDisk (virgil#250)")
 LAM, BMAX = 0.55e-6, 60.0  # an NPOI-like coverage, as 2004's: a 1.9 mas beam
 BEAM = LAM / BMAX / sky.MAS
 
@@ -267,6 +272,7 @@ def test_star_guard_falls_back_to_no_star(simulated, monkeypatch):
 
 @pytest.mark.validates("pipeline:contest-imaging", "virgil.models.EllipticalLimbDarkenedDisk", roots=["self-consistency"], kind="reference")
 @needs_2004
+@needs_ellipse
 def test_primary_fit_moves_from_its_moment_start(simulated):
     # The old fit_primary started PA 0 on its U(0, 180) prior and LM took no
     # steps. From the moments, the multistart lands near the simulated star.
