@@ -1,0 +1,318 @@
+{
+ "version": 2,
+ "tasks": 256,
+ "incomplete_tasks": 0,
+ "virgil": [
+  "0.2.0"
+ ],
+ "virgil_commit": "0726734a1032cf95a2248d0678b72bbb35b395e4",
+ "criteria_hash": "e7537647d8d5d74747dc275d20eea3bab77f9614239da94e245565ae3907afc9",
+ "design_hash": "7bf79127db9a6e29",
+ "criteria": {
+  "draws_per_replicate": 99,
+  "rank_bins": 20,
+  "quantities": [
+   "diam",
+   "flux",
+   "sep",
+   "pa",
+   "vis_scale",
+   "loglike"
+  ],
+  "sampler": {
+   "warmup": 500,
+   "samples": 1000,
+   "chains": 4,
+   "dense_mass": [
+    "pa_vec",
+    "sep",
+    "flux"
+   ],
+   "ring_width": 0.1,
+   "start": "grid_fit",
+   "grid": {
+    "diam": {
+     "lo": 0.5,
+     "hi": 3.0,
+     "n": 7,
+     "spacing": "log"
+    },
+    "flux": {
+     "lo": 0.001,
+     "hi": 0.1,
+     "n": 13,
+     "spacing": "log"
+    },
+    "offset_mas": {
+     "half_width": 26.0,
+     "n": 53
+    }
+   },
+   "jitter": {
+    "diam": 0.05,
+    "flux": 0.2,
+    "sep": 0.05,
+    "pa_deg": 2.0,
+    "vis_scale": 0.05
+   }
+  },
+  "generative": {
+   "diam": {
+    "lo": 0.5,
+    "hi": 3.0
+   },
+   "sep": {
+    "lo": 5.0,
+    "hi": 25.0
+   },
+   "vis_scale": {
+    "lo": 0.7,
+    "hi": 1.5
+   },
+   "pa": "uniform on [0, 360) degrees, sampled as an AngleVector",
+   "sigma_v2": 0.005,
+   "sigma_cp_deg": 0.3
+  },
+  "regimes": {
+   "bright": {
+    "flux_lo": 0.02,
+    "flux_hi": 0.1,
+    "tasks": 128,
+    "replicates_per_task": 8
+   },
+   "low": {
+    "flux_lo": 0.001,
+    "flux_hi": 0.02,
+    "tasks": 128,
+    "replicates_per_task": 8
+   }
+  },
+  "counts": {
+   "min_replicates_per_regime": 1000
+  },
+  "rank_tests": [
+   "chi2_bins",
+   "coverage_68",
+   "coverage_95",
+   "mean_rank",
+   "ecdf"
+  ],
+  "ecdf_simulations": 10000,
+  "ecdf_seed": 20261007,
+  "family_alpha": 0.01,
+  "sampler_health": {
+   "max_divergent_draws": 0,
+   "max_rhat": 1.01,
+   "min_bulk_ess": 400,
+   "max_unhealthy_fraction": 0.05,
+   "max_divergent_fraction": 0.02
+  },
+  "descriptive": [
+   "exclude_unhealthy",
+   "fit_converged"
+  ]
+ },
+ "regimes": {
+  "bright": {
+   "n": 1024,
+   "health": {
+    "unhealthy": 85,
+    "unhealthy_fraction": 0.0830078125,
+    "with_divergences": 19,
+    "divergent_fraction": 0.0185546875,
+    "high_rhat": 84,
+    "low_ess": 83,
+    "pass": false
+   },
+   "enough": true,
+   "exclude_unhealthy": {
+    "n": 939,
+    "p": {
+     "diam": {
+      "chi2_bins": 0.003010063204400309,
+      "mean_rank": 0.24677378391857674
+     },
+     "flux": {
+      "chi2_bins": 0.0012954292617225758,
+      "mean_rank": 0.0006821430064791609
+     },
+     "sep": {
+      "chi2_bins": 0.0013667395330248368,
+      "mean_rank": 0.8889605255914381
+     },
+     "pa": {
+      "chi2_bins": 0.439341666440134,
+      "mean_rank": 0.8409582632724366
+     },
+     "vis_scale": {
+      "chi2_bins": 4.183398960054517e-06,
+      "mean_rank": 0.01500240401293391
+     },
+     "loglike": {
+      "chi2_bins": 2.6235248962698347e-06,
+      "mean_rank": 0.011058295093990126
+     }
+    }
+   },
+   "fit_converged_fraction": 0.94921875
+  },
+  "low": {
+   "n": 1024,
+   "health": {
+    "unhealthy": 429,
+    "unhealthy_fraction": 0.4189453125,
+    "with_divergences": 143,
+    "divergent_fraction": 0.1396484375,
+    "high_rhat": 415,
+    "low_ess": 417,
+    "pass": false
+   },
+   "enough": true,
+   "exclude_unhealthy": {
+    "n": 595,
+    "p": {
+     "diam": {
+      "chi2_bins": 2.8752613714423043e-173,
+      "mean_rank": 6.585992458727539e-36
+     },
+     "flux": {
+      "chi2_bins": 5.3749334581001343e-216,
+      "mean_rank": 2.964018719548203e-42
+     },
+     "sep": {
+      "chi2_bins": 5.092018423662308e-136,
+      "mean_rank": 9.641283441537047e-20
+     },
+     "pa": {
+      "chi2_bins": 7.120315711382793e-118,
+      "mean_rank": 0.8485108544869591
+     },
+     "vis_scale": {
+      "chi2_bins": 2.4608405595676832e-158,
+      "mean_rank": 1.863749990310966e-41
+     },
+     "loglike": {
+      "chi2_bins": 1.6462941690596625e-265,
+      "mean_rank": 3.081961424875125e-47
+     }
+    }
+   },
+   "fit_converged_fraction": 0.8623046875
+  }
+ },
+ "pvalues": {
+  "bright:diam:chi2_bins": 6.911538611524279e-10,
+  "bright:diam:coverage_68": 0.002850642271539309,
+  "bright:diam:coverage_95": 2.3693776030286266e-15,
+  "bright:diam:mean_rank": 0.00874095281144644,
+  "bright:diam:ecdf": 0.0013998600139986002,
+  "bright:flux:chi2_bins": 2.196118159889432e-15,
+  "bright:flux:coverage_68": 3.1854310004883956e-05,
+  "bright:flux:coverage_95": 7.249777956223023e-17,
+  "bright:flux:mean_rank": 2.4100628598383278e-08,
+  "bright:flux:ecdf": 9.999000099990002e-05,
+  "bright:sep:chi2_bins": 1.4452818642846045e-08,
+  "bright:sep:coverage_68": 0.027022565421753398,
+  "bright:sep:coverage_95": 6.325682666070481e-14,
+  "bright:sep:mean_rank": 0.6563610921250449,
+  "bright:sep:ecdf": 0.0020997900209979003,
+  "bright:pa:chi2_bins": 0.00010514218213465876,
+  "bright:pa:coverage_68": 0.002850642271539309,
+  "bright:pa:coverage_95": 4.3876262026706844e-15,
+  "bright:pa:mean_rank": 0.9991362216050373,
+  "bright:pa:ecdf": 0.05749425057494251,
+  "bright:vis_scale:chi2_bins": 4.814928792547989e-22,
+  "bright:vis_scale:coverage_68": 0.0007087406721009422,
+  "bright:vis_scale:coverage_95": 1.255711334123681e-14,
+  "bright:vis_scale:mean_rank": 6.221052066472796e-07,
+  "bright:vis_scale:ecdf": 9.999000099990002e-05,
+  "bright:loglike:chi2_bins": 9.234650065515023e-21,
+  "bright:loglike:coverage_68": 0.0014485019815769662,
+  "bright:loglike:coverage_95": 9.507598912196274e-19,
+  "bright:loglike:mean_rank": 4.192423437091415e-07,
+  "bright:loglike:ecdf": 9.999000099990002e-05,
+  "low:diam:chi2_bins": 0.0,
+  "low:diam:coverage_68": 8.605379161099996e-70,
+  "low:diam:coverage_95": 2.9357243595257034e-206,
+  "low:diam:mean_rank": 4.167378550529681e-118,
+  "low:diam:ecdf": 9.999000099990002e-05,
+  "low:flux:chi2_bins": 0.0,
+  "low:flux:coverage_68": 1.1871854552025499e-95,
+  "low:flux:coverage_95": 1.8171180423431854e-291,
+  "low:flux:mean_rank": 2.8365615077714893e-160,
+  "low:flux:ecdf": 9.999000099990002e-05,
+  "low:sep:chi2_bins": 3.739786700093937e-289,
+  "low:sep:coverage_68": 5.484052343125015e-48,
+  "low:sep:coverage_95": 1.5582377173362803e-191,
+  "low:sep:mean_rank": 3.2311225316623866e-42,
+  "low:sep:ecdf": 9.999000099990002e-05,
+  "low:pa:chi2_bins": 0.0,
+  "low:pa:coverage_68": 5.411993942892631e-118,
+  "low:pa:coverage_95": 0.0,
+  "low:pa:mean_rank": 0.6376943943227386,
+  "low:pa:ecdf": 9.999000099990002e-05,
+  "low:vis_scale:chi2_bins": 0.0,
+  "low:vis_scale:coverage_68": 1.0897156506534866e-62,
+  "low:vis_scale:coverage_95": 2.1346177842321615e-196,
+  "low:vis_scale:mean_rank": 1.4007974315809536e-141,
+  "low:vis_scale:ecdf": 9.999000099990002e-05,
+  "low:loglike:chi2_bins": 0.0,
+  "low:loglike:coverage_68": 4.3095318091284574e-125,
+  "low:loglike:coverage_95": 0.0,
+  "low:loglike:mean_rank": 3.6334452120951265e-220,
+  "low:loglike:ecdf": 9.999000099990002e-05
+ },
+ "rejected": [
+  "bright:diam:chi2_bins",
+  "bright:diam:coverage_95",
+  "bright:flux:chi2_bins",
+  "bright:flux:coverage_68",
+  "bright:flux:coverage_95",
+  "bright:flux:ecdf",
+  "bright:flux:mean_rank",
+  "bright:loglike:chi2_bins",
+  "bright:loglike:coverage_95",
+  "bright:loglike:ecdf",
+  "bright:loglike:mean_rank",
+  "bright:pa:chi2_bins",
+  "bright:pa:coverage_95",
+  "bright:sep:chi2_bins",
+  "bright:sep:coverage_95",
+  "bright:vis_scale:chi2_bins",
+  "bright:vis_scale:coverage_68",
+  "bright:vis_scale:coverage_95",
+  "bright:vis_scale:ecdf",
+  "bright:vis_scale:mean_rank",
+  "low:diam:chi2_bins",
+  "low:diam:coverage_68",
+  "low:diam:coverage_95",
+  "low:diam:ecdf",
+  "low:diam:mean_rank",
+  "low:flux:chi2_bins",
+  "low:flux:coverage_68",
+  "low:flux:coverage_95",
+  "low:flux:ecdf",
+  "low:flux:mean_rank",
+  "low:loglike:chi2_bins",
+  "low:loglike:coverage_68",
+  "low:loglike:coverage_95",
+  "low:loglike:ecdf",
+  "low:loglike:mean_rank",
+  "low:pa:chi2_bins",
+  "low:pa:coverage_68",
+  "low:pa:coverage_95",
+  "low:pa:ecdf",
+  "low:sep:chi2_bins",
+  "low:sep:coverage_68",
+  "low:sep:coverage_95",
+  "low:sep:ecdf",
+  "low:sep:mean_rank",
+  "low:vis_scale:chi2_bins",
+  "low:vis_scale:coverage_68",
+  "low:vis_scale:coverage_95",
+  "low:vis_scale:ecdf",
+  "low:vis_scale:mean_rank"
+ ],
+ "tests": 60,
+ "pass": false
+}
