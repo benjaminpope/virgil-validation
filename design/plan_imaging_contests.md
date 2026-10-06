@@ -410,7 +410,7 @@ Planned options for `contest_images.py`, in order:
 
 ### C2d. The convergence diagnosis and the ensemble campaign
 
-`docs/contest_convergence_diagnosis.md` separates the causes of the
+`design/contest_convergence_diagnosis.md` separates the causes of the
 non-converging fits: optimiser and conditioning, likelihood, regularisation
 and hyperparameters, and initialisation. Initialisation and the image
 parameterisation dominate. The campaign follows the winners' methods taken
@@ -424,6 +424,110 @@ together:
   evidence.
 
 It covers 22 datasets, including the 2024 MATISSE L and N bands.
+
+### C2e. After the first campaign: what is left, and the next round
+
+The campaign (virgil `8562a39`, MATISSE rerun on `3018a9f` after
+virgil#237) gives χ²/N ≈ 0.7–1.1 for 2004 data1, 2006, all six 2008 sets,
+2018 and both 2024 Obj1 sets (PIONIER and GRAVITY). Ensemble table:
+`~/data/imaging_contests/results/ensemble_8562a39_3018a9f/ensemble.md`.
+Five problems remain. Each plan below uses only what contestants had
+before submitting.
+
+**2004 data2 (χ²/N ≈ 21, error scale 4.7).**
+- *What we see.*
+  - V² dominate: 31 per point, against 5.8 for the closure phases.
+  - The short-baseline V² residuals have a mean of −8σ.
+  - The evidence's best σ (4) and ℓ (0.75 beam) both sit on the edges of
+    the hyperparameter grid.
+  - Members with the analytic point star are far worse (χ²/N ≈ 1300).
+- *What the contestants knew.* The contest page listed the possible
+  morphologies: a limb-darkened star with spots, a compact source with an
+  envelope, or something more exotic.
+- *Plan.*
+  1. Widen the hyperparameter grid whenever the evidence's best point lies
+     on an edge (σ up to 16, ℓ down to 0.25 beam), for every dataset.
+  2. Add *resolved-star* members. The base becomes a `LimbDarkenedDisk`
+     whose diameter is fitted (log-uniform from 0.1 beam to a quarter of
+     the field) by `clean(base_priors=...)` and again in the GP fit,
+     instead of the point star.
+  3. Scan the field (1×, 2× and 4×), with the evidence choosing.
+
+**2010 Low HK (χ²/N ≈ 2500–4000, error scale 52–67).**
+- *What we see.* Every V² error is 1e-4, so any model mismatch dominates
+  χ².
+- *What the contestants knew.* The grey category was judged as three
+  images: Med H, Low HK channels 1–10, and Low HK channels 11–20. Our two
+  Low HK tasks (split at 1.9 µm) roughly match the last two, so colour within a half-band is
+  probably not the main cause.
+- *Plan.*
+  1. Scan the field (1×, 2× and 4×, star on and off) to test for flux
+     outside the 69 mas field.
+  2. Then try a SPARCO weighting using the SED the organisers gave out.
+  3. Image per channel only if those leave structured residuals (C3).
+
+**2024 Obj2 GRAVITY (χ²/N ≈ 185–250, error scale 14–16).**
+- *What we see.*
+  - V² dominate: 290–370 per point, against 9–35 for the closure phases.
+  - The short-baseline V² residuals have a mean of −4σ.
+  - The evidence strongly prefers the star (ΔlogZ ≈ +1e4).
+- *What the contestants knew.* A young star with a suspected companion,
+  and uncalibrated `OI_FLUX` spectra.
+- *Diagnosis.* A grey environment with a fixed star-to-environment ratio
+  cannot follow a star and a disk with different spectra across 2.0–2.5 µm
+  (the problem SPARCO solves). Over-resolved flux would also lower the
+  short-baseline V².
+- *Plan.* Add SPARCO members: the star with a `PowerLaw` spectrum, and the
+  environment with its own fitted index. Add a halo option. The evidence
+  chooses between them. 2024 Obj2 PIONIER (χ²/N 1.7) gets the same
+  members.
+
+**2022 AMI (χ²/N 0.02–0.13).**
+- *Diagnosis.* This is not over-fitting in the error-bar sense. There are 56
+  data points (21 V² and 15 independent closure phases, from one
+  snapshot). MacKay's γ is about 53, so nearly every point is used to fix
+  an image parameter, and χ² ≈ N − γ is small by construction. The error
+  scale is 0.63–1.58, consistent with 1. The problem is under-determined:
+  the image has more freedom than the data constrain.
+- *Plan.*
+  1. Report N − γ alongside χ²/N.
+  2. Compare the images' evidence with parametric models (a point star;
+     a star plus a companion from `grid_fit`, since the organisers called
+     it a high-contrast test).
+  3. Treat the ensemble's σ map as the honest image uncertainty.
+
+**MATISSE (error scale 0.34–0.53).**
+- *What we see.* In the N band, χ² per point is 0.005 for V² and 0.49 for
+  the closure phases. The two blocks are mis-scaled by very different
+  factors, so one global scale cannot fix both.
+- *Plan.*
+  1. Use a MacKay error scale per observable block (V², closure phase),
+     with γ split between the blocks by the diagonal of the hat matrix.
+     This comes from the same SVD the evidence already uses. It is a
+     virgil feature (`error_scale(..., blocks=...)`).
+  2. Adjacent MATISSE channels are correlated, so the effective N is
+     smaller than the count of points. That is noted, not yet modelled.
+  3. The 19 members that hit the 2-hour limit are being rerun with
+     8 hours.
+
+**Scoring against the winners (C4).**
+- *Available truths.* Only 2004 data2 and 2018 have truths we can use, as
+  analytic models in the papers. They were revealed after the contests, so
+  they are used for scoring only. Every other year needs the organisers'
+  truth images.
+- *Which first.* 2018 already fits (χ²/N 1.11), so it is the first case to
+  score.
+- *Sources.* The metric definitions and published score tables are
+  collected in `design/contest_scoring_sources.md`.
+
+**Order of work.**
+1. Per-block error scales (virgil PR).
+2. The widened hyperparameter grid, resolved-star members and field scans
+   (`contest_images.py`), then a second campaign on 2004 data2, 2010 and
+   2024 Obj2.
+3. SPARCO members for 2024 Obj2.
+4. Scoring 2018, then 2004 data2.
+5. Parametric comparisons for AMI.
 
 ### C3. Chromatic data
 
@@ -508,9 +612,11 @@ MPoL (`rml-imaging`).
 
 ## Open decisions for Ben
 
-1. **2024 truths.** Should we ask Millour or Soulez for the 2024 truth
-   images? With ImageMetrics, that is the quickest route to a quantitative
-   score.
+1. **2024 truths** (decided by Ben, 2026-10-06). He will ask Millour or
+   Soulez later, not yet. Until then, 2024 is assessed on the data alone
+   (χ²/N, residuals, agreement within the ensemble) and is left out of the
+   comparison with the winners. It is recorded as pending in
+   `design/contest_scoring_sources.md`.
 2. **Chromatic imaging in virgil.** If C3 shows that per-band images are
    not enough, should a cross-wavelength regulariser go into virgil (a
    design note first)?
