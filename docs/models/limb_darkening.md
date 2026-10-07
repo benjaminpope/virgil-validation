@@ -19,6 +19,13 @@ At order 22 the error grows because expanding (1 − μ)²² into powers of μ
 cancels binomial coefficients as large as 7e5. Powers outside (−2, 22] are
 refused, as documented.
 
+## Elliptical disks
+
+| virgil | Reference | Agreement |
+| --- | --- | --- |
+| `EllipticalLimbDarkenedDisk`, uniform, linear and quadratic laws, axis ratio 0.7, PA 35°, offset | our circular point cloud squashed across the major axis in the image plane (no similarity theorem on our side); the major axis at PA + 90° is far off (control) | 1e-14 |
+| its major axis | oriented as an `EllipticalGaussian`'s: baselines along it see lower visibilities than across it, for both | same ordering |
+
 ## Kipping's parametrization
 
 | virgil | Reference | Agreement |

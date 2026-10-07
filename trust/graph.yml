@@ -55,6 +55,8 @@ nodes:
     source: [src/virgil/amigo.py]
     depends: [virgil.oidata.OIData]
     doc: method/coverage.md
+  virgil.coverage.mask_transfer: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
+  virgil.coverage.nrm_oidata: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
 
   # -------------------------------------------------------------- models
   virgil.models.PointSource: {layer: models, source: [src/virgil/models.py]}
@@ -102,6 +104,17 @@ nodes:
   virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
   virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
   virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md#the-harmonix-wrapper}
+  virgil.models.FlaredDisk: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md}
+  virgil.models.cvis_uniform_disk: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md#closed-form-helpers}
+  virgil.models.cvis_binary: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md#closed-form-helpers}
+  virgil.models.EllipticalLimbDarkenedDisk:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.cvis_limb_darkened_disk]
+    doc: models/limb_darkening.md#elliptical-disks
+  virgil.spectra.Spectrum: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
+  virgil.spectra.flux_at: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
+  virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.Tabulated: {layer: models, source: [src/virgil/spectra.py]}
@@ -175,6 +188,11 @@ nodes:
   virgil.orbits.orientation_priors: {layer: orbits, source: [src/virgil/orbits.py], depends: [virgil.angles.AngleVector]}
   virgil.orbits.orientation_from_varpi: {layer: orbits, source: [src/virgil/orbits.py]}
   virgil.orbits.position_angle_log_jacobian: {layer: orbits, source: [src/virgil/orbits.py]}
+  virgil.orbits.position_angle_prior:
+    layer: orbits
+    source: [src/virgil/orbits.py]
+    depends: [virgil.orbits.position_angle_log_jacobian]
+    doc: orbits/kepler.md#the-position-angle-prior
   virgil.models.Attached:
     layer: models
     source: [src/virgil/models.py, src/virgil/orbits.py]
@@ -202,6 +220,10 @@ nodes:
   virgil.detection.DetectionMC: {layer: inference, source: [src/virgil/detection.py]}
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
   virgil.limits.flux_to_delta_mag: {layer: inference, source: [src/virgil/limits.py]}
+  virgil.limits.delta_mag_to_flux: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
+  virgil.limits.contrast_to_flux: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
+  virgil.limits.chi2ppf: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
+  virgil.limits.radial_profile: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
@@ -252,6 +274,8 @@ nodes:
     source: [src/virgil/gains.py, src/virgil/likelihood.py]
     depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise, virgil._linear]
     doc: likelihood/linear_marginals.md
+  virgil.gains.GainModes: {layer: likelihood, source: [src/virgil/gains.py], doc: likelihood/linear_marginals.md#the-mode-objects}
+  virgil.gains.ClosureOffsets: {layer: likelihood, source: [src/virgil/gains.py], doc: likelihood/linear_marginals.md#the-mode-objects}
   virgil.limits.nsigma:
     layer: inference
     roots: 2  # mathematics and CANDID
@@ -276,6 +300,30 @@ nodes:
   virgil.imaging.nyquist_pixel_scale: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.field_of_view: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.convolve_beam: {layer: imaging, source: [src/virgil/imaging.py]}
+  # image-recovery metrics (imaging contests) and randomized ensembles
+  virgil.metrics.ncc: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
+  virgil.metrics.l1_score: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
+  virgil.metrics.lawson_sigma_over_peak: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
+  virgil.metrics.rms_convolved: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
+  virgil.metrics.resample: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
+  virgil.metrics.align:
+    layer: imaging
+    source: [src/virgil/metrics.py]
+    depends: [virgil.metrics.ncc]
+    doc: imaging/metrics_ensembles.md#metrics
+  virgil.metrics.score:
+    layer: imaging
+    source: [src/virgil/metrics.py]
+    depends: [virgil.metrics.ncc, virgil.metrics.l1_score, virgil.metrics.lawson_sigma_over_peak,
+              virgil.metrics.rms_convolved, virgil.metrics.resample, virgil.metrics.align]
+    doc: imaging/metrics_ensembles.md#metrics
+  virgil.ensemble.EnsembleSpec: {layer: imaging, source: [src/virgil/ensemble.py], doc: imaging/metrics_ensembles.md#ensembles}
+  virgil.ensemble.Draw: {layer: imaging, source: [src/virgil/ensemble.py], doc: imaging/metrics_ensembles.md#ensembles}
+  virgil.ensemble.draw_groups:
+    layer: imaging
+    source: [src/virgil/ensemble.py, src/virgil/imaging.py]
+    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view]
+    doc: imaging/metrics_ensembles.md#ensembles
   # regularised imaging: natural roots are eht-imaging and MPoL
   virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals], doc: imaging/machinery.md#clean}
   virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
@@ -344,6 +392,7 @@ nodes:
   crosscheck.disks: {layer: references}
   crosscheck.elr: {layer: references}
   crosscheck.nrm: {layer: references}
+  crosscheck.image_metrics: {layer: references}
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)

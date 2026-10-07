@@ -333,6 +333,17 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/229]
 
+- id: F17
+  title: limits.chi2ppf with df != 1 raises ImportError, needing tensorflow_probability, which virgil does not declare
+  objects: [virgil.limits.chi2ppf]
+  ruling: virgil
+  kind: dependency (the documented fallback, numpyro's gammaincinv, imports tensorflow_probability; df = 1, the path nsigma uses, is unaffected)
+  referee: statistics (scipy.stats.chi2.ppf)
+  evidence:
+    - tests/test_limits_coverage_helpers.py::test_chi2ppf_is_scipys_for_one_degree_of_freedom
+    - tests/test_limits_coverage_helpers.py::test_f17_chi2ppf_works_for_several_degrees_of_freedom
+  status: open
+
 - id: P7
   title: orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre
   objects: [orbitize]

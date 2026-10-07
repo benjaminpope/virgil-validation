@@ -26,6 +26,15 @@ fix for [F9](../index.md#F9).
 | `GaussianLine`, `LorentzianLine` | the profiles, their half maxima, and the documented integrals by quadrature | 1e-13; integrals 1e-8 |
 | `Sum` | the sum of its parts, and its reference flux at `wavel0` | 1e-14 |
 
+## The spectrum interface
+
+[`test_models_spectra_extras.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_models_spectra_extras.py).
+
+| virgil | Reference | Agreement |
+| --- | --- | --- |
+| `flux_at`, `reference_flux` | numbers pass through; a `PowerLaw` gives ratio (λ/λ₀)^index, and `ratio` at `None`; a `BlackBody`'s reference flux is its `ratio` | 1e-14 |
+| `Spectrum`, subclassed by a user with only `_at` and `wavel0` | its value at λ, at `None`, and as a companion's flux in a `System` (the chromatic binary in closed form) | 7e-16 |
+
 ## Chromatic scenes
 
 | virgil | Reference | Agreement |

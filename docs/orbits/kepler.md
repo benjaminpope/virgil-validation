@@ -15,3 +15,9 @@ visual-binary projection) and SciPy. orbitize! covers `KeplerOrbit`,
 | `starting_orbits` | each grid point's χ² equals our own weighted least squares in the unit orbit (X, Y); the best orbit is the one the positions came from | Mathematics | 1e-8 |
 | `models.Attached` (a companion on an orbit) | the static binary with the companion at our orbit position, at three times | Mathematics | 1e-12 |
 
+## The position angle prior
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `position_angle_prior` with `KeplerOrbit.from_position_angle` (e = 0, 0.3, 0.6) | its `loglike` is log\|∂M/∂θ\| by finite differences of our projection, and `log_norm` its negative | Mathematics | 2e-9 |
+
