@@ -73,3 +73,14 @@ reads its summary, under criteria registered in the script:
 Written and smoke-tested on the laptop (3 + 3 + 20 draws, all four checks
 pass); not yet run at full size.
 
+
+## Limit helpers
+
+[`test_limits_coverage_helpers.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_limits_coverage_helpers.py).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `chi2ppf`, one degree of freedom, p from 0.1 to 0.9999 | `scipy.stats.chi2.ppf` | Statistics | 2e-15 relative |
+| `chi2ppf`, three degrees of freedom | the same | Statistics | fails: needs `tensorflow_probability`, which virgil does not declare ([F17](../index.md#F17)) |
+| `delta_mag_to_flux`, `contrast_to_flux` | 10^(−Δm/2.5) and 1/contrast; inverses of `flux_to_delta_mag` and `flux_to_contrast` | Mathematics | 1e-14 |
+| `radial_profile` (off-centre, with a NaN) | our annuli of equal width from 0 to `r_max`: centres, counts, mean, std, median, 16th and 84th percentiles | Mathematics | exact |

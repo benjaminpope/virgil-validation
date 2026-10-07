@@ -13,6 +13,10 @@ centres and summed directly in Fourier space. Test:
 | `FlaredDiskHG`, `FlaredDiskGaussian`, `FlaredDiskPowerLaw`: face-on and flat, inclined, inclined at PA 200°, offset | direct Fourier sum of our brightness | 1e-15 |
 | the default pixel sampling | the same disk at twice the density, on baselines that resolve the ring | 1e-9 |
 
+The shared base class `FlaredDisk` gets its evidence through these three; on
+its own it has no phase function, and evaluating it raises
+`NotImplementedError` (a guard).
+
 As a negative control, the same disk turned through 180° (near side at
 PA + 270°) differs by more than 1e-2, as it should.
 

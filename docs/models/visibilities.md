@@ -39,6 +39,16 @@ round on the sky, is kept as a negative control. The arc agreed only to
 | `Resolved` flux in a `System` | normalization | 1e-15 |
 | `System`: five random scenes of 24 points, Gaussians, elliptical Gaussians and disks, plus a nested, shifted, weighted `System` | sum of closed forms | 1e-12 (float64), 3e-5 (float32, virgil's default) |
 
+## Closed-form helpers
+
+[`test_models_spectra_extras.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_models_spectra_extras.py), on 200
+random baselines given in wavelengths.
+
+| virgil | Reference | Agreement |
+| --- | --- | --- |
+| `cvis_uniform_disk`, offset | 2 J₁(x)/x, x = πθ\|u\|, times the shift phase; zero at the first root of J₁ | 4e-16 |
+| `cvis_binary` | (1 + f e^(−2πi(u·dra + v·ddec))) / (1 + f), and the sum of two shifted points | 9e-16 |
+
 ## Pixel images
 
 | virgil | Reference | Agreement |

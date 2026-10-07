@@ -18,6 +18,19 @@ integration.
 | `OIData.with_closure_offsets`: per-baseline (T e), per-triangle and supplied offsets common to a frame's channels, four UTs | the sines over σ, projected on an orthonormal basis of each channel's triangle column space, against 𝒩(y; 0, QᵀRQ + VVᵀ) | Mathematics | 1e-13 |
 | `RVData.marginal_loglike` and `zero_point_posterior` (three instruments, with and without jitter), given virgil's Keplerian model | 𝒩(m + Aμ, C + AΛAᵀ); the Gaussian conditional of the zero points | Mathematics | 1e-11; 1e-13 |
 
+## The mode objects
+
+[`test_gains_algebra.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_gains_algebra.py): the objects themselves,
+on a simulated four-UT file (two frames, four channels), against our own
+telescope and triangle algebra (`crosscheck.chi2.triangle_matrix`).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `GainModes` from `gain_modes` (telescope, baseline and chromatic groups) | each block's shapes, times its group's width, scattered onto the samples: UUᵀ equals ours (per frame an indicator per telescope on its baselines; one per baseline; one per baseline shaped (λ_ref/λ)²), and the number of modes | Mathematics | exact |
+| `ClosureOffsets` from `closure_offsets` (baseline, triangle, both) | the modes scattered onto the closure phases through `cp_noise.groups`: Σ τ² m mᵀ equals τ² (T Tᵀ) ⊗ 1 1ᵀ for baseline offsets (T e), τ² I ⊗ 1 1ᵀ for triangle offsets, the offsets being common to all channels of a frame | Mathematics | exact |
+| station phases (our algebra) | a phase gᵢ per telescope shifts baseline (i, j) by gⱼ − gᵢ, which T annihilates: T A = 0; rank T = 3 for four telescopes | Mathematics | exact |
+| an offset mode along the left null vector of T (the dependent closure-phase combination of four telescopes), 0.3 rad | leaves the log-likelihood unchanged; one along a column of T does not | Mathematics | 0 |
+
 The `OI_FLUX` grey scale and differential phases are on
 [Flux spectra and differential phases](spectra_phases.md); the continuum
 operator is on [OIFITS writing and observables](../data/oifits_observables.md).

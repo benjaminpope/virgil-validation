@@ -126,7 +126,8 @@ def _disk_reference(geometry, phase, npix, scale, u, v, w, dra=0.0, ddec=0.0):
 
 @pytest.mark.parametrize(
     "name",
-    [pytest.param(n, marks=pytest.mark.validates(f"virgil.models.{n}", roots=["mathematics"])) for n in PHASES],
+    [pytest.param(n, marks=pytest.mark.validates(f"virgil.models.{n}", "virgil.models.FlaredDisk", roots=["mathematics"]))
+     for n in PHASES],
 )
 @pytest.mark.parametrize("geometry", [GEOMETRY, {**GEOMETRY, "inc": 0.0, "aspect": 0.0, "skew": 0.0, "symmetric": 0.0}, {**GEOMETRY, "inc": 70.0, "pa": 200.0}])
 def test_flared_disk_is_the_documented_brightness(name, geometry):
