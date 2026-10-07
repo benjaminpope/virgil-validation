@@ -228,7 +228,7 @@ MODELS_WEAK = [(0.3, 6.0, -4.0), (0.3, 6.5, -4.3), (0.3, -6.0, 4.0)]  # truth, o
 # changes the answer (``upper``: s ≈ 1.1 against s_max 1.2; ``lower``: s ≈ 0.5
 # against 1/1.2).
 BOUND_CASES = {"upper": ("weak", 1.2), "lower": ("inflated", 1.2)}
-BOUND_TOL = 5e-3  # virgil integrates on a grid in ln s; see the finding below
+BOUND_TOL = 1e-6  # measured 2e-14 at virgil 206bbcb (F18 fixed in virgil#295); quad's own accuracy is about 1e-12
 
 
 def bound_case(request_data, case):
@@ -298,21 +298,20 @@ def test_marginal_loglike_control_wrong_bound(weak, inflated, case, wrong):
 
 
 @pytest.mark.parametrize("case", ["upper", "lower"])
-@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], kind="finding")
-@pytest.mark.xfail(strict=True, reason="the ln s grid of the bounded integral is too coarse where the likelihood "
-                   "falls steeply from a bound (a model with s ≈ 5 against s_max = 1.2): errors of 0.1-0.7 in m")
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
 def test_marginal_loglike_bounded_steep_edge(weak, inflated, case):
     """The offset model (χ²_V²/ν ≈ 30 or more, so its likelihood is cut off
     steeply at s_max): virgil's m differences against the truth should match
-    quad of the bounded integral to 1e-3, as they do for the mirror. They
-    miss by 0.1-0.7 (our dense trapezoid sums converge on quad)."""
+    quad of the bounded integral to 1e-6, as they do for the mirror (F18:
+    they missed by 0.1-0.7 before virgil#295; our dense trapezoid sums
+    converge on quad)."""
     data, d, s_max = bound_case({"weak": weak, "inflated": inflated}, case)
     s_max = 1.2
     got = [virgil_m(data, m, s_max=s_max) for m in MODELS_WEAK[:2]]
     want = [marginal_by_quad(d, m, s_max=s_max) for m in MODELS_WEAK[:2]]
     miss = abs((got[1] - got[0]) - (want[1] - want[0]))
     record(f"abs_miss_offset_{case}", miss)
-    assert miss < 1e-3
+    assert miss < BOUND_TOL
 
 
 # -------------------------------------------------------- epoch_positions
