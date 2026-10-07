@@ -47,7 +47,10 @@ def test_manifest_shape():
                 assert c["stage"] != "O1" and c["total_bytes"] is None, f
                 continue
             assert isinstance(f["bytes"], int) and f["bytes"] > 0 and f["bytes"] % 2880 == 0, f
-            assert f["sha256"] is None or re.fullmatch(r"[0-9a-f]{64}", f["sha256"]), f
+            if c["stage"] == "O1":  # fetched: every file must carry its recorded sum
+                assert f["sha256"] is not None and re.fullmatch(r"[0-9a-f]{64}", f["sha256"]), f
+            else:
+                assert f["sha256"] is None or re.fullmatch(r"[0-9a-f]{64}", f["sha256"]), f
         if c["total_bytes"] is not None:
             assert c["total_bytes"] == sum(f["bytes"] for f in c["files"]), c["id"]
 
@@ -170,3 +173,23 @@ def test_scan_urls_are_absolute(monkeypatch):
     out = fetch_oidb.scan("x", log=open(os.devnull, "w"))
     assert seen == ["https://oidb.jmmc.fr/get-data.html?id=9&name=/b.fits"]
     assert out["files"][0]["get_data"] == seen[0] and out["total_bytes"] == 2880
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_scan_keeps_recorded_sums(tmp_path, monkeypatch, capsys):
+    """A rescan of a collection carries over the sha256 sums already in the manifest."""
+    row = ('<tr data-template="app:each-row" data-access_url="get-data.html?id=9&amp;name=/b.fits" '
+           'data-calib_level="3" data-id="9" data-target_name="t"><td></td></tr>')
+    monkeypatch.setattr(fetch_oidb, "get_text", lambda url: row)
+    monkeypatch.setattr(fetch_oidb, "staging_url", lambda u: u)
+    monkeypatch.setattr(fetch_oidb, "content_length", lambda u: 2880)
+    monkeypatch.setattr(fetch_oidb, "PAUSE", 0)
+    digest = "ab" * 32
+    manifest, _ = _one_file_manifest(tmp_path, b"x" * 2880, sha=digest)
+    c = json.loads(manifest.read_text().split("\n", 1)[1])
+    c["collections"][0]["files"][0]["name"] = "b.fits"
+    manifest.write_text("# header\n" + json.dumps(c))
+    assert fetch_oidb.main(["scan", "x", "--manifest", str(manifest)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert [f["sha256"] for f in out["files"]] == [digest]
+    assert fetch_oidb.scan("x", log=open(os.devnull, "w"))["files"][0]["sha256"] is None

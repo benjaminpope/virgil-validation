@@ -193,8 +193,13 @@ def parse_search_page(page):
     return rows, int(pages.group(1)) if pages else 1
 
 
-def scan(cid, sizes=True, log=sys.stderr):
-    """Every granule of a collection, grouped into files, with sizes."""
+def scan(cid, sizes=True, log=sys.stderr, known=None):
+    """Every granule of a collection, grouped into files, with sizes.
+
+    ``known`` maps file names to sha256 sums already recorded in the manifest;
+    they are carried over, so a rescan never turns a recorded sum back into null.
+    """
+    known = known or {}
     granules, page, npages = [], 1, 1
     while page <= npages:
         q = urllib.parse.urlencode({"collection": "~" + urllib.parse.unquote(cid), "perpage": PERPAGE, "page": page})
@@ -214,7 +219,7 @@ def scan(cid, sizes=True, log=sys.stderr):
             f["bytes"] = content_length(f["url"])
             time.sleep(PAUSE)
             print(f"  {i + 1}/{len(files)} {f['name']} {f['bytes']}", file=log)
-        f["sha256"] = None
+        f["sha256"] = known.get(f["name"])
         out.append(f)
     return {
         "levels": sorted({g["level"] for g in granules}),
@@ -328,7 +333,12 @@ def main(argv=None):
     a = p.parse_args(argv)
 
     if a.cmd == "scan":
-        json.dump(scan(a.collection, sizes=not a.no_sizes), sys.stdout, indent=2)
+        known = {}
+        if a.manifest.exists():
+            for c in load_manifest(a.manifest)["collections"]:
+                if c["id"] == a.collection:
+                    known = {f["name"]: f["sha256"] for f in c["files"] if f.get("sha256")}
+        json.dump(scan(a.collection, sizes=not a.no_sizes, known=known), sys.stdout, indent=2)
         print()
         return 0
     manifest = load_manifest(a.manifest)
