@@ -2,10 +2,15 @@
 
 Stage O5 of `design/plan_oidb.md`. Companion to Track B of
 `design/plan_eso_binaries.md`, whose per-epoch comparison it reuses. Criteria are
-registered in `design/oidb_binaries_criteria.md`, commit
-`e34f1351a21b75b0008cc6976debea8b203836ab`, SHA-256
-`2420cdb1574da18c12e401b25a07d4594230086c5f7c4624640684a6d34b225d`. They were
-committed before this plan and before any fit.
+registered in `design/oidb_binaries_criteria.md`. First registered in commit
+`e34f1351a21b75b0008cc6976debea8b203836ab` (SHA-256
+`2420cdb1574da18c12e401b25a07d4594230086c5f7c4624640684a6d34b225d`), before this
+plan and before any fit. Review then found five faults, and the file was
+amended, still before any fit, in commit
+`8a530b54eae970c4dcff36fc6e3e8310b6636652` (its "Amendments (before any fit)"
+section lists them). The registered file now has SHA-256
+`654754392e870b1af0d5a4f0596d5040019af0c70ab59bd068904d27edfb895a`, and results
+record that commit and hash.
 
 ## Why
 
@@ -64,15 +69,20 @@ Totals:
   which the Wolf-Rayet survey is 0.78 GB.
 
 Individual systems. Category A: an orbit or per-epoch system with few caveats.
-Category B: not clean (disk, wind, hierarchy), reported and not scored. Epochs are
-distinct nights among OiDB granules, which is not the file count.
+Category B: provisionally not clean (disk, wind), reported and not scored.
+Category H: hierarchical or triple only, with no disk or wind known: these are
+class `third_body` in the criteria and are counted when the paper tabulates the
+pair and virgil fits the paper's model. **Categories are provisional: OB0's epoch
+classes decide what is counted, and a system moves between A, B and H when its
+paper is read.** Epochs are distinct nights among OiDB granules, which is not the
+file count.
 
 | system | collection | instruments | files | epochs | σ | orbit | cat |
 |---|---|---|---|---|---|---|---|
 | Gl 229 Ba-Bb | 782185b2 | GRAVITY | 22 | 5 | yes | yes | A |
 | HD 45166 | f4afc4cd | GRAVITY | 4 | 1 | yes | spectroscopic 22.5 yr; no interferometric orbit | A |
 | iota Peg | fac164e1 | MIRCX | 24 | 5 | probable | yes | A |
-| kappa Tuc A (Aa-Ab) | 855397ef | GRAVITY,MATISSE | 136 | 16 | probable | yes | B |
+| kappa Tuc A (Aa-Ab) | 855397ef | GRAVITY,MATISSE | 136 | 16 | probable | yes | H |
 | GG Tau Ab1-Ab2 | 1e9bab59 | PIONIER | 3 | 2 | probable | yes | B |
 | theta1 Ori C | 371c145f | AMBER | 2 | 2 | probable | yes | A |
 | TZ For | J/A+A/586/A35 | PIONIER | 11 | 11 | probable | yes | A |
@@ -81,7 +91,7 @@ distinct nights among OiDB granules, which is not the file count.
 | HD 174881 (HR 7112) | 45840351 | MIRCX-HPRISM | 2 | 2 | probable | yes | A |
 | HR 6819 (QV Tel) | 696baf06 | GRAVITY | 12 | 12 | probable | yes | B |
 | Polaris Aa-Ab | 337cfbf7 | H_PRISM,MIRCX | 28 | 8 | probable | yes | A |
-| kappa Dra | 222e5f53 | MIRC,MIRCX,MYSTIC | 7 | 6 | probable | yes | B |
+| kappa Dra | 222e5f53 | MIRC,MIRCX,MYSTIC | 7 | 6 | probable | yes | H |
 | rho Oph A | 512015b1 | GRAVITY | 8 | 7 | unverified | unknown | B |
 | HD 123999 (d Boo) | J/A+A/597/A137 | PIONIER | 4 | 4 | unverified | unverified | A |
 
@@ -126,6 +136,10 @@ this plan was written and before any fit. In short:
     counts.
   - *Bandwidth smearing.* Epochs with s·B/(λR) > 0.1 count only if the model
     smears at the file's own resolving power.
+  - *Motion within an epoch.* A system whose published orbit moves it by more
+    than 0.1σ_pub during an epoch (Gl 229 Ba-Bb: about 0.15 mas per hour) is
+    class `moving`: each file is fitted at its own MJD and compared with the
+    paper's orbit position at that MJD.
   - *Triples and resolved components.* They are fitted as the paper fitted them.
     A paper that does not tabulate the pair's position gives no counted epoch.
   - *Not clean systems* (disk, wind, dust) are reported against the paper's own
@@ -144,19 +158,19 @@ issue (the package has to change) or a **script** fix (in the campaign script
 
 | blocker | census evidence | class | fix |
 |---|---|---|---|
-| MIRC-X and MYSTIC closure-phase rows whose baselines have no V² row | 20 candidate files: 13 of the 28 A-star survey files and 7 of the Be survey; 2 MIRC-X rows in the OiDB have T3 and no V² at all. Track B met the same in an AL Dor file (a triangle naming baseline 3–4) | virgil | compute the T3 uv points from the table's own U1/V1/U2/V2 (the third baseline is their sum), not from the V² baselines. Until then the script drops the unmatched triangles, counts them, and flags the epoch |
+| MIRC-X and MYSTIC closure-phase rows whose baselines have no V² row | 20 candidate files: 13 of the 28 A-star survey files and 7 of the Be survey; 2 MIRC-X rows in the OiDB have T3 and no V² at all. Track B met the same in an AL Dor file (a triangle naming baseline 3–4) | virgil | compute the T3 uv points from the table's own U1/V1/U2/V2 (the third baseline is their sum, entering conjugated: T3 = V₁₂V₂₃V*(u₁+u₂)), not from the V² baselines. Until then the script drops the unmatched triangles, reports the dropped fraction, and counts the epoch only if at least 75 per cent of its triangles remain (criteria rule 11) |
 | Several targets in one file | 27 candidate files (Gl 229 22, Gaia BH3 3, newborn Be 2). OiDB target names have 2 to 5 spellings for κ Tuc, γ² Vel, HR 6819 and SS Lep | script | `target=` selection by regex or alias list in the reference record, as `oidb_fit.pick_target` does for Gl 229. The coordinates are a check |
 | Several wavelength tables in one file | 220 of 680 candidate files (for example GRAVITY SC and FT) | script | `insname_prefix`, as Track B and `oidb_fit.load` do. GRAVITY_FT-only rows (4 to 5 files of the accelerator survey) are used only where there is no SC table, and flagged |
 | Several nights in one file | 9 candidate files (SS Lep 5, Polaris 2, symbiotic giants 2); 367 of 18 257 files in all of OiDB | script | split by MJD window with `OIData.select`, matching published epochs within 0.5 d (criteria rule 7) |
 | VizieR collections link to the CDS FTP, not OiDB staging | TZ For, SS Lep, HD 123999 (3 collections) | script | `fetch_oidb.py` accepts the `cdsarc` host, with the size from the metadata |
-| Instrument-name variants | MIRCX, MIRCX-HPRISM, H_PRISM, MYSTIC; SPHERE-IFS_1 to _40 | script | normalize to a family for the per-family statistics; take the resolving power from each file's own `EFF_BAND` and `EFF_WAVE` |
+| Instrument-name variants | MIRCX, MIRCX-HPRISM, H_PRISM, MYSTIC; SPHERE-IFS_1 to _40 | script | normalize to a family for the per-family statistics (criteria: GRAVITY, PIONIER, AMBER, MATISSE, SPHERE-SAM, and MIRC-family = MIRC, MIRC-X, MYSTIC, H_PRISM); take the resolving power from each file's own `EFF_BAND` and `EFF_WAVE` |
 | SAM files (SPHERE) have V² and T3 counts that differ from the VLTI pattern | all 16 SPHERE and SPHERE_1 rows have fewer V² than the triangles imply | script, to check | OB1 reads one file's table headers and confirms before any fit |
 | No bibcode in the OiDB | ρ Oph A, symbiotic giants, the ι Peg workshop copy | script (reference record) | OB0 finds the paper |
 | A wavelength-dependent flux ratio | κ Tuc A (MATISSE), γ² Vel | virgil (model), not a loader fault | `spectra.PowerLaw` exists; the reference record states the paper's choice |
 
 Only the first item needs a virgil change. If virgil does not take the T3
 table's own uv points by OB1, the 20 affected files are fitted with the script's
-workaround and reported as such.
+workaround under criteria rule 11 and reported as such.
 
 ## (d) Dedupe
 
@@ -170,7 +184,8 @@ workaround and reported as such.
 - **ESO binaries set.** Gl 229 only, public L3 (O1 already fits it) and
   PIONIER L2. The Nowak et al. 21 systems and the other orbit benchmarks
   (HD 136164, δ Vel) are not in the OiDB. 9 Sgr is, in PIONIER L2.
-- **O1 of `plan_oidb.md`.** Gl 229, HR 6819, ι Peg, HD 45166 and the five A-star
+- **O1 of `plan_oidb.md`.** Gl 229 (a compute task in section e, scored as class
+  `moving`), HR 6819, ι Peg, HD 45166 and the five A-star
   detections are O1 fits with their own thresholds (0.25σ_pub). They are refitted
   here with the Track B statistic on the same files, so nothing is downloaded
   twice and the O1 results are not replaced.
@@ -199,14 +214,14 @@ short:
 
 | group | tasks | epochs | estimate per task | total |
 |---|---|---|---|---|
-| A systems (HD 45166, ι Peg, θ¹ Ori C, TZ For, HD 174881, Polaris, HD 123999) | 7 | 33 | 0.3 to 2 h | 6 h |
-| B systems (κ Tuc A in 2 tasks, GG Tau, SS Lep, γ² Vel, κ Dra, ρ Oph A, HR 6819) | 8 | 67 | 1 to 4 h | 20 h |
+| A systems (HD 45166, ι Peg, θ¹ Ori C, TZ For, HD 174881, Polaris, HD 123999, Gl 229 Ba-Bb: 22 files, dual-field with `target=`, one fit per file) | 8 | 38 | 0.3 to 2 h | 7 h |
+| B and H systems (κ Tuc A in 2 tasks, GG Tau, SS Lep, γ² Vel, κ Dra, ρ Oph A, HR 6819) | 8 | 67 | 1 to 4 h | 20 h |
 | A-star survey | 3 | 27 targets | 1 h | 3 h |
 | A-type accelerators | 2 | 11 targets | 1 h | 2 h |
 | Wolf-Rayet survey | 5 | 42 targets | 1.5 h | 8 h |
 | M17, SPHERE SAM | 2 | 13 targets | 1 h | 2 h |
 | Newborn Be and Be multiplicity | 7 | 52 targets | 1.5 h | 10 h |
-| **total** | **34** | | | **about 50 task-hours, 6 h wall** |
+| **total** | **35** | | | **about 51 task-hours, 6 h wall** |
 
 These estimates are first-principles upper bounds, not measurements. The Track B
 job (18210048) is the same kind of per-epoch fit on GRAVITY and PIONIER, so its
@@ -243,7 +258,9 @@ Agreed with the orbit-fitting session on 2026-10-08.
   replaces the "probable" and "unconfirmed" entries with read ones and drops
   surveys whose paper reports no companion. Gate: no fit before this commit.
 - **OB1 (about 6 h).** `scripts/oidb_binaries_fit.py`, tests for the ellipse
-  conversion and epoch matching, the loader fixes of section (c), one-file header
+  conversion and epoch matching, a test pinning the sign convention of the T3 uv
+  points (the closing baseline enters conjugated) against a synthetic closure
+  phase built independently, the loader fixes of section (c), one-file header
   checks for SAM and GRAVITY_FT, and the virgil issue for the T3 uv points.
 - **OB2.** The download and the fit array of section (e), in two waves.
 - **OB3 (about 4 h).** Summary, flags, finding or definition for each flag,
