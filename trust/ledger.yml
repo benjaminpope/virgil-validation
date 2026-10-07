@@ -333,7 +333,7 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/229]
 
-- id: F17
+- id: F18
   title: marginal_loglike(s_max=...) integrates each scale on a ln s grid that is too coarse where the likelihood falls steeply from a bound, so differences of m between models are wrong by 0.1-0.7
   objects: [virgil.epochs.marginal_loglike]
   ruling: virgil
