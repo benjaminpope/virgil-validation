@@ -12,3 +12,23 @@ against our own χ².
 | `simulate.simulate` | noiseless: our V² and closure phases; noisy: V² pulls are 𝒩(0, noise_scale²) (sd, KS) | Mathematics, statistics | 1e-12; within 4σ |
 | `simulate.bias_test` | each entry is the fit to the simulation drawn with that key | Self-consistency | 1e-10 |
 
+`tests/test_inference_joint.py`: the inference helpers on problems with
+closed forms, and the joint likelihood over several datasets against our
+own observables on two simulated three-telescope files.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `inference.hessian_matrix` | the analytic Hessian of a quartic-and-sine objective | Mathematics | 1e-12 |
+| `inference.regularized_inverse` | NumPy's `inv(M + ridge I)`; a `RuntimeWarning` for an indefinite matrix | Mathematics | 1e-12 relative |
+| `inference.laplace_covariance` | exactly (Jᵀ C⁻¹ J)⁻¹ for a model linear in its parameters; control: (Jᵀ J)⁻¹ and (Jᵀ C J)⁻¹ do not match | Mathematics | 1e-10 (ridge 0), 1e-6 (default ridge) |
+| `inference.gaussian_fisher` | Jᵀ Σ⁻¹ J exactly on a linear model; on the joint prediction, J by central differences of our V² and closure phases; control: unweighted Jᵀ J does not match | Mathematics | 1e-12; 1e-6 |
+| `inference.fisher_projection` | P Pᵀ = F⁻¹ and Pᵀ F P = I; flat directions floored at eps × the largest eigenvalue, with a warning | Mathematics | 1e-10 |
+| `inference.laplace_parameter_uncertainty` | (½ ∂²χ²/∂θ²)^−½ of our χ² by central differences, the others fixed | Mathematics | 1e-5 relative |
+| `likelihood.joint_loglike` | the sum over datasets of SciPy's Gaussian (V²) and von Mises (κ = 1/σ²) log densities, i.e. −½ our χ² plus their normalisations; shared and per-dataset parameters, with and without inflated errors; control: swapped per-dataset parameters do not match | Mathematics | 1e-8 |
+| `likelihood.joint_prediction`, `joint_data`, `joint_errors` | our files' values and our observables, dataset by dataset, visibilities then phases; (prediction − data)/errors gives our χ² | Mathematics | 1e-10 |
+| `likelihood.noise_sites`, `noise_for` | the documented site names (`noise.<term>`, `noise[i].<term>`); the terms they give per dataset reproduce our likelihood with that dataset's errors scaled | Mathematics | 1e-8 |
+| `likelihood.posterior_predictive_summary` | the mean and (population) standard deviation of our V² and closure phases over the samples | Mathematics | 1e-10 |
+| `detection.rescale_errors` | s = √(χ²/n) for each block of our χ², after which each block has χ²/n = 1 | Mathematics | 1e-10 |
+| `detection.injection_grid` | every separation and flux in the documented order; PA = arctan2(dra, ddec) uniform on [0°, 360°) (Kolmogorov–Smirnov) | Mathematics, statistics | 1e-12; p > 1e-3 |
+| `detection.bootstrap_null` | sign flip: each whitened residual about our prediction keeps its magnitude (phases wrapped), also about another scene, with about half flipped; resample: residuals drawn only from their own block | Mathematics, statistics | 1e-8; within 4σ |
+
