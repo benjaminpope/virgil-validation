@@ -12,6 +12,7 @@ from . import KINDS, ROOTS
 from .meta import run_header
 
 _RECORDS = pytest.StashKey[list]()
+_HEADER = pytest.StashKey[dict]()
 _CONFIG = {}
 
 
@@ -200,11 +201,20 @@ def pytest_runtest_logreport(report):
             )
 
 
+def pytest_sessionstart(session):
+    # The provenance of the code under test, taken before any test runs and
+    # before the evidence file exists: in CI that file is written into the
+    # checkout, and an untracked file there would mark the run dirty.
+    if session.config.getoption("--evidence"):
+        session.config.stash[_HEADER] = run_header()
+
+
 def pytest_sessionfinish(session):
     path = session.config.getoption("--evidence")
     if not path:
         return
+    header = session.config.stash.get(_HEADER, None) or run_header()
     with open(path, "w") as f:
-        f.write(json.dumps(run_header()) + "\n")
+        f.write(json.dumps(header) + "\n")
         for record in session.config.stash[_RECORDS]:
             f.write(json.dumps(record) + "\n")

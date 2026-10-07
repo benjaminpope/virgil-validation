@@ -183,3 +183,28 @@ def test_runs_on_uncommitted_or_foreign_code_are_left_out_of_the_page(trust, tmp
     path.write_text("\n".join(lines) + "\n")
     assert len(trust.load_evidence([path])[1]) == 1
     assert trust.load_evidence([path], strict=True) == ([], [])
+
+
+def test_provenance_is_taken_before_the_evidence_file_exists(tmp_path, monkeypatch):
+    """In CI the evidence file is written into the checkout; were the header
+    taken after opening it, the untracked file would mark every run dirty."""
+    import pytest as _pytest
+
+    from evidence import plugin
+
+    path = tmp_path / "evidence.jsonl"
+    seen = []
+    monkeypatch.setattr(plugin, "run_header", lambda: seen.append(path.exists()) or {"record": "run"})
+
+    class Config:
+        stash = _pytest.Stash()
+
+        def getoption(self, name):
+            return str(path)
+
+    session = type("Session", (), {"config": Config()})()
+    session.config.stash[plugin._RECORDS] = []
+    plugin.pytest_sessionstart(session)
+    plugin.pytest_sessionfinish(session)
+    assert seen == [False]
+    assert json.loads(path.read_text().splitlines()[0]) == {"record": "run"}
