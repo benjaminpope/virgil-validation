@@ -45,6 +45,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from astropy.io import fits
 from scipy import special, stats
 
 from crosscheck import chi2 as ours, simulate as sim, sky
@@ -104,6 +105,13 @@ def pair(tmp_path_factory):
         sim.observe(path, binary_vis(*POS, f), UTS3, hour_angles_h=np.linspace(-3, 3, 5),
                     wavelengths=np.linspace(*band, 3), dec_deg=-50.0, sigma_v2=0.01, sigma_cp_deg=0.5,
                     rng=np.random.default_rng(20 + k))
+        # Per-element errors that differ inside a file and between the two files, so that
+        # any misalignment of errors with data (or of one dataset with the other) shows.
+        rng = np.random.default_rng(100 + k)
+        with fits.open(path, mode="update") as hdul:
+            for ext, col in (("OI_VIS2", "VIS2ERR"), ("OI_T3", "T3PHIERR")):
+                err = hdul[ext].data[col]
+                err[...] = err * rng.uniform(0.5, 2.0, err.shape)
         obs.append(OIData(str(path)))
         loaded.append(ours.load(path))
     return obs, loaded
@@ -463,7 +471,10 @@ def test_injection_grid_order_geometry_and_uniform_angles():
     sep = np.hypot(g["dra"], g["ddec"])
     assert np.allclose(sep, np.repeat(seps, fluxes.size * n_pa), rtol=1e-12)
     assert np.array_equal(g["flux"], np.tile(np.repeat(fluxes, n_pa), seps.size))
-    pa = np.degrees(np.arctan2(g["dra"], g["ddec"])) % 360  # East of North: dra = sep sin PA
+    # Only the angle distribution is tested: a uniform angle stays uniform under any rotation or
+    # reflection, so this does not pin the PA convention (dra = sep sin PA is virgil's documented
+    # choice; the convention is validated through the binary model tests, not here).
+    pa = np.degrees(np.arctan2(g["dra"], g["ddec"])) % 360
     p = stats.kstest(pa / 360, "uniform").pvalue
     record("ks_pvalue", p)
     assert p > 1e-3
@@ -523,9 +534,15 @@ def test_bootstrap_null_resample_draws_within_each_block(pair):
     r_v = (d["v2"].ravel() - v2)[iv] / d["dv2"].ravel()[iv]
     r_c = wrap(d["cp"].ravel() - cp)[ic] / d["dcp"].ravel()[ic]
     simulate = detection.bootstrap_null(data, null, method="resample")
+    moved, repeated = 0, 0
     for k in range(5):
         yd = np.asarray(simulate(jax.random.key(k)).flatten_data()[0])
         s_v = (yd[:nv] - v2[iv]) / d["dv2"].ravel()[iv]
         s_c = wrap(yd[nv:] - cp[ic]) / d["dcp"].ravel()[ic]
         assert all(np.min(np.abs(r_v - x)) < 1e-8 for x in s_v)  # visibilities from visibilities
         assert all(np.min(np.abs(r_c - x)) < 1e-8 for x in s_c)  # phases from phases
+        moved += not (np.allclose(s_v, r_v, atol=1e-8) and np.allclose(s_c, r_c, atol=1e-8))
+        repeated += len(np.unique(np.round(s_v, 8))) < nv  # with replacement: a value recurs
+    record("draws_changed_of_5", moved)
+    assert moved == 5  # a method that returned the data unchanged would give 0
+    assert repeated >= 1  # a pure permutation (no replacement) would give 0
