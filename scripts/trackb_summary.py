@@ -17,7 +17,7 @@ import json
 import pathlib
 import sys
 
-N_SYSTEMS = 20   # system.json files in the Track B data (19 contribute counted epochs)
+N_SYSTEMS = 20  # system.json files in the Track B data (19 contribute counted epochs)
 N_COUNTED = 121  # counted epochs fixed by the registered criteria
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -27,7 +27,11 @@ from crosscheck import astrometry as A  # noqa: E402
 
 def main():
     d = pathlib.Path(sys.argv[1])
-    results = [json.loads(p.read_text()) for p in sorted(d.glob("*.json")) if p.name != "summary.json"]
+    results = [
+        json.loads(p.read_text())
+        for p in sorted(d.glob("*.json"))
+        if p.name != "summary.json"
+    ]
     crit = {json.dumps(r["criteria"], sort_keys=True) for r in results}
     if len(crit) != 1:
         raise SystemExit(f"results from different criteria versions: {crit}")
@@ -38,27 +42,52 @@ def main():
             if e.get("counted") and "d2" not in e:
                 unfitted.append(dict(epoch=tag, error=e.get("error")))
             if e.get("scale_failure"):
-                scale_fail.append(dict(epoch=tag, scales=e.get("scales"), counted=e.get("counted")))
+                scale_fail.append(
+                    dict(epoch=tag, scales=e.get("scales"), counted=e.get("counted"))
+                )
             if e.get("counted") and "d2" in e:
                 counted.append(e["d2"])
                 if e["d2"] > A.D2_FLAG:
-                    flags.append(dict(epoch=tag, d2=e["d2"], delta=e["delta"],
-                                      two_dloss_at_reference=(e.get("at_reference") or {}).get("two_dloss")))
-        systems[r["system"]] = A.system_statistic([e["d2"] for e in r["epochs"] if e.get("counted") and "d2" in e])
+                    flags.append(
+                        dict(
+                            epoch=tag,
+                            d2=e["d2"],
+                            delta=e["delta"],
+                            two_dloss_at_reference=(e.get("at_reference") or {}).get(
+                                "two_dloss"
+                            ),
+                        )
+                    )
+        systems[r["system"]] = A.system_statistic(
+            [e["d2"] for e in r["epochs"] if e.get("counted") and "d2" in e]
+        )
     ks = A.overall_ks(counted)
     done = {p.stem for p in d.glob("*.done")}
-    missing = sorted({r["system"] for r in results} ^ done)  # a .json without .done, or the reverse
-    incomplete = bool(unfitted or missing or ks["n"] != N_COUNTED or len(results) != N_SYSTEMS)
-    out = dict(criteria=json.loads(crit.pop()), n_systems=len(results), overall=ks, epoch_flags=flags,
-               system_flags=[k for k, v in systems.items() if v["flagged"]],
-               systems_conservative=[k for k, v in systems.items() if v.get("conservative")],
-               systems=systems, scale_failures=scale_fail, counted_without_fit=unfitted,
-               systems_without_json_or_done=missing,
-               verdict="incomplete" if incomplete else ("fail" if ks["fails"] else "pass"))
+    missing = sorted(
+        {r["system"] for r in results} ^ done
+    )  # a .json without .done, or the reverse
+    incomplete = bool(
+        unfitted or missing or ks["n"] != N_COUNTED or len(results) != N_SYSTEMS
+    )
+    out = dict(
+        criteria=json.loads(crit.pop()),
+        n_systems=len(results),
+        overall=ks,
+        epoch_flags=flags,
+        system_flags=[k for k, v in systems.items() if v["flagged"]],
+        systems_conservative=[k for k, v in systems.items() if v.get("conservative")],
+        systems=systems,
+        scale_failures=scale_fail,
+        counted_without_fit=unfitted,
+        systems_without_json_or_done=missing,
+        verdict="incomplete" if incomplete else ("fail" if ks["fails"] else "pass"),
+    )
     (d / "summary.json").write_text(json.dumps(out, indent=1))
-    print(f"{len(results)} systems, {ks['n']} counted epochs: KS p(d2 too large) {ks['p_larger']}, two-sided "
-          f"{ks['p_two_sided']}; {len(flags)} epoch flags (expected {ks.get('expected_flagged', 0):.2f}); "
-          f"system flags {out['system_flags']}; {len(unfitted)} counted epochs without a fit; verdict {out['verdict']}")
+    print(
+        f"{len(results)} systems, {ks['n']} counted epochs: KS p(d2 too large) {ks['p_larger']}, two-sided "
+        f"{ks['p_two_sided']}; {len(flags)} epoch flags (expected {ks.get('expected_flagged', 0):.2f}); "
+        f"system flags {out['system_flags']}; {len(unfitted)} counted epochs without a fit; verdict {out['verdict']}"
+    )
 
 
 if __name__ == "__main__":
