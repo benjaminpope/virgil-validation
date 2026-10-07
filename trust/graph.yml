@@ -492,6 +492,7 @@ nodes:
   crosscheck.limb: {layer: references}
   crosscheck.array: {layer: references}
   crosscheck.chi2: {layer: references}
+  crosscheck.astrometry: {layer: references, doc: method/index.md}
   crosscheck.oifits_writer: {layer: references}
   crosscheck.simulate: {layer: references, depends: [crosscheck.array, crosscheck.oifits_writer]}
   crosscheck.orbits: {layer: references}
