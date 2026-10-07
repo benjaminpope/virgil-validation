@@ -333,6 +333,17 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/229]
 
+- id: F18
+  title: marginal_loglike(s_max=...) integrates each scale on a ln s grid that is too coarse where the likelihood falls steeply from a bound, so differences of m between models are wrong by 0.1-0.7
+  objects: [virgil.epochs.marginal_loglike]
+  ruling: virgil
+  kind: numerics (a model with s about 5 against s_max = 1.2, i.e. chi2/nu of 30 in the V2 block, misses quad of the same bounded integral by 0.73 in m relative to the truth; our dense trapezoid sums converge on quad, 1e-6 at 1e5 points; where the integrand is smooth, the mirror image agrees to 1e-3)
+  referee: mathematics (scipy.integrate.quad in ln s of the documented bounded integral)
+  evidence:
+    - tests/test_epochs.py::test_marginal_loglike_bound_binds
+    - tests/test_epochs.py::test_marginal_loglike_bounded_steep_edge
+  status: to-raise
+
 - id: P7
   title: orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre
   objects: [orbitize]

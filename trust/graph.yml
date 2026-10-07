@@ -171,6 +171,58 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.PositionData]
+  # ----------------------------------------------- multi-epoch orbits (epochs)
+  virgil.models.OrbitalBinary:
+    layer: models
+    source: [src/virgil/models.py, src/virgil/orbits.py]
+    depends: [virgil.orbits.KeplerOrbit, virgil.models.BinaryModelCartesian]
+    doc: orbits/epochs.md
+  virgil.epochs.Epochs:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.oidata.OIData, virgil.likelihood.model_loglike]
+    doc: orbits/epochs.md
+  virgil.epochs.marginal_loglike:
+    layer: likelihood
+    source: [src/virgil/epochs.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: orbits/epochs.md
+  virgil.epochs.epoch_positions:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.Epochs, virgil.epochs.marginal_loglike, virgil.models.BinaryModelCartesian]
+    doc: orbits/epochs.md
+  virgil.epochs.EpochPositions:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.epoch_positions]
+    doc: orbits/epochs.md
+  virgil.epochs.rank_orbits:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.Epochs, virgil.epochs.marginal_loglike, virgil.models.OrbitalBinary]
+    doc: orbits/epochs.md
+  virgil.epochs.RankedOrbits:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.epochs.chain_starts:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.RankedOrbits]
+    doc: orbits/epochs.md
+  virgil.epochs.start_from_positions:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.epoch_positions, virgil.orbits.starting_orbits, virgil.epochs.rank_orbits,
+              virgil.epochs.chain_starts, virgil.fitting.fit]
+    doc: orbits/epochs.md
+  virgil.epochs.OrbitStart:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.start_from_positions]
+    doc: orbits/epochs.md
   virgil.orbits.AxialVonMises: {layer: orbits, source: [src/virgil/orbits.py]}
   virgil.orbits.orientation_priors: {layer: orbits, source: [src/virgil/orbits.py], depends: [virgil.angles.AngleVector]}
   virgil.orbits.orientation_from_varpi: {layer: orbits, source: [src/virgil/orbits.py]}
