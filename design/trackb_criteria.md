@@ -115,9 +115,16 @@ visibilities. The bound f ≤ 1 picks the brighter star as the primary.
 4. **At-reference refit (diagnostic).** dra and ddec are fixed at the
    published position (for the near-equal pairs, at whichever sign is
    nearer), and flux and the error scales are refitted.
-   - It reports 2Δloss = 2(loss_ref − loss_best).
-   - It is not a pass/fail quantity. It separates the causes of a flag
-     (below).
+   - It reports 2Δloss = 2(loss_ref − loss_best), where loss is the full
+     Gaussian negative log likelihood that `fit` returns with fitted error
+     scales (including Σ log σ). The priors on dra, ddec, flux and the scales
+     are Uniform or LogUniform, which are flat in the coordinate `fit`
+     optimises and so add nothing to the loss (documented in `fit`); the
+     script asserts that all priors are of these two kinds, so 2Δloss has no
+     prior offset.
+   - It is not a pass/fail quantity. It only separates optimizer misses from
+     everything else (below): both losses are virgil's own likelihood, so
+     2Δloss ≫ 0 is also what a convention error inside virgil produces.
 
 ## Reported quantities, per epoch
 
@@ -171,6 +178,13 @@ Other systems are compared with their sign as fitted.
 
 d² = Δᵀ (C_v + C_p)⁻¹ Δ, with Δ = virgil − published in (dra, ddec) mas.
 
+The counted d² is the larger of two values: d² with C_v from the errors
+multiplied by the fitted scales, and d² with C_v on the errors as delivered
+(`cov_virgil_unscaled`). A worse fit has larger fitted scales and hence a
+larger C_v, so the scaled d² alone would reward it; taking the larger keeps a
+bad fit from certifying itself. Both values are reported (`d2_scaled`,
+`d2_unscaled`).
+
 Both fits use the same photons, so their errors are correlated. Summing the
 covariances then overstates the variance of Δ, and χ²₂ is a *conservative*
 reference: d² values smaller than χ²₂ predicts are expected, not a failure.
@@ -183,7 +197,9 @@ The floors in Gallenne+2023 push the same way.
 - epochs with `below_lambda_2B` (separation below λ/2B), reported
   separately;
 - η Oph's 2023-06-16 epoch, beyond the AT fibre field, which its paper also
-  excludes;
+  excludes. This is the only exclusion by flag: the script tests for exactly
+  this system and date, and a `flag` in `system.json` on any other epoch
+  is reported but does not exclude it;
 - the ο Leo sensitivity fit;
 - TZ For's nights (no published epoch with Phase 3). These are fitted and
   reported only. So are any other files that no published epoch names,
@@ -219,18 +235,30 @@ Every flagged epoch and system is examined, and each outcome is entered in
   - It is also a finding when a convention error reproduces the offset: an
     East/North or uv sign, a PA origin, a wavelength or unit scale inside
     virgil, or a wrong diameter or flux handling in the model.
+  - Every flag is tested for this, as a required step, by refitting the
+    epoch with u → −u, with λ × 1.01 and λ × 0.99, and with the published
+    position mirrored (dra → −dra, ddec → −ddec). A variant that brings
+    the offset to d² < 5.991 (the χ²₂ 95%
+    quantile) names the convention error, and the flag is a finding.
   - These are pinned as strict-xfail tests.
 - **Definition.** A flag is a definition difference when our data prefer
-  our position (2Δloss ≫ 0) and the offset follows from a choice that
-  differs between the two analyses:
+  our position (2Δloss > 13.816, the same χ²₂ quantile as the per-epoch
+  flag), none of the convention variants above reproduces the offset, and
+  the offset follows from a choice that differs between the two analyses.
+  A flag with 0 ≤ 2Δloss ≤ 13.816 is reported as undecided and is not
+  ruled definition without such a named choice:
   - the reduction (ESO Phase 3 against the authors' pndrs or own
     calibration);
   - the observables (closure phases only against all of them);
   - fixed or free diameters and flux ratios;
   - bandwidth smearing;
-  - the wavelength scale: an offset along the separation vector that is
-    common to a system's epochs. The scale is fitted and reported, for
-    example PIONIER's 0.35–1% calibration;
+  - the wavelength scale, only for an offset along the separation vector
+    that is common to a system's epochs and is at most the instrument's
+    calibration uncertainty as a fraction of the separation: 1% for PIONIER
+    (its calibration is 0.35–1%) and 0.1% for GRAVITY. No wavelength scale
+    is fitted. A larger common radial offset is the wavelength or unit
+    scale case of a finding above, and the λ × 1.01 and λ × 0.99
+    refits are what tell the two apart;
   - the reference point (δ Cir's companion is measured from the inner
     pair's centre of mass);
   - the error convention.
@@ -253,7 +281,8 @@ Each `<system>.json` written by `scripts/trackb_fit.py` holds:
   - `chi2_raw`, `n_independent`, `chi2_raw_per_n`, scales;
   - dra, ddec, sep, pa, flux, cov_virgil, cov_virgil_unscaled;
   - published, cov_published, `convention`;
-  - delta, d2, d2_alt (the uncounted variant), sign, counted, reason;
+  - delta, d2 (the larger of d2_scaled and d2_unscaled), d2_alt (the
+    uncounted variant), sign, counted, reason, note;
   - peaks[], at_reference;
 - `system_stat`: `{n, S, dof, p_upper, p_lower}`.
 
