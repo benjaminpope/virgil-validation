@@ -285,16 +285,17 @@ flux ratio where it is published), not of a joint orbit.
 #### Status (2026-10-07)
 
 All three targets are reduced with AMICAL 1.6.0 (OzSTAR job `eso_binaries_naco`)
-and fitted once with virgil (`likelihood_grid`, then `fit` from five grid peaks;
-`dra`, `ddec` uniform, flux LogUniform(1e-4, 1), `vis_scale` and `phi_scale`
-LogUniform(0.1, 10)). The fit outputs are on `/fred` only. The fits predate the
-`likelihood_grid` argument-order change and need rerunning.
+and fitted with virgil 032cf70 (job 18193592: `likelihood_grid`, then `fit` from
+five grid peaks; `dra`, `ddec` uniform, flux LogUniform(1e-4, 1), `vis_scale` and
+`phi_scale` LogUniform(0.1, 10)). Outputs are in
+`~/data/eso_binaries/naco/fits/032cf70/fit_naco/`. Raw χ²/N is about s² of the
+fitted scales; the stored `chi2_red` ≈ 1 is after rescaling.
 
 | Target | Prediction | virgil result | Verdict |
 |---|---|---|---|
-| 9 Sgr (Ks, 7 holes, 2011-03-10) | 11.89 ± 0.3 mas, PA 72.3 ± 1.5° (Fabry et al. 2021, a = 14.656 mas fitted to their Table A.2; checked against their AMBER points two weeks later) | 16.95 mas, PA 31°, flux at the bound of 1, `vis_scale` 3.0 | Unreliable. The binary is below λ/2B (~30 mas), so separation and flux are degenerate, and the PA is moot modulo 180°. A resolution-limit case, not a disagreement. |
-| HD 136164 Ab (L′, 2012-08-01) | 166.1 ± 3.4 mas, PA 99.7 ± 1.4° (Balmer et al. 2024, via whereistheplanet) | not detected | A detection-limit case: the noise floor is a flux ratio of about 0.003, against about 1e-3 expected (ΔL′ ≈ 7). virgil limits at that position are still to do. |
-| δ Vel Aa–Ab (18 holes, NB 1.64 and IB 2.12, 2009-01-07) | none yet | 16.66 mas, PA 344.8°, flux 0.317, `vis_scale` 1.21, `phi_scale` 1.81 | Fitted, but no reference. Kervella et al. 2013 and Mérand et al. 2011 need extracting and propagating to the epoch (per-file MJDs from the OIFITS). δ Vel B at about 0.6″ is in the stamp, and the narrow-band data are photon-starved. |
+| 9 Sgr (Ks, 7 holes, 2011-03-10) | 11.89 ± 0.3 mas, PA 72.3 ± 1.5° (Fabry et al. 2021, a = 14.656 mas fitted to their Table A.2) | 16.95 mas, PA 31.1°, flux 0.95 (at the bound), `vis_scale` 3.0 (raw V² χ²/N ≈ 9); pinned at the prediction, 2Δloss = 78 worse | Unreliable: below λ/2B (~30 mas), so separation and flux are degenerate. A resolution-limit case, not a disagreement. |
+| HD 136164 Ab (L′, 2012-08-01) | 166.1 ± 3.4 mas, PA 99.7 ± 1.4° (Balmer et al. 2024, via whereistheplanet) | not detected: best peak 279 mas, flux 0.0037 (noise); at the prediction the flux goes to the 1e-4 bound | A detection-limit case (expected flux ratio about 1e-3, ΔL′ ≈ 7). virgil limits at that position are still to do. |
+| δ Vel Aa–Ab (18 holes, NB 1.64 and IB 2.12, 2009-01-07) | 14.26 ± 0.14 mas, PA 155.3 ± 0.6° (Mérand et al. 2011, T0 refitted to their AMBER vectors) | 15.23 mas, PA 344.3° (164.3° modulo 180°), flux 0.45, `vis_scale` 1.21, `phi_scale` 1.81 (raw χ²/N ≈ 1.5 in V², 3.3 in CP) | Off by 1.0 mas and 9°. Near periastron the PA moves about 10° per day, so the comparison depends on the per-file MJDs and T0. δ Vel B (~0.6″) is in the stamp, and the narrow-band data are photon-starved. |
 
 The star finder had to be fixed for HD 136164: destripe, mask the border and
 refine in two passes (the old version locked onto edge column x = 511).
@@ -305,20 +306,15 @@ Treat V² scales with care until the data are re-reduced with the fork.
 
 **Next steps.**
 
-1. δ Vel: extract the orbit, propagate it to the epoch, compare with the fit.
+1. δ Vel: per-file MJDs from the OIFITS, the prediction propagated to each, and
+   the T0 uncertainty carried through, before calling the 9° a disagreement.
 2. HD 136164 Ab: virgil contrast limits at 166 mas, PA 100° and over the whole
    field, against the expected ΔL′ ≈ 7.
 3. 9 Sgr: record it as a resolution-limit case; optionally refit with the flux
    fixed near Fabry et al.'s ratio and compare the PA modulo 180°.
-4. Rerun all three fits after the argument-order change, and download the
-   `*_fit.json` files.
-5. Optionally re-reduce with the AMICAL fork.
-6. Evidence records and the independent NumPy orbit evaluator (the 9 Sgr
+4. Optionally re-reduce with the AMICAL fork.
+5. Evidence records and the independent NumPy orbit evaluator (the 9 Sgr
    prediction logic) in `crosscheck/`, once the numbers are final.
-
-Numbers still to be downloaded from `/fred`: the three NACO `<set>_fit.json`
-files (job 18060943), and from the orbit session the `fits/<hash>` outputs of
-jobs 18122372, 18159316 and 18172340.
 
 ### Stage E5: reporting (1–2 h)
 
