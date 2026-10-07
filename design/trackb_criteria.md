@@ -45,6 +45,13 @@ by `phase3_dp_ids` (with `:` written as `_`), read together. Rows with no
 Phase 3 product are not fitted. Like the papers, the fits neglect orbital
 motion within a night.
 
+A file that virgil cannot read is left out of its epoch, and the file and
+the reason are listed. The dry run found one: in AL Dor 2017-11-24
+(`ADP.2018-09-28T21:20:56.836`), a closure triangle names baseline 3–4,
+which has no V² row. The reader's handling of such files is noted as a
+possible virgil limitation, not as a finding. If no file of an epoch can be
+read, the epoch counts as "not fitted".
+
 ## Model
 
 The model is a binary of two components, with the secondary at
@@ -179,7 +186,8 @@ The floors in Gallenne+2023 push the same way.
   excludes;
 - the ο Leo sensitivity fit;
 - TZ For's nights (no published epoch with Phase 3). These are fitted and
-  reported only.
+  reported only. So are any other files that no published epoch names,
+  grouped by night and instrument.
 
 The run has 121 counted epochs in 19 systems, and 9 epochs reported
 separately.
