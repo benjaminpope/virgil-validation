@@ -867,9 +867,6 @@ def _jsonable(x):
 
 def run(collection, data_dir, out_dir, *, quick=False, nuts=True):
     collection = pc.key_of(collection)  # a private collection's real id -> its placeholder key
-    if collection.startswith(pc.PREFIX) and pc.real_id(collection) is None:
-        pc.warn_skip(collection)
-        return None
     if collection not in RECIPES:
         raise SystemExit(f"unknown collection {collection}; known: {', '.join(RECIPES)}")
     cfg = dict(nuts=NUTS if nuts else None)
