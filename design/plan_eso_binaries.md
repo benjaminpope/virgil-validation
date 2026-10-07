@@ -165,6 +165,49 @@ Each stage is a separate PR with its own tests and evidence records, as in
 4. Check the 180° choice against the orbit: virgil's PA must agree with the
    orbit's, not the flipped one. This is test 5.3.2's real GRAVITY anchor.
 
+#### Status (2026-10-07)
+
+Steps 1–2 are done for seven nights with a script outside this repository
+(`fit_nights.py`): closure phases only, 2.05–2.18 µm, a linear-motion binary
+per night, a grid over ±12 mas refined from the five best peaks, and a free
+`phi_scale` per night. The reference is Xuan et al. 2024 (Nature 634, 1070),
+whose elements we evaluate independently (Ω = 213°, ω_secondary = ω_primary +
+180°). No evidence records yet: the runs are not CI-produced.
+
+- **Four decisive nights agree within about 1 mas.** Positions (dRA, dDec, mas):
+
+  | Night | Xuan et al. prediction | Per-night best peak |
+  |---|---|---|
+  | 2023-12-25 | (+0.2, −5.6) | (+0.1, −5.6) |
+  | 2023-12-29 | (−2.7, +6.5) | (−2.4, +5.6) |
+  | 2024-04-29 | (−1.7, +7.3) | (−1.6, +7.1) |
+  | 2025-02-11 | (−4.5, −3.3) | (−4.7, −2.9) |
+
+- **Three nights are ambiguous.** On 2024-02-27, 2024-03-28 and 2024-12-18 the
+  top two peaks differ by Δloss 0.6, 0.5 and 0.8, and no top-five peak lies
+  near the prediction. Xuan et al. flag 2024-02-27 and 2024-03-28 as bad.
+- **Flux is free on every night**, so a wrong peak can look decisive (2024-02-27
+  at flux 0.21, 2024-12-18 at 0.95). These are per-night positions with free
+  flux, not orbit constraints. The shared-flux scorer of the orbit session
+  (virgil PR D1) supersedes them.
+- **Noise excess.** The virgil-vlti pair test on the science frames (Gl 229 has
+  no calibrator frames) gives a closure-phase white-noise excess of 1.85 on
+  2023-12-25 and 1.90 on 2025-02-11, matching the fitted `phi_scale` of
+  1.8–2.6: real noise beyond the pipeline errors. The phase offsets (11.9° and
+  17.8°) are upper bounds, since no target model was subtracted. V² is
+  uncalibrated, so its baseline-gain term is expected.
+- **Open.** Xuan et al.'s own 22 GRAVITY files (OiDB, virgil-validation#69) give
+  a same-data check of our reduction. The 180° check (step 4) waits for the
+  orbit fit.
+
+Stage E3 now lives in the orbit-fitting session (virgil#268, virgil#279). Its
+first results: the free search converges on i ≈ 110° against Xuan et al.'s
+31.4°, with raw closure-phase χ²/N of 3–25 on the training nights and 606 and
+355 on the held-out nights. Seeding at Xuan et al.'s orbit recovers their
+elements (P 12.13 d, e 0.23, i 29–30°, a 7.3 mas) and the held-out 2025-02-11
+to 0.52 mas, with raw χ²/N 10.1, so the failure is in the search, not the
+likelihood or conventions.
+
 ### Stage E2: dual-field positions (decision needed; see Questions)
 
 - **Route 1, positions as data (3 h).** Take the published per-epoch
@@ -239,6 +282,44 @@ tables. This covers the masking anchor of the orbit note's §5.3.2. With one epo
 per target, these are per-epoch tests only. Each check is of position (and of
 flux ratio where it is published), not of a joint orbit.
 
+#### Status (2026-10-07)
+
+All three targets are reduced with AMICAL 1.6.0 (OzSTAR job `eso_binaries_naco`)
+and fitted once with virgil (`likelihood_grid`, then `fit` from five grid peaks;
+`dra`, `ddec` uniform, flux LogUniform(1e-4, 1), `vis_scale` and `phi_scale`
+LogUniform(0.1, 10)). The fit outputs are on `/fred` only. The fits predate the
+`likelihood_grid` argument-order change and need rerunning.
+
+| Target | Prediction | virgil result | Verdict |
+|---|---|---|---|
+| 9 Sgr (Ks, 7 holes, 2011-03-10) | 11.89 ± 0.3 mas, PA 72.3 ± 1.5° (Fabry et al. 2021, a = 14.656 mas fitted to their Table A.2; checked against their AMBER points two weeks later) | 16.95 mas, PA 31°, flux at the bound of 1, `vis_scale` 3.0 | Unreliable. The binary is below λ/2B (~30 mas), so separation and flux are degenerate, and the PA is moot modulo 180°. A resolution-limit case, not a disagreement. |
+| HD 136164 Ab (L′, 2012-08-01) | 166.1 ± 3.4 mas, PA 99.7 ± 1.4° (Balmer et al. 2024, via whereistheplanet) | not detected | A detection-limit case: the noise floor is a flux ratio of about 0.003, against about 1e-3 expected (ΔL′ ≈ 7). virgil limits at that position are still to do. |
+| δ Vel Aa–Ab (18 holes, NB 1.64 and IB 2.12, 2009-01-07) | none yet | 16.66 mas, PA 344.8°, flux 0.317, `vis_scale` 1.21, `phi_scale` 1.81 | Fitted, but no reference. Kervella et al. 2013 and Mérand et al. 2011 need extracting and propagating to the epoch (per-file MJDs from the OIFITS). δ Vel B at about 0.6″ is in the stamp, and the narrow-band data are photon-starved. |
+
+The star finder had to be fixed for HD 136164: destripe, mask the border and
+refine in two passes (the old version locked onto edge column x = 511).
+
+**Calibrator weighting.** AMICAL 1.6.0 averages calibrators with error weights,
+which biases the V² normalization (fixed in SAIL-Labs/AMICAL#332, unreleased).
+Treat V² scales with care until the data are re-reduced with the fork.
+
+**Next steps.**
+
+1. δ Vel: extract the orbit, propagate it to the epoch, compare with the fit.
+2. HD 136164 Ab: virgil contrast limits at 166 mas, PA 100° and over the whole
+   field, against the expected ΔL′ ≈ 7.
+3. 9 Sgr: record it as a resolution-limit case; optionally refit with the flux
+   fixed near Fabry et al.'s ratio and compare the PA modulo 180°.
+4. Rerun all three fits after the argument-order change, and download the
+   `*_fit.json` files.
+5. Optionally re-reduce with the AMICAL fork.
+6. Evidence records and the independent NumPy orbit evaluator (the 9 Sgr
+   prediction logic) in `crosscheck/`, once the numbers are final.
+
+Numbers still to be downloaded from `/fred`: the three NACO `<set>_fit.json`
+files (job 18060943), and from the orbit session the `fits/<hash>` outputs of
+jobs 18122372, 18159316 and 18172340.
+
 ### Stage E5: reporting (1–2 h)
 
 Evidence table rows per system and stage; a results page with per-epoch pulls
@@ -261,6 +342,15 @@ virgil's visibility modelling, both per epoch and jointly:
 Their elements are in paper tables, not in the summary JSON, so E0's
 reading of the tables would have to extend to them. Proposed as Track B after
 E1, starting with two or three of the Araucaria GRAVITY SB2s.
+
+**Status (2026-10-07):** proposed, not started, awaiting Ben's decision.
+Gallenne et al. 2023 (A&A 672, A119) fit per-epoch positions of the ten GRAVITY
+SB2s with CANDID (diameters fixed, bootstrap errors); their Table B.1 gives the
+positions with error ellipses, and they report a +0.02% wavelength correction
+and 8–50 µas systematics. Phase 3 visibility OIFITS exist for all of them and
+are small (a few MB per epoch, likely under 1 GB in all). The comparison would
+be virgil per-epoch fits against Table B.1, then joint orbits against their
+elements, with their radial velocities as `RVData`.
 
 ## Questions for Ben
 
