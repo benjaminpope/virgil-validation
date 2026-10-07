@@ -237,7 +237,7 @@ and the free search −5695.2: the likelihood prefers Xuan et al.'s orbit by
 outputs at `~/data/eso_binaries/gravity/fits/9820bc3/fit_orbit/`). That
 supports a search failure, not a likelihood or convention problem, for this
 data set. The nights' grid fits (step 2) are a separate matter, see the
-caveat below the E4 table.
+provisional note above the E4 table.
 
 ### Stage E2: dual-field positions (decision needed; see Questions)
 
