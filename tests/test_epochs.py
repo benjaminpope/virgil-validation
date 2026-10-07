@@ -212,11 +212,40 @@ def test_marginal_loglike_control_uniform_prior_in_s(single):
     assert miss > 1e-3
 
 
+@pytest.fixture(scope="module")
+def inflated(tmp_path_factory):
+    """The weak-closure-phase data with every quoted error 2 times too large
+    (s ≈ 0.5 in both blocks): the lower bound binds."""
+    tmp = tmp_path_factory.mktemp("infl")
+    src = observe(tmp / "a.fits", 0.3, 6.0, -4.0, seed=2, sigma_v2=0.02, sigma_cp_deg=40.0, hours=5)
+    path = shrink_errors(src, tmp / "b.fits", 0.5)
+    return OIData(str(path)), ours.load(path)
+
+
+MODELS_WEAK = [(0.3, 6.0, -4.0), (0.3, 6.5, -4.3), (0.3, -6.0, 4.0)]  # truth, offset, mirror image
+# (data, s_max, tolerance on the mirror's m difference): the limits in ln s are
+# about one posterior width (1/sqrt(2 nu) ~ 0.16) from the peak, so the bound
+# changes the answer (``upper``: s ≈ 1.1 against s_max 1.2; ``lower``: s ≈ 0.5
+# against 1/1.2).
+BOUND_CASES = {"upper": ("weak", 1.2), "lower": ("inflated", 1.2)}
+BOUND_TOL = 5e-3  # virgil integrates on a grid in ln s; see the finding below
+
+
+def bound_case(request_data, case):
+    name, s_max = BOUND_CASES[case]
+    data, d = request_data[name][:2]
+    return data, d, s_max
+
+
+def mirror_difference(fn, data_models):
+    return fn(data_models[2]) - fn(data_models[0])
+
+
 @pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
 def test_marginal_loglike_bounded_scales(weak):
     """With s_max, each block's scale is bounded to [1/s_max, s_max] and
     integrated out with the exact von Mises density for the closure
-    phases: differences against quad of that integral."""
+    phases: differences against quad of that integral (loose bound, 10)."""
     data, d, models = weak
     s_max = 10.0
     got = [virgil_m(data, m, s_max=s_max) for m in models]
@@ -226,6 +255,64 @@ def test_marginal_loglike_bounded_scales(weak):
     record("max_abs_diff_vs_quad", worst)
     record("unbounded_minus_bounded_mirror_gap", (gauss[2] - gauss[0]) - (got[2] - got[0]))
     assert worst < 1e-6
+
+
+@pytest.mark.parametrize("case", ["upper", "lower"])
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
+def test_marginal_loglike_bound_binds(weak, inflated, case):
+    """A tight s_max, where the limits of ln s are about one posterior width
+    from the peak, so the bound changes the answer. virgil matches quad of
+    the bounded integral for the mirror image's m, and the bound is shown to
+    matter: the bounded difference differs from the unbounded one by far
+    more than the tolerance (and the wrong-bound controls below miss)."""
+    data, d, s_max = bound_case({"weak": weak, "inflated": inflated}, case)
+    got = mirror_difference(lambda m: virgil_m(data, m, s_max=s_max), MODELS_WEAK)
+    want = mirror_difference(lambda m: marginal_by_quad(d, m, s_max=s_max), MODELS_WEAK)
+    free = mirror_difference(lambda m: marginal_by_quad(d, m), MODELS_WEAK)
+    record(f"abs_diff_vs_quad_{case}", abs(got - want))
+    record(f"bound_effect_{case}", abs(want - free))
+    assert abs(want - free) > 0.1
+    assert abs(got - want) < BOUND_TOL
+    assert abs(want - free) > 10 * BOUND_TOL
+
+
+@pytest.mark.parametrize("case,wrong", [("upper", "no_upper"), ("lower", "no_lower"), ("lower", "squared_lower")])
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], kind="control")
+def test_marginal_loglike_control_wrong_bound(weak, inflated, case, wrong):
+    """The wrong bound (no upper limit; no lower limit; [1/s_max², s_max]) on
+    the side where the data reach it must miss virgil's by far more than the
+    tolerance."""
+    data, d, s_max = bound_case({"weak": weak, "inflated": inflated}, case)
+    got = mirror_difference(lambda m: virgil_m(data, m, s_max=s_max), MODELS_WEAK)
+    lo, hi = -np.log(s_max), np.log(s_max)
+    lo, hi = {"no_lower": (-12.0, hi), "no_upper": (lo, 12.0), "squared_lower": (2 * lo, hi)}[wrong]
+
+    def wrong_m(m):
+        rv, rp = blocks(d, *m)
+        sv, sp = d["dv2"].ravel(), d["dcp"].ravel()
+        return log_integral(gaussian_logl(rv, sv), lo, hi) + log_integral(von_mises_logl(rp, sp), lo, hi)
+
+    miss = abs(got - mirror_difference(wrong_m, MODELS_WEAK))
+    record(f"abs_miss_{case}_{wrong}", miss)
+    assert miss > 10 * BOUND_TOL
+
+
+@pytest.mark.parametrize("case", ["upper", "lower"])
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], kind="finding")
+@pytest.mark.xfail(strict=True, reason="the ln s grid of the bounded integral is too coarse where the likelihood "
+                   "falls steeply from a bound (a model with s ≈ 5 against s_max = 1.2): errors of 0.1-0.7 in m")
+def test_marginal_loglike_bounded_steep_edge(weak, inflated, case):
+    """The offset model (χ²_V²/ν ≈ 30 or more, so its likelihood is cut off
+    steeply at s_max): virgil's m differences against the truth should match
+    quad of the bounded integral to 1e-3, as they do for the mirror. They
+    miss by 0.1-0.7 (our dense trapezoid sums converge on quad)."""
+    data, d, s_max = bound_case({"weak": weak, "inflated": inflated}, case)
+    s_max = 1.2
+    got = [virgil_m(data, m, s_max=s_max) for m in MODELS_WEAK[:2]]
+    want = [marginal_by_quad(d, m, s_max=s_max) for m in MODELS_WEAK[:2]]
+    miss = abs((got[1] - got[0]) - (want[1] - want[0]))
+    record(f"abs_miss_offset_{case}", miss)
+    assert miss < 1e-3
 
 
 # -------------------------------------------------------- epoch_positions
@@ -303,33 +390,42 @@ def test_epoch_positions_grid_and_gaps(nights, positions):
     assert worst_gap < 1e-8
 
 
+def curvature(d, x, h):
+    """Second derivatives of m in (dra, ddec, flux) at x, central differences with steps h."""
+    H = np.empty((3, 3))
+    for a in range(3):
+        for b in range(3):
+            ea, eb = np.eye(3)[a] * h[a], np.eye(3)[b] * h[b]
+            f = [m_ours(d, p[2], p[0], p[1]) for p in (x + ea + eb, x + ea - eb, x - ea + eb, x - ea - eb)]
+            H[a, b] = (f[0] - f[1] - f[2] + f[3]) / (4 * h[a] * h[b])
+    return H
+
+
 @pytest.mark.validates("virgil.epochs.epoch_positions", "virgil.epochs.EpochPositions", roots=["mathematics"])
 def test_epoch_positions_refined_maximum_of_m(nights, positions):
     """The refined position and flux maximise our m (SciPy, from the best
-    grid point); the covariance is the inverse curvature of m there (our
-    finite differences); chi2_raw and scale are χ²_b/ν_b and its root at
+    grid point); the covariance is the position block of the inverse of the full
+    (position and flux) curvature of m there (our Richardson-extrapolated
+    finite differences), and differs from the flux-fixed inverse of the
+    position block by far more than the tolerance; chi2_raw and scale are χ²_b/ν_b and its root at
     the fitted point; and the truth lies within a few σ."""
     _, _, ds = nights
     pq, _, _ = positions
-    worst_pos, worst_cov, worst_chi2 = 0.0, 0.0, 0.0
+    worst_pos, worst_flux, worst_cov, worst_cond, worst_chi2 = 0.0, 0.0, 0.0, np.inf, 0.0
     for k, name in enumerate(pq.names):
         d = ds[name]
         x0 = [pq.dra[k], pq.ddec[k], pq.flux[k]]
         res = optimize.minimize(lambda p: -m_ours(d, p[2], p[0], p[1]), x0, method="Nelder-Mead",
                                 options={"xatol": 1e-9, "fatol": 1e-12, "maxiter": 4000})
         worst_pos = max(worst_pos, np.max(np.abs(res.x[:2] - x0[:2])))
-        assert abs(res.x[2] - x0[2]) < 1e-4
-        # curvature by central differences in (dra, ddec, flux)
-        h = np.array([2e-3, 2e-3, 2e-4])
-        H = np.empty((3, 3))
-        for a in range(3):
-            for b in range(3):
-                ea, eb = np.eye(3)[a] * h[a], np.eye(3)[b] * h[b]
-                f = [m_ours(d, p[2], p[0], p[1]) for p in (res.x + ea + eb, res.x + ea - eb, res.x - ea + eb,
-                                                            res.x - ea - eb)]
-                H[a, b] = (f[0] - f[1] - f[2] + f[3]) / (4 * h[a] * h[b])
+        worst_flux = max(worst_flux, abs(res.x[2] - x0[2]))
+        # curvature in (dra, ddec, flux) by central differences, Richardson-extrapolated over h and h/2
+        H1, H2 = (curvature(d, res.x, np.array([2e-3, 2e-3, 2e-4]) / n) for n in (1, 2))
+        H = (4 * H2 - H1) / 3
         cov = np.linalg.inv(-H)[:2, :2]
         worst_cov = max(worst_cov, np.max(np.abs(pq.cov[k] - cov)) / np.max(np.abs(cov)))
+        # the flux-conditioned covariance, inv(-H[:2,:2]), is what a bug that held the flux fixed would return
+        worst_cond = min(worst_cond, np.max(np.abs(np.linalg.inv(-H[:2, :2]) / cov - 1)))
         rv, rp = blocks(d, pq.flux[k], pq.dra[k], pq.ddec[k])
         for key, r in (("vis", rv), ("phi", rp)):
             worst_chi2 = max(worst_chi2, abs(pq.chi2_raw[k][key] / (np.sum(r**2) / r.size) - 1),
@@ -338,10 +434,14 @@ def test_epoch_positions_refined_maximum_of_m(nights, positions):
         delta = np.array([pq.dra[k], pq.ddec[k]]) - truth
         assert delta @ np.linalg.solve(pq.cov[k], delta) < 25.0
     record("max_abs_position_mas", worst_pos)
+    record("max_abs_flux", worst_flux)
     record("max_rel_cov", worst_cov)
+    record("min_rel_flux_conditioned_minus_marginalised_cov", worst_cond)
     record("max_rel_chi2_raw_scale", worst_chi2)
     assert worst_pos < 1e-6
-    assert worst_cov < 5e-3
+    assert worst_flux < 1e-6
+    assert worst_cov < 1e-4
+    assert worst_cond > 100 * worst_cov  # the tolerance separates flux marginalised from flux fixed
     assert worst_chi2 < 1e-6
 
 
