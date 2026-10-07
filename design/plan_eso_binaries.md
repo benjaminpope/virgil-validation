@@ -165,6 +165,80 @@ Each stage is a separate PR with its own tests and evidence records, as in
 4. Check the 180° choice against the orbit: virgil's PA must agree with the
    orbit's, not the flipped one. This is test 5.3.2's real GRAVITY anchor.
 
+#### Status (2026-10-07)
+
+Steps 1–2 are done for seven nights with a script outside this repository
+(`fit_nights.py`): closure phases only, 2.05–2.18 µm, a linear-motion binary
+per night, a grid over ±12 mas refined from the five best peaks, and a free
+`phi_scale` per night. The reference is Xuan et al. 2024 (Nature 634, 1070),
+whose elements we evaluate independently (Ω = 213°, ω_secondary = ω_primary +
+180°). No evidence records yet: the runs are not CI-produced.
+
+- **Four nights have a best peak within 0.1–0.9 mas of the prediction; this is
+  not yet a test in σ.** Positions (dRA, dDec, mas), with the offset from the
+  prediction (our NumPy evaluation of Xuan et al.'s PMOIRED elements in
+  `crosscheck/orbits.py`):
+
+  | Night | Xuan et al. prediction | Per-night best peak | Offset (mas, PA) |
+  |---|---|---|---|
+  | 2023-12-25 | (+0.2, −5.6) | (+0.1, −5.6) | 0.10, 1.0° |
+  | 2023-12-29 | (−2.7, +6.5) | (−2.4, +5.6) | 0.93, −1.0° |
+  | 2024-04-29 | (−1.7, +7.3) | (−1.6, +7.1) | 0.15, 0.2° |
+  | 2025-02-11 | (−4.5, −3.3) | (−4.7, −2.9) | 0.38, 3.8° |
+
+  A tolerance of about 1 mas is far looser than GRAVITY's per-epoch precision
+  (tens of µas) at separations of 5–8 mas: it would pass a plate-scale or
+  wavelength error of about 10% or a PA error of about 8°. The comparison must
+  be made in σ before it is evidence (E5): the offset divided by the quadrature
+  sum of the per-night fit error and Xuan et al.'s per-epoch (or
+  orbit-propagated) uncertainty. Neither is in hand yet. The night fits store
+  no covariance, and `xuan2024_table1.json` has only the orbital elements and
+  their errors. Until both are added, these four rows are consistent with the
+  prediction, with no pull quoted.
+
+- **Two nights are ambiguous.** On 2024-02-27 and 2024-03-28 the top two peaks
+  differ by Δloss 0.6 and 0.5, and no top-five peak lies near the prediction
+  (the nearest are 7.9 and 13.3 mas away, the best peaks). Xuan et al. flag
+  both as bad.
+- **2024-12-18 is a disagreement to be ruled on, not an ambiguous night.** It
+  is not one of Xuan et al.'s epochs, so their orbit predicts it out of
+  sample, and they do not flag it. Our best peak, (−3.6, +3.3), is 10.0 mas
+  from the prediction (+5.6, +7.1), at PA −86° from it, with flux 0.95 (at the
+  bound). The second and third peaks (Δloss 0.8) are 11.5 mas away, and the
+  only peak near the prediction is the fifth, (+5.9, +7.3), 0.37 mas from it
+  with Δloss 15.1 behind the best. This corrects an earlier statement that no
+  top-five peak lies near the prediction. Resolve it with the shared-flux
+  scorer or with the same-data check of virgil-validation#69 (see Open)
+  before any of the seven nights becomes evidence.
+- **Flux is free on every night**, so a wrong peak can look decisive (2024-02-27
+  at flux 0.21, 2024-12-18 at 0.95). These are per-night positions with free
+  flux, not orbit constraints. The shared-flux scorer of the orbit session
+  (virgil PR D1) supersedes them.
+- **Noise excess.** The virgil-vlti pair test on the science frames (Gl 229 has
+  no calibrator frames) gives a closure-phase white-noise excess of 1.85 on
+  2023-12-25 and 1.90 on 2025-02-11, matching the fitted `phi_scale` of
+  1.8–2.6: real noise beyond the pipeline errors. The phase offsets (11.9° and
+  17.8°) are upper bounds, since no target model was subtracted. V² is
+  uncalibrated, so its baseline-gain term is expected.
+- **Open.** 2024-12-18, as above: the loss at the predicted position on the
+  grid (the fifth peak's value is the nearest we hold), and a ruling. Xuan et al.'s own 22 GRAVITY files (OiDB, virgil-validation#69) give
+  a same-data check of our reduction. The 180° check (step 4) waits for the
+  orbit fit.
+
+Stage E3 now lives in the orbit-fitting session (virgil#268, virgil#279). Its
+first results: the free search converges on i ≈ 110° against Xuan et al.'s
+31.4°, with raw closure-phase χ²/N of 3–25 on the training nights and 606 and
+355 on the held-out nights. Seeding at Xuan et al.'s orbit recovers their
+elements (P 12.13 d, e 0.23, i 29–30°, a 7.3 mas) and the held-out 2025-02-11
+to 0.52 mas, with raw χ²/N 10.1. On the same five training nights, with the
+same free per-night `phi_scale`, the Xuan-seeded refit reaches loss −5961.1
+and the free search −5695.2: the likelihood prefers Xuan et al.'s orbit by
+Δloss 265.9, so the free search failed to find the better optimum (`fit_orbit`
+outputs at `~/data/eso_binaries/gravity/fits/9820bc3/fit_orbit/`). That
+supports a search failure, not a likelihood or convention problem, for this
+data set. The nights' grid fits (step 2) are a separate matter, see the
+provisional note above the E4 table.
+
 ### Stage E2: dual-field positions (decision needed; see Questions)
 
 - **Route 1, positions as data (3 h).** Take the published per-epoch
@@ -239,6 +313,51 @@ tables. This covers the masking anchor of the orbit note's §5.3.2. With one epo
 per target, these are per-epoch tests only. Each check is of position (and of
 flux ratio where it is published), not of a joint orbit.
 
+#### Status (2026-10-07)
+
+All three targets are reduced with AMICAL 1.6.0 (OzSTAR job `eso_binaries_naco`)
+and fitted with virgil 032cf70 (job 18193592: `likelihood_grid`, then `fit` from
+five grid peaks; `dra`, `ddec` uniform, flux LogUniform(1e-4, 1), `vis_scale` and
+`phi_scale` LogUniform(0.1, 10)). Outputs are in
+`~/data/eso_binaries/naco/fits/032cf70/fit_naco/`. Raw χ²/N is about s² of the
+fitted scales; the stored `chi2_red` ≈ 1 is after rescaling.
+
+**All "virgil result" and "Verdict" entries below are provisional (pre-fix,
+to rerun).** The fits predate the `likelihood_grid` argument-order change. If
+it swapped axes or arguments, the grid peaks that seed `fit` may be wrong, and
+the 9 Sgr PA, the δ Vel PA and the HD 136164 non-detection could be artefacts
+of the call. No verdict is settled before step 4 below is rerun.
+
+| Target | Prediction | virgil result (provisional) | Verdict (provisional) |
+|---|---|---|---|
+| 9 Sgr (Ks, 7 holes, 2011-03-10) | 11.89 ± 0.3 mas, PA 72.3 ± 1.5° (Fabry et al. 2021, a = 14.656 mas fitted to their Table A.2) | 16.95 mas, PA 31.1°, flux 0.95 (at the bound), `vis_scale` 3.0 (raw V² χ²/N ≈ 9); pinned at the prediction, 2Δloss = 78 worse | Unresolved. The fit has the flux at its bound of 1, where an equal-flux binary's closure phases vanish and the PA is unconstrained, so the flux bound is a candidate cause of the degeneracy. The 41° offset (31.1° against 72.3°) is not explained by 180° ambiguity. At 11.89 mas, about 0.4 λ/2B, closure phases still constrain the PA at modest contrast, so a resolution limit is not shown either. A disagreement, a degeneracy and a call artefact are all still possible. |
+| HD 136164 Ab (L′, 2012-08-01) | 166.1 ± 3.4 mas, PA 99.7 ± 1.4° (Balmer et al. 2024, via whereistheplanet) | not detected: best peak 279 mas, flux 0.0037 (noise); at the prediction the flux goes to the 1e-4 bound | A detection-limit case (expected flux ratio about 1e-3, ΔL′ ≈ 7). virgil limits at that position are still to do. |
+| δ Vel Aa–Ab (18 holes, NB 1.64 and IB 2.12, 2009-01-07) | 14.26 ± 0.14 mas, PA 155.3 ± 0.6° (Mérand et al. 2011, T0 refitted to their AMBER vectors) | 15.23 mas, PA 344.3° (164.3° modulo 180°), flux 0.45, `vis_scale` 1.21, `phi_scale` 1.81 (raw χ²/N ≈ 1.5 in V², 3.3 in CP) | Off by 1.0 mas and 9°. Near periastron the PA moves about 10° per day, so the comparison depends on the per-file MJDs and T0. δ Vel B (~0.6″) is in the stamp, and the narrow-band data are photon-starved. |
+
+The star finder had to be fixed for HD 136164: destripe, mask the border and
+refine in two passes (the old version locked onto edge column x = 511).
+
+**Calibrator weighting.** AMICAL 1.6.0 averages calibrators with error weights,
+which biases the V² normalization (fixed in SAIL-Labs/AMICAL#332, unreleased).
+Treat V² scales with care until the data are re-reduced with the fork.
+
+**Next steps.**
+
+1. δ Vel: per-file MJDs from the OIFITS, the prediction propagated to each, and
+   the T0 uncertainty carried through, before calling the 9° a disagreement.
+2. HD 136164 Ab: virgil contrast limits at 166 mas, PA 100° and over the whole
+   field, against the expected ΔL′ ≈ 7.
+3. 9 Sgr: keep it unresolved. Show the degeneracy directly with a
+   contrast-separation profile, or refit with a flux prior bounded away from 1
+   that does not come from the reference (fixing the flux at Fabry et al.'s
+   ratio would feed the reference into the fit, so the PA agreement would be
+   partly self-fulfilling). Rerun after step 4.
+4. Rerun the fits with the corrected `likelihood_grid` call (all three
+   targets), then re-read every verdict above. Optionally re-reduce with the
+   AMICAL fork first.
+5. Evidence records and the independent NumPy orbit evaluator (the 9 Sgr
+   prediction logic) in `crosscheck/`, once the numbers are final.
+
 ### Stage E5: reporting (1–2 h)
 
 Evidence table rows per system and stage; a results page with per-epoch pulls
@@ -261,6 +380,15 @@ virgil's visibility modelling, both per epoch and jointly:
 Their elements are in paper tables, not in the summary JSON, so E0's
 reading of the tables would have to extend to them. Proposed as Track B after
 E1, starting with two or three of the Araucaria GRAVITY SB2s.
+
+**Status (2026-10-07):** proposed, not started, awaiting Ben's decision.
+Gallenne et al. 2023 (A&A 672, A119) fit per-epoch positions of the ten GRAVITY
+SB2s with CANDID (diameters fixed, bootstrap errors); their Table B.1 gives the
+positions with error ellipses, and they report a +0.02% wavelength correction
+and 8–50 µas systematics. Phase 3 visibility OIFITS exist for all of them and
+are small (a few MB per epoch, likely under 1 GB in all). The comparison would
+be virgil per-epoch fits against Table B.1, then joint orbits against their
+elements, with their radial velocities as `RVData`.
 
 ## Questions for Ben
 
