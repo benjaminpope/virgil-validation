@@ -30,6 +30,7 @@ seconds-long check that the script runs.
 import argparse
 import json
 import pathlib
+import sys
 import tempfile
 import time
 
@@ -68,6 +69,9 @@ from virgil.likelihood import whitened_residuals  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.plotting import plot_model  # noqa: E402
 from virgil.spectra import PowerLaw  # noqa: E402
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
+from crosscheck import starts as linear_starts  # noqa: E402
 
 # One task per dataset. Everything here is what contestants had before they
 # submitted (contests/manifest.yml, "presubmission"); nothing revealed in the
@@ -131,6 +135,23 @@ TASKS = [
          star_source="contest page: a young star"),
     dict(label="2024_obj2_matisseN", files=["2024/Obj2_MATISSE_8-13.fits"], star=True,
          star_source="contest page: a young star"),
+    # John Young's data (docs/plan_imaging_contests.md, C4b). 2012: CHARA/MIRC-6T,
+    # H band, 8 channels. The rules page described no target and the readme was
+    # never archived, so field and star come from the data.
+    dict(label="2012_alp", files=["2012/2012_Alp_Fak_MIRC6T_LowH.oifits"]),
+    dict(label="2012_bet", files=["2012/2012_Bet_Fak_MIRC6T_LowH.oifits"]),
+    # 2014: real PIONIER data on VY CMa, a red supergiant (named in OI_TARGET).
+    # R Car (2014/2014_R_CAR_all.fits) is left out for now: virgil 0.3.0's
+    # reader refuses it (a closure triangle whose baseline is in no V² table
+    # at the same time).
+    dict(label="2014_vycma", files=["2014/2014_VY_CMA_all.fits"]),
+    # 2016: the contest page's 9 May 2016 update suggested the fields (FOV
+    # 50-60 mas for Object 1, GRAVITY K; 0.4 arcsec for Object 2, MATISSE N).
+    # Grey first looks; the rules ask for chromatic images (Stage C3).
+    dict(label="2016_obj1", files=["2016/2016_Object1-v3.oifits"], field=60.0,
+         field_source="2016 contest page, 9 May 2016: FOV 50-60 mas"),
+    dict(label="2016_obj2", files=["2016/2016_Object2-v3.fits"], field=400.0,
+         field_source="2016 contest page, 9 May 2016: FOV 0.4 arcsec"),
 ]
 
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
@@ -153,65 +174,241 @@ def spec_of(task):
 
 
 COMPANION_SNR = 5.0  # a companion is kept when the linear flux map's peak SNR reaches this
+COMPANION_DCHI2 = 25.0  # ... and its refit lowers χ² by this much (3 extra parameters)
+COMPANION_GUARD = 10.0  # search only when the primary's χ²/N is within this factor of the no-star ellipse's
+COMPANION_MAX_AXIS = 201  # samples per axis of the companion map (coarser steps beyond)
+# Star fraction f = 1 / (1 + env/star). Below F_MIN the star is absent; the
+# env/star flux ratio's log-uniform prior has the fixed upper bound
+# 1/F_MIN - 1, not one that moves with the start (C2g: CLEAN's runaway totals
+# of 1e163 moved a cap of 10x the start along with them).
+F_MIN = 0.01
+FLUX_CAP = 1.0 / F_MIN - 1.0
+STAR_GUARD = 2.0  # a star start whose χ²/N exceeds this x the no-star ellipse's is dropped
+EDGE = 0.05  # starts keep this fraction of a prior's range (log range for scales) from its bounds
+N_STARTS, N_STARTS_SMOKE = 16, 4  # multistart fits of the parametric models
+# Position angles: a window two half-turns wide, so that no plausible PA
+# (0-180) starts or ends near a bound; the models are symmetric under
+# PA + 180, so results are wrapped into [0, 180).
+PA_PRIOR = (-90.0, 270.0)
 
 
-def fit_primary(data, resolution, star_model, start):
-    """The primary alone, as a parametric model, and its priors (paths
-    relative to the primary). "ellipse": an elliptical limb-darkened disk
-    (linear law, u = 0.5 held fixed: a starting model, the image takes the
-    rest), diameter log-uniform from 0.05 beam to half the starting field,
-    axis ratio and position angle uniform. "point_companion": a point."""
+def v2_table(data):
+    """Every dataset's V² as flat arrays: u, v and wavelength (m), V² and its
+    error (from |V| and its error for amplitude data)."""
+    cols = []
+    for d in data if isinstance(data, list) else [data]:
+        u, v = np.ravel(np.asarray(d.u, float)), np.ravel(np.asarray(d.v, float))
+        wavel = np.broadcast_to(np.ravel(np.asarray(d.wavel, float)), u.shape) if np.size(d.wavel) in (1, u.size) \
+            else np.ravel(np.asarray(d.wavel, float))[: u.size]
+        vis, err = np.ravel(np.asarray(d.vis, float)), np.ravel(np.asarray(d.d_vis, float))
+        index = np.arange(vis.size) if d.vis_index is None else np.ravel(np.asarray(d.vis_index))
+        if not d.v2_flag:
+            vis, err = vis**2, 2 * np.abs(vis) * err
+        cols.append((u[index], v[index], wavel[index], vis, err))
+    return tuple(np.concatenate(c) for c in zip(*cols))
+
+
+def moments_of(data):
+    """``crosscheck.starts.second_moments`` of the data's V²."""
+    u, v, wavel, v2, err = v2_table(data)
+    return linear_starts.second_moments(u / wavel, v / wavel, v2, err)
+
+
+def chi2_red(model, data):
+    """χ²/N of ``model`` against the quoted errors, over all datasets."""
+    datasets = data if isinstance(data, list) else [data]
+    chi2 = sum(float(np.sum(np.asarray(whitened_residuals(model, d)) ** 2)) for d in datasets)
+    return chi2 / sum(int(d.n_independent) for d in datasets)
+
+
+def n_independent(data):
+    return sum(int(d.n_independent) for d in (data if isinstance(data, list) else [data]))
+
+
+def _interior(prior, edge=EDGE):
+    """A prior's range shrunk by ``edge`` of it at each end (in log for a
+    log-uniform prior): (low, high, log)."""
+    log = isinstance(prior, dist.LogUniform)
+    lo, hi = float(prior.low), float(prior.high)
+    if log:
+        lo, hi = np.log(lo), np.log(hi)
+    pad = edge * (hi - lo)
+    return lo + pad, hi - pad, log
+
+
+def inside(prior, x, edge=EDGE):
+    """``x`` moved into the prior's interior (see ``_interior``)."""
+    lo, hi, log = _interior(prior, edge)
+    y = np.log(max(float(x), 1e-300)) if log else float(x)
+    y = float(np.clip(y if np.isfinite(y) else hi, lo, hi))
+    return float(np.exp(y)) if log else y
+
+
+def jittered_starts(centre, priors, n, rng, jitter):
+    """``centre`` (a dict of parameter values) and ``n - 1`` draws about it:
+    ``jitter[k] = ("log", s)`` multiplies by exp(s·N(0, 1)) (a scale) and
+    ``("add", s)`` adds U(-s, s) (a location or angle). Every value is then
+    moved into its prior's interior, so no start sits on a bound."""
+    out = []
+    for i in range(n):
+        start = {}
+        for k, x in centre.items():
+            if i and k in jitter:
+                kind, size = jitter[k]
+                x = x * np.exp(size * rng.standard_normal()) if kind == "log" else x + rng.uniform(-size, size)
+            start[k] = inside(priors[k], x) if k in priors else float(x)
+        out.append(start)
+    return out
+
+
+def multistart_fit(model_fn, priors, data, starts, **options):
+    """Fit ``model_fn(start)`` from each start and keep the lowest χ²/N.
+    Returns the best FitResult and a record: χ²/N of the best and of every
+    start, their spread and whether the best fit converged."""
+    best, chi2s = None, []
+    for start in starts:
+        r = fit(model_fn(start), priors, data, **options)
+        c = chi2_red(r.model, data)
+        chi2s.append(c)
+        if best is None or (np.isfinite(c) and not c >= best[0]):
+            best = (c, r)
+    finite = [c for c in chi2s if np.isfinite(c)]
+    return best[1], {"chi2_red": best[0], "chi2_starts": chi2s,
+                     "spread": float(max(finite) - min(finite)) if finite else np.nan,
+                     "converged": best[1].info.get("converged") is not False}
+
+
+def fit_primary(data, resolution, star_model, start, n_starts=N_STARTS, seed=0):
+    """The primary alone, as a parametric model, its priors (paths relative
+    to the primary) and a fit record. "ellipse": an elliptical limb-darkened
+    disk (linear law, u = 0.5 held fixed: a starting model, the image takes
+    the rest), diameter log-uniform from 0.05 beam to half the starting
+    field, axis ratio uniform, PA uniform over PA_PRIOR. Seeded by the
+    data's second moments (crosscheck.starts), then a diameter scan from 0.5x
+    to 2x that picks the visibility null's branch, then ``n_starts`` fits
+    jittered about it (C2g). "point_companion": a point."""
     if star_model == "point_companion":
-        return vm.PointSource(), {}
+        point = vm.PointSource()
+        return point, {}, {"chi2_red": chi2_red(point, data), "converged": True}
     if not hasattr(vm, "EllipticalLimbDarkenedDisk"):
         raise RuntimeError("star_model='ellipse' needs virgil with EllipticalLimbDarkenedDisk (virgil#250)")
     field = float(start.env.pixel_scale_mas * np.shape(start.env.log_brightness)[0])
     priors = {"diam": dist.LogUniform(0.05 * resolution.minor_mas, 0.5 * field),
-              "ratio": dist.Uniform(0.2, 1.0), "pa": dist.Uniform(0.0, 180.0)}
-    best = None
-    for pa0 in (0.0, 60.0, 120.0):
-        disk = vm.EllipticalLimbDarkenedDisk(resolution.major_mas, ratio=0.8, pa=pa0, u=(0.5,))
-        r = fit(disk, priors, data)
-        chi2 = float(np.sum(r.info["chi2_red"]))
-        if best is None or chi2 < best[0]:
-            best = (chi2, r.model)
-    return best[1], priors
+              "ratio": dist.Uniform(0.2, 1.0), "pa": dist.Uniform(*PA_PRIOR)}
+    m = moments_of(data)
+    diam0 = float(linear_starts.disk_diameter_from_sigma(m["sigma_major"], 0.5))
+    diam0 = inside(priors["diam"], diam0 if np.isfinite(diam0) and diam0 > 0 else resolution.major_mas)
+    ratio0 = float(np.clip(m["ratio"] if np.isfinite(m["ratio"]) else 0.8, 0.25, 0.95))
+    pa0 = float(m["pa"]) if np.isfinite(m["pa"]) else 90.0
+
+    def disk(p):
+        return vm.EllipticalLimbDarkenedDisk(p["diam"], ratio=p["ratio"], pa=p["pa"], u=(0.5,))
+
+    scan = [inside(priors["diam"], diam0 * f) for f in np.logspace(np.log10(0.5), np.log10(2.0), 9)]
+    scan_chi2 = [chi2_red(disk({"diam": d, "ratio": ratio0, "pa": pa0}), data) for d in scan]
+    centre = {"diam": scan[int(np.nanargmin(scan_chi2))], "ratio": ratio0, "pa": pa0}
+    starts = jittered_starts(centre, priors, n_starts, np.random.default_rng(seed),
+                             {"diam": ("log", 0.3), "ratio": ("add", 0.1), "pa": ("add", 30.0)})
+    for s in starts:
+        s["ratio"] = float(np.clip(s["ratio"], 0.25, 0.95))
+    best, record = multistart_fit(disk, priors, data, starts)
+    model = eqx.tree_at(lambda d: d.pa, best.model, jnp.asarray(float(best.model.pa) % 180.0))
+    record |= {"moments": m, "scan_chi2": scan_chi2}
+    print(f"primary: χ²/N {record['chi2_red']:.4g} (spread {record['spread']:.3g} over {len(starts)} starts, "
+          f"converged {record['converged']}); diam {float(model.diam):.3g} mas ratio {float(model.ratio):.3f} "
+          f"pa {float(model.pa):.1f}; moments start diam {diam0:.3g} ratio {ratio0:.3f} pa {pa0:.1f}", flush=True)
+    return model, priors, record
 
 
-def companion_search(data, resolution, primary, primary_priors, start):
-    """Search a linear flux map (virgil.grid_fit.linear_flux_grid) for a
-    companion to ``primary`` over the starting field, a third of a beam per
-    step; datasets are combined by inverse variance. Returns the base (the
-    primary, or System(star=primary, comp=...) refitted) and its priors with
-    paths relative to the scene ("star.<...>"). Positions are uniform within
-    a beam of the peak, the flux ratio log-uniform."""
+def companion_map(data, resolution, primary):
+    """A linear flux map (virgil.grid_fit.linear_flux_grid) for a point
+    companion to ``primary``, emission only, over ±λ/B_min (the largest scale
+    the data probe; not the starting image's field, which for 2004 data2
+    reaches only 6.9 mas) a third of a beam per step (coarser beyond
+    COMPANION_MAX_AXIS samples), with positions on the primary's disk (its
+    major radius plus half a beam) left out: there the map's peak is a spot,
+    not a companion (vv#70). Datasets are combined by inverse variance.
+    Returns the peak: offsets (mas), flux, SNR, the half-width searched and
+    the radius left out."""
     from virgil.grid_fit import linear_flux_grid
 
-    field = float(start.env.pixel_scale_mas * np.shape(start.env.log_brightness)[0])
-    axis = np.arange(-0.5 * field, 0.5 * field + 1e-9, resolution.minor_mas / 3)
+    u, v, wavel, _, _ = v2_table(data)
+    half = 1.0 / float(np.min(np.hypot(u, v) / wavel)) / linear_starts.MAS
+    step = max(resolution.minor_mas / 3, 2 * half / (COMPANION_MAX_AXIS - 1))
+    axis = np.arange(-half, half + 1e-9, step)
     template = vm.System(star=primary, comp=vm.PointSource(1e-3))
     samples = {"comp.dra": axis, "comp.ddec": axis, "comp.flux": np.array([1e-3])}
-    datasets = data if isinstance(data, list) else [data]
     num = den = 0.0
-    for d in datasets:
+    for d in data if isinstance(data, list) else [data]:
         g = linear_flux_grid(d, template, samples)
         w = 1.0 / np.asarray(g.flux_error) ** 2
         num, den = num + np.nan_to_num(np.asarray(g.flux) * w), den + np.nan_to_num(w)
-    flux, snr = num / den, num / np.sqrt(den)
-    snr = np.where(flux > 0, snr, 0.0)  # emission only
+    flux = num / np.where(den > 0, den, np.inf)
+    snr = np.where(flux > 0, num / np.sqrt(np.where(den > 0, den, np.inf)), 0.0)
+    dra, ddec = np.meshgrid(axis, axis, indexing="ij")  # as linear_flux_grid's axes: dra first
+    hole = 0.5 * float(np.ravel(getattr(primary, "diam", 0.0))[0]) + 0.5 * resolution.minor_mas
+    snr = np.nan_to_num(np.where(np.hypot(dra, ddec) < hole, 0.0, snr))
     i, j = np.unravel_index(np.argmax(snr), snr.shape)
+    return {"dra": float(axis[i]), "ddec": float(axis[j]), "flux": float(flux[i, j]), "snr": float(snr[i, j]),
+            "half": float(half), "hole": float(hole)}
+
+
+def companion_search(data, resolution, primary, primary_priors, primary_chi2=None, nostar_chi2=None):
+    """A companion to ``primary`` from ``companion_map``, with guards (C2g):
+    the search runs only when the primary's χ²/N (``primary_chi2``) is within
+    COMPANION_GUARD of the no-star ellipse's (``nostar_chi2``), since against
+    a broken primary any residual looks like a companion (2006: SNR 35,000);
+    a companion is kept only at SNR >= COMPANION_SNR and when the refitted
+    System lowers χ² by COMPANION_DCHI2. Returns the base (the primary, or
+    System(star=primary, comp=...) refitted), its priors with paths relative
+    to the scene ("star.<...>") and a record. Positions are uniform within a
+    beam of the peak, the flux ratio log-uniform."""
     priors = {f"star.{k}": v for k, v in primary_priors.items()}
-    print(f"companion search: peak SNR {float(snr[i, j]):.2f} at ({float(axis[i]):.3g}, {float(axis[j]):.3g}) mas, "
-          f"flux {float(flux[i, j]):.3g}: {'kept' if snr[i, j] >= COMPANION_SNR else 'below threshold'}", flush=True)
-    if snr[i, j] < COMPANION_SNR:
-        return primary, priors
-    dra, ddec, beam_ = axis[i], axis[j], resolution.major_mas
-    pair = vm.System(star=primary, comp=vm.PointSource(float(max(flux[i, j], 1e-4)), dra=dra, ddec=ddec))
+    record = {"searched": False, "kept": False, "primary_chi2": primary_chi2, "nostar_chi2": nostar_chi2}
+    if primary_chi2 is not None and nostar_chi2 is not None and not primary_chi2 <= COMPANION_GUARD * nostar_chi2:
+        print(f"companion search skipped: primary χ²/N {primary_chi2:.4g} > {COMPANION_GUARD:g} x no-star "
+              f"ellipse χ²/N {nostar_chi2:.4g}", flush=True)
+        return primary, priors, record
+    peak = companion_map(data, resolution, primary)
+    record |= {"searched": True, "peak": peak}
+    line = (f"companion search (±{peak['half']:.3g} mas, < {peak['hole']:.3g} mas left out): peak SNR {peak['snr']:.2f} "
+            f"at ({peak['dra']:.3g}, {peak['ddec']:.3g}) mas, flux {peak['flux']:.3g}")
+    if peak["snr"] < COMPANION_SNR:
+        print(f"{line}: below threshold", flush=True)
+        return primary, priors, record
+    dra, ddec, beam_ = peak["dra"], peak["ddec"], resolution.major_mas
     pair_priors = {f"star.{k}": v for k, v in primary_priors.items()} | {
         "comp.dra": dist.Uniform(dra - beam_, dra + beam_), "comp.ddec": dist.Uniform(ddec - beam_, ddec + beam_),
         "comp.flux": dist.LogUniform(FLUX_FLOOR, 1.0)}
+    pair = vm.System(star=primary, comp=vm.PointSource(inside(pair_priors["comp.flux"], peak["flux"]), dra=dra, ddec=ddec))
     pair = fit(pair, pair_priors, data).model
-    return pair, {f"star.{k}": v for k, v in pair_priors.items()}
+    n = n_independent(data)
+    chi2_one, chi2_two = chi2_red(primary, data), chi2_red(pair, data)
+    dchi2 = (chi2_one - chi2_two) * n
+    kept = dchi2 >= COMPANION_DCHI2
+    record |= {"kept": bool(kept), "chi2_single": chi2_one, "chi2_pair": chi2_two, "dchi2": float(dchi2)}
+    print(f"{line}; χ²/N {chi2_one:.4g} alone, {chi2_two:.4g} with it (Δχ² {dchi2:.3g}): "
+          f"{'kept' if kept else 'dropped (Δχ² < %g)' % COMPANION_DCHI2}", flush=True)
+    if not kept:
+        return primary, priors, record
+    return pair, {f"star.{k}": v for k, v in pair_priors.items()}, record
+
+
+def clean_companion(components, pixel, resolution):
+    """The brightest CLEAN component cluster (flux within a beam of the
+    brightest component) more than 1.5 beams from the centre, for the log:
+    a cross-check of the companion search, not used to decide."""
+    c = np.asarray(components, float)
+    n = c.shape[0]
+    offsets = (np.arange(n) - (n - 1) / 2) * pixel
+    yy, xx = np.meshgrid(offsets, offsets, indexing="ij")
+    r = np.hypot(xx, yy)
+    outer = np.where(r > 1.5 * resolution.major_mas, c, -np.inf)
+    if not np.any(np.isfinite(outer)) or np.max(outer) <= 0:
+        return None
+    i, j = np.unravel_index(np.argmax(outer), c.shape)
+    near = np.hypot(xx - xx[i, j], yy - yy[i, j]) < resolution.major_mas
+    return {"r_mas": float(r[i, j]), "row": int(i), "col": int(j), "flux": float(np.sum(np.clip(c[near], 0, None)))}
 
 
 def flux_priors(flux_cap, sparco=False):
@@ -246,15 +443,23 @@ def select_channels(path, wavel, tmp_dir):
 
 
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
-          oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0):
+          oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0,
+          n_starts=N_STARTS, guard=True):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data. With a star, ``star_model`` is "point" (unresolved) or
     "disk" (a uniform disk whose diameter is fitted); ``sparco`` gives the
     image a power-law spectrum relative to the star's. ``mean_blur`` scales
     the beam that restores CLEAN's components into the starting image (1:
-    the beam; 0.5 keeps detail finer than a beam)."""
+    the beam; 0.5 keeps detail finer than a beam). ``n_starts``: the
+    parametric fits' multistart size. With ``guard``, a star whose start
+    fails (CLEAN's star fraction below F_MIN, or a parametric χ²/N worse
+    than STAR_GUARD x the no-star ellipse's, or an unconverged fit) is
+    dropped and the setup redone without it; ``star_rejected`` says why
+    (C2g)."""
     spec = spec_of(task)
+    args = dict(halo=halo, grow=grow, init=init, clean_iters=clean_iters, oversample=oversample,
+                clean_gain=clean_gain, sparco=sparco, mean_blur=mean_blur, n_starts=n_starts)
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
     # (labels get _star / _nostar).
@@ -282,12 +487,28 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         kwargs["hole_mas"] = 0.5 * resolution.minor_mas
     start = starting_image(data, **kwargs)
     star_priors = {}
+    star_fit = {"converged": True}  # the parametric star fit's record, for the guard
+    nostar = None  # the no-star ellipse (fit_ellipse's tuple), the guards' reference
+    if star and guard:
+        field0 = float(start.env.pixel_scale_mas * np.shape(start.env.log_brightness)[0])
+        nostar = fit_ellipse(dict(fov=field0, star=False, data=data, resolution=resolution, start=start,
+                                  img0=start.env), n_starts=n_starts)
+
+    def without_star(reason, detail=""):
+        print(f"{label}: star rejected ({reason}{': ' + detail if detail else ''}); imaged without it", flush=True)
+        s_ = setup(task, data_dir, star=False, star_model="none", guard=False, **args)
+        s_.update(label=label, star_rejected=reason, ellipse=nostar if nostar is not None else s_.get("ellipse"))
+        return s_
+
     if star and star_model == "disk":
         # Diameter: a scale parameter, so log-uniform, from a twentieth of the
         # beam (unresolved) to the beam's major axis (beyond that, flux belongs
-        # in the image). Started from a fit of the disk alone.
+        # in the image). Started from a fit of the disk alone, from the
+        # second-moment diameter (C2g) and from half a beam.
         diam_prior = dist.LogUniform(0.05 * resolution.minor_mas, resolution.major_mas)
-        alone = fit(vm.UniformDisk(0.5 * resolution.minor_mas), {"diam": diam_prior}, data)
+        diam0 = float(linear_starts.disk_diameter_from_sigma(moments_of(data)["sigma_major"], 0.0))
+        starts = [{"diam": inside(diam_prior, d)} for d in (diam0, 0.5 * resolution.minor_mas) if np.isfinite(d) and d > 0]
+        alone, star_fit = multistart_fit(lambda p: vm.UniformDisk(p["diam"]), {"diam": diam_prior}, data, starts)
         start = vm.System(star=alone.model, env=start.env)
         star_priors = {"star.diam": diam_prior}
     elif star and star_model in ("ellipse", "point_companion"):
@@ -295,8 +516,9 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         # darkened star with one or more spots"; 2024 Obj2: "a young star with
         # a suspected companion"): the primary alone, then a companion search,
         # with the GP image left for the spots and the rest.
-        primary, primary_priors = fit_primary(data, resolution, star_model, start)
-        base, star_priors = companion_search(data, resolution, primary, primary_priors, start)
+        primary, primary_priors, star_fit = fit_primary(data, resolution, star_model, start, n_starts)
+        base, star_priors, star_fit["companion"] = companion_search(
+            data, resolution, primary, primary_priors, star_fit["chi2_red"], None if nostar is None else nostar[0])
         start = vm.System(star=base, env=start.env)
     elif star and star_model != "point":
         raise ValueError(f"star_model must be 'point', 'disk', 'ellipse' or 'point_companion', not {star_model!r}")
@@ -325,7 +547,10 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             log_start = jnp.asarray(np.log(q))
         else:
             log_start = jnp.zeros((n, n))
-        new = vm.Image(log_start, pixel, flux=img0.flux)
+        # The hole under the star (starting_image's hole_mas) is kept on the
+        # new grid: without it the star and the envelope next to it trade flux.
+        hole = np.hypot(x[None, :], x[:, None]) >= kwargs["hole_mas"] if star else None
+        new = vm.Image(log_start, pixel, flux=img0.flux, support=None if hole is None else jnp.asarray(hole))
         start = vm.System(star=start.star, env=new) if star else new
         img0 = new
     if sparco and init != "clean":
@@ -366,15 +591,41 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             if restored.shape != (n_img, n_img):  # zoom can come up a pixel short
                 restored = np.pad(restored, [(0, n_img - restored.shape[0]), (0, n_img - restored.shape[1])], mode="edge")
         restored = restored / restored.max() + 1e-3  # a floor, so no pixel starts switched off
-        flux = float(np.sum(cleaned.components)) if star else float(img0.flux)
-        new = vm.Image(jnp.asarray(np.log(restored)), pix_img, support=support, flux=max(flux, 1e-3))
+        new = vm.Image(jnp.asarray(np.log(restored)), pix_img, support=support, flux=1.0)
+        clean_comp = None
+        if star:
+            # CLEAN fits normalised visibilities with the base's flux fixed at
+            # 1, so when the data want little or no compact star its
+            # components' total runs away (1e163 in campaign 18107553). As a
+            # star fraction it is bounded: below F_MIN the star is absent.
+            total = float(np.sum(cleaned.components))
+            f_clean = 1.0 / (1.0 + total) if np.isfinite(total) and total >= 0 else 0.0
+            if guard and f_clean < F_MIN:
+                return without_star("clean_flux", f"star fraction {f_clean:.3g} < {F_MIN:g} (components total {total:.3g})")
+            # The start's flux ratio: the exact star fraction for this star
+            # and the CLEAN image's shape (crosscheck.starts.star_fraction).
+            u_, v_, w_, v2_, err_ = v2_table(data)
+            f_star = linear_starts.star_fraction(np.asarray(start.star.model(u_, v_, w_)), np.asarray(new.model(u_, v_, w_)),
+                                                 v2_, err_)
+            flux = (1.0 - f_star) / f_star if f_star > 0 else np.inf
+            flux = inside(dist.LogUniform(FLUX_FLOOR, FLUX_CAP), flux)
+            clean_comp = clean_companion(cleaned.components, pix_c, resolution)
+            print(f"CLEAN with the star: star fraction {f_clean:.3g} from the components, {f_star:.3g} fitted; "
+                  f"env/star start {flux:.3g}; brightest cluster beyond 1.5 beams: {clean_comp}", flush=True)
+        else:
+            flux = float(img0.flux)
+        new = eqx.tree_at(lambda m: m.flux, new, max(flux, 1e-3))
         if sparco and star:
             new = eqx.tree_at(lambda m: m.flux, new, PowerLaw(max(flux, 1e-3), 0.0, wavel0))
         start = vm.System(star=start.star, env=new) if star else new
         img0 = new
         clean_info = (cleaned.stop, float(np.ravel(cleaned.chi2_red)[-1]))
     else:
-        clean_info = None
+        clean_info = clean_comp = None
+        if star:  # starting_image's flux, within the fixed prior
+            flux = inside(dist.LogUniform(FLUX_FLOOR, FLUX_CAP), flux_value(img0.flux))
+            img0 = eqx.tree_at(lambda m: m.flux, img0, flux)
+            start = vm.System(star=start.star, env=img0)
     if halo:
         parts = {"star": start.star, "env": start.env} if star else {"env": start}
         start = vm.System(**parts, halo=vm.Resolved(1.0))
@@ -382,13 +633,29 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     pixel = float(img0.pixel_scale_mas)
     fov = npix * pixel
 
+    ellipse = None
+    if star and guard:
+        # The sanity guard (C2g): the star start with an elliptical Gaussian
+        # environment must fit about as well as that environment alone (it
+        # can, with a faint star), or the star is dropped.
+        ellipse, record = fit_ellipse(dict(fov=fov, star=True, data=data, resolution=resolution, start=start,
+                                           img0=img0), n_starts=n_starts, record=True)
+        worse = not ellipse[0] <= STAR_GUARD * nostar[0]
+        print(f"star guard: χ²/N {ellipse[0]:.4g} with the star (converged {record['converged']}, parametric fit "
+              f"converged {star_fit['converged']}), {nostar[0]:.4g} without", flush=True)
+        if worse:
+            return without_star("chi2", f"χ²/N {ellipse[0]:.4g} > {STAR_GUARD:g} x {nostar[0]:.4g}")
+        # Only the star's own fit must converge: the environment's ellipse is
+        # often degenerate next to a star (a faint or bare one), so LM runs
+        # out of steps without that meaning anything is wrong.
+        if not star_fit["converged"]:
+            return without_star("not_converged", "the parametric star fit")
+
     path = "env" if (star or halo) else None
-    # With a star, the image flux is relative to it; starting_image can start
-    # it well above 1 (5.8 for 2022 GRAVITY), so the prior must reach beyond.
-    flux_cap = max(100.0, 10 * flux_value(img0.flux))
-    # Jeffreys priors (Ben, 2026-10-05): fluxes are scale parameters, so
-    # log-uniform, with stated bounds.
-    priors = image_priors(start) | (flux_priors(flux_cap, sparco) if star else {}) | star_priors
+    # With a star, the image flux is relative to it, with the fixed bounds
+    # [FLUX_FLOOR, FLUX_CAP] (C2g). Jeffreys priors (Ben, 2026-10-05): fluxes
+    # are scale parameters, so log-uniform, with stated bounds.
+    priors = image_priors(start) | (flux_priors(FLUX_CAP, sparco) if star else {}) | star_priors
     if halo:
         priors |= {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)}
     others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
@@ -398,7 +665,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
                 resolution=resolution, start=start, img0=img0, npix=npix, pixel=pixel, fov=fov,
                 path=path, priors=priors, others=others, q=q, adaptive=field is None,
                 field_source=spec.get("field_source", "data" + (f" x{grow:g}" if grow > 1 else "")),
-                clean_info=clean_info)
+                clean_info=clean_info, star_rejected="", star_fit=star_fit, ellipse=ellipse,
+                clean_companion=clean_comp, n_starts=n_starts)
 
 
 def residual_diagnostics(model, data):
@@ -431,7 +699,7 @@ def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=Fal
     contestant would try. (Flux at the image edge is not a usable trigger:
     the support and centroid prior keep it off the edge even when the field
     is too small.) Returns the setup and the growth record."""
-    opts = dict(star=star, init=init, clean_iters=50 if smoke else 3000)
+    opts = dict(star=star, init=init, clean_iters=50 if smoke else 3000, n_starts=N_STARTS_SMOKE if smoke else N_STARTS)
     s = setup(task, data_dir, halo, **opts)
     growth = []
     if s["adaptive"]:
@@ -497,7 +765,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         chosen_model = curve.results[index["discrepancy"]].model
         reference = dict(ref_image=np.asarray(chosen_model.render(REF_NPIX, s["ref_fov"])), ref_fov=s["ref_fov"],
                          best_chi2_red=float(np.sum(np.asarray(curve.chi2_red)[index["discrepancy"]])), error_scale=np.nan,
-                         star=bool(star), best_log_z=np.nan, flip_dchi2=np.nan)
+                         star=bool(star), star_rejected=s["star_rejected"], best_log_z=np.nan, flip_dchi2=np.nan)
     np.savez_compressed(
         out_dir / f"{label}.npz", **reference,
         weights=np.asarray(curve.weights), chi2=np.asarray(curve.chi2),
@@ -513,7 +781,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     best = curve.results[index["discrepancy"]].model
     report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], prior=s["q"], path=path), *others])
     summary = (
-        f"task={task} label={label} files={files} star={star} halo={halo}\n"
+        f"task={task} label={label} files={files} star={star} star_rejected={s['star_rejected'] or None} halo={halo}\n"
         f"field_source={s['field_source']} clean={s['clean_info']} star_source={spec_of(task).get('star_source')} prior={spec_of(task).get('prior')} wavel={spec_of(task).get('wavel')} growth(fov, chi2/N)={growth}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
@@ -566,27 +834,42 @@ GP_LENGTH_LIMITS = (0.125, 8.0)
 GP_GROWTHS = 3
 
 
-def fit_ellipse(s):
+def fit_ellipse(s, n_starts=None, record=False, seed=0):
     """Elongation and position angle from the data: an elliptical Gaussian
-    (with the analytic star, if any), from a few starting angles."""
+    (with the analytic star, if ``s["star"]``), from ``n_starts`` starts
+    jittered about the data's second moments (crosscheck.starts), never on a
+    prior bound (C2g; the old fixed start, ratio 0.7 and PA 0, stalled there).
+    Returns (χ²/N, ratio, pa, fwhm), and with ``record`` the multistart's
+    record too."""
     fov, star = s["fov"], s["star"]
-    # Start at a few beams, not a fraction of the field: in a 4x field, 0.3 fov
-    # is so broad that V² ≈ 0 on every baseline, and LM crawled on 2010 low-H
-    # past the 30-min watchdog (campaign 18098742 tasks 75/77/79).
-    fwhm0 = min(0.3 * fov, 3.0 * s["resolution"].major_mas)
-    best = None
-    for pa0 in (0.0, 45.0, 90.0, 135.0):
-        env = vm.EllipticalGaussian(fwhm0, 0.7, pa0, flux=flux_value(s["img0"].flux) if star else 1.0)
-        scene = vm.System(star=s["start"].star, env=env) if star else vm.System(env=env)
-        priors = {"env.fwhm": dist.LogUniform(0.01, fov), "env.ratio": dist.LogUniform(0.05, 1.0),
-                  "env.pa": dist.Uniform(pa0 - 90.0, pa0 + 90.0)}
-        if star:
-            priors["env.flux"] = dist.LogUniform(FLUX_FLOOR, max(100.0, 10 * flux_value(s["img0"].flux)))
-        r = fit(scene, priors, s["data"], max_steps=300)
-        chi2 = float(np.sum(r.info["chi2_red"]))
-        if best is None or chi2 < best[0]:
-            best = (chi2, float(r.values["env.ratio"]), float(r.values["env.pa"]) % 180.0, float(r.values["env.fwhm"]))
-    return best
+    n_starts = s.get("n_starts", N_STARTS) if n_starts is None else n_starts
+    priors = {"env.fwhm": dist.LogUniform(0.01, fov), "env.ratio": dist.LogUniform(0.05, 1.0),
+              "env.pa": dist.Uniform(*PA_PRIOR)}
+    m = moments_of(s["data"])
+    # Without moments, a few beams, not a fraction of the field: in a 4x field,
+    # 0.3 fov is so broad that V² ≈ 0 on every baseline, and LM crawled on 2010
+    # low-H past the 30-min watchdog (campaign 18098742 tasks 75/77/79).
+    fwhm0 = 2.3548 * m["sigma_major"] if np.isfinite(m["sigma_major"]) and m["sigma_major"] > 0 \
+        else min(0.3 * fov, 3.0 * s["resolution"].major_mas)
+    centre = {"env.fwhm": fwhm0, "env.ratio": float(np.clip(m["ratio"] if np.isfinite(m["ratio"]) else 0.7, 0.25, 0.95)),
+              "env.pa": float(m["pa"]) if np.isfinite(m["pa"]) else 90.0}
+    if star:
+        priors["env.flux"] = dist.LogUniform(FLUX_FLOOR, FLUX_CAP)
+        centre["env.flux"] = flux_value(s["img0"].flux)
+    starts = jittered_starts(centre, priors, n_starts, np.random.default_rng(seed),
+                             {"env.fwhm": ("log", 0.5), "env.ratio": ("add", 0.1), "env.pa": ("add", 30.0),
+                              "env.flux": ("log", 1.0)})
+    for p in starts:
+        p["env.ratio"] = inside(priors["env.ratio"], float(np.clip(p["env.ratio"], 0.25, 0.95)))
+
+    def scene(p):
+        env = vm.EllipticalGaussian(p["env.fwhm"], p["env.ratio"], p["env.pa"], flux=p.get("env.flux", 1.0))
+        return vm.System(star=s["start"].star, env=env) if star else vm.System(env=env)
+
+    best, rec = multistart_fit(scene, priors, s["data"], starts, max_steps=300)
+    out = (rec["chi2_red"], float(best.values["env.ratio"]), float(best.values["env.pa"]) % 180.0,
+           float(best.values["env.fwhm"]))
+    return (out, rec) if record else out
 
 
 def oriented_template(template, pa_deg, pixel, n):
@@ -645,7 +928,7 @@ def member_setup(task, data_dir, member, smoke=False, settings=None):
     opts = dict(star=settings["star"], init="clean", clean_iters=50 if smoke else 3000,
                 oversample=settings["oversample"], clean_gain=settings["clean_gain"],
                 star_model=settings["star_model"], sparco=settings["sparco"],
-                mean_blur=settings.get("mean_blur", 1.0))
+                mean_blur=settings.get("mean_blur", 1.0), n_starts=N_STARTS_SMOKE if smoke else N_STARTS)
     if spec_of(task).get("field") is not None:
         settings["field"] = 1.0  # a contest-given field is used as given
     s = setup(task, data_dir, settings["halo"], settings["field"], **opts)
@@ -657,7 +940,7 @@ def reference_fov(task, data_dir):
     """The common grid's field for all members of a task: max(MEMBER_FIELDS) x the base field
     of the task's own configuration (its default star, a moments start), so it
     does not depend on any member's random settings or star choice."""
-    base = setup(task, data_dir, False, 1.0, star=None, init="moments")
+    base = setup(task, data_dir, False, 1.0, star=None, init="moments", guard=False)
     return max(MEMBER_FIELDS) * base["fov"]
 
 
@@ -720,8 +1003,8 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     template = np.asarray(img0.brightness).reshape(n, n)
     support = getattr(img0, "support", None)
     flux0 = img0.flux  # a number, or with SPARCO a PowerLaw
-    flux_cap = max(100.0, 10 * flux_value(flux0))
-    ell = fit_ellipse(s)  # (chi2, ratio, pa, fwhm)
+    flux_cap = FLUX_CAP  # fixed (C2g), not 10x a start that CLEAN can run away with
+    ell = s.get("ellipse") or fit_ellipse(s)  # (chi2/N, ratio, pa, fwhm); setup's guard may have fitted it
     sigmas0 = GP_SIGMAS[1:2] if smoke else GP_SIGMAS
     lengths0 = [f * res.minor_mas for f in (GP_LENGTHS[1:2] if smoke else GP_LENGTHS)]
     length_limits = [f * res.minor_mas for f in GP_LENGTH_LIMITS]
@@ -802,7 +1085,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
             # no-star members compare like with like; the environment alone too.
             ref_image=np.asarray(final.model.render(REF_NPIX, ref_fov)),
             ref_env=np.asarray(final.model.env.render(REF_NPIX, ref_fov)), ref_fov=ref_fov,
-            star=settings["star"], star_model=settings["star_model"], halo=settings["halo"],
+            star=bool(star), star_rejected=s["star_rejected"], star_model=s["star_model"], halo=settings["halo"],
             sparco=settings["sparco"], field_factor=settings["field"], oversample=settings["oversample"],
             clean_gain=settings["clean_gain"], env_flux=flux_value(final.model.env.flux),
             env_index=float(np.ravel(getattr(final.model.env.flux, "index", np.nan))[0]),
@@ -822,9 +1105,10 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                         **{f"lengths_mas_{k}": np.asarray(a[0]) for k, a in axes.items()},
                         ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
                         template=template)
-    lines = [f"task={task} label={label} star={star} halo={halo} init={init} field_source={s['field_source']} growth={growth}",
+    lines = [f"task={task} label={label} star={star} star_rejected={s['star_rejected'] or None} halo={halo} init={init} "
+             f"field_source={s['field_source']} growth={growth}",
              f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas",
-             f"ellipse fit: chi2={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
+             f"ellipse fit: chi2/N={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
              f"star_model={s['star_model']} sparco={s['sparco']} wavel0={s['wavel0']:.4g}"]
     for name, g in log_z.items():
         ls, ss = axes[name]
@@ -835,10 +1119,12 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         lines.append(f"best {name}: ℓ={ls[i]:.4g} σ={ss[j]} log_z={g[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
     lines.append(f"residuals of the winner={residual_diagnostics(winner.model, data)}")
     lines.append(f"N={n_indep} gamma={gamma:.1f} N-gamma={n_indep - gamma:.1f}")
-    lines.append(f"error_scale={scale:.3f}" + (f" -> refit with rescaled errors: log_z={rescaled['log_z']:.2f} chi2/N={rescaled['chi2_red']:.3f}" if rescaled else " (within 1.3x: kept)"))
+    lines.append(f"chi2/N={chi2_winner / n_indep:.4g} (quoted errors), error_scale={scale:.3f}"
+                 + (f" -> refit with rescaled errors: log_z={rescaled['log_z']:.2f} chi2/N={rescaled['chi2_red']:.3f}" if rescaled else " (within 1.3x: kept)"))
     if settings is not None:
         lines.append(f"member settings={settings}")
-    lines.append(f"WINNER: {best_name} ℓ={best_length:.4g} σ={best_sigma} log_z={best_log_z:.2f}")
+    lines.append(f"WINNER: chi2/N={chi2_winner / n_indep:.4g} error_scale={scale:.3f} {best_name} ℓ={best_length:.4g} "
+                 f"σ={best_sigma} log_z={best_log_z:.2f}")
     lines.append(f"elapsed={time.time() - t0:.0f}s\n\n{diagnose(winner.model, data, list(others))}")
     text = "\n".join(lines) + "\n"
     (out_dir / f"{label}.txt").write_text(text)
