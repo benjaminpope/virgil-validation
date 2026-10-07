@@ -247,10 +247,16 @@ def test_pick_target_reads_the_named_target_and_refuses_another_star(of, tmp_pat
         h["OI_TARGET"].data["TARGET"][0] = "37 And"
         name = "37 And"
         first = float(np.min(h["OI_VIS2"].data["MJD"]))
+        n_wave = 3
+        left = {e: int(np.sum(np.abs(h[e].data["MJD"] - first) >= 1e-6)) for e in ("OI_VIS2", "OI_T3")}
         for ext in ("OI_VIS2", "OI_T3"):  # the first snapshot under an id OI_TARGET does not list
             h[ext].data["TARGET_ID"][np.abs(h[ext].data["MJD"] - first) < 1e-6] = 7
     assert of.pick_target(str(path)) == name
-    assert np.asarray(of.load([path]).vis).size > 0
+    of.LOAD_NOTES.clear()
+    assert np.asarray(of.load([path]).vis).size == left["OI_VIS2"] * n_wave  # the id-7 snapshot is left out
+    note = of.LOAD_NOTES[-1]
+    assert note["target_read"] == name and note["rows_read"] == sum(left.values())
+    assert note["rows_total"] > note["rows_read"]
     with pytest.raises(ValueError, match="no target matches"):
         of.pick_target(str(path), r"HD.?45166")
     single = _observe(tmp_path / "one.fits", _binary(3.0, -4.0, 0.3))
