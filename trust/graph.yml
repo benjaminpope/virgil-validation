@@ -269,6 +269,59 @@ nodes:
     layer: inference
     source: [src/virgil/likelihood.py]
     depends: [virgil.likelihood.model_loglike]
+  virgil.inference.hessian_matrix: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.regularized_inverse: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.laplace_covariance:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.inference.hessian_matrix, virgil.inference.regularized_inverse]
+    doc: inference/helpers.md
+  virgil.inference.gaussian_fisher: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.fisher_projection: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.laplace_parameter_uncertainty:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.likelihood.loglike]
+    doc: inference/helpers.md
+  virgil.likelihood.joint_prediction:
+    layer: likelihood
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.oidata.OIData]
+    doc: inference/helpers.md
+  virgil.likelihood.joint_data: {layer: likelihood, source: [src/virgil/likelihood.py], depends: [virgil.oidata.OIData], doc: inference/helpers.md}
+  virgil.likelihood.joint_errors: {layer: likelihood, source: [src/virgil/likelihood.py], depends: [virgil.oidata.OIData], doc: inference/helpers.md}
+  virgil.likelihood.joint_loglike:
+    layer: likelihood
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.model_loglike]
+    doc: inference/helpers.md
+  virgil.likelihood.noise_sites: {layer: likelihood, source: [src/virgil/likelihood.py], doc: inference/helpers.md}
+  virgil.likelihood.noise_for:
+    layer: likelihood
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.noise_sites, virgil.likelihood.model_loglike]
+    doc: inference/helpers.md
+  virgil.likelihood.posterior_predictive_summary:
+    layer: inference
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.build_model, virgil.oidata.OIData]
+    doc: inference/helpers.md
+  virgil.likelihood.flux_scale_posterior:
+    layer: likelihood
+    source: [src/virgil/likelihood.py, src/virgil/observables.py, src/virgil/_linear.py]
+    depends: [virgil.observables.FluxSpectrum]
+    doc: likelihood/spectra_phases.md
+  virgil.detection.rescale_errors:
+    layer: inference
+    source: [src/virgil/detection.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: inference/helpers.md
+  virgil.detection.injection_grid: {layer: inference, source: [src/virgil/detection.py], doc: inference/helpers.md}
+  virgil.detection.bootstrap_null:
+    layer: inference
+    source: [src/virgil/detection.py, src/virgil/oidata.py, src/virgil/_closure.py]
+    depends: [virgil.oidata.OIData, virgil.oidata.OIData.cp_noise]
+    doc: inference/helpers.md
 
   # -------------------------------------------------------------- imaging
   virgil.imaging.dirty_image: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
