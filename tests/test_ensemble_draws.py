@@ -58,6 +58,8 @@ def test_each_draw_follows_the_spec(drawn):
     # every family and start is drawn (uniformly: chi-squared test of the counts)
     counts = np.array([sum(d.family == f for d in draws) for f in spec.families])
     assert stats.chisquare(counts).pvalue > 1e-3
+    start_counts = np.array([sum(d.start == st for d in draws) for st in spec.starts])
+    assert stats.chisquare(start_counts).pvalue > 1e-3
 
 
 @pytest.mark.validates("virgil.ensemble.draw_groups", "virgil.ensemble.EnsembleSpec", roots=["statistics"])

@@ -12,7 +12,7 @@ Here the objects themselves:
 * ClosureOffsets: the same with closure phases, through ``cp_noise.groups``:
   per frame, a baseline offset e reaches the closure phases as T e (T the
   triangle-by-baseline signs), a triangle offset as an indicator; so
-  Σ m mᵀ is τ² T Tᵀ per channel, or τ² I.
+  Σ m mᵀ is τ² (T Tᵀ) ⊗ 1 1ᵀ (offsets common to all channels of a frame), or τ² I ⊗ 1 1ᵀ.
 * Station phases: a phase g_k on telescope k shifts baseline (i, j) by
   g_j - g_i and so never reaches a closure phase, T A = 0 for our T and the
   station incidence A (a reference check of our algebra); and with four

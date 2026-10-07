@@ -98,9 +98,10 @@ def test_rms_after_a_gaussian_beam(pair):
     got = float(metrics.rms_convolved(image, truth, pixel_scale_mas=SCALE, beam=beam))
     record("rel_drms_beam", abs(got / want - 1))
     assert got == pytest.approx(want, rel=1e-10)
-    # The orientation matters: the beam turned by 90° gives a different number.
-    turned = ours.rms(image, truth, ours.gaussian_kernel(31, SCALE, 3 * SCALE, 2 * SCALE, 120.0))
-    assert abs(got - want) < 0.2 * abs(turned - want)
+    # The orientation matters: the mirrored beam (PA -30°, what a North or East
+    # flip gives) misses the tolerance above by a large factor.
+    mirrored = ours.rms(image, truth, ours.gaussian_kernel(31, SCALE, 3 * SCALE, 2 * SCALE, -30.0))
+    assert abs(mirrored / want - 1) > 1e6 * 1e-10
 
 
 @pytest.mark.parametrize("new_scale,npix", [(1.3, 20), (0.45, 50), (0.7, 24)], ids=["coarser", "finer", "crop"])

@@ -27,7 +27,7 @@ telescope and triangle algebra (`crosscheck.chi2.triangle_matrix`).
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `GainModes` from `gain_modes` (telescope, baseline and chromatic groups) | each block's shapes, times its group's width, scattered onto the samples: UUᵀ equals ours (per frame an indicator per telescope on its baselines; one per baseline; one per baseline shaped (λ_ref/λ)²), and the number of modes | Mathematics | exact |
-| `ClosureOffsets` from `closure_offsets` (baseline, triangle, both) | the modes scattered onto the closure phases through `cp_noise.groups`: Σ τ² m mᵀ equals τ² T Tᵀ per channel for baseline offsets (T e), τ² I for triangle offsets | Mathematics | exact |
+| `ClosureOffsets` from `closure_offsets` (baseline, triangle, both) | the modes scattered onto the closure phases through `cp_noise.groups`: Σ τ² m mᵀ equals τ² (T Tᵀ) ⊗ 1 1ᵀ for baseline offsets (T e), τ² I ⊗ 1 1ᵀ for triangle offsets, the offsets being common to all channels of a frame | Mathematics | exact |
 | station phases (our algebra) | a phase gᵢ per telescope shifts baseline (i, j) by gⱼ − gᵢ, which T annihilates: T A = 0; rank T = 3 for four telescopes | Mathematics | exact |
 | an offset mode along the left null vector of T (the dependent closure-phase combination of four telescopes), 0.3 rad | leaves the log-likelihood unchanged; one along a column of T does not | Mathematics | 0 |
 
