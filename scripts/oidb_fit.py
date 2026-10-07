@@ -15,7 +15,7 @@ Models, by collection (the reasons are in RECIPES' docstrings):
   stars on the K-band continuum (Br-gamma and He I windows left out, where the
   paper's Keplerian disk contributes), per epoch and as an orbit. Reported, not
   scored.
-* ``647a22a9`` CHARA workshop 2023, **L2**: iota Peg (the same seven files as
+* ``private-workshop`` a private L2 collection (CHARA workshop 2023): iota Peg (the same seven files as
   fac164e1's 2018-10-22 night) and sigma Ori Aa-Ab as a "scaled binary" (Aa, Ab
   and the incoherent light of B, Schaefer et al. 2016). Fitted, but its results
   are not published until the dataPI has been contacted.
@@ -72,6 +72,9 @@ from virgil.models import (  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.oifits import read_oifits  # noqa: E402
 from virgil.orbits import KeplerOrbit  # noqa: E402
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import private_collections as pc  # noqa: E402
 
 UM = 1e-6
 SCALE_PRIOR = dist.LogUniform(0.1, 100.0)  # error scales: Jeffreys, bounds wide enough to show a failed fit
@@ -826,7 +829,7 @@ def recipe_pi1gru(data_dir, cfg):
 RECIPES = {
     "782185b2-0727-42b0-a185-b2072732b047": recipe_gl229,
     "696baf06-6c3c-424d-abaf-066c3c324d99": recipe_hr6819,
-    "647a22a9-5047-4220-ba22-a95047022072": recipe_workshop,
+    "private-workshop": recipe_workshop,
     "fac164e1-d9d0-4500-8164-e1d9d0450099": recipe_iota_peg,
     "bda75673-61c6-49f0-a756-7361c699f0c4": recipe_astars,
     "f4afc4cd-fd31-40d3-afc4-cdfd3150d340": recipe_hd45166,
@@ -860,6 +863,10 @@ def _jsonable(x):
 
 
 def run(collection, data_dir, out_dir, *, quick=False, nuts=True):
+    collection = pc.key_of(collection)  # a private collection's real id -> its placeholder key
+    if collection.startswith(pc.PREFIX) and pc.real_id(collection) is None:
+        pc.warn_skip(collection)
+        return None
     if collection not in RECIPES:
         raise SystemExit(f"unknown collection {collection}; known: {', '.join(RECIPES)}")
     cfg = dict(nuts=NUTS if nuts else None)
@@ -895,7 +902,9 @@ def main(argv=None):
     p.add_argument("--quick", action="store_true", help="coarse grids, no NUTS (smoke test)")
     p.add_argument("--no-nuts", action="store_true", help="orbits: maximum a posteriori only")
     a = p.parse_args(argv)
-    print(run(a.collection, a.data_dir, a.out_dir, quick=a.quick, nuts=not a.no_nuts), flush=True)
+    path = run(a.collection, a.data_dir, a.out_dir, quick=a.quick, nuts=not a.no_nuts)
+    if path:
+        print(path, flush=True)
 
 
 if __name__ == "__main__":

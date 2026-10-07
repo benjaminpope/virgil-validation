@@ -38,6 +38,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from crosscheck import orbits  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "scripts"))
+import private_collections as pc  # noqa: E402
+
 CRITERIA = {
     "epoch": dict(max_dev_sigma=0.25, applies="per-epoch binary in-sample (same files): separation, PA, flux ratio, "
                                                "each against the published statistical error"),
@@ -56,7 +59,7 @@ CRITERIA = {
 }
 CRITERIA_HASH = hashlib.sha256(json.dumps(CRITERIA, sort_keys=True).encode()).hexdigest()[:16]
 
-L2 = {"647a22a9-5047-4220-ba22-a95047022072"}
+L2 = {"private-workshop"}
 FIELDS = ["collection", "target", "epoch", "quantity", "virgil", "virgil_err", "published", "published_err",
           "sigma_used", "dev_sigma", "rule", "status", "chi2_raw", "flags", "note"]
 
@@ -375,7 +378,7 @@ def cmp_pi1gru(cid, fit, ref):
 COMPARE = {
     "782185b2-0727-42b0-a185-b2072732b047": cmp_gl229,
     "696baf06-6c3c-424d-abaf-066c3c324d99": cmp_hr6819,
-    "647a22a9-5047-4220-ba22-a95047022072": cmp_workshop,
+    "private-workshop": cmp_workshop,
     "fac164e1-d9d0-4500-8164-e1d9d0450099": cmp_iota_peg,
     "bda75673-61c6-49f0-a756-7361c699f0c4": cmp_astars,
     "f4afc4cd-fd31-40d3-afc4-cdfd3150d340": cmp_hd45166,
@@ -389,6 +392,8 @@ def compare(fits_dir, *, refs_dir=ROOT / "oidb" / "references", include_l2=False
     rows, missing = [], []
     for cid, fn in COMPARE.items():
         path = os.path.join(fits_dir, f"fit_{cid}.json")
+        if not os.path.exists(path) and pc.real_id(cid):  # a run made before the placeholder: named by the real id
+            path = os.path.join(fits_dir, f"fit_{pc.real_id(cid)}.json")
         if cid in L2 and not include_l2:
             continue
         if not os.path.exists(path):

@@ -54,6 +54,9 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/126 Safari/537.36"
 )
 HONEST_AGENT = "virgil-validation-fetch_oidb (Python-urllib; github.com/benjaminpope/virgil-validation)"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import private_collections as pc  # noqa: E402
+
 MANIFEST = Path(__file__).resolve().parents[1] / "oidb" / "manifest.yml"
 PAUSE = 0.5  # seconds between requests, to be gentle on OiDB
 PERPAGE = 100
@@ -82,6 +85,7 @@ def save_manifest(manifest, path=MANIFEST):
 
 
 def collection(manifest, cid):
+    cid = pc.key_of(cid)  # a private collection is stored under its placeholder key
     for c in manifest["collections"]:
         if c["id"] == cid:
             return c
@@ -333,10 +337,15 @@ def main(argv=None):
     a = p.parse_args(argv)
 
     if a.cmd == "scan":
+        key = pc.key_of(a.collection)
+        if pc.real_id(key) is None:
+            pc.warn_skip(key)
+            return 0
+        a.collection = pc.real_id(key)
         known = {}
         if a.manifest.exists():
             for c in load_manifest(a.manifest)["collections"]:
-                if c["id"] == a.collection:
+                if pc.real_id(c["id"]) == a.collection:
                     known = {f["name"]: f["sha256"] for f in c["files"] if f.get("sha256")}
         json.dump(scan(a.collection, sizes=not a.no_sizes, known=known), sys.stdout, indent=2)
         print()
@@ -345,7 +354,10 @@ def main(argv=None):
     if a.cmd == "ids":
         for c in manifest["collections"]:
             if c["stage"] == a.stage:
-                print(c["id"])
+                if pc.real_id(c["id"]):
+                    print(pc.real_id(c["id"]))
+                else:
+                    pc.warn_skip(c["id"])
         return 0
     c = collection(manifest, a.collection)
     if a.cmd == "record":

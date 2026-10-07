@@ -35,7 +35,7 @@ machine-readable form.
 |---|---|---|---|---|---|
 | `782185b2-0727-42b0-a185-b2072732b047` | Gl 229 Ba-Bb, GRAVITY (O1) | L3 | XUAN | Nature 634, 1070, doi:10.1038/s41586-024-08064-x | not yet (thank dataPI, cite paper when used) |
 | `696baf06-6c3c-424d-abaf-066c3c324d99` | HR 6819, GRAVITY dynamical masses (binary + Be disk: not clean) (O1) | L3 | Robert Klement | A&A 694, A208, doi:10.1051/0004-6361/202453248 | not yet (thank dataPI, cite paper when used) |
-| `647a22a9-5047-4220-ba22-a95047022072` | CHARA/MIRC-X workshop data (iota Peg, sigma Ori) (O1) | L2 | Gail Schaefer | none | not yet: contact the dataPI before presenting |
+| `private-workshop` (a private L2 collection) | CHARA/MIRC-X workshop data (iota Peg, sigma Ori) (O1) | L2 | Gail Schaefer | none | not yet: contact the dataPI before presenting |
 | `fac164e1-d9d0-4500-8164-e1d9d0450099` | iota Peg, MIRC-X (O1) | L3 | Narsireddy Anugu | AJ 160, 158, doi:10.3847/1538-3881/aba957 | not yet (thank dataPI, cite paper when used) |
 | `bda75673-61c6-49f0-a756-7361c699f0c4` | A-star companions, MIRC-X (De Furio+2022) (O1) | L3 | DE FURIO | ApJ 941, 118, doi:10.3847/1538-4357/aca1ad | not yet (thank dataPI, cite paper when used) |
 | `f4afc4cd-fd31-40d3-afc4-cdfd3150d340` | HD 45166, GRAVITY (O1) | L3 | DESHMUKH | A&A 695, L20, doi:10.1051/0004-6361/202553692 | not yet (thank dataPI, cite paper when used) |

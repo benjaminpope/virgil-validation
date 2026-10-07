@@ -1,9 +1,9 @@
 {
-  "collection_id": "647a22a9-5047-4220-ba22-a95047022072",
+  "collection_id": "private-workshop",
   "targets": {
     "iot Peg": {
       "pointer": "See fac164e1-d9d0-4500-8164-e1d9d0450099.json (Anugu et al. 2020, AJ 160, 158, arXiv:2007.12320)",
-      "collection_id": "647a22a9-5047-4220-ba22-a95047022072",
+      "collection_id": "private-workshop",
       "target": "iota Peg (HD 210027)",
       "paper": {
         "authors": "Anugu, N.; Le Bouquin, J.-B.; Monnier, J. D.; Kraus, S.; Setterholm, B. R.; Labdon, A.; Davies, C. L.; Lanthermann, C.; Gardner, T.; Ennis, J.; Johnson, K. J. C.; ten Brummelaar, T.; Schaefer, G.; Sturmann, J.",
@@ -122,7 +122,7 @@
       "notes": "Paper contains no separate dataset for the Imaging Workshop files; 2018-10-22 is one of the five MIRC-X epochs in Table 2 (rho 10.0352 +/- 0.0176 mas, PA 354.7005 +/- 0.019 deg, Fpri/sec 4.55 +/- 0.04). The workshop files (7 files, this date) are presumably the same night; not verifiable from the paper."
     },
     "sig Ori": {
-      "collection_id": "647a22a9-5047-4220-ba22-a95047022072",
+      "collection_id": "private-workshop",
       "target": "sigma Ori (Aa,Ab close pair; MIRC H prism, 2011-09-29)",
       "paper": {
         "authors": "Schaefer, G. H.; Hummel, C. A.; Gies, D. R.; Zavala, R. T.; Monnier, J. D.; Walter, F. M.; Turner, N. H.; Baron, F.; ten Brummelaar, T.; Che, X.; Farrington, C. D.; Kraus, S.; Sturmann, J.; Sturmann, L.",

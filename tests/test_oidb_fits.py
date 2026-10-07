@@ -325,12 +325,12 @@ def _fake_fits(oc, tmp_path, shift=0.0):
         orbit=_orbit(dict(period_day=io["P_day"][0], t_peri_mjd=io["T_peri_unstated_system"][0], ecc=io["e"][0],
                           inc_deg=io["i_deg"][0], omega_deg=io["omega_deg"][0], Omega_deg=io["Omega_deg"][0],
                           a_mas=io["a_mas"][0], flux_ratio=0.2)))
-    w = _ref("647a22a9-5047-4220-ba22-a95047022072")["targets"]
+    w = _ref("private-workshop")["targets"]
     wi = w["iot Peg"]["epoch_2018-10-22"]
     so = next(e for e in w["sig Ori"]["epochs"] if e["date"] == "2011-09-29")
     sig = _epoch("2011-09-29", so["hjd_minus_2400000"] - 0.5, so["rho_mas"][0], so["pa_deg"][0])
     sig["fractions"] = {k: v[0] for k, v in so["fractions"].items()}
-    fits["647a22a9-5047-4220-ba22-a95047022072"] = dict(targets={
+    fits["private-workshop"] = dict(targets={
         "iot Peg": dict(epochs=[_epoch("2018-10-22", None, wi["rho_mas"][0], wi["pa_deg"][0], flux=1 / wi["flux_ratio"][0])]),
         "sig Ori": dict(epochs=[sig], variants=[])})
     a = _ref("bda75673-61c6-49f0-a756-7361c699f0c4")
@@ -359,7 +359,7 @@ def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_pat
     periods), HR 6819 is never scored, and the L2 rows stay out unless asked for."""
     rows, missing = oc.compare(str(_fake_fits(oc, tmp_path)))
     assert not missing
-    assert not any(r["collection"].startswith("647a22a9") for r in rows)
+    assert not any(r["collection"].startswith("private-") for r in rows)
     scored = [r for r in rows if r["status"] in ("PASS", "FAIL")]
     assert len(scored) > 30 and all(r["status"] == "PASS" for r in scored), [r for r in scored if r["status"] == "FAIL"]
     assert all(r["status"] == "NOT-CLEAN" for r in rows if r["target"] == "HR 6819")
@@ -367,7 +367,7 @@ def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_pat
     exact = [r for r in orbit if "vs Octofitter" not in r["note"]]  # the fakes reproduce PMOIRED's Gl 229 orbit
     assert len(exact) == 7 * 3 and all(abs(r["dev_sigma"]) < 1e-6 for r in exact), exact
     l2, _ = oc.compare(str(tmp_path), include_l2=True)
-    work = [r for r in l2 if r["collection"].startswith("647a22a9")]
+    work = [r for r in l2 if r["collection"].startswith("private-")]
     assert work and not any(r["status"] in ("PASS", "FAIL") for r in work)
     assert "WITHHELD" in {r["status"] for r in work}
     text = oc.markdown(rows)
