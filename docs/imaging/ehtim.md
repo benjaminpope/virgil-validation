@@ -10,6 +10,7 @@ given arrays read from our files with astropy.
 | `Image.model` (16², 15², 20² random images; three pixel sizes) | eht-imaging's `ftmatrix`, delta pixel response: virgil's visibility is its complex conjugate (eht-imaging's transform has the opposite sign; same pixel orientation, North row 0, East column 0) | eht-imaging | 1e-13 |
 | control | flipped images, or no conjugate | eht-imaging | differ by > 1e-2 |
 | closure-phase χ² of random images, three-telescope file, 2° noise | `chisq_cphase` × N (its 2(1 − cos Δ) is virgil's chord²) | eht-imaging | 1e-10 |
+| eht-imaging itself: `ftmatrix` of a sampled, offset Gaussian (σ = 2 mas, 0.25 mas pixels) | exp(−2π²σ²q²) exp(+2πi q·x₀), its documented sign | Mathematics (reference) | 1e-12 |
 
 ## Reconstructions against eht-imaging's imager
 

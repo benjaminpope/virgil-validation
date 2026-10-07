@@ -14,6 +14,9 @@ taken from the data):
   station, with and without a polynomial.
 * "nflux": the same with t the total spectrum over its mean on the
   continuum channels of its row, and the default prior (1, 0.1).
+* flux_scale_posterior: per group, the conjugate Gaussian posterior of the
+  weights (k and the polynomial coefficients) under the stated prior,
+  solved with SciPy, and the total spectrum's scale k / mean(F).
 
 DifferentialPhase:
 
@@ -47,7 +50,7 @@ from evidence.plugin import record
 oifits = pytest.importorskip("virgil.oifits")
 vm = pytest.importorskip("virgil.models")
 sp = pytest.importorskip("virgil.spectra")
-from virgil.likelihood import model_loglike  # noqa: E402
+from virgil.likelihood import flux_scale_posterior, model_loglike  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 
 pytestmark = pytest.mark.x64
@@ -202,6 +205,46 @@ def test_normalised_flux_is_a_dense_gaussian(written):
         worst = max(worst, gap)
     record("max_abs_dloglike", worst)
     assert worst < 1e-8
+
+
+@pytest.mark.parametrize("per,poly_order", [("dataset", 0), ("station", 0), ("station", 1)])
+@pytest.mark.validates("virgil.likelihood.flux_scale_posterior", roots=["mathematics"])
+def test_flux_scale_posterior_is_the_conjugate_gaussian(written, per, poly_order):
+    """Per group, data = A w + noise with A = [t, t x, ...] (t the template
+    over its group mean) and prior w ~ N((mu, 0, ...), diag(s^2, (tau mu)^2,
+    ...)): the posterior is Gaussian with covariance (A^T D^-1 A + P^-1)^-1
+    and mean cov (A^T D^-1 d + P^-1 m), solved with SciPy; the scale of the
+    total spectrum is k over the template's normalisation (the group mean)."""
+    tables, path = written
+    scale, width = (3.2, 0.4), 0.05
+    data = OIData(str(path), extras=("flux",)).with_flux_scale(scale=scale, per=per, poly_order=poly_order,
+                                                               poly_width=width)
+    got = flux_scale_posterior(scene(*TRUTH), data)["flux"]
+    t = tables["OI_FLUX"]
+    d, e = t["FLUXDATA"], t["FLUXERR"]
+    F = np.broadcast_to(total(WL, TRUTH[2]), d.shape)
+    groups = np.zeros(d.shape, int) if per == "dataset" else np.broadcast_to(t["STA_INDEX"], d.shape)
+    worst_mean = worst_cov = worst_scale = 0.0
+    for n, g in enumerate(np.unique(groups)):
+        m = groups == g
+        assert np.array_equal(np.asarray(got["groups"]).reshape(d.shape) == n, m)
+        tmpl = F[m] / F[m].mean()
+        w = np.broadcast_to(WL, d.shape)[m]
+        x = (w - 0.5 * (w.min() + w.max())) / (0.5 * (w.max() - w.min()))
+        A = np.stack([tmpl * x**j for j in range(poly_order + 1)], axis=1)
+        prior_mean = np.r_[scale[0], np.zeros(poly_order)]
+        prior_var = np.r_[scale[1] ** 2, np.full(poly_order, (width * scale[0]) ** 2)]
+        precision = A.T @ (A / e[m][:, None] ** 2) + np.diag(1 / prior_var)
+        cov = linalg.inv(precision)
+        mean = linalg.solve(precision, A.T @ (d[m] / e[m] ** 2) + prior_mean / prior_var, assume_a="pos")
+        sd = np.sqrt(np.diag(cov))
+        worst_mean = max(worst_mean, np.max(np.abs(np.asarray(got["mean"])[n] - mean) / sd))
+        worst_cov = max(worst_cov, np.max(np.abs(np.asarray(got["cov"])[n] - cov) / np.outer(sd, sd)))
+        worst_scale = max(worst_scale, abs(float(np.asarray(got["scale"])[n]) / (mean[0] / F[m].mean()) - 1))
+    record("max_dmean_over_sd", worst_mean)
+    record("max_rel_dcov", worst_cov)
+    record("max_rel_dscale", worst_scale)
+    assert worst_mean < 1e-8 and worst_cov < 1e-8 and worst_scale < 1e-10
 
 
 @pytest.mark.validates("virgil.observables.FluxSpectrum", roots=["mathematics"])

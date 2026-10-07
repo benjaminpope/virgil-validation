@@ -113,3 +113,28 @@ def test_closure_phase_chi2_matches_ehtim(tmp_path):
         worst = max(worst, abs(got / want - 1))
     record("max_rel_chi2", worst)
     assert worst < 1e-10
+
+
+@pytest.mark.validates("ehtim", roots=["mathematics"], kind="reference")
+def test_ehtims_transform_of_a_gaussian_is_analytic():
+    """eht-imaging's direct transform of a sampled circular Gaussian
+    (sigma 2 mas on 0.25 mas pixels, centred 1.5 mas East and 0.75 mas
+    North of the image centre), divided by the sum of the pixels, against
+    the continuous transform exp(-2 pi^2 sigma^2 |q|^2) exp(+2 pi i q.x0)
+    in its documented sign. Sampling errors (aliases at 1 / pixel,
+    exp(-2 pi^2 (sigma / pixel)^2)) are below 1e-200 and truncation errors
+    (the field reaches over 9 sigma from the Gaussian's centre) below
+    1e-19, so they agree to rounding."""
+    n, scale, sigma, east, north = 160, 0.25, 2.0, 1.5, 0.75
+    offsets = ((n - 1) / 2 - np.arange(n)) * scale  # row 0 North, column 0 East
+    ee, nn = np.meshgrid(offsets, offsets)
+    b = np.exp(-((ee - east) ** 2 + (nn - north) ** 2) / (2 * sigma**2))
+    rng = np.random.default_rng(2)
+    wl = 2.0e-6
+    u, v = rng.uniform(-60, 60, (2, 40))  # metres; |q| up to 0.4 / sigma
+    got = ehtim_ft(b, scale, u, v, wl) / b.sum()
+    qu, qv = u / wl * MAS, v / wl * MAS  # cycles per mas
+    want = np.exp(-2 * np.pi**2 * sigma**2 * (qu**2 + qv**2)) * np.exp(2j * np.pi * (qu * east + qv * north))
+    record("max_abs_dV", np.max(np.abs(got - want)))
+    assert np.max(np.abs(got - want)) < 1e-12
+    assert np.max(np.abs(got - np.conj(want))) > 1e-2  # the sign is pinned, not free

@@ -56,6 +56,7 @@ nav:
       - "Visibility-only data": data/visibility_only.md
       - "Aperture masking": data/masking.md
       - "OIFITS writing and observables": data/oifits_observables.md
+      - "AMIGO mixed-DISCO products": data/amigo.md
   - Models:
       - "Geometric visibilities": models/visibilities.md
       - "Limb-darkened disks": models/limb_darkening.md
@@ -76,6 +77,7 @@ nav:
   - Orbits:
       - "Kepler orbits": orbits/kepler.md
       - "Against orbitize!": orbits/orbitize.md
+      - "Multi-epoch orbits": orbits/epochs.md
   - Imaging:
       - "Transforms, beams and regularizers": imaging/machinery.md
       - "Against eht-imaging": imaging/ehtim.md
