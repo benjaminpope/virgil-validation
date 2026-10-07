@@ -29,13 +29,14 @@ Models, by collection (the reasons are in RECIPES' docstrings):
   on the continuum, emission-line windows left out; scored on the uncalibrated
   science closure phases, as the night's calibrator is a binary.
 
+* ``19f7e2cf`` pi1 Gru, PIONIER: a uniform disk fitted to V^2 (LitPro's model in
+  Paladini et al. 2018).
+
 Reading: a closure triangle with a baseline in no V^2 row is dropped, and counted,
 before virgil reads the file (``drop_unmatched_t3``; MIRC-X keeps such rows); a file
 with rows under several TARGET_IDs reads the one its OI_TARGET names
 (``pick_target``). Progress lines are timestamped, and an orbit's MAP is written to
 ``map_<id>.json`` before NUTS starts.
-* ``19f7e2cf`` pi1 Gru, PIONIER: a uniform disk fitted to V^2 (LitPro's model in
-  Paladini et al. 2018).
 
 Priors are Jeffreys priors under the relevant group: log-uniform scales (fluxes,
 diameters, periods, semimajor axes, error scales), uniform locations (positions)
@@ -202,6 +203,11 @@ def load(paths, *, insname_prefix=None, target=None, select=None):
         if not insname:
             raise ValueError(f"no INSNAME starting {insname_prefix!r} in {paths}")
     name = pick_target(paths[0], target)
+    if name is not None:  # record what the choice left out, so the fit JSON shows it
+        info = oifits_info(paths[0])
+        read = sum(n for i, n in info["rows"].items() if info["targets"].get(i) == name)
+        LOAD_NOTES.append(dict(file=os.path.basename(paths[0]), target_read=name, rows_read=read,
+                               rows_total=sum(info["rows"].values())))
     hduls = []
     for p in paths:
         with fits.open(p, memmap=False) as h:
@@ -716,7 +722,8 @@ def recipe_hd45166(data_dir, cfg):
     * variant: those files' V^2 and closure phases, with the transfer function as
       gains per (frame, baseline) and chromatic, marginalised, widths fitted (the
       paper's SCI-FREE analogue), started from the scored fit;
-    * variant: the pipeline-calibrated V^2 and closure phases (the old scored fit);
+    * variant: the pipeline-calibrated V^2 and closure phases (the old scored fit; never
+      a fallback for the scored fit, which raises if virgil fails on the files);
     * variant: the calibrator's own closure phases (``*singlecalvis_singlecaltf``),
       which measure its companion and the instrument's closure-phase floor;
     * ``output_zpcal.fits``: fitted as whichever target it holds (in job 18174979 it
@@ -738,13 +745,9 @@ def recipe_hd45166(data_dir, cfg):
                          point_binary, priors, grid)
         main.update(files=[os.path.basename(p) for p in raw], target="HD 45166",
                     data="uncalibrated science closure phases (the calibrator is a binary)")
-    except Exception as exc:  # keep the task's output: fall back to the pipeline-calibrated files, flagged
-        log(f"uncalibrated closure-phase fit failed ({type(exc).__name__}: {exc}); scoring the calibrated files")
-        paths = _files(data_dir, r"singlesciviscalibrated\.fits$")
-        main = fit_epoch("2023-11-26", load(paths, insname_prefix="GRAVITY_SC", target=sci, select=sel),
-                         point_binary, priors, grid)
-        main.update(files=[os.path.basename(p) for p in paths], target="HD 45166",
-                    data=f"FALLBACK, pipeline-calibrated V2 + CP: the uncalibrated fit failed ({exc})")
+    except Exception as exc:  # no fallback to the calibrated files: they carry the binary calibrator's signal
+        log(f"uncalibrated closure-phase fit failed ({type(exc).__name__}: {exc})")
+        raise
     start = {k: main["values"][k][0] for k in ("dra", "ddec", "flux")}
 
     def variant(name, fn):
