@@ -166,7 +166,7 @@ workaround and reported as such.
   Track B systems also have private L2 files in the OiDB (PIONIER 10, ISSP 2,
   and IOTA for α Equ again). They hold the authors' own calibration of systems
   that Track B fits from Phase 3, but they are private and enter this plan only
-  as counts (open question 2).
+  as counts (decision D2: not pursued for now).
 - **ESO binaries set.** Gl 229 only, public L3 (O1 already fits it) and
   PIONIER L2. The Nowak et al. 21 systems and the other orbit benchmarks
   (HD 136164, δ Vel) are not in the OiDB. 9 Sgr is, in PIONIER L2.
@@ -253,19 +253,26 @@ Agreed with the orbit-fitting session on 2026-10-08.
 - **OB4.** A results page with each collection's terms (thanks to the dataPI,
   the paper, OiDB's acknowledgement, CC BY-NC-SA 4.0). No L2 results.
 
+## Decisions
+
+Decided by Ben, 2026-10-08.
+
+- **D1. O1 systems are refitted with the Track B statistic: yes.** ι Peg,
+  HD 45166, HR 6819 and the A-star detections are refitted here on the same
+  files, as planned. The O1 comparisons stay as they are and are not replaced.
+- **D2. dataPIs of private files are not contacted yet: deferred.** The 12
+  Track B systems with private L2 files (PIONIER, ISSP, IOTA) stay out of this
+  work, and no second private check is made. The current focus is public ESO
+  archive and JMMC data only. Revisit under `plan_oidb.md` Decision 1 once the
+  public results are in.
+
 ## Open questions
 
-1. Are the O1 systems (ι Peg, HD 45166, HR 6819, the A-star detections)
-   refitted here, as planned, or do the O1 comparisons stay as their only
-   record?
-2. The 12 Track B systems with private PIONIER, ISSP and IOTA files hold the
-   authors' own calibration. Do we contact their dataPIs under Decision 1, so
-   that they can be a second, private check of the Track B results?
-3. Orbits: may the staged systems also become orbit tests (the orbit session
+1. Orbits: may the staged systems also become orbit tests (the orbit session
    decides), and should they wait for OB0's transcribed elements?
-4. Which survey targets count? A target counts only when its paper reports a
+2. Which survey targets count? A target counts only when its paper reports a
    companion with an uncertainty. The census cannot tell detections from
    non-detections among the survey target names until OB0 reads the tables.
-5. The SIMBAD screen is coarse. After OB0, is a second pass over the 54 excluded
+3. The SIMBAD screen is coarse. After OB0, is a second pass over the 54 excluded
    L3 collections worth about 2 h, to catch a binary table in a disk or diameter
    paper?
