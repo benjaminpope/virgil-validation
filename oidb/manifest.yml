@@ -1,0 +1,3864 @@
+# OiDB collections for virgil-validation (design/plan_oidb.md, stage O0).
+# The body is JSON, which is valid YAML; scripts/fetch_oidb.py reads and
+# writes it with the standard library. Lines starting with '#' are comments.
+#
+# Per collection: OiDB id; stage (O1 first, then O2); title; calibration
+# levels and dataPIs as OiDB lists them; terms (OiDB doc.html: L3 -> thank
+# the dataPI and cite the paper; L2 -> contact the dataPI before presenting);
+# publication status confirmed against Crossref, not copied from listings;
+# files with OiDB granule ids, get-data.html links and Content-Length sizes
+# (HEAD of the staging URL; no file body was fetched). sha256 is null until
+# a fetch on OzSTAR records it (fetch_oidb.py record). Staging URLs can
+# expire; the fetcher resolves get_data afresh. Licence: CC BY-NC-SA 4.0;
+# acknowledgements in DATA_ATTRIBUTION.md.
+# Scanned 2026-10-07 with fetch_oidb.py scan. Collections with bytes null
+# (and total_bytes null) were listed without sizes; rescan them before O2.
+{
+  "scanned": "2026-10-07",
+  "collections": [
+    {
+      "id": "782185b2-0727-42b0-a185-b2072732b047",
+      "stage": "O1",
+      "title": "Gl 229 Ba-Bb, GRAVITY",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "XUAN"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "Nature 634, 1070",
+        "doi": "10.1038/s41586-024-08064-x",
+        "evidence": "Crossref https://api.crossref.org/works/10.1038/s41586-024-08064-x (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2024Natur.634.1070X"
+      ],
+      "instruments": [
+        "GRAVITY"
+      ],
+      "targets": [
+        "HD_42581",
+        "HD_42581_B"
+      ],
+      "n_granules": 44,
+      "n_files": 22,
+      "total_bytes": 10336320,
+      "files": [
+        {
+          "name": "GRAVI.2023-12-26T04_13_56.643_dualscivis.fits",
+          "granules": [
+            1783796,
+            1783795
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783796&name=/GRAVI.2023-12-26T04_13_56.643_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T04_31_08.687_dualscivis.fits",
+          "granules": [
+            1783806,
+            1783805
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783806&name=/GRAVI.2023-12-26T04_31_08.687_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T04_46_32.726_dualscivis.fits",
+          "granules": [
+            1783792,
+            1783791
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783792&name=/GRAVI.2023-12-26T04_46_32.726_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T04_53_47.744_dualscivis.fits",
+          "granules": [
+            1783804,
+            1783803
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783804&name=/GRAVI.2023-12-26T04_53_47.744_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T05_00_59.763_dualscivis.fits",
+          "granules": [
+            1783810,
+            1783809
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783810&name=/GRAVI.2023-12-26T05_00_59.763_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T05_15_41.800_dualscivis.fits",
+          "granules": [
+            1783798,
+            1783797
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783798&name=/GRAVI.2023-12-26T05_15_41.800_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T05_36_14.852_dualscivis.fits",
+          "granules": [
+            1783828,
+            1783827
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783828&name=/GRAVI.2023-12-26T05_36_14.852_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T05_58_44.909_dualscivis.fits",
+          "granules": [
+            1783830,
+            1783829
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783830&name=/GRAVI.2023-12-26T05_58_44.909_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T06_19_08.961_dualscivis.fits",
+          "granules": [
+            1783820,
+            1783819
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783820&name=/GRAVI.2023-12-26T06_19_08.961_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T06_27_05.981_dualscivis.fits",
+          "granules": [
+            1783816,
+            1783815
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783816&name=/GRAVI.2023-12-26T06_27_05.981_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T06_34_23.999_dualscivis.fits",
+          "granules": [
+            1783822,
+            1783821
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783822&name=/GRAVI.2023-12-26T06_34_23.999_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-26T06_41_39.018_dualscivis.fits",
+          "granules": [
+            1783818,
+            1783817
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783818&name=/GRAVI.2023-12-26T06_41_39.018_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-30T05_47_14.016_dualscivis.fits",
+          "granules": [
+            1783814,
+            1783813
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783814&name=/GRAVI.2023-12-30T05_47_14.016_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-30T06_11_23.077_dualscivis.fits",
+          "granules": [
+            1783832,
+            1783831
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783832&name=/GRAVI.2023-12-30T06_11_23.077_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-30T06_18_38.095_dualscivis.fits",
+          "granules": [
+            1783808,
+            1783807
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783808&name=/GRAVI.2023-12-30T06_18_38.095_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-12-30T06_25_53.113_dualscivis.fits",
+          "granules": [
+            1783824,
+            1783823
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783824&name=/GRAVI.2023-12-30T06_25_53.113_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2024-02-28T02_57_28.592_dualscivis.fits",
+          "granules": [
+            1783794,
+            1783793
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783794&name=/GRAVI.2024-02-28T02_57_28.592_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2024-02-28T03_13_28.632_dualscivis.fits",
+          "granules": [
+            1783812,
+            1783811
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783812&name=/GRAVI.2024-02-28T03_13_28.632_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2024-02-28T03_29_49.673_dualscivis.fits",
+          "granules": [
+            1783799,
+            1783800
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783799&name=/GRAVI.2024-02-28T03_29_49.673_dualscivis.fits",
+          "bytes": 469440,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2024-03-29T00_31_13.894_dualscivis.fits",
+          "granules": [
+            1783790,
+            1783789
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783790&name=/GRAVI.2024-03-29T00_31_13.894_dualscivis.fits",
+          "bytes": 472320,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2024-04-29T23_15_12.061_dualscivis.fits",
+          "granules": [
+            1783826,
+            1783825
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783826&name=/GRAVI.2024-04-29T23_15_12.061_dualscivis.fits",
+          "bytes": 472320,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2024-04-29T23_22_24.079_dualscivis.fits",
+          "granules": [
+            1783802,
+            1783801
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783802&name=/GRAVI.2024-04-29T23_22_24.079_dualscivis.fits",
+          "bytes": 472320,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "696baf06-6c3c-424d-abaf-066c3c324d99",
+      "stage": "O1",
+      "title": "HR 6819, GRAVITY dynamical masses (binary + Be disk: not clean)",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Robert Klement"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "A&A 694, A208",
+        "doi": "10.1051/0004-6361/202453248",
+        "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/202453248 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2025A&A...694A.208K"
+      ],
+      "instruments": [
+        "GRAVITY"
+      ],
+      "targets": [
+        "HR6819",
+        "HR_6819"
+      ],
+      "n_granules": 28,
+      "n_files": 12,
+      "total_bytes": 44974080,
+      "files": [
+        {
+          "name": "2021Sep05_SCI_HR6819_A_SINGLE_SCI_VIS_CALIBRATED_WOLL.fits",
+          "granules": [
+            1884253,
+            1884254,
+            1884251,
+            1884252
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884253&name=/2021Sep05_SCI_HR6819_A_SINGLE_SCI_VIS_CALIBRATED_WOLL.fits",
+          "bytes": 6238080,
+          "sha256": null
+        },
+        {
+          "name": "2021Sep18_SCI_HR6819_B_SINGLE_SCI_VIS_CALIBRATED_WOLL.fits",
+          "granules": [
+            1884257,
+            1884258,
+            1884255,
+            1884256
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884257&name=/2021Sep18_SCI_HR6819_B_SINGLE_SCI_VIS_CALIBRATED_WOLL.fits",
+          "bytes": 6238080,
+          "sha256": null
+        },
+        {
+          "name": "2022May06_SCI_HR6819_A_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884240,
+            1884239
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884240&name=/2022May06_SCI_HR6819_A_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3248640,
+          "sha256": null
+        },
+        {
+          "name": "2023Apr23_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884249,
+            1884250
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884249&name=/2023Apr23_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3251520,
+          "sha256": null
+        },
+        {
+          "name": "2023Aug16_SCI_HR6819_EP5_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884238,
+            1884237
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884238&name=/2023Aug16_SCI_HR6819_EP5_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3248640,
+          "sha256": null
+        },
+        {
+          "name": "2023Aug20_SCI_HR6819_EP6_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884236,
+            1884235
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884236&name=/2023Aug20_SCI_HR6819_EP6_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3248640,
+          "sha256": null
+        },
+        {
+          "name": "2023Jul17_SCI_HR6819_EP4_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884242,
+            1884241
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884242&name=/2023Jul17_SCI_HR6819_EP4_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3251520,
+          "sha256": null
+        },
+        {
+          "name": "2023Jun20_SCI_HR6819_EP3_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884248,
+            1884247
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884248&name=/2023Jun20_SCI_HR6819_EP3_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3251520,
+          "sha256": null
+        },
+        {
+          "name": "2023May01_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884244,
+            1884243
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884244&name=/2023May01_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3251520,
+          "sha256": null
+        },
+        {
+          "name": "2023May20_SCI_HR6819_EP2_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884232,
+            1884231
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884232&name=/2023May20_SCI_HR6819_EP2_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3248640,
+          "sha256": null
+        },
+        {
+          "name": "2023Sep07_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884245,
+            1884246
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884245&name=/2023Sep07_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3248640,
+          "sha256": null
+        },
+        {
+          "name": "2023Sep08_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "granules": [
+            1884234,
+            1884233
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884234&name=/2023Sep08_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
+          "bytes": 3248640,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "647a22a9-5047-4220-ba22-a95047022072",
+      "stage": "O1",
+      "title": "CHARA/MIRC-X workshop data (iota Peg, sigma Ori)",
+      "levels": [
+        2
+      ],
+      "datapis": [
+        "Gail Schaefer"
+      ],
+      "terms": [
+        "L2: contact the dataPI before presenting results"
+      ],
+      "publication": {
+        "status": "no paper",
+        "journal": null,
+        "doi": null,
+        "evidence": "OiDB granules carry no bib_reference; the targets' published orbits (Anugu+2020 AJ 160, 158; Schaefer+2016 AJ 152, 213) are the references"
+      },
+      "bibcodes": [],
+      "instruments": [
+        "H_PRISM",
+        "MIRCX"
+      ],
+      "targets": [
+        "HD_210027",
+        "sig Ori"
+      ],
+      "n_granules": 8,
+      "n_files": 8,
+      "total_bytes": 1180800,
+      "files": [
+        {
+          "name": "2018-10-22mircx00029_oifits_viscal.fits",
+          "granules": [
+            1707096
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707096&name=/2018-10-22mircx00029_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00059_oifits_viscal.fits",
+          "granules": [
+            1707098
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707098&name=/2018-10-22mircx00059_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00089_oifits_viscal.fits",
+          "granules": [
+            1707102
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707102&name=/2018-10-22mircx00089_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00119_oifits_viscal.fits",
+          "granules": [
+            1707097
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707097&name=/2018-10-22mircx00119_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00147_oifits_viscal.fits",
+          "granules": [
+            1707095
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707095&name=/2018-10-22mircx00147_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00177_oifits_viscal.fits",
+          "granules": [
+            1707100
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707100&name=/2018-10-22mircx00177_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00207_oifits_viscal.fits",
+          "granules": [
+            1707101
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707101&name=/2018-10-22mircx00207_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "oiprep_sig_Ori.2011Sep29_Hprism_tcoh0075ms_GHS_sigclip3_2016Apr08.XCHAN.final_cal.AVG15m.oifits",
+          "granules": [
+            1707099
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707099&name=/oiprep_sig_Ori.2011Sep29_Hprism_tcoh0075ms_GHS_sigclip3_2016Apr08.XCHAN.final_cal.AVG15m.oifits",
+          "bytes": 51840,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "fac164e1-d9d0-4500-8164-e1d9d0450099",
+      "stage": "O1",
+      "title": "iota Peg, MIRC-X",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Narsireddy Anugu"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "AJ 160, 158",
+        "doi": "10.3847/1538-3881/aba957",
+        "evidence": "Crossref https://api.crossref.org/works/10.3847/1538-3881/aba957 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2020AJ....160..158A"
+      ],
+      "instruments": [
+        "MIRCX"
+      ],
+      "targets": [
+        "HD_210027"
+      ],
+      "n_granules": 24,
+      "n_files": 24,
+      "total_bytes": 3916800,
+      "files": [
+        {
+          "name": "2018-10-22mircx00029_oifits_viscal.fits",
+          "granules": [
+            1340507
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340507&name=/2018-10-22mircx00029_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00059_oifits_viscal.fits",
+          "granules": [
+            1340515
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340515&name=/2018-10-22mircx00059_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00089_oifits_viscal.fits",
+          "granules": [
+            1340509
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340509&name=/2018-10-22mircx00089_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00119_oifits_viscal.fits",
+          "granules": [
+            1340511
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340511&name=/2018-10-22mircx00119_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00147_oifits_viscal.fits",
+          "granules": [
+            1340510
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340510&name=/2018-10-22mircx00147_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00177_oifits_viscal.fits",
+          "granules": [
+            1340504
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340504&name=/2018-10-22mircx00177_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-22mircx00207_oifits_viscal.fits",
+          "granules": [
+            1340508
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340508&name=/2018-10-22mircx00207_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-23mircx00300_oifits_viscal.fits",
+          "granules": [
+            1340516
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340516&name=/2018-10-23mircx00300_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-23mircx00330_oifits_viscal.fits",
+          "granules": [
+            1340512
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340512&name=/2018-10-23mircx00330_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-23mircx00360_oifits_viscal.fits",
+          "granules": [
+            1340506
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340506&name=/2018-10-23mircx00360_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-10-23mircx00390_oifits_viscal.fits",
+          "granules": [
+            1340517
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340517&name=/2018-10-23mircx00390_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-11-21mircx00000_oifits_viscal.fits",
+          "granules": [
+            1340505
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340505&name=/2018-11-21mircx00000_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-11-21mircx00030_oifits_viscal.fits",
+          "granules": [
+            1340514
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340514&name=/2018-11-21mircx00030_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-11-21mircx00060_oifits_viscal.fits",
+          "granules": [
+            1340518
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340518&name=/2018-11-21mircx00060_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-11-21mircx00090_oifits_viscal.fits",
+          "granules": [
+            1340519
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340519&name=/2018-11-21mircx00090_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2018-11-21mircx00119_oifits_viscal.fits",
+          "granules": [
+            1340513
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340513&name=/2018-11-21mircx00119_oifits_viscal.fits",
+          "bytes": 161280,
+          "sha256": null
+        },
+        {
+          "name": "2019-07-31mircx01884_oifits_viscal.fits",
+          "granules": [
+            1340523
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340523&name=/2019-07-31mircx01884_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        },
+        {
+          "name": "2019-07-31mircx01914_oifits_viscal.fits",
+          "granules": [
+            1340520
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340520&name=/2019-07-31mircx01914_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        },
+        {
+          "name": "2019-07-31mircx02049_oifits_viscal.fits",
+          "granules": [
+            1340525
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340525&name=/2019-07-31mircx02049_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        },
+        {
+          "name": "2019-07-31mircx02079_oifits_viscal.fits",
+          "granules": [
+            1340522
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340522&name=/2019-07-31mircx02079_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        },
+        {
+          "name": "2019-08-06mircx01945_oifits_viscal.fits",
+          "granules": [
+            1340524
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340524&name=/2019-08-06mircx01945_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        },
+        {
+          "name": "2019-08-06mircx01975_oifits_viscal.fits",
+          "granules": [
+            1340521
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340521&name=/2019-08-06mircx01975_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        },
+        {
+          "name": "2019-08-06mircx02110_oifits_viscal.fits",
+          "granules": [
+            1340527
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340527&name=/2019-08-06mircx02110_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        },
+        {
+          "name": "2019-08-06mircx02140_oifits_viscal.fits",
+          "granules": [
+            1340526
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340526&name=/2019-08-06mircx02140_oifits_viscal.fits",
+          "bytes": 167040,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "bda75673-61c6-49f0-a756-7361c699f0c4",
+      "stage": "O1",
+      "title": "A-star companions, MIRC-X (De Furio+2022)",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "DE FURIO"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "ApJ 941, 118",
+        "doi": "10.3847/1538-4357/aca1ad",
+        "evidence": "Crossref https://api.crossref.org/works/10.3847/1538-4357/aca1ad (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2022ApJ...941..118D"
+      ],
+      "instruments": [
+        "MIRCX"
+      ],
+      "targets": [
+        "19 CVn",
+        "37 And",
+        "50 Cnc",
+        "64 Gem",
+        "HD 106661",
+        "HD 112734",
+        "HD 120047",
+        "HD 121164",
+        "HD 15550",
+        "HD 29388",
+        "HD 32301",
+        "HD 46089",
+        "HD 48097",
+        "HD 66664",
+        "HD 77660",
+        "HD 92941",
+        "HD 97244",
+        "HD_21912",
+        "HD_99787",
+        "V386 Per",
+        "bet Ari",
+        "f Leo",
+        "gam Cnc",
+        "l Per",
+        "lam Gem",
+        "ome Aur",
+        "rho Tau"
+      ],
+      "n_granules": 65,
+      "n_files": 28,
+      "total_bytes": 25462080,
+      "files": [
+        {
+          "name": "HD_106661.oifits",
+          "granules": [
+            1760298,
+            1760297
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760298&name=/HD_106661.oifits",
+          "bytes": 1016640,
+          "sha256": null
+        },
+        {
+          "name": "HD_112734.oifits",
+          "granules": [
+            1760241
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760241&name=/HD_112734.oifits",
+          "bytes": 239040,
+          "sha256": null
+        },
+        {
+          "name": "HD_115271.oifits",
+          "granules": [
+            1760246
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760246&name=/HD_115271.oifits",
+          "bytes": 639360,
+          "sha256": null
+        },
+        {
+          "name": "HD_11636.oifits",
+          "granules": [
+            1760250
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760250&name=/HD_11636.oifits",
+          "bytes": 1048320,
+          "sha256": null
+        },
+        {
+          "name": "HD_120047.oifits",
+          "granules": [
+            1760302
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760302&name=/HD_120047.oifits",
+          "bytes": 970560,
+          "sha256": null
+        },
+        {
+          "name": "HD_121164.oifits",
+          "granules": [
+            1760292
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760292&name=/HD_121164.oifits",
+          "bytes": 996480,
+          "sha256": null
+        },
+        {
+          "name": "HD_15550.oifits",
+          "granules": [
+            1760251
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760251&name=/HD_15550.oifits",
+          "bytes": 1016640,
+          "sha256": null
+        },
+        {
+          "name": "HD_20677.oifits",
+          "granules": [
+            1760247
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760247&name=/HD_20677.oifits",
+          "bytes": 973440,
+          "sha256": null
+        },
+        {
+          "name": "HD_21912.oifits",
+          "granules": [
+            1760287,
+            1760282,
+            1760274,
+            1760289,
+            1760285,
+            1760275,
+            1760284,
+            1760280,
+            1760279,
+            1760281,
+            1760291,
+            1760277,
+            1760286,
+            1760276,
+            1760278,
+            1760283,
+            1760288,
+            1760290
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760287&name=/HD_21912.oifits",
+          "bytes": 1566720,
+          "sha256": null
+        },
+        {
+          "name": "HD_24809.oifits",
+          "granules": [
+            1760244
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760244&name=/HD_24809.oifits",
+          "bytes": 593280,
+          "sha256": null
+        },
+        {
+          "name": "HD_28910.oifits",
+          "granules": [
+            1760272
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760272&name=/HD_28910.oifits",
+          "bytes": 941760,
+          "sha256": null
+        },
+        {
+          "name": "HD_29388.oifits",
+          "granules": [
+            1760293
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760293&name=/HD_29388.oifits",
+          "bytes": 982080,
+          "sha256": null
+        },
+        {
+          "name": "HD_32301.oifits",
+          "granules": [
+            1760299
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760299&name=/HD_32301.oifits",
+          "bytes": 1031040,
+          "sha256": null
+        },
+        {
+          "name": "HD_46089.oifits",
+          "granules": [
+            1760294
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760294&name=/HD_46089.oifits",
+          "bytes": 927360,
+          "sha256": null
+        },
+        {
+          "name": "HD_48097.oifits",
+          "granules": [
+            1760295
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760295&name=/HD_48097.oifits",
+          "bytes": 982080,
+          "sha256": null
+        },
+        {
+          "name": "HD_5448.oifits",
+          "granules": [
+            1760248
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760248&name=/HD_5448.oifits",
+          "bytes": 1013760,
+          "sha256": null
+        },
+        {
+          "name": "HD_56537.oifits",
+          "granules": [
+            1760245
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760245&name=/HD_56537.oifits",
+          "bytes": 509760,
+          "sha256": null
+        },
+        {
+          "name": "HD_59037.oifits",
+          "granules": [
+            1760273
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760273&name=/HD_59037.oifits",
+          "bytes": 1177920,
+          "sha256": null
+        },
+        {
+          "name": "HD_66664.oifits",
+          "granules": [
+            1760303
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760303&name=/HD_66664.oifits",
+          "bytes": 999360,
+          "sha256": null
+        },
+        {
+          "name": "HD_74198.oifits",
+          "granules": [
+            1760305
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760305&name=/HD_74198.oifits",
+          "bytes": 1025280,
+          "sha256": null
+        },
+        {
+          "name": "HD_74873.oifits",
+          "granules": [
+            1760304
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760304&name=/HD_74873.oifits",
+          "bytes": 999360,
+          "sha256": null
+        },
+        {
+          "name": "HD_77660.oifits",
+          "granules": [
+            1760243
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760243&name=/HD_77660.oifits",
+          "bytes": 555840,
+          "sha256": null
+        },
+        {
+          "name": "HD_84107.oifits",
+          "granules": [
+            1760301
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760301&name=/HD_84107.oifits",
+          "bytes": 999360,
+          "sha256": null
+        },
+        {
+          "name": "HD_92941.oifits",
+          "granules": [
+            1760296
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760296&name=/HD_92941.oifits",
+          "bytes": 1031040,
+          "sha256": null
+        },
+        {
+          "name": "HD_97244.oifits",
+          "granules": [
+            1760300
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760300&name=/HD_97244.oifits",
+          "bytes": 987840,
+          "sha256": null
+        },
+        {
+          "name": "HD_99787.oifits",
+          "granules": [
+            1760257,
+            1760256,
+            1760254,
+            1760270,
+            1760263,
+            1760267,
+            1760259,
+            1760269,
+            1760255,
+            1760271,
+            1760258,
+            1760253,
+            1760268,
+            1760252,
+            1760261,
+            1760265,
+            1760260,
+            1760262,
+            1760266,
+            1760264
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760257&name=/HD_99787.oifits",
+          "bytes": 1653120,
+          "sha256": null
+        },
+        {
+          "name": "MIRCX.ome_Aur.oifits",
+          "granules": [
+            1760249
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760249&name=/MIRCX.ome_Aur.oifits",
+          "bytes": 417600,
+          "sha256": null
+        },
+        {
+          "name": "MYSTIC.ome_Aur.oifits",
+          "granules": [
+            1760242
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760242&name=/MYSTIC.ome_Aur.oifits",
+          "bytes": 167040,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "f4afc4cd-fd31-40d3-afc4-cdfd3150d340",
+      "stage": "O1",
+      "title": "HD 45166, GRAVITY",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "DESHMUKH"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "A&A 695, L20",
+        "doi": "10.1051/0004-6361/202553692",
+        "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/202553692 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2025A&A...695L..20D"
+      ],
+      "instruments": [
+        "GRAVITY"
+      ],
+      "targets": [
+        "HD_45166",
+        "TYC_732-806-1"
+      ],
+      "n_granules": 14,
+      "n_files": 7,
+      "total_bytes": 59368320,
+      "files": [
+        {
+          "name": "GRAVI.2023-11-26T07_28_15.210_singlecalvis_singlecaltf.fits",
+          "granules": [
+            1884217,
+            1884218
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884217&name=/GRAVI.2023-11-26T07_28_15.210_singlecalvis_singlecaltf.fits",
+          "bytes": 8478720,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-11-26T07_34_54.227_singlecalvis_singlecaltf.fits",
+          "granules": [
+            1884228,
+            1884227
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884228&name=/GRAVI.2023-11-26T07_34_54.227_singlecalvis_singlecaltf.fits",
+          "bytes": 8481600,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-11-26T07_55_33.279_singlescivis_singlescitf.fits",
+          "granules": [
+            1884220,
+            1884219
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884220&name=/GRAVI.2023-11-26T07_55_33.279_singlescivis_singlescitf.fits",
+          "bytes": 8481600,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-11-26T07_55_33.279_singlescivis_singlesciviscalibrated.fits",
+          "granules": [
+            1884226,
+            1884225
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884226&name=/GRAVI.2023-11-26T07_55_33.279_singlescivis_singlesciviscalibrated.fits",
+          "bytes": 8481600,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-11-26T08_02_12.295_singlescivis_singlescitf.fits",
+          "granules": [
+            1884230,
+            1884229
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884230&name=/GRAVI.2023-11-26T08_02_12.295_singlescivis_singlescitf.fits",
+          "bytes": 8481600,
+          "sha256": null
+        },
+        {
+          "name": "GRAVI.2023-11-26T08_02_12.295_singlescivis_singlesciviscalibrated.fits",
+          "granules": [
+            1884224,
+            1884223
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884224&name=/GRAVI.2023-11-26T08_02_12.295_singlescivis_singlesciviscalibrated.fits",
+          "bytes": 8481600,
+          "sha256": null
+        },
+        {
+          "name": "output_zpcal.fits",
+          "granules": [
+            1884221,
+            1884222
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884221&name=/output_zpcal.fits",
+          "bytes": 8481600,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245",
+      "stage": "O1",
+      "title": "pi1 Gru, PIONIER",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Claudia Paladini"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "Nature 553, 310",
+        "doi": "10.1038/nature25001",
+        "evidence": "Crossref https://api.crossref.org/works/10.1038/nature25001 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2018Natur.553..310P"
+      ],
+      "instruments": [
+        "PIONIER"
+      ],
+      "targets": [
+        "PI_GRU"
+      ],
+      "n_granules": 2,
+      "n_files": 1,
+      "total_bytes": 152640,
+      "files": [
+        {
+          "name": "PI_GRU_forImage.fits",
+          "granules": [
+            1355393,
+            1355392
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1355393&name=/PI_GRU_forImage.fits",
+          "bytes": 152640,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "1e9bab59-54c9-416d-9bab-5954c9416db7",
+      "stage": "O2",
+      "title": "GG Tau Ab1-Ab2, PIONIER",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Gaspard Duchene"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "A&A 686, A188",
+        "doi": "10.1051/0004-6361/202348755",
+        "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/202348755 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2024A&A...686A.188D"
+      ],
+      "instruments": [
+        "PIONIER"
+      ],
+      "targets": [
+        "GG_TAU",
+        "GG_TAU_Ab"
+      ],
+      "n_granules": 5,
+      "n_files": 3,
+      "total_bytes": 172800,
+      "files": [
+        {
+          "name": "2013-10-17_SCI_GG_TAU_oiDataCalib.fits",
+          "granules": [
+            1762694
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1762694&name=/2013-10-17_SCI_GG_TAU_oiDataCalib.fits",
+          "bytes": 43200,
+          "sha256": null
+        },
+        {
+          "name": "2013-10-17_SCI_GG_TAU_oidataCalibrated.fits",
+          "granules": [
+            1762690
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1762690&name=/2013-10-17_SCI_GG_TAU_oidataCalibrated.fits",
+          "bytes": 43200,
+          "sha256": null
+        },
+        {
+          "name": "2015-12-21_SCI_GG_TAU_Ab_oidataCalibrated.fits",
+          "granules": [
+            1762691,
+            1762692,
+            1762693
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1762691&name=/2015-12-21_SCI_GG_TAU_Ab_oidataCalibrated.fits",
+          "bytes": 86400,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "J/A+A/586/A35",
+      "stage": "O2",
+      "title": "TZ For, PIONIER",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Gallenne A."
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "A&A 586, A35",
+        "doi": "10.1051/0004-6361/201526764",
+        "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/201526764 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2016A&A...586A..35G"
+      ],
+      "instruments": [
+        "PIONIER"
+      ],
+      "targets": [
+        "TZ_FOR",
+        "TZ_For"
+      ],
+      "n_granules": 11,
+      "n_files": 11,
+      "total_bytes": 1068480,
+      "files": [
+        {
+          "name": "2014-10-06_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51306
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51306&name=/2014-10-06_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 95040,
+          "sha256": null
+        },
+        {
+          "name": "2014-10-08_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51307
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51307&name=/2014-10-08_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 89280,
+          "sha256": null
+        },
+        {
+          "name": "2014-10-31_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51308
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51308&name=/2014-10-31_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 89280,
+          "sha256": null
+        },
+        {
+          "name": "2014-11-17_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51309
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51309&name=/2014-11-17_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 89280,
+          "sha256": null
+        },
+        {
+          "name": "2014-12-03_SCI_TZ_For_oidataCalibrated.fits",
+          "granules": [
+            51310
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51310&name=/2014-12-03_SCI_TZ_For_oidataCalibrated.fits",
+          "bytes": 46080,
+          "sha256": null
+        },
+        {
+          "name": "2014-12-04_SCI_TZ_For_oidataCalibrated.fits",
+          "granules": [
+            51311
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51311&name=/2014-12-04_SCI_TZ_For_oidataCalibrated.fits",
+          "bytes": 46080,
+          "sha256": null
+        },
+        {
+          "name": "2014-12-17_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51312
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51312&name=/2014-12-17_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 123840,
+          "sha256": null
+        },
+        {
+          "name": "2014-12-19_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51313
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51313&name=/2014-12-19_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 123840,
+          "sha256": null
+        },
+        {
+          "name": "2015-01-09_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51314
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51314&name=/2015-01-09_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 135360,
+          "sha256": null
+        },
+        {
+          "name": "2015-01-16_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51315
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51315&name=/2015-01-16_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 115200,
+          "sha256": null
+        },
+        {
+          "name": "2015-01-25_SCI_TZ_FOR_oidataCalibrated.fits",
+          "granules": [
+            51316
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=51316&name=/2015-01-25_SCI_TZ_FOR_oidataCalibrated.fits",
+          "bytes": 115200,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "371c145f-7889-47d5-9c14-5f7889c7d510",
+      "stage": "O2",
+      "title": "theta1 Ori C, AMBER",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "KRAUS"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "A&A 497, 195",
+        "doi": "10.1051/0004-6361/200810368",
+        "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/200810368 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2009A&A...497..195K"
+      ],
+      "instruments": [
+        "AMBER"
+      ],
+      "targets": [
+        "T1ORIC"
+      ],
+      "n_granules": 2,
+      "n_files": 2,
+      "total_bytes": 198720,
+      "files": [
+        {
+          "name": "Theta1Ori2007Dec03_2.fits",
+          "granules": [
+            1660380
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1660380&name=/Theta1Ori2007Dec03_2.fits",
+          "bytes": 92160,
+          "sha256": null
+        },
+        {
+          "name": "Theta1Ori2007Dec05_2.fits",
+          "granules": [
+            1660381
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1660381&name=/Theta1Ori2007Dec05_2.fits",
+          "bytes": 106560,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "45840351-f65e-446c-8403-51f65e546c16",
+      "stage": "O2",
+      "title": "HD 174881, CHARA",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "John Monnier"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "ApJ 977, 43",
+        "doi": "10.3847/1538-4357/ad8dcc",
+        "evidence": "Crossref https://api.crossref.org/works/10.3847/1538-4357/ad8dcc (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2024ApJ...977...43T"
+      ],
+      "instruments": [
+        "MIRCX-HPRISM"
+      ],
+      "targets": [
+        "HR_7112"
+      ],
+      "n_granules": 2,
+      "n_files": 2,
+      "total_bytes": 80640,
+      "files": [
+        {
+          "name": "MIRC.2007Jul04.HR_7112.v1.oifits",
+          "granules": [
+            1778275
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1778275&name=/MIRC.2007Jul04.HR_7112.v1.oifits",
+          "bytes": 40320,
+          "sha256": null
+        },
+        {
+          "name": "MIRC.2007Jul07.HR_7112.v1.oifits",
+          "granules": [
+            1778274
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1778274&name=/MIRC.2007Jul07.HR_7112.v1.oifits",
+          "bytes": 40320,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "337cfbf7-5327-4875-bcfb-f753270875d0",
+      "stage": "O2",
+      "title": "Polaris Aa-Ab, MIRC/MIRC-X",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Gail Schaefer"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "ApJ 971, 190",
+        "doi": "10.3847/1538-4357/ad5e7a",
+        "evidence": "Crossref https://api.crossref.org/works/10.3847/1538-4357/ad5e7a (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2024ApJ...971..190E"
+      ],
+      "instruments": [
+        "H_PRISM",
+        "MIRCX"
+      ],
+      "targets": [
+        "HD 8890",
+        "Polaris"
+      ],
+      "n_granules": 55,
+      "n_files": 28,
+      "total_bytes": null,
+      "files": [
+        {
+          "name": "oiprep_2018Aug27_MIRCX_HD_8890_AVG15m_all.fits",
+          "granules": [
+            1939817,
+            1939816
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939817&name=/oiprep_2018Aug27_MIRCX_HD_8890_AVG15m_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2018Aug27_MIRCX_HD_8890_SPLIT_all.fits",
+          "granules": [
+            1939812,
+            1939811
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939812&name=/oiprep_2018Aug27_MIRCX_HD_8890_SPLIT_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2019Apr09_MIRCX_HD_8890_SPLIT_all.fits",
+          "granules": [
+            1939823,
+            1939822,
+            1939824
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939823&name=/oiprep_2019Apr09_MIRCX_HD_8890_SPLIT_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2019Sep02_MIRCX_HD_8890_SPLIT_E1W2W1E2_all.fits",
+          "granules": [
+            1939858,
+            1939857
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939858&name=/oiprep_2019Sep02_MIRCX_HD_8890_SPLIT_E1W2W1E2_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr02_03_04_MIRCX_HD_8890_AVG15m_all.fits",
+          "granules": [
+            1939845,
+            1939846,
+            1939844,
+            1939843,
+            1939841,
+            1939840,
+            1939842
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939845&name=/oiprep_2021Apr02_03_04_MIRCX_HD_8890_AVG15m_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr02_03_04_MIRCX_HD_8890_SPLIT_all.fits",
+          "granules": [
+            1939834,
+            1939835,
+            1939833,
+            1939832,
+            1939830,
+            1939829,
+            1939831
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939834&name=/oiprep_2021Apr02_03_04_MIRCX_HD_8890_SPLIT_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr02_MIRCX_HD_8890_AVG15m_all.fits",
+          "granules": [
+            1939838,
+            1939837,
+            1939839
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939838&name=/oiprep_2021Apr02_MIRCX_HD_8890_AVG15m_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr02_MIRCX_HD_8890_SPLIT_all.fits",
+          "granules": [
+            1939826,
+            1939825,
+            1939827
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939826&name=/oiprep_2021Apr02_MIRCX_HD_8890_SPLIT_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr03_MIRCX_HD_8890_AVG15m_E1W2W1E2.fits",
+          "granules": [
+            1939855,
+            1939854
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939855&name=/oiprep_2021Apr03_MIRCX_HD_8890_AVG15m_E1W2W1E2.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr03_MIRCX_HD_8890_SPLIT_E1W2W1E2.fits",
+          "granules": [
+            1939850,
+            1939849
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939850&name=/oiprep_2021Apr03_MIRCX_HD_8890_SPLIT_E1W2W1E2.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr04_MIRCX_HD_8890_AVG15m_all.fits",
+          "granules": [
+            1939851,
+            1939852
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939851&name=/oiprep_2021Apr04_MIRCX_HD_8890_AVG15m_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_2021Apr04_MIRCX_HD_8890_SPLIT_all.fits",
+          "granules": [
+            1939818,
+            1939819
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939818&name=/oiprep_2021Apr04_MIRCX_HD_8890_SPLIT_all.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2018Aug27.HD_8890.MIRCX_IDL.GHS.SPLIT_itime30_W1E1E2W2.oifits",
+          "granules": [
+            1939836
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939836&name=/oiprep_MIRCX_L2.2018Aug27.HD_8890.MIRCX_IDL.GHS.SPLIT_itime30_W1E1E2W2.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2018Aug27.HD_8890.MIRCX_IDL.GHS.SPLIT_itime30_W1S2E1E2.oifits",
+          "granules": [
+            1939856
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939856&name=/oiprep_MIRCX_L2.2018Aug27.HD_8890.MIRCX_IDL.GHS.SPLIT_itime30_W1S2E1E2.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2019Apr09.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W1S2E2.oifits",
+          "granules": [
+            1939815,
+            1939814
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939815&name=/oiprep_MIRCX_L2.2019Apr09.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W1S2E2.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2019Apr09.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2.oifits",
+          "granules": [
+            1939828
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939828&name=/oiprep_MIRCX_L2.2019Apr09.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2019Sep02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2_Grism190.oifits",
+          "granules": [
+            1939821
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939821&name=/oiprep_MIRCX_L2.2019Sep02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2_Grism190.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2019Sep02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2_Prism102.oifits",
+          "granules": [
+            1939820
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939820&name=/oiprep_MIRCX_L2.2019Sep02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2_Prism102.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2021Apr02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W1S2E2_all.oifits",
+          "granules": [
+            1939848,
+            1939847
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939848&name=/oiprep_MIRCX_L2.2021Apr02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W1S2E2_all.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2021Apr02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2.oifits",
+          "granules": [
+            1939860
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939860&name=/oiprep_MIRCX_L2.2021Apr02.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2021Apr04.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W1S2E2.oifits",
+          "granules": [
+            1939853
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939853&name=/oiprep_MIRCX_L2.2021Apr04.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W1S2E2.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRCX_L2.2021Apr04.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2.oifits",
+          "granules": [
+            1939859
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939859&name=/oiprep_MIRCX_L2.2021Apr04.HD_8890.MIRCX_IDL.GHS.SPLIT_E1W2W1E2.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRC_L2.Polaris.2016Nov18_tcoh0075ms_GHS_2017Mar01.XCHAN.cal.AVG15m.oifits",
+          "granules": [
+            1939810
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939810&name=/oiprep_MIRC_L2.Polaris.2016Nov18_tcoh0075ms_GHS_2017Mar01.XCHAN.cal.AVG15m.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRC_L2.Polaris.2016Nov18_tcoh0075ms_GHS_2017Mar01.XCHAN.cal.SPLIT.oifits",
+          "granules": [
+            1939809
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939809&name=/oiprep_MIRC_L2.Polaris.2016Nov18_tcoh0075ms_GHS_2017Mar01.XCHAN.cal.SPLIT.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRC_L2.Polaris.2016Nov18_tcoh0075ms_GHS_30sec_2023Apr21.XCHAN.cal.SPLIT.oifits",
+          "granules": [
+            1939808
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939808&name=/oiprep_MIRC_L2.Polaris.2016Nov18_tcoh0075ms_GHS_30sec_2023Apr21.XCHAN.cal.SPLIT.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRC_L2.Polaris.2016Sep12_tcoh0075ms_GHS_2023Apr10.XCHAN.cal.AVG15m.oifits",
+          "granules": [
+            1939807
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939807&name=/oiprep_MIRC_L2.Polaris.2016Sep12_tcoh0075ms_GHS_2023Apr10.XCHAN.cal.AVG15m.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRC_L2.Polaris.2016Sep12_tcoh0075ms_GHS_2023Apr10.XCHAN.cal.SPLIT.oifits",
+          "granules": [
+            1939813
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939813&name=/oiprep_MIRC_L2.Polaris.2016Sep12_tcoh0075ms_GHS_2023Apr10.XCHAN.cal.SPLIT.oifits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "oiprep_MIRC_L2.Polaris.2016Sep12_tcoh0075ms_GHS_30sec_2023Apr21.XCHAN.cal.SPLIT.oifits",
+          "granules": [
+            1939806
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1939806&name=/oiprep_MIRC_L2.Polaris.2016Sep12_tcoh0075ms_GHS_30sec_2023Apr21.XCHAN.cal.SPLIT.oifits",
+          "sha256": null,
+          "bytes": null
+        }
+      ]
+    },
+    {
+      "id": "J/A+A/597/A137",
+      "stage": "O2",
+      "title": "alpha Cen A, B and HD 123999, PIONIER",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Kervella P."
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "A&A 597, A137",
+        "doi": "10.1051/0004-6361/201629505",
+        "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/201629505 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2017A&A...597A.137K"
+      ],
+      "instruments": [
+        "PIONIER"
+      ],
+      "targets": [
+        "Alpha_Cen_A",
+        "Alpha_Cen_B",
+        "HD123999"
+      ],
+      "n_granules": 13,
+      "n_files": 13,
+      "total_bytes": 627840,
+      "files": [
+        {
+          "name": "20160221_HD123999.fits",
+          "granules": [
+            152822
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152822&name=/20160221_HD123999.fits",
+          "bytes": 51840,
+          "sha256": null
+        },
+        {
+          "name": "20160229_HD123999.fits",
+          "granules": [
+            152823
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152823&name=/20160229_HD123999.fits",
+          "bytes": 77760,
+          "sha256": null
+        },
+        {
+          "name": "20160301_HD123999.fits",
+          "granules": [
+            152824
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152824&name=/20160301_HD123999.fits",
+          "bytes": 77760,
+          "sha256": null
+        },
+        {
+          "name": "20160523_AlphaCenA_1.fits",
+          "granules": [
+            152825
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152825&name=/20160523_AlphaCenA_1.fits",
+          "bytes": 40320,
+          "sha256": null
+        },
+        {
+          "name": "20160523_AlphaCenA_2.fits",
+          "granules": [
+            152826
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152826&name=/20160523_AlphaCenA_2.fits",
+          "bytes": 40320,
+          "sha256": null
+        },
+        {
+          "name": "20160523_AlphaCenB.fits",
+          "granules": [
+            152827
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152827&name=/20160523_AlphaCenB.fits",
+          "bytes": 43200,
+          "sha256": null
+        },
+        {
+          "name": "20160527_AlphaCenA.fits",
+          "granules": [
+            152828
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152828&name=/20160527_AlphaCenA.fits",
+          "bytes": 40320,
+          "sha256": null
+        },
+        {
+          "name": "20160527_AlphaCenB.fits",
+          "granules": [
+            152829
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152829&name=/20160527_AlphaCenB.fits",
+          "bytes": 43200,
+          "sha256": null
+        },
+        {
+          "name": "20160529_AlphaCenA.fits",
+          "granules": [
+            152830
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152830&name=/20160529_AlphaCenA.fits",
+          "bytes": 40320,
+          "sha256": null
+        },
+        {
+          "name": "20160529_AlphaCenB.fits",
+          "granules": [
+            152831
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152831&name=/20160529_AlphaCenB.fits",
+          "bytes": 40320,
+          "sha256": null
+        },
+        {
+          "name": "20160530_AlphaCenA.fits",
+          "granules": [
+            152832
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152832&name=/20160530_AlphaCenA.fits",
+          "bytes": 43200,
+          "sha256": null
+        },
+        {
+          "name": "20160530_AlphaCenB.fits",
+          "granules": [
+            152833
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152833&name=/20160530_AlphaCenB.fits",
+          "bytes": 43200,
+          "sha256": null
+        },
+        {
+          "name": "20160530_HD123999.fits",
+          "granules": [
+            152834
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=152834&name=/20160530_HD123999.fits",
+          "bytes": 46080,
+          "sha256": null
+        }
+      ]
+    },
+    {
+      "id": "855397ef-dca8-4125-9397-efdca851259d",
+      "stage": "O2",
+      "title": "kappa Tuc A, MATISSE + GRAVITY (hot dust: not clean)",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Thomas Stuber"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "AJ 171, 1",
+        "doi": "10.3847/1538-3881/adfe66",
+        "evidence": "Crossref https://api.crossref.org/works/10.3847/1538-3881/adfe66 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2026AJ....171....1S"
+      ],
+      "instruments": [
+        "GRAVITY",
+        "MATISSE"
+      ],
+      "targets": [
+        "Kappa_Tuc_A",
+        "kap Tuc",
+        "kap Tuc A",
+        "kapTuc"
+      ],
+      "n_granules": 140,
+      "n_files": 136,
+      "total_bytes": null,
+      "files": [
+        {
+          "name": "2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926102
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926102&name=/2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926105
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926105&name=/2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926104
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926104&name=/2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926107
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926107&name=/2019-07-09T082424_kapTuc_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926106
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926106&name=/2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926108
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926108&name=/2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926109
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926109&name=/2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926103
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926103&name=/2019-07-11T085450_kapTuc_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926114
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926114&name=/2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926110
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926110&name=/2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926115
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926115&name=/2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926118
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926118&name=/2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926116
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926116&name=/2022-08-27T081045_kapTuc_K0G2D0J3_IR-LM_MED_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926119
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926119&name=/2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926122
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926122&name=/2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926127
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926127&name=/2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926126
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926126&name=/2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926125
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926125&name=/2022-10-28T013533_kapTuc_K0G2D0J3_IR-LM_MED_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926130
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926130&name=/2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926132
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926132&name=/2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926141
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926141&name=/2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926147
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926147&name=/2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926140
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926140&name=/2022-10-29T031912_kapTuc_K0G2D0J3_IR-LM_MED_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926134
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926134&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926137
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926137&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926144
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926144&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926149
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926149&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926151
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926151&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926153
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926153&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926154
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926154&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926146
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926146&name=/2023-06-17T101426_kapTuc_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926158
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926158&name=/2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926162
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926162&name=/2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926160
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926160&name=/2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926165
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926165&name=/2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926166
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926166&name=/2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926163
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926163&name=/2023-06-21T075206_kapTuc_A0G2J2J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926171
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926171&name=/2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926168
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926168&name=/2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926175
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926175&name=/2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926174
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926174&name=/2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926184
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926184&name=/2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926177
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926177&name=/2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926179
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926179&name=/2023-07-13T073719_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926182
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926182&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926187
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926187&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926185
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926185&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926188
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926188&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926191
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926191&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926193
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926193&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926196
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926196&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926198
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926198&name=/2023-08-13T045813_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926199
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926199&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926202
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926202&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926203
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926203&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926206
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926206&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926208
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926208&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926212
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926212&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926214
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926214&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926205
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926205&name=/2024-10-25T060455_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926216
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926216&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926218
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926218&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926220
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926220&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926221
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926221&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926225
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926225&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926226
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926226&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926228
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926228&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926223
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926223&name=/2024-10-26T024904_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926231
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926231&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926233
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926233&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926232
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926232&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926230
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926230&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926229
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926229&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926224
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926224&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926222
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926222&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926227
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926227&name=/2024-10-26T063945_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926219
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926219&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926217
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926217&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926213
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926213&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926215
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926215&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926210
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926210&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926211
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926211&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926209
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926209&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926207
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926207&name=/2024-10-29T054601_kapTucA_A0B2D0C1_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926200
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926200&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926204
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926204&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926201
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926201&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926195
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926195&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926194
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926194&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926192
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926192&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926189
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926189&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926197
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926197&name=/2024-10-29T064406_kapTucA_A0B2D0C1_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926186
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926186&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926190
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926190&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926183
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926183&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926181
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926181&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926180
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926180&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926172
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926172&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926173
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926173&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926178
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926178&name=/2024-10-29T235955_kapTucA_A0B2D0C1_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926176
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926176&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926169
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926169&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926170
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926170&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926164
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926164&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926161
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926161&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926159
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926159&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926157
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926157&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926167
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926167&name=/2024-11-06T035945_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926156
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926156&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926152
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926152&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926155
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926155&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926150
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926150&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926148
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926148&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926142
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926142&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926143
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926143&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926145
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926145&name=/2024-11-06T045658_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926138
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926138&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926136
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926136&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926133
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926133&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926139
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926139&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926131
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926131&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926128
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926128&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926129
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926129&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926135
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926135&name=/2024-11-07T002029_kapTucA_K0G2D0J3_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926124
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926124&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926123
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926123&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926121
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926121&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_IN_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926120
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926120&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_IN_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926112
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926112&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_IN_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "granules": [
+            1926113
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926113&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_Chop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926111
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926111&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_OUT_OUT_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "granules": [
+            1926117
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926117&name=/2024-11-23T030128_kapTucA_A0G1J2K0_IR-LM_LOW_noChop_cal_oifits_0.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "GRAVI.2024-11-23T01_23_49.246_singlescivis_singlesciviscalibrated_4frames.fits",
+          "granules": [
+            1926239,
+            1926238
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926239&name=/GRAVI.2024-11-23T01_23_49.246_singlescivis_singlesciviscalibrated_4frames.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "GRAVI.2024-11-23T01_23_49.246_singlescivis_singlesciviscalibrated_6frames.fits",
+          "granules": [
+            1926235,
+            1926234
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926235&name=/GRAVI.2024-11-23T01_23_49.246_singlescivis_singlesciviscalibrated_6frames.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "GRAVI.2024-11-23T01_30_28.263_singlescivis_singlesciviscalibrated_4frames.fits",
+          "granules": [
+            1926241,
+            1926240
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926241&name=/GRAVI.2024-11-23T01_30_28.263_singlescivis_singlesciviscalibrated_4frames.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "GRAVI.2024-11-23T01_30_28.263_singlescivis_singlesciviscalibrated_6frames.fits",
+          "granules": [
+            1926237,
+            1926236
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=1926237&name=/GRAVI.2024-11-23T01_30_28.263_singlescivis_singlesciviscalibrated_6frames.fits",
+          "sha256": null,
+          "bytes": null
+        }
+      ]
+    },
+    {
+      "id": "534fbba6-b715-4b41-9278-b6bd0de9f674",
+      "stage": "O2",
+      "title": "gamma2 Vel, AMBER (wind collision: not clean)",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Florentin Millour"
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "MNRAS 468, 2655",
+        "doi": "10.1093/mnras/stx588",
+        "evidence": "Crossref https://api.crossref.org/works/10.1093/mnras/stx588 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2017MNRAS.468.2655L"
+      ],
+      "instruments": [
+        "AMBER"
+      ],
+      "targets": [
+        "Gamma",
+        "Gamma2_Velorum",
+        "Gamma2_vel",
+        "Gamma_vel",
+        "HD-68273"
+      ],
+      "n_granules": 43,
+      "n_files": 43,
+      "total_bytes": null,
+      "files": [
+        {
+          "name": "PRODUCT_Gamma2_Velorum_1.45-1.86micron_2006-12-30T06_39_38.4480.fits",
+          "granules": [
+            156583
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156583&name=/PRODUCT_Gamma2_Velorum_1.45-1.86micron_2006-12-30T06_39_38.4480.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_Velorum_1.45-1.86micron_2007-03-07T03_07_32.8599.fits",
+          "granules": [
+            156585
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156585&name=/PRODUCT_Gamma2_Velorum_1.45-1.86micron_2007-03-07T03_07_32.8599.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_Velorum_1.89-2.55micron_2007-03-07T03_07_32.8599.fits",
+          "granules": [
+            156586
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156586&name=/PRODUCT_Gamma2_Velorum_1.89-2.55micron_2007-03-07T03_07_32.8599.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_Velorum_1.89-2.59micron_2006-12-30T06_39_38.4480.fits",
+          "granules": [
+            156584
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156584&name=/PRODUCT_Gamma2_Velorum_1.89-2.59micron_2006-12-30T06_39_38.4480.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_Velorum_2.02-2.09micron_2007-03-31T01_39_00.5372.fits",
+          "granules": [
+            156588
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156588&name=/PRODUCT_Gamma2_Velorum_2.02-2.09micron_2007-03-31T01_39_00.5372.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_Velorum_2.08-2.16micron_2007-03-31T02_00_28.3916.fits",
+          "granules": [
+            156587
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156587&name=/PRODUCT_Gamma2_Velorum_2.08-2.16micron_2007-03-31T02_00_28.3916.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T01_45_27.8049.fits",
+          "granules": [
+            156612
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156612&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T01_45_27.8049.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T02_22_28.4161.fits",
+          "granules": [
+            156616
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156616&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T02_22_28.4161.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T03_04_04.2570.fits",
+          "granules": [
+            156618
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156618&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T03_04_04.2570.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T03_41_26.2153.fits",
+          "granules": [
+            156617
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156617&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T03_41_26.2153.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T04_51_44.3943.fits",
+          "granules": [
+            156611
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156611&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T04_51_44.3943.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T05_29_51.3140.fits",
+          "granules": [
+            156614
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156614&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T05_29_51.3140.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T06_05_31.8580.fits",
+          "granules": [
+            156613
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156613&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T06_05_31.8580.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T06_44_39.9553.fits",
+          "granules": [
+            156615
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156615&name=/PRODUCT_Gamma2_vel_1.47-1.81micron_2010-01-23T06_44_39.9553.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T03_40_11.3584.fits",
+          "granules": [
+            156607
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156607&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T03_40_11.3584.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T04_23_29.2825.fits",
+          "granules": [
+            156605
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156605&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T04_23_29.2825.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T05_01_58.1015.fits",
+          "granules": [
+            156606
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156606&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T05_01_58.1015.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T05_38_42.0662.fits",
+          "granules": [
+            156609
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156609&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T05_38_42.0662.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T06_16_30.9025.fits",
+          "granules": [
+            156604
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156604&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T06_16_30.9025.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T07_00_03.2064.fits",
+          "granules": [
+            156610
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156610&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T07_00_03.2064.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T08_26_00.1190.fits",
+          "granules": [
+            156608
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156608&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T08_26_00.1190.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T09_02_27.7580.fits",
+          "granules": [
+            156603
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156603&name=/PRODUCT_Gamma2_vel_1.92-2.27micron_2008-12-23T09_02_27.7580.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T03_39_22.9227.fits",
+          "granules": [
+            156595
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156595&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T03_39_22.9227.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T05_08_56.3410.fits",
+          "granules": [
+            156598
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156598&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T05_08_56.3410.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T05_46_00.8736.fits",
+          "granules": [
+            156602
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156602&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T05_46_00.8736.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T06_22_28.8450.fits",
+          "granules": [
+            156599
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156599&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T06_22_28.8450.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T07_00_32.7983.fits",
+          "granules": [
+            156596
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156596&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T07_00_32.7983.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T07_38_44.4037.fits",
+          "granules": [
+            156600
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156600&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T07_38_44.4037.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T08_15_02.4105.fits",
+          "granules": [
+            156597
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156597&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T08_15_02.4105.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T08_51_38.6985.fits",
+          "granules": [
+            156601
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156601&name=/PRODUCT_Gamma2_vel_2.11-2.46micron_2008-12-22T08_51_38.6985.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T04_20_25.3924.fits",
+          "granules": [
+            156591
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156591&name=/PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T04_20_25.3924.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T05_50_45.0499.fits",
+          "granules": [
+            156589
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156589&name=/PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T05_50_45.0499.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T06_28_01.5911.fits",
+          "granules": [
+            156594
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156594&name=/PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T06_28_01.5911.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T07_06_12.1867.fits",
+          "granules": [
+            156590
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156590&name=/PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T07_06_12.1867.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T08_25_28.7278.fits",
+          "granules": [
+            156593
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156593&name=/PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T08_25_28.7278.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T09_07_09.0882.fits",
+          "granules": [
+            156592
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156592&name=/PRODUCT_Gamma2_vel_2.13-2.19micron_2008-12-21T09_07_09.0882.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma_1.64-1.79micron_2006-02-08T03_42_59.8611.fits",
+          "granules": [
+            156582
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156582&name=/PRODUCT_Gamma_1.64-1.79micron_2006-02-08T03_42_59.8611.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma_vel_1.44-1.86micron_2012-01-06T06_32_37.7068.fits",
+          "granules": [
+            156619
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156619&name=/PRODUCT_Gamma_vel_1.44-1.86micron_2012-01-06T06_32_37.7068.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_Gamma_vel_1.90-2.56micron_2012-01-06T06_32_37.7068.fits",
+          "granules": [
+            156620
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156620&name=/PRODUCT_Gamma_vel_1.90-2.56micron_2012-01-06T06_32_37.7068.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_HD-68273_1.95-2.02micron_2004-12-26T04_18_29.8509.fits",
+          "granules": [
+            156579
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156579&name=/PRODUCT_HD-68273_1.95-2.02micron_2004-12-26T04_18_29.8509.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_HD-68273_2.02-2.09micron_2004-12-26T04_35_56.8488.fits",
+          "granules": [
+            156580
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156580&name=/PRODUCT_HD-68273_2.02-2.09micron_2004-12-26T04_35_56.8488.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_HD-68273_2.04-2.07micron_2004-12-26T03_48_11.1617.fits",
+          "granules": [
+            156578
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156578&name=/PRODUCT_HD-68273_2.04-2.07micron_2004-12-26T03_48_11.1617.fits",
+          "sha256": null,
+          "bytes": null
+        },
+        {
+          "name": "PRODUCT_HD-68273_2.09-2.16micron_2004-12-26T04_49_27.3144.fits",
+          "granules": [
+            156581
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=156581&name=/PRODUCT_HD-68273_2.09-2.16micron_2004-12-26T04_49_27.3144.fits",
+          "sha256": null,
+          "bytes": null
+        }
+      ]
+    },
+    {
+      "id": "J/A+A/536/A55",
+      "stage": "O2",
+      "title": "SS Lep, AMBER + PIONIER (Roche-lobe overflow: not clean)",
+      "levels": [
+        3
+      ],
+      "datapis": [
+        "Blind N."
+      ],
+      "terms": [
+        "L3: thank the dataPI and cite the paper"
+      ],
+      "publication": {
+        "status": "published",
+        "journal": "A&A 536, A55",
+        "doi": "10.1051/0004-6361/201118036",
+        "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/201118036 (checked 2026-10-07)"
+      },
+      "bibcodes": [
+        "2011A&A...536A..55B"
+      ],
+      "instruments": [
+        "AMBER",
+        "PIONIER"
+      ],
+      "targets": [
+        "SS-Lep",
+        "ss-lep"
+      ],
+      "n_granules": 15,
+      "n_files": 8,
+      "total_bytes": 921600,
+      "files": [
+        {
+          "name": "AMBER_070409.fits",
+          "granules": [
+            38667,
+            38666
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38667&name=/AMBER_070409.fits",
+          "bytes": 89280,
+          "sha256": null
+        },
+        {
+          "name": "AMBER_111108.fits",
+          "granules": [
+            38669,
+            38668,
+            38670
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38669&name=/AMBER_111108.fits",
+          "bytes": 144000,
+          "sha256": null
+        },
+        {
+          "name": "AMBER_210209.fits",
+          "granules": [
+            38672,
+            38671
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38672&name=/AMBER_210209.fits",
+          "bytes": 92160,
+          "sha256": null
+        },
+        {
+          "name": "AMBER_261208.fits",
+          "granules": [
+            38673
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38673&name=/AMBER_261208.fits",
+          "bytes": 54720,
+          "sha256": null
+        },
+        {
+          "name": "PIONIER_071210.fits",
+          "granules": [
+            38674
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38674&name=/PIONIER_071210.fits",
+          "bytes": 74880,
+          "sha256": null
+        },
+        {
+          "name": "PIONIER_221210.fits",
+          "granules": [
+            38675,
+            38676
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38675&name=/PIONIER_221210.fits",
+          "bytes": 103680,
+          "sha256": null
+        },
+        {
+          "name": "PIONIER_281010.fits",
+          "granules": [
+            38679,
+            38678,
+            38677
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38679&name=/PIONIER_281010.fits",
+          "bytes": 213120,
+          "sha256": null
+        },
+        {
+          "name": "PIONIER_291110.fits",
+          "granules": [
+            38680
+          ],
+          "get_data": "https://oidb.jmmc.fr/get-data.html?id=38680&name=/PIONIER_291110.fits",
+          "bytes": 149760,
+          "sha256": null
+        }
+      ]
+    }
+  ]
+}

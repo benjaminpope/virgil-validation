@@ -1,0 +1,570 @@
+{
+  "collection_id": "647a22a9-5047-4220-ba22-a95047022072",
+  "targets": {
+    "iot Peg": {
+      "pointer": "See fac164e1-d9d0-4500-8164-e1d9d0450099.json (Anugu et al. 2020, AJ 160, 158, arXiv:2007.12320)",
+      "collection_id": "647a22a9-5047-4220-ba22-a95047022072",
+      "target": "iota Peg (HD 210027)",
+      "paper": {
+        "authors": "Anugu, N.; Le Bouquin, J.-B.; Monnier, J. D.; Kraus, S.; Setterholm, B. R.; Labdon, A.; Davies, C. L.; Lanthermann, C.; Gardner, T.; Ennis, J.; Johnson, K. J. C.; ten Brummelaar, T.; Schaefer, G.; Sturmann, J.",
+        "year": 2020,
+        "journal": "The Astronomical Journal 160, 158",
+        "bibcode": "2020AJ....160..158A (constructed from volume/page; not looked up in ADS)",
+        "doi": "10.3847/1538-3881/aba957",
+        "arxiv": "2007.12320"
+      },
+      "epoch_2018-10-22": {
+        "date": "2018-10-22",
+        "mjd": null,
+        "rho_mas": [
+          10.0352,
+          0.0176
+        ],
+        "pa_deg": [
+          354.7005,
+          0.019
+        ],
+        "flux_ratio": [
+          4.55,
+          0.04
+        ],
+        "error_ellipse": null,
+        "used_in_orbit_fit": true,
+        "source": "Table 2 (squeeze+model fitting columns; CANDID columns in canndid_alt), p. 24 of arXiv:2007.12320 PDF; orbit-fit use inferred from Fig. 25 (all five epochs plotted), p. 25",
+        "candid_alt": {
+          "flux_ratio": [
+            4.68,
+            0.08
+          ],
+          "rho_mas": [
+            10.0206,
+            0.0051
+          ],
+          "pa_deg": [
+            354.6822,
+            0.0137
+          ]
+        }
+      },
+      "orbit": {
+        "P_day": [
+          10.21277,
+          0.00021
+        ],
+        "a_mas": [
+          10.3609,
+          0.0038
+        ],
+        "e": [
+          0.0052,
+          0.0011
+        ],
+        "i_deg": [
+          95.865,
+          0.01
+        ],
+        "Omega_deg": [
+          176.194,
+          0.015
+        ],
+        "omega_deg": [
+          272.45,
+          1.95
+        ],
+        "T_peri_unstated_system": [
+          52997.4686,
+          0.19,
+          "Anugu+2020 Table 3 does not state the time system (MJD or RJD = MJD+0.5); fix it against the RV ephemeris before use"
+        ],
+        "K1": null,
+        "K2": null,
+        "masses": null,
+        "comparison_orbit_Konacki2010": {
+          "a_mas": [
+            10.329,
+            0.016
+          ],
+          "P_day": [
+            10.2130253,
+            1.6e-06
+          ],
+          "e": [
+            0.001764,
+            6.3e-05
+          ],
+          "T": [
+            52997.378,
+            0.052
+          ],
+          "omega_deg": [
+            272.8,
+            1.8
+          ],
+          "Omega_deg": [
+            176.262,
+            0.075
+          ],
+          "i_deg": [
+            95.865,
+            0.011
+          ]
+        },
+        "source": "Table 3, p. 24; compared with Konacki et al. (2010) spectroscopic+interferometric orbit; text p. 22: 'The best-fit parameters very well match with spectroscopic observations Konacki et al. (2010)'. Flux ratio: 'We estimate a flux ratio of primary to secondary Fpri/sec of 4.6 +/- 0.1 ... compared with 5.0 +/- 0.5 reported by Konacki et al. (2010)', p. 22."
+      },
+      "flux_ratio_definition": "'F_pri/sec' = flux ratio of primary to secondary (Table 2 header; text p. 22: 'flux ratio of primary to secondary F_pri/sec of 4.6 +/- 0.1'). H band implied (MIRC-X H-band data) but band not explicitly stated in the passage. NB primary/secondary, i.e. >1; invert for secondary/primary (~0.217).",
+      "uncertainties": "Table 2 errors are the fit errors; no mention of inflation. Table 3: semi-major axis footnote '* 0.5% uncertainty in the semi-major due to uncertain absolute wavelength calibration' (i.e. the quoted +/-0.0038 mas is statistical only, 0.5% systematic additional). Median orbit residual 6.65 uas (Fig. 25 caption). Model-fit vs CANDID differences up to 3.3 sigma (Table 2 last columns).",
+      "conventions": {
+        "PA": "North up, East to the left in images (Fig. 24/25); PA of secondary relative to primary presumed east of north, not stated explicitly in the text read",
+        "omega": "Table 3 'Longitude of the periastron'; whose component not stated",
+        "Omega": "Table 3 footnote: 'Our orbit Omega is not in J2000, apparent North-East precession.' (i.e. epoch-of-date frame)",
+        "other": "Table 3 T_peri unit not stated in the table (value 52997.4686, presumably MJD). Epoch MJDs not given in the paper (null here)."
+      },
+      "notes": "Paper contains no separate dataset for the Imaging Workshop files; 2018-10-22 is one of the five MIRC-X epochs in Table 2 (rho 10.0352 +/- 0.0176 mas, PA 354.7005 +/- 0.019 deg, Fpri/sec 4.55 +/- 0.04). The workshop files (7 files, this date) are presumably the same night; not verifiable from the paper."
+    },
+    "sig Ori": {
+      "collection_id": "647a22a9-5047-4220-ba22-a95047022072",
+      "target": "sigma Ori (Aa,Ab close pair; MIRC H prism, 2011-09-29)",
+      "paper": {
+        "authors": "Schaefer, G. H.; Hummel, C. A.; Gies, D. R.; Zavala, R. T.; Monnier, J. D.; Walter, F. M.; Turner, N. H.; Baron, F.; ten Brummelaar, T.; Che, X.; Farrington, C. D.; Kraus, S.; Sturmann, J.; Sturmann, L.",
+        "year": 2016,
+        "journal": "The Astronomical Journal 152, 213",
+        "bibcode": "2016AJ....152..213S (constructed from volume/page; not looked up in ADS)",
+        "doi": "10.3847/0004-6256/152/6/213",
+        "arxiv": "1610.01984"
+      },
+      "publication_status": {
+        "status": "published",
+        "evidence": "arXiv API record https://export.arxiv.org/api/query?id_list=1610.01984 lists arxiv:doi 10.3847/0004-6256/152/6/213 and comment 'Accepted by the Astronomical Journal'. Pages/tables below are from arXiv v1 (6 Oct 2016), not the published layout."
+      },
+      "method": "Sec. 2.2 (pp. 3-5): MIRC data (amdlib pipeline) fit per night with a scaled binary model (Aa,Ab close pair plus B as a third component in the flux budget); fit grid search + chi2 maps; alternative triple model (Aa,Ab,B with bandwidth smearing, 2.5 min blocks) was checked but the simpler scaled binary solution is reported. Closure triangles including S1-S2 excluded. Orbit (Sec. 4.1, p. 9): simultaneous Newton-Raphson fit of MIRC positions (Table 3), Simon-Diaz et al. (2015) RVs and new CTIO RVs. Priors not stated.",
+      "flux_ratio_definition": "Not a single ratio: Table 3 lists per-epoch fractional flux contributions fAa, fAb, fB of the total H-band light on the detector (Sec. 2.2, p. 4: means 47.7% +/- 5.9% (Aa), 27.4% +/- 5.2% (Ab), 24.9% +/- 8.0% (B)). Ab/Aa ratio derived by me from Table 3 fractions (2011-09-29: 0.2549/0.4347 = 0.586). AMBER check: fitted magnitude difference Ab-Aa = 0.57 +/- 0.03 (H) and 0.55 +/- 0.02 (K); 'consistent with the CHARA value of Delta H = 0.60 mag' (Sec. 2.3, p. 5).",
+      "uncertainties": "Table 3 note: error-ellipse axes 'scaled by a factor of 2.24 to force chi2_nu = 1 for an orbit fit to only the MIRC derived positions'. Wavelength-scale systematic of +/-0.25% (Monnier et al. 2012) on separations is propagated only into the second uncertainty on a in Table 9 (4.2860 +/- 0.0031 +/- 0.0107).",
+      "conventions": {
+        "PA": "theta measured east of north (Sec. 2.2, p. 4); of Ab relative to Aa (implied by Table 3 header 'Positions of sigma Ori Aa,Ab')",
+        "omega": "omega_Aa = argument of periastron for the primary Aa; omega_Ab = omega_Aa + 180 deg = 19.83 (Table 9 footnote a, p. 23)",
+        "Omega": "position angle of the line of nodes, 'Omega' (Sec. 4.1); equinox not stated for the close pair (Table 10 wide pair says J2000.0)",
+        "other": "HJD column is HJD - 2,400,000 at the median time of observation; MJD not listed (HJD-2400000 minus ~0.5 would give 2011-09-29 ~55833.5, my derivation). Observation log Table 1 p. 16 lists 2011 Sep 29 as 55834.004, S1-S2-E1-E2-W1-W2, calibrators HD 25490 and HD 33256, 200 V2, 240 closure phases, r0 = 12.0 cm."
+      },
+      "epochs": [
+        {
+          "date": "2010-11-05",
+          "hjd_minus_2400000": 55506.014,
+          "mjd": null,
+          "rho_mas": [
+            7.2007,
+            null
+          ],
+          "pa_deg": [
+            192.867,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.4655,
+              0.0051
+            ],
+            "fAb": [
+              0.2704,
+              0.0036
+            ],
+            "fB": [
+              0.264,
+              0.0062
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.5809,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.043,
+            "sigma_min_mas": 0.0036,
+            "phi_deg": 41.16
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2011-09-29",
+          "hjd_minus_2400000": 55834.004,
+          "mjd": null,
+          "rho_mas": [
+            6.2883,
+            null
+          ],
+          "pa_deg": [
+            206.224,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.4347,
+              0.0029
+            ],
+            "fAb": [
+              0.2549,
+              0.002
+            ],
+            "fB": [
+              0.3105,
+              0.0035
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.5864,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.0046,
+            "sigma_min_mas": 0.0031,
+            "phi_deg": 156.37
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2011-12-09",
+          "hjd_minus_2400000": 55904.836,
+          "mjd": null,
+          "rho_mas": [
+            4.9017,
+            null
+          ],
+          "pa_deg": [
+            180.184,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.4167,
+              0.0039
+            ],
+            "fAb": [
+              0.2477,
+              0.0037
+            ],
+            "fB": [
+              0.3356,
+              0.0053
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.5944,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.0098,
+            "sigma_min_mas": 0.0076,
+            "phi_deg": 132.28
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2012-09-15",
+          "hjd_minus_2400000": 56186.016,
+          "mjd": null,
+          "rho_mas": [
+            4.1128,
+            null
+          ],
+          "pa_deg": [
+            176.028,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.4986,
+              0.0045
+            ],
+            "fAb": [
+              0.2989,
+              0.0027
+            ],
+            "fB": [
+              0.2025,
+              0.0053
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.5995,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.0047,
+            "sigma_min_mas": 0.0019,
+            "phi_deg": 142.73
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2012-10-31",
+          "hjd_minus_2400000": 56231.907,
+          "mjd": null,
+          "rho_mas": [
+            7.3658,
+            null
+          ],
+          "pa_deg": [
+            195.874,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.4145,
+              0.0033
+            ],
+            "fAb": [
+              0.245,
+              0.0025
+            ],
+            "fB": [
+              0.3405,
+              0.0042
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.5911,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.0086,
+            "sigma_min_mas": 0.0032,
+            "phi_deg": 164.21
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2012-12-09",
+          "hjd_minus_2400000": 56270.813,
+          "mjd": null,
+          "rho_mas": [
+            5.7271,
+            null
+          ],
+          "pa_deg": [
+            209.509,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.4947,
+              0.0058
+            ],
+            "fAb": [
+              0.2976,
+              0.0067
+            ],
+            "fB": [
+              0.2077,
+              0.0088
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.6016,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.0167,
+            "sigma_min_mas": 0.0142,
+            "phi_deg": 175.66
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2013-10-21",
+          "hjd_minus_2400000": 56586.948,
+          "mjd": null,
+          "rho_mas": [
+            1.8253,
+            null
+          ],
+          "pa_deg": [
+            250.315,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.4497,
+              0.0024
+            ],
+            "fAb": [
+              0.2666,
+              0.002
+            ],
+            "fB": [
+              0.2838,
+              0.0031
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.5928,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.0072,
+            "sigma_min_mas": 0.005,
+            "phi_deg": 134.36
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2013-11-03",
+          "hjd_minus_2400000": 56599.926,
+          "mjd": null,
+          "rho_mas": [
+            1.0917,
+            null
+          ],
+          "pa_deg": [
+            74.529,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.5992,
+              0.0497
+            ],
+            "fAb": [
+              0.1989,
+              0.0444
+            ],
+            "fB": [
+              0.2019,
+              0.0666
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.3319,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.3161,
+            "sigma_min_mas": 0.0524,
+            "phi_deg": 73.41
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        },
+        {
+          "date": "2013-11-11",
+          "hjd_minus_2400000": 56607.886,
+          "mjd": null,
+          "rho_mas": [
+            2.8034,
+            null
+          ],
+          "pa_deg": [
+            164.128,
+            null
+          ],
+          "flux_ratio": null,
+          "fractions": {
+            "fAa": [
+              0.5181,
+              0.0302
+            ],
+            "fAb": [
+              0.3888,
+              0.03
+            ],
+            "fB": [
+              0.0931,
+              0.0426
+            ]
+          },
+          "flux_ratio_Ab_over_Aa_derived": 0.7504,
+          "error_ellipse": {
+            "sigma_maj_mas": 0.1406,
+            "sigma_min_mas": 0.0148,
+            "phi_deg": 166.21
+          },
+          "used_in_orbit_fit": true,
+          "source": "Table 3, p. 17 of arXiv:1610.01984v1 (same epochs as AJ 152, 213 Table 3)"
+        }
+      ],
+      "orbit": {
+        "P_day": [
+          143.2002,
+          0.0024
+        ],
+        "a_mas": [
+          4.286,
+          0.0031,
+          0.0107
+        ],
+        "e": [
+          0.77896,
+          0.00043
+        ],
+        "i_deg": [
+          56.378,
+          0.085
+        ],
+        "Omega_deg": [
+          6.878,
+          0.079
+        ],
+        "omega_deg": [
+          199.83,
+          0.12
+        ],
+        "T_peri_mjd": null,
+        "T_peri_hjd_minus_2400000": [
+          56597.638,
+          0.014
+        ],
+        "K1": [
+          72.03,
+          0.25
+        ],
+        "K2": [
+          95.53,
+          0.22
+        ],
+        "masses": {
+          "M_Aa": [
+            16.99,
+            0.2
+          ],
+          "M_Ab": [
+            12.81,
+            0.18
+          ],
+          "parallax_mas": [
+            2.5806,
+            0.0088
+          ],
+          "d_pc": [
+            387.5,
+            1.3
+          ]
+        },
+        "MIRC_only_fit": {
+          "P_day": [
+            143.224,
+            0.02
+          ],
+          "T_hjd_minus_2400000": [
+            56597.684,
+            0.061
+          ],
+          "e": [
+            0.77845,
+            0.00083
+          ],
+          "omega_deg": [
+            199.61,
+            0.46
+          ],
+          "a_mas": [
+            4.2861,
+            0.0069
+          ],
+          "i_deg": [
+            56.48,
+            0.14
+          ],
+          "Omega_deg": [
+            7.02,
+            0.23
+          ]
+        },
+        "source": "Table 9, p. 23 (last column = simultaneous visual+spectroscopic fit; chi2_nu total 1.25, MIRC 1.60); masses Sec. 4.3 / Table 11."
+      },
+      "used_in_orbit_fit_2011-09-29": {
+        "answer": true,
+        "evidence": "Sec. 4.1 p. 9: fit to 'the higher precision interferometric positions of sigma Orionis Aa,Ab measured with CHARA in Table 3'; the 2011 Sep 29 row (HJD-2400000 = 55834.004) is in Table 3. Only 2010 Nov 4 was excluded (no position reported, Sec. 2.2 p. 4). Residuals per epoch not tabulated in the text read."
+      },
+      "notes": "Uncertain: 2011-09-29 date in OiDB is UT date and matches Table 1 exactly. Epoch 2010-11-05 has a dropped night 2010-11-04. NPOI positions (Table 7) are separate and not MIRC. Table 3 rho/PA carry no scalar error; use error ellipse."
+    }
+  }
+}

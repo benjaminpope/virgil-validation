@@ -1,0 +1,158 @@
+{
+  "collection_id": "782185b2-0727-42b0-a185-b2072732b047",
+  "target": "Gliese 229 B (brown-dwarf binary Ba + Bb)",
+  "paper": {
+    "authors": "Xuan et al.",
+    "year": 2024,
+    "journal": "Nature 634, 1070-1074",
+    "bibcode": "2024Natur.634.1070X",
+    "doi": "10.1038/s41586-024-08064-x",
+    "arxiv": "2410.11953",
+    "table": "Table 1 (orbit fits) and Methods (orbit fits; coordinate conventions)"
+  },
+  "publication_status": {
+    "status": "published",
+    "evidence": "Crossref 10.1038/s41586-024-08064-x (Nature 634, 1070); OiDB granules carry bib_reference 2024Natur.634.1070X"
+  },
+  "method": "VLTI/GRAVITY single-field closure phases (K band) plus CRIRES+ radial velocities; orbit fitted with PMOIRED (frequentist) and Octofitter (Bayesian), Table 1. Closure phases only, 2.05-2.18 um.",
+  "flux_ratio_definition": "f2/f1 = flux of Bb over Ba at 2.0 um (virgil's BinaryModelCartesian flux)",
+  "uncertainties": "Table 1 1-sigma; PMOIRED values are frequentist, Octofitter values are posterior summaries. q has no quoted error.",
+  "conventions": {
+    "omega": "argument of periastron of the PRIMARY (Ba), as stated under Table 1; virgil uses the secondary's, = this + 180 deg",
+    "coordinates": "+X East, +Y North, +Z away from the observer (Methods, Orbit fits); same as virgil's dra, ddec, dz",
+    "Omega": "'longitude of ascending node'; which node (approaching or receding) is not stated in the extracted text. virgil's Omega is the PA of the receding node: compare modulo 180 deg until checked",
+    "flux_ratio": "f2/f1 = Bb/Ba at 2.0 um; virgil's BinaryModelCartesian flux"
+  },
+  "epochs": {
+    "used_in_paper": [
+      "2023-12-26",
+      "2023-12-30",
+      "2024-02-28",
+      "2024-03-29",
+      "2024-04-29"
+    ],
+    "note": "All 22 files of this OiDB collection are from these five nights (manifest).",
+    "not_in_this_collection": {
+      "dates": [
+        "2024-12-19",
+        "2025-02-12"
+      ],
+      "source": "ESO archive raw GRAVITY data, programmes 112.25RU.001 and 112.26Z1.001 (Gl 229 B = HD 42581 B), reduced by us; not in OiDB and not in the paper. Out-of-sample checks on them belong to the ESO binaries validation, not to O1."
+    }
+  },
+  "orbit": {
+    "pmoired_frequentist": {
+      "P_day": [
+        12.134,
+        0.003
+      ],
+      "a_au": [
+        0.0424,
+        0.0004
+      ],
+      "e": [
+        0.234,
+        0.004
+      ],
+      "omega_primary_deg": [
+        180.7,
+        1.2
+      ],
+      "i_deg": [
+        31.4,
+        0.3
+      ],
+      "Omega_deg": [
+        213,
+        2
+      ],
+      "T_peri_mjd": [
+        60377.88,
+        0.04
+      ],
+      "q": [
+        0.9,
+        null
+      ],
+      "M1_mjup": [
+        38.1,
+        1.0
+      ],
+      "M2_mjup": [
+        34.4,
+        1.5
+      ],
+      "flux_ratio_2um": [
+        0.47,
+        0.03
+      ],
+      "gamma_rv_kms": [
+        0.4,
+        0.2
+      ],
+      "M_tot_mjup": [
+        72.5,
+        1.3
+      ]
+    },
+    "octofitter_bayesian": {
+      "P_day": [
+        12.137,
+        0.001
+      ],
+      "a_au": [
+        0.0422,
+        0.0001
+      ],
+      "e": [
+        0.234,
+        0.002
+      ],
+      "omega_primary_deg": [
+        182.8,
+        0.9
+      ],
+      "i_deg": [
+        31.1,
+        0.4
+      ],
+      "Omega_deg": [
+        210.3,
+        1.2
+      ],
+      "T_peri_mjd": [
+        60377.85,
+        0.02
+      ],
+      "q": [
+        0.91,
+        null
+      ],
+      "M1_mjup": [
+        37,
+        1
+      ],
+      "M2_mjup": [
+        34,
+        1
+      ],
+      "flux_ratio_2um": [
+        0.53,
+        0.02
+      ],
+      "gamma_rv_kms": [
+        0.46,
+        0.2
+      ],
+      "M_tot_mjup": [
+        71.3,
+        0.5
+      ]
+    }
+  },
+  "notes": [
+    "secondary ~5 mas south of the primary, flux ratio ~0.5, moving ~4.6 mas/day nearly perpendicular to the separation over the 2.5 h window",
+    "Two Table 1 variants differ in flux ratio (0.47+/-0.03 vs 0.53+/-0.02): compare against both and say which.",
+    "Orbit values transcribed from Xuan et al. 2024, Nature 634, 1070, Table 1. fit_nights.py/LinearBinary is to be ported in O1."
+  ]
+}
