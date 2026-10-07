@@ -266,7 +266,7 @@ def run_ensemble(spec, out, label, seed=0, smoke=False):
     resolution = beam(data)
     out.mkdir(parents=True, exist_ok=True)
     arrays = dict(
-        ref_image=np.asarray(result.model.render(n_ref, ref_fov)), ref_fov=ref_fov, ref_std=ref_std,
+        ref_image=contest_images.render_scene(result.model, n_ref, ref_fov, contest_images.data_q_max(data)), ref_fov=ref_fov, ref_std=ref_std,
         best_chi2_red=float(np.sum(result.chi2_red)), error_scale=np.nan, best_log_z=np.nan, flip_dchi2=np.nan,
         star=bool(settings["star"]), mean=mean, std=std, pixel_scale_mas=scale, npix=mean.shape[0],
         chi2_red=np.asarray(result.chi2_red), trace=np.asarray(result.trace),
