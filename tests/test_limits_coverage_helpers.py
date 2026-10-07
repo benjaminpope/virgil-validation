@@ -48,12 +48,13 @@ def test_chi2ppf_is_scipys_for_one_degree_of_freedom():
     _chi2ppf_against_scipy(1)
 
 
+@pytest.mark.parametrize("df", [2, 3, 10])
 @pytest.mark.validates("virgil.limits.chi2ppf", roots=["statistics"])
-def test_f17_chi2ppf_works_for_several_degrees_of_freedom():
-    """The documented fallback for df != 1 (numpyro's gammaincinv) raises
-    ImportError ("Please install tensorflow_probability>=0.18") on an
-    install of virgil-astro with its declared dependencies."""
-    _chi2ppf_against_scipy(3)
+def test_f17_chi2ppf_works_for_several_degrees_of_freedom(df):
+    """chi2ppf for df != 1 agrees with SciPy (F17: the documented fallback,
+    numpyro's gammaincinv, raised ImportError for tensorflow_probability
+    before virgil#291)."""
+    _chi2ppf_against_scipy(df)
 
 
 @pytest.mark.validates("virgil.limits.delta_mag_to_flux", "virgil.limits.contrast_to_flux", roots=["mathematics"])
