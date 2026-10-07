@@ -76,6 +76,7 @@ nav:
   - Orbits:
       - "Kepler orbits": orbits/kepler.md
       - "Against orbitize!": orbits/orbitize.md
+      - "Multi-epoch orbits": orbits/epochs.md
   - Imaging:
       - "Transforms, beams and regularizers": imaging/machinery.md
       - "Against eht-imaging": imaging/ehtim.md
