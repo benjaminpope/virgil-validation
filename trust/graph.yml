@@ -73,6 +73,10 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     depends: [virgil.models.cvis_limb_darkened_disk]
+  virgil.models.EllipticalLimbDarkenedDisk:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.cvis_limb_darkened_disk]
   virgil.models.QuadraticLimbDarkenedDisk:
     layer: models
     source: [src/virgil/models.py]
