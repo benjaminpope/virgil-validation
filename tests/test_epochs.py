@@ -298,9 +298,7 @@ def test_marginal_loglike_control_wrong_bound(weak, inflated, case, wrong):
 
 
 @pytest.mark.parametrize("case", ["upper", "lower"])
-@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"], kind="finding")
-@pytest.mark.xfail(strict=True, reason="the ln s grid of the bounded integral is too coarse where the likelihood "
-                   "falls steeply from a bound (a model with s ≈ 5 against s_max = 1.2): errors of 0.1-0.7 in m")
+@pytest.mark.validates("virgil.epochs.marginal_loglike", roots=["mathematics"])
 def test_marginal_loglike_bounded_steep_edge(weak, inflated, case):
     """The offset model (χ²_V²/ν ≈ 30 or more, so its likelihood is cut off
     steeply at s_max): virgil's m differences against the truth should match

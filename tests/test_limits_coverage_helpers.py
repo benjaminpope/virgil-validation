@@ -48,9 +48,7 @@ def test_chi2ppf_is_scipys_for_one_degree_of_freedom():
     _chi2ppf_against_scipy(1)
 
 
-@pytest.mark.xfail(strict=True, raises=ImportError,
-                   reason="F17: chi2ppf with df != 1 needs tensorflow_probability, not a virgil dependency")
-@pytest.mark.validates("virgil.limits.chi2ppf", roots=["statistics"], kind="finding")
+@pytest.mark.validates("virgil.limits.chi2ppf", roots=["statistics"])
 def test_f17_chi2ppf_works_for_several_degrees_of_freedom():
     """The documented fallback for df != 1 (numpyro's gammaincinv) raises
     ImportError ("Please install tensorflow_probability>=0.18") on an
