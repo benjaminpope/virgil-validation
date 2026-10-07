@@ -57,7 +57,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783796&name=/GRAVI.2023-12-26T04_13_56.643_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "d024fac20709c63efa6a340434abc44c2bf6ae71ce49a34888bb077496439541"
         },
         {
           "name": "GRAVI.2023-12-26T04_31_08.687_dualscivis.fits",
@@ -67,7 +67,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783806&name=/GRAVI.2023-12-26T04_31_08.687_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "6bc41126b783c009c61b8308ffdb9ac954fcc7ede2ecf77ba6af21dfa7cef397"
         },
         {
           "name": "GRAVI.2023-12-26T04_46_32.726_dualscivis.fits",
@@ -77,7 +77,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783792&name=/GRAVI.2023-12-26T04_46_32.726_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "703a187f0ffa2fe69b99dccbc8e48f1edef6be952065072d4783f3c902f3f3b4"
         },
         {
           "name": "GRAVI.2023-12-26T04_53_47.744_dualscivis.fits",
@@ -87,7 +87,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783804&name=/GRAVI.2023-12-26T04_53_47.744_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "7252347ff0ca661e482d53a5c755a54b7d4a06fd224d052cadfd025c4d6c23f4"
         },
         {
           "name": "GRAVI.2023-12-26T05_00_59.763_dualscivis.fits",
@@ -97,7 +97,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783810&name=/GRAVI.2023-12-26T05_00_59.763_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "fb23c95bda11e342b28f7461ad9f9ac54847a51d1fead45d0997938adb45fc70"
         },
         {
           "name": "GRAVI.2023-12-26T05_15_41.800_dualscivis.fits",
@@ -107,7 +107,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783798&name=/GRAVI.2023-12-26T05_15_41.800_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "4ed2a3ed1b86034cb5fc39b0cc1c76b7d9062eba1788c14e7f0f2b9027f7275d"
         },
         {
           "name": "GRAVI.2023-12-26T05_36_14.852_dualscivis.fits",
@@ -117,7 +117,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783828&name=/GRAVI.2023-12-26T05_36_14.852_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "01d2d133dbced1b38e9d71ec336c5d0fe394a9ea1658244dcc65c0af48e0426f"
         },
         {
           "name": "GRAVI.2023-12-26T05_58_44.909_dualscivis.fits",
@@ -127,7 +127,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783830&name=/GRAVI.2023-12-26T05_58_44.909_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "a03d1eb6bc980a58917291f53521bb110d20c5798e63692eedd0c574e7f30eeb"
         },
         {
           "name": "GRAVI.2023-12-26T06_19_08.961_dualscivis.fits",
@@ -137,7 +137,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783820&name=/GRAVI.2023-12-26T06_19_08.961_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "2ea3b7efaf3aa1f0e4374be8f71798d0311e2ad083373298b1009797b3aed849"
         },
         {
           "name": "GRAVI.2023-12-26T06_27_05.981_dualscivis.fits",
@@ -147,7 +147,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783816&name=/GRAVI.2023-12-26T06_27_05.981_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "a7ee2375eb2f5ca026b8f014febb9a72ef62b5151ae46e544abf68197af66c60"
         },
         {
           "name": "GRAVI.2023-12-26T06_34_23.999_dualscivis.fits",
@@ -157,7 +157,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783822&name=/GRAVI.2023-12-26T06_34_23.999_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "0d5c223c50188ce6db8008811f0b9389c9ec484a77496bdfdd77db4a808e6f56"
         },
         {
           "name": "GRAVI.2023-12-26T06_41_39.018_dualscivis.fits",
@@ -167,7 +167,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783818&name=/GRAVI.2023-12-26T06_41_39.018_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "41b3f441ab60bd5ecf85d118e88ca68c08407790134c67a71b34208fa827912e"
         },
         {
           "name": "GRAVI.2023-12-30T05_47_14.016_dualscivis.fits",
@@ -177,7 +177,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783814&name=/GRAVI.2023-12-30T05_47_14.016_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "81981ef1a3eb81c048b16297907f9875f7e5a045eec63149e8ec3e18553713d8"
         },
         {
           "name": "GRAVI.2023-12-30T06_11_23.077_dualscivis.fits",
@@ -187,7 +187,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783832&name=/GRAVI.2023-12-30T06_11_23.077_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "825f4a97b27b8187dfadea9360f2b34a100b7d83929546224a55e3e47d322c67"
         },
         {
           "name": "GRAVI.2023-12-30T06_18_38.095_dualscivis.fits",
@@ -197,7 +197,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783808&name=/GRAVI.2023-12-30T06_18_38.095_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "7a8bae5cedea17f606b114643948797f82607779796163a3482158bc7e4e1060"
         },
         {
           "name": "GRAVI.2023-12-30T06_25_53.113_dualscivis.fits",
@@ -207,7 +207,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783824&name=/GRAVI.2023-12-30T06_25_53.113_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "c4312cba780ecc2ec8591d37d89d41b4c3179bd0ce8b6ec8b4a776c9e2d5a2db"
         },
         {
           "name": "GRAVI.2024-02-28T02_57_28.592_dualscivis.fits",
@@ -217,7 +217,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783794&name=/GRAVI.2024-02-28T02_57_28.592_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "5d3341518acd55f6f54d2ae0c4d36e4a180c2f5c7f2387d5ea3d50e836c509b5"
         },
         {
           "name": "GRAVI.2024-02-28T03_13_28.632_dualscivis.fits",
@@ -227,7 +227,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783812&name=/GRAVI.2024-02-28T03_13_28.632_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "1b5a0d1096c2412a15ec7602a8ece2ccf846c2a7468324a36324715687e5eb7a"
         },
         {
           "name": "GRAVI.2024-02-28T03_29_49.673_dualscivis.fits",
@@ -237,7 +237,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783799&name=/GRAVI.2024-02-28T03_29_49.673_dualscivis.fits",
           "bytes": 469440,
-          "sha256": null
+          "sha256": "0461b109a27ca1e9e24703888ff900516589d4d42d8478de373203a23b50e581"
         },
         {
           "name": "GRAVI.2024-03-29T00_31_13.894_dualscivis.fits",
@@ -247,7 +247,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783790&name=/GRAVI.2024-03-29T00_31_13.894_dualscivis.fits",
           "bytes": 472320,
-          "sha256": null
+          "sha256": "754c807f4133b03f9a6c9d81b98639dd262cbd6c922604b2cae1dc07f39dbe55"
         },
         {
           "name": "GRAVI.2024-04-29T23_15_12.061_dualscivis.fits",
@@ -257,7 +257,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783826&name=/GRAVI.2024-04-29T23_15_12.061_dualscivis.fits",
           "bytes": 472320,
-          "sha256": null
+          "sha256": "a34bb2dca3f1b15cb61a2eb04b0eacd5c948f19ffcf241c3ad496bc3c2dcf4b5"
         },
         {
           "name": "GRAVI.2024-04-29T23_22_24.079_dualscivis.fits",
@@ -267,7 +267,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1783802&name=/GRAVI.2024-04-29T23_22_24.079_dualscivis.fits",
           "bytes": 472320,
-          "sha256": null
+          "sha256": "070d1eebee33300b0180cdb7f6f7dda07a52e4e7c66ffefb228950095242d448"
         }
       ]
     },
@@ -314,7 +314,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884253&name=/2021Sep05_SCI_HR6819_A_SINGLE_SCI_VIS_CALIBRATED_WOLL.fits",
           "bytes": 6238080,
-          "sha256": null
+          "sha256": "8c981fffffabed13c2578b9813ef247ef395b69cba76b9535d93661af3954428"
         },
         {
           "name": "2021Sep18_SCI_HR6819_B_SINGLE_SCI_VIS_CALIBRATED_WOLL.fits",
@@ -326,7 +326,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884257&name=/2021Sep18_SCI_HR6819_B_SINGLE_SCI_VIS_CALIBRATED_WOLL.fits",
           "bytes": 6238080,
-          "sha256": null
+          "sha256": "11e653fb857168683749716eb6d61af8e020a8d82bfa76040f3ca783dc0c5364"
         },
         {
           "name": "2022May06_SCI_HR6819_A_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -336,7 +336,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884240&name=/2022May06_SCI_HR6819_A_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3248640,
-          "sha256": null
+          "sha256": "48f6733d0d7513f59267aba2e9884d0d231d00573f844fdd5ec354234fd27ba8"
         },
         {
           "name": "2023Apr23_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -346,7 +346,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884249&name=/2023Apr23_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3251520,
-          "sha256": null
+          "sha256": "989bb69d33e61664b1891a9f390e72ba7e7e52833968100b505fab2e90ca39dc"
         },
         {
           "name": "2023Aug16_SCI_HR6819_EP5_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -356,7 +356,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884238&name=/2023Aug16_SCI_HR6819_EP5_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3248640,
-          "sha256": null
+          "sha256": "51d6ef9135b55d72b6ffd15fda246914897a42114eb27f3b1d96f80ec442deba"
         },
         {
           "name": "2023Aug20_SCI_HR6819_EP6_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -366,7 +366,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884236&name=/2023Aug20_SCI_HR6819_EP6_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3248640,
-          "sha256": null
+          "sha256": "ef717dc7fa4aa3f1971544350aec0fe3cb80f0d21462f32f5c957560527de57c"
         },
         {
           "name": "2023Jul17_SCI_HR6819_EP4_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -376,7 +376,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884242&name=/2023Jul17_SCI_HR6819_EP4_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3251520,
-          "sha256": null
+          "sha256": "e47f6e5b40d2fa064de3121aa8497b74d86736b95bed208907177d5445884a37"
         },
         {
           "name": "2023Jun20_SCI_HR6819_EP3_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -386,7 +386,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884248&name=/2023Jun20_SCI_HR6819_EP3_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3251520,
-          "sha256": null
+          "sha256": "901db7e2d42257215aeec66ce5bf3e0a743e50320af545962a511cdc5ecb2b46"
         },
         {
           "name": "2023May01_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -396,7 +396,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884244&name=/2023May01_SCI_HR6819_EP1_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3251520,
-          "sha256": null
+          "sha256": "3efed47a6677c4430e3a59374ae6a70b2ee41c8a12bc75952b8b27832c0d6189"
         },
         {
           "name": "2023May20_SCI_HR6819_EP2_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -406,7 +406,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884232&name=/2023May20_SCI_HR6819_EP2_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3248640,
-          "sha256": null
+          "sha256": "3ada53ac4d1aeaa3c3acfd76e91b5f50b472a956313202ac9b712b5590b41095"
         },
         {
           "name": "2023Sep07_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -416,7 +416,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884245&name=/2023Sep07_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3248640,
-          "sha256": null
+          "sha256": "ef5b96e459274cb1b19d06e0e95ac5e7fe3a71724733089254dfe7129969bb91"
         },
         {
           "name": "2023Sep08_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
@@ -426,7 +426,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884234&name=/2023Sep08_SCI_HR6819_EP7_SINGLE_SCI_VIS_CALIBRATED.fits",
           "bytes": 3248640,
-          "sha256": null
+          "sha256": "34f65fdc6c8ffabd6cc2b2d35f4b7e73c56a8d8fcdafe2cd7f84615d345830c2"
         }
       ]
     },
@@ -469,7 +469,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707096&name=/2018-10-22mircx00029_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "545b38334e39e1569d404de87b7d44f863c40ca3cf42e84550c86444d7c473a8"
         },
         {
           "name": "2018-10-22mircx00059_oifits_viscal.fits",
@@ -478,7 +478,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707098&name=/2018-10-22mircx00059_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "037503dc87673f04cdb26a700e39bb724cd4be6e696954815e91c787eb99051b"
         },
         {
           "name": "2018-10-22mircx00089_oifits_viscal.fits",
@@ -487,7 +487,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707102&name=/2018-10-22mircx00089_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "75087d58a4da4521535916f263f77cd2057cce6bd48a4c0510ae7954d2235c01"
         },
         {
           "name": "2018-10-22mircx00119_oifits_viscal.fits",
@@ -496,7 +496,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707097&name=/2018-10-22mircx00119_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "4c1f9278d8fee2f00e390b697b01de796a7193bbbfb2fdb14e147a73575cd7f9"
         },
         {
           "name": "2018-10-22mircx00147_oifits_viscal.fits",
@@ -505,7 +505,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707095&name=/2018-10-22mircx00147_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "28e3ade0a335f5f6b2dc04a8447366781f7efa959e9d5675f5322fb1e8396d7a"
         },
         {
           "name": "2018-10-22mircx00177_oifits_viscal.fits",
@@ -514,7 +514,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707100&name=/2018-10-22mircx00177_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "d6cb316968b331f5832b8b3d0084ebc607a90a48d8a5cf7cfadf3c30ba44d7ba"
         },
         {
           "name": "2018-10-22mircx00207_oifits_viscal.fits",
@@ -523,7 +523,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707101&name=/2018-10-22mircx00207_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "28ef9cbe247f1aefbdefa18a383c2336bd6c67e266deeabf8deebcd6ed05e029"
         },
         {
           "name": "oiprep_sig_Ori.2011Sep29_Hprism_tcoh0075ms_GHS_sigclip3_2016Apr08.XCHAN.final_cal.AVG15m.oifits",
@@ -532,7 +532,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1707099&name=/oiprep_sig_Ori.2011Sep29_Hprism_tcoh0075ms_GHS_sigclip3_2016Apr08.XCHAN.final_cal.AVG15m.oifits",
           "bytes": 51840,
-          "sha256": null
+          "sha256": "7feb7c040426f29084a92c30a23d880f3fb206c8d8ad49ef965bda3af1f3184d"
         }
       ]
     },
@@ -575,7 +575,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340507&name=/2018-10-22mircx00029_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "545b38334e39e1569d404de87b7d44f863c40ca3cf42e84550c86444d7c473a8"
         },
         {
           "name": "2018-10-22mircx00059_oifits_viscal.fits",
@@ -584,7 +584,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340515&name=/2018-10-22mircx00059_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "037503dc87673f04cdb26a700e39bb724cd4be6e696954815e91c787eb99051b"
         },
         {
           "name": "2018-10-22mircx00089_oifits_viscal.fits",
@@ -593,7 +593,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340509&name=/2018-10-22mircx00089_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "75087d58a4da4521535916f263f77cd2057cce6bd48a4c0510ae7954d2235c01"
         },
         {
           "name": "2018-10-22mircx00119_oifits_viscal.fits",
@@ -602,7 +602,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340511&name=/2018-10-22mircx00119_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "4c1f9278d8fee2f00e390b697b01de796a7193bbbfb2fdb14e147a73575cd7f9"
         },
         {
           "name": "2018-10-22mircx00147_oifits_viscal.fits",
@@ -611,7 +611,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340510&name=/2018-10-22mircx00147_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "28e3ade0a335f5f6b2dc04a8447366781f7efa959e9d5675f5322fb1e8396d7a"
         },
         {
           "name": "2018-10-22mircx00177_oifits_viscal.fits",
@@ -620,7 +620,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340504&name=/2018-10-22mircx00177_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "d6cb316968b331f5832b8b3d0084ebc607a90a48d8a5cf7cfadf3c30ba44d7ba"
         },
         {
           "name": "2018-10-22mircx00207_oifits_viscal.fits",
@@ -629,7 +629,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340508&name=/2018-10-22mircx00207_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "28ef9cbe247f1aefbdefa18a383c2336bd6c67e266deeabf8deebcd6ed05e029"
         },
         {
           "name": "2018-10-23mircx00300_oifits_viscal.fits",
@@ -638,7 +638,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340516&name=/2018-10-23mircx00300_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "644b889daa37c6e8d2ae1d1cd00b93eb2bd000c523932931f5ad257018c5356e"
         },
         {
           "name": "2018-10-23mircx00330_oifits_viscal.fits",
@@ -647,7 +647,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340512&name=/2018-10-23mircx00330_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "7c709829f7fe0bed8520c7ffddb50ca20c536d58c0ec62a25e9d5bc3cbdae7dd"
         },
         {
           "name": "2018-10-23mircx00360_oifits_viscal.fits",
@@ -656,7 +656,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340506&name=/2018-10-23mircx00360_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "d06503faa01827053b6681a9c60a9c6deaece8ba457347cb8228ccae8cd28c21"
         },
         {
           "name": "2018-10-23mircx00390_oifits_viscal.fits",
@@ -665,7 +665,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340517&name=/2018-10-23mircx00390_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "f7dedee1533987d86a643c7b68cdca12bb94a83b8759e78a42ae7e3efd222e49"
         },
         {
           "name": "2018-11-21mircx00000_oifits_viscal.fits",
@@ -674,7 +674,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340505&name=/2018-11-21mircx00000_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "cb89cf37e5cf549e638d8e74804459fbb6d925209a762c93f3a2efcdfb96142f"
         },
         {
           "name": "2018-11-21mircx00030_oifits_viscal.fits",
@@ -683,7 +683,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340514&name=/2018-11-21mircx00030_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "d688ea9a09d9129576805f8d50d5435fd20cf2d2eb5e4d015be3323e8f64f737"
         },
         {
           "name": "2018-11-21mircx00060_oifits_viscal.fits",
@@ -692,7 +692,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340518&name=/2018-11-21mircx00060_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "c4d6a6742e720acd24d19fe25b2d5cbf3c954e62dfa30c0d701db84a55930b21"
         },
         {
           "name": "2018-11-21mircx00090_oifits_viscal.fits",
@@ -701,7 +701,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340519&name=/2018-11-21mircx00090_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "28f3c6ed112630e9d8ecaaff00344cecb638bd88a93f900db2de499a5b78f62b"
         },
         {
           "name": "2018-11-21mircx00119_oifits_viscal.fits",
@@ -710,7 +710,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340513&name=/2018-11-21mircx00119_oifits_viscal.fits",
           "bytes": 161280,
-          "sha256": null
+          "sha256": "d4249254861c49d952b72832909d8f27b7bfcbb2893126d5611457db3a666d85"
         },
         {
           "name": "2019-07-31mircx01884_oifits_viscal.fits",
@@ -719,7 +719,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340523&name=/2019-07-31mircx01884_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "afda0974a5bae6904a258ef7a9afe549c3420878a9928095daac6fc7dfc33f0b"
         },
         {
           "name": "2019-07-31mircx01914_oifits_viscal.fits",
@@ -728,7 +728,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340520&name=/2019-07-31mircx01914_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "087e3c0235502d57b5e480f54eae2686662350e63f27014e3d47a4ca06c90685"
         },
         {
           "name": "2019-07-31mircx02049_oifits_viscal.fits",
@@ -737,7 +737,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340525&name=/2019-07-31mircx02049_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "32ea570b6fb7ac6e39ddabcdb02e7356b31214591c88dad2425c0b340cbcef3c"
         },
         {
           "name": "2019-07-31mircx02079_oifits_viscal.fits",
@@ -746,7 +746,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340522&name=/2019-07-31mircx02079_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "13c377a99383d00a03810ca7a63f6ac491bfa291d2649913dcd7097c3427685b"
         },
         {
           "name": "2019-08-06mircx01945_oifits_viscal.fits",
@@ -755,7 +755,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340524&name=/2019-08-06mircx01945_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "e6896e2fbe24501c564bc97278ec11404d0a443f3f4eb16e5ddd8d529d0364e0"
         },
         {
           "name": "2019-08-06mircx01975_oifits_viscal.fits",
@@ -764,7 +764,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340521&name=/2019-08-06mircx01975_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "3a82e72c6c6eebdeb727c7cf38723158ea38e1c69020ca4490ac055ec6d79c6f"
         },
         {
           "name": "2019-08-06mircx02110_oifits_viscal.fits",
@@ -773,7 +773,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340527&name=/2019-08-06mircx02110_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "68130a60f108528ccb491f8b10bddb4c4546b932b9749e5aca0ce95adc94961b"
         },
         {
           "name": "2019-08-06mircx02140_oifits_viscal.fits",
@@ -782,7 +782,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1340526&name=/2019-08-06mircx02140_oifits_viscal.fits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "e1a9f7d9a1cf5f831e0f301baa62c2aa603faebf144a543f143ab6cb7e73c677"
         }
       ]
     },
@@ -852,7 +852,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760298&name=/HD_106661.oifits",
           "bytes": 1016640,
-          "sha256": null
+          "sha256": "b5969a0cde450a9bf7f91d8f905f8e2fae5b59bc3bc7cdbf675723650d697cf3"
         },
         {
           "name": "HD_112734.oifits",
@@ -861,7 +861,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760241&name=/HD_112734.oifits",
           "bytes": 239040,
-          "sha256": null
+          "sha256": "f786e54ce31fb7f8e0fd7001c79c156a0d3e8d77d3f2d1e9669dcb6b6943e5a1"
         },
         {
           "name": "HD_115271.oifits",
@@ -870,7 +870,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760246&name=/HD_115271.oifits",
           "bytes": 639360,
-          "sha256": null
+          "sha256": "80a6cb1757700ede3dd069b0660f31f9a52a47e05d82babc6973d63030671a24"
         },
         {
           "name": "HD_11636.oifits",
@@ -879,7 +879,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760250&name=/HD_11636.oifits",
           "bytes": 1048320,
-          "sha256": null
+          "sha256": "110acacf5c985525faa9771da72602f26011a7bcfca263742dd5cb17d10e3248"
         },
         {
           "name": "HD_120047.oifits",
@@ -888,7 +888,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760302&name=/HD_120047.oifits",
           "bytes": 970560,
-          "sha256": null
+          "sha256": "2988f4d31bfe2b0846d232e751f9f7007fbc60245faf2b2fece90f09961241a8"
         },
         {
           "name": "HD_121164.oifits",
@@ -897,7 +897,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760292&name=/HD_121164.oifits",
           "bytes": 996480,
-          "sha256": null
+          "sha256": "59e4a35161289bf014b6fd080d4140a4b63c27ff5da0303630b09ef9fd7e518b"
         },
         {
           "name": "HD_15550.oifits",
@@ -906,7 +906,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760251&name=/HD_15550.oifits",
           "bytes": 1016640,
-          "sha256": null
+          "sha256": "ba58724d5799e8c228afba88acd327c1f4560c7ae10f9514314ac922f710c62b"
         },
         {
           "name": "HD_20677.oifits",
@@ -915,7 +915,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760247&name=/HD_20677.oifits",
           "bytes": 973440,
-          "sha256": null
+          "sha256": "1b420532a88baa54fcd4c3984671fad205c52663778cd27552abb17c8efd55e1"
         },
         {
           "name": "HD_21912.oifits",
@@ -941,7 +941,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760287&name=/HD_21912.oifits",
           "bytes": 1566720,
-          "sha256": null
+          "sha256": "3f246f842d8b06f0cd2597db00e1cf568e624410eb1387469b596c5292b0ecdb"
         },
         {
           "name": "HD_24809.oifits",
@@ -950,7 +950,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760244&name=/HD_24809.oifits",
           "bytes": 593280,
-          "sha256": null
+          "sha256": "c60642dade07f5b9ac170214d4ab228706b33df8161265d24c20653ce483a67b"
         },
         {
           "name": "HD_28910.oifits",
@@ -959,7 +959,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760272&name=/HD_28910.oifits",
           "bytes": 941760,
-          "sha256": null
+          "sha256": "f3350f31b593c4c94f551d8bd0a03746aa4f5eecdef053d29603b50a80086dc2"
         },
         {
           "name": "HD_29388.oifits",
@@ -968,7 +968,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760293&name=/HD_29388.oifits",
           "bytes": 982080,
-          "sha256": null
+          "sha256": "79b2b88ca45a494fe770ec556288f3a64112e525f27d9ba67ef67f581900665d"
         },
         {
           "name": "HD_32301.oifits",
@@ -977,7 +977,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760299&name=/HD_32301.oifits",
           "bytes": 1031040,
-          "sha256": null
+          "sha256": "f11c12c8e2cf2a198f3a2b2e361d20ac71829814bfcf0be84960f17202f9ac73"
         },
         {
           "name": "HD_46089.oifits",
@@ -986,7 +986,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760294&name=/HD_46089.oifits",
           "bytes": 927360,
-          "sha256": null
+          "sha256": "4d9b835c4c9176677f82d3e7c5d0b1b75429476bc8ff50854a7a792c5e4acb70"
         },
         {
           "name": "HD_48097.oifits",
@@ -995,7 +995,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760295&name=/HD_48097.oifits",
           "bytes": 982080,
-          "sha256": null
+          "sha256": "d48869960f0265df902c15ed9e5e873e9d2df748bb544830d5cbff0f16797d41"
         },
         {
           "name": "HD_5448.oifits",
@@ -1004,7 +1004,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760248&name=/HD_5448.oifits",
           "bytes": 1013760,
-          "sha256": null
+          "sha256": "542e6c09a9ca5919e78be8db185d98f0e3b8b8ea47c44a8d1937bba02fc98416"
         },
         {
           "name": "HD_56537.oifits",
@@ -1013,7 +1013,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760245&name=/HD_56537.oifits",
           "bytes": 509760,
-          "sha256": null
+          "sha256": "bd143a898adda18d171773eabe824f8421c6a61056b1b9f53895394671378b1a"
         },
         {
           "name": "HD_59037.oifits",
@@ -1022,7 +1022,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760273&name=/HD_59037.oifits",
           "bytes": 1177920,
-          "sha256": null
+          "sha256": "e51282bf9e267801c5d501e5ffea350564dd59973c7a76f3bafb831e58daaf25"
         },
         {
           "name": "HD_66664.oifits",
@@ -1031,7 +1031,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760303&name=/HD_66664.oifits",
           "bytes": 999360,
-          "sha256": null
+          "sha256": "d692156b021c6edf8552d16f3ab694dd7c6e919271d5e7803b3fc271306bc26c"
         },
         {
           "name": "HD_74198.oifits",
@@ -1040,7 +1040,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760305&name=/HD_74198.oifits",
           "bytes": 1025280,
-          "sha256": null
+          "sha256": "68875297998d30234feba753ca2302a3d82e44ac7f9a17d9608ee0b9f8bfc7ac"
         },
         {
           "name": "HD_74873.oifits",
@@ -1049,7 +1049,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760304&name=/HD_74873.oifits",
           "bytes": 999360,
-          "sha256": null
+          "sha256": "c544abddb11ff06a6baba7f9b293274b937bbe3b6af92bee82687de2fc301b27"
         },
         {
           "name": "HD_77660.oifits",
@@ -1058,7 +1058,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760243&name=/HD_77660.oifits",
           "bytes": 555840,
-          "sha256": null
+          "sha256": "e53df1fb13c088e1e41dc168412130f02180ed3a9705023e7d41def2179358d2"
         },
         {
           "name": "HD_84107.oifits",
@@ -1067,7 +1067,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760301&name=/HD_84107.oifits",
           "bytes": 999360,
-          "sha256": null
+          "sha256": "ae44fbe698e77f363531650c1962c38298538c5c047c3b352f5d03e19d9afa35"
         },
         {
           "name": "HD_92941.oifits",
@@ -1076,7 +1076,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760296&name=/HD_92941.oifits",
           "bytes": 1031040,
-          "sha256": null
+          "sha256": "cbbb78edaa6f86aca1c7fdc747af1246fb98cda481fe8e3efc832bfe73eff01f"
         },
         {
           "name": "HD_97244.oifits",
@@ -1085,7 +1085,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760300&name=/HD_97244.oifits",
           "bytes": 987840,
-          "sha256": null
+          "sha256": "69ea0cbf07fa92859850fdeeea7fb5ebe57e9afbd12bc21f954bf8cde7b8f97a"
         },
         {
           "name": "HD_99787.oifits",
@@ -1113,7 +1113,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760257&name=/HD_99787.oifits",
           "bytes": 1653120,
-          "sha256": null
+          "sha256": "7ea3e0d852af196474e0d98a1c2bc8514b24af4ed7cc71cd6b3a95d5dcc5c3ca"
         },
         {
           "name": "MIRCX.ome_Aur.oifits",
@@ -1122,7 +1122,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760249&name=/MIRCX.ome_Aur.oifits",
           "bytes": 417600,
-          "sha256": null
+          "sha256": "720aac6ae5e449facb74403a58e99702692a942a1c081c76b4adee68bfb2ecab"
         },
         {
           "name": "MYSTIC.ome_Aur.oifits",
@@ -1131,7 +1131,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1760242&name=/MYSTIC.ome_Aur.oifits",
           "bytes": 167040,
-          "sha256": null
+          "sha256": "ebb88cd6f4c834acc1646f504a81b975d034fd17fc6bab75b717fbc42cf4273c"
         }
       ]
     },
@@ -1176,7 +1176,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884217&name=/GRAVI.2023-11-26T07_28_15.210_singlecalvis_singlecaltf.fits",
           "bytes": 8478720,
-          "sha256": null
+          "sha256": "1777f03ecebd12f4e1869e1077a489f09236fcbe1a26fab323af9f78a290c61e"
         },
         {
           "name": "GRAVI.2023-11-26T07_34_54.227_singlecalvis_singlecaltf.fits",
@@ -1186,7 +1186,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884228&name=/GRAVI.2023-11-26T07_34_54.227_singlecalvis_singlecaltf.fits",
           "bytes": 8481600,
-          "sha256": null
+          "sha256": "21a22cf33581622635f67d0a40796c11b493e71895b94dffcf45a04483ecce3e"
         },
         {
           "name": "GRAVI.2023-11-26T07_55_33.279_singlescivis_singlescitf.fits",
@@ -1196,7 +1196,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884220&name=/GRAVI.2023-11-26T07_55_33.279_singlescivis_singlescitf.fits",
           "bytes": 8481600,
-          "sha256": null
+          "sha256": "a71a2202da70a49df3789966cb70da816f2e41311a6c88ccc41be7432e140444"
         },
         {
           "name": "GRAVI.2023-11-26T07_55_33.279_singlescivis_singlesciviscalibrated.fits",
@@ -1206,7 +1206,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884226&name=/GRAVI.2023-11-26T07_55_33.279_singlescivis_singlesciviscalibrated.fits",
           "bytes": 8481600,
-          "sha256": null
+          "sha256": "573f6c0eca7c5b80c5eefba6099ba388d5f84c3cf39b47735e93645ebad9414f"
         },
         {
           "name": "GRAVI.2023-11-26T08_02_12.295_singlescivis_singlescitf.fits",
@@ -1216,7 +1216,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884230&name=/GRAVI.2023-11-26T08_02_12.295_singlescivis_singlescitf.fits",
           "bytes": 8481600,
-          "sha256": null
+          "sha256": "01eaffc9b7b101f68cb80fa56e5b8cfce081ee038a3ee7fb6c83a27fc9204619"
         },
         {
           "name": "GRAVI.2023-11-26T08_02_12.295_singlescivis_singlesciviscalibrated.fits",
@@ -1226,7 +1226,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884224&name=/GRAVI.2023-11-26T08_02_12.295_singlescivis_singlesciviscalibrated.fits",
           "bytes": 8481600,
-          "sha256": null
+          "sha256": "7949c8bf234a55520923e65e9a7b32881911386f8bbc230fcd9c237dec5260be"
         },
         {
           "name": "output_zpcal.fits",
@@ -1236,7 +1236,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1884221&name=/output_zpcal.fits",
           "bytes": 8481600,
-          "sha256": null
+          "sha256": "97ba3aaed46e74a8b5435efb206a9ac3feb4fe49853fd0a28c16d4293ed019b5"
         }
       ]
     },
@@ -1280,7 +1280,7 @@
           ],
           "get_data": "https://oidb.jmmc.fr/get-data.html?id=1355393&name=/PI_GRU_forImage.fits",
           "bytes": 152640,
-          "sha256": null
+          "sha256": "a40957e402029713b858f34083b25924eefbf9de6d3c106a978b706c773b532f"
         }
       ]
     },
