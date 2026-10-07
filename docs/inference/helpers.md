@@ -29,6 +29,6 @@ own observables on two simulated three-telescope files.
 | `likelihood.noise_sites`, `noise_for` | the documented site names (`noise.<term>`, `noise[i].<term>`); the terms they give per dataset reproduce our likelihood with that dataset's errors scaled | Mathematics | 1e-8 |
 | `likelihood.posterior_predictive_summary` | the mean and (population) standard deviation of our V² and closure phases over the samples | Mathematics | 1e-10 |
 | `detection.rescale_errors` | s = √(χ²/n) for each block of our χ², after which each block has χ²/n = 1 | Mathematics | 1e-10 |
-| `detection.injection_grid` | every separation and flux in the documented order; PA = arctan2(dra, ddec) uniform on [0°, 360°) (Kolmogorov–Smirnov) | Mathematics, statistics | 1e-12; p > 1e-3 |
+| `detection.injection_grid` | every separation and flux in the documented order; angles of (dra, ddec) uniform on [0°, 360°) (Kolmogorov–Smirnov; this does not pin the PA sign convention) | Mathematics, statistics | 1e-12; p > 1e-3 |
 | `detection.bootstrap_null` | sign flip: each whitened residual about our prediction keeps its magnitude (phases wrapped), also about another scene, with about half flipped; resample: residuals drawn only from their own block | Mathematics, statistics | 1e-8; within 4σ |
 

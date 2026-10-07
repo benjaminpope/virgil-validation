@@ -33,7 +33,7 @@ crosscheck.chi2) on two simulated three-telescope files.
 * rescale_errors: s = sqrt(chi^2 / n) per block of our chi-squared, after
   which each block has chi^2 / n = 1.
 * injection_grid: every separation and flux, ordered, at PAs recovered by
-  arctan2(dra, ddec) that are uniform on [0, 360) (Kolmogorov-Smirnov).
+  the angle of (dra, ddec), uniform on [0, 360) (Kolmogorov-Smirnov).
 * bootstrap_null: a sign flip keeps each whitened residual's magnitude
   about our prediction (phases wrapped), flipping about half of them; a
   resample draws only residuals from the same block.
