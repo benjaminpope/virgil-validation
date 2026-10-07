@@ -149,24 +149,39 @@ def test_pi1gru_recipe_recovers_a_uniform_disk(of, tmp_path):
 ORBIT = dict(period=12.1, t_peri=60005.0, ecc=0.25, inc=35.0, omega=60.0, Omega=210.0, a=6.0, flux=0.5)
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.models.BinaryModelCartesian", "virgil.fitting.fit",
-                       roots=["mathematics", "standards"])
+def _wrap(x):
+    return (x + 180.0) % 360.0 - 180.0
+
+
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.orbits.starting_orbits", "virgil.models.Attached",
+                       "virgil.fitting.fit", "virgil.likelihood.numpyro_model", roots=["mathematics", "standards"])
 def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
-    """Five simulated nights of a point binary on a Kepler orbit (positions from
-    crosscheck.orbits, our NumPy evaluator), fitted as the Gl 229 recipe does: per-night
-    datasets for start_from_positions(scales="marginal"), then the refit."""
-    nights, mjds = {}, [60000.2, 60003.2, 60009.2, 60015.2, 60030.2]
-    for k, m in enumerate(mjds):
-        t_mean = m + 2.0 / 24.0  # the mean time of the five hourly snapshots
-        dra, ddec = (float(x) for x in np.ravel(orbits.position(t_mean, ORBIT["period"], ORBIT["t_peri"], ORBIT["ecc"],
-                                                               ORBIT["inc"], ORBIT["omega"], ORBIT["Omega"],
-                                                               ORBIT["a"])))
-        p = _observe(tmp_path / f"n{k}.fits", _binary(dra, ddec, ORBIT["flux"]), sigma_cp=0.3, sigma_v2=0.005,
-                     seed=10 + k, mjd0=m)
-        nights[f"n{k}"] = of.load([p])
+    """Five simulated nights of a point binary on a Kepler orbit, each night five
+    one-snapshot files an hour apart, the companion moving between them (~0.1 mas/h;
+    positions at each file's own time from crosscheck.orbits, our NumPy evaluator).
+    Fitted as recipe_gl229 does: merged nights for start_from_positions(scales=
+    "marginal"), then the refit on the nested Epochs({night: {file: data}}), every file
+    a snapshot at its own time. The elements come back, (Omega, omega) jointly up to
+    the (Omega + 180, omega + 180) twin (positions alone cannot tell them apart), and
+    the time of periastron, which checks that KeplerOrbit's dt_peri is t_peri - t_ref as
+    kepler() and elements() assume."""
+    per_night, per_file, nights = {}, {}, [60000.2, 60003.2, 60009.2, 60015.2, 60030.2]
+    for k, m in enumerate(nights):
+        paths = []
+        for j, h in enumerate((-2.0, -1.0, 0.0, 1.0, 2.0)):
+            t = m + j / 24.0
+            dra, ddec = (float(x) for x in np.ravel(orbits.position(
+                t, ORBIT["period"], ORBIT["t_peri"], ORBIT["ecc"], ORBIT["inc"], ORBIT["omega"], ORBIT["Omega"],
+                ORBIT["a"])))
+            paths.append(_observe(tmp_path / f"n{k}_{j}.fits", _binary(dra, ddec, ORBIT["flux"]), hours=(h,),
+                                  sigma_cp=0.3, sigma_v2=0.005, seed=10 + 5 * k + j, mjd0=t))
+        per_night[f"n{k}"] = of.load(paths)
+        per_file[f"n{k}"] = {p.name: of.load([p]) for p in paths}
     priors = of.orbit_priors((11.5, 12.8), (2.0, 20.0), (0.05, 1.0))
     grid = of._grid(9.0, 0.2, np.linspace(0.2, 1.0, 5))
-    out = of.fit_orbit(of.Epochs(nights), of.Epochs(nights), of.orbital_point_binary, priors, grid=grid,
+    fit_data = of.Epochs(per_file)
+    assert len(fit_data.data) == 25 and len(set(np.round(fit_data.times, 4))) == 25
+    out = of.fit_orbit(of.Epochs(per_night), fit_data, of.orbital_point_binary, priors, grid=grid,
                        periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=60,
                        n_refine=2, min_gap=3.0, nuts=dict(warmup=20, samples=20, chains=2))
     m = out["map"]
@@ -175,10 +190,15 @@ def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     assert abs(m["ecc"] - ORBIT["ecc"]) < 0.05
     assert abs(m["inc_deg"] - ORBIT["inc"]) < 3.0
     assert abs(m["flux_ratio"] - ORBIT["flux"]) < 0.05
+    # every file fitted at its own time: the motion within a night is in the model
     assert 0.5 < out["chi2_raw"]["chi2_red"] < 2.0
-    # positions alone fix (Omega, omega) only up to adding 180 deg to both
-    dO = (m["Omega_deg"] - ORBIT["Omega"]) % 180.0
-    assert min(dO, 180.0 - dO) < 5.0
+    assert len(out["datasets"]) == 25
+    same = max(abs(_wrap(m["Omega_deg"] - ORBIT["Omega"])), abs(_wrap(m["omega_deg"] - ORBIT["omega"])))
+    twin = max(abs(_wrap(m["Omega_deg"] - ORBIT["Omega"] - 180)), abs(_wrap(m["omega_deg"] - ORBIT["omega"] - 180)))
+    assert min(same, twin) < 5.0, (m["Omega_deg"], m["omega_deg"])
+    P = ORBIT["period"]
+    dt = (m["t_peri_mjd"] - ORBIT["t_peri"] + P / 2) % P - P / 2
+    assert abs(dt) < 0.02 * P, dt
     # the NUTS path runs end to end (a smoke test: 20 draws are not a posterior)
     assert set(out["nuts"]["elements"]) >= {"period_day", "a_mas", "ecc"}
     assert np.isfinite(out["nuts"]["elements"]["a_mas"]["median"])
@@ -274,7 +294,7 @@ def _fake_fits(oc, tmp_path, shift=0.0):
     return tmp_path
 
 
-@pytest.mark.validates("evidence", roots=["literature", "mathematics"], kind="guard")
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
 def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_path):
     """Fits that reproduce the published values: every scored row passes (including the
     conventions: omega of the primary + 180, a in au times the parallax, the (Omega,
@@ -295,6 +315,50 @@ def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_pat
     assert "WITHHELD" in {r["status"] for r in work}
     text = oc.markdown(rows)
     assert oc.CRITERIA_HASH in text and "WITHHELD" not in text
+    assert not [r for r in rows if r["status"] == "MISSING"]
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
+def test_compare_table_counts_missing_fits_as_failures(oc, tmp_path):
+    """A star missing from a fit gives MISSING rows (one per scored quantity of that
+    star, not silence), and a missing fit file gives exactly one MISSING row."""
+    import json
+    d = _fake_fits(oc, tmp_path)
+    astar = d / "fit_bda75673-61c6-49f0-a756-7361c699f0c4.json"
+    fit = json.loads(astar.read_text())
+    del fit["targets"]["HD 29388"]
+    astar.write_text(json.dumps(fit))
+    rows, _ = oc.compare(str(d))
+    miss = [r for r in rows if r["status"] == "MISSING"]
+    assert miss and {r["target"] for r in miss} == {"HD 29388"}
+    assert len(miss) == 5  # rho, PA, flux, resolved flux, UD1
+    (d / "fit_19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245.json").unlink()
+    rows, missing = oc.compare(str(d))
+    miss = [r for r in rows if r["status"] == "MISSING" and r["collection"].startswith("19f7e2cf")]
+    assert len(miss) == 1 and missing == ["19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245"]
+    assert "Failures (FAIL + MISSING): 6" in oc.markdown(rows, missing)
+
+
+@pytest.mark.validates("evidence", roots=["literature"], kind="guard")
+def test_published_numbers_fix_the_conventions():
+    """Where a paper quotes numbers that fix a convention independently of our
+    comparator, pin it. HR 6819 (Klement et al. 2025, Table A.1) prints dRA, dDec and
+    rho, PA for each epoch: they agree with PA = atan2(dRA, dDec) east of north, dRA
+    east, to the printed rounding. Gl 229 B (Xuan et al. 2024, Table 1): a, P and
+    M_tot obey Kepler's third law with a in au and P in days, so a_mas = a_au x
+    parallax is the right conversion."""
+    import json
+    import math
+    h = json.loads((ROOT / "oidb" / "references" / "696baf06-6c3c-424d-abaf-066c3c324d99.json").read_text())
+    for e in h["epochs"]:
+        o = e["other"]
+        assert abs(math.hypot(o["dRA_mas"], o["dDec_mas"]) - e["rho_mas"][0]) < 2e-3
+        pa = math.degrees(math.atan2(o["dRA_mas"], o["dDec_mas"])) % 360
+        assert abs(_wrap(pa - e["pa_deg"][0])) < 0.05
+    g = json.loads((ROOT / "oidb" / "references" / "782185b2-0727-42b0-a185-b2072732b047.json").read_text())["orbit"]
+    for o in g.values():
+        mtot_msun = o["M_tot_mjup"][0] * 9.5458e-4  # IAU 2015: M_J / M_sun
+        assert abs(o["a_au"][0] ** 3 / (o["P_day"][0] / 365.25) ** 2 / mtot_msun - 1) < 0.01
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
@@ -327,4 +391,4 @@ def test_criteria_are_frozen(oc):
     """The pass/fail rules were fixed before the real fits ran: a change to them must
     change this hash on purpose."""
     assert oc.CRITERIA["epoch"]["max_dev_sigma"] == 0.25 and oc.CRITERIA["parametric"]["max_dev_sigma"] == 2.0
-    assert oc.CRITERIA_HASH == "0283e15b9d7f6f4b"
+    assert oc.CRITERIA_HASH == "1b35907f4268e909"

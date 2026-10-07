@@ -329,7 +329,13 @@ within 0.25 σ_pub (published statistical errors; error ellipses projected
 on ρ and PA, σ Ori's divided by its 2.24 inflation); diameters, resolved
 flux and orbit flux ratios within 2 σ_pub; HD 45166 within 1 σ of the
 adopted mean over its four calibrations; orbital elements reported, not
-scored; HR 6819 compared, never scored; L2 rows withheld. Two departures
+scored; HR 6819 compared, never scored; L2 rows withheld; a scored value
+virgil does not deliver (or a missing fit file) is MISSING and counts as a
+failure. The A-star flux ratios and resolved fluxes are scored under the
+2 σ parametric rule, not the per-epoch one: CANDID's bandwidth smearing
+averages V² and the bispectrum over three points, ours the complex
+visibility over seven (`docs/method/candid.md`), so the two definitions
+can differ by more than 0.25 σ_pub; the A-star positions stay per-epoch. Two departures
 from the list above. Gl 229 has no per-night `LinearBinary`: the orbit is
 refitted on every file as a snapshot at its own time, which carries the
 motion within a night, and static per-night fits serve only as starts.

@@ -21,11 +21,20 @@ Pinned by `tests/test_candid.py`.
 | Fourier sign | exp(−2πi(ux + vy)/λ) | the same (OIFITS) |
 | observables | V², closure phase and T3 amplitude by default | V² and closure phase |
 | bandwidth smearing | on, from `EFF_BAND` (3-point top hat or Gaussian) | off |
+| smearing average (†) | `Nsmear` = 3: λ + (−½, 0, +½) Δλ, end points included; V² is the mean of \|V\|², T3 the mean bispectrum over the three | none in virgil; `scripts/oidb_fit.py` `Smeared`: complex V averaged over 7 mid-points of the top hat, then \|·\|² and the closure phase of the mean |
+| resolved flux (†) | `fres`, percent of the primary, in the normalisation only: V = (V* + f V_c) / (1 + f + fres) | no virgil model; `scripts/oidb_fit.py` `CandidBinary`: `resolved`, the same, as a fraction |
 | χ²_r | mean of squared normalised residuals | χ² / number of data points |
 | closure-phase residual | plain difference Δ | chord 2 sin(Δ/2) |
 | significance | χ² tail (`chi2.sf`, then `chdtri`), two-sided Gaussian | the same (`gammaincc`, then `ndtri`); saturates instead of `inf` |
 | degrees of freedom (Absil) | number of data points | the same |
 | fit uncertainties | scaled by √χ²_r, χ²_r = χ²/(N − n_fit + 1) | not scaled |
+
+(†) Read from CANDID's source at `c255e90` (`_VbinSlow` and the Cython
+`_V2binFast`/`_T3binFast`), not pinned by a test. The resolved flux is
+defined as ours. The smearing is not: averaging V² and the bispectrum is not
+the same as averaging V, so the O1 comparison scores De Furio et al.'s
+CANDID flux and resolved-flux values under the 2σ parametric rule, not the
+0.25σ per-epoch rule.
 
 The bridge switches CANDID to V² and closure phases, zero channel width (no
 smearing) and one core. With those settings, the only difference of

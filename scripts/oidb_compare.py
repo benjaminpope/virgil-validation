@@ -12,7 +12,8 @@ the reference orbit positions come from ``crosscheck.orbits`` (our NumPy evaluat
 The pass/fail rules (``CRITERIA``) were fixed before any fit of the real files was
 run; ``CRITERIA_HASH`` is printed with the table so a change to them shows.
 
-Statuses: PASS / FAIL (scored), REPORT (compared, not scored: orbits, variants,
+Statuses: PASS / FAIL (scored), MISSING (a scored quantity, or a whole fit file, that
+virgil did not deliver; counted as a failure), REPORT (compared, not scored: orbits, variants,
 alternative published values), NOT-CLEAN (a target the plan lists as not clean:
 compared, never scored), WITHHELD (L2 data: the row is left out of the table unless
 ``--include-l2``, and an L2 table is not published before the dataPI has been
@@ -40,7 +41,10 @@ from crosscheck import orbits  # noqa: E402
 CRITERIA = {
     "epoch": dict(max_dev_sigma=0.25, applies="per-epoch binary in-sample (same files): separation, PA, flux ratio, "
                                                "each against the published statistical error"),
-    "parametric": dict(max_dev_sigma=2.0, applies="diameters, resolved flux, and flux ratios from orbit fits"),
+    "parametric": dict(max_dev_sigma=2.0, applies="diameters, resolved flux, flux ratios from orbit fits, and the "
+                                                   "A-star flux ratios (CANDID's bandwidth smearing averages V^2 and "
+                                                   "the bispectrum over 3 points, ours the complex visibility over 7: "
+                                                   "docs/method/candid.md)"),
     "adopted": dict(max_dev_sigma=1.0, applies="HD 45166: the paper's adopted value is the mean over four calibrations "
                                                "and its error their dispersion; virgil fits one of them"),
     "orbit": dict(applies="orbital elements (Jeffreys priors, astrometry only): reported, not scored"),
@@ -113,7 +117,12 @@ def row(collection, target, epoch, quantity, value, err, pub, pub_err, rule, *, 
     dev = None if diff is None or not s else diff / s
     if status is None:
         limit = CRITERIA.get(rule, {}).get("max_dev_sigma")
-        status = "REPORT" if limit is None or dev is None else ("PASS" if abs(dev) <= limit else "FAIL")
+        if limit is None:
+            status = "REPORT"
+        elif value is None:
+            status = "MISSING"  # a scored quantity virgil did not deliver counts as a failure
+        else:
+            status = "REPORT" if dev is None else ("PASS" if abs(dev) <= limit else "FAIL")
     red, flags = chi2_info(fit)
     return dict(collection=collection, target=target, epoch=epoch, quantity=quantity, virgil=value, virgil_err=err,
                 published=pub, published_err=pub_err, sigma_used=s, dev_sigma=dev, rule=rule, status=status,
@@ -281,16 +290,16 @@ def cmp_workshop(cid, fit, ref):
                       note="files byte-identical to fac164e1's")
     s = fit["targets"]["sig Ori"]
     so = ref["targets"]["sig Ori"]
-    for r, e in by_epoch(s["epochs"], so["epochs"]):
-        if e is None:
-            continue
+    in_collection = [r for r in so["epochs"] if r["date"] == "2011-09-29"]  # the one sigma Ori night in the workshop set
+    for r, e in by_epoch(s["epochs"], in_collection):
         el = r["error_ellipse"]
         k = CRITERIA["sigma_ori_ellipse_scale"]
         cov = ellipse_cov(el["sigma_maj_mas"] / k, el["sigma_min_mas"] / k, el["phi_deg"])
         rows += _position_rows(cid, "sigma Ori Aa-Ab", r, e, "epoch", cov=cov,
                                note="sigma: the published ellipse / 2.24 (its chi2 inflation), projected")
         for q in ("fAa", "fAb", "fB"):
-            rows.append(row(cid, "sigma Ori Aa-Ab", r["date"], q, e["fractions"][q], None, *r["fractions"][q],
+            rows.append(row(cid, "sigma Ori Aa-Ab", r["date"], q, (e or {}).get("fractions", {}).get(q), None,
+                            *r["fractions"][q],
                             "epoch", fit=e, note="fraction of the total light"))
         for v in s.get("variants", []):
             for q, ang in (("rho_mas", False), ("pa_deg", True)):
@@ -309,15 +318,14 @@ def cmp_astars(cid, fit, ref):
     for r in ref["epochs"]:
         star = r["star"]
         t = fit["targets"].get(star)
-        if t is None:
-            continue
-        e = t["epochs"][0]
+        e = t["epochs"][0] if t and t.get("epochs") else None  # a missing star gives MISSING rows
         rec = dict(date=star, rho_mas=[r["rho_mas"], r["rho_err_mas"]], pa_deg=[r["pa_deg_E_of_N"], r["pa_err_deg"]])
         rows += _position_rows(cid, star, rec, e, "epoch")
         f, fe = val(e, "flux")
         c = r["contrast"]
         rows.append(row(cid, star, star, "flux_%_primary", None if f is None else 100 * f, None if fe is None else 100 * fe,
-                        c["flux_ratio_percent_of_primary"], c["err_percent"], "epoch", fit=e))
+                        c["flux_ratio_percent_of_primary"], c["err_percent"], "parametric", fit=e,
+                        note="parametric, not epoch: smearing is defined differently from CANDID's"))
         rf, rfe = val(e, "resolved")
         rp = r["resolved_flux_percent_primary"]
         rows.append(row(cid, star, star, "resolved_%_primary", None if rf is None else 100 * rf,
@@ -381,10 +389,12 @@ def compare(fits_dir, *, refs_dir=ROOT / "oidb" / "references", include_l2=False
     rows, missing = [], []
     for cid, fn in COMPARE.items():
         path = os.path.join(fits_dir, f"fit_{cid}.json")
+        if cid in L2 and not include_l2:
+            continue
         if not os.path.exists(path):
             missing.append(cid)
-            continue
-        if cid in L2 and not include_l2:
+            rows.append(row(cid, "", "", "fit", None, None, None, None, "epoch",
+                            note=f"no fit_{cid}.json: the task failed or has not run"))
             continue
         with open(path) as f:
             fit = json.load(f)
@@ -419,7 +429,8 @@ def markdown(rows, missing=()):
     counts = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    lines += ["", "Totals: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items()))]
+    lines += ["", "Totals: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())),
+              f"Failures (FAIL + MISSING): {counts.get('FAIL', 0) + counts.get('MISSING', 0)}"]
     return "\n".join(lines) + "\n"
 
 
