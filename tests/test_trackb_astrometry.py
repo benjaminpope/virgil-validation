@@ -122,7 +122,7 @@ def test_every_comparable_epoch_has_a_valid_covariance():
     assert n == 130  # 121 counted + 9 reported separately (design/trackb_criteria.md)
 
 
-@pytest.mark.validates("crosscheck.astrometry", roots=["standards"], kind="guard")
+@pytest.mark.validates("crosscheck.astrometry", roots=["self-consistency"], kind="guard")
 def test_fit_script_names_the_registered_criteria():
     """scripts/trackb_fit.py carries the commit and SHA-256 of design/trackb_criteria.md."""
     import hashlib
