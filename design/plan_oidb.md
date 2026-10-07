@@ -321,6 +321,28 @@ In order:
 7. **π¹ Gru.** One file: the cheapest imaging target, and a first ensemble
    run on real data.
 
+**As built (parametric part).** `scripts/oidb_fit.py` holds one recipe per
+collection (model choices in its docstring) and runs as the OzSTAR array job
+`oidb_o1_fits`; `scripts/oidb_compare.py` writes the table, with its rules
+frozen in `CRITERIA` (hash in the table): per-epoch ρ, PA and flux ratio
+within 0.25 σ_pub (published statistical errors; error ellipses projected
+on ρ and PA, σ Ori's divided by its 2.24 inflation); diameters, resolved
+flux and orbit flux ratios within 2 σ_pub; HD 45166 within 1 σ of the
+adopted mean over its four calibrations; orbital elements reported, not
+scored; HR 6819 compared, never scored; L2 rows withheld; a scored value
+virgil does not deliver (or a missing fit file) is MISSING and counts as a
+failure. The A-star flux ratios and resolved fluxes are scored under the
+2 σ parametric rule, not the per-epoch one: CANDID's bandwidth smearing
+averages V² and the bispectrum over three points, ours the complex
+visibility over seven (`docs/method/candid.md`), so the two definitions
+can differ by more than 0.25 σ_pub; the A-star positions stay per-epoch. Two departures
+from the list above. Gl 229 has no per-night `LinearBinary`: the orbit is
+refitted on every file as a snapshot at its own time, which carries the
+motion within a night, and static per-night fits serve only as starts.
+HR 6819 is fitted on the K continuum with the Brγ and He I windows left
+out instead of binary + disk: Klement+2025's disk contributes only in the
+line, so the continuum model is theirs without the disk.
+
 ### Stage O2: the remaining binaries (about 2 h per small collection, 6 h per survey; OC)
 
 Orbit systems first, clean ones scored: GG Tau Ab, TZ For, θ¹ Ori C,
