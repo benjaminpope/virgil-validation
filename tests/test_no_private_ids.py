@@ -1,19 +1,30 @@
 """The private L2 collection's id must not appear anywhere in the tracked tree.
 
-The id is built from two halves so that this file does not contain it. Private
+This file holds only SHA-256 hashes of the id (and of its first 8 hex digits), compared
+with the hash of every UUID-shaped or 8-hex token in each tracked file name and body. Private
 collections are named by a placeholder (``private-<name>``); the real id lives in
 ``OIDB_PRIVATE_COLLECTIONS`` or ``~/.config/virgil-validation/private_collections.txt``
 (``scripts/private_collections.py``).
 """
 
+import hashlib
 import importlib.util
+import re
 import subprocess
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE_IDS = ["647a" + "22a9", ("647a" + "22a9") + "-5047-4220-ba22-a95047022072"]
+PRIVATE_SHA256 = {
+    "a9c8ab1bb62be8362fb5b6bf2128c47d03d4669f2313e665f5b2a65921ccf251",  # the full id
+    "1fc430335c576930002d900ac0ae3adcc6ba036eb7062732aee58038a22c46c9",  # its first 8 hex digits
+}
+TOKEN = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|\b[0-9a-f]{8}\b")
+
+
+def _hits(s):
+    return any(hashlib.sha256(t.encode()).hexdigest() in PRIVATE_SHA256 for t in TOKEN.findall(s))
 
 
 def _tracked():
@@ -29,7 +40,8 @@ def test_private_collection_id_not_in_tracked_tree():
         if not path.is_file():
             continue
         text = path.read_bytes().decode("utf-8", "replace")
-        hits += [name for pid in PRIVATE_IDS if pid in name or pid in text]
+        if _hits(name) or _hits(text):
+            hits.append(name)
     assert not hits, f"private collection id in tracked files: {sorted(set(hits))}"
 
 
