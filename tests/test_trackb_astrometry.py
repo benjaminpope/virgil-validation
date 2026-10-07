@@ -138,3 +138,35 @@ def test_fit_script_names_the_registered_criteria():
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("no git history (e.g. a source snapshot)")
     assert hashlib.sha256(blob).hexdigest() == sha
+
+
+def _fit_script():
+    import importlib.util
+    root = pathlib.Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("trackb_fit", root / "scripts" / "trackb_fit.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.mark.validates("crosscheck.astrometry", roots=["self-consistency"], kind="guard")
+def test_only_registered_flags_exclude_an_epoch():
+    m = _fit_script()
+    assert m.exclusion_reason("eta_oph", dict(date="2023-06-16", flag="beyond AT fibre field")) is not None
+    assert m.exclusion_reason("zet_boo", dict(date="2023-06-16", flag="low SNR")) is None
+    assert m.exclusion_reason("eta_oph", dict(date="2023-07-01", flag="doubtful calibration")) is None
+    assert m.exclusion_reason("x", dict(date="d", below_lambda_2B=True)) == "below lambda/2B"
+    assert m.exclusion_reason("x", dict(date="d")) is None
+
+
+@pytest.mark.validates("crosscheck.astrometry", roots=["self-consistency"], kind="guard")
+def test_peaks_follow_the_grid_axes_and_reject_a_transposed_grid():
+    m = _fit_script()
+    axes = [np.linspace(-30, 30, 7), np.linspace(-20, 20, 5), np.geomspace(1e-3, 1.0, 3)]
+    ll = np.zeros((7, 5, 3))
+    i, j, k = 5, 1, 2  # (dra, ddec, flux) = (20, -10, 1.0)
+    ll[i, j, k] = 10.0
+    top = m.peaks(ll, axes, 1, 1.0)[0]
+    assert (top["dra"], top["ddec"], top["flux"]) == (20.0, -10.0, 1.0)
+    with pytest.raises(ValueError):
+        m.peaks(np.swapaxes(ll, 0, 1), axes, 1, 1.0)

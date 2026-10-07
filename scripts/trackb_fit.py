@@ -40,8 +40,8 @@ sys.path.insert(0, str(REPO / "src"))
 from crosscheck import astrometry as A  # noqa: E402
 
 CRITERIA_FILE = "design/trackb_criteria.md"
-CRITERIA_COMMIT = "1d2b3e6eca2002bb57310dcc27995730adb894ae"
-CRITERIA_SHA256 = "d763e4c19b85f4f38fe0d917adea0de0bc636c72e09e018cf74d1c46c18c9f0e"
+CRITERIA_COMMIT = "30f70e18ef4f2b9b2e5bfd6394d994c75ed39356"
+CRITERIA_SHA256 = "702d4f0a3de4e28d8e60012d3b4235d0b51d8db988d796822ea7a56518ba3e53"
 
 MAS_PER_RAD = 180.0 / np.pi * 3600e3
 GRAVITY_RANGES = [(2.05e-6, 2.155e-6), (2.175e-6, 2.38e-6)]
@@ -53,6 +53,8 @@ SCALE_PRIOR = (0.1, 10.0)
 # o Leo: the primary's mean UD diameter of Gallenne+2023 (fitted per epoch there), and the secondary's.
 DIAMETER_OVERRIDE = {"omi_leo": (1.285, 0.49)}
 SENSITIVITY_FREE_PRIMARY = ("omi_leo",)
+# The one exclusion by flag that the criteria register (system, date); any other flag is only noted.
+FLAG_EXCLUSIONS = {("eta_oph", "2023-06-16")}
 
 
 def criteria_block():
@@ -90,6 +92,15 @@ def mjd_of(path):
     return float("nan")
 
 
+def exclusion_reason(system, rec):
+    """Why a published epoch is not counted, per "Counted epochs" in the criteria; None if counted."""
+    if rec.get("below_lambda_2B"):
+        return "below lambda/2B"
+    if (system, rec.get("date")) in FLAG_EXCLUSIONS:
+        return rec.get("flag") or "registered exclusion"
+    return None
+
+
 def epochs_of(system, s, root):
     """Published epochs with Phase 3 files, then any unreferenced files grouped into nights (reported only)."""
     sysdir = root / system
@@ -102,13 +113,9 @@ def epochs_of(system, s, root):
         files = [sysdir / "oifits" / (d.replace(":", "_") + ".fits") for d in ids]
         used |= {f.name for f in files}
         pub = A.published_for_system(system, rec, paper)
-        reason = None
-        if rec.get("below_lambda_2B"):
-            reason = "below lambda/2B"
-        elif rec.get("flag"):
-            reason = rec["flag"]
+        reason = exclusion_reason(system, rec)
         out.append(dict(index=i, date=rec["date"], mjd=rec.get("mjd"), files=files, rec=rec, published=pub,
-                        counted=reason is None, reason=reason))
+                        counted=reason is None, reason=reason, note=rec.get("flag") if reason is None else None))
     rest = sorted(p for p in (sysdir / "oifits").glob("*.fits") if p.name not in used)
     nights = {}
     for p in rest:  # one group per night (MJD integer boundary at UT 12h) and instrument
@@ -187,9 +194,13 @@ def build(diam, dra, ddec, flux):
 
 
 def peaks(ll, axes, n, min_sep):
+    """Best separate peaks of ll, whose axis k follows axes[k] (likelihood_grid: grid keys in order, indexing="ij")."""
+    if np.shape(ll) != tuple(len(a) for a in axes):
+        raise ValueError(f"likelihood grid shape {np.shape(ll)} does not follow the axes {[len(a) for a in axes]}")
     m, fb = np.nanmax(ll, axis=2), np.nanargmax(ll, axis=2)
     out = []
-    for k in np.argsort(m, axis=None)[::-1]:
+    m = np.where(np.isnan(m), -np.inf, m)
+    for k in np.argsort(m, axis=None, kind="stable")[::-1]:
         i, j = np.unravel_index(k, m.shape)
         x, y = float(axes[0][i]), float(axes[1][j])
         if all(np.hypot(x - p["dra"], y - p["ddec"]) >= min_sep for p in out):
@@ -232,12 +243,22 @@ def fit_epoch(system, ep, diam, fmax, dry_run):
     gdata = grid_data(data, inst, channels)
     ll = np.asarray(likelihood_grid(BinaryModelCartesian, gdata, {"dra": axes[0], "ddec": axes[1], "flux": axes[2]}))
     info["grid_seconds"] = time.time() - t0
+    # Order and shape are documented (axis k follows the k-th key); checked here, and again in peaks().
+    if ll.shape != tuple(len(a) for a in axes):
+        raise RuntimeError(f"likelihood_grid returned shape {ll.shape}, expected {[len(a) for a in axes]}")
     noise = {"phi_scale": dist.LogUniform(*SCALE_PRIOR)}
     if inst == "PIONIER":
         noise["vis_scale"] = dist.LogUniform(*SCALE_PRIOR)
     _, paths = build(diam, 0.0, 0.0, 0.5)
     priors = {paths[0]: dist.Uniform(-half, half), paths[1]: dist.Uniform(-half, half),
               paths[2]: dist.LogUniform(FLUX_MIN, fmax)}
+
+    # Loss comparisons (best vs at-reference) need priors that add nothing to the loss: fit() documents
+    # that Uniform and LogUniform are flat in the coordinate it optimises, so the loss is the Gaussian
+    # negative log likelihood with no prior offset. Assert that this holds for every prior used.
+    for k, pr in list(priors.items()) + list(noise.items()):
+        if not isinstance(pr, (dist.Uniform, dist.LogUniform)):
+            raise RuntimeError(f"prior on {k} is {type(pr).__name__}: loss would carry a prior offset")
 
     def summarise(res):
         v = {p: f(res.values[p]) for p in paths}
@@ -278,9 +299,14 @@ def fit_epoch(system, ep, diam, fmax, dry_run):
 
     if pub:
         fold = system in A.NEAR_EQUAL
-        d2, sign, delta = A.d2_compare([best["dra"], best["ddec"]], cov[:2, :2], pub["pos"], pub["cov"], fold180=fold)
+        pos = [best["dra"], best["ddec"]]
+        # counted d2 = the larger of the scaled-error and quoted-error values, so a worse fit (larger
+        # fitted scale, larger C_v) is not rewarded with a smaller d2
+        d2s, sign_s, delta_s = A.d2_compare(pos, cov[:2, :2], pub["pos"], pub["cov"], fold180=fold)
+        d2u, sign_u, delta_u = A.d2_compare(pos, cov_raw[:2, :2], pub["pos"], pub["cov"], fold180=fold)
+        d2, sign, delta = (d2s, sign_s, delta_s) if d2s >= d2u else (d2u, sign_u, delta_u)
         out.update(published=pub["pos"], cov_published=np.asarray(pub["cov"]).tolist(), convention=pub["convention"],
-                   fold180=fold, sign=sign, delta=delta, d2=d2, d2_flag=d2 > A.D2_FLAG)
+                   fold180=fold, sign=sign, delta=delta, d2=d2, d2_scaled=d2s, d2_unscaled=d2u, d2_flag=d2 > A.D2_FLAG)
         if pub["cov_alt"] is not None:
             out.update(d2_alt=A.d2_compare([best["dra"], best["ddec"]], cov[:2, :2], pub["pos"], pub["cov_alt"],
                                            fold180=fold)[0], d2_alt_note=pub["alt_note"])
@@ -289,7 +315,7 @@ def fit_epoch(system, ep, diam, fmax, dry_run):
             rx, ry = sign * np.asarray(pub["pos"])
             tmpl, _ = build(diam, float(rx), float(ry), float(np.clip(best["flux"], 1.2 * FLUX_MIN, 0.95 * fmax)))
             rr = fit(tmpl, {paths[2]: priors[paths[2]]}, data, noise=noise)
-            out["at_reference"] = dict(loss=f(rr.info["loss"]), two_dloss=2 * (f(rr.info["loss"]) - best["loss"]),
+            out["at_reference"] = dict(loss=f(rr.info["loss"]), two_dloss=2 * (f(rr.info["loss"]) - best["loss"]),  # no prior offset: asserted above
                                        flux=f(rr.values[paths[2]]),
                                        scales={k: f(rr.values[f"noise.{k}"]) for k in noise})
         except Exception as e:  # a diagnostic: never lose the epoch's fit
@@ -333,7 +359,7 @@ def main():
           flush=True)
     rows = []
     for ep in eps:
-        row = dict(date=ep["date"], mjd=ep["mjd"], counted=ep["counted"], reason=ep["reason"],
+        row = dict(date=ep["date"], mjd=ep["mjd"], counted=ep["counted"], reason=ep["reason"], note=ep.get("note"),
                    published_record=ep["rec"])
         try:
             row.update(fit_epoch(a.system, ep, diam, fmax, a.dry_run))
