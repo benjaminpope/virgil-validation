@@ -204,6 +204,63 @@ def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     assert np.isfinite(out["nuts"]["elements"]["a_mas"]["median"])
 
 
+def _remove_vis2_baseline(path, pair):
+    """Drop every OI_VIS2 row of one baseline, as MIRC-X files lack some (astropy)."""
+    with fits.open(path) as h:
+        hdus = []
+        for hdu in h:
+            if hdu.header.get("EXTNAME") == "OI_VIS2":
+                keep = np.array([set(map(int, s)) != set(pair) for s in hdu.data["STA_INDEX"]])
+                hdu = fits.BinTableHDU(data=hdu.data[keep], header=hdu.header, name="OI_VIS2")
+            hdus.append(hdu)
+        fits.HDUList(hdus).writeto(path, overwrite=True)
+    return path
+
+
+@pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")
+def test_triangles_with_a_baseline_in_no_vis2_row_are_dropped(of, tmp_path):
+    """A T3 row whose leg has no V^2 row (MIRC-X; AL Dor's PIONIER file) is dropped
+    and counted before virgil reads the file; the other triangles are kept."""
+    path = _observe(tmp_path / "t3.fits", _binary(3.0, -4.0, 0.3))
+    with fits.open(path) as h:
+        sta = h["OI_VIS2"].data["STA_INDEX"]
+        pair = tuple(int(x) for x in sta[0])
+        t3 = np.asarray(h["OI_T3"].data["STA_INDEX"], int)
+    uses = np.array([len({*pair} & {*row}) == 2 for row in t3])
+    assert uses.any() and not uses.all()
+    _remove_vis2_baseline(path, pair)
+    with pytest.raises(ValueError, match="needs baseline"):
+        of.read_oifits(str(path))
+    of.LOAD_NOTES.clear()
+    data = of.load([path])
+    assert of.LOAD_NOTES == [dict(file="t3.fits", t3_rows=len(t3), t3_dropped=int(uses.sum()))]
+    n_wave = 3
+    assert np.asarray(data.phi).size == int((~uses).sum()) * n_wave
+
+
+@pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")
+def test_pick_target_reads_the_named_target_and_refuses_another_star(of, tmp_path):
+    """Rows under a TARGET_ID that OI_TARGET does not list (the MIRC-X A-star files):
+    the named target is read. With a pattern, a file of another star is refused."""
+    path = _observe(tmp_path / "ids.fits", _binary(3.0, -4.0, 0.3))
+    with fits.open(path, mode="update") as h:
+        h["OI_TARGET"].data["TARGET"][0] = "37 And"
+        name = "37 And"
+        first = float(np.min(h["OI_VIS2"].data["MJD"]))
+        for ext in ("OI_VIS2", "OI_T3"):  # the first snapshot under an id OI_TARGET does not list
+            h[ext].data["TARGET_ID"][np.abs(h[ext].data["MJD"] - first) < 1e-6] = 7
+    assert of.pick_target(str(path)) == name
+    assert np.asarray(of.load([path]).vis).size > 0
+    with pytest.raises(ValueError, match="no target matches"):
+        of.pick_target(str(path), r"HD.?45166")
+    single = _observe(tmp_path / "one.fits", _binary(3.0, -4.0, 0.3))
+    with fits.open(single, mode="update") as h:
+        h["OI_TARGET"].data["TARGET"][0] = "TYC_732-806-1"
+    assert of.pick_target(str(single), r"TYC.?732") is None
+    with pytest.raises(ValueError, match="no target matches"):
+        of.pick_target(str(single), r"HD.?45166")
+
+
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_every_o1_collection_has_a_recipe(of):
     import json

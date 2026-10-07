@@ -343,6 +343,25 @@ HR 6819 is fitted on the K continuum with the Brγ and He I windows left
 out instead of binary + disk: Klement+2025's disk contributes only in the
 line, so the continuum model is theirs without the disk.
 
+**After the first run (OzSTAR job 18174979, virgil 7498dd0).** Three
+changes, none to `CRITERIA`. (1) MIRC-X files keep closure triangles whose
+baselines have no V² row, which virgil refuses; `oidb_fit.load` drops those
+rows and records how many in `load_notes`, until virgil places such a leg at
+the T3 table's own (u, v). Files with rows under a TARGET_ID that OI_TARGET
+does not list read the named target, and a target pattern that the file's
+only target does not match is now an error. (2) HR 6819's orbit is the MAP
+without NUTS: the task hit 12 h in its orbit stage, and its elements are
+reported, not scored. (3) HD 45166 is now scored on the closure phases of the
+uncalibrated science files. This change was made after seeing a failed fit
+(raw χ²/N 1234, error scales 34–37). It rests on the paper's own statement
+that the calibrator TYC 732-806-1 is a binary, which makes the
+pipeline-calibrated V² and closure phases carry its signal. The old fit stays
+in the JSON and the table as a REPORT variant, beside a fit with the transfer
+function as marginalised gains and a fit of the calibrator itself.
+`output_zpcal.fits` gave a 3.3 mas binary at the calibrator's time, not at
+HD 45166's, so it is now fitted as whichever target it holds and is kept out
+of the table unless that target is HD 45166.
+
 ### Stage O2: the remaining binaries (about 2 h per small collection, 6 h per survey; OC)
 
 Orbit systems first, clean ones scored: GG Tau Ab, TZ For, θ¹ Ori C,

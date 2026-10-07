@@ -354,8 +354,8 @@ def cmp_hd45166(cid, fit, ref):
     rows.append(row(cid, "HD 45166", r["date"], "flux_ratio", *val(e, "flux"), *r["flux_ratio"][:2], "adopted", fit=e,
                     note="f2/f1"))
     for v in fit.get("variants", []):
-        if "values" not in v:
-            continue
+        if "values" not in v or "45166" not in v.get("target", "HD 45166"):
+            continue  # failed variants, and fits of another star (the calibrator) are in the JSON only
         for q, ang in (("rho_mas", False), ("pa_deg", True)):
             rows.append(row(cid, "HD 45166", r["date"], q, *val(v, q), *r[q][:2], "adopted", fit=v, angle=ang,
                             status="REPORT", note=v["variant"]))
