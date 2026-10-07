@@ -290,3 +290,64 @@ def test_whitened_form_is_better_calibrated_on_baseline_noise(tmp_path, which):
     tol = 4 * np.sqrt(2 * 3 / n)  # 4 sigma on the mean of chi2_3
     assert abs(exact - 3) < tol
     assert abs(virgil - 3) < abs(pinv - 3)
+
+
+UTS3 = UTS[[0, 1, 3]]
+MAS = np.pi / 180 / 3600 / 1000
+
+
+def closed_form_chi2(d, f, x, y):
+    """The binary's V² and closure phases from the closed form
+    V = (1 + f exp(-2 pi i (u x + v y) / lambda)) / (1 + f), closure phase
+    the sum of the three baseline phases (fouriever's, unwrapped), against
+    the file's values, independent and plain."""
+    def vis(u, v, w):
+        return (1 + f * np.exp(-2j * np.pi * (u * x + v * y) / w * MAS)) / (1 + f)
+
+    v2 = np.abs(vis(d["u"], d["v"], d["wl"])) ** 2
+    cp = (np.angle(vis(d["u1"], d["v1"], d["wl3"])) + np.angle(vis(d["u2"], d["v2_"], d["wl3"]))
+          - np.angle(vis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"])))
+    return float(np.sum(((v2 - d["v2"]) / d["dv2"]) ** 2) + np.sum(((cp - d["cp"]) / d["dcp"]) ** 2))
+
+
+@pytest.mark.validates("fouriever", roots=["mathematics"], kind="reference")
+def test_fourievers_binary_chi2_is_the_closed_form(tmp_path):
+    """Noise-free three-UT file of a faint binary (closure phases well
+    inside +-180 deg, so P5 does not arise): fouriever's chi-squared without
+    covariance is zero at the truth and equals the closed form elsewhere
+    (rel. 1e-10). A mirrored companion is a control on the sign."""
+    path = tmp_path / "b3.fits"
+    simulate.observe(path, binary_vis(FLUX, DRA, DDEC), UTS3, hour_angles_h=np.linspace(-3, 3, 5),
+                     wavelengths=np.linspace(1.5e-6, 2.4e-6, 4), dec_deg=-50.0, sigma_v2=0.01, sigma_cp_deg=0.5)
+    d = ours.load(path)
+    ps = params(6)
+    got = np.array(fouriever(path, ps, cov=False)["chi2"])
+    want = np.array([closed_form_chi2(d, *p) for p in ps])
+    rel = np.abs(got[1:] / want[1:] - 1)
+    record("chi2_at_truth", got[0])
+    record("max_rel_chi2", np.max(rel))
+    assert got[0] < 1e-12
+    assert np.max(rel) < 1e-10
+    mirrored = [[FLUX, -DRA, -DDEC]]
+    assert fouriever(path, mirrored, cov=False)["chi2"][0] > 10.0
+
+
+@pytest.mark.validates("fouriever", roots=["mathematics"], kind="reference")
+def test_fourievers_nsigma_is_absil_eq_1():
+    """util.nsigma (Absil et al. 2011, eq. 1): the probability that a
+    chi-squared with ndof degrees of freedom exceeds ndof times the ratio
+    of reduced chi-squareds, as a two-sided Gaussian significance, from
+    SciPy's survival functions in log space (mpmath branch, rel. 1e-9,
+    where it is below 7.5 sigma; SciPy branch 1e-7 there)."""
+    cases = [(r, 1.0, n) for n in (30, 200, 1000) for r in (1.02, 1.05, 1.1, 1.2, 1.4)]
+    cases += [(1.3, 1.1, 100), (2.0, 1.6, 50)]
+    from scipy import special, stats
+
+    want = np.array([
+        -special.ndtri(np.exp(stats.chi2.logsf(n * a / b, n) - np.log(2.0))) for a, b, n in cases])
+    fv = sp.run("fouriever", "fouriever_worker.py", {"task": "nsigma", "cases": cases})
+    ok = want < 7.5
+    got_mp, got_sp = np.array(fv["mpmath"]), np.array(fv["scipy"])
+    record("max_abs_dsigma_mpmath", float(np.max(np.abs(got_mp[ok] - want[ok]))))
+    np.testing.assert_allclose(got_mp[ok], want[ok], rtol=1e-9, atol=1e-9)
+    np.testing.assert_allclose(got_sp[ok], want[ok], rtol=1e-7)

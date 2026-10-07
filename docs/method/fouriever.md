@@ -50,6 +50,15 @@ Pinned by `tests/test_fouriever.py`.
 | --- | --- | --- | --- | --- |
 | P5 | 0.4.3 | The closure-phase residual is `data − model`, with the model the sum of the three baseline phases and nothing wrapped. Take a near-equal binary (flux ratio 0.99, inside its fitting range) whose closure phase is 178°. A measurement 3° away is stored as −179°, so the residual is 357° instead of 3°, and the true binary gets a huge χ². Measurements this close to ±180° are common for near-equal binaries with a few degrees of noise. | `test_p5_residual_wraps_across_the_phase_cut` (strict xfail); `test_plain_residual_across_the_phase_cut` pins the unwrapped definition | medium: wrong fits near ±180°; raised as [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 
+## Checks of fouriever itself
+
+`tests/test_fouriever.py`, against closed forms (kind `reference`):
+
+| fouriever | Reference | Agreement |
+| --- | --- | --- |
+| `util.chi2_bin` without covariance, noise-free three-UT file of a faint binary | zero at the truth; elsewhere the closed-form binary V² and unwrapped closure phase | 1e-12 at the truth; 1e-10 relative |
+| `util.nsigma` (Absil et al. 2011, eq. 1) | χ² survival function as a two-sided Gaussian significance, in log space (SciPy) | 1e-9 (mpmath branch), 1e-7 (SciPy branch), below 7.5σ |
+
 ## Reading requirements
 
 fouriever needs both `OI_VIS2` and `OI_T3`. Every triangle's baselines must

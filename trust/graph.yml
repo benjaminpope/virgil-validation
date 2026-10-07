@@ -54,7 +54,7 @@ nodes:
     layer: data
     source: [src/virgil/amigo.py]
     depends: [virgil.oidata.OIData]
-    doc: method/coverage.md
+    doc: data/amigo.md
 
   # -------------------------------------------------------------- models
   virgil.models.PointSource: {layer: models, source: [src/virgil/models.py]}
@@ -280,6 +280,7 @@ nodes:
     layer: inference
     source: [src/virgil/simulate.py]
     depends: [virgil.simulate.simulate, virgil.fitting.fit]
+    doc: inference/helpers.md
   virgil.observables.FluxSpectrum:
     layer: likelihood
     source: [src/virgil/observables.py, src/virgil/_linear.py]
@@ -393,7 +394,7 @@ nodes:
     layer: imaging
     source: [src/virgil/imaging.py]
     depends: [virgil.fitting.fit]
-    doc: method/coverage.md  # not yet checked: listed on the generated Not yet covered page
+    doc: imaging/machinery.md#l-curve
 
   # -------------------------------------------------------------- orbits
   # Grounded on orbitize! (Blunt et al. 2020, 2024) and on mathematics (the
