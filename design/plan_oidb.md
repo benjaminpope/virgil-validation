@@ -382,6 +382,14 @@ Betelgeuse sets as PYRA comparisons). Images are compared with the
 published figures and quoted values only: we do not ask authors for FITS
 images, and we do not run MiRA or SQUEEZE. Each with the four steps above.
 
+### Stage O5: every single-epoch binary dataset (planned; OC)
+
+Planned in `design/plan_oidb_binaries.md`: a census of all public OiDB binaries
+with per-epoch positions across instruments, Track B-style per-epoch criteria
+registered in `design/oidb_binaries_criteria.md`, loader blockers, and a 34-task
+OzSTAR array. It widens the O2 survey item ("decide after the orbits") and
+supersedes its per-epoch checks; orbit fitting stays with the orbit session.
+
 ### Stage O4: reporting (2 h)
 
 Trust-graph edits, made before the first test names them
@@ -441,3 +449,5 @@ O0 → O1 (items 1–7 in order) now, on virgil main. O2 and O3 can run in
 parallel once O1 has passed. Downloads only from trevor via `scripts/oidb_dl`;
 fits only on OzSTAR. About 40–50 agent hours for everything, of which O0–O1
 is about 15.
+
+O5 (`design/plan_oidb_binaries.md`) can start OB0, reading the papers, in parallel with O1; its fits wait for O1 to pass the loader checks.
