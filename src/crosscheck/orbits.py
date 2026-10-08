@@ -103,12 +103,14 @@ def _kepler_E(mean, ecc):
     """Vectorised Newton solution of M = E - e sin E (starting at pi for high e)."""
     mean = np.mod(mean + np.pi, 2 * np.pi) - np.pi
     E = mean + ecc * np.sin(mean)
-    E = np.where(ecc > 0.8, np.pi, E)
+    E = np.where(ecc > 0.8, np.where(mean < 0, -np.pi, np.pi), E)
     for _ in range(100):
         step = (E - ecc * np.sin(E) - mean) / (1 - ecc * np.cos(E))
         E = E - step
         if np.max(np.abs(step)) < 1e-14:
             break
+    else:
+        raise RuntimeError("Kepler's equation did not converge")
     return E
 
 
@@ -161,12 +163,12 @@ def per_epoch_d2(ours, ref, c_ref=None):
     return d2, stats.chi2.sf(d2, 2)
 
 
-def joint_d2(ours, ref, sigma=1.0, c_ref=None):
+def joint_d2(ours, ref, sigma, c_ref=None):
     """Statistic A, joint over epochs, with the eigenvalue-threshold pseudo-inverse.
 
     Returns a dict: d2, rank r, p (chi^2_r), residual (norm of dmu outside the
-    retained subspace, in units of the per-epoch position errors `sigma`; the
-    comparison fails if it exceeds 1).
+    retained subspace, in units of the per-epoch position errors `sigma`, which
+    is required: the comparison fails if it exceeds 1, see residual_ok).
     """
     from scipy import stats
     dmu = (ours.mean(0) - ref.mean(0)).ravel()
@@ -179,7 +181,8 @@ def joint_d2(ours, ref, sigma=1.0, c_ref=None):
     perp = V[:, ~keep] @ c[~keep]
     resid = float(np.linalg.norm(perp / np.broadcast_to(np.asarray(sigma, float), dmu.shape)))
     r = int(keep.sum())
-    return {"d2": d2, "rank": r, "p": float(stats.chi2.sf(d2, r)), "residual": resid}
+    return {"d2": d2, "rank": r, "p": float(stats.chi2.sf(d2, r)), "residual": resid,
+            "residual_ok": resid <= 1.0}
 
 
 def max_track_separation(ours, ref):
@@ -194,13 +197,22 @@ def max_track_separation(ours, ref):
     return float(np.max(np.hypot(*(mo - mr).T)) / np.median(ours["a"]))
 
 
-def projected_elements(samples, t_mean):
+def periastron_anchor(samples, t_mean):
+    """The single periastron nearest `t_mean`, from the median P and t_p."""
+    P, tp = np.median(samples["P"]), np.median(samples["t_p"])
+    return float(tp + P * np.round((t_mean - tp) / P))
+
+
+def projected_elements(samples, t_mean, anchor=None):
     """theta = (P, e, t_p, A, B, F, G) per sample, shape (n, 7).
 
-    t_p is shifted by whole periods to the periastron nearest `t_mean`.
+    t_p is shifted by whole periods to the periastron nearest one anchor shared
+    by the whole comparison (default: `periastron_anchor` of these samples), so
+    a posterior straddling a half-period boundary is not split into two modes.
     """
+    anchor = periastron_anchor(samples, t_mean) if anchor is None else anchor
     P, tp = np.asarray(samples["P"], float), np.asarray(samples["t_p"], float)
-    tp = tp + P * np.round((t_mean - tp) / P)
+    tp = tp + P * np.round((anchor - tp) / P)
     ABFG = thiele_innes(*(np.asarray(samples[k], float) for k in ("a", "inc", "omega", "Omega")))
     return np.column_stack([P, samples["e"], tp, *ABFG])
 
@@ -215,7 +227,8 @@ def statistic_b(ours, ref, t_mean, e_min=0.1, c_ref=None):
     if min(np.median(ours["e"]), np.median(ref["e"])) < e_min:
         return {"applicable": False, "d2": np.nan, "rank": 0, "p": np.nan,
                 "reason": f"median e < {e_min}: t_p undefined, use statistic A"}
-    to, tr = projected_elements(ours, t_mean), projected_elements(ref, t_mean)
+    anchor = periastron_anchor(ours, t_mean)
+    to, tr = projected_elements(ours, t_mean, anchor), projected_elements(ref, t_mean, anchor)
     C = np.cov(to.T) + (np.cov(tr.T) if c_ref is None else c_ref)
     d2, r, _ = _quad(to.mean(0) - tr.mean(0), C)
     return {"applicable": True, "d2": d2, "rank": r, "p": float(stats.chi2.sf(d2, r)), "reason": ""}
@@ -244,7 +257,7 @@ def independent_draws(marginals, n, rng):
     return {k: rng.normal(*marginals[k], size=n) for k in ELEMENTS}
 
 
-def compare_orbits(ours, ref, t_obs, *, ref_kind="samples", t_mean=None, sigma=1.0, rng=None):
+def compare_orbits(ours, ref, t_obs, *, sigma, ref_kind="samples", t_mean=None, rng=None):
     """Run statistics A and B against a reference.
 
     ref_kind="samples": `ref` holds samples (or a sample set carrying the

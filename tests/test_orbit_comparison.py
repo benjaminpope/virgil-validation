@@ -26,7 +26,7 @@ def mirror(s):
 def both(ref, ours=None):
     ours = draw(1) if ours is None else ours
     ot, rt = co.predict_track(ours, T_OBS), co.predict_track(ref, T_OBS)
-    return (co.per_epoch_d2(ot, rt)[0].max(), co.joint_d2(ot, rt)["d2"],
+    return (co.per_epoch_d2(ot, rt)[0].max(), co.joint_d2(ot, rt, 0.05)["d2"],
             co.statistic_b(ours, ref, T_MEAN))
 
 
@@ -45,10 +45,12 @@ def test_thiele_innes_reproduces_sky_position(e):
 
 
 @pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="reference")
-def test_predict_track_matches_position():
-    s = {k: np.array([v]) for k, v in BASE.items()}
-    got = co.predict_track(s, T_OBS)[0]
-    dra, ddec = co.position(T_OBS, BASE["P"], BASE["t_p"], BASE["e"], BASE["inc"],
+@pytest.mark.parametrize("e", [0.45, 0.85, 0.95])
+def test_predict_track_matches_position(e):
+    s = {k: np.array([v]) for k, v in {**BASE, "e": e}.items()}
+    t = BASE["t_p"] + np.linspace(-0.6, 0.6, 41) * BASE["P"]  # spans periastron
+    got = co.predict_track(s, t)[0]
+    dra, ddec = co.position(t, BASE["P"], BASE["t_p"], e, BASE["inc"],
                             BASE["omega"], BASE["Omega"], BASE["a"])
     assert np.allclose(got[:, 0], dra, atol=1e-9) and np.allclose(got[:, 1], ddec, atol=1e-9)
 
@@ -70,12 +72,17 @@ def test_mirror_is_invisible_to_a_and_b_but_not_to_raw_elements():
 def test_same_posterior_passes():
     dA, dJ, b = both(draw(2))
     ot, rt = co.predict_track(draw(1), T_OBS), co.predict_track(draw(2), T_OBS)
-    j = co.joint_d2(ot, rt)
+    j = co.joint_d2(ot, rt, 0.05)
     assert stats.chi2.sf(dA, 2) > 1e-3 and j["p"] > 0.01 and b["p"] > 0.01
 
 
-def _large(ref):
+def _large(ref, separated=False):
     dA, dJ, b = both(ref)
+    ot, rt = co.predict_track(draw(1), T_OBS), co.predict_track(ref, T_OBS)
+    j = co.joint_d2(ot, rt, 0.05)
+    assert j["p"] < 1e-2
+    if separated:
+        assert co.max_track_separation(draw(1), ref) > 0.3
     record("control_d2_B", b["d2"])
     record("control_max_epoch_d2_A", dA)
     assert stats.chi2.sf(dA, 2) < 1e-3 / len(T_OBS)
@@ -85,20 +92,20 @@ def _large(ref):
 @pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="control")
 def test_control_omega_plus_180_alone():
     ref = draw(2)
-    _large({**ref, "omega": ref["omega"] + 180.0})
+    _large({**ref, "omega": ref["omega"] + 180.0}, separated=True)
 
 
 @pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="control")
 def test_control_reversed_sense_of_motion():
     ref = draw(2)
-    _large({**ref, "inc": 180.0 - ref["inc"]})
+    _large({**ref, "inc": 180.0 - ref["inc"]}, separated=True)
 
 
 @pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="control")
 @pytest.mark.parametrize("key", ["t_p", "P"])
 def test_control_shift_in_tp_or_period(key):
-    # 3 sigma of the combined spread sqrt(2) sigma is d^2 ~ 9; chi^2_7 only calls
-    # that p ~ 0.25, so the control uses 8 sigma of one posterior (d^2 ~ 32).
+    # 3 sigma of one posterior against C_ours + C_ref = 2 sigma^2 is d^2 ~ 4.5, which
+    # chi^2_7 does not reject (p ~ 0.72), so the control uses 8 sigma (d^2 ~ 32).
     _large(draw(2, **{key: 8 * SIGMA[key]}))
     # at 3 sigma the d^2 still rises above the null by about the shift squared
     assert both(draw(2, **{key: 3 * SIGMA[key]}))[2]["d2"] > both(draw(2))[2]["d2"] + 2
@@ -124,10 +131,32 @@ def test_eccentricity_to_zero_is_not_applicable_for_b():
 @pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="reference")
 def test_marginals_only_reference_is_never_scored():
     marg = {k: (BASE[k], SIGMA[k]) for k in BASE}
-    out = co.compare_orbits(draw(1), marg, T_OBS, ref_kind="marginals", rng=np.random.default_rng(3))
+    out = co.compare_orbits(draw(1), marg, T_OBS, ref_kind="marginals", sigma=0.05, rng=np.random.default_rng(3))
     assert out["scored"] is False
     assert out["ours_alone"]["scored"] is False and out["independent_draws"]["scored"] is False
     # independent draws inflate C_ref in position space only; both variants are reported
     assert out["independent_draws"]["joint"]["rank"] >= 1
-    full = co.compare_orbits(draw(1), draw(2), T_OBS)
+    full = co.compare_orbits(draw(1), draw(2), T_OBS, sigma=0.05)
     assert full["scored"] is True and full["max_separation"] < 0.05
+
+
+@pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="reference")
+def test_tp_anchor_is_shared_when_mean_epoch_is_at_apastron():
+    """With t_mean half a period after periastron the per-sample wrap would split t_p."""
+    t_mean = BASE["t_p"] + BASE["P"] / 2
+    ours = draw(1)
+    th = co.projected_elements(ours, t_mean, co.periastron_anchor(ours, t_mean))
+    assert th[:, 2].std() < 5 * SIGMA["t_p"]  # one mode, not two P apart
+    assert co.statistic_b(ours, draw(2), t_mean)["p"] > 0.01
+    b = co.statistic_b(draw(1), draw(2, t_p=8 * SIGMA["t_p"]), t_mean)
+    assert b["p"] < 1e-3
+
+
+@pytest.mark.validates("crosscheck.orbits", roots=["mathematics"], kind="control")
+def test_control_residual_fires_for_offset_in_dropped_direction():
+    rng = np.random.default_rng(0)
+    n, N = 500, 4
+    ours = np.zeros((n, N, 2)) + rng.standard_normal((n, 1, 1)) * np.array([1.0, 0.0])  # no spread in y
+    ref = ours.copy() + np.array([0.0, 0.5])  # offset in the dropped direction
+    j = co.joint_d2(ours, ref, 0.05)
+    assert j["residual"] > 1 and j["residual_ok"] is False
