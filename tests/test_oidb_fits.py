@@ -204,6 +204,69 @@ def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     assert np.isfinite(out["nuts"]["elements"]["a_mas"]["median"])
 
 
+def _remove_vis2_baseline(path, pair):
+    """Drop every OI_VIS2 row of one baseline, as MIRC-X files lack some (astropy)."""
+    with fits.open(path) as h:
+        hdus = []
+        for hdu in h:
+            if hdu.header.get("EXTNAME") == "OI_VIS2":
+                keep = np.array([set(map(int, s)) != set(pair) for s in hdu.data["STA_INDEX"]])
+                hdu = fits.BinTableHDU(data=hdu.data[keep], header=hdu.header, name="OI_VIS2")
+            hdus.append(hdu)
+        fits.HDUList(hdus).writeto(path, overwrite=True)
+    return path
+
+
+@pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")
+def test_triangles_with_a_baseline_in_no_vis2_row_are_dropped(of, tmp_path):
+    """A T3 row whose leg has no V^2 row (MIRC-X; AL Dor's PIONIER file) is dropped
+    and counted before virgil reads the file; the other triangles are kept."""
+    path = _observe(tmp_path / "t3.fits", _binary(3.0, -4.0, 0.3))
+    with fits.open(path) as h:
+        sta = h["OI_VIS2"].data["STA_INDEX"]
+        pair = tuple(int(x) for x in sta[0])
+        t3 = np.asarray(h["OI_T3"].data["STA_INDEX"], int)
+    uses = np.array([len({*pair} & {*row}) == 2 for row in t3])
+    assert uses.any() and not uses.all()
+    _remove_vis2_baseline(path, pair)
+    with pytest.raises(ValueError, match="needs baseline"):
+        of.read_oifits(str(path))
+    of.LOAD_NOTES.clear()
+    data = of.load([path])
+    assert of.LOAD_NOTES == [dict(file="t3.fits", t3_rows=len(t3), t3_dropped=int(uses.sum()))]
+    n_wave = 3
+    assert np.asarray(data.phi).size == int((~uses).sum()) * n_wave
+
+
+@pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")
+def test_pick_target_reads_the_named_target_and_refuses_another_star(of, tmp_path):
+    """Rows under a TARGET_ID that OI_TARGET does not list (the MIRC-X A-star files):
+    the named target is read. With a pattern, a file of another star is refused."""
+    path = _observe(tmp_path / "ids.fits", _binary(3.0, -4.0, 0.3))
+    with fits.open(path, mode="update") as h:
+        h["OI_TARGET"].data["TARGET"][0] = "37 And"
+        name = "37 And"
+        first = float(np.min(h["OI_VIS2"].data["MJD"]))
+        n_wave = 3
+        left = {e: int(np.sum(np.abs(h[e].data["MJD"] - first) >= 1e-6)) for e in ("OI_VIS2", "OI_T3")}
+        for ext in ("OI_VIS2", "OI_T3"):  # the first snapshot under an id OI_TARGET does not list
+            h[ext].data["TARGET_ID"][np.abs(h[ext].data["MJD"] - first) < 1e-6] = 7
+    assert of.pick_target(str(path)) == name
+    of.LOAD_NOTES.clear()
+    assert np.asarray(of.load([path]).vis).size == left["OI_VIS2"] * n_wave  # the id-7 snapshot is left out
+    note = of.LOAD_NOTES[-1]
+    assert note["target_read"] == name and note["rows_read"] == sum(left.values())
+    assert note["rows_total"] > note["rows_read"]
+    with pytest.raises(ValueError, match="no target matches"):
+        of.pick_target(str(path), r"HD.?45166")
+    single = _observe(tmp_path / "one.fits", _binary(3.0, -4.0, 0.3))
+    with fits.open(single, mode="update") as h:
+        h["OI_TARGET"].data["TARGET"][0] = "TYC_732-806-1"
+    assert of.pick_target(str(single), r"TYC.?732") is None
+    with pytest.raises(ValueError, match="no target matches"):
+        of.pick_target(str(single), r"HD.?45166")
+
+
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_every_o1_collection_has_a_recipe(of):
     import json
@@ -268,12 +331,12 @@ def _fake_fits(oc, tmp_path, shift=0.0):
         orbit=_orbit(dict(period_day=io["P_day"][0], t_peri_mjd=io["T_peri_unstated_system"][0], ecc=io["e"][0],
                           inc_deg=io["i_deg"][0], omega_deg=io["omega_deg"][0], Omega_deg=io["Omega_deg"][0],
                           a_mas=io["a_mas"][0], flux_ratio=0.2)))
-    w = _ref("647a22a9-5047-4220-ba22-a95047022072")["targets"]
+    w = _ref("private-workshop")["targets"]
     wi = w["iot Peg"]["epoch_2018-10-22"]
     so = next(e for e in w["sig Ori"]["epochs"] if e["date"] == "2011-09-29")
     sig = _epoch("2011-09-29", so["hjd_minus_2400000"] - 0.5, so["rho_mas"][0], so["pa_deg"][0])
     sig["fractions"] = {k: v[0] for k, v in so["fractions"].items()}
-    fits["647a22a9-5047-4220-ba22-a95047022072"] = dict(targets={
+    fits["private-workshop"] = dict(targets={
         "iot Peg": dict(epochs=[_epoch("2018-10-22", None, wi["rho_mas"][0], wi["pa_deg"][0], flux=1 / wi["flux_ratio"][0])]),
         "sig Ori": dict(epochs=[sig], variants=[])})
     a = _ref("bda75673-61c6-49f0-a756-7361c699f0c4")
@@ -302,7 +365,7 @@ def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_pat
     periods), HR 6819 is never scored, and the L2 rows stay out unless asked for."""
     rows, missing = oc.compare(str(_fake_fits(oc, tmp_path)))
     assert not missing
-    assert not any(r["collection"].startswith("647a22a9") for r in rows)
+    assert not any(r["collection"].startswith("private-") for r in rows)
     scored = [r for r in rows if r["status"] in ("PASS", "FAIL")]
     assert len(scored) > 30 and all(r["status"] == "PASS" for r in scored), [r for r in scored if r["status"] == "FAIL"]
     assert all(r["status"] == "NOT-CLEAN" for r in rows if r["target"] == "HR 6819")
@@ -310,7 +373,7 @@ def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_pat
     exact = [r for r in orbit if "vs Octofitter" not in r["note"]]  # the fakes reproduce PMOIRED's Gl 229 orbit
     assert len(exact) == 7 * 3 and all(abs(r["dev_sigma"]) < 1e-6 for r in exact), exact
     l2, _ = oc.compare(str(tmp_path), include_l2=True)
-    work = [r for r in l2 if r["collection"].startswith("647a22a9")]
+    work = [r for r in l2 if r["collection"].startswith("private-")]
     assert work and not any(r["status"] in ("PASS", "FAIL") for r in work)
     assert "WITHHELD" in {r["status"] for r in work}
     text = oc.markdown(rows)

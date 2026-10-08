@@ -170,7 +170,7 @@ read from the paper's tables in Stage O0, not from memory or abstracts.
 | Collection id | Target, instrument | Files | Reference | Published result to match | virgil model | Cross-check | Compute |
 |---|---|---|---|---|---|---|---|
 | 782185b2-0727-42b0-a185-b2072732b047 | Gl 229 Ba–Bb, GRAVITY (dual-field, SC on B) | 22 | Xuan+2024 Nature 634, 1070 | orbit P = 12.134 d, e ≈ 0.23, flux ratio 0.47±0.03; CPs only, 2.05–2.18 µm | per night: a linearly moving binary (the `LinearBinary` SourceModel in `fit_nights.py`, see O1), then `KeplerOrbit` + `Attached` on visibilities | Xuan's per-night positions (`literature`); `crosscheck.orbits`; PMOIRED was the authors' tool, so `literature` unless re-run through the bridge (`pmoired`); our esorex reduction (`self-consistency` only) | OC |
-| 647a22a9-5047-4220-ba22-a95047022072 | CHARA Imaging Workshop 2023: ι Peg (MIRC-X, 7 files, 2018-10-22) and σ Ori (MIRC, 1 file, 2011-09-29) | 8 | Workshop; ι Peg orbit (Anugu+2020, arXiv:2007.12320); σ Ori Aa–Ab (Schaefer+2016 AJ 152, 213) | position predicted by each orbit at the epoch; flux ratio (O0) | `BinaryModelAngular` (+ `UniformDisk` primary); also imaging, below | `crosscheck.orbits`; CANDID via the bridge; in-sample unless O0 shows otherwise | OC |
+| a private L2 collection | CHARA Imaging Workshop 2023: ι Peg (MIRC-X, 7 files, 2018-10-22) and σ Ori (MIRC, 1 file, 2011-09-29) | 8 | Workshop; ι Peg orbit (Anugu+2020, arXiv:2007.12320); σ Ori Aa–Ab (Schaefer+2016 AJ 152, 213) | position predicted by each orbit at the epoch; flux ratio (O0) | `BinaryModelAngular` (+ `UniformDisk` primary); also imaging, below | `crosscheck.orbits`; CANDID via the bridge; in-sample unless O0 shows otherwise | OC |
 | fac164e1-d9d0-4500-8164-e1d9d0450099 | ι Peg, MIRC-X GRISM-190 | 24 | Anugu+2020 (MIRC-X instrument paper) | 5-epoch positions and SB2 orbit, P ≈ 10.2 d (O0) | per epoch, then `KeplerOrbit` | CANDID; workshop files of 2018-10-22 | OC |
 | bda75673-61c6-49f0-a756-7361c699f0c4 | A-star companions, MIRC-X | 28 | De Furio+2022 ApJ 941, 118 | detections (ρ, PA, contrast) and limits | `linear_flux_grid`, `fit`, `absil_limits` | published CANDID numbers (`literature`) and CANDID re-run through the bridge (`candid`) | OC |
 | f4afc4cd-fd31-40d3-afc4-cdfd3150d340 | HD 45166, GRAVITY, one night | 7 | Deshmukh+2025 A&A 695, L20 | ρ, PA, flux ratio (O0) | `BinaryModelAngular` | CANDID; PMOIRED | OC |
@@ -230,7 +230,7 @@ to `plan_imaging_contests.md`.
 
 | Collection id | Target, instrument | Files | Reference | Published result | Features to recover | Compute |
 |---|---|---|---|---|---|---|
-| 647a22a9-5047-4220-ba22-a95047022072 | CHARA Workshop 2023 (ι Peg, σ Ori) | 8 | workshop; orbits above | two point sources with known ρ, PA, flux ratio | peak positions within 0.1 beam of the orbit; flux ratio within 10% | OG |
+| a private L2 collection | CHARA Workshop 2023 (ι Peg, σ Ori) | 8 | workshop; orbits above | two point sources with known ρ, PA, flux ratio | peak positions within 0.1 beam of the orbit; flux ratio within 10% | OG |
 | 19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245 | π¹ Gru, PIONIER H | 1 | Paladini+2018 Nature 553, 310 | H-band image with a few large granulation cells; diameter | diameter within 2σ; number and size of cells in the residual image (after the best-fit disk) match the paper, with the bounded, calibrated spread | OG |
 | 7e5740b8-745c-40bd-9740-b8745cd0bd52 | R Car (Mira), GRAVITY | 15 | Rosales-Guzmán+2024 A&A | K-band images (continuum and CO) | diameter; brightness asymmetry; chromatic change | OG |
 | 6cfa202a-e35c-458c-837e-c512e73c3e45 | R Dor (AGB), AMBER HR | 75 | Ohnaka, Weigelt & Hofmann 2019 ApJ 883, 89 | MiRA images in continuum and CO lines | continuum diameter; line-vs-continuum size; asymmetry | OG |
@@ -342,6 +342,25 @@ motion within a night, and static per-night fits serve only as starts.
 HR 6819 is fitted on the K continuum with the Brγ and He I windows left
 out instead of binary + disk: Klement+2025's disk contributes only in the
 line, so the continuum model is theirs without the disk.
+
+**After the first run (OzSTAR job 18174979, virgil 7498dd0).** Three
+changes, none to `CRITERIA`. (1) MIRC-X files keep closure triangles whose
+baselines have no V² row, which virgil refuses; `oidb_fit.load` drops those
+rows and records how many in `load_notes`, until virgil places such a leg at
+the T3 table's own (u, v). Files with rows under a TARGET_ID that OI_TARGET
+does not list read the named target, and a target pattern that the file's
+only target does not match is now an error. (2) HR 6819's orbit is the MAP
+without NUTS: the task hit 12 h in its orbit stage, and its elements are
+reported, not scored. (3) HD 45166 is now scored on the closure phases of the
+uncalibrated science files. This change was made after seeing a failed fit
+(raw χ²/N 1234, error scales 34–37). It rests on the paper's own statement
+that the calibrator TYC 732-806-1 is a binary, which makes the
+pipeline-calibrated V² and closure phases carry its signal. The old fit stays
+in the JSON and the table as a REPORT variant, beside a fit with the transfer
+function as marginalised gains and a fit of the calibrator itself.
+`output_zpcal.fits` gave a 3.3 mas binary at the calibrator's time, not at
+HD 45166's, so it is now fitted as whichever target it holds and is kept out
+of the table unless that target is HD 45166.
 
 ### Stage O2: the remaining binaries (about 2 h per small collection, 6 h per survey; OC)
 
