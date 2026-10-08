@@ -190,6 +190,9 @@ N_STARTS, N_STARTS_SMOKE = 16, 4  # multistart fits of the parametric models
 # (0-180) starts or ends near a bound; the models are symmetric under
 # PA + 180, so results are wrapped into [0, 180).
 PA_PRIOR = (-90.0, 270.0)
+# The disk and ellipse arms model a resolved star, so their diameters'
+# log-uniform priors start at this fraction of the beam's minor axis (C2g).
+RESOLVED_FLOOR = 0.5
 
 
 def v2_table(data):
@@ -282,8 +285,9 @@ def fit_primary(data, resolution, star_model, start, n_starts=N_STARTS, seed=0):
     """The primary alone, as a parametric model, its priors (paths relative
     to the primary) and a fit record. "ellipse": an elliptical limb-darkened
     disk (linear law, u = 0.5 held fixed: a starting model, the image takes
-    the rest), diameter log-uniform from 0.05 beam to half the starting
-    field, axis ratio uniform, PA uniform over PA_PRIOR. Seeded by the
+    the rest), diameter log-uniform from RESOLVED_FLOOR x the beam's minor
+    axis (a resolved star: an unresolved one is the point arm's) to half the
+    starting field, axis ratio uniform, PA uniform over PA_PRIOR. Seeded by the
     data's second moments (crosscheck.starts), then a diameter scan from 0.5x
     to 2x that picks the visibility null's branch, then ``n_starts`` fits
     jittered about it (C2g). "point_companion": a point."""
@@ -293,7 +297,7 @@ def fit_primary(data, resolution, star_model, start, n_starts=N_STARTS, seed=0):
     if not hasattr(vm, "EllipticalLimbDarkenedDisk"):
         raise RuntimeError("star_model='ellipse' needs virgil with EllipticalLimbDarkenedDisk (virgil#250)")
     field = float(start.env.pixel_scale_mas * np.shape(start.env.log_brightness)[0])
-    priors = {"diam": dist.LogUniform(0.05 * resolution.minor_mas, 0.5 * field),
+    priors = {"diam": dist.LogUniform(RESOLVED_FLOOR * resolution.minor_mas, 0.5 * field),
               "ratio": dist.Uniform(0.2, 1.0), "pa": dist.Uniform(*PA_PRIOR)}
     m = moments_of(data)
     diam0 = float(linear_starts.disk_diameter_from_sigma(m["sigma_major"], 0.5))
@@ -426,6 +430,177 @@ def flux_value(flux):
     return float(np.ravel(getattr(flux, "ratio", flux))[0])
 
 
+# The images saved for scoring are rendered from the fitted model on the
+# reference grid, not resampled from the fit grid (C2g, smoke job 18207630:
+# SourceModel.render resamples an Image bilinearly, which smooths it, and
+# the saved images' own χ²/N was 3-11 against the fits' 1.2).
+def _shift(fu, fv, dra, ddec):
+    """The Fourier shift factor of an offset (dra, ddec) mas at spatial
+    frequencies fu, fv (cycles per mas, East and North)."""
+    return np.exp(-2j * np.pi * (fu * float(np.ravel(dra)[0]) + fv * float(np.ravel(ddec)[0])))
+
+
+def _taper(f, q_pass, q_stop):
+    """1 up to ``q_pass``, a raised cosine down to 0 at ``q_stop``, then 0,
+    in |f| (cycles per mas); a sharp cut at ``q_pass`` when there is no room
+    for the roll-off."""
+    f = np.abs(f)
+    if not q_stop > q_pass:
+        return (f <= q_pass).astype(float)
+    x = np.clip((f - q_pass) / (q_stop - q_pass), 0.0, 1.0)
+    return 0.5 * (1.0 + np.cos(np.pi * x))
+
+
+def _image_visibility(image, fu, fv, q_max, chunk=16384):
+    """An Image's centred visibilities at fu, fv (cycles per mas): the
+    transform of its pixels, each a point at its centre (as virgil's
+    ``Image.model``), kept as they are up to ``q_max`` (the data's largest
+    spatial frequency) and rolled off to zero at its own grid's Nyquist
+    frequency (``_taper`` along each axis of the grid's rotated frame),
+    beyond which a pixel grid's transform only repeats itself. Rendered on
+    a finer grid, that is a smooth band-limited interpolation of the pixels:
+    flux-conserving, with the pixels' visibilities wherever the data reach,
+    and without the ringing of a sharp cut."""
+    b = np.asarray(image.brightness, float)
+    nrow, ncol = b.shape
+    pixel = float(image.pixel_scale_mas)
+    shape = np.shape(fu)
+    fr, gr = (np.ravel(np.asarray(x, float)) for x in vm.rotate(fu, fv, -image.rotation_deg))
+    x = (0.5 * (ncol - 1) - np.arange(ncol)) * pixel  # column j's offset East, as Image._centred_image
+    y = (0.5 * (nrow - 1) - np.arange(nrow)) * pixel  # row i's offset North
+    nyquist = 0.5 / pixel
+    weight = _taper(fr, q_max, nyquist) * _taper(gr, q_max, nyquist)
+    vis = np.zeros(fr.shape, complex)
+    for start in range(0, fr.size, chunk):
+        sl = slice(start, start + chunk)
+        keep = np.flatnonzero(weight[sl] > 0) + start
+        rows = np.exp(-2j * np.pi * np.outer(gr[keep], y)) @ b
+        vis[keep] = np.sum(rows * np.exp(-2j * np.pi * np.outer(fr[keep], x)), axis=1)
+    return (vis * weight).reshape(shape)
+
+
+def scene_visibility(model, fu, fv, q_max):
+    """Unit-sum visibilities of ``model`` at spatial frequencies ``fu``,
+    ``fv`` (cycles per mas, East and North), as it is drawn: a System's
+    Resolved parts are left out and the rest weighted by their reference
+    fluxes (as ``SourceModel.render`` does); analytic components are their
+    own visibilities; an Image's are rolled off beyond ``q_max``
+    (``_image_visibility``)."""
+    fu, fv = np.asarray(fu, float), np.asarray(fv, float)
+    if isinstance(model, vm.System):
+        parts = [c for c in model.parts if not isinstance(c, vm.Resolved)]
+        weights = [flux_value(getattr(c, "flux", 1.0)) for c in parts]
+        vis = sum(w * scene_visibility(c, fu, fv, q_max) for w, c in zip(weights, parts)) / sum(weights)
+    elif isinstance(model, vm.Image):
+        vis = _image_visibility(model, fu, fv, q_max)
+    else:  # an analytic component: its model() includes its offset
+        mas = linear_starts.MAS
+        return np.asarray(model.model(fu / mas, fv / mas, 1.0), complex)
+    return vis * _shift(fu, fv, model.dra, model.ddec)
+
+
+def data_q_max(data):
+    """The data's largest spatial frequency (cycles per mas), over V² and
+    closure triangles alike (each triangle's third baseline too)."""
+    best = 0.0
+    for d in data if isinstance(data, list) else [data]:
+        u, v = np.ravel(np.asarray(d.u, float)), np.ravel(np.asarray(d.v, float))
+        wavel = np.ravel(np.asarray(d.wavel, float))
+        wavel = wavel if wavel.size == u.size else np.min(wavel)
+        best = max(best, float(np.max(np.hypot(u, v) / wavel)) * linear_starts.MAS)
+    return best
+
+
+def render_scene(model, npix, fov_mas, q_max):
+    """``model`` drawn on an ``npix`` x ``npix`` grid spanning ``fov_mas``,
+    in ``SourceModel.render``'s orientation (East left, North up) and unit
+    sum, by Fourier synthesis: the inverse DFT of ``scene_visibility`` on
+    the grid's own frequency lattice, rolled off (``_taper``) from
+    ``q_max``, the data's largest spatial frequency (``data_q_max``), to
+    the grid's Nyquist frequency. So the image's DFT reproduces the model's
+    visibilities wherever the data reach (exactly at the lattice points;
+    between them, to the leakage of what lies outside the field), with no
+    resampling of the fit's pixels and no blurring of point sources, while
+    what the data cannot see is smoothed rather than left to ring. A few
+    pixels can still be slightly negative."""
+    pixel = float(fov_mas) / int(npix)
+    freq = (np.arange(npix) - (npix - 1) / 2) / (npix * pixel)
+    fu, fv = np.meshgrid(freq, freq)  # [row l, column k] = (freq[k] East, freq[l] North)
+    nyquist = 0.5 / pixel
+    vis = scene_visibility(model, fu, fv, q_max) * _taper(fu, q_max, nyquist) * _taper(fv, q_max, nyquist)
+    offsets = ((npix - 1) / 2 - np.arange(npix)) * pixel  # column j's dra, row i's ddec
+    e = np.exp(2j * np.pi * np.outer(offsets, freq))
+    image = np.real(e @ vis @ e.T)
+    return image / np.sum(image)
+
+
+def star_record(model):
+    """The fitted star, for the npz (NaN where the model has no such
+    parameter): ``star_frac``, the star's share of the total flux (with a
+    companion, of the pair's); the primary's ``star_diam``, ``star_ratio``
+    and ``star_pa``; and a companion's ``comp_dra``, ``comp_ddec`` and
+    ``comp_flux`` (relative to the primary)."""
+    nan = float("nan")
+    out = dict(star_frac=nan, star_diam=nan, star_ratio=nan, star_pa=nan, comp_dra=nan, comp_ddec=nan, comp_flux=nan)
+    if not (isinstance(model, vm.System) and "star" in model.names):
+        return out
+    total = sum(flux_value(getattr(c, "flux", 1.0)) for c in model.parts)
+    star = model.star
+    out["star_frac"] = flux_value(getattr(star, "flux", 1.0)) / total
+    primary = star.star if isinstance(star, vm.System) else star
+    for key in ("diam", "ratio", "pa"):
+        if hasattr(primary, key):
+            out[f"star_{key}"] = float(np.ravel(getattr(primary, key))[0])
+    if isinstance(star, vm.System) and "comp" in star.names:
+        weights = {k: flux_value(getattr(c, "flux", 1.0)) for k, c in star.components.items()}
+        out |= {"comp_dra": float(np.ravel(star.comp.dra)[0]), "comp_ddec": float(np.ravel(star.comp.ddec)[0]),
+                "comp_flux": weights["comp"] / weights["star"]}
+    return out
+
+
+# Star or no star (C2g): the star arm's GP fit against the same fit with no
+# star, by Laplace evidence over every fitted parameter. A star is kept only
+# when it raises the evidence by ln 100 (Jeffreys' "decisive", odds 100:1).
+STAR_LOG_BAYES = float(np.log(100.0))
+
+
+def log_evidence_full(result, data, priors, path="env"):
+    """``log_evidence`` (the image's latents integrated out, every other
+    parameter at its MAP), plus the Laplace integral over those other
+    parameters (``priors``: the star, the fluxes, a halo), so that a model
+    with more of them pays its Occam factor. Each is integrated in the
+    coordinate in which its Jeffreys prior is flat (log for a log-uniform
+    scale, linear for a uniform location or angle), with the curvature
+    ``Jᵀ(I + J_z J_zᵀ)⁻¹J`` of the likelihood marginalised over the latents
+    (J_z: the Jacobian with respect to the latents) plus the prior's
+    variance (R²/12 for a range R), so that a parameter the data do not
+    constrain costs ½ ln(π/6) ≈ −0.3 rather than a divergent log
+    determinant. Returns (log Z, the Occam term)."""
+    from virgil.imaging import _residual_jacobian  # private in virgil 0.3.0: the Jacobian log_evidence uses
+
+    log_z = float(log_evidence(result, data, path))
+    if not priors:
+        return log_z, 0.0
+    model = result.model
+    _, jac_z = _residual_jacobian(model, data, f"{path}.log_brightness.latent")
+    u, sv, _ = np.linalg.svd(jac_z, full_matrices=False)
+    columns, ranges = [], []
+    for name, prior in priors.items():
+        _, jac = _residual_jacobian(model, data, name)
+        lo, hi, log = _interior(prior, 0.0)
+        if log:  # d/d ln θ = θ d/dθ
+            jac = jac * float(np.ravel(model.get(name))[0])
+        columns.append(jac.reshape(jac.shape[0], -1))
+        ranges.append(hi - lo)
+    jac = np.concatenate(columns, axis=1)
+    projected = u.T @ jac
+    curvature = jac.T @ jac - projected.T @ ((sv**2 / (1.0 + sv**2))[:, None] * projected)
+    curvature += np.diag(12.0 / np.square(ranges))
+    _, logdet = np.linalg.slogdet(curvature)
+    occam = float(-np.sum(np.log(ranges)) + 0.5 * len(ranges) * np.log(2 * np.pi) - 0.5 * logdet)
+    return log_z + occam, occam
+
+
 def select_channels(path, wavel, tmp_dir):
     """A copy of an OIFITS file with every channel outside ``wavel`` (µm)
     flagged, since OIData reads FLAG but cannot select channels itself."""
@@ -494,18 +669,27 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         nostar = fit_ellipse(dict(fov=field0, star=False, data=data, resolution=resolution, start=start,
                                   img0=start.env), n_starts=n_starts)
 
+    def no_star_setup():
+        """This setup with no star (the guards' and the evidence test's
+        alternative), under this label."""
+        s_ = setup(task, data_dir, star=False, star_model="none", guard=False, **args)
+        s_.update(label=label, ellipse=nostar if nostar is not None else s_.get("ellipse"))
+        return s_
+
     def without_star(reason, detail=""):
         print(f"{label}: star rejected ({reason}{': ' + detail if detail else ''}); imaged without it", flush=True)
-        s_ = setup(task, data_dir, star=False, star_model="none", guard=False, **args)
-        s_.update(label=label, star_rejected=reason, ellipse=nostar if nostar is not None else s_.get("ellipse"))
+        s_ = no_star_setup()
+        s_.update(star_rejected=reason)
         return s_
 
     if star and star_model == "disk":
-        # Diameter: a scale parameter, so log-uniform, from a twentieth of the
-        # beam (unresolved) to the beam's major axis (beyond that, flux belongs
+        # Diameter: a scale parameter, so log-uniform, from half the beam's
+        # minor axis (this arm is the resolved star: an unresolved one is the
+        # point_star arm's, and below that floor the GP took the star down to
+        # 0.075 mas, C2g) to the beam's major axis (beyond that, flux belongs
         # in the image). Started from a fit of the disk alone, from the
         # second-moment diameter (C2g) and from half a beam.
-        diam_prior = dist.LogUniform(0.05 * resolution.minor_mas, resolution.major_mas)
+        diam_prior = dist.LogUniform(RESOLVED_FLOOR * resolution.minor_mas, resolution.major_mas)
         diam0 = float(linear_starts.disk_diameter_from_sigma(moments_of(data)["sigma_major"], 0.0))
         starts = [{"diam": inside(diam_prior, d)} for d in (diam0, 0.5 * resolution.minor_mas) if np.isfinite(d) and d > 0]
         alone, star_fit = multistart_fit(lambda p: vm.UniformDisk(p["diam"]), {"diam": diam_prior}, data, starts)
@@ -666,7 +850,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
                 path=path, priors=priors, others=others, q=q, adaptive=field is None,
                 field_source=spec.get("field_source", "data" + (f" x{grow:g}" if grow > 1 else "")),
                 clean_info=clean_info, star_rejected="", star_fit=star_fit, ellipse=ellipse,
-                clean_companion=clean_comp, n_starts=n_starts)
+                clean_companion=clean_comp, n_starts=n_starts, no_star_setup=no_star_setup if star else None)
 
 
 def residual_diagnostics(model, data):
@@ -763,7 +947,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     reference = {}
     if settings is not None:
         chosen_model = curve.results[index["discrepancy"]].model
-        reference = dict(ref_image=np.asarray(chosen_model.render(REF_NPIX, s["ref_fov"])), ref_fov=s["ref_fov"],
+        reference = dict(ref_image=render_scene(chosen_model, REF_NPIX, s["ref_fov"], data_q_max(data)), ref_fov=s["ref_fov"],
                          best_chi2_red=float(np.sum(np.asarray(curve.chi2_red)[index["discrepancy"]])), error_scale=np.nan,
                          star=bool(star), star_rejected=s["star_rejected"], best_log_z=np.nan, flip_dchi2=np.nan)
     np.savez_compressed(
@@ -980,26 +1164,13 @@ def grow_grid(evaluate, lengths, sigmas, length_limits, sigma_limits, growths):
     return ls, ss, values
 
 
-def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
-           settings=None, label=None):
-    """GP fits chosen by evidence. With ``member`` (or ``settings``, a fixed
-    configuration as used by scripts/contest_bench.py) a CLEAN-started
-    ensemble member; otherwise a grown-field run. ``label`` names the
-    outputs."""
-    t0 = time.time()
-    if member is None and settings is None:
-        s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
-        label = label or s["label"] + "_gp"
-    else:
-        s, settings = member_setup(task, data_dir, member, smoke, settings)
-        growth, init = [], "clean"
-        label = label or f"{spec_of(task)['label']}_m{member}"
-    # A member's halo comes from its settings (setup's flag), not this
-    # function's argument.
-    halo = s["halo"]
-    data, star, res = s["data"], s["star"], s["resolution"]
+def gp_fit(s, smoke=False):
+    """The GP fits of one setup ``s``: σ and ℓ on a grid grown by evidence,
+    isotropic and (for an elongated source) anisotropic fields, then
+    MacKay's error-scale check, with a refit on rescaled errors when it is
+    far from 1. Returns a dict of the grid, the winner and the final fit."""
+    data, star, halo, res = s["data"], s["star"], s["halo"], s["resolution"]
     img0, n, pixel = s["img0"], s["npix"], s["pixel"]
-    fov = n * pixel
     template = np.asarray(img0.brightness).reshape(n, n)
     support = getattr(img0, "support", None)
     flux0 = img0.flux  # a number, or with SPARCO a PowerLaw
@@ -1018,6 +1189,8 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         return vm.System(**parts)
 
     others = () if star else (Centroid(0.1 * res.minor_mas, path="env"),)
+    # Every fitted parameter other than the image's latents (the evidence's
+    # Occam factor integrates over these: log_evidence_full).
     extra = ((flux_priors(flux_cap, s["sparco"]) | s["star_priors"]) if star else {}) | (
         {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {})
     variants = {"iso": (template, 0.0, lambda length: length)}
@@ -1059,7 +1232,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     n_indep = sum(d.n_independent for d in datasets)
     chi2_winner = float(np.sum(np.asarray(winner.info["chi2_red"]) * np.asarray([d.n_independent for d in datasets])))
     gamma = n_indep - chi2_winner / scale**2
-    rescaled = None
+    rescaled, data_s = None, data
     if not 1 / 1.3 < scale < 1.3:
         data_s = [d.with_error_scale(scale) for d in datasets]
         data_s = data_s if isinstance(data, list) else data_s[0]
@@ -1070,34 +1243,100 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         rescaled = {"scale": scale, "log_z": float(log_evidence(rr, data_s)),
                     "chi2_red": float(np.sum(rr.info["chi2_red"])), "result": rr}
 
-    out_dir.mkdir(parents=True, exist_ok=True)
     def best_result(name):
         i, j = best_of[name]
         return results[name, axes[name][0][i], axes[name][1][j]]
 
+    return dict(template=template, ell=ell, others=others, extra=extra, results=results, log_z=log_z, axes=axes,
+                best_of=best_of, best_name=best_name, best_length=best_length, best_sigma=best_sigma, winner=winner,
+                best_log_z=best_log_z, scale=scale, n_indep=n_indep, chi2_winner=chi2_winner, gamma=gamma,
+                rescaled=rescaled, data_s=data_s, final=rescaled["result"] if rescaled else winner,
+                best_result=best_result)
+
+
+def star_evidence(s, g, smoke=False):
+    """The evidence test (C2g): the star arm's GP winner ``g`` against the
+    same setup's GP fit with no star, both by ``log_evidence_full`` on the
+    quoted errors. Returns the record and the no-star setup and fit."""
+    s0 = s["no_star_setup"]()
+    g0 = gp_fit(s0, smoke)
+    log_z_star, occam_star = log_evidence_full(g["winner"], s["data"], g["extra"])
+    log_z_none, occam_none = log_evidence_full(g0["winner"], s0["data"], g0["extra"])
+    log_bayes = log_z_star - log_z_none
+    record = {"log_z_star": log_z_star, "occam_star": occam_star, "log_z_nostar": log_z_none,
+              "occam_nostar": occam_none, "log_bayes": log_bayes, "kept": bool(log_bayes >= STAR_LOG_BAYES),
+              "chi2_red_star": g["chi2_winner"] / g["n_indep"], "chi2_red_nostar": g0["chi2_winner"] / g0["n_indep"]}
+    print(f"evidence test: χ²/N {record['chi2_red_star']:.4g} with the star, {record['chi2_red_nostar']:.4g} without; "
+          f"log Z {log_z_star:.2f} (Occam {occam_star:.2f}) against {log_z_none:.2f} (Occam {occam_none:.2f}): "
+          f"ln B = {log_bayes:.2f}, star {'kept' if record['kept'] else 'rejected (ln B < %.2f)' % STAR_LOG_BAYES}",
+          flush=True)
+    return record, s0, g0
+
+
+def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
+           settings=None, label=None):
+    """GP fits chosen by evidence. With ``member`` (or ``settings``, a fixed
+    configuration as used by scripts/contest_bench.py) a CLEAN-started
+    ensemble member; otherwise a grown-field run. ``label`` names the
+    outputs. With a star, the winner is compared with the same fit without
+    it (``star_evidence``); unless the star wins decisively the no-star fit
+    is kept, with ``star_rejected="evidence"``."""
+    t0 = time.time()
+    if member is None and settings is None:
+        s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
+        label = label or s["label"] + "_gp"
+    else:
+        s, settings = member_setup(task, data_dir, member, smoke, settings)
+        growth, init = [], "clean"
+        label = label or f"{spec_of(task)['label']}_m{member}"
+    g = gp_fit(s, smoke)
+    evidence, star_arm = {}, {}
+    if s["star"]:
+        evidence, s0, g0 = star_evidence(s, g, smoke)
+        star_arm = star_record(g["final"].model)  # the star as fitted, kept even when rejected
+        if not evidence["kept"]:
+            print(f"{label}: star rejected (evidence); imaged without it", flush=True)
+            s0.update(star_rejected="evidence", star_fit=s["star_fit"], ref_fov=s.get("ref_fov"))
+            s, g = s0, g0
+    # A member's halo comes from its settings (setup's flag), not this
+    # function's argument.
+    halo = s["halo"]
+    data, star, res = s["data"], s["star"], s["resolution"]
+    n, pixel = s["npix"], s["pixel"]
+    fov = n * pixel
+    template, ell, others, log_z, axes, best_of = (g[k] for k in ("template", "ell", "others", "log_z", "axes", "best_of"))
+    best_name, best_length, best_sigma, winner = g["best_name"], g["best_length"], g["best_sigma"], g["winner"]
+    best_log_z, scale, n_indep, chi2_winner, gamma = (g[k] for k in ("best_log_z", "scale", "n_indep", "chi2_winner", "gamma"))
+    rescaled, data_s, final, best_result = g["rescaled"], g["data_s"], g["final"], g["best_result"]
+
+    out_dir.mkdir(parents=True, exist_ok=True)
     images = {name: np.asarray(best_result(name).model.env.render(n, fov)) for name in log_z}
-    final = rescaled["result"] if rescaled else winner
     member_extra = {}
     if settings is not None:
         ref_fov = s["ref_fov"]
+        companion = s["star_fit"].get("companion") if isinstance(s.get("star_fit"), dict) else None
         member_extra = dict(
-            # The whole scene (star included) on the common grid, so that star and
-            # no-star members compare like with like; the environment alone too.
-            ref_image=np.asarray(final.model.render(REF_NPIX, ref_fov)),
-            ref_env=np.asarray(final.model.env.render(REF_NPIX, ref_fov)), ref_fov=ref_fov,
+            # The whole scene (star and companion included) rendered on the
+            # common grid (render_scene, not a resampling of the fit grid), so
+            # that star and no-star members compare like with like; the
+            # environment alone too.
+            ref_image=render_scene(final.model, REF_NPIX, ref_fov, data_q_max(data)),
+            ref_env=render_scene(final.model.env, REF_NPIX, ref_fov, data_q_max(data)), ref_fov=ref_fov,
             star=bool(star), star_rejected=s["star_rejected"], star_model=s["star_model"], halo=settings["halo"],
             sparco=settings["sparco"], field_factor=settings["field"], oversample=settings["oversample"],
             clean_gain=settings["clean_gain"], env_flux=flux_value(final.model.env.flux),
             env_index=float(np.ravel(getattr(final.model.env.flux, "index", np.nan))[0]),
-            star_diam=float(np.ravel(getattr(final.model.star, "diam", np.nan))[0]) if settings["star"] else np.nan,
+            # The fitted star (NaN without one) and, for a rejected star, the
+            # star arm's own fit (arm_*), with the evidence test's record.
+            **star_record(final.model), **{f"arm_{k}": v for k, v in star_arm.items()},
+            evidence=json.dumps(evidence), companion=json.dumps(companion, default=float),
             n_independent=n_indep, gamma=gamma,
             best_log_z=best_log_z,
             best_chi2_red=float(np.sum(winner.info["chi2_red"])),
             error_scale=scale,
             rescaled_log_z=rescaled["log_z"] if rescaled else np.nan,
             rescaled_chi2_red=rescaled["chi2_red"] if rescaled else np.nan,
-            flip_dchi2=float(np.ravel(diagnose(final.model, data if not rescaled else data_s,
-                                                list(others)).checks["flip_dchi2"])[0]),
+            flip_dchi2=float(np.ravel(diagnose(final.model, data_s, list(others)).checks["flip_dchi2"])[0]),
         )
     np.savez_compressed(out_dir / f"{label}.npz", **member_extra, **{f"log_z_{k}": v for k, v in log_z.items()},
                         **{f"image_{k}": v for k, v in images.items()},
@@ -1110,13 +1349,15 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
              f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas",
              f"ellipse fit: chi2/N={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
              f"star_model={s['star_model']} sparco={s['sparco']} wavel0={s['wavel0']:.4g}"]
-    for name, g in log_z.items():
+    if evidence:
+        lines.append(f"evidence test (star arm against no star): {evidence}; star arm's star: {star_arm}")
+    for name, g_ in log_z.items():
         ls, ss = axes[name]
         lines.append(f"{name}: sigmas={list(ss)} lengths_mas={[round(x, 4) for x in ls]}")
-        lines.append(f"log_z[{name}] (rows ℓ, cols σ):\n{np.array2string(g, precision=2)}")
+        lines.append(f"log_z[{name}] (rows ℓ, cols σ):\n{np.array2string(g_, precision=2)}")
         i, j = best_of[name]
         rr = best_result(name)
-        lines.append(f"best {name}: ℓ={ls[i]:.4g} σ={ss[j]} log_z={g[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
+        lines.append(f"best {name}: ℓ={ls[i]:.4g} σ={ss[j]} log_z={g_[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
     lines.append(f"residuals of the winner={residual_diagnostics(winner.model, data)}")
     lines.append(f"N={n_indep} gamma={gamma:.1f} N-gamma={n_indep - gamma:.1f}")
     lines.append(f"chi2/N={chi2_winner / n_indep:.4g} (quoted errors), error_scale={scale:.3f}"
@@ -1137,9 +1378,9 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         i, j = best_of[name]
         plot_model(best_result(name).model.env, fov_mas=fov, npix=n, ax=ax, beam=res,
                    title=f"GP {name}: ℓ={axes[name][0][i]:.2g} mas, σ={axes[name][1][j]:g}, logZ={log_z[name][i, j]:.0f}")
-    for ax, (name, g) in zip(panels[1 + len(images):], log_z.items()):
+    for ax, (name, g_) in zip(panels[1 + len(images):], log_z.items()):
         ls, ss = axes[name]
-        ax.imshow(g - np.nanmax(g), origin="lower", cmap="viridis", aspect="auto")
+        ax.imshow(g_ - np.nanmax(g_), origin="lower", cmap="viridis", aspect="auto")
         ax.set(xticks=range(len(ss)), xticklabels=ss, yticks=range(len(ls)),
                yticklabels=[f"{x:.2g}" for x in ls], xlabel="σ", ylabel="ℓ (mas)", title=f"log Z − max ({name})")
     plt.tight_layout()

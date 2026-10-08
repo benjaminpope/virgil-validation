@@ -681,6 +681,105 @@ meant to help: χ²/N of 300–5000 on the spotted star, and up to 10⁶ on the
   it: a closure triangle needs a baseline that is in no V² table at the
   same time.
 
+**Smoke of the star arms (job 18207630, 2026-10-08).** One dataset per
+family, five arms. On the 2004 spotted star (an elliptical limb-darkened
+star, 5.31 mas, axis ratio 0.60, PA 154°, two spots, no companion) three
+more problems showed:
+
+1. **The saved image did not reproduce the fit.** The fits' χ²/N was
+   1.2–1.3, but a direct NumPy DFT of the saved `ref_image` gave 3–11
+   (5.4 for the baseline, all of the excess in V² at 0.1–0.3 cycles/mas),
+   while the truth image gave 1.0 with the same DFT. `SourceModel.render`
+   resamples an `Image` bilinearly from the fit grid (0.316 mas) to the
+   reference grid (0.214 mas), which smooths it, and draws a point source
+   as a Gaussian one reference pixel wide. 2004's V² are precise enough
+   (errors ~10⁻³) for that to matter.
+2. **The star arms' records were incomplete.** `star_diam` was NaN
+   whenever the star was a System (a primary with a companion), so the
+   ellipse arm's final shape was lost. The `companion` arm's image equals
+   the `point_star` arm's because its companion search never ran: the
+   guard compared the point primary's χ²/N (1.5 × 10⁵) with 10× the
+   no-star ellipse's (28). The SNR-41 companion was the `ellipse_star`
+   arm's (the spot at 3.9 mas), and was in that arm's image.
+3. **The star decomposition is degenerate.** A 16% point star plus the GP
+   fits as well as anything (χ²/N 1.22). `disk_star` shrank to 0.075 mas,
+   the ellipse kept 38% of the flux, and the χ² guard never fired (star
+   plus Gaussian 30 against Gaussian alone 28: both bad). A one-pixel star
+   then dominates the peak-normalised Lawson score (0.28–1.00 against the
+   baseline's 0.117).
+
+**Fixes** (`scripts/contest_images.py`):
+
+- **Render, not resample.** `render_scene` draws the fitted model on the
+  reference grid by Fourier synthesis: the inverse DFT of the model's
+  visibilities on the grid's own frequency lattice. Analytic components
+  enter through their own visibilities, so a centred point star is one
+  pixel. The GP image enters through its pixels' exact transform, kept as
+  it is out to the data's largest spatial frequency and rolled off (a
+  raised cosine) to zero at the fit grid's Nyquist frequency, beyond which
+  a pixel grid's transform only repeats itself. The whole scene is rolled
+  off the same way towards the reference grid's Nyquist frequency. The
+  image's DFT therefore reproduces the model's visibilities wherever the
+  data reach. What they do not reach is smoothed rather than left to ring,
+  though a few pixels can still be slightly negative (−1.4% of the flux in
+  a coarse smoke run). These pixels must not be clipped: on 2004,
+  clipping and renormalising them alone raised the DFT χ²/N from 0.96 to
+  14. The same renderer serves the `mem` and `ensemble` arms.
+- **Every component in the image and the record.** The image is the whole
+  model, companion included. The npz records the star's share of the flux
+  (`star_frac`), the primary's diameter, axis ratio and PA, the
+  companion's offsets and flux ratio, and the companion search's record
+  (`companion`, with whether and why it was skipped).
+- **Star or no star by evidence** (`star_evidence`). After each star arm's
+  GP fit, the same setup is fitted without the star (exactly the baseline
+  configuration). The two are compared by Laplace evidence over *every*
+  fitted parameter (`log_evidence_full`). virgil's `log_evidence`
+  integrates out the image's latents but holds the star, the fluxes and
+  any companion at their MAP values, so on its own it would favour any
+  model with more of them. The Occam factor adds the Laplace integral over
+  those parameters, as follows:
+  - each parameter is integrated in the coordinate in which its Jeffreys
+    prior is flat (log for scales, linear for locations and angles);
+  - the curvature is that of the likelihood marginalised over the latents,
+    Jᵀ(I + J_z J_zᵀ)⁻¹J, from the same Jacobian `log_evidence` uses;
+  - the prior's own variance (R²/12) is added to the curvature, so that a
+    parameter the data do not constrain costs ½ ln(π/6) ≈ −0.3 nats rather
+    than a divergent log determinant.
+
+  The star is kept only when ln B ≥ ln 100 (Jeffreys' "decisive");
+  otherwise the arm saves the no-star fit with `star_rejected="evidence"`
+  and keeps the star arm's own fit as `arm_*` and `evidence`. In a coarse
+  local smoke run on the 2004 dataset the ellipse star (with its
+  companion) gained 27 nats of latent evidence and paid 23 nats of Occam
+  factor for seven parameters: ln B = 3.5, so it was rejected. On a
+  simulated resolved Gaussian, a spare point star gives ln B = −1.3, and
+  a 50% point star gives ln B = 35. An unresolved star of 10–20% is
+  rejected too, because a pixel carries it as well. The evidence was
+  preferred to a held-out fit because the GP grid already computes it,
+  and the extra cost is one no-star GP fit per star arm (which repeats
+  the baseline arm's work).
+- **A resolved floor for the resolved-star arms.** The `disk_star` and
+  `ellipse_star` diameters are log-uniform from ½ the beam's minor axis
+  (`RESOLVED_FLOOR`): these arms model a resolved star, and an unresolved
+  one is the `point_star` arm's.
+
+**Two suggested guards were not adopted.** Both were to be triggered by
+the data's second moments, but the moments cannot tell a resolved star
+from a point star with extended emission. Across the benchmark's `_d0`
+datasets the moments' FWHM is 1.3–2.2 beam minor axes on the 2004 spotted
+stars (no point star), but 3.9–5.9 on the 2006 thin disks (a point star
+with 7–30% of the flux), 1.4–2.6 on two of the 2018 star-disk-planet
+scenes (46–48%), and 1.6 on two 2024 spirals around an unresolved
+central binary (42%).
+
+- Skipping the point-star arm when the source is "much larger than the
+  beam" would drop correct stars in all of those.
+- Making the diameter floor conditional on the moments would force a
+  resolved disk on them.
+
+The floor is unconditional instead, as part of the two arms' definition,
+and the evidence test decides whether any star stays.
+
 **Next.** Once job 18107553 has finished and been downloaded, smoke the
 four star arms on datasets 0, 12, 24, 36 and 48, then rerun those arms (a
 240-task array, into a separate `--out`). The success criteria are no
