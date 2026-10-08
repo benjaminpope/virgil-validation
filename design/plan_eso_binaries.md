@@ -196,17 +196,31 @@ whose elements we evaluate independently (Ω = 213°, ω_secondary = ω_primary 
   their errors. Until both are added, these four rows are consistent with the
   prediction, with no pull quoted.
 
+- **Orbit comparisons without RVs use the projected degrees of freedom.** The
+  GRAVITY-only fits have no RVs, so $(\omega,\Omega)\to(\omega+180^\circ,
+  \Omega+180^\circ)$ leaves the sky positions unchanged and raw $\omega$ and
+  $\Omega$ pulls are not scored (the first fits gave $-90\sigma$ and
+  $-28\sigma$ for a mirror mode that fits equally well). Compare the sky track
+  (statistic A) and the projected elements (statistic B), and show folded
+  corner plots, as defined in `design/orbit_comparison.md`. Gl 229 is already
+  fitted, so this is a post hoc comparison, labelled as not preregistered.
+  Systems not yet fitted need a pre-fit amendment to their criteria file
+  (`design/trackb_criteria.md` is hashed and is not edited here).
 - **Two nights are ambiguous.** On 2024-02-27 and 2024-03-28 the top two peaks
   differ by Δloss 0.6 and 0.5, and no top-five peak lies near the prediction
   (the nearest are 7.9 and 13.3 mas away, the best peaks). Xuan et al. flag
-  both as bad.
+  both as bad. In the orbit comparison these are flagged single-night alias
+  peaks (`design/orbit_comparison.md`, section 5): not used as constraints, but
+  still given a track comparison (statistic A).
 - **2024-12-18 is a disagreement to be ruled on, not an ambiguous night.** It
   is not one of Xuan et al.'s epochs, so their orbit predicts it out of
   sample, and they do not flag it. Our best peak, (−3.6, +3.3), is 10.0 mas
   from the prediction (+5.6, +7.1), at PA −86° from it, with flux 0.95 (at the
   bound). The second and third peaks (Δloss 0.8) are 11.5 mas away, and the
   only peak near the prediction is the fifth, (+5.9, +7.3), 0.37 mas from it
-  with Δloss 15.1 behind the best. This corrects an earlier statement that no
+  with Δloss 15.1 behind the best. It is likewise a flagged alias peak in the
+  orbit comparison, 8–32 nats worse at the orbit position than at its own
+  best peak. This corrects an earlier statement that no
   top-five peak lies near the prediction. Resolve it with the shared-flux
   scorer or with the same-data check of virgil-validation#69 (see Open)
   before any of the seven nights becomes evidence.
@@ -282,7 +296,9 @@ stays as an optional orbit-fitting test.
 4. **Coverage (tier C, OzSTAR).** For Gl 229 Ba–Bb and two wide calibrators:
    draw orbits from the published posterior, simulate data on the real
    time and uv sampling (`simulate`, R8), and refit. The credible
-   intervals must cover the truth at their nominal rates. This is a Monte
+   intervals must cover the truth at their nominal rates. Without RVs, coverage
+   is assessed on the projected quantities (statistic A positions, statistic B
+   elements; `design/orbit_comparison.md`), not on raw $\omega$ and $\Omega$. This is a Monte
    Carlo campaign in the sense of `design.md`.
 
 ### Stage E4: masking anchors with NACO SAM (AMICAL; about 3 h, then 2 h per target)
@@ -361,7 +377,9 @@ Treat V² scales with care until the data are re-reduced with the fork.
 ### Stage E5: reporting (1–2 h)
 
 Evidence table rows per system and stage; a results page with per-epoch pulls
-and joint-fit element comparisons; findings in the README.
+and joint-fit comparisons (sky track and projected elements, folded corner
+plots, `design/orbit_comparison.md`; no raw $\omega$ and $\Omega$ pulls without
+RVs); findings in the README.
 
 ## Beyond the 21: single-fibre binaries with published orbits
 

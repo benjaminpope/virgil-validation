@@ -247,7 +247,13 @@ Agreed with the orbit-fitting session on 2026-10-08.
   range, size; no downloads), epochs, instrument and band, the reference orbit
   with its source, and caveats. Ten are staged: ι Peg, θ¹ Ori C, TZ For,
   HD 174881, HR 6819, κ Tuc A, Polaris, κ Dra, γ² Vel and SS Lep. Gl 229 is
-  already theirs. The staged files say that orbital elements are not yet
+  already theirs. Orbits fitted without RVs are compared with the reference
+  in the projected degrees of freedom (sky track, projected elements, folded
+  corner plots), never by raw ω and Ω pulls (`design/orbit_comparison.md`).
+  `design/oidb_binaries_criteria.md` is hashed and is not edited here: systems
+  not yet fitted need a pre-fit amendment to it saying so, and any system
+  already fitted gets the comparison post hoc, labelled as not preregistered.
+  The staged files say that orbital elements are not yet
   transcribed: OB0 reads them from the papers, with the position tables.
 
 ## Stages

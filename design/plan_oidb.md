@@ -329,7 +329,10 @@ within 0.25 σ_pub (published statistical errors; error ellipses projected
 on ρ and PA, σ Ori's divided by its 2.24 inflation); diameters, resolved
 flux and orbit flux ratios within 2 σ_pub; HD 45166 within 1 σ of the
 adopted mean over its four calibrations; orbital elements reported, not
-scored; HR 6819 compared, never scored; L2 rows withheld; a scored value
+scored (without RVs, ω and Ω are reported folded and compared only in the
+projected degrees of freedom, `design/orbit_comparison.md`; the frozen
+`CRITERIA` need a pre-fit amendment for systems not yet fitted, and Gl 229 uses
+the new comparison post hoc, not preregistered); HR 6819 compared, never scored; L2 rows withheld; a scored value
 virgil does not deliver (or a missing fit file) is MISSING and counts as a
 failure. The A-star flux ratios and resolved fluxes are scored under the
 2 σ parametric rule, not the per-epoch one: CANDID's bandwidth smearing
