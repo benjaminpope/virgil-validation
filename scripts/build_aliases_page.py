@@ -1,0 +1,131 @@
+"""Generate docs/orbits/aliases.md from scripts/templates/aliases_page.md.tmpl and the
+per-system bands.json / meta.json in docs/assets/orbit_aliases/<system>/.
+
+Systems with no bands.json get a clearly marked placeholder. Run by
+scripts/pull_back_orbit_results.py after it copies the results; safe to run on its own.
+
+    python scripts/build_aliases_page.py [--assets DIR] [--out FILE]
+"""
+
+import argparse
+import json
+import pathlib
+import string
+import sys
+
+import numpy as np
+
+REPO = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "scripts"))
+
+TEMPLATE = REPO / "scripts" / "templates" / "aliases_page.md.tmpl"
+ASSETS = REPO / "docs" / "assets" / "orbit_aliases"
+OUT = REPO / "docs" / "orbits" / "aliases.md"
+MAX_ROWS = 12
+PLOTS = [("sky.png", "Sky plane: per-epoch positions (red), posterior orbits in the winning band, reference orbit"),
+         ("corner.png", "Posterior of the winning band"),
+         ("residuals.png", "Closure-phase residuals at the best orbit, per epoch")]
+
+SKIPPED = [
+    ("kappa Vel, NN Del (Track B)", "span shorter than the period, so only N = 0 and 1 exist and nothing is tested"),
+    ("Apep (GRAVITY, 6 nights)", "calibration is done by a script outside this repository and the calibrated OIFITS are not on /fred"),
+    ("Apep, 9 Sgr, delta Vel, HD 136164 (NACO SAM)", "one epoch, or four nights in one run: not an orbit"),
+    ("HR 4049 (PIONIER)", "no period; the analysis lives in notebooks, with no standalone loader"),
+    ("9 Sgr, HD 152314, HD 168137, KQ Vel, CPD-71 172, TYC 1703-394-1 (Track B)", "one or two epochs"),
+    ("zeta Boo, eta Oph (Track B)", "no tabulated reference period to set the prior window"),
+    ("del Cir, TZ For (Track B)", "mixed GRAVITY and PIONIER epochs; a conflict between the manifest and the files"),
+]
+
+
+def fmt(x, spec):
+    return "-" if x is None or (isinstance(x, float) and not np.isfinite(x)) else format(x, spec)
+
+
+def finite(xs):
+    return [x for x in (xs or []) if x is not None and np.isfinite(x)]
+
+
+def flag_text(b):
+    flags = b.get("flags")
+    if flags is None:  # an older bands.json: the single flagged boolean
+        return "flagged" if b.get("flagged") else ""
+    return ", ".join(flags)
+
+
+def table(bands):
+    rows = ["| N | P (d) | χ²/N (raw) | error scales | log Z | log Z (IS) | p | ESS | flags |",
+            "| ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |"]
+    for b in bands[:MAX_ROWS]:
+        sc = finite(b.get("scales"))
+        s = f"{min(sc):.2f}–{max(sc):.2f}" if sc else "-"
+        rows.append(f"| {b['n']} | {fmt(b.get('period'), '.4f')} | {fmt(b.get('chi2_red'), '.2f')} | {s} | "
+                    f"{fmt(b.get('log_z'), '.2f')} | {fmt(b.get('log_z_is'), '.2f')} | {fmt(b.get('p'), '.3f')} | "
+                    f"{fmt(b.get('ess'), '.0f')} | {flag_text(b)} |")
+    if len(bands) > MAX_ROWS:
+        rows.append(f"\n*{len(bands) - MAX_ROWS} further bands, each with p < {fmt(bands[MAX_ROWS - 1].get('p'), '.3g')}, are in `bands.json`.*")
+    return "\n".join(rows)
+
+
+def section(name, label, instrument, sysdir, rel):
+    head = f"## {label}\n\n"
+    bj = sysdir / "bands.json"
+    if not bj.exists():
+        return head + (f"!!! warning \"Placeholder\"\n    No results yet for `{name}` ({instrument}). "
+                       f"Expected: band table, `sky.png`, `corner.png`, `residuals.png`.\n")
+    bands = json.load(open(bj))["bands"]
+    meta = json.load(open(sysdir / "meta.json")) if (sysdir / "meta.json").exists() else {}
+    out = [head]
+    n_ep = len(meta.get("epochs", []))
+    out.append(f"{instrument}, {n_ep} epochs, period range {meta.get('p_range', '?')} d; {len(bands)} alias bands.\n")
+    v = meta.get("virgil") or {}
+    out.append(f"virgil {v.get('version', '?')}, commit `{v.get('commit_id') or 'unknown'}`.\n")
+    ref = meta.get("reference_band")
+    if ref:
+        out.append(f"Reference period {ref['period']:.4f} d lies in band N = {ref['n']} (p = {fmt(ref.get('p'), '.3f')}); "
+                   f"{'it is the winner' if ref.get('is_winner') else 'it is not the winner'}.\n")
+    out.append(table(bands) + "\n")
+    el = meta.get("elements")
+    if el:
+        fold = "omega compared mod 180° (near-equal twins); " if el.get("twin_fold") else ""
+        out.append(f"Winning band against the reference elements ({fold}Omega folded mod 180° with omega shifted; "
+                   f"mirror fraction {el['mirror_fraction']:.2f}):\n")
+        out.append("| element | reference | posterior − reference | pull |\n| --- | ---: | ---: | ---: |")
+        for k in ("period", "ecc", "inc", "Omega", "omega", "a_mas"):
+            e = el[k]
+            out.append(f"| {k} | {e['ref']:.4g} | {e['mean_offset']:.3g} ± {e['sd']:.2g} | {fmt(e['pull'], '.1f')} |")
+        out.append("")
+    chk = meta.get("chi2_check")
+    if chk and not chk["agrees"]:
+        out.append(f"!!! warning\n    Raw χ²/N recomputed here ({chk['ours']:.2f}) differs from the band table ({chk['virgil']:.2f}).\n")
+    for png, cap in PLOTS:
+        if (sysdir / png).exists():
+            out.append(f"![{cap}]({rel}/{name}/{png})\n")
+    return "\n".join(out)
+
+
+def render(assets=ASSETS, template=TEMPLATE, rel="../assets/orbit_aliases"):
+    names = _registry()
+    secs = [section(n, v["label"], v["instrument"], assets / n, rel) for n, v in names.items()]
+    skipped = "\n".join(f"- {a}: {b}." for a, b in SKIPPED)
+    return string.Template(template.read_text()).substitute(SYSTEMS="\n".join(secs), SKIPPED=skipped)
+
+
+def _registry():
+    """System names, labels and instruments, from reanalyse_orbits.py without importing virgil."""
+    import reanalyse_orbits as R
+
+    return {k: dict(label=v.label, instrument=v.instrument) for k, v in R.SYSTEMS.items()}
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--assets", default=str(ASSETS))
+    ap.add_argument("--out", default=str(OUT))
+    a = ap.parse_args(argv)
+    text = render(pathlib.Path(a.assets))
+    pathlib.Path(a.out).write_text(text)
+    print(f"wrote {a.out}")
+
+
+if __name__ == "__main__":
+    main()

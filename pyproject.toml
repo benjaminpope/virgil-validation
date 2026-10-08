@@ -8,6 +8,8 @@ dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil
 [project.optional-dependencies]
 # Other people's packages, pinned: updating a pin is a deliberate PR.
 external = ["pmoired==26.10.1"]
+# Stage A of the alias bands (virgil#319) until it is released; plots need corner.
+orbit-aliases = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@2963095390be7603792af1f663158377d7bdc842", "corner"]
 docs = ["mkdocs<2", "mkdocs-material", "zensical>=0.0.62,<0.1"]  # built with Zensical, as virgil is
 
 # The evidence plugin loads whenever the package is installed, so its options
