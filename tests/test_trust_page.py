@@ -92,6 +92,7 @@ def test_pipelines_real_and_simulated(model):
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_page_sections_links_and_embedded_data(model):
     page = trust.render(model)
+    assert page.index("# Can virgil be trusted?") < page.index("> *ma però che già mai") < page.index("virgil's calculations")
     for anchor in ("real-data", "simulated-data", "parts", "roots", "ledger", "precision"):
         assert f'id="{anchor}"' in page
     assert re.search(r'class="vt-big">1</span> of 7 parts of virgil verified', page)  # parts of virgil only
