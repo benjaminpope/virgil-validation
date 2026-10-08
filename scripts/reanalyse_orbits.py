@@ -337,11 +337,15 @@ def plot_residuals(path, result, loaded):
 
 
 def print_table(result):
-    print(f"{'N':>4} {'P (d)':>9} {'chi2/N':>7} {'s_min':>6} {'s_max':>6} {'logZ':>9} {'logZ_IS':>9} {'p':>7} {'ESS':>7}  flag")
+    print(f"{'N':>4} {'P (d)':>9} {'chi2/N':>7} {'s_min':>6} {'s_max':>6} {'logZ':>9} {'logZ_IS':>9} {'p':>7} {'ESS':>7}  flags")
     for r in result.table():
-        sc = r["scales"] or [float("nan")]
-        print(f"{r['n']:>4d} {r['period'] or float('nan'):>9.4f} {r['chi2_red']:>7.2f} {min(sc):>6.2f} {max(sc):>6.2f} "
-              f"{r['log_z']:>9.2f} {r['log_z_is']:>9.2f} {r['p']:>7.3f} {r['ess']:>7.0f}  {'FLAG' if r['flagged'] else ''}")
+        sc = [x for x in (r["scales"] or []) if x is not None and np.isfinite(x)] or [float("nan")]
+        flags = r.get("flags")
+        flags = ("FLAG" if r["flagged"] else "") if flags is None else ", ".join(flags)
+        nan = float("nan")
+        v = {k: nan if r[k] is None else r[k] for k in ("period", "chi2_red", "log_z", "log_z_is", "p", "ess")}
+        print(f"{r['n']:>4d} {v['period']:>9.4f} {v['chi2_red']:>7.2f} {min(sc):>6.2f} {max(sc):>6.2f} "
+              f"{v['log_z']:>9.2f} {v['log_z_is']:>9.2f} {v['p']:>7.3f} {v['ess']:>7.0f}  {flags}")
 
 
 def run(name, args):
@@ -386,8 +390,9 @@ def run(name, args):
     meta["rms_residual"] = rms
     meta["chi2_raw"], meta["n_independent"] = chi2, n_ind
     meta["chi2_raw_per_n"] = chi2 / n_ind
-    meta["chi2_check"] = dict(ours=chi2 / n_ind, virgil=result.best.chi2_red,
-                              agrees=bool(abs(chi2 / n_ind / result.best.chi2_red - 1) < 0.05))
+    vr = result.best.chi2_red
+    meta["chi2_check"] = dict(ours=chi2 / n_ind, virgil=vr,
+                              agrees=bool(np.isfinite(vr) and vr > 0 and abs(chi2 / n_ind / vr - 1) < 0.05))
     if not meta["chi2_check"]["agrees"]:
         print(f"WARNING: raw chi2/N here {chi2 / n_ind:.3f} differs from the band table's {result.best.chi2_red:.3f}")
     json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
