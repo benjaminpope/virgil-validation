@@ -209,7 +209,7 @@ whose elements we evaluate independently (Ω = 213°, ω_secondary = ω_primary 
 - **Two nights are ambiguous.** On 2024-02-27 and 2024-03-28 the top two peaks
   differ by Δloss 0.6 and 0.5, and no top-five peak lies near the prediction
   (the nearest are 7.9 and 13.3 mas away, the best peaks). Xuan et al. flag
-  both as bad. In the orbit comparison these are flagged single-night alias
+  both as bad. In the orbit comparison these two are flagged single-night alias
   peaks (`design/orbit_comparison.md`, section 5): not used as constraints, but
   still given a track comparison (statistic A).
 - **2024-12-18 is a disagreement to be ruled on, not an ambiguous night.** It
@@ -218,9 +218,10 @@ whose elements we evaluate independently (Ω = 213°, ω_secondary = ω_primary 
   from the prediction (+5.6, +7.1), at PA −86° from it, with flux 0.95 (at the
   bound). The second and third peaks (Δloss 0.8) are 11.5 mas away, and the
   only peak near the prediction is the fifth, (+5.9, +7.3), 0.37 mas from it
-  with Δloss 15.1 behind the best. It is likewise a flagged alias peak in the
-  orbit comparison, 8–32 nats worse at the orbit position than at its own
-  best peak. This corrects an earlier statement that no
+  with Δloss 15.1 behind the best. Until that ruling it is excluded from the orbit fit but kept as an open
+  per-epoch disagreement, with a scored data-vs-reference row (best-peak offset
+  and Δloss to the predicted position; `design/orbit_comparison.md`, section 5).
+  This corrects an earlier statement that no
   top-five peak lies near the prediction. Resolve it with the shared-flux
   scorer or with the same-data check of virgil-validation#69 (see Open)
   before any of the seven nights becomes evidence.

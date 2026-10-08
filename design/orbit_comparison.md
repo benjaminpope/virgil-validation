@@ -15,8 +15,14 @@ B = a(\cos\omega\sin\Omega + \sin\omega\cos\Omega\cos i),$$
 $$F = -a(\sin\omega\cos\Omega + \cos\omega\sin\Omega\cos i),\quad
 G = -a(\sin\omega\sin\Omega - \cos\omega\cos\Omega\cos i)$$
 
-(sign and axis conventions as in `src/crosscheck/orbits.py`; the argument below
-holds for any of them).
+Axis assignment: $A,F$ are the $\Delta\delta$ coefficients of $r\cos f$ and
+$r\sin f$, and $B,G$ the $\Delta\alpha^*$ ones (expanded from `sky_position` in
+`src/crosscheck/orbits.py`). The invariance argument below holds for any
+convention, but statistic B does not: a reference that quotes $A..G$ with
+$x$ = RA instead of $x$ = Dec swaps $A\leftrightarrow B$ and $F\leftrightarrow G$
+and the test fails without the cause being obvious. So both sides are computed
+from Campbell elements with one function, never from quoted Thiele–Innes
+constants.
 
 Both $\omega$ and $\Omega$ enter only through the angle sums and differences
 above, so $(\omega+180^\circ,\ \Omega+180^\circ)$ leaves $A,B,F,G$ unchanged.
@@ -49,23 +55,42 @@ $\Delta\mu=\bar\mu_{\rm ours}-\bar\mu_{\rm ref}$ and sample covariances,
 
 $$d^2 = \Delta\mu^\top (C_{\rm ours}+C_{\rm ref})^{-1}\Delta\mu \ \sim\ \chi^2_2 .$$
 
-Jointly, the stacked $2N$-vector lies on a manifold of at most 7 dimensions
-(the orbit has $P,e,t_p,A,B,F,G$), so $C$ is rank-deficient. Use a
-rank-truncated pseudo-inverse with rank $r=\min(2N,7)$,
+Jointly, the stacked $2N$-vector lies near a manifold of about 7 dimensions
+(the orbit has $P,e,t_p,A,B,F,G$), so $C$ is nearly rank-deficient. The rank-7
+statement holds only to first order, for one posterior: $C_{\rm ours}$ and
+$C_{\rm ref}$ are tangent at different points, so their sum can reach rank 14,
+and sampling noise and nonlinearity fill in the small eigenvalues. Truncating
+to the broadest directions would drop the components of $\Delta\mu$ where the
+posteriors are tightest, which is where a disagreement matters most. So:
 
-$$d^2_{\rm joint}=\Delta\mu^\top (C_{\rm ours}+C_{\rm ref})^{+}_{r}\Delta\mu\ \sim\ \chi^2_r ,$$
+- Truncate by an eigenvalue threshold (eigenvalues of $C_{\rm ours}+C_{\rm
+  ref}$ below $10^{-6}$ of the largest, fixed in the criteria file), not by a
+  fixed $r$. Let $r$ be the retained rank.
+- $d^2_{\rm joint}=\Delta\mu^\top (C_{\rm ours}+C_{\rm ref})^{+}_{r}\Delta\mu\ \sim\ \chi^2_r$.
+- Always report the residual $\lVert\Delta\mu_\perp\rVert$ outside the retained
+  subspace beside $d^2_{\rm joint}$, in units of the per-epoch position errors.
+  The comparison fails if it exceeds 1 (criteria file may tighten this).
+- Statistic B is the joint test; statistic A's joint row is a cross-check on it.
 
-or statistic B. The reference distribution is $\chi^2_r$ under the null that the
-two posteriors agree; it is approximate where the posteriors are non-Gaussian,
-and the report says so.
+The reference distribution is $\chi^2_r$ under the null that the two posteriors
+agree; it is approximate where the posteriors are non-Gaussian, and the report
+says so.
 
 Also report the maximum separation between the two median tracks over one full
 period, as a fraction of $a$.
 
 **Reference samples.** Use the published posterior samples where available.
-Otherwise draw Monte Carlo from the published marginal errors, ignoring
-correlations. Then the joint statistic is approximate and is reported, not
-scored, and the per-epoch rows are labelled approximate.
+Otherwise do not draw from the marginal errors independently: visual-orbit
+elements are strongly correlated ($P$–$t_p$, $a$–$i$–$e$, $\omega$–$\Omega$),
+and independent draws inflate $C_{\rm ref}$ in the predicted positions, so
+$d^2$ shrinks and a wrong fit passes. With no published samples or covariance,
+no statistic against that reference is scored, per-epoch rows included. Report
+instead the $d^2$ using $C_{\rm ours}$ alone (the stricter bound) and the one
+with the independent-draw $C_{\rm ref}$, both labelled unscored.
+
+Open question: whether a Xuan et al. 2024 posterior (samples or covariance) is
+public for Gl 229. If not, every Gl 229 statistic A and B row falls under this
+case and is reported, not scored, until it is found or reconstructed.
 
 ## 3. Statistic B: the projected elements
 
@@ -99,12 +124,21 @@ fraction. Pulls on folded $\omega$ and $\Omega$ are descriptive only.
 ## 5. Bad epochs
 
 Single-epoch alias peaks are flagged, not used as constraints. Worked example,
-Gl 229 Ba–Bb: 2024-02-27, 2024-03-28 and 2024-12-18 are single-night alias peaks
-(weak signal; a failing fringe tracker on 03-28). Their loss at the orbit
-position is only 8–32 nats worse than at their own best peak.
+Gl 229 Ba–Bb: 2024-02-27 and 2024-03-28 are single-night alias peaks that Xuan
+et al. also flag (weak signal; a failing fringe tracker on 03-28).
+
+2024-12-18 is listed separately. Xuan et al. do not flag it, and
+`plan_eso_binaries.md` classes it as a disagreement to be ruled on (shared-flux
+scorer or virgil-validation#69). Until that ruling it is excluded from the orbit
+fit but kept as an open per-epoch disagreement, with a scored data-vs-reference
+row: the offset of virgil's best peak from the reference position, and the
+$\Delta$loss between them. The orbit-vs-orbit track comparison never involves the
+measured position on that night, so it cannot detect a peak-finding error
+there; this row can.
 
 Statistic A compares the orbit fit's predicted positions with the reference
-orbit's, so flagged epochs still get a track comparison.
+orbit's, so flagged epochs still get a track comparison, which is orbit against
+orbit only.
 
 Lead every comparison with the raw $\chi^2/N$ on the quoted errors, before any
 error rescaling.
@@ -113,16 +147,29 @@ error rescaling.
 
 New campaigns register the choice of A, B or both, and the thresholds (for
 example per-epoch $d^2$ $p>0.01$, Holm-corrected across epochs; joint $p>0.01$),
-in their criteria file before fitting. Systems already fitted (Gl 229) use the
-comparison post hoc, labelled as not preregistered.
+in their criteria file before fitting. Holm is a correction for false
+rejections, so here it loosens the test: with $N$ epochs the smallest $p$ needs
+only $p>0.01/N$, and with about 10 GRAVITY epochs one epoch at roughly $3\sigma$
+still passes. The criteria file states the effective per-epoch threshold, and
+requires the joint statistic as well, so a run of moderate per-epoch offsets
+cannot pass. Systems already fitted (Gl 229) use the comparison post hoc,
+labelled as not preregistered.
 
 ## 7. Implementation pointers (text only)
 
-- `src/crosscheck/orbits.py` already has Thiele–Innes. The comparison functions
-  belong there: numpy only, never importing virgil.
+- `src/crosscheck/orbits.py` has the Campbell sky projection (`sky_position`);
+  Thiele–Innes is to be added, with the axis assignment of §1. The comparison
+  functions belong there: numpy only, never importing virgil.
 - Our samples come from the orbit-fitting outputs,
   `~/data/orbit_fits/<system>/<run>/{fit.json,samples.npz}` (schema in
   `~/data/orbit_fits/SCHEMA.md`).
-- Deliverable test: a synthetic orbit and its mirror
+- Deliverable tests. Positive control: a synthetic orbit and its mirror
   $(\omega+180^\circ,\Omega+180^\circ)$ must give $d^2\approx0$ in A and B, but
-  large raw $\omega$ and $\Omega$ differences.
+  large raw $\omega$ and $\Omega$ differences. That alone cannot fail (a statistic
+  that always returns 0 passes it), so it is paired with `kind="control"` cases
+  that must give a large $d^2$ in both A and B:
+  - $\omega+180^\circ$ alone (all four constants flip sign: the
+    primary/secondary labelling error of §1);
+  - $i\to180^\circ-i$ (reversed sense of motion);
+  - a small $\Delta t_p$ or $\Delta P$ at about $3\sigma$ of the synthetic
+    posterior, which checks that the statistic responds at the scale it is used.
