@@ -41,17 +41,28 @@ def fmt(x, spec):
     return "-" if x is None or (isinstance(x, float) and not np.isfinite(x)) else format(x, spec)
 
 
+def finite(xs):
+    return [x for x in (xs or []) if x is not None and np.isfinite(x)]
+
+
+def flag_text(b):
+    flags = b.get("flags")
+    if flags is None:  # an older bands.json: the single flagged boolean
+        return "flagged" if b.get("flagged") else ""
+    return ", ".join(flags)
+
+
 def table(bands):
-    rows = ["| N | P (d) | χ²/N (raw) | error scales | log Z | log Z (IS) | p | ESS | flag |",
+    rows = ["| N | P (d) | χ²/N (raw) | error scales | log Z | log Z (IS) | p | ESS | flags |",
             "| ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |"]
     for b in bands[:MAX_ROWS]:
-        sc = b.get("scales") or []
+        sc = finite(b.get("scales"))
         s = f"{min(sc):.2f}–{max(sc):.2f}" if sc else "-"
         rows.append(f"| {b['n']} | {fmt(b.get('period'), '.4f')} | {fmt(b.get('chi2_red'), '.2f')} | {s} | "
                     f"{fmt(b.get('log_z'), '.2f')} | {fmt(b.get('log_z_is'), '.2f')} | {fmt(b.get('p'), '.3f')} | "
-                    f"{fmt(b.get('ess'), '.0f')} | {'flagged' if b.get('flagged') else ''} |")
+                    f"{fmt(b.get('ess'), '.0f')} | {flag_text(b)} |")
     if len(bands) > MAX_ROWS:
-        rows.append(f"\n*{len(bands) - MAX_ROWS} further bands, each with p < {bands[MAX_ROWS - 1]['p']:.3g}, are in `bands.json`.*")
+        rows.append(f"\n*{len(bands) - MAX_ROWS} further bands, each with p < {fmt(bands[MAX_ROWS - 1].get('p'), '.3g')}, are in `bands.json`.*")
     return "\n".join(rows)
 
 
