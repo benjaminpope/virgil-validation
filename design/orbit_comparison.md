@@ -3,7 +3,7 @@
 A general note. It defines what an orbit fit without RVs is compared on, and how
 the comparison is reported. Per-system plans point here. Gl 229 Ba–Bb
 (GRAVITY-only fits against Xuan et al. 2024) is the worked example. The comparison
-functions are text-only so far: no science code is added by this note.
+functions are in `src/crosscheck/orbits.py` (§7).
 
 ## 1. The degeneracy
 
@@ -155,21 +155,26 @@ requires the joint statistic as well, so a run of moderate per-epoch offsets
 cannot pass. Systems already fitted (Gl 229) use the comparison post hoc,
 labelled as not preregistered.
 
-## 7. Implementation pointers (text only)
+## 7. Implementation
 
-- `src/crosscheck/orbits.py` has the Campbell sky projection (`sky_position`);
-  Thiele–Innes is to be added, with the axis assignment of §1. The comparison
-  functions belong there: numpy only, never importing virgil.
+- `src/crosscheck/orbits.py` has the Campbell sky projection (`sky_position`) and,
+  with the axis assignment of §1, `thiele_innes`, `predict_track`, `per_epoch_d2`,
+  `joint_d2`, `max_track_separation` (statistic A), `projected_elements` and
+  `statistic_b` (statistic B), `fold_samples` and `mirror_fraction` (§4), and
+  `compare_orbits`, which applies the reference-samples rule of §2 (a
+  marginals-only reference is never scored). Numpy only, never importing virgil.
 - Our samples come from the orbit-fitting outputs,
   `~/data/orbit_fits/<system>/<run>/{fit.json,samples.npz}` (schema in
   `~/data/orbit_fits/SCHEMA.md`).
-- Deliverable tests. Positive control: a synthetic orbit and its mirror
-  $(\omega+180^\circ,\Omega+180^\circ)$ must give $d^2\approx0$ in A and B, but
-  large raw $\omega$ and $\Omega$ differences. That alone cannot fail (a statistic
-  that always returns 0 passes it), so it is paired with `kind="control"` cases
-  that must give a large $d^2$ in both A and B:
+- Deliverable tests are in `tests/test_orbit_comparison.py`. Positive control: a
+  synthetic orbit and its mirror $(\omega+180^\circ,\Omega+180^\circ)$ must give
+  $d^2\approx0$ in A and B, but large raw $\omega$ and $\Omega$ differences. That
+  alone cannot fail (a statistic that always returns 0 passes it), so it is paired
+  with `kind="control"` cases that must give a large $d^2$ in both A and B:
   - $\omega+180^\circ$ alone (all four constants flip sign: the
     primary/secondary labelling error of §1);
   - $i\to180^\circ-i$ (reversed sense of motion);
-  - a small $\Delta t_p$ or $\Delta P$ at about $3\sigma$ of the synthetic
-    posterior, which checks that the statistic responds at the scale it is used.
+  - a shift in $t_p$ or $P$. A shift of $3\sigma$ of one posterior is only
+    $d^2\approx4.5$ against $C_{\rm ours}+C_{\rm ref}=2\sigma^2$, which
+    $\chi^2_7$ does not reject; the control therefore uses $8\sigma$ ($d^2\approx32$),
+    and a separate check that $3\sigma$ still raises $d^2$ above the null.
