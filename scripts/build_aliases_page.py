@@ -27,6 +27,7 @@ PLOTS = [("sky.png", "Sky plane: per-epoch positions (red), posterior orbits in 
          ("residuals.png", "Closure-phase residuals at the best orbit, per epoch")]
 
 SKIPPED = [
+    ("kappa Vel, NN Del (Track B)", "span shorter than the period, so only N = 0 and 1 exist and nothing is tested"),
     ("Apep (GRAVITY, 6 nights)", "calibration is done by a script outside this repository and the calibrated OIFITS are not on /fred"),
     ("Apep, 9 Sgr, delta Vel, HD 136164 (NACO SAM)", "one epoch, or four nights in one run: not an orbit"),
     ("HR 4049 (PIONIER)", "no period; the analysis lives in notebooks, with no standalone loader"),
@@ -65,11 +66,26 @@ def section(name, label, instrument, sysdir, rel):
     out = [head]
     n_ep = len(meta.get("epochs", []))
     out.append(f"{instrument}, {n_ep} epochs, period range {meta.get('p_range', '?')} d; {len(bands)} alias bands.\n")
+    v = meta.get("virgil") or {}
+    out.append(f"virgil {v.get('version', '?')}, commit `{v.get('commit_id') or 'unknown'}`.\n")
     ref = meta.get("reference_band")
     if ref:
         out.append(f"Reference period {ref['period']:.4f} d lies in band N = {ref['n']} (p = {fmt(ref.get('p'), '.3f')}); "
                    f"{'it is the winner' if ref.get('is_winner') else 'it is not the winner'}.\n")
     out.append(table(bands) + "\n")
+    el = meta.get("elements")
+    if el:
+        fold = "omega compared mod 180° (near-equal twins); " if el.get("twin_fold") else ""
+        out.append(f"Winning band against the reference elements ({fold}Omega folded mod 180° with omega shifted; "
+                   f"mirror fraction {el['mirror_fraction']:.2f}):\n")
+        out.append("| element | reference | posterior − reference | pull |\n| --- | ---: | ---: | ---: |")
+        for k in ("period", "ecc", "inc", "Omega", "omega", "a_mas"):
+            e = el[k]
+            out.append(f"| {k} | {e['ref']:.4g} | {e['mean_offset']:.3g} ± {e['sd']:.2g} | {fmt(e['pull'], '.1f')} |")
+        out.append("")
+    chk = meta.get("chi2_check")
+    if chk and not chk["agrees"]:
+        out.append(f"!!! warning\n    Raw χ²/N recomputed here ({chk['ours']:.2f}) differs from the band table ({chk['virgil']:.2f}).\n")
     for png, cap in PLOTS:
         if (sysdir / png).exists():
             out.append(f"![{cap}]({rel}/{name}/{png})\n")

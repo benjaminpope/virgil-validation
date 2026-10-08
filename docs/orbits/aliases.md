@@ -22,6 +22,15 @@ importance-sampling log evidence of the band; **p** is its posterior
 probability; **ESS** is the importance-sampling effective sample size of the best
 mode, and a flag means the two evidences disagree or the ESS is low.
 
+!!! warning "The reference is not an independent test of the period"
+    For every Track B system the prior window on the period is P_ref / 1.25 to
+    1.25 P_ref, centred on the published period; for Gl 229 it is 10 to 14 d. A
+    reference orbit in the winning band is therefore a choice among the few bands
+    of that window, not an independent confirmation of the published period.
+    Element comparisons fold the reference's mirror (Omega mod 180° with omega
+    shifted) and, for the near-equal-mass systems (al_dor, hd41255, hd188088),
+    compare omega mod 180°, since closure phases barely separate the twins.
+
 !!! note "Results pending"
     Sections marked *placeholder* have no results yet: the fits run on OzSTAR
     (`ozstar_scripts/scripts/orbit_aliases`) and are pulled into this page by
@@ -62,16 +71,6 @@ mode, and a flag means the two evidences disagree or the ESS is low.
 !!! warning "Placeholder"
     No results yet for `hd70937` (GRAVITY). Expected: band table, `sky.png`, `corner.png`, `residuals.png`.
 
-## kappa Vel
-
-!!! warning "Placeholder"
-    No results yet for `kap_vel` (GRAVITY). Expected: band table, `sky.png`, `corner.png`, `residuals.png`.
-
-## NN Del
-
-!!! warning "Placeholder"
-    No results yet for `nn_del` (PIONIER). Expected: band table, `sky.png`, `corner.png`, `residuals.png`.
-
 ## o Leo
 
 !!! warning "Placeholder"
@@ -85,6 +84,7 @@ mode, and a flag means the two evidences disagree or the ESS is low.
 
 ## Systems not included
 
+- kappa Vel, NN Del (Track B): span shorter than the period, so only N = 0 and 1 exist and nothing is tested.
 - Apep (GRAVITY, 6 nights): calibration is done by a script outside this repository and the calibrated OIFITS are not on /fred.
 - Apep, 9 Sgr, delta Vel, HD 136164 (NACO SAM): one epoch, or four nights in one run: not an orbit.
 - HR 4049 (PIONIER): no period; the analysis lives in notebooks, with no standalone loader.

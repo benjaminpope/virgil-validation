@@ -9,7 +9,7 @@ fits and are plotted as diagnostics only.
 Install virgil from the Stage A branch (until the PR merges):
 
     pip install git+https://github.com/benjaminpope/virgil@claude/orbit-aliases-d040f2
-    pip install corner            # the `plots` extra of this repo
+    pip install -e ".[orbit-aliases]"   # the extra pins virgil (Stage A commit) and corner
 
 Usage (the fits are heavy JAX: OzSTAR, see ozstar_scripts/scripts/orbit_aliases; on a laptop
 only --list is safe):
@@ -144,16 +144,14 @@ def _trackb_reference(s):
                 or s["reference"].get("bibcode", ""))
 
 
-def _trackb_p_range(s, factor=P_WINDOW):
-    p = s["reference_orbit"]["P_day"][0]
-    return (p / factor, p * factor)
-
-
 def make_trackb_loader(name):
     def load(root):
         import trackb_fit as T
 
         s, _ = _trackb_system(root, name)
+        p_json = s["reference_orbit"]["P_day"][0]  # one source for P_ref: TRACKB; a mismatch is an error
+        if abs(p_json / TRACKB[name][2] - 1) > 1e-4:
+            raise ValueError(f"{name}: TRACKB period {TRACKB[name][2]} != system.json {p_json}")
         eps = [e for e in T.epochs_of(name, s, pathlib.Path(root) / "trackb") if e["counted"]]
         names, data, gdata, notes, refpos, seps = [], [], [], [], [], []
         for e in eps:
@@ -174,7 +172,7 @@ def make_trackb_loader(name):
 
 
 # Track B systems with a tabulated reference period and at least four counted epochs on disk.
-# Others are skipped (docs/orbits/aliases.md): 1-2 epochs (9sgr, hd152314, hd168137, kq_vel, cpd-71_172,
+# Others are skipped (docs/orbits/aliases.md): span shorter than the period (kap_vel, nn_del), 1-2 epochs (9sgr, hd152314, hd168137, kq_vel, cpd-71_172,
 # tyc1703-394-1), no tabulated period (zet_boo, eta_oph), mixed instruments or a manifest conflict
 # (del_cir, tz_for). Gl 229's loader is the one outside Track B.
 TRACKB = {
@@ -184,8 +182,6 @@ TRACKB = {
     "hd210763": ("HD 210763", "GRAVITY", 42.38113),
     "hd41255": ("HD 41255", "GRAVITY", 148.329),
     "hd70937": ("HD 70937", "GRAVITY", 27.8858),
-    "kap_vel": ("kappa Vel", "GRAVITY", 116.795),
-    "nn_del": ("NN Del", "PIONIER", 99.269),
     "omi_leo": ("o Leo", "GRAVITY", 14.498068),
     "psi_cen": ("psi Cen", "PIONIER", 38.8121),
 }
@@ -227,6 +223,31 @@ def sample_track(s, i, t_ref, t):
 
     return O.position(t, s["period"][i], t_ref + s["dt_peri"][i], s["ecc"][i], s["inc"][i], s["omega"][i], s["Omega"][i],
                       s["a_mas"][i])
+
+
+def element_comparison(result, ref, name):
+    """Winning-band posterior against the reference elements (our Kepler convention). Omega is folded mod 180 deg
+    with omega shifted (crosscheck.orbits.fold_samples); for the near-equal-mass systems (crosscheck.astrometry.NEAR_EQUAL:
+    al_dor, hd41255, hd188088), where closure phases barely tell the twins apart, omega is also compared mod 180 deg."""
+    from crosscheck import astrometry as A
+    from crosscheck import orbits as O
+
+    s = result.samples[result.best.n]
+    om, Om, mirror = O.fold_samples(s["omega"], s["Omega"], ref["Omega"])
+    twin = name in A.NEAR_EQUAL
+    out = {}
+    for k, v, r in (("period", s["period"], ref["P"]), ("ecc", s["ecc"], ref["ecc"]), ("inc", s["inc"], ref["inc"]),
+                    ("Omega", Om, ref["Omega"]), ("omega", om, ref["omega"]), ("a_mas", s["a_mas"], ref["a_mas"])):
+        v = np.asarray(v, float)
+        if k == "omega":
+            d = (v - r + (90.0 if twin else 180.0)) % (180.0 if twin else 360.0) - (90.0 if twin else 180.0)
+        else:
+            d = v - r
+        sd = float(np.std(d))
+        out[k] = dict(ref=r, mean_offset=float(np.mean(d)), sd=sd, pull=float(np.mean(d) / sd) if sd > 0 else None)
+    out["twin_fold"] = twin
+    out["mirror_fraction"] = float(np.mean(mirror))
+    return out
 
 
 def plot_sky(path, result, loaded, epos, ref, n_draw=60):
@@ -295,22 +316,24 @@ def plot_residuals(path, result, loaded):
     model = OrbitalBinary(orbit, b["flux"])
     rng = np.random.default_rng(1)
     fig, ax = plt.subplots(figsize=(max(6, 0.6 * len(loaded.data) + 3), 4))
-    rms = []
+    rms, chi2, n_ind = [], 0.0, 0
     for k, d in enumerate(loaded.data):
-        r = np.asarray(whitened_residuals(model, d))[: int(d.n_independent)]
+        r = np.asarray(whitened_residuals(model, d))  # the full vector, as trackb_fit.py sums it
         ax.plot(k + 0.15 * rng.standard_normal(r.size), r, ".", ms=2, alpha=0.4, color="C0")
         rms.append(float(np.sqrt(np.mean(r**2))))
+        chi2 += float(np.sum(r**2))
+        n_ind += int(d.n_independent)
     ax.plot(range(len(rms)), rms, "o", color="C3", label="rms (raw chi/N^0.5)")
     ax.plot(range(len(rms)), -np.array(rms), "o", color="C3")
     ax.axhline(0, color="k", lw=0.5)
     ax.set_xticks(range(len(loaded.names)), loaded.names, rotation=60, ha="right", fontsize=7)
     ax.set_ylabel("residual / quoted error")
-    ax.set_title(f"closure-phase residuals at the best orbit (N={result.best.n})")
+    ax.set_title(f"residuals / quoted error at the best orbit (N={result.best.n})")
     ax.legend(fontsize=7)
     fig.tight_layout()
     fig.savefig(path, dpi=130)
     plt.close(fig)
-    return rms
+    return rms, chi2, n_ind
 
 
 def print_table(result):
@@ -351,15 +374,22 @@ def run(name, args):
                 notes=loaded.notes, reference=ref,
                 virgil=_virgil_version())
     if ref is not None:
-        n_ref = int(round(float(np.ptp(times)) / ref["P"]))
-        meta["reference_band"] = dict(n=n_ref, period=ref["P"],
-                                      p=next((b.p for b in result.bands if b.n == n_ref), None),
-                                      is_winner=result.best.n == n_ref)
-        print(f"reference (P={ref['P']:.4f} d) lies in band N={n_ref}; winner N={result.best.n}")
+        hit = next((b for b in result.bands if b.p_lo <= ref["P"] <= b.p_hi), None)  # virgil's own band edges
+        meta["reference_band"] = dict(n=None if hit is None else hit.n, period=ref["P"],
+                                      p=None if hit is None else hit.p, is_winner=hit is not None and hit is result.best)
+        meta["elements"] = element_comparison(result, ref, name)
+        print(f"reference (P={ref['P']:.4f} d) lies in band N={meta['reference_band']['n']}; winner N={result.best.n}")
     json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
     plot_sky(outdir / "sky.png", result, loaded, epos, ref)
     plot_corner(outdir / "corner.png", result)
-    meta["rms_residual"] = plot_residuals(outdir / "residuals.png", result, loaded)
+    rms, chi2, n_ind = plot_residuals(outdir / "residuals.png", result, loaded)
+    meta["rms_residual"] = rms
+    meta["chi2_raw"], meta["n_independent"] = chi2, n_ind
+    meta["chi2_raw_per_n"] = chi2 / n_ind
+    meta["chi2_check"] = dict(ours=chi2 / n_ind, virgil=result.best.chi2_red,
+                              agrees=bool(abs(chi2 / n_ind / result.best.chi2_red - 1) < 0.05))
+    if not meta["chi2_check"]["agrees"]:
+        print(f"WARNING: raw chi2/N here {chi2 / n_ind:.3f} differs from the band table's {result.best.chi2_red:.3f}")
     json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
     (outdir / f"{name}.done").write_text("ok\n")
     print(f"wrote {outdir} in {time.time() - t0:.0f} s")
@@ -369,9 +399,15 @@ def _virgil_version():
     try:
         import importlib.metadata as im
 
-        return im.version("virgil-astro")
+        v = im.version("virgil-astro")
     except Exception:
         return None
+    try:  # the commit a pip install from git recorded
+        du = json.loads(im.distribution("virgil-astro").read_text("direct_url.json") or "{}")
+        commit = du.get("vcs_info", {}).get("commit_id")
+    except Exception:
+        commit = None
+    return dict(version=v, commit_id=commit or os.environ.get("VIRGIL_COMMIT"))
 
 
 def main(argv=None):

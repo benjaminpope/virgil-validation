@@ -18,13 +18,13 @@ OzSTAR under `/fred/oz440/bpope/eso_binaries/`.
 | omi_leo | GRAVITY K | `trackb/omi_leo/oifits/` | 9, 59638-59971 | Gallenne+2023: P 14.5 d | yes |
 | hd70937 | GRAVITY K | `trackb/hd70937/oifits/` | 14, 59197-59971 | Gallenne+2023: P 27.9 d | yes |
 | hd210763 | GRAVITY K | `trackb/hd210763/oifits/` | 9, 59442-59804 | Gallenne+2023: P 42.4 d | yes |
-| kap_vel | GRAVITY K | `trackb/kap_vel/oifits/` | 8 of 9, 60670-60731 | orbit_fit_table: P 116.8 d | yes (two months of data) |
+| kap_vel | GRAVITY K | `trackb/kap_vel/oifits/` | 8 of 9, 60670-60731 | orbit_fit_table: P 116.8 d | no: span shorter than the period |
 | zet_boo, eta_oph | GRAVITY K | `trackb/<sys>/oifits/` | 4; 6 | ORB6 + GRAVITY | no: no tabulated P |
 | del_cir | GRAVITY + PIONIER | `trackb/del_cir/oifits/` | 8 of 12 | spinOS, P 1603 d | no: mixed instruments |
 | tz_for | GRAVITY + PIONIER | `trackb/tz_for/oifits/` | manifest 0, files 16 | Gallenne+2018: P 75.7 d | no: manifest conflict |
 | psi_cen | PIONIER H | `trackb/psi_cen/oifits/` | 6, 57481-57816 | Gallenne+2019 Table 2: P 38.8 d | yes |
-| nn_del | PIONIER H | `trackb/nn_del/oifits/` | 4, 57954-58016 | Gallenne+2019: P 99.3 d | yes |
-| al_dor | PIONIER H | `trackb/al_dor/oifits/` | 18 of 19, 57387-58118 | Gallenne+2019: P 14.9 d (twins: compare mod 180 deg) | yes |
+| nn_del | PIONIER H | `trackb/nn_del/oifits/` | 4, 57954-58016 | Gallenne+2019: P 99.3 d | no: span shorter than the period |
+| al_dor | PIONIER H | `trackb/al_dor/oifits/` | 18 of 19, 57387-58118 | Gallenne+2019: P 14.9 d (near-equal twins: omega mod 180 deg, as hd41255 and hd188088) | yes |
 | alf_equ | PIONIER H | `trackb/alf_equ/oifits/` | 7 of 12, 56937-57625 | VB+SB orbit table: P 98.8 d | yes |
 | 9sgr, hd152314, hd168137, kq_vel, cpd-71_172, tyc1703-394-1 | PIONIER / GRAVITY | `trackb/<sys>/oifits/` | 1-2 epochs | various | no: too few epochs |
 
