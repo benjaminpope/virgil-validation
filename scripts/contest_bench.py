@@ -251,7 +251,7 @@ def run_ensemble(spec, out, label, seed=0, smoke=False):
 
     # The other arms' common grid: max(MEMBER_FIELDS) x the data-chosen field.
     ref_fov = contest_images.reference_fov(spec, pathlib.Path("/"))
-    n_ref = contest_images.REF_NPIX
+    n_ref = contest_images.reference_npix(ref_fov, contest_images.data_q_max(data))
     scale = float(result.mean.pixel_scale_mas)
     std = np.asarray(result.std, float)
     mean = np.asarray(result.mean.brightness, float)

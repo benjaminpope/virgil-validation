@@ -511,6 +511,16 @@ def data_q_max(data):
     return best
 
 
+def reference_npix(fov_mas, q_max, base=None):
+    """The reference grid's side: ``REF_NPIX``, or the smallest odd side whose
+    Nyquist frequency is at least 1.1 x ``q_max`` (cycles per mas) if the data
+    reach beyond what ``REF_NPIX`` samples, so the saved image always samples
+    every baseline."""
+    base = REF_NPIX if base is None else base
+    n = int(np.ceil(2.2 * q_max * fov_mas))
+    return max(base, n + 1 - n % 2)
+
+
 def render_scene(model, npix, fov_mas, q_max):
     """``model`` drawn on an ``npix`` x ``npix`` grid spanning ``fov_mas``,
     in ``SourceModel.render``'s orientation (East left, North up) and unit
@@ -524,6 +534,9 @@ def render_scene(model, npix, fov_mas, q_max):
     what the data cannot see is smoothed rather than left to ring. A few
     pixels can still be slightly negative."""
     pixel = float(fov_mas) / int(npix)
+    if 0.5 / pixel < q_max:
+        raise ValueError(f"a {npix}-pixel grid over {fov_mas:.4g} mas (Nyquist {0.5 / pixel:.3g} cycles/mas) "
+                         f"undersamples the data (q_max {q_max:.3g}); use reference_npix")
     freq = (np.arange(npix) - (npix - 1) / 2) / (npix * pixel)
     fu, fv = np.meshgrid(freq, freq)  # [row l, column k] = (freq[k] East, freq[l] North)
     nyquist = 0.5 / pixel
@@ -947,7 +960,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     reference = {}
     if settings is not None:
         chosen_model = curve.results[index["discrepancy"]].model
-        reference = dict(ref_image=render_scene(chosen_model, REF_NPIX, s["ref_fov"], data_q_max(data)), ref_fov=s["ref_fov"],
+        reference = dict(ref_image=render_scene(chosen_model, reference_npix(s["ref_fov"], data_q_max(data)), s["ref_fov"], data_q_max(data)), ref_fov=s["ref_fov"],
                          best_chi2_red=float(np.sum(np.asarray(curve.chi2_red)[index["discrepancy"]])), error_scale=np.nan,
                          star=bool(star), star_rejected=s["star_rejected"], best_log_z=np.nan, flip_dchi2=np.nan)
     np.savez_compressed(
@@ -1314,14 +1327,15 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     member_extra = {}
     if settings is not None:
         ref_fov = s["ref_fov"]
+        n_ref = reference_npix(ref_fov, data_q_max(data))
         companion = s["star_fit"].get("companion") if isinstance(s.get("star_fit"), dict) else None
         member_extra = dict(
             # The whole scene (star and companion included) rendered on the
             # common grid (render_scene, not a resampling of the fit grid), so
             # that star and no-star members compare like with like; the
             # environment alone too.
-            ref_image=render_scene(final.model, REF_NPIX, ref_fov, data_q_max(data)),
-            ref_env=render_scene(final.model.env, REF_NPIX, ref_fov, data_q_max(data)), ref_fov=ref_fov,
+            ref_image=render_scene(final.model, n_ref, ref_fov, data_q_max(data)),
+            ref_env=render_scene(final.model.env, n_ref, ref_fov, data_q_max(data)), ref_fov=ref_fov,
             star=bool(star), star_rejected=s["star_rejected"], star_model=s["star_model"], halo=settings["halo"],
             sparco=settings["sparco"], field_factor=settings["field"], oversample=settings["oversample"],
             clean_gain=settings["clean_gain"], env_flux=flux_value(final.model.env.flux),

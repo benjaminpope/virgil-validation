@@ -93,6 +93,31 @@ def test_saved_image_reproduces_the_fitted_chi2():
     assert np.sum(np.clip(rendered, None, 0.0)) > -0.02  # smoothed beyond the data, not ringing
 
 
+@pytest.mark.validates("pipeline:contest-imaging", "virgil.models.Image", roots=["mathematics"], kind="reference")
+def test_reference_grid_samples_the_longest_baseline():
+    # 2018's coverage (q_max 1.07 cycles/mas) over a 180 mas field: the default
+    # 257-pixel grid (Nyquist 0.71) undersamples it, so the saved image's DFT
+    # failed the data (χ²/N ~ 29 against a fit's 0.95). reference_npix enlarges
+    # the grid and render_scene refuses an undersampled one.
+    ci = _load("contest_images")
+    model = _scene()
+    fov, q_max = 180.0, 1.07
+    assert 0.5 * ci.REF_NPIX / fov < q_max
+    with pytest.raises(ValueError, match="undersamples"):
+        ci.render_scene(model, ci.REF_NPIX, fov, q_max)
+    npix = ci.reference_npix(fov, q_max)
+    assert npix > ci.REF_NPIX and npix % 2 == 1 and 0.5 * npix / fov >= 1.1 * q_max
+    assert ci.reference_npix(30.0, 0.5) == ci.REF_NPIX
+    image = ci.render_scene(model, npix, fov, q_max)
+    cloud = sky.pixel_image(image, fov / npix)
+    rng = np.random.default_rng(5)
+    q, t = rng.uniform(0.05, q_max, 60), rng.uniform(0, 2 * np.pi, 60)
+    u, v = q * np.sin(t) / sky.MAS * 1.0, q * np.cos(t) / sky.MAS
+    want = np.asarray(model.model(u, v, 1.0))
+    got = np.asarray(sky.visibility(cloud, u, v, 1.0))
+    assert np.max(np.abs(got - want)) < 0.02
+
+
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
 def test_every_component_is_drawn_and_recorded():
     # Fix B: the companion is in the saved image (its share of the flux,
