@@ -21,7 +21,7 @@ only --list is safe):
 Data root: $ESO_BIN_ROOT (default /fred/oz440/bpope/eso_binaries), holding gravity/oifits/<night>/
 (Gl 229) and trackb/<system>/{system.json,oifits/} (Track B, see design/plan_eso_binaries.md).
 
-Writes DIR/<system>/{bands.json, meta.json, sky.png, corner.png, residuals.png} and prints the
+Writes DIR/<system>/{bands/band_<N>.{pkl,json} (per band, as fitted; a rerun resumes), bands.json, meta.json, sky.png, corner.png, residuals.png} and prints the
 band table with the raw chi2/N on the quoted errors first.
 
 Independence rule (AGENTS.md): reference orbits and every orbit track drawn here come from
@@ -37,6 +37,7 @@ import os
 import pathlib
 import sys
 import time
+import traceback
 
 import numpy as np
 
@@ -197,18 +198,33 @@ for _k, (_label, _inst, _p) in TRACKB.items():
 # ---------------------------------------------------------------------------
 # Fit and outputs
 # ---------------------------------------------------------------------------
-def positions_for(loaded, t_ref):
-    """Per-epoch positions (seeds and diagnostic): epoch_positions on a grid at lambda_min / 4 B_max."""
+def positions_for(loaded, t_ref, max_widen=3):
+    """Per-epoch positions (seeds and diagnostic): epoch_positions on a grid at lambda_min / 4 B_max.
+
+    A best peak at the grid edge may stand for a companion outside it, so the half-width is widened by
+    1.5 (up to ``max_widen`` times) until no epoch's best peak is at the edge. Returns (positions, epochs,
+    info) with info = dict(half_widths, edge_epochs) recording what happened; an epoch still at the edge
+    after the last widening is listed in ``edge_epochs`` and the run goes on (the positions only seed the fits).
+    """
     from virgil.epochs import Epochs, epoch_positions
 
     wmin = min(float(np.min(np.asarray(d.wavel, float))) for d in loaded.grid_data)
     bmax = max(float(np.max(np.hypot(np.asarray(d.u, float), np.asarray(d.v, float)))) for d in loaded.grid_data)
-    half, step = _grid_half(bmax, wmin, loaded.grid_half)
-    n = 2 * int(np.ceil(half / step)) + 1
-    ax = np.linspace(-half, half, n)
-    grid = dict(dra=ax, ddec=ax, flux=np.geomspace(0.02, 1.0, 13))
-    ep = epoch_positions(Epochs(dict(zip(loaded.names, loaded.grid_data))), grid, n_peaks=5)
-    return ep.positions(t_ref=t_ref), ep
+    half = loaded.grid_half
+    halves = []
+    for _ in range(max_widen + 1):
+        half, step = _grid_half(bmax, wmin, half)
+        n = 2 * int(np.ceil(half / step)) + 1
+        ax = np.linspace(-half, half, n)
+        grid = dict(dra=ax, ddec=ax, flux=np.geomspace(0.02, 1.0, 13))
+        ep = epoch_positions(Epochs(dict(zip(loaded.names, loaded.grid_data))), grid, n_peaks=5)
+        halves.append(float(half))
+        edge = np.asarray(ep.edge, bool)
+        if not edge.any():
+            break
+        half = 1.5 * half
+    info = dict(half_widths=halves, edge_epochs=[nm for nm, e in zip(loaded.names, edge) if e])
+    return ep.positions(t_ref=t_ref), ep, info
 
 
 def ref_track(ref, t):
@@ -336,10 +352,20 @@ def plot_residuals(path, result, loaded):
     return rms, chi2, n_ind
 
 
+def _flatten(v):
+    """Scalars of a nested list (virgil's per-block scales were lists of lists before PR #321)."""
+    for x in v:
+        if isinstance(x, (list, tuple)):
+            yield from _flatten(x)
+        else:
+            yield x
+
+
 def print_table(result):
     print(f"{'N':>4} {'P (d)':>9} {'chi2/N':>7} {'s_min':>6} {'s_max':>6} {'logZ':>9} {'logZ_IS':>9} {'p':>7} {'ESS':>7}  flags")
     for r in result.table():
-        sc = [x for x in (r["scales"] or []) if x is not None and np.isfinite(x)] or [float("nan")]
+        sc = [x for x in _flatten(r["scales"] or []) if x is not None and np.isfinite(x)]
+        sc = sc or [float("nan")]
         flags = r.get("flags")
         flags = ("FLAG" if r["flagged"] else "") if flags is None else ", ".join(flags)
         nan = float("nan")
@@ -366,37 +392,67 @@ def run(name, args):
         print("note:", n)
     if args.dry_run:
         return
-    positions, epos = positions_for(loaded, t_ref)
+    errors = []
+
+    def attempt(label, fn):
+        """Run a post-processing step; a failure is recorded in meta.json and printed, never fatal."""
+        try:
+            return fn()
+        except Exception as err:  # noqa: BLE001
+            errors.append(f"{label}: {type(err).__name__}: {err}")
+            print(f"WARNING: {errors[-1]}", file=sys.stderr)
+            traceback.print_exc()
+            return None
+
+    meta = dict(system=name, label=sysd.label, instrument=sysd.instrument, epochs=loaded.names, mjd=times.tolist(),
+                p_range=p_range, args={k: v for k, v in vars(args).items() if k != "list"}, notes=loaded.notes,
+                reference=loaded.reference, virgil=_virgil_version(), errors=errors)
+
+    def save_meta():
+        meta["elapsed_s"] = time.time() - t0
+        json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
+
+    save_meta()
+    positions, epos, pinfo = positions_for(loaded, t_ref)
+    meta["position_grid"] = pinfo
+    if pinfo["edge_epochs"]:
+        print(f"WARNING: best position at the grid edge after widening to {pinfo['half_widths'][-1]:.1f} mas: "
+              f"{pinfo['edge_epochs']}")
+    save_meta()
+    # Each band is written to outdir/bands/ as soon as it is fitted; a rerun skips the finished ones.
     result = fit_orbit_aliases(loaded.data, p_range, positions=positions, times=times, t_ref=t_ref, a_range=loaded.a_range,
                                ecc_max=args.ecc_max, n_candidates=args.n_candidates, n_refine=args.n_refine, n_is=args.n_is,
-                               n_samples=args.n_samples)
-    print_table(result)
-    result.to_json(outdir / "bands.json", n_samples=args.n_samples)
+                               n_samples=args.n_samples, checkpoint_dir=outdir / "bands",
+                               on_band=lambda b: print(f"band N={b.n}: log_z {b.log_z:.2f} flags {b.flags} "
+                                                       f"({time.time() - t0:.0f} s)", flush=True))
+    result.to_json(outdir / "bands.json", n_samples=args.n_samples)  # results first: nothing below can lose them
+    attempt("print_table", lambda: print_table(result))
     ref = loaded.reference
-    meta = dict(system=name, label=sysd.label, instrument=sysd.instrument, epochs=loaded.names, mjd=times.tolist(),
-                p_range=p_range, args={k: v for k, v in vars(args).items() if k != "list"}, elapsed_s=time.time() - t0,
-                notes=loaded.notes, reference=ref,
-                virgil=_virgil_version())
     if ref is not None:
         hit = next((b for b in result.bands if b.p_lo <= ref["P"] <= b.p_hi), None)  # virgil's own band edges
         meta["reference_band"] = dict(n=None if hit is None else hit.n, period=ref["P"],
                                       p=None if hit is None else hit.p, is_winner=hit is not None and hit is result.best)
-        meta["elements"] = element_comparison(result, ref, name)
+        meta["elements"] = attempt("element_comparison", lambda: element_comparison(result, ref, name))
         print(f"reference (P={ref['P']:.4f} d) lies in band N={meta['reference_band']['n']}; winner N={result.best.n}")
-    json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
-    plot_sky(outdir / "sky.png", result, loaded, epos, ref)
-    plot_corner(outdir / "corner.png", result)
-    rms, chi2, n_ind = plot_residuals(outdir / "residuals.png", result, loaded)
-    meta["rms_residual"] = rms
-    meta["chi2_raw"], meta["n_independent"] = chi2, n_ind
-    meta["chi2_raw_per_n"] = chi2 / n_ind
-    vr = result.best.chi2_red
-    meta["chi2_check"] = dict(ours=chi2 / n_ind, virgil=vr,
-                              agrees=bool(np.isfinite(vr) and vr > 0 and abs(chi2 / n_ind / vr - 1) < 0.05))
-    if not meta["chi2_check"]["agrees"]:
-        print(f"WARNING: raw chi2/N here {chi2 / n_ind:.3f} differs from the band table's {result.best.chi2_red:.3f}")
-    json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
-    (outdir / f"{name}.done").write_text("ok\n")
+    save_meta()
+    if result.samples.get(result.best.n) is not None and result.best.best:
+        attempt("plot_sky", lambda: plot_sky(outdir / "sky.png", result, loaded, epos, ref))
+        attempt("plot_corner", lambda: plot_corner(outdir / "corner.png", result))
+        res = attempt("plot_residuals", lambda: plot_residuals(outdir / "residuals.png", result, loaded))
+        if res is not None:
+            rms, chi2, n_ind = res
+            meta["rms_residual"] = rms
+            meta["chi2_raw"], meta["n_independent"] = chi2, n_ind
+            meta["chi2_raw_per_n"] = chi2 / n_ind
+            vr = result.best.chi2_red
+            meta["chi2_check"] = dict(ours=chi2 / n_ind, virgil=vr,
+                                      agrees=bool(np.isfinite(vr) and vr > 0 and abs(chi2 / n_ind / vr - 1) < 0.05))
+            if not meta["chi2_check"]["agrees"]:
+                print(f"WARNING: raw chi2/N here {chi2 / n_ind:.3f} differs from the band table's {result.best.chi2_red:.3f}")
+    else:
+        errors.append("no posterior samples in the best band: plots skipped")
+    save_meta()
+    (outdir / f"{name}.done").write_text("ok\n" if not errors else "ok, with errors: see meta.json\n")
     print(f"wrote {outdir} in {time.time() - t0:.0f} s")
 
 
