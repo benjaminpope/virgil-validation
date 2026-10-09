@@ -318,11 +318,12 @@ def plot_corner(path, result):
     plt.close(fig)
 
 
-def plot_residuals(path, result, loaded):
-    import matplotlib
+def residual_stats(result, loaded):
+    """Raw residuals of every epoch at the best orbit, whitened by the quoted errors, as trackb_fit.py sums them.
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    Returns (residuals per epoch, rms per epoch, chi2, n_independent): the independent check of virgil's chi2_red,
+    kept apart from the plotting so a plotting failure cannot remove it.
+    """
     from virgil.likelihood import whitened_residuals
     from virgil.models import OrbitalBinary
     from virgil.orbits import KeplerOrbit
@@ -330,26 +331,31 @@ def plot_residuals(path, result, loaded):
     b = result.best.best
     orbit = KeplerOrbit(b["period"], b["dt_peri"], b["ecc"], b["inc"], b["omega"], b["Omega"], b["a_mas"], t_ref=result.t_ref)
     model = OrbitalBinary(orbit, b["flux"])
+    res = [np.asarray(whitened_residuals(model, d)) for d in loaded.data]
+    rms = [float(np.sqrt(np.mean(r**2))) for r in res]
+    return res, rms, sum(float(np.sum(r**2)) for r in res), sum(int(d.n_independent) for d in loaded.data)
+
+
+def plot_residuals(path, loaded, res, rms, n_best):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
     rng = np.random.default_rng(1)
     fig, ax = plt.subplots(figsize=(max(6, 0.6 * len(loaded.data) + 3), 4))
-    rms, chi2, n_ind = [], 0.0, 0
-    for k, d in enumerate(loaded.data):
-        r = np.asarray(whitened_residuals(model, d))  # the full vector, as trackb_fit.py sums it
+    for k, r in enumerate(res):
         ax.plot(k + 0.15 * rng.standard_normal(r.size), r, ".", ms=2, alpha=0.4, color="C0")
-        rms.append(float(np.sqrt(np.mean(r**2))))
-        chi2 += float(np.sum(r**2))
-        n_ind += int(d.n_independent)
     ax.plot(range(len(rms)), rms, "o", color="C3", label="rms (raw chi/N^0.5)")
     ax.plot(range(len(rms)), -np.array(rms), "o", color="C3")
     ax.axhline(0, color="k", lw=0.5)
     ax.set_xticks(range(len(loaded.names)), loaded.names, rotation=60, ha="right", fontsize=7)
     ax.set_ylabel("residual / quoted error")
-    ax.set_title(f"residuals / quoted error at the best orbit (N={result.best.n})")
+    ax.set_title(f"residuals / quoted error at the best orbit (N={n_best})")
     ax.legend(fontsize=7)
     fig.tight_layout()
     fig.savefig(path, dpi=130)
     plt.close(fig)
-    return rms, chi2, n_ind
 
 
 def _flatten(v):
@@ -419,7 +425,11 @@ def run(name, args):
         print(f"WARNING: best position at the grid edge after widening to {pinfo['half_widths'][-1]:.1f} mas: "
               f"{pinfo['edge_epochs']}")
     save_meta()
-    # Each band is written to outdir/bands/ as soon as it is fitted; a rerun skips the finished ones.
+    # Each band is written to outdir/bands/ as soon as it is fitted; a rerun skips the finished ones, but only
+    # if the settings, data and virgil version match: otherwise the old bands move aside and the run starts fresh.
+    _check_resume(outdir, dict(system=name, p_range=list(p_range), a_range=list(loaded.a_range), epochs=loaded.names,
+                               mjd=times.tolist(), virgil=_virgil_version(),
+                               args={k: v for k, v in vars(args).items() if k not in ("list", "out", "dry_run")}))
     result = fit_orbit_aliases(loaded.data, p_range, positions=positions, times=times, t_ref=t_ref, a_range=loaded.a_range,
                                ecc_max=args.ecc_max, n_candidates=args.n_candidates, n_refine=args.n_refine, n_is=args.n_is,
                                n_samples=args.n_samples, checkpoint_dir=outdir / "bands",
@@ -435,25 +445,46 @@ def run(name, args):
         meta["elements"] = attempt("element_comparison", lambda: element_comparison(result, ref, name))
         print(f"reference (P={ref['P']:.4f} d) lies in band N={meta['reference_band']['n']}; winner N={result.best.n}")
     save_meta()
+    vr = result.best.chi2_red
+    stats = attempt("residual_stats", lambda: residual_stats(result, loaded)) if result.best.best else None
+    if stats is not None:  # the independent chi2 check does not depend on any plot
+        res, rms, chi2, n_ind = stats
+        meta["rms_residual"] = rms
+        meta["chi2_raw"], meta["n_independent"] = chi2, n_ind
+        meta["chi2_raw_per_n"] = chi2 / n_ind
+        meta["chi2_check"] = dict(ours=chi2 / n_ind, virgil=vr,
+                                  agrees=bool(np.isfinite(vr) and vr > 0 and abs(chi2 / n_ind / vr - 1) < 0.05))
+        if not meta["chi2_check"]["agrees"]:
+            print(f"WARNING: raw chi2/N here {chi2 / n_ind:.3f} differs from the band table's {vr:.3f}")
+    else:  # absence must not read as a pass
+        meta["chi2_check"] = dict(ours=None, virgil=vr, agrees=False, reason="not computed: see errors")
+        errors.append("chi2_check: not computed")
     if result.samples.get(result.best.n) is not None and result.best.best:
         attempt("plot_sky", lambda: plot_sky(outdir / "sky.png", result, loaded, epos, ref))
         attempt("plot_corner", lambda: plot_corner(outdir / "corner.png", result))
-        res = attempt("plot_residuals", lambda: plot_residuals(outdir / "residuals.png", result, loaded))
-        if res is not None:
-            rms, chi2, n_ind = res
-            meta["rms_residual"] = rms
-            meta["chi2_raw"], meta["n_independent"] = chi2, n_ind
-            meta["chi2_raw_per_n"] = chi2 / n_ind
-            vr = result.best.chi2_red
-            meta["chi2_check"] = dict(ours=chi2 / n_ind, virgil=vr,
-                                      agrees=bool(np.isfinite(vr) and vr > 0 and abs(chi2 / n_ind / vr - 1) < 0.05))
-            if not meta["chi2_check"]["agrees"]:
-                print(f"WARNING: raw chi2/N here {chi2 / n_ind:.3f} differs from the band table's {result.best.chi2_red:.3f}")
+        if stats is not None:
+            attempt("plot_residuals", lambda: plot_residuals(outdir / "residuals.png", loaded, res, rms, result.best.n))
     else:
         errors.append("no posterior samples in the best band: plots skipped")
     save_meta()
-    (outdir / f"{name}.done").write_text("ok\n" if not errors else "ok, with errors: see meta.json\n")
+    for stale in (outdir / f"{name}.done", outdir / f"{name}.errors"):
+        stale.unlink(missing_ok=True)
+    if errors:  # .done means complete: a run with failed steps is marked apart, so batch tooling reruns or looks
+        (outdir / f"{name}.errors").write_text("\n".join(errors) + "\n")
+    else:
+        (outdir / f"{name}.done").write_text("ok\n")
     print(f"wrote {outdir} in {time.time() - t0:.0f} s")
+
+
+def _check_resume(outdir, fingerprint):
+    """Keep outdir/bands for resuming only if it was fitted under this fingerprint; else move it aside."""
+    fp = outdir / "bands_fingerprint.json"
+    text = json.dumps(fingerprint, sort_keys=True, default=str)
+    if (outdir / "bands").exists() and (not fp.exists() or fp.read_text() != text):
+        aside = outdir / f"bands.stale-{int(time.time())}"
+        (outdir / "bands").rename(aside)
+        print(f"NOTE: earlier bands were fitted under other settings or code; moved to {aside.name}, starting fresh")
+    fp.write_text(text)
 
 
 def _virgil_version():

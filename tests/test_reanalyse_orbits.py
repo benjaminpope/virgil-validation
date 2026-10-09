@@ -5,9 +5,14 @@ import sys
 import types
 
 import numpy as np
+import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 import reanalyse_orbits as R  # noqa: E402
+
+pytest.importorskip("virgil.epochs")
+# How the script behaves, not a check of virgil against an independent result: guards.
+pytestmark = pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 
 
 class _Result:
@@ -63,3 +68,15 @@ def test_positions_for_records_a_persistent_edge_and_continues(monkeypatch):
     loaded = R.Loaded(["a", "b"], [d, d], [d, d], 10.0, (1.0, 5.0))
     _, _, info = R.positions_for(loaded, 60000.0, max_widen=2)
     assert info["edge_epochs"] == ["b"] and len(info["half_widths"]) == 3
+
+
+def test_check_resume_keeps_matching_bands_and_moves_mismatched_aside(tmp_path):
+    fp = dict(system="x", args=dict(n_is=10))
+    (tmp_path / "bands").mkdir()
+    R._check_resume(tmp_path, fp)  # no fingerprint yet: stale, moved aside
+    assert not (tmp_path / "bands").exists() and len(list(tmp_path.glob("bands.stale-*"))) == 1
+    (tmp_path / "bands").mkdir()
+    R._check_resume(tmp_path, fp)  # same fingerprint: kept
+    assert (tmp_path / "bands").exists()
+    R._check_resume(tmp_path, dict(fp, args=dict(n_is=11)))  # changed setting
+    assert not (tmp_path / "bands").exists()
