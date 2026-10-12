@@ -376,3 +376,22 @@
   referee: mathematics (fouriever's own criteria, solved exactly with its own chi-squared and nsigma, work, in tests/test_fouriever_limits.py::test_limits_match_fouriever_exactly)
   evidence: [tests/test_fouriever_limits.py::test_fouriever_public_detlim_against_its_exact_criteria]
   status: to-raise
+
+- id: F20
+  title: the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD (FD scaling as 1/eps) and a loss that rises along -grad; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere"
+  objects: [virgil.likelihood.whitened_residuals]
+  ruling: virgil
+  kind: 'objective (not the correlated whitening of F11, not the entropy, softmax or pixel parameterisation: 3 telescopes show it too, and V² and MaxEntropy have AD = FD at the same point. A model visibility V passing through 0 changes its phase by pi, so every closure phase through that baseline jumps by pi and the chi-squared by ~2/sigma^2 over a step of |V|/|dV/dx| (1e-9 and less at a stall); d(phase)/dx ~ 1/|V|. Reproduced on synthetic 3-telescope data: a flat-start MEM fit (16x16, 3000 L-BFGS steps) ends with a model visibility of 4e-12 and does not converge; AD 6e6 vs FD -4e7 at eps 1e-5. Constructed: on a line of centrosymmetric images V is real and crosses 0 (1e-18), the loss jumps by 1e5 and its FD is 5e9 (eps 1e-5) and 5e11 (1e-7) against AD 2e15. Not yet confirmed on the contest files themselves, which are not available here: scripts/diagnose_stall.py now prints the smallest model visibility at the stall)'
+  fix: 'Fit the complex bispectrum, as BSMEM and MiRA do: r = (B_model - B_data) / (|B_data| sigma_phi), B = V_ab V_bc conj(V_ac), a polynomial in the model visibilities, so smooth through V = 0 and equal to the phase residual to first order where |B_model| = |B_data| (reference test: its change across the null is ~1e-3 where the phase residual''s is 1e5). Or keep the phase residual and floor/penalise the model amplitude on closure baselines. Either way correct the docstring and add a check to imaging.diagnose for min |V_model| on closure baselines.'
+  referee: mathematics (the phase of a complex number is discontinuous at 0; a loss built from it cannot have a bounded gradient there; the bispectrum form is polynomial in V)
+  evidence:
+    - tests/test_mem_null_discontinuity.py::test_constructed_null_is_a_null_of_virgils_model
+    - tests/test_mem_null_discontinuity.py::test_v2_and_entropy_terms_are_smooth_at_the_null
+    - tests/test_mem_null_discontinuity.py::test_closure_phase_flips_by_pi_across_the_null
+    - tests/test_mem_null_discontinuity.py::test_loss_gradient_is_right_away_from_nulls
+    - tests/test_mem_null_discontinuity.py::test_loss_changes_by_a_fixed_amount_across_the_null
+    - tests/test_mem_null_discontinuity.py::test_v2_only_mem_fit_has_no_null_stall
+    - tests/test_mem_null_discontinuity.py::test_bispectrum_residual_is_continuous_across_the_null
+    - tests/test_mem_null_discontinuity.py::test_f20_loss_gradient_is_right_at_a_visibility_null
+    - tests/test_mem_null_discontinuity.py::test_f20_mem_fit_stalls_at_a_point_where_ad_equals_fd
+  status: open

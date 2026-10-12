@@ -64,8 +64,24 @@ from those papers are used here, never their results.
   by +10, AGN K by +8700, 2022 GRAVITY by +845). That is the signature of
   a jump in the loss. It is **not** the closure-phase chord (#174 removed
   that), and it does not show in the GP basis at the same data's solution.
-  Candidates still to separate: the MEM regulariser at the image support's
-  edge, and the analytic star's flux bounds.
+  - **Localised (ledger F20, `tests/test_mem_null_discontinuity.py`):** the
+    jump is in the closure-phase residual, where a model visibility passes
+    through zero. The phase of a complex number changes by π through 0, so
+    every closure phase through that baseline and the χ² jump, and the
+    gradient is ~ 1/|V|. Term by term on synthetic 3- and 6-telescope
+    data: V² and the entropy (softmax, pixel parameterisation) have
+    AD = FD at the null; the two closure-phase terms carry the whole jump
+    (3T: 1e5 in the loss, FD 5e9 at ε = 1e-5 and 5e11 at 1e-7 against AD
+    2e15). A flat-start MEM fit of 3T data (16 × 16 pixels, 3000 L-BFGS
+    steps) ends with a model |V| of 4e-12, and does not converge. A V²-only
+    MEM fit of the same kind converges with AD = FD. The nulls attract the
+    fit because a V² term does not object to a null where the data's V² is
+    small, and at a null every closure phase through it is free.
+  - **Not yet confirmed on the contest files** (not available when this was
+    written): `scripts/diagnose_stall.py` now prints the smallest model
+    visibility observable at the stall; a value ≲ 1e-6 confirms it.
+  - **Fix:** fit the complex bispectrum with data weights (BSMEM, MiRA):
+    r = (B_model − B_data) / (|B_data| σ_φ), B = V_ab V_bc V̄_ac. See F20.
   - **Partial check: Obj2 GRAVITY has no jump.** 2024 Obj2 GRAVITY, also
     4T, shows AD = FD to 1e-8 and descent along −∇. It is slow, not
     trapped.
