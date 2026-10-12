@@ -58,6 +58,10 @@ from virgil.imaging import (  # noqa: E402
     log_evidence,
     Centroid,
     MaxEntropy,
+    StarletL1,
+    LogSum,
+    TSV,
+    TV,
     beam,
     diagnose,
     image_priors,
@@ -162,8 +166,46 @@ FLUX_FLOOR = 1e-4  # lower bound of the log-uniform (Jeffreys) flux priors, rela
 GROWTHS = 3  # data-chosen fields grow at most three times (see run())
 
 
-def image_of(model, star, halo=False):
-    return model.env if (star or halo) else model
+def image_of(model, star=None, halo=False):
+    """The Image in ``model``: ``env`` in a System (a star, halo or point
+    sources beside it), else the model itself."""
+    return model.env if isinstance(model, vm.System) else model
+
+
+# Round 2 (contests/fit_plan.yml): regularisers beside MaxEnt, chosen by the
+# discrepancy principle on the quoted errors as MaxEnt is. Their penalties
+# differ in scale by orders of magnitude (TSV is quadratic in unit-sum pixel
+# steps, LogSum a sum over every pixel), so their weights are not MaxEnt's
+# fixed WEIGHTS: the sweep spans 10^±2 about N / P0, where P0 is the
+# penalty at weight 1 on the starting image and N the number of independent
+# data, i.e. from a penalty 100x χ² = N down to 1/100 of it.
+REGULARISERS = {"mem": None, "tv": TV, "tsv": TSV, "starlet": StarletL1, "logsum": LogSum}
+REG_SPAN = np.logspace(2.0, -2.0, 13)
+
+
+def regulariser(name, weight, path, q=None):
+    """The image penalty ``name`` (REGULARISERS) at ``weight``."""
+    if name == "mem":
+        return MaxEntropy(weight, prior=q, path=path)
+    return REGULARISERS[name](weight, path=path)
+
+
+def regulariser_weights(name, start, data, path, q=None, smoke=False):
+    """The weights of an L-curve for ``name``: MaxEnt's WEIGHTS, or REG_SPAN
+    about N / P0 (see REGULARISERS)."""
+    if name == "mem":
+        weights = WEIGHTS
+    else:
+        p0 = float(regulariser(name, 1.0, path, q).value(start))
+        weights = n_independent(data) / max(p0, 1e-300) * REG_SPAN
+    return weights[[0, len(weights) // 2, -1]] if smoke else weights
+
+
+def informed_line(informed):
+    """The provenance line of a summary: round-2 fits chose their method after
+    the truths were seen (contests/fit_plan.yml), so they are "informed"."""
+    return ("provenance=informed (method chosen after seeing the truth; values from pre-submission information "
+            "and the data only)") if informed else "provenance=blind"
 
 
 def spec_of(task):
@@ -632,7 +674,7 @@ def select_channels(path, wavel, tmp_dir):
 
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
           oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0,
-          n_starts=N_STARTS, guard=True):
+          n_starts=N_STARTS, guard=True, field_override=None):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data. With a star, ``star_model`` is "point" (unresolved) or
@@ -644,10 +686,12 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     fails (CLEAN's star fraction below F_MIN, or a parametric χ²/N worse
     than STAR_GUARD x the no-star ellipse's, or an unconverged fit) is
     dropped and the setup redone without it; ``star_rejected`` says why
-    (C2g)."""
+    (C2g). ``field_override`` (mas) fixes the field instead of the task's
+    (round 2, --field: only where pre-submission information gives one)."""
     spec = spec_of(task)
     args = dict(halo=halo, grow=grow, init=init, clean_iters=clean_iters, oversample=oversample,
-                clean_gain=clean_gain, sparco=sparco, mean_blur=mean_blur, n_starts=n_starts)
+                clean_gain=clean_gain, sparco=sparco, mean_blur=mean_blur, n_starts=n_starts,
+                field_override=field_override)
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
     # (labels get _star / _nostar).
@@ -657,6 +701,9 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     else:
         label += "_star" if star else "_nostar"
     field, prior_spec = spec.get("field"), spec.get("prior")
+    field_source = spec.get("field_source")
+    if field_override is not None:
+        field, field_source = float(field_override), f"--field {float(field_override):g} mas"
     if halo:
         label += "_halo"
     if init == "clean":
@@ -818,7 +865,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         img0 = new
         clean_info = (cleaned.stop, float(np.ravel(cleaned.chi2_red)[-1]))
     else:
-        clean_info = clean_comp = None
+        clean_info = clean_comp = cleaned = None
         if star:  # starting_image's flux, within the fixed prior
             flux = inside(dist.LogUniform(FLUX_FLOOR, FLUX_CAP), flux_value(img0.flux))
             img0 = eqx.tree_at(lambda m: m.flux, img0, flux)
@@ -861,7 +908,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
                 wavel0=wavel0,
                 resolution=resolution, start=start, img0=img0, npix=npix, pixel=pixel, fov=fov,
                 path=path, priors=priors, others=others, q=q, adaptive=field is None,
-                field_source=spec.get("field_source", "data" + (f" x{grow:g}" if grow > 1 else "")),
+                field_source=field_source or "data" + (f" x{grow:g}" if grow > 1 else ""),
+                cleaned=cleaned, restore=restore if cleaned is not None else None,
                 clean_info=clean_info, star_rejected="", star_fit=star_fit, ellipse=ellipse,
                 clean_companion=clean_comp, n_starts=n_starts, no_star_setup=no_star_setup if star else None)
 
@@ -890,13 +938,14 @@ def residual_diagnostics(model, data):
     return out
 
 
-def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=False):
+def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=False, field=None):
     """setup(), with a field chosen from the data grown (x1.5) while doing so
     lowers χ² by more than 10% in a probe fit at a middle weight: what a
     contestant would try. (Flux at the image edge is not a usable trigger:
     the support and centroid prior keep it off the edge even when the field
     is too small.) Returns the setup and the growth record."""
-    opts = dict(star=star, init=init, clean_iters=50 if smoke else 3000, n_starts=N_STARTS_SMOKE if smoke else N_STARTS)
+    opts = dict(star=star, init=init, clean_iters=50 if smoke else 3000, n_starts=N_STARTS_SMOKE if smoke else N_STARTS,
+                field_override=field)
     s = setup(task, data_dir, halo, **opts)
     growth = []
     if s["adaptive"]:
@@ -918,15 +967,18 @@ def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=Fal
     return s, growth
 
 
-def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", settings=None, label=None):
+def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", settings=None, label=None,
+        reg="mem", field=None, informed=False):
     """MaxEnt L-curve. With ``settings`` (scripts/contest_bench.py's "mem"
     arm) the field, pixels and CLEAN start follow those settings, as for a GP
     member, and the default model of the entropy is the CLEAN starting image
     (as BSMEM and MiRA use a prior image); the chosen image is also rendered
-    on the common reference grid (``ref_image``) for scoring."""
+    on the common reference grid (``ref_image``) for scoring. ``reg`` names
+    the penalty (REGULARISERS; labels get _<reg> unless MaxEnt), ``field``
+    fixes the field (mas), and ``informed`` marks a round-2 fit."""
     t0 = time.time()
     if settings is None:
-        s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
+        s, growth = grown_setup(task, data_dir, halo, star, init, smoke, field)
     else:
         s, settings = member_setup(task, data_dir, None, smoke, settings)
         growth, init, halo = [], "clean", s["halo"]
@@ -934,12 +986,12 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         s["q"] = template / template.sum()
     label_ = label
     label, files, star, data, npts = s["label"], s["files"], s["star"], s["data"], s["npts"]
-    label = label_ or label
+    label = label_ or (label if reg == "mem" else f"{label}_{reg}")
     resolution, start, img0, npix, pixel, fov = (s[k] for k in ("resolution", "start", "img0", "npix", "pixel", "fov"))
     path, priors, others = s["path"], s["priors"], s["others"]
-    weights = WEIGHTS[[0, 6, -1]] if smoke else WEIGHTS
+    weights = regulariser_weights(reg, start, data, path, s["q"], smoke)
     options = {"max_steps": 50} if smoke else {"max_steps": 200_000}
-    curve = l_curve(start, priors, data, MaxEntropy(1.0, prior=s["q"], path=path), jnp.asarray(weights), others, **options)
+    curve = l_curve(start, priors, data, regulariser(reg, 1.0, path, s["q"]), jnp.asarray(weights), others, **options)
 
     # discrepancy() is None when no weight reaches χ² = N (the data are then
     # under-fitted at every weight: worth a note); corner() needs >= 3 points.
@@ -971,14 +1023,15 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         beam=np.array([resolution.major_mas, resolution.minor_mas, resolution.pa_deg]),
         halo_flux=np.array([float(r.model.halo.flux) if halo else 0.0 for r in curve.results]),
         converged=np.array([bool(r.info.get("converged", False)) for r in curve.results]),
-        chosen=json.dumps(chosen), index=json.dumps(index),
+        chosen=json.dumps(chosen), index=json.dumps(index), regulariser=reg, informed=bool(informed),
     )
 
 
     best = curve.results[index["discrepancy"]].model
-    report = diagnose(best, data, [MaxEntropy(chosen["discrepancy"], prior=s["q"], path=path), *others])
+    report = diagnose(best, data, [regulariser(reg, chosen["discrepancy"], path, s["q"]), *others])
     summary = (
         f"task={task} label={label} files={files} star={star} star_rejected={s['star_rejected'] or None} halo={halo}\n"
+        f"{informed_line(informed)} regulariser={reg}\n"
         f"field_source={s['field_source']} clean={s['clean_info']} star_source={spec_of(task).get('star_source')} prior={spec_of(task).get('prior')} wavel={spec_of(task).get('wavel')} growth(fov, chi2/N)={growth}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
@@ -986,6 +1039,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         f"weights={np.asarray(curve.weights).round(4).tolist()}\n"
         f"chi2_red={np.asarray(curve.chi2_red).round(3).tolist()}\n"
         f"halo_flux={[round(float(r.model.halo.flux), 4) for r in curve.results] if halo else None}\n"
+        f"chi2/N at the discrepancy weight={chi2_red(best, data):.4g} (quoted errors)\n"
         f"chosen={chosen} discrepancy_reached={reached}\nconverged={[bool(r.info.get('converged', False)) for r in curve.results]}\n"
         f"residuals at the discrepancy weight={residual_diagnostics(best, data)}\n"
         f"residuals at the corner weight={residual_diagnostics(curve.results[index['corner']].model, data)}\n"
@@ -1190,8 +1244,12 @@ def gp_fit(s, smoke=False):
     flux_cap = FLUX_CAP  # fixed (C2g), not 10x a start that CLEAN can run away with
     ell = s.get("ellipse") or fit_ellipse(s)  # (chi2/N, ratio, pa, fwhm); setup's guard may have fitted it
     sigmas0 = GP_SIGMAS[1:2] if smoke else GP_SIGMAS
-    lengths0 = [f * res.minor_mas for f in (GP_LENGTHS[1:2] if smoke else GP_LENGTHS)]
-    length_limits = [f * res.minor_mas for f in GP_LENGTH_LIMITS]
+    # ℓ in beam minor axes, capped at the field: a correlation length beyond
+    # the field is unconstrained by the image (the 2022 AMI smoke chose
+    # ℓ = 103 mas, a degenerate fit) and the evidence's grid stops there.
+    fov = n * pixel
+    lengths0 = sorted({min(f * res.minor_mas, fov) for f in (GP_LENGTHS[1:2] if smoke else GP_LENGTHS)})
+    length_limits = [min(f * res.minor_mas, fov) for f in GP_LENGTH_LIMITS]
     options = {"max_steps": 50} if smoke else {}
 
     def scene(field, rotation):
@@ -1287,16 +1345,17 @@ def star_evidence(s, g, smoke=False):
 
 
 def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
-           settings=None, label=None):
+           settings=None, label=None, field=None, informed=False):
     """GP fits chosen by evidence. With ``member`` (or ``settings``, a fixed
     configuration as used by scripts/contest_bench.py) a CLEAN-started
     ensemble member; otherwise a grown-field run. ``label`` names the
     outputs. With a star, the winner is compared with the same fit without
     it (``star_evidence``); unless the star wins decisively the no-star fit
-    is kept, with ``star_rejected="evidence"``."""
+    is kept, with ``star_rejected="evidence"``. ``field`` (mas) fixes the
+    field of a grown-field run; ``informed`` marks a round-2 fit."""
     t0 = time.time()
     if member is None and settings is None:
-        s, growth = grown_setup(task, data_dir, halo, star, init, smoke)
+        s, growth = grown_setup(task, data_dir, halo, star, init, smoke, field)
         label = label or s["label"] + "_gp"
     else:
         s, settings = member_setup(task, data_dir, member, smoke, settings)
@@ -1357,9 +1416,9 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                         **{f"sigmas_{k}": np.asarray(a[1]) for k, a in axes.items()},
                         **{f"lengths_mas_{k}": np.asarray(a[0]) for k, a in axes.items()},
                         ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
-                        template=template)
+                        template=template, informed=bool(informed))
     lines = [f"task={task} label={label} star={star} star_rejected={s['star_rejected'] or None} halo={halo} init={init} "
-             f"field_source={s['field_source']} growth={growth}",
+             f"field_source={s['field_source']} growth={growth}", informed_line(informed),
              f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas",
              f"ellipse fit: chi2/N={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
              f"star_model={s['star_model']} sparco={s['sparco']} wavel0={s['wavel0']:.4g}"]
@@ -1401,6 +1460,39 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     fig.savefig(out_dir / f"{label}.png", dpi=100)
 
 
+def run_clean(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="clean", label=None, field=None,
+              informed=False):
+    """CLEAN's own result (round 2, clean-final): the restored image and the
+    components of setup's CLEAN run, with χ²/N of the components' model on
+    the quoted errors. CLEAN stops at χ²/N = 1, so no weight is chosen."""
+    t0 = time.time()
+    s, growth = grown_setup(task, data_dir, halo, star, "clean", smoke, field)
+    cleaned, data, res = s["cleaned"], s["data"], s["resolution"]
+    label = label or spec_of(task)["label"] + "_cleanfinal"
+    restored = np.clip(np.asarray(cleaned.restored(s["restore"])), 0.0, None)
+    comps = np.asarray(cleaned.components)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    chi2 = chi2_red(cleaned.model, data)
+    np.savez_compressed(out_dir / f"{label}.npz", restored=restored, components=comps,
+                        pixel_scale_mas=float(cleaned.pixel_scale_mas), npix=restored.shape[0],
+                        beam=np.array([res.major_mas, res.minor_mas, res.pa_deg]), chi2_red=chi2,
+                        stop=str(cleaned.stop), informed=bool(informed))
+    text = (f"task={task} label={label} files={s['files']} star={s['star']} halo={halo}\n{informed_line(informed)}\n"
+            f"field_source={s['field_source']} growth(fov, chi2/N)={growth}\n"
+            f"virgil={virgil.__version__} from {virgil.__file__}\n"
+            f"points={s['npts']} npix={restored.shape[0]} pixel={float(cleaned.pixel_scale_mas):.4g} mas "
+            f"beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas components={int(np.count_nonzero(comps))}\n"
+            f"CLEAN stop={cleaned.stop} CLEAN's chi2/N={float(np.ravel(cleaned.chi2_red)[-1]):.4g}\nchi2/N={chi2:.4g} (quoted errors; the components' model)\n"
+            f"residuals={residual_diagnostics(cleaned.model, data)}\nelapsed={time.time() - t0:.0f}s\n")
+    (out_dir / f"{label}.txt").write_text(text)
+    print(text)
+    fov = restored.shape[0] * float(cleaned.pixel_scale_mas)
+    fig, ax = plt.subplots(figsize=(5, 4.6))
+    plot_model(vm.Image(jnp.asarray(np.log(restored / restored.max() + 1e-6)), float(cleaned.pixel_scale_mas)),
+               fov_mas=fov, npix=restored.shape[0], ax=ax, beam=res, title=f"{label}: CLEAN restored, χ²/N={chi2:.3g}")
+    fig.savefig(out_dir / f"{label}.png", dpi=100)
+
+
 def main():
     # A run that stalls prints where it is: every 30 minutes, every thread's
     # traceback goes to stderr (campaign-2 smoke tasks 75, 77 and 79 hung for
@@ -1417,10 +1509,17 @@ def main():
     parser.add_argument("--halo", action="store_true", help="add a fully resolved component (labels get _halo)")
     parser.add_argument("--star", choices=("on", "off"), help="override the task's central star (labels get _star/_nostar)")
     parser.add_argument("--init", choices=("moments", "clean"), default="moments", help="starting image (labels get _clean)")
-    parser.add_argument("--prior", choices=("mem", "gp"), default="mem", help="MaxEnt L-curve, or Gaussian-process fits chosen by evidence (labels get _gp)")
+    parser.add_argument("--prior", choices=("mem", "gp", "clean"), default="mem",
+                        help="regularised L-curve, Gaussian-process fits chosen by evidence (labels get _gp), "
+                             "or CLEAN's own restored image and components (labels get _cleanfinal)")
+    parser.add_argument("--regulariser", choices=tuple(REGULARISERS), default="mem",
+                        help="--prior mem's penalty, weight by the discrepancy principle (labels get _<name> unless mem)")
+    parser.add_argument("--field", type=float, help="field of view (mas), only where pre-submission information gives one")
+    parser.add_argument("--informed", action="store_true",
+                        help="mark the outputs as round-2 fits whose method was chosen after seeing the truth")
     parser.add_argument("--member", type=int, help="ensemble member (CLEAN-started GP with a randomised start)")
     parser.add_argument("--settings", help="a fixed ensemble configuration (JSON, keys as member_settings), e.g. from contests/fit_plan.yml")
-    parser.add_argument("--label", help="output label for --settings runs")
+    parser.add_argument("--label", help="output label (default: the task's, with suffixes)")
     parser.add_argument("--smoke", action="store_true", help="three weights, 50 steps: check that it runs")
     args = parser.parse_args()
     if args.list:
@@ -1431,15 +1530,20 @@ def main():
     star = None if args.star is None else args.star == "on"
     if args.settings is not None:
         run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
-               settings=json.loads(args.settings), label=args.label)
+               settings=json.loads(args.settings), label=args.label, informed=args.informed)
         return
     if args.member is not None:
         run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
                member=args.member)
         return
-    runner = run_gp if args.prior == "gp" else run
-    runner(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
-           args.halo, star, args.init)
+    paths = pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser()
+    common = dict(label=args.label, field=args.field, informed=args.informed)
+    if args.prior == "gp":
+        run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, **common)
+    elif args.prior == "clean":
+        run_clean(args.task, *paths, args.smoke, args.halo, star, **common)
+    else:
+        run(args.task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, **common)
 
 
 if __name__ == "__main__":
