@@ -80,6 +80,7 @@ class System:
     p_range: tuple
     loader: object
     n_epochs: str  # for --list
+    sign_free: bool = False  # near-equal fluxes: positions known only up to a sign (seeds), see virgil PR #324
 
 
 def _thin(data, max_ch=24):
@@ -138,10 +139,29 @@ def _trackb_reference(s):
     need = ("P_day", "T0", "e", "omega_deg", "Omega_deg", "i_deg", "a_mas")
     if not all(k in ro for k in need):
         return None
-    return dict(P=ro["P_day"][0], t_peri=ro["T0"][0] - MJD_JD, ecc=ro["e"][0], inc=ro["i_deg"][0],
+    t0 = ro["T0"]
+    jd = t0[0] + 2445000.0 if len(t0) > 2 and "HJD-2445000" in str(t0[2]) else t0[0]  # AL Dor: Tp is HJD-2445000
+    return dict(P=ro["P_day"][0], t_peri=jd - MJD_JD, ecc=ro["e"][0], inc=ro["i_deg"][0],
                 omega=ro["omega_deg"][0] + 180.0,  # RV omega is the primary's
                 Omega=ro["Omega_deg"][0], a_mas=ro["a_mas"][0], source=s["reference"].get("positions_source", "")[:60]
                 or s["reference"].get("bibcode", ""))
+
+
+def _match_published_sign(ref, refpos):
+    """Flip the reference omega by 180 deg when the orbit is the point reflection of the published positions.
+
+    For near-equal pairs the RV omega (the primary's) and the label of the astrometric companion need not agree, and the
+    flux ratio cannot tell: take the sign that is nearer the published positions."""
+    from crosscheck import orbits as O
+
+    rp = np.array(refpos)
+    def miss(r):
+        x, y = O.position(rp[:, 0], r["P"], r["t_peri"], r["ecc"], r["inc"], r["omega"], r["Omega"], r["a_mas"])
+        return float(np.median(np.hypot(x - rp[:, 1], y - rp[:, 2])))
+    other = dict(ref, omega=ref["omega"] + 180.0)
+    if miss(other) < miss(ref):
+        return other, True
+    return ref, False
 
 
 def make_trackb_loader(name):
@@ -164,9 +184,14 @@ def make_trackb_loader(name):
                 dra, ddec = e["published"]["pos"]
                 refpos.append((e["mjd"], dra, ddec))
                 seps.append(float(np.hypot(dra, ddec)))
+        ref = _trackb_reference(s)
+        if ref is not None and refpos:
+            ref, flipped = _match_published_sign(ref, refpos)
+            if flipped:
+                notes.append("reference omega shifted by 180 deg to match the published positions (twin: sign is conventional)")
         sep = max(seps) if seps else 20.0
         lo = max(0.3 * min(seps), 0.2) if seps else 0.5
-        return Loaded(names, data, gdata, 1.5 * sep, (lo, 3.0 * sep), reference=_trackb_reference(s),
+        return Loaded(names, data, gdata, 1.5 * sep, (lo, 3.0 * sep), reference=ref,
                       ref_positions=refpos or None, notes=notes)
     return load
 
@@ -189,9 +214,10 @@ TRACKB = {
 SYSTEMS = {
     "gl229": System("Gl 229 Ba-Bb", "GRAVITY", XUAN_2024["source"], (10.0, 14.0), load_gl229, "7 nights"),
 }
+TWINS = ("al_dor", "hd41255", "hd188088")  # flux ratios 0.9-1.0 (crosscheck.astrometry.NEAR_EQUAL without zet_boo)
 for _k, (_label, _inst, _p) in TRACKB.items():
     SYSTEMS[_k] = System(_label, _inst, "Track B reference orbit (system.json, Gallenne+ tables)", (_p / P_WINDOW, _p * P_WINDOW),
-                         make_trackb_loader(_k), "Track B")
+                         make_trackb_loader(_k), "Track B", sign_free=_k in TWINS)
 
 
 # ---------------------------------------------------------------------------
@@ -294,12 +320,16 @@ def plot_corner(path, result):
     import matplotlib.pyplot as plt
 
     s = result.samples[result.best.n]
+    if len(s["period"]) < 10:
+        print(f"note: only {len(s['period'])} posterior samples in band {result.best.n}: corner.png skipped")
+        return False
     keys = ["period", "dt_peri", "ecc", "inc", "omega", "Omega", "a_mas", "flux"]
     arr = np.column_stack([np.asarray(s[k], float) for k in keys])
     ok = np.ptp(arr, axis=0) > 0
     fig = corner.corner(arr[:, ok], labels=[k for k, o in zip(keys, ok) if o], show_titles=True, title_fmt=".3g")
     fig.savefig(path, dpi=110)
     plt.close(fig)
+    return True
 
 
 def plot_residuals(path, result, loaded):
@@ -368,7 +398,7 @@ def run(name, args):
         return
     positions, epos = positions_for(loaded, t_ref)
     result = fit_orbit_aliases(loaded.data, p_range, positions=positions, times=times, t_ref=t_ref, a_range=loaded.a_range,
-                               ecc_max=args.ecc_max, n_candidates=args.n_candidates, n_refine=args.n_refine, n_is=args.n_is,
+                               ecc_max=args.ecc_max, sign_free=sysd.sign_free, n_candidates=args.n_candidates, n_refine=args.n_refine, n_is=args.n_is,
                                n_samples=args.n_samples)
     print_table(result)
     result.to_json(outdir / "bands.json", n_samples=args.n_samples)
