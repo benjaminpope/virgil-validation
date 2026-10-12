@@ -1,5 +1,19 @@
 # Criteria and design for the cold-start campaign (scripts/coldstart_pull.py).
-# Registered on 2026-10-12, before any draw was run. Rationale and the list of
+# Registered on 2026-10-12, before any draw was run.
+# AMENDMENT 1 (2026-10-12, committed before any campaign draw; the original,
+# SHA-256 5c0229024d9d45770754c5f45c64b34023ce8ff799aee7320dc602460751a26b, is
+# at commit 2ca9c5a). A 25-draw smoke run per cell (seeds outside the registered
+# range; numbers in design/coldstart_pull.md) showed two flaws of the GRIDS, not
+# of the criteria, which are unchanged (failure definition, bounds, tests, sizes):
+#   * envelope: the grid sat on the prior's bounds (ratio 1.0, pa 0), where the
+#     fit cannot move (virgil warns, "stopped after 0 steps"). The grid is now
+#     strictly inside the priors.
+#   * resolved_companion: a single 4-D grid with a 0.5 mas diameter step: at
+#     high S/N the diameter mismatch is absorbed by a fake companion at the
+#     centre. virgil's pipeline scans the star's diameter first (docs/pipeline.md,
+#     'fit' stage). The start is now two stages: a diameter scan of the star
+#     alone, then the companion grid at that diameter.
+# The unamended single-grid result for this cell is reported in the .md. Rationale and the list of
 # what it does not cover: design/coldstart_pull.md.
 # The script records this file's SHA-256 (criteria_hash) in every task output
 # and in the summary; the aggregator refuses outputs made under another hash,
@@ -119,14 +133,16 @@ cells:                         # truths and noise_scale are drawn per draw: {log
     stations: 4UT
     hour_angles: 5
     draw: {diam_mas: {uniform: [0.8, 3.0]}, sep_mas: {log: [5, 20]}, pa_deg: {uniform: [0, 360]}, flux: {log: [0.01, 0.1]}, noise_scale: {log: [0.5, 2.0]}}
-    grid: {half_width_mas: 30.0, diam_mas: [0.5, 1.0, 1.5, 2.0, 2.5, 3.5, 5.0], flux: {lo: 0.005, hi: 0.2, n: 6, spacing: log}}
+    # two stages: likelihood_grid over the star's diameter alone (the companion's flux 0), then
+    # likelihood_grid over (dra, ddec, flux) with the diameter fixed at the stage-1 best, then fit
+    grid: {half_width_mas: 30.0, stage1_diam_mas: {lo: 0.3, hi: 6.0, n: 60, spacing: log}, flux: {lo: 0.005, hi: 0.2, n: 10, spacing: log}}
     failure_bound: 0.02
   envelope:                    # a point star and an elliptical Gaussian envelope (elongated, pa away from the prior's wrap)
     scene: star_envelope
     stations: 4UT
     hour_angles: 5
     draw: {fwhm_mas: {log: [2, 8]}, ratio: {uniform: [0.3, 0.7]}, pa_deg: {uniform: [30, 150]}, flux: {log: [0.2, 1.0]}, noise_scale: {log: [0.5, 2.0]}}
-    grid: {fwhm_mas: {lo: 1.0, hi: 12.0, n: 10, spacing: log}, ratio: [0.4, 0.7, 1.0], pa_deg: [0.0, 45.0, 90.0, 135.0],
+    grid: {fwhm_mas: {lo: 1.0, hi: 12.0, n: 10, spacing: log}, ratio: [0.3, 0.5, 0.7, 0.9], pa_deg: [22.5, 67.5, 112.5, 157.5],
            flux: {lo: 0.05, hi: 2.0, n: 8, spacing: log}}
     failure_bound: 0.02
 

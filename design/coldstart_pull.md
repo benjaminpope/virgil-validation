@@ -58,6 +58,27 @@ arithmetic, before any draw was run. The smoke run (`coldstart_pull.py smoke`, t
 cell, seeds outside the registered range) is for timing and for checking the pipeline; its
 outputs are marked and refused by `aggregate`.
 
+## Amendment 1 (2026-10-12, before any campaign draw)
+
+The smoke run (25 draws per cell, seeds 7.1e9 to 7.1e9+5e6, outside the registered range;
+virgil `0c1be69`) showed two flaws of the *grids*, so the grids of two cells were changed
+and nothing else (failure definition, bounds, tests, sizes, noise and draw ranges are as
+registered; the original file, SHA-256 `5c0229024d9d...`, is at commit `2ca9c5a`).
+
+- `envelope`: the grid had ratio 1.0 and pa 0, the prior's bounds, where `fit` cannot move
+  (it warns: "stopped after 0 steps"). 2/25 failed this way. The grid is now strictly inside the
+  priors (ratio 0.3 to 0.9, pa 22.5 to 157.5). Result with the amended grid: 0/25.
+- `resolved_companion`: a single 4-D grid with a 0.5 mas diameter step failed 4/25, all at high S/N
+  (27 to 154): the diameter mismatch is absorbed by a fake companion at the centre. virgil's pipeline
+  scans the diameter first (`docs/pipeline.md`, `fit` stage). The start is now two stages (a scan of the
+  star's diameter alone on 60 log-spaced values, then the companion grid at that diameter). Result with
+  the amended start: 1/25.
+
+Smoke numbers for the unchanged cells (25 draws): `binary_bright` 0, `binary_faint` 1 (a noise
+peak at S/N 7.6, dchi2 = 1.8), `binary_wide` 0, `binary_sparse` 2 (aliases: dchi2 = 2.7 and 3.4).
+25 draws cannot tell a 5% rate from 10%; they say only that the pipeline runs and that failures occur
+in the cells designed to be hard. The bounds were not changed in light of them.
+
 ## Cost
 
 About 5 to 10 s per draw on one core (grid, two fits, two Laplace covariances, S/N): 6 cells
