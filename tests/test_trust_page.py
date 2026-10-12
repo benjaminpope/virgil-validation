@@ -103,3 +103,13 @@ def test_page_sections_links_and_embedded_data(model):
     assert data["nodes"]["virgil.models.UniformDisk"]["checks"][0]["url"].endswith("tests/test_x.py#L3")
     for verdict in trust.VERDICTS:
         assert verdict in data["verdicts"]
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_pipeline_card_links_to_page_when_set(model):
+    p = {x["id"]: dict(x) for x in model["pipelines"]}
+    plain = trust._pipeline_card(p["binaries"], model["nodes"])
+    assert "vt-card-link" not in plain
+    p["binaries"]["page"] = "orbits/binaries/"
+    linked = trust._pipeline_card(p["binaries"], model["nodes"])
+    assert '<a class="vt-card-link" href="orbits/binaries/">Published binaries</a>' in linked

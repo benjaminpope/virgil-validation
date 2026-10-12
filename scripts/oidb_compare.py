@@ -388,9 +388,23 @@ COMPARE = {
 
 # ----------------------------------------------------------------------------- table
 
-def compare(fits_dir, *, refs_dir=ROOT / "oidb" / "references", include_l2=False):
+def compare(fits_dir, *, refs_dir=ROOT / "oidb" / "references", include_l2=False, fits=None):
+    """Rows for every collection in ``COMPARE``. ``fits`` (adapter for the trimmed summaries of
+    scripts/orbit_gallery.py, which keep the shape of fit_<id>.json without the bulky datasets)
+    maps a collection id to its fit dict and replaces reading ``fits_dir``; a collection absent
+    from it is reported missing."""
     rows, missing = [], []
     for cid, fn in COMPARE.items():
+        if fits is not None:
+            if cid in L2 and not include_l2:
+                continue
+            if cid not in fits:
+                missing.append(cid)
+                rows.append(row(cid, "", "", "fit", None, None, None, None, "epoch", note=f"no fit summary for {cid}"))
+                continue
+            with open(os.path.join(refs_dir, f"{cid}.json")) as f:
+                rows += fn(cid, fits[cid], json.load(f))
+            continue
         path = os.path.join(fits_dir, f"fit_{cid}.json")
         if not os.path.exists(path) and pc.real_id(cid):  # a run made before the placeholder: named by the real id
             path = os.path.join(fits_dir, f"fit_{pc.real_id(cid)}.json")
