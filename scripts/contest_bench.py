@@ -31,6 +31,7 @@ phase offset per triangle and pointing, on top of the noise.
 """
 
 import argparse
+import collections
 import json
 import pathlib
 import sys
@@ -88,12 +89,13 @@ CONFIGS = {
 }
 OPT_IN = ("ensemble",)
 DEFAULT_CONFIGS = [c for c in CONFIGS if c not in OPT_IN]
-# The ensemble arm: groups (each one L-curve of ENSEMBLE_WEIGHTS weights, one
-# family, geometry and start) and virgil.ensemble.EnsembleSpec's defaults
-# otherwise (fields 0.5-1 x field_of_view, moments/flat starts, members within
-# 2x the best χ² per dataset, a window 1 dex above each L-curve's corner).
+# The ensemble arm (virgil#304, 0b206c2): groups (each one L-curve of
+# ENSEMBLE_WEIGHTS weights, one family, geometry and start; 8 is virgil's
+# recommendation and default) and virgil.ensemble.EnsembleSpec's defaults
+# otherwise (weights kept at or below each L-curve's corner, fields 1-4 x the
+# data-chosen field, min_kept members).
 ENSEMBLE_GROUPS = 12
-ENSEMBLE_WEIGHTS = 6
+ENSEMBLE_WEIGHTS = 8
 DROP = ("OI_VIS", "OI_FLUX")
 
 
@@ -345,7 +347,9 @@ def score(bench, out):
     (out / "bench_scores.json").write_text(json.dumps(rows, indent=1))
     metrics = ("lawson", "rms_e6", "l1", "ncc", "chi2_red")
     lines = ["# Benchmark scores (medians; lawson and rms lower is better, l1 and ncc higher)", "",
-             "star_rejected: results whose star the guards dropped (imaged without it).", "",
+             "star_rejected: results whose star the guards dropped (imaged without it); by reason: "
+             + (", ".join(f"{k} {n}" for k, n in sorted(collections.Counter(r["star_rejected"] for r in rows if r["star_rejected"]).items())) or "none")
+             + ".", "",
              "| config | n | " + " | ".join(metrics) + " | star_rejected |", "|---|---|" + "---|" * (len(metrics) + 1)]
     configs = sorted({r["config"] for r in rows}, key=lambda c: list(CONFIGS).index(c) if c in CONFIGS else 99)
     for c in configs:

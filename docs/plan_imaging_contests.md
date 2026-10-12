@@ -904,6 +904,58 @@ MPoL (`rml-imaging`).
   papers (score tables, metrics, figures). MiRA, SQUEEZE and the rest are
   not run on the data.
 
+### C2h. Start fits after job 18275454 (2026-10-12)
+
+Job 18275454 (vv `ea39d88`, virgil `0726734`) re-ran the baseline and the
+four parametric-star arms after vv#84 and vv#90.
+
+**Results.** Every rerun arm fits (χ²/N ≤ 1.36). point_star and companion
+beat the baseline on star_disk_planet (NCC 0.485 → 0.59). On envelope,
+point_star and companion take Lawson from 0.102 to 0.055. ellipse_star on
+spotted_star is marginal. disk_star on star_disk_planet is rejected 12/12
+(evidence or not_converged). Tasks 38 and 439 failed; the cause is unknown.
+The star models were often `not_converged`: ellipse_star 6/12 on
+spotted_star and 7/12 on star_disk_planet, disk_star 4/12 and 6/12.
+
+**Diagnosis** (truths used only here and in tests, never in the fits).
+
+1. *Not converged.* Two causes. (a) `multistart_fit` kept the lowest-χ²
+   start whether or not it converged, so one drifting start that happened
+   to have the lowest χ² made the arm `not_converged` even when others
+   converged. (b) A fit whose optimum lies beyond a prior bound drifts
+   toward it, never meets LM's gradient test, and is reported unconverged
+   (see 2). The disk arm also had only two starts.
+2. *Pinned diameters.* The diameter prior's floor was `RESOLVED_FLOOR` = 0.5
+   × the beam's minor axis. star_disk_planet's stars are 0.19 mas, 0.2 beam,
+   so the fit sat on the floor: 0.539 mas = 0.5 × 1.078 mas, identical on 7
+   datasets. Envelope has no star, and the disk arm's 0.911 mas on all 12 is
+   its upper bound (the beam's major axis): the star absorbs the envelope.
+3. *Implausible star.* `2024_obj1_pionier_p0_d0` ellipse_star kept a
+   19.2 mas star (f = 0.26, ratio 0.94): on a coverage with λ/B_min ≈ 34 mas
+   a star that size has V² ≈ 0.5 on the shortest baseline and is the
+   environment in disguise.
+
+**Fixes** (`scripts/contest_images.py`; all from pre-submission data).
+
+- `multistart_fit` keeps the lowest-χ²/N *converged* start, and the lowest
+  overall only when none converged.
+- `RESOLVED_FLOOR` 0.5 → 0.1 of the minor axis (0.19 mas on 2004's 1.9 mas
+  beam, so the GP still cannot take the star to 0.075 mas).
+- The disk arm is multistarted (`n_starts`, default 16, 4 in smoke) about
+  the second-moment diameter, plus a half-beam start; every start at least
+  5% of the log range from each bound. The ellipse arm adds perpendicular
+  PA starts (PA is periodic; the window is two half-turns wide).
+- Size guard: a star whose diameter exceeds `SIZE_FRACTION` = 0.5 × λ/B_min
+  (`size_limit_mas`), or a diameter pinned to its prior's upper bound and
+  wider than the minor axis, is dropped with `star_rejected="size"`.
+  `contest_bench.py score` reports the count of each reason.
+- Ensemble arm: `ENSEMBLE_WEIGHTS` = 8, virgil#304's recommendation and
+  default (`EnsembleSpec(n_weights=...)` and `ensemble(...)` match virgil at
+  `0b206c2`).
+
+Next: a cluster smoke on d·10 + {1, 2, 8, 9} for d in 0, 12, 24, 36, 48,
+plus 481 and 488.
+
 ## Open decisions for Ben
 
 1. **2024 truths** (decided by Ben, 2026-10-06). He will ask Millour or

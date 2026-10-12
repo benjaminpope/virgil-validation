@@ -192,7 +192,17 @@ N_STARTS, N_STARTS_SMOKE = 16, 4  # multistart fits of the parametric models
 PA_PRIOR = (-90.0, 270.0)
 # The disk and ellipse arms model a resolved star, so their diameters'
 # log-uniform priors start at this fraction of the beam's minor axis (C2g).
-RESOLVED_FLOOR = 0.5
+RESOLVED_FLOOR = 0.1
+# C2h: 0.5 pinned the star_disk_planet stars (truth 0.2 beam) to a diameter of
+# exactly 0.5 x the minor axis (job 18275454: 0.539 mas on 7 datasets), and a
+# fit whose optimum lies beyond a bound drifts toward it without ever meeting
+# the gradient test, so reported not_converged. 0.1 beam still stops the GP
+# taking the star down to 0.075 mas (C2g, 2004's 1.9 mas beam gives 0.19 mas).
+PIN_EDGE = 0.02  # a fitted scale within this fraction of its log range of a prior bound is pinned
+# A star larger than this fraction of lambda / B_min is not a star: V² on the
+# shortest baseline would already be ~0.5, and the model is the environment
+# in disguise (job 18275454: a 19.2 mas star on 2024 data, f = 0.26).
+SIZE_FRACTION = 0.5
 
 
 def v2_table(data):
@@ -222,6 +232,23 @@ def chi2_red(model, data):
     datasets = data if isinstance(data, list) else [data]
     chi2 = sum(float(np.sum(np.asarray(whitened_residuals(model, d)) ** 2)) for d in datasets)
     return chi2 / sum(int(d.n_independent) for d in datasets)
+
+
+def size_limit_mas(data, fraction=SIZE_FRACTION):
+    """The largest plausible star diameter (mas) from the data alone:
+    ``fraction`` of λ/B_min, over all datasets' V² baselines."""
+    u, v, wavel, _, _ = v2_table(data)
+    q = np.hypot(u, v) / wavel  # cycles per radian
+    q = q[np.isfinite(q) & (q > 0)]
+    return float(fraction / q.min() / linear_starts.MAS) if q.size else np.inf
+
+
+def pinned(prior, x, edge=PIN_EDGE):
+    """Whether ``x`` sits within ``edge`` of ``prior``'s range (in log for a
+    log-uniform prior) from either bound."""
+    lo, hi, log = _interior(prior, 0.0)
+    y = np.log(max(float(x), 1e-300)) if log else float(x)
+    return bool(y <= lo + edge * (hi - lo) or y >= hi - edge * (hi - lo))
 
 
 def n_independent(data):
@@ -265,7 +292,8 @@ def jittered_starts(centre, priors, n, rng, jitter):
 
 
 def multistart_fit(model_fn, priors, data, starts, **options):
-    """Fit ``model_fn(start)`` from each start and keep the lowest χ²/N.
+    """Fit ``model_fn(start)`` from each start and keep the lowest-χ²/N converged one
+    (the lowest overall when none converged).
     Returns the best FitResult and a record: χ²/N of the best and of every
     start, their spread and whether the best fit converged."""
     best, chi2s = None, []
@@ -273,8 +301,11 @@ def multistart_fit(model_fn, priors, data, starts, **options):
         r = fit(model_fn(start), priors, data, **options)
         c = chi2_red(r.model, data)
         chi2s.append(c)
-        if best is None or (np.isfinite(c) and not c >= best[0]):
-            best = (c, r)
+        # A converged start beats any unconverged one; within a class, the lowest χ²/N (C2h).
+        key = (r.info.get("converged") is False, c if np.isfinite(c) else np.inf)
+        if best is None or key < best[0]:
+            best = (key, c, r)
+    best = (best[1], best[2])
     finite = [c for c in chi2s if np.isfinite(c)]
     return best[1], {"chi2_red": best[0], "chi2_starts": chi2s,
                      "spread": float(max(finite) - min(finite)) if finite else np.nan,
@@ -313,8 +344,10 @@ def fit_primary(data, resolution, star_model, start, n_starts=N_STARTS, seed=0):
     centre = {"diam": scan[int(np.nanargmin(scan_chi2))], "ratio": ratio0, "pa": pa0}
     starts = jittered_starts(centre, priors, n_starts, np.random.default_rng(seed),
                              {"diam": ("log", 0.3), "ratio": ("add", 0.1), "pa": ("add", 30.0)})
-    for s in starts:
+    for i, s in enumerate(starts):
         s["ratio"] = float(np.clip(s["ratio"], 0.25, 0.95))
+        if i % 4 == 3:  # the moments' PA is poor for a near-round star: also try the perpendicular (PA is periodic)
+            s["pa"] = inside(priors["pa"], s["pa"] + 90.0)
     best, record = multistart_fit(disk, priors, data, starts)
     model = eqx.tree_at(lambda d: d.pa, best.model, jnp.asarray(float(best.model.pa) % 180.0))
     record |= {"moments": m, "scan_chi2": scan_chi2}
@@ -704,8 +737,12 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         # second-moment diameter (C2g) and from half a beam.
         diam_prior = dist.LogUniform(RESOLVED_FLOOR * resolution.minor_mas, resolution.major_mas)
         diam0 = float(linear_starts.disk_diameter_from_sigma(moments_of(data)["sigma_major"], 0.0))
-        starts = [{"diam": inside(diam_prior, d)} for d in (diam0, 0.5 * resolution.minor_mas) if np.isfinite(d) and d > 0]
+        centre = {"diam": diam0 if np.isfinite(diam0) and diam0 > 0 else resolution.minor_mas}
+        starts = jittered_starts(centre, {"diam": diam_prior}, n_starts, np.random.default_rng(0), {"diam": ("log", 0.5)})
+        starts.append({"diam": inside(diam_prior, 0.5 * resolution.minor_mas)})
         alone, star_fit = multistart_fit(lambda p: vm.UniformDisk(p["diam"]), {"diam": diam_prior}, data, starts)
+        star_fit["diam"] = float(alone.model.diam)
+        star_fit["pinned"] = pinned(diam_prior, star_fit["diam"])
         start = vm.System(star=alone.model, env=start.env)
         star_priors = {"star.diam": diam_prior}
     elif star and star_model in ("ellipse", "point_companion"):
@@ -714,6 +751,9 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         # a suspected companion"): the primary alone, then a companion search,
         # with the GP image left for the spots and the rest.
         primary, primary_priors, star_fit = fit_primary(data, resolution, star_model, start, n_starts)
+        if star_model == "ellipse":
+            star_fit["diam"] = float(primary.diam)
+            star_fit["pinned"] = pinned(primary_priors["diam"], star_fit["diam"])
         base, star_priors, star_fit["companion"] = companion_search(
             data, resolution, primary, primary_priors, star_fit["chi2_red"], None if nostar is None else nostar[0])
         start = vm.System(star=base, env=start.env)
@@ -829,6 +869,16 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     npix = int(np.shape(img0.log_brightness)[0])
     pixel = float(img0.pixel_scale_mas)
     fov = npix * pixel
+
+    if star and guard and star_fit.get("diam") is not None:
+        # The plausibility guard (C2h): a star beyond a fraction of λ/B_min is
+        # the environment in disguise; one pinned to its upper bound (a disk
+        # as wide as a beam) wants to be an image.
+        limit = size_limit_mas(data)
+        if star_fit["diam"] > limit:
+            return without_star("size", f"diameter {star_fit['diam']:.3g} mas > {limit:.3g} mas")
+        if star_fit.get("pinned") and star_fit["diam"] > resolution.minor_mas:
+            return without_star("size", f"diameter {star_fit['diam']:.3g} mas pinned to its upper bound")
 
     ellipse = None
     if star and guard:

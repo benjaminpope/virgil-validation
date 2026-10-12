@@ -289,3 +289,81 @@ def test_primary_fit_moves_from_its_moment_start(simulated):
     assert record["converged"] and len(record["chi2_starts"]) == 3
     assert float(model.diam) == pytest.approx(truth["diam"], rel=0.3)
     assert abs(_dpa(float(model.pa), truth["pa"])) < 20.0
+
+
+# C2h: not_converged starts, pinned diameters and the size guard (job 18275454).
+
+
+def _fake_data(bmin, bmax, lam, n=60, seed=0):
+    """A stand-in for OIData with V² on baselines log-uniform in [bmin, bmax] m."""
+    import types
+
+    rng = np.random.default_rng(seed)
+    r, t = np.exp(rng.uniform(np.log(bmin), np.log(bmax), n)), rng.uniform(0, np.pi, n)
+    return types.SimpleNamespace(u=r * np.sin(t), v=r * np.cos(t), wavel=np.full(n, lam), vis=np.full(n, 0.9),
+                                 d_vis=np.full(n, 0.01), vis_index=None, v2_flag=True)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_moments_start_the_2018_star_disk_planet_phantoms():
+    rng = np.random.default_rng(0)
+    coverage = _coverage(rng)
+    for seed in range(12):
+        p = phantoms.sample("star_disk_planet", np.random.default_rng(seed), BEAM)
+        m = starts.second_moments(*_observe(p, rng, coverage))
+        assert np.isfinite(m["sigma_major"]) and m["sigma_major"] > 0, seed
+        assert 0 < m["ratio"] <= 1.0 and 0.0 <= m["pa"] < 180.0, seed
+        diam = starts.disk_diameter_from_sigma(m["sigma_major"], 0.0)
+        assert np.isfinite(diam) and diam > 0, seed
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_resolved_floor_clears_the_unresolved_2018_stars():
+    # Job 18275454: the floor of 0.5 beam pinned stars of 0.2 beam to 0.539 mas.
+    ci = _load("contest_images")
+    assert ci.RESOLVED_FLOOR <= 0.2
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_size_guard_rejects_a_19_mas_star_on_the_2024_coverage():
+    ci = _load("contest_images")
+    data = _fake_data(10.0, 130.0, 1.65e-6)  # PIONIER-like: λ/B_min = 34 mas
+    limit = ci.size_limit_mas(data)
+    assert 10.0 < limit < 19.2
+    assert 4.4 < limit  # the 2004 stars the guard must keep are far below
+    assert ci.size_limit_mas(_fake_data(3.0, 60.0, 0.55e-6)) > 4.4  # 2004's coverage
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_pinned_detects_a_bound_for_log_and_linear_priors():
+    import numpyro.distributions as dist
+
+    ci = _load("contest_images")
+    log = dist.LogUniform(0.1, 10.0)
+    assert ci.pinned(log, 0.1005) and ci.pinned(log, 9.99) and not ci.pinned(log, 1.0)
+    assert ci.pinned(dist.Uniform(0.2, 1.0), 0.201) and not ci.pinned(dist.Uniform(0.2, 1.0), 0.6)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_multistart_keeps_the_lowest_chi2_converged_start(monkeypatch):
+    import types
+
+    ci = _load("contest_images")
+    runs = iter([(0.5, False), (1.2, True), (0.9, True), (0.1, False)])  # (χ²/N, converged)
+    seen = []
+
+    def fake_fit(model, priors, data, **options):
+        c, ok = next(runs)
+        seen.append(c)
+        return types.SimpleNamespace(model=c, info={"converged": ok})
+
+    monkeypatch.setattr(ci, "fit", fake_fit)
+    monkeypatch.setattr(ci, "chi2_red", lambda model, data: model)
+    best, rec = ci.multistart_fit(lambda p: p, {}, None, [0, 1, 2, 3])
+    assert best.model == 0.9 and rec["converged"] and rec["chi2_red"] == 0.9
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_ensemble_uses_virgils_recommended_weights():
+    bench = _load("contest_bench")
+    assert bench.ENSEMBLE_WEIGHTS == 8
