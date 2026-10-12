@@ -1,0 +1,1089 @@
+# Mutation-testing campaign for virgil-validation (scripts/mutation.py).
+#
+# Each mutant is a plausible slip in virgil, as a precise textual patch against
+# the pinned virgil commit: `original` must occur exactly `count` times
+# (default 1) in `file`, and is replaced by `replacement`. A mutant with
+# several edits lists them under `edits:` (each with file, original,
+# replacement, count). `nodes` are the trust/graph.yml nodes the slip
+# belongs to: the harness runs the tests that validate them first (so a
+# kill is found early) but then the whole of tier A, so a mutant counts as
+# killed by ANY test. `cls` is the class of slip. Mutants written from
+# virgil's source on purpose: this file is a probe of the tests, not an
+# independent reference, and nothing here leaks into src/crosscheck.
+#
+# tests/test_mutants_apply.py checks that every mutant still applies
+# cleanly to `pin`, so a virgil bump that moves a snippet fails loudly.
+
+pin: 0c1be69c61afc524c21ac327e41329d0ee15ac5d   # virgil main after PR #323
+
+mutants:
+# ---------------------------------------------------------------- FT conventions
+- id: M01
+  cls: ft_conj_sign
+  description: "Fourier shift factor conjugated (exp(+i...) instead of exp(-i...)), the sign of the transform."
+  file: src/virgil/_geometry.py
+  original: |-
+    return jax.lax.complex(np.cos(arg), -np.sin(arg))
+  replacement: |-
+    return jax.lax.complex(np.cos(arg), np.sin(arg))
+  nodes: [virgil.models.PointSource, virgil.models.cvis_binary, virgil.models.BinaryModelCartesian, virgil.models.System]
+
+- id: M02
+  cls: ft_conj_sign
+  description: "Pixel-image DFT kernel exp(+2 pi i f x) instead of exp(-2 pi i f x)."
+  file: src/virgil/_geometry.py
+  original: |-
+    return np.exp(-2j * np.pi * np.outer(mas2rad * freq_per_rad, offsets))
+  replacement: |-
+    return np.exp(2j * np.pi * np.outer(mas2rad * freq_per_rad, offsets))
+  nodes: [virgil.models.Image, virgil.models.Image.model_on_grid]
+
+- id: M03
+  cls: uv_swap
+  description: "Offset phase pairs u with ddec and v with dra (u<->v swapped)."
+  file: src/virgil/_geometry.py
+  original: |-
+    arg = 2.0 * np.pi * mas2rad * (uu * dra + vv * ddec)
+  replacement: |-
+    arg = 2.0 * np.pi * mas2rad * (uu * ddec + vv * dra)
+  nodes: [virgil.models.PointSource, virgil.models.cvis_binary, virgil.models.BinaryModelCartesian]
+
+- id: M04
+  cls: pi_factor
+  description: "Offset phase uses pi instead of 2 pi."
+  file: src/virgil/_geometry.py
+  original: |-
+    arg = 2.0 * np.pi * mas2rad * (uu * dra + vv * ddec)
+  replacement: |-
+    arg = np.pi * mas2rad * (uu * dra + vv * ddec)
+  nodes: [virgil.models.PointSource, virgil.models.cvis_binary]
+
+- id: M05
+  cls: dra_sign
+  description: "Component offset applied with the RA sign flipped (East negative)."
+  file: src/virgil/models.py
+  original: |-
+    return self._centred_cvis(uu, vv) * offset_phase(
+                uu, vv, self.dra, self.ddec
+            )
+  replacement: |-
+    return self._centred_cvis(uu, vv) * offset_phase(
+                uu, vv, -self.dra, self.ddec
+            )
+  nodes: [virgil.models.PointSource, virgil.models.GaussianDisk, virgil.models.UniformDisk, virgil.models.System]
+
+# ---------------------------------------------------------------- unit factors
+- id: M06
+  cls: mas_rad
+  description: "mas->rad constant off by 10 (divides by 100 not 1000)."
+  file: src/virgil/_utils.py
+  original: |-
+    mas2rad = np.pi / 180.0 / 3600.0 / 1000.0  # convert mas to rad
+  replacement: |-
+    mas2rad = np.pi / 180.0 / 3600.0 / 100.0  # convert mas to rad
+  nodes: [virgil.models.UniformDisk, virgil.models.GaussianDisk, virgil.models.cvis_binary]
+
+- id: M07
+  cls: deg_rad
+  description: "deg->rad constant uses 360 (half the angle)."
+  file: src/virgil/_utils.py
+  original: |-
+    dtor = np.pi / 180.0  # convert deg to rad
+  replacement: |-
+    dtor = np.pi / 360.0  # convert deg to rad
+  nodes: [virgil.models.BinaryModelAngular, virgil.models.EllipticalGaussian, virgil.models.Rotated]
+
+- id: M08
+  cls: deg_rad
+  description: "OIFITS phases in degrees are read as if they were radians."
+  file: src/virgil/oifits.py
+  original: |-
+    if name_ in {"deg", "degree", "degrees"}:
+            return math.pi / 180.0
+  replacement: |-
+    if name_ in {"deg", "degree", "degrees"}:
+            return 1.0
+  nodes: [virgil.oifits.read_oifits, virgil.oidata.OIData]
+
+- id: M09
+  cls: deg_rad
+  description: "OIFITS default phase unit is radians (the standard says degrees)."
+  file: src/virgil/oifits.py
+  original: |-
+    _DEFAULT_PHASE_UNIT = "deg"
+  replacement: |-
+    _DEFAULT_PHASE_UNIT = "rad"
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M10
+  cls: deg_rad
+  description: "VLTI simulated closure-phase errors declared in radians although given in degrees."
+  file: src/virgil/coverage.py
+  original: |-
+    "d_phi": onp.full((n_cp, n_wl), float(sigma_cp_deg)),
+                "phi_unit": "deg",
+  replacement: |-
+    "d_phi": onp.full((n_cp, n_wl), float(sigma_cp_deg)),
+                "phi_unit": "rad",
+  nodes: [virgil.coverage.vlti_oidata]
+
+# ---------------------------------------------------------------- PA / sky orientation
+- id: M11
+  cls: pa_origin
+  description: "Position angle measured as N of E (arctan2(ddec, dra)) instead of E of N."
+  file: src/virgil/_geometry.py
+  original: |-
+    pa = xp.mod(xp.rad2deg(xp.arctan2(dra, ddec)), 360.0)
+  replacement: |-
+    pa = xp.mod(xp.rad2deg(xp.arctan2(ddec, dra)), 360.0)
+  nodes: [virgil.models.BinaryModelCartesian, virgil.orbits.KeplerOrbit]
+
+- id: M12
+  cls: pa_origin
+  description: "Binary (sep, PA) to Cartesian with sin and cos swapped in the visibility (PA from East, not North)."
+  file: src/virgil/models.py
+  original: |-
+    return cvis_binary(u, v, sep * np.sin(th), sep * np.cos(th), flux)
+  replacement: |-
+    return cvis_binary(u, v, sep * np.cos(th), sep * np.sin(th), flux)
+  nodes: [virgil.models.BinaryModelAngular]
+
+- id: M13
+  cls: pa_origin
+  description: "BinaryModelAngular.to_cartesian (used for images) with sin and cos swapped."
+  file: src/virgil/models.py
+  original: |-
+    self.sep * np.sin(th), self.sep * np.cos(th), self.flux
+  replacement: |-
+    self.sep * np.cos(th), self.sep * np.sin(th), self.flux
+  nodes: [virgil.models.BinaryModelAngular]
+
+- id: M14
+  cls: pa_sign
+  description: "Binary PA runs North through West (RA offset sign flipped) in the visibility."
+  file: src/virgil/models.py
+  original: |-
+    return cvis_binary(u, v, sep * np.sin(th), sep * np.cos(th), flux)
+  replacement: |-
+    return cvis_binary(u, v, -sep * np.sin(th), sep * np.cos(th), flux)
+  nodes: [virgil.models.BinaryModelAngular]
+
+- id: M15
+  cls: pa_sign
+  description: "Rotated model rotates the wrong way (frequencies rotated by +angle)."
+  file: src/virgil/models.py
+  original: |-
+    u, v = rotate(u, v, -self.rotation_deg)
+            return self.source.model(u, v, wavel)
+  replacement: |-
+    u, v = rotate(u, v, self.rotation_deg)
+            return self.source.model(u, v, wavel)
+  nodes: [virgil.models.Rotated]
+
+- id: M16
+  cls: pa_sign
+  description: "rotate() matrix transposed (rotation sense reversed everywhere)."
+  file: src/virgil/_geometry.py
+  original: |-
+    return c * x + s * y, -s * x + c * y
+  replacement: |-
+    return c * x - s * y, s * x + c * y
+  nodes: [virgil.models.Rotated, virgil.models.Image, virgil.coverage.nrm_oidata]
+
+- id: M17
+  cls: pa_sign
+  description: "Elliptical Gaussian / rim PA of the major axis negated in the uv transform."
+  file: src/virgil/_geometry.py
+  original: |-
+    ut = (u * np.cos(pa_rad) - v * np.sin(pa_rad)) * stretch
+        vt = u * np.sin(pa_rad) + v * np.cos(pa_rad)
+  replacement: |-
+    ut = (u * np.cos(pa_rad) + v * np.sin(pa_rad)) * stretch
+        vt = -u * np.sin(pa_rad) + v * np.cos(pa_rad)
+  nodes: [virgil.models.EllipticalGaussian, virgil.models.ModulatedGaussianRim]
+
+- id: M18
+  cls: wrong_axis
+  description: "Ellipse stretch applied to the minor/major axis the wrong way round (v, not u)."
+  file: src/virgil/_geometry.py
+  original: |-
+    ut = (u * np.cos(pa_rad) - v * np.sin(pa_rad)) * stretch
+        vt = u * np.sin(pa_rad) + v * np.cos(pa_rad)
+  replacement: |-
+    ut = u * np.cos(pa_rad) - v * np.sin(pa_rad)
+        vt = (u * np.sin(pa_rad) + v * np.cos(pa_rad)) * stretch
+  nodes: [virgil.models.EllipticalGaussian, virgil.models.ModulatedGaussianRim]
+
+- id: M19
+  cls: pa_sign
+  description: "Image-plane ellipse coordinates rotated the opposite way (PA sign in render)."
+  file: src/virgil/_geometry.py
+  original: |-
+    xt = (x * np.cos(pa_rad) - y * np.sin(pa_rad)) / stretch
+        yt = x * np.sin(pa_rad) + y * np.cos(pa_rad)
+  replacement: |-
+    xt = (x * np.cos(pa_rad) + y * np.sin(pa_rad)) / stretch
+        yt = -x * np.sin(pa_rad) + y * np.cos(pa_rad)
+  nodes: [virgil.models.EllipticalGaussian, virgil.models.SourceModel.render]
+
+- id: M20
+  cls: pa_origin
+  description: "Azimuthal modulation angle measured from the u axis (arctan2(v, u)) not from North (arctan2(u, v))."
+  file: src/virgil/models.py
+  original: |-
+    base_proj_ang_rad = np.where(origin, 0.0, np.arctan2(u_safe, v_safe))
+  replacement: |-
+    base_proj_ang_rad = np.where(origin, 0.0, np.arctan2(v_safe, u_safe))
+  nodes: [virgil.models.ModulatedGaussianRim]
+
+- id: M21
+  cls: ft_conj_sign
+  description: "Ring modulation Hankel phase i^-m flipped to i^+m (conj sign convention for the azimuthal terms)."
+  file: src/virgil/models.py
+  original: |-
+    * np.exp(-0.5j * np.pi * az_order)
+  replacement: |-
+    * np.exp(0.5j * np.pi * az_order)
+  nodes: [virgil.models.ModulatedGaussianRim]
+
+- id: M22
+  cls: wrong_axis
+  description: "Rim inclination stretch uses sin(inc) instead of cos(inc) in the visibility."
+  file: src/virgil/models.py
+  original: |-
+    stretch_factor = np.maximum(np.cos(inc * dtor), 1e-8)
+  replacement: |-
+    stretch_factor = np.maximum(np.sin(inc * dtor), 1e-8)
+  nodes: [virgil.models.ModulatedGaussianRim]
+
+- id: M23
+  cls: pa_sign
+  description: "Rim modulation phases measured relative to PA with the wrong sign (az_pas + pa) in the visibility."
+  file: src/virgil/models.py
+  original: |-
+    self.az_pas - self.pa,
+            )
+  replacement: |-
+    self.az_pas + self.pa,
+            )
+  nodes: [virgil.models.ModulatedGaussianRim]
+
+- id: M24
+  cls: pa_sign
+  description: "Image model_on_grid / Image visibilities rotate by +rotation_deg instead of -rotation_deg."
+  file: src/virgil/models.py
+  original: |-
+    uu, vv = rotate(uu, vv, -self.rotation_deg)
+            return image_visibilities(
+  replacement: |-
+    uu, vv = rotate(uu, vv, self.rotation_deg)
+            return image_visibilities(
+  nodes: [virgil.models.Image]
+
+- id: M25
+  cls: pa_origin
+  description: "Pixel image drawn with East to the right (sign of dra axis flipped in pixel_offsets)."
+  file: src/virgil/_geometry.py
+  original: |-
+    return (0.5 * (npix - 1) - np.arange(npix)) * pixel_scale_mas
+  replacement: |-
+    return (np.arange(npix) - 0.5 * (npix - 1)) * pixel_scale_mas
+  nodes: [virgil.models.Image, virgil.models.Image.model_on_grid]
+
+- id: M26
+  cls: pa_origin
+  description: "Render grid has East to the right (x axis sign flipped in image_coordinates)."
+  file: src/virgil/_geometry.py
+  original: |-
+    x = -(pixel_indices - center) * pixel_scale_mas
+  replacement: |-
+    x = (pixel_indices - center) * pixel_scale_mas
+  nodes: [virgil.models.SourceModel.render, virgil.models.Image.from_model]
+
+- id: M27
+  cls: pa_sign
+  description: "Image bilinear resampling reads rows with +yy (North down)."
+  file: src/virgil/models.py
+  original: |-
+    rows = 0.5 * (nrow - 1) - yy / self.pixel_scale_mas
+  replacement: |-
+    rows = 0.5 * (nrow - 1) + yy / self.pixel_scale_mas
+  nodes: [virgil.models.Image, virgil.models.Image.from_model]
+
+# ---------------------------------------------------------------- baselines / uv
+- id: M28
+  cls: uv_swap
+  description: "OIFITS reader swaps UCOORD and VCOORD."
+  file: src/virgil/oifits.py
+  original: |-
+    u.append(onp.repeat(ucoord, nwave))
+            v.append(onp.repeat(vcoord, nwave))
+  replacement: |-
+    u.append(onp.repeat(vcoord, nwave))
+            v.append(onp.repeat(ucoord, nwave))
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M29
+  cls: uv_sign
+  description: "OIFITS reader negates UCOORD only (mirror image on the sky)."
+  file: src/virgil/oifits.py
+  original: |-
+    u.append(onp.repeat(ucoord, nwave))
+  replacement: |-
+    u.append(onp.repeat(-ucoord, nwave))
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M30
+  cls: uv_swap
+  description: "VLTI simulated uv: u and v hour-angle formulae swapped (Thompson-Moran-Swenson)."
+  file: src/virgil/coverage.py
+  original: |-
+    us.append(onp.sin(h) * x + onp.cos(h) * y)
+  replacement: |-
+    us.append(onp.cos(h) * x + onp.sin(h) * y)
+  nodes: [virgil.coverage.vlti_oidata]
+
+- id: M31
+  cls: uv_sign
+  description: "VLTI simulated baselines taken from station j to i (all baselines reversed)."
+  file: src/virgil/coverage.py
+  original: |-
+    east, north = stations[j] - stations[i]
+  replacement: |-
+    east, north = stations[i] - stations[j]
+  nodes: [virgil.coverage.vlti_oidata]
+
+- id: M32
+  cls: deg_rad
+  description: "VLTI hour angle converted at 1 deg/h instead of 15 deg/h."
+  file: src/virgil/coverage.py
+  original: |-
+    h = onp.radians(15.0 * hour)
+  replacement: |-
+    h = onp.radians(1.0 * hour)
+  nodes: [virgil.coverage.vlti_oidata]
+
+- id: M33
+  cls: pa_sign
+  description: "NRM mask rotated the wrong way on the sky in nrm_oidata."
+  file: src/virgil/coverage.py
+  original: |-
+    u, v = rotate(baselines[:, 0], baselines[:, 1], rotation_deg)
+  replacement: |-
+    u, v = rotate(baselines[:, 0], baselines[:, 1], -rotation_deg)
+  nodes: [virgil.coverage.nrm_oidata]
+
+- id: M34
+  cls: pa_sign
+  description: "AMI DISCO grid rotated the wrong way."
+  file: src/virgil/coverage.py
+  original: |-
+    u, v = rotate(grid_u, grid_v, rotation_deg)
+  replacement: |-
+    u, v = rotate(grid_u, grid_v, -rotation_deg)
+  nodes: [virgil.coverage.mask_transfer, virgil.amigo.load_oi_data]
+
+# ---------------------------------------------------------------- Bessel / disks
+- id: M35
+  cls: bessel_factor
+  description: "Uniform-disk Bessel argument uses 2 pi (not pi) x theta x B."
+  file: src/virgil/models.py
+  original: |-
+    kernel = np.pi * base_norm * diam_rad
+  replacement: |-
+    kernel = 2.0 * np.pi * base_norm * diam_rad
+  nodes: [virgil.models.UniformDisk, virgil.models.cvis_uniform_disk]
+
+- id: M36
+  cls: bessel_factor
+  description: "Uniform-disk diameter taken as radius."
+  file: src/virgil/models.py
+  original: |-
+    diam_rad = mas2rad * diam
+        base_norm = np.hypot(u, v)
+  replacement: |-
+    diam_rad = mas2rad * diam / 2.0
+        base_norm = np.hypot(u, v)
+  nodes: [virgil.models.UniformDisk, virgil.models.cvis_uniform_disk]
+
+- id: M37
+  cls: bessel_factor
+  description: "Uniform-disk envelope J1(x)/x without the factor 2."
+  file: src/virgil/models.py
+  original: |-
+    (2.0 * bessel_jn(1, safe_kernel)[1]) / safe_kernel + 0j,
+  replacement: |-
+    bessel_jn(1, safe_kernel)[1] / safe_kernel + 0j,
+  nodes: [virgil.models.UniformDisk, virgil.models.cvis_uniform_disk]
+
+- id: M38
+  cls: bessel_factor
+  description: "Limb-darkened Bessel argument uses 2 pi instead of pi."
+  file: src/virgil/models.py
+  original: |-
+    x = np.pi * np.hypot(u, v) * mas2rad * diam
+  replacement: |-
+    x = 2.0 * np.pi * np.hypot(u, v) * mas2rad * diam
+  nodes: [virgil.models.cvis_limb_darkened_disk, virgil.models.LimbDarkenedDisk, virgil.models.QuadraticLimbDarkenedDisk]
+
+- id: M39
+  cls: limb_darkening
+  description: "Quirrenbach prefactor Gamma(nu/2+1) dropped from the limb-darkened visibility."
+  file: src/virgil/models.py
+  original: |-
+    scale = 2.0 ** (nu / 2) * math.gamma(nu / 2 + 1)
+  replacement: |-
+    scale = 2.0 ** (nu / 2)
+  nodes: [virgil.models.cvis_limb_darkened_disk, virgil.models.QuadraticLimbDarkenedDisk, virgil.models.SquareRootLimbDarkenedDisk]
+
+- id: M40
+  cls: limb_darkening
+  description: "Limb-darkening flux normalisation sum a_nu/(nu+1) instead of a_nu/(nu+2)."
+  file: src/virgil/models.py
+  original: |-
+    norm = norm + coeffs[i] / (nu + 2)
+  replacement: |-
+    norm = norm + coeffs[i] / (nu + 1)
+  nodes: [virgil.models.cvis_limb_darkened_disk, virgil.models.LimbDarkenedDisk]
+
+- id: M41
+  cls: limb_darkening
+  description: "Quadratic limb-darkening u1 enters with the wrong sign (limb brightening)."
+  file: src/virgil/models.py
+  original: |-
+    coeffs = np.stack([1.0 - u1 - u2, u1 + 2.0 * u2, -u2])
+  replacement: |-
+    coeffs = np.stack([1.0 + u1 - u2, -u1 + 2.0 * u2, -u2])
+  nodes: [virgil.models.QuadraticLimbDarkenedDisk]
+
+- id: M42
+  cls: limb_darkening
+  description: "Kipping u1 and u2 swapped (u1 = sqrt(q1)(1-2 q2), u2 = 2 sqrt(q1) q2)."
+  file: src/virgil/models.py
+  original: |-
+    return 2.0 * np.sqrt(self.q1) * self.q2
+
+        @property
+        def u2(self):
+            return np.sqrt(self.q1) * (1.0 - 2.0 * self.q2)
+  replacement: |-
+    return np.sqrt(self.q1) * (1.0 - 2.0 * self.q2)
+
+        @property
+        def u2(self):
+            return 2.0 * np.sqrt(self.q1) * self.q2
+  nodes: [virgil.models.QuadraticLimbDarkenedDisk]
+
+- id: M43
+  cls: limb_darkening
+  description: "Square-root limb-darkening d coefficient with the wrong sign."
+  file: src/virgil/models.py
+  original: |-
+    return np.stack([1.0 - c - d, c, d]), (0.0, 1.0, 0.5)
+  replacement: |-
+    return np.stack([1.0 - c - d, c, -d]), (0.0, 1.0, 0.5)
+  nodes: [virgil.models.SquareRootLimbDarkenedDisk]
+
+- id: M44
+  cls: limb_darkening
+  description: "Linear-in-(1-mu) limb-darkening expansion (-1)^k sign dropped."
+  file: src/virgil/models.py
+  original: |-
+    expand[n - 1, k] = math.comb(n, k) * (-1.0) ** k
+  replacement: |-
+    expand[n - 1, k] = math.comb(n, k)
+  nodes: [virgil.models.LimbDarkenedDisk, virgil.models.EllipticalLimbDarkenedDisk]
+
+- id: M45
+  cls: gaussian_factor
+  description: "Gaussian disk visibility exp(-pi^2 sigma^2 B^2) instead of exp(-2 pi^2 ...)."
+  file: src/virgil/models.py
+  original: |-
+    return np.exp(-2.0 * np.pi**2 * sigma_rad**2 * (uu**2 + vv**2)) + 0j
+  replacement: |-
+    return np.exp(-1.0 * np.pi**2 * sigma_rad**2 * (uu**2 + vv**2)) + 0j
+  nodes: [virgil.models.GaussianDisk]
+
+- id: M46
+  cls: gaussian_factor
+  description: "Gaussian envelope of a FWHM uses 2 ln 2 instead of 4 ln 2 in the denominator."
+  file: src/virgil/models.py
+  original: |-
+    np.exp(-(np.pi**2) * fwhm_rad**2 * base_norm**2 / (4.0 * np.log(2.0)))
+  replacement: |-
+    np.exp(-(np.pi**2) * fwhm_rad**2 * base_norm**2 / (2.0 * np.log(2.0)))
+  nodes: [virgil.models.EllipticalGaussian, virgil.models.ModulatedGaussianRim]
+
+- id: M47
+  cls: bessel_factor
+  description: "Ring (dirac delta) Bessel argument uses pi instead of 2 pi."
+  file: src/virgil/models.py
+  original: |-
+    xbes = 2.0 * np.pi * base_norm * r0_rad
+  replacement: |-
+    xbes = np.pi * base_norm * r0_rad
+  nodes: [virgil.models.ModulatedGaussianRim]
+
+# ---------------------------------------------------------------- flux ratio / mixing
+- id: M48
+  cls: flux_contrast
+  description: "Binary flux parameter treated as primary/companion (contrast) instead of companion/primary."
+  file: src/virgil/models.py
+  original: |-
+    primary = 1.0 / (1.0 + flux)
+        companion = flux / (1.0 + flux)
+  replacement: |-
+    primary = flux / (1.0 + flux)
+        companion = 1.0 / (1.0 + flux)
+  nodes: [virgil.models.cvis_binary, virgil.models.BinaryModelCartesian, virgil.models.BinaryModelAngular]
+
+- id: M49
+  cls: flux_contrast
+  description: "Binary visibility not normalised to unit total flux (V(0) = 1 + f)."
+  file: src/virgil/models.py
+  original: |-
+    primary = 1.0 / (1.0 + flux)
+        companion = flux / (1.0 + flux)
+  replacement: |-
+    primary = 1.0
+        companion = flux
+  nodes: [virgil.models.cvis_binary, virgil.models.BinaryModelCartesian]
+
+- id: M50
+  cls: flux_contrast
+  description: "System visibility not normalised by the total weight."
+  file: src/virgil/models.py
+  original: |-
+    ) / sum(weights)
+            uu, vv = u / wavel, v / wavel
+  replacement: |-
+    )
+            uu, vv = u / wavel, v / wavel
+  nodes: [virgil.models.System]
+
+- id: M51
+  cls: flux_contrast
+  description: "Resolved component is 1 away from the origin and 0 at it (inverted)."
+  file: src/virgil/models.py
+  original: |-
+    return np.where(at_origin, 1.0, 0.0) + 0j
+  replacement: |-
+    return np.where(at_origin, 0.0, 1.0) + 0j
+  nodes: [virgil.models.Resolved]
+
+- id: M52
+  cls: flux_contrast
+  description: "delta_mag_to_flux sign flipped (fainter companion gets more flux)."
+  file: src/virgil/limits.py
+  original: |-
+    return 10.0 ** (-0.4 * onp.asarray(delta_mag, dtype=float))
+  replacement: |-
+    return 10.0 ** (0.4 * onp.asarray(delta_mag, dtype=float))
+  nodes: [virgil.limits.delta_mag_to_flux]
+
+- id: M53
+  cls: flux_contrast
+  description: "flux_to_delta_mag takes log of the flux ratio, not the contrast (sign flipped)."
+  file: src/virgil/limits.py
+  original: |-
+    return 2.5 * onp.log10(flux_to_contrast(flux))
+  replacement: |-
+    return 2.5 * onp.log10(flux)
+  nodes: [virgil.limits.flux_to_delta_mag]
+
+- id: M54
+  cls: flux_contrast
+  description: "contrast_to_flux returns the contrast unchanged."
+  file: src/virgil/limits.py
+  original: |-
+    return 1.0 / onp.asarray(contrast, dtype=float)
+  replacement: |-
+    return onp.asarray(contrast, dtype=float)
+  nodes: [virgil.limits.contrast_to_flux]
+
+- id: M55
+  cls: spectra_index
+  description: "PowerLaw spectrum evaluates (wavel0/wavel)^index (inverted wavelength ratio)."
+  file: src/virgil/spectra.py
+  original: |-
+    return self.ratio * (wavel / self.wavel0) ** self.index
+  replacement: |-
+    return self.ratio * (self.wavel0 / wavel) ** self.index
+  nodes: [virgil.spectra.PowerLaw]
+
+# ---------------------------------------------------------------- closure phase
+- id: M56
+  cls: closure_sign
+  description: "Closure phase phi_ab + phi_bc + phi_ac (sign of the third leg)."
+  file: src/virgil/oidata.py
+  original: |-
+    + phases[np.asarray(index_cps2)]
+            - phases[np.asarray(index_cps3)]
+  replacement: |-
+    + phases[np.asarray(index_cps2)]
+            + phases[np.asarray(index_cps3)]
+  nodes: [virgil.oidata.OIData]
+
+- id: M57
+  cls: closure_order
+  description: "Closure phase phi_ab - phi_bc + phi_ac (triangle legs in the wrong order)."
+  file: src/virgil/oidata.py
+  original: |-
+    + phases[np.asarray(index_cps2)]
+            - phases[np.asarray(index_cps3)]
+  replacement: |-
+    - phases[np.asarray(index_cps2)]
+            + phases[np.asarray(index_cps3)]
+  nodes: [virgil.oidata.OIData]
+
+- id: M58
+  cls: closure_order
+  description: "OI_T3 third leg looked up as (c, a) instead of (a, c)."
+  file: src/virgil/oifits.py
+  original: |-
+    pairs = ((a, b), (b, c), (a, c))
+  replacement: |-
+    pairs = ((a, b), (b, c), (c, a))
+  nodes: [virgil.oifits.read_oifits, virgil.oidata.OIData]
+
+- id: M59
+  cls: closure_sign
+  description: "T3-only files: third leg's (u, v) taken as u1 - u2 instead of u1 + u2."
+  file: src/virgil/oifits.py
+  original: |-
+    legs_uv = ((u1, v1), (u2, v2), (u1 + u2, v1 + v2))
+  replacement: |-
+    legs_uv = ((u1, v1), (u2, v2), (u1 - u2, v1 - v2))
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M60
+  cls: wrap
+  description: "Closure/phase wrap to [0, 2 pi) instead of [-pi, pi)."
+  file: src/virgil/_utils.py
+  original: |-
+    return np.mod(phase + np.pi, 2.0 * np.pi) - np.pi
+  replacement: |-
+    return np.mod(phase, 2.0 * np.pi)
+  nodes: [virgil.oidata.OIData]
+
+- id: M61
+  cls: closure_sign
+  description: "Absolute phases returned as arg(V*) (conjugate sign) when closure phases are not used."
+  file: src/virgil/oidata.py
+  original: |-
+    phases = np.angle(cvis)
+                if self.phi_index is not None:
+  replacement: |-
+    phases = -np.angle(cvis)
+                if self.phi_index is not None:
+  nodes: [virgil.oidata.OIData]
+
+- id: M62
+  cls: closure_covariance
+  description: "Closure-phase correlation of triangles sharing a baseline has the wrong sign (+1 for the third leg)."
+  file: src/virgil/_closure.py
+  original: |-
+    t[row, col[i3[tri]]] -= 1.0
+  replacement: |-
+    t[row, col[i3[tri]]] += 1.0
+  nodes: [virgil.oidata.OIData.cp_noise]
+
+- id: M63
+  cls: closure_covariance
+  description: "Closure-phase correlation matrix normalised by 2 not 3 (R = T T^T / 2)."
+  file: src/virgil/_closure.py
+  original: |-
+    t = _incidence(g, i1, i2, i3) / onp.sqrt(3.0)
+  replacement: |-
+    t = _incidence(g, i1, i2, i3) / onp.sqrt(2.0)
+  nodes: [virgil.oidata.OIData.cp_noise]
+
+- id: M64
+  cls: whitening_transpose
+  description: "Closure-phase whitening solves L^T w = a instead of L w = a."
+  file: src/virgil/_closure.py
+  original: |-
+    w = jsl.solve_triangular(chol, a[..., None], lower=True)[..., 0]
+  replacement: |-
+    w = jsl.solve_triangular(chol, a[..., None], lower=True, trans=1)[..., 0]
+  nodes: [virgil.oidata.OIData.cp_noise]
+
+- id: M65
+  cls: whitening_transpose
+  description: "Differential-phase block whitened with L^T instead of L."
+  file: src/virgil/observables.py
+  original: |-
+    chol, resid.reshape(n_f, k * r, 1), lower=True
+            )
+  replacement: |-
+    chol, resid.reshape(n_f, k * r, 1), lower=True, trans=1
+            )
+  nodes: [virgil.observables.DifferentialPhase]
+
+- id: M66
+  cls: covariance_inverse
+  description: "Closure-phase whitening multiplies the residuals by sigma instead of dividing."
+  file: src/virgil/_closure.py
+  original: |-
+    self.mask, np.asarray(residuals)[self.groups] / sigma, 0.0
+  replacement: |-
+    self.mask, np.asarray(residuals)[self.groups] * sigma, 0.0
+  nodes: [virgil.oidata.OIData.cp_noise]
+
+- id: M67
+  cls: covariance_inverse
+  description: "Marginalised-gain Jacobian divided by errors replaced by multiplied (sigma vs 1/sigma)."
+  file: src/virgil/likelihood.py
+  original: |-
+    jacobian = _gain_jacobian(data, prediction) / errors
+  replacement: |-
+    jacobian = _gain_jacobian(data, prediction) * errors
+  nodes: [virgil.gains.GainModes, virgil.likelihood.whitened_residuals]
+
+- id: M68
+  cls: whitening_transpose
+  description: "Rank-k whitening back-substitution adds the correction instead of subtracting (x + W y)."
+  file: src/virgil/_linear.py
+  original: |-
+    return x - W @ y, np.sum(np.log(np.diag(L)))
+  replacement: |-
+    return x + W @ y, np.sum(np.log(np.diag(L)))
+  nodes: [virgil._linear, virgil.gains.GainModes]
+
+- id: M69
+  cls: closure_covariance
+  description: "Closure-offset ClosureNoise variance uses sigma instead of sigma^2 in the normaliser."
+  file: src/virgil/_closure.py
+  original: |-
+    var = np.where(self.mask, sigma**2, 0.0)
+  replacement: |-
+    var = np.where(self.mask, sigma, 0.0)
+  nodes: [virgil.oidata.OIData.cp_noise, virgil.likelihood.model_loglike]
+
+# ---------------------------------------------------------------- V vs V^2, errors
+- id: M70
+  cls: v_vs_v2
+  description: "V^2 mode predicts |V| (no square)."
+  file: src/virgil/oidata.py
+  original: |-
+    if self.vis_mode == "v2":
+                return amp**2
+  replacement: |-
+    if self.vis_mode == "v2":
+                return amp
+  nodes: [virgil.oidata.OIData]
+
+- id: M71
+  cls: v_vs_v2
+  description: "V^2 data converted to amplitude mode without the square root."
+  file: src/virgil/oidata.py
+  original: |-
+    return np.sqrt(np.maximum(vis, 0.0))
+  replacement: |-
+    return vis
+  nodes: [virgil.oidata.OIData]
+
+- id: M72
+  cls: sqrt_missing
+  description: "V^2 -> amplitude error propagation missing the square root (0.5 sigma / V^2 not / V)."
+  file: src/virgil/oidata.py
+  original: |-
+    return 0.5 * d_vis / np.sqrt(floored)
+  replacement: |-
+    return 0.5 * d_vis / floored
+  nodes: [virgil.oidata.OIData]
+
+- id: M73
+  cls: sqrt_missing
+  description: "Amplitude -> V^2 error propagation missing the factor 2."
+  file: src/virgil/oidata.py
+  original: |-
+    return 2.0 * np.hypot(vis, d_vis) * d_vis
+  replacement: |-
+    return np.hypot(vis, d_vis) * d_vis
+  nodes: [virgil.oidata.OIData]
+
+- id: M74
+  cls: v_vs_v2
+  description: "Gain Jacobian of V^2 is the amplitude's (missing the factor 2)."
+  file: src/virgil/likelihood.py
+  original: |-
+    if data.vis_mode == "v2":
+            return 2.0 * vis_prediction
+  replacement: |-
+    if data.vis_mode == "v2":
+            return vis_prediction
+  nodes: [virgil.gains.GainModes, virgil.likelihood.model_loglike]
+
+- id: M75
+  cls: sqrt_missing
+  description: "RV jitter added in quadrature without the square root."
+  file: src/virgil/orbits.py
+  original: |-
+    return np.sqrt(self.d_rv**2 + jitter**2)
+  replacement: |-
+    return self.d_rv**2 + jitter**2
+  nodes: [virgil.orbits.RVData]
+
+- id: M76
+  cls: sqrt_missing
+  description: "TSV residuals missing the square root of the weight."
+  file: src/virgil/imaging.py
+  original: |-
+    return np.sqrt(2.0 * self.weight) * np.concatenate(
+  replacement: |-
+    return (2.0 * self.weight) * np.concatenate(
+  nodes: [virgil.imaging.TSV]
+
+- id: M77
+  cls: likelihood_norm
+  description: "Gaussian log-likelihood adds the log-normaliser sum(log sigma) instead of subtracting it."
+  file: src/virgil/likelihood.py
+  original: |-
+    - np.sum(np.log(errors))
+  replacement: |-
+    + np.sum(np.log(errors))
+  nodes: [virgil.likelihood.model_loglike, virgil.likelihood.loglike]
+
+- id: M78
+  cls: likelihood_norm
+  description: "Unprojected phase chord 2 sin(d/2) replaced by sin(d/2) (von Mises concentration wrong by 4)."
+  file: src/virgil/likelihood.py
+  original: |-
+    return 2.0 * np.sin(0.5 * resid) / errors, von_mises, zero
+  replacement: |-
+    return np.sin(0.5 * resid) / errors, von_mises, zero
+  nodes: [virgil.likelihood.whitened_residuals, virgil.likelihood.model_loglike]
+
+# ---------------------------------------------------------------- flags
+- id: M79
+  cls: flag_ignored
+  description: "OIFITS FLAG column ignored (only non-finite values are flagged)."
+  file: src/virgil/oifits.py
+  original: |-
+    flag = _column(hdu, "FLAG", mask, nwave, dtype=bool)
+  replacement: |-
+    flag = onp.zeros((int(mask.sum()), nwave), dtype=bool)
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M80
+  cls: flag_inverted
+  description: "OIFITS FLAG column inverted (True = good)."
+  file: src/virgil/oifits.py
+  original: |-
+    flag = _column(hdu, "FLAG", mask, nwave, dtype=bool)
+  replacement: |-
+    flag = ~_column(hdu, "FLAG", mask, nwave, dtype=bool)
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M81
+  cls: flag_ignored
+  description: "OIData ignores vis_flag / phi_flag given in a record."
+  file: src/virgil/oidata.py
+  original: |-
+    bad = bad | flag
+  replacement: |-
+    bad = bad
+  nodes: [virgil.oidata.OIData]
+
+- id: M82
+  cls: flag_inverted
+  description: "OIData keeps the flagged samples and drops the good ones."
+  file: src/virgil/oidata.py
+  original: |-
+    if not bad.any():
+            return None
+        return ~bad
+  replacement: |-
+    if not bad.any():
+            return None
+        return bad
+  nodes: [virgil.oidata.OIData]
+
+- id: M83
+  cls: flag_ignored
+  description: "Non-finite values no longer flagged on read."
+  file: src/virgil/oifits.py
+  original: |-
+    flag = flag | ~onp.isfinite(array)
+  replacement: |-
+    flag = flag | False
+  nodes: [virgil.oifits.read_oifits]
+
+# ---------------------------------------------------------------- wavelength indexing
+- id: M84
+  cls: wavelength_axis
+  description: "OIFITS reader tiles wavelengths with repeat (wrong axis: each channel repeated per baseline)."
+  file: src/virgil/oifits.py
+  original: |-
+    wavel.append(onp.tile(wave, values.shape[0]))
+  replacement: |-
+    wavel.append(onp.repeat(wave, values.shape[0]))
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M85
+  cls: wavelength_axis
+  description: "OIData channel expansion tiles wavelengths with repeat (wrong axis)."
+  file: src/virgil/oidata.py
+  original: |-
+    onp.tile(wavel, n_baseline),
+  replacement: |-
+    onp.repeat(wavel, n_baseline),
+  nodes: [virgil.oidata.OIData]
+
+- id: M86
+  cls: wavelength_off_by_one
+  description: "Closure-phase legs mapped to the next wavelength channel (off by one, cyclic)."
+  file: src/virgil/oidata.py
+  original: |-
+    (index[:, None] * n_wavel + channels[None, :]).reshape(-1)
+  replacement: |-
+    (index[:, None] * n_wavel + (channels[None, :] + 1) % n_wavel).reshape(-1)
+  nodes: [virgil.oidata.OIData]
+
+- id: M87
+  cls: wavelength_axis
+  description: "OI_T3 legs matched to the baseline's channels in reverse order."
+  file: src/virgil/oifits.py
+  original: |-
+    leg.append(found[0] + channels)
+  replacement: |-
+    leg.append(found[0] + channels[::-1])
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M88
+  cls: wavelength_axis
+  description: "EFF_WAVE read in reverse order."
+  file: src/virgil/oifits.py
+  original: |-
+    hdu.data["EFF_WAVE"], dtype=float
+            ).reshape(-1)
+  replacement: |-
+    hdu.data["EFF_WAVE"], dtype=float
+            ).reshape(-1)[::-1]
+  nodes: [virgil.oifits.read_oifits]
+
+# ---------------------------------------------------------------- MJD / TIME grouping
+- id: M89
+  cls: mjd_time_grouping
+  description: "Exposures grouped on MJD alone (TIME ignored)."
+  file: src/virgil/oifits.py
+  original: |-
+    if abs(t1 - t0) <= _MJD_TOLERANCE:
+  replacement: |-
+    if True:
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M90
+  cls: mjd_time_grouping
+  description: "Frame MJD is the sum, not the mean, of the rows' MJDs."
+  file: src/virgil/oifits.py
+  original: |-
+    row_mjd = (sums / onp.bincount(frame))[frame]
+  replacement: |-
+    row_mjd = sums[frame]
+  nodes: [virgil.oifits.read_oifits]
+
+- id: M91
+  cls: mjd_time_grouping
+  description: "TIME (seconds) converted to days with 86.4 instead of 86400."
+  file: src/virgil/oifits.py
+  original: |-
+    return onp.nan_to_num(_column(hdu, "TIME", mask)) / 86400.0
+  replacement: |-
+    return onp.nan_to_num(_column(hdu, "TIME", mask)) / 86.4
+  nodes: [virgil.oifits.read_oifits]
+
+# ---------------------------------------------------------------- orbits
+- id: M92
+  cls: pa_origin
+  description: "Orbit sky position returned as (ddec, dra) instead of (dra, ddec) (PA N of E)."
+  file: src/virgil/orbits.py
+  original: |-
+    return np.stack([b * x + g * y, a * x + f * y, c * x + h * y])
+  replacement: |-
+    return np.stack([a * x + f * y, b * x + g * y, c * x + h * y])
+  nodes: [virgil.orbits.KeplerOrbit, virgil.orbits.ThieleInnesOrbit]
+
+- id: M93
+  cls: pa_sign
+  description: "Thiele-Innes A with the wrong sign between the two terms."
+  file: src/virgil/orbits.py
+  original: |-
+    a_mas * (np.cos(w) * np.cos(n) - np.sin(w) * np.sin(n) * ci),
+  replacement: |-
+    a_mas * (np.cos(w) * np.cos(n) + np.sin(w) * np.sin(n) * ci),
+  nodes: [virgil.orbits.KeplerOrbit]
+
+- id: M94
+  cls: time_sign
+  description: "Mean anomaly measured from (dt + dt_peri) instead of (dt - dt_peri)."
+  file: src/virgil/orbits.py
+  original: |-
+    mean_anomaly = 2.0 * np.pi * (dt - dt_peri) / period
+  replacement: |-
+    mean_anomaly = 2.0 * np.pi * (dt + dt_peri) / period
+  nodes: [virgil.orbits.KeplerOrbit]
+
+- id: M95
+  cls: pa_sign
+  description: "jaxoplanet bridge passes omega without the pi shift (primary's omega vs secondary's)."
+  file: src/virgil/orbits.py
+  original: |-
+    omega_peri=np.deg2rad(self.omega) - np.pi,
+  replacement: |-
+    omega_peri=np.deg2rad(self.omega),
+  nodes: [virgil.orbits.KeplerOrbit]
+
+- id: M96
+  cls: pa_origin
+  description: "Angle-vector direction measured from the second component (arctan2(x, y))."
+  file: src/virgil/angles.py
+  original: |-
+    np.arctan2(vector[..., 1], vector[..., 0])
+  replacement: |-
+    np.arctan2(vector[..., 0], vector[..., 1])
+  nodes: [virgil.angles.AngleVector]
+
+# ---------------------------------------------------------------- detection / statistics / metrics
+- id: M97
+  cls: statistics_factor
+  description: "delta chi^2 = log L ratio (missing the factor 2)."
+  file: src/virgil/detection.py
+  original: |-
+    delta_chi2 = 2.0 * (profile.reshape(-1)[best] - loglike0)
+  replacement: |-
+    delta_chi2 = 1.0 * (profile.reshape(-1)[best] - loglike0)
+  nodes: [virgil.detection.detection_statistics, virgil.detection.local_nsigma]
+
+- id: M98
+  cls: statistics_factor
+  description: "nsigma gives the two-sided tail (0.5 factor dropped)."
+  file: src/virgil/limits.py
+  original: |-
+    half_tail = 0.5 * jax.scipy.special.gammaincc(ndof / 2.0, x / 2.0)
+  replacement: |-
+    half_tail = 1.0 * jax.scipy.special.gammaincc(ndof / 2.0, x / 2.0)
+  nodes: [virgil.limits.nsigma, virgil.detection.local_nsigma]
+
+- id: M99
+  cls: statistics_factor
+  description: "nsigma chi^2 survival function with ndof and x not halved."
+  file: src/virgil/limits.py
+  original: |-
+    jax.scipy.special.gammaincc(ndof / 2.0, x / 2.0)
+  replacement: |-
+    jax.scipy.special.gammaincc(ndof, x)
+  nodes: [virgil.limits.nsigma, virgil.detection.local_nsigma]
+
+- id: M100
+  cls: metric
+  description: "NCC without removing the means (cosine similarity)."
+  file: src/virgil/metrics.py
+  original: |-
+    e = e - np.mean(e)
+        r = r - np.mean(r)
+  replacement: |-
+    e = e
+        r = r
+  nodes: [virgil.metrics.ncc]

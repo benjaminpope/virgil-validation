@@ -1,0 +1,28 @@
+# Design of the mutation-testing campaign (scripts/mutation.py, mutants/mutants.yml).
+# Registered on 2026-10-12, before any mutant was run. The harness records the
+# SHA-256 of this file and of mutants/mutants.yml in results.json; edit either
+# and the hashes in a report no longer match its inputs.
+#
+# Question: if virgil carried a plausible slip, would tier A notice? Each mutant
+# is one slip (a sign, a factor, an axis, an index) in one place; a mutant that
+# survives is a candidate gap in the tests (or an equivalent mutant, to be
+# decided by reading it, not by the harness).
+
+pin: 0c1be69c61afc524c21ac327e41329d0ee15ac5d   # virgil main after PR #323; mutants/mutants.yml has the same pin
+
+suite: 'pytest -m "not slow" -x -q -p no:cacheprovider tests'   # tier A, stop at the first failure
+deselected_always:
+  - tests that already fail on the unmutated pin (listed in baseline.json)
+  - kind finding and upstream (strict xfails flip on ANY change of behaviour, so they cannot count as kills)
+order: tests validating the mutant's trust-graph nodes first, then those that depend on them, then the rest
+timeout_s: 600                 # per mutant; a timeout is neither a kill nor a survivor
+
+outcomes:
+  killed: a test outside the baseline failures failed
+  survived: the whole of tier A passed
+  timeout: neither (counted against the kill rate)
+  error: the mutant broke collection or import; a harness bug, fixed and rerun, never counted
+
+kill_rate: killed / (killed + survived + timeout)
+criteria: none pass or fail. The kill rate is descriptive; each survivor is read and either filed as a gap
+  (a test to add) or marked equivalent. Nothing is tuned after a run: a mutant is not dropped for surviving.
