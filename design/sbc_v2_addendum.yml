@@ -1,0 +1,50 @@
+# Addendum to design/sbc_v2.yml (scripts/sbc_v2.py), registered 2026-10-12 before
+# any replicate of the v2 campaign was run (no v2 task output exists; the probe
+# runs behind it are diagnostics on a handful of replicates, in the .md).
+# design/sbc_v2.yml stays as registered and hashed. This file replaces what it
+# says about the low-signal regime, and nothing else: the bright regime, the
+# sampler (dense mass, ring width 0.1, grid-fit start, jitter), the quantities,
+# the rank tests, Holm at 1% over 2 regimes x 6 quantities x 5 tests = 60, and
+# the sampler-health gate are as registered. The scripts record the hash of both
+# files (v2.yml bytes, a newline, these bytes) as criteria_hash.
+# Rationale and numbers: design/sbc_v2_addendum.md.
+#
+# Why. The registered low regime (flux 1e-3 to 2e-2, nothing known about the
+# companion's position) has a multimodal posterior in the companion's position:
+# at these fluxes the likelihood has comparable lobes at fringe spacing, and NUTS
+# cannot move between them. In 8 probe replicates run exactly as registered, 5
+# were unhealthy (split R-hat 4 to 27, bulk ESS 2; 0 to 4 divergences), and the
+# same chains started unjittered at the fit were as bad. That is a mode-finding
+# limit, not a geometry a reparameterisation cures: Cartesian offsets (or the
+# narrow ring) did not help when the chains started away from the truth's lobe,
+# and no variant mixes between lobes. The registered gate (more than 5% unhealthy
+# fails the regime) would fail the regime for a reason no change to numpyro_model
+# could fix. Mode-finding at low signal is the job of the cold-start campaign
+# (design/coldstart_pull.yml, cell binary_faint). What the low regime exists to
+# test, a flux posterior truncated at the prior's lower bound, needs a unimodal
+# position, which a position measurement gives. With the measurement (sigma 0.5 mas,
+# narrower than the 2 mas fringe lobes), 24 of 24 probe replicates were healthy.
+
+removed_regimes: [low]
+regimes:
+  low_astrometric:
+    flux_lo: 1.0e-3
+    flux_hi: 2.0e-2
+    tasks: 128
+    replicates_per_task: 8
+    astrometry_sigma_mas: 0.5      # a measurement of the companion's (dra, ddec): truth + N(0, sigma) per axis
+astrometry:
+  # The generative model is v2's, plus one datum per replicate: the measured offset
+  # (dra, ddec) = truth + N(0, sigma^2 I), drawn after the interferometric data from the
+  # same stream. The posterior samples the same priors as v2 (sep log-uniform, angle
+  # uniform, as an AngleVector) and adds the Gaussian log density of the measurement
+  # as a likelihood term, virgil's `likelihoods=` hook, so the SBC remains exact.
+  likelihood: gaussian, isotropic, in (dra, ddec)
+  start: >-
+    no grid over the position: the chains start at the measured offset; the star's
+    diameter and the flux come from virgil.grid_fit.likelihood_grid (keyword arguments) over
+    (diam, flux) at that offset, on v2's diam and flux axes, then virgil.fitting.fit with the
+    measurement term
+  grid_diam: {lo: 0.5, hi: 3.0, n: 60, spacing: log}   # finer than v2's 7 values: the fit from a diameter 0.2 mas off began in a lobe
+                                                       # 3 mas from the measured offset (probe seed 10900006)
+  position_jitter_mas: 0.1         # per chain, isotropic in (dra, ddec) around the fit; diam, flux, vis_scale jitter as v2

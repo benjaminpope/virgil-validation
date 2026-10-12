@@ -59,12 +59,16 @@ def test_sbc_v2_registered_file_is_what_the_script_runs():
     (the script reuses v1's simulator); the family is the stated 60 tests."""
     s = script()
     spec = s.spec()
-    assert s.criteria_hash() == hashlib.sha256((ROOT / "design" / "sbc_v2.yml").read_bytes()).hexdigest()
+    registered = (ROOT / "design" / "sbc_v2.yml").read_bytes()
+    addendum = (ROOT / "design" / "sbc_v2_addendum.yml").read_bytes()
+    assert s.criteria_hash() == hashlib.sha256(registered + b"\n" + addendum).hexdigest()
+    assert "low" not in spec["regimes"] and set(spec["regimes"]) == {"bright", "low_astrometric"}
+    assert spec["regimes"]["low_astrometric"]["astrometry_sigma_mas"] == 0.5
     assert spec["generative"]["sigma_v2"] == s.v1.SIGMA_V2 and spec["generative"]["sigma_cp_deg"] == s.v1.SIGMA_CP_DEG
     assert (spec["generative"]["diam"]["lo"], spec["generative"]["diam"]["hi"]) == s.v1.BOUNDS["diam"]
     assert (spec["generative"]["sep"]["lo"], spec["generative"]["sep"]["hi"]) == s.v1.BOUNDS["sep"]
     assert spec["regimes"]["bright"]["flux_lo"] == s.v1.BOUNDS["flux"][0] and spec["regimes"]["bright"]["flux_hi"] == s.v1.BOUNDS["flux"][1]
-    assert (spec["regimes"]["low"]["flux_lo"], spec["regimes"]["low"]["flux_hi"]) == (1e-3, 2e-2)
+    assert (spec["regimes"]["low_astrometric"]["flux_lo"], spec["regimes"]["low_astrometric"]["flux_hi"]) == (1e-3, 2e-2)
     assert spec["draws_per_replicate"] == 99 and spec["family_alpha"] == 0.01
     n_tests = len(spec["regimes"]) * len(spec["quantities"]) * len(spec["rank_tests"])
     assert n_tests == 60
@@ -74,7 +78,7 @@ def test_sbc_v2_registered_file_is_what_the_script_runs():
     assert (health["max_rhat"], health["min_bulk_ess"]) == (1.01, 400)
     assert spec["sampler"]["ring_width"] < 0.25 and set(spec["sampler"]["dense_mass"]) == {"pa_vec", "sep", "flux"}
     rng = np.random.default_rng(0)
-    for regime in ("bright", "low"):
+    for regime in ("bright", "low_astrometric"):
         flux = [s.draw_truth(rng, regime)["flux"] for _ in range(2000)]
         lo, hi = spec["regimes"][regime]["flux_lo"], spec["regimes"][regime]["flux_hi"]
         assert lo <= min(flux) and max(flux) <= hi
@@ -120,29 +124,29 @@ def test_sbc_v2_aggregate_passes_uniform_ranks_and_fails_bias_and_ill_health(tmp
     def analyse(by_regime):
         return s.analyse(by_regime, s.spec())
 
-    good = analyse({"bright": uniform(1000, "bright", 0), "low": uniform(1000, "low", 10_000)})
+    good = analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": uniform(1000, "low_astrometric", 10_000)})
     assert good["tests"] == 60 and good["pass"], (good["rejected"], good["regimes"])
 
-    low = uniform(1000, "low", 10_000)
+    low = uniform(1000, "low_astrometric", 10_000)
     for r in low:  # flux ranks pushed up: the posterior sits below the truth
         r["ranks"]["flux"] = int(np.clip(rng.normal(70, 20), 0, 99))
-    biased = analyse({"bright": uniform(1000, "bright", 0), "low": low})
-    assert not biased["pass"] and any(k.startswith("low:flux:") for k in biased["rejected"])
+    biased = analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": low})
+    assert not biased["pass"] and any(k.startswith("low_astrometric:flux:") for k in biased["rejected"])
     assert not any(k.startswith("bright:") for k in biased["rejected"])
 
-    sick = uniform(1000, "low", 10_000)
+    sick = uniform(1000, "low_astrometric", 10_000)
     for r in sick[:100]:
         r["ess"]["diam"] = 50.0
-    ill = analyse({"bright": uniform(1000, "bright", 0), "low": sick})
-    assert not ill["rejected"] and not ill["regimes"]["low"]["health"]["pass"] and not ill["pass"]
-    assert ill["regimes"]["low"]["health"]["unhealthy_fraction"] == 0.1
+    ill = analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": sick})
+    assert not ill["rejected"] and not ill["regimes"]["low_astrometric"]["health"]["pass"] and not ill["pass"]
+    assert ill["regimes"]["low_astrometric"]["health"]["unhealthy_fraction"] == 0.1
 
-    divergent = uniform(1000, "low", 10_000)
+    divergent = uniform(1000, "low_astrometric", 10_000)
     for r in divergent[:30]:
         r["divergences"] = 3
-    assert not analyse({"bright": uniform(1000, "bright", 0), "low": divergent})["regimes"]["low"]["health"]["pass"]
+    assert not analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": divergent})["regimes"]["low_astrometric"]["health"]["pass"]
 
-    few = analyse({"bright": uniform(900, "bright", 0), "low": uniform(1000, "low", 10_000)})
+    few = analyse({"bright": uniform(900, "bright", 0), "low_astrometric": uniform(1000, "low_astrometric", 10_000)})
     assert not few["pass"] and not few["regimes"]["bright"]["enough"]
     assert not analyse({"bright": uniform(1000, "bright", 0)})["pass"]  # a missing regime
 
@@ -158,16 +162,16 @@ def test_sbc_v2_aggregate_refuses_mixed_runs(tmp_path):
     _write(a, "bright", 0, [_rep(1, "bright", rank)])
     assert _run(a).returncode == 0
     assert "repeat a seed" in _run(a, a).stderr
-    _write(b, "low", 0, [_rep(2, "low", rank)], commit="b" * 40)
+    _write(b, "low_astrometric", 0, [_rep(2, "low_astrometric", rank)], commit="b" * 40)
     assert "different or unknown virgil commits" in _run(a, b).stderr
-    (b / "task_low_0000.json").unlink()
-    _write(b, "low", 0, [_rep(2, "low", rank)], criteria_hash="0" * 64)
+    (b / "task_low_astrometric_0000.json").unlink()
+    _write(b, "low_astrometric", 0, [_rep(2, "low_astrometric", rank)], criteria_hash="0" * 64)
     assert "criteria changed" in _run(a, b).stderr
-    (b / "task_low_0000.json").unlink()
-    _write(b, "low", 0, [_rep(2, "low", rank)], design_hash="0" * 16)
+    (b / "task_low_astrometric_0000.json").unlink()
+    _write(b, "low_astrometric", 0, [_rep(2, "low_astrometric", rank)], design_hash="0" * 16)
     assert "experiment changed" in _run(a, b).stderr
-    (b / "task_low_0000.json").unlink()
-    _write(b, "low", 0, [_rep(2, "low", rank)], override=[10, 10, 2])
+    (b / "task_low_astrometric_0000.json").unlink()
+    _write(b, "low_astrometric", 0, [_rep(2, "low_astrometric", rank)], override=[10, 10, 2])
     assert "smoke run" in _run(a, b).stderr
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -195,17 +199,17 @@ def test_sbc_v2_tasks_write_incrementally_and_resume(tmp_path, monkeypatch):
         calls.append(seed)
         return _rep(seed, regime, lambda k: 1)
 
-    args = argparse.Namespace(regime="low", task=3, replicates=4, seed_base=100, warmup=0, samples=0, chains=0,
+    args = argparse.Namespace(regime="low_astrometric", task=3, replicates=4, seed_base=100, warmup=0, samples=0, chains=0,
                               out=str(tmp_path))
     with pytest.raises(TimeLimit):
         s.run(args, replicate_fn=stub)
-    saved = json.loads((tmp_path / "task_low_0003.json").read_text())
+    saved = json.loads((tmp_path / "task_low_astrometric_0003.json").read_text())
     first = 100 + 10_000_000 + 3 * 4
     assert [r["seed"] for r in saved["replicates"]] == [first, first + 1] and saved["complete"] is False
     calls.clear()
     stop["after"] = None
     s.run(args, replicate_fn=stub)
-    saved = json.loads((tmp_path / "task_low_0003.json").read_text())
+    saved = json.loads((tmp_path / "task_low_astrometric_0003.json").read_text())
     assert calls == [first + 2, first + 3]
     assert [r["seed"] for r in saved["replicates"]] == [first + k for k in range(4)] and saved["complete"] is True
     monkeypatch.setenv("PIN_COMMIT", "d" * 40)
@@ -221,12 +225,12 @@ def test_sbc_v2_smoke_run_makes_a_well_formed_replicate(tmp_path, monkeypatch):
     sampler is overridden, so the output is a smoke run and aggregate
     refuses it."""
     done = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "sbc_v2.py"), "run", "--regime", "low", "--task", "0",
+        [sys.executable, str(ROOT / "scripts" / "sbc_v2.py"), "run", "--regime", "low_astrometric", "--task", "0",
          "--replicates", "1", "--warmup", "10", "--samples", "10", "--chains", "2", "--out", str(tmp_path)],
         capture_output=True, text=True, env={**__import__("os").environ, "PIN_COMMIT": "e" * 40,
                                              "PYTHONPATH": str(ROOT / "src")})
     assert done.returncode == 0, done.stderr[-2000:]
-    task = json.loads((tmp_path / "task_low_0000.json").read_text())
+    task = json.loads((tmp_path / "task_low_astrometric_0000.json").read_text())
     rep = task["replicates"][0]
     assert task["complete"] and task["override"] == [10, 10, 2]
     assert set(rep["ranks"]) == {"diam", "flux", "sep", "pa", "vis_scale", "loglike"}
@@ -253,3 +257,40 @@ def test_sbc_v2_start_is_finite_when_the_grid_peaks_on_a_prior_bound(tmp_path):
     assert all(np.isfinite(v) for v in start.values())
     inits = m.jittered_inits(start, "bright", rng, 4)
     assert all(np.all(np.isfinite(v)) for c in inits for v in c.values())
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_sbc_v2_registered_file_is_unchanged_by_the_addendum():
+    """design/sbc_v2.yml is as first registered (commit "Register SBC v2"): the addendum
+    changes the low regime in the merged spec only."""
+    import yaml
+
+    raw = yaml.safe_load((ROOT / "design" / "sbc_v2.yml").read_text())
+    assert set(raw["regimes"]) == {"bright", "low"} and raw["regimes"]["low"]["flux_hi"] == 2.0e-2
+    merged = script().spec()
+    assert merged["regimes"]["bright"] == raw["regimes"]["bright"]
+    for key in ("sampler", "sampler_health", "rank_tests", "quantities", "family_alpha", "draws_per_replicate"):
+        assert merged[key] == raw[key]
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_sbc_v2_astrometry_term_and_jitter():
+    """The position measurement is a unit-Gaussian whitening of (dra, ddec) from the sampled
+    (sep, pa), and the chains' jitter in the addendum's regime is absolute and about 0.1 mas."""
+    s = script()
+    meas = np.array([3.0, -4.0])
+    term = s.astrometry_term(meas, 0.5)
+    r = np.asarray(term({"sep": 5.0, "pa": 143.130102354}))  # (3, -4) mas: sin pa = 0.6, cos pa = -0.8
+    assert np.allclose(r, 0.0, atol=1e-6)
+    r = np.asarray(term({"sep": 5.0, "pa": 143.130102354 + 1e-3}))
+    assert 0 < np.linalg.norm(r) < 1e-3
+    assert np.allclose(np.asarray(term({"sep": 6.0, "pa": 143.130102354})), [0.6 * 1.0 / 0.5, -0.8 / 0.5])
+    rng = np.random.default_rng(0)
+    start = {"diam": 1.0, "flux": 5e-3, "sep": 10.0, "pa": 40.0, "vis_scale": 1.0}
+    inits = s.jittered_inits(start, "low_astrometric", rng, 4000)
+    sep = np.array([c["sep"] for c in inits])
+    ang = np.array([np.arctan2(c["pa_vec"][1], c["pa_vec"][0]) for c in inits])
+    dra, ddec = sep * np.sin(ang), sep * np.cos(ang)
+    p0 = np.deg2rad(40.0)
+    assert abs(np.std(dra) - 0.1) < 0.01 and abs(np.std(ddec) - 0.1) < 0.01
+    assert abs(np.mean(dra) - 10.0 * np.sin(p0)) < 0.01
