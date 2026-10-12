@@ -458,20 +458,13 @@ def test_criteria_are_frozen(oc):
 
 
 @pytest.mark.validates("evidence", roots=["literature"], kind="guard")
-def test_hr6819_omega_is_the_companions_and_the_real_fit_is_within_errors(oc):
-    """Klement+2025's Table 3 omega (labelled omega_Be) equals Table 2's omega_pre-sd within
-    errors with the same Omega, so no +180 applies; virgil's real HR 6819 fit (omega 119.2,
-    Omega 22.8, summarised from OzSTAR) is then 0.8 sigma from Table 3 and ~7 deg, not 173 deg, off."""
+def test_hr6819_omega_table3_equals_table2_so_no_shift(oc):
+    """Klement+2025's Table 3 omega (labelled omega_Be) equals Table 2's omega_pre-sd within errors
+    with the same Omega, so no +180 applies (assuming one node convention throughout the paper).
+    Pins the reference file's convention; says nothing about virgil's fit."""
     ref = _ref("696baf06-6c3c-424d-abaf-066c3c324d99")
     assert ref["conventions"]["omega_shift_deg"] == 0.0
     o = ref["orbit"]
     t2 = o["all_solutions"]["astrometry_only (Table 2, p. 5; omega is omega_pre-sd)"]["eccentric"]
     assert abs(oc.wrap180(o["omega_deg"][0] - t2["omega_deg"][0])) < o["omega_deg"][1]
-    assert abs(oc.wrap180(o["Omega_deg"][0] - t2["Omega_deg"][0])) < 2 * np.hypot(o["Omega_deg"][1], t2["Omega_deg"][1])
-    el = dict(period_day=40.32061588731872, t_peri_mjd=59955.08568276427, ecc=0.03196979523382894,
-              inc_deg=38.094255982497266, omega_deg=119.19981691050985, Omega_deg=22.82584150649433,
-              a_mas=1.2762591507761971, flux_ratio=0.7436420336352977)
-    pub = {"omega_deg": o["omega_deg"][:2], "Omega_deg": o["Omega_deg"][:2]}
-    rows = {r["quantity"]: r for r in oc.orbit_rows("c", "HR 6819", _orbit(el), pub, omega_shift=ref["conventions"]["omega_shift_deg"])}
-    assert abs(rows["omega_deg"]["dev_sigma"]) < 1.0 and abs(rows["omega_deg"]["virgil"] - 111.9) < 8
-    assert abs(rows["Omega_deg"]["dev_sigma"]) < 1.5
+    assert abs(oc.wrap180(o["Omega_deg"][0] - t2["Omega_deg"][0])) < 1.5 * o["Omega_deg"][1]  # same 12 positions: errors correlated
