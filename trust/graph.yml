@@ -561,6 +561,7 @@ pipelines:
     reference: the published separations, angles and contrasts
     url: https://github.com/benjaminpope/virgil-validation/blob/main/design/plan_eso_binaries.md
     headline: separation, angle and contrast against the papers
+    page: orbits/binaries/
     state: running
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,

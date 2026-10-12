@@ -257,8 +257,9 @@ def cmp_hr6819(cid, fit, ref):
     o = ref["orbit"]
     pub = {"period_day": o["P_day"][:2], "a_mas": o["a_mas"][:2], "ecc": o["e"][:2], "inc_deg": o["i_deg"][:2],
            "Omega_deg": o["Omega_deg"][:2], "omega_deg": o["omega_deg"][:2], "t_peri_mjd": o["T_peri_mjd"][:2]}
-    rows += orbit_rows(cid, "HR 6819", fit["orbit"], pub, omega_shift=180.0, status="NOT-CLEAN",
-                       note="vs eccentric astro+RVs (headline); omega_Be+180")
+    shift = ref["conventions"]["omega_shift_deg"]  # 0: Table 3's omega is the companion's (see the reference file)
+    rows += orbit_rows(cid, "HR 6819", fit["orbit"], pub, omega_shift=shift, status="NOT-CLEAN",
+                       note="vs eccentric astro+RVs (headline); omega as published, read as the companion's (Table 3 = Table 2 omega_pre-sd; see the reference file for the caveat)")
     return rows
 
 
@@ -388,9 +389,23 @@ COMPARE = {
 
 # ----------------------------------------------------------------------------- table
 
-def compare(fits_dir, *, refs_dir=ROOT / "oidb" / "references", include_l2=False):
+def compare(fits_dir, *, refs_dir=ROOT / "oidb" / "references", include_l2=False, fits=None):
+    """Rows for every collection in ``COMPARE``. ``fits`` (adapter for the trimmed summaries of
+    scripts/orbit_gallery.py, which keep the shape of fit_<id>.json without the bulky datasets)
+    maps a collection id to its fit dict and replaces reading ``fits_dir``; a collection absent
+    from it is reported missing."""
     rows, missing = [], []
     for cid, fn in COMPARE.items():
+        if fits is not None:
+            if cid in L2 and not include_l2:
+                continue
+            if cid not in fits:
+                missing.append(cid)
+                rows.append(row(cid, "", "", "fit", None, None, None, None, "epoch", note=f"no fit summary for {cid}"))
+                continue
+            with open(os.path.join(refs_dir, f"{cid}.json")) as f:
+                rows += fn(cid, fits[cid], json.load(f))
+            continue
         path = os.path.join(fits_dir, f"fit_{cid}.json")
         if not os.path.exists(path) and pc.real_id(cid):  # a run made before the placeholder: named by the real id
             path = os.path.join(fits_dir, f"fit_{pc.real_id(cid)}.json")

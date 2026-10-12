@@ -89,6 +89,7 @@ class System:
     p_range: tuple
     loader: object
     n_epochs: str  # for --list
+    sign_free: bool = False  # near-equal fluxes: position seeds known only up to a sign (virgil#324)
 
 
 def _thin(data, max_ch=24):
@@ -110,8 +111,8 @@ def _grid_half(bmax, wmin, half):
 # Loaders
 # ---------------------------------------------------------------------------
 def load_gl229(root):
-    """Gl 229 Ba-Bb, GRAVITY SC closure phases, one OIData per night (as fit_nights.py in the
-    eso_binaries scripts: V2 flagged, closure phases outside 2.05-2.18 um flagged)."""
+    """Gl 229 Ba-Bb, GRAVITY SC V2 and closure phases, one OIData per night (as fit_nights.py in the
+    eso_binaries scripts, but with V2 kept: V2 and closure phases outside 2.05-2.18 um flagged)."""
     import glob
 
     from virgil.oidata import OIData
@@ -136,7 +137,11 @@ def load_gl229(root):
         wl = np.asarray(rec["wavel"], float)
         i1 = np.asarray(rec["i_cps1"])
         lam = wl[i1] if wl.size > 1 else np.full(i1.shape, wl.item())
-        rec["vis_flag"] = np.ones_like(np.asarray(rec["vis_flag"]), dtype=bool)
+        rec["vis_flag"] = (  # V2 over the same band as the closure phases: both are fitted
+            np.asarray(rec["vis_flag"], bool)
+            | (wl < GL229_BAND[0])
+            | (wl > GL229_BAND[1])
+        )
         rec["phi_flag"] = (
             np.asarray(rec["phi_flag"], bool)
             | (lam < GL229_BAND[0])
@@ -159,12 +164,20 @@ def _trackb_reference(s):
     need = ("P_day", "T0", "e", "omega_deg", "Omega_deg", "i_deg", "a_mas")
     if not all(k in ro for k in need):
         return None
+    t0 = ro["T0"]
+    jd = (  # AL Dor: Tp is HJD-2445000
+        t0[0] + 2445000.0
+        if len(t0) > 2 and "HJD-2445000" in str(t0[2])
+        else t0[0]
+    )
     return dict(
         P=ro["P_day"][0],
-        t_peri=ro["T0"][0] - MJD_JD,
+        t_peri=jd - MJD_JD,
         ecc=ro["e"][0],
         inc=ro["i_deg"][0],
-        omega=ro["omega_deg"][0] + 180.0,  # RV omega is the primary's
+        # The tabulated omega reproduces the published companion positions in crosscheck.orbits' convention as it
+        # stands (checked for all 8 Track B systems: the old +180 deg gave their point reflection).
+        omega=ro["omega_deg"][0],
         Omega=ro["Omega_deg"][0],
         a_mas=ro["a_mas"][0],
         source=s["reference"].get("positions_source", "")[:60]
@@ -172,9 +185,46 @@ def _trackb_reference(s):
     )
 
 
+def _check_published(ref, refpos, limit_mas=0.5):
+    """Median miss (mas) of the reference orbit against the published positions, and a note if it exceeds limit_mas.
+
+    A check, not an adjustment: a large miss means a wrong reference (convention, T0 epoch), not a sign to choose."""
+    from crosscheck import orbits as O
+
+    rp = np.array(refpos)
+    x, y = O.position(
+        rp[:, 0], ref["P"], ref["t_peri"], ref["ecc"], ref["inc"], ref["omega"], ref["Omega"], ref["a_mas"]
+    )
+    miss = float(np.median(np.hypot(x - rp[:, 1], y - rp[:, 2])))
+    note = None
+    if miss > limit_mas:
+        note = f"WARNING: reference orbit misses the published positions by a median {miss:.2f} mas: reference unreliable"
+    return miss, note
+
+
+def _read_with_vis(T):
+    """trackb_fit._read, but GRAVITY keeps V2 beside the closure phases (the Track B criteria are closure phases only)."""
+    read_tb = T._read
+
+    def read(files, inst):
+        if inst != "GRAVITY":
+            return read_tb(files, inst)
+        from virgil.oidata import OIData
+        from virgil.oifits import read_oifits
+
+        return OIData(read_oifits([str(f) for f in files], insname="GRAVITY_SC")).select(
+            ranges=T.GRAVITY_RANGES, observables=("vis", "phi")
+        )
+
+    return read
+
+
 def make_trackb_loader(name):
     def load(root):
         import trackb_fit as T
+
+        T._read = _read_with_vis(T) if not getattr(T._read, "_vis", False) else T._read
+        T._read._vis = True
 
         s, _ = _trackb_system(root, name)
         p_json = s["reference_orbit"]["P_day"][
@@ -200,6 +250,12 @@ def make_trackb_loader(name):
                 dra, ddec = e["published"]["pos"]
                 refpos.append((e["mjd"], dra, ddec))
                 seps.append(float(np.hypot(dra, ddec)))
+        ref = _trackb_reference(s)
+        if ref is not None and refpos:
+            miss, note = _check_published(ref, refpos)
+            ref["median_miss_published_mas"] = miss
+            if note:
+                notes.append(note)
         sep = max(seps) if seps else 20.0
         lo = max(0.3 * min(seps), 0.2) if seps else 0.5
         return Loaded(
@@ -208,7 +264,7 @@ def make_trackb_loader(name):
             gdata,
             1.5 * sep,
             (lo, 3.0 * sep),
-            reference=_trackb_reference(s),
+            reference=ref,
             ref_positions=refpos or None,
             notes=notes,
         )
@@ -241,6 +297,7 @@ SYSTEMS = {
         "7 nights",
     ),
 }
+TWINS = ("al_dor", "hd41255", "hd188088")  # flux ratios 0.9-1.0
 for _k, (_label, _inst, _p) in TRACKB.items():
     SYSTEMS[_k] = System(
         _label,
@@ -249,6 +306,7 @@ for _k, (_label, _inst, _p) in TRACKB.items():
         (_p / P_WINDOW, _p * P_WINDOW),
         make_trackb_loader(_k),
         "Track B",
+        sign_free=_k in TWINS,
     )
 
 
@@ -438,6 +496,28 @@ def plot_corner(path, result):
     plt.close(fig)
 
 
+def block_chi2(result, loaded):
+    """Raw chi2 and independent-observable count of the V2 and the closure-phase blocks at the best orbit,
+    summed over epochs ("vis" and "phi"), on the quoted errors."""
+    from virgil.epochs import _blocks
+    from virgil.likelihood import whitened_residuals
+    from virgil.models import OrbitalBinary
+    from virgil.orbits import KeplerOrbit
+
+    b = result.best.best
+    orbit = KeplerOrbit(
+        b["period"], b["dt_peri"], b["ecc"], b["inc"], b["omega"], b["Omega"], b["a_mas"], t_ref=result.t_ref
+    )
+    model = OrbitalBinary(orbit, b["flux"])
+    out = {}
+    for d in loaded.data:
+        r = np.asarray(whitened_residuals(model, d))
+        for name, a, z, nu, _ in _blocks(d):
+            c, n = out.get(name, (0.0, 0))
+            out[name] = (c + float(np.sum(r[a:z] ** 2)), n + int(nu))
+    return {k: dict(chi2=c, n=n, chi2_per_n=c / n if n else None) for k, (c, n) in out.items()}
+
+
 def residual_stats(result, loaded):
     """Raw residuals of every epoch at the best orbit, whitened by the quoted errors, as trackb_fit.py sums them.
 
@@ -551,6 +631,9 @@ def run(name, args):
         print("note:", n)
     if args.dry_run:
         return
+    if args.closure_only:  # the old fit: closure phases alone
+        loaded.data = [d.select(observables="phi") for d in loaded.data]
+        loaded.grid_data = [d.select(observables="phi") for d in loaded.grid_data]
     errors = []
 
     def attempt(label, fn):
@@ -616,6 +699,7 @@ def run(name, args):
         t_ref=t_ref,
         a_range=loaded.a_range,
         ecc_max=args.ecc_max,
+        sign_free=sysd.sign_free,
         n_candidates=args.n_candidates,
         n_refine=args.n_refine,
         n_is=args.n_is,
@@ -656,6 +740,13 @@ def run(name, args):
         if result.best.best
         else None
     )
+    blocks = attempt("block_chi2", lambda: block_chi2(result, loaded)) if result.best.best else None
+    if blocks is not None:
+        meta["chi2_raw_by_block"] = blocks
+        print(
+            "raw chi2/N by observable: "
+            + ", ".join(f"{k} {v['chi2_per_n']:.2f} (N={v['n']})" for k, v in blocks.items())
+        )
     if stats is not None:  # the independent chi2 check does not depend on any plot
         res, rms, chi2, n_ind = stats
         meta["rms_residual"] = rms
@@ -752,6 +843,12 @@ def main(argv=None):
         default=200,
         dest="max_steps",
         help="L-BFGS-B iterations per start",
+    )
+    ap.add_argument(
+        "--closure-only",
+        action="store_true",
+        dest="closure_only",
+        help="fit closure phases only (default: V2 and closure phases, per-epoch error scales for each)",
     )
     ap.add_argument("--ecc-max", type=float, default=0.9, dest="ecc_max")
     ap.add_argument(

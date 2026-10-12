@@ -509,7 +509,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None)
         pipelines.append({
             "id": name, "title": p["title"], "data": p.get("data", "simulated"),
             "dataset": p.get("dataset"), "reference": p.get("reference"), "url": p.get("url"),
-            "headline": p.get("headline"), "status": status, "steps": p["steps"],
+            "headline": p.get("headline"), "page": p.get("page"), "status": status, "steps": p["steps"],
             "unverified": unverified, "checks": [_check(r) for r in recs],
         })
 
@@ -576,6 +576,9 @@ def _pipeline_card(p, nodes):
     ref = e(p["reference"]) if p["reference"] else ""
     if p.get("url") and ref:
         ref = f'<a href="{e(p["url"])}">{ref}</a>'
+    title = e(p["title"])
+    if p.get("page"):
+        title = f'<a class="vt-card-link" href="{e(p["page"])}">{title}</a>'
     head = ""
     good = [c for c in p["checks"] if c["outcome"] in GOOD and c["value"] is not None]
     if good:
@@ -583,7 +586,7 @@ def _pipeline_card(p, nodes):
     elif p.get("headline"):
         head = e(p["headline"])
     return (
-        f'<div class="vt-card vt-p-{e(p["status"])}"><div class="vt-card-t">{e(p["title"])}</div>'
+        f'<div class="vt-card vt-p-{e(p["status"])}"><div class="vt-card-t">{title}</div>'
         f'<div class="vt-muted">{e(p["dataset"] or "")}{" · " + ref if ref else ""}</div>'
         f'<div class="vt-card-h">{head}</div><span class="vt-badge">{e(badge)}</span></div>'
     )
