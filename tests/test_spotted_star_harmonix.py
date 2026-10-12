@@ -157,15 +157,15 @@ def test_scene_applies_v2_scale_and_frozen_parameters():
 @pytest.mark.skipif(not DATA2.exists(), reason="contest data not fetched")
 def test_v2_scale_is_recovered_and_matters():
     """Data2's uv coverage with V² 15% above a normalized model: the
-    uniform-disk scan finds the scale (the start of every fit) and χ² at the
+    uniform-disk scan finds the scale and radius, and χ² at the
     truth is far worse without it."""
     import virgil.models as vm
     from virgil.oidata import OIData
 
-    truth = vm.UniformDisk(4.4)
+    truth = vm.UniformDisk(2.8)
     data = OIData(str(DATA2)).with_model(ssh.V2Scaled(truth, 1.15), key=jax.random.PRNGKey(3))
     radius, scale = ssh.uniform_disk_fit(data, 2.0, 12.0, n=150)
-    assert scale == pytest.approx(1.15, abs=0.03) and radius == pytest.approx(2.2, abs=0.1)
+    assert scale == pytest.approx(1.15, abs=0.03) and radius == pytest.approx(1.4, abs=0.1)
     chi2_scaled, n = ssh.chi2_of(ssh.V2Scaled(truth, 1.15), data)
     chi2_plain, _ = ssh.chi2_of(truth, data)
     assert chi2_scaled / n < 2.0 and chi2_plain / n > 10.0
@@ -180,3 +180,4 @@ def test_on_bounds_reports_parameters_on_a_prior_bound():
     values = {"level": 19.98, "u": 0.0002, "ratio": 0.7, "scale": 1.15, "data": np.zeros(2)}
     assert ssh.on_bounds(values, priors) == ["level", "u"]
     assert ssh.on_bounds(values | {"level": 1.0, "u": 0.3}, priors) == []
+    assert ssh.on_bounds(values | {"u": 0.02, "level": 17.0}, priors) == []  # outside the 1% tolerance

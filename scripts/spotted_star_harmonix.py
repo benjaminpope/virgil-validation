@@ -85,8 +85,9 @@ positions and angles (Ben's Jeffreys-prior rule).
 
 **Starts.** The radius starts from a uniform-disk χ² scan, as in virgil's
 harmonix tutorial; each configuration is started from several position
-angles (15°, 75°, 135°, ratio 0.8, V² scales 0.9, 1.1, 1.3) and spot positions (latitudes ±0.5,
-longitudes ±0.6 rad, bright and dark), and the best χ² is kept.
+angles (15°, 75°, 135°, ratio 0.8, V² scales 0.9, 1.1, 1.3) and
+spot positions (latitudes ±0.5, longitudes ±0.6 rad, bright and dark), and
+the best χ² is kept.
 
 **Outputs** (``--out``), per configuration, ``2004_data2_harmonix_<config>``:
 
@@ -277,7 +278,9 @@ def chi2_of(model, data):
 
 def uniform_disk_fit(data, low, high, n=300):
     """Radius (mas) and V² scale of the best uniform disk on a log grid, as
-    in virgil's harmonix tutorial (starting values only). The V² residuals
+    in virgil's harmonix tutorial. The radius is a starting value; the scale
+    is only reported (a uniform disk is a poor star, and the fits start from
+    ``START_SCALES``). The V² residuals
     are linear in the scale, so at each diameter the best scale (clipped to
     ``SCALE_RANGE``) comes from residuals at two values of it."""
     diams = np.geomspace(low, high, n)
@@ -545,9 +548,12 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
         starts1 = [b | s for b in base_starts(radius0, companion) for s in spot_starts(1)]
         if smoke:
             starts1 = starts1[:1]
+        if max_starts:
+            starts1 = starts1[:max_starts]
         records1, best1 = run_starts(stage1, priors1, data, starts1, max_steps)
         frozen = {k: best1["values"][k] for k in OUTLINE}
         stage1_chi2 = best1["chi2"]
+        stage1_pinned = on_bounds(best1["values"], priors1)
         scene = Scene("map", ydeg, companion, fixed=frozen)
         priors = {k: v for k, v in priors.items() if k not in frozen}
         free_start = {k: best1["values"][k] for k in priors}
@@ -576,6 +582,8 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
         edge = i_best in (0, len(scan) - 1)
         extra = {"sigmas": np.array([s[0] for s in scan]), "log_evidence": np.array([s[1] for s in scan]),
                  "sigma": sigma, "sigma_on_edge": edge, "stage1_chi2": stage1_chi2, "stage1_ydeg": stage1.ydeg,
+                 "stage1_start_chi2": np.array([r["chi2"] for r in records1]),
+                 "stage1_on_bounds": np.array(stage1_pinned, dtype=str),
                  "scan_chi2": np.array([s[2]["chi2"] for s in scan])}
         scales = map_prior_scales(ydeg, sigma)
         precision = {k: np.zeros(np.shape(v)) for k, v in best["values"].items()} | {"data": 1.0 / scales**2}
@@ -586,7 +594,8 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
     from jax.flatten_util import ravel_pytree
 
     prec_vec, _ = ravel_pytree({k: jnp.asarray(precision[k], dtype=float) for k in values})
-    scale, gamma = mackay_error_scale(residuals, theta, prec_vec, n=int(data.n_independent))
+    # The frozen outline was fitted to these data too (stage 1): it takes its parameters off N.
+    scale, gamma = mackay_error_scale(residuals, theta, prec_vec, n=int(data.n_independent) - len(frozen))
 
     model = scene(**values)
     fov = SCORE_NPIX * SCORE_PIXEL
@@ -619,7 +628,8 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
             lines.append(f"  {k:12s} {float(v):.4g}{' (frozen from stage 1)' if k in frozen else ''}")
     lines.append("on a prior bound (degenerate or prior-limited, not measured): " + (", ".join(pinned) or "none"))
     if extra:
-        lines.append(f"stage 1 (one spot, ydeg {extra['stage1_ydeg']}): chi2/N = {extra['stage1_chi2'] / n:.3f}")
+        lines.append(f"stage 1 (one spot, ydeg {extra['stage1_ydeg']}): chi2/N = {extra['stage1_chi2'] / n:.3f}; "
+                     "on a prior bound: " + (", ".join(extra["stage1_on_bounds"]) or "none"))
         lines.append("sigma scan (sigma, log Z, chi2/N): " + ", ".join(
             f"({s:.3g}, {z:.1f}, {c / n:.2f})" for s, z, c in zip(extra["sigmas"], extra["log_evidence"], extra["scan_chi2"])))
         lines.append(f"chosen sigma={extra['sigma']:.3g}" + (" (on the grid's edge)" if extra["sigma_on_edge"] else ""))
@@ -637,7 +647,7 @@ def parse_args(argv=None):
     parser.add_argument("--config", choices=CONFIGS, required=True)
     parser.add_argument("--ydeg", type=int, default=None,
                         help="maximum degree (default 12 for spots, 4 for map)")
-    parser.add_argument("--max-starts", type=int, default=None, help="use only the first N starts (per sigma for map)")
+    parser.add_argument("--max-starts", type=int, default=None, help="use only the first N starts (stage 1 and each sigma for map)")
     parser.add_argument("--smoke", action="store_true", help="ydeg <= 3, one start, three steps: check that it runs")
     args = parser.parse_args(argv)
     if args.ydeg is not None and args.ydeg < 1:
