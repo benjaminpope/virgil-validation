@@ -7,7 +7,7 @@ invocation, all its epochs:
   1. per epoch, the Phase 3 files named by its phase3_dp_ids: GRAVITY closure
      phases only (GRAVITY_SC, 2.05-2.38 um without 2.155-2.175 um), PIONIER V2
      and closure phases;
-  2. likelihood_grid(model, data, grid) of BinaryModelCartesian over
+  2. likelihood_grid(model, data=data, grid=grid) of BinaryModelCartesian over
      +-max(3 sep_published, 30) mas at lambda_min / (4 B_max), then fit() of the
      full model (fixed uniform disks where the paper gives diameters) from the 5
      best separate peaks, with Jeffreys priors and free error scales;
@@ -241,7 +241,7 @@ def fit_epoch(system, ep, diam, fmax, dry_run):
 
     axes = [np.linspace(-half, half, n_axis), np.linspace(-half, half, n_axis), np.geomspace(FLUX_MIN, fmax, N_FLUX_GRID)]
     gdata = grid_data(data, inst, channels)
-    ll = np.asarray(likelihood_grid(BinaryModelCartesian, gdata, {"dra": axes[0], "ddec": axes[1], "flux": axes[2]}))
+    ll = np.asarray(likelihood_grid(BinaryModelCartesian, data=gdata, grid={"dra": axes[0], "ddec": axes[1], "flux": axes[2]}))
     info["grid_seconds"] = time.time() - t0
     # Order and shape are documented (axis k follows the k-th key); checked here, and again in peaks().
     if ll.shape != tuple(len(a) for a in axes):
