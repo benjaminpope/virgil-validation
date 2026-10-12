@@ -59,6 +59,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | --- | --- | --- | --- |
 | <span id="C1">C1</span> | `external_bridge.pmoired_models` | Our PMOIRED parameter mapping had the wrong sign of d(ratio)/d(incl) | fixed [virgil-validation#11](https://github.com/benjaminpope/virgil-validation/pull/11) |
 | <span id="C2">C2</span> | `crosscheck.oifits_writer` | Our OIFITS writer wrote DATE_OBS (a Python keyword argument) instead of the DATE-OBS keyword OIFITS v2 requires, with a fixed date | fixed |
+| <span id="C3">C3</span> | `detection.gaussian_null`, `detection.detection_statistics` | Version 2 of the detection campaign reported a tail excess (288 exceedances of virgil's 1e-2 threshold against 240, rate ratio 1.20, CI [1.05, 1.37], Fisher p = 0.006) that is not a difference between our simulator and virgil's gaussian_null; the campaign design could not tell | open |
 
 ## Definition changes in virgil
 

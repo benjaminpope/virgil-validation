@@ -56,22 +56,33 @@ for JWST NIRISS AMI) with a 1 % companion.
 
 ## False-alarm and contrast calibration (campaign)
 
-`scripts/detection_campaign.py` (OzSTAR job `detection_mc`): 10⁴
-companion-free and 10⁴ injected four-UT files from our own simulator, and
-10⁴ of virgil's own null simulations. `tests/test_detection_campaign.py`
-reads its summary, under criteria registered in the script:
+`scripts/detection_campaign.py` (OzSTAR; version 3, criteria `design/detection_v3.yml`
+registered before any run, rationale `design/detection_v3.md`): four-UT files
+from our own simulator, with and without a companion, virgil's own null
+simulations (`injection_recovery`, `gaussian_null`) on CPU and, with the same
+keys, on a GPU, and the linear search statistic (`crosscheck.tails`) of
+10⁶ draws of each simulator. `tests/test_detection_campaign.py` reads its
+summary. Version 2 passed but showed 288 exceedances of virgil's 1e-2 threshold
+against 240 expected (ratio 1.20, 95% CI [1.05, 1.37]). That is not a difference
+in the noise ([C3](../index.md#C3)): both simulators draw the same covariance
+and the same tails to 5σ (`tests/test_tails.py`), and the version 2 seeds
+reproduce 288 while twelve other blocks give 245. Version 3 is built so that
+it could not recur unseen:
 
-- under the null, Δχ² at a fixed position is ½δ₀ + ½χ²₁ (Chernoff 1954), as
-  `detection_statistics` documents;
-- virgil's `gaussian_null` gives our simulator's distributions of `delta_chi2`,
-  `log_bayes_factor` and `max_snr` (two-sample KS);
-- `DetectionMC`'s false-alarm probabilities are the documented (k + 1)/(n + 1),
-  with SciPy's exact binomial interval, and its thresholds are our quantiles;
-- at the true position of an injected companion, Δχ² is noncentral χ²₁(λ), with
-  λ our own noiseless χ² (probability integral transform).
+- the tail is the primary test, in its own Holm family at 0.05: the exceedance
+  rate of ours over virgil's at Δχ² = 13.93 (P = 10⁻²) and 19.03 (10⁻³) must be
+  *shown* to lie within a factor 1.3 (two one-sided tests), with a stated
+  precision (standard error of the log ratio at most 0.09); at 10⁻³ and beyond
+  (10⁻⁴, 3σ, 5σ) both simulators are sampled by importance sampling (a mixture
+  of companions at every search position, with the exact Gaussian weight);
+- the bulk (Chernoff's ½δ₀ + ½χ²₁ at a fixed position, Anderson–Darling),
+  the boundary (Δχ² at an injected companion's true position against
+  max(0, √λ + Z)², the randomized PIT) and `DetectionMC`'s bookkeeping
+  ((k + 1)/(n + 1), SciPy's exact binomial interval) form a secondary family;
+- simulator and device are separated: ours and virgil's comparison run on CPU, and
+  the GPU repeats virgil's keys, so the devices agree draw by draw.
 
-Written and smoke-tested on the laptop (3 + 3 + 20 draws, all four checks
-pass); not yet run at full size.
+Not yet run at full size (needs OzSTAR); smoke-tested on the laptop.
 
 
 ## Limit helpers

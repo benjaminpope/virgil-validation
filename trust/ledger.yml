@@ -267,6 +267,24 @@
   evidence: [tests/test_references.py::test_oifits_writer_meets_the_v2_standard]
   status: fixed
 
+- id: C3
+  title: >-
+    Version 2 of the detection campaign reported a tail excess (288 exceedances of virgil's 1e-2 threshold against 240, rate ratio 1.20, CI [1.05, 1.37], Fisher p = 0.006) that is not a difference between our simulator and virgil's gaussian_null; the campaign design could not tell
+  objects: [virgil.detection.gaussian_null, virgil.detection.detection_statistics]
+  ruling: crosscheck
+  kind: >-
+    campaign design (no code difference; both simulators draw per-baseline phase noise sigma/sqrt(3), so closure phases sharing a baseline are correlated by 1/3, with additive unclipped V² noise and no gains or offsets drawn; their covariances, distribution of S and importance-sampled tails to 5 sigma agree within 1-3 %. The version 2 seeds give the recorded 288 exceedances, a +3 sigma sample, and twelve other blocks of 24000 give the expectation. What failed: a tail test of ~250 exceedances with no stated precision, absorbed by a Holm family of eleven powerless tests, with simulator (CPU) and device (virgil's null on GPU) confounded. Version 3, design/detection_v3.yml, registered before any rerun: the tail is the primary test in its own family, an equivalence within 1.3, importance sampling at 1e-3 and beyond, and a device control with the same keys)
+  referee: >-
+    statistics (Gaussian reference: the linear search statistic S under the likelihood's own covariance, exact; importance sampling checked against plain Monte Carlo)
+  evidence:
+    - tests/test_tails.py::test_both_simulators_draw_the_templates_covariance
+    - tests/test_tails.py::test_our_closure_covariance_is_virgils
+    - tests/test_tails.py::test_delta_chi2_is_the_linear_search_statistic
+    - tests/test_tails.py::test_simulators_agree_in_the_tail_at_one_percent_and_one_per_mille
+    - tests/test_tails.py::test_importance_sampling_of_both_simulators_agrees_to_five_sigma
+    - tests/test_tails.py::test_the_version_2_excess_is_a_fluctuation_of_its_sample
+  status: open
+
 - id: P4
   title: CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation)
   objects: [candid]
