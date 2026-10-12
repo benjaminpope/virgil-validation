@@ -3,11 +3,12 @@
 # crops from this manifest and each paper's PDF, keyed by the PDF's sha256,
 # into ~/data/imaging_contests/figures/ (outside the repository).
 #
-# PDFs live in ~/data/imaging_contests/papers/<year>.pdf and are never
-# committed; nor are crops, unless `licence.reusable` is true.
+# PDFs live in ~/data/imaging_contests/papers/<year>.pdf (arXiv versions
+# fetched directly; the others supplied by Ben) and are never committed; nor are crops, unless `licence.reusable` is true.
 #
 # papers.<year>:
 #   ads        ADS abstract page (the public page links here)
+#   arxiv      arXiv id, where the paper has one (the PDF is fetched from there)
 #   sha256     of the PDF the bboxes were measured on (filled by `inventory`)
 #   licence    per copy: where it was read, what it says, the date checked;
 #              reusable: true only for an explicit licence that permits
@@ -53,19 +54,33 @@ papers:
     panels: []
   "2010":
     ads: https://ui.adsabs.harvard.edu/abs/2010SPIE.7734E..2NM/abstract
+    arxiv: "1007.4473"
     licence:
       reusable: false
       copies:
-        - {where: "arXiv:1007.4473", says: "arXiv non-exclusive distribution licence (no third-party reuse)", checked: 2026-10-12}
-    panels: []
+        - {where: "arXiv:1007.4473", says: "arXiv non-exclusive distribution licence 1.0 (abs page licence link; no third-party redistribution)", checked: 2026-10-12, pdf: papers/2010.pdf}
+    sha256: 156ed56f7ddd565bd439440bd61c4b40cb3528a8fcc5d556c729e1f686fa7ae6
+    panels:
+      - {id: "2010_fig4_a", figure: "Fig. 4", panel: "upper left (Med Res H)", page: 4, role: truth, rows: ["Mystery, medium resolution, H"], wavelength_um: null, bbox: [135.9, 79.4, 289.4, 194.4], extent_mas: null, scale: "Axes in mas, tick marks every 5 mas (RA and Dec); grey-scale average over the band's spectral channels; companion inset moved closer to the star", orientation: "North up, East left (axes: RA decreasing to the right, Dec up); stated for BSMEM FITS files"}
+      - {id: "2010_fig4_b", figure: "Fig. 4", panel: "lower left (Low Res H)", page: 4, role: truth, rows: [2010_lowH], wavelength_um: null, bbox: [135.9, 220.0, 289.4, 335.1], extent_mas: null, scale: "Axes in mas, tick marks every 5 mas (RA and Dec); grey-scale average over the band's spectral channels; companion inset moved closer to the star", orientation: "North up, East left (axes: RA decreasing to the right, Dec up); stated for BSMEM FITS files"}
+      - {id: "2010_fig4_c", figure: "Fig. 4", panel: "lower right (Low Res K)", page: 4, role: truth, rows: [2010_lowK], wavelength_um: null, bbox: [322.2, 220.0, 475.7, 335.1], extent_mas: null, scale: "Axes in mas, tick marks every 5 mas (RA and Dec); grey-scale average over the band's spectral channels; companion inset moved closer to the star", orientation: "North up, East left (axes: RA decreasing to the right, Dec up); stated for BSMEM FITS files"}
+      - {id: "2010_fig5_a", figure: "Fig. 5", panel: "upper left (Med Res H)", page: 6, role: winner, method: "BSMEM (Baron)", rows: ["Mystery, medium resolution, H"], wavelength_um: null, bbox: [135.9, 79.4, 289.4, 194.4], extent_mas: null, scale: "Axes in mas, tick marks every 5 mas (RA and Dec); grey-scale average over the band's spectral channels; companion inset moved closer to the star", orientation: "North up, East left (axes: RA decreasing to the right, Dec up); stated for BSMEM FITS files"}
+      - {id: "2010_fig5_b", figure: "Fig. 5", panel: "lower left (Low Res H)", page: 6, role: winner, method: "BSMEM (Baron)", rows: [2010_lowH], wavelength_um: null, bbox: [135.9, 220.0, 289.4, 335.1], extent_mas: null, scale: "Axes in mas, tick marks every 5 mas (RA and Dec); grey-scale average over the band's spectral channels; companion inset moved closer to the star", orientation: "North up, East left (axes: RA decreasing to the right, Dec up); stated for BSMEM FITS files"}
+      - {id: "2010_fig5_c", figure: "Fig. 5", panel: "lower right (Low Res K)", page: 6, role: winner, method: "BSMEM (Baron)", rows: [2010_lowK], wavelength_um: null, bbox: [322.2, 220.0, 475.7, 335.1], extent_mas: null, scale: "Axes in mas, tick marks every 5 mas (RA and Dec); grey-scale average over the band's spectral channels; companion inset moved closer to the star", orientation: "North up, East left (axes: RA decreasing to the right, Dec up); stated for BSMEM FITS files"}
   "2012":
     ads: https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB/abstract
+    arxiv: "1207.7141"
     licence:
       reusable: false
       copies:
-        - {where: "arXiv:1207.7141", says: "arXiv non-exclusive distribution licence (no third-party reuse)", checked: 2026-10-12}
+        - {where: "arXiv:1207.7141", says: "arXiv non-exclusive distribution licence 1.0 (abs page licence link; no third-party redistribution)", checked: 2026-10-12, pdf: papers/2012.pdf}
         - {where: HAL hal-00754980, says: "open access, no licence field in the HAL API", checked: 2026-10-12}
-    panels: []
+    sha256: 8304e3cc17f7214b455d9b91f5ba87eccb4144b9fb96e73da6ac69f5854018d4
+    panels:
+      - {id: "2012_fig1_alp", figure: "Fig. 1", panel: "left (Alp Fak)", page: 2, role: truth, rows: [Alp_Fak], wavelength_um: null, bbox: [63.0, 72.0, 306.0, 323.5], extent_mas: null, scale: "Axes RA and Y in mas, tick marks every 2 mas", orientation: "not stated (axes: RA decreasing to the right, Y up)"}
+      - {id: "2012_fig1_bet", figure: "Fig. 1", panel: "right (Bet Fak)", page: 2, role: truth, rows: [Bet_Fak], wavelength_um: null, bbox: [306.0, 72.0, 549.0, 323.5], extent_mas: null, scale: "Axes RA and Y in mas, tick marks every 2 mas", orientation: "not stated (axes: RA decreasing to the right, Y up)"}
+      - {id: "2012_fig3_macim", figure: "Fig. 3", panel: "middle row, right (Monnier, MACIM)", page: 5, role: winner, method: "MACIM (Monnier)", rows: [Alp_Fak], wavelength_um: null, bbox: [401.1, 241.3, 546.9, 382.5], extent_mas: null, scale: "Axes RA and Y in mas, tick marks every 2 mas; same greyscale table as the Alp Fak truth image", orientation: "not stated (axes: RA decreasing to the right, Y up)"}
+      - {id: "2012_fig4_macim", figure: "Fig. 4", panel: "middle row, right (Monnier, MACIM)", page: 6, role: winner, method: "MACIM (Monnier)", rows: [Bet_Fak], wavelength_um: null, bbox: [401.1, 310.1, 546.9, 451.3], extent_mas: null, scale: "Axes RA and Y in mas, tick marks every 2 mas; same greyscale table as the Bet Fak truth image", orientation: "not stated (axes: RA decreasing to the right, Y up)"}
   "2014":
     ads: https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM/abstract
     licence:
@@ -97,8 +112,26 @@ papers:
     panels: []
   "2024":
     ads: https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M/abstract
+    arxiv: "2609.35064"
     licence:
       reusable: false
       copies:
-        - {where: "arXiv:2609.35064", says: "arXiv non-exclusive distribution licence (no third-party reuse)", checked: 2026-10-12}
-    panels: []
+        - {where: "arXiv:2609.35064", says: "arXiv non-exclusive distribution licence 1.0 (abs page licence link; no third-party redistribution)", checked: 2026-10-12, pdf: papers/2024.pdf}
+    sha256: a94e20d2de6977157d623e9cd3ac92eb0f53f5b6a87c835fad5a61d3d904817b
+    panels:
+      - {id: "2024_fig2_H", figure: "Fig. 2", panel: "1 of 4, 1.30 um", page: 3, role: truth, rows: [2024_obj1_pionier], wavelength_um: 1.3, bbox: [64.5, 104.7, 190.1, 235.0], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, normalised to the maximum", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig2_K", figure: "Fig. 2", panel: "2 of 4, 2.20 um", page: 3, role: truth, rows: [2024_obj1_gravity], wavelength_um: 2.2, bbox: [190.1, 104.7, 296.3, 235.0], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, normalised to the maximum", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig2_L", figure: "Fig. 2", panel: "3 of 4, 4.00 um", page: 3, role: truth, rows: [2024_obj1_matisseL], wavelength_um: 4.0, bbox: [296.3, 104.7, 402.5, 235.0], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, normalised to the maximum", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig2_N", figure: "Fig. 2", panel: "4 of 4, 10.50 um", page: 3, role: truth, rows: [2024_obj1_matisseN], wavelength_um: 10.5, bbox: [402.5, 104.7, 508.7, 235.0], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, normalised to the maximum", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig4_H", figure: "Fig. 4", panel: "1 of 4, 1.61 um", page: 4, role: truth, rows: [2024_obj2_pionier], wavelength_um: 1.61, bbox: [74.8, 468.0, 208.3, 603.0], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig4_K", figure: "Fig. 4", panel: "2 of 4, 2.22 um", page: 4, role: truth, rows: [2024_obj2_gravity], wavelength_um: 2.22, bbox: [209.0, 468.0, 323.2, 603.0], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig4_L", figure: "Fig. 4", panel: "3 of 4, 3.04 um", page: 4, role: truth, rows: [2024_obj2_matisseL], wavelength_um: 3.04, bbox: [323.5, 468.0, 437.6, 603.0], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig4_N", figure: "Fig. 4", panel: "4 of 4, 10.58 um", page: 4, role: truth, rows: [2024_obj2_matisseN], wavelength_um: 10.58, bbox: [438.0, 468.0, 552.0, 603.0], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig6_H", figure: "Fig. 6", panel: "top row, 1 of 4, 1.58 um", page: 7, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj1_pionier], wavelength_um: 1.58, bbox: [73.6, 114.3, 206.0, 252.6], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, single selected wavelength", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig6_K", figure: "Fig. 6", panel: "top row, 2 of 4, 2.19 um", page: 7, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj1_gravity], wavelength_um: 2.19, bbox: [207.0, 114.3, 321.7, 252.6], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, single selected wavelength", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig6_L", figure: "Fig. 6", panel: "top row, 3 of 4, 2.99 um", page: 7, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj1_matisseL], wavelength_um: 2.99, bbox: [322.7, 114.3, 437.4, 252.6], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, single selected wavelength", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig6_N", figure: "Fig. 6", panel: "top row, 4 of 4, 10.48 um", page: 7, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj1_matisseN], wavelength_um: 10.48, bbox: [437.9, 114.3, 552.6, 252.6], extent_mas: [45, -45, -45, 45], scale: "Axes in mas, tick marks every 20 mas; cubic-root intensity scale, single selected wavelength", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig7_H", figure: "Fig. 7", panel: "top row, 1 of 4, 1.63 um", page: 8, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj2_pionier], wavelength_um: 1.63, bbox: [75.0, 142.2, 208.5, 276.7], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets (unlabelled)", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig7_K", figure: "Fig. 7", panel: "top row, 2 of 4, 2.22 um", page: 8, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj2_gravity], wavelength_um: 2.22, bbox: [209.0, 142.2, 323.7, 276.7], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets (unlabelled)", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig7_L", figure: "Fig. 7", panel: "top row, 3 of 4, 3.01 um", page: 8, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj2_matisseL], wavelength_um: 3.01, bbox: [324.1, 142.2, 438.9, 276.7], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets (unlabelled)", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}
+      - {id: "2024_fig7_N", figure: "Fig. 7", panel: "top row, 4 of 4, 10.53 um", page: 8, role: winner, method: "MiRA (J. Drevon)", rows: [2024_obj2_matisseN], wavelength_um: 10.53, bbox: [438.9, 142.2, 553.6, 276.7], extent_mas: [250, -250, -250, 250], scale: "Axes in mas, tick marks every 100 mas; cubic-root intensity scale; inset zooms the central +-25 mas; arrows mark the three planets (unlabelled)", orientation: "North up, East left (read from the axes: RA decreasing to the right, Dec up); not stated in the text"}

@@ -229,15 +229,27 @@ def badge(key):
     return f'<span class="cg-badge cg-{key}">{BADGES[key]}</span>'
 
 
+def row_panels(paper, row):
+    """The paper panels listed for ``row`` (by label, or by name for a row
+    not imaged); a panel without ``rows`` belongs to every row of its year."""
+    keys = {row.get("label"), row["name"]}
+    return [p for p in (paper or {}).get("panels") or [] if not p.get("rows") or keys & set(p["rows"])]
+
+
+def panel_ref(p):
+    what = p["role"] if p["role"] == "truth" else f"{p['role']} {p.get('method') or ''}".strip()
+    where = f"{p['figure']} ({p['panel']})" if p.get("panel") else p["figure"]
+    return f"{what}, {where}"
+
+
 def paper_links(year, figures, manifest):
     paper = figures["papers"].get(year)
     contest = manifest["contests"].get(year, {})
     if not paper:
         return ""
     parts = [f"[{contest.get('bibcode', 'paper')}]({paper['ads']})"]
-    for p in paper.get("panels") or []:
-        what = p["role"] if p["role"] == "truth" else f"{p['role']} ({p.get('method', '')})"
-        parts.append(f"{p['figure']}{p.get('panel') or ''}: {what}")
+    if paper.get("arxiv"):
+        parts.append(f"[arXiv:{paper['arxiv']}](https://arxiv.org/abs/{paper['arxiv']})")
     if contest.get("winner"):
         parts.append(f"winner: {contest['winner']}")
     return "Paper: " + "; ".join(parts) + "."
@@ -284,7 +296,7 @@ def build(data, private=None):
     for year, block in config["years"].items():
         lines += [f"## {year}: {block['title']}", ""]
         for row in block["rows"]:
-            badges, caption, png = [], [], None
+            badges, caption, png, best = [], [], None, None
             group = members(results, row["label"]) if row.get("label") else []
             if group:
                 best, kept = best_member(group)
@@ -304,11 +316,14 @@ def build(data, private=None):
             badges.append(badge({"score_2004": "truth", "markers_2018": "partial"}.get(row["truth"], "no-truth")))
             if row.get("note"):
                 caption.append(row["note"])
+            refs = row_panels(figures["papers"].get(year), row)
+            if refs:
+                caption.append("Paper figures: " + "; ".join(panel_ref(p) for p in refs) + ".")
             lines += [f"### {year} {row['name']}", "", " ".join(badges) + f" {row['target']}.", ""]
             if png:
                 lines += [f"![{year} {row['name']}: virgil and truth](assets/contests/{png.name})", ""]
             lines += [" ".join(caption), ""] if caption else []
-            private_rows.append((year, row, png, caption))
+            private_rows.append((year, row, png, caption, best))
         links = paper_links(year, figures, manifest)
         if links:
             lines += [links, ""]
@@ -330,14 +345,26 @@ def write_private(out, rows, figures, data):
 
     crops = data / "figures"
     body = ["<h1>Imaging contests: gallery (private, with paper crops)</h1>"]
-    for year, row, png, caption in rows:
+    for year, row, png, caption, best in rows:
         cells = [img(png)] if png else []
         paper = figures["papers"].get(year) or {}
-        for p in paper.get("panels") or []:
-            crop = crops / str(paper.get("sha256", "")) / f"{p['id']}.png" if p.get("id") else None
-            if crop and crop.exists():
-                cells.append(f"<figure style='display:inline-block'>{img(crop)}<figcaption>{html.escape(p['figure'])}"
-                             f"{html.escape(p.get('panel') or '')}: {html.escape(p['role'])} {html.escape(p.get('method') or '')}</figcaption></figure>")
+        # Our image again on the paper's field, where the figure's axes give it.
+        extents = {abs(e) for p in row_panels(paper, row) for e in (p.get("extent_mas") or [])}
+        if best is not None and extents:
+            half = float(max(extents))
+            fig, ax = plt.subplots(figsize=(PANEL_IN, PANEL_IN + 0.35))
+            panel(ax, on_grid(best["image"], best["fov"], half), half, f"virgil, paper's field ±{half:g} mas")
+            ax.set_xlabel("ΔRA (mas)", fontsize=8)
+            fig.tight_layout(pad=0.4)
+            matched = out / f"{row['label']}_paper_field.png"
+            out.mkdir(parents=True, exist_ok=True)
+            save_png(fig, matched)
+            cells.append(img(matched))
+        for p in row_panels(paper, row):
+            crop = crops / str(paper.get("sha256", "")) / f"{p['id']}.png"
+            if crop.exists():
+                cells.append(f"<figure style='display:inline-block;margin:2px'>{img(crop)}"
+                             f"<figcaption>{html.escape(panel_ref(p))}</figcaption></figure>")
         body.append(f"<h3>{year} {html.escape(row['name'])}</h3><div>{''.join(cells)}</div><p>{html.escape(' '.join(caption))}</p>")
     out.mkdir(parents=True, exist_ok=True)
     (out / "index.html").write_text("<!doctype html><meta charset=utf-8><body style='font-family:sans-serif'>" + "".join(body))

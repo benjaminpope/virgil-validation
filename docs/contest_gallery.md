@@ -109,7 +109,7 @@ Paper: [2008SPIE.7013E..1NC](https://ui.adsabs.harvard.edu/abs/2008SPIE.7013E..1
 
 ![2010 Mystery, low resolution, H: virgil and truth](assets/contests/2010_lowH.png)
 
-χ²/N 2.52e+03 against the quoted errors (V² 1.82e+03, closure phase 4.63e+03); error scale 52.00; member m4 (star), 6/6 kept.
+χ²/N 2.52e+03 against the quoted errors (V² 1.82e+03, closure phase 4.63e+03); error scale 52.00; member m4 (star), 6/6 kept. Paper figures: truth, Fig. 4 (lower left (Low Res H)); winner BSMEM (Baron), Fig. 5 (lower left (Low Res H)).
 
 ### 2010 Mystery, low resolution, K
 
@@ -117,13 +117,15 @@ Paper: [2008SPIE.7013E..1NC](https://ui.adsabs.harvard.edu/abs/2008SPIE.7013E..1
 
 ![2010 Mystery, low resolution, K: virgil and truth](assets/contests/2010_lowK.png)
 
-χ²/N 3.77e+03 against the quoted errors (V² 3.21e+03, closure phase 5.43e+03); error scale 62.55; member m2 (star), 7/8 kept.
+χ²/N 3.77e+03 against the quoted errors (V² 3.21e+03, closure phase 5.43e+03); error scale 62.55; member m2 (star), 7/8 kept. Paper figures: truth, Fig. 4 (lower right (Low Res K)); winner BSMEM (Baron), Fig. 5 (lower right (Low Res K)).
 
 ### 2010 Mystery, medium resolution, H
 
 <span class="cg-badge cg-not-imaged">not imaged</span> <span class="cg-badge cg-no-truth">no truth</span> the same, AMBER medium resolution with differential phases.
 
-Paper: [2010SPIE.7734E..2NM](https://ui.adsabs.harvard.edu/abs/2010SPIE.7734E..2NM/abstract); winner: BSMEM (Baron).
+Paper figures: truth, Fig. 4 (upper left (Med Res H)); winner BSMEM (Baron), Fig. 5 (upper left (Med Res H)).
+
+Paper: [2010SPIE.7734E..2NM](https://ui.adsabs.harvard.edu/abs/2010SPIE.7734E..2NM/abstract); [arXiv:1007.4473](https://arxiv.org/abs/1007.4473); winner: BSMEM (Baron).
 
 ## 2012: CHARA/MIRC-6T, simulated, H
 
@@ -131,15 +133,15 @@ Paper: [2010SPIE.7734E..2NM](https://ui.adsabs.harvard.edu/abs/2010SPIE.7734E..2
 
 <span class="cg-badge cg-not-imaged">not imaged</span> <span class="cg-badge cg-no-truth">no truth</span> T Tauri star and disk (TORUS).
 
-Truth listed on OLBIN but never archived.
+Truth listed on OLBIN but never archived. Paper figures: truth, Fig. 1 (left (Alp Fak)); winner MACIM (Monnier), Fig. 3 (middle row, right (Monnier, MACIM)).
 
 ### 2012 Bet_Fak
 
 <span class="cg-badge cg-not-imaged">not imaged</span> <span class="cg-badge cg-no-truth">no truth</span> spotted red supergiant.
 
-Truth listed on OLBIN but never archived.
+Truth listed on OLBIN but never archived. Paper figures: truth, Fig. 1 (right (Bet Fak)); winner MACIM (Monnier), Fig. 4 (middle row, right (Monnier, MACIM)).
 
-Paper: [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB/abstract); winner: MACIM (Monnier).
+Paper: [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB/abstract); [arXiv:1207.7141](https://arxiv.org/abs/1207.7141); winner: MACIM (Monnier).
 
 ## 2014: VLTI/PIONIER, real data, H
 
@@ -209,7 +211,7 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj1 PIONIER H: virgil and truth](assets/contests/2024_obj1_pionier.png)
 
-χ²/N 1.04 against the quoted errors (V² 0.987, closure phase 1.12); error scale 1.04; member m2 (star), 8/8 kept.
+χ²/N 1.04 against the quoted errors (V² 0.987, closure phase 1.12); error scale 1.04; member m2 (star), 8/8 kept. Paper figures: truth, Fig. 2 (1 of 4, 1.30 um); winner MiRA (J. Drevon), Fig. 6 (top row, 1 of 4, 1.58 um).
 
 ### 2024 Obj1 GRAVITY K
 
@@ -217,7 +219,7 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj1 GRAVITY K: virgil and truth](assets/contests/2024_obj1_gravity.png)
 
-χ²/N 0.981 against the quoted errors (V² 1.03, closure phase 0.81); error scale 1.03; member m2 (star), 8/8 kept.
+χ²/N 0.981 against the quoted errors (V² 1.03, closure phase 0.81); error scale 1.03; member m2 (star), 8/8 kept. Paper figures: truth, Fig. 2 (2 of 4, 2.20 um); winner MiRA (J. Drevon), Fig. 6 (top row, 2 of 4, 2.19 um).
 
 ### 2024 Obj1 MATISSE L
 
@@ -225,7 +227,7 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj1 MATISSE L: virgil and truth](assets/contests/2024_obj1_matisseL.png)
 
-χ²/N 0.35 against the quoted errors (V² 0.012, closure phase 1.08); error scale 0.60; member m0 (star), 8/8 kept.
+χ²/N 0.35 against the quoted errors (V² 0.012, closure phase 1.08); error scale 0.60; member m0 (star), 8/8 kept. Paper figures: truth, Fig. 2 (3 of 4, 4.00 um); winner MiRA (J. Drevon), Fig. 6 (top row, 3 of 4, 2.99 um).
 
 ### 2024 Obj1 MATISSE N
 
@@ -233,7 +235,7 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj1 MATISSE N: virgil and truth](assets/contests/2024_obj1_matisseN.png)
 
-χ²/N 0.117 against the quoted errors (V² 0.00534, closure phase 0.486); error scale 0.34; member m0 (star), 8/8 kept.
+χ²/N 0.117 against the quoted errors (V² 0.00534, closure phase 0.486); error scale 0.34; member m0 (star), 8/8 kept. Paper figures: truth, Fig. 2 (4 of 4, 10.50 um); winner MiRA (J. Drevon), Fig. 6 (top row, 4 of 4, 10.48 um).
 
 ### 2024 Obj2 PIONIER H
 
@@ -241,7 +243,7 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj2 PIONIER H: virgil and truth](assets/contests/2024_obj2_pionier.png)
 
-χ²/N 1.71 against the quoted errors (V² 2.18, closure phase 0.766); error scale 1.35; member m4 (star), 8/8 kept.
+χ²/N 1.71 against the quoted errors (V² 2.18, closure phase 0.766); error scale 1.35; member m4 (star), 8/8 kept. Paper figures: truth, Fig. 4 (1 of 4, 1.61 um); winner MiRA (J. Drevon), Fig. 7 (top row, 1 of 4, 1.63 um).
 
 ### 2024 Obj2 GRAVITY K
 
@@ -249,7 +251,7 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj2 GRAVITY K: virgil and truth](assets/contests/2024_obj2_gravity.png)
 
-χ²/N 185 against the quoted errors (V² 271, closure phase 12.2); error scale 13.91; member m2 (star), 8/8 kept.
+χ²/N 185 against the quoted errors (V² 271, closure phase 12.2); error scale 13.91; member m2 (star), 8/8 kept. Paper figures: truth, Fig. 4 (2 of 4, 2.22 um); winner MiRA (J. Drevon), Fig. 7 (top row, 2 of 4, 2.22 um).
 
 ### 2024 Obj2 MATISSE L
 
@@ -257,7 +259,7 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj2 MATISSE L: virgil and truth](assets/contests/2024_obj2_matisseL.png)
 
-χ²/N 0.38 against the quoted errors (V² 0.0332, closure phase 1.09); error scale 0.62; member m0 (star), 8/8 kept.
+χ²/N 0.38 against the quoted errors (V² 0.0332, closure phase 1.09); error scale 0.62; member m0 (star), 8/8 kept. Paper figures: truth, Fig. 4 (3 of 4, 3.04 um); winner MiRA (J. Drevon), Fig. 7 (top row, 3 of 4, 3.01 um).
 
 ### 2024 Obj2 MATISSE N
 
@@ -265,9 +267,9 @@ Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1
 
 ![2024 Obj2 MATISSE N: virgil and truth](assets/contests/2024_obj2_matisseN.png)
 
-χ²/N 0.272 against the quoted errors (V² 0.0719, closure phase 0.951); error scale 0.52; member m4 (star), 8/8 kept.
+χ²/N 0.272 against the quoted errors (V² 0.0719, closure phase 0.951); error scale 0.52; member m4 (star), 8/8 kept. Paper figures: truth, Fig. 4 (4 of 4, 10.58 um); winner MiRA (J. Drevon), Fig. 7 (top row, 4 of 4, 10.53 um).
 
-Paper: [2024SPIE13095E..14M](https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M/abstract); winner: Julien Drevon (MiRA); special mention Ryan Norris (SQUEEZE + OITOOLS.jl).
+Paper: [2024SPIE13095E..14M](https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M/abstract); [arXiv:2609.35064](https://arxiv.org/abs/2609.35064); winner: Julien Drevon (MiRA); special mention Ryan Norris (SQUEEZE + OITOOLS.jl).
 
 ## 2026: data not yet released
 
