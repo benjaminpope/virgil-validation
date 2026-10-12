@@ -45,6 +45,14 @@ Each is a slip no tier A test notices (or an equivalent mutant: check before fil
 - **M64** timeout: Closure-phase whitening solves L^T w = a instead of L w = a.
 - **M89** timeout: Exposures grouped on MJD alone (TIME ignored).
 
+## Quick check of the unresolved ones
+
+Only the tests that validate the mutant's nodes and their dependents (`--max-rank 1`). `survived` here means the tests written for these nodes do not notice the slip; the rest of the suite is left unmeasured (timed out).
+
+- **M11** pa_origin: survived in 17s 3 passed, 9 skipped, 674 deselected in 13.40s 
+- **M64** whitening_transpose: survived in 138s 102 passed, 48 skipped, 536 deselected, 45 warnings in 134.07s (0:02:14) 
+- **M89** mjd_time_grouping: survived in 147s 150 passed, 45 skipped, 491 deselected, 52 warnings in 143.15s (0:02:23) 
+
 ## Kills
 
 | mutant | class | first failing test | s |

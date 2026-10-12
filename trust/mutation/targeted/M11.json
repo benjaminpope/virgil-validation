@@ -1,0 +1,19 @@
+{
+ "id": "M11",
+ "cls": "pa_origin",
+ "nodes": [
+  "virgil.models.BinaryModelCartesian",
+  "virgil.orbits.KeplerOrbit"
+ ],
+ "description": "Position angle measured as N of E (arctan2(ddec, dra)) instead of E of N.",
+ "files": [
+  "src/virgil/_geometry.py"
+ ],
+ "status": "survived",
+ "killed_by": [],
+ "message": "",
+ "returncode": 0,
+ "seconds": 17.2,
+ "pytest": "3 passed, 9 skipped, 674 deselected in 13.40s",
+ "max_rank": 1
+}

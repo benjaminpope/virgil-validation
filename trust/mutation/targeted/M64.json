@@ -1,0 +1,18 @@
+{
+ "id": "M64",
+ "cls": "whitening_transpose",
+ "nodes": [
+  "virgil.oidata.OIData.cp_noise"
+ ],
+ "description": "Closure-phase whitening solves L^T w = a instead of L w = a.",
+ "files": [
+  "src/virgil/_closure.py"
+ ],
+ "status": "survived",
+ "killed_by": [],
+ "message": "",
+ "returncode": 0,
+ "seconds": 138.0,
+ "pytest": "102 passed, 48 skipped, 536 deselected, 45 warnings in 134.07s (0:02:14)",
+ "max_rank": 1
+}

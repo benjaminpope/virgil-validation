@@ -272,5 +272,61 @@
    "pytest": ""
   }
  ],
- "targeted": {}
+ "targeted": {
+  "M11": {
+   "id": "M11",
+   "cls": "pa_origin",
+   "nodes": [
+    "virgil.models.BinaryModelCartesian",
+    "virgil.orbits.KeplerOrbit"
+   ],
+   "description": "Position angle measured as N of E (arctan2(ddec, dra)) instead of E of N.",
+   "files": [
+    "src/virgil/_geometry.py"
+   ],
+   "status": "survived",
+   "killed_by": [],
+   "message": "",
+   "returncode": 0,
+   "seconds": 17.2,
+   "pytest": "3 passed, 9 skipped, 674 deselected in 13.40s",
+   "max_rank": 1
+  },
+  "M64": {
+   "id": "M64",
+   "cls": "whitening_transpose",
+   "nodes": [
+    "virgil.oidata.OIData.cp_noise"
+   ],
+   "description": "Closure-phase whitening solves L^T w = a instead of L w = a.",
+   "files": [
+    "src/virgil/_closure.py"
+   ],
+   "status": "survived",
+   "killed_by": [],
+   "message": "",
+   "returncode": 0,
+   "seconds": 138.0,
+   "pytest": "102 passed, 48 skipped, 536 deselected, 45 warnings in 134.07s (0:02:14)",
+   "max_rank": 1
+  },
+  "M89": {
+   "id": "M89",
+   "cls": "mjd_time_grouping",
+   "nodes": [
+    "virgil.oifits.read_oifits"
+   ],
+   "description": "Exposures grouped on MJD alone (TIME ignored).",
+   "files": [
+    "src/virgil/oifits.py"
+   ],
+   "status": "survived",
+   "killed_by": [],
+   "message": "",
+   "returncode": 0,
+   "seconds": 147.2,
+   "pytest": "150 passed, 45 skipped, 491 deselected, 52 warnings in 143.15s (0:02:23)",
+   "max_rank": 1
+  }
+ }
 }
