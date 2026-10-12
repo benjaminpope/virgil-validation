@@ -257,8 +257,9 @@ def cmp_hr6819(cid, fit, ref):
     o = ref["orbit"]
     pub = {"period_day": o["P_day"][:2], "a_mas": o["a_mas"][:2], "ecc": o["e"][:2], "inc_deg": o["i_deg"][:2],
            "Omega_deg": o["Omega_deg"][:2], "omega_deg": o["omega_deg"][:2], "t_peri_mjd": o["T_peri_mjd"][:2]}
-    rows += orbit_rows(cid, "HR 6819", fit["orbit"], pub, omega_shift=180.0, status="NOT-CLEAN",
-                       note="vs eccentric astro+RVs (headline); omega_Be+180")
+    shift = ref["conventions"]["omega_shift_deg"]  # 0: Table 3's omega is the companion's (see the reference file)
+    rows += orbit_rows(cid, "HR 6819", fit["orbit"], pub, omega_shift=shift, status="NOT-CLEAN",
+                       note="vs eccentric astro+RVs (headline); omega as published, read as the companion's (Table 3 = Table 2 omega_pre-sd; see the reference file for the caveat)")
     return rows
 
 

@@ -321,7 +321,7 @@ def _fake_fits(oc, tmp_path, shift=0.0):
         epochs=[_epoch(r["date"], r["mjd"] + 0.1, r["rho_mas"][0], r["pa_deg"][0],
                        flux=r["flux_ratio"][0] / (1 - r["flux_ratio"][0])) for r in h["epochs"]],
         orbit=_orbit(dict(period_day=ho["P_day"][0], t_peri_mjd=ho["T_peri_mjd"][0], ecc=ho["e"][0],
-                          inc_deg=ho["i_deg"][0], omega_deg=ho["omega_deg"][0] % 360,  # the twin of omega_Be + 180
+                          inc_deg=ho["i_deg"][0], omega_deg=(ho["omega_deg"][0] + 180) % 360,  # the (Omega+180, omega+180) twin; omega is the companion's, no shift
                           Omega_deg=(ho["Omega_deg"][0] + 180) % 360, a_mas=ho["a_mas"][0], flux_ratio=0.8)))
     i = _ref("fac164e1-d9d0-4500-8164-e1d9d0450099")
     io = i["orbit"]
@@ -360,7 +360,7 @@ def _fake_fits(oc, tmp_path, shift=0.0):
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
 def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_path):
     """Fits that reproduce the published values: every scored row passes (including the
-    conventions: omega of the primary + 180, a in au times the parallax, the (Omega,
+    conventions: omega of the primary + 180 for Gl 229 (none for HR 6819), a in au times the parallax, the (Omega,
     omega) twin, 1/flux for iota Peg, r/(1+r) for HR 6819, T_peri folded by whole
     periods), HR 6819 is never scored, and the L2 rows stay out unless asked for."""
     rows, missing = oc.compare(str(_fake_fits(oc, tmp_path)))
@@ -455,3 +455,16 @@ def test_criteria_are_frozen(oc):
     change this hash on purpose."""
     assert oc.CRITERIA["epoch"]["max_dev_sigma"] == 0.25 and oc.CRITERIA["parametric"]["max_dev_sigma"] == 2.0
     assert oc.CRITERIA_HASH == "1b35907f4268e909"
+
+
+@pytest.mark.validates("evidence", roots=["literature"], kind="guard")
+def test_hr6819_omega_table3_equals_table2_so_no_shift(oc):
+    """Klement+2025's Table 3 omega (labelled omega_Be) equals Table 2's omega_pre-sd within errors
+    with the same Omega, so no +180 applies (assuming one node convention throughout the paper).
+    Pins the reference file's convention; says nothing about virgil's fit."""
+    ref = _ref("696baf06-6c3c-424d-abaf-066c3c324d99")
+    assert ref["conventions"]["omega_shift_deg"] == 0.0
+    o = ref["orbit"]
+    t2 = o["all_solutions"]["astrometry_only (Table 2, p. 5; omega is omega_pre-sd)"]["eccentric"]
+    assert abs(oc.wrap180(o["omega_deg"][0] - t2["omega_deg"][0])) < o["omega_deg"][1]
+    assert abs(oc.wrap180(o["Omega_deg"][0] - t2["Omega_deg"][0])) < 1.5 * o["Omega_deg"][1]  # same 12 positions: errors correlated
