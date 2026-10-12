@@ -175,7 +175,9 @@ def _trackb_reference(s):
         t_peri=jd - MJD_JD,
         ecc=ro["e"][0],
         inc=ro["i_deg"][0],
-        omega=ro["omega_deg"][0] + 180.0,  # RV omega is the primary's
+        # The tabulated omega reproduces the published companion positions in crosscheck.orbits' convention as it
+        # stands (checked for all 8 Track B systems: the old +180 deg gave their point reflection).
+        omega=ro["omega_deg"][0],
         Omega=ro["Omega_deg"][0],
         a_mas=ro["a_mas"][0],
         source=s["reference"].get("positions_source", "")[:60]
@@ -183,23 +185,21 @@ def _trackb_reference(s):
     )
 
 
-def _match_published_sign(ref, refpos):
-    """Shift the reference omega by 180 deg if the orbit is the point reflection of the published positions.
+def _check_published(ref, refpos, limit_mas=0.5):
+    """Median miss (mas) of the reference orbit against the published positions, and a note if it exceeds limit_mas.
 
-    For near-equal pairs the RV omega (the primary's) and the label of the astrometric companion need not
-    agree, and the flux ratio cannot tell: take the sign nearer the published positions."""
+    A check, not an adjustment: a large miss means a wrong reference (convention, T0 epoch), not a sign to choose."""
     from crosscheck import orbits as O
 
     rp = np.array(refpos)
-
-    def miss(r):
-        x, y = O.position(
-            rp[:, 0], r["P"], r["t_peri"], r["ecc"], r["inc"], r["omega"], r["Omega"], r["a_mas"]
-        )
-        return float(np.median(np.hypot(x - rp[:, 1], y - rp[:, 2])))
-
-    other = dict(ref, omega=ref["omega"] + 180.0)
-    return (other, True) if miss(other) < miss(ref) else (ref, False)
+    x, y = O.position(
+        rp[:, 0], ref["P"], ref["t_peri"], ref["ecc"], ref["inc"], ref["omega"], ref["Omega"], ref["a_mas"]
+    )
+    miss = float(np.median(np.hypot(x - rp[:, 1], y - rp[:, 2])))
+    note = None
+    if miss > limit_mas:
+        note = f"WARNING: reference orbit misses the published positions by a median {miss:.2f} mas: reference unreliable"
+    return miss, note
 
 
 def _read_with_vis(T):
@@ -252,11 +252,10 @@ def make_trackb_loader(name):
                 seps.append(float(np.hypot(dra, ddec)))
         ref = _trackb_reference(s)
         if ref is not None and refpos:
-            ref, flipped = _match_published_sign(ref, refpos)
-            if flipped:
-                notes.append(
-                    "reference omega shifted by 180 deg to match the published positions (the sign is conventional)"
-                )
+            miss, note = _check_published(ref, refpos)
+            ref["median_miss_published_mas"] = miss
+            if note:
+                notes.append(note)
         sep = max(seps) if seps else 20.0
         lo = max(0.3 * min(seps), 0.2) if seps else 0.5
         return Loaded(
