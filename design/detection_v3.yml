@@ -1,0 +1,70 @@
+# Criteria for the detection campaign, version 3 (scripts/detection_campaign.py).
+# Registered on 2026-10-12, before any v3 draw was run. Version 2 (OzSTAR job
+# detection_mc_v2, summary trust/campaigns/detection_mc_v2.json) passed its
+# criteria but its tail test, ours against virgil's gaussian_null above virgil's 1e-2
+# threshold, gave 288 against 240 expected (rate ratio 1.20, 95% CI [1.05, 1.37],
+# Fisher p = 0.006) and was absorbed by a Holm family of eleven. Version 3 makes the
+# tail the primary test, in its own family, with a precision target and a method for
+# the far tail, and separates the simulator from the device. Rationale and the
+# diagnosis of the v2 excess: design/detection_v3.md.
+# The aggregator records this file's SHA-256 in the summary, and
+# tests/test_detection_campaign.py checks it against the committed file.
+
+# Thresholds on delta_chi2, fixed here, not taken from either simulator's sample: the
+# upper quantiles of the linear reference statistic S = max_j max(0, s_j)^2 over the
+# 288 grid positions (crosscheck.tails.Search) under Gaussian noise of the template's
+# covariance. 1e-2 and 1e-3 from 2e7 plain draws (rank error 0.01 and 0.04); the rest
+# by importance sampling with 2e5 draws and Brent's method (relative error 0.6% in the
+# probability, 0.01 in t). virgil's detection_statistics equals S to 0.015.
+thresholds:
+  "1e-2": 13.93         # P = 1e-2
+  "1e-3": 19.03         # P = 1e-3
+  "1e-4": 23.89         # P = 1e-4
+  "3sigma": 18.38       # P = 1.35e-3, one-sided 3 sigma
+  "5sigma": 35.76       # P = 2.87e-7, one-sided 5 sigma
+
+primary:                # the tail: its own family, its own alpha
+  family_alpha: 0.05    # Holm over the four tests
+  margin: 1.3           # equivalence: the exceedance-rate ratio, ours / virgil's, within [1/1.3, 1.3]
+  # each test: two one-sided tests (Schuirmann 1987) of ln(ratio) within +-ln(margin);
+  # the p-value is the larger of the two; a test passes when Holm rejects its
+  # "not equivalent". An interval too wide for the margin is a failure, not a pass.
+  tests:
+    noise_tail_1e-2: linear reference statistic S of 1e6 draws from each simulator (crosscheck.simulate.observe; virgil's gaussian_null), exceedances of 13.93, plain Monte Carlo
+    noise_tail_1e-3: the same, exceedances of 19.03
+    e2e_tail_1e-2: delta_chi2 of virgil's detection_statistics on our files (device cpu) against delta_chi2 of virgil's own null draws (device cpu), exceedances of 13.93, plain Monte Carlo
+    e2e_tail_1e-3: the same at 19.03, importance sampling for both (mixture of companions at every search position, crosscheck.tails.Mixture)
+  precision_target: 0.09   # standard error of ln(ratio) each test must reach (checked, must hold)
+
+secondary:              # the bulk and the boundary: Holm, as in v2
+  family_alpha: 0.01
+  tests:
+    chernoff_zero_fraction: exact two-sided binomial test of P(delta_chi2 = 0) = 1/2 at one fixed position
+    chernoff_positive: KS of the positive values against chi2_1
+    chernoff_mean: z-test of mean 1/2, variance 5/4
+    simulators_ad: k-sample Anderson-Darling of our simulator against virgil's (device cpu), one per statistic
+    boundary_pit: KS of the randomized PIT of delta_chi2 at the true position of injected companions against max(0, sqrt(lambda) + Z)^2
+    boundary_mean: z-test of the standardized mean of the same
+
+must_hold:              # not p-values: each must be exactly true
+  bookkeeping: DetectionMC's FAPs, exact intervals and thresholds equal ours from the counts (on the cpu draws)
+  statistic_identity: delta_chi2 of virgil's detection_statistics equals the linear reference statistic S within 0.05 on every draw of the check part, on each device run
+  device_agreement: virgil's null draws with the same keys on cpu and on the other device (GPU) give delta_chi2, log_bayes_factor and max_snr equal within 0.05 for 99.9% of draws, and the same exceedance counts of every registered threshold within 3 or 3%
+  is_weights: the mean importance weight is 1 within four standard errors, for every simulator and threshold
+  is_precision: relative standard error of each importance-sampling estimate at most 0.05, effective number of exceedances at least 400
+
+counts:
+  min_null: 24000               # our companion-free files, device cpu
+  min_injected: 24000
+  min_virgil_cpu: 120000        # virgil's own null simulations, device cpu
+  min_virgil_other: 120000      # the same keys on another device (GPU); the same tasks as cpu
+  min_proxy: 1000000            # per simulator
+  min_is: 5000                  # importance-sampling draws per simulator and threshold
+  min_check: 2000               # check draws per device run
+
+reported:               # never pass/fail
+  - exceedance_ratio_ci # 95% exact CI on the rate ratio at virgil's own empirical 1e-2 and 1e-3 thresholds, three statistics (as in v2)
+  - far_tail            # importance sampling, ours / virgil's, at 1e-4, 3 sigma and 5 sigma, with relative error and effective sample size
+  - gpd_cross_check     # generalised-Pareto fit to the top 2% of the proxy draws against the plain and importance estimates
+  - nominal             # each simulator's exceedance rate at each threshold against its nominal probability
+  - completeness        # fraction detected at virgil's 1e-3 threshold, by separation and flux
