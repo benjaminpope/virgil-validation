@@ -340,8 +340,8 @@ def test_pinned_detects_a_bound_for_log_and_linear_priors():
 
     ci = _load("contest_images")
     log = dist.LogUniform(0.1, 10.0)
-    assert ci.pinned(log, 0.1005) and ci.pinned(log, 9.99) and not ci.pinned(log, 1.0)
-    assert ci.pinned(dist.Uniform(0.2, 1.0), 0.201) and not ci.pinned(dist.Uniform(0.2, 1.0), 0.6)
+    assert ci.pinned(log, 0.1005) == "low" and ci.pinned(log, 9.99) == "high" and ci.pinned(log, 1.0) == ""
+    assert ci.pinned(dist.Uniform(0.2, 1.0), 0.201) == "low" and ci.pinned(dist.Uniform(0.2, 1.0), 0.6) == ""
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
@@ -349,7 +349,7 @@ def test_multistart_keeps_the_lowest_chi2_converged_start(monkeypatch):
     import types
 
     ci = _load("contest_images")
-    runs = iter([(0.5, False), (1.2, True), (0.9, True), (0.1, False)])  # (χ²/N, converged)
+    runs = iter([(0.5, False), (1.2, True), (0.9, True), (0.1, False), (np.nan, True)])  # (χ²/N, converged)
     seen = []
 
     def fake_fit(model, priors, data, **options):
@@ -359,7 +359,7 @@ def test_multistart_keeps_the_lowest_chi2_converged_start(monkeypatch):
 
     monkeypatch.setattr(ci, "fit", fake_fit)
     monkeypatch.setattr(ci, "chi2_red", lambda model, data: model)
-    best, rec = ci.multistart_fit(lambda p: p, {}, None, [0, 1, 2, 3])
+    best, rec = ci.multistart_fit(lambda p: p, {}, None, [0, 1, 2, 3, 4])
     assert best.model == 0.9 and rec["converged"] and rec["chi2_red"] == 0.9
 
 

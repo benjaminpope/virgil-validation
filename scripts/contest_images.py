@@ -244,11 +244,11 @@ def size_limit_mas(data, fraction=SIZE_FRACTION):
 
 
 def pinned(prior, x, edge=PIN_EDGE):
-    """Whether ``x`` sits within ``edge`` of ``prior``'s range (in log for a
-    log-uniform prior) from either bound."""
+    """Which bound ``x`` sits within ``edge`` of in ``prior``'s range (in log for
+    a log-uniform prior): ``"low"``, ``"high"`` or ``""`` (not pinned)."""
     lo, hi, log = _interior(prior, 0.0)
     y = np.log(max(float(x), 1e-300)) if log else float(x)
-    return bool(y <= lo + edge * (hi - lo) or y >= hi - edge * (hi - lo))
+    return "low" if y <= lo + edge * (hi - lo) else "high" if y >= hi - edge * (hi - lo) else ""
 
 
 def n_independent(data):
@@ -302,7 +302,9 @@ def multistart_fit(model_fn, priors, data, starts, **options):
         c = chi2_red(r.model, data)
         chi2s.append(c)
         # A converged start beats any unconverged one; within a class, the lowest χ²/N (C2h).
-        key = (r.info.get("converged") is False, c if np.isfinite(c) else np.inf)
+        # A non-finite χ²/N counts as unconverged.
+        ok = r.info.get("converged") is not False and np.isfinite(c)
+        key = (not ok, c if np.isfinite(c) else np.inf)
         if best is None or key < best[0]:
             best = (key, c, r)
     best = (best[1], best[2])
@@ -729,12 +731,11 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         return s_
 
     if star and star_model == "disk":
-        # Diameter: a scale parameter, so log-uniform, from half the beam's
-        # minor axis (this arm is the resolved star: an unresolved one is the
-        # point_star arm's, and below that floor the GP took the star down to
-        # 0.075 mas, C2g) to the beam's major axis (beyond that, flux belongs
-        # in the image). Started from a fit of the disk alone, from the
-        # second-moment diameter (C2g) and from half a beam.
+        # Diameter: a scale parameter, so log-uniform, from RESOLVED_FLOOR of the
+        # beam's minor axis (below that the GP took the star down to 0.075 mas,
+        # C2g; C2h lowered the floor from 0.5) to the beam's major axis (beyond
+        # that, flux belongs in the image). Multistarted from the second-moment
+        # diameter (C2g) with jitter, plus half a beam.
         diam_prior = dist.LogUniform(RESOLVED_FLOOR * resolution.minor_mas, resolution.major_mas)
         diam0 = float(linear_starts.disk_diameter_from_sigma(moments_of(data)["sigma_major"], 0.0))
         centre = {"diam": diam0 if np.isfinite(diam0) and diam0 > 0 else resolution.minor_mas}
@@ -759,6 +760,17 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         start = vm.System(star=base, env=start.env)
     elif star and star_model != "point":
         raise ValueError(f"star_model must be 'point', 'disk', 'ellipse' or 'point_companion', not {star_model!r}")
+
+    if star and guard and star_fit.get("diam") is not None:
+        # The plausibility guard (C2h): a star beyond a fraction of λ/B_min is
+        # the environment in disguise; one pinned to its upper bound (a disk
+        # as wide as a beam) wants to be an image.
+        limit = size_limit_mas(data)
+        if star_fit["diam"] > limit:
+            return without_star("size", f"diameter {star_fit['diam']:.3g} mas > {limit:.3g} mas")
+        if star_fit.get("pinned") == "high":
+            return without_star("size", f"diameter {star_fit['diam']:.3g} mas pinned to its upper bound")
+
     wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel)) for d in datasets])))
     img0 = image_of(start, star)
     pixel0 = float(img0.pixel_scale_mas)
@@ -869,16 +881,6 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     npix = int(np.shape(img0.log_brightness)[0])
     pixel = float(img0.pixel_scale_mas)
     fov = npix * pixel
-
-    if star and guard and star_fit.get("diam") is not None:
-        # The plausibility guard (C2h): a star beyond a fraction of λ/B_min is
-        # the environment in disguise; one pinned to its upper bound (a disk
-        # as wide as a beam) wants to be an image.
-        limit = size_limit_mas(data)
-        if star_fit["diam"] > limit:
-            return without_star("size", f"diameter {star_fit['diam']:.3g} mas > {limit:.3g} mas")
-        if star_fit.get("pinned") and star_fit["diam"] > resolution.minor_mas:
-            return without_star("size", f"diameter {star_fit['diam']:.3g} mas pinned to its upper bound")
 
     ellipse = None
     if star and guard:
