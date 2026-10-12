@@ -1,0 +1,22 @@
+{
+ "id": "M01",
+ "cls": "ft_conj_sign",
+ "nodes": [
+  "virgil.models.PointSource",
+  "virgil.models.cvis_binary",
+  "virgil.models.BinaryModelCartesian",
+  "virgil.models.System"
+ ],
+ "description": "Fourier shift factor conjugated (exp(+i...) instead of exp(-i...)), the sign of the transform.",
+ "files": [
+  "src/virgil/_geometry.py"
+ ],
+ "status": "killed",
+ "killed_by": [
+  "tests/test_cone_field.py::test_source_model_invariants[PointSource]"
+ ],
+ "message": "...",
+ "returncode": 1,
+ "seconds": 8.8,
+ "pytest": ""
+}

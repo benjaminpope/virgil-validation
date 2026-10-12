@@ -1,0 +1,332 @@
+{
+ "pin": "0c1be69c61afc524c21ac327e41329d0ee15ac5d",
+ "listed": 100,
+ "run": 7,
+ "killed": 4,
+ "design_sha256": "b21e1e9d633538c4b4ac64124670bb39d25a84e5b9ff5b7815444d1dcbca223b",
+ "mutants_sha256": "f80d3513f6c148321958ea45ef3e6057c7a51327201c129cc4a1a90364832b19",
+ "survived": 0,
+ "timeout": 3,
+ "error": 0,
+ "kill_rate": 0.5714285714285714,
+ "baseline": {
+  "pin": "0c1be69c61afc524c21ac327e41329d0ee15ac5d",
+  "returncode": 1,
+  "seconds": 652.9,
+  "summary": "4 failed (tier A, finding/upstream deselected; run under load average ~40)",
+  "failing_tests": [
+   "tests/test_l_curve.py::test_chi2_plus_once_the_penalty_is_not_stationary",
+   "tests/test_limits_coverage_helpers.py::test_position_angle_prior_term_is_the_jacobian",
+   "tests/test_oidb_fits.py::test_orbit_from_marginal_start_recovers_elements",
+   "tests/test_oidb_fits.py::test_triangles_with_a_baseline_in_no_vis2_row_are_dropped"
+  ],
+  "when": "2026-10-12T15:12:37"
+ },
+ "by_class": {
+  "bessel_factor": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "flag_ignored": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "ft_conj_sign": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "mjd_time_grouping": {
+   "mutants": 1,
+   "killed": 0,
+   "survived": 0,
+   "other": 1,
+   "kill_rate": 0.0
+  },
+  "pa_origin": {
+   "mutants": 2,
+   "killed": 1,
+   "survived": 0,
+   "other": 1,
+   "kill_rate": 0.5
+  },
+  "whitening_transpose": {
+   "mutants": 1,
+   "killed": 0,
+   "survived": 0,
+   "other": 1,
+   "kill_rate": 0.0
+  }
+ },
+ "by_node": {
+  "virgil.angles.AngleVector": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "virgil.models.BinaryModelCartesian": {
+   "mutants": 2,
+   "killed": 1,
+   "survived": 0,
+   "other": 1,
+   "kill_rate": 0.5
+  },
+  "virgil.models.PointSource": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "virgil.models.System": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "virgil.models.UniformDisk": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "virgil.models.cvis_binary": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "virgil.models.cvis_uniform_disk": {
+   "mutants": 1,
+   "killed": 1,
+   "survived": 0,
+   "other": 0,
+   "kill_rate": 1.0
+  },
+  "virgil.oidata.OIData.cp_noise": {
+   "mutants": 1,
+   "killed": 0,
+   "survived": 0,
+   "other": 1,
+   "kill_rate": 0.0
+  },
+  "virgil.oifits.read_oifits": {
+   "mutants": 2,
+   "killed": 1,
+   "survived": 0,
+   "other": 1,
+   "kill_rate": 0.5
+  },
+  "virgil.orbits.KeplerOrbit": {
+   "mutants": 1,
+   "killed": 0,
+   "survived": 0,
+   "other": 1,
+   "kill_rate": 0.0
+  }
+ },
+ "mutants": [
+  {
+   "id": "M01",
+   "cls": "ft_conj_sign",
+   "nodes": [
+    "virgil.models.PointSource",
+    "virgil.models.cvis_binary",
+    "virgil.models.BinaryModelCartesian",
+    "virgil.models.System"
+   ],
+   "description": "Fourier shift factor conjugated (exp(+i...) instead of exp(-i...)), the sign of the transform.",
+   "files": [
+    "src/virgil/_geometry.py"
+   ],
+   "status": "killed",
+   "killed_by": [
+    "tests/test_cone_field.py::test_source_model_invariants[PointSource]"
+   ],
+   "message": "...",
+   "returncode": 1,
+   "seconds": 8.8,
+   "pytest": ""
+  },
+  {
+   "id": "M11",
+   "cls": "pa_origin",
+   "nodes": [
+    "virgil.models.BinaryModelCartesian",
+    "virgil.orbits.KeplerOrbit"
+   ],
+   "description": "Position angle measured as N of E (arctan2(ddec, dra)) instead of E of N.",
+   "files": [
+    "src/virgil/_geometry.py"
+   ],
+   "status": "timeout",
+   "killed_by": [],
+   "message": "",
+   "returncode": "timeout",
+   "seconds": 600.2,
+   "pytest": ""
+  },
+  {
+   "id": "M35",
+   "cls": "bessel_factor",
+   "nodes": [
+    "virgil.models.UniformDisk",
+    "virgil.models.cvis_uniform_disk"
+   ],
+   "description": "Uniform-disk Bessel argument uses 2 pi (not pi) x theta x B.",
+   "files": [
+    "src/virgil/models.py"
+   ],
+   "status": "killed",
+   "killed_by": [
+    "tests/test_models_spectra_extras.py::test_cvis_uniform_disk_is_the_airy_pattern"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 14.6,
+   "pytest": ""
+  },
+  {
+   "id": "M64",
+   "cls": "whitening_transpose",
+   "nodes": [
+    "virgil.oidata.OIData.cp_noise"
+   ],
+   "description": "Closure-phase whitening solves L^T w = a instead of L w = a.",
+   "files": [
+    "src/virgil/_closure.py"
+   ],
+   "status": "timeout",
+   "killed_by": [],
+   "message": "",
+   "returncode": "timeout",
+   "seconds": 600.2,
+   "pytest": ""
+  },
+  {
+   "id": "M79",
+   "cls": "flag_ignored",
+   "nodes": [
+    "virgil.oifits.read_oifits"
+   ],
+   "description": "OIFITS FLAG column ignored (only non-finite values are flagged).",
+   "files": [
+    "src/virgil/oifits.py"
+   ],
+   "status": "killed",
+   "killed_by": [
+    "tests/test_vlti.py::test_all_closure_phases_flagged_leaves_the_visibilities"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 166.5,
+   "pytest": ""
+  },
+  {
+   "id": "M89",
+   "cls": "mjd_time_grouping",
+   "nodes": [
+    "virgil.oifits.read_oifits"
+   ],
+   "description": "Exposures grouped on MJD alone (TIME ignored).",
+   "files": [
+    "src/virgil/oifits.py"
+   ],
+   "status": "timeout",
+   "killed_by": [],
+   "message": "",
+   "returncode": "timeout",
+   "seconds": 737.8,
+   "pytest": ""
+  },
+  {
+   "id": "M96",
+   "cls": "pa_origin",
+   "nodes": [
+    "virgil.angles.AngleVector"
+   ],
+   "description": "Angle-vector direction measured from the second component (arctan2(x, y)).",
+   "files": [
+    "src/virgil/angles.py"
+   ],
+   "status": "killed",
+   "killed_by": [
+    "tests/test_priors_angles.py::test_angle_vector_samples"
+   ],
+   "message": "AssertionError:",
+   "returncode": 1,
+   "seconds": 91.0,
+   "pytest": ""
+  }
+ ],
+ "targeted": {
+  "M11": {
+   "id": "M11",
+   "cls": "pa_origin",
+   "nodes": [
+    "virgil.models.BinaryModelCartesian",
+    "virgil.orbits.KeplerOrbit"
+   ],
+   "description": "Position angle measured as N of E (arctan2(ddec, dra)) instead of E of N.",
+   "files": [
+    "src/virgil/_geometry.py"
+   ],
+   "status": "survived",
+   "killed_by": [],
+   "message": "",
+   "returncode": 0,
+   "seconds": 17.2,
+   "pytest": "3 passed, 9 skipped, 674 deselected in 13.40s",
+   "max_rank": 1
+  },
+  "M64": {
+   "id": "M64",
+   "cls": "whitening_transpose",
+   "nodes": [
+    "virgil.oidata.OIData.cp_noise"
+   ],
+   "description": "Closure-phase whitening solves L^T w = a instead of L w = a.",
+   "files": [
+    "src/virgil/_closure.py"
+   ],
+   "status": "survived",
+   "killed_by": [],
+   "message": "",
+   "returncode": 0,
+   "seconds": 138.0,
+   "pytest": "102 passed, 48 skipped, 536 deselected, 45 warnings in 134.07s (0:02:14)",
+   "max_rank": 1
+  },
+  "M89": {
+   "id": "M89",
+   "cls": "mjd_time_grouping",
+   "nodes": [
+    "virgil.oifits.read_oifits"
+   ],
+   "description": "Exposures grouped on MJD alone (TIME ignored).",
+   "files": [
+    "src/virgil/oifits.py"
+   ],
+   "status": "survived",
+   "killed_by": [],
+   "message": "",
+   "returncode": 0,
+   "seconds": 147.2,
+   "pytest": "150 passed, 45 skipped, 491 deselected, 52 warnings in 143.15s (0:02:23)",
+   "max_rank": 1
+  }
+ }
+}

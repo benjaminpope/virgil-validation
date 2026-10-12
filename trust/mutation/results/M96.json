@@ -1,0 +1,19 @@
+{
+ "id": "M96",
+ "cls": "pa_origin",
+ "nodes": [
+  "virgil.angles.AngleVector"
+ ],
+ "description": "Angle-vector direction measured from the second component (arctan2(x, y)).",
+ "files": [
+  "src/virgil/angles.py"
+ ],
+ "status": "killed",
+ "killed_by": [
+  "tests/test_priors_angles.py::test_angle_vector_samples"
+ ],
+ "message": "AssertionError:",
+ "returncode": 1,
+ "seconds": 91.0,
+ "pytest": ""
+}

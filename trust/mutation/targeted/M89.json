@@ -1,0 +1,18 @@
+{
+ "id": "M89",
+ "cls": "mjd_time_grouping",
+ "nodes": [
+  "virgil.oifits.read_oifits"
+ ],
+ "description": "Exposures grouped on MJD alone (TIME ignored).",
+ "files": [
+  "src/virgil/oifits.py"
+ ],
+ "status": "survived",
+ "killed_by": [],
+ "message": "",
+ "returncode": 0,
+ "seconds": 147.2,
+ "pytest": "150 passed, 45 skipped, 491 deselected, 52 warnings in 143.15s (0:02:23)",
+ "max_rank": 1
+}

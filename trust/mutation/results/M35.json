@@ -1,0 +1,20 @@
+{
+ "id": "M35",
+ "cls": "bessel_factor",
+ "nodes": [
+  "virgil.models.UniformDisk",
+  "virgil.models.cvis_uniform_disk"
+ ],
+ "description": "Uniform-disk Bessel argument uses 2 pi (not pi) x theta x B.",
+ "files": [
+  "src/virgil/models.py"
+ ],
+ "status": "killed",
+ "killed_by": [
+  "tests/test_models_spectra_extras.py::test_cvis_uniform_disk_is_the_airy_pattern"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 14.6,
+ "pytest": ""
+}
