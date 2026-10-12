@@ -11,15 +11,14 @@ gives the raw χ²/N against the quoted errors and, where the truth is held, our
 score with the contest's own metric.
 
 Paper figures (contests/figures.yml) are linked, not shown, unless their
-licence allows republication. ``--private DIR`` also writes DIR/index.html,
-outside the repository, which embeds the crops made by
-scripts/contest_figures.py for local viewing only.
+licence allows republication. ``--private DIR`` also writes a small Zensical site
+in DIR, outside the repository, which shows the crops made by
+scripts/contest_figures.py, for local viewing only.
 
 NumPy, SciPy and matplotlib only: no JAX.
 """
 
 import argparse
-import base64
 import html
 import importlib.util
 import io
@@ -168,49 +167,50 @@ def markers_2018(ax):
 
 # --- rendering -----------------------------------------------------------------
 
+INK, PAPER = "#d8d8e0", "#15151c"  # panel text and background: dark cards suit magma
 
-def panel(ax, image, half, title, peak=None):
-    img = np.clip(image, 0, None)
-    peak = img.max() if peak is None else peak
-    ax.imshow(np.arcsinh(img / (SOFT * peak)) / np.arcsinh(1 / SOFT), origin="upper", extent=[half, -half, -half, half], cmap=CMAP, vmin=0, vmax=1)
-    ax.set_title(title, fontsize=9)
-    ax.tick_params(labelsize=7)
+
+def render_panel(image, fov, half, title, markers=None):
+    """One square panel: ``image`` on a ±``half`` mas field, North up, East
+    left, asinh stretch to its own peak. Returns the figure."""
+    img = np.clip(on_grid(image, fov, half), 0, None)
+    fig, ax = plt.subplots(figsize=(PANEL_IN, PANEL_IN), facecolor=PAPER)
+    ax.imshow(np.arcsinh(img / (SOFT * img.max())) / np.arcsinh(1 / SOFT), origin="upper",
+              extent=[half, -half, -half, half], cmap=CMAP, vmin=0, vmax=1)
+    if markers:
+        markers(ax)
     ax.set_xlim(half, -half)
     ax.set_ylim(-half, half)
+    ax.set_title(title, fontsize=9, color=INK)
+    ax.set_xlabel("ΔRA (mas)", fontsize=8, color=INK)
+    ax.set_ylabel("ΔDec (mas)", fontsize=8, color=INK)
+    ax.tick_params(labelsize=7, colors=INK)
+    for spine in ax.spines.values():
+        spine.set_color(INK)
+    ax.xaxis.set_major_locator(MaxNLocator(5, symmetric=True))
+    ax.yaxis.set_major_locator(MaxNLocator(5, symmetric=True))
+    fig.tight_layout(pad=0.3)
+    return fig
 
 
 def save_png(fig, path):
     """A compact PNG: 256-colour palette, optimised."""
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=DPI)
+    fig.savefig(buf, format="png", dpi=DPI, facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
     PILImage.open(buf).convert("RGB").quantize(256).save(path, optimize=True)
 
 
-def render_row(row, best, truth):
-    """virgil's image, and the truth beside it when we hold one, on one field
-    (``row['half']`` mas, or one holding ENCLOSED of each image's flux)."""
-    image, fov = best["image"], best["fov"]
-    radius = enclosing_radius(image, fov)
+def field(row, best, truth):
+    """Half-width (mas) shared by a row's panels: ``row['half']``, or one
+    holding ENCLOSED of each image's flux."""
+    if row.get("half"):
+        return float(row["half"])
+    radius = enclosing_radius(best["image"], best["fov"])
     if truth is not None:
         radius = max(radius, enclosing_radius(truth[0], truth[1]))
-    half = float(row.get("half") or nice(1.1 * radius))
-    n = 1 if truth is None else 2
-    fig, axes = plt.subplots(1, n, figsize=(n * PANEL_IN, PANEL_IN + 0.35), sharey=True, squeeze=False)
-    axes = axes[0]
-    panel(axes[0], on_grid(image, fov, half), half, "virgil")
-    if row["truth"] == "markers_2018":
-        markers_2018(axes[0])
-    if truth is not None:
-        panel(axes[1], on_grid(truth[0], truth[1], half), half, "truth (rebuilt)")
-    axes[0].set_ylabel("ΔDec (mas)", fontsize=8)
-    for ax in axes:
-        ax.set_xlabel("ΔRA (mas)", fontsize=8)
-        ax.xaxis.set_major_locator(MaxNLocator(5, symmetric=True))
-        ax.yaxis.set_major_locator(MaxNLocator(5, symmetric=True))
-    fig.tight_layout(pad=0.4)
-    return fig, half
+    return nice(1.1 * radius)
 
 
 # --- page --------------------------------------------------------------------
@@ -247,11 +247,11 @@ def paper_links(year, figures, manifest):
     contest = manifest["contests"].get(year, {})
     if not paper:
         return ""
-    parts = [f"[{contest.get('bibcode', 'paper')}]({paper['ads']})"]
+    parts = [f'<a href="{paper["ads"]}">{contest.get("bibcode", "paper")}</a>']
     if paper.get("arxiv"):
-        parts.append(f"[arXiv:{paper['arxiv']}](https://arxiv.org/abs/{paper['arxiv']})")
+        parts.append(f'<a href="https://arxiv.org/abs/{paper["arxiv"]}">arXiv:{paper["arxiv"]}</a>')
     if contest.get("winner"):
-        parts.append(f"winner: {contest['winner']}")
+        parts.append(f"winner: {html.escape(contest['winner'])}")
     return "Paper: " + "; ".join(parts) + "."
 
 
@@ -263,40 +263,63 @@ def chi2_line(best, kept, total):
             f"member m{best['member']} ({'star' if best['star'] else 'no star'}), {kept}/{total} kept.")
 
 
-def build(data, private=None):
-    config = yaml.safe_load((ROOT / "contests" / "gallery.yml").read_text())
-    figures = yaml.safe_load((ROOT / "contests" / "figures.yml").read_text())
-    manifest = yaml.safe_load((ROOT / "contests" / "manifest.yml").read_text())
-    results = [data / "results" / r for r in config["campaign"]["results"]]
-    ASSETS.mkdir(parents=True, exist_ok=True)
-    camp = config["campaign"]
+def card(title, src=None, text=None, kind="ours"):
+    """One figure card: an image (linked to itself) or a placeholder text."""
+    body = (f'<a href="{src}"><img src="{src}" alt="{html.escape(title)}" loading="lazy"></a>' if src
+            else f'<div class="cg-placeholder">{text}</div>')
+    return f'<figure class="cg-card cg-{kind}">{body}<figcaption>{html.escape(title)}</figcaption></figure>'
+
+
+def intro(camp, private):
     lines = [
-        "# Imaging contests: gallery",
+        "# Imaging contests: gallery" + (" (private)" if private else ""),
         "",
-        "virgil's images of the SPIE interferometric imaging contest data, beside the truth",
-        "where we hold one. Every panel has North up and East left, the same colour map",
-        f"and the same stretch, asinh(I / {SOFT:g} I<sub>peak</sub>), which keeps faint emission beside a",
-        "bright central star visible; the panels in a row share",
-        f"one field, which holds {ENCLOSED:.0%} of the flux of each image.",
+        "virgil's images of the SPIE interferometric imaging contest data, beside the truth where we",
+        "hold one" + (" and the truth and winning entries from the contest papers." if private else "."),
+        f"Our panels have North up and East left, the `{CMAP}` colour map and one stretch,",
+        f"asinh(I / {SOFT:g} I<sub>peak</sub>), which keeps faint emission beside a bright central star",
+        f"visible; the panels in a row share one field, holding {ENCLOSED:.0%} of each image's flux.",
         "",
         f"**Method.** virgil {camp['virgil']}, campaign 1. {camp['method']} "
         "Truths are used for scoring and display only, never for fitting.",
         "",
         "**Captions.** The raw χ²/N against the quoted errors comes first; the error scale is the",
         f"factor that brings it to 1, and a fit with a scale above {FAILED_SCALE:g} is marked failed.",
-        "Where we hold the truth, the score uses that contest's own metric",
-        "([scoring sources](contest_scoring_sources.md)).",
-        "",
-        "**Paper figures.** The contest papers' truth panels and entries are not shown: no copy",
-        "we found carries a licence that allows republication. Each row links to the paper on ADS.",
-        "See the [plan](plan_imaging_contests.md) for the status of each dataset.",
+        "Where we hold the truth, the score uses that contest's own metric.",
         "",
     ]
-    private_rows = []
+    if private:
+        lines += ['!!! warning "Local use only"',
+                  "    The paper crops are copyrighted (contests/figures.yml records each licence).",
+                  "    This site is built outside the repository and must not be published.",
+                  "    Paper panels keep their own orientation, scale and stretch: read each card's caption.", ""]
+    else:
+        lines += ["**Paper figures.** The contest papers' truth panels and entries are cited, not shown: no copy",
+                  "we found carries a licence that allows republication. See the",
+                  "[scoring sources](contest_scoring_sources.md) and the [plan](plan_imaging_contests.md).", ""]
+    return lines
+
+
+def build(data, private=None):
+    config = yaml.safe_load((ROOT / "contests" / "gallery.yml").read_text())
+    figures = yaml.safe_load((ROOT / "contests" / "figures.yml").read_text())
+    manifest = yaml.safe_load((ROOT / "contests" / "manifest.yml").read_text())
+    results = [data / "results" / r for r in config["campaign"]["results"]]
+    if private:
+        out = pathlib.Path(private).expanduser().resolve()
+        if out.is_relative_to(ROOT):
+            raise SystemExit(f"--private must be outside the repository: {out}")
+        img_dir = out / "docs" / "assets" / "img"
+        img_dir.mkdir(parents=True, exist_ok=True)
+    ASSETS.mkdir(parents=True, exist_ok=True)
+    public, secret = intro(config["campaign"], False), intro(config["campaign"], True)
     for year, block in config["years"].items():
-        lines += [f"## {year}: {block['title']}", ""]
+        for lines in (public, secret):
+            lines += [f"## {year}: {block['title']}", ""]
+        paper = figures["papers"].get(year) or {}
         for row in block["rows"]:
-            badges, caption, png, best = [], [], None, None
+            badges, caption, best = [], [], None
+            ours = []  # (title, file name) of our renders
             group = members(results, row["label"]) if row.get("label") else []
             if group:
                 best, kept = best_member(group)
@@ -305,9 +328,13 @@ def build(data, private=None):
                 if row["truth"] == "score_2004":
                     ref, ref_fov, score = truth_2004_data2(best["image"], best["fov"])
                     truth = (ref, ref_fov)
-                fig, half = render_row(row, best, truth)
-                png = ASSETS / f"{row['label']}.png"
-                save_png(fig, png)
+                half = field(row, best, truth)
+                marks = markers_2018 if row["truth"] == "markers_2018" else None
+                save_png(render_panel(best["image"], best["fov"], half, "virgil", marks), ASSETS / f"{row['label']}_virgil.png")
+                ours.append(("virgil", f"{row['label']}_virgil.png"))
+                if truth is not None:
+                    save_png(render_panel(truth[0], truth[1], half, "truth (rebuilt)"), ASSETS / f"{row['label']}_truth.png")
+                    ours.append(("truth, rebuilt from the paper's model", f"{row['label']}_truth.png"))
                 caption.append(chi2_line(best, kept, len(group)))
                 if score:
                     caption.append(score + ".")
@@ -316,65 +343,76 @@ def build(data, private=None):
             badges.append(badge({"score_2004": "truth", "markers_2018": "partial"}.get(row["truth"], "no-truth")))
             if row.get("note"):
                 caption.append(row["note"])
-            refs = row_panels(figures["papers"].get(year), row)
-            if refs:
-                caption.append("Paper figures: " + "; ".join(panel_ref(p) for p in refs) + ".")
-            lines += [f"### {year} {row['name']}", "", " ".join(badges) + f" {row['target']}.", ""]
-            if png:
-                lines += [f"![{year} {row['name']}: virgil and truth](assets/contests/{png.name})", ""]
-            lines += [" ".join(caption), ""] if caption else []
-            private_rows.append((year, row, png, caption, best))
+            refs = row_panels(paper, row)
+            head = [f"### {year} {row['name']}", "", f'<p class="cg-meta">{" ".join(badges)} {html.escape(row["target"])}.</p>', ""]
+            empty = [] if group else [card("virgil", text="Not imaged yet", kind="empty")]
+            # Public: our renders, and the paper panels as citations.
+            cards = [card(t, f"assets/contests/{f}") for t, f in ours] + empty
+            cards += [card(panel_ref(p), text=f'<a href="{paper["ads"]}">{html.escape(p["figure"])}</a><br>'
+                           f'{html.escape(p.get("panel") or "")}', kind="cite") for p in refs]
+            public += head + ['<div class="cg-grid">', *cards, "</div>", ""]
+            if caption:
+                public += [f'<p class="cg-caption">{html.escape(" ".join(caption))}</p>', ""]
+            if private:
+                cards = []
+                for t, f in ours:
+                    (img_dir / f).write_bytes((ASSETS / f).read_bytes())
+                    cards.append(card(t, f"assets/img/{f}"))
+                cards += empty
+                # Our image again on the paper's field, where the figure's axes give it.
+                extents = {abs(e) for p in refs for e in (p.get("extent_mas") or [])}
+                if best is not None and extents:
+                    h = float(max(extents))
+                    name = f"{row['label']}_paper_field.png"
+                    save_png(render_panel(best["image"], best["fov"], h, f"virgil, ±{h:g} mas"), img_dir / name)
+                    cards.append(card(f"virgil on the paper's field (±{h:g} mas)", f"assets/img/{name}"))
+                for p in refs:
+                    crop = data / "figures" / str(paper.get("sha256", "")) / f"{p['id']}.png"
+                    if crop.exists():
+                        (img_dir / crop.name).write_bytes(crop.read_bytes())
+                        kind = "truth" if p["role"] == "truth" else "paper"
+                        cards.append(card(panel_ref(p), f"assets/img/{crop.name}", kind=kind))
+                secret += head + ['<div class="cg-grid">', *cards, "</div>", ""]
+                notes = [p["orientation"] for p in refs if "RIGHT" in (p.get("orientation") or "")]
+                text = " ".join(caption) + (" Paper orientation: " + "; ".join(sorted(set(notes))) + "." if notes else "")
+                if text:
+                    secret += [f'<p class="cg-caption">{html.escape(text)}</p>', ""]
         links = paper_links(year, figures, manifest)
         if links:
-            lines += [links, ""]
-    PAGE.write_text("\n".join(lines).rstrip() + "\n")
+            for lines in (public, secret):
+                lines += [f'<p class="cg-paper">{links}</p>', ""]
+    PAGE.write_text("\n".join(public).rstrip() + "\n")
     if private:
-        out = pathlib.Path(private).expanduser().resolve()
-        if out.is_relative_to(ROOT):
-            raise SystemExit(f"--private must be outside the repository: {out}")
-        write_private(out, private_rows, figures, data)
+        write_private(out, secret)
 
 
-def write_private(out, rows, figures, data):
-    """A standalone HTML page, outside the repository, embedding our renders
-    and the paper crops listed in contests/figures.yml. For local viewing
-    only: the crops are copyrighted."""
-    def img(path):
-        b = base64.b64encode(pathlib.Path(path).read_bytes()).decode()
-        return f'<img src="data:image/png;base64,{b}" style="height:220px;margin:2px">'
-
-    crops = data / "figures"
-    body = ["<h1>Imaging contests: gallery (private, with paper crops)</h1>"]
-    for year, row, png, caption, best in rows:
-        cells = [img(png)] if png else []
-        paper = figures["papers"].get(year) or {}
-        # Our image again on the paper's field, where the figure's axes give it.
-        extents = {abs(e) for p in row_panels(paper, row) for e in (p.get("extent_mas") or [])}
-        if best is not None and extents:
-            half = float(max(extents))
-            fig, ax = plt.subplots(figsize=(PANEL_IN, PANEL_IN + 0.35))
-            panel(ax, on_grid(best["image"], best["fov"], half), half, f"virgil, paper's field ±{half:g} mas")
-            ax.set_xlabel("ΔRA (mas)", fontsize=8)
-            fig.tight_layout(pad=0.4)
-            matched = out / f"{row['label']}_paper_field.png"
-            out.mkdir(parents=True, exist_ok=True)
-            save_png(fig, matched)
-            cells.append(img(matched))
-        for p in row_panels(paper, row):
-            crop = crops / str(paper.get("sha256", "")) / f"{p['id']}.png"
-            if crop.exists():
-                cells.append(f"<figure style='display:inline-block;margin:2px'>{img(crop)}"
-                             f"<figcaption>{html.escape(panel_ref(p))}</figcaption></figure>")
-        body.append(f"<h3>{year} {html.escape(row['name'])}</h3><div>{''.join(cells)}</div><p>{html.escape(' '.join(caption))}</p>")
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "index.html").write_text("<!doctype html><meta charset=utf-8><body style='font-family:sans-serif'>" + "".join(body))
-    print(f"wrote {out / 'index.html'}")
+def write_private(out, lines):
+    """A small Zensical project in ``out`` (outside the repository): the
+    gallery with the paper crops, styled as the docs site. Build or serve it
+    with ``zensical serve -f OUT/mkdocs.yml``. For local viewing only."""
+    docs = out / "docs"
+    (docs / "index.md").write_text("\n".join(lines).rstrip() + "\n")
+    (docs / "assets" / "contests.css").write_text((ROOT / "docs" / "assets" / "contests.css").read_text())
+    config = {
+        "site_name": "Imaging contests: private gallery",
+        "site_description": "Local only: contains copyrighted paper figures",
+        "theme": {"name": "material", "features": ["navigation.sections", "toc.follow"],
+                  "palette": [{"media": "(prefers-color-scheme: light)", "scheme": "default",
+                               "toggle": {"icon": "material/brightness-7", "name": "Dark mode"}},
+                              {"media": "(prefers-color-scheme: dark)", "scheme": "slate",
+                               "toggle": {"icon": "material/brightness-4", "name": "Light mode"}}]},
+        "markdown_extensions": ["tables", "admonition", {"toc": {"permalink": True}}],
+        "extra_css": ["assets/contests.css"],
+        "nav": [{"Gallery": "index.md"}],
+    }
+    (out / "mkdocs.yml").write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
+    print(f"wrote {out}: serve with  zensical serve -f {out / 'mkdocs.yml'}")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", default="~/data/imaging_contests")
-    parser.add_argument("--private", default=None, help="also write a local-only page with paper crops here")
+    parser.add_argument("--private", default=None, help="also write a local-only Zensical site with paper crops here")
     args = parser.parse_args()
     build(pathlib.Path(args.data).expanduser(), args.private)
 

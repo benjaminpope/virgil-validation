@@ -120,7 +120,7 @@ def test_public_page_shows_only_our_renders():
     labels = {r["label"] for y in config["years"].values() for r in y["rows"] if r.get("label")}
     assets = ROOT / "docs" / "assets" / "contests"
     for png in assets.glob("*"):
-        assert png.suffix == ".png" and png.stem in labels, png  # nothing but our renders
+        assert png.suffix == ".png" and png.stem.rsplit("_", 1)[0] in labels, png  # nothing but our renders
         assert png.stat().st_size < 100_000
     page = (ROOT / "docs" / "contest_gallery.md").read_text()
     assert not re.search(r"design[^)\s]*\.md", page)
