@@ -30,6 +30,7 @@ validated when, in addition, every step is verified.
 import argparse
 import collections
 import html
+import importlib.util
 import json
 import math
 import pathlib
@@ -321,12 +322,35 @@ EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "dlux
 
 
 def load_signoffs(path=ROOT / "trust" / "signoffs.yml"):
-    """{node: {property: entry}}: conventions confirmed by a cited paper or Ben's sign-off."""
-    return (yaml.safe_load(open(path)) or {}) if pathlib.Path(path).exists() else {}
+    """{node: {property: entry}}: conventions confirmed by a cited paper or Ben's sign-off.
+
+    Entries with ``status: pending`` (written by scripts/mutation_trust.py for Ben to sign) confirm nothing.
+    """
+    data = (yaml.safe_load(open(path)) or {}) if pathlib.Path(path).exists() else {}
+    confirmed = {node: {prop: e for prop, e in props.items() if e.get("status") != "pending"}
+                 for node, props in data.items()}
+    return {node: props for node, props in confirmed.items() if props}
 
 
-def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None):
+MUTATION_REPORT = ROOT / "trust" / "mutation" / "results.json"
+
+
+def load_mutation(report=MUTATION_REPORT, mutants=None):
+    """Mutation data for the page (``{"nodes": ..., "summary": ...}``), or ``None`` without a report.
+
+    See scripts/mutation_trust.py. The page builds without a report, and shows nothing about mutants then.
+    """
+    if not pathlib.Path(report).exists():
+        return None
+    spec = importlib.util.spec_from_file_location("mutation_trust", ROOT / "scripts" / "mutation_trust.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.page_data(module.load_report(report), module.load_listed(mutants))
+
+
+def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None, mutation=None):
     nodes = graph["nodes"]
+    mutation_nodes = (mutation or {}).get("nodes", {})
     golden = load_golden() if golden is None else golden
     signoffs = load_signoffs() if signoffs is None else signoffs
     by_obj = collections.defaultdict(list)
@@ -392,7 +416,21 @@ def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None)
             status = "partly"
         else:
             status = "unchecked"
+        # A part is verified only if no mutant of it survives: a slip of that kind would not be noticed.
+        if status in ("ok", "ok-via") and mutation_nodes.get(name, {}).get("survivors"):
+            status = "partly"
         return status, strong, weak, need, recs, good, sorted(blocked_by), prop_roots
+
+    def mutation_view(name):
+        """What the mutation report says of a part (``None`` when there is no report)."""
+        if mutation is None:
+            return None
+        m = mutation_nodes.get(name)
+        if m is None:
+            return {"text": "no mutants written for this part.", "survivors": [], "state": "none"}
+        state = ("survived" if m["survivors"] else "killed" if m["killed"] == m["listed"] - m["equivalent"] and m["killed"]
+                 else "not-run" if not (m["killed"] or m["unresolved"]) else "partial")
+        return {"text": m["text"], "survivors": m["survivors"], "state": state}
 
     def properties_short(name, prop_roots):
         """Properties of a part with fewer independent roots than it needs."""
@@ -435,6 +473,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None)
             "properties": {p: {"need": n, "roots": sorted(prop_roots.get(p, ()))}
                            for p, n in (node.get("properties") or {}).items()},
             "unconfirmed": unconfirmed_conventions(name, prop_roots),
+            "mutation": mutation_view(name),
         }
 
     # verdicts: a part whose own checks pass is verified only if everything
@@ -485,7 +524,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None)
             "because": [{"id": c, "findings": own.get(c, {}).get("findings", []),
                          "status": own.get(c, {}).get("status", "unchecked")} for c in causes],
             "depends": node.get("depends", []), "dependents": dependents,
-            "properties": o["properties"], "unconfirmed": o["unconfirmed"],
+            "properties": o["properties"], "unconfirmed": o["unconfirmed"], "mutation": o["mutation"],
             "checks": o["checks"], "commits": o["commits"],
             "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set())),
             "skipped": o["skipped"],
@@ -523,6 +562,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None)
         "nodes": out_nodes,
         "pipelines": pipelines,
         "ledger": ledger,
+        "mutation": (mutation or {}).get("summary"),
     }
 
 
@@ -610,6 +650,8 @@ def _tooltip(n):
     lines = [f'{n["id"]}: {VERDICTS[n["verdict"]][0]}']
     if n["strong"] or n["weak"]:
         lines.append("checked against " + ", ".join(ROOT_NAMES.get(r, r) for r in n["strong"] + n["weak"]))
+    if n.get("mutation") and n["mutation"]["survivors"]:
+        lines.append("mutants survive: " + ", ".join(n["mutation"]["survivors"]))
     for b in n["because"]:
         lines.append(("relies on " if n["verdict"].startswith("relies") else "also relies on ")
                      + b["id"] + (" (" + ", ".join(b["findings"]) + ")" if b["findings"] else ""))
@@ -742,6 +784,8 @@ def render_coverage(model, extra=ROOT / "trust" / "not_covered.md"):
                 why.append("no check yet")
             if verdict == "convention":
                 why.append("convention " + ", ".join(f"`{p}`" for p in n["unconfirmed"]) + " from virgil's docs only")
+            if n["mutation"] and n["mutation"]["survivors"]:
+                why.append("mutants survive: " + ", ".join(n["mutation"]["survivors"]) + " (a slip of that kind would not be noticed)")
             short = [p for p, v in n["properties"].items() if len(v["roots"]) < v["need"]]
             if verdict == "partly" and short:
                 why.append("; ".join(f"`{p}`: {len(n['properties'][p]['roots'])} of {n['properties'][p]['need']} "
@@ -807,6 +851,16 @@ def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
             f'{refs_ok} of {refs_total} verified.</div></div>')
 
 
+def _mutation_line(m):
+    """How sensitive the suite is: mutants of virgil that its tests notice (blank without a mutation report)."""
+    if not m:
+        return ""
+    survive = f", {m['survived']} survive" if m["survived"] else ""
+    return (f'<div class="vt-muted">Mutation testing of these checks: {m["killed"]} of the {m["run"]} slips of virgil '
+            f'run so far were noticed by a test{survive} ({m["listed"]} listed; '
+            f'a part with a surviving slip is not verified).</div>')
+
+
 def render(model, base=""):
     nodes = model["nodes"]
     ours_nodes = [n for n in nodes.values() if n["id"].startswith("virgil.")]
@@ -822,7 +876,7 @@ def render(model, base=""):
              f'<i aria-hidden="true">⏲</i> virgil has changed {model["changed"]} of these parts since; the weekly run refreshes the evidence')
     real = [p for p in model["pipelines"] if p["data"] == "real"]
     sim = [p for p in model["pipelines"] if p["data"] != "real"]
-    slim = {k: {f: n[f] for f in ("id", "verdict", "strong", "weak", "findings", "because", "depends", "dependents", "changed")}
+    slim = {k: {f: n[f] for f in ("id", "verdict", "strong", "weak", "findings", "because", "depends", "dependents", "changed", "mutation")}
                 | {"doc": base + doc_url(model["docs"][k]) if model.get("docs", {}).get(k) else None}
                 | {"checks": [{f: c[f] for f in ("name", "doc", "outcome", "kind", "headline", "value", "url")} for c in n["checks"]]}
             for k, n in nodes.items()}
@@ -839,7 +893,7 @@ def render(model, base=""):
         "independent packages written by other people, then whole chains end to end. "
         "[How this works](method/index.md).\n",
         '<div class="vt">',
-        _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
+        _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)) + _mutation_line(model.get("mutation")),
         _bar(counts, total),
         _legend(counts),
         '<h2 id="real-data">On real data: does virgil reproduce published results?</h2>',
@@ -883,13 +937,15 @@ def main():
     ap.add_argument("--index", default=None, help="also write the page here (the site's home page)")
     ap.add_argument("--json", default=None)
     ap.add_argument("--findings", default=None, help="also write the Findings page here (docs/method/findings.md)")
+    ap.add_argument("--mutation", default=MUTATION_REPORT,
+                    help="mutation report (scripts/mutation.py report); skipped when the file does not exist")
     ap.add_argument("--coverage", default=None, help="also write the Not yet covered page here (docs/method/coverage.md)")
     args = ap.parse_args()
     graph = yaml.safe_load(open(args.graph))
     ledger = yaml.safe_load(open(args.ledger))
     runs, records = load_evidence(args.evidence, strict=args.strict_provenance)
     virgil = args.virgil.expanduser() if args.virgil else None
-    model = build(graph, ledger, records, runs, virgil)
+    model = build(graph, ledger, records, runs, virgil, mutation=load_mutation(args.mutation))
     model["docs"] = resolve_docs(graph)
     out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None
     docs_root = ROOT / "docs"

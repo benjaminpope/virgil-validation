@@ -1,0 +1,23 @@
+{
+ "id": "M109",
+ "cls": "regression",
+ "nodes": [
+  "virgil.oifits.read_oifits",
+  "virgil.oidata.OIData"
+ ],
+ "description": "A closure-phase leg stored reversed (b, a) is not looked up in the visibility tables, so it counts as unmatched.",
+ "files": [
+  "src/virgil/oifits.py"
+ ],
+ "finding": "F10",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_epochs.py::test_epoch_positions_grid_and_gaps"
+ ],
+ "message": "assert np.f...",
+ "returncode": 1,
+ "seconds": 55.4,
+ "pytest": "1 failed, 57 passed, 29 skipped, 571 deselected, 14 warnings in 52.76s",
+ "max_rank": 1
+}

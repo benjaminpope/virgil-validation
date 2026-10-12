@@ -133,6 +133,10 @@ def test_signoffs_confirm_declared_conventions():
     signoffs = yaml.safe_load(open(ROOT / "trust" / "signoffs.yml")) or {}
     for node, entries in signoffs.items():
         for prop, entry in entries.items():
+            if entry.get("status") == "pending":  # written by scripts/mutation_trust.py for Ben: confirms nothing
+                assert node in GRAPH["nodes"], node
+                assert not entry.get("by") and not entry.get("citation"), (node, prop)
+                continue
             assert prop in (GRAPH["nodes"][node].get("convention") or []), (node, prop)
             by_paper = bool(entry.get("citation"))
             by_ben = entry.get("by") and entry.get("date") and len(str(entry.get("commit", ""))) == 40

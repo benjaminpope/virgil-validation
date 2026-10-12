@@ -1,0 +1,22 @@
+{
+ "id": "M103",
+ "cls": "regression",
+ "nodes": [
+  "virgil.inference.laplace_cov"
+ ],
+ "description": "laplace_cov / fisher ignore array-valued parameters again (values used as given, no leaf shapes).",
+ "files": [
+  "src/virgil/inference.py"
+ ],
+ "finding": "F5",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_vlti.py::test_laplace_cov_with_array_parameters"
+ ],
+ "message": "TypeError...",
+ "returncode": 1,
+ "seconds": 20.3,
+ "pytest": "1 failed, 4 passed, 7 skipped, 782 deselected, 2 warnings in 18.12s",
+ "max_rank": 1
+}

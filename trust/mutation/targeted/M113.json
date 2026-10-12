@@ -1,0 +1,23 @@
+{
+ "id": "M113",
+ "cls": "regression",
+ "nodes": [
+  "virgil.orbits.total_mass",
+  "virgil.orbits.distance_pc"
+ ],
+ "description": "total_mass and distance_pc use a^3/P^2 with P in Julian years, not Kepler's third law with the IAU constants.",
+ "files": [
+  "src/virgil/orbits.py"
+ ],
+ "finding": "F14",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_orbits_more.py::test_f14_total_mass_is_keplers_third_law_without_orbitize[elements0]"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 7.0,
+ "pytest": "1 failed, 6 skipped, 804 deselected in 5.19s",
+ "max_rank": 1
+}

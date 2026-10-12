@@ -1,0 +1,22 @@
+{
+ "id": "M111",
+ "cls": "regression",
+ "nodes": [
+  "virgil.imaging.clean"
+ ],
+ "description": "imaging.clean keeps pixels whose flux cannot change the model (|J e_p| at rounding level) in the search.",
+ "files": [
+  "src/virgil/imaging.py"
+ ],
+ "finding": "F12",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_clean_finite.py::test_clean_is_finite_with_four_telescopes"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 13.1,
+ "pytest": "1 failed, 1 passed, 4 skipped, 792 deselected in 10.52s",
+ "max_rank": 1
+}

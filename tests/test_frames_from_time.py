@@ -77,3 +77,22 @@ def test_simulated_snapshots_have_distinct_mjd(tmp_path):
 def test_snapshots_in_time_column_are_separate_frames(tmp_path):
     distinct, shared = _files(tmp_path)
     assert shared.n_independent == distinct.n_independent
+
+
+@pytest.mark.validates("virgil.oidata.OIData", "virgil.oifits.read_oifits", roots=["standards"])
+def test_time_column_gives_the_same_frames_as_distinct_mjd(tmp_path):
+    """The frame labels, not only the count of independent observables.
+
+    ``n_independent`` can stay the same when frames merge (the closure-phase
+    covariance follows the shared baselines), so the mutant that groups rows on
+    MJD alone (M89, which reintroduces F13) passed the test above. The frames
+    themselves are what F13 is about: one per snapshot, however it is stored.
+    """
+    distinct, shared = _files(tmp_path)
+    fd, fs = np.asarray(distinct.frame), np.asarray(shared.frame)
+    assert np.unique(fd).size == 7
+    assert np.unique(fs).size == 7
+    # the same partition of the samples (labels may differ)
+    assert np.unique(np.stack([fd, fs]), axis=1).shape[1] == 7
+    # and the same number of samples in each frame
+    assert np.all(np.bincount(fs) == np.bincount(fd))

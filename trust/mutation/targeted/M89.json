@@ -8,11 +8,15 @@
  "files": [
   "src/virgil/oifits.py"
  ],
- "status": "survived",
- "killed_by": [],
+ "finding": "F13",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_frames_from_time.py::test_time_column_gives_the_same_frames_as_distinct_mjd"
+ ],
  "message": "",
- "returncode": 0,
- "seconds": 147.2,
- "pytest": "150 passed, 45 skipped, 491 deselected, 52 warnings in 143.15s (0:02:23)",
+ "returncode": 1,
+ "seconds": 7.4,
+ "pytest": "1 failed, 9 skipped, 581 deselected in 5.52s",
  "max_rank": 1
 }

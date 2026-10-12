@@ -26,3 +26,31 @@ virgil.orbits.PositionData:
       OIData.with_north_angle; checked by
       tests/test_orbits_more.py::test_north_angle_adds_to_the_measured_position_angle.
       Approved by Ben in the validation session.
+virgil.models.BinaryModelCartesian:
+  position_angle_origin:
+    status: pending
+    signed: false
+    mutants:
+    - M11
+    note: 'UNSIGNED, for Ben. A mutant of the convention `position_angle_origin` survived, so no test
+      failed if virgil took the other reading: Position angle measured as N of E (arctan2(ddec, dra))
+      instead of E of N. Confirm the convention against a paper or by reading the code, then replace this
+      entry by `by`, `date` (YYYY-MM-DD) and `commit` (full hash), or `citation`, and declare the property
+      a `convention` of the node in trust/graph.yml. Killing the mutant with a test written from the same
+      documentation does not confirm the convention.'
+    mutants_now:
+      M11: killed
+virgil.orbits.KeplerOrbit:
+  position_angle_origin:
+    status: pending
+    signed: false
+    mutants:
+    - M11
+    note: 'UNSIGNED, for Ben. A mutant of the convention `position_angle_origin` survived, so no test
+      failed if virgil took the other reading: Position angle measured as N of E (arctan2(ddec, dra))
+      instead of E of N. Confirm the convention against a paper or by reading the code, then replace this
+      entry by `by`, `date` (YYYY-MM-DD) and `commit` (full hash), or `citation`, and declare the property
+      a `convention` of the node in trust/graph.yml. Killing the mutant with a test written from the same
+      documentation does not confirm the convention.'
+    mutants_now:
+      M11: killed

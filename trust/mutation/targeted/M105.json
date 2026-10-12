@@ -1,0 +1,22 @@
+{
+ "id": "M105",
+ "cls": "regression",
+ "nodes": [
+  "virgil.fitting.fit"
+ ],
+ "description": "Expanded priors (.expand) are not unwrapped to their base, so fit leaves the least-squares (LM) path for L-BFGS.",
+ "files": [
+  "src/virgil/_flat.py"
+ ],
+ "finding": "F7",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_vlti.py::test_fit_uses_lm_for_expanded_uniform_priors[expand]"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 55.8,
+ "pytest": "1 failed, 13 passed, 12 skipped, 767 deselected, 8 warnings in 52.91s",
+ "max_rank": 1
+}

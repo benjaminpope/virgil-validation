@@ -1,0 +1,22 @@
+{
+ "id": "M108",
+ "cls": "regression",
+ "nodes": [
+  "virgil.oifits.read_oifits"
+ ],
+ "description": "A baseline is looked up only under its own INSNAME: the fallback to another INSNAME with identical wavelengths is gone.",
+ "files": [
+  "src/virgil/oifits.py"
+ ],
+ "finding": "F10",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_epochs.py::test_epoch_positions_grid_and_gaps"
+ ],
+ "message": "assert np.f...",
+ "returncode": 1,
+ "seconds": 53.5,
+ "pytest": "1 failed, 54 passed, 29 skipped, 571 deselected, 14 warnings in 50.75s",
+ "max_rank": 1
+}
