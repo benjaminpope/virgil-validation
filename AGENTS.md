@@ -57,6 +57,24 @@ versions; `scripts/evidence_table.py` renders them (`docs/evidence.md`, and
 the CI job summary). Roots are listed in `src/evidence/__init__.py`;
 `self-consistency` is the weakest and never enough on its own.
 
+**Pin all evidence to one virgil commit before a release.** The headers of
+`trust/evidence/latest.jsonl`, `virgil.jsonl` and `campaigns.jsonl` must all
+name the release commit, from a clean tree: regenerate them (or rerun the
+campaign) rather than mixing commits. `scripts/check_evidence_pin.py
+--release --expect <sha>` fails otherwise; `tests/test_evidence_pin.py` runs
+the same check as a tier B test under `VALIDATION_RELEASE=1`. Never edit a
+header to make it agree.
+
+## Verifying reviews
+
+An adversarial review, by a person or a model, is a set of claims, not
+verdicts. Reproduce each claim (a failing test, a number) before ruling on
+it, and record unreproduced claims as unconfirmed. For a high-stakes call
+(anything that flips a verdict, lifts a "provisional" label or closes a
+finding) get a second reviewer who did not make the first judgement: another
+model family or a person. Say in the ledger entry or hand-over who
+reproduced and who second-reviewed it.
+
 ## Trust graph and ledger
 
 - `trust/graph.yml`: virgil's objects (with their virgil source files,
