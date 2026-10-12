@@ -199,9 +199,68 @@ def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     P = ORBIT["period"]
     dt = (m["t_peri_mjd"] - ORBIT["t_peri"] + P / 2) % P - P / 2
     assert abs(dt) < 0.02 * P, dt
+    # one fit per period band N = round(T/P), each free to leave its band; the winner is at the true period
+    won = min((b for b in out["bands"] if "loss" in b), key=lambda b: b["loss"])
+    assert abs(won["elements"]["period_day"] - ORBIT["period"]) < 0.05, out["bands"]
+    assert won["n_fit"] == round(30.0 / ORBIT["period"])
+    assert [r["name"] for r in out["epoch_checks"]] == [f"n{k}" for k in range(5)]
     # the NUTS path runs end to end (a smoke test: 20 draws are not a posterior)
     assert set(out["nuts"]["elements"]) >= {"period_day", "a_mas", "ecc"}
     assert np.isfinite(out["nuts"]["elements"]["a_mas"]["median"])
+
+
+def test_alias_bands_tile_the_window_and_split_the_o1_orbits(of):
+    """Band N = round(T/P) of the first-to-last-night span T. Gl 229 (T = 125.7 d): Xuan et al.'s
+    12.134 d is band 10 and the 11.81 d of the O1 MAP is band 11; iota Peg (T = 288.2 d): the
+    published 10.213 d and the O1 MAP's 10.332 d share band 28, so that is no cycle-count alias."""
+    def band_of(bands, p):
+        (n,) = [n for n, lo, hi in bands if lo <= p <= hi]
+        return n
+    gl = of.alias_bands([60304.23, 60429.97], (11.8, 12.5))
+    assert [n for n, _, _ in gl] == [10, 11]  # by N, so the longest period first
+    assert band_of(gl, 12.134) == 10 and band_of(gl, 11.809) == 11
+    assert gl[1][1] == 11.8 and gl[0][2] == 12.5 and gl[0][1] == gl[1][2]  # tile the window, no gaps
+    ip = of.alias_bands([58413.16, 58701.33], (10.0, 10.4))
+    assert band_of(ip, 10.213) == band_of(ip, 10.332) == 28
+    with pytest.raises(ValueError):
+        of.alias_bands([60000.0], (10.0, 11.0))
+
+
+def test_reference_positions_agree_with_the_published_epochs(of):
+    """The reference rows of the epoch checks: the Xuan et al. orbit through crosscheck.orbits (our
+    own solver) gives the positions that virgil's Kepler solver gives at the nights the fits agree
+    on (26 Dec 2023, 29 Apr 2024) and the two they do not (28 Feb, 29 Mar 2024); iota Peg's come
+    from Table 2 of Anugu et al."""
+    from types import SimpleNamespace
+    nights = {n: SimpleNamespace(mjd=np.array([m])) for n, m in
+              {"2023-12-26": 60304.2327, "2024-02-28": 60368.137, "2024-03-29": 60398.024, "2024-04-29": 60429.974}.items()}
+    ref = of.reference_positions("782185b2-0727-42b0-a185-b2072732b047", nights)
+    for night, (rho, pa) in {"2023-12-26": (5.57, 177.9), "2024-02-28": (6.16, 313.0), "2024-03-29": (8.04, 67.8),
+                             "2024-04-29": (7.47, 347.1)}.items():
+        dra, ddec = ref[night]
+        assert abs(np.hypot(dra, ddec) - rho) < 0.05, night
+        assert abs(_wrap(np.degrees(np.arctan2(dra, ddec)) - pa)) < 0.5, night
+    ip = of.reference_positions("fac164e1-d9d0-4500-8164-e1d9d0450099", {"2018-11-21": None, "2019-08-06": None})
+    assert abs(np.hypot(*ip["2018-11-21"]) - 10.1793) < 1e-6 and abs(np.hypot(*ip["2019-08-06"]) - 1.1297) < 1e-6
+
+
+def test_check_epochs_flags_nights_that_may_not_seed_the_orbits(of, tmp_path):
+    """Two simulated nights of a point binary, 5 mas apart in one and 6 in the other. A night in
+    ``flagged`` and a night whose best peak is closer than ``min_sep`` are barred from seeding, with
+    the reason; the reference row gives the offset of the best peak from the reference position."""
+    per_night = {}
+    for k, (dra, ddec) in enumerate([(3.0, 4.0), (-3.6, 4.8)]):
+        per_night[f"n{k}"] = of.load([_observe(tmp_path / f"n{k}.fits", _binary(dra, ddec, 0.5), sigma_cp=0.3,
+                                               sigma_v2=0.005, seed=3 + k, mjd0=60000.2 + 20 * k)])
+    grid = of._grid(8.0, 0.25, np.linspace(0.2, 1.0, 5))
+    rows, _ = of.check_epochs(of.Epochs(per_night), grid, flagged={"n1": "alias peak"}, min_sep=5.5,
+                              reference={"n0": (3.0, 4.0)})
+    n0, n1 = rows
+    assert n0["barred"] and any("closer than" in r for r in n0["reasons"])  # 5.0 mas < 5.5
+    assert n1["barred"] and n1["reasons"][0] == "flagged: alias peak"
+    assert n0["reference"]["best_offset"] < 0.3 and "reference" not in n1
+    rows, _ = of.check_epochs(of.Epochs(per_night), grid)
+    assert [r["seeds"] for r in rows] == [True, True] and not any(r["barred"] for r in rows)
 
 
 def _remove_vis2_baseline(path, pair):
