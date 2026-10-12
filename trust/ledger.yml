@@ -394,3 +394,15 @@
   referee: mathematics (fouriever's own criteria, solved exactly with its own chi-squared and nsigma, work, in tests/test_fouriever_limits.py::test_limits_match_fouriever_exactly)
   evidence: [tests/test_fouriever_limits.py::test_fouriever_public_detlim_against_its_exact_criteria]
   status: to-raise
+
+- id: F21
+  title: likelihood_grid's 0.4 argument order (model, data, grid) is told from the 0.3 order (data, model, grid) only by sniffing types, and a misordered positional call fails from inside the grid code with an AttributeError instead of an error naming the call
+  objects: [virgil.grid_fit.likelihood_grid]
+  ruling: virgil
+  kind: api (not a wrong number. The 0.3-order call is recognized by type, rebound and warned about (FutureWarning), and gives exactly the keyword call's grid, which is minus half our chi-squared on a 5 x 4 x 1 grid whose axes differ in length; of the six positional orders of (model, data, grid), the 0.4 order and the 0.3 order return that grid and the other four raise, none returns a different one. So no result computed with a swapped argument or axis is possible, and the provisional label on the ESO-binaries verdicts is not caused by this. A permuted call raises AttributeError ("OIData has no attribute keys"), not an error naming the call; virgil branch likelihood-grid-kwonly makes data and grid keyword-only so it raises a TypeError naming the keyword call)
+  referee: mathematics (our own chi-squared; the documented argument names)
+  evidence:
+    - tests/test_api_argument_order.py::test_f21_keyword_and_old_order_calls_are_minus_half_chi2
+    - tests/test_api_argument_order.py::test_f21_no_positional_order_returns_a_different_grid
+    - tests/test_api_argument_order.py::test_f21_misordered_positional_call_is_a_clear_error
+  status: open
