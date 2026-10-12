@@ -23,11 +23,13 @@ markdown_extensions:
 extra_css:
   - stylesheets/nav.css
   - assets/trust.css
+  - assets/orbits.css
 
 extra_javascript:
   - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - assets/trust.js
+  - assets/orbits.js
 
 site_name: virgil-validation
 site_description: Independent validation of virgil against first principles, dLux and other packages
@@ -80,6 +82,7 @@ nav:
       - "Against orbitize!": orbits/orbitize.md
       - "Multi-epoch orbits": orbits/epochs.md
       - "Period aliases": orbits/aliases.md
+      - "Binary orbit gallery": orbits/binaries.md
   - Imaging:
       - "Transforms, beams and regularizers": imaging/machinery.md
       - "Against eht-imaging": imaging/ehtim.md

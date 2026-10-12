@@ -11,3 +11,5 @@ site/
 .external/
 .venv-*/
 docs/method/coverage.md
+docs/orbits/binaries.md
+docs/assets/orbits.json

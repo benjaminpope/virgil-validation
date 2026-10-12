@@ -15,7 +15,11 @@
 .vt-failing, .vt-sw.vt-failing { background: rgba(var(--vt-fail), .3); }
 .vt-unchecked, .vt-sw.vt-unchecked { background: transparent; outline: 1px dashed rgba(var(--vt-none), .8); }
 .vt-cards { display: flex; flex-wrap: wrap; gap: .6rem; }
-.vt-card { flex: 1 1 14rem; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 6px; padding: .6rem .8rem; }
+.vt-card { position: relative; flex: 1 1 14rem; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 6px; padding: .6rem .8rem; }
+.vt-card-link::after { content: ""; position: absolute; inset: 0; }
+.vt-card-link { color: inherit; }
+.vt-card:has(.vt-card-link):hover { border-color: var(--md-accent-fg-color); }
+.vt-card .vt-muted a { position: relative; z-index: 1; }
 .vt-card-t { font-weight: 600; }
 .vt-card-h { margin: .4rem 0 .3rem; font-size: .8rem; }
 .vt-badge { display: inline-block; font-size: .7rem; padding: .05rem .5rem; border-radius: 1rem; background: var(--md-code-bg-color); }
