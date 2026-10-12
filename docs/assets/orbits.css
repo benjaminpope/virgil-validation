@@ -18,6 +18,7 @@
 .og-foot { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; }
 .og-badge { display: inline-block; font-size: .7rem; padding: .05rem .5rem; border-radius: 1rem; background: var(--md-code-bg-color); }
 .og-b-agrees { background: rgba(var(--og-ok), .25); }
+.og-b-reported { background: rgba(128,128,128,.22); }
 .og-b-tension { background: rgba(var(--og-bad), .28); }
 .og-b-awaiting, .og-b-kind { outline: 1px dashed var(--md-default-fg-color--lighter); background: transparent; }
 .og-chip { font-size: .7rem; padding: .05rem .5rem; border-radius: 1rem; border: 1px solid var(--md-default-fg-color--lighter); text-decoration: none; color: var(--md-typeset-a-color); }

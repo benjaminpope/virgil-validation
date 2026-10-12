@@ -96,7 +96,7 @@ def test_embedded_json_parses_and_matches_the_json_file(og, tmp_path):
     assert json.loads(blob) == json.loads(js.read_text())
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
 def test_polylines_close_and_pass_through_the_map_positions(data):
     t = _target(data, "gl229b")
     assert t["status"] == "agrees" and t["kind"] == "orbit"
@@ -120,7 +120,7 @@ def test_polylines_close_and_pass_through_the_map_positions(data):
         assert all(np.min(np.hypot(*(pp - w).T)) < 1e-5 for w in want)
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["literature", "mathematics"], kind="reference")
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_published_gl229_orbit_has_the_corrected_conventions(data):
     """Xuan+24's omega is the primary's (+180 for the companion) and a is in au (x 173.574 mas)."""
     ref = json.loads((ROOT / "oidb" / "references" / f"{GL229}.json").read_text())["orbit"]["pmoired_frequentist"]
@@ -128,7 +128,7 @@ def test_published_gl229_orbit_has_the_corrected_conventions(data):
     assert el["omega_deg"] == pytest.approx((ref["omega_primary_deg"][0] + 180) % 360)
     assert el["a_mas"] == pytest.approx(ref["a_au"][0] * 173.574)
     peak = max(np.hypot(*np.array(_target(data, "gl229b")["published"][0]["path"]).T))
-    assert peak == pytest.approx(el["a_mas"] * (1 + el["ecc"]), rel=0.05)  # the apoastron distance bounds the path
+    assert peak <= el["a_mas"] * (1 + el["ecc"]) * 1.001  # the projected apoastron cannot exceed a(1+e)
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")

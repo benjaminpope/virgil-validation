@@ -207,16 +207,20 @@ def published_orbits(cid, ref):
                         dict(period_day=c[0][0], t_peri_mjd=c[1][0] - 0.5, ecc=c[2][0], inc_deg=c[4][0],
                              omega_deg=(c[6][0] + 180) % 360, Omega_deg=c[5][0] % 360, a_mas=c[3][0])))
         astro = next(v for k, v in sols.items() if k.startswith("astrometry_only"))
-        for key in ("eccentric", "circular"):  # omega here is the pre-sd star's: no shift
+        # omega here is read as the pre-sd star's (no shift). That holds for the circular row but not
+        # obviously for the eccentric one: its 117.6 deg is close to Table 3's omega_Be = 111.9, so
+        # the eccentric curve may be half an orbit out of phase with the headline.
+        for key in ("eccentric", "circular"):
             c = astro[key]
-            out.append((f"{key} astrometry only (Klement+25)",
+            note = " (omega convention unclear)" if key == "eccentric" else ""
+            out.append((f"{key} astrometry only{note} (Klement+25)",
                         dict(period_day=c["P_day"][0], t_peri_mjd=c["T0_RJD"][0] - 0.5, ecc=_num(c["e"]),
                              inc_deg=c["i_deg"][0], omega_deg=c["omega_deg"][0] % 360 if isinstance(c["omega_deg"], list)
                              else c["omega_deg"] % 360, Omega_deg=c["Omega_deg"][0] % 360, a_mas=c["a_mas"][0])))
         return out
     if cid.startswith("fac164e1"):
         o = ref["orbit"]
-        out = [("Anugu+20", dict(period_day=o["P_day"][0], t_peri_mjd=o["T_peri_unstated_system"][0], ecc=o["e"][0],
+        out = [("Anugu+20 (omega component / T system unstated)", dict(period_day=o["P_day"][0], t_peri_mjd=o["T_peri_unstated_system"][0], ecc=o["e"][0],
                                  inc_deg=o["i_deg"][0], omega_deg=o["omega_deg"][0] % 360,
                                  Omega_deg=o["Omega_deg"][0] % 360, a_mas=o["a_mas"][0]))]
         k = o["comparison_orbit_Konacki2010"]
@@ -404,8 +408,12 @@ def build_target(cid, ref, summary, rows):
         t["phase"]["published"] = phase_curve(pubs[0][1])
     if summary is not None:
         scored = [r for r in rows if r["status"] in ("FAIL", "MISSING") and r["quantity"] != "fit"]
+        # the badge follows the scored rows only: agrees needs one PASS, tension a FAIL/MISSING; rows
+        # oidb_compare keeps as REPORT/NOT-CLEAN (orbit elements, per-night positions, iota Peg's
+        # unstated conventions) give "reported". The distance from the headline orbit is shown, not scored.
         worst = _tension(ours_ep, pubs[0][1]) if pubs and cfg["kind"] == "orbit" else 0.0
-        t["status"] = "tension" if scored or worst > TENSION_SIGMA else "agrees"
+        passed = any(r["status"] == "PASS" for r in rows)
+        t["status"] = "tension" if scored else "agrees" if passed else "reported"
         t["tension_sigma"] = worst
     return _clean(t)
 

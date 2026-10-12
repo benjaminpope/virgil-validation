@@ -23,7 +23,7 @@
   }
   var PUB_N = 4;
   function pubClass(i) { return "og-p" + (i % PUB_N); }
-  var STATUS = { agrees: "agrees", tension: "tension", awaiting: "awaiting fit" };
+  var STATUS = { agrees: "agrees", tension: "tension", reported: "reported", awaiting: "awaiting fit" };
   function statusText(s) { return STATUS[s] || s || ""; }
   function arxivUrl(id) { return "https://arxiv.org/abs/" + encodeURIComponent(id); }
   function chip(t) {
