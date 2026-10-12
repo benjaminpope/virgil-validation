@@ -1,0 +1,483 @@
+# Fit plan for the next contest reconstructions, seeded by Ben's advice
+# (contests/fit_advice.csv, written with scripts/contest_advice.py after
+# reviewing each campaign image against the truth).
+#
+# Read with scripts/contest_fit_plan.py, which checks that every advice row
+# has an entry here and prints the commands for the runnable arms.
+#
+# The advice was written after seeing the truths. It chooses *methods* to try
+# (regularisers, parametric parts, joint fits), never values taken from a
+# truth: priors, fields and starts still come from pre-submission
+# information only (scripts/contest_images.py, TASKS), as for the campaign.
+#
+# Entries (one per advice row, matched on year + name):
+#   year, name   the CSV row's key (name is the gallery row's name)
+#   task         contest_images.py TASKS label (null: no task yet); it can
+#                differ from the CSV's label, which is blank for rows the
+#                gallery shows as "not imaged yet"
+#   group        rows that share advice (groups below)
+#   advice       the CSV text, verbatim
+#   arms         fit variants to try, in priority order. Each has
+#                  id      short name (labels of the outputs get _<id>)
+#                  what    one line on the variant
+#                  run     how to run it with code that exists today:
+#                            cli: [contest_images.py arguments after --task N]
+#                            settings: {member_settings-style dict} for
+#                                      run_gp(settings=...), or
+#                            script: a command line of another script
+#                  needs   what virgil-validation (or virgil) lacks for it;
+#                          an arm with `needs` is not runnable yet
+#   questions    open items
+#
+# Features named in `needs` (one implementation serves every arm using it):
+#   regulariser      contest_images.py --regulariser tv|tsv|starlet|logsum beside
+#                    MaxEnt (plan C2c item 3). virgil.imaging already has TV, TSV,
+#                    StarletL1 and LogSum; only the script's wiring is missing.
+#   clean-final      write CLEAN's restored image (and its components) as a
+#                    result of its own, not only as the GP start.
+#   point-sources    K free point sources (virgil PointSource) beside the image,
+#                    seeded from CLEAN's brightest compact components; today only
+#                    a central star and one companion (companion_search) exist.
+#   parametric-only  a purely parametric scene (uniform disk + Gaussian halo,
+#                    ellipses, point fields) fitted and reported like an image
+#                    arm, with fit_primary's multistart.
+#   two-scale        an image as the sum of two GaussianFields with separate
+#                    length scales (compact + extended), both chosen by evidence.
+#   field            contest_images.py --field MAS: fix the field instead of
+#                    growing it from the data.
+#   joint-bands      a TASKS entry that fits several bands' files at once with
+#                    sparco=True (setup() already takes several files and the
+#                    SPARCO power law); a new entry per object.
+#   artefact-prune   iterative removal of isolated compact components outside
+#                    the main source (CLEAN-window style), refitting after each.
+#   stretch          a per-row display stretch (and log/asinh SOFT) in
+#                    contest_gallery.py, so faint structure shows; display only.
+#   harmonix-2012    scripts/spotted_star_harmonix.py generalised from 2004 data2
+#                    (one band, NPOI) to the 2012 MIRC-6T file (8 channels, H).
+#   reader-rcar      virgil's OIData to accept 2014 R Car (a closure triangle
+#                    whose baselines are in no V² table at that time).
+#   visphi           virgil to fit AMBER differential visibilities (OI_VIS
+#                    VISAMP/VISPHI) beside V² and closure phases.
+
+groups:
+  2008_agb:
+    names: [Alp_Vic J, Alp_Vic H, Alp_Vic K]
+    joint: false
+    note: Same advice for each band; fitted per band (the 2008 contest judged bands separately). A joint J/H/K fit is an optional extra arm.
+  2008_agn:
+    names: [Bet_Vic J, Bet_Vic H, Bet_Vic K]
+    joint: true
+    note: Ben asks for all three bands fitted simultaneously with SPARCO (feature joint-bands).
+  2010_low:
+    names: ["Mystery, low resolution, H", "Mystery, low resolution, K"]
+    joint: false
+    note: Same advice for H and K; still imaged separately (the contest judged them separately).
+  2024_obj1:
+    names: [Obj1 PIONIER H, Obj1 GRAVITY K, Obj1 MATISSE L, Obj1 MATISSE N]
+    joint: false
+    note: H, K and L share the advice (spiral broken into dots); N differs (no TV there). A joint fit is not asked for; per-band images stay the rule (plan C3).
+  2024_obj2:
+    names: [Obj2 PIONIER H, Obj2 GRAVITY K, Obj2 MATISSE L, Obj2 MATISSE N]
+    joint: false
+    note: H, K and L share the advice (dynamic range); N is "a total mess". A joint fit is not asked for.
+
+datasets:
+  - year: "2004"
+    name: data1
+    task: 2004_data1
+    advice: "This is already fairly good, though it is off-centre."
+    arms:
+      - id: recentre
+        what: Same campaign image, recentred on its photocentre before display and scoring (closure phases fix position only up to the reference; a shift is not an error).
+        needs: display recentring in contest_gallery.py (shift the image so its centroid, or the brightest component, is at the origin)
+    questions:
+      - Is the offset a real position error (closure-phase constrained), or only the display centring? Check the image centroid against the phase-reference convention before changing any fit.
+
+  - year: "2004"
+    name: data2
+    task: 2004_data2
+    advice: "The virgil fit has broken up into a chain of dots. This is indicating a problem with regularization perhaps. The real data consist of a dot (which we correctly recover) at about (5, 0), and a large faint ellipse (broken up into a chain of dots in our recovery) with a small circle overlapping its edge. Consider TV as an optimal regularizer for this sort of piecewise constant data, and whether the smaller dots should be point sources."
+    arms:
+      - id: tv
+        what: MaxEnt replaced by TV on a CLEAN start (piecewise-constant ellipse).
+        needs: regulariser
+      - id: tv_ps
+        what: TV image plus free point sources for the compact dot(s).
+        needs: [regulariser, point-sources]
+      - id: harmonix
+        what: The existing parametric spotted elliptical star (harmonix) with a companion; the ellipse-plus-spot is exactly this model.
+        run: {script: "python scripts/spotted_star_harmonix.py --data ~/data/imaging_contests/2004/2004-data2.fits --out OUT --config spots1"}
+      - id: halo_gp
+        what: The campaign's halo members (GP image + over-resolved halo), already in the ensemble, as the baseline to beat.
+        run: {cli: [--prior, gp, --init, clean, --halo]}
+    questions:
+      - The (5, 0) dot is the companion the contest page hinted at; the harmonix arm already models it. Compare harmonix and TV on score_2004 before adding point sources to the image arm.
+
+  - year: "2006"
+    name: MIR0001
+    task: 2006_disk
+    advice: "This is an absolutely terrible recovery. Just dreadful. The real thing has a bright core, and flares out to the corners of a rectangle. Consider a variety of priors to solve this."
+    arms:
+      - id: mem
+        what: MaxEnt L-curve from a CLEAN start (the 106 mas field from the clue image).
+        run: {cli: [--prior, mem, --init, clean]}
+      - id: gp_star
+        what: GP image with a central point star (a bright core), against the campaign's evidence verdict (no star, -75).
+        run: {cli: [--prior, gp, --init, clean, --star, "on"]}
+      - id: tv
+        what: TV (sharp-edged, flared structure).
+        needs: regulariser
+      - id: tsv
+        what: Total squared variation (smooth).
+        needs: regulariser
+      - id: starlet
+        what: "Starlet L1 (multiscale: compact core plus extended flare)."
+        needs: regulariser
+      - id: two_scale
+        what: Compact plus extended GP fields with separate length scales.
+        needs: two-scale
+    questions:
+      - Four AMBER nights with 3 telescopes each; is the failure the prior or the phase coverage? Check closure-phase χ² and uv coverage of the corner directions before blaming the prior.
+
+  - year: "2008"
+    name: Alp_Vic J
+    task: 2008_agb_J
+    group: 2008_agb
+    advice: &agb "The real thing is a circle embedded in a broader halo. The virgil recovery is terrible and blobby; consider a uniform disk with a halo, or consider a two-component image fit with different scales."
+    arms: &agb_arms
+      - id: ud_halo_gp
+        what: A uniform-disk star plus over-resolved halo, with a GP image for the rest (member_settings star_model=disk, halo=true).
+        run: {settings: {star: true, star_model: disk, halo: true, sparco: false, field: 1.0, oversample: 3.0, clean_gain: 0.1}}
+      - id: ud_halo
+        what: Uniform disk plus Gaussian halo, no image (parametric only), as a baseline for the image arms.
+        needs: parametric-only
+      - id: two_scale
+        what: Compact plus extended GP fields with separate length scales.
+        needs: two-scale
+      - id: tv
+        what: TV image (a sharp-edged disk).
+        needs: regulariser
+    questions: []
+
+  - year: "2008"
+    name: Alp_Vic H
+    task: 2008_agb_H
+    group: 2008_agb
+    advice: *agb
+    arms: *agb_arms
+    questions: []
+
+  - year: "2008"
+    name: Alp_Vic K
+    task: 2008_agb_K
+    group: 2008_agb
+    advice: *agb
+    arms: *agb_arms
+    questions: []
+
+  - year: "2008"
+    name: Bet_Vic J
+    task: 2008_agn_J
+    group: 2008_agn
+    advice: &agn "We want to fit all three bands simultaneously with a SPARCO approach. The image consists of an anisotropic blob in the middle with two thin jets coming out; the virgil recovery in K band is good but not the other bands, where the jets are broken into blobs."
+    arms: &agn_arms
+      - id: jhk_sparco
+        what: One joint J+H+K fit (files 2008-Contest2_{J,H,K}.oifits), a central star with a power-law spectrum plus a grey GP image with its own index; one image for all three bands.
+        needs: joint-bands
+      - id: jhk_sparco_k_start
+        what: The joint fit started from the K-band campaign image (the band that recovers the jets), to keep the jets continuous.
+        needs: joint-bands
+      - id: star_gp
+        what: Per band, GP with a central star (evidence preferred a star in H, +57) as the per-band reference.
+        run: {cli: [--prior, gp, --init, clean, --star, "on"]}
+    questions:
+      - SPARCO here means a star (or core) and environment with different spectral indices, imaged jointly over J, H and K; is the core the "anisotropic blob" (then a resolved, elliptical core rather than a point)?
+
+  - year: "2008"
+    name: Bet_Vic H
+    task: 2008_agn_H
+    group: 2008_agn
+    advice: *agn
+    arms: *agn_arms
+    questions: []
+
+  - year: "2008"
+    name: Bet_Vic K
+    task: 2008_agn_K
+    group: 2008_agn
+    advice: *agn
+    arms: *agn_arms
+    questions: []
+
+  - year: "2010"
+    name: "Mystery, medium resolution, H"
+    task: null
+    advice: "Is this a duplicate of the other H band?"
+    arms:
+      - id: med_h_grey
+        what: Grey image of Mystery-Med_H-AmberVISPHI.oifits restricted to the continuum channels (V² and closure phases only), checked against 2010_lowH.
+        needs: a TASKS entry for the Med_H file (512 channels; bin to ~10 channels first so the Jacobian fits)
+      - id: med_h_visphi
+        what: The same with differential phases.
+        needs: visphi
+    questions:
+      - "Answered from the data: not a duplicate. Mystery-Med_H-AmberVISPHI.oifits has the same uv tracks as Mystery-Low_HK.oifits (183 V², 61 closure phases, same MJDs and stations: the same simulated nights), but 512 channels at R~1500 over 1.54-1.82 µm against Low_HK's 20 channels at R~35 over 1.52-2.42 µm, independent V² values (median |ΔV²| ~ 0.001 at matching wavelengths, ~10σ for the quoted 1e-4 errors), and adds OI_VIS (VISAMP, VISPHI). It is the same target in the same band at higher spectral resolution, so its grey continuum image should match 2010_lowH; its extra information is chromatic (differential phases)."
+      - "There is no 'Mystery, medium resolution, K' row or file: the 2010 archive has Med_H only (plus the Binary-test-Med_H calibrator). The dataset with no advice row is 2026 (data not yet released)."
+
+  - year: "2010"
+    name: "Mystery, low resolution, H"
+    task: 2010_lowH
+    group: 2010_low
+    advice: &low "This is actually a pretty good recovery in general of the central object but there are chains of dots throughout the FOV. Consider whether we can iteratively remove these, or whether we can just fit a smaller FOV of 20x20 mas."
+    arms: &low_arms
+      - id: fov20
+        what: The campaign's GP members with the field fixed to 20 mas.
+        needs: field
+      - id: prune
+        what: Iteratively remove isolated compact components outside the central object and refit.
+        needs: artefact-prune
+      - id: support
+        what: A circular support (virgil.imaging.circular_support) on the CLEAN and GP fits, radius ~10 mas.
+        needs: field
+    questions:
+      - "The truth (gallery target line, from the paper) has a faint companion at 84 mas, which a 20 mas field would drop. Choosing the field from the truth is not blind: justify it from the data (the shortest baselines' visibilities) or keep the large field with pruning."
+
+  - year: "2010"
+    name: "Mystery, low resolution, K"
+    task: 2010_lowK
+    group: 2010_low
+    advice: *low
+    arms: *low_arms
+    questions: []
+
+  - year: "2012"
+    name: Alp_Fak
+    task: 2012_alp
+    advice: "Two bright stripes at the side, parallel to each other, and a bright core."
+    arms:
+      - id: gp_star
+        what: GP with a central point star (bright core) on the campaign's CLEAN start; the campaign has not imaged 2012 yet.
+        run: {cli: [--prior, gp, --init, clean, --star, "on"]}
+      - id: gp_nostar
+        what: The same without a star, for the evidence comparison.
+        run: {cli: [--prior, gp, --init, clean, --star, "off"]}
+      - id: tv
+        what: TV (two sharp parallel stripes, e.g. a disk seen edge-on with a dark lane).
+        needs: regulariser
+    questions:
+      - The advice is a description, not an instruction. Is the target the image to recover (a TORUS T Tauri disk, edge-on), with the arms above, or is something specific wrong with a current image? 2012 has no campaign image yet (gallery row is not imaged).
+
+  - year: "2012"
+    name: Bet_Fak
+    task: 2012_bet
+    advice: "Spotted star, use harmonix and compare it to a TV regularization."
+    arms:
+      - id: harmonix
+        what: Harmonix spotted limb-darkened star on the 2012 MIRC-6T data.
+        needs: harmonix-2012
+      - id: tv
+        what: TV image, the comparison Ben asks for.
+        needs: regulariser
+      - id: gp
+        what: Campaign-style GP for reference.
+        run: {cli: [--prior, gp, --init, clean]}
+    questions:
+      - Ben's advice names "spotted star" from the truth; the 2012 pre-submission text was never archived. Using harmonix (a star model) needs a data-based justification (V² first null consistent with a resolved disk) to stay blind.
+
+  - year: "2014"
+    name: R Car
+    task: null
+    advice: "Blobby thing."
+    arms:
+      - id: gp
+        what: Campaign GP ensemble, once the file loads.
+        needs: reader-rcar
+    questions:
+      - '"Blobby thing" describes the source, not a change; read as: the campaign recipe is fine once R Car is readable.'
+
+  - year: "2014"
+    name: VY CMa
+    task: 2014_vycma
+    advice: "Blobby thing."
+    arms:
+      - id: gp
+        what: Campaign GP fit (not yet imaged in the gallery).
+        run: {cli: [--prior, gp, --init, clean]}
+      - id: mem
+        what: MaxEnt L-curve, for comparison with the published consensus image.
+        run: {cli: [--prior, mem, --init, clean]}
+    questions: []
+
+  - year: "2016"
+    name: Object1 (GRAVITY)
+    task: 2016_obj1
+    advice: "Field of point sources. Consider CLEAN, consider parametric models, and consider L1 regularisation."
+    arms:
+      - id: clean
+        what: CLEAN's restored image as the result.
+        needs: clean-final
+      - id: points
+        what: Parametric field of K point sources, K by evidence, seeded from CLEAN.
+        needs: [point-sources, parametric-only]
+      - id: l1
+        what: Sparse image (LogSum or starlet L1).
+        needs: regulariser
+      - id: gp
+        what: Campaign GP baseline (60 mas field from the contest page).
+        run: {cli: [--prior, gp, --init, clean]}
+    questions: []
+
+  - year: "2016"
+    name: Object2 (MATISSE N)
+    task: 2016_obj2
+    advice: "Bright central object with rings. "
+    arms:
+      - id: gp_star
+        what: GP image with a central star (bright central object).
+        run: {cli: [--prior, gp, --init, clean, --star, "on"]}
+      - id: tsv
+        what: Smooth (TSV) image with a star, for smooth rings.
+        needs: regulariser
+    questions:
+      - A description rather than an instruction; 2016 has no campaign image yet.
+
+  - year: "2018"
+    name: "star, disk and planet"
+    task: 2018_disk
+    advice: "Several smooth elliptical disks with azimuthal modulation, and embedded point sources (1 in the middle and 1 in a disk gap). Consider TV and consider adding point sources. Consider CLEAN too. "
+    arms:
+      - id: tv
+        what: TV image with the central star (the readme's star).
+        needs: regulariser
+      - id: gp_ps
+        what: GP image with the central star plus one free point source (the planet), via the companion search.
+        needs: point-sources
+      - id: clean
+        what: CLEAN's restored image.
+        needs: clean-final
+    questions:
+      - "The single extra point source is fair (the readme says 'with a planet'); its position must come from the fit, never from the published 3.75 mas, PA 27°."
+
+  - year: "2022"
+    name: Obj2 (NIRISS AMI)
+    task: 2022_ami
+    advice: "Banana shaped thing around a dot; our recovery breaks the dot into a square and the banana into points."
+    arms:
+      - id: gp_oversample
+        what: The star (evidence +24) on a finer grid (oversample 4), so the dot is not pixelated into a square.
+        run: {settings: {star: true, star_model: point, halo: false, sparco: false, field: 1.0, oversample: 4.0, clean_gain: 0.1}}
+      - id: tsv
+        what: Smooth (TSV) image with the star, against the GP's points.
+        needs: regulariser
+      - id: error_scale
+        what: Inflate the closure-phase errors (χ²/N 0.02-0.09 means over-fit) before imaging, so the image does not chase noise into points.
+        needs: an --error-floor option in contest_images.py (error_scale only corrects χ²/N > 1.3)
+    questions: []
+
+  - year: "2022"
+    name: Obj1 (GRAVITY K)
+    task: 2022_gravity
+    advice: "We recover the ring and two dots pretty well but we should consider the individual dots as point sources and the ring to be smoother."
+    arms:
+      - id: gp_ps
+        what: GP ring with two free point sources for the dots.
+        needs: point-sources
+      - id: tsv_ps
+        what: TSV (smooth) ring plus two point sources.
+        needs: [regulariser, point-sources]
+    questions: []
+
+  - year: "2024"
+    name: Obj1 GRAVITY K
+    task: 2024_obj1_gravity
+    group: 2024_obj1
+    advice: &spiral "Spiral where we recover it very poorly but it's broken up into a chain of dots."
+    arms: &spiral_arms
+      - id: mem
+        what: MaxEnt L-curve with the star (smooth, positive); not TV, which suits piecewise-constant scenes, not a thin spiral.
+        run: {cli: [--prior, mem, --init, clean, --star, "on"]}
+      - id: tsv
+        what: TSV with the star (smooth, connected arms).
+        needs: regulariser
+      - id: gp_wide
+        what: GP with longer minimum length scale (≥ 2 beams) so arms connect.
+        needs: a minimum-length option for gp_fit's evidence grid
+    questions: []
+
+  - year: "2024"
+    name: Obj1 MATISSE L
+    task: 2024_obj1_matisseL
+    group: 2024_obj1
+    advice: *spiral
+    arms: *spiral_arms
+    questions: []
+
+  - year: "2024"
+    name: Obj1 MATISSE N
+    task: 2024_obj1_matisseN
+    group: 2024_obj1
+    advice: "We barely recover this spiral. We shouldn't use TV here, which I think has been used."
+    arms:
+      - id: mem
+        what: MaxEnt L-curve with the star.
+        run: {cli: [--prior, mem, --init, clean, --star, "on"]}
+      - id: gp
+        what: The campaign's GP members (no TV anywhere in the campaign).
+        run: {cli: [--prior, gp, --init, clean, --star, "on"]}
+    questions:
+      - "TV has not been used: the campaign (8562a39, 3018a9f) is CLEAN-started GP fits only, and contest_images.py has no TV option yet. The blocky look must come from elsewhere (likely the coarse pixel grid or CLEAN's start); worth checking the member's pixel scale."
+
+  - year: "2024"
+    name: Obj1 PIONIER H
+    task: 2024_obj1_pionier
+    group: 2024_obj1
+    advice: "Spiral where we recover a bit but it's broken up into a chain of dots."
+    arms: *spiral_arms
+    questions: []
+
+  - year: "2024"
+    name: Obj2 GRAVITY K
+    task: 2024_obj2_gravity
+    group: 2024_obj2
+    advice: &dot "We just get a dot; we need to play with dynamic range here carefully."
+    arms: &dr_arms
+      - id: stretch
+        what: Show the existing images with a harder stretch (log or smaller asinh SOFT) to see if the disk is there but faint.
+        needs: stretch
+      - id: sparco_halo
+        what: Star + SPARCO image + halo (the campaign's members 4-7 for this task) as one fixed configuration, larger field.
+        run: {settings: {star: true, star_model: point, halo: true, sparco: true, field: 2.0, oversample: 3.0, clean_gain: 0.05}}
+      - id: star_subtracted
+        what: Fit and subtract the star (and halo) parametrically first, then image the residual visibilities with a weaker prior.
+        needs: parametric-only
+    questions:
+      - Dynamic range is limited by the star's flux fraction; is the disk below the image's noise floor (σ map from combine_ensemble.py), or suppressed by the prior?
+
+  - year: "2024"
+    name: Obj2 MATISSE L
+    task: 2024_obj2_matisseL
+    group: 2024_obj2
+    advice: "We just get a few dots; we need to play with dynamic range here carefully."
+    arms: *dr_arms
+    questions:
+      - The L-band task has no sparco/halo_members flags (unlike PIONIER and GRAVITY); the sparco_halo arm sets them explicitly.
+
+  - year: "2024"
+    name: Obj2 MATISSE N
+    task: 2024_obj2_matisseN
+    group: 2024_obj2
+    advice: "We have a total mess. "
+    arms:
+      - id: sparco_halo
+        what: As the other Obj2 bands.
+        run: {settings: {star: true, star_model: point, halo: true, sparco: true, field: 2.0, oversample: 3.0, clean_gain: 0.05}}
+    questions:
+      - No direction given beyond "mess". First read the campaign members' .txt summaries (χ²/N for V² and CP separately, error_scale) in ~/data/imaging_contests/results/<commit>/campaign/2024_obj2_matisseN_m*.txt; then Ben to say what to try.
+
+  - year: "2024"
+    name: Obj2 PIONIER H
+    task: 2024_obj2_pionier
+    group: 2024_obj2
+    advice: *dot
+    arms: *dr_arms
+    questions: []
