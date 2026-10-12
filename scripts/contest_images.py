@@ -1419,6 +1419,8 @@ def main():
     parser.add_argument("--init", choices=("moments", "clean"), default="moments", help="starting image (labels get _clean)")
     parser.add_argument("--prior", choices=("mem", "gp"), default="mem", help="MaxEnt L-curve, or Gaussian-process fits chosen by evidence (labels get _gp)")
     parser.add_argument("--member", type=int, help="ensemble member (CLEAN-started GP with a randomised start)")
+    parser.add_argument("--settings", help="a fixed ensemble configuration (JSON, keys as member_settings), e.g. from contests/fit_plan.yml")
+    parser.add_argument("--label", help="output label for --settings runs")
     parser.add_argument("--smoke", action="store_true", help="three weights, 50 steps: check that it runs")
     args = parser.parse_args()
     if args.list:
@@ -1427,6 +1429,10 @@ def main():
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     star = None if args.star is None else args.star == "on"
+    if args.settings is not None:
+        run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
+               settings=json.loads(args.settings), label=args.label)
+        return
     if args.member is not None:
         run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
                member=args.member)
