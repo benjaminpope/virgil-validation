@@ -1,0 +1,162 @@
+# Criteria and design for the cold-start campaign (scripts/coldstart_pull.py).
+# Registered on 2026-10-12, before any draw was run.
+# AMENDMENT 1 (2026-10-12, committed before any campaign draw; the original,
+# SHA-256 5c0229024d9d45770754c5f45c64b34023ce8ff799aee7320dc602460751a26b, is
+# at commit 2ca9c5a). A 25-draw smoke run per cell (seeds outside the registered
+# range; numbers in design/coldstart_pull.md) showed two flaws of the GRIDS, not
+# of the criteria, which are unchanged (failure definition, bounds, tests, sizes):
+#   * envelope: the grid sat on the prior's bounds (ratio 1.0, pa 0), where the
+#     fit cannot move (virgil warns, "stopped after 0 steps"). The grid is now
+#     strictly inside the priors.
+#   * resolved_companion: a single 4-D grid with a 0.5 mas diameter step: at
+#     high S/N the diameter mismatch is absorbed by a fake companion at the
+#     centre. virgil's pipeline scans the star's diameter first (docs/pipeline.md,
+#     'fit' stage). The start is now two stages: a diameter scan of the star
+#     alone, then the companion grid at that diameter.
+# The unamended single-grid result for this cell is reported in the .md. Rationale and the list of
+# what it does not cover: design/coldstart_pull.md.
+# The script records this file's SHA-256 (criteria_hash) in every task output
+# and in the summary; the aggregator refuses outputs made under another hash,
+# and tests/test_coldstart_pull.py checks the registered numbers. Every number
+# the experiment depends on is here; the code that draws, starts and fits is
+# covered by the design hash (arrays, simulator and scene sources).
+#
+# Why. Every other campaign starts at the truth (the pull campaign fits from
+# scene.truth; SBC v1 starts its chains there). None tests finding the mode,
+# which is what fails on real data (Gl 229, NACO 9 Sgr, delta Vel; see
+# design/plan_eso_binaries.md). Here the pipeline is what a user runs and no
+# truth enters it: the data are simulated from a truth drawn per draw, a
+# virgil.grid_fit.likelihood_grid over a registered grid (the same for every
+# draw of a cell) picks the best point, virgil.fitting.fit refines it under
+# registered priors (the same for every draw of a cell), virgil.inference.
+# laplace_cov gives its uncertainties. Only the SCORING uses the truth:
+# a second fit of the same data, started at the truth under the same priors
+# (the "reference fit"), and the pulls.
+#
+# Definitions, per draw:
+#   cold fit      grid -> best_grid_point -> fit.   chi2_cold = sum of info["chi2"].
+#   reference fit fit started at the truth, same priors.   chi2_ref likewise.
+#   FAILURE       the cold fit raised, returned a non-finite loss, or
+#                 chi2_cold - chi2_ref > failure_delta_chi2: it converged to a
+#                 mode worse than the one the truth-started fit finds.
+#   BETTER        chi2_ref - chi2_cold > failure_delta_chi2: the cold fit found a
+#                 better mode than the truth-started one (noise peaks at low
+#                 S/N, or the reference sits in a local mode). Not a failure.
+#   SAME MODE     |chi2_cold - chi2_ref| <= failure_delta_chi2.
+#   ALIAS         SAME MODE, yet some parameter of the cold fit differs from
+#                 the reference fit's by more than alias_sigma of the reference
+#                 fit's Laplace sigma: a different, equally likely solution
+#                 (e.g. the point reflection of a companion in sparse data).
+#                 Reported, not a failure.
+#   GROSS ERROR   any parameter of the cold fit more than gross_pull_sigma
+#                 Laplace sigmas from the truth (failure or not). Reported.
+#   S/N           sqrt(2 (ll_ref - ll_null)): the log-likelihood gain of the
+#                 reference fit over the star alone, both from likelihood_grid.
+#   REFERENCE FAILED  the reference fit raised or was non-finite: the draw is
+#                 dropped from the failure and pull analysis and counted.
+
+failure_delta_chi2: 1.0        # chi-squared units; a converged fit in the same mode agrees to ~1e-4
+alias_sigma: 5.0
+gross_pull_sigma: 5.0
+pulls_from: same_mode_not_alias   # secondary: pulls (cold fit - truth) / Laplace sigma on draws that are SAME MODE and not ALIAS
+
+# Primary pass/fail: the failure rate of each cell is at most its bound.
+# Test: exact one-sided binomial, H0: rate <= bound, against rate > bound;
+# the cell fails if H0 is rejected. Holm over the cells at family_alpha.
+# The bounds are what a user of the documented path should expect, set
+# before any rate was seen: 1% where the problem is easy (bright, well
+# separated, many snapshots), 2% for the resolved star and the envelope,
+# 5% where the problem is hard by construction (faint, wide, one snapshot).
+family_alpha: 0.01
+counts:
+  draws_per_task: 125
+  tasks_per_cell: 8              # 1000 planned per cell
+  min_draws_per_cell: 900        # draws with a finite reference fit required for a cell to count
+reference_failures:
+  max_fraction: 0.01             # per cell: reference fits that failed (the cell is then not trustworthy)
+# Sizing (exact binomial, N = 1000, Holm threshold alpha/6 = 0.00167 at worst):
+#   bound 0.01: rejected from 21 failures (observed 2.1%); power 0.44 at a true rate of 2%, 0.97 at 3%.
+#   bound 0.02: rejected from 35 failures (3.5%); power 0.81 at 4%.
+#   bound 0.05: rejected from 72 failures (7.2%); power 0.66 at 7.5%, 0.999 at 10%.
+# A cell below its bound is reported with its one-sided 99% Clopper-Pearson
+# upper limit, so that a pass with few failures is not read as "none".
+
+data:                          # our simulator, crosscheck.simulate.observe, phase noise per baseline
+  dec_deg: -50.0
+  wavelengths_um: {lo: 1.5, hi: 2.4, n: 6}      # as the pull campaign
+  stations_4UT: [[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]]
+  stations_3UT: [[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]]
+  hour_angles_h_5: [-3.0, -1.5, 0.0, 1.5, 3.0]  # np.linspace(-3, 3, 5)
+  hour_angles_h_1: [0.0]
+  sigma_v2: 0.02               # times the draw's noise_scale
+  sigma_cp_deg: 1.0            # times the draw's noise_scale
+
+fit:                           # the same for every draw of a cell; none depends on the truth. Priors are Uniform(lo, hi) on each path
+  method: virgil.fitting.fit defaults (LM where it applies), from the grid's best point
+  grid_call: virgil.grid_fit.likelihood_grid(model=..., data=..., grid=...)   # keyword arguments
+  priors_binary:   {dra: [-50, 50], ddec: [-50, 50], flux: [0, 1]}
+  priors_resolved: {"star.diam": [0, 10], "comp.dra": [-50, 50], "comp.ddec": [-50, 50], "comp.flux": [0, 1]}
+  priors_envelope: {"env.fwhm": [0.1, 30], "env.ratio": [0.05, 1], "env.pa": [0, 180], "env.flux": [0, 5]}
+  offset_step_mas: 0.5         # dra and ddec grid step, about lambda_min / (4 B_max)
+
+cells:                         # truths and noise_scale are drawn per draw: {log: [lo, hi]} is log-uniform, {uniform: [lo, hi]} uniform
+  binary_bright:
+    scene: binary
+    stations: 4UT
+    hour_angles: 5
+    draw: {sep_mas: {log: [3, 20]}, pa_deg: {uniform: [0, 360]}, flux: {log: [0.03, 0.3]}, noise_scale: {log: [0.5, 2.0]}}
+    grid: {half_width_mas: 30.0, flux: {lo: 0.003, hi: 0.5, n: 10, spacing: log}}
+    failure_bound: 0.01
+  binary_faint:
+    scene: binary
+    stations: 4UT
+    hour_angles: 5
+    draw: {sep_mas: {log: [3, 20]}, pa_deg: {uniform: [0, 360]}, flux: {log: [0.005, 0.03]}, noise_scale: {log: [0.5, 2.0]}}
+    grid: {half_width_mas: 30.0, flux: {lo: 0.003, hi: 0.5, n: 10, spacing: log}}
+    failure_bound: 0.05
+  binary_wide:                 # separations of several fringe spacings: many modes of the likelihood
+    scene: binary
+    stations: 4UT
+    hour_angles: 5
+    draw: {sep_mas: {log: [15, 35]}, pa_deg: {uniform: [0, 360]}, flux: {log: [0.03, 0.3]}, noise_scale: {log: [0.5, 2.0]}}
+    grid: {half_width_mas: 40.0, flux: {lo: 0.003, hi: 0.5, n: 10, spacing: log}}
+    failure_bound: 0.05
+  binary_sparse:               # one snapshot of three telescopes: sparse uv, reflection and fringe aliases
+    scene: binary
+    stations: 3UT
+    hour_angles: 1
+    draw: {sep_mas: {log: [3, 20]}, pa_deg: {uniform: [0, 360]}, flux: {log: [0.03, 0.3]}, noise_scale: {log: [0.5, 2.0]}}
+    grid: {half_width_mas: 30.0, flux: {lo: 0.003, hi: 0.5, n: 10, spacing: log}}
+    failure_bound: 0.05
+  resolved_companion:          # a resolved uniform disk and a companion; the grid has the diameter too
+    scene: resolved_star_companion
+    stations: 4UT
+    hour_angles: 5
+    draw: {diam_mas: {uniform: [0.8, 3.0]}, sep_mas: {log: [5, 20]}, pa_deg: {uniform: [0, 360]}, flux: {log: [0.01, 0.1]}, noise_scale: {log: [0.5, 2.0]}}
+    # two stages: likelihood_grid over the star's diameter alone (the companion's flux 0), then
+    # likelihood_grid over (dra, ddec, flux) with the diameter fixed at the stage-1 best, then fit
+    grid: {half_width_mas: 30.0, stage1_diam_mas: {lo: 0.3, hi: 6.0, n: 60, spacing: log}, flux: {lo: 0.005, hi: 0.2, n: 10, spacing: log}}
+    failure_bound: 0.02
+  envelope:                    # a point star and an elliptical Gaussian envelope (elongated, pa away from the prior's wrap)
+    scene: star_envelope
+    stations: 4UT
+    hour_angles: 5
+    draw: {fwhm_mas: {log: [2, 8]}, ratio: {uniform: [0.3, 0.7]}, pa_deg: {uniform: [30, 150]}, flux: {log: [0.2, 1.0]}, noise_scale: {log: [0.5, 2.0]}}
+    grid: {fwhm_mas: {lo: 1.0, hi: 12.0, n: 10, spacing: log}, ratio: [0.3, 0.5, 0.7, 0.9], pa_deg: [22.5, 67.5, 112.5, 157.5],
+           flux: {lo: 0.05, hi: 2.0, n: 8, spacing: log}}
+    failure_bound: 0.02
+
+stratification:                # reported, never pass/fail: failure rate by S/N, separation and contrast, per cell
+  snr_edges: [0.0, 3.0, 5.0, 10.0, 20.0, 50.0]   # the last bin is open
+  separation_and_contrast: tertiles of the cell's draws (cells with a companion)
+
+secondary:                     # reported, never pass/fail: pulls of SAME MODE (not ALIAS) draws
+  tests: {mean: "z = mean(pull) sqrt(N)", sd: "z = (sd(pull) - 1) sqrt(2N)"}
+  family_alpha: 0.01           # Holm over every pull test of every cell, reported as a flag only
+  min_draws: 100
+reported:
+  - alias_rate
+  - better_rate
+  - gross_error_rate
+  - failure_rate_at_delta_chi2: [0.1, 10.0]    # sensitivity to the registered threshold
+  - upper_limit_99                              # one-sided Clopper-Pearson upper limit of each cell's failure rate

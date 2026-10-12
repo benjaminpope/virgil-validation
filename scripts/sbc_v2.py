@@ -44,7 +44,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 CRITERIA_FILE = ROOT / "design" / "sbc_v2.yml"
-SEED_OFFSET = {"bright": 0, "low": 10_000_000}
+ADDENDUM_FILE = ROOT / "design" / "sbc_v2_addendum.yml"  # replaces the low regime (see the file)
+SEED_OFFSET = {"bright": 0, "low": 10_000_000, "low_astrometric": 10_000_000}
 
 
 def _v1():
@@ -58,13 +59,25 @@ v1 = _v1()
 
 
 def spec():
+    """design/sbc_v2.yml with the addendum's regime in place of the one it removes."""
     import yaml
 
-    return yaml.safe_load(CRITERIA_FILE.read_text())
+    s = yaml.safe_load(CRITERIA_FILE.read_text())
+    if ADDENDUM_FILE.exists():
+        a = yaml.safe_load(ADDENDUM_FILE.read_text())
+        for name in a["removed_regimes"]:
+            s["regimes"].pop(name)
+        s["regimes"].update(a["regimes"])
+        s["astrometry"] = a["astrometry"]
+    return s
 
 
 def criteria_hash():
-    return hashlib.sha256(CRITERIA_FILE.read_bytes()).hexdigest()
+    """SHA-256 of the registered file and its addendum (v2.yml's bytes, a newline, the addendum's)."""
+    h = hashlib.sha256(CRITERIA_FILE.read_bytes())
+    if ADDENDUM_FILE.exists():
+        h.update(b"\n" + ADDENDUM_FILE.read_bytes())
+    return h.hexdigest()
 
 
 def design_hash():
@@ -74,7 +87,7 @@ def design_hash():
     config = {"UTS3": v1.UTS3.tolist(), "WAVELENGTHS": v1.WAVELENGTHS.tolist(),
               "HOUR_ANGLES": v1.HOUR_ANGLES.tolist(), "PARAMS": list(v1.PARAMS)}
     h = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
-    for fn in (v1.observe, draw_truth, start_from_fit, jittered_inits, replicate, v1.circular_rank):
+    for fn in (v1.observe, draw_truth, start_from_fit, jittered_inits, replicate, v1.circular_rank, astrometry_term):
         h.update(inspect.getsource(fn).encode())
     for name in ("simulate.py", "sky.py", "array.py"):
         h.update((ROOT / "src" / "crosscheck" / name).read_bytes())
@@ -105,7 +118,21 @@ def _axis(a):
     return f(a["lo"], a["hi"], a["n"])
 
 
-def start_from_fit(data, regime):
+def astrometry_term(meas, sigma):
+    """virgil's ``likelihoods=`` hook: the Gaussian measurement of the companion's
+    offset (mas), as whitened residuals of the sampled (sep, pa)."""
+    import jax.numpy as jnp
+
+    meas = jnp.asarray(meas)
+
+    def term(values):
+        p = jnp.deg2rad(values["pa"])
+        return (jnp.stack([values["sep"] * jnp.sin(p), values["sep"] * jnp.cos(p)]) - meas) / sigma
+
+    return term
+
+
+def start_from_fit(data, regime, meas=None):
     """virgil's own start: the best point of a likelihood grid over (diam,
     dra, ddec, flux), refined by the MAP fit with the sampler's priors.
     Returns the fitted values (constrained, plus pa in degrees) and whether
@@ -118,11 +145,15 @@ def start_from_fit(data, regime):
 
     s = spec()
     g, rr = s["sampler"]["grid"], s["regimes"][regime]
-    off = np.linspace(-g["offset_mas"]["half_width"], g["offset_mas"]["half_width"], g["offset_mas"]["n"])
-    samples = {"star.diam": _axis(g["diam"]), "comp.dra": off, "comp.ddec": off,
-               "comp.flux": np.geomspace(rr["flux_lo"], rr["flux_hi"], g["flux"]["n"])}
     template = vm.System(star=vm.UniformDisk(1.0), comp=vm.PointSource(0.01, 0.0, 0.0))
-    best = best_grid_point(likelihood_grid(data, template, samples), samples)
+    flux_axis = np.geomspace(rr["flux_lo"], rr["flux_hi"], g["flux"]["n"])
+    if meas is None:  # nothing known of the position: the grid searches it
+        off = np.linspace(-g["offset_mas"]["half_width"], g["offset_mas"]["half_width"], g["offset_mas"]["n"])
+        samples = {"star.diam": _axis(g["diam"]), "comp.dra": off, "comp.ddec": off, "comp.flux": flux_axis}
+    else:  # a position measurement: the grid is over the diameter and flux at that offset
+        samples = {"star.diam": _axis(s["astrometry"]["grid_diam"]), "comp.dra": np.array([meas[0]]), "comp.ddec": np.array([meas[1]]),
+                   "comp.flux": flux_axis}
+    best = best_grid_point(likelihood_grid(model=template, data=data, grid=samples), samples)
     sep = float(np.hypot(best["comp.dra"], best["comp.ddec"]))
     pa = float(np.rad2deg(np.arctan2(best["comp.dra"], best["comp.ddec"])) % 360.0)
     gen = s["generative"]
@@ -138,7 +169,8 @@ def start_from_fit(data, regime):
     raw = {"diam": best["star.diam"], "flux": best["comp.flux"], "sep": sep}
     init = {k: float(np.clip(x, bounds[k][0] * 1.001, bounds[k][1] / 1.001)) for k, x in raw.items()}
     init |= {"pa": pa, "noise.vis_scale": 1.0}
-    result = fit(scene, priors, data, noise=noise, init=init)
+    extra = {} if meas is None else {"likelihoods": [astrometry_term(meas, s["regimes"][regime]["astrometry_sigma_mas"])]}
+    result = fit(scene, priors, data, noise=noise, init=init, **extra)
     v = result.values
     values = {"diam": float(v["diam"]), "flux": float(v["flux"]), "sep": float(v["sep"]), "pa": float(v["pa"]),
               "vis_scale": float(v["noise.vis_scale"])}
@@ -154,18 +186,25 @@ def scene(diam, flux, sep, pa):
 
 def jittered_inits(start, regime, rng, chains):
     """One constrained starting point per chain, the fit's jittered, kept
-    inside the prior's support."""
+    inside the prior's support. With a position measurement (the addendum's
+    regime) the position is jittered by an absolute offset in (dra, ddec)."""
     s = spec()
     j, g, rr = s["sampler"]["jitter"], s["generative"], s["regimes"][regime]
     bounds = {"diam": (g["diam"]["lo"], g["diam"]["hi"]), "flux": (rr["flux_lo"], rr["flux_hi"]),
               "sep": (g["sep"]["lo"], g["sep"]["hi"]), "vis_scale": (g["vis_scale"]["lo"], g["vis_scale"]["hi"])}
+    absolute = "astrometry_sigma_mas" in rr
     out = []
     for _ in range(chains):
         c = {}
         for k, (lo, hi) in bounds.items():
             x = start[k] * np.exp(j[k] * rng.standard_normal())
             c[k] = float(np.clip(x, lo * 1.001, hi / 1.001))
-        pa = np.deg2rad(start["pa"] + j["pa_deg"] * rng.standard_normal())
+        pa = np.deg2rad(start["pa"] + (0.0 if absolute else j["pa_deg"] * rng.standard_normal()))
+        if absolute:  # isotropic jitter of the offset, in mas
+            p0 = np.deg2rad(start["pa"])
+            x = start["sep"] * np.array([np.sin(p0), np.cos(p0)]) + s["astrometry"]["position_jitter_mas"] * rng.standard_normal(2)
+            c["sep"] = float(np.clip(np.hypot(*x), bounds["sep"][0] * 1.001, bounds["sep"][1] / 1.001))
+            pa = np.arctan2(x[0], x[1])
         c["pa_vec"] = np.array([np.cos(pa), np.sin(pa)])
         out.append(c)
     return out
@@ -200,9 +239,15 @@ def replicate(seed, regime, override=None):
               "sep": dist.LogUniform(g["sep"]["lo"], g["sep"]["hi"]),
               "pa": AngleVector(ring_width=smp["ring_width"])}
     noise = {"vis_scale": dist.LogUniform(g["vis_scale"]["lo"], g["vis_scale"]["hi"])}
-    model = numpyro_model(scene, priors, data, noise=noise)
+    meas, extra = None, {}
+    if "astrometry_sigma_mas" in rr:  # a position measurement, drawn after the data from the same stream
+        sigma = rr["astrometry_sigma_mas"]
+        pr = np.deg2rad(truth["pa"])
+        meas = np.array([truth["sep"] * np.sin(pr), truth["sep"] * np.cos(pr)]) + sigma * rng.standard_normal(2)
+        extra = {"likelihoods": [astrometry_term(meas, sigma)]}
+    model = numpyro_model(scene, priors, data, noise=noise, **extra)
 
-    start, converged, start_info = start_from_fit(data, regime)
+    start, converged, start_info = start_from_fit(data, regime, meas)
     inits = jittered_inits(start, regime, rng, smp["chains"])
     names = {"diam": "diam", "flux": "flux", "sep": "sep", "pa_vec": "pa_vec", "vis_scale": "noise.vis_scale"}
     site_values = [{names[k]: v for k, v in c.items()} for c in inits]
@@ -232,7 +277,7 @@ def replicate(seed, regime, override=None):
     sites = {"diam": "diam", "flux": "flux", "sep": "sep", "pa": "pa", "vis_scale": "noise.vis_scale"}
     out = {"seed": int(seed), "regime": regime, "truth": truth, "ranks": {}, "ess": {}, "rhat": {},
            "divergences": divergences, "fit_converged": converged, "start": {**start, **start_info},
-           "loglike_truth": ll_truth}
+           "loglike_truth": ll_truth, "measured_offset": None if meas is None else meas.tolist()}
     for name, site in sites.items():
         chain_draws = np.asarray(grouped[site])
         draws = chain_draws.reshape(-1)[idx]
