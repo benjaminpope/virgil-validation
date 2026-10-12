@@ -280,6 +280,31 @@ criteria and sample size **before** it runs:
 The pulls already in `tests/test_vlti.py` become the first campaign, with
 a 60-draw smoke version left in CI.
 
+**Register a precision target, not only a p-value.** A campaign whose tests do
+not reject has not shown that the thing is calibrated: with few draws, error bars
+that are 10 % wrong pass. So a campaign also registers the smallest
+miscalibration it must rule out (a pull sd within [0.9, 1.1], a pull mean within
+±0.1, a failure rate below a stated rate, a coverage within a stated margin) as
+an equivalence test (two one-sided tests, or an interval lying inside the
+margin), with its power for the registered counts, and the counts are raised
+until the power is at least 0.8. When the claim is a conjunction over many
+parameters or cells, the tests form an intersection-union claim and the power is
+that of all of them at once. The calculation is `scripts/precision_power.py`;
+the formulas are `src/crosscheck/precision.py`; detection v3 is the pattern. A
+campaign that has already run states the precision it achieved instead, marked
+post hoc. The targets are registered as addenda to the hashed criteria files,
+never by editing them (design/coldstart_pull_precision.yml,
+design/pull_campaign_precision.yml, design/sbc_v2_precision.yml).
+
+**Rerun any campaign signal on fresh seeds before ruling on it.** A rejected
+test, an interval that misses its margin or a sampler-health failure is a
+signal, not a finding. It is rerun with the same criteria on seeds that no earlier
+run used (the criteria file registers the seed base), and the ruling is the
+rerun's: a signal that does not reappear is reported as one that did not; one that
+does is the finding. Summaries list their open signals and are marked
+`provisional` until the rerun is aggregated. Each criteria file states this rule
+under `must_hold`.
+
 ### Cost tiers
 
 | Tier | Runs | Budget | Contents |

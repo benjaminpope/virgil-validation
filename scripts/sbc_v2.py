@@ -45,6 +45,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 CRITERIA_FILE = ROOT / "design" / "sbc_v2.yml"
 ADDENDUM_FILE = ROOT / "design" / "sbc_v2_addendum.yml"  # replaces the low regime (see the file)
+PRECISION_FILE = ROOT / "design" / "sbc_v2_precision.yml"  # equivalence targets and the counts that give them power
 SEED_OFFSET = {"bright": 0, "low": 10_000_000, "low_astrometric": 10_000_000}
 
 
@@ -69,14 +70,23 @@ def spec():
             s["regimes"].pop(name)
         s["regimes"].update(a["regimes"])
         s["astrometry"] = a["astrometry"]
+    if PRECISION_FILE.exists():
+        q = yaml.safe_load(PRECISION_FILE.read_text())
+        for name, counts in q["counts"]["regimes"].items():
+            s["regimes"][name].update(counts)
+        s["counts"] = {**s["counts"], "min_replicates_per_regime": q["counts"]["min_replicates_per_regime"]}
+        s["precision"] = q["precision"]
+        s["rerun_seed_base"] = q["rerun_seed_base"]
     return s
 
 
 def criteria_hash():
-    """SHA-256 of the registered file and its addendum (v2.yml's bytes, a newline, the addendum's)."""
+    """SHA-256 of the registered file and its addenda (v2.yml's bytes, a newline, addendum 1's,
+    a newline, the precision addendum's)."""
     h = hashlib.sha256(CRITERIA_FILE.read_bytes())
-    if ADDENDUM_FILE.exists():
-        h.update(b"\n" + ADDENDUM_FILE.read_bytes())
+    for extra in (ADDENDUM_FILE, PRECISION_FILE):
+        if extra.exists():
+            h.update(b"\n" + extra.read_bytes())
     return h.hexdigest()
 
 
@@ -350,9 +360,40 @@ def unhealthy(r, health):
             or min(r["ess"].values()) < health["min_bulk_ess"])
 
 
+def precision_tests(by_regime, s):
+    """The equivalence tests of design/sbc_v2_precision.yml: for each regime and quantity the exact
+    interval of the coverage of the central 68% and 95% intervals, and the interval of the mean
+    rank, each at alpha per side, inside the registered margin around the nominal value."""
+    from crosscheck import precision as P
+
+    cfg = s["precision"]
+    L, a, margins = s["draws_per_replicate"], cfg["alpha"], cfg["margins"]
+    sd_rank = float(np.sqrt(((L + 1) ** 2 - 1) / 12.0)) / L
+    out = {}
+    for regime, reps in by_regime.items():
+        for q in s["quantities"]:
+            ranks = np.array([r["ranks"][q] for r in reps], dtype=int)
+            n = ranks.size
+            if n == 0:
+                continue
+            for level in (68, 95):
+                accepted = np.abs(np.arange(L + 1) - L / 2) < level / 100 * (L + 1) / 2
+                nominal, k = float(accepted.mean()), int(accepted[ranks].sum())
+                ci = P.cp_interval(k, n, a)
+                m = margins[f"coverage_{level}"]
+                out[f"{regime}:{q}:coverage_{level}"] = {"estimate": k / n, "nominal": nominal, "ci": list(ci), "margin": m,
+                                                          "met": P.inside(ci, nominal - m, nominal + m)}
+            ci = P.mean_ci(float(ranks.mean()) / L, sd_rank, n, a)
+            m = margins["mean_rank"]
+            out[f"{regime}:{q}:mean_rank"] = {"estimate": float(ranks.mean()) / L, "nominal": 0.5, "ci": list(ci), "margin": m,
+                                              "met": P.inside(ci, 0.5 - m, 0.5 + m)}
+    return out
+
+
 def analyse(by_regime, s):
     """The registered analysis of {regime: replicates}: Holm over every rank
-    test, the sampler-health criterion per regime, descriptive extras."""
+    test, the sampler-health criterion per regime, the equivalence (precision)
+    tests, descriptive extras."""
     L, bins, tests = s["draws_per_replicate"], s["rank_bins"], s["rank_tests"]
     health = s["sampler_health"]
     out = {"regimes": {}, "pvalues": {}}
@@ -384,9 +425,20 @@ def analyse(by_regime, s):
     rejected = v1.holm(pv, s["family_alpha"]) if pv else {}
     out["rejected"] = sorted(k for k, v in rejected.items() if v)
     out["tests"] = len(pv)
-    out["pass"] = bool(pv and not out["rejected"]
-                       and all(e["enough"] and e["health"]["pass"] for e in out["regimes"].values())
-                       and set(out["regimes"]) == set(s["regimes"]))
+    prec = precision_tests(by_regime, s) if "precision" in s else {}
+    out["precision"] = {"tests": prec, "expected": s["precision"]["tests"] if "precision" in s else 0,
+                        "not_met": sorted(k for k, v in prec.items() if not v["met"])}
+    out["precision"]["all_met"] = bool(prec and not out["precision"]["not_met"]
+                                       and len(prec) == out["precision"]["expected"])
+    healthy = all(e["health"]["pass"] for e in out["regimes"].values())
+    complete = set(out["regimes"]) == set(s["regimes"]) and all(e["enough"] for e in out["regimes"].values())
+    out["pass"] = bool(pv and not out["rejected"] and complete and healthy and out["precision"]["all_met"])
+    # fail: a rejection or an unhealthy regime; inconclusive: nothing rejected but the margins are not shown;
+    # either is a signal, and the ruling on it is a rerun on fresh seeds (must_hold rerun_on_fresh_seeds)
+    out["outcome"] = ("pass" if out["pass"] else "fail" if (out["rejected"] or not healthy) else "inconclusive")
+    out["signals"] = out["rejected"] + [f"unhealthy:{r}" for r, e in out["regimes"].items() if not e["health"]["pass"]] \
+        + [f"margin:{k}" for k in out["precision"]["not_met"]]
+    out["provisional"] = bool(out["signals"])
     return out
 
 

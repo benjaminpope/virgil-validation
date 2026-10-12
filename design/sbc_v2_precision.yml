@@ -1,0 +1,67 @@
+# Addendum 2 to design/sbc_v2.yml (scripts/sbc_v2.py): precision targets, registered on
+# 2026-10-12 before any replicate of the v2 campaign was run. design/sbc_v2.yml and
+# design/sbc_v2_addendum.yml stay as registered and hashed; this file adds to them and
+# overrides only the counts below. The script records the hash of the three files (v2.yml's
+# bytes, a newline, addendum 1's, a newline, these bytes) as criteria_hash.
+#
+# ORDER. The cold-start campaign (design/coldstart_pull.yml and design/coldstart_pull_precision.yml)
+# runs BEFORE this one: SBC v2 starts its chains from a grid fit and the position measurement
+# below replaces the search for the mode that the cold-start campaign tests. Do not run SBC v2
+# until the cold-start campaign has been aggregated and ruled on.
+#
+# WHAT THIS CAMPAIGN DOES NOT COVER. The low regime (addendum 1) has a 0.5 mas measurement of
+# the companion's position. That measurement removes the multimodality of the position
+# posterior; the registered low regime (no measurement) was multimodal and NUTS did not mix
+# between its lobes (8 probe replicates, 5 unhealthy). So SBC v2 says NOTHING about posteriors
+# that are multimodal: a sampler that fails between lobes is outside it, and what SBC finds in
+# the unimodal regimes does not transfer to a multimodal posterior. Finding the mode is the
+# cold-start campaign's question (cell binary_faint); sampling several modes is untested. The
+# limit is stated where the Trust page shows it (trust/not_covered.md).
+#
+# Why a precision target. As registered, the rank tests are tests of uniformity: with few
+# replicates, a posterior 10% too wide or too narrow is not rejected, and "not rejected" is not
+# "calibrated". As in detection v3 (an equivalence margin with power), each regime must now show
+# that its ranks are uniform to a stated precision. For each of the 6 quantities in each of the
+# 2 regimes (36 tests, the claim being their conjunction, an intersection-union test: alpha 0.05
+# per side each, no correction, Berger 1982) the 90% interval (exact for coverages, normal for
+# the mean rank) lies inside the margin:
+#   coverage_68   the central 68% interval's coverage (nominal 0.68 for L = 99) within +-0.06
+#   coverage_95   the central 95% interval's coverage (nominal 0.94: 94 of the 100 ranks) within +-0.03
+#   mean_rank     the mean normalised rank (nominal 0.5) within +-0.04
+# What the margins mean for a Gaussian posterior of the right location whose width is f times the
+# true width (central interval coverage 2 Phi(z f) - 1): the 68% margin is reached at f = 0.88 and f = 1.13,
+# the 95% margin at f = 0.87 and f = 1.11 (measured from the nominal 0.94 of the 100-rank set).
+# So each test rules out an error of about 12% in the posterior width. A bias b (in posterior standard
+# deviations) moves the mean rank by about 0.28 b, so +-0.04 rules out a bias of about 0.14 sigma.
+# Power (scripts/precision_power.py; src/crosscheck/precision.py), the true coverages being nominal:
+#   N = 1280 replicates per regime: coverage_68 0.997, coverage_95 0.993, mean rank 0.999 per test,
+#   all 36 at once 0.87. At the registered v2 counts (N = 1024) the 36 at once had power 0.56; at N = 1250 0.84.
+
+precision:
+  alpha: 0.05
+  tests: 36
+  margins: {coverage_68: 0.06, coverage_95: 0.03, mean_rank: 0.04}
+  design_power: 0.8           # of the claim, true ranks uniform, at the minimum N and every N up to the plan
+  interval: {coverage: exact Clopper-Pearson, mean_rank: "normal, standard error sqrt(((L+1)^2 - 1) / 12) / L / sqrt(N)"}
+  quantities: [diam, flux, sep, pa, vis_scale, loglike]
+  outcomes: >-
+    pass: no Holm rejection, sampler health, and all 36 intervals inside their margins.
+    fail: a Holm rejection or a failed health gate.
+    inconclusive: no rejection and no health failure, but some interval is not inside its margin
+    (the data cannot rule out the miscalibration): treated as a signal, rerun on fresh seeds.
+
+counts:                       # overrides the regimes' tasks and min_replicates_per_regime
+  regimes:
+    bright:          {tasks: 160, replicates_per_task: 8}    # 1280 planned
+    low_astrometric: {tasks: 160, replicates_per_task: 8}    # 1280 planned
+  min_replicates_per_regime: 1270   # complete replicates; the claim has power 0.86 at 1270
+
+must_hold:                    # not p-values: each must be exactly true
+  rerun_on_fresh_seeds: >-
+    any campaign signal (a Holm-rejected rank test, an unhealthy regime, an interval not inside its
+    margin) is rerun on fresh seeds before anyone rules on it: the seed base of the rerun is
+    40261007 (the first run's is 20261007), the criteria are the same, and the ruling is the rerun's.
+    The summary lists the signals (`signals`) and marks itself `provisional` while any is open.
+  coldstart_first: the cold-start campaign has been aggregated and ruled on before the first SBC v2 task is submitted
+  multimodality_stated: the Trust page's list of what is not covered (trust/not_covered.md) says that SBC v2 does not test multimodal posteriors
+rerun_seed_base: 40261007

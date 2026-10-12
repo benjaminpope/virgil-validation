@@ -88,3 +88,10 @@ replicates, so a pass is not assured, and a failure would be a real mode-finding
 On the loaded laptop (load ~20 on 10 cores): about 20 s per bright replicate and 12 s per
 low replicate (compile included), 1024 of each: 5.7 + 3.4 = 9 core-hours; 256 tasks of 8
 replicates (2.7 and 1.6 min each, plus start-up). v1 took about 90 s per replicate (25 core-hours).
+
+## Precision, counts and order (addendum 2, 2026-10-12)
+
+design/sbc_v2_precision.yml registers the margins SBC v2 must show (coverage and mean-rank equivalence, power 0.87 at
+1280 replicates per regime) and states that the campaign says nothing about multimodal posteriors, which the 0.5 mas
+measurement removed from the low regime (see trust/not_covered.md). The cold-start campaign runs before SBC v2.
+Rationale and numbers: design/precision_targets.md.

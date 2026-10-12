@@ -84,3 +84,11 @@ in the cells designed to be hard. The bounds were not changed in light of them.
 About 5 to 10 s per draw on one core (grid, two fits, two Laplace covariances, S/N): 6 cells
 x 1000 draws = 6000 draws = 8 to 17 core-hours, as a 6 x 8 array of 125-draw tasks of 15 to 20
 minutes (OzSTAR CPU, 4 GB each).
+
+## Precision targets and order (addendum 2, 2026-10-12)
+
+Before any draw, design/coldstart_pull_precision.yml adds what the campaign must rule out (a failure rate above 2.5%,
+4% or 7.5% for the cells whose bounds are 1%, 2% and 5%) with the power for the counts, which rise to 1625 draws per cell
+(13 tasks of 125, 78 tasks). Calculation and rationale: design/precision_targets.md. This campaign runs BEFORE SBC v2
+(design/sbc_v2_precision.yml), whose chains start from a fit and whose low regime carries a position measurement because
+finding the mode is this campaign's question. Any signal is rerun on fresh seeds (base 30261012) before it is ruled on.

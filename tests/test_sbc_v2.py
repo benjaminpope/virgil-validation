@@ -61,7 +61,8 @@ def test_sbc_v2_registered_file_is_what_the_script_runs():
     spec = s.spec()
     registered = (ROOT / "design" / "sbc_v2.yml").read_bytes()
     addendum = (ROOT / "design" / "sbc_v2_addendum.yml").read_bytes()
-    assert s.criteria_hash() == hashlib.sha256(registered + b"\n" + addendum).hexdigest()
+    precision = (ROOT / "design" / "sbc_v2_precision.yml").read_bytes()
+    assert s.criteria_hash() == hashlib.sha256(registered + b"\n" + addendum + b"\n" + precision).hexdigest()
     assert "low" not in spec["regimes"] and set(spec["regimes"]) == {"bright", "low_astrometric"}
     assert spec["regimes"]["low_astrometric"]["astrometry_sigma_mas"] == 0.5
     assert spec["generative"]["sigma_v2"] == s.v1.SIGMA_V2 and spec["generative"]["sigma_cp_deg"] == s.v1.SIGMA_CP_DEG
@@ -73,7 +74,7 @@ def test_sbc_v2_registered_file_is_what_the_script_runs():
     n_tests = len(spec["regimes"]) * len(spec["quantities"]) * len(spec["rank_tests"])
     assert n_tests == 60
     for r in spec["regimes"].values():
-        assert r["tasks"] * r["replicates_per_task"] >= spec["counts"]["min_replicates_per_regime"] >= 1000
+        assert r["tasks"] * r["replicates_per_task"] >= spec["counts"]["min_replicates_per_regime"] >= 1270  # the precision addendum's counts
     health = spec["sampler_health"]
     assert (health["max_rhat"], health["min_bulk_ess"]) == (1.01, 400)
     assert spec["sampler"]["ring_width"] < 0.25 and set(spec["sampler"]["dense_mass"]) == {"pa_vec", "sep", "flux"}
@@ -124,31 +125,40 @@ def test_sbc_v2_aggregate_passes_uniform_ranks_and_fails_bias_and_ill_health(tmp
     def analyse(by_regime):
         return s.analyse(by_regime, s.spec())
 
-    good = analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": uniform(1000, "low_astrometric", 10_000)})
-    assert good["tests"] == 60 and good["pass"], (good["rejected"], good["regimes"])
+    n = s.spec()["counts"]["min_replicates_per_regime"]
+    good = analyse({"bright": uniform(n, "bright", 0), "low_astrometric": uniform(n, "low_astrometric", 10_000)})
+    assert good["tests"] == 60 and good["pass"], (good["rejected"], good["regimes"], good["precision"]["not_met"])
+    assert good["precision"]["expected"] == 36 and len(good["precision"]["tests"]) == 36 and not good["provisional"]
 
-    low = uniform(1000, "low_astrometric", 10_000)
+    low = uniform(n, "low_astrometric", 10_000)
     for r in low:  # flux ranks pushed up: the posterior sits below the truth
         r["ranks"]["flux"] = int(np.clip(rng.normal(70, 20), 0, 99))
-    biased = analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": low})
+    biased = analyse({"bright": uniform(n, "bright", 0), "low_astrometric": low})
     assert not biased["pass"] and any(k.startswith("low_astrometric:flux:") for k in biased["rejected"])
     assert not any(k.startswith("bright:") for k in biased["rejected"])
 
-    sick = uniform(1000, "low_astrometric", 10_000)
-    for r in sick[:100]:
+    sick = uniform(n, "low_astrometric", 10_000)
+    for r in sick[: n // 10]:
         r["ess"]["diam"] = 50.0
-    ill = analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": sick})
+    ill = analyse({"bright": uniform(n, "bright", 0), "low_astrometric": sick})
     assert not ill["rejected"] and not ill["regimes"]["low_astrometric"]["health"]["pass"] and not ill["pass"]
     assert ill["regimes"]["low_astrometric"]["health"]["unhealthy_fraction"] == 0.1
 
-    divergent = uniform(1000, "low_astrometric", 10_000)
-    for r in divergent[:30]:
+    divergent = uniform(n, "low_astrometric", 10_000)
+    for r in divergent[: n // 33]:
         r["divergences"] = 3
-    assert not analyse({"bright": uniform(1000, "bright", 0), "low_astrometric": divergent})["regimes"]["low_astrometric"]["health"]["pass"]
+    assert not analyse({"bright": uniform(n, "bright", 0), "low_astrometric": divergent})["regimes"]["low_astrometric"]["health"]["pass"]
 
-    few = analyse({"bright": uniform(900, "bright", 0), "low_astrometric": uniform(1000, "low_astrometric", 10_000)})
+    few = analyse({"bright": uniform(n - 100, "bright", 0), "low_astrometric": uniform(n, "low_astrometric", 10_000)})
     assert not few["pass"] and not few["regimes"]["bright"]["enough"]
-    assert not analyse({"bright": uniform(1000, "bright", 0)})["pass"]  # a missing regime
+    assert not analyse({"bright": uniform(n, "bright", 0)})["pass"]  # a missing regime
+
+    # too few replicates cannot show the margins: nothing rejected, nothing unhealthy, so "inconclusive",
+    # a signal to rerun on fresh seeds, not a pass
+    small = analyse({"bright": uniform(300, "bright", 0), "low_astrometric": uniform(300, "low_astrometric", 10_000)})
+    assert not small["pass"] and not small["rejected"] and small["outcome"] == "inconclusive" and small["provisional"]
+    assert small["precision"]["not_met"] and set(small["signals"]) >= {f"margin:{k}" for k in small["precision"]["not_met"]}
+    assert biased["outcome"] == "fail" and good["outcome"] == "pass"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -268,7 +278,9 @@ def test_sbc_v2_registered_file_is_unchanged_by_the_addendum():
     raw = yaml.safe_load((ROOT / "design" / "sbc_v2.yml").read_text())
     assert set(raw["regimes"]) == {"bright", "low"} and raw["regimes"]["low"]["flux_hi"] == 2.0e-2
     merged = script().spec()
-    assert merged["regimes"]["bright"] == raw["regimes"]["bright"]
+    counts = ("tasks", "replicates_per_task")  # overridden by the precision addendum
+    assert {k: v for k, v in merged["regimes"]["bright"].items() if k not in counts} \
+        == {k: v for k, v in raw["regimes"]["bright"].items() if k not in counts}
     for key in ("sampler", "sampler_health", "rank_tests", "quantities", "family_alpha", "draws_per_replicate"):
         assert merged[key] == raw[key]
 

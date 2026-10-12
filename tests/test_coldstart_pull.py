@@ -39,8 +39,12 @@ def test_coldstart_campaign_failure_rates_within_bounds():
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_registered_hash():
     """The registered file hashes to the registered value, and that file was committed
-    (the original too, so that the amendment is visible in history)."""
-    assert cp.criteria_hash() == REGISTERED_HASH
+    (the original too, so that the amendment is visible in history). The script's criteria
+    hash covers it and the precision addendum (design/coldstart_pull_precision.yml)."""
+    assert hashlib.sha256(cp.CRITERIA_FILE.read_bytes()).hexdigest() == REGISTERED_HASH
+    h = hashlib.sha256(cp.CRITERIA_FILE.read_bytes())
+    h.update(b"\n" + cp.PRECISION_FILE.read_bytes())
+    assert cp.criteria_hash() == h.hexdigest()
 
     def git(*args):
         return subprocess.run(["git", *args], cwd=ROOT, capture_output=True)
@@ -55,8 +59,8 @@ def test_registered_hash():
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_registered_design():
     assert S["family_alpha"] == 0.01 and S["failure_delta_chi2"] == 1.0
-    assert S["counts"]["draws_per_task"] * S["counts"]["tasks_per_cell"] >= 1000
-    assert S["counts"]["min_draws_per_cell"] >= 900
+    assert S["counts"]["draws_per_task"] * S["counts"]["tasks_per_cell"] >= 1625  # the addendum's counts (power of the rule-out)
+    assert S["counts"]["min_draws_per_cell"] >= 1510
     assert {c: v["failure_bound"] for c, v in S["cells"].items()} == {
         "binary_bright": 0.01, "binary_faint": 0.05, "binary_wide": 0.05, "binary_sparse": 0.05,
         "resolved_companion": 0.02, "envelope": 0.02}
@@ -104,13 +108,23 @@ def synthetic(rate, n, rng, npar):
 def test_analysis_flags_rates_over_bound():
     rng = np.random.default_rng(1)
     names = {c: (cp.param_names(c), None) for c in S["cells"]}
-    ok = {c: (cp.param_names(c), synthetic(0.3 * S["cells"][c]["failure_bound"], 1000, rng, len(cp.param_names(c)))) for c in S["cells"]}
+    n = S["counts"]["min_draws_per_cell"]
+    ok = {c: (cp.param_names(c), synthetic(0.3 * S["cells"][c]["failure_bound"], n, rng, len(cp.param_names(c)))) for c in S["cells"]}
     out = cp.analyse(ok, S)
     assert out["pass"] and out["rejected"] == []
     bad = dict(ok)
-    bad["binary_bright"] = (cp.param_names("binary_bright"), synthetic(0.04, 1000, rng, 3))
+    bad["binary_bright"] = (cp.param_names("binary_bright"), synthetic(0.04, n, rng, 3))
     out = cp.analyse(bad, S)
     assert not out["pass"] and out["rejected"] == ["binary_bright"]
+    clean = cp.analyse(ok, S)
+    assert all(e["rule_out_met"] for e in clean["cells"].values()) and not clean["signals"] and not clean["provisional"]
+    # 56 failures in 1000 against a 5% bound: not rejected (p about 0.2), but the 99% upper limit, 7.9%, does not
+    # rule out 7.5%: a signal, so the summary is provisional until rerun on fresh seeds (a pass needs the rule-out)
+    wide = dict(ok)
+    wide["binary_faint"] = (cp.param_names("binary_faint"), [row(105.0 if i < 56 else 100.0, 100.0, pulls=[0.0] * 3) for i in range(1000)])
+    w = cp.analyse(wide, S)
+    assert w["rejected"] == [] and not w["cells"]["binary_faint"]["rule_out_met"] and not w["pass"]
+    assert "rule_out:binary_faint" in w["signals"] and w["provisional"]
     few = {c: (n, r[:50]) for c, (n, r) in ok.items()}
     assert not cp.analyse(few, S)["pass"]  # too few draws is not a pass
     assert names  # keep the helper used

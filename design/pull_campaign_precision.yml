@@ -1,0 +1,57 @@
+# Addendum to design/pull_campaign.yml (scripts/pull_campaign.py): precision targets for
+# any rerun, and the precision the completed v1 campaign actually achieved.
+# Registered on 2026-10-12, AFTER pull v1 (trust/campaigns/pull_campaign.json, 60 tasks,
+# virgil 0726734a, criteria SHA-256 75fa91a2...) was run and its summary read. It does not
+# edit, re-test or re-rule v1, whose criteria were met as registered. design/pull_campaign.yml
+# stays as hashed. This file is NOT part of v1's criteria_hash; v1's summary and test are
+# unaffected; scripts/pull_campaign.py is unchanged (its criteria_hash is v1's). A rerun (a new
+# cell, a new virgil, a signal to confirm) must meet this file, and the script must first be
+# extended to apply it and record the hash of both files, as sbc_v2.py does.
+#
+# Why. v1 reported "no test rejected" and the sd and mean within 3 standard errors. That is
+# the absence of evidence of miscalibration, not evidence of calibration to a stated
+# precision. Following detection v3 (equivalence with power), the smallest miscalibration a
+# pull campaign must rule out is registered: for every parameter of every cell, the pull sd
+# within [0.9, 1.1] (error bars right to 10%) and the pull mean within +-0.1 (bias below
+# a tenth of a sigma). Each is an equivalence test (TOST: the interval of confidence
+# 1 - 2 alpha lies inside the margin), 40 of them, combined as an intersection-union claim
+# (alpha 0.05 per side, no correction; see below). Calculation: scripts/precision_power.py; formulas: src/crosscheck/precision.py;
+# narrative: design/precision_targets.md.
+
+equivalence:
+  # The claim is a conjunction (every parameter of every cell is calibrated to the margins), so
+  # the 40 tests form an intersection-union test: each at alpha per side, no correction
+  # (Berger 1982); the claim is made when all 40 reject non-equivalence. (v1's Holm family of 40
+  # at 0.01 is unchanged; that tests for miscalibration, this shows calibration.)
+  alpha: 0.05
+  tests: 40                   # 2 per parameter, 20 parameters in the six cells
+  sd_interval: [0.9, 1.1]
+  mean_margin: 0.1
+  sd_standard_error: sd * sqrt((kurtosis - 1) / (4 N))   # equal to sd / sqrt(2 N) for Gaussian pulls
+  design_power: 0.8           # of the claim (all 40 at once), at the true pull sd 1 and mean 0
+  # Power per test at N draws per cell: the sd test 0.995 at N = 1000, 0.999 at 1250; the mean test
+  # 0.87 at N = 1000, 0.94 at 1250, 0.97 at 1500, 0.993 at 1875. All 40 at once: 0.06 at N = 1000,
+  # 0.29 at 1250 (v1), 0.59 at 1500, 0.80 at 1750, 0.86 at N = 1875. The mean margin sets the count.
+counts:                       # for a rerun of v1's design
+  draws_per_task: 125
+  tasks_per_cell: 15          # 1875 planned per cell, 11250 in all
+  min_draws_per_cell: 1850    # so that the claim keeps power 0.8 (0.80 at N = 1750; 0.84 at 1850)
+
+achieved_v1: >-
+  Post hoc, from the committed summary, not a ruling: at N = 1250 and alpha 0.05 per side
+  (`scripts/precision_power.py pull-achieved`; per-test power at N = 1250 was 0.94 for the mean
+  and 0.999 for the sd). SD: all 20 parameters have their 90% interval inside [0.9, 1.1] (the
+  widest, star_rim_fit rim.flux, is [1.019, 1.090]: error bars certified to 9%). Mean: 19 of
+  the 20 intervals lie inside +-0.1; the exception, star_rim_fit rim.inc, is [+0.009, +0.104]
+  (its mean is +0.056); all 20 lie inside +-0.105, so the claim "calibrated to 0.1 sigma in
+  every parameter" narrowly fails at v1's N = 1250 and "to 0.11 sigma" holds. v1's own criteria
+  (no Holm rejection at 0.01, every mean and sd within 3 standard errors) were met as
+  registered. Numbers per parameter: design/precision_targets.md.
+
+must_hold:
+  rerun_on_fresh_seeds: >-
+    any campaign signal (a Holm-rejected mean or sd test, an equivalence that fails) is
+    rerun on fresh seeds before anyone rules on it: seed base 30261008 for the rerun (v1's
+    is 20261008); same criteria; the ruling is the rerun's. A signal that does not reappear
+    is reported as one that did not.
+rerun_seed_base: 30261008
