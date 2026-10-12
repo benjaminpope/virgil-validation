@@ -39,3 +39,16 @@ def test_commands_render_without_jax():
     cmds = fp.commands(plan, indices)
     assert cmds and len({(e["task"], a["id"]) for e, a, _ in cmds}) == len(cmds)
     assert all(c.startswith("python scripts/") for *_, c in cmds)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_oz_lines_are_label_tab_command():
+    plan = fp.load_plan()
+    tasks = {e["task"] for e in plan["datasets"] if e["task"]}
+    lines = fp.oz_lines(plan, {t: i for i, t in enumerate(sorted(tasks))})
+    labels = [line.split("\t")[0] for line in lines]
+    assert lines and len(set(labels)) == len(labels)
+    for line in lines:
+        label, cmd = line.split("\t")
+        assert cmd.startswith("scripts/contest_images.py --task ")
+        assert cmd.endswith('--data "$VV_DATA" --out "$OUT"') and "~" not in cmd

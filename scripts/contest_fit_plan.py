@@ -3,6 +3,8 @@
     python scripts/contest_fit_plan.py            # check, then list arms
     python scripts/contest_fit_plan.py --commands # the runnable arms' commands
     python scripts/contest_fit_plan.py --needs    # features the other arms wait for
+    python scripts/contest_fit_plan.py --commands --oz > commands.txt
+                                                  # the OzSTAR advice job's lines
 
 Every row of contests/fit_advice.csv (scripts/contest_advice.py) must have
 an entry in the plan, matched on year and name, with its advice quoted
@@ -15,6 +17,7 @@ import csv
 import json
 import pathlib
 import shlex
+import sys
 
 import yaml
 
@@ -104,17 +107,37 @@ def commands(plan, indices, data="~/data/imaging_contests", out="contest_images/
     return result
 
 
+def oz_lines(plan, indices):
+    """``<label>\\t<script> <args>`` for the OzSTAR advice job (ozstar_scripts
+    contest_imaging/advice.sbatch, one array task per line): contest_images.py
+    arms only (script arms have jobs of their own), with "$VV_DATA" and "$OUT"
+    left for the job to expand."""
+    lines = []
+    for e, arm, _ in commands(plan, indices):
+        run, label = arm["run"], f"{e['task']}_{arm['id']}"
+        if "script" in run:
+            continue
+        extra = run["cli"] if "cli" in run else [
+            "--prior", "gp", "--settings", json.dumps(run["settings"]), "--label", label]
+        args = shlex.join(["scripts/contest_images.py", "--task", str(indices[e["task"]]), *extra])
+        lines.append(f'{label}\t{args} --data "$VV_DATA" --out "$OUT"')
+    return lines
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--commands", action="store_true")
     parser.add_argument("--needs", action="store_true")
     parser.add_argument("--smoke", action="store_true", help="add --smoke to contest_images.py commands")
+    parser.add_argument("--oz", action="store_true", help="with --commands: the OzSTAR advice job's commands.txt lines")
     args = parser.parse_args()
     plan = load_plan()
     problems = check(plan, load_advice_rows())
     for p in problems:
-        print("PROBLEM:", p)
-    if args.commands:
+        print("PROBLEM:", p, file=sys.stderr)
+    if args.commands and args.oz:
+        print("\n".join(oz_lines(plan, task_indices())))
+    elif args.commands:
         for e, arm, cmd in commands(plan, task_indices(), smoke=args.smoke):
             print(f"# {e['year']} {e['name']}: {arm['id']}\n{cmd}")
     elif args.needs:
