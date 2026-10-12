@@ -1,0 +1,17 @@
+{
+ "id": "M89",
+ "cls": "mjd_time_grouping",
+ "nodes": [
+  "virgil.oifits.read_oifits"
+ ],
+ "description": "Exposures grouped on MJD alone (TIME ignored).",
+ "files": [
+  "src/virgil/oifits.py"
+ ],
+ "status": "timeout",
+ "killed_by": [],
+ "message": "",
+ "returncode": "timeout",
+ "seconds": 737.8,
+ "pytest": ""
+}

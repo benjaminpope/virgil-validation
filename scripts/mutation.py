@@ -51,7 +51,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MUTANTS = ROOT / "mutants" / "mutants.yml"
 GRAPH = ROOT / "trust" / "graph.yml"
 OUT = ROOT / "trust" / "mutation"
-DEFAULT_TIMEOUT = 600  # seconds per mutant; tier A takes ~3-5 min on an idle laptop
+DEFAULT_TIMEOUT = 1200  # seconds per mutant; tier A takes ~3 min on an idle laptop, 11 min on a busy one
 
 
 class MutationError(Exception):
@@ -188,7 +188,7 @@ def check_import_path(python, src):
         raise MutationError(f"import virgil resolves to {where!r} (wanted inside {src}):\n{out.stderr[-500:]}")
 
 
-def run_pytest(python, src, rank, timeout, deselect=(), first_fail=True, extra=()):
+def run_pytest(python, src, rank, timeout, deselect=(), first_fail=True, extra=(), max_rank=None):
     """Run tier A against the virgil copy in ``src``; ``(returncode | 'timeout', output, seconds)``."""
     cmd = [python, "-m", "pytest", "-m", "not slow", "-q", "-p", "no:cacheprovider", "-p", "mutation_order", *extra]
     if first_fail:
@@ -197,8 +197,11 @@ def run_pytest(python, src, rank, timeout, deselect=(), first_fail=True, extra=(
         cmd += ["--deselect", node]
     cmd.append("tests")
     t0 = time.time()
+    env = _env(src, rank)
+    if max_rank is not None:
+        env["MUTATION_MAX_RANK"] = str(max_rank)
     proc = subprocess.Popen(
-        cmd, cwd=ROOT, env=_env(src, rank), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, start_new_session=True,
     )
     try:
@@ -212,7 +215,7 @@ def run_pytest(python, src, rank, timeout, deselect=(), first_fail=True, extra=(
 
 
 _FAIL = re.compile(r"^(FAILED|ERROR) (\S+?)(?: - (.*))?$", re.M)
-_SUMMARY = re.compile(r"=+ (.*?) in [\d.]+s", re.M)
+_SUMMARY = re.compile(r"^=*\s*(\d+ (?:passed|failed|skipped|error|deselected|xfailed)[^\n]*? in [\d.]+s(?: \([\d:]+\))?)", re.M)
 
 
 def parse_failures(output):
@@ -248,7 +251,7 @@ def run_baseline(python, scratch, repo, pin, timeout):
     }
 
 
-def run_mutant(mutant, python, scratch, repo, pin, timeout, graph, baseline_failures=()):
+def run_mutant(mutant, python, scratch, repo, pin, timeout, graph, baseline_failures=(), max_rank=None):
     texts = apply_mutant(mutant, lambda f: git_show(repo, pin, f))
     root = Path(scratch) / mutant["id"]
     if root.exists():
@@ -260,7 +263,9 @@ def run_mutant(mutant, python, scratch, repo, pin, timeout, graph, baseline_fail
             raise MutationError(f"{mutant['id']}: {file} is not in the exported tree")
         target.write_text(text)
     check_import_path(python, src)
-    rc, out, seconds = run_pytest(python, src, node_ranks(mutant, graph), timeout, deselect=baseline_failures)
+    rc, out, seconds = run_pytest(
+        python, src, node_ranks(mutant, graph), timeout, deselect=baseline_failures, max_rank=max_rank
+    )
     status, killed_by, message = classify(rc, out, set(baseline_failures))
     summary = _SUMMARY.findall(out)
     shutil.rmtree(root, ignore_errors=True)
@@ -268,7 +273,7 @@ def run_mutant(mutant, python, scratch, repo, pin, timeout, graph, baseline_fail
         "id": mutant["id"], "cls": mutant["cls"], "nodes": mutant["nodes"], "description": mutant["description"],
         "files": sorted({e["file"] for e in mutant["edits"]}),
         "status": status, "killed_by": killed_by, "message": message, "returncode": rc,
-        "seconds": round(seconds, 1), "pytest": summary[-1] if summary else "",
+        "seconds": round(seconds, 1), "pytest": summary[-1] if summary else "", "max_rank": max_rank,
     }
 
 
@@ -346,6 +351,14 @@ def render_markdown(report):
     if others:
         lines += ["", "## Timed out or errored", ""]
         lines += [f"- **{m['id']}** {m['status']}: {m['description']}" for m in others]
+    if r.get("targeted"):
+        lines += ["", "## Quick check of the unresolved ones", "",
+                  "Only the tests that validate the mutant's nodes and their dependents (`--max-rank 1`). "
+                  "`survived` here means the tests written for these nodes do not notice the slip; "
+                  "the rest of the suite is left unmeasured (timed out).", ""]
+        for k, t in r["targeted"].items():
+            lines.append(f"- **{k}** {t['cls']}: {t['status']} in {t['seconds']:.0f}s {t['pytest']} "
+                         f"{(t['killed_by'] or [''])[0]}")
     killed_rows = [m for m in r["mutants"] if m["status"] == "killed"]
     lines += ["", "## Kills", "", "| mutant | class | first failing test | s |", "| --- | --- | --- | ---: |"]
     for m in killed_rows:
@@ -360,6 +373,9 @@ def cmd_report(args):
     baseline_path = out / "baseline.json"
     baseline = json.loads(baseline_path.read_text()) if baseline_path.exists() else None
     report = build_report(results, baseline, pin, len(mutants))
+    report["targeted"] = {
+        q.stem: json.loads(q.read_text()) for q in sorted((out / "targeted").glob("M*.json"))
+    }
     (out / "results.json").write_text(json.dumps(report, indent=1) + "\n")
     (out / "report.md").write_text(render_markdown(report))
     print(f"{report['run']}/{report['listed']} run: {report['killed']} killed, {report['survived']} survived, "
@@ -424,12 +440,14 @@ def cmd_run(args):
         baseline = run_baseline(python, scratch, repo, pin, args.baseline_timeout)
         baseline_path.write_text(json.dumps(baseline, indent=1) + "\n")
         print(f"  {baseline['summary']} in {baseline['seconds']}s; {len(baseline['failing_tests'])} failing", flush=True)
+    results_dir = "targeted" if args.max_rank is not None else "results"
+    (out / results_dir).mkdir(parents=True, exist_ok=True)
     for m in _select(mutants, args):
-        path = out / "results" / f"{m['id']}.json"
+        path = out / results_dir / f"{m['id']}.json"
         if path.exists() and not args.rerun:
             print(f"{m['id']}: already done ({json.loads(path.read_text())['status']})", flush=True)
             continue
-        result = run_mutant(m, python, scratch, repo, pin, args.timeout, graph, baseline["failing_tests"])
+        result = run_mutant(m, python, scratch, repo, pin, args.timeout, graph, baseline["failing_tests"], args.max_rank)
         path.write_text(json.dumps(result, indent=1) + "\n")
         first = result["killed_by"][0] if result["killed_by"] else ""
         print(f"{m['id']} {m['cls']}: {result['status']} in {result['seconds']:.0f}s {first}", flush=True)
@@ -452,6 +470,7 @@ def main(argv=None):
     r.add_argument("--scratch", help="scratch directory (default: a new temporary one)")
     r.add_argument("--baseline", help="reuse this baseline.json")
     r.add_argument("--rebaseline", action="store_true")
+    r.add_argument("--max-rank", type=int, help="run only the tests of the mutant's nodes (0) or also their dependents (1); results go to targeted/")
     r.add_argument("--rerun", action="store_true", help="redo mutants that already have a result")
     rep = sub.add_parser("report", help="merge per-mutant results into results.json and report.md")
     rep.add_argument("--out", default=str(OUT))

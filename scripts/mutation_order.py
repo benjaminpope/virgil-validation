@@ -36,4 +36,12 @@ def pytest_collection_modifyitems(config, items):
         return min(ranks) if ranks else 99
 
     # sorted() is stable: the original order is kept within a rank
-    items[:] = sorted(keep, key=key)
+    ordered = sorted(keep, key=key)
+    # MUTATION_MAX_RANK: run only the tests of the mutant's nodes (0) or of those and their
+    # dependents (1): a quick lower bound on survival when the whole suite is too slow.
+    max_rank = os.environ.get("MUTATION_MAX_RANK")
+    if max_rank is not None:
+        cut = [i for i in ordered if key(i) > int(max_rank)]
+        ordered = [i for i in ordered if key(i) <= int(max_rank)]
+        config.hook.pytest_deselected(items=cut)
+    items[:] = ordered

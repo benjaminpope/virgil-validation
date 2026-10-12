@@ -1,0 +1,19 @@
+{
+ "id": "M79",
+ "cls": "flag_ignored",
+ "nodes": [
+  "virgil.oifits.read_oifits"
+ ],
+ "description": "OIFITS FLAG column ignored (only non-finite values are flagged).",
+ "files": [
+  "src/virgil/oifits.py"
+ ],
+ "status": "killed",
+ "killed_by": [
+  "tests/test_vlti.py::test_all_closure_phases_flagged_leaves_the_visibilities"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 166.5,
+ "pytest": ""
+}
