@@ -24,6 +24,7 @@ import importlib.util
 import io
 import pathlib
 import re
+import sys
 
 import matplotlib
 
@@ -406,7 +407,8 @@ def write_private(out, lines):
         "nav": [{"Gallery": "index.md"}],
     }
     (out / "mkdocs.yml").write_text(yaml.safe_dump(config, sort_keys=False, allow_unicode=True))
-    print(f"wrote {out}: serve with  zensical serve -f {out / 'mkdocs.yml'}")
+    zensical = pathlib.Path(sys.executable).parent / "zensical"  # the venv's, often not on PATH
+    print(f"wrote {out}: serve with  {zensical} serve -f {out / 'mkdocs.yml'}")
 
 
 def main():
