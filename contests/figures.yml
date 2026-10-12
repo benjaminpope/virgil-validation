@@ -1,0 +1,104 @@
+# Figures in the contest papers: truth panels and entries' reconstructions,
+# for the gallery (docs/contest_gallery.md). scripts/contest_figures.py makes
+# crops from this manifest and each paper's PDF, keyed by the PDF's sha256,
+# into ~/data/imaging_contests/figures/ (outside the repository).
+#
+# PDFs live in ~/data/imaging_contests/papers/<year>.pdf and are never
+# committed; nor are crops, unless `licence.reusable` is true.
+#
+# papers.<year>:
+#   ads        ADS abstract page (the public page links here)
+#   sha256     of the PDF the bboxes were measured on (filled by `inventory`)
+#   licence    per copy: where it was read, what it says, the date checked;
+#              reusable: true only for an explicit licence that permits
+#              republication (CC BY or CC BY-SA). Never guessed.
+#   panels     one entry per wanted panel:
+#       figure, panel   as the paper labels them ("Fig. 3", "b")
+#       page            1-based
+#       role            truth | winner | entry
+#       method          the entry's code and authors (for winner and entry)
+#       bbox            [x0, y0, x1, y1] in PDF points, origin top left;
+#                       written by `inventory`/`split`, overridden by hand
+#       extent_mas      [east, west, south, north] edges in mas, from the axes,
+#                       when the figure has them; else null
+#       scale, orientation  as stated in the caption or on the axes
+#
+# Licences checked 2026-10-12 from landing pages only (ADS and SPIE pages
+# could not be read by the agent; check them in a browser). No copy carries
+# a Creative Commons licence, so every paper is `reusable: false` and the
+# public page links to the figures instead of showing them.
+
+papers:
+  "2004":
+    ads: https://ui.adsabs.harvard.edu/abs/2004SPIE.5491..886L/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: SPIE, says: "© SPIE (closed access); landing page not readable", checked: 2026-10-12}
+        - {where: OLBIN copy, says: not checked, checked: null}
+    panels: []
+  "2006":
+    ads: https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1UL/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: SPIE, says: "© SPIE (closed access); no open copy found", checked: 2026-10-12}
+    panels: []
+  "2008":
+    ads: https://ui.adsabs.harvard.edu/abs/2008SPIE.7013E..1NC/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: SPIE, says: "© SPIE (closed access); no open copy found", checked: 2026-10-12}
+    panels: []
+  "2010":
+    ads: https://ui.adsabs.harvard.edu/abs/2010SPIE.7734E..2NM/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: "arXiv:1007.4473", says: "arXiv non-exclusive distribution licence (no third-party reuse)", checked: 2026-10-12}
+    panels: []
+  "2012":
+    ads: https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1EB/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: "arXiv:1207.7141", says: "arXiv non-exclusive distribution licence (no third-party reuse)", checked: 2026-10-12}
+        - {where: HAL hal-00754980, says: "open access, no licence field in the HAL API", checked: 2026-10-12}
+    panels: []
+  "2014":
+    ads: https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: "Exeter ORE (hdl 10871/22034)", says: "All rights reserved", checked: 2026-10-12}
+    panels: []
+  "2016":
+    ads: https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1DS/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: SPIE, says: "© SPIE (closed access); no open copy found", checked: 2026-10-12}
+    panels: []
+  "2018":
+    ads: https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: HAL hal-01978553, says: "HAL deposit authorisation (hal-authorisation-v1), not a CC licence", checked: 2026-10-12}
+        - {where: ESO library PDF, says: not checked, checked: null}
+    panels: []
+  "2022":
+    ads: https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1GS/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: KU Leuven Lirias, says: not checked, checked: null}
+    panels: []
+  "2024":
+    ads: https://ui.adsabs.harvard.edu/abs/2024SPIE13095E..14M/abstract
+    licence:
+      reusable: false
+      copies:
+        - {where: "arXiv:2609.35064", says: "arXiv non-exclusive distribution licence (no third-party reuse)", checked: 2026-10-12}
+    panels: []

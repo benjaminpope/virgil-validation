@@ -1,0 +1,17 @@
+/* Status badges on the contest gallery (docs/contest_gallery.md). */
+.cg-badge {
+  display: inline-block;
+  padding: 0.05em 0.5em;
+  margin-right: 0.3em;
+  border-radius: 0.8em;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: #fff;
+  background: #757575;
+}
+.cg-imaged { background: #2e7d32; }
+.cg-failed { background: #c62828; }
+.cg-not-imaged { background: #9e9e9e; }
+.cg-truth { background: #1565c0; }
+.cg-partial { background: #6a1b9a; }
+.cg-no-truth { background: #bdbdbd; color: #212121; }

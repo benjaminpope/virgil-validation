@@ -1,0 +1,92 @@
+# Rows of the "Imaging contests: gallery" docs page (docs/contest_gallery.md),
+# written by scripts/contest_gallery.py. One entry per contest dataset.
+#
+#   label    the campaign label (`<label>_m<k>.npz` from contest_images.py);
+#            absent when the dataset is not imaged yet
+#   name     what the row is called on the page
+#   target   one line on what the data are of (contests/manifest.yml)
+#   truth    none | score_2004 (rebuilt from the paper, scripts/score_2004.py)
+#            | markers_2018 (the published planet position and disk PA only)
+#   half     optional half-width of the field (mas); else the field holds
+#            97% of each image's flux
+#   note     optional extra caption text
+#
+# Paper figures (truth panels and entries) are listed in contests/figures.yml.
+# Truths are used for scoring and display only, never for fitting.
+
+campaign:
+  # Later directories win (combine_ensemble.load), as for ensemble.md.
+  results: [8562a39/campaign, 3018a9f/campaign]
+  virgil: 8562a39
+  method: >-
+    Eight CLEAN-started Gaussian-process images per dataset with randomised
+    starts, half with a central point star; members within 1.5x of the best
+    χ²/N are kept, and the panel shows the kept member with the highest
+    evidence.
+
+years:
+  "2004":
+    title: NPOI, simulated, 550 nm
+    rows:
+      - {label: 2004_data1, name: data1, target: "LkHα 101 model (star in an asymmetric shell), image by P. Tuthill", truth: none}
+      - {label: 2004_data2, name: data2, target: "binary: limb-darkened elliptical disk with a spot, and a 0.5 mas companion 10 mas east", truth: score_2004}
+  "2006":
+    title: VLTI/AMBER, simulated, grey
+    rows:
+      - {label: 2006_disk, name: MIR0001, target: "thin-disk model by O. Chesneau", truth: none}
+  "2008":
+    title: CHARA, simulated, J/H/K
+    rows:
+      - {label: 2008_agb_J, name: Alp_Vic J, target: "AGB star", truth: none}
+      - {label: 2008_agb_H, name: Alp_Vic H, target: "AGB star", truth: none}
+      - {label: 2008_agb_K, name: Alp_Vic K, target: "AGB star", truth: none}
+      - {label: 2008_agn_J, name: Bet_Vic J, target: "AGN", truth: none}
+      - {label: 2008_agn_H, name: Bet_Vic H, target: "AGN", truth: none}
+      - {label: 2008_agn_K, name: Bet_Vic K, target: "AGN", truth: none}
+  "2010":
+    title: VLTI/AMBER, simulated, polychromatic
+    rows:
+      - {label: 2010_lowH, name: "Mystery, low resolution, H", target: "red-supergiant surface (CO5BOLD) with a faint companion at 84 mas", truth: none}
+      - {label: 2010_lowK, name: "Mystery, low resolution, K", target: "red-supergiant surface (CO5BOLD) with a faint companion at 84 mas", truth: none}
+      - {name: "Mystery, medium resolution, H", target: "the same, AMBER medium resolution with differential phases", truth: none}
+  "2012":
+    title: CHARA/MIRC-6T, simulated, H
+    rows:
+      - {name: Alp_Fak, target: "T Tauri star and disk (TORUS)", truth: none, note: "Truth listed on OLBIN but never archived."}
+      - {name: Bet_Fak, target: "spotted red supergiant", truth: none, note: "Truth listed on OLBIN but never archived."}
+  "2014":
+    title: VLTI/PIONIER, real data, H
+    rows:
+      - {name: VY CMa, target: "red supergiant", truth: none, note: "Real data: compared with the published consensus image."}
+      - {name: R Car, target: "Mira", truth: none, note: "Real data; waits for a virgil reader fix."}
+  "2016":
+    title: VLTI GRAVITY and MATISSE, simulated, chromatic
+    rows:
+      - {name: Object1 (GRAVITY), target: "chromatic object with an OI_FLUX spectrum", truth: none}
+      - {name: Object2 (MATISSE N), target: "protoplanetary disk with one gap", truth: none}
+  "2018":
+    title: CHARA/MIRC and VLTI/PIONIER, simulated, grey
+    rows:
+      - {label: 2018_disk, name: "star, disk and planet", target: "0.4 mas star (65%), inner disk with a bright rim (29%), planet at 3.75 mas PA 27° (2%), outer disk to 20 mas", truth: markers_2018, half: 12,
+         note: "The published truth omits the ring radii, so only the planet (circle) and the disk's major-axis PA 44.2° (dashed) are drawn on our image."}
+  "2022":
+    title: VLTI/GRAVITY and JWST/NIRISS AMI, simulated
+    rows:
+      - {label: 2022_gravity, name: Obj1 (GRAVITY K), target: "high-contrast test", truth: none}
+      - {label: 2022_ami, name: Obj2 (NIRISS AMI), target: "high-contrast test", truth: none}
+  "2024":
+    title: VLTI PIONIER, GRAVITY and MATISSE, simulated, grey reconstructions
+    rows:
+      - {label: 2024_obj1_pionier, name: Obj1 PIONIER H, target: "Wolf-Rayet pinwheel spiral", truth: none}
+      - {label: 2024_obj1_gravity, name: Obj1 GRAVITY K, target: "Wolf-Rayet pinwheel spiral", truth: none}
+      - {label: 2024_obj1_matisseL, name: Obj1 MATISSE L, target: "Wolf-Rayet pinwheel spiral", truth: none}
+      - {label: 2024_obj1_matisseN, name: Obj1 MATISSE N, target: "Wolf-Rayet pinwheel spiral", truth: none}
+      - {label: 2024_obj2_pionier, name: Obj2 PIONIER H, target: "Herbig disk with rings, gaps and planets", truth: none}
+      - {label: 2024_obj2_gravity, name: Obj2 GRAVITY K, target: "Herbig disk with rings, gaps and planets", truth: none}
+      - {label: 2024_obj2_matisseL, name: Obj2 MATISSE L, target: "Herbig disk with rings, gaps and planets", truth: none}
+      - {label: 2024_obj2_matisseN, name: Obj2 MATISSE N, target: "Herbig disk with rings, gaps and planets", truth: none}
+  "2026":
+    title: data not yet released
+    rows:
+      - {name: "K, LM and N bands", target: "globular-cluster simulation", truth: none,
+         note: "Truth cubes are held (J. Young), but are not shown while the contest is open."}
