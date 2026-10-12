@@ -321,7 +321,7 @@ def _fake_fits(oc, tmp_path, shift=0.0):
         epochs=[_epoch(r["date"], r["mjd"] + 0.1, r["rho_mas"][0], r["pa_deg"][0],
                        flux=r["flux_ratio"][0] / (1 - r["flux_ratio"][0])) for r in h["epochs"]],
         orbit=_orbit(dict(period_day=ho["P_day"][0], t_peri_mjd=ho["T_peri_mjd"][0], ecc=ho["e"][0],
-                          inc_deg=ho["i_deg"][0], omega_deg=ho["omega_deg"][0] % 360,  # the twin of omega_Be + 180
+                          inc_deg=ho["i_deg"][0], omega_deg=(ho["omega_deg"][0] + 180) % 360,  # the (Omega+180, omega+180) twin; omega is the companion's, no shift
                           Omega_deg=(ho["Omega_deg"][0] + 180) % 360, a_mas=ho["a_mas"][0], flux_ratio=0.8)))
     i = _ref("fac164e1-d9d0-4500-8164-e1d9d0450099")
     io = i["orbit"]
@@ -360,7 +360,7 @@ def _fake_fits(oc, tmp_path, shift=0.0):
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
 def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_path):
     """Fits that reproduce the published values: every scored row passes (including the
-    conventions: omega of the primary + 180, a in au times the parallax, the (Omega,
+    conventions: omega of the primary + 180 for Gl 229 (none for HR 6819), a in au times the parallax, the (Omega,
     omega) twin, 1/flux for iota Peg, r/(1+r) for HR 6819, T_peri folded by whole
     periods), HR 6819 is never scored, and the L2 rows stay out unless asked for."""
     rows, missing = oc.compare(str(_fake_fits(oc, tmp_path)))
@@ -455,3 +455,23 @@ def test_criteria_are_frozen(oc):
     change this hash on purpose."""
     assert oc.CRITERIA["epoch"]["max_dev_sigma"] == 0.25 and oc.CRITERIA["parametric"]["max_dev_sigma"] == 2.0
     assert oc.CRITERIA_HASH == "1b35907f4268e909"
+
+
+@pytest.mark.validates("evidence", roots=["literature"], kind="guard")
+def test_hr6819_omega_is_the_companions_and_the_real_fit_is_within_errors(oc):
+    """Klement+2025's Table 3 omega (labelled omega_Be) equals Table 2's omega_pre-sd within
+    errors with the same Omega, so no +180 applies; virgil's real HR 6819 fit (omega 119.2,
+    Omega 22.8, summarised from OzSTAR) is then 0.8 sigma from Table 3 and ~7 deg, not 173 deg, off."""
+    ref = _ref("696baf06-6c3c-424d-abaf-066c3c324d99")
+    assert ref["conventions"]["omega_shift_deg"] == 0.0
+    o = ref["orbit"]
+    t2 = o["all_solutions"]["astrometry_only (Table 2, p. 5; omega is omega_pre-sd)"]["eccentric"]
+    assert abs(oc.wrap180(o["omega_deg"][0] - t2["omega_deg"][0])) < o["omega_deg"][1]
+    assert abs(oc.wrap180(o["Omega_deg"][0] - t2["Omega_deg"][0])) < o["Omega_deg"][1]
+    el = dict(period_day=40.32061588731872, t_peri_mjd=59955.08568276427, ecc=0.03196979523382894,
+              inc_deg=38.094255982497266, omega_deg=119.19981691050985, Omega_deg=22.82584150649433,
+              a_mas=1.2762591507761971, flux_ratio=0.7436420336352977)
+    pub = {"omega_deg": o["omega_deg"][:2], "Omega_deg": o["Omega_deg"][:2]}
+    rows = {r["quantity"]: r for r in oc.orbit_rows("c", "HR 6819", _orbit(el), pub, omega_shift=ref["conventions"]["omega_shift_deg"])}
+    assert abs(rows["omega_deg"]["dev_sigma"]) < 1.0 and abs(rows["omega_deg"]["virgil"] - 111.9) < 8
+    assert abs(rows["Omega_deg"]["dev_sigma"]) < 1.5
