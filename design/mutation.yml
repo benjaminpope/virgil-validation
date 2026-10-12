@@ -1,4 +1,27 @@
 # Design of the mutation-testing campaign (scripts/mutation.py, mutants/mutants.yml).
+# AMENDMENT 1 (2026-10-12, committed before any run of the mutants it adds; the original, SHA-256
+# b21e1e9d633538c4b4ac64124670bb39d25a84e5b9ff5b7815444d1dcbca223b, is at commit 37dd804).
+#   * REGRESSION MUTANTS. mutants/mutants.yml gains M101-M116 (class `regression`), one per ledger entry with
+#     ruling virgil and status fixed whose bug can be put back by a textual patch against the pin, each tagged
+#     `finding: F<n>`; the pre-existing M89 (exposure grouping ignores TIME) is tagged `finding: F13`.
+#     F1 is a documentation fix (M101 makes the code follow the old, wrong text). F3 (a documentation fix
+#     whose documented behaviour gives the same numbers) and F17 (the old code needed tensorflow_probability,
+#     an undeclared dependency) have no mutant; the reasons are in mutation-trust.md.
+#   * CRITERION, replacing "none pass or fail" for these only: every mutant carrying `finding:` MUST be killed
+#     by a test outside the baseline failures. A survivor of one is a failure of the suite (the test that pins
+#     the finding does not notice the bug coming back) and is fixed by strengthening that test; it is never
+#     removed from the list. The other 100 mutants stay descriptive, as registered.
+#   * EQUIVALENT MUTANTS. A mutant may carry `equivalent: <reason>`, written after reading its patch (and,
+#     where possible, a numerical check). The harness still runs it; reports count it as neither killed nor
+#     survived, and the trust page and the sign-off list ignore it. M64 is marked (the Cholesky factor of a
+#     diagonal matrix: L and L^T coincide).
+#   * TRUST PAGE. scripts/trust.py reads trust/mutation/results.json when it exists: a part is shown
+#     "verified" only if no non-equivalent mutant targeting it survived (a survivor demotes it to "partly",
+#     with the mutant ids); a part with no mutant run shows "mutants not run". Nothing here changes the
+#     outcomes, the timeout, the suite or the pin.
+#   * SIGN-OFF LIST. scripts/mutation_trust.py re-derives, from the same report, the nodes where a mutant
+#     survives and the convention is defined only by virgil's documentation; they are written as pending
+#     entries of trust/signoffs.yml (not confirmations).
 # Registered on 2026-10-12, before any mutant was run. The harness records the
 # SHA-256 of this file and of mutants/mutants.yml in results.json; edit either
 # and the hashes in a report no longer match its inputs.
