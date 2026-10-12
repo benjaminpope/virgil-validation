@@ -52,8 +52,7 @@ TARGETS = {
     "f4afc4cd-fd31-40d3-afc4-cdfd3150d340": dict(slug="hd45166", name="HD 45166", kind="positions"),
     "bda75673-61c6-49f0-a756-7361c699f0c4": dict(slug="a-stars", name="A-star companions (27 stars)",
                                                  kind="positions"),
-    "19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245": dict(slug="pi1-gru", name="pi1 Gru", kind="positions"),
-}
+}  # pi1 Gru (19f7e2cf) is a uniform-disk fit to an AGB star, not a binary: no tile
 ELEMENTS = ("period_day", "t_peri_mjd", "ecc", "inc_deg", "omega_deg", "Omega_deg", "a_mas")
 
 
