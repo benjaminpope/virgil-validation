@@ -1,0 +1,534 @@
+# Registered design: real-data parity and a real-data null test.
+# Registered on 2026-10-12, before any run. Rationale and conventions: design/realdata_parity.md.
+# Its SHA-256 is in design/realdata_parity.sha256 (checked by tests/test_realdata_design.py);
+# a result records that hash, and a change after the first run is a new version (a new file),
+# never an edit.
+#
+# Why: only 4 evidence records use the `literature` root (the imaging-contest binaries), the
+# ESO verdicts are provisional, real GRAVITY fits show chi2/N of 3 to 606 absorbed by a free
+# phi_scale, and our simulated noise is the likelihood's own model, so pulls are near
+# tautological. Part A fits identical real files with virgil and with other people's codes.
+# Part B asks how often virgil's detection pipeline fires on real files that hold no
+# companion. Part C only lists what the simulator cannot yet do.
+
+version: 1
+status: registered
+virgil: record the commit and package versions in each result (evidence header)
+pins:                        # an external is run only at these versions
+  pmoired: "26.10.1"
+  candid: "c255e90 (1.1.0)"
+  fouriever: "0.4.3"
+nothing_is_tuned_after_a_run: >
+  Targets, epochs, windows, models, tolerances and counts below are fixed. A fit that fails,
+  or a file that cannot be read, is listed with its reason and counts as a failure of the
+  code that failed; it is never dropped silently. Changing any value starts version 2.
+
+# --------------------------------------------------------------------------------------------
+# Part A: same-file parity
+# --------------------------------------------------------------------------------------------
+parity:
+  frozen_input:
+    rule: >
+      One deterministic script cuts each epoch's "parity file" from the archived OIFITS: the
+      target, the INSNAME, the spectral window and the unmatched-closure-triangle rule of
+      scripts/oidb_fit.load, all applied once, written as OIFITS, hashed (SHA-256 recorded).
+      Every code then reads that one file with its own reader. A code may not select or
+      flag data itself.
+    unit: one epoch = one night's files of the target, joined (a single file where the
+      collection has one per night)
+    nothing_else: no calibration, no error inflation, no outlier clipping by any code
+  observables:
+    GRAVITY: [T3PHI]                   # closure phases only, as scripts/oidb_fit and Track B
+    other: [V2, T3PHI]                 # PIONIER, MIRC/MIRC-X, AMBER, SAM: V2 and closure phase
+    not_used: [T3AMP, differential phase, flux, any extra observable]
+    reported_variant: GRAVITY with V2 (transfer function not removed); reported, not scored
+  smearing: >
+    off in every code (CANDID: dwavel = 0; PMOIRED: no wl kernel; virgil: none)
+  smearing_variant: >
+    epochs with s*B/(lambda R) > 0.1 are also fitted with virgil's Smeared and CANDID's own
+    smearing; reported only (a definition difference, docs/method/candid.md)
+  models:
+    M1_common:
+      what: UD primary (diameter free, LogUniform(0.01, 20) mas) + point companion at
+        (dra, ddec), flux ratio free
+      used_by: [virgil, PMOIRED, CANDID]     # CANDID's only binary model
+      note: CANDID has no companion diameter; this is its model
+    M2_published:
+      what: the model of the reference paper (fixed UD sizes, point stars, etc.), as the
+        scripts/oidb_fit recipe for that collection
+      used_by: [virgil, PMOIRED]
+    M3_ud:
+      what: a single uniform disk, diameter free; V2 only
+      used_by: [virgil, PMOIRED, "CANDID (chi2 task scanned and minimised)"]
+    scoring: >
+      M1 is the only model scored for CANDID; M2 (or M3 for a single star) is the only
+      model scored against the literature. PMOIRED is scored on both.
+  arms:
+    V0:
+      what: virgil with the file's quoted errors, no error scales, closure-phase
+        correlations OFF (data.cp_noise = None), i.e. the same independent-residual
+        likelihood PMOIRED and CANDID use
+      compared_with: PMOIRED with its normalisation undone (sigma / sqrt(chi2_red), as
+        external_bridge.pmoired_models.fit does); CANDID with its sqrt(chi2_r) scaling undone
+      role: scored
+    V0c:
+      what: V0 with virgil's default closure-phase correlations (whitened group), for 4 or
+        more telescopes
+      compared_with: fouriever (pseudo-inverse of the correlated covariance); PMOIRED/CANDID
+        independent-residual fits for the best fit only
+      role: reported; error bars of 4T+ files are expected 4-6 percent apart from PMOIRED's
+        (docs/method/pmoired.md)
+    V1:
+      what: >
+        virgil as a user runs it on real data: free vis_scale and phi_scale (the fit that
+        absorbed chi2/N of 3 to 606), Laplace covariance with the fitted scales
+      compared_with: PMOIRED and CANDID as shipped (their sqrt(chi2_red) normalisation)
+      role: reported, with one scored limit (A5)
+  externals:
+    PMOIRED: external_bridge.pmoired_models.fit (OI.doFit, auto=False, obs V2/T3PHI); every
+      error floor and minimum relative error set to zero; Nr irrelevant (no rings)
+    CANDID: external_bridge candid_worker `fitmap` (starts on a grid, uncertainties scaled by
+      sqrt(chi2_r); both returned). A UD-only scan is a new task (gap, below)
+    fouriever: external_bridge fouriever_worker `chi2` / `chi2_grid` evaluated at each code's
+      best-fit point (correlated closure phases, point binary). A `fit` task is a gap, below
+    gaps_to_build: [candid ud_fit (minimise chi2 over diam* with f = 0), fouriever fit task,
+      a pmoired chi2-at-given-parameters helper (doFit with every parameter fixed)]
+  convention_map:               # each row is pinned by docs/*_conventions.md and tests/test_*
+    position: virgil dra East, ddec North = PMOIRED x, y = CANDID x, y (mas)
+    flux: virgil flux = companion/primary = PMOIRED f2 with f1 = 1 = CANDID f / 100
+    primary_ud: >
+      virgil UniformDisk(diam) = PMOIRED {ud: diam} = CANDID diam*
+    closure_phase_sign: T3 = V12 V23 V*13 in all
+    fourier_sign: exp(-2 pi i (u dra + v ddec)/lambda) in all
+    cp_residual: virgil chord 2 sin(d/2), PMOIRED and fouriever plain d, CANDID wrapped plain d
+      (ledger D5; 1e-6 relative near a good fit, up to 1e-3 far from one)
+    chi2_normalisation: compare total chi2 and N, never reduced chi2 (PMOIRED's is chi2/(N-n_free),
+      CANDID's chi2/(N-n_fit+1), virgil's chi2/N independent observables)
+    n_data: each code's count of V2 and closure-phase samples must be equal; if not, the
+      difference is listed and that epoch is reported only
+  epochs_per_rule: "first, last, and every epoch between listed here"
+  tolerances:                   # all registered; sigma is the EXTERNAL code's reported error on
+                                # the matched convention (arm V0)
+    A1_best_fit:
+      statistic: z = |theta_virgil - theta_X| / sigma_X, per parameter (dra, ddec, flux, and
+        diam in M1/M3), per epoch, per external X in {PMOIRED, CANDID}
+      per_comparison: 0.25
+      pass_fraction: 0.90        # at least 90 percent of comparisons within 0.25 sigma
+      hard_limit: 1.0            # no comparison above 1 sigma unless it is explained by A1m
+    A1m_mode_rule: >
+      For a comparison above 1 sigma, virgil is restarted from X's best fit and X's loss
+      is evaluated at virgil's best fit (the convention-refit procedure of the OiDB plan).
+      If the codes land in the same point within 0.25 sigma it was a search miss
+      (counted against whichever code started in the worse basin: virgil's grid search
+      counts against virgil). If both are distinct local minima, the deeper total chi2
+      (common definition, evaluated by both codes) wins; a virgil minimum that is deeper
+      is not a failure, a shallower one is.
+    A2_chi2:
+      at_same_parameters: >
+        |chi2_virgil - chi2_X| / chi2_X <= 1e-3 (5e-3 if chi2/N > 10) at the
+        parameters of virgil's best fit, evaluated by virgil, PMOIRED, CANDID and fouriever;
+        all epochs; one failure is a failure
+      at_own_best_fit: >
+        |chi2_virgil - chi2_X| / chi2_X <= 0.01, every epoch
+      n_data_equal: exact
+    A3_error_bars:
+      statistic: R = sigma_virgil(V0) / sigma_X, per parameter, matched convention
+      band: [0.90, 1.10]
+      pass_fraction: 0.90
+      hard_band: [0.75, 1.33]    # none outside
+      scope: 3-telescope files and V0; 4T+ files (V0c vs fouriever, or V0 vs PMOIRED) use
+        [0.85, 1.15], pass fraction 0.90, hard band [0.70, 1.43]
+    A4_literature:
+      rules: >
+        Reuse scripts/oidb_compare.CRITERIA unchanged (epoch 0.25, parametric 2.0, adopted 1.0
+        sigma, chi2_flag 3.0, scale_flag 3.0; its CRITERIA_HASH is printed with its table).
+        Published values are those of oidb/references/<id>.json; a quantity with no published
+        value yet (reference record pending, OB0) is reported only.
+      orbit_predictions: >
+        NACO SAM rows compare with the published orbit's prediction at the epoch, the
+        orbit's position error carried (crosscheck.orbits); pass: |delta| / sqrt(sigma_v^2 +
+        sigma_pred^2) <= 3 per coordinate (position projected on the error ellipses); the
+        predictions are not same-data, so this is reported and never part of the verdict
+      pass_fraction: 0.90        # of scored literature rows
+    A5_scales_limit: >
+      Arm V1: the fitted phi_scale and vis_scale and the raw chi2/N are recorded for every
+      epoch. An epoch with a fitted scale > 3 (scale_flag) is listed as "model or errors have
+      failed" and not counted as a positive parity result in A1-A3 for V1 (scored for V0 as
+      usual). Scored limit: V1 sigma / V0 sigma must lie within 25 percent of the larger of
+      the two fitted scales (the Laplace covariance scales with them): [0.75 s, 1.25 s].
+  verdict:
+    PASS: A1, A2 and A3 hold for PMOIRED and for CANDID on the scored epochs, A5 holds, and
+      fouriever's chi2 at the same parameters agrees (A2) on every epoch where it applies
+    FAIL: any scored criterion fails; each failing comparison is a finding (ledger entry
+      with the next free ID, a passing test pinned to documented behaviour, a strict xfail
+      stating what is wrong) unless the ruling is "definition"
+    INCONCLUSIVE: fewer than 80 percent of the planned fits complete for an external code
+      (the reasons are listed); the criteria are then reported, not judged
+    ruling_before_blaming_virgil: >
+      A disagreement is first checked for the convention differences above and for the
+      external code's own known problems (docs/method/pmoired.md P1-P3, candid.md P4); a
+      disagreement ruled external or definition is recorded as such
+  # Targets, spanning GRAVITY, PIONIER, MIRC/MIRC-X, AMBER and NACO SAM. 12 targets, 36
+  # planned fits. sizes are from oidb/manifest.yml (metadata; nothing is downloaded here).
+  targets:
+    - id: gl229
+      name: Gl 229 Ba-Bb
+      instrument: GRAVITY (SC, single field)
+      source: {oidb: 782185b2-0727-42b0-a185-b2072732b047, level: L3, mb: 10.3}
+      epochs: "5 nights (2023-12-26, 2023-12-30, 2024-02-28, 2024-03-29, 2024-04-29); the first
+        file of each night, not the night's files joined: the pair moves 0.15 mas per hour
+        (class `moving` in design/oidb_binaries_criteria.md), so a static fit of a longer
+        stretch is itself misspecified"
+      window: closure phases, 2.05-2.18 um
+      model:
+        externals: "M1 with a point primary (diam fixed at 0)"
+        literature: "M2 = two point sources"
+      literature: >
+        Xuan et al. 2024, Nature 634, 1070, Table 1 (orbit; per-epoch positions not
+        tabulated): orbit prediction at each epoch, reported (rule A4 orbit_predictions)
+      externals: [PMOIRED, CANDID, fouriever]
+      fits: 5
+    - id: hd45166
+      name: HD 45166 (qWR + B7 V)
+      instrument: GRAVITY (SC)
+      source: {oidb: f4afc4cd-fd31-40d3-afc4-cdfd3150d340, level: L3, mb: 59.4}
+      epochs: "2023-11-26, the uncalibrated science files (singlescivis_singlescitf), joined; the
+        pipeline-calibrated files are not used (the night's calibrator TYC 732-806-1 is a
+        binary; the old calibrated fit had chi2/N 1234)"
+      window: closure phases, 2.02-2.40 um minus HD45166_LINES of scripts/oidb_fit.py
+      model:
+        externals: "M1 with a point primary"
+        literature: "M2 = two point sources"
+      literature: >
+        Deshmukh et al. 2025, A&A 695, L20: rho 10.886 +/- 0.082 mas, PA 26.34 +/- 0.7
+        deg (mean and dispersion over four calibration strategies; rule `adopted`, 1.0 sigma)
+      externals: [PMOIRED, CANDID, fouriever]
+      fits: 1
+    - id: hr6819
+      name: HR 6819 (QV Tel); not clean (Be decretion disk)
+      instrument: GRAVITY HR (SC)
+      source: {oidb: 696baf06-6c3c-424d-abaf-066c3c324d99, level: L3, mb: 45.0}
+      epochs: "first and last epoch by date (2021-09-05 and 2023-09-08)"
+      window: V2 and closure phases, 2.02-2.40 um minus HR6819_LINES of scripts/oidb_fit.py
+      model:
+        externals: "M1 with a point primary"
+        literature: "M2 = two point stars"
+      literature: >
+        Klement et al. 2025, A&A 694, A208, Table A.1 positions (no rho/PA errors:
+        error ellipses only); rule `not_clean`, compared and never scored
+      externals: [PMOIRED, CANDID, fouriever]
+      fits: 2
+    - id: pigru
+      name: pi1 Gru (resolved AGB star)
+      instrument: PIONIER (H, 3 channels)
+      source: {oidb: 19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245, level: L3, mb: 0.2}
+      epochs: the one file (PI_GRU_forImage.fits, nights 2014-09-25 and -29 together)
+      window: all channels; V2 only
+      model: M3 (single UD)
+      literature: >
+        Paladini et al. 2018, Nature 553, 310: UD 18.37 +/- 0.18 mas (LitPro, H, 5 percent
+        systematic added to the visibilities); rule `parametric`, 2 sigma. If the file's errors
+        do not carry the 5 percent, the paper's error is compared as reported, not scored
+      externals: [PMOIRED, CANDID (UD scan)]
+      fits: 1
+    - id: tzfor
+      name: TZ For
+      instrument: PIONIER
+      source: {oidb: "J/A+A/586/A35 (VizieR CDS link)", level: L3, mb: 1.1}
+      epochs: "first, middle and last of the 11 nights by date (middle = the 6th)"
+      window: all channels; V2 and closure phases
+      model:
+        externals: "M1 with the primary UD fixed at 0.414 mas (Track B value)"
+        literature: "M2 = UD 0.414 + UD 0.197 mas, both fixed"
+      literature: reference record pending (OB0 of design/plan_oidb_binaries.md); reported only
+      externals: [PMOIRED, CANDID]
+      fits: 3
+    - id: dboo
+      name: HD 123999 (d Boo)
+      instrument: PIONIER
+      source: {oidb: "J/A+A/597/A137 (VizieR CDS link)", level: L3, mb: 0.6}
+      epochs: "all four HD 123999 nights (2016-02-21, 2016-02-29, 2016-03-01, 2016-05-30)"
+      window: all channels; V2 and closure phases
+      model:
+        externals: "M1"
+        literature: "M1"
+      literature: reference record pending (OB0); reported only
+      externals: [PMOIRED, CANDID]
+      fits: 4
+    - id: iotpeg
+      name: iota Peg (SB2, 10.2 d)
+      instrument: MIRC-X (H)
+      source: {oidb: fac164e1-d9d0-4500-8164-e1d9d0450099, level: L3, mb: 3.9}
+      epochs: "all five nights (2018-10-22, 2018-10-23, 2018-11-21, 2019-07-31, 2019-08-06); the
+        last has rho = 1.13 mas, a hard case"
+      window: all channels; V2 and closure phases
+      model:
+        externals: "M1"
+        literature: "M2 = UDs fixed at 1.05 and 0.6 mas"
+      literature: >
+        Anugu et al. 2020, AJ 160, 158, Table 2: rho, PA, flux ratio, squeeze+model-fit
+        columns, and the CANDID columns (candid_alt in the reference record); rule `epoch`,
+        0.25 sigma. Note F_pri/sec in the paper, inverted to virgil's secondary/primary
+      externals: [PMOIRED, CANDID, fouriever]
+      fits: 5
+    - id: astars
+      name: A-star companions, MIRC-X (HD 5448, HD 11636, HD 28910, HD 29388, HD 48097)
+      instrument: MIRC-X (H, R ~ 190)
+      source: {oidb: bda75673-61c6-49f0-a756-7361c699f0c4, level: L3, mb: 25.5}
+      epochs: "the five published detections, one calibrated file each"
+      window: all channels; V2 and closure phases
+      model:
+        externals: "M1 with CANDID's resolved flux fres"
+        literature: "CANDID's model"
+      literature: >
+        De Furio et al. 2022, ApJ 941, 118, Table 3: the authors' own CANDID fit of the
+        same files. rho errors 0.002-0.007 mas make this the sharpest test of the three codes;
+        rule `parametric` (2 sigma), because their smearing averages V2 and the bispectrum
+        (docs/method/candid.md) and ours the complex visibility
+      externals: [PMOIRED, CANDID]
+      fits: 5
+    - id: hd174881
+      name: HD 174881 (HR 7112)
+      instrument: MIRC (CHARA, H_PRISM)
+      source: {oidb: 45840351-f65e-446c-8403-51f65e546c16, level: L3, mb: 0.1}
+      epochs: "both nights (2007-07-04 and 2007-07-07)"
+      window: all channels; V2 and closure phases
+      model:
+        externals: "M1"
+        literature: "M1"
+      literature: reference record pending (OB0); reported only
+      externals: [PMOIRED, CANDID]
+      fits: 2
+    - id: polaris
+      name: Polaris Aa-Ab
+      instrument: MIRC / MIRC-X (CHARA)
+      source: {oidb: 337cfbf7-5327-4875-bcfb-f753270875d0, level: L3, mb: unknown}
+      epochs: "first, 4th and last of the 8 nights (2016-09-12, 2019-04-09, 2021-04-04); the AVG15m calibrated file of a night where there is one, else the SPLIT file (same data, unaveraged)"
+      window: all channels; V2 and closure phases
+      model:
+        externals: "M1"
+        literature: "M1"
+      literature: reference record pending (OB0); reported only
+      externals: [PMOIRED, CANDID]
+      fits: 3
+    - id: th1oric
+      name: theta1 Ori C
+      instrument: AMBER (H/K)
+      source: {oidb: 371c145f-7889-47d5-9c14-5f7889c7d510, level: L3, mb: 0.2}
+      epochs: "both nights (2007-12-03 and 2007-12-05)"
+      window: all channels; V2 and closure phases (no differential phase)
+      model:
+        externals: "M1"
+        literature: "M1"
+      literature: reference record pending (OB0); reported only
+      externals: [PMOIRED, CANDID]
+      fits: 2
+    - id: naco_sam
+      name: NACO SAM, AMICAL-reduced (tier S; reported, not in the verdict until the
+        provisional fits of plan_eso_binaries.md Stage E4 are rerun)
+      instrument: VLT/NACO aperture masking (9 Sgr 7 holes Ks; delta Vel 18 holes NB 1.64 and IB 2.12; HD 136164 L')
+      source: AMICAL OIFITS on OzSTAR, ~/data/eso_binaries/naco/ (not in the OiDB; not on this machine)
+      epochs: "9 Sgr 2011-03-10; delta Vel 2009-01-07; HD 136164 Ab 2012-08-01"
+      window: all channels; V2 and closure phases
+      model:
+        externals: "M1"
+        literature: "orbit prediction"
+      literature: 9 Sgr 11.89 +/- 0.3 mas, PA 72.3 +/- 1.5 deg (Fabry et al. 2021); delta Vel
+        14.26 +/- 0.14, PA 155.3 +/- 0.6 (Merand et al. 2011); HD 136164 Ab 166.1 +/- 3.4, PA
+        99.7 +/- 1.4 (Balmer et al. 2024). Rule A4 orbit_predictions
+      externals: [PMOIRED, CANDID]
+      fits: 3
+      caveat: AMICAL 1.6.0's calibrator weighting biases the V2 normalisation (SAIL-Labs/AMICAL#332);
+        V2 scale differences between the codes are not a parity failure, closure phases are
+        scored; V2 is reported
+  counts:
+    targets: 12
+    planned_fits: 36             # 5+1+2+1+3+4+5+5+2+3+2+3
+    instruments: [GRAVITY, PIONIER, MIRC, MIRC-X, AMBER, NACO SAM]
+    tier_S_fits: 3
+    scored_fits: 33
+    expected_comparisons_per_external: "about 110 (33 fits x about 3.4 parameters)"
+    chance_failures_at_0.25_tolerance: >
+      the pass fraction (0.90) is a bound on the share above 0.25 sigma, not a p-value: two
+      codes fitting one file with one model should differ by far less (Stage 2 of
+      docs/method/pmoired.md: under 0.25 sigma, typically under 0.1 sigma on simulations)
+  data_and_tools_needed:
+    download_mb: "about 150 from the OiDB (sum of mb above, Polaris unknown); NACO SAM from OzSTAR"
+    install: "PMOIRED (pip), CANDID (scripts/setup_candid.sh), fouriever (scripts/setup_external.sh);
+      none is installed in the working checkout (checked 2026-10-12)"
+
+# --------------------------------------------------------------------------------------------
+# Part B: real-data null test of virgil's detection pipeline
+# --------------------------------------------------------------------------------------------
+null_test:
+  question: >
+    On real calibrated data that hold no companion, how often does virgil's detection
+    statistic exceed the thresholds that its own Monte Carlo (gaussian_null thresholds at a
+    stated false-alarm probability) assigns, compared with the nominal probability, with
+    and without rescale_errors?
+  population:
+    selection_rule: >
+      Applied by a query written and committed BEFORE any file is fitted (the second
+      registration: the list of observation ids with their sha256, as oidb/manifest.yml).
+      Targets in the OiDB at calibration level 3 (released) or from the ESO Phase 3
+      products, calibrated OIFITS with at least 3 telescopes (so a closure triangle exists)
+      and at least 60 closure-phase samples; one night per target is the unit.
+      Exclusions: SIMBAD object types of binary, multiple, spectroscopic or eclipsing
+      binary, emission-line or Be star, Wolf-Rayet, YSO, post-AGB, Mira or other variable
+      with an envelope; any target in WDS, ORB6 or SB9; Gaia DR3 RUWE > 1.4; any target
+      whose publication reports a companion; any target whose own OI_TARGET or file name
+      carries a binary or component suffix (A, B, Ab).
+      L2 (unreleased) data stay out (DATA_ATTRIBUTION.md).
+    strata:
+      S_clean: calibrators and single stars, observed to calibrate or as diameter targets
+      S_survey: science stars of a companion survey with a published non-detection
+        (may hold a companion below the survey limit; an excess confined to this stratum
+        is reported as "possible real companions", not charged to virgil)
+      S_stress: stars with a disk or wind (Be, WR) from the OiDB surveys; reported only, to
+        show the false-alarm rate when the null model is wrong
+    minimum_size: {S_clean: 30, all_null: 60, instrument_families: 4}
+    unit_independence: >
+      Primary statistics use one night per target (the first by date). Every further night is
+      secondary, tested with a cluster bootstrap over targets.
+    candidates_found_in_the_repo:
+      MIRC_X_H_band_collection_bda75673: >
+        De Furio et al. 2022 (A-star survey), 28 files in 27 OI_TARGET names. Excluding the
+        five published detections (HD 5448, HD 11636, HD 28910, HD 29388, HD 48097), omega Aur
+        (a spectroscopic binary and Be-type; two instruments) and the SIMBAD-flagged, about 21
+        files remain, of which HD 99787, HD 21912, HD 120047, HD 32301 and HD 74198 are the paper's
+        calibrators (Table 2; S_clean) and the rest S_survey (HD 106661, HD 112734, HD 115271, HD 121164,
+        HD 15550, HD 20677, HD 24809, HD 46089, HD 56537, HD 59037, HD 66664, HD 74873, HD 77660,
+        HD 84107, HD 92941, HD 97244, and named stars among the 27 OI_TARGET names that the
+        SIMBAD rule keeps). The paper's published detection limits at 1, 3, 5, 10, 50, 300 mas
+        (Table 5) are an external check of the same files
+      GRAVITY_calibrators_of_the_ESO_programmes: >
+        gravity_calibrators.json of Track B (2.8 GB, not downloaded; design/trackb_criteria.md):
+        the same-programme calibrators, closure phases only. SearchCal diameters make them
+        unresolved stars; selected by the rule above
+      PIONIER_calibrators: >
+        pi1 Gru's calibrators HD 209688 and HD 215104 (reference record 19f7e2cf) and the
+        OiDB's L1 collection that holds calibrators only (178 files, id in the private notes),
+        if the dataPI terms allow
+      SAM_calibrators: >
+        AMICAL-reduced NACO calibrators of plan_eso_binaries.md Stage E4: HIP 74479, HIP 74865
+        (HD 136164), HD 152249 (9 Sgr), delta Phe (delta Vel); Achernar is excluded (rapid
+        rotator with a known companion). Calibrated by another calibrator: closure phases of
+        a point source
+      HD_45166_calibrator: >
+        TYC 732-806-1 (a 3.3 mas binary, plan_oidb.md): not a null, the positive control
+    positive_controls:
+      rule: >
+        The five published companions of the A-star collection (flux ratios 1.6 to a few
+        percent, 6 to 65 mas) and TYC 732-806-1. Under the rescaled variant, at least 5 of
+        these 6 must exceed the FAP 1e-3 threshold of delta_chi2. A null test that detects
+        nothing passes vacuously; this guards against that. The detection fraction is reported
+        per instrument. A positive control that is not detected is a finding about completeness
+        (reported, ledger entry), not a pass of the null test
+  procedure:
+    per_file:
+      load: scripts/oidb_fit.load, the observables and windows of the parity table above
+      null_scene: UniformDisk with the diameter fitted (LogUniform(0.01, 20) mas) as the
+        null; a point if the fitted diameter is below 0.05 mas
+      grid: >
+        dra and ddec in (-H, H), H = 30 mas (H = 10 mas for NACO SAM), step the larger of
+        lambda_min/(2 B_max) and 2H/200 (at most about 4e4 cells), flux ratio geomspace(1e-4,
+        0.3, 40). The coarser Monte Carlo grid is the registered price of N_null draws per file;
+        a finer grid for the observed statistic only is not allowed (it would not match the
+        thresholds)
+      statistics: [delta_chi2 (primary), log_bayes_factor, max_snr]   # virgil.detection
+      thresholds: >
+        virgil.detection.injection_recovery with gaussian_null(null_scene, template) and
+        n_null = 2000 draws per file, FAP levels 0.05, 0.01, 0.001 (DetectionMC.threshold,
+        its bootstrap CI recorded); each file's observed statistic is converted to its
+        false-alarm probability p_i (DetectionMC.false_alarm_probability) with the look-elsewhere
+        effect of the grid built in
+    variants:
+      raw: template and data with the quoted errors
+      rescaled: data and template from detection.rescale_errors(null_scene, data) (the vis and
+        phi blocks each scaled to chi2/n = 1 for the null); the factors are recorded
+      bootstrap: thresholds from detection.bootstrap_null (sign_flip) of the data about the null
+        (reported; it removes a pure scale error and keeps heteroscedasticity)
+      candid_nsigma: CANDID's fitMap nsigma on the same file, a second code's view (reported)
+  criteria:
+    primary: >
+      the rescaled variant on S_clean; if S_clean has fewer than 30 targets, on S_null,
+      labelled "contains possible real companions"
+    N1_counts:
+      statistic: k = number of files with p_i < alpha, alpha in {0.05, 0.01}, delta_chi2
+      test: >
+        one-sided exact binomial P(K >= k | N, alpha), fail if p < 0.01. One Holm family at
+        0.01 over six p-values: these counts (2 levels x raw and rescaled = 4) and the two PIT tests (N2)
+    N2_pit:
+      statistic: the p_i of every file in the primary set
+      test: one-sided Kolmogorov-Smirnov, alternative "p_i stochastically smaller than
+        uniform" (too many small p), fail if p < 0.01 (same Holm family)
+    N3_reported: >
+      the exceedance fraction and its 95 percent Clopper-Pearson interval at each alpha, the
+      ratio to nominal, the same for log_bayes_factor and max_snr, per instrument, per
+      stratum, with and without the bootstrap thresholds, and the rate of FAP deficits
+      (conservative), which is not a failure
+    verdict:
+      PASS: N1 and N2 hold for the rescaled variant on the primary set and the positive controls
+        are detected
+      FAIL: >
+        N1 or N2 fails for the rescaled variant, which is a finding: ledger entry with the
+        next free ID; a passing test pinned to the thresholds as documented; a strict xfail
+        stating that the false-alarm probability on real noise exceeds the nominal
+      RAW_VARIANT: reported with the same tests; its result decides one documentation
+        statement, "use rescale_errors on real data" (needed or not), not the verdict
+      INCONCLUSIVE: fewer than the minimum sizes; reported
+  power_note: >
+    With N = 60 independent nulls the count test at alpha = 0.05 fails for k >= 8 (expected 3.0;
+    p = 0.0098) and at alpha = 0.01 for k >= 4 (expected 0.6; p = 0.0031). Its power against a
+    false-alarm probability inflated by a factor of 2, 3, 5 is 0.25, 0.70, 0.99 at alpha = 0.05,
+    and 0.03, 0.11, 0.35 at alpha = 0.01: the 0.01 count is nearly blind at this N and is
+    reported mainly for its interval. The PIT test (N2) uses every file and carries the weight
+    for a smaller or uniform inflation. The report states the inflation factor the data can
+    exclude, as the detection campaign states its precision, and no finer calibration is claimed
+  cost:
+    downloads_mb: "S_survey and calibrators from the A-star collection are already in the Part A
+      download (25.5 MB); the rest is to be set by the selection query (estimate 100-300 MB)"
+    time_per_null_draw_s: "0.16 (17 x 17 cells, 120 V2 + 80 CP) to 0.32 (41 x 41), measured
+      2026-10-12 on a laptop, eager, single process; a real MIRC-X file (15 baselines, 8
+      channels) and 4e4 cells is 5 to 20 times heavier, so 1 to 5 s per eager draw; the
+      compiled injection_recovery kernel is expected to be several times faster"
+    cpu_hours: "60 files x 2000 draws x 2 variants x 1-5 s = 70-330 CPU-hours eager; with the
+      compiled kernel, roughly 15-70. One OzSTAR array of 60 tasks (about 1-5 h each), or a GPU
+      array"
+
+# --------------------------------------------------------------------------------------------
+# Part C: misspecification: later campaigns (scope only; no criteria are registered now)
+# --------------------------------------------------------------------------------------------
+misspecification_later:
+  rule: >
+    Each campaign gets its own registered file before it runs. Magnitudes are not guessed: Part A
+    gives the fitted error scales and raw chi2/N of real files, and Part B the false-alarm excess,
+    and a campaign injects the misspecification at the size that reproduces those numbers.
+  campaigns:
+    C1_nongaussian_closure_phases: >
+      closure phases made from the argument of a bispectrum average at low S/N (wrapped,
+      heavy-tailed, uniform below S/N about 1 per bispectrum), not Gaussian with sigma:
+      simulator extension in src/crosscheck/simulate.py (complex noise on V12 V23 V13* then arg).
+      Measure pull sd and coverage of the fit and the delta_chi2 tail, with and without
+      the sine-plus-periodic-penalty residual
+    C2_wavelength_correlated_errors: >
+      errors correlated across spectral channels (squared-exponential or AR(1) in channel
+      number, correlation length 0.5 to 8 channels), common to V2 and closure phase through the
+      transfer function. Measure the error-bar ratio sigma_true/sigma_quoted against the
+      effective number of independent channels, pull sd, and what the free phi_scale does to it
+    C3_calibration_errors: >
+      per-baseline, per-night multiplicative V2 errors (transfer-function drift, calibrator
+      diameter error) and closure-phase offsets; marginalised or not with virgil's gains and
+      phase_offsets (OIData.with_gains, with phase offsets). Measure bias of position and
+      flux ratio and the coverage, the data's own chi2/N, and detection FAP
+    C4_wrong_sigma: >
+      true noise k times the quoted error, k in {0.5, 1, 2, 4}, uniform and then varying per
+      baseline and per channel; gaussian_null(error_scale=k) exists for the detection part.
+      Measure coverage with vis_scale and phi_scale free, with rescale_errors and with neither,
+      and the false-alarm probability of the delta_chi2 statistic
+    C5_unmodelled_structure: >
+      a faint unmodelled companion or a disk in the null (the realistic null of a survey);
+      measure the fit's bias and the false-alarm rate. Listed because Part B's S_survey and
+      S_stress strata cannot separate it from the above
+  cost: "a campaign each, one to two sessions of simulator and test work plus OzSTAR
+    CPU time of the order of the detection campaign (10^4 to 10^5 draws)"
