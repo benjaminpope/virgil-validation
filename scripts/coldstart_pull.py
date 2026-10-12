@@ -36,17 +36,28 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 CRITERIA_FILE = ROOT / "design" / "coldstart_pull.yml"
+PRECISION_FILE = ROOT / "design" / "coldstart_pull_precision.yml"  # addendum 2: precision targets, counts
 SNR_FLOOR = 0.0
 
 
 def spec():
     import yaml
 
-    return yaml.safe_load(CRITERIA_FILE.read_text())
+    s = yaml.safe_load(CRITERIA_FILE.read_text())
+    if PRECISION_FILE.exists():
+        q = yaml.safe_load(PRECISION_FILE.read_text())
+        s["counts"] = {**s["counts"], **q["counts"]}
+        s["precision"], s["pull_equivalence"] = q["precision"], q["pull_equivalence"]
+        s["rerun_seed_base"] = q["rerun_seed_base"]
+    return s
 
 
 def criteria_hash():
-    return hashlib.sha256(CRITERIA_FILE.read_bytes()).hexdigest()
+    """SHA-256 of the registered file and its precision addendum (the file's bytes, a newline, the addendum's)."""
+    h = hashlib.sha256(CRITERIA_FILE.read_bytes())
+    if PRECISION_FILE.exists():
+        h.update(b"\n" + PRECISION_FILE.read_bytes())
+    return h.hexdigest()
 
 
 def design_hash():
@@ -384,6 +395,8 @@ def analyse(cells, s):
     """The registered analysis of {cell: (param names, rows)}."""
     from scipy import stats
 
+    from crosscheck import precision as P
+
     out = {"cells": {}, "primary_pvalues": {}}
     pv = out["primary_pvalues"]
     pull_p = {}
@@ -408,6 +421,11 @@ def analyse(cells, s):
             pv[cell] = float(bt.pvalue)
             e["pvalue"] = float(bt.pvalue)
             e["upper99"] = float(stats.binomtest(k, n, bound).proportion_ci(confidence_level=0.98, method="exact").high)
+            if "precision" in s:  # the failure rate is shown to be at most the rule-out rate (design/coldstart_pull_precision.yml)
+                prec = s["precision"]
+                rule_out = prec["cells"][cell]["rule_out"]
+                upper = P.cp_upper(k, n, prec["alpha"])
+                e["rule_out"], e["upper_limit"], e["rule_out_met"] = rule_out, upper, bool(upper <= rule_out)
         e["stratified"] = stratify(valid, s)
         good = np.array([r["pulls"] for r, x in zip(valid, vk) if x == "same_mode" and r.get("pulls") and None not in r["pulls"]], float)
         e["pull_draws"] = int(len(good))
@@ -419,16 +437,31 @@ def analyse(cells, s):
                 pm = float(2 * stats.norm.sf(abs(m * np.sqrt(len(x)))))
                 ps = float(2 * stats.norm.sf(abs((sd - 1) * np.sqrt(2 * len(x)))))
                 pull_p[f"{cell}:{name}:mean"], pull_p[f"{cell}:{name}:sd"] = pm, ps
-                e["pulls"][name] = {"mean": m, "sd": sd, "kurtosis": float(stats.kurtosis(x, fisher=False)),
-                                    "mean_p": pm, "sd_p": ps}
+                kurt = float(stats.kurtosis(x, fisher=False))
+                e["pulls"][name] = {"mean": m, "sd": sd, "kurtosis": kurt, "mean_p": pm, "sd_p": ps}
+                if "pull_equivalence" in s:  # a flag, never pass/fail: the 90% intervals inside the registered margins
+                    q = s["pull_equivalence"]
+                    mi, si = P.mean_ci(m, sd, len(x), q["alpha"]), P.sd_ci(sd, kurt, len(x), q["alpha"])
+                    e["pulls"][name].update({"mean_ci": list(mi), "sd_ci": list(si),
+                                             "equivalent": bool(P.inside(mi, -q["mean_margin"], q["mean_margin"])
+                                                                and P.inside(si, *q["sd_interval"])),
+                                             "underpowered": bool(len(x) < q["min_draws"])})
         out["cells"][cell] = e
     rejected = holm(pv, s["family_alpha"]) if pv else {}
     out["rejected"] = sorted(k for k, v in rejected.items() if v)
     pull_rej = holm(pull_p, s["secondary"]["family_alpha"]) if pull_p else {}
     out["pull_tests"] = len(pull_p)
     out["pull_rejected"] = sorted(k for k, v in pull_rej.items() if v)  # reported, not pass/fail
-    out["pass"] = bool(pv and not out["rejected"] and set(out["cells"]) == set(s["cells"])
+    precise = all(c.get("rule_out_met", "precision" not in s) for c in out["cells"].values())
+    out["pass"] = bool(pv and not out["rejected"] and set(out["cells"]) == set(s["cells"]) and precise
                        and all(c["enough"] and c["reference_ok"] for c in out["cells"].values()))
+    # signals: anything that is not a clean pass; the ruling on one is a rerun on fresh seeds
+    # (must_hold rerun_on_fresh_seeds in design/coldstart_pull_precision.yml)
+    out["signals"] = (list(out["rejected"]) + [f"rule_out:{c}" for c, e in out["cells"].items() if not e.get("rule_out_met", True)]
+                      + [f"pull_not_equivalent:{c}:{n}" for c, e in out["cells"].items()
+                         for n, v in e["pulls"].items() if not v.get("equivalent", True) and not v.get("underpowered")]
+                      + list(out["pull_rejected"]))
+    out["provisional"] = bool(out["signals"])
     return out
 
 

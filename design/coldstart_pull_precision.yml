@@ -1,0 +1,73 @@
+# Addendum 2 to design/coldstart_pull.yml (scripts/coldstart_pull.py): precision targets.
+# Registered on 2026-10-12, before any campaign draw (no cold-start task output exists; the
+# 25-draw smoke runs behind amendment 1 are diagnostics). design/coldstart_pull.yml stays as
+# committed (SHA-256 96fb09a7...ddba2, amendment 1 included) and is not edited. This file
+# adds to it and overrides only the counts below; the script records the hash of both files
+# (the registered file's bytes, a newline, these bytes) as criteria_hash.
+#
+# Why. As registered, a cell fails when its failure rate is significantly ABOVE its bound.
+# A cell with 25 failures in 1000 against a bound of 1% is rejected; one with 12 is not,
+# and "not rejected" is not "at most 1%": the one-sided 99.83% upper limit of 12/1000 is
+# 2.4%. Following detection v3 (design/detection_v3.yml, an equivalence margin with power),
+# each cell now also states the failure rate it must RULE OUT, and the counts are sized so
+# that a pipeline exactly as good as its bound passes with power at least 0.8. The
+# calculation is scripts/precision_power.py (tests/test_precision.py reproduces every number
+# below from it); the formulas are in src/crosscheck/precision.py. Rationale and the order of
+# the campaigns: design/precision_targets.md.
+#
+# ORDER. This campaign runs BEFORE the SBC v2 campaign (design/sbc_v2.yml with its addenda):
+# SBC v2's low-signal regime is analysed only where the position is measured, because
+# finding the mode at low signal is this campaign's job (cell binary_faint), not SBC's.
+
+precision:
+  # The claim is a conjunction (every cell's failure rate is below its rule-out rate), so the six
+  # cell tests form an intersection-union test: each is made at the family level, no correction
+  # (Berger 1982); the claim is made when all six reject. The registered Holm test is unchanged.
+  alpha: 0.01                 # one-sided exact (Clopper-Pearson) upper limit of each cell's failure rate at confidence 0.99
+  # Each cell must show that its failure rate is at most `rule_out`: the upper limit <= rule_out.
+  # The registered test (rate not above `bound`, Holm over six at 0.01) is unchanged and must hold too.
+  cells:
+    binary_bright:      {bound: 0.01, rule_out: 0.025}
+    binary_faint:       {bound: 0.05, rule_out: 0.075}
+    binary_wide:        {bound: 0.05, rule_out: 0.075}
+    binary_sparse:      {bound: 0.05, rule_out: 0.075}
+    resolved_companion: {bound: 0.02, rule_out: 0.04}
+    envelope:           {bound: 0.02, rule_out: 0.04}
+  design_power:               # P(the rule-out is shown) when the true rate equals the bound
+    min_power: 0.8            # required of the claim (all six at once) at the minimum N, and of each cell
+    # N = 1625 (planned): bright 0.991 (met when failures <= 26), resolved_companion/envelope 0.991 (<= 46),
+    # faint/wide/sparse 0.965 (<= 97); all six at once 0.875. N = 1510 (the minimum): 0.98, 0.985, 0.948;
+    # all six 0.81. At the registered N = 1000: each 0.79 to 0.89, all six 0.34: too low, hence more draws.
+    # tests/test_precision.py checks every N from the minimum to the plan.
+
+counts:                       # overrides design/coldstart_pull.yml's counts
+  draws_per_task: 125
+  tasks_per_cell: 13          # 1625 planned per cell, 9750 in all, 78 tasks (was 1000 and 48)
+  min_draws_per_cell: 1510    # draws with a finite reference fit required for a cell to count
+
+# Pull calibration of the SAME MODE draws, which was reported with no margin. Now an
+# equivalence flag, still never pass/fail (the primary criterion is the failure rate): the
+# 90% interval (alpha 0.05 per side, no correction: the flag is the conjunction) of each
+# parameter's pull mean lies inside +-0.15 and of its sd inside [0.9, 1.1].
+# The mean margin is wider than the pull campaign's 0.1 (design/pull_campaign_precision.yml)
+# because the pull campaign, started at the truth, carries the calibration claim at 0.1;
+# this one only has to show that finding the mode does not degrade it by more than 0.15 sigma.
+pull_equivalence:
+  mean_margin: 0.15
+  sd_interval: [0.9, 1.1]
+  alpha: 0.05
+  min_draws: 450              # below this a cell's equivalence is reported "underpowered", not tested
+  # Power per test at N = 450 same-mode draws: mean 0.88, sd 0.82 (0.8 is first reached at N = 390
+  # for the mean and 430 for the sd); at N = 940: 0.997 and 0.993.
+
+must_hold:                    # not p-values: each must be exactly true
+  rerun_on_fresh_seeds: >-
+    any campaign signal (a cell's failure rate over its bound, an upper limit above its
+    rule-out rate, a Holm-rejected pull test, an equivalence flag that fails) is rerun
+    on fresh seeds before anyone rules on it: the seed base of the rerun is 30261012 (the
+    first run's is 20261012), the criteria are the same, and the ruling is the rerun's.
+    The summary lists the signals (`signals`) and marks itself `provisional` while any is
+    open. A signal that does not reappear is reported as a signal that did not reappear;
+    one that does is the finding.
+  fresh_seed_ranges: the rerun's seeds, base + cell_index * 1e6 + task * 125 + k, do not overlap the first run's
+rerun_seed_base: 30261012
