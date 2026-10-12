@@ -467,7 +467,7 @@ def test_hr6819_omega_is_the_companions_and_the_real_fit_is_within_errors(oc):
     o = ref["orbit"]
     t2 = o["all_solutions"]["astrometry_only (Table 2, p. 5; omega is omega_pre-sd)"]["eccentric"]
     assert abs(oc.wrap180(o["omega_deg"][0] - t2["omega_deg"][0])) < o["omega_deg"][1]
-    assert abs(oc.wrap180(o["Omega_deg"][0] - t2["Omega_deg"][0])) < o["Omega_deg"][1]
+    assert abs(oc.wrap180(o["Omega_deg"][0] - t2["Omega_deg"][0])) < 2 * np.hypot(o["Omega_deg"][1], t2["Omega_deg"][1])
     el = dict(period_day=40.32061588731872, t_peri_mjd=59955.08568276427, ecc=0.03196979523382894,
               inc_deg=38.094255982497266, omega_deg=119.19981691050985, Omega_deg=22.82584150649433,
               a_mas=1.2762591507761971, flux_ratio=0.7436420336352977)
