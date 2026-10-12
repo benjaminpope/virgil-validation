@@ -111,8 +111,8 @@ def _grid_half(bmax, wmin, half):
 # Loaders
 # ---------------------------------------------------------------------------
 def load_gl229(root):
-    """Gl 229 Ba-Bb, GRAVITY SC closure phases, one OIData per night (as fit_nights.py in the
-    eso_binaries scripts: V2 flagged, closure phases outside 2.05-2.18 um flagged)."""
+    """Gl 229 Ba-Bb, GRAVITY SC V2 and closure phases, one OIData per night (as fit_nights.py in the
+    eso_binaries scripts, but with V2 kept: V2 and closure phases outside 2.05-2.18 um flagged)."""
     import glob
 
     from virgil.oidata import OIData
@@ -137,7 +137,11 @@ def load_gl229(root):
         wl = np.asarray(rec["wavel"], float)
         i1 = np.asarray(rec["i_cps1"])
         lam = wl[i1] if wl.size > 1 else np.full(i1.shape, wl.item())
-        rec["vis_flag"] = np.ones_like(np.asarray(rec["vis_flag"]), dtype=bool)
+        rec["vis_flag"] = (  # V2 over the same band as the closure phases: both are fitted
+            np.asarray(rec["vis_flag"], bool)
+            | (wl < GL229_BAND[0])
+            | (wl > GL229_BAND[1])
+        )
         rec["phi_flag"] = (
             np.asarray(rec["phi_flag"], bool)
             | (lam < GL229_BAND[0])
@@ -198,9 +202,29 @@ def _match_published_sign(ref, refpos):
     return (other, True) if miss(other) < miss(ref) else (ref, False)
 
 
+def _read_with_vis(T):
+    """trackb_fit._read, but GRAVITY keeps V2 beside the closure phases (the Track B criteria are closure phases only)."""
+    read_tb = T._read
+
+    def read(files, inst):
+        if inst != "GRAVITY":
+            return read_tb(files, inst)
+        from virgil.oidata import OIData
+        from virgil.oifits import read_oifits
+
+        return OIData(read_oifits([str(f) for f in files], insname="GRAVITY_SC")).select(
+            ranges=T.GRAVITY_RANGES, observables=("vis", "phi")
+        )
+
+    return read
+
+
 def make_trackb_loader(name):
     def load(root):
         import trackb_fit as T
+
+        T._read = _read_with_vis(T) if not getattr(T._read, "_vis", False) else T._read
+        T._read._vis = True
 
         s, _ = _trackb_system(root, name)
         p_json = s["reference_orbit"]["P_day"][
@@ -473,6 +497,28 @@ def plot_corner(path, result):
     plt.close(fig)
 
 
+def block_chi2(result, loaded):
+    """Raw chi2 and independent-observable count of the V2 and the closure-phase blocks at the best orbit,
+    summed over epochs ("vis" and "phi"), on the quoted errors."""
+    from virgil.epochs import _blocks
+    from virgil.likelihood import whitened_residuals
+    from virgil.models import OrbitalBinary
+    from virgil.orbits import KeplerOrbit
+
+    b = result.best.best
+    orbit = KeplerOrbit(
+        b["period"], b["dt_peri"], b["ecc"], b["inc"], b["omega"], b["Omega"], b["a_mas"], t_ref=result.t_ref
+    )
+    model = OrbitalBinary(orbit, b["flux"])
+    out = {}
+    for d in loaded.data:
+        r = np.asarray(whitened_residuals(model, d))
+        for name, a, z, nu, _ in _blocks(d):
+            c, n = out.get(name, (0.0, 0))
+            out[name] = (c + float(np.sum(r[a:z] ** 2)), n + int(nu))
+    return {k: dict(chi2=c, n=n, chi2_per_n=c / n if n else None) for k, (c, n) in out.items()}
+
+
 def residual_stats(result, loaded):
     """Raw residuals of every epoch at the best orbit, whitened by the quoted errors, as trackb_fit.py sums them.
 
@@ -586,6 +632,9 @@ def run(name, args):
         print("note:", n)
     if args.dry_run:
         return
+    if args.closure_only:  # the old fit: closure phases alone
+        loaded.data = [d.select(observables="phi") for d in loaded.data]
+        loaded.grid_data = [d.select(observables="phi") for d in loaded.grid_data]
     errors = []
 
     def attempt(label, fn):
@@ -692,6 +741,13 @@ def run(name, args):
         if result.best.best
         else None
     )
+    blocks = attempt("block_chi2", lambda: block_chi2(result, loaded)) if result.best.best else None
+    if blocks is not None:
+        meta["chi2_raw_by_block"] = blocks
+        print(
+            "raw chi2/N by observable: "
+            + ", ".join(f"{k} {v['chi2_per_n']:.2f} (N={v['n']})" for k, v in blocks.items())
+        )
     if stats is not None:  # the independent chi2 check does not depend on any plot
         res, rms, chi2, n_ind = stats
         meta["rms_residual"] = rms
@@ -788,6 +844,12 @@ def main(argv=None):
         default=200,
         dest="max_steps",
         help="L-BFGS-B iterations per start",
+    )
+    ap.add_argument(
+        "--closure-only",
+        action="store_true",
+        dest="closure_only",
+        help="fit closure phases only (default: V2 and closure phases, per-epoch error scales for each)",
     )
     ap.add_argument("--ecc-max", type=float, default=0.9, dest="ecc_max")
     ap.add_argument(
