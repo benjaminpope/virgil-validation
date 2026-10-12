@@ -100,22 +100,53 @@ def test_points_match_our_chi2_and_penalty(sweep):
     assert rel_chi2 < 1e-8 and rel_red < 1e-8 and rel_pen < 1e-8
 
 
+def kkt(d, b, w, kappa, scale):
+    """Stationarity of χ² + κ w TSV on the simplex of pixel fluxes b.
+
+    The fitted log-brightness runs far along its softmax gauge (shifts of
+    1e7 or more) and the weakest pixels are driven to exactly zero flux, where
+    the gradient with respect to log-brightness vanishes identically. A
+    gradient in log-brightness is then zero for every loss and shows nothing,
+    so we differentiate in flux b instead and apply the Karush-Kuhn-Tucker
+    condition for Σ b = 1: on the pixels with b > 0 the gradient of the loss
+    is one common number λ. Returns the largest departure from λ, relative to
+    the gradient of χ² at the flat image, and the number of such pixels."""
+    g = gradient(lambda y: chi2_image(d, y) + kappa * w * tsv(y), b, h=1e-8)
+    live = b.ravel() > 1e-12
+    r = g[live] - np.mean(g[live])
+    return np.max(np.abs(r)) / scale, int(live.sum())
+
+
+def flux_scale(d):
+    flat = np.full((N, N), 1.0 / N**2)
+    return np.max(np.abs(gradient(lambda y: chi2_image(d, y), flat, h=1e-8)))
+
+
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])
 def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
-    """At each fitted image our gradients satisfy g_χ² + κ w g_TSV = 0 with
-    κ = 2 (to 1 %), and what is left over is below 1e-5 of the gradient
-    of χ² at the flat starting image."""
+    """At each fitted image the loss χ² + 2 w TSV is stationary on the
+    pixels with flux (KKT, see kkt): what is left is below 1e-5 of the
+    gradient of χ² at the flat image. Solving for κ in g_χ² + κ w g_TSV = λ
+    gives κ = 2 to 1 % at the two strongest weights. At the weaker weights
+    the penalty gradient is itself below that 1e-5 floor, so κ is not
+    determined there (it wanders from 2 to 3) and only the residual is
+    asserted."""
     lc, log_b, d = sweep
-    flat = np.zeros((N, N))
-    scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
-    worst_kappa, worst_left = 0.0, 0.0
-    for w, x in zip(np.asarray(lc.weights), log_b):
-        g_chi = gradient(lambda y: chi2_image(d, softmax(y)), x)
-        g_pen = w * gradient(lambda y: tsv(softmax(y)), x)
-        kappa = -(g_chi @ g_pen) / (g_pen @ g_pen)
-        left = np.max(np.abs(g_chi + 2.0 * g_pen)) / scale
-        worst_kappa, worst_left = max(worst_kappa, abs(kappa - 2.0)), max(worst_left, left)
-    record("max_abs_kappa_minus_2", worst_kappa)
+    scale = flux_scale(d)
+    worst_left, worst_kappa = 0.0, 0.0
+    for i, (w, x) in enumerate(zip(np.asarray(lc.weights), log_b)):
+        b = softmax(x)
+        left, n_live = kkt(d, b, w, 2.0, scale)
+        assert n_live > 10  # not a vacuous check
+        worst_left = max(worst_left, left)
+        if i < 2:
+            gc = gradient(lambda y: chi2_image(d, y), b, h=1e-8)
+            gp = w * gradient(tsv, b, h=1e-8)
+            live = b.ravel() > 1e-12
+            design = np.c_[gp[live], -np.ones(live.sum())]
+            kappa = np.linalg.lstsq(design, -gc[live], rcond=None)[0][0]
+            worst_kappa = max(worst_kappa, abs(kappa - 2.0))
+    record("max_abs_kappa_minus_2_strong_weights", worst_kappa)
     record("max_rel_gradient_left", worst_left)
     assert worst_kappa < 0.02
     assert worst_left < 1e-5
@@ -124,13 +155,15 @@ def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"], kind="control")
 def test_chi2_plus_once_the_penalty_is_not_stationary(sweep):
     """The other reading of "added to the loss", χ² + w TSV, leaves a
-    gradient ten times the tolerance above at the strongest weight."""
+    gradient on the pixels with flux at the strongest weight that is more
+    than 100 times what χ² + 2 w TSV leaves."""
     lc, log_b, d = sweep
-    flat = np.zeros((N, N))
-    scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
-    w, x = float(np.asarray(lc.weights)[0]), log_b[0]
-    g = gradient(lambda y: chi2_image(d, softmax(y)) + w * tsv(softmax(y)), x)
-    assert np.max(np.abs(g)) / scale > 1e-4
+    scale = flux_scale(d)
+    w, b = float(np.asarray(lc.weights)[0]), softmax(log_b[0])
+    once, _ = kkt(d, b, w, 1.0, scale)
+    twice, _ = kkt(d, b, w, 2.0, scale)
+    record("kkt_left_kappa1_over_kappa2", once / twice)
+    assert once > 3e-5 and once > 100 * twice
 
 
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])

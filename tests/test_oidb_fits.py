@@ -219,8 +219,9 @@ def _remove_vis2_baseline(path, pair):
 
 @pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")
 def test_triangles_with_a_baseline_in_no_vis2_row_are_dropped(of, tmp_path):
-    """A T3 row whose leg has no V^2 row (MIRC-X; AL Dor's PIONIER file) is dropped
-    and counted before virgil reads the file; the other triangles are kept."""
+    """A T3 row whose leg has no V^2 row (MIRC-X; AL Dor's PIONIER file): virgil keeps it,
+    placing the leg at the T3 coordinates and warning; our load() drops and counts such rows
+    before virgil reads the file, and keeps the other triangles."""
     path = _observe(tmp_path / "t3.fits", _binary(3.0, -4.0, 0.3))
     with fits.open(path) as h:
         sta = h["OI_VIS2"].data["STA_INDEX"]
@@ -229,8 +230,14 @@ def test_triangles_with_a_baseline_in_no_vis2_row_are_dropped(of, tmp_path):
     uses = np.array([len({*pair} & {*row}) == 2 for row in t3])
     assert uses.any() and not uses.all()
     _remove_vis2_baseline(path, pair)
-    with pytest.raises(ValueError, match="needs baseline"):
-        of.read_oifits(str(path))
+    # virgil >= 0.4 (#299, CHANGELOG) no longer raises: a leg in no V^2 row is placed at the
+    # OI_T3 row's own (u, v) as a flagged sample, with one UserWarning per file, and every
+    # closure phase is kept.
+    with pytest.warns(UserWarning, match="no visibility row"):
+        whole = of.read_oifits(str(path))
+    assert np.asarray(whole["phi"]).size == len(t3) * 3
+    # Our script still drops those rows before virgil reads the file (scripts/oidb_fit.py,
+    # whose comment that virgil "cannot place their legs yet" is out of date).
     of.LOAD_NOTES.clear()
     data = of.load([path])
     assert of.LOAD_NOTES == [dict(file="t3.fits", t3_rows=len(t3), t3_dropped=int(uses.sum()))]
