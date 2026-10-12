@@ -25,7 +25,7 @@ See the [plan](plan_imaging_contests.md) for the status of each dataset.
 
 ![2004 data1: virgil and truth](assets/contests/2004_data1.png)
 
-χ²/N 0.893 against the quoted errors (V² 0.92, closure phase 0.853); error scale 1.05; member m6 (star), 8/8 kept.
+χ²/N 0.893 against the quoted errors (V² 0.92, closure phase 0.853); error scale 1.05; member m6 (star), 8/8 kept. Paper figures: truth, Fig. 1 (left (source image, Data Set 1)); truth, Fig. 8 (upper right (Data 1 Model: Greyscale Plot)); winner BSMEM (Thorsteinsson & Young), Fig. 3 (left (Data Set 1)).
 
 ### 2004 data2
 
@@ -33,7 +33,7 @@ See the [plan](plan_imaging_contests.md) for the status of each dataset.
 
 ![2004 data2: virgil and truth](assets/contests/2004_data2.png)
 
-χ²/N 20.7 against the quoted errors (V² 30.6, closure phase 5.85); error scale 4.65; member m1 (no star), 4/8 kept. σ/peak 0.234 against the rebuilt truth (Lawson et al. 2004, Eq. 2; lower is better; published: BSMEM 0.116, WISARD 0.163, MIRA 0.532, VLBMEM 0.798).
+χ²/N 20.7 against the quoted errors (V² 30.6, closure phase 5.85); error scale 4.65; member m1 (no star), 4/8 kept. σ/peak 0.234 against the rebuilt truth (Lawson et al. 2004, Eq. 2; lower is better; published: BSMEM 0.116, WISARD 0.163, MIRA 0.532, VLBMEM 0.798). Paper figures: truth, Fig. 9 (upper right (Data 2 Model: Greyscale Plot)); winner BSMEM (Thorsteinsson & Young), Fig. 3 (right (Data Set 2)).
 
 Paper: [2004SPIE.5491..886L](https://ui.adsabs.harvard.edu/abs/2004SPIE.5491..886L/abstract); winner: BSMEM (Thorsteinsson & Young, Cambridge).
 
@@ -45,7 +45,7 @@ Paper: [2004SPIE.5491..886L](https://ui.adsabs.harvard.edu/abs/2004SPIE.5491..88
 
 ![2006 MIR0001: virgil and truth](assets/contests/2006_disk.png)
 
-χ²/N 0.899 against the quoted errors (V² 1.04, closure phase 0.508); error scale 1.07; member m0 (star), 8/8 kept.
+χ²/N 0.899 against the quoted errors (V² 1.04, closure phase 0.508); error scale 1.07; member m0 (star), 8/8 kept. Paper figures: truth, Fig. 1 (left (greyscale)); winner BSMEM (Baron & Young), Fig. 4 (single panel (contours over greyscale residuals)).
 
 Paper: [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1UL/abstract); winner: BSMEM (Baron & Young).
 
@@ -57,7 +57,7 @@ Paper: [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1
 
 ![2008 Alp_Vic J: virgil and truth](assets/contests/2008_agb_J.png)
 
-χ²/N 0.69 against the quoted errors (V² 0.87, closure phase 0.419); error scale 0.87; member m6 (star), 8/8 kept.
+χ²/N 0.69 against the quoted errors (V² 0.87, closure phase 0.419); error scale 0.87; member m6 (star), 8/8 kept. Paper figures: truth, Fig. 3 (left column (AGB model), J band); winner MiRA (Thiébaut), Fig. 8 (left column (AGB model), J band).
 
 ### 2008 Alp_Vic H
 
@@ -65,7 +65,7 @@ Paper: [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1
 
 ![2008 Alp_Vic H: virgil and truth](assets/contests/2008_agb_H.png)
 
-χ²/N 0.724 against the quoted errors (V² 0.844, closure phase 0.543); error scale 0.88; member m2 (star), 8/8 kept.
+χ²/N 0.724 against the quoted errors (V² 0.844, closure phase 0.543); error scale 0.88; member m2 (star), 8/8 kept. Paper figures: truth, Fig. 3 (left column (AGB model), H band); winner MiRA (Thiébaut), Fig. 8 (left column (AGB model), H band).
 
 ### 2008 Alp_Vic K
 
@@ -73,7 +73,7 @@ Paper: [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1
 
 ![2008 Alp_Vic K: virgil and truth](assets/contests/2008_agb_K.png)
 
-χ²/N 0.76 against the quoted errors (V² 0.948, closure phase 0.478); error scale 0.91; member m7 (no star), 8/8 kept.
+χ²/N 0.76 against the quoted errors (V² 0.948, closure phase 0.478); error scale 0.91; member m7 (no star), 8/8 kept. Paper figures: truth, Fig. 3 (left column (AGB model), K band); winner MiRA (Thiébaut), Fig. 8 (left column (AGB model), K band).
 
 ### 2008 Bet_Vic J
 
@@ -81,7 +81,7 @@ Paper: [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1
 
 ![2008 Bet_Vic J: virgil and truth](assets/contests/2008_agn_J.png)
 
-χ²/N 0.767 against the quoted errors (V² 0.884, closure phase 0.591); error scale 0.94; member m5 (no star), 8/8 kept.
+χ²/N 0.767 against the quoted errors (V² 0.884, closure phase 0.591); error scale 0.94; member m5 (no star), 8/8 kept. Paper figures: truth, Fig. 3 (right column (AGN model), J band); winner MiRA (Thiébaut), Fig. 8 (right column (AGN model), J band).
 
 ### 2008 Bet_Vic H
 
@@ -89,7 +89,7 @@ Paper: [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1
 
 ![2008 Bet_Vic H: virgil and truth](assets/contests/2008_agn_H.png)
 
-χ²/N 0.782 against the quoted errors (V² 0.942, closure phase 0.543); error scale 0.94; member m0 (star), 8/8 kept.
+χ²/N 0.782 against the quoted errors (V² 0.942, closure phase 0.543); error scale 0.94; member m0 (star), 8/8 kept. Paper figures: truth, Fig. 3 (right column (AGN model), H band); winner MiRA (Thiébaut), Fig. 8 (right column (AGN model), H band).
 
 ### 2008 Bet_Vic K
 
@@ -97,7 +97,7 @@ Paper: [2006SPIE.6268E..1UL](https://ui.adsabs.harvard.edu/abs/2006SPIE.6268E..1
 
 ![2008 Bet_Vic K: virgil and truth](assets/contests/2008_agn_K.png)
 
-χ²/N 0.775 against the quoted errors (V² 0.931, closure phase 0.541); error scale 0.95; member m4 (star), 8/8 kept.
+χ²/N 0.775 against the quoted errors (V² 0.931, closure phase 0.541); error scale 0.95; member m4 (star), 8/8 kept. Paper figures: truth, Fig. 3 (right column (AGN model), K band); winner MiRA (Thiébaut), Fig. 8 (right column (AGN model), K band).
 
 Paper: [2008SPIE.7013E..1NC](https://ui.adsabs.harvard.edu/abs/2008SPIE.7013E..1NC/abstract); winner: MiRA (Thiebaut).
 
@@ -149,13 +149,13 @@ Paper: [2012SPIE.8445E..1EB](https://ui.adsabs.harvard.edu/abs/2012SPIE.8445E..1
 
 <span class="cg-badge cg-not-imaged">not imaged</span> <span class="cg-badge cg-no-truth">no truth</span> red supergiant.
 
-Real data: compared with the published consensus image.
+Real data: compared with the published consensus image. Paper figures: winner BSMEM (Sanchez-Bermudez et al.), Fig. 5 (Sanchez/BSMEM, 1.61 um); winner BSMEM (Sanchez-Bermudez et al.), Fig. 5 (Sanchez/BSMEM, 1.67 um); winner BSMEM (Sanchez-Bermudez et al.), Fig. 5 (Sanchez/BSMEM, 1.73 um); entry median of entries, Fig. 8 (VY CMa median image, 1.61 um); entry median of entries, Fig. 8 (VY CMa median image, 1.67 um); entry median of entries, Fig. 8 (VY CMa median image, 1.73 um).
 
 ### 2014 R Car
 
 <span class="cg-badge cg-not-imaged">not imaged</span> <span class="cg-badge cg-no-truth">no truth</span> Mira.
 
-Real data; waits for a virgil reader fix.
+Real data; waits for a virgil reader fix. Paper figures: winner BSMEM (Sanchez-Bermudez et al.), Fig. 6 (Sanchez/BSMEM, 1.61 um); winner BSMEM (Sanchez-Bermudez et al.), Fig. 6 (Sanchez/BSMEM, 1.67 um); winner BSMEM (Sanchez-Bermudez et al.), Fig. 6 (Sanchez/BSMEM, 1.73 um); entry median of entries, Fig. 8 (R Car median image, 1.61 um); entry median of entries, Fig. 8 (R Car median image, 1.67 um); entry median of entries, Fig. 8 (R Car median image, 1.73 um).
 
 Paper: [2014SPIE.9146E..1QM](https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1QM/abstract); winner: Joel Sanchez-Bermudez (BSMEM; IAA-CSIC).
 
@@ -165,9 +165,13 @@ Paper: [2014SPIE.9146E..1QM](https://ui.adsabs.harvard.edu/abs/2014SPIE.9146E..1
 
 <span class="cg-badge cg-not-imaged">not imaged</span> <span class="cg-badge cg-no-truth">no truth</span> chromatic object with an OI_FLUX spectrum.
 
+Paper figures: truth, Fig. 1 (left (Object 1, wavelength-averaged)); winner IRBis (Hofmann, Heininger, Schertl & Weigelt, MPIfR), Fig. 7 (top row, middle (Hofmann)).
+
 ### 2016 Object2 (MATISSE N)
 
 <span class="cg-badge cg-not-imaged">not imaged</span> <span class="cg-badge cg-no-truth">no truth</span> protoplanetary disk with one gap.
+
+Paper figures: truth, Fig. 2 (left (Object 2, wavelength-averaged)); winner IRBis (Hofmann, Heininger, Schertl & Weigelt, MPIfR), Fig. 9 (top row, right (Hofmann)).
 
 Paper: [2016SPIE.9907E..1DS](https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1DS/abstract); winner: Karl-Heinz Hofmann and the MPIfR group (probably IRBis).
 
@@ -179,7 +183,7 @@ Paper: [2016SPIE.9907E..1DS](https://ui.adsabs.harvard.edu/abs/2016SPIE.9907E..1
 
 ![2018 star, disk and planet: virgil and truth](assets/contests/2018_disk.png)
 
-χ²/N 1.13 against the quoted errors (V² 1.52, closure phase 0.639); error scale 1.11; member m2 (star), 8/8 kept. The published truth omits the ring radii, so only the planet (circle) and the disk's major-axis PA 44.2° (dashed) are drawn on our image.
+χ²/N 1.13 against the quoted errors (V² 1.52, closure phase 0.639); error scale 1.11; member m2 (star), 8/8 kept. The published truth omits the ring radii, so only the planet (circle) and the disk's major-axis PA 44.2° (dashed) are drawn on our image. Paper figures: truth, Fig. 1 (centre, large upper right (synthetic image)); winner SQUEEZE then BSMEM (Sanchez-Bermudez, Alberdi & Schödel), Fig. 2 (third panel); entry BSMEM (Young), Fig. 2 (fourth panel); entry MiRA + SPARCO (Kluska), Fig. 2 (first panel).
 
 Paper: [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1UM/abstract); winner: Sanchez-Bermudez, Alberdi & Schodel (SQUEEZE, then BSMEM).
 
@@ -191,7 +195,7 @@ Paper: [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1
 
 ![2022 Obj1 (GRAVITY K): virgil and truth](assets/contests/2022_gravity.png)
 
-χ²/N 1.14 against the quoted errors (V² 1.12, closure phase 1.18); error scale 1.13; member m6 (star), 2/8 kept.
+χ²/N 1.14 against the quoted errors (V² 1.12, closure phase 1.18); error scale 1.13; member m6 (star), 2/8 kept. Paper figures: truth, Fig. 1 (left (Object 1 model)); winner BSMEM (John Young), Fig. 5 (first column, top row (Object No. 1)).
 
 ### 2022 Obj2 (NIRISS AMI)
 
@@ -199,7 +203,7 @@ Paper: [2018SPIE10701E..1UM](https://ui.adsabs.harvard.edu/abs/2018SPIE10701E..1
 
 ![2022 Obj2 (NIRISS AMI): virgil and truth](assets/contests/2022_ami.png)
 
-χ²/N 0.106 against the quoted errors (V² 0.179, closure phase 0.00475); error scale 1.05; member m7 (no star), 5/8 kept.
+χ²/N 0.106 against the quoted errors (V² 0.179, closure phase 0.00475); error scale 1.05; member m7 (no star), 5/8 kept. Paper figures: truth, Fig. 3 (left (Object 2 model)); winner BSMEM (John Young), Fig. 5 (first column, bottom row (Object No. 2)).
 
 Paper: [2022SPIE12183E..1GS](https://ui.adsabs.harvard.edu/abs/2022SPIE12183E..1GS/abstract); winner: John Young (BSMEM); honourable mention Jacques Kluska.
 

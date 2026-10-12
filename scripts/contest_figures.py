@@ -38,6 +38,7 @@ THUMB_DPI = 72
 CAPTION = re.compile(r"^\s*(Fig\.|Figure)\s*(\d+)[.:]?", re.I)
 WHITE = 245  # a gutter pixel is at least this bright in every channel
 GUTTER = 0.995  # fraction of a row/column that must be white to be a gutter
+MIN_SIZE = 10  # points: smaller "figures" are rules or underlines
 MIN_PANEL = 0.08  # panels narrower than this fraction of the figure are merged
 
 
@@ -79,7 +80,8 @@ def page_figures(page):
         top_of_caption = cap[1]
         # The figure starts below the lowest wide text block above its caption
         # (body text or the previous caption); narrow blocks are axis labels.
-        wide = [b[3] for b in blocks if b[3] <= top_of_caption and (b[2] - b[0]) > 0.5 * page.rect.width]
+        wide = [b[3] for b in blocks if b[3] <= top_of_caption
+                and ((b[2] - b[0]) > 0.5 * page.rect.width or CAPTION.match(b[4]))]
         ceiling = max([0.0] + wide)
         inside = lambda r: r.y0 >= ceiling - 1 and r.y1 <= top_of_caption + 1  # noqa: E731
         ims = [im for im in images if inside(im["rect"])]
@@ -90,6 +92,9 @@ def page_figures(page):
             continue
         near = _union(rects) + (-20, -20, 20, 20)
         bbox = _union(rects + [r for r in labels if r.intersects(near)])
+        bbox &= page.rect
+        if min(bbox.width, bbox.height) < MIN_SIZE:
+            continue  # a rule or underline, not a figure
         number = int(CAPTION.match(cap[4]).group(2))
         figures.append({
             "figure": f"Fig. {number}",
@@ -205,16 +210,19 @@ def split(pdf, data, figure):
 
 
 def crop_panel(doc, panel):
-    """The panel's pixels: from the one embedded image that contains it, at
-    native resolution, else rendered at DPI. Returns (array, source)."""
+    """The panel's pixels: from the one upright embedded image that contains
+    it, at native resolution, else rendered at DPI. Returns (array, source)."""
     import pymupdf
 
     page = doc[panel["page"] - 1]
     bbox = pymupdf.Rect(panel["bbox"])
     for info in page.get_images(full=True):
         xref = info[0]
-        for rect in page.get_image_rects(xref):
-            if bbox in rect + (-1, -1, 1, 1):
+        for rect, matrix in page.get_image_rects(xref, transform=True):
+            # Native pixels only from an image drawn upright and unflipped;
+            # a rotated or mirrored placement is rendered as printed.
+            upright = abs(matrix.b) < 1e-6 and abs(matrix.c) < 1e-6 and matrix.a > 0 and matrix.d > 0
+            if upright and bbox in rect + (-1, -1, 1, 1):
                 pix = pymupdf.Pixmap(doc, xref)
                 if pix.alpha or pix.n > 3:
                     pix = pymupdf.Pixmap(pymupdf.csRGB, pix)

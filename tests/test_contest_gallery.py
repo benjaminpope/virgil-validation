@@ -79,6 +79,9 @@ def _synthetic_pdf(path):
     page.insert_textbox(pymupdf.Rect(72, 60, 540, 120), "Body text of the paper, wide enough to bound the figure from above. " * 3, fontsize=9)
     page.insert_image(pymupdf.Rect(156, 140, 456, 340), stream=buf.getvalue())  # 300 x 200 pt
     page.insert_textbox(pymupdf.Rect(72, 350, 540, 380), "Figure 3. Four panels: truth, winner and two entries.", fontsize=9)
+    # A horizontal rule above a caption-like line: not a figure.
+    page.draw_line(pymupdf.Point(72, 420), pymupdf.Point(540, 420))
+    page.insert_textbox(pymupdf.Rect(72, 430, 540, 460), "Figure 4. A table caption under a rule.", fontsize=9)
     doc.save(path)
     return grid
 
@@ -104,6 +107,11 @@ def test_figure_inventory_split_and_native_crop(tmp_path):
     array, source = figures.crop_panel(doc, {"page": 1, "bbox": bbox})
     assert "native" in source and array.shape == (160, 260, 3)
     assert np.all(array == grid[20:180, 320:580])  # lossless
+    # A rotated placement is rendered as printed, never cut from the bitmap.
+    page = doc[0]
+    page.insert_image(pymupdf.Rect(156, 480, 356, 780), stream=page.parent.extract_image(fig["images"][0]["xref"])["image"], rotate=90)
+    array, source = figures.crop_panel(doc, {"page": 1, "bbox": [160, 490, 350, 770]})
+    assert "rendered" in source
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
