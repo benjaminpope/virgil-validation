@@ -307,11 +307,19 @@ def test_f14_total_mass_is_keplers_third_law_without_orbitize(elements):
 @pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["mathematics"])
 def test_f15_thiele_innes_node_at_180_is_in_the_documented_range_without_orbitize(omega):
     """to_kepler documents 0 <= Omega < 180: a node at 180 degrees, whose Thiele-Innes constants carry
-    sin(180 deg) ~ 1e-16, must come back as 0 (omega shifted by 180). Only the range is pinned: the round trip does not return the
-    sky orbit (one sky component comes back negated at the pin), which is a separate question."""
+    sin(180 deg) ~ 1e-16, must come back as 0 (omega shifted by 180). The round trip keeps the sky
+    orbit (dra, ddec) against the textbook construction (crosscheck.orbits); only dz, the line of
+    sight, is reversed, as to_kepler documents for the (Omega + 180, omega + 180) twin. (A report of
+    a negated sky component was this dz, or float32 noise; see thiele.md.)"""
+    t = 59000.0 + np.linspace(0.0, 900.0, 7)
     orbit = vo.KeplerOrbit(1000.0, 0.0, 0.3, 60.0, omega, 180.0, 100.0, t_ref=59000.0)
     back = orbit.to_thiele_innes().to_kepler()
     assert 0.0 <= float(back.Omega) < 180.0
+    want_ra, want_dec = co.position(t - 59000.0, 1000.0, 0.0, 0.3, 60.0, omega, 180.0, 100.0)
+    ra, dec, dz = (np.asarray(x) for x in back.relative(t))
+    assert np.allclose(ra, want_ra, atol=1e-8) and np.allclose(dec, want_dec, atol=1e-8)
+    dz0 = np.asarray(orbit.relative(t)[2])
+    assert np.allclose(dz, -dz0, atol=1e-8)  # the documented twin
 
 
 @pytest.mark.parametrize("inc", [0.001, 0.01, 179.99])
