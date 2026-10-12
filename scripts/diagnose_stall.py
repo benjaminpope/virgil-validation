@@ -128,6 +128,14 @@ def run(case, data_dir, out_dir, smoke=False):
         for eps in (1e-3, 1e-5):
             fd = float((loss(x + eps * d) - loss(x - eps * d)) / (2 * eps))
             lines.append(f"direction {i} eps={eps:g}: AD {ad:.8g}  FD {fd:.8g}  rel.diff {abs(ad - fd) / max(abs(fd), 1e-300):.2e}")
+    # A model visibility near zero makes every closure phase through that
+    # baseline jump (ledger F20): a loss with AD != FD, FD ~ 1/eps, is the
+    # signature, and the smallest model visibility observable (V² or |V|)
+    # at the stall says whether that is the cause.
+    for k, d in enumerate(s["data"] if isinstance(s["data"], list) else [s["data"]]):
+        observable = np.asarray(d.model(last.model))[: np.asarray(d.vis).size]
+        lines.append(f"dataset {k}: smallest model visibility observable {observable.min():.3g} "
+                     f"({np.mean(np.abs(observable) < 1e-6):.3g} of {observable.size} below 1e-6)")
     gdir = -g.reshape(x.shape) / np.linalg.norm(g)
     l0 = float(loss(x))
     scan = [(t, float(loss(x + t * gdir)) - l0) for t in np.logspace(-8, 1, 10)]
