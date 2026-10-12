@@ -36,6 +36,19 @@ says why ``companion_search`` itself is not used). It is then fitted jointly wit
 position uniform within a beam of the search's peak, flux ratio log-uniform
 (``FLUX_FLOOR`` to 1).
 
+**The V² scale.** The contest allowed calibration errors, and data2's V² are
+about 15% above any normalized model: a free multiplicative ``v2_scale``
+(log-uniform on [0.5, 2], Jeffreys; closure phases are unaffected) takes
+χ²/N from about 29 to about 1.1 for a one-spot star, with every other
+parameter at its physical value (``V2Scaled``). Without it the fit trades
+the mismatch against the outline and the map (the first full run: spots
+χ²/N 27-29, and a map that carved a 3.4 mas circle). A data-driven nuisance,
+not a use of the truth. Spot ``level`` pinned at its upper bound is a
+degeneracy, not a limit of the parametrization: the spot (about 0.4 mas
+across) is far smaller than the beam (about 1.9 mas), so only its excess
+flux, about (level - 1) x size², is measured. ``on_bounds`` lists any
+parameter that ends on a prior bound.
+
 **Maps.** Three configurations:
 
 - ``spots1``, ``spots2``: one or two jaxoplanet ``ylm_spot`` spots (degree
@@ -49,7 +62,7 @@ position uniform within a beam of the search's peak, flux ratio log-uniform
   expansion, so there size and level are degenerate. Latitude
   ``virgil.priors.IsotropicLatitude`` (-pi/2, pi/2), longitude uniform over
   the visible hemisphere (-pi/2, pi/2).
-- ``map``: every l >= 1 coefficient up to ``--ydeg`` (default 6), with a
+- ``map``: every l >= 1 coefficient up to ``--ydeg`` (default 4), with a
   Gaussian prior of variance C_l = sigma² (1 + l)^-2, falling with degree.
   sigma is chosen by an outer scan over a log-uniform grid (``SIGMAS``),
   keeping the one of largest Laplace evidence,
@@ -60,14 +73,19 @@ position uniform within a beam of the search's peak, flux ratio log-uniform
   point: the fixed point assumes a linear model, and the map's evidence
   can have several local maxima once a spot is resolved; on a log-uniform
   hyperprior (Jeffreys, sigma is a scale) the grid's maximum is the MAP
-  sigma. A maximum on the edge of the grid is reported.
+  sigma. A maximum on the edge of the grid is reported. The map's outline
+  (radius, limb darkening, ratio, pa) is *frozen* at a stage 1, a one-spot
+  star at ``STAGE1_YDEG``: a free map is degenerate with the outline (it can
+  darken the rim of a larger, rounder disk), and the first run's map ended
+  with ratio = 1 on its bound, 25% too large a radius and u = 0. The
+  companion and ``v2_scale`` stay free; each fit may take ``MAP_MAX_STEPS``.
 
 All priors are bounded, log-uniform for scales and fluxes and uniform for
 positions and angles (Ben's Jeffreys-prior rule).
 
 **Starts.** The radius starts from a uniform-disk χ² scan, as in virgil's
 harmonix tutorial; each configuration is started from several position
-angles (0°, 60°, 120°, ratio 0.8) and spot positions (latitudes ±0.5,
+angles (15°, 75°, 135°, ratio 0.8, V² scales 0.9, 1.1, 1.3) and spot positions (latitudes ±0.5,
 longitudes ±0.6 rad, bright and dark), and the best χ² is kept.
 
 **Outputs** (``--out``), per configuration, ``2004_data2_harmonix_<config>``:
@@ -80,8 +98,9 @@ longitudes ±0.6 rad, bright and dark), and the best χ² is kept.
   parameters, as virgil.imaging.error_scale; 1 for flat priors on
   measured parameters), the parameter values (``param_<name>``), every
   start's χ² and convergence (``start_chi2``, ``start_steps``,
-  ``start_grad_norm``), and for ``map`` the σ scan (``sigmas``,
-  ``log_evidence``);
+  ``start_grad_norm``), the parameters on a prior bound (``on_bounds``), and
+  for ``map`` the σ scan (``sigmas``, ``log_evidence``) and stage 1's χ²
+  (``stage1_chi2``);
 - ``.txt``: the summary printed at the end.
 
 Score with ``python scripts/score_2004.py OUT/2004_data2_harmonix_<config>.npz``.
@@ -129,9 +148,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from contest_images import COMPANION_SNR, FLUX_FLOOR, fit_primary  # noqa: E402
 
 CONFIGS = ("spots1", "spots2", "map")
-DEFAULT_YDEG = {"spots1": 12, "spots2": 12, "map": 6}
+DEFAULT_YDEG = {"spots1": 12, "spots2": 12, "map": 4}
+STAGE1_YDEG = 6  # the one-spot fit that sets the map's outline
 START_PAS = (15.0, 75.0, 135.0)  # degrees, away from the prior's bounds (a start on a bound is stuck)
 START_RATIO = 0.8
+START_SCALES = (0.9, 1.1, 1.3)  # V² scale starts, one per position angle: they bracket 1, not tuned
 START_U = 0.5
 SPOT_POSITIONS = tuple(itertools.product((0.5, -0.5), (0.6, -0.6)))  # (lat, lon) radians
 SPOT_LEVELS = (3.0, 0.3)  # bright and dark starts
@@ -139,6 +160,10 @@ SPOT_SIZE0 = 0.3  # radians
 LEVEL_RANGE = (1.0 / 20.0, 20.0)
 SIZE_RANGE = (0.05, 1.2)
 SIGMAS = np.geomspace(0.01, 10.0, 9)
+SCALE_RANGE = (0.5, 2.0)  # the V² normalization nuisance (a scale, Jeffreys)
+MAP_MAX_STEPS = 5000  # the map's fits did not converge in the optimiser's default 1000
+OUTLINE = ("radius", "u", "ratio", "pa")  # frozen in the map stage
+BOUND_TOL = 0.01  # a parameter this close (of its prior's range, in its flat coordinate) to a bound is reported
 SCORE_PIXEL = 0.08  # mas, scripts/score_2004.PIXEL
 SCORE_NPIX = 321  # 25.7 mas across: the companion at 10 mas is inside
 
@@ -148,6 +173,26 @@ def require_harmonix():
         raise ImportError(
             f"harmonix is not importable ({_HARMONIX_ERROR}); install it with pip install 'harmonix>=0.1.0'"
         )
+
+
+class V2Scaled(vm.SourceModel):
+    """``inner`` with every squared visibility multiplied by ``scale``: the
+    complex visibility is multiplied by sqrt(scale), so closure phases are
+    unchanged. A calibration nuisance (the contest allowed calibration
+    errors): the data's V² need not reach 1 at zero baseline."""
+
+    inner: vm.SourceModel
+    scale: jax.Array
+
+    def __init__(self, inner, scale=1.0):
+        self.inner = inner
+        self.scale = jnp.asarray(scale, dtype=float)
+
+    def model(self, u, v, wavel):
+        return jnp.sqrt(self.scale) * self.inner.model(u, v, wavel)
+
+    def render(self, npix=256, fov_mas=200.0):
+        return self.inner.render(npix, fov_mas)
 
 
 class EllipticalHarmonix(vm.HarmonixModel):
@@ -230,26 +275,42 @@ def chi2_of(model, data):
     return float(jnp.sum(r**2)), int(data.n_independent)
 
 
-def uniform_disk_radius(data, low, high, n=300):
-    """Radius (mas) of the best uniform disk on a log grid, as in virgil's
-    harmonix tutorial (a starting value only)."""
+def uniform_disk_fit(data, low, high, n=300):
+    """Radius (mas) and V² scale of the best uniform disk on a log grid, as
+    in virgil's harmonix tutorial (starting values only). The V² residuals
+    are linear in the scale, so at each diameter the best scale (clipped to
+    ``SCALE_RANGE``) comes from residuals at two values of it."""
     diams = np.geomspace(low, high, n)
-    chi2 = jax.jit(lambda d: jnp.sum(whitened_residuals(vm.UniformDisk(d), data) ** 2))
-    values = np.array([float(chi2(d)) for d in diams])
-    return 0.5 * float(diams[np.argmin(values)])
+
+    @jax.jit
+    def best_scale(d):
+        r1 = whitened_residuals(V2Scaled(vm.UniformDisk(d), 1.0), data)
+        slope = whitened_residuals(V2Scaled(vm.UniformDisk(d), 2.0), data) - r1
+        s = jnp.clip(1.0 - jnp.sum(r1 * slope) / jnp.sum(slope**2), *SCALE_RANGE)
+        return s, jnp.sum((r1 + (s - 1.0) * slope) ** 2)
+
+    fits = [best_scale(d) for d in diams]
+    chi2 = np.array([float(c) for _, c in fits])
+    i = int(np.argmin(chi2))
+    return 0.5 * float(diams[i]), float(fits[i][0])
 
 
 class Scene:
     """The star (with ``n_spots`` spots, or a free map) and, if found, a
-    point companion; ``__call__(**params)`` builds the virgil model."""
+    point companion, all behind a V² scale (``V2Scaled``);
+    ``__call__(**params)`` builds the virgil model. ``fixed`` holds
+    parameters that are not fitted (the map stage's outline, or the map's
+    coefficients for an unspotted star)."""
 
-    def __init__(self, config, ydeg, companion):
+    def __init__(self, config, ydeg, companion, fixed=None):
         self.config, self.ydeg, self.companion = config, ydeg, companion
+        self.fixed = dict(fixed or {})
         self.template = template_star(ydeg)
         self.n_spots = {"spots1": 1, "spots2": 2}.get(config, 0)
         self.spot_fn = ylm_spot(ydeg) if self.n_spots else None
 
-    def __call__(self, **p):
+    def __call__(self, **params):
+        p = self.fixed | params
         if self.n_spots:
             spots = [(p[f"spot{i}_level"], p[f"spot{i}_size"], p[f"spot{i}_lat"], p[f"spot{i}_lon"])
                      for i in range(self.n_spots)]
@@ -257,14 +318,15 @@ class Scene:
         else:
             data = p["data"]
         star = star_from(self.template, p["radius"], p["u"], p["ratio"], p["pa"], data)
-        if not self.companion:
-            return star
-        return vm.System(star=star, comp=vm.PointSource(p["comp_flux"], dra=p["comp_dra"], ddec=p["comp_ddec"]))
+        if self.companion:
+            star = vm.System(star=star, comp=vm.PointSource(p["comp_flux"], dra=p["comp_dra"], ddec=p["comp_ddec"]))
+        return V2Scaled(star, p["v2_scale"])
 
 
 def base_priors(radius_range, companion, beam_mas):
     priors = {"radius": dist.LogUniform(*radius_range), "u": dist.Uniform(0.0, 1.0),
-              "ratio": dist.Uniform(0.2, 1.0), "pa": dist.Uniform(0.0, 180.0)}
+              "ratio": dist.Uniform(0.2, 1.0), "pa": dist.Uniform(0.0, 180.0),
+              "v2_scale": dist.LogUniform(*SCALE_RANGE)}
     if companion:
         dra, ddec = companion["dra"], companion["ddec"]
         priors |= {"comp_dra": dist.Uniform(dra - beam_mas, dra + beam_mas),
@@ -284,8 +346,8 @@ def spot_priors(n_spots):
 
 def base_starts(radius0, companion):
     starts = []
-    for pa in START_PAS:
-        s = {"radius": radius0, "u": START_U, "ratio": START_RATIO, "pa": pa}
+    for pa, scale0 in zip(START_PAS, START_SCALES):
+        s = {"radius": radius0, "u": START_U, "ratio": START_RATIO, "pa": pa, "v2_scale": scale0}
         if companion:
             s |= {"comp_dra": companion["dra"], "comp_ddec": companion["ddec"],
                   "comp_flux": float(np.clip(companion["flux"], 2 * FLUX_FLOOR, 0.5))}
@@ -423,6 +485,24 @@ def find_companion(data):
     return companion, resolution, field, peak
 
 
+def on_bounds(values, priors, tol=BOUND_TOL):
+    """Names of scalar parameters within ``tol`` of a bound of their prior's
+    range (a log-uniform prior's in log, a uniform one's in the parameter): a
+    fit that ends on a bound is limited by the prior or by a degeneracy, not
+    by the data, and its value is not a measurement."""
+    out = []
+    for name, value in values.items():
+        prior = priors.get(name)
+        if prior is None or np.ndim(value) or not hasattr(prior, "low"):
+            continue
+        low, high, x = float(prior.low), float(prior.high), float(value)
+        if isinstance(prior, dist.LogUniform):
+            low, high, x = np.log(low), np.log(high), np.log(x)
+        if min(x - low, high - x) <= tol * (high - low):
+            out.append(name)
+    return out
+
+
 def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
     from virgil.oidata import OIData
 
@@ -438,15 +518,15 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
 
     companion, resolution, field, peak = find_companion(data)
     radius_range = (0.025 * resolution.minor_mas, 0.25 * field)
-    radius0 = uniform_disk_radius(data, 2 * radius_range[0], 2 * radius_range[1])
+    radius0, scale0 = uniform_disk_fit(data, 2 * radius_range[0], 2 * radius_range[1])
     radius0 = float(np.clip(radius0, 1.05 * radius_range[0], 0.95 * radius_range[1]))
     print(f"{label}: ydeg={ydeg} beam {resolution.major_mas:.2f}x{resolution.minor_mas:.2f} mas, field {field:.1f} mas, "
-          f"uniform-disk radius {radius0:.3f} mas, companion {companion}", flush=True)
+          f"uniform-disk radius {radius0:.3f} mas, V² scale {scale0:.3f}, companion {companion}", flush=True)
 
-    scene = Scene(config, ydeg, companion)
     priors = base_priors(radius_range, companion, resolution.major_mas)
-    extra = {}
-    if scene.n_spots:
+    extra, frozen = {}, {}
+    if config != "map":
+        scene = Scene(config, ydeg, companion)
         priors |= spot_priors(scene.n_spots)
         starts = [b | s for b in base_starts(radius0, companion) for s in spot_starts(scene.n_spots)]
         if smoke:
@@ -456,21 +536,34 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
         records, best = run_starts(scene, priors, data, starts, max_steps)
         precision = {k: np.zeros(np.shape(v)) for k, v in best["values"].items()}
     else:
-        sigmas = SIGMAS[[2, 6]] if smoke else SIGMAS
+        # Stage 1: a one-spot star fixes the outline (radius, limb darkening,
+        # ellipse). A free map can carve any outline out of a larger disk (the
+        # first run's circle of radius 3.4 mas), so the outline is not left to it.
+        print(" stage 1: one spot, outline", flush=True)
+        stage1 = Scene("spots1", min(ydeg, STAGE1_YDEG) if smoke else STAGE1_YDEG, companion)
+        priors1 = priors | spot_priors(1)
+        starts1 = [b | s for b in base_starts(radius0, companion) for s in spot_starts(1)]
+        if smoke:
+            starts1 = starts1[:1]
+        records1, best1 = run_starts(stage1, priors1, data, starts1, max_steps)
+        frozen = {k: best1["values"][k] for k in OUTLINE}
+        stage1_chi2 = best1["chi2"]
+        scene = Scene("map", ydeg, companion, fixed=frozen)
+        priors = {k: v for k, v in priors.items() if k not in frozen}
+        free_start = {k: best1["values"][k] for k in priors}
         ncoef = (ydeg + 1) ** 2 - 1
+        sigmas = SIGMAS[[2, 6]] if smoke else SIGMAS
         records, scan, warm = [], [], None
         for sigma in sigmas:
             scales = map_prior_scales(ydeg, sigma)
             p = priors | {"data": dist.Normal(jnp.zeros(ncoef), jnp.asarray(scales))}
-            starts = [b | {"data": np.zeros(ncoef)} for b in base_starts(radius0, companion)]
+            starts = [free_start | {"data": np.zeros(ncoef)}]
             if warm is not None:
                 starts = [warm] + starts
-            if smoke:
-                starts = starts[:1]
             if max_starts:
                 starts = starts[:max_starts]
             print(f" sigma={sigma:.3g}", flush=True)
-            recs, best_s = run_starts(scene, p, data, starts, max_steps)
+            recs, best_s = run_starts(scene, p, data, starts, max_steps or MAP_MAX_STEPS)
             log_z = map_log_evidence(scene, data, best_s["values"], scales)
             print(f" sigma={sigma:.3g}: best χ²/N={best_s['chi2'] / best_s['n']:.3f} log Z={log_z:.2f}", flush=True)
             for r in recs:
@@ -482,10 +575,11 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
         sigma, _, best = scan[i_best]
         edge = i_best in (0, len(scan) - 1)
         extra = {"sigmas": np.array([s[0] for s in scan]), "log_evidence": np.array([s[1] for s in scan]),
-                 "sigma": sigma, "sigma_on_edge": edge,
+                 "sigma": sigma, "sigma_on_edge": edge, "stage1_chi2": stage1_chi2, "stage1_ydeg": stage1.ydeg,
                  "scan_chi2": np.array([s[2]["chi2"] for s in scan])}
         scales = map_prior_scales(ydeg, sigma)
         precision = {k: np.zeros(np.shape(v)) for k, v in best["values"].items()} | {"data": 1.0 / scales**2}
+        priors = priors | {"data": dist.Normal(jnp.zeros(ncoef), jnp.asarray(scales))}
 
     values = best["values"]
     residuals, theta, _ = residual_function(scene, data, values)
@@ -497,9 +591,10 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
     model = scene(**values)
     fov = SCORE_NPIX * SCORE_PIXEL
     image = np.asarray(model.render(SCORE_NPIX, fov))
-    star = model.star if companion else model
+    star = model.inner.star if companion else model.inner
     star_image = np.asarray(star.render(SCORE_NPIX, fov))
     chi2, n = best["chi2"], best["n"]
+    pinned = on_bounds(values, priors)
     out = dict(config=config, ydeg=ydeg, smoke=smoke, ref_image=image, ref_fov=fov, image=image, fov=fov,
                star_image=star_image, chi2=chi2, n_data=n, chi2_red=chi2 / n, error_scale=scale, gamma=gamma,
                companion_found=companion is not None, companion_peak=np.array([peak[k] for k in ("dra", "ddec", "flux", "snr")]),
@@ -507,8 +602,9 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
                start_grad_norm=np.array([r["grad_norm"] for r in records]),
                start_converged=np.array([r["converged"] for r in records]),
                best_steps=best["steps"], best_grad_norm=best["grad_norm"], best_converged=best["converged"],
+               on_bounds=np.array(pinned, dtype=str), uniform_disk_scale=scale0,
                elapsed=time.time() - t0, **extra)
-    out |= {f"param_{k}": np.asarray(v) for k, v in values.items()}
+    out |= {f"param_{k}": np.asarray(v) for k, v in (frozen | values).items()}
     np.savez(out_dir / f"{label}.npz", **out)
 
     lines = [f"{label}: {len(records)} fits, ydeg={ydeg}{' (smoke)' if smoke else ''}, {out['elapsed']:.0f} s",
@@ -516,12 +612,14 @@ def run(config, data_path, out_dir, ydeg=None, smoke=False, max_starts=None):
              f"MacKay error scale s={scale:.3f} (gamma={gamma:.1f} effective parameters)",
              f"best start: steps={best['steps']} grad_norm={best['grad_norm']:.2e} converged={best['converged']}; "
              f"start chi2/N: {np.array2string(out['start_chi2'] / n, precision=2, max_line_width=200)}"]
-    for k, v in values.items():
+    for k, v in (frozen | values).items():
         if k == "data":
             lines.append(f"  data: {v.size} coefficients, rms {float(np.sqrt(np.mean(v**2))):.3g}")
         else:
-            lines.append(f"  {k:12s} {float(v):.4g}")
+            lines.append(f"  {k:12s} {float(v):.4g}{' (frozen from stage 1)' if k in frozen else ''}")
+    lines.append("on a prior bound (degenerate or prior-limited, not measured): " + (", ".join(pinned) or "none"))
     if extra:
+        lines.append(f"stage 1 (one spot, ydeg {extra['stage1_ydeg']}): chi2/N = {extra['stage1_chi2'] / n:.3f}")
         lines.append("sigma scan (sigma, log Z, chi2/N): " + ", ".join(
             f"({s:.3g}, {z:.1f}, {c / n:.2f})" for s, z, c in zip(extra["sigmas"], extra["log_evidence"], extra["scan_chi2"])))
         lines.append(f"chosen sigma={extra['sigma']:.3g}" + (" (on the grid's edge)" if extra["sigma_on_edge"] else ""))
@@ -538,7 +636,7 @@ def parse_args(argv=None):
     parser.add_argument("--out", default="spotted_star_harmonix")
     parser.add_argument("--config", choices=CONFIGS, required=True)
     parser.add_argument("--ydeg", type=int, default=None,
-                        help="maximum degree (default 12 for spots, 6 for map)")
+                        help="maximum degree (default 12 for spots, 4 for map)")
     parser.add_argument("--max-starts", type=int, default=None, help="use only the first N starts (per sigma for map)")
     parser.add_argument("--smoke", action="store_true", help="ydeg <= 3, one start, three steps: check that it runs")
     args = parser.parse_args(argv)

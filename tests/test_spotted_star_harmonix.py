@@ -104,7 +104,7 @@ def test_simulated_spotted_star_prefers_its_truth():
     companion = {"dra": 6.0, "ddec": 1.0, "flux": 0.1}
     scene = ssh.Scene("spots1", 3, companion)
     truth = dict(radius=2.6, u=0.5, ratio=0.7, pa=120.0, comp_dra=6.0, comp_ddec=1.0, comp_flux=0.1,
-                 spot0_level=4.0, spot0_size=0.5, spot0_lat=-0.6, spot0_lon=0.4)
+                 spot0_level=4.0, spot0_size=0.5, spot0_lat=-0.6, spot0_lon=0.4, v2_scale=1.0)
     data = OIData(str(DATA2)).with_model(scene(**truth), key=jax.random.PRNGKey(0))
     chi2_truth, n = ssh.chi2_of(scene(**truth), data)
     assert chi2_truth / n < 2.0
@@ -119,10 +119,64 @@ def test_command_line():
     assert (args.config, args.ydeg, args.smoke, args.out) == ("map", 4, True, "x")
     args = ssh.parse_args(["--config", "spots2"])
     assert args.ydeg is None and not args.smoke and args.data.endswith("2004-data2.fits")
-    assert ssh.DEFAULT_YDEG["spots2"] == 12 and ssh.DEFAULT_YDEG["map"] == 6
+    assert ssh.DEFAULT_YDEG["spots2"] == 12 and ssh.DEFAULT_YDEG["map"] == 4
     with pytest.raises(SystemExit):
         ssh.parse_args(["--config", "spots3"])
     with pytest.raises(SystemExit):
         ssh.parse_args(["--config", "map", "--ydeg", "0"])
     # The prior on the map's coefficients falls as C_l = σ² (1 + l)^-2.
     np.testing.assert_allclose(ssh.map_prior_scales(2, 1.0), [1 / 2] * 3 + [1 / 3] * 5)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
+def test_v2_scale_multiplies_v2_and_keeps_closure_phases():
+    inner = _star(ratio=0.7, pa=40.0)
+    scaled = ssh.V2Scaled(inner, 1.21)
+    v, v0 = np.asarray(scaled.model(U, V, 1.0)), np.asarray(inner.model(U, V, 1.0))
+    np.testing.assert_allclose(np.abs(v) ** 2, 1.21 * np.abs(v0) ** 2, rtol=1e-12)
+    np.testing.assert_allclose(np.angle(v), np.angle(v0), atol=1e-12)
+    np.testing.assert_allclose(np.asarray(scaled.render(17, 6.0)), np.asarray(inner.render(17, 6.0)))
+    assert float(ssh.V2Scaled(inner).scale) == 1.0
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
+def test_scene_applies_v2_scale_and_frozen_parameters():
+    """A Scene's v2_scale scales V²; ``fixed`` parameters need not be passed
+    and give the same model as passing them."""
+    outline = dict(radius=2.2, u=0.4, ratio=0.7, pa=50.0)
+    free = dict(v2_scale=1.3, data=0.05 * np.random.default_rng(2).normal(size=8))
+    whole = ssh.Scene("map", 2, None)(**outline, **free)
+    frozen = ssh.Scene("map", 2, None, fixed=outline)(**free)
+    np.testing.assert_allclose(np.asarray(frozen.model(U, V, 1.0)), np.asarray(whole.model(U, V, 1.0)), rtol=1e-13)
+    unit = ssh.Scene("map", 2, None, fixed=outline)(**(free | {"v2_scale": 1.0}))
+    np.testing.assert_allclose(np.abs(np.asarray(whole.model(U, V, 1.0))) ** 2,
+                               1.3 * np.abs(np.asarray(unit.model(U, V, 1.0))) ** 2, rtol=1e-12)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
+@pytest.mark.skipif(not DATA2.exists(), reason="contest data not fetched")
+def test_v2_scale_is_recovered_and_matters():
+    """Data2's uv coverage with V² 15% above a normalized model: the
+    uniform-disk scan finds the scale (the start of every fit) and χ² at the
+    truth is far worse without it."""
+    import virgil.models as vm
+    from virgil.oidata import OIData
+
+    truth = vm.UniformDisk(4.4)
+    data = OIData(str(DATA2)).with_model(ssh.V2Scaled(truth, 1.15), key=jax.random.PRNGKey(3))
+    radius, scale = ssh.uniform_disk_fit(data, 2.0, 12.0, n=150)
+    assert scale == pytest.approx(1.15, abs=0.03) and radius == pytest.approx(2.2, abs=0.1)
+    chi2_scaled, n = ssh.chi2_of(ssh.V2Scaled(truth, 1.15), data)
+    chi2_plain, _ = ssh.chi2_of(truth, data)
+    assert chi2_scaled / n < 2.0 and chi2_plain / n > 10.0
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
+def test_on_bounds_reports_parameters_on_a_prior_bound():
+    import numpyro.distributions as dist
+
+    priors = {"level": dist.LogUniform(0.05, 20.0), "u": dist.Uniform(0.0, 1.0), "ratio": dist.Uniform(0.2, 1.0),
+              "scale": dist.LogUniform(0.5, 2.0), "data": dist.Normal(jnp.zeros(2), 1.0)}
+    values = {"level": 19.98, "u": 0.0002, "ratio": 0.7, "scale": 1.15, "data": np.zeros(2)}
+    assert ssh.on_bounds(values, priors) == ["level", "u"]
+    assert ssh.on_bounds(values | {"level": 1.0, "u": 0.3}, priors) == []
