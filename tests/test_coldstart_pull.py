@@ -73,14 +73,16 @@ def test_no_truth_in_the_cold_path():
     truths see identical grids and priors (the grid_axes/priors_of signatures take no truth)."""
     import inspect
 
-    for fn in (cp.grid_axes, cp.stage1_axes, cp.priors_of, cp.generic_template):
-        assert "truth" not in str(inspect.signature(fn)) and "scene" not in str(inspect.signature(fn))
-    assert list(inspect.signature(cp.cold_start).parameters) == ["cell_spec", "data"]  # data only
+    for fn in (cp.grid_axes, cp.stage1_axes):
+        assert list(inspect.signature(fn).parameters) == ["cell_spec"]
+    assert list(inspect.signature(cp.priors_of).parameters) == ["scene_name"]
+    assert list(inspect.signature(cp.generic_template).parameters) == ["scene_name"]
+    assert list(inspect.signature(cp.cold_start).parameters) == ["cell_spec", "data"]  # the data, no truth, no scene
 
 
 def row(cold, ref, far=(0.0,), **kw):
     return {"seed": 0, "cold_chi2": cold, "ref_chi2": ref, "ref_distance_sigma": list(far), "pulls": [0.0], "snr": 10.0,
-            "sep": 5.0, "contrast": 0.05, **kw}
+            "sep": 5.0, "contrast": 0.05, **kw}  # kw may override the defaults, e.g. pulls
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -93,19 +95,20 @@ def test_classification():
     assert cp.classify({"ref_failed": True}, S) == "reference_failed"
 
 
-def synthetic(rate, n, rng):
-    return [row(100.0 + (5.0 if rng.random() < rate else 0.0), 100.0) for _ in range(n)]
+def synthetic(rate, n, rng, npar):
+    return [row(100.0 + (5.0 if rng.random() < rate else 0.0), 100.0, pulls=list(rng.standard_normal(npar)))
+            for _ in range(n)]
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_analysis_flags_rates_over_bound():
     rng = np.random.default_rng(1)
     names = {c: (cp.param_names(c), None) for c in S["cells"]}
-    ok = {c: (cp.param_names(c), synthetic(0.3 * S["cells"][c]["failure_bound"], 1000, rng)) for c in S["cells"]}
+    ok = {c: (cp.param_names(c), synthetic(0.3 * S["cells"][c]["failure_bound"], 1000, rng, len(cp.param_names(c)))) for c in S["cells"]}
     out = cp.analyse(ok, S)
     assert out["pass"] and out["rejected"] == []
     bad = dict(ok)
-    bad["binary_bright"] = (cp.param_names("binary_bright"), synthetic(0.04, 1000, rng))
+    bad["binary_bright"] = (cp.param_names("binary_bright"), synthetic(0.04, 1000, rng, 3))
     out = cp.analyse(bad, S)
     assert not out["pass"] and out["rejected"] == ["binary_bright"]
     few = {c: (n, r[:50]) for c, (n, r) in ok.items()}

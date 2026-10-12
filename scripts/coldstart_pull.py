@@ -333,7 +333,7 @@ def run(args, draw_fn=None):
             except Exception as e:  # noqa: BLE001 - a draw that cannot be made is a counted reference failure
                 print(f"seed={seed} failed: {type(e).__name__}: {e}", flush=True)
                 row = {"seed": seed, "ref_failed": True, "cold_failed": False}
-            rows.append(row)
+            rows.append({**row, "seed": seed})
             tmp_path = path.with_suffix(".tmp")
             tmp_path.write_text(json.dumps({**head, "complete": len(rows) == draws, "rows": rows}))
             tmp_path.rename(path)
@@ -374,7 +374,8 @@ def stratify(rows, s):
             continue
         cuts = np.quantile(x, [1 / 3, 2 / 3])
         bins = np.digitize(x, cuts)
-        out[key] = [{"lo": float(x[bins == b].min()), "hi": float(x[bins == b].max()), "n": int((bins == b).sum()),
+        out[key] = [{"lo": float(x[bins == b].min()) if (bins == b).any() else None,
+                     "hi": float(x[bins == b].max()) if (bins == b).any() else None, "n": int((bins == b).sum()),
                      "failures": int(fail[bins == b].sum())} for b in range(3)]
     return out
 
