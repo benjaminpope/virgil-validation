@@ -89,7 +89,7 @@
     if (pub && pts(pub.path).length) svg += '<path d="' + poly(pub.path, tx, ty, true) + '" class="og-line og-p0 og-dash"/>';
     if (t.ours && pts(t.ours.path).length) svg += '<path d="' + poly(t.ours.path, tx, ty, true) + '" class="og-line og-ours"/>';
     arr(t.epochs).forEach(function (e) {
-      if (num(e.dra) && num(e.ddec)) svg += '<circle cx="' + f(tx(e.dra)) + '" cy="' + f(ty(e.ddec)) + '" r="2.2" class="og-dot og-ours"/>';
+      if (num(e.dra) && num(e.ddec)) svg += '<circle cx="' + f(tx(e.dra)) + '" cy="' + f(ty(e.ddec)) + '" r="3.4" class="og-dot og-ours"/>';
     });
     return svg + "</svg>";
   }
@@ -144,10 +144,10 @@
         hasPub = true;
         var pe = ellipse(e.pub.cov, e.pub.dra, e.pub.ddec);
         g += '<g data-key="pubep" class="og-ep og-pubep">' + (pe ? '<path class="og-ell og-p0" d="' + poly(pe, tx, ty, true) + '"/>' : "") +
-          '<circle class="og-dot og-hollow og-p0" cx="' + f(tx(e.pub.dra)) + '" cy="' + f(ty(e.pub.ddec)) + '" r="3.4"/></g>';
+          '<circle class="og-dot og-hollow og-p0" cx="' + f(tx(e.pub.dra)) + '" cy="' + f(ty(e.pub.ddec)) + '" r="5.2"/></g>';
       }
       g += '<g data-key="eps" class="og-ep">' + (el ? '<path class="og-ell og-ours" d="' + poly(el, tx, ty, true) + '"/>' : "") +
-        '<circle class="og-dot og-ours og-hit" tabindex="0" data-i="' + i + '" cx="' + f(tx(e.dra)) + '" cy="' + f(ty(e.ddec)) + '" r="4.2"/></g>';
+        '<circle class="og-dot og-ours og-hit" tabindex="0" data-i="' + i + '" cx="' + f(tx(e.dra)) + '" cy="' + f(ty(e.ddec)) + '" r="6.2"/></g>';
     });
     // primary
     g += '<circle class="og-star" cx="' + f(tx(0)) + '" cy="' + f(ty(0)) + '" r="5"/>';
@@ -199,7 +199,7 @@
       g += '<path data-key="' + s.key + '" class="og-line ' + s.cls + (s.dash ? " og-dash" : "") + '" d="' + d + '"/>';
     });
     arr(o.dots).forEach(function (d) {
-      if (num(d.x) && num(d.y)) g += '<circle data-key="' + d.key + '" class="og-dot ' + d.cls + '" cx="' + f(X(d.x)) + '" cy="' + f(Y(d.y)) + '" r="3.4"/>';
+      if (num(d.x) && num(d.y)) g += '<circle data-key="' + d.key + '" class="og-dot ' + d.cls + '" cx="' + f(X(d.x)) + '" cy="' + f(Y(d.y)) + '" r="4.6"/>';
     });
     return g + "</svg>";
   }
@@ -243,7 +243,19 @@
       function pm(v, e) { return fmt(v) + (num(e) ? " ± " + fmt(e) : ""); }
       h += "<tr><td>" + esc(r.quantity) + "</td><td>" + pm(r.ours, r.err) + "</td><td>" + pm(r.pub, r.pub_err) + "</td><td>" + (num(r.pull) ? fmt(Math.round(r.pull * 100) / 100) + "σ" : "–") + '</td><td class="' + cls + '">' + esc(r.status) + "</td></tr>";
     });
-    return h + "</tbody></table></div>";
+    return '<details class="og-tabd"' + (rows.length <= 8 ? " open" : "") + "><summary>" + rows.length + " rows</summary>" + h + "</tbody></table></div></details>";
+  }
+
+  // the static per-target tables below the gallery: collapse them too
+  function collapseStatic() {
+    document.querySelectorAll(".md-typeset table").forEach(function (tb) {
+      var w = tb.closest(".og") || tb.closest("details") ;
+      if (w) return;
+      var box = tb.closest(".md-typeset__scrollwrap") || tb;
+      var d = document.createElement("details"); d.className = "og-tabd";
+      var sm = document.createElement("summary"); sm.textContent = "Parameter table (" + tb.rows.length + " rows)";
+      box.parentNode.insertBefore(d, box); d.appendChild(sm); d.appendChild(box);
+    });
   }
 
   // ---- detail ---------------------------------------------------------
@@ -315,6 +327,7 @@
   // ---- wiring ---------------------------------------------------------
   function init() {
     var root = document.querySelector(".og");
+    if (root) collapseStatic();
     if (!root || root.getAttribute("data-og-init")) return;
     root.setAttribute("data-og-init", "1");
     var holder = document.getElementById("og-data"), data = null;

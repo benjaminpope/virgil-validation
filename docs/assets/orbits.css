@@ -31,13 +31,13 @@
 .og-p0 { stroke: var(--og-p0); fill: var(--og-p0); } .og-p1 { stroke: var(--og-p1); fill: var(--og-p1); }
 .og-p2 { stroke: var(--og-p2); fill: var(--og-p2); } .og-p3 { stroke: var(--og-p3); fill: var(--og-p3); }
 .og-alt { stroke: var(--og-alt); fill: none; opacity: .55; }
-.og-line { fill: none; stroke-width: 2; stroke-linejoin: round; }
-.og-thumb .og-line { stroke-width: 1.6; }
+.og-line { fill: none; stroke-width: 3.2; stroke-linejoin: round; }
+.og-thumb .og-line { stroke-width: 2.4; }
 .og-dash { stroke-dasharray: 6 4; }
 .og-thumb .og-dash { stroke-dasharray: 3 2.5; }
 .og-dot { stroke: none; }
-.og-dot.og-hollow { fill: var(--md-default-bg-color); stroke-width: 1.6; }
-.og-ell { fill-opacity: .12; stroke-width: 1; }
+.og-dot.og-hollow { fill: var(--md-default-bg-color); stroke-width: 2.4; }
+.og-ell { fill-opacity: .14; stroke-width: 1.8; }
 .og-hit { cursor: pointer; }
 .og-hit:focus-visible { outline: none; stroke: var(--md-default-fg-color); stroke-width: 2; }
 .og-star { fill: var(--og-star); stroke: none; }
@@ -82,3 +82,5 @@
 .og-tip[hidden] { display: none; }
 @media (max-width: 52rem) { .og-plots { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 30rem) { .og-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; } .og-legend { flex-direction: column; } }
+
+.og-tabd > summary, .md-typeset details.og-tabd > summary { cursor: pointer; margin: .4rem 0; color: var(--md-default-fg-color--light); font-size: .8rem; }
