@@ -90,6 +90,12 @@ reproduced and who second-reviewed it.
 - `scripts/trust.py --evidence ... --virgil <virgil checkout> --out docs/trust.md --index docs/index.md` (the site's home page; the docs workflow regenerates both at deploy)
   writes the Trust page (statuses, chart, pipelines, ledger); weekly CI does
   the same against virgil's main.
+- `scripts/mutation.py` / `mutants/mutants.yml` / `design/mutation.yml`: mutation testing of tier A
+  (`check`, `run`, `report`). The Trust page reads `trust/mutation/results.json` when it exists: a part
+  with a surviving mutant is not "verified", a part with none run says "mutants not run". Each ledger
+  entry with ruling virgil and status fixed has a regression mutant (`finding:`) that must be killed
+  (design amendment 1). `scripts/mutation_trust.py checklist [--write]` lists the convention-defined
+  survivors as pending entries of `trust/signoffs.yml` (Ben signs them; pending confirms nothing).
 - Roots are a pool (mathematics, standards, statistics, literature, dLux,
   PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!): validate any link against
   whichever suits it. Do not claim a root a test does not really exercise.

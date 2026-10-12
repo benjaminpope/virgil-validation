@@ -1,0 +1,22 @@
+{
+ "id": "M116",
+ "cls": "regression",
+ "nodes": [
+  "virgil.epochs.marginal_loglike"
+ ],
+ "description": "marginal_loglike(s_max=...) integrates ln s on a fixed uniform grid of 257 nodes again, not adaptively (too coarse where the likelihood falls steeply from a bound).",
+ "files": [
+  "src/virgil/epochs.py"
+ ],
+ "finding": "F18",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_epochs.py::test_marginal_loglike_bound_binds[upper]"
+ ],
+ "message": "asser...",
+ "returncode": 1,
+ "seconds": 14.8,
+ "pytest": "1 failed, 4 passed, 4 skipped, 782 deselected in 11.52s",
+ "max_rank": 1
+}

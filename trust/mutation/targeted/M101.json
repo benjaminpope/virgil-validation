@@ -1,0 +1,22 @@
+{
+ "id": "M101",
+ "cls": "regression",
+ "nodes": [
+  "virgil.models.ModulatedGaussianRim"
+ ],
+ "description": "ModulatedGaussianRim reads az_pas as an on-sky position angle (the pre-fix documentation), not an in-plane azimuth: the angle is deprojected before use.",
+ "files": [
+  "src/virgil/models.py"
+ ],
+ "finding": "F1",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_visibilities.py::test_modulated_rim_in_plane_azimuth_and_blur[amps1-pas1-50.0]"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 12.3,
+ "pytest": "1 failed, 5 passed, 4 skipped, 778 deselected in 10.35s",
+ "max_rank": 1
+}

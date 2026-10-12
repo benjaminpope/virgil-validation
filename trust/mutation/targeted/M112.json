@@ -1,0 +1,23 @@
+{
+ "id": "M112",
+ "cls": "regression",
+ "nodes": [
+  "virgil.oifits.read_oifits",
+  "virgil.oidata.OIData"
+ ],
+ "description": "OIFITS TIME column ignored everywhere (zeros), so snapshots told apart only by TIME are one exposure. (M89 reintroduces only the frame grouping.)",
+ "files": [
+  "src/virgil/oifits.py"
+ ],
+ "finding": "F13",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_frames_from_time.py::test_snapshots_in_time_column_are_separate_frames"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 10.6,
+ "pytest": "1 failed, 1 passed, 9 skipped, 571 deselected in 8.04s",
+ "max_rank": 1
+}

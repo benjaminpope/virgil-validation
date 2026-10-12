@@ -30,6 +30,7 @@
       }).join(", ") + (n.verdict.indexOf("relies") === 0 ? "; it counts as verified once that is fixed." : "; fixing that alone would not verify it.") + "</div>";
       var rs = n.strong.concat(n.weak);
       html += "<div>Checked against: " + (rs.length ? rs.map(function (r) { return '<span class="vt-root">' + esc(roots[r] || r) + "</span>"; }).join("") : "nothing yet") + "</div>";
+      if (n.mutation) html += "<div" + (n.mutation.survivors.length ? "" : ' class="vt-muted"') + ">Mutants: " + esc(n.mutation.text) + "</div>";
       if (n.changed && n.changed.length) html += '<div class="vt-muted">virgil has changed ' + n.changed.map(function (f) { return "<code>" + esc(f) + "</code>"; }).join(", ") + " since this evidence.</div>";
       var checks = n.checks.filter(function (c) { return c.kind !== "guard" && c.outcome !== "skipped"; });
       if (checks.length) {

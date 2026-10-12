@@ -1,0 +1,22 @@
+{
+ "id": "M114",
+ "cls": "regression",
+ "nodes": [
+  "virgil.orbits.ThieleInnesOrbit"
+ ],
+ "description": "ThieleInnesOrbit.to_kepler can return Omega = 180 (outside [0, 180)): a node at exactly 180 is not wrapped.",
+ "files": [
+  "src/virgil/orbits.py"
+ ],
+ "finding": "F15",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_orbits_more.py::test_f15_thiele_innes_node_at_180_is_in_the_documented_range_without_orbitize[0.0]"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 7.2,
+ "pytest": "1 failed, 6 skipped, 803 deselected in 5.39s",
+ "max_rank": 1
+}

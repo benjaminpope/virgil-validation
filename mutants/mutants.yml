@@ -700,6 +700,7 @@ mutants:
 
 - id: M64
   cls: whitening_transpose
+  equivalent: "ClosureNoise.chol is the Cholesky factor of Q R Q^T with Q the left singular vectors of T, which is diagonal (off-diagonal below 3e-16 for 4, 5 and 6 telescopes), so L and L^T are the same matrix and solving with either gives the same whitened vector."
   description: "Closure-phase whitening solves L^T w = a instead of L w = a."
   file: src/virgil/_closure.py
   original: |-
@@ -966,6 +967,7 @@ mutants:
 # ---------------------------------------------------------------- MJD / TIME grouping
 - id: M89
   cls: mjd_time_grouping
+  finding: F13
   description: "Exposures grouped on MJD alone (TIME ignored)."
   file: src/virgil/oifits.py
   original: |-
@@ -1087,3 +1089,236 @@ mutants:
     e = e
         r = r
   nodes: [virgil.metrics.ncc]
+
+# ---------------------------------------------------------------- regression mutants (one per fixed ruling-virgil finding)
+# AMENDMENT 1 of design/mutation.yml: each reintroduces a bug found by this repository (trust/ledger.yml, ruling virgil, status
+# fixed) against the pin, tagged `finding:`. Unlike the probe mutants above, every one of these must be killed.
+
+- id: M101
+  cls: regression
+  finding: F1
+  description: "ModulatedGaussianRim reads az_pas as an on-sky position angle (the pre-fix documentation), not an in-plane azimuth: the angle is deprojected before use."
+  note: "F1 was a documentation fix (az_pas is an in-plane azimuth); the mutant makes the code follow the old, wrong text."
+  nodes: [virgil.models.ModulatedGaussianRim]
+  edits:
+  - file: src/virgil/models.py
+    original: |-
+      self.az_pas - self.pa,
+              )
+    replacement: |-
+      self._ring_angle(self.az_pas) - self.pa,
+              )
+  - file: src/virgil/models.py
+    original: |-
+      np.concatenate([np.array([0.0]), self.az_pas - self.pa]) * dtor
+    replacement: |-
+      np.concatenate([np.array([0.0]), self._ring_angle(self.az_pas) - self.pa]) * dtor
+
+- id: M102
+  cls: regression
+  finding: F2
+  description: "GaussianArc weight truncated at +-3.5 sigma again (and not once round the circle)."
+  nodes: [virgil.models.GaussianArc]
+  edits:
+  - file: src/virgil/models.py
+    original: |-
+      span = np.minimum(6.0 * sigma, np.pi * self.radius)
+              s = np.linspace(-1.0, 1.0, self.nodes) * span
+    replacement: |-
+      s = np.linspace(-3.5, 3.5, self.nodes) * sigma
+
+- id: M103
+  cls: regression
+  finding: F5
+  description: "laplace_cov / fisher ignore array-valued parameters again (values used as given, no leaf shapes)."
+  nodes: [virgil.inference.laplace_cov]
+  edits:
+  - file: src/virgil/inference.py
+    original: |-
+      if not isinstance(model, SourceModel):
+    replacement: |-
+      if True:
+
+- id: M104
+  cls: regression
+  finding: F6
+  description: "fit tolerance has no 1e-6 gtol floor and the L-BFGS carry starts with an infinite gradient, so a start at an exact zero-residual optimum is not converged."
+  nodes: [virgil.fitting.fit]
+  edits:
+  - file: src/virgil/fitting.py
+    original: |-
+      np.minimum(gtol, 1e-3 * largest), np.maximum(floor, 1e-6 * gtol)
+    replacement: |-
+      np.minimum(gtol, 1e-3 * largest), floor
+  - file: src/virgil/fitting.py
+    original: |-
+      start = (0, z0, state, value, _largest(gradient), np.asarray(True))
+    replacement: |-
+      start = (0, z0, state, value, np.asarray(np.inf, dtype=value.dtype), np.asarray(True))
+
+- id: M105
+  cls: regression
+  finding: F7
+  description: "Expanded priors (.expand) are not unwrapped to their base, so fit leaves the least-squares (LM) path for L-BFGS."
+  nodes: [virgil.fitting.fit]
+  edits:
+  - file: src/virgil/_flat.py
+    original: |-
+      while isinstance(
+              distribution, (dist.Independent, dist.ExpandedDistribution)
+          ):
+              distribution = distribution.base_dist
+    replacement: |-
+      if isinstance(distribution, dist.Independent):
+              distribution = distribution.base_dist
+
+- id: M106
+  cls: regression
+  finding: F8
+  description: "OIData does not catch a closure-phase table that is entirely flagged (the visibilities-alone fallback)."
+  nodes: [virgil.oidata.OIData]
+  edits:
+  - file: src/virgil/oidata.py
+    original: |-
+      if cp_flag and phi.size == 0:
+    replacement: |-
+      if False:
+
+- id: M107
+  cls: regression
+  finding: F9
+  description: "reference_flux of a spectrum is its ratio (every Tabulated node), not flux(None), the documented mean."
+  nodes: [virgil.spectra.Tabulated]
+  edits:
+  - file: src/virgil/spectra.py
+    original: |-
+      if isinstance(flux, Spectrum):
+              return flux(None)
+    replacement: |-
+      if isinstance(flux, Spectrum):
+              return flux.ratio
+
+- id: M108
+  cls: regression
+  finding: F10
+  description: "A baseline is looked up only under its own INSNAME: the fallback to another INSNAME with identical wavelengths is gone."
+  nodes: [virgil.oifits.read_oifits]
+  edits:
+  - file: src/virgil/oifits.py
+    original: |-
+      if found is not None or wave is None:
+    replacement: |-
+      if True:
+
+- id: M109
+  cls: regression
+  finding: F10
+  description: "A closure-phase leg stored reversed (b, a) is not looked up in the visibility tables, so it counts as unmatched."
+  nodes: [virgil.oifits.read_oifits, virgil.oidata.OIData]
+  edits:
+  - file: src/virgil/oifits.py
+    original: |-
+      reverse = lookup.find(
+                              ins, pair[::-1], mjd[row], wave, time[row]
+                          )
+    replacement: |-
+      reverse = None
+
+- id: M110
+  cls: regression
+  finding: F11
+  description: "Correlated closure phases are whitened from the chord of the residual wrapped into [-pi, pi), which jumps where a residual crosses +-pi."
+  nodes: [virgil.likelihood.whitened_residuals, virgil.oidata.OIData.cp_noise]
+  edits:
+  - file: src/virgil/likelihood.py
+    original: |-
+      data.cp_noise.whiten(np.sin(resid), errors)
+    replacement: |-
+      data.cp_noise.whiten(
+              2.0 * np.sin(0.5 * (resid - 2.0 * np.pi * np.round(resid / (2.0 * np.pi)))), errors
+          )
+
+- id: M111
+  cls: regression
+  finding: F12
+  description: "imaging.clean keeps pixels whose flux cannot change the model (|J e_p| at rounding level) in the search."
+  nodes: [virgil.imaging.clean]
+  edits:
+  - file: src/virgil/imaging.py
+    original: |-
+      live = norms > (100.0 * eps) ** 2 * np.max(norms)
+    replacement: |-
+      live = norms > 0.0
+
+- id: M112
+  cls: regression
+  finding: F13
+  description: "OIFITS TIME column ignored everywhere (zeros), so snapshots told apart only by TIME are one exposure. (M89 reintroduces only the frame grouping.)"
+  nodes: [virgil.oifits.read_oifits, virgil.oidata.OIData]
+  edits:
+  - file: src/virgil/oifits.py
+    original: |-
+      return onp.nan_to_num(_column(hdu, "TIME", mask)) / 86400.0
+    replacement: |-
+      return onp.zeros(int(mask.sum()))
+
+- id: M113
+  cls: regression
+  finding: F14
+  description: "total_mass and distance_pc use a^3/P^2 with P in Julian years, not Kepler's third law with the IAU constants."
+  nodes: [virgil.orbits.total_mass, virgil.orbits.distance_pc]
+  edits:
+  - file: src/virgil/orbits.py
+    original: |-
+      return _KEPLER_FACTOR * a_au**3 / orbit.period**2
+    replacement: |-
+      return a_au**3 / (orbit.period / 365.25) ** 2
+  - file: src/virgil/orbits.py
+    original: |-
+      a_au = (total_mass * orbit.period**2 / _KEPLER_FACTOR) ** (1.0 / 3.0)
+    replacement: |-
+      a_au = (total_mass * (orbit.period / 365.25) ** 2) ** (1.0 / 3.0)
+
+- id: M114
+  cls: regression
+  finding: F15
+  description: "ThieleInnesOrbit.to_kepler can return Omega = 180 (outside [0, 180)): a node at exactly 180 is not wrapped."
+  nodes: [virgil.orbits.ThieleInnesOrbit]
+  edits:
+  - file: src/virgil/orbits.py
+    original: |-
+      shift = np.floor(Omega / 180.0) * 180.0
+    replacement: |-
+      shift = np.ceil(Omega / 180.0 - 1.0) * 180.0
+  - file: src/virgil/orbits.py
+    original: |-
+      again = Omega >= 180.0
+    replacement: |-
+      again = Omega > 180.0
+
+- id: M115
+  cls: regression
+  finding: F16
+  description: "StateVectorOrbit.to_kepler gets the inclination from arccos of cos i, which loses nearly face-on inclinations (the atan2 form is exact there)."
+  note: "Needs jaxoplanet to be killed (the orbit tests are skipped without it); and arccos near 0 is only a stand-in for the pre-fix route through ThieleInnesOrbit, which no longer exists, so a tolerance tighter than ~1e-10 rad is needed to see it."
+  nodes: [virgil.orbits.StateVectorOrbit]
+  edits:
+  - file: src/virgil/orbits.py
+    original: |-
+      inc = np.arctan2(h_xy, -h[2])
+    replacement: |-
+      inc = np.arccos(np.clip(-h[2], -1.0, 1.0))
+
+- id: M116
+  cls: regression
+  finding: F18
+  description: "marginal_loglike(s_max=...) integrates ln s on a fixed uniform grid of 257 nodes again, not adaptively (too coarse where the likelihood falls steeply from a bound)."
+  nodes: [virgil.epochs.marginal_loglike]
+  edits:
+  - file: src/virgil/epochs.py
+    original: |-
+      total = total + _log_integral(log_f, -bound, bound, guess)
+    replacement: |-
+      total = total + jax.nn.logsumexp(
+                      log_f(np.linspace(-bound, bound, 257).astype(chi2.dtype))
+                  )

@@ -1,0 +1,22 @@
+{
+ "id": "M107",
+ "cls": "regression",
+ "nodes": [
+  "virgil.spectra.Tabulated"
+ ],
+ "description": "reference_flux of a spectrum is its ratio (every Tabulated node), not flux(None), the documented mean.",
+ "files": [
+  "src/virgil/spectra.py"
+ ],
+ "finding": "F9",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_remaining_models.py::test_tabulated_reference_flux_is_the_documented_mean"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 7.9,
+ "pytest": "1 failed, 1 passed, 4 skipped, 797 deselected, 2 warnings in 5.88s",
+ "max_rank": 1
+}

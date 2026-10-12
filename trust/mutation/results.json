@@ -1,14 +1,107 @@
 {
  "pin": "0c1be69c61afc524c21ac327e41329d0ee15ac5d",
- "listed": 100,
+ "listed": 116,
  "run": 7,
  "killed": 4,
- "design_sha256": "b21e1e9d633538c4b4ac64124670bb39d25a84e5b9ff5b7815444d1dcbca223b",
- "mutants_sha256": "f80d3513f6c148321958ea45ef3e6057c7a51327201c129cc4a1a90364832b19",
+ "design_sha256": "2d18963158a858690fce697e619375e0ca3a280688e73529f1b7cbbdf2f606ff",
+ "mutants_sha256": "ceb194a1a9c734d006f216c5b946e3722b46532f3468edca72e9e9cc8a21afe7",
  "survived": 0,
+ "equivalent": 1,
  "timeout": 3,
  "error": 0,
- "kill_rate": 0.5714285714285714,
+ "kill_rate": 0.6666666666666666,
+ "regression": {
+  "listed": 17,
+  "killed": 17,
+  "survived": [],
+  "rows": [
+   {
+    "id": "M89",
+    "finding": "F13",
+    "status": "killed"
+   },
+   {
+    "id": "M101",
+    "finding": "F1",
+    "status": "killed"
+   },
+   {
+    "id": "M102",
+    "finding": "F2",
+    "status": "killed"
+   },
+   {
+    "id": "M103",
+    "finding": "F5",
+    "status": "killed"
+   },
+   {
+    "id": "M104",
+    "finding": "F6",
+    "status": "killed"
+   },
+   {
+    "id": "M105",
+    "finding": "F7",
+    "status": "killed"
+   },
+   {
+    "id": "M106",
+    "finding": "F8",
+    "status": "killed"
+   },
+   {
+    "id": "M107",
+    "finding": "F9",
+    "status": "killed"
+   },
+   {
+    "id": "M108",
+    "finding": "F10",
+    "status": "killed"
+   },
+   {
+    "id": "M109",
+    "finding": "F10",
+    "status": "killed"
+   },
+   {
+    "id": "M110",
+    "finding": "F11",
+    "status": "killed"
+   },
+   {
+    "id": "M111",
+    "finding": "F12",
+    "status": "killed"
+   },
+   {
+    "id": "M112",
+    "finding": "F13",
+    "status": "killed"
+   },
+   {
+    "id": "M113",
+    "finding": "F14",
+    "status": "killed"
+   },
+   {
+    "id": "M114",
+    "finding": "F15",
+    "status": "killed"
+   },
+   {
+    "id": "M115",
+    "finding": "F16",
+    "status": "killed"
+   },
+   {
+    "id": "M116",
+    "finding": "F18",
+    "status": "killed"
+   }
+  ]
+ },
  "baseline": {
   "pin": "0c1be69c61afc524c21ac327e41329d0ee15ac5d",
   "returncode": 1,
@@ -63,7 +156,7 @@
    "killed": 0,
    "survived": 0,
    "other": 1,
-   "kill_rate": 0.0
+   "kill_rate": null
   }
  },
  "by_node": {
@@ -121,7 +214,7 @@
    "killed": 0,
    "survived": 0,
    "other": 1,
-   "kill_rate": 0.0
+   "kill_rate": null
   },
   "virgil.oifits.read_oifits": {
    "mutants": 2,
@@ -159,7 +252,9 @@
    "message": "...",
    "returncode": 1,
    "seconds": 8.8,
-   "pytest": ""
+   "pytest": "",
+   "finding": null,
+   "equivalent": null
   },
   {
    "id": "M11",
@@ -177,7 +272,9 @@
    "message": "",
    "returncode": "timeout",
    "seconds": 600.2,
-   "pytest": ""
+   "pytest": "",
+   "finding": null,
+   "equivalent": null
   },
   {
    "id": "M35",
@@ -197,7 +294,9 @@
    "message": "",
    "returncode": 1,
    "seconds": 14.6,
-   "pytest": ""
+   "pytest": "",
+   "finding": null,
+   "equivalent": null
   },
   {
    "id": "M64",
@@ -214,7 +313,9 @@
    "message": "",
    "returncode": "timeout",
    "seconds": 600.2,
-   "pytest": ""
+   "pytest": "",
+   "finding": null,
+   "equivalent": "ClosureNoise.chol is the Cholesky factor of Q R Q^T with Q the left singular vectors of T, which is diagonal (off-diagonal below 3e-16 for 4, 5 and 6 telescopes), so L and L^T are the same matrix and solving with either gives the same whitened vector."
   },
   {
    "id": "M79",
@@ -233,7 +334,9 @@
    "message": "",
    "returncode": 1,
    "seconds": 166.5,
-   "pytest": ""
+   "pytest": "",
+   "finding": null,
+   "equivalent": null
   },
   {
    "id": "M89",
@@ -250,7 +353,9 @@
    "message": "",
    "returncode": "timeout",
    "seconds": 737.8,
-   "pytest": ""
+   "pytest": "",
+   "finding": "F13",
+   "equivalent": null
   },
   {
    "id": "M96",
@@ -269,10 +374,211 @@
    "message": "AssertionError:",
    "returncode": 1,
    "seconds": 91.0,
-   "pytest": ""
+   "pytest": "",
+   "finding": null,
+   "equivalent": null
   }
  ],
  "targeted": {
+  "M101": {
+   "id": "M101",
+   "cls": "regression",
+   "nodes": [
+    "virgil.models.ModulatedGaussianRim"
+   ],
+   "description": "ModulatedGaussianRim reads az_pas as an on-sky position angle (the pre-fix documentation), not an in-plane azimuth: the angle is deprojected before use.",
+   "files": [
+    "src/virgil/models.py"
+   ],
+   "finding": "F1",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_visibilities.py::test_modulated_rim_in_plane_azimuth_and_blur[amps1-pas1-50.0]"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 12.3,
+   "pytest": "1 failed, 5 passed, 4 skipped, 778 deselected in 10.35s",
+   "max_rank": 1
+  },
+  "M102": {
+   "id": "M102",
+   "cls": "regression",
+   "nodes": [
+    "virgil.models.GaussianArc"
+   ],
+   "description": "GaussianArc weight truncated at +-3.5 sigma again (and not once round the circle).",
+   "files": [
+    "src/virgil/models.py"
+   ],
+   "finding": "F2",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_visibilities.py::test_gaussian_arc_matches_untruncated_arc[5.0-4.0]"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 11.1,
+   "pytest": "1 failed, 1 passed, 4 skipped, 782 deselected in 9.12s",
+   "max_rank": 1
+  },
+  "M103": {
+   "id": "M103",
+   "cls": "regression",
+   "nodes": [
+    "virgil.inference.laplace_cov"
+   ],
+   "description": "laplace_cov / fisher ignore array-valued parameters again (values used as given, no leaf shapes).",
+   "files": [
+    "src/virgil/inference.py"
+   ],
+   "finding": "F5",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_vlti.py::test_laplace_cov_with_array_parameters"
+   ],
+   "message": "TypeError...",
+   "returncode": 1,
+   "seconds": 20.3,
+   "pytest": "1 failed, 4 passed, 7 skipped, 782 deselected, 2 warnings in 18.12s",
+   "max_rank": 1
+  },
+  "M104": {
+   "id": "M104",
+   "cls": "regression",
+   "nodes": [
+    "virgil.fitting.fit"
+   ],
+   "description": "fit tolerance has no 1e-6 gtol floor and the L-BFGS carry starts with an infinite gradient, so a start at an exact zero-residual optimum is not converged.",
+   "files": [
+    "src/virgil/fitting.py"
+   ],
+   "finding": "F6",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_vlti.py::test_fit_from_the_exact_optimum_converges[lm]"
+   ],
+   "message": "as...",
+   "returncode": 1,
+   "seconds": 59.4,
+   "pytest": "1 failed, 15 passed, 12 skipped, 758 deselected, 8 warnings in 56.53s",
+   "max_rank": 1
+  },
+  "M105": {
+   "id": "M105",
+   "cls": "regression",
+   "nodes": [
+    "virgil.fitting.fit"
+   ],
+   "description": "Expanded priors (.expand) are not unwrapped to their base, so fit leaves the least-squares (LM) path for L-BFGS.",
+   "files": [
+    "src/virgil/_flat.py"
+   ],
+   "finding": "F7",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_vlti.py::test_fit_uses_lm_for_expanded_uniform_priors[expand]"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 55.8,
+   "pytest": "1 failed, 13 passed, 12 skipped, 767 deselected, 8 warnings in 52.91s",
+   "max_rank": 1
+  },
+  "M106": {
+   "id": "M106",
+   "cls": "regression",
+   "nodes": [
+    "virgil.oidata.OIData"
+   ],
+   "description": "OIData does not catch a closure-phase table that is entirely flagged (the visibilities-alone fallback).",
+   "files": [
+    "src/virgil/oidata.py"
+   ],
+   "finding": "F8",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_vlti.py::test_all_closure_phases_flagged_leaves_the_visibilities"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 13.3,
+   "pytest": "1 failed, 10 passed, 9 skipped, 572 deselected, 1 warning in 11.19s",
+   "max_rank": 1
+  },
+  "M107": {
+   "id": "M107",
+   "cls": "regression",
+   "nodes": [
+    "virgil.spectra.Tabulated"
+   ],
+   "description": "reference_flux of a spectrum is its ratio (every Tabulated node), not flux(None), the documented mean.",
+   "files": [
+    "src/virgil/spectra.py"
+   ],
+   "finding": "F9",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_remaining_models.py::test_tabulated_reference_flux_is_the_documented_mean"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 7.9,
+   "pytest": "1 failed, 1 passed, 4 skipped, 797 deselected, 2 warnings in 5.88s",
+   "max_rank": 1
+  },
+  "M108": {
+   "id": "M108",
+   "cls": "regression",
+   "nodes": [
+    "virgil.oifits.read_oifits"
+   ],
+   "description": "A baseline is looked up only under its own INSNAME: the fallback to another INSNAME with identical wavelengths is gone.",
+   "files": [
+    "src/virgil/oifits.py"
+   ],
+   "finding": "F10",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_epochs.py::test_epoch_positions_grid_and_gaps"
+   ],
+   "message": "assert np.f...",
+   "returncode": 1,
+   "seconds": 53.5,
+   "pytest": "1 failed, 54 passed, 29 skipped, 571 deselected, 14 warnings in 50.75s",
+   "max_rank": 1
+  },
+  "M109": {
+   "id": "M109",
+   "cls": "regression",
+   "nodes": [
+    "virgil.oifits.read_oifits",
+    "virgil.oidata.OIData"
+   ],
+   "description": "A closure-phase leg stored reversed (b, a) is not looked up in the visibility tables, so it counts as unmatched.",
+   "files": [
+    "src/virgil/oifits.py"
+   ],
+   "finding": "F10",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_epochs.py::test_epoch_positions_grid_and_gaps"
+   ],
+   "message": "assert np.f...",
+   "returncode": 1,
+   "seconds": 55.4,
+   "pytest": "1 failed, 57 passed, 29 skipped, 571 deselected, 14 warnings in 52.76s",
+   "max_rank": 1
+  },
   "M11": {
    "id": "M11",
    "cls": "pa_origin",
@@ -284,12 +590,173 @@
    "files": [
     "src/virgil/_geometry.py"
    ],
-   "status": "survived",
-   "killed_by": [],
+   "finding": null,
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_orbits_more.py::test_kepler_position_angle_from_the_textbook_offsets[elements0]"
+   ],
    "message": "",
-   "returncode": 0,
-   "seconds": 17.2,
-   "pytest": "3 passed, 9 skipped, 674 deselected in 13.40s",
+   "returncode": 1,
+   "seconds": 13.0,
+   "pytest": "1 failed, 11 passed, 10 skipped, 755 deselected in 11.03s",
+   "max_rank": 1
+  },
+  "M110": {
+   "id": "M110",
+   "cls": "regression",
+   "nodes": [
+    "virgil.likelihood.whitened_residuals",
+    "virgil.oidata.OIData.cp_noise"
+   ],
+   "description": "Correlated closure phases are whitened from the chord of the residual wrapped into [-pi, pi), which jumps where a residual crosses +-pi.",
+   "files": [
+    "src/virgil/likelihood.py"
+   ],
+   "finding": "F11",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_closure_continuity.py::test_four_telescope_chi2_is_continuous"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 21.2,
+   "pytest": "1 failed, 1 passed, 6 skipped, 614 deselected in 18.96s",
+   "max_rank": 1
+  },
+  "M111": {
+   "id": "M111",
+   "cls": "regression",
+   "nodes": [
+    "virgil.imaging.clean"
+   ],
+   "description": "imaging.clean keeps pixels whose flux cannot change the model (|J e_p| at rounding level) in the search.",
+   "files": [
+    "src/virgil/imaging.py"
+   ],
+   "finding": "F12",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_clean_finite.py::test_clean_is_finite_with_four_telescopes"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 13.1,
+   "pytest": "1 failed, 1 passed, 4 skipped, 792 deselected in 10.52s",
+   "max_rank": 1
+  },
+  "M112": {
+   "id": "M112",
+   "cls": "regression",
+   "nodes": [
+    "virgil.oifits.read_oifits",
+    "virgil.oidata.OIData"
+   ],
+   "description": "OIFITS TIME column ignored everywhere (zeros), so snapshots told apart only by TIME are one exposure. (M89 reintroduces only the frame grouping.)",
+   "files": [
+    "src/virgil/oifits.py"
+   ],
+   "finding": "F13",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_frames_from_time.py::test_snapshots_in_time_column_are_separate_frames"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 10.6,
+   "pytest": "1 failed, 1 passed, 9 skipped, 571 deselected in 8.04s",
+   "max_rank": 1
+  },
+  "M113": {
+   "id": "M113",
+   "cls": "regression",
+   "nodes": [
+    "virgil.orbits.total_mass",
+    "virgil.orbits.distance_pc"
+   ],
+   "description": "total_mass and distance_pc use a^3/P^2 with P in Julian years, not Kepler's third law with the IAU constants.",
+   "files": [
+    "src/virgil/orbits.py"
+   ],
+   "finding": "F14",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_orbits_more.py::test_f14_total_mass_is_keplers_third_law_without_orbitize[elements0]"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 7.0,
+   "pytest": "1 failed, 6 skipped, 804 deselected in 5.19s",
+   "max_rank": 1
+  },
+  "M114": {
+   "id": "M114",
+   "cls": "regression",
+   "nodes": [
+    "virgil.orbits.ThieleInnesOrbit"
+   ],
+   "description": "ThieleInnesOrbit.to_kepler can return Omega = 180 (outside [0, 180)): a node at exactly 180 is not wrapped.",
+   "files": [
+    "src/virgil/orbits.py"
+   ],
+   "finding": "F15",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_orbits_more.py::test_f15_thiele_innes_node_at_180_is_in_the_documented_range_without_orbitize[0.0]"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 7.2,
+   "pytest": "1 failed, 6 skipped, 803 deselected in 5.39s",
+   "max_rank": 1
+  },
+  "M115": {
+   "id": "M115",
+   "cls": "regression",
+   "nodes": [
+    "virgil.orbits.StateVectorOrbit"
+   ],
+   "description": "StateVectorOrbit.to_kepler gets the inclination from arccos of cos i, which loses nearly face-on inclinations (the atan2 form is exact there).",
+   "files": [
+    "src/virgil/orbits.py"
+   ],
+   "finding": "F16",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_orbits_more.py::test_f16_state_vector_keeps_the_inclination_of_nearly_face_on_orbits_without_orbitize[0.001]"
+   ],
+   "message": "",
+   "returncode": 1,
+   "seconds": 7.7,
+   "pytest": "1 failed, 6 skipped, 804 deselected in 5.81s",
+   "max_rank": 1
+  },
+  "M116": {
+   "id": "M116",
+   "cls": "regression",
+   "nodes": [
+    "virgil.epochs.marginal_loglike"
+   ],
+   "description": "marginal_loglike(s_max=...) integrates ln s on a fixed uniform grid of 257 nodes again, not adaptively (too coarse where the likelihood falls steeply from a bound).",
+   "files": [
+    "src/virgil/epochs.py"
+   ],
+   "finding": "F18",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_epochs.py::test_marginal_loglike_bound_binds[upper]"
+   ],
+   "message": "asser...",
+   "returncode": 1,
+   "seconds": 14.8,
+   "pytest": "1 failed, 4 passed, 4 skipped, 782 deselected in 11.52s",
    "max_rank": 1
   },
   "M64": {
@@ -320,12 +787,16 @@
    "files": [
     "src/virgil/oifits.py"
    ],
-   "status": "survived",
-   "killed_by": [],
+   "finding": "F13",
+   "equivalent": null,
+   "status": "killed",
+   "killed_by": [
+    "tests/test_frames_from_time.py::test_time_column_gives_the_same_frames_as_distinct_mjd"
+   ],
    "message": "",
-   "returncode": 0,
-   "seconds": 147.2,
-   "pytest": "150 passed, 45 skipped, 491 deselected, 52 warnings in 143.15s (0:02:23)",
+   "returncode": 1,
+   "seconds": 7.4,
+   "pytest": "1 failed, 9 skipped, 581 deselected in 5.52s",
    "max_rank": 1
   }
  }

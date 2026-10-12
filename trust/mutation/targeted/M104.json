@@ -1,0 +1,22 @@
+{
+ "id": "M104",
+ "cls": "regression",
+ "nodes": [
+  "virgil.fitting.fit"
+ ],
+ "description": "fit tolerance has no 1e-6 gtol floor and the L-BFGS carry starts with an infinite gradient, so a start at an exact zero-residual optimum is not converged.",
+ "files": [
+  "src/virgil/fitting.py"
+ ],
+ "finding": "F6",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_vlti.py::test_fit_from_the_exact_optimum_converges[lm]"
+ ],
+ "message": "as...",
+ "returncode": 1,
+ "seconds": 59.4,
+ "pytest": "1 failed, 15 passed, 12 skipped, 758 deselected, 8 warnings in 56.53s",
+ "max_rank": 1
+}

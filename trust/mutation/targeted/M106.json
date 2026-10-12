@@ -1,0 +1,22 @@
+{
+ "id": "M106",
+ "cls": "regression",
+ "nodes": [
+  "virgil.oidata.OIData"
+ ],
+ "description": "OIData does not catch a closure-phase table that is entirely flagged (the visibilities-alone fallback).",
+ "files": [
+  "src/virgil/oidata.py"
+ ],
+ "finding": "F8",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_vlti.py::test_all_closure_phases_flagged_leaves_the_visibilities"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 13.3,
+ "pytest": "1 failed, 10 passed, 9 skipped, 572 deselected, 1 warning in 11.19s",
+ "max_rank": 1
+}

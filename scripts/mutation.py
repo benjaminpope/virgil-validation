@@ -272,6 +272,7 @@ def run_mutant(mutant, python, scratch, repo, pin, timeout, graph, baseline_fail
     return {
         "id": mutant["id"], "cls": mutant["cls"], "nodes": mutant["nodes"], "description": mutant["description"],
         "files": sorted({e["file"] for e in mutant["edits"]}),
+        "finding": mutant.get("finding"), "equivalent": mutant.get("equivalent"),
         "status": status, "killed_by": killed_by, "message": message, "returncode": rc,
         "seconds": round(seconds, 1), "pytest": summary[-1] if summary else "", "max_rank": max_rank,
     }
@@ -281,13 +282,22 @@ def run_mutant(mutant, python, scratch, repo, pin, timeout, graph, baseline_fail
 
 
 def rate(rows):
+    """``(killed, denominator)``; equivalent mutants (``equivalent`` set) are in neither."""
+    rows = [r for r in rows if not r.get("equivalent")]
     killed = sum(r["status"] == "killed" for r in rows)
     denominator = sum(r["status"] in ("killed", "survived", "timeout") for r in rows)
     return killed, denominator
 
 
-def build_report(results, baseline, pin, n_listed):
-    """The JSON summary: overall, per class and per trust-graph node."""
+def build_report(results, baseline, pin, n_listed, listed=(), targeted=None):
+    """The JSON summary: overall, per class and per trust-graph node.
+
+    ``listed`` is the mutant list: it supplies ``finding`` and ``equivalent`` to results
+    written before those keys existed, and the regression mutants not yet run.
+    """
+    meta = {m["id"]: m for m in listed}
+    results = [{**r, "finding": meta.get(r["id"], {}).get("finding", r.get("finding")),
+                "equivalent": meta.get(r["id"], {}).get("equivalent", r.get("equivalent"))} for r in results]
     killed, denominator = rate(results)
     by_cls, by_node = collections.defaultdict(list), collections.defaultdict(list)
     for r in results:
@@ -299,7 +309,7 @@ def build_report(results, baseline, pin, n_listed):
         out = {}
         for name, rows in sorted(groups.items()):
             k, d = rate(rows)
-            out[name] = {"mutants": len(rows), "killed": k, "survived": sum(r["status"] == "survived" for r in rows),
+            out[name] = {"mutants": len(rows), "killed": k, "survived": sum(r["status"] == "survived" and not r.get("equivalent") for r in rows),
                          "other": sum(r["status"] in ("timeout", "error") for r in rows),
                          "kill_rate": (k / d) if d else None}
         return out
@@ -308,13 +318,29 @@ def build_report(results, baseline, pin, n_listed):
         "pin": pin, "listed": n_listed, "run": len(results), "killed": killed,
         "design_sha256": hashlib.sha256((ROOT / "design" / "mutation.yml").read_bytes()).hexdigest(),
         "mutants_sha256": hashlib.sha256(MUTANTS.read_bytes()).hexdigest(),
-        "survived": sum(r["status"] == "survived" for r in results),
+        "survived": sum(r["status"] == "survived" and not r.get("equivalent") for r in results),
+        "equivalent": sum(bool(r.get("equivalent")) for r in results),
         "timeout": sum(r["status"] == "timeout" for r in results),
         "error": sum(r["status"] == "error" for r in results),
         "kill_rate": (killed / denominator) if denominator else None,
+        "regression": regression_summary(results, listed, targeted),
         "baseline": baseline, "by_class": table(by_cls), "by_node": table(by_node),
         "mutants": sorted(results, key=lambda r: r["id"]),
     }
+
+
+def regression_summary(results, listed, targeted=None):
+    """The mutants tagged ``finding``, which design amendment 1 requires to be killed."""
+    by_id = {r["id"]: r for r in results}
+    rows = []
+    for m in listed:
+        if not m.get("finding"):
+            continue
+        states = {x["status"] for x in (by_id.get(m["id"]), (targeted or {}).get(m["id"])) if x}
+        status = next((s for s in ("killed", "survived", "timeout", "error") if s in states), "not run")
+        rows.append({"id": m["id"], "finding": m["finding"], "status": status})
+    return {"listed": len(rows), "killed": sum(x["status"] == "killed" for x in rows),
+            "survived": [x["id"] for x in rows if x["status"] == "survived"], "rows": rows}
 
 
 def _pct(x):
@@ -341,12 +367,24 @@ def render_markdown(report):
               "| node | mutants | killed | survived | kill rate |", "| --- | ---: | ---: | ---: | ---: |"]
     for name, t in sorted(r["by_node"].items(), key=lambda kv: (kv[1]["kill_rate"] is None, kv[1]["kill_rate"] or 0, kv[0])):
         lines.append(f"| `{name}` | {t['mutants']} | {t['killed']} | {t['survived']} | {_pct(t['kill_rate'])} |")
-    survivors = [m for m in r["mutants"] if m["status"] == "survived"]
+    reg = r.get("regression") or {"listed": 0}
+    if reg["listed"]:
+        lines += ["", "## Regression mutants (design amendment 1: every one must be killed)", "",
+                  f"{reg['killed']} of {reg['listed']} killed; survivors: "
+                  f"{', '.join(reg['survived']) or 'none'}"
+                  + ("  **(a failure of the suite: strengthen the test that pins the finding)**" if reg["survived"] else "") + ".", "",
+                  "| mutant | finding | status |", "| --- | --- | --- |"]
+        lines += [f"| {x['id']} | {x['finding']} | {x['status']} |" for x in reg["rows"]]
+    survivors = [m for m in r["mutants"] if m["status"] == "survived" and not m.get("equivalent")]
+    equivalent = [m for m in r["mutants"] if m.get("equivalent")]
     lines += ["", f"## Survivors ({len(survivors)}): candidate gaps", "",
               "Each is a slip no tier A test notices (or an equivalent mutant: check before filing a gap).", ""]
     for m in survivors:
         lines += [f"- **{m['id']}** ({m['cls']}; {', '.join(m['files'])}): {m['description']} "
                   f"Nodes: {', '.join(f'`{n}`' for n in m['nodes'])}."]
+    if equivalent:
+        lines += ["", f"## Equivalent mutants ({len(equivalent)}), in neither count", ""]
+        lines += [f"- **{m['id']}** ({m['status']}): {m['description']} Reason: {m['equivalent']}" for m in equivalent]
     others = [m for m in r["mutants"] if m["status"] in ("timeout", "error")]
     if others:
         lines += ["", "## Timed out or errored", ""]
@@ -372,10 +410,9 @@ def cmd_report(args):
     results = [json.loads(p.read_text()) for p in sorted((out / "results").glob("M*.json"))]
     baseline_path = out / "baseline.json"
     baseline = json.loads(baseline_path.read_text()) if baseline_path.exists() else None
-    report = build_report(results, baseline, pin, len(mutants))
-    report["targeted"] = {
-        q.stem: json.loads(q.read_text()) for q in sorted((out / "targeted").glob("M*.json"))
-    }
+    targeted = {q.stem: json.loads(q.read_text()) for q in sorted((out / "targeted").glob("M*.json"))}
+    report = build_report(results, baseline, pin, len(mutants), mutants, targeted)
+    report["targeted"] = targeted
     (out / "results.json").write_text(json.dumps(report, indent=1) + "\n")
     (out / "report.md").write_text(render_markdown(report))
     print(f"{report['run']}/{report['listed']} run: {report['killed']} killed, {report['survived']} survived, "

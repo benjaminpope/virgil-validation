@@ -1,0 +1,22 @@
+{
+ "id": "M115",
+ "cls": "regression",
+ "nodes": [
+  "virgil.orbits.StateVectorOrbit"
+ ],
+ "description": "StateVectorOrbit.to_kepler gets the inclination from arccos of cos i, which loses nearly face-on inclinations (the atan2 form is exact there).",
+ "files": [
+  "src/virgil/orbits.py"
+ ],
+ "finding": "F16",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_orbits_more.py::test_f16_state_vector_keeps_the_inclination_of_nearly_face_on_orbits_without_orbitize[0.001]"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 7.7,
+ "pytest": "1 failed, 6 skipped, 804 deselected in 5.81s",
+ "max_rank": 1
+}

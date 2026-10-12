@@ -267,3 +267,58 @@ def test_attached_companion_is_the_static_binary_at_each_time():
         worst = max(worst, np.max(np.abs(got - want)))
     record("max_abs_dV", worst)
     assert worst < 1e-12
+
+
+@pytest.mark.parametrize("elements", ORBITS)
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["mathematics"], property="sky_position")
+def test_kepler_position_angle_from_the_textbook_offsets(elements):
+    """KeplerOrbit.separation_pa is the length and the North-through-East angle of the
+    textbook (dRA, dDec) from crosscheck.orbits: arctan2(dRA, dDec) wrapped to [0, 360)
+    (catches the angle-from-East slip, mutant M11, where virgil.orbits is installed)."""
+    o = vo.KeplerOrbit(*elements, t_ref=59000.0)
+    t = np.linspace(59000.0, 59000.0 + 2.3 * elements[0], 37)
+    sep, pa = (np.asarray(x) for x in o.separation_pa(t))
+    dra, ddec = co.position(t - 59000.0, elements[0], elements[1], *elements[2:])
+    want = np.degrees(np.arctan2(dra, ddec)) % 360.0
+    err = np.abs((pa - want + 180.0) % 360.0 - 180.0)
+    assert np.max(np.abs(sep - np.hypot(dra, ddec))) / elements[-1] < 1e-12
+    assert np.max(err * sep) / np.max(sep) < 1e-9
+
+
+# F14-F16 (fixed in virgil#229) are pinned in tests/test_orbitize.py, which needs orbitize!: without it the
+# pins are skipped and the regression mutants M113-M115 survived. These need nothing but mathematics.
+
+
+@pytest.mark.parametrize("elements", ORBITS)
+@pytest.mark.validates("virgil.orbits.total_mass", "virgil.orbits.distance_pc", roots=["mathematics"])
+def test_f14_total_mass_is_keplers_third_law_without_orbitize(elements):
+    """M = 4 pi^2 a^3 / (G P^2) with the IAU 2015 nominal GM_sun, au and the 86400 s day (not a^3/P^2 with
+    P in Julian years, which is 4e-5 off), and distance_pc is its inverse."""
+    gm, au, day = 1.3271244e20, 149597870700.0, 86400.0
+    orbit = vo.KeplerOrbit(*elements, t_ref=59000.0)
+    d_pc = 37.0
+    a_m = elements[-1] * 1e-3 * d_pc * au
+    want = 4 * np.pi**2 * a_m**3 / (gm * (elements[0] * day) ** 2)
+    assert float(vo.total_mass(orbit, d_pc)) == pytest.approx(want, rel=1e-12)
+    assert float(vo.distance_pc(orbit, want)) == pytest.approx(d_pc, rel=1e-12)
+
+
+@pytest.mark.parametrize("omega", [0.0, 30.0, 270.0, 359.0])
+@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["mathematics"])
+def test_f15_thiele_innes_node_at_180_is_in_the_documented_range_without_orbitize(omega):
+    """to_kepler documents 0 <= Omega < 180: a node at 180 degrees, whose Thiele-Innes constants carry
+    sin(180 deg) ~ 1e-16, must come back as 0 (omega shifted by 180). Only the range is pinned: the round trip does not return the
+    sky orbit (one sky component comes back negated at the pin), which is a separate question."""
+    orbit = vo.KeplerOrbit(1000.0, 0.0, 0.3, 60.0, omega, 180.0, 100.0, t_ref=59000.0)
+    back = orbit.to_thiele_innes().to_kepler()
+    assert 0.0 <= float(back.Omega) < 180.0
+
+
+@pytest.mark.parametrize("inc", [0.001, 0.01, 179.99])
+@pytest.mark.validates("virgil.orbits.StateVectorOrbit", roots=["mathematics"])
+def test_f16_state_vector_keeps_the_inclination_of_nearly_face_on_orbits_without_orbitize(inc):
+    """The state vector fixes the inclination as precisely face-on as edge-on (atan2 of the angular momentum):
+    i = 0.01 deg came back as 0.0106 before the fix."""
+    orbit = vo.KeplerOrbit(1000.0, 100.0, 0.3, inc, 30.0, 60.0, 100.0, t_ref=59000.0)
+    back = vo.StateVectorOrbit.from_kepler(orbit).to_kepler()
+    assert float(back.inc) == pytest.approx(inc, abs=1e-10)

@@ -1,0 +1,23 @@
+{
+ "id": "M110",
+ "cls": "regression",
+ "nodes": [
+  "virgil.likelihood.whitened_residuals",
+  "virgil.oidata.OIData.cp_noise"
+ ],
+ "description": "Correlated closure phases are whitened from the chord of the residual wrapped into [-pi, pi), which jumps where a residual crosses +-pi.",
+ "files": [
+  "src/virgil/likelihood.py"
+ ],
+ "finding": "F11",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_closure_continuity.py::test_four_telescope_chi2_is_continuous"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 21.2,
+ "pytest": "1 failed, 1 passed, 6 skipped, 614 deselected in 18.96s",
+ "max_rank": 1
+}

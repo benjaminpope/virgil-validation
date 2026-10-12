@@ -1,0 +1,22 @@
+{
+ "id": "M102",
+ "cls": "regression",
+ "nodes": [
+  "virgil.models.GaussianArc"
+ ],
+ "description": "GaussianArc weight truncated at +-3.5 sigma again (and not once round the circle).",
+ "files": [
+  "src/virgil/models.py"
+ ],
+ "finding": "F2",
+ "equivalent": null,
+ "status": "killed",
+ "killed_by": [
+  "tests/test_visibilities.py::test_gaussian_arc_matches_untruncated_arc[5.0-4.0]"
+ ],
+ "message": "",
+ "returncode": 1,
+ "seconds": 11.1,
+ "pytest": "1 failed, 1 passed, 4 skipped, 782 deselected in 9.12s",
+ "max_rank": 1
+}
