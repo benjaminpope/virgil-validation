@@ -174,3 +174,14 @@ def test_joint_arm_in_the_plan_names_known_tasks():
     for a in arms:
         for x in a["cli"][a["cli"].index("--joint") + 1].split(","):
             ci.task_index(x)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_sweep_spec_is_virgils_default_apart_from_families():
+    from virgil.ensemble import EnsembleSpec
+
+    default, smoke = EnsembleSpec(), EnsembleSpec(**ci.SWEEP_SMOKE, families=("tv", "tsv"))
+    assert smoke.weight_ranges == default.weight_ranges and smoke.families == ("tv", "tsv")
+    assert smoke.n_weights == 3 and smoke.max_npix < default.max_npix
+    with pytest.raises(ValueError):
+        EnsembleSpec(families=("logsum",))  # not an ensemble family: --sweep-families rejects it too

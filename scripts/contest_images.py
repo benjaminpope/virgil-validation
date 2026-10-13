@@ -880,6 +880,16 @@ def scene_options(text, hole_mas=None):
                 hole_mas=hole_mas, tag="_" + "-".join(parts))
 
 
+def load_data(spec, data_dir):
+    """The OIData of ``spec``'s files (a list if there are several), with
+    channels outside its "wavel" flagged."""
+    paths = [str(data_dir / f) for f in spec["files"]]
+    if spec.get("wavel"):
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="contest_"))
+        paths = [select_channels(p, spec["wavel"], tmp) for p in paths]
+    return OIData(paths[0]) if len(paths) == 1 else [OIData(p) for p in paths]
+
+
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
           oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0,
           n_starts=N_STARTS, guard=True, field_override=None, clean_scales=(0.0,), gauss_halo=False,
@@ -930,11 +940,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         label += "_clean"
     clean_scales = tuple(float(f) for f in clean_scales)
     multiscale = clean_scales != (0.0,)
-    paths = [str(data_dir / f) for f in files]
-    if spec.get("wavel"):
-        tmp = pathlib.Path(tempfile.mkdtemp(prefix="contest_"))
-        paths = [select_channels(p, spec["wavel"], tmp) for p in paths]
-    data = OIData(paths[0]) if len(paths) == 1 else [OIData(p) for p in paths]
+    data = load_data(spec, data_dir)
     datasets = data if isinstance(data, list) else [data]
     npts = sum(np.asarray(d.flatten_data()[0]).size for d in datasets)
     resolution = beam(data)
@@ -2045,6 +2051,63 @@ def run_clean(task, data_dir, out_dir, smoke=False, halo=False, star=None, init=
     fig.savefig(out_dir / f"{label}.png", dpi=100)
 
 
+# Ensemble sweep (round 2, --sweep): virgil.ensemble's randomised L-curves
+# (regulariser family, pixel scale, field, start), the kept members' mean and
+# spread. The spec is virgil's EnsembleSpec() default, apart from --sweep-families
+# (and the smoke cut). Its weight ranges are virgil's untuned defaults (fitted
+# to the contest bench's corners, not to this data), and the 180° ambiguity of
+# closure-phase data (an image and its point reflection fit alike) is not handled:
+# members are not flipped onto each other, so the mean can blur a flipped member.
+SWEEP_SMOKE = dict(n_weights=3, max_npix=32)
+
+
+def run_sweep(task, data_dir, out_dir, n_groups, smoke=False, star=None, families=None, label=None, informed=False):
+    """``n_groups`` groups of virgil.ensemble.ensemble on the task's data,
+    with the task's star unless ``star`` says otherwise. Saves the mean
+    image, its pixel-wise std, the kept members, and the ensemble's summary."""
+    from virgil.ensemble import EnsembleSpec, ensemble
+
+    t0 = time.time()
+    spec = spec_of(task)
+    star = spec.get("star", False) if star is None else star
+    data = load_data(spec, data_dir)
+    options = dict(SWEEP_SMOKE) if smoke else {}
+    if families:
+        options["families"] = tuple(families)
+    ens_spec = EnsembleSpec(**options)
+    ens = ensemble(data, n_groups, jax.random.PRNGKey(0), spec=ens_spec, star=star, **({"max_steps": 50} if smoke else {}))
+    label = label or spec["label"] + ("_star" if star and not spec.get("star") else "") + "_sweep"
+    kept = [{"group": m.draw.index, "family": m.draw.family, "weight": m.weight, "npix": m.draw.npix,
+             "pixel_scale_mas": m.draw.pixel_scale_mas, "start": m.draw.start, "chi2_red": list(m.chi2_red)}
+            for m in ens.kept]
+    mean, std = np.asarray(ens.mean.brightness), np.asarray(ens.std)
+    pixel = float(ens.mean.pixel_scale_mas)
+    raw = chi2_red(ens.model, data)
+    summary = ens.summary()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(out_dir / f"{label}.npz", mean=mean, std=std, pixel_scale_mas=pixel, npix=mean.shape[0],
+                        mean_flux=flux_value(ens.mean.flux), kept=json.dumps(kept, default=float), summary=summary,
+                        ensemble_chi2_red=np.asarray(ens.chi2_red), raw_chi2_red=raw, n_groups=n_groups, star=bool(star),
+                        spec=json.dumps(dataclasses.asdict(ens_spec), default=float), informed=bool(informed))
+    text = (f"task={task if isinstance(task, int) else spec['label']} label={label} files={spec['files']} star={star}\n"
+            f"{informed_line(informed)}\nraw chi2/N={raw:.4g} (quoted errors, no nuisances; the mean scene) "
+            f"per dataset={tuple(round(float(c), 4) for c in ens.chi2_red)}\n"
+            f"sweep: {n_groups} groups, EnsembleSpec {dataclasses.asdict(ens_spec)}\n"
+            f"the weight ranges are virgil's untuned defaults; the 180° ambiguity is not handled\n"
+            f"virgil={virgil.__version__} from {virgil.__file__}\nnpix={mean.shape[0]} pixel={pixel:.4g} mas "
+            f"kept={len(kept)} members\n{summary}\nelapsed={time.time() - t0:.0f}s\n")
+    (out_dir / f"{label}.txt").write_text(text)
+    print(text)
+    fov = mean.shape[0] * pixel
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.6))
+    plot_model(ens.mean, fov_mas=fov, npix=mean.shape[0], ax=axes[0], title=f"{label}: mean of {len(kept)}")
+    im = axes[1].imshow(std, origin="lower", cmap="magma")
+    axes[1].set_title("std across kept members")
+    fig.colorbar(im, ax=axes[1])
+    plt.tight_layout()
+    fig.savefig(out_dir / f"{label}.png", dpi=100)
+
+
 def main():
     # A run that stalls prints where it is: every 30 minutes, every thread's
     # traceback goes to stderr (campaign-2 smoke tasks 75, 77 and 79 hung for
@@ -2091,6 +2154,11 @@ def main():
     parser.add_argument("--clean-scales", default="0",
                         help="CLEAN component widths in beam minor axes, comma-separated (multi-scale CLEAN, e.g. 0,1,2; "
                              "labels get _cleanms); only with --prior clean")
+    parser.add_argument("--sweep", type=int, metavar="N",
+                        help="N groups of virgil.ensemble (randomised L-curves, mean and std of the kept members; labels "
+                             "get _sweep); virgil's default EnsembleSpec, untuned weight ranges, 180° ambiguity not handled")
+    parser.add_argument("--sweep-families", type=lambda x: x.split(","),
+                        help="--sweep: regulariser families (tv, tsv, maxent, starlet; default all four)")
     parser.add_argument("--informed", action="store_true",
                         help="mark the outputs as round-2 fits whose method was chosen after seeing the truth")
     parser.add_argument("--member", type=int, help="ensemble member (CLEAN-started GP with a randomised start)")
@@ -2139,6 +2207,16 @@ def main():
     if args.systematics != "none" and args.settings is None and (
             args.prior in ("gp2", "clean") or "block_scales" in args.systematics and args.prior != "gp"):
         parser.error("--systematics needs --prior gp or mem (block_scales: gp only)")
+    if args.sweep:
+        if args.settings is not None or args.member is not None or args.prior != "mem" or args.regulariser != "mem":
+            parser.error("--sweep takes its own regularisers (--sweep-families): not --prior, --regulariser, --settings or --member")
+        if (args.systematics != "none" or args.points or args.sparco or args.hole is not None or args.prune
+                or scene.get("star_model", "point") != "point" or scene.get("gauss_halo")):
+            parser.error("--sweep fits virgil's ensemble scene: at most --scene point,image (or --star), "
+                         "no --systematics, --points, --sparco, --hole or --prune")
+        run_sweep(task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.sweep, args.smoke,
+                  star, args.sweep_families, args.label, args.informed)
+        return
     if args.settings is not None:
         run_gp(task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
                settings=json.loads(args.settings), label=args.label, informed=args.informed, points=args.points,
