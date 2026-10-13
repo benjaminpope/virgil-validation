@@ -175,7 +175,7 @@ def trim_epoch(e):
 
 
 def trim_orbit(o):
-    out = _keep(o, ("t_ref", "map", "loss", "chi2_raw", "epoch_checks"))
+    out = _keep(o, ("t_ref", "map", "loss", "chi2_raw", "epoch_checks", "start", "blind_best"))
     out["modes"] = [_keep(m, ("loss", "elements")) for m in o.get("modes", [])]
     out["positions"] = [_keep(p, ("name", "mjd", "dra", "ddec", "cov", "flux", "rho_mas", "pa_deg"))
                         for p in o.get("positions", [])]

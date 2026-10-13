@@ -137,6 +137,9 @@ def test_arxiv_links_are_well_formed(og, data):
     text = og.page(data)
     for t in data["targets"]:
         a = t["paper"]["arxiv"]
+        if a is None:  # the workshop tile cites two papers (iota Peg, sigma Ori) and links neither
+            assert t["collection_id"].startswith("647a22a9"), t["slug"]
+            continue
         assert ARXIV.match(a), a
         assert f"[arXiv:{a}](https://arxiv.org/abs/{a})" in text
     assert not re.findall(r"arxiv\.org/abs/(?!\d{4}\.\d{4,5}\))", text)

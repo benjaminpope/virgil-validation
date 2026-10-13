@@ -198,18 +198,29 @@ def cmp_gl229(cid, fit, ref):
     rows, orbit = [], fit["orbit"]
     par = ref["orbit"]["pmoired_frequentist"]
     el, how = orbit_values(orbit)
+    blind = orbit.get("blind_best")
+    seeded = ("; SEEDED by the published orbit: the start search alone reaches loss "
+              f"{blind['loss']:.1f}, i {blind['elements']['inc_deg']:.1f} deg, so these rows show the data support "
+              "the published orbit, not that virgil finds it blind") if orbit.get("start") == "published" and blind else ""
     rows.append(row(cid, "Gl 229 Ba-Bb", "orbit", "flux_ratio", *el["flux_ratio"], *par["flux_ratio_2um"],
-                    "parametric", fit=orbit, note=f"PMOIRED (frequentist) f2/f1 at 2.0 um; virgil {how}"))
+                    "parametric", fit=orbit, note=f"PMOIRED (frequentist) f2/f1 at 2.0 um; virgil {how}{seeded}"))
     octo = ref["orbit"]["octofitter_bayesian"]
     rows.append(row(cid, "Gl 229 Ba-Bb", "orbit", "flux_ratio", *el["flux_ratio"], *octo["flux_ratio_2um"],
-                    "parametric", fit=orbit, status="REPORT", note="Octofitter posterior (reported)"))
+                    "parametric", fit=orbit, status="REPORT", note=f"Octofitter posterior (reported){seeded}"))
     names = {"P_day": "period_day", "e": "ecc", "i_deg": "inc_deg", "Omega_deg": "Omega_deg",
              "omega_primary_deg": "omega_deg", "T_peri_mjd": "t_peri_mjd", "a_au": "a_au"}
     for label, src in (("PMOIRED", par), ("Octofitter", octo)):
         pub = {names[k]: src[k] for k in names}
         rows += orbit_rows(cid, "Gl 229 Ba-Bb", orbit, pub, omega_shift=180.0,
                            a_scale=CRITERIA["gl229_parallax_mas"],
-                           note=f"vs {label}; theirs with RVs, ours astrometry only; omega_pub(primary)+180")
+                           note=f"vs {label}; theirs with RVs, ours astrometry only; omega_pub(primary)+180{seeded}")
+    if seeded:  # the blind search's own best orbit stays visible as a finding
+        pub = {names[k]: par[k] for k in names}
+        for r in orbit_rows(cid, "Gl 229 Ba-Bb", dict(map=blind["elements"], chi2_raw=orbit.get("chi2_raw")), pub,
+                            omega_shift=180.0, a_scale=CRITERIA["gl229_parallax_mas"],
+                            note=f"vs PMOIRED; the start search alone (no published start), loss {blind['loss']:.1f} "
+                                 f"against {orbit['loss']:.1f} at the headline"):
+            rows.append(dict(r, epoch="orbit (blind start)"))
     # per-night positions against Xuan's PMOIRED orbit, evaluated with crosscheck.orbits
     for e in fit["epochs"]:
         dra, ddec = (float(x) for x in np.ravel(orbits.position(
