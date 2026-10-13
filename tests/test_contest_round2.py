@@ -148,3 +148,29 @@ def test_hole_support():
     assert ci.hole_support(x, None) is None
     m = ci.hole_support(x, 1.0)
     assert not m[4, 4] and not m[4, 5] and m[4, 7] and m.sum() == 81 - 9
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_joint_spec_merges_files_in_order():
+    bands = [f"2008/2008-Contest2_{b}.oifits" for b in "JHK"]
+    by_label = ci.joint_spec(["2008_agn_J", "2008_agn_H", "2008_agn_K"])
+    by_index = ci.joint_spec([str(ci.task_index(f"2008_agn_{b}")) for b in "JHK"])
+    assert by_label == by_index and by_label["files"] == bands
+    assert by_label["label"] == "2008_agn_J+2008_agn_H+2008_agn_K" and by_label["field"] == 30.0
+    assert len(ci.TASKS) == 27 and all("JHK" not in t["label"] for t in ci.TASKS)
+    with pytest.raises(ValueError):
+        ci.joint_spec(["2004_data1", "2008_agn_J"])  # field None against 30 mas
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_joint_arm_in_the_plan_names_known_tasks():
+    from importlib import util
+
+    spec = util.spec_from_file_location("contest_fit_plan", ROOT / "scripts" / "contest_fit_plan.py")
+    fp = util.module_from_spec(spec)
+    spec.loader.exec_module(fp)
+    arms = [a for t, a in fp.round2_arms(fp.load_plan()) if "--joint" in a.get("cli", [])]
+    assert arms
+    for a in arms:
+        for x in a["cli"][a["cli"].index("--joint") + 1].split(","):
+            ci.task_index(x)

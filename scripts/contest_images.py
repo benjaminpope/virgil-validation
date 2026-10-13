@@ -159,13 +159,6 @@ TASKS = [
          field_source="2016 contest page, 9 May 2016: FOV 50-60 mas"),
     dict(label="2016_obj2", files=["2016/2016_Object2-v3.fits"], field=400.0,
          field_source="2016 contest page, 9 May 2016: FOV 0.4 arcsec"),
-    # Round 2 (contests/fit_plan.yml, joint-bands): 2008 AGN's J, H and K
-    # fitted together as a star and an image with different spectra
-    # (SPARCO). The method was chosen after seeing the truth; the star's flux,
-    # the spectra and the image come from the data.
-    dict(label="2008_agn_JHK", files=[f"2008/2008-Contest2_{b}.oifits" for b in "JHK"], field=30.0,
-         field_source="2008 readme: 15 mas FWHM taper", prior=("gauss", 15.0), star=True, sparco=True,
-         star_source="round 2 (informed): a central source with its own spectrum"),
 ]
 
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
@@ -375,6 +368,23 @@ def informed_line(informed):
     the truths were seen (contests/fit_plan.yml), so they are "informed"."""
     return ("provenance=informed (method chosen after seeing the truth; values from pre-submission information "
             "and the data only)") if informed else "provenance=blind"
+
+
+def task_index(x):
+    """TASKS index of ``x``, an index or a label."""
+    return int(x) if str(x).isdigit() else [t["label"] for t in TASKS].index(x)
+
+
+def joint_spec(selection):
+    """One spec from the TASKS named in ``selection`` (indices or labels):
+    their files in one dataset, the rest (field, prior, star, ...) from the
+    first, which the others must agree with on field, prior and wavel
+    (--joint: the bands of one target fitted together)."""
+    specs = [TASKS[task_index(x)] for x in selection]
+    for key in ("field", "prior", "wavel"):
+        if len({repr(sp.get(key)) for sp in specs}) > 1:
+            raise ValueError(f"--joint tasks disagree on {key}: {[sp.get(key) for sp in specs]}")
+    return dict(specs[0], label="+".join(sp["label"] for sp in specs), files=[f for sp in specs for f in sp["files"]])
 
 
 def spec_of(task):
@@ -914,6 +924,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         label += "_halo"
     if hole_mas is not None:
         label += f"_hole{hole_mas:g}"
+    if sparco:
+        label += "_sparco"
     if init == "clean":
         label += "_clean"
     clean_scales = tuple(float(f) for f in clean_scales)
@@ -2043,6 +2055,12 @@ def main():
     faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--task", type=int)
+    parser.add_argument("--joint", type=lambda x: x.split(","),
+                        help="TASKS (indices or labels, comma-separated) merged into one dataset, e.g. the bands of one "
+                             "target; the first fixes field, prior and star (--task, if given, must be that first one)")
+    parser.add_argument("--sparco", action="store_true",
+                        help="with a star (--scene or the task's): the image has its own power-law spectrum relative to "
+                             "the star's (a CLEAN start; labels get _sparco)")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--data", default="~/data/imaging_contests")
     parser.add_argument("--out", default="contest_images")
@@ -2086,6 +2104,17 @@ def main():
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     star = None if args.star is None else args.star == "on"
+    task = args.task
+    if args.joint:
+        try:
+            task = joint_spec(args.joint)
+            first = task_index(args.joint[0])
+        except (ValueError, IndexError) as e:
+            parser.error(f"--joint: {e}")
+        if args.task is not None and args.task != first:
+            parser.error("--task must be the first of --joint's tasks (or omitted)")
+    elif task is None:
+        parser.error("give --task or --joint")
     scene = {} if args.hole is None else {"hole_mas": args.hole}
     if args.scene:
         if args.star or args.settings is not None or args.member is not None:
@@ -2097,32 +2126,40 @@ def main():
         star = scene.pop("star")
         if args.prior in ("gp2", "clean") and scene["gauss_halo"]:
             parser.error("gauss_halo needs --prior gp or mem")
+    if args.sparco:
+        spec = spec_of(task)
+        if not (star if star is not None else spec.get("star", False)):
+            parser.error("--sparco needs a star (--scene with point, ud or ld_ellipse, or a task with one)")
+        if args.settings is not None or args.member is not None or args.prior in ("gp2", "clean"):
+            parser.error("--sparco needs --prior gp or mem in a grown-field run")
+        scene["sparco"] = True
+        args.init = "clean"
     if args.hole is not None and (args.settings is not None or args.member is not None):
         parser.error("--hole needs a grown-field run (not --settings / --member)")
     if args.systematics != "none" and args.settings is None and (
             args.prior in ("gp2", "clean") or "block_scales" in args.systematics and args.prior != "gp"):
         parser.error("--systematics needs --prior gp or mem (block_scales: gp only)")
     if args.settings is not None:
-        run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
+        run_gp(task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
                settings=json.loads(args.settings), label=args.label, informed=args.informed, points=args.points,
                systematics=args.systematics)
         return
     if args.member is not None:
-        run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
+        run_gp(task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
                member=args.member)
         return
     paths = pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser()
     scales = tuple(float(x) for x in args.clean_scales.split(","))
     common = dict(label=args.label, field=args.field, informed=args.informed)
     if args.prior == "gp":
-        run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, points=args.points,
+        run_gp(task, *paths, args.smoke, args.halo, star, args.init, points=args.points,
                systematics=args.systematics, scene=scene, **common)
     elif args.prior == "gp2":
-        run_gp2(args.task, *paths, args.smoke, args.halo, star, args.init, scene=scene, **common)
+        run_gp2(task, *paths, args.smoke, args.halo, star, args.init, scene=scene, **common)
     elif args.prior == "clean":
-        run_clean(args.task, *paths, args.smoke, args.halo, star, clean_scales=scales, scene=scene, **common)
+        run_clean(task, *paths, args.smoke, args.halo, star, clean_scales=scales, scene=scene, **common)
     else:
-        run(args.task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, points=args.points,
+        run(task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, points=args.points,
             prune_blobs=args.prune, systematics=args.systematics, scene=scene, **common)
 
 

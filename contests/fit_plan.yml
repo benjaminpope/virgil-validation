@@ -527,15 +527,16 @@ round2:
     - {id: gp2, what: Two-scale GP, cli: [--prior, gp2]}
   2008_agb_H: *agb_r2
   2008_agb_K: *agb_r2
-  2008_agn_J: &agn_r2
+  2008_agn_J:
     - {id: starlet, what: Starlet L1 per band, cli: [--regulariser, starlet]}
     - {id: tsv, what: TSV per band, cli: [--regulariser, tsv]}
-  2008_agn_H: *agn_r2
+    - id: sparco_jhk
+      what: J+H+K together, star + image with different spectra (SPARCO); the method was chosen after seeing the truth.
+      cli: [--prior, gp, --joint, "2008_agn_J,2008_agn_H,2008_agn_K", --scene, "point,image", --sparco]
+  2008_agn_H: &agn_r2
+    - {id: starlet, what: Starlet L1 per band, cli: [--regulariser, starlet]}
+    - {id: tsv, what: TSV per band, cli: [--regulariser, tsv]}
   2008_agn_K: *agn_r2
-  2008_agn_JHK:
-    - id: sparco
-      what: J+H+K together, star + image with different spectra (SPARCO).
-      settings: {star: true, star_model: point, halo: false, sparco: true, field: 1.0, oversample: 3.0, clean_gain: 0.1}
   2010_lowH: &low_r2
     - {id: prune, what: MaxEnt from CLEAN, isolated compact blobs outside the main source removed and refitted, cli: [--init, clean, --prune]}
   2010_lowK: *low_r2
