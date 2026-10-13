@@ -90,6 +90,7 @@ class System:
     loader: object
     n_epochs: str  # for --list
     sign_free: bool = False  # near-equal fluxes: position seeds known only up to a sign (virgil#324)
+    primary_diam: object = None  # the primary's uniform-disk diameter: None (point), mas, or "fit"
 
 
 def _thin(data, max_ch=24):
@@ -159,25 +160,26 @@ def _trackb_system(root, name):
     return json.load(open(p)), p.parent
 
 
-def _trackb_reference(s):
+def _trackb_reference(s, primary_omega=False):
     ro = s.get("reference_orbit") or {}
     need = ("P_day", "T0", "e", "omega_deg", "Omega_deg", "i_deg", "a_mas")
     if not all(k in ro for k in need):
         return None
     t0 = ro["T0"]
-    jd = (  # AL Dor: Tp is HJD-2445000
-        t0[0] + 2445000.0
-        if len(t0) > 2 and "HJD-2445000" in str(t0[2])
-        else t0[0]
-    )
+    unit = str(t0[2]) if len(t0) > 2 else ""
+    if "BJD-2400000" in unit:  # alpha Equ: MJD = BJD - 2400000.5, so BJD-2400000 less 0.5 d
+        t_peri = t0[0] - 0.5
+    else:
+        jd = t0[0] + 2445000.0 if "HJD-2445000" in unit else t0[0]  # AL Dor: Tp is HJD-2445000
+        t_peri = jd - MJD_JD
     return dict(
         P=ro["P_day"][0],
-        t_peri=jd - MJD_JD,
+        t_peri=t_peri,
         ecc=ro["e"][0],
         inc=ro["i_deg"][0],
         # The tabulated omega reproduces the published companion positions in crosscheck.orbits' convention as it
         # stands (checked for all 8 Track B systems: the old +180 deg gave their point reflection).
-        omega=ro["omega_deg"][0],
+        omega=ro["omega_deg"][0] + (180.0 if primary_omega else 0.0),
         Omega=ro["Omega_deg"][0],
         a_mas=ro["a_mas"][0],
         source=s["reference"].get("positions_source", "")[:60]
@@ -186,9 +188,10 @@ def _trackb_reference(s):
 
 
 def _check_published(ref, refpos, limit_mas=0.5):
-    """Median miss (mas) of the reference orbit against the published positions, and a note if it exceeds limit_mas.
+    """Median miss (mas) of the reference orbit against the published positions; raises if it exceeds limit_mas.
 
-    A check, not an adjustment: a large miss means a wrong reference (convention, T0 epoch), not a sign to choose."""
+    A check, not an adjustment: a large miss means a wrong reference (convention, T0 epoch), not a sign to choose.
+    It is an error, not a note: a wrong reference (alpha Equ, 7.4 mas) once went through as a warning."""
     from crosscheck import orbits as O
 
     rp = np.array(refpos)
@@ -196,10 +199,12 @@ def _check_published(ref, refpos, limit_mas=0.5):
         rp[:, 0], ref["P"], ref["t_peri"], ref["ecc"], ref["inc"], ref["omega"], ref["Omega"], ref["a_mas"]
     )
     miss = float(np.median(np.hypot(x - rp[:, 1], y - rp[:, 2])))
-    note = None
     if miss > limit_mas:
-        note = f"WARNING: reference orbit misses the published positions by a median {miss:.2f} mas: reference unreliable"
-    return miss, note
+        raise ValueError(
+            f"reference orbit misses the published positions by a median {miss:.2f} mas (limit {limit_mas} mas): "
+            "the reference convention or epoch is wrong"
+        )
+    return miss, None
 
 
 def _read_with_vis(T):
@@ -219,7 +224,7 @@ def _read_with_vis(T):
     return read
 
 
-def make_trackb_loader(name):
+def make_trackb_loader(name, primary_omega=False):
     def load(root):
         import trackb_fit as T
 
@@ -250,7 +255,7 @@ def make_trackb_loader(name):
                 dra, ddec = e["published"]["pos"]
                 refpos.append((e["mjd"], dra, ddec))
                 seps.append(float(np.hypot(dra, ddec)))
-        ref = _trackb_reference(s)
+        ref = _trackb_reference(s, primary_omega)
         if ref is not None and refpos:
             miss, note = _check_published(ref, refpos)
             ref["median_miss_published_mas"] = miss
@@ -287,6 +292,23 @@ TRACKB = {
     "psi_cen": ("psi Cen", "PIONIER", 38.8121),
 }
 
+# The primary's angular diameter (mas) for the uniform-disk model: "fit" where the primary is resolved on the
+# longest baselines (UD >= ~0.4 mas, i.e. V^2(B_max) < 0.98 in K), else the literature value fixed (JSDC, VizieR
+# II/346, which agrees with the Track B system.json "diameters_mas" wherever both exist), else None (unresolved).
+PRIMARY_DIAM = {
+    "gl229": None,  # Ba: no catalogue value; R ~0.08 Rsun at 5.76 pc is ~0.13 mas, V^2 > 0.99: a point
+    "omi_leo": "fit",  # 1.30 +/- 0.08 mas LD (Gallenne+2023, 2023A&A...672A.119G); strongly resolved
+    "al_dor": 0.156,  # LD, H (Graczyk+2019, adopted in Gallenne+2019, 2019A&A...632A..31G); unresolved
+    "alf_equ": "fit",  # JSDC UD ~1.48 mas (no paper value; Halbwachs+2020 assume unresolved); strongly resolved
+    "hd188088": "fit",  # 0.746 +/- 0.007 mas LD, K (Gallenne+2023 Table 3)
+    "hd210763": 0.367,  # 0.367 +/- 0.009 mas LD, K (Gallenne+2023 Table 3); marginal: V^2 ~0.98, so fixed
+    "hd41255": 0.245,  # 0.245 +/- 0.002 mas LD, K (Gallenne+2023 Table 3); unresolved
+    "hd70937": "fit",  # 0.413 +/- 0.005 mas LD, K (Gallenne+2023 Table 3); just resolved
+    "psi_cen": "fit",  # 0.424 +/- 0.007 mas LD, H (Mantegazza+2010, as used in Gallenne+2019); resolved at H
+}
+# alpha Equ: the tabulated omega is "omega_1, refers to the motion of the primary" (system.json): +180 deg
+PRIMARY_OMEGA = ("alf_equ",)
+
 SYSTEMS = {
     "gl229": System(
         "Gl 229 Ba-Bb",
@@ -295,6 +317,7 @@ SYSTEMS = {
         (10.0, 14.0),
         load_gl229,
         "7 nights",
+        primary_diam=PRIMARY_DIAM["gl229"],
     ),
 }
 TWINS = ("al_dor", "hd41255", "hd188088")  # flux ratios 0.9-1.0
@@ -304,16 +327,17 @@ for _k, (_label, _inst, _p) in TRACKB.items():
         _inst,
         "Track B reference orbit (system.json, Gallenne+ tables)",
         (_p / P_WINDOW, _p * P_WINDOW),
-        make_trackb_loader(_k),
+        make_trackb_loader(_k, primary_omega=_k in PRIMARY_OMEGA),
         "Track B",
         sign_free=_k in TWINS,
+        primary_diam=PRIMARY_DIAM[_k],
     )
 
 
 # ---------------------------------------------------------------------------
 # Fit and outputs
 # ---------------------------------------------------------------------------
-def positions_for(loaded, t_ref, max_widen=3):
+def positions_for(loaded, t_ref, max_widen=5):
     """Per-epoch positions (seeds and diagnostic): epoch_positions on a grid at lambda_min / 4 B_max.
 
     A best peak at the grid edge may stand for a companion outside it, so the half-width is widened by
@@ -496,11 +520,12 @@ def plot_corner(path, result):
     plt.close(fig)
 
 
-def block_chi2(result, loaded):
-    """Raw chi2 and independent-observable count of the V2 and the closure-phase blocks at the best orbit,
-    summed over epochs ("vis" and "phi"), on the quoted errors."""
-    from virgil.epochs import _blocks
-    from virgil.likelihood import whitened_residuals
+VIS_AMP = (0.01, 1.5)  # per-epoch V^2 amplitude, log-uniform (virgil vis_amp): a contrast loss the same on all baselines
+
+
+def best_scene(result, primary_diam):
+    """The best band's scene, as the fit built it: point or uniform-disk primary, one orbiting companion."""
+    from virgil.aliases import _UDBinary
     from virgil.models import OrbitalBinary
     from virgil.orbits import KeplerOrbit
 
@@ -508,39 +533,53 @@ def block_chi2(result, loaded):
     orbit = KeplerOrbit(
         b["period"], b["dt_peri"], b["ecc"], b["inc"], b["omega"], b["Omega"], b["a_mas"], t_ref=result.t_ref
     )
-    model = OrbitalBinary(orbit, b["flux"])
+    diam = b.get("diam", None if primary_diam == "fit" else primary_diam)
+    return _UDBinary(orbit, b["flux"], diam) if diam else OrbitalBinary(orbit, b["flux"])
+
+
+def epoch_residuals(model, d, vis_amp=VIS_AMP):
+    """Whitened residuals of one epoch, with its squared visibilities scaled by the best amplitude in vis_amp
+    (the weighted least-squares amplitude, clipped: the same profile as the fit's). Returns (residuals, amplitude)."""
+    from virgil.epochs import _blocks
+    from virgil.likelihood import whitened_residuals
+
+    r = np.array(whitened_residuals(model, d))
+    blocks = _blocks(d)
+    if vis_amp is None or blocks[0][0] != "vis" or not d.v2_flag:
+        return r, 1.0
+    n = blocks[0][2]
+    err = np.asarray(d.d_vis, float).ravel()
+    obs = np.asarray(d.vis, float).ravel()
+    mod = obs + r[:n] * err
+    amp = float(np.clip(np.sum(obs * mod / err**2) / np.sum(mod**2 / err**2), *vis_amp))
+    r[:n] = (amp * mod - obs) / err
+    return r, amp
+
+
+def block_chi2(result, loaded, primary_diam=None, vis_amp=VIS_AMP):
+    """Raw chi2 and independent-observable count of the V2 and the closure-phase blocks at the best orbit,
+    summed over epochs ("vis" and "phi"), on the quoted errors (with the epochs' V2 amplitudes, if fitted)."""
+    from virgil.epochs import _blocks
+
+    model = best_scene(result, primary_diam)
     out = {}
     for d in loaded.data:
-        r = np.asarray(whitened_residuals(model, d))
+        r, _ = epoch_residuals(model, d, vis_amp)
         for name, a, z, nu, _ in _blocks(d):
             c, n = out.get(name, (0.0, 0))
             out[name] = (c + float(np.sum(r[a:z] ** 2)), n + int(nu))
     return {k: dict(chi2=c, n=n, chi2_per_n=c / n if n else None) for k, (c, n) in out.items()}
 
 
-def residual_stats(result, loaded):
+def residual_stats(result, loaded, primary_diam=None, vis_amp=VIS_AMP):
     """Raw residuals of every epoch at the best orbit, whitened by the quoted errors, as trackb_fit.py sums them.
 
     Returns (residuals per epoch, rms per epoch, chi2, n_independent): the independent check of virgil's chi2_red,
-    kept apart from the plotting so a plotting failure cannot remove it.
+    kept apart from the plotting so a plotting failure cannot remove it. The model is the fit's: the same primary
+    and, with vis_amp, the epochs' best V2 amplitudes.
     """
-    from virgil.likelihood import whitened_residuals
-    from virgil.models import OrbitalBinary
-    from virgil.orbits import KeplerOrbit
-
-    b = result.best.best
-    orbit = KeplerOrbit(
-        b["period"],
-        b["dt_peri"],
-        b["ecc"],
-        b["inc"],
-        b["omega"],
-        b["Omega"],
-        b["a_mas"],
-        t_ref=result.t_ref,
-    )
-    model = OrbitalBinary(orbit, b["flux"])
-    res = [np.asarray(whitened_residuals(model, d)) for d in loaded.data]
+    model = best_scene(result, primary_diam)
+    res = [epoch_residuals(model, d, vis_amp)[0] for d in loaded.data]
     rms = [float(np.sqrt(np.mean(r**2))) for r in res]
     return (
         res,
@@ -635,6 +674,9 @@ def run(name, args):
         loaded.data = [d.select(observables="phi") for d in loaded.data]
         loaded.grid_data = [d.select(observables="phi") for d in loaded.grid_data]
     errors = []
+    vis_amp = None if args.no_vis_amp or args.closure_only else VIS_AMP
+    primary_diam = None if args.no_ud else sysd.primary_diam
+    ref0 = loaded.reference
 
     def attempt(label, fn):
         """Run a post-processing step; a failure is recorded in meta.json and printed, never fatal."""
@@ -654,6 +696,8 @@ def run(name, args):
         mjd=times.tolist(),
         p_range=p_range,
         args={k: v for k, v in vars(args).items() if k != "list"},
+        primary_diam=primary_diam,
+        vis_amp=vis_amp,
         notes=loaded.notes,
         reference=loaded.reference,
         virgil=_virgil_version(),
@@ -668,10 +712,21 @@ def run(name, args):
     positions, epos, pinfo = positions_for(loaded, t_ref)
     meta["position_grid"] = pinfo
     if pinfo["edge_epochs"]:
-        print(
-            f"WARNING: best position at the grid edge after widening to {pinfo['half_widths'][-1]:.1f} mas: "
-            f"{pinfo['edge_epochs']}"
+        # Loud: a best position still at the grid edge may be a bad night or a companion beyond the grid.
+        pinfo["edge_detail"] = {}
+        for nm in pinfo["edge_epochs"]:
+            i = loaded.names.index(nm)
+            pinfo["edge_detail"][nm] = dict(
+                dra=float(epos.dra[i]),
+                ddec=float(epos.ddec[i]),
+                chi2_raw=epos.chi2_raw[i] if getattr(epos, "chi2_raw", None) is not None else None,
+            )
+        msg = (
+            f"position grid: best peak still at the edge after widening to {pinfo['half_widths'][-1]:.1f} mas "
+            f"for {pinfo['edge_epochs']}: {pinfo['edge_detail']}"
         )
+        errors.append(msg)
+        print(f"WARNING: {msg}", file=sys.stderr)
     save_meta()
     # Each band is written to outdir/bands/ as soon as it is fitted; a rerun skips the finished ones, but only
     # if the settings, data and virgil version match: otherwise the old bands move aside and the run starts fresh.
@@ -691,6 +746,19 @@ def run(name, args):
             },
         ),
     )
+    init = None
+    if ref0 is not None and not args.no_init:
+        # Warm start in the reference band, so "no valid mode" cannot happen there: the fit still decides.
+        init = dict(
+            period=ref0["P"],
+            dt_peri=ref0["t_peri"] - t_ref,
+            ecc=ref0["ecc"],
+            inc=ref0["inc"],
+            omega=ref0["omega"],
+            Omega=ref0["Omega"],
+            a_mas=ref0["a_mas"],
+            flux=0.9 if sysd.sign_free else 0.3,
+        )
     result = fit_orbit_aliases(
         loaded.data,
         p_range,
@@ -705,9 +773,13 @@ def run(name, args):
         n_is=args.n_is,
         n_samples=args.n_samples,
         max_steps=args.max_steps,
+        primary_diam=primary_diam,
+        vis_amp=vis_amp,
+        flip_flux=not args.no_flip,
+        init=init,
         checkpoint_dir=outdir / "bands",
         on_band=lambda b: print(
-            f"band N={b.n}: log_z {b.log_z:.2f} flags {b.flags} "
+            f"band N={b.n}: log_z {b.log_z:.2f} flags {b.flags}{' FLIPPED' if getattr(b, 'flipped', False) else ''} "
             f"({time.time() - t0:.0f} s)",
             flush=True,
         ),
@@ -733,14 +805,23 @@ def run(name, args):
         print(
             f"reference (P={ref['P']:.4f} d) lies in band N={meta['reference_band']['n']}; winner N={result.best.n}"
         )
+        meta["sky_plane"] = attempt("sky_plane", lambda: sky_plane(result, meta, ref))
+        print(
+            "sky plane vs reference: "
+            + ", ".join(
+                f"{k} band {v['band']}: rms {v['rms']:.2f} mas ({v['frac_sep']:.0%} of sep) {v['verdict']}"
+                for k, v in (meta["sky_plane"] or {}).items()
+            )
+        )
+    meta["fit_summary"] = attempt("fit_summary", lambda: fit_summary(result))
     save_meta()
     vr = result.best.chi2_red
     stats = (
-        attempt("residual_stats", lambda: residual_stats(result, loaded))
+        attempt("residual_stats", lambda: residual_stats(result, loaded, primary_diam, vis_amp))
         if result.best.best
         else None
     )
-    blocks = attempt("block_chi2", lambda: block_chi2(result, loaded)) if result.best.best else None
+    blocks = attempt("block_chi2", lambda: block_chi2(result, loaded, primary_diam, vis_amp)) if result.best.best else None
     if blocks is not None:
         meta["chi2_raw_by_block"] = blocks
         print(
@@ -790,6 +871,38 @@ def run(name, args):
     else:
         (outdir / f"{name}.done").write_text("ok\n")
     print(f"wrote {outdir} in {time.time() - t0:.0f} s")
+
+
+def sky_plane(result, meta, ref):
+    """Sky-plane agreement with the reference (crosscheck.skyplane) for the winning band and the reference's
+    band: rms and max offset at the epochs, the point-reflection (flux flip) used, and the verdict."""
+    from crosscheck import skyplane as SP
+
+    m = dict(mjd=meta["mjd"], reference=ref)
+    bands = {"top": result.best}
+    hit = next((b for b in result.bands if b.p_lo <= ref["P"] <= b.p_hi), None)
+    if hit is not None:
+        bands["reference"] = hit
+    out = {}
+    for k, b in bands.items():
+        if not b.best:
+            continue
+        sc = SP.score(m, b.best, result.t_ref, result.samples.get(b.n))
+        out[k] = dict(sc, band=b.n, period=b.best["period"], p=b.p, flipped=bool(getattr(b, "flipped", False)))
+    return out
+
+
+def fit_summary(result):
+    """What the fit added beyond the orbit: flux ratio and whether the labels were swapped, the primary's diameter
+    and each epoch's V2 amplitude, for the winning band."""
+    b = result.best
+    return dict(
+        band=b.n,
+        flux=b.best.get("flux"),
+        flipped=bool(getattr(b, "flipped", False)),
+        diam=b.best.get("diam"),
+        vis_amp=[e.get("vis_amp") for e in b.epochs],
+    )
 
 
 def _check_resume(outdir, fingerprint):
@@ -850,6 +963,10 @@ def main(argv=None):
         dest="closure_only",
         help="fit closure phases only (default: V2 and closure phases, per-epoch error scales for each)",
     )
+    ap.add_argument("--no-vis-amp", action="store_true", dest="no_vis_amp", help="no per-epoch V2 amplitude")
+    ap.add_argument("--no-ud", action="store_true", dest="no_ud", help="point primary (default: the registry's diameter)")
+    ap.add_argument("--no-flip", action="store_true", dest="no_flip", help="no automatic flux-ratio flip")
+    ap.add_argument("--no-init", action="store_true", dest="no_init", help="no reference-orbit warm start")
     ap.add_argument("--ecc-max", type=float, default=0.9, dest="ecc_max")
     ap.add_argument(
         "--p-range",
