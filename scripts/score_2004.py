@@ -47,7 +47,12 @@ VLBMEM 0.798.
 import argparse
 import pathlib
 
+import sys
+
 import numpy as np
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "src"))
+from crosscheck.image_metrics import centre_on_centroid  # noqa: E402
 
 # The reference grid is not published. 0.08 mas pixels reproduce the published
 # data2 reference peak (3.16e-3 against 3.07e-3, unit sum); 0.05 mas (data1's)
@@ -214,6 +219,7 @@ def aligned(entry, ref, max_shift=MAX_SHIFT):
 
 
 def score(entry, fov, ratio, u_ld=U_LD):
+    entry, _ = centre_on_centroid(entry)  # sub-pixel, before the whole-pixel alignment
     ref = truth_image(ratio, u_ld)
     # A box around all of the truth's emission, with a 0.5 mas margin (the
     # published box is not given).
@@ -253,7 +259,7 @@ def main():
     box = np.zeros_like(ref, bool)
     rows, cols = np.nonzero(ref > 0)
     box[rows.min() - 10 : rows.max() + 11, cols.min() - 10 : cols.max() + 11] = True
-    moved, shift = aligned(resample(entry, fov, NPIX + 2 * MAX_SHIFT), ref)
+    moved, shift = aligned(resample(centre_on_centroid(entry)[0], fov, NPIX + 2 * MAX_SHIFT), ref)
     lines.append(f"fitted truth (u_ld={FITTED['u_ld']}, spot contrast {FITTED['spot_contrast']}, B/A={FITTED['ratio']}): "
                  f"σ/peak={sigma_over_peak(moved, ref, box)[0]:.3f} shift={shift}")
     lines.append("published data2 σ/peak: " + ", ".join(f"{k} {v}" for k, v in PUBLISHED.items()))

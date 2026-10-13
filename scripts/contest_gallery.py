@@ -36,6 +36,9 @@ import yaml  # noqa: E402
 from PIL import Image as PILImage  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from crosscheck.image_metrics import centre_on_centroid  # noqa: E402
+
 ASSETS = ROOT / "docs" / "assets" / "contests"
 PAGE = ROOT / "docs" / "contest_gallery.md"
 
@@ -71,19 +74,26 @@ def members(results, label):
         d = np.load(path)
         if "ref_image" not in d:
             continue
+        image, (dx, dy) = centre_on_centroid(np.asarray(d["ref_image"], float))
         m = {
             "member": int(re.search(r"_m(\d+)\.npz$", path.name).group(1)),
-            "image": np.asarray(d["ref_image"], float),
+            "image": image,
+            "centre_shift": (dx, dy),
+            "n_minus_gamma": (float(d["n_indep"]) - float(d["gamma"])) if "n_indep" in d and "gamma" in d else None,
             "fov": float(d["ref_fov"]),
             "star": bool(d["star"]),
             "log_z": float(d["best_log_z"]),
             "chi2": float(d["best_chi2_red"]),
             "scale": float(d["error_scale"]),
             "path": path,
+            "label": label,
         }
         log = path.with_suffix(".txt")
         if log.exists():
             text = log.read_text()
+            raw = re.search(r"raw chi2/N=([0-9.eE+-]+)", text)
+            if raw:
+                m["raw_chi2"] = float(raw.group(1))
             for key in ("chi2_v2", "chi2_cp"):
                 found = re.search(rf"'{key}': ([0-9.eE+-]+)", text)
                 m[key] = float(found.group(1)) if found else None
@@ -149,21 +159,44 @@ def truth_2004_data2(entry, fov):
     box = np.zeros_like(ref, bool)
     rows, cols = np.nonzero(ref > 0)
     box[rows.min() - 10 : rows.max() + 11, cols.min() - 10 : cols.max() + 11] = True
-    moved, _ = s.aligned(s.resample(entry, fov, s.NPIX + 2 * s.MAX_SHIFT), ref)
+    moved, _ = s.aligned(s.resample(s.centre_on_centroid(entry)[0], fov, s.NPIX + 2 * s.MAX_SHIFT), ref)
     sp = s.sigma_over_peak(moved, ref, box)[0]
     published = ", ".join(f"{k} {v:.3f}" for k, v in sorted(s.PUBLISHED.items(), key=lambda kv: kv[1]))
     score = f"σ/peak {sp:.3f} against the rebuilt truth (Lawson et al. 2004, Eq. 2; lower is better; published: {published})"
     return ref, s.NPIX * s.PIXEL, score
 
 
+PLANET_2018 = {"sep": 3.75, "pa": 27.0, "flux": 0.02, "disk_pa": 44.2}  # Mérand et al. 2018, §2: flux fractions of the total
+
+
+def centroid_2018():
+    """(East, North) mas of the analytic 2018 model's flux centroid with the
+    star and the (symmetric) disk at the origin: only the planet (2% of the
+    flux, 3.75 mas at PA 27°) pulls it off, by about 0.075 mas."""
+    pa = np.radians(PLANET_2018["pa"])
+    return (PLANET_2018["flux"] * PLANET_2018["sep"] * np.sin(pa),
+            PLANET_2018["flux"] * PLANET_2018["sep"] * np.cos(pa))
+
+
+def marker_positions_2018():
+    """Planet position and the disk-axis line in the centroid frame, as the
+    centred reconstructions (centre_on_centroid) are drawn: the analytic
+    centroid is subtracted from every position. Returns (planet (x, y),
+    axis (x, y) arrays of the two ends), x = East offset."""
+    cx, cy = centroid_2018()
+    pa, t = np.radians(PLANET_2018["pa"]), np.radians(PLANET_2018["disk_pa"])
+    planet = (PLANET_2018["sep"] * np.sin(pa) - cx, PLANET_2018["sep"] * np.cos(pa) - cy)
+    r = np.array([-20, 20])
+    return planet, (r * np.sin(t) - cx, r * np.cos(t) - cy)
+
+
 def markers_2018(ax):
     """The published planet position and disk major-axis PA (Mérand et al.
-    2018, §2), drawn on our image: the ring radii are not published."""
-    pa, sep = np.radians(27.0), 3.75
-    ax.plot(sep * np.sin(pa), sep * np.cos(pa), "o", mfc="none", mec="c", ms=9, mew=1.2)
-    t = np.radians(44.2)
-    r = np.array([-20, 20])
-    ax.plot(r * np.sin(t), r * np.cos(t), "c--", lw=0.8)
+    2018, §2), drawn on our image in its centroid frame: the ring radii are
+    not published, so the analytic model cannot be rendered or scored."""
+    planet, axis = marker_positions_2018()
+    ax.plot(*planet, "o", mfc="none", mec="c", ms=9, mew=1.2)
+    ax.plot(*axis, "c--", lw=0.8)
 
 
 # --- rendering -----------------------------------------------------------------
@@ -260,7 +293,11 @@ def chi2_line(best, kept, total):
     split = ""
     if best.get("chi2_v2") is not None and best.get("chi2_cp") is not None:
         split = f" (V² {best['chi2_v2']:.3g}, closure phase {best['chi2_cp']:.3g})"
-    return (f"χ²/N {best['chi2']:.3g} against the quoted errors{split}; error scale {best['scale']:.2f}; "
+    raw = best.get("raw_chi2", best["chi2"])  # the log's raw χ²/N where printed, else the npz's
+    extra = ""
+    if best.get("n_minus_gamma") is not None and "ami" in str(best.get("label", "")).lower():
+        extra = f"; N−γ {best['n_minus_gamma']:.1f}"
+    return (f"raw χ²/N {raw:.3g} against the quoted errors{split}{extra}; error scale {best['scale']:.2f}; "
             f"member m{best['member']} ({'star' if best['star'] else 'no star'}), {kept}/{total} kept.")
 
 
