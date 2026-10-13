@@ -5,6 +5,8 @@
     python scripts/contest_fit_plan.py --needs    # features the other arms wait for
     python scripts/contest_fit_plan.py --commands --oz > commands.txt
                                                   # the OzSTAR advice job's lines
+    python scripts/contest_fit_plan.py --commands --oz --round 2 > commands.txt
+                                                  # round 2's lines (labels _r2)
 
 Every row of contests/fit_advice.csv (scripts/contest_advice.py) must have
 an entry in the plan, matched on year and name, with its advice quoted
@@ -124,19 +126,66 @@ def oz_lines(plan, indices):
     return lines
 
 
+def round2_arms(plan):
+    """(task, arm) for every round-2 arm, in plan order."""
+    return [(task, arm) for task, arms in (plan.get("round2") or {}).items() for arm in arms]
+
+
+def check_round2(plan, indices=None):
+    """Problems with the round2 section: each arm has an id and exactly one
+    of cli / settings / needs (cli may accompany settings), ids are unique
+    per task, and (given ``indices``) every task exists."""
+    problems, seen = [], set()
+    for task, arm in round2_arms(plan):
+        key = (task, arm.get("id"))
+        if key in seen:
+            problems.append(f"round2 {task}: duplicate arm {arm.get('id')!r}")
+        seen.add(key)
+        kinds = [k for k in ("settings", "needs") if k in arm] or (["cli"] if "cli" in arm else [])
+        if len(kinds) != 1 or ("needs" in arm and "cli" in arm):
+            problems.append(f"round2 {task} arm {arm.get('id')!r}: give cli, settings (+cli) or needs")
+        if indices is not None and task not in indices:
+            problems.append(f"round2 {task}: no such contest_images.py task")
+    return problems
+
+
+def oz_lines_round2(plan, indices):
+    """Round 2's ``<label>\t<script> <args>`` lines: every runnable arm,
+    labelled <task>_<id>_r2 and marked --informed (the advice chose the
+    method after the truths were seen)."""
+    lines = []
+    for task, arm in round2_arms(plan):
+        if "needs" in arm:
+            continue
+        label = f"{task}_{arm['id']}_r2"
+        extra = [str(a) for a in arm.get("cli", [])]
+        if "settings" in arm:
+            extra = ["--prior", "gp", "--settings", json.dumps(arm["settings"]), *extra]
+        args = shlex.join(["scripts/contest_images.py", "--task", str(indices[task]), *extra,
+                           "--informed", "--label", label])
+        lines.append(f'{label}\t{args} --data "$VV_DATA" --out "$OUT"')
+    return lines
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--commands", action="store_true")
     parser.add_argument("--needs", action="store_true")
     parser.add_argument("--smoke", action="store_true", help="add --smoke to contest_images.py commands")
     parser.add_argument("--oz", action="store_true", help="with --commands: the OzSTAR advice job's commands.txt lines")
+    parser.add_argument("--round", type=int, default=1, choices=(1, 2), help="with --commands --oz: which round's arms")
     args = parser.parse_args()
     plan = load_plan()
-    problems = check(plan, load_advice_rows())
+    problems = check(plan, load_advice_rows()) + check_round2(plan)
     for p in problems:
         print("PROBLEM:", p, file=sys.stderr)
     if args.commands and args.oz:
-        print("\n".join(oz_lines(plan, task_indices())))
+        indices = task_indices()
+        if args.round == 2:
+            problems += check_round2(plan, indices)
+            for p in problems:
+                print("PROBLEM:", p, file=sys.stderr)
+        print("\n".join(oz_lines_round2(plan, indices) if args.round == 2 else oz_lines(plan, indices)))
     elif args.commands:
         for e, arm, cmd in commands(plan, task_indices(), smoke=args.smoke):
             print(f"# {e['year']} {e['name']}: {arm['id']}\n{cmd}")

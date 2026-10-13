@@ -52,3 +52,17 @@ def test_oz_lines_are_label_tab_command():
         label, cmd = line.split("\t")
         assert cmd.startswith("scripts/contest_images.py --task ")
         assert cmd.endswith('--data "$VV_DATA" --out "$OUT"') and "~" not in cmd
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_round2_lines_are_informed_and_labelled():
+    plan = fp.load_plan()
+    assert fp.check_round2(plan) == []
+    tasks = sorted({t for t, _ in fp.round2_arms(plan)})
+    lines = fp.oz_lines_round2(plan, {t: i for i, t in enumerate(tasks)})
+    labels = [line.split("\t")[0] for line in lines]
+    assert lines and len(set(labels)) == len(labels)
+    for line in lines:
+        label, cmd = line.split("\t")
+        assert label.endswith("_r2") and f"--label {label}" in cmd and "--informed" in cmd
+        assert cmd.endswith('--data "$VV_DATA" --out "$OUT"')

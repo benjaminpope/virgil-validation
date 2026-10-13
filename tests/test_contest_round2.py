@@ -60,3 +60,47 @@ def test_mem_keeps_its_weights():
 def test_informed_provenance():
     assert ci.informed_line(True).startswith("provenance=informed")
     assert ci.informed_line(False) == "provenance=blind"
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_pixel_offset_matches_virgil_image():
+    """A one-pixel Image and a PointSource at pixel_offset have the same
+    visibilities, so CLEAN clusters start point sources in the right place."""
+    import jax.numpy as jnp
+    import virgil.models as vm
+
+    n, pixel, row, col = 21, 1.0, 8, 4
+    lb = np.full((n, n), -40.0)
+    lb[row, col] = 0.0
+    image = vm.Image(jnp.asarray(lb), pixel, flux=1.0)
+    dra, ddec = ci.pixel_offset(row, col, n, pixel)
+    u, v, w = np.array([10.0, 0.0, 7.0]), np.array([0.0, 10.0, -5.0]), np.full(3, 1e-6)
+    np.testing.assert_allclose(np.asarray(image.model(u, v, w)),
+                               np.asarray(vm.PointSource(1.0, dra=float(dra), ddec=float(ddec)).model(u, v, w)), atol=1e-5)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_point_candidates_skip_the_main_source():
+    """Candidates come from compact clusters outside the main source,
+    brightest first; the main source's own components are never offered."""
+    n, pixel = 41, 1.0
+    beam = types.SimpleNamespace(major_mas=3.0, minor_mas=3.0)
+    c = np.zeros((n, n))
+    c[18:23, 18:23] = 1.0  # the main source, 25 units
+    c[5, 30] = 0.5  # a bright dot
+    c[35, 8] = 0.2  # a faint dot
+    y, x = np.mgrid[:n, :n]
+    kernel = np.exp(-0.5 * ((x - n // 2) ** 2 + (y - n // 2) ** 2) / 1.3**2)
+    restored = np.real(np.fft.ifft2(np.fft.fft2(c) * np.fft.fft2(np.fft.ifftshift(kernel))))
+    found = ci.clean_point_candidates(c, restored, pixel, beam, 5)
+    assert [round(f["flux"], 3) for f in found] == [0.5, 0.2]
+    assert found[0]["dra"] == pytest.approx(ci.pixel_offset(5, 30, n, pixel)[0])
+    assert found[0]["ddec"] == pytest.approx(ci.pixel_offset(5, 30, n, pixel)[1])
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_suffixes_and_no_systematics():
+    assert ci.suffix(3, [0.01], None, True, reg="tv") == "_tv_ps3_gains_errscale"
+    assert ci.suffix() == ""
+    data = object()
+    assert ci.with_systematics(data, None) is data

@@ -156,6 +156,13 @@ TASKS = [
          field_source="2016 contest page, 9 May 2016: FOV 50-60 mas"),
     dict(label="2016_obj2", files=["2016/2016_Object2-v3.fits"], field=400.0,
          field_source="2016 contest page, 9 May 2016: FOV 0.4 arcsec"),
+    # Round 2 (contests/fit_plan.yml, joint-bands): 2008 AGN's J, H and K
+    # fitted together as a star and an image with different spectra
+    # (SPARCO). The method was chosen after seeing the truth; the star's flux,
+    # the spectra and the image come from the data.
+    dict(label="2008_agn_JHK", files=[f"2008/2008-Contest2_{b}.oifits" for b in "JHK"], field=30.0,
+         field_source="2008 readme: 15 mas FWHM taper", prior=("gauss", 15.0), star=True, sparco=True,
+         star_source="round 2 (informed): a central source with its own spectrum"),
 ]
 
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
@@ -199,6 +206,127 @@ def regulariser_weights(name, start, data, path, q=None, smoke=False):
         p0 = float(regulariser(name, 1.0, path, q).value(start))
         weights = n_independent(data) / max(p0, 1e-300) * REG_SPAN
     return weights[[0, len(weights) // 2, -1]] if smoke else weights
+
+
+# Point sources (round 2, point-sources): up to K PointSources beside the
+# image, started at CLEAN's brightest compact clusters outside the main
+# source, each kept only if it lowers χ² by COMPANION_DCHI2 with the image
+# fixed. The main source is the connected region of CLEAN's restored image
+# above MAIN_LEVEL of its peak that holds the peak, grown by half a beam.
+MAIN_LEVEL = 0.1
+
+
+def pixel_offset(row, col, n, pixel):
+    """(dra, ddec) mas of pixel (row, col) of an n x n virgil Image: East is
+    towards column 0 and North towards row 0 (tests/test_contest_round2.py)."""
+    c = (n - 1) / 2
+    return (c - col) * pixel, (c - row) * pixel
+
+
+def clean_point_candidates(components, restored, pixel, resolution, k):
+    """Up to ``k`` compact CLEAN clusters outside the main source, brightest
+    first: dicts of dra, ddec (the cluster's flux-weighted centre, mas) and
+    flux (its components' total, positive part)."""
+    from scipy import ndimage
+
+    c = np.clip(np.asarray(components, float), 0.0, None)
+    restored = np.asarray(restored, float)
+    n = c.shape[0]
+    labels, _ = ndimage.label(restored > MAIN_LEVEL * restored.max())
+    main = labels == labels[np.unravel_index(np.argmax(restored), restored.shape)]
+    main = ndimage.binary_dilation(main, iterations=max(1, int(round(0.5 * resolution.minor_mas / pixel))))
+    rows, cols = np.mgrid[:n, :n]
+    left = np.where(main, 0.0, c)
+    found = []
+    while len(found) < k and left.max() > 0:
+        i, j = np.unravel_index(np.argmax(left), left.shape)
+        near = np.hypot(rows - i, cols - j) * pixel < resolution.minor_mas
+        w = left * near
+        flux = float(w.sum())
+        dra, ddec = pixel_offset(float((w * rows).sum() / flux), float((w * cols).sum() / flux), n, pixel)
+        found.append({"dra": float(dra), "ddec": float(ddec), "flux": flux})
+        left = np.where(near, 0.0, left)
+    return found
+
+
+def add_point_sources(s, k):
+    """Setup ``s`` with up to ``k`` PointSources ``p0``, ``p1``... added (see
+    MAIN_LEVEL), each tested against the scene so far with only its own
+    parameters free and kept if Δχ² >= COMPANION_DCHI2. Positions are uniform
+    within a beam of the start, fluxes log-uniform. The image is cut under a
+    kept source (half a beam) so that it does not start with the same flux
+    twice. Needs a CLEAN start (init="clean")."""
+    if s.get("cleaned") is None:
+        raise ValueError("point sources need a CLEAN start (init='clean')")
+    cleaned, data, res = s["cleaned"], s["data"], s["resolution"]
+    pix_c = float(cleaned.pixel_scale_mas)
+    candidates = clean_point_candidates(cleaned.components, cleaned.restored(s["restore"]), pix_c, res, k)
+    start = s["start"] if isinstance(s["start"], vm.System) else vm.System(env=s["start"])
+    parts, priors, records = dict(start.components), {}, []
+    flux_scale = flux_value(start.env.flux) / max(float(np.sum(np.clip(np.asarray(cleaned.components), 0, None))), 1e-12)
+    n = n_independent(data)
+    for cand in candidates:
+        name = f"p{sum(1 for r in records if r['kept'])}"
+        beam_ = res.major_mas
+        pp = {f"{name}.dra": dist.Uniform(cand["dra"] - beam_, cand["dra"] + beam_),
+              f"{name}.ddec": dist.Uniform(cand["ddec"] - beam_, cand["ddec"] + beam_),
+              f"{name}.flux": dist.LogUniform(FLUX_FLOOR, FLUX_CAP)}
+        point = vm.PointSource(inside(pp[f"{name}.flux"], cand["flux"] * flux_scale), dra=cand["dra"], ddec=cand["ddec"])
+        trial = fit(vm.System(**parts, **{name: point}), pp, data).model
+        dchi2 = (chi2_red(vm.System(**parts), data) - chi2_red(trial, data)) * n
+        kept = bool(dchi2 >= COMPANION_DCHI2)
+        records.append(cand | {"dchi2": float(dchi2), "kept": kept})
+        print(f"point source at ({cand['dra']:.3g}, {cand['ddec']:.3g}) mas, CLEAN flux {cand['flux']:.3g}: "
+              f"Δχ² {dchi2:.3g}, {'kept as ' + name if kept else 'dropped'}", flush=True)
+        if kept:
+            parts[name] = trial.components[name]
+            priors |= pp
+    env = parts["env"]
+    if priors:
+        nn, pix = int(np.shape(env.log_brightness)[0]), float(env.pixel_scale_mas)
+        rows, cols = np.mgrid[:nn, :nn]
+        lb = np.asarray(env.log_brightness).copy()
+        floor = float(lb.max()) - np.log(1e3)
+        for name in (k_ for k_ in parts if k_.startswith("p")):
+            ra, de = float(parts[name].dra), float(parts[name].ddec)
+            dra, ddec = pixel_offset(rows, cols, nn, pix)
+            under = np.hypot(dra - ra, ddec - de) < 0.5 * res.minor_mas
+            lb[under] = np.minimum(lb[under], floor)
+        parts["env"] = eqx.tree_at(lambda m: m.log_brightness, env, jnp.asarray(lb))
+    s = dict(s)
+    s["start"] = vm.System(**parts)
+    s["img0"] = parts["env"]
+    s["path"] = "env"
+    s["points"] = {k_: v for k_, v in parts.items() if k_.startswith("p") and k_[1:].isdigit()}
+    s["point_priors"] = priors
+    s["point_record"] = records
+    # The other parameters' priors already carry their paths when the start
+    # was a System; a bare Image's were only its pixels.
+    rest = {k_: v for k_, v in s["priors"].items() if "log_brightness" not in k_}
+    s["priors"] = image_priors(s["start"]) | rest | priors
+    if not s["star"]:
+        s["others"] = (Centroid(0.1 * res.minor_mas, path="env"),)
+    return s
+
+
+# Systematics arms (round 2): calibration nuisances marginalised by virgil
+# (OIData.with_gains / with_closure_offsets), their widths chosen by an
+# outer evidence scan, and per-observable error scales (error_scale's
+# by_observable). Raw χ²/N on the quoted errors is always reported first.
+def with_systematics(data, systematics):
+    """``data`` with gains per baseline and/or closure offsets per triangle
+    of the widths in ``systematics`` ({"gains": w, "closure": w})."""
+    if not systematics:
+        return data
+    datasets = data if isinstance(data, list) else [data]
+    out = []
+    for d in datasets:
+        if systematics.get("gains"):
+            d = d.with_gains(baseline=float(systematics["gains"]))
+        if systematics.get("closure"):
+            d = d.with_closure_offsets(triangle=float(systematics["closure"]))
+        out.append(d)
+    return out if isinstance(data, list) else out[0]
 
 
 def informed_line(informed):
@@ -968,17 +1096,20 @@ def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=Fal
 
 
 def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", settings=None, label=None,
-        reg="mem", field=None, informed=False):
+        reg="mem", field=None, informed=False, points=0, prune_blobs=False):
     """MaxEnt L-curve. With ``settings`` (scripts/contest_bench.py's "mem"
     arm) the field, pixels and CLEAN start follow those settings, as for a GP
     member, and the default model of the entropy is the CLEAN starting image
     (as BSMEM and MiRA use a prior image); the chosen image is also rendered
     on the common reference grid (``ref_image``) for scoring. ``reg`` names
     the penalty (REGULARISERS; labels get _<reg> unless MaxEnt), ``field``
-    fixes the field (mas), and ``informed`` marks a round-2 fit."""
+    fixes the field (mas), ``informed`` marks a round-2 fit, and ``points``
+    adds up to that many point sources (add_point_sources; a CLEAN start)."""
     t0 = time.time()
     if settings is None:
-        s, growth = grown_setup(task, data_dir, halo, star, init, smoke, field)
+        s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field)
+        if points:
+            s = add_point_sources(s, points)
     else:
         s, settings = member_setup(task, data_dir, None, smoke, settings)
         growth, init, halo = [], "clean", s["halo"]
@@ -986,7 +1117,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         s["q"] = template / template.sum()
     label_ = label
     label, files, star, data, npts = s["label"], s["files"], s["star"], s["data"], s["npts"]
-    label = label_ or (label if reg == "mem" else f"{label}_{reg}")
+    label = label_ or label + suffix(points, reg=reg) + ("_prune" if prune_blobs else "")
     resolution, start, img0, npix, pixel, fov = (s[k] for k in ("resolution", "start", "img0", "npix", "pixel", "fov"))
     path, priors, others = s["path"], s["priors"], s["others"]
     weights = regulariser_weights(reg, start, data, path, s["q"], smoke)
@@ -1024,14 +1155,24 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         halo_flux=np.array([float(r.model.halo.flux) if halo else 0.0 for r in curve.results]),
         converged=np.array([bool(r.info.get("converged", False)) for r in curve.results]),
         chosen=json.dumps(chosen), index=json.dumps(index), regulariser=reg, informed=bool(informed),
+        point_sources=json.dumps(s.get("point_record"), default=float),
     )
 
 
     best = curve.results[index["discrepancy"]].model
+    pruned = None
+    if prune_blobs:
+        result, pruned = prune(curve.results[index["discrepancy"]], priors, data,
+                               regulariser(reg, chosen["discrepancy"], path, s["q"]), others, path, npix, fov,
+                               resolution, options)
+        best = result.model
+        np.savez_compressed(out_dir / f"{label}_pruned.npz", image=np.asarray(image_of(best).render(npix, fov)),
+                            pixel_scale_mas=pixel, npix=npix, prune=json.dumps(pruned), informed=bool(informed),
+                            raw_chi2_red=chi2_red(best, data))
     report = diagnose(best, data, [regulariser(reg, chosen["discrepancy"], path, s["q"]), *others])
     summary = (
         f"task={task} label={label} files={files} star={star} star_rejected={s['star_rejected'] or None} halo={halo}\n"
-        f"{informed_line(informed)} regulariser={reg}\n"
+        f"{informed_line(informed)} regulariser={reg} point_sources={s.get('point_record')}\n"
         f"field_source={s['field_source']} clean={s['clean_info']} star_source={spec_of(task).get('star_source')} prior={spec_of(task).get('prior')} wavel={spec_of(task).get('wavel')} growth(fov, chi2/N)={growth}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
@@ -1039,7 +1180,8 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         f"weights={np.asarray(curve.weights).round(4).tolist()}\n"
         f"chi2_red={np.asarray(curve.chi2_red).round(3).tolist()}\n"
         f"halo_flux={[round(float(r.model.halo.flux), 4) for r in curve.results] if halo else None}\n"
-        f"chi2/N at the discrepancy weight={chi2_red(best, data):.4g} (quoted errors)\n"
+        f"chi2/N at the discrepancy weight={chi2_red(best, data):.4g} (quoted errors)"
+        f"{' after pruning ' + str(pruned) if prune_blobs else ''}\n"
         f"chosen={chosen} discrepancy_reached={reached}\nconverged={[bool(r.info.get('converged', False)) for r in curve.results]}\n"
         f"residuals at the discrepancy weight={residual_diagnostics(best, data)}\n"
         f"residuals at the corner weight={residual_diagnostics(curve.results[index['corner']].model, data)}\n"
@@ -1236,7 +1378,8 @@ def gp_fit(s, smoke=False):
     isotropic and (for an elongated source) anisotropic fields, then
     MacKay's error-scale check, with a refit on rescaled errors when it is
     far from 1. Returns a dict of the grid, the winner and the final fit."""
-    data, star, halo, res = s["data"], s["star"], s["halo"], s["resolution"]
+    star, halo, res = s["star"], s["halo"], s["resolution"]
+    data = with_systematics(s["data"], s.get("systematics"))
     img0, n, pixel = s["img0"], s["npix"], s["pixel"]
     template = np.asarray(img0.brightness).reshape(n, n)
     support = getattr(img0, "support", None)
@@ -1257,13 +1400,13 @@ def gp_fit(s, smoke=False):
         parts = {"star": s["start"].star, "env": env} if star else {"env": env}
         if halo:
             parts["halo"] = vm.Resolved(1.0)
-        return vm.System(**parts)
+        return vm.System(**parts, **s.get("points", {}))
 
     others = () if star else (Centroid(0.1 * res.minor_mas, path="env"),)
     # Every fitted parameter other than the image's latents (the evidence's
     # Occam factor integrates over these: log_evidence_full).
     extra = ((flux_priors(flux_cap, s["sparco"]) | s["star_priors"]) if star else {}) | (
-        {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {})
+        {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {}) | s.get("point_priors", {})
     variants = {"iso": (template, 0.0, lambda length: length)}
     if ell[1] < 0.9:  # elongated enough for an anisotropic field to differ
         r = ell[1]
@@ -1304,14 +1447,16 @@ def gp_fit(s, smoke=False):
     chi2_winner = float(np.sum(np.asarray(winner.info["chi2_red"]) * np.asarray([d.n_independent for d in datasets])))
     gamma = n_indep - chi2_winner / scale**2
     rescaled, data_s = None, data
-    if not 1 / 1.3 < scale < 1.3:
-        data_s = [d.with_error_scale(scale) for d in datasets]
+    by_obs = bool((s.get("systematics") or {}).get("errscale"))
+    if by_obs or not 1 / 1.3 < scale < 1.3:
+        factor = error_scale(winner.model, data, by_observable=True) if by_obs else scale
+        data_s = [d.with_error_scale(factor) for d in datasets]
         data_s = data_s if isinstance(data, list) else data_s[0]
         mean, rotation, lens = variants[best_name]
         field = GaussianField(np.zeros((n, n)), best_sigma, lens(best_length), mean=mean)
         sc = scene(field, rotation)
         rr = fit(sc, image_priors(sc) | extra, data_s, others, init=winner.values, **options)
-        rescaled = {"scale": scale, "log_z": float(log_evidence(rr, data_s)),
+        rescaled = {"scale": factor if by_obs else scale, "log_z": float(log_evidence(rr, data_s)),
                     "chi2_red": float(np.sum(rr.info["chi2_red"])), "result": rr}
 
     def best_result(name):
@@ -1325,14 +1470,55 @@ def gp_fit(s, smoke=False):
                 best_result=best_result)
 
 
+def suffix(points=0, gains=None, closure=None, errscale=False, reg="mem"):
+    """Label suffixes of the round-2 options."""
+    return ((f"_{reg}" if reg != "mem" else "") + (f"_ps{points}" if points else "") + ("_gains" if gains else "")
+            + ("_cloff" if closure else "") + ("_errscale" if errscale else ""))
+
+
+def point_scene(s, points, point_priors):
+    """Setup ``s`` with the given point sources added unchanged (no test)."""
+    start = s["start"] if isinstance(s["start"], vm.System) else vm.System(env=s["start"])
+    s = dict(s, start=vm.System(**start.components, **points), path="env", points=points, point_priors=point_priors)
+    s["img0"] = s["start"].env
+    if not s["star"]:
+        s["others"] = (Centroid(0.1 * s["resolution"].minor_mas, path="env"),)
+    return s
+
+
+def systematics_scan(s, smoke, gains=None, closure=None, errscale=False):
+    """gp_fit over every combination of the ``gains`` and ``closure`` widths
+    (lists; None leaves a nuisance out), keeping the highest evidence: the
+    outer evidence scan of the widths. Sets s["systematics"] to the winner's
+    and returns its fit and the scan [(widths, best log Z, raw χ²/N)]."""
+    import itertools
+
+    scan, best = [], None
+    for gw, cw in itertools.product(gains or [None], closure or [None]):
+        s["systematics"] = {"gains": gw, "closure": cw, "errscale": errscale} if (gw or cw or errscale) else None
+        g = gp_fit(s, smoke)
+        raw = chi2_red(g["winner"].model, s["data"])
+        scan.append(({"gains": gw, "closure": cw}, g["best_log_z"], raw))
+        if gains or closure:
+            print(f"systematics widths gains={gw} closure={cw}: log Z {g['best_log_z']:.2f}, raw χ²/N {raw:.4g}", flush=True)
+        if best is None or g["best_log_z"] > best[1]["best_log_z"]:
+            best = (dict(s["systematics"] or {}), g)
+    s["systematics"] = best[0] or None
+    return best[1], scan
+
+
 def star_evidence(s, g, smoke=False):
     """The evidence test (C2g): the star arm's GP winner ``g`` against the
     same setup's GP fit with no star, both by ``log_evidence_full`` on the
     quoted errors. Returns the record and the no-star setup and fit."""
     s0 = s["no_star_setup"]()
+    if s.get("points"):  # the same point sources, refitted with the image
+        s0 = point_scene(s0, s["points"], s["point_priors"])
+    s0["systematics"] = s.get("systematics")
     g0 = gp_fit(s0, smoke)
-    log_z_star, occam_star = log_evidence_full(g["winner"], s["data"], g["extra"])
-    log_z_none, occam_none = log_evidence_full(g0["winner"], s0["data"], g0["extra"])
+    data, data0 = with_systematics(s["data"], s.get("systematics")), with_systematics(s0["data"], s0.get("systematics"))
+    log_z_star, occam_star = log_evidence_full(g["winner"], data, g["extra"])
+    log_z_none, occam_none = log_evidence_full(g0["winner"], data0, g0["extra"])
     log_bayes = log_z_star - log_z_none
     record = {"log_z_star": log_z_star, "occam_star": occam_star, "log_z_nostar": log_z_none,
               "occam_nostar": occam_none, "log_bayes": log_bayes, "kept": bool(log_bayes >= STAR_LOG_BAYES),
@@ -1345,23 +1531,30 @@ def star_evidence(s, g, smoke=False):
 
 
 def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
-           settings=None, label=None, field=None, informed=False):
+           settings=None, label=None, field=None, informed=False, points=0, gains=None, closure=None,
+           errscale=False):
     """GP fits chosen by evidence. With ``member`` (or ``settings``, a fixed
     configuration as used by scripts/contest_bench.py) a CLEAN-started
     ensemble member; otherwise a grown-field run. ``label`` names the
     outputs. With a star, the winner is compared with the same fit without
     it (``star_evidence``); unless the star wins decisively the no-star fit
     is kept, with ``star_rejected="evidence"``. ``field`` (mas) fixes the
-    field of a grown-field run; ``informed`` marks a round-2 fit."""
+    field of a grown-field run; ``informed`` marks a round-2 fit. Round 2:
+    ``points`` adds up to that many point sources (add_point_sources; a
+    CLEAN start), ``gains`` / ``closure`` are lists of widths for the
+    calibration nuisances (with_systematics), the widest-evidence one kept,
+    and ``errscale`` refits with per-observable error scales."""
     t0 = time.time()
     if member is None and settings is None:
-        s, growth = grown_setup(task, data_dir, halo, star, init, smoke, field)
-        label = label or s["label"] + "_gp"
+        s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field)
+        label = label or s["label"] + "_gp" + suffix(points, gains, closure, errscale)
     else:
         s, settings = member_setup(task, data_dir, member, smoke, settings)
         growth, init = [], "clean"
         label = label or f"{spec_of(task)['label']}_m{member}"
-    g = gp_fit(s, smoke)
+    if points:
+        s = add_point_sources(s, points)
+    g, scan = systematics_scan(s, smoke, gains, closure, errscale)
     evidence, star_arm = {}, {}
     if s["star"]:
         evidence, s0, g0 = star_evidence(s, g, smoke)
@@ -1416,9 +1609,14 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                         **{f"sigmas_{k}": np.asarray(a[1]) for k, a in axes.items()},
                         **{f"lengths_mas_{k}": np.asarray(a[0]) for k, a in axes.items()},
                         ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
-                        template=template, informed=bool(informed))
+                        template=template, informed=bool(informed),
+                        systematics=json.dumps(s.get("systematics")), systematics_scan=json.dumps(scan, default=float),
+                        point_sources=json.dumps(s.get("point_record"), default=float),
+                        raw_chi2_red=chi2_red(winner.model, data))
     lines = [f"task={task} label={label} star={star} star_rejected={s['star_rejected'] or None} halo={halo} init={init} "
              f"field_source={s['field_source']} growth={growth}", informed_line(informed),
+             f"raw chi2/N={chi2_red(winner.model, data):.4g} (quoted errors, no nuisances) systematics={s.get('systematics')} "
+             f"scan={scan} point_sources={s.get('point_record')}",
              f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas",
              f"ellipse fit: chi2/N={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
              f"star_model={s['star_model']} sparco={s['sparco']} wavel0={s['wavel0']:.4g}"]
@@ -1458,6 +1656,150 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                yticklabels=[f"{x:.2g}" for x in ls], xlabel="σ", ylabel="ℓ (mas)", title=f"log Z − max ({name})")
     plt.tight_layout()
     fig.savefig(out_dir / f"{label}.png", dpi=100)
+
+
+# Two-scale GP (round 2, two-scale): a compact and an extended Gaussian field
+# on the same grid, summed as two Images in one System (virgil has no sum of
+# fields). Each ℓ (in beam minor axes, capped at the field) is chosen by the
+# evidence with both fields' latents integrated out (log_evidence_two).
+TWO_SCALE_COMPACT = (0.5, 1.0)
+TWO_SCALE_EXTENDED = (2.0, 4.0, 8.0)
+TWO_SCALE_SIGMAS = (1.0, 2.0)
+
+
+def log_evidence_two(result, data, paths=("env", "ext")):
+    """log_evidence with the latents of several Gaussian fields integrated
+    out together: -½χ² - log_norm - ½Σ|z|² - ½ Σ log(1 + s²) over the
+    singular values s of the joint latent Jacobian (virgil's log_evidence,
+    one field, generalised)."""
+    from virgil.imaging import _log_norm, _residual_jacobian  # private in virgil: as log_evidence
+
+    model = getattr(result, "model", result)
+    jacs, z2 = [], 0.0
+    for p in paths:
+        r, jac = _residual_jacobian(model, data, f"{p}.log_brightness.latent")
+        jacs.append(jac.reshape(jac.shape[0], -1))
+        z2 += float(np.sum(np.square(np.asarray(model.get(f"{p}.log_brightness.latent"), float))))
+    singular = np.linalg.svd(np.concatenate(jacs, axis=1), compute_uv=False)
+    return float(-0.5 * float(r @ r) - float(_log_norm(model, data)) - 0.5 * z2 - 0.5 * np.sum(np.log1p(singular**2)))
+
+
+def run_gp2(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", label=None, field=None,
+            informed=False):
+    """Two-scale GP: compact (``env``, mean the starting image) plus extended
+    (``ext``, flat mean, its flux relative to the compact one log-uniform)
+    fields, ℓ for each and a common σ chosen by log_evidence_two."""
+    import itertools
+
+    t0 = time.time()
+    s, growth = grown_setup(task, data_dir, halo, star, init, smoke, field)
+    label = label or s["label"] + "_gp2"
+    data, star, res, n, pixel = s["data"], s["star"], s["resolution"], s["npix"], s["pixel"]
+    fov = n * pixel
+    img0 = s["img0"]
+    template = np.asarray(img0.brightness).reshape(n, n)
+    support = getattr(img0, "support", None)
+    cap = lambda fs: sorted({min(f * res.minor_mas, fov) for f in fs})  # noqa: E731
+    compact = cap(TWO_SCALE_COMPACT[1:] if smoke else TWO_SCALE_COMPACT)
+    extended = cap(TWO_SCALE_EXTENDED[1:2] if smoke else TWO_SCALE_EXTENDED)
+    sigmas = TWO_SCALE_SIGMAS[1:] if smoke else TWO_SCALE_SIGMAS
+    extra = (flux_priors(FLUX_CAP, s["sparco"]) | s["star_priors"]) if star else {}
+    extra = extra | {"ext.flux": dist.LogUniform(FLUX_FLOOR, FLUX_CAP)} | (
+        {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {})
+    others = () if star else (Centroid(0.1 * res.minor_mas, path="env"),)
+    options = {"max_steps": 50} if smoke else {}
+    grid, previous = {}, None
+    for l1, l2, sig in itertools.product(compact, extended, sigmas):
+        if l2 <= l1:
+            continue
+        env = vm.Image(GaussianField(np.zeros((n, n)), sig, l1, mean=template), pixel, support=support, flux=img0.flux)
+        ext = vm.Image(GaussianField(np.zeros((n, n)), sig, l2), pixel, support=support, flux=0.3)
+        parts = ({"star": s["start"].star} if star else {}) | {"env": env, "ext": ext} | (
+            {"halo": vm.Resolved(1.0)} if halo else {})
+        sc = vm.System(**parts)
+        r_ = fit(sc, image_priors(sc) | extra, data, others,
+                 init=None if previous is None else previous.values, **options)
+        previous = r_
+        grid[l1, l2, sig] = (log_evidence_two(r_, data), r_)
+        print(f"two-scale ℓ={l1:.3g}/{l2:.3g} mas σ={sig:g}: log Z {grid[l1, l2, sig][0]:.2f} "
+              f"χ²/N {chi2_red(r_.model, data):.4g}", flush=True)
+    key = max(grid, key=lambda k: grid[k][0])
+    log_z, best = grid[key]
+    m = best.model
+    raw = chi2_red(m, data)
+    images = {k: np.asarray(getattr(m, k).render(n, fov)) for k in ("env", "ext")}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(out_dir / f"{label}.npz", image_env=images["env"], image_ext=images["ext"],
+                        image=images["env"] + images["ext"], pixel_scale_mas=pixel, npix=n, raw_chi2_red=raw,
+                        log_z=json.dumps({f"{a:.4g}/{b:.4g}/{c:g}": v for (a, b, c), (v, _) in grid.items()}),
+                        best=np.array(key), ext_flux=flux_value(m.ext.flux), informed=bool(informed))
+    text = (f"task={task} label={label} star={star} halo={halo} init={init} field_source={s['field_source']} "
+            f"growth={growth}\n{informed_line(informed)}\n"
+            f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas "
+            f"beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas\n"
+            f"grid (ℓ compact / ℓ extended / σ: log Z)={ {k: round(v[0], 2) for k, v in grid.items()} }\n"
+            f"WINNER: chi2/N={raw:.4g} (quoted errors) ℓ={key[0]:.4g}/{key[1]:.4g} mas σ={key[2]:g} log_z={log_z:.2f} "
+            f"ext/env flux={flux_value(m.ext.flux) / max(flux_value(m.env.flux), 1e-300):.3g}\n"
+            f"residuals={residual_diagnostics(m, data)}\nelapsed={time.time() - t0:.0f}s\n")
+    (out_dir / f"{label}.txt").write_text(text)
+    print(text)
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
+    for ax, (name, model_) in zip(axes, (("compact", m.env), ("extended", m.ext))):
+        plot_model(model_, fov_mas=fov, npix=n, ax=ax, beam=res, title=f"{label}: {name}")
+    axes[2].imshow(images["env"] + images["ext"], origin="lower", cmap="inferno")
+    axes[2].set_title(f"sum, χ²/N={raw:.3g}")
+    plt.tight_layout()
+    fig.savefig(out_dir / f"{label}.png", dpi=100)
+
+
+# Artefact pruning (round 2, artefact-prune): isolated compact blobs outside
+# the main source (connected regions above PRUNE_LEVEL of the peak, smaller
+# than a beam's area, not touching the main source) are set to the image's
+# floor and the fit is redone at the same weight, up to PRUNE_ROUNDS times.
+PRUNE_LEVEL = 0.02
+PRUNE_ROUNDS = 5
+
+
+def isolated_blobs(image, pixel, resolution):
+    """Masks of compact regions of ``image`` above PRUNE_LEVEL of its peak
+    outside the main source (see MAIN_LEVEL)."""
+    from scipy import ndimage
+
+    im = np.asarray(image, float)
+    labels, _ = ndimage.label(im > MAIN_LEVEL * im.max())
+    main = labels == labels[np.unravel_index(np.argmax(im), im.shape)]
+    main = ndimage.binary_dilation(main, iterations=max(1, int(round(0.5 * resolution.minor_mas / pixel))))
+    blobs, count = ndimage.label(im > PRUNE_LEVEL * im.max())
+    beam_area = np.pi / 4 * resolution.major_mas * resolution.minor_mas / pixel**2
+    out = []
+    for i in range(1, count + 1):
+        b = blobs == i
+        if not np.any(b & main) and b.sum() <= beam_area:
+            out.append(b)
+    return out
+
+
+def prune(result, priors, data, reg_, others, path, n, fov, resolution, options):
+    """Remove isolated blobs from ``result``'s image and refit, repeatedly.
+    Returns the final fit and a record per round."""
+    record = []
+    for _ in range(PRUNE_ROUNDS):
+        img = image_of(result.model)
+        blobs = isolated_blobs(np.asarray(img.render(n, fov)), fov / n, resolution)
+        if not blobs:
+            break
+        lb = np.asarray(img.log_brightness).copy()
+        floor = float(lb.max()) - np.log(1e4)
+        for b in blobs:
+            lb[b] = floor
+        model = result.model
+        new = eqx.tree_at(lambda m: m.log_brightness, img, jnp.asarray(lb))
+        model = vm.System(**(model.components | {"env": new})) if path else new
+        before = chi2_red(result.model, data)
+        result = fit(model, priors, data, [reg_, *others], **options)
+        record.append({"removed": len(blobs), "chi2_before": before, "chi2_after": chi2_red(result.model, data)})
+        print(f"prune: removed {len(blobs)} blob(s), χ²/N {before:.4g} -> {record[-1]['chi2_after']:.4g}", flush=True)
+    return result, record
 
 
 def run_clean(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="clean", label=None, field=None,
@@ -1509,12 +1851,25 @@ def main():
     parser.add_argument("--halo", action="store_true", help="add a fully resolved component (labels get _halo)")
     parser.add_argument("--star", choices=("on", "off"), help="override the task's central star (labels get _star/_nostar)")
     parser.add_argument("--init", choices=("moments", "clean"), default="moments", help="starting image (labels get _clean)")
-    parser.add_argument("--prior", choices=("mem", "gp", "clean"), default="mem",
+    parser.add_argument("--prior", choices=("mem", "gp", "gp2", "clean"), default="mem",
                         help="regularised L-curve, Gaussian-process fits chosen by evidence (labels get _gp), "
+                             "a compact plus an extended GP (labels get _gp2), "
                              "or CLEAN's own restored image and components (labels get _cleanfinal)")
+    parser.add_argument("--prune", action="store_true",
+                        help="--prior mem: remove isolated compact blobs outside the main source and refit (_prune)")
     parser.add_argument("--regulariser", choices=tuple(REGULARISERS), default="mem",
                         help="--prior mem's penalty, weight by the discrepancy principle (labels get _<name> unless mem)")
     parser.add_argument("--field", type=float, help="field of view (mas), only where pre-submission information gives one")
+    parser.add_argument("--points", type=int, default=0,
+                        help="up to K point sources from CLEAN's compact clusters outside the main source, each kept "
+                             "if Δχ² >= 25 (a CLEAN start; labels get _psK)")
+    widths = lambda text: [float(w) for w in text.split(",")]  # noqa: E731
+    parser.add_argument("--gains", type=widths, help="--prior gp: widths (log|V|) of gains per baseline, scanned by "
+                        "evidence, e.g. 0.01,0.03,0.1 (labels get _gains)")
+    parser.add_argument("--closure-offsets", type=widths, help="--prior gp: widths (rad) of closure offsets per "
+                        "triangle, scanned by evidence (labels get _cloff)")
+    parser.add_argument("--error-scales", action="store_true",
+                        help="--prior gp: refit with per-observable error scales (labels get _errscale)")
     parser.add_argument("--informed", action="store_true",
                         help="mark the outputs as round-2 fits whose method was chosen after seeing the truth")
     parser.add_argument("--member", type=int, help="ensemble member (CLEAN-started GP with a randomised start)")
@@ -1528,9 +1883,12 @@ def main():
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     star = None if args.star is None else args.star == "on"
+    if args.prior != "gp" and args.settings is None and (args.gains or args.closure_offsets or args.error_scales):
+        parser.error("--gains, --closure-offsets and --error-scales need --prior gp")
     if args.settings is not None:
         run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
-               settings=json.loads(args.settings), label=args.label, informed=args.informed)
+               settings=json.loads(args.settings), label=args.label, informed=args.informed, points=args.points,
+               gains=args.gains, closure=args.closure_offsets, errscale=args.error_scales)
         return
     if args.member is not None:
         run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
@@ -1539,11 +1897,15 @@ def main():
     paths = pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser()
     common = dict(label=args.label, field=args.field, informed=args.informed)
     if args.prior == "gp":
-        run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, **common)
+        run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, points=args.points, gains=args.gains,
+               closure=args.closure_offsets, errscale=args.error_scales, **common)
+    elif args.prior == "gp2":
+        run_gp2(args.task, *paths, args.smoke, args.halo, star, args.init, **common)
     elif args.prior == "clean":
         run_clean(args.task, *paths, args.smoke, args.halo, star, **common)
     else:
-        run(args.task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, **common)
+        run(args.task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, points=args.points,
+            prune_blobs=args.prune, **common)
 
 
 if __name__ == "__main__":

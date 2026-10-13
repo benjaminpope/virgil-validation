@@ -29,6 +29,27 @@
 #                          an arm with `needs` is not runnable yet
 #   questions    open items
 #
+# Round 2 (the `round2` section at the end): the arms built after the first
+# advice runs, one OzSTAR line each, labels <task>_<id>_r2. Ground rules:
+#   - The advice chose methods after the truths were seen; it never gives
+#     values. Positions, sizes, fluxes, starts and fields come from
+#     pre-submission information and the data only.
+#   - Every round-2 output is labelled "informed" (--informed: txt line
+#     "provenance=informed", npz informed=True).
+#   - Jeffreys priors: log-uniform scales, uniform locations and angles.
+#   - Raw χ²/N on the quoted errors is reported first; an error scale or a
+#     nuisance width goes beside it, never instead of it.
+#   - Noise: no inflation for 2004/06/08/10/12/16. 2014: per-observable
+#     error scales. 2018: closure offsets per triangle and gains per
+#     baseline, widths by an outer evidence scan. 2024: gains and error
+#     scales, as an arm beside the plain one. 2022 GRAVITY: our reading of
+#     the file checked (one INSNAME, no flags, errors honest against the
+#     file's noise-free model columns); the winner's χ²/N 19-26 is a grey
+#     image against strongly chromatic data (V² rises ~30% across K).
+#   - No heavy JAX on a laptop.
+# round2 entries: {task: [arms]}, each arm id, what, and cli (contest_images.py
+# arguments after --task N), settings (+ optional cli), or needs.
+#
 # Features named in `needs` (one implementation serves every arm using it):
 #   regulariser      contest_images.py --regulariser tv|tsv|starlet|logsum beside
 #                    MaxEnt (plan C2c item 3). virgil.imaging already has TV, TSV,
@@ -481,3 +502,86 @@ datasets:
     advice: *dot
     arms: *dr_arms
     questions: []
+
+round2:
+  2004_data1:
+    - id: recentre
+      what: Recentre on the flux centroid for display only (gallery), no refit.
+      needs: recentre-display
+  2004_data2:
+    - id: tv
+      what: TV from a CLEAN start, weight by the discrepancy principle.
+      cli: [--regulariser, tv, --init, clean]
+    - id: parametric_scene
+      what: Compact + large faint ellipse + small disk, started from CLEAN.
+      needs: parametric-scene
+    - id: harmonix
+      what: Spotted-star harmonix; waits for vv#104.
+      needs: harmonix-vv104
+  2006_disk:
+    - {id: tv, what: TV, cli: [--regulariser, tv]}
+    - {id: tsv, what: TSV, cli: [--regulariser, tsv]}
+    - {id: starlet, what: Starlet L1, cli: [--regulariser, starlet]}
+    - {id: gp2, what: Two-scale GP (compact + extended; each ℓ by evidence), cli: [--prior, gp2]}
+  2008_agb_J: &agb_r2
+    - {id: gp2, what: Two-scale GP, cli: [--prior, gp2]}
+  2008_agb_H: *agb_r2
+  2008_agb_K: *agb_r2
+  2008_agn_J: &agn_r2
+    - {id: starlet, what: Starlet L1 per band, cli: [--regulariser, starlet]}
+    - {id: tsv, what: TSV per band, cli: [--regulariser, tsv]}
+  2008_agn_H: *agn_r2
+  2008_agn_K: *agn_r2
+  2008_agn_JHK:
+    - id: sparco
+      what: J+H+K together, star + image with different spectra (SPARCO).
+      settings: {star: true, star_model: point, halo: false, sparco: true, field: 1.0, oversample: 3.0, clean_gain: 0.1}
+  2010_lowH: &low_r2
+    - {id: prune, what: MaxEnt from CLEAN, isolated compact blobs outside the main source removed and refitted, cli: [--init, clean, --prune]}
+  2010_lowK: *low_r2
+  2012_alp:
+    - {id: tv, what: TV, cli: [--regulariser, tv]}
+    - {id: gp_star, what: GP with a central star, cli: [--prior, gp, --star, "on"]}
+    - {id: gp_nostar, what: GP without a star, cli: [--prior, gp, --star, "off"]}
+  2012_bet:
+    - {id: tv, what: TV (against harmonix on MIRC once vv#104 lands), cli: [--regulariser, tv]}
+  2014_vycma:
+    - {id: gp_errscale, what: GP with per-observable error scales, cli: [--prior, gp, --error-scales]}
+  2016_obj1:
+    - {id: cleanfinal, what: CLEAN's restored image and components, cli: [--prior, clean]}
+    - {id: starlet_ps10, what: Starlet L1 with up to 10 point sources (Δχ² ≥ 25 each), cli: [--regulariser, starlet, --points, "10"]}
+  2016_obj2:
+    - {id: gp_star, what: GP with a central star, cli: [--prior, gp, --star, "on"]}
+    - {id: mem, what: MaxEnt, cli: []}
+  2018_disk:
+    - {id: tv, what: TV, cli: [--regulariser, tv]}
+    - {id: gp_ps1, what: GP, star + up to one point source, cli: [--prior, gp, --points, "1"]}
+    - {id: cleanfinal, what: CLEAN's restored image and components, cli: [--prior, clean]}
+    - {id: gp_sys, what: GP with closure offsets per triangle and gains per baseline (widths by evidence), cli: [--prior, gp, --gains, "0.01,0.05", --closure-offsets, "0.01,0.05"]}
+  2022_ami:
+    - {id: gp, what: Point + GP with ℓ capped at the field, cli: [--prior, gp]}
+  2022_gravity:
+    - {id: gp_ps8, what: Dots as point sources + smooth GP ring, cli: [--prior, gp, --points, "8"]}
+    - {id: tsv_ps8, what: Dots as point sources + smooth TSV ring, cli: [--regulariser, tsv, --points, "8"]}
+  2024_obj1_pionier: &obj1_r2
+    - {id: gp, what: ℓ-capped GP, cli: [--prior, gp]}
+    - {id: gp2, what: Two-scale GP, cli: [--prior, gp2]}
+    - {id: gp_sys, what: GP with gains per baseline and per-observable error scales, cli: [--prior, gp, --gains, "0.01,0.03", --error-scales]}
+  2024_obj1_gravity: *obj1_r2
+  2024_obj1_matisseL: *obj1_r2
+  2024_obj1_matisseN: *obj1_r2
+  2024_obj2_pionier: &obj2_r2
+    - id: sparco_halo_ps3
+      what: Star + SPARCO image + halo + up to 3 point sources.
+      settings: {star: true, star_model: point, halo: true, sparco: true, field: 2.0, oversample: 3.0, clean_gain: 0.05}
+      cli: [--points, "3"]
+    - id: sparco_halo_sys
+      what: As round 1's sparco_halo, with gains and per-observable error scales.
+      settings: {star: true, star_model: point, halo: true, sparco: true, field: 2.0, oversample: 3.0, clean_gain: 0.05}
+      cli: [--gains, "0.01,0.03", --error-scales]
+    - id: wide_amplitude
+      what: Log-brightness prior with a wider amplitude range.
+      needs: gp-sigma-range
+  2024_obj2_gravity: *obj2_r2
+  2024_obj2_matisseL: *obj2_r2
+  2024_obj2_matisseN: *obj2_r2
