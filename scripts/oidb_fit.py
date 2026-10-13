@@ -634,7 +634,7 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
                          elements={k: float(np.asarray(x)) for k, x in elements(
                              {k: float(np.asarray(r.values[k])) for k in priors}, t_ref).items()})
         log(f"orbit: published start: loss {pub_start['loss']:.1f}, P {pub_start['elements']['period_day']:.4f} d")
-    if not all_refits:
+    if not all_refits or pos is None:  # pos: the start search seeded no band, whatever ``published`` gave
         raise RuntimeError(f"no period band could be fitted: {per_band}")
     all_refits.sort(key=lambda nr: float(np.asarray(nr[1].info["loss"])))
     refits = [r for _, r in all_refits]
@@ -646,6 +646,12 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
     log(f"orbit: start search done in {time.time() - t0:.0f} s; {len(refits)} modes refitted on "
         f"{len(fit_data.data)} datasets, {sum(n_obs)} observables")
     best = refits[0]
+    best_n = all_refits[0][0]
+    blind = [nr for nr in all_refits if nr[0] != "published"]  # the best refit from the start search alone
+    blind_best = None if not blind else dict(
+        loss=float(np.asarray(blind[0][1].info["loss"])), band=blind[0][0],
+        elements={k: float(np.asarray(x)) for k, x in elements(
+            {k: float(np.asarray(blind[0][1].values[k])) for k in priors}, t_ref).items()})
     v = {k: float(np.asarray(best.values[k])) for k in priors}
     models = model_fn(**v)
     per_dataset = [dict(name=n, epoch=e, mjd=float(t), chi2_raw=raw_chi2(m, d),
@@ -656,7 +662,8 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
     n = sum(p["chi2_raw"]["all"]["n"] for p in per_dataset)
     out = dict(t_ref=t_ref, map={k: float(np.asarray(x)) for k, x in elements(v, t_ref).items()},
                map_sampled=v, loss=float(np.asarray(best.info["loss"])), converged=bool(best.info.get("converged")),
-               bands=per_band, published_start=pub_start, epoch_checks=rows, exclude_flagged=bool(exclude_flagged),
+               start="published" if best_n == "published" else "blind",  # what the headline mode was refitted from
+               blind_best=blind_best, bands=per_band, published_start=pub_start, epoch_checks=rows, exclude_flagged=bool(exclude_flagged),
                modes=[dict(loss=float(np.asarray(r.info["loss"])), band=nb,
                            elements={k: float(np.asarray(x)) for k, x in elements(
                                {k: float(np.asarray(r.values[k])) for k in priors}, t_ref).items()})

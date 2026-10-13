@@ -12,7 +12,8 @@ Four questions, on the same data and the same loss as ``oidb_fit.fit_orbit``:
 
 Published elements are converted to virgil's convention (omega of the secondary, Omega
 of the receding node); the conversion is checked against the published astrometry
-(``astrometry_check`` in the output).
+(``astrometry_check`` in the output: virgil's KeplerOrbit against the reference positions of
+``oidb_fit.reference_positions``, i.e. crosscheck.orbits for Gl 229 and Table 2 for iota Peg).
 
     python scripts/orbit_diagnose.py gl229|iotapeg DATA_DIR FIT_JSON OUT_JSON
 """
@@ -29,13 +30,12 @@ from virgil.epochs import Epochs, epoch_positions  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
 from virgil.orbits import KeplerOrbit  # noqa: E402
 
-PLX_GL229 = 173.8  # mas, Gaia; a = 0.0424 au -> 7.37 mas (Xuan et al. quote ~7.3)
-
 # collection -> (published orbit as KeplerOrbit arguments at t_ref, published positions per night
 # (rho, PA) if the paper gives them, else None: then the orbit predicts them)
 REF = {
-    "gl229": dict(P=12.134, T=60377.88, ecc=0.234, inc=31.4, omega=(180.7 + 180.0) % 360.0, Omega=213.0,
-                  a_mas=0.0424 * PLX_GL229),
+    "gl229": dict(P=of.XUAN_2024["period"], T=of.XUAN_2024["t_peri"], ecc=of.XUAN_2024["ecc"],
+                  inc=of.XUAN_2024["inc"], omega=of.XUAN_2024["omega"] % 360.0, Omega=of.XUAN_2024["Omega"],
+                  a_mas=of.XUAN_2024["a"]),  # the same start as fit_orbit(published=...)
     "iotapeg": dict(P=10.21277, T=52997.4686, ecc=0.0052, inc=95.865, omega=(272.45 + 180.0) % 360.0,
                     Omega=176.194, a_mas=10.3609),
 }
@@ -98,9 +98,11 @@ def main():
     pos = epoch_positions(Epochs(per_night), grid, n_peaks=8)
     for k, (night, data) in enumerate(per_night.items()):
         mjd = of.mean_mjd(data)
-        rho, pa, _ = predicted(ref, t_ref, mjd)
         if a.which == "iotapeg":
             rho, pa = IOTA_TABLE2[night]  # the paper's own astrometry
+        else:  # Xuan et al.'s orbit through crosscheck.orbits, our own solver, not virgil's KeplerOrbit
+            gx, gy = of.reference_positions("782185b2", {night: data})[night]
+            rho, pa = float(np.hypot(gx, gy)), float(np.degrees(np.arctan2(gx, gy)) % 360.0)
         px, py = xy(rho, pa)
         pk = pos.peaks[k]
         peaks = [dict(rho=float(np.hypot(x, y)), pa=float(np.degrees(np.arctan2(x, y)) % 360), flux=float(f),

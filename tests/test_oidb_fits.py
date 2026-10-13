@@ -236,8 +236,10 @@ def _orbit_nights(of, tmp_path, amps, *, per_night_only=False, nights=(60000.2, 
 @pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"], kind="check")
 def test_vis_amp_of_recovers_a_contrast_loss(of, tmp_path):
     """One night of a point binary with V^2 scaled by 0.4: the amplitude of the true model is 0.4 (to the
-    noise), and 1 without the loss. A model with no companion needs a different amplitude (the estimator
-    depends on the model); closure-phase-only data give None."""
+    noise), and 1 without the loss; a model with no companion gives a different amplitude (the estimator
+    depends on the model); closure-phase-only data give None. The claim about virgil is that its V^2
+    residuals are linear in ``vis``, with errors that do not depend on the data: ``vis_amp_of`` solves for
+    the amplitude from two evaluations (the data and twice the data), and it recovers the injected loss."""
     truth = _binary(3.0, -4.0, 0.3)
     scene = of.point_binary
     for loss in (1.0, 0.4):
@@ -246,6 +248,7 @@ def test_vis_amp_of_recovers_a_contrast_loss(of, tmp_path):
         data = of.load([path])
         a = of.vis_amp_of(scene(dra=3.0, ddec=-4.0, flux=0.3), data)
         assert abs(a - loss) < 0.02, (loss, a)
+    assert abs(of.vis_amp_of(scene(dra=3.0, ddec=-4.0, flux=0.0), data) - 0.4) > 0.05  # the model matters
     assert of.vis_amp_of(scene(dra=3.0, ddec=-4.0, flux=0.3), data.select(observables="phi")) is None
     record("vis_amp_recovered", a)
 
@@ -267,8 +270,16 @@ def test_published_start_joins_the_modes_and_refits_to_the_orbit(of, tmp_path):
     ps = out["published_start"]
     assert abs(ps["elements"]["period_day"] - ORBIT["period"]) < 0.01 and abs(ps["elements"]["a_mas"] - ORBIT["a"]) < 0.2
     assert "published" in {m["band"] for m in out["modes"]}
-    assert out["loss"] <= ps["loss"] + 1e-6  # the lowest loss over every start is the answer
     assert abs(out["map"]["period_day"] - ORBIT["period"]) < 0.01
+    assert out["start"] in ("published", "blind") and out["blind_best"]["loss"] >= out["loss"] - 1e-6
+    # control: a published orbit in the wrong band (a different period and other elements) is not imposed
+    wrong = dict(pub, period=ORBIT["period"] * 11 / 10, ecc=0.6, inc=80.0, a=ORBIT["a"] * 2, flux=0.2)
+    out2 = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
+                        periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
+                        n_refine=1, min_gap=3.0, published=wrong)
+    assert out2["modes"][0]["band"] != "published" and out2["start"] == "blind"
+    assert abs(out2["map"]["period_day"] - ORBIT["period"]) < 0.02
+    assert out2["published_start"]["loss"] > out2["loss"] + 100.0  # the wrong start is far worse and loses
     assert of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
                         periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
                         n_refine=1, min_gap=3.0)["published_start"] is None
@@ -279,7 +290,10 @@ def test_vis_amp_variant_recovers_the_orbit_and_the_per_night_losses(of, tmp_pat
     """The V^2 + closure-phase orbit with a free amplitude on each night (``virgil.aliases``): V^2 scaled by
     AMPS night by night, a warm start displaced from the truth. The orbit and every night's loss
     come back."""
-    pytest.importorskip("virgil.aliases")
+    aliases = pytest.importorskip("virgil.aliases")
+    import inspect
+    if "vis_amp" not in inspect.signature(aliases.fit_orbit_aliases).parameters:
+        pytest.skip("this virgil's fit_orbit_aliases has no vis_amp (needs virgil a92b97c)")
     per_night, _ = _orbit_nights(of, tmp_path, AMPS)
     pub = dict(period=ORBIT["period"] + 0.03, t_peri=ORBIT["t_peri"] + 0.3, ecc=ORBIT["ecc"], inc=ORBIT["inc"] + 3.0,
                omega=ORBIT["omega"], Omega=ORBIT["Omega"], a=ORBIT["a"] * 1.1, flux=ORBIT["flux"])
@@ -524,6 +538,25 @@ def test_compare_table_passes_the_published_numbers(oc, tmp_path):
     text = oc.markdown(rows)
     assert oc.CRITERIA_HASH in text and "WITHHELD" not in text
     assert not [r for r in rows if r["status"] == "MISSING"]
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_compare_marks_a_gl229_orbit_seeded_by_the_published_orbit(oc, tmp_path):
+    """A headline refitted from the published orbit says so on every orbit row, and the blind search's own
+    best orbit is a REPORT row set (a miss stays visible); a blind headline gets neither."""
+    import json
+    cid = "782185b2-0727-42b0-a185-b2072732b047"
+    fit = json.loads((_fake_fits(oc, tmp_path) / f"fit_{cid}.json").read_text())
+    blind = dict(loss=-6141.3, band=10, elements=dict(fit["orbit"]["map"], inc_deg=72.8))
+    seeded = dict(fit, orbit=dict(fit["orbit"], start="published", blind_best=blind, loss=-6321.2))
+    rows, _ = oc.compare(None, fits={cid: seeded})
+    mine = [r for r in rows if r["collection"] == cid]
+    orbit = [r for r in mine if r["epoch"] == "orbit"]
+    assert orbit and all("SEEDED by the published orbit" in r["note"] for r in orbit)
+    miss = [r for r in mine if r["epoch"] == "orbit (blind start)" and r["quantity"] == "inc_deg"]
+    assert len(miss) == 1 and miss[0]["status"] == "REPORT" and abs(miss[0]["virgil"] - 72.8) < 1e-9  # against PMOIRED
+    plain, _ = oc.compare(None, fits={cid: dict(fit, orbit=dict(fit["orbit"], start="blind", blind_best=blind))})
+    assert not any("SEEDED" in r["note"] or r["epoch"] == "orbit (blind start)" for r in plain if r["collection"] == cid)
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="control")

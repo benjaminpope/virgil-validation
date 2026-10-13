@@ -94,7 +94,7 @@ def trim_epoch(e):
 
 
 def trim_orbit(o):
-    out = _keep(o, ("t_ref", "map", "loss", "chi2_raw"))
+    out = _keep(o, ("t_ref", "map", "loss", "chi2_raw", "start", "blind_best"))
     out["modes"] = [_keep(m, ("loss", "elements")) for m in o.get("modes", [])]
     out["positions"] = [_keep(p, ("name", "mjd", "dra", "ddec", "cov", "flux", "rho_mas", "pa_deg"))
                         for p in o.get("positions", [])]
@@ -351,7 +351,11 @@ def _tension(ours_ep, headline):
 
 
 def paper_of(ref):
-    p = ref.get("paper") or ref["targets"]["sig Ori"]["paper"]  # the workshop: sigma Ori's paper (iota Peg's is fac164e1's)
+    if "paper" not in ref:  # the workshop: sigma Ori against Schaefer+2016, iota Peg against Anugu+2020
+        cites = [paper_of(dict(paper=t["paper"]))["cite"] + f" ({n.replace('iot', 'iota').replace('sig', 'sigma')})"
+                 for n, t in ref["targets"].items()]
+        return dict(cite="; ".join(reversed(cites)), arxiv=None, bibcode=None, doi=None)
+    p = ref["paper"]
     first = re.split(r"[,;]", p["authors"])[0].strip()
     who = first if first.endswith("et al.") else f"{first} et al."
     journal = re.sub(r"\s*\(.*", "", p.get("journal") or "")
