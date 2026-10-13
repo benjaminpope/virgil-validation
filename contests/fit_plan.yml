@@ -29,6 +29,45 @@
 #                          an arm with `needs` is not runnable yet
 #   questions    open items
 #
+# Round 2: a terse `brief:` per dataset entry (below), expanded into OzSTAR
+# lines by scripts/contest_fit_plan.py --commands --oz --round 2; labels
+# <task>_<arm>_r2, every line marked --informed. Ground rules:
+#   - The advice chose methods after the truths were seen; it never gives
+#     values. Positions, sizes, fluxes, starts and fields come from
+#     pre-submission information and the data only.
+#   - Every round-2 output is labelled "informed" (--informed: txt line
+#     "provenance=informed", npz informed=True).
+#   - Jeffreys priors: log-uniform scales, uniform locations and angles.
+#   - Raw χ²/N on the quoted errors is reported first; an error scale or a
+#     nuisance width goes beside it, never instead of it.
+#   - No heavy JAX on a laptop.
+#
+# brief keys (generic: the generator knows no dataset by name):
+#   scene       parts from {point, ud, ld_ellipse, gauss_halo, points:K, image,
+#               hole, hole:MAS}; a list of such lists is alternative scene arms.
+#               points:K -> --points K; hole -> contest_images' default hole (half
+#               the beam's minor axis, computed from the data, with a star);
+#               hole:MAS -> --hole MAS; the rest -> --scene.
+#   prior       one arm per entry of {gp, gp2, mem, tsv, tv, starlet, logsum,
+#               clean_ms}: gp/gp2/mem -> --prior, the others -> --regulariser,
+#               clean_ms -> --prior clean --clean-scales 0,1,2.
+#   systematics one of {none, block_scales, gains+block_scales,
+#               gains+closure_offsets}; applies to gp arms only.
+#   bands       grey | per_band (one line per task of the group of the entry
+#               carrying the brief, in the group's names order) | joint_sparco (--joint over the
+#               group's tasks --sparco where the group says `joint: true`; else
+#               --sparco on the entry's task alone) |
+#               per_channel_grey_default (not built: grey lines and a needs
+#               note); a list gives one set of arms per entry.
+#   field       `data`, or {mas, source} -> --field MAS (field of view in mas).
+#   sweep       default on: one `--sweep 16` line per band run (--scene point,image
+#               or image); `sweep: {off: reason}` disables it.
+#   prune       true: one extra MaxEnt-from-CLEAN arm with --prune (mem only).
+#   needs, departures   free-text lists of what the advice asks for and the code
+#               lacks, or where an arm departs from the advice.
+# Combinations contest_images rejects are dropped (or, for a part that cannot
+# apply, reduced) with a note printed to stderr, never emitted.
+#
 # Features named in `needs` (one implementation serves every arm using it):
 #   regulariser      contest_images.py --regulariser tv|tsv|starlet|logsum beside
 #                    MaxEnt (plan C2c item 3). virgil.imaging already has TV, TSV,
@@ -78,13 +117,20 @@ groups:
     note: H, K and L share the advice (spiral broken into dots); N differs (no TV there). A joint fit is not asked for; per-band images stay the rule (plan C3).
   2024_obj2:
     names: [Obj2 PIONIER H, Obj2 GRAVITY K, Obj2 MATISSE L, Obj2 MATISSE N]
-    joint: false
-    note: H, K and L share the advice (dynamic range); N is "a total mess". A joint fit is not asked for.
+    joint: true
+    note: H, K and L share the advice (dynamic range); N is "a total mess". The round-2 brief fits the four instruments jointly with SPARCO.
 
 datasets:
   - year: "2004"
     name: data1
     task: 2004_data1
+    brief:
+      scene: [image]
+      prior: [gp]
+      systematics: none
+      bands: grey
+      field: data
+      needs: [recentre-display]
     advice: "This is already fairly good, though it is off-centre."
     arms:
       - id: recentre
@@ -96,6 +142,15 @@ datasets:
   - year: "2004"
     name: data2
     task: 2004_data2
+    brief:
+      scene: [[point, image], [point, gauss_halo, image]]
+      prior: [tv, gp]
+      systematics: none
+      bands: grey
+      field: data
+      departures:
+        - "Short-baseline V² runs 7-15% high, so a free V(0) / total flux or a resolved component may matter; the gauss_halo alternative scene (FWHM and flux fitted) is the mechanism available."
+      needs: [harmonix-vv104]
     advice: "The virgil fit has broken up into a chain of dots. This is indicating a problem with regularization perhaps. The real data consist of a dot (which we correctly recover) at about (5, 0), and a large faint ellipse (broken up into a chain of dots in our recovery) with a small circle overlapping its edge. Consider TV as an optimal regularizer for this sort of piecewise constant data, and whether the smaller dots should be point sources."
     arms:
       - id: tv
@@ -116,6 +171,12 @@ datasets:
   - year: "2006"
     name: MIR0001
     task: 2006_disk
+    brief:
+      scene: [image]
+      prior: [mem, tsv, tv, gp2]
+      systematics: none
+      bands: grey
+      field: {mas: 106.05, source: "README: 101 px x 1.05 mas"}
     advice: "This is an absolutely terrible recovery. Just dreadful. The real thing has a bright core, and flares out to the corners of a rectangle. Consider a variety of priors to solve this."
     arms:
       - id: mem
@@ -142,6 +203,12 @@ datasets:
   - year: "2008"
     name: Alp_Vic J
     task: 2008_agb_J
+    brief:
+      scene: [[ud, gauss_halo, image], [ud, gauss_halo]]
+      prior: [gp2, gp]
+      systematics: none
+      bands: per_band
+      field: data
     group: 2008_agb
     advice: &agb "The real thing is a circle embedded in a broader halo. The virgil recovery is terrible and blobby; consider a uniform disk with a halo, or consider a two-component image fit with different scales."
     arms: &agb_arms
@@ -178,6 +245,12 @@ datasets:
   - year: "2008"
     name: Bet_Vic J
     task: 2008_agn_J
+    brief:
+      scene: [image]
+      prior: [gp, starlet, tsv]
+      systematics: none
+      bands: joint_sparco
+      field: data
     group: 2008_agn
     advice: &agn "We want to fit all three bands simultaneously with a SPARCO approach. The image consists of an anisotropic blob in the middle with two thin jets coming out; the virgil recovery in K band is good but not the other bands, where the jets are broken into blobs."
     arms: &agn_arms
@@ -212,6 +285,11 @@ datasets:
   - year: "2010"
     name: "Mystery, medium resolution, H"
     task: null
+    brief:
+      needs:
+        - "Med H (R=1500, 512 channels): a TASKS entry binned in wavelength; none exists, so no lines"
+        - "VISPHI (visphi) unsupported by virgil"
+        - "There is no Med K file in the 2010 archive"
     advice: "Is this a duplicate of the other H band?"
     arms:
       - id: med_h_grey
@@ -227,6 +305,18 @@ datasets:
   - year: "2010"
     name: "Mystery, low resolution, H"
     task: 2010_lowH
+    brief: &low_brief
+      scene: [ld_ellipse, point, image]
+      prior: [gp]
+      systematics: block_scales
+      bands: [joint_sparco, per_channel_grey_default]
+      field: data
+      prune: true
+      needs:
+        - "SPARCO with the organisers' SED (Challenge.txt, sed-Low_HK.dat): the arm fits a power law instead"
+        - "per-channel grey images beyond the H / K split (the TASKS wavel cuts)"
+      departures:
+        - "No pre-submission file in 2010/ gives a field (Challenge.txt names none), so the field comes from the data."
     group: 2010_low
     advice: &low "This is actually a pretty good recovery in general of the central object but there are chains of dots throughout the FOV. Consider whether we can iteratively remove these, or whether we can just fit a smaller FOV of 20x20 mas."
     arms: &low_arms
@@ -245,6 +335,7 @@ datasets:
   - year: "2010"
     name: "Mystery, low resolution, K"
     task: 2010_lowK
+    brief: *low_brief
     group: 2010_low
     advice: *low
     arms: *low_arms
@@ -253,6 +344,12 @@ datasets:
   - year: "2012"
     name: Alp_Fak
     task: 2012_alp
+    brief:
+      scene: [[image], [point, image]]
+      prior: [tv, gp]
+      systematics: none
+      bands: grey
+      field: {mas: 9.6, source: "64 px x 0.15 mas"}
     advice: "Two bright stripes at the side, parallel to each other, and a bright core."
     arms:
       - id: gp_star
@@ -270,6 +367,13 @@ datasets:
   - year: "2012"
     name: Bet_Fak
     task: 2012_bet
+    brief:
+      scene: [ld_ellipse, image]
+      prior: [tv, gp]
+      systematics: none
+      bands: grey
+      field: {mas: 9.6, source: "64 px x 0.15 mas"}
+      needs: [harmonix-2012]
     advice: "Spotted star, use harmonix and compare it to a TV regularization."
     arms:
       - id: harmonix
@@ -287,6 +391,8 @@ datasets:
   - year: "2014"
     name: R Car
     task: null
+    brief:
+      needs: ["skip: virgil#329 (virgil's reader refuses 2014 R Car)"]
     advice: "Blobby thing."
     arms:
       - id: gp
@@ -298,6 +404,12 @@ datasets:
   - year: "2014"
     name: VY CMa
     task: 2014_vycma
+    brief:
+      scene: [image]
+      prior: [gp, mem]
+      systematics: block_scales
+      bands: grey
+      field: data
     advice: "Blobby thing."
     arms:
       - id: gp
@@ -311,6 +423,12 @@ datasets:
   - year: "2016"
     name: Object1 (GRAVITY)
     task: 2016_obj1
+    brief:
+      scene: ["points:10", image]
+      prior: [clean_ms, logsum, starlet]
+      systematics: none
+      bands: grey
+      field: {mas: 60.0, source: "2016 contest page, 9 May 2016: FOV 50-60 mas"}
     advice: "Field of point sources. Consider CLEAN, consider parametric models, and consider L1 regularisation."
     arms:
       - id: clean
@@ -330,6 +448,12 @@ datasets:
   - year: "2016"
     name: Object2 (MATISSE N)
     task: 2016_obj2
+    brief:
+      scene: [point, image]
+      prior: [gp, mem]
+      systematics: block_scales
+      bands: grey
+      field: {mas: 400.0, source: "2016 contest page, 9 May 2016: FOV 0.4 arcsec"}
     advice: "Bright central object with rings. "
     arms:
       - id: gp_star
@@ -344,6 +468,12 @@ datasets:
   - year: "2018"
     name: "star, disk and planet"
     task: 2018_disk
+    brief:
+      scene: [point, "points:1", image]
+      prior: [tv, gp]
+      systematics: gains+closure_offsets
+      bands: grey
+      field: data
     advice: "Several smooth elliptical disks with azimuthal modulation, and embedded point sources (1 in the middle and 1 in a disk gap). Consider TV and consider adding point sources. Consider CLEAN too. "
     arms:
       - id: tv
@@ -361,6 +491,13 @@ datasets:
   - year: "2022"
     name: Obj2 (NIRISS AMI)
     task: 2022_ami
+    brief:
+      scene: [point, image, hole]
+      prior: [gp]
+      systematics: none
+      bands: grey
+      field: data
+      sweep: {"off": "AMI N-gamma is small (a few aperture-masking baselines)"}
     advice: "Banana shaped thing around a dot; our recovery breaks the dot into a square and the banana into points."
     arms:
       - id: gp_oversample
@@ -377,6 +514,13 @@ datasets:
   - year: "2022"
     name: Obj1 (GRAVITY K)
     task: 2022_gravity
+    brief:
+      scene: ["points:2", image]
+      prior: [tsv, gp]
+      systematics: none
+      bands: grey
+      field: data
+      needs: ["gp with a larger length scale (no flag)"]
     advice: "We recover the ring and two dots pretty well but we should consider the individual dots as point sources and the ring to be smoother."
     arms:
       - id: gp_ps
@@ -430,6 +574,13 @@ datasets:
   - year: "2024"
     name: Obj1 PIONIER H
     task: 2024_obj1_pionier
+    brief:
+      scene: [image]
+      prior: [gp, gp2, mem]
+      systematics: gains+block_scales
+      bands: per_band
+      field: data
+      departures: ["no tv in any band (the advice excludes it for MATISSE N)"]
     group: 2024_obj1
     advice: "Spiral where we recover a bit but it's broken up into a chain of dots."
     arms: *spiral_arms
@@ -477,6 +628,15 @@ datasets:
   - year: "2024"
     name: Obj2 PIONIER H
     task: 2024_obj2_pionier
+    brief:
+      scene: [point, gauss_halo, "points:3", image, hole]
+      prior: [gp, mem]
+      systematics: gains+block_scales
+      bands: joint_sparco
+      field: data
+      needs:
+        - "gp with a wider log-brightness amplitude range (no flag)"
+        - "SPARCO with the organisers' SED where supplied: the arm fits the PowerLaw"
     group: 2024_obj2
     advice: *dot
     arms: *dr_arms
