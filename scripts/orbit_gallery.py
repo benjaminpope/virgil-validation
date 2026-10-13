@@ -41,7 +41,6 @@ MANIFEST = ROOT / "oidb" / "manifest.yml"
 N_PATH = 200  # points on a sky polyline (the epoch times are added to them)
 N_PHASE = 120
 TENSION_SIGMA = 3.0  # a headline published orbit further than this from our epoch position is a tension
-HD45166_DISTANCE_PC = 991.0  # Deshmukh et al. 2025, adopted distance (the reference's 'other' notes)
 INSTRUMENT = {"GRAVITY": "VLTI/GRAVITY", "MIRCX": "CHARA/MIRC-X", "PIONIER": "VLTI/PIONIER"}
 
 # gallery order; ``kind`` orbit: we fit an orbit; positions: epoch positions or a diameter only
@@ -49,10 +48,10 @@ TARGETS = {
     "782185b2-0727-42b0-a185-b2072732b047": dict(slug="gl229b", name="Gliese 229 B (Ba-Bb)", kind="orbit"),
     "696baf06-6c3c-424d-abaf-066c3c324d99": dict(slug="hr6819", name="HR 6819", kind="orbit"),
     "fac164e1-d9d0-4500-8164-e1d9d0450099": dict(slug="iota-peg", name="iota Peg", kind="orbit"),
-    "f4afc4cd-fd31-40d3-afc4-cdfd3150d340": dict(slug="hd45166", name="HD 45166", kind="positions"),
     "bda75673-61c6-49f0-a756-7361c699f0c4": dict(slug="a-stars", name="A-star companions (27 stars)",
                                                  kind="positions"),
-}  # pi1 Gru (19f7e2cf) is a uniform-disk fit to an AGB star, not a binary: no tile
+}  # pi1 Gru (19f7e2cf) is a uniform-disk fit to an AGB star, not a binary: no tile;
+# HD 45166 (f4afc4cd) is out until its calibration is solved (design/hd45166_diagnosis.md)
 ELEMENTS = ("period_day", "t_peri_mjd", "ecc", "inc_deg", "omega_deg", "Omega_deg", "a_mas")
 
 
@@ -227,13 +226,6 @@ def published_orbits(cid, ref):
                                        inc_deg=k["i_deg"][0], omega_deg=k["omega_deg"][0] % 360,
                                        Omega_deg=k["Omega_deg"][0] % 360, a_mas=k["a_mas"][0])))
         return out
-    if cid.startswith("f4afc4cd"):
-        o = ref["orbit"]
-        M, P = o["masses"]["M_total_Msun"][0], o["P_day"][0]
-        a_mas = (M * (P / 365.25) ** 2) ** (1 / 3) / HD45166_DISTANCE_PC * 1000.0  # Kepler III; au / pc = arcsec
-        return [("Deshmukh+25 (a from Kepler III, M_tot, 991 pc)",
-                 dict(period_day=P, t_peri_mjd=o["T_peri_mjd"][0], ecc=o["e"][0], inc_deg=o["i_deg"][0],
-                      omega_deg=o["omega_deg"][0] % 360, Omega_deg=o["Omega_deg"][0] % 360, a_mas=a_mas))]
     return []
 
 
