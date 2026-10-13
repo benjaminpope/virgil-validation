@@ -166,14 +166,37 @@ def truth_2004_data2(entry, fov):
     return ref, s.NPIX * s.PIXEL, score
 
 
+PLANET_2018 = {"sep": 3.75, "pa": 27.0, "flux": 0.02, "disk_pa": 44.2}  # Mérand et al. 2018, §2: flux fractions of the total
+
+
+def centroid_2018():
+    """(East, North) mas of the analytic 2018 model's flux centroid with the
+    star and the (symmetric) disk at the origin: only the planet (2% of the
+    flux, 3.75 mas at PA 27°) pulls it off, by about 0.075 mas."""
+    pa = np.radians(PLANET_2018["pa"])
+    return (PLANET_2018["flux"] * PLANET_2018["sep"] * np.sin(pa),
+            PLANET_2018["flux"] * PLANET_2018["sep"] * np.cos(pa))
+
+
+def marker_positions_2018():
+    """Planet position and the disk-axis line in the centroid frame, as the
+    centred reconstructions (centre_on_centroid) are drawn: the analytic
+    centroid is subtracted from every position. Returns (planet (x, y),
+    axis (x, y) arrays of the two ends), x = East offset."""
+    cx, cy = centroid_2018()
+    pa, t = np.radians(PLANET_2018["pa"]), np.radians(PLANET_2018["disk_pa"])
+    planet = (PLANET_2018["sep"] * np.sin(pa) - cx, PLANET_2018["sep"] * np.cos(pa) - cy)
+    r = np.array([-20, 20])
+    return planet, (r * np.sin(t) - cx, r * np.cos(t) - cy)
+
+
 def markers_2018(ax):
     """The published planet position and disk major-axis PA (Mérand et al.
-    2018, §2), drawn on our image: the ring radii are not published."""
-    pa, sep = np.radians(27.0), 3.75
-    ax.plot(sep * np.sin(pa), sep * np.cos(pa), "o", mfc="none", mec="c", ms=9, mew=1.2)
-    t = np.radians(44.2)
-    r = np.array([-20, 20])
-    ax.plot(r * np.sin(t), r * np.cos(t), "c--", lw=0.8)
+    2018, §2), drawn on our image in its centroid frame: the ring radii are
+    not published, so the analytic model cannot be rendered or scored."""
+    planet, axis = marker_positions_2018()
+    ax.plot(*planet, "o", mfc="none", mec="c", ms=9, mew=1.2)
+    ax.plot(*axis, "c--", lw=0.8)
 
 
 # --- rendering -----------------------------------------------------------------

@@ -39,3 +39,21 @@ def test_centred_image_is_unchanged():
     moved, shift = centre_on_centroid(img)
     assert shift == (0.0, 0.0)
     np.testing.assert_array_equal(moved, img)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_2018_markers_share_the_centroid_frame():
+    import importlib.util
+    import pathlib
+
+    spec = importlib.util.spec_from_file_location(
+        "contest_gallery", pathlib.Path(__file__).parents[1] / "scripts" / "contest_gallery.py")
+    cg = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cg)
+    cx, cy = cg.centroid_2018()
+    assert np.hypot(cx, cy) == pytest.approx(0.02 * 3.75)
+    planet, _ = cg.marker_positions_2018()
+    assert np.hypot(planet[0] + cx, planet[1] + cy) == pytest.approx(3.75)  # separation unchanged
+    # Star (0, 0) and planet, both shifted, have flux-weighted mean at the new origin.
+    assert 0.02 * planet[0] + 0.98 * (-cx) == pytest.approx(0.0, abs=1e-12)
+    assert 0.02 * planet[1] + 0.98 * (-cy) == pytest.approx(0.0, abs=1e-12)
