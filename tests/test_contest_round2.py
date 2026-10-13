@@ -35,18 +35,19 @@ def _image(n=16, pixel=1.0):
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
 @pytest.mark.parametrize("name", ["tv", "tsv", "starlet", "logsum"])
-def test_regulariser_weights_span_the_discrepancy_scale(name):
-    """Non-MaxEnt weights span 10^±2 about N / P0, so the penalty at the middle
-    weight equals χ² = N on the start and the discrepancy weight is bracketed."""
-    start = _image()
+def test_regulariser_weights_span_the_documented_range(name):
+    """Non-MaxEnt weights are virgil.ensemble's per-data-point range x N, 12 log-spaced, strong to weak."""
+    from virgil.ensemble import _default_weight_ranges
+
+    low, high = _default_weight_ranges()["starlet" if name == "logsum" else name]
     data = types.SimpleNamespace(n_independent=500)
-    weights = ci.regulariser_weights(name, start, data, path=None)
-    p0 = float(ci.regulariser(name, 1.0, None).value(start))
-    assert p0 > 0
-    assert len(weights) == len(ci.REG_SPAN)
-    np.testing.assert_allclose(weights[len(weights) // 2] * p0, 500, rtol=1e-6)
-    np.testing.assert_allclose(weights[0] / weights[-1], 1e4, rtol=1e-6)
-    assert len(ci.regulariser_weights(name, start, data, path=None, smoke=True)) == 3
+    weights = ci.regulariser_weights(name, _image(), data, path=None)
+    assert len(weights) == 12
+    np.testing.assert_allclose(weights[0], high * 500, rtol=1e-9)
+    np.testing.assert_allclose(weights[-1], low * 500, rtol=1e-9)
+    assert np.all(np.diff(np.log(weights)) < 0)
+    np.testing.assert_allclose(np.diff(np.log(weights)), np.diff(np.log(weights))[0], rtol=1e-9)
+    assert len(ci.regulariser_weights(name, _image(), data, path=None, smoke=True)) == 3
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")

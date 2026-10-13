@@ -28,6 +28,7 @@ seconds-long check that the script runs.
 """
 
 import argparse
+import dataclasses
 import json
 import pathlib
 import sys
@@ -68,6 +69,8 @@ from virgil.imaging import (  # noqa: E402
     l_curve,
     starting_image,
 )
+from virgil._utils import _reference  # noqa: E402
+from virgil.ensemble import _default_weight_ranges  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
 from virgil.likelihood import whitened_residuals  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
@@ -182,12 +185,17 @@ def image_of(model, star=None, halo=False):
 # Round 2 (contests/fit_plan.yml): regularisers beside MaxEnt, chosen by the
 # discrepancy principle on the quoted errors as MaxEnt is. Their penalties
 # differ in scale by orders of magnitude (TSV is quadratic in unit-sum pixel
-# steps, LogSum a sum over every pixel), so their weights are not MaxEnt's
-# fixed WEIGHTS: the sweep spans 10^±2 about N / P0, where P0 is the
-# penalty at weight 1 on the starting image and N the number of independent
-# data, i.e. from a penalty 100x χ² = N down to 1/100 of it.
+# steps), so MaxEnt's fixed WEIGHTS do not serve. The sweep follows virgil's
+# design/regulariser_weight_selection.md: a weight per data point, over the
+# ranges of virgil.ensemble's defaults (fitted to the corners of the 60
+# contest-bench datasets), times the number of independent data N, 12 log-spaced
+# points from strong to weak.
 REGULARISERS = {"mem": None, "tv": TV, "tsv": TSV, "starlet": StarletL1, "logsum": LogSum}
-REG_SPAN = np.logspace(2.0, -2.0, 13)
+REG_POINTS = 12
+# virgil.ensemble._default_weight_ranges(): per data point. LogSum has no entry
+# there; it takes StarletL1's range (both are sparsity penalties of O(1) on a
+# unit-sum image).
+WEIGHT_RANGES = {**_default_weight_ranges(), "logsum": _default_weight_ranges()["starlet"]}
 
 
 def regulariser(name, weight, path, q=None):
@@ -198,13 +206,14 @@ def regulariser(name, weight, path, q=None):
 
 
 def regulariser_weights(name, start, data, path, q=None, smoke=False):
-    """The weights of an L-curve for ``name``: MaxEnt's WEIGHTS, or REG_SPAN
-    about N / P0 (see REGULARISERS)."""
+    """The weights of an L-curve for ``name``: MaxEnt's WEIGHTS, or
+    WEIGHT_RANGES[name] x N (``n_independent(data)``), REG_POINTS log-spaced
+    from strong to weak. ``start`` and ``path`` are unused (kept for callers)."""
     if name == "mem":
         weights = WEIGHTS
     else:
-        p0 = float(regulariser(name, 1.0, path, q).value(start))
-        weights = n_independent(data) / max(p0, 1e-300) * REG_SPAN
+        low, high = WEIGHT_RANGES[name]
+        weights = n_independent(data) * np.logspace(np.log10(high), np.log10(low), REG_POINTS)
     return weights[[0, len(weights) // 2, -1]] if smoke else weights
 
 
@@ -514,7 +523,7 @@ def companion_map(data, resolution, primary):
     samples = {"comp.dra": axis, "comp.ddec": axis, "comp.flux": np.array([1e-3])}
     num = den = 0.0
     for d in data if isinstance(data, list) else [data]:
-        g = linear_flux_grid(d, template, samples)
+        g = linear_flux_grid(template, d, samples)  # (model, data, grid); .flux, .flux_error
         w = 1.0 / np.asarray(g.flux_error) ** 2
         num, den = num + np.nan_to_num(np.asarray(g.flux) * w), den + np.nan_to_num(w)
     flux = num / np.where(den > 0, den, np.inf)
@@ -802,7 +811,7 @@ def select_channels(path, wavel, tmp_dir):
 
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
           oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0,
-          n_starts=N_STARTS, guard=True, field_override=None):
+          n_starts=N_STARTS, guard=True, field_override=None, clean_scales=(0.0,)):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data. With a star, ``star_model`` is "point" (unresolved) or
@@ -815,11 +824,12 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     than STAR_GUARD x the no-star ellipse's, or an unconverged fit) is
     dropped and the setup redone without it; ``star_rejected`` says why
     (C2g). ``field_override`` (mas) fixes the field instead of the task's
-    (round 2, --field: only where pre-submission information gives one)."""
+    (round 2, --field: only where pre-submission information gives one).
+    ``clean_scales`` (in beam minor axes; (0,) is point components) makes CLEAN multi-scale."""
     spec = spec_of(task)
     args = dict(halo=halo, grow=grow, init=init, clean_iters=clean_iters, oversample=oversample,
                 clean_gain=clean_gain, sparco=sparco, mean_blur=mean_blur, n_starts=n_starts,
-                field_override=field_override)
+                field_override=field_override, clean_scales=clean_scales)
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
     # (labels get _star / _nostar).
@@ -836,6 +846,8 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         label += "_halo"
     if init == "clean":
         label += "_clean"
+    clean_scales = tuple(float(f) for f in clean_scales)
+    multiscale = clean_scales != (0.0,)
     paths = [str(data_dir / f) for f in files]
     if spec.get("wavel"):
         tmp = pathlib.Path(tempfile.mkdtemp(prefix="contest_"))
@@ -946,6 +958,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             support_c = ndimage.zoom(np.asarray(support, float), n_c / n_img, order=0) > 0.5
         cleaned = clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
                         max_iterations=clean_iters, target_chi2_red=1.0, gain=clean_gain,
+                        scales_mas=tuple(f * resolution.minor_mas for f in clean_scales),
                         base_priors={k.removeprefix("star."): v for k, v in star_priors.items()} or None)
         if star_priors:  # the base's parameters CLEAN fitted along with the components
             fitted = cleaned.model
@@ -1066,14 +1079,14 @@ def residual_diagnostics(model, data):
     return out
 
 
-def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=False, field=None):
+def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=False, field=None, clean_scales=(0.0,)):
     """setup(), with a field chosen from the data grown (x1.5) while doing so
     lowers χ² by more than 10% in a probe fit at a middle weight: what a
     contestant would try. (Flux at the image edge is not a usable trigger:
     the support and centroid prior keep it off the edge even when the field
     is too small.) Returns the setup and the growth record."""
     opts = dict(star=star, init=init, clean_iters=50 if smoke else 3000, n_starts=N_STARTS_SMOKE if smoke else N_STARTS,
-                field_override=field)
+                field_override=field, clean_scales=clean_scales)
     s = setup(task, data_dir, halo, **opts)
     growth = []
     if s["adaptive"]:
@@ -1095,6 +1108,57 @@ def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=Fal
     return s, growth
 
 
+ADAM_STEPS, ADAM_STEPS_SMOKE = 2000, 50
+
+
+def adam_fallback(curve, start, priors, data, reg, path, q, others, smoke=False):
+    """Refit, with Adam from the L-BFGS values, each weight whose fit did not
+    converge or stopped "stalled"/"limit"; keep the lower total χ². Returns
+    (a patched LCurve, the method kept per weight, and per weight a
+    (lbfgs, adam) χ²/N pair, or None where no refit was made)."""
+    results, chi2, chi2_red, penalty, methods, both = [], [], [], [], [], []
+    n_total = n_independent(data)
+    for w, r, c, cr, pen in zip(curve.weights, curve.results, curve.chi2, curve.chi2_red, curve.penalty):
+        method, pair = "lbfgs", None
+        if not r.info.get("converged", False) or r.info.get("stop") in ("stalled", "limit"):
+            weighted = regulariser(reg, np.asarray(w, dtype=float), path, q)
+            a = fit(start, priors, data, [weighted, *others], init=r.values, method="adam",
+                    max_steps=ADAM_STEPS_SMOKE if smoke else ADAM_STEPS)
+            c_a = float(sum(a.info["chi2"]))
+            pair = (round(float(c) / n_total, 4), round(c_a / n_total, 4))
+            if np.isfinite(c_a) and c_a < float(c):
+                r, c, method = a, c_a, "adam"
+                cr = [x / n for x, n in zip(a.info["chi2"], a.info["ndata"])]
+                pen = float(weighted.value(_reference(a.model))) / float(w)
+        results.append(r), chi2.append(c), chi2_red.append(cr), penalty.append(pen)
+        methods.append(method), both.append(pair)
+    patched = dataclasses.replace(curve, chi2=np.asarray(chi2), chi2_red=np.asarray(chi2_red),
+                                  penalty=np.asarray(penalty), results=results)
+    return patched, methods, both
+
+
+def weight_report(curve, data, reg, path, index):
+    """The weight-selection rule's numbers (virgil design/regulariser_weight_selection.md):
+    the discrepancy weight (None if no weight reaches χ²/N = 1), the L-curve
+    corner (None if the sweep is too short), for MaxEnt Gull and Skilling's
+    classic weight, and the dataset that binds at the chosen weight."""
+    def guarded(f, *a):
+        try:
+            v = f(*a)
+            return None if v is None else float(v)
+        except Exception as e:  # report-only numbers must not stop a fit (classic_maxent needs an image path in a System)
+            return f"unavailable ({type(e).__name__}: {e})"
+
+    chi2_here = np.asarray(curve.chi2_red)[index]
+    datasets = data if isinstance(data, list) else [data]
+    report = {"discrepancy": guarded(curve.discrepancy), "corner": guarded(curve.corner),
+              "binding_dataset": int(np.argmax(chi2_here)), "chi2_red_by_dataset": [round(float(x), 4) for x in chi2_here],
+              "n_datasets": len(datasets)}
+    if reg == "mem":
+        report["classic_maxent"] = guarded(curve.classic_maxent, data, path)
+    return report
+
+
 def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", settings=None, label=None,
         reg="mem", field=None, informed=False, points=0, prune_blobs=False):
     """MaxEnt L-curve. With ``settings`` (scripts/contest_bench.py's "mem"
@@ -1106,6 +1170,8 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     fixes the field (mas), ``informed`` marks a round-2 fit, and ``points``
     adds up to that many point sources (add_point_sources; a CLEAN start)."""
     t0 = time.time()
+    if reg != "mem":
+        init = "clean"  # pixel-basis penalties stall from flat or Gaussian starts (docs/contest_convergence_diagnosis.md)
     if settings is None:
         s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field)
         if points:
@@ -1122,19 +1188,26 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     path, priors, others = s["path"], s["priors"], s["others"]
     weights = regulariser_weights(reg, start, data, path, s["q"], smoke)
     options = {"max_steps": 50} if smoke else {"max_steps": 200_000}
-    curve = l_curve(start, priors, data, regulariser(reg, 1.0, path, s["q"]), jnp.asarray(weights), others, **options)
+    # A warm-started LogSum sweep collapses to one pixel (virgil design/sparse_imaging.md).
+    curve = l_curve(start, priors, data, regulariser(reg, 1.0, path, s["q"]), jnp.asarray(weights), others,
+                    warm_start=reg != "logsum", **options)
+    curve, methods, adam_chi2 = adam_fallback(curve, start, priors, data, reg, path, s["q"], others, smoke)
 
     # discrepancy() is None when no weight reaches χ² = N (the data are then
     # under-fitted at every weight: worth a note); corner() needs >= 3 points.
     # Fall back to the L-curve corner, then to the weakest weight.
     weakest = float(curve.weights[-1])
-    corner = curve.corner()
+    try:
+        corner = curve.corner()
+    except ValueError:
+        corner = None
     corner = weakest if corner is None else float(corner)
     discrepancy = curve.discrepancy()
     chosen = {"discrepancy": corner if discrepancy is None else float(discrepancy), "corner": corner}
     reached = discrepancy is not None
     index = {k: int(np.argmin(np.abs(np.log(curve.weights) - np.log(w)))) for k, w in chosen.items()}
     images = np.stack([np.asarray(image_of(r.model, star, halo).render(npix, fov)) for r in curve.results])
+    report_w = weight_report(curve, data, reg, path, index["discrepancy"])
     # V² and closure phases have no absolute phases, so no dirty image:
     # show the starting image instead.
     first = np.asarray(img0.render(npix, fov))
@@ -1154,8 +1227,10 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         beam=np.array([resolution.major_mas, resolution.minor_mas, resolution.pa_deg]),
         halo_flux=np.array([float(r.model.halo.flux) if halo else 0.0 for r in curve.results]),
         converged=np.array([bool(r.info.get("converged", False)) for r in curve.results]),
+        methods=np.array(methods), adam_used=np.array([m == "adam" for m in methods]),
         chosen=json.dumps(chosen), index=json.dumps(index), regulariser=reg, informed=bool(informed),
         point_sources=json.dumps(s.get("point_record"), default=float),
+        weight_report=json.dumps(report_w),
     )
 
 
@@ -1183,6 +1258,9 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         f"chi2/N at the discrepancy weight={chi2_red(best, data):.4g} (quoted errors)"
         f"{' after pruning ' + str(pruned) if prune_blobs else ''}\n"
         f"chosen={chosen} discrepancy_reached={reached}\nconverged={[bool(r.info.get('converged', False)) for r in curve.results]}\n"
+        f"methods (lbfgs/adam)={methods}\nadam_used={[m == 'adam' for m in methods]} "
+        f"lbfgs vs adam chi2/N per weight (None: not refitted)={adam_chi2}\n"
+        f"weight report={report_w}\n"
         f"residuals at the discrepancy weight={residual_diagnostics(best, data)}\n"
         f"residuals at the corner weight={residual_diagnostics(curve.results[index['corner']].model, data)}\n"
         f"elapsed={time.time() - t0:.0f}s\n\n{report}\n"
@@ -1803,14 +1881,15 @@ def prune(result, priors, data, reg_, others, path, n, fov, resolution, options)
 
 
 def run_clean(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="clean", label=None, field=None,
-              informed=False):
+              informed=False, clean_scales=(0.0,)):
     """CLEAN's own result (round 2, clean-final): the restored image and the
     components of setup's CLEAN run, with χ²/N of the components' model on
     the quoted errors. CLEAN stops at χ²/N = 1, so no weight is chosen."""
     t0 = time.time()
-    s, growth = grown_setup(task, data_dir, halo, star, "clean", smoke, field)
+    s, growth = grown_setup(task, data_dir, halo, star, "clean", smoke, field, clean_scales)
     cleaned, data, res = s["cleaned"], s["data"], s["resolution"]
-    label = label or spec_of(task)["label"] + "_cleanfinal"
+    multiscale = tuple(float(f) for f in clean_scales) != (0.0,)
+    label = label or spec_of(task)["label"] + "_cleanfinal" + ("_cleanms" if multiscale else "")
     restored = np.clip(np.asarray(cleaned.restored(s["restore"])), 0.0, None)
     comps = np.asarray(cleaned.components)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1818,12 +1897,15 @@ def run_clean(task, data_dir, out_dir, smoke=False, halo=False, star=None, init=
     np.savez_compressed(out_dir / f"{label}.npz", restored=restored, components=comps,
                         pixel_scale_mas=float(cleaned.pixel_scale_mas), npix=restored.shape[0],
                         beam=np.array([res.major_mas, res.minor_mas, res.pa_deg]), chi2_red=chi2,
-                        stop=str(cleaned.stop), informed=bool(informed))
+                        stop=str(cleaned.stop), informed=bool(informed),
+                        components_by_scale=np.asarray(cleaned.components_by_scale),
+                        scales_mas=np.asarray(cleaned.scales_mas), clean_scales=np.asarray(clean_scales, float))
     text = (f"task={task} label={label} files={s['files']} star={s['star']} halo={halo}\n{informed_line(informed)}\n"
             f"field_source={s['field_source']} growth(fov, chi2/N)={growth}\n"
             f"virgil={virgil.__version__} from {virgil.__file__}\n"
             f"points={s['npts']} npix={restored.shape[0]} pixel={float(cleaned.pixel_scale_mas):.4g} mas "
             f"beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas components={int(np.count_nonzero(comps))}\n"
+            f"clean_scales(beams)={tuple(clean_scales)} scales_mas={tuple(round(float(x), 4) for x in cleaned.scales_mas)}\n"
             f"CLEAN stop={cleaned.stop} CLEAN's chi2/N={float(np.ravel(cleaned.chi2_red)[-1]):.4g}\nchi2/N={chi2:.4g} (quoted errors; the components' model)\n"
             f"residuals={residual_diagnostics(cleaned.model, data)}\nelapsed={time.time() - t0:.0f}s\n")
     (out_dir / f"{label}.txt").write_text(text)
@@ -1870,6 +1952,9 @@ def main():
                         "triangle, scanned by evidence (labels get _cloff)")
     parser.add_argument("--error-scales", action="store_true",
                         help="--prior gp: refit with per-observable error scales (labels get _errscale)")
+    parser.add_argument("--clean-scales", default="0",
+                        help="CLEAN component widths in beam minor axes, comma-separated (multi-scale CLEAN, e.g. 0,1,2; "
+                             "labels get _cleanms); only with --prior clean")
     parser.add_argument("--informed", action="store_true",
                         help="mark the outputs as round-2 fits whose method was chosen after seeing the truth")
     parser.add_argument("--member", type=int, help="ensemble member (CLEAN-started GP with a randomised start)")
@@ -1895,6 +1980,7 @@ def main():
                member=args.member)
         return
     paths = pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser()
+    scales = tuple(float(x) for x in args.clean_scales.split(","))
     common = dict(label=args.label, field=args.field, informed=args.informed)
     if args.prior == "gp":
         run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, points=args.points, gains=args.gains,
@@ -1902,7 +1988,7 @@ def main():
     elif args.prior == "gp2":
         run_gp2(args.task, *paths, args.smoke, args.halo, star, args.init, **common)
     elif args.prior == "clean":
-        run_clean(args.task, *paths, args.smoke, args.halo, star, **common)
+        run_clean(args.task, *paths, args.smoke, args.halo, star, clean_scales=scales, **common)
     else:
         run(args.task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, points=args.points,
             prune_blobs=args.prune, **common)
