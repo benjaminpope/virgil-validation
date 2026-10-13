@@ -11,17 +11,26 @@ scoring only, never for imaging. The model:
   atmosphere, which the paper does not tabulate: we use a linear law with
   u = ``U_LD`` at 550 nm, and report how the score changes with u.
 - A spot on A, 1 mas across, 2.5 mas from A's centre at PA 150°, at 1.5 x the
-  star's temperature. Its surface brightness is the Planck ratio at 550 nm
-  (about 3.7) times the limb-darkened profile beneath it, and only the part
-  on A's disk counts.
+  star's temperature. Its surface brightness is a contrast (the Planck ratio
+  at 550 nm, about 3.7, by default) times the limb-darkened profile beneath
+  it, and only the part on A's disk counts.
 - B: a 0.5 mas uniform disk, 10 mas from A at PA 90°.
 
 The paper does not state the A:B flux ratio, so it is fitted to the data's V²
 (a one-parameter scan, NumPy DFT; V² does not depend on the sign convention of
-the phases). The paper also leaves out the reference grid, the comparison box
-and the flux normalisation. We use 0.08 mas pixels, which reproduce the
-published reference peak, and normalise the truth and the entry to unit sum inside a box
-holding all of the truth's emission. The published data2 reference peak
+the phases). The paper also leaves out the reference grid and the comparison
+box. We use 0.08 mas pixels, which reproduce the published reference peak,
+and normalise the truth image and the entry to unit sum inside a box holding
+all of the truth's emission.
+
+Two normalisations, which differ by the spot's excess flux. The *scoring*
+image (``truth_image``) has unit sum, as the paper's comparison does. The
+*visibilities* the data were normalised with do not include the spot's
+brightening: V(0) = (1 + spot excess + B/A) / (1 + B/A) ≈ 1.07, so V²(0) ≈
+1.145, not 1 (``truth_vis_image``; the short-baseline V² of data2 sit 7-10 %
+above a unit-sum model on every baseline). The spot's excess flux is therefore
+left out of the star's normalisation: ``truth_parts`` normalises the *unspotted*
+star to unit sum. The published data2 reference peak
 (3.07e-3 after correcting the exponent typo) gives a check on the grid.
 
 Metric: σ = [Σ p_ref (p − p_ref)² / Σ p_ref]^½ over the box, reported as
@@ -32,13 +41,17 @@ closure phases fix the orientation, so the unflipped score is the one that
 counts; the flipped one is reported as a check).
 
 The unpublished details, fitted to the data (V² and closure phases, a
-Nelder-Mead fit, for scoring only), give u = 0.78, a spot contrast of 7.1 and
-B/A = 0.096 (``FITTED``). Even then the truth fits at V² χ²/N ≈ 50 and closure
-χ²/N ≈ 9, so the data carry errors beyond their quoted noise: the 2004 rules
-allowed calibration errors. Other readings of the geometry (PA 120° as the
+Nelder-Mead fit, for scoring only; ``fit_nuisances``), give the values in
+``FITTED``. With the normalisation above the truth fits at V² χ²/N ≈ 3 and closure
+χ²/N ≈ 1.4; with a unit-sum normalisation it fitted only at V² χ²/N ≈ 50, which
+was once read as calibration error in the data (the 2004 rules allowed it) but is
+the normalisation: the BSC1948 test binary from the same chain fits at V² scale
+0.997. The remaining χ²/N > 1 may be bandwidth smearing, frame merging or the
+unpublished limb-darkening table. Other readings of the geometry (PA 120° as the
 minor axis, 5.5 mas as the minor diameter, the spot at PA −30°) fit far worse
-(V² χ²/N 100-1100). Our score moves little between the two truths (campaign
-1: 0.250 published, 0.260 fitted); both are reported.
+(V² χ²/N 100-1100), and the closure phases reject the inverted truth (χ²/N ~900),
+so there is no coordinate or orientation error. Our score moves little between
+the two truths; both are reported.
 
 Published data2 σ/peak (Table 2): BSMEM 0.116, WISARD 0.163, MIRA 0.532,
 VLBMEM 0.798.
@@ -56,7 +69,7 @@ PIXEL = 0.08  # mas
 NPIX = 301  # 24 mas across: A at the centre and B 10 mas east both inside
 U_LD = 0.5  # linear limb darkening at 550 nm for a 7000 K, log g 4 star (assumed)
 WAVEL = 5.5e-7
-FITTED = {"u_ld": 0.78, "spot_contrast": 7.06, "ratio": 0.096}  # see the module docstring
+FITTED = {"u_ld": 0.462, "spot_contrast": 5.575, "ratio": 0.1129}  # fit_nuisances; see the module docstring
 PUBLISHED = {"BSMEM": 0.116, "WISARD": 0.163, "MIRA": 0.532, "VLBMEM": 0.798}
 MAS = np.pi / 180 / 3600e3
 
@@ -83,7 +96,10 @@ def offset(pa_deg, sep):
 
 
 def truth_parts(u_ld=U_LD, npix=NPIX, pixel=PIXEL, spot_contrast=None):
-    """A (with its spot) and B, each normalised to unit sum, on the grid."""
+    """A (with its spot) and B on the grid. B is normalised to unit sum; A is
+    normalised so that the star *without* its spot has unit sum, so the spot's
+    excess flux is left out of the visibility normalisation (see the module
+    docstring): ``A.sum()`` is 1 plus the excess."""
     x, y = grid(npix, pixel)
     # A's frame: along the major axis (PA 120°) and across it.
     pa = np.radians(120.0)
@@ -97,10 +113,10 @@ def truth_parts(u_ld=U_LD, npix=NPIX, pixel=PIXEL, spot_contrast=None):
     sx, sy = offset(150.0, 2.5)
     spot = inside & ((x - sx) ** 2 + (y - sy) ** 2 < 0.5**2)
     contrast = planck_ratio(1.5 * 7000.0, 7000.0) if spot_contrast is None else spot_contrast
-    star = np.where(spot, star * contrast, star)
+    spotted = np.where(spot, star * contrast, star)
     bx, by = offset(90.0, 10.0)
     companion = (((x - bx) ** 2 + (y - by) ** 2) < 0.25**2).astype(float)
-    return star / star.sum(), companion / companion.sum()
+    return spotted / star.sum(), companion / companion.sum()
 
 
 def visibilities(image, u, v, npix=NPIX, pixel=PIXEL):
@@ -122,7 +138,8 @@ def read_v2(path):
 
 
 def fit_ratio(star, companion, u, v, v2, err, ratios=np.geomspace(0.01, 2.0, 400)):
-    """B/A flux ratio minimising the V² χ² (a scan: one parameter)."""
+    """B/A flux ratio minimising the V² χ² (a scan: one parameter). ``star`` and
+    ``companion`` are ``truth_parts``, so V(0) = (star.sum() + r) / (1 + r)."""
     va, vb = visibilities(star, u, v), visibilities(companion, u, v)
     chi2 = [np.sum(((np.abs(va + r * vb) / (1 + r)) ** 2 - v2) ** 2 / err**2) for r in ratios]
     i = int(np.argmin(chi2))
@@ -152,10 +169,46 @@ def closure_chi2(image, t3):
     return out
 
 
-def truth_image(ratio, u_ld=U_LD, spot_contrast=None):
+def truth_vis_image(ratio, u_ld=U_LD, spot_contrast=None):
+    """The image the data's visibilities are normalised against: V(0) =
+    (A.sum() + B/A) / (1 + B/A) > 1, the spot's excess flux outside the
+    normalisation."""
     star, companion = truth_parts(u_ld, spot_contrast=spot_contrast)
-    img = star + ratio * companion
+    return (star + ratio * companion) / (1 + ratio)
+
+
+def truth_image(ratio, u_ld=U_LD, spot_contrast=None):
+    """The scoring image: ``truth_vis_image`` normalised to unit sum."""
+    img = truth_vis_image(ratio, u_ld, spot_contrast)
     return img / img.sum()
+
+
+def v2_chi2(image, u, v, v2, err):
+    return float(np.mean(((np.abs(visibilities(image, u, v)) ** 2 - v2) / err) ** 2))
+
+
+def fit_nuisances(v2_data, t3, start=None):
+    """Nelder-Mead fit of (u_ld, spot contrast, B/A) to the V² and closure
+    phases (sum of the two χ²/N), the visibilities normalised as in
+    ``truth_vis_image``. Used once to set ``FITTED``; scoring only."""
+    from scipy.optimize import minimize
+
+    u, v, v2, err = v2_data
+    x0 = start or (FITTED["u_ld"], FITTED["spot_contrast"], np.log(FITTED["ratio"]))
+
+    def objective(p):
+        u_ld, contrast, log_r = p
+        if not (0.0 <= u_ld <= 1.0 and contrast > 1.0):
+            return 1e6
+        img = truth_vis_image(np.exp(log_r), u_ld, contrast)
+        return v2_chi2(img, u, v, v2, err) + closure_chi2(img, t3)[0]
+
+    best = None
+    for guess in (x0, (0.45, 5.6, np.log(0.11)), (0.8, 3.0, np.log(0.1))):
+        r = minimize(objective, guess, method="Nelder-Mead", options=dict(xatol=1e-4, fatol=1e-4, maxiter=1000, adaptive=True))
+        if best is None or r.fun < best.fun:
+            best = r
+    return {"u_ld": float(best.x[0]), "spot_contrast": float(best.x[1]), "ratio": float(np.exp(best.x[2]))}
 
 
 def resample(image, fov, npix=NPIX):
@@ -232,6 +285,7 @@ def main():
     parser.add_argument("ensemble", help="<label>_ensemble.npz from combine_ensemble.py, or a member npz")
     parser.add_argument("--data", default="~/data/imaging_contests")
     parser.add_argument("--out", default=None)
+    parser.add_argument("--refit", action="store_true", help="refit FITTED's nuisances to the data (about 10 s)")
     args = parser.parse_args()
     data_path = pathlib.Path(args.data).expanduser() / "2004" / "2004-data2.fits"
     d = np.load(args.ensemble)
@@ -240,6 +294,8 @@ def main():
     u, v, v2, err = read_v2(data_path)
     t3 = read_t3(data_path)
     lines = []
+    if args.refit:
+        lines.append(f"fit_nuisances: {fit_nuisances((u, v, v2, err), t3)}")
     for u_ld in (0.3, U_LD, 0.7):
         star, companion = truth_parts(u_ld)
         ratio, chi2 = fit_ratio(star, companion, u, v, v2, err)
@@ -254,8 +310,11 @@ def main():
     rows, cols = np.nonzero(ref > 0)
     box[rows.min() - 10 : rows.max() + 11, cols.min() - 10 : cols.max() + 11] = True
     moved, shift = aligned(resample(entry, fov, NPIX + 2 * MAX_SHIFT), ref)
+    vis_img = truth_vis_image(FITTED["ratio"], FITTED["u_ld"], FITTED["spot_contrast"])
+    cp, cp_inv = closure_chi2(vis_img, t3)
     lines.append(f"fitted truth (u_ld={FITTED['u_ld']}, spot contrast {FITTED['spot_contrast']}, B/A={FITTED['ratio']}): "
-                 f"σ/peak={sigma_over_peak(moved, ref, box)[0]:.3f} shift={shift}")
+                 f"V² χ²/N={v2_chi2(vis_img, u, v, v2, err):.2f}, closure χ²/N {cp:.2f} (inverted {cp_inv:.2f}), "
+                 f"V(0)={vis_img.sum():.3f}, σ/peak={sigma_over_peak(moved, ref, box)[0]:.3f} shift={shift}")
     lines.append("published data2 σ/peak: " + ", ".join(f"{k} {v}" for k, v in PUBLISHED.items()))
     text = "\n".join(lines)
     print(text)
