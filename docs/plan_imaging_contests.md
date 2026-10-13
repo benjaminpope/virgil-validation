@@ -953,8 +953,37 @@ spotted_star and 7/12 on star_disk_planet, disk_star 4/12 and 6/12.
   default (`EnsembleSpec(n_weights=...)` and `ensemble(...)` match virgil at
   `0b206c2`).
 
-Next: a cluster smoke on d·10 + {1, 2, 8, 9} for d in 0, 12, 24, 36, 48,
-plus 481 and 488.
+**Full rerun 18479831 (head `7e25278`, 240 star-arm tasks).** On the 181
+valid tasks every criterion passed: worst median χ²/N 1.187, NCC on the
+target families at or above the baseline, no pinned diameters, env_flux ≤ 10.8.
+Three problems remained, fixed or diagnosed after it.
+
+- *Contaminated outputs.* 57 tasks (ids 98, 99, 122, 128, 129, 141, 392, 459,
+  479 and every spiral task 481–599) ran vv `1183e2f`: `bench.sbatch` read the
+  code from the shared upload directory, which another upload replaced during
+  the array. ozstar_scripts now pins the code (`--bench --ref-vv=<commit>`, a
+  snapshot as `--advice` and the ensemble use) and takes `--tag=` for a
+  separate output directory.
+- *Fallback regression.* Four rejected star_disk_planet arms lost the planet
+  (382 disk_star NCC 0.007, 391 point_star 0.030, 412 disk_star 0.394, 432
+  disk_star 0.263; baselines 0.45–0.59) at an unchanged χ²/N. The no-star
+  fallback (`no_star_setup`) carried the guard's no-star ellipse, fitted on
+  the star start's pre-growth field with that field's priors, so `gp_fit`
+  chose a different anisotropic template and orientation than the baseline
+  arm, whose ellipse is fitted on its own grown setup. A near-degenerate
+  χ²/N hides the difference. The fallback now leaves `ellipse` unset so
+  `gp_fit` refits it as arm 0 does, and a test checks that the fallback and
+  baseline setups have the same grid, start image and priors.
+- *Segfaults* (421 point_star and 438 ellipse_star on 2018_p3, at 30 min,
+  inside `star_evidence → gp_fit → grow_grid → fit(lm)`). No Python-side
+  cause found: the 2018_p3 data have no zero-size leaves (the Shardy trigger
+  of virgil#282), and the earlier run 18275454 finished both tasks (82 and
+  80 min), so this is intermittent. The 30 min mark is the `faulthandler`
+  watchdog's periodic traceback dump, which is not the crash. Both star arms
+  there fit badly (χ²/N 7 for the point star against 1.0 without it), so LM
+  runs a long way through a pathological region. Rerun; if it recurs, take a
+  C-level stack (`python -X faulthandler`, `ulimit -c`) before filing a
+  virgil/JAX issue.
 
 ## Open decisions for Ben
 

@@ -721,7 +721,11 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         """This setup with no star (the guards' and the evidence test's
         alternative), under this label."""
         s_ = setup(task, data_dir, star=False, star_model="none", guard=False, **args)
-        s_.update(label=label, ellipse=nostar if nostar is not None else s_.get("ellipse"))
+        # No ellipse carried over: the guard's was fitted on the star start's
+        # pre-growth field, and gp_fit refits it on this setup's own, as the
+        # baseline arm does. Carrying it changed the GP's anisotropy and lost
+        # the planet on four star_disk_planet fallbacks (job 18479831, C2h).
+        s_.update(label=label, ellipse=None)
         return s_
 
     def without_star(reason, detail=""):

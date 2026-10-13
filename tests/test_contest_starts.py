@@ -266,7 +266,7 @@ def test_star_guard_falls_back_to_no_star(simulated, monkeypatch):
     monkeypatch.setattr(ci, "STAR_GUARD", 0.0)
     s = _star_setup(ci, simulated["bare"], init="moments")
     assert s["star_rejected"] == "chi2" and not s["star"] and s["star_model"] == "none"
-    assert s["label"] == "sim_star" and s["ellipse"] is not None
+    assert s["label"] == "sim_star" and s["ellipse"] is None
     assert "env.flux" not in s["priors"]
 
 
@@ -367,3 +367,25 @@ def test_multistart_keeps_the_lowest_chi2_converged_start(monkeypatch):
 def test_ensemble_uses_virgils_recommended_weights():
     bench = _load("contest_bench")
     assert bench.ENSEMBLE_WEIGHTS == 8
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
+@needs_2004
+@pytest.mark.parametrize("scene", ["spotted_star", "thin_disk"])
+def test_fallback_setup_is_the_baseline_setup(simulated, scene):
+    # Job 18479831: four rejected star_disk_planet arms lost the planet (NCC
+    # 0.007 against the baseline's 0.45) at the baseline's χ²/N. The no-star
+    # fallback carried the guard's ellipse, fitted on the star start's
+    # pre-growth field, so the GP saw another anisotropy than the baseline's.
+    # It must be the baseline's setup, ellipse included (fitted by gp_fit).
+    ci = _load("contest_images")
+    spec = {"label": "sim", "files": [str(simulated[scene])]}
+    common = dict(init="clean", clean_iters=30, oversample=2.0, n_starts=2)
+    base = ci.setup(spec, pathlib.Path("/"), False, 2.0, star=False, **common)
+    arm = ci.setup(spec, pathlib.Path("/"), False, 2.0, star=True, star_model="point", **common)
+    fall = arm["no_star_setup"]() if arm["star"] else arm
+    assert not fall["star"] and fall["ellipse"] is None and base["ellipse"] is None
+    assert (fall["npix"], fall["pixel"], fall["fov"]) == (base["npix"], base["pixel"], base["fov"])
+    np.testing.assert_allclose(np.asarray(fall["img0"].log_brightness), np.asarray(base["img0"].log_brightness))
+    assert float(fall["img0"].flux) == pytest.approx(float(base["img0"].flux))
+    assert set(fall["priors"]) == set(base["priors"])
