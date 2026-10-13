@@ -15,10 +15,10 @@ Models, by collection (the reasons are in RECIPES' docstrings):
   stars on the K-band continuum (Br-gamma and He I windows left out, where the
   paper's Keplerian disk contributes), per epoch and as an orbit. Reported, not
   scored.
-* ``private-workshop`` a private L2 collection (CHARA workshop 2023): iota Peg (the same seven files as
-  fac164e1's 2018-10-22 night) and sigma Ori Aa-Ab as a "scaled binary" (Aa, Ab
-  and the incoherent light of B, Schaefer et al. 2016). Fitted, but its results
-  are not published until the dataPI has been contacted.
+* ``647a22a9`` CHARA imaging workshop 2023 (dataPI Gail Schaefer; cleared by Ben Pope
+  on 2026-10-13 for reduction and display, attribution in oidb/manifest.yml): iota Peg
+  (the same seven files as fac164e1's 2018-10-22 night) and sigma Ori Aa-Ab as a
+  "scaled binary" (Aa, Ab and the incoherent light of B, Schaefer et al. 2016).
 * ``fac164e1`` iota Peg, MIRC-X: a binary of two uniform disks fixed at 1.05 and
   0.6 mas (Anugu et al. 2020), per night and as an orbit.
 * ``bda75673`` A-star companions, MIRC-X: the five detections of De Furio et al.
@@ -44,7 +44,7 @@ and angles (``AngleVector``: omega, Omega and the mean anomaly at t_ref), unifor
 cos i; e uniform on [0, 0.95]. Every fit reports the raw chi2/N on the quoted
 errors first; the fitted error scales follow and are never a pass criterion.
 
-Usage: python scripts/oidb_fit.py <collection id> <data dir> <out dir> [--quick] [--no-nuts]
+Usage: python scripts/oidb_fit.py <collection id> <data dir> <out dir> [--quick] [--no-nuts] [--exclude-flagged]
 """
 
 import argparse
@@ -73,9 +73,6 @@ from virgil.models import (  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.oifits import read_oifits  # noqa: E402
 from virgil.orbits import KeplerOrbit  # noqa: E402
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import private_collections as pc  # noqa: E402
 
 UM = 1e-6
 SCALE_PRIOR = dist.LogUniform(0.1, 100.0)  # error scales: Jeffreys, bounds wide enough to show a failed fit
@@ -316,6 +313,20 @@ def raw_chi2(model, data):
     return out
 
 
+def vis_amp_of(model, data):
+    """The multiplicative amplitude A on the squared visibilities of ``data`` that best fits ``model``
+    (least squares on the quoted errors; A = 1: no contrast loss), or None without V^2 rows. The
+    residuals are linear in the model and the data, so two evaluations (the data and twice the data)
+    give both whitened vectors: (m - d)/s and (m - 2d)/s."""
+    if not np.asarray(data.vis).size or getattr(data, "vis_mode", "v2") != "v2":
+        return None
+    d = data.select(observables="vis")
+    r1 = np.asarray(whitened_residuals(model, d))
+    r2 = np.asarray(whitened_residuals(model, eqx.tree_at(lambda x: x.vis, d, d.vis * 2)))
+    dat, mod = r1 - r2, 2 * r1 - r2
+    return float(mod @ dat / (mod @ mod)) if mod @ mod > 0 else None
+
+
 def scales_of(values, prefix="noise."):
     return {k[len(prefix):]: float(np.asarray(v)) for k, v in values.items() if k.startswith(prefix)}
 
@@ -371,6 +382,7 @@ def fit_epoch(label, data, scene, priors, grid, *, extra=None, noise=None, chi2_
     out = dict(label=label, mjd=mean_mjd(data), n_vis=int(np.asarray(data.vis).size),
                n_phi=int(np.asarray(data.phi).size),
                chi2_raw=raw_chi2(model, data if chi2_data is None else chi2_data), scales=scales,
+               vis_amp=vis_amp_of(model, data if chi2_data is None else chi2_data),
                converged=bool(res.info.get("converged")), loss=float(np.asarray(res.info["loss"])),
                values={k: [values[k], err[k]] for k in names}, cov_names=names, cov=cov.tolist(),
                grid_start=grid_start, seconds=time.time() - t0)
@@ -456,42 +468,183 @@ def _summary(x, angle=False):
 CHECKPOINT = None  # set by run(): writes a partial result (map_<id>.json)
 
 
+FAILED_EPOCH_CHI2 = 100.0  # raw chi2/N on the quoted errors above which a night's static fit has failed
+
+
+def alias_bands(times, p_range):
+    """Period bands N = round(T/P), T the span of ``times`` (days): band N holds
+    T/(N + 1/2) <= P <= T/(N - 1/2), clipped to ``p_range``. Returns [(N, p_lo, p_hi)] by
+    increasing N (longest period first). Periods differing by less than the band width fit the
+    same number of cycles between the first and last night (design/orbit_comparison.md;
+    virgil.aliases.alias_bands, whose bands these are)."""
+    span = float(np.ptp(np.asarray(times, float)))
+    p_min, p_max = (float(p) for p in p_range)
+    if span <= 0 or not 0 < p_min < p_max:
+        raise ValueError("need epochs spanning a positive time and 0 < p_min < p_max")
+    out = []
+    for n in range(int(np.floor(span / p_max + 0.5)), int(np.floor(span / p_min + 0.5)) + 1):
+        lo = span / (n + 0.5)
+        hi = span / (n - 0.5) if n > 0 else p_max
+        lo, hi = max(lo, p_min), min(hi, p_max)
+        if hi > lo:
+            out.append((n, lo, hi))
+    return out
+
+
+def drop_epochs(epochs, names):
+    """``epochs`` (an Epochs) without the epochs in ``names``."""
+    groups = {}
+    for dataset, epoch, d in zip(epochs.dataset_names, epochs.epoch_of, epochs.data):
+        if epoch not in names:
+            groups.setdefault(epoch, {})[dataset] = d
+    return Epochs(groups)
+
+
+def check_epochs(start_data, grid, *, flagged=None, min_sep=None, min_gap=5.0, reference=None):
+    """Which nights may seed the starting orbits, and why the others may not.
+
+    A night is *flagged* (not a seed; its visibilities still enter every fit unless the
+    caller drops it) when
+    * it is in ``flagged`` ({night: reason}: single-night alias peaks the paper flags,
+      design/orbit_comparison.md section 5),
+    * its best grid peak is closer than ``min_sep`` mas (two stars whose disks
+      overlap: iota Peg's 0.5 mas peaks, with fixed disks of 1.05 and 0.6 mas),
+    * its static fit failed (raw chi2/N above ``FAILED_EPOCH_CHI2``), or
+    * it is ambiguous (``gap_marginal`` below ``min_gap``: start_from_positions skips it too).
+    ``reference`` ({night: (dra, ddec)}) adds the offset of the best and of the nearest
+    peak from the reference position, and the marginal-score difference between them
+    (the data-vs-reference row of section 5).
+    Returns (list of per-night dicts, the EpochPositions)."""
+    flagged = flagged or {}
+    pos = epoch_positions(start_data, grid, n_peaks=8)
+    rows = []
+    for k, name in enumerate(pos.names):
+        pk = pos.peaks[k]
+        rho = np.hypot(pk.dra, pk.ddec)
+        chi2 = float(pos.chi2_raw[k]["all"])  # chi2/N on the quoted errors at the best peak
+        reasons = []
+        if name in flagged:
+            reasons.append(f"flagged: {flagged[name]}")
+        if min_sep is not None and rho[0] < min_sep:
+            reasons.append(f"best peak at {rho[0]:.2f} mas, closer than {min_sep:.2f} mas")
+        if chi2 > FAILED_EPOCH_CHI2:
+            reasons.append(f"static fit failed: raw chi2/N {chi2:.3g}")
+        if float(pos.gap_marginal[k]) < min_gap:
+            reasons.append(f"ambiguous: gap_marginal {float(pos.gap_marginal[k]):.2g}")
+        row = dict(name=name, mjd=float(pos.mjd[k]), best=dict(dra=float(pk.dra[0]), ddec=float(pk.ddec[0]),
+                                                                flux=float(pk.flux[0]), rho=float(rho[0])),
+                   gap_marginal=float(pos.gap_marginal[k]), chi2_raw=chi2, reasons=reasons,
+                   barred=any(not r.startswith("ambiguous") for r in reasons), seeds=not reasons)
+        if reference is not None and name in reference:
+            rx, ry = reference[name]
+            d = np.hypot(pk.dra - rx, pk.ddec - ry)
+            j = int(np.argmin(d))
+            row["reference"] = dict(dra=float(rx), ddec=float(ry), best_offset=float(d[0]), nearest_peak=j,
+                                    nearest_offset=float(d[j]),
+                                    delta_marginal=float(pk.marginal[0] - pk.marginal[j]))
+        rows.append(row)
+    return rows, pos
+
+
 def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, eccs=None, n_candidates=200,
-              n_refine=4, min_gap=5.0, nuts=None, seed=0):
+              n_refine=4, min_gap=5.0, nuts=None, seed=0, flagged=None, min_sep=None, reference=None,
+              exclude_flagged=False, published=None):
     """Orbit from multi-epoch visibilities.
 
-    1. ``start_from_positions(..., scales="marginal")`` on ``start_data`` (an Epochs, one
-       dataset per night: positions are decisive there), error scales per dataset.
-    2. A refit on ``fit_data`` (an Epochs with every file a dataset, each a snapshot at
-       its own mean time) from each distinct start; the lowest loss is the answer.
-    3. Optionally NUTS (``chain_method="vectorized"``) from the distinct modes.
-    Reports the raw chi2/N of every dataset on its quoted errors."""
+    1. ``check_epochs``: which nights may seed the starting orbits (not the flagged ones).
+    2. For each period band N = round(T/P) of ``periods`` (``alias_bands``):
+       ``start_from_positions(..., scales="marginal")`` on the seeding nights of ``start_data``
+       (an Epochs, one dataset per night: positions are decisive there), error scales per
+       dataset, with the trial periods confined to the band, then a refit on ``fit_data``
+       (an Epochs with every file a dataset, each a snapshot at its own mean time) from each
+       distinct start. The lowest loss over the bands is the answer; each band's best is
+       reported (``bands``), since a published orbit in another band is a finding, not a fit
+       to tune away.
+    3. ``published`` (dict: period, t_peri, ecc, inc, omega, Omega, a, flux: the paper's orbit in virgil's
+       convention, ``XUAN_2024``) is one more start, tagged ``band="published"`` in ``modes`` and
+       reported in ``published_start``. It is not imposed: the lowest loss over every start is the
+       answer, and a published start that wins says that the blind search missed a better mode.
+    4. Optionally NUTS (``chain_method="vectorized"``) from the best modes.
+    ``flagged`` = {night: reason}, ``min_sep`` (mas) and ``reference`` = {night: (dra, ddec)}
+    are those of ``check_epochs``. A flagged night's visibilities stay in the fits unless
+    ``exclude_flagged``. Reports the raw chi2/N of every dataset on its quoted errors."""
     t0 = time.time()
     t_ref = float(np.round(np.mean(start_data.times), 1))
     scene = scene_factory(t_ref)
+    rows, _ = check_epochs(start_data, grid, flagged=flagged, min_sep=min_sep, min_gap=min_gap,
+                           reference=reference)
+    for r in rows:
+        log(f"orbit: night {r['name']}: " + ("seeds the orbits" if r["seeds"] else "; ".join(r["reasons"])))
+    barred = {r["name"] for r in rows if r["barred"]}  # flagged, failed or too close: not a seed
+    seed_data = drop_epochs(start_data, barred)  # ambiguous nights stay: start_from_positions skips them (min_gap)
+    if not any(r["seeds"] for r in rows):
+        raise ValueError(f"no night may seed the orbits: {[(r['name'], r['reasons']) for r in rows]}")
+    if exclude_flagged:
+        fit_data = drop_epochs(fit_data, barred)
+    span = float(np.ptp(start_data.times))
+    bands = alias_bands(start_data.times, (float(np.min(periods)), float(np.max(periods))))
     n_obs = [int(np.asarray(d.vis).size + np.asarray(d.phi).size) for d in fit_data.data]
-    log(f"orbit: start search on {len(start_data.data)} datasets, {len(periods)} periods x "
-        f"{1 if eccs is None else len(eccs)} eccentricities, {n_candidates} candidates, {n_refine} refined")
-    start = start_from_positions(
-        scene, priors, start_data, start_values_for(priors), grid=grid, periods=periods, t_ref=t_ref,
-        scales="marginal", noise=[noise_terms(d) for d in start_data.data], eccs=eccs,
-        n_candidates=n_candidates, n_refine=n_refine, min_gap=min_gap)
-    pos = start.positions
-    positions = [dict(name=n, mjd=float(m), dra=float(x), ddec=float(y), cov=np.asarray(c).tolist(),
-                      flux=float(f), gap_marginal=float(g), chi2_raw=cr, scale=sc,
-                      **polar(float(x), float(y), c))
-                 for n, m, x, y, c, f, g, cr, sc in zip(pos.names, pos.mjd, pos.dra, pos.ddec, pos.cov, pos.flux,
-                                                        pos.gap_marginal, pos.chi2_raw, pos.scale)]
-    log(f"orbit: start search done in {time.time() - t0:.0f} s; refitting {len(start.modes())} modes on "
-        f"{len(fit_data.data)} datasets, {sum(n_obs)} observables")
+    log(f"orbit: {len(seed_data.data)} of {len(start_data.data)} nights seed; {len(bands)} period band(s) "
+        f"{[(n, round(lo, 3), round(hi, 3)) for n, lo, hi in bands]}; "
+        f"{1 if eccs is None else len(eccs)} eccentricities, {n_candidates} candidates, {n_refine} refined per band")
     model_fn = fit_data.model_fn(scene)
     noise = [noise_terms(d) for d in fit_data.data]
-    refits = []
-    for mode in start.modes():
-        init = {k: mode.values[k] for k in priors}
-        r = fit(model_fn, priors, list(fit_data.data), noise=noise, init=init)
-        refits.append(r)
-    refits.sort(key=lambda r: float(np.asarray(r.info["loss"])))
+    per_band, all_refits, pos = [], [], None
+    for n, lo, hi in bands:
+        in_band = np.asarray(periods, float)
+        in_band = in_band[(in_band >= lo) & (in_band <= hi)]
+        if in_band.size < 2:
+            continue
+        tb = time.time()
+        try:
+            start = start_from_positions(
+                scene, priors, seed_data, start_values_for(priors), grid=grid, periods=in_band, t_ref=t_ref,
+                scales="marginal", noise=[noise_terms(d) for d in seed_data.data], eccs=eccs,
+                n_candidates=n_candidates, n_refine=n_refine, min_gap=min_gap)
+        except Exception as e:  # a band the start search cannot seed is reported, not fatal
+            log(f"orbit: band N={n} ({lo:.3f}-{hi:.3f} d): start search failed: {type(e).__name__}: {e}")
+            per_band.append(dict(n=n, p_lo=lo, p_hi=hi, error=f"{type(e).__name__}: {e}"))
+            continue
+        pos = pos or start.positions
+        refits = []
+        for mode in start.modes():
+            init = {k: mode.values[k] for k in priors}
+            r = fit(model_fn, priors, list(fit_data.data), noise=noise, init=init)
+            refits.append((n, r))
+        refits.sort(key=lambda nr: float(np.asarray(nr[1].info["loss"])))
+        best = refits[0][1]
+        el = {k: float(np.asarray(x)) for k, x in elements(
+            {k: float(np.asarray(best.values[k])) for k in priors}, t_ref).items()}
+        per_band.append(dict(
+            n=n, p_lo=lo, p_hi=hi, loss=float(np.asarray(best.info["loss"])),
+            converged=bool(best.info.get("converged")), n_modes=len(refits), seconds=time.time() - tb,
+            # the refit is free to leave the band it started in: the band of the fitted period
+            n_fit=int(np.floor(span / el["period_day"] + 0.5)), elements=el))
+        log(f"orbit: band N={n} ({lo:.3f}-{hi:.3f} d): loss {per_band[-1]['loss']:.1f}, "
+            f"P {per_band[-1]['elements']['period_day']:.4f} d, {len(refits)} modes in {time.time() - tb:.0f} s")
+        all_refits += refits
+    pub_start = None
+    if published is not None:
+        orbit0 = KeplerOrbit(published["period"], published["t_peri"] - t_ref, published["ecc"], published["inc"],
+                             published["omega"] % 360.0, published["Omega"], published["a"], t_ref=t_ref)
+        init = start_values_for(priors)(orbit0, published["flux"])
+        r = fit(model_fn, priors, list(fit_data.data), noise=noise, init={k: init[k] for k in priors})
+        all_refits.append(("published", r))
+        pub_start = dict(loss=float(np.asarray(r.info["loss"])), converged=bool(r.info.get("converged")),
+                         elements={k: float(np.asarray(x)) for k, x in elements(
+                             {k: float(np.asarray(r.values[k])) for k in priors}, t_ref).items()})
+        log(f"orbit: published start: loss {pub_start['loss']:.1f}, P {pub_start['elements']['period_day']:.4f} d")
+    if not all_refits:
+        raise RuntimeError(f"no period band could be fitted: {per_band}")
+    all_refits.sort(key=lambda nr: float(np.asarray(nr[1].info["loss"])))
+    refits = [r for _, r in all_refits]
+    positions = [dict(name=n_, mjd=float(m), dra=float(x), ddec=float(y), cov=np.asarray(c).tolist(),
+                      flux=float(f), gap_marginal=float(g), chi2_raw=cr, scale=sc,
+                      **polar(float(x), float(y), c))
+                 for n_, m, x, y, c, f, g, cr, sc in zip(pos.names, pos.mjd, pos.dra, pos.ddec, pos.cov, pos.flux,
+                                                         pos.gap_marginal, pos.chi2_raw, pos.scale)]
+    log(f"orbit: start search done in {time.time() - t0:.0f} s; {len(refits)} modes refitted on "
+        f"{len(fit_data.data)} datasets, {sum(n_obs)} observables")
     best = refits[0]
     v = {k: float(np.asarray(best.values[k])) for k in priors}
     models = model_fn(**v)
@@ -502,11 +655,12 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
     chi2 = sum(p["chi2_raw"]["all"]["chi2"] for p in per_dataset)
     n = sum(p["chi2_raw"]["all"]["n"] for p in per_dataset)
     out = dict(t_ref=t_ref, map={k: float(np.asarray(x)) for k, x in elements(v, t_ref).items()},
-               map_sampled=v, loss=float(np.asarray(best.info["loss"])),
-               modes=[dict(loss=float(np.asarray(r.info["loss"])),
+               map_sampled=v, loss=float(np.asarray(best.info["loss"])), converged=bool(best.info.get("converged")),
+               bands=per_band, published_start=pub_start, epoch_checks=rows, exclude_flagged=bool(exclude_flagged),
+               modes=[dict(loss=float(np.asarray(r.info["loss"])), band=nb,
                            elements={k: float(np.asarray(x)) for k, x in elements(
                                {k: float(np.asarray(r.values[k])) for k in priors}, t_ref).items()})
-                      for r in refits],
+                      for nb, r in all_refits],
                chi2_raw=dict(chi2=chi2, n=n, chi2_red=chi2 / n), datasets=per_dataset, positions=positions,
                n_candidates=n_candidates, n_observables=n_obs, seconds_map=time.time() - t0)
     log(f"orbit: MAP done in {out['seconds_map']:.0f} s, raw chi2/N {chi2 / n:.3g}")
@@ -517,6 +671,38 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
         starts = [refits[k % len(refits)].values for k in range(nuts["chains"])]  # the distinct modes, best first
         out["nuts"] = run_nuts(model_fn, priors, fit_data, noise, starts, t_ref, nuts, seed)
     return out
+
+
+VIS_AMP = (0.01, 1.5)  # the per-night V^2 amplitude A may range over this (aliases.fit_orbit_aliases)
+
+
+def fit_orbit_vis_amp(per_night, p_range, *, a_range, flux_range, init, vis_amp=VIS_AMP, n_candidates=40,
+                      n_refine=2, seed=0):
+    """The orbit from V^2 and closure phases with a free amplitude on each night's V^2 (a contrast loss, the
+    same on every baseline and wavelength: GRAVITY's seeing-dependent visibility calibration), through
+    ``virgil.aliases.fit_orbit_aliases(vis_amp=...)``: the amplitude is profiled analytically, so it
+    costs no sampled parameter. ``per_night`` = {night: OIData with V^2 and phases}; ``init`` is a published
+    orbit as in ``fit_orbit(published=...)``, joining the candidates of the band that holds its period.
+    Reports the best band's elements (as ``fit_orbit``'s ``map``), its per-night amplitudes and chi2/N, and
+    every band's evidence."""
+    from virgil.aliases import fit_orbit_aliases
+    times = np.array([mean_mjd(d) for d in per_night.values()])
+    t_ref = float(np.round(np.mean(times), 1))
+    start = dict(period=init["period"], dt_peri=init["t_peri"] - t_ref, ecc=init["ecc"], inc=init["inc"],
+                 omega=init["omega"] % 360.0, Omega=init["Omega"], a_mas=init["a"], flux=init["flux"])
+    t0 = time.time()
+    res = fit_orbit_aliases(list(per_night.values()), p_range, times=times, t_ref=t_ref, a_range=a_range,
+                            flux_range=flux_range, n_candidates=n_candidates, n_refine=n_refine, n_is=300,
+                            n_samples=100, seed=seed, vis_amp=vis_amp, init=start,
+                            on_band=lambda b: log(f"vis_amp: band N={b.n}: log Z {b.log_z:.1f} {b.flags}"))
+    b = res.best.best
+    el = dict(period_day=b["period"], t_peri_mjd=t_ref + b["dt_peri"], ecc=b["ecc"], inc_deg=b["inc"],
+              omega_deg=b["omega"] % 360.0, Omega_deg=b["Omega"] % 360.0, a_mas=b["a_mas"], flux_ratio=b["flux"])
+    return _jsonable(dict(
+        t_ref=t_ref, vis_amp_range=list(vis_amp), elements=el, seconds=time.time() - t0,
+        bands=[{k: r.get(k) for k in ("n", "period", "chi2_red", "log_z", "p", "flags")} for r in res.table()],
+        epochs=[dict(night=n, vis_amp=e.get("vis_amp"), chi2_red=dict(zip(e["blocks"], e["chi2_red"])),
+                     scale=dict(zip(e["blocks"], e["scale"]))) for n, e in zip(per_night, res.best.epochs)]))
 
 
 def run_nuts(model_fn, priors, fit_data, noise, starts, t_ref, cfg, seed):
@@ -566,6 +752,34 @@ def _grid(half, step, fluxes):
     return {"dra": axis, "ddec": axis, "flux": np.asarray(fluxes, float)}
 
 
+# Xuan et al. 2024 Table 1 (PMOIRED), as virgil's Kepler convention (reanalyse_orbits.XUAN_2024):
+# omega of the secondary = the primary's + 180 deg; distance 5.76 pc (a = 0.0424 au).
+XUAN_2024 = dict(period=12.134, t_peri=60377.88, ecc=0.234, inc=31.4, omega=180.7 + 180.0, Omega=213.0,
+                 a=0.0424 * 173.574)
+# Single-night alias peaks that Xuan et al. flag (design/orbit_comparison.md section 5), by the UT date of the
+# files; the paper's nights are 2024-02-27 and 2024-03-28 (the observing night starts the evening before).
+GL229_FLAGGED = {"2024-02-28": "single-night alias peak (Xuan et al. flag 2024-02-27: weak signal)",
+                 "2024-03-29": "single-night alias peak (Xuan et al. flag 2024-03-28: failing fringe tracker)"}
+
+
+def reference_positions(collection, nights):
+    """{night: (dra, ddec)} of the reference at each night's mean time: from the published
+    orbit (Gl 229) or the paper's own astrometry (iota Peg, Table 2 of Anugu et al. 2020)."""
+    from crosscheck import orbits as O
+    if collection.startswith("782185b2"):
+        return {n: tuple(float(x) for x in np.ravel(O.position(
+            mean_mjd(d), XUAN_2024["period"], XUAN_2024["t_peri"], XUAN_2024["ecc"], XUAN_2024["inc"],
+            XUAN_2024["omega"], XUAN_2024["Omega"], XUAN_2024["a"]))) for n, d in nights.items()}
+    ref = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "oidb", "references",
+                                      f"{collection}.json")))
+    out = {}
+    for e in ref["epochs"]:
+        if e["date"] in nights and e.get("rho_mas") and e.get("pa_deg"):
+            rho, pa = e["rho_mas"][0], np.radians(e["pa_deg"][0])
+            out[e["date"]] = (rho * np.sin(pa), rho * np.cos(pa))
+    return out
+
+
 def recipe_gl229(data_dir, cfg):
     """Gl 229 Ba-Bb (Xuan et al. 2024): closure phases only, 2.05-2.18 um, science
     channel; per-night positions and the orbit. Both are point sources (the paper's model)."""
@@ -583,7 +797,18 @@ def recipe_gl229(data_dir, cfg):
                       orbit_priors((11.5, 12.8), (2.0, 20.0), (0.05, 1.0)), grid=grid,
                       periods=np.arange(11.8, 12.5, cfg.get("dp", 0.0005)), eccs=np.arange(0.0, 0.55, 0.05),
                       n_candidates=cfg.get("n_candidates", 400), n_refine=cfg.get("n_refine", 6),
-                      nuts=cfg.get("nuts"))
+                      nuts=cfg.get("nuts"), flagged=GL229_FLAGGED, exclude_flagged=cfg.get("exclude_flagged", False),
+                      reference=reference_positions("782185b2", per_night), published=dict(XUAN_2024, flux=0.5))
+    if cfg.get("vis_amp", True):  # a variant on V^2 + closure phases; the headline stays closure-phase only
+        try:
+            sel_v2 = {k: v for k, v in sel.items() if k != "observables"}
+            full = {n: load(p, insname_prefix="GRAVITY_SC", target=r"B$|_B\b", select=sel_v2)
+                    for n, p in nights.items()}
+            orbit["vis_amp"] = fit_orbit_vis_amp(full, (11.5, 12.8), a_range=(2.0, 20.0), flux_range=(0.05, 1.0),
+                                                 init=dict(XUAN_2024, flux=0.5))
+        except Exception as e:  # a variant: its failure (e.g. a virgil without aliases.vis_amp) is reported
+            log(f"vis_amp variant failed: {type(e).__name__}: {e}")
+            orbit["vis_amp"] = dict(error=f"{type(e).__name__}: {e}")
     return dict(model="two point sources; closure phases 2.05-2.18 um; Keplerian orbit (OrbitalBinary)",
                 epochs=epochs, orbit=orbit)
 
@@ -644,13 +869,14 @@ def recipe_iota_peg(data_dir, cfg):
                       orbit_priors((9.0, 11.5), (3.0, 30.0), (0.02, 1.0)), grid=grid,
                       periods=np.arange(10.0, 10.4, cfg.get("dp", 0.0002)), eccs=np.arange(0.0, 0.3, 0.05),
                       n_candidates=cfg.get("n_candidates", 400), n_refine=cfg.get("n_refine", 6),
-                      nuts=cfg.get("nuts"))
+                      nuts=cfg.get("nuts"), min_sep=sum(IOTA_PEG_UD) / 2, exclude_flagged=cfg.get("exclude_flagged", False),
+                      reference=reference_positions("fac164e1-d9d0-4500-8164-e1d9d0450099", per_night))
     return dict(model="two uniform disks fixed at 1.05 and 0.6 mas; V^2 + closure phases; Keplerian orbit",
                 epochs=epochs, orbit=orbit)
 
 
 def recipe_workshop(data_dir, cfg):
-    """CHARA imaging workshop 2023 (L2). iota Peg 2018-10-22: as fac164e1 (the files are
+    """CHARA imaging workshop 2023 (647a22a9). iota Peg 2018-10-22: as fac164e1 (the files are
     byte-identical, sha256 in the manifest). sigma Ori Aa-Ab (Schaefer et al. 2016):
     the "scaled binary": point-like Aa and Ab (O stars, ~0.1 mas) and B's light,
     incoherent in MIRC, as resolved flux; without smearing (the reported solution) and
@@ -670,7 +896,6 @@ def recipe_workshop(data_dir, cfg):
         e["fractions"] = dict(fAa=1 / (1 + f + r), fAb=f / (1 + f + r), fB=r / (1 + f + r))
     smeared["variant"] = "bandwidth smearing at R = %.0f" % resolving_power([sig])
     return dict(model="iota Peg: two UDs fixed at 1.05/0.6 mas; sigma Ori: scaled binary (Aa, Ab, B incoherent)",
-                flags=["L2: dataPI (Gail Schaefer) to be contacted before results are presented"],
                 targets={"iot Peg": dict(epochs=iota), "sig Ori": dict(epochs=[sigma], variants=[smeared])})
 
 
@@ -832,7 +1057,7 @@ def recipe_pi1gru(data_dir, cfg):
 RECIPES = {
     "782185b2-0727-42b0-a185-b2072732b047": recipe_gl229,
     "696baf06-6c3c-424d-abaf-066c3c324d99": recipe_hr6819,
-    "private-workshop": recipe_workshop,
+    "647a22a9-5047-4220-ba22-a95047022072": recipe_workshop,
     "fac164e1-d9d0-4500-8164-e1d9d0450099": recipe_iota_peg,
     "bda75673-61c6-49f0-a756-7361c699f0c4": recipe_astars,
     "f4afc4cd-fd31-40d3-afc4-cdfd3150d340": recipe_hd45166,
@@ -865,13 +1090,12 @@ def _jsonable(x):
     return x
 
 
-def run(collection, data_dir, out_dir, *, quick=False, nuts=True):
-    collection = pc.key_of(collection)  # a private collection's real id -> its placeholder key
+def run(collection, data_dir, out_dir, *, quick=False, nuts=True, exclude_flagged=False):
     if collection not in RECIPES:
         raise SystemExit(f"unknown collection {collection}; known: {', '.join(RECIPES)}")
-    cfg = dict(nuts=NUTS if nuts else None)
+    cfg = dict(nuts=NUTS if nuts else None, exclude_flagged=exclude_flagged)
     if quick:  # a smoke run: coarse grids, few candidates, no NUTS
-        cfg = dict(nuts=None, n_candidates=50, n_refine=2, dp=0.005)
+        cfg = dict(nuts=None, n_candidates=50, n_refine=2, dp=0.005, exclude_flagged=exclude_flagged, vis_amp=False)
     t0 = time.time()
     os.makedirs(out_dir, exist_ok=True)
     head = dict(collection=collection, recipe=RECIPES[collection].__name__, quick=quick, provenance=provenance())
@@ -901,8 +1125,10 @@ def main(argv=None):
     p.add_argument("out_dir")
     p.add_argument("--quick", action="store_true", help="coarse grids, no NUTS (smoke test)")
     p.add_argument("--no-nuts", action="store_true", help="orbits: maximum a posteriori only")
+    p.add_argument("--exclude-flagged", action="store_true",
+                   help="orbits: also leave the flagged nights out of the fits (they only stop seeding by default)")
     a = p.parse_args(argv)
-    path = run(a.collection, a.data_dir, a.out_dir, quick=a.quick, nuts=not a.no_nuts)
+    path = run(a.collection, a.data_dir, a.out_dir, quick=a.quick, nuts=not a.no_nuts, exclude_flagged=a.exclude_flagged)
     if path:
         print(path, flush=True)
 

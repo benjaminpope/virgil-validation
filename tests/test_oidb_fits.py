@@ -18,6 +18,7 @@ import pytest
 from astropy.io import fits
 
 from crosscheck import orbits, simulate, sky
+from evidence.plugin import record
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.x64
@@ -199,9 +200,154 @@ def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     P = ORBIT["period"]
     dt = (m["t_peri_mjd"] - ORBIT["t_peri"] + P / 2) % P - P / 2
     assert abs(dt) < 0.02 * P, dt
+    # one fit per period band N = round(T/P), each free to leave its band; the winner is at the true period
+    won = min((b for b in out["bands"] if "loss" in b), key=lambda b: b["loss"])
+    assert abs(won["elements"]["period_day"] - ORBIT["period"]) < 0.05, out["bands"]
+    assert won["n_fit"] == round(30.0 / ORBIT["period"])
+    assert [r["name"] for r in out["epoch_checks"]] == [f"n{k}" for k in range(5)]
     # the NUTS path runs end to end (a smoke test: 20 draws are not a posterior)
     assert set(out["nuts"]["elements"]) >= {"period_day", "a_mas", "ecc"}
     assert np.isfinite(out["nuts"]["elements"]["a_mas"]["median"])
+
+
+AMPS = [0.30, 0.60, 0.90, 0.50, 0.20]  # the injected per-night contrast loss: V^2 -> A V^2
+
+
+def _orbit_nights(of, tmp_path, amps, *, per_night_only=False, nights=(60000.2, 60003.2, 60009.2, 60015.2, 60030.2)):
+    """The simulated Kepler orbit of ORBIT, five files an hour apart on each night, night k's V^2 scaled by amps[k]
+    (a contrast loss, the same on every baseline; closure phases do not see it)."""
+    per_night, per_file = {}, {}
+    for k, m in enumerate(nights):
+        paths = []
+        for j, h in enumerate((-2.0, -1.0, 0.0, 1.0, 2.0)):
+            t = m + j / 24.0
+            dra, ddec = (float(x) for x in np.ravel(orbits.position(
+                t, ORBIT["period"], ORBIT["t_peri"], ORBIT["ecc"], ORBIT["inc"], ORBIT["omega"], ORBIT["Omega"],
+                ORBIT["a"])))
+            binary = _binary(dra, ddec, ORBIT["flux"])
+            vis = lambda u, v, w, binary=binary, a=amps[k]: np.sqrt(a) * binary(u, v, w)  # noqa: E731
+            paths.append(_observe(tmp_path / f"n{k}_{j}.fits", vis, hours=(h,), sigma_cp=0.3, sigma_v2=0.005,
+                                  seed=10 + 5 * k + j, mjd0=t))
+        per_night[f"n{k}"] = of.load(paths)
+        per_file[f"n{k}"] = {q.name: of.load([q]) for q in paths}
+    return per_night, per_file
+
+
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"], kind="check")
+def test_vis_amp_of_recovers_a_contrast_loss(of, tmp_path):
+    """One night of a point binary with V^2 scaled by 0.4: the amplitude of the true model is 0.4 (to the
+    noise), and 1 without the loss. A model with no companion needs a different amplitude (the estimator
+    depends on the model); closure-phase-only data give None."""
+    truth = _binary(3.0, -4.0, 0.3)
+    scene = of.point_binary
+    for loss in (1.0, 0.4):
+        path = _observe(tmp_path / f"a{loss}.fits", lambda u, v, w, l=loss: np.sqrt(l) * truth(u, v, w),
+                        sigma_v2=0.005, seed=3)
+        data = of.load([path])
+        a = of.vis_amp_of(scene(dra=3.0, ddec=-4.0, flux=0.3), data)
+        assert abs(a - loss) < 0.02, (loss, a)
+    assert of.vis_amp_of(scene(dra=3.0, ddec=-4.0, flux=0.3), data.select(observables="phi")) is None
+    record("vis_amp_recovered", a)
+
+
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.fitting.fit", "virgil.likelihood.numpyro_model",
+                       roots=["mathematics", "standards"])
+def test_published_start_joins_the_modes_and_refits_to_the_orbit(of, tmp_path):
+    """``published`` (a paper's orbit, here ORBIT displaced by 0.03 d in P, 10 % in a and 3 deg in i) is one more
+    start: tagged ``published`` in the modes and reported in ``published_start``, and refitted to the
+    simulated truth. The blind search runs as always."""
+    per_night, per_file = _orbit_nights(of, tmp_path, [1.0] * 5)
+    priors = of.orbit_priors((11.5, 12.8), (2.0, 20.0), (0.05, 1.0))
+    grid = of._grid(9.0, 0.2, np.linspace(0.2, 1.0, 5))
+    pub = dict(period=ORBIT["period"] + 0.03, t_peri=ORBIT["t_peri"] + 0.3, ecc=ORBIT["ecc"], inc=ORBIT["inc"] + 3.0,
+               omega=ORBIT["omega"], Omega=ORBIT["Omega"], a=ORBIT["a"] * 1.1, flux=ORBIT["flux"])
+    out = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
+                       periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
+                       n_refine=1, min_gap=3.0, published=pub)
+    ps = out["published_start"]
+    assert abs(ps["elements"]["period_day"] - ORBIT["period"]) < 0.01 and abs(ps["elements"]["a_mas"] - ORBIT["a"]) < 0.2
+    assert "published" in {m["band"] for m in out["modes"]}
+    assert out["loss"] <= ps["loss"] + 1e-6  # the lowest loss over every start is the answer
+    assert abs(out["map"]["period_day"] - ORBIT["period"]) < 0.01
+    assert of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
+                        periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
+                        n_refine=1, min_gap=3.0)["published_start"] is None
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["mathematics"], kind="check")
+def test_vis_amp_variant_recovers_the_orbit_and_the_per_night_losses(of, tmp_path):
+    """The V^2 + closure-phase orbit with a free amplitude on each night (``virgil.aliases``): V^2 scaled by
+    AMPS night by night, a warm start displaced from the truth. The orbit and every night's loss
+    come back."""
+    pytest.importorskip("virgil.aliases")
+    per_night, _ = _orbit_nights(of, tmp_path, AMPS)
+    pub = dict(period=ORBIT["period"] + 0.03, t_peri=ORBIT["t_peri"] + 0.3, ecc=ORBIT["ecc"], inc=ORBIT["inc"] + 3.0,
+               omega=ORBIT["omega"], Omega=ORBIT["Omega"], a=ORBIT["a"] * 1.1, flux=ORBIT["flux"])
+    out = of.fit_orbit_vis_amp(per_night, (11.5, 12.8), a_range=(2.0, 20.0), flux_range=(0.05, 1.0), init=pub,
+                               n_candidates=20, n_refine=1)
+    el = out["elements"]
+    assert abs(el["period_day"] - ORBIT["period"]) < 0.03 and abs(el["a_mas"] - ORBIT["a"]) < 0.3
+    assert abs(el["ecc"] - ORBIT["ecc"]) < 0.06 and abs(el["inc_deg"] - ORBIT["inc"]) < 4.0
+    got = [e["vis_amp"] for e in out["epochs"]]
+    assert np.allclose(got, AMPS, atol=0.05), (got, AMPS)
+    record("vis_amp_max_error", float(np.max(np.abs(np.array(got) - AMPS))))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_alias_bands_tile_the_window_and_split_the_o1_orbits(of):
+    """Band N = round(T/P) of the first-to-last-night span T. Gl 229 (T = 125.7 d): Xuan et al.'s
+    12.134 d is band 10 and the 11.81 d of the O1 MAP is band 11; iota Peg (T = 288.2 d): the
+    published 10.213 d and the O1 MAP's 10.332 d share band 28, so that is no cycle-count alias."""
+    def band_of(bands, p):
+        (n,) = [n for n, lo, hi in bands if lo <= p <= hi]
+        return n
+    gl = of.alias_bands([60304.23, 60429.97], (11.8, 12.5))
+    assert [n for n, _, _ in gl] == [10, 11]  # by N, so the longest period first
+    assert band_of(gl, 12.134) == 10 and band_of(gl, 11.809) == 11
+    assert gl[1][1] == 11.8 and gl[0][2] == 12.5 and gl[0][1] == gl[1][2]  # tile the window, no gaps
+    ip = of.alias_bands([58413.16, 58701.33], (10.0, 10.4))
+    assert band_of(ip, 10.213) == band_of(ip, 10.332) == 28
+    with pytest.raises(ValueError):
+        of.alias_bands([60000.0], (10.0, 11.0))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_reference_positions_agree_with_the_published_epochs(of):
+    """The reference rows of the epoch checks: the Xuan et al. orbit through crosscheck.orbits (our
+    own solver) gives the positions that virgil's Kepler solver gives at the nights the fits agree
+    on (26 Dec 2023, 29 Apr 2024) and the two they do not (28 Feb, 29 Mar 2024); iota Peg's come
+    from Table 2 of Anugu et al."""
+    from types import SimpleNamespace
+    nights = {n: SimpleNamespace(mjd=np.array([m])) for n, m in
+              {"2023-12-26": 60304.2327, "2024-02-28": 60368.137, "2024-03-29": 60398.024, "2024-04-29": 60429.974}.items()}
+    ref = of.reference_positions("782185b2-0727-42b0-a185-b2072732b047", nights)
+    for night, (rho, pa) in {"2023-12-26": (5.57, 177.9), "2024-02-28": (6.16, 313.0), "2024-03-29": (8.04, 67.8),
+                             "2024-04-29": (7.47, 347.1)}.items():
+        dra, ddec = ref[night]
+        assert abs(np.hypot(dra, ddec) - rho) < 0.05, night
+        assert abs(_wrap(np.degrees(np.arctan2(dra, ddec)) - pa)) < 0.5, night
+    ip = of.reference_positions("fac164e1-d9d0-4500-8164-e1d9d0450099", {"2018-11-21": None, "2019-08-06": None})
+    assert abs(np.hypot(*ip["2018-11-21"]) - 10.1793) < 1e-6 and abs(np.hypot(*ip["2019-08-06"]) - 1.1297) < 1e-6
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_check_epochs_flags_nights_that_may_not_seed_the_orbits(of, tmp_path):
+    """Two simulated nights of a point binary, 5 mas apart in one and 6 in the other. A night in
+    ``flagged`` and a night whose best peak is closer than ``min_sep`` are barred from seeding, with
+    the reason; the reference row gives the offset of the best peak from the reference position."""
+    per_night = {}
+    for k, (dra, ddec) in enumerate([(3.0, 4.0), (-3.6, 4.8)]):
+        per_night[f"n{k}"] = of.load([_observe(tmp_path / f"n{k}.fits", _binary(dra, ddec, 0.5), sigma_cp=0.3,
+                                               sigma_v2=0.005, seed=3 + k, mjd0=60000.2 + 20 * k)])
+    grid = of._grid(8.0, 0.25, np.linspace(0.2, 1.0, 5))
+    rows, _ = of.check_epochs(of.Epochs(per_night), grid, flagged={"n1": "alias peak"}, min_sep=5.5,
+                              reference={"n0": (3.0, 4.0)})
+    n0, n1 = rows
+    assert n0["barred"] and any("closer than" in r for r in n0["reasons"])  # 5.0 mas < 5.5
+    assert n1["barred"] and n1["reasons"][0] == "flagged: alias peak"
+    assert n0["reference"]["best_offset"] < 0.3 and "reference" not in n1
+    rows, _ = of.check_epochs(of.Epochs(per_night), grid)
+    assert [r["seeds"] for r in rows] == [True, True] and not any(r["barred"] for r in rows)
 
 
 def _remove_vis2_baseline(path, pair):
@@ -331,12 +477,12 @@ def _fake_fits(oc, tmp_path, shift=0.0):
         orbit=_orbit(dict(period_day=io["P_day"][0], t_peri_mjd=io["T_peri_unstated_system"][0], ecc=io["e"][0],
                           inc_deg=io["i_deg"][0], omega_deg=io["omega_deg"][0], Omega_deg=io["Omega_deg"][0],
                           a_mas=io["a_mas"][0], flux_ratio=0.2)))
-    w = _ref("private-workshop")["targets"]
+    w = _ref("647a22a9-5047-4220-ba22-a95047022072")["targets"]
     wi = w["iot Peg"]["epoch_2018-10-22"]
     so = next(e for e in w["sig Ori"]["epochs"] if e["date"] == "2011-09-29")
     sig = _epoch("2011-09-29", so["hjd_minus_2400000"] - 0.5, so["rho_mas"][0], so["pa_deg"][0])
     sig["fractions"] = {k: v[0] for k, v in so["fractions"].items()}
-    fits["private-workshop"] = dict(targets={
+    fits["647a22a9-5047-4220-ba22-a95047022072"] = dict(targets={
         "iot Peg": dict(epochs=[_epoch("2018-10-22", None, wi["rho_mas"][0], wi["pa_deg"][0], flux=1 / wi["flux_ratio"][0])]),
         "sig Ori": dict(epochs=[sig], variants=[])})
     a = _ref("bda75673-61c6-49f0-a756-7361c699f0c4")
@@ -358,24 +504,23 @@ def _fake_fits(oc, tmp_path, shift=0.0):
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
-def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_path):
+def test_compare_table_passes_the_published_numbers(oc, tmp_path):
     """Fits that reproduce the published values: every scored row passes (including the
     conventions: omega of the primary + 180 for Gl 229 (none for HR 6819), a in au times the parallax, the (Omega,
     omega) twin, 1/flux for iota Peg, r/(1+r) for HR 6819, T_peri folded by whole
-    periods), HR 6819 is never scored, and the L2 rows stay out unless asked for."""
+    periods), HR 6819 is never scored, and the workshop (cleared, no longer L2) is in the table."""
     rows, missing = oc.compare(str(_fake_fits(oc, tmp_path)))
     assert not missing
-    assert not any(r["collection"].startswith("private-") for r in rows)
+    assert any(r["collection"] == "647a22a9-5047-4220-ba22-a95047022072" for r in rows)
     scored = [r for r in rows if r["status"] in ("PASS", "FAIL")]
     assert len(scored) > 30 and all(r["status"] == "PASS" for r in scored), [r for r in scored if r["status"] == "FAIL"]
     assert all(r["status"] == "NOT-CLEAN" for r in rows if r["target"] == "HR 6819")
     orbit = [r for r in rows if r["rule"] == "orbit" and r["dev_sigma"] is not None and r["published_err"]]
     exact = [r for r in orbit if "vs Octofitter" not in r["note"]]  # the fakes reproduce PMOIRED's Gl 229 orbit
     assert len(exact) == 7 * 3 and all(abs(r["dev_sigma"]) < 1e-6 for r in exact), exact
-    l2, _ = oc.compare(str(tmp_path), include_l2=True)
-    work = [r for r in l2 if r["collection"].startswith("private-")]
-    assert work and not any(r["status"] in ("PASS", "FAIL") for r in work)
-    assert "WITHHELD" in {r["status"] for r in work}
+    assert not oc.L2  # no collection is withheld
+    work = [r for r in rows if r["collection"] == "647a22a9-5047-4220-ba22-a95047022072"]
+    assert any(r["status"] == "PASS" for r in work) and not any(r["status"] in ("FAIL", "WITHHELD") for r in work)
     text = oc.markdown(rows)
     assert oc.CRITERIA_HASH in text and "WITHHELD" not in text
     assert not [r for r in rows if r["status"] == "MISSING"]
@@ -426,11 +571,11 @@ def test_published_numbers_fix_the_conventions():
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
 def test_compare_table_fails_a_shifted_separation(oc, tmp_path):
-    """A separation 0.5 sigma_pub off (iota Peg) fails the 0.25 sigma epoch rule."""
+    """A separation 0.5 sigma_pub off (iota Peg, fac164e1) fails the 0.25 sigma epoch rule."""
     shift = 0.5 * 0.0176
     rows, _ = oc.compare(str(_fake_fits(oc, tmp_path, shift=shift)))
-    hit = [r for r in rows if r["target"] == "iota Peg" and r["quantity"] == "rho_mas" and r["epoch"] == "2018-10-22"
-           and r["status"] in ("PASS", "FAIL")]
+    hit = [r for r in rows if r["collection"].startswith("fac164e1") and r["quantity"] == "rho_mas"
+           and r["epoch"] == "2018-10-22" and r["status"] in ("PASS", "FAIL")]
     assert len(hit) == 1 and hit[0]["status"] == "FAIL" and abs(hit[0]["dev_sigma"] - 0.5) < 1e-6
 
 

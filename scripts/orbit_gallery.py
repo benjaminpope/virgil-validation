@@ -50,9 +50,9 @@ GL229 = "782185b2-0727-42b0-a185-b2072732b047"
 HR6819 = "696baf06-6c3c-424d-abaf-066c3c324d99"
 IOTA_PEG = "fac164e1-d9d0-4500-8164-e1d9d0450099"
 ASTARS = "bda75673-61c6-49f0-a756-7361c699f0c4"
-WORKSHOP = "private-workshop"  # the CHARA 2023 imaging workshop collection (L2); its OiDB id is kept out of the tree
-# L2 collections the gallery may show: cleared for display by the project lead on 2026-10-13 (DATA_ATTRIBUTION.md)
-CLEARED_L2 = {WORKSHOP}
+# The CHARA 2023 imaging workshop collection (L2), cleared for display by the project lead on 2026-10-13
+# (DATA_ATTRIBUTION.md)
+WORKSHOP = "647a22a9-5047-4220-ba22-a95047022072"
 
 # One tile per binary, in gallery order. ``kind``: orbit = we fit an orbit; positions = epoch positions
 # only (a published orbit may still be drawn for context). ``key`` picks one target out of a collection that
@@ -132,8 +132,9 @@ TILES = [
                      text="The 22 non-detections (detection limits) are not part of this comparison.")]),
 ]
 TARGETS = {t["cid"]: t for t in TILES}  # the collections the gallery shows
-# Single-night alias peaks (design/orbit_comparison.md section 5) flagged by label until the fit summaries carry
-# ``alias`` themselves; Xuan et al. flag the same two nights (as 02-27 and 03-28).
+# Single-night alias peaks (design/orbit_comparison.md section 5): a fit summary names them in
+# ``orbit["epoch_checks"]`` (reasons starting "flagged"); for a summary that predates that field, these nights
+# are flagged by label (Xuan et al. flag the same two, as 02-27 and 03-28).
 ALIAS_NIGHTS = {GL229: {"2024-02-28", "2024-03-29"}}
 ELEMENTS = ("period_day", "t_peri_mjd", "ecc", "inc_deg", "omega_deg", "Omega_deg", "a_mas")
 
@@ -174,7 +175,7 @@ def trim_epoch(e):
 
 
 def trim_orbit(o):
-    out = _keep(o, ("t_ref", "map", "loss", "chi2_raw"))
+    out = _keep(o, ("t_ref", "map", "loss", "chi2_raw", "epoch_checks"))
     out["modes"] = [_keep(m, ("loss", "elements")) for m in o.get("modes", [])]
     out["positions"] = [_keep(p, ("name", "mjd", "dra", "ddec", "cov", "flux", "rho_mas", "pa_deg"))
                         for p in o.get("positions", [])]
@@ -442,17 +443,6 @@ def paper_of(ref):
     return dict(cite=f"{who} {p['year']}, {journal}", arxiv=p.get("arxiv"), bibcode=bib, doi=p.get("doi"))
 
 
-def rescore(r):
-    """The status of an ``oidb_compare`` row, with a WITHHELD row (L2 data, cleared for display) scored by
-    the same rule as an open one. The rule's limit comes from ``oidb_compare.CRITERIA``."""
-    if r["status"] != "WITHHELD":
-        return r["status"]
-    limit = oc.CRITERIA.get(r["rule"], {}).get("max_dev_sigma")
-    if limit is None or r["dev_sigma"] is None:
-        return "REPORT"
-    return "PASS" if abs(r["dev_sigma"]) <= limit else "FAIL"
-
-
 def table_of(rows):
     out = []
     for r in rows:
@@ -463,7 +453,7 @@ def table_of(rows):
         note = "; ".join(x for x in r["note"].split("; ") if not x.startswith("L2: contact"))
         out.append(dict(quantity=q, ours=r["virgil"], err=r["virgil_err"], pub=r["published"],
                         pub_err=max(abs(x) for x in pe) if isinstance(pe, (list, tuple)) else pe,
-                        pull=r["dev_sigma"], status=rescore(r), note=note))
+                        pull=r["dev_sigma"], status=r["status"], note=note))
     return out
 
 
@@ -512,7 +502,7 @@ def _data_of(tile, manifest):
     c = manifest.get(tile["cid"], {})
     level = "L" + str(max(c["levels"])) if c.get("levels") else None
     return dict(level=level, datapi=", ".join(c.get("datapis", [])) or None, title=c.get("title"),
-                collection=None if tile["cid"] == WORKSHOP else tile["cid"])
+                collection=tile["cid"])
 
 
 def build_target(tile, ref, summary, rows, manifest=None):
@@ -535,7 +525,9 @@ def build_target(tile, ref, summary, rows, manifest=None):
         ep_mjds = [e["mjd"] for e in ours_ep if e.get("mjd") is not None]
         pub_ep = published_epochs(tile, ref, ours_ep, pubs[0][1] if pubs else None) if ref else [None] * len(ours_ep)
         t["epochs"] = []
-        alias_labels = ALIAS_NIGHTS.get(tile["cid"], ())
+        checks = (summary.get("orbit") or {}).get("epoch_checks")
+        alias_labels = ({c["name"] for c in checks if any(str(r).startswith("flagged") for r in c.get("reasons", []))}
+                        if checks is not None else ALIAS_NIGHTS.get(tile["cid"], ()))
         for e, p in zip(ours_ep, pub_ep):
             sep, pa = _sep_pa(e["dra"], e["ddec"])
             d = dict(label=e["label"], mjd=e["mjd"], dra=e["dra"], ddec=e["ddec"], cov=e["cov"], sep=sep, pa=pa)
@@ -593,8 +585,7 @@ def load_summaries(summaries_dir):
 def build(summaries_dir=SUMMARIES, refs_dir=REFERENCES):
     summaries = load_summaries(summaries_dir)
     manifest = {c["id"]: c for c in load_manifest()["collections"]}
-    # L2 rows come back only when asked for: the cleared collections
-    rows, _ = oc.compare(None, refs_dir=refs_dir, fits=summaries, include_l2=bool(CLEARED_L2))
+    rows, _ = oc.compare(None, refs_dir=refs_dir, fits=summaries)
     targets = []
     for tile in TILES:
         mine = [r for r in rows if r["collection"] == tile["cid"]

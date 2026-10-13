@@ -58,7 +58,7 @@ def test_compare_reads_summaries_through_the_adapter(og):
     summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
     import oidb_compare as oc
     rows, missing = oc.compare(None, fits={GL229: summary})
-    assert GL229 not in missing and len(missing) == len(oc.COMPARE) - 1 - 1  # the L2 workshop is skipped
+    assert GL229 not in missing and len(missing) == len(oc.COMPARE) - 1
     mine = [r for r in rows if r["collection"] == GL229]
     assert any(r["quantity"] == "period_day" and r["status"] == "REPORT" for r in mine)
     assert not [r for r in mine if r["status"] in ("FAIL", "MISSING")]
@@ -103,15 +103,19 @@ def _summaries_copy(tmp_path):
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
-def test_alias_nights_are_flagged_by_label_and_by_the_summary_field(og, tmp_path):
-    """The known Gl 229 alias nights are flagged by label; a night the summary itself marks ``alias`` is too."""
+def test_alias_nights_come_from_the_summary_else_from_the_label_list(og, tmp_path):
+    """A summary without ``epoch_checks`` falls back to the known Gl 229 labels; one with them uses its "flagged" nights."""
     path = _summaries_copy(tmp_path) / f"{GL229}.json"
     summary = json.loads(path.read_text())
     pos = summary["orbit"]["positions"]
-    pos[0]["name"], pos[1]["name"], pos[2]["alias"] = "2024-02-28", "2024-03-01", True
+    pos[0]["name"], pos[1]["name"] = "2024-02-28", "2024-03-01"
     path.write_text(json.dumps(summary))
-    flagged = {e["label"] for e in _target(og.build(tmp_path), "gl229b")["epochs"] if e.get("alias")}
-    assert flagged == {"2024-02-28", pos[2]["name"]}  # the ordinary night (2024-03-01) is not flagged
+    flagged = lambda: {e["label"] for e in _target(og.build(tmp_path), "gl229b")["epochs"] if e.get("alias")}
+    assert flagged() == {"2024-02-28"}  # the label list; the ordinary night (2024-03-01) is not flagged
+    summary["orbit"]["epoch_checks"] = [dict(name=pos[1]["name"], reasons=["flagged: weak peak"], barred=False),
+                                        dict(name=pos[0]["name"], reasons=[], barred=False)]
+    path.write_text(json.dumps(summary))
+    assert flagged() == {"2024-03-01"}  # the summary's own checks win
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
