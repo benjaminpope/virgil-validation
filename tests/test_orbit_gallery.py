@@ -16,6 +16,7 @@ from evidence.plugin import record
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "orbits"
 PI1GRU = "19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245"
+HD45166 = "f4afc4cd-fd31-40d3-afc4-cdfd3150d340"  # dropped from the gallery: design/hd45166_diagnosis.md
 GL229 = "782185b2-0727-42b0-a185-b2072732b047"
 ARXIV = re.compile(r"^\d{4}\.\d{4,5}$")
 
@@ -65,7 +66,7 @@ def test_compare_reads_summaries_through_the_adapter(og):
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_every_reference_target_gets_a_section(og, data):
-    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {"private-workshop", PI1GRU}  # pi1 Gru is a single star: no tile
+    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {"private-workshop", PI1GRU, HD45166}  # pi1 Gru is a single star: no tile
     assert {t["collection_id"] for t in data["targets"]} == refs == set(og.TARGETS)
     text = og.page(data)
     headings = re.findall(r"^## (.+)$", text, flags=re.M)
