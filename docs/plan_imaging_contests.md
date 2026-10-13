@@ -437,7 +437,9 @@ before submitting.
 **2004 data2 (χ²/N ≈ 21, error scale 4.7).**
 - *What we see.*
   - V² dominate: 31 per point, against 5.8 for the closure phases.
-  - The short-baseline V² residuals have a mean of −8σ.
+  - The short-baseline V² residuals have a mean of −8σ. (Probably the
+    data's V(0) ≈ 1.07: see the correction in C2f. An image normalised to
+    V(0) = 1 cannot reach V²(0) ≈ 1.145. Not tested on the campaign fits.)
   - The evidence's best σ (4) and ℓ (0.75 beam) both sit on the edges of
     the hyperparameter grid.
   - Members with the analytic point star are far worse (χ²/N ≈ 1300).
@@ -535,10 +537,32 @@ before submitting.
 2004 data2 has a truth we can score against numerically. Campaign 1 scored
 σ/peak 0.250 there, third of four (BSMEM 0.116, WISARD 0.163, MIRA 0.532,
 VLBMEM 0.798). With the truth's unpublished details fitted to the data it
-scores 0.260, and even that truth fits only at V² χ²/N ≈ 50: the 2004
-data carry calibration errors. So, before more contest campaigns, every
-method choice is tested on **known phantoms observed with the real contest
-uv coverages** (Ben, 2026-10-06).
+scores 0.260 (0.264 after the 2026-10-13 correction below). The rebuilt
+truth first fitted only at V² χ²/N ≈ 50, which this plan blamed on
+calibration errors in the 2004 data; that was wrong (note below). So, before
+more contest campaigns, every method choice is tested on **known phantoms
+observed with the real contest uv coverages** (Ben, 2026-10-06).
+
+> **Correction, 2026-10-13: it was the visibility normalisation, not
+> calibration error.** An investigation (no coordinate or orientation
+> bug: all eight dihedral transforms of the truth and all the uv/phase
+> flips were tried, and the closure phases reject the inverted truth at χ²/N
+> ≈ 900) found that the 2004 data2 V² are normalised without the spot's
+> brightening. The data's V(0) is (1 + spot excess + B/A) / (1 + B/A) ≈
+> 1.07, so V²(0) ≈ 1.145, and the short-baseline V² sit 7–10 % above any
+> unit-sum model on every baseline. Leaving the spot's excess flux out of the
+> normalisation (`scripts/score_2004.py`: `truth_parts`, `truth_vis_image`),
+> and refitting the three nuisances (`FITTED`: u = 0.462, spot contrast 5.6,
+> B/A = 0.113), the truth fits at **V² χ²/N 3.05, closure χ²/N 1.31**
+> (before: 50.1 and 8.98 at u = 0.78, contrast 7.06, B/A = 0.096). The
+> organisers' BSC1948 test binary fits with a V² scale of 0.997, so the
+> NPOI/OYSTER chain has no global offset. The remaining χ²/N ≈ 3 is not
+> explained (bandwidth smearing, frame merging and the unpublished
+> limb-darkening table are untested), and the spot's brightness (Planck at
+> 550 nm, 3.7, or T⁴, 5.06) is not pinned by the data. The scoring image
+> keeps its unit sum, so the σ/peak score barely moves (campaign 1: 0.250
+> against the published truth, 0.264 against the fitted one). The test is
+> `tests/test_score_2004.py::test_rebuilt_truth_fits_data2_v2`.
 
 - **Phantoms** (`src/crosscheck/phantoms.py`, NumPy only). These are
   generic families matching each contest's *pre-submission* description:
@@ -870,8 +894,9 @@ John Young sent Ben a folder of contest datasets. It is filed under
   - The 2010 files are identical to ours.
   - The 2004 files carry real per-frame times, and contest 2 adds an
     `OI_VIS` table. The fitted 2004 truth gives the same χ² on both copies
-    (V² 50.1, closure phase 9.0), so the poor fit of the rebuilt truth is
-    not caused by a corrupt copy.
+    (V² 50.1, closure phase 9.0, with the old unit-sum normalisation),
+    so the poor fit of the rebuilt truth was not caused by a corrupt copy;
+    it was the normalisation (C2f, correction of 2026-10-13: now V² 3.05).
 - **Still missing:** the 2012 and 2016 truths. Neither collection is in
   JMMC OiDB, whose contest collections (2004–2010, 2022, 2024) match our
   files byte for byte.

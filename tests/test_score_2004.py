@@ -3,6 +3,7 @@ geometry, the flux-ratio fit, and the metric's zero for a perfect entry.
 NumPy only; the truth is used for scoring, never for imaging."""
 
 import importlib.util
+import os
 import pathlib
 
 import numpy as np
@@ -15,10 +16,19 @@ score_2004 = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(score_2004)
 
 
+DATA2 = pathlib.Path(os.environ.get("CONTEST_DATA", "~/data/imaging_contests")).expanduser() / "2004" / "2004-data2.fits"
+needs_data2 = pytest.mark.skipif(not DATA2.exists(), reason="contest data not fetched")
+
+
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
 def test_truth_geometry_companion_east_and_unit_sum():
     star, companion = score_2004.truth_parts()
-    assert star.sum() == pytest.approx(1.0) and companion.sum() == pytest.approx(1.0)
+    # B has unit sum; A's *unspotted* flux does, so the spot's excess is left
+    # out of the visibility normalisation and A.sum() > 1.
+    assert companion.sum() == pytest.approx(1.0)
+    unspotted, _ = score_2004.truth_parts(spot_contrast=1.0)
+    assert unspotted.sum() == pytest.approx(1.0)
+    assert star.sum() > 1.0
     x, y = score_2004.grid()
     assert np.sum(companion * x) == pytest.approx(10.0, abs=0.05)  # 10 mas east (PA 90°)
     assert np.sum(companion * y) == pytest.approx(0.0, abs=0.05)
@@ -58,3 +68,32 @@ def test_alignment_keeps_emission_a_shift_brings_into_view():
     edge = np.zeros((5, 5))
     edge[2, 4] = 1.0
     assert score_2004.shifted(edge, (0, 1)).sum() == 0.0
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_visibility_normalisation_leaves_out_the_spot_excess():
+    ratio = 0.11
+    star, companion = score_2004.truth_parts(spot_contrast=5.0)
+    vis = score_2004.truth_vis_image(ratio, spot_contrast=5.0)
+    # V(0) = (1 + excess + B/A) / (1 + B/A) > 1; the scoring image has unit sum.
+    assert vis.sum() == pytest.approx((star.sum() + ratio) / (1 + ratio))
+    assert vis.sum() > 1.05
+    assert score_2004.truth_image(ratio, spot_contrast=5.0).sum() == pytest.approx(1.0)
+    v0 = score_2004.visibilities(vis, np.zeros(1), np.zeros(1))[0]
+    assert v0.real == pytest.approx(vis.sum())
+
+
+@needs_data2
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_rebuilt_truth_fits_data2_v2():
+    # The data's V² are normalised without the spot's excess (V²(0) ~ 1.14): the
+    # rebuilt truth then fits at V² χ²/N ~ 3 (50 with a unit-sum image, once
+    # blamed on calibration errors), and its closure phases fix the orientation.
+    u, v, v2, err = score_2004.read_v2(DATA2)
+    f = score_2004.FITTED
+    img = score_2004.truth_vis_image(f["ratio"], f["u_ld"], f["spot_contrast"])
+    assert score_2004.v2_chi2(img, u, v, v2, err) < 5.0
+    unit_sum = score_2004.truth_image(f["ratio"], f["u_ld"], f["spot_contrast"])
+    assert score_2004.v2_chi2(unit_sum, u, v, v2, err) > 5.0 * score_2004.v2_chi2(img, u, v, v2, err)
+    cp, cp_inverted = score_2004.closure_chi2(img, score_2004.read_t3(DATA2))
+    assert cp < 3.0 and cp_inverted > 100.0
