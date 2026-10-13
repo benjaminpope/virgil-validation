@@ -50,6 +50,8 @@ TARGETS = {
     "696baf06-6c3c-424d-abaf-066c3c324d99": dict(slug="hr6819", name="HR 6819", kind="orbit"),
     "fac164e1-d9d0-4500-8164-e1d9d0450099": dict(slug="iota-peg", name="iota Peg", kind="orbit"),
     "f4afc4cd-fd31-40d3-afc4-cdfd3150d340": dict(slug="hd45166", name="HD 45166", kind="positions"),
+    "647a22a9-5047-4220-ba22-a95047022072": dict(slug="chara-workshop", name="CHARA workshop 2023 (iota Peg, sigma Ori)",
+                                                 kind="positions"),
     "bda75673-61c6-49f0-a756-7361c699f0c4": dict(slug="a-stars", name="A-star companions (27 stars)",
                                                  kind="positions"),
 }  # pi1 Gru (19f7e2cf) is a uniform-disk fit to an AGB star, not a binary: no tile
@@ -129,7 +131,7 @@ def extract(fits_dir, out_dir=SUMMARIES):
     for path in sorted(pathlib.Path(fits_dir).glob("fit_*.json")):
         fit = json.loads(path.read_text())
         cid = fit.get("collection") or path.stem[len("fit_"):]
-        if cid not in TARGETS:  # the L2 workshop set and the collections the gallery does not show
+        if cid not in TARGETS:  # the collections the gallery does not show
             print(f"skip {path.name}: not a gallery target")
             continue
         prov = fit.get("provenance") or {}
@@ -264,7 +266,7 @@ def ours_epochs(cid, summary):
     if summary.get("orbit", {}).get("positions"):
         return [dict(label=p["name"], mjd=p["mjd"], dra=p["dra"], ddec=p["ddec"], cov=p.get("cov"))
                 for p in summary["orbit"]["positions"]]
-    if cid.startswith("bda75673"):  # the detections: one epoch per star
+    if cid.startswith(("bda75673", "647a22a9")):  # one epoch per star
         out = []
         for star, t in summary.get("targets", {}).items():
             e = next(iter(t.get("epochs", [])), None)
@@ -314,6 +316,11 @@ def published_epochs(cid, ref, ours):
     if cid.startswith("782185b2"):  # the PMOIRED orbit at our epoch times
         el = published_orbits(cid, ref)[0][1]
         return [dict(zip(("dra", "ddec"), (float(x) for x in np.ravel(_orbit_at(el, e["mjd"]))))) for e in ours]
+    if cid.startswith("647a22a9"):  # the workshop's two nights: iota Peg 2018-10-22 and sigma Ori 2011-09-29
+        w = ref["targets"]
+        by_star = {"iot Peg": w["iot Peg"]["epoch_2018-10-22"],
+                   "sig Ori": next(r for r in w["sig Ori"]["epochs"] if r["date"] == "2011-09-29")}
+        return [published_position(by_star[e["label"]]) if e["label"] in by_star else None for e in ours]
     if cid.startswith("bda75673"):
         by_star = {r["star"]: dict(r, rho_mas=[r["rho_mas"], r["rho_err_mas"]], pa_deg=[r["pa_deg_E_of_N"], r["pa_err_deg"]])
                    for r in ref["epochs"]}
@@ -344,7 +351,7 @@ def _tension(ours_ep, headline):
 
 
 def paper_of(ref):
-    p = ref["paper"]
+    p = ref.get("paper") or ref["targets"]["sig Ori"]["paper"]  # the workshop: sigma Ori's paper (iota Peg's is fac164e1's)
     first = re.split(r"[,;]", p["authors"])[0].strip()
     who = first if first.endswith("et al.") else f"{first} et al."
     journal = re.sub(r"\s*\(.*", "", p.get("journal") or "")

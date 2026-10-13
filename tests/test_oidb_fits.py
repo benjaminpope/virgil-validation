@@ -209,6 +209,7 @@ def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     assert np.isfinite(out["nuts"]["elements"]["a_mas"]["median"])
 
 
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_alias_bands_tile_the_window_and_split_the_o1_orbits(of):
     """Band N = round(T/P) of the first-to-last-night span T. Gl 229 (T = 125.7 d): Xuan et al.'s
     12.134 d is band 10 and the 11.81 d of the O1 MAP is band 11; iota Peg (T = 288.2 d): the
@@ -226,6 +227,7 @@ def test_alias_bands_tile_the_window_and_split_the_o1_orbits(of):
         of.alias_bands([60000.0], (10.0, 11.0))
 
 
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_reference_positions_agree_with_the_published_epochs(of):
     """The reference rows of the epoch checks: the Xuan et al. orbit through crosscheck.orbits (our
     own solver) gives the positions that virgil's Kepler solver gives at the nights the fits agree
@@ -244,6 +246,7 @@ def test_reference_positions_agree_with_the_published_epochs(of):
     assert abs(np.hypot(*ip["2018-11-21"]) - 10.1793) < 1e-6 and abs(np.hypot(*ip["2019-08-06"]) - 1.1297) < 1e-6
 
 
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_check_epochs_flags_nights_that_may_not_seed_the_orbits(of, tmp_path):
     """Two simulated nights of a point binary, 5 mas apart in one and 6 in the other. A night in
     ``flagged`` and a night whose best peak is closer than ``min_sep`` are barred from seeding, with
@@ -390,12 +393,12 @@ def _fake_fits(oc, tmp_path, shift=0.0):
         orbit=_orbit(dict(period_day=io["P_day"][0], t_peri_mjd=io["T_peri_unstated_system"][0], ecc=io["e"][0],
                           inc_deg=io["i_deg"][0], omega_deg=io["omega_deg"][0], Omega_deg=io["Omega_deg"][0],
                           a_mas=io["a_mas"][0], flux_ratio=0.2)))
-    w = _ref("private-workshop")["targets"]
+    w = _ref("647a22a9-5047-4220-ba22-a95047022072")["targets"]
     wi = w["iot Peg"]["epoch_2018-10-22"]
     so = next(e for e in w["sig Ori"]["epochs"] if e["date"] == "2011-09-29")
     sig = _epoch("2011-09-29", so["hjd_minus_2400000"] - 0.5, so["rho_mas"][0], so["pa_deg"][0])
     sig["fractions"] = {k: v[0] for k, v in so["fractions"].items()}
-    fits["private-workshop"] = dict(targets={
+    fits["647a22a9-5047-4220-ba22-a95047022072"] = dict(targets={
         "iot Peg": dict(epochs=[_epoch("2018-10-22", None, wi["rho_mas"][0], wi["pa_deg"][0], flux=1 / wi["flux_ratio"][0])]),
         "sig Ori": dict(epochs=[sig], variants=[])})
     a = _ref("bda75673-61c6-49f0-a756-7361c699f0c4")
@@ -417,24 +420,23 @@ def _fake_fits(oc, tmp_path, shift=0.0):
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
-def test_compare_table_passes_the_published_numbers_and_withholds_l2(oc, tmp_path):
+def test_compare_table_passes_the_published_numbers(oc, tmp_path):
     """Fits that reproduce the published values: every scored row passes (including the
     conventions: omega of the primary + 180 for Gl 229 (none for HR 6819), a in au times the parallax, the (Omega,
     omega) twin, 1/flux for iota Peg, r/(1+r) for HR 6819, T_peri folded by whole
-    periods), HR 6819 is never scored, and the L2 rows stay out unless asked for."""
+    periods), HR 6819 is never scored, and the workshop (cleared, no longer L2) is in the table."""
     rows, missing = oc.compare(str(_fake_fits(oc, tmp_path)))
     assert not missing
-    assert not any(r["collection"].startswith("private-") for r in rows)
+    assert any(r["collection"] == "647a22a9-5047-4220-ba22-a95047022072" for r in rows)
     scored = [r for r in rows if r["status"] in ("PASS", "FAIL")]
     assert len(scored) > 30 and all(r["status"] == "PASS" for r in scored), [r for r in scored if r["status"] == "FAIL"]
     assert all(r["status"] == "NOT-CLEAN" for r in rows if r["target"] == "HR 6819")
     orbit = [r for r in rows if r["rule"] == "orbit" and r["dev_sigma"] is not None and r["published_err"]]
     exact = [r for r in orbit if "vs Octofitter" not in r["note"]]  # the fakes reproduce PMOIRED's Gl 229 orbit
     assert len(exact) == 7 * 3 and all(abs(r["dev_sigma"]) < 1e-6 for r in exact), exact
-    l2, _ = oc.compare(str(tmp_path), include_l2=True)
-    work = [r for r in l2 if r["collection"].startswith("private-")]
-    assert work and not any(r["status"] in ("PASS", "FAIL") for r in work)
-    assert "WITHHELD" in {r["status"] for r in work}
+    assert not oc.L2  # no collection is withheld
+    work = [r for r in rows if r["collection"] == "647a22a9-5047-4220-ba22-a95047022072"]
+    assert any(r["status"] == "PASS" for r in work) and not any(r["status"] in ("FAIL", "WITHHELD") for r in work)
     text = oc.markdown(rows)
     assert oc.CRITERIA_HASH in text and "WITHHELD" not in text
     assert not [r for r in rows if r["status"] == "MISSING"]
@@ -485,11 +487,11 @@ def test_published_numbers_fix_the_conventions():
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
 def test_compare_table_fails_a_shifted_separation(oc, tmp_path):
-    """A separation 0.5 sigma_pub off (iota Peg) fails the 0.25 sigma epoch rule."""
+    """A separation 0.5 sigma_pub off (iota Peg, fac164e1) fails the 0.25 sigma epoch rule."""
     shift = 0.5 * 0.0176
     rows, _ = oc.compare(str(_fake_fits(oc, tmp_path, shift=shift)))
-    hit = [r for r in rows if r["target"] == "iota Peg" and r["quantity"] == "rho_mas" and r["epoch"] == "2018-10-22"
-           and r["status"] in ("PASS", "FAIL")]
+    hit = [r for r in rows if r["collection"].startswith("fac164e1") and r["quantity"] == "rho_mas"
+           and r["epoch"] == "2018-10-22" and r["status"] in ("PASS", "FAIL")]
     assert len(hit) == 1 and hit[0]["status"] == "FAIL" and abs(hit[0]["dev_sigma"] - 0.5) < 1e-6
 
 

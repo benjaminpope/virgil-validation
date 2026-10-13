@@ -15,10 +15,10 @@ Models, by collection (the reasons are in RECIPES' docstrings):
   stars on the K-band continuum (Br-gamma and He I windows left out, where the
   paper's Keplerian disk contributes), per epoch and as an orbit. Reported, not
   scored.
-* ``private-workshop`` a private L2 collection (CHARA workshop 2023): iota Peg (the same seven files as
-  fac164e1's 2018-10-22 night) and sigma Ori Aa-Ab as a "scaled binary" (Aa, Ab
-  and the incoherent light of B, Schaefer et al. 2016). Fitted, but its results
-  are not published until the dataPI has been contacted.
+* ``647a22a9`` CHARA imaging workshop 2023 (dataPI Gail Schaefer; cleared by Ben Pope
+  on 2026-10-13 for reduction and display, attribution in oidb/manifest.yml): iota Peg
+  (the same seven files as fac164e1's 2018-10-22 night) and sigma Ori Aa-Ab as a
+  "scaled binary" (Aa, Ab and the incoherent light of B, Schaefer et al. 2016).
 * ``fac164e1`` iota Peg, MIRC-X: a binary of two uniform disks fixed at 1.05 and
   0.6 mas (Anugu et al. 2020), per night and as an orbit.
 * ``bda75673`` A-star companions, MIRC-X: the five detections of De Furio et al.
@@ -73,9 +73,6 @@ from virgil.models import (  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.oifits import read_oifits  # noqa: E402
 from virgil.orbits import KeplerOrbit  # noqa: E402
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import private_collections as pc  # noqa: E402
 
 UM = 1e-6
 SCALE_PRIOR = dist.LogUniform(0.1, 100.0)  # error scales: Jeffreys, bounds wide enough to show a failed fit
@@ -807,7 +804,7 @@ def recipe_iota_peg(data_dir, cfg):
 
 
 def recipe_workshop(data_dir, cfg):
-    """CHARA imaging workshop 2023 (L2). iota Peg 2018-10-22: as fac164e1 (the files are
+    """CHARA imaging workshop 2023 (647a22a9). iota Peg 2018-10-22: as fac164e1 (the files are
     byte-identical, sha256 in the manifest). sigma Ori Aa-Ab (Schaefer et al. 2016):
     the "scaled binary": point-like Aa and Ab (O stars, ~0.1 mas) and B's light,
     incoherent in MIRC, as resolved flux; without smearing (the reported solution) and
@@ -827,7 +824,6 @@ def recipe_workshop(data_dir, cfg):
         e["fractions"] = dict(fAa=1 / (1 + f + r), fAb=f / (1 + f + r), fB=r / (1 + f + r))
     smeared["variant"] = "bandwidth smearing at R = %.0f" % resolving_power([sig])
     return dict(model="iota Peg: two UDs fixed at 1.05/0.6 mas; sigma Ori: scaled binary (Aa, Ab, B incoherent)",
-                flags=["L2: dataPI (Gail Schaefer) to be contacted before results are presented"],
                 targets={"iot Peg": dict(epochs=iota), "sig Ori": dict(epochs=[sigma], variants=[smeared])})
 
 
@@ -989,7 +985,7 @@ def recipe_pi1gru(data_dir, cfg):
 RECIPES = {
     "782185b2-0727-42b0-a185-b2072732b047": recipe_gl229,
     "696baf06-6c3c-424d-abaf-066c3c324d99": recipe_hr6819,
-    "private-workshop": recipe_workshop,
+    "647a22a9-5047-4220-ba22-a95047022072": recipe_workshop,
     "fac164e1-d9d0-4500-8164-e1d9d0450099": recipe_iota_peg,
     "bda75673-61c6-49f0-a756-7361c699f0c4": recipe_astars,
     "f4afc4cd-fd31-40d3-afc4-cdfd3150d340": recipe_hd45166,
@@ -1023,7 +1019,6 @@ def _jsonable(x):
 
 
 def run(collection, data_dir, out_dir, *, quick=False, nuts=True, exclude_flagged=False):
-    collection = pc.key_of(collection)  # a private collection's real id -> its placeholder key
     if collection not in RECIPES:
         raise SystemExit(f"unknown collection {collection}; known: {', '.join(RECIPES)}")
     cfg = dict(nuts=NUTS if nuts else None, exclude_flagged=exclude_flagged)
