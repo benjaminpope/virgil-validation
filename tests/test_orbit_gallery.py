@@ -66,12 +66,41 @@ def test_compare_reads_summaries_through_the_adapter(og):
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_every_reference_target_gets_a_section(og, data):
-    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {"private-workshop", PI1GRU, HD45166}  # pi1 Gru is a single star: no tile
+    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {PI1GRU, HD45166}  # pi1 Gru is a single star: no tile
     assert {t["collection_id"] for t in data["targets"]} == refs == set(og.TARGETS)
+    assert len({t["slug"] for t in data["targets"]}) == len(data["targets"]) == len(og.TILES)  # the workshop collection gives two tiles
     text = og.page(data)
-    headings = re.findall(r"^## (.+)$", text, flags=re.M)
-    assert headings == [t["target"] for t in data["targets"]]
-    record("targets", len(headings))
+    names = re.findall(r"^\*\*(.+)\*\*$", text, flags=re.M)  # the plain-text section of each target
+    assert names == [t["target"] for t in data["targets"]]
+    record("targets", len(names))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_page_explains_the_gallery(og, data):
+    text = og.page(data)
+    for heading in ("How to read a plot", "The badges", "Where the data come from", "Method"):
+        assert re.search(rf"^## {heading}$", text, flags=re.M), heading
+    assert "OiDB" in text and "CC BY-NC-SA" in text and "Jean-Marie Mariotti" in text
+    assert "??? note" in text and all(f"({page}.md)" in text for page in ("orbitize", "epochs", "aliases"))
+    for badge in ("agrees", "tension", "reported", "awaiting fit"):
+        assert f"**{badge}.**" in text, badge
+    assert {g["key"] for g in data["guide"]} >= {"sky", "ours", "pub", "alt", "eps", "alias", "phase"}
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_workshop_collection_splits_into_two_tiles(og, data):
+    iota, sigma = _target(data, "iota-peg-workshop"), _target(data, "sigma-ori")
+    assert iota["collection_id"] == sigma["collection_id"] == og.WORKSHOP
+    assert iota["status"] != "awaiting" and sigma["status"] != "awaiting"
+    assert iota["target"] != sigma["target"]
+    assert [e["label"] for e in iota["epochs"]] != [e["label"] for e in sigma["epochs"]]
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_known_alias_nights_are_flagged_not_used(data):
+    t = _target(data, "gl229b")
+    flagged = {e["label"] for e in t["epochs"] if e.get("alias")}
+    assert flagged <= {"2024-02-28", "2024-03-29"}
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
@@ -141,4 +170,4 @@ def test_target_without_a_summary_is_awaiting(og, tmp_path):
     assert "Awaiting fit" in og.page(data)
     # one summary present: only that tile leaves the awaiting state
     mixed = og.build(FIX / "summaries")
-    assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b"]
+    assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b", "iota-peg-workshop", "sigma-ori"]
