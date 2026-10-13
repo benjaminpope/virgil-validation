@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE_SHA256 = {
-    "a9c8ab1bb62be8362fb5b6bf2128c47d03d4669f2313e665f5b2a65921ccf251",  # the full id
-    "1fc430335c576930002d900ac0ae3adcc6ba036eb7062732aee58038a22c46c9",  # its first 8 hex digits
-}
+# Empty: the one L2 collection (CHARA workshop 647a22a9) was cleared by Ben Pope on 2026-10-13 for reduction and
+# display, so its id is now tracked (oidb/manifest.yml). Add the SHA-256 of any future private id (and of its first
+# 8 hex digits) here before its first fetch.
+PRIVATE_SHA256 = set()
 TOKEN = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|\b[0-9a-f]{8}\b")
 
 

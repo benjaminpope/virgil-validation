@@ -1,0 +1,212 @@
+{
+ "collection_id": "647a22a9-5047-4220-ba22-a95047022072",
+ "target": "fake workshop fixture (not a real fit)",
+ "instrument": "CHARA/MIRC-X",
+ "provenance": {
+  "virgil_commit": "0123abc",
+  "validation_commit": "4567def"
+ },
+ "model": "fixture",
+ "flags": [
+  "L2: dataPI to be contacted before results are presented"
+ ],
+ "targets": {
+  "iot Peg": {
+   "epochs": [
+    {
+     "label": "2018-10-22",
+     "mjd": 58413.2,
+     "values": {
+      "dra": [
+       -0.9268701198716446,
+       0.01
+      ],
+      "ddec": [
+       9.992304580070062,
+       0.01
+      ],
+      "flux": [
+       0.21978021978021978,
+       0.01
+      ],
+      "rho_mas": [
+       10.0352,
+       0.01
+      ],
+      "pa_deg": [
+       354.7005,
+       0.05
+      ]
+     },
+     "cov_names": [
+      "dra",
+      "ddec",
+      "flux"
+     ],
+     "cov": [
+      [
+       0.0001,
+       0,
+       0
+      ],
+      [
+       0,
+       0.0001,
+       0
+      ],
+      [
+       0,
+       0,
+       0.0001
+      ]
+     ],
+     "chi2_raw": {
+      "all": {
+       "chi2_red": 1.1
+      }
+     },
+     "scales": {
+      "phi_scale": 1.0
+     }
+    }
+   ]
+  },
+  "sig Ori": {
+   "epochs": [
+    {
+     "label": "2011-09-29",
+     "mjd": 55833.504,
+     "values": {
+      "dra": [
+       -2.7786844221695257,
+       0.01
+      ],
+      "ddec": [
+       -5.641066368337852,
+       0.01
+      ],
+      "flux": [
+       0.58,
+       0.01
+      ],
+      "rho_mas": [
+       6.2883,
+       0.02
+      ],
+      "pa_deg": [
+       206.224,
+       0.2
+      ],
+      "resolved": [
+       0.57,
+       0.01
+      ]
+     },
+     "cov_names": [
+      "dra",
+      "ddec",
+      "flux"
+     ],
+     "cov": [
+      [
+       0.0001,
+       0,
+       0
+      ],
+      [
+       0,
+       0.0001,
+       0
+      ],
+      [
+       0,
+       0,
+       0.0001
+      ]
+     ],
+     "chi2_raw": {
+      "all": {
+       "chi2_red": 1.1
+      }
+     },
+     "scales": {
+      "phi_scale": 1.0
+     },
+     "fractions": {
+      "fAa": 0.4347,
+      "fAb": 0.2549,
+      "fB": 0.3105
+     }
+    }
+   ],
+   "variants": [
+    {
+     "label": "2011-09-29",
+     "mjd": 55833.504,
+     "values": {
+      "dra": [
+       -2.7786844221695257,
+       0.01
+      ],
+      "ddec": [
+       -5.641066368337852,
+       0.01
+      ],
+      "flux": [
+       0.58,
+       0.01
+      ],
+      "rho_mas": [
+       6.2883,
+       0.02
+      ],
+      "pa_deg": [
+       206.224,
+       0.2
+      ],
+      "resolved": [
+       0.57,
+       0.01
+      ]
+     },
+     "cov_names": [
+      "dra",
+      "ddec",
+      "flux"
+     ],
+     "cov": [
+      [
+       0.0001,
+       0,
+       0
+      ],
+      [
+       0,
+       0.0001,
+       0
+      ],
+      [
+       0,
+       0,
+       0.0001
+      ]
+     ],
+     "chi2_raw": {
+      "all": {
+       "chi2_red": 1.1
+      }
+     },
+     "scales": {
+      "phi_scale": 1.0
+     },
+     "fractions": {
+      "fAa": 0.4347,
+      "fAb": 0.2549,
+      "fB": 0.3105
+     },
+     "variant": "bandwidth smearing at R = 40"
+    }
+   ]
+  }
+ }
+}
