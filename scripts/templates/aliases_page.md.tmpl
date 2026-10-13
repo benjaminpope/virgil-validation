@@ -27,9 +27,13 @@ mode, and a flag means the two evidences disagree or the ESS is low.
     1.25 P_ref, centred on the published period; for Gl 229 it is 10 to 14 d. A
     reference orbit in the winning band is therefore a choice among the few bands
     of that window, not an independent confirmation of the published period.
-    Element comparisons fold the reference's mirror (Omega mod 180° with omega
-    shifted) and, for the near-equal-mass systems (al_dor, hd41255, hd188088),
-    compare omega mod 180°, since closure phases barely separate the twins.
+    The reference band's fit is also warm-started at the reference orbit (unless
+    run with `--no-init`), so a sky-plane match there can mean the fit never
+    moved; the page gives the offset from the start and the χ² gain over it.
+    Orbits are compared by their positions on the sky, not by elements. A point
+    reflection is accepted only when the fit swapped the stars' labels (or, for
+    the near-equal-mass systems al_dor, hd41255 and hd188088, where closure
+    phases barely separate the twins); otherwise it is UNEXPLAINED-FLIP.
 
 !!! note "Results pending"
     Sections marked *placeholder* have no results yet: the fits run on OzSTAR

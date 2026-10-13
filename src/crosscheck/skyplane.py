@@ -5,8 +5,10 @@ elements: (P, e, i, Omega, omega) have conventions and aliases (Omega and omega 
 for a bright companion) that give one sky orbit many element sets. The positions come from `crosscheck.orbits`
 (our own Kepler solver); the reference's omega is the secondary's, as there.
 
-A label swap of the two stars negates every relative position, which is the flux-ratio flip of the fit: the score
-takes the reference or its point reflection, whichever is nearer, and reports which.
+A label swap of the two stars negates every relative position, which is the flux-ratio flip of the fit. The score
+compares with the reference or its point reflection, whichever is nearer, and reports which; the reflection is
+accepted only if the fit swapped the labels (``flipped``) or the system's labels are free (``sign_free``, the
+twins). Otherwise a reflected match is a sign error, not agreement, and the verdict is UNEXPLAINED-FLIP.
 """
 
 import numpy as np
@@ -21,8 +23,8 @@ VARIANTS = {
     "omega+180,Omega+180": (180, 180, False),
     "inc->180-inc": (0, 0, True),
 }
-SAME_FRACTION = 0.10  # rms offset below this fraction of the mean separation, or
-SAME_SIGMA = 3.0  # below this many posterior spreads, is the same sky orbit
+SAME_FRACTION = 0.02  # rms offset below this fraction of the mean separation, and
+SAME_SIGMA = 3.0  # below this many posterior spreads, is the same sky orbit (published residuals are ~0.1 mas)
 
 
 def thiele_innes(a, inc, omega, Omega):
@@ -57,14 +59,16 @@ def _rms(d):
     return float(np.sqrt(np.mean(np.sum(d**2, -1))))
 
 
-def score(meta, best, t_ref=None, samples=None):
+def score(meta, best, t_ref=None, samples=None, flipped=False, sign_free=False):
     """Compare a fitted orbit with ``meta["reference"]`` on the sky at ``meta["mjd"]``.
 
     ``best`` holds period, dt_peri (days from ``t_ref``), ecc, inc, omega, Omega, a_mas; ``samples`` (optional)
     the same keys as arrays, for the posterior spread. Returns rms and max offset (mas), the rms as a fraction of
     the mean separation, the rms over the posterior spread, whether the reference's point reflection matches (the
     flux-ratio flip), the rms of each convention variant, the Thiele-Innes constants and the verdict
-    SAME-SKY-ORBIT or DIFFERENT.
+    SAME-SKY-ORBIT, DIFFERENT or UNEXPLAINED-FLIP (matches only as a point reflection, though the fit did not swap
+    labels and ``sign_free`` is false). ``flipped`` is the fit's label swap (band.flipped or fitted flux > 1).
+    The position match needs both frac_sep < SAME_FRACTION and, with samples, offset_over_spread < SAME_SIGMA.
     """
     mjd = np.asarray(meta["mjd"], float)
     ref = meta["reference"]
@@ -84,6 +88,8 @@ def score(meta, best, t_ref=None, samples=None):
         variant_rms=variants,
         mirror="flip" if sign < 0 else "none",
         flux_flip_matches=sign < 0,
+        flipped=bool(flipped),
+        sign_free=bool(sign_free),
         rms=rms,
         max=float(dist.max()),
         mean_sep=float(np.mean(sep)),
@@ -115,6 +121,13 @@ def score(meta, best, t_ref=None, samples=None):
         )
         spread = float(np.sqrt(np.mean(np.sum(tracks.var(0), -1))))
         out["spread"], out["offset_over_spread"] = spread, rms / max(spread, 1e-12)
-    same = out["frac_sep"] < SAME_FRACTION or out["offset_over_spread"] < SAME_SIGMA
-    out["verdict"] = "SAME-SKY-ORBIT" if same else "DIFFERENT"
+    sky_ok = out["frac_sep"] < SAME_FRACTION
+    if samples is not None:
+        sky_ok = sky_ok and out["offset_over_spread"] < SAME_SIGMA
+    if not sky_ok:
+        out["verdict"] = "DIFFERENT"
+    elif sign < 0 and not (flipped or sign_free):
+        out["verdict"] = "UNEXPLAINED-FLIP"
+    else:
+        out["verdict"] = "SAME-SKY-ORBIT"
     return out

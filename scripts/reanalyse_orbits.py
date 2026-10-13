@@ -178,7 +178,8 @@ def _trackb_reference(s, primary_omega=False):
         ecc=ro["e"][0],
         inc=ro["i_deg"][0],
         # The tabulated omega reproduces the published companion positions in crosscheck.orbits' convention as it
-        # stands (checked for all 8 Track B systems: the old +180 deg gave their point reflection).
+        # stands (checked for 7 of the 8 Track B systems: the old +180 deg gave their point reflection; alpha Equ's omega_1 is
+        # the primary's, hence +180 via PRIMARY_OMEGA).
         omega=ro["omega_deg"][0] + (180.0 if primary_omega else 0.0),
         Omega=ro["Omega_deg"][0],
         a_mas=ro["a_mas"][0],
@@ -523,69 +524,103 @@ def plot_corner(path, result):
 VIS_AMP = (0.01, 1.5)  # per-epoch V^2 amplitude, log-uniform (virgil vis_amp): a contrast loss the same on all baselines
 
 
-def best_scene(result, primary_diam):
-    """The best band's scene, as the fit built it: point or uniform-disk primary, one orbiting companion."""
+def best_scene(result, primary_diam, params=None):
+    """The best band's scene (or that of ``params``), as the fit built it: point or uniform-disk primary, one
+    orbiting companion."""
     from virgil.aliases import _UDBinary
     from virgil.models import OrbitalBinary
     from virgil.orbits import KeplerOrbit
 
-    b = result.best.best
+    b = result.best.best if params is None else params
     orbit = KeplerOrbit(
         b["period"], b["dt_peri"], b["ecc"], b["inc"], b["omega"], b["Omega"], b["a_mas"], t_ref=result.t_ref
     )
-    diam = b.get("diam", None if primary_diam == "fit" else primary_diam)
+    if primary_diam == "fit" and "diam" not in result.best.best:
+        raise ValueError("primary_diam is 'fit' but the best band has no fitted 'diam': cannot rebuild the fit's scene")
+    diam = (b.get("diam") or result.best.best["diam"]) if primary_diam == "fit" else primary_diam
     return _UDBinary(orbit, b["flux"], diam) if diam else OrbitalBinary(orbit, b["flux"])
 
 
-def epoch_residuals(model, d, vis_amp=VIS_AMP):
-    """Whitened residuals of one epoch, with its squared visibilities scaled by the best amplitude in vis_amp
-    (the weighted least-squares amplitude, clipped: the same profile as the fit's). Returns (residuals, amplitude)."""
+def fit_vis_amps(result):
+    """The fit's own per-epoch V^2 amplitudes (virgil vis_amp, sampled log-uniform) from the best band, or None."""
+    amps = [e.get("vis_amp") for e in result.best.epochs]
+    return amps if amps and all(a is not None for a in amps) else None
+
+
+def epoch_residuals(model, d, amp=None):
+    """Whitened residuals of one epoch (virgil's whitened_residuals, assumed (model - obs) / d_vis, diagonal), with
+    the squared visibilities scaled by the fit's own amplitude ``amp`` for this epoch, if given."""
     from virgil.epochs import _blocks
     from virgil.likelihood import whitened_residuals
 
     r = np.array(whitened_residuals(model, d))
     blocks = _blocks(d)
-    if vis_amp is None or blocks[0][0] != "vis" or not d.v2_flag:
-        return r, 1.0
+    if amp is None or blocks[0][0] != "vis" or not d.v2_flag:
+        return r
     n = blocks[0][2]
     err = np.asarray(d.d_vis, float).ravel()
     obs = np.asarray(d.vis, float).ravel()
-    mod = obs + r[:n] * err
-    amp = float(np.clip(np.sum(obs * mod / err**2) / np.sum(mod**2 / err**2), *vis_amp))
-    r[:n] = (amp * mod - obs) / err
-    return r, amp
+    r[:n] = (amp * (obs + r[:n] * err) - obs) / err
+    return r
 
 
-def block_chi2(result, loaded, primary_diam=None, vis_amp=VIS_AMP):
+def block_chi2(result, loaded, primary_diam=None):
     """Raw chi2 and independent-observable count of the V2 and the closure-phase blocks at the best orbit,
-    summed over epochs ("vis" and "phi"), on the quoted errors (with the epochs' V2 amplitudes, if fitted)."""
+    summed over epochs ("vis" and "phi"), on the quoted errors, with the fit's V2 amplitudes if it fitted them.
+    This is virgil's own model: it checks the bookkeeping, not the model (see residual_stats)."""
     from virgil.epochs import _blocks
 
     model = best_scene(result, primary_diam)
+    amps = fit_vis_amps(result) or [None] * len(loaded.data)
     out = {}
-    for d in loaded.data:
-        r, _ = epoch_residuals(model, d, vis_amp)
+    for d, amp in zip(loaded.data, amps):
+        r = epoch_residuals(model, d, amp)
         for name, a, z, nu, _ in _blocks(d):
             c, n = out.get(name, (0.0, 0))
             out[name] = (c + float(np.sum(r[a:z] ** 2)), n + int(nu))
     return {k: dict(chi2=c, n=n, chi2_per_n=c / n if n else None) for k, (c, n) in out.items()}
 
 
-def residual_stats(result, loaded, primary_diam=None, vis_amp=VIS_AMP):
+def residual_stats(result, loaded, primary_diam=None):
     """Raw residuals of every epoch at the best orbit, whitened by the quoted errors, as trackb_fit.py sums them.
 
-    Returns (residuals per epoch, rms per epoch, chi2, n_independent): the independent check of virgil's chi2_red,
-    kept apart from the plotting so a plotting failure cannot remove it. The model is the fit's: the same primary
-    and, with vis_amp, the epochs' best V2 amplitudes.
+    Returns (residuals per epoch, rms per epoch, chi2, n_independent). This is NOT an independent test of the
+    model: the model (_UDBinary / OrbitalBinary, whitened_residuals) and the V2 amplitudes are virgil's own, so
+    agreement with chi2_red checks only the summation, the observable count and the amplitudes. It is kept apart
+    from the plotting so a plotting failure cannot remove it. A model-independent chi2 (V2 and CP from
+    crosscheck's UD + point-companion visibility, against d.vis / d.d_vis) is not yet implemented.
     """
     model = best_scene(result, primary_diam)
-    res = [epoch_residuals(model, d, vis_amp)[0] for d in loaded.data]
+    amps = fit_vis_amps(result) or [None] * len(loaded.data)
+    res = [epoch_residuals(model, d, a) for d, a in zip(loaded.data, amps)]
     rms = [float(np.sqrt(np.mean(r**2))) for r in res]
     return (
         res,
         rms,
         sum(float(np.sum(r**2)) for r in res),
         sum(int(d.n_independent) for d in loaded.data),
+    )
+
+
+def init_check(result, loaded, init, primary_diam, mjd):
+    """How far the best orbit of the warm-started band moved from ``init`` (the reference orbit), and the chi2 gain
+    over the init point (V2 amplitudes unscaled at both): a fit that never moved passes any comparison with the
+    reference it started from."""
+    from crosscheck import skyplane as SP
+
+    mjd = np.asarray(mjd, float)
+    b = result.best.best
+    moved = SP.fit_pos(b, mjd, result.t_ref) - SP.fit_pos(init, mjd, result.t_ref)
+    chi2 = {}
+    for k, params in (("init", dict(init, **({"diam": b["diam"]} if "diam" in b else {}))), ("best", b)):
+        model = best_scene(result, primary_diam, params)
+        chi2[k] = sum(float(np.sum(epoch_residuals(model, d) ** 2)) for d in loaded.data)
+    return dict(
+        offset_rms_mas=SP._rms(moved),
+        offset_max_mas=float(np.hypot(*moved.T).max()),
+        chi2_init=chi2["init"],
+        chi2_best=chi2["best"],
+        chi2_gain=chi2["init"] - chi2["best"],
     )
 
 
@@ -747,6 +782,7 @@ def run(name, args):
         ),
     )
     init = None
+    meta["init"] = None
     if ref0 is not None and not args.no_init:
         # Warm start in the reference band, so "no valid mode" cannot happen there: the fit still decides.
         init = dict(
@@ -759,6 +795,8 @@ def run(name, args):
             a_mas=ref0["a_mas"],
             flux=0.9 if sysd.sign_free else 0.3,
         )
+        meta["init"] = dict(init, source="reference orbit")
+        save_meta()
     result = fit_orbit_aliases(
         loaded.data,
         p_range,
@@ -805,7 +843,17 @@ def run(name, args):
         print(
             f"reference (P={ref['P']:.4f} d) lies in band N={meta['reference_band']['n']}; winner N={result.best.n}"
         )
-        meta["sky_plane"] = attempt("sky_plane", lambda: sky_plane(result, meta, ref))
+        meta["sky_plane"] = attempt("sky_plane", lambda: sky_plane(result, meta, ref, sysd.sign_free, init is not None))
+        if init is not None and result.best.best:
+            meta["init_check"] = attempt(
+                "init_check", lambda: init_check(result, loaded, init, primary_diam, meta["mjd"])
+            )
+            ic = meta["init_check"]
+            if ic:
+                print(
+                    f"warm start: best orbit is {ic['offset_rms_mas']:.3f} mas rms from the init (the reference), "
+                    f"chi2 gain over init {ic['chi2_gain']:.1f}"
+                )
         print(
             "sky plane vs reference: "
             + ", ".join(
@@ -817,18 +865,18 @@ def run(name, args):
     save_meta()
     vr = result.best.chi2_red
     stats = (
-        attempt("residual_stats", lambda: residual_stats(result, loaded, primary_diam, vis_amp))
+        attempt("residual_stats", lambda: residual_stats(result, loaded, primary_diam))
         if result.best.best
         else None
     )
-    blocks = attempt("block_chi2", lambda: block_chi2(result, loaded, primary_diam, vis_amp)) if result.best.best else None
+    blocks = attempt("block_chi2", lambda: block_chi2(result, loaded, primary_diam)) if result.best.best else None
     if blocks is not None:
         meta["chi2_raw_by_block"] = blocks
         print(
             "raw chi2/N by observable: "
             + ", ".join(f"{k} {v['chi2_per_n']:.2f} (N={v['n']})" for k, v in blocks.items())
         )
-    if stats is not None:  # the independent chi2 check does not depend on any plot
+    if stats is not None:  # the chi2 bookkeeping check does not depend on any plot
         res, rms, chi2, n_ind = stats
         meta["rms_residual"] = rms
         meta["chi2_raw"], meta["n_independent"] = chi2, n_ind
@@ -873,9 +921,11 @@ def run(name, args):
     print(f"wrote {outdir} in {time.time() - t0:.0f} s")
 
 
-def sky_plane(result, meta, ref):
+def sky_plane(result, meta, ref, sign_free=False, warm_started=False):
     """Sky-plane agreement with the reference (crosscheck.skyplane) for the winning band and the reference's
-    band: rms and max offset at the epochs, the point-reflection (flux flip) used, and the verdict."""
+    band: rms and max offset at the epochs, the point-reflection (flux flip) used, and the verdict. A reflection
+    is accepted only if the band's fit swapped the labels (band.flipped or fitted flux > 1) or the system is
+    sign_free. ``warm_started``: the reference band's fit began at the reference orbit."""
     from crosscheck import skyplane as SP
 
     m = dict(mjd=meta["mjd"], reference=ref)
@@ -887,8 +937,10 @@ def sky_plane(result, meta, ref):
     for k, b in bands.items():
         if not b.best:
             continue
-        sc = SP.score(m, b.best, result.t_ref, result.samples.get(b.n))
-        out[k] = dict(sc, band=b.n, period=b.best["period"], p=b.p, flipped=bool(getattr(b, "flipped", False)))
+        flipped = bool(getattr(b, "flipped", False)) or (b.best.get("flux") or 0.0) > 1.0
+        sc = SP.score(m, b.best, result.t_ref, result.samples.get(b.n), flipped=flipped, sign_free=sign_free)
+        warm = warm_started and b is hit
+        out[k] = dict(sc, band=b.n, period=b.best["period"], p=b.p, flipped=flipped, warm_started=warm)
     return out
 
 

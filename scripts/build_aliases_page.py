@@ -91,19 +91,22 @@ def section(name, label, instrument, sysdir, rel):
     if sp:
         out.append(
             "Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit "
-            "many element sets). Offsets are in mas; a **flip** means the reference's point reflection matches, i.e. the "
-            "two stars' labels (the flux-ratio sign) are swapped; the verdict is SAME-SKY-ORBIT if the rms offset is under "
-            f"{SAME_FRACTION:.0%} of the separation or under {SAME_SIGMA:g} posterior spreads.\n"
+            "many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection "
+            "matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap "
+            "(and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if "
+            f"the rms offset is under {SAME_FRACTION:.0%} of the separation and, with posterior samples, under {SAME_SIGMA:g} "
+            "posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement "
+            "there is not independent.\n"
         )
         out.append(
-            "| band | N | P (d) | rms | max | rms / sep | rms / spread | flip | verdict |\n"
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |"
+            "| band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |\n"
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
         )
         for k, v in sp.items():
             out.append(
-                f"| {'winner' if k == 'top' else 'reference'} | {v['band']} | {v['period']:.4f} | {v['rms']:.2f} | "
+                f"| {'winner' if k == 'top' else 'reference'}{' (warm-started)' if v.get('warm_started') else ''} | {v['band']} | {v['period']:.4f} | {v['rms']:.2f} | "
                 f"{v['max']:.2f} | {v['frac_sep']:.0%} | {fmt(v['offset_over_spread'], '.1f')} | {v['mirror']} | "
-                f"{v['verdict']} |"
+                f"{'yes' if v.get('flipped') else 'no'} | {v['verdict']} |"
             )
         out.append("")
     fs = meta.get("fit_summary")
@@ -117,9 +120,17 @@ def section(name, label, instrument, sysdir, rel):
         if amps:
             bits.append(f"per-epoch V² amplitudes {min(amps):.2f}–{max(amps):.2f}")
         out.append("Winning band: " + "; ".join(bits) + ".\n")
+    ic = meta.get("init_check")
+    if meta.get("init") and ic:
+        out.append(
+            f"The reference band was warm-started at the reference orbit; the best orbit is {ic['offset_rms_mas']:.2f} mas rms "
+            f"(max {ic['offset_max_mas']:.2f}) from that start, with χ² {ic['chi2_init']:.1f} at the start and "
+            f"{ic['chi2_best']:.1f} at the best orbit (gain {ic['chi2_gain']:.1f}; V² amplitudes unscaled). A small offset "
+            "with no χ² gain means the fit did not move.\n"
+        )
     chk = meta.get("chi2_check")
     if chk and not chk["agrees"]:
-        out.append(f"!!! warning\n    Raw χ²/N recomputed here ({chk['ours']:.2f}) differs from the band table ({chk['virgil']:.2f}).\n")
+        out.append(f"!!! warning\n    Raw χ²/N re-summed here from virgil's own residuals ({chk['ours']:.2f}) differs from the band table ({chk['virgil']:.2f}).\n")
     for png, cap in PLOTS:
         if (sysdir / png).exists():
             out.append(f"![{cap}]({rel}/{name}/{png})\n")
