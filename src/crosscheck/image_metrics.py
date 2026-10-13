@@ -21,10 +21,41 @@ the origin and keeps the better (V² cannot tell them apart).
 """
 
 import numpy as np
-from scipy.ndimage import gaussian_filter, map_coordinates
+from scipy.ndimage import gaussian_filter, map_coordinates, shift as nd_shift
 from scipy.signal import fftconvolve
 
 FWHM_PER_SIGMA = 2.0 * np.sqrt(2.0 * np.log(2.0))
+
+
+def centroid(image):
+    """Flux centroid (column, row) in pixels of the positive part of
+    ``image``: negative ringing carries no weight."""
+    w = np.clip(np.asarray(image, float), 0.0, None)
+    total = w.sum()
+    if not total > 0:
+        return (image.shape[1] - 1) / 2.0, (image.shape[0] - 1) / 2.0
+    rows, cols = np.indices(w.shape)
+    return float((w * cols).sum() / total), float((w * rows).sum() / total)
+
+
+def centre_on_centroid(image, order=3):
+    """``image`` translated by a sub-pixel shift (spline of ``order``, zero
+    fill) so that its positive-part flux centroid sits on the array centre,
+    (n - 1)/2 in each axis, with the total flux kept. Returns (image, (dx, dy))
+    with the shift applied in pixels, dx along columns (East is column 0, so
+    positive dx moves flux West) and dy down rows. Orientation is untouched.
+    An already centred image comes back unchanged with (0, 0). Used before
+    every display and score of a reconstructed contest image."""
+    image = np.asarray(image, float)
+    cx, cy = centroid(image)
+    dx, dy = (image.shape[1] - 1) / 2.0 - cx, (image.shape[0] - 1) / 2.0 - cy
+    if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+        return image.copy(), (0.0, 0.0)
+    moved = nd_shift(image, (dy, dx), order=order, mode="constant", cval=0.0)
+    total, new_total = image.sum(), moved.sum()
+    if new_total != 0 and total != 0:
+        moved = moved * (total / new_total)
+    return moved, (float(dx), float(dy))
 
 
 def offsets(npix, pixel):
