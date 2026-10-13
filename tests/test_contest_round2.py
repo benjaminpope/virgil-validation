@@ -101,7 +101,28 @@ def test_point_candidates_skip_the_main_source():
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
 def test_suffixes_and_no_systematics():
-    assert ci.suffix(3, [0.01], None, True, reg="tv") == "_tv_ps3_gains_errscale"
+    assert ci.suffix(3, "gains+block_scales", reg="tv") == "_tv_ps3_gain_bscale"
     assert ci.suffix() == ""
     data = object()
     assert ci.with_systematics(data, None) is data
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_systematics_mapping():
+    """Each --systematics choice names its nuisances; widths are scanned, or the median alone."""
+    assert set(ci.SYSTEMATICS) == set(ci.SYSTEMATIC_SUFFIX)
+    assert ci.SYSTEMATICS["gains+block_scales"] == ("gains", "block_scales")
+    assert ci.systematic_widths("none") == {} and ci.systematic_widths("block_scales") == {}
+    assert ci.systematic_widths("gains+closure_offsets") == {"gains": [0.01, 0.03, 0.1], "closure": [0.01, 0.03, 0.1]}
+    assert ci.systematic_widths("gains+block_scales", scan=False) == {"gains": [0.03]}
+    assert len({ci.SYSTEMATIC_SUFFIX[k] for k in ci.SYSTEMATICS}) == len(ci.SYSTEMATICS)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_rescale_applies_scales_to_each_dataset():
+    class D:
+        def with_error_scale(self, s):
+            return ("scaled", s)
+
+    assert ci.rescale(D(), {"vis": 2.0}) == ("scaled", {"vis": 2.0})
+    assert ci.rescale([D(), D()], {"vis": 2.0}) == [("scaled", {"vis": 2.0})] * 2

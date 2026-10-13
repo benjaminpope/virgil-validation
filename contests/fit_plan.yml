@@ -546,7 +546,7 @@ round2:
   2012_bet:
     - {id: tv, what: TV (against harmonix on MIRC once vv#104 lands), cli: [--regulariser, tv]}
   2014_vycma:
-    - {id: gp_errscale, what: GP with per-observable error scales, cli: [--prior, gp, --error-scales]}
+    - {id: gp_errscale, what: GP with per-observable error scales, cli: [--prior, gp, --systematics, block_scales]}
   2016_obj1:
     - {id: cleanfinal, what: CLEAN's restored image and components, cli: [--prior, clean]}
     - {id: starlet_ps10, what: Starlet L1 with up to 10 point sources (Δχ² ≥ 25 each), cli: [--regulariser, starlet, --points, "10"]}
@@ -557,7 +557,7 @@ round2:
     - {id: tv, what: TV, cli: [--regulariser, tv]}
     - {id: gp_ps1, what: GP, star + up to one point source, cli: [--prior, gp, --points, "1"]}
     - {id: cleanfinal, what: CLEAN's restored image and components, cli: [--prior, clean]}
-    - {id: gp_sys, what: GP with closure offsets per triangle and gains per baseline (widths by evidence), cli: [--prior, gp, --gains, "0.01,0.05", --closure-offsets, "0.01,0.05"]}
+    - {id: gp_sys, what: GP with closure offsets per triangle and gains per baseline (widths by evidence), cli: [--prior, gp, --systematics, "gains+closure_offsets"]}
   2022_ami:
     - {id: gp, what: Point + GP with ℓ capped at the field, cli: [--prior, gp]}
   2022_gravity:
@@ -566,7 +566,7 @@ round2:
   2024_obj1_pionier: &obj1_r2
     - {id: gp, what: ℓ-capped GP, cli: [--prior, gp]}
     - {id: gp2, what: Two-scale GP, cli: [--prior, gp2]}
-    - {id: gp_sys, what: GP with gains per baseline and per-observable error scales, cli: [--prior, gp, --gains, "0.01,0.03", --error-scales]}
+    - {id: gp_sys, what: GP with gains per baseline and per-observable error scales, cli: [--prior, gp, --systematics, "gains+block_scales"]}
   2024_obj1_gravity: *obj1_r2
   2024_obj1_matisseL: *obj1_r2
   2024_obj1_matisseN: *obj1_r2
@@ -578,7 +578,7 @@ round2:
     - id: sparco_halo_sys
       what: As round 1's sparco_halo, with gains and per-observable error scales.
       settings: {star: true, star_model: point, halo: true, sparco: true, field: 2.0, oversample: 3.0, clean_gain: 0.05}
-      cli: [--gains, "0.01,0.03", --error-scales]
+      cli: [--systematics, "gains+block_scales"]
     - id: wide_amplitude
       what: Log-brightness prior with a wider amplitude range.
       needs: gp-sigma-range

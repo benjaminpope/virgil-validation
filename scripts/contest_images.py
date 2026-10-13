@@ -338,6 +338,38 @@ def with_systematics(data, systematics):
     return out if isinstance(data, list) else out[0]
 
 
+# --systematics: one switch over the calibration nuisances and error scales.
+# block_scales: one error scale per observable kind (error_scale's
+# by_observable), estimated on the gains-free model and applied before any
+# gains or closure offsets are added (error_scale refuses data that has them).
+# The nuisances' widths come from the outer evidence scan (systematics_scan) on
+# --prior gp; on the evidence-free path (MaxEnt and the other regularisers) the
+# scan's median is used, fixed.
+SYSTEMATICS = {"none": (), "block_scales": ("block_scales",), "gains+block_scales": ("gains", "block_scales"),
+               "gains+closure_offsets": ("gains", "closure")}
+SYSTEMATIC_WIDTHS = {"gains": (0.01, 0.03, 0.1), "closure": (0.01, 0.03, 0.1)}  # log|V| per baseline; rad per triangle
+SYSTEMATIC_SUFFIX = {"none": "", "block_scales": "_bscale", "gains+block_scales": "_gain_bscale",
+                     "gains+closure_offsets": "_gain_cloff"}
+
+
+def systematic_widths(name, scan=True):
+    """{"gains": [w...], "closure": [w...]} for the nuisances in ``name``
+    (SYSTEMATICS): the whole scan, or with ``scan=False`` the median alone."""
+    out = {}
+    for kind in SYSTEMATICS[name]:
+        if kind in SYSTEMATIC_WIDTHS:
+            ws = SYSTEMATIC_WIDTHS[kind]
+            out[kind] = list(ws) if scan else [ws[len(ws) // 2]]
+    return out
+
+
+def rescale(data, scales):
+    """``data`` (one OIData or a list) with ``scales`` (error_scale's dict) applied."""
+    if isinstance(data, list):
+        return [d.with_error_scale(scales) for d in data]
+    return data.with_error_scale(scales)
+
+
 def informed_line(informed):
     """The provenance line of a summary: round-2 fits chose their method after
     the truths were seen (contests/fit_plan.yml), so they are "informed"."""
@@ -1160,7 +1192,7 @@ def weight_report(curve, data, reg, path, index):
 
 
 def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", settings=None, label=None,
-        reg="mem", field=None, informed=False, points=0, prune_blobs=False):
+        reg="mem", field=None, informed=False, points=0, prune_blobs=False, systematics="none"):
     """MaxEnt L-curve. With ``settings`` (scripts/contest_bench.py's "mem"
     arm) the field, pixels and CLEAN start follow those settings, as for a GP
     member, and the default model of the entropy is the CLEAN starting image
@@ -1168,8 +1200,13 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     on the common reference grid (``ref_image``) for scoring. ``reg`` names
     the penalty (REGULARISERS; labels get _<reg> unless MaxEnt), ``field``
     fixes the field (mas), ``informed`` marks a round-2 fit, and ``points``
-    adds up to that many point sources (add_point_sources; a CLEAN start)."""
+    adds up to that many point sources (add_point_sources; a CLEAN start).
+    ``systematics`` (SYSTEMATICS; no block scales here, which need a Gaussian
+    field) adds gains / closure offsets at the median width of the scan: this
+    path has no evidence to choose it."""
     t0 = time.time()
+    if "block_scales" in SYSTEMATICS[systematics]:
+        raise ValueError("block_scales are estimated from a Gaussian-field fit: use --prior gp")
     if reg != "mem":
         init = "clean"  # pixel-basis penalties stall from flat or Gaussian starts (docs/contest_convergence_diagnosis.md)
     if settings is None:
@@ -1183,7 +1220,9 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         s["q"] = template / template.sum()
     label_ = label
     label, files, star, data, npts = s["label"], s["files"], s["star"], s["data"], s["npts"]
-    label = label_ or label + suffix(points, reg=reg) + ("_prune" if prune_blobs else "")
+    label = label_ or label + suffix(points, systematics, reg=reg) + ("_prune" if prune_blobs else "")
+    fixed = {k: v[0] for k, v in systematic_widths(systematics, scan=False).items()}
+    quoted, data = data, with_systematics(data, fixed)
     resolution, start, img0, npix, pixel, fov = (s[k] for k in ("resolution", "start", "img0", "npix", "pixel", "fov"))
     path, priors, others = s["path"], s["priors"], s["others"]
     weights = regulariser_weights(reg, start, data, path, s["q"], smoke)
@@ -1229,6 +1268,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         converged=np.array([bool(r.info.get("converged", False)) for r in curve.results]),
         methods=np.array(methods), adam_used=np.array([m == "adam" for m in methods]),
         chosen=json.dumps(chosen), index=json.dumps(index), regulariser=reg, informed=bool(informed),
+        systematics_mode=systematics, systematics_widths=json.dumps(fixed),
         point_sources=json.dumps(s.get("point_record"), default=float),
         weight_report=json.dumps(report_w),
     )
@@ -1243,11 +1283,14 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         best = result.model
         np.savez_compressed(out_dir / f"{label}_pruned.npz", image=np.asarray(image_of(best).render(npix, fov)),
                             pixel_scale_mas=pixel, npix=npix, prune=json.dumps(pruned), informed=bool(informed),
-                            raw_chi2_red=chi2_red(best, data))
+                            raw_chi2_red=chi2_red(best, quoted))
     report = diagnose(best, data, [regulariser(reg, chosen["discrepancy"], path, s["q"]), *others])
     summary = (
         f"task={task} label={label} files={files} star={star} star_rejected={s['star_rejected'] or None} halo={halo}\n"
+        f"raw chi2/N={chi2_red(best, quoted):.4g} (quoted errors, no nuisances)\n"
         f"{informed_line(informed)} regulariser={reg} point_sources={s.get('point_record')}\n"
+        f"systematics={systematics}"
+        f"{' (widths ' + str(fixed) + ': fixed at the scan median, no evidence on this path)' if fixed else ''}\n"
         f"field_source={s['field_source']} clean={s['clean_info']} star_source={spec_of(task).get('star_source')} prior={spec_of(task).get('prior')} wavel={spec_of(task).get('wavel')} growth(fov, chi2/N)={growth}\n"
         f"virgil={virgil.__version__} from {virgil.__file__}\n"
         f"points={npts} npix={npix} pixel={pixel:.4g} mas fov={fov:.4g} mas "
@@ -1255,14 +1298,14 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
         f"weights={np.asarray(curve.weights).round(4).tolist()}\n"
         f"chi2_red={np.asarray(curve.chi2_red).round(3).tolist()}\n"
         f"halo_flux={[round(float(r.model.halo.flux), 4) for r in curve.results] if halo else None}\n"
-        f"chi2/N at the discrepancy weight={chi2_red(best, data):.4g} (quoted errors)"
+        f"chi2/N at the discrepancy weight={chi2_red(best, quoted):.4g} (quoted errors, no nuisances)"
         f"{' after pruning ' + str(pruned) if prune_blobs else ''}\n"
         f"chosen={chosen} discrepancy_reached={reached}\nconverged={[bool(r.info.get('converged', False)) for r in curve.results]}\n"
         f"methods (lbfgs/adam)={methods}\nadam_used={[m == 'adam' for m in methods]} "
         f"lbfgs vs adam chi2/N per weight (None: not refitted)={adam_chi2}\n"
         f"weight report={report_w}\n"
-        f"residuals at the discrepancy weight={residual_diagnostics(best, data)}\n"
-        f"residuals at the corner weight={residual_diagnostics(curve.results[index['corner']].model, data)}\n"
+        f"residuals at the discrepancy weight={residual_diagnostics(best, quoted)}\n"
+        f"residuals at the corner weight={residual_diagnostics(curve.results[index['corner']].model, quoted)}\n"
         f"elapsed={time.time() - t0:.0f}s\n\n{report}\n"
     )
     (out_dir / f"{label}.txt").write_text(summary)
@@ -1519,22 +1562,23 @@ def gp_fit(s, smoke=False):
     # evidence assumes correct error bars, which several contest datasets
     # break on purpose. Far from 1, refit the winner with rescaled errors.
     datasets = data if isinstance(data, list) else [data]
-    scale = float(error_scale(winner.model, data))
+    # error_scale refuses data with gains or closure offsets, so with nuisances
+    # the single scale is left at 1 (block scales are estimated before they are added).
+    nuisances = bool(s.get("systematics"))
+    scale = 1.0 if nuisances else float(error_scale(winner.model, data))
     # MacKay's effective number of parameters, from s² = χ²/(N − γ).
     n_indep = sum(d.n_independent for d in datasets)
     chi2_winner = float(np.sum(np.asarray(winner.info["chi2_red"]) * np.asarray([d.n_independent for d in datasets])))
     gamma = n_indep - chi2_winner / scale**2
     rescaled, data_s = None, data
-    by_obs = bool((s.get("systematics") or {}).get("errscale"))
-    if by_obs or not 1 / 1.3 < scale < 1.3:
-        factor = error_scale(winner.model, data, by_observable=True) if by_obs else scale
-        data_s = [d.with_error_scale(factor) for d in datasets]
+    if not 1 / 1.3 < scale < 1.3:
+        data_s = [d.with_error_scale(scale) for d in datasets]
         data_s = data_s if isinstance(data, list) else data_s[0]
         mean, rotation, lens = variants[best_name]
         field = GaussianField(np.zeros((n, n)), best_sigma, lens(best_length), mean=mean)
         sc = scene(field, rotation)
         rr = fit(sc, image_priors(sc) | extra, data_s, others, init=winner.values, **options)
-        rescaled = {"scale": factor if by_obs else scale, "log_z": float(log_evidence(rr, data_s)),
+        rescaled = {"scale": scale, "log_z": float(log_evidence(rr, data_s)),
                     "chi2_red": float(np.sum(rr.info["chi2_red"])), "result": rr}
 
     def best_result(name):
@@ -1548,10 +1592,9 @@ def gp_fit(s, smoke=False):
                 best_result=best_result)
 
 
-def suffix(points=0, gains=None, closure=None, errscale=False, reg="mem"):
+def suffix(points=0, systematics="none", reg="mem"):
     """Label suffixes of the round-2 options."""
-    return ((f"_{reg}" if reg != "mem" else "") + (f"_ps{points}" if points else "") + ("_gains" if gains else "")
-            + ("_cloff" if closure else "") + ("_errscale" if errscale else ""))
+    return (f"_{reg}" if reg != "mem" else "") + (f"_ps{points}" if points else "") + SYSTEMATIC_SUFFIX[systematics]
 
 
 def point_scene(s, points, point_priors):
@@ -1564,25 +1607,41 @@ def point_scene(s, points, point_priors):
     return s
 
 
-def systematics_scan(s, smoke, gains=None, closure=None, errscale=False):
+def systematics_scan(s, smoke, gains=None, closure=None):
     """gp_fit over every combination of the ``gains`` and ``closure`` widths
     (lists; None leaves a nuisance out), keeping the highest evidence: the
     outer evidence scan of the widths. Sets s["systematics"] to the winner's
-    and returns its fit and the scan [(widths, best log Z, raw χ²/N)]."""
+    and returns its fit and the scan [(widths, best log Z, raw χ²/N)]. The
+    raw χ²/N is on the quoted errors (s["quoted"]), with no nuisances."""
     import itertools
 
     scan, best = [], None
     for gw, cw in itertools.product(gains or [None], closure or [None]):
-        s["systematics"] = {"gains": gw, "closure": cw, "errscale": errscale} if (gw or cw or errscale) else None
+        s["systematics"] = {"gains": gw, "closure": cw} if (gw or cw) else None
         g = gp_fit(s, smoke)
-        raw = chi2_red(g["winner"].model, s["data"])
+        raw = chi2_red(g["winner"].model, s.get("quoted", s["data"]))
         scan.append(({"gains": gw, "closure": cw}, g["best_log_z"], raw))
         if gains or closure:
-            print(f"systematics widths gains={gw} closure={cw}: log Z {g['best_log_z']:.2f}, raw χ²/N {raw:.4g}", flush=True)
+            print(f"raw χ²/N {raw:.4g} (quoted errors, no nuisances); systematics widths gains={gw} closure={cw}: "
+                  f"log Z {g['best_log_z']:.2f}", flush=True)
         if best is None or g["best_log_z"] > best[1]["best_log_z"]:
             best = (dict(s["systematics"] or {}), g)
     s["systematics"] = best[0] or None
     return best[1], scan
+
+
+def estimate_block_scales(s, smoke):
+    """Per-observable error scales from a GP fit of ``s`` on the gains-free
+    data (printing its raw χ²/N first); s["data"] becomes the rescaled data,
+    s["quoted"] keeps the quoted errors', s["error_scales"] the scales."""
+    s["systematics"] = None
+    g = gp_fit(s, smoke)
+    quoted = s["data"]
+    print(f"raw χ²/N {chi2_red(g['winner'].model, quoted):.4g} (quoted errors, no nuisances)", flush=True)
+    scales = error_scale(g["winner"].model, quoted, by_observable=True)
+    print(f"block error scales {scales}", flush=True)
+    s.update(quoted=quoted, error_scales=scales, data=rescale(quoted, scales))
+    return scales
 
 
 def star_evidence(s, g, smoke=False):
@@ -1593,6 +1652,8 @@ def star_evidence(s, g, smoke=False):
     if s.get("points"):  # the same point sources, refitted with the image
         s0 = point_scene(s0, s["points"], s["point_priors"])
     s0["systematics"] = s.get("systematics")
+    if s.get("error_scales"):
+        s0.update(quoted=s0["data"], error_scales=s["error_scales"], data=rescale(s0["data"], s["error_scales"]))
     g0 = gp_fit(s0, smoke)
     data, data0 = with_systematics(s["data"], s.get("systematics")), with_systematics(s0["data"], s0.get("systematics"))
     log_z_star, occam_star = log_evidence_full(g["winner"], data, g["extra"])
@@ -1609,8 +1670,7 @@ def star_evidence(s, g, smoke=False):
 
 
 def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
-           settings=None, label=None, field=None, informed=False, points=0, gains=None, closure=None,
-           errscale=False):
+           settings=None, label=None, field=None, informed=False, points=0, systematics="none"):
     """GP fits chosen by evidence. With ``member`` (or ``settings``, a fixed
     configuration as used by scripts/contest_bench.py) a CLEAN-started
     ensemble member; otherwise a grown-field run. ``label`` names the
@@ -1619,20 +1679,24 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     is kept, with ``star_rejected="evidence"``. ``field`` (mas) fixes the
     field of a grown-field run; ``informed`` marks a round-2 fit. Round 2:
     ``points`` adds up to that many point sources (add_point_sources; a
-    CLEAN start), ``gains`` / ``closure`` are lists of widths for the
-    calibration nuisances (with_systematics), the widest-evidence one kept,
-    and ``errscale`` refits with per-observable error scales."""
+    CLEAN start), ``systematics`` is one of SYSTEMATICS: block error scales
+    first (estimate_block_scales), then gains / closure offsets with their
+    widths chosen by the evidence scan (systematics_scan)."""
     t0 = time.time()
     if member is None and settings is None:
         s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field)
-        label = label or s["label"] + "_gp" + suffix(points, gains, closure, errscale)
+        label = label or s["label"] + "_gp" + suffix(points, systematics)
     else:
         s, settings = member_setup(task, data_dir, member, smoke, settings)
         growth, init = [], "clean"
         label = label or f"{spec_of(task)['label']}_m{member}"
     if points:
         s = add_point_sources(s, points)
-    g, scan = systematics_scan(s, smoke, gains, closure, errscale)
+    if "block_scales" in SYSTEMATICS[systematics]:
+        estimate_block_scales(s, smoke)
+    # In smoke runs the scan is cut to its median width.
+    widths = systematic_widths(systematics, scan=not smoke)
+    g, scan = systematics_scan(s, smoke, widths.get("gains"), widths.get("closure"))
     evidence, star_arm = {}, {}
     if s["star"]:
         evidence, s0, g0 = star_evidence(s, g, smoke)
@@ -1644,7 +1708,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     # A member's halo comes from its settings (setup's flag), not this
     # function's argument.
     halo = s["halo"]
-    data, star, res = s["data"], s["star"], s["resolution"]
+    data, star, res = s.get("quoted", s["data"]), s["star"], s["resolution"]
     n, pixel = s["npix"], s["pixel"]
     fov = n * pixel
     template, ell, others, log_z, axes, best_of = (g[k] for k in ("template", "ell", "others", "log_z", "axes", "best_of"))
@@ -1689,11 +1753,13 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                         ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
                         template=template, informed=bool(informed),
                         systematics=json.dumps(s.get("systematics")), systematics_scan=json.dumps(scan, default=float),
+                        systematics_mode=systematics, error_scales=json.dumps(s.get("error_scales")),
                         point_sources=json.dumps(s.get("point_record"), default=float),
                         raw_chi2_red=chi2_red(winner.model, data))
     lines = [f"task={task} label={label} star={star} star_rejected={s['star_rejected'] or None} halo={halo} init={init} "
              f"field_source={s['field_source']} growth={growth}", informed_line(informed),
-             f"raw chi2/N={chi2_red(winner.model, data):.4g} (quoted errors, no nuisances) systematics={s.get('systematics')} "
+             f"raw chi2/N={chi2_red(winner.model, data):.4g} (quoted errors, no nuisances) mode={systematics} "
+             f"widths={s.get('systematics')} error_scales={s.get('error_scales')} "
              f"scan={scan} point_sources={s.get('point_record')}",
              f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas",
              f"ellipse fit: chi2/N={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
@@ -1945,13 +2011,10 @@ def main():
     parser.add_argument("--points", type=int, default=0,
                         help="up to K point sources from CLEAN's compact clusters outside the main source, each kept "
                              "if Δχ² >= 25 (a CLEAN start; labels get _psK)")
-    widths = lambda text: [float(w) for w in text.split(",")]  # noqa: E731
-    parser.add_argument("--gains", type=widths, help="--prior gp: widths (log|V|) of gains per baseline, scanned by "
-                        "evidence, e.g. 0.01,0.03,0.1 (labels get _gains)")
-    parser.add_argument("--closure-offsets", type=widths, help="--prior gp: widths (rad) of closure offsets per "
-                        "triangle, scanned by evidence (labels get _cloff)")
-    parser.add_argument("--error-scales", action="store_true",
-                        help="--prior gp: refit with per-observable error scales (labels get _errscale)")
+    parser.add_argument("--systematics", choices=tuple(SYSTEMATICS), default="none",
+                        help="calibration nuisances and error scales: per-observable error scales (block_scales, "
+                             "--prior gp), gains per baseline, closure offsets per triangle; widths by evidence with "
+                             "--prior gp, the scan's median otherwise (labels get _bscale, _gain_bscale, _gain_cloff)")
     parser.add_argument("--clean-scales", default="0",
                         help="CLEAN component widths in beam minor axes, comma-separated (multi-scale CLEAN, e.g. 0,1,2; "
                              "labels get _cleanms); only with --prior clean")
@@ -1968,12 +2031,13 @@ def main():
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     star = None if args.star is None else args.star == "on"
-    if args.prior != "gp" and args.settings is None and (args.gains or args.closure_offsets or args.error_scales):
-        parser.error("--gains, --closure-offsets and --error-scales need --prior gp")
+    if args.systematics != "none" and args.settings is None and (
+            args.prior in ("gp2", "clean") or "block_scales" in args.systematics and args.prior != "gp"):
+        parser.error("--systematics needs --prior gp or mem (block_scales: gp only)")
     if args.settings is not None:
         run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
                settings=json.loads(args.settings), label=args.label, informed=args.informed, points=args.points,
-               gains=args.gains, closure=args.closure_offsets, errscale=args.error_scales)
+               systematics=args.systematics)
         return
     if args.member is not None:
         run_gp(args.task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.smoke,
@@ -1983,15 +2047,15 @@ def main():
     scales = tuple(float(x) for x in args.clean_scales.split(","))
     common = dict(label=args.label, field=args.field, informed=args.informed)
     if args.prior == "gp":
-        run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, points=args.points, gains=args.gains,
-               closure=args.closure_offsets, errscale=args.error_scales, **common)
+        run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, points=args.points,
+               systematics=args.systematics, **common)
     elif args.prior == "gp2":
         run_gp2(args.task, *paths, args.smoke, args.halo, star, args.init, **common)
     elif args.prior == "clean":
         run_clean(args.task, *paths, args.smoke, args.halo, star, clean_scales=scales, **common)
     else:
         run(args.task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, points=args.points,
-            prune_blobs=args.prune, **common)
+            prune_blobs=args.prune, systematics=args.systematics, **common)
 
 
 if __name__ == "__main__":
