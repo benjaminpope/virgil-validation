@@ -126,3 +126,25 @@ def test_rescale_applies_scales_to_each_dataset():
 
     assert ci.rescale(D(), {"vis": 2.0}) == ("scaled", {"vis": 2.0})
     assert ci.rescale([D(), D()], {"vis": 2.0}) == [("scaled", {"vis": 2.0})] * 2
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_scene_options_map_parts_to_setup():
+    o = ci.scene_options("ld_ellipse,point,image")
+    assert (o["star"], o["star_model"], o["gauss_halo"], o["tag"]) == (True, "ellipse", False, "_ld_ellipse-point-image")
+    assert ci.scene_options("ud,gauss_halo,image")["star_model"] == "disk"
+    assert ci.scene_options("ud,gauss_halo,image")["gauss_halo"] is True
+    o = ci.scene_options("point,image", hole_mas=2.0)
+    assert (o["star"], o["star_model"], o["hole_mas"]) == (True, "point", 2.0)
+    assert ci.scene_options("image")["star"] is False
+    for bad in ("point", "ud,ld_ellipse,image", "ud,point,image", "disk,image", "point,point,image"):
+        with pytest.raises(ValueError):
+            ci.scene_options(bad)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_hole_support():
+    x = (np.arange(9) - 4.0) * 0.5
+    assert ci.hole_support(x, None) is None
+    m = ci.hole_support(x, 1.0)
+    assert not m[4, 4] and not m[4, 5] and m[4, 7] and m.sum() == 81 - 9

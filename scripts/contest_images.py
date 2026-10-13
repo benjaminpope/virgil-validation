@@ -841,9 +841,39 @@ def select_channels(path, wavel, tmp_dir):
     return str(out)
 
 
+def hole_support(x, hole_mas):
+    """The support of an image on the axis ``x`` (mas) with a hole of radius
+    ``hole_mas`` at the centre (None: no hole, no mask)."""
+    return None if hole_mas is None else np.hypot(x[None, :], x[:, None]) >= hole_mas
+
+
+SCENE_PARTS = ("point", "ud", "ld_ellipse", "gauss_halo", "image")
+
+
+def scene_options(text, hole_mas=None):
+    """--scene's comma list of SCENE_PARTS as setup() options. The central
+    source is "point" (an unresolved star), "ud" (a uniform disk, diameter
+    fitted) or "ld_ellipse" (an elliptical limb-darkened disk, fit_primary;
+    its companion search covers a "point" beside it); "gauss_halo" adds a
+    circular Gaussian (FWHM and flux fitted); "image" is required: the pixel
+    image every arm fits. ``hole_mas``: --hole."""
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    bad = [p for p in parts if p not in SCENE_PARTS]
+    if bad or len(set(parts)) != len(parts):
+        raise ValueError(f"--scene takes distinct parts of {SCENE_PARTS}, not {parts}")
+    if "image" not in parts:
+        raise ValueError("--scene needs an image")
+    if "ud" in parts and ("ld_ellipse" in parts or "point" in parts):
+        raise ValueError("--scene: ud cannot be combined with ld_ellipse or point")
+    model = "ellipse" if "ld_ellipse" in parts else "disk" if "ud" in parts else "point" if "point" in parts else None
+    return dict(star=model is not None, star_model=model or "point", gauss_halo="gauss_halo" in parts,
+                hole_mas=hole_mas, tag="_" + "-".join(parts))
+
+
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
           oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0,
-          n_starts=N_STARTS, guard=True, field_override=None, clean_scales=(0.0,)):
+          n_starts=N_STARTS, guard=True, field_override=None, clean_scales=(0.0,), gauss_halo=False,
+          hole_mas=None, tag=None):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data. With a star, ``star_model`` is "point" (unresolved) or
@@ -857,11 +887,17 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     dropped and the setup redone without it; ``star_rejected`` says why
     (C2g). ``field_override`` (mas) fixes the field instead of the task's
     (round 2, --field: only where pre-submission information gives one).
-    ``clean_scales`` (in beam minor axes; (0,) is point components) makes CLEAN multi-scale."""
+    ``clean_scales`` (in beam minor axes; (0,) is point components) makes CLEAN multi-scale.
+    ``gauss_halo`` adds a circular Gaussian beside the image (``ghalo``, FWHM
+    and flux fitted); ``hole_mas`` is the radius of the hole in the image's
+    support (default with a star: half the beam's minor axis; the image's
+    flux is then a fitted parameter, relative to the star's); ``tag`` is the
+    label suffix of an explicit scene (--scene), in place of _star/_nostar."""
     spec = spec_of(task)
     args = dict(halo=halo, grow=grow, init=init, clean_iters=clean_iters, oversample=oversample,
                 clean_gain=clean_gain, sparco=sparco, mean_blur=mean_blur, n_starts=n_starts,
-                field_override=field_override, clean_scales=clean_scales)
+                field_override=field_override, clean_scales=clean_scales, gauss_halo=gauss_halo,
+                hole_mas=hole_mas, tag=tag)
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
     # (labels get _star / _nostar).
@@ -869,13 +905,15 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     if star is None:
         star = spec.get("star", False)
     else:
-        label += "_star" if star else "_nostar"
+        label += tag or ("_star" if star else "_nostar")
     field, prior_spec = spec.get("field"), spec.get("prior")
     field_source = spec.get("field_source")
     if field_override is not None:
         field, field_source = float(field_override), f"--field {float(field_override):g} mas"
     if halo:
         label += "_halo"
+    if hole_mas is not None:
+        label += f"_hole{hole_mas:g}"
     if init == "clean":
         label += "_clean"
     clean_scales = tuple(float(f) for f in clean_scales)
@@ -890,8 +928,10 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     resolution = beam(data)
 
     kwargs = {"star": star, "oversample": oversample}
-    if star:
-        kwargs["hole_mas"] = 0.5 * resolution.minor_mas
+    if hole_mas is None and star:
+        hole_mas = 0.5 * resolution.minor_mas
+    if hole_mas is not None:
+        kwargs["hole_mas"] = hole_mas
     start = starting_image(data, **kwargs)
     star_priors = {}
     star_fit = {"converged": True}  # the parametric star fit's record, for the guard
@@ -965,7 +1005,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             log_start = jnp.zeros((n, n))
         # The hole under the star (starting_image's hole_mas) is kept on the
         # new grid: without it the star and the envelope next to it trade flux.
-        hole = np.hypot(x[None, :], x[:, None]) >= kwargs["hole_mas"] if star else None
+        hole = hole_support(x, hole_mas)
         new = vm.Image(log_start, pixel, flux=img0.flux, support=None if hole is None else jnp.asarray(hole))
         start = vm.System(star=start.star, env=new) if star else new
         img0 = new
@@ -1068,17 +1108,25 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         if not star_fit["converged"]:
             return without_star("not_converged", "the parametric star fit")
 
-    path = "env" if (star or halo) else None
+    extras, extra_priors = {}, {}
+    if gauss_halo:
+        extra_priors = {"ghalo.fwhm": dist.LogUniform(resolution.minor_mas, fov),
+                        "ghalo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)}
+        extras["ghalo"] = vm.EllipticalGaussian(inside(extra_priors["ghalo.fwhm"], 0.3 * fov), 1.0, 0.0,
+                                                flux=inside(extra_priors["ghalo.flux"], 0.1))
+        start = vm.System(**(start.components if isinstance(start, vm.System) else {"env": start}), **extras)
+    path = "env" if (star or halo or gauss_halo) else None
     # With a star, the image flux is relative to it, with the fixed bounds
     # [FLUX_FLOOR, FLUX_CAP] (C2g). Jeffreys priors (Ben, 2026-10-05): fluxes
     # are scale parameters, so log-uniform, with stated bounds.
     priors = image_priors(start) | (flux_priors(FLUX_CAP, sparco) if star else {}) | star_priors
     if halo:
         priors |= {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)}
+    priors |= extra_priors
     others = () if star else (Centroid(0.1 * resolution.minor_mas, path=path),)
     return dict(label=label, files=files, star=star, halo=halo, data=data, npts=npts,
                 star_model=star_model if star else "none", star_priors=star_priors, sparco=bool(sparco and star),
-                wavel0=wavel0,
+                wavel0=wavel0, extras=extras, extra_priors=extra_priors,
                 resolution=resolution, start=start, img0=img0, npix=npix, pixel=pixel, fov=fov,
                 path=path, priors=priors, others=others, q=q, adaptive=field is None,
                 field_source=field_source or "data" + (f" x{grow:g}" if grow > 1 else ""),
@@ -1111,14 +1159,15 @@ def residual_diagnostics(model, data):
     return out
 
 
-def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=False, field=None, clean_scales=(0.0,)):
+def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=False, field=None, clean_scales=(0.0,),
+                **scene):
     """setup(), with a field chosen from the data grown (x1.5) while doing so
     lowers χ² by more than 10% in a probe fit at a middle weight: what a
     contestant would try. (Flux at the image edge is not a usable trigger:
     the support and centroid prior keep it off the edge even when the field
     is too small.) Returns the setup and the growth record."""
     opts = dict(star=star, init=init, clean_iters=50 if smoke else 3000, n_starts=N_STARTS_SMOKE if smoke else N_STARTS,
-                field_override=field, clean_scales=clean_scales)
+                field_override=field, clean_scales=clean_scales, **scene)
     s = setup(task, data_dir, halo, **opts)
     growth = []
     if s["adaptive"]:
@@ -1192,7 +1241,8 @@ def weight_report(curve, data, reg, path, index):
 
 
 def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", settings=None, label=None,
-        reg="mem", field=None, informed=False, points=0, prune_blobs=False, systematics="none"):
+        reg="mem", field=None, informed=False, points=0, prune_blobs=False, systematics="none",
+        scene=None):
     """MaxEnt L-curve. With ``settings`` (scripts/contest_bench.py's "mem"
     arm) the field, pixels and CLEAN start follow those settings, as for a GP
     member, and the default model of the entropy is the CLEAN starting image
@@ -1203,14 +1253,14 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     adds up to that many point sources (add_point_sources; a CLEAN start).
     ``systematics`` (SYSTEMATICS; no block scales here, which need a Gaussian
     field) adds gains / closure offsets at the median width of the scan: this
-    path has no evidence to choose it."""
+    path has no evidence to choose it. ``scene``: more setup() options (scene_options)."""
     t0 = time.time()
     if "block_scales" in SYSTEMATICS[systematics]:
         raise ValueError("block_scales are estimated from a Gaussian-field fit: use --prior gp")
     if reg != "mem":
         init = "clean"  # pixel-basis penalties stall from flat or Gaussian starts (docs/contest_convergence_diagnosis.md)
     if settings is None:
-        s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field)
+        s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field, **(scene or {}))
         if points:
             s = add_point_sources(s, points)
     else:
@@ -1521,13 +1571,13 @@ def gp_fit(s, smoke=False):
         parts = {"star": s["start"].star, "env": env} if star else {"env": env}
         if halo:
             parts["halo"] = vm.Resolved(1.0)
-        return vm.System(**parts, **s.get("points", {}))
+        return vm.System(**parts, **s.get("points", {}), **s.get("extras", {}))
 
     others = () if star else (Centroid(0.1 * res.minor_mas, path="env"),)
     # Every fitted parameter other than the image's latents (the evidence's
     # Occam factor integrates over these: log_evidence_full).
     extra = ((flux_priors(flux_cap, s["sparco"]) | s["star_priors"]) if star else {}) | (
-        {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {}) | s.get("point_priors", {})
+        {"halo.flux": dist.LogUniform(FLUX_FLOOR, 1000.0)} if halo else {}) | s.get("point_priors", {}) | s.get("extra_priors", {})
     variants = {"iso": (template, 0.0, lambda length: length)}
     if ell[1] < 0.9:  # elongated enough for an anisotropic field to differ
         r = ell[1]
@@ -1670,7 +1720,7 @@ def star_evidence(s, g, smoke=False):
 
 
 def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
-           settings=None, label=None, field=None, informed=False, points=0, systematics="none"):
+           settings=None, label=None, field=None, informed=False, points=0, systematics="none", scene=None):
     """GP fits chosen by evidence. With ``member`` (or ``settings``, a fixed
     configuration as used by scripts/contest_bench.py) a CLEAN-started
     ensemble member; otherwise a grown-field run. ``label`` names the
@@ -1684,7 +1734,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
     widths chosen by the evidence scan (systematics_scan)."""
     t0 = time.time()
     if member is None and settings is None:
-        s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field)
+        s, growth = grown_setup(task, data_dir, halo, star, "clean" if points else init, smoke, field, **(scene or {}))
         label = label or s["label"] + "_gp" + suffix(points, systematics)
     else:
         s, settings = member_setup(task, data_dir, member, smoke, settings)
@@ -1829,14 +1879,14 @@ def log_evidence_two(result, data, paths=("env", "ext")):
 
 
 def run_gp2(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", label=None, field=None,
-            informed=False):
+            informed=False, scene=None):
     """Two-scale GP: compact (``env``, mean the starting image) plus extended
     (``ext``, flat mean, its flux relative to the compact one log-uniform)
     fields, ℓ for each and a common σ chosen by log_evidence_two."""
     import itertools
 
     t0 = time.time()
-    s, growth = grown_setup(task, data_dir, halo, star, init, smoke, field)
+    s, growth = grown_setup(task, data_dir, halo, star, init, smoke, field, **(scene or {}))
     label = label or s["label"] + "_gp2"
     data, star, res, n, pixel = s["data"], s["star"], s["resolution"], s["npix"], s["pixel"]
     fov = n * pixel
@@ -1947,12 +1997,12 @@ def prune(result, priors, data, reg_, others, path, n, fov, resolution, options)
 
 
 def run_clean(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="clean", label=None, field=None,
-              informed=False, clean_scales=(0.0,)):
+              informed=False, clean_scales=(0.0,), scene=None):
     """CLEAN's own result (round 2, clean-final): the restored image and the
     components of setup's CLEAN run, with χ²/N of the components' model on
     the quoted errors. CLEAN stops at χ²/N = 1, so no weight is chosen."""
     t0 = time.time()
-    s, growth = grown_setup(task, data_dir, halo, star, "clean", smoke, field, clean_scales)
+    s, growth = grown_setup(task, data_dir, halo, star, "clean", smoke, field, clean_scales, **(scene or {}))
     cleaned, data, res = s["cleaned"], s["data"], s["resolution"]
     multiscale = tuple(float(f) for f in clean_scales) != (0.0,)
     label = label or spec_of(task)["label"] + "_cleanfinal" + ("_cleanms" if multiscale else "")
@@ -2007,6 +2057,11 @@ def main():
                         help="--prior mem: remove isolated compact blobs outside the main source and refit (_prune)")
     parser.add_argument("--regulariser", choices=tuple(REGULARISERS), default="mem",
                         help="--prior mem's penalty, weight by the discrepancy principle (labels get _<name> unless mem)")
+    parser.add_argument("--scene", help="comma list of parts of the scene (point, ud, ld_ellipse, gauss_halo, image; "
+                        "image is required): a central source, a Gaussian halo with fitted FWHM and flux, and the pixel image "
+                        "(labels get _<parts>); in place of --star")
+    parser.add_argument("--hole", type=float, help="radius (mas) of the hole in the image's support (default with a star: "
+                        "half the beam's minor axis); the image's flux is then fitted relative to the star's")
     parser.add_argument("--field", type=float, help="field of view (mas), only where pre-submission information gives one")
     parser.add_argument("--points", type=int, default=0,
                         help="up to K point sources from CLEAN's compact clusters outside the main source, each kept "
@@ -2031,6 +2086,19 @@ def main():
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     star = None if args.star is None else args.star == "on"
+    scene = {} if args.hole is None else {"hole_mas": args.hole}
+    if args.scene:
+        if args.star or args.settings is not None or args.member is not None:
+            parser.error("--scene replaces --star, and --settings / --member fix their own scene")
+        try:
+            scene = scene_options(args.scene, args.hole)
+        except ValueError as e:
+            parser.error(str(e))
+        star = scene.pop("star")
+        if args.prior in ("gp2", "clean") and scene["gauss_halo"]:
+            parser.error("gauss_halo needs --prior gp or mem")
+    if args.hole is not None and (args.settings is not None or args.member is not None):
+        parser.error("--hole needs a grown-field run (not --settings / --member)")
     if args.systematics != "none" and args.settings is None and (
             args.prior in ("gp2", "clean") or "block_scales" in args.systematics and args.prior != "gp"):
         parser.error("--systematics needs --prior gp or mem (block_scales: gp only)")
@@ -2048,14 +2116,14 @@ def main():
     common = dict(label=args.label, field=args.field, informed=args.informed)
     if args.prior == "gp":
         run_gp(args.task, *paths, args.smoke, args.halo, star, args.init, points=args.points,
-               systematics=args.systematics, **common)
+               systematics=args.systematics, scene=scene, **common)
     elif args.prior == "gp2":
-        run_gp2(args.task, *paths, args.smoke, args.halo, star, args.init, **common)
+        run_gp2(args.task, *paths, args.smoke, args.halo, star, args.init, scene=scene, **common)
     elif args.prior == "clean":
-        run_clean(args.task, *paths, args.smoke, args.halo, star, clean_scales=scales, **common)
+        run_clean(args.task, *paths, args.smoke, args.halo, star, clean_scales=scales, scene=scene, **common)
     else:
         run(args.task, *paths, args.smoke, args.halo, star, args.init, reg=args.regulariser, points=args.points,
-            prune_blobs=args.prune, systematics=args.systematics, **common)
+            prune_blobs=args.prune, systematics=args.systematics, scene=scene, **common)
 
 
 if __name__ == "__main__":
