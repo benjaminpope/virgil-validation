@@ -103,8 +103,9 @@ TILES = [
          kind="positions", pub="iota",
          tagline="The same star from the CHARA 2023 imaging-workshop files",
          about="The workshop data set holds the 2018-10-22 night of ι Peg, byte-identical to the files of the ι Peg tile. "
-               "This tile checks that the workshop copy gives the same position; one night is not enough to fit an orbit, "
-               "so the published orbit is drawn for context only.",
+               "This tile compares virgil's position on the workshop copy with the paper's. The files are identical to the "
+               "ι Peg tile's, so the two tiles should agree exactly; one night is not enough to fit an orbit, so the "
+               "published orbit is drawn for context only.",
          notes=[dict(kind="data", title="Unpublished data",
                      text="An L2 (not yet published) collection from the CHARA 2023 imaging workshop, shown here with "
                           "clearance for display (data PI Gail Schaefer).")]),
@@ -708,10 +709,11 @@ give it the archival data behind a published binary orbit, does it get the autho
 open it for the orbit on the sky, the separation and position angle through the orbit, and a table comparing every \
 fitted quantity with the paper.
 
-**Why this tests virgil.** The data are the authors' own, so any difference comes from the analysis: the model, the \
-likelihood, the optimizer, or a convention such as which star an angle belongs to. Agreement from independent code on \
-real data is evidence that virgil's orbit and likelihood machinery works; disagreement is a lead to chase, and the \
-notes under each target say what is known. Nothing is tuned towards the published numbers. The data come from the JMMC \
+**Why this tests virgil.** The data are the authors' own, so a difference comes from the analysis or from calibration \
+choices the archive does not record: the model, the likelihood, the optimizer, a convention such as which star an angle \
+belongs to, or the calibrators used. Agreement with the authors' independent pipelines on their own data is evidence \
+that virgil's orbit and likelihood machinery works; disagreement is a lead to chase, and the notes under each target \
+say what is known. Nothing is tuned towards the published numbers. The data come from the JMMC \
 OiDB database ([attribution below](#where-the-data-come-from)).
 """
 

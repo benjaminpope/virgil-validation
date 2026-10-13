@@ -96,11 +96,36 @@ def test_workshop_collection_splits_into_two_tiles(og, data):
     assert [e["label"] for e in iota["epochs"]] != [e["label"] for e in sigma["epochs"]]
 
 
+def _summaries_copy(tmp_path):
+    for f in (FIX / "summaries").glob("*.json"):
+        (tmp_path / f.name).write_text(f.read_text())
+    return tmp_path
+
+
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
-def test_known_alias_nights_are_flagged_not_used(data):
-    t = _target(data, "gl229b")
-    flagged = {e["label"] for e in t["epochs"] if e.get("alias")}
-    assert flagged <= {"2024-02-28", "2024-03-29"}
+def test_alias_nights_are_flagged_by_label_and_by_the_summary_field(og, tmp_path):
+    """The known Gl 229 alias nights are flagged by label; a night the summary itself marks ``alias`` is too."""
+    path = _summaries_copy(tmp_path) / f"{GL229}.json"
+    summary = json.loads(path.read_text())
+    pos = summary["orbit"]["positions"]
+    pos[0]["name"], pos[1]["name"], pos[2]["alias"] = "2024-02-28", "2024-03-01", True
+    path.write_text(json.dumps(summary))
+    flagged = {e["label"] for e in _target(og.build(tmp_path), "gl229b")["epochs"] if e.get("alias")}
+    assert flagged == {"2024-02-28", pos[2]["name"]}  # the ordinary night (2024-03-01) is not flagged
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_workshop_badge_is_scored_by_the_comparison_rule(og, data, tmp_path):
+    """The fixture sits on the published sigma Ori position: it agrees. Moving it by many sigma is a tension."""
+    assert _target(data, "sigma-ori")["status"] == "agrees"
+    path = _summaries_copy(tmp_path) / f"{og.WORKSHOP}.json"
+    summary = json.loads(path.read_text())
+    for e in summary["targets"]["sig Ori"]["epochs"]:
+        e["values"]["rho_mas"][0] += 1.0  # tens of the published sigmas, far beyond the epoch rule's limit
+    path.write_text(json.dumps(summary))
+    t = _target(og.build(tmp_path), "sigma-ori")
+    assert t["status"] == "tension" and any(r["status"] == "FAIL" for r in t["table"])
+    assert _target(og.build(tmp_path), "iota-peg-workshop")["status"] == "agrees"  # the other tile is untouched
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
