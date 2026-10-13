@@ -162,18 +162,65 @@ def test_joint_spec_merges_files_in_order():
         ci.joint_spec(["2004_data1", "2008_agn_J"])  # field None against 30 mas
 
 
-@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
-def test_joint_arm_in_the_plan_names_known_tasks():
+def _plan_module():
     from importlib import util
 
     spec = util.spec_from_file_location("contest_fit_plan", ROOT / "scripts" / "contest_fit_plan.py")
     fp = util.module_from_spec(spec)
     spec.loader.exec_module(fp)
-    arms = [a for t, a in fp.round2_arms(fp.load_plan()) if "--joint" in a.get("cli", [])]
-    assert arms
-    for a in arms:
-        for x in a["cli"][a["cli"].index("--joint") + 1].split(","):
-            ci.task_index(x)
+    return fp
+
+
+def _round2_lines():
+    fp = _plan_module()
+    plan = fp.load_plan()
+    indices = {t["label"]: i for i, t in enumerate(ci.TASKS)}
+    assert fp.check_briefs(plan, indices) == []
+    notes = []
+    return fp.oz_lines_round2(plan, indices, notes), notes
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_every_round2_line_passes_contest_images_validation():
+    """Each generated line parses with contest_images' own parser and passes validate (no data read, no fit)."""
+    import shlex
+
+    lines, _ = _round2_lines()
+    assert len(lines) > 50
+    parser = ci.build_parser()
+    for line in lines:
+        label, cmd = line.split("\t")
+        argv = shlex.split(cmd.replace('"$VV_DATA"', "d").replace('"$OUT"', "o"))
+        assert argv[0] == "scripts/contest_images.py"
+        args = parser.parse_args(argv[1:])
+        try:
+            ci.validate(parser, args)
+        except SystemExit:  # parser.error
+            pytest.fail(f"{label}: contest_images rejects {cmd}")
+        assert args.label == label and args.informed
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_round2_labels_are_unique_and_round2():
+    lines, _ = _round2_lines()
+    labels = [line.split("\t")[0] for line in lines]
+    assert len(set(labels)) == len(labels) and all(x.endswith("_r2") for x in labels)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_incompatible_combinations_are_dropped_with_a_note():
+    fp = _plan_module()
+    entry = dict(year="1", name="x", task="2004_data1", brief=dict(
+        scene=[["ud", "point", "image"], ["gauss_halo", "image"], ["gauss_halo"]], prior=["gp2", "mem"],
+        systematics="block_scales", bands="grey", sweep={"off": "test"}))
+    plan = dict(datasets=[entry], groups={})
+    lines, notes = fp.expand_brief(plan, entry, {"2004_data1": 0})
+    argvs = [" ".join(a) for _, a in lines]
+    assert not any("ud,point" in a for a in argvs) and not any("--scene gauss_halo " in a for a in argvs)
+    assert any("--prior gp2" in a and "gauss_halo" not in a for a in argvs)
+    assert not any("--systematics" in a for a in argvs)
+    kinds = {k for k, _ in notes}
+    assert {"dropped", "needs"} <= kinds
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")

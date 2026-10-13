@@ -2108,14 +2108,8 @@ def run_sweep(task, data_dir, out_dir, n_groups, smoke=False, star=None, familie
     fig.savefig(out_dir / f"{label}.png", dpi=100)
 
 
-def main():
-    # A run that stalls prints where it is: every 30 minutes, every thread's
-    # traceback goes to stderr (campaign-2 smoke tasks 75, 77 and 79 hung for
-    # 45 min without output, with low CPU and GPU use).
-    import faulthandler
-    import sys
-
-    faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
+def build_parser():
+    """The command line's parser (scripts/contest_fit_plan.py's tests parse the round-2 lines with it)."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--task", type=int)
     parser.add_argument("--joint", type=lambda x: x.split(","),
@@ -2165,12 +2159,13 @@ def main():
     parser.add_argument("--settings", help="a fixed ensemble configuration (JSON, keys as member_settings), e.g. from contests/fit_plan.yml")
     parser.add_argument("--label", help="output label (default: the task's, with suffixes)")
     parser.add_argument("--smoke", action="store_true", help="three weights, 50 steps: check that it runs")
-    args = parser.parse_args()
-    if args.list:
-        for i, spec in enumerate(TASKS):
-            print(f"{i:2d}  {spec['label']:20s} field={spec.get('field')}  prior={spec.get('prior')}  "
-                  f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
-        return
+    return parser
+
+
+def validate(parser, args):
+    """Check the combination of options (``parser.error`` on a bad one) and
+    resolve the scene: (task, star, scene), ``args.init`` set for --sparco.
+    No data are read."""
     star = None if args.star is None else args.star == "on"
     task = args.task
     if args.joint:
@@ -2214,6 +2209,26 @@ def main():
                 or scene.get("star_model", "point") != "point" or scene.get("gauss_halo")):
             parser.error("--sweep fits virgil's ensemble scene: at most --scene point,image (or --star), "
                          "no --systematics, --points, --sparco, --hole or --prune")
+    return task, star, scene
+
+
+def main():
+    # A run that stalls prints where it is: every 30 minutes, every thread's
+    # traceback goes to stderr (campaign-2 smoke tasks 75, 77 and 79 hung for
+    # 45 min without output, with low CPU and GPU use).
+    import faulthandler
+    import sys
+
+    faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.list:
+        for i, spec in enumerate(TASKS):
+            print(f"{i:2d}  {spec['label']:20s} field={spec.get('field')}  prior={spec.get('prior')}  "
+                  f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
+        return
+    task, star, scene = validate(parser, args)
+    if args.sweep:
         run_sweep(task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.sweep, args.smoke,
                   star, args.sweep_families, args.label, args.informed)
         return
