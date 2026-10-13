@@ -18,6 +18,7 @@ import pytest
 from astropy.io import fits
 
 from crosscheck import orbits, simulate, sky
+from evidence.plugin import record
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.x64
@@ -207,6 +208,89 @@ def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     # the NUTS path runs end to end (a smoke test: 20 draws are not a posterior)
     assert set(out["nuts"]["elements"]) >= {"period_day", "a_mas", "ecc"}
     assert np.isfinite(out["nuts"]["elements"]["a_mas"]["median"])
+
+
+AMPS = [0.30, 0.60, 0.90, 0.50, 0.20]  # the injected per-night contrast loss: V^2 -> A V^2
+
+
+def _orbit_nights(of, tmp_path, amps, *, per_night_only=False, nights=(60000.2, 60003.2, 60009.2, 60015.2, 60030.2)):
+    """The simulated Kepler orbit of ORBIT, five files an hour apart on each night, night k's V^2 scaled by amps[k]
+    (a contrast loss, the same on every baseline; closure phases do not see it)."""
+    per_night, per_file = {}, {}
+    for k, m in enumerate(nights):
+        paths = []
+        for j, h in enumerate((-2.0, -1.0, 0.0, 1.0, 2.0)):
+            t = m + j / 24.0
+            dra, ddec = (float(x) for x in np.ravel(orbits.position(
+                t, ORBIT["period"], ORBIT["t_peri"], ORBIT["ecc"], ORBIT["inc"], ORBIT["omega"], ORBIT["Omega"],
+                ORBIT["a"])))
+            binary = _binary(dra, ddec, ORBIT["flux"])
+            vis = lambda u, v, w, binary=binary, a=amps[k]: np.sqrt(a) * binary(u, v, w)  # noqa: E731
+            paths.append(_observe(tmp_path / f"n{k}_{j}.fits", vis, hours=(h,), sigma_cp=0.3, sigma_v2=0.005,
+                                  seed=10 + 5 * k + j, mjd0=t))
+        per_night[f"n{k}"] = of.load(paths)
+        per_file[f"n{k}"] = {q.name: of.load([q]) for q in paths}
+    return per_night, per_file
+
+
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"], kind="check")
+def test_vis_amp_of_recovers_a_contrast_loss(of, tmp_path):
+    """One night of a point binary with V^2 scaled by 0.4: the amplitude of the true model is 0.4 (to the
+    noise), and 1 without the loss. A model with no companion needs a different amplitude (the estimator
+    depends on the model); closure-phase-only data give None."""
+    truth = _binary(3.0, -4.0, 0.3)
+    scene = of.point_binary
+    for loss in (1.0, 0.4):
+        path = _observe(tmp_path / f"a{loss}.fits", lambda u, v, w, l=loss: np.sqrt(l) * truth(u, v, w),
+                        sigma_v2=0.005, seed=3)
+        data = of.load([path])
+        a = of.vis_amp_of(scene(dra=3.0, ddec=-4.0, flux=0.3), data)
+        assert abs(a - loss) < 0.02, (loss, a)
+    assert of.vis_amp_of(scene(dra=3.0, ddec=-4.0, flux=0.3), data.select(observables="phi")) is None
+    record("vis_amp_recovered", a)
+
+
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.fitting.fit", "virgil.likelihood.numpyro_model",
+                       roots=["mathematics", "standards"])
+def test_published_start_joins_the_modes_and_refits_to_the_orbit(of, tmp_path):
+    """``published`` (a paper's orbit, here ORBIT displaced by 0.03 d in P, 10 % in a and 3 deg in i) is one more
+    start: tagged ``published`` in the modes and reported in ``published_start``, and refitted to the
+    simulated truth. The blind search runs as always."""
+    per_night, per_file = _orbit_nights(of, tmp_path, [1.0] * 5)
+    priors = of.orbit_priors((11.5, 12.8), (2.0, 20.0), (0.05, 1.0))
+    grid = of._grid(9.0, 0.2, np.linspace(0.2, 1.0, 5))
+    pub = dict(period=ORBIT["period"] + 0.03, t_peri=ORBIT["t_peri"] + 0.3, ecc=ORBIT["ecc"], inc=ORBIT["inc"] + 3.0,
+               omega=ORBIT["omega"], Omega=ORBIT["Omega"], a=ORBIT["a"] * 1.1, flux=ORBIT["flux"])
+    out = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
+                       periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
+                       n_refine=1, min_gap=3.0, published=pub)
+    ps = out["published_start"]
+    assert abs(ps["elements"]["period_day"] - ORBIT["period"]) < 0.01 and abs(ps["elements"]["a_mas"] - ORBIT["a"]) < 0.2
+    assert "published" in {m["band"] for m in out["modes"]}
+    assert out["loss"] <= ps["loss"] + 1e-6  # the lowest loss over every start is the answer
+    assert abs(out["map"]["period_day"] - ORBIT["period"]) < 0.01
+    assert of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
+                        periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
+                        n_refine=1, min_gap=3.0)["published_start"] is None
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["mathematics"], kind="check")
+def test_vis_amp_variant_recovers_the_orbit_and_the_per_night_losses(of, tmp_path):
+    """The V^2 + closure-phase orbit with a free amplitude on each night (``virgil.aliases``): V^2 scaled by
+    AMPS night by night, a warm start displaced from the truth. The orbit and every night's loss
+    come back."""
+    pytest.importorskip("virgil.aliases")
+    per_night, _ = _orbit_nights(of, tmp_path, AMPS)
+    pub = dict(period=ORBIT["period"] + 0.03, t_peri=ORBIT["t_peri"] + 0.3, ecc=ORBIT["ecc"], inc=ORBIT["inc"] + 3.0,
+               omega=ORBIT["omega"], Omega=ORBIT["Omega"], a=ORBIT["a"] * 1.1, flux=ORBIT["flux"])
+    out = of.fit_orbit_vis_amp(per_night, (11.5, 12.8), a_range=(2.0, 20.0), flux_range=(0.05, 1.0), init=pub,
+                               n_candidates=20, n_refine=1)
+    el = out["elements"]
+    assert abs(el["period_day"] - ORBIT["period"]) < 0.03 and abs(el["a_mas"] - ORBIT["a"]) < 0.3
+    assert abs(el["ecc"] - ORBIT["ecc"]) < 0.06 and abs(el["inc_deg"] - ORBIT["inc"]) < 4.0
+    got = [e["vis_amp"] for e in out["epochs"]]
+    assert np.allclose(got, AMPS, atol=0.05), (got, AMPS)
+    record("vis_amp_max_error", float(np.max(np.abs(np.array(got) - AMPS))))
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
