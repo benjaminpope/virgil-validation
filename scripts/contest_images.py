@@ -2004,6 +2004,16 @@ def log_evidence_two(result, data, paths=("env", "ext")):
     return float(-0.5 * float(r @ r) - float(_log_norm(model, data)) - 0.5 * z2 - 0.5 * np.sum(np.log1p(singular**2)))
 
 
+def two_scale_image(env, ext, f_env, f_ext):
+    """The sum of the compact and extended fields as one unit-sum image.
+    ``Image.render`` is unit-sum whatever the flux, so the components are
+    weighted by their fitted fluxes (``image_env`` and ``image_ext`` stay
+    unit-sum each). Summing them unweighted gave an image of total 2 whose
+    extended part counted as much as the compact one (round 2)."""
+    total = f_env + f_ext
+    return (f_env * np.asarray(env) + f_ext * np.asarray(ext)) / total
+
+
 def run_gp2(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", label=None, field=None,
             informed=False, scene=None):
     """Two-scale GP: compact (``env``, mean the starting image) plus extended
@@ -2048,9 +2058,11 @@ def run_gp2(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="m
     m = best.model
     raw = chi2_red(m, data)
     images = {k: np.asarray(getattr(m, k).render(n, fov)) for k in ("env", "ext")}
+    f_env, f_ext = flux_value(m.env.flux), flux_value(m.ext.flux)
+    combined = two_scale_image(images["env"], images["ext"], f_env, f_ext)
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_dir / f"{label}.npz", image_env=images["env"], image_ext=images["ext"],
-                        image=images["env"] + images["ext"], pixel_scale_mas=pixel, npix=n, raw_chi2_red=raw,
+                        image=combined, ext_fraction=f_ext / (f_env + f_ext), pixel_scale_mas=pixel, npix=n, raw_chi2_red=raw,
                         log_z=json.dumps({f"{a:.4g}/{b:.4g}/{c:g}": v for (a, b, c), (v, _) in grid.items()}),
                         best=np.array(key), ext_flux=flux_value(m.ext.flux), informed=bool(informed))
     text = (f"task={task} label={label} star={star} halo={halo} init={init} field_source={s['field_source']} "
@@ -2066,8 +2078,8 @@ def run_gp2(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="m
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
     for ax, (name, model_) in zip(axes, (("compact", m.env), ("extended", m.ext))):
         plot_model(model_, fov_mas=fov, npix=n, ax=ax, beam=res, title=f"{label}: {name}")
-    axes[2].imshow(images["env"] + images["ext"], origin="lower", cmap="inferno")
-    axes[2].set_title(f"sum, χ²/N={raw:.3g}")
+    axes[2].imshow(combined, origin="lower", cmap="inferno")
+    axes[2].set_title(f"flux-weighted sum, χ²/N={raw:.3g}")
     plt.tight_layout()
     fig.savefig(out_dir / f"{label}.png", dpi=100)
 

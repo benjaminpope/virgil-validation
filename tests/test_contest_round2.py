@@ -402,3 +402,13 @@ def test_safe_clean_retries_a_non_finite_refit_at_a_lower_gain(monkeypatch):
     monkeypatch.setattr(ci, "clean", other)
     with pytest.raises(ValueError, match="something else"):
         ci.safe_clean("data")
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_two_scale_image_is_unit_sum_and_flux_weighted():
+    """Image.render is unit-sum per component: the saved gp2 image must weight them by flux, not add them (it summed to 2)."""
+    env, ext = np.zeros((4, 4)), np.zeros((4, 4))
+    env[1, 1], ext[2, 2] = 1.0, 1.0
+    img = ci.two_scale_image(env, ext, 3.0, 1.0)
+    np.testing.assert_allclose(img.sum(), 1.0)
+    np.testing.assert_allclose([img[1, 1], img[2, 2]], [0.75, 0.25])
