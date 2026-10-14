@@ -1,0 +1,408 @@
+{
+ "schema": "trackb-target/1",
+ "slug": "nn_del",
+ "target": "NN Del",
+ "kind": "short_arc",
+ "instrument": "PIONIER",
+ "band": "H",
+ "ra_deg": 311.70510608921995,
+ "dec_deg": 7.552901518490001,
+ "paper": {
+  "authors": "Gallenne, A.; Mérand, A.; Kervella, P.; et al.",
+  "year": 2019,
+  "journal": "A&A 632, A31",
+  "bibcode": "2019A&A...632A..31G",
+  "arxiv": "1910.03393",
+  "doi": "10.1051/0004-6361/201935837"
+ },
+ "conventions": {
+  "omega_shift_deg": 0.0,
+  "text": "Elements from Gallenne et al. 2019, Table 2 (joint fit of PIONIER astrometry and STELLA radial velocities). omega is the primary's (RV model V1 = gamma + K1[cos(omega + nu) + e cos omega]; the V2 sign of K2 is opposite although the typeset formula does not show it). T_peri is printed as 5235.164 d with the note '-2445000': read as JD - 2445000. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). The paper's four positions are reproduced to about 0.003 mas by the standard Campbell formulas with these omega and Omega.",
+  "omega_primary": true,
+  "check": "the four Table 1 positions reproduced to about 0.003 mas"
+ },
+ "orbit": {
+  "P_day": [
+   99.269,
+   0.0009
+  ],
+  "e": [
+   0.5197,
+   0.0004
+  ],
+  "omega_deg": [
+   350.0,
+   0.07
+  ],
+  "Omega_deg": [
+   181.41,
+   0.14
+  ],
+  "i_deg": [
+   89.9,
+   0.11
+  ],
+  "a_mas": [
+   3.508,
+   0.013
+  ],
+  "K1": [
+   36.191,
+   0.023
+  ],
+  "K2": [
+   39.407,
+   0.037
+  ],
+  "parallax_mas": [
+   5.953,
+   0.023
+  ],
+  "M1_Msun": [
+   1.4445,
+   0.0029
+  ],
+  "M2_Msun": [
+   1.3266,
+   0.0021
+  ],
+  "T_peri_jd": [
+   2450235.164,
+   0.07
+  ],
+  "T_peri_mjd": [
+   50234.66399999987,
+   0.07
+  ],
+  "source": "Table 2 (table__orbits), Sect. 4 of the arXiv version (A&A 632, A31). Combined MCMC (emcee) fit of RVs + astrometry. Values are printed as value(uncertainty on last digits) in the paper; here converted to [value, error]. Tp in the paper is HJD-2445000 for the first five systems (see note)."
+ },
+ "diameters_mas": {
+  "primary": [
+   0.115,
+   0.001
+  ],
+  "secondary": [
+   0.084,
+   0.001
+  ],
+  "source": "Sect. 2.1: LD diameters fixed, from Sybilski et al. 2018 (linear radius + Gaia parallax)"
+ },
+ "positions_source": "Table 1 (label table__astrometry; 'Relative astrometric position of the secondary component for all systems'), Sect. 2.1 of the arXiv version (A&A 632, A31, Table 1). Columns: HJD, dAlpha, dDelta (mas; secondary relative to primary, east and north positive), sigma_PA (deg, error-ellipse position angle, from north through east), sigma_maj, sigma_min (mas, 1-sigma semi-axes, with 0.35% wavelength-calibration systematic added in quadrature), f (per cent, H band, secondary/primary), baselines (quadruplet), calibrator numbers (Table A.1). Dates in this file are derived from HJD (UT day) and are approximate; HJD is in each note.",
+ "third_light": "None reported (not known to be triple).",
+ "caveats": "Only 4 PIONIER epochs; orbit relies on dense STELLA RVs (final fit uses STELLA RVs only). Eccentric orbit (e=0.52). Fitted parallax 4.2 sigma larger than Gaia DR2 (offset-corrected), consistent with Hipparcos.",
+ "epochs": [
+  {
+   "date": "2017-07-20",
+   "mjd": 57954.258,
+   "dra_mas": 0.094,
+   "ddec_mas": 3.588,
+   "sigma_major_mas": 0.012,
+   "sigma_minor_mas": 0.016,
+   "sigma_pa_deg": 104.2,
+   "flux_ratio_pct": 59.9,
+   "sigma_flux_ratio_pct": 1.8,
+   "note": "baselines A0-G1-J2-J3; calibrators #1,2,3; date derived from HJD (UT day, approximate); HJD 2457954.758",
+   "sep_mas": 3.5892311154340564,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2017-10-13T01:36:26.278",
+    "ADP.2017-10-13T01:36:26.282"
+   ]
+  },
+  {
+   "date": "2017-08-29",
+   "mjd": 57994.194,
+   "dra_mas": 0.027,
+   "ddec_mas": 1.257,
+   "sigma_major_mas": 0.007,
+   "sigma_minor_mas": 0.006,
+   "sigma_pa_deg": 14.5,
+   "flux_ratio_pct": 57.4,
+   "sigma_flux_ratio_pct": 0.7,
+   "note": "baselines A0-G1-J2-J3; calibrators #1,2,3; date derived from HJD (UT day, approximate); HJD 2457994.694",
+   "sep_mas": 1.257289942694206,
+   "below_lambda_2B": true,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2017-10-13T01:36:26.464",
+    "ADP.2017-10-13T01:36:26.470"
+   ]
+  },
+  {
+   "date": "2017-09-06",
+   "mjd": 58002.182,
+   "dra_mas": 0.061,
+   "ddec_mas": 2.83,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.012,
+   "sigma_pa_deg": 74.4,
+   "flux_ratio_pct": 55.6,
+   "sigma_flux_ratio_pct": 1.5,
+   "note": "baselines A0-G1-J2-J3; calibrators #1,2,3; date derived from HJD (UT day, approximate); HJD 2458002.682",
+   "sep_mas": 2.830657344151708,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2017-10-13T01:36:26.573",
+    "ADP.2017-10-13T01:36:26.577"
+   ]
+  },
+  {
+   "date": "2017-09-20",
+   "mjd": 58016.115,
+   "dra_mas": 0.113,
+   "ddec_mas": 4.637,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.017,
+   "sigma_pa_deg": 78.8,
+   "flux_ratio_pct": 59.0,
+   "sigma_flux_ratio_pct": 0.4,
+   "note": "baselines A0-G1-J2-J3; calibrators #1,2,3; date derived from HJD (UT day, approximate); HJD 2458016.615",
+   "sep_mas": 4.638376655684615,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2017-10-13T01:36:26.658",
+    "ADP.2017-10-13T01:36:26.661"
+   ]
+  }
+ ],
+ "files": [
+  {
+   "dp_id": "ADP.2017-04-04T14:22:19.335",
+   "file": "ADP.2017-04-04T14_22_19.335.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 57605.20072,
+   "t_max_mjd": 57605.2102,
+   "night_mjd": 57604,
+   "programme": "097.D-0025(A)",
+   "release_date": "2017-08-05T05:16:14.963Z",
+   "size_kB": 83.0,
+   "product": "calibrated",
+   "role": "heldout",
+   "epoch_index": null,
+   "after_paper_span": false,
+   "dir": "oifits_extra",
+   "sha256": "f17b5cca1f11d8fac89c39c5c8c50d9882f4b67d8ce0f72c029d3ba9239c8fa6",
+   "bytes": 83520
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.278",
+   "file": "ADP.2017-10-13T01_36_26.278.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 57954.24468,
+   "t_max_mjd": 57954.25061,
+   "night_mjd": 57953,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-07-20T06:11:10.430Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 0,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "5845646394731a97e5bc4e30797b6d627adafd3872b3e670cf8c08b3f5489912",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.282",
+   "file": "ADP.2017-10-13T01_36_26.282.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 57954.26533,
+   "t_max_mjd": 57954.27126,
+   "night_mjd": 57953,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-07-20T06:35:59.500Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 0,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "954f862428cd70ee6a3588b7911f6a1d6734147efc3243404a88296258695ff7",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.464",
+   "file": "ADP.2017-10-13T01_36_26.464.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 57994.18094,
+   "t_max_mjd": 57994.18686,
+   "night_mjd": 57993,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-08-29T04:36:39.800Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 1,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "4122311bee695c02125fa93f624de58f1fe2bc5f78fb18ade801fd88dc1b2a5e",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.470",
+   "file": "ADP.2017-10-13T01_36_26.470.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 57994.2015,
+   "t_max_mjd": 57994.20742,
+   "night_mjd": 57993,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-08-29T05:06:04.437Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 1,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "e96c45b39ec38ce7d6ba6f053011dcfe06e612723c717d9b6157dc46f4223414",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.573",
+   "file": "ADP.2017-10-13T01_36_26.573.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 58002.16636,
+   "t_max_mjd": 58002.17228,
+   "night_mjd": 58001,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-09-06T04:15:54.013Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 2,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "9ade0630f173decc41db4fd2eef0a8562b9b15d32fd306435a30166ca0862cf3",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.577",
+   "file": "ADP.2017-10-13T01_36_26.577.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 58002.18811,
+   "t_max_mjd": 58002.1964,
+   "night_mjd": 58001,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-09-06T04:51:07.660Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 2,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "280a3f769217f73906551230d83a0d41f6ce36cc340224f45abf2843eaa1be6d",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.616",
+   "file": "ADP.2017-10-13T01_36_26.616.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 58004.10883,
+   "t_max_mjd": 58004.12068,
+   "night_mjd": 58003,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-09-08T03:01:10.530Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "heldout",
+   "epoch_index": null,
+   "after_paper_span": false,
+   "dir": "oifits_extra",
+   "sha256": "6ba903e1d40c950ca3f70ac4b0f2dc81762dcb410ed690801fd1eca83aa8b56d",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.622",
+   "file": "ADP.2017-10-13T01_36_26.622.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 58004.1377,
+   "t_max_mjd": 58004.14956,
+   "night_mjd": 58003,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-09-08T03:46:03.597Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "heldout",
+   "epoch_index": null,
+   "after_paper_span": false,
+   "dir": "oifits_extra",
+   "sha256": "e3950be2061ebab42ad9c894a04b8dfab03a5c1d3db5d3fe0cc719e84df8fb51",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.624",
+   "file": "ADP.2017-10-13T01_36_26.624.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 58004.1812,
+   "t_max_mjd": 58004.18713,
+   "night_mjd": 58003,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-09-08T06:12:23.353Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "heldout",
+   "epoch_index": null,
+   "after_paper_span": false,
+   "dir": "oifits_extra",
+   "sha256": "a0616a530e5f263f8fe25844baacf3bd6c164a819a7481498efca7fc51565888",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.658",
+   "file": "ADP.2017-10-13T01_36_26.658.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 58016.10446,
+   "t_max_mjd": 58016.1089,
+   "night_mjd": 58015,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-09-20T02:45:51.557Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 3,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "b960b969c078aad995e696f7db0903058fdad4eae56445cd4e69a4e1159a9b14",
+   "bytes": 86400
+  },
+  {
+   "dp_id": "ADP.2017-10-13T01:36:26.661",
+   "file": "ADP.2017-10-13T01_36_26.661.fits",
+   "instrument": "PIONIER",
+   "t_min_mjd": 58016.12186,
+   "t_max_mjd": 58016.1263,
+   "night_mjd": 58015,
+   "programme": "097.D-0025(A)",
+   "release_date": "2018-09-20T03:10:36.503Z",
+   "size_kB": 86.0,
+   "product": "calibrated",
+   "role": "paper",
+   "epoch_index": 3,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "c5441b3abf89a539aa1f0fc557dcf50c2dedab74bd73dd98b0cd8d6a95e7d7c2",
+   "bytes": 86400
+  }
+ ],
+ "split": {
+  "rule": "* ``paper``: a product whose start time is within 0.03 d of a published epoch (the data behind a published position); * ``paper_night``: another product of a night with a published epoch (same night, so not an independent prediction); * ``heldout``: a product of a night the paper has no epoch for. ``after_paper_span`` marks those later than the last published epoch; the others fall inside the published span or before it (earlier programmes).",
+  "paper_epochs": 4,
+  "paper_epochs_with_phase3": 4,
+  "paper_epochs_below_lambda_2B": 1,
+  "paper_files": 8,
+  "paper_night_files": 0,
+  "heldout_files": 4,
+  "heldout_nights": 2,
+  "heldout_nights_after_paper_span": 0,
+  "last_paper_mjd": 58016.115
+ },
+ "data_root": "~/data/eso_binaries/trackb/nn_del",
+ "provenance": {
+  "eso_query": "ivoa.ObsCore dataproduct_type='visibility', GRAVITY/PIONIER, 18 arcsec cone on the SIMBAD position",
+  "download": "https://dataportal.eso.org/dataPortal/file/<dp_id> (public Phase 3 products, unchanged)",
+  "built": "2026-10-14",
+  "builder": "scripts/build_trackb_targets.py"
+ }
+}

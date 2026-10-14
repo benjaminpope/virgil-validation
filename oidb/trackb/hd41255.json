@@ -1,0 +1,663 @@
+{
+ "schema": "trackb-target/1",
+ "slug": "hd41255",
+ "target": "HD 41255",
+ "kind": "alias_track",
+ "instrument": "GRAVITY",
+ "band": "K",
+ "ra_deg": 90.8247460875,
+ "dec_deg": -16.04316056754,
+ "paper": {
+  "authors": "Gallenne, A.; Mérand, A.; Kervella, P.; et al.",
+  "year": 2023,
+  "journal": "A&A 672, A119",
+  "bibcode": "2023A&A...672A.119G",
+  "arxiv": "2302.12960",
+  "doi": "10.1051/0004-6361/202245712"
+ },
+ "conventions": {
+  "omega_shift_deg": 0.0,
+  "text": "Elements from Gallenne et al. 2023, Table 6 (joint radial-velocity and astrometry fit). omega is the primary's (the RV model is V1 = gamma + K1[cos(omega + nu) + e cos omega], V2 with -K2); T_peri is a full JD (here also as MJD = JD - 2400000.5). Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). Checked against the paper's own tables: the tabulated omega and Omega, used as they stand in the standard Campbell formulas, reproduce the published positions (Table B.1); changing either alone by 180 degrees does not. (Equivalent to the companion's omega + 180 degrees with Omega + 180 degrees.) Where e is near zero (AK For, o Leo) omega and T_peri are poorly determined.",
+  "omega_primary": true,
+  "check": "positions of Table B.1 reproduced to 0.01-0.2 mas"
+ },
+ "orbit": {
+  "P_day": [
+   148.329,
+   0.005
+  ],
+  "T_peri_jd": [
+   2459569.95,
+   0.02
+  ],
+  "e": [
+   0.3432,
+   0.0002
+  ],
+  "K1": [
+   23.22,
+   0.02
+  ],
+  "K2": [
+   23.03,
+   0.02
+  ],
+  "omega_deg": [
+   348.404,
+   0.06
+  ],
+  "Omega_deg": [
+   316.79,
+   0.02
+  ],
+  "a_mas": [
+   11.573,
+   0.004
+  ],
+  "i_deg": [
+   56.76,
+   0.03
+  ],
+  "parallax_mas": [
+   16.344,
+   0.014
+  ],
+  "M1_Msun": [
+   1.0719,
+   0.0023
+  ],
+  "M2_Msun": [
+   1.0808,
+   0.0024
+  ],
+  "T_peri_mjd": [
+   59569.450000000186,
+   0.02
+  ],
+  "source": "VizieR J/A+A/672/A119/table6, row 'HD 41255' (Table 6; joint RV + astrometry)"
+ },
+ "diameters_mas": {
+  "primary": [
+   0.245,
+   0.002
+  ],
+  "secondary": null,
+  "source": "Gallenne et al. 2023, Table 3 (LD diameters, literature/SBCR)"
+ },
+ "positions_source": "Gallenne et al. 2023, Appendix B Table B.1 (VizieR J/A+A/672/A119/tableb1): CANDID on the SC visibilities and closure phases, bootstrap errors with 8-50 uas systematic floors",
+ "third_light": "none reported",
+ "caveats": "Errors include systematic floors (8-50 uas), so the smallest ellipses are floors not statistical errors. Astrometry is SC-only. The paper's orbit used these positions, so orbit predictions at these epochs are consistency checks only. The Phase 3 products are uncalibrated (SINGLE_SCI_VIS): use closure phases only.",
+ "epochs": [
+  {
+   "date": "2021-01-17",
+   "mjd": 59231.227,
+   "dra_mas": 4.649,
+   "ddec_mas": -10.969,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 152.4,
+   "flux_ratio_pct": 97.12,
+   "sigma_flux_ratio_pct": 0.03,
+   "baselines": "A0-G1-J2-J3",
+   "spectral_resolution": "HIGH",
+   "calibrator_id": 1,
+   "sep_mas": 11.913528528525879,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-18T10:24:01.847"
+   ]
+  },
+  {
+   "date": "2021-01-19",
+   "mjd": 59233.09,
+   "dra_mas": 4.04,
+   "ddec_mas": -10.665,
+   "sigma_major_mas": 0.026,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": -155.1,
+   "flux_ratio_pct": 96.78,
+   "sigma_flux_ratio_pct": 0.78,
+   "baselines": "A0-G1-J2-J3",
+   "spectral_resolution": "HIGH",
+   "calibrator_id": 1,
+   "sep_mas": 11.404552818940337,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-03-04T16:19:03.434"
+   ]
+  },
+  {
+   "date": "2022-01-13",
+   "mjd": 59592.13,
+   "dra_mas": 3.227,
+   "ddec_mas": 4.869,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 135.8,
+   "flux_ratio_pct": 95.83,
+   "sigma_flux_ratio_pct": 0.02,
+   "baselines": "K0-B2-D0-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 5.841291809180568,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-03-04T16:19:05.478"
+   ]
+  },
+  {
+   "date": "2022-02-11",
+   "mjd": 59621.08,
+   "dra_mas": 11.306,
+   "ddec_mas": -4.346,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 91.0,
+   "flux_ratio_pct": 95.04,
+   "sigma_flux_ratio_pct": 0.02,
+   "baselines": "A0-G1-J2-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 12.112528720296186,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-03-04T16:19:06.765"
+   ]
+  },
+  {
+   "date": "2022-03-01",
+   "mjd": 59639.105,
+   "dra_mas": 11.961,
+   "ddec_mas": -9.049,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 130.4,
+   "flux_ratio_pct": 96.17,
+   "sigma_flux_ratio_pct": 0.02,
+   "baselines": "A0-G1-J2-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 14.998330640441289,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-03-04T16:19:06.078"
+   ]
+  },
+  {
+   "date": "2022-03-25",
+   "mjd": 59663.008,
+   "dra_mas": 8.463,
+   "ddec_mas": -11.793,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 114.4,
+   "flux_ratio_pct": 97.42,
+   "sigma_flux_ratio_pct": 0.03,
+   "baselines": "A0-G1-J2-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 14.515413118475132,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-03-04T16:19:06.555"
+   ]
+  },
+  {
+   "date": "2022-04-10",
+   "mjd": 59679.99,
+   "dra_mas": 3.388,
+   "ddec_mas": -10.345,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 97.9,
+   "flux_ratio_pct": 97.45,
+   "sigma_flux_ratio_pct": 0.01,
+   "baselines": "A0-G1-J2-K0",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 10.885658868437869,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-18T13:04:40.100"
+   ]
+  },
+  {
+   "date": "2022-10-21",
+   "mjd": 59873.332,
+   "dra_mas": -3.594,
+   "ddec_mas": 6.568,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 94.8,
+   "flux_ratio_pct": 94.06,
+   "sigma_flux_ratio_pct": 0.32,
+   "baselines": "A0-G1-J2-K0",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 7.487019433659833,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-18T13:47:36.427"
+   ]
+  },
+  {
+   "date": "2022-11-21",
+   "mjd": 59904.28,
+   "dra_mas": 8.66,
+   "ddec_mas": 0.041,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 140.7,
+   "flux_ratio_pct": 94.87,
+   "sigma_flux_ratio_pct": 0.01,
+   "baselines": "A0-B2-D0-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 8.660097054883392,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-03-04T16:19:02.966"
+   ]
+  },
+  {
+   "date": "2022-11-27",
+   "mjd": 59910.26,
+   "dra_mas": 10.089,
+   "ddec_mas": -1.959,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 115.3,
+   "flux_ratio_pct": 95.02,
+   "sigma_flux_ratio_pct": 0.08,
+   "baselines": "A0-G2-J2-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 10.277431683061678,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-18T13:57:13.543"
+   ]
+  },
+  {
+   "date": "2022-12-15",
+   "mjd": 59928.23,
+   "dra_mas": 12.086,
+   "ddec_mas": -7.306,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 88.3,
+   "flux_ratio_pct": 95.9,
+   "sigma_flux_ratio_pct": 0.04,
+   "baselines": "A0-G1-J2-K0",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 14.122642528932042,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-18T14:01:19.245"
+   ]
+  },
+  {
+   "date": "2022-12-19",
+   "mjd": 59932.23,
+   "dra_mas": 12.095,
+   "ddec_mas": -8.308,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 90.5,
+   "flux_ratio_pct": 95.56,
+   "sigma_flux_ratio_pct": 0.05,
+   "baselines": "A0-G1-J2-K0",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 14.673509771012524,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-18T14:03:00.808"
+   ]
+  },
+  {
+   "date": "2022-12-30",
+   "mjd": 59943.176,
+   "dra_mas": 11.379,
+   "ddec_mas": -10.398,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 98.7,
+   "flux_ratio_pct": 95.97,
+   "sigma_flux_ratio_pct": 0.04,
+   "baselines": "A0-G2-J2-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 15.414280554083605,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-18T14:07:00.303"
+   ]
+  },
+  {
+   "date": "2023-01-24",
+   "mjd": 59968.18,
+   "dra_mas": 6.123,
+   "ddec_mas": -11.468,
+   "sigma_major_mas": 0.008,
+   "sigma_minor_mas": 0.008,
+   "sigma_pa_deg": 143.9,
+   "flux_ratio_pct": 94.81,
+   "sigma_flux_ratio_pct": 0.05,
+   "baselines": "A0-G1-J2-J3",
+   "spectral_resolution": "MEDIUM",
+   "calibrator_id": 2,
+   "sep_mas": 13.000236651692154,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-03-04T19:28:15.869"
+   ]
+  }
+ ],
+ "files": [
+  {
+   "dp_id": "ADP.2025-12-18T10:24:01.847",
+   "file": "ADP.2025-12-18T10_24_01.847.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59231.22696,
+   "t_max_mjd": 59231.22992,
+   "night_mjd": 59230,
+   "programme": "106.210E.002",
+   "release_date": "2022-01-17T05:41:11Z",
+   "size_kB": 9731.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 0,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "db0f7871a2b598be214912e423a9e38daffa0d461cf75e26f96d1f743ba0ff4e",
+   "bytes": 9731520
+  },
+  {
+   "dp_id": "ADP.2026-03-04T16:19:03.434",
+   "file": "ADP.2026-03-04T16_19_03.434.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59233.09078,
+   "t_max_mjd": 59233.09374,
+   "night_mjd": 59232,
+   "programme": "106.210E.002",
+   "release_date": "2022-01-19T02:21:40Z",
+   "size_kB": 9728.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 1,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "732eb4e511836ffcb8f23def571b2d5500bee9a16deacc0068aba7e3e12ce7cc",
+   "bytes": 9728640
+  },
+  {
+   "dp_id": "ADP.2026-03-04T16:19:05.478",
+   "file": "ADP.2026-03-04T16_19_05.478.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59592.12763,
+   "t_max_mjd": 59592.13059,
+   "night_mjd": 59591,
+   "programme": "108.221X.001",
+   "release_date": "2023-01-13T03:16:21Z",
+   "size_kB": 8487.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 2,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "84e7e9e7ed0960f8cf0988dab87be1d30762c1e3a79ceb90134fa1333f0ff7b3",
+   "bytes": 8487360
+  },
+  {
+   "dp_id": "ADP.2026-03-04T16:19:06.765",
+   "file": "ADP.2026-03-04T16_19_06.765.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59621.07859,
+   "t_max_mjd": 59621.08154,
+   "night_mjd": 59620,
+   "programme": "108.221X.001",
+   "release_date": "2023-02-11T02:06:07Z",
+   "size_kB": 8487.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 3,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "fa4c80298d1c5dfeea74dd2383e1b96dadd8d1395718253a6af09385ec28fac7",
+   "bytes": 8487360
+  },
+  {
+   "dp_id": "ADP.2026-03-04T16:19:06.078",
+   "file": "ADP.2026-03-04T16_19_06.078.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59639.10431,
+   "t_max_mjd": 59639.10726,
+   "night_mjd": 59638,
+   "programme": "108.221X.001",
+   "release_date": "2023-03-01T02:41:20Z",
+   "size_kB": 8487.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 4,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "7d1e80c149dc7490769aaf4fbdb81039e85e3315abe7d0ac157d00ac82ab14ef",
+   "bytes": 8487360
+  },
+  {
+   "dp_id": "ADP.2026-03-04T16:19:06.555",
+   "file": "ADP.2026-03-04T16_19_06.555.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59663.00651,
+   "t_max_mjd": 59663.00947,
+   "night_mjd": 59662,
+   "programme": "108.221X.001",
+   "release_date": "2023-03-25T00:21:12Z",
+   "size_kB": 8490.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 5,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "e3a0d9b9ea4a49d92c15dcb580c118878649d9c5e50894ac623f768f6e454246",
+   "bytes": 8490240
+  },
+  {
+   "dp_id": "ADP.2025-12-18T13:04:40.100",
+   "file": "ADP.2025-12-18T13_04_40.100.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59679.98724,
+   "t_max_mjd": 59679.99019,
+   "night_mjd": 59679,
+   "programme": "108.221X.001",
+   "release_date": "2023-04-10T23:50:47Z",
+   "size_kB": 8490.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 6,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "aa663f20b38aa7182f17f221bde26f795a3f252585e3c325446beec7574b6af8",
+   "bytes": 8490240
+  },
+  {
+   "dp_id": "ADP.2025-12-18T13:47:36.427",
+   "file": "ADP.2025-12-18T13_47_36.427.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59873.33252,
+   "t_max_mjd": 59873.33547,
+   "night_mjd": 59872,
+   "programme": "108.221X.001",
+   "release_date": "2023-10-21T08:11:28Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 7,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "01b24d1cd8f4834e1f1e44b7595b617cfea21ddee6176b5de1af5b9011158558",
+   "bytes": 8493120
+  },
+  {
+   "dp_id": "ADP.2026-03-04T16:19:02.966",
+   "file": "ADP.2026-03-04T16_19_02.966.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59904.2819,
+   "t_max_mjd": 59904.28485,
+   "night_mjd": 59903,
+   "programme": "108.221X.001",
+   "release_date": "2023-11-21T06:56:32Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 8,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "80e6436d8463216aba7e15a84602e38e24d8672b1f09bdb30e2a52eb48fa7f10",
+   "bytes": 8493120
+  },
+  {
+   "dp_id": "ADP.2025-12-18T13:57:13.543",
+   "file": "ADP.2025-12-18T13_57_13.543.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59910.26041,
+   "t_max_mjd": 59910.26337,
+   "night_mjd": 59909,
+   "programme": "110.23QY.001",
+   "release_date": "2023-11-27T06:25:51Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 9,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "201b9ae84a5f13f33197ff47863562df10d551b68750f0568a2d816f038474d8",
+   "bytes": 8493120
+  },
+  {
+   "dp_id": "ADP.2025-12-18T14:01:19.245",
+   "file": "ADP.2025-12-18T14_01_19.245.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59928.22913,
+   "t_max_mjd": 59928.23208,
+   "night_mjd": 59927,
+   "programme": "108.221X.001",
+   "release_date": "2023-12-15T05:41:22Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 10,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "4048af400c762cd68fa2ed06f5820910bf5a6136c33b8907e9be2379d625729e",
+   "bytes": 8493120
+  },
+  {
+   "dp_id": "ADP.2025-12-18T14:03:00.808",
+   "file": "ADP.2025-12-18T14_03_00.808.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59932.2301,
+   "t_max_mjd": 59932.23305,
+   "night_mjd": 59931,
+   "programme": "110.23QY.001",
+   "release_date": "2023-12-19T05:41:19Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 11,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "51c1d5d1b6be1e4df0ff4006164bc2a76f619ee014f79ff444402d04242d9515",
+   "bytes": 8493120
+  },
+  {
+   "dp_id": "ADP.2025-12-18T14:07:00.303",
+   "file": "ADP.2025-12-18T14_07_00.303.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59943.17376,
+   "t_max_mjd": 59943.17672,
+   "night_mjd": 59942,
+   "programme": "110.23QY.001",
+   "release_date": "2023-12-30T04:21:11Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 12,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "3afb1ceb010698fd09a9838ac6b543bb576535158b95e58e79fcdcb75b9f18bd",
+   "bytes": 8493120
+  },
+  {
+   "dp_id": "ADP.2026-03-04T19:28:15.869",
+   "file": "ADP.2026-03-04T19_28_15.869.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59968.18078,
+   "t_max_mjd": 59968.18373,
+   "night_mjd": 59967,
+   "programme": "110.23QY.001",
+   "release_date": "2024-01-24T04:30:56Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 13,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "782b3243302f49c6f725f9c8bfae67fcc853b3e039247da563ac23266ecc6e57",
+   "bytes": 8493120
+  },
+  {
+   "dp_id": "ADP.2026-03-04T19:28:19.116",
+   "file": "ADP.2026-03-04T19_28_19.116.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 59990.10457,
+   "t_max_mjd": 59990.10752,
+   "night_mjd": 59989,
+   "programme": "110.23QY.001",
+   "release_date": "2024-02-15T02:41:21Z",
+   "size_kB": 8493.0,
+   "product": "uncalibrated",
+   "role": "heldout",
+   "epoch_index": null,
+   "after_paper_span": true,
+   "dir": "oifits_extra",
+   "sha256": "4e9c9f6e351d78d3ae021bdae26d0f810a78ee7a7d916e2f82ab95dc72268d9b",
+   "bytes": 8493120
+  }
+ ],
+ "split": {
+  "rule": "* ``paper``: a product whose start time is within 0.03 d of a published epoch (the data behind a published position); * ``paper_night``: another product of a night with a published epoch (same night, so not an independent prediction); * ``heldout``: a product of a night the paper has no epoch for. ``after_paper_span`` marks those later than the last published epoch; the others fall inside the published span or before it (earlier programmes).",
+  "paper_epochs": 14,
+  "paper_epochs_with_phase3": 14,
+  "paper_epochs_below_lambda_2B": 0,
+  "paper_files": 14,
+  "paper_night_files": 0,
+  "heldout_files": 1,
+  "heldout_nights": 1,
+  "heldout_nights_after_paper_span": 1,
+  "last_paper_mjd": 59968.18
+ },
+ "data_root": "~/data/eso_binaries/trackb/hd41255",
+ "provenance": {
+  "eso_query": "ivoa.ObsCore dataproduct_type='visibility', GRAVITY/PIONIER, 18 arcsec cone on the SIMBAD position",
+  "download": "https://dataportal.eso.org/dataPortal/file/<dp_id> (public Phase 3 products, unchanged)",
+  "built": "2026-10-14",
+  "builder": "scripts/build_trackb_targets.py"
+ }
+}
