@@ -2229,7 +2229,8 @@ def build_parser():
                         help="--prior mem: remove isolated compact blobs outside the main source and refit (_prune)")
     parser.add_argument("--regulariser", choices=tuple(REGULARISERS), default="mem",
                         help="--prior mem's penalty, weight by the discrepancy principle (labels get _<name> unless mem)")
-    parser.add_argument("--scene", help="comma list of parts of the scene (point, ud, ld_ellipse, gauss_halo, image; "
+    parser.add_argument("--scene", help="a composite scene, NAME=KIND[...] + ... (scripts/contest_composite.py), or a "
+                        "comma list of parts of the scene (point, ud, ld_ellipse, gauss_halo, image; "
                         "image is required): a central source, a Gaussian halo with fitted FWHM and flux, and the pixel image "
                         "(labels get _<parts>); in place of --star")
     parser.add_argument("--hole", type=float, help="radius (mas) of the hole in the image's support (default with a star: "
@@ -2286,6 +2287,17 @@ def validate(parser, args):
     if args.settings is not None and args.field is not None:
         parser.error("--field has no effect with --settings")
     scene = {} if args.hole is None else {"hole_mas": args.hole}
+    if args.scene and "=" in args.scene:  # a composite scene (scripts/contest_composite.py)
+        import contest_composite
+
+        if (args.star or args.settings is not None or args.member is not None or args.prior != "mem"
+                or args.hole is not None or args.sparco or args.points or args.systematics != "none" or args.sweep):
+            parser.error("a composite --scene sets its own priors, holes and stars: not with --star, --prior, --hole, "
+                         "--sparco, --points, --systematics, --sweep, --settings or --member")
+        try:
+            return task, None, {"composite": contest_composite.parse_scene(args.scene)}
+        except ValueError as e:
+            parser.error(str(e))
     if args.scene:
         if args.star or args.settings is not None or args.member is not None:
             parser.error("--scene replaces --star, and --settings / --member fix their own scene")
@@ -2335,6 +2347,12 @@ def main():
                   f"star={spec.get('star', False)}  wavel={spec.get('wavel')}  {len(spec['files'])} file(s)")
         return
     task, star, scene = validate(parser, args)
+    if "composite" in scene:
+        import contest_composite
+
+        contest_composite.run_composite(task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(),
+                                        scene["composite"], args.smoke, args.label, args.field, args.informed)
+        return
     if args.sweep:
         run_sweep(task, pathlib.Path(args.data).expanduser(), pathlib.Path(args.out).expanduser(), args.sweep, args.smoke,
                   star, args.sweep_families, args.label, args.informed)

@@ -144,7 +144,8 @@ def test_run_ids_cover_every_dataset_and_config():
     configs = list(contest_bench.CONFIGS)
     pairs = {(i // len(configs), configs[i % len(configs)]) for i in range(3 * len(configs))}
     assert len(pairs) == 3 * len(configs)
-    assert all(set(contest_bench.CONFIGS[c]) == set(contest_bench.BASE) for c in configs)
+    assert all(set(contest_bench.CONFIGS[c]) - {"scene"} == set(contest_bench.BASE) for c in configs)
+    assert all(("scene" in contest_bench.CONFIGS[c]) == (c in contest_bench.COMPOSITE) for c in configs)
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
