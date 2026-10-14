@@ -1368,7 +1368,10 @@ def adam_fallback(curve, start, priors, data, reg, path, q, others, smoke=False)
     return patched, methods, both
 
 
-def weight_report(curve, data, reg, path, index):
+CLASSIC_MAXENT_BUDGET = 1.0e8  # Jacobian elements (data points x pixels): above it classic_maxent's SVD per weight is skipped
+
+
+def weight_report(curve, data, reg, path, index, jacobian_size=0):
     """The weight-selection rule's numbers (virgil design/regulariser_weight_selection.md):
     the discrepancy weight (None if no weight reaches χ²/N = 1), the L-curve
     corner (None if the sweep is too short), for MaxEnt Gull and Skilling's
@@ -1386,7 +1389,9 @@ def weight_report(curve, data, reg, path, index):
               "binding_dataset": int(np.argmax(chi2_here)), "chi2_red_by_dataset": [round(float(x), 4) for x in chi2_here],
               "n_datasets": len(datasets)}
     if reg == "mem":
-        report["classic_maxent"] = guarded(curve.classic_maxent, data, path)
+        # One SVD of the data x pixels Jacobian per weight: hours at 400 mas (2016 Obj2 MEM, job 18593342).
+        report["classic_maxent"] = (f"skipped (Jacobian of {jacobian_size:.3g} elements > {CLASSIC_MAXENT_BUDGET:g})"
+                                    if jacobian_size > CLASSIC_MAXENT_BUDGET else guarded(curve.classic_maxent, data, path))
     return report
 
 
@@ -1480,7 +1485,7 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     ok, good, chosen, index, reached = choose_weights(curve, reg)
     # The output first (the report's classic_maxent is an SVD per weight, hours at 400 mas, job 18593342).
     save(curve, methods, chosen, index, {}, False)
-    report_w = weight_report(curve, data, reg, path, index["discrepancy"])
+    report_w = weight_report(curve, data, reg, path, index["discrepancy"], npts * npix**2)
     save(curve, methods, chosen, index, report_w, False)
 
     best = curve.results[index["discrepancy"]].model

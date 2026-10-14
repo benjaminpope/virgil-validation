@@ -481,3 +481,14 @@ def test_nearest_discrepancy_picks_chi2_nearest_one_and_counts_overfits():
     best, n_over = ci.nearest_discrepancy(ms)
     assert best.total_chi2_red == 1.3 and n_over == 2
     assert ci.nearest_discrepancy([member(float("nan"))]) == (None, 0)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_weight_report_skips_classic_maxent_above_the_jacobian_budget():
+    curve = types.SimpleNamespace(chi2_red=np.array([2.0, 1.0]), discrepancy=lambda: 1.0, corner=lambda: 1.0,
+                                  classic_maxent=lambda *a: 1.0 / 0)
+    data = types.SimpleNamespace(n_independent=10)
+    big = ci.weight_report(curve, data, "mem", "env", 0, jacobian_size=2 * ci.CLASSIC_MAXENT_BUDGET)
+    assert big["classic_maxent"].startswith("skipped")
+    small = ci.weight_report(curve, data, "mem", "env", 0, jacobian_size=1.0)
+    assert small["classic_maxent"].startswith("unavailable")  # called, and guarded
