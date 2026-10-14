@@ -944,10 +944,8 @@ John Young sent Ben a folder of contest datasets. It is filed under
   calibration error: the data are an OYSTER simulation with uncorrelated
   Poisson noise, and the BSC1948 binary from the same chain fits at V² scale
   0.997 and χ²/N 0.94, so no baseline-dependent systematic is allowed. The
-  remaining 1.3 against 0.94 is error in our rebuilt truth (the scales say
-  where it sits: stations 0–2 at 23 m worst) — probably the unpublished
-  limb-darkening table or the spot's exact profile and brightness at the
-  limb — and is still open.
+  remaining V² excess was model error at the time of this paragraph (the
+  scales say where: stations 0–2 at 23 m worst); the follow-up below closes it.
   σ/peak of campaign 1 against the fitted truth: 0.252 (was 0.264).
   The mechanism in OYSTER (spot added at the limb brightness) is
   inferred from the fit, not documented. **Follow-up (Ben, 2026-10-14):**
@@ -962,8 +960,13 @@ John Young sent Ben a folder of contest datasets. It is filed under
   1.33 at 0.469, 2.6 at 0.55), whereas a 550 nm monochromatic value (about
   0.55) is rejected. `U_LD` and `FITTED` now use 0.469, so the truth has no
   fitted limb darkening or spot parameter: V² 1.33 analytic (1.45 on
-  score_2004's 0.08 mas pixel grid), CP 0.55, T3AMP 0.64. Still 1.33 against
-  BSC1948's 0.94.
+  score_2004's 0.08 mas pixel grid), CP 0.55, T3AMP 0.64. **Pooled, the truth
+  fits at χ²/ν = 1.02** (V² and closure phase, 331.6 for 325 points, one
+  fitted parameter, B/A; the 130 closure phases are the 10 independent
+  triangles of 13 blocks; T3AMP is correlated with V², so it is left out; 0.92
+  with it). That is as good as BSC1948's 0.94: the V² alone at 1.33 is a
+  fluctuation against closure phases sitting at 0.57, not a missing
+  ingredient. Closed.
 
 - **Still missing:** the 2012 and 2016 truths. Neither collection is in
   JMMC OiDB, whose contest collections (2004–2010, 2022, 2024) match our
