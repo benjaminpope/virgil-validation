@@ -1,0 +1,195 @@
+{
+ "provenance": {
+  "virgil": {
+   "version": "0.3.0",
+   "commit": "791f9fef65eb49ebc387c5c365a13c7af2342341",
+   "url": "https://github.com/benjaminpope/virgil",
+   "dirty": false
+  },
+  "virgil_pin_ok": true,
+  "versions": {
+   "virgil-astro": "0.3.0",
+   "jax": "0.11.2",
+   "jaxlib": "0.11.2",
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "numpyro": "0.22.0",
+   "frank": "1.2.3",
+   "vis-r": "0.0.1",
+   "astro-frap": "1.0.2",
+   "pmoired": "26.10.1",
+   "oimodeler": "0.8.1"
+  },
+  "python": "3.12.12",
+  "machine": "Darwin arm64, 10 CPUs",
+  "jax_backend": "cpu",
+  "validation_commit": "68082967a95aa6572a03f9e228a7b39f407ac389"
+ },
+ "inc_deg": 50.0,
+ "pa_deg": 30.0,
+ "accuracy_mm_scale": {
+  "gauss_ring": {
+   "n_r": 64,
+   "virgil_vs_truth": 1.32004385200446e-09,
+   "tol": 1e-06,
+   "frank_vs_truth": 1.3322676295501878e-15,
+   "virgil_vs_frank": 1.3200450177386358e-09,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 1.3877787807814457e-15,
+   "virgil_vs_frap": 1.3200449622274846e-09,
+   "visr_vs_truth": 0.0005295587378596478,
+   "virgil_vs_visr": 0.0005295592772420754,
+   "visr_criterion_margin": 9.999550380336125e-07,
+   "visr_n_q": 243,
+   "visr_r_out_arcsec": 31.193448631982577
+  },
+  "erf_power": {
+   "n_r": 96,
+   "virgil_vs_truth": 6.730782597941243e-12,
+   "tol": 1e-06,
+   "frank_vs_truth": 3.3306690738754696e-16,
+   "virgil_vs_frank": 6.730838109092474e-12,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 2.220446049250313e-16,
+   "virgil_vs_frap": 6.7308103535168584e-12,
+   "visr_vs_truth": 0.005191290418984855,
+   "virgil_vs_visr": 0.005191290417821112,
+   "visr_criterion_margin": 1.8208475784143863e-06,
+   "visr_n_q": 243,
+   "visr_r_out_arcsec": 31.193448631982577
+  },
+  "gap_on_plateau": {
+   "n_r": 128,
+   "virgil_vs_truth": 2.803340892754136e-12,
+   "tol": 1e-06,
+   "frank_vs_truth": 2.220446049250313e-16,
+   "virgil_vs_frank": 2.8033825261175593e-12,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 3.3306690738754696e-16,
+   "virgil_vs_frap": 2.8032992593907125e-12,
+   "visr_vs_truth": 0.002980890914403297,
+   "virgil_vs_visr": 0.002980890914863062,
+   "visr_criterion_margin": 1.0031922084562296e-06,
+   "visr_n_q": 243,
+   "visr_r_out_arcsec": 31.193448631982577
+  },
+  "exp_tail": {
+   "n_r": 128,
+   "virgil_vs_truth": 0.00019531227576478905,
+   "tol": 1e-05,
+   "frank_vs_truth": 0.004884310082661686,
+   "virgil_vs_frank": 0.004884310082543322,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 0.004884310082661603,
+   "virgil_vs_frap": 0.004884310082543239
+  },
+  "gauss_ring_scale_height": {
+   "aspect": 0.1,
+   "virgil_with_factor_vs_truth": 1.3151646438558373e-09,
+   "visr_vs_truth": 0.0005295518725249027,
+   "virgil_vs_visr": 0.0005295524119002248,
+   "visr_criterion_margin": 9.999814360069435e-07,
+   "factor_min": 0.17621447927801587
+  }
+ },
+ "accuracy_ir_scale": {
+  "gauss_ring": {
+   "n_r": 64,
+   "virgil_vs_truth": 1.3200439630267624e-09,
+   "tol": 1e-06,
+   "frank_vs_truth": 1.3877787807814457e-15,
+   "virgil_vs_frank": 1.320045073249787e-09,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 1.3877787807814457e-15,
+   "virgil_vs_frap": 1.3200451287609383e-09
+  },
+  "erf_power": {
+   "n_r": 96,
+   "virgil_vs_truth": 6.730754842365627e-12,
+   "tol": 1e-06,
+   "frank_vs_truth": 2.220446049250313e-16,
+   "virgil_vs_frank": 6.7308103535168584e-12,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 2.220446049250313e-16,
+   "virgil_vs_frap": 6.730754842365627e-12
+  },
+  "gap_on_plateau": {
+   "n_r": 128,
+   "virgil_vs_truth": 2.8032159926638656e-12,
+   "tol": 1e-06,
+   "frank_vs_truth": 1.734723475976807e-16,
+   "virgil_vs_frank": 2.8031327259370187e-12,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 2.7755575615628914e-16,
+   "virgil_vs_frap": 2.80318823708825e-12
+  },
+  "exp_tail": {
+   "n_r": 128,
+   "virgil_vs_truth": 0.00019531227576470925,
+   "tol": 1e-05,
+   "frank_vs_truth": 0.004884310082661561,
+   "virgil_vs_frank": 0.004884310082543211,
+   "frank_q_max_ok": true,
+   "frap_vs_truth": 0.004884310082661561,
+   "virgil_vs_frap": 0.004884310082543211
+  }
+ },
+ "timing_mm_scale": {
+  "1000": {
+   "virgil_first_call_s": 0.36760687499918276,
+   "virgil_jit_s": 0.0006327499941107817,
+   "virgil_frozen_jit_s": 0.00014229200314730406,
+   "virgil_frozen_vs_unfrozen": 4.40619762898109e-16,
+   "frank_cold_s": 0.06016500000259839,
+   "frank_hot_s": 0.00013087499974062666,
+   "frank_matvec_only_s": 8.98750004125759e-05,
+   "frap_cold_s": 0.05953908300580224,
+   "frap_hot_s": 0.00021291699522407725,
+   "visr_setup_s": 0.03398933399876114,
+   "visr_hot_s": 0.00013349999790079892
+  },
+  "10000": {
+   "virgil_first_call_s": 0.8810917500013602,
+   "virgil_jit_s": 0.007104625001375098,
+   "virgil_frozen_jit_s": 0.0005006669962313026,
+   "virgil_frozen_vs_unfrozen": 5.828670879282072e-16,
+   "frank_cold_s": 0.6548985000044922,
+   "frank_hot_s": 0.0018837500028894283,
+   "frank_matvec_only_s": 0.0008480420001433231,
+   "frap_cold_s": 0.47469708300195634,
+   "frap_hot_s": 0.001007500002742745,
+   "visr_setup_s": 0.03950004199577961,
+   "visr_hot_s": 0.0008267910016002133
+  }
+ },
+ "virgil_n_r_convergence": {
+  "gauss_ring": {
+   "16": 0.02212679196385342,
+   "32": 1.3200520676548422e-09,
+   "64": 1.3200521231659934e-09,
+   "128": 1.3200521231659934e-09,
+   "256": 1.3200521231659934e-09
+  },
+  "erf_power": {
+   "16": 0.0019556303191451112,
+   "32": 8.133317981259824e-06,
+   "64": 6.724121259793492e-12,
+   "128": 6.725980883359739e-12,
+   "256": 6.726147416813433e-12
+  },
+  "gap_on_plateau": {
+   "16": 0.015056764304542742,
+   "32": 0.0001387313432090789,
+   "64": 4.222137090902772e-10,
+   "128": 2.8033686483297515e-12,
+   "256": 2.803410281693175e-12
+  },
+  "exp_tail": {
+   "16": 0.09507761507462174,
+   "32": 0.05111422768103189,
+   "64": 0.009274651024182621,
+   "128": 0.00016338186779100115,
+   "150": 3.876002223391489e-05
+  }
+ }
+}

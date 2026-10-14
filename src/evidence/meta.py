@@ -7,7 +7,8 @@ import platform
 import subprocess
 from importlib import metadata
 
-PACKAGES = ("virgil-astro", "jax", "numpy", "scipy", "dLux", "pmoired", "astropy")
+PACKAGES = ("virgil-astro", "jax", "numpy", "scipy", "dLux", "pmoired", "astropy", "frank", "vis-r", "astro-frap",
+            "oimodeler")
 
 
 def _version(name):

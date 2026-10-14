@@ -66,7 +66,8 @@ VERDICTS = {
 ROOT_NAMES = {
     "mathematics": "mathematics", "standards": "standards", "statistics": "statistics",
     "literature": "published result", "render": "independent render", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
-    "fouriever": "fouriever", "ehtim": "eht-imaging", "mpol": "MPoL", "orbitize": "orbitize!",
+    "fouriever": "fouriever", "frank": "frank", "visr": "vis-r", "frap": "FRAP", "oimodeler": "oimodeler",
+    "ehtim": "eht-imaging", "mpol": "MPoL", "orbitize": "orbitize!",
     "self-consistency": "virgil itself",
 }
 # metric names that state a difference or error (raw statistics such as a
@@ -317,7 +318,8 @@ UNFIXED = {"open", "to-raise", "raised"}
 # geometry (what the convention means on the sky) rather than from virgil's
 # formula. Mathematics and standards are our own transcriptions of the
 # documented formula, so they cannot.
-EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "dlux", "literature", "render"}
+EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "dlux", "literature", "render",
+            "frank", "visr", "frap", "oimodeler"}
 
 
 def load_signoffs(path=ROOT / "trust" / "signoffs.yml"):

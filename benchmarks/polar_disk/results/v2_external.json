@@ -1,0 +1,95 @@
+{
+ "provenance": {
+  "virgil": {
+   "version": "0.3.0",
+   "commit": "791f9fef65eb49ebc387c5c365a13c7af2342341",
+   "url": "https://github.com/benjaminpope/virgil",
+   "dirty": false
+  },
+  "virgil_pin_ok": true,
+  "versions": {
+   "virgil-astro": "0.3.0",
+   "jax": "0.11.2",
+   "jaxlib": "0.11.2",
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "numpyro": "0.22.0",
+   "frank": "1.2.3",
+   "vis-r": "0.0.1",
+   "astro-frap": "1.0.2",
+   "pmoired": "26.10.1",
+   "oimodeler": "0.8.1"
+  },
+  "python": "3.12.12",
+  "machine": "Darwin arm64, 10 CPUs",
+  "jax_backend": "cpu",
+  "validation_commit": "68082967a95aa6572a03f9e228a7b39f407ac389"
+ },
+ "pmoired": {
+  "gaussian_ring_M1": {
+   "max_abs_dV2": 9.86848047723754e-10,
+   "max_abs_dCP_deg": 2.5625428747844126e-06,
+   "max_abs_CP_deg": 172.62120862793915,
+   "passed": true
+  },
+  "gaussian_ring_M2": {
+   "max_abs_dV2": 1.5711945078322742e-09,
+   "max_abs_dCP_deg": 6.87647940367242e-07,
+   "max_abs_CP_deg": 173.14084478944642,
+   "passed": true
+  },
+  "gaussian_ring_M3": {
+   "max_abs_dV2": 1.608503302774622e-09,
+   "max_abs_dCP_deg": 5.490550449849252e-07,
+   "max_abs_CP_deg": 177.57396809584645,
+   "passed": true
+  },
+  "power_law_M1": {
+   "max_abs_dV2": 1.2741218774481311e-08,
+   "max_abs_dCP_deg": 0.0001670289286721527,
+   "max_abs_CP_deg": 177.71324224497573,
+   "passed": true
+  }
+ },
+ "oimodeler": {
+  "O1_EIRing": {
+   "max_abs_dV": 9.404441390700612e-16,
+   "passed": true
+  },
+  "O2_Ring": {
+   "max_abs_dV": 4.440892098500626e-16,
+   "passed": true
+  },
+  "O3_ESKRing": {
+   "skw=0.6,skwPa=40.0,pa=25.0,elong=1.4": {
+    "max_abs_dV": 7.135936359693696e-16,
+    "swapped_c_s_control": 0.34349753505009234,
+    "passed": true
+   },
+   "skw=0.3,skwPa=-70.0,pa=100.0,elong=1.0": {
+    "max_abs_dV": 9.03762628910173e-16,
+    "swapped_c_s_control": 0.19949149604185212,
+    "passed": true
+   },
+   "skw=0.8,skwPa=10.0,pa=-50.0,elong=2.0": {
+    "max_abs_dV": 9.71445146547012e-16,
+    "swapped_c_s_control": 0.2405430728000733,
+    "passed": true
+   }
+  },
+  "O4_ExpRing": {
+   "dim=512": {
+    "virgil_vs_oimodeler": 0.008328885002896969,
+    "oimodeler_vs_exact": 0.008328885002893305,
+    "virgil_vs_exact": 8.451572774959004e-15
+   },
+   "dim=2048": {
+    "virgil_vs_oimodeler": 0.008422493237631445,
+    "oimodeler_vs_exact": 0.008422493237627782,
+    "virgil_vs_exact": 8.451572774959004e-15
+   },
+   "cut_in_scale_lengths": 5.545177444479562,
+   "passed": false
+  }
+ }
+}
