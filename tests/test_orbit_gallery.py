@@ -203,3 +203,22 @@ def test_target_without_a_summary_is_awaiting(og, tmp_path):
     # one summary present: only that tile leaves the awaiting state
     mixed = og.build(FIX / "summaries")
     assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b", "iota-peg-workshop", "sigma-ori"]
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_seeded_and_single_mode_fits_are_labelled_provisional_and_a_failed_tile_says_so(og, data):
+    gl = _target(data, "gl229b")
+    assert gl["flags"] == []  # the fixture fit is blind and has two modes
+    summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
+    tile = next(t for t in og.TILES if t["slug"] == "gl229b")
+    seeded = json.loads(json.dumps(summary))
+    seeded["orbit"]["start"] = "published"
+    (flag,) = og.flags_of(tile, seeded)
+    assert flag["key"] == "provisional" and "seeded from the published orbit" in flag["text"]
+    single = json.loads(json.dumps(summary))
+    single["orbit"]["modes"] = single["orbit"]["modes"][:1]
+    (flag,) = og.flags_of(tile, single)
+    assert flag["key"] == "provisional" and "single-mode" in flag["text"]
+    iota = next(t for t in og.TILES if t["slug"] == "iota-peg")
+    assert [f["key"] for f in og.flags_of(iota, None)] == ["failed"]
+    assert "Provisional: single-mode fit" in og.page(dict(data, targets=[dict(_target(data, "gl229b"), flags=[flag])]))

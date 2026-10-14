@@ -74,6 +74,10 @@ TILES = [
                      text="GRAVITY's V² loses contrast by a different amount each night, so the fit gives each night its own "
                           "V² amplitude rather than one for the whole run. The flux ratio, read from the same amplitudes, "
                           "depends on it."),
+                dict(kind="caveat", title="Seeded fit",
+                     text="This fit was started from the published orbit. Started blind, the search alone finds a "
+                          "different, worse mode (see the table), and the NUTS chains do not agree with each other "
+                          "(r̂ well above 1), so their medians mix modes. A blind solver will replace it."),
                 dict(kind="caveat", title="Radial velocities",
                      text="The paper combines the astrometry with radial velocities; ours is astrometry only. Orbital "
                           "elements are therefore reported, not scored.")]),
@@ -91,6 +95,7 @@ TILES = [
                      text="A Be star's decretion disk adds light that a model of two point stars does not describe. Every "
                           "row is compared but never scored, so the badge reads 'reported'.")]),
     dict(cid=IOTA_PEG, slug="iota-peg", name="ι Peg", kind="orbit", pub="iota",
+         failed="Orbit fit failed; under investigation",
          tagline="A 10-day spectroscopic binary seen by CHARA/MIRC-X",
          about="Anugu et al. (2020) fitted five nights of CHARA/MIRC-X data on ι Peg (HD 210027) and compared the orbit "
                "with the spectroscopic one of Konacki et al. (2010). We fit the same files.",
@@ -505,6 +510,24 @@ def _data_of(tile, manifest):
                 collection=tile["cid"])
 
 
+PROVISIONAL = "Provisional: {why}; alias not independently resolved"
+
+
+def flags_of(tile, summary):
+    """Short labels for a tile: a fit that failed, and a fit whose alias cannot be checked, because it was seeded
+    from the published orbit or came from one mode (NUTS chains started in one mode cannot find a wrong alias)."""
+    out = []
+    if tile.get("failed"):
+        out.append(dict(key="failed", text=tile["failed"]))
+    orb = (summary or {}).get("orbit")
+    if tile["kind"] == "orbit" and orb:
+        if orb.get("start") == "published":
+            out.append(dict(key="provisional", text=PROVISIONAL.format(why="seeded from the published orbit")))
+        elif len(orb.get("modes") or []) <= 1:
+            out.append(dict(key="provisional", text=PROVISIONAL.format(why="single-mode fit")))
+    return out
+
+
 def build_target(tile, ref, summary, rows, manifest=None):
     manifest = manifest if manifest is not None else {c["id"]: c for c in load_manifest()["collections"]}
     pubs = published_orbits(tile["pub"], ref) if ref and tile["pub"] else []
@@ -514,7 +537,7 @@ def build_target(tile, ref, summary, rows, manifest=None):
              instrument=(summary or {}).get("instrument") or " + ".join(
                  INSTRUMENT.get(i, i) for i in mc.get("instruments", [])),
              kind=tile["kind"], status="awaiting", awaiting=None if summary is not None else "fit",
-             paper=paper_of(ref), ours=None, alternatives=[], published=[], epochs=[],
+             flags=flags_of(tile, summary), paper=paper_of(ref), ours=None, alternatives=[], published=[], epochs=[],
              phase=dict(ours=[], published=[]), table=[], provenance={}, scored=None, status_why="")
     if ref is None or t["paper"] is None:
         t["awaiting"] = "reference"
@@ -677,6 +700,8 @@ def _section(t):
         lines += [f"Awaiting {t.get('awaiting') or 'fit'}: it has not been added yet.", ""]
     else:
         lines += [f"Status: {t['status']}. {t['status_why']}", ""]
+    for f in t["flags"]:
+        lines += [f"> {f['text']}.", ""]
     for n in t["notes"]:
         lines += [f"- **{n['title']}.** {n['text']}"]
     lines += [""] if t["notes"] else []

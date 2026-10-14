@@ -52,6 +52,12 @@
 .og-s-awaiting { border-style: dashed; box-shadow: none; }
 .og-s-awaiting .og-thumb { opacity: .8; }
 
+/* provisional and failed-fit labels */
+.og-flag { display: block; font-size: .7rem; line-height: 1.3; padding: .2rem .5rem; border-radius: 6px; border-left: 3px solid rgb(var(--og-warn));
+           background: rgba(var(--og-warn), .14); }
+.og-detail .og-flag { margin: .4rem 0; font-size: .8rem; padding: .35rem .8rem; }
+.og-f-failed { border-color: rgb(var(--og-bad)); background: rgba(var(--og-bad), .12); }
+
 /* badges and chips */
 .og-badge { display: inline-flex; align-items: center; gap: .3rem; font-size: .7rem; font-weight: 600; padding: .1rem .55rem .1rem .4rem; border-radius: 1rem;
             background: rgba(var(--og-info), .16); color: var(--md-default-fg-color); cursor: help; white-space: nowrap; }
