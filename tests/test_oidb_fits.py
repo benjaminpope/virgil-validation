@@ -378,24 +378,23 @@ def _remove_vis2_baseline(path, pair):
 
 
 @pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")
-def test_triangles_with_a_baseline_in_no_vis2_row_are_dropped(of, tmp_path):
-    """A T3 row whose leg has no V^2 row (MIRC-X; AL Dor's PIONIER file) is dropped
-    and counted before virgil reads the file; the other triangles are kept."""
+def test_triangles_with_a_baseline_in_no_vis2_row_are_kept(of, tmp_path):
+    """A T3 row whose leg has no V^2 row (MIRC-X; AL Dor's PIONIER file) used to be dropped
+    before virgil read the file. virgil places such a leg from the T3 row's own U/V
+    coordinates (virgil 48f8727), so ``load`` keeps every closure phase, unchanged."""
     path = _observe(tmp_path / "t3.fits", _binary(3.0, -4.0, 0.3))
+    full = of.load([path])
     with fits.open(path) as h:
-        sta = h["OI_VIS2"].data["STA_INDEX"]
-        pair = tuple(int(x) for x in sta[0])
+        pair = tuple(int(x) for x in h["OI_VIS2"].data["STA_INDEX"][0])
         t3 = np.asarray(h["OI_T3"].data["STA_INDEX"], int)
     uses = np.array([len({*pair} & {*row}) == 2 for row in t3])
     assert uses.any() and not uses.all()
     _remove_vis2_baseline(path, pair)
-    with pytest.raises(ValueError, match="needs baseline"):
-        of.read_oifits(str(path))
     of.LOAD_NOTES.clear()
     data = of.load([path])
-    assert of.LOAD_NOTES == [dict(file="t3.fits", t3_rows=len(t3), t3_dropped=int(uses.sum()))]
-    n_wave = 3
-    assert np.asarray(data.phi).size == int((~uses).sum()) * n_wave
+    assert of.LOAD_NOTES == []  # nothing is dropped, so nothing is noted
+    assert np.asarray(data.phi).size == len(t3) * 3 == np.asarray(full.phi).size
+    np.testing.assert_allclose(np.asarray(data.phi), np.asarray(full.phi))
 
 
 @pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")
