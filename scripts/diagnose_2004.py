@@ -211,8 +211,8 @@ DATA_PATH = None
 
 def per_baseline_scale(p, spot, data):
     """V² χ²/N after fitting a free multiplicative scale to each of the 15
-    station pairs (diagnostic only: it says how much of the excess is
-    baseline-dependent calibration)."""
+    station pairs (diagnostic only: it shows which baselines the model
+    gets wrong; the data are a simulation, so it is not a calibration)."""
     from astropy.io import fits
 
     u, v, v2, err, *_ = data

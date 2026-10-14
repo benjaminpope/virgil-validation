@@ -940,9 +940,14 @@ John Young sent Ben a folder of contest datasets. It is filed under
   `test_spot_is_an_unclipped_added_disk`): V² 1.31, closure 0.52 on its grid.
   Bandwidth smearing makes it worse and a quadratic law is a worse
   explanation than the spot, so neither is adopted. A free scale per baseline
-  gets 1.06 on top of the spot, scales 0.91–1.01, nearly all within 3 %:
-  the remaining 1.3 against 0.94 is a few percent of baseline-dependent
-  calibration (0–2 at 23 m worst), not a physical ingredient we can pin.
+  gets 1.06 on top of the spot, scales 0.91–1.01. That is **not** a
+  calibration error: the data are an OYSTER simulation with uncorrelated
+  Poisson noise, and the BSC1948 binary from the same chain fits at V² scale
+  0.997 and χ²/N 0.94, so no baseline-dependent systematic is allowed. The
+  remaining 1.3 against 0.94 is error in our rebuilt truth (the scales say
+  where it sits: stations 0–2 at 23 m worst) — probably the unpublished
+  limb-darkening table or the spot's exact profile and brightness at the
+  limb — and is still open.
   σ/peak of campaign 1 against the fitted truth: 0.253 (was 0.264).
   The mechanism in OYSTER (spot added at the limb brightness) is
   inferred from the fit, not documented.
