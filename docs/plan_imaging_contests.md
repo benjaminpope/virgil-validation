@@ -811,6 +811,43 @@ star arm with a median χ²/N above 2 on any family; on its target family,
 each star arm's median NCC at least the baseline's, or a rejection by the
 guard; and the rejection counts reported.
 
+### C2h. An informed parametric ladder for the 2004 data
+
+`scripts/contest_parametric.py` fits the 2004 data1 and data2 OIFITS with
+a ladder of physical models, using virgil only: uniform disk, limb-darkened
+disk, elliptical limb-darkened disk, then one spot (free position in the
+star's frame, free contrast), then a companion, then a second spot only if
+the evidence asks for it. It is **informed** (domain knowledge of what the
+object is) and is badged as such wherever it is quoted; it is not a blind
+reconstruction.
+
+- **Starts.** Moments from `second_moments`, plus multistarts strictly inside
+  the priors; angles are periodic; no start sits on a prior edge. The companion
+  is searched with `linear_flux_grid` over ±λ/B_min with the primary masked,
+  the peaks are ranked by their actual χ², and the best are refined.
+- **Priors.** Jeffreys: log-uniform scales and fluxes, uniform positions
+  and angles. The published truth is never a start or a prior.
+- **Gain.** The data are normalized without the spot's excess flux
+  (V(0) ≈ 1.07), so a real gain multiplies V (V² by g², T3AMP by g³).
+- **Selection.** Raw χ²/N per observable first (V², closure phase, T3AMP),
+  then ΔBIC and a Laplace evidence; NUTS on the winner.
+- **Scoring.** The winner is rendered on the scoring grid and scored with
+  `score_2004`'s σ/peak. The published truth enters only that score and the
+  parameter-recovery table.
+
+Local result on data2 (light settings): the elliptical limb-darkened disk with
+one spot and a companion reaches raw χ²/N 0.985 (V² 0.97, closure 1.01); every
+simpler rung has χ²/N above 26. σ/peak is 0.180 against the published truth
+(BSMEM 0.116, our best image 0.250). The score depends on how the unresolved
+companion is rendered: a point source scored 0.351, a free-diameter disk 0.180.
+The limb-darkening, stellar and companion diameters are 3–6σ from the rebuilt
+truth, plausibly because the contest's limb-darkening table is unpublished.
+
+On data1 the ladder does not reach the data: the best rung (two spots and a
+companion) has raw χ²/N 82 on the light settings, so data1 is not described by
+this star-plus-spots-plus-companion family, and its parameters and NUTS
+(r_hat up to 9) are not to be quoted. The full job reruns it with 16 starts.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
