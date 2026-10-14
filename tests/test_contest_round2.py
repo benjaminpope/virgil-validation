@@ -470,3 +470,14 @@ def test_gp_checkpoint_writes_a_partial_npz_with_the_best_fit_so_far(tmp_path):
     import json
     assert json.loads(str(d["best_so_far"]))["iso"][:3] == [-40.0, 2.0, 2.0]
     assert (tmp_path / "lab.txt").read_text().startswith("PARTIAL")
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_nearest_discrepancy_picks_chi2_nearest_one_and_counts_overfits():
+    def member(chi2, kept=True):
+        return types.SimpleNamespace(total_chi2_red=chi2, kept=kept)
+
+    ms = [member(0.12), member(0.4), member(1.3, False), member(float("nan")), member(5.0)]
+    best, n_over = ci.nearest_discrepancy(ms)
+    assert best.total_chi2_red == 1.3 and n_over == 2
+    assert ci.nearest_discrepancy([member(float("nan"))]) == (None, 0)

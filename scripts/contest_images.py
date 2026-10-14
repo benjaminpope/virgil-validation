@@ -2265,6 +2265,20 @@ def run_clean(task, data_dir, out_dir, smoke=False, halo=False, star=None, label
 SWEEP_SMOKE = dict(n_weights=3, max_npix=32)
 
 
+def nearest_discrepancy(members):
+    """The member whose total χ²/N is nearest 1 (in log) among those whose fit
+    is finite, kept or not, and how many kept members fit better than χ²/N =
+    0.5. virgil.ensemble keeps the weights up to the L-curve's corner, whose
+    window and "within 2x the best member" cut favour the lowest χ²: with
+    errors that are too large (2008 AGB K, MATISSE N: winners at χ²/N 0.27 and
+    0.12) that is an over-fit. The discrepancy principle asks for χ²/N ≈ 1; this
+    reports the member that does, beside virgil's mean (which is not
+    changed). Returns (member or None, n_overfit)."""
+    finite = [m for m in members if np.isfinite(m.total_chi2_red) and m.total_chi2_red > 0]
+    best = min(finite, key=lambda m: abs(np.log(m.total_chi2_red)), default=None)
+    return best, sum(1 for m in finite if m.kept and m.total_chi2_red < 0.5)
+
+
 def run_sweep(task, data_dir, out_dir, n_groups, smoke=False, star=None, families=None, label=None, informed=False):
     """``n_groups`` groups of virgil.ensemble.ensemble on the task's data,
     with the task's star unless ``star`` says otherwise. Saves the mean
@@ -2288,18 +2302,32 @@ def run_sweep(task, data_dir, out_dir, n_groups, smoke=False, star=None, familie
     pixel = float(ens.mean.pixel_scale_mas)
     raw = chi2_red(ens.model, data)
     summary = ens.summary()
+    near, n_overfit = nearest_discrepancy(ens.members)
+    near_record, near_image = None, np.zeros((0, 0))
+    if near is not None:
+        near_record = {"group": near.draw.index, "family": near.draw.family, "weight": near.weight, "kept": near.kept,
+                       "reason": near.reason, "chi2_red": list(near.chi2_red), "total_chi2_red": near.total_chi2_red,
+                       "npix": near.draw.npix, "pixel_scale_mas": near.draw.pixel_scale_mas}
+        near_image = safe_render(image_of(near.result.model), near.draw.npix, near.draw.npix * near.draw.pixel_scale_mas)
+    if len(data if isinstance(data, list) else [0]) > 1:
+        summary += ("\nnote: the datasets are fitted jointly with one grey image (no SPARCO in virgil.ensemble); "
+                    "per-dataset χ²/N above is not comparable with a single-band fit")
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_dir / f"{label}.npz", mean=mean, std=std, pixel_scale_mas=pixel, npix=mean.shape[0],
                         mean_flux=flux_value(ens.mean.flux), kept=json.dumps(kept, default=float), summary=summary,
                         ensemble_chi2_red=np.asarray(ens.chi2_red), raw_chi2_red=raw, n_groups=n_groups, star=bool(star),
-                        spec=json.dumps(dataclasses.asdict(ens_spec), default=float), informed=bool(informed))
+                        spec=json.dumps(dataclasses.asdict(ens_spec), default=float), informed=bool(informed),
+                        nearest_discrepancy=json.dumps(near_record, default=float), nearest_discrepancy_image=near_image,
+                        n_kept_below_half=n_overfit)
     text = (f"task={task if isinstance(task, int) else spec['label']} label={label} files={spec['files']} star={star}\n"
             f"{informed_line(informed)}\nraw chi2/N={raw:.4g} (quoted errors, no nuisances; the mean scene) "
             f"per dataset={tuple(round(float(c), 4) for c in ens.chi2_red)}\n"
             f"sweep: {n_groups} groups, EnsembleSpec {dataclasses.asdict(ens_spec)}\n"
             f"the weight ranges are virgil's untuned defaults; the 180° ambiguity is not handled\n"
             f"virgil={virgil.__version__} from {virgil.__file__}\nnpix={mean.shape[0]} pixel={pixel:.4g} mas "
-            f"kept={len(kept)} members\n{summary}\nelapsed={time.time() - t0:.0f}s\n")
+            f"kept={len(kept)} members\n{summary}\n"
+            f"member nearest χ²/N = 1 (the discrepancy principle on the quoted errors; virgil's mean keeps the lowest-χ² "
+            f"members, {n_overfit} kept below χ²/N 0.5, an over-fit when errors are too large): {near_record}\nelapsed={time.time() - t0:.0f}s\n")
     (out_dir / f"{label}.txt").write_text(text)
     print(text)
     fov = mean.shape[0] * pixel
