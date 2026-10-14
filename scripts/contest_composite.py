@@ -350,6 +350,53 @@ def _latent_paths(sc):
     return tuple(f"{name}.log_brightness.latent" for name in sc.gp)
 
 
+def _jacobian(model, data, paths):
+    """Whitened residuals and their Jacobian with respect to ``paths`` (one
+    path or several, columns in that order). virgil's own tuple-path
+    support (virgil#330) is newer than the pinned virgil, so several paths
+    are stacked here."""
+    from virgil.imaging import _residual_jacobian  # private: the Jacobian log_evidence uses
+
+    if isinstance(paths, str):
+        return _residual_jacobian(model, data, paths)
+    pieces = [_residual_jacobian(model, data, p) for p in paths]
+    r = pieces[0][0]
+    return r, np.concatenate([np.asarray(j).reshape(len(r), -1) for _, j in pieces], axis=1)
+
+
+def gp_log_evidence(model, data, sc):
+    """virgil's ``log_evidence`` with every GP image's latents integrated out
+    together: -½χ² - log norm - ½|z|² - ½ log det(I + JᵀJ), J over all
+    their latents (the same formula, for several images)."""
+    from virgil.imaging import _log_norm
+
+    if len(sc.gp) == 1:
+        return float(log_evidence(model, data, path=next(iter(sc.gp))))
+    r, jac = _jacobian(model, data, _latent_paths(sc))
+    z2 = sum(float(np.sum(np.square(np.asarray(model.get(p), float)))) for p in _latent_paths(sc))
+    sv = np.linalg.svd(jac, compute_uv=False)
+    return float(-0.5 * r @ r - _log_norm(model, data) - 0.5 * z2 - 0.5 * np.sum(np.log1p(sv**2)))
+
+
+def gp_error_scale(model, data, sc):
+    """MacKay's error scale (virgil's ``error_scale``) with the effective
+    number of parameters γ over every GP image's latents together."""
+    if len(sc.gp) == 1:
+        return float(error_scale(model, data, path=next(iter(sc.gp))))
+    r, jac = _jacobian(model, data, _latent_paths(sc))
+    chi2 = float(r @ r)
+    n_data = sum(d.n_independent for d in (data if isinstance(data, list) else [data]))
+    lam = np.linalg.svd(jac, compute_uv=False) ** 2
+    beta = 0.0  # g(β) = βχ² + γ(β) - N = 0 by Newton from 0, as virgil does
+    for _ in range(100):
+        g = beta * chi2 + np.sum(beta * lam / (1.0 + beta * lam))
+        step = (g - n_data) / (chi2 + np.sum(lam / (1.0 + beta * lam) ** 2))
+        beta -= step
+        if abs(step) <= 1e-12 * beta:
+            break
+    return float(1.0 / np.sqrt(beta))
+
+
 def _flux_path(sc):
     """Some scalar leaf of the scene (for the residuals alone)."""
     return next(f"{n}.flux" for n, c in sc.model.components.items() if isinstance(c, vm.Image))
@@ -357,32 +404,32 @@ def _flux_path(sc):
 
 def log_evidence_all(sc, result, data):
     """Laplace log evidence of a composite fit: every GP image's latents
-    integrated out together (``log_evidence(path=<all GP images>)``), then
+    integrated out together (``gp_log_evidence``), then
     the Occam factor of the other parameters (fluxes, offsets, the star) in
     the coordinates in which their Jeffreys priors are flat, with the
     curvature marginalized over the latents (as contest_images.log_evidence_full
     does for one image). Penalised images are held at their fit. Without a
     GP image the first term is log_evidence's with no latents, -½χ² minus
     the likelihood's normalization."""
-    from virgil.imaging import _log_norm, _residual_jacobian  # private: log_evidence's own pieces
+    from virgil.imaging import _log_norm  # private: log_evidence's own normalization
 
     model = result.model
     if sc.gp:
-        log_z = float(log_evidence(result, data, path=sc.gp_paths()))
+        log_z = gp_log_evidence(model, data, sc)
     else:
-        r, _ = _residual_jacobian(model, data, _flux_path(sc))
+        r, _ = _jacobian(model, data, _flux_path(sc))
         log_z = float(-0.5 * r @ r - _log_norm(model, data))
     rest = {k: v for k, v in sc.priors.items() if isinstance(v, (dist.Uniform, dist.LogUniform))}
     if not rest:
         return log_z, 0.0
     if sc.gp:
-        _, jac_z = _residual_jacobian(model, data, _latent_paths(sc))
+        _, jac_z = _jacobian(model, data, _latent_paths(sc))
         u, sv, _ = np.linalg.svd(np.asarray(jac_z).reshape(jac_z.shape[0], -1), full_matrices=False)
     else:
         u, sv = np.zeros((len(r), 0)), np.zeros(0)
     columns, ranges = [], []
     for name, prior in rest.items():
-        _, jac = _residual_jacobian(model, data, name)
+        _, jac = _jacobian(model, data, name)
         lo, hi, log = ci._interior(prior, 0.0)
         if log:
             jac = jac * float(np.ravel(model.get(name))[0])
@@ -413,7 +460,6 @@ def marginal_flux_map(sc, data, positions):
     the latents at their fit, finds nothing a GP was free enough to absorb
     (design/composite_scenes.md). With no GP image it is virgil's
     ``linear_flux_grid`` on ``sc.model``. Returns (flux, snr) arrays."""
-    from virgil.imaging import _residual_jacobian
     from virgil.likelihood import whitened_residuals
 
     datasets = data if isinstance(data, list) else [data]
@@ -421,7 +467,7 @@ def marginal_flux_map(sc, data, positions):
     for path in _latent_paths(sc):
         model = model.set(path, jnp.zeros_like(model.get(path)))
     if sc.gp:
-        mean, jac = _residual_jacobian(model, data, _latent_paths(sc))
+        mean, jac = _jacobian(model, data, _latent_paths(sc))
         u, sv, _ = np.linalg.svd(np.asarray(jac).reshape(jac.shape[0], -1), full_matrices=False)
         shrink = sv**2 / (1.0 + sv**2)
     else:
@@ -612,7 +658,7 @@ def run_composite(task, data_dir, out_dir, parts, smoke=False, label=None, field
                                             "flux": ci.flux_value(st.flux)}
     scale, data_s = 1.0, data
     if sc.gp:
-        scale = float(error_scale(result.model, data, path=sc.gp_paths()))
+        scale = gp_error_scale(result.model, data, sc)
         if not 1 / 1.3 < scale < 1.3:
             datasets = data if isinstance(data, list) else [data]
             data_s = [d.with_error_scale(scale) for d in datasets]
