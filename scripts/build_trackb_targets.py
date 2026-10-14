@@ -75,9 +75,10 @@ SHORT_ARC_PAPERS = {
 # gives T0 = 73.1 d with no epoch; its RV table is on JD - 2416500 and that offset (alone) fits the table's 33 RVs.
 T_PERI_OFFSET_JD = {"nn_del": 2445000.0, "kap_vel": 2416500.0}
 
-_DEGENERATE = (" Without radial velocities the sky positions are unchanged by (omega, Omega) -> (omega + 180, Omega + 180) "
-               "degrees, so a blind astrometric solver's omega and Omega can only be compared with the published pair "
-               "jointly, modulo that shift (the companion-convention pair is the published one plus 180 degrees in both).")
+_DEGENERATE = (" Compare orbits on the sky by their Thiele-Innes constants (orbit.thiele_innes_mas: with X = cos E - e, "
+               "Y = sqrt(1 - e^2) sin E, dDec = A X + F Y and dRA = B X + G Y): they do not depend on which star omega "
+               "refers to or on the (omega, Omega) -> (omega + 180, Omega + 180) degeneracy of astrometry without radial "
+               "velocities. For kappa Vel they are taken from the paper's own Eqs. 6-7.")
 _CONV_COMMON = (
     "Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; "
     "the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary "
@@ -111,7 +112,8 @@ CONVENTIONS = {
               "The paper's Omega and i are in a form (Thiele-Innes constants with x = -A(cosE - e) - F sqrt(1-e^2) sinE) "
               "that does not give the published positions in the standard east-of-north Campbell formulas; "
               "the equivalent standard elements, found here by comparing the paper's Eqs. 6-7 with the standard form and then tried "
-              "against Table 3 (so that check tests this mapping and is not independent of it), are Omega = 270 - 109.74 = "
+              "against Table 3; their Thiele-Innes constants equal those of the paper's own Eqs. 6-7 to 1e-15, so the mapping is exact "
+              "algebra, not a fit to Table 3), are Omega = 270 - 109.74 = "
               "160.26 degrees and i = 180 - 74.03 = 105.97 degrees (retrograde, as the position angles run). "
               "Use 'standard' for any comparison; the published values stay in 'orbit'. " + _CONV_COMMON),
         omega_primary=True, degenerate_shift_deg=180.0, standard=dict(Omega_deg=270.0 - 109.74, i_deg=180.0 - 74.03),
@@ -135,6 +137,23 @@ SUSPECT = {("kap_vel", "2025-02-28"): (
     "epoch, which is the night of 2025-02-24 (the date label and the MJD disagree). The paper's own orbit predicts about "
     "-0.53 mas, a blind single-night fit of the Phase 3 file gives about -0.51 mas, and dRA is falling through the "
     "neighbouring epochs: a sign error in the printed value is likely. The files are matched by MJD, so the data are not affected.")}
+
+
+def thiele_innes(a, omega, Omega, inc, rowan=False):
+    """Thiele-Innes constants (mas) of the relative orbit on the sky: with X = cos E - e and Y = sqrt(1 - e^2) sin E,
+    dDec = A X + F Y and dRA = B X + G Y (secondary relative to primary, east and north positive). They fix the sky
+    orbit with no choice of which star omega refers to, and are unchanged by (omega, Omega) -> (omega + 180, Omega + 180),
+    the one thing astrometry alone cannot tell apart. ``rowan``: the paper's own Eqs. 6-7 (x = dRA = -A (cos E - e) -
+    F sqrt(1 - e^2) sin E, y = dDec = -B (cos E - e) - G sqrt(1 - e^2) sin E, with its A, B, F, G), mapped to ours."""
+    w, O, i = map(math.radians, (omega, Omega, inc))
+    A = a * (math.cos(O) * math.cos(w) - math.cos(i) * math.sin(O) * math.sin(w))
+    B = a * (math.sin(O) * math.cos(w) + math.cos(i) * math.cos(O) * math.sin(w))
+    F = a * (-math.cos(O) * math.sin(w) - math.cos(i) * math.sin(O) * math.cos(w))
+    G = a * (-math.sin(O) * math.sin(w) + math.cos(i) * math.cos(O) * math.cos(w))
+    if rowan:
+        return dict(A=-B, B=-A, F=-G, G=-F)
+    # standard form (Binnendijk): dDec = A X + F Y, dRA = B X + G Y with the usual A, B, F, G of an east-of-north orbit
+    return dict(A=A, B=B, F=F, G=G)
 
 
 def _pair(x):
@@ -290,9 +309,16 @@ def templates(trackb):
     return out
 
 
+def rec_slug_is_rowan(tmpl):
+    return tmpl["paper"]["arxiv"] == SHORT_ARC_PAPERS["kap_vel"]["arxiv"]
+
+
 def build(slug, trackb, tmpl):
     simbad, cat_slug, kind = tmpl["simbad"], tmpl["cat_slug"], tmpl["kind"]
     tmpl["conventions"] = dict(tmpl["conventions"], text=tmpl["conventions"]["text"] + _DEGENERATE)
+    o = tmpl["orbit"]
+    o["thiele_innes_mas"] = thiele_innes(o["a_mas"][0], o["omega_deg"][0], o["Omega_deg"][0], o["i_deg"][0],
+                                         rowan=rec_slug_is_rowan(tmpl))
     rec = dict(schema="trackb-target/1", slug=slug, target=simbad, kind=kind, instrument=tmpl["instrument"],
                band=tmpl["band"], ra_deg=tmpl["ra_deg"], dec_deg=tmpl["dec_deg"], paper=tmpl["paper"],
                conventions=tmpl["conventions"], orbit=tmpl["orbit"], diameters_mas=tmpl.get("diameters_mas"),

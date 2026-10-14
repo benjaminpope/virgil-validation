@@ -59,6 +59,54 @@ LOOSE_MAS = {"ak_for": 0.45}  # e = 0.0002: omega and T_peri are undetermined, s
 FLOOR_MAS = 0.15  # the larger of this and 6 sigma_major is each epoch's tolerance (the short arcs print no sigma)
 
 
+def _ti_position(t, o):
+    """(dRA, dDec) from the Thiele-Innes constants: dDec = A X + F Y, dRA = B X + G Y (no angle convention involved)."""
+    ti = o["thiele_innes_mas"]
+    M = 2 * np.pi * (np.asarray(t) - o["T_peri_mjd"][0]) / o["P_day"][0]
+    e = o["e"][0]
+    E = M + e * np.sin(M)
+    for _ in range(60):  # Newton on Kepler's equation
+        E = E - (E - e * np.sin(E) - M) / (1 - e * np.cos(E))
+    X, Y = np.cos(E) - e, np.sqrt(1 - e * e) * np.sin(E)
+    return ti["B"] * X + ti["G"] * Y, ti["A"] * X + ti["F"] * Y
+
+
+@pytest.mark.validates("pipeline:trackb-targets", roots=["literature"], kind="guard")
+@pytest.mark.parametrize("slug", SLUGS)
+def test_thiele_innes_reproduce_the_published_positions(slug):
+    """The record's Thiele-Innes constants (the sky orbit, whatever the paper's angle convention) reproduce the paper's own
+    positions at every epoch, to 6 sigma or the floor; none was fitted. A flagged ``suspect`` epoch is excluded, but only
+    if it really is the outlier."""
+    r = _rec(slug)
+    ep = r["epochs"]
+    x, y = _ti_position([e["mjd"] for e in ep], r["orbit"])
+    m = np.hypot(x - [e["dra_mas"] for e in ep], y - [e["ddec_mas"] for e in ep])
+    sigma = np.array([max(e["sigma_major_mas"] or 0, e["sigma_minor_mas"] or 0) for e in ep])
+    tol = np.maximum(6 * sigma, LOOSE_MAS.get(slug, FLOOR_MAS))
+    suspect = np.array(["suspect" in e for e in ep])
+    assert suspect.sum() <= 1
+    assert np.all(m[~suspect] <= tol[~suspect]), (slug, np.round(m, 3), np.round(tol, 3))
+    if suspect.any():
+        assert m[suspect][0] > 0.5 and np.sum(m > 0.5) == 1
+    record("max_miss_mas", float(m[~suspect].max()))
+
+
+@pytest.mark.validates("pipeline:trackb-targets", roots=["literature"], kind="guard")
+def test_kappa_vel_standard_elements_are_the_papers_orbit_exactly():
+    """kappa Vel's Omega and i are printed in the paper's own Thiele-Innes form (its Eqs. 6-7); the standard elements stored
+    beside them give the same constants by algebra (no fit to Table 3)."""
+    import math
+    r = _rec("kap_vel")
+    ti, o, st = r["orbit"]["thiele_innes_mas"], r["orbit"], r["conventions"]["standard"]
+    w, O, i = (math.radians(x) for x in (o["omega_deg"][0], st["Omega_deg"], st["i_deg"]))
+    a = o["a_mas"][0]
+    A = a * (math.cos(O) * math.cos(w) - math.cos(i) * math.sin(O) * math.sin(w))
+    B = a * (math.sin(O) * math.cos(w) + math.cos(i) * math.cos(O) * math.sin(w))
+    F = a * (-math.cos(O) * math.sin(w) - math.cos(i) * math.sin(O) * math.cos(w))
+    G = a * (-math.sin(O) * math.sin(w) + math.cos(i) * math.cos(O) * math.cos(w))
+    assert (ti["A"], ti["B"], ti["F"], ti["G"]) == pytest.approx((A, B, F, G), abs=1e-9)
+
+
 @pytest.mark.validates("pipeline:trackb-targets", roots=["literature"], kind="guard")
 @pytest.mark.parametrize("slug", SLUGS)
 def test_published_orbit_reproduces_the_published_positions(slug):

@@ -17,7 +17,7 @@
  },
  "conventions": {
   "omega_shift_deg": 0.0,
-  "text": "Elements from Gallenne et al. 2023, Table 6 (joint radial-velocity and astrometry fit). omega is the primary's (the RV model is V1 = gamma + K1[cos(omega + nu) + e cos omega], V2 with -K2); T_peri is a full JD (here also as MJD = JD - 2400000.5). Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). Checked against the paper's own tables: the tabulated omega and Omega, used as they stand in the standard Campbell formulas, reproduce the published positions (Table B.1); changing either alone by 180 degrees does not. (Equivalent to the companion's omega + 180 degrees with Omega + 180 degrees.) Where e is near zero (AK For, o Leo) omega and T_peri are poorly determined. Without radial velocities the sky positions are unchanged by (omega, Omega) -> (omega + 180, Omega + 180) degrees, so a blind astrometric solver's omega and Omega can only be compared with the published pair jointly, modulo that shift (the companion-convention pair is the published one plus 180 degrees in both).",
+  "text": "Elements from Gallenne et al. 2023, Table 6 (joint radial-velocity and astrometry fit). omega is the primary's (the RV model is V1 = gamma + K1[cos(omega + nu) + e cos omega], V2 with -K2); T_peri is a full JD (here also as MJD = JD - 2400000.5). Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). Checked against the paper's own tables: the tabulated omega and Omega, used as they stand in the standard Campbell formulas, reproduce the published positions (Table B.1); changing either alone by 180 degrees does not. (Equivalent to the companion's omega + 180 degrees with Omega + 180 degrees.) Where e is near zero (AK For, o Leo) omega and T_peri are poorly determined. Compare orbits on the sky by their Thiele-Innes constants (orbit.thiele_innes_mas: with X = cos E - e, Y = sqrt(1 - e^2) sin E, dDec = A X + F Y and dRA = B X + G Y): they do not depend on which star omega refers to or on the (omega, Omega) -> (omega + 180, Omega + 180) degeneracy of astrometry without radial velocities. For kappa Vel they are taken from the paper's own Eqs. 6-7.",
   "omega_primary": true,
   "degenerate_shift_deg": 180.0,
   "check": "positions of Table B.1 reproduced to 0.01-0.4 mas (0.4 for AK For, e = 0.0002)"
@@ -75,7 +75,13 @@
    55100.06799999997,
    0.002
   ],
-  "source": "VizieR J/A+A/672/A119/table6, row 'LL Aqr' (Table 6; joint RV + astrometry)"
+  "source": "VizieR J/A+A/672/A119/table6, row 'LL Aqr' (Table 6; joint RV + astrometry)",
+  "thiele_innes_mas": {
+   "A": -1.1723892697907308,
+   "B": 0.4894904233105927,
+   "F": -0.5375809407625196,
+   "G": 0.2013059287263522
+  }
  },
  "diameters_mas": {
   "primary": [

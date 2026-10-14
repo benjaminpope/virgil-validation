@@ -17,7 +17,7 @@
  },
  "conventions": {
   "omega_shift_deg": 0.0,
-  "text": "Elements from Gallenne et al. 2019, Table 2 (joint fit of PIONIER astrometry and STELLA radial velocities). omega is the primary's (RV model V1 = gamma + K1[cos(omega + nu) + e cos omega]; the V2 sign of K2 is opposite although the typeset formula does not show it). T_peri is printed as 5235.164 d with the note '-2445000': read as JD - 2445000. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). The paper's four positions are reproduced to about 0.003 mas by the standard Campbell formulas with these omega and Omega. Without radial velocities the sky positions are unchanged by (omega, Omega) -> (omega + 180, Omega + 180) degrees, so a blind astrometric solver's omega and Omega can only be compared with the published pair jointly, modulo that shift (the companion-convention pair is the published one plus 180 degrees in both).",
+  "text": "Elements from Gallenne et al. 2019, Table 2 (joint fit of PIONIER astrometry and STELLA radial velocities). omega is the primary's (RV model V1 = gamma + K1[cos(omega + nu) + e cos omega]; the V2 sign of K2 is opposite although the typeset formula does not show it). T_peri is printed as 5235.164 d with the note '-2445000': read as JD - 2445000. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). The paper's four positions are reproduced to about 0.003 mas by the standard Campbell formulas with these omega and Omega. Compare orbits on the sky by their Thiele-Innes constants (orbit.thiele_innes_mas: with X = cos E - e, Y = sqrt(1 - e^2) sin E, dDec = A X + F Y and dRA = B X + G Y): they do not depend on which star omega refers to or on the (omega, Omega) -> (omega + 180, Omega + 180) degeneracy of astrometry without radial velocities. For kappa Vel they are taken from the paper's own Eqs. 6-7.",
   "omega_primary": true,
   "degenerate_shift_deg": 180.0,
   "check": "the four Table 1 positions reproduced to about 0.003 mas"
@@ -75,7 +75,13 @@
    50234.66399999987,
    0.07
   ],
-  "source": "Table 2 (table__orbits), Sect. 4 of the arXiv version (A&A 632, A31). Combined MCMC (emcee) fit of RVs + astrometry. Values are printed as value(uncertainty on last digits) in the paper; here converted to [value, error]. Tp in the paper is HJD-2445000 for the first five systems (see note)."
+  "source": "Table 2 (table__orbits), Sect. 4 of the arXiv version (A&A 632, A31). Combined MCMC (emcee) fit of RVs + astrometry. Values are printed as value(uncertainty on last digits) in the paper; here converted to [value, error]. Tp in the paper is HJD-2445000 for the first five systems (see note).",
+  "thiele_innes_mas": {
+   "A": -3.453685709734649,
+   "B": -0.08394590273977039,
+   "F": -0.6088249923651119,
+   "G": -0.02101710817570585
+  }
  },
  "diameters_mas": {
   "primary": [
