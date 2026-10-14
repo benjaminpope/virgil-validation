@@ -217,6 +217,21 @@ def off_bounds(values, priors, edge=1e-3):
     return out
 
 
+def finite_points(curve):
+    """Indices of the L-curve points whose fit is finite (χ² and every value)."""
+    return [i for i, r in enumerate(curve.results)
+            if np.isfinite(float(curve.chi2[i])) and all(np.all(np.isfinite(np.asarray(v))) for v in r.values.values())]
+
+
+def safe_render(model, npix, fov):
+    """``model.render``, or an all-NaN image when the model is non-finite or
+    has no positive flux (virgil raises then)."""
+    try:
+        return np.asarray(model.render(npix, fov))
+    except ValueError:
+        return np.full((npix, npix), np.nan)
+
+
 def sweep(start, priors, data, penalty, weights, others, warm_start=True, **options):
     """virgil's ``l_curve`` (the same fits, weights strongest first, each warm
     started from the previous unless ``warm_start`` is False) except that a
@@ -1363,19 +1378,28 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     # discrepancy() is None when no weight reaches χ² = N (the data are then
     # under-fitted at every weight: worth a note); corner() needs >= 3 points.
     # Fall back to the L-curve corner, then to the weakest weight.
-    weakest = float(curve.weights[-1])
+    # Non-finite fits (logged) take no part in choosing the weight.
+    ok = finite_points(curve)
+    if not ok:
+        raise RuntimeError("every L-curve fit is non-finite")
+    if len(ok) < len(curve.results):
+        print("non-finite fits at weights", [float(curve.weights[i]) for i in range(len(curve.results)) if i not in ok])
+    good = curve if len(ok) == len(curve.results) else LCurve(
+        np.asarray(curve.weights)[ok], np.asarray(curve.chi2)[ok], np.asarray(curve.chi2_red)[ok],
+        np.asarray(curve.penalty)[ok], [curve.results[i] for i in ok])
+    weakest = float(good.weights[-1])
     try:
-        corner = curve.corner()
+        corner = good.corner()
     except ValueError:
-        if reg == "mem":
+        if reg == "mem" and len(ok) == len(curve.results):
             raise  # round-1 behaviour
         corner = None
     corner = weakest if corner is None else float(corner)
-    discrepancy = curve.discrepancy()
+    discrepancy = good.discrepancy()
     chosen = {"discrepancy": corner if discrepancy is None else float(discrepancy), "corner": corner}
     reached = discrepancy is not None
-    index = {k: int(np.argmin(np.abs(np.log(curve.weights) - np.log(w)))) for k, w in chosen.items()}
-    images = np.stack([np.asarray(image_of(r.model, star, halo).render(npix, fov)) for r in curve.results])
+    index = {k: ok[int(np.argmin(np.abs(np.log(good.weights) - np.log(w))))] for k, w in chosen.items()}
+    images = np.stack([safe_render(image_of(r.model, star, halo), npix, fov) for r in curve.results])
     report_w = weight_report(curve, data, reg, path, index["discrepancy"])
     # V² and closure phases have no absolute phases, so no dirty image:
     # show the starting image instead.

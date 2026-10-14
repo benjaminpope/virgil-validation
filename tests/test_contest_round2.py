@@ -355,3 +355,20 @@ def test_sweep_warm_starts_inside_the_bounds_and_skips_non_finite_fits(monkeypat
     assert seeds[0] is None
     assert 1e-4 < float(seeds[1]["g.flux"])
     assert seeds[2] is seeds[1]  # the NaN fit did not replace the last finite seed
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_non_finite_fits_are_left_out_and_render_as_nan():
+    """A fit that went non-finite takes no part in choosing the weight, and
+    renders as NaN instead of stopping the run."""
+    good = types.SimpleNamespace(values={"a": np.array([1.0, 2.0])})
+    bad = types.SimpleNamespace(values={"a": np.array([np.nan, 2.0])})
+    curve = types.SimpleNamespace(chi2=np.array([5.0, np.nan, 3.0, 4.0]), results=[good, good, bad, good])
+    assert ci.finite_points(curve) == [0, 3]
+
+    class Broken:
+        def render(self, npix, fov):
+            raise ValueError("Rendered image must contain positive finite flux.")
+
+    assert np.all(np.isnan(ci.safe_render(Broken(), 4, 1.0)))
+    assert ci.safe_render(_image(8), 8, 8.0).shape == (8, 8)
