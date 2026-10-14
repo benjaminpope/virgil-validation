@@ -537,7 +537,7 @@ before submitting.
 2004 data2 has a truth we can score against numerically. Campaign 1 scored
 σ/peak 0.250 there, third of four (BSMEM 0.116, WISARD 0.163, MIRA 0.532,
 VLBMEM 0.798). With the truth's unpublished details fitted to the data it
-scores 0.260 (0.264 after the 2026-10-13 correction below, 0.253 after the
+scores 0.260 (0.264 after the 2026-10-13 correction below, 0.252 after the
 2026-10-14 spot correction in C4b). The rebuilt
 truth first fitted only at V² χ²/N ≈ 50, which this plan blamed on
 calibration errors in the 2004 data; that was wrong (note below). So, before
@@ -948,9 +948,22 @@ John Young sent Ben a folder of contest datasets. It is filed under
   where it sits: stations 0–2 at 23 m worst) — probably the unpublished
   limb-darkening table or the spot's exact profile and brightness at the
   limb — and is still open.
-  σ/peak of campaign 1 against the fitted truth: 0.253 (was 0.264).
+  σ/peak of campaign 1 against the fitted truth: 0.252 (was 0.264).
   The mechanism in OYSTER (spot added at the limb brightness) is
-  inferred from the fit, not documented.
+  inferred from the fit, not documented. **Follow-up (Ben, 2026-10-14):**
+  the data are an analytic OYSTER model, so `score_2004.model_vis` evaluates
+  it in closed form (elliptical linear limb-darkened disk, uniform spot and
+  companion added in the Fourier plane). With the spot flux free it fits at
+  V² 1.28, CP 0.52, T3AMP 0.62, and the fitted flux (0.0788 of A's) agrees
+  with the Planck excess prediction (0.0783) to 0.6 %. A quadratic law gives
+  u2 = 0.00 ± 0.01. Hummel cites Van Hamme (1993, AJ 106, 2096) for his
+  linear coefficients; its Table 1 (bolometric, Kurucz 7000 K, log g 4)
+  gives u = 0.469, inside the data's 0.48 ± 0.02 (V² χ²/N 1.74 at u = 0.44,
+  1.33 at 0.469, 2.6 at 0.55), whereas a 550 nm monochromatic value (about
+  0.55) is rejected. `U_LD` and `FITTED` now use 0.469, so the truth has no
+  fitted limb darkening or spot parameter: V² 1.33 analytic (1.45 on
+  score_2004's 0.08 mas pixel grid), CP 0.55, T3AMP 0.64. Still 1.33 against
+  BSC1948's 0.94.
 
 - **Still missing:** the 2012 and 2016 truths. Neither collection is in
   JMMC OiDB, whose contest collections (2004–2010, 2022, 2024) match our

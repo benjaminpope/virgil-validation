@@ -117,3 +117,29 @@ def test_spot_is_an_unclipped_added_disk():
     np.testing.assert_allclose(extra[on_spot], (contrast - 1.0) * (1.0 - u_ld) * without.max())  # the centre is 1/norm
     outside = on_spot & (without == 0)
     assert outside.sum() > 0.3 * on_spot.sum()  # light beyond the limb
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_analytic_visibilities_match_a_fine_pixel_model():
+    # The closed form agrees with a 0.02 mas pixel DFT of the same model.
+    npix, pixel = 1201, 0.02
+    star, companion = score_2004.truth_parts(npix=npix, pixel=pixel)
+    ratio = 0.112
+    rng = np.random.default_rng(1)
+    u, v = rng.uniform(-6e7, 6e7, (2, 12))
+    pix = (
+        score_2004.visibilities(star, u, v, npix, pixel) + ratio * score_2004.visibilities(companion, u, v, npix, pixel)
+    ) / (1 + ratio)
+    np.testing.assert_allclose(score_2004.model_vis(u, v, ratio), pix, atol=3e-3)
+    assert score_2004.model_vis(np.zeros(1), np.zeros(1), ratio)[0].real == pytest.approx(
+        score_2004.truth_vis_image(ratio).sum(), rel=2e-3
+    )
+
+
+@needs_data2
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_analytic_truth_fits_data2_near_one():
+    u, v, v2, err = score_2004.read_v2(DATA2)
+    f = score_2004.FITTED
+    m = np.abs(score_2004.model_vis(u, v, f["ratio"], f["u_ld"], f["spot_contrast"])) ** 2
+    assert np.mean(((m - v2) / err) ** 2) < 1.5

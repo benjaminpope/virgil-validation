@@ -8,8 +8,12 @@ scoring only, never for imaging. The model:
 
 - A: an elliptical limb-darkened disk, 5.5 mas major axis, axis ratio 0.7,
   major axis at PA 120°. Its limb darkening came from a 7000 K, log g 4 model
-  atmosphere, which the paper does not tabulate: we use a linear law with
-  u = ``U_LD`` at 550 nm, and report how the score changes with u.
+  atmosphere. The paper does not tabulate it; OYSTER's linear coefficient is
+  taken to be Van Hamme (1993, AJ 106, 2096) Table 1's bolometric one for
+  7000 K, log g 4, u = 0.469 (``U_LD``), which Hummel's papers cite as the
+  source of his coefficients. The data pin u to 0.48 ± 0.02 (V² χ²/N 1.74 at
+  0.44, 2.6 at 0.55), so a 550 nm monochromatic value (about 0.55) is
+  rejected. The score is reported for u = 0.3, ``U_LD`` and 0.7.
 - A spot, 1 mas across, 2.5 mas from A's centre at PA 150°, at 1.5 x the
   star's temperature. It is a uniform disk added to the star, not clipped at
   the limb (the limb is at 2.45 mas on that PA, so half the spot hangs off the
@@ -47,7 +51,7 @@ counts; the flipped one is reported as a check).
 The unpublished details, fitted to the data (V² and closure phases, a
 Nelder-Mead fit, for scoring only; ``fit_nuisances``), give the values in
 ``FITTED``. With the normalisation and the spot above the truth fits at V² χ²/N
-1.31, closure χ²/N 0.52 and T3AMP χ²/N 0.7-0.8 (B/A 0.112, u = 0.487; the free
+1.3, closure χ²/N 0.55 and T3AMP χ²/N 0.6-0.8 (B/A 0.112, u = 0.469; the free
 spot contrast comes out at 3.68, the Planck ratio 3.70, which is what ``FITTED``
 uses). With a unit-sum normalisation it fitted only at V² χ²/N ≈ 50, which was
 once read as calibration error in the data (the 2004 rules allowed it) but is
@@ -76,10 +80,10 @@ import numpy as np
 # gives 1.2e-3. The score itself moves by 0.005 between the two.
 PIXEL = 0.08  # mas
 NPIX = 301  # 24 mas across: A at the centre and B 10 mas east both inside
-U_LD = 0.5  # linear limb darkening at 550 nm for a 7000 K, log g 4 star (assumed)
+U_LD = 0.469  # linear limb darkening, Van Hamme (1993) Table 1 (bolometric), Kurucz model 7000 K, log g 4
 WAVEL = 5.5e-7
 FITTED = {
-    "u_ld": 0.487,
+    "u_ld": U_LD,
     "spot_contrast": 3.7,
     "ratio": 0.112,
 }  # fit_nuisances; see the module docstring
@@ -161,6 +165,37 @@ def fit_ratio(star, companion, u, v, v2, err, ratios=np.geomspace(0.01, 2.0, 400
     chi2 = [np.sum(((np.abs(va + r * vb) / (1 + r)) ** 2 - v2) ** 2 / err**2) for r in ratios]
     i = int(np.argmin(chi2))
     return float(ratios[i]), float(chi2[i]) / len(v2)
+
+
+def model_vis(u, v, ratio, u_ld=U_LD, spot_contrast=None):
+    """Analytic complex visibilities of the contest model, normalised as
+    ``truth_vis_image`` (V(0) = 1 + spot excess + B/A over 1 + B/A), with no
+    pixel grid. OYSTER adds the Fourier transform of each component: A is a
+    linear limb-darkened elliptical disk (the baselines stretched along its
+    axes), the spot a uniform 1 mas disk of flux (contrast - 1)(1 - u) times
+    its area, over A's, and B a uniform disk. At u = 0.469 the 0.08 mas pixel
+    grid reads V² χ²/N 1.45 where this reads 1.33."""
+    from scipy.special import j1, jv
+
+    def uniform(q):
+        x = np.maximum(2 * np.pi * q, 1e-12)
+        return 2 * j1(x) / x
+
+    uu, vv = np.asarray(u) * MAS, np.asarray(v) * MAS  # cycles per mas
+    pa = np.radians(120.0)
+    along, across = uu * np.sin(pa) + vv * np.cos(pa), uu * np.cos(pa) - vv * np.sin(pa)
+    x = np.maximum(2 * np.pi * np.hypot(2.75 * along, 0.7 * 2.75 * across), 1e-12)
+    # Hanbury Brown et al. (1974): the linear limb-darkened disk
+    va = ((1 - u_ld) * j1(x) / x + u_ld * np.sqrt(np.pi / 2) * jv(1.5, x) / x**1.5) / ((1 - u_ld) / 2 + u_ld / 3)
+    contrast = planck_ratio(1.5 * 7000.0, 7000.0) if spot_contrast is None else spot_contrast
+    star_area = np.pi * 2.75 * 0.7 * 2.75 * (1 - u_ld / 3)
+    flux = (contrast - 1.0) * (1.0 - u_ld) * np.pi * 0.25 / star_area
+    sx, sy = offset(150.0, 2.5)
+    bx, by = offset(90.0, 10.0)
+    rho = np.hypot(uu, vv)
+    vs = flux * uniform(0.5 * rho) * np.exp(-2j * np.pi * (uu * sx + vv * sy))
+    vb = ratio * uniform(0.25 * rho) * np.exp(-2j * np.pi * (uu * bx + vv * by))
+    return (va + vs + vb) / (1 + ratio)
 
 
 def read_t3(path):
@@ -354,6 +389,8 @@ def main():
     moved, shift = aligned(resample(entry, fov, NPIX + 2 * MAX_SHIFT), ref)
     vis_img = truth_vis_image(FITTED["ratio"], FITTED["u_ld"], FITTED["spot_contrast"])
     cp, cp_inv = closure_chi2(vis_img, t3)
+    an = np.abs(model_vis(u, v, FITTED["ratio"], FITTED["u_ld"], FITTED["spot_contrast"])) ** 2
+    lines.append(f"  analytic visibilities (no pixel grid): V² χ²/N={np.mean(((an - v2) / err) ** 2):.2f}")
     lines.append(
         f"fitted truth (u_ld={FITTED['u_ld']}, spot contrast {FITTED['spot_contrast']}, B/A={FITTED['ratio']}): "
         f"V² χ²/N={v2_chi2(vis_img, u, v, v2, err):.2f}, closure χ²/N {cp:.2f} (inverted {cp_inv:.2f}), "
