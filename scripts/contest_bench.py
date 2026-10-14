@@ -85,8 +85,23 @@ CONFIGS = {
     # the baseline. Opt-in (not in DEFAULT_CONFIGS), so that the ten-arm
     # task numbering of earlier runs is unchanged.
     "ensemble": BASE | {"method": "ensemble"},
+    # Composite scenes (scripts/contest_composite.py): several images, each
+    # with its own grid, support, prior and offset. Opt-in, like the ensemble.
+    # A star, a GP disk with a hole, and a companion stamp placed by the
+    # marginalized search (star_disk_planet's planet; spotted_star's companion).
+    "comp_disk": BASE | {"method": "composite", "scene": "star=point + disk=image + planet=stamp"},
+    # A compact GP (2 beams, fine pixels) beside an extended one, no star:
+    # envelope cores that are not points.
+    "comp_core": BASE | {"method": "composite",
+                         "scene": "core=image[fov=2,pixel=0.125,ell=0.25:0.5,sigma=2,hole=0] + env=image"},
+    # A GP surface and a companion stamp, no star (spotted_star).
+    "comp_spot": BASE | {"method": "composite", "scene": "surface=image + comp=stamp"},
+    # Mixed regularisers: the disk under TSV (weight by the discrepancy
+    # principle) and the stamp a GP (by the evidence, conditional on the disk).
+    "comp_mixed": BASE | {"method": "composite", "scene": "star=point + disk=image[prior=tsv] + planet=stamp"},
 }
-OPT_IN = ("ensemble",)
+COMPOSITE = tuple(c for c in CONFIGS if CONFIGS[c]["method"] == "composite")
+OPT_IN = ("ensemble",) + COMPOSITE
 DEFAULT_CONFIGS = [c for c in CONFIGS if c not in OPT_IN]
 # The ensemble arm: groups (each one L-curve of ENSEMBLE_WEIGHTS weights, one
 # family, geometry and start) and virgil.ensemble.EnsembleSpec's defaults
@@ -317,6 +332,12 @@ def run(bench, out, dataset_id, config_names, smoke=False, seed=0):
     settings = CONFIGS[config]
     if settings["method"] == "ensemble":
         run_ensemble(spec, out, f"{name}__{config}", seed=seed, smoke=smoke)
+        return name, config
+    if settings["method"] == "composite":
+        import contest_composite
+
+        contest_composite.run_composite(spec, pathlib.Path("/"), out, contest_composite.parse_scene(settings["scene"]),
+                                        smoke, f"{name}__{config}", settings=settings)
         return name, config
     runner = contest_images.run if settings["method"] == "mem" else contest_images.run_gp
     runner(spec, pathlib.Path("/"), out, smoke=smoke, settings=settings, label=f"{name}__{config}")
