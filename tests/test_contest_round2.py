@@ -440,3 +440,33 @@ def test_sweep_checkpoints_and_the_choice_degrades_with_few_finite_fits(monkeypa
     bad = LCurve(curve.weights, np.full(4, np.nan), curve.chi2_red, curve.penalty, curve.results)
     with pytest.raises(RuntimeError):
         ci.choose_weights(bad, "mem")
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_max_pix_flag_reaches_setup_and_is_checked():
+    parser = ci.build_parser()
+    base = ["--task", "26", "--scene", "point,image", "--prior", "gp", "--max-pix", "101"]
+    _, _, scene = ci.validate(parser, parser.parse_args(base))
+    assert scene["max_pix"] == 101 and scene["tag"] == "_point-image"
+    _, _, scene = ci.validate(parser, parser.parse_args(["--task", "26", "--max-pix", "101"]))
+    assert scene == {"max_pix": 101}
+    with pytest.raises(SystemExit):
+        ci.validate(parser, parser.parse_args(base + ["--sweep", "4"]))
+    with pytest.raises(SystemExit):
+        ci.validate(parser, parser.parse_args(["--task", "26", "--max-pix", "3"]))
+    assert "max_pix" in ci.setup.__code__.co_varnames
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_gp_checkpoint_writes_a_partial_npz_with_the_best_fit_so_far(tmp_path):
+    s = {"npix": 8, "fov": 8.0, "pixel": 1.0}
+    on_fit = ci.gp_checkpoint(s, tmp_path, "lab", 0.0)
+    res = lambda: types.SimpleNamespace(model=_image(8))  # noqa: E731
+    on_fit("iso", 1.0, 2.0, -50.0, res())
+    on_fit("iso", 2.0, 2.0, -40.0, res())
+    on_fit("iso", 4.0, 2.0, float("nan"), res())
+    d = np.load(tmp_path / "lab.npz")
+    assert bool(d["partial"]) and d["image_iso"].shape == (8, 8)
+    import json
+    assert json.loads(str(d["best_so_far"]))["iso"][:3] == [-40.0, 2.0, 2.0]
+    assert (tmp_path / "lab.txt").read_text().startswith("PARTIAL")

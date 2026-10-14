@@ -1004,7 +1004,7 @@ def load_data(spec, data_dir):
 def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean_iters=3000,
           oversample=4.0, clean_gain=0.1, star_model="point", sparco=False, mean_blur=1.0,
           n_starts=N_STARTS, guard=True, field_override=None, clean_scales=(0.0,), gauss_halo=False,
-          hole_mas=None, tag=None):
+          hole_mas=None, tag=None, max_pix=None):
     """The data, starting model, priors and fixed regularisers for one task
     (shared with scripts/diagnose_stall.py). ``grow`` enlarges a field chosen
     from the data. With a star, ``star_model`` is "point" (unresolved) or
@@ -1023,12 +1023,15 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     and flux fitted); ``hole_mas`` is the radius of the hole in the image's
     support (default with a star: half the beam's minor axis; the image's
     flux is then a fitted parameter, relative to the star's); ``tag`` is the
-    label suffix of an explicit scene (--scene), in place of _star/_nostar."""
+    label suffix of an explicit scene (--scene), in place of _star/_nostar.
+    ``max_pix`` caps the pixels on a side (default MAX_PIX; --max-pix): the
+    evidence's SVD (GP runs) costs data points x pixels², so a large field on a
+    fine grid takes hours (round 2: 2016 Obj2 at 400 mas, 2024 MATISSE)."""
     spec = spec_of(task)
     args = dict(halo=halo, grow=grow, init=init, clean_iters=clean_iters, oversample=oversample,
                 clean_gain=clean_gain, sparco=sparco, mean_blur=mean_blur, n_starts=n_starts,
                 field_override=field_override, clean_scales=clean_scales, gauss_halo=gauss_halo,
-                hole_mas=hole_mas, tag=tag)
+                hole_mas=hole_mas, tag=tag, max_pix=max_pix)
     # star=None keeps the task's default; True/False override it, so any
     # dataset can be imaged with and without a central star and compared
     # (labels get _star / _nostar).
@@ -1114,7 +1117,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
     # cap the grid so that product stays within JACOBIAN_BUDGET. MATISSE's
     # 8-26k points on 255^2 pixels needed 432 GB on an 80 GB A100 (job
     # 18073823). The cap only bites for the largest datasets.
-    max_pix = min(MAX_PIX, int(np.sqrt(JACOBIAN_BUDGET / max(npts, 1))))
+    max_pix = min(max_pix or MAX_PIX, int(np.sqrt(JACOBIAN_BUDGET / max(npts, 1))))
     want = field if field is not None else (n0 * pixel0 * grow if grow > 1 else None)
     if want is None and n0 > max_pix:  # starting_image's own grid can exceed the cap
         want = n0 * pixel0
@@ -1754,7 +1757,10 @@ def gp_fit(s, smoke=False):
                      init=None if previous is None else previous.values, **options)
             previous = r_
             results[name, length, sigma] = r_
-            return float(log_evidence(r_, data))
+            log_z_ = float(log_evidence(r_, data))
+            if s.get("on_fit"):  # checkpoint: a job that times out keeps the best fit so far
+                s["on_fit"](name, length, sigma, log_z_, r_)
+            return log_z_
 
         ls, ss, values = grow_grid(evaluate, lengths0, sigmas0, length_limits, GP_SIGMA_LIMITS,
                                    0 if smoke else GP_GROWTHS)
@@ -1858,6 +1864,7 @@ def star_evidence(s, g, smoke=False):
     same setup's GP fit with no star, both by ``log_evidence_full`` on the
     quoted errors. Returns the record and the no-star setup and fit."""
     s0 = s["no_star_setup"]()
+    s0["on_fit"] = s.get("on_fit")
     if s.get("points"):  # the same point sources, refitted with the image
         s0 = point_scene(s0, s["points"], s["point_priors"])
     s0["systematics"] = s.get("systematics")
@@ -1876,6 +1883,31 @@ def star_evidence(s, g, smoke=False):
           f"ln B = {log_bayes:.2f}, star {'kept' if record['kept'] else 'rejected (ln B < %.2f)' % STAR_LOG_BAYES}",
           flush=True)
     return record, s0, g0
+
+
+def gp_checkpoint(s, out_dir, label, t0):
+    """A callback for gp_fit's ``s["on_fit"]``: after every fitted (ℓ, σ) it
+    rewrites ``<label>.npz`` (``partial=True``) with the best-evidence image so
+    far and the log Z of every fit so far, and ``<label>.txt`` with a note. The
+    finished run overwrites both. GP runs take hours at large fields and a
+    timeout used to leave nothing (round 2, 2016 Obj2 and 2024 MATISSE)."""
+    best, fits = {}, {}
+
+    def on_fit(name, length, sigma, log_z, result):
+        fits[f"{name}/{length:.4g}/{sigma:g}"] = log_z
+        if np.isfinite(log_z) and (name not in best or log_z > best[name][0]):
+            best[name] = (log_z, length, sigma, np.asarray(image_of(result.model).render(s["npix"], s["fov"])))
+        if not best:
+            return
+        out_dir.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(out_dir / f"{label}.npz", partial=True, log_z_fits=json.dumps(fits),
+                            **{f"image_{k}": v[3] for k, v in best.items()},
+                            best_so_far=json.dumps({k: v[:3] for k, v in best.items()}),
+                            pixel_scale_mas=s["pixel"], npix=s["npix"], informed=True)
+        (out_dir / f"{label}.txt").write_text(f"PARTIAL: {len(fits)} GP fits at {time.time() - t0:.0f}s; "
+                                              f"best so far (log Z, ℓ mas, σ)={ {k: v[:3] for k, v in best.items()} }\n")
+
+    return on_fit
 
 
 def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="moments", member=None,
@@ -1901,6 +1933,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         label = label or f"{spec_of(task)['label']}_m{member}"
     if points:
         s = add_point_sources(s, points)
+    s["on_fit"] = gp_checkpoint(s, out_dir, label, t0)
     if "block_scales" in SYSTEMATICS[systematics]:
         estimate_block_scales(s, smoke)
     # In smoke runs the scan is cut to its median width.
@@ -1960,7 +1993,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                         **{f"sigmas_{k}": np.asarray(a[1]) for k, a in axes.items()},
                         **{f"lengths_mas_{k}": np.asarray(a[0]) for k, a in axes.items()},
                         ellipse=np.asarray(ell), pixel_scale_mas=pixel, npix=n,
-                        template=template, informed=bool(informed),
+                        template=template, informed=bool(informed), partial=False,
                         systematics=json.dumps(s.get("systematics")), systematics_scan=json.dumps(scan, default=float),
                         systematics_mode=systematics, error_scales=json.dumps(s.get("error_scales")),
                         point_sources=json.dumps(s.get("point_record"), default=float),
@@ -2084,6 +2117,16 @@ def run_gp2(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="m
                  init=None if previous is None else previous.values, **options)
         previous = r_
         grid[l1, l2, sig] = (log_evidence_two(r_, data), r_)
+        if np.isfinite(grid[l1, l2, sig][0]):  # checkpoint: the best fit so far, partial=True (the final npz overwrites it)
+            k_ = max((k for k in grid if np.isfinite(grid[k][0])), key=lambda k: grid[k][0])
+            m_ = grid[k_][1].model
+            e_, x_ = (np.asarray(getattr(m_, c).render(n, fov)) for c in ("env", "ext"))
+            out_dir.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(out_dir / f"{label}.npz", partial=True, image_env=e_, image_ext=x_,
+                                image=two_scale_image(e_, x_, flux_value(m_.env.flux), flux_value(m_.ext.flux)),
+                                pixel_scale_mas=pixel, npix=n, best=np.array(k_), informed=bool(informed),
+                                log_z=json.dumps({f"{a:.4g}/{b:.4g}/{c:g}": v for (a, b, c), (v, _) in grid.items()}))
+            (out_dir / f"{label}.txt").write_text(f"PARTIAL: {len(grid)} two-scale fits at {time.time() - t0:.0f}s\n")
         print(f"two-scale ℓ={l1:.3g}/{l2:.3g} mas σ={sig:g}: log Z {grid[l1, l2, sig][0]:.2f} "
               f"χ²/N {chi2_red(r_.model, data):.4g}", flush=True)
     key = max(grid, key=lambda k: grid[k][0])
@@ -2097,7 +2140,7 @@ def run_gp2(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="m
     np.savez_compressed(out_dir / f"{label}.npz", image_env=images["env"], image_ext=images["ext"],
                         image=combined, ext_fraction=f_ext / (f_env + f_ext), pixel_scale_mas=pixel, npix=n, raw_chi2_red=raw,
                         log_z=json.dumps({f"{a:.4g}/{b:.4g}/{c:g}": v for (a, b, c), (v, _) in grid.items()}),
-                        best=np.array(key), ext_flux=flux_value(m.ext.flux), informed=bool(informed))
+                        best=np.array(key), ext_flux=flux_value(m.ext.flux), informed=bool(informed), partial=False)
     text = (f"task={task} label={label} star={star} halo={halo} init={init} field_source={s['field_source']} "
             f"growth={growth}\n{informed_line(informed)}\n"
             f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas "
@@ -2297,6 +2340,8 @@ def build_parser():
                         "comma list of parts of the scene (point, ud, ld_ellipse, gauss_halo, image; "
                         "image is required): a central source, a Gaussian halo with fitted FWHM and flux, and the pixel image "
                         "(labels get _<parts>); in place of --star")
+    parser.add_argument("--max-pix", type=int, help="cap the image's pixels on a side (default %d; coarser pixels over the same field). "
+                        "The GP evidence costs data points x pixels², so heavy lines (400 mas fields, MATISSE) take this" % MAX_PIX)
     parser.add_argument("--hole", type=float, help="radius (mas) of the hole in the image's support (default with a star: "
                         "half the beam's minor axis); the image's flux is then fitted relative to the star's")
     parser.add_argument("--field", type=float, help="field of view (mas), only where pre-submission information gives one")
@@ -2351,6 +2396,11 @@ def validate(parser, args):
     if args.settings is not None and args.field is not None:
         parser.error("--field has no effect with --settings")
     scene = {} if args.hole is None else {"hole_mas": args.hole}
+    if args.max_pix is not None:
+        if args.max_pix < 9 or args.settings is not None or args.member is not None or args.sweep or (
+                args.scene and "=" in args.scene):
+            parser.error("--max-pix is at least 9 and needs a grown-field run (not --settings, --member, --sweep or a composite --scene)")
+        scene["max_pix"] = args.max_pix
     if args.scene and "=" in args.scene:  # a composite scene (scripts/contest_composite.py)
         import contest_composite
 
@@ -2366,7 +2416,7 @@ def validate(parser, args):
         if args.star or args.settings is not None or args.member is not None:
             parser.error("--scene replaces --star, and --settings / --member fix their own scene")
         try:
-            scene = scene_options(args.scene, args.hole)
+            scene = scene_options(args.scene, args.hole) | ({} if args.max_pix is None else {"max_pix": args.max_pix})
         except ValueError as e:
             parser.error(str(e))
         star = scene.pop("star")
