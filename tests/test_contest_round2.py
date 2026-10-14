@@ -372,3 +372,33 @@ def test_non_finite_fits_are_left_out_and_render_as_nan():
 
     assert np.all(np.isnan(ci.safe_render(Broken(), 4, 1.0)))
     assert ci.safe_render(_image(8), 8, 8.0).shape == (8, 8)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_safe_clean_retries_a_non_finite_refit_at_a_lower_gain(monkeypatch):
+    """CLEAN's nnls refit raising on infs/NaNs (2004 data2 TV, job 18579912) is retried once at a quarter of the gain; other errors and a second failure are raised."""
+    gains = []
+
+    def flaky(*args, gain=0.1, **kw):
+        gains.append(gain)
+        if len(gains) == 1:
+            raise ValueError("array must not contain infs or NaNs")
+        return "cleaned"
+
+    monkeypatch.setattr(ci, "clean", flaky)
+    assert ci.safe_clean("data", gain=0.2) == "cleaned"
+    assert gains == [0.2, 0.05]
+
+    def always(*args, **kw):
+        raise ValueError("array must not contain infs or NaNs")
+
+    monkeypatch.setattr(ci, "clean", always)
+    with pytest.raises(ValueError):
+        ci.safe_clean("data")
+
+    def other(*args, **kw):
+        raise ValueError("something else")
+
+    monkeypatch.setattr(ci, "clean", other)
+    with pytest.raises(ValueError, match="something else"):
+        ci.safe_clean("data")

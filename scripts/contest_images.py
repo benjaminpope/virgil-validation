@@ -232,6 +232,21 @@ def safe_render(model, npix, fov):
         return np.full((npix, npix), np.nan)
 
 
+def safe_clean(*args, **kwargs):
+    """virgil's ``clean``, and when its non-negative refit meets non-finite
+    numbers (a runaway component: scipy's nnls raises "array must not contain
+    infs or NaNs", 2004 data2 TV, job 18579912) once more at a quarter of the
+    gain, which cannot take as large a step. A second failure is raised."""
+    try:
+        return clean(*args, **kwargs)
+    except ValueError as e:
+        if "infs or NaNs" not in str(e):
+            raise
+        gain = float(kwargs.get("gain", 0.1)) / 4
+        print(f"CLEAN met non-finite values in its refit ({e}); retrying at gain {gain:g}", flush=True)
+        return clean(*args, **{**kwargs, "gain": gain})
+
+
 def sweep(start, priors, data, penalty, weights, others, warm_start=True, **options):
     """virgil's ``l_curve`` (the same fits, weights strongest first, each warm
     started from the previous unless ``warm_start`` is False) except that a
@@ -1104,7 +1119,7 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
             from scipy import ndimage
 
             support_c = ndimage.zoom(np.asarray(support, float), n_c / n_img, order=0) > 0.5
-        cleaned = clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
+        cleaned = safe_clean(data, n_c, pix_c, base=start.star if star else None, support=support_c,
                         max_iterations=clean_iters, target_chi2_red=1.0, gain=clean_gain,
                         scales_mas=tuple(f * resolution.minor_mas for f in clean_scales),
                         base_priors={k.removeprefix("star."): v for k, v in star_priors.items()} or None)
@@ -1256,7 +1271,11 @@ def grown_setup(task, data_dir, halo=False, star=None, init="moments", smoke=Fal
         grow, chi2 = 1.0, probe(s)
         growth.append((round(s["fov"], 3), round(chi2, 3)))
         for _ in range(GROWTHS):
-            bigger = setup(task, data_dir, halo, grow * 1.5, **opts)
+            try:
+                bigger = setup(task, data_dir, halo, grow * 1.5, **opts)
+            except ValueError as e:  # a probe of a larger field that cannot be set up ends the growth, it does not stop the run
+                print(f"field x{grow * 1.5:g} could not be set up ({e}); keeping the field x{grow:g}", flush=True)
+                break
             chi2_big = probe(bigger)
             growth.append((round(bigger["fov"], 3), round(chi2_big, 3)))
             if chi2_big > 0.9 * chi2:
