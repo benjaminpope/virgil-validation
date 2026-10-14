@@ -350,9 +350,11 @@ def published_orbits(pub, ref):
                                        inc_deg=k["i_deg"][0], omega_deg=k["omega_deg"][0] % 360,
                                        Omega_deg=k["Omega_deg"][0] % 360, a_mas=k["a_mas"][0])))
         return out
-    if pub == "trackb":  # omega is the RV primary's (conventions.omega_shift_deg to the companion's); T_peri in JD
+    if pub == "trackb":  # the published (omega, Omega) as they stand reproduce the paper's positions (omega_shift_deg 0)
+        # here; they are equivalent to the companion's omega + 180 with Omega + 180, which a no-RV solver cannot tell
+        # apart, so a later comparison of omega and Omega must wrap them jointly (conventions.degenerate_shift_deg)
         o, shift = ref["orbit"], ref["conventions"]["omega_shift_deg"]
-        if o.get("T_peri_mjd") is None:  # a time the paper gives without a reference epoch: no curve
+        if (o.get("T_peri_mjd") or [None])[0] is None:  # a time the paper gives without a reference epoch: no curve
             return []
         std = ref["conventions"].get("standard", {})  # elements restated in the standard form where the paper's differ
         return [(f"{paper_of(ref)['cite']}", dict(period_day=o["P_day"][0], t_peri_mjd=o["T_peri_mjd"][0], ecc=o["e"][0],

@@ -55,23 +55,38 @@ def test_record_cites_its_paper_and_elements(slug):
     assert r["conventions"]["text"] and "omega_shift_deg" in r["conventions"]
 
 
-@pytest.mark.validates("pipeline:trackb-targets", roots=["standards"], kind="guard")
+LOOSE_MAS = {"ak_for": 0.45}  # e = 0.0002: omega and T_peri are undetermined, so the orbit follows the positions less closely
+FLOOR_MAS = 0.15  # the larger of this and 6 sigma_major is each epoch's tolerance (the short arcs print no sigma)
+
+
+@pytest.mark.validates("pipeline:trackb-targets", roots=["literature"], kind="guard")
 @pytest.mark.parametrize("slug", SLUGS)
 def test_published_orbit_reproduces_the_published_positions(slug):
-    """The convention check: the tabulated elements, with the record's convention, reproduce the paper's own positions
-    (never fitted); a point reflection (omega + 180 degrees alone) would miss by milliarcseconds."""
+    """The convention check: the tabulated elements, with the record's convention, reproduce the paper's own positions at
+    *every* epoch within 6 sigma (or the floor); never fitted. A point reflection (omega + 180 degrees alone) misses by
+    milliarcseconds. An epoch flagged ``suspect`` (the paper's own table disagrees with itself) is excluded, but only if it
+    really is the outlier, and at most one per system."""
     r = _rec(slug)
     o, c = r["orbit"], r["conventions"]
     std = c.get("standard", {})
-    pos = np.array([[e["mjd"], e["dra_mas"], e["ddec_mas"]] for e in r["epochs"]])
+    ep = r["epochs"]
+    t = np.array([e["mjd"] for e in ep])
 
     def miss(shift):
-        x, y = O.position(pos[:, 0], o["P_day"][0], o["T_peri_mjd"][0], o["e"][0], std.get("i_deg", o["i_deg"][0]),
+        x, y = O.position(t, o["P_day"][0], o["T_peri_mjd"][0], o["e"][0], std.get("i_deg", o["i_deg"][0]),
                           o["omega_deg"][0] + shift, std.get("Omega_deg", o["Omega_deg"][0]), o["a_mas"][0])
-        return float(np.median(np.hypot(x - pos[:, 1], y - pos[:, 2])))
+        return np.hypot(x - [e["dra_mas"] for e in ep], y - [e["ddec_mas"] for e in ep])
 
-    assert miss(c["omega_shift_deg"]) < 0.25, slug
-    assert miss(c["omega_shift_deg"] + 180) > 1.0, slug  # the reflected orbit is clearly wrong: the check can fail
+    m = miss(c["omega_shift_deg"])
+    sigma = np.array([max(e["sigma_major_mas"] or 0, e["sigma_minor_mas"] or 0) for e in ep])
+    tol = np.maximum(6 * sigma, LOOSE_MAS.get(slug, FLOOR_MAS))
+    suspect = np.array(["suspect" in e for e in ep])
+    assert suspect.sum() <= 1
+    assert np.all(m[~suspect] <= tol[~suspect]), (slug, np.round(m, 3), np.round(tol, 3))
+    if suspect.any():
+        assert m[suspect][0] > 0.5 and np.sum(m > 0.5) == 1  # flagged because it really is the one that disagrees
+    assert np.median(miss(c["omega_shift_deg"] + 180)) > 1.0  # the reflected orbit is clearly wrong: the check can fail
+    record("max_miss_mas", float(m[~suspect].max()))
 
 
 @pytest.mark.validates("pipeline:trackb-targets", roots=["standards"], kind="guard")

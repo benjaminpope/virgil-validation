@@ -17,8 +17,9 @@
  },
  "conventions": {
   "omega_shift_deg": 0.0,
-  "text": "Elements from Gallenne et al. 2019, Table 2 (joint fit of PIONIER astrometry and STELLA radial velocities). omega is the primary's (RV model V1 = gamma + K1[cos(omega + nu) + e cos omega]; the V2 sign of K2 is opposite although the typeset formula does not show it). T_peri is printed as 5235.164 d with the note '-2445000': read as JD - 2445000. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). The paper's four positions are reproduced to about 0.003 mas by the standard Campbell formulas with these omega and Omega.",
+  "text": "Elements from Gallenne et al. 2019, Table 2 (joint fit of PIONIER astrometry and STELLA radial velocities). omega is the primary's (RV model V1 = gamma + K1[cos(omega + nu) + e cos omega]; the V2 sign of K2 is opposite although the typeset formula does not show it). T_peri is printed as 5235.164 d with the note '-2445000': read as JD - 2445000. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). The paper's four positions are reproduced to about 0.003 mas by the standard Campbell formulas with these omega and Omega. Without radial velocities the sky positions are unchanged by (omega, Omega) -> (omega + 180, Omega + 180) degrees, so a blind astrometric solver's omega and Omega can only be compared with the published pair jointly, modulo that shift (the companion-convention pair is the published one plus 180 degrees in both).",
   "omega_primary": true,
+  "degenerate_shift_deg": 180.0,
   "check": "the four Table 1 positions reproduced to about 0.003 mas"
  },
  "orbit": {

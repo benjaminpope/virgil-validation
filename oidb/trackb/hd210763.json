@@ -17,9 +17,10 @@
  },
  "conventions": {
   "omega_shift_deg": 0.0,
-  "text": "Elements from Gallenne et al. 2023, Table 6 (joint radial-velocity and astrometry fit). omega is the primary's (the RV model is V1 = gamma + K1[cos(omega + nu) + e cos omega], V2 with -K2); T_peri is a full JD (here also as MJD = JD - 2400000.5). Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). Checked against the paper's own tables: the tabulated omega and Omega, used as they stand in the standard Campbell formulas, reproduce the published positions (Table B.1); changing either alone by 180 degrees does not. (Equivalent to the companion's omega + 180 degrees with Omega + 180 degrees.) Where e is near zero (AK For, o Leo) omega and T_peri are poorly determined.",
+  "text": "Elements from Gallenne et al. 2023, Table 6 (joint radial-velocity and astrometry fit). omega is the primary's (the RV model is V1 = gamma + K1[cos(omega + nu) + e cos omega], V2 with -K2); T_peri is a full JD (here also as MJD = JD - 2400000.5). Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). Checked against the paper's own tables: the tabulated omega and Omega, used as they stand in the standard Campbell formulas, reproduce the published positions (Table B.1); changing either alone by 180 degrees does not. (Equivalent to the companion's omega + 180 degrees with Omega + 180 degrees.) Where e is near zero (AK For, o Leo) omega and T_peri are poorly determined. Without radial velocities the sky positions are unchanged by (omega, Omega) -> (omega + 180, Omega + 180) degrees, so a blind astrometric solver's omega and Omega can only be compared with the published pair jointly, modulo that shift (the companion-convention pair is the published one plus 180 degrees in both).",
   "omega_primary": true,
-  "check": "positions of Table B.1 reproduced to 0.01-0.2 mas"
+  "degenerate_shift_deg": 180.0,
+  "check": "positions of Table B.1 reproduced to 0.01-0.4 mas (0.4 for AK For, e = 0.0002)"
  },
  "orbit": {
   "P_day": [

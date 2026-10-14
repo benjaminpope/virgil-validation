@@ -75,6 +75,9 @@ SHORT_ARC_PAPERS = {
 # gives T0 = 73.1 d with no epoch; its RV table is on JD - 2416500 and that offset (alone) fits the table's 33 RVs.
 T_PERI_OFFSET_JD = {"nn_del": 2445000.0, "kap_vel": 2416500.0}
 
+_DEGENERATE = (" Without radial velocities the sky positions are unchanged by (omega, Omega) -> (omega + 180, Omega + 180) "
+               "degrees, so a blind astrometric solver's omega and Omega can only be compared with the published pair "
+               "jointly, modulo that shift (the companion-convention pair is the published one plus 180 degrees in both).")
 _CONV_COMMON = (
     "Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; "
     "the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary "
@@ -90,7 +93,8 @@ CONVENTIONS = {
               "positions (Table B.1); changing either alone by 180 degrees does not. (Equivalent to the companion's "
               "omega + 180 degrees with Omega + 180 degrees.) Where e is near zero (AK For, o Leo) omega and T_peri are "
               "poorly determined."),
-        omega_primary=True, check="positions of Table B.1 reproduced to 0.01-0.2 mas"),
+        omega_primary=True, degenerate_shift_deg=180.0,
+        check="positions of Table B.1 reproduced to 0.01-0.4 mas (0.4 for AK For, e = 0.0002)"),
     "nn_del": dict(
         omega_shift_deg=0.0,
         text=("Elements from Gallenne et al. 2019, Table 2 (joint fit of PIONIER astrometry and STELLA radial velocities). "
@@ -98,7 +102,7 @@ CONVENTIONS = {
               "opposite although the typeset formula does not show it). T_peri is printed as 5235.164 d with the note "
               "'-2445000': read as JD - 2445000. " + _CONV_COMMON + "The paper's four positions are reproduced to about "
               "0.003 mas by the standard Campbell formulas with these omega and Omega."),
-        omega_primary=True, check="the four Table 1 positions reproduced to about 0.003 mas"),
+        omega_primary=True, degenerate_shift_deg=180.0, check="the four Table 1 positions reproduced to about 0.003 mas"),
     "kap_vel": dict(
         omega_shift_deg=0.0,
         text=("Elements from Rowan, Kraus and Thompson 2026, Table 4 (joint SB1 radial-velocity and GRAVITY astrometry "
@@ -106,11 +110,12 @@ CONVENTIONS = {
               "scale of the paper's RV table and the only offset that fits it, so T_peri here is derived, not stated. "
               "The paper's Omega and i are in a form (Thiele-Innes constants with x = -A(cosE - e) - F sqrt(1-e^2) sinE) "
               "that does not give the published positions in the standard east-of-north Campbell formulas; "
-              "the equivalent standard elements, derived here and checked against Table 3, are Omega = 270 - 109.74 = "
+              "the equivalent standard elements, found here by comparing the paper's Eqs. 6-7 with the standard form and then tried "
+              "against Table 3 (so that check tests this mapping and is not independent of it), are Omega = 270 - 109.74 = "
               "160.26 degrees and i = 180 - 74.03 = 105.97 degrees (retrograde, as the position angles run). "
               "Use 'standard' for any comparison; the published values stay in 'orbit'. " + _CONV_COMMON),
-        omega_primary=True, standard=dict(Omega_deg=270.0 - 109.74, i_deg=180.0 - 74.03),
-        check="Table 3 positions reproduced to 0.02-0.06 mas for 8 of 9 epochs (2025-02-28 dRA off by 1.0 mas)"),
+        omega_primary=True, degenerate_shift_deg=180.0, standard=dict(Omega_deg=270.0 - 109.74, i_deg=180.0 - 74.03),
+        check="Table 3 positions reproduced to 0.02-0.06 mas for 8 of 9 epochs; the ninth (2025-02-28) is flagged suspect"),
 }
 
 
@@ -121,6 +126,15 @@ UNREADABLE = {
     "ADP.2026-03-04T16:19:04.805": "no observables left after the Brgamma window and flag cuts (every closure phase flagged or NaN)",
     "ADP.2026-03-04T16:19:05.376": "no observables left after the Brgamma window and flag cuts (every closure phase flagged or NaN)",
 }
+
+
+# Published positions that the paper's own elements and the data disagree with. Kept as printed, flagged, and left out of
+# the convention check (tests/test_trackb_targets.py).
+SUSPECT = {("kap_vel", "2025-02-28"): (
+    "Rowan+2026 Table 3 prints dRA = +0.510 mas under the date 2025-02-28, but its Table 1 gives MJD 60731.05 for that "
+    "epoch, which is the night of 2025-02-24 (the date label and the MJD disagree). The paper's own orbit predicts about "
+    "-0.53 mas, a blind single-night fit of the Phase 3 file gives about -0.51 mas, and dRA is falling through the "
+    "neighbouring epochs: a sign error in the printed value is likely. The files are matched by MJD, so the data are not affected.")}
 
 
 def _pair(x):
@@ -150,6 +164,8 @@ def short_arc_positions(s):
             sigma_pa_deg=r.get("sigma_pa_deg"), flux_ratio_pct=r["flux_ratio"] * (100 if r["flux_ratio_unit"].startswith("ratio") else 1),
             sigma_flux_ratio_pct=r.get("sigma_flux_ratio") and r["sigma_flux_ratio"] * (100 if r["flux_ratio_unit"].startswith("ratio") else 1),
             note=r.get("note", ""), sep_mas=math.hypot(r["dra_mas"], r["ddec_mas"])))
+        if (s["target"].split()[0].lower() == "kappa" and ("kap_vel", r["date"]) in SUSPECT):
+            out[-1]["suspect"] = SUSPECT[("kap_vel", r["date"])]
     return out
 
 def vizier(query):
@@ -276,6 +292,7 @@ def templates(trackb):
 
 def build(slug, trackb, tmpl):
     simbad, cat_slug, kind = tmpl["simbad"], tmpl["cat_slug"], tmpl["kind"]
+    tmpl["conventions"] = dict(tmpl["conventions"], text=tmpl["conventions"]["text"] + _DEGENERATE)
     rec = dict(schema="trackb-target/1", slug=slug, target=simbad, kind=kind, instrument=tmpl["instrument"],
                band=tmpl["band"], ra_deg=tmpl["ra_deg"], dec_deg=tmpl["dec_deg"], paper=tmpl["paper"],
                conventions=tmpl["conventions"], orbit=tmpl["orbit"], diameters_mas=tmpl.get("diameters_mas"),

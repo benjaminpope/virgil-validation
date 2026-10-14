@@ -570,9 +570,9 @@ pipelines:
     title: Track B orbit targets, onboarded for the blind orbit solver (published orbits for comparison only)
     data: real
     dataset: ESO Phase 3 GRAVITY and PIONIER products of 12 binaries (Araucaria SB2s, later epochs, short arcs)
-    reference: the published orbits and astrometry (Gallenne et al. 2023, 2019; Rosu et al. 2026), never used as a start
+    reference: the published orbits and astrometry (Gallenne et al. 2023, 2019; Rowan et al. 2026), never used as a start
     url: https://github.com/benjaminpope/virgil-validation/blob/main/design/eso_binaries_triage.md
-    headline: files load; single-night blind fits fall in a sensible separation range; held-out epochs recorded
+    headline: records and held-out split committed; awaiting the blind solver
     page: orbits/
     state: planned  # data and records are in; the orbit fits await the blind solver
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,

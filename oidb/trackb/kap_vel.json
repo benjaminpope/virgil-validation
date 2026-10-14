@@ -17,13 +17,14 @@
  },
  "conventions": {
   "omega_shift_deg": 0.0,
-  "text": "Elements from Rowan, Kraus and Thompson 2026, Table 4 (joint SB1 radial-velocity and GRAVITY astrometry fit). omega is the photometric primary's. T0 (73.1 d) is printed without an epoch: JD - 2416500 is the scale of the paper's RV table and the only offset that fits it, so T_peri here is derived, not stated. The paper's Omega and i are in a form (Thiele-Innes constants with x = -A(cosE - e) - F sqrt(1-e^2) sinE) that does not give the published positions in the standard east-of-north Campbell formulas; the equivalent standard elements, derived here and checked against Table 3, are Omega = 270 - 109.74 = 160.26 degrees and i = 180 - 74.03 = 105.97 degrees (retrograde, as the position angles run). Use 'standard' for any comparison; the published values stay in 'orbit'. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive). ",
+  "text": "Elements from Rowan, Kraus and Thompson 2026, Table 4 (joint SB1 radial-velocity and GRAVITY astrometry fit). omega is the photometric primary's. T0 (73.1 d) is printed without an epoch: JD - 2416500 is the scale of the paper's RV table and the only offset that fits it, so T_peri here is derived, not stated. The paper's Omega and i are in a form (Thiele-Innes constants with x = -A(cosE - e) - F sqrt(1-e^2) sinE) that does not give the published positions in the standard east-of-north Campbell formulas; the equivalent standard elements, found here by comparing the paper's Eqs. 6-7 with the standard form and then tried against Table 3 (so that check tests this mapping and is not independent of it), are Omega = 270 - 109.74 = 160.26 degrees and i = 180 - 74.03 = 105.97 degrees (retrograde, as the position angles run). Use 'standard' for any comparison; the published values stay in 'orbit'. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive).  Without radial velocities the sky positions are unchanged by (omega, Omega) -> (omega + 180, Omega + 180) degrees, so a blind astrometric solver's omega and Omega can only be compared with the published pair jointly, modulo that shift (the companion-convention pair is the published one plus 180 degrees in both).",
   "omega_primary": true,
+  "degenerate_shift_deg": 180.0,
   "standard": {
    "Omega_deg": 160.26,
    "i_deg": 105.97
   },
-  "check": "Table 3 positions reproduced to 0.02-0.06 mas for 8 of 9 epochs (2025-02-28 dRA off by 1.0 mas)"
+  "check": "Table 3 positions reproduced to 0.02-0.06 mas for 8 of 9 epochs; the ninth (2025-02-28) is flagged suspect"
  },
  "orbit": {
   "P_day": [
@@ -240,6 +241,7 @@
    "sigma_flux_ratio_pct": 1.0,
    "note": "sigma_dRA=0.001 mas, sigma_dDec=0.002 mas, correlation rho(dRA,dDec)=-0.5; A0-G1-J2-K0, HR, calibrator HD83465",
    "sep_mas": 4.808124478421913,
+   "suspect": "Rowan+2026 Table 3 prints dRA = +0.510 mas under the date 2025-02-28, but its Table 1 gives MJD 60731.05 for that epoch, which is the night of 2025-02-24 (the date label and the MJD disagree). The paper's own orbit predicts about -0.53 mas, a blind single-night fit of the Phase 3 file gives about -0.51 mas, and dRA is falling through the neighbouring epochs: a sign error in the printed value is likely. The files are matched by MJD, so the data are not affected.",
    "below_lambda_2B": false,
    "role": "paper",
    "dp_ids": [
