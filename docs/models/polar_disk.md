@@ -3,7 +3,7 @@
 `PolarDisk` (virgil P1-P4: radial profiles `GaussianRing`, `RadialPowerLaw`, `ExpTail`, `Gap`,
 `RadialSum`, `RadialGP`; azimuthal `Harmonics` in linear and positive forms and `VonMises` arcs;
 height `Cone` and `PowerLawHeight`) is checked here in four stages. The code under test is virgil
-`e42973d7478e04d704aaee53e61810e0356c6e49` (the tip of `polar-p4`, PR #343, which includes `polar-p3` c82e18c and `main`). **The committed result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale: regenerate them at the new pin on OzSTAR** (they still record the older hash, and were not relabelled). Every result file in
+`b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e` (the tip of `polar-p4`, PR #343, which includes `polar-p3` c82e18c and `main`). **The committed result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale: regenerate them at the new pin on OzSTAR** (they still record the older hash, and were not relabelled). Every result file in
 [`benchmarks/polar_disk/results`](https://github.com/benjaminpope/virgil-validation/tree/main/benchmarks/polar_disk/results)
 records that hash and the versions of the packages it ran with (frank 1.2.3, vis-r at
 `f53467077b04878986c967b501d88c54ff3efb86`, astro-frap 1.0.2, PMOIRED 26.10.1, oimodeler 0.8.1, JAX 0.11.2).

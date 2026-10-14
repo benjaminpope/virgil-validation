@@ -10,7 +10,7 @@ Before the full run:
 
 * Run it on the same virgil commit that the results record (the script writes it into
   `results/v4_full.json` with the package versions). The pin for this PR is
-  `e42973d7478e04d704aaee53e61810e0356c6e49` (`polar-p4`).
+  `b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e` (`polar-p4`).
 * The laptop result flags the gap depth (z-scores of 6.9 and 9.6 in two of five injections, depth near
   its bound of 1). The full run is where that is tested; do not tune the criteria first.
 * Cost: the laptop run took about 20 s per fit (compilation included, M = 2, `n_r = 24`); the full run is

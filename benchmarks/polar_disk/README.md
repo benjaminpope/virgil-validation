@@ -2,12 +2,12 @@
 
 Run from the repository root with the repo venv (`.venv`, Python 3.12, `pip install -e ".[polar-disk]"`).
 Every script writes its JSON (provenance: virgil commit, versions, machine) to `$PD_OUT`
-(default `benchmarks/polar_disk/results`). Pinned virgil: `e42973d7478e04d704aaee53e61810e0356c6e49`
+(default `benchmarks/polar_disk/results`). Pinned virgil: `b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e`
 (`origin/polar-p4`, PR #343); each result records `virgil_pin_ok`.
 
 **Stale results:** the JSONs committed in `results/` were produced at the older pin
 `791f9fef65eb49ebc387c5c365a13c7af2342341` (they record it and `virgil_pin_ok: false`); regenerate all of them at the
-new pin on OzSTAR. virgil `e42973d` fixes F19 and F20, so their evidence tests (strict xfail) need re-checking there.
+new pin on OzSTAR. virgil `b6317a1` has the same code as e42973d, which fixed F19 and F20, so their evidence tests (strict xfail) need re-checking there.
 
  Times and memory below are
 estimates from the single laptop runs (M-series, 1 CPU thread-ish) unless marked; none was timed on

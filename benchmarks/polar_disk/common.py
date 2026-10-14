@@ -26,7 +26,7 @@ PACKAGES = ("virgil-astro", "jax", "jaxlib", "numpy", "scipy", "numpyro", "frank
 # stage-V pin: origin/polar-p4 of benjaminpope/virgil (PR #343), P1-P4 stacked, includes polar-p3 c82e18c and main.
 # The committed results/*.json were produced at the OLDER pin below and are stale: regenerate at EXPECTED_VIRGIL.
 STALE_PIN = "791f9fef65eb49ebc387c5c365a13c7af2342341"
-EXPECTED_VIRGIL = "e42973d7478e04d704aaee53e61810e0356c6e49"
+EXPECTED_VIRGIL = "b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e"
 
 
 def _version(name):
