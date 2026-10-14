@@ -222,3 +222,21 @@ def test_seeded_and_single_mode_fits_are_labelled_provisional_and_a_failed_tile_
     iota = next(t for t in og.TILES if t["slug"] == "iota-peg")
     assert [f["key"] for f in og.flags_of(iota, None)] == ["failed"]
     assert "Provisional: single-mode fit" in og.page(dict(data, targets=[dict(_target(data, "gl229b"), flags=[flag])]))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_a_pass_on_unconverged_nuts_is_only_reported_and_the_tile_says_so(og, tmp_path):
+    summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
+    summary["orbit"]["nuts"]["r_hat"] = {k: 1.001 for k in summary["orbit"]["nuts"]["r_hat"]}
+    converged = tmp_path / "ok"
+    converged.mkdir()
+    (converged / f"{GL229}.json").write_text(json.dumps(summary))
+    ok = _target(og.build(converged), "gl229b")
+    assert ok["status"] == "agrees" and not any(f["key"] == "nonconverged" for f in ok["flags"])
+    summary["orbit"]["nuts"]["r_hat"]["ecc"] = 10.0
+    bad_dir = tmp_path / "bad"
+    bad_dir.mkdir()
+    (bad_dir / f"{GL229}.json").write_text(json.dumps(summary))
+    bad = _target(og.build(bad_dir), "gl229b")
+    assert bad["status"] == "reported" and "not converged" in bad["status_why"]
+    assert [f["key"] for f in bad["flags"] if f["key"] == "nonconverged"] == ["nonconverged"]

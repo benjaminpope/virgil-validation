@@ -466,6 +466,16 @@ def _phase_of(el, mjd):
     return ((mjd - el["t_peri_mjd"]) / el["period_day"]) % 1.0
 
 
+RHAT_MAX = 1.05  # a NUTS summary with a larger r-hat has not converged: its medians and sds mean nothing
+
+
+def worst_rhat(summary):
+    """The largest r-hat of the orbit's NUTS summary, or None if there is none (or no numeric r-hat)."""
+    r = [x for x in ((((summary or {}).get("orbit") or {}).get("nuts") or {}).get("r_hat") or {}).values()
+         if isinstance(x, (int, float))]
+    return max(r) if r else None
+
+
 def status_of(table, summary):
     """(status, counts, sentence) from the table rows. The badge follows the scored rows only: agrees needs
     one PASS and no FAIL/MISSING; tension a FAIL/MISSING; rows ``oidb_compare`` keeps as REPORT/NOT-CLEAN (orbit
@@ -480,6 +490,11 @@ def status_of(table, summary):
         names = ", ".join(r["quantity"] + (f" ({r['pull']:+.1f}σ)" if r["pull"] is not None else " (missing)") for r in failed[:3])
         why = f"{counts['failed']} of {scored} scored comparisons fail: {names}" + (" and more" if len(failed) > 3 else "") + "."
         return "tension", counts, why
+    rhat = worst_rhat(summary)
+    if counts["passed"] and rhat is not None and rhat > RHAT_MAX:
+        # the scored rows read NUTS medians and sds, whose spread here is mostly the gap between modes
+        return "reported", counts, (f"{scored} scored comparison{'s' if scored > 1 else ''} pass, but the NUTS chains have not "
+                                    f"converged (r̂ up to {rhat:.0f}), so the pass means little: reported only.")
     if counts["passed"]:
         return "agrees", counts, f"All {scored} scored comparisons pass (limits fixed before the fits were run)."
     return "reported", counts, "Nothing is scored for this target: its comparisons are reported only."
@@ -520,6 +535,9 @@ def flags_of(tile, summary):
     if tile.get("failed"):
         out.append(dict(key="failed", text=tile["failed"]))
     orb = (summary or {}).get("orbit")
+    rhat = worst_rhat(summary)
+    if rhat is not None and rhat > RHAT_MAX:
+        out.append(dict(key="nonconverged", text=f"NUTS did not converge (r̂ up to {rhat:.0f}); posterior values unreliable"))
     if tile["kind"] == "orbit" and orb:
         if orb.get("start") == "published":
             out.append(dict(key="provisional", text=PROVISIONAL.format(why="seeded from the published orbit")))
