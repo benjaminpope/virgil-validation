@@ -16,15 +16,16 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-PRIVATE_SHA256 = {
-    "a9c8ab1bb62be8362fb5b6bf2128c47d03d4669f2313e665f5b2a65921ccf251",  # the full id
-    "1fc430335c576930002d900ac0ae3adcc6ba036eb7062732aee58038a22c46c9",  # its first 8 hex digits
-}
-TOKEN = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|\b[0-9a-f]{8}\b")
+# Empty: the one L2 collection (CHARA workshop 647a22a9) was cleared by Ben Pope on 2026-10-13 for reduction and
+# display, so its id is now tracked (oidb/manifest.yml). Add the SHA-256 of any future private id (and of its first
+# 8 hex digits) here before its first fetch.
+PRIVATE_SHA256 = set()
+TOKEN = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|(?<![0-9a-f])[0-9a-f]{8}(?![0-9a-f])")  # not \b: "fit_647a22a9.json" has no word boundary
 
 
-def _hits(s):
-    return any(hashlib.sha256(t.encode()).hexdigest() in PRIVATE_SHA256 for t in TOKEN.findall(s))
+def _hits(s, hashes=None):
+    hashes = PRIVATE_SHA256 if hashes is None else hashes
+    return any(hashlib.sha256(t.encode()).hexdigest() in hashes for t in TOKEN.findall(s))
 
 
 def _tracked():
@@ -32,8 +33,21 @@ def _tracked():
     return [p for p in out.decode().split("\0") if p]
 
 
+@pytest.mark.validates("evidence", roots=["standards"], kind="control")
+def test_the_scan_catches_a_listed_id():
+    """The machinery that the next private collection relies on can fail: with the hash of a made-up id listed, a
+    file name or body that holds the id (or its first 8 hex digits) is a hit, and one that does not is not."""
+    fake = "0123abcd-4567-89ab-cdef-0123456789ab"
+    hashes = {hashlib.sha256(t.encode()).hexdigest() for t in (fake, fake[:8])}
+    assert _hits(f"collection {fake} fetched", hashes) and _hits(f"fit_{fake[:8]}.json", hashes)
+    assert not _hits("collection fac164e1-d9d0-4500-8164-e1d9d0450099", hashes)
+    assert not _hits(f"collection {fake}", set())  # no listed id: nothing is a hit
+
+
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_private_collection_id_not_in_tracked_tree():
+    if not PRIVATE_SHA256:
+        pytest.skip("no private collection is listed")
     hits = []
     for name in _tracked():
         path = ROOT / name

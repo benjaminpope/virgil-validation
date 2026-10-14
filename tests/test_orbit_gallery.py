@@ -16,6 +16,7 @@ from evidence.plugin import record
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "orbits"
 PI1GRU = "19f7e2cf-2a03-4bb2-b7e2-cf2a03bbb245"
+HD45166 = "f4afc4cd-fd31-40d3-afc4-cdfd3150d340"  # dropped from the gallery: design/hd45166_diagnosis.md
 GL229 = "782185b2-0727-42b0-a185-b2072732b047"
 ARXIV = re.compile(r"^\d{4}\.\d{4,5}$")
 
@@ -57,7 +58,7 @@ def test_compare_reads_summaries_through_the_adapter(og):
     summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
     import oidb_compare as oc
     rows, missing = oc.compare(None, fits={GL229: summary})
-    assert GL229 not in missing and len(missing) == len(oc.COMPARE) - 1 - 1  # the L2 workshop is skipped
+    assert GL229 not in missing and len(missing) == len(oc.COMPARE) - 1
     mine = [r for r in rows if r["collection"] == GL229]
     assert any(r["quantity"] == "period_day" and r["status"] == "REPORT" for r in mine)
     assert not [r for r in mine if r["status"] in ("FAIL", "MISSING")]
@@ -65,12 +66,70 @@ def test_compare_reads_summaries_through_the_adapter(og):
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_every_reference_target_gets_a_section(og, data):
-    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {"private-workshop", PI1GRU}  # pi1 Gru is a single star: no tile
+    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {PI1GRU, HD45166}  # pi1 Gru is a single star: no tile
     assert {t["collection_id"] for t in data["targets"]} == refs == set(og.TARGETS)
+    assert len({t["slug"] for t in data["targets"]}) == len(data["targets"]) == len(og.TILES)  # the workshop collection gives two tiles
     text = og.page(data)
-    headings = re.findall(r"^## (.+)$", text, flags=re.M)
-    assert headings == [t["target"] for t in data["targets"]]
-    record("targets", len(headings))
+    names = re.findall(r"^\*\*(.+)\*\*$", text, flags=re.M)  # the plain-text section of each target
+    assert names == [t["target"] for t in data["targets"]]
+    record("targets", len(names))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_page_explains_the_gallery(og, data):
+    text = og.page(data)
+    for heading in ("How to read a plot", "The badges", "Where the data come from", "Method"):
+        assert re.search(rf"^## {heading}$", text, flags=re.M), heading
+    assert "OiDB" in text and "CC BY-NC-SA" in text and "Jean-Marie Mariotti" in text
+    assert "??? note" in text and all(f"({page}.md)" in text for page in ("orbitize", "epochs", "aliases"))
+    for badge in ("agrees", "tension", "reported", "awaiting fit"):
+        assert f"**{badge}.**" in text, badge
+    assert {g["key"] for g in data["guide"]} >= {"sky", "ours", "pub", "alt", "eps", "alias", "phase"}
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_workshop_collection_splits_into_two_tiles(og, data):
+    iota, sigma = _target(data, "iota-peg-workshop"), _target(data, "sigma-ori")
+    assert iota["collection_id"] == sigma["collection_id"] == og.WORKSHOP
+    assert iota["status"] != "awaiting" and sigma["status"] != "awaiting"
+    assert iota["target"] != sigma["target"]
+    assert [e["label"] for e in iota["epochs"]] != [e["label"] for e in sigma["epochs"]]
+
+
+def _summaries_copy(tmp_path):
+    for f in (FIX / "summaries").glob("*.json"):
+        (tmp_path / f.name).write_text(f.read_text())
+    return tmp_path
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_alias_nights_come_from_the_summary_else_from_the_label_list(og, tmp_path):
+    """A summary without ``epoch_checks`` falls back to the known Gl 229 labels; one with them uses its "flagged" nights."""
+    path = _summaries_copy(tmp_path) / f"{GL229}.json"
+    summary = json.loads(path.read_text())
+    pos = summary["orbit"]["positions"]
+    pos[0]["name"], pos[1]["name"] = "2024-02-28", "2024-03-01"
+    path.write_text(json.dumps(summary))
+    flagged = lambda: {e["label"] for e in _target(og.build(tmp_path), "gl229b")["epochs"] if e.get("alias")}
+    assert flagged() == {"2024-02-28"}  # the label list; the ordinary night (2024-03-01) is not flagged
+    summary["orbit"]["epoch_checks"] = [dict(name=pos[1]["name"], reasons=["flagged: weak peak"], barred=False),
+                                        dict(name=pos[0]["name"], reasons=[], barred=False)]
+    path.write_text(json.dumps(summary))
+    assert flagged() == {"2024-03-01"}  # the summary's own checks win
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_workshop_badge_is_scored_by_the_comparison_rule(og, data, tmp_path):
+    """The fixture sits on the published sigma Ori position: it agrees. Moving it by many sigma is a tension."""
+    assert _target(data, "sigma-ori")["status"] == "agrees"
+    path = _summaries_copy(tmp_path) / f"{og.WORKSHOP}.json"
+    summary = json.loads(path.read_text())
+    for e in summary["targets"]["sig Ori"]["epochs"]:
+        e["values"]["rho_mas"][0] += 1.0  # tens of the published sigmas, far beyond the epoch rule's limit
+    path.write_text(json.dumps(summary))
+    t = _target(og.build(tmp_path), "sigma-ori")
+    assert t["status"] == "tension" and any(r["status"] == "FAIL" for r in t["table"])
+    assert _target(og.build(tmp_path), "iota-peg-workshop")["status"] == "agrees"  # the other tile is untouched
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
@@ -78,6 +137,9 @@ def test_arxiv_links_are_well_formed(og, data):
     text = og.page(data)
     for t in data["targets"]:
         a = t["paper"]["arxiv"]
+        if a is None:  # the workshop tile cites two papers (iota Peg, sigma Ori) and links neither
+            assert t["collection_id"].startswith("647a22a9"), t["slug"]
+            continue
         assert ARXIV.match(a), a
         assert f"[arXiv:{a}](https://arxiv.org/abs/{a})" in text
     assert not re.findall(r"arxiv\.org/abs/(?!\d{4}\.\d{4,5}\))", text)
@@ -140,4 +202,4 @@ def test_target_without_a_summary_is_awaiting(og, tmp_path):
     assert "Awaiting fit" in og.page(data)
     # one summary present: only that tile leaves the awaiting state
     mixed = og.build(FIX / "summaries")
-    assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b"]
+    assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b", "iota-peg-workshop", "sigma-ori"]
