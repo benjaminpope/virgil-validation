@@ -566,6 +566,18 @@ pipelines:
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,
             virgil.limits.absil_limits]
+  gravity-aberration-wide:
+    title: Wide single-fibre GRAVITY binaries (zeta Boo, eta Oph) against Waisberg+2025, for the fibre-offset aberration systematic
+    data: real
+    dataset: ESO Phase 3 GRAVITY AT products, 4 and 6 nights at 10-88 mas (one night at 265 mas)
+    reference: the published per-night positions (20 and 40 uas scatter) and the ORB6+GRAVITY orbits
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/gravity_aberration_test.md
+    headline: per-night position residuals against the published scatter, and a blind orbit against the published one
+    page: orbits/binaries/
+    state: planned
+    planned: true  # references, data and one-to-two-night smoke fits are in; the fits wait for the blind orbit solver
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
+            virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov]
   orbitize-posterior:
     title: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors
     data: real

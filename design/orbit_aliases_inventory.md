@@ -19,7 +19,7 @@ OzSTAR under `/fred/oz440/bpope/eso_binaries/`.
 | hd70937 | GRAVITY K | `trackb/hd70937/oifits/` | 14, 59197-59971 | Gallenne+2023: P 27.9 d | yes |
 | hd210763 | GRAVITY K | `trackb/hd210763/oifits/` | 9, 59442-59804 | Gallenne+2023: P 42.4 d | yes |
 | kap_vel | GRAVITY K | `trackb/kap_vel/oifits/` | 8 of 9, 60670-60731 | orbit_fit_table: P 116.8 d | no: span shorter than the period |
-| zet_boo, eta_oph | GRAVITY K | `trackb/<sys>/oifits/` | 4; 6 | ORB6 + GRAVITY | no: no tabulated P |
+| zet_boo, eta_oph | GRAVITY K | `trackb/<sys>/oifits/` | 4; 6 | ORB6 + GRAVITY | no: P is tabulated (125 yr, 88 yr) but the 1–2 yr span is ~1 % of it |
 | del_cir | GRAVITY + PIONIER | `trackb/del_cir/oifits/` | 8 of 12 | spinOS, P 1603 d | no: mixed instruments |
 | tz_for | GRAVITY + PIONIER | `trackb/tz_for/oifits/` | manifest 0, files 16 | Gallenne+2018: P 75.7 d | no: manifest conflict |
 | psi_cen | PIONIER H | `trackb/psi_cen/oifits/` | 6, 57481-57816 | Gallenne+2019 Table 2: P 38.8 d | yes |

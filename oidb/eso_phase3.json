@@ -1,0 +1,288 @@
+{
+ "registered": "2026-10-14",
+ "source": "ESO Science Archive Facility, Phase 3 (ivoa.ObsCore, dataproduct_type='visibility')",
+ "query_service": "https://archive.eso.org/tap_obs/sync",
+ "systems": {
+  "zet_boo": {
+   "target": "zeta Boo (HIP 71795, HD 129246/7, 30 Boo)",
+   "reference": "2025OJAp....8E..63W",
+   "programmes": [
+    "111.24UP.001",
+    "111.264P.001",
+    "113.26HF.001"
+   ],
+   "products": [
+    {
+     "dp_id": "ADP.2025-12-24T12:59:21.714",
+     "file": "ADP.2025-12-24T12_59_21.714.fits",
+     "bytes": 28632960,
+     "sha256": "1eeedd46b90e530ac87ee671a88722bf1688fa9b29c065f134472911fd0268a3",
+     "date_obs": "2023-04-20T05:29:18",
+     "mjd_obs": 60054.22857692,
+     "prog_id": "111.24UP.001",
+     "object": "HIP 71795",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "K0",
+      "G2",
+      "D0",
+      "J3"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2024-04-20T05:50:42Z",
+      "proposal_id": "111.24UP.001",
+      "dataproduct_type": "visibility",
+      "target_name": "HIP 71795"
+     },
+     "epoch_date": "2023-04-20"
+    },
+    {
+     "dp_id": "ADP.2025-12-24T13:20:24.231",
+     "file": "ADP.2025-12-24T13_20_24.231.fits",
+     "bytes": 28632960,
+     "sha256": "8d404153f71bf534faebd04c7726b7bb6dd2a0eb2869ceacbb9a749269f25e5e",
+     "date_obs": "2023-06-15T01:25:10",
+     "mjd_obs": 60110.05903054,
+     "prog_id": "111.264P.001",
+     "object": "HIP 71795",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "K0",
+      "G2",
+      "D0",
+      "J3"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2024-06-15T01:46:18Z",
+      "proposal_id": "111.264P.001",
+      "dataproduct_type": "visibility",
+      "target_name": "HIP 71795"
+     },
+     "epoch_date": "2023-06-14"
+    },
+    {
+     "dp_id": "ADP.2025-12-24T13:38:11.914",
+     "file": "ADP.2025-12-24T13_38_11.914.fits",
+     "bytes": 28632960,
+     "sha256": "098fa7fe2c1baaed6669a14d7263cc2077555747d6bb66a867426f7bea54263c",
+     "date_obs": "2023-07-14T23:49:43",
+     "mjd_obs": 60139.9927666,
+     "prog_id": "111.264P.001",
+     "object": "HIP 71795",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "K0",
+      "G2",
+      "D0",
+      "J3"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2024-07-15T00:10:43Z",
+      "proposal_id": "111.264P.001",
+      "dataproduct_type": "visibility",
+      "target_name": "HIP 71795"
+     },
+     "epoch_date": "2023-07-14"
+    },
+    {
+     "dp_id": "ADP.2025-12-31T21:11:31.589",
+     "file": "ADP.2025-12-31T21_11_31.589.fits",
+     "bytes": 19180800,
+     "sha256": "3f93f4885cf9c2881123c7870d1aaf8aab3d442ee444c8709e60b1409ec17f26",
+     "date_obs": "2024-05-22T00:34:25",
+     "mjd_obs": 60452.02378328,
+     "prog_id": "113.26HF.001",
+     "object": "zet Boo",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "A0",
+      "B2",
+      "D0",
+      "C1"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2025-05-25T01:06:21Z",
+      "proposal_id": "113.26HF.001",
+      "dataproduct_type": "visibility",
+      "target_name": "zet Boo"
+     },
+     "epoch_date": "2024-05-22"
+    }
+   ]
+  },
+  "eta_oph": {
+   "target": "eta Oph (Sabik, HIP 84012, HD 155125, 35 Oph)",
+   "reference": "2025OJAp....8E..63W",
+   "programmes": [
+    "111.24UP.003",
+    "113.26HF.001"
+   ],
+   "products": [
+    {
+     "dp_id": "ADP.2025-12-24T13:20:53.959",
+     "file": "ADP.2025-12-24T13_20_53.959.fits",
+     "bytes": 38082240,
+     "sha256": "dc1ea0f7f3fbe5ffd2259a1b257fd94f06cb06d72c41d5c1a0b563f1983b4a93",
+     "date_obs": "2023-06-16T03:35:55",
+     "mjd_obs": 60111.14982968,
+     "prog_id": "111.24UP.003",
+     "object": "HIP 84012",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "K0",
+      "G2",
+      "D0",
+      "J3"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2024-06-16T03:58:42Z",
+      "proposal_id": "111.24UP.003",
+      "dataproduct_type": "visibility",
+      "target_name": "HIP 84012"
+     },
+     "epoch_date": "2023-06-16"
+    },
+    {
+     "dp_id": "ADP.2025-12-31T21:09:49.009",
+     "file": "ADP.2025-12-31T21_09_49.009.fits",
+     "bytes": 19180800,
+     "sha256": "e446cb1b8438776616a6c6fa713046d2b22ad224adfb95bebb341d33e2dc6568",
+     "date_obs": "2024-05-18T05:38:28",
+     "mjd_obs": 60448.23492947,
+     "prog_id": "113.26HF.001",
+     "object": "eta Oph",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "A0",
+      "G2",
+      "J2",
+      "J3"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2025-05-24T22:31:03Z",
+      "proposal_id": "113.26HF.001",
+      "dataproduct_type": "visibility",
+      "target_name": "eta Oph"
+     },
+     "epoch_date": "2024-05-18"
+    },
+    {
+     "dp_id": "ADP.2025-12-31T21:21:52.929",
+     "file": "ADP.2025-12-31T21_21_52.929.fits",
+     "bytes": 19177920,
+     "sha256": "1220475d669ded1d9d88709d3972c761e29436af694545fecbd82c2c079ca14d",
+     "date_obs": "2024-06-17T05:50:31",
+     "mjd_obs": 60478.24331094,
+     "prog_id": "113.26HF.001",
+     "object": "eta Oph",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "K0",
+      "B5",
+      "D0",
+      "J6"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2025-06-17T06:05:47Z",
+      "proposal_id": "113.26HF.001",
+      "dataproduct_type": "visibility",
+      "target_name": "eta Oph"
+     },
+     "epoch_date": "2024-06-17"
+    },
+    {
+     "dp_id": "ADP.2025-12-31T21:31:32.524",
+     "file": "ADP.2025-12-31T21_31_32.524.fits",
+     "bytes": 19180800,
+     "sha256": "195d7ff0616cb2ad3b0ed6d11fd43da2beeb6a2e34048db73580fb3a919323e4",
+     "date_obs": "2024-07-08T04:57:23",
+     "mjd_obs": 60499.2064225,
+     "prog_id": "113.26HF.001",
+     "object": "eta Oph",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "A0",
+      "B5",
+      "J2",
+      "J6"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2025-07-08T05:15:35Z",
+      "proposal_id": "113.26HF.001",
+      "dataproduct_type": "visibility",
+      "target_name": "eta Oph"
+     },
+     "epoch_date": "2024-07-08"
+    },
+    {
+     "dp_id": "ADP.2025-12-31T21:36:48.410",
+     "file": "ADP.2025-12-31T21_36_48.410.fits",
+     "bytes": 19180800,
+     "sha256": "f26a05678b8424a064cf028706b0b8ee22356e8172f4725f6ca4f97122cd4955",
+     "date_obs": "2024-07-26T01:56:42",
+     "mjd_obs": 60517.08095008,
+     "prog_id": "113.26HF.001",
+     "object": "eta Oph",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "A0",
+      "B2",
+      "D0",
+      "C1"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2025-07-26T02:10:39Z",
+      "proposal_id": "113.26HF.001",
+      "dataproduct_type": "visibility",
+      "target_name": "eta Oph"
+     },
+     "epoch_date": "2024-07-26"
+    },
+    {
+     "dp_id": "ADP.2025-12-31T21:38:18.312",
+     "file": "ADP.2025-12-31T21_38_18.312.fits",
+     "bytes": 19180800,
+     "sha256": "f638dc9a19f9a1400fe86b8ca4679afd1fe3941db0760eedd81db84f310eb494",
+     "date_obs": "2024-08-11T01:11:58",
+     "mjd_obs": 60533.04988472,
+     "prog_id": "113.26HF.001",
+     "object": "eta Oph",
+     "insname": "GRAVITY",
+     "spec_res": "HIGH",
+     "stations": [
+      "K0",
+      "G1",
+      "D0",
+      "J3"
+     ],
+     "prodcatg": "SCIENCE.VISIBILITY",
+     "archive": {
+      "release_date": "2025-08-11T01:30:43Z",
+      "proposal_id": "113.26HF.001",
+      "dataproduct_type": "visibility",
+      "target_name": "eta Oph"
+     },
+     "epoch_date": "2024-08-11"
+    }
+   ]
+  }
+ }
+}

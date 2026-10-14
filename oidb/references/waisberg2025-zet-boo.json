@@ -1,0 +1,262 @@
+{
+ "collection_id": "waisberg2025-zet-boo",
+ "target": "zeta Boo (HIP 71795, HD 129246/7)",
+ "paper": {
+  "authors": "Waisberg, I.; Klein, Y.; Katz, B.",
+  "year": 2025,
+  "journal": "The Open Journal of Astrophysics 8, 63",
+  "bibcode": "2025OJAp....8E..63W",
+  "doi": "10.33232/001c.138625",
+  "arxiv": "2504.17858"
+ },
+ "publication_status": {
+  "status": "published",
+  "evidence": "Crossref 10.33232/001c.138625 (api.crossref.org, checked 2026-10-14): The Open Journal of Astrophysics vol 8, 2025-05-27. Numbers transcribed from the arXiv v2 PDF (2025-05-25) and checked against it table by table."
+ },
+ "source_of_data": "ESO Phase 3 public GRAVITY products (SINGLE_SCI_VIS, not calibrated), ~/data/eso_binaries/trackb/zet_boo/oifits/; programmes 111.24UP.001, 111.264P.001, 113.26HF.001. Not an OiDB collection (see DATA_ATTRIBUTION.md, ESO Phase 3).",
+ "method": "Single-field GRAVITY on the four ATs (K band, science channel, fringe tracker). The authors fit squared visibilities and closure phases with the interferometric binary model of Waisberg+2023 (Sect. 2.2). Free: K-band flux ratio and (dRA,dDec) per epoch. Angular diameters FIXED to 0.47 and 0.43 mas (isochrones). Errors: scatter between files/exposures: 40 microarcsec for GRAVITY epochs (formal errors far smaller). Closure phases of file averages very noisy (fringe tracker fibre hopping between near-equal components), so individual stable exposures (1-3 per file) were used.",
+ "flux_ratio_definition": "f_B/f_A in per cent, K band; epoch average 88.3 +/- 1.9 %.",
+ "uncertainties": "Formal fit errors are below 1 uas and the paper treats them as underestimated (data correlation, systematics). The adopted error is the scatter between the best fits of different files/exposures within an epoch: 40 uas per axis (Table 6 and Sect. 2.2). No per-epoch error ellipses are published. The paper does not mention the GRAVITY optical-aberration systematics (GRAVITY Collaboration 2021).",
+ "conventions": {
+  "position": "dRA, dDec = secondary B relative to primary A, east and north (as virgil's dra, ddec). PA north through east.",
+  "omega": "Standard visual-orbit omega: the companion's relative to the primary, from the ascending node; the same star as virgil's omega, so no shift is applied. Checked: with this reading, crosscheck.orbits reproduces every published epoch position to better than 0.1 mas (tests/test_waisberg_references.py); the +180 deg reading is off by tens of mas.",
+  "degeneracy": "Without radial velocities (Omega, omega) and (Omega + 180, omega + 180) give the same sky orbit; the paper reports the solution with Omega < 180 deg.",
+  "time": "Tp is a decimal year; T_peri_mjd below = (Tp - 2000) * 365.25 + 51544.5 (Julian years), and P_day = P_yr * 365.25."
+ },
+ "epochs": [
+  {
+   "date": "2023-04-20",
+   "mjd": 60054.23,
+   "epoch_number": 1,
+   "rho_mas": [
+    74.2641,
+    0.04
+   ],
+   "pa_deg": [
+    245.209,
+    0.031
+   ],
+   "flux_ratio": [
+    90.5,
+    null
+   ],
+   "flux_ratio_unit": "% (f_B/f_A, K band)",
+   "other": {
+    "dE_mas": [
+     -67.42,
+     0.04
+    ],
+    "dN_mas": [
+     -31.14,
+     0.04
+    ],
+    "note": "dRA* (towards East) and dDec (North) of the secondary B relative to the primary A, as printed; the error is the paper's scatter-based value, the same on both axes (rho and PA errors are derived from it)"
+   },
+   "at_config": "K0-G2-D0-J3",
+   "phase3_dp_ids": [
+    "ADP.2025-12-24T12:59:21.714"
+   ],
+   "used_in_orbit_fit": true,
+   "source": "Table 3 (positions, flux ratio) and Table 1 (MJD, AT configuration), arXiv:2504.17858v2"
+  },
+  {
+   "date": "2023-06-14",
+   "mjd": 60110.06,
+   "epoch_number": 2,
+   "rho_mas": [
+    63.4265,
+    0.04
+   ],
+   "pa_deg": [
+    238.224,
+    0.036
+   ],
+   "flux_ratio": [
+    88.1,
+    null
+   ],
+   "flux_ratio_unit": "% (f_B/f_A, K band)",
+   "other": {
+    "dE_mas": [
+     -53.92,
+     0.04
+    ],
+    "dN_mas": [
+     -33.4,
+     0.04
+    ],
+    "note": "dRA* (towards East) and dDec (North) of the secondary B relative to the primary A, as printed; the error is the paper's scatter-based value, the same on both axes (rho and PA errors are derived from it)"
+   },
+   "at_config": "K0-G2-D0-J3",
+   "phase3_dp_ids": [
+    "ADP.2025-12-24T13:20:24.231"
+   ],
+   "used_in_orbit_fit": true,
+   "source": "Table 3 (positions, flux ratio) and Table 1 (MJD, AT configuration), arXiv:2504.17858v2"
+  },
+  {
+   "date": "2023-07-14",
+   "mjd": 60140.0,
+   "epoch_number": 3,
+   "rho_mas": [
+    57.442,
+    0.04
+   ],
+   "pa_deg": [
+    233.174,
+    0.04
+   ],
+   "flux_ratio": [
+    85.3,
+    null
+   ],
+   "flux_ratio_unit": "% (f_B/f_A, K band)",
+   "other": {
+    "dE_mas": [
+     -45.98,
+     0.04
+    ],
+    "dN_mas": [
+     -34.43,
+     0.04
+    ],
+    "note": "dRA* (towards East) and dDec (North) of the secondary B relative to the primary A, as printed; the error is the paper's scatter-based value, the same on both axes (rho and PA errors are derived from it)"
+   },
+   "at_config": "K0-G2-D0-J3",
+   "phase3_dp_ids": [
+    "ADP.2025-12-24T13:38:11.914"
+   ],
+   "used_in_orbit_fit": true,
+   "source": "Table 3 (positions, flux ratio) and Table 1 (MJD, AT configuration), arXiv:2504.17858v2"
+  },
+  {
+   "date": "2024-05-22",
+   "mjd": 60452.02,
+   "epoch_number": 4,
+   "rho_mas": [
+    87.8208,
+    0.04
+   ],
+   "pa_deg": [
+    348.639,
+    0.026
+   ],
+   "flux_ratio": [
+    89.3,
+    null
+   ],
+   "flux_ratio_unit": "% (f_B/f_A, K band)",
+   "other": {
+    "dE_mas": [
+     -17.3,
+     0.04
+    ],
+    "dN_mas": [
+     86.1,
+     0.04
+    ],
+    "note": "dRA* (towards East) and dDec (North) of the secondary B relative to the primary A, as printed; the error is the paper's scatter-based value, the same on both axes (rho and PA errors are derived from it)"
+   },
+   "at_config": "A0-B2-D0-C1",
+   "phase3_dp_ids": [
+    "ADP.2025-12-31T21:11:31.589"
+   ],
+   "used_in_orbit_fit": true,
+   "source": "Table 3 (positions, flux ratio) and Table 1 (MJD, AT configuration), arXiv:2504.17858v2",
+   "flag": "post-pericentre; ATs A0-B2-D0-C1 (Bmax 25.3 m, resolution 18 mas)"
+  }
+ ],
+ "orbit": {
+  "label": "ORB6 + GRAVITY (Table 7, best-fit orbit)",
+  "P_yr": [
+   125.04,
+   "+0.24/-0.21"
+  ],
+  "P_day": [
+   45670.86,
+   null
+  ],
+  "Tp_year": [
+   2023.9548,
+   "+0.0013/-0.0014"
+  ],
+  "T_peri_mjd": [
+   60293.991,
+   null
+  ],
+  "e": [
+   0.98045,
+   "+0.000063/-0.000064"
+  ],
+  "omega_deg": [
+   62.08,
+   "+0.13/-0.14"
+  ],
+  "Omega_deg": [
+   176.63,
+   0.16
+  ],
+  "i_deg": [
+   125.88,
+   0.16
+  ],
+  "a_mas": [
+   808.6,
+   "+1.9/-2.0"
+  ],
+  "distance_pc": [
+   51.7,
+   0.2
+  ],
+  "errors_note": "2.3% and 97.7% percentiles of 2000 resamples, as printed (Table 7 caption), shown as +up/-down strings",
+  "source": "Table 7, ORB6+GRAVITY column; the GRAVITY epochs are among the data fitted, so the orbit reproduces them by construction and is not independent of them"
+ },
+ "orbit_orb6_only": {
+  "label": "ORB6 only (Table 7)",
+  "P_yr": [
+   123.97,
+   "+0.42/-0.46"
+  ],
+  "Tp_year": [
+   2023.26,
+   "+0.50/-0.15"
+  ],
+  "e": [
+   0.9942,
+   "+0.0026/-0.0023"
+  ],
+  "omega_deg": [
+   78.2,
+   "+3.5/-2.9"
+  ],
+  "Omega_deg": [
+   187.0,
+   "+3.1/-3.5"
+  ],
+  "i_deg": [
+   119.5,
+   "+3.5/-5.4"
+  ],
+  "a_mas": [
+   1476.7,
+   "+500.9/-220.4"
+  ],
+  "note": "the visual archive without the GRAVITY pericentre data: biased and poorly constrained (a and e strongly correlated)"
+ },
+ "diameters_mas": {
+  "primary": [
+   0.47,
+   0.07
+  ],
+  "secondary": [
+   0.43,
+   0.05
+  ],
+  "source": "MIST isochrone angular diameters (Table 5); fixed in fit"
+ },
+ "third_light": "Very wide companion HIP 71759 (F0V) at 13.3 arcmin, far outside the field. Companions excluded: K flux ratio >1% at rho>~3 mas, >2% at 1-3 mas. No close companion detected.",
+ "notes": [
+  "Companion inside a single AT fibre (all seps 57-88 mas, single-field mode; AT fibre FOV ~250 mas in K); NOT dual-field. Pericentre passage itself unobserved (target too close to the Sun); epoch 4 post-pericentre. Epoch 2 date printed 2023-06-14 in Table 1 (MJD 60110.06) but plot file named 2023-06-15. Near-equal brightness => 180 deg ambiguity resolved only by astrometric orbit (no phase referencing). Positions' absolute orientation relies on closure phases. Bandwidth smearing not discussed. Only 4 epochs; formal errors underestimated, 40 microarcsec scatter-based.",
+  "GRAVITY Collaboration 2021 (2021A&A...647A..59G, arXiv:2101.12098): static, field-dependent optical aberrations at fibre injection bias single-field binary astrometry (0.1-0.5 mas for S2 with the UTs in 2017-2018); dual-field pointings are not affected. These two single-field AT systems are the wide-separation cases that test whether such a bias shows in public AT data (design/gravity_aberration_test.md)."
+ ]
+}

@@ -50,6 +50,10 @@ GL229 = "782185b2-0727-42b0-a185-b2072732b047"
 HR6819 = "696baf06-6c3c-424d-abaf-066c3c324d99"
 IOTA_PEG = "fac164e1-d9d0-4500-8164-e1d9d0450099"
 ASTARS = "bda75673-61c6-49f0-a756-7361c699f0c4"
+# Wide single-field GRAVITY pairs from ESO Phase 3 (not OiDB collections): the "collection id" is the stem of their
+# reference file, oidb/references/<id>.json. Their fits wait for a blind orbit solver (design/gravity_aberration_test.md).
+ZETBOO = "waisberg2025-zet-boo"
+ETAOPH = "waisberg2025-eta-oph"
 # The CHARA 2023 imaging workshop collection (L2), cleared for display by the project lead on 2026-10-13
 # (DATA_ATTRIBUTION.md)
 WORKSHOP = "647a22a9-5047-4220-ba22-a95047022072"
@@ -60,6 +64,8 @@ WORKSHOP = "647a22a9-5047-4220-ba22-a95047022072"
 # ``oidb_compare`` row target for that tile; ``pub`` names the published-orbit reader.
 # pi1 Gru (19f7e2cf) is a uniform-disk fit to an AGB star, not a binary: no tile;
 # HD 45166 (f4afc4cd) is out until its calibration is solved (design/hd45166_diagnosis.md).
+ESO = dict(instrument="VLTI/GRAVITY (ATs)", level="Phase 3", datapi=None, title="ESO Science Archive Phase 3 reduced GRAVITY products (public)",
+           collection=None, source="eso")
 TILES = [
     dict(cid=GL229, slug="gl229b", name="Gliese 229 B (Ba-Bb)", kind="orbit", pub="gl229",
          tagline="Two brown dwarfs orbiting each other every 12 days",
@@ -123,6 +129,37 @@ TILES = [
                 dict(kind="data", title="Unpublished data",
                      text="An L2 (not yet published) collection from the CHARA 2023 imaging workshop, shown here with "
                           "clearance for display (data PI Gail Schaefer).")]),
+    dict(cid=ZETBOO, slug="zeta-boo", name="ζ Boo", kind="positions", pub="waisberg", data=ESO,
+         tagline="A near-equal pair at 57-88 mas on a 125-year, e = 0.98 orbit, four GRAVITY nights",
+         about="Waisberg et al. (2025) observed ζ Boo with VLTI/GRAVITY on the four ATs before and after its 2023 "
+               "periastron. The pair sits at 57-88 mas, inside one fibre but far from the fibre axis, so this is a test of "
+               "whether GRAVITY's single-field astrometry carries the fibre-offset aberration bias of GRAVITY Collaboration "
+               "(2021). The tile shows the published orbit and positions; virgil's fits wait for a blind orbit solver.",
+         notes=[dict(kind="convention", title="Conventions",
+                     text="Waisberg et al. give the standard visual-orbit ω (the companion's), so no shift is applied; Tp is a "
+                          "decimal year, converted with Julian years. With these, the published orbit reproduces its own four "
+                          "positions to better than 0.1 mas. Without radial velocities (Ω, ω) and (Ω + 180°, ω + 180°) are "
+                          "degenerate: the paper reports Ω < 180°."),
+                dict(kind="caveat", title="Positions only",
+                     text="The pericentre was not observed (the star was too close to the Sun), and the period is over a "
+                          "hundred times the span of the data, so four nights cannot give an orbit. The published errors are "
+                          "the 40 µas scatter between files."),
+                dict(kind="caveat", title="Near-equal pair",
+                     text="The flux ratio is 0.85-0.91, and swapping the stars (position → −position, flux ratio → its "
+                          "inverse) gives the same visibilities. A fit may return the swapped pair, with a flux ratio above 1; "
+                          "it is compared with the paper at whichever sign is nearer.")]),
+    dict(cid=ETAOPH, slug="eta-oph", name="η Oph", kind="positions", pub="waisberg", data=ESO,
+         tagline="A pair at 10-265 mas on an 88-year, e = 0.93 orbit, six GRAVITY nights",
+         about="Waisberg et al. (2025) observed η Oph (Sabik) with VLTI/GRAVITY on the ATs through its 2024 periastron. "
+               "Five of the six nights have the pair at 10-46 mas; the first is at 265 mas, beyond the fibre field. As for "
+               "ζ Boo, this tests the fibre-offset aberration bias of GRAVITY Collaboration (2021). The tile shows the "
+               "published orbit and positions; virgil's fits wait for a blind orbit solver.",
+         notes=[dict(kind="convention", title="Conventions",
+                     text="As for ζ Boo: the standard visual-orbit ω, Julian-year Tp, no shift, and the published orbit "
+                          "reproduces its six positions to better than 0.05 mas."),
+                dict(kind="caveat", title="First night",
+                     text="At 265 mas the pair is outside the AT fibre field. The paper calls that position very uncertain and "
+                          "fixes its flux ratio at 50 %. The published scatter for the other nights is 20 µas.")]),
     dict(cid=ASTARS, slug="a-stars", name="A-star companions (5 detections)", kind="positions", pub=None,
          tagline="Faint companions to nearby A stars, one night each",
          about="De Furio et al. (2022) searched A stars for companions with CHARA/MIRC-X. We re-fit their five detections "
@@ -310,6 +347,11 @@ def published_orbits(pub, ref):
                                        inc_deg=k["i_deg"][0], omega_deg=k["omega_deg"][0] % 360,
                                        Omega_deg=k["Omega_deg"][0] % 360, a_mas=k["a_mas"][0])))
         return out
+    if pub == "waisberg":  # Waisberg+25 Table 7 (ORB6 + GRAVITY): the companion's omega, Julian-year Tp, already in the file
+        o = ref["orbit"]
+        return [("ORB6 + GRAVITY (Waisberg+25)", dict(period_day=o["P_day"][0], t_peri_mjd=o["T_peri_mjd"][0], ecc=o["e"][0],
+                                                      inc_deg=o["i_deg"][0], omega_deg=o["omega_deg"][0] % 360,
+                                                      Omega_deg=o["Omega_deg"][0] % 360, a_mas=o["a_mas"][0]))]
     if pub == "sigori":  # Schaefer+16 Table 9: omega is Aa's (the primary's): + 180; T is HJD - 2400000
         o = ref["orbit"]
         return [("Schaefer+16", dict(period_day=o["P_day"][0], t_peri_mjd=o["T_peri_hjd_minus_2400000"][0] - 0.5,
@@ -499,6 +541,8 @@ def _load_ref(tile, refs_dir):
 
 
 def _data_of(tile, manifest):
+    if tile.get("data"):
+        return {k: v for k, v in tile["data"].items() if k != "instrument"}
     c = manifest.get(tile["cid"], {})
     level = "L" + str(max(c["levels"])) if c.get("levels") else None
     return dict(level=level, datapi=", ".join(c.get("datapis", [])) or None, title=c.get("title"),
@@ -511,7 +555,7 @@ def build_target(tile, ref, summary, rows, manifest=None):
     mc = manifest.get(tile["cid"], {})
     t = dict(slug=tile["slug"], collection_id=tile["cid"], target=tile["name"], tagline=tile["tagline"],
              about=tile["about"], notes=tile["notes"], data=_data_of(tile, manifest),
-             instrument=(summary or {}).get("instrument") or " + ".join(
+             instrument=(summary or {}).get("instrument") or tile.get("data", {}).get("instrument") or " + ".join(
                  INSTRUMENT.get(i, i) for i in mc.get("instruments", [])),
              kind=tile["kind"], status="awaiting", awaiting=None if summary is not None else "fit",
              paper=paper_of(ref), ours=None, alternatives=[], published=[], epochs=[],
@@ -551,6 +595,15 @@ def build_target(tile, ref, summary, rows, manifest=None):
                 t["alternatives"].append(dict(label=f"mode {k + 1}", dloss=m["loss"] - best,
                                               path=sky_path(mel, ep_mjds), elements=mel))
             t["phase"]["ours"] = phase_curve(el)
+    if summary is None and ref is not None and tile.get("data"):  # ESO tiles, nothing of ours yet: list what the paper published
+        t["published_positions"] = []
+        for r in _ref_epochs(ref):
+            pp = published_position(r)
+            if pp:
+                sep, pa = _sep_pa(pp["dra"], pp["ddec"])
+                sig = None if pp["cov"] is None else math.sqrt(max(pp["cov"][0][0], pp["cov"][1][1]))
+                t["published_positions"].append(dict(date=r["date"], mjd=r.get("mjd"), dra=pp["dra"], ddec=pp["ddec"],
+                                                     sep=sep, pa=pa, sigma=sig, flag=r.get("flag")))
     for label, el in pubs:
         t["published"].append(dict(label=label, path=sky_path(el, ep_mjds), elements=el))
     if pubs:
@@ -680,6 +733,15 @@ def _section(t):
     for n in t["notes"]:
         lines += [f"- **{n['title']}.** {n['text']}"]
     lines += [""] if t["notes"] else []
+    if t.get("published_positions"):
+        lines += ["| date | MJD | ΔRA (mas) | ΔDec (mas) | separation (mas) | PA (°) | σ per axis (mas) |", "|---|---|---|---|---|---|---|"]
+        for r in t["published_positions"]:
+            lines.append("| " + " | ".join(_md_cell(x) for x in (
+                r["date"], oc._fmt(r["mjd"], 7), oc._fmt(r["dra"], 6), oc._fmt(r["ddec"], 6), oc._fmt(r["sep"], 5),
+                oc._fmt(r["pa"], 5), oc._fmt(r["sigma"], 2))) + " |")
+        lines += ["", "Published positions of the secondary relative to the primary (Waisberg et al. 2025, Tables 3 and 4)."]
+        lines += [f"Flag, {r['date']}: {r['flag']}." for r in t["published_positions"] if r.get("flag")]
+        lines += [""]
     if t["table"]:
         lines += ["| quantity | virgil | published | pull | status | note |", "|---|---|---|---|---|---|"]
         for r in t["table"]:

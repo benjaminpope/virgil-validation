@@ -49,3 +49,19 @@ machine-readable form.
 | `855397ef-dca8-4125-9397-efdca851259d` | kappa Tuc A, MATISSE + GRAVITY (hot dust: not clean) (O2) | L3 | Thomas Stuber | AJ 171, 1, doi:10.3847/1538-3881/adfe66 | not yet (thank dataPI, cite paper when used) |
 | `534fbba6-b715-4b41-9278-b6bd0de9f674` | gamma2 Vel, AMBER (wind collision: not clean) (O2) | L3 | Florentin Millour | MNRAS 468, 2655, doi:10.1093/mnras/stx588 | not yet (thank dataPI, cite paper when used) |
 | `J/A+A/536/A55` | SS Lep, AMBER + PIONIER (Roche-lobe overflow: not clean) (O2) | L3 | Blind N. | A&A 536, A55, doi:10.1051/0004-6361/201118036 | not yet (thank dataPI, cite paper when used) |
+
+## ESO Science Archive, Phase 3
+
+Reduced GRAVITY products (ESO Phase 3, `ivoa.ObsCore`) of public programmes are read from the ESO Science Archive
+Facility and are not committed. They are ESO data products, public once their proprietary period has ended. `oidb/eso_phase3.json` registers each product used by the
+gallery: its dp_id, file name, size, SHA-256, header date and programme, and the release date the archive gives
+(`scripts/register_eso_phase3.py`).
+
+- **Acknowledgement.** Based on observations collected at the European Southern Observatory under ESO programmes
+  111.24UP.001, 111.24UP.003, 111.264P.001 and 113.26HF.001, and obtained from the ESO Science Archive Facility.
+- **Cite the paper** whose positions we compare with.
+
+| Data | Programmes | Products | Paper | Terms met |
+|---|---|---|---|---|
+| ζ Boo, GRAVITY ATs, 4 nights, 2023-04-20 to 2024-05-22 | 111.24UP.001, 111.264P.001, 113.26HF.001 | 4 (105 MB) | Waisberg, Klein & Katz 2025, OJAp 8, 63, doi:10.33232/001c.138625 | public since 2025-05-25 at the latest; cite the paper when used |
+| η Oph, GRAVITY ATs, 6 nights, 2023-06-16 to 2024-08-11 | 111.24UP.003, 113.26HF.001 | 6 (134 MB) | Waisberg, Klein & Katz 2025, OJAp 8, 63 | public since 2025-08-11 at the latest; cite the paper when used |
