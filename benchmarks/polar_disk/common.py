@@ -23,8 +23,10 @@ sys.path.insert(0, str(ROOT / "src"))
 RESULTS = pathlib.Path(os.environ.get("PD_OUT", pathlib.Path(__file__).parent / "results"))
 PACKAGES = ("virgil-astro", "jax", "jaxlib", "numpy", "scipy", "numpyro", "frank", "vis-r", "astro-frap",
             "pmoired", "oimodeler")
-# stage-V pin: origin/polar-p4 of benjaminpope/virgil (PR #343), P1-P4 stacked
-EXPECTED_VIRGIL = "791f9fef65eb49ebc387c5c365a13c7af2342341"
+# stage-V pin: origin/polar-p4 of benjaminpope/virgil (PR #343), P1-P4 stacked, includes polar-p3 c82e18c and main.
+# The committed results/*.json were produced at the OLDER pin below and are stale: regenerate at EXPECTED_VIRGIL.
+STALE_PIN = "791f9fef65eb49ebc387c5c365a13c7af2342341"
+EXPECTED_VIRGIL = "e42973d7478e04d704aaee53e61810e0356c6e49"
 
 
 def _version(name):

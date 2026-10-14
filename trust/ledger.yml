@@ -386,7 +386,9 @@
   evidence:
     - tests/test_polar_disk_brute_force.py::test_exp_tail_reaches_documented_accuracy_at_the_documented_node_count
     - tests/test_polar_disk_brute_force.py::test_exp_tail_error_is_the_pinned_size
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/343]
+  note: fixed in virgil e42973d (e42973d7478e04d704aaee53e61810e0356c6e49); found at 791f9fe. The kind and numbers above are the finding as made; the evidence tests were written against 791f9fe and must be re-run (their strict xfail turns into a pass) at the new pin.
 
 - id: F20
   title: Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at
@@ -397,7 +399,9 @@
   evidence:
     - tests/test_polar_disk_brute_force.py::test_harmonic_coefficients_accept_array_paths
     - tests/test_polar_disk_brute_force.py::test_harmonic_coefficients_per_element_paths_work
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/343]
+  note: fixed in virgil e42973d (e42973d7478e04d704aaee53e61810e0356c6e49); found at 791f9fe. The kind and numbers above are the finding as made; the evidence tests were written against 791f9fe and must be re-run (their strict xfail turns into a pass) at the new pin.
 
 - id: D10
   title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at N = 300

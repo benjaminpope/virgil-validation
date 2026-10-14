@@ -3,7 +3,7 @@
 `PolarDisk` (virgil P1-P4: radial profiles `GaussianRing`, `RadialPowerLaw`, `ExpTail`, `Gap`,
 `RadialSum`, `RadialGP`; azimuthal `Harmonics` in linear and positive forms and `VonMises` arcs;
 height `Cone` and `PowerLawHeight`) is checked here in four stages. The code under test is virgil
-`791f9fef65eb49ebc387c5c365a13c7af2342341` (the tip of `polar-p4`, PR #343); every result file in
+`e42973d7478e04d704aaee53e61810e0356c6e49` (the tip of `polar-p4`, PR #343, which includes `polar-p3` c82e18c and `main`). **The committed result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale: regenerate them at the new pin on OzSTAR** (they still record the older hash, and were not relabelled). Every result file in
 [`benchmarks/polar_disk/results`](https://github.com/benjaminpope/virgil-validation/tree/main/benchmarks/polar_disk/results)
 records that hash and the versions of the packages it ran with (frank 1.2.3, vis-r at
 `f53467077b04878986c967b501d88c54ff3efb86`, astro-frap 1.0.2, PMOIRED 26.10.1, oimodeler 0.8.1, JAX 0.11.2).
@@ -158,14 +158,14 @@ n_r = 24, five injections starting at the truth plus a small perturbation; about
 Five injections are a pipeline check, not a calibration: the 68 and 95 percent coverages are within their (wide) binomial tolerances,
 and the z-score failure is from one parameter. The full configuration (200 injections, NRM and VLTI, M = 1 to 3, multi-start) is
 for OzSTAR: [`benchmarks/polar_disk/README_v4.md`](https://github.com/benjaminpope/virgil-validation/blob/main/benchmarks/polar_disk/README_v4.md).
-Fitting array-valued harmonic coefficients fails in this commit (ledger **F20**); the script uses per-element paths.
+Fitting array-valued harmonic coefficients failed at 791f9fe, fixed in e42973d (ledger **F20**); the script uses per-element paths.
 
 ## Findings from this stage
 
 | # | Object | Finding | Ruling |
 | --- | --- | --- | --- |
-| F19 | virgil `ExpTail` | the documented 1e-5 at 16 * 2 pi q L nodes is 2e-4 | virgil, open |
-| F20 | virgil `Harmonics` | array-valued `re`/`im`/`c`/`s` fail (`fit` and `laplace_cov` paths) | virgil, open |
+| F19 | virgil `ExpTail` | the documented 1e-5 at 16 * 2 pi q L nodes is 2e-4 (as found at 791f9fe) | virgil, fixed in e42973d |
+| F20 | virgil `Harmonics` | array-valued `re`/`im`/`c`/`s` fail (`fit` and `laplace_cov` paths), as found at 791f9fe | virgil, fixed in e42973d |
 | D10 | frank, FRAP | cannot represent a discontinuous profile | definition |
 | P9 | oimodeler | `ExpRing` 8e-3 from its documented profile, unexplained | to raise |
 | P10 | vis-r | `r_prof_erf2_power_ggap` mixes up depth and radius | to raise |

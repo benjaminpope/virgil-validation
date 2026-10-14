@@ -24,8 +24,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F16">F16</span> | `orbits.StateVectorOrbit` | StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits (0.01° returns 0.0106°), so positions drift by up to 2e-8 of a | fixed [virgil#229](https://github.com/benjaminpope/virgil/pull/229) |
 | <span id="F17">F17</span> | `limits.chi2ppf` | limits.chi2ppf with df != 1 raises ImportError, needing tensorflow_probability, which virgil does not declare | fixed [virgil#291](https://github.com/benjaminpope/virgil/pull/291) |
 | <span id="F18">F18</span> | `epochs.marginal_loglike` | marginal_loglike(s_max=...) integrates each scale on a ln s grid that is too coarse where the likelihood falls steeply from a bound, so differences of m between models are wrong by 0.1-0.7 | fixed [virgil#295](https://github.com/benjaminpope/virgil/pull/295) |
-| <span id="F19">F19</span> | `models.ExpTail` | ExpTail's documented accuracy (1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes) is too optimistic | open |
-| <span id="F20">F20</span> | `models.Harmonics` | Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at | open |
+| <span id="F19">F19</span> | `models.ExpTail` | ExpTail's documented accuracy (1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes) is too optimistic | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
+| <span id="F20">F20</span> | `models.Harmonics` | Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
 
 ## Where codes define things differently
 

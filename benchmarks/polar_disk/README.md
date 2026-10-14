@@ -2,8 +2,14 @@
 
 Run from the repository root with the repo venv (`.venv`, Python 3.12, `pip install -e ".[polar-disk]"`).
 Every script writes its JSON (provenance: virgil commit, versions, machine) to `$PD_OUT`
-(default `benchmarks/polar_disk/results`). Pinned virgil: `791f9fef65eb49ebc387c5c365a13c7af2342341`
-(`origin/polar-p4`, PR #343); each result records `virgil_pin_ok`. Times and memory below are
+(default `benchmarks/polar_disk/results`). Pinned virgil: `e42973d7478e04d704aaee53e61810e0356c6e49`
+(`origin/polar-p4`, PR #343); each result records `virgil_pin_ok`.
+
+**Stale results:** the JSONs committed in `results/` were produced at the older pin
+`791f9fef65eb49ebc387c5c365a13c7af2342341` (they record it and `virgil_pin_ok: false`); regenerate all of them at the
+new pin on OzSTAR. virgil `e42973d` fixes F19 and F20, so their evidence tests (strict xfail) need re-checking there.
+
+ Times and memory below are
 estimates from the single laptop runs (M-series, 1 CPU thread-ish) unless marked; none was timed on
 OzSTAR. Run the scripts one at a time on a laptop; they are meant for OzSTAR.
 
@@ -19,9 +25,8 @@ OzSTAR. Run the scripts one at a time on a laptop; they are meant for OzSTAR.
 | V3 AS 209 (frank) | `.venv/bin/python benchmarks/polar_disk/v3_as209.py` | `V3_DATA/frank/AS209_continuum.npz` (37 MB), `AS209_clean_profile.txt` | frank 2 min + virgil 1 min | ~3 GB |
 | V3 HD 169142 (FRAP) | `.venv/bin/python benchmarks/polar_disk/v3_frap.py` | `V3_DATA/frap/HD169142_band{3,6}.pkl` | 1-3 min | < 2 GB |
 | V4 laptop | `.venv/bin/python benchmarks/polar_disk/v4_injection_recovery.py --config laptop` | none | ~2 min | ~2 GB |
-| V4 full (one array task) | `.venv/bin/python benchmarks/polar_disk/v4_injection_recovery.py --config full --instrument nrm --degree 2 --seed-offset 0` | none | est. 200 injections x 8 starts at n_r = 64: 10-30 core-hours per task (untimed) | ~4 GB |
+| V4 full (one array task; sbatch `--array=0-5`) | `benchmarks/polar_disk/v4_full_task.sh` (maps `SLURM_ARRAY_TASK_ID` 0-2 to nrm M=1-3, 3-5 to vlti M=1-3; optional `SEED_OFFSET`, `PY`) | none | est. 200 injections x 8 starts at n_r = 64: 10-30 core-hours per task (untimed) | ~4 GB |
 
-V4 full: 2 instruments x 3 degrees = 6 tasks (`--instrument` in nrm, vlti; `--degree` in 1, 2, 3); further
-`--seed-offset` values add independent replicates. Merge the `v4_full_*.json` rows afterwards; K1 to K4 are
+V4 full: 6 array tasks via `v4_full_task.sh`; `SEED_OFFSET=N` adds independent replicates. Merge the `v4_full_*.json` rows afterwards; K1 to K4 are
 in the script docstring. Data downloads are listed in `docs/models/polar_disk.md`; they are untrusted, keep
 each in its own directory (`V3_DATA/{visr,frank,frap}`).
