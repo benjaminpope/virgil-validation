@@ -389,7 +389,9 @@ def test_triangles_with_a_baseline_in_no_vis2_row_are_dropped(of, tmp_path):
     uses = np.array([len({*pair} & {*row}) == 2 for row in t3])
     assert uses.any() and not uses.all()
     _remove_vis2_baseline(path, pair)
-    with pytest.raises(ValueError, match="needs baseline"):
+    # virgil >= 4625624 no longer raises: it places each unmatched leg at the T3 table's own
+    # (u, v) as a flagged sample and warns. oidb_fit drops those triangles instead (below).
+    with pytest.warns(UserWarning, match="no visibility row"):
         of.read_oifits(str(path))
     of.LOAD_NOTES.clear()
     data = of.load([path])

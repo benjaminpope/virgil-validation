@@ -388,7 +388,7 @@
     - tests/test_polar_disk_brute_force.py::test_exp_tail_error_is_the_pinned_size
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/343]
-  note: fixed in virgil e42973d (e42973d7478e04d704aaee53e61810e0356c6e49); found at 791f9fe. The kind and numbers above are the finding as made; the evidence tests were written against 791f9fe and must be re-run (their strict xfail turns into a pass) at the new pin.
+  note: fixed in virgil 1eae3e4 (1eae3e4b08b452cc29d1ec29b5e883b3982882f4), merged to virgil main in #343; found at 791f9fe. The kind and numbers above are the finding as made. The strict xfail on the F20 evidence test is gone (it passes at virgil main 127cc64); the F19 fix was the docstring, and its test now checks the numbers the docstring states.
 
 - id: F20
   title: Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at
@@ -401,7 +401,7 @@
     - tests/test_polar_disk_brute_force.py::test_harmonic_coefficients_per_element_paths_work
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/343]
-  note: fixed in virgil e42973d (e42973d7478e04d704aaee53e61810e0356c6e49); found at 791f9fe. The kind and numbers above are the finding as made; the evidence tests were written against 791f9fe and must be re-run (their strict xfail turns into a pass) at the new pin.
+  note: fixed in virgil 1eae3e4 (1eae3e4b08b452cc29d1ec29b5e883b3982882f4), merged to virgil main in #343; found at 791f9fe. The kind and numbers above are the finding as made. The strict xfail on the F20 evidence test is gone (it passes at virgil main 127cc64); the F19 fix was the docstring, and its test now checks the numbers the docstring states.
 
 - id: D10
   title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline)

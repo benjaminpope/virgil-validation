@@ -7,7 +7,7 @@ Every script writes its JSON (provenance: virgil commit, versions, machine) to `
 
 **Stale results:** the JSONs committed in `results/` were produced at the older pin
 `791f9fef65eb49ebc387c5c365a13c7af2342341` (they record it and `virgil_pin_ok: false`); regenerate all of them at the
-new pin on OzSTAR. virgil `b6317a1` has the same code as e42973d, which fixed F19 and F20, so their evidence tests (strict xfail) need re-checking there.
+new pin on OzSTAR. virgil 1eae3e4 fixed F19 (docstring) and F20; their evidence tests no longer xfail.
 
  Times and memory below are
 estimates from the single laptop runs (M-series, 1 CPU thread-ish) unless marked; none was timed on

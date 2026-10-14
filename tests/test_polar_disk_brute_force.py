@@ -72,16 +72,20 @@ def test_axisymmetric_profiles_match_our_hankel_transform(name):
 
 @polar
 @pytest.mark.validates("virgil.models.ExpTail", roots=["mathematics"], kind="finding")
-@pytest.mark.xfail(strict=True, reason="F19: ExpTail's docstring promises 1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes "
-                   "(117 at 2 pi q L = 7.3); 128 nodes give 2e-4 and the 150-node cap 4e-5")
 def test_exp_tail_reaches_documented_accuracy_at_the_documented_node_count():
+    """F19 (fixed in virgil 1eae3e4 by correcting the docstring, not the numerics): ExpTail used to promise
+    1e-5 at about 16 * 2 pi q L nodes; the docstring now states what we measured, about 2e-4 at 128
+    nodes and 4e-5 at the 150-node cap in the resolved-tail case. Check those stated numbers."""
     from virgil import ExpTail, PolarDisk
 
     u, v = R.baselines(300, q_max=8e5, seed=3)
     s, wl = 100.0, 1.65e-6
-    disk = PolarDisk(ExpTail(2 * s, 3 * s), inc=50.0, pa=30.0, n_r=128)
     truth = R.disk_visibility(R.exp_tail(2 * s, 3 * s), u, v, 50.0, 30.0)
-    assert np.abs(np.asarray(disk.model(u * wl, v * wl, wl)).real - truth).max() < 1e-5
+    err = {}
+    for n_r in (128, 150):
+        disk = PolarDisk(ExpTail(2 * s, 3 * s), inc=50.0, pa=30.0, n_r=n_r)
+        err[n_r] = record(f"max_abs_dV_n{n_r}", np.abs(np.asarray(disk.model(u * wl, v * wl, wl)).real - truth).max())
+    assert err[128] < 3e-4 and err[150] < 6e-5  # documented 2e-4 and 4e-5, with margin
 
 
 @polar
@@ -156,10 +160,9 @@ def test_rendered_inclined_ring_matches_the_bessel_closed_form():
 
 @polar
 @pytest.mark.validates("virgil.models.Harmonics", roots=["mathematics"], kind="finding")
-@pytest.mark.xfail(strict=True, raises=ValueError,
-                   reason="F20: Harmonics.re/im/c/s given as arrays (as fit and laplace_cov paths like "
-                   "'disk.harmonics.re' require) fail in Harmonics._at: 'if not entries' on an array")
 def test_harmonic_coefficients_accept_array_paths():
+    """F20 (fixed in virgil 1eae3e4): Harmonics.re/im/c/s given as arrays, as the fit and laplace_cov paths
+    like 'disk.harmonics.re' require, used to fail in Harmonics._at ('if not entries' on an array)."""
     import jax.numpy as jnp
 
     from virgil import Harmonics, PolarDisk, ThinRing

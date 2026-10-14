@@ -376,17 +376,24 @@ def test_epoch_positions_grid_and_gaps(nights, positions):
     and flux, the same gap_marginal (on m) and gap (on the quoted errors)."""
     _, _, ds = nights
     pq, _, grid_only = positions
-    worst_gap = 0.0
+    worst_gap = refined_shift = 0.0
     for k, name in enumerate(pq.names):
         m, q = our_grid(ds[name])
         gm, best = gap_on(m)
         gq, _ = gap_on(q)
         assert (grid_only.dra[k], grid_only.ddec[k], grid_only.flux[k]) == pytest.approx(best, abs=1e-12)
-        worst_gap = max(worst_gap, abs(pq.gap_marginal[k] / gm - 1), abs(pq.gap[k] / gq - 1))
-        assert grid_only.gap_marginal[k] == pytest.approx(pq.gap_marginal[k], rel=1e-12)
+        # refine=False reports exactly our grid gaps
+        assert grid_only.gap_marginal[k] == pytest.approx(gm, rel=1e-12)
+        assert grid_only.gap[k] == pytest.approx(gq, rel=1e-12)
+        # refine=True (virgil#331) moves the peaks off the grid, so gap_marginal is no longer a grid
+        # number; the quoted-error gap stays on the grid
+        worst_gap = max(worst_gap, abs(pq.gap[k] / gq - 1))
+        refined_shift = max(refined_shift, abs(pq.gap_marginal[k] / gm - 1))
     record("max_rel_gap", worst_gap)
+    record("max_rel_refined_gap_shift", refined_shift)
     record("min_gap_marginal", float(np.min(pq.gap_marginal)))
     assert worst_gap < 1e-8
+    assert refined_shift < 0.02  # measured 0.0104
 
 
 def curvature(d, x, h):

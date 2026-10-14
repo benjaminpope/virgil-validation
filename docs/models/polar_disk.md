@@ -157,14 +157,14 @@ n_r = 24, five injections starting at the truth plus a small perturbation; about
 Five injections are a pipeline check, not a calibration: the 68 and 95 percent coverages are within their (wide) binomial tolerances,
 and the z-score failure is from one parameter. The full configuration (200 injections, NRM and VLTI, M = 1 to 3, multi-start) is
 for OzSTAR: [`benchmarks/polar_disk/README_v4.md`](https://github.com/benjaminpope/virgil-validation/blob/main/benchmarks/polar_disk/README_v4.md).
-Fitting array-valued harmonic coefficients failed at 791f9fe, fixed in e42973d (ledger **F20**); the script uses per-element paths.
+Fitting array-valued harmonic coefficients failed at 791f9fe, fixed in 1eae3e4 (ledger **F20**); the script uses per-element paths.
 
 ## Findings from this stage
 
 | # | Object | Finding | Ruling |
 | --- | --- | --- | --- |
-| F19 | virgil `ExpTail` | the documented 1e-5 at 16 * 2 pi q L nodes is 2e-4 (as found at 791f9fe) | virgil, fixed in e42973d |
-| F20 | virgil `Harmonics` | array-valued `re`/`im`/`c`/`s` fail (`fit` and `laplace_cov` paths), as found at 791f9fe | virgil, fixed in e42973d |
+| F19 | virgil `ExpTail` | the documented 1e-5 at 16 * 2 pi q L nodes is 2e-4 (as found at 791f9fe) | virgil, fixed in 1eae3e4 |
+| F20 | virgil `Harmonics` | array-valued `re`/`im`/`c`/`s` fail (`fit` and `laplace_cov` paths), as found at 791f9fe | virgil, fixed in 1eae3e4 |
 | D10 | frank, FRAP | cannot represent a discontinuous profile | definition |
 | P9 | oimodeler | `ExpRing` 8e-3 from its documented profile, unexplained | to raise |
 | P10 | vis-r | `r_prof_erf2_power_ggap` mixes up depth and radius | to raise |
