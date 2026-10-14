@@ -16,7 +16,9 @@ score_2004 = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(score_2004)
 
 
-DATA2 = pathlib.Path(os.environ.get("CONTEST_DATA", "~/data/imaging_contests")).expanduser() / "2004" / "2004-data2.fits"
+DATA2 = (
+    pathlib.Path(os.environ.get("CONTEST_DATA", "~/data/imaging_contests")).expanduser() / "2004" / "2004-data2.fits"
+)
 needs_data2 = pytest.mark.skipif(not DATA2.exists(), reason="contest data not fetched")
 
 
@@ -87,13 +89,31 @@ def test_visibility_normalisation_leaves_out_the_spot_excess():
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
 def test_rebuilt_truth_fits_data2_v2():
     # The data's V² are normalised without the spot's excess (V²(0) ~ 1.14): the
-    # rebuilt truth then fits at V² χ²/N ~ 3 (50 with a unit-sum image, once
-    # blamed on calibration errors), and its closure phases fix the orientation.
+    # rebuilt truth then fits at V² χ²/N ~ 1.3 (50 with a unit-sum image, once
+    # blamed on calibration errors; 2.8 with the spot clipped to the disk), and
+    # its closure phases fix the orientation.
     u, v, v2, err = score_2004.read_v2(DATA2)
     f = score_2004.FITTED
     img = score_2004.truth_vis_image(f["ratio"], f["u_ld"], f["spot_contrast"])
-    assert score_2004.v2_chi2(img, u, v, v2, err) < 5.0
+    assert score_2004.v2_chi2(img, u, v, v2, err) < 2.0
     unit_sum = score_2004.truth_image(f["ratio"], f["u_ld"], f["spot_contrast"])
     assert score_2004.v2_chi2(unit_sum, u, v, v2, err) > 5.0 * score_2004.v2_chi2(img, u, v, v2, err)
     cp, cp_inverted = score_2004.closure_chi2(img, score_2004.read_t3(DATA2))
-    assert cp < 3.0 and cp_inverted > 100.0
+    assert cp < 1.0 and cp_inverted > 100.0
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_spot_is_an_unclipped_added_disk():
+    # The spot sits 2.5 mas out where A's limb is at 2.45 mas: about half of it
+    # is off the star, and it adds (contrast - 1) x the limb brightness 1 - u.
+    u_ld, contrast = 0.5, 3.7
+    with_spot, _ = score_2004.truth_parts(u_ld, spot_contrast=contrast)
+    without, _ = score_2004.truth_parts(u_ld, spot_contrast=1.0)
+    extra = with_spot - without
+    x, y = score_2004.grid()
+    sx, sy = score_2004.offset(150.0, 2.5)
+    on_spot = (x - sx) ** 2 + (y - sy) ** 2 < 0.5**2
+    assert np.all(extra[~on_spot] == 0.0)
+    np.testing.assert_allclose(extra[on_spot], (contrast - 1.0) * (1.0 - u_ld) * without.max())  # the centre is 1/norm
+    outside = on_spot & (without == 0)
+    assert outside.sum() > 0.3 * on_spot.sum()  # light beyond the limb

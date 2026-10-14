@@ -10,10 +10,14 @@ scoring only, never for imaging. The model:
   major axis at PA 120°. Its limb darkening came from a 7000 K, log g 4 model
   atmosphere, which the paper does not tabulate: we use a linear law with
   u = ``U_LD`` at 550 nm, and report how the score changes with u.
-- A spot on A, 1 mas across, 2.5 mas from A's centre at PA 150°, at 1.5 x the
-  star's temperature. Its surface brightness is a contrast (the Planck ratio
-  at 550 nm, about 3.7, by default) times the limb-darkened profile beneath
-  it, and only the part on A's disk counts.
+- A spot, 1 mas across, 2.5 mas from A's centre at PA 150°, at 1.5 x the
+  star's temperature. It is a uniform disk added to the star, not clipped at
+  the limb (the limb is at 2.45 mas on that PA, so half the spot hangs off the
+  star), with a surface brightness of (contrast - 1) x the limb brightness
+  1 - u above the photosphere's; the contrast is the Planck ratio at 550 nm,
+  about 3.7. Of the spot variants tried (scripts/diagnose_2004.py; plan C4b,
+  2026-10-14) only this one, with no free spot parameter, fits the data (V² χ²/N
+  1.35 against 2.84 for the spot clipped to the disk).
 - B: a 0.5 mas uniform disk, 10 mas from A at PA 90°.
 
 The paper does not state the A:B flux ratio, so it is fitted to the data's V²
@@ -42,12 +46,17 @@ counts; the flipped one is reported as a check).
 
 The unpublished details, fitted to the data (V² and closure phases, a
 Nelder-Mead fit, for scoring only; ``fit_nuisances``), give the values in
-``FITTED``. With the normalisation above the truth fits at V² χ²/N ≈ 3 and closure
-χ²/N ≈ 1.4; with a unit-sum normalisation it fitted only at V² χ²/N ≈ 50, which
-was once read as calibration error in the data (the 2004 rules allowed it) but is
+``FITTED``. With the normalisation and the spot above the truth fits at V² χ²/N
+1.31, closure χ²/N 0.52 and T3AMP χ²/N 0.7-0.8 (B/A 0.112, u = 0.487; the free
+spot contrast comes out at 3.68, the Planck ratio 3.70, which is what ``FITTED``
+uses). With a unit-sum normalisation it fitted only at V² χ²/N ≈ 50, which was
+once read as calibration error in the data (the 2004 rules allowed it) but is
 the normalisation: the BSC1948 test binary from the same chain fits at V² scale
-0.997. The remaining χ²/N > 1 may be bandwidth smearing, frame merging or the
-unpublished limb-darkening table. Other readings of the geometry (PA 120° as the
+0.997. With the spot clipped to the disk the fit stalled at V² χ²/N 2.8-3.0: it
+was the spot, not bandwidth smearing (20 nm worsens the fit), a quadratic
+limb-darkening law (V² 2.4) or pixelization (3.05 against 3.02 at 0.02 mas).
+A scan of the baseline scale pins it at 1.000 within 0.3 %, so the transform
+and uv sampling are right. Other readings of the geometry (PA 120° as the
 minor axis, 5.5 mas as the minor diameter, the spot at PA −30°) fit far worse
 (V² χ²/N 100-1100), and the closure phases reject the inverted truth (χ²/N ~900),
 so there is no coordinate or orientation error. Our score moves little between
@@ -69,7 +78,11 @@ PIXEL = 0.08  # mas
 NPIX = 301  # 24 mas across: A at the centre and B 10 mas east both inside
 U_LD = 0.5  # linear limb darkening at 550 nm for a 7000 K, log g 4 star (assumed)
 WAVEL = 5.5e-7
-FITTED = {"u_ld": 0.462, "spot_contrast": 5.575, "ratio": 0.1129}  # fit_nuisances; see the module docstring
+FITTED = {
+    "u_ld": 0.487,
+    "spot_contrast": 3.7,
+    "ratio": 0.112,
+}  # fit_nuisances; see the module docstring
 PUBLISHED = {"BSMEM": 0.116, "WISARD": 0.163, "MIRA": 0.532, "VLBMEM": 0.798}
 MAS = np.pi / 180 / 3600e3
 
@@ -110,10 +123,14 @@ def truth_parts(u_ld=U_LD, npix=NPIX, pixel=PIXEL, spot_contrast=None):
     inside = r2 < 1.0
     mu = np.sqrt(np.clip(1.0 - r2, 0.0, None))
     star = np.where(inside, 1.0 - u_ld * (1.0 - mu), 0.0)
+    # The spot is a uniform disk, not clipped at the limb (it sits at 2.5 mas,
+    # on the limb's 2.45 mas, so half of it is off the star), added to the
+    # star: its surface brightness exceeds the photosphere's limb brightness
+    # (1 - u) by (contrast - 1) times it. See the module docstring.
     sx, sy = offset(150.0, 2.5)
-    spot = inside & ((x - sx) ** 2 + (y - sy) ** 2 < 0.5**2)
+    spot = (x - sx) ** 2 + (y - sy) ** 2 < 0.5**2
     contrast = planck_ratio(1.5 * 7000.0, 7000.0) if spot_contrast is None else spot_contrast
-    spotted = np.where(spot, star * contrast, star)
+    spotted = star + (contrast - 1.0) * (1.0 - u_ld) * spot
     bx, by = offset(90.0, 10.0)
     companion = (((x - bx) ** 2 + (y - by) ** 2) < 0.25**2).astype(float)
     return spotted / star.sum(), companion / companion.sum()
@@ -154,7 +171,14 @@ def read_t3(path):
         ok = ~d["FLAG"].ravel() if "FLAG" in d.columns.names else np.ones(len(d), bool)
         u1, v1 = d["U1COORD"].ravel() / WAVEL, d["V1COORD"].ravel() / WAVEL
         u2, v2 = d["U2COORD"].ravel() / WAVEL, d["V2COORD"].ravel() / WAVEL
-        return u1[ok], v1[ok], u2[ok], v2[ok], np.radians(d["T3PHI"].ravel()[ok]), np.radians(d["T3PHIERR"].ravel()[ok])
+        return (
+            u1[ok],
+            v1[ok],
+            u2[ok],
+            v2[ok],
+            np.radians(d["T3PHI"].ravel()[ok]),
+            np.radians(d["T3PHIERR"].ravel()[ok]),
+        )
 
 
 def closure_chi2(image, t3):
@@ -205,10 +229,19 @@ def fit_nuisances(v2_data, t3, start=None):
 
     best = None
     for guess in (x0, (0.45, 5.6, np.log(0.11)), (0.8, 3.0, np.log(0.1))):
-        r = minimize(objective, guess, method="Nelder-Mead", options=dict(xatol=1e-4, fatol=1e-4, maxiter=1000, adaptive=True))
+        r = minimize(
+            objective,
+            guess,
+            method="Nelder-Mead",
+            options=dict(xatol=1e-4, fatol=1e-4, maxiter=1000, adaptive=True),
+        )
         if best is None or r.fun < best.fun:
             best = r
-    return {"u_ld": float(best.x[0]), "spot_contrast": float(best.x[1]), "ratio": float(np.exp(best.x[2]))}
+    return {
+        "u_ld": float(best.x[0]),
+        "spot_contrast": float(best.x[1]),
+        "ratio": float(np.exp(best.x[2])),
+    }
 
 
 def resample(image, fov, npix=NPIX):
@@ -282,10 +315,17 @@ def score(entry, fov, ratio, u_ld=U_LD):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("ensemble", help="<label>_ensemble.npz from combine_ensemble.py, or a member npz")
+    parser.add_argument(
+        "ensemble",
+        help="<label>_ensemble.npz from combine_ensemble.py, or a member npz",
+    )
     parser.add_argument("--data", default="~/data/imaging_contests")
     parser.add_argument("--out", default=None)
-    parser.add_argument("--refit", action="store_true", help="refit FITTED's nuisances to the data (about 10 s)")
+    parser.add_argument(
+        "--refit",
+        action="store_true",
+        help="refit FITTED's nuisances to the data (about 10 s)",
+    )
     args = parser.parse_args()
     data_path = pathlib.Path(args.data).expanduser() / "2004" / "2004-data2.fits"
     d = np.load(args.ensemble)
@@ -301,8 +341,10 @@ def main():
         ratio, chi2 = fit_ratio(star, companion, u, v, v2, err)
         scores, ref = score(entry, fov, ratio, u_ld)
         cp, cp_inv = closure_chi2(ref, t3)
-        lines.append(f"u_ld={u_ld}: B/A={ratio:.3f} truth V² χ²/N={chi2:.2f}, closure χ²/N {cp:.2f} "
-                     f"(inverted truth {cp_inv:.2f}), ref peak={ref.max():.3e} (published 3.07e-3)")
+        lines.append(
+            f"u_ld={u_ld}: B/A={ratio:.3f} truth V² χ²/N={chi2:.2f}, closure χ²/N {cp:.2f} "
+            f"(inverted truth {cp_inv:.2f}), ref peak={ref.max():.3e} (published 3.07e-3)"
+        )
         for name, (sp, s, peak, shift) in scores.items():
             lines.append(f"  {name:9s} σ/peak={sp:.3f} σ={s:.2e} shift={shift}")
     ref = truth_image(FITTED["ratio"], FITTED["u_ld"], FITTED["spot_contrast"])
@@ -312,9 +354,11 @@ def main():
     moved, shift = aligned(resample(entry, fov, NPIX + 2 * MAX_SHIFT), ref)
     vis_img = truth_vis_image(FITTED["ratio"], FITTED["u_ld"], FITTED["spot_contrast"])
     cp, cp_inv = closure_chi2(vis_img, t3)
-    lines.append(f"fitted truth (u_ld={FITTED['u_ld']}, spot contrast {FITTED['spot_contrast']}, B/A={FITTED['ratio']}): "
-                 f"V² χ²/N={v2_chi2(vis_img, u, v, v2, err):.2f}, closure χ²/N {cp:.2f} (inverted {cp_inv:.2f}), "
-                 f"V(0)={vis_img.sum():.3f}, σ/peak={sigma_over_peak(moved, ref, box)[0]:.3f} shift={shift}")
+    lines.append(
+        f"fitted truth (u_ld={FITTED['u_ld']}, spot contrast {FITTED['spot_contrast']}, B/A={FITTED['ratio']}): "
+        f"V² χ²/N={v2_chi2(vis_img, u, v, v2, err):.2f}, closure χ²/N {cp:.2f} (inverted {cp_inv:.2f}), "
+        f"V(0)={vis_img.sum():.3f}, σ/peak={sigma_over_peak(moved, ref, box)[0]:.3f} shift={shift}"
+    )
     lines.append("published data2 σ/peak: " + ", ".join(f"{k} {v}" for k, v in PUBLISHED.items()))
     text = "\n".join(lines)
     print(text)

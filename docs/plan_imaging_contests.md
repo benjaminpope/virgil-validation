@@ -537,7 +537,8 @@ before submitting.
 2004 data2 has a truth we can score against numerically. Campaign 1 scored
 σ/peak 0.250 there, third of four (BSMEM 0.116, WISARD 0.163, MIRA 0.532,
 VLBMEM 0.798). With the truth's unpublished details fitted to the data it
-scores 0.260 (0.264 after the 2026-10-13 correction below). The rebuilt
+scores 0.260 (0.264 after the 2026-10-13 correction below, 0.253 after the
+2026-10-14 spot correction in C4b). The rebuilt
 truth first fitted only at V² χ²/N ≈ 50, which this plan blamed on
 calibration errors in the 2004 data; that was wrong (note below). So, before
 more contest campaigns, every method choice is tested on **known phantoms
@@ -557,8 +558,7 @@ observed with the real contest uv coverages** (Ben, 2026-10-06).
 > (before: 50.1 and 8.98 at u = 0.78, contrast 7.06, B/A = 0.096). The
 > organisers' BSC1948 test binary fits with a V² scale of 0.997, so the
 > NPOI/OYSTER chain has no global offset. The remaining χ²/N ≈ 3 is not
-> explained (bandwidth smearing, frame merging and the unpublished
-> limb-darkening table are untested), and the spot's brightness (Planck at
+> explained (closed on 2026-10-14: it was the spot's profile, C4b), and the spot's brightness (Planck at
 > 550 nm, 3.7, or T⁴, 5.06) is not pinned by the data. The scoring image
 > keeps its unit sum, so the σ/peak score barely moves (campaign 1: 0.250
 > against the published truth, 0.264 against the fitted one). The test is
@@ -897,6 +897,56 @@ John Young sent Ben a folder of contest datasets. It is filed under
     (V² 50.1, closure phase 9.0, with the old unit-sum normalisation),
     so the poor fit of the rebuilt truth was not caused by a corrupt copy;
     it was the normalisation (C2f, correction of 2026-10-13: now V² 3.05).
+- **2026-10-14: the remaining V² excess of the rebuilt 2004 truth was the
+  spot, not smearing or limb darkening.** `scripts/diagnose_2004.py`
+  refits only the unpublished nuisances (u, spot contrast, B/A; published
+  geometry fixed), V² and closure phases, 195 V², 130 triangles.
+  - *Where it sat.* Not at the shortest baselines (χ²/N 2.6, +0.7σ), but
+    past them: 15–25 m 4.2, 25–40 m 3.2, 40–60 m 2.6, with the data
+    0.7–1.1σ *below* the model at every baseline over 15 m; the worst
+    baselines are stations 0–2 (7.7, 23 m), 2–3 (4.7) and 0–5 (3.2).
+    Time blocks vary 1.1–4.9 with no trend. The data are a single 550 nm
+    channel 20 nm wide, so there is no per-channel view.
+  - *Not the transform or sampling.* A scale on the baselines is pinned
+    at 1.000 (±0.3 %; ±1 % takes χ²/N from 3 to 8), and 0.08, 0.04 and
+    0.02 mas pixels give V² χ²/N 3.05, 3.02, 3.02.
+  - *The spot.* It sits 2.5 mas out and A's limb on that PA is 2.45 mas,
+    so half of it hangs off the star. Clipping it to the disk, as before,
+    is wrong; a uniform 1 mas disk **added** to the star, not clipped,
+    fits. Its free contrast comes out 3.68 (Planck 1.5 T/T at 550 nm is
+    3.70) when the surface-brightness excess over the limb is
+    (contrast − 1)(1 − u). `FITTED` now uses the Planck value with no free
+    spot parameter: u = 0.487, B/A = 0.112.
+
+  | ingredient (nuisances refitted) | χ²/N V² | CP | T3AMP | Δχ² (V²) |
+  |---|---|---|---|---|
+  | baseline: linear LD, spot clipped to disk | 2.84 | 1.24 | 1.61 | 0 |
+  | (a) bandwidth 20 nm (7 sub-wavelengths) | 3.03 | 1.27 | 1.62 | +37 |
+  | (b) quadratic LD (u1 0.85, u2 −0.61) | 2.36 | 1.32 | 1.37 | −94 |
+  | (c) spot uniform, clipped | 2.71 | 1.18 | 1.51 | −25 |
+  | (c) spot uniform, not clipped, replaces star | 1.33 | 0.56 | 0.79 | −295 |
+  | (c) spot uniform, not clipped, **added** | 1.31 | 0.53 | 0.66 | −299 |
+  | **(c) added, contrast = Planck, no free spot parameter (adopted)** | 1.35 | 0.54 | 0.77 | −291 |
+  | (c) added Planck + quadratic LD | 1.30 | 0.52 | 0.66 | −300 |
+  | (c) Gaussian FWHM 1 mas, on the disk | 4.76 | 2.84 | 3.57 | +374 |
+  | (c) Gaussian FWHM 1 mas, added | 1.91 | 1.12 | 1.29 | −181 |
+  | (d) baseline, free V² scale per baseline (diagnostic) | 1.74 | | | −215 |
+  | (d) adopted spot, free V² scale per baseline (diagnostic) | 1.06 | | | −347 |
+
+  (Δχ² is for V² and 195 points, against the first row; fits are at
+  0.05 mas pixels, so the baseline reads 2.84, against 3.05 on
+  score_2004's 0.08 mas grid. The BSC1948 test binary fits at 0.94.)
+  Adopted in `score_2004.py` (the spot only, test
+  `test_spot_is_an_unclipped_added_disk`): V² 1.31, closure 0.52 on its grid.
+  Bandwidth smearing makes it worse and a quadratic law is a worse
+  explanation than the spot, so neither is adopted. A free scale per baseline
+  gets 1.06 on top of the spot, scales 0.91–1.01, nearly all within 3 %:
+  the remaining 1.3 against 0.94 is a few percent of baseline-dependent
+  calibration (0–2 at 23 m worst), not a physical ingredient we can pin.
+  σ/peak of campaign 1 against the fitted truth: 0.253 (was 0.264).
+  The mechanism in OYSTER (spot added at the limb brightness) is
+  inferred from the fit, not documented.
+
 - **Still missing:** the 2012 and 2016 truths. Neither collection is in
   JMMC OiDB, whose contest collections (2004–2010, 2022, 2024) match our
   files byte for byte.
