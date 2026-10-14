@@ -52,7 +52,7 @@ def test_matches_frank_discrete_hankel_transform(name):
     ref = fr.visibility(f)
     assert fr.q_max > qd.max()  # frank's band limit covers every baseline
     err = record("max_abs_dV", np.abs(_virgil(disk, u, v) - ref).max())
-    assert err < 1e-5
+    assert err < 1e-8  # measured 1.3e-9 and 6.7e-12 (V1): virgil's own quadrature floor, not frank's
 
 
 @pytest.mark.validates("virgil.models.PolarDisk", roots=["frap"])
@@ -67,13 +67,14 @@ def test_matches_frap_hankel_matrix(name):
     f, _, r_hi, _ = profile
     ref = Frap(2.0 * r_hi, 300, qd).visibility(f)
     err = record("max_abs_dV", np.abs(_virgil(disk, u, v) - ref).max())
-    assert err < 1e-5
+    assert err < 1e-8  # measured 1.3e-9 and 6.7e-12 (V1): virgil's own quadrature floor, not frank's
 
 
-@pytest.mark.validates("virgil.models.PolarDisk", roots=["visr"])
-def test_matches_vis_r_up_to_its_own_discretization():
-    """vis-r's DHT interpolates linearly in q on a grid set by the field size; its error is its own.
-    At an ALMA-like scale (r0 = 1 arcsec) virgil must differ from vis-r by no more than vis-r differs from truth."""
+@pytest.mark.validates("virgil.models.PolarDisk", roots=["mathematics"])
+def test_vis_r_difference_is_vis_rs_own_discretization_error():
+    """vis-r's DHT interpolates linearly in q on a grid set by the field size, with an error ~5e-4 here.
+    That is far above virgil's, so vis-r cannot referee virgil at the 1e-6 level and is not counted as a root:
+    the claim checked is against the exact transform, and the virgil-vs-vis-r gap is reported as vis-r's error."""
     pytest.importorskip("vis_r")
     from external_bridge.radial_codes import Frank, VisR  # noqa: F401
     from vis_r import functions as vf
@@ -88,8 +89,13 @@ def test_matches_vis_r_up_to_its_own_discretization():
     got = _virgil(disk, u, v)
     visr_err = np.abs(ref - truth)
     record("vis_r_error_vs_truth", visr_err.max())
-    assert np.abs(got - truth).max() < 1e-6
-    assert np.all(np.abs(got - ref) <= 1.1 * visr_err + 1e-6)
+    assert np.abs(got - truth).max() < 1e-8
+    # vis-r is not a referee at this setting: its own error (~5e-4) is five orders above virgil's, so any
+    # agreement test against it is implied by the comparison with the exact transform above (triangle inequality).
+    # What is checked of vis-r is that it is the discretization error that separates the two, not a bridge fault.
+    record("max_abs_dV_virgil_vs_visr", np.abs(got - ref).max())
+    assert 1e-9 < visr_err.max() < 2e-3
+    assert np.abs((got - ref) - (truth - ref)).max() < 1e-8
 
 
 @pytest.mark.validates("virgil.models.PolarDisk", "virgil.models.Harmonics", roots=["pmoired"])
@@ -136,7 +142,7 @@ def test_bridges_reproduce_our_hankel_transform():
     f, _, r_hi, _ = R.gaussian_ring(10.0, 1.5)
     truth = R.hankel(R.gaussian_ring(10.0, 1.5), qd)
     for bridge in (Frank(2.0 * r_hi, 300, qd), Frap(2.0 * r_hi, 300, qd)):
-        assert np.abs(bridge.visibility(f) - truth).max() < 1e-6
+        assert np.abs(bridge.visibility(f) - truth).max() < 1e-10  # V1 measures 1e-15
 
 
 @pytest.mark.validates("external_bridge.radial_codes", roots=["mathematics"], kind="reference")
@@ -169,7 +175,7 @@ def test_vis_r_single_gap_profile_matches_its_two_gap_form():
 @pytest.mark.validates("frank", "frap", roots=["mathematics"], kind="definition")
 def test_discrete_hankel_codes_cannot_represent_a_discontinuous_profile():
     """D10: a sharp-edged exponential tail is not band-limited: frank's and FRAP's N = 300 transforms differ from
-    the exact one by 5e-3 (their accuracy statements assume a smooth profile); virgil's rule is not sampled at fixed nodes."""
+    the exact one by 5e-3 with Rmax = 18 000 mas (their accuracy statements assume a smooth profile); virgil's rule is not sampled at fixed nodes."""
     pytest.importorskip("frank")
     pytest.importorskip("frap")
     from external_bridge.radial_codes import Frank, Frap
@@ -179,6 +185,9 @@ def test_discrete_hankel_codes_cannot_represent_a_discontinuous_profile():
     prof = R.exp_tail(200.0, 300.0)
     f, _, r_hi, _ = prof
     truth = R.hankel(prof, qd)
-    for bridge in (Frank(2.0 * r_hi, 300, qd), Frap(2.0 * r_hi, 300, qd)):
+    r_max = 18000.0  # mas, as V1: 60 scale lengths (the tail is gone) and frank's band limit covers every baseline
+    for bridge in (Frank(r_max, 300, qd), Frap(r_max, 300, qd)):
+        if hasattr(bridge, "q_max"):
+            assert bridge.q_max > qd.max(), "frank evaluated beyond its band limit: aliasing, not the discontinuity"
         err = np.abs(bridge.visibility(f) - truth).max()
         assert 1e-3 < err < 1e-1

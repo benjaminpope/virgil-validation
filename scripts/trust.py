@@ -66,7 +66,7 @@ VERDICTS = {
 ROOT_NAMES = {
     "mathematics": "mathematics", "standards": "standards", "statistics": "statistics",
     "literature": "published result", "render": "independent render", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
-    "fouriever": "fouriever", "frank": "frank", "visr": "vis-r", "frap": "FRAP", "oimodeler": "oimodeler",
+    "fouriever": "fouriever", "frank": "frank / FRAP (one root)", "visr": "vis-r", "frap": "FRAP", "oimodeler": "oimodeler",
     "ehtim": "eht-imaging", "mpol": "MPoL", "orbitize": "orbitize!",
     "self-consistency": "virgil itself",
 }
@@ -135,6 +135,11 @@ def load_golden(path=ROOT / "trust" / "golden.yml"):
     return set(yaml.safe_load(open(path)) or {}) if pathlib.Path(path).exists() else set()
 
 
+# frank and FRAP both apply the Baddour-Chouinard Fourier-Bessel matrix on the J0 zeros: they agree to ~1e-16 for
+# the same Rmax and N, so together they are one independent root. Records are counted under the first name.
+ROOT_ALIAS = {"frap": "frank"}
+
+
 def roots_of(record, golden):
     """(strong, weak) roots a passing record contributes."""
     if record["_source"] != "ours":
@@ -149,7 +154,7 @@ def roots_of(record, golden):
             if root.split(":", 1)[1] in golden:
                 strong.add(GOLDEN)
         else:
-            strong.add(root)
+            strong.add(ROOT_ALIAS.get(root, root))
     return strong, weak
 
 

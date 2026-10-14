@@ -404,7 +404,7 @@
   note: fixed in virgil e42973d (e42973d7478e04d704aaee53e61810e0356c6e49); found at 791f9fe. The kind and numbers above are the finding as made; the evidence tests were written against 791f9fe and must be re-run (their strict xfail turns into a pass) at the new pin.
 
 - id: D10
-  title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at N = 300
+  title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline)
   objects: [frank, frap]
   ruling: definition
   kind: both right (their accuracy statements assume a profile band-limited by N; PolarDisk's ExpTail integrates the edge exactly with its own rule)

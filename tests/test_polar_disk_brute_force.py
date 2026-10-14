@@ -17,7 +17,6 @@ from scipy import special
 pytest.importorskip("virgil.models")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "benchmarks" / "polar_disk"))
 
-import v2_brute_force as bf  # noqa: E402
 from crosscheck import polar_images as P  # noqa: E402
 from crosscheck import radial as R  # noqa: E402
 from crosscheck import sky  # noqa: E402
@@ -26,6 +25,16 @@ from evidence.plugin import record  # noqa: E402
 vm = pytest.importorskip("virgil.models")
 pytestmark = pytest.mark.x64
 polar = pytest.mark.skipif(not hasattr(vm, "PolarDisk"), reason="needs a virgil with PolarDisk (P1-P4)")
+
+
+def _bf():
+    """The benchmark module imports PolarDisk and friends from virgil (and enables x64 through ``common``):
+    import it only inside the tests that need it, so collection works under an older pinned virgil."""
+    if not hasattr(vm, "PolarDisk"):
+        pytest.skip("needs a virgil with PolarDisk (P1-P4)")
+    import v2_brute_force as bf
+
+    return bf
 
 
 @pytest.mark.validates("crosscheck.radial", roots=["mathematics"], kind="reference")
@@ -56,7 +65,9 @@ def test_axisymmetric_profiles_match_our_hankel_transform(name):
     truth = R.disk_visibility(profile, u, v, inc, pa)
     got = np.asarray(disk.model(u * wl, v * wl, wl)).real
     err = record("max_abs_dV", np.abs(got - truth).max())
-    assert err < 1e-6
+    # V1 records 1.3e-9 (Gaussian ring, a floor independent of n_r), 6.7e-12 and 2.8e-12: 1e-8 leaves headroom
+    # but would catch a wrong node weight in one panel (about 1e-7)
+    assert err < 1e-8
 
 
 @polar
@@ -85,13 +96,13 @@ def test_exp_tail_error_is_the_pinned_size():
     assert np.abs(np.asarray(disk.model(u * wl, v * wl, wl)).real - truth).max() < 1e-3
 
 
-CASES = {
-    "linear_M3_thin_ring": bf.case_linear,
-    "positive_M3_gaussian_ring": bf.case_positive,
-    "positive_M1_thin_ring": bf.case_positive_m1,
-    "vonmises_arc_blurred": bf.case_vonmises,
-    "cone_height": bf.case_cone,
-    "flared_with_harmonics": bf.case_flared_harmonics,
+CASES = {  # case name -> attribute of the benchmark module (resolved lazily, see _bf)
+    "linear_M3_thin_ring": "case_linear",
+    "positive_M3_gaussian_ring": "case_positive",
+    "positive_M1_thin_ring": "case_positive_m1",
+    "vonmises_arc_blurred": "case_vonmises",
+    "cone_height": "case_cone",
+    "flared_with_harmonics": "case_flared_harmonics",
 }
 
 
@@ -100,8 +111,9 @@ CASES = {
                        "virgil.models.Cone", "virgil.models.PowerLawHeight", roots=["render"])
 @pytest.mark.parametrize("name", sorted(CASES))
 def test_brute_force_render(name):
+    bf = _bf()
     u, v = bf.baselines(60)
-    row = bf.run_case(name, CASES[name], u, v)
+    row = bf.run_case(name, getattr(bf, CASES[name]), u, v)
     record("max_abs_dV", row["max_abs_dV"])
     assert row["max_abs_dV"] <= bf.TOL
     # controls: the reversed azimuth / height sense must be visibly different
@@ -112,6 +124,7 @@ def test_brute_force_render(name):
 @polar
 @pytest.mark.validates("virgil.models.PolarDisk", roots=["render"])
 def test_chromatic_system_weight(request):
+    bf = _bf()
     u, v = bf.baselines(60)
     row = bf.case_chromatic(u, v)
     assert row["passed"]

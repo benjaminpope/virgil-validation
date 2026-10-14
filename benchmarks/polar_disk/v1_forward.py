@@ -15,13 +15,17 @@ PASS CRITERIA (fixed before the runs; float64, CPU)
       each <= 1e-5.
   A3  vis-r (setup_dht defaults: sz = 8.84, nhpt = 300; its DHT is built for
       arcsec-scale discs and interpolates linearly in q): its error against
-      truth is reported; virgil vs vis-r must satisfy
-      |V_virgil - V_visr| <= 1.1 |V_visr - V_truth| + 1e-6 at every baseline
-      (any difference is vis-r's own discretization error, not virgil's).
-  A4  scale-height factor (vis-r's vertical structure): with the same factor
-      applied to virgil's visibilities (PolarDisk has no scale height; the
-      harness multiplies by exp(-0.5 (2 pi h r0 sin i u_minor)^2)), the
-      inclined-disk geometry must agree as in A3.
+      truth is reported, not asserted as a referee check. Its error (~5e-4)
+      is far above virgil's, so |V_virgil - V_visr| <= 1.1 |V_visr - V_truth|
+      + 1e-6 follows from A1 by the triangle inequality and cannot fail once
+      A1 passes; the margin is recorded only to show the gap is vis-r's own
+      discretization error. vis-r is therefore not counted as a root for
+      PolarDisk.
+  A4  bridge / convention check, NOT a validation of virgil's vertical
+      geometry: the same factor exp(-0.5 (2 pi h r0 sin i u_minor)^2) is
+      multiplied onto virgil's visibilities and onto the truth (PolarDisk has
+      no scale height), so virgil-vs-truth is just A1 again. What it tests is
+      that vis-r's aspect-ratio factor uses the same u_minor as the bridge.
   S   speed, reported only (no pass/fail): median wall time per call at
       N_vis = 1e3 and 1e4 (CPU), the matrix built per call ("cold") and
       cached ("hot") for frank and FRAP, jitted for virgil.
@@ -115,7 +119,7 @@ def regime(label, s, q_max, n_vis, with_visr, wl):
             row["visr_n_q"] = int(len(vr.Qzero))
             row["visr_r_out_arcsec"] = float(vr.Rnk.max() / X.ARCSEC)
         res[name] = row
-    # scale height (vis-r's vertical structure) on the Gaussian ring
+    # A4: bridge check of vis-r's u_minor convention on the Gaussian ring (not a scale-height validation of virgil)
     if with_visr:
         name = "gauss_ring"
         disk, prof, visr_prof, _, _ = scenes(s)[name]

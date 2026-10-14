@@ -29,8 +29,7 @@ Tests: [`test_polar_disk_brute_force.py`](https://github.com/benjaminpope/virgil
 
 ## V1 Forward transforms
 
-Criteria A1-A4 (smooth profiles to 1e-6 against truth, frank and FRAP; vis-r to within its own
-discretization error; `ExpTail` to its documented 1e-5) and the speed report are in the script. Inclination
+Criteria A1-A4 (smooth profiles to 1e-6 against truth, frank and FRAP; vis-r's error against truth reported, not a referee check (A3, implied by A1); A4 a bridge check of vis-r's u_minor convention; `ExpTail` to its documented 1e-5) and the speed report are in the script. Inclination
 50 degrees, position angle 30 degrees, an ALMA-like scale (r0 = 1 arcsec, q to 8e5) where vis-r's defaults make sense,
 and an optical/IR scale (r0 = 10 mas, q to 8e7) for virgil, frank and FRAP (the transform depends on q r only).
 
@@ -39,14 +38,14 @@ and an optical/IR scale (r0 = 10 mas, q to 8e7) for virgil, frank and FRAP (the 
 | Gaussian ring | 1.3e-9 | 1e-15 | 5.3e-4 |
 | error-function edged power law | 6.7e-12 | 3e-16 | 5.2e-3 |
 | gap on a plateau | 2.8e-12 | 3e-16 | 3.0e-3 |
-| ring with vis-r's scale-height factor | 1.3e-9 | n/a | 5.3e-4 |
+| A4 bridge check: ring with vis-r's scale-height factor applied to both sides (the A1 number again; checks vis-r's `u_minor` convention, not virgil's vertical geometry) | 1.3e-9 | n/a | 5.3e-4 |
 | `ExpTail` | **2.0e-4** | **4.9e-3** | n/a |
 
-virgil follows vis-r to within vis-r's own error everywhere (it differs from vis-r by exactly vis-r's
+virgil differs from vis-r by vis-r's own error everywhere, so vis-r cannot referee virgil here (it differs from vis-r by exactly vis-r's
 error against truth to 6 digits): vis-r interpolates linearly in q on a grid fixed by the field size.
 **`ExpTail` fails A1.** Its docstring promises 1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes (117 here);
-128 nodes give 2e-4, the 150-node cap 4e-5 (ledger **F19**). frank and FRAP are 5e-3 off on the
-same profile because a sharp-edged tail is not band-limited by their 300 nodes: a limit of those
+128 nodes give 2e-4, the 150-node cap 4e-5 (ledger **F19**). frank and FRAP (one algorithm, the Fourier-Bessel matrix on the J0 zeros; counted as one root) are 5e-3 off on the
+same profile (Rmax = 18 000 mas, N = 300, band limit above every baseline) because a sharp-edged tail is not band-limited by their 300 nodes: a limit of those
 codes rather than an error (ledger **D10**); my criterion A2, which presumed a smooth profile, was
 wrong for this scene and is reported as such, not rewritten.
 `n_r` convergence of the smooth scenes: the error is at its floor by 32 to 64 nodes.

@@ -41,7 +41,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D7">D7</span> | `limits.absil_limits`, `limits.injection_limits`, `limits.nsigma` | For correlated closure phases fouriever counts every closure phase as a degree of freedom in the Absil and injection significance; virgil counts the independent ones (OIData.n_independent) | documented |
 | <span id="D8">D8</span> | `limits.injection_limits` | CANDID's and fouriever's injection limits refit the primary's uniform-disk diameter to the injected data; virgil's hold every parameter but the flux | documented |
 | <span id="D9">D9</span> | `imaging.TSV` | eht-imaging's squared TV (stv2) counts only the steps out of the last row and column; virgil's TSV counts the steps across all four edges | documented |
-| <span id="D10">D10</span> | `frank`, `frap` | frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at N = 300 | documented |
+| <span id="D10">D10</span> | `frank`, `frap` | frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline) | documented |
 
 ## Problems found in other packages
 
