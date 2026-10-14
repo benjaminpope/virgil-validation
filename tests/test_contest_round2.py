@@ -321,3 +321,37 @@ def test_weight_report_with_a_single_dataset():
     curve = types.SimpleNamespace(chi2_red=np.array([3.0, 1.5, 0.9]), discrepancy=lambda: 0.5, corner=lambda: 1.0)
     rep = ci.weight_report(curve, object(), "tv", None, 1)
     assert rep["binding_dataset"] == 0 and rep["chi2_red_by_dataset"] == [1.5] and rep["n_datasets"] == 1
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_off_bounds_moves_values_off_the_prior_edges():
+    """A fit can end on a bound; a start there is infinite in the unconstrained coordinates (NaN fit)."""
+    import numpyro.distributions as dist
+
+    priors = {"a.flux": dist.LogUniform(1e-4, 1e3), "a.dra": dist.Uniform(-2.0, 2.0)}
+    out = ci.off_bounds({"a.flux": 1e-4, "a.dra": 2.0, "env.log_brightness": np.zeros(3)}, priors)
+    assert 1e-4 < float(out["a.flux"]) and -2.0 < float(out["a.dra"]) < 2.0
+    assert np.shape(out["env.log_brightness"]) == (3,)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_sweep_warm_starts_inside_the_bounds_and_skips_non_finite_fits(monkeypatch):
+    """Round-2 lines 2004_*_tv_point-gauss_halo-image_r2 failed because the strongest weight ended on a
+    bound and seeded the next weight with it. The seed must be interior, and a NaN fit must not seed."""
+    import numpyro.distributions as dist
+
+    priors = {"g.flux": dist.LogUniform(1e-4, 1e3)}
+    seeds, ends = [], iter([1e-4, float("nan"), 0.5])
+
+    def fake(start, pri, data, pen, weights, others, warm_start=True, init=None, **kw):
+        seeds.append(init)
+        v = next(ends)
+        res = types.SimpleNamespace(values={"g.flux": np.asarray(v)})
+        return types.SimpleNamespace(chi2=np.array([1.0]), chi2_red=np.array([[1.0]]), penalty=np.array([1.0]),
+                                     results=[res])
+
+    monkeypatch.setattr(ci, "l_curve", fake)
+    ci.sweep(None, priors, None, None, [1.0, 2.0, 3.0], (), warm_start=True)
+    assert seeds[0] is None
+    assert 1e-4 < float(seeds[1]["g.flux"])
+    assert seeds[2] is seeds[1]  # the NaN fit did not replace the last finite seed

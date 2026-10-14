@@ -58,6 +58,7 @@ from virgil.imaging import (  # noqa: E402
     error_scale,
     log_evidence,
     Centroid,
+    LCurve,
     MaxEntropy,
     StarletL1,
     LogSum,
@@ -203,6 +204,38 @@ def regulariser(name, weight, path, q=None):
     return REGULARISERS[name](weight, path=path)
 
 
+def off_bounds(values, priors, edge=1e-3):
+    """``values`` with each scalar parameter that has a Uniform or LogUniform
+    prior moved to at least ``edge`` of its (log) range from the bounds.
+    A fit can end on a bound (a faint Gaussian halo's flux, a width at its
+    floor); a warm start from there is infinite in virgil's unconstrained
+    coordinates and the next fit is NaN from step 0."""
+    out = dict(values)
+    for k, prior in priors.items():
+        if isinstance(prior, (dist.Uniform, dist.LogUniform)) and k in out and np.ndim(out[k]) == 0:
+            out[k] = jnp.asarray(inside(prior, out[k], edge))
+    return out
+
+
+def sweep(start, priors, data, penalty, weights, others, warm_start=True, **options):
+    """virgil's ``l_curve`` (the same fits, weights strongest first, each warm
+    started from the previous unless ``warm_start`` is False) except that a
+    warm start is moved off the prior bounds (``off_bounds``) and a fit that
+    went non-finite does not seed the next weight (it is refitted from the last
+    finite values instead)."""
+    weights = sorted((float(w) for w in weights), reverse=True)
+    parts, init = [], None
+    for w in weights:
+        piece = l_curve(start, priors, data, penalty, [w], others, warm_start=False, init=init, **options)
+        parts.append(piece)
+        values = piece.results[0].values
+        if warm_start and all(np.all(np.isfinite(np.asarray(v))) for v in values.values()):
+            init = off_bounds(values, priors)
+    return LCurve(np.asarray(weights), np.concatenate([np.atleast_1d(c.chi2) for c in parts]),
+                  np.concatenate([np.atleast_2d(c.chi2_red) for c in parts]),
+                  np.concatenate([np.atleast_1d(c.penalty) for c in parts]), [c.results[0] for c in parts])
+
+
 def regulariser_weights(name, data, smoke=False):
     """The weights of an L-curve for ``name``: MaxEnt's WEIGHTS, or
     WEIGHT_RANGES[name] x N (``n_independent(data)``), REG_POINTS log-spaced
@@ -286,7 +319,13 @@ def add_point_sources(s, k):
         print(f"point source at ({cand['dra']:.3g}, {cand['ddec']:.3g}) mas, CLEAN flux {cand['flux']:.3g}: "
               f"Δχ² {dchi2:.3g}, {'kept as ' + name if kept else 'dropped'}", flush=True)
         if kept:
-            parts[name] = trial.components[name]
+            # The trial fit may end on a prior bound (its box is a beam wide); a
+            # start on a bound is infinite in the unconstrained coordinates and
+            # makes the joint L-BFGS fit NaN, so move it into the interior.
+            fitted = trial.components[name]
+            parts[name] = eqx.tree_at(lambda m: (m.dra, m.ddec, m.flux), fitted,
+                                      tuple(jnp.asarray(inside(pp[f"{name}.{a_}"], getattr(fitted, a_)))
+                                            for a_ in ("dra", "ddec", "flux")))
             priors |= pp
     env = parts["env"]
     if priors:
@@ -1317,8 +1356,8 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     weights = regulariser_weights(reg, data, smoke)
     options = {"max_steps": 50} if smoke else {"max_steps": 200_000}
     # A warm-started LogSum sweep collapses to one pixel (virgil design/sparse_imaging.md).
-    curve = l_curve(start, priors, data, regulariser(reg, 1.0, path, s["q"]), jnp.asarray(weights), others,
-                    warm_start=reg != "logsum", **options)
+    curve = sweep(start, priors, data, regulariser(reg, 1.0, path, s["q"]), jnp.asarray(weights), others,
+                  warm_start=reg != "logsum", **options)
     curve, methods, adam_chi2 = adam_fallback(curve, start, priors, data, reg, path, s["q"], others, smoke)
 
     # discrepancy() is None when no weight reaches χ² = N (the data are then
