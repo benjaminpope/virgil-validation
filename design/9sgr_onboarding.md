@@ -35,8 +35,10 @@ them to 0.19 mas rms (LB17 9 Sgr), 0.16 mas (Fabry), 0.30 mas (HD 168137), again
 Things the references record that a reader should not have to rediscover:
 
 - **ω.** Both papers use the secondary's ω (the relative orbit's), from the ascending node
-  where the secondary recedes: virgil's ω, so `omega_shift_deg = 0` (checked numerically, not
-  assumed). Fabry+21 Table 1 note (a): the ω of their RV curves is the primary's, 180° away.
+  where the secondary recedes: virgil's ω, so `omega_shift_deg = 0`. This is from the papers' text (LB17
+  Sect. 2.4), **not checked**: positions are invariant under the joint flip (ω, Ω) → (ω + 180°, Ω + 180°),
+  so only radial velocities fix the receding node, and the transcription check below cannot. Fabry+21
+  Table 1 note (a): the ω of their RV curves is the primary's, 180° away.
 - **Error ellipses.** LB17 calls the emax/emin of Table B.1 FWHM; Fabry+21 calls the same numbers
   1σ. The two cannot both be right (factor 2.355). Stored as published. The first blind fit will
   show which reading gives pulls near 1; do not convert beforehand.
@@ -85,6 +87,11 @@ science OB with its calibrator: HD 164386 and HD 165015 for PIONIER; for AMBER t
 JMMC SearchCal catalogue at reduction time (not stored here).
 
 ## Known gaps and next steps
+
+0. **Fold the joint flip.** The blind fits are astrometry-only, so a correct orbit can come back as
+   (ω + 180°, Ω + 180°): (30.4°, 247.2°) for 9 Sgr. For HD 168137 the RVs were ignored, so the published
+   (246.7°, 231.2°) is one arbitrary half and (66.7°, 51.2°) is as good. The ω/Ω comparison must be made modulo
+   that joint flip, or a correct blind orbit scores as 180° off in both.
 
 1. Six PIONIER epochs (2012 to mid-2013) cannot be reduced, so the blind orbit sees at most 17 of the
    23 epochs. The June 2016 GRAVITY nights have no p2vm sequence in CalSelector's association; the job takes the

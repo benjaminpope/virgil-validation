@@ -18,7 +18,7 @@
  "uncertainties": "As for 9 Sgr. The orbit is badly constrained: a = 7.0 +/- 3.9 mas, e = 0.902 +/- 0.058 with a strong a-e-omega degeneracy (the scatterplots of Fig. A.9), and the periastron lies in a gap, so the paper's own 'preliminary' applies. Le Bouquin+17 (Table B.1 caption, CDS ReadMe note 3) calls emax/emin the FWHM of the error ellipse's axes; Fabry+21 (Table A.2 caption) calls the same numbers 1-sigma. They cannot both be right: the factor is 2 sqrt(2 ln 2) = 2.3548. Stored as published; do not convert before the first blind fit shows which reading gives pulls of order 1.",
  "conventions": {
   "PA": "as for 9 Sgr",
-  "omega": "the secondary's, from the ascending node (Sect. 2.4); omega_shift_deg = 0. With no usable RVs the paper enforces 0 < Omega < 180 deg when no RVs exist at all; here Omega = 231.2 deg because the (ignored) RVs were still attached to the fit. Checked: crosscheck.orbits at the 11 published epochs, with the published T, reproduces them to 0.30 mas rms (worst 0.68 mas at the epoch with a 24 mas ellipse).",
+  "omega": "the secondary's, from the ascending node (Sect. 2.4); omega_shift_deg = 0 is taken from the paper's text, not checked (see eso-9sgr). The RVs were ignored in this fit, so the published (omega, Omega) = (246.7, 231.2) deg is one arbitrary half of the pair: (66.7, 51.2) deg gives the same positions and is equally correct. crosscheck.orbits with the published T reproduces the 11 published epochs to 0.30 mas rms (worst 0.68 mas at the epoch with a 24 mas ellipse); that checks the transcription, not the node. Compare omega and Omega modulo the joint 180 deg flip.",
   "Omega": "as for 9 Sgr",
   "inclination": "i = 105.2 deg > 90: clockwise on the sky, PA decreasing in time",
   "T": "T = 53525 +/- 14 MJD, a periastron 0.78 P before the first epoch (MJD 54964); only T modulo P matters",
@@ -435,5 +435,5 @@
    "AMBER 087.D-0264(A) and (B), 2011-05-13 and 2011-05-18: not in the table"
   ]
  },
- "notes": "Lower priority than 9 Sgr: only about half the epochs have public raw data, the orbit is preliminary and weakly constrained, and its poor constraint will show up as a broad blind posterior rather than a pass or fail."
+ "notes": "Lower priority than 9 Sgr: 9 of the 11 epochs have public raw data, but the orbit is preliminary and weakly constrained, and its poor constraint will show up as a broad blind posterior rather than a pass or fail."
 }

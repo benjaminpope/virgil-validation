@@ -139,7 +139,7 @@ TILES = [
                "ESO GRAVITY pipeline), and the blind fit has not been run: this is the 'awaiting blind fit' placeholder.",
          notes=[dict(kind="convention", title="Conventions",
                      text="Both papers give ω for the secondary and PA east of north, as virgil does, so no shift is applied "
-                          "(checked: the published orbit reproduces the 18 published positions to 0.19 mas rms). "
+                          "(the published orbit reproduces the 18 published positions to 0.19 mas rms; positions cannot check the sign of ω and Ω, which only radial velocities fix, so compare them modulo the joint 180° flip). "
                           "Fabry et al. do not tabulate a semi-major axis: the 14.83 mas drawn for their orbit is derived "
                           "from their masses, period and distance."),
                 dict(kind="caveat", title="Two published orbits",
