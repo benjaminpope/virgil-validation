@@ -247,23 +247,60 @@ def safe_clean(*args, **kwargs):
         return clean(*args, **{**kwargs, "gain": gain})
 
 
-def sweep(start, priors, data, penalty, weights, others, warm_start=True, **options):
+def sweep(start, priors, data, penalty, weights, others, warm_start=True, on_point=None, **options):
     """virgil's ``l_curve`` (the same fits, weights strongest first, each warm
     started from the previous unless ``warm_start`` is False) except that a
     warm start is moved off the prior bounds (``off_bounds``) and a fit that
     went non-finite does not seed the next weight (it is refitted from the last
-    finite values instead)."""
+    finite values instead). ``on_point(curve)`` is called with the L-curve so
+    far after every weight but the last (a checkpoint: a job that times out
+    keeps what was fitted)."""
     weights = sorted((float(w) for w in weights), reverse=True)
     parts, init = [], None
+
+    def so_far():
+        return LCurve(np.asarray(weights[:len(parts)]), np.concatenate([np.atleast_1d(c.chi2) for c in parts]),
+                      np.concatenate([np.atleast_2d(c.chi2_red) for c in parts]),
+                      np.concatenate([np.atleast_1d(c.penalty) for c in parts]), [c.results[0] for c in parts])
+
     for w in weights:
         piece = l_curve(start, priors, data, penalty, [w], others, warm_start=False, init=init, **options)
         parts.append(piece)
         values = piece.results[0].values
         if warm_start and all(np.all(np.isfinite(np.asarray(v))) for v in values.values()):
             init = off_bounds(values, priors)
-    return LCurve(np.asarray(weights), np.concatenate([np.atleast_1d(c.chi2) for c in parts]),
-                  np.concatenate([np.atleast_2d(c.chi2_red) for c in parts]),
-                  np.concatenate([np.atleast_1d(c.penalty) for c in parts]), [c.results[0] for c in parts])
+        if on_point is not None and len(parts) < len(weights):
+            on_point(so_far())
+    return so_far()
+
+
+def choose_weights(curve, reg, strict=True):
+    """The L-curve's corner and discrepancy weights among its finite fits.
+    Returns (finite indices, the curve of those, chosen {name: weight}, index
+    {name: curve index}, discrepancy reached). Non-finite fits take no part;
+    with none finite it raises. A corner needs three finite points: without
+    them it is the weakest weight, except that ``strict`` MaxEnt with every fit
+    finite keeps round 1's error."""
+    ok = finite_points(curve)
+    if not ok:
+        raise RuntimeError("every L-curve fit is non-finite")
+    if len(ok) < len(curve.results):
+        print("non-finite fits at weights", [float(curve.weights[i]) for i in range(len(curve.results)) if i not in ok])
+    good = curve if len(ok) == len(curve.results) else LCurve(
+        np.asarray(curve.weights)[ok], np.asarray(curve.chi2)[ok], np.asarray(curve.chi2_red)[ok],
+        np.asarray(curve.penalty)[ok], [curve.results[i] for i in ok])
+    weakest = float(good.weights[-1])
+    try:
+        corner = good.corner()
+    except ValueError:
+        if strict and reg == "mem" and len(ok) == len(curve.results):
+            raise  # round-1 behaviour
+        corner = None
+    corner = weakest if corner is None else float(corner)
+    discrepancy = good.discrepancy()
+    chosen = {"discrepancy": corner if discrepancy is None else float(discrepancy), "corner": corner}
+    index = {k: ok[int(np.argmin(np.abs(np.log(good.weights) - np.log(w))))] for k, w in chosen.items()}
+    return ok, good, chosen, index, discrepancy is not None
 
 
 def regulariser_weights(name, data, smoke=False):
@@ -1389,63 +1426,59 @@ def run(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="momen
     path, priors, others = s["path"], s["priors"], s["others"]
     weights = regulariser_weights(reg, data, smoke)
     options = {"max_steps": 50} if smoke else {"max_steps": 200_000}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    first = np.asarray(img0.render(npix, fov))  # V² and closure phases have no absolute phases, so no dirty image: show the starting image instead
+
+    def save(curve, methods, chosen, index, report, partial):
+        """The npz (and, partial, a note): ``partial`` marks a checkpoint of a sweep that has not finished
+        (a job that times out keeps its output); the final call overwrites it."""
+        images = np.stack([safe_render(image_of(r.model, star, halo), npix, fov) for r in curve.results])
+        reference = {}
+        if settings is not None:
+            chosen_model = curve.results[index["discrepancy"]].model
+            reference = dict(ref_image=render_scene(chosen_model, reference_npix(s["ref_fov"], data_q_max(data)), s["ref_fov"], data_q_max(data)), ref_fov=s["ref_fov"],
+                             best_chi2_red=float(np.sum(np.asarray(curve.chi2_red)[index["discrepancy"]])), error_scale=np.nan,
+                             star=bool(star), star_rejected=s["star_rejected"], best_log_z=np.nan, flip_dchi2=np.nan)
+        np.savez_compressed(
+            out_dir / f"{label}.npz", **reference,
+            weights=np.asarray(curve.weights), chi2=np.asarray(curve.chi2),
+            chi2_red=np.asarray(curve.chi2_red), penalty=np.asarray(curve.penalty),
+            images=images, start=first, pixel_scale_mas=pixel, npix=npix,
+            beam=np.array([resolution.major_mas, resolution.minor_mas, resolution.pa_deg]),
+            halo_flux=np.array([float(r.model.halo.flux) if halo else 0.0 for r in curve.results]),
+            converged=np.array([bool(r.info.get("converged", False)) for r in curve.results]),
+            methods=np.array(methods), adam_used=np.array([m == "adam" for m in methods]),
+            chosen=json.dumps(chosen), index=json.dumps(index), regulariser=reg, informed=bool(informed),
+            systematics_mode=systematics, systematics_widths=json.dumps(fixed),
+            point_sources=json.dumps(s.get("point_record"), default=float),
+            weight_report=json.dumps(report), partial=partial, n_weights_planned=len(weights),
+        )
+        if partial:
+            (out_dir / f"{label}.txt").write_text(
+                f"PARTIAL: {len(curve.weights)} of {len(weights)} weights fitted at {time.time() - t0:.0f}s; "
+                f"chosen={chosen}\n")
+
+    def checkpoint(curve):
+        try:
+            _, _, chosen_, index_, _ = choose_weights(curve, reg, strict=False)
+        except RuntimeError:  # nothing finite yet
+            return
+        save(curve, ["lbfgs"] * len(curve.results), chosen_, index_, {}, True)
+
     # A warm-started LogSum sweep collapses to one pixel (virgil design/sparse_imaging.md).
     curve = sweep(start, priors, data, regulariser(reg, 1.0, path, s["q"]), jnp.asarray(weights), others,
-                  warm_start=reg != "logsum", **options)
+                  warm_start=reg != "logsum", on_point=checkpoint, **options)
     curve, methods, adam_chi2 = adam_fallback(curve, start, priors, data, reg, path, s["q"], others, smoke)
 
     # discrepancy() is None when no weight reaches χ² = N (the data are then
     # under-fitted at every weight: worth a note); corner() needs >= 3 points.
     # Fall back to the L-curve corner, then to the weakest weight.
     # Non-finite fits (logged) take no part in choosing the weight.
-    ok = finite_points(curve)
-    if not ok:
-        raise RuntimeError("every L-curve fit is non-finite")
-    if len(ok) < len(curve.results):
-        print("non-finite fits at weights", [float(curve.weights[i]) for i in range(len(curve.results)) if i not in ok])
-    good = curve if len(ok) == len(curve.results) else LCurve(
-        np.asarray(curve.weights)[ok], np.asarray(curve.chi2)[ok], np.asarray(curve.chi2_red)[ok],
-        np.asarray(curve.penalty)[ok], [curve.results[i] for i in ok])
-    weakest = float(good.weights[-1])
-    try:
-        corner = good.corner()
-    except ValueError:
-        if reg == "mem" and len(ok) == len(curve.results):
-            raise  # round-1 behaviour
-        corner = None
-    corner = weakest if corner is None else float(corner)
-    discrepancy = good.discrepancy()
-    chosen = {"discrepancy": corner if discrepancy is None else float(discrepancy), "corner": corner}
-    reached = discrepancy is not None
-    index = {k: ok[int(np.argmin(np.abs(np.log(good.weights) - np.log(w))))] for k, w in chosen.items()}
-    images = np.stack([safe_render(image_of(r.model, star, halo), npix, fov) for r in curve.results])
+    ok, good, chosen, index, reached = choose_weights(curve, reg)
+    # The output first (the report's classic_maxent is an SVD per weight, hours at 400 mas, job 18593342).
+    save(curve, methods, chosen, index, {}, False)
     report_w = weight_report(curve, data, reg, path, index["discrepancy"])
-    # V² and closure phases have no absolute phases, so no dirty image:
-    # show the starting image instead.
-    first = np.asarray(img0.render(npix, fov))
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    reference = {}
-    if settings is not None:
-        chosen_model = curve.results[index["discrepancy"]].model
-        reference = dict(ref_image=render_scene(chosen_model, reference_npix(s["ref_fov"], data_q_max(data)), s["ref_fov"], data_q_max(data)), ref_fov=s["ref_fov"],
-                         best_chi2_red=float(np.sum(np.asarray(curve.chi2_red)[index["discrepancy"]])), error_scale=np.nan,
-                         star=bool(star), star_rejected=s["star_rejected"], best_log_z=np.nan, flip_dchi2=np.nan)
-    np.savez_compressed(
-        out_dir / f"{label}.npz", **reference,
-        weights=np.asarray(curve.weights), chi2=np.asarray(curve.chi2),
-        chi2_red=np.asarray(curve.chi2_red), penalty=np.asarray(curve.penalty),
-        images=images, start=first, pixel_scale_mas=pixel, npix=npix,
-        beam=np.array([resolution.major_mas, resolution.minor_mas, resolution.pa_deg]),
-        halo_flux=np.array([float(r.model.halo.flux) if halo else 0.0 for r in curve.results]),
-        converged=np.array([bool(r.info.get("converged", False)) for r in curve.results]),
-        methods=np.array(methods), adam_used=np.array([m == "adam" for m in methods]),
-        chosen=json.dumps(chosen), index=json.dumps(index), regulariser=reg, informed=bool(informed),
-        systematics_mode=systematics, systematics_widths=json.dumps(fixed),
-        point_sources=json.dumps(s.get("point_record"), default=float),
-        weight_report=json.dumps(report_w),
-    )
-
+    save(curve, methods, chosen, index, report_w, False)
 
     best = curve.results[index["discrepancy"]].model
     pruned = None

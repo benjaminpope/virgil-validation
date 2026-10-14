@@ -412,3 +412,31 @@ def test_two_scale_image_is_unit_sum_and_flux_weighted():
     img = ci.two_scale_image(env, ext, 3.0, 1.0)
     np.testing.assert_allclose(img.sum(), 1.0)
     np.testing.assert_allclose([img[1, 1], img[2, 2]], [0.75, 0.25])
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_sweep_checkpoints_and_the_choice_degrades_with_few_finite_fits(monkeypatch):
+    """The sweep reports its curve after every weight but the last (a timed-out job keeps them), and with fewer than
+    three finite fits (job 18593013: 'The sweep needs at least three weights') the choice falls back to the weakest
+    finite weight; with none finite it raises."""
+    from virgil.imaging import LCurve
+
+    ends = iter([1.0, float("nan"), 2.0, float("nan")])
+
+    def fake(start, pri, data, pen, weights, others, warm_start=True, init=None, **kw):
+        res = types.SimpleNamespace(values={"a": np.asarray(next(ends))}, info={})
+        return types.SimpleNamespace(chi2=np.array([2.0]), chi2_red=np.array([[2.0]]), penalty=np.array([1.0]),
+                                     results=[res])
+
+    monkeypatch.setattr(ci, "l_curve", fake)
+    seen = []
+    curve = ci.sweep(None, {}, None, None, [8.0, 4.0, 2.0, 1.0], (), on_point=lambda c: seen.append(len(c.weights)))
+    assert seen == [1, 2, 3] and len(curve.weights) == 4
+    curve = LCurve(curve.weights, np.array([2.0, np.nan, 2.0, np.nan]), curve.chi2_red, curve.penalty, curve.results)
+    ok, good, chosen, index, reached = ci.choose_weights(curve, "tv")
+    assert ok == [0, 2] and chosen["corner"] == 2.0 and index["corner"] == 2
+    ok, good, chosen, index, reached = ci.choose_weights(curve, "mem")  # MaxEnt with non-finite fits degrades too
+    assert chosen["corner"] == 2.0
+    bad = LCurve(curve.weights, np.full(4, np.nan), curve.chi2_red, curve.penalty, curve.results)
+    with pytest.raises(RuntimeError):
+        ci.choose_weights(bad, "mem")
