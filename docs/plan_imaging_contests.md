@@ -905,6 +905,15 @@ amount that depends on their S/N. The scoring rules are:
   that is (N − 1)/2, which `[::-1, ::-1]` gives exactly for odd N, so
   scoring grids are kept odd.
 
+**Gallery.** The [gallery](contest_gallery.md) shows each dataset's best
+kept member beside the truth where we hold one (2004 data2; 2018 as markers
+only), at a matched field, orientation and stretch, with the raw χ²/N first.
+`scripts/contest_gallery.py` writes it from `contests/gallery.yml` and the
+campaign's npz files. Paper figures are listed in `contests/figures.yml` with
+each paper's licence. None has an open licence, so the page links to them.
+`scripts/contest_figures.py` crops them locally, and
+`contest_gallery.py --private DIR` shows them outside the repository.
+
 ### C4b. Data from John Young (2026-10-07)
 
 John Young sent Ben a folder of contest datasets. It is filed under

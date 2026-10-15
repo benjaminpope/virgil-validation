@@ -31,6 +31,7 @@ markdown_extensions:
 
 extra_css:
   - assets/trust.css
+  - assets/contests.css
 extra_javascript:
   - assets/trust.js
 
@@ -49,6 +50,7 @@ nav:
       - fouriever: fouriever_notes.md
       - orbitize!: orbitize_notes.md
   - "Plan: ESO binaries": plan_eso_binaries.md
+  - "Imaging contests: gallery": contest_gallery.md
   - "Plan: imaging contests": plan_imaging_contests.md
   - "Contest convergence diagnosis": contest_convergence_diagnosis.md
   - "Contest scoring sources": contest_scoring_sources.md
