@@ -107,9 +107,13 @@
           "i_deg": [
             95.865,
             0.011
-          ]
+          ],
+          "omega_of": "secondary",
+          "omega_of_basis": "UNRESOLVED: the paper does not say whose omega this is. Set to 'secondary' because that is how the gallery comparison (oidb_compare, orbit_gallery) reads it today; orbit_diagnose reads it as the primary's (+180 deg). Do not rely on it until resolved."
         },
-        "source": "Table 3, p. 24; compared with Konacki et al. (2010) spectroscopic+interferometric orbit; text p. 22: 'The best-fit parameters very well match with spectroscopic observations Konacki et al. (2010)'. Flux ratio: 'We estimate a flux ratio of primary to secondary Fpri/sec of 4.6 +/- 0.1 ... compared with 5.0 +/- 0.5 reported by Konacki et al. (2010)', p. 22."
+        "source": "Table 3, p. 24; compared with Konacki et al. (2010) spectroscopic+interferometric orbit; text p. 22: 'The best-fit parameters very well match with spectroscopic observations Konacki et al. (2010)'. Flux ratio: 'We estimate a flux ratio of primary to secondary Fpri/sec of 4.6 +/- 0.1 ... compared with 5.0 +/- 0.5 reported by Konacki et al. (2010)', p. 22.",
+        "omega_of": "secondary",
+        "omega_of_basis": "UNRESOLVED: the paper does not say whose omega this is. Set to 'secondary' because that is how the gallery comparison (oidb_compare, orbit_gallery) reads it today; orbit_diagnose reads it as the primary's (+180 deg). Do not rely on it until resolved."
       },
       "flux_ratio_definition": "'F_pri/sec' = flux ratio of primary to secondary (Table 2 header; text p. 22: 'flux ratio of primary to secondary F_pri/sec of 4.6 +/- 0.1'). H band implied (MIRC-X H-band data) but band not explicitly stated in the passage. NB primary/secondary, i.e. >1; invert for secondary/primary (~0.217).",
       "uncertainties": "Table 2 errors are the fit errors; no mention of inflation. Table 3: semi-major axis footnote '* 0.5% uncertainty in the semi-major due to uncertain absolute wavelength calibration' (i.e. the quoted +/-0.0038 mas is statistical only, 0.5% systematic additional). Median orbit residual 6.65 uas (Fig. 25 caption). Model-fit vs CANDID differences up to 3.3 sigma (Table 2 last columns).",
@@ -556,9 +560,13 @@
           "Omega_deg": [
             7.02,
             0.23
-          ]
+          ],
+          "omega_of": "primary",
+          "omega_of_basis": "omega_Aa, the primary Aa's (Table 9 footnote a: omega_Ab = omega_Aa + 180 = 19.83)."
         },
-        "source": "Table 9, p. 23 (last column = simultaneous visual+spectroscopic fit; chi2_nu total 1.25, MIRC 1.60); masses Sec. 4.3 / Table 11."
+        "source": "Table 9, p. 23 (last column = simultaneous visual+spectroscopic fit; chi2_nu total 1.25, MIRC 1.60); masses Sec. 4.3 / Table 11.",
+        "omega_of": "primary",
+        "omega_of_basis": "omega_Aa, the primary Aa's (Table 9 footnote a: omega_Ab = omega_Aa + 180 = 19.83)."
       },
       "used_in_orbit_fit_2011-09-29": {
         "answer": true,

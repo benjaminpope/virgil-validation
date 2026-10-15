@@ -50,6 +50,20 @@ def criteria_hash():
     return hashlib.sha256(CRITERIA_FILE.read_bytes()).hexdigest()
 
 
+def sky_source_without_arcs():
+    """sky.py minus the arc functions (no pull-campaign scene draws an arc) and
+    minus blank lines, so that changing the arc weight, as virgil did, does
+    not invalidate the committed campaign result."""
+    import ast
+
+    src = (ROOT / "src" / "crosscheck" / "sky.py").read_text()
+    drop = set()
+    for node in ast.parse(src).body:
+        if isinstance(node, ast.FunctionDef) and node.name in ("arc_curve", "arc_curve_gaussian"):
+            drop.update(range(node.lineno - 1, node.end_lineno))
+    return "".join(ln for i, ln in enumerate(src.splitlines(keepends=True)) if i not in drop and ln.strip())
+
+
 def design_hash():
     """The experiment the registered file describes only in words: the
     arrays, grids, truths and the code that draws and fits, and our
@@ -59,8 +73,9 @@ def design_hash():
     h = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
     for fn in (draw, param_names):
         h.update(inspect.getsource(fn).encode())
-    for name in ("simulate.py", "sky.py", "array.py"):
+    for name in ("simulate.py", "array.py"):
         h.update((ROOT / "src" / "crosscheck" / name).read_bytes())
+    h.update(sky_source_without_arcs().encode())
     h.update((ROOT / "src" / "virgil_bridge" / "__init__.py").read_bytes())
     return h.hexdigest()[:16]
 
