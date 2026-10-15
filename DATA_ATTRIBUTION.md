@@ -49,3 +49,13 @@ machine-readable form.
 | `855397ef-dca8-4125-9397-efdca851259d` | kappa Tuc A, MATISSE + GRAVITY (hot dust: not clean) (O2) | L3 | Thomas Stuber | AJ 171, 1, doi:10.3847/1538-3881/adfe66 | not yet (thank dataPI, cite paper when used) |
 | `534fbba6-b715-4b41-9278-b6bd0de9f674` | gamma2 Vel, AMBER (wind collision: not clean) (O2) | L3 | Florentin Millour | MNRAS 468, 2655, doi:10.1093/mnras/stx588 | not yet (thank dataPI, cite paper when used) |
 | `J/A+A/536/A55` | SS Lep, AMBER + PIONIER (Roche-lobe overflow: not clean) (O2) | L3 | Blind N. | A&A 536, A55, doi:10.1051/0004-6361/201118036 | not yet (thank dataPI, cite paper when used) |
+
+## ESO Science Archive, Phase 3 products
+
+The GRAVITY and PIONIER OIFITS of the Track B orbit targets (`oidb/trackb/`, `scripts/build_trackb_targets.py`) are public
+Phase 3 data products from the [ESO Science Archive](https://archive.eso.org), used unchanged and not committed. Each
+record lists every file's `dp_id`, programme, release date and SHA-256. ESO's data-use
+terms apply (see the archive's pages): publications using these data must acknowledge
+that they are based on observations collected at the European Southern Observatory under the programme IDs listed in the
+records, and cite the original papers (Gallenne et al. 2023, 2019; Rowan et al. 2026). Published orbits are used for
+comparison only.

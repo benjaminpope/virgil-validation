@@ -231,6 +231,11 @@ nodes:
     depends: [virgil.epochs.epoch_positions, virgil.orbits.starting_orbits, virgil.epochs.rank_orbits,
               virgil.epochs.chain_starts, virgil.fitting.fit]
     doc: orbits/epochs.md
+  virgil.aliases.fit_orbit_aliases:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.fitting.fit]
+    doc: orbits/aliases.md
   virgil.epochs.OrbitStart:
     layer: orbits
     source: [src/virgil/epochs.py]
@@ -566,6 +571,39 @@ pipelines:
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,
             virgil.limits.absil_limits]
+  trackb-targets:
+    title: Track B orbit targets, onboarded for the blind orbit solver (published orbits for comparison only)
+    data: real
+    dataset: ESO Phase 3 GRAVITY and PIONIER products of 12 binaries (Araucaria SB2s, later epochs, short arcs)
+    reference: the published orbits and astrometry (Gallenne et al. 2023, 2019; Rowan et al. 2026), never used as a start
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/eso_binaries_triage.md
+    headline: records and held-out split committed; awaiting the blind solver
+    page: orbits/
+    state: planned  # data and records are in; the orbit fits await the blind solver
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
+            virgil.grid_fit.likelihood_grid, virgil.fitting.fit]
+  eso-9sgr-blind-orbit:
+    title: 9 Sgr (HD 164794) orbit from the public ESO frames, solved blind, against Le Bouquin et al. 2017 and Fabry et al. 2021
+    data: real
+    dataset: VLTI AMBER, PIONIER and GRAVITY raw frames of 17 of the 23 published epochs, reduced with the instrument pipelines
+    reference: the two published orbits (P = 3310 d and 3261 d, e about 0.65), drawn only after the fit
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/9sgr_onboarding.md
+    headline: blind orbit elements against both papers' orbits
+    page: orbits/binaries/
+    state: planned
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
+            virgil.epochs.epoch_positions, virgil.epochs.rank_orbits, virgil.models.OrbitalBinary]
+  eso-hd168137-blind-orbit:
+    title: HD 168137 orbit from the public ESO frames, solved blind, against the preliminary orbit of Le Bouquin et al. 2017
+    data: real
+    dataset: VLTI AMBER and PIONIER raw frames of 9 of the 11 published epochs
+    reference: the preliminary orbit (P = 1836 d, e = 0.90, a = 7.0 ± 3.9 mas), drawn only after the fit
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/9sgr_onboarding.md
+    headline: blind orbit elements against the preliminary orbit (a broad posterior is expected)
+    page: orbits/binaries/
+    state: planned
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
+            virgil.epochs.epoch_positions, virgil.epochs.rank_orbits, virgil.models.OrbitalBinary]
   orbitize-posterior:
     title: Posteriors of a published orbit (beta Pic b, orbitize!'s data) against orbitize! with matched priors
     data: real

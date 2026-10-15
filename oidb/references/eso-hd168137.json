@@ -1,0 +1,440 @@
+{
+ "collection_id": "eso-hd168137",
+ "target": "HD 168137 (O7 V + O8 V, P = 1836 d, e = 0.90)",
+ "paper": {
+  "authors": "Le Bouquin et al.",
+  "year": 2017,
+  "journal": "A&A 601, A34",
+  "bibcode": "2017A&A...601A..34L",
+  "doi": "10.1051/0004-6361/201629260",
+  "arxiv": "1608.03525"
+ },
+ "publication_status": {
+  "status": "published",
+  "evidence": "As for 9 Sgr (eso-9sgr.json): Crossref and the VizieR ReadMe. Element values are read from the Fig. A.9 panel of the arXiv PDF. The paper calls this a preliminary orbit."
+ },
+ "method": "As for 9 Sgr. The SB2 radial velocities were ignored in the fit (Sect. 3.9): the radial-velocity elements are degenerate and the individual masses unconstrained.",
+ "flux_ratio_definition": "f_H = secondary / primary in the H band, 0.77 +/- 0.02 (Fig. A.9 panel), constant over epochs.",
+ "uncertainties": "As for 9 Sgr. The orbit is badly constrained: a = 7.0 +/- 3.9 mas, e = 0.902 +/- 0.058 with a strong a-e-omega degeneracy (the scatterplots of Fig. A.9), and the periastron lies in a gap, so the paper's own 'preliminary' applies. Le Bouquin+17 (Table B.1 caption, CDS ReadMe note 3) calls emax/emin the FWHM of the error ellipse's axes; Fabry+21 (Table A.2 caption) calls the same numbers 1-sigma. They cannot both be right: the factor is 2 sqrt(2 ln 2) = 2.3548. Stored as published; do not convert before the first blind fit shows which reading gives pulls of order 1.",
+ "conventions": {
+  "PA": "as for 9 Sgr",
+  "omega": "the secondary's, from the ascending node (Sect. 2.4); omega_shift_deg = 0 is taken from the paper's text, not checked (see eso-9sgr). The RVs were ignored in this fit, so the published (omega, Omega) = (246.7, 231.2) deg is one arbitrary half of the pair: (66.7, 51.2) deg gives the same positions and is equally correct. crosscheck.orbits with the published T reproduces the 11 published epochs to 0.30 mas rms (worst 0.68 mas at the epoch with a 24 mas ellipse); that checks the transcription, not the node. Compare omega and Omega modulo the joint 180 deg flip.",
+  "Omega": "as for 9 Sgr",
+  "inclination": "i = 105.2 deg > 90: clockwise on the sky, PA decreasing in time",
+  "T": "T = 53525 +/- 14 MJD, a periastron 0.78 P before the first epoch (MJD 54964); only T modulo P matters",
+  "omega_shift_deg": 0.0
+ },
+ "epochs": [
+  {
+   "date": "2009-05-13",
+   "mjd": 54964.384,
+   "instrument": "AMBER",
+   "rho_mas": [
+    2.597,
+    null
+   ],
+   "pa_deg": [
+    167.998,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 2.48,
+     "minor_mas": 0.77,
+     "pa_deg": 26,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "083.D-0066(A)",
+    "n_science_frames": 16,
+    "note": "16 frames over 2009-05-13..2009-06-13 in this programme: two nights"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2009-05-12"
+  },
+  {
+   "date": "2009-06-13",
+   "mjd": 54995.267,
+   "instrument": "AMBER",
+   "rho_mas": [
+    2.869,
+    null
+   ],
+   "pa_deg": [
+    168.338,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.59,
+     "minor_mas": 0.2,
+     "pa_deg": 134,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "083.D-0066(A)",
+    "n_science_frames": 8,
+    "note": "same night as the 9 Sgr epoch 54995.306"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2009-06-12"
+  },
+  {
+   "date": "2009-09-05",
+   "mjd": 55079.029,
+   "instrument": "AMBER",
+   "rho_mas": [
+    2.924,
+    null
+   ],
+   "pa_deg": [
+    147.288,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 24.25,
+     "minor_mas": 0.65,
+     "pa_deg": 126,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "083.D-0066(B)",
+    "n_science_frames": 7,
+    "note": "published error ellipse is 24 mas: the position is poorly determined"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2009-09-04"
+  },
+  {
+   "date": "2011-03-24",
+   "mjd": 55644.334,
+   "instrument": "AMBER",
+   "rho_mas": [
+    6.281,
+    null
+   ],
+   "pa_deg": [
+    215.082,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.81,
+     "minor_mas": 0.4,
+     "pa_deg": 119,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "386.D-0198(A)",
+    "n_science_frames": 10,
+    "note": "same night as 9 Sgr 55644.304"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2011-03-23"
+  },
+  {
+   "date": "2011-08-09",
+   "mjd": 55782.179,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    6.728,
+    null
+   ],
+   "pa_deg": [
+    212.249,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.33,
+     "minor_mas": 0.12,
+     "pa_deg": 137,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No HD 168137 frame in the public archive on 2011-08-08 (the PIONIER archive starts in 2013-08); the instrument is inferred."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2011-08-08"
+  },
+  {
+   "date": "2013-04-01",
+   "mjd": 56383.375,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    5.672,
+    null
+   ],
+   "pa_deg": [
+    200.863,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 5.09,
+     "minor_mas": 0.5,
+     "pa_deg": 108,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No PIONIER frame of any target exists in the public ESO archive between MJD 56100 and 56500 (checked on dbo.raw, 2026-10-14): these nights cannot be reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2013-03-31"
+  },
+  {
+   "date": "2014-04-04",
+   "mjd": 56751.41,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    3.465,
+    null
+   ],
+   "pa_deg": [
+    176.857,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.07,
+     "minor_mas": 0.05,
+     "pa_deg": 133,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "093.D-0673(A)",
+    "n_science_frames": 5,
+    "note": "same OB set as 9 Sgr 56751.389"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2014-04-03"
+  },
+  {
+   "date": "2014-05-05",
+   "mjd": 56782.384,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    3.23,
+    null
+   ],
+   "pa_deg": [
+    173.601,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.36,
+     "minor_mas": 0.18,
+     "pa_deg": 138,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "093.D-0673(E)",
+    "n_science_frames": 8
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2014-05-04"
+  },
+  {
+   "date": "2014-08-03",
+   "mjd": 56872.196,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    2.555,
+    null
+   ],
+   "pa_deg": [
+    161.281,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.47,
+     "minor_mas": 0.19,
+     "pa_deg": 136,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "093.C-0503(A)",
+    "n_science_frames": 5
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2014-08-02"
+  },
+  {
+   "date": "2016-05-02",
+   "mjd": 57510.344,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    6.228,
+    null
+   ],
+   "pa_deg": [
+    214.864,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.47,
+     "minor_mas": 0.17,
+     "pa_deg": 10,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "596.D-0495(F)",
+    "n_science_frames": 15,
+    "phase3_dp_id": "ADP.2017-04-04T14:22:20.118"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2016-05-01"
+  },
+  {
+   "date": "2016-07-30",
+   "mjd": 57599.162,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    6.747,
+    null
+   ],
+   "pa_deg": [
+    212.347,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 1.66,
+     "minor_mas": 0.48,
+     "pa_deg": 7,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "596.D-0495(F)",
+    "n_science_frames": 15,
+    "phase3_dp_id": "ADP.2017-04-04T14:22:19.099"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument inferred from the archive (the table does not give it)",
+   "night_ut_start": "2016-07-29"
+  }
+ ],
+ "orbit": {
+  "headline": "Le Bouquin+17, astrometry only for the geometry (Fig. A.9 panel); the paper's preliminary orbit",
+  "P_day": [
+   1836.0,
+   20.0
+  ],
+  "T_peri_mjd": [
+   53525.0,
+   14.0,
+   "published T, before the data; only T modulo P matters"
+  ],
+  "a_mas": [
+   7.0,
+   3.9,
+   "plus 1.5% systematic"
+  ],
+  "e": [
+   0.902,
+   0.058
+  ],
+  "i_deg": [
+   105.2,
+   4.0
+  ],
+  "Omega_deg": [
+   231.2,
+   5.0
+  ],
+  "omega_deg": [
+   246.7,
+   9.0,
+   "the secondary's"
+  ],
+  "f_H": [
+   0.77,
+   0.02
+  ],
+  "Ka_km_s": [
+   55,
+   35
+  ],
+  "Kb_km_s": [
+   71,
+   48
+  ],
+  "gamma_km_s": [
+   26.3,
+   9.2
+  ],
+  "d_pc_imposed": [
+   1800.0,
+   100.0
+  ],
+  "Mt_Msun_at_imposed_d": [
+   79,
+   1004,
+   "an uncertainty of 1004 Msun: the size of the orbit is unconstrained"
+  ],
+  "source": "Fig. A.9 panel (p. 18 of the arXiv:1608.03525 PDF); Sect. 3.9",
+  "omega_of": "secondary"
+ },
+ "other_papers": [
+  {
+   "cite": "Sana et al. 2009",
+   "role": "the SB2 radial-velocity orbit of the same pair"
+  }
+ ],
+ "eso_data": {
+  "checked": "2026-10-14, ESO TAP dbo.raw and ivoa.ObsCore, by object name",
+  "phase3": "PIONIER ADP products for MJD 57510.337, 57599.159 (both in the table) and 57871.359, 57874.351, 57924.266, 57959.179 (after it)",
+  "beyond_the_papers": [
+   "PIONIER 596.D-0495(L), 2017-04-28..2017-07-25: four Phase 3 epochs after the paper, on the way to the 2020 periastron the paper predicts",
+   "AMBER 087.D-0264(A) and (B), 2011-05-13 and 2011-05-18: not in the table"
+  ]
+ },
+ "notes": "Lower priority than 9 Sgr: 9 of the 11 epochs have public raw data, but the orbit is preliminary and weakly constrained, and its poor constraint will show up as a broad blind posterior rather than a pass or fail."
+}
