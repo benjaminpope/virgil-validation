@@ -3,17 +3,31 @@
 Orbits are compared where they are observed, as tracks of the companion on the sky at the epochs, not by their
 elements: (P, e, i, Omega, omega) have conventions and aliases (Omega and omega each shifted by 180 deg, a mirror
 for a bright companion) that give one sky orbit many element sets. The positions come from `crosscheck.orbits`
-(our own Kepler solver); the reference's omega is the secondary's, as there.
+(our own Kepler solver). The reference's omega must be the secondary's (the companion's), as there: normalise it
+first with `crosscheck.references.secondary_omega`, which needs the reference's ``omega_of`` field, rather than
+guessing whose omega a paper quotes (a primary's omega is the secondary's + 180 deg, a point reflection).
 
-A label swap of the two stars negates every relative position, which is the flux-ratio flip of the fit. The score
-compares with the reference or its point reflection, whichever is nearer, and reports which; the reflection is
-accepted only if the fit swapped the labels (``flipped``) or the system's labels are free (``sign_free``, the
-twins). Otherwise a reflected match is a sign error, not agreement, and the verdict is UNEXPLAINED-FLIP.
+Solved problems handled here, each commented where it is handled:
+
+* The (Omega + 180, omega + 180) twin is one sky orbit, so comparing positions (or Thiele-Innes constants) makes it
+  invisible; a single 180 deg shift is the point reflection.
+* A label swap of the two stars negates every relative position, which is the flux-ratio flip of the fit. The score
+  compares with the reference or its point reflection, whichever is nearer, and reports which. The reflection is
+  accepted only if the fit swapped the labels (``flipped``) or the fit itself reported its labels free
+  (``labels_free``, near-equal fluxes). The caller passes the fit's own report, never a list of system names.
+  Otherwise a reflected match is a sign error, not agreement, and the verdict is UNEXPLAINED-FLIP.
+* A good fit that sits far from the reference is not the fit's failure: with the fit's raw chi^2/N supplied the
+  verdict is REFERENCE-DISAGREES (a disagreement to report, with the chi^2 against the reference configuration),
+  not DIFFERENT.
+
+``VERDICT_RULE_VERSION`` is stored with every score so a stored verdict can be recognised as stale when the rule
+changes.
 """
 
 import numpy as np
 
 from . import orbits as O
+from .orbits import thiele_innes  # the one Thiele-Innes implementation (the copy that was here is deleted)
 
 # Variants of the reference tried to diagnose a convention problem: (d_Omega, d_omega, i -> 180 - i)
 VARIANTS = {
@@ -25,50 +39,99 @@ VARIANTS = {
 }
 SAME_FRACTION = 0.02  # rms offset below this fraction of the mean separation, and
 SAME_SIGMA = 3.0  # below this many posterior spreads, is the same sky orbit (published residuals are ~0.1 mas)
-
-
-def thiele_innes(a, inc, omega, Omega):
-    """Thiele-Innes constants (A, B, F, G): A, F are Dec and B, G RA coefficients of (X, Y)."""
-    i, w, n = np.deg2rad([inc, omega, Omega])
-    ci = np.cos(i)
-    return (
-        a * (np.cos(w) * np.cos(n) - np.sin(w) * np.sin(n) * ci),
-        a * (np.cos(w) * np.sin(n) + np.sin(w) * np.cos(n) * ci),
-        a * (-np.sin(w) * np.cos(n) - np.cos(w) * np.sin(n) * ci),
-        a * (-np.sin(w) * np.sin(n) + np.cos(w) * np.cos(n) * ci),
-    )
+VERDICT_RULE_VERSION = 2  # 2: position match needs fraction AND sigma; 1 used the fraction alone. Bump on any rule change.
+GOOD_CHI2_N = 2.0  # raw chi^2/N at or below this: the fit describes its data, so a far reference is REFERENCE-DISAGREES
 
 
 def _pos(mjd, period, t_peri, ecc, inc, omega, Omega, a):
+    """Companion (dRA, dDec) at ``mjd`` from `crosscheck.orbits.position`, stacked to shape (..., 2) (mas)."""
     x, y = O.position(mjd, period, t_peri, ecc, inc, omega, Omega, a)
     return np.stack([np.asarray(x), np.asarray(y)], -1)
 
 
 def ref_pos(ref, mjd, d_omega=0.0, d_Omega=0.0, flip_inc=False):
+    """Reference orbit's (dRA, dDec) at ``mjd``, optionally under a convention variant.
+
+    Parameters
+    ----------
+    ref : dict
+        P, t_peri, ecc, inc, omega, Omega, a_mas, with omega the secondary's (see `crosscheck.references`).
+    mjd : array_like
+        Times, MJD.
+    d_omega, d_Omega : float
+        Degrees added to omega and Omega (the convention variants of ``VARIANTS``).
+    flip_inc : bool
+        Replace inc by 180 - inc (reversed sense of motion).
+
+    Returns
+    -------
+    numpy.ndarray
+        Positions, shape (len(mjd), 2), mas.
+    """
     inc = 180 - ref["inc"] if flip_inc else ref["inc"]
     return _pos(mjd, ref["P"], ref["t_peri"], ref["ecc"], inc, ref["omega"] + d_omega, ref["Omega"] + d_Omega, ref["a_mas"])
 
 
 def fit_pos(best, mjd, t_ref):
+    """Fitted orbit's (dRA, dDec) at ``mjd``.
+
+    Parameters
+    ----------
+    best : dict
+        period, dt_peri (days from ``t_ref``), ecc, inc, omega, Omega, a_mas.
+    mjd : array_like
+        Times, MJD.
+    t_ref : float
+        Reference time of ``dt_peri``, MJD.
+
+    Returns
+    -------
+    numpy.ndarray
+        Positions, shape (len(mjd), 2), mas.
+    """
     return _pos(
         mjd, best["period"], t_ref + best["dt_peri"], best["ecc"], best["inc"], best["omega"], best["Omega"], best["a_mas"]
     )
 
 
 def _rms(d):
+    """Root-mean-square length of the 2-vectors ``d`` (shape (N, 2)), as a float."""
     return float(np.sqrt(np.mean(np.sum(d**2, -1))))
 
 
-def score(meta, best, t_ref=None, samples=None, flipped=False, sign_free=False):
+def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False, chi2_n=None):
     """Compare a fitted orbit with ``meta["reference"]`` on the sky at ``meta["mjd"]``.
 
-    ``best`` holds period, dt_peri (days from ``t_ref``), ecc, inc, omega, Omega, a_mas; ``samples`` (optional)
-    the same keys as arrays, for the posterior spread. Returns rms and max offset (mas), the rms as a fraction of
-    the mean separation, the rms over the posterior spread, whether the reference's point reflection matches (the
-    flux-ratio flip), the rms of each convention variant, the Thiele-Innes constants and the verdict
-    SAME-SKY-ORBIT, DIFFERENT or UNEXPLAINED-FLIP (matches only as a point reflection, though the fit did not swap
-    labels and ``sign_free`` is false). ``flipped`` is the fit's label swap (band.flipped or fitted flux > 1).
-    The position match needs both frac_sep < SAME_FRACTION and, with samples, offset_over_spread < SAME_SIGMA.
+    Parameters
+    ----------
+    meta : dict
+        ``mjd`` (epochs) and ``reference`` (P, t_peri, ecc, inc, omega, Omega, a_mas; omega the secondary's,
+        normalised by `crosscheck.references`).
+    best : dict
+        period, dt_peri (days from ``t_ref``), ecc, inc, omega, Omega, a_mas; optionally ``t_ref``.
+    t_ref : float, optional
+        Reference time of ``dt_peri`` (default ``best["t_ref"]`` or 0).
+    samples : dict of array_like, optional
+        The same keys as ``best``, as arrays, for the posterior spread.
+    flipped : bool
+        The fit's label swap (band.flipped, or fitted flux > 1).
+    labels_free : bool
+        The fit's own report that its labels are free (near-equal fluxes, so the data cannot tell the stars
+        apart). Never derived from a list of system names. Only with this or ``flipped`` is a point-reflected
+        match accepted.
+    chi2_n : float, optional
+        The fit's raw chi^2 per data point. When it is at most ``GOOD_CHI2_N`` and the orbit is far from the
+        reference, the verdict is REFERENCE-DISAGREES rather than DIFFERENT.
+
+    Returns
+    -------
+    dict
+        rms and max offset (mas), the rms as a fraction of the mean separation (``frac_sep``), the rms over the
+        posterior spread, whether the reference's point reflection matches (``flux_flip_matches``), the rms of each
+        convention variant, the Thiele-Innes constants, ``rule_version`` (``VERDICT_RULE_VERSION``) and the
+        ``verdict``: SAME-SKY-ORBIT, DIFFERENT, REFERENCE-DISAGREES, or UNEXPLAINED-FLIP (matches only as a point
+        reflection, though the fit did not swap labels and ``labels_free`` is false). The position match needs
+        both frac_sep < SAME_FRACTION and, with samples, offset_over_spread < SAME_SIGMA.
     """
     mjd = np.asarray(meta["mjd"], float)
     ref = meta["reference"]
@@ -79,17 +142,22 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, sign_free=False):
         r = ref_pos(ref, mjd, d_omega, d_Omega, flip_inc)
         for sign, tag in ((1, ""), (-1, " +flip")):
             variants[name + tag] = _rms(ours - sign * r)
+    # The near-equal reflection: for a near-equal pair the data cannot tell the stars apart, so a good fit may sit on
+    # the reference's point reflection (every relative position negated). The nearer of the two is compared, and
+    # which one is reported as ``mirror``; whether it counts as agreement is decided at the verdict below.
     sign = 1 if variants["as-is"] <= variants["as-is +flip"] else -1
     r0 = sign * ref_pos(ref, mjd)
     dist = np.hypot(*(ours - r0).T)
     sep = np.hypot(*r0.T)
     rms = float(np.sqrt(np.mean(dist**2)))
     out = dict(
+        rule_version=VERDICT_RULE_VERSION,
         variant_rms=variants,
         mirror="flip" if sign < 0 else "none",
         flux_flip_matches=sign < 0,
         flipped=bool(flipped),
-        sign_free=bool(sign_free),
+        labels_free=bool(labels_free),
+        chi2_n=None if chi2_n is None else float(chi2_n),
         rms=rms,
         max=float(dist.max()),
         mean_sep=float(np.mean(sep)),
@@ -125,8 +193,11 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, sign_free=False):
     if samples is not None:
         sky_ok = sky_ok and out["offset_over_spread"] < SAME_SIGMA
     if not sky_ok:
-        out["verdict"] = "DIFFERENT"
-    elif sign < 0 and not (flipped or sign_free):
+        # A fit that describes its own data but is far from the reference is a disagreement with the reference, not
+        # a failed fit: report it as such (the caller supplies the raw chi^2/N; without it the verdict is DIFFERENT).
+        good_fit = chi2_n is not None and chi2_n <= GOOD_CHI2_N
+        out["verdict"] = "REFERENCE-DISAGREES" if good_fit else "DIFFERENT"
+    elif sign < 0 and not (flipped or labels_free):
         out["verdict"] = "UNEXPLAINED-FLIP"
     else:
         out["verdict"] = "SAME-SKY-ORBIT"

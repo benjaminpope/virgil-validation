@@ -250,9 +250,13 @@
       "i_deg": [
         95.865,
         0.011
-      ]
+      ],
+      "omega_of": "secondary",
+      "omega_of_basis": "UNRESOLVED: the paper does not say whose omega this is. Set to 'secondary' because that is how the gallery comparison (oidb_compare, orbit_gallery) reads it today; orbit_diagnose reads it as the primary's (+180 deg). Do not rely on it until resolved."
     },
-    "source": "Table 3, p. 24; compared with Konacki et al. (2010) spectroscopic+interferometric orbit; text p. 22: 'The best-fit parameters very well match with spectroscopic observations Konacki et al. (2010)'. Flux ratio: 'We estimate a flux ratio of primary to secondary Fpri/sec of 4.6 +/- 0.1 ... compared with 5.0 +/- 0.5 reported by Konacki et al. (2010)', p. 22."
+    "source": "Table 3, p. 24; compared with Konacki et al. (2010) spectroscopic+interferometric orbit; text p. 22: 'The best-fit parameters very well match with spectroscopic observations Konacki et al. (2010)'. Flux ratio: 'We estimate a flux ratio of primary to secondary Fpri/sec of 4.6 +/- 0.1 ... compared with 5.0 +/- 0.5 reported by Konacki et al. (2010)', p. 22.",
+    "omega_of": "secondary",
+    "omega_of_basis": "UNRESOLVED: the paper does not say whose omega this is. Set to 'secondary' because that is how the gallery comparison (oidb_compare, orbit_gallery) reads it today; orbit_diagnose reads it as the primary's (+180 deg). Do not rely on it until resolved."
   },
   "other_papers": "Searched arXiv/web: Gardner et al. 2022 (ARMADA II, arXiv:2209.00669, AJ doi 10.3847/1538-3881/ac8eae) mentions MIRC-X wavelength correction factor 1.0054 +/- 0.0006 but its text contains no iota Peg orbit/epochs (grep for 'Peg' found nothing relevant). The MIRC-X paper says the etalon wavelength calibration is 'Gardner et al., in prep'. No separate published iota Peg orbit using these five epochs found.",
   "notes": "Headline result: Table 2 squeeze+model fitting (not CANDID) is the basis for the orbit. Flux ratio 4.6 +/- 0.1 is a summary value in text. Page numbers refer to the printed AJ layout as reproduced in the arXiv PDF (journal pagination 'N. Anugu et al.' headers). Orbit only constrains MIRC-X astrometry; wavelength-scale systematic 0.5% on separations not included in Table 2."

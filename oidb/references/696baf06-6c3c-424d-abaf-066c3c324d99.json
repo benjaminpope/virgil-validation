@@ -614,7 +614,9 @@
             0.27,
             0.027
           ]
-        ]
+        ],
+        "omega_of": "secondary",
+        "omega_of_basis": "Klement+25: the companion's (pre-sd) omega, per the conventions note; omega_shift_deg = 0."
       },
       "astrometry_only (Table 2, p. 5; omega is omega_pre-sd)": {
         "circular": {
@@ -640,7 +642,9 @@
             3.1
           ],
           "omega_deg": 90,
-          "rms_uas": 25
+          "rms_uas": 25,
+          "omega_of": "secondary",
+          "omega_of_basis": "Klement+25: the companion's (pre-sd) omega, per the conventions note; omega_shift_deg = 0."
         },
         "eccentric": {
           "P_day": [
@@ -671,10 +675,16 @@
             117.6,
             8.9
           ],
-          "rms_uas": 19
-        }
+          "rms_uas": 19,
+          "omega_of": "secondary",
+          "omega_of_basis": "Klement+25: the companion's (pre-sd) omega, per the conventions note; omega_shift_deg = 0."
+        },
+        "omega_of": "secondary",
+        "omega_of_basis": "Klement+25: the companion's (pre-sd) omega, per the conventions note; omega_shift_deg = 0."
       }
-    }
+    },
+    "omega_of": "secondary",
+    "omega_of_basis": "Klement+25: the companion's (pre-sd) omega, per the conventions note; omega_shift_deg = 0."
   },
   "other_results": {
     "mean flux ratio f_pre-sd (weighted)": [
