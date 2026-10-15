@@ -161,31 +161,16 @@ def _trackb_system(root, name):
 
 
 def _trackb_reference(s, primary_omega=False):
-    ro = s.get("reference_orbit") or {}
-    need = ("P_day", "T0", "e", "omega_deg", "Omega_deg", "i_deg", "a_mas")
-    if not all(k in ro for k in need):
-        return None
-    t0 = ro["T0"]
-    unit = str(t0[2]) if len(t0) > 2 else ""
-    if "BJD-2400000" in unit:  # alpha Equ: MJD = BJD - 2400000.5, so BJD-2400000 less 0.5 d
-        t_peri = t0[0] - 0.5
-    else:
-        jd = t0[0] + 2445000.0 if "HJD-2445000" in unit else t0[0]  # AL Dor: Tp is HJD-2445000
-        t_peri = jd - MJD_JD
-    return dict(
-        P=ro["P_day"][0],
-        t_peri=t_peri,
-        ecc=ro["e"][0],
-        inc=ro["i_deg"][0],
-        # The tabulated omega reproduces the published companion positions in crosscheck.orbits' convention as it
-        # stands (checked for 7 of the 8 Track B systems: the old +180 deg gave their point reflection; alpha Equ's omega_1 is
-        # the primary's, hence +180 via PRIMARY_OMEGA).
-        omega=ro["omega_deg"][0] + (180.0 if primary_omega else 0.0),
-        Omega=ro["Omega_deg"][0],
-        a_mas=ro["a_mas"][0],
-        source=s["reference"].get("positions_source", "")[:60]
-        or s["reference"].get("bibcode", ""),
-    )
+    """Track B reference orbit in crosscheck.orbits convention, via `crosscheck.references.trackb_reference`.
+
+    Solved problem, primary versus secondary omega: the tabulated omega reproduces the published companion positions
+    as it stands for 7 of the 8 Track B systems (the old +180 deg gave their point reflection); alpha Equ's is
+    omega_1, the primary's. ``primary_omega`` is that ``omega_of`` choice made explicit (``PRIMARY_OMEGA``, to be
+    removed when the Track B files carry ``reference_orbit.omega_of``).
+    """
+    from crosscheck import references as REF
+
+    return REF.trackb_reference(s, omega_of="primary" if primary_omega else "secondary")
 
 
 def _check_published(ref, refpos, limit_mas=0.5):
@@ -843,7 +828,11 @@ def run(name, args):
         print(
             f"reference (P={ref['P']:.4f} d) lies in band N={meta['reference_band']['n']}; winner N={result.best.n}"
         )
-        meta["sky_plane"] = attempt("sky_plane", lambda: sky_plane(result, meta, ref, sysd.sign_free, init is not None))
+        # The reflection is accepted for a near-equal pair only when the fit reports its labels free. virgil's result
+        # does not report it yet (virgil#324 follow-up, OrbitPipeline), so until it does this is the fit setting
+        # the run was given; a result that carries ``labels_free`` wins.
+        labels_free = bool(getattr(result, "labels_free", sysd.sign_free))
+        meta["sky_plane"] = attempt("sky_plane", lambda: sky_plane(result, meta, ref, labels_free, init is not None))
         if init is not None and result.best.best:
             meta["init_check"] = attempt(
                 "init_check", lambda: init_check(result, loaded, init, primary_diam, meta["mjd"])
@@ -921,11 +910,12 @@ def run(name, args):
     print(f"wrote {outdir} in {time.time() - t0:.0f} s")
 
 
-def sky_plane(result, meta, ref, sign_free=False, warm_started=False):
+def sky_plane(result, meta, ref, labels_free=False, warm_started=False):
     """Sky-plane agreement with the reference (crosscheck.skyplane) for the winning band and the reference's
     band: rms and max offset at the epochs, the point-reflection (flux flip) used, and the verdict. A reflection
-    is accepted only if the band's fit swapped the labels (band.flipped or fitted flux > 1) or the system is
-    sign_free. ``warm_started``: the reference band's fit began at the reference orbit."""
+    is accepted only if the band's fit swapped the labels (band.flipped or fitted flux > 1) or the fit reported its
+    labels free (``labels_free``). Each band's raw chi2/N goes to the score so that a good fit far from the reference
+    reads REFERENCE-DISAGREES. ``warm_started``: the reference band's fit began at the reference orbit."""
     from crosscheck import skyplane as SP
 
     m = dict(mjd=meta["mjd"], reference=ref)
@@ -938,7 +928,8 @@ def sky_plane(result, meta, ref, sign_free=False, warm_started=False):
         if not b.best:
             continue
         flipped = bool(getattr(b, "flipped", False)) or (b.best.get("flux") or 0.0) > 1.0
-        sc = SP.score(m, b.best, result.t_ref, result.samples.get(b.n), flipped=flipped, sign_free=sign_free)
+        sc = SP.score(m, b.best, result.t_ref, result.samples.get(b.n), flipped=flipped, labels_free=labels_free,
+                      chi2_n=getattr(b, "chi2_red", None))
         warm = warm_started and b is hit
         out[k] = dict(sc, band=b.n, period=b.best["period"], p=b.p, flipped=flipped, warm_started=warm)
     return out

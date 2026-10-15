@@ -19,7 +19,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO / "src"))
 
-from crosscheck.skyplane import SAME_FRACTION, SAME_SIGMA  # noqa: E402
+from crosscheck.skyplane import GOOD_CHI2_N, SAME_FRACTION, SAME_SIGMA, VERDICT_RULE_VERSION  # noqa: E402
 
 TEMPLATE = REPO / "scripts" / "templates" / "aliases_page.md.tmpl"
 ASSETS = REPO / "docs" / "assets" / "orbit_aliases"
@@ -93,7 +93,9 @@ def section(name, label, instrument, sysdir, rel):
             "Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit "
             "many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection "
             "matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap "
-            "(and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if "
+            "(and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is "
+            f"good on its own data (raw chi2/N at most {GOOD_CHI2_N:g}) but far from the reference is REFERENCE-DISAGREES. Verdict rule "
+            f"version {VERDICT_RULE_VERSION}. The verdict is SAME-SKY-ORBIT only if "
             f"the rms offset is under {SAME_FRACTION:.0%} of the separation and, with posterior samples, under {SAME_SIGMA:g} "
             "posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement "
             "there is not independent.\n"

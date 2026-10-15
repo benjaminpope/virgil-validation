@@ -206,3 +206,26 @@ def test_target_without_a_summary_is_awaiting(og, tmp_path):
     # one summary present: only that tile leaves the awaiting state
     mixed = og.build(FIX / "summaries")
     assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b", "iota-peg-workshop", "sigma-ori"]
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["literature"], kind="guard")
+@pytest.mark.parametrize("cid,pub,limit", [("eso-9sgr", 0, 0.3), ("eso-9sgr", 1, 0.3), ("eso-hd168137", 0, 0.45)])
+def test_eso_references_reproduce_their_published_epochs(og, cid, pub, limit):
+    """Transcription check of the 9 Sgr and HD 168137 references against the literature, without fitting (it cannot check
+    the sign of omega and Omega: positions are invariant under their joint 180 degree flip): the
+    published orbit, evaluated by crosscheck.orbits at the published epochs, lands within the rms limit
+    (0.19, 0.16 and 0.30 mas when written; the Fabry+21 orbit is scored on the 23 epochs and LB17's on its 18)."""
+    ref = json.loads((ROOT / "oidb" / "references" / f"{cid}.json").read_text())
+    assert ref["conventions"]["omega_shift_deg"] == 0 and ref["paper"]["arxiv"] == "1608.03525"
+    el = og.published_orbits("9sgr" if cid == "eso-9sgr" else "hd168137", ref)[pub][1]
+    rows = [e for e in ref["epochs"] if pub == 1 or not e.get("new_in_fabry21")]
+    off = []
+    for e in rows:
+        dra, ddec = (float(np.ravel(x)[0]) for x in orbits.position(
+            e["mjd"], el["period_day"], el["t_peri_mjd"], el["ecc"], el["inc_deg"], el["omega_deg"], el["Omega_deg"], el["a_mas"]))
+        rho, pa = e["rho_mas"][0], np.radians(e["pa_deg"][0])
+        off.append(np.hypot(dra - rho * np.sin(pa), ddec - rho * np.cos(pa)))
+    rms = float(np.sqrt(np.mean(np.square(off))))
+    assert rms < limit, rms
+    assert len(rows) == (23 if pub == 1 else 18 if cid == "eso-9sgr" else 11)
+    record("rms_offset_mas", round(rms, 3))

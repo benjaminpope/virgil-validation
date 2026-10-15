@@ -28,11 +28,11 @@ def test_the_label_swap_is_a_point_reflection():
     sc = S.score(META, _best(omega=REF["omega"] + 180.0), t_ref=60000.0, flipped=True)
     assert sc["rms"] < 1e-6 and sc["mirror"] == "flip" and sc["flux_flip_matches"]
     assert sc["verdict"] == "SAME-SKY-ORBIT"
-    assert S.score(META, _best(omega=REF["omega"] + 180.0), t_ref=60000.0, sign_free=True)["verdict"] == "SAME-SKY-ORBIT"
+    assert S.score(META, _best(omega=REF["omega"] + 180.0), t_ref=60000.0, labels_free=True)["verdict"] == "SAME-SKY-ORBIT"
 
 
 def test_a_reflection_without_a_label_swap_fails():
-    # control: -ref with flipped=False and sign_free=False is a sign error (e.g. a closure-phase sign), not agreement
+    # control: -ref with flipped=False and labels_free=False is a sign error (e.g. a closure-phase sign), not agreement
     sc = S.score(META, _best(omega=REF["omega"] + 180.0), t_ref=60000.0, flipped=False)
     assert sc["rms"] < 1e-6 and sc["mirror"] == "flip" and sc["verdict"] == "UNEXPLAINED-FLIP"
 
@@ -74,3 +74,31 @@ def test_a_tight_posterior_on_the_reference_passes():
     samples["a_mas"] = REF["a_mas"] + 0.01 * rng.standard_normal(50)
     sc = S.score(META, _best(), t_ref=60000.0, samples=samples)
     assert sc["verdict"] == "SAME-SKY-ORBIT"
+
+
+def test_the_score_carries_the_verdict_rule_version():
+    assert S.VERDICT_RULE_VERSION == 2
+    assert S.score(META, _best(), t_ref=60000.0)["rule_version"] == S.VERDICT_RULE_VERSION
+
+
+def test_a_good_fit_far_from_the_reference_is_a_reference_disagreement():
+    far = _best(inc=100.0, a_mas=4.0)
+    assert S.score(META, far, t_ref=60000.0)["verdict"] == "DIFFERENT"  # no chi2 supplied: nothing says the fit is good
+    assert S.score(META, far, t_ref=60000.0, chi2_n=1.1)["verdict"] == "REFERENCE-DISAGREES"
+    # control: a poor fit far from the reference is still just DIFFERENT, and a good fit on the reference is the same orbit
+    assert S.score(META, far, t_ref=60000.0, chi2_n=25.0)["verdict"] == "DIFFERENT"
+    assert S.score(META, _best(), t_ref=60000.0, chi2_n=1.1)["verdict"] == "SAME-SKY-ORBIT"
+
+
+def test_the_reflection_is_accepted_only_with_the_fits_own_labels_report():
+    refl = _best(omega=REF["omega"] + 180.0)
+    assert S.score(META, refl, t_ref=60000.0, labels_free=True)["verdict"] == "SAME-SKY-ORBIT"
+    assert S.score(META, refl, t_ref=60000.0)["verdict"] == "UNEXPLAINED-FLIP"
+    with pytest.raises(TypeError):  # the hard-coded system flag is gone
+        S.score(META, refl, t_ref=60000.0, sign_free=True)
+
+
+def test_there_is_one_thiele_innes():
+    from crosscheck import orbits as O
+
+    assert S.thiele_innes is O.thiele_innes
