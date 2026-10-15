@@ -158,11 +158,16 @@ labelled as not preregistered.
 ## 7. Implementation
 
 - `src/crosscheck/orbits.py` has the Campbell sky projection (`sky_position`) and,
-  with the axis assignment of §1, `thiele_innes`, `predict_track`, `per_epoch_d2`,
-  `joint_d2`, `max_track_separation` (statistic A), `projected_elements` and
-  `statistic_b` (statistic B), `fold_samples` and `mirror_fraction` (§4), and
-  `compare_orbits`, which applies the reference-samples rule of §2 (a
-  marginals-only reference is never scored). Numpy only, never importing virgil.
+  with the axis assignment of §1, the one `thiele_innes`, `predict_track`,
+  `fold_samples` and `mirror_fraction` (§4). Numpy only, never importing virgil.
+  **Update (PR 2a):** statistics A and B (`per_epoch_d2`, `joint_d2`,
+  `max_track_separation`, `projected_elements`, `statistic_b`) and
+  `compare_orbits` were deleted (nothing outside their own tests used them): the
+  comparison is the sky-plane score of `crosscheck.skyplane`, which imports
+  `thiele_innes` from `orbits.py`, carries `VERDICT_RULE_VERSION`, and returns
+  REFERENCE-DISAGREES for a good fit far from the reference. The reflection is
+  accepted only when the fit reports `labels_free`. `crosscheck.references`
+  normalises every reference omega by its required `omega_of` field.
 - Our samples come from the orbit-fitting outputs,
   `~/data/orbit_fits/<system>/<run>/{fit.json,samples.npz}` (schema in
   `~/data/orbit_fits/SCHEMA.md`).
