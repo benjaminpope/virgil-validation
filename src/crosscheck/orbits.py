@@ -72,14 +72,10 @@ def radial_velocity(t, period, t_peri, ecc, inc, omega, a):
 
 
 # ---------------------------------------------------------------------------
-# Comparing no-RV orbit fits in projected degrees of freedom
-# (design/orbit_comparison.md).  Samples are dicts of equal-length arrays with
+# Projected-orbit helpers for the sky-plane comparison (crosscheck.skyplane,
+# design/orbit_comparison.md). Samples are dicts of equal-length arrays with
 # keys P (days), e, t_p (days), a (mas), inc, omega, Omega (degrees).
 # ---------------------------------------------------------------------------
-
-ELEMENTS = ("P", "e", "t_p", "a", "inc", "omega", "Omega")
-RTOL_EIG = 1e-6  # eigenvalue threshold of the pseudo-inverse, relative to the largest
-
 
 def thiele_innes(a, inc, omega, Omega):
     """Thiele-Innes constants (A, B, F, G), degrees in, a's units out.
@@ -87,8 +83,28 @@ def thiele_innes(a, inc, omega, Omega):
     Expanding `sky_position` in cos f and sin f (textbook, e.g. Heintz 1978):
     dDec = A x + F y and dRA = B x + G y with x = cos E - e and
     y = sqrt(1 - e^2) sin E. So A, F are the Dec coefficients and B, G the RA
-    ones. This is the only place the constants are computed; never take them
+    ones. This is the only place the constants are computed (the copy in
+    `crosscheck.skyplane` was deleted; it imports this one); never take them
     from a quoted table.
+
+    Solved problem, the (Omega + 180, omega + 180) twin: every constant is a
+    product of one cosine or sine of omega with one of Omega, so shifting both
+    angles by 180 deg leaves A, B, F, G unchanged and the two element sets are
+    one sky orbit. Shifting only one of them negates all four: the point
+    reflection, i.e. the primary/secondary label swap. Compare orbits through
+    these constants, never through raw (Omega, omega).
+
+    Parameters
+    ----------
+    a : float or array_like
+        Semi-major axis, in any unit (returned in the same unit).
+    inc, omega, Omega : float or array_like
+        Inclination, argument of periastron of the companion and node, degrees.
+
+    Returns
+    -------
+    A, B, F, G : numpy.ndarray
+        The Thiele-Innes constants, in the unit of ``a``.
     """
     i, w, W = (np.deg2rad(np.asarray(v, float)) for v in (inc, omega, Omega))
     a = np.asarray(a, float)
@@ -100,7 +116,25 @@ def thiele_innes(a, inc, omega, Omega):
 
 
 def _kepler_E(mean, ecc):
-    """Vectorised Newton solution of M = E - e sin E (starting at pi for high e)."""
+    """Vectorised Newton solution of M = E - e sin E (starting at pi for high e).
+
+    Parameters
+    ----------
+    mean : array_like
+        Mean anomaly, radians.
+    ecc : float or array_like
+        Eccentricity, broadcast against ``mean``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Eccentric anomaly E, radians, in [-pi, pi).
+
+    Raises
+    ------
+    RuntimeError
+        If Newton's method has not converged in 100 steps.
+    """
     mean = np.mod(mean + np.pi, 2 * np.pi) - np.pi
     E = mean + ecc * np.sin(mean)
     E = np.where(ecc > 0.8, np.where(mean < 0, -np.pi, np.pi), E)
@@ -117,8 +151,19 @@ def _kepler_E(mean, ecc):
 def predict_track(samples, t):
     """Relative positions (dRA, dDec) of every sample at times t (days).
 
-    Returns an array (n_samples, len(t), 2). Built from the Thiele-Innes form,
-    so it equals `position` to rounding.
+    Built from the Thiele-Innes form, so it equals `position` to rounding.
+
+    Parameters
+    ----------
+    samples : dict of array_like
+        Equal-length arrays P (days), e, t_p (days), a, inc, omega, Omega (degrees).
+    t : array_like
+        Times, days.
+
+    Returns
+    -------
+    numpy.ndarray
+        Positions (dRA, dDec) with shape (n_samples, len(t), 2).
     """
     t = np.asarray(t, float)
     P, e, tp = (np.asarray(samples[k], float)[:, None] for k in ("P", "e", "t_p"))
@@ -129,117 +174,26 @@ def predict_track(samples, t):
     return np.stack([B * x + G * y, A * x + F * y], axis=-1)
 
 
-def _quad(d, C, rtol=RTOL_EIG):
-    """d^T C^+ d with eigenvalues below rtol * max dropped.
-
-    Returns (d2, rank, norm of the part of d outside the retained subspace).
-    """
-    w, V = np.linalg.eigh(np.atleast_2d(C))
-    keep = w > rtol * w.max()
-    c = V.T @ d
-    d2 = float(np.sum(c[keep] ** 2 / w[keep]))
-    return d2, int(keep.sum()), c[~keep]
-
-
-def _flat(track):
-    """(n, N, 2) -> (n, 2N) with the two axes interleaved per epoch."""
-    return track.reshape(track.shape[0], -1)
-
-
-def per_epoch_d2(ours, ref, c_ref=None):
-    """Statistic A per epoch. ours, ref: (n, N, 2) predicted positions.
-
-    d^2 = dmu^T (C_ours + C_ref)^-1 dmu ~ chi^2_2 per epoch. `c_ref` overrides the
-    reference covariance (N, 2, 2), e.g. zeros for the C_ours-alone variant.
-    Returns (d2 (N,), p (N,)).
-    """
-    dmu = ours.mean(0) - ref.mean(0)
-    d2 = np.empty(dmu.shape[0])
-    for k in range(dmu.shape[0]):
-        C = np.cov(ours[:, k, :].T)
-        C = C + (np.cov(ref[:, k, :].T) if c_ref is None else c_ref[k])
-        d2[k] = _quad(dmu[k], C)[0]
-    from scipy import stats
-    return d2, stats.chi2.sf(d2, 2)
-
-
-def joint_d2(ours, ref, sigma, c_ref=None):
-    """Statistic A, joint over epochs, with the eigenvalue-threshold pseudo-inverse.
-
-    Returns a dict: d2, rank r, p (chi^2_r), residual (norm of dmu outside the
-    retained subspace, in units of the per-epoch position errors `sigma`, which
-    is required: the comparison fails if it exceeds 1, see residual_ok).
-    """
-    from scipy import stats
-    dmu = (ours.mean(0) - ref.mean(0)).ravel()
-    C = np.cov(_flat(ours).T)
-    C = C + (np.cov(_flat(ref).T) if c_ref is None else c_ref)
-    w, V = np.linalg.eigh(C)
-    keep = w > RTOL_EIG * w.max()
-    c = V.T @ dmu
-    d2 = float(np.sum(c[keep] ** 2 / w[keep]))
-    perp = V[:, ~keep] @ c[~keep]
-    resid = float(np.linalg.norm(perp / np.broadcast_to(np.asarray(sigma, float), dmu.shape)))
-    r = int(keep.sum())
-    return {"d2": d2, "rank": r, "p": float(stats.chi2.sf(d2, r)), "residual": resid,
-            "residual_ok": resid <= 1.0}
-
-
-def max_track_separation(ours, ref):
-    """Max separation of the two median tracks over one period, as a fraction of a.
-
-    Samples are dicts; the grid starts at the median periastron of `ours`.
-    """
-    P = np.median(ours["P"])
-    t = np.median(ours["t_p"]) + np.linspace(0, P, 721)
-    mo = np.median(predict_track(ours, t), axis=0)
-    mr = np.median(predict_track(ref, t), axis=0)
-    return float(np.max(np.hypot(*(mo - mr).T)) / np.median(ours["a"]))
-
-
-def periastron_anchor(samples, t_mean):
-    """The single periastron nearest `t_mean`, from the median P and t_p."""
-    P, tp = np.median(samples["P"]), np.median(samples["t_p"])
-    return float(tp + P * np.round((t_mean - tp) / P))
-
-
-def projected_elements(samples, t_mean, anchor=None):
-    """theta = (P, e, t_p, A, B, F, G) per sample, shape (n, 7).
-
-    t_p is shifted by whole periods to the periastron nearest one anchor shared
-    by the whole comparison (default: `periastron_anchor` of these samples), so
-    a posterior straddling a half-period boundary is not split into two modes.
-    """
-    anchor = periastron_anchor(samples, t_mean) if anchor is None else anchor
-    P, tp = np.asarray(samples["P"], float), np.asarray(samples["t_p"], float)
-    tp = tp + P * np.round((anchor - tp) / P)
-    ABFG = thiele_innes(*(np.asarray(samples[k], float) for k in ("a", "inc", "omega", "Omega")))
-    return np.column_stack([P, samples["e"], tp, *ABFG])
-
-
-def statistic_b(ours, ref, t_mean, e_min=0.1, c_ref=None):
-    """Statistic B: d^2 ~ chi^2_7 on the projected elements.
-
-    Not applicable when the median e of either posterior is below `e_min`
-    (t_p undefined as e -> 0): use statistic A there.
-    """
-    from scipy import stats
-    if min(np.median(ours["e"]), np.median(ref["e"])) < e_min:
-        return {"applicable": False, "d2": np.nan, "rank": 0, "p": np.nan,
-                "reason": f"median e < {e_min}: t_p undefined, use statistic A"}
-    anchor = periastron_anchor(ours, t_mean)
-    to, tr = projected_elements(ours, t_mean, anchor), projected_elements(ref, t_mean, anchor)
-    C = np.cov(to.T) + (np.cov(tr.T) if c_ref is None else c_ref)
-    d2, r, _ = _quad(to.mean(0) - tr.mean(0), C)
-    return {"applicable": True, "d2": d2, "rank": r, "p": float(stats.chi2.sf(d2, r)), "reason": ""}
-
-
 def fold_samples(omega, Omega, Omega_ref):
     """Fold to Omega in [Omega_ref - 90, Omega_ref + 90), shifting omega with it.
 
-    Returns (omega, Omega, mirror) with mirror True for samples that needed an
-    odd number of 180 degree shifts (the mirror mode relative to Omega_ref).
-    Angles in degrees; omega is returned in [0, 360).
+    Solved problem, the (Omega + 180, omega + 180) twin: the two shifts together
+    leave the sky orbit unchanged (see `thiele_innes`), so samples are folded
+    by moving both. A sample that needed an odd number of shifts is in the
+    other node mode, which is still the same orbit on the sky.
+
+    Parameters
+    ----------
+    omega, Omega : array_like
+        Sample angles, degrees.
+    Omega_ref : float
+        Node to fold around, degrees.
+
+    Returns
+    -------
+    omega, Omega, mirror : numpy.ndarray
+        Folded angles (omega in [0, 360)) and a bool array, True for samples
+        that needed an odd number of 180 degree shifts.
     """
     omega, Omega = np.asarray(omega, float), np.asarray(Omega, float)
     k = np.floor((Omega - Omega_ref + 90.0) / 180.0)
@@ -247,47 +201,18 @@ def fold_samples(omega, Omega, Omega_ref):
 
 
 def mirror_fraction(Omega, Omega_ref):
-    """Posterior weight of the mirror mode, before folding."""
-    return float(np.mean(fold_samples(np.zeros_like(np.asarray(Omega, float)), Omega, Omega_ref)[2]))
+    """Posterior weight of the node mirror mode, before folding.
 
+    Parameters
+    ----------
+    Omega : array_like
+        Sample nodes, degrees.
+    Omega_ref : float
+        Reference node, degrees.
 
-def independent_draws(marginals, n, rng):
-    """Samples drawn independently from {element: (mean, sd)}: the C_ref
-    variant that ignores correlations. Labelled unscored by `compare_orbits`."""
-    return {k: rng.normal(*marginals[k], size=n) for k in ELEMENTS}
-
-
-def compare_orbits(ours, ref, t_obs, *, sigma, ref_kind="samples", t_mean=None, rng=None):
-    """Run statistics A and B against a reference.
-
-    ref_kind="samples": `ref` holds samples (or a sample set carrying the
-    published covariance) and every statistic is scored.
-    ref_kind="marginals": `ref` maps element -> (mean, sd) only. Nothing is
-    scored. Reports the C_ours-alone d^2 (stricter bound, C_ref = 0) and the
-    independent-draw C_ref variant, both with scored=False.
+    Returns
+    -------
+    float
+        Fraction of samples more than 90 deg (modulo 360) from ``Omega_ref``.
     """
-    t_obs = np.asarray(t_obs, float)
-    t_mean = float(np.mean(t_obs)) if t_mean is None else t_mean
-    if ref_kind == "samples":
-        rt = predict_track(ref, t_obs)
-        ot = predict_track(ours, t_obs)
-        d2, p = per_epoch_d2(ot, rt)
-        return {"scored": True, "per_epoch_d2": d2, "per_epoch_p": p,
-                "joint": joint_d2(ot, rt, sigma), "B": statistic_b(ours, ref, t_mean),
-                "max_separation": max_track_separation(ours, ref)}
-    if ref_kind != "marginals":
-        raise ValueError(ref_kind)
-    rng = np.random.default_rng() if rng is None else rng
-    n = len(ours["P"])
-    mean = {k: np.full(n, float(np.atleast_1d(ref[k])[0])) for k in ELEMENTS}
-    ind = independent_draws(ref, n, rng)
-    ot = predict_track(ours, t_obs)
-    mt, it = predict_track(mean, t_obs), predict_track(ind, t_obs)
-    zero_e = np.zeros((len(t_obs), 2, 2))
-    out = {"scored": False}
-    for label, track, c_ref in (("ours_alone", mt, zero_e), ("independent_draws", it, None)):
-        d2, p = per_epoch_d2(ot, track, c_ref=c_ref)
-        cflat = None if c_ref is None else np.zeros((2 * len(t_obs),) * 2)
-        out[label] = {"scored": False, "per_epoch_d2": d2, "per_epoch_p": p,
-                      "joint": joint_d2(ot, track, sigma, c_ref=cflat)}
-    return out
+    return float(np.mean(fold_samples(np.zeros_like(np.asarray(Omega, float)), Omega, Omega_ref)[2]))

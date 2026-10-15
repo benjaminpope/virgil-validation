@@ -1,0 +1,897 @@
+{
+ "collection_id": "eso-9sgr",
+ "target": "9 Sgr (HD 164794; O3.5 V + O5.5 V, P = 3310 d)",
+ "paper": {
+  "authors": "Le Bouquin et al.",
+  "year": 2017,
+  "journal": "A&A 601, A34",
+  "bibcode": "2017A&A...601A..34L",
+  "doi": "10.1051/0004-6361/201629260",
+  "arxiv": "1608.03525"
+ },
+ "publication_status": {
+  "status": "published",
+  "evidence": "Crossref https://api.crossref.org/works/10.1051/0004-6361/201629260 returns A&A volume 601, issued 2017-04-25 for this title; bibcode from the VizieR ReadMe J/A+A/601/A34 (checked 2026-10-14). Element values are read from the Fig. A.7 panel of the arXiv:1608.03525 PDF ('A&A proofs'), not from a table: the brief's 'Table 4' is not what the arXiv version calls it. The published version might differ in the last digit."
+ },
+ "method": "Two unresolved stars fitted to each night of AMBER (amdlib 3), PIONIER (pndrs) or GRAVITY (ESO pipeline) data: free parameters are the two sky coordinates and the H-band flux ratio, the latter held constant over H and over epochs; orbital motion is neglected within a night (Sect. 2.3). Orbit: Levenberg-Marquardt on the resolved positions and the SB2 radial velocities together, ten parameters (P, T, a, e, i, Omega, omega of the secondary, Ka, Kb, gamma), with a constant 10.0 km/s RV shift between the components that the fit needed (Sect. 3.7). No priors.",
+ "flux_ratio_definition": "f_H = secondary / primary, H band, the secondary being the star faint in H (Sect. 2.3). f_H = 0.62 +/- 0.02 (Fig. A.7 panel; Fabry+21 Sect. 2.2 quotes the same). One value for all epochs. Not measured in K; the NACO Ks flux in design/plan_eso_binaries.md sat at its bound of 1, against this 0.62.",
+ "uncertainties": "Orbital uncertainties are the rms of fits to datasets corrupted by random additive noise of the quoted size (Sect. 2.5). Add a 1.5% systematic on a from the PIONIER effective-wavelength calibration. Per-epoch positions have error ellipses only. Le Bouquin+17 (Table B.1 caption, CDS ReadMe note 3) calls emax/emin the FWHM of the error ellipse's axes; Fabry+21 (Table A.2 caption) calls the same numbers 1-sigma. They cannot both be right: the factor is 2 sqrt(2 ln 2) = 2.3548. Stored as published; do not convert before the first blind fit shows which reading gives pulls of order 1.",
+ "conventions": {
+  "PA": "north through east; position of the secondary (faint in H) relative to the primary (bright in H), separation in mas (Table B.1 caption)",
+  "omega": "argument of periastron of the secondary, from the ascending node along the motion of the secondary; the ascending node is the node where the motion is directed away from the observer (Sect. 2.4). That is the same star and sense as virgil's omega (the companion's, node where it recedes), so omega_shift_deg = 0: TAKEN FROM THE PAPER'S TEXT, NOT CHECKED. Positions cannot check it: they are invariant under the joint flip (omega, Omega) -> (omega + 180, Omega + 180), so only radial velocities fix the receding node. What crosscheck.orbits shows is that the transcribed (omega, Omega) pair is consistent with the 18 published positions (a = 14.78 mas, T + 3P): 0.19 mas rms (0.49 mas worst, against error-ellipse major axes of 0.12-2.1 mas), with the position angle increasing in time for i < 90 deg. A blind astrometry-only fit may return (30.4, 247.2) deg, equally good: compare omega and Omega modulo that joint flip.",
+  "Omega": "longitude of the ascending node, in the plane of the sky, from north through east (Sect. 2.4). Without radial velocities Omega and omega are only fixed modulo the joint 180 deg flip; for 9 Sgr the published RVs fix them.",
+  "inclination": "i > 90 deg would mean a clockwise apparent orbit. 9 Sgr has i = 86.64 deg: counter-clockwise, PA increasing.",
+  "T": "T = 46613 +/- 21 MJD, a periastron passage of the secondary long before the data; T + 3P = 56544.2 falls inside them, against Fabry+21's T0 = 56547 +/- 12. Both are MJD. Only T modulo P matters.",
+  "omega_shift_deg": 0.0
+ },
+ "epochs": [
+  {
+   "date": "2009-06-13",
+   "mjd": 54995.306,
+   "instrument": "AMBER",
+   "rho_mas": [
+    20.74,
+    null
+   ],
+   "pa_deg": [
+    69.87,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 1.12,
+     "minor_mas": 0.75,
+     "pa_deg": 154,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "083.D-0066(A)",
+    "n_science_frames": 7,
+    "note": "UT1-UT3-UT4, LR-JHK; calibrator HD 174774 (OB 353324, the cube after the science OB 353316); the calibrator frames carry OBJECT='OBJECT' in the archive, so they are found by OB name CAL_HD174774_for_HD164794_runA"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2009-06-12"
+  },
+  {
+   "date": "2011-03-24",
+   "mjd": 55644.304,
+   "instrument": "AMBER",
+   "rho_mas": [
+    11.85,
+    null
+   ],
+   "pa_deg": [
+    71.58,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 1.2,
+     "minor_mas": 0.5,
+     "pa_deg": 116,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "386.D-0198(A)",
+    "n_science_frames": 8,
+    "note": "UT1-UT3-UT4, LR-JHK; two science OBs (200213472, 200213478) bracketed by calibrators HIP 82272 (200213475) and HIP 88850 (200213483); calibrator frames have OBJECT='OBJECT'"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2011-03-23"
+  },
+  {
+   "date": "2011-03-28",
+   "mjd": 55648.389,
+   "instrument": "AMBER",
+   "rho_mas": [
+    11.76,
+    null
+   ],
+   "pa_deg": [
+    72.19,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.83,
+     "minor_mas": 0.63,
+     "pa_deg": 113,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "086.D-0586(B)",
+    "n_science_frames": 5,
+    "note": "A1-K0-G1, LR-JHK; science OB 200213623 at 55648.385; no calibrator cube for HD 164794 appears within +-0.2 d of it in the archive (the listing ends at HD 152247), so the calibrator is unidentified: possibly the night has no usable transfer function for this OB"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2011-03-27"
+  },
+  {
+   "date": "2012-08-15",
+   "mjd": 56154.134,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    0.74,
+    null
+   ],
+   "pa_deg": [
+    149.1,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 1.85,
+     "minor_mas": 0.82,
+     "pa_deg": 16,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No PIONIER frame of any target exists in the public ESO archive between MJD 56100 and 56500 (checked on dbo.raw, 2026-10-14): these nights cannot be reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2012-08-14"
+  },
+  {
+   "date": "2012-09-19",
+   "mjd": 56189.027,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    1.09,
+    null
+   ],
+   "pa_deg": [
+    207.39,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 1.03,
+     "minor_mas": 0.48,
+     "pa_deg": 153,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No PIONIER frame of any target exists in the public ESO archive between MJD 56100 and 56500 (checked on dbo.raw, 2026-10-14): these nights cannot be reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2012-09-18"
+  },
+  {
+   "date": "2012-09-21",
+   "mjd": 56191.087,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    1.05,
+    null
+   ],
+   "pa_deg": [
+    201.56,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.57,
+     "minor_mas": 0.21,
+     "pa_deg": 138,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No PIONIER frame of any target exists in the public ESO archive between MJD 56100 and 56500 (checked on dbo.raw, 2026-10-14): these nights cannot be reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2012-09-20"
+  },
+  {
+   "date": "2013-03-25",
+   "mjd": 56376.318,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    4.87,
+    null
+   ],
+   "pa_deg": [
+    242.59,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.5,
+     "minor_mas": 0.23,
+     "pa_deg": 44,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No PIONIER frame of any target exists in the public ESO archive between MJD 56100 and 56500 (checked on dbo.raw, 2026-10-14): these nights cannot be reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2013-03-24"
+  },
+  {
+   "date": "2013-04-01",
+   "mjd": 56383.324,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    4.94,
+    null
+   ],
+   "pa_deg": [
+    241.83,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 1.82,
+     "minor_mas": 0.31,
+     "pa_deg": 112,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No PIONIER frame of any target exists in the public ESO archive between MJD 56100 and 56500 (checked on dbo.raw, 2026-10-14): these nights cannot be reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2013-03-31"
+  },
+  {
+   "date": "2013-05-26",
+   "mjd": 56438.244,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    5.57,
+    null
+   ],
+   "pa_deg": [
+    244.91,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.13,
+     "minor_mas": 0.06,
+     "pa_deg": 151,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": false,
+    "note": "No PIONIER frame of any target exists in the public ESO archive between MJD 56100 and 56500 (checked on dbo.raw, 2026-10-14): these nights cannot be reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2013-05-25"
+  },
+  {
+   "date": "2013-09-14",
+   "mjd": 56549.143,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    4.4,
+    null
+   ],
+   "pa_deg": [
+    247.37,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 2.12,
+     "minor_mas": 0.36,
+     "pa_deg": 141,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "091.D-0334(A)",
+    "n_science_frames": 25,
+    "note": "calibrator HD 165015 (G8 III/IV) in the same programme, labelled as a science target"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2013-09-13"
+  },
+  {
+   "date": "2014-02-26",
+   "mjd": 56714.359,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    3.23,
+    null
+   ],
+   "pa_deg": [
+    59.89,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.21,
+     "minor_mas": 0.18,
+     "pa_deg": 150,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "092.D-0590(B)",
+    "n_science_frames": 10,
+    "note": "calibrator HD 165015"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2014-02-25"
+  },
+  {
+   "date": "2014-04-04",
+   "mjd": 56751.389,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    4.92,
+    null
+   ],
+   "pa_deg": [
+    62.51,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.24,
+     "minor_mas": 0.1,
+     "pa_deg": 135,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "093.D-0673(A)",
+    "n_science_frames": 5,
+    "note": "calibrator HD 165015"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2014-04-03"
+  },
+  {
+   "date": "2014-05-06",
+   "mjd": 56783.35,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    6.23,
+    null
+   ],
+   "pa_deg": [
+    63.05,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.22,
+     "minor_mas": 0.09,
+     "pa_deg": 121,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "093.D-0673(C)",
+    "n_science_frames": 5,
+    "note": "calibrator HD 165015"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2014-05-05"
+  },
+  {
+   "date": "2014-05-10",
+   "mjd": 56787.34,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    6.43,
+    null
+   ],
+   "pa_deg": [
+    63.33,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.12,
+     "minor_mas": 0.09,
+     "pa_deg": 127,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "093.D-0673(C)",
+    "n_science_frames": 5,
+    "note": "calibrator HD 165015"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2014-05-09"
+  },
+  {
+   "date": "2014-06-10",
+   "mjd": 56818.282,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    7.56,
+    null
+   ],
+   "pa_deg": [
+    64.46,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.5,
+     "minor_mas": 0.23,
+     "pa_deg": 137,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "60.A-9209(A)",
+    "n_science_frames": 5,
+    "note": "calibrator HD 165015"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2014-06-09"
+  },
+  {
+   "date": "2014-09-03",
+   "mjd": 56903.045,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    10.63,
+    null
+   ],
+   "pa_deg": [
+    65.49,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.25,
+     "minor_mas": 0.22,
+     "pa_deg": 6,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "093.D-0039(A)",
+    "n_science_frames": 5,
+    "note": "calibrator HD 165015"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2014-09-02"
+  },
+  {
+   "date": "2016-06-19",
+   "mjd": 57558.303,
+   "instrument": "GRAVITY",
+   "rho_mas": [
+    21.25,
+    null
+   ],
+   "pa_deg": [
+    67.89,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.43,
+     "minor_mas": 0.24,
+     "pa_deg": 176,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "60.A-9168(A)",
+    "n_science_frames": 2,
+    "note": "Fabry+21 Table A.2 lists this row as PIONIER, but the ESO archive holds no PIONIER frame that night and GRAVITY science frames at MJD 57558.297-57558.305 (the next row of Table A.2 is the GRAVITY refit of the same night). Le Bouquin+17 says two 2016 points came from GRAVITY. Probably one night entered twice; to confirm when the night is reduced."
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2016-06-18",
+   "instrument_per_Fabry21": "PIONIER",
+   "instrument_per_archive": "GRAVITY"
+  },
+  {
+   "date": "2016-08-01",
+   "mjd": 57601.215,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    21.69,
+    null
+   ],
+   "pa_deg": [
+    68.08,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.42,
+     "minor_mas": 0.33,
+     "pa_deg": 62,
+     "convention": "FWHM per Le Bouquin+17, 1-sigma per Fabry+21: see conventions.uncertainties"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "596.D-0495(D)",
+    "n_science_frames": 7,
+    "phase3_dp_id": "ADP.2017-04-04T14:22:19.209, ADP.2017-04-04T14:22:19.215",
+    "note": "calibrator HD 164386"
+   },
+   "source": "VizieR J/A+A/601/A34/position (CDS), the electronic Table B.1 of Le Bouquin et al. (2017); instrument from Fabry+21 Table A.2 unless noted",
+   "night_ut_start": "2016-07-31"
+  },
+  {
+   "date": "2016-06-19",
+   "mjd": 57558.305,
+   "instrument": "GRAVITY",
+   "rho_mas": [
+    21.194,
+    null
+   ],
+   "pa_deg": [
+    68.028,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.101,
+     "minor_mas": 0.102,
+     "pa_deg": 90,
+     "convention": "1-sigma (Fabry+21 Table A.2 caption)"
+    },
+    "note": "PMOIRED fit of the GRAVITY-pipeline OIFITS; error = bootstrap and a 0.1 mas systematic in quadrature (Sect. 2.2)"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "60.A-9168(A)",
+    "n_science_frames": 2,
+    "note": "same night as the 57558.303 row; single-field frames, calibrator HD 164031 (OB CAL_HD164031_for_HD164794, two STD exposures that night)"
+   },
+   "source": "Fabry+21 Table A.2 (arXiv:2105.09968 v1, p. 10)",
+   "new_in_fabry21": true
+  },
+  {
+   "date": "2016-06-21",
+   "mjd": 57560.312,
+   "instrument": "GRAVITY",
+   "rho_mas": [
+    21.45,
+    null
+   ],
+   "pa_deg": [
+    67.9,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.24,
+     "minor_mas": 0.22,
+     "pa_deg": 90,
+     "convention": "1-sigma (Fabry+21 Table A.2 caption)"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "60.A-9168(A)",
+    "n_science_frames": 4,
+    "note": "calibrator HD 164031; two OB sequences that night: 06:25-06:36 UT (MJD 57560.267-57560.275) and 07:18-07:29 UT (57560.304-57560.312); Table A.2's MJD is the later"
+   },
+   "source": "Fabry+21 Table A.2 (arXiv:2105.09968 v1, p. 10)",
+   "new_in_fabry21": true
+  },
+  {
+   "date": "2016-09-16",
+   "mjd": 57647.081,
+   "instrument": "GRAVITY",
+   "rho_mas": [
+    21.664,
+    null
+   ],
+   "pa_deg": [
+    68.246,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.101,
+     "minor_mas": 0.102,
+     "pa_deg": 90,
+     "convention": "1-sigma (Fabry+21 Table A.2 caption)"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "60.A-9168(A)",
+    "n_science_frames": 2,
+    "note": "2016-09-15; calibrator HD 164031; the night has its own p2vm sequence in the archive"
+   },
+   "source": "Fabry+21 Table A.2 (arXiv:2105.09968 v1, p. 10)",
+   "new_in_fabry21": true
+  },
+  {
+   "date": "2017-05-27",
+   "mjd": 57900.386,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    22.17,
+    null
+   ],
+   "pa_deg": [
+    68.53,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.93,
+     "minor_mas": 0.27,
+     "pa_deg": 144,
+     "convention": "1-sigma (Fabry+21 Table A.2 caption)"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "596.D-0495(J)",
+    "n_science_frames": 5,
+    "phase3_dp_id": "ADP.2017-10-13T01:36:26.058",
+    "note": "calibrators HD 164386 then HD 165015"
+   },
+   "source": "Fabry+21 Table A.2 (arXiv:2105.09968 v1, p. 10)",
+   "new_in_fabry21": true
+  },
+  {
+   "date": "2017-08-30",
+   "mjd": 57995.105,
+   "instrument": "PIONIER",
+   "rho_mas": [
+    21.86,
+    null
+   ],
+   "pa_deg": [
+    69.04,
+    null
+   ],
+   "other": {
+    "error_ellipse_published": {
+     "major_mas": 0.43,
+     "minor_mas": 0.25,
+     "pa_deg": 130,
+     "convention": "1-sigma (Fabry+21 Table A.2 caption)"
+    },
+    "note": "rho and PA are the best-fit two-point-star position of the secondary relative to the primary; no rho/PA errors are tabulated, only the error ellipse"
+   },
+   "used_in_orbit_fit": true,
+   "eso_raw": {
+    "public": true,
+    "prog_id": "596.D-0495(J)",
+    "n_science_frames": 5,
+    "phase3_dp_id": "ADP.2017-10-13T01:36:26.506",
+    "note": "calibrators HD 164386 then HD 165015"
+   },
+   "source": "Fabry+21 Table A.2 (arXiv:2105.09968 v1, p. 10)",
+   "new_in_fabry21": true
+  }
+ ],
+ "orbit": {
+  "headline": "Le Bouquin+17, combined astrometry + SB2 radial velocities (Fig. A.7 panel)",
+  "P_day": [
+   3310.4,
+   7.0
+  ],
+  "T_peri_mjd": [
+   46613.0,
+   21.0,
+   "published T; T + 3P = 56544.2 is the periastron inside the data"
+  ],
+  "a_mas": [
+   14.78,
+   0.13,
+   "plus a 1.5% systematic"
+  ],
+  "e": [
+   0.6508,
+   0.0039
+  ],
+  "i_deg": [
+   86.64,
+   0.53
+  ],
+  "Omega_deg": [
+   67.21,
+   0.51
+  ],
+  "omega_of": "secondary",
+  "omega_of_basis": "Le Bouquin+17 Sect. 2.4: 'argument of periastron of the secondary, from the ascending node along the motion of the secondary'. Corroborated by crosscheck.orbits reproducing the published positions (omega+180 alone would negate them).",
+  "omega_deg": [
+   210.4,
+   1.3,
+   "the secondary's"
+  ],
+  "f_H": [
+   0.62,
+   0.02
+  ],
+  "Ka_km_s": [
+   21.1,
+   1.0
+  ],
+  "Kb_km_s": [
+   35.14,
+   0.74
+  ],
+  "gamma_km_s": [
+   14.79,
+   0.29
+  ],
+  "d_pc_imposed": [
+   1250.0,
+   100.0,
+   "assumed (NGC 6530), not fitted"
+  ],
+  "Mt_Msun_at_imposed_d": [
+   77.0,
+   18.0
+  ],
+  "from_apparent_orbit_and_RVs": {
+   "d_pc": [
+    881.0,
+    22.0
+   ],
+   "Ma_Msun": [
+    16.77,
+    0.99
+   ],
+   "Mb_Msun": [
+    10.07,
+    0.89
+   ],
+   "note": "the mass tension: far below the O3.5V + O5.5V masses (~50 + 34), which Fabry+21 resolved"
+  },
+  "source": "Fig. A.7 panel (p. 16 of the arXiv:1608.03525 PDF)",
+  "other_published_orbit": {
+   "label": "Fabry+21 (arXiv:2105.09968), astrometry of 23 epochs: LB17's 18, three GRAVITY, two new PIONIER",
+   "P_day": [
+    3261.0,
+    69.0
+   ],
+   "T_peri_mjd": [
+    56547.0,
+    12.0
+   ],
+   "e": [
+    0.648,
+    0.009
+   ],
+   "i_deg": [
+    86.5,
+    0.5
+   ],
+   "Omega_deg": [
+    67.3,
+    0.4
+   ],
+   "omega_of": "secondary",
+   "omega_of_basis": "Fabry+21 Table 1 note (a), as quoted in the omega_deg note: \"the relative orbit's, i.e. the secondary's: Table 1 note (a) says it is shifted by 180 deg from the primary's omega_1 used for RV curves\"",
+   "omega_deg": [
+    210.7,
+    2.3,
+    "the relative orbit's, i.e. the secondary's: Table 1 note (a) says it is shifted by 180 deg from the primary's omega_1 used for RV curves"
+   ],
+   "a_mas": [
+    14.83,
+    null,
+    "DERIVED, not published: Fabry+21 does not tabulate a_app. From Eq. 6 inverted, a_app = (G M P^2 / 4 pi^2)^(1/3) / d with M = 92 Msun (K1 = 36, K2 = 49 km/s), P = 3261 d, d = 1310 pc. Circular, since their d came from the same a_app. Another reading of Table A.2 (design/plan_eso_binaries.md) gave 14.656 mas."
+   ],
+   "d_pc": [
+    1310.0,
+    60.0
+   ],
+   "M1_Msun": 53,
+   "M2_Msun": 39,
+   "K1_km_s": [
+    36,
+    "35/40"
+   ],
+   "K2_km_s": [
+    49,
+    "47/53"
+   ],
+   "source": "Table 1, Sect. 3.1-3.3, Table 3 (arXiv:2105.09968 v1)",
+   "MCMC": "100000 samples with spinOS; uncertainties are 1-sigma intervals (Table 1 caption)",
+   "omega_of": "secondary"
+  },
+  "omega_of": "secondary"
+ },
+ "other_papers": [
+  {
+   "cite": "Fabry et al. 2021, A&A 651, A119",
+   "arxiv": "2105.09968",
+   "doi": "10.1051/0004-6361/202140452",
+   "bibcode": "2021A&A...651A.119F (from the task statement; A119 not in Crossref's article-number field)",
+   "role": "refit: resolves the dynamical-mass tension. Adds three GRAVITY (PMOIRED fits, 0.1 mas systematic added in quadrature) and two PIONIER epochs (2017-05, 2017-08)."
+  },
+  {
+   "cite": "Rauw et al. 2012, 2016",
+   "role": "the SB2 radial-velocity orbit and the periastron-passage X-ray study: source of the old mass/inclination tension"
+  }
+ ],
+ "eso_data": {
+  "checked": "2026-10-14, ESO TAP dbo.raw and ivoa.ObsCore, by object name and a 36 arcsec box",
+  "science_nights_with_raw": 16,
+  "table_epochs_without_raw": 6,
+  "no_raw_epochs_mjd": [
+   56154.134,
+   56189.027,
+   56191.087,
+   56376.318,
+   56383.324,
+   56438.244
+  ],
+  "phase3": "PIONIER ADP products exist for 2016-08-01 (MJD 57601.209 and 57601.219), 2017-05-27 and 2017-08-30 only (pndrs-reduced OIFITS)",
+  "beyond_the_papers": [
+   "GRAVITY 099.D-0777(B), 2017-06-22 (MJD 57926.297), one object frame and no sky or calibrator: a possible post-publication epoch",
+   "AMBER 085.C-0389(B), 2010-06-09, 75 frames: in neither paper's table"
+  ]
+ },
+ "notes": "Data come from the ESO archive as raw frames; virgil never sees the published positions. The OiDB PIONIER L2 collection is private and unused."
+}
