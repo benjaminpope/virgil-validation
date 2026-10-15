@@ -59,6 +59,23 @@ def _rms(d):
     return float(np.sqrt(np.mean(np.sum(d**2, -1))))
 
 
+def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, sign_free=False):
+    """The verdict rule of :func:`score`, applied to stored statistics (so a stored run can be re-judged).
+
+    The position match needs ``frac_sep < SAME_FRACTION`` AND, when there are posterior samples
+    (``offset_over_spread`` finite), ``offset_over_spread < SAME_SIGMA``. A match only as the reference's point
+    reflection (``mirror``) needs the fit to have swapped labels or ``sign_free``; otherwise UNEXPLAINED-FLIP.
+    """
+    sky_ok = frac_sep < SAME_FRACTION
+    if offset_over_spread is not None and np.isfinite(offset_over_spread):
+        sky_ok = sky_ok and offset_over_spread < SAME_SIGMA
+    if not sky_ok:
+        return "DIFFERENT"
+    if mirror and not (flipped or sign_free):
+        return "UNEXPLAINED-FLIP"
+    return "SAME-SKY-ORBIT"
+
+
 def score(meta, best, t_ref=None, samples=None, flipped=False, sign_free=False):
     """Compare a fitted orbit with ``meta["reference"]`` on the sky at ``meta["mjd"]``.
 
@@ -121,13 +138,5 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, sign_free=False):
         )
         spread = float(np.sqrt(np.mean(np.sum(tracks.var(0), -1))))
         out["spread"], out["offset_over_spread"] = spread, rms / max(spread, 1e-12)
-    sky_ok = out["frac_sep"] < SAME_FRACTION
-    if samples is not None:
-        sky_ok = sky_ok and out["offset_over_spread"] < SAME_SIGMA
-    if not sky_ok:
-        out["verdict"] = "DIFFERENT"
-    elif sign < 0 and not (flipped or sign_free):
-        out["verdict"] = "UNEXPLAINED-FLIP"
-    else:
-        out["verdict"] = "SAME-SKY-ORBIT"
+    out["verdict"] = verdict_from_stats(out["frac_sep"], out["offset_over_spread"], sign < 0, flipped, sign_free)
     return out

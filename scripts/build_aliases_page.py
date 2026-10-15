@@ -19,7 +19,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 sys.path.insert(0, str(REPO / "src"))
 
-from crosscheck.skyplane import SAME_FRACTION, SAME_SIGMA  # noqa: E402
+from crosscheck.skyplane import SAME_FRACTION, SAME_SIGMA, verdict_from_stats  # noqa: E402
 
 TEMPLATE = REPO / "scripts" / "templates" / "aliases_page.md.tmpl"
 ASSETS = REPO / "docs" / "assets" / "orbit_aliases"
@@ -42,6 +42,13 @@ SKIPPED = [
 
 def fmt(x, spec):
     return "-" if x is None or (isinstance(x, float) and not np.isfinite(x)) else format(x, spec)
+
+
+def current_verdict(row):
+    """The verdict of a stored sky-plane row under the CURRENT rule (fraction AND sigma), recomputed from its
+    statistics: the stored ``verdict`` string comes from whatever rule the run used (older runs: fraction only)."""
+    return verdict_from_stats(row["frac_sep"], row.get("offset_over_spread"), row.get("mirror") == "flip",
+                              row.get("flipped", False), row.get("sign_free", False))
 
 
 def finite(xs):
@@ -106,7 +113,7 @@ def section(name, label, instrument, sysdir, rel):
             out.append(
                 f"| {'winner' if k == 'top' else 'reference'}{' (warm-started)' if v.get('warm_started') else ''} | {v['band']} | {v['period']:.4f} | {v['rms']:.2f} | "
                 f"{v['max']:.2f} | {v['frac_sep']:.0%} | {fmt(v['offset_over_spread'], '.1f')} | {v['mirror']} | "
-                f"{'yes' if v.get('flipped') else 'no'} | {v['verdict']} |"
+                f"{'yes' if v.get('flipped') else 'no'} | {current_verdict(v)} |"
             )
         out.append("")
     fs = meta.get("fit_summary")
@@ -137,9 +144,26 @@ def section(name, label, instrument, sysdir, rel):
     return "\n".join(out)
 
 
+def verdict_tally(assets, names):
+    """Winning-band verdicts of every system with a stored sky-plane row, under the current rule."""
+    verdicts = {}
+    for n in names:
+        mj = pathlib.Path(assets) / n / "meta.json"
+        top = (json.load(open(mj)).get("sky_plane") or {}).get("top") if mj.exists() else None
+        if top:
+            verdicts[n] = current_verdict(top)
+    return dict(total=len(verdicts), verdicts=verdicts,
+                **{"pass": sum(v == "SAME-SKY-ORBIT" for v in verdicts.values())})
+
+
 def render(assets=ASSETS, template=TEMPLATE, rel="../assets/orbit_aliases"):
     names = _registry()
     secs = [section(n, v["label"], v["instrument"], assets / n, rel) for n, v in names.items()]
+    tally = verdict_tally(assets, names)
+    summary = (f"Under the current sky-plane rule (rms offset under {SAME_FRACTION:.0%} of the separation AND under "
+               f"{SAME_SIGMA:g} posterior spreads), {tally['pass']} of {tally['total']} systems have a winning-band orbit on the "
+               "reference's sky orbit. Verdicts are recomputed here from the stored statistics, not copied from the run.\n")
+    secs.insert(0, summary)
     skipped = "\n".join(f"- {a}: {b}." for a, b in SKIPPED)
     return string.Template(template.read_text()).substitute(SYSTEMS="\n".join(secs), SKIPPED=skipped)
 

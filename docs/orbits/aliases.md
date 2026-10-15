@@ -40,6 +40,8 @@ mode, and a flag means the two evidences disagree or the ESS is low.
     (`ozstar_scripts/scripts/orbit_aliases`) and are pulled into this page by
     `scripts/pull_back_orbit_results.py`.
 
+Under the current sky-plane rule (rms offset under 2% of the separation AND under 3 posterior spreads), 0 of 9 systems have a winning-band orbit on the reference's sky orbit. Verdicts are recomputed here from the stored statistics, not copied from the run.
+
 ## Gl 229 Ba-Bb
 
 
@@ -68,8 +70,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 34 | 12.1350 | 0.19 | 0.36 | 3% | 6.8 | none | no | SAME-SKY-ORBIT |
-| reference | 34 | 12.1350 | 0.19 | 0.36 | 3% | 6.8 | none | no | SAME-SKY-ORBIT |
+| winner | 34 | 12.1350 | 0.19 | 0.36 | 3% | 6.8 | none | no | DIFFERENT |
+| reference | 34 | 12.1350 | 0.19 | 0.36 | 3% | 6.8 | none | no | DIFFERENT |
 
 Winning band: flux ratio 0.475; per-epoch V² amplitudes 0.07–0.55.
 
@@ -109,8 +111,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 49 | 14.9058 | 0.01 | 0.01 | 0% | 3.7 | flip | no | SAME-SKY-ORBIT |
-| reference | 49 | 14.9058 | 0.01 | 0.01 | 0% | 3.7 | flip | no | SAME-SKY-ORBIT |
+| winner | 49 | 14.9058 | 0.01 | 0.01 | 0% | 3.7 | flip | no | DIFFERENT |
+| reference | 49 | 14.9058 | 0.01 | 0.01 | 0% | 3.7 | flip | no | DIFFERENT |
 
 Winning band: flux ratio 1.000; primary diameter 0.156 mas (fixed); per-epoch V² amplitudes 0.99–1.05.
 
@@ -137,8 +139,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 1 | 98.7537 | 0.08 | 0.11 | 1% | 8.9 | none | no | SAME-SKY-ORBIT |
-| reference | 1 | 98.7537 | 0.08 | 0.11 | 1% | 8.9 | none | no | SAME-SKY-ORBIT |
+| winner | 1 | 98.7537 | 0.08 | 0.11 | 1% | 8.9 | none | no | DIFFERENT |
+| reference | 1 | 98.7537 | 0.08 | 0.11 | 1% | 8.9 | none | no | DIFFERENT |
 
 Winning band: flux ratio 0.140; primary diameter 1.357 mas (fitted); per-epoch V² amplitudes 0.98–1.01.
 
@@ -170,8 +172,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 9 | 46.8173 | 0.02 | 0.03 | 0% | 25.9 | none | no | SAME-SKY-ORBIT |
-| reference | 9 | 46.8173 | 0.02 | 0.03 | 0% | 25.9 | none | no | SAME-SKY-ORBIT |
+| winner | 9 | 46.8173 | 0.02 | 0.03 | 0% | 25.9 | none | no | DIFFERENT |
+| reference | 9 | 46.8173 | 0.02 | 0.03 | 0% | 25.9 | none | no | DIFFERENT |
 
 Winning band: flux ratio 0.917; primary diameter 0.523 mas (fitted); per-epoch V² amplitudes 0.75–0.91.
 
@@ -202,8 +204,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 9 | 42.3866 | 0.06 | 0.08 | 2% | 61.3 | none | no | SAME-SKY-ORBIT |
-| reference | 9 | 42.3866 | 0.06 | 0.08 | 2% | 61.3 | none | no | SAME-SKY-ORBIT |
+| winner | 9 | 42.3866 | 0.06 | 0.08 | 2% | 61.3 | none | no | DIFFERENT |
+| reference | 9 | 42.3866 | 0.06 | 0.08 | 2% | 61.3 | none | no | DIFFERENT |
 
 Winning band: flux ratio 0.374; primary diameter 0.367 mas (fixed); per-epoch V² amplitudes 0.83–0.91.
 
@@ -232,8 +234,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 5 | 148.3202 | 0.03 | 0.07 | 0% | 12.3 | none | no | SAME-SKY-ORBIT |
-| reference | 5 | 148.3202 | 0.03 | 0.07 | 0% | 12.3 | none | no | SAME-SKY-ORBIT |
+| winner | 5 | 148.3202 | 0.03 | 0.07 | 0% | 12.3 | none | no | DIFFERENT |
+| reference | 5 | 148.3202 | 0.03 | 0.07 | 0% | 12.3 | none | no | DIFFERENT |
 
 Winning band: flux ratio 0.959; primary diameter 0.245 mas (fixed); per-epoch V² amplitudes 0.81–0.91.
 
@@ -273,8 +275,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 26 | 27.8899 | 0.02 | 0.04 | 0% | 25.4 | none | no | SAME-SKY-ORBIT |
-| reference | 26 | 27.8899 | 0.02 | 0.04 | 0% | 25.4 | none | no | SAME-SKY-ORBIT |
+| winner | 26 | 27.8899 | 0.02 | 0.04 | 0% | 25.4 | none | no | DIFFERENT |
+| reference | 26 | 27.8899 | 0.02 | 0.04 | 0% | 25.4 | none | no | DIFFERENT |
 
 Winning band: flux ratio 0.583; primary diameter 0.876 mas (fitted); per-epoch V² amplitudes 0.89–1.00.
 
@@ -343,8 +345,8 @@ Orbits are compared on the sky, at the epochs, not by their elements (convention
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
-| winner | 9 | 38.7994 | 0.03 | 0.04 | 0% | 4.2 | none | no | SAME-SKY-ORBIT |
-| reference | 9 | 38.7994 | 0.03 | 0.04 | 0% | 4.2 | none | no | SAME-SKY-ORBIT |
+| winner | 9 | 38.7994 | 0.03 | 0.04 | 0% | 4.2 | none | no | DIFFERENT |
+| reference | 9 | 38.7994 | 0.03 | 0.04 | 0% | 4.2 | none | no | DIFFERENT |
 
 Winning band: flux ratio 0.180; primary diameter 0.435 mas (fitted); per-epoch V² amplitudes 1.02–1.11.
 
