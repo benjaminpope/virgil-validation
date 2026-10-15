@@ -1,30 +1,39 @@
 year,label,name,advice,updated
-2004,2004_data1,data1,"This is already fairly good, though it is off-centre.",2026-10-12T09:17:28+00:00
-2004,2004_data2,data2,"The virgil fit has broken up into a chain of dots. This is indicating a problem with regularization perhaps. The real data consist of a dot (which we correctly recover) at about (5, 0), and a large faint ellipse (broken up into a chain of dots in our recovery) with a small circle overlapping its edge. Consider TV as an optimal regularizer for this sort of piecewise constant data, and whether the smaller dots should be point sources.",2026-10-12T09:18:50+00:00
-2006,2006_disk,MIR0001,"This is an absolutely terrible recovery. Just dreadful. The real thing has a bright core, and flares out to the corners of a rectangle. Consider a variety of priors to solve this.",2026-10-12T09:19:33+00:00
+2004,2004_data1,data1,"I have to say, our ""best"" image here is quite poor: it is blobby and doesn't pick out the smooth ring or bright spot. Something has gone wrong here.",2026-10-15T04:39:22+00:00
+2004,2004_data2,data2,"The virgil ""best"" fit is even worse than the runners-up: our deconvolution is a chain of tight blobs now.",2026-10-15T04:39:46+00:00
+2006,2006_disk,MIR0001,"The ""best"" is an absolutely terrible recovery. Just dreadful. The real thing has a bright core, and flares out to the corners of a rectangle. Consider a variety of priors to solve this.
+
+Runner up 3 is actually getting somewhere.",2026-10-15T04:40:06+00:00
 2008,2008_agb_H,Alp_Vic H,"The real thing is a circle embedded in a broader halo. The virgil recovery is terrible and blobby; consider a uniform disk with a halo, or consider a two-component image fit with different scales.",2026-10-12T09:20:11+00:00
 2008,2008_agb_J,Alp_Vic J,"The real thing is a circle embedded in a broader halo. The virgil recovery is terrible and blobby; consider a uniform disk with a halo, or consider a two-component image fit with different scales.",2026-10-12T09:20:07+00:00
-2008,2008_agb_K,Alp_Vic K,"The real thing is a circle embedded in a broader halo. The virgil recovery is terrible and blobby; consider a uniform disk with a halo, or consider a two-component image fit with different scales.",2026-10-12T09:20:13+00:00
-2008,2008_agn_H,Bet_Vic H,"We want to fit all three bands simultaneously with a SPARCO approach. The image consists of an anisotropic blob in the middle with two thin jets coming out; the virgil recovery in K band is good but not the other bands, where the jets are broken into blobs.",2026-10-12T09:21:08+00:00
-2008,2008_agn_J,Bet_Vic J,"We want to fit all three bands simultaneously with a SPARCO approach. The image consists of an anisotropic blob in the middle with two thin jets coming out; the virgil recovery in K band is good but not the other bands, where the jets are broken into blobs.",2026-10-12T09:21:07+00:00
-2008,2008_agn_K,Bet_Vic K,"We want to fit all three bands simultaneously with a SPARCO approach. The image consists of an anisotropic blob in the middle with two thin jets coming out; the virgil recovery in K band is good but not the other bands, where the jets are broken into blobs.",2026-10-12T09:21:10+00:00
+2008,2008_agb_K,Alp_Vic K,"The virgil recovery is just a dot. You have completely the wrong angular scale - why? The true image is about 2 mas across, rendered in a field of 6x6 mas. Your grids have gone on a -40 to 40 mas scale which can't represent this. 
+",2026-10-15T04:41:09+00:00
+2008,2008_agn_H,Bet_Vic H,This is pretty good.,2026-10-15T04:41:20+00:00
+2008,2008_agn_J,Bet_Vic J,This is good now.,2026-10-15T04:41:16+00:00
+2008,2008_agn_K,Bet_Vic K,This is pretty good.,2026-10-15T04:41:23+00:00
 2010,,"Mystery, medium resolution, H",Is this a duplicate of the other H band?,2026-10-12T09:22:14+00:00
-2010,2010_lowH,"Mystery, low resolution, H","This is actually a pretty good recovery in general of the central object but there are chains of dots throughout the FOV. Consider whether we can iteratively remove these, or whether we can just fit a smaller FOV of 20x20 mas.",2026-10-12T09:21:47+00:00
+2010,2010_lowH,"Mystery, low resolution, H","This is actually a pretty good recovery in general of the central object but there are chains of dots throughout the FOV. Consider whether we can iteratively remove these, or whether we can just fit a smaller FOV of 20x20 mas. ",2026-10-15T04:41:28+00:00
 2010,2010_lowK,"Mystery, low resolution, K","This is actually a pretty good recovery in general of the central object but there are chains of dots throughout the FOV. Consider whether we can iteratively remove these, or whether we can just fit a smaller FOV of 20x20 mas.",2026-10-12T09:21:50+00:00
-2012,,Alp_Fak,"Two bright stripes at the side, parallel to each other, and a bright core.",2026-10-12T09:22:26+00:00
-2012,,Bet_Fak,"Spotted star, use harmonix and compare it to a TV regularization.",2026-10-12T09:22:36+00:00
+2012,,Alp_Fak,"Two bright stripes at the side, parallel to each other, and a bright core.
+
+Our ""best"" has overfilled the FOV. ",2026-10-15T04:41:43+00:00
+2012,,Bet_Fak,"Spotted star, use harmonix and compare it to a TV regularization.
+
+USE HARMONIX.",2026-10-15T04:41:53+00:00
 2014,,R Car,Blobby thing.,2026-10-12T09:22:55+00:00
-2014,,VY CMa,Blobby thing.,2026-10-12T09:22:54+00:00
+2014,,VY CMa,Our recovery is just terrible. The real thing is a tight blob in a broad halo. ,2026-10-15T04:42:12+00:00
 2016,,Object1 (GRAVITY),"Field of point sources. Consider CLEAN, consider parametric models, and consider L1 regularisation.",2026-10-12T09:23:11+00:00
-2016,,Object2 (MATISSE N),Bright central object with rings. ,2026-10-12T09:23:16+00:00
-2018,2018_disk,"star, disk and planet","Several smooth elliptical disks with azimuthal modulation, and embedded point sources (1 in the middle and 1 in a disk gap). Consider TV and consider adding point sources. Consider CLEAN too. ",2026-10-12T09:23:58+00:00
-2022,2022_ami,Obj2 (NIRISS AMI),Banana shaped thing around a dot; our recovery breaks the dot into a square and the banana into points.,2026-10-12T09:24:36+00:00
-2022,2022_gravity,Obj1 (GRAVITY K),We recover the ring and two dots pretty well but we should consider the individual dots as point sources and the ring to be smoother.,2026-10-12T09:24:23+00:00
-2024,2024_obj1_gravity,Obj1 GRAVITY K,Spiral where we recover it very poorly but it's broken up into a chain of dots.,2026-10-12T09:24:53+00:00
-2024,2024_obj1_matisseL,Obj1 MATISSE L,Spiral where we recover it very poorly but it's broken up into a chain of dots.,2026-10-12T09:24:55+00:00
+2016,,Object2 (MATISSE N),Bright central object with rings. We should be using a GP ring or parametric ring.,2026-10-15T04:42:25+00:00
+2018,2018_disk,"star, disk and planet","Several smooth elliptical disks with azimuthal modulation, and embedded point sources (1 in the middle and 1 in a disk gap). Consider TV and consider adding point sources. Consider CLEAN too. 
+
+We should be using a GP ring or parametric ring.",2026-10-15T04:42:34+00:00
+2022,2022_ami,Obj2 (NIRISS AMI),The truth is a banana shaped thing around a dot; our recovery breaks the dot into a square and the banana into points.,2026-10-15T04:43:02+00:00
+2022,2022_gravity,Obj1 (GRAVITY K),We recover the ring and two dots pretty well but we should consider the individual dots as point sources and the ring to be smoother. Consider the GP or parametric rings; I think runner-up 2 actually looks the best.,2026-10-15T04:42:54+00:00
+2024,2024_obj1_gravity,Obj1 GRAVITY K,"We don't recover the spiral; it is a field of junk dots spread over 120 to -120 mas, when the true spiral covers about a 40 mas wide field in the middle.",2026-10-15T04:43:48+00:00
+2024,2024_obj1_matisseL,Obj1 MATISSE L,We recover the spiral reasonably well in the core but have a huge field compared to the truth.,2026-10-15T04:44:04+00:00
 2024,2024_obj1_matisseN,Obj1 MATISSE N,"We barely recover this spiral. We shouldn't use TV here, which I think has been used.",2026-10-12T09:25:07+00:00
-2024,2024_obj1_pionier,Obj1 PIONIER H,Spiral where we recover a bit but it's broken up into a chain of dots.,2026-10-12T09:24:46+00:00
-2024,2024_obj2_gravity,Obj2 GRAVITY K,We just get a dot; we need to play with dynamic range here carefully.,2026-10-12T09:25:23+00:00
-2024,2024_obj2_matisseL,Obj2 MATISSE L,We just get a few dots; we need to play with dynamic range here carefully.,2026-10-12T09:25:30+00:00
-2024,2024_obj2_matisseN,Obj2 MATISSE N,We have a total mess. ,2026-10-12T09:25:35+00:00
-2024,2024_obj2_pionier,Obj2 PIONIER H,We just get a dot; we need to play with dynamic range here carefully.,2026-10-12T09:25:21+00:00
+2024,2024_obj1_pionier,Obj1 PIONIER H,We recover the spiral pretty well now.,2026-10-15T04:43:12+00:00
+2024,2024_obj2_gravity,Obj2 GRAVITY K,We maybe are almost getting it but our FOV is enormously too large. It really spans a 20 to -20 fov.,2026-10-15T04:44:47+00:00
+2024,2024_obj2_matisseL,Obj2 MATISSE L,We maybe are almost getting it but our FOV is enormously too large. It really spans a 20 to -20 fov.,2026-10-15T04:44:55+00:00
+2024,2024_obj2_matisseN,Obj2 MATISSE N,We have a total mess and the real thing is disky.,2026-10-15T04:45:05+00:00
+2024,2024_obj2_pionier,Obj2 PIONIER H,We just get a dot; we need to play with dynamic range here carefully. ,2026-10-15T04:44:27+00:00
