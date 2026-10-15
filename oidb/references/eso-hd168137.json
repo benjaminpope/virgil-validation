@@ -390,7 +390,7 @@
    5.0
   ],
   "omega_of": "secondary",
-  "omega_of_basis": "the secondary's, from the ascending node (Sect. 2.4)",
+  "omega_of_basis": "Le Bouquin+17 Sect. 2.4: 'the secondary's, from the ascending node'. Corroborated by crosscheck.orbits reproducing the 11 published epochs (0.30 mas rms) with the published T; that checks the transcription, not the node.",
   "omega_deg": [
    246.7,
    9.0,

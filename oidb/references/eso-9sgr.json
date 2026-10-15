@@ -761,7 +761,7 @@
    0.51
   ],
   "omega_of": "secondary",
-  "omega_of_basis": "argument of periastron of the secondary, from the ascending node along the motion of the secondary",
+  "omega_of_basis": "Le Bouquin+17 Sect. 2.4: 'argument of periastron of the secondary, from the ascending node along the motion of the secondary'. Corroborated by crosscheck.orbits reproducing the published positions (omega+180 alone would negate them).",
   "omega_deg": [
    210.4,
    1.3,
@@ -831,7 +831,7 @@
     0.4
    ],
    "omega_of": "secondary",
-   "omega_of_basis": "argument of periastron of the secondary, from the ascending node along the motion of the secondary",
+   "omega_of_basis": "Fabry+21 Table 1 note (a), as quoted in the omega_deg note: \"the relative orbit's, i.e. the secondary's: Table 1 note (a) says it is shifted by 180 deg from the primary's omega_1 used for RV curves\"",
    "omega_deg": [
     210.7,
     2.3,
