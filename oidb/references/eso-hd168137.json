@@ -419,7 +419,8 @@
    1004,
    "an uncertainty of 1004 Msun: the size of the orbit is unconstrained"
   ],
-  "source": "Fig. A.9 panel (p. 18 of the arXiv:1608.03525 PDF); Sect. 3.9"
+  "source": "Fig. A.9 panel (p. 18 of the arXiv:1608.03525 PDF); Sect. 3.9",
+  "omega_of": "secondary"
  },
  "other_papers": [
   {
