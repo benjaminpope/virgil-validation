@@ -79,6 +79,10 @@ def xy(rho, pa):
     return rho * np.sin(np.radians(pa)), rho * np.cos(np.radians(pa))
 
 
+def _red(v):
+    return float(v["chi2_red"]) if isinstance(v, dict) else float(v)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("which", choices=list(REF))
@@ -110,7 +114,14 @@ def main():
                  for x, y, f, m, l in zip(pk.dra, pk.ddec, pk.flux, pk.marginal, pk.loglike)]
         flux0 = peaks[0]["flux"] if a.which == "gl229" else 1 / 4.6
         at_pub = of.fit_epoch(night, data, scene, priors, grid, start=dict(dra=px, ddec=py, flux=flux0))
-        out["nights"].append(dict(
+        extra = {}
+        if a.which == "iotapeg":  # the T3-vs-V^2 split, and the point-star control (check_epochs' scene)
+            extra["from_published_chi2_by_observable"] = {k: _red(v) for k, v in at_pub["chi2_raw"].items()}
+            ctl = of.fit_epoch(night, data, of.point_binary, priors, grid, start=dict(dra=px, ddec=py, flux=flux0))
+            extra["point_star_control"] = dict(loss=ctl["loss"], chi2=ctl["chi2_raw"]["all"],
+                                               by_observable={k: _red(v) for k, v in ctl["chi2_raw"].items()})
+            extra["published_rho_below_floor"] = bool(rho < 0.82)
+        out["nights"].append(dict(**extra,
             night=night, mjd=mjd, published=dict(rho=rho, pa=pa), peaks=peaks,
             gap_marginal=float(pos.gap_marginal[k]),
             committed=dict(loss=prev_epochs[night]["loss"], chi2=prev_epochs[night]["chi2_raw"]["all"],

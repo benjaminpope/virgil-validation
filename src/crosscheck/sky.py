@@ -258,14 +258,27 @@ def blurred(cloud, fwhm, n=12, inc=0.0, pa=0.0):
 
 
 def arc_curve(radius, length, pa=0.0, dra=0.0, ddec=0.0, n=8192):
-    """A circle of ``radius`` about (dra, ddec), weighted by a Gaussian in arc
-    length (FWHM ``length``) peaking at position angle ``pa``. The weight
-    runs round the whole circle (arc length wrapped to [-pi R, pi R))."""
+    """A circle of ``radius`` about (dra, ddec), weighted by a von Mises function
+    of the position angle, exp(kappa cos(phi - pa)), peaking at ``pa``, with
+    kappa = (FWHM_PER_SIGMA radius / length)^2 so that ``length`` is the FWHM
+    along the arc for an arc short against its radius (virgil's definition
+    since the PolarDisk consolidation)."""
+    psi = 2.0 * np.pi * np.arange(n) / n
+    kappa = (FWHM_PER_SIGMA * radius / length) ** 2
+    weight = np.exp(kappa * (np.cos(psi - np.deg2rad(pa)) - 1.0))
+    weight /= weight.sum()
+    return Cloud(
+        radius * np.sin(psi) + dra, radius * np.cos(psi) + ddec, weight
+    )
+
+
+def arc_curve_gaussian(radius, length, pa=0.0, dra=0.0, ddec=0.0, n=8192):
+    """The arc as virgil defined it before the von Mises weight: a Gaussian in
+    arc length (FWHM ``length``), wrapped once round the circle."""
     psi = 2.0 * np.pi * np.arange(n) / n
     offset = np.angle(np.exp(1j * (psi - np.deg2rad(pa))))  # wrapped
-    s = radius * offset
     sigma = length / FWHM_PER_SIGMA
-    weight = np.exp(-0.5 * (s / sigma) ** 2)
+    weight = np.exp(-0.5 * (radius * offset / sigma) ** 2)
     weight /= weight.sum()
     return Cloud(
         radius * np.sin(psi) + dra, radius * np.cos(psi) + ddec, weight
