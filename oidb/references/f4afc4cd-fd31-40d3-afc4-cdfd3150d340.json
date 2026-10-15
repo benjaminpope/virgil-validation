@@ -151,7 +151,9 @@
       -2.51,
       1.57
     ],
-    "source": "Fig. B.1 and B.2 panel titles, p. 7 (values read from the plot images, not a table); M1, M2, a(1-e), T_0,n also in text p. 3"
+    "source": "Fig. B.1 and B.2 panel titles, p. 7 (values read from the plot images, not a table); M1, M2, a(1-e), T_0,n also in text p. 3",
+    "omega_of": "secondary",
+    "omega_of_basis": "UNRESOLVED: the paper does not say whose omega this is. Set to 'secondary' because that is how the gallery comparison (oidb_compare, orbit_gallery) reads it today; orbit_diagnose reads it as the primary's (+180 deg). Do not rely on it until resolved."
   },
   "other_results": {
     "projected separation": [
