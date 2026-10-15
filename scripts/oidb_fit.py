@@ -32,8 +32,8 @@ Models, by collection (the reasons are in RECIPES' docstrings):
 * ``19f7e2cf`` pi1 Gru, PIONIER: a uniform disk fitted to V^2 (LitPro's model in
   Paladini et al. 2018).
 
-Reading: a closure triangle with a baseline in no V^2 row is dropped, and counted,
-before virgil reads the file (``drop_unmatched_t3``; MIRC-X keeps such rows); a file
+Reading: a closure triangle with a baseline in no V^2 row (MIRC-X keeps such rows) is
+read as it stands: virgil places the leg from the T3 table's own U/V coordinates; a file
 with rows under several TARGET_IDs reads the one its OI_TARGET names
 (``pick_target``). Progress lines are timestamped, and an orbit's MAP is written to
 ``map_<id>.json`` before NUTS starts.
@@ -134,65 +134,13 @@ def pick_target(path, pattern=None):
     return names[pick]
 
 
-def drop_unmatched_t3(hdul, label=""):
-    """A copy of ``hdul`` without the OI_T3 rows that have a leg in no OI_VIS2 row.
-
-    virgil (as of 7498dd0..3420ea1) refuses a closure triangle whose three baselines are
-    not all in a visibility table of the same INSNAME at the same time, in either
-    orientation. MIRC-X (CHARA) and some PIONIER phase-3 products keep the T3 rows of
-    baselines whose V^2 rows were removed. Until virgil takes such a triangle's (u, v)
-    from the T3 table's own U1COORD/V1COORD/U2COORD/V2COORD, this drops those rows and
-    logs how many. Matching mirrors virgil's: the same INSNAME (or, if no OI_VIS2 has
-    it, any OI_VIS2 with as many channels), the same TARGET_ID, the pair in either orientation, MJDs within
-    twice the longest INT_TIME of the OI_VIS2 table (9 s if it has none)."""
-    out = fits.HDUList([h.copy() for h in hdul])
-    vis2 = [h for h in out if h.header.get("EXTNAME") == "OI_VIS2"]
-    n_drop = n_all = 0
-    for i, h in enumerate(out):
-        if h.header.get("EXTNAME") != "OI_T3" or h.data is None or not len(h.data):
-            continue
-        ins = h.header.get("INSNAME")
-        nwave = np.shape(h.data["T3PHI"])[-1] if np.ndim(h.data["T3PHI"]) > 1 else 1
-        tables = [v for v in vis2 if v.header.get("INSNAME") == ins] or [
-            v for v in vis2 if (np.shape(v.data["VIS2DATA"])[-1] if np.ndim(v.data["VIS2DATA"]) > 1 else 1) == nwave]
-        if not tables:
-            continue  # nothing to match against: leave the table to virgil
-        seen = {}  # (TARGET_ID, frozenset(pair)) -> list of (mjd array, tolerance in days)
-        for v in tables:
-            t = np.asarray(v.data["INT_TIME"], float) if "INT_TIME" in v.columns.names else np.zeros(0)
-            tol = (2.0 * float(np.max(t)) if t.size and np.max(t) > 0 else 9.0) / 86400.0
-            sta, mjd = np.asarray(v.data["STA_INDEX"], int), np.asarray(v.data["MJD"], float)
-            tid = np.asarray(v.data["TARGET_ID"], int)
-            keys = [(int(i), frozenset(map(int, s))) for i, s in zip(tid, sta)]
-            for key in set(keys):
-                sel = np.array([k == key for k in keys])
-                seen.setdefault(key, []).append((mjd[sel], tol))
-
-        def matched(target, pair, t):
-            return any(np.any(np.abs(m - t) <= tol) for m, tol in seen.get((target, frozenset(pair)), []))
-
-        sta, mjd = np.asarray(h.data["STA_INDEX"], int), np.asarray(h.data["MJD"], float)
-        tid = np.asarray(h.data["TARGET_ID"], int)
-        keep = np.array([all(matched(int(i), p, t) for p in ((a, b), (b, c), (a, c)))
-                         for (a, b, c), t, i in zip(sta, mjd, tid)])
-        n_all += keep.size
-        if not keep.all():
-            n_drop += int((~keep).sum())
-            out[i] = fits.BinTableHDU(data=h.data[keep], header=h.header, name="OI_T3")
-    if n_drop:
-        log(f"{label}: dropped {n_drop} of {n_all} OI_T3 rows with a baseline in no OI_VIS2 row "
-            "(virgil cannot place their legs yet)")
-    return out, dict(t3_rows=n_all, t3_dropped=n_drop)
-
-
 LOAD_NOTES = []  # what load() dropped, per file; written into fit_<id>.json
 
 
 def load(paths, *, insname_prefix=None, target=None, select=None):
     """One OIData from one or more files: the tables whose INSNAME starts with
     ``insname_prefix`` (GRAVITY: the science channel, both polarisations), the target
-    matching ``target`` (a regex), then ``OIData.select(**select)``. Closure triangles
-    with a leg in no V^2 row are dropped first (``drop_unmatched_t3``)."""
+    matching ``target`` (a regex), then ``OIData.select(**select)``."""
     paths = list(paths)
     insname = None
     if insname_prefix:
@@ -205,14 +153,7 @@ def load(paths, *, insname_prefix=None, target=None, select=None):
         read = sum(n for i, n in info["rows"].items() if info["targets"].get(i) == name)
         LOAD_NOTES.append(dict(file=os.path.basename(paths[0]), target_read=name, rows_read=read,
                                rows_total=sum(info["rows"].values())))
-    hduls = []
-    for p in paths:
-        with fits.open(p, memmap=False) as h:
-            hdul, note = drop_unmatched_t3(h, os.path.basename(p))
-        if note["t3_dropped"]:
-            LOAD_NOTES.append(dict(file=os.path.basename(p), **note))
-        hduls.append(hdul)
-    data = OIData(read_oifits(hduls if len(hduls) > 1 else hduls[0], target=name, insname=insname))
+    data = OIData(read_oifits(paths if len(paths) > 1 else paths[0], target=name, insname=insname))
     return data.select(**select) if select else data
 
 
