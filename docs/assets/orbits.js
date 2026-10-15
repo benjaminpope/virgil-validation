@@ -326,6 +326,7 @@
   }
   function dataLine(t) {
     var d = t.data || {}, bits = [];
+    if (d.source) return "Data: " + esc(d.source) + " products (public, programmes " + esc((d.programmes || []).join(", ")) + "), " + esc(String(d.n_files || 0)) + " OIFITS files, as released by ESO.";
     if (d.archive) return "Data: " + esc(d.archive) + (d.datapi ? "; " + esc(d.datapi) : "") + ". Raw frames are public; we thank the ESO archive and cite the papers.";
     if (d.collection) bits.push("OiDB collection <code>" + esc(d.collection) + "</code>");
     else bits.push("an unpublished (L2) OiDB collection, shown with clearance for display");

@@ -389,6 +389,8 @@
    231.2,
    5.0
   ],
+  "omega_of": "secondary",
+  "omega_of_basis": "Le Bouquin+17 Sect. 2.4: 'the secondary's, from the ascending node'. Corroborated by crosscheck.orbits reproducing the 11 published epochs (0.30 mas rms) with the published T; that checks the transcription, not the node.",
   "omega_deg": [
    246.7,
    9.0,
@@ -419,7 +421,8 @@
    1004,
    "an uncertainty of 1004 Msun: the size of the orbit is unconstrained"
   ],
-  "source": "Fig. A.9 panel (p. 18 of the arXiv:1608.03525 PDF); Sect. 3.9"
+  "source": "Fig. A.9 panel (p. 18 of the arXiv:1608.03525 PDF); Sect. 3.9",
+  "omega_of": "secondary"
  },
  "other_papers": [
   {
