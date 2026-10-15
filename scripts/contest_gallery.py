@@ -204,12 +204,14 @@ def markers_2018(ax):
 INK, PAPER = "#d8d8e0", "#15151c"  # panel text and background: dark cards suit magma
 
 
-def render_panel(image, fov, half, title, markers=None):
+def render_panel(image, fov, half, title, markers=None, peak=None):
     """One square panel: ``image`` on a ±``half`` mas field, North up, East
-    left, asinh stretch to its own peak. Returns the figure."""
+    left, asinh stretch to its own peak, or to ``peak`` (in on_grid flux
+    units) when given, so that panels can share a scale (values above clip).
+    Returns the figure."""
     img = np.clip(on_grid(image, fov, half), 0, None)
     fig, ax = plt.subplots(figsize=(PANEL_IN, PANEL_IN), facecolor=PAPER)
-    ax.imshow(np.arcsinh(img / (SOFT * img.max())) / np.arcsinh(1 / SOFT), origin="upper",
+    ax.imshow(np.arcsinh(img / (SOFT * (img.max() if peak is None else peak))) / np.arcsinh(1 / SOFT), origin="upper",
               extent=[half, -half, -half, half], cmap=CMAP, vmin=0, vmax=1)
     if markers:
         markers(ax)
