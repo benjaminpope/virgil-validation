@@ -74,8 +74,10 @@ TILES = [
                      text="GRAVITY's V² loses contrast by a different amount each night, so the fit gives each night its own "
                           "V² amplitude rather than one for the whole run. The flux ratio, read from the same amplitudes, "
                           "depends on it."),
-                dict(kind="caveat", title="Blind fit",
-                     text="No published orbit enters the fit. Every period band from 10 to 14 d is searched "
+                dict(kind="caveat", title="Reference-informed fit",
+                     text="No published orbit enters the fit, but the 10 to 14 d period window is centred on the published "
+                          "period, so the winning band is a choice among a few bands, not an independent confirmation. "
+                          "Every period band in the window is searched "
                           "(per-night positions, the two single-night alias peaks flagged, the 2024-12-19 night "
                           "left out) and the best-evidence band is refitted. This is the maximum-likelihood orbit "
                           "of the six usable nights of the ESO archive; no posterior sampling yet; the "
