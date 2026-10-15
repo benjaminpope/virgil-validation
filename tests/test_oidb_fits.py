@@ -258,8 +258,7 @@ def test_orbit_search_is_blind_and_a_flagged_night_seeds_no_position(of, tmp_pat
     """No published orbit can enter ``fit_orbit`` (it has no such argument, and reports none). A night in
     ``flagged`` gives no position to the alias search, but its closure phases and V^2 are still data in the
     orbit fit (unless ``exclude_flagged``): the search starts from the other nights' positions and still
-    lands in the true band, with the flagged night in the alias search. Flagging a night that is in fact
-    fine must not move the answer."""
+    lands in the true band, with the flagged night in the alias search."""
     import inspect
     assert "published" not in inspect.signature(of.fit_orbit).parameters
     per_night, per_file = _orbit_nights(of, tmp_path, [1.0] * 5)
