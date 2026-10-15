@@ -571,6 +571,17 @@ pipelines:
     steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
             virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.inference.laplace_cov,
             virgil.limits.absil_limits]
+  trackb-targets:
+    title: Track B orbit targets, onboarded for the blind orbit solver (published orbits for comparison only)
+    data: real
+    dataset: ESO Phase 3 GRAVITY and PIONIER products of 12 binaries (Araucaria SB2s, later epochs, short arcs)
+    reference: the published orbits and astrometry (Gallenne et al. 2023, 2019; Rowan et al. 2026), never used as a start
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/eso_binaries_triage.md
+    headline: records and held-out split committed; awaiting the blind solver
+    page: orbits/
+    state: planned  # data and records are in; the orbit fits await the blind solver
+    steps: [virgil.oifits.read_oifits, virgil.oidata.OIData, virgil.models.BinaryModelCartesian,
+            virgil.grid_fit.likelihood_grid, virgil.fitting.fit]
   eso-9sgr-blind-orbit:
     title: 9 Sgr (HD 164794) orbit from the public ESO frames, solved blind, against Le Bouquin et al. 2017 and Fabry et al. 2021
     data: real

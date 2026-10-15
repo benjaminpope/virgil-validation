@@ -41,6 +41,7 @@ import oidb_compare as oc  # noqa: E402
 SUMMARIES = ROOT / "trust" / "campaigns" / "orbits"
 REFERENCES = ROOT / "oidb" / "references"
 MANIFEST = ROOT / "oidb" / "manifest.yml"
+TRACKB = ROOT / "oidb" / "trackb"  # one record per ESO Track B binary awaiting a blind orbit fit (scripts/build_trackb_targets.py)
 N_PATH = 200  # points on a sky polyline (the epoch times are added to them)
 N_PHASE = 120
 TENSION_SIGMA = 3.0  # a headline published orbit further than this from our epoch position is a tension
@@ -167,6 +168,45 @@ TILES = [
          notes=[dict(kind="caveat", title="Not fitted",
                      text="The 22 non-detections (detection limits) are not part of this comparison.")]),
 ]
+
+
+def trackb_tiles(directory=TRACKB):
+    """One "awaiting blind fit" tile per ``oidb/trackb/<slug>.json``. These systems come from the ESO archive, not OiDB:
+    the tile's ``cid`` is ``trackb-<slug>``, its reference is the record itself, and ``kind`` is orbit (a blind orbit
+    solve will fill it). The published orbit is drawn for comparison only; no fit is run against it."""
+    tiles = []
+    for path in sorted(pathlib.Path(directory).glob("*.json")):
+        r = json.loads(path.read_text())
+        o, sp, p = r["orbit"], r["split"], r["paper"]
+        cite = f"{p['authors'].split(';')[0].split(',')[0]} et al. {p['year']}"
+        sub = {"sb2_subresolution": "mostly below the resolution limit", "alias_track": "a period-alias test",
+               "short_arc": "a data span shorter than the period"}[r["kind"]]
+        tagline = f"A {o['P_day'][0]:g}-day binary ({sub})"
+        scored = (f"be scored on the {sp['heldout_nights']} further nights it has not seen" if sp["heldout_nights"]
+                  else "be compared with the published orbit (no further public nights exist)")
+        about = (f"{cite} ({r['instrument']}) measured {sp['paper_epochs']} positions of {r['target']} and fitted an orbit "
+                 f"with radial velocities. No orbit has been fitted here yet: a blind solver, with no published starting "
+                 f"values, will fit the paper's nights and {scored}. The published orbit is drawn for comparison only.")
+        notes = [dict(kind="convention", title="Conventions", text=r["conventions"]["text"]),
+                 dict(kind="data", title="Held-out split",
+                      text=f"{sp['paper_epochs']} nights are the paper's ({sp['paper_files']} files"
+                           + (f", plus {sp['paper_night_files']} from the same nights" if sp["paper_night_files"] else "")
+                           + (f"); {sp['heldout_files']} files on {sp['heldout_nights']} other nights are held out, "
+                              f"{sp['heldout_nights_after_paper_span']} of them after the paper's last epoch. "
+                              if sp["heldout_nights"] else "); there are no other public nights. ")
+                           + "ESO Phase 3 products, public; the fit never sees the held-out nights."),
+                 dict(kind="caveat", title="Caveats", text=r["caveats"])]
+        if sp["paper_epochs_below_lambda_2B"]:
+            notes.insert(2, dict(kind="caveat", title="Below the resolution limit",
+                                 text=f"{sp['paper_epochs_below_lambda_2B']} of {sp['paper_epochs']} published positions are "
+                                      f"closer than λ/2B (about 1.75 mas for GRAVITY K at 130 m): the authors' positions "
+                                      "come from model fitting below the formal resolution."))
+        tiles.append(dict(cid=f"trackb-{r['slug']}", trackb=r["slug"], slug=r["slug"].replace("_", "-"), name=r["target"],
+                          kind="orbit", pub="trackb", tagline=tagline, about=about, notes=notes))
+    return tiles
+
+
+TILES += trackb_tiles()
 TARGETS = {t["cid"]: t for t in TILES}  # the collections the gallery shows
 # Single-night alias peaks (design/orbit_comparison.md section 5): a fit summary names them in
 # ``orbit["epoch_checks"]`` (reasons starting "flagged"); for a summary that predates that field, these nights
@@ -346,6 +386,17 @@ def published_orbits(pub, ref):
                                        inc_deg=k["i_deg"][0], omega_deg=k["omega_deg"][0] % 360,
                                        Omega_deg=k["Omega_deg"][0] % 360, a_mas=k["a_mas"][0])))
         return out
+    if pub == "trackb":  # the published (omega, Omega) as they stand reproduce the paper's positions (omega_shift_deg 0)
+        # here; they are equivalent to the companion's omega + 180 with Omega + 180, which a no-RV solver cannot tell
+        # apart, so a later comparison of omega and Omega must wrap them jointly (conventions.degenerate_shift_deg)
+        o, shift = ref["orbit"], ref["conventions"]["omega_shift_deg"]
+        if (o.get("T_peri_mjd") or [None])[0] is None:  # a time the paper gives without a reference epoch: no curve
+            return []
+        std = ref["conventions"].get("standard", {})  # elements restated in the standard form where the paper's differ
+        return [(f"{paper_of(ref)['cite']}", dict(period_day=o["P_day"][0], t_peri_mjd=o["T_peri_mjd"][0], ecc=o["e"][0],
+                                                  inc_deg=std.get("i_deg", o["i_deg"][0]),
+                                                  omega_deg=(o["omega_deg"][0] + shift) % 360,
+                                                  Omega_deg=std.get("Omega_deg", o["Omega_deg"][0]) % 360, a_mas=o["a_mas"][0]))]
     if pub in ("9sgr", "hd168137"):  # Le Bouquin+17 (omega is the secondary's: no shift) and, for 9 Sgr, Fabry+21
         o = ref["orbit"]
         lb = ("Le Bouquin+17", dict(period_day=o["P_day"][0], t_peri_mjd=o["T_peri_mjd"][0], ecc=o["e"][0],
@@ -538,6 +589,8 @@ def _split_summary(tile, summaries):
 
 
 def _load_ref(tile, refs_dir):
+    if tile.get("trackb"):
+        return json.loads((TRACKB / f"{tile['trackb']}.json").read_text())
     path = pathlib.Path(refs_dir) / f"{tile.get('ref') or tile['cid']}.json"
     if not path.exists():
         return None
@@ -546,6 +599,10 @@ def _load_ref(tile, refs_dir):
 
 
 def _data_of(tile, manifest):
+    if tile.get("trackb"):
+        r = json.loads((TRACKB / f"{tile['trackb']}.json").read_text())
+        return dict(source="ESO Phase 3 archive", level=None, datapi=None, title=r["target"], collection=None,
+                    programmes=sorted({f["programme"] for f in r["files"]}), n_files=len(r["files"]))
     if tile.get("data"):
         return dict(tile["data"], level=None, title=None, collection=None)
     c = manifest.get(tile["cid"], {})
@@ -560,8 +617,9 @@ def build_target(tile, ref, summary, rows, manifest=None):
     mc = manifest.get(tile["cid"], {})
     t = dict(slug=tile["slug"], collection_id=tile["cid"], target=tile["name"], tagline=tile["tagline"],
              about=tile["about"], notes=tile["notes"], data=_data_of(tile, manifest),
-             instrument=(summary or {}).get("instrument") or tile.get("instrument") or " + ".join(
-                 INSTRUMENT.get(i, i) for i in mc.get("instruments", [])),
+             instrument=(summary or {}).get("instrument") or tile.get("instrument") or (INSTRUMENT.get((ref or {}).get("instrument"), "")
+                                                              if tile.get("trackb") else " + ".join(
+                 INSTRUMENT.get(i, i) for i in mc.get("instruments", []))),
              kind=tile["kind"], status="awaiting", awaiting=None if summary is not None else "fit",
              paper=paper_of(ref), ours=None, alternatives=[], published=[], epochs=[],
              phase=dict(ours=[], published=[]), table=[], provenance={}, scored=None, status_why="")
@@ -764,7 +822,11 @@ thank the dataPI and cite the paper, which every tile links. This research has m
 Center OiDB service, available at <http://oidb.jmmc.fr>. The collections and their terms are in \
 [`oidb/manifest.yml`](https://github.com/benjaminpope/virgil-validation/blob/main/oidb/manifest.yml) and \
 [`DATA_ATTRIBUTION.md`](https://github.com/benjaminpope/virgil-validation/blob/main/DATA_ATTRIBUTION.md). The two \
-workshop tiles come from an unpublished (L2) collection and are shown with clearance for display.
+workshop tiles come from an unpublished (L2) collection and are shown with clearance for display. The tiles awaiting a \
+blind orbit fit (the Araucaria-I SB2s, the alias-track systems and the short arcs) use public ESO Phase 3 OIFITS \
+products instead, listed with their programme, release date and checksum in \
+[`oidb/trackb/`](https://github.com/benjaminpope/virgil-validation/tree/main/oidb/trackb); their published elements come \
+from the papers and VizieR (table named in each record).
 """
 
 METHOD = """\
