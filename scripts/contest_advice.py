@@ -437,7 +437,7 @@ function card(r) {
   left.append(box, cap, nav);
   if (r.images.length) { const g = $("div", "cands"); r.images.forEach((x, k) => g.append(cand(x, k))); right.append(g); }
   else right.append($("div", "box", r.info));
-  if (r.rejected.length) { const d = $("details"); d.append($("summary", null, r.rejected.length + " candidates rejected"), $("pre", "prompt", r.rejected.join("\n"))); right.append(d); }
+  if (r.rejected.length) { const d = $("details"); d.append($("summary", null, r.rejected.length + " candidates rejected"), $("pre", "prompt", r.rejected.join("\\n"))); right.append(d); }
   ta.value = r.advice; ta.placeholder = "Advice for the fit…";
   let t; const mark = $("span", "info");
   ta.oninput = () => { clearTimeout(t); status.textContent = "unsaved…"; mark.textContent = ""; t = setTimeout(async () => {
