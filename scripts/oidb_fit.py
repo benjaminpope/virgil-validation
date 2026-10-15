@@ -441,7 +441,7 @@ def drop_epochs(epochs, names):
     return Epochs(groups)
 
 
-def check_epochs(start_data, grid, *, flagged=None, min_sep=None, min_gap=5.0, reference=None):
+def check_epochs(start_data, grid, *, flagged=None, min_sep=None, min_gap=5.0, reference=None, point_scene=True):
     """Which nights may seed the starting orbits, and why the others may not.
 
     A night is *flagged* (not a seed; its visibilities still enter every fit unless the
@@ -450,7 +450,9 @@ def check_epochs(start_data, grid, *, flagged=None, min_sep=None, min_gap=5.0, r
       design/orbit_comparison.md section 5),
     * its best grid peak is closer than ``min_sep`` mas (two stars whose disks
       overlap: iota Peg's 0.5 mas peaks, with fixed disks of 1.05 and 0.6 mas),
-    * its static fit failed (raw chi2/N above ``FAILED_EPOCH_CHI2``), or
+    * its static fit failed (raw chi2/N above ``FAILED_EPOCH_CHI2``; only when ``point_scene``: the grid's
+      ``epoch_positions`` models two point stars, so for a resolved primary (iota Peg: a 1.05 mas disk)
+      its chi2/N is 1e3-1e4 on every night and says nothing about the fit), or
     * it is ambiguous (``gap_marginal`` below ``min_gap``: start_from_positions skips it too).
     ``reference`` ({night: (dra, ddec)}) adds the offset of the best and of the nearest
     peak from the reference position, and the marginal-score difference between them
@@ -468,7 +470,7 @@ def check_epochs(start_data, grid, *, flagged=None, min_sep=None, min_gap=5.0, r
             reasons.append(f"flagged: {flagged[name]}")
         if min_sep is not None and rho[0] < min_sep:
             reasons.append(f"best peak at {rho[0]:.2f} mas, closer than {min_sep:.2f} mas")
-        if chi2 > FAILED_EPOCH_CHI2:
+        if point_scene and chi2 > FAILED_EPOCH_CHI2:
             reasons.append(f"static fit failed: raw chi2/N {chi2:.3g}")
         if float(pos.gap_marginal[k]) < min_gap:
             reasons.append(f"ambiguous: gap_marginal {float(pos.gap_marginal[k]):.2g}")
@@ -535,7 +537,7 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
     t_ref = float(np.round(np.mean(start_data.times), 1))
     scene = scene_factory(t_ref)
     rows, pos_all = check_epochs(start_data, grid, flagged=flagged, min_sep=min_sep, min_gap=min_gap,
-                                 reference=reference)  # pos_all: every night's static position, for the plots
+                                 reference=reference, point_scene=primary_diam is None)  # pos_all: every night's static position, for the plots
     for r in rows:
         log(f"orbit: night {r['name']}: " + ("seeds the orbits" if r["seeds"] else "; ".join(r["reasons"])))
     barred = {r["name"] for r in rows if r["barred"]}  # flagged, failed or too close: no position seed
@@ -879,7 +881,7 @@ def recipe_iota_peg(data_dir, cfg):
     orbit = fit_orbit(Epochs(per_night), Epochs(per_file),
                       lambda t: orbital_disk_binary(t, *IOTA_PEG_UD),
                       orbit_priors((9.0, 11.5), (3.0, 30.0), (0.02, 1.0)), grid=grid,
-                      periods=np.arange(10.0, 10.4, cfg.get("dp", 0.0002)), eccs=np.arange(0.0, 0.3, 0.05),
+                      periods=np.array([9.6, 10.8]), eccs=np.arange(0.0, 0.3, 0.05),
                       n_candidates=cfg.get("n_candidates", 400), n_refine=cfg.get("n_refine", 6),
                       nuts=cfg.get("nuts"), min_sep=sum(IOTA_PEG_UD) / 2, primary_diam=IOTA_PEG_UD[0],
                       exclude_flagged=cfg.get("exclude_flagged", False),
