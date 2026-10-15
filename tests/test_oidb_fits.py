@@ -253,51 +253,47 @@ def test_vis_amp_of_recovers_a_contrast_loss(of, tmp_path):
     record("vis_amp_recovered", a)
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.fitting.fit", "virgil.likelihood.numpyro_model",
-                       roots=["mathematics", "standards"])
-def test_published_start_joins_the_modes_and_refits_to_the_orbit(of, tmp_path):
-    """``published`` (a paper's orbit, here ORBIT displaced by 0.03 d in P, 10 % in a and 3 deg in i) is one more
-    start: tagged ``published`` in the modes and reported in ``published_start``, and refitted to the
-    simulated truth. The blind search runs as always."""
+@pytest.mark.validates("virgil.aliases.fit_orbit_aliases", "virgil.fitting.fit", roots=["mathematics", "standards"])
+def test_orbit_search_is_blind_and_a_flagged_night_seeds_no_position(of, tmp_path):
+    """No published orbit can enter ``fit_orbit`` (it has no such argument, and reports none). A night in
+    ``flagged`` gives no position to the alias search, but its closure phases and V^2 are still data in the
+    orbit fit (unless ``exclude_flagged``): the search starts from the other nights' positions and still
+    lands in the true band, with the flagged night in the alias search."""
+    import inspect
+    assert "published" not in inspect.signature(of.fit_orbit).parameters
     per_night, per_file = _orbit_nights(of, tmp_path, [1.0] * 5)
     priors = of.orbit_priors((11.5, 12.8), (2.0, 20.0), (0.05, 1.0))
     grid = of._grid(9.0, 0.2, np.linspace(0.2, 1.0, 5))
-    pub = dict(period=ORBIT["period"] + 0.03, t_peri=ORBIT["t_peri"] + 0.3, ecc=ORBIT["ecc"], inc=ORBIT["inc"] + 3.0,
-               omega=ORBIT["omega"], Omega=ORBIT["Omega"], a=ORBIT["a"] * 1.1, flux=ORBIT["flux"])
-    out = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
-                       periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
-                       n_refine=1, min_gap=3.0, published=pub)
-    ps = out["published_start"]
-    assert abs(ps["elements"]["period_day"] - ORBIT["period"]) < 0.01 and abs(ps["elements"]["a_mas"] - ORBIT["a"]) < 0.2
-    assert "published" in {m["band"] for m in out["modes"]}
+    kw = dict(grid=grid, periods=np.array([11.5, 12.8]), n_candidates=30, n_refine=2, min_gap=3.0)
+    out = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors,
+                       flagged={"n3": "a stand-in alias peak"}, **kw)
+    assert out["start"] == "blind" and out["published_start"] is None
+    assert "published" not in {m["band"] for m in out["modes"]}
+    by = {r["name"]: r for r in out["epoch_checks"]}
+    assert by["n3"]["barred"] and not by["n3"]["seeds"] and by["n0"]["seeds"]
+    assert "n3" in out["alias"]["nights"] and len(out["alias"]["nights"]) == 5  # its data still count
     assert abs(out["map"]["period_day"] - ORBIT["period"]) < 0.01
-    assert out["start"] in ("published", "blind") and out["blind_best"]["loss"] >= out["loss"] - 1e-6
-    # control: a published orbit in the wrong band (a different period and other elements) is not imposed
-    wrong = dict(pub, period=ORBIT["period"] * 11 / 10, ecc=0.6, inc=80.0, a=ORBIT["a"] * 2, flux=0.2)
-    out2 = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
-                        periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
-                        n_refine=1, min_gap=3.0, published=wrong)
-    assert out2["modes"][0]["band"] != "published" and out2["start"] == "blind"
-    assert abs(out2["map"]["period_day"] - ORBIT["period"]) < 0.02
-    assert out2["published_start"]["loss"] > out2["loss"] + 100.0  # the wrong start is far worse and loses
-    assert of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors, grid=grid,
-                        periods=np.arange(11.8, 12.4, 0.002), eccs=np.arange(0.0, 0.5, 0.1), n_candidates=30,
-                        n_refine=1, min_gap=3.0)["published_start"] is None
+    assert abs(out["map"]["a_mas"] - ORBIT["a"]) < 0.3
+    assert out["alias"]["best_n"] == round(30.0 / ORBIT["period"])
+    assert any(b["n"] == out["alias"]["best_n"] for b in out["bands"])  # no assumption about the band order
+    assert abs(sum(b["p"] for b in out["bands"]) - 1.0) < 1e-6
+    out2 = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors,
+                        flagged={"n3": "a stand-in alias peak"}, exclude_flagged=True, **kw)
+    assert "n3" not in out2["alias"]["nights"] and len(out2["datasets"]) < len(out["datasets"])
 
 
 @pytest.mark.validates("pipeline:published-binary", roots=["mathematics"], kind="check")
 def test_vis_amp_variant_recovers_the_orbit_and_the_per_night_losses(of, tmp_path):
     """The V^2 + closure-phase orbit with a free amplitude on each night (``virgil.aliases``): V^2 scaled by
-    AMPS night by night, a warm start displaced from the truth. The orbit and every night's loss
+    AMPS night by night, searched blind. The orbit and every night's loss
     come back."""
     aliases = pytest.importorskip("virgil.aliases")
     import inspect
     if "vis_amp" not in inspect.signature(aliases.fit_orbit_aliases).parameters:
         pytest.skip("this virgil's fit_orbit_aliases has no vis_amp (needs virgil a92b97c)")
     per_night, _ = _orbit_nights(of, tmp_path, AMPS)
-    pub = dict(period=ORBIT["period"] + 0.03, t_peri=ORBIT["t_peri"] + 0.3, ecc=ORBIT["ecc"], inc=ORBIT["inc"] + 3.0,
-               omega=ORBIT["omega"], Omega=ORBIT["Omega"], a=ORBIT["a"] * 1.1, flux=ORBIT["flux"])
-    out = of.fit_orbit_vis_amp(per_night, (11.5, 12.8), a_range=(2.0, 20.0), flux_range=(0.05, 1.0), init=pub,
+    grid = of._grid(9.0, 0.2, np.linspace(0.2, 1.0, 5))
+    out = of.fit_orbit_vis_amp(per_night, (11.5, 12.8), grid=grid, a_range=(2.0, 20.0), flux_range=(0.05, 1.0),
                                n_candidates=20, n_refine=1)
     el = out["elements"]
     assert abs(el["period_day"] - ORBIT["period"]) < 0.03 and abs(el["a_mas"] - ORBIT["a"]) < 0.3
@@ -395,6 +391,15 @@ def test_triangles_with_a_baseline_in_no_vis2_row_are_kept(of, tmp_path):
     assert of.LOAD_NOTES == []  # nothing is dropped, so nothing is noted
     assert np.asarray(data.phi).size == len(t3) * 3 == np.asarray(full.phi).size
     np.testing.assert_allclose(np.asarray(data.phi), np.asarray(full.phi))
+    # The control that can fail: the observed phases are the same column in both reads, so compare the MODEL
+    # closure phases virgil computes at each read's U/V placement (the whitened residuals are not comparable
+    # row by row: the whitening depends on the triangle structure). A leg placed with the wrong sign,
+    # orientation or wavelength would move them.
+    scene = of.point_binary(dra=3.0, ddec=-4.0, flux=0.3)
+    m_full = np.asarray(full.select(observables="phi").model(scene))
+    m_t3 = np.asarray(data.select(observables="phi").model(scene))
+    np.testing.assert_allclose(m_t3, m_full, atol=1e-9)
+    assert np.degrees(np.abs(m_t3 - np.asarray(data.phi).ravel()).max()) < 3.0  # truth fits within 6 sigma_cp (0.5 deg)
 
 
 @pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")

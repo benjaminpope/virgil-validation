@@ -231,6 +231,11 @@ nodes:
     depends: [virgil.epochs.epoch_positions, virgil.orbits.starting_orbits, virgil.epochs.rank_orbits,
               virgil.epochs.chain_starts, virgil.fitting.fit]
     doc: orbits/epochs.md
+  virgil.aliases.fit_orbit_aliases:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.fitting.fit]
+    doc: orbits/aliases.md
   virgil.epochs.OrbitStart:
     layer: orbits
     source: [src/virgil/epochs.py]
