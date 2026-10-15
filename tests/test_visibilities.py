@@ -186,9 +186,9 @@ def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
 )
 @pytest.mark.validates("virgil.models.GaussianArc", roots=["render"], property="orientation")
 def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
-    """The arc weight is a Gaussian in arc length wrapped once round the
-    circle, including when the length FWHM exceeds pi R (virgil >= the
-    fix for finding 2; it used to cut the weight at +-3.5 sigma)."""
+    """The arc weight is virgil's documented von Mises function of the
+    position angle, exp(kappa cos(phi - pa)) with kappa = (2 sqrt(2 ln 2)
+    R / L)^2, including when the length FWHM exceeds pi R."""
     u, v, wl = uvw
     ours = sky.visibility(
         sky.arc_curve(radius, length, 250.0), u, v, wl
@@ -201,29 +201,27 @@ def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
 @pytest.mark.parametrize("radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)])
 @pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"])
 def test_gaussian_arc_at_its_default_nodes(uvw, radius, length):
-    """At virgil's default 128 nodes, within its documented range (node
-    spacing below half the shortest fringe, here 0.84 mas for 184 m at
-    1.5 um), the arc agrees with our dense curve to 1e-4."""
+    """At virgil's default arguments (the harmonic series, whose nodes are
+    unused for these arcs) the arc agrees with our dense curve to 1e-4."""
     u, v, wl = uvw
-    sigma = length / (2 * np.sqrt(2 * np.log(2)))
-    spacing = 2 * min(6 * sigma, np.pi * radius) / 127
-    fringe = np.rad2deg(wl.min() / (2 * np.hypot(u, v).max())) * 3.6e6
-    assert spacing < fringe
     ours = sky.visibility(sky.arc_curve(radius, length, 250.0), u, v, wl) * sky.gaussian_blur_factor(u, v, wl, 0.6)
     assert_close(ours, virgil_vis(vm.GaussianArc(radius, 0.6, length, 250.0), u, v, wl), tol=1e-4)
 
 
 @pytest.mark.x64
 @pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"], kind="control")
-def test_gaussian_arc_outside_its_documented_range_is_inaccurate(uvw):
-    """A control: an arc whose node spacing (3 mas) exceeds half the
-    shortest fringe misses our curve by far more than 1e-4."""
+def test_gaussian_arc_is_not_the_old_gaussian_weight_for_a_long_arc(uvw):
+    """A control: virgil's arc used to weight the circle by a Gaussian in arc
+    length, wrapped once round it. For a long arc (L = 8 R) that is a
+    different model from the von Mises weight, so the old curve must miss
+    virgil's by far more than the 1e-4 the current one agrees to."""
     u, v, wl = uvw
-    ours = sky.visibility(sky.arc_curve(60.0, 80.0, 250.0), u, v, wl) * sky.gaussian_blur_factor(u, v, wl, 0.6)
-    dense = np.max(np.abs(ours - virgil_vis(vm.GaussianArc(60.0, 0.6, 80.0, 250.0, nodes=8192), u, v, wl)))
-    assert dense < 1e-4  # our curve is right here: the miss is virgil's sampling
-    err = np.max(np.abs(ours - virgil_vis(vm.GaussianArc(60.0, 0.6, 80.0, 250.0), u, v, wl)))
-    assert err > 1e-2
+    blur = sky.gaussian_blur_factor(u, v, wl, 0.6)
+    theirs = virgil_vis(vm.GaussianArc(5.0, 0.6, 40.0, 250.0), u, v, wl)
+    new = sky.visibility(sky.arc_curve(5.0, 40.0, 250.0), u, v, wl) * blur
+    old = sky.visibility(sky.arc_curve_gaussian(5.0, 40.0, 250.0), u, v, wl) * blur
+    assert np.max(np.abs(new - theirs)) < 1e-4
+    assert np.max(np.abs(old - theirs)) > 1e-2
 
 
 @pytest.mark.x64
