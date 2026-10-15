@@ -74,10 +74,13 @@ TILES = [
                      text="GRAVITY's V² loses contrast by a different amount each night, so the fit gives each night its own "
                           "V² amplitude rather than one for the whole run. The flux ratio, read from the same amplitudes, "
                           "depends on it."),
-                dict(kind="caveat", title="Seeded fit",
-                     text="This fit was started from the published orbit. Started blind, the search alone finds a "
-                          "different, worse mode (see the table), and the NUTS chains do not agree with each other "
-                          "(r̂ well above 1), so their medians mix modes. A blind solver will replace it."),
+                dict(kind="caveat", title="Blind fit",
+                     text="No published orbit enters the fit. Every period band from 10 to 14 d is searched "
+                          "(per-night positions, the two single-night alias peaks flagged, the 2024-12-19 night "
+                          "left out) and the best-evidence band is refitted. This is the maximum-likelihood orbit "
+                          "of the six usable nights of the ESO archive; no posterior sampling yet; the "
+                          "table lists the modes. The five-night OiDB collection alone (125 d) lands in the same band "
+                          "but constrains the elements more loosely."),
                 dict(kind="caveat", title="Radial velocities",
                      text="The paper combines the astrometry with radial velocities; ours is astrometry only. Orbital "
                           "elements are therefore reported, not scored.")]),
