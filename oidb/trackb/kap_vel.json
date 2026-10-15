@@ -1,0 +1,423 @@
+{
+ "schema": "trackb-target/1",
+ "slug": "kap_vel",
+ "target": "kappa Vel (Markeb, HD 81188, HIP 45941)",
+ "kind": "short_arc",
+ "instrument": "GRAVITY",
+ "band": "K",
+ "ra_deg": 140.52840670833334,
+ "dec_deg": -55.01066713416667,
+ "paper": {
+  "authors": "Rowan, D. M.; Kraus, S.; Thompson, T. A.",
+  "year": 2026,
+  "journal": "PASP 138, 024203",
+  "bibcode": "2026PASP..138b4203R",
+  "arxiv": "2512.02116",
+  "doi": "10.1088/1538-3873/ae3b75"
+ },
+ "conventions": {
+  "omega_shift_deg": 0.0,
+  "text": "Elements from Rowan, Kraus and Thompson 2026, Table 4 (joint SB1 radial-velocity and GRAVITY astrometry fit). omega is the photometric primary's. T0 (73.1 d) is printed without an epoch: JD - 2416500 is the scale of the paper's RV table and the only offset that fits it, so T_peri here is derived, not stated. The paper's Omega and i are in a form (Thiele-Innes constants with x = -A(cosE - e) - F sqrt(1-e^2) sinE) that does not give the published positions in the standard east-of-north Campbell formulas; the equivalent standard elements, found here by comparing the paper's Eqs. 6-7 with the standard form and then tried against Table 3; their Thiele-Innes constants equal those of the paper's own Eqs. 6-7 to 1e-15, so the mapping is exact algebra, not a fit to Table 3), are Omega = 270 - 109.74 = 160.26 degrees and i = 180 - 74.03 = 105.97 degrees (retrograde, as the position angles run). Use 'standard' for any comparison; the published values stay in 'orbit'. Omega is the position angle of the ascending node, measured east of north, with the equinox not stated; the time scale of T_peri (UTC, HJD or BJD) is not stated. Positions are the secondary relative to the primary (east and north positive).  Compare orbits on the sky by their Thiele-Innes constants (orbit.thiele_innes_mas: with X = cos E - e, Y = sqrt(1 - e^2) sin E, dDec = A X + F Y and dRA = B X + G Y): they do not depend on which star omega refers to or on the (omega, Omega) -> (omega + 180, Omega + 180) degeneracy of astrometry without radial velocities. For kappa Vel they are taken from the paper's own Eqs. 6-7.",
+  "omega_primary": true,
+  "degenerate_shift_deg": 180.0,
+  "standard": {
+   "Omega_deg": 160.26,
+   "i_deg": 105.97
+  },
+  "check": "Table 3 positions reproduced to 0.02-0.06 mas for 8 of 9 epochs; the ninth (2025-02-28) is flagged suspect"
+ },
+ "orbit": {
+  "P_day": [
+   116.795,
+   0.002
+  ],
+  "e": [
+   0.1761,
+   0.0004
+  ],
+  "omega_deg": [
+   95.79,
+   0.07
+  ],
+  "Omega_deg": [
+   109.74,
+   0.03
+  ],
+  "i_deg": [
+   74.03,
+   0.02
+  ],
+  "a_mas": [
+   7.272,
+   0.004
+  ],
+  "K1": [
+   44.0,
+   1.0
+  ],
+  "K2": null,
+  "parallax_mas": [
+   6.05,
+   0.48
+  ],
+  "M1_Msun": null,
+  "M2_Msun": null,
+  "T_peri_jd": [
+   2416573.1,
+   0.6
+  ],
+  "T_peri_mjd": [
+   16572.600000000093,
+   0.6
+  ],
+  "source": "orbit_fit_table (Table 3 in text); joint RV+astrometry MCMC. gamma=21.8+/-0.8 km/s; ln s_ast=0.8+/-0.2 (astrometric error scaling factor ~2.2). Masses M1=10(+4/-2), M2=6.9+/-1.0 Msun for 6.05 mas.",
+  "thiele_innes_mas": {
+   "A": 1.3628264934516996,
+   "B": 1.6258099528353416,
+   "F": 6.74156845574963,
+   "G": -2.6335875094905803
+  }
+ },
+ "diameters_mas": {
+  "primary": [
+   0.1,
+   null
+  ],
+  "secondary": [
+   0.1,
+   null
+  ],
+  "source": "fixed, not measured"
+ },
+ "positions_source": "Table 2 (astrometry; Section 3.1): dRA, dDEC in mas of the secondary relative to the photometric primary (separation vector from primary to secondary, east/north by usual convention); rho = correlation coefficient dRA-dDec; f2/f1 K-band flux ratio. Dates UT start of night; MJD from Table 1 (observation log).",
+ "third_light": "No tertiary reported. Photocenter bias of Hipparcos parallax up to ~22% noted. Original selection note: companion could in principle be an inner binary, but a luminous secondary was detected.",
+ "caveats": "Single-field AT; sep 2.7-6.6 mas so well inside fibre. Astrometric residuals required scaling bootstrapped errors by s_ast ~ 2.2 (ln s_ast=0.8). Quoted sigma are bootstrap values and underestimate scatter. Separation never below ~2.7 mas vs resolution ~1 mas. Resolution lambda/2D=1.0 mas at 201.5 m. Calibrators differ per night (UD diameters in Table 1). Primary is B2IV photometric primary; the secondary is detected at first epoch.",
+ "epochs": [
+  {
+   "date": "2024-12-25",
+   "mjd": 60670.24654,
+   "dra_mas": -0.956,
+   "ddec_mas": -3.737,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.000000000000004,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.002 mas, sigma_dDec=0.003 mas, correlation rho(dRA,dDec)=-0.33; A0-G1-J2-K0, MR, calibrator HD81720",
+   "sep_mas": 3.857344293681859,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2025-12-31T22:19:16.951"
+   ]
+  },
+  {
+   "date": "2024-12-28",
+   "mjd": 60672.23178,
+   "dra_mas": -0.678,
+   "ddec_mas": -4.259,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.000000000000004,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.003 mas, sigma_dDec=0.003 mas, correlation rho(dRA,dDec)=-0.61; A0-G1-J2-K0, MR, calibrator HD83465",
+   "sep_mas": 4.3126285488087195,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": []
+  },
+  {
+   "date": "2025-01-03",
+   "mjd": 60679.26416,
+   "dra_mas": 0.331,
+   "ddec_mas": -5.806,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.999999999999996,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.002 mas, sigma_dDec=0.002 mas, correlation rho(dRA,dDec)=-0.17; A0-B5-J2-J6, MR, calibrator HD80093",
+   "sep_mas": 5.815427499333132,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-02-02T08:28:59.421"
+   ]
+  },
+  {
+   "date": "2025-01-08",
+   "mjd": 60684.24311,
+   "dra_mas": 1.025,
+   "ddec_mas": -6.568,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.999999999999996,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.002 mas, sigma_dDec=0.001 mas, correlation rho(dRA,dDec)=-0.01; A0-B5-J2-J6, MR, calibrator HD83465",
+   "sep_mas": 6.647499454682189,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-02-02T08:30:17.283"
+   ]
+  },
+  {
+   "date": "2025-02-08",
+   "mjd": 60715.17032,
+   "dra_mas": 2.203,
+   "ddec_mas": -1.529,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.999999999999996,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.003 mas, sigma_dDec=0.003 mas, correlation rho(dRA,dDec)=-0.19; A0-B5-J2-J6, MR, calibrator HD80765",
+   "sep_mas": 2.6816133203726444,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-02-02T08:39:07.114"
+   ]
+  },
+  {
+   "date": "2025-02-18",
+   "mjd": 60725.17185,
+   "dra_mas": 0.631,
+   "ddec_mas": 2.756,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.999999999999996,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.005 mas, sigma_dDec=0.004 mas, correlation rho(dRA,dDec)=-0.22; A0-B5-J2-J6, HR, calibrator HD81720",
+   "sep_mas": 2.827312681682024,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-02-02T08:43:06.267"
+   ]
+  },
+  {
+   "date": "2025-02-21",
+   "mjd": 60728.04764,
+   "dra_mas": 0.081,
+   "ddec_mas": 3.833,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.000000000000004,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.001 mas, sigma_dDec=0.001 mas, correlation rho(dRA,dDec)=-0.32; A0-B5-J2-J6, HR, calibrator HD80093",
+   "sep_mas": 3.833855761501729,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-02-02T08:43:50.462"
+   ]
+  },
+  {
+   "date": "2025-02-22",
+   "mjd": 60729.0719,
+   "dra_mas": -0.122,
+   "ddec_mas": 4.176,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.000000000000004,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.002 mas, sigma_dDec=0.001 mas, correlation rho(dRA,dDec)=0.6; A0-B5-J2-J6, HR, calibrator HD80765",
+   "sep_mas": 4.177781708035977,
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-02-02T08:44:12.914"
+   ]
+  },
+  {
+   "date": "2025-02-28",
+   "mjd": 60731.05039,
+   "dra_mas": 0.51,
+   "ddec_mas": 4.781,
+   "sigma_major_mas": null,
+   "sigma_minor_mas": null,
+   "sigma_pa_deg": null,
+   "flux_ratio_pct": 28.000000000000004,
+   "sigma_flux_ratio_pct": 1.0,
+   "note": "sigma_dRA=0.001 mas, sigma_dDec=0.002 mas, correlation rho(dRA,dDec)=-0.5; A0-G1-J2-K0, HR, calibrator HD83465",
+   "sep_mas": 4.808124478421913,
+   "suspect": "Rowan+2026 Table 3 prints dRA = +0.510 mas under the date 2025-02-28, but its Table 1 gives MJD 60731.05 for that epoch, which is the night of 2025-02-24 (the date label and the MJD disagree). The paper's own orbit predicts about -0.53 mas, a blind single-night fit of the Phase 3 file gives about -0.51 mas, and dRA is falling through the neighbouring epochs: a sign error in the printed value is likely. The files are matched by MJD, so the data are not affected.",
+   "below_lambda_2B": false,
+   "role": "paper",
+   "dp_ids": [
+    "ADP.2026-02-02T08:44:37.456"
+   ]
+  }
+ ],
+ "files": [
+  {
+   "dp_id": "ADP.2025-12-31T22:19:16.951",
+   "file": "ADP.2025-12-31T22_19_16.951.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60670.23927,
+   "t_max_mjd": 60670.25372,
+   "night_mjd": 60669,
+   "programme": "114.274C.001",
+   "release_date": "2025-12-26T06:15:32Z",
+   "size_kB": 24917.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 0,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "84d587a6de4b80f44d94707c38e2f2c6ca277d6bb50fb2e6aa531685ed141007",
+   "bytes": 24917760
+  },
+  {
+   "dp_id": "ADP.2026-02-02T08:28:59.421",
+   "file": "ADP.2026-02-02T08_28_59.421.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60679.25682,
+   "t_max_mjd": 60679.27137,
+   "night_mjd": 60678,
+   "programme": "114.274C.001",
+   "release_date": "2026-01-04T06:40:44Z",
+   "size_kB": 24917.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 2,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "6f0712c400e4680d4d0f9f705d41d281ae89d5b96d9d597ad1795769ba4422d8",
+   "bytes": 24917760
+  },
+  {
+   "dp_id": "ADP.2026-02-02T08:30:17.283",
+   "file": "ADP.2026-02-02T08_30_17.283.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60684.23579,
+   "t_max_mjd": 60684.2503,
+   "night_mjd": 60683,
+   "programme": "114.274C.001",
+   "release_date": "2026-01-09T06:10:53Z",
+   "size_kB": 24917.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 3,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "71db71be28790982900b43c352fde3b57742e54796555a5382839c9da85aff2a",
+   "bytes": 24917760
+  },
+  {
+   "dp_id": "ADP.2026-02-02T08:39:07.114",
+   "file": "ADP.2026-02-02T08_39_07.114.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60715.16306,
+   "t_max_mjd": 60715.1775,
+   "night_mjd": 60714,
+   "programme": "114.274C.001",
+   "release_date": "2026-02-09T04:25:51Z",
+   "size_kB": 24917.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 4,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "bcb753b4b8d1de53ed02d961ba572b03cd840bf8079342ee03c8e6803668630e",
+   "bytes": 24917760
+  },
+  {
+   "dp_id": "ADP.2026-02-02T08:43:06.267",
+   "file": "ADP.2026-02-02T08_43_06.267.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60725.16608,
+   "t_max_mjd": 60725.17752,
+   "night_mjd": 60724,
+   "programme": "114.274C.001",
+   "release_date": "2026-02-19T04:26:00Z",
+   "size_kB": 28630.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 5,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "740da5f2a44dad5a14edc6b9429046d31c37fe4a339bd470d5059296b63005f6",
+   "bytes": 28630080
+  },
+  {
+   "dp_id": "ADP.2026-02-02T08:43:50.462",
+   "file": "ADP.2026-02-02T08_43_50.462.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60728.04154,
+   "t_max_mjd": 60728.05364,
+   "night_mjd": 60727,
+   "programme": "114.274C.001",
+   "release_date": "2026-02-22T01:25:42Z",
+   "size_kB": 28630.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 6,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "4c484750c5f510330371c4994880b21a3a2e058f3957e88f01210e11348936dc",
+   "bytes": 28630080
+  },
+  {
+   "dp_id": "ADP.2026-02-02T08:44:12.914",
+   "file": "ADP.2026-02-02T08_44_12.914.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60729.06607,
+   "t_max_mjd": 60729.07765,
+   "night_mjd": 60728,
+   "programme": "114.274C.001",
+   "release_date": "2026-02-23T01:55:44Z",
+   "size_kB": 28630.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 7,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "bd842f92af9c3b253648a41e3bd6bacf03bad54580bd83f0ecb74bd3d9d863a8",
+   "bytes": 28630080
+  },
+  {
+   "dp_id": "ADP.2026-02-02T08:44:37.456",
+   "file": "ADP.2026-02-02T08_44_37.456.fits",
+   "instrument": "GRAVITY",
+   "t_min_mjd": 60731.04465,
+   "t_max_mjd": 60731.05605,
+   "night_mjd": 60730,
+   "programme": "114.274C.001",
+   "release_date": "2026-02-25T01:25:45Z",
+   "size_kB": 28630.0,
+   "product": "uncalibrated",
+   "role": "paper",
+   "epoch_index": 8,
+   "after_paper_span": false,
+   "dir": "oifits",
+   "sha256": "f19512aabc2523ad618713830620ce7c9b35ca5f4833a4102f38028d318b36be",
+   "bytes": 28630080
+  }
+ ],
+ "split": {
+  "rule": "* ``paper``: a product whose start time is within 0.03 d of a published epoch (the data behind a published position); * ``paper_night``: another product of a night with a published epoch (same night, so not an independent prediction); * ``heldout``: a product of a night the paper has no epoch for. ``after_paper_span`` marks those later than the last published epoch; the others fall inside the published span or before it (earlier programmes).",
+  "paper_epochs": 9,
+  "paper_epochs_with_phase3": 8,
+  "paper_epochs_below_lambda_2B": 0,
+  "paper_files": 8,
+  "paper_night_files": 0,
+  "heldout_files": 0,
+  "heldout_nights": 0,
+  "heldout_nights_after_paper_span": 0,
+  "last_paper_mjd": 60731.05039
+ },
+ "data_root": "~/data/eso_binaries/trackb/kap_vel",
+ "provenance": {
+  "eso_query": "ivoa.ObsCore dataproduct_type='visibility', GRAVITY/PIONIER, 18 arcsec cone on the SIMBAD position",
+  "download": "https://dataportal.eso.org/dataPortal/file/<dp_id> (public Phase 3 products, unchanged)",
+  "built": "2026-10-14",
+  "builder": "scripts/build_trackb_targets.py"
+ }
+}
