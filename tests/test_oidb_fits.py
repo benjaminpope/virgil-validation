@@ -273,9 +273,10 @@ def test_orbit_search_is_blind_and_a_flagged_night_seeds_no_position(of, tmp_pat
     by = {r["name"]: r for r in out["epoch_checks"]}
     assert by["n3"]["barred"] and not by["n3"]["seeds"] and by["n0"]["seeds"]
     assert "n3" in out["alias"]["nights"] and len(out["alias"]["nights"]) == 5  # its data still count
-    assert abs(out["map"]["period_day"] - ORBIT["period"]) < 0.05
+    assert abs(out["map"]["period_day"] - ORBIT["period"]) < 0.01
     assert abs(out["map"]["a_mas"] - ORBIT["a"]) < 0.3
-    assert out["bands"][0]["n"] == out["alias"]["best_n"] == round(30.0 / ORBIT["period"])
+    assert out["alias"]["best_n"] == round(30.0 / ORBIT["period"])
+    assert any(b["n"] == out["alias"]["best_n"] for b in out["bands"])  # no assumption about the band order
     assert abs(sum(b["p"] for b in out["bands"]) - 1.0) < 1e-6
     out2 = of.fit_orbit(of.Epochs(per_night), of.Epochs(per_file), of.orbital_point_binary, priors,
                         flagged={"n3": "a stand-in alias peak"}, exclude_flagged=True, **kw)
@@ -391,6 +392,15 @@ def test_triangles_with_a_baseline_in_no_vis2_row_are_kept(of, tmp_path):
     assert of.LOAD_NOTES == []  # nothing is dropped, so nothing is noted
     assert np.asarray(data.phi).size == len(t3) * 3 == np.asarray(full.phi).size
     np.testing.assert_allclose(np.asarray(data.phi), np.asarray(full.phi))
+    # The control that can fail: the observed phases are the same column in both reads, so compare the MODEL
+    # closure phases virgil computes at each read's U/V placement (the whitened residuals are not comparable
+    # row by row: the whitening depends on the triangle structure). A leg placed with the wrong sign,
+    # orientation or wavelength would move them.
+    scene = of.point_binary(dra=3.0, ddec=-4.0, flux=0.3)
+    m_full = np.asarray(full.select(observables="phi").model(scene))
+    m_t3 = np.asarray(data.select(observables="phi").model(scene))
+    np.testing.assert_allclose(m_t3, m_full, atol=1e-9)
+    assert np.degrees(np.abs(m_t3 - np.asarray(data.phi).ravel()).max()) < 3.0  # truth fits within 6 sigma_cp (0.5 deg)
 
 
 @pytest.mark.validates("virgil.oifits.read_oifits", roots=["standards"], kind="guard")

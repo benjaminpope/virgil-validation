@@ -572,7 +572,7 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
     model_fn = fit_data.model_fn(scene)
     noise = [noise_terms(d) for d in fit_data.data]
     per_band, all_refits = [], []
-    for k, b in enumerate(alias.bands):
+    for b in alias.bands:
         live = sorted((m for m in b.modes if np.isfinite(m["log_z"])), key=lambda m: -m["log_z"])
         row = dict(n=b.n, p_lo=b.p_lo, p_hi=b.p_hi, log_z=float(b.log_z), log_z_is=float(b.log_z_is), p=float(b.p),
                    chi2_red_alias=float(b.chi2_red), flags=list(b.flags), n_modes=len(live))
@@ -581,7 +581,7 @@ def fit_orbit(start_data, fit_data, scene_factory, priors, *, grid, periods, ecc
             continue
         tb = time.time()
         refits = []
-        for m in live if k == 0 else live[:1]:  # every mode of the winning band, the best of the others
+        for m in live if b.n == alias.best.n else live[:1]:  # every mode of the winning band, the best of the others
             try:
                 r = fit(model_fn, priors, list(fit_data.data), noise=noise, init=_mode_start(priors, m["x"], t_ref))
             except Exception as e:  # a mode the refit cannot start from is reported, not fatal
@@ -781,7 +781,10 @@ def recipe_gl229(data_dir, cfg):
     Blind (design/orbit_comparison.md section 5): the two single-night alias peaks are flagged, so they seed
     no position, and 2024-12-18 (open disagreement) is left out of the files. The orbit is then the alias-band
     search of ``fit_orbit`` over P = 10-14 d, which decides the integer number of orbits across the gaps from
-    the data. The published orbit is used afterwards, for comparison only. The ESO file names
+    the data. REFERENCE-INFORMED: the 10-14 d window is centred on the published period, so a winning band
+    that contains the reference is a choice among the few bands of that window, not an independent
+    confirmation (docs/orbits/aliases.md). The published orbit is used afterwards, for comparison only.
+    The ESO file names
     (``*_DUAL_SCI_VIS.fits``) are read as well as OiDB's (``*dualscivis.fits``)."""
     sel = dict(wavel_min=2.05 * UM, wavel_max=2.18 * UM, observables="phi")
     files = [p for p in _files(data_dir, r"(dualscivis|DUAL_SCI_VIS)\.fits$")
@@ -791,6 +794,7 @@ def recipe_gl229(data_dir, cfg):
         if any(n in os.path.basename(p) for p in files):
             log(f"gl229: night {n} left out: {GL229_EXCLUDED_NIGHTS[n]}")
     per_file, per_night = {}, {}
+    nights_kept = dict(nights)
     for night, paths in nights.items():
         one, kept = {}, []
         for p in paths:
@@ -800,9 +804,15 @@ def recipe_gl229(data_dir, cfg):
             except ValueError as e:  # e.g. every closure phase flagged: nothing to fit in that file
                 log(f"gl229: {os.path.basename(p)} left out: {e}")
                 LOAD_NOTES.append(dict(file=os.path.basename(p), left_out=str(e)))
+        if not kept:  # no file of this night loads: skip the night (load([]) would crash the whole recipe)
+            log(f"gl229: night {night} skipped: none of its {len(paths)} file(s) loads")
+            LOAD_NOTES.append(dict(night=night, left_out="no file of the night loads"))
+            nights_kept.pop(night, None)
+            continue
         per_night[night] = load(kept, insname_prefix="GRAVITY_SC", target=r"B$|_B\b", select=sel)
         per_file[night] = one
-        nights[night] = kept
+        nights_kept[night] = kept
+    nights = nights_kept
     grid = _grid(12.0, cfg.get("step", 0.2), np.linspace(0.2, 1.0, 9))
     priors = {"dra": dist.Uniform(-15.0, 15.0), "ddec": dist.Uniform(-15.0, 15.0), "flux": dist.LogUniform(0.05, 1.0)}
     epochs = [fit_epoch(n, d, point_binary, priors, grid) for n, d in per_night.items()]
@@ -823,7 +833,8 @@ def recipe_gl229(data_dir, cfg):
             log(f"vis_amp variant failed: {type(e).__name__}: {e}")
             orbit["vis_amp"] = dict(error=f"{type(e).__name__}: {e}")
     return dict(model="two point sources; closure phases 2.05-2.18 um; Keplerian orbit (OrbitalBinary), "
-                      "blind alias-band search over P = 10-14 d",
+                      "reference-informed alias-band search over P = 10-14 d "
+                      "(window centred on the published period; no published start)",
                 epochs=epochs, orbit=orbit)
 
 
