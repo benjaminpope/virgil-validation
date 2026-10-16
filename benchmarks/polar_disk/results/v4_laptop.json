@@ -1,0 +1,265 @@
+{
+ "provenance": {
+  "virgil": {
+   "version": "0.3.0",
+   "commit": "791f9fef65eb49ebc387c5c365a13c7af2342341",
+   "url": "https://github.com/benjaminpope/virgil",
+   "dirty": false
+  },
+  "virgil_pin_ok": true,
+  "versions": {
+   "virgil-astro": "0.3.0",
+   "jax": "0.11.2",
+   "jaxlib": "0.11.2",
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "numpyro": "0.22.0",
+   "frank": "1.2.3",
+   "vis-r": "0.0.1",
+   "astro-frap": "1.0.2",
+   "pmoired": "26.10.1",
+   "oimodeler": "0.8.1"
+  },
+  "python": "3.12.12",
+  "machine": "Darwin arm64, 10 CPUs",
+  "jax_backend": "cpu",
+  "validation_commit": "68082967a95aa6572a03f9e228a7b39f407ac389"
+ },
+ "config_name": "laptop",
+ "config": {
+  "n_inj": 5,
+  "instruments": [
+   "vlti"
+  ],
+  "n_r": 24,
+  "degrees": [
+   2
+  ],
+  "seed": 7,
+  "perturb": 0.03,
+  "multistart": 1
+ },
+ "summary": {
+  "n_pairs": 55,
+  "n_injections": 5,
+  "scalar_coverage_68": 0.6727272727272727,
+  "scalar_coverage_95": 0.9272727272727272,
+  "z_rms": 1.8978201689714194,
+  "image_harmonic_coverage_68": 0.6,
+  "image_harmonic_coverage_95": 0.95,
+  "K1_pass": true,
+  "K2_pass": false,
+  "K3_converged_fraction": 1.0,
+  "K3_pass": true,
+  "K4_pass": true,
+  "K4_worst_loglike_map_minus_truth": 6.410933514519229,
+  "tolerances": {
+   "cov68": 0.18869889434565518,
+   "cov95_floor": 0.8618369279532112,
+   "z_rms": 0.28603877677367767
+  },
+  "seconds": 104.83829307556152
+ },
+ "rows": [
+  {
+   "i": 0,
+   "instrument": "vlti",
+   "degree": 2,
+   "z": {
+    "r0": -0.4796966656191323,
+    "sigma": 0.3920464285382868,
+    "rgap": -1.1238452701857589,
+    "wgap": -0.10713166885521383,
+    "depth": 0.06942320225406025,
+    "inc": -0.28639783249048173,
+    "pa": 0.16466888688352163,
+    "fdisk": 0.367095745381011,
+    "fplanet": 1.7516157005411779,
+    "pdra": -1.7175850988306036,
+    "pddec": 0.9545463128465927
+   },
+   "converged": true,
+   "stop": "None",
+   "loss_map": 169.52302448516204,
+   "image_harmonics_coverage": {
+    "ih68": [
+     false,
+     false,
+     true,
+     false
+    ],
+    "ih95": [
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "loglike_map_minus_truth": 7.632104502717766,
+   "profile_coverage": {
+    "p68": 1.0,
+    "p95": 1.0
+   }
+  },
+  {
+   "i": 1,
+   "instrument": "vlti",
+   "degree": 2,
+   "z": {
+    "r0": 0.5402316084164838,
+    "sigma": 1.4515106920658565,
+    "rgap": 2.4257845095858324,
+    "wgap": -0.6751064690427042,
+    "depth": 0.10061757727698983,
+    "inc": -0.1034101796946129,
+    "pa": 0.17858072445312126,
+    "fdisk": 1.0233740811799883,
+    "fplanet": -1.7205517566927493,
+    "pdra": 1.153316316471775,
+    "pddec": -0.5589485351942064
+   },
+   "converged": true,
+   "stop": "None",
+   "loss_map": 178.78219594540428,
+   "image_harmonics_coverage": {
+    "ih68": [
+     true,
+     true,
+     true,
+     false
+    ],
+    "ih95": [
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "loglike_map_minus_truth": 6.490011531958771,
+   "profile_coverage": {
+    "p68": 0.325,
+    "p95": 0.9
+   }
+  },
+  {
+   "i": 2,
+   "instrument": "vlti",
+   "degree": 2,
+   "z": {
+    "r0": -1.1179256283747778,
+    "sigma": 1.429751422972558,
+    "rgap": -4.0072632850031225,
+    "wgap": 0.2175073262144112,
+    "depth": 9.628847605248112,
+    "inc": -1.5964612449640063,
+    "pa": 0.7076413627523941,
+    "fdisk": -0.9088318809244789,
+    "fplanet": -0.09848969330856627,
+    "pdra": -0.011631485334102373,
+    "pddec": -0.6065381911284771
+   },
+   "converged": true,
+   "stop": "None",
+   "loss_map": 168.67327038172394,
+   "image_harmonics_coverage": {
+    "ih68": [
+     true,
+     true,
+     false,
+     true
+    ],
+    "ih95": [
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "loglike_map_minus_truth": 6.410933514519229,
+   "profile_coverage": {
+    "p68": 0.6,
+    "p95": 0.975
+   }
+  },
+  {
+   "i": 3,
+   "instrument": "vlti",
+   "degree": 2,
+   "z": {
+    "r0": -0.2610335303547052,
+    "sigma": -0.4082314808527287,
+    "rgap": -0.12389818172474888,
+    "wgap": -0.21446539778091384,
+    "depth": 0.05552232713523183,
+    "inc": 0.3471496068357225,
+    "pa": -0.4375408080585127,
+    "fdisk": 0.10685201486156344,
+    "fplanet": 0.3926038283383707,
+    "pdra": 1.0284233359463195,
+    "pddec": -0.26824001658870833
+   },
+   "converged": true,
+   "stop": "None",
+   "loss_map": 166.49510153866788,
+   "image_harmonics_coverage": {
+    "ih68": [
+     true,
+     false,
+     true,
+     true
+    ],
+    "ih95": [
+     true,
+     true,
+     true,
+     true
+    ]
+   },
+   "loglike_map_minus_truth": 8.403331826051726,
+   "profile_coverage": {
+    "p68": 1.0,
+    "p95": 1.0
+   }
+  },
+  {
+   "i": 4,
+   "instrument": "vlti",
+   "degree": 2,
+   "z": {
+    "r0": -1.1710589894954293,
+    "sigma": 0.4706023108499207,
+    "rgap": -1.5778624772536614,
+    "wgap": 0.2046830315459765,
+    "depth": 6.939483580569585,
+    "inc": 1.6976701276669204,
+    "pa": 0.599927387832427,
+    "fdisk": 0.7572088539541634,
+    "fplanet": -0.6483968825668679,
+    "pdra": 0.10005556381436101,
+    "pddec": -0.1273358140796147
+   },
+   "converged": true,
+   "stop": "None",
+   "loss_map": 158.8139060364969,
+   "image_harmonics_coverage": {
+    "ih68": [
+     true,
+     false,
+     false,
+     true
+    ],
+    "ih95": [
+     true,
+     false,
+     true,
+     true
+    ]
+   },
+   "loglike_map_minus_truth": 7.9971026580331,
+   "profile_coverage": {
+    "p68": 0.55,
+    "p95": 0.825
+   }
+  }
+ ]
+}

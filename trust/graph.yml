@@ -117,7 +117,6 @@ nodes:
   virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
-  virgil.spectra.Tabulated: {layer: models, source: [src/virgil/spectra.py]}
 
   # ----------------------------------------------------------- likelihood
   virgil.oidata.OIData.cp_noise:  # correlated closure phases (Kammerer et al. 2020)
@@ -281,6 +280,17 @@ nodes:
   virgil.limits.contrast_to_flux: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.chi2ppf: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.radial_profile: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
+  # PolarDisk (virgil P1-P4): one disk class, radial profiles x azimuthal harmonics x height
+  virgil.models.PolarDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.models.Harmonics:
+    layer: models
+    source: [src/virgil/models.py, src/virgil/harmonics.py]
+    doc: models/polar_disk.md
+    roots: 2
+  virgil.models.VonMises: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.models.Cone: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.PowerLawHeight: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.ExpTail: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}  # accuracy beyond the 150-node cap: F19
   virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
@@ -515,6 +525,13 @@ nodes:
   external_bridge.fouriever_worker: {layer: references}
   fouriever: {layer: references}  # the external package itself (problem P5)
   ehtim: {layer: references}  # the external package itself (problem P6)
+  crosscheck.radial: {layer: references, doc: models/polar_disk.md}
+  crosscheck.polar_images: {layer: references, doc: models/polar_disk.md}
+  external_bridge.radial_codes: {layer: references, doc: models/polar_disk.md}
+  frank: {layer: references, doc: models/polar_disk.md}  # the external package itself
+  visr: {layer: references, doc: models/polar_disk.md}  # vis-r (its ggap profile: P10)
+  frap: {layer: references, doc: models/polar_disk.md}
+  oimodeler: {layer: references, doc: models/polar_disk.md}  # the external package itself (problem P9)
 
 pipelines:
   synthetic-vlti-fit:

@@ -99,6 +99,28 @@ def _rms(d):
     return float(np.sqrt(np.mean(np.sum(d**2, -1))))
 
 
+def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, labels_free=False, chi2_n=None):
+    """The verdict rule of :func:`score`, applied to stored statistics (so a stored run can be re-judged).
+
+    The position match needs ``frac_sep < SAME_FRACTION`` AND, when there are posterior samples
+    (``offset_over_spread`` finite), ``offset_over_spread < SAME_SIGMA``. A far orbit whose raw chi^2/N
+    (``chi2_n``) is at most ``GOOD_CHI2_N`` is REFERENCE-DISAGREES; without chi^2/N it is DIFFERENT. A match only as
+    the reference's point reflection (``mirror``) needs the fit to have swapped labels or ``labels_free``; otherwise
+    UNEXPLAINED-FLIP.
+    """
+    sky_ok = frac_sep < SAME_FRACTION
+    if offset_over_spread is not None and np.isfinite(offset_over_spread):
+        sky_ok = sky_ok and offset_over_spread < SAME_SIGMA
+    if not sky_ok:
+        # A fit that describes its own data but is far from the reference is a disagreement with the reference,
+        # not a failed fit (the caller supplies the raw chi^2/N; without it the verdict is DIFFERENT).
+        good_fit = chi2_n is not None and chi2_n <= GOOD_CHI2_N
+        return "REFERENCE-DISAGREES" if good_fit else "DIFFERENT"
+    if mirror and not (flipped or labels_free):
+        return "UNEXPLAINED-FLIP"
+    return "SAME-SKY-ORBIT"
+
+
 def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False, chi2_n=None):
     """Compare a fitted orbit with ``meta["reference"]`` on the sky at ``meta["mjd"]``.
 
@@ -189,16 +211,6 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         )
         spread = float(np.sqrt(np.mean(np.sum(tracks.var(0), -1))))
         out["spread"], out["offset_over_spread"] = spread, rms / max(spread, 1e-12)
-    sky_ok = out["frac_sep"] < SAME_FRACTION
-    if samples is not None:
-        sky_ok = sky_ok and out["offset_over_spread"] < SAME_SIGMA
-    if not sky_ok:
-        # A fit that describes its own data but is far from the reference is a disagreement with the reference, not
-        # a failed fit: report it as such (the caller supplies the raw chi^2/N; without it the verdict is DIFFERENT).
-        good_fit = chi2_n is not None and chi2_n <= GOOD_CHI2_N
-        out["verdict"] = "REFERENCE-DISAGREES" if good_fit else "DIFFERENT"
-    elif sign < 0 and not (flipped or labels_free):
-        out["verdict"] = "UNEXPLAINED-FLIP"
-    else:
-        out["verdict"] = "SAME-SKY-ORBIT"
+    out["verdict"] = verdict_from_stats(out["frac_sep"], out["offset_over_spread"], sign < 0, flipped,
+                                        labels_free, chi2_n)
     return out

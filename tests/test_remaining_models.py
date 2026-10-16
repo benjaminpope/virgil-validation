@@ -1,6 +1,6 @@
 """The remaining models: spectra, flared disks and the harmonix wrapper.
 
-* Spectra (PowerLaw, BlackBody, Tabulated): their documented closed forms
+* Spectra (PowerLaw, BlackBody): their documented closed forms
   (Planck with SciPy constants), and chromatic Systems as flux-weighted
   means channel by channel.
 * Flared disks (Blakely et al. 2024): crosscheck.disks evaluates the
@@ -63,25 +63,19 @@ def test_black_body_tends_to_rayleigh_jeans():
     np.testing.assert_allclose(np.array([np.ravel(s(x))[0] for x in w]), (w / 1e-4) ** -4.0, rtol=1e-3)
 
 
-@pytest.mark.validates("virgil.spectra.Tabulated", roots=["mathematics"])
-def test_tabulated_interpolates_linearly_and_holds_its_ends():
-    nodes = np.array([2.0e-6, 2.2e-6, 2.5e-6])
+@pytest.mark.validates("virgil.spectra.Nodes", "virgil.spectra.reference_flux", roots=["mathematics"])
+def test_nodes_reference_flux_is_a_scalar_at_wavel0():
+    """Nodes documents its reference flux as its value at wavel0.
+    Finding F9: reference_flux returned the whole ratio array for the removed
+    Tabulated spectrum (fixed in virgil#163); a node spectrum must return a
+    scalar equal to its value at wavel0, whichever node that is."""
     ratio = np.array([0.2, 0.4, 0.1])
-    s = spectra.Tabulated(ratio, nodes)
-    w = np.array([1.5e-6, 2.0e-6, 2.1e-6, 2.35e-6, 2.5e-6, 3e-6])
-    want = np.interp(w, nodes, ratio)  # numpy holds the end values too
-    np.testing.assert_allclose(np.array([np.ravel(s(x))[0] for x in w]), want, rtol=1e-12)
-    assert np.isclose(float(s(None)), ratio.mean())
-
-
-@pytest.mark.validates("virgil.spectra.Tabulated", roots=["mathematics"])
-def test_tabulated_reference_flux_is_the_documented_mean():
-    """Tabulated documents its reference flux as the mean over the nodes.
-    Finding F9: reference_flux returned the whole ratio array (fixed in
-    virgil#163)."""
-    s = spectra.Tabulated(np.array([0.2, 0.4, 0.1]), np.array([2.0e-6, 2.2e-6, 2.5e-6]))
-    assert np.ndim(spectra.reference_flux(s)) == 0
-    assert np.isclose(float(spectra.reference_flux(s)), float(s(None)))
+    nodes = np.array([2.0e-6, 2.2e-6, 2.5e-6])
+    for wavel0, want in ((None, 0.2), (2.2e-6, 0.4), (2.35e-6, 0.25)):
+        s = spectra.Nodes(ratio, nodes, wavel0=wavel0)
+        assert np.ndim(spectra.reference_flux(s)) == 0
+        assert np.isclose(float(spectra.reference_flux(s)), want, rtol=1e-14, atol=0)
+        assert np.isclose(float(spectra.reference_flux(s)), float(s(None)))
 
 
 @pytest.mark.validates("virgil.models.System", "virgil.spectra.BlackBody", "virgil.spectra.PowerLaw", roots=["mathematics"])

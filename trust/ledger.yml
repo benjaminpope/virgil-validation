@@ -89,12 +89,12 @@
     - https://github.com/benjaminpope/virgil/pull/160
 
 - id: F9
-  title: reference_flux returns every Tabulated node, not the documented mean
-  objects: [virgil.spectra.Tabulated]
+  title: reference_flux returned every node of a Tabulated spectrum (since removed), not the documented mean
+  objects: [virgil.spectra.reference_flux]
   ruling: virgil
   kind: documentation
-  referee: mathematics (Tabulated documents its reference flux as the node mean)
-  evidence: [tests/test_remaining_models.py::test_tabulated_reference_flux_is_the_documented_mean]
+  referee: mathematics (a spectrum documents its reference flux as one number)
+  evidence: [tests/test_remaining_models.py::test_nodes_reference_flux_is_a_scalar_at_wavel0]
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/163]
 
@@ -376,3 +376,57 @@
   referee: mathematics (fouriever's own criteria, solved exactly with its own chi-squared and nsigma, work, in tests/test_fouriever_limits.py::test_limits_match_fouriever_exactly)
   evidence: [tests/test_fouriever_limits.py::test_fouriever_public_detlim_against_its_exact_criteria]
   status: to-raise
+
+- id: F19
+  title: ExpTail's documented accuracy (1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes) is too optimistic
+  objects: [virgil.models.ExpTail]
+  ruling: virgil
+  kind: documentation or numerics (at 2 pi q L = 7.3 the documented 117 nodes give 2e-4 against our Gauss-Legendre transform of the same profile at n_r = 128, 4e-5 at the 150-node cap; the three smooth profiles reach 1e-9 to 1e-12)
+  referee: mathematics (composite Gauss-Legendre Hankel transform, src/crosscheck/radial.py, checked against scipy.integrate.quad)
+  evidence:
+    - tests/test_polar_disk_brute_force.py::test_exp_tail_reaches_documented_accuracy_at_the_documented_node_count
+    - tests/test_polar_disk_brute_force.py::test_exp_tail_error_is_the_pinned_size
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/343]
+  note: fixed in virgil 1eae3e4 (1eae3e4b08b452cc29d1ec29b5e883b3982882f4), merged to virgil main in #343; found at 791f9fe. The kind and numbers above are the finding as made. The strict xfail on the F20 evidence test is gone (it passes at virgil main 127cc64); the F19 fix was the docstring, and its test now checks the numbers the docstring states.
+
+- id: F20
+  title: Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at
+  objects: [virgil.models.Harmonics]
+  ruling: virgil
+  kind: 'bug (ValueError "truth value of an array ... is ambiguous", from `if not entries`; fit(..., priors={"disk.harmonics.re": Normal(0, 1).expand([3])}) raises on its first residual; per-element paths "disk.harmonics.re.0" work)'
+  referee: mathematics (the documented array-valued paths of fit and laplace_cov)
+  evidence:
+    - tests/test_polar_disk_brute_force.py::test_harmonic_coefficients_accept_array_paths
+    - tests/test_polar_disk_brute_force.py::test_harmonic_coefficients_per_element_paths_work
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/343]
+  note: fixed in virgil 1eae3e4 (1eae3e4b08b452cc29d1ec29b5e883b3982882f4), merged to virgil main in #343; found at 791f9fe. The kind and numbers above are the finding as made. The strict xfail on the F20 evidence test is gone (it passes at virgil main 127cc64); the F19 fix was the docstring, and its test now checks the numbers the docstring states.
+
+- id: D10
+  title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline)
+  objects: [frank, frap]
+  ruling: definition
+  kind: both right (their accuracy statements assume a profile band-limited by N; PolarDisk's ExpTail integrates the edge exactly with its own rule)
+  referee: mathematics (composite Gauss-Legendre Hankel transform)
+  evidence: [tests/test_polar_disk_vs_codes.py::test_discrete_hankel_codes_cannot_represent_a_discontinuous_profile]
+  status: documented
+
+- id: P9
+  title: oimodeler's image-based ExpRing is 8e-3 from the exact transform of its own documented profile, at every grid size
+  objects: [oimodeler]
+  ruling: external:oimodeler
+  kind: 'unexplained (oimodeler 0.8.1: exp(-0.692 (r - r0)/fwhm) cut at 8 fwhm; the error does not change from dim = 512 to 2048, and PolarDisk''s ExpTail with the same cut agrees with the exact transform to 1e-14)'
+  referee: mathematics (composite Gauss-Legendre Hankel transform)
+  evidence: [tests/test_polar_disk_vs_codes.py::test_oimodeler_exp_ring_matches_the_exact_transform]
+  status: to-raise
+
+- id: P10
+  title: vis-r's r_prof_erf2_power_ggap (one Gaussian gap) reads its depth and radius from each other's position in the parameter list
+  objects: [visr]
+  ruling: external:visr
+  kind: 'bug (vis-r f534670: with d = 0.9 at r = 0.5 the profile at the gap centre is 0.997 of the ungapped one, where r_prof_erf2_power_ggap2 with a second gap of depth 0 gives 0.100)'
+  referee: vis-r's own r_prof_erf2_power_ggap2 and its docstring
+  evidence: [tests/test_polar_disk_vs_codes.py::test_vis_r_single_gap_profile_matches_its_two_gap_form]
+  status: to-raise
+

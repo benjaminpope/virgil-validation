@@ -37,6 +37,12 @@
       '><span class="og-ico" aria-hidden="true">' + (ICON[t.status] || "") + "</span>" + esc(statusText(t)) + "</span>";
   }
 
+  function flagTags(t) {
+    return arr(t.flags).map(function (f) {
+      return '<span class="og-flag og-f-' + esc(f.key) + '">' + esc(f.text) + "</span>";
+    }).join("");
+  }
+
   // ---- links ----------------------------------------------------------
   function chips(t, compact) {
     var p = t.paper;
@@ -137,7 +143,7 @@
         '<a class="og-open" href="#' + esc(t.slug) + '" data-slug="' + esc(t.slug) + '"><span class="og-thumbwrap">' + thumb(t) + "</span>" +
         '<span class="og-name">' + esc(t.target) + "</span>" +
         '<span class="og-inst">' + esc(t.instrument) + (n ? " · " + n : "") + "</span>" +
-        '<span class="og-tag">' + esc(t.tagline) + "</span></a>" +
+        '<span class="og-tag">' + esc(t.tagline) + "</span></a>" + flagTags(t) +
         '<div class="og-foot">' + badge(t) + chips(t, true) + "</div></article>";
     });
     root.innerHTML = h + "</div>";
@@ -345,6 +351,7 @@
       '<p class="og-about-t">' + esc(t.about) + "</p>";
     if (t.status === "awaiting") h += '<p class="og-note">The ' + esc(t.awaiting || "fit") + " for this target is not in yet; whatever else exists is shown.</p>";
     else if (t.status_why) h += '<p class="og-why og-why-' + esc(t.status) + '">' + esc(t.status_why) + "</p>";
+    h += flagTags(t);
     var sky = skyPlot(t);
     var leg = [];
     if (t.ours && pts(t.ours.path).length) leg.push(["ours", t.ours.label || "ours", "og-ours"]);

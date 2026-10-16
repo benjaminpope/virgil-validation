@@ -76,6 +76,23 @@ def test_a_tight_posterior_on_the_reference_passes():
     assert sc["verdict"] == "SAME-SKY-ORBIT"
 
 
+def test_a_stored_row_is_rejudged_under_the_current_rule():
+    """Aliases page: a run made under the older fraction-only rule stores SAME-SKY-ORBIT for an orbit that is
+    over 3 posterior spreads off; recomputing from the stored statistics says DIFFERENT. A mirror without a
+    label swap is UNEXPLAINED-FLIP, and is accepted with the swap or for a twin."""
+    import sys, pathlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
+    from build_aliases_page import current_verdict
+    row = dict(frac_sep=0.0044, offset_over_spread=3.7, mirror="none", flipped=False, verdict="SAME-SKY-ORBIT")
+    assert current_verdict(row) == "DIFFERENT"
+    assert current_verdict(dict(row, offset_over_spread=2.0)) == "SAME-SKY-ORBIT"
+    assert current_verdict(dict(row, offset_over_spread=float("nan"))) == "SAME-SKY-ORBIT"  # no samples: fraction only
+    assert current_verdict(dict(row, offset_over_spread=2.0, mirror="flip")) == "UNEXPLAINED-FLIP"
+    assert current_verdict(dict(row, offset_over_spread=2.0, mirror="flip", flipped=True)) == "SAME-SKY-ORBIT"
+    assert current_verdict(dict(row, offset_over_spread=2.0, mirror="flip", labels_free=True)) == "SAME-SKY-ORBIT"
+    assert current_verdict(dict(row, frac_sep=0.03, offset_over_spread=2.0)) == "DIFFERENT"
+
+
 def test_the_score_carries_the_verdict_rule_version():
     assert S.VERDICT_RULE_VERSION == 2
     assert S.score(META, _best(), t_ref=60000.0)["rule_version"] == S.VERDICT_RULE_VERSION
