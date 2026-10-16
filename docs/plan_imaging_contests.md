@@ -985,6 +985,20 @@ Three problems remained, fixed or diagnosed after it.
   C-level stack (`python -X faulthandler`, `ulimit -c`) before filing a
   virgil/JAX issue.
 
+**Smoke of this PR (job 18642554, vv `8043205`, virgil `224258f`; disk_star
+and ellipse_star on 5 datasets).** 8 of 10 tasks finished. χ²/N (V2, closure
+phase) match the earlier runs to the second decimal (2004 0.92/1.68; 2008
+0.60/0.54; 2018_p1 1.00–1.04/1.03–1.10; 2024 0.94/0.84). The 2018_p1 star
+diameters are no longer pinned at 0.539 mas (disk 0.458, ellipse 0.488 and
+kept). The size guard rejected 2 of 8 (the disk arm on 2008 envelope and on
+2024 obj1). 2018_p0_d0 timed out at 2 h on both arms (stack: `grow_grid →
+log_evidence` SVD, no hang). Rerun 18646320 (virgil `420d1b7`, which has
+virgil#361, so a different virgil from the other 8): disk_star finished in
+3588 s (diam 0.212 mas, rejection none, χ²/N 0.96); ellipse_star segfaulted
+at 30 min like 421 and 438 before. All three segfaults sit at the
+`faulthandler` watchdog's 30 min dump, so the watchdog is now opt-in
+(`VV_WATCHDOG=1`).
+
 ## Open decisions for Ben
 
 1. **2024 truths** (decided by Ben, 2026-10-06). He will ask Millour or

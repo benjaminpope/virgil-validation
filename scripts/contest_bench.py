@@ -33,6 +33,7 @@ phase offset per triangle and pointing, on top of the noise.
 import argparse
 import collections
 import json
+import os
 import pathlib
 import sys
 
@@ -307,7 +308,8 @@ def run(bench, out, dataset_id, config_names, smoke=False, seed=0):
     """Image one simulated dataset with one configuration (array task id)."""
     import faulthandler
 
-    faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)  # see contest_images.main
+    if os.environ.get("VV_WATCHDOG"):  # opt-in; see contest_images.main
+        faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     import contest_images
 

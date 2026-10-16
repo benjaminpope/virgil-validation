@@ -1458,13 +1458,17 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
 
 
 def main():
-    # A run that stalls prints where it is: every 30 minutes, every thread's
-    # traceback goes to stderr (campaign-2 smoke tasks 75, 77 and 79 hung for
-    # 45 min without output, with low CPU and GPU use).
+    # Opt-in (VV_WATCHDOG=1): a run that stalls prints where it is, every 30
+    # minutes, every thread's traceback to stderr (campaign-2 smoke tasks 75, 77
+    # and 79 hung for 45 min without output, with low CPU and GPU use). Off by
+    # default (C2h): all three 2018 segfaults (tasks 421, 438, then 73 of job
+    # 18646320) came at the 30 min mark, inside the dump's window.
     import faulthandler
+    import os
     import sys
 
-    faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
+    if os.environ.get("VV_WATCHDOG"):
+        faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--task", type=int)
     parser.add_argument("--list", action="store_true")
