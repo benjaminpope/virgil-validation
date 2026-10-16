@@ -108,6 +108,7 @@ TARGETS = {
         star_index=-4.0,  # paper: primary flux ~ lambda^-4
         env_index0=0.42,  # paper's grid maximum: f_pri = 0.61, environment index 0.42
         ud0=0.5,
+        fit_ud=False,  # the paper fixes the primary at a 0.5 mas uniform disc
         fov_mas=38.4,  # 256 pixels of 0.15 mas
         pixel_mas=0.15,
         sec0=(-0.67, -0.45),  # parametric start: the image puts the secondary SW of the primary
@@ -332,10 +333,11 @@ def image_stage(args, out):
     print("grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; start flux", float(env.flux))
     scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))  # index: cfg env_index0
     priors = image_priors(scene) | {
-        "star.diam": dist.Uniform(0.05, 1.5),
         "env.flux.ratio": dist.LogUniform(0.01, 20.0),
         "env.flux.index": dist.Uniform(-3.0, 5.0),
     }
+    if cfg.get("fit_ud", True):  # fixed in the paper for IRAS08544 (0.5 mas); a free UD collapses onto its bound there
+        priors["star.diam"] = dist.Uniform(0.05, 1.5)
     if cfg.get("secondary", True):
         priors |= {
             "sec.flux.ratio": dist.Uniform(0.0, 0.3),
@@ -497,7 +499,8 @@ def compare_bitmap_stage(args, out):
     )
     print(json.dumps(res, indent=1))
     json.dump(res, open(path(out, cfg, "compare.json"), "w"), indent=1)
-    np.savez(path(out, cfg, "compare_images.npz"), ours=grid, ours_conv=ours_c, published_conv=pub, pixel_mas=scale)
+    np.savez_compressed(path(out, cfg, "compare_images.npz"), ours=grid.astype("f4"), ours_conv=ours_c.astype("f4"),
+                        published_conv=pub.astype("f4"), pixel_mas=scale)
     plot_images(out, cfg)
     plot_bitmap_compare(out, cfg)
     plot_fit_ours(out, cfg, args.files)

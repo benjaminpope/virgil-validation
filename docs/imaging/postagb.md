@@ -14,7 +14,7 @@ target; the others are added as they are done.
 | [IW Car](#iw-car) | SPARCO + ORGANIC (De Prins+2026; SQUEEZE check) | agree on morphology, differ in outer-arc detail | 0.95 |
 | HR 4049, HD 108015 | SPARCO + ORGANIC | pending | pending |
 | AI Sco, EN TrA, HD 95767, IRAS 15469-5311, PS Gem | SPARCO + ORGANIC | pending | pending |
-| IRAS 08544-4431 | SPARCO image (Hillen+2016) | pending | pending |
+| [IRAS 08544-4431](#iras-08544-4431) | SPARCO image (Hillen+2016) | agree on the ring, the asymmetry and the central point source | 0.96 |
 
 === "IW Car"
 
@@ -134,9 +134,125 @@ target; the others are added as they are done.
         Reproduce with `scripts/postagb_data.py fetch`, `scripts/postagb_literature.py` and
         `scripts/postagb_imaging.py {inspect,parametric,image,compare,replot} docs/imaging/postagb`.
 
+=== "IRAS 08544-4431"
+
+    ### IRAS 08544-4431 { #iras-08544-4431 }
+
+    <figure markdown>
+    ![IRAS 08544-4431: Hillen et al. image (left) and virgil image (right)](postagb/IRAS08544_images.png)
+    <figcaption>IRAS 08544-4431 in H band, 27 PIONIER observing blocks (2015-01-21, 2015-01-24 and 2015-02-23).
+    Left: the single-star-subtracted SPARCO image of Hillen et al. (2016) as published
+    (their Fig. 4, upper panel; blue contours are their 5, 3 and 1σ levels). Right: virgil, MaxEntropy with the
+    weight at the L-curve corner, primary subtracted, drawn in the published figure's own colour map, on the same
+    field of view, orientation (North up, East left), linear 0 to 1 peak-normalised stretch, and convolved with the beam
+    ellipse drawn on the published figure (2.5 × 1.8 mas, PA 168°). The paper's image exists only as a bitmap, so its
+    stretch and its beam cannot be matched exactly. The star is the marker at the origin.</figcaption>
+    </figure>
+
+    !!! success "Verdict: the two reconstructions agree"
+        At the published beam the images correlate at 0.96 (mirroring either axis drops it to 0.71 and 0.66): the same
+        ~15 mas ring, brighter in the north-east, with the same dark gaps to the north-west and south-east, and the same
+        point-like source just south-west of the star. The differences are small: virgil's ring is 0.3 mas larger
+        (flux-weighted radius 8.5 against 8.2 mas) and its central source is further from the star. The secondary's
+        separation and flux fraction in the parametric fit differ from the paper's, as set out below.
+
+    **Parameters.** Hillen et al. fit a 16-parameter parametric model (Table 1, best model) by MCMC: uniform-disc
+    primary, point-source secondary, inclined Gaussian ring with m = 1 and m = 2 azimuthal modulations, and a resolved
+    background, each with a black-body or Kurucz spectrum. The "virgil" column is the same geometry refitted to
+    the same 27 files with virgil components, using power-law spectra (so the flux fractions are at 1.65 µm and are not
+    exactly the paper's band-averaged ones). virgil's fit is a point estimate; the σ column uses the paper's uncertainty.
+
+    | Parameter | Hillen+2016 | virgil | Difference |
+    | --- | --- | --- | --- |
+    | Primary flux fraction (%) | 59.7 ± 0.6 | 55.3 | −7.3σ |
+    | Secondary flux fraction (%) | 3.9 ± 0.7 | 8.2 | +6.1σ |
+    | Ring flux fraction (%) | 20.9 ± 0.9 | 20.8 | −0.1σ |
+    | Background flux fraction (%) | 15.5 ± 0.5 | 15.7 | +0.4σ |
+    | Ring diameter (mas) | 14.15 ± 0.10 | 14.30 | +1.5σ |
+    | Ring inclination (°) | 19 ± 2 | 18.7 | −0.2σ |
+    | Ring position angle (°) | 6 ± 6 | 178 (−2) | −1.3σ |
+    | Ring m = 1 amplitude | 0.43 ± 0.06 | 0.42 | −0.2σ |
+    | Ring m = 2 amplitude | 0.28 ± 0.05 | 0.28 | 0.1σ |
+    | Secondary separation (mas) | 0.81 ± 0.05 | 0.61 | −4.1σ |
+    | Secondary position angle from the primary (°) | 236 ± 3 (56 + 180) | 211 | −8.3σ |
+    | Primary UD diameter (mas) | 0.5 (fixed) | 0.42 | not fitted in the paper |
+    | Ring Gaussian width (mas) | 6.5 (0.457 × diameter) | 3.2 (FWHM) | not compared: the width conventions are unchecked |
+
+    The ring (size, tilt, orientation, brightness and both azimuthal modulation amplitudes) is recovered well. The
+    secondary is not: it is a sub-beam point source next to the star, and virgil puts more flux in it, nearer the
+    star, and at a different angle than the paper. The PA convention for the paper's binary position is also
+    uncertain: the paper's Fig. 4 puts the secondary south-west of the primary, so 56° is taken to be the primary's position
+    from the secondary (236° from the primary). The paper's primary-flux fraction trades off against the secondary's
+    and the spectra, so the flux rows depend on the spectral assumptions (power laws here, Kurucz and black bodies there).
+    The image-fit scene has no secondary (it stays in the image, as in the paper): there the primary's fraction is 62.1 %
+    against the paper's 61 % grid value, and the environment spectral index is 0.36 against 0.42.
+    The reduced χ² of the parametric fit is 1.5 (the paper quotes 2.3 after inflating its uncertainties by √6).
+
+    **Image metrics** (both images on one 0.08 mas grid, virgil convolved to the published beam, the published bitmap
+    used as it stands; "central" is within 3.5 mas of the star, "ring" is 3.5 to 16 mas; both images get the same moments):
+
+    | Metric | Hillen+2016 | virgil |
+    | --- | --- | --- |
+    | Normalised cross-correlation | 1 | 0.96 (0.96 after the best sub-beam shift) |
+    | Central flux fraction / ring flux fraction | 5.8 % / 78.2 % | 6.3 % / 76.5 % |
+    | Central flux-weighted radius (mas) | 1.81 | 2.01 |
+    | Ring flux-weighted radius (mas) | 8.21 | 8.49 |
+    | Central major-axis PA (°) | 164 | 161 |
+    | Ring major-axis PA (°) | 70 | 99 (the ring is nearly circular, axis ratio 0.92 and 0.91, so this is ill-defined) |
+    | Asymmetry angle, central flux centroid (° East of North), offset (mas) | 351, 0.33 | 329, 0.46 |
+    | Asymmetry angle, ring flux centroid (°), offset (mas) | 166, 1.01 | 170, 0.85 |
+
+    ??? note "Data and method"
+
+        **Data.** The 27 PIONIER observing blocks of ESO programme 094.D-0865 (PI Hillen), reduced by the authors
+        with `pndrs`; ESO has no Phase 3 products for this programme, so this is the authors' reduced copy.
+        They are two folders, which we identified from the MJDs: `A` has the nights of 2015-01-21 (9 blocks) and
+        2015-01-24 (10), dated a day later in UT in the file names, and `B` has 2015-02-23 (8). The paper uses all three
+        nights, as do we. The data are 828 V² points and 504 closure-phase rows (we use all four triangles per
+        block, the paper's count of independent closure phases is 390), across the H band (1.53–1.77 µm).
+        virgil's own dirty beam is 3.2 × 2.5 mas at PA 164°; the images above use the published ellipse instead,
+        so that both are shown at the resolution of the figure in the paper.
+
+        **Model.** The paper's single-star-subtracted scene: a uniform-disc primary (0.5 mas, fixed, flux ∝ λ⁻⁴ as in
+        the paper) plus a `virgil.models.Image` environment with a power-law spectrum from `virgil.spectra` on the
+        paper's grid (256 × 256 pixels of 0.15 mas), starting from `starting_image`. The secondary is left in the
+        image, as in the paper. Regulariser `MaxEntropy`, weight from `l_curve` over nine weights (10⁴ to 10⁻²), taking
+        the corner (weight 56). The paper instead fixes the primary's flux fraction and the environment index from a
+        20 × 20 grid and uses a regularisation weight of 10¹² in its own units, so the two are not the same
+        optimisation. Neither image is a ground truth.
+
+        **Fit quality.** The virgil image has χ² per point 0.32 on 1 722 residuals. That says it is over-fitted (about
+        65 000 free pixels for those residuals), not that it is better; the paper does not tabulate a χ² for its image.
+
+        **The published image.** The published image is recovered from the bitmap by mapping each pixel's colour to
+        its value through the figure's colour bar; the blue contours, star markers, beam ellipse and compass are
+        filled from their neighbours. That gives morphology only, with the published stretch and beam, never
+        photometry. It is a restored image already, so it is not convolved again.
+
+        ![uv coverage, V² and closure phases](postagb/IRAS08544_inspect.png)
+
+        ![V² and T3 fits and residuals for virgil](postagb/IRAS08544_fit.png)
+
+        ![L-curve](postagb/IRAS08544_lcurve.png)
+
+        ![virgil, the published image recovered from the bitmap, and their difference](postagb/IRAS08544_compare.png)
+
+        <figure markdown>
+        ![The published single-star-subtracted image of IRAS 08544-4431](postagb/literature/IRAS08544_hillen_image.png)
+        <figcaption>As published: the single-star-subtracted reconstruction of IRAS 08544-4431 with 5, 3 and 1σ contours,
+        Hillen et al. (2016), arXiv:1603.03023, Fig. 4 (upper panel). Reproduced from the arXiv version; Devika Kamath
+        (Macquarie University), a co-author, permits its use here.</figcaption>
+        </figure>
+
+        Data: authors' reduced copy of ESO 094.D-0865, in `~/code/nuHor/data/ep1/{A,B}` (not committed).
+        Provenance, permissions and credits: [`DATA_ATTRIBUTION.md`](https://github.com/benjaminpope/virgil-validation/blob/main/DATA_ATTRIBUTION.md).
+        Reproduce with `scripts/postagb_literature.py --targets IRAS08544` and
+        `scripts/postagb_imaging.py {inspect,parametric,image,compare,replot} docs/imaging/postagb --target IRAS08544`
+        (about two minutes on a laptop).
+
 ## Data and permissions
 
-The targets use public ESO Phase 3 products from programme 1103.D-0797 (PI Kluska).
+Most targets use public ESO Phase 3 products from programme 1103.D-0797 (PI Kluska); IRAS 08544-4431 uses the authors' reduced copy of programme 094.D-0865.
 Published figures are shown only where the authors have given permission, from the arXiv version.
 
 | Target | Data | Published comparison | Status |
@@ -149,7 +265,7 @@ Published figures are shown only where the authors have given permission, from t
 | HD 95767 | ESO 1103.D-0797 | De Prins+2026 | pending |
 | IRAS 15469-5311 | ESO 1103.D-0797 | De Prins+2026 | pending |
 | PS Gem | ESO 1103.D-0797 | De Prins+2026 | pending |
-| IRAS 08544-4431 | ESO 1103.D-0797 | Hillen+2016 | pending |
+| IRAS 08544-4431 | ESO 094.D-0865 (PI Hillen), reduced by the authors; no Phase 3 products | Hillen+2016 (Fig. 4; bitmap from the arXiv source) | done |
 
 ## Method parity
 
