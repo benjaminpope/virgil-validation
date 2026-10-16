@@ -160,7 +160,7 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! warning "Verdict: the discs agree in shape, not in size"
-        The images correlate at 0.95 at the PIONIER beam, but virgil's disc is more compact (flux-weighted radius 10.8 against 15.5 mas) and its major-axis PA differs (142° against 72°). The parametric fit puts the rim at 18.9 mas against the paper's 14.3 and the secondary 2.3 mas from the paper's position, so it is not a clean match. The Zenodo FITS header's secondary offset also disagrees with the paper's tables, so the comparison depends on which one is the reference.
+        The images correlate at 0.95 at the PIONIER beam, but the azimuthal average of the published image already scores 0.90, so the correlation tests little beyond the radial profile; virgil's disc is more compact (flux-weighted radius 10.8 against 15.5 mas) and its major-axis PA differs (142° against 72°). The parametric fit puts the rim at 18.9 mas against the paper's 14.3 and the secondary 2.3 mas from the paper's position, so it is not a clean match. The Zenodo FITS header's secondary offset also disagrees with the paper's tables, so the comparison depends on which one is the reference.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 19 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -191,7 +191,7 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.95 (0.95 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.79, 180° rotation 0.79, azimuthal average 0.90) | 1 | 0.95 (0.95 after the best sub-beam shift) |
     | Flux fraction in the image field | 91 % | 100 % |
     | Flux-weighted radius (mas) | 15.49 | 10.84 |
     | Major-axis PA (°), axis ratio | 168, 0.88 | 94, 0.89 |
@@ -263,7 +263,7 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.99 (1.00 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.89, 180° rotation 0.51, azimuthal average 0.85) | 1 | 0.99 (1.00 after the best sub-beam shift) |
     | Flux fraction in the image field | 95 % | 99 % |
     | Flux-weighted radius (mas) | 4.19 | 4.60 |
     | Major-axis PA (°), axis ratio | 83, 0.86 | 111, 0.94 |
@@ -338,7 +338,7 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.96 (0.98 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.68, 180° rotation 0.70, azimuthal average 0.80) | 1 | 0.96 (0.98 after the best sub-beam shift) |
     | Flux fraction in the image field | 95 % | 98 % |
     | Flux-weighted radius (mas) | 3.03 | 3.52 |
     | Major-axis PA (°), axis ratio | 55, 0.77 | 56, 0.77 |
@@ -384,7 +384,7 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! warning "Verdict: the same blob, a different orientation"
-        The images correlate at 0.95 (0.97 after the best sub-beam shift) and the flux-weighted radii match (3.9 against 4.3 mas), but the second-moment major axis is at 53° in virgil and 124° in ORGANIC, and virgil's disc is rounder (axis ratio 0.90 against 0.78). The parametric rim, by contrast, matches the paper (PA 32.6° against 32.5 ± 1.9°; inclination 58.8° against 58.9 ± 1.2°). The moments of a compact, beam-sized image are fragile, so treat the orientation difference as real but small compared with the beam.
+        The images correlate at 0.95 (0.97 after the best sub-beam shift), but the azimuthal average of the published image scores 0.96 against ORGANIC, so the correlation says nothing here beyond the radial profile; the flux-weighted radii match (3.9 against 4.3 mas), but the second-moment major axis is at 53° in virgil and 124° in ORGANIC, and virgil's disc is rounder (axis ratio 0.90 against 0.78). The parametric rim, by contrast, matches the paper (PA 32.6° against 32.5 ± 1.9°; inclination 58.8° against 58.9 ± 1.2°). The moments of a compact, beam-sized image are fragile, so treat the orientation difference as real but small compared with the beam.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 20 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -413,7 +413,7 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.95 (0.97 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.90, 180° rotation 0.83, azimuthal average 0.96) | 1 | 0.95 (0.97 after the best sub-beam shift) |
     | Flux fraction in the image field | 98 % | 100 % |
     | Flux-weighted radius (mas) | 4.25 | 3.94 |
     | Major-axis PA (°), axis ratio | 124, 0.78 | 53, 0.90 |
@@ -488,7 +488,7 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.99 (0.99 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.80, 180° rotation 0.79, azimuthal average 0.92) | 1 | 0.99 (0.99 after the best sub-beam shift) |
     | Flux fraction in the image field | 97 % | 98 % |
     | Flux-weighted radius (mas) | 3.78 | 4.12 |
     | Major-axis PA (°), axis ratio | 174, 0.89 | 162, 0.93 |
@@ -560,7 +560,7 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.99 (0.99 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.71, 180° rotation 0.45, azimuthal average 0.85) | 1 | 0.99 (0.99 after the best sub-beam shift) |
     | Flux fraction in the image field | 95 % | 94 % |
     | Flux-weighted radius (mas) | 5.43 | 5.79 |
     | Major-axis PA (°), axis ratio | 122, 0.88 | 145, 0.90 |
@@ -611,7 +611,7 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! failure "Verdict: the two reconstructions do not agree, and the data cannot say which is right"
-        The images correlate at only 0.63 (0.71 after the best shift). virgil's image is a scatter of fragments out to 9 mas (flux-weighted radius 9.1 against 6.3 mas), not a compact disc. Only 12 exposures were observed and the data are met equally well by the published image (χ² per point 0.49), its East-West mirror (1.0) and its North-South mirror (1.2), so the orientation is hardly constrained at all. The L-curve for this target is flat with no clear corner, so the weight (5.6 × 10⁻⁴) is arbitrary. Do not read anything into virgil's image here.
+        The images correlate at only 0.63 (0.71 after the best shift). virgil's image is a scatter of fragments out to 9 mas (flux-weighted radius 9.1 against 6.3 mas), not a compact disc. Only 12 exposures were observed and the data are met equally well by the published image (χ² per point 0.49), its East-West mirror (1.0) and its North-South mirror (1.2), so the orientation is hardly constrained at all. The L-curve for this target is flat with no clear corner, so the weight (5.6 × 10⁻⁴) is arbitrary. Even its controls score 0.52 to 0.59, so the statistic is noisy here. Do not read anything into virgil's image.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 12 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (0.6, 0.6, 0.6, 0.6, 0.6, 0.6). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -638,7 +638,7 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.63 (0.71 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.52, 180° rotation 0.58, azimuthal average 0.59) | 1 | 0.63 (0.71 after the best sub-beam shift) |
     | Flux fraction in the image field | 95 % | 100 % |
     | Flux-weighted radius (mas) | 6.30 | 9.06 |
     | Major-axis PA (°), axis ratio | 58, 0.82 | 61, 0.61 |
@@ -699,3 +699,5 @@ fixed stellar power-law index, a point secondary, and a pixel image with its own
 regulariser and optimiser (MaxEntropy and L-BFGS against ORGANIC's GAN and pyBADS), the choice of weight (L-curve
 corner against ORGANIC's tuned regularisation), and the uncertainty treatment (here the images are single reconstructions, without the paper's per-pixel significance maps). Images are therefore
 compared at the PIONIER beam, never at native resolution, where regularised reconstructions differ by construction.
+
+A caution on the cross-correlation for the seven near-round discs of De Prins et al.: it is dominated by the radial profile. The azimuthal average of the published image already correlates at 0.80 to 0.96 with virgil's (0.59 for PS Gem), and the wrong-orientation controls at 0.45 to 0.90, so a value of 0.95 to 0.99 means the radial structure agrees and says less about the azimuthal structure. The orientation-flip χ² of the published image on our data is the sharper test of orientation, and it is passed for all but PS Gem.

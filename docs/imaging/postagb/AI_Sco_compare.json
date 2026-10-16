@@ -1,42 +1,47 @@
 {
- "ncc_zero_shift": 0.9566529066146181,
- "ncc_best_shift": 0.975726085994042,
+ "ncc_zero_shift": 0.9566529066146179,
+ "ncc_controls": {
+  "mirrored_East-West": 0.675083393282387,
+  "rotated_180": 0.6969260089573575,
+  "azimuthal_average_of_published": 0.8019288484114091
+ },
+ "ncc_best_shift": 0.9757260859940418,
  "best_shift_pixels": {
   "dy": -1,
   "dx": 2
  },
  "pixel_mas": 0.22999999999999998,
  "beam": {
-  "major_mas": 3.649150448949114,
+  "major_mas": 3.6491504489491136,
   "minor_mas": 2.5539112079180204,
   "pa_deg": 138.66507050473245
  },
  "ours": {
   "disc": {
-   "flux_fraction": 0.97786452148114,
-   "mean_radius_mas": 3.5209025619014134,
-   "major_pa_deg": 55.829425467458876,
-   "axis_ratio": 0.7722316096550954,
-   "centroid_pa_deg": 42.55000878590893,
-   "centroid_offset_mas": 1.1949123813227518
+   "flux_fraction": 0.9778645214811398,
+   "mean_radius_mas": 3.520902561901414,
+   "major_pa_deg": 124.17057453254112,
+   "axis_ratio": 0.7722316096550955,
+   "centroid_pa_deg": 137.44999121409109,
+   "centroid_offset_mas": 1.1949123813227522
   }
  },
  "published": {
   "disc": {
-   "flux_fraction": 0.9533743695660832,
-   "mean_radius_mas": 3.03483733569245,
-   "major_pa_deg": 54.75671635179043,
+   "flux_fraction": 0.9533743695660836,
+   "mean_radius_mas": 3.0348373356924494,
+   "major_pa_deg": 125.24328364820957,
    "axis_ratio": 0.7670128218770325,
-   "centroid_pa_deg": 47.616244894541595,
-   "centroid_offset_mas": 0.9173860844796009
+   "centroid_pa_deg": 132.38375510545845,
+   "centroid_offset_mas": 0.9173860844796011
   }
  },
- "chi2_per_point_published_on_our_data": 2.464908499867381,
+ "chi2_per_point_published_on_our_data": 2.4649084998673803,
  "chi2_per_point_ours": 1.1292254983518712,
  "n_points": 2184,
  "published_orientation_chi2": {
-  "as_published": 2.464908499867381,
-  "mirrored_East-West": 25.6610454952903,
+  "as_published": 2.4649084998673803,
+  "mirrored_East-West": 25.661045495290296,
   "mirrored_North-South": 17.14033359743166
  },
  "smoke": false

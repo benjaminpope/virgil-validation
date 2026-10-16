@@ -1,41 +1,46 @@
 {
- "ncc_zero_shift": 0.948144084959556,
- "ncc_best_shift": 0.948144084959556,
+ "ncc_zero_shift": 0.952440555133092,
+ "ncc_controls": {
+  "mirrored_East-West": 0.7936786287902183,
+  "rotated_180": 0.7924268433713736,
+  "azimuthal_average_of_published": 0.8991659285232048
+ },
+ "ncc_best_shift": 0.952440555133092,
  "best_shift_pixels": {
   "dy": 0,
   "dx": 0
  },
  "pixel_mas": 0.635,
  "beam": {
-  "major_mas": 5.149818722793057,
-  "minor_mas": 2.915058250515455,
+  "major_mas": 5.149818722793058,
+  "minor_mas": 2.9150582505154556,
   "pa_deg": 145.85462277224408
  },
  "ours": {
   "disc": {
-   "flux_fraction": 0.9999999999999702,
-   "mean_radius_mas": 10.836925155457006,
-   "major_pa_deg": 94.37697047440601,
-   "axis_ratio": 0.8902823625829116,
-   "centroid_pa_deg": 142.3984654137844,
-   "centroid_offset_mas": 0.563536737357404
+   "flux_fraction": 0.9988567486142855,
+   "mean_radius_mas": 10.81948512226075,
+   "major_pa_deg": 84.72948739954533,
+   "axis_ratio": 0.8888965609249662,
+   "centroid_pa_deg": 37.73349061951155,
+   "centroid_offset_mas": 0.5641526211035157
   }
  },
  "published": {
   "disc": {
-   "flux_fraction": 0.912897120502184,
-   "mean_radius_mas": 15.491636190191764,
-   "major_pa_deg": 167.69820299286081,
-   "axis_ratio": 0.8786786353315343,
-   "centroid_pa_deg": 72.42661946411768,
-   "centroid_offset_mas": 0.3270956214559647
+   "flux_fraction": 0.7094320766844695,
+   "mean_radius_mas": 10.641966778775233,
+   "major_pa_deg": 111.20427589154853,
+   "axis_ratio": 0.8254623227027958,
+   "centroid_pa_deg": 36.75893916151249,
+   "centroid_offset_mas": 0.9593972883273812
   }
  },
- "chi2_per_point_published_on_our_data": 1.9436265813804026,
+ "chi2_per_point_published_on_our_data": 1.9436265813804017,
  "chi2_per_point_ours": 0.5229845307683975,
  "n_points": 1482,
  "published_orientation_chi2": {
-  "as_published": 1.9436265813804026,
+  "as_published": 1.9436265813804017,
   "mirrored_East-West": 12.992665486655063,
   "mirrored_North-South": 9.446767478104473
  },

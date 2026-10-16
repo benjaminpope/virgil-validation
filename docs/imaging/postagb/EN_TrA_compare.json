@@ -1,5 +1,10 @@
 {
  "ncc_zero_shift": 0.9467141009689009,
+ "ncc_controls": {
+  "mirrored_East-West": 0.8958600639007938,
+  "rotated_180": 0.8254001633024665,
+  "azimuthal_average_of_published": 0.9563777806134647
+ },
  "ncc_best_shift": 0.9669768207726567,
  "best_shift_pixels": {
   "dy": -2,
@@ -15,9 +20,9 @@
   "disc": {
    "flux_fraction": 0.9999619031305601,
    "mean_radius_mas": 3.939140167165585,
-   "major_pa_deg": 52.638076622030496,
+   "major_pa_deg": 127.36192337796949,
    "axis_ratio": 0.9000218752505325,
-   "centroid_pa_deg": 344.3759830434652,
+   "centroid_pa_deg": 195.62401695653477,
    "centroid_offset_mas": 0.35966234232414235
   }
  },
@@ -25,9 +30,9 @@
   "disc": {
    "flux_fraction": 0.9806114684329494,
    "mean_radius_mas": 4.245115994172663,
-   "major_pa_deg": 123.69664774809166,
+   "major_pa_deg": 56.30335225190831,
    "axis_ratio": 0.7768057904357318,
-   "centroid_pa_deg": 256.32596043417004,
+   "centroid_pa_deg": 283.67403956582996,
    "centroid_offset_mas": 0.20313322670653697
   }
  },
