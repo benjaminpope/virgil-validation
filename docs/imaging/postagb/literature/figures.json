@@ -1,0 +1,26 @@
+{
+ "IW_Car_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 4",
+  "source": "https://arxiv.org/html/2605.13445v2/IW_Car_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of IW Car (inner and outer flux arcs)"
+ },
+ "IW_Car_disc_organic_no_sparco_secondary.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 2",
+  "source": "https://arxiv.org/html/2605.13445v2/IW_Car_disc_organic_no_sparco_secondary.png",
+  "shows": "peak-normalised ORGANIC image of IW Car without a SPARCO secondary"
+ },
+ "IW_Car_sphere_vs_pionier.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 6",
+  "source": "https://arxiv.org/html/2605.13445v2/IW_Car_sphere_vs_pionier.png",
+  "shows": "SPHERE/IRDIS (Andrych et al. 2023) against the PIONIER image"
+ },
+ "IW_Car_squeeze.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 15 (Appendix D)",
+  "source": "https://arxiv.org/html/2605.13445v2/organic_vs_squeeze_images_last_three.png",
+  "shows": "ORGANIC (left) against SQUEEZE (right) reconstructions, IW Car among the last three targets"
+ }
+}
