@@ -102,6 +102,10 @@ OTHERS = {
 for _k, _name in OTHERS.items():
     TARGETS[_k] = dict(name=_name, log_name=_name, fits=f"{_k}_image.fits", paper={})
 
+# PS Gem's primary carries 87 % of the flux, so the default weights (1e4 to 1e-2) leave the first fit unconverged
+# and the sweep goes to NaN; shift the sweep down two decades.
+TARGETS["PS_Gem"]["log_weights"] = (2, -4)
+
 for _k, _v in TARGETS.items():
     _v["key"] = _k
     _v.setdefault("files", None)  # None: the files of the paper's observation log, from the archive
@@ -166,10 +170,12 @@ def paper_log_mjds(cfg):
 
 
 def observables(model, data):
-    """Model V^2 and closure phases (degrees) at the data's samples (no flagged samples assumed)."""
+    """Model V^2 (at the unflagged V^2 samples) and closure phases (degrees)."""
     cv = model.model(data.u, data.v, data.wavel)
     t3 = closure_phases(cv, data.i_cps1, data.i_cps2, data.i_cps3)
-    return np.asarray(jnp.abs(cv) ** 2), np.degrees(np.asarray(t3))
+    v2 = np.asarray(jnp.abs(cv) ** 2)
+    vi = data.vis_index
+    return (v2 if vi is None or np.ndim(vi) == 0 else v2[np.asarray(vi)]), np.degrees(np.asarray(t3))
 
 
 def chi2r(model, data):
@@ -338,7 +344,7 @@ def image_stage(args, out):
             "sec.dra": dist.Normal(cfg["sec0"][0], 1.0),
             "sec.ddec": dist.Normal(cfg["sec0"][1], 1.0),
         }
-    weights = np.array([1e3, 1e1]) if args.smoke else np.logspace(4, -2, 9)
+    weights = np.array([1e3, 1e1]) if args.smoke else np.logspace(*cfg.get("log_weights", (4, -2)), 9)
     opts = dict(max_steps=15) if args.smoke else dict(max_steps=800)
     curve = l_curve(scene, priors, data, MaxEntropy(1.0, path="env"), weights, **opts)
     corner = curve.corner() if len(weights) > 3 else None
@@ -569,6 +575,9 @@ def plot_fit(out, cfg, files=None):
     data, _ = load(cfg, files)
     ours, z = np.load(path(out, cfg, "image.npz")), np.load(path(out, cfg, "compare_images.npz"))
     B = np.hypot(np.asarray(data.u), np.asarray(data.v)) / np.asarray(data.wavel) / 1e6
+    vi = data.vis_index
+    if vi is not None and np.ndim(vi) > 0:
+        B = B[np.asarray(vi)]
     v2, e2 = np.asarray(data.vis), np.asarray(data.d_vis)
     t3, et3 = np.degrees(np.asarray(data.phi)), np.degrees(np.asarray(data.d_phi))
     fig, ax = plt.subplots(2, 2, figsize=(11, 7))
