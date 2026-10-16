@@ -14,7 +14,7 @@ target; the others are added as they are done.
 | [IW Car](#iw-car) | SPARCO + ORGANIC (De Prins+2026; SQUEEZE check) | agree on morphology, differ in outer-arc detail | 0.95 |
 | HR 4049, HD 108015 | SPARCO + ORGANIC | pending | pending |
 | AI Sco, EN TrA, HD 95767, IRAS 15469-5311, PS Gem | SPARCO + ORGANIC | pending | pending |
-| [IRAS 08544-4431](#iras-08544-4431) | SPARCO image (Hillen+2016) | agree on the ring, the asymmetry and the central point source | 0.96 |
+| [IRAS 08544-4431](#iras-08544-4431) | SPARCO image (Hillen+2016) | agree on the ring and its asymmetry; the secondary's position and flux differ | 0.96 |
 
 === "IW Car"
 
@@ -217,7 +217,12 @@ target; the others are added as they are done.
 
     The image-fit scene has no secondary (it stays in the image, as in the paper): there the primary's fraction is 62.1 %
     against the paper's 61 % grid value, and the environment spectral index is 0.36 against 0.42.
-    The reduced χ² of the parametric fit is 1.5 (the paper quotes 2.3 after inflating its uncertainties by √6).
+    The reduced χ² of the parametric fit is 1.5 and the paper quotes 2.3 after inflating its uncertainties by √6, but the
+    two are not shown to be on the same error basis. The files' own errors (median V² error 2.4 % of V², closure phase
+    about 1°) look like pipeline errors, and nothing in them says whether the √6 inflation is already applied. If it is
+    not, the paper's χ² on these errors would be about 14, nine times virgil's for the same geometry, which would be an
+    unexplained disagreement (the χ² counts also depend on how spectral channels are binned). If it is, 1.5 against 2.3
+    compares like with like and virgil fits slightly better. This is unresolved here, so the χ² values are not used as evidence.
 
     **Image metrics** (both images on one 0.08 mas grid, virgil convolved to the published beam, the published bitmap
     used as it stands; the central source is the brightest pixel within 2.5 mas of the star, refined by the centroid within
@@ -251,8 +256,8 @@ target; the others are added as they are done.
         20 × 20 grid and uses a regularisation weight of 10¹² in its own units, so the two are not the same
         optimisation. Neither image is a ground truth.
 
-        **Fit quality.** The virgil image has χ² per point 0.32 on 1 722 residuals. That says it is over-fitted (about
-        65 000 free pixels for those residuals), not that it is better; the paper does not tabulate a χ² for its image.
+        **Fit quality.** The virgil image has χ² per point 0.32 on 1 722 residuals. That is low because there are about
+        65 000 free pixels for those residuals, so it says little about the image's quality, and the error basis is not settled (see the parametric fit above); the paper does not tabulate a χ² for its image.
 
         **The published image.** The published image is recovered from the bitmap by mapping each pixel's colour to
         its value through the figure's colour bar; the blue contours, star markers, beam ellipse and compass are
