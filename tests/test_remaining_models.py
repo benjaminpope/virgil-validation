@@ -74,7 +74,7 @@ def test_nodes_reference_flux_is_a_scalar_at_wavel0():
     for wavel0, want in ((None, 0.2), (2.2e-6, 0.4), (2.35e-6, 0.25)):
         s = spectra.Nodes(ratio, nodes, wavel0=wavel0)
         assert np.ndim(spectra.reference_flux(s)) == 0
-        assert np.isclose(float(spectra.reference_flux(s)), want)
+        assert np.isclose(float(spectra.reference_flux(s)), want, rtol=1e-14, atol=0)
         assert np.isclose(float(spectra.reference_flux(s)), float(s(None)))
 
 
