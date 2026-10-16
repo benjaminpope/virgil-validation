@@ -11,13 +11,12 @@ documentation states, evaluated with NumPy and SciPy. Tests:
 | --- | --- | --- |
 | `PowerLaw` | (λ/λ₀)^index | 1e-12 |
 | `BlackBody` | the Planck ratio with SciPy's CODATA constants, and its Rayleigh–Jeans limit | 9e-9 (virgil carries hc/k to about ten digits) |
-| `Tabulated` | linear interpolation, constant beyond the end nodes | 1e-12 |
 | `Nodes`, linear | `numpy.interp`, values held or set to a fixed number outside the nodes | 1e-14 |
 | `Nodes`, cubic | SciPy's natural cubic spline | 1e-13 |
 | `Nodes.is_physical`, positive nodes with overshoot between them | a dense evaluation of SciPy's spline | the same verdict |
 
-`Tabulated`'s reference flux has been the node mean, as documented, since the
-fix for [F9](../index.md#F9).
+`Nodes`' reference flux is its value at `wavel0`, a scalar (the removed
+`Tabulated` spectrum once returned every node: [F9](../method/findings.md#F9)).
 
 ## Lines and sums
 
