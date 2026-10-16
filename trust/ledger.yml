@@ -89,12 +89,12 @@
     - https://github.com/benjaminpope/virgil/pull/160
 
 - id: F9
-  title: reference_flux returns every Tabulated node, not the documented mean
-  objects: [virgil.spectra.Tabulated]
+  title: reference_flux returned every node of a Tabulated spectrum (since removed), not the documented mean
+  objects: [virgil.spectra.reference_flux]
   ruling: virgil
   kind: documentation
-  referee: mathematics (Tabulated documents its reference flux as the node mean)
-  evidence: [tests/test_remaining_models.py::test_tabulated_reference_flux_is_the_documented_mean]
+  referee: mathematics (a spectrum documents its reference flux as one number)
+  evidence: [tests/test_remaining_models.py::test_nodes_reference_flux_is_a_scalar_at_wavel0]
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/163]
 
