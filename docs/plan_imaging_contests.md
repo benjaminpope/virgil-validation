@@ -437,7 +437,9 @@ before submitting.
 **2004 data2 (χ²/N ≈ 21, error scale 4.7).**
 - *What we see.*
   - V² dominate: 31 per point, against 5.8 for the closure phases.
-  - The short-baseline V² residuals have a mean of −8σ.
+  - The short-baseline V² residuals have a mean of −8σ. (Probably the
+    data's V(0) ≈ 1.07: see the correction in C2f. An image normalised to
+    V(0) = 1 cannot reach V²(0) ≈ 1.145. Not tested on the campaign fits.)
   - The evidence's best σ (4) and ℓ (0.75 beam) both sit on the edges of
     the hyperparameter grid.
   - Members with the analytic point star are far worse (χ²/N ≈ 1300).
@@ -535,10 +537,32 @@ before submitting.
 2004 data2 has a truth we can score against numerically. Campaign 1 scored
 σ/peak 0.250 there, third of four (BSMEM 0.116, WISARD 0.163, MIRA 0.532,
 VLBMEM 0.798). With the truth's unpublished details fitted to the data it
-scores 0.260, and even that truth fits only at V² χ²/N ≈ 50: the 2004
-data carry calibration errors. So, before more contest campaigns, every
-method choice is tested on **known phantoms observed with the real contest
-uv coverages** (Ben, 2026-10-06).
+scores 0.260 (0.264 after the 2026-10-13 correction below, 0.252 after the
+2026-10-14 spot correction in C4b). The rebuilt
+truth first fitted only at V² χ²/N ≈ 50, which this plan blamed on
+calibration errors in the 2004 data; that was wrong (note below). So, before
+more contest campaigns, every method choice is tested on **known phantoms
+observed with the real contest uv coverages** (Ben, 2026-10-06).
+
+> **Correction, 2026-10-13: it was the visibility normalisation, not
+> calibration error.** An investigation (no coordinate or orientation
+> bug: all eight dihedral transforms of the truth and all the uv/phase
+> flips were tried, and the closure phases reject the inverted truth at χ²/N
+> ≈ 900) found that the 2004 data2 V² are normalised without the spot's
+> brightening. The data's V(0) is (1 + spot excess + B/A) / (1 + B/A) ≈
+> 1.07, so V²(0) ≈ 1.145, and the short-baseline V² sit 7–10 % above any
+> unit-sum model on every baseline. Leaving the spot's excess flux out of the
+> normalisation (`scripts/score_2004.py`: `truth_parts`, `truth_vis_image`),
+> and refitting the three nuisances (`FITTED`: u = 0.462, spot contrast 5.6,
+> B/A = 0.113), the truth fits at **V² χ²/N 3.05, closure χ²/N 1.31**
+> (before: 50.1 and 8.98 at u = 0.78, contrast 7.06, B/A = 0.096). The
+> organisers' BSC1948 test binary fits with a V² scale of 0.997, so the
+> NPOI/OYSTER chain has no global offset. The remaining χ²/N ≈ 3 is not
+> explained (closed on 2026-10-14: it was the spot's profile, C4b), and the spot's brightness (Planck at
+> 550 nm, 3.7, or T⁴, 5.06) is not pinned by the data. The scoring image
+> keeps its unit sum, so the σ/peak score barely moves (campaign 1: 0.250
+> against the published truth, 0.264 against the fitted one). The test is
+> `tests/test_score_2004.py::test_rebuilt_truth_fits_data2_v2`.
 
 - **Phantoms** (`src/crosscheck/phantoms.py`, NumPy only). These are
   generic families matching each contest's *pre-submission* description:
@@ -787,6 +811,43 @@ star arm with a median χ²/N above 2 on any family; on its target family,
 each star arm's median NCC at least the baseline's, or a rejection by the
 guard; and the rejection counts reported.
 
+### C2h. An informed parametric ladder for the 2004 data
+
+`scripts/contest_parametric.py` fits the 2004 data1 and data2 OIFITS with
+a ladder of physical models, using virgil only: uniform disk, limb-darkened
+disk, elliptical limb-darkened disk, then one spot (free position in the
+star's frame, free contrast), then a companion, then a second spot only if
+the evidence asks for it. It is **informed** (domain knowledge of what the
+object is) and is badged as such wherever it is quoted; it is not a blind
+reconstruction.
+
+- **Starts.** Moments from `second_moments`, plus multistarts strictly inside
+  the priors; angles are periodic; no start sits on a prior edge. The companion
+  is searched with `linear_flux_grid` over ±λ/B_min with the primary masked,
+  the peaks are ranked by their actual χ², and the best are refined.
+- **Priors.** Jeffreys: log-uniform scales and fluxes, uniform positions
+  and angles. The published truth is never a start or a prior.
+- **Gain.** The data are normalized without the spot's excess flux
+  (V(0) ≈ 1.07), so a real gain multiplies V (V² by g², T3AMP by g³).
+- **Selection.** Raw χ²/N per observable first (V², closure phase, T3AMP),
+  then ΔBIC and a Laplace evidence; NUTS on the winner.
+- **Scoring.** The winner is rendered on the scoring grid and scored with
+  `score_2004`'s σ/peak. The published truth enters only that score and the
+  parameter-recovery table.
+
+Local result on data2 (light settings): the elliptical limb-darkened disk with
+one spot and a companion reaches raw χ²/N 0.985 (V² 0.97, closure 1.01); every
+simpler rung has χ²/N above 26. σ/peak is 0.180 against the published truth
+(BSMEM 0.116, our best image 0.250). The score depends on how the unresolved
+companion is rendered: a point source scored 0.351, a free-diameter disk 0.180.
+The limb-darkening, stellar and companion diameters are 3–6σ from the rebuilt
+truth, plausibly because the contest's limb-darkening table is unpublished.
+
+On data1 the ladder does not reach the data: the best rung (two spots and a
+companion) has raw χ²/N 82 on the light settings, so data1 is not described by
+this star-plus-spots-plus-companion family, and its parameters and NUTS
+(r_hat up to 9) are not to be quoted. The full job reruns it with 16 starts.
+
 ### C3. Chromatic data
 
 The 2010 Med H data (512 channels, with differential phases), all of 2024,
@@ -870,8 +931,80 @@ John Young sent Ben a folder of contest datasets. It is filed under
   - The 2010 files are identical to ours.
   - The 2004 files carry real per-frame times, and contest 2 adds an
     `OI_VIS` table. The fitted 2004 truth gives the same χ² on both copies
-    (V² 50.1, closure phase 9.0), so the poor fit of the rebuilt truth is
-    not caused by a corrupt copy.
+    (V² 50.1, closure phase 9.0, with the old unit-sum normalisation),
+    so the poor fit of the rebuilt truth was not caused by a corrupt copy;
+    it was the normalisation (C2f, correction of 2026-10-13: now V² 3.05).
+- **2026-10-14: the remaining V² excess of the rebuilt 2004 truth was the
+  spot, not smearing or limb darkening.** `scripts/diagnose_2004.py`
+  refits only the unpublished nuisances (u, spot contrast, B/A; published
+  geometry fixed), V² and closure phases, 195 V², 130 triangles.
+  - *Where it sat.* Not at the shortest baselines (χ²/N 2.6, +0.7σ), but
+    past them: 15–25 m 4.2, 25–40 m 3.2, 40–60 m 2.6, with the data
+    0.7–1.1σ *below* the model at every baseline over 15 m; the worst
+    baselines are stations 0–2 (7.7, 23 m), 2–3 (4.7) and 0–5 (3.2).
+    Time blocks vary 1.1–4.9 with no trend. The data are a single 550 nm
+    channel 20 nm wide, so there is no per-channel view.
+  - *Not the transform or sampling.* A scale on the baselines is pinned
+    at 1.000 (±0.3 %; ±1 % takes χ²/N from 3 to 8), and 0.08, 0.04 and
+    0.02 mas pixels give V² χ²/N 3.05, 3.02, 3.02.
+  - *The spot.* It sits 2.5 mas out and A's limb on that PA is 2.45 mas,
+    so half of it hangs off the star. Clipping it to the disk, as before,
+    is wrong; a uniform 1 mas disk **added** to the star, not clipped,
+    fits. Its free contrast comes out 3.68 (Planck 1.5 T/T at 550 nm is
+    3.70) when the surface-brightness excess over the limb is
+    (contrast − 1)(1 − u). `FITTED` now uses the Planck value with no free
+    spot parameter: u = 0.487, B/A = 0.112.
+
+  | ingredient (nuisances refitted) | χ²/N V² | CP | T3AMP | Δχ² (V²) |
+  |---|---|---|---|---|
+  | baseline: linear LD, spot clipped to disk | 2.84 | 1.24 | 1.61 | 0 |
+  | (a) bandwidth 20 nm (7 sub-wavelengths) | 3.03 | 1.27 | 1.62 | +37 |
+  | (b) quadratic LD (u1 0.85, u2 −0.61) | 2.36 | 1.32 | 1.37 | −94 |
+  | (c) spot uniform, clipped | 2.71 | 1.18 | 1.51 | −25 |
+  | (c) spot uniform, not clipped, replaces star | 1.33 | 0.56 | 0.79 | −295 |
+  | (c) spot uniform, not clipped, **added** | 1.31 | 0.53 | 0.66 | −299 |
+  | **(c) added, contrast = Planck, no free spot parameter (adopted)** | 1.35 | 0.54 | 0.77 | −291 |
+  | (c) added Planck + quadratic LD | 1.30 | 0.52 | 0.66 | −300 |
+  | (c) Gaussian FWHM 1 mas, on the disk | 4.76 | 2.84 | 3.57 | +374 |
+  | (c) Gaussian FWHM 1 mas, added | 1.91 | 1.12 | 1.29 | −181 |
+  | (d) baseline, free V² scale per baseline (diagnostic) | 1.74 | | | −215 |
+  | (d) adopted spot, free V² scale per baseline (diagnostic) | 1.06 | | | −347 |
+
+  (Δχ² is for V² and 195 points, against the first row; fits are at
+  0.05 mas pixels, so the baseline reads 2.84, against 3.05 on
+  score_2004's 0.08 mas grid. The BSC1948 test binary fits at 0.94.)
+  Adopted in `score_2004.py` (the spot only, test
+  `test_spot_is_an_unclipped_added_disk`): V² 1.31, closure 0.52 on its grid.
+  Bandwidth smearing makes it worse and a quadratic law is a worse
+  explanation than the spot, so neither is adopted. A free scale per baseline
+  gets 1.06 on top of the spot, scales 0.91–1.01. That is **not** a
+  calibration error: the data are an OYSTER simulation with uncorrelated
+  Poisson noise, and the BSC1948 binary from the same chain fits at V² scale
+  0.997 and χ²/N 0.94, so no baseline-dependent systematic is allowed. The
+  remaining V² excess was model error at the time of this paragraph (the
+  scales say where: stations 0–2 at 23 m worst); the follow-up below closes it.
+  σ/peak of campaign 1 against the fitted truth: 0.252 (was 0.264).
+  The mechanism in OYSTER (spot added at the limb brightness) is
+  inferred from the fit, not documented. **Follow-up (Ben, 2026-10-14):**
+  the data are an analytic OYSTER model, so `score_2004.model_vis` evaluates
+  it in closed form (elliptical linear limb-darkened disk, uniform spot and
+  companion added in the Fourier plane). With the spot flux free it fits at
+  V² 1.28, CP 0.52, T3AMP 0.62, and the fitted flux (0.0788 of A's) agrees
+  with the Planck excess prediction (0.0783) to 0.6 %. A quadratic law gives
+  u2 = 0.00 ± 0.01. Hummel cites Van Hamme (1993, AJ 106, 2096) for his
+  linear coefficients; its Table 1 (bolometric, Kurucz 7000 K, log g 4)
+  gives u = 0.469, inside the data's 0.48 ± 0.02 (V² χ²/N 1.74 at u = 0.44,
+  1.33 at 0.469, 2.6 at 0.55), whereas a 550 nm monochromatic value (about
+  0.55) is rejected. `U_LD` and `FITTED` now use 0.469, so the truth has no
+  fitted limb darkening or spot parameter: V² 1.33 analytic (1.45 on
+  score_2004's 0.08 mas pixel grid), CP 0.55, T3AMP 0.64. **Pooled, the truth
+  fits at χ²/ν = 1.02** (V² and closure phase, 331.6 for 325 points, one
+  fitted parameter, B/A; the 130 closure phases are the 10 independent
+  triangles of 13 blocks; T3AMP is correlated with V², so it is left out; 0.92
+  with it). That is as good as BSC1948's 0.94: the V² alone at 1.33 is a
+  fluctuation against closure phases sitting at 0.57, not a missing
+  ingredient. Closed.
+
 - **Still missing:** the 2012 and 2016 truths. Neither collection is in
   JMMC OiDB, whose contest collections (2004–2010, 2022, 2024) match our
   files byte for byte.
