@@ -111,10 +111,16 @@ TARGETS = {
         fit_ud=False,  # the paper fixes the primary at a 0.5 mas uniform disc
         fov_mas=38.4,  # 256 pixels of 0.15 mas
         pixel_mas=0.15,
-        sec0=(-0.67, -0.45),  # parametric start: the image puts the secondary SW of the primary
+        sec0=(0.0, 0.0),  # unused: the image scene has no secondary
         regions=dict(inner=(0.0, 3.5), outer=(3.5, 16.0)),  # central point source and the ~15 mas ring
         inner_rim_max_mas=3.5,
-        rim0=(14.15, 6.5, 19.0, 6.0), az_amps0=(0.43, 0.27), az_pas0=(0.0, 0.0),  # Hillen's best model as the start
+        # Blind starts for the parametric fit (none uses the paper's values; the best chi2 is kept).
+        param_starts=[
+            dict(rim0=(10.0, 3.0, 40.0, 90.0), az_amps0=(0.3, 0.1), az_pas0=(0.0, 0.0), sec0=(0.8, 0.8)),
+            dict(rim0=(18.0, 5.0, 10.0, 0.0), az_amps0=(0.3, 0.1), az_pas0=(180.0, 90.0), sec0=(-0.8, 0.8)),
+            dict(rim0=(12.0, 4.0, 30.0, 150.0), az_amps0=(0.3, 0.1), az_pas0=(90.0, 0.0), sec0=(0.8, -0.8)),
+            dict(rim0=(16.0, 8.0, 25.0, 45.0), az_amps0=(0.3, 0.1), az_pas0=(270.0, 45.0), sec0=(-0.8, -0.8)),
+        ],
         paper=dict(  # Table 1 (best model) of Hillen et al. 2016
             f_prim_pct=59.7, ud_prim_mas=0.5, f_sec_pct=3.9, f_rim_pct=20.9, f_bg_pct=15.5,
             bin_sep_mas=0.81, bin_pa_deg=56.0, rim_diam_mas=14.15, rim_width_frac=0.457,
@@ -235,8 +241,12 @@ def plot_inspect(data, info, out, cfg):
 # parametric
 
 
-def parametric_start(cfg):
-    """The PMOIRED geometry of De Prins et al. (2026, Sect. 4.2) in virgil components."""
+def parametric_start(cfg, start=None):
+    """The PMOIRED geometry of De Prins et al. (2026, Sect. 4.2) in virgil components.
+
+    ``start`` overrides ``rim0``, ``az_amps0``, ``az_pas0`` and ``sec0`` (see ``param_starts``).
+    """
+    cfg = cfg | (start or {})
     sec = cfg["sec0"]
     return System(
         primary=UniformDisk(diam=cfg.get("ud0", 0.5), flux=PowerLaw(1.0, cfg.get("star_index", -3.165), L0)),
@@ -270,16 +280,21 @@ PARAM_PRIORS = {
 def parametric_stage(args, out):
     cfg = cfg_of(args)
     data, files = load(cfg, args.files)
-    start = parametric_start(cfg)
     t0 = time.time()
-    result = fit(start, PARAM_PRIORS, data, method="lbfgs", **({"max_steps": 25} if args.smoke else {}))
+    priors = {k: v for k, v in PARAM_PRIORS.items() if k != "primary.diam" or cfg.get("fit_ud", True)}
+    tried = []
+    for st in cfg.get("param_starts", [None]):  # blind starts: keep the best chi2, report them all
+        r = fit(parametric_start(cfg, st), priors, data, method="lbfgs", **({"max_steps": 25} if args.smoke else {}))
+        tried.append((chi2r(r.model, data)[0], r))
+        print("start", st, "chi2/pt", tried[-1][0])
+    result = min(tried, key=lambda t: t[0])[1]
     model = result.model
     c2, n = chi2r(model, data)
     v = {k: np.asarray(x).tolist() for k, x in result.values.items()}
     ratio = lambda name: float(np.asarray(getattr(model, name).flux(L0)))  # noqa: E731
     total = 1.0 + ratio("secondary") + ratio("rim") + ratio("bg")
     summary = dict(
-        values=v, chi2_per_point=c2, n_points=n, seconds=time.time() - t0, smoke=args.smoke,
+        values=v, start_chi2_per_point=[float(c) for c, _ in tried], chi2_per_point=c2, n_points=n, seconds=time.time() - t0, smoke=args.smoke,
         f_prim_pct=100.0 / total, f_sec_pct=100 * ratio("secondary") / total,
         f_rim_pct=100 * ratio("rim") / total, f_bg_pct=100 * ratio("bg") / total,
         ud_prim_mas=float(model.primary.diam), rim_diam_mas=float(model.rim.diam),
@@ -450,6 +465,20 @@ def region_metrics(img, scale, r_lo, r_hi):
     return out
 
 
+def central_peak(img, scale, rmax=2.5, rfit=0.8):
+    """Position of the point-like source near the star: the brightest pixel within ``rmax`` mas, refined by the
+    flux-weighted centroid within ``rfit`` mas of it. Returns (separation mas, PA East of North in degrees)."""
+    ny, nx = img.shape
+    yy, xx = np.mgrid[:ny, :nx]
+    dx, dy = -(xx - (nx - 1) / 2.0) * scale, ((ny - 1) / 2.0 - yy) * scale  # East (column 0), North (row 0)
+    r = np.hypot(dx, dy)
+    k = np.argmax(np.where(r < rmax, img, -np.inf))
+    x0, y0 = dx.ravel()[k], dy.ravel()[k]
+    w = np.where(np.hypot(dx - x0, dy - y0) < rfit, img, 0.0)
+    cx, cy = (w * dx).sum() / w.sum(), (w * dy).sum() / w.sum()
+    return float(np.hypot(cx, cy)), float(np.degrees(np.arctan2(cx, cy)) % 360.0)
+
+
 def ncc(a, b, mask):
     a, b = a[mask] - a[mask].mean(), b[mask] - b[mask].mean()
     return float(a @ b / np.sqrt((a @ a) * (b @ b)))
@@ -485,6 +514,7 @@ def compare_bitmap_stage(args, out):
     best = max(shifts, key=shifts.get)
     m_ours = {k: region_metrics(ours_c, scale, *v) for k, v in cfg["regions"].items()}
     m_pub = {k: region_metrics(pub, scale, *v) for k, v in cfg["regions"].items()}
+    cp_ours, cp_pub = central_peak(ours_c, scale), central_peak(pub, scale)
     flips = {name: ncc(ours_c, im, mask) for name, im in
              {"as_published": pub, "mirrored_East-West": pub[:, ::-1], "mirrored_North-South": pub[::-1, :]}.items()}
     img_json = json.load(open(path(out, cfg, "image.json")))
@@ -494,6 +524,8 @@ def compare_bitmap_stage(args, out):
         beam=pb, virgil_data_beam=dict(major_mas=beam(data).major_mas, minor_mas=beam(data).minor_mas,
                                        pa_deg=beam(data).pa_deg),
         ours=m_ours, published=m_pub, ncc_orientation=flips,
+        central_source=dict(ours=dict(sep_mas=cp_ours[0], pa_deg=cp_ours[1]),
+                            published=dict(sep_mas=cp_pub[0], pa_deg=cp_pub[1])),
         chi2_per_point_ours=img_json["chi2_per_point"], n_points=int(img_json["n_points"]), smoke=img_json["smoke"],
     )
     print(json.dumps(res, indent=1))

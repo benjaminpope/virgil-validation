@@ -164,54 +164,73 @@ target; the others are added as they are done.
         At the published beam the images correlate at 0.96 (mirroring either axis drops it to 0.71 and 0.66): the same
         ~15 mas ring, brighter in the north-east, with the same dark gaps to the north-west and south-east, and the same
         point-like source just south-west of the star. The differences are small: virgil's ring is 0.3 mas larger
-        (flux-weighted radius 8.5 against 8.2 mas) and its central source is further from the star. The secondary's
-        separation and flux fraction in the parametric fit differ from the paper's, as set out below.
+        (flux-weighted radius 8.5 against 8.2 mas) and its central source is further from the star (1.6 against 1.1 mas, at
+        the same position angle, 205° against 200°). The secondary's separation, angle and flux fraction in the
+        parametric fit differ from the paper's, as set out below.
 
     **Parameters.** Hillen et al. fit a 16-parameter parametric model (Table 1, best model) by MCMC: uniform-disc
-    primary, point-source secondary, inclined Gaussian ring with m = 1 and m = 2 azimuthal modulations, and a resolved
-    background, each with a black-body or Kurucz spectrum. The "virgil" column is the same geometry refitted to
-    the same 27 files with virgil components, using power-law spectra (so the flux fractions are at 1.65 µm and are not
-    exactly the paper's band-averaged ones). virgil's fit is a point estimate; the σ column uses the paper's uncertainty.
+    primary (fixed at 0.5 mas), point-source secondary, inclined Gaussian ring with m = 1 and m = 2 azimuthal
+    modulations, and a resolved background, each with a black-body or Kurucz spectrum. The "virgil" column is the same
+    geometry refitted to the same 27 files with virgil components, the primary fixed at 0.5 mas as in the paper and
+    power-law spectra (so the flux fractions are at 1.65 µm and are not exactly the paper's band-averaged ones).
+    The fit is blind: four generic starting points (none uses the paper's values) and the best χ² is kept.
+    They end in two minima, χ² per point 1.617 (two starts) and 1.535 (two starts, the one shown); the table's
+    ring rows are the better one. virgil's fit is a point estimate; the σ column uses the paper's uncertainty.
 
     | Parameter | Hillen+2016 | virgil | Difference |
     | --- | --- | --- | --- |
-    | Primary flux fraction (%) | 59.7 ± 0.6 | 55.3 | −7.3σ |
-    | Secondary flux fraction (%) | 3.9 ± 0.7 | 8.2 | +6.1σ |
+    | Primary flux fraction (%) | 59.7 ± 0.6 | 56.6 | −5.2σ |
+    | Secondary flux fraction (%) | 3.9 ± 0.7 | 7.0 | +4.4σ |
     | Ring flux fraction (%) | 20.9 ± 0.9 | 20.8 | −0.1σ |
-    | Background flux fraction (%) | 15.5 ± 0.5 | 15.7 | +0.4σ |
-    | Ring diameter (mas) | 14.15 ± 0.10 | 14.30 | +1.5σ |
-    | Ring inclination (°) | 19 ± 2 | 18.7 | −0.2σ |
-    | Ring position angle (°) | 6 ± 6 | 178 (−2) | −1.3σ |
-    | Ring m = 1 amplitude | 0.43 ± 0.06 | 0.42 | −0.2σ |
-    | Ring m = 2 amplitude | 0.28 ± 0.05 | 0.28 | 0.1σ |
-    | Secondary separation (mas) | 0.81 ± 0.05 | 0.61 | −4.1σ |
-    | Secondary position angle from the primary (°) | 236 ± 3 (56 + 180) | 211 | −8.3σ |
-    | Primary UD diameter (mas) | 0.5 (fixed) | 0.42 | not fitted in the paper |
-    | Ring Gaussian width (mas) | 6.5 (0.457 × diameter) | 3.2 (FWHM) | not compared: the width conventions are unchecked |
+    | Background flux fraction (%) | 15.5 ± 0.5 | 15.6 | +0.2σ |
+    | Ring diameter (mas) | 14.15 ± 0.10 | 14.26 | +1.1σ |
+    | Ring Gaussian width, FWHM (mas) | 3.2 ± 0.1 | 3.17 | −0.3σ |
+    | Ring inclination (°) | 19 ± 2 | 18.5 | −0.2σ |
+    | Ring position angle (°) | 6 ± 6 | 0.4 | −0.9σ |
+    | Ring m = 1 amplitude | 0.43 ± 0.06 | 0.42 | −0.1σ |
+    | Ring m = 2 amplitude | 0.27 ± 0.05 | 0.29 | +0.3σ |
+    | Ring m = 1 azimuth (virgil convention, °)\* | 41.5 ± 10 | 40.7 | −0.1σ |
+    | Ring m = 2 azimuth (virgil convention, °)\* | 56.3 ± 7 | 57.6 | +0.2σ |
+    | Secondary separation (mas) | 0.81 ± 0.05 | 0.63 | −3.6σ |
+    | Secondary position angle from the primary (°)\*\* | 236 ± 3 (56 + 180) | 209 | −9σ |
+    | Primary UD diameter (mas) | 0.5 (fixed) | 0.5 (fixed) | none |
 
-    The ring (size, tilt, orientation, brightness and both azimuthal modulation amplitudes) is recovered well. The
-    secondary is not: it is a sub-beam point source next to the star, and virgil puts more flux in it, nearer the
-    star, and at a different angle than the paper. The PA convention for the paper's binary position is also
-    uncertain: the paper's Fig. 4 puts the secondary south-west of the primary, so 56° is taken to be the primary's position
-    from the secondary (236° from the primary). The paper's primary-flux fraction trades off against the secondary's
-    and the spectra, so the flux rows depend on the spectral assumptions (power laws here, Kurucz and black bodies there).
+    The ring (size, width, tilt, orientation, brightness and both modulation amplitudes) is recovered well, from blind starts.
+    The secondary is not: it is a sub-beam point source next to the star, and virgil puts more flux in it, nearer the
+    star, and at a different angle than the paper.
+    A possible cause, the free primary diameter trading off against the secondary, is ruled out: with the primary
+    fixed the secondary rows barely moved. The flux rows depend on the spectral assumptions (power laws here, Kurucz and
+    black bodies there), and the primary's fraction trades off against the secondary's.
+
+    \* Hillen et al. define the modulation through coefficients c₁, s₁, c₂, s₂ with the convention in Kluska et al.
+    (2012), which the paper does not restate. The paper's coefficients give modulation phases atan2(s₁, c₁) = −35.5° and
+    ½ atan2(s₂, c₂) = −50.3°. They agree with virgil's fitted azimuths (which are in-plane azimuths from North, in the
+    sense of position angle) if the paper counts its azimuth from the ring's major axis (PA 6°) in the opposite sense:
+    6° − (−35.5°) = 41.5° and 6° + 50.3° = 56.3°. That mapping was chosen after seeing the fit, so these two rows show
+    the two readings are consistent, not that the convention is pinned. The independent check is in image space: the
+    ring's flux-centroid direction agrees (below).
+
+    \*\* Fig. 4 puts the secondary south-west of the primary, so 56° is taken to be the primary's position from the
+    secondary (236° from the primary). The published image's own central source lies at 200° (below), 36° from the
+    paper's 236°, and virgil's parametric 209° is close to it, so this row is as much a statement about the paper's
+    image against its model as about virgil.
+
     The image-fit scene has no secondary (it stays in the image, as in the paper): there the primary's fraction is 62.1 %
     against the paper's 61 % grid value, and the environment spectral index is 0.36 against 0.42.
     The reduced χ² of the parametric fit is 1.5 (the paper quotes 2.3 after inflating its uncertainties by √6).
 
     **Image metrics** (both images on one 0.08 mas grid, virgil convolved to the published beam, the published bitmap
-    used as it stands; "central" is within 3.5 mas of the star, "ring" is 3.5 to 16 mas; both images get the same moments):
+    used as it stands; the central source is the brightest pixel within 2.5 mas of the star, refined by the centroid within
+    0.8 mas of it; both images get the same moments):
 
     | Metric | Hillen+2016 | virgil |
     | --- | --- | --- |
     | Normalised cross-correlation | 1 | 0.96 (0.96 after the best sub-beam shift) |
-    | Central flux fraction / ring flux fraction | 5.8 % / 78.2 % | 6.3 % / 76.5 % |
-    | Central flux-weighted radius (mas) | 1.81 | 2.01 |
+    | Inside 3.5 mas / ring (3.5 to 16 mas) flux fraction | 5.8 % / 78.2 % | 6.3 % / 76.5 % |
+    | Central point source: separation (mas), position angle (° East of North) | 1.09, 200 | 1.63, 205 |
     | Ring flux-weighted radius (mas) | 8.21 | 8.49 |
-    | Central major-axis PA (°) | 164 | 161 |
     | Ring major-axis PA (°) | 70 | 99 (the ring is nearly circular, axis ratio 0.92 and 0.91, so this is ill-defined) |
-    | Asymmetry angle, central flux centroid (° East of North), offset (mas) | 351, 0.33 | 329, 0.46 |
-    | Asymmetry angle, ring flux centroid (°), offset (mas) | 166, 1.01 | 170, 0.85 |
+    | Asymmetry angle, ring flux centroid (° East of North), offset (mas) | 166, 1.01 | 170, 0.85 |
 
     ??? note "Data and method"
 
