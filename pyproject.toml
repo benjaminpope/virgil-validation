@@ -8,6 +8,8 @@ dependencies = ["numpy", "scipy", "astropy", "dLux>=0.15", "matplotlib", "virgil
 [project.optional-dependencies]
 # Other people's packages, pinned: updating a pin is a deliberate PR.
 external = ["pmoired==26.10.1"]
+# Stage V of the PolarDisk plan (benchmarks/polar_disk): radial-profile codes, pinned.
+polar-disk = ["frank==1.2.3", "vis-r @ git+https://github.com/drgmk/vis-r@f53467077b04878986c967b501d88c54ff3efb86", "astro-frap==1.0.2", "oimodeler==0.8.1"]
 # Stage A of the alias bands (virgil#319) until it is released; plots need corner.
 orbit-aliases = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@9061a1d0044c990fad941aae03e051cc582ff9e8", "corner"]
 docs = ["mkdocs<2", "mkdocs-material", "zensical>=0.0.62,<0.1"]  # built with Zensical, as virgil is

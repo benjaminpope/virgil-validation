@@ -35,10 +35,12 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! success "Verdict: the two reconstructions agree"
-        At the PIONIER beam the images correlate at 0.95 (0.95 after the best sub-beam shift): the same inner arcs
+        At the PIONIER beam the images correlate at 0.95 (0.95 after the best sub-beam shift), against 0.14 for the
+        East-West mirror of the published image, 0.04 for its 180° rotation and 0.60 for its azimuthal average
+        (the same flux at the same radii with no arcs): the same inner arcs
         near the star and the same large western arc. They differ in detail: the outer arc
         sits further out and is oriented differently in virgil (flux-weighted radius 11.0 against 9.9 mas,
-        major-axis PA 42° against 17°), and the south-east inner arc is weaker in virgil. De Prins et al.
+        major-axis PA 138° against 163°). De Prins et al.
         themselves note that the inner arcs' azimuthal profile is not well constrained (Appendix D, SQUEEZE).
 
     **Parameters.** De Prins et al. could not fit a PMOIRED geometric model to IW Car (a single disc does not
@@ -48,6 +50,10 @@ target; IRAS 08544-4431 is still to come.
     fits to the same 23 files: the SPARCO parameters fitted together with the image, and a
     PMOIRED-style parametric model (UD star + point secondary + power-law rim with an m = 1 modulation +
     resolved background). virgil's fits are point estimates; the σ column uses the paper's uncertainty, where it gives one.
+    The image fit starts at the paper's SPARCO values (UD 0.5 mas, environment index 0.9, secondary at the
+    paper's position under a 1 mas prior) and is a local optimisation, so agreement in this table
+    shows that the data do not pull the values away from the published ones, not that virgil recovers them blind.
+    The secondary's spectral index is 0 in both models (the paper's SIND2 = 0).
 
     | Parameter | De Prins+2026 | virgil (image fit) | virgil (parametric) | Difference |
     | --- | --- | --- | --- | --- |
@@ -67,25 +73,27 @@ target; IRAS 08544-4431 is still to come.
     0.46 for the image fit, for the same reason.
 
     **Image metrics** (both images on one 0.35 mas grid, convolved to the beam; inner = within 5 mas of the star,
-    outer = beyond; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    outer = beyond; the paper's own rim fit needs per-pixel significances, so both images get the same moments.
+    As an external check, the moments of the ORGANIC image give an outer major axis at PA 163° against the paper's
+    176 ± 3° from its rim fit, within 13°, so the two definitions are consistent):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.95 |
+    | Normalised cross-correlation (controls: E-W mirror 0.14, 180° rotation 0.04, azimuthal average 0.60) | 1 | 0.95 |
     | Inner flux fraction / outer flux fraction | 16.7 % / 77.5 % | 14.9 % / 75.9 % |
     | Inner flux-weighted radius (mas) | 3.38 | 3.35 |
     | Outer flux-weighted radius (mas) | 9.93 | 11.05 |
-    | Inner major-axis PA (°) | 61 | 58 |
-    | Outer major-axis PA (°) | 17 | 42 |
-    | Asymmetry angle, inner flux centroid (° East of North), offset (mas) | 219, 1.08 | 200, 1.11 |
-    | Asymmetry angle, outer flux centroid (°), offset (mas) | 272, 4.04 | 280, 2.94 |
+    | Inner major-axis PA (°; nearly round, axis ratio 0.95 / 0.88) | 119 | 122 |
+    | Outer major-axis PA (°; paper's outer-arc rim fit 176 ± 3) | 163 | 138 |
+    | Asymmetry angle, inner flux centroid (° East of North), offset (mas) | 321, 1.08 | 340, 1.11 |
+    | Asymmetry angle, outer flux centroid (°), offset (mas) | 268, 4.04 | 260, 2.94 |
 
     ??? note "Data and method"
 
         **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska,
         INSPIRING), the 23 exposures listed in the paper's observation log: 828 V² and 552
         closure-phase rows across the H band (1.51–1.76 µm). `postagb_data.py check` confirms
-        these are the same exposures as the earlier reduced copy. The PIONIER beam is 3.26 × 2.29 mas at PA 142°.
+        that the union of ESO's two Phase 3 releases (PIONIER and INSPIRING; 31 exposures) matches the earlier reduced copy, and the 23 used here are the INSPIRING release. The PIONIER beam is 3.26 × 2.29 mas at PA 142°.
 
         **Model.** SPARCO: a uniform-disc primary (power-law index −3.165, as in the paper) plus a point
         secondary plus a `virgil.models.Image` environment (128 × 128 pixels of 0.35 mas, the paper's grid),
@@ -98,6 +106,9 @@ target; IRAS 08544-4431 is still to come.
         published SPARCO parameters unchanged, 2.06 (V² residual rms 0.88 against 1.53σ; T3 0.68 against 2.09σ).
         This does not say virgil's image is better: it has about 16 000 free pixels for 1 794 data points and
         is over-fitted at this weight, while ORGANIC is a more strongly regularised image. The test that matters here is the image agreement above.
+        The 1 794 is the length of virgil's whitened-residual vector, not the number of data: the 828 V² and 552
+        closure phases (1 380 samples) become 1 794 residuals because each closure phase of four or more
+        telescopes also adds a periodic penalty term. Dividing by 1 380 instead would give about 0.59 and 2.67.
         Flipping the published image East-West or North-South worsens its χ² to 60 and 8.9, so the
         orientation is right.
 

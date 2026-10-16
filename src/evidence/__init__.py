@@ -22,6 +22,10 @@ ROOTS = (
     "fouriever",
     "orbitize",  # orbitize! (Blunt et al. 2020, 2024): Keplerian orbits, RVs
     "ehtim",  # eht-imaging (Chael et al.): imaging and its regularisers
+    "frank",  # frank (Jennings et al. 2020): discrete Hankel transform of radial profiles
+    "visr",  # vis-r (Kennedy 2025): radial-profile visibility modelling
+    "frap",  # FRAP (Yoshida et al.): Fourier-Bessel Hankel matrix
+    "oimodeler",  # oimodeler (Meilland et al.): Fourier-space and image-based components
     "mpol",  # MPoL (Czekala et al.): RML imaging, gridding, Fourier transforms
     "literature",  # published numbers reproduced from the authors' data (not a formula we transcribed: that is mathematics)
     "statistics",  # ensembles with a known distribution

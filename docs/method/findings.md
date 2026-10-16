@@ -14,7 +14,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F6">F6</span> | `fitting.fit` | fit started at an exact zero-residual optimum reported non-convergence | fixed [virgil#144](https://github.com/benjaminpope/virgil/pull/144) |
 | <span id="F7">F7</span> | `fitting.fit` | .expand()ed priors switched fit from LM to L-BFGS | fixed [virgil#142](https://github.com/benjaminpope/virgil/pull/142) |
 | <span id="F8">F8</span> | `oidata.OIData` | OIData crashed when every closure phase was flagged | fixed [virgil#155](https://github.com/benjaminpope/virgil/pull/155) [virgil#158](https://github.com/benjaminpope/virgil/pull/158) [virgil#160](https://github.com/benjaminpope/virgil/pull/160) |
-| <span id="F9">F9</span> | `spectra.Tabulated` | reference_flux returns every Tabulated node, not the documented mean | fixed [virgil#163](https://github.com/benjaminpope/virgil/pull/163) |
+| <span id="F9">F9</span> | `spectra.reference_flux` | reference_flux returned every node of a Tabulated spectrum (since removed), not the documented mean | fixed [virgil#163](https://github.com/benjaminpope/virgil/pull/163) |
 | <span id="F10">F10</span> | `oifits.read_oifits`, `oidata.OIData` | OIData rejects OIFITS whose OI_T3 and OI_VIS2 use different INSNAMEs (identical wavelengths) or reversed baselines | fixed [virgil#167](https://github.com/benjaminpope/virgil/pull/167) |
 | <span id="F11">F11</span> | `likelihood.whitened_residuals` | chi-squared of correlated (4+ telescope) closure phases jumps where a residual crosses ±π | fixed [virgil#174](https://github.com/benjaminpope/virgil/pull/174) |
 | <span id="F12">F12</span> | `imaging.clean` | imaging.clean returns NaN on even grids without a base scene (near-zero \|J e_p\| at the off-centre seed; exposed by virgil#174) | fixed [virgil#190](https://github.com/benjaminpope/virgil/pull/190) |
@@ -24,6 +24,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F16">F16</span> | `orbits.StateVectorOrbit` | StateVectorOrbit.to_kepler loses the inclination of nearly face-on orbits (0.01° returns 0.0106°), so positions drift by up to 2e-8 of a | fixed [virgil#229](https://github.com/benjaminpope/virgil/pull/229) |
 | <span id="F17">F17</span> | `limits.chi2ppf` | limits.chi2ppf with df != 1 raises ImportError, needing tensorflow_probability, which virgil does not declare | fixed [virgil#291](https://github.com/benjaminpope/virgil/pull/291) |
 | <span id="F18">F18</span> | `epochs.marginal_loglike` | marginal_loglike(s_max=...) integrates each scale on a ln s grid that is too coarse where the likelihood falls steeply from a bound, so differences of m between models are wrong by 0.1-0.7 | fixed [virgil#295](https://github.com/benjaminpope/virgil/pull/295) |
+| <span id="F19">F19</span> | `models.ExpTail` | ExpTail's documented accuracy (1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes) is too optimistic | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
+| <span id="F20">F20</span> | `models.Harmonics` | Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
 
 ## Where codes define things differently
 
@@ -39,6 +41,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D7">D7</span> | `limits.absil_limits`, `limits.injection_limits`, `limits.nsigma` | For correlated closure phases fouriever counts every closure phase as a degree of freedom in the Absil and injection significance; virgil counts the independent ones (OIData.n_independent) | documented |
 | <span id="D8">D8</span> | `limits.injection_limits` | CANDID's and fouriever's injection limits refit the primary's uniform-disk diameter to the injected data; virgil's hold every parameter but the flux | documented |
 | <span id="D9">D9</span> | `imaging.TSV` | eht-imaging's squared TV (stv2) counts only the steps out of the last row and column; virgil's TSV counts the steps across all four edges | documented |
+| <span id="D10">D10</span> | `frank`, `frap` | frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline) | documented |
 
 ## Problems found in other packages
 
@@ -52,6 +55,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P6">P6</span> | `ehtim` | eht-imaging's Obsdata.tlist/bllist return tuples under NumPy 2 when every time group has the same size, so closure phases fail | to-raise |
 | <span id="P7">P7</span> | `orbitize` | orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre | to-raise |
 | <span id="P8">P8</span> | `fouriever` | fouriever's uvfit.detlim fails under NumPy 2 and SciPy 1.18 (fouriever 0.4.3); its L-BFGS-B objectives return 1-element arrays, and with V² it %-formats a 1-element array | to-raise |
+| <span id="P9">P9</span> | `oimodeler` | oimodeler's image-based ExpRing is 8e-3 from the exact transform of its own documented profile, at every grid size | to-raise |
+| <span id="P10">P10</span> | `visr` | vis-r's r_prof_erf2_power_ggap (one Gaussian gap) reads its depth and radius from each other's position in the parameter list | to-raise |
 
 ## Mistakes in our own checks
 

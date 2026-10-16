@@ -208,6 +208,43 @@ def test_target_without_a_summary_is_awaiting(og, tmp_path):
     assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b", "iota-peg-workshop", "sigma-ori"]
 
 
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_seeded_and_single_mode_fits_are_labelled_provisional_and_a_failed_tile_says_so(og, data):
+    gl = _target(data, "gl229b")
+    assert gl["flags"] == []  # the fixture fit is blind and has two modes
+    summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
+    tile = next(t for t in og.TILES if t["slug"] == "gl229b")
+    seeded = json.loads(json.dumps(summary))
+    seeded["orbit"]["start"] = "published"
+    (flag,) = og.flags_of(tile, seeded)
+    assert flag["key"] == "provisional" and "seeded from the published orbit" in flag["text"]
+    single = json.loads(json.dumps(summary))
+    single["orbit"]["modes"] = single["orbit"]["modes"][:1]
+    (flag,) = og.flags_of(tile, single)
+    assert flag["key"] == "provisional" and "single-mode" in flag["text"]
+    iota = next(t for t in og.TILES if t["slug"] == "iota-peg")
+    assert [f["key"] for f in og.flags_of(iota, None)] == ["failed"]
+    assert "Provisional: single-mode fit" in og.page(dict(data, targets=[dict(_target(data, "gl229b"), flags=[flag])]))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_a_pass_on_unconverged_nuts_is_only_reported_and_the_tile_says_so(og, tmp_path):
+    summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
+    summary["orbit"]["nuts"]["r_hat"] = {k: 1.001 for k in summary["orbit"]["nuts"]["r_hat"]}
+    converged = tmp_path / "ok"
+    converged.mkdir()
+    (converged / f"{GL229}.json").write_text(json.dumps(summary))
+    ok = _target(og.build(converged), "gl229b")
+    assert ok["status"] == "agrees" and not any(f["key"] == "nonconverged" for f in ok["flags"])
+    summary["orbit"]["nuts"]["r_hat"]["ecc"] = 10.0
+    bad_dir = tmp_path / "bad"
+    bad_dir.mkdir()
+    (bad_dir / f"{GL229}.json").write_text(json.dumps(summary))
+    bad = _target(og.build(bad_dir), "gl229b")
+    assert bad["status"] == "reported" and "not converged" in bad["status_why"]
+    assert [f["key"] for f in bad["flags"] if f["key"] == "nonconverged"] == ["nonconverged"]
+
+
 @pytest.mark.validates("pipeline:published-binary", roots=["literature"], kind="guard")
 @pytest.mark.parametrize("cid,pub,limit", [("eso-9sgr", 0, 0.3), ("eso-9sgr", 1, 0.3), ("eso-hd168137", 0, 0.45)])
 def test_eso_references_reproduce_their_published_epochs(og, cid, pub, limit):

@@ -1,0 +1,106 @@
+{
+ "provenance": {
+  "virgil": {
+   "version": "0.3.0",
+   "commit": "791f9fef65eb49ebc387c5c365a13c7af2342341",
+   "url": "https://github.com/benjaminpope/virgil",
+   "dirty": false
+  },
+  "virgil_pin_ok": true,
+  "versions": {
+   "virgil-astro": "0.3.0",
+   "jax": "0.11.2",
+   "jaxlib": "0.11.2",
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "numpyro": "0.22.0",
+   "frank": "1.2.3",
+   "vis-r": "0.0.1",
+   "astro-frap": "1.0.2",
+   "pmoired": "26.10.1",
+   "oimodeler": "0.8.1"
+  },
+  "python": "3.12.12",
+  "machine": "Darwin arm64, 10 CPUs",
+  "jax_backend": "cpu",
+  "validation_commit": "68082967a95aa6572a03f9e228a7b39f407ac389"
+ },
+ "results": {
+  "linear_M3_thin_ring": {
+   "max_abs_dV": 7.708108638592624e-16,
+   "max_abs_Im_V": 0.24762273322300307,
+   "tol": 1e-06,
+   "controls": {
+    "azimuth sense reversed": 0.213738827197235
+   },
+   "passed": true
+  },
+  "positive_M3_gaussian_ring": {
+   "max_abs_dV": 2.0535509092765564e-09,
+   "max_abs_Im_V": 0.45541296631825057,
+   "tol": 1e-06,
+   "controls": {
+    "azimuth sense reversed": 0.6337884475538077
+   },
+   "passed": true
+  },
+  "positive_M1_thin_ring": {
+   "max_abs_dV": 9.418574039879462e-16,
+   "max_abs_Im_V": 0.4264360469893938,
+   "tol": 1e-06,
+   "controls": {
+    "azimuth sense reversed": 0.4565919938590417
+   },
+   "passed": true
+  },
+  "vonmises_arc_blurred": {
+   "max_abs_dV": 1.2200551480713497e-07,
+   "max_abs_Im_V": 0.8792208073389665,
+   "tol": 1e-06,
+   "controls": {
+    "theta0 mirrored": 1.713785067892838
+   },
+   "vonmises_degree": 29,
+   "truncation_power": 1.30246843997311e-13,
+   "passed": true
+  },
+  "cone_height": {
+   "max_abs_dV": 1.9729714397313217e-09,
+   "max_abs_Im_V": 0.5777977615206222,
+   "tol": 1e-06,
+   "controls": {
+    "height sense reversed": 1.1555955217540752
+   },
+   "passed": true
+  },
+  "flared_with_harmonics": {
+   "max_abs_dV": 1.3821431818200482e-09,
+   "max_abs_Im_V": 0.47462768903727615,
+   "tol": 1e-06,
+   "controls": {
+    "height sense reversed": 0.7018619055793176
+   },
+   "passed": true
+  },
+  "chromatic_system": {
+   "tol": 1e-06,
+   "per_wavelength": {
+    "1.6um": {
+     "max_abs_dV": 7.402592838390986e-10,
+     "disk_weight": 1.093946064593047
+    },
+    "2.2um": {
+     "max_abs_dV": 6.182615919373522e-10,
+     "disk_weight": 0.8
+    },
+    "3.5um": {
+     "max_abs_dV": 7.348371679169989e-10,
+     "disk_weight": 0.509241310264674
+    }
+   },
+   "max_abs_dV": 7.402592838390986e-10,
+   "passed": true
+  }
+ },
+ "n_baselines": 300
+}

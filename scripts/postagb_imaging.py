@@ -438,7 +438,6 @@ def region_metrics(img, scale, r_lo, r_hi):
     yy, xx = np.mgrid[:ny, :nx]
     dx = -(xx - (nx - 1) / 2.0) * scale  # East
     dy = -(yy - (ny - 1) / 2.0) * scale  # North (row 0 is North)
-    dy = -dy
     rad = np.hypot(dx, dy)
     w = np.where((rad >= r_lo) & (rad < r_hi), img, 0.0)
     tot = w.sum()
@@ -485,6 +484,15 @@ def compare_stage(args, out):
         for dx in range(-3, 4):
             shifts[(dy, dx)] = ncc(np.roll(ours_c, (dy, dx), (0, 1)), pub_c, mask)
     best = max(shifts, key=shifts.get)
+    # controls: what the same statistic gives for a wrong azimuthal structure
+    yy2, xx2 = np.mgrid[:n, :n]
+    rbin = np.round(np.hypot(xx2 - (n - 1) / 2, yy2 - (n - 1) / 2)).astype(int)
+    prof = np.bincount(rbin.ravel(), pub_c.ravel()) / np.bincount(rbin.ravel())
+    ncc_controls = {
+        "mirrored_East-West": ncc(ours_c, pub_c[:, ::-1], mask),
+        "rotated_180": ncc(ours_c, pub_c[::-1, ::-1], mask),
+        "azimuthal_average_of_published": ncc(ours_c, prof[rbin], mask),
+    }
     regions = cfg["regions"]
     m_ours = {k: region_metrics(ours_c, pub_scale, *v) for k, v in regions.items()}
     m_pub = {k: region_metrics(pub_c, pub_scale, *v) for k, v in regions.items()}
@@ -495,7 +503,7 @@ def compare_stage(args, out):
         env = Image.from_brightness(im, pub_scale, floor=0.0, flux=pub_model.env.flux)
         flips[name] = chi2r(pub_model.set("env", env), data)[0]
     res = dict(
-        ncc_zero_shift=ncc(ours_c, pub_c, mask), ncc_best_shift=shifts[best],
+        ncc_zero_shift=ncc(ours_c, pub_c, mask), ncc_controls=ncc_controls, ncc_best_shift=shifts[best],
         best_shift_pixels=dict(dy=best[0], dx=best[1]), pixel_mas=pub_scale, beam=dict(
             major_mas=bm.major_mas, minor_mas=bm.minor_mas, pa_deg=bm.pa_deg),
         ours=m_ours, published=m_pub, chi2_per_point_published_on_our_data=c2_pub,
