@@ -1037,6 +1037,108 @@ MPoL (`rml-imaging`).
   papers (score tables, metrics, figures). MiRA, SQUEEZE and the rest are
   not run on the data.
 
+### C2h. Start fits after job 18275454 (2026-10-12)
+
+Job 18275454 (vv `ea39d88`, virgil `0726734`) re-ran the baseline and the
+four parametric-star arms after vv#84 and vv#90.
+
+**Results.** Every rerun arm fits (χ²/N ≤ 1.36). point_star and companion
+beat the baseline on star_disk_planet (NCC 0.485 → 0.59). On envelope,
+point_star and companion take Lawson from 0.102 to 0.055. ellipse_star on
+spotted_star is marginal. disk_star on star_disk_planet is rejected 12/12
+(evidence or not_converged). Tasks 38 and 439 failed; the cause is unknown.
+The star models were often `not_converged`: ellipse_star 6/12 on
+spotted_star and 7/12 on star_disk_planet, disk_star 4/12 and 6/12.
+
+**Diagnosis** (truths used only here and in tests, never in the fits).
+
+1. *Not converged.* Two causes. (a) `multistart_fit` kept the lowest-χ²
+   start whether or not it converged, so one drifting start that happened
+   to have the lowest χ² made the arm `not_converged` even when others
+   converged. (b) A fit whose optimum lies beyond a prior bound drifts
+   toward it, never meets LM's gradient test, and is reported unconverged
+   (see 2). The disk arm also had only two starts.
+2. *Pinned diameters.* The diameter prior's floor was `RESOLVED_FLOOR` = 0.5
+   × the beam's minor axis. star_disk_planet's stars are 0.19 mas, 0.2 beam,
+   so the fit sat on the floor: 0.539 mas = 0.5 × 1.078 mas, identical on 7
+   datasets. Envelope has no star, and the disk arm's 0.911 mas on all 12 is
+   its upper bound (the beam's major axis): the star absorbs the envelope.
+3. *Implausible star.* `2024_obj1_pionier_p0_d0` ellipse_star kept a
+   19.2 mas star (f = 0.26, ratio 0.94): on a coverage with λ/B_min ≈ 34 mas
+   a star that size has V² ≈ 0.5 on the shortest baseline and is the
+   environment in disguise.
+
+**Fixes** (`scripts/contest_images.py`; all from pre-submission data).
+
+- `multistart_fit` keeps the lowest-χ²/N *converged* start, and the lowest
+  overall only when none converged.
+- `RESOLVED_FLOOR` 0.5 → 0.1 of the minor axis (0.19 mas on 2004's 1.9 mas
+  beam, so the GP still cannot take the star to 0.075 mas).
+- The disk arm is multistarted (`n_starts`, default 16, 4 in smoke) about
+  the second-moment diameter, plus a half-beam start; every start at least
+  5% of the log range from each bound. The ellipse arm adds perpendicular
+  PA starts (PA is periodic; the window is two half-turns wide).
+- Size guard: a star whose diameter exceeds `SIZE_FRACTION` = 0.5 × λ/B_min
+  (`size_limit_mas`), or a diameter pinned to its prior's upper bound and
+  wider than the minor axis, is dropped with `star_rejected="size"`.
+  `contest_bench.py score` reports the count of each reason.
+- Ensemble arm: `ENSEMBLE_WEIGHTS` = 8, virgil#304's recommendation and
+  default (`EnsembleSpec(n_weights=...)` and `ensemble(...)` match virgil at
+  `0b206c2`).
+
+**Full rerun 18479831 (head `7e25278`, 240 star-arm tasks).** On the 181
+valid tasks every criterion passed: worst median χ²/N 1.187, NCC on the
+target families at or above the baseline, no pinned diameters, env_flux ≤ 10.8.
+Three problems remained, fixed or diagnosed after it.
+
+- *Contaminated outputs.* 57 tasks (ids 98, 99, 122, 128, 129, 141, 392, 459,
+  479 and every spiral task 481–599) ran vv `1183e2f`: `bench.sbatch` read the
+  code from the shared upload directory, which another upload replaced during
+  the array. ozstar_scripts now pins the code (`--bench --ref-vv=<commit>`, a
+  snapshot as `--advice` and the ensemble use) and takes `--tag=` for a
+  separate output directory.
+- *Fallback regression.* Four rejected star_disk_planet arms lost the planet
+  (382 disk_star NCC 0.007, 391 point_star 0.030, 412 disk_star 0.394, 432
+  disk_star 0.263; baselines 0.45–0.59) at an unchanged χ²/N. The no-star
+  fallback (`no_star_setup`) carried the guard's no-star ellipse, fitted on
+  the star start's pre-growth field with that field's priors, so `gp_fit`
+  chose a different anisotropic template and orientation than the baseline
+  arm, whose ellipse is fitted on its own grown setup. A near-degenerate
+  χ²/N hides the difference. The fallback now leaves `ellipse` unset so
+  `gp_fit` refits it as arm 0 does, and a test checks that the fallback and
+  baseline setups have the same grid, start image and priors.
+- *Segfaults* (421 point_star and 438 ellipse_star on 2018_p3, at 30 min,
+  inside `star_evidence → gp_fit → grow_grid → fit(lm)`). No Python-side
+  cause found: the 2018_p3 data have no zero-size leaves (the Shardy trigger
+  of virgil#282), and the earlier run 18275454 finished both tasks (82 and
+  80 min), so this is intermittent. The 30 min mark is the `faulthandler`
+  watchdog's periodic traceback dump, which is not the crash. Both star arms
+  there fit badly (χ²/N 7 for the point star against 1.0 without it), so LM
+  runs a long way through a pathological region. Rerun; if it recurs, take a
+  C-level stack (`python -X faulthandler`, `ulimit -c`) before filing a
+  virgil/JAX issue.
+
+**Smoke of this PR (job 18642554, vv `8043205`, virgil `224258f`; disk_star
+and ellipse_star on 5 datasets).** 8 of 10 tasks finished. χ²/N (V2, closure
+phase) match the earlier runs to the second decimal (2004 0.92/1.68; 2008
+0.60/0.54; 2018_p1 1.00–1.04/1.03–1.10; 2024 0.94/0.84). The 2018_p1 star
+diameters are no longer pinned at 0.539 mas (disk 0.458, ellipse 0.488 and
+kept). The size guard rejected 2 of 8 (the disk arm on 2008 envelope and on
+2024 obj1). 2018_p0_d0 timed out at 2 h on both arms (stack: `grow_grid →
+log_evidence` SVD, no hang). Rerun 18646320 (virgil `420d1b7`, which has
+virgil#361, so a different virgil from the other 8): disk_star finished in
+3588 s (diam 0.212 mas, rejection none, χ²/N 0.96); ellipse_star segfaulted
+at 30 min like 421 and 438 before. All three segfaults sit at the
+`faulthandler` watchdog's 30 min dump, so the watchdog is now opt-in
+(`VV_WATCHDOG=1`). Job 18651448 (vv `759b982`, watchdog off, virgil
+`c80aed7`) reran task 73: it completed in 2709 s (diam 0.228 mas, kept,
+χ²/N V2 0.99, CP 0.90). One segfault is not proof; if one recurs with the
+watchdog off, take a C-level stack. The smoke thus ran on three virgil
+versions (`224258f` for 8 tasks, `420d1b7` for task 72, `c80aed7` for task
+73); the star fits' diameters, rejections and χ²/N agree with the earlier
+runs on all of them, so the version differences do not change the
+comparison.
+
 ## Open decisions for Ben
 
 1. **2024 truths** (decided by Ben, 2026-10-06). He will ask Millour or

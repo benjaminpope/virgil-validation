@@ -131,7 +131,7 @@ def test_binaries(uvw):
 @pytest.mark.parametrize(
     "amps,pas", [((), ()), ((0.4,), (200.0,)), ((0.4, 0.25), (40.0, 110.0))]
 )
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["mathematics"], property=["profile", "modulation_sense"])
 def test_modulated_rim_in_plane_azimuth_and_blur(uvw, inc, amps, pas):
     """virgil's rim (since virgil#139): a thin ring modulated in in-plane
     azimuth, blurred by a Gaussian isotropic in the rim's own plane, then
@@ -184,17 +184,44 @@ def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
 @pytest.mark.parametrize(
     "radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)]
 )
-@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["render"], property="orientation")
 def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
-    """The arc weight is a Gaussian in arc length wrapped once round the
-    circle, including when the length FWHM exceeds pi R (virgil >= the
-    fix for finding 2; it used to cut the weight at +-3.5 sigma)."""
+    """The arc weight is virgil's documented von Mises function of the
+    position angle, exp(kappa cos(phi - pa)) with kappa = (2 sqrt(2 ln 2)
+    R / L)^2, including when the length FWHM exceeds pi R."""
     u, v, wl = uvw
     ours = sky.visibility(
         sky.arc_curve(radius, length, 250.0), u, v, wl
     ) * sky.gaussian_blur_factor(u, v, wl, 0.6)
     theirs = vm.GaussianArc(radius, 0.6, length, 250.0, nodes=4096)
     assert_close(ours, virgil_vis(theirs, u, v, wl), tol=1e-5)
+
+
+@pytest.mark.x64
+@pytest.mark.parametrize("radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)])
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"])
+def test_gaussian_arc_at_its_default_nodes(uvw, radius, length):
+    """At virgil's default arguments (the harmonic series, whose nodes are
+    unused for these arcs) the arc agrees with our dense curve to 1e-4."""
+    u, v, wl = uvw
+    ours = sky.visibility(sky.arc_curve(radius, length, 250.0), u, v, wl) * sky.gaussian_blur_factor(u, v, wl, 0.6)
+    assert_close(ours, virgil_vis(vm.GaussianArc(radius, 0.6, length, 250.0), u, v, wl), tol=1e-4)
+
+
+@pytest.mark.x64
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"], kind="control")
+def test_gaussian_arc_is_not_the_old_gaussian_weight_for_a_long_arc(uvw):
+    """A control: virgil's arc used to weight the circle by a Gaussian in arc
+    length, wrapped once round it. For a long arc (L = 8 R) that is a
+    different model from the von Mises weight, so the old curve must miss
+    virgil's by far more than the 1e-4 the current one agrees to."""
+    u, v, wl = uvw
+    blur = sky.gaussian_blur_factor(u, v, wl, 0.6)
+    theirs = virgil_vis(vm.GaussianArc(5.0, 0.6, 40.0, 250.0), u, v, wl)
+    new = sky.visibility(sky.arc_curve(5.0, 40.0, 250.0), u, v, wl) * blur
+    old = sky.visibility(sky.arc_curve_gaussian(5.0, 40.0, 250.0), u, v, wl) * blur
+    assert np.max(np.abs(new - theirs)) < 1e-4
+    assert np.max(np.abs(old - theirs)) > 1e-2
 
 
 @pytest.mark.x64
@@ -212,7 +239,7 @@ def test_image_orientation_and_centre(uvw):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("angle", [0.0, 70.0, 200.0])
-@pytest.mark.validates("virgil.models.Rotated", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.Rotated", roots=["mathematics"], property="rotation_sense")
 def test_rotated_scene(uvw, angle):
     u, v, wl = uvw
     scene = vm.System(
