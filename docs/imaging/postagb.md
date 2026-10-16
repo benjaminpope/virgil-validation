@@ -12,13 +12,13 @@ target; IRAS 08544-4431 is still to come.
 | Target | Published method | virgil verdict | Image cross-correlation |
 | --- | --- | --- | --- |
 | [IW Car](#iw-car) | SPARCO + ORGANIC (De Prins+2026; SQUEEZE check) | agree on morphology, differ in outer-arc detail | 0.95 |
-| [HR 4049](#hr-4049) | SPARCO + ORGANIC | same disc, virgil more compact | 0.95 |
+| [HR 4049](#hr-4049) | SPARCO + ORGANIC | virgil more compact; correlation weak evidence | 0.95 |
 | [HD 108015](#hd-108015) | SPARCO + ORGANIC | agree | 0.99 |
 | [AI Sco](#ai-sco) | SPARCO + ORGANIC | agree | 0.96 |
 | [EN TrA](#en-tra) | SPARCO + ORGANIC | agree on size, differ in orientation | 0.95 |
 | [HD 95767](#hd-95767) | SPARCO + ORGANIC | agree | 0.99 |
-| [IRAS 15469-5311](#iras-15469-5311) | SPARCO + ORGANIC | agree | 0.99 |
-| [PS Gem](#ps-gem) | SPARCO + ORGANIC | do not agree; data cannot decide | 0.63 |
+| [IRAS 15469-5311](#iras-15469-5311) | SPARCO + ORGANIC | agree in radius and centroid | 0.99 |
+| [PS Gem](#ps-gem) | SPARCO + ORGANIC | do not agree; virgil image unconstrained | 0.63 |
 | IRAS 08544-4431 | SPARCO image (Hillen+2016) | pending | pending |
 
 === "IW Car"
@@ -159,10 +159,10 @@ target; IRAS 08544-4431 is still to come.
     <figcaption>HR 4049 in H band, 19 PIONIER exposures (MJD 58884 to 58899). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! warning "Verdict: the discs agree in shape, not in size"
-        The images correlate at 0.95 at the PIONIER beam, but the azimuthal average of the published image already scores 0.90, so the correlation tests little beyond the radial profile; virgil's disc is more compact (flux-weighted radius 10.8 against 15.5 mas) and its major-axis PA differs (142° against 72°). The parametric fit puts the rim at 18.9 mas against the paper's 14.3 and the secondary 2.3 mas from the paper's position, so it is not a clean match. The Zenodo FITS header's secondary offset also disagrees with the paper's tables, so the comparison depends on which one is the reference.
+    !!! warning "Verdict: virgil's disc is more compact, and the correlation says little"
+        The images correlate at 0.95, but the azimuthal average of the published image already scores 0.92, so this says little beyond the radial profile. virgil's disc is more compact: flux-weighted radius 10.8 against 15.5 mas (the correlation mask covers the whole 40 mas field, so nothing is cut away). The second-moment major axis is at 86° against 12°, but at axis ratios of 0.89 and 0.88 both discs are nearly round and that angle is poorly defined. The parametric rim is 18.9 mas against the paper's 14.3 and its secondary lies 2.3 mas from the paper's position; the Zenodo FITS header's secondary offset also disagrees with the paper's tables.
 
-    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 19 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
+    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 19 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
     | Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |
     | --- | --- | --- | --- |
@@ -175,7 +175,7 @@ target; IRAS 08544-4431 is still to come.
     | Rim inclination (°) | 56.8 ± 1 | 55.9 | -0.893 (-0.9σ) |
     | Rim position angle (°) | 82.3 ± 1 | 85.2 | +2.92 (+2.9σ) |
     | Rim modulation amplitude (m = 1) | 0.42 ± 0.03 | 0.501 | +0.081 (+2.7σ) |
-    | Rim modulation phase (°) | -38 ± 3 | 55.9 | +93.9 (+31.3σ) |
+    | Rim modulation phase (°) | -38 ± 3 | -29.3 | +8.65 (+2.9σ) |
     | χ² per point | 1.71 | 1.68 | |
 
     ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
@@ -191,11 +191,11 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.79, 180° rotation 0.79, azimuthal average 0.90) | 1 | 0.95 (0.95 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.83, 180° rotation 0.83, azimuthal average 0.92) | 1 | 0.95 (0.95 after the best sub-beam shift) |
     | Flux fraction in the image field | 91 % | 100 % |
     | Flux-weighted radius (mas) | 15.49 | 10.84 |
-    | Major-axis PA (°), axis ratio | 168, 0.88 | 94, 0.89 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 72, 0.33 | 142, 0.56 |
+    | Major-axis PA (°), axis ratio | 12, 0.88 | 86, 0.89 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 108, 0.33 | 38, 0.56 |
 
     ??? note "Data and method"
 
@@ -218,10 +218,6 @@ target; IRAS 08544-4431 is still to come.
         <figcaption>As published: the ORGANIC image of HR 4049 with the fitted inner rim, arXiv:2605.13445v2, Fig. 4. Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
-        <figure markdown>
-        ![ORGANIC against SQUEEZE reconstructions](postagb/literature/squeeze_organic_vs_squeeze_images_last_three.png)
-        <figcaption>ORGANIC (left) against SQUEEZE (right) for HR 4049, IRAS 15469-5311, PS Gem and IW Car, arXiv:2605.13445v2, Fig. 15 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
-        </figure>
 
         Provenance, permissions and credits: [`DATA_ATTRIBUTION.md`](https://github.com/benjaminpope/virgil-validation/blob/main/DATA_ATTRIBUTION.md).
         Reproduce with `scripts/postagb_data.py fetch`, `scripts/postagb_literature.py` and
@@ -237,9 +233,9 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! success "Verdict: the two reconstructions agree"
-        The images correlate at 0.99 (1.00 after the best sub-beam shift). The disc is nearly face-on (i about 30°), so the moments are weakly determined: the major-axis PA is 111° in virgil against 83° in ORGANIC at axis ratios 0.94 and 0.86, which is a small difference in a nearly round shape.
+        The images correlate at 0.99 (1.00 after the best sub-beam shift) and the flux-weighted radii agree (4.7 against 4.65 mas). The disc is nearly face-on (i about 30°), so the moments are weakly determined: the major-axis PA is 62° in virgil against 93° in ORGANIC at axis ratios 0.95 and 0.83. The parametric fit reproduces the paper's modulation phase and inclination.
 
-    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 35 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (1.8, 1.8, 1.8, 2.4, 1.8, 1.8). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
+    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 35 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (1.8, 1.8, 1.8, 2.4, 1.8, 1.8). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
     | Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |
     | --- | --- | --- | --- |
@@ -249,7 +245,7 @@ target; IRAS 08544-4431 is still to come.
     | Rim inclination (°) | 31.2 ± 0.8 | 29.2 | -1.99 (-2.5σ) |
     | Rim position angle (°) | 82.5 ± 1.2 | 81.6 | -0.861 (-0.8σ) |
     | Rim modulation amplitude (m = 1) | 0.502 ± 0.008 | 0.508 | +0.00644 (+0.8σ) |
-    | Rim modulation phase (°) | -66 ± 2 | 16.5 | +82.5 (+41.3σ) |
+    | Rim modulation phase (°) | -66 ± 2 | -65.1 | +0.899 (+0.4σ) |
     | χ² per point | 2.08 | 1.81 | |
 
     ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
@@ -263,11 +259,11 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.89, 180° rotation 0.51, azimuthal average 0.85) | 1 | 0.99 (1.00 after the best sub-beam shift) |
-    | Flux fraction in the image field | 95 % | 99 % |
-    | Flux-weighted radius (mas) | 4.19 | 4.60 |
-    | Major-axis PA (°), axis ratio | 83, 0.86 | 111, 0.94 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 192, 1.64 | 201, 1.36 |
+    | Normalised cross-correlation (controls: E-W mirror 0.91, 180° rotation 0.58, azimuthal average 0.88) | 1 | 0.99 (1.00 after the best sub-beam shift) |
+    | Flux fraction in the image field | 99 % | 100 % |
+    | Flux-weighted radius (mas) | 4.65 | 4.71 |
+    | Major-axis PA (°), axis ratio | 93, 0.83 | 62, 0.95 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 350, 1.68 | 339, 1.38 |
 
     ??? note "Data and method"
 
@@ -290,6 +286,7 @@ target; IRAS 08544-4431 is still to come.
         <figcaption>As published: the ORGANIC image of HD 108015 with the fitted inner rim, arXiv:2605.13445v2, Fig. 3. Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
+
         <figure markdown>
         ![ORGANIC against SQUEEZE reconstructions](postagb/literature/squeeze_organic_vs_squeeze_images_first_four.png)
         <figcaption>ORGANIC (left) against SQUEEZE (right) for AI Sco, EN TrA, HD 95767 and HD 108015, arXiv:2605.13445v2, Fig. 14 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
@@ -309,9 +306,9 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! success "Verdict: the two reconstructions agree"
-        The images correlate at 0.96 (0.98 after the best sub-beam shift), with the same elongation (major-axis PA 56° against 55°, axis ratio 0.77 in both). virgil's disc is slightly larger (flux-weighted radius 3.5 against 3.0 mas). The image-fit spectral index differs strongly (−1.8 against −0.6); the two images use different power laws for essentially the same flux.
+        The images correlate at 0.96 (0.98 after the best sub-beam shift), with the same elongation (major-axis PA 123° against 124°, axis ratio 0.77 against 0.78) and centroid direction (140° against 137°). virgil's disc is slightly larger (flux-weighted radius 3.65 against 3.3 mas). The image-fit spectral index differs strongly (−1.8 against −0.6); the two images use different power laws for essentially the same flux.
 
-    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 28 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (2.9, 2.9, 2.9, 3.1, 2.9, 2.9). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
+    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 28 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (2.9, 2.9, 2.9, 3.1, 2.9, 2.9). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
     | Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |
     | --- | --- | --- | --- |
@@ -323,7 +320,7 @@ target; IRAS 08544-4431 is still to come.
     | Rim inclination (°) | 45.6 ± 2 | 46.1 | +0.503 (+0.3σ) |
     | Rim position angle (°) | 60 ± 7 | 18.8 | -41.2 (-8.2σ) |
     | Rim modulation amplitude (m = 1) | 0.87 ± 0.05 | 0.714 | -0.156 (-3.1σ) |
-    | Rim modulation phase (°) | -9 ± 5 | 33.1 | +42.1 (+10.5σ) |
+    | Rim modulation phase (°) | -9 ± 5 | 14.3 | +23.3 (+5.8σ) |
     | χ² per point | 4.98 | 2.86 | |
 
     ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
@@ -338,11 +335,11 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.68, 180° rotation 0.70, azimuthal average 0.80) | 1 | 0.96 (0.98 after the best sub-beam shift) |
-    | Flux fraction in the image field | 95 % | 98 % |
-    | Flux-weighted radius (mas) | 3.03 | 3.52 |
-    | Major-axis PA (°), axis ratio | 55, 0.77 | 56, 0.77 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 48, 0.92 | 43, 1.19 |
+    | Normalised cross-correlation (controls: E-W mirror 0.74, 180° rotation 0.76, azimuthal average 0.85) | 1 | 0.96 (0.98 after the best sub-beam shift) |
+    | Flux fraction in the image field | 99 % | 100 % |
+    | Flux-weighted radius (mas) | 3.32 | 3.65 |
+    | Major-axis PA (°), axis ratio | 124, 0.78 | 123, 0.77 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 137, 0.90 | 140, 1.19 |
 
     ??? note "Data and method"
 
@@ -365,6 +362,7 @@ target; IRAS 08544-4431 is still to come.
         <figcaption>As published: the ORGANIC image of AI Sco with the fitted inner rim, arXiv:2605.13445v2, Fig. 3. Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
+
         <figure markdown>
         ![ORGANIC against SQUEEZE reconstructions](postagb/literature/squeeze_organic_vs_squeeze_images_first_four.png)
         <figcaption>ORGANIC (left) against SQUEEZE (right) for AI Sco, EN TrA, HD 95767 and HD 108015, arXiv:2605.13445v2, Fig. 14 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
@@ -384,9 +382,9 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! warning "Verdict: the same blob, a different orientation"
-        The images correlate at 0.95 (0.97 after the best sub-beam shift), but the azimuthal average of the published image scores 0.96 against ORGANIC, so the correlation says nothing here beyond the radial profile; the flux-weighted radii match (3.9 against 4.3 mas), but the second-moment major axis is at 53° in virgil and 124° in ORGANIC, and virgil's disc is rounder (axis ratio 0.90 against 0.78). The parametric rim, by contrast, matches the paper (PA 32.6° against 32.5 ± 1.9°; inclination 58.8° against 58.9 ± 1.2°). The moments of a compact, beam-sized image are fragile, so treat the orientation difference as real but small compared with the beam.
+        The images correlate at 0.95 (0.97 after the best sub-beam shift), but the azimuthal average of the published image scores 0.96 against ORGANIC, so the correlation says nothing here beyond the radial profile. The flux-weighted radii match (3.9 against 4.3 mas), but the second-moment major axis is at 127° in virgil and 56° in ORGANIC, and virgil's disc is rounder (axis ratio 0.90 against 0.78). The parametric rim, by contrast, matches the paper (PA 32.6° against 32.5 ± 1.9°; inclination 58.8° against 58.9 ± 1.2°). The moments of a compact, beam-sized image are fragile, so treat the orientation difference as real but small compared with the beam.
 
-    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 20 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
+    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 20 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
     | Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |
     | --- | --- | --- | --- |
@@ -398,7 +396,7 @@ target; IRAS 08544-4431 is still to come.
     | Rim inclination (°) | 58.9 ± 1.2 | 58.8 | -0.0692 (-0.1σ) |
     | Rim position angle (°) | 32.5 ± 1.9 | 32.6 | +0.114 (+0.1σ) |
     | Rim modulation amplitude (m = 1) | 0.72 ± 0.04 | 0.709 | -0.0112 (-0.3σ) |
-    | Rim modulation phase (°) | -13 ± 4 | 22.6 | +35.6 (+8.9σ) |
+    | Rim modulation phase (°) | -13 ± 4 | -10.1 | +2.94 (+0.7σ) |
     | χ² per point | 2.40 | 1.71 | |
 
     ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
@@ -416,8 +414,8 @@ target; IRAS 08544-4431 is still to come.
     | Normalised cross-correlation (controls: E-W mirror 0.90, 180° rotation 0.83, azimuthal average 0.96) | 1 | 0.95 (0.97 after the best sub-beam shift) |
     | Flux fraction in the image field | 98 % | 100 % |
     | Flux-weighted radius (mas) | 4.25 | 3.94 |
-    | Major-axis PA (°), axis ratio | 124, 0.78 | 53, 0.90 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 256, 0.20 | 344, 0.36 |
+    | Major-axis PA (°), axis ratio | 56, 0.78 | 127, 0.90 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 284, 0.20 | 196, 0.36 |
 
     ??? note "Data and method"
 
@@ -440,6 +438,7 @@ target; IRAS 08544-4431 is still to come.
         <figcaption>As published: the ORGANIC image of EN TrA with the fitted inner rim, arXiv:2605.13445v2, Fig. 3. Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
+
         <figure markdown>
         ![ORGANIC against SQUEEZE reconstructions](postagb/literature/squeeze_organic_vs_squeeze_images_first_four.png)
         <figcaption>ORGANIC (left) against SQUEEZE (right) for AI Sco, EN TrA, HD 95767 and HD 108015, arXiv:2605.13445v2, Fig. 14 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
@@ -459,9 +458,9 @@ target; IRAS 08544-4431 is still to come.
     </figure>
 
     !!! success "Verdict: the two reconstructions agree"
-        The images correlate at 0.99, with the same elongation (axis ratio 0.93 against 0.89) and centroid direction (78° against 80°); virgil's disc is slightly larger (4.1 against 3.8 mas) and the major axes differ by 12°. The parametric fit reproduces the secondary and the modulation phase, but not the rim size or inclination.
+        The images correlate at 0.99, with the same elongation (axis ratio 0.92 against 0.94), centroid direction (100° against 100°) and major-axis PA within 7° (22° against 15°); virgil's disc is slightly larger (4.25 against 3.96 mas). The parametric fit reproduces the secondary and the modulation phase, but not the rim size or inclination.
 
-    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 36 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (2.1, 2.1, 2.1, 2.1, 2.1, 2.1). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
+    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 36 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (2.1, 2.1, 2.1, 2.1, 2.1, 2.1). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
     | Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |
     | --- | --- | --- | --- |
@@ -473,7 +472,7 @@ target; IRAS 08544-4431 is still to come.
     | Rim inclination (°) | 25.6 ± 1.7 | 37 | +11.4 (+6.7σ) |
     | Rim position angle (°) | 14 ± 4 | 1.97 | -12 (-3.0σ) |
     | Rim modulation amplitude (m = 1) | 0.451 ± 0.02 | 0.504 | +0.0534 (+2.8σ) |
-    | Rim modulation phase (°) | 43 ± 4 | 43.3 | +0.313 (+0.1σ) |
+    | Rim modulation phase (°) | 43 ± 4 | 41.3 | -1.66 (-0.4σ) |
     | χ² per point | 1.97 | 2.10 | |
 
     ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
@@ -488,11 +487,11 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.80, 180° rotation 0.79, azimuthal average 0.92) | 1 | 0.99 (0.99 after the best sub-beam shift) |
-    | Flux fraction in the image field | 97 % | 98 % |
-    | Flux-weighted radius (mas) | 3.78 | 4.12 |
-    | Major-axis PA (°), axis ratio | 174, 0.89 | 162, 0.93 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 80, 0.66 | 78, 0.63 |
+    | Normalised cross-correlation (controls: E-W mirror 0.86, 180° rotation 0.85, azimuthal average 0.94) | 1 | 0.99 (0.99 after the best sub-beam shift) |
+    | Flux fraction in the image field | 99 % | 100 % |
+    | Flux-weighted radius (mas) | 3.96 | 4.25 |
+    | Major-axis PA (°), axis ratio | 15, 0.94 | 22, 0.92 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 100, 0.69 | 100, 0.66 |
 
     ??? note "Data and method"
 
@@ -515,6 +514,7 @@ target; IRAS 08544-4431 is still to come.
         <figcaption>As published: the ORGANIC image of HD 95767 with the fitted inner rim, arXiv:2605.13445v2, Fig. 3. Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
+
         <figure markdown>
         ![ORGANIC against SQUEEZE reconstructions](postagb/literature/squeeze_organic_vs_squeeze_images_first_four.png)
         <figcaption>ORGANIC (left) against SQUEEZE (right) for AI Sco, EN TrA, HD 95767 and HD 108015, arXiv:2605.13445v2, Fig. 14 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
@@ -533,10 +533,10 @@ target; IRAS 08544-4431 is still to come.
     <figcaption>IRAS 15469-5311 in H band, 20 PIONIER exposures (MJD 59266 to 59296). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! success "Verdict: the two reconstructions agree"
-        The images correlate at 0.99. The flux-weighted radii (5.8 against 5.4 mas) and the elongation (axis ratio 0.90 against 0.88) agree; the major axes differ by 23° (145° against 122°). virgil fits the data much better (χ² per point 0.38 against 2.21 for the published image), which is a symptom of over-fitting, not a better image.
+    !!! success "Verdict: the two reconstructions agree in radius and centroid, less in the major axis"
+        The images correlate at 0.99. The flux-weighted radii (6.35 against 5.7 mas), the elongation (axis ratio 0.93 against 0.88) and the centroid direction (143° against 135°) agree; the major axes differ by 42° (29° against 71°) at those nearly round axis ratios. virgil fits the data much better (χ² per point 0.38 against 2.21 for the published image), which is a symptom of over-fitting, not a better image.
 
-    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 20 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (8.3, 2.3, 4.6, 1.3, 5.0, 1.3). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
+    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 20 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (8.3, 2.3, 4.6, 1.3, 5.0, 1.3). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
     | Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |
     | --- | --- | --- | --- |
@@ -546,7 +546,7 @@ target; IRAS 08544-4431 is still to come.
     | Rim inclination (°) | 40.2 ± 0.8 | 35.1 | -5.09 (-7.3σ) |
     | Rim position angle (°) | 53.5 ± 1.1 | 49.6 | -3.92 (-3.6σ) |
     | Rim modulation amplitude (m = 1) | 0.86 ± 0.02 | 0.884 | +0.0243 (+1.2σ) |
-    | Rim modulation phase (°) | 74.6 ± 1.6 | 126 | +51.3 (+32.1σ) |
+    | Rim modulation phase (°) | 74.6 ± 1.6 | 76.3 | +1.72 (+1.1σ) |
     | χ² per point | 2.08 | 1.29 | |
 
     ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
@@ -560,11 +560,11 @@ target; IRAS 08544-4431 is still to come.
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.71, 180° rotation 0.45, azimuthal average 0.85) | 1 | 0.99 (0.99 after the best sub-beam shift) |
-    | Flux fraction in the image field | 95 % | 94 % |
-    | Flux-weighted radius (mas) | 5.43 | 5.79 |
-    | Major-axis PA (°), axis ratio | 122, 0.88 | 145, 0.90 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 45, 2.07 | 40, 1.67 |
+    | Normalised cross-correlation (controls: E-W mirror 0.74, 180° rotation 0.50, azimuthal average 0.87) | 1 | 0.99 (0.99 after the best sub-beam shift) |
+    | Flux fraction in the image field | 98 % | 99 % |
+    | Flux-weighted radius (mas) | 5.74 | 6.35 |
+    | Major-axis PA (°), axis ratio | 71, 0.88 | 29, 0.93 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 135, 2.01 | 143, 1.43 |
 
     ??? note "Data and method"
 
@@ -587,9 +587,10 @@ target; IRAS 08544-4431 is still to come.
         <figcaption>As published: the ORGANIC image of IRAS 15469-5311 with the fitted inner rim, arXiv:2605.13445v2, Fig. 4. Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
+
         <figure markdown>
         ![ORGANIC against SQUEEZE reconstructions](postagb/literature/squeeze_organic_vs_squeeze_images_last_three.png)
-        <figcaption>ORGANIC (left) against SQUEEZE (right) for HR 4049, IRAS 15469-5311, PS Gem and IW Car, arXiv:2605.13445v2, Fig. 15 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
+        <figcaption>ORGANIC (left) against SQUEEZE (right) for IRAS 15469-5311 and IW Car, arXiv:2605.13445v2, Fig. 15 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
         <figure markdown>
@@ -610,10 +611,10 @@ target; IRAS 08544-4431 is still to come.
     <figcaption>PS Gem in H band, 12 PIONIER exposures (MJD 58817 to 58928). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! failure "Verdict: the two reconstructions do not agree, and the data cannot say which is right"
-        The images correlate at only 0.63 (0.71 after the best shift). virgil's image is a scatter of fragments out to 9 mas (flux-weighted radius 9.1 against 6.3 mas), not a compact disc. Only 12 exposures were observed and the data are met equally well by the published image (χ² per point 0.49), its East-West mirror (1.0) and its North-South mirror (1.2), so the orientation is hardly constrained at all. The L-curve for this target is flat with no clear corner, so the weight (5.6 × 10⁻⁴) is arbitrary. Even its controls score 0.52 to 0.59, so the statistic is noisy here. Do not read anything into virgil's image.
+    !!! failure "Verdict: the two reconstructions do not agree, and virgil's image is the unconstrained one"
+        The images correlate at only 0.63 (0.71 after the best shift). virgil's image is a scatter of fragments out to 9 mas (flux-weighted radius 9.1 against 6.3 mas), not a compact disc. The data do prefer the published orientation over its mirrors (see Fit quality), but virgil's image is set by an arbitrary weight: the L-curve for this target is flat with no clear corner (weight 5.6 × 10⁻⁴, near the weakest regularisation). Even the controls score only 0.52 to 0.59, so the statistic is noisy here. Do not read anything into virgil's image.
 
-    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 12 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, and the modulation phase is not pinned to the paper's convention, so those two rows are not like for like. The parametric fit takes the lowest χ² of 6 starts (0.6, 0.6, 0.6, 0.6, 0.6, 0.6). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
+    **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 12 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (0.6, 0.6, 0.6, 0.6, 0.6, 0.6). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
     | Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |
     | --- | --- | --- | --- |
@@ -623,7 +624,7 @@ target; IRAS 08544-4431 is still to come.
     | Rim inclination (°) | 39 ± 7 | 49.6 | +10.6 (+1.8σ) |
     | Rim position angle (°) | 156 ± 6 | 96.6 | -59.4 (-9.9σ) |
     | Rim modulation amplitude (m = 1) | 0.65 ± 0.06 | 1 | +0.35 (+5.8σ) |
-    | Rim modulation phase (°) | 35 ± 11 | 267 | -128 (-11.6σ) |
+    | Rim modulation phase (°) | 35 ± 11 | 170 | +135 (+15.0σ) |
     | χ² per point | 0.94 | 0.62 | |
 
     ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
@@ -641,8 +642,8 @@ target; IRAS 08544-4431 is still to come.
     | Normalised cross-correlation (controls: E-W mirror 0.52, 180° rotation 0.58, azimuthal average 0.59) | 1 | 0.63 (0.71 after the best sub-beam shift) |
     | Flux fraction in the image field | 95 % | 100 % |
     | Flux-weighted radius (mas) | 6.30 | 9.06 |
-    | Major-axis PA (°), axis ratio | 58, 0.82 | 61, 0.61 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 334, 1.27 | 3, 1.36 |
+    | Major-axis PA (°), axis ratio | 122, 0.82 | 119, 0.61 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 206, 1.27 | 177, 1.36 |
 
     ??? note "Data and method"
 
@@ -650,7 +651,7 @@ target; IRAS 08544-4431 is still to come.
 
         **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 0.000562); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 0.32 and the ORGANIC image, with its published SPARCO parameters unchanged, 0.49 (936 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 1.0 and 1.2 (so the data barely constrain the orientation). This target was computed on the laptop; the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 0.32 and the ORGANIC image, with its published SPARCO parameters unchanged, 0.49 (936 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 1.0 and 1.2 (a difference of 440 and 701 in χ², so the data clearly prefer the published orientation; it is virgil's image, set by an arbitrary weight on a flat L-curve, that is unconstrained). This target was computed on the laptop; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/PS_Gem_inspect.png)
 
@@ -665,10 +666,6 @@ target; IRAS 08544-4431 is still to come.
         <figcaption>As published: the ORGANIC image of PS Gem with the fitted inner rim, arXiv:2605.13445v2, Fig. 4. Reproduced from the arXiv version with the authors' permission.</figcaption>
         </figure>
 
-        <figure markdown>
-        ![ORGANIC against SQUEEZE reconstructions](postagb/literature/squeeze_organic_vs_squeeze_images_last_three.png)
-        <figcaption>ORGANIC (left) against SQUEEZE (right) for HR 4049, IRAS 15469-5311, PS Gem and IW Car, arXiv:2605.13445v2, Fig. 15 (Appendix D). Reproduced from the arXiv version with the authors' permission.</figcaption>
-        </figure>
 
         Provenance, permissions and credits: [`DATA_ATTRIBUTION.md`](https://github.com/benjaminpope/virgil-validation/blob/main/DATA_ATTRIBUTION.md).
         Reproduce with `scripts/postagb_data.py fetch`, `scripts/postagb_literature.py` and
@@ -682,13 +679,13 @@ Published figures are shown only where the authors have given permission, from t
 | Target | Data | Published comparison | Status |
 | --- | --- | --- | --- |
 | IW Car | ESO 1103.D-0797, 23 files used (31 in the archive) | De Prins+2026 (Figs 2, 4, 6, 15; Zenodo FITS) | done |
-| HR 4049 | ESO 1103.D-0797 | De Prins+2026 (Fig. 4, Appendix D SQUEEZE; Zenodo FITS) | done |
+| HR 4049 | ESO 1103.D-0797 | De Prins+2026 (Fig. 4; Zenodo FITS) | done |
 | HD 108015 | ESO 1103.D-0797 | De Prins+2026 (Fig. 3, Appendix D SQUEEZE; Zenodo FITS) | done |
 | AI Sco | ESO 1103.D-0797 | De Prins+2026 (Fig. 3, Appendix D SQUEEZE; Zenodo FITS) | done |
 | EN TrA | ESO 1103.D-0797 | De Prins+2026 (Fig. 3, Appendix D SQUEEZE; Zenodo FITS) | done |
 | HD 95767 | ESO 1103.D-0797 | De Prins+2026 (Fig. 3, Appendix D SQUEEZE; Zenodo FITS) | done |
 | IRAS 15469-5311 | ESO 1103.D-0797 | De Prins+2026 (Fig. 4, Appendix D SQUEEZE; Zenodo FITS) | done |
-| PS Gem | ESO 1103.D-0797 | De Prins+2026 (Fig. 4, Appendix D SQUEEZE; Zenodo FITS) | done |
+| PS Gem | ESO 1103.D-0797 | De Prins+2026 (Fig. 4; Zenodo FITS) | done |
 | IRAS 08544-4431 | ESO 1103.D-0797 | Hillen+2016 | pending |
 
 ## Method parity
@@ -700,4 +697,4 @@ regulariser and optimiser (MaxEntropy and L-BFGS against ORGANIC's GAN and pyBAD
 corner against ORGANIC's tuned regularisation), and the uncertainty treatment (here the images are single reconstructions, without the paper's per-pixel significance maps). Images are therefore
 compared at the PIONIER beam, never at native resolution, where regularised reconstructions differ by construction.
 
-A caution on the cross-correlation for the seven near-round discs of De Prins et al.: it is dominated by the radial profile. The azimuthal average of the published image already correlates at 0.80 to 0.96 with virgil's (0.59 for PS Gem), and the wrong-orientation controls at 0.45 to 0.90, so a value of 0.95 to 0.99 means the radial structure agrees and says less about the azimuthal structure. The orientation-flip χ² of the published image on our data is the sharper test of orientation, and it is passed for all but PS Gem.
+A caution on the cross-correlation for the seven near-round discs of De Prins et al.: it is dominated by the radial profile. The azimuthal average of the published image already correlates at 0.85 to 0.96 with virgil's (0.59 for PS Gem), and the wrong-orientation controls at 0.50 to 0.91, so a value of 0.95 to 0.99 means the radial structure agrees and says less about the azimuthal structure. The orientation-flip χ² of the published image on our data is the sharper test of orientation, and the published orientation wins it for all seven targets.

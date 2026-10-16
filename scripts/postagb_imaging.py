@@ -140,8 +140,8 @@ def setup(cfg):
     has_sec = hdr["SFLU2"] > 0
     cfg.update(
         fov_mas=n * scale, pixel_mas=scale, sec0=(hdr["SDEX2"], hdr["SDEY2"]) if has_sec else None,
-        ud0=max(hdr["SUD1"], 0.3), half_mas=half, mask_mas=half, half_cmp_mas=0.85 * half,
-        regions=dict(disc=(0.0, half)), inner_rim_max_mas=None, paper_header=dict(
+        ud0=max(hdr["SUD1"], 0.3), half_mas=half, mask_mas=0.95 * n * scale / 2, half_cmp_mas=0.85 * half,
+        regions=dict(disc=(0.0, 0.95 * n * scale / 2)), inner_rim_max_mas=None, paper_header=dict(
             ud=hdr["SUD1"], f_prim_pct=100 * hdr["SFLU1"], f_sec_pct=100 * hdr["SFLU2"],
             sec=(hdr["SDEX2"], hdr["SDEY2"]), image_index=hdr["SIND0"], star_index=hdr["SIND1"]),
     )
@@ -675,7 +675,7 @@ def table_stage(args, out):
         ("Rim inclination (°)", "i_rim", par["rim_inc_deg"], None),
         ("Rim position angle (°)", "pa_rim", par["rim_pa_deg"], 180.0),
         ("Rim modulation amplitude (m = 1)", "a_mod", par["az_amp"], None),
-        ("Rim modulation phase (°)", "psi_mod", par["az_pa_deg"], 360.0),
+        ("Rim modulation phase (°)", "psi_mod", par["az_pa_deg"] - par["rim_pa_deg"], 360.0),  # PMOIRED az projang = az_pas - pa
     ]
     lines = ["| Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |", "| --- | --- | --- | --- |"]
     for label, key, mine, period in rows:

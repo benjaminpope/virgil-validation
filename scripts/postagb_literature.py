@@ -47,9 +47,9 @@ for _t, _name, _fig in (("AI_Sco", "AI Sco", "Fig. 3"), ("EN_TrA", "EN TrA", "Fi
 _SQ1 = ("organic_vs_squeeze_images_first_four.png", "Fig. 14 (Appendix D)",
         "ORGANIC (left) against SQUEEZE (right) reconstructions of AI Sco, EN TrA, HD 95767 and HD 108015")
 _SQ2 = ("organic_vs_squeeze_images_last_three.png", "Fig. 15 (Appendix D)",
-        "ORGANIC (left) against SQUEEZE (right) reconstructions of IRAS 15469-5311 and IW Car (and the ones that follow Fig. 14)")
+        "ORGANIC (left) against SQUEEZE (right) reconstructions of IRAS 15469-5311 and IW Car (inner and outer arcs)")
 for _t, (_remote, _label, _what) in (("AI_Sco", _SQ1), ("EN_TrA", _SQ1), ("HD95767", _SQ1), ("HD108015", _SQ1),
-                                     ("HR4049", _SQ2), ("IRAS15469-5311", _SQ2), ("PS_Gem", _SQ2)):
+                                     ("IRAS15469-5311", _SQ2),):  # Fig. 15 has no panel for HR 4049 or PS Gem
     FIGURES[_t][f"squeeze_{_remote}"] = (_remote, _label, _what)
 FIGURES["IRAS15469-5311"]["IRAS15469-5311_inner_rim_fit_organic.png"] = (
     "IRAS15469-5311_inner_rim_fit_organic.png", "Fig. 5",

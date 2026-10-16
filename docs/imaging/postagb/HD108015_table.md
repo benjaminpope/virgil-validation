@@ -6,7 +6,7 @@
 | Rim inclination (°) | 31.2 ± 0.8 | 29.2 | -1.99 (-2.5σ) |
 | Rim position angle (°) | 82.5 ± 1.2 | 81.6 | -0.861 (-0.8σ) |
 | Rim modulation amplitude (m = 1) | 0.502 ± 0.008 | 0.508 | +0.00644 (+0.8σ) |
-| Rim modulation phase (°) | -66 ± 2 | 16.5 | +82.5 (+41.3σ) |
+| Rim modulation phase (°) | -66 ± 2 | -65.1 | +0.899 (+0.4σ) |
 | χ² per point | 2.08 | 1.81 | |
 
 ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:
