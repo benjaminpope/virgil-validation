@@ -105,6 +105,7 @@ for _k, _name in OTHERS.items():
 # PS Gem's primary carries 87 % of the flux, so the default weights (1e4 to 1e-2) leave the first fit unconverged
 # and the sweep goes to NaN; shift the sweep down two decades.
 TARGETS["PS_Gem"]["log_weights"] = (2, -4)
+TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
 
 for _k, _v in TARGETS.items():
     _v["key"] = _k
@@ -135,7 +136,7 @@ def setup(cfg):
     rad = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * scale
     o = np.argsort(rad.ravel())
     r90 = float(rad.ravel()[o][np.searchsorted(np.cumsum(im.ravel()[o]) / im.sum(), 0.9)])
-    half = float(np.clip(1.5 * r90, 8.0, 0.95 * n * scale / 2))
+    half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * n * scale / 2))  # per-target override: the paper's figure extent
     has_sec = hdr["SFLU2"] > 0
     cfg.update(
         fov_mas=n * scale, pixel_mas=scale, sec0=(hdr["SDEX2"], hdr["SDEY2"]) if has_sec else None,
@@ -242,13 +243,13 @@ def plot_inspect(data, info, out, cfg):
 # parametric
 
 
-def parametric_start(cfg):
+def parametric_start(cfg, inc=50.0, pa=150.0):
     """The PMOIRED geometry of De Prins et al. (2026, Sect. 4.2) in virgil components."""
     sec = cfg["sec0"]
     parts = dict(
         primary=UniformDisk(diam=cfg["ud0"], flux=PowerLaw(1.0, -3.165, L0)),
         rim=ModulatedGaussianRim(
-            12.0, 4.0, 50.0, 150.0, az_amps=(0.3,), az_pas=(0.0,), flux=PowerLaw(0.4, 0.9, L0)),
+            12.0, 4.0, inc, pa, az_amps=(0.3,), az_pas=(0.0,), flux=PowerLaw(0.4, 0.9, L0)),
         bg=Resolved(flux=PowerLaw(0.1, 0.0, L0)),
     )
     if sec is not None:  # targets without a SPARCO secondary in the paper have none here
@@ -279,10 +280,18 @@ PARAM_PRIORS = {
 def parametric_stage(args, out):
     cfg = cfg_of(args)
     data, files = load(cfg, args.files)
-    start = parametric_start(cfg)
     t0 = time.time()
     priors = {k: v for k, v in PARAM_PRIORS.items() if cfg["sec0"] is not None or not k.startswith("secondary.")}
-    result = fit(start, priors, data, method="lbfgs", **({"max_steps": 25} if args.smoke else {}))
+    # blind multi-start over the rim orientation (a single start can stick face-on: IRAS 15469-5311); keep the lowest chi2
+    starts = [(50.0, 150.0)] if args.smoke else [(50.0, 150.0), (25.0, 30.0), (25.0, 120.0), (60.0, 30.0), (60.0, 100.0), (40.0, 170.0)]
+    best, chi2_starts = None, []
+    for inc, pa in starts:
+        res = fit(parametric_start(cfg, inc, pa), priors, data, method="lbfgs", **({"max_steps": 25} if args.smoke else {}))
+        c = chi2r(res.model, data)[0]
+        chi2_starts.append(c)
+        if best is None or c < best[0]:
+            best = (c, res)
+    result = best[1]
     model = result.model
     c2, n = chi2r(model, data)
     v = {k: np.asarray(x).tolist() for k, x in result.values.items()}
@@ -290,7 +299,7 @@ def parametric_stage(args, out):
     ratio = lambda name: float(np.asarray(getattr(model, name).flux(L0))) if name != "secondary" or has_sec else 0.0  # noqa: E731
     total = 1.0 + ratio("secondary") + ratio("rim") + ratio("bg")
     summary = dict(
-        values=v, chi2_per_point=c2, n_points=n, seconds=time.time() - t0, smoke=args.smoke,
+        values=v, chi2_per_point=c2, n_points=n, chi2_starts=chi2_starts, seconds=time.time() - t0, smoke=args.smoke,
         f_prim_pct=100.0 / total, f_sec_pct=100 * ratio("secondary") / total,
         f_rim_pct=100 * ratio("rim") / total, f_bg_pct=100 * ratio("bg") / total,
         ud_prim_mas=float(model.primary.diam), rim_diam_mas=float(model.rim.diam),

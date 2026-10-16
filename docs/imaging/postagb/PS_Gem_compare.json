@@ -1,0 +1,43 @@
+{
+ "ncc_zero_shift": 0.6333888537100109,
+ "ncc_best_shift": 0.7084450814506312,
+ "best_shift_pixels": {
+  "dy": -3,
+  "dx": 1
+ },
+ "pixel_mas": 0.31133333333333335,
+ "beam": {
+  "major_mas": 3.098036267937997,
+  "minor_mas": 1.783171039309062,
+  "pa_deg": 153.45515655593601
+ },
+ "ours": {
+  "disc": {
+   "flux_fraction": 0.9979536153074039,
+   "mean_radius_mas": 9.057811466168932,
+   "major_pa_deg": 60.81795928969689,
+   "axis_ratio": 0.6099408913605524,
+   "centroid_pa_deg": 3.0979304572297077,
+   "centroid_offset_mas": 1.3560356709815218
+  }
+ },
+ "published": {
+  "disc": {
+   "flux_fraction": 0.9486455263046419,
+   "mean_radius_mas": 6.2993861092695544,
+   "major_pa_deg": 58.22881283822852,
+   "axis_ratio": 0.8225385497232794,
+   "centroid_pa_deg": 334.06468673939224,
+   "centroid_offset_mas": 1.2673274457162544
+  }
+ },
+ "chi2_per_point_published_on_our_data": 0.4891561535100136,
+ "chi2_per_point_ours": 0.32279644433970944,
+ "n_points": 936,
+ "published_orientation_chi2": {
+  "as_published": 0.4891561535100136,
+  "mirrored_East-West": 0.9596368976144333,
+  "mirrored_North-South": 1.237894787216489
+ },
+ "smoke": false
+}
