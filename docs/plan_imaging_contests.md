@@ -1130,7 +1130,14 @@ virgil#361, so a different virgil from the other 8): disk_star finished in
 3588 s (diam 0.212 mas, rejection none, χ²/N 0.96); ellipse_star segfaulted
 at 30 min like 421 and 438 before. All three segfaults sit at the
 `faulthandler` watchdog's 30 min dump, so the watchdog is now opt-in
-(`VV_WATCHDOG=1`).
+(`VV_WATCHDOG=1`). Job 18651448 (vv `759b982`, watchdog off, virgil
+`c80aed7`) reran task 73: it completed in 2709 s (diam 0.228 mas, kept,
+χ²/N V2 0.99, CP 0.90). One segfault is not proof; if one recurs with the
+watchdog off, take a C-level stack. The smoke thus ran on three virgil
+versions (`224258f` for 8 tasks, `420d1b7` for task 72, `c80aed7` for task
+73); the star fits' diameters, rejections and χ²/N agree with the earlier
+runs on all of them, so the version differences do not change the
+comparison.
 
 ## Open decisions for Ben
 
