@@ -391,6 +391,23 @@ def test_triangles_with_a_baseline_in_no_vis2_row_are_kept(of, tmp_path):
     assert of.LOAD_NOTES == []  # nothing is dropped, so nothing is noted
     assert np.asarray(data.phi).size == len(t3) * 3 == np.asarray(full.phi).size
     np.testing.assert_allclose(np.asarray(data.phi), np.asarray(full.phi))
+    # where virgil put each leg: the file's own T3 coordinates (OIFITS: leg 1 = U1/V1, leg 2 = U2/V2, leg 3 = their sum)
+    with fits.open(path) as h:
+        t3d = h["OI_T3"].data
+        uv1, uv2 = (np.column_stack([t3d[f"U{k}COORD"], t3d[f"V{k}COORD"]]) for k in (1, 2))
+        t3_phi, t3_err = np.deg2rad(t3d["T3PHI"]), np.deg2rad(t3d["T3PHIERR"])
+    n_wave = 3
+    idx = [np.asarray(i).reshape(len(t3), n_wave) for i in (data.i_cps1, data.i_cps2, data.i_cps3)]
+    uv = np.column_stack([np.asarray(data.u), np.asarray(data.v)])
+    for leg, want in zip(idx, (uv1, uv2, uv1 + uv2)):
+        np.testing.assert_allclose(uv[leg], np.repeat(want[:, None, :], n_wave, axis=1), atol=1e-6)
+    # and the closure phase of the true binary (crosscheck's point-source visibility) at those places is the one in the file
+    vis = _binary(3.0, -4.0, 0.3)
+    v1, v2, v3 = (vis(uv[leg][..., 0], uv[leg][..., 1], np.asarray(data.wavel)[leg] if np.size(data.wavel) > 1
+                      else np.asarray(data.wavel)) for leg in idx)
+    model = np.angle(v1 * v2 * np.conj(v3))
+    assert np.all(np.abs(np.angle(np.exp(1j * (model - t3_phi)))) < 5 * t3_err)
+
     # The control that can fail: the observed phases are the same column in both reads, so compare the MODEL
     # closure phases virgil computes at each read's U/V placement (the whitened residuals are not comparable
     # row by row: the whitening depends on the triangle structure). A leg placed with the wrong sign,
