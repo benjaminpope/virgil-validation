@@ -67,6 +67,7 @@ nav:
       - "Limb-darkened disks": models/limb_darkening.md
       - "Rapid rotators": models/rapid_rotators.md
       - "Flared disks and harmonix": models/flared_disks.md
+      - "PolarDisk: profiles, harmonics, height": models/polar_disk.md
       - "Spectra": models/spectra.md
       - "Cones, fields and invariants": models/cones_fields.md
   - Likelihood:
