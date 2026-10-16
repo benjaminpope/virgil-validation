@@ -22,5 +22,11 @@
   "figure": "Fig. 15 (Appendix D)",
   "source": "https://arxiv.org/html/2605.13445v2/organic_vs_squeeze_images_last_three.png",
   "shows": "ORGANIC (left) against SQUEEZE (right) reconstructions, IW Car among the last three targets"
+ },
+ "IRAS08544_hillen_image.png": {
+  "arxiv": "1603.03023",
+  "figure": "Fig. 4 (upper panel)",
+  "source": "https://arxiv.org/e-print/1603.03023:IRAS08544_UD045_015mas-256pixels_531sig-contour_beam.png",
+  "shows": "single-star-subtracted SPARCO image of IRAS 08544-4431 with 5, 3 and 1 sigma contours"
  }
 }

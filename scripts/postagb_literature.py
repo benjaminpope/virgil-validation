@@ -3,7 +3,8 @@
     python scripts/postagb_literature.py [--targets IW_Car ...] [--root DIR]
 
 Figures come from the arXiv HTML render of De Prins et al. (2026,
-arXiv:2605.13445v2), reproduced with the authors' permission (see
+arXiv:2605.13445v2) and, for IRAS08544, the e-print source of Hillen et al. (2016,
+arXiv:1603.03023), reproduced with the authors' permission (see
 DATA_ATTRIBUTION.md), and are written to ``docs/imaging/postagb/literature/``
 together with ``figures.json`` (file -> figure number and caption stem). If the
 Zenodo record has been staged by ``postagb_data.py fetch``, each target's
@@ -12,7 +13,9 @@ scale in mas, header values) for quantitative comparison.
 """
 
 import argparse
+import io
 import json
+import tarfile
 import urllib.request
 from pathlib import Path
 
@@ -37,6 +40,18 @@ FIGURES = {
             "ORGANIC (left) against SQUEEZE (right) reconstructions, IW Car among the last three targets"),
     },
 }
+FIGURES["IRAS08544"] = {}  # figures from the arXiv source tarball, below
+
+# target -> (arXiv ID, {local name: (member of the e-print tarball, figure label, what it shows)}).
+# Hillen et al. (2016, A&A 588, L1) has no Zenodo images: the reconstruction is a bitmap, so its
+# colours are mapped back to values through the figure's own colour bar (``bitmap_to_image``).
+SOURCE_FIGURES = {
+    "IRAS08544": ("1603.03023", {
+        "IRAS08544_hillen_image.png": (
+            "IRAS08544_UD045_015mas-256pixels_531sig-contour_beam.png", "Fig. 4 (upper panel)",
+            "single-star-subtracted SPARCO image of IRAS 08544-4431 with 5, 3 and 1 sigma contours"),
+    }),
+}
 # Table values and parameter provenance live in the docs page and the imaging script.
 
 
@@ -46,6 +61,72 @@ def download(name, dest):
     if not data.startswith(b"\x89PNG"):
         raise ValueError(f"{name}: not a PNG")
     dest.write_bytes(data)
+
+
+def eprint_member(arxiv_id, member):
+    """One file of an arXiv e-print tarball, as bytes (read in memory; nothing is extracted to disk)."""
+    with urllib.request.urlopen(f"https://arxiv.org/e-print/{arxiv_id}", timeout=300) as r:
+        blob = r.read()
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as t:
+        return t.extractfile(t.getmember(member)).read()
+
+
+def bitmap_to_image(png_bytes, axes=(171, 650, 61, 540), cbar_x=672, half_mas=19.2):
+    """Recover a peak-normalised image from a published bitmap (colour map plus overlays).
+
+    The axes interior is ``axes`` = (x0, x1, y0, y1) in pixels (here ``half_mas`` = 19.2 mas to each
+    side, East left, North up) and the colour bar runs down column ``cbar_x`` from 1 (top) to 0.
+    Each pixel takes the value of the nearest colour-bar colour; pixels that match none (the
+    blue sigma contours, star markers, beam and compass) are filled from their nearest good
+    neighbour. The result is a stretch-limited copy of the published image, not the data: use it
+    for morphology, never for photometry. Also returns the drawn beam (major, minor FWHM in mas,
+    PA North to East in degrees), measured from the blue ellipse in the upper left corner, the colour map
+    as an (n, 3) array from 0 to 1, and the axes interior as RGB (the image as published).
+    """
+    import numpy as np  # noqa: PLC0415
+    from PIL import Image  # noqa: PLC0415
+    from scipy import ndimage  # noqa: PLC0415
+
+    im = np.asarray(Image.open(io.BytesIO(png_bytes)).convert("RGB")).astype(float)
+    x0, x1, y0, y1 = axes
+    lut = im[y0 + 1:y1 - 1, cbar_x, :]  # one row of the bar's border is dropped at each end
+    val = (y1 - (y0 + 1) - np.arange(lut.shape[0]) - 0.5) / (y1 - y0)
+    sub = im[y0:y1 - 1, x0:x1 - 1, :]
+    dist = np.linalg.norm(sub[:, :, None, :] - lut[None, None, :, :], axis=-1)
+    out, bad = val[dist.argmin(-1)], ndimage.binary_dilation(dist.min(-1) > 25, iterations=1)
+    scale = 2 * half_mas / (x1 - x0)
+    box = sub[:45, :60]
+    blue = (box[:, :, 2] > 200) & (box[:, :, 0] < 190) & (box[:, :, 1] < 190)
+    ys, xs = np.where(blue)
+    ev, vec = np.linalg.eigh(np.cov(np.vstack([xs, ys])))
+    major = vec[:, 1]  # (right = West, down = South)
+    # a filled ellipse of full axis length L has variance (L/2)^2 / 4 = L^2 / 16 along that axis
+    beam = dict(major_mas=float(4 * np.sqrt(ev[1]) * scale), minor_mas=float(4 * np.sqrt(ev[0]) * scale),
+                pa_deg=float(np.degrees(np.arctan2(-major[0], -major[1])) % 180.0))
+    bad[:45, :60] = True  # beam ellipse
+    bad[-70:, -70:] = True  # N/E compass
+    out[bad] = np.nan
+    idx = ndimage.distance_transform_edt(bad, return_distances=False, return_indices=True)
+    crop = np.asarray(Image.open(io.BytesIO(png_bytes)).convert("RGB"))[y0:y1 - 1, x0:x1 - 1]
+    return out[tuple(idx)], scale, beam, lut[::-1][:: max(1, lut.shape[0] // 256)], crop
+
+
+def fetch_source_figures(target, out):
+    arxiv_id, figs = SOURCE_FIGURES[target]
+    manifest = {}
+    for local, (member, label, what) in figs.items():
+        png = eprint_member(arxiv_id, member)
+        (out / local).write_bytes(png)  # the whole published panel, as in the arXiv source
+        img, scale, beam, lut, crop = bitmap_to_image(png)
+        import numpy as np  # noqa: PLC0415
+
+        np.savez_compressed(out / f"{target}_hillen_image.npz", image=img, pixel_mas=scale, beam=json.dumps(beam), cmap=lut / 255.0,
+                 crop=crop,
+                 source=f"arXiv:{arxiv_id} {label}")
+        manifest[local] = dict(arxiv=arxiv_id, figure=label, source=f"https://arxiv.org/e-print/{arxiv_id}:{member}",
+                               shows=what)
+        print("wrote", out / local, "beam", beam)
+    return manifest
 
 
 def save_organic_fits(target, out):
@@ -80,6 +161,9 @@ def main():
             download(remote, args.out / local)
             manifest[local] = dict(arxiv="2605.13445v2", figure=label, source=ARXIV + remote, shows=what)
             print("wrote", args.out / local)
+        if t in SOURCE_FIGURES:
+            manifest.update(fetch_source_figures(t, args.out))
+            continue
         npz = save_organic_fits(t, args.out)
         print("ORGANIC FITS ->", npz or "not staged (run postagb_data.py fetch)")
     manifest_path.write_text(json.dumps(manifest, indent=1))
