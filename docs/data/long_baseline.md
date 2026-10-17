@@ -1,7 +1,9 @@
 # Long-baseline interferometry
 
-Four VLTI UTs, 7 hour angles, 6 channels in H–K, declination −50°
-(`tests/test_vlti.py`).
+This page checks virgil on long-baseline data: uv coverage against
+Earth-rotation synthesis, OIFITS round trips, and noise-free and noisy fit
+recovery. The setup is four VLTI UTs, 7 hour angles, 6 channels in H–K,
+declination −50° (`tests/test_vlti.py`).
 
 | Check | Reference | Tag | Agreement |
 | --- | --- | --- | --- |

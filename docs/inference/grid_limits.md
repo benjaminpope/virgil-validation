@@ -18,8 +18,8 @@ Ruffio et al. (2018), written with SciPy and mpmath.
 
 ## Against CANDID
 
-The second root for these steps is CANDID, the code virgil's grid search
-follows. It is run on the same files in its own environment
+A second reference is CANDID, the code virgil's grid search
+follows. We run it on the same files in its own environment
 (`tests/test_candid.py`; conventions and problems in
 [CANDID](../method/candid.md)). The files: the same three-telescope VLTI
 setup, a 0.8 mas uniform-disk primary, with and without a 3 % companion at

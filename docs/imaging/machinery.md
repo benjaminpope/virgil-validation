@@ -1,6 +1,8 @@
 # Imaging and grid machinery
 
-`tests/test_grids.py`.
+This page checks the imaging grids, beams and transforms against analytic results, then the regularisers against eht-imaging and MPoL, CLEAN against simulated scenes, and the L-curve against our own recomputation.
+
+`tests/test_grids.py` covers the grids and transforms.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
@@ -21,8 +23,8 @@
 `tests/test_imaging_regularisers.py`. eht-imaging 1.3.2 (`imager_utils`,
 normalisation off) and MPoL 0.3.1 (`losses`) run in their own
 environments. The test images are random, on a circular support, so their
-outer ring of pixels is zero. With that, the three codes' different edge
-conventions give the same sums; the mapping (signs, flips, the softening's
+outer ring of pixels is zero, so the three codes' different edge
+conventions give the same sums. The mapping (signs, flips, the softening's
 square, the cells each code counts) is in the test's docstring. Gradients
 are virgil's, with respect to the log-brightness, against eht-imaging's
 hand-written and MPoL's autograd pixel gradients through the softmax

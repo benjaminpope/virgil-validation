@@ -1,6 +1,7 @@
 # Grey-scaled spectra and differential phases
 
-`tests/test_flux_visphi.py`, on a four-telescope file with a Brγ-like line
+This page checks the flux-spectrum and differential-phase likelihoods against dense Gaussians built with SciPy.
+`tests/test_flux_visphi.py` uses a four-telescope file with a Brγ-like line
 (unequal phase errors), written by `oifits.write_oifits`. The references
 use the values the file holds (EFF_WAVE is float32).
 

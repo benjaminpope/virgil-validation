@@ -1,17 +1,16 @@
 # AMIGO mixed-DISCO products
 
-`virgil.amigo.load_oi_data` reads the filter-keyed products of the AMIGO
-pipeline for JWST NIRISS AMI. Each record holds DISCO coefficients with
-independent errors, and two operators that map a model's log-amplitudes and
-phases onto them. No real product is needed to check the reader. We build
-a small one from what virgil documents: the record fields, the model
-vector `A_logamp @ log|V| + A_phase @ arg V`, and (u, v) stored with the
-opposite sign.
+This page checks that `virgil.amigo.load_oi_data` reads the AMIGO pipeline's
+products for JWST NIRISS AMI correctly. Each filter's record holds DISCO
+coefficients with independent errors, plus two operators that map a model's
+log-amplitudes and phases onto them. No real product is needed: we build a
+small one from the documented record fields, the model vector
+`A_logamp @ log|V| + A_phase @ arg V`, and (u, v) stored with the opposite sign.
 
 [`test_amigo_records.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_amigo_records.py)
 uses two filters, 40 uv points and 60 modes each, with random operators.
-The coefficients are those of a faint binary's closed-form visibility,
-taken at the physical (u, v), the negative of the stored values.
+The coefficients come from a faint binary's closed-form visibility at the
+physical (u, v), the negative of the stored values.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |

@@ -1,0 +1,38 @@
+# One line per function-test page, for the landing page that scripts/trust.py
+# writes (docs/tests/index.md). The sections and their order come from the
+# "Function tests" part of mkdocs.yml; a page missing here is listed without
+# a description.
+sections:
+  Data: How virgil reads data and simulates it, from OIFITS files and masking images.
+  Models: Each model's visibilities, against Fourier transforms of the brightness it documents.
+  Likelihood: The statistics that turn models and data into a likelihood, and the priors.
+  Inference: Searching, detecting, setting limits and sampling posteriors.
+  Orbits: Keplerian orbits on the sky and multi-night orbit fits.
+  Imaging: Image reconstruction machinery, against eht-imaging and MPoL.
+pages:
+  data/long_baseline.md: VLTI uv coverage, OIFITS round trips, and fits that recover what was put in.
+  data/visibility_only.md: Reading and fitting V²-only data with no phases, including against PMOIRED.
+  data/masking.md: Aperture-masking simulation with dLux, mask geometry and fits against injected truth.
+  data/oifits_observables.md: The OIFITS writer, extra observables and the continuum operator.
+  data/amigo.md: Reading JWST/NIRISS AMIGO products and applying their model operators.
+  models/visibilities.md: Every analytic model against the Fourier transform of its brightness, and its derivatives.
+  models/limb_darkening.md: Limb-darkened disks against point clouds, closed forms and Kipping's parametrization.
+  models/rapid_rotators.md: The gravity-darkened rapid rotator against an independent surface integration.
+  models/flared_disks.md: Flared disks and the harmonix wrapper against direct Fourier sums.
+  models/polar_disk.md: PolarDisk profiles, harmonics and height against other codes, renders and ALMA data.
+  models/spectra.md: Each spectrum model against the formula or interpolation it documents.
+  models/cones_fields.md: Cones, Gaussian-process fields and visibility identities against direct sums.
+  likelihood/closure_phases.md: Correlated closure-phase covariance and χ² against fouriever.
+  likelihood/linear_marginals.md: Analytic marginalization of gains, offsets and zero points against quadrature.
+  likelihood/priors.md: Inclination, latitude and angle priors against closed forms and samples.
+  likelihood/spectra_phases.md: Flux-spectrum and differential-phase likelihoods against SciPy.
+  inference/grid_limits.md: Grid searches, significance and detection limits against CANDID, fouriever and Monte Carlo.
+  inference/detection.md: Detection statistics and injection limits against our own χ² and quadrature.
+  inference/sampling.md: Simulation-based calibration of NUTS posteriors (1000 replicates; passes, not yet counted, chains often unhealthy).
+  inference/helpers.md: Small inference, simulation and joint-likelihood helpers against closed forms.
+  orbits/kepler.md: Kepler orbits on the sky and orientation priors against textbook Kepler code.
+  orbits/orbitize.md: Keplerian, Thiele–Innes and radial-velocity orbits against orbitize!.
+  orbits/epochs.md: Starting, ranking and scoring multi-night orbit fits.
+  imaging/machinery.md: Imaging grids, beams, regularizers, CLEAN and the L-curve against analytic results.
+  imaging/ehtim.md: The image transform, data terms and reconstructions against eht-imaging.
+  imaging/metrics_ensembles.md: Image-quality metrics and ensembles against published definitions.

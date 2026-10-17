@@ -1,7 +1,7 @@
 # Spectra
 
-Each spectrum is compared with the formula or interpolation its
-documentation states, evaluated with NumPy and SciPy. Tests:
+This page checks each spectrum model against the formula or interpolation
+its documentation states, evaluated with NumPy and SciPy. Tests:
 [`test_remaining_models.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_remaining_models.py) and
 [`test_spectra_more.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_spectra_more.py).
 
