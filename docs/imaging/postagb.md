@@ -687,7 +687,7 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     </figure>
 
     !!! success "Verdict: the two reconstructions agree"
-        At the published beam the images correlate at 0.96 (mirroring either axis drops it to 0.71 and 0.66): the same
+        At the published beam the images correlate at 0.96 (mirroring either axis drops it to 0.71 and 0.66, and the azimuthal average of the published image alone scores 0.86, so the radial profile alone gives most of the correlation and the ring's asymmetry adds 0.10): the same
         ~15 mas ring, brighter in the north-east, with the same dark gaps to the north-west and south-east, and the same
         point-like source just south-west of the star. The differences are small: virgil's ring is 0.3 mas larger
         (flux-weighted radius 8.5 against 8.2 mas) and its central source is further from the star (1.6 against 1.1 mas, at
@@ -756,7 +756,7 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     | Metric | Hillen+2016 | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation | 1 | 0.96 (0.96 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.71, 180° rotation 0.72, azimuthal average 0.86) | 1 | 0.96 (0.96 after the best sub-beam shift) |
     | Inside 3.5 mas / ring (3.5 to 16 mas) flux fraction | 5.8 % / 78.2 % | 6.3 % / 76.5 % |
     | Central point source: separation (mas), position angle (° East of North) | 1.09, 200 | 1.63, 205 |
     | Ring flux-weighted radius (mas) | 8.21 | 8.49 |

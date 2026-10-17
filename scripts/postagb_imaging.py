@@ -575,9 +575,13 @@ def compare_bitmap_stage(args, out):
     cp_ours, cp_pub = central_peak(ours_c, scale), central_peak(pub, scale)
     flips = {name: ncc(ours_c, im, mask) for name, im in
              {"as_published": pub, "mirrored_East-West": pub[:, ::-1], "mirrored_North-South": pub[::-1, :]}.items()}
+    rbin = np.round(np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2)).astype(int)  # azimuthal-average control
+    prof = np.bincount(rbin.ravel(), pub.ravel()) / np.bincount(rbin.ravel())
+    ncc_controls = {"mirrored_East-West": flips["mirrored_East-West"], "rotated_180": ncc(ours_c, pub[::-1, ::-1], mask),
+                    "azimuthal_average_of_published": ncc(ours_c, prof[rbin], mask)}
     img_json = json.load(open(path(out, cfg, "image.json")))
     res = dict(
-        ncc_zero_shift=ncc(ours_c, pub, mask), ncc_best_shift=shifts[best],
+        ncc_zero_shift=ncc(ours_c, pub, mask), ncc_controls=ncc_controls, ncc_best_shift=shifts[best],
         best_shift_mas=dict(dy=best[0] * step * scale, dx=best[1] * step * scale), pixel_mas=scale,
         beam=pb, virgil_data_beam=dict(major_mas=beam(data).major_mas, minor_mas=beam(data).minor_mas,
                                        pa_deg=beam(data).pa_deg),

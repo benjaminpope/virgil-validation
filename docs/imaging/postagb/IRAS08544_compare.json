@@ -1,5 +1,10 @@
 {
  "ncc_zero_shift": 0.9567299301191793,
+ "ncc_controls": {
+  "mirrored_East-West": 0.7110404256209372,
+  "rotated_180": 0.7210455539446621,
+  "azimuthal_average_of_published": 0.8609637798109455
+ },
  "ncc_best_shift": 0.9617875513891282,
  "best_shift_mas": {
   "dy": 0.0,
