@@ -1,11 +1,11 @@
 {
- "ncc_zero_shift": 0.9686122573389235,
+ "ncc_zero_shift": 0.9335642589447599,
  "ncc_controls": {
-  "mirrored_East-West": 0.8031245347101181,
-  "rotated_180": 0.7777097811904268,
-  "azimuthal_average_of_published": 0.8780763619500991
+  "mirrored_East-West": 0.8093540486662667,
+  "rotated_180": 0.7630790812534771,
+  "azimuthal_average_of_published": 0.8858858219157432
  },
- "ncc_best_shift": 0.9707613156723005,
+ "ncc_best_shift": 0.9351097361519293,
  "best_shift_mas": {
   "dy": 0.0,
   "dx": -0.1603340292275574
@@ -23,20 +23,20 @@
  },
  "ours": {
   "inner": {
-   "flux_fraction": 0.018904575640094998,
-   "mean_radius_mas": 2.5302368702345848,
-   "major_pa_deg": 12.401138195761273,
-   "axis_ratio": 0.6666537159437851,
-   "centroid_pa_deg": 39.61314274276613,
-   "centroid_offset_mas": 0.40584645117450446
+   "flux_fraction": 0.026332331556799808,
+   "mean_radius_mas": 2.305439635208921,
+   "major_pa_deg": 8.317317790399327,
+   "axis_ratio": 0.7911370488572339,
+   "centroid_pa_deg": 44.8277006034668,
+   "centroid_offset_mas": 0.5386636024775814
   },
   "outer": {
-   "flux_fraction": 0.8031874727784967,
-   "mean_radius_mas": 8.540900799046822,
-   "major_pa_deg": 85.29122400170895,
-   "axis_ratio": 0.9186791300903699,
-   "centroid_pa_deg": 7.151646188060259,
-   "centroid_offset_mas": 0.8781139873397082
+   "flux_fraction": 0.9403555621517652,
+   "mean_radius_mas": 8.538209512117298,
+   "major_pa_deg": 28.499366939689125,
+   "axis_ratio": 0.7918899169496393,
+   "centroid_pa_deg": 28.74783824894706,
+   "centroid_offset_mas": 0.503962584231398
   }
  },
  "published": {
@@ -58,21 +58,21 @@
   }
  },
  "ncc_orientation": {
-  "as_published": 0.9686122573389235,
-  "mirrored_East-West": 0.8031245347101181,
-  "mirrored_North-South": 0.7584292433747182
+  "as_published": 0.9335642589447599,
+  "mirrored_East-West": 0.8093540486662667,
+  "mirrored_North-South": 0.7914552092146525
  },
  "central_source": {
   "ours": {
-   "sep_mas": 2.496628357360542,
-   "pa_deg": 188.21462442585215
+   "sep_mas": 1.7115329992450428,
+   "pa_deg": 23.517391125929123
   },
   "published": {
    "sep_mas": 2.4105038912425636,
    "pa_deg": 179.27877845532524
   }
  },
- "chi2_per_point_ours": 0.31347945683883943,
+ "chi2_per_point_ours": 0.9460233417730923,
  "n_points": 1722,
  "smoke": false
 }

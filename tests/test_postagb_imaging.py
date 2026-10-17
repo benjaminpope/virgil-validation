@@ -63,3 +63,38 @@ def test_bitmap_to_image_recovers_beam_pa_and_colourbar():
     assert beam["major_mas"] / beam["minor_mas"] == pytest.approx(a / b, rel=0.1)
     assert beam["major_mas"] == pytest.approx(2 * a * scale, rel=0.1)
     assert np.nanmedian(img) == pytest.approx(0.5, abs=0.03)  # the colour-bar inversion (top = 1)
+
+
+@pytest.mark.parametrize("rot", [0.0, 35.0, 120.0])
+def test_hole_mask_window_sits_on_the_secondary_as_virgil_renders_it(rot):
+    """The pixel the secondary's window is centred on, lit alone in virgil's Image, has the visibility of PointSource(dra, ddec)."""
+    from virgil.models import Image, PointSource
+
+    n, scale, sec = 201, 0.1, (4.0, -3.0)
+    env = Image(np.zeros((n, n)), scale)
+
+    class Data:  # only what compare_beam needs
+        u, v, wavel = np.array([30.0]), np.array([0.0]), np.array([1.6e-6])
+
+    cfg = dict(sec0=sec, secondary=True, ud0=0.01, hole_mas=0.12, mask_mas=1e9)
+    mask, _ = P.hole_mask(cfg, env, Data, rot)
+    yy, xx = np.nonzero(~mask)
+    far = np.hypot(yy - (n - 1) / 2, xx - (n - 1) / 2) > 20  # the secondary's window, not the star's
+    iy, ix = int(round(yy[far].mean())), int(round(xx[far].mean()))
+    lit = np.full((n, n), 1e-12)
+    lit[iy, ix] = 1.0
+    rng = np.random.default_rng(0)
+    u, v, wl = rng.uniform(-80, 80, 40), rng.uniform(-80, 80, 40), np.full(40, 1.65e-6)
+    ref = np.asarray(Image(np.log(lit), scale, rotation_deg=rot).model(u, v, wl))
+    pt = np.asarray(PointSource(dra=sec[0], ddec=sec[1]).model(u, v, wl))
+    assert np.max(np.abs(np.angle(ref * np.conj(pt)))) < 0.5  # pixel rounding (0.05 mas) is ~0.25 rad at 80 m
+
+
+def test_the_postagb_page_matches_the_stored_results():
+    """docs/imaging/postagb.md is regenerated from the compare / image JSON: no number has drifted."""
+    import postagb_page
+
+    page = pathlib.Path(__file__).resolve().parents[1] / "docs/imaging/postagb.md"
+    text = page.read_text()
+    assert postagb_page.build(text) == text
+    assert text.count("<!-- gen:") == text.count("<!-- /gen:") > 0

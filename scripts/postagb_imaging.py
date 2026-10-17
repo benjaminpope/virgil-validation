@@ -34,16 +34,21 @@ with the beam ellipse drawn on the figure, and has no ORGANIC-style chi2 for the
 IRAS08544 is compared with the binary-subtracted panel (Fig. 4, lower): the scene has a free secondary
 (``sec_index0`` frees its power-law index) and both stars are blanked in the image support.
 
-Per-target options: ``hole_beams`` (radius of the window blanked in the image support around each central star, in
-beams' minor axes, default 0.5, so the pixels cannot trade flux with the stellar point sources or UD fluxes);
-``gp=dict(sigmas, length_beams)`` swaps MaxEntropy for a ``GaussianField`` prior with (sigma, length) chosen by
-the Laplace evidence; ``secondary=False`` fits a single-star-subtracted scene (the secondary stays in the image).
+Per-target options: the window blanked in the image support around each central star has radius
+max(lambda_min / (2 B_max), the starting UD diameter) (``hole_mas`` overrides), so the pixels cannot trade flux with
+the stellar point sources or UD fluxes; ``bg`` adds a grey over-resolved background (SPARCO ``f_bg``, free) to the
+image scene; the regularisation weight is set by the discrepancy principle (chi2 per point = 1 on the errors as
+given) for MaxEntropy, and for ``gp=dict(sigmas, length_beams)`` (a ``GaussianField`` prior) the grid cell that is
+whose chi2 per point is closest to 1, ties broken by the Laplace evidence;
+``secondary=False`` fits a single-star-subtracted scene (the secondary stays in the image).
 """
 
 import argparse
+from scipy.ndimage import rotate as rotate_img
 import glob
 import json
 import os
+import pathlib
 import sys
 import time
 from pathlib import Path
@@ -66,13 +71,14 @@ from scipy import ndimage  # noqa: E402
 from virgil import OIData, read_oifits
 from virgil.oidata import closure_phases  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
-from virgil.fields import GaussianField  # noqa: E402
+from virgil import gp_priors  # noqa: E402
+from virgil.fields import GaussianField, MultipoleField  # noqa: E402
 from virgil.imaging import (  # noqa: E402
     MaxEntropy, beam, convolve_beam, error_scale, image_priors, l_curve, log_evidence, nyquist_pixel_scale,
     starting_image, whitened_residuals,
 )
 from virgil.models import (  # noqa: E402
-    Image, ModulatedGaussianRim, PointSource, Resolved, System, UniformDisk,
+    GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, Resolved, System, UniformDisk,
 )
 from virgil.spectra import PowerLaw  # noqa: E402
 
@@ -94,7 +100,7 @@ TARGETS = {
         fov_mas=44.8,
         pixel_mas=0.35,
         sec0=(1.12, -1.90),  # secondary from the paper's Gaussian fit to the image (Table 2)
-        half_mas=18.0, mask_mas=20.0, half_cmp_mas=15.0, ud0=0.5,
+        half_mas=18.0, mask_mas=20.0, half_cmp_mas=15.0, ud0=0.5, ud_fix=0.5,
         inner_rim_max_mas=5.0,  # inner arcs lie inside this radius, the outer arc beyond (paper Sect. 5.3.7)
         regions=dict(inner=(0.0, 5.0), outer=(5.0, 20.0)),
         paper=dict(
@@ -120,10 +126,11 @@ TARGETS = {
         sec_index0=-2.5, f_sec0=0.065,
         star_index=-4.0,  # paper: primary flux ~ lambda^-4
         env_index0=0.42,  # paper's grid maximum: f_pri = 0.61, environment index 0.42
-        ud0=0.5,
+        ud0=0.5, ud_fix=0.5,
         fit_ud=False,  # the paper fixes the primary at a 0.5 mas uniform disc
         fov_mas=38.4,  # 256 pixels of 0.15 mas
         pixel_mas=0.15,
+        half_mas=16.0, half_cmp_mas=14.0,  # the ~15 mas ring and a little beyond
         sec0=(-0.671, -0.453),  # 0.81 mas at PA 236 deg (56 + 180) from the primary
         regions=dict(inner=(0.0, 3.5), outer=(3.5, 16.0)),  # central point source and the ~15 mas ring
         inner_rim_max_mas=3.5,
@@ -156,14 +163,20 @@ for _k, _name in OTHERS.items():
 
 # PS Gem's primary carries 87 % of the flux, so the default weights (1e4 to 1e-2) leave the first fit unconverged
 # and the sweep goes to NaN; shift the sweep down two decades.
+TARGETS["IRAS08544"]["log_weights"] = (3, 0)  # the full (4, -2) sweep reaches a non-finite fit at its low-weight end here
 TARGETS["PS_Gem"]["log_weights"] = (2, -4)  # the MaxEntropy sweep, kept for the comparison
 # ... and the MaxEntropy image is arbitrary on a flat L-curve (NCC 0.63), so PS Gem is imaged with a GP prior instead:
 # a (sigma, length) grid, lengths in beams, the cell with the largest Laplace evidence kept.
-TARGETS["PS_Gem"]["gp"] = dict(sigmas=(1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))
-TARGETS["HR4049"]["gp"] = dict(sigmas=(1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
+TARGETS["PS_Gem"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))
+TARGETS["HR4049"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
+# Field sizes (Ben): the support is a disc (mask_mas) in every target. PS Gem's emission is within ~5 mas; HR 4049's ORGANIC halo extends
+# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-27 mas with a disc of 25 mas. Pixel scales are the paper's.
+TARGETS["PS_Gem"].update(fov_override=11.0, half_mas=5.0, half_cmp_mas=5.0, mask_mas=5.0, hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
+TARGETS["HR4049"].update(fov_override=54.0, half_cmp_mas=25.0, mask_mas=25.0)
 
 for _k, _v in TARGETS.items():
+    _v["bg"] = _k != "IRAS08544"  # De Prins+2026 images account for an over-resolved flux; Hillen's image scene has none
     _v["key"] = _k
     _v.setdefault("files", None)  # None: the files of the paper's observation log, from the archive
 
@@ -177,10 +190,52 @@ def path(out, cfg, name):
 # data
 
 
+def paper_indices(cfg):
+    """(star, companion) spectral indices of the paper's ORGANIC model: SIND1 and SIND2 of its FITS header."""
+    ph = cfg.get("paper_header")
+    if ph and "sec_index" in ph:
+        return float(ph["star_index"]), float(ph["sec_index"])
+    hdr, _, _ = zenodo_header(cfg)
+    return float(hdr["SIND1"]), float(hdr["SIND2"])
+
+
+def secondary_defaults(cfg, target):
+    """The default secondary treatment of every target with one (except IRAS 08544, which has its own, from Hillen+2016): position and flux
+    ratio from De Prins's PMOIRED fit as informative priors where it has them (position sigma 0.05 mas, flux sigma 3 % of the total), the
+    index fixed at the paper's SIND2 (0), no window around it when it lies inside the primary's hole. For HD95767 this took the inner knots
+    out of the image (NCC 0.90 -> 0.95, log Z +342) and the separation from 1.04 to 0.89 mas (paper 0.88)."""
+    if cfg.get("_sec_done") or cfg.get("sec0") is None or "sec_index0" in cfg or not cfg.get("secondary", True):
+        return
+    from postagb_paper import PMOIRED  # noqa: PLC0415
+
+    cfg["_sec_done"] = True
+    cfg["sec_index_fixed"] = paper_indices(cfg)[1]  # the paper's own value (ORGANIC SIND2, 0), fixed: indices are only comparable that way
+    cfg["sec_index_source"] = "ORGANIC SIND2"
+    pm = PMOIRED.get(target, {})
+    if pm.get("sec_dra"):
+        cfg["sec0"] = (pm["sec_dra"][0], pm["sec_ddec"][0])
+        cfg["sec_prior"] = dict(dra=pm["sec_dra"][0], ddec=pm["sec_ddec"][0], pos_sigma=0.05)
+        if pm.get("f_sec") and pm.get("f_prim"):
+            cfg["f_sec0"] = pm["f_sec"][0] / pm["f_prim"][0]
+            cfg["sec_prior"] |= dict(ratio=cfg["f_sec0"], ratio_sigma=0.03 / (pm["f_prim"][0] / 100.0))
+    else:
+        cfg["sec_prior"] = dict(dra=cfg["sec0"][0], ddec=cfg["sec0"][1], pos_sigma=0.1)
+
+
 def cfg_of(args):
     cfg = TARGETS[args.target]
     if "fov_mas" not in cfg:
         setup(cfg)
+    if "sec_index0" not in cfg and "img_star_index" not in cfg:
+        # the paper's own stellar index per target (ORGANIC SIND1, -2.1 ... -3.2), fixed: the environment's index and flux fraction are only
+        # defined relative to the stellar spectrum, so they compare with De Prins's only if the star is the same (IRAS 08544 keeps -4, Hillen)
+        cfg["img_star_index"] = paper_indices(cfg)[0]
+        cfg["star_index_source"] = "ORGANIC SIND1"
+    if getattr(args, "bg_index", None) is not None:
+        cfg = cfg | dict(bg_index_fixed=args.bg_index)
+    if getattr(args, "star_index", None) is not None:
+        cfg = cfg | dict(img_star_index=args.star_index, star_index_source=f"one-off override ({args.star_index:g})")
+    secondary_defaults(cfg, args.target)
     return cfg
 
 
@@ -192,21 +247,23 @@ def setup(cfg):
     rad = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * scale
     o = np.argsort(rad.ravel())
     r90 = float(rad.ravel()[o][np.searchsorted(np.cumsum(im.ravel()[o]) / im.sum(), 0.9)])
-    half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * n * scale / 2))  # per-target override: the paper's figure extent
+    fov = cfg.get("fov_override") or n * scale  # per-target field override (PS Gem smaller, HR 4049 larger), same pixel scale
+    half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * fov / 2))  # per-target override: the paper's figure extent
     has_sec = hdr["SFLU2"] > 0
     cfg.update(
-        fov_mas=n * scale, pixel_mas=scale, sec0=(hdr["SDEX2"], hdr["SDEY2"]) if has_sec else None,
-        ud0=max(hdr["SUD1"], 0.3), half_mas=half, mask_mas=0.95 * n * scale / 2, half_cmp_mas=0.85 * half,
-        regions=dict(disc=(0.0, 0.95 * n * scale / 2)), inner_rim_max_mas=None, paper_header=dict(
+        fov_mas=fov, pixel_mas=scale, sec0=(hdr["SDEX2"], hdr["SDEY2"]) if has_sec else None,
+        ud_fix=hdr["SUD1"],  # the paper's fixed stellar diameter
+        ud0=max(hdr["SUD1"], 0.3), half_mas=half, mask_mas=cfg.get("mask_mas") or 0.95 * fov / 2, half_cmp_mas=cfg.get("half_cmp_mas") or 0.85 * half,
+        regions=dict(disc=(0.0, cfg.get("mask_mas") or 0.95 * fov / 2)), inner_rim_max_mas=None, paper_header=dict(
             ud=hdr["SUD1"], f_prim_pct=100 * hdr["SFLU1"], f_sec_pct=100 * hdr["SFLU2"],
-            sec=(hdr["SDEX2"], hdr["SDEY2"]), image_index=hdr["SIND0"], star_index=hdr["SIND1"]),
+            sec=(hdr["SDEX2"], hdr["SDEY2"]), image_index=hdr["SIND0"], star_index=hdr["SIND1"], sec_index=hdr["SIND2"]),
     )
 
 
 def load_files(cfg, n=None):
     # the INSPIRING release holds exactly the exposures of the paper's observation log (counts checked per target)
     pats = cfg["files"] if isinstance(cfg["files"], (list, tuple)) else [cfg["files"]]
-    pats = [DATA / cfg["key"] / "INSPIRING/*.fits" if pat is None else pat for pat in pats]
+    pats = [DATA / cfg.get("data_key", cfg["key"]) / "INSPIRING/*.fits" if pat is None else pat for pat in pats]
     files = sorted(f for pat in pats for f in glob.glob(str(pat)))
     if not files:
         raise SystemExit(f"no files for {cfg['key']}; run scripts/postagb_data.py fetch")
@@ -388,166 +445,557 @@ def parametric_stage(args, out):
 # image
 
 
-def sparco_scene(cfg, env, f_env=0.5, index=None, f_sec=None, ud=None):
-    """UD primary + (optional) point secondary + Image environment, power-law spectra (SPARCO).
+def sparco_scene(cfg, env, f_env=0.5, index=None, f_sec=None, extra=None):
+    """UD primary (diameter fixed, flux ~ lambda^-4) + point secondary + environment + grey over-resolved background (SPARCO).
 
-    A target with ``sec0=None`` or ``secondary=False`` has no secondary here (for IRAS08544 it stays in the image,
-    as in the paper).
+    Every strategy uses this one scene; only the environment component differs. ``extra`` adds components (the disc strategy's
+    residual field). A target with ``sec0=None`` or ``secondary=False`` has no secondary.
     """
     sec = cfg["sec0"] if cfg.get("secondary", True) else None
     index = cfg.get("env_index0", 0.9) if index is None else index
     parts = dict(
-        star=UniformDisk(diam=cfg["ud0"] if ud is None else ud, flux=PowerLaw(1.0, cfg.get("star_index", -3.165), L0)),
+        star=UniformDisk(diam=cfg["ud_fix"], flux=PowerLaw(1.0, cfg.get("img_star_index", -4.0), L0)),
         env=env.set("flux", PowerLaw(f_env, index, L0)) if hasattr(env, "set") else env,
     )
+    if cfg.get("bg"):  # grey over-resolved background, free flux fraction and index
+        parts["bg"] = Resolved(flux=PowerLaw(cfg.get("f_bg0", 0.1), cfg.get("bg_index_fixed") or 0.0, L0))
     if sec is not None:
-        parts["sec"] = PointSource(flux=PowerLaw(cfg.get("f_sec0", 0.03) if f_sec is None else f_sec, cfg.get("sec_index0", 0.0), L0),
+        parts["sec"] = PointSource(flux=PowerLaw(cfg.get("f_sec0", 0.03) if f_sec is None else f_sec, cfg.get("sec_index_fixed", cfg.get("sec_index0", 0.0)), L0),
                                    dra=sec[0], ddec=sec[1])
-    return System(**parts)
+    return System(**parts, **(extra or {}))
 
 
-def hole_mask(cfg, env, data):
+def hole_mask(cfg, env, data, rot_deg=0.0):
     """Pixels of the environment image allowed to carry flux: the image's own support minus a window around
     each central star. Extended flux within a fraction of a beam of a star is nearly indistinguishable from the
     star's own, so without the window the pixels and the UD / point-source fluxes are degenerate.
 
-    The radius is ``hole_beams`` (default 0.5) times the beam's minor axis, as in the nuHor notebooks
-    (``circular_support(npix, scale, npix * scale, 0.5 * beam(data).minor_mas)``). The primary is at the origin,
+    The radius is the larger of lambda_min / (2 B_max) (one resolution element, the comparison beam's FWHM) and the
+    starting UD diameter ``ud0`` (the diameter's number used as a radius), unless ``hole_mas`` sets it. The image is also
+    limited to a disc of radius ``mask_mas`` (half the field by default), so that the corners of the square grid, which
+    the data barely constrain, carry no flux. The primary is at the origin,
     the window follows ``sec0`` too when the secondary is a point source of the scene (``secondary`` true), so that
     only a secondary left in the image (``secondary=False``) is not masked.
     """
-    radius = cfg.get("hole_beams", 0.5) * beam(data).minor_mas
+    radius = cfg.get("hole_mas") or max(compare_beam(data).minor_mas, cfg["ud_fix"])
     ny, nx = np.shape(env.log_brightness)
     scale = float(env.pixel_scale_mas)
     mask = np.ones((ny, nx), bool) if env.support is None else np.asarray(env.support, bool).copy()
     yy, xx = np.mgrid[:ny, :nx]
-    east, north = ((nx - 1) / 2.0 - xx) * scale, ((ny - 1) / 2.0 - yy) * scale  # row 0 North, column 0 East
-    mask &= np.hypot(east, north) > radius
-    if cfg.get("sec0") is not None and cfg.get("secondary", True) and cfg.get("sec_hole", True):
+    left, up = ((nx - 1) / 2.0 - xx) * scale, ((ny - 1) / 2.0 - yy) * scale  # row 0 up, column 0 left of the grid
+    th = np.radians(rot_deg)  # the grid's up axis points at position angle ``rot_deg`` (North through East)
+    east, north = left * np.cos(th) + up * np.sin(th), up * np.cos(th) - left * np.sin(th)
+    mask &= (np.hypot(east, north) > radius) & (np.hypot(left, up) <= cfg.get("mask_mas", nx * scale / 2))
+    # no window around a secondary that lies inside the primary's own hole: the two would merge into one blanked region
+    if (cfg.get("sec0") is not None and cfg.get("secondary", True) and cfg.get("sec_hole", True)
+            and np.hypot(*cfg["sec0"]) >= radius):
         mask &= np.hypot(east - cfg["sec0"][0], north - cfg["sec0"][1]) > radius
     return mask, radius
 
 
-def image_stage(args, out):
-    cfg = cfg_of(args)
-    data, files = load(cfg, args.files)
-    t0 = time.time()
-    # grid: the paper's pixel scale and field of view (parity with ORGANIC); coarser in --smoke
-    scale = cfg["pixel_mas"] * (4.0 if args.smoke else 1.0)
-    fov = cfg["fov_mas"] * (0.5 if args.smoke else 1.0)
-    start = starting_image(data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov)
-    support, hole_mas = hole_mask(cfg, start.env, data)  # window around the star(s): no pixel / point-source degeneracy
-    env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
-    print("grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; start flux", float(env.flux),
-          f"; hole radius {hole_mas:.3f} mas ({int((~support).sum())} pixels blanked)")
-    scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))  # index: cfg env_index0
-    priors = image_priors(scene) | {
-        "env.flux.ratio": dist.LogUniform(0.01, 20.0),
-        "env.flux.index": dist.Uniform(-3.0, 5.0),
-    }
-    if cfg.get("fit_ud", True):  # fixed in the paper for IRAS08544 (0.5 mas); a free UD collapses onto its bound there
-        priors["star.diam"] = dist.Uniform(0.05, 1.5)
-    has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
-    if has_sec:
+STRATEGIES = ("mem", "gp-iso", "gp-aniso", "gp-polar", "disc+res")
+HEADLINE = "gp-polar"
+GP_FRACS = (0.25, 0.5, 1.0, 2.0)  # GP lengths in units of the comparison beam's FWHM, lambda_min / (2 B_max)
+
+
+def scene_priors(cfg, scene, env_fixed_geometry=False):
+    """Priors shared by every strategy: the SPARCO fluxes and indices of the environment, the grey background and the secondary."""
+    priors = {"env.flux.ratio": dist.LogUniform(0.01, 20.0), "env.flux.index": dist.Uniform(-6.0, 6.0)}
+    if cfg.get("bg"):
+        priors |= {"bg.flux.ratio": dist.Uniform(0.0, 2.0)}
+        if cfg.get("bg_index_fixed") is None:  # the index is unconstrained (a few per cent of the flux): one-off ``--bg-index`` fixes it
+            priors["bg.flux.index"] = dist.Uniform(-6.0, 6.0)
+    if cfg["sec0"] is not None and cfg.get("secondary", True):
         priors |= {
-            "sec.flux.ratio": dist.Uniform(0.0, 0.3),
+            "sec.flux.ratio": dist.LogUniform(1e-3, 1.0),  # was Uniform(0, 0.3), which HD95767 (paper: 0.43) pinned and IW Car mem soaked up
             "sec.dra": dist.Normal(cfg["sec0"][0], 1.0),
             "sec.ddec": dist.Normal(cfg["sec0"][1], 1.0),
         }
-        if "sec_index0" in cfg:  # free power-law index of the secondary (IRAS08544: published black body of 4000 K)
+        if "sec_prior" in cfg:  # the PMOIRED fit as an informative prior (see ``secondary_defaults``); the index is fixed, not fitted
+            sp = cfg["sec_prior"]
+            priors |= {"sec.dra": dist.Normal(sp["dra"], sp["pos_sigma"]), "sec.ddec": dist.Normal(sp["ddec"], sp["pos_sigma"])}
+            if "ratio" in sp:
+                priors["sec.flux.ratio"] = dist.TruncatedNormal(sp["ratio"], sp["ratio_sigma"], low=0.0)
+            if cfg.get("sec_index_fixed") is None:
+                priors["sec.flux.index"] = dist.Uniform(-5.0, 2.0)
+        elif "sec_index0" in cfg:  # free power-law index of the secondary (IRAS08544: published black body of 4000 K)
             priors["sec.flux.index"] = dist.Uniform(-5.0, 2.0)  # a star is not steeper than the primary (-4) by much, nor rising faster than lambda^2
-    extra = dict(hole_mas=hole_mas, hole_beams=cfg.get("hole_beams", 0.5), n_blanked=int((~support).sum()))
-    if cfg.get("gp"):
-        model, curve_arrays, extra_gp = fit_gp(cfg, scene, start.env, support, priors, data, args)
-    else:
-        model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data, args)
-    extra |= extra_gp
-    c2, n = chi2r(model, data)  # on the data as given, whatever error rescaling the GP evidence used
-    bright = np.asarray(model.env.brightness)
-    mv2, mt3 = observables(model, data)
-    np.savez(
-        path(out, cfg, "image.npz"), brightness=bright, pixel_mas=float(model.env.pixel_scale_mas), model_v2=mv2, model_t3=mt3,
-        **curve_arrays,
-        stars=json.dumps(dict(
-            ud=float(model.star.diam), f_env=float(np.asarray(model.env.flux.ratio)),
-            env_index=float(np.asarray(model.env.flux.index)),
-            f_sec=float(np.asarray(model.sec.flux.ratio)) if has_sec else 0.0,
-            sec_dra=float(model.sec.dra) if has_sec else None,
-            sec_ddec=float(model.sec.ddec) if has_sec else None,
-            sec_index=float(np.asarray(model.sec.flux.index)) if has_sec else None)),
-    )
-    p = json.loads(str(np.load(path(out, cfg, "image.npz"))["stars"]))
-    tot = 1.0 + p["f_env"] + p["f_sec"]
-    summary = dict(
-        chi2_per_point=c2, n_points=n,
-        grid=list(bright.shape), pixel_mas=float(model.env.pixel_scale_mas), smoke=args.smoke,
-        seconds=time.time() - t0, f_prim_pct=100 / tot, f_sec_pct=100 * p["f_sec"] / tot if p["f_sec"] else None,
-        f_env_pct=100 * p["f_env"] / tot, **extra,
-        **{k_: v for k_, v in p.items() if k_ in ("ud", "env_index", "sec_dra", "sec_ddec", "sec_index")},
-    )
-    if has_sec:
-        summary |= dict(sec_sep_mas=float(np.hypot(p["sec_dra"], p["sec_ddec"])),
-                        sec_pa_deg=float(np.degrees(np.arctan2(p["sec_dra"], p["sec_ddec"])) % 360.0))
-    print(json.dumps(summary, indent=1))
-    json.dump(summary, open(path(out, cfg, "image.json"), "w"), indent=1)
+    return priors
+
+
+def grid_setup(cfg, data, args, rot=0.0):
+    """The paper's pixel grid, the window around the star(s), and the Gaussian start image."""
+    scale = cfg["pixel_mas"] * (4.0 if args.smoke else 1.0)
+    fov = cfg["fov_mas"] * (0.5 if args.smoke else 1.0)
+    start = starting_image(data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov)
+    support, hole_mas = hole_mask(cfg, start.env, data, rot)
+    return start, support, hole_mas
+
+
+def scale_file(out, cfg):
+    return out / f"{cfg.get('data_key', cfg['key'])}_scale.json"
+
+
+def load_scaled(cfg, args, out):
+    """The target's data with its errors rescaled by the MacKay factor stored by the ``scale`` stage (1 if absent)."""
+    data, files = load(cfg, args.files)
+    f = scale_file(out, cfg)
+    s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
+    return data.with_error_scale(s) if s != 1.0 else data, data, s, files
+
+
+def scale_stage(args, out):
+    """Error rescaling and geometry, once per target: an isotropic GP pilot on the errors as given gives
+    ``error_scale`` (MacKay), then a parametric ``MultipoleDisk`` (Gaussian ring + first harmonic) on the rescaled data gives the
+    disc's inclination and position angle for the anisotropic and polar GPs and the disc strategy."""
+    from virgil.priors import IsotropicInclination  # noqa: PLC0415
+
+    cfg = cfg_of(args)
+    data, files = load(cfg, args.files)
+    start, support, hole_mas = grid_setup(cfg, data, args)
+    env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
+    scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
+    priors = image_priors(scene) | scene_priors(cfg, scene)
+    # pilot: an isotropic GP at the middle of the (sigma, length) grid on the errors as given; MacKay's error_scale needs a GaussianField
+    unit = compare_beam(data).minor_mas
+    mean = np.asarray(start.env.brightness)
+    pilot_sc = scene.set("env", Image(GaussianField(np.zeros(mean.shape), 1.0, unit, mean=mean), float(start.env.pixel_scale_mas),
+                                      support=support, flux=scene.env.flux))
+    pilot_pri = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}
+    pf = fit(pilot_sc, image_priors(pilot_sc) | pilot_pri, data, **(dict(max_steps=15) if args.smoke else {}))
+    pilot, corner = pf.model, 0.0
+    s = float(error_scale(pilot, data))
+    data_s = data.with_error_scale(s)
+    print(f"pilot GP: chi2/pt {chi2r(pilot, data)[0]:.3f}; error scale s = {s:.3f}", flush=True)
+    # geometry: a parametric disc, started from virgil's own blind rim fit (parametric stage), never the paper's values
+    par = json.load(open(path(out, cfg, "parametric.json")))
+    r0 = max(0.5 * par["rim_diam_mas"], 1.5 * hole_mas)
+    disk = MultipoleDisk(GaussianRing(r0, 0.4 * r0), harmonics=Harmonics(re=0.1, im=0.1), inc=min(max(par["rim_inc_deg"], 5.0), 80.0),
+                         pa=par["rim_pa_deg"] % 180.0, n_r=48, flux=PowerLaw(0.3, 0.0, L0))
+    sc = sparco_scene(cfg, disk, f_env=0.3)
+    gp = scene_priors(cfg, sc) | {
+        "env.inc": IsotropicInclination(0, 85), "env.pa": dist.Uniform(-90.0, 180.0), "env.profile.radius": dist.LogUniform(0.5, 60.0),
+        "env.profile.sigma": dist.LogUniform(0.1, 12.0), "env.harmonics.re": dist.Uniform(-1.0, 1.0), "env.harmonics.im": dist.Uniform(-1.0, 1.0)}
+    g = fit(sc, gp, data_s, **(dict(max_steps=15) if args.smoke else {}))
+    v = g.values
+    geo = dict(inc_deg=float(v["env.inc"]), pa_deg=float(v["env.pa"]) % 180.0, radius_mas=float(v["env.profile.radius"]),
+               width_mas=float(v["env.profile.sigma"]), h_re=float(np.ravel(v["env.harmonics.re"])[0]), h_im=float(np.ravel(v["env.harmonics.im"])[0]),
+               chi2_per_point=float(chi2r(g.model, data_s)[0]), converged=bool(g.info.get("converged", True)))
+    print("geometry", json.dumps(geo), flush=True)
+    json.dump(dict(error_scale=s, pilot_chi2_per_point=float(chi2r(pilot, data)[0]), hole_mas=hole_mas,
+                   geometry=geo, smoke=args.smoke), open(scale_file(out, cfg), "w"), indent=1)
 
 
 def fit_mem(cfg, scene, priors, data, args):
-    """MaxEntropy image, the weight at the corner of an L-curve."""
+    """MaxEntropy image: the weight where chi2 per point, on the (rescaled) errors, is 1 (Morozov's discrepancy principle)."""
     weights = np.array([1e3, 1e1]) if args.smoke else np.logspace(*cfg.get("log_weights", (4, -2)), 9)
-    opts = dict(max_steps=15) if args.smoke else dict(max_steps=800)
+    opts = dict(max_steps=15) if args.smoke else dict(max_steps=1500)
     curve = l_curve(scene, priors, data, MaxEntropy(1.0, path="env"), weights, **opts)
-    corner = curve.corner() if len(weights) > 3 else None
-    w_star = float(corner) if corner is not None else float(weights[len(weights) // 2])
-    k = int(np.argmin(np.abs(np.log(np.asarray(curve.weights)) - np.log(w_star))))
-    arrays = dict(weights=np.asarray(curve.weights), chi2_red=np.asarray(curve.chi2_red).tolist(),
-                  penalty=np.asarray(curve.penalty), chosen=k)
-    return curve.results[k].model, arrays, dict(regulariser="MaxEntropy", weight=float(curve.weights[k]), corner_weight=w_star)
+    try:
+        corner = curve.corner()
+    except ValueError:  # fewer than three swept weights converged (virgil raises); fall back to the middle weight
+        corner = None
+    corner_w = float(corner) if corner is not None else float(weights[len(weights) // 2])
+    ws = np.asarray(curve.weights, float)
+    chi = np.array([chi2r(r.model, data)[0] for r in curve.results])
+    k = int(np.argmin(np.abs(np.log(chi))))
+    model, w_star, how = curve.results[k].model, float(ws[k]), "closest swept weight to chi2 = 1 (the sweep does not bracket it)"
+    cross = [i for i in range(len(ws) - 1) if (chi[i] - 1.0) * (chi[i + 1] - 1.0) <= 0 and chi[i] != chi[i + 1]]
+    if cross and not args.smoke:
+        i = cross[0]
+        lo, hi = np.log(ws[i]), np.log(ws[i + 1])
+        c_lo, c_hi = chi[i], chi[i + 1]
+        start = curve.results[i].model
+        for _ in range(4):  # interpolate in log w, refit from the nearest stronger fit, secant-correct
+            w_try = float(np.exp(lo + (c_lo - 1.0) / (c_lo - c_hi) * (hi - lo)))
+            model = l_curve(start, priors, data, MaxEntropy(1.0, path="env"), [w_try], max_steps=2500).results[0].model
+            c_try = chi2r(model, data)[0]
+            w_star, how = w_try, "discrepancy"
+            if abs(c_try - 1.0) < 0.03:
+                break
+            if c_try > 1.0:
+                lo, c_lo = np.log(w_try), c_try
+            else:
+                hi, c_hi = np.log(w_try), c_try
+    arrays = dict(weights=ws, chi2_red=np.asarray(curve.chi2_red).tolist(), chi2_all=chi,
+                  penalty=np.asarray(curve.penalty), chosen=k, chosen_weight=w_star)
+    return model, arrays, dict(regulariser="MaxEntropy", weight=w_star, weight_rule=how, corner_weight=corner_w)
 
 
-def fit_gp(cfg, scene, start_env, support, priors, data, args):
-    """Gaussian-process image: a GaussianField log-brightness about the Gaussian start, (sigma, length) from the evidence.
+def pick_cell(log_z, chi2):
+    """The grid cell with the largest Laplace evidence, and whether it lies on the edge of the grid."""
+    cell = np.unravel_index(int(np.argmax(log_z)), log_z.shape)
+    edge = any(c in (0, n - 1) for c, n in zip(cell, log_z.shape) if n > 1)
+    return cell, bool(edge)
 
-    Follows the nuHor GP notebooks: errors are first rescaled with MacKay's ``error_scale`` from a pilot fit at the
-    middle of the grid (the evidence assumes correct error bars), then every (sigma, length) of the grid is fitted,
-    warm-started from the last, and the one with the largest Laplace evidence is kept. Lengths are fractions of the
-    beam's minor axis.
+
+def pixel_floor_lengths(pix, unit, mults=(0.5, 1.0, 2.0)):
+    """GP correlation lengths from one pixel (the floor: shorter is white noise) up through ``mults`` x the comparison beam, with one
+    geometric intermediate step between the pixel and the first beam multiple."""
+    top = [m * unit for m in mults if m * unit > 1.05 * pix]
+    first = top[0] if top else 2.0 * pix
+    return sorted({float(pix), float(np.sqrt(pix * first)), *top}) if first > 1.2 * pix else sorted({float(pix), *top})
+
+
+def fit_gp(cfg, scene, start_env, support, priors, data, args, geo=None, aniso=False):
+    """Gaussian-process image: a GaussianField log-brightness about the Gaussian start, (sigma, length) from the Laplace evidence.
+
+    ``data`` already carries the MacKay error rescaling. With ``aniso`` the grid's up axis points along the disc's major axis
+    (``geo['pa_deg']``) and the correlation lengths are (3 l, l) along and across it. Lengths are fractions of the comparison beam.
     """
-    gp = cfg["gp"]
-    sigmas, fracs = list(gp["sigmas"]), list(gp["length_beams"])
+    sigmas = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
+    unit = compare_beam(data).minor_mas
+    pix_ = float(start_env.pixel_scale_mas)
+    lengths = pixel_floor_lengths(pix_, unit)
     if args.smoke:
-        sigmas, fracs = sigmas[:1], fracs[:1]
-    minor = beam(data).minor_mas
-    lengths = [f * minor for f in fracs]
+        sigmas, lengths = sigmas[:1], lengths[:1]
+    fracs = [ln_ / unit for ln_ in lengths]
+    ratio = 3.0 if aniso else None
+    rot = float(geo["pa_deg"]) if aniso else 0.0
     mean = np.asarray(start_env.brightness)
-    n, pix = mean.shape[0], float(start_env.pixel_scale_mas)
+    pix = float(start_env.pixel_scale_mas)
     opts = dict(max_steps=15) if args.smoke else {}
 
     def gp_scene(sigma, length):
-        env = Image(GaussianField(np.zeros(mean.shape), sigma, length, mean=mean), pix, support=support, flux=scene.env.flux)
+        ell = (ratio * length, length) if ratio else length
+        env = Image(GaussianField(np.zeros(mean.shape), sigma, ell, mean=mean), pix, support=support, flux=scene.env.flux, rotation_deg=rot)
         return scene.set("env", env)
 
-    priors = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}  # the GP's latents replace the pixels
-    pilot = gp_scene(sigmas[len(sigmas) // 2], lengths[len(lengths) // 2])
-    pilot_fit = fit(pilot, image_priors(pilot) | priors, data, **opts)
-    s = float(error_scale(pilot_fit.model, data))
-    scaled = data.with_error_scale(s)
-    print(f"pilot chi2/pt {pilot_fit.info['chi2_red']:.3f}; error scale s = {s:.3f}")
+    priors = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}
     log_z, chi2 = np.zeros((len(lengths), len(sigmas))), np.zeros((len(lengths), len(sigmas)))
     fits, previous = {}, None
     for i, length in enumerate(lengths):
         for j, sigma in enumerate(sigmas):
             sc = gp_scene(sigma, length)
-            fits[i, j] = previous = fit(sc, image_priors(sc) | priors, scaled, init=None if previous is None else previous.values, **opts)
-            log_z[i, j], chi2[i, j] = float(log_evidence(fits[i, j], scaled)), float(fits[i, j].info["chi2_red"])
+            fits[i, j] = previous = fit(sc, image_priors(sc) | priors, data, init=None if previous is None else previous.values, **opts)
+            log_z[i, j], chi2[i, j] = float(log_evidence(fits[i, j], data)), float(fits[i, j].info["chi2_red"])
             print(f"length {length:.2f} mas, sigma {sigma}: log Z {log_z[i, j]:.1f}, chi2/pt {chi2[i, j]:.3f}", flush=True)
-    bi, bj = np.unravel_index(np.argmax(log_z), log_z.shape)
-    arrays = dict(gp_log_z=log_z, gp_chi2=chi2, gp_sigmas=np.asarray(sigmas), gp_lengths_mas=np.asarray(lengths),
-                  chosen=np.array([bi, bj]))
+    (bi, bj), edge = pick_cell(log_z, chi2)
+    arrays = dict(gp_log_z=log_z, gp_chi2=chi2, gp_sigmas=np.asarray(sigmas), gp_lengths_mas=np.asarray(lengths), chosen=np.array([bi, bj]))
     return fits[bi, bj].model, arrays, dict(
-        regulariser="GaussianField", gp_sigma=float(sigmas[bj]), gp_length_mas=float(lengths[bi]),
-        gp_length_beams=float(fracs[bi]), error_scale=s, log_evidence=float(log_z[bi, bj]),
-        gp_converged=bool(fits[bi, bj].info.get("converged", True)))
+        regulariser="GaussianField", rotation_deg=rot, weight_rule="Laplace evidence", gp_chi2=float(chi2[bi, bj]), gp_sigma=float(sigmas[bj]),
+        gp_length_mas=float(lengths[bi]), gp_ratio=ratio, gp_length_beams=float(fracs[bi]), log_evidence=float(log_z[bi, bj]),
+        gp_on_edge=edge, gp_converged=bool(fits[bi, bj].info.get("converged", True)))
+
+
+def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
+    """Polar-GP image (``virgil.fields.MultipoleField``): a Matern kernel in the disc's radius times a periodic one in azimuth,
+    deprojected by the inclination and position angle of our own parametric disc fit (``geo``); the polar grid starts at the hole
+    radius. (sigma, length_r, length_theta) from the Laplace evidence on the rescaled data."""
+    sigmas, lens_t = [0.125, 0.25, 0.5, 1.0, 2.0], [0.25, 0.5, 1.0, 2.0]
+    unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
+    lens_r = [m * unit_ for m in (0.5, 1.0, 2.0, 4.0) if m * unit_ >= pix_]
+    if args.smoke:
+        sigmas, lens_r, lens_t = sigmas[:1], lens_r[:1], lens_t[:1]
+    mean = np.asarray(start_env.brightness)
+    pix = float(start_env.pixel_scale_mas)
+    r_max = float(cfg["half_mas"])
+    n_r, n_th = 40, 32
+    opts = dict(max_steps=15) if args.smoke else {}
+
+    def mp_scene(sigma, lr, lt):
+        field = MultipoleField(np.zeros((n_r, n_th)), image_shape=mean.shape, r_max_mas=r_max, r_min_mas=r_min, sigma=sigma, length_r=lr,
+                               length_theta=lt, inc=geo["inc_deg"], pa=geo["pa_deg"], mean=mean)
+        return scene.set("env", Image(field, pix, support=support, flux=scene.env.flux))
+
+    priors = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}
+    shape = (len(lens_r), len(lens_t), len(sigmas))
+    log_z, chi2 = np.zeros(shape), np.zeros(shape)
+    fits, previous = {}, None
+    for i, lr in enumerate(lens_r):
+        for j, lt in enumerate(lens_t):
+            for k, sg in enumerate(sigmas):
+                sc = mp_scene(sg, lr, lt)
+                fits[i, j, k] = previous = fit(sc, image_priors(sc) | priors, data, init=None if previous is None else previous.values, **opts)
+                log_z[i, j, k], chi2[i, j, k] = float(log_evidence(fits[i, j, k], data)), float(fits[i, j, k].info["chi2_red"])
+                print(f"length_r {lr:.2f} mas, length_theta {lt:g} rad, sigma {sg}: log Z {log_z[i, j, k]:.1f}, chi2/pt {chi2[i, j, k]:.3f}", flush=True)
+    (bi, bj, bk), edge = pick_cell(log_z, chi2)
+    arrays = dict(gp_log_z=log_z[:, :, bk], gp_chi2=chi2[:, :, bk], gp_sigmas=np.asarray(lens_t), gp_lengths_mas=np.asarray(lens_r),
+                  gp_xlabel="ℓ_θ (rad)", gp_ylabel="ℓ_r (mas)", chosen=np.array([bi, bj]), mp_log_z=log_z, mp_chi2=chi2)
+    return fits[bi, bj, bk].model, arrays, dict(
+        regulariser="MultipoleField", weight_rule="Laplace evidence", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(sigmas[bk]),
+        gp_length_r_mas=float(lens_r[bi]), gp_length_theta=float(lens_t[bj]), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"],
+        mp_r_min_mas=r_min, mp_r_max_mas=r_max, log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge,
+        gp_converged=bool(fits[bi, bj, bk].info.get("converged", True)))
+
+
+def rendered_chi2_disc(model, shape, pix, data):
+    """chi2/pt of the disc+residual model's rendered pixel image, put back into the fitted scene (the render guard of ``image_one``)."""
+    b = render_env(model, "disc+res", shape, pix)
+    m = model.resolved()
+    env_r = Image(np.log(np.clip(b / b.sum(), 1e-14, None)), pix,
+                  flux=PowerLaw(float(np.asarray(m.env.flux.ratio)) + float(np.asarray(m.res.flux.ratio)), float(np.asarray(m.env.flux.index)), L0))
+    return chi2r(System(**{k: getattr(m, k) for k in ("star", "sec", "bg") if hasattr(m, k)}, env=env_r), data)[0]
+
+
+def fit_disc_at(cfg, data, args, geo, r_in, f_env0, d_env, pix, npix):
+    """Disc + residual: a ``MultipoleDisk`` with a ``RadialGP`` profile and degree-2 harmonics (``MultipoleKernel``), geometry
+    frozen at our parametric fit (``geo``), plus a coarse ``MultipoleField`` residual that follows the disc's geometry.
+    (sigma, length) of the profile from the Laplace evidence on the rescaled data; the inner edge is the hole.
+    Disc and residual share one spectral index ``d_env`` (fixed here, chosen by ``fit_disc``): SPARCO's environment is one grey image
+    with one index. Separate indices need no single image and make the rendered one meaningless (chi2/pt 76 against the model's 1.05)."""
+    unit = compare_beam(data).minor_mas
+    sigmas = [1.0, 2.0, 4.0, 8.0, 16.0]
+    lens = pixel_floor_lengths(float(pix), unit, mults=(0.5, 1.0, 2.0, 4.0))
+    if args.smoke:
+        sigmas, lens = sigmas[:1], lens[:1]
+    r_out = float(cfg["half_mas"])
+    opts = dict(max_steps=15) if args.smoke else {}
+
+    probe = MultipoleDisk(RadialGP(r_in, r_out, sigma=1.0, ell=unit), harmonics=Harmonics(re=0.0, im=0.0), inc=geo["inc_deg"], pa=geo["pa_deg"], n_r=48)
+    # 192 nodes: the model's chi2 does not depend on n_r, but the rendered image only converges there (IW Car: rendered chi2/pt 2.44 at 48,
+    # 2.02 at 96, 1.92 at 192 against the model's 1.86); suggest_n_r says 48 and is a starting point only.
+    n_r = int(os.environ.get("POSTAGB_NR", 0)) or (192 if not args.smoke else 48)
+    print("disc quadrature nodes n_r =", n_r, flush=True)
+
+    def disc_scene(sigma, ell):
+        disk = MultipoleDisk(
+            RadialGP(r_in, r_out, sigma=sigma, ell=ell),
+            harmonics=Harmonics(degree=2, prior=MultipoleKernel(ell_r=ell, ell_theta=2.0, sigma=0.5, n=10, r_in=r_in, r_out=r_out)),
+            inc=geo["inc_deg"], pa=geo["pa_deg"], n_r=n_r, flux=PowerLaw(f_env0, d_env, L0))
+        # the residual lives on the main image's pixel grid (its polar latent grid stays coarse), so rendering needs no resampling
+        res = Image(MultipoleField(np.zeros((16, 16)), image_shape=(npix, npix), r_max_mas=r_out, r_min_mas=r_in, sigma=1.0, length_r=4 * unit,
+                                   length_theta=1.0, geometry_from="env"),
+                    pix, flux=PowerLaw(0.02, d_env, L0))
+        sc = sparco_scene(cfg, disk, f_env=f_env0, extra=dict(res=res))
+        return sc.set("env", disk.freeze_geometry(data))
+
+    log_z, chi2 = np.zeros((len(lens), len(sigmas))), np.zeros((len(lens), len(sigmas)))
+    rendered, ok = np.zeros_like(log_z), np.zeros(log_z.shape, bool)
+    fits, previous = {}, None
+    for i, ell in enumerate(lens):
+        for j, sigma in enumerate(sigmas):
+            sc = disc_scene(sigma, ell)
+            pri = gp_priors(sc) | image_priors(sc) | scene_priors(cfg, sc) | {"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)}  # a residual, not the model: at most 30 % of the starting environment flux
+            pri.pop("env.flux.index", None)
+            pri.pop("res.flux.index", None)
+            fits[i, j] = previous = fit(sc, pri, data, init=None if previous is None else previous.values, **opts)
+            log_z[i, j], chi2[i, j] = float(log_evidence(fits[i, j], data)), float(fits[i, j].info["chi2_red"])
+            rendered[i, j] = rendered_chi2_disc(fits[i, j].model, (npix, npix), pix, data)
+            ok[i, j] = abs(rendered[i, j] - chi2[i, j]) <= 0.1 * chi2[i, j] + 0.02
+            print(f"profile length {ell:.2f} mas, sigma {sigma}: log Z {log_z[i, j]:.1f}, chi2/pt {chi2[i, j]:.3f}, rendered {rendered[i, j]:.3f}"
+                  f"{'' if ok[i, j] else ' (render mismatch: not eligible)'}", flush=True)
+    # a profile rougher than the pixel grid can show has no image: such cells are not eligible (all of them, if none passes)
+    (bi, bj), edge = pick_cell(np.where(ok, log_z, -np.inf) if ok.any() else log_z, chi2)
+    arrays = dict(gp_log_z=log_z, gp_chi2=chi2, gp_rendered_chi2=rendered, gp_render_ok=ok, gp_sigmas=np.asarray(sigmas), gp_lengths_mas=np.asarray(lens), chosen=np.array([bi, bj]))
+    return fits[bi, bj].model, arrays, dict(
+        regulariser="MultipoleDisk", n_r=n_r, weight_rule="Laplace evidence", gp_chi2=float(chi2[bi, bj]), gp_sigma=float(sigmas[bj]),
+        gp_length_mas=float(lens[bi]), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"], mp_r_min_mas=r_in, mp_r_max_mas=r_out,
+        log_evidence=float(log_z[bi, bj]), gp_on_edge=edge, gp_converged=bool(fits[bi, bj].info.get("converged", True)))
+
+
+def fit_disc(cfg, data, args, geo, r_in, f_env0, d_mem, pix, npix):
+    """``fit_disc_at`` over a grid of the shared environment index (the MEM fit's value ``d_mem`` and one unit either side), the largest Laplace
+    evidence choosing it: virgil cannot tie two components' indices, so the one free SPARCO index is scanned."""
+    ds = sorted({round(float(d_mem) + k, 2) for k in (-1.0, 0.0, 1.0)})  # the evidence peaks within +-1 of the MEM value (IW Car: 1.0 against 0.82)
+    if args.smoke:
+        ds = ds[:1]
+    fits = {d: fit_disc_at(cfg, data, args, geo, r_in, f_env0, d, pix, npix) for d in ds}
+    best = max(fits, key=lambda d: fits[d][2]["log_evidence"])
+    model, arrays, extra = fits[best]
+    arrays["d_env_grid"] = np.asarray(ds)
+    arrays["d_env_log_z"] = np.asarray([fits[d][2]["log_evidence"] for d in ds])
+    extra["d_env_shared"] = float(best)
+    extra["d_env_on_edge"] = bool(best in (ds[0], ds[-1]))
+    print("shared index grid:", {d: round(fits[d][2]["log_evidence"], 1) for d in ds}, "-> chosen", best, flush=True)
+    return model, arrays, extra
+
+
+def render_env(model, strategy, bright_shape, pix):
+    """The environment's brightness on the pixel grid (North up, East left), flux-weighted for the disc strategy."""
+    if strategy != "disc+res":
+        return np.asarray(model.env.brightness)
+    n = bright_shape[0]
+    model = model.resolved()  # the residual's geometry_from="env" tie is only applied here, not when its pixels are read off the component
+    disk = np.asarray(model.env.render(npix=n, fov_mas=n * pix))
+    f_d = float(np.asarray(model.env.flux.ratio))
+    res = np.asarray(model.res.brightness)  # coarse residual on its own grid, resampled to ours
+    res_g = res / res.sum() if res.shape == (n, n) and abs(float(model.res.pixel_scale_mas) - pix) < 1e-9 else to_grid(
+        res / res.sum(), float(model.res.pixel_scale_mas), pix, n)
+    return f_d * disk / disk.sum() + float(np.asarray(model.res.flux.ratio)) * res_g / res_g.sum()
+
+
+def per_strategy(fn, args, out, *extra):
+    """Run ``fn`` for each requested strategy, with the target's outputs named <target>_<strategy>_*."""
+    base = TARGETS[args.target]
+    for strat in (STRATEGIES if args.strategy == "all" else (args.strategy,)):
+        sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")  # a one-off star-index run never overwrites the headline files
+        TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
+        try:
+            fn(args, out, strat, *extra)
+        except FileNotFoundError as e:  # a strategy not run for this target
+            print("skipped", strat, e)
+        finally:
+            TARGETS[args.target] = base
+
+
+def image_stage(args, out):
+    """The imaging strategies (``--strategy``): the common SPARCO scene, each strategy's environment, hyperparameters by evidence."""
+    per_strategy(image_one, args, out)
+
+
+def bound_warnings(model, priors, tol=0.01):
+    """Fitted scene parameters that sit within ``tol`` of the range of their uniform / log-uniform prior: the prior, not the data, then
+    chose them. (Field latents and Normal priors have no bound.)"""
+    out = []
+    for key, pr in priors.items():
+        lo, hi = getattr(pr, "low", None), getattr(pr, "high", None)
+        if lo is None or hi is None or key.startswith(("env.log_brightness", "env.field")) or ".z" in key:
+            continue
+        try:
+            v = model
+            for part in key.split("."):
+                v = getattr(v, part)
+            v = float(np.ravel(np.asarray(v))[0])
+        except Exception:  # noqa: BLE001 - a prior on something that is not a plain scalar of the model
+            continue
+        lo, hi = float(np.ravel(np.asarray(lo))[0]), float(np.ravel(np.asarray(hi))[0])
+        if "LogUniform" in type(pr).__name__ and v > 0 and lo > 0:
+            v, lo, hi = np.log(v), np.log(lo), np.log(hi)
+        span = hi - lo
+        if v - lo < tol * span:
+            out.append(f"{key} at its lower bound")
+        elif hi - v < tol * span:
+            out.append(f"{key} at its upper bound")
+    return out
+
+
+def warm_params(out, cfg, strat, args):
+    """Scene parameters of the previous run of this target and strategy, if it converged cleanly: ``(values by path, source)``.
+    Only the scene (flux ratios, indices, secondary position) is reused: field latents are not saved, and a changed field size
+    (PS Gem, HR 4049) would not fit them anyway. Disc runs need the render guard to have passed."""
+    f = out / f"{cfg['key']}_image.json"
+    if args.smoke or not f.exists():
+        return None, None
+    j = json.load(open(f))
+    clean = j.get("gp_converged", True) is not False and 0.2 < j.get("chi2_per_point", 9.0) < 3.0 and not j.get("smoke")
+    if strat == "disc+res":
+        clean = clean and bool(j.get("render_ok")) and j.get("d_env_shared") is not None
+    if not clean or not j.get("f_prim_pct"):
+        return None, None
+    fp = j["f_prim_pct"]
+    w = {"env.flux.ratio": float(np.clip(j["f_env_pct"] / fp, 0.011, 19.0)), "env.flux.index": float(np.clip(j["env_index"], -5.9, 5.9))}
+    if cfg.get("bg") and j.get("f_bg_pct") is not None and j.get("bg_index") is not None:
+        w |= {"bg.flux.ratio": float(np.clip(j["f_bg_pct"] / fp, 1e-4, 1.9)), "bg.flux.index": float(np.clip(j["bg_index"], -5.9, 5.9))}
+        if cfg.get("bg_index_fixed") is not None:
+            w.pop("bg.flux.index")
+    if j.get("sec_dra") is not None and cfg.get("sec0") is not None and cfg.get("secondary", True):
+        w |= {"sec.flux.ratio": float(np.clip(j["f_sec_pct"] / fp, 1e-4, 0.97)), "sec.dra": float(j["sec_dra"]), "sec.ddec": float(j["sec_ddec"])}
+        if j.get("sec_index") is not None and "sec_index0" in cfg:
+            w["sec.flux.index"] = float(np.clip(j["sec_index"], -4.9, 1.9))
+    return w, f.name
+
+
+SKIP_FLAG = pathlib.Path("/private/tmp/claude-501/skip_clean.flag")  # while it exists, a cleanly converged earlier result is kept
+
+
+def skip_clean_reason(out, cfg, strat, args):
+    """Why this target x strategy need not be rerun (its previous result converged, was not on a grid edge, and for the disc
+    passed the render guard), or None. PS Gem and HR 4049 changed field size, so they always rerun; MEM does not use the GP grids."""
+    f = out / f"{cfg['key']}_image.json"
+    if args.smoke or not SKIP_FLAG.exists() or not f.exists() or cfg.get("fov_override"):
+        return None
+    j = json.load(open(f))
+    if j.get("smoke") or not (0.2 < j.get("chi2_per_point", 9.0) < 3.0) or j.get("gp_converged", True) is False:
+        return None
+    if j.get("f_sec_pct") and j["f_sec_pct"] / j["f_prim_pct"] > 0.28:
+        return None  # pinned at the old 0.3 bound of the secondary's flux ratio
+    if ("sec_index0" not in cfg and not j.get("star_index_source", "").startswith("ORGANIC")) or (
+            cfg.get("sec_index_fixed") is not None and not j.get("sec_treatment")):
+        return None  # fitted before the default secondary treatment (PMOIRED prior, fixed index, no window inside the primary hole)
+    if strat == "mem":
+        return "mem does not use the GP grids"
+    if j.get("gp_on_edge") is not False:
+        return None
+    if strat == "disc+res" and not (j.get("render_ok") and j.get("d_env_shared") is not None and j.get("n_r") == 192):
+        return None
+    return "converged, interior of its grid" + (", render guard passed" if strat == "disc+res" else "")
+
+
+def image_one(args, out, strat):
+    cfg = cfg_of(args)
+    why = skip_clean_reason(out, cfg, strat, args)
+    if why:
+        print("skipped", strat, "-", why, flush=True)
+        return
+    data_s, data0, s, files = load_scaled(cfg, args, out)
+    geo = json.load(open(scale_file(out, cfg)))["geometry"] if strat in ("gp-aniso", "gp-polar", "disc+res") and not args.smoke else dict(
+        inc_deg=45.0, pa_deg=90.0)
+    t0 = time.time()
+    pix_ = cfg["pixel_mas"] * (4.0 if args.smoke else 1.0)
+    rot = float(geo["pa_deg"]) if strat == "gp-aniso" else 0.0
+    start, support, hole_mas = grid_setup(cfg, data_s, args, rot)
+    env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux, rotation_deg=rot)
+    print(strat, "grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; hole radius", f"{hole_mas:.3f}", "mas;",
+          f"error scale {s:.3f}", flush=True)
+    f_env0 = float(np.asarray(env.flux))
+    scene = sparco_scene(cfg, env, f_env=f_env0)
+    warm, warm_src = warm_params(out, cfg, strat, args)
+    if warm and strat != "disc+res":
+        for k_, v_ in warm.items():
+            scene = scene.set(k_, v_)
+    if warm:
+        print("warm start from", warm_src, {k_: round(v_, 3) for k_, v_ in warm.items()}, flush=True)
+    priors = image_priors(scene) | scene_priors(cfg, scene)
+    has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
+    if strat == "mem":
+        model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data_s, args)
+    elif strat in ("gp-iso", "gp-aniso"):
+        model, curve_arrays, extra_gp = fit_gp(cfg, scene, start.env, support, priors, data_s, args, geo, aniso=strat == "gp-aniso")
+    elif strat == "gp-polar":
+        model, curve_arrays, extra_gp = fit_polar(cfg, scene, start.env, support, priors, data_s, args, geo, hole_mas)
+    else:
+        mem_json = out / f"{cfg['key'][:-len('_disc+res')]}_mem_image.json"
+        d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
+        model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
+
+    extra = dict(strategy=strat, error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+                 n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
+                 bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
+                 sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
+                                if cfg.get("sec_index_fixed") is not None else None),
+                 star_index_source=cfg.get("star_index_source", "SPARCO convention (-4)"), sec_index_source=cfg.get("sec_index_source"),
+                 warm_start=bool(warm) and strat != "disc+res", warm_source=warm_src if strat != "disc+res" else None,
+                 field_radius_mas=float(cfg["half_mas"]), support_radius_mas=float(cfg.get("mask_mas", env.log_brightness.shape[0] * pix_ / 2))) | extra_gp
+    c2, n = chi2r(model, data_s)
+    pix = float(env.pixel_scale_mas)
+    bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
+    bright = bright_grid if not rot else np.clip(rotate_img(bright_grid, rot, order=1, reshape=False, mode="constant", cval=0.0), 0.0, None)
+    mv2, mt3 = observables(model, data_s)
+    # guard: the rendered environment, put back into the fitted scene as a pixel image, must fit as well as the model does
+    b_ = bright_grid / bright_grid.sum()
+    env_r = Image(np.log(np.clip(b_, 1e-14, None)), pix, rotation_deg=rot, flux=PowerLaw(float(np.asarray(model.env.flux.ratio)) + (float(np.asarray(model.res.flux.ratio)) if strat == "disc+res" else 0.0),
+                                                                      float(np.asarray(model.env.flux.index)), L0))
+    chi2_rendered = chi2r(model.set("env", env_r) if strat != "disc+res" else System(**{k: getattr(model, k) for k in ("star", "sec", "bg") if hasattr(model, k)}, env=env_r), data_s)[0]
+    render_ok = bool(abs(chi2_rendered - c2) <= 0.1 * c2 + 0.02)
+    print(f"render guard: chi2/pt model {c2:.3f}, rendered image {chi2_rendered:.3f}", "ok" if render_ok else "RENDER MISMATCH", flush=True)
+    f_env = float(np.asarray(model.env.flux.ratio))
+    f_sec = float(np.asarray(model.sec.flux.ratio)) if has_sec else 0.0
+    f_bg = float(np.asarray(model.bg.flux.ratio)) if cfg.get("bg") else 0.0
+    f_res = float(np.asarray(model.res.flux.ratio)) if strat == "disc+res" else 0.0
+    f_disk = f_env if strat == "disc+res" else None
+    n_ = bright.shape[0]
+    yy, xx = np.mgrid[:n_, :n_]
+    outer = np.hypot(xx - (n_ - 1) / 2, yy - (n_ - 1) / 2) * pix > 0.8 * cfg["half_mas"]  # env flux near the field edge
+    f_outer = (f_env + f_res) * float(bright[outer].sum() / bright.sum()) if bright.sum() > 0 else 0.0
+    stars = dict(ud=float(cfg["ud_fix"]), f_env=f_env + f_res, env_index=float(np.asarray(model.env.flux.index)), f_sec=f_sec,
+                 f_bg=f_bg, bg_index=float(np.asarray(model.bg.flux.index)) if cfg.get("bg") else None,
+                 sec_dra=float(model.sec.dra) if has_sec else None, sec_ddec=float(model.sec.ddec) if has_sec else None,
+                 sec_index=float(np.asarray(model.sec.flux.index)) if has_sec else None)
+    np.savez(path(out, cfg, "image.npz"), brightness=bright, brightness_grid=bright_grid, rotation_deg=rot, pixel_mas=pix, model_v2=mv2, model_t3=mt3,
+             **curve_arrays, stars=json.dumps(stars))
+    tot = 1.0 + stars["f_env"] + f_sec + f_bg
+    summary = dict(chi2_per_point=c2, chi2_rendered=chi2_rendered, render_ok=render_ok, f_disk=f_disk, f_res=f_res if strat == "disc+res" else None, n_points=n, grid=list(bright.shape), pixel_mas=pix, smoke=args.smoke, seconds=time.time() - t0,
+                   f_prim_pct=100 / tot, f_sec_pct=100 * f_sec / tot if has_sec else None, f_env_pct=100 * stars["f_env"] / tot,
+                   f_bg_pct=100 * f_bg / tot if cfg.get("bg") else None, f_outer_pct=100 * f_outer / tot,
+                   f_overresolved_pct=100 * (f_bg + f_outer) / tot, **extra,
+                   **{k_: v for k_, v in stars.items() if k_ in ("ud", "env_index", "bg_index", "sec_dra", "sec_ddec", "sec_index")})
+    if has_sec:
+        summary |= dict(sec_sep_mas=float(np.hypot(stars["sec_dra"], stars["sec_ddec"])),
+                        sec_pa_deg=float(np.degrees(np.arctan2(stars["sec_dra"], stars["sec_ddec"])) % 360.0))
+    print(json.dumps(summary, indent=1))
+    json.dump(summary, open(path(out, cfg, "image.json"), "w"), indent=1)
+    plot_lcurve(out, cfg)
 
 
 # ----------------------------------------------------------------------------
@@ -665,7 +1113,7 @@ def compare_bitmap_stage(args, out):
     from virgil.imaging import Beam
 
     cfg = cfg_of(args)
-    data, _ = load(cfg, args.files)
+    data, _, _, _ = load_scaled(cfg, args, out)
     ours = np.load(path(out, cfg, "image.npz"))
     pub, scale, pb, _ = bitmap_published(cfg)
     n = pub.shape[0]
@@ -739,10 +1187,14 @@ def plot_bitmap_compare(out, cfg):
 
 
 def compare_stage(args, out):
+    per_strategy(lambda a, o, strat: compare_one(a, o), args, out)
+
+
+def compare_one(args, out):
     cfg = cfg_of(args)
     if cfg.get("bitmap"):
         return compare_bitmap_stage(args, out)
-    data, _ = load(cfg, args.files)
+    data, _, _, _ = load_scaled(cfg, args, out)  # the errors as rescaled for the fits
     ours = np.load(path(out, cfg, "image.npz"))
     pub, noise, pub_scale, hdr = published_image(cfg)
     n = pub.shape[0]
@@ -839,7 +1291,11 @@ def reg_label(out, cfg):
     j = json.load(open(path(out, cfg, "image.json")))
     if j.get("regulariser") == "GaussianField":
         return f"GP, σ = {j['gp_sigma']:g}, ℓ = {j['gp_length_mas']:.2f} mas"
-    return "MaxEntropy, L-curve"
+    if j.get("regulariser") == "MultipoleDisk":
+        return f"disc + residual GP, σ = {j['gp_sigma']:g}, ℓ = {j['gp_length_mas']:.2f} mas"
+    if j.get("regulariser") == "MultipoleField":
+        return f"polar GP, σ = {j['gp_sigma']:g}, ℓ_r = {j['gp_length_r_mas']:g} mas, ℓ_θ = {j['gp_length_theta']:g} rad"
+    return "MaxEntropy, discrepancy"
 
 
 def plot_images(out, cfg):
@@ -970,10 +1426,10 @@ def plot_gp_grid(out, cfg, z):
     log_z, chi2 = z["gp_log_z"], z["gp_chi2"]
     sig, ln, (bi, bj) = z["gp_sigmas"], z["gp_lengths_mas"], z["chosen"]
     fig, ax = plt.subplots(1, 2, figsize=(9, 3.6))
-    for a, vals, title, fmt in ((ax[0], log_z - log_z.max(), "log evidence - max", "{:.0f}"), (ax[1], chi2, "χ² per point (rescaled errors)", "{:.2f}")):
+    for a, vals, title, fmt in ((ax[0], log_z - log_z.max(), "log evidence - max", "{:.0f}"), (ax[1], chi2, "χ² per point (errors as given)", "{:.2f}")):
         im = a.imshow(vals, origin="lower", cmap="viridis", aspect="auto")
         a.set(xticks=range(len(sig)), xticklabels=[f"{x:g}" for x in sig], yticks=range(len(ln)),
-              yticklabels=[f"{x:.2f}" for x in ln], xlabel="σ", ylabel="ℓ (mas)", title=title)
+              yticklabels=[f"{x:.2f}" for x in ln], xlabel=str(z["gp_xlabel"]) if "gp_xlabel" in z else "σ", ylabel=str(z["gp_ylabel"]) if "gp_ylabel" in z else "ℓ (mas)", title=title)
         a.plot(bj, bi, "wx", ms=12, mew=2)
         mid = 0.5 * (vals.min() + vals.max())
         for (i, j), v in np.ndenumerate(vals):
@@ -1026,6 +1482,66 @@ def _fmt(v, e=None):
     return f"{v:.3g}" if e is None else f"{v:.3g} ± {e:.2g}"
 
 
+STRATEGY_TITLES = {"mem": "S0 MaxEntropy", "gp-iso": "S1 GP isotropic", "gp-aniso": "S2 GP anisotropic", "gp-polar": "S3 GP polar",
+                   "disc+res": "S4 disc + residual"}
+CANONICAL = ("image.json", "image.npz", "compare.json", "compare_images.npz", "compare.png", "images.png", "fit.png", "lcurve.png")
+
+
+def select_stage(args, out):
+    """Collect the strategies of a target: the table (``<t>_strategies.json``), the strip ``<t>_strategies.png`` (published | S0..S4 at the
+    comparison beam), and the evidence-preferred strategy's files copied to the canonical ``<t>_*`` names the page links to.
+
+    The headline is HEADLINE (the polar GP, chosen by eye by Ben on IW Car: the strategies differ a lot in latent dimension and Occam
+    factor and chi2/pt sits near 0.5-0.6, so the Laplace evidence is not followed blindly); ``evidence_preferred`` records the strategy
+    with the largest Laplace log evidence among the GP and disc strategies (MaxEntropy has none), and dlogz is relative to it."""
+    import shutil  # noqa: PLC0415
+
+    cfg = cfg_of(args)
+    rows = {}
+    for st in STRATEGIES:
+        c = cfg | dict(key=f"{cfg['key']}_{st}")
+        if not (path(out, c, "image.json").exists() and path(out, c, "compare.json").exists()):
+            continue
+        i, r = json.load(open(path(out, c, "image.json"))), json.load(open(path(out, c, "compare.json")))
+        rows[st] = dict(strategy=st, ncc=r["ncc_zero_shift"], ncc_best_control=max(r["ncc_controls"].values()), chi2_per_point=i["chi2_per_point"],
+                        log_evidence=i.get("log_evidence"), f_prim_pct=i["f_prim_pct"], f_sec_pct=i.get("f_sec_pct"), f_env_pct=i["f_env_pct"],
+                        f_bg_pct=i.get("f_bg_pct"), f_outer_pct=i.get("f_outer_pct"), f_overresolved_pct=i.get("f_overresolved_pct"),
+                        env_index=i.get("env_index"), error_scale=i["error_scale"], gp_on_edge=i.get("gp_on_edge"), regulariser=i.get("regulariser"),
+                        hole_mas=i["hole_mas"], seconds=i["seconds"])
+    if not rows:
+        raise FileNotFoundError("no strategy outputs")
+    evid = {k: v["log_evidence"] for k, v in rows.items() if v["log_evidence"] is not None}
+    ev_best = max(evid, key=evid.get) if evid else "mem"
+    best = HEADLINE if HEADLINE in rows else ev_best
+    for k, v in rows.items():
+        v["dlogz"] = (v["log_evidence"] - evid[ev_best]) if v["log_evidence"] is not None else None
+    json.dump(dict(preferred=best, evidence_preferred=ev_best, strategies=rows), open(out / f"{cfg['key']}_strategies.json", "w"), indent=1)
+    for suf in CANONICAL:
+        shutil.copyfile(path(out, cfg | dict(key=f"{cfg['key']}_{best}"), suf), path(out, cfg, suf))
+    # the strip
+    names = list(rows)
+    zs = {k: np.load(path(out, cfg | dict(key=f"{cfg['key']}_{k}"), "compare_images.npz")) for k in names}
+    first = zs[names[0]]
+    s, n, half = float(first["pixel_mas"]), first["ours"].shape[0], cfg["half_mas"]
+    ext = [n * s / 2, -n * s / 2, -n * s / 2, n * s / 2]
+    fig, ax = plt.subplots(1, len(names) + 1, figsize=(3.1 * (len(names) + 1), 3.6), sharey=True)
+    panels = [("published_conv", "published", first)] + [("ours_conv", f"{STRATEGY_TITLES[k]}\nNCC {rows[k]['ncc']:.2f}, χ²/pt {rows[k]['chi2_per_point']:.2f}"
+                                                           + (f", ΔlnZ {rows[k]['dlogz']:.0f}" if rows[k]["dlogz"] is not None else ""), zs[k]) for k in names]
+    for a, (key, title, z) in zip(ax, panels):
+        im = z[key]
+        a.imshow(im / im.max(), origin="upper", extent=ext, cmap="magma", vmin=0, vmax=1)
+        a.set_xlim(half, -half)
+        a.set_ylim(-half, half)
+        a.plot(0, 0, "*", c="gold", ms=8, mec="k")
+        a.set_title(title + (" (preferred)" if key == "ours_conv" and title.startswith(STRATEGY_TITLES[best]) else ""), fontsize=8)
+        a.set_xlabel("Δα (mas)", fontsize=8)
+    ax[0].set_ylabel("Δδ (mas)", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out / f"{cfg['key']}_strategies.png", dpi=130)
+    plt.close(fig)
+    print("preferred strategy:", best, json.dumps({k: (round(v["ncc"], 3), round(v["chi2_per_point"], 3), v["dlogz"]) for k, v in rows.items()}))
+
+
 def table_stage(args, out):
     """Markdown rows of the parametric comparison, only for what the paper reports for this target."""
     from postagb_paper import IMAGE, PMOIRED  # noqa: PLC0415
@@ -1072,8 +1588,8 @@ def table_stage(args, out):
     path(out, cfg, "table.md").write_text(text + "\n")
 
 
-STAGES = dict(inspect=inspect_stage, parametric=parametric_stage, image=image_stage,
-              compare=compare_stage, replot=replot_stage, table=table_stage)
+STAGES = dict(inspect=inspect_stage, parametric=parametric_stage, scale=scale_stage, image=image_stage,
+              compare=compare_stage, select=select_stage, replot=replot_stage, table=table_stage)
 
 
 def main():
@@ -1082,14 +1598,15 @@ def main():
     p.add_argument("outdir", type=Path)
     p.add_argument("--target", default="IW_Car", choices=list(TARGETS))
     p.add_argument("--smoke", action="store_true", help="tiny run: three files, coarse grid, few steps")
+    p.add_argument("--strategy", default="all", choices=("all",) + STRATEGIES, help="imaging strategy for the image and compare stages")
+    p.add_argument("--star-index", type=float, default=None, help="one-off: stellar power-law index of the image scene (default -4), written as <target>_si<n>_*")
+    p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")
     p.add_argument("--files", type=int, default=None, help="use only the first N files")
     args = p.parse_args()
     if args.smoke and args.files is None:
         args.files = 3
     args.outdir.mkdir(parents=True, exist_ok=True)
     STAGES[args.stage](args, args.outdir)
-    if args.stage == "image":
-        plot_lcurve(args.outdir, cfg_of(args))
 
 
 if __name__ == "__main__":

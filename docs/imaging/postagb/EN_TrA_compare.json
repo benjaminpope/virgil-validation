@@ -1,14 +1,14 @@
 {
- "ncc_zero_shift": 0.9152947196035879,
+ "ncc_zero_shift": 0.9485132074421533,
  "ncc_controls": {
-  "mirrored_East-West": 0.7082933763544801,
-  "rotated_180": 0.5869243894198728,
-  "azimuthal_average_of_published": 0.8108035676230639
+  "mirrored_East-West": 0.7549698861693256,
+  "rotated_180": 0.4983467544185601,
+  "azimuthal_average_of_published": 0.783079628908892
  },
- "ncc_best_shift": 0.9204652471004517,
+ "ncc_best_shift": 0.9614831599948811,
  "best_shift_pixels": {
   "dy": -1,
-  "dx": 0
+  "dx": -1
  },
  "pixel_mas": 0.265,
  "beam": {
@@ -18,18 +18,18 @@
  },
  "beam_convention": "circular Gaussian, FWHM lambda_min / (2 B_max)",
  "virgil_data_beam": {
-  "major_mas": 3.259888638303417,
-  "minor_mas": 1.9782569785000836,
-  "pa_deg": 139.03899101995935
+  "major_mas": 3.25843818784666,
+  "minor_mas": 1.9770113173478556,
+  "pa_deg": 139.0530229389888
  },
  "ours": {
   "disc": {
-   "flux_fraction": 0.9999582641617782,
-   "mean_radius_mas": 3.755226250435894,
-   "major_pa_deg": 117.73451100211162,
-   "axis_ratio": 0.9318285178230447,
-   "centroid_pa_deg": 195.28629518404753,
-   "centroid_offset_mas": 0.2824308283366502
+   "flux_fraction": 0.9989868810322131,
+   "mean_radius_mas": 4.153399749294321,
+   "major_pa_deg": 39.00799065775499,
+   "axis_ratio": 0.7287081145924394,
+   "centroid_pa_deg": 189.74616924023314,
+   "centroid_offset_mas": 0.579949674203062
   }
  },
  "published": {
@@ -42,13 +42,13 @@
    "centroid_offset_mas": 0.19345830777367792
   }
  },
- "chi2_per_point_published_on_our_data": 1.4086375792451018,
- "chi2_per_point_ours": 1.1553910129581608,
+ "chi2_per_point_published_on_our_data": 0.8268205519008994,
+ "chi2_per_point_ours": 0.6285638759295384,
  "n_points": 1548,
  "published_orientation_chi2": {
-  "as_published": 1.4086375792451018,
-  "mirrored_East-West": 7.256286587485451,
-  "mirrored_North-South": 16.162051754819903
+  "as_published": 0.8268205519008994,
+  "mirrored_East-West": 4.259184171581638,
+  "mirrored_North-South": 9.486554063773076
  },
  "smoke": false
 }

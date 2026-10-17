@@ -1,0 +1,78 @@
+{
+ "ncc_zero_shift": 0.8934389521796934,
+ "ncc_controls": {
+  "mirrored_East-West": 0.8058292458616612,
+  "rotated_180": 0.7193933055750421,
+  "azimuthal_average_of_published": 0.8517257759179631
+ },
+ "ncc_best_shift": 0.9060378827198182,
+ "best_shift_mas": {
+  "dy": -0.3206680584551148,
+  "dx": -0.1603340292275574
+ },
+ "pixel_mas": 0.0801670146137787,
+ "beam": {
+  "major_mas": 2.545104076943428,
+  "minor_mas": 1.8454062318846791,
+  "pa_deg": 167.8574186230478
+ },
+ "virgil_data_beam": {
+  "major_mas": 3.2154518222243578,
+  "minor_mas": 2.462135243013228,
+  "pa_deg": 164.44509171538132
+ },
+ "ours": {
+  "inner": {
+   "flux_fraction": 0.04029571456629453,
+   "mean_radius_mas": 2.4460179631716428,
+   "major_pa_deg": 15.957901579512585,
+   "axis_ratio": 0.7577634791491981,
+   "centroid_pa_deg": 321.47776338202283,
+   "centroid_offset_mas": 0.3045854168331241
+  },
+  "outer": {
+   "flux_fraction": 0.9119864760649677,
+   "mean_radius_mas": 8.646224475816195,
+   "major_pa_deg": 28.06967196678966,
+   "axis_ratio": 0.7547566908063401,
+   "centroid_pa_deg": 341.65773996087427,
+   "centroid_offset_mas": 0.9261706925692015
+  }
+ },
+ "published": {
+  "inner": {
+   "flux_fraction": 0.012091480346622623,
+   "mean_radius_mas": 2.598450088597638,
+   "major_pa_deg": 10.924368375945146,
+   "axis_ratio": 0.46279590696478345,
+   "centroid_pa_deg": 163.67118730380614,
+   "centroid_offset_mas": 0.6610769119803244
+  },
+  "outer": {
+   "flux_fraction": 0.8419211424951472,
+   "mean_radius_mas": 8.10866171431663,
+   "major_pa_deg": 115.9275354225391,
+   "axis_ratio": 0.9455144687008644,
+   "centroid_pa_deg": 9.50946221326786,
+   "centroid_offset_mas": 0.9508790717991981
+  }
+ },
+ "ncc_orientation": {
+  "as_published": 0.8934389521796934,
+  "mirrored_East-West": 0.8058292458616612,
+  "mirrored_North-South": 0.7287706360129556
+ },
+ "central_source": {
+  "ours": {
+   "sep_mas": 1.8860353575367454,
+   "pa_deg": 209.1823840319424
+  },
+  "published": {
+   "sep_mas": 2.4105038912425636,
+   "pa_deg": 179.27877845532524
+  }
+ },
+ "chi2_per_point_ours": 1.535719021126909,
+ "n_points": 1722,
+ "smoke": false
+}

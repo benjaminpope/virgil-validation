@@ -1,0 +1,70 @@
+{
+ "ncc_zero_shift": 0.8483327790387634,
+ "ncc_controls": {
+  "mirrored_East-West": 0.16848149190144962,
+  "rotated_180": 0.09746953995733365,
+  "azimuthal_average_of_published": 0.5885131019646181
+ },
+ "ncc_best_shift": 0.8483327790387634,
+ "best_shift_pixels": {
+  "dy": 0,
+  "dx": 0
+ },
+ "pixel_mas": 0.35000000000000003,
+ "beam": {
+  "major_mas": 1.2102040317542013,
+  "minor_mas": 1.2102040317542013,
+  "pa_deg": 0.0
+ },
+ "beam_convention": "circular Gaussian, FWHM lambda_min / (2 B_max)",
+ "virgil_data_beam": {
+  "major_mas": 3.2567743180708644,
+  "minor_mas": 2.286272831550803,
+  "pa_deg": 142.35951189879174
+ },
+ "ours": {
+  "inner": {
+   "flux_fraction": 0.18111208181473054,
+   "mean_radius_mas": 3.26066884723592,
+   "major_pa_deg": 148.84014087060012,
+   "axis_ratio": 0.7986055077114947,
+   "centroid_pa_deg": 329.61660586620224,
+   "centroid_offset_mas": 1.1283732318731814
+  },
+  "outer": {
+   "flux_fraction": 0.8188875694463973,
+   "mean_radius_mas": 10.183921063517474,
+   "major_pa_deg": 176.30713543346656,
+   "axis_ratio": 0.7209938755580206,
+   "centroid_pa_deg": 265.86648203126197,
+   "centroid_offset_mas": 4.340843984986863
+  }
+ },
+ "published": {
+  "inner": {
+   "flux_fraction": 0.1663585114443422,
+   "mean_radius_mas": 3.4137509373681034,
+   "major_pa_deg": 138.30103779461763,
+   "axis_ratio": 0.8781149263921841,
+   "centroid_pa_deg": 328.9292455541165,
+   "centroid_offset_mas": 1.1230689138114398
+  },
+  "outer": {
+   "flux_fraction": 0.7733272046776728,
+   "mean_radius_mas": 9.833721731920603,
+   "major_pa_deg": 163.30444057448483,
+   "axis_ratio": 0.7832841077026632,
+   "centroid_pa_deg": 267.7080001464239,
+   "centroid_offset_mas": 4.051091680385955
+  }
+ },
+ "chi2_per_point_published_on_our_data": 2.0467730184101156,
+ "chi2_per_point_ours": 1.8611241367493823,
+ "n_points": 1794,
+ "published_orientation_chi2": {
+  "as_published": 2.0467730184101156,
+  "mirrored_East-West": 60.191467789790615,
+  "mirrored_North-South": 8.818546257661843
+ },
+ "smoke": false
+}
