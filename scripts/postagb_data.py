@@ -24,6 +24,7 @@ import io
 import json
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -53,8 +54,14 @@ TARGETS = {
 def _get(url, params=None, timeout=600):
     if params:
         url += "?" + urllib.parse.urlencode(params)
-    with urllib.request.urlopen(url, timeout=timeout) as r:
-        return r.read()
+    for attempt in range(5):  # the archive drops connections now and then
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                return r.read()
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(5 * (attempt + 1))
 
 
 def list_products(target):

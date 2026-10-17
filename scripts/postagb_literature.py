@@ -37,6 +37,24 @@ FIGURES = {
             "ORGANIC (left) against SQUEEZE (right) reconstructions, IW Car among the last three targets"),
     },
 }
+# The other seven targets: one ORGANIC image each (Fig. 3 for the first four, Fig. 4 for the last four),
+# plus the SQUEEZE comparison panels of Appendix D and the rim-fit example of Fig. 5.
+_SHOWS = "peak-normalised SPARCO+ORGANIC image of {}, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+for _t, _name, _fig in (("AI_Sco", "AI Sco", "Fig. 3"), ("EN_TrA", "EN TrA", "Fig. 3"), ("HD95767", "HD 95767", "Fig. 3"),
+                        ("HD108015", "HD 108015", "Fig. 3"), ("HR4049", "HR 4049", "Fig. 4"),
+                        ("IRAS15469-5311", "IRAS 15469-5311", "Fig. 4"), ("PS_Gem", "PS Gem", "Fig. 4")):
+    FIGURES[_t] = {f"{_t}_disc_organic.png": (f"{_t}_disc_organic.png", _fig, _SHOWS.format(_name))}
+_SQ1 = ("organic_vs_squeeze_images_first_four.png", "Fig. 14 (Appendix D)",
+        "ORGANIC (left) against SQUEEZE (right) reconstructions of AI Sco, EN TrA, HD 95767 and HD 108015")
+_SQ2 = ("organic_vs_squeeze_images_last_three.png", "Fig. 15 (Appendix D)",
+        "ORGANIC (left) against SQUEEZE (right) reconstructions of IRAS 15469-5311 and IW Car (inner and outer arcs)")
+for _t, (_remote, _label, _what) in (("AI_Sco", _SQ1), ("EN_TrA", _SQ1), ("HD95767", _SQ1), ("HD108015", _SQ1),
+                                     ("IRAS15469-5311", _SQ2),):  # Fig. 15 has no panel for HR 4049 or PS Gem
+    FIGURES[_t][f"squeeze_{_remote}"] = (_remote, _label, _what)
+FIGURES["IRAS15469-5311"]["IRAS15469-5311_inner_rim_fit_organic.png"] = (
+    "IRAS15469-5311_inner_rim_fit_organic.png", "Fig. 5",
+    "example of the inner-rim ellipse fit for IRAS 15469-5311 (radial rays and 100 MCMC ellipses)")
+
 # Table values and parameter provenance live in the docs page and the imaging script.
 
 
