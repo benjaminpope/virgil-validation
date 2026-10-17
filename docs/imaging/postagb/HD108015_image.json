@@ -1,20 +1,25 @@
 {
- "chi2_per_point": 0.5785804266064462,
+ "chi2_per_point": 0.576854662421869,
  "n_points": 2730,
- "weight": 316.22776601683796,
- "corner_weight": 316.22776601683796,
  "grid": [
   103,
   103
  ],
  "pixel_mas": 0.3273333333333333,
  "smoke": false,
- "seconds": 84.97132992744446,
- "f_prim_pct": 56.64007821423179,
- "f_sec_pct": 0.0,
- "f_env_pct": 43.359921785768215,
- "ud": 0.050897623305707615,
- "env_index": 1.3378720648539808,
+ "seconds": 35.94475221633911,
+ "f_prim_pct": 56.65644993379538,
+ "f_sec_pct": null,
+ "f_env_pct": 43.34355006620462,
+ "hole_mas": 0.9817006719479326,
+ "hole_beams": 0.5,
+ "n_blanked": 25,
+ "regulariser": "MaxEntropy",
+ "weight": 316.22776601683796,
+ "corner_weight": 316.22776601683796,
+ "ud": 0.050650871190929696,
+ "env_index": 1.340639786296352,
  "sec_dra": null,
- "sec_ddec": null
+ "sec_ddec": null,
+ "sec_index": null
 }

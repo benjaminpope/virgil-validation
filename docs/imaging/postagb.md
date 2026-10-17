@@ -9,17 +9,26 @@ reconstruct each target with a SPARCO-like model (below), put both images on
 one grid and one beam, and say plainly whether they agree. One tab per
 target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from the authors' reduced data.
 
-| Target | Published method | virgil verdict | Image cross-correlation |
-| --- | --- | --- | --- |
-| [IW Car](#iw-car) | SPARCO + ORGANIC (De Prins+2026; SQUEEZE check) | agree on morphology, differ in outer-arc detail | 0.95 |
-| [HR 4049](#hr-4049) | SPARCO + ORGANIC | virgil more compact; correlation weak evidence | 0.95 |
-| [HD 108015](#hd-108015) | SPARCO + ORGANIC | agree | 0.99 |
-| [AI Sco](#ai-sco) | SPARCO + ORGANIC | agree | 0.96 |
-| [EN TrA](#en-tra) | SPARCO + ORGANIC | agree on size, differ in orientation | 0.95 |
-| [HD 95767](#hd-95767) | SPARCO + ORGANIC | agree | 0.99 |
-| [IRAS 15469-5311](#iras-15469-5311) | SPARCO + ORGANIC | agree in radius and centroid | 0.99 |
-| [PS Gem](#ps-gem) | SPARCO + ORGANIC | do not agree; virgil image unconstrained | 0.63 |
-| [IRAS 08544-4431](#iras-08544-4431) | SPARCO image (Hillen+2016) | agree on the ring and its asymmetry; the secondary's position and flux differ | 0.96 |
+!!! note "Method: the central stars are not in the image"
+    The image has no pixels within a window of radius 0.5 × the minor axis of the data's own dirty beam around each central star
+    (and around each point-source secondary that the scene models; the radius is given per target in its tab). Extended flux that close to a star
+    is degenerate with the star's own flux, so letting the image fill it trades stellar flux for disc flux and
+    shifts the fitted stellar fractions. Both images are convolved with a circular Gaussian of FWHM λ_min/(2 B_max), computed from each
+    target's own data (the value is in the last column below and drawn on each figure); IRAS 08544-4431 instead uses the beam drawn on
+    Hillen's figure. HR 4049 and PS Gem use a Gaussian-process prior on the environment (σ and length chosen by the Laplace evidence);
+    the others use MaxEntropy. For both GP targets the MaxEntropy result is kept for comparison and the tab says which is shown.
+
+| Target | Published method | virgil method | virgil verdict | NCC (best control) | Comparison beam (mas) |
+| --- | --- | --- | --- | --- | --- |
+| [IW Car](#iw-car) | SPARCO + ORGANIC (SQUEEZE check) | MaxEntropy | the inner arcs agree, the outer arc does not | 0.81 (0.46) | 1.21 |
+| [HR 4049](#hr-4049) | SPARCO + ORGANIC | GP prior | virgil's disc is still too compact; the Gaussian-process prior does not fix it | 0.88 (0.84) | 1.39 |
+| [HD 108015](#hd-108015) | SPARCO + ORGANIC | MaxEntropy | the two reconstructions agree | 0.98 (0.83) | 1.18 |
+| [AI Sco](#ai-sco) | SPARCO + ORGANIC | MaxEntropy | the same orientation, but virgil's disc is larger | 0.73 (0.44) | 1.22 |
+| [EN TrA](#en-tra) | SPARCO + ORGANIC | MaxEntropy | the same size, a different orientation | 0.92 (0.81) | 1.21 |
+| [HD 95767](#hd-95767) | SPARCO + ORGANIC | MaxEntropy | the two reconstructions agree | 0.97 (0.88) | 1.20 |
+| [IRAS 15469-5311](#iras-15469-5311) | SPARCO + ORGANIC | MaxEntropy | the two reconstructions agree in radius and centroid, less in the major axis | 0.98 (0.83) | 1.16 |
+| [PS Gem](#ps-gem) | SPARCO + ORGANIC | GP prior | still poor: the GP fixes the size, not the structure | 0.58 (0.50) | 1.18 |
+| [IRAS 08544-4431](#iras-08544-4431) | SPARCO, binary subtracted (Hillen+2016) | MaxEntropy | the two reconstructions agree, with the binary core modelled | 0.97 (0.88) | 2.55 (Hillen: drawn 2.5 × 1.8 ellipse) |
 
 === "IW Car"
 
@@ -29,19 +38,16 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     ![IW Car: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/IW_Car_images.png)
     <figcaption>IW Car in H band, 23 PIONIER exposures (MJD 58812 to 58893, up to 2020-02-14). Left: the
     ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS
-    (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the
-    L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to the PIONIER
-    beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    (10.5281/zenodo.20155600). Right: virgil, MaxEntropy at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.21 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! success "Verdict: the two reconstructions agree"
-        At the PIONIER beam the images correlate at 0.95 (0.95 after the best sub-beam shift), against 0.14 for the
-        East-West mirror of the published image, 0.04 for its 180° rotation and 0.60 for its azimuthal average
-        (the same flux at the same radii with no arcs): the same inner arcs
-        near the star and the same large western arc. They differ in detail: the outer arc
-        sits further out and is oriented differently in virgil (flux-weighted radius 11.0 against 9.9 mas,
-        major-axis PA 138° against 163°). De Prins et al.
-        themselves note that the inner arcs' azimuthal profile is not well constrained (Appendix D, SQUEEZE).
+    !!! warning "Verdict: the inner arcs agree, the outer arc does not"
+        At the λ/2B_max beam (1.21 mas) the images correlate at 0.81 (0.82 after the best sub-beam shift), against 0.10 for
+        the East-West mirror of the published image, 0.04 for its 180° rotation and 0.46 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). The inner arcs match (flux-weighted radius 3.1 against 3.4 mas,
+        major-axis PA 138° against 138°). The outer arc sits further out and is oriented differently in virgil (radius 11.0
+        against 9.8 mas, PA 140° against 163°). De Prins et al. themselves note that the arcs' azimuthal profile is not well
+        constrained (Appendix D, SQUEEZE).
 
     **Parameters.** De Prins et al. could not fit a PMOIRED geometric model to IW Car (a single disc does not
     reproduce it), so there is no PMOIRED row to compare with. The comparison is with what the paper does
@@ -72,37 +78,38 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     model is describing a blend of structures, as the paper concluded. Its χ² per point is 3.3, against
     0.46 for the image fit, for the same reason.
 
-    **Image metrics** (both images on one 0.35 mas grid, convolved to the beam; inner = within 5 mas of the star,
+    **Image metrics** (both images on one 0.35 mas grid, convolved to the λ_min/2B_max beam (1.21 mas FWHM); inner = within 5 mas of the star,
     outer = beyond; the paper's own rim fit needs per-pixel significances, so both images get the same moments.
     As an external check, the moments of the ORGANIC image give an outer major axis at PA 163° against the paper's
     176 ± 3° from its rim fit, within 13°, so the two definitions are consistent):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.14, 180° rotation 0.04, azimuthal average 0.60) | 1 | 0.95 |
-    | Inner flux fraction / outer flux fraction | 16.7 % / 77.5 % | 14.9 % / 75.9 % |
-    | Inner flux-weighted radius (mas) | 3.38 | 3.35 |
-    | Outer flux-weighted radius (mas) | 9.93 | 11.05 |
-    | Inner major-axis PA (°; nearly round, axis ratio 0.95 / 0.88) | 119 | 122 |
-    | Outer major-axis PA (°; paper's outer-arc rim fit 176 ± 3) | 163 | 138 |
-    | Asymmetry angle, inner flux centroid (° East of North), offset (mas) | 321, 1.08 | 340, 1.11 |
-    | Asymmetry angle, outer flux centroid (°), offset (mas) | 268, 4.04 | 260, 2.94 |
+    | Normalised cross-correlation (controls: E-W mirror 0.10, 180° rotation 0.04, azimuthal average 0.46) | 1 | 0.81 (0.82 after the best sub-beam shift) |
+    | Inner flux fraction (%) | 16.6 | 17.5 |
+    | Inner flux-weighted radius (mas) | 3.41 | 3.05 |
+    | Inner major-axis PA (°), axis ratio | 138, 0.88 | 138, 0.73 |
+    | Inner flux centroid (° East of North), offset (mas) | 329, 1.12 | 355, 1.13 |
+    | Outer flux fraction (%) | 77.3 | 74.0 |
+    | Outer flux-weighted radius (mas) | 9.83 | 10.96 |
+    | Outer major-axis PA (°), axis ratio | 163, 0.78 | 140, 0.83 |
+    | Outer flux centroid (° East of North), offset (mas) | 268, 4.05 | 254, 3.03 |
 
     ??? note "Data and method"
 
         **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska,
         INSPIRING), the 23 exposures listed in the paper's observation log: 828 V² and 552
         closure-phase rows across the H band (1.51–1.76 µm). `postagb_data.py check` confirms
-        that the union of ESO's two Phase 3 releases (PIONIER and INSPIRING; 31 exposures) matches the earlier reduced copy, and the 23 used here are the INSPIRING release. The PIONIER beam is 3.26 × 2.29 mas at PA 142°.
+        that the union of ESO's two Phase 3 releases (PIONIER and INSPIRING; 31 exposures) matches the earlier reduced copy, and the 23 used here are the INSPIRING release. The PIONIER beam is 3.26 × 2.29 mas at PA 142°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.21 mas, for both images. The environment image has a window of radius 1.14 mas (0.5 of the data beam's minor axis; 65 pixels) blanked around the primary and around the secondary, so that its pixels cannot trade flux with the stellar point sources.
 
         **Model.** SPARCO: a uniform-disc primary (power-law index −3.165, as in the paper) plus a point
         secondary plus a `virgil.models.Image` environment (128 × 128 pixels of 0.35 mas, the paper's grid),
         each with a power-law spectrum from `virgil.spectra`. The secondary starts at the paper's position
         (so it is not independent of ORGANIC) and the fit then moves it. Regulariser `MaxEntropy`; weight from
-        `l_curve` over nine weights (10⁴ to 10⁻²), taking the corner (weight 56); start from
+        `l_curve` over nine weights (10⁴ to 10⁻²), taking the corner (weight 10); start from
         `starting_image`. ORGANIC differs: a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 0.46 and the ORGANIC image, with its
+        **Fit quality.** On the same data the virgil image has χ² per point 0.45 and the ORGANIC image, with its
         published SPARCO parameters unchanged, 2.06 (V² residual rms 0.88 against 1.53σ; T3 0.68 against 2.09σ).
         This does not say virgil's image is better: it has about 16 000 free pixels for 1 794 data points and
         is over-fitted at this weight, while ORGANIC is a more strongly regularised image. The test that matters here is the image agreement above.
@@ -156,11 +163,17 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     <figure markdown>
     ![HR 4049: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/HR4049_images.png)
-    <figcaption>HR 4049 in H band, 19 PIONIER exposures (MJD 58884 to 58899). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>HR 4049 in H band, 19 PIONIER exposures (MJD 58884 to 58899). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, a Gaussian-process prior (σ = 1, ℓ = 2.92 mas). Both are the star-and-secondary-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.39 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! warning "Verdict: virgil's disc is more compact, and the correlation says little"
-        The images correlate at 0.95, but the azimuthal average of the published image already scores 0.92, so this says little beyond the radial profile. virgil's disc is more compact: flux-weighted radius 10.8 against 15.5 mas (the correlation mask covers the whole 40 mas field, so nothing is cut away). The second-moment major axis is at 86° against 12°, but at axis ratios of 0.89 and 0.88 both discs are nearly round and that angle is poorly defined. The parametric rim is 18.9 mas against the paper's 14.3 and its secondary lies 2.3 mas from the paper's position; the Zenodo FITS header's secondary offset also disagrees with the paper's tables.
+    !!! failure "Verdict: virgil's disc is still too compact; the Gaussian-process prior does not fix it"
+        At the λ/2B_max beam (1.39 mas) the images correlate at 0.88 (0.88 after the best sub-beam shift), against 0.69 for
+        the East-West mirror of the published image, 0.70 for its 180° rotation and 0.84 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). virgil's disc is smaller than the published one (flux-weighted
+        radius 10.1 against 15.4 mas); MaxEntropy gave 10.7 mas, so the Gaussian-process prior (σ = 1, ℓ = 2.9 mas, chosen by
+        the evidence) does not close the gap, and the correlation (0.88, against 0.90 for MaxEntropy) is barely above its
+        azimuthal-average control, so it says little. The data prefer the published orientation (see Fit quality), but
+        virgil's image does not reproduce the published extent.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 19 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -187,23 +200,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     | Secondary flux fraction, H (%) | 0.24 | 0.328 | +0.0876 |
     | Image spectral index | 2.39 | 2.41 | +0.0179 |
 
-    **Image metrics** (both images on one 0.64 mas grid, convolved to the beam; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    **Image metrics** (both images on one 0.64 mas grid, convolved to the λ_min/2B_max beam (1.39 mas FWHM); the paper's own rim fit needs per-pixel significances, so both images get the same moments):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.83, 180° rotation 0.83, azimuthal average 0.92) | 1 | 0.95 (0.95 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.69, 180° rotation 0.70, azimuthal average 0.84) | 1 | 0.88 (0.88 after the best sub-beam shift) |
     | Flux fraction in the image field | 91 % | 100 % |
-    | Flux-weighted radius (mas) | 15.49 | 10.84 |
-    | Major-axis PA (°), axis ratio | 12, 0.88 | 86, 0.89 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 108, 0.33 | 38, 0.56 |
+    | Flux-weighted radius (mas) | 15.42 | 10.11 |
+    | Major-axis PA (°), axis ratio | 14, 0.87 | 58, 0.89 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 113, 0.32 | 47, 0.90 |
 
     ??? note "Data and method"
 
-        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 19 exposures listed in the paper's observation log: 684 V² and 456 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 5.15 × 2.92 mas at PA 146°.
+        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 19 exposures listed in the paper's observation log: 684 V² and 456 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 5.15 × 2.92 mas at PA 146°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.39 mas, for both images. The environment image has a window of radius 1.46 mas (0.5 of the data beam's minor axis; 33 pixels) blanked around the primary and around the secondary, so that its pixels cannot trade flux with the stellar point sources.
 
-        **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 316); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
+        **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser a `GaussianField` prior on the log-brightness about the Gaussian start image (σ and ℓ chosen on a grid of σ = 1, 2, 4 and ℓ = 0.25 to 2 data beams by the Laplace evidence, after MacKay's error rescaling, s = 0.92: σ = 1, ℓ = 2.92 mas, log evidence -702). MaxEntropy comparison (the earlier run): radius 10.7 mas, NCC 0.90. Start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 0.52 and the ORGANIC image, with its published SPARCO parameters unchanged, 1.94 (1482 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 13.0 and 9.4 (so the orientation is right). This target was computed on OzSTAR (job postagb_imaging, library snapshot ea943fa + c80aed7); the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 0.56 and the ORGANIC image, with its published SPARCO parameters unchanged, 1.94 (1482 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and the Gaussian-process prior is the only regularisation (the χ² is on the errors as given, not rescaled). Flipping the published image East-West or North-South gives χ² 13.0 and 9.4 (so the orientation is right). The images were computed on the laptop for this page; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/HR4049_inspect.png)
 
@@ -229,11 +242,14 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     <figure markdown>
     ![HD 108015: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/HD108015_images.png)
-    <figcaption>HD 108015 in H band, 35 PIONIER exposures (MJD 59576 to 59621). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>HD 108015 in H band, 35 PIONIER exposures (MJD 59576 to 59621). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy at the L-curve corner. Both are the star-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.18 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
     !!! success "Verdict: the two reconstructions agree"
-        The images correlate at 0.99 (1.00 after the best sub-beam shift) and the flux-weighted radii agree (4.7 against 4.65 mas). The disc is nearly face-on (i about 30°), so the moments are weakly determined: the major-axis PA is 62° in virgil against 93° in ORGANIC at axis ratios 0.95 and 0.83. The parametric fit reproduces the paper's modulation phase and inclination.
+        At the λ/2B_max beam (1.18 mas) the images correlate at 0.98 (0.98 after the best sub-beam shift), against 0.81 for
+        the East-West mirror of the published image, 0.46 for its 180° rotation and 0.83 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). Flux-weighted radius 4.6 against 4.5 mas, flux centroid 339°
+        against 350° East of North.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 35 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (1.8, 1.8, 1.8, 2.4, 1.8, 1.8). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -255,23 +271,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     | Primary flux fraction, H (%) | 56 | 56.6 | +0.64 |
     | Image spectral index | 1.45 | 1.34 | -0.112 |
 
-    **Image metrics** (both images on one 0.33 mas grid, convolved to the beam; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    **Image metrics** (both images on one 0.33 mas grid, convolved to the λ_min/2B_max beam (1.18 mas FWHM); the paper's own rim fit needs per-pixel significances, so both images get the same moments):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.91, 180° rotation 0.58, azimuthal average 0.88) | 1 | 0.99 (1.00 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.81, 180° rotation 0.46, azimuthal average 0.83) | 1 | 0.98 (0.98 after the best sub-beam shift) |
     | Flux fraction in the image field | 99 % | 100 % |
-    | Flux-weighted radius (mas) | 4.65 | 4.71 |
-    | Major-axis PA (°), axis ratio | 93, 0.83 | 62, 0.95 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 350, 1.68 | 339, 1.38 |
+    | Flux-weighted radius (mas) | 4.49 | 4.55 |
+    | Major-axis PA (°), axis ratio | 88, 0.83 | 46, 0.92 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 350, 1.68 | 339, 1.37 |
 
     ??? note "Data and method"
 
-        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 35 exposures listed in the paper's observation log: 1260 V² and 840 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 3.28 × 1.96 mas at PA 117°.
+        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 35 exposures listed in the paper's observation log: 1260 V² and 840 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 3.28 × 1.96 mas at PA 117°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.18 mas, for both images. The environment image has a window of radius 0.98 mas (0.5 of the data beam's minor axis; 25 pixels) blanked around the primary, so that its pixels cannot trade flux with the stellar point sources.
 
         **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 316); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 0.58 and the ORGANIC image, with its published SPARCO parameters unchanged, 4.29 (2730 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 29.0 and 70.4 (so the orientation is right). This target was computed on OzSTAR (job postagb_imaging, library snapshot ea943fa + c80aed7); the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 0.58 and the ORGANIC image, with its published SPARCO parameters unchanged, 4.29 (2730 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 29.0 and 70.4 (so the orientation is right). The images were computed on the laptop for this page; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/HD108015_inspect.png)
 
@@ -302,11 +318,14 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     <figure markdown>
     ![AI Sco: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/AI_Sco_images.png)
-    <figcaption>AI Sco in H band, 28 PIONIER exposures (MJD 58693 to 58726). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>AI Sco in H band, 28 PIONIER exposures (MJD 58693 to 58726). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.22 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! success "Verdict: the two reconstructions agree"
-        The images correlate at 0.96 (0.98 after the best sub-beam shift), with the same elongation (major-axis PA 123° against 124°, axis ratio 0.77 against 0.78) and centroid direction (140° against 137°). virgil's disc is slightly larger (flux-weighted radius 3.65 against 3.3 mas). The image-fit spectral index differs strongly (−1.8 against −0.6); the two images use different power laws for essentially the same flux.
+    !!! warning "Verdict: the same orientation, but virgil's disc is larger"
+        At the λ/2B_max beam (1.22 mas) the images correlate at 0.73 (0.78 after the best sub-beam shift), against 0.36 for
+        the East-West mirror of the published image, 0.41 for its 180° rotation and 0.44 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). The flux centroid points the same way (138° against 136° East of
+        North), but virgil's disc is larger (flux-weighted radius 3.7 against 2.9 mas).
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 28 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (2.9, 2.9, 2.9, 3.1, 2.9, 2.9). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -331,23 +350,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     | Secondary flux fraction, H (%) | 2.76 | 2.68 | -0.0847 |
     | Image spectral index | -0.59 | -1.83 | -1.24 |
 
-    **Image metrics** (both images on one 0.23 mas grid, convolved to the beam; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    **Image metrics** (both images on one 0.23 mas grid, convolved to the λ_min/2B_max beam (1.22 mas FWHM); the paper's own rim fit needs per-pixel significances, so both images get the same moments):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.74, 180° rotation 0.76, azimuthal average 0.85) | 1 | 0.96 (0.98 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.36, 180° rotation 0.41, azimuthal average 0.44) | 1 | 0.73 (0.78 after the best sub-beam shift) |
     | Flux fraction in the image field | 99 % | 100 % |
-    | Flux-weighted radius (mas) | 3.32 | 3.65 |
-    | Major-axis PA (°), axis ratio | 124, 0.78 | 123, 0.77 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 137, 0.90 | 140, 1.19 |
+    | Flux-weighted radius (mas) | 2.88 | 3.71 |
+    | Major-axis PA (°), axis ratio | 119, 0.80 | 131, 0.81 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 136, 0.90 | 138, 1.23 |
 
     ??? note "Data and method"
 
-        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 28 exposures listed in the paper's observation log: 1008 V² and 672 closure-phase rows across the H band (1.51–1.76 µm). The PIONIER beam is 3.65 × 2.55 mas at PA 139°.
+        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 28 exposures listed in the paper's observation log: 1008 V² and 672 closure-phase rows across the H band (1.51–1.76 µm). The PIONIER beam is 3.65 × 2.55 mas at PA 139°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.22 mas, for both images. The environment image has a window of radius 1.28 mas (0.5 of the data beam's minor axis; 175 pixels) blanked around the primary and around the secondary, so that its pixels cannot trade flux with the stellar point sources.
 
-        **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 0.0562); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
+        **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 316); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 1.13 and the ORGANIC image, with its published SPARCO parameters unchanged, 2.46 (2184 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 25.7 and 17.1 (so the orientation is right). This target was computed on OzSTAR (job postagb_imaging, library snapshot ea943fa + c80aed7); the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 1.38 and the ORGANIC image, with its published SPARCO parameters unchanged, 2.46 (2184 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 25.7 and 17.1 (so the orientation is right). The images were computed on the laptop for this page; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/AI_Sco_inspect.png)
 
@@ -378,11 +397,15 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     <figure markdown>
     ![EN TrA: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/EN_TrA_images.png)
-    <figcaption>EN TrA in H band, 20 PIONIER exposures (MJD 59267 to 59295). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>EN TrA in H band, 20 PIONIER exposures (MJD 59267 to 59295). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.21 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! warning "Verdict: the same blob, a different orientation"
-        The images correlate at 0.95 (0.97 after the best sub-beam shift), but the azimuthal average of the published image scores 0.96 against ORGANIC, so the correlation says nothing here beyond the radial profile. The flux-weighted radii match (3.9 against 4.3 mas), but the second-moment major axis is at 127° in virgil and 56° in ORGANIC, and virgil's disc is rounder (axis ratio 0.90 against 0.78). The parametric rim, by contrast, matches the paper (PA 32.6° against 32.5 ± 1.9°; inclination 58.8° against 58.9 ± 1.2°). The moments of a compact, beam-sized image are fragile, so treat the orientation difference as real but small compared with the beam.
+    !!! warning "Verdict: the same size, a different orientation"
+        At the λ/2B_max beam (1.21 mas) the images correlate at 0.92 (0.92 after the best sub-beam shift), against 0.71 for
+        the East-West mirror of the published image, 0.59 for its 180° rotation and 0.81 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). The size agrees (flux-weighted radius 3.8 against 4.0 mas), but
+        the major-axis PA differs (118° against 56°) and the flux centroid is close to the star in both (0.28 and 0.19 mas),
+        so its direction is not meaningful.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 20 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (1.7, 1.7, 1.7, 1.7, 1.7, 1.7). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -407,23 +430,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     | Secondary flux fraction, H (%) | 5.37 | 5.44 | +0.0724 |
     | Image spectral index | 0.3 | 0.0101 | -0.29 |
 
-    **Image metrics** (both images on one 0.27 mas grid, convolved to the beam; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    **Image metrics** (both images on one 0.27 mas grid, convolved to the λ_min/2B_max beam (1.21 mas FWHM); the paper's own rim fit needs per-pixel significances, so both images get the same moments):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.90, 180° rotation 0.83, azimuthal average 0.96) | 1 | 0.95 (0.97 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.71, 180° rotation 0.59, azimuthal average 0.81) | 1 | 0.92 (0.92 after the best sub-beam shift) |
     | Flux fraction in the image field | 98 % | 100 % |
-    | Flux-weighted radius (mas) | 4.25 | 3.94 |
-    | Major-axis PA (°), axis ratio | 56, 0.78 | 127, 0.90 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 284, 0.20 | 196, 0.36 |
+    | Flux-weighted radius (mas) | 4.03 | 3.76 |
+    | Major-axis PA (°), axis ratio | 56, 0.72 | 118, 0.93 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 288, 0.19 | 195, 0.28 |
 
     ??? note "Data and method"
 
-        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 20 exposures listed in the paper's observation log: 712 V² and 477 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 3.26 × 1.98 mas at PA 139°.
+        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 20 exposures listed in the paper's observation log: 712 V² and 477 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 3.26 × 1.98 mas at PA 139°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.21 mas, for both images. The environment image has a window of radius 0.99 mas (0.5 of the data beam's minor axis; 85 pixels) blanked around the primary and around the secondary, so that its pixels cannot trade flux with the stellar point sources.
 
         **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 56.2); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 1.15 and the ORGANIC image, with its published SPARCO parameters unchanged, 1.41 (1548 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 7.3 and 16.2 (so the orientation is right). This target was computed on the laptop; the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 1.16 and the ORGANIC image, with its published SPARCO parameters unchanged, 1.41 (1548 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 7.3 and 16.2 (so the orientation is right). The images were computed on the laptop for this page; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/EN_TrA_inspect.png)
 
@@ -454,11 +477,14 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     <figure markdown>
     ![HD 95767: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/HD95767_images.png)
-    <figcaption>HD 95767 in H band, 36 PIONIER exposures (MJD 59577 to 59616). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>HD 95767 in H band, 36 PIONIER exposures (MJD 59577 to 59616). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy at the L-curve corner. Both are the star-and-secondary-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.20 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
     !!! success "Verdict: the two reconstructions agree"
-        The images correlate at 0.99, with the same elongation (axis ratio 0.92 against 0.94), centroid direction (100° against 100°) and major-axis PA within 7° (22° against 15°); virgil's disc is slightly larger (4.25 against 3.96 mas). The parametric fit reproduces the secondary and the modulation phase, but not the rim size or inclination.
+        At the λ/2B_max beam (1.20 mas) the images correlate at 0.97 (0.97 after the best sub-beam shift), against 0.77 for
+        the East-West mirror of the published image, 0.74 for its 180° rotation and 0.88 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). Flux-weighted radius 4.1 against 3.7 mas, flux centroid 100°
+        against 100° East of North.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 36 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (2.1, 2.1, 2.1, 2.1, 2.1, 2.1). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -483,23 +509,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     | Secondary flux fraction, H (%) | 24.8 | 16.5 | -8.28 |
     | Image spectral index | 2.36 | 1.91 | -0.452 |
 
-    **Image metrics** (both images on one 0.26 mas grid, convolved to the beam; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    **Image metrics** (both images on one 0.26 mas grid, convolved to the λ_min/2B_max beam (1.20 mas FWHM); the paper's own rim fit needs per-pixel significances, so both images get the same moments):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.86, 180° rotation 0.85, azimuthal average 0.94) | 1 | 0.99 (0.99 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.77, 180° rotation 0.74, azimuthal average 0.88) | 1 | 0.97 (0.97 after the best sub-beam shift) |
     | Flux fraction in the image field | 99 % | 100 % |
-    | Flux-weighted radius (mas) | 3.96 | 4.25 |
-    | Major-axis PA (°), axis ratio | 15, 0.94 | 22, 0.92 |
+    | Flux-weighted radius (mas) | 3.75 | 4.07 |
+    | Major-axis PA (°), axis ratio | 25, 0.89 | 26, 0.87 |
     | Asymmetry angle, flux centroid (° East of North), offset (mas) | 100, 0.69 | 100, 0.66 |
 
     ??? note "Data and method"
 
-        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 36 exposures listed in the paper's observation log: 1296 V² and 864 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 3.31 × 2.19 mas at PA 124°.
+        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 36 exposures listed in the paper's observation log: 1296 V² and 864 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 3.31 × 2.19 mas at PA 124°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.20 mas, for both images. The environment image has a window of radius 1.09 mas (0.5 of the data beam's minor axis; 81 pixels) blanked around the primary and around the secondary, so that its pixels cannot trade flux with the stellar point sources.
 
         **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 316); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 0.61 and the ORGANIC image, with its published SPARCO parameters unchanged, 1.35 (2808 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 6.4 and 7.7 (so the orientation is right). This target was computed on OzSTAR (job postagb_imaging, library snapshot ea943fa + c80aed7); the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 0.61 and the ORGANIC image, with its published SPARCO parameters unchanged, 1.35 (2808 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 6.4 and 7.7 (so the orientation is right). The images were computed on the laptop for this page; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/HD95767_inspect.png)
 
@@ -530,11 +556,14 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     <figure markdown>
     ![IRAS 15469-5311: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/IRAS15469-5311_images.png)
-    <figcaption>IRAS 15469-5311 in H band, 20 PIONIER exposures (MJD 59266 to 59296). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>IRAS 15469-5311 in H band, 20 PIONIER exposures (MJD 59266 to 59296). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy at the L-curve corner. Both are the star-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.16 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
     !!! success "Verdict: the two reconstructions agree in radius and centroid, less in the major axis"
-        The images correlate at 0.99. The flux-weighted radii (6.35 against 5.7 mas), the elongation (axis ratio 0.93 against 0.88) and the centroid direction (143° against 135°) agree; the major axes differ by 42° (29° against 71°) at those nearly round axis ratios. virgil fits the data much better (χ² per point 0.38 against 2.21 for the published image), which is a symptom of over-fitting, not a better image.
+        At the λ/2B_max beam (1.16 mas) the images correlate at 0.98 (0.98 after the best sub-beam shift), against 0.65 for
+        the East-West mirror of the published image, 0.41 for its 180° rotation and 0.83 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). The radius (flux-weighted radius 6.2 against 5.6 mas) and the
+        flux centroid (147° against 135°) agree; the major-axis PA differs (35° against 63°, the discs being nearly round).
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 20 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (8.3, 2.3, 4.6, 1.3, 5.0, 1.3). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -556,23 +585,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     | Primary flux fraction, H (%) | 52.9 | 53.6 | +0.729 |
     | Image spectral index | 1.84 | 1.9 | +0.0551 |
 
-    **Image metrics** (both images on one 0.29 mas grid, convolved to the beam; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    **Image metrics** (both images on one 0.29 mas grid, convolved to the λ_min/2B_max beam (1.16 mas FWHM); the paper's own rim fit needs per-pixel significances, so both images get the same moments):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.74, 180° rotation 0.50, azimuthal average 0.87) | 1 | 0.99 (0.99 after the best sub-beam shift) |
-    | Flux fraction in the image field | 98 % | 99 % |
-    | Flux-weighted radius (mas) | 5.74 | 6.35 |
-    | Major-axis PA (°), axis ratio | 71, 0.88 | 29, 0.93 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 135, 2.01 | 143, 1.43 |
+    | Normalised cross-correlation (controls: E-W mirror 0.65, 180° rotation 0.41, azimuthal average 0.83) | 1 | 0.98 (0.98 after the best sub-beam shift) |
+    | Flux fraction in the image field | 98 % | 100 % |
+    | Flux-weighted radius (mas) | 5.60 | 6.19 |
+    | Major-axis PA (°), axis ratio | 63, 0.85 | 35, 0.91 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 135, 2.00 | 147, 1.35 |
 
     ??? note "Data and method"
 
-        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 20 exposures listed in the paper's observation log: 720 V² and 480 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 4.15 × 1.82 mas at PA 127°.
+        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 20 exposures listed in the paper's observation log: 720 V² and 480 closure-phase rows across the H band (1.52–1.77 µm). The PIONIER beam is 4.15 × 1.82 mas at PA 127°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.16 mas, for both images. The environment image has a window of radius 0.91 mas (0.5 of the data beam's minor axis; 29 pixels) blanked around the primary, so that its pixels cannot trade flux with the stellar point sources.
 
         **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 56.2); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 0.38 and the ORGANIC image, with its published SPARCO parameters unchanged, 2.21 (1560 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 15.6 and 37.1 (so the orientation is right). This target was computed on OzSTAR (job postagb_imaging, library snapshot ea943fa + c80aed7); the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 0.38 and the ORGANIC image, with its published SPARCO parameters unchanged, 2.21 (1560 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 15.6 and 37.1 (so the orientation is right). The images were computed on the laptop for this page; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/IRAS15469-5311_inspect.png)
 
@@ -608,11 +637,17 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 
     <figure markdown>
     ![PS Gem: ORGANIC image (left) and virgil image (right) at the PIONIER beam](postagb/PS_Gem_images.png)
-    <figcaption>PS Gem in H band, 12 PIONIER exposures (MJD 58817 to 58928). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, MaxEntropy with the weight at the L-curve corner. Both are the star-subtracted disc emission, convolved to the PIONIER beam (grey ellipse), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>PS Gem in H band, 12 PIONIER exposures (MJD 58817 to 58928). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, a Gaussian-process prior (σ = 2, ℓ = 0.45 mas). Both are the star-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.18 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
-    !!! failure "Verdict: the two reconstructions do not agree, and virgil's image is the unconstrained one"
-        The images correlate at only 0.63 (0.71 after the best shift). virgil's image is a scatter of fragments out to 9 mas (flux-weighted radius 9.1 against 6.3 mas), not a compact disc. The data do prefer the published orientation over its mirrors (see Fit quality), but virgil's image is set by an arbitrary weight: the L-curve for this target is flat with no clear corner (weight 5.6 × 10⁻⁴, near the weakest regularisation). Even the controls score only 0.52 to 0.59, so the statistic is noisy here. Do not read anything into virgil's image.
+    !!! failure "Verdict: still poor: the GP fixes the size, not the structure"
+        At the λ/2B_max beam (1.18 mas) the images correlate at 0.58 (0.63 after the best sub-beam shift), against 0.45 for
+        the East-West mirror of the published image, 0.48 for its 180° rotation and 0.50 for its azimuthal average (the same
+        flux at the same radii with no azimuthal structure). With the Gaussian-process prior virgil's disc has the right size
+        (flux-weighted radius 6.4 against 6.2 mas; MaxEntropy gave 9.0 mas, NCC 0.27 against 0.58 now), but the structure is a
+        scatter of clumps and the correlation is only just above its controls. ORGANIC's brightest feature is a clump at the
+        star, inside the window virgil blanks around the star (radius 0.89 mas); that is one reason the two cannot agree
+        there. Do not read anything into the clumps.
 
     **Parameters.** The first table compares the PMOIRED geometric model of De Prins et al. (Table 3) with a PMOIRED-style parametric fit of virgil to the same 12 files (UD star, power-law rim with an m = 1 modulation, plus the paper's optional secondary or resolved background). The σ column uses the paper's uncertainty only; virgil's are point estimates, so large σ values mostly say how tight the paper's errors are. The rim diameter is that of a Gaussian ring in virgil and of a power-law rim in PMOIRED, so that row is not like for like; the modulation phase is virgil's `az_pas` minus the rim position angle, which is PMOIRED's `az projang` (docs/method/pmoired.md). The parametric fit takes the lowest χ² of 6 starts (0.6, 0.6, 0.6, 0.6, 0.6, 0.6). The second table compares the SPARCO parameters of the ORGANIC image with those fitted together with virgil's image.
 
@@ -635,23 +670,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     | Primary UD diameter (mas) | 0.37 | 0.285 | -0.085 |
     | Image spectral index | 0.61 | 0.329 | -0.281 |
 
-    **Image metrics** (both images on one 0.31 mas grid, convolved to the beam; the paper's own rim fit needs per-pixel significances, so both images get the same moments):
+    **Image metrics** (both images on one 0.31 mas grid, convolved to the λ_min/2B_max beam (1.18 mas FWHM); the paper's own rim fit needs per-pixel significances, so both images get the same moments):
 
     | Metric | ORGANIC | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.52, 180° rotation 0.58, azimuthal average 0.59) | 1 | 0.63 (0.71 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.45, 180° rotation 0.48, azimuthal average 0.50) | 1 | 0.58 (0.63 after the best sub-beam shift) |
     | Flux fraction in the image field | 95 % | 100 % |
-    | Flux-weighted radius (mas) | 6.30 | 9.06 |
-    | Major-axis PA (°), axis ratio | 122, 0.82 | 119, 0.61 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 206, 1.27 | 177, 1.36 |
+    | Flux-weighted radius (mas) | 6.16 | 6.38 |
+    | Major-axis PA (°), axis ratio | 119, 0.83 | 104, 0.96 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 206, 1.28 | 230, 1.13 |
 
     ??? note "Data and method"
 
-        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 12 exposures listed in the paper's observation log: 432 V² and 288 closure-phase rows across the H band (1.52–1.76 µm). The PIONIER beam is 3.10 × 1.78 mas at PA 153°.
+        **Data.** Phase 3 calibrated OIFITS from the ESO archive, programme 1103.D-0797 (PI J. Kluska, INSPIRING), the 12 exposures listed in the paper's observation log: 432 V² and 288 closure-phase rows across the H band (1.52–1.76 µm). The PIONIER beam is 3.10 × 1.78 mas at PA 153°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.18 mas, for both images. The environment image has a window of radius 0.89 mas (0.5 of the data beam's minor axis; 24 pixels) blanked around the primary, so that its pixels cannot trade flux with the stellar point sources.
 
-        **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser `MaxEntropy`; weight from `l_curve` (corner at 0.000562); start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
+        **Model.** SPARCO as for IW Car, with the primary, secondary (where the paper fits one) and the grid read from the Zenodo FITS header; regulariser a `GaussianField` prior on the log-brightness about the Gaussian start image (σ and ℓ chosen on a grid of σ = 1, 2, 4 and ℓ = 0.25 to 2 data beams by the Laplace evidence, after MacKay's error rescaling, s = 0.84: σ = 2, ℓ = 0.45 mas, log evidence -383). MaxEntropy comparison (the earlier run): radius 9.0 mas, NCC 0.27. Start from `starting_image`. ORGANIC uses a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil image has χ² per point 0.32 and the ORGANIC image, with its published SPARCO parameters unchanged, 0.49 (936 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and is over-fitted at this weight, while ORGANIC is more strongly regularised. Flipping the published image East-West or North-South gives χ² 1.0 and 1.2 (a difference of 440 and 701 in χ², so the data clearly prefer the published orientation; it is virgil's image, set by an arbitrary weight on a flat L-curve, that is unconstrained). This target was computed on the laptop; the parametric fit is a local multi-start rerun.
+        **Fit quality.** On the same data the virgil image has χ² per point 0.43 and the ORGANIC image, with its published SPARCO parameters unchanged, 0.49 (936 data points). This does not say virgil's image is better: it has thousands of free pixels for those points and the Gaussian-process prior is the only regularisation (the χ² is on the errors as given, not rescaled). Flipping the published image East-West or North-South gives χ² 1.0 and 1.2. The images were computed on the laptop for this page; the parametric fit is a local multi-start rerun.
 
         ![uv coverage, V² and closure phases](postagb/PS_Gem_inspect.png)
 
@@ -678,21 +713,23 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     <figure markdown>
     ![IRAS 08544-4431: Hillen et al. image (left) and virgil image (right)](postagb/IRAS08544_images.png)
     <figcaption>IRAS 08544-4431 in H band, 27 PIONIER observing blocks (2015-01-21, 2015-01-24 and 2015-02-23).
-    Left: the single-star-subtracted SPARCO image of Hillen et al. (2016) as published
-    (their Fig. 4, upper panel; blue contours are their 5, 3 and 1σ levels). Right: virgil, MaxEntropy with the
-    weight at the L-curve corner, primary subtracted, drawn in the published figure's own colour map, on the same
+    Left: the binary-subtracted SPARCO image of Hillen et al. (2016) as published
+    (their Fig. 4, lower panel; the blue contour is their 5σ level). Right: virgil, MaxEntropy with the
+    weight at the L-curve corner, primary and secondary subtracted, drawn in the published figure's own colour map, on the same
     field of view, orientation (North up, East left), linear 0 to 1 peak-normalised stretch, and convolved with the beam
     ellipse drawn on the published figure (2.5 × 1.8 mas, PA 168°). The paper's image exists only as a bitmap, so its
-    stretch and its beam cannot be matched exactly. The star is the marker at the origin.</figcaption>
+    stretch and its beam cannot be matched exactly, so for this target only, virgil is convolved with the beam the paper draws
+    rather than with the λ_min/2B_max beam of the other tabs, and the published image, already a restored image, is not convolved
+    again. The primary is the marker at the origin.</figcaption>
     </figure>
 
-    !!! success "Verdict: the two reconstructions agree"
-        At the published beam the images correlate at 0.96 (mirroring either axis drops it to 0.71 and 0.66, and the azimuthal average of the published image alone scores 0.86, so the radial profile alone gives most of the correlation and the ring's asymmetry adds 0.10): the same
-        ~15 mas ring, brighter in the north-east, with the same dark gaps to the north-west and south-east, and the same
-        point-like source just south-west of the star. The differences are small: virgil's ring is 0.3 mas larger
-        (flux-weighted radius 8.5 against 8.2 mas) and its central source is further from the star (1.6 against 1.1 mas, at
-        the same position angle, 205° against 200°). The secondary's separation, angle and flux fraction in the
-        parametric fit differ from the paper's, as set out below.
+    !!! success "Verdict: the two reconstructions agree, with the binary core modelled"
+        At the beam drawn on the published figure (2.5 × 1.8 mas) the images correlate at 0.97 (0.97 after the best sub-beam
+        shift), against 0.80 for the East-West mirror of the published image, 0.78 for its 180° rotation and 0.88 for its
+        azimuthal average (the same flux at the same radii with no azimuthal structure). With the binary subtracted in both,
+        there is no residual central emission (inside 3.5 mas: 1.9 % of the flux against 1.2 %), and the ring matches:
+        flux-weighted radius 8.54 against 8.11 mas, flux centroid 7° against 10°. The secondary's parameters are in the table
+        below.
 
     **Parameters.** Hillen et al. fit a 16-parameter parametric model (Table 1, best model) by MCMC: uniform-disc
     primary (fixed at 0.5 mas), point-source secondary, inclined Gaussian ring with m = 1 and m = 2 azimuthal
@@ -741,8 +778,29 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     paper's 236°, and virgil's parametric 209° is close to it, so this row is as much a statement about the paper's
     image against its model as about virgil.
 
-    The image-fit scene has no secondary (it stays in the image, as in the paper): there the primary's fraction is 62.1 %
-    against the paper's 61 % grid value, and the environment spectral index is 0.36 against 0.42.
+    **The binary core in the image fit.** The core is a binary, so the image scene is a uniform-disc primary (0.5 mas, fixed,
+    flux ∝ λ⁻⁴) plus a point-source secondary plus the hole-masked image. The secondary's position, flux and power-law index are free,
+    started at Hillen's separation, position angle and flux ratio (index −2.5, the local slope of a 4000 K black body), with a prior of
+    ±1 mas on each coordinate and an index range of −5 to 2. This replaces the earlier single-star-subtracted scene, which left the
+    secondary in the image. The fitted binary next to Hillen et al. (Table 1; the environment index is their grid value against a λ⁻⁴ primary;
+    σ is the paper's uncertainty, virgil's are point estimates):
+
+    | Parameter | Hillen+2016 | virgil (image fit) | Difference |
+    | --- | --- | --- | --- |
+    <!-- binary-table -->
+    | Primary flux fraction, H (%) | 59.7 ± 0.6 | 60.0 | +0.31 (+0.5σ) |
+    | Secondary flux fraction, H (%) | 3.9 ± 0.7 | 3.7 | -0.22 (-0.3σ) |
+    | Secondary separation (mas) | 0.81 ± 0.05 | 0.92 | +0.11 (+2.3σ) |
+    | Secondary position angle from the primary (°) | 236 ± 3 | 208 | -28 (-9.4σ) |
+    | Secondary spectral index (power law at 1.65 µm) | −2.5 (−3.1 to −0.6; from 4000 ± 2000 K) | -5.0 | at the prior's lower bound (−5) |
+    | Environment spectral index | 0.42 | 0.30 | -0.12 |
+    <!-- /binary-table -->
+
+    The secondary's flux and the primary's agree with the paper. Its separation is 2σ larger and its angle differs from the table's
+    236° by 28°. That table value is itself in doubt: the star markers drawn on the published figure, measured from the bitmap, sit at about
+    0.86 mas and 213° (reading uncertainty about 0.1 mas and 8°), which virgil's position matches. The secondary's index runs to the
+    lower bound of its prior, so it is not measured: a faint companion this close to the primary (inside the 1.2 mas hole) trades
+    flux and slope with the primary.
     The reduced χ² of the parametric fit is 1.5 and the paper quotes 2.3 after inflating its uncertainties by √6, but the
     two are not shown to be on the same error basis. The files' own errors (median V² error 2.4 % of V², closure phase
     about 1°) look like pipeline errors, and nothing in them says whether the √6 inflation is already applied. If it is
@@ -751,17 +809,15 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
     compares like with like and virgil fits slightly better. This is unresolved here, so the χ² values are not used as evidence.
 
     **Image metrics** (both images on one 0.08 mas grid, virgil convolved to the published beam, the published bitmap
-    used as it stands; the central source is the brightest pixel within 2.5 mas of the star, refined by the centroid within
-    0.8 mas of it; both images get the same moments):
+    used as it stands; the binary is subtracted in both, so there is no central source to compare; both images get the same moments):
 
     | Metric | Hillen+2016 | virgil |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.71, 180° rotation 0.72, azimuthal average 0.86) | 1 | 0.96 (0.96 after the best sub-beam shift) |
-    | Inside 3.5 mas / ring (3.5 to 16 mas) flux fraction | 5.8 % / 78.2 % | 6.3 % / 76.5 % |
-    | Central point source: separation (mas), position angle (° East of North) | 1.09, 200 | 1.63, 205 |
-    | Ring flux-weighted radius (mas) | 8.21 | 8.49 |
-    | Ring major-axis PA (°) | 70 | 99 (the ring is nearly circular, axis ratio 0.92 and 0.91, so this is ill-defined) |
-    | Asymmetry angle, ring flux centroid (° East of North), offset (mas) | 166, 1.01 | 170, 0.85 |
+    | Normalised cross-correlation (controls: E-W mirror 0.80, 180° rotation 0.78, azimuthal average 0.88) | 1 | 0.97 (0.97 after the best sub-beam shift) |
+    | Inside 3.5 mas / ring (3.5 to 16 mas) flux fraction | 1.2 % / 84.2 % | 1.9 % / 80.3 % |
+    | Ring flux-weighted radius (mas) | 8.11 | 8.54 |
+    | Ring major-axis PA (°) | 116 | 85 (the ring is nearly circular, axis ratio 0.95 and 0.92, so this is ill-defined) |
+    | Asymmetry angle, ring flux centroid (° East of North), offset (mas) | 10, 0.95 | 7, 0.88 |
 
     ??? note "Data and method"
 
@@ -771,14 +827,17 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
         2015-01-24 (10), dated a day later in UT in the file names, and `B` has 2015-02-23 (8). The paper uses all three
         nights, as do we. The data are 828 V² points and 504 closure-phase rows (we use all four triangles per
         block, the paper's count of independent closure phases is 390), across the H band (1.53–1.77 µm).
-        virgil's own dirty beam is 3.2 × 2.5 mas at PA 164°; the images above use the published ellipse instead,
-        so that both are shown at the resolution of the figure in the paper.
+        virgil's own dirty beam is 3.2 × 2.5 mas at PA 164°; the images above use the published ellipse (2.5 × 1.8 mas, PA 168°)
+        instead, so that both are shown at the resolution of the figure in the paper. This target does not use the
+        λ_min/2B_max beam of the other tabs, because the published image is already restored at its own beam and cannot be sharpened.
+        The environment image has a window of radius 1.23 mas (0.5 of the data beam's minor axis; 299 pixels) blanked around
+        the primary and around the published position of the secondary.
 
-        **Model.** The paper's single-star-subtracted scene: a uniform-disc primary (0.5 mas, fixed, flux ∝ λ⁻⁴ as in
-        the paper) plus a `virgil.models.Image` environment with a power-law spectrum from `virgil.spectra` on the
-        paper's grid (256 × 256 pixels of 0.15 mas), starting from `starting_image`. The secondary is left in the
-        image, as in the paper. Regulariser `MaxEntropy`, weight from `l_curve` over nine weights (10⁴ to 10⁻²), taking
-        the corner (weight 56). The paper instead fixes the primary's flux fraction and the environment index from a
+        **Model.** The paper's binary-subtracted scene: a uniform-disc primary (0.5 mas, fixed, flux ∝ λ⁻⁴ as in
+        the paper), a point-source secondary (free position, flux and power-law index, started at the published binary) and a
+        `virgil.models.Image` environment with a power-law spectrum from `virgil.spectra` on the paper's grid (256 × 256 pixels
+        of 0.15 mas), starting from `starting_image`. Regulariser `MaxEntropy`, weight from `l_curve` over nine weights
+        (10⁴ to 10⁻²), taking the corner (weight 56). The paper instead fixes the primary's flux fraction and the environment index from a
         20 × 20 grid and uses a regularisation weight of 10¹² in its own units, so the two are not the same
         optimisation. Neither image is a ground truth.
 
@@ -799,10 +858,16 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
         ![virgil, the published image recovered from the bitmap, and their difference](postagb/IRAS08544_compare.png)
 
         <figure markdown>
-        ![The published single-star-subtracted image of IRAS 08544-4431](postagb/literature/IRAS08544_hillen_image.png)
-        <figcaption>As published: the single-star-subtracted reconstruction of IRAS 08544-4431 with 5, 3 and 1σ contours,
-        Hillen et al. (2016), arXiv:1603.03023, Fig. 4 (upper panel). Reproduced from the arXiv version; Devika Kamath
+        ![The published binary-subtracted image of IRAS 08544-4431](postagb/literature/IRAS08544_hillen_binsub.png)
+        <figcaption>As published: the binary-subtracted reconstruction of IRAS 08544-4431 with the 5σ contour,
+        Hillen et al. (2016), arXiv:1603.03023, Fig. 4 (lower panel). Reproduced from the arXiv version; Devika Kamath
         (Macquarie University), a co-author, permits its use here.</figcaption>
+        </figure>
+
+        <figure markdown>
+        ![The published single-star-subtracted image of IRAS 08544-4431](postagb/literature/IRAS08544_hillen_image.png)
+        <figcaption>For reference, the upper panel of the same figure: the single-star-subtracted reconstruction (primary only),
+        with 5, 3 and 1σ contours, in which the secondary shows as a point source south-west of the star. Same source and permission.</figcaption>
         </figure>
 
         Data: authors' reduced copy of ESO 094.D-0865, in `~/code/nuHor/data/ep1/{A,B}` (not committed).
@@ -835,6 +900,6 @@ fixed stellar power-law index, a point secondary, and a pixel image with its own
 (SPARCO, Kluska et al. 2014), on the paper's grid and with the same data. What differs on purpose is the
 regulariser and optimiser (MaxEntropy and L-BFGS against ORGANIC's GAN and pyBADS), the choice of weight (L-curve
 corner against ORGANIC's tuned regularisation), and the uncertainty treatment (here the images are single reconstructions, without the paper's per-pixel significance maps). Images are therefore
-compared at the PIONIER beam, never at native resolution, where regularised reconstructions differ by construction.
+compared at a common beam (λ_min/2B_max, or the published beam for IRAS 08544-4431), never at native resolution, where regularised reconstructions differ by construction.
 
-A caution on the cross-correlation for the seven near-round discs of De Prins et al.: it is dominated by the radial profile. The azimuthal average of the published image already correlates at 0.85 to 0.96 with virgil's (0.59 for PS Gem), and the wrong-orientation controls at 0.50 to 0.91, so a value of 0.95 to 0.99 means the radial structure agrees and says less about the azimuthal structure. The orientation-flip χ² of the published image on our data is the sharper test of orientation, and the published orientation wins it for all seven targets.
+A caution on the cross-correlation for the seven near-round discs of De Prins et al.: it is dominated by the radial profile. The azimuthal average of the published image already correlates at 0.44 to 0.88 with virgil's (the high values for the compact, round discs), and the wrong-orientation controls at 0.10 to 0.81, so a value of 0.95 to 0.99 means the radial structure agrees and says less about the azimuthal structure. The orientation-flip χ² of the published image on our data is the sharper test of orientation, and the published orientation wins it for all seven targets.

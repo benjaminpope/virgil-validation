@@ -31,8 +31,13 @@ A target whose published image is only a bitmap (IRAS08544: Hillen et al. 2016, 
 ``bitmap`` in its TARGETS entry: ``compare`` then maps the bitmap's colours back to values
 through its colour bar (morphology only; the stretch cannot be matched exactly), convolves virgil
 with the beam ellipse drawn on the figure, and has no ORGANIC-style chi2 for the published image.
-``secondary=False`` fits a single-star-subtracted scene (UD primary + image, the secondary stays
-in the image), as that paper does.
+IRAS08544 is compared with the binary-subtracted panel (Fig. 4, lower): the scene has a free secondary
+(``sec_index0`` frees its power-law index) and both stars are blanked in the image support.
+
+Per-target options: ``hole_beams`` (radius of the window blanked in the image support around each central star, in
+beams' minor axes, default 0.5, so the pixels cannot trade flux with the stellar point sources or UD fluxes);
+``gp=dict(sigmas, length_beams)`` swaps MaxEntropy for a ``GaussianField`` prior with (sigma, length) chosen by
+the Laplace evidence; ``secondary=False`` fits a single-star-subtracted scene (the secondary stays in the image).
 """
 
 import argparse
@@ -61,8 +66,9 @@ from scipy import ndimage  # noqa: E402
 from virgil import OIData, read_oifits
 from virgil.oidata import closure_phases  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
+from virgil.fields import GaussianField  # noqa: E402
 from virgil.imaging import (  # noqa: E402
-    MaxEntropy, beam, convolve_beam, image_priors, l_curve, nyquist_pixel_scale,
+    MaxEntropy, beam, convolve_beam, error_scale, image_priors, l_curve, log_evidence, nyquist_pixel_scale,
     starting_image, whitened_residuals,
 )
 from virgil.models import (  # noqa: E402
@@ -105,16 +111,20 @@ TARGETS = {
         name="IRAS 08544-4431",
         files=[NUHOR / "ep1/A/*.fits", NUHOR / "ep1/B/*.fits"],
         log_name=None,
-        bitmap="IRAS08544_hillen_image.npz",
-        pub_label="Hillen et al. 2016, Fig. 4",
-        secondary=False,  # single-star-subtracted image: the secondary stays in the image
+        bitmap="IRAS08544_hillen_binsub.npz",
+        pub_label="Hillen et al. 2016, Fig. 4 lower panel",
+        # The core is a binary: the scene has a point-source secondary, free in position, flux and power-law index,
+        # started at the published values (Table 1: separation 0.81 mas, PA of the primary from the secondary 56 deg,
+        # f_sec 3.9 % against f_pri 59.7 %; T_sec = 4000 K, a local index of -2.5 at 1.65 um). Both stars get a
+        # window in the image support, as in the paper's binary-subtracted reconstruction.
+        sec_index0=-2.5, f_sec0=0.065,
         star_index=-4.0,  # paper: primary flux ~ lambda^-4
         env_index0=0.42,  # paper's grid maximum: f_pri = 0.61, environment index 0.42
         ud0=0.5,
         fit_ud=False,  # the paper fixes the primary at a 0.5 mas uniform disc
         fov_mas=38.4,  # 256 pixels of 0.15 mas
         pixel_mas=0.15,
-        sec0=(0.0, 0.0),  # unused: the image scene has no secondary
+        sec0=(-0.671, -0.453),  # 0.81 mas at PA 236 deg (56 + 180) from the primary
         regions=dict(inner=(0.0, 3.5), outer=(3.5, 16.0)),  # central point source and the ~15 mas ring
         inner_rim_max_mas=3.5,
         # Blind starts for the parametric fit (none uses the paper's values; the best chi2 is kept).
@@ -146,7 +156,11 @@ for _k, _name in OTHERS.items():
 
 # PS Gem's primary carries 87 % of the flux, so the default weights (1e4 to 1e-2) leave the first fit unconverged
 # and the sweep goes to NaN; shift the sweep down two decades.
-TARGETS["PS_Gem"]["log_weights"] = (2, -4)
+TARGETS["PS_Gem"]["log_weights"] = (2, -4)  # the MaxEntropy sweep, kept for the comparison
+# ... and the MaxEntropy image is arbitrary on a flat L-curve (NCC 0.63), so PS Gem is imaged with a GP prior instead:
+# a (sigma, length) grid, lengths in beams, the cell with the largest Laplace evidence kept.
+TARGETS["PS_Gem"]["gp"] = dict(sigmas=(1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))
+TARGETS["HR4049"]["gp"] = dict(sigmas=(1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
 
 for _k, _v in TARGETS.items():
@@ -374,7 +388,7 @@ def parametric_stage(args, out):
 # image
 
 
-def sparco_scene(cfg, env, f_env=0.5, index=None, f_sec=0.03, ud=None):
+def sparco_scene(cfg, env, f_env=0.5, index=None, f_sec=None, ud=None):
     """UD primary + (optional) point secondary + Image environment, power-law spectra (SPARCO).
 
     A target with ``sec0=None`` or ``secondary=False`` has no secondary here (for IRAS08544 it stays in the image,
@@ -387,8 +401,31 @@ def sparco_scene(cfg, env, f_env=0.5, index=None, f_sec=0.03, ud=None):
         env=env.set("flux", PowerLaw(f_env, index, L0)) if hasattr(env, "set") else env,
     )
     if sec is not None:
-        parts["sec"] = PointSource(flux=PowerLaw(f_sec, 0.0, L0), dra=sec[0], ddec=sec[1])
+        parts["sec"] = PointSource(flux=PowerLaw(cfg.get("f_sec0", 0.03) if f_sec is None else f_sec, cfg.get("sec_index0", 0.0), L0),
+                                   dra=sec[0], ddec=sec[1])
     return System(**parts)
+
+
+def hole_mask(cfg, env, data):
+    """Pixels of the environment image allowed to carry flux: the image's own support minus a window around
+    each central star. Extended flux within a fraction of a beam of a star is nearly indistinguishable from the
+    star's own, so without the window the pixels and the UD / point-source fluxes are degenerate.
+
+    The radius is ``hole_beams`` (default 0.5) times the beam's minor axis, as in the nuHor notebooks
+    (``circular_support(npix, scale, npix * scale, 0.5 * beam(data).minor_mas)``). The primary is at the origin,
+    the window follows ``sec0`` too when the secondary is a point source of the scene (``secondary`` true), so that
+    only a secondary left in the image (``secondary=False``) is not masked.
+    """
+    radius = cfg.get("hole_beams", 0.5) * beam(data).minor_mas
+    ny, nx = np.shape(env.log_brightness)
+    scale = float(env.pixel_scale_mas)
+    mask = np.ones((ny, nx), bool) if env.support is None else np.asarray(env.support, bool).copy()
+    yy, xx = np.mgrid[:ny, :nx]
+    east, north = ((nx - 1) / 2.0 - xx) * scale, ((ny - 1) / 2.0 - yy) * scale  # row 0 North, column 0 East
+    mask &= np.hypot(east, north) > radius
+    if cfg.get("sec0") is not None and cfg.get("secondary", True) and cfg.get("sec_hole", True):
+        mask &= np.hypot(east - cfg["sec0"][0], north - cfg["sec0"][1]) > radius
+    return mask, radius
 
 
 def image_stage(args, out):
@@ -398,11 +435,11 @@ def image_stage(args, out):
     # grid: the paper's pixel scale and field of view (parity with ORGANIC); coarser in --smoke
     scale = cfg["pixel_mas"] * (4.0 if args.smoke else 1.0)
     fov = cfg["fov_mas"] * (0.5 if args.smoke else 1.0)
-    start = starting_image(
-        data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov,
-        hole_mas=0.5 * beam(data).minor_mas)
-    env = start.env
-    print("grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; start flux", float(env.flux))
+    start = starting_image(data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov)
+    support, hole_mas = hole_mask(cfg, start.env, data)  # window around the star(s): no pixel / point-source degeneracy
+    env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
+    print("grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; start flux", float(env.flux),
+          f"; hole radius {hole_mas:.3f} mas ({int((~support).sum())} pixels blanked)")
     scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))  # index: cfg env_index0
     priors = image_priors(scene) | {
         "env.flux.ratio": dist.LogUniform(0.01, 20.0),
@@ -410,44 +447,107 @@ def image_stage(args, out):
     }
     if cfg.get("fit_ud", True):  # fixed in the paper for IRAS08544 (0.5 mas); a free UD collapses onto its bound there
         priors["star.diam"] = dist.Uniform(0.05, 1.5)
-    if cfg["sec0"] is not None and cfg.get("secondary", True):
+    has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
+    if has_sec:
         priors |= {
             "sec.flux.ratio": dist.Uniform(0.0, 0.3),
             "sec.dra": dist.Normal(cfg["sec0"][0], 1.0),
             "sec.ddec": dist.Normal(cfg["sec0"][1], 1.0),
         }
+        if "sec_index0" in cfg:  # free power-law index of the secondary (IRAS08544: published black body of 4000 K)
+            priors["sec.flux.index"] = dist.Uniform(-5.0, 2.0)  # a star is not steeper than the primary (-4) by much, nor rising faster than lambda^2
+    extra = dict(hole_mas=hole_mas, hole_beams=cfg.get("hole_beams", 0.5), n_blanked=int((~support).sum()))
+    if cfg.get("gp"):
+        model, curve_arrays, extra_gp = fit_gp(cfg, scene, start.env, support, priors, data, args)
+    else:
+        model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data, args)
+    extra |= extra_gp
+    c2, n = chi2r(model, data)  # on the data as given, whatever error rescaling the GP evidence used
+    bright = np.asarray(model.env.brightness)
+    mv2, mt3 = observables(model, data)
+    np.savez(
+        path(out, cfg, "image.npz"), brightness=bright, pixel_mas=float(model.env.pixel_scale_mas), model_v2=mv2, model_t3=mt3,
+        **curve_arrays,
+        stars=json.dumps(dict(
+            ud=float(model.star.diam), f_env=float(np.asarray(model.env.flux.ratio)),
+            env_index=float(np.asarray(model.env.flux.index)),
+            f_sec=float(np.asarray(model.sec.flux.ratio)) if has_sec else 0.0,
+            sec_dra=float(model.sec.dra) if has_sec else None,
+            sec_ddec=float(model.sec.ddec) if has_sec else None,
+            sec_index=float(np.asarray(model.sec.flux.index)) if has_sec else None)),
+    )
+    p = json.loads(str(np.load(path(out, cfg, "image.npz"))["stars"]))
+    tot = 1.0 + p["f_env"] + p["f_sec"]
+    summary = dict(
+        chi2_per_point=c2, n_points=n,
+        grid=list(bright.shape), pixel_mas=float(model.env.pixel_scale_mas), smoke=args.smoke,
+        seconds=time.time() - t0, f_prim_pct=100 / tot, f_sec_pct=100 * p["f_sec"] / tot if p["f_sec"] else None,
+        f_env_pct=100 * p["f_env"] / tot, **extra,
+        **{k_: v for k_, v in p.items() if k_ in ("ud", "env_index", "sec_dra", "sec_ddec", "sec_index")},
+    )
+    if has_sec:
+        summary |= dict(sec_sep_mas=float(np.hypot(p["sec_dra"], p["sec_ddec"])),
+                        sec_pa_deg=float(np.degrees(np.arctan2(p["sec_dra"], p["sec_ddec"])) % 360.0))
+    print(json.dumps(summary, indent=1))
+    json.dump(summary, open(path(out, cfg, "image.json"), "w"), indent=1)
+
+
+def fit_mem(cfg, scene, priors, data, args):
+    """MaxEntropy image, the weight at the corner of an L-curve."""
     weights = np.array([1e3, 1e1]) if args.smoke else np.logspace(*cfg.get("log_weights", (4, -2)), 9)
     opts = dict(max_steps=15) if args.smoke else dict(max_steps=800)
     curve = l_curve(scene, priors, data, MaxEntropy(1.0, path="env"), weights, **opts)
     corner = curve.corner() if len(weights) > 3 else None
     w_star = float(corner) if corner is not None else float(weights[len(weights) // 2])
     k = int(np.argmin(np.abs(np.log(np.asarray(curve.weights)) - np.log(w_star))))
-    model = curve.results[k].model
-    has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
-    c2, n = chi2r(model, data)
-    bright = np.asarray(model.env.brightness)
-    mv2, mt3 = observables(model, data)
-    np.savez(
-        path(out, cfg, "image.npz"), brightness=bright, pixel_mas=float(model.env.pixel_scale_mas),
-        weights=np.asarray(curve.weights), chi2_red=np.asarray(curve.chi2_red).tolist(),
-        penalty=np.asarray(curve.penalty), chosen=k, model_v2=mv2, model_t3=mt3,
-        stars=json.dumps(dict(
-            ud=float(model.star.diam), f_env=float(np.asarray(model.env.flux.ratio)),
-            env_index=float(np.asarray(model.env.flux.index)),
-            f_sec=float(np.asarray(model.sec.flux.ratio)) if has_sec else 0.0,
-            sec_dra=float(model.sec.dra) if has_sec else None,
-            sec_ddec=float(model.sec.ddec) if has_sec else None)),
-    )
-    p = json.loads(str(np.load(path(out, cfg, "image.npz"))["stars"]))
-    tot = 1.0 + p["f_env"] + p["f_sec"]
-    summary = dict(
-        chi2_per_point=c2, n_points=n, weight=float(curve.weights[k]), corner_weight=w_star,
-        grid=list(bright.shape), pixel_mas=float(model.env.pixel_scale_mas), smoke=args.smoke,
-        seconds=time.time() - t0, f_prim_pct=100 / tot, f_sec_pct=100 * p["f_sec"] / tot if p["f_sec"] else None,
-        f_env_pct=100 * p["f_env"] / tot, **{k_: v for k_, v in p.items() if k_ in ("ud", "env_index", "sec_dra", "sec_ddec")},
-    )
-    print(json.dumps(summary, indent=1))
-    json.dump(summary, open(path(out, cfg, "image.json"), "w"), indent=1)
+    arrays = dict(weights=np.asarray(curve.weights), chi2_red=np.asarray(curve.chi2_red).tolist(),
+                  penalty=np.asarray(curve.penalty), chosen=k)
+    return curve.results[k].model, arrays, dict(regulariser="MaxEntropy", weight=float(curve.weights[k]), corner_weight=w_star)
+
+
+def fit_gp(cfg, scene, start_env, support, priors, data, args):
+    """Gaussian-process image: a GaussianField log-brightness about the Gaussian start, (sigma, length) from the evidence.
+
+    Follows the nuHor GP notebooks: errors are first rescaled with MacKay's ``error_scale`` from a pilot fit at the
+    middle of the grid (the evidence assumes correct error bars), then every (sigma, length) of the grid is fitted,
+    warm-started from the last, and the one with the largest Laplace evidence is kept. Lengths are fractions of the
+    beam's minor axis.
+    """
+    gp = cfg["gp"]
+    sigmas, fracs = list(gp["sigmas"]), list(gp["length_beams"])
+    if args.smoke:
+        sigmas, fracs = sigmas[:1], fracs[:1]
+    minor = beam(data).minor_mas
+    lengths = [f * minor for f in fracs]
+    mean = np.asarray(start_env.brightness)
+    n, pix = mean.shape[0], float(start_env.pixel_scale_mas)
+    opts = dict(max_steps=15) if args.smoke else {}
+
+    def gp_scene(sigma, length):
+        env = Image(GaussianField(np.zeros(mean.shape), sigma, length, mean=mean), pix, support=support, flux=scene.env.flux)
+        return scene.set("env", env)
+
+    priors = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}  # the GP's latents replace the pixels
+    pilot = gp_scene(sigmas[len(sigmas) // 2], lengths[len(lengths) // 2])
+    pilot_fit = fit(pilot, image_priors(pilot) | priors, data, **opts)
+    s = float(error_scale(pilot_fit.model, data))
+    scaled = data.with_error_scale(s)
+    print(f"pilot chi2/pt {pilot_fit.info['chi2_red']:.3f}; error scale s = {s:.3f}")
+    log_z, chi2 = np.zeros((len(lengths), len(sigmas))), np.zeros((len(lengths), len(sigmas)))
+    fits, previous = {}, None
+    for i, length in enumerate(lengths):
+        for j, sigma in enumerate(sigmas):
+            sc = gp_scene(sigma, length)
+            fits[i, j] = previous = fit(sc, image_priors(sc) | priors, scaled, init=None if previous is None else previous.values, **opts)
+            log_z[i, j], chi2[i, j] = float(log_evidence(fits[i, j], scaled)), float(fits[i, j].info["chi2_red"])
+            print(f"length {length:.2f} mas, sigma {sigma}: log Z {log_z[i, j]:.1f}, chi2/pt {chi2[i, j]:.3f}", flush=True)
+    bi, bj = np.unravel_index(np.argmax(log_z), log_z.shape)
+    arrays = dict(gp_log_z=log_z, gp_chi2=chi2, gp_sigmas=np.asarray(sigmas), gp_lengths_mas=np.asarray(lengths),
+                  chosen=np.array([bi, bj]))
+    return fits[bi, bj].model, arrays, dict(
+        regulariser="GaussianField", gp_sigma=float(sigmas[bj]), gp_length_mas=float(lengths[bi]),
+        gp_length_beams=float(fracs[bi]), error_scale=s, log_evidence=float(log_z[bi, bj]),
+        gp_converged=bool(fits[bi, bj].info.get("converged", True)))
 
 
 # ----------------------------------------------------------------------------
@@ -548,6 +648,18 @@ def bitmap_published(cfg):
     return np.asarray(z["image"], float), float(z["pixel_mas"]), json.loads(str(z["beam"])), z
 
 
+def compare_beam(data):
+    """The comparison beam: a circular Gaussian of FWHM lambda_min / (2 B_max), from this target's data.
+
+    Both images are convolved with it (the virgil data beam, ``beam(data)``, only sets the hole radius).
+    """
+    from virgil.imaging import Beam
+
+    b_max = float(np.max(np.hypot(np.asarray(data.u), np.asarray(data.v))))
+    fwhm = float(np.min(np.asarray(data.wavel))) / (2.0 * b_max) * 180.0 / np.pi * 3.6e6
+    return Beam(fwhm, fwhm, 0.0)
+
+
 def compare_bitmap_stage(args, out):
     """Compare with an image that exists only as a bitmap: morphology at the paper's drawn beam."""
     from virgil.imaging import Beam
@@ -636,7 +748,7 @@ def compare_stage(args, out):
     n = pub.shape[0]
     grid = to_grid(ours["brightness"], float(ours["pixel_mas"]), pub_scale, n)
     grid = grid / grid.sum()
-    bm = beam(data)
+    bm = compare_beam(data)
     ours_c = np.asarray(convolve_beam(grid, pub_scale, bm))
     pub_c = np.asarray(convolve_beam(pub, pub_scale, bm))
     yy, xx = np.mgrid[:n, :n]
@@ -669,6 +781,8 @@ def compare_stage(args, out):
         ncc_zero_shift=ncc(ours_c, pub_c, mask), ncc_controls=ncc_controls, ncc_best_shift=shifts[best],
         best_shift_pixels=dict(dy=best[0], dx=best[1]), pixel_mas=pub_scale, beam=dict(
             major_mas=bm.major_mas, minor_mas=bm.minor_mas, pa_deg=bm.pa_deg),
+        beam_convention="circular Gaussian, FWHM lambda_min / (2 B_max)",
+        virgil_data_beam=dict(major_mas=beam(data).major_mas, minor_mas=beam(data).minor_mas, pa_deg=beam(data).pa_deg),
         ours=m_ours, published=m_pub, chi2_per_point_published_on_our_data=c2_pub,
         chi2_per_point_ours=json.load(open(path(out, cfg, "image.json")))["chi2_per_point"], n_points=n_pts,
         published_orientation_chi2=flips, smoke=json.load(open(path(out, cfg, "image.json")))["smoke"],
@@ -721,6 +835,13 @@ def plot_compare(out, cfg):
     plt.close(fig)
 
 
+def reg_label(out, cfg):
+    j = json.load(open(path(out, cfg, "image.json")))
+    if j.get("regulariser") == "GaussianField":
+        return f"GP, σ = {j['gp_sigma']:g}, ℓ = {j['gp_length_mas']:.2f} mas"
+    return "MaxEntropy, L-curve"
+
+
 def plot_images(out, cfg):
     """The page's headline figure: published (Zenodo FITS) and virgil, one style, one beam."""
     from matplotlib.patches import Ellipse
@@ -734,7 +855,7 @@ def plot_images(out, cfg):
     b = r["beam"]
     fig, ax = plt.subplots(1, 2, figsize=(10.4, 5.2), sharey=True)
     for a, key, title in ((ax[0], "published_conv", "ORGANIC (De Prins et al. 2026)"),
-                          (ax[1], "ours_conv", "virgil (MaxEntropy, L-curve)")):
+                          (ax[1], "ours_conv", f"virgil ({reg_label(out, cfg)})")):
         im = z[key]
         a.imshow(im / im.max(), origin="upper", extent=ext, cmap="magma", vmin=0, vmax=1)
         a.set_xlim(half, -half)
@@ -771,7 +892,7 @@ def plot_images_bitmap(out, cfg):
     ax[1].plot(0, 0, "*", c="#2a52be", ms=9, mec="k")
     ax[1].add_patch(Ellipse((half - 2.5, half - 2.2), pb["minor_mas"], pb["major_mas"], angle=-pb["pa_deg"],
                             fc="#8080ff", ec="#4040c0", alpha=0.9))
-    for a, title in zip(ax, (f"as published ({cfg['pub_label']})", "virgil (MaxEntropy, L-curve)")):
+    for a, title in zip(ax, (f"as published ({cfg['pub_label']})", f"virgil ({reg_label(out, cfg)})")):
         a.set_xlim(half, -half)
         a.set_ylim(-half, half)
         a.set_xlabel("Δα (mas, East left)")
@@ -844,8 +965,29 @@ def plot_fit_ours(out, cfg, files=None):
     plt.close(fig)
 
 
+def plot_gp_grid(out, cfg, z):
+    """The (sigma, length) grid of a GP image: Laplace log evidence and chi2 per point, the chosen cell crossed."""
+    log_z, chi2 = z["gp_log_z"], z["gp_chi2"]
+    sig, ln, (bi, bj) = z["gp_sigmas"], z["gp_lengths_mas"], z["chosen"]
+    fig, ax = plt.subplots(1, 2, figsize=(9, 3.6))
+    for a, vals, title, fmt in ((ax[0], log_z - log_z.max(), "log evidence - max", "{:.0f}"), (ax[1], chi2, "χ² per point (rescaled errors)", "{:.2f}")):
+        im = a.imshow(vals, origin="lower", cmap="viridis", aspect="auto")
+        a.set(xticks=range(len(sig)), xticklabels=[f"{x:g}" for x in sig], yticks=range(len(ln)),
+              yticklabels=[f"{x:.2f}" for x in ln], xlabel="σ", ylabel="ℓ (mas)", title=title)
+        a.plot(bj, bi, "wx", ms=12, mew=2)
+        mid = 0.5 * (vals.min() + vals.max())
+        for (i, j), v in np.ndenumerate(vals):
+            a.text(j, i, fmt.format(v), ha="center", va="center", color="k" if v > mid else "w", fontsize=8)
+        plt.colorbar(im, ax=a)
+    fig.tight_layout()
+    fig.savefig(path(out, cfg, "lcurve.png"), dpi=130)
+    plt.close(fig)
+
+
 def plot_lcurve(out, cfg):
     z = np.load(path(out, cfg, "image.npz"))
+    if "gp_log_z" in z:
+        return plot_gp_grid(out, cfg, z)
     chi2 = np.asarray(z["chi2_red"]).mean(axis=-1) if np.ndim(z["chi2_red"]) > 1 else np.asarray(z["chi2_red"])
     fig, ax = plt.subplots(figsize=(5, 4))
     ax.loglog(chi2, z["penalty"], "o-")
