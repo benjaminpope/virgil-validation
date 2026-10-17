@@ -187,7 +187,8 @@ def patch_iras(text, c, i):
     kind, title, body = verdict("IRAS08544", c, i, None)
     text = re.sub(r'    !!! \w+ "Verdict[^\n]*\n(?:        [^\n]*\n)+', lambda _: admonition(kind, title, body), text, count=1)
     text = re.sub(r"    \| Metric \| Hillen\+2016 \| virgil \|\n(?:    \|[^\n]*\n)+", lambda _: iras_metrics(c), text, count=1)
-    text = re.sub(r"(    <!-- binary-table -->\n)(?:    \|[^\n]*\n)*(    <!-- /binary-table -->)", lambda mo: mo.group(1) + binary_table(i) + mo.group(2), text, count=1)
+    hdr = "    | Parameter | Hillen+2016 | virgil (image fit) | Difference |\n    | --- | --- | --- | --- |\n"
+    text = re.sub(r"(    <!-- binary-table -->\n\n)(?:    \|[^\n]*\n)*(\n    <!-- /binary-table -->)", lambda mo: mo.group(1) + hdr + binary_table(i) + mo.group(2), text, count=1)
     text = re.sub(r"The comparison beam is circular.*?point sources\.", "", text)  # this tab keeps the drawn beam
     text = re.sub(r"(virgil's own dirty beam is [\d.]+ × [\d.]+ mas at PA \d+°)", lambda mo: mo.group(1), text)
     text = re.sub(r"(window of radius )[\d.]+( mas \(0\.5 of the data beam's minor axis; )\d+( pixels\))", lambda mo: f"{mo.group(1)}{i['hole_mas']:.2f}{mo.group(2)}{i['n_blanked']}{mo.group(3)}", text)
