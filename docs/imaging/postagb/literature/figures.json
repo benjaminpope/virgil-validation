@@ -28,5 +28,65 @@
   "figure": "Fig. 4 (upper panel)",
   "source": "https://arxiv.org/e-print/1603.03023:IRAS08544_UD045_015mas-256pixels_531sig-contour_beam.png",
   "shows": "single-star-subtracted SPARCO image of IRAS 08544-4431 with 5, 3 and 1 sigma contours"
+ },
+ "HR4049_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 4",
+  "source": "https://arxiv.org/html/2605.13445v2/HR4049_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of HR 4049, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+ },
+ "squeeze_organic_vs_squeeze_images_last_three.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 15 (Appendix D)",
+  "source": "https://arxiv.org/html/2605.13445v2/organic_vs_squeeze_images_last_three.png",
+  "shows": "ORGANIC (left) against SQUEEZE (right) reconstructions of IRAS 15469-5311 and IW Car (and the ones that follow Fig. 14)"
+ },
+ "HD108015_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 3",
+  "source": "https://arxiv.org/html/2605.13445v2/HD108015_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of HD 108015, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+ },
+ "squeeze_organic_vs_squeeze_images_first_four.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 14 (Appendix D)",
+  "source": "https://arxiv.org/html/2605.13445v2/organic_vs_squeeze_images_first_four.png",
+  "shows": "ORGANIC (left) against SQUEEZE (right) reconstructions of AI Sco, EN TrA, HD 95767 and HD 108015"
+ },
+ "AI_Sco_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 3",
+  "source": "https://arxiv.org/html/2605.13445v2/AI_Sco_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of AI Sco, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+ },
+ "EN_TrA_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 3",
+  "source": "https://arxiv.org/html/2605.13445v2/EN_TrA_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of EN TrA, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+ },
+ "HD95767_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 3",
+  "source": "https://arxiv.org/html/2605.13445v2/HD95767_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of HD 95767, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+ },
+ "IRAS15469-5311_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 4",
+  "source": "https://arxiv.org/html/2605.13445v2/IRAS15469-5311_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of IRAS 15469-5311, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+ },
+ "IRAS15469-5311_inner_rim_fit_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 5",
+  "source": "https://arxiv.org/html/2605.13445v2/IRAS15469-5311_inner_rim_fit_organic.png",
+  "shows": "example of the inner-rim ellipse fit for IRAS 15469-5311 (radial rays and 100 MCMC ellipses)"
+ },
+ "PS_Gem_disc_organic.png": {
+  "arxiv": "2605.13445v2",
+  "figure": "Fig. 4",
+  "source": "https://arxiv.org/html/2605.13445v2/PS_Gem_disc_organic.png",
+  "shows": "peak-normalised SPARCO+ORGANIC image of PS Gem, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
  }
 }

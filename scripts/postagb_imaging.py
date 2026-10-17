@@ -1,6 +1,6 @@
 """virgil against published VLTI/PIONIER post-AGB disc images (De Prins et al. 2026; Hillen et al. 2016).
 
-    python scripts/postagb_imaging.py {inspect,parametric,image,compare,replot} OUTDIR
+    python scripts/postagb_imaging.py {inspect,parametric,image,compare,replot,table} OUTDIR
         [--target IW_Car] [--smoke] [--files N]
 
 Stages (each writes into OUTDIR and the later ones read the earlier ones):
@@ -19,6 +19,7 @@ Stages (each writes into OUTDIR and the later ones read the earlier ones):
                  position angle and azimuthal asymmetry, and the reduced chi2 of the
                  published image on our data.
 * ``replot``     redraw every figure from the saved results (no fitting).
+* ``table``      markdown parameter table: De Prins et al. PMOIRED fit | virgil | difference in sigma.
 
 ``--smoke`` shrinks everything (three files, a coarse grid, two L-curve weights,
 a handful of optimiser steps) so that it runs on a laptop in a few minutes; its
@@ -69,7 +70,7 @@ from virgil.models import (  # noqa: E402
 )
 from virgil.spectra import PowerLaw  # noqa: E402
 
-DATA = Path("~/data/postagb_pionier").expanduser()
+DATA = Path(os.environ.get("POSTAGB_DATA", "~/data/postagb_pionier")).expanduser()  # POSTAGB_DATA: the OzSTAR copy
 ZENODO = DATA / "literature/obs_logs_and_images"
 LITERATURE = Path(__file__).resolve().parents[1] / "docs/imaging/postagb/literature"
 NUHOR = Path(os.environ.get("POSTAGB_NUHOR", "~/code/nuHor/data")).expanduser()  # authors' reduced copies (IRAS08544)
@@ -87,7 +88,9 @@ TARGETS = {
         fov_mas=44.8,
         pixel_mas=0.35,
         sec0=(1.12, -1.90),  # secondary from the paper's Gaussian fit to the image (Table 2)
+        half_mas=18.0, mask_mas=20.0, half_cmp_mas=15.0, ud0=0.5,
         inner_rim_max_mas=5.0,  # inner arcs lie inside this radius, the outer arc beyond (paper Sect. 5.3.7)
+        regions=dict(inner=(0.0, 5.0), outer=(5.0, 20.0)),
         paper=dict(
             f_prim_pct=63.6, ud_prim_mas=0.50, f_sec_pct=1.99, sec_dra=1.12, sec_ddec=-1.90,
             image_index=0.89, rim_diam_mas=6.9, rim_inc_deg=48.0, rim_pa_deg=144.0,
@@ -131,8 +134,24 @@ TARGETS = {
 }
 
 
+# The other seven targets of the paper share one recipe; everything geometric (grid, SPARCO
+# secondary, plot field of view) comes from the Zenodo FITS header at run time (see ``setup``).
+# ``paper`` holds only the numbers the paper reports for that target (Table 2 / PMOIRED tables).
+OTHERS = {
+    "HR4049": "HR 4049", "HD108015": "HD 108015", "AI_Sco": "AI Sco", "EN_TrA": "EN TrA",
+    "HD95767": "HD 95767", "IRAS15469-5311": "IRAS 15469-5311", "PS_Gem": "PS Gem",
+}
+for _k, _name in OTHERS.items():
+    TARGETS[_k] = dict(name=_name, log_name=_name, fits=f"{_k}_image.fits", paper={})
+
+# PS Gem's primary carries 87 % of the flux, so the default weights (1e4 to 1e-2) leave the first fit unconverged
+# and the sweep goes to NaN; shift the sweep down two decades.
+TARGETS["PS_Gem"]["log_weights"] = (2, -4)
+TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
+
 for _k, _v in TARGETS.items():
     _v["key"] = _k
+    _v.setdefault("files", None)  # None: the files of the paper's observation log, from the archive
 
 
 def path(out, cfg, name):
@@ -145,14 +164,38 @@ def path(out, cfg, name):
 
 
 def cfg_of(args):
-    return TARGETS[args.target]
+    cfg = TARGETS[args.target]
+    if "fov_mas" not in cfg:
+        setup(cfg)
+    return cfg
+
+
+def setup(cfg):
+    """Fill grid, SPARCO secondary and plot extents from the published FITS header."""
+    hdr, im, _ = zenodo_header(cfg)
+    n, scale = im.shape[0], abs(hdr["CDELT1"])
+    yy, xx = np.mgrid[:n, :n]
+    rad = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * scale
+    o = np.argsort(rad.ravel())
+    r90 = float(rad.ravel()[o][np.searchsorted(np.cumsum(im.ravel()[o]) / im.sum(), 0.9)])
+    half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * n * scale / 2))  # per-target override: the paper's figure extent
+    has_sec = hdr["SFLU2"] > 0
+    cfg.update(
+        fov_mas=n * scale, pixel_mas=scale, sec0=(hdr["SDEX2"], hdr["SDEY2"]) if has_sec else None,
+        ud0=max(hdr["SUD1"], 0.3), half_mas=half, mask_mas=0.95 * n * scale / 2, half_cmp_mas=0.85 * half,
+        regions=dict(disc=(0.0, 0.95 * n * scale / 2)), inner_rim_max_mas=None, paper_header=dict(
+            ud=hdr["SUD1"], f_prim_pct=100 * hdr["SFLU1"], f_sec_pct=100 * hdr["SFLU2"],
+            sec=(hdr["SDEX2"], hdr["SDEY2"]), image_index=hdr["SIND0"], star_index=hdr["SIND1"]),
+    )
 
 
 def load_files(cfg, n=None):
+    # the INSPIRING release holds exactly the exposures of the paper's observation log (counts checked per target)
     pats = cfg["files"] if isinstance(cfg["files"], (list, tuple)) else [cfg["files"]]
+    pats = [DATA / cfg["key"] / "INSPIRING/*.fits" if pat is None else pat for pat in pats]
     files = sorted(f for pat in pats for f in glob.glob(str(pat)))
     if not files:
-        raise SystemExit(f"no files match {cfg['files']}; run scripts/postagb_data.py fetch")
+        raise SystemExit(f"no files for {cfg['key']}; run scripts/postagb_data.py fetch")
     return files[:n] if n else files
 
 
@@ -171,10 +214,12 @@ def paper_log_mjds(cfg):
 
 
 def observables(model, data):
-    """Model V^2 and closure phases (degrees) at the data's samples (no flagged samples assumed)."""
+    """Model V^2 (at the unflagged V^2 samples) and closure phases (degrees)."""
     cv = model.model(data.u, data.v, data.wavel)
     t3 = closure_phases(cv, data.i_cps1, data.i_cps2, data.i_cps3)
-    return np.asarray(jnp.abs(cv) ** 2), np.degrees(np.asarray(t3))
+    v2 = np.asarray(jnp.abs(cv) ** 2)
+    vi = data.vis_index
+    return (v2 if vi is None or np.ndim(vi) == 0 else v2[np.asarray(vi)]), np.degrees(np.asarray(t3))
 
 
 def chi2r(model, data):
@@ -241,20 +286,22 @@ def plot_inspect(data, info, out, cfg):
 # parametric
 
 
-def parametric_start(cfg, start=None):
+def parametric_start(cfg, inc=50.0, pa=150.0, start=None):
     """The PMOIRED geometry of De Prins et al. (2026, Sect. 4.2) in virgil components.
 
     ``start`` overrides ``rim0``, ``az_amps0``, ``az_pas0`` and ``sec0`` (see ``param_starts``).
     """
     cfg = cfg | (start or {})
     sec = cfg["sec0"]
-    return System(
-        primary=UniformDisk(diam=cfg.get("ud0", 0.5), flux=PowerLaw(1.0, cfg.get("star_index", -3.165), L0)),
-        secondary=PointSource(flux=PowerLaw(0.03, 0.0, L0), dra=sec[0], ddec=sec[1]),
-        rim=ModulatedGaussianRim(*cfg.get("rim0", (12.0, 4.0, 50.0, 150.0)), az_amps=cfg.get("az_amps0", (0.3,)),
+    parts = dict(
+        primary=UniformDisk(diam=cfg["ud0"], flux=PowerLaw(1.0, cfg.get("star_index", -3.165), L0)),
+        rim=ModulatedGaussianRim(*cfg.get("rim0", (12.0, 4.0, inc, pa)), az_amps=cfg.get("az_amps0", (0.3,)),
                                  az_pas=cfg.get("az_pas0", (0.0,)), flux=PowerLaw(0.4, 0.9, L0)),
         bg=Resolved(flux=PowerLaw(0.1, 0.0, L0)),
     )
+    if sec is not None:  # targets without a SPARCO secondary in the paper have none here
+        parts["secondary"] = PointSource(flux=PowerLaw(0.03, 0.0, L0), dra=sec[0], ddec=sec[1])
+    return System(**parts)
 
 
 PARAM_PRIORS = {
@@ -281,20 +328,30 @@ def parametric_stage(args, out):
     cfg = cfg_of(args)
     data, files = load(cfg, args.files)
     t0 = time.time()
-    priors = {k: v for k, v in PARAM_PRIORS.items() if k != "primary.diam" or cfg.get("fit_ud", True)}
+    priors = {k: v for k, v in PARAM_PRIORS.items()
+              if (k != "primary.diam" or cfg.get("fit_ud", True)) and (cfg["sec0"] is not None or not k.startswith("secondary."))}
+    # blind multi-start (a single start can stick face-on: IRAS 15469-5311); keep the lowest chi2 and report them all
+    starts = cfg.get("param_starts") or [dict(inc=i, pa=p_) for i, p_ in
+                                          [(50.0, 150.0), (25.0, 30.0), (25.0, 120.0), (60.0, 30.0), (60.0, 100.0), (40.0, 170.0)]]
+    if args.smoke:
+        starts = starts[:1]
     tried = []
-    for st in cfg.get("param_starts", [None]):  # blind starts: keep the best chi2, report them all
-        r = fit(parametric_start(cfg, st), priors, data, method="lbfgs", **({"max_steps": 25} if args.smoke else {}))
+    for st in starts:
+        kw = dict(st) if "inc" in st else dict(start=st)
+        r = fit(parametric_start(cfg, **kw), priors, data, method="lbfgs", **({"max_steps": 25} if args.smoke else {}))
         tried.append((chi2r(r.model, data)[0], r))
         print("start", st, "chi2/pt", tried[-1][0])
     result = min(tried, key=lambda t: t[0])[1]
+    chi2_starts = [float(c) for c, _ in tried]
     model = result.model
     c2, n = chi2r(model, data)
     v = {k: np.asarray(x).tolist() for k, x in result.values.items()}
-    ratio = lambda name: float(np.asarray(getattr(model, name).flux(L0)))  # noqa: E731
+    has_sec = cfg["sec0"] is not None
+    ratio = lambda name: float(np.asarray(getattr(model, name).flux(L0))) if name != "secondary" or has_sec else 0.0  # noqa: E731
     total = 1.0 + ratio("secondary") + ratio("rim") + ratio("bg")
     summary = dict(
-        values=v, start_chi2_per_point=[float(c) for c, _ in tried], chi2_per_point=c2, n_points=n, seconds=time.time() - t0, smoke=args.smoke,
+        values=v, chi2_per_point=c2, n_points=n, chi2_starts=chi2_starts, start_chi2_per_point=chi2_starts,
+        seconds=time.time() - t0, smoke=args.smoke,
         f_prim_pct=100.0 / total, f_sec_pct=100 * ratio("secondary") / total,
         f_rim_pct=100 * ratio("rim") / total, f_bg_pct=100 * ratio("bg") / total,
         ud_prim_mas=float(model.primary.diam), rim_diam_mas=float(model.rim.diam),
@@ -303,9 +360,10 @@ def parametric_stage(args, out):
         az_amp=float(np.ravel(model.rim.az_amps)[0]), az_pa_deg=float(np.ravel(model.rim.az_pas)[0]) % 360.0,
         az_amps=[float(a) for a in np.ravel(model.rim.az_amps)],
         az_pas_deg=[float(a) % 360.0 for a in np.ravel(model.rim.az_pas)],
-        sec_dra=float(model.secondary.dra), sec_ddec=float(model.secondary.ddec),
-        sec_sep_mas=float(np.hypot(model.secondary.dra, model.secondary.ddec)),
-        sec_pa_deg=float(np.degrees(np.arctan2(model.secondary.dra, model.secondary.ddec)) % 360.0),
+        sec_dra=float(model.secondary.dra) if has_sec else None,
+        sec_ddec=float(model.secondary.ddec) if has_sec else None,
+        sec_sep_mas=float(np.hypot(model.secondary.dra, model.secondary.ddec)) if has_sec else None,
+        sec_pa_deg=float(np.degrees(np.arctan2(model.secondary.dra, model.secondary.ddec)) % 360.0) if has_sec else None,
         rim_dra=float(model.rim.dra), rim_ddec=float(model.rim.ddec),
     )
     print(json.dumps(summary, indent=1))
@@ -317,21 +375,20 @@ def parametric_stage(args, out):
 
 
 def sparco_scene(cfg, env, f_env=0.5, index=None, f_sec=0.03, ud=None):
-    """UD primary + point secondary + Image environment, power-law spectra (SPARCO).
+    """UD primary + (optional) point secondary + Image environment, power-law spectra (SPARCO).
 
-    With ``secondary=False`` in the target's config the secondary is left out (it stays in the image).
+    A target with ``sec0=None`` or ``secondary=False`` has no secondary here (for IRAS08544 it stays in the image,
+    as in the paper).
     """
-    sec = cfg["sec0"]
+    sec = cfg["sec0"] if cfg.get("secondary", True) else None
     index = cfg.get("env_index0", 0.9) if index is None else index
-    comps = dict(
-        star=UniformDisk(diam=cfg.get("ud0", 0.5) if ud is None else ud,
-                         flux=PowerLaw(1.0, cfg.get("star_index", -3.165), L0)),
+    parts = dict(
+        star=UniformDisk(diam=cfg["ud0"] if ud is None else ud, flux=PowerLaw(1.0, cfg.get("star_index", -3.165), L0)),
         env=env.set("flux", PowerLaw(f_env, index, L0)) if hasattr(env, "set") else env,
     )
-    if cfg.get("secondary", True):
-        comps = dict(star=comps["star"], sec=PointSource(flux=PowerLaw(f_sec, 0.0, L0), dra=sec[0], ddec=sec[1]),
-                     env=comps["env"])
-    return System(**comps)
+    if sec is not None:
+        parts["sec"] = PointSource(flux=PowerLaw(f_sec, 0.0, L0), dra=sec[0], ddec=sec[1])
+    return System(**parts)
 
 
 def image_stage(args, out):
@@ -353,19 +410,20 @@ def image_stage(args, out):
     }
     if cfg.get("fit_ud", True):  # fixed in the paper for IRAS08544 (0.5 mas); a free UD collapses onto its bound there
         priors["star.diam"] = dist.Uniform(0.05, 1.5)
-    if cfg.get("secondary", True):
+    if cfg["sec0"] is not None and cfg.get("secondary", True):
         priors |= {
             "sec.flux.ratio": dist.Uniform(0.0, 0.3),
             "sec.dra": dist.Normal(cfg["sec0"][0], 1.0),
             "sec.ddec": dist.Normal(cfg["sec0"][1], 1.0),
         }
-    weights = np.array([1e3, 1e1]) if args.smoke else np.logspace(4, -2, 9)
+    weights = np.array([1e3, 1e1]) if args.smoke else np.logspace(*cfg.get("log_weights", (4, -2)), 9)
     opts = dict(max_steps=15) if args.smoke else dict(max_steps=800)
     curve = l_curve(scene, priors, data, MaxEntropy(1.0, path="env"), weights, **opts)
     corner = curve.corner() if len(weights) > 3 else None
     w_star = float(corner) if corner is not None else float(weights[len(weights) // 2])
     k = int(np.argmin(np.abs(np.log(np.asarray(curve.weights)) - np.log(w_star))))
     model = curve.results[k].model
+    has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
     c2, n = chi2r(model, data)
     bright = np.asarray(model.env.brightness)
     mv2, mt3 = observables(model, data)
@@ -376,8 +434,9 @@ def image_stage(args, out):
         stars=json.dumps(dict(
             ud=float(model.star.diam), f_env=float(np.asarray(model.env.flux.ratio)),
             env_index=float(np.asarray(model.env.flux.index)),
-            **(dict(f_sec=float(np.asarray(model.sec.flux.ratio)), sec_dra=float(model.sec.dra),
-                    sec_ddec=float(model.sec.ddec)) if cfg.get("secondary", True) else dict(f_sec=0.0)))),
+            f_sec=float(np.asarray(model.sec.flux.ratio)) if has_sec else 0.0,
+            sec_dra=float(model.sec.dra) if has_sec else None,
+            sec_ddec=float(model.sec.ddec) if has_sec else None)),
     )
     p = json.loads(str(np.load(path(out, cfg, "image.npz"))["stars"]))
     tot = 1.0 + p["f_env"] + p["f_sec"]
@@ -422,11 +481,10 @@ def published_scene(cfg):
     f1, f2 = h["SFLU1"], h["SFLU2"]
     f_env = 1.0 - f1 - f2 - h.get("SFLU3", 0.0)
     env = Image.from_brightness(img, scale, floor=0.0, flux=PowerLaw(f_env / f1, h["SIND0"], h["SWAVE0"]))
-    return System(
-        star=UniformDisk(diam=h["SUD1"], flux=PowerLaw(1.0, h["SIND1"], h["SWAVE0"])),
-        sec=PointSource(flux=PowerLaw(f2 / f1, h["SIND2"], h["SWAVE0"]), dra=h["SDEX2"], ddec=h["SDEY2"]),
-        env=env,
-    )
+    parts = dict(star=UniformDisk(diam=h["SUD1"], flux=PowerLaw(1.0, h["SIND1"], h["SWAVE0"])), env=env)
+    if f2 > 0:
+        parts["sec"] = PointSource(flux=PowerLaw(f2 / f1, h["SIND2"], h["SWAVE0"]), dra=h["SDEX2"], ddec=h["SDEY2"])
+    return System(**parts)
 
 
 def region_metrics(img, scale, r_lo, r_hi):
@@ -579,7 +637,7 @@ def compare_stage(args, out):
     pub_c = np.asarray(convolve_beam(pub, pub_scale, bm))
     yy, xx = np.mgrid[:n, :n]
     rad = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * pub_scale
-    mask = rad < 20.0
+    mask = rad < cfg["mask_mas"]
     shifts = {}
     for dy in range(-3, 4):
         for dx in range(-3, 4):
@@ -594,8 +652,7 @@ def compare_stage(args, out):
         "rotated_180": ncc(ours_c, pub_c[::-1, ::-1], mask),
         "azimuthal_average_of_published": ncc(ours_c, prof[rbin], mask),
     }
-    rin = cfg["inner_rim_max_mas"]
-    regions = dict(inner=(0.0, rin), outer=(rin, 20.0))
+    regions = cfg["regions"]
     m_ours = {k: region_metrics(ours_c, pub_scale, *v) for k, v in regions.items()}
     m_pub = {k: region_metrics(pub_c, pub_scale, *v) for k, v in regions.items()}
     pub_model = published_scene(cfg)
@@ -627,7 +684,7 @@ def plot_compare(out, cfg):
     z = np.load(path(out, cfg, "compare_images.npz"))
     s = float(z["pixel_mas"])
     n = z["ours"].shape[0]
-    half = 15.0
+    half = cfg["half_cmp_mas"]
     ext = [n * s / 2, -n * s / 2, -n * s / 2, n * s / 2]
     panels = [("virgil, native", z["ours"]), ("virgil, PIONIER beam", z["ours_conv"]),
               ("ORGANIC (Zenodo), PIONIER beam", z["published_conv"])]
@@ -637,8 +694,9 @@ def plot_compare(out, cfg):
         a.imshow(im / (im.max() if "native" in title else vmax), origin="upper", extent=ext, cmap="magma", vmin=0, vmax=1)
         a.set_title(title)
     th = np.linspace(0, 2 * np.pi, 200)
-    for a in ax[:3]:
-        a.plot(cfg["inner_rim_max_mas"] * np.sin(th), cfg["inner_rim_max_mas"] * np.cos(th), "c-.", lw=0.8)
+    rin = cfg.get("inner_rim_max_mas")
+    for a in ax[:3] if rin else []:
+        a.plot(rin * np.sin(th), rin * np.cos(th), "c-.", lw=0.8)
     diff = z["ours_conv"] / z["ours_conv"].max() - z["published_conv"] / z["published_conv"].max()
     im = ax[3].imshow(diff, origin="upper", extent=ext, cmap="RdBu_r", vmin=-0.5, vmax=0.5)
     ax[3].set_title("difference of peak-normalised\nconvolved images")
@@ -667,7 +725,7 @@ def plot_images(out, cfg):
         return plot_images_bitmap(out, cfg)
     r = json.load(open(path(out, cfg, "compare.json")))
     z = np.load(path(out, cfg, "compare_images.npz"))
-    s, n, half = float(z["pixel_mas"]), z["ours"].shape[0], 18.0
+    s, n, half = float(z["pixel_mas"]), z["ours"].shape[0], cfg["half_mas"]
     ext = [n * s / 2, -n * s / 2, -n * s / 2, n * s / 2]
     b = r["beam"]
     fig, ax = plt.subplots(1, 2, figsize=(10.4, 5.2), sharey=True)
@@ -678,7 +736,7 @@ def plot_images(out, cfg):
         a.set_xlim(half, -half)
         a.set_ylim(-half, half)
         a.plot(0, 0, "*", c="gold", ms=11, mec="k")
-        a.add_patch(Ellipse((half - 4, -half + 3.5), b["major_mas"], b["minor_mas"], angle=90 - b["pa_deg"],
+        a.add_patch(Ellipse((half - 0.22 * half, -half + 0.2 * half), b["major_mas"], b["minor_mas"], angle=90 - b["pa_deg"],
                             fc="0.85", ec="w", alpha=0.9))
         a.set_xlabel("Δα (mas, East left)")
         a.set_title(title)
@@ -727,6 +785,9 @@ def plot_fit(out, cfg, files=None):
     data, _ = load(cfg, files)
     ours, z = np.load(path(out, cfg, "image.npz")), np.load(path(out, cfg, "compare_images.npz"))
     B = np.hypot(np.asarray(data.u), np.asarray(data.v)) / np.asarray(data.wavel) / 1e6
+    vi = data.vis_index
+    if vi is not None and np.ndim(vi) > 0:
+        B = B[np.asarray(vi)]
     v2, e2 = np.asarray(data.vis), np.asarray(data.d_vis)
     t3, et3 = np.degrees(np.asarray(data.phi)), np.degrees(np.asarray(data.d_phi))
     fig, ax = plt.subplots(2, 2, figsize=(11, 7))
@@ -811,8 +872,62 @@ def replot_stage(args, out):
         plot_inspect(data, json.load(open(path(out, cfg, "inspect.json"))), out, cfg)
 
 
+# ----------------------------------------------------------------------------
+# table: the page's parameter table (paper PMOIRED fit | virgil parametric fit | difference in sigma)
+
+
+def _fmt(v, e=None):
+    return f"{v:.3g}" if e is None else f"{v:.3g} ± {e:.2g}"
+
+
+def table_stage(args, out):
+    """Markdown rows of the parametric comparison, only for what the paper reports for this target."""
+    from postagb_paper import IMAGE, PMOIRED  # noqa: PLC0415
+
+    cfg = cfg_of(args)
+    par = json.load(open(path(out, cfg, "parametric.json")))
+    img = json.load(open(path(out, cfg, "image.json")))
+    paper = PMOIRED[cfg["key"]]
+    rows = [  # label, key in paper, virgil value, wrap period
+        ("Primary flux fraction, H (%)", "f_prim", par["f_prim_pct"], None),
+        ("Primary UD diameter (mas)", "ud", par["ud_prim_mas"], None),
+        ("Secondary flux fraction, H (%)", "f_sec", par["f_sec_pct"], None),
+        ("Resolved-background flux fraction, H (%)", "f_bg", par["f_bg_pct"], None),
+        ("Secondary offset Δα (mas)", "sec_dra", par["sec_dra"], None),
+        ("Secondary offset Δδ (mas)", "sec_ddec", par["sec_ddec"], None),
+        ("Rim diameter (mas)", "theta_rim", par["rim_diam_mas"], None),
+        ("Rim inclination (°)", "i_rim", par["rim_inc_deg"], None),
+        ("Rim position angle (°)", "pa_rim", par["rim_pa_deg"], 180.0),
+        ("Rim modulation amplitude (m = 1)", "a_mod", par["az_amp"], None),
+        ("Rim modulation phase (°)", "psi_mod", par["az_pa_deg"] - par["rim_pa_deg"], 360.0),  # PMOIRED az projang = az_pas - pa
+    ]
+    lines = ["| Parameter | De Prins+2026 (PMOIRED) | virgil (parametric) | Difference |", "| --- | --- | --- | --- |"]
+    for label, key, mine, period in rows:
+        if key not in paper or mine is None:
+            continue
+        val, lo, hi = paper[key]
+        d = mine - val
+        if period:
+            d = (d + period / 2) % period - period / 2
+        sig = d / (lo if d < 0 else hi)
+        lines.append(f"| {label} | {_fmt(val, max(lo, hi))} | {_fmt(mine)} | {d:+.3g} ({sig:+.1f}σ) |")
+    lines.append(f"| χ² per point | {paper['chi2']:.2f} | {par['chi2_per_point']:.2f} | |")
+    lines += ["", "ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit:", "",
+              "| Parameter | De Prins+2026 (ORGANIC) | virgil (image fit) | Difference |", "| --- | --- | --- | --- |"]
+    ip = IMAGE[cfg["key"]]
+    for label, key, mine in (("Primary flux fraction, H (%)", "f_prim", img["f_prim_pct"]),
+                             ("Primary UD diameter (mas)", "ud", img["ud"]),
+                             ("Secondary flux fraction, H (%)", "f_sec", img["f_sec_pct"]),
+                             ("Image spectral index", "image_index", img["env_index"])):
+        if key in ip and not (key == "f_sec" and cfg["sec0"] is None):
+            lines.append(f"| {label} | {_fmt(ip[key])} | {_fmt(mine)} | {mine - ip[key]:+.3g} |")
+    text = "\n".join(lines)
+    print(text)
+    path(out, cfg, "table.md").write_text(text + "\n")
+
+
 STAGES = dict(inspect=inspect_stage, parametric=parametric_stage, image=image_stage,
-              compare=compare_stage, replot=replot_stage)
+              compare=compare_stage, replot=replot_stage, table=table_stage)
 
 
 def main():
