@@ -12,8 +12,8 @@ sub-mm wavelengths, but the engineering is different:
   curvature stop at about 10⁴.
 - **Calibration nuisances for each execution block (EB)**: amplitude scale,
   weight scale, phase-centre offset.
-- **A primary beam.** It is negligible here: IM Lup's continuum is about 2″
-  across, against a Band 6 primary beam of about 25″.
+- **A primary beam.** It is negligible here: IM Lup's continuum is about 2–2.5″
+  across (outer radius to be fixed from DSHARP II), against a Band 6 primary beam of about 25″.
 
 The MPoL example
 [`04-IMLup-multi-EB`](https://github.com/MPoL-dev/examples/tree/main/04-IMLup-multi-EB)
@@ -162,8 +162,11 @@ data are never committed.
   × 300 nodes × 9 orders, which is 3 × 10⁸ Bessel evaluations per
   gradient. That is laptop-scale for a single evaluation, though full fits
   and evidence sweeps still go to OzSTAR.
-- The 5.12″ field gives only 2× padding of the roughly 2.5″ disk. The
-  cell-centre test in P2 should also try a 2048² grid.
+- The 5.12″ field gives only 2× padding of a disk of roughly 2–2.5″, and
+  the CLEAN mask (5.5″ × 3.5″) is wider than the field. The FFT model is
+  periodic with period FOV, so the outer radius must be taken from
+  DSHARP II/Table 1 and the grid sized from it before P2. The cell-centre
+  test in P2 should also try a 2048² grid.
 - The DSHARP MS keeps up to 16 channels per window. LB1 is 74% of the
   visibilities and 98% of the cells.
 
@@ -187,15 +190,30 @@ Independent checks in `src/crosscheck/`:
 - a DFT dirty image, compared with CASA `tclean` at `niter=0` on the same
   pixels;
 - the weight scatter for each ddid, recomputed from the residual
-  histogram.
+  histogram. The residuals are against the DSHARP CLEAN model, so the check
+  is independent of virgil.
 
 ### Grid per calibration group, then fit all the data at once
 
 Within each ddid, average the visibilities with their weights onto the
 uv-cell lattice of the image (Hermitian-folded). For Gaussian noise, the
 cell average and summed weight are sufficient statistics for any model
-evaluated at cell centres. The only approximation is the cell-centre one,
-bounded by a 2× padded grid.
+evaluated at cell centres and with s fixed. That is an approximation, not
+an identity: a visibility up to Δu/2 from its cell centre sees a phase error
+of about π·x/FOV for emission at offset x. For x ≈ 1.7″ and FOV = 5.12″ that
+is about 1 rad, and about 0.5 rad on a 2048² grid; padding does not bound
+it. The acceptance criterion is check (b) under Verification: ungridded
+minus gridded χ² below about 1 per degree of freedom for each ddid, from a
+DFT at the raw uv. MPoL's own example 04 uses `NuFFT` on the loose
+visibilities for this reason. If (b) fails, fall back to a NUFFT likelihood
+on the SB ddids, or to a finer grid, before any science run.
+
+The gridder must store, per cell, V̄ and Σw, and per group the raw N_vis and
+Σw|V|². The s term needs the within-cell scatter and the raw count, which
+carry almost all the information on s for the SB ddids (about 10⁴
+visibilities per cell). The within-cell scatter also contains source
+structure across the cell, so s is biased high at high SNR; compare it with
+the CLEAN-model estimate (see Verification), not with itself.
 
 What this buys over MPoL's batched SGD:
 
@@ -205,8 +223,11 @@ What this buys over MPoL's batched SGD:
 - Cheap nuisances:
   - the amplitude of each EB scales that group's model grid;
   - the offset of each EB is a phase ramp on the cell centres;
-  - the σ factor of each ddid enters the likelihood in closed form, as
-    N log s + χ²/s².
+  - the σ factor of each ddid enters the likelihood in closed form. With
+    variance σ² s² on each of Re and Im, −ln L = 2 N_vis ln s +
+    Σ w|r|² / (2 s²) + const, which is minimised at s² = Σ w|r|² /
+    (4 N_vis). N_vis is the raw visibility count, and the sum runs over raw
+    visibilities.
 
 NUFFT (removed in virgil issue #75, code in PR #71's history) returns only
 as a CPU check of the ungridded residuals, not for optimisation.
@@ -223,8 +244,12 @@ New in virgil (one PR):
 - `Image` at 1024² pixels and 5 mas, with optional Gaussian convolution
   matching MPoL's 30 mas, plus `MaxEntropy` with a flat prior and a small
   `TSV`. Fit with L-BFGS.
-- λ is chosen by k-fold dartboard cross-validation over uv cells, as in
-  MPoL and Zawadzki et al. 2023.
+- λ is chosen by k-fold dartboard cross-validation, as in MPoL and
+  Zawadzki et al. 2023. Folds are drawn on the union cell index (or on
+  dartboard sectors), and every group's copy of a held-out cell is held out
+  together; otherwise the same uv cell leaks into training through the
+  neighbouring ddids and EBs, and CV favours the method that overfits. The
+  GP uses the identical folds.
 - `l_curve` discrepancy and classic Gull–Skilling are reported as secondary
   choices.
 
@@ -244,8 +269,10 @@ gradient. A single evaluation fits on the laptop, but the fits and evidence
 sweeps go to OzSTAR. The geometry can be fitted on the SB data first (fewer
 than 3000 cells), then frozen for the full latent and hyperparameter fit.
 
-Hyperparameters come from `log_evidence`, a Laplace approximation in about
-3000 whitened latents. The model is also scored on the same dartboard
+Hyperparameters come from `log_evidence`, a Laplace approximation in
+(2M+1)·n_r whitened latents: about 3,300 (M=6, n_r=256) to 6,800 (M=8,
+n_r=400). A dense Hessian at 6,800² is fine, but budget the OzSTAR
+evidence sweeps on the upper figure. The model is also scored on the same dartboard
 cross-validation as MaxEnt.
 
 frank (Jennings et al. 2020) is an external check on the m=0 profile.
@@ -277,16 +304,40 @@ Expectation:
 | P0 | this note | References, data inventory, design, N_vis (done 2026-10-17). |
 | P1 | virgil-validation PR | ALMA worker, download, export, dirty-image and weight-scatter checks; record N_vis. |
 | P2 | virgil PR | Complex observable, `GriddedVisData`, `CalibrationNuisance`, tests against the DFT. |
-| P3 | OzSTAR GPU | MaxEnt plus a cross-validation sweep (sbatch array over λ and folds). |
+| P3 | OzSTAR GPU | MPoL reference run (`sgd.py` and `analyze_scale_factors.py` in `.venv-mpol` through `mpol_worker.py`, conventions in `docs/mpol_conventions.md`), then MaxEnt plus a cross-validation sweep (sbatch array over λ and folds). |
 | P4 | OzSTAR GPU | `MultipoleDisk`: geometry on SB, then the full fit and evidence over M and lengthscales. |
 | P5 | virgil-validation PR | `docs/imaging/alma_imlup.md`, trust graph and ledger, findings. |
 
 ## Verification
 
-- The gridded likelihood equals the float64 DFT likelihood to better than
-  1e-6 relative on a 10⁴-visibility subsample, and the gradients agree.
-- The dirty image matches CASA `tclean niter=0` to within noise.
-- Fitted σ factors agree with the scatter estimate to about 5%.
+- Two separate gridding checks:
+  - (a) Algebra: the gridded likelihood equals a float64 DFT likelihood
+    evaluated at the cell centres to 1e-10 relative, including the
+    s-dependent constant, and the gradients agree. This tests the
+    bookkeeping only.
+  - (b) Approximation: the ungridded χ² minus the gridded χ² at the fitted
+    model, from an independent DFT at the raw uv (in `src/crosscheck/`), is
+    below about 1 per degree of freedom for each ddid, with SB and LB
+    reported separately. The subsample is drawn so that cells hold several
+    visibilities each; a random 10⁴ draw from 4.2 × 10⁷ puts about one
+    visibility in most LB cells and hides the within-cell term.
+- The dirty image matches CASA `tclean niter=0` (with `weighting="natural"`
+  and the N/2 phase-centre pixel convention pinned) to a tolerance set by
+  the tclean gridding kernel, not by the noise: both images are linear in
+  the same data and share its noise.
+- A control that must fail: inject an offset point source (or an asymmetric
+  pair) with `simobserve`/`ft` into a copy of the MS. Check its position
+  from both tclean and the crosscheck DFT, in RA and Dec signs. The
+  conjugated mapping is registered as `kind="control"`. IM Lup's rings and
+  m=2 spiral are invariant under a 180° rotation, so a conjugation bug
+  would barely change its dirty image; only the injected source exposes it.
+- Fitted σ factors agree with the scatter estimate to about 5%, where the
+  residuals are taken against the DSHARP CLEAN model (the `.model` from
+  `tclean`, or the released FITS degridded by the crosscheck DFT), never
+  against a virgil fit.
+- Both MPoL's ingest and ours go through visread, so a visread convention
+  error would agree on both sides. The tclean check with the injected
+  source is the only root that reads the MS independently.
 - Injection-recovery: a synthetic ring-plus-spiral disk on the real uv
   coverage and weights is recovered by both methods.
 
