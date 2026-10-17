@@ -7,13 +7,17 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
-pytest.importorskip("virgil")
-import postagb_imaging as P  # noqa: E402
+try:  # needs virgil main (MultipoleField); the CI pin of the orbit pages predates it, so these tests skip there (extra: postagb)
+    import postagb_imaging as P  # noqa: E402
+except ImportError:
+    P = None
+needs_multipole = pytest.mark.skipif(P is None, reason="virgil without MultipoleField (install the postagb extra)")
 
 # Guards our own script's convention, not virgil against an independent result.
 pytestmark = pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 
 
+@needs_multipole
 @pytest.mark.parametrize("pa", [20.0, 80.0, 130.0, 170.0])
 def test_major_axis_pa_is_east_of_north(pa):
     n, scale = 129, 0.5
@@ -28,6 +32,7 @@ def test_major_axis_pa_is_east_of_north(pa):
     assert m["major_pa_deg"] == pytest.approx(pa, abs=0.5)
 
 
+@needs_multipole
 def test_centroid_pa_points_to_the_offset_blob():
     n, scale = 129, 0.5
     yy, xx = np.mgrid[:n, :n]
@@ -36,6 +41,7 @@ def test_centroid_pa_points_to_the_offset_blob():
     assert m["centroid_pa_deg"] == pytest.approx(45.0, abs=1.0)
 
 
+@needs_multipole
 def test_bitmap_to_image_recovers_beam_pa_and_colourbar():
     """A synthetic panel (grey colour bar, blue beam ellipse at PA 30 deg East of North) round-trips."""
     import io
@@ -65,6 +71,7 @@ def test_bitmap_to_image_recovers_beam_pa_and_colourbar():
     assert np.nanmedian(img) == pytest.approx(0.5, abs=0.03)  # the colour-bar inversion (top = 1)
 
 
+@needs_multipole
 @pytest.mark.parametrize("rot", [0.0, 35.0, 120.0])
 def test_hole_mask_window_sits_on_the_secondary_as_virgil_renders_it(rot):
     """The pixel the secondary's window is centred on, lit alone in virgil's Image, has the visibility of PointSource(dra, ddec)."""
