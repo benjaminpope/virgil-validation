@@ -1,7 +1,8 @@
 # Visibility-only data
 
-virgil#158 lets virgil read and fit data with no phases
-(`tests/test_v2_only.py`). Our simulator writes V² alone (no OI_T3).
+This page checks that virgil can read and fit data with no phases
+(virgil#158), against our own writer, injected truth and PMOIRED
+(`tests/test_v2_only.py`). Our simulator writes V² alone, with no OI_T3.
 
 | Check | Reference | Tag | Agreement |
 | --- | --- | --- | --- |

@@ -1,7 +1,7 @@
 # Analytic marginalisation of linear parameters
 
-`tests/test_linear_marginals.py`. virgil is adopting Luger, Foreman-Mackey
-& Hogg (2017) across the code. Each use is checked against a dense Gaussian
+virgil integrates out linear nuisance parameters (gains, offsets, zero points) analytically, following Luger, Foreman-Mackey
+& Hogg (2017). `tests/test_linear_marginals.py` checks each use against a dense Gaussian
 built with NumPy from our own reading of the file, or against brute-force
 integration.
 

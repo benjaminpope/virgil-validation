@@ -1,8 +1,10 @@
 # Aperture masking
 
-NIRISS-like 7-hole mask (0.8 m circular holes on the 1.32 m hexagonal
-grid), 4.8 µm, 30 mas pixels; each scene is a point cloud imaged source by
-source (`tests/test_nrm.py`).
+This page checks aperture-masking simulation and fitting against closed-form
+visibilities and injected truth. The setup is a NIRISS-like 7-hole mask
+(0.8 m circular holes on the 1.32 m hexagonal grid) at 4.8 µm with 30 mas
+pixels. Each scene is a point cloud imaged source by source
+(`tests/test_nrm.py`).
 
 | Check | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
@@ -16,8 +18,8 @@ source (`tests/test_nrm.py`).
 
 ## Mask geometry
 
-`virgil.coverage`'s synthetic masking data, against our own mask geometry
-([`test_limits_coverage_helpers.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_limits_coverage_helpers.py)).
+`virgil.coverage`'s synthetic masking data is compared with our own mask
+geometry ([`test_limits_coverage_helpers.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_limits_coverage_helpers.py)).
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |

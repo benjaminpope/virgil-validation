@@ -47,7 +47,7 @@ jobs:
           .venv/bin/python scripts/trust.py --strict-provenance --evidence ci/push/evidence.jsonl $extra \
             --evidence trust/evidence/campaigns.jsonl --virgil virgil-src \
             --out docs/index.md --json docs/assets/trust.json \
-            --findings docs/method/findings.md --coverage docs/method/coverage.md
+            --findings docs/method/findings.md --coverage docs/method/coverage.md --tests docs/tests/index.md
           # the binary orbit gallery: sky polylines from crosscheck.orbits, parameter tables from oidb_compare
           .venv/bin/python scripts/orbit_gallery.py render --out docs/orbits/binaries.md --json docs/assets/orbits.json
           # Zensical, as virgil (it reads mkdocs.yml); strict fails on warnings

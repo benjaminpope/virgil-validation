@@ -1,5 +1,7 @@
 # Against eht-imaging
 
+This page checks virgil's image transform, data terms and reconstructions against eht-imaging's `ftmatrix`, chi-squared terms and imager.
+
 ## Against eht-imaging's transform and data term
 
 `tests/test_ehtim_imaging.py`. eht-imaging has no OIFITS reader, so it is

@@ -1,10 +1,11 @@
 # Rapid rotators
 
-`GravityDarkenedStar` is compared with a rotating star that we wrote from
-Espinosa Lara & Rieutord (2011), not from virgil or from Shashank Dholakia's
-code, whose values virgil's own tests use. Our star has the Roche shape, the
-effective gravity and the ELR11 flux F = |g| tan²ϑ / tan²θ, integrated over a
-400 × 800 grid on its surface; virgil sums a mesh of `n_lat` latitude rings.
+This page checks `GravityDarkenedStar` against a rotating star that we wrote
+from Espinosa Lara & Rieutord (2011), independently of virgil and of Shashank
+Dholakia's code, whose values virgil's own tests use. Our star has the Roche
+shape, the effective gravity and the ELR11 flux F = |g| tan²ϑ / tan²θ,
+integrated over a 400 × 800 grid on its surface. virgil sums a mesh of `n_lat`
+latitude rings.
 Test: [`test_gravity_darkened_independent.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_gravity_darkened_independent.py).
 
 ## Grey model
@@ -24,7 +25,7 @@ second order. The default `n_lat` of 32 is good to 2–6e-3.
 
 ## Our reference
 
-Checked against closed forms before it is used: with ω = 0 it is a uniform
+We checked it against closed forms before using it: with ω = 0 it is a uniform
 disk (to 2e-5); its fluxes at the pole and the equator take ELR11's limits,
 e^(2ω²r_p³/3)/r_p² and (1 − ω²)^(1/3) (to 1e-6 and 1e-3); and its surface normal
 lies along g (to 1e-10).

@@ -1,7 +1,7 @@
 # Priors, angles and the MAP
 
-`tests/test_priors_angles.py`. virgil's default priors are the Jeffreys
-(invariant) measures, and `fit` optimises each in the coordinate where it
+This page checks virgil's default priors against closed forms, quadrature and sampling tests (`tests/test_priors_angles.py`).
+The defaults are Jeffreys (invariant) measures, and `fit` optimizes each in the coordinate where it
 is flat ("Priors and the MAP" in virgil's conventions).
 
 | virgil | Reference | Tag | Agreement |
