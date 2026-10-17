@@ -28,7 +28,7 @@ pages:
   likelihood/spectra_phases.md: Flux-spectrum and differential-phase likelihoods against SciPy.
   inference/grid_limits.md: Grid searches, significance and detection limits against CANDID, fouriever and Monte Carlo.
   inference/detection.md: Detection statistics and injection limits against our own χ² and quadrature.
-  inference/sampling.md: NUTS posteriors checked by simulation-based calibration over 1000 replicates.
+  inference/sampling.md: Simulation-based calibration of NUTS posteriors (1000 replicates; passes, not yet counted, chains often unhealthy).
   inference/helpers.md: Small inference, simulation and joint-likelihood helpers against closed forms.
   orbits/kepler.md: Kepler orbits on the sky and orientation priors against textbook Kepler code.
   orbits/orbitize.md: Keplerian, Thiele–Innes and radial-velocity orbits against orbitize!.

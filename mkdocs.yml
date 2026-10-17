@@ -62,6 +62,7 @@ nav:
   - Overview: index.md
   - "Disc images": imaging/postagb.md
   - "Binary orbits":
+      - orbits/index.md
       - "Orbit gallery": orbits/binaries.md
       - "Period aliases": orbits/aliases.md
   - "Function tests":

@@ -230,7 +230,7 @@ REFERENCE_DOCS = {
 NOT_TOPIC_PAGES = {"index.md", "trust.md", "evidence.md", "results.md", "tests/index.md"}
 # Showcase pages (real-data results): the explanation of a part only when no
 # function-test page covers it, like the method pages.
-SHOWCASE_PAGES = {"imaging/postagb.md", "orbits/binaries.md", "orbits/aliases.md"}
+SHOWCASE_PAGES = {"imaging/postagb.md", "orbits/index.md", "orbits/binaries.md", "orbits/aliases.md"}
 
 
 def slugify(text):
@@ -790,7 +790,7 @@ def test_sections(mkdocs=ROOT / "mkdocs.yml"):
         if isinstance(item, dict) and "Function tests" in item:
             return [(name, [(t, path) for page in pages for t, path in page.items()])
                     for sub in item["Function tests"] if isinstance(sub, dict) for name, pages in sub.items()]
-    return []
+    raise ValueError(f'no "Function tests" section in the nav of {mkdocs}')
 
 
 def render_tests(model, mkdocs=ROOT / "mkdocs.yml", about=ROOT / "trust" / "test_pages.yml"):
@@ -870,9 +870,9 @@ SHOWCASE = [
     ("imaging/postagb.md", "imaging/postagb/HD108015_images.png", "Disc images",
      "Dusty discs around nine post-AGB binaries, reconstructed by virgil from VLTI/PIONIER data "
      "and set beside the published images."),
-    ("orbits/binaries.md", "assets/orbit_aliases/gl229/sky.png", "Binary orbits",
-     "Orbits of close binaries from VLTI/GRAVITY and PIONIER archives, solved without the published answer "
-     "and compared with it."),
+    ("orbits/index.md", "assets/orbit_aliases/gl229/sky.png", "Binary orbits",
+     "Orbits of close binaries from VLTI/GRAVITY and PIONIER archives, fitted without starting from the "
+     "published orbit and compared with it."),
 ]
 
 

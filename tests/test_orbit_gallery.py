@@ -84,7 +84,7 @@ def test_page_explains_the_gallery(og, data):
     for heading in ("How to read a plot", "The badges", "Where the data come from", "Method"):
         assert re.search(rf"^## {heading}$", text, flags=re.M), heading
     assert "OiDB" in text and "CC BY-NC-SA" in text and "Jean-Marie Mariotti" in text
-    assert all(f"({page}.md)" in text for page in ("orbitize", "epochs", "aliases"))
+    assert "??? note" in text and all(f"({page}.md)" in text for page in ("orbitize", "epochs", "aliases"))
     for badge in ("agrees", "tension", "reported", "awaiting fit"):
         assert f"**{badge}.**" in text, badge
     assert {g["key"] for g in data["guide"]} >= {"sky", "ours", "pub", "alt", "eps", "alias", "phase"}

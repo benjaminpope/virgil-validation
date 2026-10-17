@@ -22,7 +22,9 @@ with virgil and compare.
 3. **Reconstruction.** virgil fits the pixels and the star parameters together, with a maximum-entropy
    regulariser whose weight is set at the corner of the L-curve (the point beyond which fitting
    the data better costs disproportionately more structure). ORGANIC instead uses a neural-network
-   prior; the choice is deliberate, so that agreement does not come from shared machinery.
+   prior; the choice is deliberate, so that agreement does not come from shared regularisers. The star
+   parameters start from the paper's SPARCO values and the secondary from its published position, so the
+   star fits show that the data do not pull them away, not that virgil finds them blind.
 4. **Comparison.** Both images are blurred to PIONIER's resolution (its beam), placed on one grid
    and compared by cross-correlation. As controls we also correlate against the published image
    mirrored, rotated by 180° and azimuthally averaged: a real match must beat all three.

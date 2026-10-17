@@ -113,3 +113,27 @@ def test_pipeline_card_links_to_page_when_set(model):
     p["binaries"]["page"] = "orbits/binaries/"
     linked = trust._pipeline_card(p["binaries"], model["nodes"])
     assert '<a class="vt-card-link" href="orbits/binaries/">Published binaries</a>' in linked
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_function_tests_landing_page_lists_every_page():
+    """The landing page from the real nav: a row per page, no stale descriptions, layer links resolve."""
+    import yaml
+
+    sections = trust.test_sections()
+    nav_paths = {path for _, pages in sections for _, path in pages}
+    assert nav_paths, "no pages under Function tests"
+    about = yaml.safe_load(open(ROOT / "trust" / "test_pages.yml"))
+    assert set(about["pages"]) <= nav_paths, set(about["pages"]) - nav_paths
+    text = trust.render_tests({"nodes": {}, "docs": {}})
+    for path in nav_paths:
+        assert f'href="../{trust.doc_url(path)}"' in text, path
+    anchors = set(re.findall(r'<h2 id="([^"]+)"', text))
+    assert {trust.slugify(s) for s in trust.LAYER_SECTION.values()} <= anchors
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_function_tests_section_missing_is_an_error(tmp_path):
+    (tmp_path / "mkdocs.yml").write_text("nav:\n  - Overview: index.md\n")
+    with pytest.raises(ValueError):
+        trust.test_sections(tmp_path / "mkdocs.yml")
