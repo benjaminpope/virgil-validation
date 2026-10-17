@@ -1,13 +1,38 @@
-# Post-AGB discs (VLTI/PIONIER)
+# Disc images: post-AGB binaries with VLTI/PIONIER
 
-The imaging-contest data cannot all be shown in public, so this page tests
-virgil's image reconstruction on data that anyone can fetch and against
-images that experts have already published: the VLTI/PIONIER observations of
-post-AGB circumbinary discs in ESO programme 1103.D-0797, reconstructed
-independently by De Prins et al. (2026) with SPARCO + ORGANIC. We
-reconstruct each target with a SPARCO-like model (below), put both images on
-one grid and one beam, and say plainly whether they agree. One tab per
-target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from the authors' reduced data.
+Old stars that have just left the asymptotic giant branch (post-AGB stars) often sit in binaries
+wrapped in a dusty disc a few astronomical units across. At their distances that is a few
+milliarcseconds: too small for any telescope, but within reach of the VLTI, which combines four
+telescopes up to 130 m apart. PIONIER measures how the fringes from each pair of telescopes
+fade (visibilities) and how their phases add around each triangle (closure phases). An image has
+to be reconstructed from those numbers, and the reconstruction depends on the software.
+
+This page asks whether virgil, given the same public data, draws the same discs as the experts.
+De Prins et al. (2026) imaged eight of these systems with SPARCO + ORGANIC from ESO programme
+1103.D-0797; IRAS 08544-4431 has an older image by Hillen et al. (2016). We reconstruct each one
+with virgil and compare.
+
+## How the images were made
+
+1. **Data.** The calibrated PIONIER files from the ESO archive (Phase 3 products), the same ones
+   the papers used. For IRAS 08544-4431, the authors' own reduced files.
+2. **Model.** Following the papers' SPARCO approach: the bright central star is a small uniform
+   disc, its companion a point, and everything else a pixel image with its own colour (a power-law
+   spectrum across the H band). Subtracting the stars in the model leaves the disc.
+3. **Reconstruction.** virgil fits the pixels and the star parameters together, with a maximum-entropy
+   regulariser whose weight is set at the corner of the L-curve (the point beyond which fitting
+   the data better costs disproportionately more structure). ORGANIC instead uses a neural-network
+   prior; the choice is deliberate, so that agreement does not come from shared machinery.
+4. **Comparison.** Both images are blurred to PIONIER's resolution (its beam), placed on one grid
+   and compared by cross-correlation. As controls we also correlate against the published image
+   mirrored, rotated by 180° and azimuthally averaged: a real match must beat all three.
+
+A correlation near 1 at the beam means the two reconstructions put the same light in the same places
+at the resolution the data support. For nearly round discs it mostly tests the radial profile; the
+orientation is tested separately by asking which way round the published image fits our data
+better (details under [Method parity](#method-parity)).
+
+## Results
 
 | Target | Published method | virgil verdict | Image cross-correlation |
 | --- | --- | --- | --- |
@@ -20,6 +45,11 @@ target. IRAS 08544-4431 is compared against Hillen et al. (2016) instead, from t
 | [IRAS 15469-5311](#iras-15469-5311) | SPARCO + ORGANIC | agree in radius and centroid | 0.99 |
 | [PS Gem](#ps-gem) | SPARCO + ORGANIC | do not agree; virgil image unconstrained | 0.63 |
 | [IRAS 08544-4431](#iras-08544-4431) | SPARCO image (Hillen+2016) | agree on the ring and its asymmetry; the secondary's position and flux differ | 0.96 |
+
+In short: four agree outright (HD 108015, AI Sco, HD 95767, IRAS 15469-5311); four agree in outline but
+differ in some detail (IW Car's outer arc, HR 4049's size, EN TrA's orientation, the companion of
+IRAS 08544-4431); and PS Gem's data do not constrain an image at all. Each tab shows the two images side by side, the verdict,
+a parameter table against the paper, and how to reproduce it.
 
 === "IW Car"
 

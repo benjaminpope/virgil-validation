@@ -1,8 +1,8 @@
 # Limb-darkened disks
 
-virgil's limb-darkened disks are compared with point clouds of each law's
-brightness, with Hanbury Brown et al.'s (1974) closed form for the linear law,
-and with Kipping's (2013) parametrization. The baselines are 300 random VLTI
+This page checks virgil's limb-darkened disks against point clouds of each
+law's brightness, Hanbury Brown et al.'s (1974) closed form for the linear
+law, and Kipping's (2013) parametrization. The baselines are 300 random VLTI
 samples and a dense radial cut to 130 m at 1.5 µm, which passes every null of
 a 12 mas disk. Test: [`test_limb_darkening.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_limb_darkening.py);
 issue [#12](https://github.com/benjaminpope/virgil-validation/issues/12).

@@ -3,7 +3,7 @@
     python scripts/trust.py --evidence trust/evidence/latest.jsonl \\
         [--evidence trust/evidence/virgil.jsonl] [--virgil ~/code/drpangloss] \\
         [--out docs/index.md] [--json docs/assets/trust.json]
-        [--findings docs/method/findings.md] [--coverage docs/method/coverage.md]
+        [--findings docs/method/findings.md] [--coverage docs/method/coverage.md] [--tests docs/tests/index.md]
 
 Two questions are kept apart:
 
@@ -227,7 +227,10 @@ REFERENCE_DOCS = {
     "crosscheck.orbits": "orbits/kepler.md", "crosscheck.disks": "models/flared_disks.md",
 }
 # Pages that are not about one topic: never the explanation of a part.
-NOT_TOPIC_PAGES = {"index.md", "trust.md", "evidence.md", "results.md"}
+NOT_TOPIC_PAGES = {"index.md", "trust.md", "evidence.md", "results.md", "tests/index.md"}
+# Showcase pages (real-data results): the explanation of a part only when no
+# function-test page covers it, like the method pages.
+SHOWCASE_PAGES = {"imaging/postagb.md", "orbits/binaries.md", "orbits/aliases.md"}
 
 
 def slugify(text):
@@ -296,8 +299,9 @@ def resolve_docs(graph, docs=ROOT / "docs", mkdocs=ROOT / "mkdocs.yml"):
         dotted = name.removeprefix("virgil.")
         last = dotted.rsplit(".", 1)[-1]
         best = None
-        # the topic sections first; the method pages only for parts no topic covers
-        for tier in ([p for p in pages if not p.startswith("method/")], [p for p in pages if p.startswith("method/")]):
+        # the topic sections first; the showcase and method pages only for parts no topic covers
+        fallback = [p for p in pages if p in SHOWCASE_PAGES or p.startswith("method/")]
+        for tier in ([p for p in pages if p not in fallback], fallback):
             for p in tier:
                 counts = [(a, _mentions(t, dotted, last)) for a, t in sections[p]]
                 total = sum(c for _, c in counts)
@@ -632,7 +636,7 @@ def layers(nodes):
     return [layer for layer in LAYER_ORDER if layer in present] + sorted(present - set(LAYER_ORDER))
 
 
-def _map(nodes):
+def _map(nodes, base=""):
     rows = []
     for layer in layers(nodes):
         chips = [n for n in nodes.values() if n["layer"] == layer]
@@ -645,7 +649,10 @@ def _map(nodes):
             + "</button>"
             for n in chips
         )
-        rows.append(f'<div class="vt-row"><div class="vt-layer">{e(layer)}</div><div class="vt-chips">{cells}</div></div>')
+        label = e(layer)
+        if layer in LAYER_SECTION:
+            label = f'<a href="{base}tests/#{slugify(LAYER_SECTION[layer])}" title="The {e(layer)} tests">{label}</a>'
+        rows.append(f'<div class="vt-row"><div class="vt-layer">{label}</div><div class="vt-chips">{cells}</div></div>')
     return '<div class="vt-map">' + "".join(rows) + '</div><div class="vt-detail" id="vt-detail" aria-live="polite">Select a part to see what it was checked against.</div>'
 
 
@@ -687,7 +694,10 @@ def _ledger(ledger):
             cards.append(f'<div class="vt-finding vt-f-{e(x["status"])}" id="{e(x["id"])}"><span class="vt-fid">{e(x["id"])}</span> '
                          f'<span class="vt-badge">{e(x["status"])}</span><div>{e(x["title"])}</div>'
                          f'<div class="vt-muted">{links}</div></div>')
-        out.append(f'<h3>{e(title)} ({len(items)})</h3><div class="vt-findings">{"".join(cards)}</div>')
+        unfixed = sum(1 for x in items if x["status"] in UNFIXED)
+        state = f"{unfixed} still open" if unfixed else "all resolved"
+        out.append(f'<details class="vt-fold"><summary><b>{e(title)} ({len(items)})</b> '
+                   f'<span class="vt-muted">· {state}</span></summary><div class="vt-findings">{"".join(cards)}</div></details>')
     return "".join(out)
 
 
@@ -769,6 +779,55 @@ def render_coverage(model, extra=ROOT / "trust" / "not_covered.md"):
     return "\n".join(out) + "\n"
 
 
+# The function-test section of the site that explains each layer of the map.
+LAYER_SECTION = {"data": "Data", "models": "Models", "likelihood": "Likelihood", "priors": "Likelihood",
+                 "inference": "Inference", "orbits": "Orbits", "imaging": "Imaging"}
+
+
+def test_sections(mkdocs=ROOT / "mkdocs.yml"):
+    """[(section, [(title, path)])] from the "Function tests" part of the nav."""
+    for item in yaml.load(open(mkdocs), Loader=yaml.BaseLoader)["nav"]:
+        if isinstance(item, dict) and "Function tests" in item:
+            return [(name, [(t, path) for page in pages for t, path in page.items()])
+                    for sub in item["Function tests"] if isinstance(sub, dict) for name, pages in sub.items()]
+    return []
+
+
+def render_tests(model, mkdocs=ROOT / "mkdocs.yml", about=ROOT / "trust" / "test_pages.yml"):
+    """The Function tests landing page: each page, what it checks and how many of its parts are verified."""
+    about = yaml.safe_load(open(about)) if pathlib.Path(about).exists() else {}
+    by_page = collections.defaultdict(list)
+    for k, doc in model.get("docs", {}).items():
+        if k.startswith("virgil.") and k in model["nodes"]:
+            by_page[doc.partition("#")[0]].append(model["nodes"][k])
+    lines = ["---\nhide:\n  - toc\n---",
+             "<!-- Generated by scripts/trust.py from mkdocs.yml and trust/test_pages.yml. Do not edit. -->",
+             "# Function tests\n",
+             "virgil, part by part. Each page below checks a group of virgil's functions against mathematics, "
+             "published standards or other people's code, and explains how. The bar shows how many of the parts "
+             "explained on that page are verified. To find one part, select it in the "
+             "[map on the Overview](../index.md#parts).\n",
+             '<div class="vt">']
+    for section, pages in test_sections(mkdocs):
+        lines.append(f'<h2 id="{slugify(section)}">{e(section)}</h2>')
+        if about.get("sections", {}).get(section):
+            lines.append(f'<p class="vt-muted">{e(about["sections"][section])}</p>')
+        rows = []
+        for title, path in pages:
+            nodes = by_page.get(path, [])
+            counts = collections.Counter(n["verdict"] for n in nodes)
+            ok = counts.get("verified", 0)
+            status = (f'{_bar(counts, len(nodes))}<span class="vt-muted">{ok} of {len(nodes)} verified</span>'
+                      if nodes else '<span class="vt-muted">no parts of its own</span>')
+            href = "../" + doc_url(path)
+            rows.append(f'<a class="vt-tp" href="{e(href)}"><span class="vt-tp-t">{e(title)}</span>'
+                        f'<span class="vt-tp-d">{e(about.get("pages", {}).get(path, ""))}</span>'
+                        f'<span class="vt-tp-s">{status}</span></a>')
+        lines.append('<div class="vt-tps">' + "".join(rows) + "</div>")
+    lines.append("</div>\n")
+    return "\n".join(lines)
+
+
 def _precision(nodes):
     """One dot per check with a numeric agreement in (0, 1), on a log axis."""
     pts = []
@@ -805,6 +864,24 @@ def _tables(model):
         roots = ", ".join(ROOT_NAMES.get(r, r) for r in n["strong"]) or "—"
         lines.append(f'| `{n["id"]}` | {VERDICTS[n["verdict"]][0]} | {roots} ({n["need"]}) | {changed} | {len(n["checks"])} |')
     return "\n".join(lines)
+
+
+SHOWCASE = [
+    ("imaging/postagb.md", "imaging/postagb/HD108015_images.png", "Disc images",
+     "Dusty discs around nine post-AGB binaries, reconstructed by virgil from VLTI/PIONIER data "
+     "and set beside the published images."),
+    ("orbits/binaries.md", "assets/orbit_aliases/gl229/sky.png", "Binary orbits",
+     "Orbits of close binaries from VLTI/GRAVITY and PIONIER archives, solved without the published answer "
+     "and compared with it."),
+]
+
+
+def _showcase(base):
+    cards = "".join(
+        f'<a class="vt-show" href="{base}{e(doc_url(page))}"><img src="{base}{e(img)}" alt="" loading="lazy">'
+        f'<span class="vt-show-t">{e(title)} →</span><span class="vt-show-d">{e(text)}</span></a>'
+        for page, img, title, text in SHOWCASE)
+    return f'<div class="vt-shows">{cards}</div>'
 
 
 def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
@@ -852,23 +929,30 @@ def render(model, base=""):
         _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
         _bar(counts, total),
         _legend(counts),
-        '<h2 id="real-data">On real data: does virgil reproduce published results?</h2>',
+        '<h2 id="showcase">Results on real data</h2>',
+        _showcase(base),
+        '<h2 id="real-data">Does virgil reproduce published results?</h2>',
         '<div class="vt-cards">' + ("".join(_pipeline_card(p, nodes) for p in real) or '<div class="vt-muted">None yet.</div>') + "</div>",
         '<h2 id="simulated-data">On simulated data: whole chains, from file to answer</h2>',
         '<div class="vt-chains">' + "".join(_chain(p, nodes) for p in sim) + "</div>",
         '<h2 id="parts">Every part, from data up</h2>',
-        '<p class="vt-muted">Each chip is one part of virgil. Select it to see how it was checked; '
-        "a dot marks parts virgil has changed since their evidence was measured.</p>",
-        _map(nodes),
-        '<h2 id="roots">Who checks what</h2>',
-        '<p class="vt-muted">Independent roots behind each part: trust does not rest on one source.</p>',
-        _matrix(nodes),
+        '<p class="vt-muted">Each chip is one part of virgil: select it to see how it was checked and read the page that '
+        'explains it. Each layer name opens its <a href="' + base + 'tests/">function tests</a>. '
+        "A dot marks parts virgil has changed since their evidence was measured.</p>",
+        _map(nodes, base),
         '<h2 id="ledger">What the checks found</h2>',
         _ledger(model["ledger"]),
+        '<p class="vt-muted">Every finding, with its tests: <a href="' + base + 'method/findings/">Findings</a>.</p>',
+        '<h2 id="roots">Who checks what</h2>',
+        '<details class="vt-fold"><summary>Independent roots behind each part: trust does not rest on one source.</summary>',
+        _matrix(nodes),
+        "</details>",
         '<h2 id="precision">How precise</h2>',
-        '<p class="vt-muted">Each dot is one check’s agreement with its reference (hover for which). '
-        "Most agree to machine precision; the looser ones are noisy simulations or deliberate approximations.</p>",
+        '<details class="vt-fold"><summary>Most checks agree to machine precision; the looser ones are noisy simulations '
+        "or deliberate approximations.</summary>",
+        '<p class="vt-muted">Each dot is one check’s agreement with its reference (hover for which).</p>',
         _precision(nodes),
+        "</details>",
         "</div>",
         f'<script type="application/json" id="vt-data">{data}</script>\n',
         "## All parts\n",
@@ -894,6 +978,7 @@ def main():
     ap.add_argument("--json", default=None)
     ap.add_argument("--findings", default=None, help="also write the Findings page here (docs/method/findings.md)")
     ap.add_argument("--coverage", default=None, help="also write the Not yet covered page here (docs/method/coverage.md)")
+    ap.add_argument("--tests", default=None, help="also write the Function tests landing page here (docs/tests/index.md)")
     args = ap.parse_args()
     graph = yaml.safe_load(open(args.graph))
     ledger = yaml.safe_load(open(args.ledger))
@@ -911,6 +996,9 @@ def main():
         pathlib.Path(args.findings).write_text(render_findings(ledger))
     if args.coverage:
         pathlib.Path(args.coverage).write_text(render_coverage(model))
+    if args.tests:
+        pathlib.Path(args.tests).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(args.tests).write_text(render_tests(model))
     if args.json:
         pathlib.Path(args.json).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.json).write_text(json.dumps(model, indent=1, default=str))

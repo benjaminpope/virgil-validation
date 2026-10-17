@@ -1,7 +1,7 @@
 # Multi-epoch orbits
 
 `tests/test_epochs.py` checks `virgil.epochs`, the tools that start and
-score an orbit fit to interferometric data from several epochs. The data
+score an orbit fitted to interferometric data from several epochs, against our own code and SciPy. The data
 are three-telescope nights simulated by `crosscheck.simulate`, so every
 closure phase is independent, and read with astropy. The reference is our
 own χ² (`crosscheck.chi2`), our own Kepler positions (`crosscheck.orbits`)

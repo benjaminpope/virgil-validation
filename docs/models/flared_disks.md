@@ -1,9 +1,10 @@
 # Flared disks and harmonix
 
-The flared disks are compared with their documented brightness (Blakely et
-al. 2024, eqs. 2–9: the scattering surface, the three phase functions and
-the skewed Gaussian ring), evaluated by our own code at the documented pixel
-centres and summed directly in Fourier space. Test:
+This page checks the flared-disk models against their documented brightness
+(Blakely et al. 2024, eqs. 2–9: the scattering surface, the three phase
+functions and the skewed Gaussian ring). Our own code evaluates that
+brightness at the documented pixel centres and sums it directly in Fourier
+space. Test:
 [`test_remaining_models.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_remaining_models.py).
 
 ## Flared disks

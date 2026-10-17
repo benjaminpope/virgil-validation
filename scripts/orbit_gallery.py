@@ -855,6 +855,14 @@ give it the archival data behind a published binary orbit, does it get the autho
 open it for the orbit on the sky, the separation and position angle through the orbit, and a table comparing every \
 fitted quantity with the paper.
 
+**How an orbit comes out of interferometry.** Most of these pairs are far too close to split with a single \
+telescope: a few milliarcseconds apart. VLTI/GRAVITY and PIONIER combine the light of four telescopes, and a \
+companion shows up as a ripple in the closure phases and visibilities whose spacing and size give its separation, \
+direction and brightness. Each night gives one position of the companion; a Keplerian orbit is the ellipse, \
+period and timing that threads those positions together. When the nights are sparse, several periods can fit \
+the same positions equally well (aliases), so the search covers every candidate period rather than starting at \
+the published one.
+
 **Why this tests virgil.** The data are the authors' own, so a difference comes from the analysis or from calibration \
 choices the archive does not record: the model, the likelihood, the optimizer, a convention such as which star an angle \
 belongs to, or the calibrators used. Agreement with the authors' independent pipelines on their own data is evidence \
@@ -896,7 +904,7 @@ ambiguity behind the alias nights).
 def page(data):
     blob = json.dumps(data, separators=(",", ":")).replace("</", "<\\/").replace("<!--", "<\\!--")
     bd = data.get("badges") or badges()
-    lines = ["# Binary orbit gallery", "", '<div class="og-intro" markdown>', "", INTRO.rstrip(), "", "</div>", "",
+    lines = ["# Binary orbits: GRAVITY and PIONIER", "", '<div class="og-intro" markdown>', "", INTRO.rstrip(), "", "</div>", "",
              '<div class="og"></div>', "",
              f'<script type="application/json" id="og-data">{blob}</script>', "",
              '<div class="og-about" markdown>', "", "## How to read a plot", ""]
@@ -904,9 +912,8 @@ def page(data):
     lines += ["", "## The badges", "",
               "Each tile carries one badge, which comes from the comparison tables of `scripts/oidb_compare.py`:", ""]
     lines += [f"- **{b['title']}.** {b['text']}" for b in bd["items"]]
-    lines += ["", bd["pull"], "", "## Where the data come from", "", DATA.rstrip(), "", "## Method", ""]
-    lines += ['??? note "How the fits and the comparison are made"', ""]
-    lines += [("    " + x).rstrip() for x in METHOD.rstrip().splitlines()]
+    lines += ["", bd["pull"], "", "## Method", "", METHOD.rstrip(),
+              "", "## Where the data come from", "", DATA.rstrip()]
     lines += ["", "</div>", "", '<div class="og-static" markdown>', "", "## The numbers without JavaScript", "",
               "The same tables as text, for readers without JavaScript.", ""]
     for t in data["targets"]:

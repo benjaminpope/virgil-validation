@@ -1,9 +1,10 @@
 # Geometric visibilities
 
-Every analytic model is compared with the Fourier transform of its documented
-brightness, evaluated by our own code on 500 random baselines up to 130 m at
-1.5–2.4 µm. Where a closed form exists we use it; otherwise we sum a point
-cloud drawn from the brightness by quadrature. Tests:
+This page checks every analytic model against the Fourier transform of its
+documented brightness, and then checks virgil's derivatives. Our own code
+evaluates the transform on 500 random baselines up to 130 m at 1.5–2.4 µm,
+using a closed form where one exists and otherwise a point cloud drawn from
+the brightness by quadrature. Tests:
 [`test_visibilities.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_visibilities.py) and
 [`test_gradients.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_gradients.py).
 
@@ -73,6 +74,6 @@ finite. Here they are compared with central finite differences
 
 ## Our references
 
-Before they judge virgil, our quadrature routes are checked against closed
+Before they judge virgil, we check our quadrature routes against closed
 forms: the disk cloud against 2 J₁(x)/x to 3e-15, the Gaussian cloud against
 its transform to 5e-16.

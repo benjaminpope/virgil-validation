@@ -1,15 +1,17 @@
 # How trust is built
 
 virgil is largely written by language models (Claude and Copilot), and so are
-most of its tests, which mostly check virgil against other parts of
-virgil. That proves the code is self-consistent, not that it is right. A
-sign convention, a factor of two or a misread paper can be consistent
-everywhere and still wrong.
+most of its tests. Those tests mostly check virgil against other parts of
+virgil. That shows the code is self-consistent, not that it is right. A sign
+convention, a factor of two or a misread paper can be consistent everywhere
+and still wrong.
 
-This repository's strategy is to **bootstrap trust**. We start from a few
-things we do not need to take on faith, and extend trust upwards one checked
-step at a time, until every capability of virgil hangs from that foundation
-by a chain of independent checks.
+This repository **bootstraps trust**. We start from a few things we need not
+take on faith. We then extend trust upwards one checked step at a time, until
+every capability of virgil hangs from that foundation by a chain of
+independent checks. The sections below set out the rules (principles), what
+the checks can and cannot show, how the evidence is recorded, and how the
+[Trust page](../index.md) turns it into verdicts.
 
 ## Principles
 
@@ -28,7 +30,7 @@ by a chain of independent checks.
       [fouriever](https://github.com/kammerje/fouriever) (Jens Kammerer),
       and for image reconstruction
       [eht-imaging](https://github.com/achael/eht-imaging) and
-      [MPoL](https://github.com/MPoL-dev/MPoL), and for orbits
+      [MPoL](https://github.com/MPoL-dev/MPoL), and for Keplerian orbits and radial velocities
       [orbitize!](https://github.com/sblunt/orbitize) (Blunt et al. 2020,
       2024);
     * **literature**: published results, reproduced from the authors' own
@@ -37,25 +39,46 @@ by a chain of independent checks.
       (pulls of fit − truth over σ must be N(0, 1)).
 2. **Our own reference code is a link, not a root.** `crosscheck` is also
    LLM-written. Before it may judge virgil, each reference must agree with a
-   root by a second, independent route (e.g. quadrature against a closed
-   form), and it must never import or copy virgil.
+   root by a second, independent route (for example, quadrature against a
+   closed form). It must never import or copy virgil.
 3. **Trust flows upwards only.** A virgil capability is trusted when it is
    checked against something already trusted *and* everything it is built
-   on is trusted. A fit is only as trustworthy as the likelihood, which is
-   only as trustworthy as the model and the data reader.
+   on is trusted. A fit is only as good as the likelihood, which is only as
+   good as the model and the data reader.
 4. **When roots disagree, mathematics wins.** If PMOIRED and virgil
    disagree, our analytic references decide which is wrong (as with
    PMOIRED's ring precision, [P3](pmoired.md)).
-5. **Disagreements are findings, never tolerances.** Each one is kept as a
-   test (pinned behaviour plus a strict `xfail` for the fix), fixed in
-   virgil by a PR, or reported upstream.
+5. **Disagreements are findings, never tolerances.** We never loosen a
+   tolerance to hide one. Each is kept as a test (pinned behaviour plus a
+   strict `xfail` for the fix), fixed in virgil by a PR, or reported upstream.
 6. **People sign off the conventions.** Every mapping between conventions
-   (axes, signs, which angle is which) is written down in a page a person
-   can check, because a model can agree with itself about a convention.
+   (axes, signs, which angle is which) is written on a page a person can
+   check, because a model can agree with itself about a convention.
+
+## What this does and does not establish
+
+The independent code was written by an AI agent (Claude), the same kind of
+author as most of virgil. It reads virgil's *documentation* to learn
+parameter conventions, never its implementation, and `src/crosscheck` cannot
+import virgil (a test enforces it). Shared misconceptions are still possible.
+Four guards reduce the risk:
+
+* Each of our numerical routes is checked against an analytic form before it
+  is used to judge virgil.
+* Conventions come from external standards (OIFITS sign and orientation,
+  position angle North through East), not from virgil.
+* Masking data are simulated two ways, by dLux (human-written, by other
+  authors) and by a closed-form interferogram, and the two must agree.
+* Every disagreement is a finding to be explained, never a tolerance to
+  loosen.
+
+External packages written by other people (PMOIRED, CANDID, fouriever,
+orbitize!, eht-imaging, MPoL) are a stronger check still. Each has its own
+page under Method.
 
 ## Two kinds of grounding
 
-Trust in virgil comes in two halves, grounded differently.
+Trust in virgil has two halves, grounded in different ways.
 
 **Models and data input/output are grounded externally.** Every forward
 model (a component's visibility, a composite scene, a chromatic flux),
@@ -63,23 +86,24 @@ every reader and writer (OIFITS, AMIGO DISCO products) and every observable
 operator (V², closure phases and their covariance) is compared with
 mathematics or with a published pipeline: PMOIRED, CANDID, dLux, harmonix,
 AMICAL, AMIGO. Every mismatch is ruled to be **ours**, **theirs**, or a
-**difference of definition**, and recorded. That is this repository's main
-job, because it needs code virgil must not contain.
+**difference of definition**, and recorded. This is the main job of this
+repository, because it needs code that virgil must not contain.
 
 **Retrievals are grounded internally.** Once a forward model is trusted,
-virgil can simulate data with it, and injection-recovery and Monte Carlo
+virgil can simulate data with it. Injection-recovery and Monte Carlo
 statistics then test everything downstream: fits, uncertainties, grid
 searches, detection limits, sampling and imaging. No external code is
 needed, so this half can run inside virgil. Its correctness is statistical:
 pulls must be N(0, 1), credible intervals must cover at their nominal rate,
-false-alarm rates must match their thresholds.
+and false-alarm rates must match their thresholds.
 
 **virgil's own CI counts as evidence.** Internal properties are already
 tested in virgil and are not reimplemented here: `model_on_grid` equals
 `model`, float32 agrees with float64, gradients are correct, the whitening
-algebra holds, small recoveries succeed. Such a test becomes evidence for a
-node of the flow once it is tagged (below), and it counts only when the
-forward model it relies on is itself externally grounded.
+algebra holds, and small recoveries succeed. Such a test becomes evidence for
+a node of the flow once it is tagged (see [Evidence records](#evidence-records)).
+It counts only when the forward model it relies on is itself externally
+grounded.
 
 Where each kind of check lives:
 
@@ -90,54 +114,71 @@ Where each kind of check lives:
 | External parity (expensive: dLux images, CANDID maps) | here, `campaigns/` | weekly, or on demand |
 | Monte Carlo statistics of retrievals | here, `campaigns/`, using only virgil | weekly (small), before releases and on OzSTAR (large) |
 
+## Kinds of reference
+
+Each check is tagged with the kind of reference virgil is compared with:
+
+| Tag | Meaning |
+| --- | --- |
+| **Analytic** | A closed-form result from a textbook or the physics (Airy pattern `2 J1(x)/x`, Gaussian transforms, the shift theorem, second moments), evaluated with NumPy/SciPy. |
+| **Quadrature** | Our own numerical integral of the brightness distribution: Gauss–Legendre, Gauss–Hermite or trapezoid rules over a point cloud, summed directly. It is checked against the analytic form wherever both exist. |
+| **First principles** | Our own implementation of a standard: uv tracks from Earth rotation (Thompson, Moran & Swenson ch. 4), closure phases and the OIFITS v2 format (Pauls et al. 2005; Duvert et al. 2017). |
+| **dLux** | An independent optical simulator written by other people (Desdoigts et al. 2023), propagating wavefronts through a sampled pupil. |
+| **Statistical** | Ensembles of noisy simulations testing that virgil's uncertainties are calibrated. |
+| **PMOIRED** | Another package's model of the same file (Mérand 2022), evaluated at mapped parameters. |
+| **virgil (internal)** | Agreement between two virgil code paths. Listed only where the other path is itself validated here. |
+
 ## The flow and its status
 
 The flow of trust, from the roots up through virgil's objects, and its
-current state are generated from the evidence rather than written by hand:
-see **[Trust](../index.md)**, the site's home page. It keeps two questions
-apart. The verdict, from the evidence at the virgil commit it ran on, is
-one of: verified; works, but relies on a known bug (or on a part not yet
-verified); convention from virgil's docs; known bug, fix pending; partly
-checked; check failing; or not yet checked. Freshness is separate: whether virgil's source under a part
-has changed since. The page also shows the end-to-end results on real and
-simulated data, which roots check which parts, every finding, and how
-precisely each check agrees.
+current state are generated from the evidence, not written by hand. See
+**[Trust](../index.md)**, the site's home page. It keeps two questions apart.
+
+* The **verdict** comes from the evidence at the virgil commit it ran on. It
+  is one of: verified; works, but relies on a known bug (or on a part not yet
+  verified); convention from virgil's docs; known bug, fix pending; partly
+  checked; check failing; or not yet checked.
+* **Freshness** is separate: whether virgil's source under a part has changed
+  since.
+
+The page also shows the end-to-end results on real and simulated data, which
+roots check which parts, every finding, and how precisely each check agrees.
 
 ### Roots are a pool
 
-The roots of trust are one pool: mathematics, standards, statistics,
-**literature** (published results reproduced from the authors' own data), and
-the trusted packages: dLux, PMOIRED, CANDID, fouriever, and, for image
-reconstruction, [eht-imaging](https://github.com/achael/eht-imaging) and
-[MPoL](https://github.com/MPoL-dev/MPoL), and for Keplerian orbits and radial
-velocities [orbitize!](https://github.com/sblunt/orbitize). Any link in the graph may be
-validated against whichever root suits it; no stage needs every package.
-A node asks only for a number of *distinct* roots (two for conventions, where
-a single reference could share a mistake).
+All the roots listed in the [principles](#principles) form one pool:
+mathematics, standards, statistics, **literature** (published results
+reproduced from the authors' own data), and the trusted packages. Any link in
+the graph may be validated against whichever root suits it, and no stage needs
+every package. A node asks only for a number of *distinct* roots. Conventions
+need two, because a single reference could share a mistake.
 
 ### Units and pipelines
 
-Most evidence is **unit** evidence: one object against one root, which says
+Most evidence is **unit** evidence: one object against one root. It says
 *where* something is right or wrong. **Pipeline** evidence checks a whole
 chain at once: reading OIFITS, building `OIData`, a model, the fit, its
-uncertainties, a grid search and limits. Reproducing a **published binary**
-from the authors' archival data is the strongest such check (root:
-literature): independent people, pipeline and data, with real-data quirks no
-simulation has. A pipeline counts as validated when its own evidence passes
-and every step is trusted on its own; if the end-to-end check fails while
-every unit passes, the fault is in the joins between them, which is itself a
-finding. The graph lists the pipelines checked so far (simulated VLTI fits,
-dLux masking fits, identical fits with PMOIRED) and the ones planned
-(published binaries, regularised imaging against eht-imaging or MPoL).
+uncertainties, a grid search and limits.
+
+Reproducing a **published binary** from the authors' archival data is the
+strongest pipeline check (root: literature). The people, pipeline and data
+are all independent, and real data bring quirks no simulation has.
+
+A pipeline counts as validated when its own evidence passes and every step is
+trusted on its own. If the end-to-end check fails while every unit passes,
+the fault is in the joins between them, which is itself a finding. The graph
+lists the pipelines checked so far (simulated VLTI fits, dLux masking fits,
+identical fits with PMOIRED) and those planned (published binaries,
+regularised imaging against eht-imaging or MPoL).
 
 ## Making it traceable and auditable
 
-The goal: any claim about virgil's correctness, such as "`UniformDisk` is
-right to 1e-15", can be followed to the evidence behind it. That means the
-test or campaign, the exact virgil commit and package versions it ran
+The goal is that any claim about virgil's correctness, such as "`UniformDisk`
+is right to 1e-15", can be followed to the evidence behind it. That evidence
+is the test or campaign, the exact virgil commit and package versions it ran
 against, the seed, the numbers, the criterion it had to meet, and the
-command to rerun it. The Trust page is then generated from that
-evidence, never written by hand.
+command to rerun it. The Trust page is generated from that evidence, never
+written by hand.
 
 ### Evidence records
 
@@ -163,19 +204,18 @@ campaign, produces a small JSON record:
 }
 ```
 
-Tests declare what they validate with a marker, and a pytest plugin
-(`conftest.py` here; a five-line copy in virgil's `conftest.py`) writes
-the records:
+Tests declare what they validate with a marker. A pytest plugin writes the
+records (`conftest.py` here; a five-line copy in virgil's `conftest.py`):
 
 ```python
 @pytest.mark.validates("virgil.models.UniformDisk", roots=["mathematics", "pmoired"])
 def test_disk_star_and_companion(...): ...
 ```
 
-Records go in `evidence/`: committed to an `evidence` branch by the
-weekly job, so that main's history stays clean, and published with the
-docs. Large outputs (campaign samples, figures) are uploaded as release
-assets, or kept on OzSTAR `/fred` with a checksum in the record.
+The weekly job commits records to `evidence/` on an `evidence` branch, which
+keeps main's history clean, and they are published with the docs. Large
+outputs (campaign samples, figures) are uploaded as release assets, or kept
+on OzSTAR `/fred` with a checksum in the record.
 
 ### The trust graph
 
@@ -189,7 +229,8 @@ assets, or kept on OzSTAR `/fred` with a checksum in the record.
   could get wrong in a correlated way, conventions above all.
 
 `scripts/trust.py` joins the graph with the latest evidence and gives
-each node a **verdict**, from the evidence at the virgil commit it ran on:
+each node a **verdict**, from the evidence at the virgil commit it ran on.
+The verdicts are:
 
 * **verified**: passing evidence from its required roots, and every node
   it relies on verified;
@@ -209,18 +250,18 @@ each node a **verdict**, from the evidence at the virgil commit it ran on:
 * **check failing**: a check of it fails;
 * **not yet checked**: no evidence.
 
-**Freshness** is reported separately, never folded into the verdict:
-whether virgil's source under a node has changed since that commit (from
-`git diff <commit> origin/main -- <paths>` on virgil). The page (the site's
-home page) shows the verdicts as a layered map with a detail panel per
-node, linking each check's evidence and test. "Verified at virgil
-`5239a70` on 2026-10-04" is then a statement anyone can audit.
+**Freshness** is reported separately, never folded into the verdict. It
+says whether virgil's source under a node has changed since that commit
+(from `git diff <commit> origin/main -- <paths>` on virgil). The home page
+shows the verdicts as a layered map with a detail panel per node, linking
+each check's evidence and test. "Verified at virgil `5239a70` on
+2026-10-04" is then a statement anyone can audit.
 
 ### The mismatch ledger: ours, theirs, or definition
 
 `ledger.yml` replaces the separate findings tables (virgil's findings in
 the README, PMOIRED's in [pmoired_notes.md](pmoired.md)). Every
-disagreement gets an entry, ruled by a fixed procedure:
+disagreement gets an entry, ruled by a fixed procedure.
 
 1. **Reproduce minimally**: the smallest scene and file that shows it, as a
    test.
@@ -244,11 +285,11 @@ issue link, so a ruling can itself be audited.
 
 ### Monte Carlo campaigns for retrievals
 
-`campaigns/` holds scripts that only use virgil (plus our trusted
+`campaigns/` holds scripts that use only virgil (plus our trusted
 simulators for data). Each takes `--draws`, `--seed` and `--out` and
 writes evidence records, so the same campaign runs small in CI and large
 on OzSTAR (via `ozstar_scripts`). Every campaign states its acceptance
-criteria and sample size **before** it runs:
+criteria and sample size **before** it runs.
 
 | Campaign | Statistic | Criterion | Draws |
 | --- | --- | --- | --- |
@@ -270,15 +311,15 @@ a 60-draw smoke version left in CI.
 | B | weekly, against virgil `main` | ~1 h on CI | dLux images, PMOIRED fits, campaigns at modest N |
 | C | before a virgil release, or on demand | hours on OzSTAR | campaigns at full N, CANDID maps and limits |
 
-A tier B or C result counts until virgil's code under its node changes;
-the page then marks the node as changed since its evidence (above). So the
-expensive runs need repeating only where virgil has actually changed.
+A tier B or C result counts until virgil's code under its node changes.
+The page then marks the node as changed since its evidence (see Freshness
+above), so the expensive runs repeat only where virgil has changed.
 
 ### Release gate
 
-virgil's release checklist gains one item: for anything the release
-changes, the trust page shows no node that is changed since its evidence,
-has a known bug, is failing or is not yet checked, or the release notes say
+virgil's release checklist gains one item. For anything the release changes,
+the trust page must show no node that is changed since its evidence, has a
+known bug, is failing or is not yet checked. Otherwise the release notes say
 which ones remain and why.
 
 ## Order of work
@@ -320,39 +361,3 @@ In dependency order, each with the root it would rest on:
 
 Related: virgil's own note on [matching PMOIRED's
 features](https://github.com/benjaminpope/virgil/blob/main/design/pmoired_parity.md).
-
-## Kinds of reference
-
-Each check is tagged with the kind of reference virgil is compared with:
-
-| Tag | Meaning |
-| --- | --- |
-| **Analytic** | A closed-form result from a textbook or the physics (Airy pattern `2 J1(x)/x`, Gaussian transforms, the shift theorem, second moments), evaluated with NumPy/SciPy. |
-| **Quadrature** | Our own numerical integral of the brightness distribution: Gauss–Legendre, Gauss–Hermite or trapezoid rules over a point cloud, summed directly. It is checked against the analytic form wherever both exist. |
-| **First principles** | Our own implementation of a standard: uv tracks from Earth rotation (Thompson, Moran & Swenson ch. 4), closure phases and the OIFITS v2 format (Pauls et al. 2005; Duvert et al. 2017). |
-| **dLux** | An independent optical simulator written by other people (Desdoigts et al. 2023), propagating wavefronts through a sampled pupil. |
-| **Statistical** | Ensembles of noisy simulations testing that virgil's uncertainties are calibrated. |
-| **PMOIRED** | Another package's model of the same file (Mérand 2022), evaluated at mapped parameters. |
-| **virgil (internal)** | Agreement between two virgil code paths. Listed only where the other path is itself validated here. |
-
-## What this does and does not establish
-
-The independent code was written by an AI agent (Claude), the same kind of
-author as most of virgil. It reads virgil's *documentation* to learn
-parameter conventions, never its implementation, and `src/crosscheck` cannot
-import virgil (a test enforces it). Shared misconceptions are still possible.
-They are guarded against by:
-
-* checking each of our numerical routes against an analytic form before it
-  is used to judge virgil;
-* taking conventions from external standards (OIFITS sign and orientation,
-  position angle North through East), not from virgil;
-* simulating masking data two ways, by dLux (human-written, by other
-  authors) and by a closed-form interferogram, and requiring them to agree;
-* treating every disagreement as a finding to be explained, never a
-  tolerance to loosen.
-
-External packages written by other people (PMOIRED, CANDID, fouriever,
-orbitize!, eht-imaging, MPoL) are a stronger check still; each has its own
-page under Method.
-

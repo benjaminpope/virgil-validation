@@ -1,14 +1,13 @@
 # PolarDisk: radial profiles, harmonics and height
 
-`PolarDisk` (virgil P1-P4: radial profiles `GaussianRing`, `RadialPowerLaw`, `ExpTail`, `Gap`,
-`RadialSum`, `RadialGP`; azimuthal `Harmonics` in linear and positive forms and `VonMises` arcs;
-height `Cone` and `PowerLawHeight`) is checked here in four stages. The code under test is virgil
-`b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e` (the tip of `polar-p4`, PR #343, which includes `polar-p3` c82e18c and `main`). **The committed result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale: regenerate them at the new pin on OzSTAR** (they still record the older hash, and were not relabelled). Every result file in
+This page checks `PolarDisk`, virgil's disk model built from a radial profile, azimuthal harmonics and a height, in four stages. The stages test the forward transforms against other codes, brute-force renders, public ALMA data, and injection and recovery. The model parts are the radial profiles `GaussianRing`, `RadialPowerLaw`, `ExpTail`, `Gap`, `RadialSum` and `RadialGP` (virgil P1-P4); the azimuthal `Harmonics` (linear and positive forms) and `VonMises` arcs; and the heights `Cone` and `PowerLawHeight`.
+
+The code under test is virgil `b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e`, the tip of `polar-p4` (PR #343), which includes `polar-p3` c82e18c and `main`. **The committed result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale. Regenerate them at the new pin on OzSTAR.** They still record the older hash and were not relabelled. Every result file in
 [`benchmarks/polar_disk/results`](https://github.com/benjaminpope/virgil-validation/tree/main/benchmarks/polar_disk/results)
-records that hash and the versions of the packages it ran with (frank 1.2.3, vis-r at
+records that hash and the package versions it ran with (frank 1.2.3, vis-r at
 `f53467077b04878986c967b501d88c54ff3efb86`, astro-frap 1.0.2, PMOIRED 26.10.1, oimodeler 0.8.1, JAX 0.11.2).
-The pass criteria are written at the head of each script before it was run. Results are from the working
-tree on top of this repository's `main` at the time of the PR: re-run on merge to pin them to a commit.
+The pass criteria are written at the head of each script before it was run. Results come from the working
+tree on top of this repository's `main` at the time of the PR. Re-run on merge to pin them to a commit.
 
 | Stage | What | Script | Outcome |
 | --- | --- | --- | --- |
@@ -20,18 +19,18 @@ tree on top of this repository's `main` at the time of the PR: re-run on merge t
 ## Independence
 
 Reference values come from other codes or from code written in this repository, never from virgil.
-`src/crosscheck/radial.py` is a composite Gauss-Legendre Hankel transform (checked against
-`scipy.integrate.quad`); `src/crosscheck/polar_images.py` renders a scene finely in the plane of the disk
-(radius, azimuth, height) and carries it to the sky, and `crosscheck.sky` sums it point by point;
+`src/crosscheck/radial.py` is a composite Gauss-Legendre Hankel transform, checked against
+`scipy.integrate.quad`. `src/crosscheck/polar_images.py` renders a scene finely in the plane of the disk
+(radius, azimuth, height) and carries it to the sky, where `crosscheck.sky` sums it point by point.
 `src/external_bridge/radial_codes.py` calls frank, vis-r and FRAP as documented.
 Tests: [`test_polar_disk_brute_force.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_polar_disk_brute_force.py),
 [`test_polar_disk_vs_codes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_polar_disk_vs_codes.py).
 
 ## V1 Forward transforms
 
-Criteria A1-A4 (smooth profiles to 1e-6 against truth, frank and FRAP; vis-r's error against truth reported, not a referee check (A3, implied by A1); A4 a bridge check of vis-r's u_minor convention; `ExpTail` to its documented 1e-5) and the speed report are in the script. Inclination
-50 degrees, position angle 30 degrees, an ALMA-like scale (r0 = 1 arcsec, q to 8e5) where vis-r's defaults make sense,
-and an optical/IR scale (r0 = 10 mas, q to 8e7) for virgil, frank and FRAP (the transform depends on q r only).
+The criteria and the speed report are in the script. A1-A2 require smooth profiles to agree to 1e-6 with truth, frank and FRAP. A3 reports vis-r's error against truth; it is not a referee check and is implied by A1. A4 is a bridge check of vis-r's u_minor convention. `ExpTail` must reach its documented 1e-5. The scenes have inclination
+50 degrees and position angle 30 degrees. An ALMA-like scale (r0 = 1 arcsec, q to 8e5) suits vis-r's defaults.
+An optical/IR scale (r0 = 10 mas, q to 8e7) serves virgil, frank and FRAP, since the transform depends on q r only.
 
 | Scene | virgil against truth | frank / FRAP against truth | vis-r against truth |
 | --- | --- | --- | --- |
@@ -41,14 +40,13 @@ and an optical/IR scale (r0 = 10 mas, q to 8e7) for virgil, frank and FRAP (the 
 | A4 bridge check: ring with vis-r's scale-height factor applied to both sides (the A1 number again; checks vis-r's `u_minor` convention, not virgil's vertical geometry) | 1.3e-9 | n/a | 5.3e-4 |
 | `ExpTail` | **2.0e-4** | **4.9e-3** | n/a |
 
-virgil differs from vis-r by vis-r's own error everywhere, so vis-r cannot referee virgil here (it differs from vis-r by exactly vis-r's
-error against truth to 6 digits): vis-r interpolates linearly in q on a grid fixed by the field size.
+virgil differs from vis-r by exactly vis-r's own error against truth, to 6 digits, so vis-r cannot referee virgil here. vis-r interpolates linearly in q on a grid fixed by the field size.
 **`ExpTail` fails A1.** Its docstring promises 1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes (117 here);
-128 nodes give 2e-4, the 150-node cap 4e-5 (ledger **F19**). frank and FRAP (one algorithm, the Fourier-Bessel matrix on the J0 zeros; counted as one root) are 5e-3 off on the
-same profile (Rmax = 18 000 mas, N = 300, band limit above every baseline) because a sharp-edged tail is not band-limited by their 300 nodes: a limit of those
-codes rather than an error (ledger **D10**); my criterion A2, which presumed a smooth profile, was
-wrong for this scene and is reported as such, not rewritten.
-`n_r` convergence of the smooth scenes: the error is at its floor by 32 to 64 nodes.
+128 nodes give 2e-4 and the 150-node cap 4e-5 (ledger **F19**). frank and FRAP (one algorithm, the Fourier-Bessel matrix on the J0 zeros, counted as one root) are 5e-3 off on the
+same profile (Rmax = 18 000 mas, N = 300, band limit above every baseline). A sharp-edged tail is not band-limited by their 300 nodes, so this is a limit of those
+codes rather than an error (ledger **D10**). Our criterion A2 presumed a smooth profile and
+was wrong for this scene. It is reported as such, not rewritten.
+For the smooth scenes, the error in `n_r` convergence is at its floor by 32 to 64 nodes.
 
 Speed (CPU, Apple M-series laptop, float64, median of 15):
 
@@ -57,14 +55,14 @@ Speed (CPU, Apple M-series laptop, float64, median of 15):
 | 1e3 | 0.63 ms | 0.14 ms | 0.13 ms | 0.21 ms | 0.13 ms | 60 / 60 ms |
 | 1e4 | 7.1 ms | 0.50 ms | 1.9 ms | 1.0 ms | 0.83 ms | 650 / 470 ms |
 
-virgil's per-call cost includes the Bessel matrix; with the geometry frozen it matches the other codes'
+virgil's per-call cost includes the Bessel matrix. With the geometry frozen it matches the other codes'
 cached-matrix cost. GPU and N_vis = 1e5 timings are deferred to OzSTAR.
 
 ## V2 Non-axisymmetric and geometric models
 
-Against the brute-force renders, 300 baselines to 130 m at 2.2 um, every case passes (criterion 1e-6; the
-imaginary part is above 0.2 everywhere, so each is sensitive to the asymmetry, and the control with the
-azimuth or height sense reversed differs by more than 0.2):
+Against the brute-force renders, on 300 baselines to 130 m at 2.2 um, every case passes (criterion 1e-6). The
+imaginary part is above 0.2 everywhere, so each case is sensitive to the asymmetry. The control with the
+azimuth or height sense reversed differs by more than 0.2.
 
 | Case | max abs dV |
 | --- | --- |
@@ -91,9 +89,8 @@ beyond five lengths); criteria C1 to C3 pass. Per-call times are in the result f
 
 ## V3 Public data
 
-virgil has no loader for complex visibilities and none was added (design/radial_profiles.md, section 13): what follows
-compares forward models and profile shapes on data corrected and averaged here, not posteriors from raw data. Downloaded
-files are untrusted: each is in its own directory, pickles are read with a whitelisting unpickler
+virgil has no loader for complex visibilities and none was added (design/radial_profiles.md, section 13). The comparisons below cover forward models and profile shapes on data corrected and averaged here, not posteriors from raw data. Downloaded
+files are untrusted. Each sits in its own directory, pickles are read with a whitelisting unpickler
 (`src/external_bridge/safe_load.py`), and `.npz` files with `allow_pickle=False`.
 
 **HR 4796** (vis-r, `data/hr4796.selfcal.npy`, 12.9 MB, 321 322 visibilities, binned to 19 493 at 4 arcsec as in `hello_world.py`).
@@ -107,8 +104,8 @@ The reference is the authors' own notebook output for their image-based Gaussian
 | H3 both within 3 sigma of the notebook values | passes: largest 0.36 (vis-r) and 0.59 (virgil) sigma |
 
 The offsets: vis-r's (dra, ddec) is a phase rotation of the model by exp(+2 pi i (u dra + v ddec)), which in virgil's sky
-convention is the offset (-dra, -ddec); the first run passed them unchanged and recovered the same fit with both offsets
-of opposite sign. Raw chi2 per data point on the quoted (re-weighted) errors is 0.98 for vis-r and 0.98 for virgil; the weights are
+convention is the offset (-dra, -ddec). The first run passed them unchanged and recovered the same fit with both offsets
+of opposite sign. Raw chi2 per data point on the quoted (re-weighted) errors is 0.98 for vis-r and 0.98 for virgil. The weights are
 rescaled so that the null model has chi2 equal to the number of points, so this is not an independent goodness of fit.
 
 **AS 209** (frank `docs/tutorials/AS209_continuum.npz`, 37.4 MB, 977 774 visibilities). With frank's tutorial geometry
@@ -136,8 +133,8 @@ here (the same prior as `RadialGP`: squared-exponential, sigma = 2, ell = 30 mas
 | F2 raw chi2 per point of the two MAPs within 5 percent | passes: 2.489 and 2.495 (ratio 0.998) | passes: 3.69 and 3.71 (0.996) |
 | F3 unit-flux profiles within 10 percent of the peak | passes: 2.5 percent | passes: 0.9 percent |
 
-The F1 difference is the linear interpolation of virgil's profile onto FRAP's differently placed nodes (a property of the check, not of
-either transform: V1 compares the transforms of the same function and agrees to 1e-9).
+The F1 difference comes from linearly interpolating virgil's profile onto FRAP's differently placed nodes. It is a property of the check, not of
+either transform: V1 compares the transforms of the same function and agrees to 1e-9.
 
 ## V4 Injection and recovery
 
@@ -154,8 +151,8 @@ n_r = 24, five injections starting at the truth plus a small perturbation; about
 | z-score rms (K2: within 0.29 of 1) | **1.9, fails**: the gap depth has abs(z) of 6.9 and 9.6 in two injections (the Laplace covariance is too narrow where the depth sits near its bound of 1 and degenerates with the gap width) |
 | K3 converged / K4 MAP loglike no worse than the truth's | 5 of 5; yes (worst +6.4) |
 
-Five injections are a pipeline check, not a calibration: the 68 and 95 percent coverages are within their (wide) binomial tolerances,
-and the z-score failure is from one parameter. The full configuration (200 injections, NRM and VLTI, M = 1 to 3, multi-start) is
+Five injections are a pipeline check, not a calibration. The 68 and 95 percent coverages are within their wide binomial tolerances,
+and the z-score failure comes from one parameter. The full configuration (200 injections, NRM and VLTI, M = 1 to 3, multi-start) is
 for OzSTAR: [`benchmarks/polar_disk/README_v4.md`](https://github.com/benjaminpope/virgil-validation/blob/main/benchmarks/polar_disk/README_v4.md).
 Fitting array-valued harmonic coefficients failed at 791f9fe, fixed in 1eae3e4 (ledger **F20**); the script uses per-element paths.
 
