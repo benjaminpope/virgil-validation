@@ -50,6 +50,9 @@ SOURCE_FIGURES = {
         "IRAS08544_hillen_image.png": (
             "IRAS08544_UD045_015mas-256pixels_531sig-contour_beam.png", "Fig. 4 (upper panel)",
             "single-star-subtracted SPARCO image of IRAS 08544-4431 with 5, 3 and 1 sigma contours"),
+        "IRAS08544_hillen_binsub.png": (
+            "IRAS08544-binsubt_UD045_015mas-256pixels_5sig-contour_beam.png", "Fig. 4 (lower panel)",
+            "binary-subtracted SPARCO image of IRAS 08544-4431 (primary and secondary at the best-fit parametric positions) with 5 sigma contours"),
     }),
 }
 
@@ -139,7 +142,7 @@ def fetch_source_figures(target, out):
         img, scale, beam, lut, crop = bitmap_to_image(png)
         import numpy as np  # noqa: PLC0415
 
-        np.savez_compressed(out / f"{target}_hillen_image.npz", image=img, pixel_mas=scale, beam=json.dumps(beam), cmap=lut / 255.0,
+        np.savez_compressed(out / local.replace(".png", ".npz"), image=img, pixel_mas=scale, beam=json.dumps(beam), cmap=lut / 255.0,
                  crop=crop,
                  source=f"arXiv:{arxiv_id} {label}")
         manifest[local] = dict(arxiv=arxiv_id, figure=label, source=f"https://arxiv.org/e-print/{arxiv_id}:{member}",

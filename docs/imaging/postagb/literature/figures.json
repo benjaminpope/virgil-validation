@@ -88,5 +88,11 @@
   "figure": "Fig. 4",
   "source": "https://arxiv.org/html/2605.13445v2/PS_Gem_disc_organic.png",
   "shows": "peak-normalised SPARCO+ORGANIC image of PS Gem, with the median inner-rim fit (cyan), the SPARCO primary (star) and secondary (cross)"
+ },
+ "IRAS08544_hillen_binsub.png": {
+  "arxiv": "1603.03023",
+  "figure": "Fig. 4 (lower panel)",
+  "source": "https://arxiv.org/e-print/1603.03023:IRAS08544-binsubt_UD045_015mas-256pixels_5sig-contour_beam.png",
+  "shows": "binary-subtracted SPARCO image of IRAS 08544-4431 (primary and secondary at the best-fit parametric positions) with 5 sigma contours"
  }
 }
