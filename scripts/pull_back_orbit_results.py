@@ -4,7 +4,8 @@
 
 RESULTS_DIR is anywhere above the per-system output directories of reanalyse_orbits.py
 (e.g. ozstar_scripts/results/orbit_aliases/<tag>): every directory under it holding a
-bands.json and named after a registered system is used. Copies bands.json, meta.json
+bands.json and named after a registered system is used (one whose tag directory ends in -cold, a --no-init run,
+is kept as <system>-cold beside the warm result). Copies bands.json, meta.json
 and the PNGs to docs/assets/orbit_aliases/<system>/, runs scripts/build_aliases_page.py,
 then `.venv/bin/zensical build --clean` (add --strict as CI does). Needs no JAX.
 """
@@ -33,7 +34,8 @@ def main(argv=None):
     found = {}
     for bj in sorted(a.results.rglob("bands.json")):  # later (sorted) tags overwrite earlier ones
         if bj.parent.name in known:
-            found[bj.parent.name] = bj.parent
+            cold = bj.parent.parent.name.endswith("-cold")  # a --no-init run (tag ends -cold): kept beside the warm one
+            found[bj.parent.name + ("-cold" if cold else "")] = bj.parent
     if not found:
         sys.exit(f"no <system>/bands.json under {a.results} for any of {sorted(known)}")
     for name, src in found.items():

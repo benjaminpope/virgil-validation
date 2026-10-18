@@ -146,6 +146,53 @@ def section(name, label, instrument, sysdir, rel):
     return "\n".join(out)
 
 
+GATE_N, GATE_NATS = 34, 10.0  # virgil 0.4.0 release gate (CONTRIBUTING "Releasing", item 4)
+
+
+def gate_section(assets, rel):
+    """The Gl 229 release-gate run (cold: ``--no-init``), kept beside the warm result in ``gl229/``."""
+    sysdir = pathlib.Path(assets) / "gl229-cold"
+    if not (sysdir / "bands.json").exists():
+        return ""
+    bands = sorted(json.load(open(sysdir / "bands.json"))["bands"], key=lambda b: -b["log_z"])
+    meta = json.load(open(sysdir / "meta.json")) if (sysdir / "meta.json").exists() else {}
+    top, nxt = bands[0], bands[1]
+    n34 = next((b for b in bands if b["n"] == GATE_N), None)
+    delta = top["log_z"] - nxt["log_z"]
+    ok = top["n"] == GATE_N and delta > GATE_NATS
+    prov = meta.get("provenance") or {}
+    v = meta.get("virgil") or {}
+    out = [
+        "## Release gate: Gl 229, cold start\n",
+        f"**{'PASS' if ok else 'FAIL'}.** virgil 0.4.0 gate: `reanalyse_orbits.py --system gl229 --no-init`, no warm start, at the "
+        f"release code, must rank band N = {GATE_N} first with Δlog Z > {GATE_NATS:g} over every other band. This run is labelled "
+        "**cold, reference-informed window**: the period window is 10 to 14 d (12 bands), set from the published period, "
+        "so it is not a blind search. The blind gate runs through `OrbitPipeline`.\n",
+        f"virgil {v.get('version', '?')}, commit `{v.get('commit_id') or 'unknown'}`; virgil-validation `{prov.get('validation_commit') or 'unknown'}`; "
+        f"options `{prov.get('extra_args') or '?'}`; OzSTAR job {prov.get('slurm_job') or '?'}. "
+        "The release adds only #421 (a `starting_image` change in `imaging.py`) and the CHANGELOG to this commit.\n",
+        f"Winner: N = {top['n']}, P = {fmt(top.get('period'), '.4f')} d, raw χ²/N {fmt(top.get('chi2_red'), '.2f')}, p = {fmt(top.get('p'), '.3f')}, "
+        f"log Z {fmt(top.get('log_z'), '.2f')} (Laplace) vs {fmt(top.get('log_z_is'), '.2f')} (IS). "
+        f"Margin over the runner-up (N = {nxt['n']}): Δlog Z = {delta:.1f}.\n",
+    ]
+    if n34 is not None and top["n"] != GATE_N:
+        warm_file = pathlib.Path(assets) / "gl229" / "bands.json"
+        warm = next((b for b in json.load(open(warm_file))["bands"] if b["n"] == GATE_N), None) if warm_file.exists() else None
+        out.append(
+            f"Band N = {GATE_N} ranks {1 + [b['n'] for b in bands].index(GATE_N)} of {len(bands)}: log Z {n34['log_z']:.1f}, raw χ²/N "
+            f"{fmt(n34.get('chi2_red'), '.2f')}."
+            + (f" The warm run reached log Z {warm['log_z']:.1f} and χ²/N {fmt(warm.get('chi2_red'), '.2f')} in this band, "
+               "so a cold start did not find its optimum here (or the likelihood changed between the two commits: not yet separated)." if warm else "")
+            + "\n"
+        )
+    out.append(table(bands) + "\n")
+    out.append("The warm-started result of 2026-10-15 (virgil a92b97c) is the Gl 229 section above.\n")
+    for png, cap in PLOTS:
+        if (sysdir / png).exists():
+            out.append(f"![{cap}]({rel}/gl229-cold/{png})\n")
+    return "\n".join(out)
+
+
 def verdict_tally(assets, names):
     """Winning-band verdicts of every system with a stored sky-plane row, under the current rule."""
     verdicts = {}
@@ -166,6 +213,9 @@ def render(assets=ASSETS, template=TEMPLATE, rel="../assets/orbit_aliases"):
                f"{SAME_SIGMA:g} posterior spreads), {tally['pass']} of {tally['total']} systems have a winning-band orbit on the "
                "reference's sky orbit. Verdicts are recomputed here from the stored statistics, not copied from the run.\n")
     secs.insert(0, summary)
+    gate = gate_section(assets, rel)
+    if gate:
+        secs.append(gate)
     skipped = "\n".join(f"- {a}: {b}." for a, b in SKIPPED)
     return string.Template(template.read_text()).substitute(SYSTEMS="\n".join(secs), SKIPPED=skipped)
 
