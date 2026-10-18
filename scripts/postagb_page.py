@@ -680,7 +680,8 @@ def gen_methods(_):
     h, hc = imgs.get("HD95767"), J("HD95767", "compare")
     if a and b_ and h and hc:
         si4 = (f" A one-off check on HD 95767 (gp-polar) with the earlier −4 index instead of SIND1 = {n_(h.get('star_index'), 'g')} changes the NCC from "
-               f"{hc['ncc_zero_shift']:.2f} to {b_['ncc_zero_shift']:.2f} and d_env from {h['env_index']:.2f} to {a['env_index']:.2f}.")
+               f"{hc['ncc_zero_shift']:.2f} to {b_['ncc_zero_shift']:.2f} and d_env from {h['env_index']:.2f} to {a['env_index']:.2f}, with the log evidence "
+               f"{h['log_evidence'] - a['log_evidence']:+.0f} in favour of SIND1: the disc index is degenerate with the fixed star colour.")
     bg0 = ""
     a, b_ = J("IW_Car", "image", "gp-polar_bg0"), J("IW_Car", "compare", "gp-polar_bg0")
     h, hc = imgs.get("IW_Car"), J("IW_Car", "compare")
@@ -711,7 +712,9 @@ def gen_methods(_):
         "(σ over 0.25 to 16, ℓ from one pixel to twice the comparison beam). gp-aniso stretches the correlation length along the disc's major axis. gp-polar is "
         "`virgil.fields.MultipoleField`, a polar GP (Matérn in radius times a periodic kernel in azimuth) deprojected by the parametric fit's inclination and PA "
         "(σ over 0.125 to 2, ℓ_θ over 0.25 to 2 rad, ℓ_r from 0.5 to 4 beams). In each GP strategy the hyperparameters are the cell of the grid with the largest "
-        "Laplace evidence. gp-polar is our recommended model and the headline of every tab.",
+        "Laplace evidence. A radial cap on the polar grid (the parametric rim radius plus the larger of three comparison beams and half a radius, the rest left to the grey background) was tested on IW Car and HD 95767: it lowered the log evidence by hundreds and degraded the images (IW Car NCC 0.74 against 0.90, HD 95767 0.88 against 0.94), so the faint outer arcs carry real, partly resolved flux that the fully resolved background cannot absorb. The polar grid therefore runs to the whole field. Its cells are uniform in radius, so at the field edge they can form concentric arcs: read the outermost emission with that in mind. "
+        "its cells are uniform in radius, and at the field edge they otherwise soak up the over-resolved flux as concentric arcs. "
+        "gp-polar is our recommended model and the headline of every tab.",
         "**Why the evidence is not followed blindly.** The strategies have very different latent dimensions (a pixel field, a polar grid, a disc plus residual), so "
         f"their Occam factors are not like for like; and with headline χ²/pt of {rng(chis)} every fit is already well inside the noise. "
         f"gp-polar is the evidence-best strategy on {', '.join(polar_best) if polar_best else 'none of the targets'}"
