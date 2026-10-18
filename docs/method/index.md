@@ -341,10 +341,15 @@ virgil's release checklist gains these items (also in virgil's
 1. Tier A of this repository passes against the release commit.
 2. All evidence is regenerated and pinned to that single commit
    (`scripts/check_evidence_pin.py --release`, above).
-3. No ledger finding ruled `virgil` with severity `bug` is open without a
-   recorded decision (fix, or accepted with a reason in the release notes).
+3. No ledger finding ruled `virgil` with severity `bug` (its `kind` begins
+   `bug`) is open without a recorded decision: fixed, or accepted with a
+   reason in the entry's `decision` field and in the release notes.
 4. The mutation kill rate of the validation suite is reported.
-5. For anything the release changes, the trust page shows no node that is
+5. The `orbit_aliases` search for Gl 229, run cold (`--no-init`) at the
+   release commit, ranks the N = 34 band (P = 12.134 d) first with
+   Δlog Z > 10 over every other band
+   ([the aliases page](../orbits/aliases.md)).
+6. For anything the release changes, the trust page shows no node that is
    changed since its evidence, has a known bug, is failing or is not yet
    checked, or the release notes say which ones remain and why.
 
