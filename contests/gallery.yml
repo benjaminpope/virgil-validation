@@ -7,6 +7,8 @@
 #   target   one line on what the data are of (contests/manifest.yml)
 #   truth    none | score_2004 (rebuilt from the paper, scripts/score_2004.py)
 #            | markers_2018 (the published planet position and disk PA only)
+#   advice   prefix of the informed runs' directories (results/<virgil>/advice/
+#            <prefix>_*); defaults to `label`, needed for rows not imaged blind
 #   half     optional half-width of the field (mas); else the field holds
 #            97% of each image's flux
 #   note     optional extra caption text
@@ -23,6 +25,13 @@ campaign:
     starts, half with a central point star; members within 1.5x of the best
     χ²/N are kept, and the panel shows the kept member with the highest
     evidence.
+
+# Informed alternatives (method chosen after seeing the truth or the contest page;
+# never a blind result): the advice-seeded fits of contests/fit_advice.csv, and the
+# 2004 parametric ladder (docs/plan_imaging_contests.md, C2h).
+informed:
+  advice: {results: f643e07/advice, virgil: f643e07}
+  ladder: {results: 39f9399/parametric}
 
 years:
   "2004":
@@ -52,18 +61,18 @@ years:
   "2012":
     title: CHARA/MIRC-6T, simulated, H
     rows:
-      - {name: Alp_Fak, target: "T Tauri star and disk (TORUS)", truth: none, note: "Truth listed on OLBIN but never archived."}
-      - {name: Bet_Fak, target: "spotted red supergiant", truth: none, note: "Truth listed on OLBIN but never archived."}
+      - {advice: 2012_alp, name: Alp_Fak, target: "T Tauri star and disk (TORUS)", truth: none, note: "Truth listed on OLBIN but never archived."}
+      - {advice: 2012_bet, name: Bet_Fak, target: "spotted red supergiant", truth: none, note: "Truth listed on OLBIN but never archived."}
   "2014":
     title: VLTI/PIONIER, real data, H
     rows:
-      - {name: VY CMa, target: "red supergiant", truth: none, note: "Real data: compared with the published consensus image."}
+      - {advice: 2014_vycma, name: VY CMa, target: "red supergiant", truth: none, note: "Real data: compared with the published consensus image."}
       - {name: R Car, target: "Mira", truth: none, note: "Real data; waits for a virgil reader fix."}
   "2016":
     title: VLTI GRAVITY and MATISSE, simulated, chromatic
     rows:
-      - {name: Object1 (GRAVITY), target: "chromatic object with an OI_FLUX spectrum", truth: none}
-      - {name: Object2 (MATISSE N), target: "protoplanetary disk with one gap", truth: none}
+      - {advice: 2016_obj1, name: Object1 (GRAVITY), target: "chromatic object with an OI_FLUX spectrum", truth: none}
+      - {advice: 2016_obj2, name: Object2 (MATISSE N), target: "protoplanetary disk with one gap", truth: none}
   "2018":
     title: CHARA/MIRC and VLTI/PIONIER, simulated, grey
     rows:

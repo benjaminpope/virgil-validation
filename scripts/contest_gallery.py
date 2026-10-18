@@ -21,7 +21,9 @@ NumPy, SciPy and matplotlib only: no JAX.
 import argparse
 import html
 import importlib.util
+import csv
 import io
+import json
 import pathlib
 import re
 import sys
@@ -45,6 +47,7 @@ DPI = 80
 CMAP = "magma"
 SOFT = 0.02  # stretch: asinh(I / (SOFT peak)) / asinh(1 / SOFT), the same for every panel
 ENCLOSED = 0.97  # the field holds this fraction of each image's flux
+OVERFIT = 0.5  # raw χ²/N below this: errors overestimated, or an overfit
 FAILED_SCALE = 2.0  # error scale above which a fit counts as failed
 
 
@@ -81,13 +84,18 @@ def members(results, label):
             "scale": float(d["error_scale"]),
             "path": path,
         }
-        log = path.with_suffix(".txt")
-        if log.exists():
-            text = log.read_text()
-            for key in ("chi2_v2", "chi2_cp"):
-                found = re.search(rf"'{key}': ([0-9.eE+-]+)", text)
-                m[key] = float(found.group(1)) if found else None
+        m.update(log_split(path.with_suffix(".txt")))
         out.append(m)
+    return out
+
+
+def log_split(log):
+    """The V² and closure-phase χ²/N from a run's text log (None when absent)."""
+    text = log.read_text() if log.exists() else ""
+    out = {}
+    for key in ("chi2_v2", "chi2_cp"):
+        found = re.search(rf"'{key}': ([0-9.eE+-]+)", text)
+        out[key] = float(found.group(1)) if found else None
     return out
 
 
@@ -98,6 +106,83 @@ def best_member(group, keep=1.5):
     best = np.nanmin(chi2)
     kept = [m for m in group if np.isfinite(m["chi2"]) and m["chi2"] <= keep * max(best, 1.0)]
     return max(kept, key=lambda m: m["log_z"]), len(kept)
+
+
+# --- informed alternatives ------------------------------------------------------
+
+
+def closeness(chi2):
+    """How far a raw χ²/N is from the expected 1, as a factor ≥ 1: a fit at 0.3
+    overfits or has overestimated errors, and is no better than one at 3."""
+    return max(chi2, 1 / chi2)
+
+
+def informed_runs(directory, prefix):
+    """The advice-seeded runs ``<prefix>_*`` in ``directory`` that left an image
+    (the GP, regularised and CLEAN runs; the sweeps are ensemble means on their
+    own fields and are skipped), each with its raw χ²/N. Informed: the method
+    was chosen after seeing the truth or the contest page, so none is blind."""
+    out = []
+    for run in sorted(pathlib.Path(directory).glob(f"{prefix}_*")):
+        path = run / f"{run.name}.npz"
+        if not path.exists():
+            continue
+        d = np.load(path)
+        if "image" in d:
+            image = d["image"]
+        elif "image_iso" in d:  # the GP's isotropic and anisotropic kernels: the higher peak evidence
+            aniso = "image_aniso" in d and np.max(d["log_z_aniso"]) > np.max(d["log_z_iso"])
+            image = d["image_aniso" if aniso else "image_iso"]
+        elif "restored" in d:
+            image = d["restored"]
+        elif "images" in d and "index" in d:
+            image = d["images"][json.loads(str(d["index"]))["discrepancy"]]
+        else:
+            continue
+        log = run / f"{run.name}.txt"
+        text = log.read_text() if log.exists() else ""
+        if "raw_chi2_red" in d:
+            chi2 = float(d["raw_chi2_red"])
+        elif "chi2_red" in d and d["chi2_red"].ndim == 0:
+            chi2 = float(d["chi2_red"])
+        elif found := re.search(r"raw chi2/N=([0-9.eE+-]+)", text):
+            chi2 = float(found.group(1))
+        else:
+            continue
+        name = re.sub(r"_r\d+$", "", run.name[len(prefix) + 1 :])
+        out.append({"name": name, "image": np.asarray(image, float), "chi2": chi2, **log_split(log),
+                    "fov": float(d["npix"]) * float(d["pixel_scale_mas"])})
+    return out
+
+
+def choose_informed(runs, blind):
+    """The informed run closest to χ²/N = 1, if the row has no blind image or
+    it is closer to 1 than the blind fit; else None. Against a blind fit, a run
+    below ``OVERFIT`` is not preferred: both overfit or have overestimated errors."""
+    runs = [r for r in runs if blind is None or r["chi2"] >= OVERFIT]
+    if not runs:
+        return None
+    best = min(runs, key=lambda r: closeness(r["chi2"]))
+    return best if blind is None or closeness(best["chi2"]) < closeness(blind["chi2"]) else None
+
+
+def ladder(directory, label):
+    """The 2004 informed parametric ladder's winner for ``label`` (its image,
+    raw χ²/N split, rung), or None when there is no result."""
+    path = pathlib.Path(directory) / f"{label}_parametric"
+    if not path.with_suffix(".json").exists():
+        return None
+    info = json.loads(path.with_suffix(".json").read_text())
+    win = next(r for r in info["ladder"] if r["winner"])
+    d = np.load(path.with_suffix(".npz"))
+    return {"image": np.asarray(d["ref_image"], float), "fov": float(d["ref_fov"]), "chi2": win["chi2_red"],
+            "chi2_v2": win["v2"], "chi2_cp": win["cp"], "rung": win["label"]}
+
+
+def advice_notes():
+    """contests/fit_advice.csv keyed by (year, name): (advice, date)."""
+    with (ROOT / "contests" / "fit_advice.csv").open(newline="", encoding="utf-8") as f:
+        return {(r["year"], r["name"]): (r["advice"], r["updated"][:10]) for r in csv.DictReader(f)}
 
 
 # --- grids -------------------------------------------------------------------
@@ -142,7 +227,8 @@ def nice(x):
 
 def truth_2004_data2(entry, fov):
     """The data2 truth rebuilt from the paper with the parameters fitted to
-    the data (score_2004.FITTED), and our σ/peak against it."""
+    the data (score_2004.FITTED), our σ/peak against it, and the published
+    entries' scores as text."""
     s = _load_script("score_2004")
     f = s.FITTED
     ref = s.truth_image(f["ratio"], f["u_ld"], f["spot_contrast"])
@@ -152,8 +238,7 @@ def truth_2004_data2(entry, fov):
     moved, _ = s.aligned(s.resample(entry, fov, s.NPIX + 2 * s.MAX_SHIFT), ref)
     sp = s.sigma_over_peak(moved, ref, box)[0]
     published = ", ".join(f"{k} {v:.3f}" for k, v in sorted(s.PUBLISHED.items(), key=lambda kv: kv[1]))
-    score = f"σ/peak {sp:.3f} against the rebuilt truth (Lawson et al. 2004, Eq. 2; lower is better; published: {published})"
-    return ref, s.NPIX * s.PIXEL, score
+    return ref, s.NPIX * s.PIXEL, sp, published
 
 
 def markers_2018(ax):
@@ -203,15 +288,12 @@ def save_png(fig, path):
     PILImage.open(buf).convert("RGB").quantize(256).save(path, optimize=True)
 
 
-def field(row, best, truth):
+def field(row, shown):
     """Half-width (mas) shared by a row's panels: ``row['half']``, or one
-    holding ENCLOSED of each image's flux."""
+    holding ENCLOSED of the flux of every ``(image, fov)`` in ``shown``."""
     if row.get("half"):
         return float(row["half"])
-    radius = enclosing_radius(best["image"], best["fov"])
-    if truth is not None:
-        radius = max(radius, enclosing_radius(truth[0], truth[1]))
-    return nice(1.1 * radius)
+    return nice(1.1 * max(enclosing_radius(image, fov) for image, fov in shown))
 
 
 # --- page --------------------------------------------------------------------
@@ -223,6 +305,8 @@ BADGES = {
     "no-truth": "no truth",
     "truth": "truth rebuilt",
     "partial": "truth partial",
+    "informed": "informed fit, not blind",
+    "not-imaged-blind": "not imaged blind",
 }
 
 
@@ -275,18 +359,31 @@ def intro(camp, private):
     lines = [
         "# Imaging contests: gallery" + (" (private)" if private else ""),
         "",
-        "virgil's images of the SPIE interferometric imaging contest data, beside the truth where we",
-        "hold one" + (" and the truth and winning entries from the contest papers." if private else "."),
-        f"Our panels have North up and East left, the `{CMAP}` colour map and one stretch,",
-        f"asinh(I / {SOFT:g} I<sub>peak</sub>), which keeps faint emission beside a bright central star",
-        f"visible; the panels in a row share one field, holding {ENCLOSED:.0%} of each image's flux.",
+        "Every two years from 2004, the interferometry community has run a blind image-reconstruction",
+        "contest: simulated or real optical interferometer data are released without the true image,",
+        "and teams submit their reconstructions. This page runs virgil on those data and shows what it",
+        "recovers, beside the truth where we hold one" + (" and the truth and winning entries from the contest papers." if private else "."),
+        "A fit counts only as far as it reaches the data (the raw χ²/N against the quoted errors) and,",
+        "where there is a truth, its score with the contest's own metric.",
         "",
-        f"**Method.** virgil {camp['virgil']}, campaign 1. {camp['method']} "
+        "**How to read the panels.** North up and East left, the "
+        f"`{CMAP}` colour map and one stretch,",
+        f"asinh(I / {SOFT:g} I<sub>peak</sub>), which keeps faint emission beside a bright central star",
+        f"visible; the panels in a row share one field, holding {ENCLOSED:.0%} of every image's flux.",
+        "",
+        f"**Blind fits.** virgil {camp['virgil']}, campaign 1. {camp['method']} "
         "Truths are used for scoring and display only, never for fitting.",
+        "",
+        "**Informed fits.** Where Ben's visual review of the blind images asked for a different model "
+        "(smoother or sparser priors, a halo, point sources), those runs and the 2004 parametric ladder "
+        "use knowledge of what the object is. They are badged *informed*: the method was chosen after seeing "
+        "the truth or the contest page, so they are not blind reconstructions, and they are shown only where "
+        "their raw χ²/N is closer to 1 than the blind fit's, or where the dataset has no blind fit.",
         "",
         "**Captions.** The raw χ²/N against the quoted errors comes first; the error scale is the",
         f"factor that brings it to 1, and a fit with a scale above {FAILED_SCALE:g} is marked failed.",
-        "Where we hold the truth, the score uses that contest's own metric.",
+        "The images were made before virgil's field and beam scaling change (virgil#361, in the "
+        "current pin); a rerun may change them.",
         "",
     ]
     if private:
@@ -301,11 +398,41 @@ def intro(camp, private):
     return lines
 
 
+def verdict(best):
+    if best is None:
+        return "not imaged blind"
+    if best["scale"] > FAILED_SCALE:
+        return "failed"
+    return "fits, χ²/N below 0.5" if best["chi2"] < OVERFIT else "fits"
+
+
+def status_table(status):
+    """The page's summary: one line per dataset with the blind raw χ²/N and
+    verdict, and the informed fit that is closer to 1, if any."""
+    imaged = [s for s in status if s[2] is not None]
+    failed = [s for s in imaged if s[2]["scale"] > FAILED_SCALE]
+    lines = ["## Where we stand", "",
+             f"{len(imaged)} of {len(status)} datasets are imaged blind; {len(imaged) - len(failed)} of those fit the "
+             f"quoted errors (error scale at most {FAILED_SCALE:g}) and {len(failed)} fail. "
+             "A fit that reaches the data is not yet a good image: the visual review under each dataset "
+             "notes where the recovery breaks up (chains of dots, blobs).", "",
+             "| Contest | Dataset | Blind raw χ²/N | Blind | Informed raw χ²/N |", "|---|---|---|---|---|"]
+    for year, row, best, alt, lad in status:
+        informed = ", ".join(f"{x['chi2']:.3g} ({what})" for x, what in ((alt, "advice-seeded"), (lad, "parametric ladder")) if x)
+        chi2 = f"{best['chi2']:.3g}" if best else "–"
+        lines.append(f"| {year} | {row['name']} | {chi2} | {verdict(best)} | {informed or '–'} |")
+    return lines + [""]
+
+
 def build(data, private=None):
     config = yaml.safe_load((ROOT / "contests" / "gallery.yml").read_text())
     figures = yaml.safe_load((ROOT / "contests" / "figures.yml").read_text())
     manifest = yaml.safe_load((ROOT / "contests" / "manifest.yml").read_text())
     results = [data / "results" / r for r in config["campaign"]["results"]]
+    adv = config["informed"]["advice"]
+    adv_dir = data / "results" / adv["results"]
+    ladder_dir = data / "results" / config["informed"]["ladder"]["results"]
+    reviews, status = advice_notes(), []
     if private:
         out = pathlib.Path(private).expanduser().resolve()
         if out.is_relative_to(ROOT):
@@ -314,6 +441,7 @@ def build(data, private=None):
         img_dir.mkdir(parents=True, exist_ok=True)
     ASSETS.mkdir(parents=True, exist_ok=True)
     public, secret = intro(config["campaign"], False), intro(config["campaign"], True)
+    n_intro = len(public)
     for year, block in config["years"].items():
         for lines in (public, secret):
             lines += [f"## {year}: {block['title']}", ""]
@@ -322,31 +450,70 @@ def build(data, private=None):
             badges, caption, best = [], [], None
             ours = []  # (title, file name) of our renders
             group = members(results, row["label"]) if row.get("label") else []
+            prefix = row.get("advice") or row.get("label")
+            runs = informed_runs(adv_dir, prefix) if prefix else []
+            lad = ladder(ladder_dir, row["label"]) if row.get("label", "").startswith("2004_") else None
+            lad_ok = lad is not None and lad["chi2"] ** 0.5 <= FAILED_SCALE
+            truth, sigma, kept = None, None, 0
             if group:
                 best, kept = best_member(group)
+            alt = choose_informed(runs, best)
+            shown = [(m["image"], m["fov"]) for m in (best, alt) if m] + ([(lad["image"], lad["fov"])] if lad_ok else [])
+            if row["truth"] == "score_2004":
+                src = best or alt or lad
+                ref, ref_fov, sigma, published = truth_2004_data2(src["image"], src["fov"])
+                truth = (ref, ref_fov)
+                shown.append(truth)
+            half = field(row, shown) if shown else None
+            marks = markers_2018 if row["truth"] == "markers_2018" else None
+            key = row.get("label") or prefix
+            if best:
                 badges.append(badge("failed" if best["scale"] > FAILED_SCALE else "imaged"))
-                truth, score = None, None
-                if row["truth"] == "score_2004":
-                    ref, ref_fov, score = truth_2004_data2(best["image"], best["fov"])
-                    truth = (ref, ref_fov)
-                half = field(row, best, truth)
-                marks = markers_2018 if row["truth"] == "markers_2018" else None
-                save_png(render_panel(best["image"], best["fov"], half, "virgil", marks), ASSETS / f"{row['label']}_virgil.png")
-                ours.append(("virgil", f"{row['label']}_virgil.png"))
-                if truth is not None:
-                    save_png(render_panel(truth[0], truth[1], half, "truth (rebuilt)"), ASSETS / f"{row['label']}_truth.png")
-                    ours.append(("truth, rebuilt from the paper's model", f"{row['label']}_truth.png"))
-                caption.append(chi2_line(best, kept, len(group)))
-                if score:
-                    caption.append(score + ".")
+                save_png(render_panel(best["image"], best["fov"], half, "virgil, blind", marks), ASSETS / f"{key}_virgil.png")
+                ours.append(("virgil, blind", f"{key}_virgil.png"))
+                caption.append("Blind: " + chi2_line(best, kept, len(group)))
+                if sigma is not None:
+                    caption.append(f"σ/peak {sigma:.3f} against the rebuilt truth (Lawson et al. 2004, Eq. 2; lower is better).")
+            elif alt:
+                badges.append(badge("not-imaged-blind"))
             else:
                 badges.append(badge("not-imaged"))
+            if alt:
+                badges.append(badge("informed"))
+                save_png(render_panel(alt["image"], alt["fov"], half, "virgil, informed", marks), ASSETS / f"{key}_informed.png")
+                ours.append((f"virgil, informed ({alt['name'].replace('_', ' ')})", f"{key}_informed.png"))
+                split = (f" (V² {alt['chi2_v2']:.3g}, closure phase {alt['chi2_cp']:.3g})"
+                         if alt.get("chi2_v2") is not None and alt.get("chi2_cp") is not None else "")
+                versus = (f"; closer to 1 than the blind fit's {best['chi2']:.3g}" if best else "")
+                failed = " Failed (error scale above 2)." if alt["chi2"] ** 0.5 > FAILED_SCALE else ""
+                caption.append(f"Informed ({alt['name'].replace('_', ' ')}): raw χ²/N {alt['chi2']:.3g}{split}{versus}.{failed} "
+                               "Its method was chosen after seeing the truth or the contest page, so it is not a blind result.")
+            if runs and not alt and best:
+                caption.append(f"{len(runs)} informed run{'s' * (len(runs) > 1)} (advice-seeded, {adv['virgil']}) came no closer to 1 than the blind fit.")
+            if lad_ok:
+                save_png(render_panel(lad["image"], lad["fov"], half, "virgil, informed ladder"), ASSETS / f"{key}_ladder.png")
+                ours.append((f"virgil, informed parametric ladder ({lad['rung']})", f"{key}_ladder.png"))
+                badges.append(badge("informed"))
+                text = (f"Informed parametric ladder ({lad['rung']}): raw χ²/N {lad['chi2']:.3g} "
+                        f"(V² {lad['chi2_v2']:.3g}, closure phase {lad['chi2_cp']:.3g}).")
+                if row["truth"] == "score_2004":
+                    lad_sigma = truth_2004_data2(lad["image"], lad["fov"])[2]
+                    text += f" σ/peak {lad_sigma:.3f} against the rebuilt truth (informed; the blind fit's is {sigma:.3f})."
+                caption.append(text)
+            elif lad is not None:
+                caption.append(f"The informed parametric ladder does not reach this data set: its best rung ({lad['rung']}) has raw χ²/N {lad['chi2']:.3g}.")
+            if truth is not None:
+                save_png(render_panel(truth[0], truth[1], half, "truth (rebuilt)"), ASSETS / f"{key}_truth.png")
+                ours.append(("truth, rebuilt from the paper's model", f"{key}_truth.png"))
             badges.append(badge({"score_2004": "truth", "markers_2018": "partial"}.get(row["truth"], "no-truth")))
             if row.get("note"):
                 caption.append(row["note"])
+            if sigma is not None:
+                caption.append(f"Published σ/peak: {published}.")
+            status.append((year, row, best, alt, lad if lad_ok else None))
             refs = row_panels(paper, row)
             head = [f"### {year} {row['name']}", "", f'<p class="cg-meta">{" ".join(badges)} {html.escape(row["target"])}.</p>', ""]
-            empty = [] if group else [card("virgil", text="Not imaged yet", kind="empty")]
+            empty = [] if ours else [card("virgil", text="Not imaged yet", kind="empty")]
             # Public: our renders, and the paper panels as citations.
             cards = [card(t, f"assets/contests/{f}") for t, f in ours] + empty
             cards += [card(panel_ref(p), text=f'<a href="{paper["ads"]}">{html.escape(p["figure"])}</a><br>'
@@ -354,6 +521,9 @@ def build(data, private=None):
             public += head + ['<div class="cg-grid">', *cards, "</div>", ""]
             if caption:
                 public += [f'<p class="cg-caption">{html.escape(" ".join(caption))}</p>', ""]
+            if (year, row["name"]) in reviews:
+                advice, when = reviews[(year, row["name"])]
+                public += [f'<details class="cg-review"><summary>Visual review ({when})</summary>{html.escape(advice)}</details>', ""]
             if private:
                 cards = []
                 for t, f in ours:
@@ -382,6 +552,7 @@ def build(data, private=None):
         if links:
             for lines in (public, secret):
                 lines += [f'<p class="cg-paper">{links}</p>', ""]
+    public[n_intro:n_intro] = status_table(status)
     PAGE.write_text("\n".join(public).rstrip() + "\n")
     if private:
         write_private(out, secret)

@@ -14,6 +14,8 @@
 .cg-not-imaged { background: #9e9e9e; }
 .cg-truth { background: #1565c0; }
 .cg-partial { background: #6a1b9a; }
+.cg-informed { background: #ef6c00; }
+.cg-not-imaged-blind { background: #9e9e9e; }
 .cg-no-truth { background: #bdbdbd; color: #212121; }
 
 /* Card grid: one card per image, our renders first. */
@@ -67,3 +69,6 @@
 }
 .cg-caption { font-size: 0.72rem; color: var(--md-default-fg-color--light); margin-top: 0; }
 .cg-paper { font-size: 0.72rem; }
+
+.cg-review { font-size: 0.72rem; margin: 0 0 1em; color: var(--md-default-fg-color--light); }
+.cg-review summary { cursor: pointer; }

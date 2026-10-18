@@ -61,6 +61,49 @@ def test_best_member_is_kept_and_highest_evidence():
     assert best["member"] == 1 and kept == 2
 
 
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_informed_run_is_shown_only_when_closer_to_one():
+    runs = [{"name": "tv", "chi2": 1.3}, {"name": "gp", "chi2": 0.8}]
+    assert gallery.closeness(0.5) == gallery.closeness(2.0) == 2.0
+    assert gallery.choose_informed(runs, {"chi2": 1.1}) is None  # 0.8 is as far below 1 as 1.25 above
+    assert gallery.choose_informed(runs, {"chi2": 2.0})["name"] == "gp"
+    assert gallery.choose_informed(runs, None)["name"] == "gp"  # no blind fit: shown
+    assert gallery.choose_informed([{"name": "gp", "chi2": 0.2}], {"chi2": 0.1}) is None  # both overfit
+    assert gallery.choose_informed([], None) is None
+
+
+def _advice_run(root, name, **arrays):
+    run = root / name
+    run.mkdir(parents=True)
+    np.savez(run / f"{name}.npz", pixel_scale_mas=0.5, npix=4, **arrays)
+    (run / f"{name}.txt").write_text("residuals=[{'chi2_v2': 1.5, 'chi2_cp': 0.5}]\n")
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_informed_runs_read_each_output_format(tmp_path):
+    img = np.ones((4, 4))
+    _advice_run(tmp_path, "x_gp_r2", image=img, raw_chi2_red=1.2)
+    _advice_run(tmp_path, "x_kern_r2", image_iso=img, image_aniso=2 * img, log_z_iso=np.array([-5.0]),
+                log_z_aniso=np.array([-3.0]), raw_chi2_red=2.0)
+    _advice_run(tmp_path, "x_tv_r2", images=np.stack([img, 3 * img]), index=np.array('{"discrepancy": 1}'), chi2_red=np.ones((2, 1)))
+    (tmp_path / "x_tv_r2" / "x_tv_r2.txt").write_text("raw chi2/N=0.9 (quoted errors)\n")
+    _advice_run(tmp_path, "x_sweep_r2", mean=img, raw_chi2_red=1.0)  # an ensemble mean: skipped
+    by_name = {r["name"]: r for r in gallery.informed_runs(tmp_path, "x")}
+    assert set(by_name) == {"gp", "kern", "tv"}
+    assert by_name["gp"]["fov"] == 2.0 and by_name["gp"]["chi2_v2"] == 1.5 and by_name["gp"]["chi2_cp"] == 0.5
+    assert by_name["kern"]["image"].max() == 2.0  # the higher-evidence kernel
+    assert by_name["tv"]["image"].max() == 3.0 and by_name["tv"]["chi2"] == 0.9
+    assert gallery.informed_runs(tmp_path, "xx") == []  # a prefix match needs the underscore
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
+def test_page_badges_informed_fits_and_keeps_failures():
+    page = (ROOT / "docs" / "contest_gallery.md").read_text()
+    assert "Where we stand" in page and "cg-informed" in page
+    # Every informed card says so in its caption, and a failed fit is never shown without the word.
+    assert page.count("so it is not a blind result") >= page.count("<figcaption>virgil, informed (")
+
+
 def _synthetic_pdf(path):
     """A page with body text, a 2 x 2 grid of panels as one embedded bitmap
     (white gutters between panels) and a caption below it."""
@@ -117,7 +160,7 @@ def test_figure_inventory_split_and_native_crop(tmp_path):
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="guard")
 def test_public_page_shows_only_our_renders():
     config = yaml.safe_load((ROOT / "contests" / "gallery.yml").read_text())
-    labels = {r["label"] for y in config["years"].values() for r in y["rows"] if r.get("label")}
+    labels = {r.get("label") or r.get("advice") for y in config["years"].values() for r in y["rows"]} - {None}
     assets = ROOT / "docs" / "assets" / "contests"
     for png in assets.glob("*"):
         assert png.suffix == ".png" and png.stem.rsplit("_", 1)[0] in labels, png  # nothing but our renders
