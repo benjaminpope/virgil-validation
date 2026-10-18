@@ -7,7 +7,8 @@ against the published table. The scorer is
 and its tests are
 [`test_score_2004.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_score_2004.py).
 The truth is used for scoring only, never for imaging; the metric is
-Lawson et al.'s Eq. 2, written independently in `crosscheck.image_metrics`.
+Lawson et al.'s Eq. 2, which `score_2004.sigma_over_peak` reimplements and a
+test checks against `crosscheck.image_metrics.lawson_sigma_over_peak`.
 
 ## The rebuilt truth
 
@@ -15,12 +16,17 @@ Lawson et al.'s Eq. 2, written independently in `crosscheck.image_metrics`.
 | --- | --- |
 | Truth V² against the data, spot included, pixel grid | χ²/N 1.45 |
 | Same, analytic visibilities (no pixel grid) | χ²/N 1.32 |
-| Truth closure phases | χ²/N 0.6; the inverted truth 947 |
+| Truth closure phases | χ²/N 0.61; the inverted truth 947 |
 | Same truth, unit-sum normalisation | χ²/N ≈ 50, so the data's V² are normalised without the spot's excess flux (V(0) ≈ 1.07) |
 | Spot clipped to the disk instead of added | χ²/N 2.8–3.0 |
 
 Limb darkening is Van Hamme's bolometric u = 0.469 for 7000 K, log g 4; the
 data pin u to 0.48 ± 0.02. The score is reported for u = 0.3, 0.469 and 0.7.
+
+The checks against the data need the contest OIFITS (`~/data/imaging_contests`),
+which CI does not have, so they are tier C: run them locally with the data
+fetched. CI runs the geometry, normalisation, analytic-visibility and metric
+checks; the metric is tested against `crosscheck.image_metrics`.
 
 ## Scores
 

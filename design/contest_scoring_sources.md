@@ -600,8 +600,8 @@ that higher is better.
   0.7 (0.253 at the adopted u = 0.469), and 0.252 against the truth with its
   nuisances fitted to the data. The informed score depends on how the
   companion is rendered (a point source 0.351, a free-diameter disk 0.180).
-  The rebuilt truth itself fits the data (V² χ²/N 1.3–1.45 on the grid and
-  analytic models, closure 0.6; pooled χ²/ν 1.02), so the data are not what
+  The rebuilt truth itself fits the data (V² χ²/N 1.45 on the pixel grid, 1.32
+  analytic, closure 0.61; pooled χ²/ν 1.02), so the data are not what
   limits the blind image, whose V² fit is still poor.
 - **2018:** scored against the published qualitative criteria: whether
   the image recovers the gap between the inner and outer disks, and the

@@ -593,12 +593,13 @@ change the scores and the fit of the truth, not the images:
 - *Normalisation (#108).* The data's V² are normalised without the spot's
   excess flux (V(0) ≈ 1.07, V²(0) ≈ 1.145). With a unit-sum truth the
   truth fitted at V² χ²/N ≈ 50, once blamed on calibration error in the
-  data; with the excess left out it fits at 3.05.
+  data; with the excess left out (and the spot still clipped to the disk) it
+  fitted at 3.05, before the spot correction below.
 - *Spot and limb darkening (#114).* The spot is an unclipped uniform disk
   added to the star (half of it hangs off the limb), and u = 0.469 is Van
   Hamme's bolometric value for 7000 K, log g 4 (the data pin u to
-  0.48 ± 0.02). The truth fits at V² χ²/N 1.3–1.45 (pixel grid 1.45,
-  analytic `model_vis` 1.32), closure 0.6, pooled χ²/ν 1.02. No remainder
+  0.48 ± 0.02). At the `FITTED` nuisances the truth fits at V² χ²/N 1.45
+  (0.08 mas pixel grid) or 1.32 (analytic `model_vis`), closure 0.61, pooled χ²/ν 1.02. No remainder
   is left to blame on calibration. `scripts/diagnose_2004.py` holds the
   spot-variant comparison.
 - *The score barely moves with these changes*, because the scoring image

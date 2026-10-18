@@ -21,7 +21,14 @@ scoring only, never for imaging. The model:
   1 - u above the photosphere's; the contrast is the Planck ratio at 550 nm,
   about 3.7. Of the spot variants tried (scripts/diagnose_2004.py; plan C4b,
   2026-10-14) only this one, with no free spot parameter, fits the data (V² χ²/N
-  1.35 against 2.84 for the spot clipped to the disk).
+  1.35 on diagnose_2004.py's 0.05 mas grid with free nuisances, against 2.84
+  for the spot clipped to the disk).
+
+Numbers this script prints (``FITTED`` nuisances, u = 0.469, data2): V² χ²/N
+1.45 on the 0.08 mas pixel grid and 1.32 with the analytic ``model_vis``;
+closure χ²/N 0.61 (the inverted truth 947). ``--refit`` moves the nuisances to
+u = 0.488, contrast 3.68, B/A 0.112. The 1.3/0.55 quoted below are from the
+earlier free fit and the finer grid of diagnose_2004.py.
 - B: a 0.5 mas uniform disk, 10 mas from A at PA 90°.
 
 The paper does not state the A:B flux ratio, so it is fitted to the data's V²
@@ -51,7 +58,7 @@ counts; the flipped one is reported as a check).
 The unpublished details, fitted to the data (V² and closure phases, a
 Nelder-Mead fit, for scoring only; ``fit_nuisances``), give the values in
 ``FITTED``. With the normalisation and the spot above the truth fits at V² χ²/N
-1.3, closure χ²/N 0.55 and T3AMP χ²/N 0.6-0.8 (B/A 0.112, u = 0.469; the free
+1.3 (free fit, finer grid; 1.45 on the 0.08 mas grid at ``FITTED``), closure χ²/N 0.55 (0.61 at ``FITTED``) and T3AMP χ²/N 0.6-0.8 (B/A 0.112, u = 0.469; the free
 spot contrast comes out at 3.68, the Planck ratio 3.70, which is what ``FITTED``
 uses). With a unit-sum normalisation it fitted only at V² χ²/N ≈ 50, which was
 once read as calibration error in the data (the 2004 rules allowed it) but is

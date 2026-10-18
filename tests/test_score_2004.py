@@ -86,7 +86,7 @@ def test_visibility_normalisation_leaves_out_the_spot_excess():
 
 
 @needs_data2
-@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("pipeline:contest-imaging", roots=["literature"], kind="reference", tier="C")
 def test_rebuilt_truth_fits_data2_v2():
     # The data's V² are normalised without the spot's excess (V²(0) ~ 1.14): the
     # rebuilt truth then fits at V² χ²/N ~ 1.3 (50 with a unit-sum image, once
@@ -119,7 +119,7 @@ def test_spot_is_an_unclipped_added_disk():
     assert outside.sum() > 0.3 * on_spot.sum()  # light beyond the limb
 
 
-@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
 def test_analytic_visibilities_match_a_fine_pixel_model():
     # The closed form agrees with a 0.02 mas pixel DFT of the same model.
     npix, pixel = 1201, 0.02
@@ -137,9 +137,19 @@ def test_analytic_visibilities_match_a_fine_pixel_model():
 
 
 @needs_data2
-@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("pipeline:contest-imaging", roots=["literature"], kind="reference", tier="C")
 def test_analytic_truth_fits_data2_near_one():
     u, v, v2, err = score_2004.read_v2(DATA2)
     f = score_2004.FITTED
     m = np.abs(score_2004.model_vis(u, v, f["ratio"], f["u_ld"], f["spot_contrast"])) ** 2
     assert np.mean(((m - v2) / err) ** 2) < 1.5
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_sigma_over_peak_agrees_with_the_independent_metric():
+    from crosscheck.image_metrics import lawson_sigma_over_peak
+
+    rng = np.random.default_rng(3)
+    ref, entry = rng.uniform(0.1, 1.0, (2, 21, 21))
+    box = np.ones_like(ref, bool)
+    assert score_2004.sigma_over_peak(entry, ref, box)[0] == pytest.approx(lawson_sigma_over_peak(entry, ref), rel=1e-12)

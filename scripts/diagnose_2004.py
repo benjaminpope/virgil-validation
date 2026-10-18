@@ -26,7 +26,7 @@ SPOT_PA, SPOT_SEP, SPOT_DIAM = 150.0, 2.5, 1.0
 def build(u_ld, u2, contrast, spot, pix=PIX, npix=NPIX):
     """(A with its spot, B): the unspotted star has unit sum, the spot's
     excess is left out of the normalisation (see score_2004). ``spot``:
-    ``clip-ld`` (score_2004's: contrast x the star's profile, only on the
+    ``clip-ld`` (score_2004's old spot, superseded by ``add-planck``: contrast x the star's profile, only on the
     disk), ``clip-flat`` (uniform brightness ``contrast``, only on the disk),
     ``free-flat`` (the whole 1 mas disk at ``contrast``, also beyond the
     limb), ``free-add`` (the disk added to the star), ``add-planck`` (the Planck excess over the limb brightness, added),
@@ -165,7 +165,7 @@ def residual_tables(p, data, out):
     from astropy.io import fits
 
     u, v, v2, err, *_ = data
-    m = model_obs(p, "clip-ld", 0.0, data)[0]
+    m = model_obs(p, "clip-ld", 0.0, data)[0]  # the old clipped-spot truth, not the current scorer's
     r = (v2 - m) / err
     b = np.hypot(u, v) * s.WAVEL
     with fits.open(DATA_PATH) as h:
@@ -259,7 +259,7 @@ def main():
         )
 
     lines.append(residual_tables(base, data, out))
-    add("baseline (linear LD, clipped spot)", "clip-ld", 0.0)
+    add("old scorer truth (linear LD, clipped spot; the scorer now uses add-planck)", "clip-ld", 0.0)
     if not args.skip_slow:
         add("(a) bandwidth 20 nm", "clip-ld", BAND)
     add("(b) quadratic LD", "clip-ld", 0.0, free_u2=True)
