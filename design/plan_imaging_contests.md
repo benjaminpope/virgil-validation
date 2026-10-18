@@ -586,6 +586,46 @@ amount that depends on their S/N. The scoring rules are:
   that is (N − 1)/2, which `[::-1, ::-1]` gives exactly for odd N, so
   scoring grids are kept odd.
 
+**2004 data2: the truth and the scores (2026-10-18).** The rebuilt truth
+(`scripts/score_2004.py`) was corrected three times, and the corrections
+change the scores and the fit of the truth, not the images:
+
+- *Normalisation (#108).* The data's V² are normalised without the spot's
+  excess flux (V(0) ≈ 1.07, V²(0) ≈ 1.145). With a unit-sum truth the
+  truth fitted at V² χ²/N ≈ 50, once blamed on calibration error in the
+  data; with the excess left out (and the spot still clipped to the disk) it
+  fitted at 3.05, before the spot correction below.
+- *Spot and limb darkening (#114).* The spot is an unclipped uniform disk
+  added to the star (half of it hangs off the limb), and u = 0.469 is Van
+  Hamme's bolometric value for 7000 K, log g 4 (the data pin u to
+  0.48 ± 0.02). At the `FITTED` nuisances the truth fits at V² χ²/N 1.45
+  (0.08 mas pixel grid) or 1.32 (analytic `model_vis`), closure 0.61, pooled χ²/ν 1.02. No remainder
+  is left to blame on calibration. `scripts/diagnose_2004.py` holds the
+  spot-variant comparison.
+- *The score barely moves with these changes*, because the scoring image
+  keeps its unit sum; the fit of the truth moves a lot.
+
+Scores, against the published truth (lower σ/peak is better), badged by
+how the entry was made:
+
+| Entry | σ/peak | Raw χ²/N (V², closure) | Status |
+|---|---|---|---|
+| BSMEM (published) | 0.116 | | |
+| WISARD (published) | 0.163 | | |
+| Informed parametric ladder | 0.180 | 0.985 (0.97, 1.01) | **informed** |
+| Our best image, ensemble of 4 kept CLEAN-started GP fits | 0.253 | 20.7–21.3 (about 31, about 6) | **blind** |
+| MIRA (published) | 0.532 | | |
+| VLBMEM (published) | 0.798 | | |
+
+The informed ladder (an elliptical limb-darkened star, one spot and a
+companion, chosen by BIC and Laplace evidence) used knowledge of what the
+object is, so it is not a blind reconstruction. Its σ/peak depends on the
+companion's rendering (a point source scores 0.351, a free-diameter disk
+0.180), and its limb-darkening, stellar and companion diameters are 3–6σ
+from the rebuilt truth. Failing fits that remain (raw χ²/N): 2004 data2
+blind images about 20.5, 2010 about 2500–3800, 2024 Obj2 GRAVITY about 185.
+Reproduce with `python scripts/score_2004.py ENSEMBLE_NPZ`.
+
 ### C5. 2014: real data
 
 If Joel or John Monnier have the reduced OIFITS, virgil's images of VY CMa
