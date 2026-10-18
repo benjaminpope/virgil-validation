@@ -31,28 +31,7 @@ CELLS = {  # label: (noise, mean) -> file-name suffix of postagb_imaging
 STRATS = ("mem", "gp-iso", "gp-polar")
 
 
-def rows_of(data):
-    """Sample indices of each (frame, station pair), channels in wavelength order: an (n_group, n_channel) array."""
-    frame, st, wl = np.asarray(data.frame), np.asarray(data.stations), np.asarray(data.wavel)
-    key = {}
-    for i, (f, s, w) in enumerate(zip(frame, st, wl)):
-        key.setdefault((int(f), int(s[0]), int(s[1])), []).append((float(w), i))
-    return np.array([[i for _, i in sorted(v)] for v in key.values()])
-
-
-def residual_stats(data, model_v2, model_t3):
-    """chi2 per point (V^2, T3), common-mode share of the V^2 residual variance and adjacent-channel correlation, on quoted errors."""
-    z = (np.asarray(data.vis) - np.asarray(model_v2)) / np.asarray(data.d_vis)
-    dt = np.degrees(np.asarray(data.phi)) - np.asarray(model_t3)
-    zt = (((dt + 180.0) % 360.0) - 180.0) / np.degrees(np.asarray(data.d_phi))
-    g = rows_of(data)
-    zg = z[g]  # (n_group, n_channel)
-    m = zg.mean(axis=1)
-    n_ch = zg.shape[1]
-    a, b = zg[:, :-1].ravel(), zg[:, 1:].ravel()
-    return dict(chi2_v2=float(np.mean(z**2)), chi2_t3=float(np.mean(zt**2)), n_v2=int(z.size), n_t3=int(zt.size),
-                common_mode_v2=float(n_ch * np.mean(m**2) / np.mean(z**2)), white_expectation=1.0 / n_ch,
-                adjacent_corr_v2=float(np.corrcoef(a, b)[0, 1]))
+residual_stats = pi.residual_stats
 
 
 def cell_row(out, strat, suffix, quoted):
