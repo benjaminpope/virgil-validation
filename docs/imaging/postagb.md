@@ -1,106 +1,15 @@
 # Disc images: post-AGB binaries with VLTI/PIONIER
 
-Old stars that have just left the asymptotic giant branch (post-AGB stars) often sit in binaries
-wrapped in a dusty disc a few astronomical units across. At their distances that is a few
-milliarcseconds: too small for any telescope, but within reach of the VLTI, which combines four
-telescopes up to 130 m apart. PIONIER measures how the fringes from each pair of telescopes
-fade (visibilities) and how their phases add around each triangle (closure phases). An image has
-to be reconstructed from those numbers, and the reconstruction depends on the software.
+Post-AGB binaries are wrapped in dusty discs a few milliarcseconds across, which only an interferometer
+such as the VLTI can resolve. Given the same public PIONIER data, does virgil draw the same discs as the experts?
+We reconstruct eight systems imaged by De Prins et al. (2026) with SPARCO + ORGANIC, and IRAS 08544-4431 imaged by
+Hillen et al. (2016), and compare the images at a common beam.
 
-This page asks whether virgil, given the same public data, draws the same discs as the experts.
-De Prins et al. (2026) imaged eight of these systems with SPARCO + ORGANIC from ESO programme
-1103.D-0797; IRAS 08544-4431 has an older image by Hillen et al. (2016). We reconstruct each one
-with virgil and compare.
+Each tab shows the published and virgil images side by side, the verdict, a parameter table against the paper and
+how to reproduce it. The [summary table](#summary), the [method](#how-the-images-were-made) and the
+[Methods note](#methods-note) follow the gallery.
 
-## How the images were made
-
-1. **Data.** The calibrated PIONIER files from the ESO archive (Phase 3 products), the same ones
-   the papers used. For IRAS 08544-4431, the authors' own reduced files.
-2. **Model.** Following the papers' SPARCO approach: the bright central star is a small uniform
-   disc, its companion a point, and everything else a pixel image with its own colour (a power-law
-   spectrum across the H band). Subtracting the stars in the model leaves the disc.
-3. **Reconstruction.** virgil fits the pixels and the star parameters together. We compare five ways
-   of regularising the pixels (maximum entropy, three Gaussian-process priors and a disc plus residual); the
-   headline of every tab, and our recommended model, is the polar Gaussian-process prior (`gp-polar`). ORGANIC instead uses a
-   neural-network prior; the choice is deliberate, so that agreement does not come from shared regularisers. The stars'
-   spectral indices are the paper's own, and the secondary's position and flux ratio have the paper's values as priors, so the
-   star fits show that the data do not pull them away, not that virgil finds them blind. See the Methods note below.
-4. **Comparison.** Both images are blurred to a circular beam of FWHM λ_min/2B_max, placed on one grid
-   and compared by cross-correlation. As controls we also correlate against the published image
-   mirrored, rotated by 180° and azimuthally averaged: a real match must beat all three.
-
-A correlation near 1 at the beam means the two reconstructions put the same light in the same places
-at the resolution the data support. For nearly round discs it mostly tests the radial profile; the
-orientation is tested separately by asking which way round the published image fits our data
-better (details under [Method parity](#method-parity)).
-
-## Results
-
-<!-- gen:summary -->
-
-| Target | Published method | Headline (gp-polar) | Verdict | NCC (best control) | Best other strategy NCC | Comparison beam (mas) |
-| --- | --- | --- | --- | --- | --- | --- |
-| [IW Car](#iw-car) | SPARCO + ORGANIC (SQUEEZE check) | gp-polar (grid edge) | agrees (+0.33 over its best control) | 0.90 (0.57) | 0.89 (gp-iso) | 1.21 |
-| [HR 4049](#hr-4049) | SPARCO + ORGANIC | gp-polar (grid edge) | inconclusive (+0.05 over its best control) | 0.85 (0.80) | 0.91 (mem) | 1.39 |
-| [HD 108015](#hd-108015) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.16 over its best control) | 0.97 (0.81) | 0.98 (gp-aniso) | 1.18 |
-| [AI Sco](#ai-sco) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.29 over its best control) | 0.83 (0.54) | 0.79 (gp-aniso) | 1.22 |
-| [EN TrA](#en-tra) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.17 over its best control) | 0.95 (0.78) | 0.94 (mem) | 1.21 |
-| [HD 95767](#hd-95767) | SPARCO + ORGANIC | gp-polar (grid edge) | inconclusive (+0.09 over its best control) | 0.94 (0.86) | 0.96 (mem) | 1.20 |
-| [IRAS 15469-5311](#iras-15469-5311) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.16 over its best control) | 0.98 (0.82) | 0.98 (gp-iso) | 1.16 |
-| [PS Gem](#ps-gem) | SPARCO + ORGANIC | gp-polar (grid edge) | does not agree (+0.12 over its best control) | 0.21 (0.09) | 0.20 (mem) | 1.18 |
-| [IRAS 08544-4431](#iras-08544-4431) | SPARCO, binary subtracted (Hillen+2016) | gp-polar (grid edge) | inconclusive (+0.05 over its best control) | 0.93 (0.89) | 0.96 (mem) | 2.55 (Hillen: drawn 2.5 × 1.8 ellipse) |
-
-<!-- /gen:summary -->
-
-## Methods note { #methods-note }
-
-<!-- gen:methods -->
-
-**The common scene (SPARCO).** Every strategy fits the same scene (Kluska et al. 2014): a uniform-disc primary of fixed diameter whose flux goes as λ^index (normalised at 1.65 µm); a point-source secondary where the paper has one; an environment image with a free flux fraction and its own spectral index d_env; and a grey (index-free) over-resolved background. The strategies differ only in how the environment image is regularised.
-
-**Spectral indices.** We adopt De Prins's own per-target stellar index SIND1 from the ORGANIC FITS header, held fixed (-3.19 to -2.13 across the eight targets), and the companion index SIND2 = 0, also fixed, so that our d_env values are comparable with the paper's image index (SIND0). An earlier convention of −4 for every star was wrong for this paper and has been removed. A one-off check on HD 95767 (gp-polar) with the earlier −4 index instead of SIND1 = -3.194 changes the NCC from 0.94 to 0.94 and d_env from 3.04 to 2.71, with the log evidence +32 in favour of SIND1: the disc index is degenerate with the fixed star colour.
-
-**The secondary.** Its position and flux ratio carry PMOIRED priors (Table 3 of the paper), and its index is fixed at SIND2. The image has no window inside the primary's hole, so the secondary's own flux is not traded against pixels there; for HD 95767 this removed inner knots that the earlier treatment produced.
-
-**Error rescaling.** The data errors are multiplied by a single factor s chosen by MacKay's evidence argument on an isotropic GP pilot (s = 0.81 to 1.34 across the targets, see the table). All χ²/pt on this page are on the rescaled errors. The headline χ²/pt is 0.59 to 0.77 on the targets fitted with gp-polar: well below 1 after rescaling, which says the PIONIER errors are conservative or that the latent field is flexible enough to absorb noise, so χ²/pt cannot be used to rank strategies.
-
-**Hole, support and field.** The environment image has no pixels within a hole of radius max(λ_min/2B_max, UD diameter) around the primary. For PS Gem the hole is the UD diameter only, 0.37 mas, because the beam-size hole blanked compact emission there; the table shows the hole of each stored fit. The image support is a circle, with a per-target field radius (the table: PS Gem 5.0 mas, HR 4049 25.0 mas).
-
-**Strategies.** MEM is MaxEntropy with the weight at the discrepancy principle (no evidence). gp-iso is an isotropic Gaussian-process prior on the log-brightness (σ over 0.25 to 16, ℓ from one pixel to twice the comparison beam). gp-aniso stretches the correlation length along the disc's major axis. gp-polar is `virgil.fields.MultipoleField`, a polar GP (Matérn in radius times a periodic kernel in azimuth) deprojected by the parametric fit's inclination and PA (σ over 0.125 to 2, ℓ_θ over 0.25 to 2 rad, ℓ_r from 0.5 to 4 beams). In each GP strategy the hyperparameters are the cell of the grid with the largest Laplace evidence. A radial cap on the polar grid (the parametric rim radius plus the larger of three comparison beams and half a radius, the rest left to the grey background) was tested on IW Car and HD 95767: it lowered the log evidence by hundreds and degraded the images (IW Car NCC 0.74 against 0.90, HD 95767 0.88 against 0.94), so the faint outer arcs carry real, partly resolved flux that the fully resolved background cannot absorb. The polar grid therefore runs to the whole field. Its cells are uniform in radius, so at the field edge they can form concentric arcs: read the outermost emission with that in mind. its cells are uniform in radius, and at the field edge they otherwise soak up the over-resolved flux as concentric arcs. gp-polar is our recommended model and the headline of every tab.
-
-**Why the evidence is not followed blindly.** The strategies have very different latent dimensions (a pixel field, a polar grid, a disc plus residual), so their Occam factors are not like for like; and with headline χ²/pt of 0.59 to 0.77 every fit is already well inside the noise. gp-polar is the evidence-best strategy on IRAS 15469-5311; elsewhere the evidence prefers IW Car: gp-iso; HR 4049: gp-aniso; HD 108015: gp-iso; AI Sco: gp-iso; EN TrA: gp-aniso; HD 95767: gp-iso; PS Gem: gp-iso. A small ΔlnZ (a few units) means the data do not choose between strategies.
-
-**Grid edges.** 18 of 24 GP-based selections sit on the edge of their hyperparameter grid (the flags are in each tab's strategy table, generated from `gp_on_edge`). For the gp-polar headline the edge flag is set on: IW Car, HR 4049, HD 108015, AI Sco, EN TrA, HD 95767, IRAS 15469-5311, PS Gem. An edge value means the grid did not bracket the optimum, so the hyperparameters are not measured.
-
-**disc+res and the render guard.** disc+res (a parametric disc plus a coarse residual field, n_r = 192 radial knots) is shown as a diagnostic column only. Its render guard puts the disc's rendered pixel image back into the fitted scene and requires the rendered χ²/pt to reproduce the model's within 10 %: |rendered − model| ≤ 0.1 × model + 0.02. Cells that fail are excluded from its selection, and the guard fails for the final disc+res image on IW Car, HR 4049, HD 108015, HD 95767, IRAS 15469-5311, PS Gem (6 of 8 run). It is never a headline candidate.
-
-**The grey background.** The background's index and flux sit at a prior bound on most targets (5 of 8: IW Car, HR 4049, AI Sco, EN TrA, HD 95767); the grey background is a few per cent of the flux and its index is unconstrained, so we report f_bg plus the outer environment flux as one total over-resolved flux. Fixing the background's index at 0 (grey) instead of fitting it, for IW Car (gp-polar, bg0 run), leaves the image alike (NCC 0.90, against 0.90 with it free) but fits worse (χ²/pt 0.73 against 0.62, log evidence -983 against -885) and moves d_env from 2.53 to 1.11: the background index and d_env are degenerate, so quoted d_env values carry that systematic uncertainty. We keep the index free, as the data prefer.
-
-**Verdicts.** Normalised cross-correlation is dominated by the radial profile, so each tab lists three controls (the East-West mirror, the 180° rotation and the azimuthal average of the published image). A verdict says 'agree' only if the NCC exceeds its best control by at least 0.1 and is itself at least 0.5; between 0.03 and 0.1 it says 'inconclusive'; below 0.03 it says 'does not agree'. SQUEEZE also failed on HR 4049 and PS Gem in the paper (Appendix D), so those two are documented hard cases, not only virgil's.
-
-**IRAS 08544-4431 is different.** It follows Hillen et al. (2016): stellar index −4, secondary index free (it runs to its −5 lower bound), beam as drawn on their figure, and its binary table is not a blind recovery. It is compared with their published bitmap, not with De Prins's ORGANIC image.
-
-Setup of each target, from the stored fits:
-
-| Target | Stellar index (SIND1) | UD fixed (mas) | Error scale s | Hole (mas) | Field radius (mas) | Headline σ, ℓ | Headline χ²/pt |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| IW Car | -3.17 | 0.5 | 1.00 | 1.21 | 18.0 | σ = 2, ℓ_r = 0.61 mas, ℓ_θ = 0.25 rad | 0.62 |
-| HR 4049 | -3.14 | 0.721 | 0.93 | 1.39 | 25.0 | σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.25 rad | 0.65 |
-| HD 108015 | -3.16 | 0.001 | 0.89 | 1.18 | 12.2 | σ = 2, ℓ_r = 0.59 mas, ℓ_θ = 0.5 rad | 0.66 |
-| AI Sco | -2.13 | 0.001 | 1.34 | 1.22 | 8.5 | σ = 2, ℓ_r = 1.22 mas, ℓ_θ = 0.25 rad | 0.77 |
-| EN TrA | -2.86 | 0.001 | 1.31 | 1.21 | 16.1 | σ = 2, ℓ_r = 1.21 mas, ℓ_θ = 0.25 rad | 0.63 |
-| HD 95767 | -3.19 | 0.001 | 0.95 | 1.20 | 9.3 | σ = 2, ℓ_r = 0.60 mas, ℓ_θ = 0.25 rad | 0.59 |
-| IRAS 15469-5311 | -3.17 | 0.001 | 0.81 | 1.16 | 14.3 | σ = 2, ℓ_r = 2.32 mas, ℓ_θ = 2 rad | 0.71 |
-| PS Gem | -3.03 | 0.367 | 1.06 | 0.37 | 5.0 | σ = 2, ℓ_r = 0.59 mas, ℓ_θ = 0.5 rad | 0.74 |
-| IRAS 08544-4431 | -4 | 0.5 | 0.84 | 1.22 | 16.0 | σ = 2, ℓ_r = 0.61 mas, ℓ_θ = 0.5 rad | 0.95 |
-
-<!-- /gen:methods -->
-
-
-In short: four agree outright (HD 108015, AI Sco, HD 95767, IRAS 15469-5311); four agree in outline but
-differ in some detail (IW Car's outer arc, HR 4049's size, EN TrA's orientation, the companion of
-IRAS 08544-4431); and PS Gem's data do not constrain an image at all. Each tab shows the two images side by side, the verdict,
-a parameter table against the paper, and how to reproduce it.
+## Gallery
 
 === "IW Car"
 
@@ -1302,6 +1211,90 @@ a parameter table against the paper, and how to reproduce it.
         Reproduce with `scripts/postagb_literature.py --targets IRAS08544` and
         `scripts/postagb_imaging.py {inspect,parametric,image,compare,replot} docs/imaging/postagb --target IRAS08544`
         (about two minutes on a laptop).
+
+## Summary
+
+<!-- gen:summary -->
+
+| Target | Published method | Headline (gp-polar) | Verdict | NCC (best control) | Best other strategy NCC | Comparison beam (mas) |
+| --- | --- | --- | --- | --- | --- | --- |
+| [IW Car](#iw-car) | SPARCO + ORGANIC (SQUEEZE check) | gp-polar (grid edge) | agrees (+0.33 over its best control) | 0.90 (0.57) | 0.89 (gp-iso) | 1.21 |
+| [HR 4049](#hr-4049) | SPARCO + ORGANIC | gp-polar (grid edge) | inconclusive (+0.05 over its best control) | 0.85 (0.80) | 0.91 (mem) | 1.39 |
+| [HD 108015](#hd-108015) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.16 over its best control) | 0.97 (0.81) | 0.98 (gp-aniso) | 1.18 |
+| [AI Sco](#ai-sco) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.29 over its best control) | 0.83 (0.54) | 0.79 (gp-aniso) | 1.22 |
+| [EN TrA](#en-tra) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.17 over its best control) | 0.95 (0.78) | 0.94 (mem) | 1.21 |
+| [HD 95767](#hd-95767) | SPARCO + ORGANIC | gp-polar (grid edge) | inconclusive (+0.09 over its best control) | 0.94 (0.86) | 0.96 (mem) | 1.20 |
+| [IRAS 15469-5311](#iras-15469-5311) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.16 over its best control) | 0.98 (0.82) | 0.98 (gp-iso) | 1.16 |
+| [PS Gem](#ps-gem) | SPARCO + ORGANIC | gp-polar (grid edge) | does not agree (+0.12 over its best control) | 0.21 (0.09) | 0.20 (mem) | 1.18 |
+| [IRAS 08544-4431](#iras-08544-4431) | SPARCO, binary subtracted (Hillen+2016) | gp-polar (grid edge) | inconclusive (+0.05 over its best control) | 0.93 (0.89) | 0.96 (mem) | 2.55 (Hillen: drawn 2.5 × 1.8 ellipse) |
+
+<!-- /gen:summary -->
+
+## How the images were made
+
+1. **Data.** The calibrated PIONIER files from the ESO archive (Phase 3 products), the same ones
+   the papers used. For IRAS 08544-4431, the authors' own reduced files.
+2. **Model.** Following the papers' SPARCO approach: the bright central star is a small uniform
+   disc, its companion a point, and everything else a pixel image with its own colour (a power-law
+   spectrum across the H band). Subtracting the stars in the model leaves the disc.
+3. **Reconstruction.** virgil fits the pixels and the star parameters together. We compare five ways
+   of regularising the pixels (maximum entropy, three Gaussian-process priors and a disc plus residual); the
+   headline of every tab, and our recommended model, is the polar Gaussian-process prior (`gp-polar`). ORGANIC instead uses a
+   neural-network prior; the choice is deliberate, so that agreement does not come from shared regularisers. The stars'
+   spectral indices are the paper's own, and the secondary's position and flux ratio have the paper's values as priors, so the
+   star fits show that the data do not pull them away, not that virgil finds them blind. See the Methods note below.
+4. **Comparison.** Both images are blurred to a circular beam of FWHM λ_min/2B_max, placed on one grid
+   and compared by cross-correlation. As controls we also correlate against the published image
+   mirrored, rotated by 180° and azimuthally averaged: a real match must beat all three.
+
+A correlation near 1 at the beam means the two reconstructions put the same light in the same places
+at the resolution the data support. For nearly round discs it mostly tests the radial profile; the
+orientation is tested separately by asking which way round the published image fits our data
+better (details under [Method parity](#method-parity)).
+
+## Methods note { #methods-note }
+
+<!-- gen:methods -->
+
+**The common scene (SPARCO).** Every strategy fits the same scene (Kluska et al. 2014): a uniform-disc primary of fixed diameter whose flux goes as λ^index (normalised at 1.65 µm); a point-source secondary where the paper has one; an environment image with a free flux fraction and its own spectral index d_env; and a grey (index-free) over-resolved background. The strategies differ only in how the environment image is regularised.
+
+**Spectral indices.** We adopt De Prins's own per-target stellar index SIND1 from the ORGANIC FITS header, held fixed (-3.19 to -2.13 across the eight targets), and the companion index SIND2 = 0, also fixed, so that our d_env values are comparable with the paper's image index (SIND0). An earlier convention of −4 for every star was wrong for this paper and has been removed. A one-off check on HD 95767 (gp-polar) with the earlier −4 index instead of SIND1 = -3.194 changes the NCC from 0.94 to 0.94 and d_env from 3.04 to 2.71, with the log evidence +32 in favour of SIND1: the disc index is degenerate with the fixed star colour.
+
+**The secondary.** Its position and flux ratio carry PMOIRED priors (Table 3 of the paper), and its index is fixed at SIND2. The image has no window inside the primary's hole, so the secondary's own flux is not traded against pixels there; for HD 95767 this removed inner knots that the earlier treatment produced.
+
+**Error rescaling.** The data errors are multiplied by a single factor s chosen by MacKay's evidence argument on an isotropic GP pilot (s = 0.81 to 1.34 across the targets, see the table). All χ²/pt on this page are on the rescaled errors. The headline χ²/pt is 0.59 to 0.77 on the targets fitted with gp-polar: well below 1 after rescaling, which says the PIONIER errors are conservative or that the latent field is flexible enough to absorb noise, so χ²/pt cannot be used to rank strategies.
+
+**Hole, support and field.** The environment image has no pixels within a hole of radius max(λ_min/2B_max, UD diameter) around the primary. For PS Gem the hole is the UD diameter only, 0.37 mas, because the beam-size hole blanked compact emission there; the table shows the hole of each stored fit. The image support is a circle, with a per-target field radius (the table: PS Gem 5.0 mas, HR 4049 25.0 mas).
+
+**Strategies.** MEM is MaxEntropy with the weight at the discrepancy principle (no evidence). gp-iso is an isotropic Gaussian-process prior on the log-brightness (σ over 0.25 to 16, ℓ from one pixel to twice the comparison beam). gp-aniso stretches the correlation length along the disc's major axis. gp-polar is `virgil.fields.MultipoleField`, a polar GP (Matérn in radius times a periodic kernel in azimuth) deprojected by the parametric fit's inclination and PA (σ over 0.125 to 2, ℓ_θ over 0.25 to 2 rad, ℓ_r from 0.5 to 4 beams). In each GP strategy the hyperparameters are the cell of the grid with the largest Laplace evidence. A radial cap on the polar grid (the parametric rim radius plus the larger of three comparison beams and half a radius, the rest left to the grey background) was tested on IW Car and HD 95767: it lowered the log evidence by hundreds and degraded the images (IW Car NCC 0.74 against 0.90, HD 95767 0.88 against 0.94), so the faint outer arcs carry real, partly resolved flux that the fully resolved background cannot absorb. The polar grid therefore runs to the whole field. Its cells are uniform in radius, so at the field edge they can form concentric arcs: read the outermost emission with that in mind. gp-polar is our recommended model and the headline of every tab.
+
+**Why the evidence is not followed blindly.** The strategies have very different latent dimensions (a pixel field, a polar grid, a disc plus residual), so their Occam factors are not like for like; and with headline χ²/pt of 0.59 to 0.77 every fit is already well inside the noise. gp-polar is the evidence-best strategy on IRAS 15469-5311; elsewhere the evidence prefers IW Car: gp-iso; HR 4049: gp-aniso; HD 108015: gp-iso; AI Sco: gp-iso; EN TrA: gp-aniso; HD 95767: gp-iso; PS Gem: gp-iso. A small ΔlnZ (a few units) means the data do not choose between strategies.
+
+**Grid edges.** 18 of 24 GP-based selections sit on the edge of their hyperparameter grid (the flags are in each tab's strategy table, generated from `gp_on_edge`). For the gp-polar headline the edge flag is set on: IW Car, HR 4049, HD 108015, AI Sco, EN TrA, HD 95767, IRAS 15469-5311, PS Gem. An edge value means the grid did not bracket the optimum, so the hyperparameters are not measured.
+
+**disc+res and the render guard.** disc+res (a parametric disc plus a coarse residual field, n_r = 192 radial knots) is shown as a diagnostic column only. Its render guard puts the disc's rendered pixel image back into the fitted scene and requires the rendered χ²/pt to reproduce the model's within 10 %: |rendered − model| ≤ 0.1 × model + 0.02. Cells that fail are excluded from its selection, and the guard fails for the final disc+res image on IW Car, HR 4049, HD 108015, HD 95767, IRAS 15469-5311, PS Gem (6 of 8 run). It is never a headline candidate.
+
+**The grey background.** The background's index and flux sit at a prior bound on most targets (5 of 8: IW Car, HR 4049, AI Sco, EN TrA, HD 95767); the grey background is a few per cent of the flux and its index is unconstrained, so we report f_bg plus the outer environment flux as one total over-resolved flux. Fixing the background's index at 0 (grey) instead of fitting it, for IW Car (gp-polar, bg0 run), leaves the image alike (NCC 0.90, against 0.90 with it free) but fits worse (χ²/pt 0.73 against 0.62, log evidence -983 against -885) and moves d_env from 2.53 to 1.11: the background index and d_env are degenerate, so quoted d_env values carry that systematic uncertainty. We keep the index free, as the data prefer.
+
+**Verdicts.** Normalised cross-correlation is dominated by the radial profile, so each tab lists three controls (the East-West mirror, the 180° rotation and the azimuthal average of the published image). A verdict says 'agree' only if the NCC exceeds its best control by at least 0.1 and is itself at least 0.5; between 0.03 and 0.1 it says 'inconclusive'; below 0.03 it says 'does not agree'. SQUEEZE also failed on HR 4049 and PS Gem in the paper (Appendix D), so those two are documented hard cases, not only virgil's.
+
+**IRAS 08544-4431 is different.** It follows Hillen et al. (2016): stellar index −4, secondary index free (it runs to its −5 lower bound), beam as drawn on their figure, and its binary table is not a blind recovery. It is compared with their published bitmap, not with De Prins's ORGANIC image.
+
+Setup of each target, from the stored fits:
+
+| Target | Stellar index (SIND1) | UD fixed (mas) | Error scale s | Hole (mas) | Field radius (mas) | Headline σ, ℓ | Headline χ²/pt |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| IW Car | -3.17 | 0.5 | 1.00 | 1.21 | 18.0 | σ = 2, ℓ_r = 0.61 mas, ℓ_θ = 0.25 rad | 0.62 |
+| HR 4049 | -3.14 | 0.721 | 0.93 | 1.39 | 25.0 | σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.25 rad | 0.65 |
+| HD 108015 | -3.16 | 0.001 | 0.89 | 1.18 | 12.2 | σ = 2, ℓ_r = 0.59 mas, ℓ_θ = 0.5 rad | 0.66 |
+| AI Sco | -2.13 | 0.001 | 1.34 | 1.22 | 8.5 | σ = 2, ℓ_r = 1.22 mas, ℓ_θ = 0.25 rad | 0.77 |
+| EN TrA | -2.86 | 0.001 | 1.31 | 1.21 | 16.1 | σ = 2, ℓ_r = 1.21 mas, ℓ_θ = 0.25 rad | 0.63 |
+| HD 95767 | -3.19 | 0.001 | 0.95 | 1.20 | 9.3 | σ = 2, ℓ_r = 0.60 mas, ℓ_θ = 0.25 rad | 0.59 |
+| IRAS 15469-5311 | -3.17 | 0.001 | 0.81 | 1.16 | 14.3 | σ = 2, ℓ_r = 2.32 mas, ℓ_θ = 2 rad | 0.71 |
+| PS Gem | -3.03 | 0.367 | 1.06 | 0.37 | 5.0 | σ = 2, ℓ_r = 0.59 mas, ℓ_θ = 0.5 rad | 0.74 |
+| IRAS 08544-4431 | -4 | 0.5 | 0.84 | 1.22 | 16.0 | σ = 2, ℓ_r = 0.61 mas, ℓ_θ = 0.5 rad | 0.95 |
+
+<!-- /gen:methods -->
 
 ## Data and permissions
 
