@@ -1,0 +1,86 @@
+{
+ "_about": "PIONIER error-model widths per target from the virgil-vlti pair test (virgil-vlti-pairs, commit 4c67372): V2 and closure-phase white scales on the quoted errors, gain widths on log|V| (half the V2 widths), closure-phase offset per (frame, triangle) in degrees. Non-IW-Car offsets are upper bounds (the target changes between paired frames; IW Car's drops from 0.40 to 0.21 deg once its model is subtracted).",
+ "targets": {
+  "IW_Car": {
+   "n_pairs": 11,
+   "v2_white": 0.32,
+   "gain_baseline": 0.0045,
+   "gain_telescope": 0.0055,
+   "t3_white": 0.65,
+   "t3_offset_deg": 0.21,
+   "source": "pair test on the 11 disjoint pairs (virgil-vlti design/pionier_systematics.md): white scales 0.32 and 0.65, gains 0.55 % per telescope and 0.45 % per baseline, offset 0.21 deg with the parametric model subtracted"
+  },
+  "HR4049": {
+   "n_pairs": 9,
+   "v2_white": 0.2356,
+   "gain_baseline": 0.0057,
+   "gain_telescope": 0.0172,
+   "t3_white": 0.71,
+   "t3_offset_deg": 0.2328,
+   "source": "pair test, no model subtracted"
+  },
+  "AI_Sco": {
+   "n_pairs": 12,
+   "v2_white": 0.4979,
+   "gain_baseline": 0.0051,
+   "gain_telescope": 0.0172,
+   "t3_white": 0.8888,
+   "t3_offset_deg": 0.4447,
+   "source": "pair test, no model subtracted"
+  },
+  "EN_TrA": {
+   "n_pairs": 7,
+   "v2_white": 0.6137,
+   "gain_baseline": 0.0091,
+   "gain_telescope": 0.005,
+   "t3_white": 0.7777,
+   "t3_offset_deg": 0.2325,
+   "source": "pair test, no model subtracted"
+  },
+  "PS_Gem": {
+   "n_pairs": 5,
+   "v2_white": 0.3129,
+   "gain_baseline": 0.0037,
+   "gain_telescope": 0.0046,
+   "t3_white": 0.6376,
+   "t3_offset_deg": 0.1642,
+   "source": "pair test, no model subtracted"
+  },
+  "HD108015": {
+   "n_pairs": 17,
+   "v2_white": 0.6135,
+   "gain_baseline": 0.0042,
+   "gain_telescope": 0.0072,
+   "t3_white": 0.8215,
+   "t3_offset_deg": 0.4741,
+   "source": "pair test, no model subtracted"
+  },
+  "HD95767": {
+   "n_pairs": 18,
+   "v2_white": 0.5701,
+   "gain_baseline": 0.0064,
+   "gain_telescope": 0.005,
+   "t3_white": 0.8409,
+   "t3_offset_deg": 0.3741,
+   "source": "pair test, no model subtracted"
+  },
+  "IRAS15469-5311": {
+   "n_pairs": 10,
+   "v2_white": 0.4956,
+   "gain_baseline": 0.003,
+   "gain_telescope": 0.0075,
+   "t3_white": 0.8156,
+   "t3_offset_deg": 0.5811,
+   "source": "pair test, no model subtracted"
+  },
+  "IRAS08544": {
+   "n_pairs": 3,
+   "v2_white": 0.4968,
+   "gain_baseline": 0.0054,
+   "gain_telescope": 0.0064,
+   "t3_white": 0.7967,
+   "t3_offset_deg": 0.3869,
+   "source": "pooled median of the targets with >= 5 pairs (this one has 3)"
+  }
+ }
+}

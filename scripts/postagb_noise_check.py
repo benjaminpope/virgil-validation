@@ -138,11 +138,11 @@ def synth_stage(args):
     if args.case == "white":
         data = base.with_model(truth, key)  # white noise at the quoted errors, nothing else
     else:
-        sim = pi.vlti_noise(base).with_model(truth, key)  # white at the vlti scale + gains + closure offsets, drawn at the vlti widths
+        sim = pi.vlti_noise(base, pi.noise_widths(cfg)).with_model(truth, key)  # white at the vlti scale + gains + closure offsets, drawn at the vlti widths
         if args.case == "gains-model":
             data = sim
         else:  # the same numbers fitted with independent errors: the quoted errors back, no gains, no offsets
-            n = pi.VLTI_NOISE
+            n = pi.noise_widths(cfg)
             data = eqx.tree_at(lambda d: (d.gains, d.phase_offsets), sim, (None, None), is_leaf=lambda x: x is None)
             data = data.with_error_scale({"vis": 1.0 / n["v2_white"], "phi": 1.0 / n["t3_white"]})
     ns = argparse.Namespace(smoke=False, mean=args.mean, noise="vlti" if args.case == "gains-model" else "current")

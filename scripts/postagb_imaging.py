@@ -592,15 +592,24 @@ def scale_file(out, cfg, noise=DEFAULT_NOISE):
 # 11 disjoint pairs of consecutive exposures, model subtracted). V^2 errors are 0.32 white; the rest is a gain per (frame, telescope)
 # and per (frame, baseline) shared by the six channels, widths on log|V| (half the 1.1 % and 0.9 % on V^2); closure-phase errors are
 # 0.65 white, plus an offset per (frame, triangle) of 0.21 deg. The MacKay ``error_scale`` is skipped: virgil refuses it with gains.
-VLTI_NOISE = dict(v2_white=0.32, t3_white=0.65, gain_telescope=0.0055, gain_baseline=0.0045, t3_offset_deg=0.21)
+# Each target has its own widths in postagb_noise_widths.json (the same pair test on its own exposures; fewer than five pairs: the
+# median of the others).
+VLTI_NOISE = dict(v2_white=0.32, t3_white=0.65, gain_telescope=0.0055, gain_baseline=0.0045, t3_offset_deg=0.21)  # IW Car
+NOISE_WIDTHS = json.load(open(Path(__file__).with_name("postagb_noise_widths.json")))["targets"]
 
 
-def vlti_noise(data):
-    """``data`` (read with ``bandwidth=True``) under the virgil-vlti PIONIER error model (``VLTI_NOISE``).
+def noise_widths(cfg):
+    """The vlti error-model widths of this target (``VLTI_NOISE`` for a target the table does not have)."""
+    row = NOISE_WIDTHS.get(cfg.get("data_key", cfg["key"]))
+    return VLTI_NOISE if row is None else {k: row[k] for k in VLTI_NOISE}
+
+
+def vlti_noise(data, widths=VLTI_NOISE):
+    """``data`` (read with ``bandwidth=True``) under the virgil-vlti PIONIER error model (``widths``, see ``noise_widths``).
 
     Per-observable white scaling goes first (``with_error_scale`` by kind: ``vis`` is the V^2 here, ``phi`` the closure phases), then
     gains on log|V| and closure-phase offsets, which the likelihood marginalizes analytically."""
-    n = VLTI_NOISE
+    n = widths
     data = data.with_error_scale({"vis": n["v2_white"], "phi": n["t3_white"]})
     return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"]).with_closure_offsets(triangle=np.radians(n["t3_offset_deg"]))
 
@@ -611,7 +620,7 @@ def load_scaled(cfg, args, out):
     if getattr(args, "noise", "current") == "vlti":
         data, files = load(cfg, args.files, bandwidth=True)
         assert data.bandwidth is not None, "read_oifits(bandwidth=True) did not set data.bandwidth"
-        return vlti_noise(data), data, 1.0, files
+        return vlti_noise(data, noise_widths(cfg)), data, 1.0, files
     data, files = load(cfg, args.files)
     f = scale_file(out, cfg, "current")
     s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
@@ -632,7 +641,7 @@ def scale_stage(args, out):
     scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
     priors = image_priors(scene) | scene_priors(cfg, scene)
     if vlti:  # no MacKay rescaling: virgil's error_scale refuses gains; the noise model sets the errors
-        s, pilot_chi2, data_s = 1.0, None, vlti_noise(data)
+        s, pilot_chi2, data_s = 1.0, None, vlti_noise(data, noise_widths(cfg))
     else:
         # pilot: an isotropic GP at the middle of the (sigma, length) grid on the errors as given; MacKay's error_scale needs a GaussianField
         unit = compare_beam(data).minor_mas
@@ -1121,7 +1130,7 @@ def image_one(args, out, strat):
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
-    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=VLTI_NOISE if args.noise == "vlti" else None, error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=noise_widths(cfg) if args.noise == "vlti" else None, error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
                  bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
