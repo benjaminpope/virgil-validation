@@ -888,6 +888,8 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
 def rendered_chi2_disc(model, shape, pix, data):
     """chi2/pt of the disc+residual model's rendered pixel image, put back into the fitted scene (the render guard of ``image_one``)."""
     b = render_env(model, "disc+res", shape, pix)
+    if not (np.all(np.isfinite(b)) and b.sum() > 0):  # a fit that diverged has no image: never eligible
+        return float("inf")
     m = model.resolved()
     env_r = Image(np.log(np.clip(b / b.sum(), 1e-14, None)), pix,
                   flux=PowerLaw(float(np.asarray(m.env.flux.ratio)) + float(np.asarray(m.res.flux.ratio)), float(np.asarray(m.env.flux.index)), L0))
@@ -938,7 +940,7 @@ def fit_disc_at(cfg, data, args, geo, r_in, f_env0, d_env, pix, npix):
         f_ = state["previous"] = fit(sc, pri, data, init=None if prev is None else prev.values, **opts)
         lz, c2 = float(log_evidence(f_, data)), float(f_.info["chi2_red"])
         rend = rendered_chi2_disc(f_.model, (npix, npix), pix, data)
-        side[vals] = (rend, abs(rend - c2) <= 0.1 * c2 + 0.02)
+        side[vals] = (rend, bool(np.isfinite(rend) and np.isfinite(lz) and abs(rend - c2) <= 0.1 * c2 + 0.02))
         print(f"profile length {ell:.2f} mas, sigma {sigma}: log Z {lz:.1f}, chi2/pt {c2:.3f}, rendered {rend:.3f}"
               f"{'' if side[vals][1] else ' (render mismatch: not eligible)'}", flush=True)
         return f_, lz, c2
