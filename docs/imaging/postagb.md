@@ -159,7 +159,7 @@ how to reproduce it. The [summary table](#summary), the [method](#how-the-images
 
     <figure markdown>
     ![HR 4049: ORGANIC image (left) and virgil image (right) at the comparison beam](postagb/HR4049_images.png)
-    <figcaption>HR 4049 in H band, 19 PIONIER exposures (MJD 58884 to 58899). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, the polar Gaussian-process prior (σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.25 rad), our recommended model. Both are the star-and-secondary-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.39 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
+    <figcaption>HR 4049 in H band, 19 PIONIER exposures (MJD 58884 to 58899). Left: the ORGANIC image of De Prins et al. (2026), re-rendered here from their Zenodo FITS (10.5281/zenodo.20155600). Right: virgil, the polar Gaussian-process prior (σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.125 rad), our recommended model. Both are the star-and-secondary-subtracted disc emission, convolved to a circular λ_min/2B_max beam of 1.39 mas FWHM (grey disc), peak-normalised, North up, East left; the star is the gold marker.</figcaption>
     </figure>
 
     <!-- /gen:figure -->
@@ -167,12 +167,12 @@ how to reproduce it. The [summary table](#summary), the [method](#how-the-images
     <!-- gen:verdict HR4049 -->
 
     !!! warning "Verdict: inconclusive (NCC only +0.05 over its best control)"
-        At the λ_min/2B_max beam (1.39 mas) the headline image (gp-polar) correlates with the published one at 0.85 (0.85
+        At the λ_min/2B_max beam (1.39 mas) the headline image (gp-polar) correlates with the published one at 0.84 (0.84
         after the best sub-beam shift), against 0.63 for the East-West mirror of the published image, 0.64 for its 180°
-        rotation and 0.80 for its azimuthal average (the same flux at the same radii with no azimuthal structure): +0.05 over
+        rotation and 0.79 for its azimuthal average (the same flux at the same radii with no azimuthal structure): +0.05 over
         the best control. A verdict says 'agree' only above +0.1. Flux-weighted radius 10.0 against 10.5 mas, flux centroid
-        42° against 36° East of North, major-axis PA 57° against 109° (axis ratios 0.89 and 0.82). Of the other strategies,
-        MEM (MaxEntropy) is closest to the published image at 0.91. SQUEEZE also failed to reconstruct this target in the
+        40° against 36° East of North, major-axis PA 60° against 109° (axis ratios 0.89 and 0.82). Of the other strategies,
+        gp-iso is closest to the published image at 0.89 (MEM 0.87). SQUEEZE also failed to reconstruct this target in the
         paper (Appendix D). Conventions: see the [Methods note](#methods-note).
 
     <!-- /gen:verdict -->
@@ -183,15 +183,15 @@ how to reproduce it. The [summary table](#summary), the [method](#how-the-images
 
     | Strategy | NCC (best control) | χ²/pt (rescaled errors) | ΔlnZ | f★ / f_env / f_bg+outer (%) | d_env (paper SIND0 = 2.39) | grid edge | bound warnings | disc+res render guard, n_r |
     | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-    | MEM (MaxEntropy) | 0.91 (0.81) | 0.98 | - | 65.6 / 34.1 / 1.5 | 2.39 | - | 1: bg.flux.ratio at its lower bound | - |
-    | gp-iso | 0.87 (0.81) | 0.64 | −22.3 | 65.8 / 33.7 / 0.3 | 2.42 | yes | 1: bg.flux.ratio at its lower bound | - |
-    | gp-aniso \* | 0.87 (0.82) | 0.60 | +0.0 | 65.7 / 33.8 / 0.1 | 2.46 | no | 2: bg.flux.ratio at its lower bound; bg.flux.index at its upper bound | - |
-    | **gp-polar** (headline) | 0.85 (0.80) | 0.65 | −26.7 | 65.7 / 33.6 / 0.5 | 2.41 | yes | 1: bg.flux.ratio at its lower bound | - |
-    | disc+res (diagnostic) | 0.91 (0.83) | 0.80 | −22.2 | 65.6 / 33.5 / 1.0 | 2.39 | yes (d_env: no) | 2: bg.flux.ratio at its lower bound; res.flux.ratio at its upper bound | χ² 0.80 model, 1.07 rendered: FAIL; n_r = 192 |
+    | MEM (MaxEntropy) | 0.87 (0.64) | 0.97 | - | 65.5 / 34.3 / 8.6 | 2.44 | - | 1: bg.flux.ratio at its lower bound | - |
+    | gp-iso | 0.89 (0.81) | 0.59 | −2.4 | 65.8 / 33.7 / 1.8 | 2.42 | no | 2: bg.flux.ratio at its lower bound; bg.flux.index at its upper bound | - |
+    | gp-aniso \* | 0.86 (0.80) | 0.61 | +0.0 | 65.7 / 33.8 / 1.0 | 2.46 | no | 1: bg.flux.ratio at its lower bound | - |
+    | **gp-polar** (headline) | 0.84 (0.79) | 0.64 | −18.3 | 65.7 / 33.5 / 0.7 | 2.39 | yes | 2: bg.flux.ratio at its lower bound; bg.flux.index at its upper bound | - |
+    | disc+res (diagnostic) | 0.91 (0.81) | 0.82 | −15.9 | 65.7 / 33.7 / 2.5 | 2.44 | yes (d_env: no) | 2: bg.flux.ratio at its lower bound; res.flux.ratio at its upper bound | χ² 0.82 model, 0.82 rendered: pass; n_r = 192 |
 
     \* the evidence-best strategy. f★ is the primary's share of the 1.65 µm flux, f_env the environment image's, f_bg+outer the grey over-resolved flux (the background plus the environment's outer region). d_env is the environment's spectral index against De Prins's image index.
 
-    The evidence prefers gp-aniso, by ΔlnZ = −26.7 for gp-polar; that is a real preference on this grid, but the strategies have very different latent dimensions (see the Methods note), so we do not follow it blindly, and gp-polar stays the headline. Selected on the edge of the hyperparameter grid: gp-iso, gp-polar, disc+res (of 4 GP-based fits); an edge value means the grid did not bracket the optimum. disc+res is a diagnostic column only, never a headline candidate: it fails the render guard here (its rendered pixel image, put back into the scene, does not reproduce the model's χ²/pt), so its image is not a valid reconstruction.
+    The evidence prefers gp-aniso, by ΔlnZ = −18.3 for gp-polar; that is a real preference on this grid, but the strategies have very different latent dimensions (see the Methods note), so we do not follow it blindly, and gp-polar stays the headline. Selected on the edge of the hyperparameter grid: gp-polar, disc+res (of 4 GP-based fits); an edge value means the grid did not bracket the optimum. disc+res is a diagnostic column only, never a headline candidate: it passes the render guard here.
 
     ??? note "All strategies side by side"
         ![Published image and all five strategies for HR 4049](postagb/HR4049_strategies.png)
@@ -220,12 +220,12 @@ how to reproduce it. The [summary table](#summary), the [method](#how-the-images
 
     | Parameter | De Prins+2026 (ORGANIC) | virgil (gp-polar) | Difference |
     | --- | --- | --- | --- |
-    | Primary flux fraction, H (%) | 65.4 | 65.7 | +0.313 |
-    | Secondary flux fraction, H (%) | 0.24 | 0.385 | +0.145 |
+    | Primary flux fraction, H (%) | 65.4 | 65.7 | +0.291 |
+    | Secondary flux fraction, H (%) | 0.24 | 0.356 | +0.116 |
     | Primary UD diameter (mas; fixed in virgil) | 0.72 | 0.721 | +0.001 |
     | Secondary offset (Δα, Δδ) (mas; PMOIRED Table 3) | (-1.70, -0.69) | (-1.71, -0.69) | ≤ 0.01 mas |
     | Primary spectral index (fixed) | ORGANIC SIND1 | -3.14 (ORGANIC SIND1) | same by construction |
-    | Disc spectral index d_env (paper's image index SIND0) | 2.39 | 2.41 | +0.02 |
+    | Disc spectral index d_env (paper's image index SIND0) | 2.39 | 2.39 | −0.00 |
 
     <!-- /gen:parameters -->
 
@@ -235,11 +235,11 @@ how to reproduce it. The [summary table](#summary), the [method](#how-the-images
 
     | Metric | ORGANIC | virgil (gp-polar) |
     | --- | --- | --- |
-    | Normalised cross-correlation (controls: E-W mirror 0.63, 180° rotation 0.64, azimuthal average 0.80) | 1 | 0.85 (0.85 after the best sub-beam shift) |
+    | Normalised cross-correlation (controls: E-W mirror 0.63, 180° rotation 0.64, azimuthal average 0.79) | 1 | 0.84 (0.84 after the best sub-beam shift) |
     | Flux fraction in the image field | 71 % | 100 % |
-    | Flux-weighted radius (mas) | 10.49 | 10.00 |
-    | Major-axis PA (°), axis ratio | 109, 0.82 | 57, 0.89 |
-    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 36, 0.98 | 42, 0.89 |
+    | Flux-weighted radius (mas) | 10.49 | 9.97 |
+    | Major-axis PA (°), axis ratio | 109, 0.82 | 60, 0.89 |
+    | Asymmetry angle, flux centroid (° East of North), offset (mas) | 36, 0.98 | 40, 0.82 |
 
     <!-- /gen:metrics -->
 
@@ -249,11 +249,11 @@ how to reproduce it. The [summary table](#summary), the [method](#how-the-images
 
         <!-- gen:model HR4049 -->
 
-        **Beam and hole.** The PIONIER dirty beam is 5.15 × 2.92 mas at PA 146°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.39 mas, for both images. The environment image has a window of radius 1.39 mas (max(lambda_min/(2 B_max), UD diameter); 27 pixels) blanked around the primary, with no window inside the primary's hole around the secondary (its position and flux are set by the PMOIRED priors), inside a circular support of radius 25.0 mas (field radius 25.0 mas), so that its pixels cannot trade flux with the stellar point sources.
+        **Beam and hole.** The PIONIER dirty beam is 5.15 × 2.92 mas at PA 146°. The comparison beam is circular, FWHM λ_min/(2B_max) = 1.39 mas, for both images. The environment image has a window of radius 1.39 mas (max(lambda_min/(2 B_max), UD diameter); 5412 pixels) blanked around the primary, with no window inside the primary's hole around the secondary (its position and flux are set by the PMOIRED priors), inside a circular support of radius 25.0 mas (field radius 25.0 mas), so that its pixels cannot trade flux with the stellar point sources.
 
-        **Model.** SPARCO (Methods note): a uniform-disc primary of fixed diameter 0.721 mas with flux ∝ λ^-3.14 (ORGANIC SIND1), a point-source secondary (position and flux with PMOIRED priors, index fixed at the paper's SIND2, no image window inside the primary's hole), and a `virgil.models.Image` environment on a 56 × 56 grid of 0.635 mas pixels (its own power-law index d_env = 2.41), plus a grey over-resolved background where the strategy fits one. Headline strategy gp-polar: the polar Gaussian-process prior (σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.25 rad), our recommended model, selected by the Laplace evidence (ln Z = -694), at the edge of its hyperparameter grid, on a polar grid deprojected by the parametric disc's inclination 44° and PA 81°. ORGANIC differs: a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
+        **Model.** SPARCO (Methods note): a uniform-disc primary of fixed diameter 0.721 mas with flux ∝ λ^-3.14 (ORGANIC SIND1), a point-source secondary (position and flux with PMOIRED priors, index fixed at the paper's SIND2, no image window inside the primary's hole), and a `virgil.models.Image` environment on a 146 × 146 grid of 0.35 mas pixels (its own power-law index d_env = 2.39), plus a grey over-resolved background where the strategy fits one. Headline strategy gp-polar: the polar Gaussian-process prior (σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.125 rad), our recommended model, selected by the Laplace evidence (ln Z = -690), at the edge of its hyperparameter grid, on a polar grid deprojected by the parametric disc's inclination 44° and PA 81°. ORGANIC differs: a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.
 
-        **Fit quality.** On the same data the virgil gp-polar image has χ² per point 0.65 on errors rescaled by MacKay's evidence (s = 0.93; the Methods note explains why χ²/pt then sits below 1) and the ORGANIC image, with its published SPARCO parameters unchanged, 2.22 (1482 residuals, same rescaled errors). This does not say virgil's image is better: it has thousands of free pixels for those points and its prior is the only regularisation. Flipping the published image East-West or North-South gives χ² 14.9 and 10.8 against 2.22 as published, so the published orientation is the better one.
+        **Fit quality.** On the same data the virgil gp-polar image has χ² per point 0.64 on errors rescaled by MacKay's evidence (s = 0.94; the Methods note explains why χ²/pt then sits below 1) and the ORGANIC image, with its published SPARCO parameters unchanged, 2.22 (1482 residuals, same rescaled errors). This does not say virgil's image is better: it has thousands of free pixels for those points and its prior is the only regularisation. Flipping the published image East-West or North-South gives χ² 14.9 and 10.8 against 2.22 as published, so the published orientation is the better one.
 
         <!-- /gen:model -->
 
@@ -1219,7 +1219,7 @@ how to reproduce it. The [summary table](#summary), the [method](#how-the-images
 | Target | Published method | Headline (gp-polar) | Verdict | NCC (best control) | Best other strategy NCC | Comparison beam (mas) |
 | --- | --- | --- | --- | --- | --- | --- |
 | [IW Car](#iw-car) | SPARCO + ORGANIC (SQUEEZE check) | gp-polar (grid edge) | agrees (+0.33 over its best control) | 0.90 (0.57) | 0.89 (gp-iso) | 1.21 |
-| [HR 4049](#hr-4049) | SPARCO + ORGANIC | gp-polar (grid edge) | inconclusive (+0.05 over its best control) | 0.85 (0.80) | 0.91 (mem) | 1.39 |
+| [HR 4049](#hr-4049) | SPARCO + ORGANIC | gp-polar (grid edge) | inconclusive (+0.05 over its best control) | 0.84 (0.79) | 0.89 (gp-iso) | 1.39 |
 | [HD 108015](#hd-108015) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.16 over its best control) | 0.97 (0.81) | 0.98 (gp-aniso) | 1.18 |
 | [AI Sco](#ai-sco) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.29 over its best control) | 0.83 (0.54) | 0.79 (gp-aniso) | 1.22 |
 | [EN TrA](#en-tra) | SPARCO + ORGANIC | gp-polar (grid edge) | agrees (+0.17 over its best control) | 0.95 (0.78) | 0.94 (mem) | 1.21 |
@@ -1270,9 +1270,9 @@ better (details under [Method parity](#method-parity)).
 
 **Why the evidence is not followed blindly.** The strategies have very different latent dimensions (a pixel field, a polar grid, a disc plus residual), so their Occam factors are not like for like; and with headline χ²/pt of 0.59 to 0.77 every fit is already well inside the noise. gp-polar is the evidence-best strategy on IRAS 15469-5311; elsewhere the evidence prefers IW Car: gp-iso; HR 4049: gp-aniso; HD 108015: gp-iso; AI Sco: gp-iso; EN TrA: gp-aniso; HD 95767: gp-iso; PS Gem: gp-iso. A small ΔlnZ (a few units) means the data do not choose between strategies.
 
-**Grid edges.** 18 of 24 GP-based selections sit on the edge of their hyperparameter grid (the flags are in each tab's strategy table, generated from `gp_on_edge`). For the gp-polar headline the edge flag is set on: IW Car, HR 4049, HD 108015, AI Sco, EN TrA, HD 95767, IRAS 15469-5311, PS Gem. An edge value means the grid did not bracket the optimum, so the hyperparameters are not measured.
+**Grid edges.** 17 of 24 GP-based selections sit on the edge of their hyperparameter grid (the flags are in each tab's strategy table, generated from `gp_on_edge`). For the gp-polar headline the edge flag is set on: IW Car, HR 4049, HD 108015, AI Sco, EN TrA, HD 95767, IRAS 15469-5311, PS Gem. An edge value means the grid did not bracket the optimum, so the hyperparameters are not measured.
 
-**disc+res and the render guard.** disc+res (a parametric disc plus a coarse residual field, n_r = 192 radial knots) is shown as a diagnostic column only. Its render guard puts the disc's rendered pixel image back into the fitted scene and requires the rendered χ²/pt to reproduce the model's within 10 %: |rendered − model| ≤ 0.1 × model + 0.02. Cells that fail are excluded from its selection, and the guard fails for the final disc+res image on IW Car, HR 4049, HD 108015, HD 95767, IRAS 15469-5311, PS Gem (6 of 8 run). It is never a headline candidate.
+**disc+res and the render guard.** disc+res (a parametric disc plus a coarse residual field, n_r = 192 radial knots) is shown as a diagnostic column only. Its render guard puts the disc's rendered pixel image back into the fitted scene and requires the rendered χ²/pt to reproduce the model's within 10 %: |rendered − model| ≤ 0.1 × model + 0.02. Cells that fail are excluded from its selection, and the guard fails for the final disc+res image on IW Car, HD 108015, HD 95767, IRAS 15469-5311, PS Gem (5 of 8 run). It is never a headline candidate.
 
 **The grey background.** The background's index and flux sit at a prior bound on most targets (5 of 8: IW Car, HR 4049, AI Sco, EN TrA, HD 95767); the grey background is a few per cent of the flux and its index is unconstrained, so we report f_bg plus the outer environment flux as one total over-resolved flux. Fixing the background's index at 0 (grey) instead of fitting it, for IW Car (gp-polar, bg0 run), leaves the image alike (NCC 0.90, against 0.90 with it free) but fits worse (χ²/pt 0.73 against 0.62, log evidence -983 against -885) and moves d_env from 2.53 to 1.11: the background index and d_env are degenerate, so quoted d_env values carry that systematic uncertainty. We keep the index free, as the data prefer.
 
@@ -1285,7 +1285,7 @@ Setup of each target, from the stored fits:
 | Target | Stellar index (SIND1) | UD fixed (mas) | Error scale s | Hole (mas) | Field radius (mas) | Headline σ, ℓ | Headline χ²/pt |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | IW Car | -3.17 | 0.5 | 1.00 | 1.21 | 18.0 | σ = 2, ℓ_r = 0.61 mas, ℓ_θ = 0.25 rad | 0.62 |
-| HR 4049 | -3.14 | 0.721 | 0.93 | 1.39 | 25.0 | σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.25 rad | 0.65 |
+| HR 4049 | -3.14 | 0.721 | 0.94 | 1.39 | 25.0 | σ = 1, ℓ_r = 2.77 mas, ℓ_θ = 0.125 rad | 0.64 |
 | HD 108015 | -3.16 | 0.001 | 0.89 | 1.18 | 12.2 | σ = 2, ℓ_r = 0.59 mas, ℓ_θ = 0.5 rad | 0.66 |
 | AI Sco | -2.13 | 0.001 | 1.34 | 1.22 | 8.5 | σ = 2, ℓ_r = 1.22 mas, ℓ_θ = 0.25 rad | 0.77 |
 | EN TrA | -2.86 | 0.001 | 1.31 | 1.21 | 16.1 | σ = 2, ℓ_r = 1.21 mas, ℓ_θ = 0.25 rad | 0.63 |
