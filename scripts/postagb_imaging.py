@@ -41,6 +41,12 @@ image scene; the regularisation weight is set by the discrepancy principle (chi2
 given) for MaxEntropy, and for ``gp=dict(sigmas, length_beams)`` (a ``GaussianField`` prior) the grid cell that is
 whose chi2 per point is closest to 1, ties broken by the Laplace evidence;
 ``secondary=False`` fits a single-star-subtracted scene (the secondary stays in the image).
+
+``--noise vlti`` swaps the independent errors and MacKay ``error_scale`` for virgil-vlti's PIONIER error model (``VLTI_NOISE``:
+V^2 and closure-phase errors scaled by kind, gains per telescope and baseline, closure-phase offsets, bandwidth smearing) and
+``--mean flat`` gives the GaussianField / MultipoleField a flat template inside the support instead of the Gaussian start blob;
+outputs carry ``_vlti`` / ``_flat`` in their names. The geometry of the polar GP still comes from the ``scale`` stage (current noise).
+``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
 """
 
 import argparse
@@ -270,9 +276,9 @@ def load_files(cfg, n=None):
     return files[:n] if n else files
 
 
-def load(cfg, n=None):
+def load(cfg, n=None, bandwidth=False):
     files = load_files(cfg, n)
-    return OIData(read_oifits(files)), files
+    return OIData(read_oifits(files, bandwidth=bandwidth)), files
 
 
 def paper_log_mjds(cfg):
@@ -536,8 +542,30 @@ def scale_file(out, cfg):
     return out / f"{cfg.get('data_key', cfg['key'])}_scale.json"
 
 
+# ``--noise vlti``: the PIONIER error model of virgil-vlti (design/pionier_systematics.md, measured on IW Car with the pair test:
+# 11 disjoint pairs of consecutive exposures, model subtracted). V^2 errors are 0.32 white; the rest is a gain per (frame, telescope)
+# and per (frame, baseline) shared by the six channels, widths on log|V| (half the 1.1 % and 0.9 % on V^2); closure-phase errors are
+# 0.65 white, plus an offset per (frame, triangle) of 0.21 deg. The MacKay ``error_scale`` is skipped: virgil refuses it with gains.
+VLTI_NOISE = dict(v2_white=0.32, t3_white=0.65, gain_telescope=0.0055, gain_baseline=0.0045, t3_offset_deg=0.21)
+
+
+def vlti_noise(data):
+    """``data`` (read with ``bandwidth=True``) under the virgil-vlti PIONIER error model (``VLTI_NOISE``).
+
+    Per-observable white scaling goes first (``with_error_scale`` by kind: ``vis`` is the V^2 here, ``phi`` the closure phases), then
+    gains on log|V| and closure-phase offsets, which the likelihood marginalizes analytically."""
+    n = VLTI_NOISE
+    data = data.with_error_scale({"vis": n["v2_white"], "phi": n["t3_white"]})
+    return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"]).with_closure_offsets(triangle=np.radians(n["t3_offset_deg"]))
+
+
 def load_scaled(cfg, args, out):
-    """The target's data with its errors rescaled by the MacKay factor stored by the ``scale`` stage (1 if absent)."""
+    """The target's data under the chosen noise model: ``--noise current`` rescales the errors by the MacKay factor stored by the
+    ``scale`` stage (1 if absent); ``--noise vlti`` applies ``vlti_noise`` (bandwidth smearing on, factor reported as 1)."""
+    if getattr(args, "noise", "current") == "vlti":
+        data, files = load(cfg, args.files, bandwidth=True)
+        assert data.bandwidth is not None, "read_oifits(bandwidth=True) did not set data.bandwidth"
+        return vlti_noise(data), data, 1.0, files
     data, files = load(cfg, args.files)
     f = scale_file(out, cfg)
     s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
@@ -637,6 +665,14 @@ def pixel_floor_lengths(pix, unit, mults=(0.5, 1.0, 2.0)):
     return sorted({float(pix), float(np.sqrt(pix * first)), *top}) if first > 1.2 * pix else sorted({float(pix), *top})
 
 
+def field_mean(start_env, support, args):
+    """The GP's template image: the Gaussian start blob (``--mean blob``, the default), or ``--mean flat``, one inside the support (the
+    field then models the whole log-brightness about a uniform disc; outside the support the template is the 1e-3 floor, and masked)."""
+    if getattr(args, "mean", "blob") == "flat":
+        return np.where(np.asarray(support, bool), 1.0, 0.0)
+    return np.asarray(start_env.brightness)
+
+
 def fit_gp(cfg, scene, start_env, support, priors, data, args, geo=None, aniso=False):
     """Gaussian-process image: a GaussianField log-brightness about the Gaussian start, (sigma, length) from the Laplace evidence.
 
@@ -652,7 +688,7 @@ def fit_gp(cfg, scene, start_env, support, priors, data, args, geo=None, aniso=F
     fracs = [ln_ / unit for ln_ in lengths]
     ratio = 3.0 if aniso else None
     rot = float(geo["pa_deg"]) if aniso else 0.0
-    mean = np.asarray(start_env.brightness)
+    mean = field_mean(start_env, support, args)
     pix = float(start_env.pixel_scale_mas)
     opts = dict(max_steps=15) if args.smoke else {}
 
@@ -687,7 +723,7 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
     lens_r = [m * unit_ for m in (0.5, 1.0, 2.0, 4.0) if m * unit_ >= pix_]
     if args.smoke:
         sigmas, lens_r, lens_t = sigmas[:1], lens_r[:1], lens_t[:1]
-    mean = np.asarray(start_env.brightness)
+    mean = field_mean(start_env, support, args)
     pix = float(start_env.pixel_scale_mas)
     r_max = float(cfg["half_mas"])
     n_r, n_th = 40, 32
@@ -819,7 +855,9 @@ def per_strategy(fn, args, out, *extra):
     """Run ``fn`` for each requested strategy, with the target's outputs named <target>_<strategy>_*."""
     base = TARGETS[args.target]
     for strat in (STRATEGIES if args.strategy == "all" else (args.strategy,)):
-        sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")  # a one-off star-index run never overwrites the headline files
+        sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")
+        sfx += ("_vlti" if args.noise == "vlti" else "") + ("_flat" if args.mean == "flat" else "")  # the 2 x 2 noise/mean design: never overwrites the headline files
+        # a one-off star-index run never overwrites the headline files
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
             fn(args, out, strat, *extra)
@@ -949,7 +987,7 @@ def image_one(args, out, strat):
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
-    extra = dict(strategy=strat, error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=VLTI_NOISE if args.noise == "vlti" else None, error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
                  bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
@@ -1601,6 +1639,11 @@ def main():
     p.add_argument("--strategy", default="all", choices=("all",) + STRATEGIES, help="imaging strategy for the image and compare stages")
     p.add_argument("--star-index", type=float, default=None, help="one-off: stellar power-law index of the image scene (default -4), written as <target>_si<n>_*")
     p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")
+    p.add_argument("--noise", default="current", choices=("current", "vlti"),
+                   help="error model: current (independent errors, MacKay error_scale) or vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
+                        "gains per telescope and baseline, closure offsets, bandwidth smearing); written as <target>_<strategy>_vlti_*")
+    p.add_argument("--mean", default="blob", choices=("blob", "flat"),
+                   help="GaussianField / MultipoleField mean: the Gaussian start blob, or flat inside the support; written as ..._flat_*")
     p.add_argument("--files", type=int, default=None, help="use only the first N files")
     args = p.parse_args()
     if args.smoke and args.files is None:
