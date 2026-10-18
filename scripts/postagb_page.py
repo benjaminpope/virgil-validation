@@ -522,7 +522,8 @@ def gen_model(key):
     out = [f"**Beam and hole.** The PIONIER dirty beam is {b['major_mas']:.2f} × {b['minor_mas']:.2f} mas at PA {b['pa_deg']:.0f}°. The comparison beam is circular, "
            f"FWHM λ_min/(2B_max) = {c['beam']['major_mas']:.2f} mas, for both images. The environment image has a window of radius {hole_text(i)} blanked around the primary"
            + (", with no window inside the primary's hole around the secondary (its position and flux are set by the PMOIRED priors)" if i.get("sec_treatment") else "")
-           + (f", inside a circular support of radius {i['support_radius_mas']:.1f} mas (field radius {i['field_radius_mas']:.1f} mas)" if i.get("field_radius_mas") else "")
+           + (f", inside a circular support of radius {i['support_radius_mas']:.1f} mas on a square grid reaching ±{grid_half(i):.1f} mas"
+              + (", which clips the support (this fit predates the padded grid)" if grid_half(i) < i["support_radius_mas"] - 0.5 * i["pixel_mas"] else "") + ")" if i.get("support_radius_mas") and grid_half(i) else "")
            + ", so that its pixels cannot trade flux with the stellar point sources."]
     chi = f"{i['chi2_per_point']:.2f}"
     err = (f" on errors rescaled by MacKay's evidence (s = {s:.2f}; the Methods note explains why χ²/pt then sits below 1)" if s else "")
@@ -641,9 +642,22 @@ def rng(vals, spec=".2f"):
     return "-" if not vals else f"{min(vals):{spec}} to {max(vals):{spec}}"
 
 
+def grid_half(i):
+    """Half-width of the fitted square grid, measured from the saved grid and pixel (not the configured field radius)."""
+    return i["grid"][0] * i["pixel_mas"] / 2 if i.get("grid") and i.get("pixel_mas") else None
+
+
+def grid_text(i):
+    """'half-width / support radius (mas)', flagged when the square grid is narrower than the support disc."""
+    gh, sr = grid_half(i), i.get("support_radius_mas")
+    if gh is None:
+        return "-"
+    return f"{gh:.1f} / {sr:.1f}" + (" (clips the support)" if sr and gh < sr - 0.5 * i["pixel_mas"] else "") if sr else f"{gh:.1f}"
+
+
 def gen_methods(_):
     imgs = {k: J(k, "image") for k in TABS.values()}
-    rows = ["| Target | Stellar index (SIND1) | UD fixed (mas) | Error scale s | Hole (mas) | Field radius (mas) | Headline σ, ℓ | Headline χ²/pt |",
+    rows = ["| Target | Stellar index (SIND1) | UD fixed (mas) | Error scale s | Hole (mas) | Grid half-width / support radius (mas) | Headline σ, ℓ | Headline χ²/pt |",
             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for t, k in TABS.items():
         i = imgs[k]
@@ -656,7 +670,7 @@ def gen_methods(_):
         else:
             gp = i["regulariser"]
         rows.append(f"| {t} | {n_(i.get('star_index'), '.3g')} | {n_(i.get('ud_fixed_mas'), '.3g')} | {n_(i.get('error_scale'))} | {i['hole_mas']:.2f} | "
-                    f"{n_(i.get('field_radius_mas'), '.1f')} | {gp} | {i['chi2_per_point']:.2f} |")
+                    f"{grid_text(i)} | {gp} | {i['chi2_per_point']:.2f} |")
     de = [imgs[k] for k in DE_PRINS if imgs[k]]
     sidx = [i["star_index"] for i in de if i.get("star_index") is not None]
     scl = [i["error_scale"] for i in de if i.get("error_scale") is not None]
@@ -707,13 +721,13 @@ def gen_methods(_):
         f"{rng(chis)} on the targets fitted with gp-polar: well below 1 after rescaling, which says the PIONIER errors are conservative or that the latent field is "
         "flexible enough to absorb noise, so χ²/pt cannot be used to rank strategies.",
         f"**Hole, support and field.** The environment image has no pixels within a hole of radius max(λ_min/2B_max, UD diameter) around the primary.{ud_only} The image "
-        "support is a circle, with a per-target field radius (the table: " + (f"PS Gem {ps['field_radius_mas']:.1f} mas, HR 4049 {hr['field_radius_mas']:.1f} mas" if ps and hr and ps.get("field_radius_mas") and hr.get("field_radius_mas") else "per target") + ").",
+        "support is a circle, with a per-target radius; the table gives the measured half-width of each square grid next to it. A grid narrower than its support clips the "
+        "image: the targets so marked were fitted before the grid was padded to the requested field and will be refitted.",
         "**Strategies.** MEM is MaxEntropy with the weight at the discrepancy principle (no evidence). gp-iso is an isotropic Gaussian-process prior on the log-brightness "
-        "(σ over 0.25 to 16, ℓ from one pixel to twice the comparison beam). gp-aniso stretches the correlation length along the disc's major axis. gp-polar is "
+        "(σ over 0.25 to 16, ℓ from one pixel to twice the comparison beam; up to 8 beams for HR 4049). gp-aniso stretches the correlation length along the disc's major axis. gp-polar is "
         "`virgil.fields.MultipoleField`, a polar GP (Matérn in radius times a periodic kernel in azimuth) deprojected by the parametric fit's inclination and PA "
-        "(σ over 0.125 to 2, ℓ_θ over 0.25 to 2 rad, ℓ_r from 0.5 to 4 beams). In each GP strategy the hyperparameters are the cell of the grid with the largest "
+        "(σ over 0.125 to 2; ℓ_θ over 0.25 to 2 rad and ℓ_r from 0.5 to 4 beams as fitted for most targets, ℓ_θ from 0.125 and ℓ_r up to 8 beams for HR 4049, the only target refitted on the finer grid). In each GP strategy the hyperparameters are the cell of the grid with the largest "
         "Laplace evidence. A radial cap on the polar grid (the parametric rim radius plus the larger of three comparison beams and half a radius, the rest left to the grey background) was tested on IW Car and HD 95767: it lowered the log evidence by hundreds and degraded the images (IW Car NCC 0.74 against 0.90, HD 95767 0.88 against 0.94), so the faint outer arcs carry real, partly resolved flux that the fully resolved background cannot absorb. The polar grid therefore runs to the whole field. Its cells are uniform in radius, so at the field edge they can form concentric arcs: read the outermost emission with that in mind. "
-        "its cells are uniform in radius, and at the field edge they otherwise soak up the over-resolved flux as concentric arcs. "
         "gp-polar is our recommended model and the headline of every tab.",
         "**Why the evidence is not followed blindly.** The strategies have very different latent dimensions (a pixel field, a polar grid, a disc plus residual), so "
         f"their Occam factors are not like for like; and with headline χ²/pt of {rng(chis)} every fit is already well inside the noise. "

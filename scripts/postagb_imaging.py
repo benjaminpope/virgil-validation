@@ -171,9 +171,10 @@ TARGETS["PS_Gem"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(
 TARGETS["HR4049"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
 # Field sizes (Ben): the support is a disc (mask_mas) in every target. PS Gem's emission is within ~5 mas; HR 4049's ORGANIC halo extends
-# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-27 mas with a disc of 25 mas. Pixel scales are the paper's.
+# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
 TARGETS["PS_Gem"].update(fov_override=11.0, half_mas=5.0, half_cmp_mas=5.0, mask_mas=5.0, hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
-TARGETS["HR4049"].update(fov_override=54.0, half_cmp_mas=25.0, mask_mas=25.0)
+# The grid must contain the 25 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and a 51 mas field, 146 pixels.
+TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=51.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=25.0)
 
 for _k, _v in TARGETS.items():
     _v["bg"] = _k != "IRAS08544"  # De Prins+2026 images account for an over-resolved flux; Hillen's image scene has none
@@ -247,7 +248,8 @@ def setup(cfg):
     rad = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * scale
     o = np.argsort(rad.ravel())
     r90 = float(rad.ravel()[o][np.searchsorted(np.cumsum(im.ravel()[o]) / im.sum(), 0.9)])
-    fov = cfg.get("fov_override") or n * scale  # per-target field override (PS Gem smaller, HR 4049 larger), same pixel scale
+    scale = cfg.get("pixel_override") or scale  # per-target pixel (HR 4049: finer than the paper's 0.635 mas)
+    fov = cfg.get("fov_override") or n * scale  # per-target field override (PS Gem smaller, HR 4049 larger); grid_setup pads the start image to it
     half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * fov / 2))  # per-target override: the paper's figure extent
     has_sec = hdr["SFLU2"] > 0
     cfg.update(
@@ -528,6 +530,18 @@ def grid_setup(cfg, data, args, rot=0.0):
     scale = cfg["pixel_mas"] * (4.0 if args.smoke else 1.0)
     fov = cfg["fov_mas"] * (0.5 if args.smoke else 1.0)
     start = starting_image(data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov)
+    # starting_image never exceeds the interferometric field of view (lambda / B_min), whatever ``largest_mas`` says, so a larger
+    # requested field (HR 4049: 36 mas against 51 mas) is padded here with the start image's own floor, keeping the star at the centre.
+    n0, n_want = start.env.log_brightness.shape[0], int(np.ceil(fov / scale))
+    n_want += (n_want - n0) % 2
+    if n_want > n0:
+        b0 = np.exp(np.asarray(start.env.log_brightness))
+        pad = (n_want - n0) // 2
+        env = Image.from_brightness(np.pad(b0, pad, constant_values=0.0), start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
+        start = System(star=start.star, env=env)
+    half = start.env.log_brightness.shape[0] * float(start.env.pixel_scale_mas) / 2
+    if half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # the saved field and support radii are config values, so check the grid itself
+        raise SystemExit(f"{cfg['key']}: the grid reaches only +-{half:.1f} mas but the support radius is {cfg['mask_mas']:.1f} mas; raise fov_override")
     support, hole_mas = hole_mask(cfg, start.env, data, rot)
     return start, support, hole_mas
 
@@ -646,7 +660,7 @@ def fit_gp(cfg, scene, start_env, support, priors, data, args, geo=None, aniso=F
     sigmas = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0]
     unit = compare_beam(data).minor_mas
     pix_ = float(start_env.pixel_scale_mas)
-    lengths = pixel_floor_lengths(pix_, unit)
+    lengths = pixel_floor_lengths(pix_, unit, cfg.get("gp_mults", (0.5, 1.0, 2.0)))
     if args.smoke:
         sigmas, lengths = sigmas[:1], lengths[:1]
     fracs = [ln_ / unit for ln_ in lengths]
@@ -682,9 +696,9 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
     """Polar-GP image (``virgil.fields.MultipoleField``): a Matern kernel in the disc's radius times a periodic one in azimuth,
     deprojected by the inclination and position angle of our own parametric disc fit (``geo``); the polar grid starts at the hole
     radius. (sigma, length_r, length_theta) from the Laplace evidence on the rescaled data."""
-    sigmas, lens_t = [0.125, 0.25, 0.5, 1.0, 2.0], [0.25, 0.5, 1.0, 2.0]
+    sigmas, lens_t = [0.125, 0.25, 0.5, 1.0, 2.0], [0.125, 0.25, 0.5, 1.0, 2.0]  # HR 4049 chose the 0.25 edge of [0.25, 2]
     unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
-    lens_r = [m * unit_ for m in (0.5, 1.0, 2.0, 4.0) if m * unit_ >= pix_]
+    lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", (0.5, 1.0, 2.0, 4.0)) if m * unit_ >= pix_]
     if args.smoke:
         sigmas, lens_r, lens_t = sigmas[:1], lens_r[:1], lens_t[:1]
     mean = np.asarray(start_env.brightness)
@@ -865,7 +879,7 @@ def warm_params(out, cfg, strat, args):
     Only the scene (flux ratios, indices, secondary position) is reused: field latents are not saved, and a changed field size
     (PS Gem, HR 4049) would not fit them anyway. Disc runs need the render guard to have passed."""
     f = out / f"{cfg['key']}_image.json"
-    if args.smoke or not f.exists():
+    if args.smoke or args.cold or not f.exists():
         return None, None
     j = json.load(open(f))
     clean = j.get("gp_converged", True) is not False and 0.2 < j.get("chi2_per_point", 9.0) < 3.0 and not j.get("smoke")
@@ -956,7 +970,7 @@ def image_one(args, out, strat):
                                 if cfg.get("sec_index_fixed") is not None else None),
                  star_index_source=cfg.get("star_index_source", "SPARCO convention (-4)"), sec_index_source=cfg.get("sec_index_source"),
                  warm_start=bool(warm) and strat != "disc+res", warm_source=warm_src if strat != "disc+res" else None,
-                 field_radius_mas=float(cfg["half_mas"]), support_radius_mas=float(cfg.get("mask_mas", env.log_brightness.shape[0] * pix_ / 2))) | extra_gp
+                 field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", env.log_brightness.shape[0] * pix_ / 2))) | extra_gp
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
@@ -1601,6 +1615,7 @@ def main():
     p.add_argument("--strategy", default="all", choices=("all",) + STRATEGIES, help="imaging strategy for the image and compare stages")
     p.add_argument("--star-index", type=float, default=None, help="one-off: stellar power-law index of the image scene (default -4), written as <target>_si<n>_*")
     p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")
+    p.add_argument("--cold", action="store_true", help="never warm-start the scene parameters from an earlier <target>_image.json")
     p.add_argument("--files", type=int, default=None, help="use only the first N files")
     args = p.parse_args()
     if args.smoke and args.files is None:
