@@ -192,7 +192,17 @@ N_STARTS, N_STARTS_SMOKE = 16, 4  # multistart fits of the parametric models
 PA_PRIOR = (-90.0, 270.0)
 # The disk and ellipse arms model a resolved star, so their diameters'
 # log-uniform priors start at this fraction of the beam's minor axis (C2g).
-RESOLVED_FLOOR = 0.5
+RESOLVED_FLOOR = 0.1
+# C2h: 0.5 pinned the star_disk_planet stars (truth 0.2 beam) to a diameter of
+# exactly 0.5 x the minor axis (job 18275454: 0.539 mas on 7 datasets), and a
+# fit whose optimum lies beyond a bound drifts toward it without ever meeting
+# the gradient test, so reported not_converged. 0.1 beam still stops the GP
+# taking the star down to 0.075 mas (C2g, 2004's 1.9 mas beam gives 0.19 mas).
+PIN_EDGE = 0.02  # a fitted scale within this fraction of its log range of a prior bound is pinned
+# A star larger than this fraction of lambda / B_min is not a star: V² on the
+# shortest baseline would already be ~0.5, and the model is the environment
+# in disguise (job 18275454: a 19.2 mas star on 2024 data, f = 0.26).
+SIZE_FRACTION = 0.5
 
 
 def v2_table(data):
@@ -222,6 +232,23 @@ def chi2_red(model, data):
     datasets = data if isinstance(data, list) else [data]
     chi2 = sum(float(np.sum(np.asarray(whitened_residuals(model, d)) ** 2)) for d in datasets)
     return chi2 / sum(int(d.n_independent) for d in datasets)
+
+
+def size_limit_mas(data, fraction=SIZE_FRACTION):
+    """The largest plausible star diameter (mas) from the data alone:
+    ``fraction`` of λ/B_min, over all datasets' V² baselines."""
+    u, v, wavel, _, _ = v2_table(data)
+    q = np.hypot(u, v) / wavel  # cycles per radian
+    q = q[np.isfinite(q) & (q > 0)]
+    return float(fraction / q.min() / linear_starts.MAS) if q.size else np.inf
+
+
+def pinned(prior, x, edge=PIN_EDGE):
+    """Which bound ``x`` sits within ``edge`` of in ``prior``'s range (in log for
+    a log-uniform prior): ``"low"``, ``"high"`` or ``""`` (not pinned)."""
+    lo, hi, log = _interior(prior, 0.0)
+    y = np.log(max(float(x), 1e-300)) if log else float(x)
+    return "low" if y <= lo + edge * (hi - lo) else "high" if y >= hi - edge * (hi - lo) else ""
 
 
 def n_independent(data):
@@ -265,7 +292,8 @@ def jittered_starts(centre, priors, n, rng, jitter):
 
 
 def multistart_fit(model_fn, priors, data, starts, **options):
-    """Fit ``model_fn(start)`` from each start and keep the lowest χ²/N.
+    """Fit ``model_fn(start)`` from each start and keep the lowest-χ²/N converged one
+    (the lowest overall when none converged).
     Returns the best FitResult and a record: χ²/N of the best and of every
     start, their spread and whether the best fit converged."""
     best, chi2s = None, []
@@ -273,8 +301,13 @@ def multistart_fit(model_fn, priors, data, starts, **options):
         r = fit(model_fn(start), priors, data, **options)
         c = chi2_red(r.model, data)
         chi2s.append(c)
-        if best is None or (np.isfinite(c) and not c >= best[0]):
-            best = (c, r)
+        # A converged start beats any unconverged one; within a class, the lowest χ²/N (C2h).
+        # A non-finite χ²/N counts as unconverged.
+        ok = r.info.get("converged") is not False and np.isfinite(c)
+        key = (not ok, c if np.isfinite(c) else np.inf)
+        if best is None or key < best[0]:
+            best = (key, c, r)
+    best = (best[1], best[2])
     finite = [c for c in chi2s if np.isfinite(c)]
     return best[1], {"chi2_red": best[0], "chi2_starts": chi2s,
                      "spread": float(max(finite) - min(finite)) if finite else np.nan,
@@ -313,8 +346,10 @@ def fit_primary(data, resolution, star_model, start, n_starts=N_STARTS, seed=0):
     centre = {"diam": scan[int(np.nanargmin(scan_chi2))], "ratio": ratio0, "pa": pa0}
     starts = jittered_starts(centre, priors, n_starts, np.random.default_rng(seed),
                              {"diam": ("log", 0.3), "ratio": ("add", 0.1), "pa": ("add", 30.0)})
-    for s in starts:
+    for i, s in enumerate(starts):
         s["ratio"] = float(np.clip(s["ratio"], 0.25, 0.95))
+        if i % 4 == 3:  # the moments' PA is poor for a near-round star: also try the perpendicular (PA is periodic)
+            s["pa"] = inside(priors["pa"], s["pa"] + 90.0)
     best, record = multistart_fit(disk, priors, data, starts)
     model = eqx.tree_at(lambda d: d.pa, best.model, jnp.asarray(float(best.model.pa) % 180.0))
     record |= {"moments": m, "scan_chi2": scan_chi2}
@@ -686,7 +721,11 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         """This setup with no star (the guards' and the evidence test's
         alternative), under this label."""
         s_ = setup(task, data_dir, star=False, star_model="none", guard=False, **args)
-        s_.update(label=label, ellipse=nostar if nostar is not None else s_.get("ellipse"))
+        # No ellipse carried over: the guard's was fitted on the star start's
+        # pre-growth field, and gp_fit refits it on this setup's own, as the
+        # baseline arm does. Carrying it changed the GP's anisotropy and lost
+        # the planet on four star_disk_planet fallbacks (job 18479831, C2h).
+        s_.update(label=label, ellipse=None)
         return s_
 
     def without_star(reason, detail=""):
@@ -696,16 +735,19 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         return s_
 
     if star and star_model == "disk":
-        # Diameter: a scale parameter, so log-uniform, from half the beam's
-        # minor axis (this arm is the resolved star: an unresolved one is the
-        # point_star arm's, and below that floor the GP took the star down to
-        # 0.075 mas, C2g) to the beam's major axis (beyond that, flux belongs
-        # in the image). Started from a fit of the disk alone, from the
-        # second-moment diameter (C2g) and from half a beam.
+        # Diameter: a scale parameter, so log-uniform, from RESOLVED_FLOOR of the
+        # beam's minor axis (below that the GP took the star down to 0.075 mas,
+        # C2g; C2h lowered the floor from 0.5) to the beam's major axis (beyond
+        # that, flux belongs in the image). Multistarted from the second-moment
+        # diameter (C2g) with jitter, plus half a beam.
         diam_prior = dist.LogUniform(RESOLVED_FLOOR * resolution.minor_mas, resolution.major_mas)
         diam0 = float(linear_starts.disk_diameter_from_sigma(moments_of(data)["sigma_major"], 0.0))
-        starts = [{"diam": inside(diam_prior, d)} for d in (diam0, 0.5 * resolution.minor_mas) if np.isfinite(d) and d > 0]
+        centre = {"diam": diam0 if np.isfinite(diam0) and diam0 > 0 else resolution.minor_mas}
+        starts = jittered_starts(centre, {"diam": diam_prior}, n_starts, np.random.default_rng(0), {"diam": ("log", 0.5)})
+        starts.append({"diam": inside(diam_prior, 0.5 * resolution.minor_mas)})
         alone, star_fit = multistart_fit(lambda p: vm.UniformDisk(p["diam"]), {"diam": diam_prior}, data, starts)
+        star_fit["diam"] = float(alone.model.diam)
+        star_fit["pinned"] = pinned(diam_prior, star_fit["diam"])
         start = vm.System(star=alone.model, env=start.env)
         star_priors = {"star.diam": diam_prior}
     elif star and star_model in ("ellipse", "point_companion"):
@@ -714,11 +756,25 @@ def setup(task, data_dir, halo=False, grow=1.0, star=None, init="moments", clean
         # a suspected companion"): the primary alone, then a companion search,
         # with the GP image left for the spots and the rest.
         primary, primary_priors, star_fit = fit_primary(data, resolution, star_model, start, n_starts)
+        if star_model == "ellipse":
+            star_fit["diam"] = float(primary.diam)
+            star_fit["pinned"] = pinned(primary_priors["diam"], star_fit["diam"])
         base, star_priors, star_fit["companion"] = companion_search(
             data, resolution, primary, primary_priors, star_fit["chi2_red"], None if nostar is None else nostar[0])
         start = vm.System(star=base, env=start.env)
     elif star and star_model != "point":
         raise ValueError(f"star_model must be 'point', 'disk', 'ellipse' or 'point_companion', not {star_model!r}")
+
+    if star and guard and star_fit.get("diam") is not None:
+        # The plausibility guard (C2h): a star beyond a fraction of λ/B_min is
+        # the environment in disguise; one pinned to its upper bound (a disk
+        # as wide as a beam) wants to be an image.
+        limit = size_limit_mas(data)
+        if star_fit["diam"] > limit:
+            return without_star("size", f"diameter {star_fit['diam']:.3g} mas > {limit:.3g} mas")
+        if star_fit.get("pinned") == "high":
+            return without_star("size", f"diameter {star_fit['diam']:.3g} mas pinned to its upper bound")
+
     wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel)) for d in datasets])))
     img0 = image_of(start, star)
     pixel0 = float(img0.pixel_scale_mas)
@@ -1402,13 +1458,17 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
 
 
 def main():
-    # A run that stalls prints where it is: every 30 minutes, every thread's
-    # traceback goes to stderr (campaign-2 smoke tasks 75, 77 and 79 hung for
-    # 45 min without output, with low CPU and GPU use).
+    # Opt-in (VV_WATCHDOG=1): a run that stalls prints where it is, every 30
+    # minutes, every thread's traceback to stderr (campaign-2 smoke tasks 75, 77
+    # and 79 hung for 45 min without output, with low CPU and GPU use). Off by
+    # default (C2h): all three 2018 segfaults (tasks 421, 438, then 73 of job
+    # 18646320) came at the 30 min mark, inside the dump's window.
     import faulthandler
+    import os
     import sys
 
-    faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
+    if os.environ.get("VV_WATCHDOG"):
+        faulthandler.dump_traceback_later(1800, repeat=True, file=sys.stderr)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--task", type=int)
     parser.add_argument("--list", action="store_true")

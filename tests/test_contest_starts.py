@@ -266,7 +266,7 @@ def test_star_guard_falls_back_to_no_star(simulated, monkeypatch):
     monkeypatch.setattr(ci, "STAR_GUARD", 0.0)
     s = _star_setup(ci, simulated["bare"], init="moments")
     assert s["star_rejected"] == "chi2" and not s["star"] and s["star_model"] == "none"
-    assert s["label"] == "sim_star" and s["ellipse"] is not None
+    assert s["label"] == "sim_star" and s["ellipse"] is None
     assert "env.flux" not in s["priors"]
 
 
@@ -289,3 +289,103 @@ def test_primary_fit_moves_from_its_moment_start(simulated):
     assert record["converged"] and len(record["chi2_starts"]) == 3
     assert float(model.diam) == pytest.approx(truth["diam"], rel=0.3)
     assert abs(_dpa(float(model.pa), truth["pa"])) < 20.0
+
+
+# C2h: not_converged starts, pinned diameters and the size guard (job 18275454).
+
+
+def _fake_data(bmin, bmax, lam, n=60, seed=0):
+    """A stand-in for OIData with V² on baselines log-uniform in [bmin, bmax] m."""
+    import types
+
+    rng = np.random.default_rng(seed)
+    r, t = np.exp(rng.uniform(np.log(bmin), np.log(bmax), n)), rng.uniform(0, np.pi, n)
+    return types.SimpleNamespace(u=r * np.sin(t), v=r * np.cos(t), wavel=np.full(n, lam), vis=np.full(n, 0.9),
+                                 d_vis=np.full(n, 0.01), vis_index=None, v2_flag=True)
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_moments_start_the_2018_star_disk_planet_phantoms():
+    rng = np.random.default_rng(0)
+    coverage = _coverage(rng)
+    for seed in range(12):
+        p = phantoms.sample("star_disk_planet", np.random.default_rng(seed), BEAM)
+        m = starts.second_moments(*_observe(p, rng, coverage))
+        assert np.isfinite(m["sigma_major"]) and m["sigma_major"] > 0, seed
+        assert 0 < m["ratio"] <= 1.0 and 0.0 <= m["pa"] < 180.0, seed
+        diam = starts.disk_diameter_from_sigma(m["sigma_major"], 0.0)
+        assert np.isfinite(diam) and diam > 0, seed
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_resolved_floor_clears_the_unresolved_2018_stars():
+    # Job 18275454: the floor of 0.5 beam pinned stars of 0.2 beam to 0.539 mas.
+    ci = _load("contest_images")
+    assert ci.RESOLVED_FLOOR <= 0.2
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_size_guard_rejects_a_19_mas_star_on_the_2024_coverage():
+    ci = _load("contest_images")
+    data = _fake_data(10.0, 130.0, 1.65e-6)  # PIONIER-like: λ/B_min = 34 mas
+    limit = ci.size_limit_mas(data)
+    assert 10.0 < limit < 19.2
+    assert 4.4 < limit  # the 2004 stars the guard must keep are far below
+    assert ci.size_limit_mas(_fake_data(3.0, 60.0, 0.55e-6)) > 4.4  # 2004's coverage
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_pinned_detects_a_bound_for_log_and_linear_priors():
+    import numpyro.distributions as dist
+
+    ci = _load("contest_images")
+    log = dist.LogUniform(0.1, 10.0)
+    assert ci.pinned(log, 0.1005) == "low" and ci.pinned(log, 9.99) == "high" and ci.pinned(log, 1.0) == ""
+    assert ci.pinned(dist.Uniform(0.2, 1.0), 0.201) == "low" and ci.pinned(dist.Uniform(0.2, 1.0), 0.6) == ""
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_multistart_keeps_the_lowest_chi2_converged_start(monkeypatch):
+    import types
+
+    ci = _load("contest_images")
+    runs = iter([(0.5, False), (1.2, True), (0.9, True), (0.1, False), (np.nan, True)])  # (χ²/N, converged)
+    seen = []
+
+    def fake_fit(model, priors, data, **options):
+        c, ok = next(runs)
+        seen.append(c)
+        return types.SimpleNamespace(model=c, info={"converged": ok})
+
+    monkeypatch.setattr(ci, "fit", fake_fit)
+    monkeypatch.setattr(ci, "chi2_red", lambda model, data: model)
+    best, rec = ci.multistart_fit(lambda p: p, {}, None, [0, 1, 2, 3, 4])
+    assert best.model == 0.9 and rec["converged"] and rec["chi2_red"] == 0.9
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+def test_ensemble_uses_virgils_recommended_weights():
+    bench = _load("contest_bench")
+    assert bench.ENSEMBLE_WEIGHTS == 8
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
+@needs_2004
+@pytest.mark.parametrize("scene", ["spotted_star", "thin_disk"])
+def test_fallback_setup_is_the_baseline_setup(simulated, scene):
+    # Job 18479831: four rejected star_disk_planet arms lost the planet (NCC
+    # 0.007 against the baseline's 0.45) at the baseline's χ²/N. The no-star
+    # fallback carried the guard's ellipse, fitted on the star start's
+    # pre-growth field, so the GP saw another anisotropy than the baseline's.
+    # It must be the baseline's setup, ellipse included (fitted by gp_fit).
+    ci = _load("contest_images")
+    spec = {"label": "sim", "files": [str(simulated[scene])]}
+    common = dict(init="clean", clean_iters=30, oversample=2.0, n_starts=2)
+    base = ci.setup(spec, pathlib.Path("/"), False, 2.0, star=False, **common)
+    arm = ci.setup(spec, pathlib.Path("/"), False, 2.0, star=True, star_model="point", **common)
+    fall = arm["no_star_setup"]() if arm["star"] else arm
+    assert not fall["star"] and fall["ellipse"] is None and base["ellipse"] is None
+    assert (fall["npix"], fall["pixel"], fall["fov"]) == (base["npix"], base["pixel"], base["fov"])
+    np.testing.assert_allclose(np.asarray(fall["img0"].log_brightness), np.asarray(base["img0"].log_brightness))
+    assert float(fall["img0"].flux) == pytest.approx(float(base["img0"].flux))
+    assert set(fall["priors"]) == set(base["priors"])
