@@ -48,7 +48,6 @@ the checks can and cannot show, how the evidence is recorded, and how the
 4. **When roots disagree, mathematics wins.** If PMOIRED and virgil
    disagree, our analytic references decide which is wrong (as with
    PMOIRED's ring precision, [P3](pmoired.md)).
-<<<<<<< HEAD
 5. **Disagreements are findings, never tolerances.** We never loosen a
    tolerance to hide one. Each is kept as a test (pinned behaviour plus a
    strict `xfail` for the fix), fixed in virgil by a PR, or reported upstream.
@@ -76,21 +75,6 @@ Four guards reduce the risk:
 External packages written by other people (PMOIRED, CANDID, fouriever,
 orbitize!, eht-imaging, MPoL) are a stronger check still. Each has its own
 page under Method.
-=======
-5. **Disagreements are findings, never tolerances.** Each one is kept as a
-   test (pinned behaviour plus a strict `xfail` for the fix), fixed in
-   virgil by a PR, or reported upstream.
-6. **Reviews are checked like findings.** An adversarial review (by a
-   person or a model) is a list of claims, not verdicts. Reproduce each
-   claim, with a test or a number, before ruling on it. Anything high-stakes
-   (a ruling that flips a verdict, lifts a "provisional" label or closes a
-   finding) also needs a second reviewer who did not write the first
-   judgement: another model family or a person. A review's claim that is
-   not reproduced is recorded as unconfirmed, not acted on.
-7. **People sign off the conventions.** Every mapping between conventions
-   (axes, signs, which angle is which) is written down in a page a person
-   can check, because a model can agree with itself about a convention.
->>>>>>> 2bb68ed (Release gate: one virgil commit for all evidence (check script, tier B test); verify reviews like findings)
 
 ## Two kinds of grounding
 
@@ -233,17 +217,6 @@ keeps main's history clean, and they are published with the docs. Large
 outputs (campaign samples, figures) are uploaded as release assets, or kept
 on OzSTAR `/fred` with a checksum in the record.
 
-**One virgil commit per release.** Evidence from different virgil commits
-cannot be read together: a pass at one commit says nothing about another,
-and the Trust page would show a verdict for no virgil that exists. Before a
-virgil release, every evidence file (`trust/evidence/latest.jsonl`,
-`virgil.jsonl`, `campaigns.jsonl`) is regenerated against the release commit
-and carries a run header naming that one commit, from a clean tree.
-`scripts/check_evidence_pin.py --release --expect <sha>` (also the tier B
-test `tests/test_evidence_pin.py`, run with `VALIDATION_RELEASE=1`) fails
-when the headers name more than one commit. A Monte Carlo campaign too long
-to repeat is rerun, or its result is shown as stale rather than counted.
-
 ### The trust graph
 
 `trust/graph.yml`, written by hand, lists virgil's objects as nodes, with:
@@ -344,25 +317,10 @@ above), so the expensive runs repeat only where virgil has changed.
 
 ### Release gate
 
-<<<<<<< HEAD
 virgil's release checklist gains one item. For anything the release changes,
 the trust page must show no node that is changed since its evidence, has a
 known bug, is failing or is not yet checked. Otherwise the release notes say
 which ones remain and why.
-=======
-virgil's release checklist gains these items (also in virgil's
-`RELEASING.md`):
-
-1. Tier A of this repository passes against the release commit.
-2. All evidence is regenerated and pinned to that single commit
-   (`scripts/check_evidence_pin.py --release`, above).
-3. No ledger finding ruled `virgil` with severity `bug` is open without a
-   recorded decision (fix, or accepted with a reason in the release notes).
-4. The mutation kill rate of the validation suite is reported.
-5. For anything the release changes, the trust page shows no node that is
-   changed since its evidence, has a known bug, is failing or is not yet
-   checked, or the release notes say which ones remain and why.
->>>>>>> 2bb68ed (Release gate: one virgil commit for all evidence (check script, tier B test); verify reviews like findings)
 
 ## Order of work
 
