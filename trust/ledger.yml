@@ -430,3 +430,15 @@
   evidence: [tests/test_polar_disk_vs_codes.py::test_vis_r_single_gap_profile_matches_its_two_gap_form]
   status: to-raise
 
+
+- id: F22
+  title: the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere"
+  objects: [virgil.likelihood.whitened_residuals]
+  ruling: virgil
+  kind: 'bug (a model visibility V passing through 0 changes its phase by pi, so every closure phase through that baseline jumps by pi and the chi-squared by ~2/sigma^2 over a step of |V|/|dV/dx|; d(phase)/dx ~ 1/|V|. Reproduced on synthetic 3-telescope data: a flat-start MEM fit ends with a model visibility of 4e-12 and does not converge, AD 6e6 against FD -4e7 at eps 1e-5. V^2 and MaxEntropy terms have AD = FD at the same point)'
+  referee: mathematics (the phase of a complex number is discontinuous at 0; a loss built from it has no bounded gradient there; the bispectrum form is polynomial in V)
+  evidence: []
+  status: open
+  links: [https://github.com/benjaminpope/virgil/issues/309]
+  decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring.'
+  note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
