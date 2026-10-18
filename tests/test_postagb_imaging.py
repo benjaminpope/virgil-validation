@@ -7,13 +7,17 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
-pytest.importorskip("virgil")
-import postagb_imaging as P  # noqa: E402
+try:  # needs virgil main (MultipoleField); the CI pin of the orbit pages predates it, so these tests skip there (extra: postagb)
+    import postagb_imaging as P  # noqa: E402
+except ImportError:
+    P = None
+needs_multipole = pytest.mark.skipif(P is None, reason="virgil without MultipoleField (install the postagb extra)")
 
 # Guards our own script's convention, not virgil against an independent result.
 pytestmark = pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 
 
+@needs_multipole
 @pytest.mark.parametrize("pa", [20.0, 80.0, 130.0, 170.0])
 def test_major_axis_pa_is_east_of_north(pa):
     n, scale = 129, 0.5
@@ -28,6 +32,7 @@ def test_major_axis_pa_is_east_of_north(pa):
     assert m["major_pa_deg"] == pytest.approx(pa, abs=0.5)
 
 
+@needs_multipole
 def test_centroid_pa_points_to_the_offset_blob():
     n, scale = 129, 0.5
     yy, xx = np.mgrid[:n, :n]
@@ -36,6 +41,7 @@ def test_centroid_pa_points_to_the_offset_blob():
     assert m["centroid_pa_deg"] == pytest.approx(45.0, abs=1.0)
 
 
+@needs_multipole
 def test_bitmap_to_image_recovers_beam_pa_and_colourbar():
     """A synthetic panel (grey colour bar, blue beam ellipse at PA 30 deg East of North) round-trips."""
     import io
@@ -63,3 +69,39 @@ def test_bitmap_to_image_recovers_beam_pa_and_colourbar():
     assert beam["major_mas"] / beam["minor_mas"] == pytest.approx(a / b, rel=0.1)
     assert beam["major_mas"] == pytest.approx(2 * a * scale, rel=0.1)
     assert np.nanmedian(img) == pytest.approx(0.5, abs=0.03)  # the colour-bar inversion (top = 1)
+
+
+@needs_multipole
+@pytest.mark.parametrize("rot", [0.0, 35.0, 120.0])
+def test_hole_mask_window_sits_on_the_secondary_as_virgil_renders_it(rot):
+    """The pixel the secondary's window is centred on, lit alone in virgil's Image, has the visibility of PointSource(dra, ddec)."""
+    from virgil.models import Image, PointSource
+
+    n, scale, sec = 201, 0.1, (4.0, -3.0)
+    env = Image(np.zeros((n, n)), scale)
+
+    class Data:  # only what compare_beam needs
+        u, v, wavel = np.array([30.0]), np.array([0.0]), np.array([1.6e-6])
+
+    cfg = dict(sec0=sec, secondary=True, ud0=0.01, hole_mas=0.12, mask_mas=1e9)
+    mask, _ = P.hole_mask(cfg, env, Data, rot)
+    yy, xx = np.nonzero(~mask)
+    far = np.hypot(yy - (n - 1) / 2, xx - (n - 1) / 2) > 20  # the secondary's window, not the star's
+    iy, ix = int(round(yy[far].mean())), int(round(xx[far].mean()))
+    lit = np.full((n, n), 1e-12)
+    lit[iy, ix] = 1.0
+    rng = np.random.default_rng(0)
+    u, v, wl = rng.uniform(-80, 80, 40), rng.uniform(-80, 80, 40), np.full(40, 1.65e-6)
+    ref = np.asarray(Image(np.log(lit), scale, rotation_deg=rot).model(u, v, wl))
+    pt = np.asarray(PointSource(dra=sec[0], ddec=sec[1]).model(u, v, wl))
+    assert np.max(np.abs(np.angle(ref * np.conj(pt)))) < 0.5  # pixel rounding (0.05 mas) is ~0.25 rad at 80 m
+
+
+def test_the_postagb_page_matches_the_stored_results():
+    """docs/imaging/postagb.md is regenerated from the compare / image JSON: no number has drifted."""
+    import postagb_page
+
+    page = pathlib.Path(__file__).resolve().parents[1] / "docs/imaging/postagb.md"
+    text = page.read_text()
+    assert postagb_page.build(text) == text
+    assert text.count("<!-- gen:") == text.count("<!-- /gen:") > 0

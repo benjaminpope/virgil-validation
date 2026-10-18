@@ -12,6 +12,8 @@ external = ["pmoired==26.10.1"]
 polar-disk = ["frank==1.2.3", "vis-r @ git+https://github.com/drgmk/vis-r@f53467077b04878986c967b501d88c54ff3efb86", "astro-frap==1.0.2", "oimodeler==0.8.1"]
 # Stage A of the alias bands (virgil#319) until it is released; plots need corner.
 orbit-aliases = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@9061a1d0044c990fad941aae03e051cc582ff9e8", "corner"]
+# The post-AGB imaging scripts need MultipoleField/MultipoleDisk, which are on virgil main but not in the CI pin, which the orbit pages need.
+postagb = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@f1e6dae00e4afca3dff1cf1ba9ca7b58f7246055"]
 docs = ["mkdocs<2", "mkdocs-material", "zensical>=0.0.62,<0.1"]  # built with Zensical, as virgil is
 
 # The evidence plugin loads whenever the package is installed, so its options
