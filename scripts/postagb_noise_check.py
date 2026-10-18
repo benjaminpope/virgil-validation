@@ -9,9 +9,9 @@ all into OUTDIR (files ``IW_Car_<strategy>[_vlti][_flat]_*``). ``table`` reads t
 what the fits leave behind:
 
 * chi2 per point of the V^2 and of the closure phases, separately;
-* the common-mode share of the V^2 residual variance: the six channels of one (frame, baseline) share a calibration gain, so the
-  per-(frame, baseline) channel mean carries ``n_channels * mean(m_g^2) / mean(z^2)`` of the standardised residual variance
-  (z = residual / quoted error); independent errors give 1 / n_channels = 17 %;
+* the V^2 common-mode ratio: the six channels of one (frame, baseline) share a calibration gain, so the per-(frame, baseline)
+  channel mean m_g of the standardised residual z = residual / quoted error has ``n_channels * mean(m_g^2) / mean(z^2)`` times the
+  variance independent errors give (ratio 1; the share of the total variance is that over n_channels, 17 % for six channels);
 * the correlation of adjacent channels' standardised V^2 residuals within a (frame, baseline).
 """
 
@@ -36,7 +36,7 @@ residual_stats = pi.residual_stats
 
 def cell_row(out, strat, suffix, quoted):
     """One cell of the table for one strategy, from the saved image / compare files; None if the fit has not been run."""
-    key = f"IW_Car_{strat}{suffix}"
+    key = f"IW_Car_{strat}{suffix.replace('_flat', '') if strat == 'mem' else suffix}"  # mem has no GP mean
     img, cmp_, npz = out / f"{key}_image.json", out / f"{key}_compare.json", out / f"{key}_image.npz"
     if not (img.exists() and cmp_.exists()):
         return None
@@ -62,7 +62,7 @@ def table_stage(args):
             if v and v["log_evidence"] is not None:
                 v["dlogz_vs_best_strategy"] = v["log_evidence"] - max(ev.values())
     json.dump(res, open(args.outdir / "IW_Car_noise_table.json", "w"), indent=1)
-    lines = ["| strategy | noise / mean | hyperparameters (edge?) | χ²/pt V² | χ²/pt T3 | common-mode V² | adjacent corr | NCC (best control) | ΔlnZ | f_env % | f_bg % | bg index |",
+    lines = ["| strategy | noise / mean | hyperparameters (edge?) | χ²/pt V² | χ²/pt T3 | common-mode V² (white = 1) | adjacent corr | NCC (best control) | ΔlnZ | f_env % | f_bg % | bg index |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for s in STRATS:
         for lab in CELLS:
@@ -74,7 +74,7 @@ def table_stage(args):
             edge = {True: " **edge**", False: "", None: ""}[v["on_edge"]]
             dz = v.get("dlogz_vs_best_strategy")
             bg = "–" if v["bg_index"] is None else f"{v['bg_index']:.2f}" + (" (bound)" if any("bg.flux.index" in w for w in v["bound_warnings"] or []) else "")
-            lines.append(f"| {s} | {lab} | {h}{edge} | {v['chi2_v2']:.2f} | {v['chi2_t3']:.2f} | {100 * v['common_mode_v2']:.0f} % | {v['adjacent_corr_v2']:.2f} | "
+            lines.append(f"| {s} | {lab} | {h}{edge} | {v['chi2_v2']:.2f} | {v['chi2_t3']:.2f} | {v['common_mode_v2']:.2f} | {v['adjacent_corr_v2']:.2f} | "
                          f"{v['ncc']:.2f} ({v['ncc_best_control']:.2f}) | {'–' if dz is None else f'{dz:.0f}'} | {v['f_env_pct']:.1f} | {v['f_bg_pct']:.1f} | {bg} |")
     text = "\n".join(lines)
     (args.outdir / "IW_Car_noise_table.md").write_text(text + "\n")
@@ -132,7 +132,7 @@ def synth_stage(args):
     import jax  # noqa: PLC0415
 
     cfg = pi.cfg_of(argparse.Namespace(target="IW_Car", bg_index=None, star_index=None))
-    base, _ = pi.load(cfg, bandwidth=True)
+    base, _ = pi.load(cfg)
     truth = synth_truth(cfg, args, base)
     key = jax.random.PRNGKey(args.seed)
     if args.case == "white":

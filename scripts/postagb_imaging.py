@@ -43,7 +43,7 @@ whose chi2 per point is closest to 1, ties broken by the Laplace evidence;
 ``secondary=False`` fits a single-star-subtracted scene (the secondary stays in the image).
 
 ``--noise vlti`` swaps the independent errors and MacKay ``error_scale`` for virgil-vlti's PIONIER error model (``VLTI_NOISE``:
-V^2 and closure-phase errors scaled by kind, gains per telescope and baseline, closure-phase offsets, bandwidth smearing) and
+V^2 and closure-phase errors scaled by kind, gains per telescope and baseline, closure-phase offsets; no bandwidth smearing, which virgil does not support for pixel Images) and
 ``--mean flat`` gives the GaussianField / MultipoleField a flat template inside the support instead of the Gaussian start blob;
 outputs carry ``_vlti`` / ``_flat`` in their names. The geometry of the polar GP still comes from the ``scale`` stage (current noise).
 ``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
@@ -312,11 +312,12 @@ def rows_of(data):
 
 def residual_stats(data, model_v2, model_t3):
     """What a fit leaves behind, on the *quoted* errors of ``data`` (as read, before any rescaling or gains): chi2 per point of the V^2
-    and of the closure phases, the common-mode share of the V^2 residual variance and the adjacent-channel correlation.
+    and of the closure phases, the common-mode ratio of the V^2 residuals and the adjacent-channel correlation.
 
-    The six channels of one (frame, baseline) share calibration gains, so the per-(frame, baseline) channel mean carries
-    ``n_channels * mean(m_g^2) / mean(z^2)`` of the standardised residual variance z = residual / quoted error (independent
-    errors: 1 / n_channels = 17 %); the correlation is that of adjacent channels' z within a (frame, baseline), pooled."""
+    The six channels of one (frame, baseline) share calibration gains, so the per-(frame, baseline) channel mean m_g of the
+    standardised residual z = residual / quoted error has variance ``n_channels * mean(m_g^2) / mean(z^2)`` times what independent
+    errors give (ratio 1 for independent errors; its inverse share of the total variance is mean(m_g^2) / mean(z^2) = ratio / n_channels,
+    17 % for six channels); the correlation is that of adjacent channels' z within a (frame, baseline), pooled."""
     z = (np.asarray(data.vis) - np.asarray(model_v2)) / np.asarray(data.d_vis)
     dt = np.degrees(np.asarray(data.phi)) - np.asarray(model_t3)
     zt = (((dt + 180.0) % 360.0) - 180.0) / np.degrees(np.asarray(data.d_phi))
@@ -605,7 +606,7 @@ def noise_widths(cfg):
 
 
 def vlti_noise(data, widths=VLTI_NOISE):
-    """``data`` (read with ``bandwidth=True``) under the virgil-vlti PIONIER error model (``widths``, see ``noise_widths``).
+    """``data`` under the virgil-vlti PIONIER error model (``widths``, see ``noise_widths``).
 
     Per-observable white scaling goes first (``with_error_scale`` by kind: ``vis`` is the V^2 here, ``phi`` the closure phases), then
     gains on log|V| and closure-phase offsets, which the likelihood marginalizes analytically."""
@@ -616,10 +617,9 @@ def vlti_noise(data, widths=VLTI_NOISE):
 
 def load_scaled(cfg, args, out):
     """The target's data under the chosen noise model: ``--noise current`` rescales the errors by the MacKay factor stored by the
-    ``scale`` stage (1 if absent); ``--noise vlti`` applies ``vlti_noise`` (bandwidth smearing on, factor reported as 1)."""
+    ``scale`` stage (1 if absent); ``--noise vlti`` applies ``vlti_noise`` (no bandwidth smearing, which virgil does not support for pixel Images; factor reported as 1)."""
     if getattr(args, "noise", "current") == "vlti":
-        data, files = load(cfg, args.files, bandwidth=True)
-        assert data.bandwidth is not None, "read_oifits(bandwidth=True) did not set data.bandwidth"
+        data, files = load(cfg, args.files)  # no bandwidth smearing: virgil does not support it for pixel Images
         return vlti_noise(data, noise_widths(cfg)), data, 1.0, files
     data, files = load(cfg, args.files)
     f = scale_file(out, cfg, "current")
@@ -635,7 +635,7 @@ def scale_stage(args, out):
 
     cfg = cfg_of(args)
     vlti = args.noise == "vlti"
-    data, files = load(cfg, args.files, bandwidth=vlti)
+    data, files = load(cfg, args.files)
     start, support, hole_mas = grid_setup(cfg, data, args)
     env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
     scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
@@ -1126,7 +1126,7 @@ def image_one(args, out, strat):
     elif strat == "gp-polar":
         model, curve_arrays, extra_gp = fit_polar(cfg, scene, start.env, support, priors, data_s, args, geo, hole_mas)
     else:
-        mem_json = out / f"{cfg['key'][:-len('_disc+res')]}_mem_image.json"
+        mem_json = out / f"{cfg['key'].split('_disc+res')[0]}_mem{noise_tag(args.noise)}_image.json"  # the mem fit under the same noise model
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
@@ -1785,7 +1785,7 @@ def main():
     p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")
     p.add_argument("--noise", default="current", choices=("current", "vlti"),
                    help="error model: current (independent errors, MacKay error_scale) or vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
-                        "gains per telescope and baseline, closure offsets, bandwidth smearing); written as <target>_<strategy>_vlti_*")
+                        "gains per telescope and baseline, closure offsets); written as <target>_<strategy>_vlti_*")
     p.add_argument("--mean", default="blob", choices=("blob", "flat"),
                    help="GaussianField / MultipoleField mean: the Gaussian start blob, or flat inside the support; written as ..._flat_*")
     p.add_argument("--cold", action="store_true", help="never warm-start the scene parameters from an earlier <target>_image.json")
