@@ -188,3 +188,91 @@ flip misses by 1e-2 to 0.6. The conventions are CASA's, as in Part 1: the data's
 
 MPoL's `log_likelihood` docstring writes Σ w_i where its code correctly uses
 Σ ln w_i (`P11`). Its taper buffer is float32 (`P12`), a 3.5e-8 effect.
+
+# Part 4: the MPoL reference run (formats)
+
+The reference run trains the IM Lup example's own `sgd.py` (unmodified, paper flags, only
+`--log-interval 200`) on the example's own export of the measurement set, then reads the result back with
+three tasks of `src/external_bridge/mpol_worker.py` (`.venv-mpol`, MPoL's code from the pinned clone; no
+virgil). `tests/test_alma_mpol_ref.py` pins them on small inputs. Each task is a JSON file run as
+
+    .venv-mpol/bin/python src/external_bridge/mpol_worker.py task.json result.json
+
+`task.json` holds `"task"`, `"examples_dir"` (the clone, `.external/mpol-examples`) and the task's own
+fields; `result.json` is the output below plus `mpol_version`, `torch_version`, `torchkbnufft_version`,
+`asdf_version`, `visread_version`, `numpy_version`. Defaults are the example's: `npix` 1028, `cell_size` 0.005
+arcsec, `fwhm` 0.03 arcsec, `obsid_dict` as in `sgd.py`. Units: u, v in wavelengths (the example's
+`loaddata.py` comment says kilolambda; its values are wavelengths); sky offsets in arcsec; images in
+Jy/arcsec².
+
+## `export_checkpoint`
+
+Task fields: `checkpoint` (`sgd.py`'s `--save-checkpoint`), `out_npz`. The image is recomputed from the base
+cube through the example's forward chain (the checkpoint holds `icube.packed_cube` only after a forward
+pass, and in float32); `stored_packed_cube_max_rel_diff` says how far that is from the stored one.
+
+| `out_npz` key | Shape | Meaning |
+|---|---|---|
+| `image` | (N, N) | the tapered image, Jy/arcsec². **Row 0 is North, column 0 is East** (`imshow` with East left, North up), i.e. `mpol.utils.packed_cube_to_sky_cube(packed)[0][::-1]`; the same layout as `virgil_bridge.mpol.unpack` |
+| `base_image` | (N, N) | `softplus(base_cube)`, before the taper, same layout |
+| `base_cube` | (N, N) | the raw parameter, MPoL's packed (FFT) layout, as `sgd.py` stores it |
+| `l_east_arcsec`, `m_north_arcsec` | (N,) | the pixel centres of the columns and rows of `image` (offset East and North of the grid centre; both axes decrease with index). Column j is at l = (N/2 − 1 − j) dx: MPoL's grid puts a pixel on l = 0, so the half-pixel map (D11) is the comparer's to apply |
+| `cell_size_arcsec` | () | dx |
+| `log10_amp`, `amp` | (7,) | per observation, **observation 0 (fixed) included as 0 / 1**; `amp` = 10^`log10_amp` (the example's `g`) |
+| `log10_sigma`, `sigma` | (26,) | per ddid (`s_M`) |
+| `delta_ra_arcsec`, `delta_dec_arcsec` | (7,) | per observation, fixed one (0) included; phase `exp(−2πi(δRA u + δDec v))` |
+
+`result.json`: `npix`, `cell_size_arcsec`, `fwhm_arcsec`, `flux_jy` (Σ image · dx²), `peak_jy_arcsec2`,
+`min_jy_arcsec2`; the nuisance vectors as lists (`amp`, `log10_amp`, `sigma`, `log10_sigma`,
+`delta_{ra,dec}_arcsec`, `delta_{ra,dec}_mas`); `sigma_eb_mean` (`{"0": ..., "6": ...}`: `analyze_scale_factors.py`'s
+`np.average` of the sigma factors over each observation's ddids); `missing_keys`, `unexpected_keys` of the state
+dict (`icube.packed_cube` is expected in `unexpected_keys` when the checkpoint has no forward pass).
+
+## `objective_full`
+
+Task fields: `checkpoint`, `asdf` (the example's export), optional `batch` (10⁶), `sparse_matrices` (true),
+`lam_ent` (1e-9), `sb_only` (false), `device` (CUDA if present). float64 throughout; the data are
+`loaddata.get_ddid_data`'s (float32 weights widened exactly). Per batch the example's `adjust_weights`,
+`adjust_amplitudes`, `adjust_positions`, then `mpol.losses.log_likelihood`; the image is computed once.
+
+| `result.json` field | Meaning |
+|---|---|
+| `n` | complex visibilities |
+| `neg_log_likelihood` | −ln L, normalising constants included (N ln 2π − Σ ln w + χ²/2, MPoL's `log_likelihood`, adjusted weights) |
+| `neg_log_likelihood_avg` | −ln L / 2N, the example's batch loss without the entropy term |
+| `entropy` | S_M = `mpol.losses.entropy` of the tapered image (prior 1e-4, F_tot 0.253), a sum over pixels in Jy/arcsec² |
+| `lam_ent`, `loss_mpol` | λ_M and `neg_log_likelihood_avg` + λ_M · S_M |
+| `objective_R` | −ln L + 2N λ_M S_M, the quantity decision C4 equates with virgil's R objective |
+| `n_ddid`, `chi2_fit`, `chi2_raw`, `*_per_dof`, `*_total` | per ddid (26 entries): the count and MPoL's χ² = Σ w \|model − data\|², over complex points, so ≈ 2 n_ddid for a good fit. `_fit`: weights `w / (s_M g)²` (the fitted s); `_raw`: the quoted weights (s = 1); the model (amplitude-scaled by g, shifted) is the same in both. `_per_dof` is χ² / (2 n_ddid) |
+| `sum_ln_weight_fit` | per ddid Σ ln w with the fitted weights |
+| `batch`, `sparse_matrices`, `device`, `dtype` | as run |
+
+## `asdf_vs_npz`
+
+Task fields: `asdf`, `npz_dir` (per-ddid `ddid_NN.npz`: `u, v` in wavelengths, `vis` or `re`/`im`, `weight`, and, if
+present, `chan, time, ant1, ant2`). The asdf is read by the example's `loaddata.get_ddid_data` (its flag handling,
+its conversion to wavelengths, its channel flattening); a second pass over the tree, in the same order, recovers
+the channel, antennas and time of each kept point. Points are matched by sorting both sides on (chan, time, ant1,
+ant2) when both have those keys (`matching: "keys"`; `key_mismatch` counts points whose keys still differ), else
+by order (`matching: "order"`). The task **reports**; a conjugation, a unit factor or a different order is a
+finding, not corrected.
+
+`result.json`: `ddids` (keyed `"0"`..`"25"`), each `n_asdf`, `n_npz`, `matching`, `key_mismatch`, and, when the
+counts agree, `u_max_abs`, `v_max_abs` (wavelengths), `vis_max_abs` (Jy), `weight_max_abs`, `u_max_rel`,
+`weight_max_rel`, and the signatures of a convention difference: `vis_conj_max_abs` (|V_asdf − conj V_npz|:
+zero when the two differ by a conjugation), `u_flip_max_abs` (|u_asdf + u_npz|: zero when the sign of u
+differs), `u_ratio_median` (≈ 1; 10³ would be kilolambda). Also `worst` (maxima over ddids) and
+`n_asdf_total`, `n_npz_total`.
+
+## The environment
+
+`bash scripts/setup_external.sh mpol` builds `.venv-mpol`: Python 3.12, torch (the CUDA wheel index when
+`nvidia-smi` exists, else CPU; `MPOL_TORCH_INDEX=cu126` or `cpu` overrides), mpol 0.3.1, asdf, tensorboard,
+matplotlib and visread 0.0.5 (installed with `--no-deps`: the example's `loaddata.py` and `sgd.py` use only
+`visread.process`, `.scatter` and `.visualization`, none of which needs CASA), then clones the examples at
+`5a7c3f0b`. The script prints the resolved versions (laptop, 2026-10-20: torch 2.14.1, torchkbnufft 1.5.2,
+mpol 0.3.1, asdf 6.0.0, tensorboard 2.21.0, matplotlib 3.11.2, visread 0.0.5, numpy 2.5.4).
+The export of the measurement set (`casa_analysis/src/export_asdf.py`) needs casatools 6.7.0.31 *together
+with* visread: that is the **`alma` env** (`.venv-alma`, Python 3.11; on OzSTAR the conda env `alma-casa`),
+not `mpol`. casatools wheels pin the Python version and weigh hundreds of MB of CASA that training never
+uses, so the two stay apart; the asdf in between is the interface. `alma` also installs asdf for the export.
