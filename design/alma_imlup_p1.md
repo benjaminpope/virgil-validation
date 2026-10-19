@@ -231,13 +231,37 @@ Tasks, JSON in and out through `_subprocess.run`:
 - `src/evidence/__init__.py`: add the root `casa` (CASA's simulator and
   predict). `trust/graph.yml`: node `crosscheck.alma`.
 
-## W3: validating `virgil.radio` (virgil-validation PR, later)
+## W3: validating `virgil.radio` (virgil-validation PR `alma-radio-validation`, built)
 
-Specified in full when W1 and W2 have merged. Outline: `read_ms` against
-W2's `read` on both synthetic MSs and the subsample (root `casa`);
-`ComplexVisData.model` against `crosscheck.sky` on the subsample's uv
-(`mathematics`); the offset sign and the primary beam against
-`crosscheck.sky`; the log-normalisation against `scipy.stats`
-(`statistics`); an injection-recovery fit on the subsample's uv and
-weights (tier B); trust nodes `virgil.radio.*` and a planned pipeline
-`alma-imlup`.
+Built against virgil 9ee600f (`virgil-astro[radio]`), in its own venv, without
+moving `VIRGIL_REF` (CI's pin, 9061a1d, has no `virgil.radio`: every test here
+skips there, via `pytest.importorskip("virgil.radio")`, until Ben bumps it).
+
+Files: `src/virgil_bridge/alma.py` (`load_npz`: W2's per-ddid files into
+`ComplexVisData.from_arrays`; scene builders `image_scene`, `fixed_image_scene`,
+`point_scene`, the numpy `ring_and_blob`; it also points casatools at
+`.venv-alma`'s measures data), `tests/test_alma_radio.py`, nodes
+`virgil.radio.*` and the planned pipeline `alma-imlup` in `trust/graph.yml`.
+
+| # | Test | Tier | Roots | What |
+|---|---|---|---|---|
+| 1 | `test_read_ms_agrees_with_our_reader_*` (clean, noisy, IM Lup at stride 1000) | B | casa | `read_ms` (casatools 6.7.6.14) against W2's `read` (6.7.0.31): counts per ddid, u and v to 1e-9, V and weight to float32, frequency, time, antennas, channels, labels |
+| 1b | `test_read_ms_returns_the_conjugate_...` and its `control` | B | casa | CASA-predicted point sources; property `conjugation` |
+| 2 | `test_model_matches_the_float64_dft_...`, `..._nufft_...` (eps 1e-12, 1e-6), control (offset sign), default nu0 | A | mathematics | F, g, offsets, alpha, taper and a point source on a 64² image, 5000 uv points, 4 ddids, 3 observations |
+| 3 | `test_primary_beam_...`, `test_adding_the_beam_...` | A | mathematics | ALMA (12 m, 1.13) and ATCA (22 m); beam times image against the crosscheck DFT |
+| 4 | `test_half_chi2_plus_log_norm_...`, `test_masked_points_...` | A | statistics | against `scipy.stats.norm.logpdf` at two parameter sets, with a mask |
+| 5 | `test_dartboard_folds_...`, `test_chi2_by_ddid_...` | A | mathematics | Hermitian partners, log-q annuli, occupied folds, one fold per uv cell, held-out chi² |
+| 6 | `test_sigma_fit_on_casa_noise_...` | B | statistics, casa | `cal.sigma` on CASA's 1 mJy noise: 1 within 3 SE and equal to the successive-difference estimate |
+| 7 | `test_nuisances_are_recovered_...` | B | statistics | injection-recovery on ≤ 10⁴ points of IM Lup's uv, numpy Fisher matrix |
+
+Choices: the documentation was unambiguous everywhere it was tested (image
+centre at ((n-1)/2, (n-1)/2); annuli edges `logspace(q_min, q_max, n_q + 1)`;
+default nu0 the weighted mean frequency); virgil's behaviour matched each
+reading first time. In test 7 the truth flux is 2.5 Jy (ten times IM Lup's),
+so that offsets of a few mas are measurable with 10⁴ points of weight ~10³ Jy⁻²,
+and the offset prior is narrowed to ±20 mas with `priors(offset=...)`. At
+IM Lup's own flux (0.25 Jy, checked once by hand) a cold L-BFGS start from the
+defaults and the default offset prior (±1/(2 q_min), about 8000 mas) ended in
+a phase-wrapped local mode (gains at their bounds, offsets of hundreds of
+mas) with a log-likelihood 1000 below the truth's; at 2.5 Jy the default
+prior also recovers (max pull 2.7, recorded as an observation). The free-image fit (MaxEntropy) is reported only.
