@@ -105,6 +105,9 @@ def summary_of(folder, record):
         raise ValueError("no band with a finite evidence")
     top = bands[0][0]
     winner = bands[0][1]
+    if int(winner["n"]) != int(s["modes"]["winner"]["n"]):  # the tile must show the pipeline's own winner
+        raise ValueError(f"best band file N={winner['n']} is not the pipeline's winner N={s['modes']['winner']['n']}")
+    raw_chi2 = s["chi2"]["best_orbit_reduced"]  # raw chi2/N on the quoted errors at the best orbit, as the pipeline reports it
     table = s["modes"]["table"]
     positions, checks = [], []
     for n in epochs["nights"]:
@@ -114,21 +117,22 @@ def summary_of(folder, record):
         if n["flags"]:
             checks.append(dict(name=n["dataset"], reasons=[f"flagged: {f['code']}: {f['reason']}" for f in n["flags"]]))
     orbit = dict(t_ref=t_ref, map=_elements(winner["best"], t_ref), loss=-top, start="blind",
-                 chi2_raw=s["chi2"]["best_orbit_reduced"], epoch_checks=checks, positions=positions,
+                 chi2_raw=raw_chi2, epoch_checks=checks, positions=positions,
                  modes=[dict(loss=-z, elements=_elements(b["best"], t_ref)) for z, b in bands[:N_MODES]])
     rows, verdict = sky_rows(winner["best"], t_ref, record, table, bool(winner.get("flipped")),
-                             bool(winner.get("labels_free")), winner.get("chi2_red"))
+                             bool(winner.get("labels_free")), raw_chi2)
     flags = []
-    delta = s["modes"]["delta_log_z"]
-    if delta is not None and delta < ALIAS_NATS:
+    delta = s["modes"]["delta_log_z"]  # winner minus runner-up, so >= 0 (the band table's own column is <= 0)
+    if delta is not None and abs(delta) < ALIAS_NATS:
         flags.append(dict(key="alias", text=f"Alias not resolved: the runner-up band is only {delta:.1f} nats behind "
                                             f"(N={s['modes']['runner_up']['n']} against the winner N={s['modes']['winner']['n']})."))
     if s["modes"]["no_orbit"]["verdict"] != "orbit":
         flags.append(dict(key="no-orbit", text=f"The orbit is not preferred over a single star ({s['modes']['no_orbit']['verdict']})."))
-    if s.get("worst_check") in ("fail", "warn") or s.get("status") not in (None, "pass"):
-        failed = [c["name"] for c in s["checks"] if c["status"] == "fail"]
-        if failed:
-            flags.append(dict(key="checks", text="Pipeline checks failed: " + ", ".join(failed) + "."))
+    # Solved problem: unconverged NUTS reported as a result. Every failed or warned check is listed on the tile.
+    for status, word in (("fail", "failed"), ("warn", "warn")):
+        names = [c["name"] for c in s["checks"] if c["status"] == status]
+        if names:
+            flags.append(dict(key=f"checks-{status}", text=f"Pipeline checks {word}: " + ", ".join(names) + "."))
     flags.append(dict(key="short-arc", text=SHORT_ARC_NOTE))
     blind = dict(
         alias_bands=table, flags=flags, table=rows, verdict=verdict, p_range=search["p_range"], n_bands=search["n_bands"],
