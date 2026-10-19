@@ -110,5 +110,6 @@ nav:
           - fouriever: method/fouriever.md
           - orbitize!: method/orbitize.md
           - eht-imaging: method/ehtim.md
+      - "ALMA measurement-set conventions": alma_conventions.md
       - "Evidence table": evidence.md
       - "Generated results": results.md

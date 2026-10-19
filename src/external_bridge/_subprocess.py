@@ -20,11 +20,21 @@ def python(name):
     return os.environ.get(f"{name.upper()}_PYTHON", str(ROOT / f".venv-{name}" / "bin" / "python"))
 
 
+def _env(name):
+    """Environment for ``name``'s interpreter: CASA reads its measures data
+    from the venv's own casasiteconfig.py (scripts/setup_external.sh)."""
+    env = {**os.environ, "MPLBACKEND": "Agg"}
+    site = ROOT / f".venv-{name}" / "casasiteconfig.py"
+    if site.exists():
+        env.setdefault("CASASITECONFIG", str(site))
+    return env
+
+
 def available(name, module=None):
     """Whether the configured interpreter (a path or a command on PATH)
     can import the package."""
     try:
-        out = subprocess.run([python(name), "-c", f"import {module or name}"], capture_output=True)
+        out = subprocess.run([python(name), "-c", f"import {module or name}"], capture_output=True, env=_env(name))
     except OSError:
         return False
     return out.returncode == 0
@@ -47,7 +57,7 @@ def run(name, worker, task, timeout=3600):
     with tempfile.TemporaryDirectory() as tmp:
         src, dst = pathlib.Path(tmp, "task.json"), pathlib.Path(tmp, "result.json")
         src.write_text(json.dumps(task, default=str))
-        env = {**os.environ, "MPLBACKEND": "Agg"}
+        env = _env(name)
         out = subprocess.run(
             [python(name), str(script), str(src), str(dst)],
             capture_output=True, text=True, timeout=timeout, env=env,

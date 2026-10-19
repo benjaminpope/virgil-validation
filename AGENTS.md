@@ -102,6 +102,9 @@ reproduced and who second-reviewed it.
 (plan Phases 1-2: one blind pipeline in virgil, vv keeps only a thin driver, the independent comparison and
 the rendering). Fixes to these files are limited to what blocks a merge.
 
+**Gallery runs.** The blind orbit fits of the ESO (Track B) gallery targets go through `scripts/gallery_orbits.py`, a thin
+caller of virgil's `OrbitPipeline` (OzSTAR job `gallery_orbits` in ozstar_scripts). Do not add a fit path to the frozen files.
+
 ### Binary orbits: solved problems (read first)
 
 Each row was solved before; never re-derive one or report its symptom as an open problem. Rows without a
