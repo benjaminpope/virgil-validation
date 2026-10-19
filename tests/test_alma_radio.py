@@ -55,8 +55,10 @@ def _virgil_casatools():
     return casatools.version_string()
 
 
-def _build(v):
-    return float(re.split(r"[.-]", str(v))[-1])
+def _version_code(v):
+    """6.7.6.14 (or 6.7.6-14) as 6070614.0: major*1e6 + minor*1e4 + patch*1e2 + build, a float for `record`."""
+    major, minor, patch, build = (int(x) for x in re.split(r"[.-]", str(v))[:4])
+    return float(major * 10**6 + minor * 10**4 + patch * 10**2 + build)
 
 
 # ---------------------------------------------------------------- fixtures
@@ -109,12 +111,12 @@ def _compare_readers(ms, stride, tmp):
             assert np.array_equal(got[k][o_virgil], z[k][o_ours]), k
         for k in ("u", "v"):
             ref = z[k][o_ours]
-            worst["uv"] = max(worst["uv"], np.abs(got[k][o_virgil] - ref).max() / np.abs(ref).max())
+            worst["uv"] = np.maximum(worst["uv"], np.abs(got[k][o_virgil] - ref).max() / np.abs(ref).max())
         gv = got["vis"][o_virgil]
         ov = (z["re"] + 1j * z["im"])[o_ours].astype(complex)
-        worst["vis"] = max(worst["vis"], np.abs(gv - ov).max() / np.abs(ov).max())
-        worst["weight"] = max(worst["weight"], np.abs(got["weight"][o_virgil] / z["weight"][o_ours] - 1).max())
-        worst["freq"] = max(worst["freq"], np.abs(got["freq"][o_virgil] / z["freq"][o_ours] - 1).max())
+        worst["vis"] = np.maximum(worst["vis"], np.abs(gv - ov).max() / np.abs(ov).max())
+        worst["weight"] = np.maximum(worst["weight"], np.abs(got["weight"][o_virgil] / z["weight"][o_ours] - 1).max())
+        worst["freq"] = np.maximum(worst["freq"], np.abs(got["freq"][o_virgil] / z["freq"][o_ours] - 1).max())
     assert n_total == len(data)
     return worst, n_total, res["casatools"]
 
@@ -127,8 +129,8 @@ def _check_reader(worst):
 
 def _record_reader(worst, n, ours_ct):
     ver = _virgil_casatools()
-    record("casatools_virgil_build", _build(ver))
-    record("casatools_alma_worker_build", _build(ours_ct))
+    record("casatools_virgil_version_code", _version_code(ver))
+    record("casatools_alma_worker_version_code", _version_code(ours_ct))
     for k, v in worst.items():
         record(f"max_rel_{k}", v)
     record("n_points", n)
@@ -173,12 +175,24 @@ def casa_point_sources(data):
 def test_read_ms_returns_the_conjugate_of_data_that_casa_predicted_for_known_point_sources(ms_clean):
     """virgil's `read_ms` of CASA's own prediction (10 mJy at (+300, +100) mas, 5 mJy at
     (-200, -400) mas) equals sum F exp(-2 pi i (u x + v y)) to float32 precision: DATA is the
-    conjugate of V at u = +UVW[0] nu / c, as docs/alma_conventions.md found independently."""
-    ms, _ = ms_clean
+    conjugate of V at u = +UVW[0] nu / c, as docs/alma_conventions.md found independently.
+    For a real sky conj V(u, v) = V(-u, -v), so the visibilities alone fix only the product of the
+    conjugation and the sign of u: the test also checks u and v against our reader (UVW read
+    from the MS by the CASA worker, u = +UVW[0] nu / c), which makes it stand on its own."""
+    ms, tmp = ms_clean
     data = radio.ComplexVisData.read_ms(ms)
+    ours = _load(_worker({"task": "read", "path": ms, "out": str(tmp / "ours_conj")})["files"])
+    for lab, z in enumerate(ours):
+        sel = np.asarray(data.ddid) == lab
+        a, b = _by_key({k: np.asarray(getattr(data, k))[sel] for k in ("time", "ant1", "ant2", "chan")}), _by_key(z)
+        for k in ("u", "v"):
+            ref = z[k][b]
+            assert np.abs(np.asarray(getattr(data, k))[sel][a] - ref).max() < 1e-9 * np.abs(ref).max()
     miss = np.abs(np.asarray(data.vis) - casa_point_sources(data)).max()
     record("max_abs_vis_error_jy", miss)
-    assert miss < 1e-6  # float32 rounding of 15 mJy is 1e-9
+    # measured 6.7e-8 Jy (4e-6 of the 15 mJy): CASA's single-precision predict, not float32 storage
+    # (1e-9); the wrong mappings miss by 0.03, so 1e-6 leaves a margin of 15 on the measurement
+    assert miss < 1e-6
 
 
 @pytest.mark.validates("virgil.radio.ComplexVisData.read_ms", roots=["casa"], tier="B", kind="control", property="conjugation")
