@@ -45,6 +45,46 @@ def dft_dirty_image(u, v, vis, weight, npix, pixel_scale_mas, chunk=4096):
     return out / w.sum()
 
 
+def image_visibilities(image, x, y, u, v, chunk=2048):
+    """Float64 visibilities of a pixel image, an exact sum over the pixels.
+
+    V_k = sum_{r,c} I[r, c] exp(-2 pi i (u_k x_c + v_k y_r)), with ``x`` the
+    East offsets of the columns and ``y`` the North offsets of the rows, in
+    radians, and ``image`` the flux in each pixel (Jy). This is the
+    definition of the visibility (Thompson, Moran and Swenson, ch. 2) with
+    each pixel a point at its centre. The exponential separates, so a chunk of
+    points costs two matrix products.
+    """
+    image = np.asarray(image, float)
+    x, y, u, v = (np.asarray(a, float) for a in (x, y, u, v))
+    out = np.empty(len(u), complex)
+    for i in range(0, len(u), chunk):
+        s = slice(i, i + chunk)
+        fx = np.exp(-2j * np.pi * np.outer(u[s], x))  # (M, ncol)
+        fy = np.exp(-2j * np.pi * np.outer(v[s], y))  # (M, nrow)
+        out[s] = np.sum((fx @ image.T) * fy, axis=1)
+    return out
+
+
+def adjoint_image(z, x, y, u, v, chunk=2048):
+    """Re sum_k z_k exp(-2 pi i (u_k x_c + v_k y_r)) for every pixel (r, c).
+
+    The gradient of a real function of the visibilities of a pixel image is
+    this sum with z_k the derivative with respect to Re V_k and Im V_k
+    combined (z = dF/dReV - i dF/dImV, conjugated as the caller needs): the
+    adjoint of ``image_visibilities``. Same separable form, same units.
+    """
+    z = np.asarray(z, complex)
+    x, y, u, v = (np.asarray(a, float) for a in (x, y, u, v))
+    out = np.zeros((len(y), len(x)))
+    for i in range(0, len(u), chunk):
+        s = slice(i, i + chunk)
+        fx = np.exp(-2j * np.pi * np.outer(u[s], x))
+        fy = np.exp(-2j * np.pi * np.outer(v[s], y))
+        out += ((fy * z[s, None]).T @ fx).real
+    return out
+
+
 def gridded_dirty_image(u, v, vis, weight, npix, pixel_scale_mas):
     """Nearest-cell gridding of V and its Hermitian partner, then ``numpy.fft``.
 

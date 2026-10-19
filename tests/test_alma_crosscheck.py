@@ -144,3 +144,45 @@ def test_successive_difference_sigma_is_biased_up_by_a_changing_sky():
     drifting = alma.successive_difference_sigma(pair_data(0.3, n_base=300, drift=0.05))
     # Re changes by 0.05 * 6 = 0.3 between neighbours: |dV|^2 gains 0.09 over 4 sigma^2 = 0.36
     assert drifting["s2"] - flat["s2"] == pytest.approx(0.09 / 0.36, abs=0.04)
+
+
+@pytest.mark.validates("crosscheck.alma", roots=["mathematics"], kind="reference")
+def test_image_visibilities_of_pixels_are_the_sum_of_their_point_sources():
+    """Each pixel is a point at its centre: the separable sum equals the
+    sum of the closed-form point-source visibilities, at off-centre pixels
+    on a non-square grid."""
+    rng = np.random.default_rng(3)
+    image = rng.uniform(size=(7, 9))
+    x = (np.arange(9) - 2.5) * 11.0 * MAS  # East offsets, radians
+    y = (np.arange(7) - 1.0) * 7.0 * MAS
+    u, v = uv_points(50, seed=1, umax=3e5)
+    got = alma.image_visibilities(image, x, y, u, v, chunk=16)
+    want = sum(image[r, c] * np.exp(-2j * np.pi * (u * x[c] + v * y[r])) for r in range(7) for c in range(9))
+    assert np.abs(got - want).max() < 1e-13 * image.sum()
+    record("image_visibilities_error", np.abs(got - want).max())
+
+
+@pytest.mark.validates("crosscheck.alma", roots=["mathematics"], kind="reference")
+def test_adjoint_image_is_the_gradient_of_the_visibility_sum():
+    """d/dI[r, c] of F = Re sum_k conj(a_k) V_k(I) is the adjoint sum with z = conj(a),
+    checked against central differences of ``image_visibilities``."""
+    rng = np.random.default_rng(5)
+    image = rng.uniform(size=(6, 5))
+    x = (np.arange(5) - 2.0) * 9.0 * MAS
+    y = (np.arange(6) - 3.0) * 9.0 * MAS
+    u, v = uv_points(40, seed=2, umax=4e5)
+    a = rng.normal(size=40) + 1j * rng.normal(size=40)
+
+    def f(img):
+        return np.sum((np.conj(a) * alma.image_visibilities(img, x, y, u, v)).real)
+
+    got = alma.adjoint_image(np.conj(a), x, y, u, v, chunk=16)
+    h = 1e-6
+    fd = np.zeros_like(image)
+    for r in range(6):
+        for c in range(5):
+            d = np.zeros_like(image)
+            d[r, c] = h
+            fd[r, c] = (f(image + d) - f(image - d)) / (2 * h)
+    assert np.abs(got - fd).max() < 1e-8 * np.abs(fd).max()
+    record("adjoint_image_error", np.abs(got - fd).max())

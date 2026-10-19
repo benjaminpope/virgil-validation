@@ -154,3 +154,37 @@ and the long baselines see the phase change fastest, so these are upper
 bounds on the true scale, not estimates of it; the bias is bounded only by
 the short-baseline EBs, where ŝ² − 1 ≲ 0.3. The per-ddid σ factors of the
 multi-EB fit are compared with these ratios, and are not replaced by them.
+
+# Part 3: MPoL and virgil.radio
+
+Pinned by `tests/test_alma_mpol.py` (needs `.venv-mpol` and the examples clone,
+`bash scripts/setup_external.sh mpol`; tests skip without them or without
+`virgil.radio`). MPoL's side is the IM Lup multi-EB example's own `Net`
+(MPoL-dev/examples, commit `5a7c3f0b373f62341ca4baf5869f95e916bbabb3`,
+`04-IMLup-multi-EB/mpol_analysis/src/sgd.py`) with `mpol.losses`, imported
+unmodified by `src/external_bridge/mpol_worker.py` in float64. virgil's side
+is `src/virgil_bridge/mpol.py`.
+
+## The parameter map
+
+| MPoL (`Net`) | virgil.radio | Note |
+|---|---|---|
+| image `softplus(base_cube)`, Jy/arcsec², packed (`fftshift` layout) | `Image(log_brightness)` with `cal.flux = Σ I · dx²` | `dx` in arcsec; virgil's pixels are a softmax fraction of the flux |
+| unpacked cube: column `c` is `l = (c − N/2) dx` East, row `r` is `m = (r − N/2) dx` North | row 0 North, column 0 East, centre ((N−1)/2, (N−1)/2) | `virgil = unpacked[::-1, ::-1]` with `dra = ddec = −dx/2` (half-pixel phase-centre convention) |
+| per-ddid `10^log10_sigma` (`s_M`), applied as `w → w / s_M²` | `cal.sigma` | `s = g · s_M`: `s_M` of an observation's ddids is multiplied by that observation's gain |
+| per-observation `10^log10_amp` (`g`, observation 0 fixed at 1), model × g and `w → w / g²` | `cal.gain` (observation 0 fixed) | the weight rescaling by g² is why `s` carries `g`: virgil's σ is in the data's units, MPoL's `s_M` in the already-rescaled ones |
+| `delta_ra`, `delta_dec` (arcsec), phase `exp(−2πi(δRA·u + δDec·v))` | `cal.offset` = 1000 (δRA, δDec) mas | same sign; checked against the exact DFT |
+| `FWHM` (arcsec) Gaussian taper, `GaussConvFourier` | `taper_fwhm_mas` = 1000 × `FWHM` | the same Gaussian visibility multiplier |
+| no spectral index | `alpha = 0` | |
+| `neg_log_likelihood_avg` = −ln L / (2N) | `½ Σ r² + log_norm + Σ_k (ln 2π − ln w_k)` | −ln L = N ln 2π − Σ ln w + χ²/2 on both sides |
+
+With the map the two likelihoods agree to 1e-15 relative on the same model, the
+same weights and the same data (`log_likelihood` and `neg_log_likelihood_avg · 2N`),
+and the control `s = s_M` misses by 2e-2. The forward models agree to MPoL's NuFFT
+error (`P12`, 6e-4 by default, 1.6e-6 with `sparse_matrices=True`), against an exact
+numpy DFT (`crosscheck.alma.image_visibilities`); dropping the half pixel or either
+flip misses by 1e-2 to 0.6. The conventions are CASA's, as in Part 1: the data's
+`conj(V)` convention is applied by the reader, so here both codes see the same `(u, v, V)`.
+
+MPoL's `log_likelihood` docstring writes Σ w_i where its code correctly uses
+Σ ln w_i (`P11`). Its taper buffer is float32 (`P12`), a 3.5e-8 effect.

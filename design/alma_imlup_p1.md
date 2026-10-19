@@ -265,3 +265,20 @@ defaults and the default offset prior (±1/(2 q_min), about 8000 mas) ended in
 a phase-wrapped local mode (gains at their bounds, offsets of hundreds of
 mas) with a log-likelihood 1000 below the truth's; at 2.5 Jy the default
 prior also recovers (max pull 2.7, recorded as an observation). The free-image fit (MaxEntropy) is reported only.
+
+## W6: the likelihood equals MPoL's (virgil-validation PR `alma-mpol-likelihood`, built)
+
+Ben, 2026-10-19: "We should make sure that the likelihood matches MPoL's."
+`tests/test_alma_mpol.py` calls the IM Lup example's own `Net` and
+`mpol.losses` (examples commit `5a7c3f0b`, mpol 0.3.1, torch 2.14.1,
+torchkbnufft 1.5.2, float64) through `src/external_bridge/mpol_worker.py`,
+and virgil.radio (dcf1db8) through `src/virgil_bridge/mpol.py`. The map is in
+`docs/alma_conventions.md`, Part 3 (s = g·s_M, δ in arcsec × 1000, taper
+FWHM × 1000, `virgil = unpacked[::-1, ::-1]` with dra = ddec = −dx/2).
+Tests: (1) loss normalisation to 1e-12 with the control s = s_M; (2) forward
+model, MPoL vs virgil vs exact DFT, at 256² and 5 mas; (3) objective and
+gradients (torch autograd vs JAX, chain rule through the map); (4, tier B)
+the objective on all 26 ddids of the stride-1000 subsample. Result: no
+virgil finding; MPoL's default NuFFT is 6e-4 from the exact transform (P12),
+and its docstring has a slip (P11, draft upstream text in the PR). The new
+tests skip in CI (its pinned virgil has no `virgil.radio`; `VIRGIL_REF` is not bumped).

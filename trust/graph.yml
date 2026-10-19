@@ -538,8 +538,11 @@ nodes:
   crosscheck.elr: {layer: references}
   crosscheck.nrm: {layer: references}
   crosscheck.image_metrics: {layer: references}
-  crosscheck.alma: {layer: references, doc: alma_conventions.md}
+  crosscheck.alma: {layer: references, doc: alma_conventions.md}  # incl. the exact DFT image_visibilities and its adjoint
   external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
+  external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol
+  virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
+  mpol: {layer: references}  # the external package itself (problems P11, P12)
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
@@ -662,6 +665,6 @@ pipelines:
     reference: MPoL 04-IMLup-multi-EB; DSHARP II/III
     url: https://github.com/benjaminpope/virgil-validation/blob/main/design/alma_imlup.md
     headline: virgil.radio on the 26 ddids of IM Lup against MPoL's multi-observation example and the DSHARP images
-    state: planned  # the readers, model and likelihood are validated; the IM Lup fit is not run yet
+    state: planned  # the readers, model and likelihood are validated, and equal MPoL's (tests/test_alma_mpol.py); the IM Lup fit is not run yet
     steps: [virgil.radio.ComplexVisData.read_ms, virgil.radio.ComplexVisData.model, virgil.radio.ComplexVisData.term,
             virgil.radio.primary_beam, virgil.radio.dartboard_folds, virgil.models.Image, virgil.fitting.fit]
