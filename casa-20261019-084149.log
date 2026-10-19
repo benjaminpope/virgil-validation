@@ -1,0 +1,11 @@
+2026-10-19 08:41:49	INFO	::casa	
+2026-10-19 08:41:49	SEVERE	::casa	
+2026-10-19 08:41:49	SEVERE	::casa	data_update: path must exist as a directory and it must be owned by the user, path = /Users/benpope/.casa/data
+2026-10-19 08:41:49	SEVERE	::casa	
+2026-10-19 08:41:49	SEVERE	::casa	Warning: measurespath must exist as a directory and it must be owned by the user.
+2026-10-19 08:41:49	SEVERE	::casa	Warning: no auto update is possible on this measurespath by this user.
+2026-10-19 08:41:49	SEVERE	::casa	
+2026-10-19 08:41:49	SEVERE	::casa	The expected casa data was not found at measurespath. CASA may still work if the data can be found in datapath.
+2026-10-19 08:41:49	SEVERE	::casa	The expected measures data was not found at measurespath. CASA may still work if the data can be found in datapath.
+2026-10-19 08:41:49	SEVERE	::casa	visit https://casadocs.readthedocs.io/en/stable/notebooks/external-data.html for more information
+2026-10-19 08:41:49	SEVERE	::casa	
