@@ -435,7 +435,7 @@
   objects: [mpol]
   ruling: external:mpol
   kind: 'documentation (mpol 0.3.1, losses.log_likelihood: the code is -N ln 2 pi + sum ln w - chi2/2, which our tests pin to 1e-12)'
-  referee: statistics (the complex Gaussian log density, written out)
+  referee: mathematics (the complex Gaussian log density, written out in numpy, formula_nll)
   evidence: [tests/test_alma_mpol.py::test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol]
   status: to-raise
 

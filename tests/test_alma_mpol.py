@@ -166,6 +166,10 @@ def _factors(theta, pts):
     return gain * np.exp(-2j * np.pi * (dra * pts["u"] + ddec * pts["v"])) * taper
 
 
+# measured 1.2e-5 to 5.8e-4 (table interpolation in MPoL's NuFFT), with about 10x slack
+GRADIENT_BOUND = {"base_cube": 4e-4, "log10_sigma": 4e-4, "log10_amp": 1e-4, "delta_ra": 6e-3, "delta_dec": 3e-3}
+
+
 def formula_nll(model, data, weight):
     """-ln L of complex Gaussian data, normalising constant included, in numpy:
     N ln 2 pi - sum ln w + (1/2) sum w |d - M|^2, with the weights actually used."""
@@ -279,7 +283,9 @@ def _normalisation_problem(rng, m=3000):
     nuis = CalibrationNuisance(shape, ref_obs=0, offsets=False, alpha=False)
     unit = nuis.defaults()
     unit["cal.flux"] = 0.3
-    model1 = np.asarray(shape.model(scene(unit), unit, nuis))  # g = 1, s = 1: the model before MPoL's own gain
+    # g = 1, s = 1: the model before MPoL's own gain, in numpy from the point-source formula, so that the
+    # complex vector MPoL is given does not come from virgil (virgil's own model matches it to rounding)
+    model1 = 0.3 * sum(f * np.exp(-2j * np.pi * (u * e + v * n) * vbm.ARCSEC / 1000.0) for f, e, n in [(0.6, 100.0, 50.0), (0.4, -200.0, 300.0)])
     vis = 1.05 * model1 + (rng.normal(size=m) + 1j * rng.normal(size=m)) / np.sqrt(w)
     data = ComplexVisData.from_arrays(u, v, vis, w, freq, ddid=ddid, obs=obs)
     gain = 10.0 ** np.concatenate([[0.0], rng.uniform(-0.1, 0.1, 6)])  # g != 1
@@ -300,6 +306,16 @@ def _virgil_nll(p, sigma):
     return dict(nll=half_chi2 + log_norm + const, half_chi2=half_chi2, log_norm=log_norm, const=const, loglike=float(term.loglike(vals)))
 
 
+# what the worker may replace by a mock to import the example's sgd.py unmodified: plotting, logging and I/O
+# only, none of it used by Net; a mock of anything else would make Net run on MagicMock values
+MOCKABLE = ("mpol.plot", "torch.utils.tensorboard", "asdf", "visread", "matplotlib", "src", "mpl_toolkits")
+
+
+def check_mocked(info):
+    bad = [n for n in info["mocked"] if not n.startswith(MOCKABLE)]
+    assert not bad, bad
+
+
 def _mpol_loglike(p, tmp):
     np.savez(tmp / "norm.npz", model_re=p["model1"].real, model_im=p["model1"].imag, data_re=p["vis"].real, data_im=p["vis"].imag, weight=p["w"], ddid=p["ddid"],
              log10_sigma=np.log10(p["s_m"]), log10_amp=np.log10(p["gain"][1:]))
@@ -317,6 +333,7 @@ def test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol(tmp_path)
     m = _mpol_loglike(p, tmp_path)
     n = len(p["w"])
     assert m["n"] == n
+    check_mocked(m)
     expected_ll = -(v["half_chi2"] + v["log_norm"]) - v["const"]
     err_ll = abs(m["log_likelihood"] - expected_ll) / abs(expected_ll)
     err_avg = abs(m["neg_log_likelihood_avg"] * 2 * n + m["log_likelihood"]) / abs(m["log_likelihood"])
@@ -325,6 +342,16 @@ def test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol(tmp_path)
     record("rel_error_neg_log_likelihood_avg_times_2N", err_avg)
     record("rel_error_vs_virgil_loglike", err_loglike)
     record("mpol_log_likelihood", m["log_likelihood"])
+    # the independent referee: the complex Gaussian density written out in numpy, with MPoL's own
+    # rescaling (model * g, w / (s_M g)^2); neither code can share a slip in its normalisation with it
+    obs, ddid = p["obs"], p["ddid"]
+    closed = -formula_nll(p["gain"][obs] * p["model1"], p["vis"], p["w"] / (p["s_m"][ddid] * p["gain"][obs]) ** 2)
+    err_closed = abs(m["log_likelihood"] - closed) / abs(closed)
+    err_closed_virgil = abs(v["nll"] + closed) / abs(closed)
+    record("rel_error_mpol_vs_closed_form", err_closed)
+    record("rel_error_virgil_vs_closed_form", err_closed_virgil)
+    assert err_closed < RTOL_NORM
+    assert err_closed_virgil < RTOL_NORM
     assert err_ll < RTOL_NORM
     assert err_avg < RTOL_NORM
     assert err_loglike < RTOL_NORM
@@ -350,10 +377,11 @@ def test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model(case):
     """MPoL's forward visibilities (torchkbnufft, the example's Net with its nuisance layers),
     virgil's `data.model` and a float64 numpy DFT, on the IM Lup uv of 10^4 points: virgil is
     exact to 1e-10 (NUFFT eps 1e-12); MPoL's table interpolation errs by 6e-4; and MPoL against
-    virgil is within the sum of the two (the triangle inequality: the content is that each
-    agrees with the DFT, and MPoL's error is its transform's, not a convention)."""
+    virgil is within MPoL's own error, so the difference is its transform's, not a convention."""
     ex, mp, vg = case["exact"], case["mpol"]["model"], case["virgil"]["model"]
     e_mpol, e_virgil, e_both = rel(mp, ex), rel(vg, ex), rel(mp, vg)
+    record("uv_is_im_lup_subsample", float(case["source"].startswith("IM Lup")))  # 0: the synthetic fallback uv
+    check_mocked(case["info"])
     record("rel_l2_mpol_vs_dft", e_mpol)
     record("rel_l2_virgil_vs_dft", e_virgil)
     record("rel_l2_mpol_vs_virgil", e_both)
@@ -362,7 +390,7 @@ def test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model(case):
     record("max_abs_jy_mpol_vs_virgil", np.abs(mp - vg).max())
     assert e_virgil < 1e-10
     assert e_mpol < 2e-3  # torchkbnufft's default table interpolation
-    assert np.linalg.norm(mp - vg) <= np.linalg.norm(mp - ex) + np.linalg.norm(vg - ex) + 1e-12
+    assert e_both < 2e-3  # MPoL's table-interpolation error, as against the DFT
     assert case["info"]["taper_dtype"] == "torch.float32"  # GaussConvFourier's buffer: part of the measured error
 
 
@@ -448,8 +476,8 @@ def test_gradients_of_the_objective_agree_with_respect_to_the_pixels_and_every_n
         record(f"rel_l2_grad_{key}_mpol_vs_exact", rel(gm, ge))
         record(f"norm_grad_{key}", np.linalg.norm(ge))
         assert rel(gv, ge) < 1e-6, key
-        assert rel(gm, ge) < 1e-2, key
-        assert rel(gm, gv) < 1e-2, key
+        assert rel(gm, ge) < GRADIENT_BOUND[key], key
+        assert rel(gm, gv) < GRADIENT_BOUND[key], key
 
 
 @pytest.mark.validates("virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"])
@@ -468,7 +496,7 @@ def test_the_sigma_and_gain_gradients_obey_the_chain_rule_of_the_map(case):
         got[o - 1] = np.log(10) * (gain[o - 1] * float(own["cal.gain"][o - 1]) + gain[o - 1] * sum(float(own["cal.sigma"][d]) * 10.0 ** th["log10_sigma"][d] for d in ddids))
     mp = case["mpol"]["grad_log10_amp"]
     record("rel_l2_chain_rule_vs_mpol", rel(got, mp))
-    assert rel(got, mp) < 1e-2
+    assert rel(got, mp) < 1e-4
 
 
 # ------------------------------------------------ 4. IM Lup scale (B)
@@ -491,12 +519,14 @@ def test_the_objective_matches_mpol_on_all_26_ddids_and_7_observations_of_im_lup
     theta = nontrivial_theta(rng, asymmetric_image(rng), log10_sigma=np.log10(IMLUP_SIGMA))
     theta["delta_ra"] = rng.uniform(-0.004, 0.004, 6)  # arcsec
     theta["delta_dec"] = rng.uniform(-0.004, 0.004, 6)
-    mp, _ = run_mpol(theta, pts, tmp_path, grad=False)
+    mp, info = run_mpol(theta, pts, tmp_path, grad=False)
     vg = run_virgil(theta, pts, grad=False)
     v0, ex = exact_model(theta, pts)
     nll_exact = exact_nll(theta, pts, v0)
     nll_m, nll_v = float(mp["neg_log_likelihood"]), vg["nll"]
     record("n_visibilities", len(pts["u"]))
+    record("uv_is_im_lup_subsample", 1.0)  # the test is skipped without the subsample
+    check_mocked(info)
     record("neg_log_likelihood_mpol", nll_m)
     record("neg_log_likelihood_virgil", nll_v)
     record("neg_log_likelihood_exact_dft", nll_exact)
