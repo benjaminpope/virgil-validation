@@ -1,0 +1,264 @@
+{
+ "system": "gl229",
+ "label": "Gl 229 Ba-Bb",
+ "instrument": "GRAVITY",
+ "epochs": [
+  "2023-12-25",
+  "2023-12-29",
+  "2024-02-27",
+  "2024-03-28",
+  "2024-04-29",
+  "2024-12-18",
+  "2025-02-11"
+ ],
+ "mjd": [
+  60304.23271449256,
+  60308.25991646038,
+  60368.136678582654,
+  60398.038054925135,
+  60429.97411500254,
+  60663.31107861246,
+  60718.12345427137
+ ],
+ "p_range": [
+  10.0,
+  14.0
+ ],
+ "args": {
+  "system": "gl229",
+  "out": "/fred/oz440/bpope/jobs/orbit_aliases/out/2946041+vvbda1d27-cold-effort",
+  "n_is": 2000,
+  "n_candidates": 400,
+  "n_refine": 10,
+  "n_samples": 1000,
+  "max_steps": 1000,
+  "closure_only": false,
+  "no_vis_amp": false,
+  "no_ud": false,
+  "no_flip": false,
+  "no_init": true,
+  "ecc_max": 0.9,
+  "p_range": null,
+  "dry_run": false
+ },
+ "primary_diam": null,
+ "vis_amp": [
+  0.01,
+  1.5
+ ],
+ "notes": [
+  "2023-12-25: left out GRAVI.2023-12-26T05_51_29.891_DUAL_SCI_VIS.fits"
+ ],
+ "reference": {
+  "P": 12.134,
+  "t_peri": 60377.88,
+  "ecc": 0.234,
+  "inc": 31.4,
+  "omega": 360.7,
+  "Omega": 213.0,
+  "a_mas": 7.3595376,
+  "source": "Xuan+2024 Table 1 (PMOIRED); Omega node convention unverified: compare mod 180 deg"
+ },
+ "virgil": {
+  "version": "0.4.0",
+  "commit_id": "2946041d767bccb8763ebabf04281d4c385d28c2"
+ },
+ "errors": [],
+ "elapsed_s": 195.2798957824707,
+ "position_grid": {
+  "half_widths": [
+   12.0,
+   18.0
+  ],
+  "edge_epochs": []
+ },
+ "init": null,
+ "reference_band": {
+  "n": 34,
+  "period": 12.134,
+  "p": 0.0,
+  "is_winner": false
+ },
+ "elements": {
+  "period": {
+   "ref": 12.134,
+   "mean_offset": -1.3866310869397178,
+   "sd": 0.0004118097742492973,
+   "pull": -3367.1640977134575
+  },
+  "ecc": {
+   "ref": 0.234,
+   "mean_offset": 0.37447436240822224,
+   "sd": 0.003795951762882382,
+   "pull": 98.65098025478396
+  },
+  "inc": {
+   "ref": 31.4,
+   "mean_offset": 39.40579822960545,
+   "sd": 0.16073775937439283,
+   "pull": 245.15582637817457
+  },
+  "Omega": {
+   "ref": 213.0,
+   "mean_offset": 14.553236076414112,
+   "sd": 0.17001653433254071,
+   "pull": 85.59894561754199
+  },
+  "omega": {
+   "ref": 360.7,
+   "mean_offset": 116.7801726839203,
+   "sd": 0.2645999027382328,
+   "pull": 441.3462419124555
+  },
+  "a_mas": {
+   "ref": 7.3595376,
+   "mean_offset": 0.8916787643483783,
+   "sd": 0.03487161952928429,
+   "pull": 25.570328432826855
+  },
+  "twin_fold": false,
+  "mirror_fraction": 1.0
+ },
+ "sky_plane": {
+  "top": {
+   "rule_version": 2,
+   "variant_rms": {
+    "as-is": 10.01077956635047,
+    "as-is +flip": 9.093716173267763,
+    "omega+180": 9.093716173267763,
+    "omega+180 +flip": 10.010779566350472,
+    "Omega+180": 9.093716173267763,
+    "Omega+180 +flip": 10.010779566350472,
+    "omega+180,Omega+180": 10.010779566350472,
+    "omega+180,Omega+180 +flip": 9.093716173267763,
+    "inc->180-inc": 9.934891133475626,
+    "inc->180-inc +flip": 9.176563601479545
+   },
+   "mirror": "flip",
+   "flux_flip_matches": true,
+   "flipped": false,
+   "labels_free": false,
+   "chi2_n": 14.106377922500206,
+   "rms": 9.093716173267763,
+   "max": 12.504660959411561,
+   "mean_sep": 6.986934438713247,
+   "frac_sep": 1.3015316306506681,
+   "best_variant": "as-is +flip",
+   "best_variant_rms": 9.093716173267763,
+   "TI_ours_ABFG": [
+    4.346253032762359,
+    1.1860857075784605,
+    4.0162210554703055,
+    6.2465303799681235
+   ],
+   "TI_ref_ABFG": [
+    6.129969158248021,
+    4.072355261339283,
+    -3.496431146680613,
+    5.218947295035585
+   ],
+   "spread": 0.027883460265108243,
+   "offset_over_spread": 326.1329866095248,
+   "verdict": "DIFFERENT",
+   "band": 39,
+   "period": 10.74736349397826,
+   "p": 1.0,
+   "warm_started": false
+  },
+  "reference": {
+   "rule_version": 2,
+   "variant_rms": {
+    "as-is": 7.821927156096342,
+    "as-is +flip": 12.327711901354172,
+    "omega+180": 12.327711901354176,
+    "omega+180 +flip": 7.821927156096339,
+    "Omega+180": 12.327711901354174,
+    "Omega+180 +flip": 7.821927156096341,
+    "omega+180,Omega+180": 7.821927156096337,
+    "omega+180,Omega+180 +flip": 12.327711901354176,
+    "inc->180-inc": 4.201734068926271,
+    "inc->180-inc +flip": 13.98214775962874
+   },
+   "mirror": "none",
+   "flux_flip_matches": false,
+   "flipped": false,
+   "labels_free": false,
+   "chi2_n": 17.94215423539407,
+   "rms": 7.821927156096342,
+   "max": 11.811176183841082,
+   "mean_sep": 6.986934438713247,
+   "frac_sep": 1.1195077361477106,
+   "best_variant": "inc->180-inc",
+   "best_variant_rms": 4.201734068926271,
+   "TI_ours_ABFG": [
+    -6.356256010158041,
+    -3.996172666595463,
+    -2.790170768602318,
+    4.993361554499752
+   ],
+   "TI_ref_ABFG": [
+    -6.129969158248021,
+    -4.072355261339283,
+    3.496431146680613,
+    -5.218947295035585
+   ],
+   "spread": NaN,
+   "offset_over_spread": NaN,
+   "verdict": "DIFFERENT",
+   "band": 34,
+   "period": 12.21192135936038,
+   "p": 0.0,
+   "warm_started": false
+  }
+ },
+ "fit_summary": {
+  "band": 39,
+  "flux": 0.45028186142409127,
+  "flipped": false,
+  "diam": null,
+  "vis_amp": [
+   0.17667870190817683,
+   0.018497668994929266,
+   0.11717145759093929,
+   0.03684668856324186,
+   0.34066273474059955,
+   0.550025722553704,
+   0.11681504162062382
+  ]
+ },
+ "chi2_raw_by_block": {
+  "vis": {
+   "chi2": 199684.78833007812,
+   "n": 12312,
+   "chi2_per_n": 16.218712502442994
+  },
+  "phi": {
+   "chi2": 63015.260986328125,
+   "n": 6311,
+   "chi2_per_n": 9.984988272275094
+  }
+ },
+ "rms_residual": [
+  3.310241460800171,
+  4.0190863609313965,
+  2.244811773300171,
+  3.148209810256958,
+  2.372868299484253,
+  1.9358147382736206,
+  3.4853804111480713
+ ],
+ "chi2_raw": 262700.0546875,
+ "n_independent": 18623,
+ "chi2_raw_per_n": 14.106215684234549,
+ "chi2_check": {
+  "ours": 14.106215684234549,
+  "virgil": 14.106377922500206,
+  "agrees": true
+ },
+ "provenance": {
+  "virgil_commit": "2946041d767bccb8763ebabf04281d4c385d28c2",
+  "validation_commit": "bda1d27751c99ec607f3b87c68ac1eee04eca8a4",
+  "extra_args": "--no-init",
+  "slurm_job": "18761000"
+ }
+}

@@ -149,42 +149,96 @@ def section(name, label, instrument, sysdir, rel):
 GATE_N, GATE_NATS = 34, 10.0  # virgil 0.4.0 release gate (CONTRIBUTING "Releasing", item 4)
 
 
+def _rank34(bands):
+    bands = sorted(bands, key=lambda b: -b["log_z"])
+    n34 = next((b for b in bands if b["n"] == GATE_N), None)
+    return bands, n34, ([b["n"] for b in bands].index(GATE_N) + 1 if n34 else None)
+
+
+def _pipeline_gate(assets, rel):
+    """The blind gate: virgil's OrbitPipeline on Gl 229 with no settings, on data prepared on the virgil-vlti side."""
+    d = pathlib.Path(assets) / "gl229-pipeline"
+    if not (d / "meta.json").exists():
+        return []
+    m = json.load(open(d / "meta.json"))
+    g, s, prov = m["gate"], m["summary"], m.get("provenance") or {}
+    prep = m.get("preparation") or {}
+    win = s["modes"]["winner"]
+    el = win.get("elements") or {}
+    temper = (s.get("search") or {}).get("tempering") or {}
+    out = [
+        f"**{g['verdict']}.** `OrbitPipeline` on Gl 229 with no settings: no period window, start or published orbit "
+        f"(the window, {fmt(g['p_range'][0], '.1f')} to {fmt(g['p_range'][1], '.0f')} d, comes from the data, with {g['n_bands']} bands). "
+        f"It must rank band N = {GATE_N} first with Δlog Z > {GATE_NATS:g} over every other band.\n",
+        f"Winner: N = {g['winner_n']}, P = {fmt(el.get('period'), '.3f')} d, e = {fmt(el.get('ecc'), '.3f')}, flux ratio {fmt(el.get('flux'), '.3f')}. "
+        f"Δlog Z = {fmt(g['delta_log_z'], '.1f')} over the runner-up (N = {g['runner_up_n']}); the evidences are tempered "
+        f"(effective-channel factor f = {fmt(temper.get('f'), '.0f')}), so this margin is on the tempered likelihood.\n",
+        f"Information, not pass/fail: raw χ²/N {fmt(g['chi2_per_n_raw'], '.1f')} on the quoted errors (the pipeline's χ² check fails: "
+        f"the errors are far too small, a noise-model matter for virgil-vlti, not the period search); "
+        f"{(prep.get('n_files_kept'))} of {prep.get('n_files')} files, {len(prep.get('nights') or [])} nights. "
+        f"virgil `{prov.get('virgil_commit')}`, virgil-vlti `{prov.get('virgil_vlti_commit')}` (channel `{prep.get('insname')}`, "
+        f"window {prep.get('window_um')} µm, one bad exposure out), OzSTAR job {prov.get('slurm_job')}.\n",
+    ]
+    for png, cap in (("search_bands.png", "Pipeline band search: Δlog Z and raw χ²/N by period"),
+                     ("modes_sky.png", "Pipeline modes on the sky")):
+        if (d / png).exists():
+            out.append(f"![{cap}]({rel}/gl229-pipeline/{png})\n")
+    return out
+
+
+def _alias_runs(assets):
+    rows = ["| run | commit | start | search effort (candidates/refines/steps) | N = 34: rank, log Z, raw χ²/N | winner |",
+            "| --- | --- | --- | --- | --- | --- |"]
+    for name, label, commit in (("gl229", "warm, 2026-10-15", "a92b97c"), ("gl229-warm-2946041", "warm (job 18760999)", "2946041"),
+                                ("gl229-cold", "cold (job 18758960)", "2946041"), ("gl229-cold-effort", "cold, high effort (job 18761000)", "2946041")):
+        d = pathlib.Path(assets) / name
+        if not (d / "bands.json").exists():
+            continue
+        bands, n34, rank = _rank34(json.load(open(d / "bands.json"))["bands"])
+        a = (json.load(open(d / "meta.json")).get("args") or {}) if (d / "meta.json").exists() else {}
+        start = "cold" if a.get("no_init") else "warm"
+        eff = f"{a.get('n_candidates', '?')}/{a.get('n_refine', '?')}/{a.get('max_steps', '?')}"
+        rows.append(f"| {label} | {commit} | {start} | {eff} | {rank}, {fmt(n34['log_z'], '.1f')}, {fmt(n34.get('chi2_red'), '.2f')} | "
+                    f"N = {bands[0]['n']} ({fmt(bands[0]['log_z'], '.1f')}) |")
+    return "\n".join(rows) + "\n"
+
+
 def gate_section(assets, rel):
-    """The Gl 229 release-gate run (cold: ``--no-init``), kept beside the warm result in ``gl229/``."""
+    """The Gl 229 release-gate runs, kept beside the warm result of 2026-10-15 in ``gl229/``."""
     sysdir = pathlib.Path(assets) / "gl229-cold"
-    if not (sysdir / "bands.json").exists():
+    pipe = _pipeline_gate(assets, rel)
+    if not pipe and not (sysdir / "bands.json").exists():
         return ""
-    bands = sorted(json.load(open(sysdir / "bands.json"))["bands"], key=lambda b: -b["log_z"])
+    out = ["## Release gate: Gl 229\n"]
+    if pipe:
+        out += ["### Blind: OrbitPipeline, no settings\n"] + pipe
+    if not (sysdir / "bands.json").exists():
+        return "\n".join(out)
+    bands, n34, rank = _rank34(json.load(open(sysdir / "bands.json"))["bands"])
     meta = json.load(open(sysdir / "meta.json")) if (sysdir / "meta.json").exists() else {}
     top, nxt = bands[0], bands[1]
-    n34 = next((b for b in bands if b["n"] == GATE_N), None)
     delta = top["log_z"] - nxt["log_z"]
     ok = top["n"] == GATE_N and delta > GATE_NATS
-    prov = meta.get("provenance") or {}
-    v = meta.get("virgil") or {}
-    out = [
-        "## Release gate: Gl 229, cold start\n",
-        f"**{'PASS' if ok else 'FAIL'}.** virgil 0.4.0 gate: `reanalyse_orbits.py --system gl229 --no-init`, no warm start, at the "
-        f"release code, must rank band N = {GATE_N} first with Δlog Z > {GATE_NATS:g} over every other band. This run is labelled "
-        "**cold, reference-informed window**: the period window is 10 to 14 d (12 bands), set from the published period, "
-        "so it is not a blind search. The blind gate runs through `OrbitPipeline`.\n",
+    prov, v = meta.get("provenance") or {}, meta.get("virgil") or {}
+    out += [
+        "### Cold orbit_aliases, reference-informed window\n",
+        f"**{'PASS' if ok else 'FAIL'}.** `reanalyse_orbits.py --system gl229 --no-init`, no warm start, window 10 to 14 d "
+        "(12 bands, set from the published period, so not blind). "
         f"virgil {v.get('version', '?')}, commit `{v.get('commit_id') or 'unknown'}`; virgil-validation `{prov.get('validation_commit') or 'unknown'}`; "
         f"options `{prov.get('extra_args') or '?'}`; OzSTAR job {prov.get('slurm_job') or '?'}. "
         "The release adds only #421 (a `starting_image` change in `imaging.py`) and the CHANGELOG to this commit.\n",
         f"Winner: N = {top['n']}, P = {fmt(top.get('period'), '.4f')} d, raw χ²/N {fmt(top.get('chi2_red'), '.2f')}, p = {fmt(top.get('p'), '.3f')}, "
-        f"log Z {fmt(top.get('log_z'), '.2f')} (Laplace) vs {fmt(top.get('log_z_is'), '.2f')} (IS). "
-        f"Margin over the runner-up (N = {nxt['n']}): Δlog Z = {delta:.1f}.\n",
+        f"log Z {fmt(top.get('log_z'), '.2f')} (Laplace) vs {fmt(top.get('log_z_is'), '.2f')} (IS); "
+        f"Δlog Z = {delta:.1f} over the runner-up (N = {nxt['n']}).\n",
     ]
     if n34 is not None and top["n"] != GATE_N:
-        warm_file = pathlib.Path(assets) / "gl229" / "bands.json"
-        warm = next((b for b in json.load(open(warm_file))["bands"] if b["n"] == GATE_N), None) if warm_file.exists() else None
         out.append(
-            f"Band N = {GATE_N} ranks {1 + [b['n'] for b in bands].index(GATE_N)} of {len(bands)}: log Z {n34['log_z']:.1f}, raw χ²/N "
-            f"{fmt(n34.get('chi2_red'), '.2f')}."
-            + (f" The warm run reached log Z {warm['log_z']:.1f} and χ²/N {fmt(warm.get('chi2_red'), '.2f')} in this band, "
-               "so a cold start did not find its optimum here (or the likelihood changed between the two commits: not yet separated)." if warm else "")
-            + "\n"
+            f"Band N = {GATE_N} ranks {rank} of {len(bands)} in this run. **Diagnosis: the cold search seeds the wrong modes; "
+            "the likelihood is unchanged.** The warm rerun at the release commit reproduces the 2026-10-15 N = 34 optimum exactly, and a cold run with four times the "
+            "candidates, more refinements and five times the steps converges to the same wrong N = 39 and N = 36 optima. More random effort "
+            "does not help, so the problem is the starting points, not the search length.\n"
         )
+        out.append(_alias_runs(assets))
     out.append(table(bands) + "\n")
     out.append("The warm-started result of 2026-10-15 (virgil a92b97c) is the Gl 229 section above.\n")
     for png, cap in PLOTS:
