@@ -13,6 +13,14 @@ plan's decisions hold and this spec is the bug.
 W1 and W2 run at the same time and share nothing but the conventions below.
 W2 must not read W1's code (the independence rule); both read this spec.
 
+**`virgil.radio` is instrument-neutral (Ben, 2026-10-19).** ALMA is the
+first user and ATCA will follow, so nothing in virgil hard-codes ALMA: no
+default dish size, beam factor, reference frequency, band or offset scale.
+Anything instrument-specific is an argument, or is derived from the data;
+the IM Lup analysis in virgil-validation passes ALMA's values. Names follow
+the measurement set, not ALMA: an "observation" (`OBSERVATION_ID`), not an
+"execution block". Plan text that says "EB" means an observation here.
+
 ## Shared conventions (to be pinned by tests, not assumed)
 
 - **Visibility.** V(u, v) = Σ I(x, y) exp(−2πi(u x + v y)), with x towards
@@ -35,9 +43,12 @@ W2 must not read W1's code (the independence rule); both read this spec.
   otherwise `WEIGHT` broadcast over channels. A weight is 1/σ² for each of
   Re and Im. That is CASA's documented meaning; the noisy synthetic MS and
   the model-free σ test it.
-- **Labels.** `ddid` = `DATA_DESC_ID`; `eb` = `OBSERVATION_ID`. Both are
+- **Labels.** `ddid` = `DATA_DESC_ID`; `obs` = `OBSERVATION_ID`. Both are
   kept as the MS gives them and relabelled 0..n−1 in sorted order, with the
   originals kept.
+- **Fields.** One field only. If the selection holds more than one
+  (a mosaic), the reader raises unless a `field` is given. Mosaics are out of
+  scope for now.
 - **Units.** Frequencies in Hz, times in MJD seconds (`TIME`), offsets in
   milliarcseconds, flux in Jy.
 
@@ -56,20 +67,20 @@ protocol), `virgil.fitting.fit` (how `likelihoods`, `has_log_norm` and
 ### `ComplexVisData` (an `equinox.Module`)
 
 Fields: `u`, `v` (float64, wavelengths), `vis` (complex), `weight`,
-`freq` (Hz), `ddid`, `eb` (int32, relabelled), static `ddid_ids`,
-`eb_ids` (original ids), static `ddid_eb` (the EB of each ddid), and
+`freq` (Hz), `ddid`, `obs` (int32, relabelled), static `ddid_ids`,
+`obs_ids` (original ids), static `ddid_obs` (the observation of each ddid), and
 optional `time`, `ant1`, `ant2`, `chan` (None when unknown).
 
-- `from_arrays(u, v, vis, weight, freq, ddid=0, eb=0, **optional)`:
+- `from_arrays(u, v, vis, weight, freq, ddid=0, obs=0, **optional)`:
   validates shapes, positive weights, finite values.
-- `read_ms(path, ddids=None, stride=1, datacolumn="DATA")`: the reader of
+- `read_ms(path, ddids=None, field=None, stride=1, datacolumn="DATA")`: the reader of
   the shared conventions above, through `casatools.table` (lazy import, a
   clear error naming the `radio` extra). It reads one ddid at a time with a
   table query, keeps every `stride`-th row, and never holds more than one
   ddid's columns at once.
-- `__len__`, `select(ddids=None, ebs=None)`, `subset(mask)`.
+- `__len__`, `select(ddids=None, obs=None)`, `subset(mask)`.
 - `model(scene, values, nuisance)`: the complex model at every point,
-  M_k = F · g_e · (ν_k/ν₀)^α · exp(−2πi(δα_e u_k + δδ_e v_k)) ·
+  M_k = F · g_o · (ν_k/ν₀)^α · exp(−2πi(δα_o u_k + δδ_o v_k)) ·
   T(u_k, v_k) · V_scene(u_k, v_k). V_scene is
   `scene.model(u·λ, v·λ, λ)` with λ = c/ν, so that a chromatic scene still
   works. The ramp uses `offset_phase` with the same sign as a component's
@@ -91,32 +102,33 @@ optional `time`, `ant1`, `ant2`, `chan` (None when unknown).
 
 ### `CalibrationNuisance` (static configuration)
 
-`CalibrationNuisance(data, ref_eb=0, gains=True, offsets=True,
-sigmas=True, alpha=True, nu0_hz=239e9, taper_fwhm_mas=None,
-prefix="cal")`. Sites, all keys of `priors` that a function model must
+`CalibrationNuisance(data, ref_obs=0, gains=True, offsets=True,
+sigmas=True, alpha=True, nu0_hz=None, taper_fwhm_mas=None,
+prefix="cal")`. `nu0_hz=None` means the weighted mean frequency of `data`. Sites, all keys of `priors` that a function model must
 accept:
 
 | Site | Shape | Default prior | When not fitted |
 |---|---|---|---|
 | `cal.flux` | () | `LogUniform(1e-4, 1e2)` Jy | always fitted |
-| `cal.gain` | (n_eb − 1,) | `LogUniform(0.5, 2)` | 1 |
-| `cal.offset` | (n_eb − 1, 2), mas | `Uniform(−100, 100)` | 0 |
+| `cal.gain` | (n_obs − 1,) | `LogUniform(0.5, 2)` | 1 |
+| `cal.offset` | (n_obs − 1, 2), mas | `Uniform(−θ, θ)`, θ = 1/(2 q_min) from the data unless given | 0 |
 | `cal.sigma` | (n_ddid,) | `LogUniform(0.1, 10)` | 1 |
 | `cal.alpha` | () | `Uniform(0, 5)` | 0 |
 
-The reference EB has g = 1 and zero offset. `priors()` returns this
-dict, `defaults()` the starting values. Check early that `fit` accepts
-vector-valued sites; if it does not, use one scalar site per EB and ddid
+The reference observation has g = 1 and zero offset. `priors(**bounds)`
+returns this dict, with any bound overridable, `defaults()` the starting values. Check early that `fit` accepts
+vector-valued sites; if it does not, use one scalar site per observation and ddid
 (`cal.gain_3`, …) and say so in the PR. The taper T = exp(−(π θ q)²/(4
 ln 2)), with θ the FWHM in radians and q = √(u² + v²), is a Gaussian
 convolution of the image, as MPoL's `GaussConvFourier`.
 
 ### Helpers
 
-- `primary_beam(npix, pixel_scale_mas, freq_hz, dish_m=12.0,
-  factor=1.13)`: the log-attenuation −4 ln 2 r²/FWHM² on the pixel grid
-  of `pixel_offsets`, FWHM = factor · c/(freq · dish_m). It is added to an
-  `Image` log-brightness.
+- `primary_beam(npix, pixel_scale_mas, freq_hz, dish_m, factor)`: the
+  log-attenuation −4 ln 2 r²/FWHM² on the pixel grid of `pixel_offsets`,
+  FWHM = factor · c/(freq · dish_m). It is added to an `Image`
+  log-brightness. `dish_m` and `factor` have no defaults; the docs give
+  ALMA (12 m, 1.13) and ATCA (22 m) as examples, with sources.
 - `dartboard_folds(data, k=5, n_q=12, n_phi=16, seed=0)`: returns the fold
   (0..k−1) and the q-annulus index of every point. Annuli are log-spaced
   between the smallest and largest q; azimuth φ = arctan2(v, u) mod π, so a
@@ -134,7 +146,7 @@ convolution of the image, as MPoL's `GaussConvFourier`.
    points.
 5. Gradients with respect to log-brightness and every nuisance site agree
    with central finite differences (float64).
-6. A small `fit` (64² image of a Gaussian disk, 2 EBs, 3 ddids, 2 000
+6. A small `fit` (64² image of a Gaussian disk, 2 observations, 3 ddids, 2 000
    points, `data=()`, the term in `likelihoods`, a function model,
    `method="lbfgs"`) recovers g, the offset, s and α within 3σ.
 7. `dartboard_folds`: Hermitian partners in the same fold; every fold
@@ -147,7 +159,9 @@ convolution of the image, as MPoL's `GaussConvFourier`.
    data to 1e-6. The opposite conjugation must fail.
 
 Docs: an API page and a short "Radio interferometry" guide page in virgil's
-docs (no science targets, no link to design notes).
+docs (no science targets, no link to design notes), written for any
+measurement set, with ALMA and ATCA as examples where an instrument value
+is needed. No module, class, argument or default names an instrument.
 
 ## W2: independent ingest and checks (virgil-validation PR)
 
