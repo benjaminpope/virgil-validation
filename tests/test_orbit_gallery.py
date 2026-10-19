@@ -266,3 +266,14 @@ def test_eso_references_reproduce_their_published_epochs(og, cid, pub, limit):
     assert rms < limit, rms
     assert len(rows) == (23 if pub == 1 else 18 if cid == "eso-9sgr" else 11)
     record("rms_offset_mas", round(rms, 3))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_legacy_flag_follows_data_path(og):
+    tile = dict(og.TARGETS["trackb-ll_aqr"])
+    (flag,) = [f for f in og.flags_of(tile, {"orbit": {"modes": [1, 2]}}) if f["key"] == "legacy"]
+    assert "uncalibrated GRAVITY V²" in flag["text"] and "rerun pending" in flag["text"]
+    nn = og.flags_of(og.TARGETS["trackb-nn_del"], {"orbit": {"modes": [1, 2]}})
+    assert any("gain model" in f["text"] for f in nn)
+    assert not [f for f in og.flags_of(dict(tile, data_path=None), {"orbit": {"modes": [1, 2]}}) if f["key"] == "legacy"]
+    assert not [f for f in og.flags_of(tile, None) if f["key"] == "legacy"]  # no fit, nothing to label

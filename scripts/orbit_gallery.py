@@ -216,7 +216,19 @@ def trackb_tiles(directory=TRACKB):
     return tiles
 
 
+# How a tile's data were reduced and fitted. A tile with no ``data_path`` is not legacy. The renderer turns the value into
+# a visible flag, so the rerun flips a tile by changing (or dropping) its ``data_path``, not by editing the page.
+DATA_PATHS = {
+    "legacy_uncalibrated_v2": "Legacy: uncalibrated GRAVITY V², white errors + tempering; rerun pending",
+    "legacy_no_gain_model": "Legacy: fitted without the virgil-vlti gain model; rerun pending",
+}
+LEGACY_DATA_PATH = {"GRAVITY": "legacy_uncalibrated_v2", "PIONIER": "legacy_no_gain_model"}  # by instrument, Track B tiles
+
+
 TILES += trackb_tiles()
+for _t in TILES:
+    if _t.get("trackb"):
+        _t.setdefault("data_path", LEGACY_DATA_PATH.get(json.loads((TRACKB / f"{_t['trackb']}.json").read_text())["instrument"]))
 TARGETS = {t["cid"]: t for t in TILES}  # the collections the gallery shows
 # Single-night alias peaks (design/orbit_comparison.md section 5): a fit summary names them in
 # ``orbit["epoch_checks"]`` (reasons starting "flagged"); for a summary that predates that field, these nights
@@ -645,6 +657,8 @@ def flags_of(tile, summary):
     out = []
     if tile.get("failed"):
         out.append(dict(key="failed", text=tile["failed"]))
+    if summary is not None and tile.get("data_path"):
+        out.append(dict(key="legacy", text=DATA_PATHS[tile["data_path"]]))
     orb = (summary or {}).get("orbit")
     rhat = worst_rhat(summary)
     if rhat is not None and rhat > RHAT_MAX:
@@ -854,6 +868,11 @@ This gallery asks one question of [virgil](https://github.com/benjaminpope/virgi
 give it the archival data behind a published binary orbit, does it get the authors' answer? Each tile is one binary; \
 open it for the orbit on the sky, the separation and position angle through the orbit, and a table comparing every \
 fitted quantity with the paper.
+
+**Legacy results.** Orbits tagged *Legacy* were fitted before the interferometric calibration was settled: the GRAVITY \
+files behind them are uncalibrated (SINGLE_SCI_VIS), yet their V² was fitted with white errors and tempering and no \
+gain model, and the PIONIER fit also lacked the virgil-vlti gains. Treat them as provisional until the rerun; the \
+design of the replacement noise model is in [virgil PR #436](https://github.com/benjaminpope/virgil/pull/436).
 
 **Why this tests virgil.** The data are the authors' own, so a difference comes from the analysis or from calibration \
 choices the archive does not record: the model, the likelihood, the optimizer, a convention such as which star an angle \
