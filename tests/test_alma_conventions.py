@@ -201,3 +201,17 @@ def test_samples_are_dropped_for_flags_flag_row_and_zero_weights(tmp_path):
     # 100 rows x 4 channels (XX flagged) + 400 (FLAG_ROW) + 400 (YY weight 0) + 100 (channel 1)
     # the last block overlaps nothing: rows 300-399 only
     assert before - kept() == 100 * 4 + 100 * 4 + 100 * 4 + 100
+
+
+@pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", **VALIDATES)
+def test_a_selection_with_more_than_one_field_raises_unless_a_field_is_given(tmp_path):
+    """The reader is for one pointing: a two-field MS needs `field`, which then
+    selects its rows only."""
+    ms = str(tmp_path / "two.ms")
+    worker({"task": "simulate_ms", "path": ms, "two_fields": True})
+    with pytest.raises(RuntimeError, match="field"):
+        worker({"task": "read", "path": ms, "out": str(tmp_path / "a"), "ddids": [0]})
+    n = [sum(f["n"] for f in worker({"task": "read", "path": ms, "out": str(tmp_path / f"f{k}"), "ddids": [0], "field": k})["files"])
+         for k in (0, 1)]
+    record("rows_field0", n[0])
+    assert n[0] == n[1] == 28 * 5 * 60 * 4  # 28 baselines x 300 integrations (30 min each) x 4 channels

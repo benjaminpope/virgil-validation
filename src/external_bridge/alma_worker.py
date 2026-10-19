@@ -80,13 +80,18 @@ def simulate_ms(task):
                        freqresolution=f"{CHAN_WIDTH}Hz", nchannels=NCHAN, stokes="XX YY")
     sm.setfeed(mode="perfect X Y")
     sm.setfield(sourcename="IMLUP", sourcedirection=PHASE_CENTRE)
+    two = bool(task.get("two_fields"))
+    if two:  # a second pointing (for the mosaic guard), 1 arcmin North
+        sm.setfield(sourcename="OTHER", sourcedirection=f"J2000 15h56m09.20s -37d55m06.42s")
     sm.setlimits(shadowlimit=0.0, elevationlimit="5deg")
     sm.setauto(autocorrwt=0.0)
     sm.settimes(integrationtime="6s", usehourangle=True,
                 referencetime=me.epoch("utc", "2025-04-01T00:00:00"))
     for _, name in SPWS:
-        sm.observe(sourcename="IMLUP", spwname=name, starttime="-1.5h", stoptime="-0.5h")
-    sm.setdata(spwid=list(range(len(SPWS))), fieldid=[0])
+        sm.observe(sourcename="IMLUP", spwname=name, starttime="-1.5h", stoptime="-1.0h" if two else "-0.5h")
+        if two:
+            sm.observe(sourcename="OTHER", spwname=name, starttime="-1.0h", stoptime="-0.5h")
+    sm.setdata(spwid=list(range(len(SPWS))), fieldid=[0, 1] if two else [0])
     cl = ct.componentlist()
     dec0 = np.deg2rad(DEC0_DEG)
     clpath = str(path) + ".cl"
@@ -140,7 +145,7 @@ def _corr_type(tb, path, pol_id):
     return ct
 
 
-def read_ddid(ct, path, ddid, stride=1, conjugate=False, datacolumn="DATA"):
+def read_ddid(ct, path, ddid, stride=1, conjugate=False, datacolumn="DATA", field=None):
     """One ddid as a dict of arrays, with the conventions of the spec.
 
     Samples: cross-correlations, not FLAG_ROW, neither parallel-hand
@@ -158,12 +163,17 @@ def read_ddid(ct, path, ddid, stride=1, conjugate=False, datacolumn="DATA"):
         raise ValueError(f"ddid {ddid}: no pair of parallel-hand correlations in CORR_TYPE {corr}")
     tb.open(path)
     has_ws = "WEIGHT_SPECTRUM" in tb.colnames()
-    q = tb.query(f"DATA_DESC_ID=={ddid} && ANTENNA1!=ANTENNA2")
+    sel = f"DATA_DESC_ID=={ddid} && ANTENNA1!=ANTENNA2" + ("" if field is None else f" && FIELD_ID=={int(field)}")
+    q = tb.query(sel)
     tb.close()
     n = q.nrows()
     if n == 0:
         q.close()
         return None
+    fields = np.unique(q.getcol("FIELD_ID"))
+    if len(fields) > 1:
+        q.close()
+        raise ValueError(f"ddid {ddid}: the selection holds fields {fields.tolist()} (a mosaic?); give one with `field`")
     step = max(int(stride), 1)
     nsel = (n + step - 1) // step
 
@@ -222,7 +232,7 @@ def read(task):
     files = []
     for d in _ddids(ct, path, task.get("ddids")):
         rec = read_ddid(ct, path, d, task.get("stride", 1), task.get("conjugate", True),
-                        task.get("datacolumn", "DATA"))
+                        task.get("datacolumn", "DATA"), task.get("field"))
         if rec is None:
             continue
         f = out / f"ddid_{d:02d}.npz"

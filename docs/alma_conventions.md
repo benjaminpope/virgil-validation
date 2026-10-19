@@ -1,4 +1,4 @@
-# ALMA measurement-set conventions
+# Measurement-set conventions (CASA MS; ALMA and DSHARP IM Lup)
 
 How a CASA measurement set (MS) maps to complex visibilities V(u, v), as
 pinned by `tests/test_alma_conventions.py` (tier B: needs `.venv-alma`,
@@ -8,9 +8,17 @@ written from CASA's [MS definition](https://casacore.github.io/casacore-notes/22
 through `casatools.table`, not from visread. Checks are in
 `src/crosscheck/alma.py` (NumPy only). Neither imports virgil.
 
+This page has two parts. **Part 1** is MS-generic: it holds for any CASA
+measurement set (ALMA, ATCA, VLA, ...), and the reader does not assume an
+instrument. **Part 2** is specific to ALMA and the DSHARP IM Lup data. The
+synthetic MS is built with ALMA antennas and frequencies only because it
+needs some telescope; none of the conventions depend on that choice.
+
 Versions: casatools 6.7.0.31, casadata 2025.9.22 (measures data, inside
 `.venv-alma` through `casasiteconfig.py`; nothing is written to `~/.casa`),
 casaconfig 1.5.2, visread 0.0.5, Python 3.11.
+
+# Part 1: MS-generic conventions
 
 ## The result: conjugation and the sign of u
 
@@ -41,6 +49,12 @@ and u = `UVW[0]` ν / c, v = `UVW[1]` ν / c:
 
 ## Other conventions (as the reader applies them)
 
+- **Observations and fields.** Observations are labelled by
+  `OBSERVATION_ID` (`obsid` in the npz files), spectral windows by
+  `DATA_DESC_ID` (`ddid`). `read` takes an optional `field`; with none, the
+  selection must hold a single `FIELD_ID`, and a second one (a mosaic)
+  raises an error naming the fields
+  (`test_a_selection_with_more_than_one_field_raises_unless_a_field_is_given`).
 - **Samples.** Cross-correlations only (`ANTENNA1 != ANTENNA2`), one per
   (row, channel). Dropped: `FLAG_ROW` true; either parallel-hand
   correlation flagged in `FLAG`; either weight not positive
@@ -83,6 +97,12 @@ it. Two cautions. ŝ is an upper bound on the true weight scale: any change
 of the sky or the atmospheric phase over 6 s adds to |ΔV|² (a drift of
 0.3 σ between neighbours adds 0.25 to ŝ², tier-A test). And ŝ² has standard
 error std(r)/√n over the pairs r; the table quotes ŝ ± SE(ŝ) = SE(ŝ²)/(2ŝ).
+
+# Part 2: ALMA and DSHARP IM Lup
+
+The synthetic MS: 8 ALMA antennas (a fixed layout of about 1.6 km), two
+windows at 230 and 245 GHz with 4 channels of 125 MHz, 6 s integrations, dual
+linear feeds; IM Lup's phase centre 15h56m09.20s −37°56′06.42″.
 
 ## IM Lup (DSHARP continuum) measured on 2026-10-19
 
