@@ -430,8 +430,6 @@
   evidence: [tests/test_polar_disk_vs_codes.py::test_vis_r_single_gap_profile_matches_its_two_gap_form]
   status: to-raise
 
-<<<<<<< HEAD
-
 - id: F22
   title: the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere"
   objects: [virgil.likelihood.whitened_residuals]
@@ -443,7 +441,7 @@
   links: [https://github.com/benjaminpope/virgil/issues/309]
   decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring.'
   note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
-=======
+
 - id: P11
   title: MPoL's log_likelihood docstring writes the normalisation as a sum of w_i, while the code (correctly) uses the sum of ln w_i
   objects: [mpol]
@@ -470,4 +468,3 @@
   referee: mathematics (exact DFT of the image, src/crosscheck/alma.py)
   evidence: [tests/test_alma_mpol.py::test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model, tests/test_alma_mpol.py::test_mpol_with_its_accurate_nufft_agrees_to_1e_5]
   status: documented
->>>>>>> 0278333bf89b3995462909d9c27412a1a6caab15
