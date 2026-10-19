@@ -302,12 +302,18 @@ def observables(model, data):
 
 
 def rows_of(data):
-    """Sample indices of each (frame, station pair), channels in wavelength order: an (n_group, n_channel) array."""
-    frame, st, wl = np.asarray(data.frame), np.asarray(data.stations), np.asarray(data.wavel)
+    """Indices into the V^2 arrays (``data.vis``) of each (frame, station pair), channels in wavelength order: an (n_group, n_channel) array.
+
+    The per-sample arrays (frame, stations, wavel) hold every V^2 sample, flagged ones included, and ``vis_index`` (None if nothing is
+    flagged) picks those that are kept; a (frame, baseline) that lost a channel to flagging has fewer than the usual number and is left out."""
+    sel = slice(None) if data.vis_index is None else np.asarray(data.vis_index)  # None: nothing flagged
+    frame, st, wl = np.asarray(data.frame)[sel], np.asarray(data.stations)[sel], np.asarray(data.wavel)[sel]
     key = {}
     for i, (f, s_, w) in enumerate(zip(frame, st, wl)):
         key.setdefault((int(f), int(s_[0]), int(s_[1])), []).append((float(w), i))
-    return np.array([[i for _, i in sorted(v)] for v in key.values()])
+    groups = [[i for _, i in sorted(v)] for v in key.values()]
+    n_ch = max(len(g) for g in groups)
+    return np.array([g for g in groups if len(g) == n_ch])
 
 
 def residual_stats(data, model_v2, model_t3):
@@ -674,11 +680,54 @@ def scale_stage(args, out):
                    geometry=geo, smoke=args.smoke), open(scale_file(out, cfg, args.noise), "w"), indent=1)
 
 
+def safe_l_curve(scene, priors, data, regulariser, weights, **opts):
+    """``l_curve``, but a weight whose fit goes non-finite is skipped instead of fatal.
+
+    virgil starts each weight from the previous fit, so one NaN fit poisons every later weight and ``l_curve`` raises. On that error the
+    sweep is redone one weight at a time (largest first), keeping the last finite fit as the start; the skipped weights are printed and
+    left out of the returned ``LCurve``."""
+    from virgil.imaging import LCurve  # noqa: PLC0415
+
+    try:
+        curve = l_curve(scene, priors, data, regulariser, weights, **opts)
+        if np.all(np.isfinite(curve.chi2)) and np.all(np.isfinite(curve.penalty)):
+            return curve
+        print("l_curve has non-finite fits -> sweeping one weight at a time and skipping them", flush=True)
+    except ValueError as e:
+        if "NaN" not in str(e):
+            raise
+        print("l_curve hit a NaN fit:", e, "-> sweeping one weight at a time and skipping non-finite ones", flush=True)
+    kept, skipped, init = [], [], None
+
+    def attempt(w, start):  # one weight from ``start``; (curve, finite)
+        try:
+            c = l_curve(scene, priors, data, regulariser, [w], init=start, **opts)
+            r = c.results[0]
+            return c, bool(np.isfinite(c.chi2[0]) and np.isfinite(c.penalty[0]) and all(np.all(np.isfinite(np.asarray(v))) for v in r.values.values()))
+        except ValueError:
+            return None, False
+
+    for w in sorted((float(w) for w in weights), reverse=True):
+        c, finite = attempt(w, init)
+        if not finite and init is not None:  # the warm start may be what diverged: try from the scene itself
+            c, finite = attempt(w, None)
+        if finite:
+            kept.append((w, c))
+            init = c.results[0].values
+        else:
+            skipped.append(w)
+    print("weights skipped (non-finite fit):", skipped, flush=True)
+    if not kept:
+        raise ValueError("every weight of the MaxEntropy sweep gave a non-finite fit")
+    return LCurve(np.asarray([w for w, _ in kept]), np.asarray([float(c.chi2[0]) for _, c in kept]), np.asarray([np.asarray(c.chi2_red[0]) for _, c in kept]),
+                  np.asarray([float(c.penalty[0]) for _, c in kept]), [c.results[0] for _, c in kept])
+
+
 def fit_mem(cfg, scene, priors, data, args):
     """MaxEntropy image: the weight where chi2 per point, on the (rescaled) errors, is 1 (Morozov's discrepancy principle)."""
     weights = np.array([1e3, 1e1]) if args.smoke else np.logspace(*cfg.get("log_weights", (4, -2)), 9)
     opts = dict(max_steps=15) if args.smoke else dict(max_steps=1500)
-    curve = l_curve(scene, priors, data, MaxEntropy(1.0, path="env"), weights, **opts)
+    curve = safe_l_curve(scene, priors, data, MaxEntropy(1.0, path="env"), weights, **opts)
     try:
         corner = curve.corner()
     except ValueError:  # fewer than three swept weights converged (virgil raises); fall back to the middle weight
@@ -696,7 +745,11 @@ def fit_mem(cfg, scene, priors, data, args):
         start = curve.results[i].model
         for _ in range(4):  # interpolate in log w, refit from the nearest stronger fit, secant-correct
             w_try = float(np.exp(lo + (c_lo - 1.0) / (c_lo - c_hi) * (hi - lo)))
-            model = l_curve(start, priors, data, MaxEntropy(1.0, path="env"), [w_try], max_steps=2500).results[0].model
+            try:
+                model = safe_l_curve(start, priors, data, MaxEntropy(1.0, path="env"), [w_try], max_steps=2500).results[0].model
+            except ValueError as e:  # the refinement went non-finite: keep the closest swept fit
+                print("discrepancy refinement skipped:", e, flush=True)
+                break
             c_try = chi2r(model, data)[0]
             w_star, how = w_try, "discrepancy"
             if abs(c_try - 1.0) < 0.03:
@@ -1145,7 +1198,11 @@ def image_one(args, out, strat):
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
     bright = bright_grid if not rot else np.clip(rotate_img(bright_grid, rot, order=1, reshape=False, mode="constant", cval=0.0), 0.0, None)
     mv2, mt3 = observables(model, data_s)
-    resid = residual_stats(data0, mv2, mt3)  # on the data as quoted, whichever noise model the fit used
+    try:  # a diagnostic never discards a finished fit
+        resid = residual_stats(data0, mv2, mt3)  # on the data as quoted, whichever noise model the fit used
+    except Exception as e:  # noqa: BLE001
+        resid = dict(failed=f"{type(e).__name__}: {e}")
+        print("residual statistics failed:", resid["failed"], flush=True)
     # guard: the rendered environment, put back into the fitted scene as a pixel image, must fit as well as the model does
     b_ = bright_grid / bright_grid.sum()
     env_r = Image(np.log(np.clip(b_, 1e-14, None)), pix, rotation_deg=rot, flux=PowerLaw(float(np.asarray(model.env.flux.ratio)) + (float(np.asarray(model.res.flux.ratio)) if strat == "disc+res" else 0.0),
