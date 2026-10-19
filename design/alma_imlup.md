@@ -26,6 +26,32 @@ The likelihood is now an exact NUFFT on the visibilities, using nufftax
 - M1 Max CPU timings: the scans of 2026-10-19 in the #426 session. The fixed cost varied 2–4× between runs.
 - MPoL code: MPoL `main` at 8850b483, and MPoL-dev/examples `04-IMLup-multi-EB`.
 
+## Review 2026-10-19 (second): what changes before implementation
+
+An adversarial read of the revision above, before any code. Each row is
+decided; the sections below are edited to match, and
+[`alma_imlup_p1.md`](alma_imlup_p1.md) is the implementation spec.
+
+**Where the code lives (Ben, 2026-10-19).** The ALMA functionality belongs
+in virgil, and the IM Lup analysis in virgil-validation. So virgil gets a
+general module, `virgil.radio`: complex visibilities, calibration nuisances,
+a measurement-set reader and the primary beam. virgil-validation keeps the
+independent reader and checks, the IM Lup scripts, the OzSTAR jobs and the
+comparisons.
+
+| # | Problem | Decision |
+|---|---|---|
+| B1 | P2 proposed three new classes plus a fit path of their own. `virgil.fit` already takes extra likelihood terms (`likelihoods=`: a callable of the fitted values returning whitened residuals, with `has_log_norm`/`log_norm` for fitted scales), as `virgil.orbits.PositionData.term` does. | `virgil.radio.ComplexVisData.term(...)` follows the `PositionData.term` pattern, so no new fit path is needed. `CalibrationNuisance` describes the nuisance sites and their default priors. `ToeplitzVisData` is deferred (B2). |
+| B2 | The Toeplitz form (d) and fine bins (b) are optimisations with their own classes and checks, adopted before (a) is timed. The "laptop" column runs λ sweeps and evidence locally, which `local-compute-limits` forbids, and five folds of 26 kernels at 2560² is ≈ 7 GB. | Bins are dropped (estimated ≲ 3×). Toeplitz is deferred: it is built only if P2b shows that an L-BFGS fit on (a) takes more than ≈ 30 GPU-minutes. At the estimated 0.1–0.4 s per gradient, a 5-fold × 10-λ sweep is ≈ 50 fits, a few GPU-hours as one array job. Nothing heavy runs on the laptop. |
+| B3 | "f32 transform, f64 reduction" cannot be done through `virgil.fit`: its `dtype` switches JAX's x64 mode for the whole fit, so a term cannot upcast. A χ² of 8.5 × 10⁷ summed in f32 has a resolution of ≈ 8, too coarse for the L-BFGS line search near the optimum. | Fit in float64 throughout, and loosen the transform instead: `virgil.set_ft_defaults(eps_f64=1e-6)` for joint fits, and the default 1e-12 for cross-validation scores, evidence and checks. P2b times f64 at eps 1e-6 and 1e-12. |
+| B4 | `fit` normalises the loss and `gtol` by the number of residuals (8.5 × 10⁷), so its default stop may fire early or never. | Every fit records `info["stop"]`, the steps and the χ² trajectory (`progress=`), with an explicit `max_steps` and `time_limit`. Convergence is judged by χ² change per step, not by `gtol` alone. |
+| B5 | The σ-factor check takes residuals against "the released FITS degridded". That FITS is the restored image (CLEAN model ⊗ beam + residuals), not the model, so its degridded visibilities are tapered by the beam and the check is wrong on the LB data. The `.model` needs DSHARP's `tclean` run again. | A model-free estimate replaces it: differences of time-adjacent samples on the same baseline, channel and scan, σ² ≈ ⟨\|V_i − V_{i+1}\|²⟩/4 per component (root `statistics`). Its bias from sky change between integrations is bounded from the SB data, where it is negligible. Rerunning `tclean` for its model is optional. |
+| B6 | The only independent conventions root was `simobserve`/`ft` injection into a copy of the 2.5 GB MS, and ingest went through `visread`, which MPoL shares. | Both readers (virgil's and virgil-validation's) use `casatools.table` directly, written separately. Conventions are pinned on a small synthetic MS made from scratch with `casatools.simulator`, into which CASA's own predict puts an asymmetric pair of known position (new root `casa`). The dirty image must put the brighter source at the right RA and Dec, and the conjugated mapping is a `kind="control"` that must fail. `visread` is compared on the same MS as a second, weaker check. |
+| B7 | The spectral index is left open, with an "absorb α into w and V" option. Any fixed α is equally exact as a per-point factor on the model. | A global α is fitted: M_k ∝ (ν_k/ν₀)^α, with ν₀ = 239 GHz and a uniform prior on α in [0, 5]. The MPoL replication run fixes α = 0, as MPoL does. A radially varying α is out of scope, and noted as a limit. |
+| B8 | The primary beam is called negligible, but at 2″ a 25″ Gaussian attenuates by ≈ 2%, which the SB data can see. | `virgil.radio.primary_beam` gives the log-attenuation on the pixel grid (Gaussian, FWHM 1.13 λ₀/D, D = 12 m, at ν₀). The analysis adds it to the `Image` log-brightness, which is exact. Its change across 230–247 GHz (≈ 0.1% in attenuation at 2″) is neglected, and that bound is stated. |
+| B9 | "The GP wins on cross-validation in the ringed outer disk" cannot be tested: dartboard folds hold out uv cells, not image regions. | CV χ² is reported per uv annulus of the dartboard as well as in total, which shows which scales each method wins. Image-region claims rest on residual dirty images, not on CV. |
+| B10 | Where the 1.2 GB export is made, and how it reaches OzSTAR, is not said. | The full read runs on OzSTAR: the job downloads the MS from the DSHARP page itself. The laptop reads only a strided subsample (≈ 4 × 10⁴ visibilities) of the MS already in `~/data/alma_imlup/`, for development and tests. |
+
 ## Why
 
 So far every virgil validation case has been optical/IR interferometry: V²,
@@ -325,15 +351,15 @@ metrics stay valid because both methods share it.
 - f64 nufftax at eps 1e-12 roughly doubles ns, so it costs about 4× the
   memory and ≈ 4.5× the per-point time (job 18819744). Keep it for checks.
 
-**Recommended defaults:**
+**Recommended defaults** (after B2 and B3, which supersede the f32 advice
+above for anything run through `virgil.fit`):
 
-| | Laptop (M1 Max) | OzSTAR A100 |
+| | Laptop | OzSTAR A100 |
 |---|---|---|
-| Development and tests | SB1+SB2 raw (1.1 M), or any ddid subsample, option (a) | — |
-| Joint image + all nuisances | not run (see `local-compute-limits`) | (a) raw, f32, f64 reduction, chunks of ≤ 10⁷ points |
-| λ and cross-validation sweeps, evidence | (d) Toeplitz with the offsets frozen, after an OzSTAR joint fit | (d) Toeplitz, or (a) in f64 if offsets stay free |
-| `MultipoleDisk` | rendered → (d) | rendered → (a) or (d) |
-| (b) bins | only if P1 shows ≥ 3× compression | not needed |
+| Development and tests | synthetic MS, or the strided subsample (≈ 4 × 10⁴ points, 256²), option (a) | — |
+| Joint image + all nuisances | not run (`local-compute-limits`) | (a) raw, float64, eps 1e-6, chunks of ≤ 10⁷ points |
+| λ and cross-validation sweeps, evidence | not run | (a) float64 at eps 1e-12 for the scores; Toeplitz only if P2b says so |
+| `MultipoleDisk` | not run | rendered → (a) |
 
 ### Following and departing from MPoL
 
@@ -393,30 +419,29 @@ hvps). The whitened Hessian for any hyperparameters is then I + LᵀAL, and
 the Laplace evidence is exact. In the Toeplitz form each hvp is one 2N² FFT
 (≈ 2 ms on the A100), so the whole 6,800² matrix takes ≈ 15 s.
 
-New in virgil (P2, after #426):
+New in virgil (P2, `virgil.radio`; B1, spec in `alma_imlup_p1.md`):
 
-- `ComplexVisData`: complex visibilities with a weight per point and a
-  group index (ddid, EB). Its likelihood calls `image_visibilities` with
-  `ft="nufft"` (or `"auto"`) in chunks, with f64 reductions. There is an
-  optional bin-averaging constructor (option b).
-- `CalibrationNuisance`: g and the offset per EB, and s per ddid
-  (profiled or free).
-- `ToeplitzVisData` (option d): it is built from `ComplexVisData` once the
-  offsets are frozen, and its χ² matches `ComplexVisData` to 1e-8 relative.
-- `GriddedVisData` is **not** needed. A gridded dirty image stays as a
-  diagnostic in the crosscheck, not as a likelihood.
+- `ComplexVisData`: complex visibilities with a weight per point, ddid and
+  EB labels, frequencies, and a `read_ms` constructor (`casatools`, an
+  optional extra). Its `term(...)` is a `fit` likelihood term on nufftax,
+  chunked, with an optional 0/1 cross-validation mask.
+- `CalibrationNuisance`: g and the offset per EB (one of each fixed), s per
+  ddid, a global α and the total flux, with Jeffreys default priors.
+- `primary_beam` and `dartboard_folds`.
+- Not now: `ToeplitzVisData` (B2), bins (B2), `GriddedVisData` (option c).
 
 ### MaxEnt
 
-- `Image` at 1280² and 5 mas (or 1024² at 6 mas), with optional Gaussian
-  convolution matching MPoL's 30 mas, plus `MaxEntropy` with a flat prior
+- `Image` at 1280² and 5 mas (or 1024² at 6 mas), its log-brightness offset
+  by `virgil.radio.primary_beam` (B8), with an optional Gaussian taper
+  matching MPoL's 30 mas (a per-point factor on the model), plus `MaxEntropy` with a flat prior
   and a small `TSV`. Fit with full-batch L-BFGS on option (a), jointly with
   `CalibrationNuisance`.
 - λ is chosen by k-fold dartboard cross-validation, as in MPoL and
-  Zawadzki et al. 2023 (folds as under Nuisances). Run the sweep in the
-  Toeplitz form with offsets frozen at the joint-fit values. Refit the
-  offsets on (a) at the chosen λ, as a check that they did not move. The
-  GP uses the identical folds.
+  Zawadzki et al. 2023 (folds as under Nuisances). The sweep runs on
+  (a) as an OzSTAR array over λ and folds, starting each fit from the
+  full-data joint fit, and scores the held-out points in float64 at eps
+  1e-12 with the training s per ddid. The GP uses the identical folds.
 - `l_curve` discrepancy and classic Gull–Skilling are reported as secondary
   choices.
 
@@ -481,12 +506,14 @@ Expectation:
 
 | Phase | Where | Work |
 |---|---|---|
-| P0 | this note | References, data inventory, design, N_vis (done 2026-10-17); nufftax revision (2026-10-19). |
-| P1 | virgil-validation PR | ALMA worker, download, export, dirty-image and weight-scatter checks. Record N_vis, Δν, t_int, typical σ per visibility, and occupied-bin counts at 650 λ and 2 kλ. |
-| P2 | virgil PR, **after virgil#426 merges** | `ComplexVisData` on nufftax (chunked, f64 reductions, optional bins), `CalibrationNuisance`, `ToeplitzVisData`; tests against a float64 DFT. No `GriddedVisData`. |
-| P2b | OzSTAR A100 + M1 Max | Scale benchmark: `bench_jax_nufft.py --npts 1e6 4e6 1.6e7 4.2e7` at 1024² and 1280², f32, value + grad, with peak memory. Repeat the M1 Max runs ≥ 3 times, because its fixed cost varied 2–4× between runs. Also time Toeplitz evaluation at 2560². Fill the cost table above. |
-| P3 | OzSTAR GPU | MPoL reference run (`sgd.py` and `analyze_scale_factors.py` in `.venv-mpol` through `mpol_worker.py`, conventions in `docs/mpol_conventions.md`). Then the MaxEnt joint fit on (a), and the cross-validation sweep in the Toeplitz form (sbatch array over λ and folds). Use a fresh pip env on the latest JAX. |
-| P4 | OzSTAR GPU | `MultipoleDisk` pixel rendering, with a Hankel check. Geometry on SB, then the full fit and evidence over M and lengthscales. |
+| P0 | this note | References, data inventory, design, N_vis (done 2026-10-17); nufftax revision and second review (2026-10-19). |
+| P1 | virgil-validation PR (Sonnet worker W2) | Independent ingest and checks, no virgil: `.venv-alma`, `alma_worker.py` (casatools reader, synthetic-MS builder, visread), `docs/alma_conventions.md`, `crosscheck/alma.py` (DFT and gridded dirty images, model-free σ), tests. Runs alongside P2. |
+| P2 | virgil PR (Sonnet worker W1) | `virgil.radio`: `ComplexVisData` (`read_ms`, `term`), `CalibrationNuisance`, `primary_beam`, `dartboard_folds`; tests against virgil's own DFT path and a synthetic MS. |
+| P2v | virgil-validation PR (Sonnet worker W3), after P1 and P2 | Validate `virgil.radio` against P1: the reader against ours on the synthetic MS, the term against the `crosscheck.sky` float64 DFT, nuisance signs, log-normalisation, a small injection-recovery fit; trust-graph nodes. |
+| P1c | ozstar_scripts PR (W4), after P1 and P2 | CPU job `alma_imlup_read`: download the MS, read all 26 ddids with both readers, record N_vis, Δν, t_int, model-free σ, dirty images. Ben submits. |
+| P2b | ozstar_scripts PR (W5), after P2 | A100 benchmark of `ComplexVisData.term` on the full data: value + grad at 10⁶–4.2 × 10⁷ points, 1280², f64 at eps 1e-6 and 1e-12, peak memory. Decides B2's Toeplitz question. |
+| P3 | OzSTAR GPU, scripts in virgil-validation | MPoL reference run (`sgd.py`, `analyze_scale_factors.py` in `.venv-mpol`). MaxEnt joint fit, then the CV sweep (array over λ and folds) on (a). Fresh pip env on the latest JAX. |
+| P4 | OzSTAR GPU | `MultipoleDisk` pixel rendering (a virgil PR), with a Hankel check. Geometry on SB, then the full fit and evidence over M and lengthscales. |
 | P5 | virgil-validation PR | `docs/imaging/alma_imlup.md`, trust graph and ledger, findings. |
 
 ## Verification
