@@ -42,6 +42,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D8">D8</span> | `limits.injection_limits` | CANDID's and fouriever's injection limits refit the primary's uniform-disk diameter to the injected data; virgil's hold every parameter but the flux | documented |
 | <span id="D9">D9</span> | `imaging.TSV` | eht-imaging's squared TV (stv2) counts only the steps out of the last row and column; virgil's TSV counts the steps across all four edges | documented |
 | <span id="D10">D10</span> | `frank`, `frap` | frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline) | documented |
+| <span id="D11">D11</span> | `mpol`, `models.Image` | MPoL's image centre is pixel N/2 of the unpacked cube; virgil's is ((N-1)/2, (N-1)/2), so the two scenes differ by half a pixel in both axes | documented |
 
 ## Problems found in other packages
 
@@ -57,6 +58,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P8">P8</span> | `fouriever` | fouriever's uvfit.detlim fails under NumPy 2 and SciPy 1.18 (fouriever 0.4.3); its L-BFGS-B objectives return 1-element arrays, and with V² it %-formats a 1-element array | to-raise |
 | <span id="P9">P9</span> | `oimodeler` | oimodeler's image-based ExpRing is 8e-3 from the exact transform of its own documented profile, at every grid size | to-raise |
 | <span id="P10">P10</span> | `visr` | vis-r's r_prof_erf2_power_ggap (one Gaussian gap) reads its depth and radius from each other's position in the parameter list | to-raise |
+| <span id="P11">P11</span> | `mpol` | MPoL's log_likelihood docstring writes the normalisation as a sum of w_i, while the code (correctly) uses the sum of ln w_i | to-raise |
+| <span id="P12">P12</span> | `mpol` | MPoL's default NuFFT (torchkbnufft table interpolation) is 6e-4 from the exact transform of its image at 256 pixels, and its taper buffer is float32 | documented |
 
 ## Mistakes in our own checks
 
