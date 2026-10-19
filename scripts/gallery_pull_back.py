@@ -41,9 +41,10 @@ SHORT_ARC_NOTE = (
 def run_folders(results):
     """{slug: folder} of the newest ``gallery.json`` + ``run/summary.json`` per system under ``results``."""
     found = {}
-    for g in sorted(pathlib.Path(results).rglob("gallery.json")):
-        if (g.parent / "run" / "summary.json").exists():
-            found[g.parent.name] = g.parent  # sorted: later tags overwrite earlier ones
+    for g in pathlib.Path(results).rglob("gallery.json"):
+        s = g.parent / "run" / "summary.json"
+        if s.exists() and (g.parent.name not in found or s.stat().st_mtime > (found[g.parent.name] / "run" / "summary.json").stat().st_mtime):
+            found[g.parent.name] = g.parent  # newest by summary.json mtime, not by path order
     return found
 
 

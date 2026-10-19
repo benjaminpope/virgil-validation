@@ -113,3 +113,15 @@ def test_another_alias_band_is_a_different_sky_orbit(hd9312):
     rows, verdict = PB.sky_rows(far, t_ref, r, table, False, False, None)
     assert verdict == "DIFFERENT"  # without a raw chi2/N the paper is not blamed
     assert PB.sky_rows(far, t_ref, r, table, False, False, 1.0)[1] == "REFERENCE-DISAGREES"
+
+
+def test_the_newest_run_folder_wins_by_time_not_by_name(tmp_path):
+    import os
+
+    for tag, when in (("run-9", 2000), ("run-10", 1000)):  # run-10 sorts first but is older
+        d = tmp_path / tag / "nn_del"
+        (d / "run").mkdir(parents=True)
+        (d / "gallery.json").write_text("{}")
+        (d / "run" / "summary.json").write_text("{}")
+        os.utime(d / "run" / "summary.json", (when, when))
+    assert PB.run_folders(tmp_path)["nn_del"].parent.name == "run-9"
