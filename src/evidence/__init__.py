@@ -26,6 +26,7 @@ ROOTS = (
     "visr",  # vis-r (Kennedy 2025): radial-profile visibility modelling
     "frap",  # FRAP (Yoshida et al.): Fourier-Bessel Hankel matrix
     "oimodeler",  # oimodeler (Meilland et al.): Fourier-space and image-based components
+    "casa",  # CASA (NRAO; casatools): its simulator and predict put known sources into a synthetic measurement set
     "mpol",  # MPoL (Czekala et al.): RML imaging, gridding, Fourier transforms
     "literature",  # published numbers reproduced from the authors' data (not a formula we transcribed: that is mathematics)
     "statistics",  # ensembles with a known distribution

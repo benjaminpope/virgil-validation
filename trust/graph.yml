@@ -515,6 +515,8 @@ nodes:
   crosscheck.elr: {layer: references}
   crosscheck.nrm: {layer: references}
   crosscheck.image_metrics: {layer: references}
+  crosscheck.alma: {layer: references, doc: alma_conventions.md}
+  external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
