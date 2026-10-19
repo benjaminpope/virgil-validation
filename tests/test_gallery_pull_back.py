@@ -35,7 +35,7 @@ def folder(tmp_path):
         dict(dataset="MJD 1", mjd=59000.2, dra_mas=1.0, ddec_mas=2.0, flux=0.5, flags=[]),
         dict(dataset="MJD 2", mjd=59010.2, dra_mas=1.5, ddec_mas=2.5, flux=0.5, flags=[flag])]))
     for n, z in ((2, -10.0), (3, -12.0)):
-        _write(run / "stages" / "search" / "bands" / f"band_{n}.json", dict(n=n, log_z=z, best=BEST, flipped=False, labels_free=False, chi2_red=1.0))
+        _write(run / "stages" / "search" / "bands" / f"band_{n}.json", dict(n=n, p_lo=10.0 * (n + 1), p_hi=10.0 * (n + 2), log_z=z, best=BEST, flipped=False, labels_free=False, chi2_red=1.0))
     return tmp_path / "hd_9312"
 
 
@@ -68,6 +68,9 @@ def test_a_band_file_that_is_not_the_pipelines_winner_is_an_error(folder):
         PB.summary_of(folder, json.loads((ROOT / "oidb" / "trackb" / "hd_9312.json").read_text()))
 
 
+WINDOW = (3.0, 3000.0)
+
+
 # --- the sky comparison. Positions are generated from hd_9312's tabulated orbit, so the match is exact by construction
 # (the paper's own residuals are ~0.1 mas, 3% of the separation, above crosscheck's 2% bar).
 
@@ -87,32 +90,32 @@ def hd9312():
     return r, best, t_ref, table
 
 
-@pytest.mark.validates("evidence", roots=["mathematics"])
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
 def test_an_orbit_on_the_measured_positions_is_the_same_sky_orbit(hd9312):
     r, best, t_ref, table = hd9312
-    rows, verdict = PB.sky_rows(best, t_ref, r, table, False, False, 1.0)
+    rows, verdict = PB.sky_rows(best, t_ref, r, table, WINDOW, False, False, 1.0)
     assert verdict == "SAME-SKY-ORBIT"
     assert rows[0]["ours"] < 1e-6
-    assert "band N=5 (rank 1" in rows[1]["note"]
+    assert "band N=5 (rank 1 of 2" in rows[1]["note"]
 
 
-@pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="control")
 def test_a_point_reflection_without_a_label_swap_is_not_agreement(hd9312):
     r, best, t_ref, table = hd9312
     reflected = dict(best, Omega=best["Omega"] + 180.0)  # (dRA, dDec) -> (-dRA, -dDec)
-    _, verdict = PB.sky_rows(reflected, t_ref, r, table, False, False, 1.0)
+    _, verdict = PB.sky_rows(reflected, t_ref, r, table, WINDOW, False, False, 1.0)
     assert verdict == "UNEXPLAINED-FLIP"
-    _, accepted = PB.sky_rows(reflected, t_ref, r, table, True, False, 1.0)
+    _, accepted = PB.sky_rows(reflected, t_ref, r, table, WINDOW, True, False, 1.0)
     assert accepted == "SAME-SKY-ORBIT"
 
 
-@pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="control")
 def test_another_alias_band_is_a_different_sky_orbit(hd9312):
     r, best, t_ref, table = hd9312
     far = dict(best, period=best["period"] * 2.5)
-    rows, verdict = PB.sky_rows(far, t_ref, r, table, False, False, None)
+    rows, verdict = PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, None)
     assert verdict == "DIFFERENT"  # without a raw chi2/N the paper is not blamed
-    assert PB.sky_rows(far, t_ref, r, table, False, False, 1.0)[1] == "REFERENCE-DISAGREES"
+    assert PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, 1.0)[1] == "REFERENCE-DISAGREES"
 
 
 def test_the_newest_run_folder_wins_by_time_not_by_name(tmp_path):
@@ -133,3 +136,17 @@ def test_an_unfinished_run_is_flagged_not_hidden(folder):
     _write(folder / "run" / "summary.json", s)
     out = PB.summary_of(folder, json.loads((ROOT / "oidb" / "trackb" / "hd_9312.json").read_text()))
     assert any(f["key"] == "incomplete" for f in out["blind"]["flags"])
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_the_period_row_says_where_the_published_period_ranked_or_that_it_is_outside_the_window(hd9312):
+    r, best, t_ref, table = hd9312
+    low = [dict(rank=0, n=9, p_lo=100.0, p_hi=200.0, delta_log_z=0.0)] + [
+        dict(rank=i, n=i, p_lo=0.0, p_hi=0.0, delta_log_z=-1.0 * i) for i in range(1, 11)] + [
+        dict(rank=11, n=5, p_lo=best["period"] - 1, p_hi=best["period"] + 1, delta_log_z=-30.0)]
+    note = PB.sky_rows(best, t_ref, r, low, WINDOW, False, False, 1.0)[0][-1]["note"]
+    assert "rank 12 of 12" in note  # below the tenth: the ranking's finding, not the window's
+    note = PB.sky_rows(best, t_ref, r, low[:-1], WINDOW, False, False, 1.0)[0][-1]["note"]
+    assert "no finite evidence" in note
+    note = PB.sky_rows(best, t_ref, r, low[:-1], (100.0, 3000.0), False, False, 1.0)[0][-1]["note"]
+    assert "outside the searched window" in note

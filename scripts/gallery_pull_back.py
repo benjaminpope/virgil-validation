@@ -75,9 +75,10 @@ def _bands(run):
     return sorted(out, key=lambda x: -x[0])
 
 
-def sky_rows(best, t_ref, record, band_table, flipped, labels_free, chi2_n):
+def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2_n):
     """Table rows and the verdict: the winning orbit against the paper's measured positions, and the paper's period
-    against the band ranking. The reference is used here only."""
+    against the band ranking. ``band_rows`` are all the bands with a finite evidence (not the short table of the pipeline's
+    summary), best first. The reference is used here only."""
     from crosscheck import skyplane as SP
 
     rows, verdict = [], None
@@ -96,12 +97,15 @@ def sky_rows(best, t_ref, record, band_table, flipped, labels_free, chi2_n):
                               f"{'point reflection' if sign < 0 else 'same orientation'}"))
     p_pub = (record.get("orbit") or {}).get("P_day", [None])[0]
     if p_pub:
-        hit = next((r for r in band_table if r["p_lo"] <= p_pub <= r["p_hi"]), None)
+        hit = next((r for r in band_rows if r["p_lo"] <= p_pub <= r["p_hi"]), None)
+        if hit:
+            where = f"band N={hit['n']} (rank {hit['rank'] + 1} of {len(band_rows)}, Δlog Z {hit['delta_log_z']:+.1f})"
+        elif p_range[0] <= p_pub <= p_range[1]:
+            where = "a searched band that gave no finite evidence"
+        else:
+            where = f"no band: it is outside the searched window {p_range[0]:.3g}-{p_range[1]:.3g} d"
         rows.append(dict(quantity="period (d)", ours=best["period"], err=None, pub=p_pub, pub_err=None, pull=None,
-                         status="REPORT",
-                         note="the published period lies in " + (
-                             f"band N={hit['n']} (rank {hit['rank'] + 1}, Δlog Z {hit['delta_log_z']:+.1f})"
-                             if hit else "no band of the searched window")))
+                         status="REPORT", note="the published period lies in " + where))
     return rows, verdict
 
 
@@ -132,7 +136,8 @@ def summary_of(folder, record):
     orbit = dict(t_ref=t_ref, map=_elements(winner["best"], t_ref), loss=-top, start="blind",
                  chi2_raw=raw_chi2, epoch_checks=checks, positions=positions,
                  modes=[dict(loss=-z, elements=_elements(b["best"], t_ref)) for z, b in bands[:N_MODES]])
-    rows, verdict = sky_rows(winner["best"], t_ref, record, table, bool(winner.get("flipped")),
+    band_rows = [dict(rank=i, n=b["n"], p_lo=b["p_lo"], p_hi=b["p_hi"], delta_log_z=z - top) for i, (z, b) in enumerate(bands)]
+    rows, verdict = sky_rows(winner["best"], t_ref, record, band_rows, search["p_range"], bool(winner.get("flipped")),
                              bool(winner.get("labels_free")), raw_chi2)
     flags = []
     delta = s["modes"]["delta_log_z"]  # winner minus runner-up, so >= 0 (the band table's own column is <= 0)

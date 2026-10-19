@@ -426,7 +426,7 @@
     "pub_err": null,
     "pull": null,
     "status": "REPORT",
-    "note": "the published period lies in no band of the searched window"
+    "note": "the published period lies in band N=20 (rank 30 of 200, \u0394log Z -9.1)"
    }
   ],
   "verdict": "DIFFERENT",

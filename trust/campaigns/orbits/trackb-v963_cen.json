@@ -399,7 +399,7 @@
     "pub_err": null,
     "pull": null,
     "status": "REPORT",
-    "note": "the published period lies in band N=58 (rank 6, \u0394log Z -3.4)"
+    "note": "the published period lies in band N=58 (rank 6 of 162, \u0394log Z -3.4)"
    }
   ],
   "verdict": "DIFFERENT",

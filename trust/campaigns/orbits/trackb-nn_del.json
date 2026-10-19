@@ -349,7 +349,7 @@
     "pub_err": null,
     "pull": null,
     "status": "REPORT",
-    "note": "the published period lies in band N=1 (rank 2, \u0394log Z -0.0)"
+    "note": "the published period lies in band N=1 (rank 2 of 138, \u0394log Z -0.0)"
    }
   ],
   "verdict": "SAME-SKY-ORBIT",

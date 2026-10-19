@@ -472,7 +472,7 @@
     "pub_err": null,
     "pull": null,
     "status": "REPORT",
-    "note": "the published period lies in no band of the searched window"
+    "note": "the published period lies in a searched band that gave no finite evidence"
    }
   ],
   "verdict": "DIFFERENT",
