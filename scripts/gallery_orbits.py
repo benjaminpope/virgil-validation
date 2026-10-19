@@ -80,10 +80,18 @@ def load_nights(slug, root, include_extra=False):
         if T.instrument(f) != inst:
             notes.append(f"{f.name}: {T.instrument(f)}, not the record's {inst}; left out")
         else:
-            items.append((f, T.mjd_of(f)))
+            mjd = T.mjd_of(f)
+            if np.isfinite(mjd):
+                items.append((f, mjd))
+            else:
+                notes.append(f"{f.name}: no OI_VIS2 time stamp; left out")
     nights, used = {}, {}
     for night, fs in group_nights(items):
-        d, _, dropped = T.load(fs)
+        try:
+            d, _, dropped = T.load(fs)
+        except ValueError as err:  # a night with no readable file is left out; MIN_NIGHTS decides
+            notes.append(f"MJD {night}: left out: {err}")
+            continue
         notes += [f"MJD {night}: dropped {x['file']}: {x.get('error', '')}" for x in dropped]
         nights[f"MJD {night}"] = d
         used[f"MJD {night}"] = [dict(file=f.name, sha256=sha256(f)) for f in fs if f.name not in {x["file"] for x in dropped}]

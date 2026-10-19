@@ -7,10 +7,10 @@ import pathlib
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-pytestmark = pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 
 AWAITING_TRACKB = {"ak_for", "hd188088", "hd210763", "hd41255", "hd70937", "hd_224974", "hd_9312", "kap_vel",
                    "ll_aqr", "nn_del", "omi_leo", "v963_cen"}
+EFFORT = {"n_candidates", "n_refine", "max_steps", "n_is", "num_warmup", "num_samples", "num_chains", "quicklook_execute"}
 PUBLISHED_KEYS = {"orbit", "epochs", "conventions", "reference_orbit", "reference_positions"}
 
 
@@ -22,10 +22,12 @@ def mod():
     return m
 
 
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
 def test_every_trackb_target_of_the_gallery_has_a_system(mod):
     assert AWAITING_TRACKB <= set(mod.slugs())
 
 
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
 def test_nights_split_at_ut_noon():
     import sys
 
@@ -36,15 +38,17 @@ def test_nights_split_at_ut_noon():
     assert [(n, sorted(f)) for n, f in nights] == [(58999, ["a", "d"]), (59000, ["b", "c"])]
 
 
-def test_the_driver_is_blind_to_the_published_solution():
-    """Solved problem: published orbit leaking into fits. The driver reads only the record's instrument, and passes
-    the pipeline no period, window, start or prior: every setting is virgil's default (``--quick`` only shrinks effort)."""
-    src = (ROOT / "scripts" / "gallery_orbits.py").read_text()
-    tree = ast.parse(src)
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_the_driver_is_blind_to_the_published_solution(mod):
+    """Solved problem: published orbit leaking into fits. The only settings the pipeline gets are effort-only keys
+    (``QUICK``) and ``quicklook_execute``; ``OrbitPipeline`` is called with ``output`` and ``**settings`` alone, and
+    the driver reads only the record's instrument."""
+    assert set(mod.QUICK) <= EFFORT
+    tree = ast.parse((ROOT / "scripts" / "gallery_orbits.py").read_text())
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "OrbitPipeline"]
+    assert len(calls) == 1
+    assert [k.arg for k in calls[0].keywords] == ["output", None]  # None: **settings
+    sets = [n for n in ast.walk(tree) if isinstance(n, ast.Subscript) and getattr(n.value, "id", "") == "settings"]
+    assert all(isinstance(s.slice, ast.Constant) and s.slice.value in EFFORT for s in sets)
     strings = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
     assert not (strings & PUBLISHED_KEYS)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute):
-            assert node.attr not in ("period_range", "a_range", "ecc_max", "primary_diam", "init")
-    keys = {k for k in __import__("re").findall(r"(\w+)=", src)}
-    assert not keys & {"period_range", "a_range", "ecc_max", "primary_diam", "init", "p_range"}
