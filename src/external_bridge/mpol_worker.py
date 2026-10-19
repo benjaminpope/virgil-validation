@@ -401,11 +401,14 @@ def asdf_vs_npz(task):
         res.update(
             u_max_abs=mx(ua - ub), v_max_abs=mx(va - vb), vis_max_abs=mx(za - zb), weight_max_abs=mx(wa - wb),
             u_max_rel=mx((ua - ub) / np.maximum(np.abs(ub), 1e-300)), weight_max_rel=mx((wa - wb) / np.maximum(np.abs(wb), 1e-300)),
-            vis_conj_max_abs=mx(za - np.conj(zb)), u_flip_max_abs=mx(ua + ub), u_ratio_median=float(np.median(np.abs(ua) / np.maximum(np.abs(ub), 1e-300))) if len(ua) else None,
+            vis_conj_max_abs=mx(za - np.conj(zb)), u_flip_max_abs=mx(ua + ub), v_flip_max_abs=mx(va + vb), u_ratio_median=float(np.median(np.abs(ua) / np.maximum(np.abs(ub), 1e-300))) if len(ua) else None,
         )
         for k in worst:
             worst[k] = max(worst[k], res[k] if k in res else 0.0)
         out["ddids"][str(d)] = res
+    # a ddid whose counts disagree (or with no npz) is skipped above, so say so in the summary
+    worst["n_mismatch_ddids"] = [int(d) for d, r in out["ddids"].items() if r["n_npz"] != r["n_asdf"]]
+    worst["key_mismatch_max"] = max([r.get("key_mismatch", 0) for r in out["ddids"].values()] + [0])
     out["worst"] = worst
     out["n_asdf_total"], out["n_npz_total"] = int(len(pts["u"])), int(sum(r["n_npz"] or 0 for r in out["ddids"].values()))
     return out

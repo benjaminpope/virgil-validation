@@ -260,8 +260,7 @@ finding, not corrected.
 `result.json`: `ddids` (keyed `"0"`..`"25"`), each `n_asdf`, `n_npz`, `matching`, `key_mismatch`, and, when the
 counts agree, `u_max_abs`, `v_max_abs` (wavelengths), `vis_max_abs` (Jy), `weight_max_abs`, `u_max_rel`,
 `weight_max_rel`, and the signatures of a convention difference: `vis_conj_max_abs` (|V_asdf − conj V_npz|:
-zero when the two differ by a conjugation), `u_flip_max_abs` (|u_asdf + u_npz|: zero when the sign of u
-differs), `u_ratio_median` (≈ 1; 10³ would be kilolambda). Also `worst` (maxima over ddids) and
+zero when the two differ by a conjugation), `u_flip_max_abs`, `v_flip_max_abs` (|u_asdf + u_npz|, likewise v: zero when the sign differs; a conjugation pairs with (u, v) → (−u, −v)), `u_ratio_median` (≈ 1; 10³ would be kilolambda). Also `worst` (maxima over ddids, plus `n_mismatch_ddids`: ddids with no npz or differing counts, which the maxima skip, and `key_mismatch_max`) and
 `n_asdf_total`, `n_npz_total`.
 
 ## The environment

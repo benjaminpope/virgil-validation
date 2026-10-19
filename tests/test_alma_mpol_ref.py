@@ -252,6 +252,13 @@ def test_objective_full_equals_the_one_batch_objective(reference):
     assert sparse["neg_log_likelihood"] == pytest.approx(n * np.log(2 * np.pi) - sum(sparse["sum_ln_weight_fit"]) + 0.5 * sparse["chi2_fit_total"], rel=1e-12)
     assert sum(sparse["n_ddid"]) == n and sparse["objective_R"] == pytest.approx(sparse["neg_log_likelihood"] + 2 * n * 1e-9 * sparse["entropy"])
     assert sparse["chi2_raw_total"] != sparse["chi2_fit_total"]
+    # S_M against MPoL's documented formula, sum I ln(I / p) / F_tot, from the exported tapered image
+    _run(dict(task="export_checkpoint", checkpoint=reference["chk"], out_npz=str(tmp / "exp.npz"), npix=NPIX), tmp)
+    img = np.load(tmp / "exp.npz")["image"]
+    s_m = np.sum(img * np.log(img / 1e-4)) / 0.253
+    assert sparse["entropy"] == pytest.approx(s_m, rel=1e-12)
+    assert sparse["loss_mpol"] == pytest.approx(sparse["neg_log_likelihood_avg"] + 1e-9 * sparse["entropy"], rel=1e-14)
+    assert sparse["neg_log_likelihood_avg"] == pytest.approx(sparse["neg_log_likelihood"] / (2 * n), rel=1e-14)
     record("objective_full -ln L (sparse) over the stride-1000 subsample", sparse["neg_log_likelihood"])
 
 
@@ -270,6 +277,11 @@ def test_asdf_vs_npz_agrees_on_an_export_of_the_subsample(reference):
     for d, r in res["ddids"].items():
         assert r["matching"] == "keys" and r["key_mismatch"] == 0, (d, r)
         assert r["u_max_rel"] < 1e-12 and r["vis_max_abs"] < 1e-12 and r["weight_max_rel"] < 1e-12, (d, r)
+        assert r["v_max_abs"] < 1e-12 * max(1.0, np.abs(reference["rows"][int(d)]["v"]).max()), (d, r)
+        # the convention signatures must be non-zero when the readers agree (two-sided partner of the control)
+        assert r["vis_conj_max_abs"] > 1e-3 and r["u_flip_max_abs"] > 0 and r["v_flip_max_abs"] > 0, (d, r)
+        assert r["u_ratio_median"] == pytest.approx(1.0, abs=1e-12), (d, r)
+    assert res["worst"]["n_mismatch_ddids"] == [] and res["worst"]["key_mismatch_max"] == 0
     record("asdf_vs_npz worst |du| (lambda), synthetic asdf", res["worst"]["u_max_abs"])
 
 
@@ -282,4 +294,18 @@ def test_asdf_vs_npz_reports_a_conjugation_and_does_not_fix_it(reference):
     res = _run(dict(task="asdf_vs_npz", asdf=reference["asdf_conj"], npz_dir=str(SUBSAMPLE)), reference["tmp"])
     assert res["worst"]["vis_max_abs"] > 1e-2
     for r in res["ddids"].values():
-        assert r["vis_conj_max_abs"] < 1e-12 and r["u_max_rel"] < 1e-12
+        assert r["vis_conj_max_abs"] < 1e-12 and r["u_max_rel"] < 1e-12 and r["v_max_abs"] < 1e-6
+
+
+@needs_subsample
+@needs_asdf
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+def test_asdf_vs_npz_summary_flags_a_missing_ddid(reference, tmp_path):
+    """With one ddid's npz absent, ``worst`` lists it in ``n_mismatch_ddids`` instead of looking clean."""
+    import shutil
+
+    for f in SUBSAMPLE.glob("ddid_*.npz"):
+        if f.name != "ddid_07.npz":
+            shutil.copy(f, tmp_path / f.name)
+    res = _run(dict(task="asdf_vs_npz", asdf=reference["asdf"], npz_dir=str(tmp_path)), reference["tmp"])
+    assert res["worst"]["n_mismatch_ddids"] == [7]
