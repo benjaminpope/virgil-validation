@@ -335,6 +335,34 @@ def residual_stats(data, model_v2, model_t3):
                 adjacent_corr_v2=float(np.corrcoef(zg[:, :-1].ravel(), zg[:, 1:].ravel())[0, 1]))
 
 
+def map_gain_stats(data, data_g, model_v2, model_t3):
+    """Residual statistics after the MAP gains of the fitted error model are subtracted (``--noise vlti``).
+
+    ``data_g`` is ``data`` under the vlti error model, so its V^2 errors e are the scaled ones and its gains cover the (frame, telescope)
+    and (frame, baseline) modes. In units of e the residual x has covariance ``I + L L^T`` per block of linked modes (L the modes' columns,
+    ``2 V^2 / e`` times their shapes times their widths); the conditional (MAP) gain estimate is ``L L^T C^-1 x`` and what is left is
+    ``C^-1 x``. The statistics are those of ``residual_stats`` on the quoted errors with that gain removed from the model, plus
+    ``chi2_v2_own`` = x^T C^-1 x per point: chi2 under the fitted covariance (gains marginalised), which is the fit's own V^2 chi2."""
+    g = data_g.gains
+    assert g.spanning is None, "modes that span frames are not used by the vlti error model"
+    e = np.asarray(data_g.d_vis, float)
+    x = (np.asarray(data.vis, float) - np.asarray(model_v2, float)) / e
+    jw = 2.0 * np.asarray(model_v2, float) / e
+    widths = np.asarray(g.widths_for(None), float)
+    rows, shapes, grp = np.asarray(g.rows), np.asarray(g.shapes, float), np.asarray(g.group)
+    xp = x.copy()
+    for b in range(rows.shape[0]):
+        ok = rows[b] < e.size
+        idx = rows[b][ok]
+        if idx.size == 0:
+            continue
+        local = shapes[b][ok] * jw[idx][:, None] * widths[grp[b]][None, :]
+        xp[idx] = np.linalg.solve(np.eye(idx.size) + local @ local.T, x[idx])
+    stats = residual_stats(data, np.asarray(model_v2, float) + e * (x - xp), model_t3)
+    stats["chi2_v2_own"] = float(np.mean(x * xp))
+    return stats
+
+
 def chi2r(model, data):
     r = np.asarray(whitened_residuals(model, data))
     return float(np.sum(r**2) / r.size), int(r.size)
