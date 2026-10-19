@@ -37,6 +37,18 @@ SHORT_ARC_NOTE = (
     "narrower than the band ranking here shows."
 )
 
+# Findings from reading a finished run by hand, shown on that system's tile (the run itself is not changed).
+NOTES = {
+    "hd_9312": (
+        "Diagnosis (2026-10-20, from the run's own reports): the period window (3.6-2864 d) contains the published 36.5 d. "
+        "The per-night position search agrees with the paper's positions on 4 of 10 nights (MJD 59191, 59498, 59819, 59907). "
+        "On 5 further nights (59523, 59538, 59817, 59877, 59904) the dRA is right but the dDec is off by 3-15 mas (a north-south "
+        "sidelobe; fitted separations 4.3-13.4 mas against the orbit's maximum of about 5.5 mas), and no night flag fired on them. "
+        "Raw chi2/N is 22-104 on every night, so the likelihood was tempered by 1/854 and the orbit-versus-single-star evidence "
+        "is only 2.4 nats. The long-period winner is therefore driven by wrong night positions, not by a missed window."
+    ),
+}
+
 
 def run_folders(results):
     """{slug: folder} of the newest ``gallery.json`` + ``run/summary.json`` per system under ``results``."""
@@ -137,6 +149,8 @@ def summary_of(folder, record):
     if s.get("status") != "complete":  # e.g. the CPU job aborted in NUTS (LLVM section-memory error) after the band search
         flags.append(dict(key="incomplete", text=f"The pipeline run did not finish (status {s.get('status')!r}): the band search is "
                                                  "reported, the posterior is not. Rerunning on a GPU node."))
+    if record["slug"] in NOTES:
+        flags.append(dict(key="note", text=NOTES[record["slug"]]))
     flags.append(dict(key="short-arc", text=SHORT_ARC_NOTE))
     blind = dict(
         alias_bands=table, flags=flags, table=rows, verdict=verdict, p_range=search["p_range"], n_bands=search["n_bands"],

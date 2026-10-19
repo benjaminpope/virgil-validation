@@ -399,6 +399,10 @@
     "text": "Pipeline checks warn: night_flags, alias_ambiguity, winner_flags, tempering, no_orbit, period_bound, stage_warnings."
    },
    {
+    "key": "note",
+    "text": "Diagnosis (2026-10-20, from the run's own reports): the period window (3.6-2864 d) contains the published 36.5 d. The per-night position search agrees with the paper's positions on 4 of 10 nights (MJD 59191, 59498, 59819, 59907). On 5 further nights (59523, 59538, 59817, 59877, 59904) the dRA is right but the dDec is off by 3-15 mas (a north-south sidelobe; fitted separations 4.3-13.4 mas against the orbit's maximum of about 5.5 mas), and no night flag fired on them. Raw chi2/N is 22-104 on every night, so the likelihood was tempered by 1/854 and the orbit-versus-single-star evidence is only 2.4 nats. The long-period winner is therefore driven by wrong night positions, not by a missed window."
+   },
+   {
     "key": "short-arc",
     "text": "Short-arc seeding (virgil#425) was not in this run: with few nights far apart the cycle count may be narrower than the band ranking here shows."
    }
