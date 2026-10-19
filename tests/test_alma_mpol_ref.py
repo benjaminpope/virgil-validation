@@ -37,6 +37,7 @@ WORKER_DIR = ROOT / "src" / "external_bridge"
 SUBSAMPLE = pathlib.Path("~/data/alma_imlup/subsample_1000").expanduser()
 OBSID_DICT = {0: [0, 1, 2, 3, 4], 1: [5, 6, 7, 8, 9, 10], 2: [11, 12], 3: [13, 14], 4: [15, 16, 17], 5: [18, 19, 20, 21], 6: [22, 23, 24, 25]}
 C = 299792458.0
+ARCSEC = np.pi / 180.0 / 3600.0
 NPIX = 128  # the example's 1028 is used once, for the export (no NuFFT)
 
 
@@ -141,17 +142,34 @@ def test_export_checkpoint_round_trips_a_saved_net(tmp_path):
 
 
 @pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
-def test_exported_image_axes_put_east_left_and_north_up(tmp_path):
-    """A base-cube spike at packed (row 3, column 5) is a source 3 pixels North and 5 East of the phase
-    centre in MPoL's convention (``GridCoords.l_centers``: column c is l = (c - N/2) dx, towards East). In
-    the export, rows run North to South and columns East to West, and the axes say so."""
-    make_checkpoint(tmp_path / "chk.pt", tmp_path / "truth.npz", NPIX, spike=(3, 5))
+def test_exported_image_axes_are_the_sky_the_forward_model_sees(tmp_path):
+    """A base-cube spike at packed (row 3, column 5) is, in the export, the brightest pixel at
+    (l, m) = (``l_east_arcsec[col]``, ``m_north_arcsec[row]``), East left and North up. The axes are tied
+    to MPoL's own forward model, not to the indexing that wrote them: the example's NuFFT visibilities of the
+    spike have the phase of a point source there, V = F exp(-2 pi i (u l + m v)) (Part 1's convention, l East,
+    m North) with a real positive taper, to the NuFFT's accuracy; the mirrored position, the control, is
+    several radians off."""
+    truth = make_checkpoint(tmp_path / "chk.pt", tmp_path / "truth.npz", NPIX, spike=(3, 5))
     _run(dict(task="export_checkpoint", checkpoint=str(tmp_path / "chk.pt"), out_npz=str(tmp_path / "chk.npz"), npix=NPIX), tmp_path)
     z = np.load(tmp_path / "chk.npz")
     row, col = np.unravel_index(np.argmax(z["image"]), z["image"].shape)
-    assert z["m_north_arcsec"][row] == pytest.approx(3 * 0.005) and z["l_east_arcsec"][col] == pytest.approx(5 * 0.005)
     assert row < NPIX // 2 and col < NPIX // 2  # North of centre is the top half; East of centre the left half
     assert z["m_north_arcsec"][0] > z["m_north_arcsec"][-1] and z["l_east_arcsec"][0] > z["l_east_arcsec"][-1]
+    l, m = z["l_east_arcsec"][col] * ARCSEC, z["m_north_arcsec"][row] * ARCSEC
+    rng = np.random.default_rng(1)
+    u, v = rng.uniform(-3e6, 3e6, 40), rng.uniform(-3e6, 3e6, 40)
+    np.savez(
+        tmp_path / "spike.npz", u=u, v=v, data_re=np.zeros(40), data_im=np.zeros(40), weight=np.ones(40), ddid=np.zeros(40, int),
+        log10_sigma=truth["log10_sigma"], log10_amp=truth["log10_amp"], delta_ra=truth["delta_ra"], delta_dec=truth["delta_dec"], base_cube=truth["base_cube"],
+    )
+    _run(dict(task="objective", npz=str(tmp_path / "spike.npz"), out_npz=str(tmp_path / "spike_out.npz"), grad=False, npix=NPIX), tmp_path)
+    vis = (lambda o: o["vis_raw_re"] + 1j * o["vis_raw_im"])(np.load(tmp_path / "spike_out.npz"))
+    resid = np.angle(vis * np.exp(2j * np.pi * (u * l + v * m)))  # phase left after removing the point source at (l, m)
+    assert np.max(np.abs(resid)) < 1e-2
+    flipped = np.angle(vis * np.exp(2j * np.pi * (-u * l + v * m)))  # control: l towards West
+    assert np.max(np.abs(flipped)) > 0.5
+    # the flux the taper leaves is the image's: the zero-spacing amplitude is of order the image flux
+    assert z["image"].sum() * (0.005) ** 2 == pytest.approx(5.0067 * 0.005**2, rel=1e-3)
 
 
 # ------------------------------------------------------------------ data from the subsample
