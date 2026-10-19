@@ -7,6 +7,9 @@
 # CASA (casatools, BSD-3-Clause-like NRAO licence) for ALMA measurement sets: `alma`, in
 # .venv-alma on Python 3.11 (casatools wheels), with measures data from the casadata
 # package inside the venv (casasiteconfig.py, found through CASASITECONFIG by alma_worker.py).
+# `mpol` also clones MPoL-dev/examples at a pinned commit into .external/mpol-examples (the IM Lup
+# multi-EB example's own Net is what tests/test_alma_mpol.py calls); MPOL_EXAMPLES overrides the
+# location in the tests, MPOL_PYTHON the interpreter.
 # CANDID (no PyPI release) has scripts/setup_candid.sh.
 #   bash scripts/setup_external.sh [ehtim] [mpol] [fouriever] [orbitize] [alma]
 set -euo pipefail
@@ -45,6 +48,11 @@ data_auto_update = False
 nologfile = True
 logfile = os.devnull
 EOF
+  fi
+  if [ "$name" = mpol ]; then
+    ex="$ROOT/.external/mpol-examples"
+    [ -d "$ex/.git" ] || git clone -q https://github.com/MPoL-dev/examples "$ex"
+    git -C "$ex" checkout -q 5a7c3f0b373f62341ca4baf5869f95e916bbabb3
   fi
   echo "$spec in $ROOT/.venv-$name"
 done

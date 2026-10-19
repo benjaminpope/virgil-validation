@@ -430,3 +430,29 @@
   evidence: [tests/test_polar_disk_vs_codes.py::test_vis_r_single_gap_profile_matches_its_two_gap_form]
   status: to-raise
 
+- id: P11
+  title: MPoL's log_likelihood docstring writes the normalisation as a sum of w_i, while the code (correctly) uses the sum of ln w_i
+  objects: [mpol]
+  ruling: external:mpol
+  kind: 'documentation (mpol 0.3.1, losses.log_likelihood: the code is -N ln 2 pi + sum ln w - chi2/2, which our tests pin to 1e-12)'
+  referee: mathematics (the complex Gaussian log density, written out in numpy, formula_nll)
+  evidence: [tests/test_alma_mpol.py::test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol]
+  status: to-raise
+
+- id: D11
+  title: MPoL's image centre is pixel N/2 of the unpacked cube; virgil's is ((N-1)/2, (N-1)/2), so the two scenes differ by half a pixel in both axes
+  objects: [mpol, virgil.models.Image]
+  ruling: definition
+  kind: 'both right (the map is virgil = unpacked[::-1, ::-1] with dra = ddec = -pixel/2; with it the forward models agree to the NuFFT error, without it they miss by 1e-2)'
+  referee: mathematics (exact DFT of the image, src/crosscheck/alma.py)
+  evidence: [tests/test_alma_mpol.py::test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model, tests/test_alma_mpol.py::test_control_a_wrong_pixel_map_misses_mpol_by_far_more_than_the_matched_map_does]
+  status: documented
+
+- id: P12
+  title: MPoL's default NuFFT (torchkbnufft table interpolation) is 6e-4 from the exact transform of its image at 256 pixels, and its taper buffer is float32
+  objects: [mpol]
+  ruling: external:mpol
+  kind: 'precision (relative L2 6.3e-4 against the exact DFT on 10^4 IM Lup uv points; with sparse_matrices=True 1.6e-6; virgil.radio''s nufft is 1e-14; the float32 taper_2D buffer of GaussConvFourier adds about 3.5e-8)'
+  referee: mathematics (exact DFT of the image, src/crosscheck/alma.py)
+  evidence: [tests/test_alma_mpol.py::test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model, tests/test_alma_mpol.py::test_mpol_with_its_accurate_nufft_agrees_to_1e_5]
+  status: documented
