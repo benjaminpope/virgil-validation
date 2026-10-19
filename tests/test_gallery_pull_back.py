@@ -28,7 +28,7 @@ def folder(tmp_path):
     _write(tmp_path / "hd_9312" / "gallery.json", dict(instrument="GRAVITY", virgil_commit="abc", validation_commit="def"))
     table = [dict(rank=0, n=2, period=100.0, p_lo=80.0, p_hi=120.0, log_z=-10.0, delta_log_z=0.0, p=0.6, chi2_red=1.0, labels_free=False, flags=[]),
              dict(rank=1, n=3, period=60.0, p_lo=50.0, p_hi=79.0, log_z=-12.0, delta_log_z=-2.0, p=0.4, chi2_red=1.1, labels_free=False, flags=[])]
-    _write(run / "summary.json", dict(status="warn", worst_check="warn", chi2=dict(best_orbit_reduced=1.0), checks=[dict(name="r_hat", status="fail"), dict(name="ess", status="warn")],
+    _write(run / "summary.json", dict(status="complete", worst_check="warn", chi2=dict(best_orbit_reduced=1.0), checks=[dict(name="r_hat", status="fail"), dict(name="ess", status="warn")],
            modes=dict(table=table, delta_log_z=2.0, winner=dict(n=2), runner_up=dict(n=3), no_orbit=dict(verdict="orbit"))))
     _write(run / "stages" / "search" / "report.json", dict(t_ref=59000.0, p_range=[1, 400], n_bands=9, primary_diam=None))
     _write(run / "stages" / "epochs" / "report.json", dict(nights=[
@@ -125,3 +125,11 @@ def test_the_newest_run_folder_wins_by_time_not_by_name(tmp_path):
         (d / "run" / "summary.json").write_text("{}")
         os.utime(d / "run" / "summary.json", (when, when))
     assert PB.run_folders(tmp_path)["nn_del"].parent.name == "run-9"
+
+
+def test_an_unfinished_run_is_flagged_not_hidden(folder):
+    s = json.loads((folder / "run" / "summary.json").read_text())
+    s["status"] = "running"
+    _write(folder / "run" / "summary.json", s)
+    out = PB.summary_of(folder, json.loads((ROOT / "oidb" / "trackb" / "hd_9312.json").read_text()))
+    assert any(f["key"] == "incomplete" for f in out["blind"]["flags"])

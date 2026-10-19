@@ -134,6 +134,9 @@ def summary_of(folder, record):
         names = [c["name"] for c in s["checks"] if c["status"] == status]
         if names:
             flags.append(dict(key=f"checks-{status}", text=f"Pipeline checks {word}: " + ", ".join(names) + "."))
+    if s.get("status") != "complete":  # e.g. the CPU job aborted in NUTS (LLVM section-memory error) after the band search
+        flags.append(dict(key="incomplete", text=f"The pipeline run did not finish (status {s.get('status')!r}): the band search is "
+                                                 "reported, the posterior is not. Rerunning on a GPU node."))
     flags.append(dict(key="short-arc", text=SHORT_ARC_NOTE))
     blind = dict(
         alias_bands=table, flags=flags, table=rows, verdict=verdict, p_range=search["p_range"], n_bands=search["n_bands"],

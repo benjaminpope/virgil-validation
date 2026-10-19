@@ -1,0 +1,554 @@
+{
+ "collection_id": "trackb-hd188088",
+ "target": "HD 188088",
+ "instrument": "VLTI/GRAVITY",
+ "provenance": {
+  "virgil_commit": "e3e1f2d33fea21e501e4fb0e1282e356f8d0bdce",
+  "validation_commit": "461723bf414cf8a6e66e8d1efb93cc8eddceee30"
+ },
+ "orbit": {
+  "t_ref": 59705.3,
+  "map": {
+   "period_day": 46.81684766,
+   "t_peri_mjd": 59700.78266,
+   "ecc": 0.685106152,
+   "inc_deg": 99.07130776,
+   "omega_deg": 240.9024402,
+   "Omega_deg": 111.8141861,
+   "a_mas": 21.58320501
+  },
+  "loss": 3806.024596,
+  "start": "blind",
+  "chi2_raw": 36.54589761,
+  "epoch_checks": [
+   {
+    "name": "MJD 59442",
+    "reasons": [
+     "flagged: chi2-high: raw chi2/N 739.6 exceeds 364.6 (3 x max(median night 121.5, 1))"
+    ]
+   }
+  ],
+  "positions": [
+   {
+    "name": "MJD 59439",
+    "mjd": 59440.23996,
+    "dra": 22.70736313,
+    "ddec": 1.039144487,
+    "cov": null,
+    "flux": 0.9157271819,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59441",
+    "mjd": 59442.22174,
+    "dra": 28.4210133,
+    "ddec": -1.927319578,
+    "cov": null,
+    "flux": 0.9544471315,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59442",
+    "mjd": 59443.22315,
+    "dra": 21.18679389,
+    "ddec": -6.485652507,
+    "cov": null,
+    "flux": 0.9429144766,
+    "note": "chi2-high",
+    "alias": null
+   },
+   {
+    "name": "MJD 59462",
+    "mjd": 59463.16087,
+    "dra": -8.5827727,
+    "ddec": 5.201687349,
+    "cov": null,
+    "flux": 0.9356218566,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59492",
+    "mjd": 59493.06721,
+    "dra": 15.07352234,
+    "ddec": -0.4834467115,
+    "cov": null,
+    "flux": 0.9357489607,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59728",
+    "mjd": 59729.38935,
+    "dra": 12.35184297,
+    "ddec": 0.6791973702,
+    "cov": null,
+    "flux": 0.9377007639,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59797",
+    "mjd": 59798.26523,
+    "dra": 14.12857047,
+    "ddec": -5.981402552,
+    "cov": null,
+    "flux": 0.9433635265,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59804",
+    "mjd": 59805.26408,
+    "dra": 23.3593325,
+    "ddec": -6.92376022,
+    "cov": null,
+    "flux": 0.9340175024,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59819",
+    "mjd": 59820.13859,
+    "dra": 15.79431586,
+    "ddec": -0.717269721,
+    "cov": null,
+    "flux": 0.9342262884,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59820",
+    "mjd": 59821.20103,
+    "dra": 14.6022809,
+    "ddec": -0.2192356362,
+    "cov": null,
+    "flux": 0.9178582746,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59822",
+    "mjd": 59823.21811,
+    "dra": 12.1309555,
+    "ddec": 0.7839025986,
+    "cov": null,
+    "flux": 0.9143113986,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59823",
+    "mjd": 59824.16298,
+    "dra": 10.80860079,
+    "ddec": 1.326767874,
+    "cov": null,
+    "flux": 0.9322164844,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59824",
+    "mjd": 59825.21034,
+    "dra": 9.41322922,
+    "ddec": 1.80998898,
+    "cov": null,
+    "flux": 0.932619754,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59825",
+    "mjd": 59826.20274,
+    "dra": 8.026768013,
+    "ddec": 2.359023991,
+    "cov": null,
+    "flux": 0.9399629977,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59849",
+    "mjd": 59850.10924,
+    "dra": 22.21784166,
+    "ddec": -7.056877355,
+    "cov": null,
+    "flux": 0.9314923811,
+    "note": null,
+    "alias": null
+   },
+   {
+    "name": "MJD 59878",
+    "mjd": 59879.04821,
+    "dra": -1.176341554,
+    "ddec": 4.850962331,
+    "cov": null,
+    "flux": 0.9395420241,
+    "note": null,
+    "alias": null
+   }
+  ],
+  "modes": [
+   {
+    "loss": 3806.024596,
+    "elements": {
+     "period_day": 46.81684766,
+     "t_peri_mjd": 59700.78266,
+     "ecc": 0.685106152,
+     "inc_deg": 99.07130776,
+     "omega_deg": 240.9024402,
+     "Omega_deg": 111.8141861,
+     "a_mas": 21.58320501
+    }
+   },
+   {
+    "loss": 4304.697482,
+    "elements": {
+     "period_day": 93.65662214,
+     "t_peri_mjd": 59777.72544,
+     "ecc": 0.007130719598,
+     "inc_deg": 100.3574153,
+     "omega_deg": 247.0353336,
+     "Omega_deg": 104.9806048,
+     "a_mas": 24.31261296
+    }
+   },
+   {
+    "loss": 4629.908456,
+    "elements": {
+     "period_day": 41.60198799,
+     "t_peri_mjd": 59714.61561,
+     "ecc": 0.7799864435,
+     "inc_deg": 98.36333622,
+     "omega_deg": 246.4142665,
+     "Omega_deg": 113.7112629,
+     "a_mas": 23.28814369
+    }
+   },
+   {
+    "loss": 4805.470978,
+    "elements": {
+     "period_day": 46.19034186,
+     "t_peri_mjd": 59693.95758,
+     "ecc": 0.7967397153,
+     "inc_deg": 112.802283,
+     "omega_deg": 213.6692912,
+     "Omega_deg": 118.1526016,
+     "a_mas": 14.77180452
+    }
+   },
+   {
+    "loss": 4863.686661,
+    "elements": {
+     "period_day": 74.92127264,
+     "t_peri_mjd": 59729.8159,
+     "ecc": 0.334665859,
+     "inc_deg": 97.73603253,
+     "omega_deg": 298.5747427,
+     "Omega_deg": 100.7394227,
+     "a_mas": 23.67692064
+    }
+   },
+   {
+    "loss": 4908.414748,
+    "elements": {
+     "period_day": 30.50438061,
+     "t_peri_mjd": 59711.72345,
+     "ecc": 0.9,
+     "inc_deg": 99.18123999,
+     "omega_deg": 247.5914087,
+     "Omega_deg": 116.3375349,
+     "a_mas": 22.36314862
+    }
+   }
+  ]
+ },
+ "blind": {
+  "alias_bands": [
+   {
+    "rank": 0,
+    "n": 9,
+    "period": 46.81684766,
+    "p_lo": 46.19034186,
+    "p_hi": 51.62449972,
+    "log_z": -3806.024596,
+    "delta_log_z": 0.0,
+    "p": 1.0,
+    "chi2_red": 36.64595642,
+    "labels_free": false,
+    "flags": [
+     "poor-fit"
+    ]
+   },
+   {
+    "rank": 1,
+    "n": 5,
+    "period": 93.65662214,
+    "p_lo": 79.78331776,
+    "p_hi": 97.51294392,
+    "log_z": -4304.697482,
+    "delta_log_z": -498.6728868,
+    "p": 2.686067796e-217,
+    "chi2_red": 5172.487014,
+    "labels_free": false,
+    "flags": [
+     "hessian-not-positive-definite",
+     "near-prior-bound"
+    ]
+   },
+   {
+    "rank": 2,
+    "n": 11,
+    "period": 41.60198799,
+    "p_lo": 38.15723893,
+    "p_hi": 41.79126168,
+    "log_z": -4629.908456,
+    "delta_log_z": -823.8838603,
+    "p": 0.0,
+    "chi2_red": 7990.61799,
+    "labels_free": false,
+    "flags": [
+     "laplace-is-differ",
+     "low-ess"
+    ]
+   },
+   {
+    "rank": 3,
+    "n": 10,
+    "period": 46.19034186,
+    "p_lo": 41.79126168,
+    "p_hi": 46.19034186,
+    "log_z": -4805.470978,
+    "delta_log_z": -999.4463825,
+    "p": 0.0,
+    "chi2_red": 5973.81769,
+    "labels_free": false,
+    "flags": [
+     "hessian-not-positive-definite",
+     "hessian-singular",
+     "near-prior-bound"
+    ]
+   },
+   {
+    "rank": 4,
+    "n": 6,
+    "period": 74.92127264,
+    "p_lo": 67.50896118,
+    "p_hi": 79.78331776,
+    "log_z": -4863.686661,
+    "delta_log_z": -1057.662065,
+    "p": 0.0,
+    "chi2_red": 6283.96191,
+    "labels_free": false,
+    "flags": [
+     "laplace-is-differ",
+     "low-ess"
+    ]
+   },
+   {
+    "rank": 5,
+    "n": 14,
+    "period": 30.50438061,
+    "p_lo": 30.26263777,
+    "p_hi": 32.50431464,
+    "log_z": -4908.414748,
+    "delta_log_z": -1102.390152,
+    "p": 0.0,
+    "chi2_red": 7235.73748,
+    "labels_free": false,
+    "flags": [
+     "near-prior-bound",
+     "laplace-is-differ",
+     "low-ess"
+    ]
+   },
+   {
+    "rank": 6,
+    "n": 15,
+    "period": 28.60602558,
+    "p_lo": 28.31020953,
+    "p_hi": 30.26263777,
+    "log_z": -4918.312836,
+    "delta_log_z": -1112.28824,
+    "p": 0.0,
+    "chi2_red": 6710.187603,
+    "labels_free": false,
+    "flags": [
+     "near-prior-bound",
+     "low-ess"
+    ]
+   },
+   {
+    "rank": 7,
+    "n": 4,
+    "period": 106.9163644,
+    "p_lo": 97.51294392,
+    "p_hi": 125.373785,
+    "log_z": -4928.336939,
+    "delta_log_z": -1122.312343,
+    "p": 0.0,
+    "chi2_red": 7075.185623,
+    "labels_free": false,
+    "flags": [
+     "near-prior-bound",
+     "laplace-is-differ",
+     "low-ess"
+    ]
+   },
+   {
+    "rank": 8,
+    "n": 19,
+    "period": 23.35310634,
+    "p_lo": 22.50298706,
+    "p_hi": 23.71936474,
+    "log_z": -4983.661587,
+    "delta_log_z": -1177.636992,
+    "p": 0.0,
+    "chi2_red": 4852.489709,
+    "labels_free": false,
+    "flags": [
+     "near-prior-bound",
+     "laplace-is-differ",
+     "low-ess"
+    ]
+   },
+   {
+    "rank": 9,
+    "n": 13,
+    "period": 33.32993857,
+    "p_lo": 32.50431464,
+    "p_hi": 35.10465981,
+    "log_z": -5017.218362,
+    "delta_log_z": -1211.193766,
+    "p": 0.0,
+    "chi2_red": 10702.45537,
+    "labels_free": false,
+    "flags": [
+     "hessian-not-positive-definite",
+     "near-prior-bound"
+    ]
+   }
+  ],
+  "flags": [
+   {
+    "key": "checks-fail",
+    "text": "Pipeline checks failed: chi2."
+   },
+   {
+    "key": "checks-warn",
+    "text": "Pipeline checks warn: night_flags, tempering, stage_warnings."
+   },
+   {
+    "key": "short-arc",
+    "text": "Short-arc seeding (virgil#425) was not in this run: with few nights far apart the cycle count may be narrower than the band ranking here shows."
+   }
+  ],
+  "table": [
+   {
+    "quantity": "sky rms vs the paper's positions (mas)",
+    "ours": 0.03110860029,
+    "err": null,
+    "pub": 0.0,
+    "pub_err": null,
+    "pull": null,
+    "status": "REPORT",
+    "note": "SAME-SKY-ORBIT; 16 epochs; 0.2% of the mean separation; same orientation"
+   },
+   {
+    "quantity": "period (d)",
+    "ours": 46.81684766,
+    "err": null,
+    "pub": 46.81614,
+    "pub_err": null,
+    "pull": null,
+    "status": "REPORT",
+    "note": "the published period lies in band N=9 (rank 1, \u0394log Z +0.0)"
+   }
+  ],
+  "verdict": "SAME-SKY-ORBIT",
+  "p_range": [
+   2.412757145,
+   1755.232991
+  ],
+  "n_bands": 183,
+  "flagged_nights": [
+   "MJD 59442"
+  ],
+  "checks": [
+   {
+    "name": "chi2",
+    "status": "fail"
+   },
+   {
+    "name": "night_flags",
+    "status": "warn"
+   },
+   {
+    "name": "labels_free",
+    "status": "pass"
+   },
+   {
+    "name": "bands_failed",
+    "status": "pass"
+   },
+   {
+    "name": "alias_ambiguity",
+    "status": "pass"
+   },
+   {
+    "name": "winner_flags",
+    "status": "pass"
+   },
+   {
+    "name": "tempering",
+    "status": "warn"
+   },
+   {
+    "name": "primary_resolved",
+    "status": "pass"
+   },
+   {
+    "name": "no_orbit",
+    "status": "pass"
+   },
+   {
+    "name": "period_bound",
+    "status": "pass"
+   },
+   {
+    "name": "prior_bound",
+    "status": "pass"
+   },
+   {
+    "name": "r_hat",
+    "status": "pass"
+   },
+   {
+    "name": "ess",
+    "status": "pass"
+   },
+   {
+    "name": "divergences",
+    "status": "pass"
+   },
+   {
+    "name": "mode_converged",
+    "status": "pass"
+   },
+   {
+    "name": "stage_warnings",
+    "status": "warn"
+   }
+  ],
+  "no_orbit": {
+   "delta_log_z": 1467.961669,
+   "log_like_single_star": -5273.986265,
+   "threshold": 10.0,
+   "verdict": "orbit"
+  },
+  "primary_diam": "fit",
+  "pipeline_status": "complete"
+ }
+}
