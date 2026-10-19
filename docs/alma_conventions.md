@@ -143,6 +143,10 @@ check uses every row.
 | 24 | 6 | 16 | 125.000 | 6.048 | 245.956–247.831 | 356,929 | 4,997,006 | 4,998 | 2,245,194 | 1.991 ± 0.001 |
 | 25 | 6 | 8 | 117.188 | 6.048 | 230.117–230.937 | 356,929 | 2,855,432 | 2,856 | 1,282,968 | 2.081 ± 0.001 |
 
+Every ddid of this MS has no `WEIGHT_SPECTRUM` column in use: the reader took
+`WEIGHT` for all 26 (the `weight_source` field of `info`), so the table does not
+depend on the `WEIGHT_SPECTRUM` branch.
+
 Reading the ŝ column: the short-baseline EBs 0–4 give ŝ = 1.05–1.15; the
 long-baseline EB 5 gives 1.66–1.75 and EB 6 gives 1.99–2.08. ŝ overestimates
 the weight scale wherever the sky or the atmospheric phase changes within 6 s,
