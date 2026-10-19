@@ -20,7 +20,9 @@ The likelihood is now an exact NUFFT on the visibilities, using nufftax
 **Sources:**
 
 - A100 timings: ozstar_scripts#35, job 18762629 (`results/finufft_plans/out/18762629/combined.md`, f32 jitted value + grad of Σ|V|², in ms).
-- Job 18819744 (A100 threshold scan) is still running. **Placeholder:** its numbers go here when it finishes.
+- A100 threshold scan: job 18819744 (jax 0.10.2, nufftax 0.6.1, value + grad, ms). At 1024² in f32: 0.517 (10² points), 0.523 (10³), 0.543 (10⁴), 0.571 (3×10⁴), 0.699 (10⁵). That confirms ≈ 0.55 ms fixed + ≈ 1.7 ns/point.
+  In f64 at eps 1e-12: 1.08 ms floor, 1.85 ms at 10⁵, ≈ 7.7 ns/point, so an f64 check at 4×10⁷ points costs ≈ 0.3 s.
+  virgil#426's final `ft="auto"` rules (nufftax when M ≥ 3000 and side ≥ 128 on GPU; M ≥ max(500, 2N) and side ≥ 64 on CPU) are far below ALMA sizes, so `"auto"` always picks nufftax here.
 - M1 Max CPU timings: the scans of 2026-10-19 in the #426 session. The fixed cost varied 2–4× between runs.
 - MPoL code: MPoL `main` at 8850b483, and MPoL-dev/examples `04-IMLup-multi-EB`.
 
@@ -304,7 +306,7 @@ metrics stay valid because both methods share it.
   too coarse for cross-validation and evidence differences.
 - uv in f32 is fine: 11.5 Mλ has a resolution of ≈ 0.7 λ.
 - f64 nufftax at eps 1e-12 roughly doubles ns, so it costs about 4× the
-  memory. Keep it for checks.
+  memory and ≈ 4.5× the per-point time (job 18819744). Keep it for checks.
 
 **Recommended defaults:**
 
@@ -532,4 +534,3 @@ Still to do:
   exoALMA II (Loomis et al. 2025, arXiv:2504.19870); not yet checked.
 - Check the Fessler et al. 2005 citation on ADS or Crossref, and IM Lup's
   mm spectral index (for the α decision).
-- Fill the job 18819744 placeholder in the revision section.
