@@ -649,6 +649,7 @@ def flags_of(tile, summary):
     rhat = worst_rhat(summary)
     if rhat is not None and rhat > RHAT_MAX:
         out.append(dict(key="nonconverged", text=f"NUTS did not converge (r̂ up to {rhat:.0f}); posterior values unreliable"))
+    out.extend((summary or {}).get("blind", {}).get("flags", []))  # gallery_pull_back: alias ambiguity, no-orbit, short arc
     if tile["kind"] == "orbit" and orb:
         if orb.get("start") == "published":
             out.append(dict(key="provisional", text=PROVISIONAL.format(why="seeded from the published orbit")))
@@ -692,6 +693,9 @@ def build_target(tile, ref, summary, rows, manifest=None):
                 d["note"] = e["note"]
             t["epochs"].append(d)
         t["table"] = table_of(rows) if ref else []
+        if summary.get("blind"):  # blind pipeline runs: their rows are written by gallery_pull_back
+            t["table"] = summary["blind"]["table"]
+            t["alias_bands"] = summary["blind"]["alias_bands"]
         orb = summary.get("orbit")
         if tile["kind"] == "orbit" and orb:
             el = _our_elements(orb)
