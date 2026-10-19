@@ -28,43 +28,43 @@ import postagb_imaging as pi  # noqa: E402  (sets the JAX environment before jax
 
 CELLS = {  # label: (noise, mean) -> file-name suffix of postagb_imaging
     "current / blob": "", "current / flat": "_flat", "vlti / blob": "_vlti", "vlti / flat": "_vlti_flat"}
-STRATS = ("mem", "gp-iso", "gp-polar")
+STRATS = ("mem", "gp-iso", "gp-polar")  # the IW Car 2 x 2
+STRATS_ALL = ("mem", "gp-iso", "gp-aniso", "gp-polar")  # every target
 
 
 residual_stats = pi.residual_stats
 
 
-def cell_row(out, strat, suffix, quoted):
-    """One cell of the table for one strategy, from the saved image / compare files; None if the fit has not been run."""
-    key = f"IW_Car_{strat}{suffix.replace('_flat', '') if strat == 'mem' else suffix}"  # mem has no GP mean
-    img, cmp_, npz = out / f"{key}_image.json", out / f"{key}_compare.json", out / f"{key}_image.npz"
+def cell_row(base, target, strat, suffix):
+    """One cell of the table for one strategy of one target, from the saved image / compare files; None if the fit has not been run.
+
+    The residual statistics are those saved with the fit (``resid`` in the image json, on the quoted errors)."""
+    key = f"{target}_{strat}{suffix.replace('_flat', '') if strat == 'mem' else suffix}"  # mem has no GP mean
+    img, cmp_ = base / f"{key}_image.json", base / f"{key}_compare.json"
     if not (img.exists() and cmp_.exists()):
         return None
-    i, c, z = json.load(open(img)), json.load(open(cmp_)), np.load(npz)
-    r = residual_stats(quoted, z["model_v2"], z["model_t3"])
+    i, c = json.load(open(img)), json.load(open(cmp_))
+    r = i.get("resid") or {}
+    nan = float("nan")
     hyper = {k: i[k] for k in ("gp_sigma", "gp_length_mas", "gp_length_r_mas", "gp_length_theta") if k in i}
-    return dict(strategy=strat, hyper=hyper, on_edge=i.get("gp_on_edge"), log_evidence=i.get("log_evidence"), ncc=c["ncc_zero_shift"],
-                ncc_best_control=max(c["ncc_controls"].values()), f_env_pct=i["f_env_pct"], f_bg_pct=i.get("f_bg_pct"),
-                bg_index=i.get("bg_index"), bound_warnings=i.get("bound_warnings"), env_index=i.get("env_index"),
-                chi2_fit=i["chi2_per_point"], seconds=i["seconds"], **r)
+    return dict(strategy=strat, hyper=hyper, on_edge=i.get("gp_on_edge"), extended=i.get("gp_grid_extended"), log_evidence=i.get("log_evidence"),
+                ncc=c["ncc_zero_shift"], ncc_best_control=max(c["ncc_controls"].values()), f_env_pct=i["f_env_pct"], f_bg_pct=i.get("f_bg_pct"),
+                bg_index=i.get("bg_index"), bound_warnings=i.get("bound_warnings"), env_index=i.get("env_index"), chi2_fit=i["chi2_per_point"],
+                seconds=i["seconds"], chi2_v2=r.get("chi2_v2", nan), chi2_t3=r.get("chi2_t3", nan), common_mode_v2=r.get("common_mode_v2", nan),
+                adjacent_corr_v2=r.get("adjacent_corr_v2", nan))
 
 
-def table_stage(args):
-    from postagb_imaging import TARGETS, cfg_of  # noqa: PLC0415
-
-    cfg = cfg_of(argparse.Namespace(target="IW_Car", bg_index=None, star_index=None))
-    quoted, _ = pi.load(cfg)
-    res = {lab: {s: cell_row(args.outdir, s, suf, quoted) for s in STRATS} for lab, suf in CELLS.items()}
+def target_table(base, target, strats=STRATS):
+    res = {lab: {s: cell_row(base, target, s, suf) for s in strats} for lab, suf in CELLS.items()}
     # the grid edge and evidence differences between strategies are within a cell (same data and same error model)
-    for lab, row in res.items():
+    for row in res.values():
         ev = {s: v["log_evidence"] for s, v in row.items() if v and v["log_evidence"] is not None}
-        for s, v in row.items():
+        for v in row.values():
             if v and v["log_evidence"] is not None:
                 v["dlogz_vs_best_strategy"] = v["log_evidence"] - max(ev.values())
-    json.dump(res, open(args.outdir / "IW_Car_noise_table.json", "w"), indent=1)
     lines = ["| strategy | noise / mean | hyperparameters (edge?) | χ²/pt V² | χ²/pt T3 | common-mode V² (white = 1) | adjacent corr | NCC (best control) | ΔlnZ | f_env % | f_bg % | bg index |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
-    for s in STRATS:
+    for s in strats:
         for lab in CELLS:
             v = res[lab][s]
             if v is None:
@@ -74,11 +74,25 @@ def table_stage(args):
             edge = {True: " **edge**", False: "", None: ""}[v["on_edge"]]
             dz = v.get("dlogz_vs_best_strategy")
             bg = "–" if v["bg_index"] is None else f"{v['bg_index']:.2f}" + (" (bound)" if any("bg.flux.index" in w for w in v["bound_warnings"] or []) else "")
+            fbg = "–" if v["f_bg_pct"] is None else f"{v['f_bg_pct']:.1f}"
             lines.append(f"| {s} | {lab} | {h}{edge} | {v['chi2_v2']:.2f} | {v['chi2_t3']:.2f} | {v['common_mode_v2']:.2f} | {v['adjacent_corr_v2']:.2f} | "
-                         f"{v['ncc']:.2f} ({v['ncc_best_control']:.2f}) | {'–' if dz is None else f'{dz:.0f}'} | {v['f_env_pct']:.1f} | {v['f_bg_pct']:.1f} | {bg} |")
-    text = "\n".join(lines)
-    (args.outdir / "IW_Car_noise_table.md").write_text(text + "\n")
-    print(text)
+                         f"{v['ncc']:.2f} ({v['ncc_best_control']:.2f}) | {'–' if dz is None else f'{dz:.0f}'} | {v['f_env_pct']:.1f} | {fbg} | {bg} |")
+    return res, "\n".join(lines)
+
+
+def table_stage(args):
+    """The 2 x 2 table of IW Car (``OUTDIR`` flat) or of every target in OUTDIR/<target>/ (``--all``), plus a one-row-per-fit summary."""
+    targets = list(pi.TARGETS) if args.all else ["IW_Car"]
+    allres, md = {}, []
+    for t in targets:
+        base = args.outdir / t if args.all else args.outdir
+        res, text = target_table(base, t, STRATS_ALL if args.all else STRATS)
+        allres[t] = res
+        md.append(f"### {t}\n\n{text}\n")
+    name = "all_targets_noise_table" if args.all else "IW_Car_noise_table"
+    json.dump(allres if args.all else allres["IW_Car"], open(args.outdir / f"{name}.json", "w"), indent=1)
+    (args.outdir / f"{name}.md").write_text("\n".join(md))
+    print("\n".join(md))
 
 
 def strips_stage(args):
@@ -167,6 +181,7 @@ def main():
     p.add_argument("--case", default="white", choices=("white", "gains-indep", "gains-model"))
     p.add_argument("--mean", default="blob", choices=("blob", "flat"))
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--all", action="store_true", help="table: every target, from OUTDIR/<target>/")
     args = p.parse_args()
     {"table": table_stage, "strips": strips_stage, "synth": synth_stage}[args.stage](args)
 

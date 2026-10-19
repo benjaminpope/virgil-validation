@@ -1,0 +1,92 @@
+{
+ "chi2_per_point": 1.84903870409523,
+ "chi2_rendered": 1.849038703905869,
+ "render_ok": true,
+ "f_disk": null,
+ "f_res": null,
+ "n_points": 1794,
+ "grid": [
+  149,
+  149
+ ],
+ "pixel_mas": 0.30255100793855033,
+ "smoke": false,
+ "seconds": 1635.5369296073914,
+ "f_prim_pct": 30.76552873851397,
+ "f_sec_pct": 30.765528738503725,
+ "f_env_pct": 30.703165795904102,
+ "f_bg_pct": 7.765776727078196,
+ "f_outer_pct": 3.2476193090463097,
+ "f_overresolved_pct": 11.013396036124504,
+ "resid": {
+  "chi2_v2": 3.1483850293728453,
+  "chi2_t3": 1.0020629778972432,
+  "n_v2": 828,
+  "n_t3": 552,
+  "common_mode_v2": 5.448089752912997,
+  "white_expectation": 0.16666666666666666,
+  "adjacent_corr_v2": 0.9181158410511239
+ },
+ "strategy": "gp-polar",
+ "noise": "vlti",
+ "gp_mean": "flat",
+ "noise_model": {
+  "v2_white": 0.32,
+  "t3_white": 0.65,
+  "gain_telescope": 0.0055,
+  "gain_baseline": 0.0045,
+  "t3_offset_deg": 0.21
+ },
+ "error_scale": 1.0,
+ "rotation_deg": 0.0,
+ "hole_mas": 1.2102040317542013,
+ "hole_rule": "max(lambda_min/(2 B_max), UD diameter)",
+ "n_blanked": 8562,
+ "star_index": -3.165,
+ "ud_fixed_mas": 0.5,
+ "bound_warnings": [
+  "env.flux.index at its upper bound",
+  "bg.flux.index at its lower bound",
+  "sec.flux.ratio at its upper bound"
+ ],
+ "sec_treatment": "PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole",
+ "star_index_source": "ORGANIC SIND1",
+ "sec_index_source": "ORGANIC SIND2",
+ "warm_start": false,
+ "warm_source": null,
+ "field_radius_mas": 18.0,
+ "support_radius_mas": 20.0,
+ "regulariser": "MultipoleField",
+ "weight_rule": "Laplace evidence",
+ "gp_chi2": 2.670833683693104,
+ "gp_sigma": 4.0,
+ "gp_length_r_mas": 0.6051020158771007,
+ "gp_length_theta": 0.0625,
+ "mp_inc_deg": 22.97799242050726,
+ "mp_pa_deg": 179.9263748936375,
+ "mp_r_min_mas": 1.2102040317542013,
+ "mp_r_max_mas": 18.0,
+ "log_evidence": -2474.0810035374952,
+ "gp_on_edge": true,
+ "gp_grid_extended": [
+  [
+   1,
+   "lower",
+   0.0625
+  ],
+  [
+   2,
+   "upper",
+   4.0
+  ]
+ ],
+ "gp_converged": true,
+ "ud": 0.5,
+ "env_index": 5.999999971048094,
+ "bg_index": -5.999999999170012,
+ "sec_dra": -0.12665202416519403,
+ "sec_ddec": 0.17532528346028456,
+ "sec_index": 0.0,
+ "sec_sep_mas": 0.21628613049747322,
+ "sec_pa_deg": 324.15628916907144
+}

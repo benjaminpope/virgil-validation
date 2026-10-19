@@ -1,0 +1,351 @@
+{
+ "current / blob": {
+  "mem": {
+   "strategy": "mem",
+   "hyper": {},
+   "on_edge": null,
+   "extended": null,
+   "log_evidence": null,
+   "ncc": 0.8906753693839167,
+   "ncc_best_control": 0.5108257009454436,
+   "f_env_pct": 34.12693314060283,
+   "f_bg_pct": 1.09893485679385e-06,
+   "bg_index": 5.448964504961163,
+   "bound_warnings": [
+    "bg.flux.ratio at its lower bound"
+   ],
+   "env_index": 0.8019046048645695,
+   "chi2_fit": 0.9826539115141315,
+   "seconds": 129.95081114768982,
+   "chi2_v2": 1.4992565768553534,
+   "chi2_t3": 1.3467599327617885,
+   "common_mode_v2": 4.093858541593353,
+   "adjacent_corr_v2": 0.783581120058448
+  },
+  "gp-iso": {
+   "strategy": "gp-iso",
+   "hyper": {
+    "gp_sigma": 2.0,
+    "gp_length_mas": 1.2102040317542013
+   },
+   "on_edge": false,
+   "extended": [],
+   "log_evidence": -866.185785922886,
+   "ncc": 0.8923964255734433,
+   "ncc_best_control": 0.554159402162672,
+   "f_env_pct": 29.761419072034936,
+   "f_bg_pct": 4.357865310653199,
+   "bg_index": -5.999982770372407,
+   "bound_warnings": [
+    "bg.flux.index at its lower bound"
+   ],
+   "env_index": 1.9058339699994065,
+   "chi2_fit": 0.5279562199339874,
+   "seconds": 906.6201539039612,
+   "chi2_v2": 0.8464930278020282,
+   "chi2_t3": 0.6576422038738621,
+   "common_mode_v2": 4.002484775102025,
+   "adjacent_corr_v2": 0.741301131883527,
+   "dlogz_vs_best_strategy": 0.0
+  },
+  "gp-polar": {
+   "strategy": "gp-polar",
+   "hyper": {
+    "gp_sigma": 2.0,
+    "gp_length_r_mas": 0.6051020158771007,
+    "gp_length_theta": 0.25
+   },
+   "on_edge": true,
+   "extended": [
+    [
+     2,
+     "upper",
+     4.0
+    ]
+   ],
+   "log_evidence": -884.9897901014572,
+   "ncc": 0.9071715921601022,
+   "ncc_best_control": 0.5770609813642604,
+   "f_env_pct": 27.392650629888518,
+   "f_bg_pct": 6.3676643278004565,
+   "bg_index": -5.999997819736864,
+   "bound_warnings": [
+    "bg.flux.index at its lower bound"
+   ],
+   "env_index": 2.534330610600211,
+   "chi2_fit": 0.6214733220997805,
+   "seconds": 755.2791600227356,
+   "chi2_v2": 0.9958543680965223,
+   "chi2_t3": 0.7681410188000883,
+   "common_mode_v2": 4.119650498324127,
+   "adjacent_corr_v2": 0.790901943271284,
+   "dlogz_vs_best_strategy": -18.804004178571176
+  }
+ },
+ "current / flat": {
+  "mem": {
+   "strategy": "mem",
+   "hyper": {},
+   "on_edge": null,
+   "extended": null,
+   "log_evidence": null,
+   "ncc": 0.8906753693839167,
+   "ncc_best_control": 0.5108257009454436,
+   "f_env_pct": 34.12693314060283,
+   "f_bg_pct": 1.09893485679385e-06,
+   "bg_index": 5.448964504961163,
+   "bound_warnings": [
+    "bg.flux.ratio at its lower bound"
+   ],
+   "env_index": 0.8019046048645695,
+   "chi2_fit": 0.9826539115141315,
+   "seconds": 129.95081114768982,
+   "chi2_v2": 1.4992565768553534,
+   "chi2_t3": 1.3467599327617885,
+   "common_mode_v2": 4.093858541593353,
+   "adjacent_corr_v2": 0.783581120058448
+  },
+  "gp-iso": {
+   "strategy": "gp-iso",
+   "hyper": {
+    "gp_sigma": 2.0,
+    "gp_length_mas": 2.4204080635084027
+   },
+   "on_edge": false,
+   "extended": [
+    [
+     0,
+     "upper",
+     4.840816127016805
+    ]
+   ],
+   "log_evidence": -950.4882537008716,
+   "ncc": 0.8989306952088146,
+   "ncc_best_control": 0.564074132976996,
+   "f_env_pct": 34.325622385147646,
+   "f_bg_pct": 2.8878126459741414e-06,
+   "bg_index": -4.0370174663580745,
+   "bound_warnings": [
+    "bg.flux.ratio at its lower bound"
+   ],
+   "env_index": 0.8103009160338122,
+   "chi2_fit": 0.6185156690722479,
+   "seconds": 2108.5397202968597,
+   "chi2_v2": 0.9846769347799239,
+   "chi2_t3": 0.7773678324132445,
+   "common_mode_v2": 3.525933139771838,
+   "adjacent_corr_v2": 0.6880091033502174,
+   "dlogz_vs_best_strategy": 0.0
+  },
+  "gp-polar": {
+   "strategy": "gp-polar",
+   "hyper": {
+    "gp_sigma": 2.0,
+    "gp_length_r_mas": 0.6051020158771007,
+    "gp_length_theta": 0.25
+   },
+   "on_edge": true,
+   "extended": [
+    [
+     2,
+     "upper",
+     4.0
+    ]
+   ],
+   "log_evidence": -1105.3522948338264,
+   "ncc": 0.8887973007542558,
+   "ncc_best_control": 0.5641885769629339,
+   "f_env_pct": 34.04422653396684,
+   "f_bg_pct": 3.685329841001575e-07,
+   "bg_index": -5.217667038960227,
+   "bound_warnings": [
+    "bg.flux.ratio at its lower bound"
+   ],
+   "env_index": 0.8837767599704627,
+   "chi2_fit": 0.8027384913887946,
+   "seconds": 873.1765429973602,
+   "chi2_v2": 1.2728665541331268,
+   "chi2_t3": 1.0073646133344554,
+   "common_mode_v2": 3.940504344528424,
+   "adjacent_corr_v2": 0.7708408296598344,
+   "dlogz_vs_best_strategy": -154.86404113295475
+  }
+ },
+ "vlti / blob": {
+  "mem": {
+   "strategy": "mem",
+   "hyper": {},
+   "on_edge": null,
+   "extended": null,
+   "log_evidence": null,
+   "ncc": 0.6491431965571387,
+   "ncc_best_control": 0.3446442983176383,
+   "f_env_pct": 34.222647467539815,
+   "f_bg_pct": 1.5996997882339575e-17,
+   "bg_index": -5.999999999997305,
+   "bound_warnings": [
+    "bg.flux.ratio at its lower bound",
+    "bg.flux.index at its lower bound"
+   ],
+   "env_index": 0.854590457564556,
+   "chi2_fit": 1.2984096679393127,
+   "seconds": 371.7837371826172,
+   "chi2_v2": 1.518572266918033,
+   "chi2_t3": 0.509392239531247,
+   "common_mode_v2": 5.113077588681804,
+   "adjacent_corr_v2": 0.8493522383323622
+  },
+  "gp-iso": {
+   "strategy": "gp-iso",
+   "hyper": {
+    "gp_sigma": 2.0,
+    "gp_length_mas": 1.2102040317542013
+   },
+   "on_edge": false,
+   "extended": [],
+   "log_evidence": -2141.11972574119,
+   "ncc": 0.8572072346075403,
+   "ncc_best_control": 0.47454470543008365,
+   "f_env_pct": 34.115139073216135,
+   "f_bg_pct": 2.383911799887698e-15,
+   "bg_index": -5.99999999999509,
+   "bound_warnings": [
+    "bg.flux.ratio at its lower bound",
+    "bg.flux.index at its lower bound"
+   ],
+   "env_index": 0.8454222561767981,
+   "chi2_fit": 1.4833449408558035,
+   "seconds": 1208.9435992240906,
+   "chi2_v2": 1.7991554848797746,
+   "chi2_t3": 0.6826209737960213,
+   "common_mode_v2": 5.167435770325286,
+   "adjacent_corr_v2": 0.8623589618858831,
+   "dlogz_vs_best_strategy": -386.4268276707128
+  },
+  "gp-polar": {
+   "strategy": "gp-polar",
+   "hyper": {
+    "gp_sigma": 2.0,
+    "gp_length_r_mas": 0.6051020158771007,
+    "gp_length_theta": 0.25
+   },
+   "on_edge": true,
+   "extended": [
+    [
+     2,
+     "upper",
+     4.0
+    ]
+   ],
+   "log_evidence": -1754.6928980704772,
+   "ncc": 0.8829666616120454,
+   "ncc_best_control": 0.5428610587081921,
+   "f_env_pct": 27.111005274334957,
+   "f_bg_pct": 6.272164021316906,
+   "bg_index": -5.999997870196022,
+   "bound_warnings": [
+    "bg.flux.index at its lower bound"
+   ],
+   "env_index": 2.5625638774980644,
+   "chi2_fit": 1.2332500053298472,
+   "seconds": 2261.5982072353363,
+   "chi2_v2": 2.019202048575339,
+   "chi2_t3": 0.7047366425752767,
+   "common_mode_v2": 5.43393131086887,
+   "adjacent_corr_v2": 0.9089397368240297,
+   "dlogz_vs_best_strategy": 0.0
+  }
+ },
+ "vlti / flat": {
+  "mem": {
+   "strategy": "mem",
+   "hyper": {},
+   "on_edge": null,
+   "extended": null,
+   "log_evidence": null,
+   "ncc": 0.6491431965571387,
+   "ncc_best_control": 0.3446442983176383,
+   "f_env_pct": 34.222647467539815,
+   "f_bg_pct": 1.5996997882339575e-17,
+   "bg_index": -5.999999999997305,
+   "bound_warnings": [
+    "bg.flux.ratio at its lower bound",
+    "bg.flux.index at its lower bound"
+   ],
+   "env_index": 0.854590457564556,
+   "chi2_fit": 1.2984096679393127,
+   "seconds": 371.7837371826172,
+   "chi2_v2": 1.518572266918033,
+   "chi2_t3": 0.509392239531247,
+   "common_mode_v2": 5.113077588681804,
+   "adjacent_corr_v2": 0.8493522383323622
+  },
+  "gp-iso": {
+   "strategy": "gp-iso",
+   "hyper": {
+    "gp_sigma": 4.0,
+    "gp_length_mas": 0.30255100793855033
+   },
+   "on_edge": true,
+   "extended": [],
+   "log_evidence": -1825.8558725494488,
+   "ncc": 0.6866314643087064,
+   "ncc_best_control": 0.4206677686014193,
+   "f_env_pct": 30.58609078746986,
+   "f_bg_pct": 5.093527389073673,
+   "bg_index": -5.9999999551320755,
+   "bound_warnings": [
+    "bg.flux.index at its lower bound",
+    "sec.flux.ratio at its upper bound"
+   ],
+   "env_index": 3.9681543863714044,
+   "chi2_fit": 1.0726291920511903,
+   "seconds": 1024.80770611763,
+   "chi2_v2": 1.6277155021127574,
+   "chi2_t3": 0.5472516340588307,
+   "common_mode_v2": 5.429403006407306,
+   "adjacent_corr_v2": 0.8980165711817717,
+   "dlogz_vs_best_strategy": 0.0
+  },
+  "gp-polar": {
+   "strategy": "gp-polar",
+   "hyper": {
+    "gp_sigma": 4.0,
+    "gp_length_r_mas": 0.6051020158771007,
+    "gp_length_theta": 0.0625
+   },
+   "on_edge": true,
+   "extended": [
+    [
+     1,
+     "lower",
+     0.0625
+    ],
+    [
+     2,
+     "upper",
+     4.0
+    ]
+   ],
+   "log_evidence": -2474.0810035374952,
+   "ncc": 0.42095405712899414,
+   "ncc_best_control": 0.2656969622300885,
+   "f_env_pct": 30.703165795904102,
+   "f_bg_pct": 7.765776727078196,
+   "bg_index": -5.999999999170012,
+   "bound_warnings": [
+    "env.flux.index at its upper bound",
+    "bg.flux.index at its lower bound",
+    "sec.flux.ratio at its upper bound"
+   ],
+   "env_index": 5.999999971048094,
+   "chi2_fit": 1.84903870409523,
+   "seconds": 1635.5369296073914,
+   "chi2_v2": 3.1483850293728453,
+   "chi2_t3": 1.0020629778972432,
+   "common_mode_v2": 5.448089752912997,
+   "adjacent_corr_v2": 0.9181158410511239,
+   "dlogz_vs_best_strategy": -648.2251309880464
+  }
+ }
+}
