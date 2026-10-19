@@ -356,7 +356,9 @@ def positions_for(loaded, t_ref, max_widen=5):
     info = dict(
         half_widths=halves, edge_epochs=[nm for nm, e in zip(loaded.names, edge) if e]
     )
-    return ep.positions(t_ref=t_ref), ep, info
+    # The EpochPositions itself, not ep.positions(t_ref): fit_orbit_aliases then drops the flagged alias-peak
+    # nights from the seeds (skip_flagged) and applies temper and primary_diam='auto', as OrbitPipeline does.
+    return ep, ep, info
 
 
 def ref_track(ref, t):
