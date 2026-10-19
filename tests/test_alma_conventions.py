@@ -142,10 +142,13 @@ def test_our_reader_agrees_with_visread(clean, clean_read):
     res = worker({"task": "visread_read", "path": ms, "out": str(tmp / "visread")})
     record("n_files", len(res["files"]))
     ref = load(res["files"])
+    assert len(ref) == len(clean_read) == 2
+    assert [f["ddid"] for f in res["files"]] == [int(z["ddid"]) for z in clean_read]
     for ours, theirs in zip(clean_read, ref):
         assert len(ours["u"]) == len(theirs["u"])
-        for k in ("u", "v", "freq", "time"):
+        for k in ("u", "v", "freq"):
             assert np.allclose(ours[k], theirs[k], rtol=0, atol=1e-6 * np.abs(ours[k]).max())
+        assert np.allclose(ours["time"], theirs["time"], rtol=0, atol=1e-3)  # seconds
         for k in ("re", "im", "weight"):
             assert np.allclose(ours[k], theirs[k], rtol=1e-6, atol=1e-9)
 
@@ -158,7 +161,7 @@ def noisy_read(tmp_path_factory):
     return load(worker({"task": "read", "path": ms, "out": str(tmp / "ours")})["files"])
 
 
-@pytest.mark.validates("crosscheck.alma", roots=["statistics"], tier="B")
+@pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", roots=["statistics", "casa"], tier="B")
 def test_weights_are_inverse_variance_per_component_and_polarizations_add(noisy_read):
     """With 1 mJy simple noise on each of XX and YY, the polarization-averaged
     visibility has sigma = 1 mJy / sqrt 2 on each of Re and Im, weight w1 + w2 =
@@ -169,6 +172,7 @@ def test_weights_are_inverse_variance_per_component_and_polarizations_add(noisy_
         record("s2", got["s2"])
         record("s2_err", got["s2_err"])
         assert abs(got["s2"] - 1.0) < 3 * got["s2_err"]
+        # plumbing only: the worker wrote WEIGHT = 1/noise^2 itself; the two checks around it are the evidence
         assert np.allclose(z["weight"], 2e6, rtol=1e-6)
         res = z["re"] + 1j * z["im"] - model(z)
         for part in (res.real, res.imag):
@@ -215,3 +219,20 @@ def test_a_selection_with_more_than_one_field_raises_unless_a_field_is_given(tmp
          for k in (0, 1)]
     record("rows_field0", n[0])
     assert n[0] == n[1] == 28 * 5 * 60 * 4  # 28 baselines x 300 integrations (30 min each) x 4 channels
+
+
+@pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", **VALIDATES)
+def test_weight_spectrum_is_used_when_present_and_the_source_is_recorded(clean, clean_read, tmp_path):
+    """Without the column the reader uses WEIGHT (and says so); with a
+    WEIGHT_SPECTRUM that differs by channel it uses that, and says so."""
+    ms, _ = clean
+    assert {str(z["weight_source"]) for z in clean_read} == {"WEIGHT"}
+    assert worker({"task": "info", "path": ms})["ddids"][0]["weight_source"] == "WEIGHT"
+    ms2 = str(tmp_path / "ws.ms")
+    worker({"task": "simulate_ms", "path": ms2})
+    worker({"task": "add_weight_spectrum", "path": ms2})
+    z = load(worker({"task": "read", "path": ms2, "out": str(tmp_path / "o"), "ddids": [0]})["files"])[0]
+    assert str(z["weight_source"]) == "WEIGHT_SPECTRUM"
+    assert worker({"task": "info", "path": ms2})["ddids"][0]["weight_source"] == "WEIGHT_SPECTRUM"
+    # WEIGHT = 1 per polarization, so w1 + w2 = 2 (channel + 1)
+    assert np.allclose(z["weight"], 2.0 * (z["chan"] + 1.0))

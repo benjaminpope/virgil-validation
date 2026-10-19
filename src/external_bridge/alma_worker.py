@@ -12,6 +12,7 @@ Tasks (``task["task"]``):
                  MAIN, DATA_DESCRIPTION, SPECTRAL_WINDOW, POLARIZATION)
                  through ``casatools.table``; one .npz per ddid;
 ``visread_read`` the same output through visread, for comparison only;
+``add_weight_spectrum`` add a WEIGHT_SPECTRUM column (for its test);
 ``flag_ms``      mark some samples of a synthetic MS bad (for the flag test);
 ``info``         per ddid: N_vis, channels, channel width, integration time.
 
@@ -184,10 +185,16 @@ def read_ddid(ct, path, ddid, stride=1, conjugate=False, datacolumn="DATA", fiel
     uvw, flag_row = col("UVW"), col("FLAG_ROW")
     weight = col("WEIGHT")  # (npol, nrow)
     ws = None
-    if has_ws and q.iscelldefined("WEIGHT_SPECTRUM", 0):
-        ws = col("WEIGHT_SPECTRUM")
-        if ws.shape != data.shape:
-            ws = None
+    if has_ws:
+        first, last = q.iscelldefined("WEIGHT_SPECTRUM", 0), q.iscelldefined("WEIGHT_SPECTRUM", n - 1)
+        if first != last:
+            q.close()
+            raise ValueError(f"ddid {ddid}: WEIGHT_SPECTRUM is defined in some rows only; refusing to mix it with WEIGHT")
+        if first:
+            ws = col("WEIGHT_SPECTRUM")
+            if ws.shape != data.shape or not np.all(np.isfinite(ws)):
+                q.close()
+                raise ValueError(f"ddid {ddid}: WEIGHT_SPECTRUM has shape {ws.shape}, DATA {data.shape}, or is not finite")
     ant1, ant2, time = col("ANTENNA1"), col("ANTENNA2"), col("TIME")
     scan, obs, interval = col("SCAN_NUMBER"), col("OBSERVATION_ID"), col("INTERVAL")
     q.close()
@@ -213,6 +220,7 @@ def read_ddid(ct, path, ddid, stride=1, conjugate=False, datacolumn="DATA", fiel
         "ant1": ant1[rw].astype(np.int32), "ant2": ant2[rw].astype(np.int32),
         "chan": ch.astype(np.int16), "time": time[rw], "scan": scan[rw].astype(np.int32),
         "obsid": int(obs[0]), "ddid": int(ddid),
+        "weight_source": "WEIGHT_SPECTRUM" if ws is not None else "WEIGHT",
         "chan_width_hz": float(np.median(np.abs(width))), "t_int_s": float(np.median(interval)),
     }
 
@@ -295,8 +303,9 @@ def info(task):
         n = q.nrows()
         interval = float(np.median(q.getcol("INTERVAL", 0, min(n, 2000), max(n // 2000, 1)))) if n else 0.0
         obs = int(q.getcell("OBSERVATION_ID", 0)) if n else -1
+        has_ws = bool(n) and "WEIGHT_SPECTRUM" in q.colnames() and q.iscelldefined("WEIGHT_SPECTRUM", 0)
         q.close()
-        rows.append({"ddid": d, "obsid": obs, "n_rows": n, "nchan": len(freq),
+        rows.append({"ddid": d, "obsid": obs, "n_rows": n, "weight_source": "WEIGHT_SPECTRUM" if has_ws else "WEIGHT", "nchan": len(freq),
                      "chan_width_hz": float(np.median(np.abs(width))), "t_int_s": interval,
                      "freq_min_hz": float(freq.min()), "freq_max_hz": float(freq.max()),
                      "corr_type": [int(c) for c in _corr_type(tb, path, int(pol_of[d]))]})
@@ -328,7 +337,25 @@ def flag_ms(task):
     return {"rows": [int(x) for x in r[:3]]}
 
 
-TASKS = {"flag_ms": flag_ms, "simulate_ms": simulate_ms, "read": read, "visread_read": visread_read, "info": info}
+def add_weight_spectrum(task):
+    """For the weight-branch test: add WEIGHT_SPECTRUM = WEIGHT x (channel + 1)
+    to every row, so that it differs from WEIGHT in value and by channel."""
+    ct = _quiet_import()
+    tb = ct.table()
+    tb.open(task["path"], nomodify=False)
+    desc = tb.getcoldesc("DATA")
+    desc.update(valueType="float", comment="weight spectrum")
+    for k in ("keywords", "dataManagerType", "dataManagerGroup"):
+        desc.pop(k, None)
+    tb.addcols({"WEIGHT_SPECTRUM": desc})
+    nchan = tb.getcol("DATA", 0, 1).shape[1]
+    w = tb.getcol("WEIGHT")  # (npol, nrow)
+    tb.putcol("WEIGHT_SPECTRUM", w[:, None, :] * (np.arange(nchan) + 1.0)[None, :, None])
+    tb.close()
+    return {}
+
+
+TASKS = {"add_weight_spectrum": add_weight_spectrum, "flag_ms": flag_ms, "simulate_ms": simulate_ms, "read": read, "visread_read": visread_read, "info": info}
 
 if __name__ == "__main__":
     task = json.load(open(sys.argv[1]))
