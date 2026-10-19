@@ -1,5 +1,29 @@
 # Plan: ALMA IM Lup, MaxEnt against the multipole GP
 
+## Revision 2026-10-19
+
+The likelihood is now an exact NUFFT on the visibilities, using nufftax
+(virgil#426), instead of FFT-cell gridding. What changed, and why:
+
+| Change | Why |
+|---|---|
+| FFT-cell gridding (`GriddedVisData`) dropped from the likelihood | Its cell-centre phase error is about 1.5 rad at the disk edge on the 1024² grid. Check (b) would almost certainly have failed. |
+| Default likelihood: nufftax on the raw visibilities, f32, chunked | About 0.1 s per value + gradient for all 42.4 M points on an A100. That is cheaper than the old Hankel-on-cells plan, and exact to eps 1e-5. |
+| Optional: fine bins at their weighted centroids | The error is second order in the bin width, so it is negligible at 650 λ. Compression is modest (an estimated ≲3×), so this is a laptop and Hankel option, not the default. |
+| New: Toeplitz (dirty-beam) form for frozen offsets | It is exact for a pixel image and costs one 2N² FFT per evaluation, independent of N_vis. It makes the cross-validation and evidence sweeps cheap. |
+| `MultipoleDisk` is rendered to pixels, then goes through nufftax or Toeplitz | Hankel on 4×10⁷ points is about 10¹¹ Bessel evaluations per gradient. The Hankel path stays only as a check on a subsample. |
+| σ-factor formula corrected: s² = Σw\|r\|²/(2N), not 4N | With variance s²/w on each of Re and Im, E[w\|r\|²] = 2s². |
+| Field size raised to at least 6″ | The NUFFT model does not wrap, but the field must still cover the CLEAN mask (5.5″ along the major axis). |
+| New phase P2b: nufftax scale benchmark | The cost figures below are extrapolated from 10⁵ points. |
+| Dependency: virgil#426 must merge first | The `ft="nufft"` path, the even-N phase fix and the eps defaults live there. |
+
+**Sources:**
+
+- A100 timings: ozstar_scripts#35, job 18762629 (`results/finufft_plans/out/18762629/combined.md`, f32 jitted value + grad of Σ|V|², in ms).
+- Job 18819744 (A100 threshold scan) is still running. **Placeholder:** its numbers go here when it finishes.
+- M1 Max CPU timings: the scans of 2026-10-19 in the #426 session. The fixed cost varied 2–4× between runs.
+- MPoL code: MPoL `main` at 8850b483, and MPoL-dev/examples `04-IMLup-multi-EB`.
+
 ## Why
 
 So far every virgil validation case has been optical/IR interferometry: V²,
@@ -8,8 +32,9 @@ sub-mm wavelengths, but the engineering is different:
 
 - **Complex visibilities with absolute phase**, and a thermal-noise weight
   on every visibility.
-- **10⁶–10⁷ visibilities**, where virgil's dense likelihood and Gauss–Newton
-  curvature stop at about 10⁴.
+- **10⁶–10⁷ visibilities.** Here virgil's DFT (cost ∝ M·N²) and its dense
+  Gauss–Newton curvature stop at about 10⁴. nufftax (virgil#426) removes the
+  first limit; the second is avoided with Hessian–vector products.
 - **Calibration nuisances for each execution block (EB)**: amplitude scale,
   weight scale, phase-centre offset.
 - **A primary beam.** It is negligible here: IM Lup's continuum is about 2–2.5″
@@ -27,7 +52,8 @@ structure is not purely axisymmetric.
 
 ## What the MPoL example does
 
-Surveyed on 2026-10-17. All files are under `04-IMLup-multi-EB/`.
+Surveyed on 2026-10-17; code read again on 2026-10-19. Example files are
+under `04-IMLup-multi-EB/`; library files are under `src/mpol/` in MPoL.
 
 **Export** (`casa_analysis/src/export_asdf.py`):
 
@@ -43,17 +69,38 @@ Surveyed on 2026-10-17. All files are under `04-IMLup-multi-EB/`.
 
 **Model** (`mpol_analysis/src/sgd.py`):
 
-- PyTorch BaseCube → GaussConvFourier → ImageCube → NuFFT, at 1028² pixels
-  and 5 mas.
+- PyTorch BaseCube → GaussConvFourier → ImageCube → `fourier.NuFFT`
+  (`sgd.py:58–62`, `forward` at `sgd.py:139–158`), at 1028² pixels and
+  5 mas (`sgd.py:441`).
+- The NuFFT is torchkbnufft's `KbNufft` on the **loose** visibilities of each
+  batch (`fourier.py:111–141`). It is not `NuFFTCached`: that class
+  precomputes sparse interpolation matrices for one fixed uv set
+  (`fourier.py:436–499`), which does not suit shuffled mini-batches.
 - Nuisances fitted jointly with the image:
-  - `log10_sigma_factor` for each ddid (26);
-  - `log10_amp_factor` for each observation (6 free, 1 fixed);
-  - (δRA, δDec) for each observation, as a phase ramp.
-- Loss: the negative log-likelihood plus an entropy term (prior
-  1e-4, total flux 0.253 Jy).
+  - `log10_sigma_factor` for each ddid (26), applied as w/s²
+    (`sgd.py:64–70`);
+  - `log10_amp_factor` for each observation (6 free, 1 fixed). It scales
+    the model by g **and** the weights by 1/g² (`sgd.py:72–98`);
+  - (δRA, δDec) for each observation, as a phase ramp
+    exp(−2πi(δRA·u + δDec·v)) on the model (`sgd.py:100–137`).
+- Loss: `losses.neg_log_likelihood_avg` (the full Gaussian ln L, including
+  Σ ln w, divided by 2N; `losses.py:129–262`) plus an entropy term (prior
+  1e-4, total flux 0.253 Jy) (`sgd.py:298–302`).
+- Optimiser: AdamW on shuffled 40k-visibility batches, optionally grouped by
+  ddid (`DdidBatchSampler`, `sgd.py:164–199`, 425–436, 444).
 - Paper-run settings (commented in the Snakefile): λ_ent = 1e-9, FWHM 30 mas,
   AdamW at lr 1e-2, 10 epochs, batches of 40k visibilities, run twice from a
   checkpoint.
+
+Elsewhere in MPoL, the standard path is gridded:
+
+- `gridding.DataAverager` (`gridding.py:558`) averages onto FFT cells,
+  "assuming that the visibility function is constant across the cell"
+  (`gridding.py:428–429`).
+- `datasets.GriddedDataset` (`datasets.py:14`) holds the non-empty cells, and
+  `fourier.FourierCube` (`fourier.py:14`) evaluates the model there by FFT.
+- `datasets.Dartboard` (`datasets.py:147`) provides the polar cross-validation
+  cells; it keeps Hermitian pairs in the same cell (`datasets.py:286`).
 
 **What it lacks:** cross-validation (the validation split is commented out
 in `attic/`), written-up results, and any statement of the visibility count.
@@ -153,25 +200,19 @@ data are never committed.
 
 **What this means for the design:**
 
-- Gridding compresses the data 373× on this grid. Even kept separate for
-  each of the 26 ddids, there are only 1.1 × 10⁵ cells.
-- The SBs have far more visibilities than cells: their uv tracks are short
-  compared with the 40 kλ cell. That is exactly where per-ddid gridding pays
-  off.
-- The cost estimate for `MultipoleDisk` drops. It is about 1.1 × 10⁵ cells
-  × 300 nodes × 9 orders, which is 3 × 10⁸ Bessel evaluations per
-  gradient. That is laptop-scale for a single evaluation, though full fits
-  and evidence sweeps still go to OzSTAR.
-- The 5.12″ field gives only 2× padding of a disk of roughly 2–2.5″, and
-  the CLEAN mask (5.5″ × 3.5″) is wider than the field. The FFT model is
-  periodic with period FOV, so the outer radius must be taken from
-  DSHARP II/Table 1 and the grid sized from it before P2. The cell-centre
-  test in P2 should also try a 2048² grid.
-- The DSHARP MS keeps up to 16 channels per window. LB1 is 74% of the
-  visibilities and 98% of the cells.
+- The FFT-cell count (1.1 × 10⁵) shows how coarse the 40 kλ cells are, not
+  how far the data can be compressed safely (see "Likelihood options").
+- The SBs (10.9 M visibilities) have short uv tracks and many channels, so
+  they compress well into fine bins. LB1 (31.5 M, 74%) barely compresses.
+- The 5.12″ field is narrower than the CLEAN mask (5.5″ × 3.5″). A NUFFT
+  model does not wrap, but emission outside the field goes unmodelled. The
+  field is therefore at least 6″: 1280² at 5 mas (6.4″, MPoL's pixel), or
+  1024² at 6 mas (6.1″). Both are finer than the 9 mas Nyquist pixel for
+  11.5 Mλ. Fix the outer radius from DSHARP II/Table 1 before P2.
+- The DSHARP MS keeps up to 16 channels per window.
 
 The counting script is a scratch prototype. P1 should turn it into
-`alma_worker.py`.
+`alma_worker.py`, and add the occupied-bin count at 650 λ and 2 kλ.
 
 ## Design
 
@@ -180,8 +221,9 @@ The counting script is a scratch prototype. P1 should turn it into
 `src/external_bridge/alma_worker.py` runs in its own venv
 (`scripts/setup_external.sh`) with `casatools`, `casadata` and `visread`.
 
-- It writes one `.npz` per ddid: u, v in wavelengths, Re, Im, weight,
-  frequency, obsid, ddid.
+- It writes one `.npz` per ddid: u, v in wavelengths (float64), Re, Im,
+  weight, frequency, obsid, ddid. It also records the channel width and
+  integration time, which set the smearing already in the data.
 - Its conventions go in `docs/alma_conventions.md` first: conjugation, the
   sign of the u axis, polarisation averaging, and weight units.
 
@@ -193,62 +235,165 @@ Independent checks in `src/crosscheck/`:
   histogram. The residuals are against the DSHARP CLEAN model, so the check
   is independent of virgil.
 
-### Grid per calibration group, then fit all the data at once
+The crosscheck code uses a float64 DFT, or `finufft` at eps 1e-12, never
+nufftax. virgil uses nufftax, so using it here would break the independence
+rule.
 
-Within each ddid, average the visibilities with their weights onto the
-uv-cell lattice of the image (Hermitian-folded). For Gaussian noise, the
-cell average and summed weight are sufficient statistics for any model
-evaluated at cell centres and with s fixed. That is an approximation, not
-an identity: a visibility up to Δu/2 from its cell centre sees a phase error
-of about π·x/FOV for emission at offset x. For x ≈ 1.7″ and FOV = 5.12″ that
-is about 1 rad, and about 0.5 rad on a 2048² grid; padding does not bound
-it. The acceptance criterion is check (b) under Verification: ungridded
-minus gridded χ² below about 1 per degree of freedom for each ddid, from a
-DFT at the raw uv. MPoL's own example 04 uses `NuFFT` on the loose
-visibilities for this reason. If (b) fails, fall back to a NUFFT likelihood
-on the SB ddids, or to a finer grid, before any science run.
+### Likelihood options
 
-The gridder must store, per cell, V̄ and Σw, and per group the raw N_vis and
-Σw|V|². The s term needs the within-cell scatter and the raw count, which
-carry almost all the information on s for the SB ddids (about 10⁴
-visibilities per cell). The within-cell scatter also contains source
-structure across the cell, so s is biased high at high SNR; compare it with
-the CLEAN-model estimate (see Verification), not with itself.
+The model is a pixel image I on an N² grid (or a model rendered to one).
+Its visibilities are V(u) = Σ_p I_p exp(−2πi u·x_p). The error columns give
+the phase or amplitude error for emission at x = 2.5″ (1.2 × 10⁻⁵ rad).
 
-What this buys over MPoL's batched SGD:
+| Option | Model evaluated at | Error at x = 2.5″ | A100 value + grad | M1 Max CPU | Memory |
+|---|---|---|---|---|---|
+| (a) **raw nufftax** (default) | each visibility | eps 1e-5 × V(0) ≈ 2.5 µJy | ≈ 0.1 s (0.55 ms fixed + ≈ 1.7 ns/point) | ≈ 3–8 s (0.06 ms per 10³ points, ×2–3 for the gradient) | M·ns² ≈ 42.4 M × 36 ≈ 1.5 × 10⁹ weights ≈ 6–8 GB in f32; chunked, peak ≈ largest chunk |
+| (b) fine bins + nufftax | weighted centroid of each bin | second order: ½(2πx·Δu_b/√12)², ≈ 1 × 10⁻⁴ at Δu_b = 650 λ, ≈ 1 × 10⁻³ at 2 kλ | (a) × compression | (a) × compression | (a) × compression |
+| (c) FFT cells (old plan, MPoL `DataAverager`) | cell centre | first order: π·Δu·x ≈ 1.5 rad at 1024² × 5 mas; even at the centroid, a ≈ 40% amplitude loss | one FFT | one FFT | small |
+| (d) **Toeplitz form** (frozen offsets) | exact for a pixel image | eps of the precompute (f64, 1e-12) | ≈ 1–3 ms (one 2N² FFT) | ≈ 50–200 ms | one real 2N² kernel per ddid: 26 × 2560² × 8 B ≈ 1.4 GB |
 
-- 1.1 × 10⁵ cells in all instead of 4.2 × 10⁷ raw visibilities.
-  The model visibilities cost one FFT per group.
-- Full-batch L-BFGS with a deterministic optimum.
-- Cheap nuisances:
-  - the amplitude of each EB scales that group's model grid;
-  - the offset of each EB is a phase ramp on the cell centres;
-  - the σ factor of each ddid enters the likelihood in closed form. With
-    variance σ² s² on each of Re and Im, −ln L = 2 N_vis ln s +
-    Σ w|r|² / (2 s²) + const, which is minimised at s² = Σ w|r|² /
-    (4 N_vis). N_vis is the raw visibility count, and the sum runs over raw
-    visibilities.
+**Notes on the table:**
 
-NUFFT (removed in virgil issue #75, code in PR #71's history) returns only
-as a CPU check of the ungridded residuals, not for optimisation.
+- **(a), extrapolated.** It is extrapolated from 10⁵ points: 0.714 ms at
+  1024²/10⁵ and 0.562 ms at 10⁴, so ≈ 1.7 ns per extra point. P2b measures
+  it.
+- **(a), memory.** ns ≈ 6 for eps 1e-5 in 2D. Chunk by memory, not by ddid:
+  each call pays the grid-FFT fixed cost, so 26 calls add ≈ 14 ms on the
+  A100 but seconds on a CPU.
+- **(b), bins.** Take the weighted mean of (u, v, V) in each bin, after
+  folding to v ≥ 0. Evaluating the model at the weighted centroid cancels
+  the first-order term, so the error is ½|∇²V|·⟨δu²⟩. The bin count is
+  unknown until P1.
+- **(b), compression estimate.** In 6 s an LB track at 3 Mλ moves ≈ 1.3 kλ.
+  Adjacent channels are ≈ 1.5 kλ apart, if 16 channels span ≈ 1.9 GHz. So
+  LB compresses ≲ 1.5× at 650 λ, while the SBs compress ≳ 5×. The expected
+  total gain is ≲ 3×.
+- **(c), dropped.** MPoL's own IM Lup example avoids it, by using `NuFFT`
+  on the loose visibilities.
+- **(d), derivation.** For a pixel image,
+  χ² = Q − 2 Σ_p I_p D(x_p) + Σ_pq I_p I_q B(x_p − x_q), with:
+  - D the (unnormalised) dirty image, Re Σ_k w_k V_k* e^(−2πi u_k·x);
+  - B the dirty beam on the (2N−1)² lags;
+  - Q = Σ w|V|².
+- **(d), precompute.** D and B are each one type-1 NUFFT per ddid, done
+  once (chunked, f64).
+- **(d), what it allows.** Per-EB amplitude g scales the terms as g and g²,
+  so they stay exact. A fixed spectral index is absorbed exactly into w and
+  V. A free offset needs D at shifted positions (a new type-1 per change),
+  so freeze the offsets first. This is the Toeplitz trick from MRI
+  (Fessler et al. 2005).
+- **(d), precision.** Q ≫ χ² at high SNR, because Σw|V|² on the SB data is
+  ~10⁹. The precompute and the evaluation must therefore be in f64.
 
-New in virgil (one PR):
+**Smearing already in the data.** The bandwidth term is δu ≈ |u|·Δν/ν. With
+Δν ≈ 117 MHz at 11 Mλ, that is ≈ 5.5 kλ, a ≈ 0.4 rad phase spread at 2.5″.
+The time term is δu ≈ |u|·ω_E·t_int, ≈ 4.8 kλ for 6 s at 11 Mλ. These
+are estimates; P1 reads Δν and t_int from the MS. The smearing is the same
+for every method here (MPoL does not model it either), and it is far larger
+than the 650 λ bin error. Modelling it is out of scope; the comparison
+metrics stay valid because both methods share it.
 
-- a complex-visibility observable with a σ on every sample;
-- `GriddedVisData`, a grid of averaged visibilities and weights for each
-  group, with its likelihood;
-- `CalibrationNuisance`, the amplitude, σ factor and offset of each group.
+**Precision.** nufftax's f32 error at eps 1e-5 is relative to Σ|I| ≈ V(0)
+≈ 0.25 Jy, so it is ≈ 2.5 µJy.
+
+- An ALMA visibility in one channel and one integration has σ of order
+  10 mJy (to be measured in P1), so the transform error is ≲ 10⁻³ σ.
+  Summed over 4 × 10⁷ points it biases χ² by ≲ 1.
+- The transform is therefore f32. But the χ² reduction must be f64 (cast r
+  before summing): 2N ≈ 8.5 × 10⁷ in f32 has a resolution of 8, which is
+  too coarse for cross-validation and evidence differences.
+- uv in f32 is fine: 11.5 Mλ has a resolution of ≈ 0.7 λ.
+- f64 nufftax at eps 1e-12 roughly doubles ns, so it costs about 4× the
+  memory. Keep it for checks.
+
+**Recommended defaults:**
+
+| | Laptop (M1 Max) | OzSTAR A100 |
+|---|---|---|
+| Development and tests | SB1+SB2 raw (1.1 M), or any ddid subsample, option (a) | — |
+| Joint image + all nuisances | not run (see `local-compute-limits`) | (a) raw, f32, f64 reduction, chunks of ≤ 10⁷ points |
+| λ and cross-validation sweeps, evidence | (d) Toeplitz with the offsets frozen, after an OzSTAR joint fit | (d) Toeplitz, or (a) if offsets stay free |
+| `MultipoleDisk` | rendered → (d) | rendered → (a) or (d) |
+| (b) bins | only if P1 shows ≥ 3× compression | not needed |
+
+### Following and departing from MPoL
+
+| Topic | MPoL | Here | Follow or depart, and why |
+|---|---|---|---|
+| Forward model on the loose uv | `NuFFT`, torchkbnufft, per batch | nufftax per chunk, all data per step | **Follow**: exact at the raw uv. |
+| Precomputed interpolation | `NuFFTCached` exists but is unused for IM Lup | not used | **Follow**: a precomputed-points prototype for #426 was slower on CPU. |
+| Gridded data | `GriddedDataset` and `FourierCube` elsewhere | dropped from the likelihood | **Depart**: the cell-centre approximation fails at this resolution. |
+| Optimiser | AdamW, 40k batches, 10 epochs | full-batch L-BFGS | **Depart**: a deterministic optimum, needed for CV differences, Laplace evidence and reproducible trust nodes. A full batch costs ≈ 0.1 s on the A100. |
+| Amplitude | ×g on the model, w/g² | ×g on the model only | **Depart**: per-ddid s absorbs the weight scaling (s_ours = g·s_MPoL), which removes a near-degeneracy. Compare via that map. |
+| Offsets | phase ramp on the model | phase ramp on the model | **Follow**: the shift theorem makes it exact. |
+| σ factors | log10 s per ddid, by SGD | per ddid, profiled in closed form, or log s with a log-uniform prior | **Depart in method only**: same model, faster and deterministic. |
+| Regulariser | entropy, λ 1e-9, plus a 30 mas Gaussian base layer | `MaxEntropy` + small `TSV`; optional Gaussian convolution | **Follow**, with λ set by cross-validation. |
+| Cross-validation | `Dartboard`; not used in example 04 | dartboard folds on all groups at once | **Follow** the library, and do what the example left out. |
+| Spectral index | ignored (231–247 GHz) | open decision: a fixed α absorbed into w and V, or ignored as in MPoL | **Flag**: α ≈ 2–3 gives ≈ 15–20% across the band inside each LB EB, which per-EB g cannot absorb. |
+
+### Nuisances
+
+On raw or binned points, each nuisance is a per-point factor on the model.
+The uv points never move.
+
+- **Amplitude:** M_k = g_e(k) · V_k. One EB's g is fixed to 1. Parametrise
+  as ln g (Jeffreys).
+- **Offset:** M_k = g · exp(−2πi(δα u_k + δδ v_k)) · V_k. ∂M/∂δ =
+  −2πi u_k M_k is analytic. Shifting the image is exactly this ramp, so
+  no ∂V/∂u term and no nufftax JVP with respect to the points is needed.
+  One EB's offset is fixed, to break the degeneracy with the model centre.
+- **σ factor per ddid:** with variance s²/w on each of Re and Im,
+  −ln L_d = 2N_d ln s_d + Σ w|r|²/(2s_d²) + const, which is minimised at
+  s_d² = Σ w|r|²/(2N_d). N_d is the raw count. Profile it out, or sample
+  ln s. With bins, Σ_k w|r|² = (Q_b − W_b|V̄_b|²) + W_b|V̄_b − M_b|²
+  exactly, so store W_b, V̄_b, N_b per bin and Q per ddid.
+- **Cross-validation:** the folds are `Dartboard`-style polar cells
+  (q, φ, Hermitian-paired), and a held-out cell is held out in every ddid
+  and EB together. On points this is a 0/1 weight mask, so the shapes and
+  the jit stay fixed across folds. In the Toeplitz form, each fold needs its
+  own D and B: k folds × 26 ddids, precomputed once.
+
+### nufftax limits (0.6.1)
+
+| Limit | Consequence here |
+|---|---|
+| The `_make_batcher` batching rule handles only one batch dimension, at axis 0. `jax.hessian` and nested `vmap` fail. | Laplace and evidence use hvp (`jvp` of `grad`), or a dense Hessian built from **one** `vmap` of hvps over basis chunks. Never `jax.hessian`. Do not monkeypatch; the fix goes upstream with Ben's OK. |
+| f32 eps 1e-5 is relative to Σ\|I\| | Fine for the likelihood (see Precision). Reductions in f64. |
+| Memory ∝ M·ns² | Chunk on the GPU. CPU runs at the full 42.4 M are not for the laptop. |
+| The OzSTAR conda env pins jax 0.10.2 | Per `latest-jax`, P2b and P3 use a fresh pip env on the latest JAX with nufftax and virgil from the #426 merge. Never pin back. |
+
+**Exploiting linearity for the evidence.** If the `MultipoleDisk`
+brightness is linear in its latents (no positivity transform), then at
+fixed geometry and nuisances the likelihood Hessian is A = RᵀFᵀWFR, where R
+is the render matrix and F the Fourier operator. A does not depend on the
+latents or the hyperparameters, so compute it once per geometry (6,800
+hvps). The whitened Hessian for any hyperparameters is then I + LᵀAL, and
+the Laplace evidence is exact. In the Toeplitz form each hvp is one 2N² FFT
+(≈ 2 ms on the A100), so the whole 6,800² matrix takes ≈ 15 s.
+
+New in virgil (P2, after #426):
+
+- `ComplexVisData`: complex visibilities with a weight per point and a
+  group index (ddid, EB). Its likelihood calls `image_visibilities` with
+  `ft="nufft"` (or `"auto"`) in chunks, with f64 reductions. There is an
+  optional bin-averaging constructor (option b).
+- `CalibrationNuisance`: g and the offset per EB, and s per ddid
+  (profiled or free).
+- `ToeplitzVisData` (option d): it is built from `ComplexVisData` once the
+  offsets are frozen, and its χ² matches `ComplexVisData` to 1e-8 relative.
+- `GriddedVisData` is **not** needed. A gridded dirty image stays as a
+  diagnostic in the crosscheck, not as a likelihood.
 
 ### MaxEnt
 
-- `Image` at 1024² pixels and 5 mas, with optional Gaussian convolution
-  matching MPoL's 30 mas, plus `MaxEntropy` with a flat prior and a small
-  `TSV`. Fit with L-BFGS.
+- `Image` at 1280² and 5 mas (or 1024² at 6 mas), with optional Gaussian
+  convolution matching MPoL's 30 mas, plus `MaxEntropy` with a flat prior
+  and a small `TSV`. Fit with full-batch L-BFGS on option (a), jointly with
+  `CalibrationNuisance`.
 - λ is chosen by k-fold dartboard cross-validation, as in MPoL and
-  Zawadzki et al. 2023. Folds are drawn on the union cell index (or on
-  dartboard sectors), and every group's copy of a held-out cell is held out
-  together; otherwise the same uv cell leaks into training through the
-  neighbouring ddids and EBs, and CV favours the method that overfits. The
+  Zawadzki et al. 2023 (folds as under Nuisances). Run the sweep in the
+  Toeplitz form with offsets frozen at the joint-fit values. Refit the
+  offsets on (a) at the chosen λ, as a check that they did not move. The
   GP uses the identical folds.
 - `l_curve` discrepancy and classic Gull–Skilling are reported as secondary
   choices.
@@ -263,17 +408,27 @@ New in virgil (one PR):
 - Geometry (inclination, PA, centre) is fitted jointly with the EB offsets.
   One EB's offset is fixed to remove the degeneracy with the centre.
 
-Cost on the gridded cells is 1.1 × 10⁵ cells (measured, see "Visibility
-count") × 300 nodes × 9 orders, about 3 × 10⁸ Bessel evaluations per
-gradient. A single evaluation fits on the laptop, but the fits and evidence
-sweeps go to OzSTAR. The geometry can be fitted on the SB data first (fewer
-than 3000 cells), then frozen for the full latent and hyperparameter fit.
+**Data path.** The Hankel quadrature is not an FFT. On raw data it costs
+42.4 M × 300 nodes × 9 orders ≈ 10¹¹ Bessel evaluations per gradient, and
+even on the 113k FFT cells (which are invalid anyway; see option c) it was
+3 × 10⁸. Options:
 
-Hyperparameters come from `log_evidence`, a Laplace approximation in
-(2M+1)·n_r whitened latents: about 3,300 (M=6, n_r=256) to 6,800 (M=8,
-n_r=400). A dense Hessian at 6,800² is fine, but budget the OzSTAR
-evidence sweeps on the upper figure. The model is also scored on the same dartboard
-cross-validation as MaxEnt.
+| Path | Cost per gradient | Error | Use |
+|---|---|---|---|
+| Hankel on raw points | ≈ 10¹¹ Bessel | exact | check only, on a ≤ 10⁵ subsample |
+| Hankel on fine bins | 10⁸–10¹¹, depends on P1 | second order, as (b) | only if P1 shows strong compression |
+| **Render to pixels → nufftax or Toeplitz** | 1280² × (2M+1) interpolation + (a) or (d) | pixel sampling: 5 mas samples to 20.6 Mλ, so aliasing needs model power above ≈ 30 Mλ. That is negligible for Matérn lengthscales ≳ 10 mas. | **default** |
+
+Rendering needs a new pixel-image method on `MultipoleDisk` (P4). Check it
+against the Hankel model on a raw subsample, to within the eps of (a).
+
+**Fitting.** Fit the geometry on the SB data first (10.9 M raw points; far
+fewer in the Toeplitz form), then freeze it for the full latent and
+hyperparameter fit. Hyperparameters come from `log_evidence`, a Laplace
+approximation in (2M+1)·n_r whitened latents: about 3,300 (M=6, n_r=256) to
+6,800 (M=8, n_r=400). Build the Hessian from hvps, never with
+`jax.hessian`. Use the linearity shortcut above where it applies. The model
+is also scored on the same dartboard cross-validation as MaxEnt.
 
 frank (Jennings et al. 2020) is an external check on the m=0 profile.
 
@@ -288,7 +443,7 @@ The same metrics for every method:
 4. Spiral pitch angle and arm phase, against DSHARP III, compared in sky
    coordinates.
 5. Total flux and the fitted nuisances, against MPoL's
-   `analyze_scale_factors.py`.
+   `analyze_scale_factors.py` (mapping s_ours = g·s_MPoL).
 6. The image convolved to the CLEAN beam, against the DSHARP FITS.
 
 Expectation:
@@ -301,44 +456,51 @@ Expectation:
 
 | Phase | Where | Work |
 |---|---|---|
-| P0 | this note | References, data inventory, design, N_vis (done 2026-10-17). |
-| P1 | virgil-validation PR | ALMA worker, download, export, dirty-image and weight-scatter checks; record N_vis. |
-| P2 | virgil PR | Complex observable, `GriddedVisData`, `CalibrationNuisance`, tests against the DFT. |
-| P3 | OzSTAR GPU | MPoL reference run (`sgd.py` and `analyze_scale_factors.py` in `.venv-mpol` through `mpol_worker.py`, conventions in `docs/mpol_conventions.md`), then MaxEnt plus a cross-validation sweep (sbatch array over λ and folds). |
-| P4 | OzSTAR GPU | `MultipoleDisk`: geometry on SB, then the full fit and evidence over M and lengthscales. |
+| P0 | this note | References, data inventory, design, N_vis (done 2026-10-17); nufftax revision (2026-10-19). |
+| P1 | virgil-validation PR | ALMA worker, download, export, dirty-image and weight-scatter checks. Record N_vis, Δν, t_int, typical σ per visibility, and occupied-bin counts at 650 λ and 2 kλ. |
+| P2 | virgil PR, **after virgil#426 merges** | `ComplexVisData` on nufftax (chunked, f64 reductions, optional bins), `CalibrationNuisance`, `ToeplitzVisData`; tests against a float64 DFT. No `GriddedVisData`. |
+| P2b | OzSTAR A100 + M1 Max | Scale benchmark: `bench_jax_nufft.py --npts 1e6 4e6 1.6e7 4.2e7` at 1024² and 1280², f32, value + grad, with peak memory. Repeat the M1 Max runs ≥ 3 times, because its fixed cost varied 2–4× between runs. Also time Toeplitz evaluation at 2560². Fill the cost table above. |
+| P3 | OzSTAR GPU | MPoL reference run (`sgd.py` and `analyze_scale_factors.py` in `.venv-mpol` through `mpol_worker.py`, conventions in `docs/mpol_conventions.md`). Then the MaxEnt joint fit on (a), and the cross-validation sweep in the Toeplitz form (sbatch array over λ and folds). Use a fresh pip env on the latest JAX. |
+| P4 | OzSTAR GPU | `MultipoleDisk` pixel rendering, with a Hankel check. Geometry on SB, then the full fit and evidence over M and lengthscales. |
 | P5 | virgil-validation PR | `docs/imaging/alma_imlup.md`, trust graph and ledger, findings. |
 
 ## Verification
 
-- Two separate gridding checks:
-  - (a) Algebra: the gridded likelihood equals a float64 DFT likelihood
-    evaluated at the cell centres to 1e-10 relative, including the
-    s-dependent constant, and the gradients agree. This tests the
-    bookkeeping only.
-  - (b) Approximation: the ungridded χ² minus the gridded χ² at the fitted
-    model, from an independent DFT at the raw uv (in `src/crosscheck/`), is
-    below about 1 per degree of freedom for each ddid, with SB and LB
-    reported separately. The subsample is drawn so that cells hold several
-    visibilities each; a random 10⁴ draw from 4.2 × 10⁷ puts about one
-    visibility in most LB cells and hides the within-cell term.
-- The dirty image matches CASA `tclean niter=0` (with `weighting="natural"`
-  and the N/2 phase-centre pixel convention pinned) to a tolerance set by
-  the tclean gridding kernel, not by the noise: both images are linear in
-  the same data and share its noise.
-- A control that must fail: inject an offset point source (or an asymmetric
-  pair) with `simobserve`/`ft` into a copy of the MS. Check its position
-  from both tclean and the crosscheck DFT, in RA and Dec signs. The
-  conjugated mapping is registered as `kind="control"`. IM Lup's rings and
-  m=2 spiral are invariant under a 180° rotation, so a conjugation bug
+- **Transform.** nufftax (f32, eps 1e-5) against a float64 DFT on a random
+  10⁴-point subsample of every ddid, at the fitted image: max |ΔV| ≤ 1e-5 ×
+  Σ|I|. Gradients agree to the same tolerance. The f64 path at eps 1e-12
+  agrees to 1e-10 relative.
+- **Reduction.** Raw χ² per ddid from the chunked f64 reduction equals an
+  f64 numpy sum to 1e-10 relative.
+- **Bins** (if used). χ²_raw − χ²_binned at the fitted model, per ddid,
+  from the independent DFT in `src/crosscheck/`, is below about 1 per ddid,
+  with SB and LB reported separately. The subsample is whole bins, not
+  random points; a random draw puts about one visibility in each bin and
+  hides the within-bin term.
+- **Toeplitz.** χ² from `ToeplitzVisData` equals χ² from `ComplexVisData`
+  (f64 nufftax) to 1e-8 relative, per ddid and per fold, and also at a
+  random image (to catch a missing lag or a wrong sign).
+- **Hankel against rendering.** The rendered `MultipoleDisk` visibilities
+  match the Hankel visibilities on a raw subsample to within eps plus the
+  pixel-aliasing bound.
+- **Dirty image.** It matches CASA `tclean niter=0` (with
+  `weighting="natural"` and the N/2 phase-centre pixel convention pinned)
+  to a tolerance set by the tclean gridding kernel, not by the noise: both
+  images are linear in the same data and share its noise.
+- **A control that must fail.** Inject an offset point source (or an
+  asymmetric pair) with `simobserve`/`ft` into a copy of the MS. Check its
+  position from both tclean and the crosscheck DFT, in RA and Dec signs.
+  The conjugated mapping is registered as `kind="control"`. IM Lup's rings
+  and m=2 spiral are invariant under a 180° rotation, so a conjugation bug
   would barely change its dirty image; only the injected source exposes it.
-- Fitted σ factors agree with the scatter estimate to about 5%, where the
-  residuals are taken against the DSHARP CLEAN model (the `.model` from
-  `tclean`, or the released FITS degridded by the crosscheck DFT), never
-  against a virgil fit.
-- Both MPoL's ingest and ours go through visread, so a visread convention
-  error would agree on both sides. The tclean check with the injected
-  source is the only root that reads the MS independently.
-- Injection-recovery: a synthetic ring-plus-spiral disk on the real uv
+- **σ factors.** Fitted σ factors agree with the scatter estimate to about
+  5%, where the residuals are taken against the DSHARP CLEAN model (the
+  `.model` from `tclean`, or the released FITS degridded by the crosscheck
+  DFT), never against a virgil fit.
+- **Shared ingest.** Both MPoL's ingest and ours go through visread, so a
+  visread convention error would agree on both sides. The tclean check with
+  the injected source is the only root that reads the MS independently.
+- **Injection-recovery.** A synthetic ring-plus-spiral disk on the real uv
   coverage and weights is recovered by both methods.
 
 ## References
@@ -358,6 +520,8 @@ ADS search run on 2026-10-17.
 | [2020MNRAS.495.3209J](https://ui.adsabs.harvard.edu/abs/2020MNRAS.495.3209J) | Jennings et al. 2020, frank | 2005.07709 |
 | [2021ApJS..257....1O](https://ui.adsabs.harvard.edu/abs/2021ApJS..257....1O) | Öberg et al. 2021, MAPS I | 2109.06268 |
 | [2021ApJS..257...14S](https://ui.adsabs.harvard.edu/abs/2021ApJS..257...14S) | Sierra et al. 2021, MAPS XIV: multiwavelength continuum substructures | 2109.06433 |
+| — | Fessler et al. 2005, IEEE Trans. Signal Process. 53, 3393: Toeplitz-based iterative image reconstruction | — |
+| — | nufftax (GragasLab/nufftax), pure-JAX NUFFT, 0.6.1 | — |
 
 Still to do:
 
@@ -366,3 +530,6 @@ Still to do:
 - Find a refereed source for the multi-EB weight-scatter method. ADS found
   none by Czekala et al. for 2023–2026. It may be in the MPoL paper or in
   exoALMA II (Loomis et al. 2025, arXiv:2504.19870); not yet checked.
+- Check the Fessler et al. 2005 citation on ADS or Crossref, and IM Lup's
+  mm spectral index (for the α decision).
+- Fill the job 18819744 placeholder in the revision section.
