@@ -13,7 +13,7 @@ The likelihood is now an exact NUFFT on the visibilities, using nufftax
 | New: Toeplitz (dirty-beam) form for frozen offsets | It is exact for a pixel image and costs one 2N² FFT per evaluation, independent of N_vis. It makes the cross-validation and evidence sweeps cheap. |
 | `MultipoleDisk` is rendered to pixels, then goes through nufftax or Toeplitz | Hankel on 4×10⁷ points is about 10¹¹ Bessel evaluations per gradient. The Hankel path stays only as a check on a subsample. |
 | σ-factor formula corrected: s² = Σw\|r\|²/(2N), not 4N | With variance s²/w on each of Re and Im, E[w\|r\|²] = 2s². |
-| Field size raised to at least 6″ | The NUFFT model does not wrap, but the field must still cover the CLEAN mask (5.5″ along the major axis). |
+| Field size raised to at least 6″ | The NUFFT model does not wrap. The rotated CLEAN mask's RA × Dec extent (≈ 4.3″ × 4.9″) fits in 5.12″ only if centred on the phase centre; 6″ adds padding for a mask–phase-centre offset, at 1.56× the pixels. |
 | New phase P2b: nufftax scale benchmark | The cost figures below are extrapolated from 10⁵ points. |
 | Dependency: virgil#426 must merge first | The `ft="nufft"` path, the even-N phase fix and the eps defaults live there. |
 
@@ -206,9 +206,12 @@ data are never committed.
   how far the data can be compressed safely (see "Likelihood options").
 - The SBs (10.9 M visibilities) have short uv tracks and many channels, so
   they compress well into fine bins. LB1 (31.5 M, 74%) barely compresses.
-- The 5.12″ field is narrower than the CLEAN mask (5.5″ × 3.5″). A NUFFT
-  model does not wrap, but emission outside the field goes unmodelled. The
-  field is therefore at least 6″: 1280² at 5 mas (6.4″, MPoL's pixel), or
+- The CLEAN mask (semi-axes 2.75″ × 1.75″ at PA 145°) spans
+  2√(a²sin²θ + b²cos²θ) × 2√(a²cos²θ + b²sin²θ) ≈ 4.3″ (RA) × 4.9″ (Dec).
+  That fits in 5.12″ only if the mask is centred on the phase centre. A
+  NUFFT model does not wrap, but emission outside the field goes
+  unmodelled, so for padding and a possible mask–phase-centre offset the
+  field is at least 6″ (1.56× the pixels, and the Toeplitz kernel memory): 1280² at 5 mas (6.4″, MPoL's pixel), or
   1024² at 6 mas (6.1″). Both are finer than the 9 mas Nyquist pixel for
   11.5 Mλ. Fix the outer radius from DSHARP II/Table 1 before P2.
 - The DSHARP MS keeps up to 16 channels per window.
@@ -237,9 +240,13 @@ Independent checks in `src/crosscheck/`:
   histogram. The residuals are against the DSHARP CLEAN model, so the check
   is independent of virgil.
 
-The crosscheck code uses a float64 DFT, or `finufft` at eps 1e-12, never
-nufftax. virgil uses nufftax, so using it here would break the independence
-rule.
+The crosscheck code never uses nufftax: virgil does, so that would break
+the independence rule. finufft is not fully independent either: nufftax
+ports the same ES-kernel algorithm and mirrors its conventions (`isign`,
+mode ordering, the N/2 centre on even N). So every sign and centre
+convention in the crosscheck is pinned against the float64 DFT only. finufft
+(eps 1e-12) may be used for scale, after it matches that DFT on a small
+grid with an asymmetric source.
 
 ### Likelihood options
 
@@ -263,7 +270,11 @@ the phase or amplitude error for emission at x = 2.5″ (1.2 × 10⁻⁵ rad).
   each call pays the grid-FFT fixed cost, so 26 calls add ≈ 14 ms on the
   A100 but seconds on a CPU.
 - **(b), bins.** Take the weighted mean of (u, v, V) in each bin, after
-  folding to v ≥ 0. Evaluating the model at the weighted centroid cancels
+  folding to v ≥ 0; a folded point has (u, v, V) → (−u, −v, V*), or
+  Hermitian partners partly cancel. A bin never crosses a ddid, an EB or
+  a dartboard cell, so the per-point nuisances stay exact and the CV mask
+  applies per bin. None of these rules is caught by the χ² check at the
+  fitted model, so P2 tests each directly. Evaluating the model at the weighted centroid cancels
   the first-order term, so the error is ½|∇²V|·⟨δu²⟩. The bin count is
   unknown until P1.
 - **(b), compression estimate.** In 6 s an LB track at 3 Mλ moves ≈ 1.3 kλ.
@@ -299,12 +310,18 @@ metrics stay valid because both methods share it.
 ≈ 0.25 Jy, so it is ≈ 2.5 µJy.
 
 - An ALMA visibility in one channel and one integration has σ of order
-  10 mJy (to be measured in P1), so the transform error is ≲ 10⁻³ σ.
-  Summed over 4 × 10⁷ points it biases χ² by ≲ 1.
-- The transform is therefore f32. But the χ² reduction must be f64 (cast r
+  10 mJy per component (to be measured in P1), so the transform error is
+  ≈ 2.5 × 10⁻⁴ σ. Over 4.24 × 10⁷ points, Σw|ε|² ≈ 2.7, and the cross
+  term 2Σw Re(r*ε) has a standard deviation of ≈ 3.3. ε changes with the
+  model, so this is χ² noise of a few units that f64 reduction does not
+  remove.
+- The transform is therefore f32 for the joint fit, where O(3) in χ² ≈
+  8.5 × 10⁷ is irrelevant. Any cross-validation or evidence evaluation
+  on option (a) uses f64 nufftax (≈ 0.3 s at 4 × 10⁷ points, job
+  18819744); the Toeplitz form is f64 already. But the χ² reduction must be f64 (cast r
   before summing): 2N ≈ 8.5 × 10⁷ in f32 has a resolution of 8, which is
   too coarse for cross-validation and evidence differences.
-- uv in f32 is fine: 11.5 Mλ has a resolution of ≈ 0.7 λ.
+- uv in f32 is fine: 11.5 Mλ lies in [2²³, 2²⁴), so the spacing is 1 λ and the rounding error ≤ 0.5 λ.
 - f64 nufftax at eps 1e-12 roughly doubles ns, so it costs about 4× the
   memory and ≈ 4.5× the per-point time (job 18819744). Keep it for checks.
 
@@ -314,7 +331,7 @@ metrics stay valid because both methods share it.
 |---|---|---|
 | Development and tests | SB1+SB2 raw (1.1 M), or any ddid subsample, option (a) | — |
 | Joint image + all nuisances | not run (see `local-compute-limits`) | (a) raw, f32, f64 reduction, chunks of ≤ 10⁷ points |
-| λ and cross-validation sweeps, evidence | (d) Toeplitz with the offsets frozen, after an OzSTAR joint fit | (d) Toeplitz, or (a) if offsets stay free |
+| λ and cross-validation sweeps, evidence | (d) Toeplitz with the offsets frozen, after an OzSTAR joint fit | (d) Toeplitz, or (a) in f64 if offsets stay free |
 | `MultipoleDisk` | rendered → (d) | rendered → (a) or (d) |
 | (b) bins | only if P1 shows ≥ 3× compression | not needed |
 
@@ -331,7 +348,7 @@ metrics stay valid because both methods share it.
 | σ factors | log10 s per ddid, by SGD | per ddid, profiled in closed form, or log s with a log-uniform prior | **Depart in method only**: same model, faster and deterministic. |
 | Regulariser | entropy, λ 1e-9, plus a 30 mas Gaussian base layer | `MaxEntropy` + small `TSV`; optional Gaussian convolution | **Follow**, with λ set by cross-validation. |
 | Cross-validation | `Dartboard`; not used in example 04 | dartboard folds on all groups at once | **Follow** the library, and do what the example left out. |
-| Spectral index | ignored (231–247 GHz) | open decision: a fixed α absorbed into w and V, or ignored as in MPoL | **Flag**: α ≈ 2–3 gives ≈ 15–20% across the band inside each LB EB, which per-EB g cannot absorb. |
+| Spectral index | ignored (231–247 GHz) | open decision: a fixed α absorbed into w and V, or ignored as in MPoL | **Flag**: each LB EB spans 230.5–246.9 GHz (ratio 1.071), so α ≈ 2–3 gives ≈ 15–23%, which per-EB g cannot absorb. |
 
 ### Nuisances
 
@@ -346,9 +363,12 @@ The uv points never move.
   One EB's offset is fixed, to break the degeneracy with the model centre.
 - **σ factor per ddid:** with variance s²/w on each of Re and Im,
   −ln L_d = 2N_d ln s_d + Σ w|r|²/(2s_d²) + const, which is minimised at
-  s_d² = Σ w|r|²/(2N_d). N_d is the raw count. Profile it out, or sample
-  ln s. With bins, Σ_k w|r|² = (Q_b − W_b|V̄_b|²) + W_b|V̄_b − M_b|²
-  exactly, so store W_b, V̄_b, N_b per bin and Q per ddid.
+  s_d² = Σ w|r|²/(2N_d). N_d = Σ_k m_k is the **unmasked** raw count in
+  the current fold (m_k the 0/1 CV mask); using the full count would bias
+  s² low by the held-out fraction (20% for 5 folds) and with it every
+  training χ². Profile s out, or sample ln s with the same N_d. With bins,
+  Σ_k w|r|² = (Q_b − W_b|V̄_b|²) + W_b|V̄_b − M_b|² exactly, so store
+  W_b, V̄_b, N_b per bin and Q per ddid, and N_d per fold.
 - **Cross-validation:** the folds are `Dartboard`-style polar cells
   (q, φ, Hermitian-paired), and a held-out cell is held out in every ddid
   and EB together. On points this is a 0/1 weight mask, so the shapes and
@@ -419,10 +439,13 @@ even on the 113k FFT cells (which are invalid anyway; see option c) it was
 |---|---|---|---|
 | Hankel on raw points | ≈ 10¹¹ Bessel | exact | check only, on a ≤ 10⁵ subsample |
 | Hankel on fine bins | 10⁸–10¹¹, depends on P1 | second order, as (b) | only if P1 shows strong compression |
-| **Render to pixels → nufftax or Toeplitz** | 1280² × (2M+1) interpolation + (a) or (d) | pixel sampling: 5 mas samples to 20.6 Mλ, so aliasing needs model power above ≈ 30 Mλ. That is negligible for Matérn lengthscales ≳ 10 mas. | **default** |
+| **Render to pixels → nufftax or Toeplitz** | 1280² × (2M+1) interpolation + (a) or (d) | pixel sampling: 5 mas samples to 20.6 Mλ, so model power at 29.7–41 Mλ aliases into the data. Matérn spectra fall as power laws (Matérn-3/2 at ℓ = 10 mas: amplitude ≈ 10⁻² at 30 Mλ), and node interpolation and a non-zero edge add f⁻² tails, so this is **not** negligible at eps 1e-5. Render by pixel integration or ≥ 2× supersampling, and bound the residual from the Hankel model at 29.7–41 Mλ. | **default** |
 
-Rendering needs a new pixel-image method on `MultipoleDisk` (P4). Check it
-against the Hankel model on a raw subsample, to within the eps of (a).
+Rendering needs a new pixel-image method on `MultipoleDisk` (P4). Compute
+the aliasing bound before running the check (from the Hankel model at
+29.7–41 Mλ, for the rendering scheme chosen), pin it, and then check the
+rendering against the Hankel model on a raw subsample to within eps plus
+that bound.
 
 **Fitting.** Fit the geometry on the SB data first (10.9 M raw points; far
 fewer in the Toeplitz form), then freeze it for the full latent and
@@ -468,20 +491,29 @@ Expectation:
 
 ## Verification
 
-- **Transform.** nufftax (f32, eps 1e-5) against a float64 DFT on a random
-  10⁴-point subsample of every ddid, at the fitted image: max |ΔV| ≤ 1e-5 ×
-  Σ|I|. Gradients agree to the same tolerance. The f64 path at eps 1e-12
-  agrees to 1e-10 relative.
-- **Reduction.** Raw χ² per ddid from the chunked f64 reduction equals an
-  f64 numpy sum to 1e-10 relative.
+- **Transform.** nufftax (f32, eps 1e-5) against the float64 DFT in
+  `src/crosscheck/` (root `mathematics`, not virgil's own DFT path) on a
+  random 10⁴-point subsample of every ddid, at the fitted image. eps is a
+  target for the relative l2 error, not a max-norm bound, so the
+  criterion is ‖ΔV‖₂/‖V‖₂ ≤ 3·eps, with c = 3 fixed now. The max-norm
+  error is measured in P2b and reported, not used as the pass bound.
+  Gradients are checked the same way. The f64 path at eps 1e-12 meets the
+  same l2 criterion at its eps.
+- **Reduction.** Raw −ln L per ddid from the chunked f64 reduction,
+  including the s-dependent constant 2N_d ln s_d with the per-fold
+  unmasked N_d, equals an f64 numpy sum to 1e-10 relative.
 - **Bins** (if used). χ²_raw − χ²_binned at the fitted model, per ddid,
   from the independent DFT in `src/crosscheck/`, is below about 1 per ddid,
   with SB and LB reported separately. The subsample is whole bins, not
   random points; a random draw puts about one visibility in each bin and
   hides the within-bin term.
-- **Toeplitz.** χ² from `ToeplitzVisData` equals χ² from `ComplexVisData`
-  (f64 nufftax) to 1e-8 relative, per ddid and per fold, and also at a
-  random image (to catch a missing lag or a wrong sign).
+- **Toeplitz.** Per-ddid χ² from `ToeplitzVisData` equals the
+  `src/crosscheck/` float64 DFT χ² on the raw points to 1e-8 relative,
+  per fold, at the fitted image and at a random image (to catch a missing
+  lag or a wrong sign). Both virgil forms share the nufftax path, so a
+  shared convention error (even-N centre, `isign`) would pass a
+  virgil-vs-virgil comparison; that comparison (against `ComplexVisData`
+  in f64) is kept only as a plain guard (`self-consistency`).
 - **Hankel against rendering.** The rendered `MultipoleDisk` visibilities
   match the Hankel visibilities on a raw subsample to within eps plus the
   pixel-aliasing bound.
