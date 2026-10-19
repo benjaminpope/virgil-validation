@@ -87,7 +87,7 @@ def hd9312():
     return r, best, t_ref, table
 
 
-@pytest.mark.validates("mathematics", roots=["literature"])
+@pytest.mark.validates("evidence", roots=["mathematics"])
 def test_an_orbit_on_the_measured_positions_is_the_same_sky_orbit(hd9312):
     r, best, t_ref, table = hd9312
     rows, verdict = PB.sky_rows(best, t_ref, r, table, False, False, 1.0)
@@ -96,7 +96,7 @@ def test_an_orbit_on_the_measured_positions_is_the_same_sky_orbit(hd9312):
     assert "band N=5 (rank 1" in rows[1]["note"]
 
 
-@pytest.mark.validates("mathematics", roots=["literature"], kind="control")
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
 def test_a_point_reflection_without_a_label_swap_is_not_agreement(hd9312):
     r, best, t_ref, table = hd9312
     reflected = dict(best, Omega=best["Omega"] + 180.0)  # (dRA, dDec) -> (-dRA, -dDec)
@@ -106,7 +106,7 @@ def test_a_point_reflection_without_a_label_swap_is_not_agreement(hd9312):
     assert accepted == "SAME-SKY-ORBIT"
 
 
-@pytest.mark.validates("mathematics", roots=["literature"], kind="control")
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="control")
 def test_another_alias_band_is_a_different_sky_orbit(hd9312):
     r, best, t_ref, table = hd9312
     far = dict(best, period=best["period"] * 2.5)
