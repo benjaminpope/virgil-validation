@@ -164,7 +164,11 @@ def summary_of(folder, record):
     )
     return dict(collection_id=f"trackb-{record['slug']}", target=record["target"],
                 instrument=G.INSTRUMENT.get(meta["instrument"], meta["instrument"]),
-                provenance=dict(virgil_commit=meta.get("virgil_commit"), validation_commit=meta.get("validation_commit")),
+                provenance=dict(virgil_commit=meta.get("virgil_commit"), validation_commit=meta.get("validation_commit"),
+                                virgil_vlti_commit=meta.get("virgil_vlti_commit"),
+                                # absent for a run that predates it: the tile's legacy flag then stays
+                                **({k: meta[k] for k in ("data_path",) if meta.get(k)}),
+                                night_paths={k: v.get("data_path") for k, v in (meta.get("nights") or {}).items()} or None),
                 orbit=orbit, blind=blind)
 
 

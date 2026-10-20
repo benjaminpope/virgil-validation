@@ -79,6 +79,8 @@ class Loaded:
     reference: dict = None  # orbit elements in crosscheck.orbits convention, or None
     ref_positions: list = None  # published (mjd, dra, ddec) per epoch, or None
     notes: list = dataclasses.field(default_factory=list)
+    data_path: str = None  # "calibrated", "cp-only", "pair-test gains" or "mixed"; None: the legacy Gl 229 loader
+    night_paths: dict = None  # epoch label -> data path
 
 
 @dataclasses.dataclass
@@ -193,31 +195,52 @@ def _check_published(ref, refpos, limit_mas=0.5):
     return miss, None
 
 
-def _read_with_vis(T):
-    """trackb_fit._read, but GRAVITY keeps V2 beside the closure phases (the Track B criteria are closure phases only)."""
+def _refuse_gravity_sci_vis(T):
+    """trackb_fit._read, but GRAVITY raises: its uncalibrated SCI_VIS V² (fitted with vis_amp) is not used.
+
+    GRAVITY systems are read from the calibrated files (``calibrated_load``); this guards any path that still
+    goes through ``T.load``/``T._read`` with raw ESO products."""
     read_tb = T._read
 
     def read(files, inst):
-        if inst != "GRAVITY":
-            return read_tb(files, inst)
-        from virgil.oidata import OIData
-        from virgil.oifits import read_oifits
+        if inst == "GRAVITY":
+            import calibrated_load
 
-        return OIData(read_oifits([str(f) for f in files], insname="GRAVITY_SC")).select(
-            ranges=T.GRAVITY_RANGES, observables=("vis", "phi")
-        )
+            calibrated_load.refuse_uncalibrated_gravity()
+        return read_tb(files, inst)
 
     return read
 
 
+def _load_pionier_night(C, files):
+    """One night of calibrated PIONIER files, a file virgil cannot read left out as ``trackb_fit.load`` does."""
+    try:
+        return C.load_pionier_night(files), []
+    except ValueError:
+        if len(files) == 1:
+            raise
+    good, dropped = [], []
+    for f in files:
+        try:
+            C.load_pionier_night([f])
+            good.append(f)
+        except ValueError as e:
+            dropped.append(dict(file=f.name, error=str(e)[:300]))
+    if not good:
+        raise ValueError(f"no readable file: {dropped}")
+    return C.load_pionier_night(good), dropped
+
+
 def make_trackb_loader(name, primary_omega=False):
     def load(root):
+        import calibrated_load as C
         import trackb_fit as T
 
-        T._read = _read_with_vis(T) if not getattr(T._read, "_vis", False) else T._read
-        T._read._vis = True
+        T._read = _refuse_gravity_sci_vis(T) if not getattr(T._read, "_guarded", False) else T._read
+        T._read._guarded = True
 
         s, _ = _trackb_system(root, name)
+        inst = TRACKB[name][1]
         p_json = s["reference_orbit"]["P_day"][
             0
         ]  # one source for P_ref: TRACKB; a mismatch is an error
@@ -230,11 +253,31 @@ def make_trackb_loader(name, primary_omega=False):
             for e in T.epochs_of(name, s, pathlib.Path(root) / "trackb")
             if e["counted"]
         ]
-        names, data, gdata, notes, refpos, seps = [], [], [], [], [], []
+        calibrated = (
+            {C.night_label(n["mjd"], n["mode"]): n for n in C.gravity_nights(pathlib.Path(root) / "trackb" / name)}
+            if inst == "GRAVITY"
+            else None
+        )
+        names, data, gdata, notes, refpos, seps, paths = [], [], [], [], [], [], []
         for e in eps:
-            d, inst, dropped = T.load(e["files"])
+            if inst == "GRAVITY":
+                # the published epoch's night, in the mode(s) it was calibrated in
+                night = C.night_of(float(np.mean([T.mjd_of(f) for f in e["files"]])))
+                found = [n for k, n in calibrated.items() if n["mjd"] == night]
+                if not found:
+                    notes.append(f"{e['date']}: no calibrated night (MJD {night}); left out")
+                    continue
+                if len(found) > 1:  # two modes on one night: the one with a calibrator, then the first
+                    found.sort(key=lambda n: n["path"] != C.CALIBRATED)
+                    notes.append(f"{e['date']}: calibrated in {len(found)} modes; used {found[0]['mode']}")
+                d, dropped, path = C.load_gravity_night(found[0]), [], found[0]["path"]
+                notes += [f"{e['date']}: {x}" for x in found[0]["notes"]]
+            else:
+                d, dropped = _load_pionier_night(C, e["files"])
+                path = C.PAIR_GAINS
             notes += [f"{e['date']}: dropped {x['file']}" for x in dropped]
             names.append(e["date"])
+            paths.append(path)
             data.append(d)
             gdata.append(T.grid_data(d, inst, T.geometry(d)[3]))
             if e["published"]:
@@ -258,6 +301,8 @@ def make_trackb_loader(name, primary_omega=False):
             reference=ref,
             ref_positions=refpos or None,
             notes=notes,
+            data_path=C.system_data_path(paths) if paths else None,
+            night_paths=dict(zip(names, paths)),
         )
 
     return load
@@ -696,7 +741,8 @@ def run(name, args):
         loaded.data = [d.select(observables="phi") for d in loaded.data]
         loaded.grid_data = [d.select(observables="phi") for d in loaded.grid_data]
     errors = []
-    vis_amp = None if args.no_vis_amp or args.closure_only else VIS_AMP
+    # Data with gains (calibrated GRAVITY, PIONIER with pair-test gains) supersede a per-epoch V² amplitude: none.
+    vis_amp = None if args.no_vis_amp or args.closure_only or loaded.data_path else VIS_AMP
     primary_diam = None if args.no_ud else sysd.primary_diam
     ref0 = loaded.reference
 
@@ -720,6 +766,8 @@ def run(name, args):
         args={k: v for k, v in vars(args).items() if k != "list"},
         primary_diam=primary_diam,
         vis_amp=vis_amp,
+        data_path=loaded.data_path,
+        night_paths=loaded.night_paths,
         notes=loaded.notes,
         reference=loaded.reference,
         virgil=_virgil_version(),
