@@ -98,3 +98,20 @@ def test_pull_back_keeps_the_legacy_flag_unless_a_path_was_recorded():
 
     src = pathlib.Path(PB.__file__).read_text()
     assert '"data_path"' in src and "absent for a run that predates it" in src
+
+
+def test_grid_batches_are_limited_for_data_with_gains():
+    from virgil import _grid
+
+    old = (_grid.CPU_BATCH_VISIBILITIES, _grid.ACCELERATOR_BATCH_VISIBILITIES, _grid.MIN_BATCH_SIZE)
+    try:
+        set_to = G.limit_grid_batches()
+        assert set_to == dict(batch_visibilities=4096, min_batch_size=2)
+
+        class D:
+            u = [0.0] * 882
+            wavel = 1.0
+
+        assert _grid.batch_size_or_default(None, D) == 4  # not the default ~1200 points
+    finally:
+        _grid.CPU_BATCH_VISIBILITIES, _grid.ACCELERATOR_BATCH_VISIBILITIES, _grid.MIN_BATCH_SIZE = old

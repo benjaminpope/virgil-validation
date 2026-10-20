@@ -40,6 +40,25 @@ MIN_NIGHTS = 3  # fewer nights cannot say anything about an orbit
 QUICK = dict(n_candidates=10, n_refine=2, max_steps=50, n_is=200, num_warmup=100, num_samples=100, num_chains=2)
 
 
+GRID_BATCH_VISIBILITIES = 4096  # model visibilities per grid batch with gains (virgil default 2**20 on a CPU)
+
+
+def limit_grid_batches(n_vis=GRID_BATCH_VISIBILITIES):
+    """Stop-gap: grid batches that fit in memory for data with gains.
+
+    virgil sizes a batch of grid points as ``batch_visibilities() // n_vis`` (at least 256), counting one model
+    visibility per point. With gains each point also whitens an N x N covariance at 32 scale nodes, so the default
+    (about 1200 points for a 900-sample night) needs hundreds of GB: HD 9312 night MJD 59191 on a 16 GB laptop was killed.
+    ``OrbitPipeline`` has no ``batch_size`` setting, so this sets virgil's private defaults (4 points at N = 900,
+    never fewer than 2). To go once virgil sizes batches by the gains (design/orbit_noise_models.md 3.2). Returns
+    what was set, for the provenance."""
+    from virgil import _grid
+
+    _grid.CPU_BATCH_VISIBILITIES = _grid.ACCELERATOR_BATCH_VISIBILITIES = int(n_vis)
+    _grid.MIN_BATCH_SIZE = 2
+    return dict(batch_visibilities=int(n_vis), min_batch_size=2)
+
+
 def slugs():
     return sorted(p.stem for p in RECORDS.glob("*.json"))
 
@@ -146,6 +165,7 @@ def main(argv=None):
         return 0
     from virgil.pipeline import OrbitPipeline
 
+    prov["grid_batches"] = limit_grid_batches()
     settings = dict(QUICK) if a.quick else {}
     if a.no_qe:
         settings["quicklook_execute"] = False
