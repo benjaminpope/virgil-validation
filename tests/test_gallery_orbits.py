@@ -54,7 +54,7 @@ def test_the_driver_is_blind_to_the_published_solution(mod):
     assert not (strings & PUBLISHED_KEYS)
 
 
-@pytest.mark.validates("virgil.oidata.OIData.with_gains", "virgil.oidata.OIData.with_closure_offsets", roots=["standards"], kind="guard")
+@pytest.mark.validates("virgil.oidata.OIData", roots=["self-consistency"], kind="guard")
 def test_mircx_nights_carry_gains_and_offsets(mod, tmp_path):
     """iota Peg's viscal files, one night per UT date, are read with per-frame gains and closure offsets."""
     import sys
@@ -72,4 +72,5 @@ def test_mircx_nights_carry_gains_and_offsets(mod, tmp_path):
     assert sorted(nights) == ["2018Oct20", "2018Oct21", "2018Oct22"]
     assert all(n.gains is not None for n in nights.values()) and np.asarray(nights["2018Oct20"].vis).size
     assert prov["data_path"] == "viscal+gains" and prov["gain_widths"]["telescope"] == mod.MIRCX_GAINS["telescope"]
+    assert all(n.phase_offsets is not None for n in nights.values())
     assert all(len(v["files"]) == 1 for v in prov["nights"].values())

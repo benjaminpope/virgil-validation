@@ -1126,6 +1126,9 @@ def _jsonable(x):
     return x
 
 
+ORBIT_RECIPES = (recipe_gl229, recipe_hr6819, recipe_iota_peg, recipe_hd45166)
+
+
 def run(collection, data_dir, out_dir, *, quick=False, nuts=True, exclude_flagged=False):
     if collection not in RECIPES:
         raise SystemExit(f"unknown collection {collection}; known: {', '.join(RECIPES)}")
@@ -1146,6 +1149,9 @@ def run(collection, data_dir, out_dir, *, quick=False, nuts=True, exclude_flagge
                                     dict(head, partial=True, seconds=time.time() - t0, **part))
     LOAD_NOTES.clear()
     log(f"{collection}: {RECIPES[collection].__name__}")
+    if GAINS and RECIPES[collection] in ORBIT_RECIPES:
+        raise SystemExit("--gains is for single-night fits: the frozen fit_orbit takes plain data; "
+                         "orbits with gains go through gallery_orbits.py (OrbitPipeline)")
     result = RECIPES[collection](data_dir, cfg)
     result = dict(head, seconds=time.time() - t0, load_notes=list(LOAD_NOTES), **result)
     path = os.path.join(out_dir, f"fit_{collection}.json")

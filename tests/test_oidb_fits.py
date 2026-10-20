@@ -82,8 +82,7 @@ def test_epoch_fit_recovers_a_point_binary(of, tmp_path):
     assert 0.6 < e["scales"]["vis_scale"] < 1.6 and 0.6 < e["scales"]["phi_scale"] < 1.6
 
 
-@pytest.mark.validates("virgil.models.BinaryModelCartesian", "virgil.fitting.fit", "virgil.oidata.OIData.with_gains",
-                       roots=["mathematics", "standards"])
+@pytest.mark.validates("virgil.oidata.OIData", roots=["self-consistency"], kind="guard")
 def test_epoch_fit_with_gains_replaces_the_v2_error_scale(of, tmp_path):
     """--gains: V^2 carry per-frame gains with fitted widths, no V^2 error scale; the position is recovered."""
     truth = dict(dra=3.0, ddec=-4.0, flux=0.3)
@@ -97,7 +96,8 @@ def test_epoch_fit_with_gains_replaces_the_v2_error_scale(of, tmp_path):
         of.GAINS = None
     assert "vis_scale" not in e["scales"] and {"vis_gain_telescope", "vis_gain_baseline"} <= set(e["scales"])
     for k, t in truth.items():
-        assert _within(*e["values"][k], t, n=6.0), (k, e["values"][k], t)
+        assert _within(*e["values"][k], t), (k, e["values"][k], t)
+    assert max(e["scales"]["vis_gain_telescope"], e["scales"]["vis_gain_baseline"]) < 0.01  # white noise: no gain to find
     assert 0.5 < e["chi2_raw"]["all"]["chi2_red"] < 2.0  # scored on the plain data, quoted errors
 
 
