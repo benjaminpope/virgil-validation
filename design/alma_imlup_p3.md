@@ -153,3 +153,23 @@ the latest one at least 100 steps earlier (the first if shorter). (3) R1's data 
 - `folds` records the sha256 of each ddid's (u, v) in the file; `cv-task` refuses (ValueError) data whose points, count or order differ for any ddid it loads, and `--ddids` subsets are checked too.
 - `compare` requires the reference observation's amplitude `amp[0] == 1` in MPoL's export (`values_from_mpol_export`), and `resample` no longer zeroes edge pixels on identical grids (found by running `F_vs_dsharp` end to end).
 - R1's bound is 1e-5 of the *model-dependent* part (½Σw|r|² + λ S_M), not of |−ln L|, in which the constants cancel; near-miss controls (prior 1e-3, F_tot halved, untapered) fail by more than 10× the bound. A new test shows `fit`'s own loss contains `+ λ S_M`, with a control that drops the term.
+
+## Built: W9, first-run fixes (job 18912039)
+
+The first A100 run fitted F_sb, R and F but lost R and F: the per-point report called `sub.model` on a whole observation
+(1.74e7 points, a 22.1 GB buffer, about 1.27 kB per point) and ran out of memory before anything was saved.
+
+- **Save first.** Each stage writes `values.npz`, `image.npy`, `image.fits` and a provisional `result.json` (`complete: false`,
+  stages, loss history, steps, stop, `stopped_because`) after every restart round and at the stage end, atomically. A new
+  `report --data D --out DIR` recomputes the full result (and dirty images unless `--no-dirty`) from the saved `values.npz`
+  without refitting.
+- **Chunked evaluation.** `virgil_bridge.alma.model_chunks` evaluates the model on index ranges of at most `--chunk-size`
+  points (default 1e6, via `data.subset`); `per_point`, `score`, `r_objective` and `residual_dirty_images` use it, so
+  chunked equals unchunked to rounding. Memory at 1e6 points is about 1.3 GB per such buffer, so the 4.24e7-point set peaks
+  at a few GB rather than the about 54 GB the unchunked report needs.
+- **Stopping is C8.** `info["stop"] is None` meant only that `fit`'s `gtol=1e-4` gradient test passed. `run_fit_c8` restarts
+  the fit warm (each restart's test is 1/1000 of the current gradient, so it tightens) until C8 holds (|Δloss| < 0.1 over
+  at least 100 steps) or the budget is spent, and records `stopped_because` in {c8, max_steps, time_limit, stalled,
+  non_finite, max_rounds}. Defaults: `--max-steps 20000`, `--time-limit 18000` (5 h) per stage; `--gtol` sets the first
+  round's tolerance. The cv-task defaults are unchanged.
+- C13 (SB |s/ŝ−1| up to 0.123 at ddid 5–6) is reported as a finding, not tuned. Science settings are unchanged.
