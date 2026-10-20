@@ -684,17 +684,21 @@ def flags_of(tile, summary):
 
 
 def flag_of(check):
-    """``(code, reason, excluded)`` of an epoch check, or None when the night is not flagged.
+    """``(codes, reasons, excluded)`` of an epoch check, or None when the night is not flagged.
 
-    virgil writes ``"flagged: <code>: <why>"``; only the code ``alias-peaks`` marks an alias. ``barred`` is virgil's own
-    statement that the night was left out of the orbit fit."""
+    virgil writes one ``"flagged: <code>: <why>"`` per flag, and a night can carry several. oidb_fit's older summaries
+    (Gl 229) write ``"flagged: single-night alias peak (...)"`` with no code; that is an alias-peaks flag. ``barred`` is
+    the fit's own statement that the night was left out of the orbit fit."""
+    codes, reasons = [], []
     for r in check.get("reasons", []):
         r = str(r)
-        if r.startswith("flagged"):
-            parts = [x.strip() for x in r.split(":", 2)]
-            code = parts[1] if len(parts) > 1 and parts[1] in FLAG_CODES else "other"
-            return code, r.split(":", 1)[1].strip(), bool(check.get("barred"))
-    return None
+        if not r.startswith("flagged"):
+            continue
+        body = r.split(":", 1)[1].strip() if ":" in r else r
+        head = body.split(":", 1)[0].strip()
+        codes.append(head if head in FLAG_CODES else ALIAS_CODE if "alias peak" in body else "other")
+        reasons.append(body)
+    return (codes, reasons, bool(check.get("barred"))) if codes else None
 
 
 def build_target(tile, ref, summary, rows, manifest=None):
@@ -720,7 +724,7 @@ def build_target(tile, ref, summary, rows, manifest=None):
         t["epochs"] = []
         checks = (summary.get("orbit") or {}).get("epoch_checks")
         flags = {c["name"]: flag_of(c) for c in checks or []}
-        alias_labels = ({n for n, f in flags.items() if f and f[0] == ALIAS_CODE}
+        alias_labels = ({n for n, f in flags.items() if f and ALIAS_CODE in f[0]}
                         if checks is not None else ALIAS_NIGHTS.get(tile["cid"], ()))
         for e, p in zip(ours_ep, pub_ep):
             sep, pa = _sep_pa(e["dra"], e["ddec"])
@@ -730,8 +734,10 @@ def build_target(tile, ref, summary, rows, manifest=None):
             if e.get("alias") or e["label"] in alias_labels:
                 d["alias"] = True
             f = flags.get(e["label"])
-            if f and f[0] != ALIAS_CODE:
-                d["flag"] = dict(code=f[0], reason=f[1], excluded=f[2])
+            other = [c for c in f[0] if c != ALIAS_CODE] if f else []
+            if other:
+                d["flag"] = dict(code=", ".join(other), reason="; ".join(r for c, r in zip(f[0], f[1]) if c != ALIAS_CODE),
+                                 excluded=f[2])
             if e.get("note"):
                 d["note"] = e["note"]
             t["epochs"].append(d)
@@ -825,7 +831,7 @@ GUIDE = [
               "1σ error ellipse. Open orange rings are the paper's own position for that night, where it gives one. "
               "Hover over a dot, or tab to it, for the date, separation and position angle."),
     dict(key="alias", title="Alias nights",
-         text="A cross with a dashed ellipse marks a night that virgil flagged alias-peaks: its best single-night peak is "
+         text="A cross with a dashed ellipse marks a night flagged as a single-night alias peak: its best single-night peak is "
               "a secondary maximum of the likelihood, not the companion's true position. Such nights are not expected "
               "to sit on the orbit. Other flags (separation below the resolution limit, chi2 too high, flux at its "
               "bound, low gap) are drawn as open diamonds, not crosses, with the reason in the tooltip; the tooltip "

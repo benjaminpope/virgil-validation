@@ -361,7 +361,7 @@
     var leg = [];
     if (t.ours && pts(t.ours.path).length) leg.push(["ours", t.ours.label || "ours", "og-ours"]);
     if (arr(t.epochs).some(function (e) { return num(e.dra) && !e.alias; })) leg.push(["eps", "nights (1σ)", "og-ours og-sw-dot"]);
-    if (sky.hasAlias) leg.push(["alias", "alias nights (flagged alias-peaks)", "og-ours og-sw-x"]);
+    if (sky.hasAlias) leg.push(["alias", "alias nights (single-night alias peak)", "og-ours og-sw-x"]);
     if (sky.hasFlag) {
       var nx = arr(t.epochs).filter(function (e) { return e.flag && e.flag.excluded; }).length, nu = arr(t.epochs).filter(function (e) { return e.flag; }).length - nx;
       leg.push(["flag", "other flagged nights, open diamonds (" + (nx ? nx + " excluded from the fit" : "") + (nx && nu ? ", " : "") + (nu ? nu + " used in the fit" : "") + "; reason in tooltip)", "og-ours og-sw-diamond"]);
