@@ -147,6 +147,8 @@ def main(argv=None):
     ap.add_argument("--include-extra", action="store_true", dest="include_extra", help="also use oifits_extra/ (nights the paper has no epoch for)")
     ap.add_argument("--quick", action="store_true", help="smoke settings: tiny search and NUTS")
     ap.add_argument("--dry-run", action="store_true", dest="dry_run", help="load and group the data, no fit")
+    ap.add_argument("--grid-batch-vis", type=int, default=GRID_BATCH_VISIBILITIES, dest="grid_batch_vis",
+                    help="model visibilities per grid batch (memory; a GPU can take more than the laptop default)")
     ap.add_argument("--no-quicklook-execute", action="store_true", dest="no_qe", help="write the quicklook notebook without running it")
     a = ap.parse_args(argv)
     if a.list:
@@ -165,7 +167,7 @@ def main(argv=None):
         return 0
     from virgil.pipeline import OrbitPipeline
 
-    prov["grid_batches"] = limit_grid_batches()
+    prov["grid_batches"] = limit_grid_batches(a.grid_batch_vis)
     settings = dict(QUICK) if a.quick else {}
     if a.no_qe:
         settings["quicklook_execute"] = False
