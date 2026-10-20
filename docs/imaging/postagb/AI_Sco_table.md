@@ -15,6 +15,6 @@ ORGANIC/SPARCO parameters (Table 2 and FITS header) against the virgil image fit
 
 | Parameter | De Prins+2026 (ORGANIC) | virgil (image fit) | Difference |
 | --- | --- | --- | --- |
-| Primary flux fraction, H (%) | 64.5 | 69.9 | +5.36 |
-| Secondary flux fraction, H (%) | 2.76 | 2.68 | -0.0847 |
-| Image spectral index | -0.59 | -1.83 | -1.24 |
+| Primary flux fraction, H (%) | 64.5 | 69.7 | +5.23 |
+| Secondary flux fraction, H (%) | 2.76 | 4.17 | +1.41 |
+| Image spectral index | -0.59 | -1.42 | -0.827 |

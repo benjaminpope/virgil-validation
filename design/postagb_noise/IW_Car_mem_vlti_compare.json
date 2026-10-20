@@ -1,0 +1,70 @@
+{
+ "ncc_zero_shift": 0.6491431965571387,
+ "ncc_controls": {
+  "mirrored_East-West": 0.0803063197406115,
+  "rotated_180": -0.0034812889646550797,
+  "azimuthal_average_of_published": 0.3446442983176383
+ },
+ "ncc_best_shift": 0.6602363538336027,
+ "best_shift_pixels": {
+  "dy": -1,
+  "dx": -1
+ },
+ "pixel_mas": 0.35000000000000003,
+ "beam": {
+  "major_mas": 1.2102040317542013,
+  "minor_mas": 1.2102040317542013,
+  "pa_deg": 0.0
+ },
+ "beam_convention": "circular Gaussian, FWHM lambda_min / (2 B_max)",
+ "virgil_data_beam": {
+  "major_mas": 3.2567743180708644,
+  "minor_mas": 2.286272831550803,
+  "pa_deg": 142.35951189879174
+ },
+ "ours": {
+  "inner": {
+   "flux_fraction": 0.13313318865929363,
+   "mean_radius_mas": 3.2429680584245935,
+   "major_pa_deg": 146.4671113283762,
+   "axis_ratio": 0.667359072118045,
+   "centroid_pa_deg": 7.947039599948763,
+   "centroid_offset_mas": 1.6488762475918133
+  },
+  "outer": {
+   "flux_fraction": 0.8383257800767682,
+   "mean_radius_mas": 11.416082651656616,
+   "major_pa_deg": 147.12377255708154,
+   "axis_ratio": 0.7909766580170831,
+   "centroid_pa_deg": 248.07830015034858,
+   "centroid_offset_mas": 2.644370286453758
+  }
+ },
+ "published": {
+  "inner": {
+   "flux_fraction": 0.1663585114443422,
+   "mean_radius_mas": 3.4137509373681034,
+   "major_pa_deg": 138.30103779461763,
+   "axis_ratio": 0.8781149263921841,
+   "centroid_pa_deg": 328.9292455541165,
+   "centroid_offset_mas": 1.1230689138114398
+  },
+  "outer": {
+   "flux_fraction": 0.7733272046776728,
+   "mean_radius_mas": 9.833721731920603,
+   "major_pa_deg": 163.30444057448483,
+   "axis_ratio": 0.7832841077026632,
+   "centroid_pa_deg": 267.7080001464239,
+   "centroid_offset_mas": 4.051091680385955
+  }
+ },
+ "chi2_per_point_published_on_our_data": 3.8970817620555334,
+ "chi2_per_point_ours": 1.2984096679393127,
+ "n_points": 1794,
+ "published_orientation_chi2": {
+  "as_published": 3.8970817620555334,
+  "mirrored_East-West": 55.79408647628334,
+  "mirrored_North-South": 9.94324896541042
+ },
+ "smoke": false
+}

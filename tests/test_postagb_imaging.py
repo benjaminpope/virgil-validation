@@ -97,6 +97,35 @@ def test_hole_mask_window_sits_on_the_secondary_as_virgil_renders_it(rot):
     assert np.max(np.abs(np.angle(ref * np.conj(pt)))) < 0.5  # pixel rounding (0.05 mas) is ~0.25 rad at 80 m
 
 
+@needs_multipole
+def test_grid_search_extends_an_edge_pick_once_and_reports_a_surviving_edge():
+    calls = []
+
+    def run(vals):  # log Z rises with the value, so the pick is always the upper edge
+        calls.append(vals)
+        return None, float(vals[0]), 1.0
+
+    cells, axes, best, on_edge, extended = P.grid_search([[1.0, 2.0, 4.0]], run, [(None, lambda v: 2.0 * v)])
+    assert axes[0] == [1.0, 2.0, 4.0, 8.0] and best == (8.0,)  # one extension, not chased
+    assert on_edge and extended == [(0, "upper", 8.0)]
+    assert len(calls) == len(set(calls)) == 4  # each cell is fitted once
+
+
+@needs_multipole
+def test_grid_search_interior_pick_does_not_extend_and_a_declining_extender_leaves_the_edge():
+    cells, axes, best, on_edge, extended = P.grid_search([[1.0, 2.0, 4.0]], lambda v: (None, -abs(v[0] - 2.0), 1.0), [(lambda v: v / 2, lambda v: 2 * v)])
+    assert best == (2.0,) and not on_edge and extended == []
+    # a lower edge that cannot move (the extender returns None, as for a length at one pixel) stays an edge
+    cells, axes, best, on_edge, extended = P.grid_search([[1.0, 2.0]], lambda v: (None, -v[0], 1.0), [(lambda v: None, None)])
+    assert best == (1.0,) and on_edge and extended == []
+
+
+@needs_multipole
+def test_pixel_floor_lengths_start_at_one_pixel():
+    lengths = P.pixel_floor_lengths(0.3, 1.2, (0.5, 1.0, 2.0))
+    assert lengths[0] == pytest.approx(0.3) and lengths == sorted(lengths) and lengths[-1] == pytest.approx(2.4)
+
+
 def test_the_postagb_page_matches_the_stored_results():
     """docs/imaging/postagb.md is regenerated from the compare / image JSON: no number has drifted."""
     import postagb_page
