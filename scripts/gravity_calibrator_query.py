@@ -6,9 +6,10 @@ angular resolution (``s_resolution``, i.e. the same baselines), not the science 
 from the same programme come first, then those of other programmes on the same night.
 
 Excluded: any star within ``--exclude-arcsec`` of a science target in ``--root`` (every Track B
-or gallery system, so programme binaries are never calibrators), and any SIMBAD main type that
-marks a binary or multiple. From other programmes only standards are kept (target name "STD,SINGLE", the
-archive's name for ``DPR TYPE`` STD); named stars of the same programme are kept unless excluded.
+or gallery system, so programme binaries are never calibrators), and any star whose SIMBAD types (all of them,
+for the nearest object) include a binary or multiple. Only standards are kept (target name "STD,SINGLE", the archive's name for ``DPR TYPE`` STD,
+whose products are ``SINGLE_CAL_VIS``): a named star is a science target, also in the same
+programme (several programmes here observe binaries).
 
 Writes JSON: {system: [{science, t_min, candidates: [...], rejected: [...]}]}. No data are
 downloaded; ``access_estsize`` (kB) gives the download size. Usage:
@@ -70,16 +71,38 @@ def near(ra, dec, ras, decs, arcsec):
     return bool(d.size and d.min() < arcsec)
 
 
+SIMBAD_RADIUS_ARCSEC = 30.0
+_SIMBAD_CACHE = {}
+
+
 def binary_type(simbad, ra, dec):
-    """SIMBAD main type within 5 arcsec if it marks a binary or multiple, else None."""
-    q = (
-        "SELECT TOP 1 main_id, otype FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), "
-        f"CIRCLE('ICRS', {ra}, {dec}, {5 / 3600})) = 1"
-    )
-    rows = simbad.run_sync(q).to_table()
-    if len(rows) and str(rows[0]["otype"]).strip() in BINARY_OTYPES:
-        return f"{rows[0]['main_id']}: {rows[0]['otype']}"
-    return None
+    """The nearest SIMBAD object within SIMBAD_RADIUS_ARCSEC (proper motion moves the star from its J2000
+    position by several arcsec: 64 Psc by 5.6 arcsec): ``(main_id, binary_otype or None)``.
+
+    Every type the object carries (``otypes``, not only the main type) is checked: a
+    spectroscopic binary can have a main type of ``*`` or ``PM*`` with ``SB*`` only among the others.
+    """
+    key = (round(ra, 4), round(dec, 4))
+    if key not in _SIMBAD_CACHE:
+        near = simbad.run_sync(
+            f"SELECT TOP 1 oid, main_id, DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', {ra}, {dec})) AS sep "
+            "FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), "
+            f"CIRCLE('ICRS', {ra}, {dec}, {SIMBAD_RADIUS_ARCSEC / 3600})) = 1 "
+            "ORDER BY sep"
+        ).to_table()
+        rows = (
+            simbad.run_sync(
+                f"SELECT otype FROM otypes WHERE oidref = {near['oid'][0]}"
+            ).to_table()
+            if len(near)
+            else near
+        )
+        if not len(near):
+            _SIMBAD_CACHE[key] = (None, None)
+        else:
+            hits = sorted({str(t).strip() for t in rows["otype"]} & BINARY_OTYPES)
+            _SIMBAD_CACHE[key] = (str(near["main_id"][0]), ",".join(hits) or None)
+    return _SIMBAD_CACHE[key]
 
 
 def main():
@@ -119,11 +142,8 @@ def main():
                     for k, v in zip(c.colnames, c)
                 }
                 reason = None
-                if (
-                    c["proposal_id"] != s["proposal_id"]
-                    and c["target_name"] != "STD,SINGLE"
-                ):
-                    reason = "other programme, not a standard (DPR TYPE STD)"
+                if c["target_name"] != "STD,SINGLE":
+                    reason = "not a standard (DPR TYPE STD): a science product, also in the same programme"
                 elif c["obstech"] != s["obstech"]:
                     reason = "polarisation mode differs"
                 elif (
@@ -137,19 +157,15 @@ def main():
                 elif near(c["s_ra"], c["s_dec"], sra, sdec, args.exclude_arcsec):
                     reason = "Track B / gallery science target"
                 else:
-                    reason = binary_type(simbad, c["s_ra"], c["s_dec"])
-                    reason = f"known binary ({reason})" if reason else None
+                    main_id, otypes = binary_type(simbad, c["s_ra"], c["s_dec"])
+                    row["simbad_main_id"] = main_id
+                    reason = f"known binary ({main_id}: {otypes})" if otypes else None
                 row["same_programme"] = bool(c["proposal_id"] == s["proposal_id"])
                 if reason:
                     rejected.append({**row, "reason": reason})
                 else:
                     keep.append(row)
-            keep.sort(
-                key=lambda r: (
-                    not r["same_programme"],
-                    r["target_name"] != "STD,SINGLE",
-                )
-            )
+            keep.sort(key=lambda r: not r["same_programme"])
             entries.append(
                 {"science": s["dp_id"], "t_min": t, "proposal_id": s["proposal_id"],
                  "candidates": keep, "rejected": rejected}
