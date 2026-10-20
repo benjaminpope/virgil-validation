@@ -30,6 +30,8 @@ sys.path.insert(0, str(REPO / "scripts"))
 import orbit_gallery as G  # noqa: E402
 
 TRACKB = REPO / "oidb" / "trackb"
+EXTRA = REPO / "oidb" / "gallery_extra"  # records of targets whose gallery tile exists already (Gl 229 B)
+REFERENCES = REPO / "oidb" / "references"
 N_MODES = 6  # bands kept as alternative modes on the tile
 ALIAS_NATS = 10.0  # a runner-up closer than this leaves the cycle count ambiguous (the pipeline's alias_nats)
 SHORT_ARC_NOTE = (
@@ -75,7 +77,19 @@ def _bands(run):
     return sorted(out, key=lambda x: -x[0])
 
 
-def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2_n):
+def published_orbit_epochs(record, mjds):
+    """Positions of the headline published orbit at ``mjds`` for a record with a ``collection_id`` and ``pub`` (a target
+    whose paper gives an orbit, not positions): ``[(mjd, dra, ddec)]``, and the orbit's period; ``([], None)`` for any
+    other record. Read after the fit, never as a start."""
+    if not record.get("pub"):
+        return [], None
+    ref = json.loads((REFERENCES / f"{record['collection_id']}.json").read_text())
+    el = G.published_orbits(record["pub"], ref)[0][1]
+    dra, ddec = (np.ravel(x) for x in G._orbit_at(el, np.asarray(mjds, float)))
+    return [(float(m), float(a), float(d)) for m, a, d in zip(mjds, dra, ddec)], el["period_day"]
+
+
+def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2_n, pub_orbit=None):
     """Table rows and the verdict: the winning orbit against the paper's measured positions, and the paper's period
     against the band ranking. ``band_rows`` are all the bands with a finite evidence (not the short table of the pipeline's
     summary), best first. The reference is used here only."""
@@ -83,6 +97,11 @@ def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2
 
     rows, verdict = [], None
     pub = [(e["mjd"], e["dra_mas"], e["ddec_mas"]) for e in record.get("epochs", []) if e.get("mjd")]
+    what = "the paper's positions"
+    p_pub = (record.get("orbit") or {}).get("P_day", [None])[0]
+    if pub_orbit and pub_orbit[0]:  # an orbit-only paper: its orbit's positions at our nights
+        pub, p_pub = pub_orbit
+        what = "the published orbit's positions at our nights"
     if pub:
         mjd, dra, ddec = (np.array(c, float) for c in zip(*pub))
         ours = SP.fit_pos(best, mjd, t_ref)
@@ -91,11 +110,10 @@ def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2
         sign = 1 if rms[1] <= rms[-1] else -1
         mean_sep = float(np.mean(np.hypot(dra, ddec)))
         verdict = SP.verdict_from_stats(rms[sign] / mean_sep, None, sign < 0, flipped, labels_free, chi2_n)
-        rows.append(dict(quantity="sky rms vs the paper's positions (mas)", ours=rms[sign], err=None, pub=0.0, pub_err=None,
+        rows.append(dict(quantity=f"sky rms vs {what} (mas)", ours=rms[sign], err=None, pub=0.0, pub_err=None,
                          pull=None, status="REPORT",
                          note=f"{verdict}; {len(pub)} epochs; {rms[sign] / mean_sep:.1%} of the mean separation; "
                               f"{'point reflection' if sign < 0 else 'same orientation'}"))
-    p_pub = (record.get("orbit") or {}).get("P_day", [None])[0]
     if p_pub:
         hit = next((r for r in band_rows if r["p_lo"] <= p_pub <= r["p_hi"]), None)
         if hit:
@@ -137,8 +155,9 @@ def summary_of(folder, record):
                  chi2_raw=raw_chi2, epoch_checks=checks, positions=positions,
                  modes=[dict(loss=-z, elements=_elements(b["best"], t_ref)) for z, b in bands[:N_MODES]])
     band_rows = [dict(rank=i, n=b["n"], p_lo=b["p_lo"], p_hi=b["p_hi"], delta_log_z=z - top) for i, (z, b) in enumerate(bands)]
+    pub_orbit = published_orbit_epochs(record, [p["mjd"] for p in positions])
     rows, verdict = sky_rows(winner["best"], t_ref, record, band_rows, search["p_range"], bool(winner.get("flipped")),
-                             bool(winner.get("labels_free")), raw_chi2)
+                             bool(winner.get("labels_free")), raw_chi2, pub_orbit)
     flags = []
     delta = s["modes"]["delta_log_z"]  # winner minus runner-up, so >= 0 (the band table's own column is <= 0)
     if delta is not None and abs(delta) < ALIAS_NATS:
@@ -162,7 +181,7 @@ def summary_of(folder, record):
         flagged_nights=[c["name"] for c in checks], checks=[dict(name=c["name"], status=c["status"]) for c in s["checks"]],
         no_orbit=s["modes"]["no_orbit"], primary_diam=search["primary_diam"], pipeline_status=s.get("status"),
     )
-    return dict(collection_id=f"trackb-{record['slug']}", target=record["target"],
+    return dict(collection_id=record.get("collection_id") or f"trackb-{record['slug']}", target=record["target"],
                 instrument=G.INSTRUMENT.get(meta["instrument"], meta["instrument"]),
                 provenance=dict(virgil_commit=meta.get("virgil_commit"), validation_commit=meta.get("validation_commit"),
                                 virgil_vlti_commit=meta.get("virgil_vlti_commit"),
@@ -184,16 +203,17 @@ def main(argv=None):
         sys.exit(f"no <system>/gallery.json with run/summary.json under {a.results}")
     a.summaries.mkdir(parents=True, exist_ok=True)
     failed = {}
-    for slug in sorted(p.stem for p in TRACKB.glob("*.json")):
+    records = {p.stem: p for d in (TRACKB, EXTRA) for p in d.glob("*.json")}
+    for slug in sorted(records):
         if slug not in folders:
             failed[slug] = "no finished run folder"
             continue
         try:
-            summary = summary_of(folders[slug], json.loads((TRACKB / f"{slug}.json").read_text()))
+            summary = summary_of(folders[slug], json.loads(records[slug].read_text()))
         except Exception as err:  # noqa: BLE001 a failed target is listed, not hidden
             failed[slug] = f"{type(err).__name__}: {err}"
             continue
-        dest = a.summaries / f"trackb-{slug}.json"
+        dest = a.summaries / f"{summary['collection_id']}.json"
         dest.write_text(json.dumps(G._clean(summary), indent=1) + "\n")
         print(f"wrote {dest.relative_to(REPO) if dest.is_relative_to(REPO) else dest}")
     for slug, why in failed.items():

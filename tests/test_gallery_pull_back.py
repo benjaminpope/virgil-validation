@@ -169,3 +169,13 @@ def test_a_calibrated_run_records_its_data_path(folder):
     prov = _prov(folder, data_path="mixed", nights=nights, virgil_vlti_commit="abc")
     assert prov["data_path"] == "mixed" and prov["virgil_vlti_commit"] == "abc"
     assert prov["night_paths"] == {"MJD 1": "calibrated", "MJD 2": "cp-only"}
+
+
+def test_gl229b_summary_takes_the_existing_tile_and_compares_with_xuan(folder):
+    record = json.loads((ROOT / "oidb" / "gallery_extra" / "gl229b.json").read_text())
+    s = PB.summary_of(folder, record)
+    assert s["collection_id"] == record["collection_id"] == "782185b2-0727-42b0-a185-b2072732b047"  # the tile that exists, not trackb-gl229b
+    quantities = [r["quantity"] for r in s["blind"]["table"]]
+    assert any("published orbit's positions at our nights" in q for q in quantities)  # sky plane, after the fit
+    period = next(r for r in s["blind"]["table"] if r["quantity"] == "period (d)")
+    assert period["pub"] == pytest.approx(12.134)  # Xuan+24 PMOIRED, the headline orbit
