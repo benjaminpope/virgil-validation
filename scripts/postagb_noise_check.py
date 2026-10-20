@@ -113,7 +113,7 @@ def target_table(base, target, strats=STRATS):
             bg = "–" if v["bg_index"] is None else f"{v['bg_index']:.2f}" + (" (bound)" if any("bg.flux.index" in w for w in v["bound_warnings"] or []) else "")
             fbg = "–" if v["f_bg_pct"] is None else f"{v['f_bg_pct']:.1f}"
             lines.append(f"| {s} | {lab} | {h}{edge} | {v['chi2_v2']:.2f} | {v['chi2_t3']:.2f} | {v['common_mode_v2']:.2f} | {v['adjacent_corr_v2']:.2f} | "
-                         f"{v['chi2_v2_map']:.2f} ({v['chi2_v2_own']:.2f}) · {v['common_mode_v2_map']:.2f} · {v['adjacent_corr_v2_map']:.2f} | "
+                         f"{v['chi2_v2_map']:.2f} ({'–' if np.isnan(v['chi2_v2_own']) else format(v['chi2_v2_own'], '.2f')}) · {v['common_mode_v2_map']:.2f} · {v['adjacent_corr_v2_map']:.2f} | "
                          f"{v['ncc']:.2f} ({v['ncc_best_control']:.2f}) | {'–' if dz is None else f'{dz:.0f}'} | {v['f_env_pct']:.1f} | {fbg} | {bg} |")
     return res, "\n".join(lines)
 
@@ -128,6 +128,8 @@ def summarize(allres, strats):
              "| strategy | cell | " + " | ".join(allres) + " | median NCC | median Δ | worse by > 0.05 | grid-edge fits |", "|---|---|" + "---|" * (len(allres) + 4)]
     for s_ in strats:
         for lab in CELLS:
+            if s_ == "mem" and "flat" in lab:
+                continue  # mem has no GP mean: the flat cells repeat the blob ones
             nccs = [(allres[t].get(lab, {}).get(s_) or {}).get("ncc", nan) for t in allres]
             ref = [(allres[t]["current / blob"].get(s_) or {}).get("ncc", nan) for t in allres]
             d = [a - b for a, b in zip(nccs, ref)]
@@ -135,14 +137,14 @@ def summarize(allres, strats):
             n_run = sum(e is not None for e in edge)
             cells = " | ".join("–" if np.isnan(a) else f"{a:.2f}" + ("" if lab == "current / blob" or np.isnan(b) else f" ({a - b:+.2f})") for a, b in zip(nccs, ref))
             worse = sum(x < -0.05 for x in d if not np.isnan(x))
-            lines.append(f"| {s_} | {lab} | {cells} | {med(nccs):.2f} | {med(d):+.2f} | {worse} | {sum(bool(e) for e in edge)} of {n_run} |")
+            lines.append(f"| {s_} | {lab} | {cells} | {med(nccs):.2f} | {med(d):+.2f} | {worse} | {'–' if s_ == 'mem' else f'{sum(bool(e) for e in edge)} of {n_run}'} |")
     lines += ["", "Median residuals over targets and strategies (V²; plain = on the quoted errors, MAP = after subtracting the MAP gains; own = under the fit's own covariance).", "",
               "| cell | χ²/pt V² plain | common-mode plain | adjacent plain | χ²/pt V² MAP | common-mode MAP | adjacent MAP | χ²/pt V² own | χ²/pt T3 |", "|---|---|---|---|---|---|---|---|---|"]
     for lab in CELLS:
         rows = [allres[t][lab][s_] for t in allres for s_ in strats if allres[t][lab].get(s_)]
         g = lambda k: med([r[k] for r in rows])  # noqa: E731
         lines.append(f"| {lab} | {g('chi2_v2'):.2f} | {g('common_mode_v2'):.2f} | {g('adjacent_corr_v2'):.2f} | {g('chi2_v2_map'):.2f} | {g('common_mode_v2_map'):.2f} | "
-                     f"{g('adjacent_corr_v2_map'):.2f} | {g('chi2_v2_own'):.2f} | {g('chi2_t3'):.2f} |")
+                     f"{g('adjacent_corr_v2_map'):.2f} | {'–' if np.isnan(g('chi2_v2_own')) else format(g('chi2_v2_own'), '.2f')} | {g('chi2_t3'):.2f} |")
     return "\n".join(lines)
 
 

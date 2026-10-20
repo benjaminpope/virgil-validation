@@ -1,11 +1,11 @@
 {
- "ncc_zero_shift": 0.7851476305240115,
+ "ncc_zero_shift": 0.7849307546881507,
  "ncc_controls": {
-  "mirrored_East-West": 0.42818277980964575,
-  "rotated_180": 0.47214360618329876,
-  "azimuthal_average_of_published": 0.48942353043273923
+  "mirrored_East-West": 0.41958555625153215,
+  "rotated_180": 0.4693276625452078,
+  "azimuthal_average_of_published": 0.48369085743811674
  },
- "ncc_best_shift": 0.7891436306773277,
+ "ncc_best_shift": 0.788519112137048,
  "best_shift_pixels": {
   "dy": 0,
   "dx": 1
@@ -24,31 +24,31 @@
  },
  "ours": {
   "disc": {
-   "flux_fraction": 0.9958341582891903,
-   "mean_radius_mas": 3.453810957839412,
-   "major_pa_deg": 114.7383134760642,
-   "axis_ratio": 0.7507215455998516,
-   "centroid_pa_deg": 132.4588494237121,
-   "centroid_offset_mas": 1.8582343889385056
+   "flux_fraction": 0.9901567920984395,
+   "mean_radius_mas": 3.7791951374327697,
+   "major_pa_deg": 118.48338800725804,
+   "axis_ratio": 0.7732947186185589,
+   "centroid_pa_deg": 132.0311237789231,
+   "centroid_offset_mas": 1.6504479330000439
   }
  },
  "published": {
   "disc": {
-   "flux_fraction": 0.9902171098636375,
-   "mean_radius_mas": 2.8763922381001814,
-   "major_pa_deg": 118.61398138434365,
-   "axis_ratio": 0.7963975617759846,
+   "flux_fraction": 0.9902171098636372,
+   "mean_radius_mas": 2.8763922381001823,
+   "major_pa_deg": 118.61398138434372,
+   "axis_ratio": 0.7963975617759843,
    "centroid_pa_deg": 136.3862913799249,
-   "centroid_offset_mas": 0.8954927803324085
+   "centroid_offset_mas": 0.8954927803324088
   }
  },
- "chi2_per_point_published_on_our_data": 1.3760266798568757,
- "chi2_per_point_ours": 0.5920308225441945,
+ "chi2_per_point_published_on_our_data": 1.377085429480697,
+ "chi2_per_point_ours": 0.5593279011948677,
  "n_points": 2184,
  "published_orientation_chi2": {
-  "as_published": 1.3760266798568757,
-  "mirrored_East-West": 14.32519026018221,
-  "mirrored_North-South": 9.56853219216134
+  "as_published": 1.377085429480697,
+  "mirrored_East-West": 14.336212422776258,
+  "mirrored_North-South": 9.57589446209932
  },
  "smoke": false
 }
