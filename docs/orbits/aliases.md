@@ -360,11 +360,28 @@ Winning band: flux ratio 0.180; primary diameter 0.435 mas (fitted); per-epoch V
 
 ### Blind: OrbitPipeline, no settings
 
-**PASS.** `OrbitPipeline` on Gl 229 with no settings: no period window, start or published orbit (the window, 2.9 to 1656 d, comes from the data, with 144 bands). It must rank band N = 34 first with Δlog Z > 10 over every other band.
+**FAIL.** `OrbitPipeline` on Gl 229 with no settings: no period window, start or published orbit (the window, 2.9 to 1656 d, comes from the data, with 144 bands). It must rank band N = 34 first with Δlog Z > 10 over every other band, and the winner must lie on the published orbit on the sky. vv recomputes this: virgil's verdict is PASS; winner N = 34 and Δlog Z = 22.8 meet the margin test; the sky-plane verdict is DIFFERENT.
 
-Winner: N = 34, P = 12.132 d, e = 0.237, flux ratio 0.476. Δlog Z = 22.8 over the runner-up (N = 62); the evidences are tempered (effective-channel factor f = 41), so this margin is on the tempered likelihood.
+Winner: N = 34, P = 12.132 d, e = 0.237, flux ratio 0.476. Δlog Z = 22.8 over the runner-up (N = 62), on the **tempered** likelihood (effective-channel factor f = 41.1, outside virgil's accepted range 0.5 to 2). Tempering rescales the evidences to absorb errors that are too small; it is not a noise model, and this margin can move across the 10-nat line when f changes.
 
-Information, not pass/fail: raw χ²/N 66.4 on the quoted errors (the pipeline's χ² check fails: the errors are far too small, a noise-model matter for virgil-vlti, not the period search); 39 of 40 files, 7 nights. virgil `dda910f5c74a92cce830ee42d61ffec28c5dba3b`, virgil-vlti `0a06e84febfd88f38b1aafac09a44851e770db27` (channel `GRAVITY_SC`, window [2.05, 2.18] µm, one bad exposure out), OzSTAR job 18762942.
+Winner against the published orbit, on the sky at the pipeline's nights:
+
+| band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| winner | 34 | 12.1321 | 0.29 | 0.54 | 4% | - | none | no | DIFFERENT |
+
+virgil's own checks that are not a pass:
+
+- **chi2** (fail): χ²/N = 66.4 for the best-fit orbit on quoted errors: the model does not describe the data, or the errors are much too small.
+- **night_flags** (warn): 2 of 7 nights are flagged (2023-12-29: chi2-high; 2024-12-18: flux-at-bound): they seed no orbit, but their data still count in the likelihood.
+- **tempering** (warn): The effective-channel factor f = 41.1 (raw 27.8) is outside [0.5, 2] or the residual correlation is not AR(1): the evidences are less reliable.
+- **stage_warnings** (warn): 5 warning(s) were raised inside the stages: Raw chi2/N on the quoted errors exceeds 4 (errors underestimated by more than 2) in 2023-12-25 (337.2), 2023-12-29 (1303.4), 2024-02-27 (241.5), 2024-03-28 (188.4), 2024-04-29 (58.9), 2024-12-18 (35.0), 2025-02-11 (461.5): fit error scales for these datasets, and do not read a rescaled chi2/N of 1 as a good fit.; fit_orbit_aliases(): the period window starts at 2.9 d, 14.5 nights' length: a shorter period would move the companion by more than half the resolution during a night (field 7.31 mas). Pass p_range to search shorter periods.; fit_orbit_aliases(): the effective-channel factor is f = 42.9 (block 'vis'; pooled 41.1, raw 27.8), outside 0.5 to 2: the likelihood is tempered by 1/f (AliasResult.tempering). Check the channels' errors. (and 2 more). See the 'warnings' list of summary.json.
+
+Provenance: this blind run is virgil 0.3.0 commit `dda910f`, not the 0.4.0 release code (`2946041`): no `OrbitPipeline` run at the release commit is stored here, so this is a pre-release result. virgil-vlti `0a06e84`; OzSTAR job 18762942.
+
+Data: virgil-vlti's preparation, channel `GRAVITY_SC`, window [2.05, 2.18] µm, 39 of 40 files, 7 nights; excluded: GRAVI.2023-12-26T05_51_29.891 (closure phases +38 to +57 deg on all triangles, errors 5-10x the night's). The alias runs below use this repository's loader (`reanalyse_orbits.py`), which is not the same preparation: the recorded nights are the same. Nights flagged by virgil: 2023-12-29, 2024-12-18. The two results are therefore not on identical data (the files and errors differ even where the nights match).
+
+Raw χ²/N 66.4 on the quoted errors: the errors are far too small, a noise-model matter for virgil-vlti, not the period search.
 
 ![Pipeline band search: Δlog Z and raw χ²/N by period](../assets/orbit_aliases/gl229-pipeline/search_bands.png)
 
@@ -372,18 +389,27 @@ Information, not pass/fail: raw χ²/N 66.4 on the quoted errors (the pipeline's
 
 ### Cold orbit_aliases, reference-informed window
 
-**FAIL.** `reanalyse_orbits.py --system gl229 --no-init`, no warm start, window 10 to 14 d (12 bands, set from the published period, so not blind). virgil 0.4.0, commit `2946041d767bccb8763ebabf04281d4c385d28c2`; virgil-validation `bda1d27751c99ec607f3b87c68ac1eee04eca8a4`; options `--no-init`; OzSTAR job 18758960. The release adds only #421 (a `starting_image` change in `imaging.py`) and the CHANGELOG to this commit.
+**FAIL.** `reanalyse_orbits.py --system gl229 --no-init`: a cold start, from the run's own record (no_init set, no init orbit); window 10 to 14 d (12 bands), set from the published period, so not blind. PASS needs the cold record, N = 34 first by more than 10 nats, N = 34 on the reference's sky orbit, and no not-converged/no-valid-mode flag on it. virgil 0.4.0, commit `2946041` (the 0.4.0 release); virgil-validation `bda1d27`; options `--no-init`; OzSTAR job 18758960.
 
-Winner: N = 39, P = 10.7474 d, raw χ²/N 14.11, p = 1.000, log Z -91954.75 (Laplace) vs -91954.75 (IS); Δlog Z = 331.4 over the runner-up (N = 36).
+Winner: N = 39, P = 10.7474 d, raw χ²/N 14.11, p = 1.000, log Z -91954.75 (Laplace) vs -91954.75 (IS); Δlog Z = 331.4 over the runner-up (N = 36). Band N = 34: rank 10 of 12, flags near-prior-bound; sky-plane verdict DIFFERENT.
 
-Band N = 34 ranks 10 of 12 in this run. **Diagnosis: the cold search seeds the wrong modes; the likelihood is unchanged.** The warm rerun at the release commit reproduces the 2026-10-15 N = 34 optimum exactly, and a cold run with four times the candidates, more refinements and five times the steps converges to the same wrong N = 39 and N = 36 optima. More random effort does not help, so the problem is the starting points, not the search length.
+| band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| winner | 39 | 10.7474 | 9.09 | 12.50 | 130% | 326.1 | flip | no | DIFFERENT |
+| reference | 34 | 12.2660 | 6.21 | 11.01 | 89% | - | none | no | DIFFERENT |
 
-| run | commit | start | search effort (candidates/refines/steps) | N = 34: rank, log Z, raw χ²/N | winner |
-| --- | --- | --- | --- | --- | --- |
-| warm, 2026-10-15 | a92b97c | warm | 100/6/200 | 1, -90191.0, 11.78 | N = 34 (-90191.0) |
-| warm (job 18760999) | 2946041 | warm | 100/6/200 | 1, -90191.0, 11.78 | N = 34 (-90191.0) |
-| cold (job 18758960) | 2946041 | cold | 100/6/200 | 10, -93705.1, 18.52 | N = 39 (-91954.8) |
-| cold, high effort (job 18761000) | 2946041 | cold | 400/10/1000 | 5, -93024.8, 17.94 | N = 39 (-91954.8) |
+The likelihood is unchanged: the warm N = 34 log Z is -90191.0 in the first run and -90191.0 in the warm rerun at the cold run's commit `2946041` (agreement within 0.1 nats).
+
+A cold run with 4 times the candidates and 5 times the steps (refines 6 to 10) ranks N = 39 then N = 36, the same two optima as the base cold run: more random effort does not move them.
+
+So the cold search seeds the wrong modes: the likelihood supports N = 34 when started there, and more random search does not find it from a cold start.
+
+| run | virgil | commit | start | job | search effort (candidates/refines/steps) | N = 34: rank, log Z, raw χ²/N | winner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| warm, first run (`gl229`) | 0.3.0 | not recorded | warm | not recorded | 100/6/200 | 1, -90191.0, 11.78 | N = 34 (-90191.0) |
+| warm (`gl229-warm-2946041`) | 0.4.0 | 2946041 | warm | 18760999 | 100/6/200 | 1, -90191.0, 11.78 | N = 34 (-90191.0) |
+| cold (`gl229-cold`) | 0.4.0 | 2946041 | cold | 18758960 | 100/6/200 | 10, -93705.1, 18.52 | N = 39 (-91954.8) |
+| cold, high effort (`gl229-cold-effort`) | 0.4.0 | 2946041 | cold | 18761000 | 400/10/1000 | 5, -93024.8, 17.94 | N = 39 (-91954.8) |
 
 | N | P (d) | χ²/N (raw) | error scales | log Z | log Z (IS) | p | ESS | flags |
 | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |
@@ -400,7 +426,7 @@ Band N = 34 ranks 10 of 12 in this run. **Diagnosis: the cold search seeds the w
 | 31 | 13.3707 | 23.64 | 1.98–10.01 | -95791.32 | -95791.32 | 0.000 | 1183 | not-converged |
 | 30 | 13.7673 | 29.31 | 1.94–12.22 | -96553.15 | -96553.11 | 0.000 | 1261 |  |
 
-The warm-started result of 2026-10-15 (virgil a92b97c) is the Gl 229 section above.
+The first warm result (virgil 0.3.0, commit `not recorded`) is the Gl 229 section above. Its N = 34 log Z (-90191.0) was **warm-started at the published orbit** (the record shows no init orbit, but args.no_init is false), so it is not a cold optimum and not independent evidence for N = 34.
 
 ![Sky plane: per-epoch positions (red), posterior orbits in the winning band, reference orbit](../assets/orbit_aliases/gl229-cold/sky.png)
 
