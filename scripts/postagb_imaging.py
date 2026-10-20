@@ -313,7 +313,10 @@ def rows_of(data):
         key.setdefault((int(f), int(s_[0]), int(s_[1])), []).append((float(w), i))
     groups = [[i for _, i in sorted(v)] for v in key.values()]
     n_ch = max(len(g) for g in groups)
-    return np.array([g for g in groups if len(g) == n_ch])
+    kept = [g for g in groups if len(g) == n_ch]
+    if len(kept) < len(groups):
+        print(f"rows_of: {len(groups) - len(kept)} of {len(groups)} (frame, baseline) groups dropped for having fewer than {n_ch} channels", flush=True)
+    return np.array(kept)
 
 
 def residual_stats(data, model_v2, model_t3):
@@ -595,7 +598,7 @@ def scene_priors(cfg, scene, env_fixed_geometry=False):
 
 def grid_setup(cfg, data, args, rot=0.0):
     """The paper's pixel grid, the window around the star(s), and the Gaussian start image."""
-    # the paper's pixel, or finer so that there are at least four pixels across the comparison beam (lambda_min / 2 B_max)
+    # the paper's pixel, or the finer of that and a quarter of the comparison beam (lambda_min / 2 B_max), so that the beam spans four pixels or more
     scale = min(cfg["pixel_mas"], compare_beam(data).minor_mas / 4.0) * (4.0 if args.smoke else 1.0)
     fov = cfg["fov_mas"] * (0.5 if args.smoke else 1.0)
     start = starting_image(data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov)
@@ -724,10 +727,8 @@ def safe_l_curve(scene, priors, data, regulariser, weights, **opts):
         if np.all(np.isfinite(curve.chi2)) and np.all(np.isfinite(curve.penalty)):
             return curve
         print("l_curve has non-finite fits -> sweeping one weight at a time and skipping them", flush=True)
-    except ValueError as e:
-        if "NaN" not in str(e):
-            raise
-        print("l_curve hit a NaN fit:", e, "-> sweeping one weight at a time and skipping non-finite ones", flush=True)
+    except ValueError as e:  # virgil raises ValueError for a NaN fit; the weights are then retried one at a time, and a sweep with no finite fit raises below
+        print("l_curve raised", repr(str(e)[:120]), "-> sweeping one weight at a time and skipping non-finite ones", flush=True)
     kept, skipped, init = [], [], None
 
     def attempt(w, start):  # one weight from ``start``; (curve, finite)
@@ -952,9 +953,11 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
         print(f"length_r {lr:.2f} mas, length_theta {lt:g} rad, sigma {sg}: log Z {lz:.1f}, chi2/pt {c2:.3f}", flush=True)
         return f_, lz, c2
 
-    # lengths in radius cannot go below the pixel; in azimuth, 2 rad is nearly one lobe, so an upper edge is a constant ring
+    # lengths in radius go down by halves to one pixel (below that a GP is white noise) and up by doubles; in azimuth, 2 rad is nearly
+    # one lobe, so an upper edge is a constant ring
     cells, (lens_r, lens_t, sigmas), (blr, blt, bsg), edge, extended = grid_search(
-        [lens_r, lens_t, sigmas], run, [(None, lambda v: 2.0 * v), (lambda v: v / 2.0, lambda v: 2.0 * v), (lambda v: v / 2.0, lambda v: 2.0 * v)],
+        [lens_r, lens_t, sigmas], run, [(lambda v: v / 2.0 if v / 2.0 >= pix_ else None, lambda v: 2.0 * v),
+                                       (lambda v: v / 2.0, lambda v: 2.0 * v), (lambda v: v / 2.0, lambda v: 2.0 * v)],
         smoke=args.smoke)
     log_z, chi2 = cube(cells, (lens_r, lens_t, sigmas), 1), cube(cells, (lens_r, lens_t, sigmas), 2)
     bi, bj, bk = lens_r.index(blr), lens_t.index(blt), sigmas.index(bsg)
@@ -1080,9 +1083,9 @@ def per_strategy(fn, args, out, *extra):
     """Run ``fn`` for each requested strategy, with the target's outputs named <target>_<strategy>_*."""
     base = TARGETS[args.target]
     for strat in (STRATEGIES if args.strategy == "all" else (args.strategy,)):
+        # a one-off star-index or background-index run, and every non-default noise or mean, is named apart and never overwrites the headline files
         sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")
-        sfx += noise_tag(args.noise) + ("" if args.mean == DEFAULT_MEAN else f"_{args.mean}")  # the 2 x 2 noise/mean design: never overwrites the headline files
-        # a one-off star-index run never overwrites the headline files
+        sfx += noise_tag(args.noise) + ("" if args.mean == DEFAULT_MEAN else f"_{args.mean}")
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
             fn(args, out, strat, *extra)
@@ -1189,10 +1192,10 @@ def image_one(args, out, strat):
     geo = json.load(open(geo_file))["geometry"] if strat in ("gp-aniso", "gp-polar", "disc+res") and not args.smoke else dict(
         inc_deg=45.0, pa_deg=90.0)
     t0 = time.time()
-    pix_ = cfg["pixel_mas"] * (4.0 if args.smoke else 1.0)
     rot = float(geo["pa_deg"]) if strat == "gp-aniso" else 0.0
     start, support, hole_mas = grid_setup(cfg, data_s, args, rot)
     env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux, rotation_deg=rot)
+    pix_ = float(env.pixel_scale_mas)  # the pixel actually used (grid_setup may take a finer one than the paper's), not cfg["pixel_mas"]
     print(strat, "grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; hole radius", f"{hole_mas:.3f}", "mas;",
           f"error scale {s:.3f}", flush=True)
     f_env0 = float(np.asarray(env.flux))
@@ -1223,7 +1226,7 @@ def image_one(args, out, strat):
                                 if cfg.get("sec_index_fixed") is not None else None),
                  star_index_source=cfg.get("star_index_source", "SPARCO convention (-4)"), sec_index_source=cfg.get("sec_index_source"),
                  warm_start=bool(warm) and strat != "disc+res", warm_source=warm_src if strat != "disc+res" else None,
-                 field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", env.log_brightness.shape[0] * pix_ / 2))) | extra_gp
+                 field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", np.shape(env.log_brightness)[0] * pix_ / 2))) | extra_gp
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)

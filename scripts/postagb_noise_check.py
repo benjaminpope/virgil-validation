@@ -52,9 +52,9 @@ def map_stats(base, target, key, suffix):
     """Residual statistics with the MAP gains subtracted, for a fit under ``--noise vlti`` (from the V^2 and closure phases saved with
     the fit); a fit under the current error model has no gains, so its plain statistics stand. Cached next to the fit."""
     cache = base / f"{key}_mapresid.json"
-    if cache.exists():
-        return json.load(open(cache))
     npz = base / f"{key}_image.npz"
+    if cache.exists() and not (npz.exists() and npz.stat().st_mtime > cache.stat().st_mtime):  # a refitted cell invalidates its cache
+        return json.load(open(cache))
     if "_vlti" not in suffix or not npz.exists():
         return None
     data, data_g = target_data(target)
@@ -202,7 +202,7 @@ def strips_all(args):
                 a.set_xlim(half, -half)
                 a.set_ylim(-half, half)
                 a.plot(0, 0, "*", c="gold", ms=6, mec="k")
-                a.set_title(lab if r == 0 or c else f"ORGANIC", fontsize=7)
+                a.set_title(lab, fontsize=7)
                 a.tick_params(labelsize=6)
             ax[r, 0].set_ylabel(s, fontsize=8)
         fig.suptitle(f"{cfg['name']}: noise model / GP mean (rows: strategy; images convolved with the ORGANIC beam)", fontsize=9)

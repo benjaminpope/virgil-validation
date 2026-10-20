@@ -30,10 +30,10 @@ Judged against the criteria agreed for the decision:
 |---|---|
 | (a) median NCC against ORGANIC, per-target deltas | medians unchanged (mem +0.00, gp-iso −0.02, gp-aniso 0.00, gp-polar 0.00). Per target mostly −0.04 to +0.02, but IW Car mem −0.24 and IW Car/IRAS 08544/AI Sco gp-iso −0.04 to −0.05; PS Gem +0.54 (mem), +0.68 (gp-iso), +0.13 (gp-aniso), +0.23 (gp-polar) |
 | (b) grid-edge hyperparameters | gp-iso 2 of 8 against 3 of 8 on the same targets (4 of 9 with EN TrA, which is missing for vlti, see Caveats); gp-aniso 5 of 9 against 4 of 9; gp-polar 9 of 9 against 7 of 9. Not better |
-| (c) residuals after subtracting the MAP gains | whitens: V² common-mode ratio 0.27 (white = 1; 3.55 for current/blob, which has no gains to subtract), adjacent-channel correlation −0.04 (0.64). The V² χ² under the fit's own covariance is still 1.67 (median), not 1: the 0.32 white factor is too small for imaging fits |
+| (c) residuals after subtracting the MAP gains | consistent with the model on the gain-sensitive statistic, not on the χ²: V² common-mode ratio 0.27 (median over targets; 3.55 for current/blob, which has no gains to subtract), adjacent-channel correlation −0.04 (0.64). These are *not* white-noise values: subtracting fitted gains from data that follow the vlti model gives a common-mode ratio of 0.10 ± 0.02 and adjacent correlation −0.19 ± 0.02 (simulated below), so the criterion is read against those, not against 1 and 0. The V² χ² under the fit's own covariance is 1.67 (median; 0.98 ± 0.03 expected), so the 0.32 white factor, or the image fit, is off for imaging fits |
 | (d) image differences in the strips | similar on IW Car for the GPs; mem under vlti is spiky on IW Car (cause not investigated); on PS Gem current/blob gives speckle and vlti/blob mem and gp-iso give a compact source like ORGANIC |
 
-The rule for adopting vlti/blob was that it be no worse on (a), (b) and (d) and whiten (c). It whitens, but (b) is slightly worse and (a) and (d)
+The rule for adopting vlti/blob was that it be no worse on (a), (b) and (d) and whiten (c). (c) is met on the common-mode statistic and missed on the own-covariance χ², (b) is slightly worse (and its gp-polar part is partly a grid limit, see Caveats) and (a) and (d)
 are mixed, with one large gain (PS Gem) and one large loss (IW Car mem), so the answer is the default stays.
 
 **Why plain residuals rise under vlti.** The residual statistics in the main tables are on the *quoted* errors with the gains not subtracted
@@ -117,9 +117,10 @@ Median residuals over targets and strategies (V²; plain = on the quoted errors,
 To see whether the Laplace evidence can pick an interior hyperparameter cell at all: simulate IW Car's uv coverage from a smooth known disc
 (a Gaussian ring with a first harmonic in the SPARCO scene, fluxes from the gp-iso fit), add noise in three ways (white at the quoted errors; independent
 errors plus gains; gains drawn from the vlti model), and run the gp-iso grid.
-All three cases choose the same cell: sigma 0.5, length 4.84 mas, the longest on the grid. The truth is smooth, so a long correlation length is the *right* answer; the
-edge pick is a statement about this smooth truth and a long-length-limited grid, not evidence that noise correlations push fits to the edge. The grid
-extends once at an edge pick in the real fits; synthetic grids were not extended. `design/postagb_noise/synth_*_s0.json`.
+All three cases choose the same cell: sigma 0.5, length 4.84 mas, the longest on the grid. On a smooth truth the evidence picks the longest length under all
+three noise cases, so the noise treatment does not decide the long-length pick here. Limits of the check: one seed and one strategy (gp-iso, current/blob scene); the committed
+`design/postagb_noise/synth_*_s0.json` were made before `grid_search` existed, so their grids were fixed (six lengths ending at 4.84 mas) and not extended; and it
+addresses only the long end. The gp-polar edge picks in the real fits are at the *short* radial end (Caveats), which this check does not test.
 
 ## Per-target noise widths
 
@@ -140,7 +141,7 @@ bounds). IRAS 08544 has three pairs and takes the median of the targets with fiv
 
 ## Pipeline change since the published page
 
-The rerun also applies the pipeline updates agreed on top of the noise-model work: cold starts, pixel ≤ beam/4, start image padded to the full field, grids extending
+The rerun also applies the pipeline updates agreed on top of the noise-model work: cold starts, pixel the finer of the paper's and a quarter of the comparison beam (beam/4 to rounding; IRAS 08544, AI Sco, EN TrA and HD 95767 keep the paper's finer pixel), start image padded to the full field, grids extending
 once at an edge pick, per-fit residual statistics. Before (the committed page) and after (the regenerated page) for the current/blob fits of all targets:
 
 | target | strategy | NCC before → after | χ²/pt before → after | ΔlnZ before → after | f_env % before → after | grid edge before → after |
@@ -155,11 +156,11 @@ once at an edge pick, per-fit residual statistics. Before (the committed page) a
 | IRAS08544 | gp-aniso | 0.95 → 0.95 | 0.53 → 0.53 | -1 → -5 | 36.5 → 36.5 | interior → interior |
 | IRAS08544 | gp-polar | 0.93 → 0.93 | 0.95 → 0.95 | -262 → -266 | 36.3 → 36.3 | edge → edge |
 | IRAS08544 | disc+res | 0.89 → 0.89 | 1.54 → 1.54 | -582 → -586 | 36.6 → 36.6 | interior → interior |
-| HR4049 | mem | 0.91 → 0.86 | 0.98 → 0.99 | – → – | 34.1 → 34.3 | – → – |
-| HR4049 | gp-iso | 0.87 → 0.89 | 0.64 → 0.59 | -22 → -2 | 33.7 → 33.7 | edge → interior |
-| HR4049 | gp-aniso | 0.87 → 0.86 | 0.60 → 0.61 | 0 → 0 | 33.8 → 33.8 | interior → interior |
-| HR4049 | gp-polar | 0.85 → 0.85 | 0.65 → 0.64 | -27 → -18 | 33.6 → 33.5 | edge → interior |
-| HR4049 | disc+res | 0.91 → 0.92 | 0.80 → 0.84 | -22 → -17 | 33.5 → 26.9 | edge → interior |
+| HR4049 | mem | 0.87 → 0.86 | 0.97 → 0.99 | – → – | 34.3 → 34.3 | – → – |
+| HR4049 | gp-iso | 0.89 → 0.89 | 0.59 → 0.59 | -2 → -2 | 33.7 → 33.7 | interior → interior |
+| HR4049 | gp-aniso | 0.86 → 0.86 | 0.61 → 0.61 | 0 → 0 | 33.8 → 33.8 | interior → interior |
+| HR4049 | gp-polar | 0.84 → 0.85 | 0.64 → 0.64 | -18 → -18 | 33.5 → 33.5 | edge → interior |
+| HR4049 | disc+res | 0.91 → 0.92 | 0.82 → 0.84 | -16 → -17 | 33.7 → 26.9 | edge → interior |
 | HD108015 | mem | 0.97 → 0.98 | 0.97 → 0.96 | – → – | 43.2 → 43.2 | – → – |
 | HD108015 | gp-iso | 0.98 → 0.98 | 0.61 → 0.61 | 0 → 0 | 40.7 → 40.8 | interior → interior |
 | HD108015 | gp-aniso | 0.98 → 0.98 | 0.60 → 0.60 | -14 → -15 | 40.8 → 40.9 | interior → interior |
@@ -192,8 +193,8 @@ once at an edge pick, per-fit residual statistics. Before (the committed page) a
 | PS_Gem | disc+res | -0.11 → -0.05 | 0.81 → 0.81 | -66 → -67 | 3.9 → 3.8 | edge → edge |
 
 Changes are small: NCC moves by at most 0.05 on every fit except PS Gem gp-polar (0.21 → 0.06, a target whose NCC is noise-dominated under current noise anyway).
-Grid-edge picks move to the interior in several cases (IW Car gp-aniso, HR 4049 gp-iso, gp-polar and disc+res, IRAS 15469 gp-iso and gp-polar). The regenerated page
-text differs from the committed one only where numbers or the named closest strategy changed (HR 4049: gp-iso now closest, not MEM); `scripts/postagb_page.py --check` passes.
+Grid-edge picks move to the interior in several cases (IW Car gp-aniso, HR 4049 gp-polar and disc+res against #137, IRAS 15469 gp-iso and gp-polar). The regenerated page
+text differs from the committed one only where numbers changed; `scripts/postagb_page.py --check` passes. HR 4049's rows compare #137's files with the OzSTAR fits.
 
 ## Recommendation on refitting all nine targets
 
@@ -205,6 +206,18 @@ text differs from the committed one only where numbers or the named closest stra
 
 ## Caveats
 
+* gp-polar edge counts are partly a grid limit. Every gp-polar edge flag in the nine-target rerun sits on the lowest radial length (ℓ_r), and the grid had no lower
+  extender there (only the θ length and σ extended), so an edge pick on ℓ_r could not move. `fit_polar` now halves ℓ_r once down to one pixel at an edge pick
+  (the same rule as the other grids); the committed gp-polar results predate this and have not been refitted. Read "gp-polar 9 of 9 against 7 of 9"
+  as a statement about the grid, which weakens criterion (b) for gp-polar but not for gp-iso/gp-aniso or the other criteria, so the verdict stands. A gp-polar rerun with the extender
+  (nine targets, current/blob at least) would settle it and needs OzSTAR.
+* Expected residual statistics under the model: `map_gain_stats` on data simulated from IW Car's gp-iso vlti model plus gains drawn from the vlti covariance and white noise at
+  the scaled errors (20 draws): MAP common-mode 0.097 ± 0.018, MAP adjacent −0.194 ± 0.023, own-covariance χ² 0.983 ± 0.032, plain common-mode 5.10 ± 0.14. Observed on IW Car vlti
+  fits: plain common-mode 5.1–5.4 (as expected), MAP common-mode 0.08–0.15 (as expected), MAP adjacent −0.05 to −0.12 (less negative), own χ² 1.8–2.6 (excess).
+* The saved `support_radius_mas` of fits for targets without a `mask_mas` was written from the paper's pixel, not the pixel used (up to ~6 % low: AI Sco 13.98 mas against 14.83);
+  this is a metadata field only. `image_one` now uses the pixel actually used.
+* The "HR 4049" before rows of the table above are main's #137 files, not the pre-#137 page.
+* gp-iso edge counts cover 8 or 9 targets, depending on the cell, because of the missing EN TrA cells.
 * HR 4049: main's #137 rerun was replaced on the page by the OzSTAR fits (one pipeline version for every target). Differences, #137 → OzSTAR: NCC mem 0.87 → 0.86, gp-iso 0.89 → 0.89, gp-aniso 0.86 → 0.86, gp-polar (headline) 0.84 → 0.85, disc+res 0.91 → 0.92; χ²/pt unchanged to 0.02; grid edge: gp-iso and gp-aniso interior in both, gp-polar edge → interior (the OzSTAR run extended the θ length grid once: lower edge 0.0625), disc+res edge → interior; disc+res f_env 33.7 → 26.9 % is the one real change (the diagnostic fit settles elsewhere). Pixel 0.35 → 0.347 mas, grid 146² → 149², same 25 mas support. Neither is clipped.
 
 * EN TrA gp-iso current/flat and gp-iso vlti/blob did not complete on OzSTAR: both tasks failed with `Disk quota exceeded` writing their output
