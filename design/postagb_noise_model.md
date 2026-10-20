@@ -205,7 +205,7 @@ text differs from the committed one only where numbers or the named closest stra
 
 ## Caveats
 
-* HR 4049 on the page is the dedicated cold rerun merged to main in #137 (0.35 mas pixels, 25 mas support); the OzSTAR HR 4049 fits (same settings) are in the tables here, and the HR 4049 "after" rows of the before/after table are the OzSTAR ones, not the page's.
+* HR 4049: main's #137 rerun was replaced on the page by the OzSTAR fits (one pipeline version for every target). Differences, #137 → OzSTAR: NCC mem 0.87 → 0.86, gp-iso 0.89 → 0.89, gp-aniso 0.86 → 0.86, gp-polar (headline) 0.84 → 0.85, disc+res 0.91 → 0.92; χ²/pt unchanged to 0.02; grid edge: gp-iso and gp-aniso interior in both, gp-polar edge → interior (the OzSTAR run extended the θ length grid once: lower edge 0.0625), disc+res edge → interior; disc+res f_env 33.7 → 26.9 % is the one real change (the diagnostic fit settles elsewhere). Pixel 0.35 → 0.347 mas, grid 146² → 149², same 25 mas support. Neither is clipped.
 
 * EN TrA gp-iso current/flat and gp-iso vlti/blob did not complete on OzSTAR: both tasks failed with `Disk quota exceeded` writing their output
   (the /fred inode cap, 97 % at the time). They are missing from the summary (8 of 9 targets for those rows), not guessed. The job's array tasks 73 and 74 rerun them.
