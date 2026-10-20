@@ -61,12 +61,12 @@ def test_positions_for_widens_until_no_epoch_is_at_the_edge(monkeypatch):
         wavel=np.array([2.2e-6]), u=np.array([100.0]), v=np.array([0.0])
     )
     loaded = R.Loaded(["a", "b"], [d, d], [d, d], 10.0, (1.0, 5.0))
-    pos, ep, info = R.positions_for(loaded, 60000.0)
+    ep, info = R.positions_for(loaded, 60000.0)
     assert len(halves) == 3 and halves[2] > halves[1] > halves[0]
     assert (
         info["edge_epochs"] == []
         and len(info["half_widths"]) == 3
-        and pos is ep  # the EpochPositions itself, so fit_orbit_aliases can skip flagged nights
+        and ep.edge.sum() == 0  # the EpochPositions itself, so fit_orbit_aliases can skip flagged nights
     )
 
 
@@ -85,7 +85,7 @@ def test_positions_for_records_a_persistent_edge_and_continues(monkeypatch):
         wavel=np.array([2.2e-6]), u=np.array([100.0]), v=np.array([0.0])
     )
     loaded = R.Loaded(["a", "b"], [d, d], [d, d], 10.0, (1.0, 5.0))
-    _, _, info = R.positions_for(loaded, 60000.0, max_widen=2)
+    _, info = R.positions_for(loaded, 60000.0, max_widen=2)
     assert info["edge_epochs"] == ["b"] and len(info["half_widths"]) == 3
 
 

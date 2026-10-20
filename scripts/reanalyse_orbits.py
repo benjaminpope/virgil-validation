@@ -327,8 +327,8 @@ def positions_for(loaded, t_ref, max_widen=5):
     """Per-epoch positions (seeds and diagnostic): epoch_positions on a grid at lambda_min / 4 B_max.
 
     A best peak at the grid edge may stand for a companion outside it, so the half-width is widened by
-    1.5 (up to ``max_widen`` times) until no epoch's best peak is at the edge. Returns (positions, epochs,
-    info) with info = dict(half_widths, edge_epochs) recording what happened; an epoch still at the edge
+    1.5 (up to ``max_widen`` times) until no epoch's best peak is at the edge. Returns (epos, info), epos
+    being the EpochPositions, with info = dict(half_widths, edge_epochs) recording what happened; an epoch still at the edge
     after the last widening is listed in ``edge_epochs`` and the run goes on (the positions only seed the fits).
     """
     from virgil.epochs import Epochs, epoch_positions
@@ -358,7 +358,7 @@ def positions_for(loaded, t_ref, max_widen=5):
     )
     # The EpochPositions itself, not ep.positions(t_ref): fit_orbit_aliases then drops the flagged alias-peak
     # nights from the seeds (skip_flagged). run() passes primary_diam explicitly, so no 'auto' resolution here.
-    return ep, ep, info
+    return ep, info
 
 
 def ref_track(ref, t):
@@ -731,7 +731,7 @@ def run(name, args):
         json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
 
     save_meta()
-    positions, epos, pinfo = positions_for(loaded, t_ref)
+    epos, pinfo = positions_for(loaded, t_ref)
     meta["position_grid"] = pinfo
     if pinfo["edge_epochs"]:
         # Loud: a best position still at the grid edge may be a bad night or a companion beyond the grid.
@@ -772,7 +772,7 @@ def run(name, args):
     result = fit_orbit_aliases(
         loaded.data,
         p_range,
-        positions=positions,
+        positions=epos,
         times=times,
         t_ref=t_ref,
         a_range=loaded.a_range,
