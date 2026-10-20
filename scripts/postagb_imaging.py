@@ -177,7 +177,7 @@ TARGETS["PS_Gem"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(
 TARGETS["HR4049"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
 # Field sizes (Ben): the support is a disc (mask_mas) in every target. PS Gem's emission is within ~5 mas; HR 4049's ORGANIC halo extends
-# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-27 mas with a disc of 25 mas. Pixel scales are the paper's.
+# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
 TARGETS["PS_Gem"].update(fov_override=11.0, half_mas=5.0, half_cmp_mas=5.0, mask_mas=5.0, hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
 # The grid must contain the 25 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and a 51 mas field, 146 pixels.
 TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=51.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=25.0)
@@ -255,7 +255,7 @@ def setup(cfg):
     o = np.argsort(rad.ravel())
     r90 = float(rad.ravel()[o][np.searchsorted(np.cumsum(im.ravel()[o]) / im.sum(), 0.9)])
     scale = cfg.get("pixel_override") or scale  # per-target pixel (HR 4049: finer than the paper's 0.635 mas)
-    fov = cfg.get("fov_override") or n * scale  # per-target field override (PS Gem smaller, HR 4049 larger), same pixel scale
+    fov = cfg.get("fov_override") or n * scale  # per-target field override (PS Gem smaller, HR 4049 larger); grid_setup pads the start image to it
     half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * fov / 2))  # per-target override: the paper's figure extent
     has_sec = hdr["SFLU2"] > 0
     cfg.update(
@@ -608,6 +608,9 @@ def grid_setup(cfg, data, args, rot=0.0):
         pad = (n_want - n0) // 2
         env = Image.from_brightness(np.pad(b0, pad, constant_values=0.0), start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
         start = System(star=start.star, env=env)
+    half = start.env.log_brightness.shape[0] * float(start.env.pixel_scale_mas) / 2
+    if half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # the saved field and support radii are config values, so check the grid itself
+        raise SystemExit(f"{cfg['key']}: the grid reaches only +-{half:.1f} mas but the support radius is {cfg['mask_mas']:.1f} mas; raise fov_override")
     support, hole_mas = hole_mask(cfg, start.env, data, rot)
     return start, support, hole_mas
 
@@ -1220,7 +1223,7 @@ def image_one(args, out, strat):
                                 if cfg.get("sec_index_fixed") is not None else None),
                  star_index_source=cfg.get("star_index_source", "SPARCO convention (-4)"), sec_index_source=cfg.get("sec_index_source"),
                  warm_start=bool(warm) and strat != "disc+res", warm_source=warm_src if strat != "disc+res" else None,
-                 field_radius_mas=float(cfg["half_mas"]), support_radius_mas=float(cfg.get("mask_mas", env.log_brightness.shape[0] * pix_ / 2))) | extra_gp
+                 field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", env.log_brightness.shape[0] * pix_ / 2))) | extra_gp
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)

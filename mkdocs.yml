@@ -99,6 +99,7 @@ nav:
           - "Transforms, beams and regularizers": imaging/machinery.md
           - "Against eht-imaging": imaging/ehtim.md
           - "Image metrics and ensembles": imaging/metrics_ensembles.md
+          - "2004 contest score": imaging/contest_2004.md
   - Method:
       - "How trust is built": method/index.md
       - "Findings": method/findings.md
@@ -109,5 +110,6 @@ nav:
           - fouriever: method/fouriever.md
           - orbitize!: method/orbitize.md
           - eht-imaging: method/ehtim.md
+      - "ALMA measurement-set conventions": alma_conventions.md
       - "Evidence table": evidence.md
       - "Generated results": results.md

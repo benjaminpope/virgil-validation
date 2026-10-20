@@ -583,6 +583,26 @@ that higher is better.
   table. The truth model is rebuilt from the paper, with the A:B flux
   ratio fixed by a fit to the data. The paper is read only for scoring,
   never for imaging.
+
+  Scores (`scripts/score_2004.py`, truth rebuilt as in the data2 section
+  above; 2026-10-18; raw numbers, lower σ/peak is better):
+
+  | Entry | σ/peak | Status |
+  |---|---|---|
+  | BSMEM | 0.116 | published |
+  | WISARD | 0.163 | published |
+  | **Informed parametric ladder** (elliptical limb-darkened star + spot + companion) | **0.180** | **informed**: the model family is chosen knowing what the object is; raw χ²/N 0.985 (V² 0.97, closure 1.01, T3AMP 0.74 as a check) |
+  | **Our best blind image** (CLEAN-started GP ensemble, 4 of 8 members kept) | **0.253** | **blind**: raw χ²/N 20.7–21.3; V² about 31 and closure about 6 in the member logs |
+  | MIRA | 0.532 | published |
+  | VLBMEM | 0.798 | published |
+
+  The blind score is 0.249–0.254 for linear limb darkening u between 0.3 and
+  0.7 (0.253 at the adopted u = 0.469), and 0.252 against the truth with its
+  nuisances fitted to the data. The informed score depends on how the
+  companion is rendered (a point source 0.351, a free-diameter disk 0.180).
+  The rebuilt truth itself fits the data (V² χ²/N 1.45 on the pixel grid, 1.32
+  analytic, closure 0.61; pooled χ²/ν 1.02), so the data are not what
+  limits the blind image, whose V² fit is still poor.
 - **2018:** scored against the published qualitative criteria: whether
   the image recovers the gap between the inner and outer disks, and the
   whole inner disk.

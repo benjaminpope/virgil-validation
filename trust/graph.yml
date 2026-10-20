@@ -118,6 +118,30 @@ nodes:
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
 
+  # ------------------------------------------------------------- radio
+  # virgil.radio (instrument-neutral): tests/test_alma_radio.py against crosscheck.sky,
+  # crosscheck.alma and the CASA worker (docs/alma_conventions.md)
+  virgil.radio.ComplexVisData: {layer: data, source: [src/virgil/radio.py], doc: alma_conventions.md}
+  virgil.radio.ComplexVisData.read_ms:
+    layer: data
+    source: [src/virgil/radio.py]
+    depends: [virgil.radio.ComplexVisData]
+    properties: {conjugation: 1}  # DATA is conj(V) at u = +UVW[0] nu / c: CASA's own prediction
+    doc: alma_conventions.md
+  virgil.radio.CalibrationNuisance: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil.radio.ComplexVisData.model:
+    layer: likelihood
+    source: [src/virgil/radio.py]
+    depends: [virgil.radio.ComplexVisData, virgil.radio.CalibrationNuisance, virgil.models.Image]
+  virgil.radio.ComplexVisData.term:
+    layer: likelihood
+    source: [src/virgil/radio.py]
+    depends: [virgil.radio.ComplexVisData.model]
+    doc: alma_conventions.md
+  virgil.radio.ComplexVisData.chi2_by_ddid: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData.model], doc: alma_conventions.md}
+  virgil.radio.primary_beam: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.models.Image], doc: alma_conventions.md}
+  virgil.radio.dartboard_folds: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+
   # ----------------------------------------------------------- likelihood
   virgil.oidata.OIData.cp_noise:  # correlated closure phases (Kammerer et al. 2020)
     layer: likelihood
@@ -515,6 +539,11 @@ nodes:
   crosscheck.elr: {layer: references}
   crosscheck.nrm: {layer: references}
   crosscheck.image_metrics: {layer: references}
+  crosscheck.alma: {layer: references, doc: alma_conventions.md}  # incl. the exact DFT image_visibilities and its adjoint
+  external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
+  external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol
+  virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
+  mpol: {layer: references, doc: alma_conventions.md}  # the external package itself (problems P11, P12)
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
@@ -630,3 +659,13 @@ pipelines:
     state: running
     planned: true  # written (tests/test_orbitize.py, tier C), not yet run: hours, for OzSTAR
     steps: [virgil.orbits.PositionData, virgil.orbits.KeplerOrbit]
+  alma-imlup:
+    title: DSHARP IM Lup Band 6 continuum, measurement sets to a multi-observation image fit
+    data: real
+    dataset: DSHARP IM Lup Band 6 continuum
+    reference: MPoL 04-IMLup-multi-EB; DSHARP II/III
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/alma_imlup.md
+    headline: virgil.radio on the 26 ddids of IM Lup against MPoL's multi-observation example and the DSHARP images
+    state: planned  # the readers, model and likelihood are validated, and equal MPoL's (tests/test_alma_mpol.py); the IM Lup fit is not run yet
+    steps: [virgil.radio.ComplexVisData.read_ms, virgil.radio.ComplexVisData.model, virgil.radio.ComplexVisData.term,
+            virgil.radio.primary_beam, virgil.radio.dartboard_folds, virgil.models.Image, virgil.fitting.fit]
