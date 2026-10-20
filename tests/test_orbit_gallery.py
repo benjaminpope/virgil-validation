@@ -115,7 +115,7 @@ def test_alias_nights_come_from_the_summary_else_from_the_label_list(og, tmp_pat
     path.write_text(json.dumps(summary))
     flagged = lambda: {e["label"] for e in _target(og.build(tmp_path), "gl229b")["epochs"] if e.get("alias")}
     assert flagged() == {"2024-02-28"}  # the label list; the ordinary night (2024-03-01) is not flagged
-    summary["orbit"]["epoch_checks"] = [dict(name=pos[1]["name"], reasons=["flagged: weak peak"], barred=False),
+    summary["orbit"]["epoch_checks"] = [dict(name=pos[1]["name"], reasons=["flagged: single-night alias peak (Xuan et al. flag: weak signal)"], barred=False),
                                         dict(name=pos[0]["name"], reasons=[], barred=False)]
     path.write_text(json.dumps(summary))
     assert flagged() == {"2024-03-01"}  # the summary's own checks win
@@ -285,3 +285,59 @@ def test_legacy_label_follows_the_fit_and_downgrades_a_pass(og):
     table = [dict(status="PASS", quantity="x", pull=0.1)]
     assert og.status_of(table, fit)[0] == "agrees"
     assert og.status_of(table, fit, og.legacy_text(tile, fit))[0] == "reported"
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_only_alias_peaks_flags_mark_an_alias_and_other_flags_carry_their_reason(og, tmp_path):
+    """sep-below-resolution, chi2-high etc. are flagged nights, not aliases; each says why and whether it was excluded."""
+    path = _summaries_copy(tmp_path) / f"{GL229}.json"
+    summary = json.loads(path.read_text())
+    pos = summary["orbit"]["positions"]
+    for k, p in enumerate(pos[:5]):
+        p["name"] = f"n{k}"
+    summary["orbit"]["epoch_checks"] = [
+        dict(name="n0", reasons=["flagged: alias-peaks: two peaks"], barred=True),
+        dict(name="n1", reasons=["flagged: sep-below-resolution: 0.7 mas below 1.9 mas"], barred=True),
+        dict(name="n2", reasons=["flagged: chi2-high: 138 > 122"], barred=False),
+        dict(name="n3", reasons=[], barred=False),
+        dict(name="n4", reasons=["flagged: chi2-high: 9 > 3", "flagged: alias-peaks: two peaks"], barred=False)]
+    path.write_text(json.dumps(summary))
+    eps = {e["label"]: e for e in _target(og.build(tmp_path), "gl229b")["epochs"]}
+    assert eps["n0"].get("alias") and "flag" not in eps["n0"]
+    assert not eps["n1"].get("alias") and eps["n1"]["flag"] == dict(
+        code="sep-below-resolution", reason="sep-below-resolution: 0.7 mas below 1.9 mas", excluded=True)
+    assert not eps["n2"].get("alias") and eps["n2"]["flag"]["code"] == "chi2-high" and not eps["n2"]["flag"]["excluded"]
+    assert not eps["n3"].get("alias") and "flag" not in eps["n3"]
+    assert eps["n4"].get("alias") and eps["n4"]["flag"]["code"] == "chi2-high"  # order of the reasons does not matter
+    assert og.ALIAS_CODE in og.FLAG_CODES
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+def test_implausible_alternative_modes_are_hidden_and_counted(og, tmp_path):
+    path = _summaries_copy(tmp_path) / f"{GL229}.json"
+    summary = json.loads(path.read_text())
+    modes = summary["orbit"]["modes"]
+    far = json.loads(json.dumps(modes[1]))
+    far["loss"] = modes[0]["loss"] + og.MODE_DLOSS_MAX + 1.0
+    modes.append(far)
+    path.write_text(json.dumps(summary))
+    t = _target(og.build(tmp_path), "gl229b")
+    assert t["modes_hidden"] == 1 and t["mode_dloss_max"] == og.MODE_DLOSS_MAX
+    assert len(t["alternatives"]) == 1 and t["alternatives"][0]["dloss"] <= og.MODE_DLOSS_MAX
+    assert str(int(og.MODE_DLOSS_MAX)) in next(g for g in og.GUIDE if g["key"] == "alt")["text"]
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
+def test_sky_axes_ignore_alternative_modes_in_the_renderer():
+    js = (ROOT / "docs" / "assets" / "orbits.js").read_text()
+    body = js.split("function allSkyPoints", 1)[1].split("function bbox", 1)[0]
+    assert "alternatives" not in body and "clip-path" in js
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
+def test_stored_gl229_summary_keeps_both_alias_nights(og):
+    """The committed Gl 229 summary uses oidb_fit's uncoded wording; both nights must still be aliases."""
+    data = og.build(og.SUMMARIES)
+    eps = _target(data, "gl229b")["epochs"]
+    assert {e["label"] for e in eps if e.get("alias")} == og.ALIAS_NIGHTS[GL229]
+    assert not any(e.get("flag") for e in eps if e.get("alias"))

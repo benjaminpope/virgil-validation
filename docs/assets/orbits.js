@@ -87,7 +87,6 @@
   function allSkyPoints(t) {
     var out = [];
     if (t.ours) out = out.concat(pts(t.ours.path));
-    arr(t.alternatives).forEach(function (a) { out = out.concat(pts(a.path)); });
     arr(t.published).forEach(function (a) { out = out.concat(pts(a.path)); });
     arr(t.epochs).forEach(function (e) {
       if (num(e.dra) && num(e.ddec)) out.push([e.dra, e.ddec]);
@@ -157,6 +156,10 @@
       return '<g data-key="alias" class="og-x og-hit" tabindex="0" role="img" aria-label="' + esc(lab) + '" data-i="' + i + '" transform="translate(' + f(cx) + " " + f(cy) + ')">' +
         '<circle r="9" class="og-hitarea"/><path d="M-4.5 -4.5L4.5 4.5M-4.5 4.5L4.5 -4.5"/></g>';
     }
+    if (e.flag) {
+      return '<g data-key="flag" class="og-flag og-hit" tabindex="0" role="img" aria-label="' + esc(lab + " (flagged " + e.flag.code + (e.flag.excluded ? ", excluded from the fit" : ", used in the fit") + ")") + '" data-i="' + i + '" transform="translate(' + f(cx) + " " + f(cy) + ')">' +
+        '<circle r="9" class="og-hitarea"/><path d="M0 -5.5L5.5 0L0 5.5L-5.5 0Z"/></g>';
+    }
     return '<g data-key="' + key + '" class="og-hit" tabindex="0" role="img" aria-label="' + esc(lab) + '" data-i="' + i + '" transform="translate(' + f(cx) + " " + f(cy) + ')">' +
       '<circle r="9" class="og-hitarea"/><circle r="4.6" class="og-dot og-ours"/></g>';
   }
@@ -176,14 +179,15 @@
     g += '<rect class="og-frame" x="0.5" y="0.5" width="' + (W - 1) + '" height="' + (H - 1) + '" rx="6"/>';
     g += '<line class="og-grid-l" x1="' + f(tx(0)) + '" x2="' + f(tx(0)) + '" y1="0" y2="' + H + '"/>' +
          '<line class="og-grid-l" y1="' + f(ty(0)) + '" y2="' + f(ty(0)) + '" x1="0" x2="' + W + '"/>';
+    g += '<clipPath id="og-clip-' + esc(t.slug) + '"><rect x="' + f(tx(b.x1)) + '" y="' + f(ty(b.y1)) + '" width="' + f((b.x1 - b.x0) * s) + '" height="' + f((b.y1 - b.y0) * s) + '"/></clipPath>';
     arr(t.alternatives).forEach(function (a, i) {
-      if (pts(a.path).length) g += '<path data-key="alt' + i + '" class="og-line og-alt" d="' + poly(a.path, tx, ty, true) + '"><title>' + esc(a.label) + (num(a.dloss) ? " (Δloss " + fmt(a.dloss) + ")" : "") + "</title></path>";
+      if (pts(a.path).length) g += '<path clip-path="url(#og-clip-' + esc(t.slug) + ')" data-key="alt' + i + '" class="og-line og-alt" d="' + poly(a.path, tx, ty, true) + '"><title>' + esc(a.label) + (num(a.dloss) ? " (Δloss " + fmt(a.dloss) + ")" : "") + "</title></path>";
     });
     arr(t.published).forEach(function (p, i) {
       if (pts(p.path).length) g += '<path data-key="pub' + i + '" class="og-line og-dash ' + pubClass(i) + '" d="' + poly(p.path, tx, ty, true) + '"><title>' + esc(p.label) + "</title></path>";
     });
     if (t.ours && pts(t.ours.path).length) g += '<path data-key="ours" class="og-line og-ours" d="' + poly(t.ours.path, tx, ty, true) + '"><title>' + esc(t.ours.label || "ours") + "</title></path>";
-    var hasPub = false, hasAlias = false, eps = arr(t.epochs), label = eps.length <= 6;
+    var hasPub = false, hasAlias = false, hasFlag = false, eps = arr(t.epochs), label = eps.length <= 6;
     eps.forEach(function (e, i) {
       if (!num(e.dra) || !num(e.ddec)) return;
       var el = ellipse(e.cov, e.dra, e.ddec);
@@ -194,6 +198,7 @@
           '<circle class="og-dot og-hollow og-p0" cx="' + f(tx(e.pub.dra)) + '" cy="' + f(ty(e.pub.ddec)) + '" r="6.4"/></g>';
       }
       if (e.alias) hasAlias = true;
+      if (e.flag) hasFlag = true;
       g += '<g data-key="' + (e.alias ? "alias" : "eps") + '" class="og-ep">' + (el ? '<path class="og-ell og-ours' + (e.alias ? " og-ell-alias" : "") + '" d="' + poly(el, tx, ty, true) + '"/>' : "") + "</g>";
     });
     eps.forEach(function (e, i) {
@@ -209,7 +214,7 @@
     var cx = margin + 28, cy = margin + 32;
     g += '<g class="og-compass"><line x1="' + cx + '" y1="' + cy + '" x2="' + cx + '" y2="' + (cy - 20) + '"/><line x1="' + cx + '" y1="' + cy + '" x2="' + (cx - 20) + '" y2="' + cy + '"/>' +
       '<text x="' + cx + '" y="' + (cy - 25) + '" text-anchor="middle">N</text><text x="' + (cx - 25) + '" y="' + (cy + 5) + '" text-anchor="end">E</text></g>';
-    return { html: g + "</svg>", hasPub: hasPub, hasAlias: hasAlias };
+    return { html: g + "</svg>", hasPub: hasPub, hasAlias: hasAlias, hasFlag: hasFlag };
   }
 
   // ---- x/y line plot (phase and date panels) ----------------------------
@@ -319,7 +324,7 @@
     var has = {
       sky: true, ours: !!(t.ours && pts(t.ours.path).length), pub: arr(t.published).length > 0,
       alt: arr(t.alternatives).length > 0, eps: arr(t.epochs).some(function (e) { return num(e.dra); }),
-      alias: !!sky.hasAlias, phase: true
+      alias: !!sky.hasAlias || !!sky.hasFlag, phase: true
     };
     var items = arr(data.guide).filter(function (g) { return has[g.key]; });
     return '<details class="og-help"><summary>How to read this plot</summary><dl>' + items.map(function (g) {
@@ -356,12 +361,17 @@
     var leg = [];
     if (t.ours && pts(t.ours.path).length) leg.push(["ours", t.ours.label || "ours", "og-ours"]);
     if (arr(t.epochs).some(function (e) { return num(e.dra) && !e.alias; })) leg.push(["eps", "nights (1σ)", "og-ours og-sw-dot"]);
-    if (sky.hasAlias) leg.push(["alias", "alias nights", "og-ours og-sw-x"]);
+    if (sky.hasAlias) leg.push(["alias", "alias nights (single-night alias peak)", "og-ours og-sw-x"]);
+    if (sky.hasFlag) {
+      var nx = arr(t.epochs).filter(function (e) { return e.flag && e.flag.excluded; }).length, nu = arr(t.epochs).filter(function (e) { return e.flag; }).length - nx;
+      leg.push(["flag", "other flagged nights, open diamonds (" + (nx ? nx + " excluded from the fit" : "") + (nx && nu ? ", " : "") + (nu ? nu + " used in the fit" : "") + "; reason in tooltip)", "og-ours og-sw-diamond"]);
+    }
     arr(t.published).forEach(function (p, k) { if (pts(p.path).length) leg.push(["pub" + k, p.label || "published", pubClass(k) + " og-sw-dash"]); });
     if (sky.hasPub) leg.push(["pubep", "published nights", "og-p0 og-sw-hollow"]);
     arr(t.alternatives).forEach(function (a, k) {
       if (pts(a.path).length) leg.push(["alt" + k, (a.label || "mode") + (num(a.dloss) ? " (Δloss " + fmt(a.dloss) + ")" : ""), "og-alt"]);
     });
+    if (num(t.modes_hidden) && t.modes_hidden > 0) leg.push(["alt-hidden", t.modes_hidden + " alternative mode" + (t.modes_hidden === 1 ? "" : "s") + " with Δloss > " + fmt(t.mode_dloss_max) + " nats not drawn", "og-alt"]);
     var phase = phasePanels(t);
     h += '<div class="og-plots"><figure class="og-skywrap">' + sky.html +
       '<div class="og-legend" role="group" aria-label="Show or hide curves">' + leg.map(function (l) {
@@ -416,9 +426,9 @@
     tip.className = "og-tip"; tip.hidden = true;
     root.appendChild(tip);
     function show(ev, e, node) {
-      tip.innerHTML = "<strong>" + esc(e.label) + (e.alias ? " · alias peak" : "") + "</strong><br>MJD " + fmt(e.mjd) + "<br>sep " + fmt(e.sep) + " mas, PA " + fmt(e.pa) + "°<br>ΔRA " + fmt(e.dra) + ", ΔDec " + fmt(e.ddec) + " mas" +
+      tip.innerHTML = "<strong>" + esc(e.label) + (e.alias ? " · alias peak" : "") + (e.flag ? " · flagged: " + esc(e.flag.code) + (e.flag.excluded ? " (excluded from the fit)" : " (used in the fit)") : "") + "</strong><br>MJD " + fmt(e.mjd) + "<br>sep " + fmt(e.sep) + " mas, PA " + fmt(e.pa) + "°<br>ΔRA " + fmt(e.dra) + ", ΔDec " + fmt(e.ddec) + " mas" +
         (e.pub && num(e.pub.dra) ? "<br>paper: ΔRA " + fmt(e.pub.dra) + ", ΔDec " + fmt(e.pub.ddec) : "") +
-        (num(e.v2_scale) ? "<br>V² amplitude × " + fmt(e.v2_scale) : "") + (e.note ? "<br>" + esc(e.note) : "");
+        (num(e.v2_scale) ? "<br>V² amplitude × " + fmt(e.v2_scale) : "") + (e.flag ? "<br>" + esc(e.flag.reason) : "") + (e.note ? "<br>" + esc(e.note) : "");
       tip.hidden = false;
       var rr = root.getBoundingClientRect(), tr = node.getBoundingClientRect();
       var x = (ev.clientX != null && ev.type !== "focus" ? ev.clientX : tr.left + tr.width / 2) - rr.left;

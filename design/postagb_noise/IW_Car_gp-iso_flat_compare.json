@@ -1,0 +1,70 @@
+{
+ "ncc_zero_shift": 0.8989306952088146,
+ "ncc_controls": {
+  "mirrored_East-West": 0.19145252172587782,
+  "rotated_180": 0.09332961017551551,
+  "azimuthal_average_of_published": 0.564074132976996
+ },
+ "ncc_best_shift": 0.9000879910541575,
+ "best_shift_pixels": {
+  "dy": -1,
+  "dx": 0
+ },
+ "pixel_mas": 0.35000000000000003,
+ "beam": {
+  "major_mas": 1.2102040317542013,
+  "minor_mas": 1.2102040317542013,
+  "pa_deg": 0.0
+ },
+ "beam_convention": "circular Gaussian, FWHM lambda_min / (2 B_max)",
+ "virgil_data_beam": {
+  "major_mas": 3.2567743180708644,
+  "minor_mas": 2.286272831550803,
+  "pa_deg": 142.35951189879174
+ },
+ "ours": {
+  "inner": {
+   "flux_fraction": 0.17901940023083637,
+   "mean_radius_mas": 3.2937342061790162,
+   "major_pa_deg": 154.68477190222347,
+   "axis_ratio": 0.7897913456893436,
+   "centroid_pa_deg": 351.89126748986826,
+   "centroid_offset_mas": 1.20130601107463
+  },
+  "outer": {
+   "flux_fraction": 0.8090933929598227,
+   "mean_radius_mas": 10.717074305734611,
+   "major_pa_deg": 17.694084263221942,
+   "axis_ratio": 0.8705439820200309,
+   "centroid_pa_deg": 269.70582245576,
+   "centroid_offset_mas": 2.6035386441400035
+  }
+ },
+ "published": {
+  "inner": {
+   "flux_fraction": 0.1663585114443422,
+   "mean_radius_mas": 3.4137509373681034,
+   "major_pa_deg": 138.30103779461763,
+   "axis_ratio": 0.8781149263921841,
+   "centroid_pa_deg": 328.9292455541165,
+   "centroid_offset_mas": 1.1230689138114398
+  },
+  "outer": {
+   "flux_fraction": 0.7733272046776728,
+   "mean_radius_mas": 9.833721731920603,
+   "major_pa_deg": 163.30444057448483,
+   "axis_ratio": 0.7832841077026632,
+   "centroid_pa_deg": 267.7080001464239,
+   "centroid_offset_mas": 4.051091680385955
+  }
+ },
+ "chi2_per_point_published_on_our_data": 2.0467730184101156,
+ "chi2_per_point_ours": 0.6185156690722479,
+ "n_points": 1794,
+ "published_orientation_chi2": {
+  "as_published": 2.0467730184101156,
+  "mirrored_East-West": 60.191467789790615,
+  "mirrored_North-South": 8.818546257661843
+ },
+ "smoke": false
+}

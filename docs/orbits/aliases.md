@@ -66,7 +66,7 @@ Reference period 12.1340 d lies in band N = 34 (p = 1.000); it is the winner.
 | 40 | 10.3694 | 24.01 | 1.72–12.52 | -96183.02 | -96183.01 | 0.000 | 1469 |  |
 | 31 | 13.2704 | 29.67 | 1.85–12.08 | -96647.47 | -96647.47 | 0.000 | 61 | hessian-not-positive-definite, near-prior-bound |
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -107,7 +107,7 @@ Reference period 14.9054 d lies in band N = 49 (p = 1.000); it is the winner.
 
 *11 further bands, each with p < 0, are in `bands.json`.*
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -135,7 +135,7 @@ Reference period 98.8045 d lies in band N = 1 (p = 1.000); it is the winner.
 | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |
 | 1 | 98.7537 | 0.63 | 0.16–2.10 | -975.12 | -975.04 | 1.000 | 1404 |  |
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -168,7 +168,7 @@ Reference period 46.8161 d lies in band N = 9 (p = 1.000); it is the winner.
 | 12 | 38.1481 | 2676.32 | 3.80–101.29 | -2082725.64 | -2082730.13 | 0.000 | 34 | near-prior-bound, laplace-is-differ, low-ess |
 | 7 | 58.5078 | 4194.02 | 2.82–149.10 | -2158146.35 | -2158171.33 | 0.000 | 1 | hessian-not-positive-definite, near-prior-bound, laplace-is-differ, low-ess |
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -200,7 +200,7 @@ Reference period 42.3811 d lies in band N = 9 (p = 1.000); it is the winner.
 | 7 | - | - | - | - | - | 0.000 | 0 | hessian-not-positive-definite, no-valid-mode |
 | 8 | - | - | - | - | - | 0.000 | 0 | hessian-not-positive-definite, no-valid-mode |
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -230,7 +230,7 @@ Reference period 148.3290 d lies in band N = 5 (p = 1.000); it is the winner.
 | 4 | 164.5831 | 3560.34 | 1.62–174.30 | -209493.38 | -209492.16 | 0.000 | 2 | hessian-not-positive-definite, near-prior-bound, laplace-is-differ, low-ess |
 | 6 | 133.7717 | 3231.49 | 3.05–125.15 | -242311.79 | -242310.94 | 0.000 | 2 | hessian-not-positive-definite, near-prior-bound, not-converged, low-ess |
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -271,7 +271,7 @@ Reference period 27.8858 d lies in band N = 26 (p = 1.000); it is the winner.
 
 *1 further bands, each with p < 0, are in `bands.json`.*
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -310,7 +310,7 @@ Reference period 14.4981 d lies in band N = 23 (p = 0.000); it is not the winner
 | 21 | - | - | - | - | - | 0.000 | 0 | hessian-not-positive-definite, no-valid-mode |
 | 23 | - | - | - | - | - | 0.000 | 0 | hessian-not-positive-definite, no-valid-mode |
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -341,7 +341,7 @@ Reference period 38.8121 d lies in band N = 9 (p = 1.000); it is the winner.
 | 8 | 39.6216 | 102.48 | 0.61–34.36 | -1872.57 | -1872.37 | 0.000 | 157 | hessian-not-positive-definite |
 | 11 | 31.3845 | 82.81 | 0.61–29.67 | -1965.26 | -1965.46 | 0.000 | 185 |  |
 
-Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and not a twin system) is UNEXPLAINED-FLIP, a sign error rather than agreement. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
+Orbits are compared on the sky, at the epochs, not by their elements (conventions and aliases give one sky orbit many element sets). Offsets are in mas; **mirror** = flip means the reference's point reflection matches, and **flipped** says whether the fit swapped the two stars' labels (flux ratio > 1): a mirror without a swap (and a fit that did not report its labels free) is UNEXPLAINED-FLIP, a sign error rather than agreement. A fit that is good on its own data (raw chi2/N at most 2) but far from the reference is REFERENCE-DISAGREES. Verdict rule version 2. The verdict is SAME-SKY-ORBIT only if the rms offset is under 2% of the separation and, with posterior samples, under 3 posterior spreads. Rows marked *warm-started* are in the band whose fit began at the reference orbit, so agreement there is not independent.
 
 | band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
@@ -355,6 +355,84 @@ Winning band: flux ratio 0.180; primary diameter 0.435 mas (fitted); per-epoch V
 ![Posterior of the winning band](../assets/orbit_aliases/psi_cen/corner.png)
 
 ![Closure-phase residuals at the best orbit, per epoch](../assets/orbit_aliases/psi_cen/residuals.png)
+
+## Release gate: Gl 229
+
+### Blind: OrbitPipeline, no settings
+
+**FAIL.** `OrbitPipeline` on Gl 229 with no settings: no period window, start or published orbit (the window, 2.9 to 1656 d, comes from the data, with 144 bands). It must rank band N = 34 first with Δlog Z > 10 over every other band, and the winner must lie on the published orbit on the sky. vv recomputes this: virgil's verdict is PASS; winner N = 34 and Δlog Z = 22.8 meet the margin test; the sky-plane verdict is DIFFERENT.
+
+Winner: N = 34, P = 12.132 d, e = 0.237, flux ratio 0.476. Δlog Z = 22.8 over the runner-up (N = 62), on the **tempered** likelihood (effective-channel factor f = 41.1, outside virgil's accepted range 0.5 to 2). Tempering rescales the evidences to absorb errors that are too small; it is not a noise model, and this margin can move across the 10-nat line when f changes.
+
+Winner against the published orbit, on the sky at the pipeline's nights:
+
+| band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| winner | 34 | 12.1321 | 0.29 | 0.54 | 4% | - | none | no | DIFFERENT |
+
+virgil's own checks that are not a pass:
+
+- **chi2** (fail): χ²/N = 66.4 for the best-fit orbit on quoted errors: the model does not describe the data, or the errors are much too small.
+- **night_flags** (warn): 2 of 7 nights are flagged (2023-12-29: chi2-high; 2024-12-18: flux-at-bound): they seed no orbit, but their data still count in the likelihood.
+- **tempering** (warn): The effective-channel factor f = 41.1 (raw 27.8) is outside [0.5, 2] or the residual correlation is not AR(1): the evidences are less reliable.
+- **stage_warnings** (warn): 5 warning(s) were raised inside the stages: Raw chi2/N on the quoted errors exceeds 4 (errors underestimated by more than 2) in 2023-12-25 (337.2), 2023-12-29 (1303.4), 2024-02-27 (241.5), 2024-03-28 (188.4), 2024-04-29 (58.9), 2024-12-18 (35.0), 2025-02-11 (461.5): fit error scales for these datasets, and do not read a rescaled chi2/N of 1 as a good fit.; fit_orbit_aliases(): the period window starts at 2.9 d, 14.5 nights' length: a shorter period would move the companion by more than half the resolution during a night (field 7.31 mas). Pass p_range to search shorter periods.; fit_orbit_aliases(): the effective-channel factor is f = 42.9 (block 'vis'; pooled 41.1, raw 27.8), outside 0.5 to 2: the likelihood is tempered by 1/f (AliasResult.tempering). Check the channels' errors. (and 2 more). See the 'warnings' list of summary.json.
+
+Provenance: this blind run is virgil 0.3.0 commit `dda910f`, not the 0.4.0 release code (`2946041`): no `OrbitPipeline` run at the release commit is stored here, so this is a pre-release result. virgil-vlti `0a06e84`; OzSTAR job 18762942.
+
+Data: virgil-vlti's preparation, channel `GRAVITY_SC`, window [2.05, 2.18] µm, 39 of 40 files, 7 nights; excluded: GRAVI.2023-12-26T05_51_29.891 (closure phases +38 to +57 deg on all triangles, errors 5-10x the night's). The alias runs below use this repository's loader (`reanalyse_orbits.py`), which is not the same preparation: the recorded nights are the same. Nights flagged by virgil: 2023-12-29, 2024-12-18. The two results are therefore not on identical data (the files and errors differ even where the nights match).
+
+Raw χ²/N 66.4 on the quoted errors: the errors are far too small, a noise-model matter for virgil-vlti, not the period search.
+
+![Pipeline band search: Δlog Z and raw χ²/N by period](../assets/orbit_aliases/gl229-pipeline/search_bands.png)
+
+![Pipeline modes on the sky](../assets/orbit_aliases/gl229-pipeline/modes_sky.png)
+
+### Cold orbit_aliases, reference-informed window
+
+**FAIL.** `reanalyse_orbits.py --system gl229 --no-init`: a cold start, from the run's own record (no_init set, no init orbit); window 10 to 14 d (12 bands), set from the published period, so not blind. PASS needs the cold record, N = 34 first by more than 10 nats, N = 34 on the reference's sky orbit, and no not-converged/no-valid-mode flag on it. virgil 0.4.0, commit `2946041` (the 0.4.0 release); virgil-validation `bda1d27`; options `--no-init`; OzSTAR job 18758960.
+
+Winner: N = 39, P = 10.7474 d, raw χ²/N 14.11, p = 1.000, log Z -91954.75 (Laplace) vs -91954.75 (IS); Δlog Z = 331.4 over the runner-up (N = 36). Band N = 34: rank 10 of 12, flags near-prior-bound; sky-plane verdict DIFFERENT.
+
+| band | N | P (d) | rms | max | rms / sep | rms / spread | mirror | flipped | verdict |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| winner | 39 | 10.7474 | 9.09 | 12.50 | 130% | 326.1 | flip | no | DIFFERENT |
+| reference | 34 | 12.2660 | 6.21 | 11.01 | 89% | - | none | no | DIFFERENT |
+
+The likelihood is unchanged: the warm N = 34 log Z is -90191.0 in the first run and -90191.0 in the warm rerun at the cold run's commit `2946041` (agreement within 0.1 nats).
+
+A cold run with 4 times the candidates and 5 times the steps (refines 6 to 10) ranks N = 39 then N = 36, the same two optima as the base cold run: more random effort does not move them.
+
+So the cold search seeds the wrong modes: the likelihood supports N = 34 when started there, and more random search does not find it from a cold start.
+
+| run | virgil | commit | start | job | search effort (candidates/refines/steps) | N = 34: rank, log Z, raw χ²/N | winner |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| warm, first run (`gl229`) | 0.3.0 | not recorded | warm | not recorded | 100/6/200 | 1, -90191.0, 11.78 | N = 34 (-90191.0) |
+| warm (`gl229-warm-2946041`) | 0.4.0 | 2946041 | warm | 18760999 | 100/6/200 | 1, -90191.0, 11.78 | N = 34 (-90191.0) |
+| cold (`gl229-cold`) | 0.4.0 | 2946041 | cold | 18758960 | 100/6/200 | 10, -93705.1, 18.52 | N = 39 (-91954.8) |
+| cold, high effort (`gl229-cold-effort`) | 0.4.0 | 2946041 | cold | 18761000 | 400/10/1000 | 5, -93024.8, 17.94 | N = 39 (-91954.8) |
+
+| N | P (d) | χ²/N (raw) | error scales | log Z | log Z (IS) | p | ESS | flags |
+| ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| 39 | 10.7474 | 14.11 | 1.98–5.95 | -91954.75 | -91954.75 | 1.000 | 1504 | poor-fit |
+| 36 | 11.4589 | 22.28 | 1.76–21.54 | -92286.12 | -92286.11 | 0.000 | 1508 | near-prior-bound |
+| 38 | 10.7543 | 14.55 | 2.33–5.93 | -92995.36 | -92995.34 | 0.000 | 1464 | not-converged |
+| 37 | 11.1636 | 16.31 | 1.74–8.51 | -93061.92 | -93061.92 | 0.000 | 1521 | hessian-singular |
+| 35 | 11.8875 | 15.16 | 1.96–6.12 | -93126.92 | -93126.92 | 0.000 | 1486 |  |
+| 32 | 12.8867 | 15.68 | 1.96–8.04 | -93238.93 | -93238.90 | 0.000 | 1366 | near-prior-bound |
+| 33 | 12.5946 | 18.42 | 1.74–13.84 | -93382.24 | -93382.23 | 0.000 | 1489 |  |
+| 41 | 10.1310 | 20.79 | 1.73–17.14 | -93630.42 | -93630.38 | 0.000 | 1499 |  |
+| 40 | 10.2236 | 15.98 | 1.92–5.00 | -93693.69 | -93693.68 | 0.000 | 1489 | near-prior-bound |
+| 34 | 12.2660 | 18.52 | 1.84–12.70 | -93705.08 | -93705.04 | 0.000 | 1523 | near-prior-bound |
+| 31 | 13.3707 | 23.64 | 1.98–10.01 | -95791.32 | -95791.32 | 0.000 | 1183 | not-converged |
+| 30 | 13.7673 | 29.31 | 1.94–12.22 | -96553.15 | -96553.11 | 0.000 | 1261 |  |
+
+The first warm result (virgil 0.3.0, commit `not recorded`) is the Gl 229 section above. Its N = 34 log Z (-90191.0) was **warm-started at the published orbit** (the record shows no init orbit, but args.no_init is false), so it is not a cold optimum and not independent evidence for N = 34.
+
+![Sky plane: per-epoch positions (red), posterior orbits in the winning band, reference orbit](../assets/orbit_aliases/gl229-cold/sky.png)
+
+![Posterior of the winning band](../assets/orbit_aliases/gl229-cold/corner.png)
+
+![Closure-phase residuals at the best orbit, per epoch](../assets/orbit_aliases/gl229-cold/residuals.png)
 
 
 ## Systems not included

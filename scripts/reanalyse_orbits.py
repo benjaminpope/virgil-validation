@@ -193,19 +193,18 @@ def _check_published(ref, refpos, limit_mas=0.5):
     return miss, None
 
 
-def _read_with_vis(T):
-    """trackb_fit._read, but GRAVITY keeps V2 beside the closure phases (the Track B criteria are closure phases only)."""
+def _refuse_gravity_sci_vis(T):
+    """trackb_fit._read, but GRAVITY raises: its uncalibrated SCI_VIS V² (fitted with vis_amp) is not used.
+
+    GRAVITY is fitted by ``gallery_orbits.py`` from the calibrated files (``calibrated_load``)."""
     read_tb = T._read
 
     def read(files, inst):
-        if inst != "GRAVITY":
-            return read_tb(files, inst)
-        from virgil.oidata import OIData
-        from virgil.oifits import read_oifits
+        if inst == "GRAVITY":
+            import calibrated_load
 
-        return OIData(read_oifits([str(f) for f in files], insname="GRAVITY_SC")).select(
-            ranges=T.GRAVITY_RANGES, observables=("vis", "phi")
-        )
+            calibrated_load.refuse_uncalibrated_gravity()
+        return read_tb(files, inst)
 
     return read
 
@@ -214,8 +213,8 @@ def make_trackb_loader(name, primary_omega=False):
     def load(root):
         import trackb_fit as T
 
-        T._read = _read_with_vis(T) if not getattr(T._read, "_vis", False) else T._read
-        T._read._vis = True
+        T._read = _refuse_gravity_sci_vis(T) if not getattr(T._read, "_guarded", False) else T._read
+        T._read._guarded = True
 
         s, _ = _trackb_system(root, name)
         p_json = s["reference_orbit"]["P_day"][
@@ -327,8 +326,8 @@ def positions_for(loaded, t_ref, max_widen=5):
     """Per-epoch positions (seeds and diagnostic): epoch_positions on a grid at lambda_min / 4 B_max.
 
     A best peak at the grid edge may stand for a companion outside it, so the half-width is widened by
-    1.5 (up to ``max_widen`` times) until no epoch's best peak is at the edge. Returns (positions, epochs,
-    info) with info = dict(half_widths, edge_epochs) recording what happened; an epoch still at the edge
+    1.5 (up to ``max_widen`` times) until no epoch's best peak is at the edge. Returns (epos, info), epos
+    being the EpochPositions, with info = dict(half_widths, edge_epochs) recording what happened; an epoch still at the edge
     after the last widening is listed in ``edge_epochs`` and the run goes on (the positions only seed the fits).
     """
     from virgil.epochs import Epochs, epoch_positions
@@ -356,7 +355,9 @@ def positions_for(loaded, t_ref, max_widen=5):
     info = dict(
         half_widths=halves, edge_epochs=[nm for nm, e in zip(loaded.names, edge) if e]
     )
-    return ep.positions(t_ref=t_ref), ep, info
+    # The EpochPositions itself, not ep.positions(t_ref): fit_orbit_aliases then drops the flagged alias-peak
+    # nights from the seeds (skip_flagged). run() passes primary_diam explicitly, so no 'auto' resolution here.
+    return ep, info
 
 
 def ref_track(ref, t):
@@ -729,7 +730,7 @@ def run(name, args):
         json.dump(meta, open(outdir / "meta.json", "w"), indent=1, default=str)
 
     save_meta()
-    positions, epos, pinfo = positions_for(loaded, t_ref)
+    epos, pinfo = positions_for(loaded, t_ref)
     meta["position_grid"] = pinfo
     if pinfo["edge_epochs"]:
         # Loud: a best position still at the grid edge may be a bad night or a companion beyond the grid.
@@ -750,22 +751,7 @@ def run(name, args):
     save_meta()
     # Each band is written to outdir/bands/ as soon as it is fitted; a rerun skips the finished ones, but only
     # if the settings, data and virgil version match: otherwise the old bands move aside and the run starts fresh.
-    _check_resume(
-        outdir,
-        dict(
-            system=name,
-            p_range=list(p_range),
-            a_range=list(loaded.a_range),
-            epochs=loaded.names,
-            mjd=times.tolist(),
-            virgil=_virgil_version(),
-            args={
-                k: v
-                for k, v in vars(args).items()
-                if k not in ("list", "out", "dry_run")
-            },
-        ),
-    )
+    _check_resume(outdir, _bands_fingerprint(name, p_range, loaded, times, args))
     init = None
     meta["init"] = None
     if ref0 is not None and not args.no_init:
@@ -785,7 +771,7 @@ def run(name, args):
     result = fit_orbit_aliases(
         loaded.data,
         p_range,
-        positions=positions,
+        positions=epos,
         times=times,
         t_ref=t_ref,
         a_range=loaded.a_range,
@@ -945,6 +931,23 @@ def fit_summary(result):
         flipped=bool(getattr(b, "flipped", False)),
         diam=b.best.get("diam"),
         vis_amp=[e.get("vis_amp") for e in b.epochs],
+    )
+
+
+SEEDING = "EpochPositions"  # what fit_orbit_aliases is seeded with; bump if the seeding changes
+
+
+def _bands_fingerprint(name, p_range, loaded, times, args):
+    """Everything that decides whether bands fitted earlier can be resumed, seeding included."""
+    return dict(
+        system=name,
+        p_range=list(p_range),
+        a_range=list(loaded.a_range),
+        epochs=loaded.names,
+        mjd=times.tolist(),
+        virgil=_virgil_version(),
+        seeding=SEEDING,
+        args={k: v for k, v in vars(args).items() if k not in ("list", "out", "dry_run")},
     )
 
 

@@ -1,11 +1,11 @@
 {
- "ncc_zero_shift": 0.957261469571616,
+ "ncc_zero_shift": 0.9573580557447137,
  "ncc_controls": {
-  "mirrored_East-West": 0.6145919320029699,
-  "rotated_180": 0.3593165793952312,
-  "azimuthal_average_of_published": 0.7832376073013776
+  "mirrored_East-West": 0.6146427776100337,
+  "rotated_180": 0.35931032237229954,
+  "azimuthal_average_of_published": 0.7832160297889491
  },
- "ncc_best_shift": 0.957261469571616,
+ "ncc_best_shift": 0.9573580557447137,
  "best_shift_pixels": {
   "dy": 0,
   "dx": 0
@@ -18,37 +18,37 @@
  },
  "beam_convention": "circular Gaussian, FWHM lambda_min / (2 B_max)",
  "virgil_data_beam": {
-  "major_mas": 4.149047563055832,
-  "minor_mas": 1.8209210825898698,
-  "pa_deg": 126.85044279342792
+  "major_mas": 4.149047563055831,
+  "minor_mas": 1.82092108258987,
+  "pa_deg": 126.85044279342793
  },
  "ours": {
   "disc": {
-   "flux_fraction": 0.999854881583115,
-   "mean_radius_mas": 5.713239894497753,
-   "major_pa_deg": 24.433627314850302,
-   "axis_ratio": 0.8962417695816789,
-   "centroid_pa_deg": 135.55276740086455,
-   "centroid_offset_mas": 1.8437863679957285
+   "flux_fraction": 0.9995041239918212,
+   "mean_radius_mas": 5.722382950703988,
+   "major_pa_deg": 24.464419638489847,
+   "axis_ratio": 0.8960036680577036,
+   "centroid_pa_deg": 135.7275886285512,
+   "centroid_offset_mas": 1.8479580737401011
   }
  },
  "published": {
   "disc": {
    "flux_fraction": 0.9823044065458654,
    "mean_radius_mas": 5.597380670224495,
-   "major_pa_deg": 62.70873469241572,
+   "major_pa_deg": 62.70873469241579,
    "axis_ratio": 0.8463474566197802,
-   "centroid_pa_deg": 135.3184408945778,
-   "centroid_offset_mas": 1.9999649842335623
+   "centroid_pa_deg": 135.31844089457783,
+   "centroid_offset_mas": 1.999964984233563
   }
  },
- "chi2_per_point_published_on_our_data": 3.3328415429408955,
- "chi2_per_point_ours": 0.5832388883631171,
+ "chi2_per_point_published_on_our_data": 3.3397390953723516,
+ "chi2_per_point_ours": 0.5841764358487939,
  "n_points": 1560,
  "published_orientation_chi2": {
-  "as_published": 3.3328415429408955,
-  "mirrored_East-West": 23.541587541637988,
-  "mirrored_North-South": 55.87815549108277
+  "as_published": 3.3397390953723516,
+  "mirrored_East-West": 23.590308530108615,
+  "mirrored_North-South": 55.993799305019486
  },
  "smoke": false
 }

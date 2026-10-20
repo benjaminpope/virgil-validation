@@ -1,0 +1,264 @@
+{
+ "system": "gl229",
+ "label": "Gl 229 Ba-Bb",
+ "instrument": "GRAVITY",
+ "epochs": [
+  "2023-12-25",
+  "2023-12-29",
+  "2024-02-27",
+  "2024-03-28",
+  "2024-04-29",
+  "2024-12-18",
+  "2025-02-11"
+ ],
+ "mjd": [
+  60304.23271449256,
+  60308.25991646038,
+  60368.136678582654,
+  60398.038054925135,
+  60429.97411500254,
+  60663.31107861246,
+  60718.12345427137
+ ],
+ "p_range": [
+  10.0,
+  14.0
+ ],
+ "args": {
+  "system": "gl229",
+  "out": "/fred/oz440/bpope/jobs/orbit_aliases/out/2946041+vvbda1d27-cold",
+  "n_is": 2000,
+  "n_candidates": 100,
+  "n_refine": 6,
+  "n_samples": 1000,
+  "max_steps": 200,
+  "closure_only": false,
+  "no_vis_amp": false,
+  "no_ud": false,
+  "no_flip": false,
+  "no_init": true,
+  "ecc_max": 0.9,
+  "p_range": null,
+  "dry_run": false
+ },
+ "primary_diam": null,
+ "vis_amp": [
+  0.01,
+  1.5
+ ],
+ "notes": [
+  "2023-12-25: left out GRAVI.2023-12-26T05_51_29.891_DUAL_SCI_VIS.fits"
+ ],
+ "reference": {
+  "P": 12.134,
+  "t_peri": 60377.88,
+  "ecc": 0.234,
+  "inc": 31.4,
+  "omega": 360.7,
+  "Omega": 213.0,
+  "a_mas": 7.3595376,
+  "source": "Xuan+2024 Table 1 (PMOIRED); Omega node convention unverified: compare mod 180 deg"
+ },
+ "virgil": {
+  "version": "0.4.0",
+  "commit_id": "2946041d767bccb8763ebabf04281d4c385d28c2"
+ },
+ "errors": [],
+ "elapsed_s": 279.61771273612976,
+ "position_grid": {
+  "half_widths": [
+   12.0,
+   18.0
+  ],
+  "edge_epochs": []
+ },
+ "init": null,
+ "reference_band": {
+  "n": 34,
+  "period": 12.134,
+  "p": 0.0,
+  "is_winner": false
+ },
+ "elements": {
+  "period": {
+   "ref": 12.134,
+   "mean_offset": -1.386631086095162,
+   "sd": 0.00041180974826611504,
+   "pull": -3367.1643081142142
+  },
+  "ecc": {
+   "ref": 0.234,
+   "mean_offset": 0.3744743550232798,
+   "sd": 0.0037959515162924763,
+   "pull": 98.65098471780026
+  },
+  "inc": {
+   "ref": 31.4,
+   "mean_offset": 39.40579804537306,
+   "sd": 0.16073775647389507,
+   "pull": 245.155829655821
+  },
+  "Omega": {
+   "ref": 213.0,
+   "mean_offset": 14.553236122700845,
+   "sd": 0.17001653009186077,
+   "pull": 85.59894802486359
+  },
+  "omega": {
+   "ref": 360.7,
+   "mean_offset": 116.78017275363906,
+   "sd": 0.26459989712763343,
+   "pull": 441.3462515342874
+  },
+  "a_mas": {
+   "ref": 7.3595376,
+   "mean_offset": 0.8916787276271034,
+   "sd": 0.03487161802324285,
+   "pull": 25.570328484120697
+  },
+  "twin_fold": false,
+  "mirror_fraction": 1.0
+ },
+ "sky_plane": {
+  "top": {
+   "rule_version": 2,
+   "variant_rms": {
+    "as-is": 10.010779540977016,
+    "as-is +flip": 9.093716183812278,
+    "omega+180": 9.093716183812278,
+    "omega+180 +flip": 10.010779540977017,
+    "Omega+180": 9.093716183812278,
+    "Omega+180 +flip": 10.010779540977016,
+    "omega+180,Omega+180": 10.010779540977017,
+    "omega+180,Omega+180 +flip": 9.093716183812278,
+    "inc->180-inc": 9.934891116834832,
+    "inc->180-inc +flip": 9.176563602264721
+   },
+   "mirror": "flip",
+   "flux_flip_matches": true,
+   "flipped": false,
+   "labels_free": false,
+   "chi2_n": 14.106377887156526,
+   "rms": 9.093716183812278,
+   "max": 12.504660998117313,
+   "mean_sep": 6.986934438713247,
+   "frac_sep": 1.3015316321598442,
+   "best_variant": "as-is +flip",
+   "best_variant_rms": 9.093716183812278,
+   "TI_ours_ABFG": [
+    4.3462530336850005,
+    1.186085698390864,
+    4.016221018605168,
+    6.246530361810182
+   ],
+   "TI_ref_ABFG": [
+    6.129969158248021,
+    4.072355261339283,
+    -3.496431146680613,
+    5.218947295035585
+   ],
+   "spread": 0.02788345937527528,
+   "offset_over_spread": 326.1329973954317,
+   "verdict": "DIFFERENT",
+   "band": 39,
+   "period": 10.747363494823158,
+   "p": 1.0,
+   "warm_started": false
+  },
+  "reference": {
+   "rule_version": 2,
+   "variant_rms": {
+    "as-is": 6.2130805513143175,
+    "as-is +flip": 12.162099035933919,
+    "omega+180": 12.162099035933919,
+    "omega+180 +flip": 6.213080551314321,
+    "Omega+180": 12.162099035933919,
+    "Omega+180 +flip": 6.213080551314318,
+    "omega+180,Omega+180": 6.213080551314322,
+    "omega+180,Omega+180 +flip": 12.162099035933917,
+    "inc->180-inc": 10.341724049678016,
+    "inc->180-inc +flip": 8.920076601537474
+   },
+   "mirror": "none",
+   "flux_flip_matches": false,
+   "flipped": false,
+   "labels_free": false,
+   "chi2_n": 18.51850999019282,
+   "rms": 6.2130805513143175,
+   "max": 11.007896363591056,
+   "mean_sep": 6.986934438713247,
+   "frac_sep": 0.8892427152155379,
+   "best_variant": "as-is",
+   "best_variant_rms": 6.2130805513143175,
+   "TI_ours_ABFG": [
+    -6.286429066274813,
+    -0.4082722432233036,
+    3.037307998007544,
+    -5.625592441515269
+   ],
+   "TI_ref_ABFG": [
+    -6.129969158248021,
+    -4.072355261339283,
+    3.496431146680613,
+    -5.218947295035585
+   ],
+   "spread": NaN,
+   "offset_over_spread": NaN,
+   "verdict": "DIFFERENT",
+   "band": 34,
+   "period": 12.266017546126186,
+   "p": 0.0,
+   "warm_started": false
+  }
+ },
+ "fit_summary": {
+  "band": 39,
+  "flux": 0.450281866192517,
+  "flipped": false,
+  "diam": null,
+  "vis_amp": [
+   0.17667870271563355,
+   0.01849766902080018,
+   0.11717145711769135,
+   0.03684668722587643,
+   0.3406627349499116,
+   0.5500257236762396,
+   0.11681504384207587
+  ]
+ },
+ "chi2_raw_by_block": {
+  "vis": {
+   "chi2": 199684.78833007812,
+   "n": 12312,
+   "chi2_per_n": 16.218712502442994
+  },
+  "phi": {
+   "chi2": 63015.260986328125,
+   "n": 6311,
+   "chi2_per_n": 9.984988272275094
+  }
+ },
+ "rms_residual": [
+  3.310241460800171,
+  4.0190863609313965,
+  2.244811773300171,
+  3.148209810256958,
+  2.372868299484253,
+  1.9358147382736206,
+  3.4853804111480713
+ ],
+ "chi2_raw": 262700.0546875,
+ "n_independent": 18623,
+ "chi2_raw_per_n": 14.106215684234549,
+ "chi2_check": {
+  "ours": 14.106215684234549,
+  "virgil": 14.106377887156526,
+  "agrees": true
+ },
+ "provenance": {
+  "virgil_commit": "2946041d767bccb8763ebabf04281d4c385d28c2",
+  "validation_commit": "bda1d27751c99ec607f3b87c68ac1eee04eca8a4",
+  "extra_args": "--no-init",
+  "slurm_job": "18758960"
+ }
+}

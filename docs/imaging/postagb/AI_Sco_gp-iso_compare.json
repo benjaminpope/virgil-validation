@@ -1,14 +1,14 @@
 {
- "ncc_zero_shift": 0.7845535116355341,
+ "ncc_zero_shift": 0.7775743013673289,
  "ncc_controls": {
-  "mirrored_East-West": 0.4263823884801842,
-  "rotated_180": 0.48412088690525906,
-  "azimuthal_average_of_published": 0.49866508579127844
+  "mirrored_East-West": 0.41317335073404465,
+  "rotated_180": 0.46871386877570176,
+  "azimuthal_average_of_published": 0.4895393659272406
  },
- "ncc_best_shift": 0.7845535116355341,
+ "ncc_best_shift": 0.7777425634542005,
  "best_shift_pixels": {
   "dy": 0,
-  "dx": 0
+  "dx": 1
  },
  "pixel_mas": 0.22999999999999998,
  "beam": {
@@ -24,31 +24,31 @@
  },
  "ours": {
   "disc": {
-   "flux_fraction": 0.9960874826697974,
-   "mean_radius_mas": 3.5160125439464807,
-   "major_pa_deg": 118.68104490742013,
-   "axis_ratio": 0.7170396550645917,
-   "centroid_pa_deg": 129.83192573409676,
-   "centroid_offset_mas": 1.6183265045508812
+   "flux_fraction": 0.9899337927601667,
+   "mean_radius_mas": 3.658240194866924,
+   "major_pa_deg": 115.71039499362793,
+   "axis_ratio": 0.8131368474788354,
+   "centroid_pa_deg": 129.48983994721027,
+   "centroid_offset_mas": 1.6401759416635329
   }
  },
  "published": {
   "disc": {
-   "flux_fraction": 0.9902171098636375,
-   "mean_radius_mas": 2.8763922381001814,
-   "major_pa_deg": 118.61398138434365,
-   "axis_ratio": 0.7963975617759846,
+   "flux_fraction": 0.9902171098636372,
+   "mean_radius_mas": 2.8763922381001823,
+   "major_pa_deg": 118.61398138434372,
+   "axis_ratio": 0.7963975617759843,
    "centroid_pa_deg": 136.3862913799249,
-   "centroid_offset_mas": 0.8954927803324085
+   "centroid_offset_mas": 0.8954927803324088
   }
  },
- "chi2_per_point_published_on_our_data": 1.3760266798568757,
- "chi2_per_point_ours": 0.5741379437193542,
+ "chi2_per_point_published_on_our_data": 1.377085429480697,
+ "chi2_per_point_ours": 0.560610330070805,
  "n_points": 2184,
  "published_orientation_chi2": {
-  "as_published": 1.3760266798568757,
-  "mirrored_East-West": 14.32519026018221,
-  "mirrored_North-South": 9.56853219216134
+  "as_published": 1.377085429480697,
+  "mirrored_East-West": 14.336212422776258,
+  "mirrored_North-South": 9.57589446209932
  },
  "smoke": false
 }

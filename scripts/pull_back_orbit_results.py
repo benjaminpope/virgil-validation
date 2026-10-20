@@ -4,12 +4,15 @@
 
 RESULTS_DIR is anywhere above the per-system output directories of reanalyse_orbits.py
 (e.g. ozstar_scripts/results/orbit_aliases/<tag>): every directory under it holding a
-bands.json and named after a registered system is used. Copies bands.json, meta.json
+bands.json and named after a registered system is used. A cold run is recognized by its own meta.json
+(args.no_init true, no init orbit), never by the tag name, and is kept as <system>-cold beside the warm
+result; a run with no meta.json is skipped, as its start cannot be known. Only gl229-cold is rendered. Copies bands.json, meta.json
 and the PNGs to docs/assets/orbit_aliases/<system>/, runs scripts/build_aliases_page.py,
 then `.venv/bin/zensical build --clean` (add --strict as CI does). Needs no JAX.
 """
 
 import argparse
+import json
 import pathlib
 import shutil
 import subprocess
@@ -20,6 +23,15 @@ sys.path.insert(0, str(REPO / "scripts"))
 import build_aliases_page as B  # noqa: E402
 
 FILES = ("bands.json", "meta.json", "sky.png", "corner.png", "residuals.png")
+
+
+def destination(src):
+    """The assets directory name for a run directory ``<...>/<system>/``: ``<system>-cold`` if the run's own
+    record says it was cold, ``<system>`` if it says warm, None if there is no record to tell."""
+    mj = src / "meta.json"
+    if not mj.exists():
+        return None
+    return src.name + ("-cold" if B.is_cold(json.load(open(mj))) else "")
 
 
 def main(argv=None):
@@ -33,7 +45,13 @@ def main(argv=None):
     found = {}
     for bj in sorted(a.results.rglob("bands.json")):  # later (sorted) tags overwrite earlier ones
         if bj.parent.name in known:
-            found[bj.parent.name] = bj.parent
+            name = destination(bj.parent)
+            if name is None:
+                print(f"skipped {bj.parent}: no meta.json, so a cold run cannot be told from a warm one")
+                continue
+            if name.endswith("-cold") and name != "gl229-cold":
+                print(f"warning: {name} is copied but the page renders no cold run of any system but gl229")
+            found[name] = bj.parent
     if not found:
         sys.exit(f"no <system>/bands.json under {a.results} for any of {sorted(known)}")
     for name, src in found.items():

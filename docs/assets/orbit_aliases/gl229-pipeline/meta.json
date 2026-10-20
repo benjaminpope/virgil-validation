@@ -1,0 +1,744 @@
+{
+ "virgil": {
+  "version": "0.3.0",
+  "commit_id": "dda910f5c74a92cce830ee42d61ffec28c5dba3b"
+ },
+ "provenance": {
+  "virgil_commit": "dda910f5c74a92cce830ee42d61ffec28c5dba3b",
+  "virgil_vlti_commit": "0a06e84febfd88f38b1aafac09a44851e770db27",
+  "slurm_job": "18762942",
+  "command": "prepare_gl229.py (virgil-vlti side) then OrbitPipeline(prepared nights).run(), no settings"
+ },
+ "preparation": {
+  "insname": "GRAVITY_SC",
+  "window_um": [
+   2.05,
+   2.18
+  ],
+  "excluded": {
+   "GRAVI.2023-12-26T05_51_29.891": "closure phases +38 to +57 deg on all triangles, errors 5-10x the night's"
+  },
+  "nights": [
+   "2023-12-25",
+   "2023-12-29",
+   "2024-02-27",
+   "2024-03-28",
+   "2024-04-29",
+   "2024-12-18",
+   "2025-02-11"
+  ],
+  "n_files": 40,
+  "n_files_kept": 39
+ },
+ "gate": {
+  "verdict": "PASS",
+  "winner_n": 34,
+  "winner_elements": {
+   "period": 12.132092128269706,
+   "dt_peri": -5.076205690586102,
+   "ecc": 0.2368176179132324,
+   "inc": 27.649199690007578,
+   "omega": 180.97284277451004,
+   "Omega": 32.84866049042,
+   "a_mas": 7.197766346277863,
+   "flux": 0.4760288262640765,
+   "diam": 1.6649716056862256
+  },
+  "runner_up_n": 62,
+  "delta_log_z": 22.810556332478427,
+  "chi2_per_n_raw": 66.35048580390857,
+  "p_range": [
+   2.897206656038803,
+   1655.5629591152538
+  ],
+  "n_bands": 144,
+  "window_capped": null
+ },
+ "summary": {
+  "schema": "virgil-pipeline-run-v1",
+  "pipeline": "orbit",
+  "stability": "provisional",
+  "status": "complete",
+  "worst_check": "fail",
+  "data": {
+   "n_nights": 7,
+   "n_datasets": 7,
+   "n_vis": 12312,
+   "n_phi": 8250,
+   "n_independent": 18623,
+   "closure_phases": true,
+   "span_days": 413.89073977881344,
+   "wavel_min_m": 2.0516267795755994e-06,
+   "wavel_max_m": 2.1792823190480703e-06,
+   "baseline_min_m": 40.458432313180225,
+   "baseline_max_m": 130.13228709064109,
+   "resolution_mas": 1.6259546713636048,
+   "fov_mas": 11.110397007393079,
+   "excluded": {}
+  },
+  "nights": [
+   {
+    "dataset": "2023-12-25",
+    "mjd": 60304.23271449256,
+    "sep_mas": 5.46772163543944,
+    "flux": 0.8452043246460507,
+    "gap_marginal": 736.8247786727443,
+    "edge": false,
+    "flags": [],
+    "chi2_per_n": 37.106259494575035
+   },
+   {
+    "dataset": "2023-12-29",
+    "mjd": 60308.25991646038,
+    "sep_mas": 12.542807571196482,
+    "flux": 0.6288237358608637,
+    "gap_marginal": 171.06783733326301,
+    "edge": false,
+    "flags": [
+     {
+      "code": "chi2-high",
+      "reason": "raw chi2/N 1303.4 exceeds 724.5 (3 x max(median night 241.5, 1))"
+     }
+    ],
+    "chi2_per_n": 199.86186502019754
+   },
+   {
+    "dataset": "2024-02-27",
+    "mjd": 60368.136678582654,
+    "sep_mas": 11.444214657389038,
+    "flux": 0.5843336540945434,
+    "gap_marginal": 44.412345211161664,
+    "edge": false,
+    "flags": [],
+    "chi2_per_n": 177.5862932900593
+   },
+   {
+    "dataset": "2024-03-28",
+    "mjd": 60398.038054925135,
+    "sep_mas": 12.030974053870516,
+    "flux": 0.6286377716070816,
+    "gap_marginal": 8.61190030447915,
+    "edge": false,
+    "flags": [],
+    "chi2_per_n": 88.89250916027075
+   },
+   {
+    "dataset": "2024-04-29",
+    "mjd": 60429.97411500254,
+    "sep_mas": 7.3111897855193115,
+    "flux": 0.541388888328988,
+    "gap_marginal": 139.9933143780563,
+    "edge": false,
+    "flags": [],
+    "chi2_per_n": 5.760818391789996
+   },
+   {
+    "dataset": "2024-12-18",
+    "mjd": 60663.31107861246,
+    "sep_mas": 9.124175217034741,
+    "flux": 0.999999999897249,
+    "gap_marginal": 55.288057350582676,
+    "edge": false,
+    "flags": [
+     {
+      "code": "flux-at-bound",
+      "reason": "flux 1 is at the upper bound 1: the labels of the stars are undetermined (genuine for a near-equal pair)"
+     }
+    ],
+    "chi2_per_n": 4.801168130952509
+   },
+   {
+    "dataset": "2025-02-11",
+    "mjd": 60718.12345427137,
+    "sep_mas": 5.437184365629706,
+    "flux": 0.5740205491553689,
+    "gap_marginal": 1126.1000006306203,
+    "edge": false,
+    "flags": [],
+    "chi2_per_n": 60.65610896008977
+   }
+  ],
+  "chi2": {
+   "n_independent": 18623,
+   "best_orbit_reduced": 66.35048580390857,
+   "nights": {
+    "2023-12-25": {
+     "chi2": 227498.47696123953,
+     "n": 6131,
+     "chi2_per_n": 37.106259494575035,
+     "vis_amp": 0.5
+    },
+    "2023-12-29": {
+     "chi2": 423307.4301127784,
+     "n": 2118,
+     "chi2_per_n": 199.86186502019754,
+     "vis_amp": 0.5
+    },
+    "2024-02-27": {
+     "chi2": 266024.2673485088,
+     "n": 1498,
+     "chi2_per_n": 177.5862932900593,
+     "vis_amp": 0.5
+    },
+    "2024-03-28": {
+     "chi2": 52002.117858758385,
+     "n": 585,
+     "chi2_per_n": 88.89250916027075,
+     "vis_amp": 0.5
+    },
+    "2024-04-29": {
+     "chi2": 6106.467495297396,
+     "n": 1060,
+     "chi2_per_n": 5.760818391789996,
+     "vis_amp": 0.5
+    },
+    "2024-12-18": {
+     "chi2": 15291.720497083741,
+     "n": 3185,
+     "chi2_per_n": 4.801168130952509,
+     "vis_amp": 0.6317913276641799
+    },
+    "2025-02-11": {
+     "chi2": 245414.6168525232,
+     "n": 4046,
+     "chi2_per_n": 60.65610896008977,
+     "vis_amp": 0.5
+    }
+   }
+  },
+  "search": {
+   "p_range": [
+    2.897206656038803,
+    1655.5629591152538
+   ],
+   "window_capped": null,
+   "n_bands": 144,
+   "failed_bands": [],
+   "t_ref": 60455.7,
+   "span_days": 413.89073977881344,
+   "primary_diam": "fit",
+   "primary_resolved": true,
+   "primary_diam_estimate": 1.7368665264154364,
+   "tempering": {
+    "f": 41.118746474574145,
+    "f_raw": 27.808638568360674,
+    "blocks": {
+     "phi": 27.808638568360674,
+     "vis": 42.88647532149509
+    },
+    "out_of_range": true
+   },
+   "labels_free": false,
+   "period_bound": false,
+   "period_at_lower_bound": false,
+   "unseeded": [
+    {
+     "name": "2023-12-29",
+     "mjd": 60308.25991646038,
+     "flags": [
+      {
+       "code": "chi2-high",
+       "reason": "raw chi2/N 1303.4 exceeds 724.5 (3 x max(median night 241.5, 1))"
+      }
+     ]
+    },
+    {
+     "name": "2024-12-18",
+     "mjd": 60663.31107861246,
+     "flags": [
+      {
+       "code": "flux-at-bound",
+       "reason": "flux 1 is at the upper bound 1: the labels of the stars are undetermined (genuine for a near-equal pair)"
+      }
+     ]
+    }
+   ]
+  },
+  "modes": {
+   "winner": {
+    "n": 34,
+    "p": 0.9999999998070934,
+    "log_z": -2714.2852145068673,
+    "elements": {
+     "period": 12.132092128269706,
+     "dt_peri": -5.076205690586102,
+     "ecc": 0.2368176179132324,
+     "inc": 27.649199690007578,
+     "omega": 180.97284277451004,
+     "Omega": 32.84866049042,
+     "a_mas": 7.197766346277863,
+     "flux": 0.4760288262640765,
+     "diam": 1.6649716056862256
+    },
+    "flipped": false,
+    "flags": [
+     "poor-fit"
+    ]
+   },
+   "runner_up": {
+    "n": 62,
+    "p": 1.2402272107025704e-10,
+    "log_z": -2737.0957708393457
+   },
+   "delta_log_z": 22.810556332478427,
+   "labels_free": false,
+   "no_orbit": {
+    "delta_log_z": 308.49245122138655,
+    "log_like_single_star": -3022.777665728254,
+    "threshold": 10.0,
+    "verdict": "orbit"
+   },
+   "sampled": [
+    34
+   ],
+   "table": [
+    {
+     "rank": 0,
+     "n": 34,
+     "period": 12.132092128269706,
+     "p_lo": 11.996833037067056,
+     "p_hi": 12.354947456083984,
+     "log_z": -2714.2852145068673,
+     "delta_log_z": 0.0,
+     "p": 0.9999999998070934,
+     "chi2_red": 66.62246471908966,
+     "labels_free": false,
+     "flags": [
+      "poor-fit"
+     ]
+    },
+    {
+     "rank": 1,
+     "n": 62,
+     "period": 6.656426752821269,
+     "p_lo": 6.6222518364610155,
+     "p_hi": 6.729930728110788,
+     "log_z": -2737.0957708393457,
+     "delta_log_z": -22.810556332478427,
+     "p": 1.2402272107025704e-10,
+     "chi2_red": 53.76276961401919,
+     "labels_free": false,
+     "flags": [
+      "near-prior-bound"
+     ]
+    },
+    {
+     "rank": 2,
+     "n": 51,
+     "period": 8.091905575712799,
+     "p_lo": 8.036713393763367,
+     "p_hi": 8.19585623324383,
+     "log_z": -2737.683814116129,
+     "delta_log_z": -23.39859960926151,
+     "p": 6.888383302755478e-11,
+     "chi2_red": 73.26495367181356,
+     "labels_free": false,
+     "flags": []
+    },
+    {
+     "rank": 3,
+     "n": 81,
+     "period": 5.099838958986626,
+     "p_lo": 5.078413985016116,
+     "p_hi": 5.141499873028739,
+     "log_z": -2765.8254833165042,
+     "delta_log_z": -51.54026880963693,
+     "p": 4.133763822122977e-23,
+     "chi2_red": 88.80693495345317,
+     "labels_free": false,
+     "flags": []
+    },
+    {
+     "rank": 4,
+     "n": 8,
+     "period": 49.54562391688812,
+     "p_lo": 48.69302820927217,
+     "p_hi": 55.18543197050846,
+     "log_z": -2772.8414158124115,
+     "delta_log_z": -58.556201305544164,
+     "p": 3.7099229644631554e-26,
+     "chi2_red": 69.21018420389782,
+     "labels_free": false,
+     "flags": []
+    },
+    {
+     "rank": 5,
+     "n": 12,
+     "period": 34.304556158476,
+     "p_lo": 33.111259182305076,
+     "p_hi": 35.99049911120117,
+     "log_z": -2772.8686000417124,
+     "delta_log_z": -58.58338553484509,
+     "p": 3.610430014378358e-26,
+     "chi2_red": 68.60477849474353,
+     "labels_free": false,
+     "flags": []
+    },
+    {
+     "rank": 6,
+     "n": 77,
+     "period": 5.368116881947737,
+     "p_lo": 5.340525674565335,
+     "p_hi": 5.410336467696908,
+     "log_z": -2773.6779534078332,
+     "delta_log_z": -59.392738900965924,
+     "p": 1.6071678276620512e-26,
+     "chi2_red": 110.67576971414455,
+     "labels_free": false,
+     "flags": []
+    },
+    {
+     "rank": 7,
+     "n": 61,
+     "period": 6.739302996869967,
+     "p_lo": 6.729930728110788,
+     "p_hi": 6.841169252542371,
+     "log_z": -2773.7663586271265,
+     "delta_log_z": -59.48114412025916,
+     "p": 1.4711851454938614e-26,
+     "chi2_red": 41.84068579243737,
+     "labels_free": false,
+     "flags": []
+    },
+    {
+     "rank": 8,
+     "n": 11,
+     "period": 37.012611836330734,
+     "p_lo": 35.99049911120117,
+     "p_hi": 39.41816569322033,
+     "log_z": -2775.6565587715445,
+     "delta_log_z": -61.37134426467719,
+     "p": 2.2221012249638937e-27,
+     "chi2_red": 142.76247430903658,
+     "labels_free": false,
+     "flags": [
+      "hessian-not-positive-definite"
+     ]
+    },
+    {
+     "rank": 9,
+     "n": 85,
+     "period": 4.872078911614736,
+     "p_lo": 4.840827365834075,
+     "p_hi": 4.898115263654597,
+     "log_z": -2777.0749218014066,
+     "delta_log_z": -62.78970729453931,
+     "p": 5.379929710368408e-28,
+     "chi2_red": 60.48589985960761,
+     "labels_free": false,
+     "flags": [
+      "near-prior-bound"
+     ]
+    }
+   ]
+  },
+  "orbit": {
+   "n": 34,
+   "verdict": "orbit",
+   "source": "posterior",
+   "elements": {
+    "period": {
+     "median": 12.132282601241736,
+     "q16": 12.130742128017113,
+     "q84": 12.133690110186073,
+     "r_hat": 1.0029097234219104,
+     "ess_bulk": 1785.09616316964
+    },
+    "dt_peri": {
+     "median": -5.06982152954852,
+     "q16": -5.105732051471211,
+     "q84": -5.033760208494315,
+     "r_hat": 1.0001747494825446,
+     "ess_bulk": 3427.0299166727864
+    },
+    "ecc": {
+     "median": 0.23633339130208436,
+     "q16": 0.23206734676265453,
+     "q84": 0.24045756520402037,
+     "r_hat": 1.0007251666725856,
+     "ess_bulk": 3401.767979153864
+    },
+    "inc": {
+     "median": 27.247879542218115,
+     "q16": 23.459618618906713,
+     "q84": 30.60640802471166,
+     "r_hat": 1.0038744168518436,
+     "ess_bulk": 1474.8516172772704
+    },
+    "omega": {
+     "median": 180.3380570214813,
+     "q16": 176.60811088694294,
+     "q84": 183.27504046726762,
+     "r_hat": 1.000728587672166,
+     "ess_bulk": 1576.3476678804589
+    },
+    "Omega": {
+     "median": 33.615045794968495,
+     "q16": 30.498984170124643,
+     "q84": 37.91453770561088,
+     "r_hat": 1.0014244561181016,
+     "ess_bulk": 1416.8771480431144
+    },
+    "a_mas": {
+     "median": 7.189352164041532,
+     "q16": 7.12644320122976,
+     "q84": 7.2573038449982255,
+     "r_hat": 1.0028943579507879,
+     "ess_bulk": 1876.7868465509735
+    },
+    "flux": {
+     "median": 0.47714145192899715,
+     "q16": 0.4624029755607758,
+     "q84": 0.49216438061619716,
+     "r_hat": 1.0003342993541011,
+     "ess_bulk": 3564.641248527512
+    },
+    "diam": {
+     "median": 1.651856294411398,
+     "q16": 1.5501199787601985,
+     "q84": 1.7483773299074763,
+     "r_hat": 1.0001091839328642,
+     "ess_bulk": 3433.5329317546143
+    }
+   }
+  },
+  "posterior": {
+   "modes": [
+    {
+     "n": 34,
+     "params": {
+      "period": {
+       "median": 12.132282601241736,
+       "q16": 12.130742128017113,
+       "q84": 12.133690110186073,
+       "r_hat": 1.0029097234219104,
+       "ess_bulk": 1785.09616316964
+      },
+      "dt_peri": {
+       "median": -5.06982152954852,
+       "q16": -5.105732051471211,
+       "q84": -5.033760208494315,
+       "r_hat": 1.0001747494825446,
+       "ess_bulk": 3427.0299166727864
+      },
+      "ecc": {
+       "median": 0.23633339130208436,
+       "q16": 0.23206734676265453,
+       "q84": 0.24045756520402037,
+       "r_hat": 1.0007251666725856,
+       "ess_bulk": 3401.767979153864
+      },
+      "inc": {
+       "median": 27.247879542218115,
+       "q16": 23.459618618906713,
+       "q84": 30.60640802471166,
+       "r_hat": 1.0038744168518436,
+       "ess_bulk": 1474.8516172772704
+      },
+      "omega": {
+       "median": 180.3380570214813,
+       "q16": 176.60811088694294,
+       "q84": 183.27504046726762,
+       "r_hat": 1.000728587672166,
+       "ess_bulk": 1576.3476678804589
+      },
+      "Omega": {
+       "median": 33.615045794968495,
+       "q16": 30.498984170124643,
+       "q84": 37.91453770561088,
+       "r_hat": 1.0014244561181016,
+       "ess_bulk": 1416.8771480431144
+      },
+      "a_mas": {
+       "median": 7.189352164041532,
+       "q16": 7.12644320122976,
+       "q84": 7.2573038449982255,
+       "r_hat": 1.0028943579507879,
+       "ess_bulk": 1876.7868465509735
+      },
+      "flux": {
+       "median": 0.47714145192899715,
+       "q16": 0.4624029755607758,
+       "q84": 0.49216438061619716,
+       "r_hat": 1.0003342993541011,
+       "ess_bulk": 3564.641248527512
+      },
+      "diam": {
+       "median": 1.651856294411398,
+       "q16": 1.5501199787601985,
+       "q84": 1.7483773299074763,
+       "r_hat": 1.0001091839328642,
+       "ess_bulk": 3433.5329317546143
+      }
+     },
+     "r_hat_max": 1.0038744168518436,
+     "ess_bulk_min": 1416.8771480431144,
+     "divergence_fraction": 0.0,
+     "prior_bound_fraction": {
+      "log_period": 0.0,
+      "log_a": 0.0,
+      "log_flux": 0.0,
+      "log_diam": 0.0,
+      "ecc": 0.0
+     },
+     "log_period_lower": 2.484642701378938,
+     "optimum_gap": 0.0
+    }
+   ],
+   "num_chains": 4,
+   "num_samples": 1000,
+   "num_warmup": 1000,
+   "r_hat_max": 1.0038744168518436,
+   "ess_bulk_min": 1416.8771480431144,
+   "divergence_fraction": 0.0,
+   "optimum_gap_max": 0.0
+  },
+  "warnings": [
+   {
+    "stage": "epochs",
+    "category": "UserWarning",
+    "message": "Raw chi2/N on the quoted errors exceeds 4 (errors underestimated by more than 2) in 2023-12-25 (337.2), 2023-12-29 (1303.4), 2024-02-27 (241.5), 2024-03-28 (188.4), 2024-04-29 (58.9), 2024-12-18 (35.0), 2025-02-11 (461.5): fit error scales for these datasets, and do not read a rescaled chi2/N of 1 as a good fit."
+   },
+   {
+    "stage": "search",
+    "category": "UserWarning",
+    "message": "fit_orbit_aliases(): the period window starts at 2.9 d, 14.5 nights' length: a shorter period would move the companion by more than half the resolution during a night (field 7.31 mas). Pass p_range to search shorter periods."
+   },
+   {
+    "stage": "search",
+    "category": "UserWarning",
+    "message": "fit_orbit_aliases(): the effective-channel factor is f = 42.9 (block 'vis'; pooled 41.1, raw 27.8), outside 0.5 to 2: the likelihood is tempered by 1/f (AliasResult.tempering). Check the channels' errors."
+   },
+   {
+    "stage": "search",
+    "category": "UserWarning",
+    "message": "fit_orbit_aliases(): the residual correlation of ['phi'] is flat across channels (lag-2 well above the square of lag-1), the signature of a shared calibration error or of misfit (a resolved primary, a moving companion). The likelihood is tempered by it either way; check the model (AliasResult.tempering)."
+   },
+   {
+    "stage": "search",
+    "category": "UserWarning",
+    "message": "fit_orbit_aliases(): the best band (N=34) has chi2_red = 66.6 on the quoted errors (above 10). Either the optimizer missed the narrow likelihood ridge, so the band probabilities are not trustworthy (try a larger n_refine or k, now 9), or the errors are underestimated by more than 3x."
+   }
+  ],
+  "checks": [
+   {
+    "name": "chi2",
+    "status": "fail",
+    "value": 66.35048580390857,
+    "threshold": 2.0,
+    "message": "\u03c7\u00b2/N = 66.4 for the best-fit orbit on quoted errors: the model does not describe the data, or the errors are much too small."
+   },
+   {
+    "name": "night_flags",
+    "status": "warn",
+    "value": 2,
+    "threshold": null,
+    "message": "2 of 7 nights are flagged (2023-12-29: chi2-high; 2024-12-18: flux-at-bound): they seed no orbit, but their data still count in the likelihood."
+   },
+   {
+    "name": "labels_free",
+    "status": "pass",
+    "value": false,
+    "threshold": null,
+    "message": "The labels of the stars are determined by the data."
+   },
+   {
+    "name": "bands_failed",
+    "status": "pass",
+    "value": 0,
+    "threshold": 0,
+    "message": "Every alias band was evaluated."
+   },
+   {
+    "name": "alias_ambiguity",
+    "status": "pass",
+    "value": 22.810556332478427,
+    "threshold": 10.0,
+    "message": "The best alias band beats the runner-up (N = 62) by 22.8 nats: the winning period is decisive."
+   },
+   {
+    "name": "winner_flags",
+    "status": "pass",
+    "value": [],
+    "threshold": null,
+    "message": "The winning band's evidence has no flags."
+   },
+   {
+    "name": "tempering",
+    "status": "warn",
+    "value": 41.118746474574145,
+    "threshold": [
+     0.5,
+     2.0
+    ],
+    "message": "The effective-channel factor f = 41.1 (raw 27.8) is outside [0.5, 2] or the residual correlation is not AR(1): the evidences are less reliable."
+   },
+   {
+    "name": "primary_resolved",
+    "status": "pass",
+    "value": 1.7368665264154364,
+    "threshold": null,
+    "message": "The primary's size is not at the edge of the diameters tried."
+   },
+   {
+    "name": "no_orbit",
+    "status": "pass",
+    "value": 308.49245122138655,
+    "threshold": 10.0,
+    "message": "The best orbit beats a single star by 308 nats: the orbit is clearly preferred."
+   },
+   {
+    "name": "period_bound",
+    "status": "pass",
+    "value": false,
+    "threshold": [
+     2.897206656038803,
+     1655.5629591152538
+    ],
+    "message": "The period is inside its window (2.9 to 1.66e+03 d)."
+   },
+   {
+    "name": "prior_bound",
+    "status": "pass",
+    "value": 0.0,
+    "threshold": 0.05,
+    "message": "No posterior mass piles up at a prior bound."
+   },
+   {
+    "name": "r_hat",
+    "status": "pass",
+    "value": 1.0038744168518436,
+    "threshold": 1.01,
+    "message": "Largest R-hat 1.0039: the chains agree."
+   },
+   {
+    "name": "ess",
+    "status": "pass",
+    "value": 1416.8771480431144,
+    "threshold": 400.0,
+    "message": "Smallest bulk ESS 1417: enough independent samples."
+   },
+   {
+    "name": "divergences",
+    "status": "pass",
+    "value": 0.0,
+    "threshold": 0.01,
+    "message": "Divergent transitions: 0 per cent: none."
+   },
+   {
+    "name": "mode_converged",
+    "status": "pass",
+    "value": 0.0,
+    "threshold": 1.0,
+    "message": "The search's best mode is an optimum of the sampled density."
+   },
+   {
+    "name": "stage_warnings",
+    "status": "warn",
+    "value": 5,
+    "threshold": 0,
+    "message": "5 warning(s) were raised inside the stages: Raw chi2/N on the quoted errors exceeds 4 (errors underestimated by more than 2) in 2023-12-25 (337.2), 2023-12-29 (1303.4), 2024-02-27 (241.5), 2024-03-28 (188.4), 2024-04-29 (58.9), 2024-12-18 (35.0), 2025-02-11 (461.5): fit error scales for these datasets, and do not read a rescaled chi2/N of 1 as a good fit.; fit_orbit_aliases(): the period window starts at 2.9 d, 14.5 nights' length: a shorter period would move the companion by more than half the resolution during a night (field 7.31 mas). Pass p_range to search shorter periods.; fit_orbit_aliases(): the effective-channel factor is f = 42.9 (block 'vis'; pooled 41.1, raw 27.8), outside 0.5 to 2: the likelihood is tempered by 1/f (AliasResult.tempering). Check the channels' errors. (and 2 more). See the 'warnings' list of summary.json."
+   }
+  ]
+ }
+}
