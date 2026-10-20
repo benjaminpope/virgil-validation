@@ -51,9 +51,6 @@ def test_positions_for_widens_until_no_epoch_is_at_the_edge(monkeypatch):
         def __init__(self, edge):
             self.edge = np.array(edge)
 
-        def positions(self, t_ref):
-            return ("positions", t_ref)
-
     def fake_epoch_positions(epochs, grid, n_peaks):
         halves.append(float(grid["dra"].max()))
         return Ep([len(halves) < 3, False])  # at the edge for the first two grids
@@ -69,7 +66,7 @@ def test_positions_for_widens_until_no_epoch_is_at_the_edge(monkeypatch):
     assert (
         info["edge_epochs"] == []
         and len(info["half_widths"]) == 3
-        and pos[0] == "positions"
+        and pos is ep  # the EpochPositions itself, so fit_orbit_aliases can skip flagged nights
     )
 
 
@@ -104,6 +101,19 @@ def test_check_resume_keeps_matching_bands_and_moves_mismatched_aside(tmp_path):
     R._check_resume(tmp_path, fp)  # same fingerprint: kept
     assert (tmp_path / "bands").exists()
     R._check_resume(tmp_path, dict(fp, args=dict(n_is=11)))  # changed setting
+    assert not (tmp_path / "bands").exists()
+
+
+def test_bands_fingerprint_includes_the_seeding(tmp_path, monkeypatch):
+    loaded = R.Loaded(["a"], [None], [None], 10.0, (1.0, 5.0))
+    args = types.SimpleNamespace(n_is=10, out="x")
+    mk = lambda: R._bands_fingerprint("x", (1.0, 2.0), loaded, np.array([1.0]), args)
+    assert mk()["seeding"] == R.SEEDING
+    (tmp_path / "bands").mkdir()
+    R._check_resume(tmp_path, mk())  # records the fingerprint (moves nothing real)
+    (tmp_path / "bands").mkdir(exist_ok=True)
+    monkeypatch.setattr(R, "SEEDING", "positions(t_ref)")  # a resume under another seeding
+    R._check_resume(tmp_path, mk())
     assert not (tmp_path / "bands").exists()
 
 

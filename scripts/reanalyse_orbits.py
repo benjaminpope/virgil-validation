@@ -357,7 +357,7 @@ def positions_for(loaded, t_ref, max_widen=5):
         half_widths=halves, edge_epochs=[nm for nm, e in zip(loaded.names, edge) if e]
     )
     # The EpochPositions itself, not ep.positions(t_ref): fit_orbit_aliases then drops the flagged alias-peak
-    # nights from the seeds (skip_flagged) and applies temper and primary_diam='auto', as OrbitPipeline does.
+    # nights from the seeds (skip_flagged). run() passes primary_diam explicitly, so no 'auto' resolution here.
     return ep, ep, info
 
 
@@ -752,22 +752,7 @@ def run(name, args):
     save_meta()
     # Each band is written to outdir/bands/ as soon as it is fitted; a rerun skips the finished ones, but only
     # if the settings, data and virgil version match: otherwise the old bands move aside and the run starts fresh.
-    _check_resume(
-        outdir,
-        dict(
-            system=name,
-            p_range=list(p_range),
-            a_range=list(loaded.a_range),
-            epochs=loaded.names,
-            mjd=times.tolist(),
-            virgil=_virgil_version(),
-            args={
-                k: v
-                for k, v in vars(args).items()
-                if k not in ("list", "out", "dry_run")
-            },
-        ),
-    )
+    _check_resume(outdir, _bands_fingerprint(name, p_range, loaded, times, args))
     init = None
     meta["init"] = None
     if ref0 is not None and not args.no_init:
@@ -947,6 +932,23 @@ def fit_summary(result):
         flipped=bool(getattr(b, "flipped", False)),
         diam=b.best.get("diam"),
         vis_amp=[e.get("vis_amp") for e in b.epochs],
+    )
+
+
+SEEDING = "EpochPositions"  # what fit_orbit_aliases is seeded with; bump if the seeding changes
+
+
+def _bands_fingerprint(name, p_range, loaded, times, args):
+    """Everything that decides whether bands fitted earlier can be resumed, seeding included."""
+    return dict(
+        system=name,
+        p_range=list(p_range),
+        a_range=list(loaded.a_range),
+        epochs=loaded.names,
+        mjd=times.tolist(),
+        virgil=_virgil_version(),
+        seeding=SEEDING,
+        args={k: v for k, v in vars(args).items() if k not in ("list", "out", "dry_run")},
     )
 
 
