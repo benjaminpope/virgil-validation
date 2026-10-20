@@ -266,3 +266,22 @@ def test_eso_references_reproduce_their_published_epochs(og, cid, pub, limit):
     assert rms < limit, rms
     assert len(rows) == (23 if pub == 1 else 18 if cid == "eso-9sgr" else 11)
     record("rms_offset_mas", round(rms, 3))
+
+
+@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
+def test_legacy_label_follows_the_fit_and_downgrades_a_pass(og):
+    fit = {"orbit": {"modes": [1, 2]}}
+    tile = og.TARGETS["trackb-ll_aqr"]
+    (flag,) = [f for f in og.flags_of(tile, fit) if f["key"] == "legacy"]
+    assert "uncalibrated GRAVITY V²" in flag["text"] and "rerun pending" in flag["text"]
+    nn = [f for f in og.flags_of(og.TARGETS["trackb-nn_del"], fit) if f["key"] == "legacy"]
+    assert len(nn) == 1 and "gain model" in nn[0]["text"]
+    assert not [f for f in og.flags_of(tile, None) if f["key"] == "legacy"]  # no fit, nothing to label
+    # a rerun records its own data path, which clears the tile's default
+    rerun = dict(fit, provenance={"data_path": "calibrated"})
+    assert not [f for f in og.flags_of(tile, rerun) if f["key"] == "legacy"]
+    # OiDB tiles are not labelled
+    assert not [t for t in og.TILES if not t.get("trackb") and t.get("data_path")]
+    table = [dict(status="PASS", quantity="x", pull=0.1)]
+    assert og.status_of(table, fit)[0] == "agrees"
+    assert og.status_of(table, fit, og.legacy_text(tile, fit))[0] == "reported"
