@@ -176,7 +176,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     sc_s1 = va.score(final_data, prob.scene, {**values, "cal.sigma": np.ones_like(sigma)}, prob.nuis, mask=final_mask, chunk_size=ck)  # s = 1 first (C10)
     say(f"-ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
     res = dict(
-        command="fit", complete=True, config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
+        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         alpha=float(values["cal.alpha"]) if "cal.alpha" in values else None,
@@ -247,8 +247,6 @@ def cmd_report(args):
     lam = saved["lam"]
     mask = _train_mask(args, data)
     stages = saved["stages"]
-    for st in stages:
-        st.pop("in_progress", None)
     use = data.select(obs=va.SB_OBS) if stages[-1]["name"] == "sb" else None
     prob = _prob_for(args, data, lam, mask)(use)
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None

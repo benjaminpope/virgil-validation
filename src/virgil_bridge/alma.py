@@ -353,6 +353,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
     import time
 
     t0, total, traj, values, why, idle = time.time(), 0, [], init, "max_rounds", 0
+    info = dict(steps=0, rounds=0, stop="time", loss=float("nan"), converged=False)
     for rnd in range(1, max_rounds + 1):
         left = time_limit - (time.time() - t0) if time_limit is not None else None
         if left is not None and left <= 0:
@@ -366,17 +367,21 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
             traj.append(dict(steps=float(total + steps), loss=float(info["loss"]), grad_norm=float(info.get("grad_norm", np.nan)), elapsed=time.time() - t0, round=rnd))
         total += steps
         info = {**info, "steps": total, "rounds": rnd}
+        stop = info.get("stop")
+        finite = np.isfinite(float(info["loss"])) and all(np.all(np.isfinite(v)) for v in values.values())
+        if not finite or stop == "non-finite":  # never overwrite the last good save with NaNs
+            why = "non_finite"
+            break
         if on_round:
             on_round(values, info, traj, rnd)
-        stop = info.get("stop")
         verdict = convergence(traj)
-        if stop in ("stalled", "non-finite"):
-            why = "non_finite" if stop == "non-finite" else "stalled"
+        if stop == "stalled":
+            why = "stalled"
             break
         if stop == "time":
             why = "time_limit"
             break
-        if verdict["converged"] and len(traj) >= 2:
+        if verdict["converged"] and (verdict["window_steps"] or 0) >= 100:
             why = "c8"
             break
         if total >= max_steps:

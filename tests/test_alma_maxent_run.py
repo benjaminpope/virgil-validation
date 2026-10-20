@@ -153,7 +153,7 @@ def test_c8_loop_restarts_until_the_loss_has_stopped_moving(monkeypatch):
     assert va.run_fit_c8(None, {}, max_steps=1000, time_limit=10.0)[3] == "time_limit"
 
 
-@pytest.mark.validates("virgil_bridge.alma", "virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"])
 def test_c8_loop_goes_further_than_fits_own_loose_test(syn):
     """On a real (small) problem a loose ``gtol`` makes `fit` stop with stop None well short of the minimum; the C8 loop restarts
     it and reaches a lower loss, in more than one round, with C8 true or the step budget spent."""
@@ -167,3 +167,27 @@ def test_c8_loop_goes_further_than_fits_own_loose_test(syn):
     record("rounds", info["rounds"])
     assert info["rounds"] > 1 and info["loss"] < plain_info["loss"] - 1.0
     assert why in ("c8", "max_steps") and (why != "c8" or va.convergence(traj)["converged"])
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_c8_needs_100_steps_and_a_bad_round_is_not_saved(monkeypatch):
+    """Short rounds (30 steps each, loss still) are not C8 (window under 100 steps); a non-finite round stops the loop without
+    calling ``on_round`` (no NaN save); a time limit already spent returns instead of raising; virgil's real ``time`` stop
+    is what the loop maps to ``time_limit``."""
+    monkeypatch.setattr(va, "run_fit", _fake_fit([(30, None, [0.01]), (30, None, [0.01]), (30, None, [0.01]), (30, None, [0.01])]))
+    _, info, traj, why = va.run_fit_c8(None, {}, max_steps=120)
+    assert why == "max_steps" and info["steps"] == 120
+    saved = []
+    monkeypatch.setattr(va, "run_fit", lambda *a, **k: ({"x": np.array([np.nan])}, dict(steps=10, stop="non-finite", loss=float("nan")), []))
+    _, _, _, why = va.run_fit_c8(None, {}, max_steps=100, on_round=lambda *a: saved.append(1))
+    assert why == "non_finite" and not saved
+    assert va.run_fit_c8(None, {}, max_steps=100, time_limit=0.0)[3] == "time_limit"
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"])
+def test_virgils_real_time_stop_is_spelled_time(syn):
+    data = va.load_dir(syn)
+    prob = va.build_problem(data, "F", lam=1000.0, npix=32)  # F needs more than a 200-step chunk, where the time test runs
+    v = va.start_values(prob)
+    _, info, _ = va.run_fit(prob, v, max_steps=5000, time_limit=1e-6, gtol=1e-12)  # the time test runs after a 200-step chunk
+    assert info["stop"] == "time", info
