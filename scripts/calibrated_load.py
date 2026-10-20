@@ -96,19 +96,23 @@ def gravity_nights(sysdir):
     return nights
 
 
-def load_gravity_night(night, ranges=None):
+def load_gravity_night(night, ranges=None, template=None):
     """OIData of one ``gravity_nights`` entry: V² with gains and closure phases with offsets, or closure phases only.
 
     If the night's files fail together (``ValueError``) each is tried alone: a file virgil-vlti cannot load (e.g. a
     three-telescope closure-phase-only file, whose offsets need four telescopes) is left out of ``night["files"]`` with
-    a reason in ``night["notes"]``, not worked around; a night with no loadable file raises."""
+    a reason in ``night["notes"]``, not worked around; a night with no loadable file raises.
+
+    ``template`` (a virgil-vlti template name) is laid out on files that carry no sidecar modes, i.e. a provider's own
+    calibrated files binned by ``gravity_bin_calibrated.py``; virgil-vlti refuses a file in another configuration
+    (HR 6819's 2021 split-polarisation nights against the combined-polarisation template), which leaves that night out."""
     import trackb_fit as T
     import virgil_vlti
 
     obs = ("vis", "phi") if night["path"] == CALIBRATED else "phi"
 
     def read(files):
-        return virgil_vlti.to_oidata(files, "GRAVITY_SC", ranges=ranges or T.GRAVITY_RANGES, observables=obs)
+        return virgil_vlti.to_oidata(files, "GRAVITY_SC", ranges=ranges or T.GRAVITY_RANGES, observables=obs, template=template)
 
     try:
         return read(night["files"])

@@ -55,6 +55,8 @@ def test_the_driver_is_blind_to_the_published_solution(mod):
 
 
 @pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
-def test_gl229b_is_a_job_target_through_its_own_record(mod):
-    assert "gl229b" in mod.slugs() and mod.record_of("gl229b")["instrument"] == "GRAVITY"
-    assert not PUBLISHED_KEYS & set(mod.record_of("gl229b"))  # the published orbit is read by the pull-back only
+@pytest.mark.parametrize("slug", ["gl229b", "hr6819"])
+def test_existing_gallery_tiles_are_job_targets_through_their_own_record(mod, slug):
+    rec = mod.record_of(slug)
+    assert slug in mod.slugs() and rec["instrument"] == "GRAVITY" and rec["collection_id"]
+    assert not PUBLISHED_KEYS & set(rec)  # the published orbit is read by the pull-back only

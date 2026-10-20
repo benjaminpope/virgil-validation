@@ -179,3 +179,10 @@ def test_gl229b_summary_takes_the_existing_tile_and_compares_with_xuan(folder):
     assert any("published orbit's positions at our nights" in q for q in quantities)  # sky plane, after the fit
     period = next(r for r in s["blind"]["table"] if r["quantity"] == "period (d)")
     assert period["pub"] == pytest.approx(12.134)  # Xuan+24 PMOIRED, the headline orbit
+
+
+def test_hr6819_summary_takes_the_existing_tile(folder):
+    record = json.loads((ROOT / "oidb" / "gallery_extra" / "hr6819.json").read_text())
+    s = PB.summary_of(folder, record)
+    assert s["collection_id"] == "696baf06-6c3c-424d-abaf-066c3c324d99"
+    assert any("published orbit's positions" in r["quantity"] for r in s["blind"]["table"])
