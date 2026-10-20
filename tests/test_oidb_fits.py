@@ -92,6 +92,8 @@ def test_epoch_fit_with_gains_replaces_the_v2_error_scale(of, tmp_path):
     of.GAINS = dict(telescope=0.02, baseline=0.02)
     try:
         e = of.fit_epoch("sim", of.load([path]), of.point_binary, priors, grid)
+    except NotImplementedError as err:  # the installed virgil's marginal surface predates gains (virgil cf996d9 has them)
+        pytest.skip(f"installed virgil: {err}"[:200])
     finally:
         of.GAINS = None
     assert "vis_scale" not in e["scales"] and {"vis_gain_telescope", "vis_gain_baseline"} <= set(e["scales"])
