@@ -146,3 +146,10 @@ the latest one at least 100 steps earlier (the first if shorter). (3) R1's data 
 `--no-dirty` omits), `result.json` (stages with trajectories, convergence, stop reason, nuisances, −ln L,
 χ² per ddid at s = 1 and fitted, C13 acceptance, `objective_R`, versions). `cv-task`: `cv.json` (a few kB).
 `compare`: `compare.json`, `compare.md`.
+
+**Review changes (PR #150).**
+- `cv-task --lam L`: `L` is the full-data strength (the grid key in `cv.json["lam"]`); the fit uses `L · n_train / N` (`lam_train`), so each CV fit keeps the data-to-penalty balance of the final fit on all N points.
+- Config F's `image.npy`/`image.fits` is the **sky**: `flux · exp(η) / Σ exp(η + ln PB) / dx²`, whose product with the primary beam sums to `cal.flux` (the fitted pixels are sky × beam). R has no beam. Whether DSHARP's image is beam-corrected is for W10/P5 to state when reading `F_vs_dsharp`.
+- `folds` records the sha256 of each ddid's (u, v) in the file; `cv-task` refuses (ValueError) data whose points, count or order differ for any ddid it loads, and `--ddids` subsets are checked too.
+- `compare` requires the reference observation's amplitude `amp[0] == 1` in MPoL's export (`values_from_mpol_export`), and `resample` no longer zeroes edge pixels on identical grids (found by running `F_vs_dsharp` end to end).
+- R1's bound is 1e-5 of the *model-dependent* part (½Σw|r|² + λ S_M), not of |−ln L|, in which the constants cancel; near-miss controls (prior 1e-3, F_tot halved, untapered) fail by more than 10× the bound. A new test shows `fit`'s own loss contains `+ λ S_M`, with a control that drops the term.

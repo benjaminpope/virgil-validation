@@ -123,6 +123,22 @@ def test_lambda_conversion_gives_virgils_maxentropy_the_same_pull_on_the_shape()
     assert abs(va.lam_f_equivalent(va.lam_r(42_421_131)) - va.lam_r(42_421_131) / (PIX / 1000) ** 2) < 1e-9
 
 
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_config_f_image_is_the_sky_whose_beam_attenuated_flux_is_cal_flux():
+    """In F the fitted pixels are sky x beam: image_of(..., log_pb) times the beam sums to cal.flux (and exceeds it
+    without the beam); in R (no beam) the image sums to cal.flux."""
+    rng = np.random.default_rng(1)
+    n = 48
+    eta = rng.normal(size=(n, n))
+    lpb = va.beam_log(n, 300.0)  # a coarse grid so that the beam matters: the field is 14 arcsec
+    v = {"log_brightness": eta, "cal.flux": 0.2}
+    dx2 = (300.0 / 1000) ** 2
+    sky = va.image_of(v, n, 300.0, lpb)
+    assert abs(np.sum(sky * np.exp(lpb)) * dx2 - 0.2) < 1e-12
+    assert np.sum(sky) * dx2 > 0.2 * (1 + 1e-4)
+    assert abs(np.sum(va.image_of(v, n, 300.0)) * dx2 - 0.2) < 1e-12
+
+
 @pytest.mark.validates("crosscheck.alma_maxent", roots=["mathematics"])
 def test_sky_wcs_and_the_elliptical_beam_have_the_documented_orientation():
     """A pixel West of the phase centre has a smaller RA, one North a larger Dec (the FITS array is flipped), and a
@@ -142,6 +158,12 @@ def test_sky_wcs_and_the_elliptical_beam_have_the_documented_orientation():
         rr, cc = np.indices(b.shape)
         var = [np.sum(b * (g - g0) ** 2) for g, g0 in ((rr, r0), (cc, c0))]
         assert var[axis_long] > 4 * var[1 - axis_long]
+    # PA = 45 degrees (East of North) points the major axis North-East: North is decreasing row and East decreasing column
+    # in this layout, so the row-column covariance is positive; -45 degrees gives a negative one
+    for pa, sign in ((45.0, 1), (-45.0, -1)):
+        b = cx.convolve(img, PIX, 60.0, 20.0, pa)
+        rr, cc = np.indices(b.shape)
+        assert sign * np.sum(b * (rr - r0) * (cc - c0)) > 0
 
 
 # ------------------------------------------------------------------ R1
@@ -172,7 +194,8 @@ def _mpol_side(npix, pts, theta, lam_m, tmp):
     reg = sp.run("mpol", "mpol_worker.py", dict(task="regularisers", images=[np.maximum(z["image_packed"][0], 1e-30).tolist()], priors=[1e-4], tv_epsilon=1e-3))
     s_mpol = reg["results"][0]["entropy"] / 0.253  # the worker's entropy has tot_flux = 1
     n = len(pts["u"])
-    return dict(nll=nll, entropy=s_mpol, loss_per_sample=nll / (2 * n) + lam_m * s_mpol, n=n, tapered=z["image_packed"][0])
+    const = n * va.LN2PI - np.sum(np.log(z["weight_used"]))  # the part of -ln L that does not depend on the model
+    return dict(nll=nll, entropy=s_mpol, loss_per_sample=nll / (2 * n) + lam_m * s_mpol, n=n, const=const, tapered=z["image_packed"][0])
 
 
 def _virgil_side(npix, pts, theta, lam_m):
@@ -187,13 +210,13 @@ def _virgil_side(npix, pts, theta, lam_m):
     return data, prob, values, sc, lam
 
 
-@pytest.mark.validates("virgil_bridge.alma", "virgil.radio.ComplexVisData.term", roots=["mpol", "mathematics"])
+@pytest.mark.validates("virgil_bridge.alma", roots=["mpol", "mathematics"])
 @pytest.mark.skipif(not sp.available("mpol", "mpol"), reason="MPoL not installed (scripts/setup_external.sh mpol)")
 @pytest.mark.skipif(tm._example_commit() != tm.EXAMPLES_COMMIT, reason="MPoL-dev/examples not cloned at the pinned commit")
 def test_r1_the_r_objective_equals_2n_times_mpols_loss(tmp_path):
     """R1. At random image and nuisance values on the IM Lup subsample (128^2 pixels at 5 mas, 30 mas taper), the R objective
     -ln L + lam_R S_M at lam_R = 2 N lam_M (C4) equals 2 N (neg_log_likelihood_avg + lam_M entropy) of the example's own Net
-    and mpol.losses (accurate NuFFT), to 1e-6 relative. lam_M = 1e-5 makes the penalty several times |nll|, so that
+    and mpol.losses (accurate NuFFT), to 1e-5 of the model-dependent part (the constants cancel). lam_M = 1e-5 makes the penalty several times |nll|, so that
     1e-5 of the total pins S_M to 1e-5; the S_M alone agrees to the float32 of MPoL's taper buffer, and lam_M = 1e-9 (the paper's)
     is checked as well."""
     npix, pts, source, theta, sky, _ = _r1_case(LAM_M)
@@ -206,15 +229,17 @@ def test_r1_the_r_objective_equals_2n_times_mpols_loss(tmp_path):
     assert m["n"] == len(pts["u"]) <= 43_000
     rel_s = abs(s_virgil - m["entropy"]) / abs(m["entropy"])
     record("rel_error_entropy_S_M", rel_s)
-    record("rel_error_data_term", abs(sc["nll"] - m["nll"]) / abs(m["nll"]))
+    chi2_part = m["nll"] - m["const"]  # 1/2 sum w |r|^2: the constants N ln 2 pi - sum ln w cancel exactly and would dilute the bound
+    record("rel_error_data_term_total", abs(sc["nll"] - m["nll"]) / abs(m["nll"]))
+    record("rel_error_data_term_chi2_part", abs(sc["nll"] - m["nll"]) / abs(chi2_part))
     assert rel_s < 1e-7  # float32 taper buffer in MPoL (P12): 3.5e-8
-    assert abs(sc["nll"] - m["nll"]) < RTOL_R1 * abs(m["nll"])
+    assert abs(sc["nll"] - m["nll"]) < RTOL_R1 * abs(chi2_part)
     for lam_m in (1e-5, LAM_M):
         obj = sc["nll"] + va.lam_r(n, lam_m) * s_virgil
         mpol_obj = 2 * n * (m["nll"] / (2 * n) + lam_m * m["entropy"])
         record(f"penalty_fraction_lam_m_{lam_m:g}", va.lam_r(n, lam_m) * s_virgil / obj)
         record(f"rel_error_objective_lam_m_{lam_m:g}", abs(obj - mpol_obj) / abs(mpol_obj))
-        assert abs(obj - mpol_obj) < RTOL_R1 * abs(mpol_obj)
+        assert abs(obj - mpol_obj) < RTOL_R1 * abs(chi2_part + va.lam_r(n, lam_m) * m["entropy"])  # model-dependent part of the objective
     # the penalty exceeds |nll| at lam_m = 1e-5, so the objective test constrains S_M to about 1e-5
     assert 0.1 < abs(va.lam_r(n, 1e-5) * s_virgil / sc["nll"]) < 100  # -ln L is negative (constants), so compare magnitudes
 
@@ -224,7 +249,7 @@ def test_r1_the_r_objective_equals_2n_times_mpols_loss(tmp_path):
 @pytest.mark.skipif(tm._example_commit() != tm.EXAMPLES_COMMIT, reason="MPoL-dev/examples not cloned at the pinned commit")
 def test_r1_control_virgils_maxentropy_or_the_untapered_image_does_not_match(tmp_path):
     """The R1 sum with virgil's `MaxEntropy` (unit-sum image, flat prior) in place of S_M, with the same strength, or with S_M
-    of the untapered image, misses MPoL's objective by far more than the 1e-6 of R1."""
+    of the untapered image, misses MPoL's objective by far more than R1's bound."""
     from virgil import Image
     from virgil.imaging import MaxEntropy
 
@@ -235,10 +260,16 @@ def test_r1_control_virgils_maxentropy_or_the_untapered_image_does_not_match(tmp
     mpol_obj = m["nll"] + lam * m["entropy"]
     wrong_maxent = sc["nll"] + lam * float(MaxEntropy(1.0).value(Image(values["log_brightness"], pixel_scale_mas=PIX)))
     wrong_bare = sc["nll"] + lam * float(va.mpol_entropy_jax(values["log_brightness"], values["cal.flux"], pixel_mas=PIX, taper_mas=0.0, prior=1e-4, f_tot=0.253))
-    for name, wrong in (("maxentropy", wrong_maxent), ("untapered", wrong_bare)):
-        miss = abs(wrong - mpol_obj) / abs(mpol_obj)
+    kw = dict(pixel_mas=PIX, taper_mas=30.0, prior=1e-4, f_tot=0.253)
+    flux = values["cal.flux"]
+    lb = values["log_brightness"]
+    wrong_p = sc["nll"] + lam * float(va.mpol_entropy_jax(lb, flux, **{**kw, "prior": 1e-3}))  # near misses: units right
+    wrong_ftot = sc["nll"] + lam * float(va.mpol_entropy_jax(lb, flux, **{**kw, "f_tot": 0.5 * 0.253}))
+    scale = abs(m["nll"] - m["const"] + lam * m["entropy"])
+    for name, wrong in (("maxentropy", wrong_maxent), ("untapered", wrong_bare), ("prior_1e-3", wrong_p), ("f_tot_halved", wrong_ftot)):
+        miss = abs(wrong - mpol_obj) / scale
         record(f"rel_miss_{name}", miss)
-        assert miss > 1e-4, name
+        assert miss > 10 * RTOL_R1, name  # maxentropy misses by units alone; the others are the wrong prior, taper or normalisation
 
 
 # ------------------------------------------------------------------ R2
@@ -258,7 +289,8 @@ def test_r2_fit_r_falls_and_writes_its_files(syn, r_fit):
     record("objective_final", res["objective_R"])
     assert res["objective_R"] < start_obj
     assert [s["name"] for s in res["stages"]] == ["sb", "all"]
-    assert res["stages"][-1]["trajectory"] and res["stop"] in ("limit", "gtol", "converged", "time") or res["stop"]
+    traj = res["stages"][-1]["trajectory"]
+    assert traj and np.isfinite(traj[-1]["loss"]) and traj[-1]["steps"] <= 20
     assert isinstance(res["converged"], bool)
     assert len(res["chi2_s1"]["chi2_raw_over_n"]) == 14 and len(res["chi2_fitted_s"]["chi2_fit_over_n"]) == 14
     for f in ["values.npz", "image.npy", "image_tapered.npy", "image.fits", "result.json"] + [f"resid_dirty_obs{e}.npy" for e in range(7)]:
@@ -267,6 +299,29 @@ def test_r2_fit_r_falls_and_writes_its_files(syn, r_fit):
     assert img.shape == (128, 128) and abs(img.sum() * (PIX / 1000) ** 2 - res["flux_jy"]) < 1e-5 * res["flux_jy"]
     d, w, _ = cx.read_fits(r_fit / "image.fits")
     assert np.allclose(d[::-1], img, rtol=1e-6)
+
+
+@pytest.mark.validates("virgil_bridge.alma", "virgil.fitting.fit", roots=["mathematics"])
+def test_the_loss_virgil_fit_minimises_contains_lambda_s_m(syn):
+    """C3 in the fit itself. `fit`'s final loss minus r_objective (-ln L + lam S_M, outside `fit`) at the same values is a constant
+    (the priors' normalisation), the same at lam = 0 and lam = 1; so `fit` adds lam S_M, with the plus sign. Control: a problem
+    without the MPoLEntropy term has a different constant, by lam S_M, so the comparison does fail when the term is missing."""
+    data = va.load_dir(syn)
+    consts = {}
+    for name, lam, drop in (("zero", 0.0, False), ("one", 1.0, False), ("without", 1.0, True)):
+        prob = va.build_problem(data, "R", lam=lam, npix=64)
+        if drop:
+            prob.terms = prob.terms[:1]
+        values, info, _ = va.run_fit(prob, va.start_values(prob), max_steps=15)
+        obj = va.r_objective(data, values, lam=lam, npix=64)
+        consts[name] = (info["loss"] - obj["objective"], obj["penalty"])
+    record("const_lam0", consts["zero"][0])
+    record("const_lam1", consts["one"][0])
+    record("const_without_term", consts["without"][0])
+    pen = abs(consts["one"][1])
+    assert pen > 10  # the term matters here
+    assert abs(consts["one"][0] - consts["zero"][0]) < 1e-3 * pen
+    assert abs(consts["without"][0] - consts["zero"][0]) > 0.5 * pen
 
 
 @pytest.mark.validates("virgil_bridge.alma", "virgil.radio.ComplexVisData.term", roots=["mathematics"])
@@ -319,9 +374,21 @@ def test_r3_folds_are_disjoint_covering_and_hermitian_closed(syn, tmp_path):
     data = va.load_dir(syn)
     fold, annulus, meta = va.load_folds(f, data)
     assert meta["k"] == 4 and meta["n"] == len(data.u) and len(meta["sha256"]) == 64
+    counts = np.bincount(fold, minlength=4)
+    assert np.all(counts > 0.5 * len(fold) / 4) and np.all(counts < 1.5 * len(fold) / 4)  # no empty or lopsided fold
     for j in range(4):
         train, test = fold != j, fold == j
         assert not np.any(train & test) and np.all(train | test)
+    # the file is tied to the points' order: a ddid with the same points permuted, or a subset of ddids, is checked too
+    sub, _, _ = va.load_folds(f, va.load_dir(syn, ddids=[0, 1]))
+    assert len(sub) == 2 * 400
+    shuffled = tmp_path / "shuf"
+    shuffled.mkdir()
+    z = dict(np.load(syn / "ddid_00.npz"))
+    order = np.random.default_rng(0).permutation(len(z["u"]))
+    np.savez(shuffled / "ddid_00.npz", **{k: (a[order] if np.ndim(a) else a) for k, a in z.items()})
+    with pytest.raises(ValueError, match="differ"):
+        va.load_folds(f, va.load_dir(shuffled))
     from virgil.radio import ComplexVisData
 
     u, v = np.asarray(data.u), np.asarray(data.v)
@@ -333,7 +400,7 @@ def test_r3_folds_are_disjoint_covering_and_hermitian_closed(syn, tmp_path):
     assert np.array_equal(f2[:n], f2[n:]) and np.array_equal(a2[:n], a2[n:])
 
 
-@pytest.mark.validates("virgil_bridge.alma", "virgil.fitting.fit", roots=["mathematics", "statistics"])
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
 def test_r3_cv_task_and_aggregate_on_two_lambdas_and_two_folds(syn, tmp_path):
     """R3 (the sweep). F at 64^2: a joint fit, then ``cv-task`` for 2 lambda x 2 folds from it, then ``cv-aggregate``: the
     held-out and training counts add to N, the held-out scores of the folds are each finite and the summary, plots and
@@ -344,12 +411,18 @@ def test_r3_cv_task_and_aggregate_on_two_lambdas_and_two_folds(syn, tmp_path):
     _call("fit", "--config", "F", "--data", syn, "--out", init, "--npix", 64, "--lam", 1e3, "--max-steps", 10, "--no-dirty")
     cv = tmp_path / "cv"
     n = 14 * 400
+    data = va.load_dir(syn)
+    fold, _, _ = va.load_folds(folds, data)
+    ids = np.asarray(data.ddid_ids)[np.asarray(data.ddid)]
     for lam in (1e2, 1e4):
         for j in (0, 1):
             _call("cv-task", "--data", syn, "--folds", folds, "--fold", j, "--init", init, "--lam", lam, "--npix", 64, "--max-steps", 10,
                   "--out", cv / f"lam_{lam:g}" / f"fold_{j}")
             r = json.loads((cv / f"lam_{lam:g}" / f"fold_{j}" / "cv.json").read_text())
-            assert r["n_train"] + r["n_test"] == n and sum(r["heldout"]["by_ddid"]["n"]) == r["n_test"]
+            held = fold == j  # the folds file read independently of cv-task
+            assert r["n_test"] == int(held.sum()) and r["n_train"] == int((~held).sum())
+            assert r["heldout"]["by_ddid"]["n"] == [int(held[ids == d].sum()) for d in np.unique(ids)]
+            assert abs(r["lam_train"] - lam * r["n_train"] / n) < 1e-12 * lam  # lam is the full-data strength, rescaled to the training size
             assert np.isfinite(r["heldout"]["nll"]) and sum(r["heldout"]["by_annulus"]["n"]) == r["n_test"]
     _call("cv-aggregate", cv)
     s = json.loads((cv / "cv_summary.json").read_text())
@@ -372,7 +445,7 @@ def mock_mpol_export(fit_dir, out, *, scale_amp=1.0, tap=True):
     z = {k: np.asarray(v) for k, v in np.load(fit_dir / "values.npz").items()}
     npix = z["log_brightness"].shape[0]
     base = va.image_of(z, npix, PIX)
-    amp = np.concatenate([[1.0], z["cal.gain"]]) * scale_amp
+    amp = np.concatenate([[1.0], z["cal.gain"] * scale_amp])  # the fixed observation stays at 1
     obs_of = np.repeat(np.arange(7), 2)
     off = np.concatenate([np.zeros((1, 2)), z["cal.offset"]]) / 1000.0
     out.mkdir(parents=True, exist_ok=True)
@@ -386,8 +459,8 @@ def mock_mpol_export(fit_dir, out, *, scale_amp=1.0, tap=True):
 def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path):
     """R4. ``compare`` of a fit with an MPoL export made from the same solution (mocked in W8's format: the 1028^2 grid is
     replaced by the fit's own): s = g s_M, gains, offsets, flux and the three image differences are zero and the two R objectives are equal
-    (virgil at eps 1e-12 on both). With the export's amplitudes 1% off, the differences are nonzero and the objective at MPoL's
-    solution is not below ours."""
+    (virgil at eps 1e-12 on both). With the export's gains 1% off, the gain difference is nonzero and the objective at MPoL's
+    solution changes. This is plumbing: the mock shares the mapping's conventions, so it is not evidence about MPoL's export (W8's real one is)."""
     mp = mock_mpol_export(r_fit, tmp_path / "mpol")
     out = tmp_path / "cmp"
     _call("compare", "--virgil", r_fit, "--mpol", mp, "--data", syn, "--out", out)
@@ -403,31 +476,35 @@ def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path)
     _call("compare", "--virgil", r_fit, "--mpol", mp2, "--data", syn, "--out", tmp_path / "cmp2")
     c2 = json.loads((tmp_path / "cmp2" / "compare.json").read_text())
     assert c2["gain"]["max_abs_diff"] > 1e-3  # the amplitude is a gauge for s = g s_M, so only the gain moves
-    assert c2["objective"]["mpol_solution_in_virgil"]["objective"] != c["objective"]["mpol_solution_in_virgil"]["objective"]
+    assert abs(c2["objective"]["mpol_solution_in_virgil"]["objective"] - c["objective"]["mpol_solution_in_virgil"]["objective"]) > 1e-6 * abs(c["objective"]["ours"]["objective"])
 
 
-@pytest.mark.validates("crosscheck.alma_maxent", roots=["mathematics"])
-def test_r4_f_against_dsharp_on_a_synthetic_clean_image(tmp_path):
-    """The DSHARP step of ``compare`` on a synthetic restored image: our image convolved to the beam, in Jy/beam, against the
-    same image written as a CLEAN FITS (4-axis, beam keywords, a different pixel grid) and regridded through its WCS, agree to 2e-3 of the peak."""
+@pytest.mark.validates("virgil_bridge.alma", "crosscheck.alma_maxent", roots=["mathematics"])
+def test_r4_f_against_dsharp_runs_through_compare_and_a_shifted_grid_fails(syn, r_fit, tmp_path):
+    """The DSHARP step of ``compare``, run as the command: the fit's image (here the R fit's, standing in for F's) convolved to a CLEAN
+    beam and written as a 4-axis restored FITS with a hand-written header (East-left CDELT1, row 0 South, the phase centre in cell
+    (N/2 - 1, N/2 - 1), so no repository WCS helper builds the header) gives ``F_vs_dsharp`` zero differences; the same FITS with its
+    reference pixel shifted by 3 pixels, which is what an off-by-pixel WCS would do, does not."""
     from astropy.io import fits
 
-    n, px = 96, PIX
-    eta = cx.gaussian_log_image(n, px, 300.0)
-    img = 2.0 * np.exp(eta)  # Jy/arcsec^2
+    img = np.load(r_fit / "image.npy").astype(float)
+    n = img.shape[0]
     beam = (120.0, 80.0, 30.0)
-    conv = cx.convolve(img, px, *beam) * cx.beam_area_arcsec2(*beam[:2])
-    px2 = 4.0  # DSHARP-like grid, different pixel
-    wd = cx.sky_wcs(120, px2, script.RA_DEG, script.DEC_DEG)
-    ours = cx.sky_wcs(n, px, script.RA_DEG, script.DEC_DEG)
-    # the "DSHARP" image: the same continuous convolved sky sampled on the 4 mas grid (bilinear from ours; smooth, so a small error)
-    d = cx.resample(conv[::-1], ours, wd, (120, 120))
-    hdr = wd.to_header()
-    hdr.update(BMAJ=beam[0] / 3.6e6, BMIN=beam[1] / 3.6e6, BPA=beam[2], BUNIT="Jy/beam")
-    fits.PrimaryHDU(d[None, None].astype(np.float32), hdr).writeto(tmp_path / "d.fits")
-    data, wcs, h = cx.read_fits(tmp_path / "d.fits")
-    assert np.allclose(cx.beam_of(h), beam)
-    back = cx.resample(data, wcs, ours, (n, n))[::-1]
-    st = cx.difference_stats(conv, back, region=np.s_[16:-16, 16:-16] and (np.abs(np.indices((n, n)) - n // 2).max(0) < n // 2 - 16))
-    record("rms_over_peak", st["rms_over_peak"])
-    assert st["rms_over_peak"] < 2e-3 and abs(st["flux_ratio"] - 1) < 5e-3
+    conv = cx.convolve(img, PIX, *beam) * cx.beam_area_arcsec2(*beam[:2])
+    mp = mock_mpol_export(r_fit, tmp_path / "mpol")
+
+    def run(name, shift):
+        hdr = fits.Header()
+        hdr.update(CTYPE1="RA---SIN", CTYPE2="DEC--SIN", CRVAL1=script.RA_DEG, CRVAL2=script.DEC_DEG, CDELT1=-PIX / 3.6e6, CDELT2=PIX / 3.6e6,
+                   CRPIX1=n // 2 - 1 + 1 + shift, CRPIX2=n // 2 - 1 + 1, CUNIT1="deg", CUNIT2="deg", BMAJ=beam[0] / 3.6e6, BMIN=beam[1] / 3.6e6, BPA=beam[2], BUNIT="Jy/beam")
+        # FITS row 0 is South, the phase centre (repository row N/2 - 1 from the North) is FITS row n - 1 - (N/2 - 1) = N/2: CRPIX2 = N/2 + 1
+        hdr["CRPIX2"] = n - 1 - (n // 2 - 1) + 1
+        fits.PrimaryHDU(conv[::-1][None, None].astype(np.float32), hdr).writeto(tmp_path / f"{name}.fits")
+        _call("compare", "--virgil", r_fit, "--mpol", mp, "--data", syn, "--f-dir", r_fit, "--dsharp", tmp_path / f"{name}.fits", "--out", tmp_path / name)
+        return json.loads((tmp_path / name / "compare.json").read_text())["F_vs_dsharp"]
+
+    good, bad = run("good", 0), run("shifted", 3)
+    record("rms_over_peak_matched", good["rms_over_peak"])
+    record("rms_over_peak_shifted_3_pixels", bad["rms_over_peak"])
+    assert good["rms_over_peak"] < 1e-5 and abs(good["flux_ratio"] - 1) < 1e-5
+    assert bad["rms_over_peak"] > 100 * good["rms_over_peak"]

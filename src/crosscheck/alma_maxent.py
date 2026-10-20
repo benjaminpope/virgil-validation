@@ -129,6 +129,10 @@ def resample(image, wcs_src, wcs_dst, shape_dst):
     yy, xx = np.meshgrid(np.arange(shape_dst[0]), np.arange(shape_dst[1]), indexing="ij")
     ra, dec = wcs_dst.all_pix2world(xx.ravel(), yy.ravel(), 0)
     sx, sy = wcs_src.all_world2pix(ra, dec, 0)
+    ny, nx = np.shape(image)
+    # coordinates a rounding error outside the first or last pixel (identical grids) are on it, not outside
+    sx = np.where(np.abs(sx) < 1e-6, 0.0, np.where(np.abs(sx - (nx - 1)) < 1e-6, nx - 1.0, sx))
+    sy = np.where(np.abs(sy) < 1e-6, 0.0, np.where(np.abs(sy - (ny - 1)) < 1e-6, ny - 1.0, sy))
     out = map_coordinates(np.nan_to_num(image), [sy, sx], order=1, mode="constant", cval=0.0)
     return out.reshape(shape_dst)
 

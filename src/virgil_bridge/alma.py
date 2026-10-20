@@ -420,10 +420,23 @@ def residual_dirty_images(data, scene, values, nuis, npix=1024, pixel_mas=3.0, e
     return out
 
 
-def image_of(values, npix, pixel_mas):
-    """The sky image in Jy/arcsec^2 (virgil layout) of fitted values: ``flux * softmax(log_brightness) / dx^2``."""
-    b = np.exp(values["log_brightness"] - np.max(values["log_brightness"]))
-    return float(values["cal.flux"]) * (b / b.sum()) / (pixel_mas / 1000.0) ** 2
+def beam_log(npix, pixel_mas):
+    """ln of the primary beam of config F on the grid (numpy)."""
+    from virgil.radio import primary_beam
+
+    return np.asarray(primary_beam(npix, pixel_mas, freq_hz=FULL["nu0_hz"], dish_m=FULL["dish_m"], factor=FULL["pb_factor"]))
+
+
+def image_of(values, npix, pixel_mas, log_pb=None):
+    """The sky image in Jy/arcsec^2 (virgil layout) of fitted values. Without ``log_pb`` (config R) the
+    pixels are the sky: ``flux * softmax(log_brightness) / dx^2``. In config F the fitted pixels are sky x beam
+    (``cal.flux`` is the flux of the apparent image, ``grid_scene``), so pass ``log_pb = beam_log(...)``:
+    the sky is ``flux * exp(log_brightness) / sum exp(log_brightness + log_pb) / dx^2``, which times the beam
+    sums to ``cal.flux``."""
+    eta = np.asarray(values["log_brightness"])
+    pb = 0.0 if log_pb is None else np.asarray(log_pb)
+    shift = np.max(eta + pb)
+    return float(values["cal.flux"]) * np.exp(eta - shift) / np.exp(eta + pb - shift).sum() / (pixel_mas / 1000.0) ** 2
 
 
 def tapered_image(image, pixel_mas, taper_mas=MPOL["taper_mas"]):
@@ -451,6 +464,14 @@ def folds_sha256(fold_by_ddid):
     return h.hexdigest()
 
 
+def _uv_sha256(data, sel):
+    """sha256 of the (u, v) of the selected points, in order: ties a fold file to the point order it was made for."""
+    h = hashlib.sha256()
+    for a in (data.u, data.v):
+        h.update(np.ascontiguousarray(np.asarray(a)[sel], np.float64).tobytes())
+    return h.hexdigest()
+
+
 def save_folds(path, data, fold, annulus, params):
     """One file: ``fold_NN`` and ``annulus_NN`` (int8, in the order of the ddid's points in its npz file), the
     parameters and the sha256 of the assignment (``folds_sha256``) as a JSON string ``meta``."""
@@ -460,7 +481,8 @@ def save_folds(path, data, fold, annulus, params):
         sel = ids == d
         arrays[f"fold_{d:02d}"], arrays[f"annulus_{d:02d}"] = fold[sel], annulus[sel]
         by[int(d)] = fold[sel]
-    meta = dict(params, sha256=folds_sha256(by), n=int(len(fold)), counts=np.bincount(fold, minlength=params["k"]).tolist())
+    uv = {int(d): _uv_sha256(data, ids == d) for d in np.unique(ids)}
+    meta = dict(params, sha256=folds_sha256(by), n=int(len(fold)), counts=np.bincount(fold, minlength=params["k"]).tolist(), uv_sha256=uv)
     np.savez_compressed(path, meta=json.dumps(meta), **arrays)
     return meta
 
@@ -476,8 +498,12 @@ def load_folds(path, data):
         fold[sel], annulus[sel] = z[f"fold_{d:02d}"], z[f"annulus_{d:02d}"]
         by[int(d)] = fold[sel]
     meta = json.loads(str(z["meta"]))
-    if len(np.unique(ids)) == len(set(int(k[5:]) for k in z.files if k.startswith("fold_"))):
-        assert folds_sha256(by) == meta["sha256"], "fold file does not match its own checksum"
+    for d in np.unique(ids):
+        want = meta.get("uv_sha256", {}).get(str(int(d)))
+        if want is not None and _uv_sha256(data, ids == d) != want:
+            raise ValueError(f"ddid {d}: the points differ (count or order) from those the fold file was made for")
+    if len(np.unique(ids)) == len(set(int(k[5:]) for k in z.files if k.startswith("fold_"))) and folds_sha256(by) != meta["sha256"]:
+        raise ValueError("fold file does not match its own checksum")
     return fold, annulus, meta
 
 
@@ -494,6 +520,8 @@ def values_from_mpol_export(export, obs_of_ddid):
     base = np.asarray(export["base_image"], float)
     dx = float(export["cell_size_arcsec"])
     amp = np.asarray(export["amp"], float)
+    if not np.isclose(amp[0], 1.0, rtol=0, atol=1e-12):
+        raise ValueError(f"the reference observation's amplitude must be 1 (cal.gain = amp[1:]); got {amp[0]!r}")
     return dict(
         log_brightness=jnp.asarray(np.log(base)),
         **{"cal.flux": jnp.asarray(base.sum() * dx**2), "cal.gain": jnp.asarray(amp[1:]),

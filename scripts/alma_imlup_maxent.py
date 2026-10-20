@@ -160,7 +160,7 @@ def cmd_fit(args):
     say(f"-ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
 
     np.savez(out / "values.npz", **values)
-    image = va.image_of(values, prob.npix, prob.pixel_mas)
+    image = va.image_of(values, prob.npix, prob.pixel_mas, va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None)
     np.save(out / "image.npy", image.astype(np.float32))
     cx.write_fits(out / "image.fits", image, prob.pixel_mas, RA_DEG, DEC_DEG, OBJECT="IM Lup", ORIGIN=f"virgil {args.config}")
     res = dict(
@@ -208,8 +208,10 @@ def cmd_cv_task(args):
     fold, annulus, fmeta = va.load_folds(args.folds, data)
     train, test = fold != args.fold, fold == args.fold
     assert not np.any(train & test) and np.all(train | test)
-    lam = lam_of(args, len(data.u))
-    prob = va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size)
+    n_all = len(data.u)
+    lam = lam_of(args, n_all)  # the full-data strength (the grid key)
+    lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
+    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size)
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
 
@@ -219,7 +221,7 @@ def cmd_cv_task(args):
     ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus)
     ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus)
     tr = va.score(data, prob.scene, values, prob.nuis, mask=train)
-    res = dict(command="cv-task", config=args.config, lam=lam, fold=args.fold, n_train=int(train.sum()), n_test=int(test.sum()), folds_sha256=fmeta["sha256"],
+    res = dict(command="cv-task", config=args.config, lam=lam, lam_train=lam_train, fold=args.fold, n_train=int(train.sum()), n_test=int(test.sum()), folds_sha256=fmeta["sha256"],
                versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], convergence=va.convergence(traj, info), trajectory=traj,
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
                             by_ddid_s1=ho1["by_ddid"], by_annulus_s1=ho1["by_annulus"]),
