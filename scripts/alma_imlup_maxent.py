@@ -4,6 +4,7 @@
     python scripts/alma_imlup_maxent.py folds --data DIR --out FILE.npz
     python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--sb-only] [--init DIR]
                                             [--shat DIR] [--folds FILE.npz --fold J] [--max-steps N] [--time-limit S]
+    python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
     python scripts/alma_imlup_maxent.py cv-aggregate DIR [--out DIR]
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] --out DIR
@@ -42,6 +43,7 @@ def say(*a):
 
 
 def dump(path, obj):
+    """JSON, written to a temporary file and renamed, so that a crash never leaves a half-written file."""
     def default(o):
         if isinstance(o, (np.floating, np.integer)):
             return o.item()
@@ -49,7 +51,10 @@ def dump(path, obj):
             return o.tolist()
         raise TypeError(type(o))
 
-    pathlib.Path(path).write_text(json.dumps(obj, indent=1, default=default))
+    path = pathlib.Path(path)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=1, default=default))
+    tmp.replace(path)
 
 
 def versions():
@@ -81,13 +86,16 @@ def lam_of(args, n):
     return va.lam_f_equivalent(va.lam_r(n) if args.lam_r_equiv is None else args.lam_r_equiv, flux=args.flux)
 
 
-def stage_summary(name, values, info, traj, wall):
-    return dict(name=name, steps=info["steps"], stop=info["stop"], fit_converged=info["converged"], wall_s=wall,
-                convergence=va.convergence(traj, info), loss_final=info["loss"], trajectory=traj)
+def stage_summary(name, info, traj, wall, why):
+    return dict(name=name, steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"],
+                wall_s=wall, convergence=va.convergence(traj, info), loss_final=info["loss"], trajectory=traj)
 
 
-def run_stages(args, data, prob_for, init_dir):
-    """C9: stage 1 on SB, stage 2 on all (warm-started); with ``--init`` a single stage."""
+def run_stages(args, data, prob_for, init_dir, save=None):
+    """C9: stage 1 on SB, stage 2 on all (warm-started); with ``--init`` a single stage. Each stage runs until C8
+    holds or its budget (``--max-steps``, ``--time-limit``) runs out (``va.run_fit_c8``). ``save(prob, values,
+    stages)`` is called after every round and stage, so a later failure never loses a fit; ``stages`` then ends with
+    the stage in progress (``in_progress`` true)."""
     import jax.numpy as jnp
 
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
@@ -104,12 +112,21 @@ def run_stages(args, data, prob_for, init_dir):
         prob = prob_for(use)
         if values is None:
             values = va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
-        say(f"stage {name}: max_steps {args.max_steps}, time limit {args.time_limit}")
+        say(f"stage {name}: max_steps {args.max_steps}, time limit {args.time_limit}, gtol {args.gtol}")
         t = time.time()
-        out, info, traj = va.run_fit(prob, values, max_steps=args.max_steps, time_limit=args.time_limit, log=say)
-        stages.append(stage_summary(name, out, info, traj, time.time() - t))
-        say(f"stage {name}: {info['stop']} after {info['steps']} steps, converged: {stages[-1]['convergence']['converged']}")
+
+        def on_round(vals, info, traj, rnd, name=name, t=t, prob=prob):
+            say(f"stage {name}: round {rnd} done, {info['steps']} steps, stop {info['stop']}, loss {info['loss']:.3f}")
+            if save:
+                part = stage_summary(name, info, traj, time.time() - t, "in_progress")
+                save(prob, {k: np.asarray(v) for k, v in vals.items()}, stages + [dict(part, in_progress=True)])
+
+        out, info, traj, why = va.run_fit_c8(prob, values, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round)
+        stages.append(stage_summary(name, info, traj, time.time() - t, why))
+        say(f"stage {name}: stopped because {why} after {info['steps']} steps in {info['rounds']} rounds; C8 converged: {stages[-1]['convergence']['converged']}")
         values = {k: jnp.asarray(v) for k, v in out.items()}
+        if save:
+            save(prob, {k: np.asarray(v) for k, v in out.items()}, stages)
     return prob, {k: np.asarray(v) for k, v in values.items()}, stages, shat
 
 
@@ -132,40 +149,35 @@ def chi2_table(sc, label):
 # ------------------------------------------------------------------ fit
 
 
-def cmd_fit(args):
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    data = load(args)
-    n = len(data.u)
-    lam = lam_of(args, n)
-    npix = args.npix
-    mask = annulus = None
-    if args.folds:
-        fold, annulus, fmeta = va.load_folds(args.folds, data)
-        mask = fold != args.fold
-        say(f"training mask: fold != {args.fold}: {int(mask.sum()):,} of {n:,} points")
-    say(f"config {args.config}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
-
-    def prob_for(use):
-        m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
-        return va.build_problem(data, args.config, lam=lam, npix=npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size)
-
-    t0 = time.time()
-    prob, values, stages, shat = run_stages(args, data, prob_for, args.init)
-    final_data = data.select(obs=va.SB_OBS) if (args.sb_only and not args.init) else data
-    final_mask = mask if final_data is data else None
-    sc_raw = va.score(final_data, prob.scene, values, prob.nuis, mask=final_mask)
-    sigma = np.asarray(values.get("cal.sigma", np.ones(26)))
-    sc_s1 = va.score(final_data, prob.scene, {**values, "cal.sigma": np.ones_like(sigma)}, prob.nuis, mask=final_mask)  # s = 1 first (C10)
-    say(f"-ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
-
+def write_state(out, args, prob, values, stages, lam, n):
+    """What a fit must never lose: ``values.npz``, the image (``.npy`` and ``.fits``) and a provisional
+    ``result.json`` (the arguments, the stages with their loss histories, ``complete`` false), written after every round
+    and stage; ``write_report`` replaces the result with the full report."""
     np.savez(out / "values.npz", **values)
     image = va.image_of(values, prob.npix, prob.pixel_mas, va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None)
     np.save(out / "image.npy", image.astype(np.float32))
     cx.write_fits(out / "image.fits", image, prob.pixel_mas, RA_DEG, DEC_DEG, OBJECT="IM Lup", ORIGIN=f"virgil {args.config}")
+    last = stages[-1]
+    dump(out / "result.json", dict(
+        command="fit", complete=False, config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n),
+        npix=prob.npix, pixel_mas=prob.pixel_mas, versions=versions(), stages=stages, converged=last["convergence"]["converged"],
+        stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"])))
+
+
+def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
+    """The full report of a fit at ``values`` (-ln L and chi^2 at eps 1e-12, C13, R's objective, the residual dirty images);
+    the model is evaluated ``--chunk-size`` points at a time. Needs no optimiser: ``report`` runs it on a saved fit."""
+    n = len(data.u)
+    final_data = data.select(obs=va.SB_OBS) if stages[-1]["name"] == "sb" else data  # the last stage fitted SB only
+    final_mask = mask if final_data is data else None
+    ck = args.chunk_size
+    sc_raw = va.score(final_data, prob.scene, values, prob.nuis, mask=final_mask, chunk_size=ck)
+    sigma = np.asarray(values.get("cal.sigma", np.ones(26)))
+    sc_s1 = va.score(final_data, prob.scene, {**values, "cal.sigma": np.ones_like(sigma)}, prob.nuis, mask=final_mask, chunk_size=ck)  # s = 1 first (C10)
+    say(f"-ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
     res = dict(
-        command="fit", config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
-        versions=versions(), wall_s=time.time() - t0, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"],
+        command="fit", complete=True, config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
+        versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         alpha=float(values["cal.alpha"]) if "cal.alpha" in values else None,
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
@@ -179,14 +191,69 @@ def cmd_fit(args):
 
         s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
         res.update(entropy_SM=s, objective_R=sc_raw["nll"] + lam * s)
+        image = va.image_of(values, prob.npix, prob.pixel_mas)
         np.save(out / "image_tapered.npy", va.tapered_image(image, prob.pixel_mas).astype(np.float32))
     if args.flux_lam0:
         res["lam0_at_fitted_flux"] = va.lam_f_equivalent(va.lam_r(n), flux=float(values["cal.flux"]), pixel_mas=prob.pixel_mas)
+    dump(out / "result.json", res)  # before the dirty images: the numbers are not lost if they fail
     if not args.no_dirty:
-        for e, img in va.residual_dirty_images(final_data, prob.scene, values, prob.nuis).items():
+        for e, img in va.residual_dirty_images(final_data, prob.scene, values, prob.nuis, chunk_size=ck).items():
             np.save(out / f"resid_dirty_obs{e}.npy", img.astype(np.float32))
-    dump(out / "result.json", res)
     say(f"wrote {out}")
+
+
+def _train_mask(args, data):
+    if not args.folds:
+        return None
+    fold, _, _ = va.load_folds(args.folds, data)
+    mask = fold != args.fold
+    say(f"training mask: fold != {args.fold}: {int(mask.sum()):,} of {len(data.u):,} points")
+    return mask
+
+
+def _prob_for(args, data, lam, mask):
+    def prob_for(use):
+        m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
+        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size)
+
+    return prob_for
+
+
+def cmd_fit(args):
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    data = load(args)
+    n = len(data.u)
+    lam = lam_of(args, n)
+    mask = _train_mask(args, data)
+    say(f"config {args.config}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
+    t0 = time.time()
+    save = lambda prob, values, stages: write_state(out, args, prob, values, stages, lam, n)  # noqa: E731
+    prob, values, stages, shat = run_stages(args, data, _prob_for(args, data, lam, mask), args.init, save)
+    write_report(args, out, data, prob, values, stages, shat, lam, mask, time.time() - t0)
+
+
+def cmd_report(args):
+    """Recompute the report of a saved fit (``values.npz`` and ``result.json`` in ``--out``) without refitting: for a
+    fit whose reporting failed, or that stopped at its budget, or at a different ``--chunk-size``."""
+    out = pathlib.Path(args.out)
+    saved = json.loads((out / "result.json").read_text())
+    for k, v in saved["args"].items():  # the fit's own arguments, except what this command sets
+        if getattr(args, k, None) is None:
+            setattr(args, k, v)
+    z = np.load(out / "values.npz")
+    values = {k: np.asarray(z[k]) for k in z.files}
+    data = load(args)
+    lam = saved["lam"]
+    mask = _train_mask(args, data)
+    stages = saved["stages"]
+    for st in stages:
+        st.pop("in_progress", None)
+    use = data.select(obs=va.SB_OBS) if stages[-1]["name"] == "sb" else None
+    prob = _prob_for(args, data, lam, mask)(use)
+    shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
+    say(f"report of {out}: config {args.config}, lambda {lam:.6g}, stages {[s['name'] for s in stages]}")
+    write_report(args, out, data, prob, values, stages, shat, lam, mask, saved.get("wall_s"))
 
 
 # ------------------------------------------------------------------ folds, cv
@@ -216,13 +283,13 @@ def cmd_cv_task(args):
     import jax.numpy as jnp
 
     t = time.time()
-    values, info, traj = va.run_fit(prob, {k: jnp.asarray(z[k]) for k in z.files}, max_steps=args.max_steps, time_limit=args.time_limit, log=say)
+    values, info, traj, why = va.run_fit_c8(prob, {k: jnp.asarray(z[k]) for k in z.files}, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol)
     wall = time.time() - t
-    ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus)
-    ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus)
-    tr = va.score(data, prob.scene, values, prob.nuis, mask=train)
+    ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
+    ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
+    tr = va.score(data, prob.scene, values, prob.nuis, mask=train, chunk_size=args.chunk_size)
     res = dict(command="cv-task", config=args.config, lam=lam, lam_train=lam_train, fold=args.fold, n_train=int(train.sum()), n_test=int(test.sum()), folds_sha256=fmeta["sha256"],
-               versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], convergence=va.convergence(traj, info), trajectory=traj,
+               versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], stopped_because=why, convergence=va.convergence(traj, info), trajectory=traj,
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
                             by_ddid_s1=ho1["by_ddid"], by_annulus_s1=ho1["by_annulus"]),
                train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]))
@@ -350,8 +417,8 @@ def cmd_compare(args):
         lam = va.lam_r(len(data.u))
         v_ours = {k: jnp.asarray(vz[k]) for k in vz.files}
         v_mpol = va.values_from_mpol_export(mz, obs_of)
-        o_ours = va.r_objective(data, v_ours, lam=lam, pixel_mas=px)
-        o_mpol = va.r_objective(data, v_mpol, lam=lam, pixel_mas=px)
+        o_ours = va.r_objective(data, v_ours, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
+        o_mpol = va.r_objective(data, v_mpol, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
         res["objective"] = dict(lam_R=lam, ours=o_ours, mpol_solution_in_virgil=o_mpol, mpol_own=obj_m and {k: obj_m.get(k) for k in ("neg_log_likelihood", "entropy", "objective_R")},
                                 ours_le_mpol=bool(o_ours["objective"] <= o_mpol["objective"]),
                                 finding=None if o_ours["objective"] <= o_mpol["objective"] else "our optimiser ended above MPoL's solution: a finding about the fit, not tuned away")
@@ -399,9 +466,10 @@ def main(argv=None):
             p.add_argument("--flux", type=float, default=va.MPOL["f_tot"], help="flux (Jy) of the conversion lam_R -> lam_F")
             p.add_argument("--npix", type=int, default=None)
             p.add_argument("--pixel-mas", type=float, default=5.0)
-            p.add_argument("--max-steps", type=int, default=3000)
-            p.add_argument("--time-limit", type=float, default=None, help="seconds per stage")
-            p.add_argument("--chunk-size", type=int, default=10**6)
+            p.add_argument("--max-steps", type=int, default=20000, help="step budget per stage (the stage stops earlier when C8 holds)")
+            p.add_argument("--time-limit", type=float, default=18000.0, help="seconds per stage (default 5 h)")
+            p.add_argument("--gtol", type=float, default=1e-4, help="fit's gradient test; restarts tighten it until C8 holds")
+            p.add_argument("--chunk-size", type=int, default=va.CHUNK, help="points per model evaluation (the fit's term and every score)")
 
     p = sub.add_parser("fit")
     common(p)
@@ -414,6 +482,14 @@ def main(argv=None):
     p.add_argument("--no-dirty", action="store_true")
     p.add_argument("--flux-lam0", action="store_true", help="also record lam_F's equivalent at the fitted flux")
     p.set_defaults(fn=cmd_fit)
+
+    p = sub.add_parser("report", help="recompute a saved fit's report (result.json, dirty images) without refitting")
+    p.add_argument("--data", required=True)
+    p.add_argument("--out", required=True, help="the fit's directory (values.npz, result.json)")
+    p.add_argument("--shat", default=None)
+    p.add_argument("--no-dirty", action="store_true", default=None)
+    p.add_argument("--chunk-size", type=int, default=va.CHUNK)
+    p.set_defaults(fn=cmd_report, ddids=None, folds=None, fold=None, flux_lam0=None)
 
     p = sub.add_parser("folds")
     p.add_argument("--data", required=True)
@@ -445,6 +521,7 @@ def main(argv=None):
     p.add_argument("--f-dir", default=None)
     p.add_argument("--dsharp", default=None)
     p.add_argument("--out", required=True)
+    p.add_argument("--chunk-size", type=int, default=va.CHUNK)
     p.set_defaults(fn=cmd_compare)
 
     p = sub.add_parser("lambda0")
