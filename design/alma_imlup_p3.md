@@ -103,3 +103,46 @@ The comparison metrics 1, 2, 5 and 6 of `alma_imlup.md` come out of `compare` an
 - Default NuFFT 6e-4 from exact at 256² (P12).
 - AdamW's default weight decay (0.01) also decays the image, σ, amplitude and offset parameters, so `sgd.py` does not optimise exactly the stated objective; R shows how far its solution is from the optimum of that objective.
 - The 1028² × 5 mas field (5.14″) is narrower than DSHARP's CLEAN mask (5.5″ × 3.5″).
+
+## Built: W9 (virgil analysis script)
+
+Code: `scripts/alma_imlup_maxent.py`; helpers in `src/virgil_bridge/alma.py` (P3 section); numpy side
+`src/crosscheck/alma_maxent.py`; tests `tests/test_alma_maxent.py` (R1–R4 and numpy checks); ledger `D12`.
+Every path is an argument; `--data DIR` (a directory of `ddid_NN.npz`, `vis` complex or `re`/`im`) has no default.
+
+**C3 (entropy of the tapered image).** `virgil.imaging.MaxEntropy` is a regulariser: it sees the model, not the
+fitted flux or the taper, and its entropy is of the unit-sum untapered image. R therefore adds a *fit likelihood
+term*, `MPoLEntropy`, with empty residuals and `log_norm(values) = λ S_M`; a term sees every fitted value
+(`flux`, `log_brightness`), and `fit` adds `log_norm` to the loss. `S_M = (1/F_tot) Σ I ln(I/p)` on
+`I = taper ⋆ (flux · softmax(log_brightness) / dx²)` (FFT with the Gaussian multiplier, floor 1e-30), `p = 1e-4`,
+`F_tot = 0.253`. F keeps `MaxEntropy(λ_F, prior = exp(primary beam))`.
+
+**λ conversions (C4, C11).** `λ_R = 2N λ_M` (N = 42,421,131 gives 0.084842262). `λ_F = λ_R · F / (F_tot dx²)`,
+`dx` in arcsec; at F = F_tot, `λ₀ = λ_R / dx² = 3393.69` at 5 mas. The conversion ignores the taper and the beam
+(the CV grid decides); `λ₀` is computed at the nominal flux 0.253 for stage 1 and for the CV grid; `--flux-lam0`
+records it at the fitted flux. `lambda0 --n N [--flux F]` prints it; `--lam-r-equiv` on `fit` applies it.
+
+**Deviations.** (1) `--folds FILE --fold J` replaces the `--mask` of the spec: `folds` writes the
+fold assignment (per-ddid `fold_NN`, `annulus_NN`, a JSON with a sha256) once, and every job reads it. (2) `fit`
+reports in 200-step chunks, so the C8 rule "loss change < 0.1 over ≥ 100 steps" compares the last record with
+the latest one at least 100 steps earlier (the first if shorter). (3) R1's data term agrees to 1.1e-6 of |−ln L|
+(MPoL's accurate NuFFT, `P12`: 1.6e-6 on visibilities), the entropy to 3.5e-8; the test bound is 1e-5.
+
+**CLI** (`$D` the vis directory, `$S` the ŝ directory, `$O` an output root; `python scripts/alma_imlup_maxent.py`):
+
+    fit --config R --data $D --shat $S --out $O/R                       # λ_R = 2N·1e-9, two stages
+    fit --config F --data $D --shat $S --sb-only --lam-r-equiv 0.084842262 --out $O/F_sb
+    fit --config F --data $D --shat $S --lam-r-equiv 0.084842262 --out $O/F
+    folds --data $D --k 5 --seed 0 --out $O/folds.npz
+    cv-task --data $D --folds $O/folds.npz --fold J --init $O/F_sb --lam L --out $O/cv/lam_L/fold_J
+    cv-aggregate $O/cv                                                  # cv_summary.json, cv_curve.png, cv_annulus.png, cv.md
+    fit --config F --data $D --shat $S --init $O/F_sb --lam L_STAR --out $O/F_final
+    compare --virgil $O/R --mpol $MPOL_EXPORT --data $D --f-dir $O/F_final --dsharp DSHARP.fits --out $O/compare
+
+`compare --mpol DIR` reads `export.npz`, `export.json` and `objective.json` from W8's export.
+
+**Outputs of `fit`:** `values.npz` (all fitted values), `image.npy` (float32 sky, Jy/arcsec²; N² × 4 B),
+`image.fits`, `image_tapered.npy` (R only), `resid_dirty_obs{0..6}.npy` (1024² float32, 4 MB each, 28 MB in all;
+`--no-dirty` omits), `result.json` (stages with trajectories, convergence, stop reason, nuisances, −ln L,
+χ² per ddid at s = 1 and fitted, C13 acceptance, `objective_R`, versions). `cv-task`: `cv.json` (a few kB).
+`compare`: `compare.json`, `compare.md`.
