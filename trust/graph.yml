@@ -543,6 +543,8 @@ nodes:
   external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
   external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4)
   virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
+  virgil_bridge.alma: {layer: references, doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
+  crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
   mpol: {layer: references, doc: alma_conventions.md}  # the external package itself (problems P11, P12)
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
