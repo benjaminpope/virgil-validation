@@ -181,7 +181,7 @@ def summary_of(folder, record):
         flagged_nights=[c["name"] for c in checks], checks=[dict(name=c["name"], status=c["status"]) for c in s["checks"]],
         no_orbit=s["modes"]["no_orbit"], primary_diam=search["primary_diam"], pipeline_status=s.get("status"),
     )
-    return dict(collection_id=record.get("collection_id") or f"trackb-{record['slug']}", target=record["target"],
+    return dict(collection_id=f"trackb-{record['slug']}", target=record["target"],
                 instrument=G.INSTRUMENT.get(meta["instrument"], meta["instrument"]),
                 provenance=dict(virgil_commit=meta.get("virgil_commit"), validation_commit=meta.get("validation_commit"),
                                 virgil_vlti_commit=meta.get("virgil_vlti_commit"),
@@ -213,7 +213,7 @@ def main(argv=None):
         except Exception as err:  # noqa: BLE001 a failed target is listed, not hidden
             failed[slug] = f"{type(err).__name__}: {err}"
             continue
-        dest = a.summaries / f"{summary['collection_id']}.json"
+        dest = a.summaries / f"{summary['collection_id']}.json"  # never the committed T1-T5 summary of the collection (oidb_compare.compare reads that shape)
         dest.write_text(json.dumps(G._clean(summary), indent=1) + "\n")
         print(f"wrote {dest.relative_to(REPO) if dest.is_relative_to(REPO) else dest}")
     for slug, why in failed.items():

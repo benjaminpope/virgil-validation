@@ -171,18 +171,45 @@ def test_a_calibrated_run_records_its_data_path(folder):
     assert prov["night_paths"] == {"MJD 1": "calibrated", "MJD 2": "cp-only"}
 
 
-def test_gl229b_summary_takes_the_existing_tile_and_compares_with_xuan(folder):
+def _xuan_best(t_ref=60000.0):
+    """The headline published orbit of Gl 229 B (PMOIRED) as a fit dict: omega is virgil's (the primary's + 180)."""
+    ref = json.loads((ROOT / "oidb" / "references" / "782185b2-0727-42b0-a185-b2072732b047.json").read_text())
+    o = ref["orbit"]["pmoired_frequentist"]
+    return dict(period=o["P_day"][0], dt_peri=o["T_peri_mjd"][0] - t_ref, ecc=o["e"][0], inc=o["i_deg"][0],
+                omega=(o["omega_primary_deg"][0] + 180) % 360, Omega=o["Omega_deg"][0], a_mas=o["a_au"][0] * 173.574)
+
+
+def _gl229b_rows(best, flipped=False, t_ref=60000.0):
     record = json.loads((ROOT / "oidb" / "gallery_extra" / "gl229b.json").read_text())
-    s = PB.summary_of(folder, record)
-    assert s["collection_id"] == record["collection_id"] == "782185b2-0727-42b0-a185-b2072732b047"  # the tile that exists, not trackb-gl229b
-    quantities = [r["quantity"] for r in s["blind"]["table"]]
-    assert any("published orbit's positions at our nights" in q for q in quantities)  # sky plane, after the fit
-    period = next(r for r in s["blind"]["table"] if r["quantity"] == "period (d)")
-    assert period["pub"] == pytest.approx(12.134)  # Xuan+24 PMOIRED, the headline orbit
+    mjd = [60303.1, 60307.1, 60367.1, 60397.1, 60429.1]
+    table = [dict(rank=0, n=34, p_lo=12.0, p_hi=12.3, delta_log_z=0.0)]
+    pub = PB.published_orbit_epochs(record, mjd)
+    return PB.sky_rows(best, t_ref, record, table, (10.0, 14.0), flipped, False, 1.0, pub)
 
 
-def test_hr6819_summary_takes_the_existing_tile(folder):
-    record = json.loads((ROOT / "oidb" / "gallery_extra" / "hr6819.json").read_text())
-    s = PB.summary_of(folder, record)
-    assert s["collection_id"] == "696baf06-6c3c-424d-abaf-066c3c324d99"
-    assert any("published orbit's positions" in r["quantity"] for r in s["blind"]["table"])
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="control")
+def test_the_published_orbit_comparison_reproduces_xuans_orbit_and_rejects_its_reflection():
+    best = _xuan_best()
+    rows, verdict = _gl229b_rows(best)
+    assert rows[0]["ours"] < 1e-6 and verdict == "SAME-SKY-ORBIT"
+    assert "published orbit's positions at our nights" in rows[0]["quantity"]
+    assert rows[1]["pub"] == pytest.approx(12.134) and "band N=34" in rows[1]["note"]
+    _, flipped = _gl229b_rows(dict(best, Omega=best["Omega"] + 180.0))  # (dRA, dDec) -> (-dRA, -dDec)
+    assert flipped == "UNEXPLAINED-FLIP"
+
+
+def test_the_gl229b_and_hr6819_summaries_stay_off_the_committed_tiles(folder):
+    for slug in ("gl229b", "hr6819"):
+        record = json.loads((ROOT / "oidb" / "gallery_extra" / f"{slug}.json").read_text())
+        assert PB.summary_of(folder, record)["collection_id"] == f"trackb-{slug}"  # not the T1-T5 summary's cid
+
+
+def test_the_pull_back_summaries_render_with_the_gallery(folder, tmp_path):
+    import orbit_gallery as G
+
+    summaries = tmp_path / "s"
+    summaries.mkdir()
+    for slug in ("gl229b", "hr6819"):
+        record = json.loads((ROOT / "oidb" / "gallery_extra" / f"{slug}.json").read_text())
+        (summaries / f"trackb-{slug}.json").write_text(json.dumps(G._clean(PB.summary_of(folder, record))))
+    G.build(summaries)  # oidb_compare.compare must not trip on a blind-shaped summary
