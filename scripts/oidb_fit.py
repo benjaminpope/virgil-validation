@@ -44,7 +44,7 @@ and angles (``AngleVector``: omega, Omega and the mean anomaly at t_ref), unifor
 cos i; e uniform on [0, 0.95]. Every fit reports the raw chi2/N on the quoted
 errors first; the fitted error scales follow and are never a pass criterion.
 
-Usage: python scripts/oidb_fit.py <collection id> <data dir> <out dir> [--quick] [--no-nuts] [--exclude-flagged]
+Usage: python scripts/oidb_fit.py <collection id> <data dir> <out dir> [--quick] [--no-nuts] [--exclude-flagged] [--gains TEL,BASE]
 """
 
 import argparse
@@ -94,7 +94,7 @@ def oifits_info(path):
                 resolving[key] = float(np.median(wl[good] / band[good])) if good.any() else float("inf")
             elif name == "OI_TARGET":
                 targets = {int(i): str(t).strip() for i, t in zip(h.data["TARGET_ID"], h.data["TARGET"])}
-            elif name in ("OI_VIS2", "OI_T3"):
+            elif name and name.startswith("OI_") and name != "OI_TARGET" and "TARGET_ID" in h.columns.names:  # every data table, as virgil counts
                 for i in np.asarray(h.data["TARGET_ID"]):
                     rows[int(i)] = rows.get(int(i), 0) + 1
     return dict(insnames=sorted(ins), resolving=resolving, targets=targets, rows=rows)
@@ -128,11 +128,12 @@ def pick_target(path, pattern=None):
         return None
     named = [i for i in ids if i in names]
     pick = named[0] if len(named) == 1 else max(ids, key=rows.get)
-    if pick not in names:
-        raise ValueError(f"{os.path.basename(path)}: several targets {listing}, and the one with most rows is unnamed")
-    log(f"{os.path.basename(path)}: targets {listing}, rows {rows}: reading {names[pick]!r}")
-    return names[pick]
+    log(f"{os.path.basename(path)}: targets {listing}, rows {rows}: reading {names.get(pick, pick)!r}")
+    return names.get(pick, pick)  # an id that OI_TARGET does not list is passed as the integer TARGET_ID
 
+
+GAINS = None  # {"telescope": w, "baseline": w}: fit V^2 with per-frame gains (virgil-vlti noise model) instead of an error scale
+GAIN_PRIOR = dist.LogUniform(1e-3, 0.3)  # width of a fitted gain, on log|V|
 
 LOAD_NOTES = []  # what load() dropped, per file; written into fit_<id>.json
 
@@ -150,7 +151,7 @@ def load(paths, *, insname_prefix=None, target=None, select=None):
     name = pick_target(paths[0], target)
     if name is not None:  # record what the choice left out, so the fit JSON shows it
         info = oifits_info(paths[0])
-        read = sum(n for i, n in info["rows"].items() if info["targets"].get(i) == name)
+        read = sum(n for i, n in info["rows"].items() if name in (i, info["targets"].get(i)))
         LOAD_NOTES.append(dict(file=os.path.basename(paths[0]), target_read=name, rows_read=read,
                                rows_total=sum(info["rows"].values())))
     data = OIData(read_oifits(paths if len(paths) > 1 else paths[0], target=name, insname=insname))
@@ -294,8 +295,14 @@ def fit_epoch(label, data, scene, priors, grid, *, extra=None, noise=None, chi2_
     (of ``chi2_data``: the data without gains, when ``data`` has them)."""
     t0 = time.time()
     log(f"epoch {label}: n_vis={int(np.asarray(data.vis).size)} n_phi={int(np.asarray(data.phi).size)}")
+    plain, gain_noise = data, {}
+    if GAINS and np.asarray(data.vis).size and data.gains is None:
+        # per-frame gains on log|V| (widths fitted, started at GAINS) replace the V^2 error scale; the phases keep theirs
+        data = plain.with_gains(**GAINS)
+        gain_noise = {f"vis_gain_{k}": GAIN_PRIOR for k in GAINS}
+        chi2_data = plain if chi2_data is None else chi2_data
     if start is None:
-        pos = epoch_positions(Epochs({label: data}), grid)
+        pos = epoch_positions(Epochs({label: data}), grid, **({"batch_size": 4} if gain_noise else {}))
         start = dict(dra=float(pos.dra[0]), ddec=float(pos.ddec[0]), flux=float(pos.flux[0]))
         grid_start = dict(start, gap_marginal=float(pos.gap_marginal[0]), chi2_raw=pos.chi2_raw[0],
                           scale=pos.scale[0])
@@ -308,11 +315,14 @@ def fit_epoch(label, data, scene, priors, grid, *, extra=None, noise=None, chi2_
         x = float(np.asarray(prior.mean)) if x is None else x
         lo, hi = float(np.asarray(prior.support.lower_bound)), float(np.asarray(prior.support.upper_bound))
         init[k] = float(np.clip(x, lo + 1e-3 * (hi - lo), hi - 1e-3 * (hi - lo)))  # strictly inside the prior
-    noise = dict(noise_terms(data), **(noise or {}))
+    noise = dict(noise_terms(plain), **(noise or {}), **gain_noise)
+    if gain_noise:
+        noise.pop("vis_scale", None)
     res = fit(scene, priors, data, noise=noise, init=init)
     values = {k: float(np.asarray(res.values[k])) for k in priors}
     scales = scales_of(res.values)
-    scaled = data.with_error_scale({k.replace("_scale", ""): s for k, s in scales.items() if k.endswith("_scale")})
+    scaled = (plain if gain_noise else data).with_error_scale(
+        {k.replace("_scale", ""): s for k, s in scales.items() if k.endswith("_scale")})
     gains = {k[len("vis_gain_"):]: s for k, s in scales.items() if k.startswith("vis_gain_")}
     if gains:  # the Laplace covariance with the fitted gain widths
         scaled = scaled.with_gains(**gains)
@@ -1124,7 +1134,7 @@ def run(collection, data_dir, out_dir, *, quick=False, nuts=True, exclude_flagge
         cfg = dict(nuts=None, n_candidates=50, n_refine=2, dp=0.005, exclude_flagged=exclude_flagged, vis_amp=False)
     t0 = time.time()
     os.makedirs(out_dir, exist_ok=True)
-    head = dict(collection=collection, recipe=RECIPES[collection].__name__, quick=quick, provenance=provenance())
+    head = dict(collection=collection, recipe=RECIPES[collection].__name__, quick=quick, gains=GAINS, provenance=provenance())
 
     def write(path, result):
         with open(path + ".part", "w") as f:
@@ -1153,7 +1163,12 @@ def main(argv=None):
     p.add_argument("--no-nuts", action="store_true", help="orbits: maximum a posteriori only")
     p.add_argument("--exclude-flagged", action="store_true",
                    help="orbits: also leave the flagged nights out of the fits (they only stop seeding by default)")
+    p.add_argument("--gains", metavar="TEL,BASE", help="single-night fits: V^2 with per-frame gains (virgil-vlti noise model) "
+                   "instead of an error scale; the widths on log|V| are fitted, started at these values (e.g. 0.02,0.02)")
     a = p.parse_args(argv)
+    if a.gains:
+        global GAINS
+        GAINS = dict(zip(("telescope", "baseline"), (float(x) for x in a.gains.split(","))))
     path = run(a.collection, a.data_dir, a.out_dir, quick=a.quick, nuts=not a.no_nuts, exclude_flagged=a.exclude_flagged)
     if path:
         print(path, flush=True)
