@@ -86,6 +86,7 @@
 .og-hollow.og-p0 { stroke: var(--og-p0); fill: none; }
 .og-ell { fill-opacity: .13; stroke-width: 1.4; stroke-opacity: .8; }
 .og-ell-alias { fill: none; stroke-dasharray: 4 3; }
+.og-flag path { stroke: var(--og-ours); stroke-width: 2; fill: none; }
 .og-x path, path.og-x { stroke: var(--og-ours); stroke-width: 2.6; stroke-linecap: round; fill: none; }
 .og-hit { cursor: pointer; outline: none; }
 .og-hitarea { fill: transparent; stroke: none; }
@@ -195,3 +196,4 @@
   .og-novt .og-detail, .og-novt .og-grid { animation: none; } .og-tile { transition: none; } .og-tile:hover, .og-tile:focus-within { transform: none; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 0s !important; }
 }
+.og-sw.og-sw-diamond { width: .7rem; height: .7rem; border: 2px solid var(--og-ours); background: transparent; transform: rotate(45deg) scale(.75); margin: 0 .4rem; border-radius: 0; }
