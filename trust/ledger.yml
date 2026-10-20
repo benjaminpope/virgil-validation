@@ -468,3 +468,12 @@
   referee: mathematics (exact DFT of the image, src/crosscheck/alma.py)
   evidence: [tests/test_alma_mpol.py::test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model, tests/test_alma_mpol.py::test_mpol_with_its_accurate_nufft_agrees_to_1e_5]
   status: documented
+
+- id: D12
+  title: MPoL's entropy is of the tapered image in Jy/arcsec^2 against a constant prior 1e-4, normalised by F_tot; virgil's MaxEntropy is of the unit-sum untapered image
+  objects: [mpol, virgil.imaging.MaxEntropy]
+  ruling: definition
+  kind: 'both right (config R reproduces MPoL''s with a fit likelihood term, virgil_bridge.alma.MPoLEntropy; config F keeps MaxEntropy, whose strength is lam_F = lam_R F / (F_tot dx^2), C11)'
+  referee: mathematics (the EHT-IV entropy sum I ln(I/p) / F, numpy, crosscheck.alma_maxent)
+  evidence: [tests/test_alma_maxent.py::test_r1_the_r_objective_equals_2n_times_mpols_loss, tests/test_alma_maxent.py::test_r1_control_virgils_maxentropy_or_the_untapered_image_does_not_match]
+  status: documented

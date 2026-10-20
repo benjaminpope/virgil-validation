@@ -212,8 +212,19 @@ def trackb_tiles(directory=TRACKB):
                                       f"closer than λ/2B (about 1.75 mas for GRAVITY K at 130 m): the authors' positions "
                                       "come from model fitting below the formal resolution."))
         tiles.append(dict(cid=f"trackb-{r['slug']}", trackb=r["slug"], slug=r["slug"].replace("_", "-"), name=r["target"],
-                          kind="orbit", pub="trackb", tagline=tagline, about=about, notes=notes))
+                          kind="orbit", pub="trackb", tagline=tagline, about=about, notes=notes,
+                          data_path=LEGACY_DATA_PATH.get(r["instrument"].upper())))
     return tiles
+
+
+# How the data behind a fit were reduced and fitted. A fit summary's ``provenance["data_path"]`` (written by the rerun)
+# wins over the tile's default below, which only describes the fits made before it exists; a value not in DATA_PATHS
+# (say "calibrated") is not legacy. The renderer turns a legacy value into a visible flag and a "reported" badge.
+DATA_PATHS = {
+    "legacy_uncalibrated_v2": "Legacy: uncalibrated GRAVITY V², white errors + tempering; rerun pending",
+    "legacy_no_gain_model": "Legacy: fitted without the virgil-vlti gain model; rerun pending",
+}
+LEGACY_DATA_PATH = {"GRAVITY": "legacy_uncalibrated_v2", "PIONIER": "legacy_no_gain_model"}  # by instrument, Track B tiles
 
 
 TILES += trackb_tiles()
@@ -579,7 +590,7 @@ def worst_rhat(summary):
     return max(r) if r else None
 
 
-def status_of(table, summary):
+def status_of(table, summary, legacy=None):
     """(status, counts, sentence) from the table rows. The badge follows the scored rows only: agrees needs
     one PASS and no FAIL/MISSING; tension a FAIL/MISSING; rows ``oidb_compare`` keeps as REPORT/NOT-CLEAN (orbit
     elements, per-night positions, iota Peg's unstated conventions) give "reported"."""
@@ -598,6 +609,9 @@ def status_of(table, summary):
         # the scored rows read NUTS medians and sds, whose spread here is mostly the gap between modes
         return "reported", counts, (f"{scored} scored comparison{'s' if scored > 1 else ''} pass, but the NUTS chains have not "
                                     f"converged (r̂ up to {rhat:.0f}), so the pass means little: reported only.")
+    if counts["passed"] and legacy:
+        return "reported", counts, (f"{scored} scored comparison{'s' if scored > 1 else ''} pass, but the fit is legacy "
+                                    f"({legacy.split(': ', 1)[1]}), so the pass means little: reported only.")
     if counts["passed"]:
         return "agrees", counts, f"All {scored} scored comparisons pass (limits fixed before the fits were run)."
     return "reported", counts, "Nothing is scored for this target: its comparisons are reported only."
@@ -639,16 +653,25 @@ def _data_of(tile, manifest):
 PROVISIONAL = "Provisional: {why}; alias not independently resolved"
 
 
+def legacy_text(tile, summary):
+    """The legacy note for this fit, or None: the fit's own ``provenance["data_path"]`` if it records one, else the tile's."""
+    prov = (summary or {}).get("provenance") or {}
+    return DATA_PATHS.get(prov["data_path"] if "data_path" in prov else tile.get("data_path"))
+
+
 def flags_of(tile, summary):
     """Short labels for a tile: a fit that failed, and a fit whose alias cannot be checked, because it was seeded
     from the published orbit or came from one mode (NUTS chains started in one mode cannot find a wrong alias)."""
     out = []
     if tile.get("failed"):
         out.append(dict(key="failed", text=tile["failed"]))
+    if summary is not None and legacy_text(tile, summary):
+        out.append(dict(key="legacy", text=legacy_text(tile, summary)))
     orb = (summary or {}).get("orbit")
     rhat = worst_rhat(summary)
     if rhat is not None and rhat > RHAT_MAX:
         out.append(dict(key="nonconverged", text=f"NUTS did not converge (r̂ up to {rhat:.0f}); posterior values unreliable"))
+    out.extend((summary or {}).get("blind", {}).get("flags", []))  # gallery_pull_back: alias ambiguity, no-orbit, short arc
     if tile["kind"] == "orbit" and orb:
         if orb.get("start") == "published":
             out.append(dict(key="provisional", text=PROVISIONAL.format(why="seeded from the published orbit")))
@@ -692,6 +715,9 @@ def build_target(tile, ref, summary, rows, manifest=None):
                 d["note"] = e["note"]
             t["epochs"].append(d)
         t["table"] = table_of(rows) if ref else []
+        if summary.get("blind"):  # blind pipeline runs: their rows are written by gallery_pull_back
+            t["table"] = summary["blind"]["table"]
+            t["alias_bands"] = summary["blind"]["alias_bands"]
         orb = summary.get("orbit")
         if tile["kind"] == "orbit" and orb:
             el = _our_elements(orb)
@@ -716,7 +742,7 @@ def build_target(tile, ref, summary, rows, manifest=None):
                 e["phase"] = _phase_of(on, e["mjd"])
         t["phase_on"] = "ours" if t["ours"] else "published"
     if summary is not None and ref is not None:
-        t["status"], t["scored"], t["status_why"] = status_of(t["table"], summary)
+        t["status"], t["scored"], t["status_why"] = status_of(t["table"], summary, legacy_text(tile, summary))
         t["tension_sigma"] = _tension(ours_ep, pubs[0][1]) if pubs and tile["kind"] == "orbit" else 0.0
     elif summary is not None:
         t["status"] = "awaiting"
@@ -854,6 +880,11 @@ This gallery asks one question of [virgil](https://github.com/benjaminpope/virgi
 give it the archival data behind a published binary orbit, does it get the authors' answer? Each tile is one binary; \
 open it for the orbit on the sky, the separation and position angle through the orbit, and a table comparing every \
 fitted quantity with the paper.
+
+**Legacy results.** Orbits tagged *Legacy* were fitted before the interferometric calibration was settled: the GRAVITY \
+files behind them are uncalibrated (SINGLE_SCI_VIS), yet their V² was fitted with white errors and tempering and no \
+gain model, and the PIONIER fit also lacked the virgil-vlti gains. Treat them as provisional until the rerun; the \
+design of the replacement noise model is in [virgil PR #436](https://github.com/benjaminpope/virgil/pull/436).
 
 **Why this tests virgil.** The data are the authors' own, so a difference comes from the analysis or from calibration \
 choices the archive does not record: the model, the likelihood, the optimizer, a convention such as which star an angle \

@@ -188,3 +188,17 @@ flip misses by 1e-2 to 0.6. The conventions are CASA's, as in Part 1: the data's
 
 MPoL's `log_likelihood` docstring writes Σ w_i where its code correctly uses
 Σ ln w_i (`P11`). Its taper buffer is float32 (`P12`), a 3.5e-8 effect.
+
+## Part 5. The MaxEnt fit (P3): MPoL's objective in virgil
+
+`scripts/alma_imlup_maxent.py` fits IM Lup with the objective of the MPoL example
+(config R) and with our full model (config F). MPoL's entropy acts on the
+**tapered** image in Jy/arcsec², `S_M = (1/F_tot) Σ I ln(I/p)` with `p = 1e-4` and
+`F_tot = 0.253` (`mpol.losses.entropy`, `tot_flux=1`, divided by `F_tot`); virgil's
+`MaxEntropy` acts on the untapered unit-sum image, so R uses a fit likelihood term
+(`virgil_bridge.alma.MPoLEntropy`, empty residuals, `log_norm = λ S_M`) and F keeps
+`MaxEntropy` (ledger `D12`). The strengths: `λ_R = 2N λ_M` (the data term is −ln L,
+MPoL's loss −ln L / 2N); `λ_F = λ_R · F / (F_tot dx²)` with `dx` in arcsec
+(Σ I ln(I/p) = (F/dx²) [Σ b ln b + const] for a unit-sum `b`). R1 (tests/test_alma_maxent.py)
+checks the R objective against MPoL's own loss: S_M to 1e-7, the data term to
+1.1e-6 (MPoL's accurate NuFFT, `P12`), with controls that must fail.

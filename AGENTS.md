@@ -104,6 +104,9 @@ the rendering). Fixes to these files are limited to what blocks a merge.
 
 **Gallery runs.** The blind orbit fits of the ESO (Track B) gallery targets go through `scripts/gallery_orbits.py`, a thin
 caller of virgil's `OrbitPipeline` (OzSTAR job `gallery_orbits` in ozstar_scripts). Do not add a fit path to the frozen files.
+Exception, ruled by Ben on 2026-10-20: `scripts/orbit_gallery.py` has two rendering hooks (`flags_of` and `build_target` read the
+`blind` block of a summary written by `scripts/gallery_pull_back.py`). They only display; nothing else of the frozen files may be extended.
+Blind tiles always read "reported", because every row is `REPORT`.
 
 ### Binary orbits: solved problems (read first)
 
