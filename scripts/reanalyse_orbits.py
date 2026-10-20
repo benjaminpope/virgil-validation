@@ -193,19 +193,18 @@ def _check_published(ref, refpos, limit_mas=0.5):
     return miss, None
 
 
-def _read_with_vis(T):
-    """trackb_fit._read, but GRAVITY keeps V2 beside the closure phases (the Track B criteria are closure phases only)."""
+def _refuse_gravity_sci_vis(T):
+    """trackb_fit._read, but GRAVITY raises: its uncalibrated SCI_VIS V² (fitted with vis_amp) is not used.
+
+    GRAVITY is fitted by ``gallery_orbits.py`` from the calibrated files (``calibrated_load``)."""
     read_tb = T._read
 
     def read(files, inst):
-        if inst != "GRAVITY":
-            return read_tb(files, inst)
-        from virgil.oidata import OIData
-        from virgil.oifits import read_oifits
+        if inst == "GRAVITY":
+            import calibrated_load
 
-        return OIData(read_oifits([str(f) for f in files], insname="GRAVITY_SC")).select(
-            ranges=T.GRAVITY_RANGES, observables=("vis", "phi")
-        )
+            calibrated_load.refuse_uncalibrated_gravity()
+        return read_tb(files, inst)
 
     return read
 
@@ -214,8 +213,8 @@ def make_trackb_loader(name, primary_omega=False):
     def load(root):
         import trackb_fit as T
 
-        T._read = _read_with_vis(T) if not getattr(T._read, "_vis", False) else T._read
-        T._read._vis = True
+        T._read = _refuse_gravity_sci_vis(T) if not getattr(T._read, "_guarded", False) else T._read
+        T._read._guarded = True
 
         s, _ = _trackb_system(root, name)
         p_json = s["reference_orbit"]["P_day"][
