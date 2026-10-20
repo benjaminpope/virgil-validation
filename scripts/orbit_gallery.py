@@ -233,6 +233,9 @@ TARGETS = {t["cid"]: t for t in TILES}  # the collections the gallery shows
 # ``orbit["epoch_checks"]`` (reasons starting "flagged"); for a summary that predates that field, these nights
 # are flagged by label (Xuan et al. flag the same two, as 02-27 and 03-28).
 ALIAS_NIGHTS = {GL229: {"2024-02-28", "2024-03-29"}}
+ALIAS_CODE = "alias-peaks"  # the one virgil flag code (src/virgil/epochs.py) that means a single-night alias peak
+FLAG_CODES = ("alias-peaks", "low-gap", "sep-below-resolution", "flux-at-bound", "chi2-high")
+MODE_DLOSS_MAX = 10.0  # nats: an alternative mode with a larger Δloss than this is not credible and is not drawn
 ELEMENTS = ("period_day", "t_peri_mjd", "ecc", "inc_deg", "omega_deg", "Omega_deg", "a_mas")
 
 
@@ -680,6 +683,20 @@ def flags_of(tile, summary):
     return out
 
 
+def flag_of(check):
+    """``(code, reason, excluded)`` of an epoch check, or None when the night is not flagged.
+
+    virgil writes ``"flagged: <code>: <why>"``; only the code ``alias-peaks`` marks an alias. ``barred`` is virgil's own
+    statement that the night was left out of the orbit fit."""
+    for r in check.get("reasons", []):
+        r = str(r)
+        if r.startswith("flagged"):
+            parts = [x.strip() for x in r.split(":", 2)]
+            code = parts[1] if len(parts) > 1 and parts[1] in FLAG_CODES else "other"
+            return code, r.split(":", 1)[1].strip(), bool(check.get("barred"))
+    return None
+
+
 def build_target(tile, ref, summary, rows, manifest=None):
     manifest = manifest if manifest is not None else {c["id"]: c for c in load_manifest()["collections"]}
     pubs = published_orbits(tile["pub"], ref) if ref and tile["pub"] else []
@@ -702,7 +719,8 @@ def build_target(tile, ref, summary, rows, manifest=None):
         pub_ep = published_epochs(tile, ref, ours_ep, pubs[0][1] if pubs else None) if ref else [None] * len(ours_ep)
         t["epochs"] = []
         checks = (summary.get("orbit") or {}).get("epoch_checks")
-        alias_labels = ({c["name"] for c in checks if any(str(r).startswith("flagged") for r in c.get("reasons", []))}
+        flags = {c["name"]: flag_of(c) for c in checks or []}
+        alias_labels = ({n for n, f in flags.items() if f and f[0] == ALIAS_CODE}
                         if checks is not None else ALIAS_NIGHTS.get(tile["cid"], ()))
         for e, p in zip(ours_ep, pub_ep):
             sep, pa = _sep_pa(e["dra"], e["ddec"])
@@ -711,6 +729,9 @@ def build_target(tile, ref, summary, rows, manifest=None):
                 d["pub"] = p
             if e.get("alias") or e["label"] in alias_labels:
                 d["alias"] = True
+            f = flags.get(e["label"])
+            if f and f[0] != ALIAS_CODE:
+                d["flag"] = dict(code=f[0], reason=f[1], excluded=f[2])
             if e.get("note"):
                 d["note"] = e["note"]
             t["epochs"].append(d)
@@ -723,9 +744,13 @@ def build_target(tile, ref, summary, rows, manifest=None):
             el = _our_elements(orb)
             t["ours"] = dict(label="virgil MAP", path=sky_path(el, ep_mjds), elements=el)
             best = orb["modes"][0]["loss"] if orb.get("modes") else orb.get("loss")
+            t["modes_hidden"], t["mode_dloss_max"] = 0, MODE_DLOSS_MAX
             for k, m in enumerate(orb.get("modes", [])):
                 if k == 0:
                     continue  # the best mode is the MAP
+                if m["loss"] - best > MODE_DLOSS_MAX:
+                    t["modes_hidden"] += 1  # not credible: counted, not drawn, and kept out of the axis limits
+                    continue
                 mel = _elements_of(m["elements"])
                 t["alternatives"].append(dict(label=f"mode {k + 1}", dloss=m["loss"] - best,
                                               path=sky_path(mel, ep_mjds), elements=mel))
@@ -792,15 +817,19 @@ GUIDE = [
               "refitted to convergence. Δloss is how much higher its loss (the negative log posterior) is than the "
               "MAP's: a few units cannot be ruled out, hundreds are clearly worse. They are shown because an orbit fit "
               "can lock onto an alias (a different number of cycles between nights) or a mirror image, and the reader "
-              "should see what else the data allow."),
+              f"should see what else the data allow. Only credible modes are drawn, those within Δloss ≤ {MODE_DLOSS_MAX:g} nats of "
+              "the MAP; the page says how many worse ones were hidden, and the axes are set by our orbit, the "
+              "published orbit and the nights alone."),
     dict(key="eps", title="Epoch points",
          text="Each filled blue dot is the companion's position on one night, from fitting that night alone, with its "
               "1σ error ellipse. Open orange rings are the paper's own position for that night, where it gives one. "
               "Hover over a dot, or tab to it, for the date, separation and position angle."),
     dict(key="alias", title="Alias nights",
-         text="A cross with a dashed ellipse marks a night whose best single-night peak is a known alias: a secondary "
-              "maximum of the likelihood, not the companion's true position. Such nights are flagged, not used as "
-              "constraints, and are not expected to sit on the orbit."),
+         text="A cross with a dashed ellipse marks a night that virgil flagged alias-peaks: its best single-night peak is "
+              "a secondary maximum of the likelihood, not the companion's true position. Such nights are not expected "
+              "to sit on the orbit. Other flags (separation below the resolution limit, chi2 too high, flux at its "
+              "bound, low gap) are drawn as open diamonds, not crosses, with the reason in the tooltip; the tooltip "
+              "and the legend say whether the night was excluded from the orbit fit."),
     dict(key="phase", title="Phase panels",
          text="Separation and position angle against orbital phase, with phase 0 at periastron. Each curve is folded on "
               "its own period; the dots are our nights placed on our orbit. A target without an orbit shows the "
