@@ -228,6 +228,9 @@ LEGACY_DATA_PATH = {"GRAVITY": "legacy_uncalibrated_v2", "PIONIER": "legacy_no_g
 
 
 TILES += trackb_tiles()
+# Tiles left off the page for now; their references and data stay in the repo, delete the entry to restore the tile.
+HIDDEN = {ESO_9SGR: "no JMMC pipeline setup yet (2026-10-21)", ESO_HD168137: "no JMMC pipeline setup yet (2026-10-21)"}
+TILES = [t for t in TILES if t["cid"] not in HIDDEN]
 TARGETS = {t["cid"]: t for t in TILES}  # the collections the gallery shows
 # Single-night alias peaks (design/orbit_comparison.md section 5): a fit summary names them in
 # ``orbit["epoch_checks"]`` (reasons starting "flagged"); for a summary that predates that field, these nights
