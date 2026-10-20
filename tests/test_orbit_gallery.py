@@ -66,12 +66,11 @@ def test_compare_reads_summaries_through_the_adapter(og):
 
 @pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
 def test_every_reference_target_gets_a_section(og, data):
-    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {PI1GRU, HD45166}  # pi1 Gru is a single star: no tile
+    refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {PI1GRU, HD45166, "eso-9sgr", "eso-hd168137"}  # pi1 Gru is a single star: no tile; 9 Sgr and HD 168137 are off the page (no JMMC pipeline setup)
     trackb = {f"trackb-{p.stem}" for p in og.TRACKB.glob("*.json")}  # the Track B targets are tiles of their own
     assert trackb and not trackb & refs
-    assert {t["collection_id"] for t in data["targets"]} == (refs | trackb) - set(og.HIDDEN)
-    assert (refs | trackb) - set(og.HIDDEN) == set(og.TARGETS)
-    assert not set(og.HIDDEN) & {x["collection_id"] for x in data["targets"]}
+    assert {t["collection_id"] for t in data["targets"]} == refs | trackb
+    assert refs | trackb == set(og.TARGETS)
     assert len({t["slug"] for t in data["targets"]}) == len(data["targets"]) == len(og.TILES)  # the workshop collection gives two tiles
     text = og.page(data)
     names = re.findall(r"^\*\*(.+)\*\*$", text, flags=re.M)  # the plain-text section of each target
