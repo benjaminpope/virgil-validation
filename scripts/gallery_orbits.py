@@ -103,12 +103,13 @@ def load_nights(slug, root, include_extra=False):
         multi = len({n["mode"] for n in found}) > 1
         for n in found:
             label = C.night_label(n["mjd"], n["mode"] if multi else None)
-            notes += [f"{label}: {x}" for x in n["notes"]]
             try:
                 nights[label] = C.load_gravity_night(n)
             except ValueError as err:  # a night with no readable file is left out; MIN_NIGHTS decides
+                notes += [f"{label}: {x}" for x in n["notes"]]
                 notes.append(f"{label}: left out: {err}")
                 continue
+            notes += [f"{label}: {x}" for x in n["notes"]]  # after the load: it may leave a file out
             used[label] = dict(data_path=n["path"], mode=n["mode"], files=[dict(file=f.name, sha256=sha256(f)) for f in n["files"]])
     elif inst == "PIONIER":
         dirs = ["oifits"] + (["oifits_extra"] if include_extra else [])
@@ -126,11 +127,14 @@ def load_nights(slug, root, include_extra=False):
         for night, fs in group_nights(items):
             label = C.night_label(night)
             try:
-                nights[label] = C.load_pionier_night(fs)
+                nights[label], dropped = C.load_pionier_night_robust(fs)
             except ValueError as err:
                 notes.append(f"{label}: left out: {err}")
                 continue
-            used[label] = dict(data_path=C.PAIR_GAINS, mode=None, files=[dict(file=f.name, sha256=sha256(f)) for f in fs])
+            notes += [f"{label}: dropped {x['file']}: {x['error']}" for x in dropped]
+            left = {x["file"] for x in dropped}
+            used[label] = dict(data_path=C.PAIR_GAINS, mode=None,
+                               files=[dict(file=f.name, sha256=sha256(f)) for f in fs if f.name not in left])
     else:
         raise ValueError(f"{slug}: no calibrated loader for {inst}")
     if len(nights) < MIN_NIGHTS:

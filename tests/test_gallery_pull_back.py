@@ -150,3 +150,22 @@ def test_the_period_row_says_where_the_published_period_ranked_or_that_it_is_out
     assert "no finite evidence" in note
     note = PB.sky_rows(best, t_ref, r, low[:-1], (100.0, 3000.0), False, False, 1.0)[0][-1]["note"]
     assert "outside the searched window" in note
+
+
+def _prov(folder, **meta):
+    g = json.loads((folder / "gallery.json").read_text())
+    _write(folder / "gallery.json", dict(g, **meta))
+    return PB.summary_of(folder, json.loads((ROOT / "oidb" / "trackb" / "hd_9312.json").read_text()))["provenance"]
+
+
+def test_a_run_without_a_data_path_stays_legacy_flagged_even_with_list_valued_nights(folder):
+    """A gallery.json written before the calibrated loader has no ``data_path`` and stores each night as a list."""
+    prov = _prov(folder, nights={"MJD 1": [dict(file="a.fits", sha256="0")]})
+    assert "data_path" not in prov and prov["night_paths"] is None  # the gallery's legacy flag then stays
+
+
+def test_a_calibrated_run_records_its_data_path(folder):
+    nights = {"MJD 1": dict(data_path="calibrated", files=[]), "MJD 2": dict(data_path="cp-only", files=[])}
+    prov = _prov(folder, data_path="mixed", nights=nights, virgil_vlti_commit="abc")
+    assert prov["data_path"] == "mixed" and prov["virgil_vlti_commit"] == "abc"
+    assert prov["night_paths"] == {"MJD 1": "calibrated", "MJD 2": "cp-only"}

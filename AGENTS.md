@@ -109,7 +109,7 @@ pinning test say which plan phase adds it. Memory-note pointer: `orbit-solved-to
 | Resolved (UD) primary (iota Peg, 1.05 mas) | UD primary, UD-aware seeds | `reanalyse_orbits.py`; virgil `epoch_positions(primary_diam=)` | `test_reanalyse_orbits.py::test_every_system_has_a_primary_diameter_entry`; recovery test pending: plan phase 1b |
 | Separation below the 0.82 mas floor | flag, do not score | `orbit_diagnose.py` | test pending: plan phase 1b (night flags) |
 | Closure triangles whose leg has no V^2 row (T3 filter) | virgil places the leg from the T3 U/V | virgil `read_oifits` | `test_oidb_fits.py::test_triangles_with_a_baseline_in_no_vis2_row_are_kept` |
-| V^2 amplitude (contrast loss) | per-night amplitude | `oidb_fit.vis_amp_of`, `fit_orbit_vis_amp` | `test_oidb_fits.py::test_vis_amp_of_recovers_a_contrast_loss`, `::test_vis_amp_variant_...` |
+| V^2 amplitude (contrast loss) | per-night amplitude, for data without gains only (the legacy Gl 229 loader); calibrated gains supersede it and virgil refuses both (`calibrated_load.py`) | `oidb_fit.vis_amp_of`, `fit_orbit_vis_amp` | `test_oidb_fits.py::test_vis_amp_of_recovers_a_contrast_loss`, `::test_vis_amp_variant_...` |
 | Untempered evidence (band p = 1.000 at chi2/N 12) | tempered likelihood, effective channels | virgil, plan phase 1d | test pending: plan phase 1d |
 | Serial `lax.map` in the search | batched evaluation | virgil `aliases` | test pending: plan phase 1e |
 | Unconverged NUTS reported as a result | `converged` flag, `r_hat`, `ess`, `divergences` checks | `oidb_fit`; virgil pipeline checks | test pending: plan phase 1e |

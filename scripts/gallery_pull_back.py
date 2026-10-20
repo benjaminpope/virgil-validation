@@ -168,7 +168,8 @@ def summary_of(folder, record):
                                 virgil_vlti_commit=meta.get("virgil_vlti_commit"),
                                 # absent for a run that predates it: the tile's legacy flag then stays
                                 **({k: meta[k] for k in ("data_path",) if meta.get(k)}),
-                                night_paths={k: v.get("data_path") for k, v in (meta.get("nights") or {}).items()} or None),
+                                night_paths={k: v.get("data_path") for k, v in (meta.get("nights") or {}).items()
+                                             if isinstance(v, dict)} or None),
                 orbit=orbit, blind=blind)
 
 

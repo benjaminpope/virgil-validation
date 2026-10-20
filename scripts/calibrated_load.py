@@ -57,6 +57,16 @@ def _is_cp_only(path):
     return bool(fits.getheader(path, 0).get(CP_ONLY_KEY, False))
 
 
+def _check_night_folder(name, mjd, files):
+    """The folder is named by the UT-noon-to-noon night (virgil-vlti): a file's MJD-OBS must fall in it."""
+    from astropy.io import fits
+
+    for f in files:
+        obs = fits.getheader(f, 0).get("MJD-OBS")
+        if obs is not None and night_of(float(obs)) != mjd:
+            raise ValueError(f"{f}: MJD-OBS {obs} is in night {night_of(float(obs))}, not the folder's {name} (MJD {mjd})")
+
+
 def gravity_nights(sysdir):
     """Nights of a system's calibrated GRAVITY files: ``[dict(mjd, mode, path, files, notes)]`` by mode and night.
 
@@ -80,17 +90,43 @@ def gravity_nights(sysdir):
                 used, path = full, CALIBRATED
             else:
                 used, path = files, CP_ONLY
-            nights.append(dict(mjd=_folder_mjd(nd.name), mode=moded.name, path=path, files=used, notes=notes))
+            mjd = _folder_mjd(nd.name)
+            _check_night_folder(nd.name, mjd, files)
+            nights.append(dict(mjd=mjd, mode=moded.name, path=path, files=used, notes=notes))
     return nights
 
 
 def load_gravity_night(night, ranges=None):
-    """OIData of one ``gravity_nights`` entry: V² with gains and closure phases with offsets, or closure phases only."""
-    import virgil_vlti
+    """OIData of one ``gravity_nights`` entry: V² with gains and closure phases with offsets, or closure phases only.
+
+    If the night's files fail together (``ValueError``) each is tried alone: a file virgil-vlti cannot load (e.g. a
+    three-telescope closure-phase-only file, whose offsets need four telescopes) is left out of ``night["files"]`` with
+    a reason in ``night["notes"]``, not worked around; a night with no loadable file raises."""
     import trackb_fit as T
+    import virgil_vlti
 
     obs = ("vis", "phi") if night["path"] == CALIBRATED else "phi"
-    return virgil_vlti.to_oidata(night["files"], "GRAVITY_SC", ranges=ranges or T.GRAVITY_RANGES, observables=obs)
+
+    def read(files):
+        return virgil_vlti.to_oidata(files, "GRAVITY_SC", ranges=ranges or T.GRAVITY_RANGES, observables=obs)
+
+    try:
+        return read(night["files"])
+    except ValueError as err:
+        if len(night["files"]) == 1:
+            raise
+        first = err
+    good = []
+    for f in night["files"]:
+        try:
+            read([f])
+            good.append(f)
+        except ValueError as err:
+            night["notes"].append(f"{f.name}: left out: {str(err)[:200]}")
+    if not good:
+        raise first
+    night["files"] = good
+    return read(good)
 
 
 def pionier_template():
@@ -114,6 +150,25 @@ def load_pionier_night(files):
     if len(names) != 1:  # PIONIER carries its wavelength solution in INSNAME: one solution per read
         raise ValueError(f"PIONIER files of one night with several INSNAMEs: {sorted(names)}")
     return virgil_vlti.to_oidata([str(f) for f in files], names.pop(), template=pionier_template())
+
+
+def load_pionier_night_robust(files):
+    """``(OIData, dropped)``: ``load_pionier_night``, a file virgil cannot read left out as ``trackb_fit.load`` does."""
+    try:
+        return load_pionier_night(files), []
+    except ValueError:
+        if len(files) == 1:
+            raise
+    good, dropped = [], []
+    for f in files:
+        try:
+            load_pionier_night([f])
+            good.append(f)
+        except ValueError as err:
+            dropped.append(dict(file=f.name, error=str(err)[:300]))
+    if not good:
+        raise ValueError(f"no readable file: {dropped}")
+    return load_pionier_night(good), dropped
 
 
 def system_data_path(paths):

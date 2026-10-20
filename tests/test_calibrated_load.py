@@ -93,13 +93,6 @@ def test_pionier_template_carries_the_pair_test_widths():
     assert t.provenance["widths"] == dict(telescope=0.011, baseline=0.009, offset=0.21)
 
 
-def test_pull_back_keeps_the_legacy_flag_unless_a_path_was_recorded():
-    import gallery_pull_back as PB
-
-    src = pathlib.Path(PB.__file__).read_text()
-    assert '"data_path"' in src and "absent for a run that predates it" in src
-
-
 def test_grid_batches_are_limited_for_data_with_gains():
     from virgil import _grid
 
@@ -115,3 +108,48 @@ def test_grid_batches_are_limited_for_data_with_gains():
         assert _grid.batch_size_or_default(None, D) == 4  # not the default ~1200 points
     finally:
         _grid.CPU_BATCH_VISIBILITIES, _grid.ACCELERATOR_BATCH_VISIBILITIES, _grid.MIN_BATCH_SIZE = old
+
+
+def test_a_file_that_cannot_load_is_left_out_with_a_reason(sysdir, monkeypatch):
+    import virgil_vlti
+
+    def fake(files, ins, **kw):
+        if any(f.name == "bad.fits" for f in files):
+            raise ValueError("closure offsets need four telescopes")
+        return "data"
+
+    monkeypatch.setattr(virgil_vlti, "to_oidata", fake)
+    night = dict(path=C.CP_ONLY, notes=[], files=[sysdir / "bad.fits", sysdir / "ok.fits"])
+    assert C.load_gravity_night(night) == "data"
+    assert [f.name for f in night["files"]] == ["ok.fits"] and "bad.fits" in night["notes"][0]
+    with pytest.raises(ValueError):
+        C.load_gravity_night(dict(path=C.CP_ONLY, notes=[], files=[sysdir / "bad.fits"]))
+
+
+def test_a_pionier_file_that_cannot_load_is_dropped_not_the_night(monkeypatch, tmp_path):
+    def fake(files):
+        if any(f.name == "bad.fits" for f in files):
+            raise ValueError("no V2 row for a closure leg")
+        return "data"
+
+    monkeypatch.setattr(C, "load_pionier_night", fake)
+    files = [tmp_path / "bad.fits", tmp_path / "ok.fits"]
+    d, dropped = C.load_pionier_night_robust(files)
+    assert d == "data" and [x["file"] for x in dropped] == ["bad.fits"]
+    with pytest.raises(ValueError, match="no readable file"):
+        C.load_pionier_night_robust(files[:1] * 2)
+
+
+def test_a_folder_that_is_not_the_files_noon_to_noon_night_is_an_error(tmp_path):
+    ok = tmp_path / "s" / "calibrated" / "HIGH" / "2020-12-08" / "a.fits"
+    _file(ok)
+    with fits.open(ok, mode="update") as h:
+        h[0].header["MJD-OBS"] = 59192.09  # 2020-12-09T02:10 UT: night MJD 59191 = folder 2020-12-08
+    assert C.gravity_nights(tmp_path / "s")[0]["mjd"] == 59191
+    with fits.open(ok, mode="update") as h:
+        h[0].header["MJD-OBS"] = 59191.6  # evening of the 8th
+    assert C.gravity_nights(tmp_path / "s")[0]["mjd"] == 59191
+    with fits.open(ok, mode="update") as h:
+        h[0].header["MJD-OBS"] = 59193.2  # a day later: the folder would be the UT date, not the night
+    with pytest.raises(ValueError, match="not the folder's"):
+        C.gravity_nights(tmp_path / "s")
