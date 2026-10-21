@@ -181,7 +181,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
-        alpha=va.alpha_report(values)[0], alpha_label=va.alpha_report(values)[1],
+        alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
     )
@@ -221,7 +221,14 @@ def _prob_for(args, data, lam, mask):
     return prob_for
 
 
+def resolve_alpha(args):
+    """Record the resolved alpha setting in the saved args (the CLI default is None, which would hide a changed default)."""
+    if getattr(args, "alpha_free", None) is None:
+        args.alpha_free = bool(va.FULL["alpha_free"])
+
+
 def cmd_fit(args):
+    resolve_alpha(args)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
@@ -244,6 +251,8 @@ def cmd_report(args):
         if getattr(args, k, None) is None:
             setattr(args, k, v)
     z = np.load(out / "values.npz")
+    if getattr(args, "alpha_free", None) is None and args.config == "F":  # a fit made before --alpha-free existed: its values say
+        args.alpha_free = "cal.alpha" in z.files
     values = {k: np.asarray(z[k]) for k in z.files}
     data = load(args)
     lam = saved["lam"]
@@ -270,6 +279,7 @@ def cmd_folds(args):
 
 
 def cmd_cv_task(args):
+    resolve_alpha(args)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
@@ -293,7 +303,7 @@ def cmd_cv_task(args):
                versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], stopped_because=why, convergence=va.convergence(traj, info), trajectory=traj,
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
                             by_ddid_s1=ho1["by_ddid"], by_annulus_s1=ho1["by_annulus"]),
-               train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]), alpha_label=va.alpha_report(values)[1])
+               train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]), alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1])
     dump(out / "cv.json", res)
     say(f"held-out -ln L {ho['nll']:.4f} on {ho['n']:,} points; wrote {out / 'cv.json'}")
 
