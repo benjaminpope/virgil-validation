@@ -191,3 +191,15 @@ def test_virgils_real_time_stop_is_spelled_time(syn):
     v = va.start_values(prob)
     _, info, _ = va.run_fit(prob, v, max_steps=5000, time_limit=1e-6, gtol=1e-12)  # the time test runs after a 200-step chunk
     assert info["stop"] == "time", info
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"])
+def test_f_fixes_alpha_unless_opted_in(syn):
+    data = va.load_dir(syn)
+    fixed = va.build_problem(data, "F", lam=1000.0, npix=16)
+    assert "cal.alpha" not in fixed.init and "cal.alpha" not in fixed.priors
+    free = va.build_problem(data, "F", lam=1000.0, npix=16, alpha_free=True)
+    assert "cal.alpha" in free.init and "cal.alpha" in free.priors
+    assert va.alpha_report(fixed.init) == (None, "fixed 0 (MPoL)")
+    a, label = va.alpha_report(free.init)
+    assert a == float(free.init["cal.alpha"]) and "None" not in label

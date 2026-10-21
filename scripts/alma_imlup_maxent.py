@@ -179,7 +179,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
-        alpha=float(values["cal.alpha"]) if "cal.alpha" in values else None,
+        alpha=va.alpha_report(values)[0], alpha_label=va.alpha_report(values)[1],
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
     )
@@ -214,7 +214,7 @@ def _train_mask(args, data):
 def _prob_for(args, data, lam, mask):
     def prob_for(use):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
-        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size)
+        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
 
     return prob_for
 
@@ -226,7 +226,7 @@ def cmd_fit(args):
     n = len(data.u)
     lam = lam_of(args, n)
     mask = _train_mask(args, data)
-    say(f"config {args.config}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
+    say(f"config {args.config}, alpha {'free' if getattr(args, 'alpha_free', None) else va.ALPHA_FIXED_LABEL}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
     t0 = time.time()
     save = lambda prob, values, stages: write_state(out, args, prob, values, stages, lam, n)  # noqa: E731
     prob, values, stages, shat = run_stages(args, data, _prob_for(args, data, lam, mask), args.init, save)
@@ -276,7 +276,7 @@ def cmd_cv_task(args):
     n_all = len(data.u)
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
-    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size)
+    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
 
@@ -290,7 +290,7 @@ def cmd_cv_task(args):
                versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], stopped_because=why, convergence=va.convergence(traj, info), trajectory=traj,
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
                             by_ddid_s1=ho1["by_ddid"], by_annulus_s1=ho1["by_annulus"]),
-               train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]))
+               train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]), alpha_label=va.alpha_report(values)[1])
     dump(out / "cv.json", res)
     say(f"held-out -ln L {ho['nll']:.4f} on {ho['n']:,} points; wrote {out / 'cv.json'}")
 
@@ -468,6 +468,7 @@ def main(argv=None):
             p.add_argument("--time-limit", type=float, default=18000.0, help="seconds per stage (default 5 h)")
             p.add_argument("--gtol", type=float, default=1e-4, help="fit's gradient test; restarts tighten it until C8 holds")
             p.add_argument("--chunk-size", type=int, default=va.CHUNK, help="points per model evaluation (the fit's term and every score)")
+            p.add_argument("--alpha-free", dest="alpha_free", action="store_true", default=None, help="F: fit the spectral index within its bounds (default: fixed 0, as MPoL)")
 
     p = sub.add_parser("fit")
     common(p)

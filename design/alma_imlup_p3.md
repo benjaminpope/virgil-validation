@@ -173,3 +173,14 @@ The first A100 run fitted F_sb, R and F but lost R and F: the per-point report c
   non_finite, max_rounds}. Defaults: `--max-steps 20000`, `--time-limit 18000` (5 h) per stage; `--gtol` sets the first
   round's tolerance. The cv-task defaults are unchanged.
 - C13 (SB |s/ŝ−1| up to 0.123 at ddid 5–6) is reported as a finding, not tuned. Science settings are unchanged.
+
+## Decision: F fixes alpha = 0 (2026-10-21)
+
+Configuration F no longer fits the spectral index by default: `CalibrationNuisance(..., alpha=False)`, so alpha = 0 as in MPoL
+(one monochromatic image for all EBs and spws). Ben: "let's fix it to what MPoL does for now, because we care about the
+comparison". Evidence: the data barely constrain alpha (a few % fractional bandwidth) and it trades off against the per-obs
+gains; in MaxEnt run 03531b4 free alpha pegged at 5.0, the upper bound of virgil's default (0, 5), and in bd3f748 it sat near 0.
+Primary beam, entropy form, lambda and `nu0_hz` are unchanged. Free alpha stays as an opt-in for a later scan
+(alpha in {0, 2.5, 5}): `FULL["alpha_free"]` / `build_problem(..., alpha_free=True)` / `--alpha-free` on `alma_imlup_maxent.py`
+(fit, cv-task; `report` reads it from the fit's saved args). `result.json` carries `alpha` (float, or null when fixed) and
+`alpha_label` ("fixed 0 (MPoL)" or the fitted value). alma_imlup_cv passes no alpha flag, so it follows the new default.
