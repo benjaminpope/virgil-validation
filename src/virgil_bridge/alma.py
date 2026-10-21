@@ -634,4 +634,32 @@ def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=E
     prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, mask=mask)
     sc = score(data, prob.scene, values, prob.nuis, mask=mask, eps=eps, chunk_size=chunk_size)
     s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
-    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s)
+    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s, by_ddid=sc["by_ddid"], n=sc["n"])
+
+
+def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chunk_size=CHUNK):
+    """How well scaled R's parameters are for L-BFGS, at ``values``: per site (image pixels, flux, gain, offset, sigma), the
+    gradient of the loss ``virgil.fit`` minimises with respect to the unconstrained coordinates z it optimises
+    (``|g_z|`` max and 2-norm), the median Jacobian ``dx/dz`` of the site's value x (1 for the pixels; for ``cal.offset`` about
+    half the offset bound in mas, since z is a logit of ``x/bound``), and the gradient in the site's own units
+    ``g_x = g_z / (dx/dz)``. The loss is virgil's ``_Objective.loss`` (a private class, pinned with virgil) at the fit's
+    eps; one value-and-gradient costs what an L-BFGS step does."""
+    import jax
+    import jax.numpy as jnp
+    from virgil.fitting import _Objective
+
+    npix = npix or values["log_brightness"].shape[0]
+    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, chunk_size=chunk_size)
+    obj = _Objective(prob.model, prob.priors, (), tuple(prob.regs), None, tuple(prob.terms))
+    z = obj.init({k: jnp.asarray(v) for k, v in values.items() if k in obj.sites})
+    with ft_eps(eps):
+        g = jax.grad(obj.loss)(z)
+    rows = {}
+    for site in obj.sites:
+        # elementwise maps: dx_i/dz_i is the gradient of sum(x) with respect to z
+        jac = jax.grad(lambda zz, site=site: jnp.sum(obj.constrain({**z, site: zz})[site]))(z[site])
+        gz, jz = np.asarray(g[site], float).ravel(), np.asarray(jac, float).ravel()
+        gx = gz / jz
+        rows[site] = dict(n=int(gz.size), gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
+                          gx_max=float(np.max(np.abs(gx))), gx_norm=float(np.linalg.norm(gx)))
+    return rows
