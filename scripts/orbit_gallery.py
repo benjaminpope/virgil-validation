@@ -138,38 +138,6 @@ TILES = [
                 dict(kind="data", title="Unpublished data",
                      text="An L2 (not yet published) collection from the CHARA 2023 imaging workshop, shown here with "
                           "clearance for display (data PI Gail Schaefer).")]),
-    dict(cid=ESO_9SGR, slug="9-sgr", name="9 Sgr (HD 164794)", kind="orbit", pub="9sgr",
-         instrument="VLTI/AMBER + PIONIER + GRAVITY",
-         data=dict(archive="ESO science archive (raw frames, public): VLTI/AMBER, PIONIER and GRAVITY, 17 of the 23 published epochs (16 nights)",
-                   datapi="programmes 083.D-0066, 386.D-0198, 086.D-0586, 091.D-0334, 092.D-0590, 093.D-0673, 093.D-0039, "
-                          "60.A-9209, 60.A-9168, 596.D-0495"),
-         tagline="An O3.5 V + O5.5 V binary on a 9-year, e = 0.65 orbit, seen by three VLTI instruments",
-         about="Le Bouquin et al. (2017) followed 9 Sgr (HD 164794) with AMBER, PIONIER and GRAVITY and fitted the 18 "
-               "positions together with radial velocities; Fabry et al. (2021) added five epochs and refitted. The orbit "
-               "is drawn here for context. Raw frames are being reduced with the instrument pipelines (pndrs, amdlib, the "
-               "ESO GRAVITY pipeline), and the blind fit has not been run: this is the 'awaiting blind fit' placeholder.",
-         notes=[dict(kind="convention", title="Conventions",
-                     text="Both papers give ω for the secondary and PA east of north, as virgil does, so no shift is applied "
-                          "(the published orbit reproduces the 18 published positions to 0.19 mas rms; positions cannot check the sign of ω and Ω, which only radial velocities fix, so compare them modulo the joint 180° flip). "
-                          "Fabry et al. do not tabulate a semi-major axis: the 14.83 mas drawn for their orbit is derived "
-                          "from their masses, period and distance."),
-                dict(kind="caveat", title="Two published orbits",
-                     text="Le Bouquin et al. find P = 3310 d and a mass tension; Fabry et al. find P = 3261 ± 69 d and "
-                          "resolve it. Both are drawn; the first is the headline."),
-                dict(kind="data", title="Archival data",
-                     text="The six earliest PIONIER nights (2012 to mid-2013) have no public raw frames and cannot be reduced; "
-                          "the three GRAVITY nights have the calibrator HD 164031. Details in design/9sgr_onboarding.md.")]),
-    dict(cid=ESO_HD168137, slug="hd-168137", name="HD 168137", kind="orbit", pub="hd168137",
-         instrument="VLTI/AMBER + PIONIER",
-         data=dict(archive="ESO science archive (raw frames, public): VLTI/AMBER and PIONIER, 9 of the 11 published epochs",
-                   datapi="programmes 083.D-0066, 386.D-0198, 093.D-0673, 093.C-0503, 596.D-0495"),
-         tagline="An O7 V + O8 V binary on a 5-year, e = 0.90 orbit: a preliminary orbit",
-         about="Le Bouquin et al. (2017) published a preliminary astrometric orbit of HD 168137 from 11 nights of AMBER and "
-               "PIONIER data. The orbit is badly constrained (a = 7.0 ± 3.9 mas, e = 0.90 ± 0.06) and the periastron "
-               "falls in a gap, so a broad blind posterior is the expected result, not a failure. Awaiting the blind fit.",
-         notes=[dict(kind="caveat", title="Preliminary orbit",
-                     text="The paper calls its orbit preliminary and ignores the radial velocities. i = 105°, so the orbit "
-                          "runs clockwise on the sky. Elements are reported, not scored.")]),
     dict(cid=ASTARS, slug="a-stars", name="A-star companions (5 detections)", kind="positions", pub=None,
          tagline="Faint companions to nearby A stars, one night each",
          about="De Furio et al. (2022) searched A stars for companions with CHARA/MIRC-X. We re-fit their five detections "

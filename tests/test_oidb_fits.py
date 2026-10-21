@@ -82,6 +82,27 @@ def test_epoch_fit_recovers_a_point_binary(of, tmp_path):
     assert 0.6 < e["scales"]["vis_scale"] < 1.6 and 0.6 < e["scales"]["phi_scale"] < 1.6
 
 
+@pytest.mark.validates("virgil.oidata.OIData", roots=["self-consistency"], kind="guard")
+def test_epoch_fit_with_gains_replaces_the_v2_error_scale(of, tmp_path):
+    """--gains: V^2 carry per-frame gains with fitted widths, no V^2 error scale; the position is recovered."""
+    truth = dict(dra=3.0, ddec=-4.0, flux=0.3)
+    path = _observe(tmp_path / "g.fits", _binary(**truth))
+    grid = of._grid(8.0, 0.25, np.linspace(0.1, 1.0, 10))
+    priors = {"dra": of.dist.Uniform(-10, 10), "ddec": of.dist.Uniform(-10, 10), "flux": of.dist.LogUniform(0.05, 1)}
+    of.GAINS = dict(telescope=0.02, baseline=0.02)
+    try:
+        e = of.fit_epoch("sim", of.load([path]), of.point_binary, priors, grid)
+    except NotImplementedError as err:  # the installed virgil's marginal surface predates gains (virgil cf996d9 has them)
+        pytest.skip(f"installed virgil: {err}"[:200])
+    finally:
+        of.GAINS = None
+    assert "vis_scale" not in e["scales"] and {"vis_gain_telescope", "vis_gain_baseline"} <= set(e["scales"])
+    for k, t in truth.items():
+        assert _within(*e["values"][k], t), (k, e["values"][k], t)
+    assert max(e["scales"]["vis_gain_telescope"], e["scales"]["vis_gain_baseline"]) < 0.01  # white noise: no gain to find
+    assert 0.5 < e["chi2_raw"]["all"]["chi2_red"] < 2.0  # scored on the plain data, quoted errors
+
+
 def _smeared_candid(ud1, dra, ddec, flux, resolved, resolving, n=101):
     """The band-averaged CANDID binary: a direct average over n sub-channels of the
     closed-form visibilities (top-hat channel of width lambda/R, flat spectrum)."""

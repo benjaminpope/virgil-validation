@@ -2,6 +2,7 @@
 
     python scripts/gallery_orbits.py --list
     python scripts/gallery_orbits.py --system hd_9312 --out DIR [--dry-run] [--include-extra] [--quick]
+    python scripts/gallery_orbits.py --system iota_peg --out DIR [--gains TEL,BASE,OFFSET_DEG]   (MIRC-X, from $OIDB_ROOT)
 
 One system per call (the OzSTAR array job `gallery_orbits` runs one per task). The orbit work is all virgil's:
 ``OrbitPipeline`` runs the per-night position search with automatic night flags, the alias-band scan over a period
@@ -26,6 +27,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 import time
 
@@ -35,6 +37,13 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 
 RECORDS = REPO / "oidb" / "trackb"
+OIDB_ROOT_DEFAULT = "/fred/oz440/bpope/oidb"
+# CHARA/MIRC-X systems read from an OiDB collection (the authors' calibrated viscal files, one night per UT date in the
+# file name); no trackb record. Gains are on log|V| per frame, closure offsets in degrees: MIRC-X has no measured
+# virgil-vlti template, so these start values are placeholders and the per-night chi2/N says whether they suffice.
+MIRCX = {"iota_peg": dict(collection="fac164e1-d9d0-4500-8164-e1d9d0450099", pattern=r"mircx\d+_oifits_viscal\.fits$",
+                          instrument="MIRC-X", ud_note="primary UD fitted by the pipeline")}
+MIRCX_GAINS = dict(telescope=0.02, baseline=0.02, offset_deg=0.2)
 ROOT_DEFAULT = "/fred/oz440/bpope/eso_binaries"
 MIN_NIGHTS = 3  # fewer nights cannot say anything about an orbit
 QUICK = dict(n_candidates=10, n_refine=2, max_steps=50, n_is=200, num_warmup=100, num_samples=100, num_chains=2)
@@ -143,16 +152,51 @@ def load_nights(slug, root, include_extra=False):
                         data_path=C.system_data_path(v["data_path"] for v in used.values()))
 
 
+def load_mircx_nights(slug, oidb_root, gains=None):
+    """``({night: OIData}, provenance)`` of a MIRC-X system: each UT night's viscal files read together (a closure
+    triangle whose baseline has no V^2 row is placed from the T3 table's own u, v), V^2 with per-frame gains on log|V|
+    and closure phases with per-frame offsets. ``gains`` = dict(telescope, baseline, offset_deg), ``MIRCX_GAINS`` by default."""
+    import oidb_fit as O
+
+    cfg, w = MIRCX[slug], dict(MIRCX_GAINS, **(gains or {}))
+    data_dir = pathlib.Path(oidb_root) / cfg["collection"]
+    nights_files = O._group_by(O._files(str(data_dir), cfg["pattern"]), lambda f: (re.match(r"\d{4}(?:[A-Za-z]{3}|-\d{2}-)\d{2}", f) or re.match(".{10}", f)).group())
+    if not nights_files:
+        raise FileNotFoundError(f"no files matching {cfg['pattern']} under {data_dir}")
+    nights, used, notes = {}, {}, []
+    for night, paths in nights_files.items():
+        try:
+            d = O.load(paths)
+        except ValueError as err:
+            notes.append(f"{night}: left out: {err}")
+            continue
+        if np.asarray(d.vis).size:
+            d = d.with_gains(telescope=w["telescope"], baseline=w["baseline"])
+        else:
+            notes.append(f"{night}: no V^2 rows; closure phases only")
+        try:
+            d = d.with_closure_offsets(baseline=np.radians(w["offset_deg"]))
+        except ValueError as err:  # fewer than four telescopes
+            notes.append(f"{night}: no closure offsets: {err}")
+        nights[night] = d
+        used[night] = dict(data_path="viscal+gains", files=[dict(file=os.path.basename(p), sha256=sha256(p)) for p in paths])
+    if len(nights) < MIN_NIGHTS:
+        raise ValueError(f"{slug}: {len(nights)} nights; at least {MIN_NIGHTS} are needed")
+    return nights, dict(instrument=cfg["instrument"], collection=cfg["collection"], include_extra=False, notes=notes + [str(x) for x in O.LOAD_NOTES], nights=used, data_path="viscal+gains", gain_widths=w,
+                        gain_widths_note="placeholders: no measured MIRC-X template (virgil-vlti has none)")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true", help="print the system slugs and exit")
-    ap.add_argument("--system", choices=slugs())
+    ap.add_argument("--system", choices=slugs() + sorted(MIRCX), help="a Track B system, or a MIRC-X system (read from OiDB)")
     ap.add_argument("--out", default="gallery_orbits_out")
     ap.add_argument("--include-extra", action="store_true", dest="include_extra", help="also use oifits_extra/ (nights the paper has no epoch for)")
     ap.add_argument("--quick", action="store_true", help="smoke settings: tiny search and NUTS")
     ap.add_argument("--dry-run", action="store_true", dest="dry_run", help="load and group the data, no fit")
     ap.add_argument("--grid-batch-vis", type=int, default=GRID_BATCH_VISIBILITIES, dest="grid_batch_vis",
                     help="model visibilities per grid batch (memory; a GPU can take more than the laptop default)")
+    ap.add_argument("--gains", metavar="TEL,BASE,OFFSET_DEG", help="MIRC-X systems: gain widths on log|V| and closure offset in degrees (default %s)" % ",".join(str(v) for v in MIRCX_GAINS.values()))
     ap.add_argument("--no-quicklook-execute", action="store_true", dest="no_qe", help="write the quicklook notebook without running it")
     a = ap.parse_args(argv)
     if a.list:
@@ -162,7 +206,11 @@ def main(argv=None):
         ap.error("--system is required")
     root = os.environ.get("ESO_BIN_ROOT", ROOT_DEFAULT)
     t0 = time.time()
-    nights, prov = load_nights(a.system, root, a.include_extra)
+    if a.system in MIRCX:
+        g = dict(zip(("telescope", "baseline", "offset_deg"), (float(x) for x in a.gains.split(",")))) if a.gains else None
+        nights, prov = load_mircx_nights(a.system, os.environ.get("OIDB_ROOT", OIDB_ROOT_DEFAULT), g)
+    else:
+        nights, prov = load_nights(a.system, root, a.include_extra)
     span = [float(np.mean(np.asarray(d.mjd, float))) for d in nights.values()]
     print(f"{a.system}: {len(nights)} nights, MJD {min(span):.1f}-{max(span):.1f}, {prov['instrument']}, data path {prov['data_path']}")
     for n in prov["notes"]:
