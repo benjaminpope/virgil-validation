@@ -313,6 +313,12 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam))
 
 
+def drop_unused_sites(values, prob):
+    """``values`` without the ``cal.*`` sites ``prob`` does not have: a warm start or report from a free-alpha F fit
+    (``cal.alpha`` saved) must not re-enable or report the alpha that is now fixed at 0."""
+    return {k: v for k, v in values.items() if not k.startswith("cal.") or k in prob.init}
+
+
 def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
     """C9's start: a circular Gaussian of FWHM 1" and flux 0.25 Jy, s_d at ŝ_d (or 1)."""
     import jax.numpy as jnp

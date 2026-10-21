@@ -203,3 +203,14 @@ def test_f_fixes_alpha_unless_opted_in(syn):
     assert va.alpha_report(fixed.init) == (None, "fixed 0 (MPoL)")
     a, label = va.alpha_report(free.init)
     assert a == float(free.init["cal.alpha"]) and "None" not in label
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"])
+def test_warm_start_from_free_alpha_values_drops_alpha(syn):
+    data = va.load_dir(syn)
+    old = {**va.build_problem(data, "F", lam=1000.0, npix=16, alpha_free=True).init, "cal.alpha": 5.0}
+    prob = va.build_problem(data, "F", lam=1000.0, npix=16)
+    kept = va.drop_unused_sites({**old, "log_brightness": 0.0}, prob)
+    assert "cal.alpha" not in kept and set(kept) == set(prob.init) | {"log_brightness"}
+    assert va.alpha_report(kept) == (None, "fixed 0 (MPoL)")
+    assert "cal.alpha" in va.drop_unused_sites(old, va.build_problem(data, "F", lam=1000.0, npix=16, alpha_free=True))

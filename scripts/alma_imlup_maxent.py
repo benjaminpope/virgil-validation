@@ -110,6 +110,8 @@ def run_stages(args, data, prob_for, init_dir, save=None):
     prob = None
     for name, use in plan:
         prob = prob_for(use)
+        if values is not None:
+            values = va.drop_unused_sites(values, prob)
         if values is None:
             values = va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
         say(f"stage {name}: max_steps {args.max_steps}, time limit {args.time_limit}, gtol {args.gtol}")
@@ -249,6 +251,7 @@ def cmd_report(args):
     stages = saved["stages"]
     use = data.select(obs=va.SB_OBS) if stages[-1]["name"] == "sb" else None
     prob = _prob_for(args, data, lam, mask)(use)
+    values = va.drop_unused_sites(values, prob)
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
     say(f"report of {out}: config {args.config}, lambda {lam:.6g}, stages {[s['name'] for s in stages]}")
     write_report(args, out, data, prob, values, stages, shat, lam, mask, saved.get("wall_s"))
@@ -281,7 +284,7 @@ def cmd_cv_task(args):
     import jax.numpy as jnp
 
     t = time.time()
-    values, info, traj, why = va.run_fit_c8(prob, {k: jnp.asarray(z[k]) for k in z.files}, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol)
+    values, info, traj, why = va.run_fit_c8(prob, va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob), max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol)
     wall = time.time() - t
     ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
