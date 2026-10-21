@@ -772,7 +772,7 @@ def test_nuisances_are_recovered_within_three_sigma_on_im_lups_uv_coverage():
     assert np.abs(pull).max() < 3.0, np.round(pull, 2)
 
 
-@pytest.mark.validates("external_bridge.alma_worker", roots=["casa"], kind="control")
+@pytest.mark.validates("external_bridge.alma_worker", roots=["self-consistency"], kind="guard")
 def test_read_records_the_datacolumn_and_refuses_a_column_the_ms_lacks(ms_clean):
     """The column is an explicit, recorded choice: the result names it (upper case), and CORRECTED_DATA on an
     MS without it is an error, not a silent fall back to DATA."""

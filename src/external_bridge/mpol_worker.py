@@ -278,18 +278,19 @@ def _asdf_points(path, examples_dir):
     import loaddata
 
     uu, vv, data, weight, ddid = loaddata.get_ddid_data(path)
-    chan, ant1, ant2, time = [], [], [], []
+    chan, freq, ant1, ant2, time = [], [], [], [], []
     with asdf.open(path) as af:
         for obsid in af["obsids"].keys():
             for d_id in af["obsids"][obsid]["ddids"].keys():
                 d = af["obsids"][obsid]["ddids"][d_id]
                 ch, row = np.nonzero(~np.asarray(d["flag"]))  # row-major over (nchan, nvis): the order `[~flag]` returns
                 chan.append(ch)
+                freq.append(np.asarray(d["frequencies"], float)[ch])
                 ant1.append(np.asarray(d["antenna1"])[row] if "antenna1" in d else np.full(len(ch), -1))
                 ant2.append(np.asarray(d["antenna2"])[row] if "antenna2" in d else np.full(len(ch), -1))
                 time.append(np.asarray(d["time"])[row] if "time" in d else np.full(len(ch), np.nan))
     cat = np.concatenate
-    return dict(u=uu, v=vv, vis=data, weight=weight, ddid=ddid, chan=cat(chan), ant1=cat(ant1), ant2=cat(ant2), time=cat(time))
+    return dict(u=uu, v=vv, vis=data, weight=weight, ddid=ddid, chan=cat(chan), freq=cat(freq), ant1=cat(ant1), ant2=cat(ant2), time=cat(time))
 
 
 def objective_full(task):
@@ -374,13 +375,14 @@ def asdf_vs_npz(task):
     Matching: when both sides have channel, antennas and time (the stride-1000 subsample does; the
     full arrays may not), points are sorted by (channel rank, time, ant1, ant2) on both sides and
     ``key_mismatch`` counts the points whose keys then differ. The channel rank is the rank of the
-    channel's frequency, ascending: visread (hence the asdf) numbers channels by increasing frequency,
-    while our npz keeps the MS order, which is decreasing for some ddids; ranking by frequency matches
-    them whatever the MS order, and our npz files stay as they are. Otherwise the order is assumed equal
+    channel's own frequency (the asdf's ``frequencies``, our npz's ``freq``), ascending. visread 0.0.5 orders
+    channels by decreasing frequency (``process_casa.get_channel_sorted_data`` flips an ascending MS), while our
+    npz keeps the MS order, which is increasing for some ddids (4, 17, 19, 20, 23, 24 broke the old index match);
+    no direction is assumed on either side, and our npz files stay as they are. Otherwise the order is assumed equal
     (``matching: "order"``); a different order shows as a large u difference.
 
     Test: per ddid ``pass`` is true when N agrees, every key matches, |dV| < ``tol_vis`` (default 1e-5 Jy),
-    the relative differences of u, v (|d|/max|.|) and of the weight are < ``tol_rel`` (default 1e-6).
+    the per-point relative differences of u, v (against max(|u|, 1 lambda)) and of the weight are < ``tol_rel`` (default 1e-6).
     ``worst.all_pass`` is true when every ddid passes; a missing npz or a different N is a FAIL."""
     tol_vis, tol_rel = float(task.get("tol_vis", 1e-5)), float(task.get("tol_rel", 1e-6))
     pts = _asdf_points(task["asdf"], task["examples_dir"])

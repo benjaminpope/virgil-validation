@@ -258,17 +258,17 @@ present, `chan, time, ant1, ant2`). The asdf is read by the example's `loaddata.
 its conversion to wavelengths, its channel flattening); a second pass over the tree, in the same order, recovers
 the channel, antennas and time of each kept point. Points are matched by sorting both sides on (channel rank, time, ant1,
 ant2) when both have those keys (`matching: "keys"`; `key_mismatch` counts points whose keys still differ), else
-by order (`matching: "order"`). The channel rank is that of the frequency, ascending (the asdf's `chan` is already
-ascending; our npz's `freq` is used), because our npz keeps the MS channel order and visread sorts ascending.
+by order (`matching: "order"`). The channel rank is that of the point's own frequency, ascending (the asdf's `frequencies` per channel, our npz's `freq`): visread 0.0.5
+orders channels by decreasing frequency, our npz keeps the MS order, and no direction is assumed (a side without `freq` raises).
 Per ddid `pass` requires `key_mismatch` 0, `vis_max_abs` < `tol_vis` (default 1e-5 Jy) and `u_max_rel`, `v_max_rel`
-(relative to the largest |u|, |v|), `weight_max_rel` < `tol_rel` (default 1e-6); a missing npz or differing N fails. The task **reports**; a conjugation, a unit factor or a different order is a
+(per point, |du| / max(|u|, 1 λ)), `weight_max_rel` < `tol_rel` (default 1e-6); a missing npz or differing N fails. The task **reports**; a conjugation, a unit factor or a different order is a
 finding, not corrected.
 
 `result.json`: `ddids` (keyed `"0"`..`"25"`), each `n_asdf`, `n_npz`, `matching`, `key_mismatch`, and, when the
-counts agree, `u_max_abs`, `v_max_abs` (wavelengths), `vis_max_abs` (Jy), `weight_max_abs`, `u_max_rel`,
-`weight_max_rel`, and the signatures of a convention difference: `vis_conj_max_abs` (|V_asdf − conj V_npz|:
+counts agree, `u_max_abs`, `v_max_abs` (wavelengths), `vis_max_abs` (Jy), `weight_max_abs`, `u_max_rel`, `v_max_rel` (per point,
+against max(|·|, 1 λ); `u_max_rel` is as before except for the 1 λ floor), `weight_max_rel`, `pass` (bool), and the signatures of a convention difference: `vis_conj_max_abs` (|V_asdf − conj V_npz|:
 zero when the two differ by a conjugation), `u_flip_max_abs`, `v_flip_max_abs` (|u_asdf + u_npz|, likewise v: zero when the sign differs; a conjugation pairs with (u, v) → (−u, −v)), `u_ratio_median` (≈ 1; 10³ would be kilolambda). Also `worst` (maxima over ddids, plus `n_mismatch_ddids`: ddids with no npz or differing counts, which the maxima skip, and `key_mismatch_max`) and
-`n_asdf_total`, `n_npz_total`; `worst.all_pass` and `tolerances`.
+`n_asdf_total`, `n_npz_total`; `worst.all_pass` and `tolerances` (`vis_max_abs_jy`, `rel`). An older `result.json` has no `v_max_rel`, `pass` or `tolerances`.
 
 ## The environment
 
