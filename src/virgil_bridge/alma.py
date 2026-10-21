@@ -314,7 +314,7 @@ def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
     return v
 
 
-def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None):
+def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4):
     """L-BFGS through ``virgil.fit`` (C8). Returns ``(values, info, trajectory)``: the fitted values as
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
     steps. The loss is in -ln L units up to the constant of the priors' normalisation."""
@@ -330,11 +330,68 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None):
     with ft_eps(eps), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="lbfgs",
-                  max_steps=max_steps, time_limit=time_limit, progress=progress)
+                  max_steps=max_steps, time_limit=time_limit, progress=progress, gtol=gtol)
     values = {k: np.asarray(v) for k, v in res.values.items()}
     info = {k: (v.item() if hasattr(v, "item") else v) for k, v in res.info.items() if np.ndim(v) == 0}
     info.update({k: np.asarray(v).tolist() for k, v in res.info.items() if np.ndim(v) > 0})
     return values, info, traj
+
+
+def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, on_round=None, max_rounds=50):
+    """L-BFGS through ``virgil.fit`` until C8 holds (loss change < 0.1 over >= 100 steps), the step or the time
+    budget (``max_steps`` and ``time_limit``, per call) runs out, or the optimiser can go no further.
+
+    ``fit`` stops on its own test: no component of the loss-per-point gradient above ``gtol`` (and 1/1000 of the
+    starting gradient, so a warm start gets a tighter test); its ``stop`` is ``None`` when that test passed. On
+    IM Lup ``gtol = 1e-4`` passed with the loss still falling by 20 per 200 steps, far from C8. So each time
+    ``fit`` stops short of C8 with budget left, this restarts it from its last point (fresh curvature memory),
+    whose test is then 1/1000 of the current gradient, until C8 holds. ``on_round(values, info, traj, round)`` is called
+    after every round (the caller saves there). Returns ``(values, info, traj, why)``: ``traj`` is the loss history over
+    all rounds (steps are cumulative), ``info`` the last round's ``fit`` diagnostics with the totals, and
+    ``why`` one of ``c8``, ``max_steps``, ``time_limit``, ``stalled`` (a round that could not move), ``non_finite``,
+    ``max_rounds``."""
+    import time
+
+    t0, total, traj, values, why, idle = time.time(), 0, [], init, "max_rounds", 0
+    info = dict(steps=0, rounds=0, stop="time", loss=float("nan"), converged=False)
+    for rnd in range(1, max_rounds + 1):
+        left = time_limit - (time.time() - t0) if time_limit is not None else None
+        if left is not None and left <= 0:
+            why = "time_limit"
+            break
+        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol)
+        steps = int(info["steps"])
+        for t in part:
+            traj.append({**t, "steps": t["steps"] + total, "round": rnd})
+        if not traj or traj[-1]["steps"] != total + steps:  # a closing record (also for a round of 0 steps)
+            traj.append(dict(steps=float(total + steps), loss=float(info["loss"]), grad_norm=float(info.get("grad_norm", np.nan)), elapsed=time.time() - t0, round=rnd))
+        total += steps
+        info = {**info, "steps": total, "rounds": rnd}
+        stop = info.get("stop")
+        finite = np.isfinite(float(info["loss"])) and all(np.all(np.isfinite(v)) for v in values.values())
+        if not finite or stop == "non-finite":  # never overwrite the last good save with NaNs
+            why = "non_finite"
+            break
+        if on_round:
+            on_round(values, info, traj, rnd)
+        verdict = convergence(traj)
+        if stop == "stalled":
+            why = "stalled"
+            break
+        if stop == "time":
+            why = "time_limit"
+            break
+        if verdict["converged"] and (verdict["window_steps"] or 0) >= 100:
+            why = "c8"
+            break
+        if total >= max_steps:
+            why = "max_steps"
+            break
+        idle = idle + 1 if steps == 0 else 0
+        if idle >= 2:
+            why = "stalled"
+            break
+    return values, info, traj, why
 
 
 def convergence(traj, info=None, tol=0.1, window=100):
@@ -351,10 +408,29 @@ def convergence(traj, info=None, tol=0.1, window=100):
     return dict(converged=bool(change < tol), change=float(change), window_steps=int(last["steps"] - ref["steps"]), reason="loss change over the window")
 
 
-def per_point(data, scene, values, nuis, mask=None, eps=EPS_SCORE):
+CHUNK = 10**6  # points per model evaluation: at eps 1e-12 one NUFFT buffer is about 1.3 kB per point (the 20.6 GiB that failed was 1.74e7 points)
+
+
+def model_chunks(data, sel, scene, jv, nuis, chunk_size=CHUNK):
+    """Yield ``(index, subset, model)`` for the points of boolean ``sel``, ``chunk_size`` at a time, so that the
+    model of an observation is never evaluated at once (``ComplexVisData.model`` does not chunk). ``index`` holds the
+    positions in ``data``; the caller sets the NUFFT accuracy (``ft_eps``)."""
+    n = len(data.u)
+    idx_all = np.flatnonzero(np.asarray(sel, bool))
+    model_scene = scene(jv)
+    for i in range(0, len(idx_all), int(chunk_size)):
+        idx = idx_all[i:i + int(chunk_size)]
+        keep = np.zeros(n, bool)
+        keep[idx] = True
+        sub = data.subset(keep)
+        yield idx, sub, np.asarray(sub.model(model_scene, jv, nuis))
+
+
+def per_point(data, scene, values, nuis, mask=None, eps=EPS_SCORE, chunk_size=CHUNK):
     """Per-point decomposition of -ln L (the complex Gaussian with variance s_d^2 / w_k per component):
     returns ``(ddid, obs, r2, nll)`` over the unmasked points, ``r2 = w |V - M|^2`` with the quoted weights
-    and ``nll = r2 / (2 s_d^2) + 2 ln s_d + ln 2 pi - ln w``. The model is evaluated one observation at a time."""
+    and ``nll = r2 / (2 s_d^2) + 2 ln s_d + ln 2 pi - ln w``. The model is evaluated one observation at a time,
+    ``chunk_size`` points at a time (``model_chunks``)."""
     import jax.numpy as jnp
 
     obs, dd = np.asarray(data.obs), np.asarray(data.ddid)
@@ -365,25 +441,22 @@ def per_point(data, scene, values, nuis, mask=None, eps=EPS_SCORE):
     with ft_eps(eps):
         for e in np.unique(obs):
             sel = (obs == e) & keep
-            if not sel.any():
-                continue
-            sub = data.subset(jnp.asarray(sel))
-            m = np.asarray(sub.model(scene(jv), jv, nuis))
-            w, d = np.asarray(sub.weight, float), np.asarray(sub.ddid)
-            r2 = w * np.abs(np.asarray(sub.vis) - m) ** 2
-            out["ddid"].append(d)
-            out["obs"].append(np.full(len(d), e))
-            out["r2"].append(r2)
-            out["nll"].append(0.5 * r2 / sigma[d] ** 2 + 2 * np.log(sigma[d]) + LN2PI - np.log(w))
-            out["index"].append(np.flatnonzero(sel))
+            for idx, sub, m in model_chunks(data, sel, scene, jv, nuis, chunk_size):
+                w, d = np.asarray(sub.weight, float), np.asarray(sub.ddid)
+                r2 = w * np.abs(np.asarray(sub.vis) - m) ** 2
+                out["ddid"].append(d)
+                out["obs"].append(np.full(len(d), e))
+                out["r2"].append(r2)
+                out["nll"].append(0.5 * r2 / sigma[d] ** 2 + 2 * np.log(sigma[d]) + LN2PI - np.log(w))
+                out["index"].append(idx)
     return {k: (np.concatenate(v) if v else np.zeros(0)) for k, v in out.items()}
 
 
-def score(data, scene, values, nuis, mask=None, annulus=None, n_ddid=None, n_annulus=12, eps=EPS_SCORE):
+def score(data, scene, values, nuis, mask=None, annulus=None, n_ddid=None, n_annulus=12, eps=EPS_SCORE, chunk_size=CHUNK):
     """-ln L, chi^2 with the quoted weights (s = 1, C10) and with the fitted s, per ddid and (given an
     ``annulus`` per point) per uv annulus, over the unmasked points, at NUFFT accuracy ``eps`` (C7).
     ``chi2`` sums two squares per point, so chi^2/N of the tables is ``chi2 / (2 n)``."""
-    pp = per_point(data, scene, values, nuis, mask, eps)
+    pp = per_point(data, scene, values, nuis, mask, eps, chunk_size)
     sigma = np.asarray(values["cal.sigma"], float) if "cal.sigma" in values else np.ones(int(np.asarray(data.ddid).max()) + 1)
     n_ddid = n_ddid or len(sigma)
 
@@ -399,7 +472,7 @@ def score(data, scene, values, nuis, mask=None, annulus=None, n_ddid=None, n_ann
     return out
 
 
-def residual_dirty_images(data, scene, values, nuis, npix=1024, pixel_mas=3.0, eps=EPS_SCORE):
+def residual_dirty_images(data, scene, values, nuis, npix=1024, pixel_mas=3.0, eps=EPS_SCORE, chunk_size=CHUNK):
     """Per observation, the natural-weighted dirty image of the residuals V - M (weights w / s_d^2) on a
     ``npix`` grid of ``pixel_mas`` (``crosscheck.alma.gridded_dirty_image``, Jy per dirty beam; layout of
     crosscheck.alma: row 0 North, column 0 East, centre at ``npix // 2``)."""
@@ -413,10 +486,13 @@ def residual_dirty_images(data, scene, values, nuis, npix=1024, pixel_mas=3.0, e
     out = {}
     with ft_eps(eps):
         for e in np.unique(obs):
-            sub = data.subset(jnp.asarray(obs == e))
-            r = np.asarray(sub.vis) - np.asarray(sub.model(scene(jv), jv, nuis))
-            w = np.asarray(sub.weight, float) / sigma[np.asarray(sub.ddid)] ** 2
-            out[int(e)] = gridded_dirty_image(np.asarray(sub.u), np.asarray(sub.v), r, w, npix, pixel_mas)
+            u, v, r, w = [], [], [], []
+            for _, sub, m in model_chunks(data, obs == e, scene, jv, nuis, chunk_size):  # the model in chunks, the grid once
+                u.append(np.asarray(sub.u))
+                v.append(np.asarray(sub.v))
+                r.append(np.asarray(sub.vis) - m)
+                w.append(np.asarray(sub.weight, float) / sigma[np.asarray(sub.ddid)] ** 2)
+            out[int(e)] = gridded_dirty_image(np.concatenate(u), np.concatenate(v), np.concatenate(r), np.concatenate(w), npix, pixel_mas)
     return out
 
 
@@ -530,13 +606,13 @@ def values_from_mpol_export(export, obs_of_ddid):
     )
 
 
-def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=EPS_SCORE):
+def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=EPS_SCORE, chunk_size=CHUNK):
     """R's objective -ln L + lam S_M at ``values``, in float64 at NUFFT accuracy ``eps`` (the
     normalising constant of -ln L included), and its two parts."""
     import jax.numpy as jnp
 
     npix = npix or values["log_brightness"].shape[0]
     prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, mask=mask)
-    sc = score(data, prob.scene, values, prob.nuis, mask=mask, eps=eps)
+    sc = score(data, prob.scene, values, prob.nuis, mask=mask, eps=eps, chunk_size=chunk_size)
     s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
     return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s)

@@ -1,0 +1,212 @@
+{
+ "schema": "gallery-target/1",
+ "slug": "hr6819_blind",
+ "target": "HR 6819, calibrated blind fit",
+ "kind": "alias_track",
+ "instrument": "GRAVITY",
+ "band": "K",
+ "paper": {
+  "authors": "Klement, R.; et al.",
+  "year": 2025,
+  "journal": "A&A 694, A208",
+  "bibcode": "2025A&A...694A.208K",
+  "arxiv": "2501.04103",
+  "doi": "10.1051/0004-6361/202453248"
+ },
+ "conventions": {
+  "omega_shift_deg": 0.0,
+  "text": "Same star as virgil: the companion (pre-sd) relative to the Be star, omega from the ascending node (the node where the companion recedes), Omega as PA north through east. The paper labels Table 3's omega 'omega_Be', but that number is the companion's: with the same 12 positions, Table 2 (astrometry only) gives omega_pre-sd = 117.6+/-8.9, Omega = 23.1+/-2.1 and Table 3 gives 111.9+/-9.0, Omega = 25.4+/-2.1; a true omega_Be would be 297.6 with the same Omega, which Table 3 is not; the (Omega+180, omega+180) twin of (23.1, 297.6) is (203.1, 117.6), so this argument assumes the paper uses ONE Omeg"
+ },
+ "orbit": {
+  "P_day": [
+   40.3261,
+   0.0013
+  ],
+  "T_peri_jd": [
+   2453220.6,
+   1.0
+  ],
+  "T_peri_mjd": [
+   53220.1,
+   1.0
+  ],
+  "e": [
+   0.0289,
+   0.0058
+  ],
+  "omega_deg": [
+   111.9,
+   9.0
+  ],
+  "Omega_deg": [
+   25.4,
+   2.1
+  ],
+  "i_deg": [
+   39.37,
+   0.95
+  ],
+  "a_mas": [
+   1.284,
+   0.015
+  ],
+  "source": "Klement et al. 2025, Table 3, eccentric astrometry + RVs; T0 is RJD (MJD + 0.5); the table labels omega as the Be star's but it is the companion's (reference file conventions)"
+ },
+ "epochs": [
+  {
+   "date": "2021-09-05",
+   "mjd": 59463.125,
+   "dra_mas": 0.896,
+   "ddec_mas": 0.577,
+   "sigma_major_mas": 0.017,
+   "sigma_minor_mas": 0.011,
+   "sigma_pa_deg": 101.5,
+   "flux_ratio_pct": 48.1,
+   "role": "paper"
+  },
+  {
+   "date": "2021-09-18",
+   "mjd": 59476.038,
+   "dra_mas": -0.231,
+   "ddec_mas": -1.047,
+   "sigma_major_mas": 0.048,
+   "sigma_minor_mas": 0.028,
+   "sigma_pa_deg": 162.0,
+   "flux_ratio_pct": 54.0,
+   "role": "paper"
+  },
+  {
+   "date": "2022-05-06",
+   "mjd": 59706.211,
+   "dra_mas": 1.045,
+   "ddec_mas": 0.35,
+   "sigma_major_mas": 0.015,
+   "sigma_minor_mas": 0.007,
+   "sigma_pa_deg": 122.8,
+   "flux_ratio_pct": 46.8,
+   "role": "paper"
+  },
+  {
+   "date": "2023-04-23",
+   "mjd": 60058.26,
+   "dra_mas": -0.193,
+   "ddec_mas": 1.117,
+   "sigma_major_mas": 0.049,
+   "sigma_minor_mas": 0.014,
+   "sigma_pa_deg": 127.0,
+   "flux_ratio_pct": 42.9,
+   "role": "paper"
+  },
+  {
+   "date": "2023-05-01",
+   "mjd": 60066.247,
+   "dra_mas": 0.953,
+   "ddec_mas": 0.838,
+   "sigma_major_mas": 0.033,
+   "sigma_minor_mas": 0.009,
+   "sigma_pa_deg": 131.3,
+   "flux_ratio_pct": 44.5,
+   "role": "paper"
+  },
+  {
+   "date": "2023-05-20",
+   "mjd": 60085.361,
+   "dra_mas": -0.858,
+   "ddec_mas": -0.902,
+   "sigma_major_mas": 0.024,
+   "sigma_minor_mas": 0.011,
+   "sigma_pa_deg": 5.0,
+   "flux_ratio_pct": 42.9,
+   "role": "paper"
+  },
+  {
+   "date": "2023-06-20",
+   "mjd": 60116.135,
+   "dra_mas": 0.585,
+   "ddec_mas": -0.904,
+   "sigma_major_mas": 0.054,
+   "sigma_minor_mas": 0.015,
+   "sigma_pa_deg": 119.5,
+   "flux_ratio_pct": 37.6,
+   "role": "paper"
+  },
+  {
+   "date": "2023-07-17",
+   "mjd": 60143.07,
+   "dra_mas": 0.417,
+   "ddec_mas": 1.239,
+   "sigma_major_mas": 0.014,
+   "sigma_minor_mas": 0.007,
+   "sigma_pa_deg": 137.5,
+   "flux_ratio_pct": 44.2,
+   "role": "paper"
+  },
+  {
+   "date": "2023-08-16",
+   "mjd": 60173.124,
+   "dra_mas": -0.957,
+   "ddec_mas": 0.345,
+   "sigma_major_mas": 0.01,
+   "sigma_minor_mas": 0.004,
+   "sigma_pa_deg": 13.2,
+   "flux_ratio_pct": 41.1,
+   "role": "paper"
+  },
+  {
+   "date": "2023-08-20",
+   "mjd": 60177.072,
+   "dra_mas": -0.562,
+   "ddec_mas": 0.989,
+   "sigma_major_mas": 0.044,
+   "sigma_minor_mas": 0.011,
+   "sigma_pa_deg": 8.7,
+   "flux_ratio_pct": 44.7,
+   "role": "paper"
+  },
+  {
+   "date": "2023-09-07",
+   "mjd": 60195.005,
+   "dra_mas": 0.798,
+   "ddec_mas": -0.534,
+   "sigma_major_mas": 0.027,
+   "sigma_minor_mas": 0.006,
+   "sigma_pa_deg": 0.1,
+   "flux_ratio_pct": 42.3,
+   "role": "paper"
+  },
+  {
+   "date": "2023-09-08",
+   "mjd": 60196.098,
+   "dra_mas": 0.67,
+   "ddec_mas": -0.731,
+   "sigma_major_mas": 0.051,
+   "sigma_minor_mas": 0.009,
+   "sigma_pa_deg": 30.5,
+   "flux_ratio_pct": 40.0,
+   "role": "paper"
+  }
+ ],
+ "caveats": "A resolved Be disk and a third body make this a reported comparison, never scored. The data are the provider's own calibrated OiDB files (the calibrators are not in them), binned by 8 channels (scripts/gravity_bin_calibrated.py), with the virgil-vlti HIGH template laid out on them for gains and closure offsets. The two 2021 split-polarisation nights are refused by the combined-polarisation template and left out. The older tile of this target (T1-T5, oidb_fit) stays until this fit is checked.",
+ "third_light": "Be disk (resolved)",
+ "split": {
+  "paper_epochs": 12,
+  "paper_epochs_with_phase3": 0,
+  "paper_epochs_below_lambda_2B": 0,
+  "paper_files": 12,
+  "paper_night_files": 0,
+  "heldout_files": 0,
+  "heldout_nights": 0,
+  "heldout_nights_after_paper_span": 0,
+  "last_paper_mjd": 60196.0
+ },
+ "files": [],
+ "template": "gravity_single_high_combined_2023-2025",
+ "data_root": "~/data/eso_binaries/trackb/hr6819_blind",
+ "provenance": {
+  "data": "OiDB 696baf06: 12 *_SINGLE_SCI_VIS_CALIBRATED*.fits of the data PI (Klement), HIGH, 1628 channels, public L3, downloaded 2026-10-21 (sha256 as oidb/manifest.yml).",
+  "calibration": "The provider's; scripts/gravity_bin_calibrated.py bins by 8 and averages the polarisations of the 2021 files; template laid out by virgil-vlti to_oidata(template=).",
+  "reference": "oidb/references/696baf06-6c3c-424d-abaf-066c3c324d99.json",
+  "built": "2026-10-21",
+  "builder": "by hand (not scripts/build_trackb_targets.py)"
+ }
+}
