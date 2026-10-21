@@ -121,7 +121,18 @@ import types  # noqa: E402
 import warnings  # noqa: E402
 
 MPOL = dict(npix=1028, pixel_mas=5.0, taper_mas=30.0, prior=1e-4, f_tot=0.253, lam_m=1e-9)  # the example's own numbers (sgd.py)
-FULL = dict(npix=1536, pixel_mas=5.0, nu0_hz=239e9, dish_m=12.0, pb_factor=1.13)  # C5
+FULL = dict(npix=1536, pixel_mas=5.0, nu0_hz=239e9, dish_m=12.0, pb_factor=1.13, alpha_free=False)  # C5; alpha fixed at 0 as MPoL (Ben, 2026-10-21)
+
+ALPHA_FIXED_LABEL = "fixed 0 (MPoL)"
+
+
+def alpha_report(values):
+    """``(alpha, label)`` for a summary: the fitted value (a float) and its text, or ``None`` and "fixed 0 (MPoL)"."""
+    if "cal.alpha" in values:
+        a = float(values["cal.alpha"])
+        return a, f"{a:.4f}"
+    return None, ALPHA_FIXED_LABEL
+
 SB_OBS = (0, 1, 2, 3, 4)
 EPS_FIT, EPS_SCORE = 1e-6, 1e-12  # C7
 LN2PI = float(np.log(2 * np.pi))
@@ -259,15 +270,16 @@ def read_shat(path, n_ddid=26):
     return np.array([json.loads((path / f"ddid_{d:02d}.json").read_text())["sigma"]["all"]["s"] for d in range(n_ddid)])
 
 
-def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0):
-    """The fit problem of configuration ``config`` ("R" or "F") on ``data``.
+def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
+                  alpha_free=None):
+    """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
     (default ``data``; the SB stage passes ``data.select(obs=SB_OBS)``); ``mask`` is a boolean per
     point of ``use`` (a cross-validation fold). Returns a namespace of ``scene``, ``nuis``, ``priors``,
     ``init`` (defaults; the caller sets the image, flux and sigma), ``terms``, ``regs`` and ``model``
     for ``virgil.fit``. Priors are the house defaults (C6): log-uniform flux, gains and error scales,
-    uniform offsets and alpha, and a flat prior on the pixels' log-brightness.
+    uniform offsets (and alpha when ``alpha_free``), and a flat prior on the pixels' log-brightness.
     """
     import jax.numpy as jnp
     import numpyro.distributions as dist
@@ -276,6 +288,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     from virgil.radio import primary_beam
 
     config = config.upper()
+    alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
     if config == "R":
         npix = npix or MPOL["npix"]
@@ -284,7 +297,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     elif config == "F":
         npix = npix or FULL["npix"]
         pb = dict(freq_hz=FULL["nu0_hz"], dish_m=FULL["dish_m"], factor=FULL["pb_factor"])
-        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=True, nu0_hz=FULL["nu0_hz"])
+        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=alpha_free, nu0_hz=FULL["nu0_hz"])
         scene = grid_scene(npix, pixel_mas, pb)
         # the pixels are sky x beam; the default image of the entropy is the beam, so the penalty is the
         # entropy of the sky relative to a flat sky (docs: "the default image q ... normalised here")
@@ -298,6 +311,12 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam))
+
+
+def drop_unused_sites(values, prob):
+    """``values`` without the ``cal.*`` sites ``prob`` does not have: a warm start or report from a free-alpha F fit
+    (``cal.alpha`` saved) must not re-enable or report the alpha that is now fixed at 0."""
+    return {k: v for k, v in values.items() if not k.startswith("cal.") or k in prob.init}
 
 
 def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):

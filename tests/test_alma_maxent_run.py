@@ -191,3 +191,37 @@ def test_virgils_real_time_stop_is_spelled_time(syn):
     v = va.start_values(prob)
     _, info, _ = va.run_fit(prob, v, max_steps=5000, time_limit=1e-6, gtol=1e-12)  # the time test runs after a 200-step chunk
     assert info["stop"] == "time", info
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_f_fixes_alpha_unless_opted_in(syn):
+    data = va.load_dir(syn)
+    fixed = va.build_problem(data, "F", lam=1000.0, npix=16)
+    assert "cal.alpha" not in fixed.init and "cal.alpha" not in fixed.priors
+    free = va.build_problem(data, "F", lam=1000.0, npix=16, alpha_free=True)
+    assert "cal.alpha" in free.init and "cal.alpha" in free.priors
+    assert va.alpha_report(fixed.init) == (None, "fixed 0 (MPoL)")
+    a, label = va.alpha_report(free.init)
+    assert a == float(free.init["cal.alpha"]) and "None" not in label
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_warm_start_from_free_alpha_values_drops_alpha(syn):
+    data = va.load_dir(syn)
+    old = {**va.build_problem(data, "F", lam=1000.0, npix=16, alpha_free=True).init, "cal.alpha": 5.0}
+    prob = va.build_problem(data, "F", lam=1000.0, npix=16)
+    kept = va.drop_unused_sites({**old, "log_brightness": 0.0}, prob)
+    assert "cal.alpha" not in kept and set(kept) == set(prob.init) | {"log_brightness"}
+    assert va.alpha_report(kept) == (None, "fixed 0 (MPoL)")
+    assert "cal.alpha" in va.drop_unused_sites(old, va.build_problem(data, "F", lam=1000.0, npix=16, alpha_free=True))
+    # report on a pre-PR free-alpha fit: args carry no alpha_free, so the setting is inferred from the saved values
+    import argparse
+
+    ns = argparse.Namespace(alpha_free=None, config="F")
+    import importlib.util, pathlib
+
+    spec = importlib.util.spec_from_file_location("maxent_cli", pathlib.Path(__file__).parents[1] / "scripts" / "alma_imlup_maxent.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    cli.resolve_alpha(ns)
+    assert ns.alpha_free is False
