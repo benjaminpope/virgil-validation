@@ -7,7 +7,8 @@
     python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
     python scripts/alma_imlup_maxent.py cv-aggregate DIR [--out DIR]
-    python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] --out DIR
+    python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] --out DIR
+    python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
 
 ``--data DIR`` holds ``ddid_NN.npz`` (the vv format of ``alma_imlup_read``; no default, so nothing runs on
 data by accident). Every path is an argument. Float64 throughout; the fits use the NUFFT at eps 1e-6 and
@@ -110,6 +111,8 @@ def run_stages(args, data, prob_for, init_dir, save=None):
     prob = None
     for name, use in plan:
         prob = prob_for(use)
+        if values is not None:
+            values = va.drop_unused_sites(values, prob)
         if values is None:
             values = va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
         say(f"stage {name}: max_steps {args.max_steps}, time limit {args.time_limit}, gtol {args.gtol}")
@@ -179,7 +182,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
-        alpha=float(values["cal.alpha"]) if "cal.alpha" in values else None,
+        alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
     )
@@ -214,19 +217,26 @@ def _train_mask(args, data):
 def _prob_for(args, data, lam, mask):
     def prob_for(use):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
-        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size)
+        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
 
     return prob_for
 
 
+def resolve_alpha(args):
+    """Record the resolved alpha setting in the saved args (the CLI default is None, which would hide a changed default)."""
+    if getattr(args, "alpha_free", None) is None:
+        args.alpha_free = bool(va.FULL["alpha_free"])
+
+
 def cmd_fit(args):
+    resolve_alpha(args)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
     n = len(data.u)
     lam = lam_of(args, n)
     mask = _train_mask(args, data)
-    say(f"config {args.config}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
+    say(f"config {args.config}, alpha {'free' if getattr(args, 'alpha_free', None) else va.ALPHA_FIXED_LABEL}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
     t0 = time.time()
     save = lambda prob, values, stages: write_state(out, args, prob, values, stages, lam, n)  # noqa: E731
     prob, values, stages, shat = run_stages(args, data, _prob_for(args, data, lam, mask), args.init, save)
@@ -242,6 +252,8 @@ def cmd_report(args):
         if getattr(args, k, None) is None:
             setattr(args, k, v)
     z = np.load(out / "values.npz")
+    if getattr(args, "alpha_free", None) is None and args.config == "F":  # a fit made before --alpha-free existed: its values say
+        args.alpha_free = "cal.alpha" in z.files
     values = {k: np.asarray(z[k]) for k in z.files}
     data = load(args)
     lam = saved["lam"]
@@ -249,6 +261,7 @@ def cmd_report(args):
     stages = saved["stages"]
     use = data.select(obs=va.SB_OBS) if stages[-1]["name"] == "sb" else None
     prob = _prob_for(args, data, lam, mask)(use)
+    values = va.drop_unused_sites(values, prob)
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
     say(f"report of {out}: config {args.config}, lambda {lam:.6g}, stages {[s['name'] for s in stages]}")
     write_report(args, out, data, prob, values, stages, shat, lam, mask, saved.get("wall_s"))
@@ -267,6 +280,7 @@ def cmd_folds(args):
 
 
 def cmd_cv_task(args):
+    resolve_alpha(args)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
@@ -276,12 +290,12 @@ def cmd_cv_task(args):
     n_all = len(data.u)
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
-    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size)
+    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
 
     t = time.time()
-    values, info, traj, why = va.run_fit_c8(prob, {k: jnp.asarray(z[k]) for k in z.files}, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol)
+    values, info, traj, why = va.run_fit_c8(prob, va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob), max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol)
     wall = time.time() - t
     ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
@@ -290,7 +304,7 @@ def cmd_cv_task(args):
                versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], stopped_because=why, convergence=va.convergence(traj, info), trajectory=traj,
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
                             by_ddid_s1=ho1["by_ddid"], by_annulus_s1=ho1["by_annulus"]),
-               train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]))
+               train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]), alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1])
     dump(out / "cv.json", res)
     say(f"held-out -ln L {ho['nll']:.4f} on {ho['n']:,} points; wrote {out / 'cv.json'}")
 
@@ -367,6 +381,57 @@ def cmd_cv_aggregate(args):
 # ------------------------------------------------------------------ compare
 
 
+def objective_tables(res, vres, obj_m):
+    """Markdown for ``compare``: the objective term by term, raw chi^2/N per ddid at both solutions (s = 1), gains and offsets side by
+    side with their conventions, and the gradient diagnostic. ``res`` is compare's result (with ``objective``), ``vres`` our fit's
+    result.json, ``obj_m`` MPoL's own objective.json (or None)."""
+    o = res["objective"]
+    a, b = o["ours"], o["mpol_solution_in_virgil"]
+    own = (obj_m or {})
+    md = ["", "## The objective, term by term (lam_R = %.6g, eps 1e-12)" % o["lam_R"], "",
+          "| | -ln L | S_M | lam_R S_M | objective_R |", "|---|---:|---:|---:|---:|",
+          f"| ours (our fit's values, virgil) | {a['nll']:.1f} | {a['entropy']:.2f} | {a['penalty']:.1f} | {a['objective']:.1f} |",
+          f"| MPoL's solution, evaluated in virgil | {b['nll']:.1f} | {b['entropy']:.2f} | {b['penalty']:.1f} | {b['objective']:.1f} |"]
+    if own:
+        md.append(f"| MPoL's own numbers (objective.json) | {own.get('neg_log_likelihood', float('nan')):.1f} | {own.get('entropy', float('nan')):.2f} | "
+                  f"{o['lam_R'] * own.get('entropy', float('nan')):.1f} | {own.get('objective_R', float('nan')):.1f} |")
+        md += ["", f"**virgil minus MPoL, both at MPoL's solution** (zero if our objective reproduces MPoL's): -ln L {b['nll'] - own['neg_log_likelihood']:+.3f}, "
+                   f"lam_R S_M {b['penalty'] - o['lam_R'] * own['entropy']:+.3f}, objective {b['objective'] - own['objective_R']:+.3f}."]
+    if vres.get("objective_R") is not None:
+        md.append(f"Our fit's own result.json: objective_R {vres['objective_R']:.1f}, -ln L {vres['nll']:.1f}.")
+    md += [f"**Our objective minus MPoL's solution's, both in virgil: {a['objective'] - b['objective']:+.1f}** (negative: ours is lower, i.e. better)."]
+    na, nb = np.asarray(a["by_ddid"]["n"]), np.asarray(b["by_ddid"]["n"])
+    ra, rb = (np.asarray(x["by_ddid"]["chi2_raw"]) / (2 * np.maximum(n, 1)) for x, n in ((a, na), (b, nb)))
+    rm = np.asarray(own["chi2_raw"], float) / (2 * np.maximum(np.asarray(own["n_ddid"]), 1)) if own.get("chi2_raw") else None
+    md += ["", "## Raw chi^2/N per ddid (s = 1, quoted weights; chi^2 / 2N)", "",
+           "| ddid | N | ours | MPoL's solution (virgil) | " + ("MPoL's own | " if rm is not None else "") + "ours - MPoL |", "|---:|---:|---:|---:|" + ("---:|" if rm is not None else "") + "---:|"]
+    for d in range(len(na)):
+        if na[d]:
+            md.append(f"| {d} | {na[d]:,} | {ra[d]:.4f} | {rb[d]:.4f} | " + (f"{rm[d]:.4f} | " if rm is not None else "") + f"{ra[d] - rb[d]:+.4f} |")
+    md.append(f"| all | {na.sum():,} | {np.sum(a['by_ddid']['chi2_raw']) / (2 * na.sum()):.4f} | {np.sum(b['by_ddid']['chi2_raw']) / (2 * nb.sum()):.4f} | "
+              + (f"{np.sum(own['chi2_raw']) / (2 * np.sum(own['n_ddid'])):.4f} | " if rm is not None else "") + f"{(np.sum(a['by_ddid']['chi2_raw']) - np.sum(b['by_ddid']['chi2_raw'])) / (2 * na.sum()):+.4f} |")
+    g, off = res["gain"], res["offset_mas"]
+    md += ["", "## Gains and offsets, side by side", "",
+           "Conventions (docs/alma_conventions.md, Part 3): both multiply the model of observation k by the gain g_k (observation 0 fixed at 1) and rescale its weights by g^2, "
+           "so the gains are directly comparable (not reciprocal); virgil's per-ddid scale is s = g s_MPoL. Offsets: MPoL's delta_RA, delta_Dec in arcsec "
+           "(phase exp(-2 pi i (dRA u + dDec v))); ours `cal.offset` in mas, the same sign, so mpol_mas = 1000 x arcsec. Obs 0 is fixed at 0 in both.", "",
+           "| obs | g ours | g MPoL | dRA ours (mas) | dRA MPoL (mas) | dDec ours (mas) | dDec MPoL (mas) |", "|---:|---:|---:|---:|---:|---:|---:|"]
+    for k in range(len(g["mpol"])):
+        md.append(f"| {k} | {g['ours'][k]:.4f} | {g['mpol'][k]:.4f} | {off['ours'][k][0]:+.3f} | {off['mpol'][k][0]:+.3f} | {off['ours'][k][1]:+.3f} | {off['mpol'][k][1]:+.3f} |")
+    if "grad_groups" in res:
+        md += ["", "## Gradient scaling by parameter group (the loss virgil.fit minimises, eps 1e-6)", "",
+               "`g_z`: gradient in the unconstrained coordinates L-BFGS moves in; `dx/dz`: median of the map from z to the parameter x; `g_x = g_z / (dx/dz)`: gradient per unit of x "
+               "(image pixels: per unit log-brightness; flux in Jy; gain unitless; offset in mas; sigma unitless). Raw loss units (-ln L + lam_R S_M; fit's gtol is per data point).", "",
+               "| at | site | n | max abs g_z | norm g_z | dx/dz | max abs g_x |", "|---|---|---:|---:|---:|---:|---:|"]
+        for label, rows in res["grad_groups"].items():
+            if "error" in rows:
+                md.append(f"| {label} | error: {rows['error']} | | | | | |")
+                continue
+            for site, r in rows.items():
+                md.append(f"| {label} | {site} | {r['n']} | {r['gz_max']:.4g} | {r['gz_norm']:.4g} | {r['dxdz_median']:.4g} | {r['gx_max']:.4g} |")
+    return md
+
+
 def cmd_compare(args):
     import jax.numpy as jnp
 
@@ -420,6 +485,13 @@ def cmd_compare(args):
         res["objective"] = dict(lam_R=lam, ours=o_ours, mpol_solution_in_virgil=o_mpol, mpol_own=obj_m and {k: obj_m.get(k) for k in ("neg_log_likelihood", "entropy", "objective_R")},
                                 ours_le_mpol=bool(o_ours["objective"] <= o_mpol["objective"]),
                                 finding=None if o_ours["objective"] <= o_mpol["objective"] else "our optimiser ended above MPoL's solution: a finding about the fit, not tuned away")
+        if not args.no_grad:
+            res["grad_groups"] = {}
+            for label, v in (("ours", v_ours), ("mpol_solution_in_virgil", v_mpol)):
+                try:
+                    res["grad_groups"][label] = va.grad_groups(data, v, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
+                except Exception as e:  # a diagnostic: never loses the comparison
+                    res["grad_groups"][label] = dict(error=f"{type(e).__name__}: {e}")
     if args.f_dir and args.dsharp:
         fz = np.load(pathlib.Path(args.f_dir) / "image.npy").astype(float)
         n = fz.shape[0]
@@ -430,7 +502,12 @@ def cmd_compare(args):
         np.save(out / "dsharp_regridded.npy", d_on.astype(np.float32))
         res["F_vs_dsharp"] = dict(beam_mas_deg=beam, **cx.difference_stats(conv, d_on))
     dump(out / "compare.json", res)
-    md = ["# R against MPoL", "", f"s_ours / (g s_MPoL): max |ratio − 1| = {res['sigma']['max_abs_dev']:.4g}",
+    md = ["# R against MPoL", ""]
+    if "objective" in res:
+        n_tot = res["objective"]["ours"]["n"]
+        raw = lambda o: sum(o["by_ddid"]["chi2_raw"]) / (2 * n_tot)  # noqa: E731
+        md += [f"**Raw chi^2/N (s = 1, quoted weights): ours {raw(res['objective']['ours']):.4f}; MPoL's solution evaluated in virgil {raw(res['objective']['mpol_solution_in_virgil']):.4f}** (N = {n_tot:,}, eps 1e-12).", ""]
+    md += [f"s_ours / (g s_MPoL): max |ratio − 1| = {res['sigma']['max_abs_dev']:.4g}",
           f"gain: max |diff| = {res['gain']['max_abs_diff']:.4g}; offsets: max |diff| = {res['offset_mas']['max_abs_diff']:.4g} mas; flux {res['flux_jy']['ours']:.5f} vs {flux_m:.5f} Jy", ""]
     for k, v in res["image"].items():
         md.append(f"- image {k}: " + ", ".join(f"{a} {b:.4g}" for a, b in v.items() if isinstance(b, float)))
@@ -439,10 +516,31 @@ def cmd_compare(args):
         md += ["", f"objective (λ_R = {o['lam_R']:.6g}): ours {o['ours']['objective']:.6f}, MPoL's solution (virgil) {o['mpol_solution_in_virgil']['objective']:.6f}; ours ≤ MPoL's: {o['ours_le_mpol']}"]
         if o["mpol_own"]:
             md.append(f"MPoL's own objective_full: {o['mpol_own']}")
+        md += objective_tables(res, vres, obj_m)
     if "F_vs_dsharp" in res:
         md += ["", "# F against DSHARP (CLEAN beam)", ", ".join(f"{a} {b:.4g}" for a, b in res["F_vs_dsharp"].items() if isinstance(b, float))]
     (out / "compare.md").write_text("\n".join(md) + "\n")
     say("\n".join(md))
+
+
+def cmd_mpol_init(args):
+    """A fit's values.npz (the ``--init`` of ``fit``) from MPoL's export: image, flux, gains, offsets and s = g s_M (``values_from_mpol_export``).
+    The ddid -> observation map comes from ``--data`` if given, else IM Lup's ``obsid_dict``. Needs no data otherwise and no GPU."""
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    mz = np.load(pathlib.Path(args.mpol) / "export.npz")
+    n_ddid = len(mz["sigma"])
+    if args.data:
+        data = va.load_dir(args.data)
+        dd, ob = np.asarray(data.ddid), np.asarray(data.obs)
+        obs_of = np.array([ob[dd == d][0] for d in range(n_ddid)])
+    else:
+        obs_of = np.array([0] * 5 + [1] * 6 + [2] * 2 + [3] * 2 + [4] * 3 + [5] * 4 + [6] * 4)
+    values = {k: np.asarray(v) for k, v in va.values_from_mpol_export(mz, obs_of).items()}
+    np.savez(out / "values.npz", **values)
+    dump(out / "mpol_init.json", dict(command="mpol-init", mpol=str(args.mpol), n_ddid=n_ddid, obs_of_ddid=obs_of, keys=sorted(values),
+                                      flux_jy=float(values["cal.flux"]), gain=values["cal.gain"], offset_mas=values["cal.offset"], sigma=values["cal.sigma"]))
+    say(f"wrote {out / 'values.npz'}: {sorted(values)}, image {values['log_brightness'].shape}, flux {float(values['cal.flux']):.5f} Jy")
 
 
 def cmd_lambda0(args):
@@ -468,6 +566,7 @@ def main(argv=None):
             p.add_argument("--time-limit", type=float, default=18000.0, help="seconds per stage (default 5 h)")
             p.add_argument("--gtol", type=float, default=1e-4, help="fit's gradient test; restarts tighten it until C8 holds")
             p.add_argument("--chunk-size", type=int, default=va.CHUNK, help="points per model evaluation (the fit's term and every score)")
+            p.add_argument("--alpha-free", dest="alpha_free", action="store_true", default=None, help="F: fit the spectral index within its bounds (default: fixed 0, as MPoL)")
 
     p = sub.add_parser("fit")
     common(p)
@@ -519,8 +618,15 @@ def main(argv=None):
     p.add_argument("--f-dir", default=None)
     p.add_argument("--dsharp", default=None)
     p.add_argument("--out", required=True)
+    p.add_argument("--no-grad", action="store_true", help="skip the gradient-scaling diagnostic (two value-and-gradient evaluations on --data)")
     p.add_argument("--chunk-size", type=int, default=va.CHUNK)
     p.set_defaults(fn=cmd_compare)
+
+    p = sub.add_parser("mpol-init", help="values.npz from MPoL's export, the --init of `fit --config R` (a warm start at MPoL's solution)")
+    p.add_argument("--mpol", required=True, help="MPoL's export directory (export.npz)")
+    p.add_argument("--data", default=None, help="optional: the ddid -> observation map is read from it (default IM Lup's obsid_dict)")
+    p.add_argument("--out", required=True)
+    p.set_defaults(fn=cmd_mpol_init)
 
     p = sub.add_parser("lambda0")
     p.add_argument("--n", type=int, required=True)

@@ -121,7 +121,18 @@ import types  # noqa: E402
 import warnings  # noqa: E402
 
 MPOL = dict(npix=1028, pixel_mas=5.0, taper_mas=30.0, prior=1e-4, f_tot=0.253, lam_m=1e-9)  # the example's own numbers (sgd.py)
-FULL = dict(npix=1536, pixel_mas=5.0, nu0_hz=239e9, dish_m=12.0, pb_factor=1.13)  # C5
+FULL = dict(npix=1536, pixel_mas=5.0, nu0_hz=239e9, dish_m=12.0, pb_factor=1.13, alpha_free=False)  # C5; alpha fixed at 0 as MPoL (Ben, 2026-10-21)
+
+ALPHA_FIXED_LABEL = "fixed 0 (MPoL)"
+
+
+def alpha_report(values):
+    """``(alpha, label)`` for a summary: the fitted value (a float) and its text, or ``None`` and "fixed 0 (MPoL)"."""
+    if "cal.alpha" in values:
+        a = float(values["cal.alpha"])
+        return a, f"{a:.4f}"
+    return None, ALPHA_FIXED_LABEL
+
 SB_OBS = (0, 1, 2, 3, 4)
 EPS_FIT, EPS_SCORE = 1e-6, 1e-12  # C7
 LN2PI = float(np.log(2 * np.pi))
@@ -259,15 +270,16 @@ def read_shat(path, n_ddid=26):
     return np.array([json.loads((path / f"ddid_{d:02d}.json").read_text())["sigma"]["all"]["s"] for d in range(n_ddid)])
 
 
-def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0):
-    """The fit problem of configuration ``config`` ("R" or "F") on ``data``.
+def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
+                  alpha_free=None):
+    """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
     (default ``data``; the SB stage passes ``data.select(obs=SB_OBS)``); ``mask`` is a boolean per
     point of ``use`` (a cross-validation fold). Returns a namespace of ``scene``, ``nuis``, ``priors``,
     ``init`` (defaults; the caller sets the image, flux and sigma), ``terms``, ``regs`` and ``model``
     for ``virgil.fit``. Priors are the house defaults (C6): log-uniform flux, gains and error scales,
-    uniform offsets and alpha, and a flat prior on the pixels' log-brightness.
+    uniform offsets (and alpha when ``alpha_free``), and a flat prior on the pixels' log-brightness.
     """
     import jax.numpy as jnp
     import numpyro.distributions as dist
@@ -276,6 +288,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     from virgil.radio import primary_beam
 
     config = config.upper()
+    alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
     if config == "R":
         npix = npix or MPOL["npix"]
@@ -284,7 +297,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     elif config == "F":
         npix = npix or FULL["npix"]
         pb = dict(freq_hz=FULL["nu0_hz"], dish_m=FULL["dish_m"], factor=FULL["pb_factor"])
-        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=True, nu0_hz=FULL["nu0_hz"])
+        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=alpha_free, nu0_hz=FULL["nu0_hz"])
         scene = grid_scene(npix, pixel_mas, pb)
         # the pixels are sky x beam; the default image of the entropy is the beam, so the penalty is the
         # entropy of the sky relative to a flat sky (docs: "the default image q ... normalised here")
@@ -298,6 +311,12 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam))
+
+
+def drop_unused_sites(values, prob):
+    """``values`` without the ``cal.*`` sites ``prob`` does not have: a warm start or report from a free-alpha F fit
+    (``cal.alpha`` saved) must not re-enable or report the alpha that is now fixed at 0."""
+    return {k: v for k, v in values.items() if not k.startswith("cal.") or k in prob.init}
 
 
 def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
@@ -615,4 +634,32 @@ def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=E
     prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, mask=mask)
     sc = score(data, prob.scene, values, prob.nuis, mask=mask, eps=eps, chunk_size=chunk_size)
     s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
-    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s)
+    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s, by_ddid=sc["by_ddid"], n=sc["n"])
+
+
+def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chunk_size=CHUNK):
+    """How well scaled R's parameters are for L-BFGS, at ``values``: per site (image pixels, flux, gain, offset, sigma), the
+    gradient of the loss ``virgil.fit`` minimises with respect to the unconstrained coordinates z it optimises
+    (``|g_z|`` max and 2-norm), the median Jacobian ``dx/dz`` of the site's value x (1 for the pixels; for ``cal.offset`` about
+    half the offset bound in mas, since z is a logit of ``x/bound``), and the gradient in the site's own units
+    ``g_x = g_z / (dx/dz)``. The loss is virgil's ``_Objective.loss`` (a private class, pinned with virgil) at the fit's
+    eps; one value-and-gradient costs what an L-BFGS step does."""
+    import jax
+    import jax.numpy as jnp
+    from virgil.fitting import _Objective
+
+    npix = npix or values["log_brightness"].shape[0]
+    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, chunk_size=chunk_size)
+    obj = _Objective(prob.model, prob.priors, (), tuple(prob.regs), None, tuple(prob.terms))
+    z = obj.init({k: jnp.asarray(v) for k, v in values.items() if k in obj.sites})
+    with ft_eps(eps):
+        g = jax.grad(obj.loss)(z)
+    rows = {}
+    for site in obj.sites:
+        # elementwise maps: dx_i/dz_i is the gradient of sum(x) with respect to z
+        jac = jax.grad(lambda zz, site=site: jnp.sum(obj.constrain({**z, site: zz})[site]))(z[site])
+        gz, jz = np.asarray(g[site], float).ravel(), np.asarray(jac, float).ravel()
+        gx = gz / jz
+        rows[site] = dict(n=int(gz.size), gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
+                          gx_max=float(np.max(np.abs(gx))), gx_norm=float(np.linalg.norm(gx)))
+    return rows
