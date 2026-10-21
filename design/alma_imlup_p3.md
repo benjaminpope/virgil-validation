@@ -184,3 +184,40 @@ Primary beam, entropy form, lambda and `nu0_hz` are unchanged. Free alpha stays 
 (alpha in {0, 2.5, 5}): `FULL["alpha_free"]` / `build_problem(..., alpha_free=True)` / `--alpha-free` on `alma_imlup_maxent.py`
 (fit, cv-task; `report` reads it from the fit's saved args). `result.json` carries `alpha` (float, or null when fixed) and
 `alpha_label` ("fixed 0 (MPoL)" or the fitted value). alma_imlup_cv passes no alpha flag, so it follows the new default.
+
+## Decision: the data column is CORRECTED_DATA (D1, 2026-10-22)
+
+Status: the vv side (this section, `alma_worker` `datacolumn`, `asdf_vs_npz` PASS/FAIL) is in vv#166; the OzSTAR side (`alma_imlup_read --datacolumn`,
+`datacolumn.txt`, the `-cd` tag, `--check-only`, `--data` for maxent and cv) is ozstar_scripts#58. **Until #58 has run, the IM Lup npz are still DATA.**
+Ledger: D13 (open until the `asdf_vs_npz` PASS on the `-cd` npz).
+
+**Finding.** Ben asked for a check that we replicate MPoL's workflow. The objective (likelihood, entropy, taper, s/g
+mapping, grid, offset sign) is identical; the *data* were not. The DSHARP MS has DATA, CORRECTED_DATA, MODEL_DATA and
+WEIGHT_SPECTRUM. MPoL's export (visread via `alma_mpol_ref`'s `run_export.py`; `asdf.export.json` says
+`"datacolumn": "corrected_data"`) read CORRECTED_DATA. Our reader (`alma_worker.read_ddid`, default `datacolumn="DATA"`)
+read DATA. `asdf_vs_npz` (MPoL's asdf against our npz) showed identical N, keys and weights (rel 6e-8) but
+|ΔV|max of 0.03 Jy on ddid 0, 0.4-0.7 Jy on ddids 4 and 17-20, 0.95-1.63 Jy on ddids 22-25. It applied no tolerance,
+so nobody noticed. This likely explains MPoL's −ln L being lower than our R fit's by 1.8e6 and the LB obs-6 gain
+(ours 1.28, MPoL 0.981). Not yet shown: that needs the new npz and a rerun (the PASS below, then ŝ and the fits).
+
+**Fix.**
+1. The column is an explicit, recorded choice. `alma_worker` `read` takes `datacolumn` (case-insensitive; an MS without
+   the column is an error, never a silent fall back) and writes it, upper case, to its result JSON. The generic default
+   stays `DATA` (the synthetic MS has only DATA); the IM Lup job `alma_imlup_read` (ozstar_scripts#58) defaults to `CORRECTED_DATA` and
+   writes `datacolumn.txt` into the npz directory, which every downstream summary prints. The new npz goes to a new tag
+   (`<vv commit>-cd`), so the DATA npz stays for comparison.
+2. `asdf_vs_npz` is a test: per ddid PASS needs equal N, all keys matched, |ΔV| < 1e-5 Jy, and relative differences of
+   per-point relative u, v, weight < 1e-6. `worst.all_pass` is the verdict. Channels are matched by each point's own frequency
+   rank, never by channel index or an assumed direction: visread 0.0.5 orders channels by decreasing frequency
+   (`process_casa.get_channel_sorted_data` flips an ascending MS), our npz keeps the MS order, which is increasing for some ddids, so the
+   index-keyed match broke there (ddids 4, 17, 19, 20, 23, 24). We match rather than re-sort our npz so that existing npz and tags stay
+   valid. u, v and weight are compared per point (u, v against max(|u|, 1 λ)). Logic in `external_bridge/npz_compare.py` (numpy only, tested in `tests/test_alma_npz_compare.py`).
+3. Weights. `alma_mpol_ref`'s check shows our weights agree with visread's to 6e-8 on every ddid, so for this MS
+   WEIGHT_SPECTRUM (which our reader uses when defined) and visread's weights are the same and the choice does not
+   matter here (stated from that agreement, not from inspecting the column).
+4. virgil's `ComplexVisData.read_ms` already takes `datacolumn="DATA"` (virgil `radio.py`); no virgil change is needed,
+   and `alma_imlup_read`'s `read_compare.py` will pass it (ozstar_scripts#58) so the two readers read the same column.
+
+C14 stands, with this addendum: "MPoL's own export" includes its column, and our arrays must be read from the same
+column or the comparison is not like for like. All fits, CV and ŝ before this date used DATA and are superseded for
+the R-vs-MPoL comparison once rerun on the `-cd` npz.

@@ -770,3 +770,14 @@ def test_nuisances_are_recovered_within_three_sigma_on_im_lups_uv_coverage():
     print(free)
     assert len(pull) == 1 + 6 + 12 + 26 + 1
     assert np.abs(pull).max() < 3.0, np.round(pull, 2)
+
+
+@pytest.mark.validates("external_bridge.alma_worker", roots=["self-consistency"], kind="guard")
+def test_read_records_the_datacolumn_and_refuses_a_column_the_ms_lacks(ms_clean):
+    """The column is an explicit, recorded choice: the result names it (upper case), and CORRECTED_DATA on an
+    MS without it is an error, not a silent fall back to DATA."""
+    ms, tmp = ms_clean
+    res = _worker({"task": "read", "path": ms, "out": str(tmp / "dc"), "datacolumn": "data"})
+    assert res["datacolumn"] == "DATA"
+    with pytest.raises(Exception, match="CORRECTED_DATA"):
+        _worker({"task": "read", "path": ms, "out": str(tmp / "dc2"), "datacolumn": "CORRECTED_DATA"})

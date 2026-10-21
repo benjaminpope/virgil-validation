@@ -25,12 +25,16 @@ Large arrays travel as ``.npz`` files named in the task.
 
 import importlib.util
 import json
+import pathlib
 import sys
 from unittest import mock
 
 import numpy as np
 import torch
 from mpol import coordinates, losses, utils
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import npz_compare  # noqa: E402  (numpy only, next to this file, so a test can import it without MPoL)
 
 torch.set_default_dtype(torch.float64)
 
@@ -274,18 +278,19 @@ def _asdf_points(path, examples_dir):
     import loaddata
 
     uu, vv, data, weight, ddid = loaddata.get_ddid_data(path)
-    chan, ant1, ant2, time = [], [], [], []
+    chan, freq, ant1, ant2, time = [], [], [], [], []
     with asdf.open(path) as af:
         for obsid in af["obsids"].keys():
             for d_id in af["obsids"][obsid]["ddids"].keys():
                 d = af["obsids"][obsid]["ddids"][d_id]
                 ch, row = np.nonzero(~np.asarray(d["flag"]))  # row-major over (nchan, nvis): the order `[~flag]` returns
                 chan.append(ch)
+                freq.append(np.asarray(d["frequencies"], float)[ch])
                 ant1.append(np.asarray(d["antenna1"])[row] if "antenna1" in d else np.full(len(ch), -1))
                 ant2.append(np.asarray(d["antenna2"])[row] if "antenna2" in d else np.full(len(ch), -1))
                 time.append(np.asarray(d["time"])[row] if "time" in d else np.full(len(ch), np.nan))
     cat = np.concatenate
-    return dict(u=uu, v=vv, vis=data, weight=weight, ddid=ddid, chan=cat(chan), ant1=cat(ant1), ant2=cat(ant2), time=cat(time))
+    return dict(u=uu, v=vv, vis=data, weight=weight, ddid=ddid, chan=cat(chan), freq=cat(freq), ant1=cat(ant1), ant2=cat(ant2), time=cat(time))
 
 
 def objective_full(task):
@@ -368,9 +373,18 @@ def asdf_vs_npz(task):
     changed to make the two agree.
 
     Matching: when both sides have channel, antennas and time (the stride-1000 subsample does; the
-    full arrays may not), points are sorted by (chan, time, ant1, ant2) on both sides and
-    ``key_mismatch`` counts the points whose keys then differ. Otherwise the order is assumed equal
-    (``matching: "order"``); a different order shows as a large u difference."""
+    full arrays may not), points are sorted by (channel rank, time, ant1, ant2) on both sides and
+    ``key_mismatch`` counts the points whose keys then differ. The channel rank is the rank of the
+    channel's own frequency (the asdf's ``frequencies``, our npz's ``freq``), ascending. visread 0.0.5 orders
+    channels by decreasing frequency (``process_casa.get_channel_sorted_data`` flips an ascending MS), while our
+    npz keeps the MS order, which is increasing for some ddids (4, 17, 19, 20, 23, 24 broke the old index match);
+    no direction is assumed on either side, and our npz files stay as they are. Otherwise the order is assumed equal
+    (``matching: "order"``); a different order shows as a large u difference.
+
+    Test: per ddid ``pass`` is true when N agrees, every key matches, |dV| < ``tol_vis`` (default 1e-5 Jy),
+    the per-point relative differences of u, v (against max(|u|, 1 lambda)) and of the weight are < ``tol_rel`` (default 1e-6).
+    ``worst.all_pass`` is true when every ddid passes; a missing npz or a different N is a FAIL."""
+    tol_vis, tol_rel = float(task.get("tol_vis", 1e-5)), float(task.get("tol_rel", 1e-6))
     pts = _asdf_points(task["asdf"], task["examples_dir"])
     out = {"ddids": {}}
     worst = {k: 0.0 for k in ("u_max_abs", "v_max_abs", "vis_max_abs", "weight_max_rel")}
@@ -386,29 +400,17 @@ def asdf_vs_npz(task):
         if res["n_asdf"] != res["n_npz"]:
             out["ddids"][str(d)] = res
             continue
-        have_keys = all(k in b for k in ("chan", "time", "ant1", "ant2")) and not np.isnan(a["time"]).any() and (a["ant1"] >= 0).all()
-        if have_keys:
-            ia = np.lexsort((a["ant2"], a["ant1"], a["time"], a["chan"]))
-            ib = np.lexsort((b["ant2"], b["ant1"], b["time"], b["chan"]))
-            res["matching"] = "keys"
-            res["key_mismatch"] = int(sum(np.count_nonzero(a[k][ia] != b[kb][ib]) for k, kb in (("chan", "chan"), ("ant1", "ant1"), ("ant2", "ant2"))) + np.count_nonzero(np.abs(a["time"][ia] - b["time"][ib]) > 1e-3))
-        else:
-            ia = ib = slice(None)
-            res["matching"] = "order"
-        ua, va, wa, za = a["u"][ia], a["v"][ia], a["weight"][ia].astype(float), a["vis"][ia].astype(complex)
-        ub, vb, wb, zb = b["u"][ib], b["v"][ib], b["weight"][ib].astype(float), b["vis"][ib].astype(complex)
-        mx = lambda x: float(np.max(np.abs(x))) if x.size else 0.0  # noqa: E731
-        res.update(
-            u_max_abs=mx(ua - ub), v_max_abs=mx(va - vb), vis_max_abs=mx(za - zb), weight_max_abs=mx(wa - wb),
-            u_max_rel=mx((ua - ub) / np.maximum(np.abs(ub), 1e-300)), weight_max_rel=mx((wa - wb) / np.maximum(np.abs(wb), 1e-300)),
-            vis_conj_max_abs=mx(za - np.conj(zb)), u_flip_max_abs=mx(ua + ub), v_flip_max_abs=mx(va + vb), u_ratio_median=float(np.median(np.abs(ua) / np.maximum(np.abs(ub), 1e-300))) if len(ua) else None,
-        )
+        res.update(npz_compare.compare_ddid(a, b, tol_vis, tol_rel))
         for k in worst:
             worst[k] = max(worst[k], res[k] if k in res else 0.0)
         out["ddids"][str(d)] = res
     # a ddid whose counts disagree (or with no npz) is skipped above, so say so in the summary
     worst["n_mismatch_ddids"] = [int(d) for d, r in out["ddids"].items() if r["n_npz"] != r["n_asdf"]]
     worst["key_mismatch_max"] = max([r.get("key_mismatch", 0) for r in out["ddids"].values()] + [0])
+    for r in out["ddids"].values():
+        r.setdefault("pass", False)
+    worst["all_pass"] = all(r["pass"] for r in out["ddids"].values())
+    out["tolerances"] = {"vis_max_abs_jy": tol_vis, "rel": tol_rel}
     out["worst"] = worst
     out["n_asdf_total"], out["n_npz_total"] = int(len(pts["u"])), int(sum(r["n_npz"] or 0 for r in out["ddids"].values()))
     return out
