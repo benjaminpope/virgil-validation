@@ -277,7 +277,9 @@ def cmd_report(args):
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
     say(f"report of {out}: config {args.config}, lambda {lam:.6g}, stages {[s['name'] for s in stages]}")
     write_report(args, out, data, prob, values, stages, shat, lam, mask, saved.get("wall_s"))
-    if args.grad and args.config == "R":
+    if args.grad and (mask is not None or use is not None):
+        say("--grad skipped: the diagnostic evaluates the all-data, unmasked objective, not this fit's (fold mask or SB-only last stage)")
+    elif args.grad and args.config == "R":
         groups = {"report": va.grad_groups(data, values, lam=lam, pixel_mas=args.pixel_mas or 5.0, chunk_size=args.chunk_size)}
         dump(out / "grad_groups.json", groups)
         (out / "grad_groups.md").write_text("\n".join(grad_table(groups)) + "\n")
@@ -446,7 +448,7 @@ def grad_table(groups):
     md = ["## Gradient scaling by parameter group (the loss virgil.fit minimises, eps 1e-6)", "",
           "`g_z`: gradient in the unconstrained coordinates L-BFGS moves in; `dx/dz`: median of the map from z to the parameter x (z is a logit of x/bound for "
           "`cal.offset`); `g_x = g_z / (dx/dz)`: gradient in physical units, `|dL/dx|` per the unit in the last column "
-          "(sigma: per ln s = s g_x). Raw loss units (-ln L + lam_R S_M; fit's gtol is per data point). A group with small `dx/dz` and large "
+          "(sigma: per ln s, max |s_i g_x,i| over ddids). Raw loss units (-ln L + lam_R S_M; fit's gtol is per data point). A group with small `dx/dz` and large "
           "`g_x`/`g_z` ratio is badly conditioned for a first-order step: z must move 1/(dx/dz) times further than x.", "",
           "| at | site | n | max abs g_z | norm g_z | dx/dz | max abs g_x | unit |", "|---|---|---:|---:|---:|---:|---:|---|"]
     units = {"cal.offset": "per mas", "cal.gain": "per unit gain", "cal.sigma": "per ln s", "cal.flux": "per Jy", "log_brightness": "per unit ln brightness"}
@@ -455,7 +457,7 @@ def grad_table(groups):
             md.append(f"| {label} | error: {rows['error']} | | | | | | |")
             continue
         for site, r in rows.items():
-            gx = r["gx_max"] * (r.get("sigma_median", 1.0) if site == "cal.sigma" else 1.0)
+            gx = r["gx_lns_max"] if site == "cal.sigma" else r["gx_max"]
             md.append(f"| {label} | {site} | {r['n']} | {r['gz_max']:.4g} | {r['gz_norm']:.4g} | {r['dxdz_median']:.4g} | {gx:.4g} | {units.get(site, '')} |")
     return md
 

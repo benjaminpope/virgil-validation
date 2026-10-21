@@ -689,7 +689,9 @@ def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chu
         jac = jax.grad(lambda zz, site=site: jnp.sum(obj.constrain({**z, site: zz})[site]))(z[site])
         gz, jz = np.asarray(g[site], float).ravel(), np.asarray(jac, float).ravel()
         gx = gz / jz
-        sig = float(np.median(np.asarray(obj.constrain(z)[site], float))) if site == "cal.sigma" else None
-        rows[site] = dict(n=int(gz.size), **({"sigma_median": sig} if sig else {}), gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
+        extra = {}
+        if site == "cal.sigma":  # dL/d ln s_i = s_i g_x,i
+            extra["gx_lns_max"] = float(np.max(np.abs(np.asarray(obj.constrain(z)[site], float).ravel() * gx)))
+        rows[site] = dict(n=int(gz.size), **extra, gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
                           gx_max=float(np.max(np.abs(gx))), gx_norm=float(np.linalg.norm(gx)))
     return rows

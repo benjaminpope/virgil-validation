@@ -44,6 +44,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D10">D10</span> | `frank`, `frap` | frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline) | documented |
 | <span id="D11">D11</span> | `mpol`, `models.Image` | MPoL's image centre is pixel N/2 of the unpacked cube; virgil's is ((N-1)/2, (N-1)/2), so the two scenes differ by half a pixel in both axes | documented |
 | <span id="D12">D12</span> | `mpol`, `imaging.MaxEntropy` | MPoL's entropy is of the tapered image in Jy/arcsec^2 against a constant prior 1e-4, normalised by F_tot; virgil's MaxEntropy is of the unit-sum untapered image | documented |
+| <span id="D13">D13</span> | `mpol` | MPoL's IM Lup export reads CORRECTED_DATA; our first read used DATA, which differs from it by 0.03 Jy (ddid 0) to 1.6 Jy (ddids 22-25) | open |
 
 ## Problems found in other packages
 
