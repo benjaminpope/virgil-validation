@@ -181,6 +181,10 @@ def read_ddid(ct, path, ddid, stride=1, conjugate=False, datacolumn="DATA", fiel
     def col(name):
         return q.getcol(name, 0, nsel, step)
 
+    datacolumn = str(datacolumn).upper()
+    if datacolumn not in q.colnames():
+        q.close()
+        raise ValueError(f"ddid {ddid}: the MS has no column {datacolumn} (it has {sorted(c for c in q.colnames() if c.endswith('DATA'))})")
     data, flag = col(datacolumn), col("FLAG")  # (npol, nchan, nrow)
     uvw, flag_row = col("UVW"), col("FLAG_ROW")
     weight = col("WEIGHT")  # (npol, nrow)
@@ -246,7 +250,8 @@ def read(task):
         f = out / f"ddid_{d:02d}.npz"
         np.savez(f, **rec)
         files.append({"file": str(f), "n": int(len(rec["u"])), "ddid": d, "obsid": rec["obsid"]})
-    return {"files": files, "casatools": ct.version_string(), "conjugate": task.get("conjugate", True)}
+    return {"files": files, "casatools": ct.version_string(), "conjugate": task.get("conjugate", True),
+            "datacolumn": str(task.get("datacolumn", "DATA")).upper()}
 
 
 def visread_read(task):

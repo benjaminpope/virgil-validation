@@ -61,6 +61,10 @@ and u = `UVW[0]` ν / c, v = `UVW[1]` ν / c:
   (`test_samples_are_dropped_for_flags_flag_row_and_zero_weights`).
 - **Polarizations.** `POLARIZATION.CORR_TYPE` must contain XX, YY (9, 12) or
   RR, LL (5, 8). V = (w₁V₁ + w₂V₂)/(w₁ + w₂), w = w₁ + w₂.
+- **Data column.** `read` takes `datacolumn` (default `DATA`; case-insensitive; a column the MS lacks is an
+  error) and records it in its result. The IM Lup MS has `DATA`, `CORRECTED_DATA`, `MODEL_DATA`; MPoL's visread
+  export reads `CORRECTED_DATA`, which differs from `DATA` by up to 1.6 Jy, so IM Lup is read with
+  `datacolumn=CORRECTED_DATA` (`design/alma_imlup_p3.md`, D1). The conjugation above applies to whichever column is read.
 - **Weights.** `WEIGHT_SPECTRUM` if the column exists and its first cell is
   defined with the shape of `DATA`; otherwise `WEIGHT` per row, repeated over
   channels. A weight is 1/σ² of each of Re and Im of a correlation product
@@ -252,16 +256,19 @@ Task fields: `checkpoint`, `asdf` (the example's export), optional `batch` (10�
 Task fields: `asdf`, `npz_dir` (per-ddid `ddid_NN.npz`: `u, v` in wavelengths, `vis` or `re`/`im`, `weight`, and, if
 present, `chan, time, ant1, ant2`). The asdf is read by the example's `loaddata.get_ddid_data` (its flag handling,
 its conversion to wavelengths, its channel flattening); a second pass over the tree, in the same order, recovers
-the channel, antennas and time of each kept point. Points are matched by sorting both sides on (chan, time, ant1,
+the channel, antennas and time of each kept point. Points are matched by sorting both sides on (channel rank, time, ant1,
 ant2) when both have those keys (`matching: "keys"`; `key_mismatch` counts points whose keys still differ), else
-by order (`matching: "order"`). The task **reports**; a conjugation, a unit factor or a different order is a
+by order (`matching: "order"`). The channel rank is that of the frequency, ascending (the asdf's `chan` is already
+ascending; our npz's `freq` is used), because our npz keeps the MS channel order and visread sorts ascending.
+Per ddid `pass` requires `key_mismatch` 0, `vis_max_abs` < `tol_vis` (default 1e-5 Jy) and `u_max_rel`, `v_max_rel`
+(relative to the largest |u|, |v|), `weight_max_rel` < `tol_rel` (default 1e-6); a missing npz or differing N fails. The task **reports**; a conjugation, a unit factor or a different order is a
 finding, not corrected.
 
 `result.json`: `ddids` (keyed `"0"`..`"25"`), each `n_asdf`, `n_npz`, `matching`, `key_mismatch`, and, when the
 counts agree, `u_max_abs`, `v_max_abs` (wavelengths), `vis_max_abs` (Jy), `weight_max_abs`, `u_max_rel`,
 `weight_max_rel`, and the signatures of a convention difference: `vis_conj_max_abs` (|V_asdf − conj V_npz|:
 zero when the two differ by a conjugation), `u_flip_max_abs`, `v_flip_max_abs` (|u_asdf + u_npz|, likewise v: zero when the sign differs; a conjugation pairs with (u, v) → (−u, −v)), `u_ratio_median` (≈ 1; 10³ would be kilolambda). Also `worst` (maxima over ddids, plus `n_mismatch_ddids`: ddids with no npz or differing counts, which the maxima skip, and `key_mismatch_max`) and
-`n_asdf_total`, `n_npz_total`.
+`n_asdf_total`, `n_npz_total`; `worst.all_pass` and `tolerances`.
 
 ## The environment
 
