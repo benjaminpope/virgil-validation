@@ -47,7 +47,7 @@ import contest_images as ci  # noqa: E402
 import virgil.models as vm  # noqa: E402
 from virgil.fields import GaussianField  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
-from virgil.imaging import beam, chi2_by_observable, clean, error_scale, image_priors, log_evidence, starting_image  # noqa: E402
+from virgil.imaging import beam, clean, error_scale, image_priors, log_evidence, starting_image  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 from virgil.spectra import PowerLaw  # noqa: E402
 
@@ -109,6 +109,8 @@ def parametric_priors(companion, res, fov, sparco):
 
 def chi2_report(model, data):
     """Raw χ² and χ²/N over all datasets, and per dataset V² and closure phases apart."""
+    from virgil.imaging import chi2_by_observable  # newer than the CI's virgil; the tests that need it skip
+
     total = chi2_by_observable(model, data)
     diag = ci.residual_diagnostics(model, data)
     return {"datasets": [{k: d[k] for k in ("chi2_v2", "chi2_cp", "short_mean")} for d in diag],
@@ -182,6 +184,8 @@ def fit_image(data, parts, base_priors, res, fov, n, sparco, wavel0, smoke):
     lengths = [f * res.minor_mas for f in (ci.GP_LENGTHS[1:2] if smoke else ci.GP_LENGTHS)]
     ci.grow_grid(evaluate, lengths, ci.GP_SIGMAS[1:2] if smoke else ci.GP_SIGMAS,
                  [f * res.minor_mas for f in ci.GP_LENGTH_LIMITS], ci.GP_SIGMA_LIMITS, 0 if smoke else ci.GP_GROWTHS)
+    from virgil.imaging import chi2_by_observable
+
     r = best["result"]
     return r, best["z"], {"length_mas": best["length"], "sigma": best["sigma"]}, float(chi2_by_observable(r.model, data, "env")["n_gamma"])
 

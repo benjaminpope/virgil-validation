@@ -17,7 +17,7 @@ import pytest
 from crosscheck import simulate, sky
 from evidence.plugin import record
 
-pytest.importorskip("virgil.imaging")
+imaging = pytest.importorskip("virgil.imaging")
 from virgil.imaging import beam  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 
@@ -28,6 +28,7 @@ cp = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(cp)
 
 pytestmark = [pytest.mark.x64, pytest.mark.slow]
+needs_chi2 = pytest.mark.skipif(not hasattr(imaging, "chi2_by_observable"), reason="virgil.imaging.chi2_by_observable is newer than this virgil")
 
 UTS = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
 DIAM, DRA, DDEC, RATIO, INDEX, WAVEL0 = 1.2, 4.0, 1.5, 0.25, -2.0, 1.9e-6
@@ -83,6 +84,7 @@ def test_a_point_star_alone_cannot_fit_the_companion(data, parametric):
 
 
 @pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"])
+@needs_chi2
 def test_combined_route_keeps_a_good_parametric_fit(data, parametric):
     """With the truth already parametric, the GP residual image adds nothing
     material: the combined raw χ²/N stays near 1 and the companion stays put;
