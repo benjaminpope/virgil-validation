@@ -210,8 +210,7 @@ so nobody noticed. This likely explains MPoL's −ln L being lower than our R fi
    convenience. Logic in `external_bridge/npz_compare.py` (numpy only, tested in `tests/test_alma_npz_compare.py`).
 3. Weights. `alma_mpol_ref`'s check shows our weights agree with visread's to 6e-8 on every ddid, so for this MS
    WEIGHT_SPECTRUM (which our reader uses when defined) and visread's weights are the same and the choice does not
-   matter here. The weights belong to the data column's calibration only through CASA's applycal scaling, which this MS
-   does not show (the agreement is the evidence).
+   matter here (stated from that agreement, not from inspecting the column).
 4. virgil's `ComplexVisData.read_ms` already takes `datacolumn="DATA"` (virgil `radio.py`); no virgil change is needed,
    but `alma_imlup_read`'s `read_compare.py` passes it now so the two readers read the same column.
 
