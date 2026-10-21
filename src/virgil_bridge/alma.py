@@ -333,6 +333,35 @@ def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
     return v
 
 
+def mpol_base_jy_arcsec2():
+    """MPoL's initial per-pixel brightness in Jy/arcsec^2: ``softplus(-3)`` = ln(1 + e^-3) = 0.04859. ``BaseCube`` fills its
+    ``base_cube`` with -3 and maps it through ``torch.nn.Softplus`` (mpol 0.3.1 ``images.py``: ``BaseCube.__init__`` lines 65-76
+    for the -3 and the Softplus default, ``forward`` for the mapping), and ``sgd.py:59`` builds it with no ``base_cube``."""
+    return float(np.log1p(np.exp(-3.0)))
+
+
+def mpol_start_values(prob):
+    """The start of MPoL's ``sgd.py`` as virgil values (workflow ``mpol``), replacing C9's Gaussian and ŝ:
+
+    - image: uniform ``softplus(-3)`` Jy/arcsec^2 per pixel (``BaseCube``, ``images.py:65-76``; ``sgd.py:59``), i.e. our
+      ``flux * softmax(log_brightness) / dx^2`` with equal logits (zero) and ``flux = value * dx^2 * npix^2`` (1.2837 Jy at
+      1028^2 x 5 mas, not the 0.253 Jy of ``F_tot``);
+    - gains 1: ``sgd.py:49`` ``log10_amp_factors = zeros``;
+    - offsets 0: ``sgd.py:56-57`` ``delta_ra``, ``delta_dec = zeros``;
+    - s_d = 1: ``sgd.py:53`` ``log10_sigma_factors = zeros`` (s_MPoL = 1) with g = 1 gives s = g s_MPoL = 1. No ŝ.
+    """
+    import jax.numpy as jnp
+
+    v = dict(prob.init)
+    dx = prob.pixel_mas / 1000.0
+    v["log_brightness"] = jnp.zeros((prob.npix, prob.npix))
+    v["cal.flux"] = jnp.asarray(mpol_base_jy_arcsec2() * dx**2 * prob.npix**2)
+    for k, fill in (("cal.gain", 1.0), ("cal.sigma", 1.0), ("cal.offset", 0.0)):
+        if k in v:
+            v[k] = jnp.full_like(jnp.asarray(v[k], float), fill)
+    return v
+
+
 def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4):
     """L-BFGS through ``virgil.fit`` (C8). Returns ``(values, info, trajectory)``: the fitted values as
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
@@ -660,6 +689,7 @@ def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chu
         jac = jax.grad(lambda zz, site=site: jnp.sum(obj.constrain({**z, site: zz})[site]))(z[site])
         gz, jz = np.asarray(g[site], float).ravel(), np.asarray(jac, float).ravel()
         gx = gz / jz
-        rows[site] = dict(n=int(gz.size), gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
+        sig = float(np.median(np.asarray(obj.constrain(z)[site], float))) if site == "cal.sigma" else None
+        rows[site] = dict(n=int(gz.size), **({"sigma_median": sig} if sig else {}), gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
                           gx_max=float(np.max(np.abs(gx))), gx_norm=float(np.linalg.norm(gx)))
     return rows

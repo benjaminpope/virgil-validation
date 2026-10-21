@@ -225,3 +225,55 @@ def test_warm_start_from_free_alpha_values_drops_alpha(syn):
     spec.loader.exec_module(cli)
     cli.resolve_alpha(ns)
     assert ns.alpha_free is False
+
+
+# ------------------------------------------------------------------ the MPoL workflow (--workflow mpol)
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_mpol_start_reproduces_the_uniform_softplus_image_and_flux(syn):
+    """`mpol_start_values` gives every pixel of `image_of` the value softplus(-3) Jy/arcsec^2 and the total flux
+    softplus(-3) dx^2 npix^2, to 1e-12 (relative); gains 1, offsets 0, s = 1; the C9 start does not."""
+    npix, px = 24, 5.0
+    data = va.load_dir(syn)
+    prob = va.build_problem(data, "R", lam=0.5, npix=npix, pixel_mas=px)
+    v = {k: np.asarray(x) for k, x in va.mpol_start_values(prob).items()}
+    img = va.image_of(v, npix, px)
+    sp = np.log1p(np.exp(-3.0))
+    record("rel_pixel_error", float(np.max(np.abs(img / sp - 1))))
+    assert np.max(np.abs(img / sp - 1)) < 1e-12
+    flux = sp * (px / 1000) ** 2 * npix**2
+    assert abs(float(v["cal.flux"]) / flux - 1) < 1e-12
+    assert abs(img.sum() * (px / 1000) ** 2 / flux - 1) < 1e-12
+    assert np.all(v["cal.gain"] == 1) and np.all(v["cal.offset"] == 0) and np.all(v["cal.sigma"] == 1)
+    c9 = {k: np.asarray(x) for k, x in va.start_values(prob).items()}
+    assert abs(va.image_of(c9, npix, px).max() / sp - 1) > 1e-3
+    # MPoL's own numbers at its grid: 1.2837 Jy
+    assert abs(sp * 0.005**2 * 1028**2 - 1.2837) < 1e-3
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_workflow_mpol_runs_exactly_one_stage_and_records_itself(syn, tmp_path):
+    out = tmp_path / "m"
+    _call("fit", "--config", "R", "--workflow", "mpol", "--data", syn, "--out", out, "--npix", 32, "--max-steps", 5, "--no-dirty")
+    r = json.loads((out / "result.json").read_text())
+    assert r["workflow"] == "mpol"
+    assert [s["name"] for s in r["stages"]] == ["all"]
+    assert r["n"] == 5600  # all data, no SB subset
+    p3 = tmp_path / "p"
+    _call("fit", "--config", "R", "--data", syn, "--out", p3, "--npix", 32, "--max-steps", 5, "--no-dirty")
+    r3 = json.loads((p3 / "result.json").read_text())
+    assert r3["workflow"] == "p3" and [s["name"] for s in r3["stages"]] == ["sb", "all"]
+    with pytest.raises(SystemExit):
+        _call("fit", "--config", "F", "--workflow", "mpol", "--data", syn, "--out", tmp_path / "f")
+    with pytest.raises(SystemExit):
+        _call("fit", "--config", "R", "--workflow", "mpol", "--sb-only", "--data", syn, "--out", tmp_path / "g")
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_grad_table_states_physical_units_and_sigma_per_ln_s():
+    row = dict(n=2, gz_max=1e4, gz_norm=1.5e4, dxdz_median=2500.0, gx_max=4.0)
+    sig = dict(n=3, gz_max=3.0, gz_norm=4.0, dxdz_median=1.5, gx_max=2.0, sigma_median=2.0)
+    md = "\n".join(script.grad_table({"x": {"cal.offset": row, "cal.sigma": sig}}))
+    assert "| x | cal.offset | 2 | 1e+04 | 1.5e+04 | 2500 | 4 | per mas |" in md
+    assert "| 4 | per ln s |" in md  # s * g_x = 2 * 2

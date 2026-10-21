@@ -221,3 +221,39 @@ so nobody noticed. This likely explains MPoL's −ln L being lower than our R fi
 C14 stands, with this addendum: "MPoL's own export" includes its column, and our arrays must be read from the same
 column or the comparison is not like for like. All fits, CV and ŝ before this date used DATA and are superseded for
 the R-vs-MPoL comparison once rerun on the `-cd` npz.
+
+## Option: `fit --workflow=mpol` (2026-10-22)
+
+Ben: "keep working on the radio analysis, to try and closely replicate MPoL". With the data column fixed (D1) the objective and the
+data agree; what still differs is the *route* to the optimum. C9 (an SB stage, then all data, from a 1″ Gaussian of 0.25 Jy, s at ŝ)
+is ours; MPoL's `sgd.py` runs two all-data AdamW stages (`Snakefile:26-27`, 10 epochs each) from a flat start. The earlier R fit on the
+DATA npz stopped at `max_steps` 20000 without C8 and kept its offsets under 2 mas, where MPoL's are 4–13 mas, so a different basin or
+a slow direction is possible. `--workflow=mpol` removes the start as a difference. Default stays `p3`; config R only.
+
+| | `p3` (default, C9) | `mpol` |
+|---|---|---|
+| stages | SB (obs 0–4), then all | one, all data, to C8 |
+| image start | 1″ FWHM Gaussian, 0.25 Jy | uniform `softplus(-3)` = 0.048587 Jy/arcsec² per pixel (`BaseCube`, mpol 0.3.1 `images.py:65-76`: `base_cube = -3`, `Softplus`; `sgd.py:59`), total 1.2837 Jy at 1028² × 5 mas |
+| parametrisation | `flux × softmax(log_brightness)` | same: logits 0, `flux = value × dx² × npix²` (so `image_of` returns the uniform value to 1e-12) |
+| gains | 1 | 1 (`sgd.py:49`, `log10_amp_factors = zeros`) |
+| offsets | 0 | 0 (`sgd.py:56-57`) |
+| s per ddid | ŝ | 1 (`sgd.py:53`, `log10_sigma_factors = zeros`; with g = 1, s = g s_MPoL = 1; ŝ is not used, C13 is still checked if `--shat` is given) |
+| optimiser | L-BFGS to C8 | L-BFGS to C8 (not AdamW: that stays the "different optimiser" of C1) |
+
+The softmax parametrisation cannot reproduce softplus per pixel *during* the fit (ours keeps the total flux a fitted scalar; MPoL's
+pixels are free and non-negative by softplus); only the start is matched. `result.json` and the log carry `workflow` (`p3` or
+`mpol`); the log line gives raw χ²/(2N) at s = 1 first. `--workflow=mpol` with `--init` (resume or continue) is the same all-data
+stage from the saved values; `--sb-only` is an error.
+
+Code: `va.mpol_start_values`, `va.mpol_base_jy_arcsec2` (`src/virgil_bridge/alma.py`); tests `test_mpol_start_reproduces_*` and
+`test_workflow_mpol_runs_exactly_one_stage_*` (`tests/test_alma_maxent_run.py`).
+
+**Offset-scaling diagnostic.** `compare` already ran `va.grad_groups` (vv#165). It now prints physical units (offset per mas, gain per
+unit gain, s per ln s, flux per Jy, pixels per unit log-brightness; `grad_table`), and `report --grad` prints the same for one saved
+fit without MPoL's export (R only; one value-and-gradient at the fit's eps). Reading it: virgil fits an offset as a logit of
+x/bound with bound = 1/(2 q_min) (≈ 10⁴ mas on IM Lup), so dx/dz = bound/2 ≈ 5 × 10³ mas per unit z near 0 and 1 mas ≈ 2 × 10⁻⁴ in z.
+In z the offset gradient is therefore bigger than the others' by about dx/dz, and its curvature by about (dx/dz)² ≈ 2.5 × 10⁷
+times the curvature per mas², against ~1 for the pixels. L-BFGS has to learn that scale from its history; the first steps and the
+line search are set by the large offset gradient and can stall the other groups. On the synthetic test data (bound ≈ 5 × 10³ mas,
+dx/dz = 2.6 × 10³): |g_z| max 1.0e4 for offsets vs 1.1e2–3.7e2 for gain, flux and s and 10 for pixels, while per physical unit
+the offset gradient is only 3.9 per mas against 3.3e2 per unit gain. The IM Lup numbers need `report --grad` on the A100 fit.
