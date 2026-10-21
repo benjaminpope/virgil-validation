@@ -30,8 +30,6 @@ sys.path.insert(0, str(REPO / "scripts"))
 import orbit_gallery as G  # noqa: E402
 
 TRACKB = REPO / "oidb" / "trackb"
-EXTRA = REPO / "oidb" / "gallery_extra"  # records of targets whose gallery tile exists already (Gl 229 B)
-REFERENCES = REPO / "oidb" / "references"
 N_MODES = 6  # bands kept as alternative modes on the tile
 ALIAS_NATS = 10.0  # a runner-up closer than this leaves the cycle count ambiguous (the pipeline's alias_nats)
 SHORT_ARC_NOTE = (
@@ -78,13 +76,12 @@ def _bands(run):
 
 
 def published_orbit_epochs(record, mjds):
-    """Positions of the headline published orbit at ``mjds`` for a record with a ``collection_id`` and ``pub`` (a target
-    whose paper gives an orbit, not positions): ``[(mjd, dra, ddec)]``, and the orbit's period; ``([], None)`` for any
-    other record. Read after the fit, never as a start."""
-    if not record.get("pub"):
+    """Positions of the record's published orbit at ``mjds`` for a record that has an orbit but no published positions
+    (Gl 229 B: Xuan+24 give an orbit): ``[(mjd, dra, ddec)]`` and the orbit's period; ``([], None)`` for a record with
+    positions. Read after the fit, never as a start."""
+    if record.get("epochs"):
         return [], None
-    ref = json.loads((REFERENCES / f"{record['collection_id']}.json").read_text())
-    el = G.published_orbits(record["pub"], ref)[0][1]
+    el = G.published_orbits("trackb", record)[0][1]
     dra, ddec = (np.ravel(x) for x in G._orbit_at(el, np.asarray(mjds, float)))
     return [(float(m), float(a), float(d)) for m, a, d in zip(mjds, dra, ddec)], el["period_day"]
 
@@ -203,7 +200,7 @@ def main(argv=None):
         sys.exit(f"no <system>/gallery.json with run/summary.json under {a.results}")
     a.summaries.mkdir(parents=True, exist_ok=True)
     failed = {}
-    records = {p.stem: p for d in (TRACKB, EXTRA) for p in d.glob("*.json")}
+    records = {p.stem: p for p in TRACKB.glob("*.json")}
     for slug in sorted(records):
         if slug not in folders:
             failed[slug] = "no finished run folder"
@@ -213,7 +210,7 @@ def main(argv=None):
         except Exception as err:  # noqa: BLE001 a failed target is listed, not hidden
             failed[slug] = f"{type(err).__name__}: {err}"
             continue
-        dest = a.summaries / f"{summary['collection_id']}.json"  # never the committed T1-T5 summary of the collection (oidb_compare.compare reads that shape)
+        dest = a.summaries / f"{summary['collection_id']}.json"
         dest.write_text(json.dumps(G._clean(summary), indent=1) + "\n")
         print(f"wrote {dest.relative_to(REPO) if dest.is_relative_to(REPO) else dest}")
     for slug, why in failed.items():

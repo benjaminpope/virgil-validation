@@ -35,7 +35,6 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 
 RECORDS = REPO / "oidb" / "trackb"
-EXTRA_RECORDS = REPO / "oidb" / "gallery_extra"  # targets whose gallery tile exists already (Gl 229 B): same job, same loader
 ROOT_DEFAULT = "/fred/oz440/bpope/eso_binaries"
 MIN_NIGHTS = 3  # fewer nights cannot say anything about an orbit
 QUICK = dict(n_candidates=10, n_refine=2, max_steps=50, n_is=200, num_warmup=100, num_samples=100, num_chains=2)
@@ -61,12 +60,11 @@ def limit_grid_batches(n_vis=GRID_BATCH_VISIBILITIES):
 
 
 def slugs():
-    return sorted(p.stem for d in (RECORDS, EXTRA_RECORDS) for p in d.glob("*.json"))
+    return sorted(p.stem for p in RECORDS.glob("*.json"))
 
 
 def record_of(slug):
-    path = next(d / f"{slug}.json" for d in (RECORDS, EXTRA_RECORDS) if (d / f"{slug}.json").exists())
-    return json.loads(path.read_text())
+    return json.loads((RECORDS / f"{slug}.json").read_text())
 
 
 def group_nights(items):

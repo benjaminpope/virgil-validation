@@ -1,0 +1,79 @@
+{
+ "schema": "gallery-target/1",
+ "slug": "gl229b_blind",
+ "target": "Gl 229 B, calibrated blind fit",
+ "kind": "alias_track",
+ "instrument": "GRAVITY",
+ "band": "K",
+ "ra_deg": 92.6446,
+ "dec_deg": -21.8644,
+ "paper": {
+  "authors": "Xuan, J.; et al.",
+  "year": 2024,
+  "journal": "Nature 634, 1070",
+  "bibcode": "2024Natur.634.1070X",
+  "arxiv": "2410.11953",
+  "doi": "10.1038/s41586-024-08064-x"
+ },
+ "conventions": {
+  "omega_shift_deg": 0.0,
+  "text": "argument of periastron of the PRIMARY (Ba), as stated under Table 1; virgil uses the secondary's, = this + 180 deg. Here omega_deg is already virgil's (the paper's primary omega + 180), so omega_shift_deg is 0. 'longitude of ascending node'; which node (approaching or receding) is not stated in the extracted text. virgil's Omega is the PA of the receding node: compare modulo 180 deg until checked"
+ },
+ "orbit": {
+  "P_day": [
+   12.134,
+   0.003
+  ],
+  "T_peri_jd": [
+   2460378.38,
+   0.04
+  ],
+  "T_peri_mjd": [
+   60377.88,
+   0.04
+  ],
+  "e": [
+   0.234,
+   0.004
+  ],
+  "omega_deg": [
+   0.6999999999999886,
+   1.2
+  ],
+  "Omega_deg": [
+   213,
+   2
+  ],
+  "i_deg": [
+   31.4,
+   0.3
+  ],
+  "a_mas": [
+   7.3595,
+   0.0694
+  ],
+  "source": "Xuan et al. 2024, Table 1, PMOIRED (frequentist) column; a = a_AU x 173.574 mas/AU (Gaia parallax); omega is virgil's (the paper's primary omega + 180)"
+ },
+ "caveats": "Closure phases only (K band, 2.05-2.38 um): the data are dual-field UT products with no standards in Phase 3, so V² is not used; no calibration template exists for them, so the closure offsets use the loader's widths. Single-night alias peaks of 2024-02-27 and 2024-03-28 are flagged, not fitted (design/orbit_comparison.md section 5). The published orbit uses CRIRES+ radial velocities; ours is astrometry only. The older tile of this target (T1-T5, oidb_fit) stays until this fit is checked.",
+ "third_light": "none reported",
+ "split": {
+  "paper_epochs": 5,
+  "paper_epochs_with_phase3": 0,
+  "paper_epochs_below_lambda_2B": 0,
+  "paper_files": 22,
+  "paper_night_files": 0,
+  "heldout_files": 18,
+  "heldout_nights": 2,
+  "heldout_nights_after_paper_span": 2,
+  "last_paper_mjd": 60429.0
+ },
+ "files": [],
+ "data_root": "~/data/eso_binaries/trackb/gl229b_blind",
+ "provenance": {
+  "data": "~/data/eso_binaries/gravity/oifits/<night>/GRAVI.*_DUAL_SCI_VIS.fits (ESO archive pipeline products, 40 files, 7 nights, UT dual-field wide, MEDIUM; Gl 229 A = HD 42581 on the fringe tracker). Not Phase 3: ivoa.ObsCore holds none of them.",
+  "calibration": "virgil-vlti 3395e78: virgil-vlti-calibrate --dual-field --diameter 0.5 --tf-error propagated --bin 1 --window 2.05 2.38 --insname GRAVITY_SC --allow-unrecorded --cp-only-when-uncalibrated; every file closure-phase-only.",
+  "reference": "oidb/references/782185b2-0727-42b0-a185-b2072732b047.json",
+  "built": "2026-10-21",
+  "builder": "by hand (not scripts/build_trackb_targets.py)"
+ }
+}

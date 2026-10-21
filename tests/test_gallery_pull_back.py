@@ -173,14 +173,13 @@ def test_a_calibrated_run_records_its_data_path(folder):
 
 def _xuan_best(t_ref=60000.0):
     """The headline published orbit of Gl 229 B (PMOIRED) as a fit dict: omega is virgil's (the primary's + 180)."""
-    ref = json.loads((ROOT / "oidb" / "references" / "782185b2-0727-42b0-a185-b2072732b047.json").read_text())
-    o = ref["orbit"]["pmoired_frequentist"]
+    o = json.loads((ROOT / "oidb" / "trackb" / "gl229b_blind.json").read_text())["orbit"]
     return dict(period=o["P_day"][0], dt_peri=o["T_peri_mjd"][0] - t_ref, ecc=o["e"][0], inc=o["i_deg"][0],
-                omega=(o["omega_primary_deg"][0] + 180) % 360, Omega=o["Omega_deg"][0], a_mas=o["a_au"][0] * 173.574)
+                omega=o["omega_deg"][0], Omega=o["Omega_deg"][0], a_mas=o["a_mas"][0])
 
 
 def _gl229b_rows(best, flipped=False, t_ref=60000.0):
-    record = json.loads((ROOT / "oidb" / "gallery_extra" / "gl229b.json").read_text())
+    record = json.loads((ROOT / "oidb" / "trackb" / "gl229b_blind.json").read_text())
     mjd = [60303.1, 60307.1, 60367.1, 60397.1, 60429.1]
     table = [dict(rank=0, n=34, p_lo=12.0, p_hi=12.3, delta_log_z=0.0)]
     pub = PB.published_orbit_epochs(record, mjd)
@@ -198,10 +197,10 @@ def test_the_published_orbit_comparison_reproduces_xuans_orbit_and_rejects_its_r
     assert flipped == "UNEXPLAINED-FLIP"
 
 
-def test_the_gl229b_and_hr6819_summaries_stay_off_the_committed_tiles(folder):
-    for slug in ("gl229b", "hr6819"):
-        record = json.loads((ROOT / "oidb" / "gallery_extra" / f"{slug}.json").read_text())
-        assert PB.summary_of(folder, record)["collection_id"] == f"trackb-{slug}"  # not the T1-T5 summary's cid
+def test_the_gl229b_and_hr6819_summaries_are_their_own_tiles(folder):
+    for slug in ("gl229b_blind", "hr6819_blind"):
+        record = json.loads((ROOT / "oidb" / "trackb" / f"{slug}.json").read_text())
+        assert PB.summary_of(folder, record)["collection_id"] == f"trackb-{slug}"  # beside, not instead of, the T1-T5 tiles
 
 
 def test_the_pull_back_summaries_render_with_the_gallery(folder, tmp_path):
@@ -209,7 +208,7 @@ def test_the_pull_back_summaries_render_with_the_gallery(folder, tmp_path):
 
     summaries = tmp_path / "s"
     summaries.mkdir()
-    for slug in ("gl229b", "hr6819"):
-        record = json.loads((ROOT / "oidb" / "gallery_extra" / f"{slug}.json").read_text())
+    for slug in ("gl229b_blind", "hr6819_blind"):
+        record = json.loads((ROOT / "oidb" / "trackb" / f"{slug}.json").read_text())
         (summaries / f"trackb-{slug}.json").write_text(json.dumps(G._clean(PB.summary_of(folder, record))))
     G.build(summaries)  # oidb_compare.compare must not trip on a blind-shaped summary
