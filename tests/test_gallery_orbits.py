@@ -52,3 +52,25 @@ def test_the_driver_is_blind_to_the_published_solution(mod):
     assert all(isinstance(s.slice, ast.Constant) and s.slice.value in EFFORT for s in sets)
     strings = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
     assert not (strings & PUBLISHED_KEYS)
+
+
+@pytest.mark.validates("virgil.oidata.OIData", roots=["self-consistency"], kind="guard")
+def test_mircx_nights_carry_gains_and_offsets(mod, tmp_path):
+    """iota Peg's viscal files, one night per UT date, are read with per-frame gains and closure offsets."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    sys.path.insert(0, str(ROOT / "tests"))
+    import numpy as np
+    from test_oidb_fits import UTS, _binary, _observe
+
+    d = tmp_path / mod.MIRCX["iota_peg"]["collection"]
+    d.mkdir()
+    for i, night in enumerate(["2018Oct20", "2018Oct21", "2018Oct22"]):
+        _observe(d / f"{night}_mircx0000{i}_oifits_viscal.fits", _binary(3.0 + i, -4.0, 0.3), stations=UTS, seed=i + 1)
+    nights, prov = mod.load_mircx_nights("iota_peg", tmp_path)
+    assert sorted(nights) == ["2018Oct20", "2018Oct21", "2018Oct22"]
+    assert all(n.gains is not None for n in nights.values()) and np.asarray(nights["2018Oct20"].vis).size
+    assert prov["data_path"] == "viscal+gains" and prov["gain_widths"]["telescope"] == mod.MIRCX_GAINS["telescope"]
+    assert all(n.phase_offsets is not None for n in nights.values())
+    assert all(len(v["files"]) == 1 for v in prov["nights"].values())
