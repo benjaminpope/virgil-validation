@@ -479,6 +479,54 @@ def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path)
     assert abs(c2["objective"]["mpol_solution_in_virgil"]["objective"] - c["objective"]["mpol_solution_in_virgil"]["objective"]) > 1e-6 * abs(c["objective"]["ours"]["objective"])
 
 
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_r4_compare_reports_both_solutions_term_by_term_and_the_gradient_scaling(syn, r_fit, tmp_path):
+    """``compare`` without ``--f-dir``/``--dsharp`` (R against MPoL alone): the per-ddid raw chi^2/N at both solutions, the objective
+    term by term against MPoL's own numbers, gains and offsets side by side, and the gradient by parameter group, whose
+    ``dx/dz`` of the offsets is half the offset bound (the sigmoid coordinate) while the pixels' is 1."""
+    mp = mock_mpol_export(r_fit, tmp_path / "mpol")
+    data = va.load_dir(syn)
+    own = va.r_objective(data, {k: np.asarray(v) for k, v in np.load(r_fit / "values.npz").items()}, lam=va.lam_r(len(data.u)), npix=128)
+    (mp / "objective.json").write_text(json.dumps(dict(neg_log_likelihood=own["nll"], entropy=own["entropy"], objective_R=own["objective"],
+                                                       n_ddid=own["by_ddid"]["n"], chi2_raw=own["by_ddid"]["chi2_raw"])))
+    out = tmp_path / "cmp"
+    _call("compare", "--virgil", r_fit, "--mpol", mp, "--data", syn, "--out", out)
+    c = json.loads((out / "compare.json").read_text())
+    assert len(c["objective"]["ours"]["by_ddid"]["chi2_raw"]) == 14
+    assert np.allclose(c["objective"]["ours"]["by_ddid"]["chi2_raw"], c["objective"]["mpol_solution_in_virgil"]["by_ddid"]["chi2_raw"], rtol=1e-9)
+    gg = c["grad_groups"]["ours"]
+    assert set(gg) >= {"log_brightness", "cal.flux", "cal.gain", "cal.offset", "cal.sigma"}
+    assert abs(gg["log_brightness"]["dxdz_median"] - 1) < 1e-12
+    assert gg["cal.offset"]["dxdz_median"] > 100 * gg["cal.gain"]["dxdz_median"]  # the offsets' bound is 1/(2 q_min) in mas: thousands
+    md = (out / "compare.md").read_text()
+    for head in ("Raw chi^2/N (s = 1", "term by term", "Gains and offsets, side by side", "Gradient scaling"):
+        assert head in md
+    assert md.index("Raw chi^2/N (s = 1") < md.index("term by term")  # raw chi^2/N leads
+    _call("compare", "--virgil", r_fit, "--mpol", mp, "--data", syn, "--no-grad", "--out", tmp_path / "cmp2")
+    assert "grad_groups" not in json.loads((tmp_path / "cmp2" / "compare.json").read_text())
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_mpol_init_writes_the_values_fit_init_reads_and_the_fit_starts_at_mpols_objective(syn, r_fit, tmp_path):
+    """``mpol-init``: values.npz from MPoL's export equals ``values_from_mpol_export`` (image, flux, g, offsets in mas, s = g s_M);
+    for an export made from our own fit it reproduces that fit's values, and ``fit --init`` of it starts at that objective and does not rise."""
+    mp = mock_mpol_export(r_fit, tmp_path / "mpol")
+    init = tmp_path / "init"
+    _call("mpol-init", "--mpol", mp, "--data", syn, "--out", init)
+    z0, z1 = np.load(r_fit / "values.npz"), np.load(init / "values.npz")
+    assert sorted(z1.files) == sorted(z0.files)
+    for k in z0.files:
+        if k != "log_brightness":
+            assert np.allclose(z0[k], z1[k], rtol=1e-9, atol=1e-12), k
+    # log_brightness is a softmax logit: log(image) differs from the fit's by a constant, the same image
+    assert np.allclose(va.image_of(dict(z0), 128, PIX), va.image_of(dict(z1), 128, PIX), rtol=1e-9)
+    out = tmp_path / "warm"
+    _call("fit", "--config", "R", "--data", syn, "--out", out, "--npix", 128, "--max-steps", 5, "--init", init)
+    res, base = json.loads((out / "result.json").read_text()), json.loads((r_fit / "result.json").read_text())
+    assert [s["name"] for s in res["stages"]] == ["all"]
+    assert res["objective_R"] <= base["objective_R"] + 1e-6 * abs(base["objective_R"])
+
+
 @pytest.mark.validates("virgil_bridge.alma", "crosscheck.alma_maxent", roots=["mathematics"])
 def test_r4_f_against_dsharp_runs_through_compare_and_a_shifted_grid_fails(syn, r_fit, tmp_path):
     """The DSHARP step of ``compare``, run as the command: the fit's image (here the R fit's, standing in for F's) convolved to a CLEAN
