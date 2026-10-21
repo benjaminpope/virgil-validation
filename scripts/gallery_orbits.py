@@ -113,7 +113,7 @@ def load_nights(slug, root, include_extra=False):
         for n in found:
             label = C.night_label(n["mjd"], n["mode"] if multi else None)
             try:
-                nights[label] = C.load_gravity_night(n)
+                nights[label] = C.load_gravity_night(n, template=record_of(slug).get("template"))
             except ValueError as err:  # a night with no readable file is left out; MIN_NIGHTS decides
                 notes += [f"{label}: {x}" for x in n["notes"]]
                 notes.append(f"{label}: left out: {err}")

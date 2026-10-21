@@ -16,7 +16,9 @@ from evidence.plugin import record
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 RECORDS = sorted((ROOT / "oidb" / "trackb").glob("*.json"))
-SLUGS = [p.stem for p in RECORDS]
+# the ESO Track B systems: records built by the builder, with registered Phase 3 files; gallery-target/1 records (Gl 229 B,
+# HR 6819, fitted on the same path but with other data) are tiles of their own and carry no file registry
+SLUGS = [p.stem for p in RECORDS if json.loads(p.read_text())["schema"] == "trackb-target/1"]
 KINDS = {"sb2_subresolution", "alias_track", "short_arc"}
 
 

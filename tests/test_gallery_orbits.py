@@ -54,6 +54,13 @@ def test_the_driver_is_blind_to_the_published_solution(mod):
     assert not (strings & PUBLISHED_KEYS)
 
 
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+@pytest.mark.parametrize("slug", ["gl229b_blind", "hr6819_blind"])
+def test_gl229b_and_hr6819_are_job_targets_through_their_own_record(mod, slug):
+    rec = mod.record_of(slug)
+    assert slug in mod.slugs() and rec["instrument"] == "GRAVITY" and rec["schema"] == "gallery-target/1"
+
+
 @pytest.mark.validates("virgil.oidata.OIData", roots=["self-consistency"], kind="guard")
 def test_mircx_nights_carry_gains_and_offsets(mod, tmp_path):
     """iota Peg's viscal files, one night per UT date, are read with per-frame gains and closure offsets."""
