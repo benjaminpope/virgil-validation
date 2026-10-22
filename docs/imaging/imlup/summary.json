@@ -1,0 +1,77 @@
+{
+ "inputs": {
+  "--r": "~/data/alma_imlup/maxent/out/03531b4/R",
+  "--r-mpol": null,
+  "--r-mpolwf": null,
+  "--mpol": "~/data/alma_imlup/mpol_ref/out/p3a",
+  "--compare": null,
+  "--clean": null,
+  "--dsharp": null,
+  "--dsharp-profile": null,
+  "--cv": null
+ },
+ "found": {
+  "R": true,
+  "R_mpol": false,
+  "R_mpolwf": false
+ },
+ "mpol": true,
+ "compare": false,
+ "clean": false,
+ "dsharp": false,
+ "image_metrics": {
+  "beam_mas_deg": [
+   44.0,
+   43.0,
+   115.0
+  ],
+  "beam_note": "44.0 \u00d7 43.0 mas, PA 115\u00b0 (DSHARP Table 4, nominal)",
+  "centroid_offset_mas": {
+   "virgil": [
+    139.76589751110083,
+    114.5756036812671
+   ],
+   "MPoL": [
+    136.74808330419992,
+    102.86121112664645
+   ]
+  },
+  "vmax_jy_arcsec2": 1.075913155509088,
+  "difference": {
+   "virgil \u2212 MPoL": {
+    "rms_over_peak": 0.0025508810882648248,
+    "max_abs_over_peak": 0.1695067615912215
+   }
+  }
+ },
+ "residual_rms_jy": {
+  "SB1": {
+   "virgil": 0.000834186329722528
+  },
+  "SB2": {
+   "virgil": 0.00017885361344664011
+  },
+  "SB3": {
+   "virgil": 0.000297110386755964
+  },
+  "SB4": {
+   "virgil": 0.00011480715660040465
+  },
+  "SB5": {
+   "virgil": 0.00010418176071886394
+  },
+  "LB1 EB1": {
+   "virgil": 2.044120399207344e-05
+  },
+  "LB1 EB2": {
+   "virgil": 3.399032047032177e-05
+  }
+ },
+ "figures": [
+  "images.png",
+  "calibration.png",
+  "chi2.png",
+  "residuals.png",
+  "profile.png"
+ ]
+}

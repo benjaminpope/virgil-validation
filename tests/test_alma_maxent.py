@@ -472,6 +472,10 @@ def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path)
     o = c["objective"]
     assert abs(o["ours"]["objective"] - o["mpol_solution_in_virgil"]["objective"]) < 1e-9 * abs(o["ours"]["objective"])
     assert (out / "compare.md").exists()
+    # the residual dirty images of MPoL's solution (for docs/imaging/imlup.md): the same solution as the fit's own, so the same images
+    for e in range(7):
+        np.testing.assert_allclose(np.load(out / f"resid_dirty_mpol_obs{e}.npy"), np.load(r_fit / f"resid_dirty_obs{e}.npy"), rtol=1e-4, atol=1e-7 * np.abs(np.load(r_fit / f"resid_dirty_obs{e}.npy")).max())
+    assert c["resid_dirty_mpol"]["files"][0] == "resid_dirty_mpol_obs0.npy"
     mp2 = mock_mpol_export(r_fit, tmp_path / "mpol2", scale_amp=1.01)
     _call("compare", "--virgil", r_fit, "--mpol", mp2, "--data", syn, "--out", tmp_path / "cmp2")
     c2 = json.loads((tmp_path / "cmp2" / "compare.json").read_text())
