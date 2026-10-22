@@ -117,7 +117,7 @@ def _fake_fit(rounds):
     it = iter(rounds)
     state = dict(loss=0.0)
 
-    def fake(prob, values, *, max_steps, time_limit=None, eps=None, log=None, gtol=1e-4):
+    def fake(prob, values, *, max_steps, time_limit=None, eps=None, log=None, gtol=1e-4, precondition=None):
         steps, stop, drops = next(it)
         steps = min(steps, max_steps)
         traj = []
@@ -169,26 +169,48 @@ def test_c8_loop_goes_further_than_fits_own_loose_test(syn):
     assert why in ("c8", "max_steps") and (why != "c8" or va.convergence(traj)["converged"])
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
-def test_precondition_needs_a_virgil_that_has_it_and_is_recorded_when_it_does(syn, monkeypatch):
-    """``precondition="diag"`` raises a clear error on a virgil whose fit() lacks the argument; with one that has it the
-    C8 loop records the scaling's per-round stats and each restart's steps and wall time."""
-    import inspect
-
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_precondition_needs_a_virgil_whose_fit_has_the_argument(syn, monkeypatch):
+    """``precondition="diag"`` raises a clear error when ``virgil.fit`` has no such parameter (checked against a stub, so
+    in every environment), and "none" and None are the same setting that needs nothing."""
     import virgil
 
     data = va.load_dir(syn)
     prob = va.build_problem(data, "R", lam=0.5, npix=16)
     start = va.start_values(prob)
+    monkeypatch.setattr(virgil, "fit", lambda model, priors, data, **kw: None)  # no `precondition` parameter
+    with pytest.raises(RuntimeError, match="precondition"):
+        va.run_fit(prob, start, max_steps=10, precondition="diag")
+    for off in (None, "none"):
+        monkeypatch.setattr(va, "run_fit", _fake_fit([(300, None, [100.0, 50.0, 10.0])]))
+        assert va.run_fit_c8(None, {}, max_steps=300, precondition=off)[1]["precondition"] is None
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_precondition_stats_and_restarts_are_recorded(syn):
+    """With a virgil that has ``precondition``, the C8 loop records the scaling's per-round stats (spread >= 0, floored
+    fraction in [0, 1], at least one record per restart) and each restart's steps and wall time; without it, none."""
+    import inspect
+
+    import virgil
+
     if "precondition" not in inspect.signature(virgil.fit).parameters:
-        with pytest.raises(RuntimeError, match="precondition"):
-            va.run_fit(prob, start, max_steps=10, precondition="diag")
-        return
+        pytest.skip("the installed virgil has no fit(precondition=...)")
+    data = va.load_dir(syn)
+    prob = va.build_problem(data, "R", lam=0.5, npix=16)
+    start = va.start_values(prob)
     _, info, _, _ = va.run_fit_c8(prob, start, max_steps=300, precondition="diag")
-    assert info["precondition"] == "diag" and info["precondition_rounds"] and info["restarts"]
+    rounds = info["precondition_rounds"]
+    assert info["precondition"] == "diag" and len(rounds) >= len(info["restarts"]) >= 1
+    assert all(r["decades"] >= 0.0 and 0.0 <= r["floored"] <= 1.0 for r in rounds)
+    assert sum(r["steps"] for r in info["restarts"]) == info["steps"]
     _, plain, _, _ = va.run_fit_c8(prob, start, max_steps=50)
-    assert plain["precondition_rounds"] == [] and plain["precondition"] is None
-    monkeypatch.setattr(virgil, "fit", lambda model, priors, data, **kw: virgil.__dict__["fit"])  # unused
+    assert plain["precondition_rounds"] == [] and plain["precondition"] is None and plain["restarts"]
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_a_non_numeric_round_field_does_not_lose_the_stage():
+    assert va._plain(np.float32(1.5)) == 1.5 and va._plain(np.array([1, 2])) == [1, 2] and va._plain("lbfgs") == "lbfgs"
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
