@@ -302,7 +302,7 @@ Ben: "let's keep working until we are as good as or better than MPoL from a cold
         [--vg-seconds LO HI] [--mpol-startup-s S]
 
 `--fit DIR` holds a config-R fit's `result.json` (and optionally `anchors.json`, below); `--mpol RUN_DIR` is `alma_mpol_ref`'s `out/<run>/` (`stage<N>.time.json`,
-`export/objective.json`, and `export/objective_chk0.json` when it exists); `--log` are job logs or digests with the `job=… host=…` and GPU lines. It writes `speed.json`,
+`export/objective.json`, and `export/objective_chk0.json` when it exists); `--log [mpol=|virgil=]FILE` are job logs or digests with the `job=… host=…` and GPU lines (the prefix says whose run; a log without one counts as MPoL's only if its job is in `stage<N>.time.json`, else it is reported as unattributed). It writes `speed.json`,
 `speed.md` (raw χ²/N first, the definitions, the tables, the fairness notes) and `speed.png` (objective against wall time, both codes, the targets as horizontal lines, with a
 zoom). Code `src/crosscheck/alma_speed.py` (numpy only), tests `tests/test_alma_speed.py` (synthetic trajectories of a known cost, compile time, restarts and constant).
 
@@ -339,7 +339,9 @@ Both virgil fits stopped at `max_steps` 20,000 without C8 and are from a pre-fix
 | virgil `R_mpolwf` (L-BFGS, float64) | MPoL's flat start | 20,000 steps | 17,078 s (0.85 s/step) | −107,726,506 | 2.7306 | **no**: 505,678 above, not converged |
 | virgil `R_mpol` (L-BFGS, float64) | **warm**, MPoL's solution | 20,000 steps | 15,789 s (0.79 s/step) | −108,304,297 | 2.7052 | not a cold start; ends 72,113 *below* MPoL's |
 
-The cost per pass favours virgil by three orders of magnitude and its step count the other way: an MPoL epoch (698–1,474 s) is about 880–1,860 virgil steps, or 1,300–3,350 value+gradient
-evaluations (at 0.44–0.53 s), while a virgil step is about 1.5–1.9 evaluations. From a cold start virgil needs far more than 20 epochs' worth of passes (20,000 steps is about 30,000
-evaluations) and has not reached MPoL's objective in 17,078 s, so on these numbers MPoL is faster to its final objective from a flat start. Not yet known: the time on the fixed env and with
+Per pass virgil is about three orders of magnitude cheaper and needs far more passes: an MPoL epoch (698–1,474 s) is about 880–1,860 virgil steps, or 1,300–3,350 value+gradient
+evaluations (at 0.44–0.53 s), while a virgil step is about 1.5–1.9 evaluations; 20,000 steps are about 30,000 evaluations against MPoL's 20 epochs. **Undecided:** `R_mpolwf` had not
+reached MPoL's final objective when it stopped at 17,078 s, which is before MPoL's 21,728 s total, so whether it would have reached it in the remaining ~4,650 s is an extrapolation
+(its loss was still falling when it stopped at the step limit). The MPoL side is itself uncertain: at its stage-0 rate (698 s/epoch) its 20 epochs would take about 13,960 s, and the 2.1×
+slowdown of stage 1 (same node, gina1) is unexplained, so the ordering of the two total times depends on that factor. Not yet known: the time on the fixed env and with
 `--offset-bound-mas` or `--precondition diag`, the node and GPU of the virgil jobs (their digests' tails lack the `host=` line), and MPoL's chk0 objective.

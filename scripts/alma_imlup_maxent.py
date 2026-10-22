@@ -10,7 +10,7 @@
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
-    python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log FILE ...] [--target LABEL=R ...]
+    python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
 
 ``--data DIR`` holds ``ddid_NN.npz`` (the vv format of ``alma_imlup_read``; no default, so nothing runs on
 data by accident). Every path is an argument. Float64 throughout; the fits use the NUFFT at eps 1e-6 and
@@ -635,7 +635,13 @@ def cmd_speed(args):
     objective = json.loads((odir / "objective.json").read_text())
     chk0 = json.loads((odir / "objective_chk0.json").read_text()) if (odir / "objective_chk0.json").exists() else None
     mpol = sp.mpol_summary(stages, objective, chk0, startup_s=args.mpol_startup_s)
-    hardware = sp.parse_logs({str(f): pathlib.Path(f).read_text() for f in args.log})
+    logs, owners = {}, {}
+    for spec in args.log:  # [mpol=|virgil=]FILE
+        owner, _, f = spec.partition("=") if spec.partition("=")[0] in ("mpol", "virgil") else ("", "", spec)
+        logs[f] = pathlib.Path(f).read_text()
+        if owner:
+            owners[f] = owner
+    hardware = sp.parse_logs(logs, owners)
     extra = {}
     for t in args.target:
         k, _, v = t.rpartition("=")
@@ -754,7 +760,8 @@ def main(argv=None):
     p.add_argument("--fit", action="append", required=True, help="a fit directory with result.json (config R), optionally LABEL=DIR; repeat for several fits")
     p.add_argument("--mpol", required=True, help="MPoL's run directory (stage<N>.time.json; export/objective.json and optional export/objective_chk0.json)")
     p.add_argument("--out", required=True)
-    p.add_argument("--log", action="append", default=[], help="a job log or digest with `job=… host=…` lines (and the GPU model), for the hardware note; repeat")
+    p.add_argument("--log", action="append", default=[], help="[mpol=|virgil=]FILE: a job log or digest with `job=… host=…` lines (and the GPU model), for the hardware note; the prefix says whose run it is "
+                   "(without it the log counts as MPoL's only if its job is in stage<N>.time.json, else unattributed); repeat")
     p.add_argument("--target", action="append", default=[], help="an extra target LABEL=R (objective R); repeat")
     p.add_argument("--vg-seconds", type=float, nargs=2, default=list(__import__("crosscheck.alma_speed", fromlist=["x"]).BENCH_VG_S), metavar=("LO", "HI"),
                    help="seconds per value+gradient on the A100 bench (job 18862592) used to estimate evaluations per step; virgil's info records none")

@@ -55,28 +55,56 @@ def constant_check(items, tol=5.0):
             cs[f"{k}@{int(a['steps'])}"] = float(a["objective"]) - float(a["loss"])
     vals = np.array(list(cs.values()))
     spread = float(vals.max() - vals.min()) if len(vals) else 0.0
-    return dict(constants=cs, spread=spread, tol=tol, ok=bool(spread <= tol), n_points=len(vals),
-                note=("one constant per fit (final point) only: no second evaluation of R inside a fit" if all(not a for _, a in items.values()) else
+    # one point cannot disagree with itself: ``ok`` is None (not checked), never True, unless there are two or more evaluations
+    return dict(constants=cs, spread=spread, tol=tol, ok=bool(spread <= tol) if len(vals) >= 2 else None, n_points=len(vals),
+                note=("one fit and no anchor: nothing to compare the constant with" if len(vals) < 2 else
+                      "one constant per fit (final point) only: no second evaluation of R inside a fit" if all(not a for _, a in items.values()) else
                       "includes anchors (second evaluations of R inside a fit)"))
+
+
+def stage_rounds(st, chunk=CHUNK_DEFAULT):
+    """The rounds of a stage with every record's ``elapsed`` made per-round. ``fit``'s progress records restart ``elapsed`` at 0 each
+    round, but ``run_fit_c8`` adds a *closing* record when a round ends off a chunk boundary, whose ``elapsed`` is measured from the
+    start of the whole stage (``virgil_bridge.alma.run_fit_c8``), so in round >= 2 it counts the earlier rounds again. Such a record is
+    recognised by its time since the previous record of the round exceeding what its steps cost (at the median seconds per step of the
+    chunk-spaced records) by more than half the time of the earlier rounds, and the earlier rounds' time is subtracted.
+    Returns a list of dict(round, recs=[(steps, elapsed, loss)], start_steps, duration_s, closing_corrected)."""
+    traj = st.get("trajectory") or []
+    restarts = st.get("restarts") or []
+    rounds = sorted({int(p.get("round", 1)) for p in traj})
+    by = {r: [p for p in traj if int(p.get("round", 1)) == r] for r in rounds}
+    rates = [(float(b["elapsed"]) - float(a["elapsed"])) / chunk for rp in by.values() for a, b in zip(rp[:-1], rp[1:]) if float(b["steps"]) - float(a["steps"]) == chunk]
+    rate = float(np.median(rates)) if rates else None
+    out, r_off, prev_end = [], 0.0, 0.0
+    for i, r in enumerate(rounds):
+        recs, fixed, prev_s, prev_e = [], 0, prev_end, 0.0
+        for p in by[r]:
+            st_, el = float(p["steps"]), float(p["elapsed"])
+            if r_off > 0 and rate is not None and (el - prev_e) - (st_ - prev_s) * rate > 0.5 * r_off:
+                el, fixed = el - r_off, fixed + 1
+            recs.append((st_, el, float(p["loss"])))
+            prev_s, prev_e = st_, el
+        last_el = max(e for _, e, _ in recs)
+        dur = max(float(restarts[i]["wall_s"]) if i < len(restarts) else 0.0, last_el)
+        out.append(dict(round=r, recs=recs, start_steps=prev_end, duration_s=dur, closing_corrected=fixed))
+        prev_end, r_off = recs[-1][0], r_off + dur
+    return out
 
 
 def fit_curve(result):
     """Cumulative wall time and steps of every trajectory record of a fit: list of dict(t_s, steps, loss, stage, round,
-    on_curve). ``elapsed`` restarts at every round (a ``run_fit_c8`` restart), so a round's offset is the time of the earlier
-    rounds (``restarts[i].wall_s`` when saved, else the last ``elapsed``); stages follow each other by ``wall_s``."""
+    on_curve), and a reconciliation of each stage's ``wall_s`` with its rounds. A round's offset is the time of the earlier rounds
+    (``restarts[i].wall_s`` when saved, else the last ``elapsed``; ``stage_rounds`` first makes closing records per-round); stages
+    follow each other by ``wall_s``."""
     pts, t_off, s_off, recon = [], 0.0, 0.0, []
     for st in result["stages"]:
-        traj = st.get("trajectory") or []
-        restarts = st.get("restarts") or []
-        r_off = 0.0
-        for i, r in enumerate(sorted({int(p.get("round", 1)) for p in traj})):
-            rp = [p for p in traj if int(p.get("round", 1)) == r]
-            for p in rp:
-                pts.append(dict(t_s=t_off + r_off + float(p["elapsed"]), steps=s_off + float(p["steps"]), loss=float(p["loss"]), stage=st["name"],
-                                round=r, on_curve=st["name"] == "all"))
-            last_el = max(float(p["elapsed"]) for p in rp)
-            r_off += max(float(restarts[i]["wall_s"]) if i < len(restarts) else 0.0, last_el)
-        recon.append(dict(stage=st["name"], wall_s=float(st["wall_s"]), rounds_s=r_off, diff_s=float(st["wall_s"]) - r_off))
+        r_off, fixed = 0.0, 0
+        for rd in stage_rounds(st):
+            for steps, el, loss in rd["recs"]:
+                pts.append(dict(t_s=t_off + r_off + el, steps=s_off + steps, loss=loss, stage=st["name"], round=rd["round"], on_curve=st["name"] == "all"))
+            r_off += rd["duration_s"]
+            fixed += rd["closing_corrected"]
+        recon.append(dict(stage=st["name"], wall_s=float(st["wall_s"]), rounds_s=r_off, diff_s=float(st["wall_s"]) - r_off, closing_records_corrected=fixed))
         t_off += float(st["wall_s"])
         s_off += float(st["steps"])
     return pts, recon
@@ -87,18 +115,16 @@ def steady_cost(result, chunk=CHUNK_DEFAULT):
     apart inside a round (so the jit compile of a round's first chunk and the short closing record are left out). Returns the
     median, the 10th/90th percentiles, the medians of the first and last quarter (the cost drifts as the line search works
     harder), and the compile estimate per round: that round's first chunk minus the median cost of a chunk."""
-    st = result["stages"][-1]
-    traj = st.get("trajectory") or []
     rates, compile_est = [], []
-    for r in sorted({int(p.get("round", 1)) for p in traj}):
-        rp = [p for p in traj if int(p.get("round", 1)) == r]
-        prev_steps = max([float(p["steps"]) for p in traj if int(p.get("round", 1)) < r] or [0.0])
-        for k, p in enumerate(rp):
-            ds, de = float(p["steps"]) - (prev_steps if k == 0 else float(rp[k - 1]["steps"])), float(p["elapsed"]) - (0.0 if k == 0 else float(rp[k - 1]["elapsed"]))
-            if ds == chunk and k > 0:
-                rates.append(de / ds)
-            elif ds == chunk and k == 0:
-                compile_est.append(dict(round=r, first_chunk_s=de, steps=int(ds)))
+    for rd in stage_rounds(result["stages"][-1], chunk):
+        prev_s, prev_e = rd["start_steps"], 0.0
+        for k, (st_, el, _) in enumerate(rd["recs"]):
+            if st_ - prev_s == chunk:
+                if k > 0:
+                    rates.append((el - prev_e) / chunk)
+                else:
+                    compile_est.append(dict(round=rd["round"], first_chunk_s=el, steps=int(chunk)))
+            prev_s, prev_e = st_, el
     if not rates:
         return dict(n_chunks=0, note="no two records exactly one chunk apart: cost per step not measured")
     rates = np.array(rates)
@@ -126,19 +152,22 @@ LOG_RE = dict(job=re.compile(r"\bjob=(\d+)"), host=re.compile(r"\bhost=(\S+)"), 
               stage=re.compile(r"\bstage=(\d)"), task=re.compile(r"\btask=(\d+)"), elapsed=re.compile(r"\|(\d\d:\d\d:\d\d)\|"))
 
 
-def parse_logs(texts):
+def parse_logs(texts, owners=None):
     """Hardware lines of job logs or digests: for every ``job=… host=…`` line the job, host, stage/task, and the GPU model named in
-    the same text (nvidia-smi line or the torch line). ``texts`` is {source: text}; a source without such a line is returned with
-    ``host`` None, so the report says "not recorded" rather than guessing."""
+    the same text (nvidia-smi line or the torch line). ``texts`` is {source: text}; ``owners`` {source: "mpol" | "virgil"} says whose run a
+    log is (``--log mpol=FILE``); a log without an owner is ``unattributed`` until ``fairness_notes`` matches its jobs against MPoL's job ids.
+    A source without a ``job=… host=…`` line is returned with ``host`` None, so the report says "not recorded" rather than guessing."""
+    owners = owners or {}
     out = []
     for src, text in texts.items():
         gpu = LOG_RE["gpu"].search(text)
+        base = dict(source=src, owner=owners.get(src, "unattributed"), gpu=gpu.group(1).strip() if gpu else None)
         lines = [ln for ln in text.splitlines() if LOG_RE["host"].search(ln) and LOG_RE["job"].search(ln)]
         if not lines:
-            out.append(dict(source=src, job=None, host=None, gpu=gpu.group(1).strip() if gpu else None))
+            out.append(dict(base, job=None, host=None))
         for ln in lines:
             g = lambda k: (LOG_RE[k].search(ln).group(1) if LOG_RE[k].search(ln) else None)  # noqa: E731
-            out.append(dict(source=src, job=g("job"), host=g("host"), stage=g("stage"), task=g("task"), gpu=gpu.group(1).strip() if gpu else None))
+            out.append(dict(base, job=g("job"), host=g("host"), stage=g("stage"), task=g("task")))
     return out
 
 
@@ -146,12 +175,13 @@ def mpol_summary(stages, objective, objective_chk0=None, startup_s=0.0, batch=MP
     """MPoL's run: ``stages`` the list of stage<N>.time.json dicts, ``objective`` objective.json (chk1), ``objective_chk0`` or None."""
     stages = sorted(stages, key=lambda s: s["stage"])
     n = int(objective["n"])
-    per_epoch = [float(s["wall_s"]) / float(s["epochs"]) for s in stages]
+    walls = [float(s["wall_s"]) - startup_s for s in stages]  # start-up (asdf load, CUDA) taken off every stage, so all derived times agree
+    per_epoch = [w / float(s["epochs"]) for w, s in zip(walls, stages)]
     cum, pts = 0.0, []
-    for s in stages:
-        cum += float(s["wall_s"])
+    for w, s in zip(walls, stages):
+        cum += w
         o = objective_chk0 if s["stage"] == 0 else objective
-        pts.append(dict(t_s=cum - startup_s * (s["stage"] + 1), steps=None, epochs=sum(x["epochs"] for x in stages[:s["stage"] + 1]), stage=s["stage"],
+        pts.append(dict(t_s=cum, steps=None, epochs=sum(x["epochs"] for x in stages[:s["stage"] + 1]), stage=s["stage"],
                         objective=None if o is None else float(o["objective_R"]), label=f"end of stage {s['stage']}"))
     return dict(stages=stages, n=n, batches_per_epoch=n / batch, batch=batch, s_per_epoch=per_epoch, s_per_batch=[p / (n / batch) for p in per_epoch],
                 stage_ratio=per_epoch[-1] / per_epoch[0] if len(per_epoch) > 1 else None, total_wall_s=cum, startup_subtracted_s=startup_s, points=pts,
@@ -266,7 +296,7 @@ def markdown(res, notes):
     md += ["", res["cost"]["note"] + ".", ""]
     cc = res["constant_check"]
     md += ["## Loss to objective", "", "R = loss + c with c from each fit's final point: " + ", ".join(f"{k}: {v:,.2f}" for k, v in cc["constants"].items())
-           + f". Spread {cc['spread']:.3g} (tolerance {cc['tol']:g}): **{'consistent' if cc['ok'] else 'NOT consistent: the loss is not R plus a constant here, do not trust the curve'}**. {cc['note']}.", ""]
+           + f". Spread {cc['spread']:.3g} (tolerance {cc['tol']:g}): **{'NOT CHECKED' if cc['ok'] is None else ('consistent' if cc['ok'] else 'NOT consistent: the loss is not R plus a constant here, do not trust the curve')}**. {cc['note']}.", ""]
     md += ["## Start-up, compile and time bookkeeping", ""]
     for lab, f in res["fits"].items():
         comp = f["cost"].get("compile") or []
@@ -282,18 +312,24 @@ def fairness_notes(res):
     m = res["mpol"]
     hw = res["hardware"]
     notes = []
-    mp_hw = [h for h in hw if h.get("job") in [str(j) for j in m["jobs"] if j]]
-    ours = [h for h in hw if h not in mp_hw]
+    mjobs = [str(j) for j in m["jobs"] if j]
+    # explicit owners first; a log without one counts as MPoL's only if its job is one of stage<N>.time.json's jobs, else it is unattributed
+    mp_hw = [h for h in hw if h.get("owner") == "mpol" or (h.get("owner") == "unattributed" and h.get("job") in mjobs)]
+    ours = [h for h in hw if h.get("owner") == "virgil"]
+    unattributed = [h for h in hw if h not in mp_hw and h not in ours and h.get("host")]
     if mp_hw:
         notes.append("Hardware, MPoL: " + "; ".join(f"job {h['job']} (stage {h.get('stage')}) on {h['host']}, {h.get('gpu') or 'GPU model not in the log'}" for h in mp_hw) + ".")
     else:
-        notes.append("Hardware, MPoL: not recorded (no `--log` with its `job=… host=…` lines was given).")
+        notes.append("Hardware, MPoL: not recorded (no `--log mpol=FILE` with its `job=… host=…` lines was given).")
     hosts = {h["host"] for h in ours if h.get("host")}
     if hosts:
         notes.append("Hardware, virgil: " + "; ".join(f"job {h['job']} on {h['host']}, {h.get('gpu') or 'GPU model not in the log'}" for h in ours if h.get("host")) + ".")
     else:
-        notes.append("Hardware, virgil: not recorded (no `--log` with a `host=` line was given; `fit.sbatch` prints the host on the first line of the job log and prints no GPU model, "
+        notes.append("Hardware, virgil: not recorded (no `--log virgil=FILE` with a `host=` line was given; `fit.sbatch` prints the host on the first line of the job log and prints no GPU model, "
                      "and result.json records only `cuda:0`), so a node and GPU match with MPoL's is not shown.")
+    if unattributed:
+        notes.append("Hardware, unattributed (a `--log` without `mpol=` or `virgil=` whose job is not one of MPoL's): "
+                     + "; ".join(f"job {h['job']} on {h['host']}, {h.get('gpu') or 'GPU model not in the log'}" for h in unattributed) + ".")
     if m["stage_ratio"] and abs(m["stage_ratio"] - 1) > 0.25:
         same = len({h["host"] for h in mp_hw}) == 1 and len(mp_hw) > 1
         notes.append(f"MPoL's two stages differ by a factor {m['stage_ratio']:.2f} per epoch ({m['s_per_epoch'][0]:,.0f} s and {m['s_per_epoch'][-1]:,.0f} s) for identical work (same code, flags and data; only `--load-checkpoint` differs)"
