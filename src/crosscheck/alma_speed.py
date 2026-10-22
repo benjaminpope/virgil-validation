@@ -251,7 +251,7 @@ def markdown(res, notes):
     md += ["", "MPoL's time is the end of the stage whose checkpoint is at or below the target (its objective is evaluated only at the checkpoints), so it is an upper bound; "
            "a target below MPoL's own final objective is not reached by MPoL."]
     if res["mpol"]["chk0_objective"] is None:
-        md.append("MPoL's objective at the end of stage 0 was not computed (no `export/objective_chk0.json`): its curve has one point. See the ozstar_scripts `analyze.sbatch --only-chk0` step.")
+        md.append("MPoL's objective at the end of stage 0 was not computed (no `export/objective_chk0.json`): its curve has one point. See ozstar_scripts#63 (`alma_mpol_ref` `submit.sh --only-chk0 --run=NAME`).")
     md += ["", "## Cost per full-data pass", "", f"MPoL: {m['s_per_epoch'][0]:,.0f} s per epoch in stage 0" + (f", {m['s_per_epoch'][1]:,.0f} s in stage 1 (a factor {m['stage_ratio']:.2f})" if len(m['s_per_epoch']) > 1 else "")
            + f"; {m['batches_per_epoch']:.0f} minibatches per epoch, so {m['s_per_batch'][0]:.2f} s per minibatch (forward and backward, float32).", ""]
     md += ["| fit | s/step (median; 10-90 %) | first / last quarter | evaluations per step (estimated) | MPoL epoch / virgil step | MPoL epoch / virgil value+gradient (bench) |", "|---|---|---|---|---|---|"]

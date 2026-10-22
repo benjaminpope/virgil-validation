@@ -326,7 +326,7 @@ zoom). Code `src/crosscheck/alma_speed.py` (numpy only), tests `tests/test_alma_
   MPoL unmodified (C14), AdamW's weight decay.
 
 **MPoL's chk0 objective.** `analyze.sbatch` evaluated only chk1. ozstar_scripts adds `objective_full` on chk0 to `analyze.sbatch`, and `submit.sh --only-chk0 --run=NAME` reruns just that
-evaluation for an existing run (a separate ozstar_scripts PR); it writes `out/<run>/export/objective_chk0.json`, which `speed` then picks up as MPoL's second point and a second target.
+evaluation for an existing run (ozstar_scripts#63); it writes `out/<run>/export/objective_chk0.json`, which `speed` then picks up as MPoL's second point and a second target.
 
 ### Preliminary numbers (OLD env: virgil 0.3.0, jobs 18968244 and the MPoL reference 18913982/18913983; NOT converged)
 
