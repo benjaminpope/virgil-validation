@@ -442,7 +442,7 @@
   decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring.'
   note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
 
-- id: D13
+- id: D14
   title: noise-free recovery is judged in units of the statistical error, not at a raw relative tolerance of 1e-6
   objects: [virgil.fitting.fit]
   ruling: definition
