@@ -6,7 +6,7 @@ RESULTS_DIR is anywhere above the per-system folders of ``scripts/gallery_orbits
 ``run/summary.json``, the OrbitPipeline run folder). For every system the newest folder wins. Writes
 ``trust/campaigns/orbits/trackb-<slug>.json`` in the shape ``orbit_gallery`` reads (the MAP orbit of the winning alias
 band, the other bands as modes, the per-night positions, the flagged nights), plus a ``blind`` block: the band
-ranking, the pipeline's checks and ``table`` rows for the tile. Then ``orbit_gallery.render`` rebuilds the page data.
+ranking, the pipeline's checks and ``table`` rows for the tile. Then ``orbit_gallery.render`` rebuilds the page data and ``build_orbits_page`` the orbit page.
 
 The published orbit enters only here, after the fit: the table compares the winning band's orbit with the paper's own
 measured positions on the sky (never raw omega/Omega), and says which band holds the published period. A system with
@@ -27,6 +27,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 sys.path.insert(0, str(REPO / "scripts"))
 
+import build_orbits_page  # noqa: E402
 import orbit_gallery as G  # noqa: E402
 
 TRACKB = REPO / "oidb" / "trackb"
@@ -216,7 +217,8 @@ def main(argv=None):
     for slug, why in failed.items():
         print(f"NOT PULLED {slug}: {why}")
     if not a.no_render:
-        G.render(REPO / "docs" / "orbits" / "binaries.md", REPO / "docs" / "assets" / "orbits.json", a.summaries)
+        G.render(REPO / "build" / "orbit_gallery.md", REPO / "docs" / "assets" / "orbits.json", a.summaries)
+        build_orbits_page.main([])
     return 0
 
 

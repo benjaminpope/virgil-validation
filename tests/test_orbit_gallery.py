@@ -38,7 +38,7 @@ def _target(data, slug):
     return next(t for t in data["targets"] if t["slug"] == slug)
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_extract_trims_a_fit_to_the_committed_summary(og, tmp_path):
     (path,) = og.extract(FIX, tmp_path)
     summary = json.loads(path.read_text())
@@ -53,7 +53,7 @@ def test_extract_trims_a_fit_to_the_committed_summary(og, tmp_path):
     assert summary["instrument"] == "VLTI/GRAVITY"
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_compare_reads_summaries_through_the_adapter(og):
     summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
     import oidb_compare as oc
@@ -64,7 +64,7 @@ def test_compare_reads_summaries_through_the_adapter(og):
     assert not [r for r in mine if r["status"] in ("FAIL", "MISSING")]
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_every_reference_target_gets_a_section(og, data):
     refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {PI1GRU, HD45166, og.ESO_9SGR, og.ESO_HD168137}  # pi1 Gru is a single star: no tile; 9 Sgr and HD 168137 are off the page (no JMMC pipeline setup)
     trackb = {f"trackb-{p.stem}" for p in og.TRACKB.glob("*.json")}  # the Track B targets are tiles of their own
@@ -78,7 +78,7 @@ def test_every_reference_target_gets_a_section(og, data):
     record("targets", len(names))
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_page_explains_the_gallery(og, data):
     text = og.page(data)
     for heading in ("How to read a plot", "The badges", "Where the data come from", "Method"):
@@ -90,7 +90,7 @@ def test_page_explains_the_gallery(og, data):
     assert {g["key"] for g in data["guide"]} >= {"sky", "ours", "pub", "alt", "eps", "alias", "phase"}
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_workshop_collection_splits_into_two_tiles(og, data):
     iota, sigma = _target(data, "iota-peg-workshop"), _target(data, "sigma-ori")
     assert iota["collection_id"] == sigma["collection_id"] == og.WORKSHOP
@@ -105,7 +105,7 @@ def _summaries_copy(tmp_path):
     return tmp_path
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_alias_nights_come_from_the_summary_else_from_the_label_list(og, tmp_path):
     """A summary without ``epoch_checks`` falls back to the known Gl 229 labels; one with them uses its "flagged" nights."""
     path = _summaries_copy(tmp_path) / f"{GL229}.json"
@@ -121,7 +121,7 @@ def test_alias_nights_come_from_the_summary_else_from_the_label_list(og, tmp_pat
     assert flagged() == {"2024-03-01"}  # the summary's own checks win
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_workshop_badge_is_scored_by_the_comparison_rule(og, data, tmp_path):
     """The fixture sits on the published sigma Ori position: it agrees. Moving it by many sigma is a tension."""
     assert _target(data, "sigma-ori")["status"] == "agrees"
@@ -135,7 +135,7 @@ def test_workshop_badge_is_scored_by_the_comparison_rule(og, data, tmp_path):
     assert _target(og.build(tmp_path), "iota-peg-workshop")["status"] == "agrees"  # the other tile is untouched
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_arxiv_links_are_well_formed(og, data):
     text = og.page(data)
     for t in data["targets"]:
@@ -148,7 +148,7 @@ def test_arxiv_links_are_well_formed(og, data):
     assert not re.findall(r"arxiv\.org/abs/(?!\d{4}\.\d{4,5}\))", text)
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_embedded_json_parses_and_matches_the_json_file(og, tmp_path):
     out, js = tmp_path / "orbits" / "binaries.md", tmp_path / "assets" / "orbits.json"
     og.main(["render", "--out", str(out), "--json", str(js), "--summaries", str(FIX / "summaries")])
@@ -159,7 +159,7 @@ def test_embedded_json_parses_and_matches_the_json_file(og, tmp_path):
     assert json.loads(blob) == json.loads(js.read_text())
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_polylines_close_and_pass_through_the_map_positions(data):
     t = _target(data, "gl229b")
     assert t["status"] == "agrees" and t["kind"] == "orbit"
@@ -183,7 +183,7 @@ def test_polylines_close_and_pass_through_the_map_positions(data):
         assert all(np.min(np.hypot(*(pp - w).T)) < 1e-5 for w in want)
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_published_gl229_orbit_has_the_corrected_conventions(data):
     """Xuan+24's omega is the primary's (+180 for the companion) and a is in au (x 173.574 mas)."""
     ref = json.loads((ROOT / "oidb" / "references" / f"{GL229}.json").read_text())["orbit"]["pmoired_frequentist"]
@@ -194,7 +194,7 @@ def test_published_gl229_orbit_has_the_corrected_conventions(data):
     assert peak <= el["a_mas"] * (1 + el["ecc"]) * 1.001  # the projected apoastron cannot exceed a(1+e)
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_target_without_a_summary_is_awaiting(og, tmp_path):
     data = og.build(tmp_path)  # an empty summaries directory
     assert {t["status"] for t in data["targets"]} == {"awaiting"}
@@ -208,7 +208,7 @@ def test_target_without_a_summary_is_awaiting(og, tmp_path):
     assert [t["slug"] for t in mixed["targets"] if t["status"] != "awaiting"] == ["gl229b", "iota-peg-workshop", "sigma-ori"]
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_seeded_and_single_mode_fits_are_labelled_provisional_and_a_failed_tile_says_so(og, data):
     gl = _target(data, "gl229b")
     assert gl["flags"] == []  # the fixture fit is blind and has two modes
@@ -227,7 +227,7 @@ def test_seeded_and_single_mode_fits_are_labelled_provisional_and_a_failed_tile_
     assert "Provisional: single-mode fit" in og.page(dict(data, targets=[dict(_target(data, "gl229b"), flags=[flag])]))
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_a_pass_on_unconverged_nuts_is_only_reported_and_the_tile_says_so(og, tmp_path):
     summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
     summary["orbit"]["nuts"]["r_hat"] = {k: 1.001 for k in summary["orbit"]["nuts"]["r_hat"]}
@@ -245,7 +245,7 @@ def test_a_pass_on_unconverged_nuts_is_only_reported_and_the_tile_says_so(og, tm
     assert [f["key"] for f in bad["flags"] if f["key"] == "nonconverged"] == ["nonconverged"]
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["literature"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["literature"], kind="guard")
 @pytest.mark.parametrize("cid,pub,limit", [("eso-9sgr", 0, 0.3), ("eso-9sgr", 1, 0.3), ("eso-hd168137", 0, 0.45)])
 def test_eso_references_reproduce_their_published_epochs(og, cid, pub, limit):
     """Transcription check of the 9 Sgr and HD 168137 references against the literature, without fitting (it cannot check
@@ -268,7 +268,7 @@ def test_eso_references_reproduce_their_published_epochs(og, cid, pub, limit):
     record("rms_offset_mas", round(rms, 3))
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_legacy_label_follows_the_fit_and_downgrades_a_pass(og):
     fit = {"orbit": {"modes": [1, 2]}}
     tile = og.TARGETS["trackb-ll_aqr"]
@@ -287,7 +287,7 @@ def test_legacy_label_follows_the_fit_and_downgrades_a_pass(og):
     assert og.status_of(table, fit, og.legacy_text(tile, fit))[0] == "reported"
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_only_alias_peaks_flags_mark_an_alias_and_other_flags_carry_their_reason(og, tmp_path):
     """sep-below-resolution, chi2-high etc. are flagged nights, not aliases; each says why and whether it was excluded."""
     path = _summaries_copy(tmp_path) / f"{GL229}.json"
@@ -312,7 +312,7 @@ def test_only_alias_peaks_flags_mark_an_alias_and_other_flags_carry_their_reason
     assert og.ALIAS_CODE in og.FLAG_CODES
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_implausible_alternative_modes_are_hidden_and_counted(og, tmp_path):
     path = _summaries_copy(tmp_path) / f"{GL229}.json"
     summary = json.loads(path.read_text())
@@ -327,14 +327,14 @@ def test_implausible_alternative_modes_are_hidden_and_counted(og, tmp_path):
     assert str(int(og.MODE_DLOSS_MAX)) in next(g for g in og.GUIDE if g["key"] == "alt")["text"]
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_sky_axes_ignore_alternative_modes_in_the_renderer():
     js = (ROOT / "docs" / "assets" / "orbits.js").read_text()
     body = js.split("function allSkyPoints", 1)[1].split("function bbox", 1)[0]
     assert "alternatives" not in body and "clip-path" in js
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_stored_gl229_summary_keeps_both_alias_nights(og):
     """The committed Gl 229 summary uses oidb_fit's uncoded wording; both nights must still be aliases."""
     data = og.build(og.SUMMARIES)
