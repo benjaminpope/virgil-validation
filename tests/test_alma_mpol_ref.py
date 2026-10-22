@@ -294,12 +294,12 @@ def test_asdf_vs_npz_agrees_on_an_export_of_the_subsample(reference):
     assert res["n_asdf_total"] == res["n_npz_total"] > 40000
     for d, r in res["ddids"].items():
         assert r["matching"] == "keys" and r["key_mismatch"] == 0, (d, r)
-        assert r["u_max_rel"] < 1e-12 and r["vis_max_abs"] < 1e-12 and r["weight_max_rel"] < 1e-12, (d, r)
+        assert r["pass"] and r["u_max_rel"] < 1e-12 and r["vis_max_abs"] < 1e-12 and r["weight_max_rel"] < 1e-12, (d, r)
         assert r["v_max_abs"] < 1e-12 * max(1.0, np.abs(reference["rows"][int(d)]["v"]).max()), (d, r)
         # the convention signatures must be non-zero when the readers agree (two-sided partner of the control)
         assert r["vis_conj_max_abs"] > 1e-3 and r["u_flip_max_abs"] > 0 and r["v_flip_max_abs"] > 0, (d, r)
         assert r["u_ratio_median"] == pytest.approx(1.0, abs=1e-12), (d, r)
-    assert res["worst"]["n_mismatch_ddids"] == [] and res["worst"]["key_mismatch_max"] == 0
+    assert res["worst"]["n_mismatch_ddids"] == [] and res["worst"]["key_mismatch_max"] == 0 and res["worst"]["all_pass"]
     record("asdf_vs_npz worst |du| (lambda), synthetic asdf", res["worst"]["u_max_abs"])
 
 
@@ -310,7 +310,7 @@ def test_asdf_vs_npz_reports_a_conjugation_and_does_not_fix_it(reference):
     """The same export with V conjugated: the visibilities differ by up to twice the amplitude and
     ``vis_conj_max_abs`` is zero (the signature of a conjugation); u and v are untouched."""
     res = _run(dict(task="asdf_vs_npz", asdf=reference["asdf_conj"], npz_dir=str(SUBSAMPLE)), reference["tmp"])
-    assert res["worst"]["vis_max_abs"] > 1e-2
+    assert res["worst"]["vis_max_abs"] > 1e-2 and not res["worst"]["all_pass"]
     for r in res["ddids"].values():
         assert r["vis_conj_max_abs"] < 1e-12 and r["u_max_rel"] < 1e-12 and r["v_max_abs"] < 1e-6
 
@@ -326,4 +326,4 @@ def test_asdf_vs_npz_summary_flags_a_missing_ddid(reference, tmp_path):
         if f.name != "ddid_07.npz":
             shutil.copy(f, tmp_path / f.name)
     res = _run(dict(task="asdf_vs_npz", asdf=reference["asdf"], npz_dir=str(tmp_path)), reference["tmp"])
-    assert res["worst"]["n_mismatch_ddids"] == [7]
+    assert res["worst"]["n_mismatch_ddids"] == [7] and not res["worst"]["all_pass"] and res["ddids"]["7"]["pass"] is False

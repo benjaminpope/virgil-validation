@@ -487,3 +487,12 @@
   referee: mathematics (the EHT-IV entropy sum I ln(I/p) / F, numpy, crosscheck.alma_maxent)
   evidence: [tests/test_alma_maxent.py::test_r1_the_r_objective_equals_2n_times_mpols_loss, tests/test_alma_maxent.py::test_r1_control_virgils_maxentropy_or_the_untapered_image_does_not_match]
   status: documented
+
+- id: D13
+  title: MPoL's IM Lup export reads CORRECTED_DATA; our first read used DATA, which differs from it by 0.03 Jy (ddid 0) to 1.6 Jy (ddids 22-25)
+  objects: [mpol]
+  ruling: definition
+  kind: 'both right, different columns (the choice is ours: CORRECTED_DATA matches MPoL and the calibrated data; found because asdf_vs_npz applied no tolerance)'
+  referee: mathematics (the PASS/FAIL comparison of the two readings, point by point)
+  evidence: [tests/test_alma_npz_compare.py::test_control_a_different_data_column_fails, tests/test_alma_npz_compare.py::test_passes_whichever_way_either_side_orders_its_channels]
+  status: open

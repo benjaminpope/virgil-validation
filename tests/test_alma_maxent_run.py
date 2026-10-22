@@ -225,3 +225,96 @@ def test_warm_start_from_free_alpha_values_drops_alpha(syn):
     spec.loader.exec_module(cli)
     cli.resolve_alpha(ns)
     assert ns.alpha_free is False
+
+
+# ------------------------------------------------------------------ the MPoL workflow (--workflow mpol)
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_mpol_start_reproduces_the_uniform_softplus_image_and_flux(syn):
+    """`mpol_start_values` is uniform through our softmax parametrisation (zero logits, flux = value dx^2 npix^2): `image_of` returns one
+    value in every pixel and the pixels sum to the flux, to 1e-12; gains 1, offsets 0, s = 1; the C9 start is not uniform. That the value is
+    softplus(-3) and that sgd.py starts there is transcribed from mpol 0.3.1 images.py:65-76 and sgd.py:49-59 (cited in the design note), not
+    checked against MPoL here."""
+    npix, px = 24, 5.0
+    data = va.load_dir(syn)
+    prob = va.build_problem(data, "R", lam=0.5, npix=npix, pixel_mas=px)
+    v = {k: np.asarray(x) for k, x in va.mpol_start_values(prob).items()}
+    img = va.image_of(v, npix, px)
+    sp = np.log1p(np.exp(-3.0))
+    record("rel_pixel_error", float(np.max(np.abs(img / sp - 1))))
+    assert np.max(np.abs(img / img.flat[0] - 1)) < 1e-12 and abs(img.flat[0] / sp - 1) < 1e-12
+    flux = sp * (px / 1000) ** 2 * npix**2
+    assert abs(float(v["cal.flux"]) / flux - 1) < 1e-12
+    assert abs(img.sum() * (px / 1000) ** 2 / flux - 1) < 1e-12
+    assert np.all(v["cal.gain"] == 1) and np.all(v["cal.offset"] == 0) and np.all(v["cal.sigma"] == 1)
+    c9 = {k: np.asarray(x) for k, x in va.start_values(prob).items()}
+    assert abs(va.image_of(c9, npix, px).max() / sp - 1) > 1e-3
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_workflow_mpol_runs_exactly_one_stage_and_records_itself(syn, tmp_path, monkeypatch):
+    calls = []
+    real = va.mpol_start_values
+    monkeypatch.setattr(va, "mpol_start_values", lambda prob: calls.append(1) or real(prob))
+    monkeypatch.setattr(va, "start_values", lambda *a, **k: pytest.fail("the mpol workflow must not use C9's start"))
+    out = tmp_path / "m"
+    _call("fit", "--config", "R", "--workflow", "mpol", "--data", syn, "--out", out, "--npix", 32, "--max-steps", 5, "--no-dirty")
+    r = json.loads((out / "result.json").read_text())
+    assert r["workflow"] == "mpol" and calls == [1]
+    assert [s["name"] for s in r["stages"]] == ["all"]
+    assert r["n"] == 5600  # all data, no SB subset
+    monkeypatch.undo()
+    p3 = tmp_path / "p"
+    _call("fit", "--config", "R", "--data", syn, "--out", p3, "--npix", 32, "--max-steps", 5, "--no-dirty")
+    r3 = json.loads((p3 / "result.json").read_text())
+    assert r3["workflow"] == "p3" and [s["name"] for s in r3["stages"]] == ["sb", "all"]
+    with pytest.raises(SystemExit):
+        _call("fit", "--config", "F", "--workflow", "mpol", "--data", syn, "--out", tmp_path / "f")
+    with pytest.raises(SystemExit):
+        _call("fit", "--config", "R", "--workflow", "mpol", "--sb-only", "--data", syn, "--out", tmp_path / "g")
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_grad_table_states_physical_units_and_sigma_per_ln_s():
+    row = dict(n=2, gz_max=1e4, gz_norm=1.5e4, dxdz_median=2500.0, gx_max=4.0)
+    sig = dict(n=3, gz_max=3.0, gz_norm=4.0, dxdz_median=1.5, gx_max=2.0, gx_lns_max=4.0)
+    md = "\n".join(script.grad_table({"x": {"cal.offset": row, "cal.sigma": sig}}))
+    assert "| x | cal.offset | 2 | 1e+04 | 1.5e+04 | 2500 | 4 | per mas |" in md
+    assert "| 4 | per ln s |" in md  # max |s g_x| over the ddids, stored by grad_groups
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_offset_bound_reaches_the_priors_and_default_is_virgils_own(syn):
+    data = va.load_dir(syn)
+    default = va.build_problem(data, "R", lam=0.5, npix=16)
+    bounded = va.build_problem(data, "R", lam=0.5, npix=16, offset_bound_mas=100.0)
+    assert bounded.offset_bound_mas == 100.0 and bounded.offset_bound_requested == 100.0
+    assert default.offset_bound_requested is None and default.offset_bound_mas == default.nuis.offset_bound_mas > 100.0
+    for prob, x in ((default, default.nuis.offset_bound_mas), (bounded, 100.0)):
+        d = prob.priors["cal.offset"]
+        assert np.allclose(np.asarray(d.low), -x) and np.allclose(np.asarray(d.high), x)
+    for k in default.priors:  # nothing else changes
+        if k != "cal.offset" and hasattr(default.priors[k], "low"):
+            assert np.allclose(np.asarray(default.priors[k].low), np.asarray(bounded.priors[k].low))
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_report_records_the_bound_and_warns_when_an_offset_is_within_5_percent_of_it(syn, tmp_path, capsys):
+    out = tmp_path / "ob"
+    _call("fit", "--config", "R", "--workflow", "mpol", "--data", syn, "--out", out, "--npix", 16, "--max-steps", 3, "--no-dirty", "--offset-bound-mas", 100)
+    r = json.loads((out / "result.json").read_text())
+    assert r["args"]["offset_bound_mas"] == 100 and r["offset_bound"]["bound_mas"] == 100 and r["offset_bound"]["requested_mas"] == 100
+    assert r["offset_bound"]["warning"] is None
+    z = dict(np.load(out / "values.npz"))
+    z["cal.offset"] = np.zeros_like(z["cal.offset"])
+    z["cal.offset"][0, 1] = 97.0  # 3% from the bound
+    np.savez(out / "values.npz", **z)
+    capsys.readouterr()
+    _call("report", "--data", syn, "--out", out, "--no-dirty")
+    shown = capsys.readouterr()
+    assert "OFFSET BOUND BINDING" in shown.out + shown.err
+    r = json.loads((out / "result.json").read_text())  # the saved --offset-bound-mas is reused by report
+    assert r["offset_bound"]["bound_mas"] == 100 and r["offset_bound"]["near_bound"] == [dict(obs=1, axis="dec", offset_mas=97.0)]
+    assert va.offset_bound_report(np.full((2, 2), 94.0), 100.0)["warning"] is None
+    assert va.offset_bound_report(np.full((2, 2), -95.0), 100.0)["warning"] is not None

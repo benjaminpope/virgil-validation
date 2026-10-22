@@ -184,3 +184,89 @@ Primary beam, entropy form, lambda and `nu0_hz` are unchanged. Free alpha stays 
 (alpha in {0, 2.5, 5}): `FULL["alpha_free"]` / `build_problem(..., alpha_free=True)` / `--alpha-free` on `alma_imlup_maxent.py`
 (fit, cv-task; `report` reads it from the fit's saved args). `result.json` carries `alpha` (float, or null when fixed) and
 `alpha_label` ("fixed 0 (MPoL)" or the fitted value). alma_imlup_cv passes no alpha flag, so it follows the new default.
+
+## Decision: the data column is CORRECTED_DATA (D1, 2026-10-22)
+
+Status: the vv side (this section, `alma_worker` `datacolumn`, `asdf_vs_npz` PASS/FAIL) is in vv#166; the OzSTAR side (`alma_imlup_read --datacolumn`,
+`datacolumn.txt`, the `-cd` tag, `--check-only`, `--data` for maxent and cv) is ozstar_scripts#58. **Until #58 has run, the IM Lup npz are still DATA.**
+Ledger: D13 (open until the `asdf_vs_npz` PASS on the `-cd` npz).
+
+**Finding.** Ben asked for a check that we replicate MPoL's workflow. The objective (likelihood, entropy, taper, s/g
+mapping, grid, offset sign) is identical; the *data* were not. The DSHARP MS has DATA, CORRECTED_DATA, MODEL_DATA and
+WEIGHT_SPECTRUM. MPoL's export (visread via `alma_mpol_ref`'s `run_export.py`; `asdf.export.json` says
+`"datacolumn": "corrected_data"`) read CORRECTED_DATA. Our reader (`alma_worker.read_ddid`, default `datacolumn="DATA"`)
+read DATA. `asdf_vs_npz` (MPoL's asdf against our npz) showed identical N, keys and weights (rel 6e-8) but
+|ΔV|max of 0.03 Jy on ddid 0, 0.4-0.7 Jy on ddids 4 and 17-20, 0.95-1.63 Jy on ddids 22-25. It applied no tolerance,
+so nobody noticed. This likely explains MPoL's −ln L being lower than our R fit's by 1.8e6 and the LB obs-6 gain
+(ours 1.28, MPoL 0.981). Not yet shown: that needs the new npz and a rerun (the PASS below, then ŝ and the fits).
+
+**Fix.**
+1. The column is an explicit, recorded choice. `alma_worker` `read` takes `datacolumn` (case-insensitive; an MS without
+   the column is an error, never a silent fall back) and writes it, upper case, to its result JSON. The generic default
+   stays `DATA` (the synthetic MS has only DATA); the IM Lup job `alma_imlup_read` (ozstar_scripts#58) defaults to `CORRECTED_DATA` and
+   writes `datacolumn.txt` into the npz directory, which every downstream summary prints. The new npz goes to a new tag
+   (`<vv commit>-cd`), so the DATA npz stays for comparison.
+2. `asdf_vs_npz` is a test: per ddid PASS needs equal N, all keys matched, |ΔV| < 1e-5 Jy, and relative differences of
+   per-point relative u, v, weight < 1e-6. `worst.all_pass` is the verdict. Channels are matched by each point's own frequency
+   rank, never by channel index or an assumed direction: visread 0.0.5 orders channels by decreasing frequency
+   (`process_casa.get_channel_sorted_data` flips an ascending MS), our npz keeps the MS order, which is increasing for some ddids, so the
+   index-keyed match broke there (ddids 4, 17, 19, 20, 23, 24). We match rather than re-sort our npz so that existing npz and tags stay
+   valid. u, v and weight are compared per point (u, v against max(|u|, 1 λ)). Logic in `external_bridge/npz_compare.py` (numpy only, tested in `tests/test_alma_npz_compare.py`).
+3. Weights. `alma_mpol_ref`'s check shows our weights agree with visread's to 6e-8 on every ddid, so for this MS
+   WEIGHT_SPECTRUM (which our reader uses when defined) and visread's weights are the same and the choice does not
+   matter here (stated from that agreement, not from inspecting the column).
+4. virgil's `ComplexVisData.read_ms` already takes `datacolumn="DATA"` (virgil `radio.py`); no virgil change is needed,
+   and `alma_imlup_read`'s `read_compare.py` will pass it (ozstar_scripts#58) so the two readers read the same column.
+
+C14 stands, with this addendum: "MPoL's own export" includes its column, and our arrays must be read from the same
+column or the comparison is not like for like. All fits, CV and ŝ before this date used DATA and are superseded for
+the R-vs-MPoL comparison once rerun on the `-cd` npz.
+
+## Option: `fit --workflow=mpol` (2026-10-22)
+
+Ben: "keep working on the radio analysis, to try and closely replicate MPoL". With the data column fixed (D1) the objective and the
+data agree; what still differs is the *route* to the optimum. C9 (an SB stage, then all data, from a 1″ Gaussian of 0.25 Jy, s at ŝ)
+is ours; MPoL's `sgd.py` runs two all-data AdamW stages (`Snakefile:26-27`, 10 epochs each) from a flat start. The earlier R fit on the
+DATA npz stopped at `max_steps` 20000 without C8 and kept its offsets under 2 mas, where MPoL's are 4–13 mas, so a different basin or
+a slow direction is possible. `--workflow=mpol` removes the start as a difference. Default stays `p3`; config R only.
+
+| | `p3` (default, C9) | `mpol` |
+|---|---|---|
+| stages | SB (obs 0–4), then all | one, all data, to C8 |
+| image start | 1″ FWHM Gaussian, 0.25 Jy | uniform `softplus(-3)` = 0.048587 Jy/arcsec² per pixel (`BaseCube`, mpol 0.3.1 `images.py:65-76`: `base_cube = -3`, `Softplus`; `sgd.py:59`), total 1.2837 Jy at 1028² × 5 mas |
+| parametrisation | `flux × softmax(log_brightness)` | same: logits 0, `flux = value × dx² × npix²` (so `image_of` returns the uniform value to 1e-12) |
+| gains | 1 | 1 (`sgd.py:49`, `log10_amp_factors = zeros`) |
+| offsets | 0 | 0 (`sgd.py:56-57`) |
+| s per ddid | ŝ | 1 (`sgd.py:53`, `log10_sigma_factors = zeros`; with g = 1, s = g s_MPoL = 1; ŝ is not used, C13 is still checked if `--shat` is given) |
+| optimiser | L-BFGS to C8 | L-BFGS to C8 (not AdamW: that stays the "different optimiser" of C1) |
+
+The softmax parametrisation cannot reproduce softplus per pixel *during* the fit (ours keeps the total flux a fitted scalar; MPoL's
+pixels are free and non-negative by softplus); only the start is matched. `result.json` and the log carry `workflow` (`p3` or
+`mpol`); the log line gives raw χ²/(2N) at s = 1 first. `--workflow=mpol` with `--init` (resume or continue) is the same all-data
+stage from the saved values; `--sb-only` is an error.
+
+Code: `va.mpol_start_values`, `va.mpol_base_jy_arcsec2` (`src/virgil_bridge/alma.py`); tests `test_mpol_start_reproduces_*` and
+`test_workflow_mpol_runs_exactly_one_stage_*` (`tests/test_alma_maxent_run.py`).
+
+**Offset-scaling diagnostic.** `compare` already ran `va.grad_groups` (vv#165). It now prints physical units (offset per mas, gain per
+unit gain, s per ln s, flux per Jy, pixels per unit log-brightness; `grad_table`), and `report --grad` prints the same for one saved
+fit without MPoL's export (R only; one value-and-gradient at the fit's eps). Reading it: virgil fits an offset as a logit of
+x/bound with bound = 1/(2 q_min) (≈ 10⁴ mas on IM Lup), so dx/dz = bound/2 ≈ 5 × 10³ mas per unit z near 0 and 1 mas ≈ 2 × 10⁻⁴ in z.
+In z the offset gradient is therefore bigger than the others' by about dx/dz, and its curvature by about (dx/dz)² ≈ 2.5 × 10⁷
+times the curvature per mas², against ~1 for the pixels. L-BFGS has to learn that scale from its history; the first steps and the
+line search are set by the large offset gradient and can stall the other groups. On the synthetic test data (bound ≈ 5 × 10³ mas,
+dx/dz = 2.6 × 10³): |g_z| max 1.0e4 for offsets vs 1.1e2–3.7e2 for gain, flux and s and 10 for pixels, while per physical unit
+the offset gradient is only 3.9 per mas against 3.3e2 per unit gain. The IM Lup numbers need `report --grad` on the A100 fit.
+
+**`--offset-bound-mas X` (fit, cv-task; R and F).** Passes `bounds={"offset": (-X, X)}` to `CalibrationNuisance.priors` (virgil
+`radio.py`, `priors(**bounds)`; mas, the same unit and sign as `cal.offset`, symmetric about 0). The default stays virgil's own
+±1/(2 q_min), so a run without the option is unchanged. Why: with the default bound ≈ 10⁴ mas, dx/dz ≈ 5 × 10³ mas and the curvature in z
+is ≈ 2.5 × 10⁷ times the per-mas² curvature, while MPoL's 4–13 mas offsets are z ≈ 10⁻³ and our earlier R fit's stayed below 2 mas. At
+X = 100 mas dx/dz ≈ 50 mas, a factor 100 in gradient and 10⁴ in curvature better, and the offsets still sit well inside the bound.
+The prior is flat, so inside the bound the objective (−ln L + λ S_M) is identical at any X: the option changes only the optimiser's
+coordinate. It stops being innocent if a fitted offset reaches the bound, so `report` (and `fit`, which reports) records
+`offset_bound` in `result.json` (`bound_mas`, `requested_mas` null for the default, `max_abs_over_bound`, `near_bound`, `warning`),
+prints the bound and the largest |offset|/bound, and prints `!!! OFFSET BOUND BINDING` if any offset ends within 5% of it; a binding run
+is not a fit of the unbounded objective and must be rerun with a larger X. `report` and `report --grad` reuse the saved `--offset-bound-mas`.
+`compare` evaluates its gradient table at virgil's default bound. Tests: `test_offset_bound_reaches_the_priors_*`,
+`test_report_records_the_bound_and_warns_*` (`tests/test_alma_maxent_run.py`).

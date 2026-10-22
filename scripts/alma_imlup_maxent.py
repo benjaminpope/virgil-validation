@@ -101,7 +101,13 @@ def run_stages(args, data, prob_for, init_dir, save=None):
 
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
     stages = []
-    if init_dir:
+    mpol = getattr(args, "workflow", "p3") == "mpol"
+    if mpol and args.sb_only:
+        raise SystemExit("--workflow mpol is one all-data stage from MPoL's own start: no --sb-only")
+    if mpol and not init_dir:  # with --init (resume or continue) the stage is the same all-data stage from the saved values
+        plan = [("all", None)]
+        values = None
+    elif init_dir:
         z = np.load(pathlib.Path(init_dir) / "values.npz")
         values = {k: jnp.asarray(z[k]) for k in z.files}
         plan = [("all", None)]
@@ -114,7 +120,7 @@ def run_stages(args, data, prob_for, init_dir, save=None):
         if values is not None:
             values = va.drop_unused_sites(values, prob)
         if values is None:
-            values = va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
+            values = va.mpol_start_values(prob) if mpol else va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
         say(f"stage {name}: max_steps {args.max_steps}, time limit {args.time_limit}, gtol {args.gtol}")
         t = time.time()
 
@@ -162,9 +168,13 @@ def write_state(out, args, prob, values, stages, lam, n):
     cx.write_fits(out / "image.fits", image, prob.pixel_mas, RA_DEG, DEC_DEG, OBJECT="IM Lup", ORIGIN=f"virgil {args.config}")
     last = stages[-1]
     dump(out / "result.json", dict(
-        command="fit", complete=False, config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n),
+        command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n),
         npix=prob.npix, pixel_mas=prob.pixel_mas, versions=versions(), stages=stages, converged=last["convergence"]["converged"],
         stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"])))
+
+
+def res_workflow(args):
+    return getattr(args, "workflow", None) or "p3"
 
 
 def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
@@ -177,15 +187,20 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     sc_raw = va.score(final_data, prob.scene, values, prob.nuis, mask=final_mask, chunk_size=ck)
     sigma = np.asarray(values.get("cal.sigma", np.ones(26)))
     sc_s1 = va.score(final_data, prob.scene, {**values, "cal.sigma": np.ones_like(sigma)}, prob.nuis, mask=final_mask, chunk_size=ck)  # s = 1 first (C10)
-    say(f"-ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
+    say(f"workflow {res_workflow(args)}: chi2/(2N) raw (s = 1) {sc_raw['chi2_raw'] / (2 * final_data.u.shape[0]):.4f}; -ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
     res = dict(
-        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
+        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
+        offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested),
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
     )
+    ob = res["offset_bound"]
+    say(f"offset bound ±{ob['bound_mas']:.6g} mas ({'--offset-bound-mas' if ob['requested_mas'] is not None else 'virgil default'}); largest |offset|/bound {ob['max_abs_over_bound']:.3g}")
+    if ob["warning"]:
+        say(ob["warning"])
     if shat is not None:
         res["shat"] = shat
         res["acceptance_C13"] = acceptance(sigma, shat)
@@ -217,7 +232,7 @@ def _train_mask(args, data):
 def _prob_for(args, data, lam, mask):
     def prob_for(use):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
-        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
+        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
 
     return prob_for
 
@@ -230,6 +245,8 @@ def resolve_alpha(args):
 
 def cmd_fit(args):
     resolve_alpha(args)
+    if args.workflow == "mpol" and args.config != "R":
+        raise SystemExit("--workflow mpol is defined for config R only (MPoL has no beam, no free alpha)")
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
@@ -265,6 +282,13 @@ def cmd_report(args):
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
     say(f"report of {out}: config {args.config}, lambda {lam:.6g}, stages {[s['name'] for s in stages]}")
     write_report(args, out, data, prob, values, stages, shat, lam, mask, saved.get("wall_s"))
+    if args.grad and (mask is not None or use is not None):
+        say("--grad skipped: the diagnostic evaluates the all-data, unmasked objective, not this fit's (fold mask or SB-only last stage)")
+    elif args.grad and args.config == "R":
+        groups = {"report": va.grad_groups(data, values, lam=lam, pixel_mas=args.pixel_mas or 5.0, chunk_size=args.chunk_size, offset_bound_mas=getattr(args, "offset_bound_mas", None))}
+        dump(out / "grad_groups.json", groups)
+        (out / "grad_groups.md").write_text("\n".join(grad_table(groups)) + "\n")
+        say("\n".join(grad_table(groups)))
 
 
 # ------------------------------------------------------------------ folds, cv
@@ -290,7 +314,7 @@ def cmd_cv_task(args):
     n_all = len(data.u)
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
-    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
+    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
 
@@ -419,16 +443,27 @@ def objective_tables(res, vres, obj_m):
     for k in range(len(g["mpol"])):
         md.append(f"| {k} | {g['ours'][k]:.4f} | {g['mpol'][k]:.4f} | {off['ours'][k][0]:+.3f} | {off['mpol'][k][0]:+.3f} | {off['ours'][k][1]:+.3f} | {off['mpol'][k][1]:+.3f} |")
     if "grad_groups" in res:
-        md += ["", "## Gradient scaling by parameter group (the loss virgil.fit minimises, eps 1e-6)", "",
-               "`g_z`: gradient in the unconstrained coordinates L-BFGS moves in; `dx/dz`: median of the map from z to the parameter x; `g_x = g_z / (dx/dz)`: gradient per unit of x "
-               "(image pixels: per unit log-brightness; flux in Jy; gain unitless; offset in mas; sigma unitless). Raw loss units (-ln L + lam_R S_M; fit's gtol is per data point).", "",
-               "| at | site | n | max abs g_z | norm g_z | dx/dz | max abs g_x |", "|---|---|---:|---:|---:|---:|---:|"]
-        for label, rows in res["grad_groups"].items():
-            if "error" in rows:
-                md.append(f"| {label} | error: {rows['error']} | | | | | |")
-                continue
-            for site, r in rows.items():
-                md.append(f"| {label} | {site} | {r['n']} | {r['gz_max']:.4g} | {r['gz_norm']:.4g} | {r['dxdz_median']:.4g} | {r['gx_max']:.4g} |")
+        md += ["", *grad_table(res["grad_groups"])]
+    return md
+
+
+def grad_table(groups):
+    """Markdown of ``va.grad_groups`` per ``at`` label: dx/dz and the gradient in physical units (offset per mas, gain per unit gain,
+    sigma per ln s, flux per Jy, pixels per unit log-brightness), and the same gradient relative to the pixels'."""
+    md = ["## Gradient scaling by parameter group (the loss virgil.fit minimises, eps 1e-6)", "",
+          "`g_z`: gradient in the unconstrained coordinates L-BFGS moves in; `dx/dz`: median of the map from z to the parameter x (z is a logit of x/bound for "
+          "`cal.offset`); `g_x = g_z / (dx/dz)`: gradient in physical units, `|dL/dx|` per the unit in the last column "
+          "(sigma: per ln s, max |s_i g_x,i| over ddids). Raw loss units (-ln L + lam_R S_M; fit's gtol is per data point). A group with small `dx/dz` and large "
+          "`g_x`/`g_z` ratio is badly conditioned for a first-order step: z must move 1/(dx/dz) times further than x.", "",
+          "| at | site | n | max abs g_z | norm g_z | dx/dz | max abs g_x | unit |", "|---|---|---:|---:|---:|---:|---:|---|"]
+    units = {"cal.offset": "per mas", "cal.gain": "per unit gain", "cal.sigma": "per ln s", "cal.flux": "per Jy", "log_brightness": "per unit ln brightness"}
+    for label, rows in groups.items():
+        if "error" in rows:
+            md.append(f"| {label} | error: {rows['error']} | | | | | | |")
+            continue
+        for site, r in rows.items():
+            gx = r["gx_lns_max"] if site == "cal.sigma" else r["gx_max"]
+            md.append(f"| {label} | {site} | {r['n']} | {r['gz_max']:.4g} | {r['gz_norm']:.4g} | {r['dxdz_median']:.4g} | {gx:.4g} | {units.get(site, '')} |")
     return md
 
 
@@ -566,12 +601,17 @@ def main(argv=None):
             p.add_argument("--time-limit", type=float, default=18000.0, help="seconds per stage (default 5 h)")
             p.add_argument("--gtol", type=float, default=1e-4, help="fit's gradient test; restarts tighten it until C8 holds")
             p.add_argument("--chunk-size", type=int, default=va.CHUNK, help="points per model evaluation (the fit's term and every score)")
+            p.add_argument("--offset-bound-mas", type=float, default=None, help="R, F: bound ±X (mas) of the offsets' uniform prior (default: virgil's own ±1/(2 q_min), ~1e4 mas for IM Lup); "
+                           "a flat prior is unchanged inside any bound, but the optimiser's logit coordinate is far better conditioned at, say, 100; `report` warns if an offset ends within 5% of it")
             p.add_argument("--alpha-free", dest="alpha_free", action="store_true", default=None, help="F: fit the spectral index within its bounds (default: fixed 0, as MPoL)")
 
     p = sub.add_parser("fit")
     common(p)
     p.add_argument("--config", choices=["R", "F"], required=True)
     p.add_argument("--sb-only", action="store_true")
+    p.add_argument("--workflow", choices=["p3", "mpol"], default="p3",
+                   help="p3 (default): C9's SB stage then all data from a 1\" Gaussian, s at ŝ. mpol (config R only): one all-data stage from MPoL's own start "
+                        "(uniform softplus(-3) image, g = 1, offsets 0, s = 1; sgd.py:49-59, images.py BaseCube)")
     p.add_argument("--init", default=None, help="a previous fit's directory (values.npz): one stage on all data")
     p.add_argument("--shat", default=None, help="directory of ddid_NN.json (alma_imlup_read): s_d starts at ŝ_d; C13 is checked")
     p.add_argument("--folds", default=None)
@@ -585,6 +625,7 @@ def main(argv=None):
     p.add_argument("--out", required=True, help="the fit's directory (values.npz, result.json)")
     p.add_argument("--shat", default=None)
     p.add_argument("--no-dirty", action="store_true", default=None)
+    p.add_argument("--grad", action="store_true", help="R: also print the per-group gradient scaling (offset-conditioning diagnostic; one value-and-gradient)")
     p.add_argument("--chunk-size", type=int, default=va.CHUNK)
     p.set_defaults(fn=cmd_report, ddids=None, folds=None, fold=None, flux_lam0=None)
 

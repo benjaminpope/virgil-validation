@@ -271,7 +271,7 @@ def read_shat(path, n_ddid=26):
 
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
-                  alpha_free=None):
+                  alpha_free=None, offset_bound_mas=None):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -280,6 +280,11 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     ``init`` (defaults; the caller sets the image, flux and sigma), ``terms``, ``regs`` and ``model``
     for ``virgil.fit``. Priors are the house defaults (C6): log-uniform flux, gains and error scales,
     uniform offsets (and alpha when ``alpha_free``), and a flat prior on the pixels' log-brightness.
+
+    ``offset_bound_mas`` (mas, default None: virgil's own ±1/(2 q_min), about 10^4 mas for IM Lup) sets the offsets' uniform prior to
+    ``(-X, X)`` through ``CalibrationNuisance.priors(offset=...)``. A flat prior is flat at any bound, so the objective is unchanged
+    unless a fitted offset reaches the bound (``offset_bound_report``), but L-BFGS moves in the logit z of ``x/bound`` and dx/dz is
+    about half the bound: a bound near the offsets (say 100 mas) conditions them far better. ``prob.offset_bound_mas`` is the bound in force.
     """
     import jax.numpy as jnp
     import numpyro.distributions as dist
@@ -306,11 +311,31 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         raise ValueError(f"config must be R or F, not {config!r}")
     term = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size)
     terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas)] if config == "R" else [])
-    priors = nuis.priors()
+    priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
     priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
     init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
-                                 terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam))
+                                 terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam),
+                                 offset_bound_mas=float(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas),
+                                 offset_bound_requested=None if offset_bound_mas is None else float(offset_bound_mas))
+
+
+OFFSET_EDGE = 0.05  # report warns when a fitted offset is within this fraction of the bound
+
+
+def offset_bound_report(offsets, bound_mas, requested=None, edge=OFFSET_EDGE):
+    """Is the offsets' uniform bound binding? ``offsets`` is the fitted ``cal.offset`` (mas, (n_obs - 1, 2); None for none).
+    A fitted offset within ``edge`` of ``bound_mas`` means the bound shapes the fit, so the objective is no longer the unbounded one.
+    Returns bound, requested, the largest |offset|/bound, the offending (obs, axis, mas) entries and a ``warning`` string (None if clear)."""
+    off = np.zeros((0, 2)) if offsets is None else np.asarray(offsets, float).reshape(-1, 2)
+    frac = np.abs(off) / bound_mas
+    near = [dict(obs=int(i) + 1, axis=["ra", "dec"][int(j)], offset_mas=float(off[i, j])) for i, j in zip(*np.nonzero(frac >= 1.0 - edge))]
+    warning = None
+    if near:
+        warning = (f"!!! OFFSET BOUND BINDING: {len(near)} fitted offset(s) within {edge:.0%} of the ±{bound_mas:g} mas bound "
+                   f"({', '.join('obs %d %s %.4g' % (n['obs'], n['axis'], n['offset_mas']) for n in near)}); the bound is changing the objective: "
+                   f"raise --offset-bound-mas or drop it !!!")
+    return dict(bound_mas=float(bound_mas), requested_mas=requested, max_abs_over_bound=float(frac.max()) if frac.size else 0.0, near_bound=near, warning=warning)
 
 
 def drop_unused_sites(values, prob):
@@ -330,6 +355,35 @@ def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
     v["cal.flux"] = jnp.asarray(flux)
     if shat is not None and "cal.sigma" in v:
         v["cal.sigma"] = jnp.asarray(shat, float)
+    return v
+
+
+def mpol_base_jy_arcsec2():
+    """MPoL's initial per-pixel brightness in Jy/arcsec^2: ``softplus(-3)`` = ln(1 + e^-3) = 0.04859. ``BaseCube`` fills its
+    ``base_cube`` with -3 and maps it through ``torch.nn.Softplus`` (mpol 0.3.1 ``images.py``: ``BaseCube.__init__`` lines 65-76
+    for the -3 and the Softplus default, ``forward`` for the mapping), and ``sgd.py:59`` builds it with no ``base_cube``."""
+    return float(np.log1p(np.exp(-3.0)))
+
+
+def mpol_start_values(prob):
+    """The start of MPoL's ``sgd.py`` as virgil values (workflow ``mpol``), replacing C9's Gaussian and ŝ:
+
+    - image: uniform ``softplus(-3)`` Jy/arcsec^2 per pixel (``BaseCube``, ``images.py:65-76``; ``sgd.py:59``), i.e. our
+      ``flux * softmax(log_brightness) / dx^2`` with equal logits (zero) and ``flux = value * dx^2 * npix^2`` (1.2837 Jy at
+      1028^2 x 5 mas, not the 0.253 Jy of ``F_tot``);
+    - gains 1: ``sgd.py:49`` ``log10_amp_factors = zeros``;
+    - offsets 0: ``sgd.py:56-57`` ``delta_ra``, ``delta_dec = zeros``;
+    - s_d = 1: ``sgd.py:53`` ``log10_sigma_factors = zeros`` (s_MPoL = 1) with g = 1 gives s = g s_MPoL = 1. No ŝ.
+    """
+    import jax.numpy as jnp
+
+    v = dict(prob.init)
+    dx = prob.pixel_mas / 1000.0
+    v["log_brightness"] = jnp.zeros((prob.npix, prob.npix))
+    v["cal.flux"] = jnp.asarray(mpol_base_jy_arcsec2() * dx**2 * prob.npix**2)
+    for k, fill in (("cal.gain", 1.0), ("cal.sigma", 1.0), ("cal.offset", 0.0)):
+        if k in v:
+            v[k] = jnp.full_like(jnp.asarray(v[k], float), fill)
     return v
 
 
@@ -637,7 +691,7 @@ def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=E
     return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s, by_ddid=sc["by_ddid"], n=sc["n"])
 
 
-def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chunk_size=CHUNK):
+def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chunk_size=CHUNK, offset_bound_mas=None):
     """How well scaled R's parameters are for L-BFGS, at ``values``: per site (image pixels, flux, gain, offset, sigma), the
     gradient of the loss ``virgil.fit`` minimises with respect to the unconstrained coordinates z it optimises
     (``|g_z|`` max and 2-norm), the median Jacobian ``dx/dz`` of the site's value x (1 for the pixels; for ``cal.offset`` about
@@ -649,7 +703,7 @@ def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chu
     from virgil.fitting import _Objective
 
     npix = npix or values["log_brightness"].shape[0]
-    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, chunk_size=chunk_size)
+    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, chunk_size=chunk_size, offset_bound_mas=offset_bound_mas)
     obj = _Objective(prob.model, prob.priors, (), tuple(prob.regs), None, tuple(prob.terms))
     z = obj.init({k: jnp.asarray(v) for k, v in values.items() if k in obj.sites})
     with ft_eps(eps):
@@ -660,6 +714,9 @@ def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chu
         jac = jax.grad(lambda zz, site=site: jnp.sum(obj.constrain({**z, site: zz})[site]))(z[site])
         gz, jz = np.asarray(g[site], float).ravel(), np.asarray(jac, float).ravel()
         gx = gz / jz
-        rows[site] = dict(n=int(gz.size), gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
+        extra = {}
+        if site == "cal.sigma":  # dL/d ln s_i = s_i g_x,i
+            extra["gx_lns_max"] = float(np.max(np.abs(np.asarray(obj.constrain(z)[site], float).ravel() * gx)))
+        rows[site] = dict(n=int(gz.size), **extra, gz_max=float(np.max(np.abs(gz))), gz_norm=float(np.linalg.norm(gz)), dxdz_median=float(np.median(np.abs(jz))),
                           gx_max=float(np.max(np.abs(gx))), gx_norm=float(np.linalg.norm(gx)))
     return rows
