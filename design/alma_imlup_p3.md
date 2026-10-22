@@ -292,3 +292,54 @@ Goal: claim an *improvement* (or parity) of virgil's IM Lup MaxEnt image over MP
 - Code: `src/external_bridge/{cv_folds,cv_compare}.py`, tasks in `mpol_worker.py`, `scripts/alma_imlup_maxent.py cv-compare`, tests `tests/test_alma_mpol_cv.py`,
   formats in `docs/alma_conventions.md` Part 6. The OzSTAR job is `alma_mpol_cv` (ozstar_scripts).
 
+
+## Built: speed comparison with MPoL (2026-10-23)
+
+Ben: "let's keep working until we are as good as or better than MPoL from a cold start. I would also like to see a speed comparison with MPoL."
+`alma_imlup_maxent.py speed` compares virgil's L-BFGS fit with MPoL's two-stage AdamW run on one axis, from small saved JSON only (no data, no GPU):
+
+    python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol RUN_DIR --out DIR [--log FILE ...] [--target LABEL=R ...]
+        [--vg-seconds LO HI] [--mpol-startup-s S]
+
+`--fit DIR` holds a config-R fit's `result.json` (and optionally `anchors.json`, below); `--mpol RUN_DIR` is `alma_mpol_ref`'s `out/<run>/` (`stage<N>.time.json`,
+`export/objective.json`, and `export/objective_chk0.json` when it exists); `--log` are job logs or digests with the `job=… host=…` and GPU lines. It writes `speed.json`,
+`speed.md` (raw χ²/N first, the definitions, the tables, the fairness notes) and `speed.png` (objective against wall time, both codes, the targets as horizontal lines, with a
+zoom). Code `src/crosscheck/alma_speed.py` (numpy only), tests `tests/test_alma_speed.py` (synthetic trajectories of a known cost, compile time, restarts and constant).
+
+**Definitions.**
+- **Objective** is MPoL's `R = −ln L + λ_R S_M` in float64 on all data (C3, C4); MPoL's own value is `objective_full`'s `objective_R`. virgil's fit loss equals R up to a constant, taken from the final
+  point (`objective_R − loss_final`; the report evaluates R at eps 1e-12, the loss is at eps 1e-6). The speed report compares that constant between fits and with any anchor (a second evaluation of R
+  at another step: `anchors.json`, a list of `{steps, objective, loss}`); a spread above 5 fails the check and the curve is not to be trusted. Within one fit `fit` records no second evaluation of R
+  (the report runs at the end only), so the check is across fits. Three existing fits (03531b4/R on DATA, R_mpol and R_mpolwf on CORRECTED_DATA) give the constant −189,545,489.39 to 1e-3.
+- **virgil wall time** is the sum of the stages' `wall_s` (the optimiser loop of each stage: it includes the jit compile of each round and the restarts' overhead; the p3 route's SB stage counts in the time
+  and not on the curve, its loss being on fewer data). The problem build before the first stage (`result.json` `wall_s` minus the stages) is reported as start-up; reading the npz is not timed. The
+  compile of each round is estimated as its first 200-step chunk minus the median chunk.
+- **MPoL wall time** is the whole `sgd.py` process per stage (`stage<N>.time.json`: asdf load, CUDA start-up, epochs); it is known only at the checkpoints, so its curve has two points: chk0 and chk1.
+- **Time to target**: the wall time of the first record at or below the target (every 200 steps), with the linearly interpolated crossing beside it; for MPoL the end of the first stage whose checkpoint
+  is at or below it (an upper bound). Targets: MPoL's final objective (−108,232,184), MPoL's chk0 objective (when evaluated), the best objective known in the inputs, and any `--target`. Warm starts
+  (`--init`) give no time to target (they start at or near it) and are drawn dashed.
+- **Cost per pass**: MPoL's s/epoch (per stage and its ratio) and s/minibatch (N/40,000 ≈ 1,061); virgil's s/step (median of the 200-step chunks inside rounds, with the 10–90 % spread and the
+  first and last quarters, since the line search works harder late). virgil's `info` records **no evaluation count**, so evaluations per step are *estimated* as s/step over the bench's s per
+  value+gradient (0.44–0.53 s at 4.24e7 points, f64, eps 1e-6, A100: job 18862592); `--vg-seconds` overrides it. A "pass" is one value+gradient (virgil) or one epoch (MPoL).
+- **Fairness notes** (in `speed.md`): hardware from the job logs (host, GPU; "not recorded" when absent), MPoL's 2× stage difference flagged as possible node contention, precision (MPoL float32
+  training, virgil float64 at eps 1e-6, every reported objective at 1e-12), start-up and compile separated, data loading in MPoL's wall time and not in virgil's (the bias favours virgil, by minutes),
+  MPoL unmodified (C14), AdamW's weight decay.
+
+**MPoL's chk0 objective.** `analyze.sbatch` evaluated only chk1. ozstar_scripts adds `objective_full` on chk0 to `analyze.sbatch`, and `submit.sh --only-chk0 --run=NAME` reruns just that
+evaluation for an existing run (a separate ozstar_scripts PR); it writes `out/<run>/export/objective_chk0.json`, which `speed` then picks up as MPoL's second point and a second target.
+
+### Preliminary numbers (OLD env: virgil 0.3.0, jobs 18968244 and the MPoL reference 18913982/18913983; NOT converged)
+
+Both virgil fits stopped at `max_steps` 20,000 without C8 and are from a pre-fix environment; they are shown only to say where the comparison stands. They were read from
+`~/data/ozstar_jobs/18968245.txt`, not from `result.json` (not yet downloaded), so the table has no per-step curve.
+
+| | start | steps / epochs | wall | final R | raw χ²/N | reaches MPoL's final R? |
+|---|---|---:|---:|---:|---:|---|
+| MPoL (AdamW, float32, 2 × 10 epochs) | flat | 20 epochs | 21,728 s (6,983 + 14,745; 698 and 1,474 s/epoch) | −108,232,184 | 2.7062 | by definition, at its end |
+| virgil `R_mpolwf` (L-BFGS, float64) | MPoL's flat start | 20,000 steps | 17,078 s (0.85 s/step) | −107,726,506 | 2.7306 | **no**: 505,678 above, not converged |
+| virgil `R_mpol` (L-BFGS, float64) | **warm**, MPoL's solution | 20,000 steps | 15,789 s (0.79 s/step) | −108,304,297 | 2.7052 | not a cold start; ends 72,113 *below* MPoL's |
+
+The cost per pass favours virgil by three orders of magnitude and its step count the other way: an MPoL epoch (698–1,474 s) is about 880–1,860 virgil steps, or 1,300–3,350 value+gradient
+evaluations (at 0.44–0.53 s), while a virgil step is about 1.5–1.9 evaluations. From a cold start virgil needs far more than 20 epochs' worth of passes (20,000 steps is about 30,000
+evaluations) and has not reached MPoL's objective in 17,078 s, so on these numbers MPoL is faster to its final objective from a flat start. Not yet known: the time on the fixed env and with
+`--offset-bound-mas` or `--precondition diag`, the node and GPU of the virgil jobs (their digests' tails lack the `host=` line), and MPoL's chk0 objective.
