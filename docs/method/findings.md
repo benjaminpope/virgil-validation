@@ -26,6 +26,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F18">F18</span> | `epochs.marginal_loglike` | marginal_loglike(s_max=...) integrates each scale on a ln s grid that is too coarse where the likelihood falls steeply from a bound, so differences of m between models are wrong by 0.1-0.7 | fixed [virgil#295](https://github.com/benjaminpope/virgil/pull/295) |
 | <span id="F19">F19</span> | `models.ExpTail` | ExpTail's documented accuracy (1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes) is too optimistic | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
 | <span id="F20">F20</span> | `models.Harmonics` | Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
+| <span id="F22">F22</span> | `likelihood.whitened_residuals` | the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere" | open [virgil#309](https://github.com/benjaminpope/virgil/issues/309) |
 
 ## Where codes define things differently
 
@@ -42,6 +43,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D8">D8</span> | `limits.injection_limits` | CANDID's and fouriever's injection limits refit the primary's uniform-disk diameter to the injected data; virgil's hold every parameter but the flux | documented |
 | <span id="D9">D9</span> | `imaging.TSV` | eht-imaging's squared TV (stv2) counts only the steps out of the last row and column; virgil's TSV counts the steps across all four edges | documented |
 | <span id="D10">D10</span> | `frank`, `frap` | frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline) | documented |
+| <span id="D14">D14</span> | `fitting.fit` | noise-free recovery is judged in units of the statistical error, not at a raw relative tolerance of 1e-6 | documented [virgil#443](https://github.com/benjaminpope/virgil/pull/443) |
 | <span id="D11">D11</span> | `mpol`, `models.Image` | MPoL's image centre is pixel N/2 of the unpacked cube; virgil's is ((N-1)/2, (N-1)/2), so the two scenes differ by half a pixel in both axes | documented |
 | <span id="D12">D12</span> | `mpol`, `imaging.MaxEntropy` | MPoL's entropy is of the tapered image in Jy/arcsec^2 against a constant prior 1e-4, normalised by F_tot; virgil's MaxEntropy is of the unit-sum untapered image | documented |
 | <span id="D13">D13</span> | `mpol` | MPoL's IM Lup export reads CORRECTED_DATA; our first read used DATA, which differs from it by 0.03 Jy (ddid 0) to 1.6 Jy (ddids 22-25) | open |

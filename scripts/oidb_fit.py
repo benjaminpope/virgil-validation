@@ -503,7 +503,7 @@ def _mode_start(priors, x, t_ref):
     """Starting values for ``fit`` from one mode of ``virgil.aliases.fit_orbit_aliases`` (its sampler
     coordinates ``x``): the mode's orbit and flux ratio, in this module's sites."""
     from virgil.aliases import _physical
-    p = {k: float(np.asarray(v)[0]) for k, v in _physical(np.asarray(x, float), t_ref).items()}
+    p = {k: float(np.asarray(v)[0]) for k, v in _physical(np.asarray(x, float)).items()}
     orbit0 = KeplerOrbit(p["period"], p["dt_peri"], p["ecc"], p["inc"], p["omega"] % 360.0, p["Omega"], p["a_mas"],
                          t_ref=t_ref)
     init = start_values_for(priors)(orbit0, p["flux"])

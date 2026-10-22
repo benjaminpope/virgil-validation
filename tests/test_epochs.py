@@ -373,8 +373,9 @@ def positions(nights):
                        roots=["mathematics"])
 def test_epoch_positions_grid_and_gaps(nights, positions):
     """Our own grid search of m and of -χ²/2: with ``refine=False`` the same best
-    grid point and flux and the same gap_marginal (on m) and gap (on the quoted
-    errors). Since virgil c5f2e4f the refined ``gap_marginal`` is that of the
+    grid point and flux and the same gap_marginal (on m; virgil 0.4 removed
+    ``EpochPositions.gap``, the gap on the quoted errors: ``gap_marginal`` is the
+    gap). Since virgil c5f2e4f the refined ``gap_marginal`` is that of the
     refined best peak against its refined rival (or, as a floor, a grid point), so
     it is not the grid gap: it must stay close to ours, and the unrefined run
     keeps the grid definition."""
@@ -382,11 +383,10 @@ def test_epoch_positions_grid_and_gaps(nights, positions):
     pq, _, grid_only = positions
     worst_gap, worst_refined = 0.0, 0.0
     for k, name in enumerate(pq.names):
-        m, q = our_grid(ds[name])
+        m, _ = our_grid(ds[name])
         gm, best = gap_on(m)
-        gq, _ = gap_on(q)
         assert (grid_only.dra[k], grid_only.ddec[k], grid_only.flux[k]) == pytest.approx(best, abs=1e-12)
-        worst_gap = max(worst_gap, abs(pq.gap[k] / gq - 1), abs(grid_only.gap_marginal[k] / gm - 1))
+        worst_gap = max(worst_gap, abs(grid_only.gap_marginal[k] / gm - 1))
         worst_refined = max(worst_refined, abs(pq.gap_marginal[k] / gm - 1))
     record("max_rel_gap", worst_gap)
     record("max_rel_refined_gap_marginal", worst_refined)
@@ -453,17 +453,14 @@ def test_epoch_positions_refined_maximum_of_m(nights, positions):
 @pytest.mark.validates("virgil.epochs.epoch_positions", "virgil.epochs.EpochPositions", roots=["mathematics"])
 def test_epoch_positions_invariant_to_underestimated_errors(positions):
     """Every quoted error three times too small (virgil#281): positions,
-    covariances and gap_marginal are unchanged, gap grows by 9, χ²/N by 9,
-    and the documented warning names both datasets (the fixture)."""
+    covariances and gap_marginal are unchanged, χ²/N grows by 9 (virgil 0.4
+    removed ``EpochPositions.gap``, which grew by 9 too), and the documented warning names both datasets (the fixture)."""
     pq, pu, _ = positions
     rel = max(np.max(np.abs(pu.gap_marginal / pq.gap_marginal - 1)), np.max(np.abs(pu.cov / pq.cov - 1)))
     shift = max(np.max(np.abs(pu.dra - pq.dra)), np.max(np.abs(pu.ddec - pq.ddec)))
-    ratio = pu.gap / pq.gap
     record("max_rel_change_gap_marginal_cov", rel)
     record("max_position_shift_mas", shift)
-    record("max_abs_gap_ratio_minus_9", float(np.max(np.abs(ratio - 9.0))))
     assert rel < 1e-6 and shift < 1e-6
-    assert ratio == pytest.approx(9.0, rel=1e-6)
     for a, b in zip(pq.chi2_raw, pu.chi2_raw):
         assert b["all"] / a["all"] == pytest.approx(9.0, rel=1e-6)
 

@@ -51,7 +51,14 @@ the checks can and cannot show, how the evidence is recorded, and how the
 5. **Disagreements are findings, never tolerances.** We never loosen a
    tolerance to hide one. Each is kept as a test (pinned behaviour plus a
    strict `xfail` for the fix), fixed in virgil by a PR, or reported upstream.
-6. **People sign off the conventions.** Every mapping between conventions
+6. **Reviews are checked like findings.** An adversarial review (by a
+   person or a model) is a list of claims, not verdicts. Reproduce each
+   claim, with a test or a number, before ruling on it. Anything high-stakes
+   (a ruling that flips a verdict, lifts a "provisional" label or closes a
+   finding) also needs a second reviewer who did not write the first
+   judgement: another model family or a person. A review's claim that is
+   not reproduced is recorded as unconfirmed, not acted on.
+7. **People sign off the conventions.** Every mapping between conventions
    (axes, signs, which angle is which) is written on a page a person can
    check, because a model can agree with itself about a convention.
 
@@ -217,6 +224,20 @@ keeps main's history clean, and they are published with the docs. Large
 outputs (campaign samples, figures) are uploaded as release assets, or kept
 on OzSTAR `/fred` with a checksum in the record.
 
+**One virgil commit per release.** Evidence from different virgil commits
+cannot be read together: a pass at one commit says nothing about another,
+and the Trust page would show a verdict for no virgil that exists. Before a
+virgil release, every evidence file (`trust/evidence/latest.jsonl`,
+`virgil.jsonl`, `campaigns.jsonl`) is regenerated against the release commit
+and carries a run header naming that one commit, from a clean tree.
+`scripts/check_evidence_pin.py --release --expect <sha>` (also the tier B
+test `tests/test_evidence_pin.py`, run with `VALIDATION_RELEASE=1`) fails
+when the headers name more than one commit, when a header does not record
+whether the tree was clean (virgil's own CI evidence is exempt: it is a fresh
+checkout at the sha), or when the run was dirty. A Monte Carlo campaign too
+long to repeat is rerun against the release commit; the gate has no "stale"
+status, so a campaign that was not rerun fails it.
+
 ### The trust graph
 
 `trust/graph.yml`, written by hand, lists virgil's objects as nodes, with:
@@ -317,10 +338,23 @@ above), so the expensive runs repeat only where virgil has changed.
 
 ### Release gate
 
-virgil's release checklist gains one item. For anything the release changes,
-the trust page must show no node that is changed since its evidence, has a
-known bug, is failing or is not yet checked. Otherwise the release notes say
-which ones remain and why.
+virgil's release checklist gains these items (also in virgil's
+`RELEASING.md`):
+
+1. Tier A of this repository passes against the release commit.
+2. All evidence is regenerated and pinned to that single commit
+   (`scripts/check_evidence_pin.py --release`, above).
+3. No ledger finding ruled `virgil` with severity `bug` (its `kind` begins
+   `bug`) is open without a recorded decision: fixed, or accepted with a
+   reason in the entry's `decision` field and in the release notes.
+4. The mutation kill rate of the validation suite is reported.
+5. The `orbit_aliases` search for Gl 229, run cold (`--no-init`) at the
+   release commit, ranks the N = 34 band (P = 12.134 d) first with
+   Δlog Z > 10 over every other band
+   ([the aliases page](../orbits/aliases.md)).
+6. For anything the release changes, the trust page shows no node that is
+   changed since its evidence, has a known bug, is failing or is not yet
+   checked, or the release notes say which ones remain and why.
 
 ## Order of work
 
