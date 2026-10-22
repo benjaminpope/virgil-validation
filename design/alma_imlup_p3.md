@@ -257,3 +257,16 @@ times the curvature per mas², against ~1 for the pixels. L-BFGS has to learn th
 line search are set by the large offset gradient and can stall the other groups. On the synthetic test data (bound ≈ 5 × 10³ mas,
 dx/dz = 2.6 × 10³): |g_z| max 1.0e4 for offsets vs 1.1e2–3.7e2 for gain, flux and s and 10 for pixels, while per physical unit
 the offset gradient is only 3.9 per mas against 3.3e2 per unit gain. The IM Lup numbers need `report --grad` on the A100 fit.
+
+**`--offset-bound-mas X` (fit, cv-task; R and F).** Passes `bounds={"offset": (-X, X)}` to `CalibrationNuisance.priors` (virgil
+`radio.py`, `priors(**bounds)`; mas, the same unit and sign as `cal.offset`, symmetric about 0). The default stays virgil's own
+±1/(2 q_min), so a run without the option is unchanged. Why: with the default bound ≈ 10⁴ mas, dx/dz ≈ 5 × 10³ mas and the curvature in z
+is ≈ 2.5 × 10⁷ times the per-mas² curvature, while MPoL's 4–13 mas offsets are z ≈ 10⁻³ and our earlier R fit's stayed below 2 mas. At
+X = 100 mas dx/dz ≈ 50 mas, a factor 100 in gradient and 10⁴ in curvature better, and the offsets still sit well inside the bound.
+The prior is flat, so inside the bound the objective (−ln L + λ S_M) is identical at any X: the option changes only the optimiser's
+coordinate. It stops being innocent if a fitted offset reaches the bound, so `report` (and `fit`, which reports) records
+`offset_bound` in `result.json` (`bound_mas`, `requested_mas` null for the default, `max_abs_over_bound`, `near_bound`, `warning`),
+prints the bound and the largest |offset|/bound, and prints `!!! OFFSET BOUND BINDING` if any offset ends within 5% of it; a binding run
+is not a fit of the unbounded objective and must be rerun with a larger X. `report` and `report --grad` reuse the saved `--offset-bound-mas`.
+`compare` evaluates its gradient table at virgil's default bound. Tests: `test_offset_bound_reaches_the_priors_*`,
+`test_report_records_the_bound_and_warns_*` (`tests/test_alma_maxent_run.py`).
