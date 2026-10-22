@@ -7,6 +7,7 @@
     python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
     python scripts/alma_imlup_maxent.py cv-aggregate DIR [--out DIR]
+    python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
 
@@ -403,6 +404,29 @@ def cmd_cv_aggregate(args):
     say("\n".join(md))
 
 
+def cmd_cv_compare(args):
+    """MPoL's held-out scores (``score.json`` per fold, ``mpol_worker.score_fold``) beside virgil's (``cv.json`` per lambda and fold, with
+    ``cv_summary.json``) on the same folds, at lambda* and at the grid lambda nearest MPoL's lam_ent (C11's conversion)."""
+    from external_bridge import cv_compare as cc
+
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    mpol = cc.load_mpol(args.mpol)
+    virgil, summary = cc.load_virgil(args.virgil)
+    if not virgil:
+        raise SystemExit(f"no cv.json under {args.virgil}")
+    rec = next(iter(virgil.values()))
+    n_all = sum(next(r for (lam, f), r in virgil.items() if f == fold)["n_test"] for fold in sorted({f for _, f in virgil}))  # every point is held out once
+    lam0 = va.lam_f_equivalent(va.lam_r(n_all, args.lam_ent))
+    res = cc.compare(mpol, virgil, summary, lam0, args.lam_ent)
+    res["n_all"], res["lam_r"] = int(n_all), va.lam_r(n_all, args.lam_ent)
+    res["virgil_versions"] = rec.get("versions")
+    dump(out / "mpol_cv_compare.json", res)
+    (out / "mpol_cv_compare.md").write_text(cc.markdown(res))
+    cc.plot(res, out / "mpol_cv_compare.png")
+    say(cc.markdown(res))
+
+
 # ------------------------------------------------------------------ compare
 
 
@@ -660,6 +684,13 @@ def main(argv=None):
     p.add_argument("dir")
     p.add_argument("--out", default=None)
     p.set_defaults(fn=cmd_cv_aggregate)
+
+    p = sub.add_parser("cv-compare", help="MPoL's held-out cross-validation scores beside virgil's on the same dartboard folds")
+    p.add_argument("--mpol", required=True, help="directory holding fold_J/score.json (mpol_worker score_fold)")
+    p.add_argument("--virgil", required=True, help="the cv directory of cv-task / cv-aggregate (cv.json per lambda and fold, cv_summary.json)")
+    p.add_argument("--lam-ent", type=float, default=va.MPOL["lam_m"], help="MPoL's entropy weight lam_M (C4/C11: lam_R = 2 N lam_M)")
+    p.add_argument("--out", required=True)
+    p.set_defaults(fn=cmd_cv_compare)
 
     p = sub.add_parser("compare")
     p.add_argument("--virgil", required=True)

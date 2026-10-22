@@ -296,3 +296,64 @@ MPoL's loss −ln L / 2N); `λ_F = λ_R · F / (F_tot dx²)` with `dx` in arcsec
 (Σ I ln(I/p) = (F/dx²) [Σ b ln b + const] for a unit-sum `b`). R1 (tests/test_alma_maxent.py)
 checks the R objective against MPoL's own loss: S_M to 1e-7, the data term to
 1.1e-6 (MPoL's accurate NuFFT, `P12`), with controls that must fail.
+
+## Part 6. MPoL on virgil's cross-validation folds
+
+Held-out χ² is the metric neither code optimises (comparison metric 1 of `design/alma_imlup.md`), so MPoL's
+example is trained on the training part of each of virgil's dartboard folds and scored on the held-out part. The
+example runs unmodified (C14): the hold-out is made on the input side, by a per-fold training asdf. Two more tasks of
+`src/external_bridge/mpol_worker.py` (same task/result JSON as Part 4), with the numpy-only helpers in
+`external_bridge/cv_folds.py`; `tests/test_alma_mpol_cv.py` pins them.
+
+**The folds** are `alma_imlup_maxent.py folds` (`dartboard_folds(k=5, n_q=12, n_phi=16, seed=0)` on all data): one `fold_NN` and
+`annulus_NN` int8 array per ddid in the order of that ddid's points in `ddid_NN.npz`, and a JSON `meta` with the parameters and a
+sha256 of the assignment. A cell is `(annulus, φ mod π)`, so a point and its Hermitian partner are always in one fold. The MS has no
+explicit partners (each baseline is stored once), so in practice this keeps each point's fold a function of (|q|, φ mod π) alone.
+
+**Matching.** The asdf's kept points (`uu[~flag]`, channel-major) are paired with the npz's by (rank of the channel's frequency, time,
+ant1, ant2), never by index (visread numbers channels in decreasing frequency, our npz keeps the MS order; Part 4). The pairing is checked: all
+keys equal; u, v (from the asdf's metres and the channel frequency) and the weight within 1e-6 relative of the npz's. A mismatch raises
+rather than writing a wrong mask.
+
+### `export_fold_asdf`
+
+Task fields: `asdf`, `npz_dir`, `folds`, `fold` (J), `out_asdf`, optional `tol_rel` (1e-6). Writes `out_asdf`: the same tree with the
+**held-out points flagged** (`flag[chan, row] = True` for the points of fold J). `loaddata` keeps `~flag`, so `sgd.py` trains on exactly the
+points of the other folds, in the same order, with the same visibilities and weights; nothing else changes. Result: `n_total`, `n_held`,
+`n_train` (also per ddid), `folds_sha256`, `folds_params`, `worst_match` (`u_max_rel`, `v_max_rel`, `weight_max_rel`).
+MPoL's `lam_ent` stays 1e-9: the data term is a mean over the training points, so λ_R = 2 n_train λ_M, the balance of
+`cv-task`'s `lam_train = λ n_train / N`.
+
+### `score_fold`
+
+Task fields: `checkpoint` (the trained model for fold J), `asdf` (the **full** export), `npz_dir`, `folds`, `fold`, `train_asdf` (fold J's training asdf, checked, see below) and `checkpoint_fold` (the fold the checkpoint was trained on; both optional for the task, required by `cv-compare`), optional `batch` (10⁶),
+`sparse_matrices` (true), `device`, `tol_rel`. float64; the example's `Net` with MPoL's accurate NuFFT; per batch `adjust_weights`,
+`adjust_amplitudes` (V → g V), `adjust_positions`. The convention is that of `virgil_bridge.alma.score` (so of `cv-task`): with `s = g s_M`
+per ddid the per-point −ln L is `w|V − M|²/(2s²) + 2 ln s + ln 2π − ln w`; `chi2_raw` sums `w|V − M|²` over the points (≈ 2 per point
+for a good fit); the "s = 1" variants put `s = 1` with M unchanged.
+
+| `result.json` field | Meaning |
+|---|---|
+| `chi2_raw_per_dof` | `chi2_s1 / 2n`: raw χ²/N, reported first |
+| `heldout.nll`, `.chi2_s1`, `.chi2_fit` | totals: −ln L at the fitted s, raw χ², χ² at the fitted s |
+| `heldout.by_ddid` (26), `.by_annulus` (12) | tallies `n`, `nll`, `chi2_raw`, `chi2_fit` at the fitted s |
+| `heldout.by_ddid_s1`, `.by_annulus_s1` | the same with s = 1 (`nll` at s = 1) |
+| `nll_mpol` | the sum of `mpol.losses.log_likelihood` on the adjusted weights over the same points (equals `heldout.nll`) |
+| `train_fold`, `train_flagged`, `train_flags_sha256` | from the task's `train_asdf`: the training asdf must flag, beyond the full export, exactly the points fold J holds out here (per ddid), else the task raises; the sha256 is of its flags |
+| `checkpoint_trained_fold` | the task's `checkpoint_fold`, the fold `train.sbatch` recorded for the checkpoint (the checkpoint holds no record of its training data) |
+| `folds_sha256`, `n_test`, `worst_match`, `sparse_matrices`, `device` | provenance |
+
+virgil's `cv.json` carries the same `heldout` layout. The **profiled** score puts one global error scale per set at its maximum-likelihood
+value, `s² = χ²_raw/(2n)`: `nll_s1 − χ²_raw/2 + n(1 + ln(χ²_raw/2n))`, computed by `cv_folds.profiled` from the s = 1 tallies of either code, in total and per
+annulus (it needs no field virgil does not already write).
+
+**Agreement of the two scorers** (`tests/test_alma_mpol_cv.py`, an IM Lup-like image at 128², random nuisances, 26 ddids, 4 folds): the
+held-out counts per ddid and annulus are identical; χ² per ddid agrees to 3.5e-5 relative and per annulus to 2.5e-5, the sum over the folds
+to the all-data score to 9.5e-6, set by MPoL's interpolated NuFFT against virgil's at 1e-12. The interpolation error grows with the image's
+power at high image frequencies: a white-noise image differs by 1e-3 of the flux (found by the test's first, noise-image checkpoint), so
+the test uses a smooth image as R1 does. The held-out numbers of a real fit are therefore good to about the 1e-5 relative level of a smooth solution, far below the differences between methods; on a
+solution with fine pixel-scale structure the NuFFT's own error would be the floor.
+
+`alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR` (`external_bridge/cv_compare.py`) lines the two up: raw χ²/N first, then −ln L at the
+fitted s and profiled, in total, per fold and per annulus, for MPoL, virgil at λ* and virgil at the grid λ nearest `λ₀ = λ_F-equivalent(2 N λ_M)` (C11); a score.json without the provenance above (or for another fold), a different folds hash, unequal held-out counts or a fold without `stage<N>.time.json` is listed under **Problems**, and a per-fold table of training effort (MPoL's epochs and wall time per stage, virgil's steps, wall time and stop reason at λ*) ends the report.
+
