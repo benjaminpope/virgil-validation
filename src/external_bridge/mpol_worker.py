@@ -20,7 +20,7 @@ Evaluates, in float64:
   ``sgd.py`` or an asdf written by ``casa_analysis/src/export_asdf.py`` and use the example's own
   ``Net``, ``loaddata`` and MPoL's losses from the pinned clone; nothing of their maths is rewritten here;
 * ``export_fold_asdf``, ``score_fold``: MPoL's side of the held-out cross-validation on virgil's dartboard folds
-  (``docs/alma_conventions.md`` Part 5). The first writes the asdf ``sgd.py`` is trained on for fold J (the points of the
+  (``docs/alma_conventions.md`` Part 6). The first writes the asdf ``sgd.py`` is trained on for fold J (the points of the
   other folds, in the same visread layout, by flagging the held-out ones); the second scores a trained checkpoint on the
   held-out points.
 
@@ -481,6 +481,25 @@ def export_fold_asdf(task):
     return out
 
 
+def _flagged_by_ddid(train_asdf, full_asdf):
+    """``{ddid: number of points the training asdf flags beyond the full export's}``, and the sha256 of the training asdf's flags. Raises if
+    the training asdf unflags a point the full export flags, or if the two trees do not have the same ddids and shapes."""
+    import hashlib
+
+    import asdf
+
+    h, out = hashlib.sha256(), {}
+    with asdf.open(full_asdf) as full, asdf.open(train_asdf) as train:
+        fd = {str(d_id): d for _, d_id, d in _asdf_ddids(full)}
+        for _, d_id, d in _asdf_ddids(train):
+            ft, ff = np.asarray(d["flag"], bool), np.asarray(fd[str(d_id)]["flag"], bool)
+            if ft.shape != ff.shape or (ff & ~ft).any():
+                raise ValueError(f"ddid {d_id}: the training asdf is not the full export with points added to the flags")
+            out[int(d_id)] = int((ft & ~ff).sum())
+            h.update(np.packbits(ft).tobytes())
+    return out, h.hexdigest()
+
+
 def score_fold(task):
     """Held-out score of a trained checkpoint on fold ``fold`` of virgil's dartboard, in the convention of
     ``alma_imlup_maxent.py cv-task`` (``virgil_bridge.alma.score``).
@@ -495,7 +514,14 @@ def score_fold(task):
     Result: ``heldout`` with the keys of ``cv.json``'s: ``nll`` (at the fitted s), ``chi2_s1`` (raw, quoted weights), ``chi2_fit``,
     ``by_ddid``, ``by_annulus`` (12 dartboard annuli: n, nll, chi2_raw, chi2_fit) and the same at s = 1 (``by_ddid_s1``,
     ``by_annulus_s1``); ``chi2_raw_per_dof`` (chi2_s1 / 2n) first; ``nll_mpol`` is the same sum from ``mpol.losses.log_likelihood`` on
-    the adjusted weights, an independent check of ``nll``."""
+    the adjusted weights, an independent check of ``nll``.
+
+    Provenance (``cv-compare`` reports a problem when it is missing or for another fold): ``train_asdf`` is the training asdf
+    ``export_fold_asdf`` wrote for fold J; it must flag, beyond the full export's flags, exactly as many points per ddid as fold J
+    holds out here (a wrong fold's file raises), and ``score.json`` records ``train_fold``, ``train_flagged`` and ``train_flags_sha256``.
+    ``checkpoint_fold`` is the fold the job trained the checkpoint on (read from the record ``train.sbatch`` wrote beside it); it is
+    echoed as ``checkpoint_trained_fold``. The checkpoint itself holds no record of its training data (``sgd.py`` is unmodified), so
+    this is the job's chain of custody, checked here, not a property of the file."""
     batch = int(task.get("batch", 10**6))
     sparse = bool(task.get("sparse_matrices", True))
     device = torch.device(task.get("device") or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -514,6 +540,16 @@ def score_fold(task):
     held = np.flatnonzero(fold == j)
     if len(held) == 0:
         raise ValueError(f"fold {j} is empty")
+    prov = {}
+    if task.get("train_asdf"):
+        flagged, flags_sha = _flagged_by_ddid(task["train_asdf"], task["asdf"])
+        held_by_ddid = {int(d): int((fold[pts["ddid"] == d] == j).sum()) for d in np.unique(pts["ddid"])}
+        if {d: n for d, n in flagged.items() if n or held_by_ddid.get(d)} != {d: n for d, n in held_by_ddid.items() if n}:
+            raise ValueError(f"the training asdf {task['train_asdf']} flags {sum(flagged.values())} points beyond the export, but fold {j} holds out "
+                             f"{len(held)}: it is not fold {j}'s training set (per ddid: {flagged} vs {held_by_ddid})")
+        prov = dict(train_fold=j, train_flagged=int(sum(flagged.values())), train_flags_sha256=flags_sha)
+    if task.get("checkpoint_fold") is not None:
+        prov["checkpoint_trained_fold"] = int(task["checkpoint_fold"])
     net, mocked = _net(task)
     _, load = _load_checkpoint(net, task["checkpoint"])
     net = net.to(device).eval()
@@ -554,7 +590,7 @@ def score_fold(task):
     ho["chi2_raw_per_dof"] = chi2_s1 / (2 * n)
     return dict(command="score-fold", fold=j, n_test=n, folds_sha256=meta["sha256"], folds_params={k: meta[k] for k in ("k", "n_q", "n_phi", "seed")},
                 chi2_raw_per_dof=ho["chi2_raw_per_dof"], heldout=ho, nll_mpol=nll_mpol, worst_match=worst, batch=batch, sparse_matrices=sparse,
-                device=str(device), dtype="float64", mocked=mocked, **load)
+                device=str(device), dtype="float64", mocked=mocked, **prov, **load)
 
 
 TASKS = {"regularisers": regularisers, "loglike": loglike, "objective": objective, "export_checkpoint": export_checkpoint, "objective_full": objective_full, "asdf_vs_npz": asdf_vs_npz,

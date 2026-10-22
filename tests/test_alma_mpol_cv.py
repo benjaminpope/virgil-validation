@@ -1,6 +1,6 @@
 """MPoL's side of the IM Lup cross-validation: the training asdf of a fold and the held-out score of a checkpoint on virgil's
 dartboard folds (``external_bridge.mpol_worker`` tasks ``export_fold_asdf`` and ``score_fold``, ``external_bridge.cv_folds``).
-Design: ``design/alma_imlup_p3.md`` ("MPoL cross-validation"), formats ``docs/alma_conventions.md`` Part 5.
+Design: ``design/alma_imlup_p3.md`` ("Built: MPoL on the dartboard folds"), formats ``docs/alma_conventions.md`` Part 6.
 
 * numpy only (``cv_folds``): matching asdf points to npz points whatever the channel order, the profiled score, the tallies.
 * with MPoL's environment (``.venv-mpol``, asdf, the examples clone) and virgil (``virgil.radio``), on a synthetic keyed set of 26
@@ -121,7 +121,8 @@ def _heldout(rng, n, scale=1.0, shift=0.0):
     return ho
 
 
-def _cv_dirs(tmp_path, lams=(0.1, 1.0, 10.0), k=3, sha="abc", n=300, mpol_sha=None):
+def _cv_dirs(tmp_path, lams=(0.1, 1.0, 10.0), k=3, sha="abc", n=300, mpol_sha=None, record=None, times=True):
+    """``record(f)`` returns fold ``f``'s extra score.json fields (default: the provenance of a correct chain, and stage time records)."""
     v, m = tmp_path / "cv", tmp_path / "mpol"
     for lam in lams:
         for f in range(k):
@@ -132,8 +133,31 @@ def _cv_dirs(tmp_path, lams=(0.1, 1.0, 10.0), k=3, sha="abc", n=300, mpol_sha=No
     for f in range(k):
         d = m / f"fold_{f}"
         d.mkdir(parents=True)
-        (d / "score.json").write_text(json.dumps(dict(fold=f, folds_sha256=mpol_sha or sha, heldout=_heldout(np.random.default_rng(100 + f), n, scale=1.3), steps=10, wall_s=1.0)))
+        extra = record(f) if record else dict(train_fold=f, checkpoint_trained_fold=f)
+        (d / "score.json").write_text(json.dumps(dict(fold=f, folds_sha256=mpol_sha or sha, heldout=_heldout(np.random.default_rng(100 + f), n, scale=1.3), **extra)))
+        if times:
+            for st, wall in ((0, 7000.0), (1, 14000.0)):
+                (d / f"stage{st}.time.json").write_text(json.dumps(dict(fold=f, stage=st, exit=0, epochs=10, wall_s=wall)))
     return m, v
+
+
+@pytest.mark.validates("external_bridge.cv_compare", roots=["mathematics"], kind="control")
+def test_cv_compare_flags_a_checkpoint_not_trained_without_its_fold(tmp_path):
+    """The chain of custody: a score.json whose training asdf was another fold's, whose checkpoint was trained on another fold (an all-data
+    or neighbouring-fold checkpoint scored by a path slip), or that records neither, and a fold without its training times, are all
+    reported as problems; the correct chain reports none."""
+    def problems(**kw):
+        m, v = _cv_dirs(tmp_path / str(len(list(tmp_path.iterdir()))), **kw)
+        mpol, virgil, summary = cv_compare.load_mpol(m), *cv_compare.load_virgil(v)
+        return cv_compare.compare(mpol, virgil, summary, lam0=1.7)["problems"]
+
+    assert problems() == []
+    wrong_asdf = problems(record=lambda f: dict(train_fold=(f + 1) % 3, checkpoint_trained_fold=f))
+    assert any("fold 0" in p and "training asdf" in p for p in wrong_asdf)
+    wrong_ckpt = problems(record=lambda f: dict(train_fold=f, checkpoint_trained_fold=1 if f == 0 else f))
+    assert len(wrong_ckpt) == 1 and "fold 0" in wrong_ckpt[0] and "training fold is 1" in wrong_ckpt[0]
+    none = problems(record=lambda f: {}, times=False)
+    assert sum("training asdf" in p for p in none) == 3 and sum("no record" in p for p in none) == 3 and sum("time.json" in p for p in none) == 3
 
 
 @pytest.mark.validates("external_bridge.cv_compare", roots=["mathematics"], kind="reference")
@@ -350,13 +374,31 @@ def test_hermitian_partners_are_in_the_same_training_asdf_or_both_out(cv, tmp_pa
 
 @pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
 @needs_env
+def test_score_fold_checks_the_training_asdf_is_the_folds_own(cv, tmp_path):
+    """``train_asdf`` of the right fold is recorded (fold, flagged count, hash of its flags, echoed checkpoint fold); another fold's
+    training asdf, or the full export itself (nothing held out), raises instead of producing a score that looks normal."""
+    j = 1
+    asdfs = {f: str(tmp_path / f"train{f}.asdf") for f in (1, 2)}
+    for f, path in asdfs.items():
+        tr._run(dict(task="export_fold_asdf", asdf=cv["asdf"], npz_dir=cv["npz"], folds=cv["folds"], fold=f, out_asdf=path), tmp_path)
+    base = dict(task="score_fold", checkpoint=cv["chk"], asdf=cv["asdf"], npz_dir=cv["npz"], folds=cv["folds"], fold=j, npix=NPIX, batch=700)
+    ok = tr._run(dict(base, train_asdf=asdfs[1], checkpoint_fold=1), tmp_path)
+    assert ok["train_fold"] == 1 and ok["checkpoint_trained_fold"] == 1 and ok["train_flagged"] == ok["n_test"] and len(ok["train_flags_sha256"]) == 64
+    with pytest.raises(Exception, match="not fold 1's training set"):
+        tr._run(dict(base, train_asdf=asdfs[2]), tmp_path)
+    with pytest.raises(Exception, match="flags 0 points beyond the export"):  # the full export itself: no point held out
+        tr._run(dict(base, train_asdf=cv["asdf"]), tmp_path)
+
+
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@needs_env
 def test_export_fold_asdf_refuses_an_npz_that_is_not_the_asdfs_data(cv, tmp_path):
     """The fold file of one dataset against the asdf of another (other times and baselines) raises instead of writing a mask."""
     other = tmp_path / "other"
     other.mkdir()
     for d, r in synthetic_rows(seed=99).items():
         np.savez(other / f"ddid_{d:02d}.npz", **r, obsid=int(OBS_OF_DDID[d]), ddid=d)
-    with pytest.raises(Exception, match="differ|cannot match|ValueError"):
+    with pytest.raises(Exception, match="the fold file has \\d+ points, the npz \\d+|channel, time or antennas|differ beyond|cannot match"):
         tr._run(dict(task="export_fold_asdf", asdf=cv["asdf"], npz_dir=str(other), folds=cv["folds"], fold=0, out_asdf=str(tmp_path / "bad.asdf")), tmp_path)
     assert not (tmp_path / "bad.asdf").exists()
 

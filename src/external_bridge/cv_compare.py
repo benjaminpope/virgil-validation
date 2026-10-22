@@ -25,8 +25,12 @@ except ImportError:
 
 
 def load_mpol(mpol_dir):
-    """``{fold: score.json}`` under ``mpol_dir``."""
-    recs = [json.loads(p.read_text()) for p in sorted(pathlib.Path(mpol_dir).rglob("score.json"))]
+    """``{fold: score.json}`` under ``mpol_dir``; each also gets ``training``: the ``stage<N>.time.json`` records beside its ``score.json``, by stage."""
+    recs = []
+    for p in sorted(pathlib.Path(mpol_dir).rglob("score.json")):
+        r = json.loads(p.read_text())
+        r["training"] = {int(t.name[5]): json.loads(t.read_text()) for t in sorted(p.parent.glob("stage[01].time.json"))}
+        recs.append(r)
     out = {int(r["fold"]): r for r in recs}
     if len(out) != len(recs):
         raise ValueError(f"two score.json for one fold under {mpol_dir}")
@@ -103,6 +107,13 @@ def compare(mpol, virgil, summary, lam0, lam_ent=1e-9):
             problems.append(f"virgil has no cv.json for lambda {lam:g} fold(s) {missing}")
         sources[name] = {f: virgil[(lam, f)]["heldout"] for f in folds if (lam, f) in virgil}
     for f in folds:
+        r = mpol[f]
+        if r.get("train_fold") != f:
+            problems.append(f"fold {f}: score.json records no check that the training asdf is fold {f}'s (train_fold = {r.get('train_fold')!r}): "
+                            "was the checkpoint scored on the points it trained on, or on all data?")
+        if r.get("checkpoint_trained_fold") != f:
+            problems.append(f"fold {f}: the checkpoint's recorded training fold is {r.get('checkpoint_trained_fold')!r}, not {f} (None: no record)")
+    for f in folds:
         n_m = int(sum(mpol[f]["heldout"]["by_ddid"]["n"]))
         for name in ("virgil_lam_star", "virgil_lam_match"):
             if f in sources[name] and int(sum(sources[name][f]["by_ddid"]["n"])) != n_m:
@@ -114,8 +125,11 @@ def compare(mpol, virgil, summary, lam0, lam_ent=1e-9):
         res["codes"][name] = dict(lam=None if name == "mpol" else (lam_star if name.endswith("star") else lam_match), folds=full)
         res["per_fold"][name] = {str(f): _measures(by_fold[f]) for f in full}
         res["total"][name] = _measures(_add([by_fold[f] for f in full])) if full else None
-    # nll summed over folds is the CV score, as cv-aggregate's `sum`
-    res["mpol_training"] = {str(f): {k: mpol[f].get(k) for k in ("steps", "wall_s", "n_train")} for f in folds}
+    res["training"] = {"mpol": {str(f): {str(s): dict(epochs=t.get("epochs"), wall_s=t.get("wall_s"), exit=t.get("exit")) for s, t in mpol[f].get("training", {}).items()} for f in folds},
+                       "virgil_lam_star": {str(f): {k: virgil[(lam_star, f)].get(k) for k in ("steps", "wall_s", "stopped_because")} for f in folds if (lam_star, f) in virgil}}
+    for f in folds:
+        if sorted(mpol[f].get("training", {})) != [0, 1]:
+            res["problems"].append(f"fold {f}: no stage0/stage1 time.json beside its score.json: MPoL's training effort is not recorded")
     return res
 
 
@@ -157,6 +171,15 @@ def markdown(res):
     if "mpol" in names:
         md += ["", "Annuli where virgil predicts the held-out points better than MPoL (profiled -ln L lower), "
                + ", ".join(f"{label[n].split(' =')[0].split(' (')[0]}: {[a for a in range(n_ann) if res['total'][n]['annulus']['nll_profiled'][a] < res['total']['mpol']['annulus']['nll_profiled'][a]]}" for n in names[1:]) + ".", ""]
+    tr = res["training"]
+    md += ["", "## Training effort (a convergence bias favours the code that trained longer: virgil's cv-task is warm-started from its all-data fit, MPoL's two stages are not)", "",
+           "| fold | MPoL stage 0 | MPoL stage 1 | virgil at lambda* (steps, wall, stopped because) |", "|---|---|---|---|"]
+    for f in res["folds"]:
+        m = tr["mpol"].get(str(f), {})
+        cell = lambda s: (f"{m[s]['epochs']} epochs, {m[s]['wall_s'] / 3600:.2f} h, exit {m[s]['exit']}" if s in m and m[s].get("wall_s") is not None else "not recorded")  # noqa: E731
+        v = tr["virgil_lam_star"].get(str(f), {})
+        vc = f"{v.get('steps')} steps, {v['wall_s'] / 3600:.2f} h, {v.get('stopped_because')}" if v.get("wall_s") is not None else "not recorded"
+        md.append(f"| {f} | {cell('0')} | {cell('1')} | {vc} |")
     return "\n".join(md) + "\n"
 
 

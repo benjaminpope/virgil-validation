@@ -287,7 +287,8 @@ Goal: claim an *improvement* (or parity) of virgil's IM Lup MaxEnt image over MP
   annulus at virgil's λ* and at the grid λ nearest λ₀ = C11's equivalent of 2 N λ_M (λ₀ = 3393.69 at N = 42,421,131 and F = F_tot).
 - **Not claimed.** A held-out advantage for either code is a statement about uv-plane prediction, not about image-plane structure (B9). The comparison is of
   methods *as run*: MPoL's AdamW at 10 + 10 epochs against our L-BFGS; MPoL's training of each fold is not warm-started from the all-data solution as virgil's `cv-task`
-  is (`--init`), which favours virgil if MPoL's stage 0/1 are under-converged on a fold: the report prints both codes' steps and wall times.
+  is (`--init`), which favours virgil if MPoL's stage 0/1 are under-converged on a fold: the report ends with a per-fold table of MPoL's epochs and wall time per stage (the `stage<N>.time.json` beside each `score.json`) and virgil's steps, wall time and stop reason at λ*, and lists a fold without MPoL's times as a problem.
+- **Chain of custody.** The checkpoint holds no record of its training data (`sgd.py` is unmodified), so `score_fold` is given the fold's training asdf (it must flag exactly fold J's held-out points per ddid beyond the export) and the fold `train.sbatch` recorded for the checkpoint; `score.json` carries `train_fold`, `train_flagged`, `train_flags_sha256`, `checkpoint_trained_fold`, and `cv-compare` reports a problem when they are missing or for another fold, so an all-data or neighbouring-fold checkpoint cannot be scored as fold J's.
 - Code: `src/external_bridge/{cv_folds,cv_compare}.py`, tasks in `mpol_worker.py`, `scripts/alma_imlup_maxent.py cv-compare`, tests `tests/test_alma_mpol_cv.py`,
   formats in `docs/alma_conventions.md` Part 6. The OzSTAR job is `alma_mpol_cv` (ozstar_scripts).
 

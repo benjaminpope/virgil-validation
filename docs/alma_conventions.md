@@ -326,7 +326,7 @@ MPoL's `lam_ent` stays 1e-9: the data term is a mean over the training points, s
 
 ### `score_fold`
 
-Task fields: `checkpoint` (the trained model for fold J), `asdf` (the **full** export), `npz_dir`, `folds`, `fold`, optional `batch` (10⁶),
+Task fields: `checkpoint` (the trained model for fold J), `asdf` (the **full** export), `npz_dir`, `folds`, `fold`, `train_asdf` (fold J's training asdf, checked, see below) and `checkpoint_fold` (the fold the checkpoint was trained on; both optional for the task, required by `cv-compare`), optional `batch` (10⁶),
 `sparse_matrices` (true), `device`, `tol_rel`. float64; the example's `Net` with MPoL's accurate NuFFT; per batch `adjust_weights`,
 `adjust_amplitudes` (V → g V), `adjust_positions`. The convention is that of `virgil_bridge.alma.score` (so of `cv-task`): with `s = g s_M`
 per ddid the per-point −ln L is `w|V − M|²/(2s²) + 2 ln s + ln 2π − ln w`; `chi2_raw` sums `w|V − M|²` over the points (≈ 2 per point
@@ -339,6 +339,8 @@ for a good fit); the "s = 1" variants put `s = 1` with M unchanged.
 | `heldout.by_ddid` (26), `.by_annulus` (12) | tallies `n`, `nll`, `chi2_raw`, `chi2_fit` at the fitted s |
 | `heldout.by_ddid_s1`, `.by_annulus_s1` | the same with s = 1 (`nll` at s = 1) |
 | `nll_mpol` | the sum of `mpol.losses.log_likelihood` on the adjusted weights over the same points (equals `heldout.nll`) |
+| `train_fold`, `train_flagged`, `train_flags_sha256` | from the task's `train_asdf`: the training asdf must flag, beyond the full export, exactly the points fold J holds out here (per ddid), else the task raises; the sha256 is of its flags |
+| `checkpoint_trained_fold` | the task's `checkpoint_fold`, the fold `train.sbatch` recorded for the checkpoint (the checkpoint holds no record of its training data) |
 | `folds_sha256`, `n_test`, `worst_match`, `sparse_matrices`, `device` | provenance |
 
 virgil's `cv.json` carries the same `heldout` layout. The **profiled** score puts one global error scale per set at its maximum-likelihood
@@ -353,5 +355,5 @@ the test uses a smooth image as R1 does. The held-out numbers of a real fit are 
 solution with fine pixel-scale structure the NuFFT's own error would be the floor.
 
 `alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR` (`external_bridge/cv_compare.py`) lines the two up: raw χ²/N first, then −ln L at the
-fitted s and profiled, in total, per fold and per annulus, for MPoL, virgil at λ* and virgil at the grid λ nearest `λ₀ = λ_F-equivalent(2 N λ_M)` (C11).
+fitted s and profiled, in total, per fold and per annulus, for MPoL, virgil at λ* and virgil at the grid λ nearest `λ₀ = λ_F-equivalent(2 N λ_M)` (C11); a score.json without the provenance above (or for another fold), a different folds hash, unequal held-out counts or a fold without `stage<N>.time.json` is listed under **Problems**, and a per-fold table of training effort (MPoL's epochs and wall time per stage, virgil's steps, wall time and stop reason at λ*) ends the report.
 
