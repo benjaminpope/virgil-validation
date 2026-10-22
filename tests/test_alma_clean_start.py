@@ -45,7 +45,7 @@ def _clean_dir(path, n=51, px=3.0, east_mas=20.0, north_mas=-10.0, flux=0.2, bea
     return path, img
 
 
-@pytest.mark.validates("virgil_bridge.alma_start.regrid", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"])
 def test_regrid_preserves_flux_places_the_source_and_keeps_east_and_north():
     """A Gaussian 20 mas East and 10 mas South of the phase centre, regridded from 3 mas (odd grid) to 5 mas (the fit's grid): the flux
     is the source's within the field to 1e-12, the centroid is where it was to 0.05 mas, East is still East (columns) and North North (rows)."""
@@ -64,7 +64,7 @@ def test_regrid_preserves_flux_places_the_source_and_keeps_east_and_north():
     assert info["scale"] == pytest.approx(1.0, abs=0.02)  # bilinear on a smooth image: the rescaling is a small correction, not a rescue
 
 
-@pytest.mark.validates("virgil_bridge.alma_start.regrid", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"])
 def test_regrid_cut_out_keeps_the_flux_inside_the_field_and_upsampling_is_exact_on_a_plane():
     """The fit's field is smaller than the CLEAN's: the flux is that of the source pixels inside it (a source outside contributes none).
     Upsampling a plane from 10 mas to 5 mas is bilinear-exact (the coarse-to-fine step), to 1e-12 away from the edge."""
@@ -85,7 +85,7 @@ def test_regrid_cut_out_keeps_the_flux_inside_the_field_and_upsampling_is_exact_
     assert np.max(np.abs(up[sl, sl] / exact[sl, sl] - up[10, 10] / exact[10, 10])) < 1e-12
 
 
-@pytest.mark.validates("crosscheck.alma_maxent.convolve", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.alma_maxent", roots=["mathematics"], kind="reference")
 def test_the_beam_convolution_uses_cleans_own_position_angle():
     """``crosscheck.alma_maxent.convolve`` of a point source with an elliptical beam is ``alma_clean.gaussian_image`` (the kernel of CLEAN's
     ``restore``) at the same PA: the start image is smoothed with the beam CLEAN restored with, not its mirror image."""
@@ -99,7 +99,7 @@ def test_the_beam_convolution_uses_cleans_own_position_angle():
     assert corr[50.0] > 0.999 and corr[-50.0] < 0.99
 
 
-@pytest.mark.validates("virgil_bridge.alma_start.clean_start", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"])
 def test_clean_start_is_positive_floored_flux_consistent_and_reads_back_through_image_of(tmp_path):
     """From a CLEAN directory: the image is what ``image_of`` returns from (log_brightness, flux) to 1e-12, every pixel is at least the floor, the
     flux is the field's flux plus the floor's, the small kernel (default) keeps the long baselines' power (a peak above the beam-smoothed one)."""
@@ -201,7 +201,7 @@ def test_the_selfcal_stage_holds_the_image_exactly_and_all_starts_from_it(tmp_pa
     assert np.max(np.abs(full["out"]["log_brightness"] - eta)) > 0
 
 
-@pytest.mark.validates("virgil_bridge.alma_start.selfcal_check", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
 def test_selfcal_check_is_in_obs0s_gauge_whatever_the_reference_observation():
     """A fit with reference observation 3 (its gain 1) is renormalised to obs 0 = 1 before the range test and before picking obs 5, 6: the same
     physical gains give the same check from the ref-0 and the ref-3 parametrisations."""
@@ -251,7 +251,7 @@ def test_offset_bound_report_judges_each_offset_against_its_own_observations_bou
     assert va.offset_bound_report(off[:1], 100.0, ref_obs=0)["near_bound"] == []
 
 
-@pytest.mark.validates("virgil_bridge.alma_start.selfcal_check", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
 def test_selfcal_check_flags_a_gain_outside_the_reference_range():
     v = dict(**{"cal.gain": np.array([1.02, 1.03, 0.99, 1.01, 1.02, 1.03]), "cal.flux": 0.27, "cal.offset": np.array([[1.0, -2.0]] * 6)})
     ok = vs.selfcal_check(v)
@@ -295,7 +295,7 @@ def test_image_first_runs_an_image_stage_then_the_workflows_own_stages(tmp_path,
             _call("fit", "--config", "R", "--image-first", *map(str, bad), "--data", syn, "--out", tmp_path / "x", "--npix", 24)
 
 
-@pytest.mark.validates("virgil_bridge.alma.resolve_ref_obs", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
 def test_ref_obs_auto_picks_the_short_baseline_observation_with_the_largest_weight_and_is_logged(tmp_path):
     syn = synthetic_dir(tmp_path / "s")
     data = va.load_dir(syn)
@@ -309,7 +309,7 @@ def test_ref_obs_auto_picks_the_short_baseline_observation_with_the_largest_weig
             va.resolve_ref_obs(data, bad)
 
 
-@pytest.mark.validates("virgil_bridge.alma.gauge_to_obs0", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
 def test_gauge_to_obs0_leaves_the_model_amplitudes_unchanged():
     """The model at observation e is flux g_e: after ``gauge_to_obs0`` the products are the same to 1e-15, obs 0 has gain 1 and offset 0, the
     offsets differ from the fit's by the one shift o_0; with ref_obs 0 the result is the fit's own."""
