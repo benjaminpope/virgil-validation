@@ -303,7 +303,7 @@ def test_orbit_search_is_blind_and_a_flagged_night_seeds_no_position(of, tmp_pat
     assert "n3" not in out2["alias"]["nights"] and len(out2["datasets"]) < len(out["datasets"])
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["mathematics"], kind="check")
+@pytest.mark.validates("virgil.aliases.fit_orbit_aliases", roots=["mathematics"], kind="check")  # simulated nights
 def test_vis_amp_variant_recovers_the_orbit_and_the_per_night_losses(of, tmp_path):
     """The V^2 + closure-phase orbit with a free amplitude on each night (``virgil.aliases``): V^2 scaled by
     AMPS night by night, searched blind. The orbit and every night's loss

@@ -115,7 +115,7 @@ def test_pipeline_card_links_to_page_when_set(model):
     assert '<a class="vt-card-link" href="orbits/binaries/">Published binaries</a>' in linked
 
 
-@pytest.mark.validates("pipeline:alma-imlup", roots=["standards"], kind="guard")
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_showcase_draws_a_tile_only_once_its_page_and_images_exist(tmp_path, monkeypatch):
     monkeypatch.setattr(trust, "SHOWCASE", [
         ("a.md", ["a.png"], "One", "x"),
