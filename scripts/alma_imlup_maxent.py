@@ -8,7 +8,7 @@
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
     python scripts/alma_imlup_maxent.py cv-aggregate DIR [--out DIR]
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
-    python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] --out DIR
+    python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
 
 ``--data DIR`` holds ``ddid_NN.npz`` (the vv format of ``alma_imlup_read``; no default, so nothing runs on
@@ -552,6 +552,12 @@ def cmd_compare(args):
                     res["grad_groups"][label] = va.grad_groups(data, v, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
                 except Exception as e:  # a diagnostic: never loses the comparison
                     res["grad_groups"][label] = dict(error=f"{type(e).__name__}: {e}")
+        if not args.no_dirty:  # the residual dirty image of MPoL's solution per observation, beside the ones `fit` saves for ours (docs/imaging/imlup.md)
+            prob = va.build_problem(data, "R", lam=lam, npix=v_mpol["log_brightness"].shape[0], pixel_mas=px, chunk_size=args.chunk_size)
+            dirty = va.residual_dirty_images(data, prob.scene, v_mpol, prob.nuis, chunk_size=args.chunk_size)
+            for e, img in dirty.items():
+                np.save(out / f"resid_dirty_mpol_obs{e}.npy", img.astype(np.float32))
+            res["resid_dirty_mpol"] = dict(files=[f"resid_dirty_mpol_obs{e}.npy" for e in sorted(dirty)], npix=1024, pixel_mas=3.0, weights="w / s^2 with s = g s_MPoL")
     if args.f_dir and args.dsharp:
         fz = np.load(pathlib.Path(args.f_dir) / "image.npy").astype(float)
         n = fz.shape[0]
@@ -694,6 +700,7 @@ def main(argv=None):
     p.add_argument("--dsharp", default=None)
     p.add_argument("--out", required=True)
     p.add_argument("--no-grad", action="store_true", help="skip the gradient-scaling diagnostic (two value-and-gradient evaluations on --data)")
+    p.add_argument("--no-dirty", action="store_true", help="skip the residual dirty images of MPoL's solution (resid_dirty_mpol_obs*.npy, 4 MB each; one NUFFT pass and one gridding of all points)")
     p.add_argument("--chunk-size", type=int, default=va.CHUNK)
     p.set_defaults(fn=cmd_compare)
 

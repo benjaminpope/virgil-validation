@@ -60,7 +60,9 @@ plugins:
 # ===== Navigation =====
 nav:
   - Overview: index.md
-  - "Disc images": imaging/postagb.md
+  - "Disc images":
+      - "Post-AGB discs": imaging/postagb.md
+      - "IM Lup: virgil against MPoL and CLEAN": imaging/imlup.md
   - "Binary orbits": orbits/index.md
   - "Function tests":
       - tests/index.md
