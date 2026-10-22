@@ -270,3 +270,24 @@ prints the bound and the largest |offset|/bound, and prints `!!! OFFSET BOUND BI
 is not a fit of the unbounded objective and must be rerun with a larger X. `report` and `report --grad` reuse the saved `--offset-bound-mas`.
 `compare` evaluates its gradient table at virgil's default bound. Tests: `test_offset_bound_reaches_the_priors_*`,
 `test_report_records_the_bound_and_warns_*` (`tests/test_alma_maxent_run.py`).
+
+## Built: MPoL on the dartboard folds (2026-10-22)
+
+Ben: "start a pr-worker for MPoL cross-validation on our dartboard folds, so we can compare held-out chi^2 on identical folds."
+Goal: claim an *improvement* (or parity) of virgil's IM Lup MaxEnt image over MPoL's on the metric neither optimises, comparison metric 1
+(held-out dartboard χ², total and per uv annulus, B9), with both codes trained on the same training sets.
+
+- **C14 holds.** MPoL's example runs unmodified; the hold-out is on the input side. `mpol_worker` task `export_fold_asdf` writes, for fold J, the
+  asdf with fold J's points **flagged** (loaddata keeps `~flag`): the same points as `cv-task`'s mask `fold != J`, matched by (channel frequency
+  rank, time, ant1, ant2) because the asdf's order and ours differ; Hermitian partners share a fold because the dartboard cell is symmetric
+  (`virgil.radio.dartboard_folds`). MPoL's `lam_ent` stays 1e-9, i.e. λ_R = 2 n_train λ_M, the same data-to-penalty balance as `cv-task`'s `lam_train`.
+- **Scoring.** `score_fold` evaluates the trained checkpoint on the fold's held-out points in `cv-task`'s convention (`s = g s_M`, raw χ² at s = 1, −ln L at the
+  fitted s, profiled form; total, per ddid, per annulus). Agreement with `virgil_bridge.alma.score` on a shared synthetic case: 3.5e-5 per ddid, set by MPoL's NuFFT.
+- **Aggregate.** `alma_imlup_maxent.py cv-compare` reads MPoL's `fold_J/score.json` and virgil's `cv.json` / `cv_summary.json` and lines them up per fold and per
+  annulus at virgil's λ* and at the grid λ nearest λ₀ = C11's equivalent of 2 N λ_M (λ₀ = 3393.69 at N = 42,421,131 and F = F_tot).
+- **Not claimed.** A held-out advantage for either code is a statement about uv-plane prediction, not about image-plane structure (B9). The comparison is of
+  methods *as run*: MPoL's AdamW at 10 + 10 epochs against our L-BFGS; MPoL's training of each fold is not warm-started from the all-data solution as virgil's `cv-task`
+  is (`--init`), which favours virgil if MPoL's stage 0/1 are under-converged on a fold: the report prints both codes' steps and wall times.
+- Code: `src/external_bridge/{cv_folds,cv_compare}.py`, tasks in `mpol_worker.py`, `scripts/alma_imlup_maxent.py cv-compare`, tests `tests/test_alma_mpol_cv.py`,
+  formats in `docs/alma_conventions.md` Part 6. The OzSTAR job is `alma_mpol_cv` (ozstar_scripts).
+

@@ -543,7 +543,9 @@ nodes:
   crosscheck.image_metrics: {layer: references}
   crosscheck.alma: {layer: references, doc: alma_conventions.md}  # incl. the exact DFT image_visibilities and its adjoint
   external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
-  external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4)
+  external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4) and the cross-validation tasks export_fold_asdf, score_fold (tests/test_alma_mpol_cv.py, conventions Part 6)
+  external_bridge.cv_folds: {layer: references, doc: alma_conventions.md}  # asdf points matched to virgil's dartboard fold file (numpy only); tallies and the profiled score of both codes (tests/test_alma_mpol_cv.py, conventions Part 6)
+  external_bridge.cv_compare: {layer: references, doc: alma_conventions.md}  # MPoL's held-out scores beside virgil's, per fold and annulus (numpy only; `alma_imlup_maxent.py cv-compare`)
   virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
   virgil_bridge.alma: {layer: references, doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
