@@ -21,8 +21,10 @@ Inputs, as the OzSTAR jobs write them:
 
 Images follow ``crosscheck.alma_maxent``: ``image[row, col]`` with row 0 North and column 0 East, so ``imshow`` with its
 default origin has North up and East left. Every panel is drawn with an explicit extent (``grid_extent``) in arcsec East
-and North of the phase centre, and carries a marker at DSHARP's mask centre, a known asymmetric sky position, so that a
-flipped or transposed image is visible; ``centroid_en`` reports where each image's emission actually sits.
+and North of the phase centre, and carries a marker at the phase centre. Both fits and MPoL's image put the disc on the phase
+centre to a few mas, so a reflection through it cannot move the disc: a mirror is caught by the position angle of the emission's
+major axis (``major_axis_pa``: 144.5° becomes 35.5°), and a 180° rotation only by comparing with the DSHARP image, which
+``--dsharp`` supplies (the page then lists each image's centroid and position angle).
 """
 
 import argparse
@@ -42,9 +44,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from crosscheck import alma_maxent as cx  # noqa: E402  (NumPy and astropy only)
 
-# The MS's phase centre (docs/alma_conventions.md) and DSHARP's CLEAN-mask centre (IMLup_continuum.py, `common_mask`).
+# The MS's phase centre (docs/alma_conventions.md).
 RA_DEG, DEC_DEG = (15 + 56 / 60 + 9.20 / 3600) * 15, -(37 + 56 / 60 + 6.42 / 3600)
-MASK_RA_DEG, MASK_DEC_DEG = (15 + 56 / 60 + 9.18880 / 3600) * 15, -(37 + 56 / 60 + 6.527374 / 3600)
 INCL_DEG, PA_DEG = 47.5, 144.5  # IM Lup, Huang et al. 2018 (DSHARP II), as in design/alma_clean.md
 DSHARP_BEAM = (44.0, 43.0, 115.0)  # DSHARP I Table 4 (mas, mas, deg): the nominal beam when no CLEAN image is given
 N_VIS = 42_421_131
@@ -105,12 +106,6 @@ def pixel_to_sky(row, col, grid):
     return (grid.cc - col) * grid.dx, (grid.cr - row) * grid.dx
 
 
-def mask_centre_offset():
-    """(East, North) offset in arcsec of DSHARP's CLEAN-mask centre from the phase centre: about 0.13 arcsec West and 0.11 arcsec South,
-    so it is neither on an axis nor symmetric: a mirrored or rotated image puts the disc away from it."""
-    return (MASK_RA_DEG - RA_DEG) * math.cos(math.radians(DEC_DEG)) * 3600.0, (MASK_DEC_DEG - DEC_DEG) * 3600.0
-
-
 def crop_window(image, grid, half):
     """The part of ``image`` within ``half`` arcsec of the phase centre, and its ``Grid``."""
     ny, nx = image.shape
@@ -143,6 +138,24 @@ def centroid_en(image, grid, centre_en=(0.0, 0.0), radius=2.0, floor=0.02):
     return float((w * e).sum() / w.sum()), float((w * n).sum() / w.sum())
 
 
+def major_axis_pa(image, grid, centre_en=(0.0, 0.0), radius=1.5, floor=0.05, clip_percentile=99.5):
+    """Position angle (degrees East of North, in [0, 180)) of the major axis of the flux-weighted second moments of the pixels brighter than ``floor`` x peak
+    within ``radius`` arcsec of ``centre_en``: 144.5 for IM Lup, 35.5 for its East-West (or North-South) mirror image. The image is clipped at the
+    ``clip_percentile`` of the window first, so that the point-like spike a MaxEnt image keeps on the star does not set the axis."""
+    rr, cc = np.indices(image.shape)
+    e, n = pixel_to_sky(rr, cc, grid)
+    e, n = e - centre_en[0], n - centre_en[1]
+    win = np.hypot(e, n) <= radius
+    image = np.minimum(image, np.percentile(image[win], clip_percentile))
+    sel = win & (image > floor * np.max(image[win]))
+    w = np.where(sel, image, 0.0)
+    ce, cn = (w * e).sum() / w.sum(), (w * n).sum() / w.sum()
+    cov = np.array([[(w * (e - ce) ** 2).sum(), (w * (e - ce) * (n - cn)).sum()], [(w * (e - ce) * (n - cn)).sum(), (w * (n - cn) ** 2).sum()]]) / w.sum()
+    vals, vecs = np.linalg.eigh(cov)
+    ve, vn = vecs[:, np.argmax(vals)]
+    return float(math.degrees(math.atan2(ve, vn)) % 180.0)
+
+
 def radial_profile(image, grid, edges, centre_en=(0.0, 0.0), incl_deg=INCL_DEG, pa_deg=PA_DEG):
     """Azimuthal mean of ``image`` in bins of deprojected radius (arcsec) about ``centre_en``: a disc of inclination ``incl_deg`` whose
     major axis lies at position angle ``pa_deg`` (East of North). Returns (bin centres, mean, pixel count)."""
@@ -159,10 +172,39 @@ def radial_profile(image, grid, edges, centre_en=(0.0, 0.0), incl_deg=INCL_DEG, 
     return 0.5 * (edges[1:] + edges[:-1]), np.where(cnt > 0, tot / np.maximum(cnt, 1), np.nan), cnt
 
 
+IM_LUP_PC = 158.0  # pc, Huang et al. 2018 (DSHARP II) distance, to turn an au column into arcsec
+
+
 def load_profile(path):
-    """DSHARP's ``IMLup.profile.txt``: columns radius (arcsec), brightness (Jy/beam), error, with ``#`` comments. Returns (r, I, dI or None)."""
+    """DSHARP's ``IMLup.profile.txt``, with the units read from its ``#`` header rather than assumed: the first column named in arcsec (or au,
+    divided by ``IM_LUP_PC`` pc) is the radius, the first named in Jy/beam, mJy/beam or uJy/beam is the brightness (scaled to Jy/beam), and the
+    next column is its error when it carries the same unit. Returns (r in arcsec, I in Jy/beam, dI in Jy/beam or None); ValueError if the
+    header does not name them, so a wrong file stops the page rather than plotting a curve that is off by a unit."""
+    lines = pathlib.Path(path).read_text().splitlines()
+    header = [ln.lstrip("#").strip() for ln in lines if ln.lstrip().startswith("#")]
+    names = None
+    for ln in reversed(header):  # the last comment line that splits into as many labels as there are data columns
+        ncol = len(np.atleast_2d(np.loadtxt(path, comments="#")).T)
+        parts = [x.strip() for x in re.split(r"\s{2,}|\t|,", ln) if x.strip()] if re.search(r"\s{2,}|\t|,", ln) else ln.split()
+        if len(parts) == ncol:
+            names = parts
+            break
+    if names is None:
+        raise ValueError(f"{path}: no '#' header line naming the columns; cannot tell the radius unit (au or arcsec) or the brightness unit (mJy/beam or Jy/beam)")
+    low = [x.lower() for x in names]
+    rcol = next((k for k, x in enumerate(low) if "arcsec" in x or '"' in x), None)
+    r_scale = 1.0
+    if rcol is None:
+        rcol = next((k for k, x in enumerate(low) if re.search(r"(^|[^a-z])au([^a-z]|$)", x)), None)
+        r_scale = 1.0 / IM_LUP_PC
+    icol = next((k for k, x in enumerate(low) if "/beam" in x and ("jy" in x)), None)
+    if rcol is None or icol is None:
+        raise ValueError(f"{path}: header {names} does not name a radius (arcsec or au) and a brightness (Jy/beam) column")
+    u = low[icol]
+    i_scale = 1e-3 if "mjy" in u else 1e-6 if ("ujy" in u or "µjy" in u) else 1.0
     a = np.atleast_2d(np.loadtxt(path, comments="#"))
-    return a[:, 0], a[:, 1], (a[:, 2] if a.shape[1] > 2 else None)
+    err = a[:, icol + 1] * i_scale if a.shape[1] > icol + 1 and "/beam" in low[icol + 1] else None
+    return a[:, rcol] * r_scale, a[:, icol] * i_scale, err
 
 
 def pending(what, needs):
@@ -303,7 +345,7 @@ def sky_image(ax, image, grid, norm, cmap, half, title, marker=True):
     _sky_axes(ax, half)
     ax.set_title(title)
     if marker:
-        ax.plot(*mask_centre_offset(), marker="+", color="cyan", ms=9, mew=1.2)
+        ax.plot(0.0, 0.0, marker="+", color="cyan", ms=9, mew=1.2)
     return im
 
 
@@ -352,7 +394,7 @@ def fig_images(assets, head, mpol, clean, dsharp, half=2.5, zoom=0.5, soft_frac=
     titles = {"virgil": "virgil MaxEnt (R)", "MPoL": "MPoL (MaxEnt)", "our CLEAN": "our CLEAN (virgil.radio_clean)", "DSHARP CLEAN": "DSHARP CLEAN"}
     pend = {"virgil": "pending: our R fit\n(--r)", "MPoL": "pending: MPoL's export\n(--mpol)", "our CLEAN": "pending: our CLEAN\n(ozstar_scripts#60; --clean)", "DSHARP CLEAN": "pending: DSHARP's FITS\n(--dsharp)"}
     fig, axes = plt.subplots(2, 5, figsize=(20, 8.6), gridspec_kw=dict(wspace=0.3, hspace=0.28))
-    metrics = {"beam_mas_deg": beam, "beam_note": beam_note, "centroid_offset_mas": {}, "vmax_jy_arcsec2": vmax}
+    metrics = {"beam_mas_deg": beam, "beam_note": beam_note, "centroid_offset_mas": {}, "major_axis_pa_deg": {}, "vmax_jy_arcsec2": vmax}
     ims = []
     for j, nm in enumerate(names):
         ax = axes[0, j]
@@ -362,9 +404,9 @@ def fig_images(assets, head, mpol, clean, dsharp, half=2.5, zoom=0.5, soft_frac=
         img, g = panels[nm]
         c, cg = crop_window(img, g, half + 0.1)
         ims.append(sky_image(ax, c, cg, norm, "magma", half, titles[nm]))
-        east_c, north_c = centroid_en(c, cg, mask_centre_offset(), 2.0)
-        me = mask_centre_offset()
-        metrics["centroid_offset_mas"][nm] = [1000 * (east_c - me[0]), 1000 * (north_c - me[1])]
+        east_c, north_c = centroid_en(c, cg, (0.0, 0.0), 2.0)
+        metrics["centroid_offset_mas"][nm] = [1000 * east_c, 1000 * north_c]
+        metrics["major_axis_pa_deg"][nm] = major_axis_pa(c, cg, (east_c, north_c), 1.5)
         ax.plot(east_c, north_c, marker="x", color="white", ms=6, mew=1.2)
         if "CLEAN" in nm:
             b = (clean if nm == "our CLEAN" else dsharp)["beam"]
@@ -501,9 +543,9 @@ def calibration_table(fit, mpol):
     return "\n".join(rows)
 
 
-def chi2_arrays(fit, mpol, compare):
-    """Raw chi^2/N (s = 1, quoted weights; chi^2 / 2N) per ddid for virgil's fit (its own report) and for MPoL's solution (MPoL's own evaluation, or,
-    when ``compare`` has it, the same solution evaluated in virgil). Returns (n per ddid, virgil, MPoL, MPoL label) or None."""
+def chi2_arrays(fit, mpol):
+    """Raw chi^2/N (s = 1, quoted weights; chi^2 / 2N) per ddid for virgil's fit (its own report) and for MPoL's solution (MPoL's own evaluation).
+    Returns (n per ddid, virgil, MPoL, MPoL label) or None."""
     if fit is None or mpol is None or mpol["objective"] is None:
         return None
     t = fit["result"].get("chi2_s1")
@@ -516,9 +558,9 @@ def chi2_arrays(fit, mpol, compare):
     return n, v, m, "MPoL's solution (MPoL's own evaluation)"
 
 
-def fig_chi2(assets, fit, mpol, compare):
+def fig_chi2(assets, fit, mpol):
     plt = _mpl()
-    c = chi2_arrays(fit, mpol, compare)
+    c = chi2_arrays(fit, mpol)
     if c is None:
         return None
     n, v, m, mlabel = c
@@ -572,7 +614,7 @@ def fig_residuals(assets, fit, compare):
             n = img.shape[0]
             g = Grid(n // 2, n // 2, 0.003)  # crosscheck.alma's layout: centre at npix // 2, 3 mas pixels
             ax.imshow(img * 1e3, extent=grid_extent(img.shape, g), cmap="RdBu_r", vmin=-lim * 1e3, vmax=lim * 1e3, interpolation="nearest")
-            ax.plot(*mask_centre_offset(), marker="+", color="k", ms=6, mew=0.8)
+            ax.plot(0.0, 0.0, marker="+", color="k", ms=6, mew=0.8)
             ax.set_xlim(1.0, -1.0)
             ax.set_ylim(-1.0, 1.0)
             ax.set_xticks([])
@@ -592,7 +634,7 @@ def fig_residuals(assets, fit, compare):
 
 
 def fig_profile(assets, head, mpol, clean, dsharp, dsharp_profile, half=2.5):
-    """Deprojected radial profiles (i = 47.5°, PA = 144.5°, about the mask centre) of the images at the CLEAN beam, in Jy/arcsec²."""
+    """Deprojected radial profiles (i = 47.5°, PA = 144.5°, each about its own emission centroid) of the images at the CLEAN beam, in Jy/arcsec²."""
     plt = _mpl()
     series = {}
     beam = (dsharp or clean or {"beam": DSHARP_BEAM})["beam"]
@@ -616,7 +658,8 @@ def fig_profile(assets, head, mpol, clean, dsharp, dsharp_profile, half=2.5):
     for label, col, img, g, smooth in srcs:
         if smooth:
             img = cx.convolve(img, g.dx * 1000.0, *beam)
-        r, p, _ = radial_profile(img, g, edges, centre_en=mask_centre_offset())
+        centre = centroid_en(img, g, (0.0, 0.0), 2.0)  # each image about its own disc centre, which sits within a few mas of the phase centre
+        r, p, _ = radial_profile(img, g, edges, centre_en=centre)
         series[label] = dict(r=r.tolist(), i=p.tolist())
         ax.plot(r, p, color=col, lw=1.6, label=label)
     if dsharp_profile is not None:
@@ -646,13 +689,16 @@ def verdict_block(runs, mpol, compare, job_ids):
     if mo is None or not present:
         what = "the fits and MPoL's export" if not present and mo is None else ("our R fits" if not present else "MPoL's export")
         return pending(f"the gate result ({what})", "`--r DIR` (a `fit --config R` directory) and `--mpol DIR` (MPoL's export) feed this card; see *How to rerun* below.")
-    m_obj = float(mo["objective_R"])
+    m_own = float(mo["objective_R"])
     m_chi = float(np.sum(mo["chi2_raw"]) / (2 * np.sum(mo["n_ddid"])))
+    co = (compare["result"].get("objective") if compare is not None else None) or None
+    m_obj = float(co["mpol_solution_in_virgil"]["objective"]) if co else m_own  # the same evaluator as ours, when ``compare`` has run
     gates = {}
     for k, f in present.items():
         r = f["result"]
         n = r["n"]
-        gates[k] = gate_result(r["objective_R"], m_obj, r["chi2_raw"] / (2 * n), m_chi, r["converged"])
+        ours = float(co["ours"]["objective"]) if co and k == next(iter(present)) else r["objective_R"]  # ``compare`` re-evaluates the head run at eps 1e-12
+        gates[k] = gate_result(ours, m_obj, r["chi2_raw"] / (2 * n), m_chi, r["converged"])
     head_name = next(iter(present))
     g = gates[head_name]
     r = present[head_name]["result"]
@@ -665,10 +711,17 @@ def verdict_block(runs, mpol, compare, job_ids):
         title = "The gate is reached: our objective is at or below MPoL's" + ("" if g["c8"] else ", but the fit has not converged (C8)")
     else:
         title = "The gate is not reached: our objective is above MPoL's"
-    body = [f"**Gate**: our R objective −ln L + λ S_M must be ≤ MPoL's {m_obj:,.0f}. "
+    if not stale and not co:
+        title += " (provisional: against MPoL's own evaluation, until `compare` has run)"
+    if co:
+        ref = f"MPoL's solution evaluated in virgil, {m_obj:,.1f} (`compare`: the same evaluator as ours)"
+    else:
+        ref = (f"MPoL's own number, {m_obj:,.0f}. This is a different evaluator from ours, so the sign of the difference is provisional until the `compare` stage "
+               f"re-evaluates MPoL's solution in virgil (`--compare`)")
+    body = [f"**Gate**: our R objective −ln L + λ S_M must be ≤ {ref}. "
             f"Raw χ²/N (s = 1, the quoted weights) is the honest fit measure; a χ² rescaled to 1 by the fitted s is tautological.", ""]
     body += ["| run | objective | − MPoL's | raw χ²/N | − MPoL's | gate | C8 (converged) | stopped because | data column | pin | job |", "| --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- |"]
-    body.append(f"| **MPoL** (`sgd.py`, 2 × 10 epochs) | {m_obj:,.0f} | | {m_chi:.4f} | | | | 20 epochs | CORRECTED_DATA | {mpol.get('pins') or 'n/a'} | {job_ids.get('MPoL', 'not recorded')} |")
+    body.append(f"| **MPoL** (`sgd.py`, 2 × 10 epochs; its own evaluation) | {m_own:,.0f} | | {m_chi:.4f} | | | | 20 epochs | CORRECTED_DATA | {mpol.get('pins') or 'n/a'} | {job_ids.get('MPoL', 'not recorded')} |")
     for k, label, what in RUNS:
         f = runs.get(k)
         if f is None:
@@ -679,11 +732,9 @@ def verdict_block(runs, mpol, compare, job_ids):
                     f"{'**reached**' if gg['passed'] else '**not reached**'} | {'yes' if gg['c8'] else 'no'} | {rr.get('stopped_because')} | {data_column(rr)} | {tag_of(rr) or 'n/a'} | {job_ids.get(k, 'not recorded')} |")
     body += ["", f"**Data:** 7 execution blocks, 26 spectral windows (ddids), {r['n']:,} visibilities ({r['n'] / 1e6:.1f} M); MPoL's export has {mo['n']:,}. "
              f"Fit: 1028² pixels of 5 mas, 30 mas taper, λ_R = {r['lam']:.6g}."]
-    if compare is not None:
-        o = compare["result"].get("objective")
-        if o:
-            body.append(f"`compare` (both solutions in virgil at eps 1e-12): ours {o['ours']['objective']:,.1f}, MPoL's {o['mpol_solution_in_virgil']['objective']:,.1f}; "
-                        f"MPoL's own number {m_obj:,.1f}.")
+    if co:
+        body.append(f"**Cross-code agreement.** MPoL's solution evaluated in virgil minus MPoL's own evaluation of it: {m_obj - m_own:+,.1f} on {m_own:,.0f} "
+                    f"({(m_obj - m_own) / abs(m_own):+.1e} relative). That is the check that the two objectives are the same function; the gate above does not depend on it.")
     if stale:
         body.append(f"The pinned fit ran on the {col} column; the DSHARP measurement set also holds CORRECTED_DATA, which MPoL's export read, and the two differ by up to 1.6 Jy on the long baselines "
                     f"(design note, decision D1). Every number and image in the fit panels below is therefore a placeholder until the three R runs on CORRECTED_DATA land.")
@@ -696,13 +747,16 @@ def images_block(name, metrics):
         return pending("the image comparison", "Needs at least one of `--r`, `--mpol`, `--clean`, `--dsharp`.")
     txt = [f"![virgil, MPoL and CLEAN images]({'imlup/' + name})", "",
            f"*Top row:* virgil's R fit, MPoL's MaxEnt image, our CLEAN and DSHARP's CLEAN on one asinh stretch (colour bar in Jy/arcsec²; the CLEAN images are divided by their beam area), North up, East left. "
-           f"The cyan **+** is DSHARP's CLEAN-mask centre, the white **×** the centroid of each panel's emission within 2″ of it. The inset is the inner ±0.5″. The solid ellipse is the CLEAN beam "
+           f"The cyan **+** is the phase centre, the white **×** the centroid of each panel's emission within 2″ of it. The inset is the inner ±0.5″. The solid ellipse is the CLEAN beam "
            f"({metrics['beam_note']}). *Bottom row:* the two MaxEnt images convolved to that beam, and virgil minus MPoL, DSHARP and our CLEAN (diverging scale, ±10% of the convolved peak).", ""]
-    cen = metrics.get("centroid_offset_mas") or {}
+    cen, pas = metrics.get("centroid_offset_mas") or {}, metrics.get("major_axis_pa_deg") or {}
     if cen:
-        txt += ["**Orientation check.** The mask centre is 0.13″ West and 0.11″ South of the phase centre, so a mirrored or rotated image would put its emission about 0.3″ away from the **+**. "
-                "Offset of each image's emission centroid from it (mas, East and North):", "", "| image | ΔEast | ΔNorth |", "| --- | ---: | ---: |"]
-        txt += [f"| {k} | {v[0]:+.0f} | {v[1]:+.0f} |" for k, v in cen.items()]
+        txt += [f"**Orientation check.** The fitted discs sit on the phase centre to within a few mas, so a reflection through it cannot move them; "
+                f"the test of a mirrored image is the position angle of the emission's major axis ({PA_DEG}° for IM Lup, Huang et al. 2018; its East-West or North-South mirror "
+                f"gives {180 - PA_DEG}°). A 180° rotation leaves both numbers unchanged: only the comparison with DSHARP's image tells it, and that panel is pending until `--dsharp` lands. "
+                "Centroid offset from the phase centre (mas, East and North) and major-axis position angle of each image's emission:", "",
+                "| image | ΔEast | ΔNorth | major-axis PA (°) |", "| --- | ---: | ---: | ---: |"]
+        txt += [f"| {k} | {v[0]:+.0f} | {v[1]:+.0f} | {pas.get(k, float('nan')):.1f} |" for k, v in cen.items()]
     if metrics.get("difference"):
         txt += ["", "| difference | rms over the ±2.5″ field / convolved peak | max abs / peak |", "| --- | ---: | ---: |"]
         txt += [f"| {k} | {v['rms_over_peak']:.4f} | {v['max_abs_over_peak']:.4f} |" for k, v in metrics["difference"].items()]
@@ -794,7 +848,7 @@ def build(args):
     inputs = {"--r": args.r, "--r-mpol": args.r_mpol, "--r-mpolwf": args.r_mpolwf, "--mpol": args.mpol, "--compare": args.compare, "--clean": args.clean,
               "--dsharp": args.dsharp, "--dsharp-profile": args.dsharp_profile, "--cv": args.cv}
     images, metrics = fig_images(assets, head, mpol, clean, dsharp, half=args.half, zoom=args.zoom)
-    cal, chi2 = fig_calibration(assets, head, mpol), fig_chi2(assets, head, mpol, compare)
+    cal, chi2 = fig_calibration(assets, head, mpol), fig_chi2(assets, head, mpol)
     resid, rstats = fig_residuals(assets, head, compare)
     prof = fig_profile(assets, head, mpol, clean, dsharp, args.dsharp_profile, half=args.half)
     blocks = {"verdict": verdict_block(runs, mpol, compare, job_ids), "images": images_block(images, metrics)}
@@ -803,10 +857,10 @@ def build(args):
     else:
         blocks["calibration"] = pending("calibration nuisances", "Needs `--r` (virgil's fit) and `--mpol` (MPoL's export).")
     if chi2:
-        c = chi2_arrays(head, mpol, compare)
+        c = chi2_arrays(head, mpol)
         blocks["fit"] = (f"![raw chi2 per ddid](imlup/{chi2})\n\nRaw χ²/N per ddid (s = 1, quoted weights) at each solution's own gains, offsets and image: virgil R "
-                         f"{np.sum(c[1] * c[0]) / np.sum(c[0]):.4f} overall against {c[3].split(' (')[0]} {np.sum(c[2] * c[0]) / np.sum(c[0]):.4f}. Both are evaluated at their own fitted nuisances; "
-                         f"`compare` (OzSTAR) adds MPoL's solution evaluated in virgil with `--compare`.")
+                         f"{np.sum(c[1] * c[0]) / np.sum(c[0]):.4f} overall against {c[3].split(' (')[0]} {np.sum(c[2] * c[0]) / np.sum(c[0]):.4f}. Both are evaluated at their own fitted nuisances, by "
+                         f"each code's own likelihood; the verdict card gives the like-for-like comparison once `compare` has run.")
     else:
         blocks["fit"] = pending("fit quality", "Needs `--r` and `--mpol`.")
     if resid:

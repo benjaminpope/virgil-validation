@@ -20,11 +20,11 @@ Raw χ²/N is reported with the quoted weights (s = 1); a χ² rescaled to 1 by 
 <!-- gen:verdict -->
 
 !!! warning "Placeholder: the fit shown was read from the DATA column, which MPoL did not use; rerun on CORRECTED_DATA"
-    **Gate**: our R objective −ln L + λ S_M must be ≤ MPoL's -108,232,184. Raw χ²/N (s = 1, the quoted weights) is the honest fit measure; a χ² rescaled to 1 by the fitted s is tautological.
+    **Gate**: our R objective −ln L + λ S_M must be ≤ MPoL's own number, -108,232,184. This is a different evaluator from ours, so the sign of the difference is provisional until the `compare` stage re-evaluates MPoL's solution in virgil (`--compare`). Raw χ²/N (s = 1, the quoted weights) is the honest fit measure; a χ² rescaled to 1 by the fitted s is tautological.
 
     | run | objective | − MPoL's | raw χ²/N | − MPoL's | gate | C8 (converged) | stopped because | data column | pin | job |
     | --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- |
-    | **MPoL** (`sgd.py`, 2 × 10 epochs) | -108,232,184 | | 2.7062 | | | | 20 epochs | CORRECTED_DATA | virgil-validation@bd3f748+mpol-examples@5a7c3f0. `sgd.py` ran unmodified (C14). | not recorded |
+    | **MPoL** (`sgd.py`, 2 × 10 epochs; its own evaluation) | -108,232,184 | | 2.7062 | | | | 20 epochs | CORRECTED_DATA | virgil-validation@bd3f748+mpol-examples@5a7c3f0. `sgd.py` ran unmodified (C14). | not recorded |
     | R: our P3 workflow | -106,445,422 | +1,786,762 | 2.8956 | +0.1893 | **not reached** | no | max_steps | DATA | 03531b4 | not recorded |
     | R_mpol: warm-started at MPoL's solution | *pending* | | | | | | | | |  |
     | R_mpolwf: MPoL's own start | *pending* | | | | | | | | |  |
@@ -40,14 +40,14 @@ Raw χ²/N is reported with the quoted weights (s = 1); a χ² rescaled to 1 by 
 
 ![virgil, MPoL and CLEAN images](imlup/images.png)
 
-*Top row:* virgil's R fit, MPoL's MaxEnt image, our CLEAN and DSHARP's CLEAN on one asinh stretch (colour bar in Jy/arcsec²; the CLEAN images are divided by their beam area), North up, East left. The cyan **+** is DSHARP's CLEAN-mask centre, the white **×** the centroid of each panel's emission within 2″ of it. The inset is the inner ±0.5″. The solid ellipse is the CLEAN beam (44.0 × 43.0 mas, PA 115° (DSHARP Table 4, nominal)). *Bottom row:* the two MaxEnt images convolved to that beam, and virgil minus MPoL, DSHARP and our CLEAN (diverging scale, ±10% of the convolved peak).
+*Top row:* virgil's R fit, MPoL's MaxEnt image, our CLEAN and DSHARP's CLEAN on one asinh stretch (colour bar in Jy/arcsec²; the CLEAN images are divided by their beam area), North up, East left. The cyan **+** is the phase centre, the white **×** the centroid of each panel's emission within 2″ of it. The inset is the inner ±0.5″. The solid ellipse is the CLEAN beam (44.0 × 43.0 mas, PA 115° (DSHARP Table 4, nominal)). *Bottom row:* the two MaxEnt images convolved to that beam, and virgil minus MPoL, DSHARP and our CLEAN (diverging scale, ±10% of the convolved peak).
 
-**Orientation check.** The mask centre is 0.13″ West and 0.11″ South of the phase centre, so a mirrored or rotated image would put its emission about 0.3″ away from the **+**. Offset of each image's emission centroid from it (mas, East and North):
+**Orientation check.** The fitted discs sit on the phase centre to within a few mas, so a reflection through it cannot move them; the test of a mirrored image is the position angle of the emission's major axis (144.5° for IM Lup, Huang et al. 2018; its East-West or North-South mirror gives 35.5°). A 180° rotation leaves both numbers unchanged: only the comparison with DSHARP's image tells it, and that panel is pending until `--dsharp` lands. Centroid offset from the phase centre (mas, East and North) and major-axis position angle of each image's emission:
 
-| image | ΔEast | ΔNorth |
-| --- | ---: | ---: |
-| virgil | +140 | +115 |
-| MPoL | +137 | +103 |
+| image | ΔEast | ΔNorth | major-axis PA (°) |
+| --- | ---: | ---: | ---: |
+| virgil | +7 | +7 | 143.3 |
+| MPoL | +4 | -5 | 144.9 |
 
 | difference | rms over the ±2.5″ field / convolved peak | max abs / peak |
 | --- | ---: | ---: |
@@ -116,7 +116,7 @@ s_ours / (g s_MPoL) over the 26 ddids: min 0.945, max 1.121; max |gain differenc
 
 ![raw chi2 per ddid](imlup/chi2.png)
 
-Raw χ²/N per ddid (s = 1, quoted weights) at each solution's own gains, offsets and image: virgil R 2.8956 overall against MPoL's solution 2.7062. Both are evaluated at their own fitted nuisances; `compare` (OzSTAR) adds MPoL's solution evaluated in virgil with `--compare`.
+Raw χ²/N per ddid (s = 1, quoted weights) at each solution's own gains, offsets and image: virgil R 2.8956 overall against MPoL's solution 2.7062. Both are evaluated at their own fitted nuisances, by each code's own likelihood; the verdict card gives the like-for-like comparison once `compare` has run.
 
 <!-- /gen:fit -->
 
@@ -165,7 +165,7 @@ Azimuthal means in deprojected radius (i = 47.5°, PA = 144.5°, DSHARP II) abou
 
 | item | value |
 | --- | --- |
-| virgil-validation commit (generator) | `9dfc1a2c2a338f7b600b4a1fc00c61ea3479aefb (+ uncommitted changes)` |
+| virgil-validation commit (generator) | `a0003a8ce440785eb149a071cc409246a076ec87 (+ uncommitted changes)` |
 | R | tag `03531b4`, vv `not recorded`, virgil 0.3.0, jax 0.12.0, cuda:0; workflow `p3`; DATA; max_steps, 20,000 steps in the last stage; wall 6.0 h |
 | R_mpol | pending |
 | R_mpolwf | pending |
