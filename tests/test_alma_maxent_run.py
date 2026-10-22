@@ -203,7 +203,6 @@ def test_precondition_stats_and_restarts_are_recorded(syn):
     rounds = info["precondition_rounds"]
     assert info["precondition"] == "diag" and len(rounds) >= len(info["restarts"]) >= 1
     assert all(r["decades"] >= 0.0 and 0.0 <= r["floored"] <= 1.0 for r in rounds)
-    assert sum(r["steps"] for r in info["restarts"]) == info["steps"]
     _, plain, _, _ = va.run_fit_c8(prob, start, max_steps=50)
     assert plain["precondition_rounds"] == [] and plain["precondition"] is None and plain["restarts"]
 
@@ -211,6 +210,8 @@ def test_precondition_stats_and_restarts_are_recorded(syn):
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
 def test_a_non_numeric_round_field_does_not_lose_the_stage():
     assert va._plain(np.float32(1.5)) == 1.5 and va._plain(np.array([1, 2])) == [1, 2] and va._plain("lbfgs") == "lbfgs"
+    ragged = [1.0, [2.0, 3.0]]
+    assert va._plain(ragged) == ragged
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])

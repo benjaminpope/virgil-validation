@@ -442,20 +442,21 @@ def test_cv_task_passes_precondition_to_the_fit_and_records_it(syn, tmp_path, mo
     _call("folds", "--data", syn, "--out", folds, "--k", 2)
     init = tmp_path / "init"
     _call("fit", "--config", "F", "--data", syn, "--out", init, "--npix", 32, "--lam", 1e3, "--max-steps", 10, "--no-dirty")
+    real = va.run_fit_c8
     seen = {}
-
-    class Stop(Exception):
-        pass
 
     def fake(*a, **k):
         seen.update(k)
-        raise Stop
+        k.pop("precondition")  # the installed virgil need not have the argument
+        values, info, traj, why = real(*a, **k)
+        return values, dict(info, precondition="diag", precondition_rounds=[dict(decades=1.5, floored=0.25)]), traj, why
 
     monkeypatch.setattr(va, "run_fit_c8", fake)
-    with pytest.raises(Stop):
-        _call("cv-task", "--data", syn, "--folds", folds, "--fold", 0, "--init", init, "--lam", 1e2, "--npix", 32, "--max-steps", 10,
-              "--precondition", "diag", "--out", tmp_path / "cv")
+    _call("cv-task", "--data", syn, "--folds", folds, "--fold", 0, "--init", init, "--lam", 1e2, "--npix", 32, "--max-steps", 10,
+          "--precondition", "diag", "--out", tmp_path / "cv")
     assert seen["precondition"] == "diag"
+    r = json.loads((tmp_path / "cv" / "cv.json").read_text())
+    assert r["precondition"] == "diag" and r["precondition_rounds"] == [dict(decades=1.5, floored=0.25)]
 
 
 # ------------------------------------------------------------------ R4

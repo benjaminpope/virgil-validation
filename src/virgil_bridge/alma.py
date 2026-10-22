@@ -390,9 +390,12 @@ def mpol_start_values(prob):
 def _plain(v):
     """A scalar as a Python number, an array as a list, anything else unchanged (so a field virgil adds to its
     per-round record cannot lose a stage's work after ``fit`` has returned)."""
-    if np.ndim(v) == 0 and hasattr(v, "item"):
-        return v.item()
-    return np.asarray(v).tolist() if np.ndim(v) else v
+    try:
+        if np.ndim(v) == 0 and hasattr(v, "item"):
+            return v.item()
+        return np.asarray(v).tolist() if np.ndim(v) else v
+    except (TypeError, ValueError):  # ragged or otherwise unconvertible
+        return v
 
 
 def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None):
