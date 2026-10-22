@@ -301,7 +301,7 @@ def markdown(res, notes):
     for lab, f in res["fits"].items():
         comp = f["cost"].get("compile") or []
         md.append(f"- {lab}: problem build before the first stage {fmt_t(f['startup_s'])}; estimated compile per round (first chunk minus a steady chunk): "
-                  + (", ".join(f"round {c['round']} {c['compile_s_est']:.0f} s" for c in comp) if comp else "not measured")
+                  + (", ".join(f"round {c['round']} {c['compile_s_est']:.0f} s" + (" (far more than a jit compile: restart overhead or a stall, not explained by the record)" if c["compile_s_est"] > 100 else "") for c in comp) if comp else "not measured")
                   + "; time bookkeeping (stage wall_s minus the rounds' time): " + ", ".join(f"{r['stage']} {r['diff_s']:+.1f} s" for r in f["time_reconciliation"]) + ".")
     md += ["", "## Fairness notes", ""] + [f"- {n}" for n in notes]
     return "\n".join(md) + "\n"

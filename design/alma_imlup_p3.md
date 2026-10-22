@@ -330,18 +330,20 @@ evaluation for an existing run (ozstar_scripts#63); it writes `out/<run>/export/
 
 ### Preliminary numbers (OLD env: virgil 0.3.0, jobs 18968244 and the MPoL reference 18913982/18913983; NOT converged)
 
-Both virgil fits stopped at `max_steps` 20,000 without C8 and are from a pre-fix environment; they are shown only to say where the comparison stands. They were read from
-`~/data/ozstar_jobs/18968245.txt`, not from `result.json` (not yet downloaded), so the table has no per-step curve.
+Both virgil fits stopped at `max_steps` 20,000 without C8 and are from a pre-fix environment, so they say where the comparison stands, not where it ends. Read from the fits' `result.json`
+(`speed.md` and `speed.png`, the latter in `docs/imaging/imlup/speed.png`).
 
 | | start | steps / epochs | wall | final R | raw χ²/N | reaches MPoL's final R? |
 |---|---|---:|---:|---:|---:|---|
-| MPoL (AdamW, float32, 2 × 10 epochs) | flat | 20 epochs | 21,728 s (6,983 + 14,745; 698 and 1,474 s/epoch) | −108,232,184 | 2.7062 | by definition, at its end |
-| virgil `R_mpolwf` (L-BFGS, float64) | MPoL's flat start | 20,000 steps | 17,078 s (0.85 s/step) | −107,726,506 | 2.7306 | **no**: 505,678 above, not converged |
-| virgil `R_mpol` (L-BFGS, float64) | **warm**, MPoL's solution | 20,000 steps | 15,789 s (0.79 s/step) | −108,304,297 | 2.7052 | not a cold start; ends 72,113 *below* MPoL's |
+| MPoL (AdamW, float32, 2 × 10 epochs; gina1) | flat | 20 epochs | 21,728 s (6,983 + 14,745; 698 and 1,474 s/epoch) | −108,232,184 | 2.7062 | by definition, at its end |
+| virgil `R_mpolwf` (L-BFGS, float64; gina301) | MPoL's flat start | 20,000 steps | 17,078 s (0.80 s/step) | −107,726,506 | 2.7306 | **no**: 505,678 above, not converged |
+| virgil `R_mpol` (L-BFGS, float64; gina303) | **warm**, MPoL's solution | 20,000 steps | 15,789 s (0.79 s/step) | −108,304,297 | 2.7052 | not a cold start; ends 72,113 *below* MPoL's |
 
-Per pass virgil is about three orders of magnitude cheaper and needs far more passes: an MPoL epoch (698–1,474 s) is about 880–1,860 virgil steps, or 1,300–3,350 value+gradient
-evaluations (at 0.44–0.53 s), while a virgil step is about 1.5–1.9 evaluations; 20,000 steps are about 30,000 evaluations against MPoL's 20 epochs. **Undecided:** `R_mpolwf` had not
-reached MPoL's final objective when it stopped at 17,078 s, which is before MPoL's 21,728 s total, so whether it would have reached it in the remaining ~4,650 s is an extrapolation
-(its loss was still falling when it stopped at the step limit). The MPoL side is itself uncertain: at its stage-0 rate (698 s/epoch) its 20 epochs would take about 13,960 s, and the 2.1×
-slowdown of stage 1 (same node, gina1) is unexplained, so the ordering of the two total times depends on that factor. Not yet known: the time on the fixed env and with
-`--offset-bound-mas` or `--precondition diag`, the node and GPU of the virgil jobs (their digests' tails lack the `host=` line), and MPoL's chk0 objective.
+Per pass virgil is about three orders of magnitude cheaper and needs far more passes: an MPoL epoch (698–1,474 s) is about 880–1,880 virgil steps, or 1,300–3,350 value+gradient
+evaluations (at 0.44–0.53 s), while a virgil step is about 1.5–1.8 evaluations; 20,000 steps are about 30,000 evaluations against MPoL's 20 epochs.
+
+**Time to target, cold start: virgil did not reach MPoL's final objective in 17,078 s; MPoL did in 21,728 s.** The ordering does not hinge on MPoL's unexplained 2.1× slowdown of stage 1: at its
+stage-0 rate MPoL would take about 13,960 s, and `R_mpolwf` was then still 544,000 above the target (−107,687,746 at 13,552 s). Its last hours fell by about 40,000 per hour against a gap of 505,678, so the
+extrapolation is more than 12 h and the rate was still falling; this is a statement about this run (flat start, no preconditioner, old env), not about the best virgil can do. `R_mpolwf` also lost about 1,000 s at
+its round-2 restart (its first round stopped at step 60; the record does not say why). The two virgil fits ran on different nodes (gina301, gina303), both A100; MPoL on gina1, also an A100. Not yet known: the time on the
+fixed env and with `--offset-bound-mas` or `--precondition diag`, and MPoL's chk0 objective.
