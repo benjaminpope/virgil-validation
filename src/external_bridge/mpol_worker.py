@@ -18,7 +18,11 @@ Evaluates, in float64:
 * ``export_checkpoint``, ``objective_full``, ``asdf_vs_npz``: the reference run of the IM Lup example
   (``sgd.py`` run unmodified, ``docs/alma_conventions.md`` Part 4). They load a checkpoint written by
   ``sgd.py`` or an asdf written by ``casa_analysis/src/export_asdf.py`` and use the example's own
-  ``Net``, ``loaddata`` and MPoL's losses from the pinned clone; nothing of their maths is rewritten here.
+  ``Net``, ``loaddata`` and MPoL's losses from the pinned clone; nothing of their maths is rewritten here;
+* ``export_fold_asdf``, ``score_fold``: MPoL's side of the held-out cross-validation on virgil's dartboard folds
+  (``docs/alma_conventions.md`` Part 6). The first writes the asdf ``sgd.py`` is trained on for fold J (the points of the
+  other folds, in the same visread layout, by flagging the held-out ones); the second scores a trained checkpoint on the
+  held-out points.
 
 Large arrays travel as ``.npz`` files named in the task.
 """
@@ -34,6 +38,7 @@ import torch
 from mpol import coordinates, losses, utils
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import cv_folds  # noqa: E402  (numpy only, as npz_compare)
 import npz_compare  # noqa: E402  (numpy only, next to this file, so a test can import it without MPoL)
 
 torch.set_default_dtype(torch.float64)
@@ -416,7 +421,180 @@ def asdf_vs_npz(task):
     return out
 
 
-TASKS = {"regularisers": regularisers, "loglike": loglike, "objective": objective, "export_checkpoint": export_checkpoint, "objective_full": objective_full, "asdf_vs_npz": asdf_vs_npz}
+# ----------------------------------------------------------------------------------------------
+# cross-validation on virgil's dartboard folds
+# ----------------------------------------------------------------------------------------------
+
+
+def _asdf_ddids(af):
+    """``(obsid, ddid, node)`` of the asdf in the order ``loaddata`` reads it."""
+    for obsid in af["obsids"].keys():
+        for d_id in af["obsids"][obsid]["ddids"].keys():
+            yield obsid, d_id, af["obsids"][obsid]["ddids"][d_id]
+
+
+def export_fold_asdf(task):
+    """Write the training asdf of one cross-validation fold: ``asdf`` (the example's export) with the points of fold
+    ``fold`` flagged, so that ``loaddata`` (``uu[~flag]``) and hence the unmodified ``sgd.py`` see only the other folds.
+
+    Task fields: ``asdf``, ``npz_dir`` (our per-ddid arrays, the order of virgil's fold file), ``folds`` (the file of
+    ``alma_imlup_maxent.py folds``), ``fold`` (J), ``out_asdf``. Nothing else of the asdf changes (same tree, same arrays, same
+    point order), so the points left are exactly those ``cv-task`` trains on. Each ddid's unflagged points are matched to the
+    npz by (channel frequency rank, time, ant1, ant2) (``cv_folds.match_index``), then take the fold of the matched point; the
+    match is checked (keys equal, u and v within ``tol_rel`` of the npz's, from the asdf's metres and the channel frequency, and
+    the weight), so a wrong pairing raises instead of writing a wrong mask. Hermitian partners share a fold because the
+    dartboard cell is symmetric under (u, v) -> (-u, -v): the fold file already has that.
+
+    Returns the counts (``n_total``, ``n_train``, ``n_held``, per ddid), the fold file's sha256 and parameters, and the worst
+    match differences. Memory is one ddid at a time plus the asdf tree (about 1.6 GB at full size)."""
+    import asdf
+
+    c_light = 299792458.0
+    folds, meta = cv_folds.load_folds(task["folds"])
+    j = int(task["fold"])
+    if not 0 <= j < int(meta["k"]):
+        raise ValueError(f"fold {j} is not in 0..{int(meta['k']) - 1}")
+    tol_rel = float(task.get("tol_rel", 1e-6))
+    per, worst = {}, dict(u_max_rel=0.0, v_max_rel=0.0, weight_max_rel=0.0)
+    with asdf.open(task["asdf"], lazy_load=False) as af:
+        for _, d_id, d in _asdf_ddids(af):
+            flag = np.array(d["flag"], bool)
+            ch, row = np.nonzero(~flag)
+            freq = np.asarray(d["frequencies"], float)[ch]
+            a = dict(freq=freq, ant1=np.asarray(d["antenna1"])[row], ant2=np.asarray(d["antenna2"])[row], time=np.asarray(d["time"], float)[row],
+                     u=np.asarray(d["uu"], float)[row] * freq / c_light, v=np.asarray(d["vv"], float)[row] * freq / c_light,
+                     weight=np.asarray(d["weight"], float)[row] if np.ndim(d["weight"]) == 1 else np.asarray(d["weight"], float)[ch, row])
+            b = _npz_ddid(task["npz_dir"], int(d_id))
+            fold, _, rep = cv_folds.labels_for_ddid(a, folds, int(d_id), b, tol_rel)
+            held = fold == j
+            flag[ch[held], row[held]] = True
+            d["flag"] = flag
+            per[str(d_id)] = dict(n=int(len(fold)), n_held=int(held.sum()), n_train=int((~held).sum()))
+            for k in worst:
+                worst[k] = max(worst[k], rep.get(k, 0.0))
+        af.write_to(task["out_asdf"])
+    out = dict(fold=j, n_total=sum(r["n"] for r in per.values()), n_held=sum(r["n_held"] for r in per.values()),
+               n_train=sum(r["n_train"] for r in per.values()), by_ddid=per, folds_sha256=meta["sha256"], folds_params={k: meta[k] for k in ("k", "n_q", "n_phi", "seed")},
+               worst_match=worst, tol_rel=tol_rel)
+    if out["n_train"] + out["n_held"] != out["n_total"] or out["n_held"] == 0:
+        raise ValueError(f"fold {j}: {out['n_held']} held out of {out['n_total']}")
+    return out
+
+
+def _flagged_by_ddid(train_asdf, full_asdf):
+    """``{ddid: number of points the training asdf flags beyond the full export's}``, and the sha256 of the training asdf's flags. Raises if
+    the training asdf unflags a point the full export flags, or if the two trees do not have the same ddids and shapes."""
+    import hashlib
+
+    import asdf
+
+    h, out = hashlib.sha256(), {}
+    with asdf.open(full_asdf) as full, asdf.open(train_asdf) as train:
+        fd = {str(d_id): d for _, d_id, d in _asdf_ddids(full)}
+        for _, d_id, d in _asdf_ddids(train):
+            ft, ff = np.asarray(d["flag"], bool), np.asarray(fd[str(d_id)]["flag"], bool)
+            if ft.shape != ff.shape or (ff & ~ft).any():
+                raise ValueError(f"ddid {d_id}: the training asdf is not the full export with points added to the flags")
+            out[int(d_id)] = int((ft & ~ff).sum())
+            h.update(np.packbits(ft).tobytes())
+    return out, h.hexdigest()
+
+
+def score_fold(task):
+    """Held-out score of a trained checkpoint on fold ``fold`` of virgil's dartboard, in the convention of
+    ``alma_imlup_maxent.py cv-task`` (``virgil_bridge.alma.score``).
+
+    Task fields: ``checkpoint``, ``asdf`` (the *full* export, not the training one), ``npz_dir``, ``folds``, ``fold``, and as
+    ``objective_full``: ``batch`` (10^6), ``sparse_matrices`` (true: MPoL's accurate NuFFT; the example's default table is
+    6e-4 off, P12), ``device``. The held-out points are those of the asdf that match (``cv_folds``) points of the fold file with
+    fold J. The model is the example's: image once, ``nufft`` per batch, ``adjust_amplitudes`` (V -> g V), ``adjust_positions``.
+    With per-ddid ``s = g s_M`` (the ``w / (s_M g)^2`` of ``adjust_weights``/``adjust_amplitudes``) the per-point
+    -ln L is ``w |V - M|^2 / (2 s^2) + 2 ln s + ln 2 pi - ln w``, as virgil's; the "s = 1" variant (``*_s1``) puts s = 1 with M unchanged.
+
+    Result: ``heldout`` with the keys of ``cv.json``'s: ``nll`` (at the fitted s), ``chi2_s1`` (raw, quoted weights), ``chi2_fit``,
+    ``by_ddid``, ``by_annulus`` (12 dartboard annuli: n, nll, chi2_raw, chi2_fit) and the same at s = 1 (``by_ddid_s1``,
+    ``by_annulus_s1``); ``chi2_raw_per_dof`` (chi2_s1 / 2n) first; ``nll_mpol`` is the same sum from ``mpol.losses.log_likelihood`` on
+    the adjusted weights, an independent check of ``nll``.
+
+    Provenance (``cv-compare`` reports a problem when it is missing or for another fold): ``train_asdf`` is the training asdf
+    ``export_fold_asdf`` wrote for fold J; it must flag, beyond the full export's flags, exactly as many points per ddid as fold J
+    holds out here (a wrong fold's file raises), and ``score.json`` records ``train_fold``, ``train_flagged`` and ``train_flags_sha256``.
+    ``checkpoint_fold`` is the fold the job trained the checkpoint on (read from the record ``train.sbatch`` wrote beside it); it is
+    echoed as ``checkpoint_trained_fold``. The checkpoint itself holds no record of its training data (``sgd.py`` is unmodified), so
+    this is the job's chain of custody, checked here, not a property of the file."""
+    batch = int(task.get("batch", 10**6))
+    sparse = bool(task.get("sparse_matrices", True))
+    device = torch.device(task.get("device") or ("cuda" if torch.cuda.is_available() else "cpu"))
+    folds, meta = cv_folds.load_folds(task["folds"])
+    j = int(task["fold"])
+    n_q = int(meta["n_q"])
+    pts = _asdf_points(task["asdf"], task["examples_dir"])
+    fold, annulus = np.zeros(len(pts["u"]), np.int8), np.zeros(len(pts["u"]), np.int8)
+    worst = dict(u_max_rel=0.0, v_max_rel=0.0, weight_max_rel=0.0)
+    for d in sorted(int(x) for x in np.unique(pts["ddid"])):
+        sel = np.flatnonzero(pts["ddid"] == d)
+        fold[sel], annulus[sel], rep = cv_folds.labels_for_ddid({k: v[sel] for k, v in pts.items()}, folds, d, _npz_ddid(task["npz_dir"], d),
+                                                                float(task.get("tol_rel", 1e-6)))
+        for k in worst:
+            worst[k] = max(worst[k], rep.get(k, 0.0))
+    held = np.flatnonzero(fold == j)
+    if len(held) == 0:
+        raise ValueError(f"fold {j} is empty")
+    prov = {}
+    if task.get("train_asdf"):
+        flagged, flags_sha = _flagged_by_ddid(task["train_asdf"], task["asdf"])
+        held_by_ddid = {int(d): int((fold[pts["ddid"] == d] == j).sum()) for d in np.unique(pts["ddid"])}
+        if {d: n for d, n in flagged.items() if n or held_by_ddid.get(d)} != {d: n for d, n in held_by_ddid.items() if n}:
+            raise ValueError(f"the training asdf {task['train_asdf']} flags {sum(flagged.values())} points beyond the export, but fold {j} holds out "
+                             f"{len(held)}: it is not fold {j}'s training set (per ddid: {flagged} vs {held_by_ddid})")
+        prov = dict(train_fold=j, train_flagged=int(sum(flagged.values())), train_flags_sha256=flags_sha)
+    if task.get("checkpoint_fold") is not None:
+        prov["checkpoint_trained_fold"] = int(task["checkpoint_fold"])
+    net, mocked = _net(task)
+    _, load = _load_checkpoint(net, task["checkpoint"])
+    net = net.to(device).eval()
+    n_ddid = len(net.log10_sigma_factors)
+    nll_mpol = 0.0
+    fit = {name: dict(n=np.zeros(size), nll=np.zeros(size), chi2_raw=np.zeros(size), chi2_fit=np.zeros(size)) for name, size in
+           (("ddid", n_ddid), ("annulus", n_q), ("ddid_s1", n_ddid), ("annulus_s1", n_q))}
+    with torch.no_grad():
+        x = _image(net)
+        for i in range(0, len(held), batch):
+            idx = held[i:i + batch]
+            u_b, v_b = (torch.as_tensor(pts[k][idx], dtype=torch.float64, device=device) for k in ("u", "v"))
+            d_b = torch.as_tensor(pts["vis"][idx], dtype=torch.complex128, device=device)
+            w_b, dd_b = torch.as_tensor(pts["weight"][idx], dtype=torch.float64, device=device), torch.as_tensor(pts["ddid"][idx], device=device)
+            vis = net.nufft(x, u_b, v_b, sparse_matrices=sparse)[0]
+            w_adj = net.adjust_weights(dd_b, w_b)
+            vis_s, w_s = net.adjust_amplitudes(dd_b, vis, w_adj)
+            vis_sh = net.adjust_positions(dd_b, u_b, v_b, vis_s)
+            nll_mpol -= float(losses.log_likelihood(vis_sh, d_b, w_s))
+            res2 = (vis_sh - d_b).abs() ** 2
+            r2 = (w_b * res2).cpu().numpy()  # quoted weights, the model with g applied
+            r2_fit = (w_s * res2).cpu().numpy()  # /(g s_M)^2
+            w_np, ws_np = w_b.cpu().numpy(), w_s.cpu().numpy()
+            nll_fit = 0.5 * r2_fit - np.log(ws_np) + cv_folds.LN2PI  # = w r2 / (2 s^2) + 2 ln s + ln 2 pi - ln w, s = g s_M
+            nll_s1 = 0.5 * r2 - np.log(w_np) + cv_folds.LN2PI
+            dd_np, an_np = pts["ddid"][idx], annulus[idx]
+            for name, ids, size, nl, rf in (("ddid", dd_np, n_ddid, nll_fit, r2_fit), ("annulus", an_np, n_q, nll_fit, r2_fit),
+                                            ("ddid_s1", dd_np, n_ddid, nll_s1, r2), ("annulus_s1", an_np, n_q, nll_s1, r2)):
+                t = cv_folds.tally(ids, size, nl, r2, rf)
+                for k in t:
+                    fit[name][k] += np.asarray(t[k], float)
+    tl = {name: {k: v.tolist() for k, v in t.items()} for name, t in fit.items()}
+    n = int(sum(tl["ddid"]["n"]))
+    chi2_s1 = float(sum(tl["ddid"]["chi2_raw"]))
+    ho = dict(nll=float(sum(tl["ddid"]["nll"])), chi2_s1=chi2_s1, chi2_fit=float(sum(tl["ddid"]["chi2_fit"])),
+              by_ddid=tl["ddid"], by_annulus=tl["annulus"], by_ddid_s1=tl["ddid_s1"], by_annulus_s1=tl["annulus_s1"])
+    ho["n"] = n
+    ho["chi2_raw_per_dof"] = chi2_s1 / (2 * n)
+    return dict(command="score-fold", fold=j, n_test=n, folds_sha256=meta["sha256"], folds_params={k: meta[k] for k in ("k", "n_q", "n_phi", "seed")},
+                chi2_raw_per_dof=ho["chi2_raw_per_dof"], heldout=ho, nll_mpol=nll_mpol, worst_match=worst, batch=batch, sparse_matrices=sparse,
+                device=str(device), dtype="float64", mocked=mocked, **prov, **load)
+
+
+TASKS = {"regularisers": regularisers, "loglike": loglike, "objective": objective, "export_checkpoint": export_checkpoint, "objective_full": objective_full, "asdf_vs_npz": asdf_vs_npz,
+         "export_fold_asdf": export_fold_asdf, "score_fold": score_fold}
 
 if __name__ == "__main__":
     task = json.load(open(sys.argv[1]))
