@@ -62,8 +62,10 @@ the CI job summary). Roots are listed in `src/evidence/__init__.py`;
 name the release commit, from a clean tree: regenerate them (or rerun the
 campaign) rather than mixing commits. `scripts/check_evidence_pin.py
 --release --expect <sha>` fails otherwise; `tests/test_evidence_pin.py` runs
-the same check as a tier B test under `VALIDATION_RELEASE=1`. Never edit a
-header to make it agree.
+the same check as a tier B test under `VALIDATION_RELEASE=1`. The gate also
+refuses a header that does not record `dirty`; `virgil.jsonl` is exempt
+(`"runner": "virgil-ci"`), because virgil's own CI is ingested from a fresh
+checkout at the sha and cannot record it. Never edit a header to make it agree.
 
 ## Verifying reviews
 

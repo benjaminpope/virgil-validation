@@ -18,9 +18,10 @@ import numpy as np
 import pytest
 from astropy.io import fits
 
-from crosscheck import oifits_writer
+from crosscheck import oifits_writer, sky
 
 pytest.importorskip("virgil.oifits")
+from virgil.models import BinaryModelCartesian  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 
 STATIONS = np.array([[0, 0, 0], [10, 0, 0], [3, 8, 0]], float)
@@ -64,6 +65,31 @@ def _baselines(data):
     return sorted(zip(np.round(np.asarray(data.u), 6), np.round(np.asarray(data.v), 6)))
 
 
+# An asymmetric binary (dra, ddec in mas, flux ratio) makes the closure phase
+# depend on the orientation of every leg: a leg matched to the right baseline
+# row but with the wrong sign would give another phase (20.8 deg, not -9.3).
+BINARY = (30.0, -20.0, 0.4)
+
+
+def _vis(a, b):
+    """The complex visibility of BINARY on baseline a -> b, from crosscheck.sky."""
+    u, v = _uv(a, b)
+    dra, ddec, flux = BINARY
+    return (sky.vis_point(u, v, WAVELENGTH) + flux * sky.vis_point(u, v, WAVELENGTH, dra, ddec)) / (1 + flux)
+
+
+def _expected_model():
+    """V^2 on the three baselines, then the closure phase (rad) of triangle (0, 1, 2)."""
+    v2 = [abs(_vis(*pair)) ** 2 for pair in [(0, 1), (1, 2), (0, 2)]]
+    return np.array(v2 + [np.angle(_vis(0, 1) * _vis(1, 2) * _vis(2, 0))])
+
+
+def _assert_model_is_the_binary(data):
+    model = np.asarray(data.model(BinaryModelCartesian(*BINARY)))
+    # float32 rounding of the wavelengths is 4e-5 in V^2; the wrong-sign leg is 0.5 rad off
+    np.testing.assert_allclose(model, _expected_model(), atol=1e-4)
+
+
 EXPECTED = sorted((round(float(_uv(a, b)[0]), 6), round(float(_uv(a, b)[1]), 6)) for a, b in [(0, 1), (1, 2), (0, 2)])
 
 
@@ -73,6 +99,7 @@ def test_legs_under_another_insname_with_equal_wavelengths_reuse_the_visibility_
     data, warned = _read(tmp_path / "a.fits")
     assert _baselines(data) == EXPECTED  # three baselines, not three plus three duplicate legs
     assert not warned
+    _assert_model_is_the_binary(data)  # and each leg reads its own row
 
 
 @pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], kind="regression")  # M108 control
@@ -85,8 +112,9 @@ def test_legs_at_different_wavelengths_are_not_matched(tmp_path):
 @pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], kind="regression")  # M109
 def test_a_reversed_visibility_baseline_matches_its_triangle_leg_silently(tmp_path):
     _write(tmp_path / "a.fits", vis_pairs=((0, 1), (1, 2), (2, 0)))
-    _, warned = _read(tmp_path / "a.fits")
+    data, warned = _read(tmp_path / "a.fits")
     assert not warned
+    _assert_model_is_the_binary(data)  # the leg takes the stored row with the sign it needs
 
 
 @pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], kind="regression")  # M109 control

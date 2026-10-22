@@ -15,15 +15,16 @@ spec.loader.exec_module(pin)
 A, B = "a" * 40, "b" * 40
 
 
-def _file(path, *runs):
-    path.write_text("".join(json.dumps({"record": "run", "virgil": r}) + "\n" for r in runs)
+def _file(path, *runs, runner=None):
+    path.write_text("".join(json.dumps({"record": "run", "virgil": r, "runner": runner}) + "\n" for r in runs)
                     + json.dumps({"record": "test", "test": "t"}) + "\n")
     return path
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_one_commit_across_files_passes(tmp_path):
-    f1, f2 = _file(tmp_path / "x.jsonl", {"commit": A}), _file(tmp_path / "y.jsonl", {"commit": A})
+    f1 = _file(tmp_path / "x.jsonl", {"commit": A, "dirty": False})
+    f2 = _file(tmp_path / "y.jsonl", {"commit": A, "dirty": False})
     assert pin.problems([f1, f2]) == []
     assert pin.problems([f1, f2], expect=A[:7], release=True) == []
 
@@ -45,6 +46,15 @@ def test_missing_commit_wrong_expected_and_dirty_fail(tmp_path):
     assert pin.problems([ok]) == []  # dirty is only refused for a release
     assert pin.problems([ok], release=True)
     assert pin.problems([_file(tmp_path / "b.jsonl", {"commit": A})], expect=B[:7])
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="control")
+def test_a_release_needs_the_dirty_state_unless_it_is_virgils_own_ci(tmp_path):
+    unrecorded = _file(tmp_path / "u.jsonl", {"commit": A})
+    assert pin.problems([unrecorded]) == []  # only a release asks for it
+    assert any("does not record" in p for p in pin.problems([unrecorded], release=True))
+    assert pin.problems([_file(tmp_path / "c.jsonl", {"commit": A, "dirty": False})], release=True) == []
+    assert pin.problems([_file(tmp_path / "v.jsonl", {"commit": A}, runner="virgil-ci")], release=True) == []
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard", tier="B")

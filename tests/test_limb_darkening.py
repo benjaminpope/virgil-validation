@@ -378,6 +378,10 @@ def test_noise_free_recovery(tmp_path, make):
     sizes = [np.atleast_1d(np.asarray(scene.truth[q], float)).size for q in paths]
     jac = _whitened_jacobian(scene, data, paths, sizes, truth)
     sigma = np.sqrt(np.diag(np.linalg.inv(jac.T @ jac)))
+    # sigma comes from virgil's residuals, so a degenerate or mis-scaled Fisher
+    # matrix must not loosen the bar: every error bar is finite and a small
+    # fraction of the parameter (measured: at most 6% of |truth|, for q1).
+    assert np.all(np.isfinite(sigma)) and np.all(sigma < 0.1 * np.abs(truth)), sigma / np.abs(truth)
     err_sigma = record("max_err_in_sigma", np.max(np.abs(got - truth) / sigma))
     assert err_sigma <= 1e-3, dict(zip(paths, np.abs(got - truth) / sigma))
 

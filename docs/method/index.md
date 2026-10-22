@@ -232,8 +232,11 @@ virgil release, every evidence file (`trust/evidence/latest.jsonl`,
 and carries a run header naming that one commit, from a clean tree.
 `scripts/check_evidence_pin.py --release --expect <sha>` (also the tier B
 test `tests/test_evidence_pin.py`, run with `VALIDATION_RELEASE=1`) fails
-when the headers name more than one commit. A Monte Carlo campaign too long
-to repeat is rerun, or its result is shown as stale rather than counted.
+when the headers name more than one commit, when a header does not record
+whether the tree was clean (virgil's own CI evidence is exempt: it is a fresh
+checkout at the sha), or when the run was dirty. A Monte Carlo campaign too
+long to repeat is rerun against the release commit; the gate has no "stale"
+status, so a campaign that was not rerun fails it.
 
 ### The trust graph
 

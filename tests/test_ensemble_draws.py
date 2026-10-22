@@ -43,26 +43,34 @@ def drawn():
 def test_each_draw_follows_the_spec(drawn):
     data, spec, draws = drawn
     assert sorted(d.index for d in draws) == list(range(len(draws)))
-    nyquist, fov = float(imaging.nyquist_pixel_scale(data)), float(imaging.field_of_view(data))
-    image_field = float(imaging.image_field(data))
+    nyquist = float(imaging.nyquist_pixel_scale(data))
     scales = np.array([nyquist / o for o in spec.oversample])
-    worst = 0.0
     for d in draws:
         assert d.family in spec.families and d.start in spec.starts
         assert len(d.weights) == spec.n_weights and list(d.weights) == sorted(d.weights, reverse=True)
         assert np.min(np.abs(scales - d.pixel_scale_mas)) < 1e-9 * nyquist
-        if d.npix < spec.max_npix:
-            # virgil 0.4: the fields are field_factors times image_field(data), capped at field_of_view(data)
-            fields = np.minimum(np.array(spec.field_factors) * image_field, fov)
-            gap = np.min(np.abs(fields / d.pixel_scale_mas - d.npix))
-            worst = max(worst, gap)
-    record("max_field_gap_pixels", worst)
-    assert worst <= 1.0
     # every family and start is drawn (uniformly: chi-squared test of the counts)
     counts = np.array([sum(d.family == f for d in draws) for f in spec.families])
     assert stats.chisquare(counts).pvalue > 1e-3
     start_counts = np.array([sum(d.start == st for d in draws) for st in spec.starts])
     assert stats.chisquare(start_counts).pvalue > 1e-3
+
+
+@pytest.mark.validates("virgil.ensemble.draw_groups", "virgil.ensemble.EnsembleSpec", roots=["self-consistency"])
+def test_each_draws_field_is_a_spec_factor_of_the_image_field(drawn):
+    """virgil 0.4: the fields are field_factors times image_field(data), capped at
+    field_of_view(data). Both come from virgil, so this only checks that the draws
+    follow the spec's rule, not that image_field is right."""
+    data, spec, draws = drawn
+    fov = float(imaging.field_of_view(data))
+    image_field = float(imaging.image_field(data))
+    fields = np.minimum(np.array(spec.field_factors) * image_field, fov)
+    worst = 0.0
+    for d in draws:
+        if d.npix < spec.max_npix:
+            worst = max(worst, np.min(np.abs(fields / d.pixel_scale_mas - d.npix)))
+    record("max_field_gap_pixels", worst)
+    assert worst <= 1.0
 
 
 @pytest.mark.validates("virgil.ensemble.draw_groups", "virgil.ensemble.EnsembleSpec", roots=["statistics"])

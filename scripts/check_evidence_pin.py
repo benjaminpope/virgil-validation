@@ -11,7 +11,9 @@ commit (AGENTS.md, "Evidence records") and run
 It exits 1, listing each file's commit(s), when the headers disagree, when a
 header has no commit, or (with ``--expect``) when the single commit is not the
 one given (a prefix of at least 7 characters is enough). ``--release`` also
-refuses ``dirty`` runs; without it the check still requires one commit.
+refuses ``dirty`` runs and runs that do not record it (except virgil's own CI,
+``"runner": "virgil-ci"``, a fresh checkout at the sha); without it the check
+still requires one commit.
 Kept apart from scripts/trust.py, which only reads the evidence.
 """
 
@@ -21,10 +23,14 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# virgil's own CI evidence (virgil.jsonl) is ingested from a run at a pinned
+# sha of a fresh checkout and cannot record ``dirty``; every other file must.
+CI_RUNNER = "virgil-ci"
 
 
 def headers(path):
-    """(commit or None, dirty) for every run header of an evidence file."""
+    """(commit or None, dirty, runner) for every run header of an evidence file;
+    ``dirty`` is None when the header does not record it."""
     out = []
     for line in pathlib.Path(path).read_text().splitlines():
         if not line.strip():
@@ -32,7 +38,7 @@ def headers(path):
         rec = json.loads(line)
         if rec.get("record") == "run":
             v = rec.get("virgil") or {}
-            out.append((v.get("commit"), bool(v.get("dirty"))))
+            out.append((v.get("commit"), v.get("dirty"), rec.get("runner")))
     return out
 
 
@@ -43,13 +49,15 @@ def problems(paths, expect=None, release=False):
         runs = headers(path)
         if not runs:
             bad.append(f"{path.name}: no run header")
-        for commit, dirty in runs:
+        for commit, dirty, runner in runs:
             if not commit:
                 bad.append(f"{path.name}: a run header names no virgil commit")
                 continue
             found.setdefault(commit, set()).add(path.name)
             if release and dirty:
                 bad.append(f"{path.name}: run at {commit[:7]} was on a dirty virgil tree")
+            elif release and dirty is None and runner != CI_RUNNER:
+                bad.append(f"{path.name}: run at {commit[:7]} does not record whether the virgil tree was dirty")
     if len(found) > 1:
         bad.append("evidence names more than one virgil commit: " + "; ".join(
             f"{c[:7]} in {', '.join(sorted(f))}" for c, f in sorted(found.items())))
