@@ -98,6 +98,7 @@ so the convolution gives √(33² + 26²) = 42 mas in both directions: Table 4's
 | major cycle | degrid/regrid, w-projection off | exact nufftax model and adjoint | ours is more accurate; differences ≪ noise |
 | PSF in minor cycle | a fraction of the PSF image | a ±256 px window | residual error is removed at each major cycle |
 | field | 4000² × 3 mas | 3001² × 3 mas (9″; `--npix`) | none inside the mask (2.75″ semi-major); the noise annulus is clipped to our field |
+| cycle threshold | `max(threshold, clip(cyclefactor·maxpsfsidelobe, 0.05, 0.8)·peak)` | the same clip; `maxpsfsidelobe` = largest \|PSF\| outside the main lobe taken as the connected positive region around the peak (CASA's definition is its own; on a dense PSF this region may include positive sidelobes and read low, so the minor cycles can run deeper against the windowed PSF) | iteration counts and the component mix can differ; major cycles keep the residual exact |
 | `cycleniter`/`niter` | 300/50000 | same; `--time-limit` stops after a major cycle | a run cut by the time limit is not at the threshold: `clean.json` says `stop` |
 | imaging weights | the MS weights, CASA's density | the npz `weight` as read from the MS, virgil's density (same Briggs formula, same cell) | none expected; neither applies the model-free ŝ error rescaling |
 | data | MS (CORRECTED_DATA) | npz of `alma_imlup_read` 15fecaa-cd (agrees with MPoL's export to 5.6e-8 Jy) | none |

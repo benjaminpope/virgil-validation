@@ -199,7 +199,7 @@ def clean(imager, *, scales_pix, mask, gain, bias, threshold, niter, cycleniter,
         if time_limit and time.time() - t0 > time_limit:
             stop = "time_limit"
             break
-        cyc = max(threshold, cyclefactor * side * peak)
+        cyc = max(threshold, min(max(cyclefactor * side, 0.05), 0.8) * peak)  # tclean's minpsffraction/maxpsffraction
         inc, n, _ = ac.multiscale_minor(resid, psf, scales_pix, mask, gain=gain, niter=min(cycleniter, niter - total), threshold=cyc, bias=bias, patch=patch)
         if n == 0:
             stop = "no_progress"
@@ -312,6 +312,8 @@ def compare(clean_dir, dsharp_path, out):
     flip = lambda a: a[::-1]  # noqa: E731  to row 0 North, the convention of crosscheck.alma_clean
     d_n, o_n, cover_n = flip(d), flip(ours_d), flip(cover)
     centre_n = (d.shape[0] - 1 - centre_d[0], centre_d[1])
+    xp, yp = w_d.all_world2pix([RA_DEG], [DEC_DEG], 0)  # the phase centre: a sign or conjugation error of the transform rotates the image about it
+    phase_n = (d.shape[0] - 1 - float(yp[0]), float(xp[0]))
     mask_d = ac.ellipse_mask(d.shape, centre_n, m["semimajor_arcsec"] * 1000 / px_d, m["semiminor_arcsec"] * 1000 / px_d, m["pa_deg"])
     mask_in = mask_d & cover_n
     # the noise annulus of DSHARP's script (annulus[[mask centre], [1.1 x the mask's semi-major axis, 5.75 arcsec]]), where our field covers it
@@ -333,8 +335,9 @@ def compare(clean_dir, dsharp_path, out):
     # orientation check: the identity beats any reflection of our image against DSHARP's
     corr = {}
     for name, f in (("identity", lambda a: a), ("flip_east_west", lambda a: a[:, ::-1]), ("flip_north_south", lambda a: a[::-1]), ("rot180", lambda a: a[::-1, ::-1])):
-        corr[name] = float(np.corrcoef(f(o_n)[mask_in].ravel(), d_n[mask_in].ravel())[0, 1]) if name == "identity" else float(_reflected_corr(o_n, d_n, centre_n, name, mask_in))
+        corr[name] = float(np.corrcoef(f(o_n)[mask_in].ravel(), d_n[mask_in].ravel())[0, 1]) if name == "identity" else float(_reflected_corr(o_n, d_n, phase_n, name, mask_in))
     stats["orientation_correlation"] = corr
+    stats["orientation_ok"] = bool(corr["identity"] > max(v for k, v in corr.items() if k != "identity"))
     # centroid of the brightness inside the mask, in mas East and North (ours - DSHARP's)
     def centroid(a):
         rr, cc = np.indices(a.shape, dtype=float)
@@ -356,8 +359,9 @@ def compare(clean_dir, dsharp_path, out):
 
 
 def _reflected_corr(o_n, d_n, centre, name, region):
-    """Correlation of DSHARP's image with a reflection of ours about the mask centre (so that a reflected copy of the same
-    disc stays on top of it); pixels the reflection takes outside the image count as zero."""
+    """Correlation of DSHARP's image with a reflection of ours about ``centre``, the phase centre: a V -> V* or u -> -u error
+    of the transform reflects the image about it, so it moves a disc that is off the phase centre (IM Lup's is ~0.17 arcsec off)
+    by twice that offset; pixels the reflection takes outside the image count as zero."""
     r0, c0 = round(centre[0]), round(centre[1])
     h, w = o_n.shape
     rr, cc = np.indices(o_n.shape)
@@ -433,8 +437,8 @@ def _summary(path, s, run):
         f"CLEAN model flux {s['model_flux_jy']} Jy. Difference image on DSHARP's grid (where our field covers it): rms/peak {s['difference']['rms_over_peak']:.4f}, max |diff|/peak {s['difference']['max_abs_over_peak']:.4f}, correlation {s['difference']['correlation']:.5f}; inside the mask: rms/peak {s['difference_in_mask']['rms_over_peak']:.4f}, correlation {s['difference_in_mask']['correlation']:.5f}.",
         f"Radial-profile rms difference / peak: {s['radial_profile_rms_diff_over_peak']:.4f}. Centroid offset (ours − DSHARP): {s['centroid_offset_mas_east_north'][0]:.3f} mas East, {s['centroid_offset_mas_east_north'][1]:.3f} mas North.",
         "",
-        "Orientation check (correlation inside the mask of DSHARP with our image and with its reflections about the mask centre): "
-        + ", ".join(f"{k} {v:.4f}" for k, v in s["orientation_correlation"].items()) + ". The identity must be the largest.",
+        "Orientation check (correlation inside the mask of DSHARP with our image and with its reflections about the phase centre): "
+        + ", ".join(f"{k} {v:.4f}" for k, v in s["orientation_correlation"].items()) + ". The identity must be the largest" + ("." if s.get("orientation_ok", True) else ": **IT IS NOT: the image may be reflected or conjugated.**"),
         "",
         "![comparison](compare.png)",
         "",

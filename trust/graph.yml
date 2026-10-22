@@ -128,6 +128,8 @@ nodes:
     depends: [virgil.radio.ComplexVisData]
     properties: {conjugation: 1}  # DATA is conj(V) at u = +UVW[0] nu / c: CASA's own prediction
     doc: alma_conventions.md
+  virgil.radio.ComplexVisData.dirty_image: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil.radio_clean.clean: {layer: imaging, source: [src/virgil/radio_clean.py], depends: [virgil.radio.ComplexVisData, virgil.radio.ComplexVisData.dirty_image, virgil.radio.ComplexVisData.model]}
   virgil.radio.CalibrationNuisance: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
   virgil.radio.ComplexVisData.model:
     layer: likelihood
@@ -544,6 +546,7 @@ nodes:
   external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4)
   virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
   virgil_bridge.alma: {layer: references, doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
+  crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
   mpol: {layer: references, doc: alma_conventions.md}  # the external package itself (problems P11, P12)
   external_bridge.pmoired_models: {layer: references}

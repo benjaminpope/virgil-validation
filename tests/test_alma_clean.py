@@ -24,7 +24,7 @@ def _psf(n=129, bmaj=7.0, bmin=4.0, pa=30.0, side=0.1, cos=True):
     return main - side * np.exp(-(((r - 14.0) / 3.0) ** 2)) * (np.cos(0.5 * (cc - c)) if cos else 1.0)
 
 
-@pytest.mark.validates("crosscheck.alma_clean.fit_beam", roots=["mathematics"])
+@pytest.mark.validates("crosscheck.alma_clean", roots=["mathematics"])
 @pytest.mark.parametrize("pa", [0.0, 30.0, 95.0, 160.0])
 def test_beam_fit_recovers_analytic_gaussian(pa):
     """The fit of an exact Gaussian PSF returns its FWHM and position angle, on an even and an odd grid."""
@@ -38,14 +38,14 @@ def test_beam_fit_recovers_analytic_gaussian(pa):
         assert centre == pytest.approx((c, c), abs=1e-3)
 
 
-@pytest.mark.validates("crosscheck.alma_clean.fit_beam", roots=["mathematics"])
+@pytest.mark.validates("crosscheck.alma_clean", roots=["mathematics"])
 def test_beam_fit_ignores_sidelobes_and_orients_major_axis():
     a, b, p, _ = ac.fit_beam(_psf(), pixel_mas=1.0)
     assert a == pytest.approx(7.0, rel=0.03) and b == pytest.approx(4.0, rel=0.03) and p == pytest.approx(30.0, abs=3.0)
     assert ac.sidelobe_level(_psf()) == pytest.approx(0.1, rel=0.1)
 
 
-@pytest.mark.validates("crosscheck.alma_clean.multiscale_minor", roots=["mathematics"])
+@pytest.mark.validates("crosscheck.alma_clean", roots=["mathematics"])
 def test_minor_cycle_recovers_point_and_gaussian():
     """A point source and a broad Gaussian blob, dirty image = model * PSF exactly: the cycle finds the point at its pixel with
     its flux, the blob at its scale, and drives the residual to the threshold."""
@@ -70,7 +70,7 @@ def test_minor_cycle_recovers_point_and_gaussian():
     assert np.abs(resid[mask]).max() < 5e-3
 
 
-@pytest.mark.validates("crosscheck.alma_clean.restore", roots=["mathematics"])
+@pytest.mark.validates("crosscheck.alma_clean", roots=["mathematics"])
 def test_restore_puts_a_point_at_its_pixel_with_unit_peak():
     n = 65
     model = np.zeros((n, n))
@@ -81,13 +81,48 @@ def test_restore_puts_a_point_at_its_pixel_with_unit_peak():
     assert out.sum() == pytest.approx(2.0 * np.pi * 6.0 * 4.0 / (4 * np.log(2)), rel=1e-3)
 
 
-@pytest.mark.validates("crosscheck.alma_clean.uv_taper", roots=["mathematics"])
+@pytest.mark.validates("crosscheck.alma_clean", roots=["mathematics"])
 def test_taper_is_the_transform_of_the_image_plane_gaussian():
     q = np.array([0.0, 1e6, 2e6])
     t = ac.uv_taper(q, 0 * q, 40.0, 40.0, 0.0)  # circular
     assert t[0] == 1.0 and t[1] == pytest.approx(np.exp(-((np.pi * 40 * ac.MAS * 1e6) ** 2) / (4 * np.log(2))))
     # the major axis at PA 90 (East) is along u: the narrow-in-uv direction
     assert ac.uv_taper(1e6, 0.0, 60.0, 20.0, 90.0) < ac.uv_taper(0.0, 1e6, 60.0, 20.0, 90.0)
+
+
+@pytest.mark.validates("crosscheck.alma_clean", roots=["mathematics"])
+def test_position_angle_is_east_of_north_by_hand():
+    """Hand-built from sky offsets (East = smaller column, North = smaller row): a lobe elongated towards the North-East is PA 45,
+    not 135, for ``fit_beam`` and ``ellipse_mask``, so the BPA and DSHARP's mask (PA 145) are not mirrored."""
+    n, c = 65, 32
+    rr, cc = np.indices((n, n), dtype=float)
+    east, north = c - cc, c - rr
+    ne, nw = (east + north) / np.sqrt(2), (east - north) / np.sqrt(2)  # along the NE-SW diagonal, along the NW-SE one
+    psf = np.exp(-4 * np.log(2) * ((ne / 9.0) ** 2 + (nw / 5.0) ** 2))
+    a, b, pa, _ = ac.fit_beam(psf, pixel_mas=1.0)
+    assert (a, b) == pytest.approx((9.0, 5.0), rel=0.01) and pa == pytest.approx(45.0, abs=0.5)
+    m45 = ac.ellipse_mask((n, n), (c, c), 12, 4, 45.0)
+    m135 = ac.ellipse_mask((n, n), (c, c), 12, 4, 135.0)
+    assert m45[c - 6, c - 6] and not m135[c - 6, c - 6]  # a pixel to the North-East
+    assert m135[c - 6, c + 6] and not m45[c - 6, c + 6]  # and one to the North-West
+
+
+@pytest.mark.validates("crosscheck.alma_clean", roots=["mathematics"])
+@pytest.mark.parametrize("pa", [30.0, 137.53])
+def test_taper_position_angle_against_a_direct_dft(pa):
+    """The taper at an oblique PA is the discrete transform of an image-plane Gaussian built by hand from sky offsets (major axis
+    East*sin(PA) + North*cos(PA)); the mirror point u -> -u differs."""
+    n, px = 257, 4.0
+    x = (np.arange(n) - (n - 1) / 2) * px  # offsets in mas
+    dra, ddec = np.meshgrid(x, x, indexing="xy")
+    p = np.deg2rad(pa)
+    along, across = dra * np.sin(p) + ddec * np.cos(p), dra * np.cos(p) - ddec * np.sin(p)
+    g = np.exp(-4 * np.log(2) * ((along / 60.0) ** 2 + (across / 25.0) ** 2))
+    q = 1e6
+    for u, v in ((q * np.sin(p), q * np.cos(p)), (q * np.cos(p), -q * np.sin(p)), (-q * np.sin(p), q * np.cos(p))):
+        dft = (g * np.exp(-2j * np.pi * (u * dra * ac.MAS + v * ddec * ac.MAS))).sum() / g.sum()
+        assert ac.uv_taper(u, v, 60.0, 25.0, pa) == pytest.approx(dft.real, abs=2e-3)
+    assert abs(ac.uv_taper(q * np.sin(p), q * np.cos(p), 60.0, 25.0, pa) - ac.uv_taper(-q * np.sin(p), q * np.cos(p), 60.0, 25.0, pa)) > 0.05
 
 
 # ------------------------------------------------------------- with virgil
@@ -119,10 +154,11 @@ def _run(data, npix=65, pixel_mas=20.0, taper=None, scales=(0, 4), threshold=2e-
     return imager, script.clean(imager, scales_pix=list(scales), mask=mask, gain=0.1, bias=0.6, threshold=threshold, niter=3000, cycleniter=300, cyclefactor=1.0, patch=32, time_limit=0, log=lambda *a: None, **kw)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
 def test_cotton_schwab_recovers_point_sources():
     """Two point sources on pixel centres: the model puts their fluxes on those pixels (the exact major cycle removes the PSF
-    approximation of the minor cycles) and the restored image peaks on them."""
+    approximation of the minor cycles) and the restored image peaks on them. The flux pins ``ComplexVisData.model``'s scale (the PSF
+    normalisation cancels a scale error of ``dirty_image``); of ``dirty_image`` it pins the geometry: orientation, phase-centre pixel, pixel scale."""
     truth = [(36, 28, 0.20), (25, 40, 0.08)]  # (row, col, Jy)
     data = _data(truth=truth)
     imager, res = _run(data)
@@ -139,10 +175,11 @@ def test_cotton_schwab_recovers_point_sources():
     assert res["history"][-1]["peak_residual_jy"] < 2e-3
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
 def test_cotton_schwab_recovers_a_gaussian_with_the_taper():
     """A Gaussian of 5-pixel FWHM through the uv taper: the restored image has the tapered beam, peak and flux of the
-    Gaussian convolved with it, and the model carries the source's flux."""
+    Gaussian convolved with it, and the model carries the source's flux; the loop converges to the threshold, and the beam has the
+    taper's position angle (as for ``dirty_image``, geometry only for that part)."""
     npix, px = 65, 20.0
     c = (npix - 1) / 2
     rows, cols = np.mgrid[:npix, :npix]
@@ -152,7 +189,7 @@ def test_cotton_schwab_recovers_a_gaussian_with_the_taper():
     data = _data(n=4000, truth=truth, seed=4)
     taper = (60.0, 40.0, 20.0)
     imager, res = _run(data, taper=taper, scales=(0, 5, 10), threshold=1.5e-3)
-    assert res["stop"] in ("threshold", "niter")
+    assert res["stop"] == "threshold" and res["history"][-1]["peak_residual_jy"] < 1.5e-3
     assert res["model"].sum() == pytest.approx(0.3, rel=0.06)
     bmaj, bmin, pa = res["beam"]
     img = ac.restore(res["model"], res["residual"], (bmaj / px, bmin / px, pa))
@@ -162,6 +199,8 @@ def test_cotton_schwab_recovers_a_gaussian_with_the_taper():
     assert img.max() == pytest.approx(expect, rel=0.08)
     # the PSF's main lobe is wider than the untapered one in the taper's direction: the beam exceeds the taper's own size
     assert bmaj > 60.0 * 0.9 and bmin > 40.0 * 0.9
+    assert abs((pa - 20.0 + 90) % 180 - 90) < 5.0  # the uv coverage is isotropic: the beam follows the taper (not its mirror, 160 deg)
+    assert bmaj / bmin > 1.1
     assert np.unravel_index(np.argmax(img), img.shape) == pytest.approx((int(c + 4), int(c - 3)), abs=1.5)
 
 
