@@ -167,6 +167,12 @@ TASKS = [
          field_source="2016 contest page, 9 May 2016: FOV 0.4 arcsec"),
 ]
 
+# 2010 Low HK, one task per channel (the winners' per-channel imaging): channel k is
+# centred 1.521375 + 0.0475 (k - 1) µm, window ±0.019 (OI_WAVELENGTH; width 0.0475); labels 2010_ch01..2010_ch20.
+# Run with --prior gp --init clean --systematics block_scales (docs/contest_2010_calibration.md).
+TASKS += [dict(label=f"2010_ch{k:02d}", files=["2010/Mystery-Low_HK.oifits"],
+               wavel=(1.502375 + 0.0475 * (k - 1), 1.540375 + 0.0475 * (k - 1))) for k in range(1, 21)]
+
 WEIGHTS = np.logspace(4.0, 0.0, 13)  # strong to weak
 MAX_PIX = 256  # pixels on a side; larger fields get coarser pixels
 JACOBIAN_BUDGET = 2.0e8  # data points x pixels, about 3 GB per complex128 Jacobian
@@ -1869,6 +1875,30 @@ def systematics_scan(s, smoke, gains=None, closure=None):
     return best[1], scan
 
 
+def quadrature_floor(r, sigma):
+    """The f >= 0 with sum r²σ²/(σ²+f²) = N for whitened residuals ``r`` of errors ``sigma``
+    (the data's units): error bars σ -> √(σ²+f²) that make χ²/N = 1; 0 if it is already <= 1."""
+    from scipy import optimize
+
+    r, sigma = np.ravel(r), np.ravel(sigma)
+    excess = lambda log_f: np.sum((r * sigma) ** 2 / (sigma**2 + np.exp(2 * log_f))) - r.size  # noqa: E731
+    if excess(-np.inf) <= 0:
+        return 0.0
+    return float(np.exp(optimize.brentq(excess, np.log(np.min(sigma)) - 20.0, np.log(np.max(np.abs(r * sigma)) + np.max(sigma)))))
+
+
+def calibration_report(model, quoted, scales):
+    """The calibration estimated from one fit, for the summary: RAW χ²/N on the quoted errors (V² and
+    closure phases) first, the block ``scales`` and a V² quadrature floor next to them, and the χ²/N
+    with the rescaled errors, which is tautological (about 1 by construction, never a success criterion)."""
+    out = {"scales": {k: float(v) for k, v in scales.items()}, "raw": residual_diagnostics(model, quoted),
+           "rescaled": residual_diagnostics(model, rescale(quoted, scales)), "v2_floor": []}
+    for d in quoted if isinstance(quoted, list) else [quoted]:
+        nv = int(np.asarray(d.vis).size)
+        out["v2_floor"].append(quadrature_floor(np.asarray(whitened_residuals(model, d))[:nv], np.asarray(d.d_vis)))
+    return out
+
+
 def estimate_block_scales(s, smoke):
     """Per-observable error scales from a GP fit of ``s`` on the gains-free
     data (printing its raw χ²/N first); s["data"] becomes the rescaled data,
@@ -1880,6 +1910,9 @@ def estimate_block_scales(s, smoke):
     scales = error_scale(g["winner"].model, quoted, by_observable=True)
     print(f"block error scales {scales}", flush=True)
     s.update(quoted=quoted, error_scales=scales, data=rescale(quoted, scales))
+    s["calibration"] = calibration_report(g["winner"].model, quoted, scales)
+    print(f"calibration (raw V²/CP χ²/N first; the rescaled χ²/N is tautological, not a success criterion): "
+          f"{s['calibration']}", flush=True)
     return scales
 
 
@@ -2020,12 +2053,13 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
                         template=template, informed=bool(informed), partial=False,
                         systematics=json.dumps(s.get("systematics")), systematics_scan=json.dumps(scan, default=float),
                         systematics_mode=systematics, error_scales=json.dumps(s.get("error_scales")),
+                        calibration=json.dumps(s.get("calibration")),
                         point_sources=json.dumps(s.get("point_record"), default=float),
                         raw_chi2_red=chi2_red(winner.model, data))
     lines = [f"task={task} label={label} star={star} star_rejected={s['star_rejected'] or None} halo={halo} init={init} "
              f"field_source={s['field_source']} growth={growth}", informed_line(informed),
              f"raw chi2/N={chi2_red(winner.model, data):.4g} (quoted errors, no nuisances) mode={systematics} "
-             f"widths={s.get('systematics')} error_scales={s.get('error_scales')} "
+             f"widths={s.get('systematics')} error_scales={s.get('error_scales')} calibration={s.get('calibration')} "
              f"scan={scan} point_sources={s.get('point_record')}",
              f"points={s['npts']} npix={n} pixel={pixel:.4g} mas fov={fov:.4g} mas beam={res.major_mas:.3g}x{res.minor_mas:.3g} mas",
              f"ellipse fit: chi2/N={ell[0]:.4g} ratio={ell[1]:.3f} pa={ell[2]:.1f} deg fwhm={ell[3]:.3g} mas",
@@ -2041,7 +2075,7 @@ def run_gp(task, data_dir, out_dir, smoke=False, halo=False, star=None, init="mo
         lines.append(f"best {name}: ℓ={ls[i]:.4g} σ={ss[j]} log_z={g_[i, j]:.2f} chi2/N={float(np.sum(rr.info['chi2_red'])):.3f} converged={rr.info.get('converged')}")
     lines.append(f"residuals of the winner={residual_diagnostics(winner.model, data)}")
     lines.append(f"N={n_indep} gamma={gamma:.1f} N-gamma={n_indep - gamma:.1f}")
-    lines.append(f"chi2/N={chi2_winner / n_indep:.4g} (quoted errors), error_scale={scale:.3f}"
+    lines.append(f"chi2/N={chi2_winner / n_indep:.4g} ({'RESCALED errors: tautological' if s.get('error_scales') else 'quoted errors'}), error_scale={scale:.3f}"
                  + (f" -> refit with rescaled errors: log_z={rescaled['log_z']:.2f} chi2/N={rescaled['chi2_red']:.3f}" if rescaled else " (within 1.3x: kept)"))
     if settings is not None:
         lines.append(f"member settings={settings}")
