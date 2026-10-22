@@ -89,7 +89,8 @@ def lam_of(args, n):
 
 def stage_summary(name, info, traj, wall, why):
     return dict(name=name, steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"],
-                wall_s=wall, convergence=va.convergence(traj, info), loss_final=info["loss"], trajectory=traj)
+                wall_s=wall, convergence=va.convergence(traj, info), loss_final=info["loss"], trajectory=traj,
+                precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []), restarts=info.get("restarts", []))
 
 
 def run_stages(args, data, prob_for, init_dir, save=None):
@@ -130,7 +131,7 @@ def run_stages(args, data, prob_for, init_dir, save=None):
                 part = stage_summary(name, info, traj, time.time() - t, "in_progress")
                 save(prob, {k: np.asarray(v) for k, v in vals.items()}, stages + [dict(part, in_progress=True)])
 
-        out, info, traj, why = va.run_fit_c8(prob, values, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round)
+        out, info, traj, why = va.run_fit_c8(prob, values, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
         stages.append(stage_summary(name, info, traj, time.time() - t, why))
         say(f"stage {name}: stopped because {why} after {info['steps']} steps in {info['rounds']} rounds; C8 converged: {stages[-1]['convergence']['converged']}")
         values = {k: jnp.asarray(v) for k, v in out.items()}
@@ -600,6 +601,8 @@ def main(argv=None):
             p.add_argument("--max-steps", type=int, default=20000, help="step budget per stage (the stage stops earlier when C8 holds)")
             p.add_argument("--time-limit", type=float, default=18000.0, help="seconds per stage (default 5 h)")
             p.add_argument("--gtol", type=float, default=1e-4, help="fit's gradient test; restarts tighten it until C8 holds")
+            p.add_argument("--precondition", choices=["none", "diag"], default="none", help="virgil.fit's diagonal Gauss-Newton scaling of L-BFGS (needs a virgil that has it); "
+                           "the stage summary records its per-round stats, each restart's steps and wall time")
             p.add_argument("--chunk-size", type=int, default=va.CHUNK, help="points per model evaluation (the fit's term and every score)")
             p.add_argument("--offset-bound-mas", type=float, default=None, help="R, F: bound ±X (mas) of the offsets' uniform prior (default: virgil's own ±1/(2 q_min), ~1e4 mas for IM Lup); "
                            "a flat prior is unchanged inside any bound, but the optimiser's logit coordinate is far better conditioned at, say, 100; `report` warns if an offset ends within 5% of it")

@@ -387,11 +387,21 @@ def mpol_start_values(prob):
     return v
 
 
-def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4):
+def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None):
     """L-BFGS through ``virgil.fit`` (C8). Returns ``(values, info, trajectory)``: the fitted values as
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
-    steps. The loss is in -ln L units up to the constant of the priors' normalisation."""
+    steps. The loss is in -ln L units up to the constant of the priors' normalisation. ``precondition`` (``"diag"``
+    or None) is ``virgil.fit``'s opt-in diagonal Gauss-Newton scaling; it needs a virgil that has the argument."""
+    import inspect
+
     from virgil import fit
+
+    kw = {}
+    if precondition not in (None, "none"):
+        if "precondition" not in inspect.signature(fit).parameters:
+            raise RuntimeError(f"precondition={precondition!r} needs a virgil whose fit() has the precondition argument "
+                               "(virgil >= the release that includes fit(precondition=...)); the installed one has not")
+        kw["precondition"] = precondition
 
     traj = []
 
@@ -403,14 +413,15 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
     with ft_eps(eps), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="lbfgs",
-                  max_steps=max_steps, time_limit=time_limit, progress=progress, gtol=gtol)
+                  max_steps=max_steps, time_limit=time_limit, progress=progress, gtol=gtol, **kw)
     values = {k: np.asarray(v) for k, v in res.values.items()}
     info = {k: (v.item() if hasattr(v, "item") else v) for k, v in res.info.items() if np.ndim(v) == 0}
-    info.update({k: np.asarray(v).tolist() for k, v in res.info.items() if np.ndim(v) > 0})
+    info.update({k: np.asarray(v).tolist() for k, v in res.info.items() if np.ndim(v) > 0 and k != "precondition_rounds"})
+    info["precondition_rounds"] = [{k: float(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])]
     return values, info, traj
 
 
-def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, on_round=None, max_rounds=50):
+def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, on_round=None, max_rounds=50, precondition=None):
     """L-BFGS through ``virgil.fit`` until C8 holds (loss change < 0.1 over >= 100 steps), the step or the time
     budget (``max_steps`` and ``time_limit``, per call) runs out, or the optimiser can go no further.
 
@@ -426,20 +437,24 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
     import time
 
     t0, total, traj, values, why, idle = time.time(), 0, [], init, "max_rounds", 0
+    pc_rounds, restarts = [], []  # the diagonal scaling's per-L-BFGS-round stats and each restart's steps and wall time
     info = dict(steps=0, rounds=0, stop="time", loss=float("nan"), converged=False)
     for rnd in range(1, max_rounds + 1):
         left = time_limit - (time.time() - t0) if time_limit is not None else None
         if left is not None and left <= 0:
             why = "time_limit"
             break
-        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol)
+        t_fit = time.time()
+        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, **({} if precondition is None else {"precondition": precondition}))
         steps = int(info["steps"])
+        pc_rounds += info.get("precondition_rounds", [])
+        restarts.append(dict(steps=steps, wall_s=time.time() - t_fit, loss=float(info["loss"])))
         for t in part:
             traj.append({**t, "steps": t["steps"] + total, "round": rnd})
         if not traj or traj[-1]["steps"] != total + steps:  # a closing record (also for a round of 0 steps)
             traj.append(dict(steps=float(total + steps), loss=float(info["loss"]), grad_norm=float(info.get("grad_norm", np.nan)), elapsed=time.time() - t0, round=rnd))
         total += steps
-        info = {**info, "steps": total, "rounds": rnd}
+        info = {**info, "steps": total, "rounds": rnd, "precondition": precondition, "precondition_rounds": pc_rounds, "restarts": restarts}
         stop = info.get("stop")
         finite = np.isfinite(float(info["loss"])) and all(np.all(np.isfinite(v)) for v in values.values())
         if not finite or stop == "non-finite":  # never overwrite the last good save with NaNs

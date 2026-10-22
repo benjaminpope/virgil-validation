@@ -170,6 +170,28 @@ def test_c8_loop_goes_further_than_fits_own_loose_test(syn):
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+def test_precondition_needs_a_virgil_that_has_it_and_is_recorded_when_it_does(syn, monkeypatch):
+    """``precondition="diag"`` raises a clear error on a virgil whose fit() lacks the argument; with one that has it the
+    C8 loop records the scaling's per-round stats and each restart's steps and wall time."""
+    import inspect
+
+    import virgil
+
+    data = va.load_dir(syn)
+    prob = va.build_problem(data, "R", lam=0.5, npix=16)
+    start = va.start_values(prob)
+    if "precondition" not in inspect.signature(virgil.fit).parameters:
+        with pytest.raises(RuntimeError, match="precondition"):
+            va.run_fit(prob, start, max_steps=10, precondition="diag")
+        return
+    _, info, _, _ = va.run_fit_c8(prob, start, max_steps=300, precondition="diag")
+    assert info["precondition"] == "diag" and info["precondition_rounds"] and info["restarts"]
+    _, plain, _, _ = va.run_fit_c8(prob, start, max_steps=50)
+    assert plain["precondition_rounds"] == [] and plain["precondition"] is None
+    monkeypatch.setattr(virgil, "fit", lambda model, priors, data, **kw: virgil.__dict__["fit"])  # unused
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
 def test_c8_needs_100_steps_and_a_bad_round_is_not_saved(monkeypatch):
     """Short rounds (30 steps each, loss still) are not C8 (window under 100 steps); a non-finite round stops the loop without
     calling ``on_round`` (no NaN save); a time limit already spent returns instead of raising; virgil's real ``time`` stop
