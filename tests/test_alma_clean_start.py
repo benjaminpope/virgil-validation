@@ -85,7 +85,7 @@ def test_regrid_cut_out_keeps_the_flux_inside_the_field_and_upsampling_is_exact_
     assert np.max(np.abs(up[sl, sl] / exact[sl, sl] - up[10, 10] / exact[10, 10])) < 1e-12
 
 
-@pytest.mark.validates("virgil_bridge.alma_start.clean_start", roots=["mathematics"])
+@pytest.mark.validates("crosscheck.alma_maxent.convolve", roots=["mathematics"], kind="reference")
 def test_the_beam_convolution_uses_cleans_own_position_angle():
     """``crosscheck.alma_maxent.convolve`` of a point source with an elliptical beam is ``alma_clean.gaussian_image`` (the kernel of CLEAN's
     ``restore``) at the same PA: the start image is smoothed with the beam CLEAN restored with, not its mirror image."""
@@ -163,17 +163,92 @@ def test_workflow_clean_runs_selfcal_then_all_from_the_clean_image_and_records_i
     assert set(chk) >= {"gain_min", "gain_max", "gain_lb_obs5_6", "gain_outside_reference", "flux_jy"}
     for k in ("nll", "chi2_raw", "objective_R", "gain", "offset_mas", "sigma", "chi2_s1", "flux_jy"):
         assert k in r and r[k] is not None
-    # the held image: the saved image after the selfcal stage is the start's; stage `all` then moves it
     model, px, beam, _ = vs.read_clean(d)
     eta, _, _ = vs.clean_start(model, px, beam, npix=32, pixel_mas=5.0)
-    z = np.load(out / "values.npz")
-    assert np.max(np.abs(z["log_brightness"] - eta)) > 0  # released in `all`
+    assert np.max(np.abs(np.load(out / "values.npz")["log_brightness"] - eta)) > 0  # released in `all`
     with pytest.raises(SystemExit):
         _call("fit", "--config", "R", "--workflow", "clean", "--data", syn, "--out", tmp_path / "x")  # no --clean-dir
     with pytest.raises(SystemExit):
         _call("fit", "--config", "F", "--workflow", "clean", "--clean-dir", d, "--data", syn, "--out", tmp_path / "y")
     with pytest.raises(SystemExit):
         _call("fit", "--config", "R", "--workflow", "clean", "--sb-only", "--clean-dir", d, "--data", syn, "--out", tmp_path / "z")
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_the_selfcal_stage_holds_the_image_exactly_and_all_starts_from_it(tmp_path, monkeypatch):
+    """Spy on ``run_fit_c8``: the selfcal stage's problem has no ``log_brightness`` site, its nuisances move off their start, and the next
+    stage starts from exactly the CLEAN start's image (``eta``) and the self-calibrated nuisances, then frees the image."""
+    syn = synthetic_dir(tmp_path / "s")
+    d, _ = _clean_dir(tmp_path / "c")
+    model, px, beam, _ = vs.read_clean(d)
+    eta, _, _ = vs.clean_start(model, px, beam, npix=32, pixel_mas=5.0)
+    calls, real = [], va.run_fit_c8
+
+    def spy(prob, start, **kw):
+        out, *rest = real(prob, start, **kw)
+        calls.append(dict(sites=set(prob.priors), start={k: np.asarray(v) for k, v in start.items()}, out={k: np.asarray(v) for k, v in out.items()}))
+        return (out, *rest)
+
+    monkeypatch.setattr(va, "run_fit_c8", spy)
+    _call("fit", "--config", "R", "--workflow", "clean", "--clean-dir", d, "--data", syn, "--out", tmp_path / "o", "--npix", 32,
+          "--max-steps", 5, "--prestage-max-steps", 5, "--no-dirty")
+    selfcal, full = calls[0], calls[1]
+    assert "log_brightness" not in selfcal["sites"] and "log_brightness" not in selfcal["start"] and "log_brightness" not in selfcal["out"]
+    assert any(np.any(selfcal["out"][k] != selfcal["start"][k]) for k in ("cal.gain", "cal.flux"))
+    assert "log_brightness" in full["sites"] and np.array_equal(full["start"]["log_brightness"], eta)
+    for k in ("cal.gain", "cal.offset", "cal.sigma", "cal.flux"):
+        assert np.array_equal(full["start"][k], selfcal["out"][k])
+    assert np.max(np.abs(full["out"]["log_brightness"] - eta)) > 0
+
+
+@pytest.mark.validates("virgil_bridge.alma_start.selfcal_check", roots=["self-consistency"], kind="guard")
+def test_selfcal_check_is_in_obs0s_gauge_whatever_the_reference_observation():
+    """A fit with reference observation 3 (its gain 1) is renormalised to obs 0 = 1 before the range test and before picking obs 5, 6: the same
+    physical gains give the same check from the ref-0 and the ref-3 parametrisations."""
+    g0 = np.array([1.0, 1.02, 1.03, 0.99, 1.01, 1.02, 1.03])  # obs 0 .. 6 in obs 0's gauge
+    off = np.zeros((6, 2))
+    ref0 = vs.selfcal_check({"cal.gain": g0[1:], "cal.flux": 0.27, "cal.offset": off})
+    k = 3
+    g_k = np.delete(g0 / g0[k], k)  # the same model in obs 3's gauge: g / g_3, flux g_3
+    refk = vs.selfcal_check({"cal.gain": g_k, "cal.flux": 0.27 * g0[k], "cal.offset": off}, ref_obs=k)
+    assert np.allclose(refk["gain"], ref0["gain"]) and np.allclose(refk["gain_lb_obs5_6"], [1.02, 1.03]) and abs(refk["flux_jy"] - 0.27) < 1e-12
+    assert not refk["gain_outside_reference"]
+    naive = np.delete(g0 / 1.15, 3)  # a gauge 15 % off, read as if obs 0 were the reference: outside the range
+    assert vs.selfcal_check({"cal.gain": naive, "cal.flux": 0.27, "cal.offset": off})["gain_outside_reference"]
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_r_objective_compares_in_one_gauge_whatever_the_reference_observation(tmp_path):
+    """-ln L is invariant under g -> g / g_k, flux -> flux g_k; S_M is not. ``r_objective(entropy_flux=...)`` gives the ref-k fit the entropy
+    of the same image in obs 0's gauge, so its objective equals the ref-0 parametrisation's; without it the entropies differ."""
+    syn = synthetic_dir(tmp_path / "s")
+    data = va.load_dir(syn)
+    n_obs, k, lam = len(data.obs_ids), 3, 0.5
+    p0 = va.build_problem(data, "R", lam=lam, npix=24, ref_obs=0)
+    rng = np.random.default_rng(3)
+    v0 = {key: np.asarray(x) for key, x in p0.init.items()}
+    v0["log_brightness"] = rng.normal(size=(24, 24))
+    g_full = np.concatenate([[1.0], rng.uniform(0.9, 1.1, n_obs - 1)])
+    v0["cal.gain"], v0["cal.flux"] = g_full[1:], np.asarray(0.3)
+    vk = dict(v0, **{"cal.gain": np.delete(g_full / g_full[k], k), "cal.flux": np.asarray(0.3 * g_full[k])})
+    o0 = va.r_objective(data, v0, lam=lam, pixel_mas=5.0, ref_obs=0)
+    ok = va.r_objective(data, vk, lam=lam, pixel_mas=5.0, ref_obs=k)
+    fixed = va.r_objective(data, vk, lam=lam, pixel_mas=5.0, ref_obs=k, entropy_flux=0.3)
+    assert abs(ok["nll"] / o0["nll"] - 1) < 1e-9
+    assert abs(ok["entropy"] - o0["entropy"]) > 1e-4 * abs(o0["entropy"])  # the gauge shows in the entropy
+    assert abs(fixed["objective"] / o0["objective"] - 1) < 1e-9 and fixed["entropy_fit_gauge"] == ok["entropy"]
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_offset_bound_report_judges_each_offset_against_its_own_observations_bound():
+    """A per-observation bound (virgil's own): an offset at 90 % of a tight bound warns although it is 9 % of the loosest; the offsets' rows
+    are the observations but the reference, so with reference 2 the rows name obs 0, 1, 3."""
+    bound = np.array([10000.0, 100.0, 10000.0, 10000.0])
+    off = np.array([[1.0, 0.0], [96.0, 0.0], [5.0, 0.0]])  # obs 1 is the tight one; rows are obs 0, 1, 3 for reference 2
+    r = va.offset_bound_report(off, bound.max(), bound_obs=bound, ref_obs=2)
+    assert [(n["obs"], n["axis"]) for n in r["near_bound"]] == [(1, "ra")] and r["warning"] and abs(r["max_abs_over_bound"] - 0.96) < 1e-12
+    assert va.offset_bound_report(off, 100.0)["warning"] is not None  # scalar bound unchanged: |96| near 100
+    assert va.offset_bound_report(off[:1], 100.0, ref_obs=0)["near_bound"] == []
 
 
 @pytest.mark.validates("virgil_bridge.alma_start.selfcal_check", roots=["self-consistency"], kind="guard")
@@ -265,3 +340,18 @@ def test_fit_with_ref_obs_records_it_the_bound_report_and_the_beam_bounds(tmp_pa
     assert json.loads((out / "result.json").read_text())["ref_obs"] == r["ref_obs"]
     with pytest.raises(SystemExit):  # a warm start is in its own fit's gauge
         _call("fit", "--config", "R", "--ref-obs", "1" if r["ref_obs"] != 1 else "0", "--init", out, "--data", syn, "--out", tmp_path / "w", "--npix", 24)
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_cv_task_refuses_an_init_fitted_with_another_reference_observation(tmp_path):
+    """``cv-task`` builds the problem with reference observation 0: an init whose result.json says another one would put its n - 1 gains and
+    offsets on the wrong observations, so it is refused before anything is fitted."""
+    syn = synthetic_dir(tmp_path / "s")
+    folds, init = tmp_path / "folds.npz", tmp_path / "init"
+    _call("folds", "--data", syn, "--out", folds, "--k", 2)
+    init.mkdir()
+    np.savez(init / "values.npz", **{k: np.asarray(v) for k, v in va.build_problem(va.load_dir(syn), "R", lam=0.5, npix=24).init.items()})
+    (init / "result.json").write_text(json.dumps(dict(ref_obs=2)))
+    with pytest.raises(SystemExit, match="reference observation 2"):
+        _call("cv-task", "--config", "R", "--data", syn, "--folds", folds, "--fold", 0, "--init", init, "--lam", 1.0, "--npix", 24, "--max-steps", 2,
+              "--out", tmp_path / "cv")

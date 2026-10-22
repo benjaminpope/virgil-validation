@@ -12,7 +12,7 @@ import numpy as np
 
 from crosscheck import alma_maxent as cx
 
-from .alma import MPOL
+from .alma import MPOL, gauge_to_obs0
 
 
 def clean_centre(npix):
@@ -108,11 +108,14 @@ REF_GAIN_RANGE = (0.94, 1.03)
 GAIN_MARGIN = 0.05
 
 
-def selfcal_check(values, ref=REF_GAIN_RANGE, margin=GAIN_MARGIN):
+def selfcal_check(values, ref=REF_GAIN_RANGE, margin=GAIN_MARGIN, ref_obs=0):
     """The image-fixed stage's gains, flux and offsets, and whether any gain is more than ``margin`` outside ``ref``.
-    ``values['cal.gain']`` is gains of obs 1..n-1 (obs 0 is fixed at 1)."""
-    g = np.asarray(values["cal.gain"], float)
+    ``values['cal.gain']`` holds the gains of every observation but ``ref_obs`` (whose gain is 1); the reference gains are those of obs 0 = 1,
+    so a fit with another reference is renormalised first (``gauge_to_obs0``: g / g_0, flux g_0). ``gain`` is that of obs 1..n-1, and
+    ``gain_lb_obs5_6`` of the long-baseline observations 5 and 6, whichever observation is the reference."""
+    full, off_full, flux = gauge_to_obs0(values["cal.gain"], values["cal.offset"], values["cal.flux"], ref_obs)
+    g = np.asarray(full, float)[1:]
     lo, hi = ref[0] - margin, ref[1] + margin
     off = np.asarray(values["cal.offset"], float)
-    return dict(gain=g, gain_min=float(g.min()), gain_max=float(g.max()), gain_lb_obs5_6=g[4:6], reference_range=ref, margin=margin,
-                gain_outside_reference=bool(np.any((g < lo) | (g > hi))), flux_jy=float(values["cal.flux"]), offset_max_abs_mas=float(np.abs(off).max()))
+    return dict(gain=g, gain_min=float(g.min()), gain_max=float(g.max()), gain_lb_obs5_6=g[4:6], reference_range=ref, margin=margin, ref_obs=int(ref_obs),
+                gain_outside_reference=bool(np.any((g < lo) | (g > hi))), flux_jy=float(flux), offset_max_abs_mas=float(np.abs(off).max()))

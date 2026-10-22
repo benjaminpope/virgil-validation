@@ -168,7 +168,7 @@ def run_stages(args, data, prob_for, init_dir, save=None):
         stages.append(stage_summary(name, info, traj, time.time() - t, why))
         if clean and name == "selfcal":
             stages[-1]["clean_start"] = start_info
-            stages[-1]["selfcal_check"] = chk = vs.selfcal_check(out)
+            stages[-1]["selfcal_check"] = chk = vs.selfcal_check(out, ref_obs=args.ref_obs)
             say(f"selfcal: gains {chk['gain_min']:.4f}-{chk['gain_max']:.4f} (LB obs 5, 6: {np.round(chk['gain_lb_obs5_6'], 4)}; R_mpol 1.02-1.03, MPoL 0.94-0.98), flux {chk['flux_jy']:.5f} Jy, "
                 f"largest offset {chk['offset_max_abs_mas']:.2f} mas" + ("; !!! A GAIN IS OUTSIDE THE REFERENCE RANGE: the held image may be biased !!!" if chk["gain_outside_reference"] else ""))
         say(f"stage {name}: stopped because {why} after {info['steps']} steps in {info['rounds']} rounds; C8 converged: {stages[-1]['convergence']['converged']}")
@@ -255,13 +255,13 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         clean_start=next((s["clean_start"] for s in stages if "clean_start" in s), None),
         alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
-        offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested),
+        offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested, bound_obs=prob.offset_bound_obs, ref_obs=getattr(args, "ref_obs", 0)),
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
     )
     b3 = va.offset_beam_bounds(data)
     res.update(ref_obs=getattr(args, "ref_obs", 0), ref_obs_info=getattr(args, "ref_obs_info", None),
-               offset_bound_3beam=dict(per_obs_mas=b3, bound_in_force_mas=prob.offset_bound_mas, tighter_than_all=bool(prob.offset_bound_mas < b3.min()),
+               offset_bound_3beam=dict(per_obs_mas=b3, bound_in_force_mas=prob.offset_bound_mas, tighter_than_all=bool(np.all(prob.offset_bound_obs < b3)),
                                        note="3 / q_max of each observation: a proxy for 3 nominal beams, not virgil's own definition"))
     ob = res["offset_bound"]
     say(f"offset bound ±{ob['bound_mas']:.6g} mas ({'--offset-bound-mas' if ob['requested_mas'] is not None else 'virgil default'}); largest |offset|/bound {ob['max_abs_over_bound']:.3g}")
@@ -392,6 +392,10 @@ def cmd_cv_task(args):
     n_all = len(data.u)
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
+    init_json = pathlib.Path(args.init) / "result.json"
+    init_ref = int(json.loads(init_json.read_text()).get("ref_obs", 0)) if init_json.exists() else 0
+    if init_ref != 0:  # cv-task builds the default problem (reference obs 0): another reference's n-1 gains and offsets would land on the wrong observations
+        raise SystemExit(f"--init {args.init} was fitted with reference observation {init_ref}: cv-task supports reference observation 0 only")
     prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
@@ -596,7 +600,7 @@ def cmd_compare(args):
     ref = int(vres.get("ref_obs", 0))  # our reference observation; MPoL's is obs 0: put ours in its convention (gauge_to_obs0)
     g_o, off_o, flux_o = va.gauge_to_obs0(vz["cal.gain"], vz["cal.offset"], vz["cal.flux"], ref)
     res["ref_obs"] = dict(ours=ref, mpol=0, note="gains, flux and offsets below are renormalised to obs 0 = (gain 1, offset 0), MPoL's convention; "
-                          "the offsets' common shift is a translation of the whole sky (not applied to the images); objective_R is evaluated in our fit's own gauge")
+                          "the offsets' common shift is a translation of the whole sky (not applied to the images); -ln L is gauge invariant and the entropy is evaluated at the obs-0-gauge flux, so the objective below compares like with like")
     res["gain"] = dict(ours=g_o, mpol=amp, max_abs_diff=float(np.max(np.abs(g_o - amp))), ours_in_fit_gauge=np.insert(np.asarray(vz["cal.gain"], float), ref, 1.0))
     off_m = 1000.0 * np.stack([mz["delta_ra_arcsec"], mz["delta_dec_arcsec"]], -1)
     res["offset_mas"] = dict(ours=off_o, mpol=off_m, max_abs_diff=float(np.max(np.abs(off_o - off_m))))
@@ -619,9 +623,10 @@ def cmd_compare(args):
         lam = va.lam_r(len(data.u))
         v_ours = {k: jnp.asarray(vz[k]) for k in vz.files}
         v_mpol = va.values_from_mpol_export(mz, obs_of)
-        o_ours = va.r_objective(data, v_ours, lam=lam, pixel_mas=px, chunk_size=args.chunk_size, ref_obs=ref)
+        # -ln L is gauge invariant but S_M scales with the flux: compare in MPoL's (obs-0) gauge, with S_M at flux_o = flux g_0 (the offsets' translation gauge needs no change: it never enters S_M)
+        o_ours = va.r_objective(data, v_ours, lam=lam, pixel_mas=px, chunk_size=args.chunk_size, ref_obs=ref, entropy_flux=flux_o if ref != 0 else None)
         o_mpol = va.r_objective(data, v_mpol, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
-        res["objective"] = dict(lam_R=lam, ours=o_ours, mpol_solution_in_virgil=o_mpol, mpol_own=obj_m and {k: obj_m.get(k) for k in ("neg_log_likelihood", "entropy", "objective_R")},
+        res["objective"] = dict(lam_R=lam, gauge="obs 0 (MPoL's): entropy at flux·g_0" if ref != 0 else "obs 0", ours=o_ours, mpol_solution_in_virgil=o_mpol, mpol_own=obj_m and {k: obj_m.get(k) for k in ("neg_log_likelihood", "entropy", "objective_R")},
                                 ours_le_mpol=bool(o_ours["objective"] <= o_mpol["objective"]),
                                 finding=None if o_ours["objective"] <= o_mpol["objective"] else "our optimiser ended above MPoL's solution: a finding about the fit, not tuned away")
         if not args.no_grad:

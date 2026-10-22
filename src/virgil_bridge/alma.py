@@ -334,28 +334,34 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     if fixed_log_brightness is None:
         priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
     init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
+    bound = np.broadcast_to(np.asarray(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas, float), (len(data.obs_ids),)).copy()
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam),
-                                 offset_bound_mas=float(np.max(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas)),
+                                 offset_bound_mas=float(bound.max()), offset_bound_obs=bound,  # virgil's bound may be one per observation: the largest, and all of them
                                  offset_bound_requested=None if offset_bound_mas is None else float(offset_bound_mas))
 
 
 OFFSET_EDGE = 0.05  # report warns when a fitted offset is within this fraction of the bound
 
 
-def offset_bound_report(offsets, bound_mas, requested=None, edge=OFFSET_EDGE):
-    """Is the offsets' uniform bound binding? ``offsets`` is the fitted ``cal.offset`` (mas, (n_obs - 1, 2); None for none).
-    A fitted offset within ``edge`` of ``bound_mas`` means the bound shapes the fit, so the objective is no longer the unbounded one.
-    Returns bound, requested, the largest |offset|/bound, the offending (obs, axis, mas) entries and a ``warning`` string (None if clear)."""
+def offset_bound_report(offsets, bound_mas, requested=None, edge=OFFSET_EDGE, bound_obs=None, ref_obs=0):
+    """Is the offsets' uniform bound binding? ``offsets`` is the fitted ``cal.offset`` (mas, (n_obs - 1, 2), the observations but ``ref_obs``;
+    None for none). A fitted offset within ``edge`` of its bound means the bound shapes the fit, so the objective is no longer the unbounded one.
+    ``bound_obs`` (n_obs,) is the bound of each observation where virgil's is per observation (``prob.offset_bound_obs``; default ``bound_mas``
+    for all), and each offset is judged against its own. Returns bound (the largest), requested, the largest |offset|/own bound, the offending
+    (obs, axis, mas) entries and a ``warning`` string (None if clear)."""
     off = np.zeros((0, 2)) if offsets is None else np.asarray(offsets, float).reshape(-1, 2)
-    frac = np.abs(off) / bound_mas
-    near = [dict(obs=int(i) + 1, axis=["ra", "dec"][int(j)], offset_mas=float(off[i, j])) for i, j in zip(*np.nonzero(frac >= 1.0 - edge))]
+    obs = np.array([e for e in range(len(off) + 1 if bound_obs is None else len(bound_obs)) if e != ref_obs][:len(off)], int)
+    own = np.full(len(off), float(bound_mas)) if bound_obs is None else np.asarray(bound_obs, float)[obs]
+    frac = np.abs(off) / own[:, None] if len(off) else np.zeros((0, 2))
+    near = [dict(obs=int(obs[i]), axis=["ra", "dec"][int(j)], offset_mas=float(off[i, j])) for i, j in zip(*np.nonzero(frac >= 1.0 - edge))]
     warning = None
     if near:
-        warning = (f"!!! OFFSET BOUND BINDING: {len(near)} fitted offset(s) within {edge:.0%} of the ±{bound_mas:g} mas bound "
+        warning = (f"!!! OFFSET BOUND BINDING: {len(near)} fitted offset(s) within {edge:.0%} of their bound (±{bound_mas:g} mas at most) "
                    f"({', '.join('obs %d %s %.4g' % (n['obs'], n['axis'], n['offset_mas']) for n in near)}); the bound is changing the objective: "
                    f"raise --offset-bound-mas or drop it !!!")
-    return dict(bound_mas=float(bound_mas), requested_mas=requested, max_abs_over_bound=float(frac.max()) if frac.size else 0.0, near_bound=near, warning=warning)
+    return dict(bound_mas=float(bound_mas), bound_obs=None if bound_obs is None else [float(b) for b in bound_obs], requested_mas=requested,
+                max_abs_over_bound=float(frac.max()) if frac.size else 0.0, near_bound=near, warning=warning)
 
 
 def drop_unused_sites(values, prob):
@@ -748,16 +754,20 @@ def values_from_mpol_export(export, obs_of_ddid):
     )
 
 
-def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=EPS_SCORE, chunk_size=CHUNK, ref_obs=0):
+def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=EPS_SCORE, chunk_size=CHUNK, ref_obs=0, entropy_flux=None):
     """R's objective -ln L + lam S_M at ``values``, in float64 at NUFFT accuracy ``eps`` (the
-    normalising constant of -ln L included), and its two parts."""
+    normalising constant of -ln L included), and its two parts. -ln L is invariant under the gain gauge (g -> g / g_0, flux -> flux g_0), S_M
+    is not (it scales with the image's flux): ``entropy_flux`` evaluates S_M at that flux instead of ``values['cal.flux']``, to compare a fit
+    whose reference observation is not 0 with MPoL's in MPoL's gauge (``entropy_fit_gauge`` is then the entropy at the fit's own flux)."""
     import jax.numpy as jnp
 
     npix = npix or values["log_brightness"].shape[0]
     prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, mask=mask, ref_obs=ref_obs)
     sc = score(data, prob.scene, values, prob.nuis, mask=mask, eps=eps, chunk_size=chunk_size)
-    s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
-    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s, by_ddid=sc["by_ddid"], n=sc["n"])
+    jv = {k: jnp.asarray(v) for k, v in values.items()}
+    s_fit = float(prob.terms[1].entropy(jv))
+    s = s_fit if entropy_flux is None else float(prob.terms[1].entropy({**jv, "cal.flux": jnp.asarray(entropy_flux)}))
+    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s, by_ddid=sc["by_ddid"], n=sc["n"], entropy_fit_gauge=s_fit)
 
 
 def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chunk_size=CHUNK, offset_bound_mas=None, ref_obs=0):
