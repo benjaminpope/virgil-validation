@@ -38,6 +38,10 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python "mkdocs<2" mkdocs-material "zensical>=0.0.62,<0.1" pyyaml numpy scipy
+          # the binary orbit page (before the Trust page, which reads it): the gallery's sky polylines come from
+          # crosscheck.orbits and its tables from oidb_compare; the period-alias section from docs/assets/orbit_aliases
+          .venv/bin/python scripts/orbit_gallery.py render --out build/orbit_gallery.md --json docs/assets/orbits.json
+          .venv/bin/python scripts/build_orbits_page.py
           # the Trust page from CI's evidence only (scripts/fetch_ci_evidence.sh):
           # the newest run on main and the newest weekly or manual run, each test
           # keeping its newest outcome. campaigns.jsonl: OzSTAR campaigns' summaries,
@@ -48,8 +52,6 @@ jobs:
             --evidence trust/evidence/campaigns.jsonl --virgil virgil-src \
             --out docs/index.md --json docs/assets/trust.json \
             --findings docs/method/findings.md --coverage docs/method/coverage.md --tests docs/tests/index.md
-          # the binary orbit gallery: sky polylines from crosscheck.orbits, parameter tables from oidb_compare
-          .venv/bin/python scripts/orbit_gallery.py render --out docs/orbits/binaries.md --json docs/assets/orbits.json
           # Zensical, as virgil (it reads mkdocs.yml); strict fails on warnings
           .venv/bin/zensical build --clean --strict
       - uses: actions/upload-pages-artifact@v3

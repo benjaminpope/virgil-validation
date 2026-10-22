@@ -1,5 +1,6 @@
-"""Generate docs/orbits/aliases.md from scripts/templates/aliases_page.md.tmpl and the
-per-system bands.json / meta.json in docs/assets/orbit_aliases/<system>/.
+"""The Period aliases section of docs/orbits/index.md, from scripts/templates/aliases_page.md.tmpl and the
+per-system bands.json / meta.json in docs/assets/orbit_aliases/<system>/. scripts/build_orbits_page.py
+places it in the orbit page; run on its own, this writes the whole orbit page the same way.
 
 Systems with no bands.json get a clearly marked placeholder. Run by
 scripts/pull_back_orbit_results.py after it copies the results; safe to run on its own.
@@ -7,7 +8,6 @@ scripts/pull_back_orbit_results.py after it copies the results; safe to run on i
     python scripts/build_aliases_page.py [--assets DIR] [--out FILE]
 """
 
-import argparse
 import json
 import pathlib
 import string
@@ -23,7 +23,6 @@ from crosscheck.skyplane import GOOD_CHI2_N, SAME_FRACTION, SAME_SIGMA, VERDICT_
 
 TEMPLATE = REPO / "scripts" / "templates" / "aliases_page.md.tmpl"
 ASSETS = REPO / "docs" / "assets" / "orbit_aliases"
-OUT = REPO / "docs" / "orbits" / "aliases.md"
 MAX_ROWS = 12
 PLOTS = [("sky.png", "Sky plane: per-epoch positions (red), posterior orbits in the winning band, reference orbit"),
          ("corner.png", "Posterior of the winning band"),
@@ -444,13 +443,9 @@ def _registry():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--assets", default=str(ASSETS))
-    ap.add_argument("--out", default=str(OUT))
-    a = ap.parse_args(argv)
-    text = render(pathlib.Path(a.assets))
-    pathlib.Path(a.out).write_text(text)
-    print(f"wrote {a.out}")
+    import build_orbits_page
+
+    build_orbits_page.main(argv)
 
 
 if __name__ == "__main__":

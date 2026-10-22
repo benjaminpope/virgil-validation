@@ -504,6 +504,9 @@ Expectation:
 
 ## Phases
 
+The landing-page gallery for the results, and the files it expects, are in
+[`alma_imlup_gallery.md`](alma_imlup_gallery.md).
+
 | Phase | Where | Work |
 |---|---|---|
 | P0 | this note | References, data inventory, design, N_vis (done 2026-10-17); nufftax revision and second review (2026-10-19). |

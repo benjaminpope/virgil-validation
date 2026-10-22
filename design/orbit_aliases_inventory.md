@@ -3,7 +3,7 @@
 Planning note, off the site (not linked from the docs). Which systems have undersampled
 multi-epoch interferometric data, where it lives, and what reference orbit exists. The
 loaders and registry are in `scripts/reanalyse_orbits.py`; the results page is
-`docs/orbits/aliases.md`. Local paths are on the laptop; Track B and Gl 229 are mirrored on
+`docs/orbits/index.md` (its Period aliases section). Local paths are on the laptop; Track B and Gl 229 are mirrored on
 OzSTAR under `/fred/oz440/bpope/eso_binaries/`.
 
 | system | instrument | data path | epochs (MJD) | reference orbit | used here |

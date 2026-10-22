@@ -63,10 +63,7 @@ nav:
   - "Disc images":
       - "Post-AGB discs": imaging/postagb.md
       - "IM Lup: virgil against MPoL and CLEAN": imaging/imlup.md
-  - "Binary orbits":
-      - orbits/index.md
-      - "Orbit gallery": orbits/binaries.md
-      - "Period aliases": orbits/aliases.md
+  - "Binary orbits": orbits/index.md
   - "Function tests":
       - tests/index.md
       - Data:

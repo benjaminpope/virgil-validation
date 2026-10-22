@@ -7,7 +7,7 @@ RESULTS_DIR is anywhere above the per-system output directories of reanalyse_orb
 bands.json and named after a registered system is used. A cold run is recognized by its own meta.json
 (args.no_init true, no init orbit), never by the tag name, and is kept as <system>-cold beside the warm
 result; a run with no meta.json is skipped, as its start cannot be known. Only gl229-cold is rendered. Copies bands.json, meta.json
-and the PNGs to docs/assets/orbit_aliases/<system>/, runs scripts/build_aliases_page.py,
+and the PNGs to docs/assets/orbit_aliases/<system>/, regenerates docs/orbits/index.md (scripts/build_orbits_page.py),
 then `.venv/bin/zensical build --clean` (add --strict as CI does). Needs no JAX.
 """
 
@@ -21,6 +21,7 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
 import build_aliases_page as B  # noqa: E402
+import build_orbits_page  # noqa: E402
 
 FILES = ("bands.json", "meta.json", "sky.png", "corner.png", "residuals.png")
 
@@ -61,8 +62,7 @@ def main(argv=None):
             if (src / f).exists():
                 shutil.copy2(src / f, dst / f)
         print(f"copied {name} from {src}")
-    B.OUT.write_text(B.render(a.assets))
-    print(f"regenerated {B.OUT.relative_to(REPO)}")
+    build_orbits_page.main(["--assets", str(a.assets)])
     if a.no_build:
         return
     cmd = [str(REPO / ".venv" / "bin" / "zensical"), "build", "--clean"] + (["--strict"] if a.strict else [])
