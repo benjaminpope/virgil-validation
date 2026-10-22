@@ -282,3 +282,39 @@ def test_grad_table_states_physical_units_and_sigma_per_ln_s():
     md = "\n".join(script.grad_table({"x": {"cal.offset": row, "cal.sigma": sig}}))
     assert "| x | cal.offset | 2 | 1e+04 | 1.5e+04 | 2500 | 4 | per mas |" in md
     assert "| 4 | per ln s |" in md  # max |s g_x| over the ddids, stored by grad_groups
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_offset_bound_reaches_the_priors_and_default_is_virgils_own(syn):
+    data = va.load_dir(syn)
+    default = va.build_problem(data, "R", lam=0.5, npix=16)
+    bounded = va.build_problem(data, "R", lam=0.5, npix=16, offset_bound_mas=100.0)
+    assert bounded.offset_bound_mas == 100.0 and bounded.offset_bound_requested == 100.0
+    assert default.offset_bound_requested is None and default.offset_bound_mas == default.nuis.offset_bound_mas > 100.0
+    for prob, x in ((default, default.nuis.offset_bound_mas), (bounded, 100.0)):
+        d = prob.priors["cal.offset"]
+        assert np.allclose(np.asarray(d.low), -x) and np.allclose(np.asarray(d.high), x)
+    for k in default.priors:  # nothing else changes
+        if k != "cal.offset" and hasattr(default.priors[k], "low"):
+            assert np.allclose(np.asarray(default.priors[k].low), np.asarray(bounded.priors[k].low))
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_report_records_the_bound_and_warns_when_an_offset_is_within_5_percent_of_it(syn, tmp_path, capsys):
+    out = tmp_path / "ob"
+    _call("fit", "--config", "R", "--workflow", "mpol", "--data", syn, "--out", out, "--npix", 16, "--max-steps", 3, "--no-dirty", "--offset-bound-mas", 100)
+    r = json.loads((out / "result.json").read_text())
+    assert r["args"]["offset_bound_mas"] == 100 and r["offset_bound"]["bound_mas"] == 100 and r["offset_bound"]["requested_mas"] == 100
+    assert r["offset_bound"]["warning"] is None
+    z = dict(np.load(out / "values.npz"))
+    z["cal.offset"] = np.zeros_like(z["cal.offset"])
+    z["cal.offset"][0, 1] = 97.0  # 3% from the bound
+    np.savez(out / "values.npz", **z)
+    capsys.readouterr()
+    _call("report", "--data", syn, "--out", out, "--no-dirty")
+    shown = capsys.readouterr()
+    assert "OFFSET BOUND BINDING" in shown.out + shown.err
+    r = json.loads((out / "result.json").read_text())  # the saved --offset-bound-mas is reused by report
+    assert r["offset_bound"]["bound_mas"] == 100 and r["offset_bound"]["near_bound"] == [dict(obs=1, axis="dec", offset_mas=97.0)]
+    assert va.offset_bound_report(np.full((2, 2), 94.0), 100.0)["warning"] is None
+    assert va.offset_bound_report(np.full((2, 2), -95.0), 100.0)["warning"] is not None

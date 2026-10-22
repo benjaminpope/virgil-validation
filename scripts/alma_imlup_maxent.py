@@ -193,9 +193,14 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
+        offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested),
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
     )
+    ob = res["offset_bound"]
+    say(f"offset bound ±{ob['bound_mas']:.6g} mas ({'--offset-bound-mas' if ob['requested_mas'] is not None else 'virgil default'}); largest |offset|/bound {ob['max_abs_over_bound']:.3g}")
+    if ob["warning"]:
+        say(ob["warning"])
     if shat is not None:
         res["shat"] = shat
         res["acceptance_C13"] = acceptance(sigma, shat)
@@ -227,7 +232,7 @@ def _train_mask(args, data):
 def _prob_for(args, data, lam, mask):
     def prob_for(use):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
-        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
+        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
 
     return prob_for
 
@@ -280,7 +285,7 @@ def cmd_report(args):
     if args.grad and (mask is not None or use is not None):
         say("--grad skipped: the diagnostic evaluates the all-data, unmasked objective, not this fit's (fold mask or SB-only last stage)")
     elif args.grad and args.config == "R":
-        groups = {"report": va.grad_groups(data, values, lam=lam, pixel_mas=args.pixel_mas or 5.0, chunk_size=args.chunk_size)}
+        groups = {"report": va.grad_groups(data, values, lam=lam, pixel_mas=args.pixel_mas or 5.0, chunk_size=args.chunk_size, offset_bound_mas=getattr(args, "offset_bound_mas", None))}
         dump(out / "grad_groups.json", groups)
         (out / "grad_groups.md").write_text("\n".join(grad_table(groups)) + "\n")
         say("\n".join(grad_table(groups)))
@@ -309,7 +314,7 @@ def cmd_cv_task(args):
     n_all = len(data.u)
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
-    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None))
+    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
 
@@ -596,6 +601,8 @@ def main(argv=None):
             p.add_argument("--time-limit", type=float, default=18000.0, help="seconds per stage (default 5 h)")
             p.add_argument("--gtol", type=float, default=1e-4, help="fit's gradient test; restarts tighten it until C8 holds")
             p.add_argument("--chunk-size", type=int, default=va.CHUNK, help="points per model evaluation (the fit's term and every score)")
+            p.add_argument("--offset-bound-mas", type=float, default=None, help="R, F: bound ±X (mas) of the offsets' uniform prior (default: virgil's own ±1/(2 q_min), ~1e4 mas for IM Lup); "
+                           "a flat prior is unchanged inside any bound, but the optimiser's logit coordinate is far better conditioned at, say, 100; `report` warns if an offset ends within 5% of it")
             p.add_argument("--alpha-free", dest="alpha_free", action="store_true", default=None, help="F: fit the spectral index within its bounds (default: fixed 0, as MPoL)")
 
     p = sub.add_parser("fit")
