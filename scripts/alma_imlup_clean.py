@@ -210,6 +210,24 @@ def clean(imager, *, scales_pix, mask, gain, bias, threshold, niter, cycleniter,
     return dict(model=model, components=comps, residual=resid, psf=psf, beam=(bmaj, bmin, pa), history=history, stop=stop, iterations=total, norm=norm, sidelobe=side)
 
 
+def clean_virgil(data, args, scales_pix, mask, log=say):
+    """The same loop by ``virgil.radio_clean.clean`` (the feature under test); returns ``clean``'s dict (no components)."""
+    from virgil.radio_clean import clean as vclean
+
+    res = vclean(
+        data, args.npix, args.pixel_mas, deconvolver="multiscale", scales=scales_pix, weighting="briggs", robust=args.robust,
+        uvtaper=None if args.no_taper else tuple(args.taper), niter=args.niter, gain=args.gain, threshold=args.threshold_jy,
+        cycleniter=args.cycleniter, cyclefactor=args.cyclefactor, smallscalebias=args.bias, psfpatch=args.patch, mask=mask,
+        restoringbeam=args.beam, uv_cell=1.0 / (args.uv_cell_npix * args.pixel_mas * ac.MAS), chunk_size=args.chunk_size,
+        time_limit=args.time_limit or None, verbose=True,
+    )
+    history = [dict(major=i, iterations=h["iterations"], peak_residual_jy=h["peak_residual"], model_flux_jy=h["model_flux"], wall_s=h["wall_s"]) for i, h in enumerate(res.history)]
+    return dict(
+        model=res.model, components=None, residual=res.residual, psf=res.psf, beam=res.beam, history=history, stop=res.stop,
+        iterations=res.iterations, sidelobe=ac.sidelobe_level(res.psf),
+    )
+
+
 def cmd_run(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -222,10 +240,13 @@ def cmd_run(args):
     r, c = mask_cell(args.npix, args.pixel_mas, m)
     mask = ac.ellipse_mask((args.npix, args.npix), (r, c), m["semimajor_arcsec"] * 1000 / args.pixel_mas, m["semiminor_arcsec"] * 1000 / args.pixel_mas, m["pa_deg"])
     t0 = time.time()
-    res = clean(
-        imager, scales_pix=scales_pix, mask=mask, gain=args.gain, bias=args.bias, threshold=args.threshold_jy, niter=args.niter,
-        cycleniter=args.cycleniter, cyclefactor=args.cyclefactor, patch=args.patch, time_limit=args.time_limit,
-    )
+    if args.engine == "virgil":
+        res = clean_virgil(data, args, scales_pix, mask)
+    else:
+        res = clean(
+            imager, scales_pix=scales_pix, mask=mask, gain=args.gain, bias=args.bias, threshold=args.threshold_jy, niter=args.niter,
+            cycleniter=args.cycleniter, cyclefactor=args.cyclefactor, patch=args.patch, time_limit=args.time_limit,
+        )
     bmaj, bmin, pa = res["beam"]
     if args.beam:
         bmaj, bmin, pa = args.beam
@@ -233,11 +254,12 @@ def cmd_run(args):
     px = args.pixel_mas
     restored = ac.restore(res["model"], res["residual"], (bmaj / px, bmin / px, pa))
     beam = (bmaj, bmin, pa)
-    write_fits(out / "image.fits", restored, px, "Jy/beam", beam, ORIGIN="virgil.radio + crosscheck.alma_clean", OBJECT="IM Lup")
+    write_fits(out / "image.fits", restored, px, "Jy/beam", beam, ORIGIN=f"virgil.radio_clean ({args.engine} engine)", OBJECT="IM Lup")
     write_fits(out / "residual.fits", res["residual"], px, "Jy/beam", beam)
     write_fits(out / "model.fits", res["model"], px, "Jy/pixel")
     write_fits(out / "psf.fits", res["psf"], px, "", beam)
-    np.savez_compressed(out / "components.npz", **{f"scale_{s:g}": np.nonzero(cmp) + (cmp[np.nonzero(cmp)],) for s, cmp in zip(scales_pix, res["components"])})
+    if res["components"] is not None:
+        np.savez_compressed(out / "components.npz", **{f"scale_{s:g}": np.nonzero(cmp) + (cmp[np.nonzero(cmp)],) for s, cmp in zip(scales_pix, res["components"])})
     beam_area_pix = np.pi * bmaj * bmin / (4 * np.log(2)) / px**2
     flux_mask = float(restored[mask].sum() / beam_area_pix)
     summary = dict(
@@ -452,6 +474,7 @@ def main(argv=None):
     p.add_argument("--beam", type=float, nargs=3, default=None, metavar=("BMAJ_MAS", "BMIN_MAS", "PA_DEG"), help="restoring beam (default: fitted to the PSF)")
     p.add_argument("--time-limit", type=float, default=0.0, help="seconds; stop after the major cycle that passes it")
     p.add_argument("--chunk-size", type=int, default=10**6)
+    p.add_argument("--engine", choices=("virgil", "prototype"), default="virgil", help="virgil.radio_clean.clean (default) or this repo's NumPy minor cycles (crosscheck.alma_clean)")
     p.set_defaults(func=cmd_run)
     p = sub.add_parser("compare", help="compare a finished run with DSHARP's image")
     p.add_argument("--clean", required=True, help="the run's directory (image.fits, clean.json)")

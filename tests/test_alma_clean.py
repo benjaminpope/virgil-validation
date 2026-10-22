@@ -163,3 +163,29 @@ def test_cotton_schwab_recovers_a_gaussian_with_the_taper():
     # the PSF's main lobe is wider than the untapered one in the taper's direction: the beam exceeds the taper's own size
     assert bmaj > 60.0 * 0.9 and bmin > 40.0 * 0.9
     assert np.unravel_index(np.argmax(img), img.shape) == pytest.approx((int(c + 4), int(c - 3)), abs=1.5)
+
+
+@pytest.mark.validates("virgil.radio_clean.clean", roots=["mathematics"])
+def test_virgil_radio_clean_agrees_with_the_independent_loop():
+    """``virgil.radio_clean.clean`` and this repo's NumPy loop (the same recipe: Briggs, taper, multi-scale, exact major cycles)
+    give the same restored image on synthetic point sources: the two codes share only the visibilities."""
+    rc = pytest.importorskip("virgil.radio_clean")
+    truth = [(36, 28, 0.20), (25, 40, 0.08)]
+    data = _data(truth=truth)
+    taper = (60.0, 40.0, 20.0)
+    npix, px = 65, 20.0
+    c = (npix - 1) // 2
+    mask = ac.ellipse_mask((npix, npix), (c, c), 28, 28, 0)
+    imager = script.Imager(data, npix, px, 0.5, taper, npix)
+    ref = script.clean(imager, scales_pix=[0, 4], mask=mask, gain=0.1, bias=0.6, threshold=2e-3, niter=3000, cycleniter=300, cyclefactor=1.0, patch=32, time_limit=0, log=lambda *a: None)
+    res = rc.clean(
+        data, npix, px, deconvolver="multiscale", scales=[0, 4], weighting="briggs", robust=0.5, uvtaper=taper, threshold=2e-3, niter=3000,
+        cycleniter=300, smallscalebias=0.6, psfpatch=32, mask=mask, uv_cell=1.0 / (npix * px * ac.MAS),
+    )
+    bmaj, bmin, pa = ref["beam"]
+    ref_img = ac.restore(ref["model"], ref["residual"], (bmaj / px, bmin / px, pa))
+    np.testing.assert_allclose(res.beam, ref["beam"], rtol=1e-3)
+    err = np.abs(res.image - ref_img).max() / ref_img.max()
+    record("radio_clean vs independent loop, max image difference over peak", err)
+    assert err < 0.03
+    assert res.model.sum() == pytest.approx(ref["model"].sum(), rel=0.02)

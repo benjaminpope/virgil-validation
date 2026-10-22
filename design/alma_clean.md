@@ -3,7 +3,7 @@
 Written 2026-10-22. Ben's request: "check that our CLEAN implementation produces a nice image to compare to DSHARP."
 Code: `scripts/alma_imlup_clean.py` (virgil-facing: imaging, exact major cycles, FITS, comparison), `src/crosscheck/alma_clean.py`
 (NumPy: multi-scale minor cycles, beam fit, statistics; imports nothing from virgil), `tests/test_alma_clean.py`. OzSTAR job:
-`alma_imlup_clean` in ozstar_scripts. This note is the design and the proposal for a virgil API; **promotion to virgil is a later PR**.
+`alma_imlup_clean` in ozstar_scripts. The prototype loop here became a first-class provisional feature, `virgil.radio_clean` (section 4, virgil PR benjaminpope/virgil#472); `scripts/alma_imlup_clean.py run` now uses it by default (`--engine virgil`) and keeps this repo's NumPy loop (`--engine prototype`) as the independent check.
 
 ## 1. Can `virgil.imaging.clean` take the IM Lup visibilities? No
 
@@ -111,38 +111,38 @@ Beam fit on analytic Gaussian PSFs (even and odd grids, four position angles, wi
 `virgil.radio`, the full Cotton–Schwab loop on synthetic `ComplexVisData` at 65² recovers two point sources (flux per pixel to 8%, restored peak to 8%) and a Gaussian through the uv taper
 (peak and beam).
 
-## 4. Proposed virgil API
+## 4. The virgil feature: `virgil.radio_clean` (virgil#472, provisional)
 
-Everything above uses public API except two things worth adding. Proposal (virgil PR later; this note is the spec):
+Built after CASA `tclean` and WSClean, with `tclean`'s argument names, so that radio astronomers recognise it
+(full table in virgil's `docs/radio_clean.md`):
 
 ```python
-class ComplexVisData:
-    def clean(self, npix, pixel_scale_mas, *, weighting="briggs", robust=0.5, taper=None,        # taper = (bmaj_mas, bmin_mas, pa_deg) or None
-              scales_mas=(0.0,), gain=0.1, small_scale_bias=0.6, threshold=None, niter=50_000,
-              cycle_niter=300, cycle_factor=1.0, mask=None, uv_cell=None, chunk_size=1_000_000,
-              beam=None, time_limit=None) -> RadioCleanResult
+from virgil.radio_clean import clean
+res = clean(data, npix, pixel_scale_mas, deconvolver="multiscale", scales=[0, 10, 50, 150], weighting="briggs", robust=0.5,
+            uvtaper=(33, 26, 137.5), niter=50000, gain=0.1, threshold=5e-5, nsigma=3, cycleniter=300, cyclefactor=1.0,
+            smallscalebias=0.6, mask=mask | usemask="auto-multithresh", restoringbeam=None, psfcutoff=0.35)
+res.write_fits(prefix, ra_deg, dec_deg, freq_hz)   # .image/.model/.residual/.psf .fits, BUNIT, BMAJ/BMIN/BPA, SIN WCS
+res.model_visibilities(data)                       # the model at the data's (u, v), for writing back or subtracting
+res.pb_corrected(pb, pblimit)                      # division by a power primary beam
 ```
-`RadioCleanResult`: `model` (Jy/pixel, signed), `components` (per scale), `residual` (Jy/beam), `psf`, `beam` (`Beam(major_mas, minor_mas, pa_deg)`, fitted unless given),
-`restored` (property), `history` (per major cycle: iterations, peak residual, flux, wall time), `stop` ("threshold" | "niter" | "time_limit" | "no_progress"), and `to_fits(path)` in the sky convention of `Image`.
-Naming: a method on `ComplexVisData`, not a second `virgil.imaging.clean` overload, because the two algorithms share a name and nothing else (gradient matching pursuit on any likelihood against image-plane
-CLEAN on linear data); `virgil.imaging.clean`'s docs should say which to use. Alternatively `virgil.radio.clean(data, ...)`; the method keeps the `dirty_image`/`dirty_beam` family together.
 
-Prerequisites, each small and independently useful:
+Decisions taken (Ben may overrule): a **function in a new module** `virgil.radio_clean`, not a `ComplexVisData` method (the method would make
+`radio.py`, already 1300 lines, import its own client; `dirty_image` stays where it is); `virgil.imaging.clean` is unchanged and the docs say
+the two share a name only; **no signed `Image`**: the model is transformed directly with `image_visibilities(..., ft="nufft")`, which takes signed pixels,
+so the positive/negative split of the prototype is gone; `uvtaper` is a new argument of `dirty_image`/`dirty_beam` (applied after the density, so the PSF
+is `natural PSF ⊛ Gaussian`, still peaking at 1); imaging weights are computed once per `clean`; the cycle threshold follows `tclean`
+(`clip(cyclefactor·sidelobe, minpsffraction, maxpsffraction)·peak`, which the prototype lacked); `"clark"` is accepted as the Högbom loop, since every
+minor cycle uses a PSF window (Clark 1980); the auto-mask is a simplified `auto-multithresh` (positive features, no negative/pruning thresholds).
+Not built: `mtmfs`/cubes, w-projection/mosaics.
 
-1. **`taper=(bmaj, bmin, pa)` on `dirty_image` and `dirty_beam`** (elliptical, applied after the Briggs density): our workaround, tapering the visibilities and normalising by the PSF's centre, works but is
-   three lines every user would rewrite, and `CalibrationNuisance.taper_fwhm_mas` is circular and a model-side taper (a different thing).
-2. **Imaging weights computed once.** `_imaging_weights` sorts all N points (`np.unique` on the density cell: ~10 s at 4.24e7) at *every* `dirty_image` call, i.e. every major cycle. Expose `data.imaging_weights(weighting, robust, uv_cell)` returning an array that `dirty_image`/`dirty_beam` accept (`weights=`), or cache them on the call.
-3. **A public chunked residual**: `data.residual_visibilities(scene, values, nuisance, chunk_size)` (exists privately as `_model_chunked`); `dirty_image(scene=...)` already uses it.
-4. **Signed images**: the positive/negative split costs two model transforms per major cycle when there are negative components; a `signed=True` `Image` (no softmax, explicit flux per pixel) would halve that and give CLEAN a native model type. Not required.
-5. `fit_beam(psf, pixel_scale_mas, cutoff=0.35)`, `sidelobe_level(psf)` and `restore(model, residual, beam)` as functions in `virgil.radio` (or `virgil.imaging`), next to `convolve_beam`/`beam` which exist for `OIData`.
-
-Where the minor cycles live: `virgil/_clean.py`, NumPy (they are a sequential greedy search with a data-dependent stopping rule; JAX buys nothing and the tile-max bookkeeping is awkward under jit).
-Run the major cycles under `eqx.filter_jit` with the term passed as an argument (virgil#438).
-
-Validation to carry over: point sources and a Gaussian on synthetic `ComplexVisData` (the tests here); the beam fit; and against CASA's `tclean` on a small simulated MS (not done: CASA is only in `alma-casa` on OzSTAR).
+Agreement: `tests/test_alma_clean.py::test_virgil_radio_clean_agrees_with_the_independent_loop` (taper + Briggs + multi-scale on synthetic visibilities) shows the
+feature and this repo's NumPy loop agree on the restored image (within 3% of the peak by the test's bound) and the beam to 0.1%; on the IM Lup 1/1000 subsample (801², 600 iterations) both engines give the same model flux
+(0.21892 Jy) and the same restored peak (14.5294 mJy/beam). The two are the same algorithm written twice, so this checks the implementation, not the choices (those are CASA's, listed in section 3).
+**Not done: a comparison with CASA's `tclean` on a simulated MS** (CASA is only in `alma-casa` on OzSTAR); the DSHARP comparison below is the first independent check.
 
 ## 5. Built / results
 
-*Built:* `scripts/alma_imlup_clean.py`, `src/crosscheck/alma_clean.py`, tests, this note; ozstar_scripts job `alma_imlup_clean`.
-*Not yet run on the full data*: the first OzSTAR run (job id, wall time, the comparison table of `summary.md`) goes here when Ben has run the job; the numbers to compare are DSHARP's:
+*Built:* virgil#472 (`virgil.radio_clean`, tests, docs page, `uvtaper`); here `scripts/alma_imlup_clean.py`, `src/crosscheck/alma_clean.py`, tests, this note; ozstar_scripts job `alma_imlup_clean`.
+*Not yet run on the full data*: the first OzSTAR run (job id, wall time, the comparison table of `summary.md`) goes here when Ben has run the job. The job needs a virgil with `radio_clean`, so it
+waits for virgil#472 to merge (or pins its branch); the numbers to compare are DSHARP's:
 beam 44 × 43 mas PA 115°, peak 7.11 mJy/beam, 253 mJy in the mask, rms 14 µJy/beam (Table 4), and MPoL's analysis of the same image (flux 0.2548 Jy, peak 3.27 Jy/arcsec², beam area 0.00217 arcsec²).
