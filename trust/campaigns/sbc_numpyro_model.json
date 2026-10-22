@@ -3,9 +3,9 @@
  "tasks": 100,
  "incomplete_tasks": 0,
  "virgil": [
-  "0.2.0"
+  "0.3.0"
  ],
- "virgil_commit": "4afc5b816012f66c472c871fa9644f360b73aa4d",
+ "virgil_commit": "8c51dc568b0b2bc75b8e5ec151eba98a38cf52d2",
  "criteria": {
   "draws_per_replicate": 99,
   "rank_bins": 20,
