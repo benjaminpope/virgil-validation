@@ -283,7 +283,8 @@ def choose_weights(curve, reg, strict=True):
     finite keeps round 1's error."""
     ok = finite_points(curve)
     if not ok:
-        raise RuntimeError("every L-curve fit is non-finite")
+        raise RuntimeError(f"every L-curve fit is non-finite (weights {np.asarray(curve.weights).round(4).tolist()}): "
+                           "the start or field is likely off, so no image is written; retry with --init clean or a grown field")
     if len(ok) < len(curve.results):
         print("non-finite fits at weights", [float(curve.weights[i]) for i in range(len(curve.results)) if i not in ok])
     good = curve if len(ok) == len(curve.results) else LCurve(
@@ -1562,6 +1563,12 @@ GP_LENGTHS = (0.5, 1.0, 2.0)
 GP_SIGMA_LIMITS = (0.25, 16.0)
 GP_LENGTH_LIMITS = (0.125, 8.0)
 GP_GROWTHS = 3
+# Each grid fit is capped at this many optimiser steps (None: run to
+# convergence) and only the best point of each field is refitted in full: the
+# scan needs the evidence's ranking, not converged images (the full fits took
+# ~10 min each, 45-50 per task, jobs 48/66/74 timed out). On synthetic cases
+# 150 steps chose the full scan's (σ, ℓ) and χ²/N in a fraction of the time.
+GP_SCAN_STEPS = 150
 
 
 def fit_ellipse(s, n_starts=None, record=False, seed=0):
@@ -1710,11 +1717,13 @@ def grow_grid(evaluate, lengths, sigmas, length_limits, sigma_limits, growths):
     return ls, ss, values
 
 
-def gp_fit(s, smoke=False):
+def gp_fit(s, smoke=False, scan_steps=GP_SCAN_STEPS):
     """The GP fits of one setup ``s``: σ and ℓ on a grid grown by evidence,
     isotropic and (for an elongated source) anisotropic fields, then
     MacKay's error-scale check, with a refit on rescaled errors when it is
-    far from 1. Returns a dict of the grid, the winner and the final fit."""
+    far from 1. With ``scan_steps`` the grid's fits are capped and the best
+    point of each field is refitted to convergence before the winner is
+    chosen. Returns a dict of the grid, the winner and the final fit."""
     star, halo, res = s["star"], s["halo"], s["resolution"]
     data = with_systematics(s["data"], s.get("systematics"))
     img0, n, pixel = s["img0"], s["npix"], s["pixel"]
@@ -1732,6 +1741,8 @@ def gp_fit(s, smoke=False):
     lengths0 = sorted({min(f * res.minor_mas, fov) for f in (GP_LENGTHS[1:2] if smoke else GP_LENGTHS)})
     length_limits = [min(f * res.minor_mas, fov) for f in GP_LENGTH_LIMITS]
     options = {"max_steps": 50} if smoke else {}
+    capped = bool(scan_steps) and not smoke
+    scan_options = {"max_steps": scan_steps} if capped else options
 
     def scene(field, rotation):
         env = vm.Image(field, pixel, support=support, flux=flux0, rotation_deg=rotation)
@@ -1759,7 +1770,7 @@ def gp_fit(s, smoke=False):
             field = GaussianField(np.zeros((n, n)), sigma, lens(length), mean=mean)
             sc = scene(field, rotation)
             r_ = fit(sc, image_priors(sc) | extra, data, others,
-                     init=None if previous is None else previous.values, **options)
+                     init=None if previous is None else previous.values, **scan_options)
             previous = r_
             results[name, length, sigma] = r_
             log_z_ = float(log_evidence(r_, data))
@@ -1771,6 +1782,14 @@ def gp_fit(s, smoke=False):
                                    0 if smoke else GP_GROWTHS)
         axes[name] = (ls, ss)
         log_z[name] = np.array([[values[ell_, sig] for sig in ss] for ell_ in ls])
+        if capped:  # converge the field's best point
+            i, j = np.unravel_index(np.nanargmax(log_z[name]), log_z[name].shape)
+            length, sigma = ls[i], ss[j]
+            mean, rotation, lens = variants[name]
+            sc = scene(GaussianField(np.zeros((n, n)), sigma, lens(length), mean=mean), rotation)
+            results[name, length, sigma] = r_ = fit(sc, image_priors(sc) | extra, data, others,
+                                                    init=results[name, length, sigma].values, **options)
+            log_z[name][i, j] = float(log_evidence(r_, data))
     best_of = {name: np.unravel_index(np.nanargmax(g), g.shape) for name, g in log_z.items()}
     best_name = max(log_z, key=lambda k: np.nanmax(log_z[k]))
     i_b, j_b = best_of[best_name]

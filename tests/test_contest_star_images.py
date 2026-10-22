@@ -189,3 +189,33 @@ def test_evidence_keeps_a_needed_star_and_rejects_a_spare_one(tmp_path, star_fra
         assert log_bayes >= ci.STAR_LOG_BAYES
     else:
         assert log_bayes < ci.STAR_LOG_BAYES
+
+
+@pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="reference")
+@needs_2004
+def test_capped_gp_scan_refits_its_best_point_in_full(tmp_path, monkeypatch):
+    # gp_fit's grid fits stop at scan_steps; the best point of the field is then
+    # refitted without the cap (the fits themselves are cut short here for speed).
+    import jax.numpy as jnp
+    import virgil.models as vm
+    from virgil.imaging import beam
+    from virgil.oidata import OIData
+
+    bench, ci = _load("contest_bench"), _load("contest_images")
+    bench.simulate_file(TEMPLATE, tmp_path / "sim.fits", sky.elliptical_gaussian(2.0, 0.8, 30.0), np.random.default_rng(5))
+    data = OIData(str(tmp_path / "sim.fits"))
+    steps, real_fit = [], ci.fit
+
+    def spy(*args, **kw):
+        steps.append(kw.get("max_steps"))
+        return real_fit(*args, **{**kw, "max_steps": 5})
+
+    monkeypatch.setattr(ci, "fit", spy)
+    monkeypatch.setattr(ci, "GP_SIGMAS", (1.0, 2.0))
+    monkeypatch.setattr(ci, "GP_LENGTHS", (1.0,))
+    monkeypatch.setattr(ci, "GP_GROWTHS", 0)
+    img0 = vm.Image(jnp.zeros((7, 7)), 0.6, flux=1.0)
+    s = dict(star=False, halo=False, resolution=beam(data), data=data, img0=img0, npix=7, pixel=0.6, start=img0,
+             sparco=False, star_priors={}, ellipse=(1.0, 1.0, 0.0, 0.0))
+    ci.gp_fit(s, scan_steps=150)
+    assert steps[:3] == [150, 150, None]  # two grid fits, then the best point in full
