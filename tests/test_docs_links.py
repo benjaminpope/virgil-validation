@@ -20,6 +20,16 @@ def trust():
     return module
 
 
+@pytest.fixture(scope="module", autouse=True)
+def orbit_page():
+    """docs/orbits/index.md is generated and git-ignored: build it on a fresh checkout (CI builds it first)."""
+    if not (ROOT / "docs" / "orbits" / "index.md").exists():
+        import subprocess
+        import sys
+
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "build_orbits_page.py")], check=True)
+
+
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_every_part_links_to_a_docs_section():
     t = trust()

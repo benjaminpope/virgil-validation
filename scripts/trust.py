@@ -230,7 +230,7 @@ REFERENCE_DOCS = {
 NOT_TOPIC_PAGES = {"index.md", "trust.md", "evidence.md", "results.md", "tests/index.md"}
 # Showcase pages (real-data results): the explanation of a part only when no
 # function-test page covers it, like the method pages.
-SHOWCASE_PAGES = {"imaging/postagb.md", "orbits/index.md", "orbits/binaries.md", "orbits/aliases.md"}
+SHOWCASE_PAGES = {"imaging/postagb.md", "orbits/index.md", "imaging/imlup.md"}
 
 
 def slugify(text):
@@ -866,22 +866,33 @@ def _tables(model):
     return "\n".join(lines)
 
 
+# Showcase tiles: (page, images, title, text). A tile with several images is a gallery strip. A tile is drawn
+# only once its page and at least one of its images exist under docs/, so a result can be wired in before it is
+# made (IM Lup: design/alma_imlup_gallery.md).
 SHOWCASE = [
-    ("imaging/postagb.md", "imaging/postagb/HD108015_images.png", "Disc images",
+    ("imaging/postagb.md", ["imaging/postagb/HD108015_images.png"], "Disc images",
      "Dusty discs around nine post-AGB binaries, reconstructed by virgil from VLTI/PIONIER data "
      "and set beside the published images."),
-    ("orbits/index.md", "assets/orbit_aliases/gl229/sky.png", "Binary orbits",
+    ("orbits/index.md", ["assets/orbit_aliases/gl229/sky.png"], "Binary orbits",
      "Orbits of close binaries from VLTI/GRAVITY and PIONIER archives, fitted without starting from the "
      "published orbit and compared with it."),
+    ("imaging/imlup.md", ["imaging/imlup/maxent.png", "imaging/imlup/multipole_gp.png", "imaging/imlup/dsharp.png"],
+     "IM Lup with ALMA", "The DSHARP IM Lup disc imaged by virgil from the measurement sets, beside the DSHARP image."),
 ]
 
 
-def _showcase(base):
-    cards = "".join(
-        f'<a class="vt-show" href="{base}{e(doc_url(page))}"><img src="{base}{e(img)}" alt="" loading="lazy">'
-        f'<span class="vt-show-t">{e(title)} →</span><span class="vt-show-d">{e(text)}</span></a>'
-        for page, img, title, text in SHOWCASE)
-    return f'<div class="vt-shows">{cards}</div>'
+def _showcase(base, docs=ROOT / "docs"):
+    cards = []
+    for page, imgs, title, text in SHOWCASE:
+        imgs = [i for i in imgs if (docs / i).exists()]
+        if not imgs or not (docs / page).exists():
+            continue
+        pics = "".join(f'<img src="{base}{e(i)}" alt="" loading="lazy">' for i in imgs)
+        if len(imgs) > 1:
+            pics = f'<span class="vt-show-g">{pics}</span>'
+        cards.append(f'<a class="vt-show" href="{base}{e(doc_url(page))}">{pics}'
+                     f'<span class="vt-show-t">{e(title)} →</span><span class="vt-show-d">{e(text)}</span></a>')
+    return f'<div class="vt-shows">{"".join(cards)}</div>'
 
 
 def _headline_html(verified, total, stale, commits, refs_ok, refs_total):

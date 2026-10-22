@@ -1,7 +1,7 @@
 """Binary orbit gallery: trimmed fit summaries and the generated docs page.
 
     python scripts/orbit_gallery.py extract <dir of fit_<id>.json> [--out trust/campaigns/orbits]
-    python scripts/orbit_gallery.py render --out docs/orbits/binaries.md --json docs/assets/orbits.json
+    python scripts/orbit_gallery.py render --out build/orbit_gallery.md --json docs/assets/orbits.json
 
 ``extract`` (run once, on the fits copied back from OzSTAR) keeps what the gallery needs of each
 ``fit_<collection>.json`` of scripts/oidb_fit.py (the MAP and its alternative modes, the NUTS
@@ -965,7 +965,7 @@ def main(argv=None):
     e.add_argument("fits_dir")
     e.add_argument("--out", default=str(SUMMARIES))
     r = sub.add_parser("render", help="write the gallery page and its JSON")
-    r.add_argument("--out", required=True, help="the Markdown page (docs/orbits/binaries.md)")
+    r.add_argument("--out", required=True, help="the gallery section (build/orbit_gallery.md, placed in docs/orbits/index.md by build_orbits_page.py)")
     r.add_argument("--json", required=True, dest="json_out", help="the data for the front end (docs/assets/orbits.json)")
     r.add_argument("--summaries", default=str(SUMMARIES))
     r.add_argument("--refs", default=str(REFERENCES))

@@ -303,7 +303,7 @@ def test_orbit_search_is_blind_and_a_flagged_night_seeds_no_position(of, tmp_pat
     assert "n3" not in out2["alias"]["nights"] and len(out2["datasets"]) < len(out["datasets"])
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["mathematics"], kind="check")
+@pytest.mark.validates("virgil.aliases.fit_orbit_aliases", roots=["mathematics"], kind="check")  # simulated nights
 def test_vis_amp_variant_recovers_the_orbit_and_the_per_night_losses(of, tmp_path):
     """The V^2 + closure-phase orbit with a free amplitude on each night (``virgil.aliases``): V^2 scaled by
     AMPS night by night, searched blind. The orbit and every night's loss
@@ -324,7 +324,7 @@ def test_vis_amp_variant_recovers_the_orbit_and_the_per_night_losses(of, tmp_pat
     record("vis_amp_max_error", float(np.max(np.abs(np.array(got) - AMPS))))
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_alias_bands_tile_the_window_and_split_the_o1_orbits(of):
     """Band N = round(T/P) of the first-to-last-night span T. Gl 229 (T = 125.7 d): Xuan et al.'s
     12.134 d is band 10 and the 11.81 d of the O1 MAP is band 11; iota Peg (T = 288.2 d): the
@@ -342,7 +342,7 @@ def test_alias_bands_tile_the_window_and_split_the_o1_orbits(of):
         of.alias_bands([60000.0], (10.0, 11.0))
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_reference_positions_agree_with_the_published_epochs(of):
     """The reference rows of the epoch checks: the Xuan et al. orbit through crosscheck.orbits (our
     own solver) gives the positions that virgil's Kepler solver gives at the nights the fits agree
@@ -361,7 +361,7 @@ def test_reference_positions_agree_with_the_published_epochs(of):
     assert abs(np.hypot(*ip["2018-11-21"]) - 10.1793) < 1e-6 and abs(np.hypot(*ip["2019-08-06"]) - 1.1297) < 1e-6
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_check_epochs_flags_nights_that_may_not_seed_the_orbits(of, tmp_path):
     """Two simulated nights of a point binary, 5 mas apart in one and 6 in the other. A night in
     ``flagged`` and a night whose best peak is closer than ``min_sep`` are barred from seeding, with

@@ -13,7 +13,7 @@ the reduction from the chain: same files, same errors, different code.
 This plan uses OiDB for three goals:
 
 - **(a) Binaries.** Every binary whose published data we can get becomes a
-  `published-binary` record: separation, PA and flux ratio per epoch, and an
+  `binary-orbits` (formerly `published-binary`) record: separation, PA and flux ratio per epoch, and an
   orbit where the paper fits one.
 - **(b) Image reconstruction.** The CHARA Imaging Workshop 2023 data, and the
   data behind the published images of R Dor, π¹ Gru, R Car and Polaris,
@@ -403,7 +403,7 @@ Trust-graph edits, made before the first test names them
   `read_oifits`, `OIData`, `BinaryModelAngular`, `BinaryModelCartesian`,
   `LimbDarkenedDisk`, `likelihood_grid`/`linear_flux_grid`, `fit`,
   `laplace_cov`, `absil_limits`, and for orbits `KeplerOrbit`, `Attached`
-  and `PositionData` (adding any missing nodes). `published-binary` stays
+  and `PositionData` (adding any missing nodes). `binary-orbits` (formerly `published-binary`) stays
   the ESO-archive pipeline of `plan_eso_binaries.md`;
 - `virgil.ensemble.draw_groups`, `run_group`, `combine` and `ensemble` as
   nodes, then a new `published-image` pipeline using them with `Image`,

@@ -61,10 +61,7 @@ plugins:
 nav:
   - Overview: index.md
   - "Disc images": imaging/postagb.md
-  - "Binary orbits":
-      - orbits/index.md
-      - "Orbit gallery": orbits/binaries.md
-      - "Period aliases": orbits/aliases.md
+  - "Binary orbits": orbits/index.md
   - "Function tests":
       - tests/index.md
       - Data:

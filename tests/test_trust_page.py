@@ -105,7 +105,7 @@ def test_page_sections_links_and_embedded_data(model):
         assert verdict in data["verdicts"]
 
 
-@pytest.mark.validates("pipeline:published-binary", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
 def test_pipeline_card_links_to_page_when_set(model):
     p = {x["id"]: dict(x) for x in model["pipelines"]}
     plain = trust._pipeline_card(p["binaries"], model["nodes"])
@@ -113,6 +113,37 @@ def test_pipeline_card_links_to_page_when_set(model):
     p["binaries"]["page"] = "orbits/binaries/"
     linked = trust._pipeline_card(p["binaries"], model["nodes"])
     assert '<a class="vt-card-link" href="orbits/binaries/">Published binaries</a>' in linked
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_showcase_draws_a_tile_only_once_its_page_and_images_exist(tmp_path, monkeypatch):
+    monkeypatch.setattr(trust, "SHOWCASE", [
+        ("a.md", ["a.png"], "One", "x"),
+        ("g.md", ["g1.png", "g2.png", "g3.png"], "Gallery", "y"),
+        ("n.md", ["n.png"], "No page", "z"),
+    ])
+    for f in ("a.md", "a.png", "g.md", "g1.png", "g3.png", "n.png"):
+        (tmp_path / f).write_text("")
+    html = trust._showcase("", tmp_path)
+    assert html.count('class="vt-show"') == 2 and "No page" not in html
+    assert '<span class="vt-show-g"><img src="g1.png"' in html and "g2.png" not in html and "g3.png" in html
+    assert 'href="a/"><img src="a.png"' in html  # one image: no strip
+    assert trust._showcase("", tmp_path / "missing") == '<div class="vt-shows"></div>'
+
+
+@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+def test_one_orbit_card_and_one_orbit_page():
+    """The orbit pipelines are one card linking one page; beta Pic against orbitize! stays its own card."""
+    import yaml
+
+    graph = yaml.safe_load(open(ROOT / "trust" / "graph.yml"))
+    real = {k: p for k, p in graph["pipelines"].items() if p.get("data") == "real"}
+    orbit = [k for k, p in real.items() if "orbit" in (p["title"] + p.get("page", "")).lower()]
+    assert sorted(orbit) == ["binary-orbits", "orbitize-posterior"]
+    assert real["binary-orbits"]["page"] == "orbits/"
+    nav = trust.nav_pages(ROOT / "mkdocs.yml")
+    assert [p for p in nav if p.startswith("orbits/") and p not in {"orbits/kepler.md", "orbits/orbitize.md", "orbits/epochs.md"}] == ["orbits/index.md"]
+    assert any(page == "orbits/index.md" for page, *_ in trust.SHOWCASE)
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
