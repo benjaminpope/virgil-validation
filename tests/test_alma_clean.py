@@ -218,7 +218,7 @@ def test_virgil_radio_clean_agrees_with_the_independent_loop():
     imager = script.Imager(data, npix, px, 0.5, taper, npix)
     ref = script.clean(imager, scales_pix=[0, 4], mask=mask, gain=0.1, bias=0.6, threshold=2e-3, niter=3000, cycleniter=300, cyclefactor=1.0, patch=32, time_limit=0, log=lambda *a: None)
     res = rc.clean(
-        data, npix, px, deconvolver="multiscale", scales=[0, 4], weighting="briggs", robust=0.5, uvtaper=taper, threshold=2e-3, niter=3000,
+        data, npix, px, deconvolver="multiscale", scales_mas=[0.0, 4 * px], weighting="briggs", robust=0.5, uvtaper=taper, threshold=2e-3, niter=3000,
         cycleniter=300, smallscalebias=0.6, psfpatch=32, mask=mask, uv_cell=1.0 / (npix * px * ac.MAS),
     )
     bmaj, bmin, pa = ref["beam"]

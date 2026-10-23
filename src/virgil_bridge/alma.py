@@ -281,7 +281,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     for ``virgil.fit``. Priors are the house defaults (C6): log-uniform flux, gains and error scales,
     uniform offsets (and alpha when ``alpha_free``), and a flat prior on the pixels' log-brightness.
 
-    ``offset_bound_mas`` (mas, default None: virgil's own ±1/(2 q_min), about 10^4 mas for IM Lup) sets the offsets' uniform prior to
+    ``offset_bound_mas`` (mas, default None: virgil's own default, ±3 beams of each observation, about 150 mas for IM Lup; 0.4.0's ±1/(2 q_min) is about 10^4 mas) sets the offsets' uniform prior to
     ``(-X, X)`` through ``CalibrationNuisance.priors(offset=...)``. A flat prior is flat at any bound, so the objective is unchanged
     unless a fitted offset reaches the bound (``offset_bound_report``), but L-BFGS moves in the logit z of ``x/bound`` and dx/dz is
     about half the bound: a bound near the offsets (say 100 mas) conditions them far better. ``prob.offset_bound_mas`` is the bound in force.
@@ -313,10 +313,12 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas)] if config == "R" else [])
     priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
     priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
+    # virgil's default offset box differs by observation; the smallest half-width is the conservative bound for the report
+    bound = float(np.min(np.asarray(priors["cal.offset"].high))) if offset_bound_mas is None and "cal.offset" in priors else None
     init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam),
-                                 offset_bound_mas=float(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas),
+                                 offset_bound_mas=float(offset_bound_mas) if bound is None and offset_bound_mas is not None else float(bound if bound is not None else nuis.offset_bound_mas),
                                  offset_bound_requested=None if offset_bound_mas is None else float(offset_bound_mas))
 
 

@@ -501,7 +501,7 @@ def test_r4_compare_reports_both_solutions_term_by_term_and_the_gradient_scaling
     gg = c["grad_groups"]["ours"]
     assert set(gg) >= {"log_brightness", "cal.flux", "cal.gain", "cal.offset", "cal.sigma"}
     assert abs(gg["log_brightness"]["dxdz_median"] - 1) < 1e-12
-    assert gg["cal.offset"]["dxdz_median"] > 100 * gg["cal.gain"]["dxdz_median"]  # the offsets' bound is 1/(2 q_min) in mas: thousands
+    assert gg["cal.offset"]["dxdz_median"] > 30 * gg["cal.gain"]["dxdz_median"]  # the offsets' box is ±3 beams in mas (virgil 0.4.1): tens of mas against 1 for ln gain
     md = (out / "compare.md").read_text()
     for head in ("Raw chi^2/N (s = 1", "term by term", "Gains and offsets, side by side", "Gradient scaling"):
         assert head in md

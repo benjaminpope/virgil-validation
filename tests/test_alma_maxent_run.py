@@ -312,10 +312,11 @@ def test_offset_bound_reaches_the_priors_and_default_is_virgils_own(syn):
     default = va.build_problem(data, "R", lam=0.5, npix=16)
     bounded = va.build_problem(data, "R", lam=0.5, npix=16, offset_bound_mas=100.0)
     assert bounded.offset_bound_mas == 100.0 and bounded.offset_bound_requested == 100.0
-    assert default.offset_bound_requested is None and default.offset_bound_mas == default.nuis.offset_bound_mas > 100.0
-    for prob, x in ((default, default.nuis.offset_bound_mas), (bounded, 100.0)):
-        d = prob.priors["cal.offset"]
-        assert np.allclose(np.asarray(d.low), -x) and np.allclose(np.asarray(d.high), x)
+    assert default.offset_bound_requested is None and 0 < default.offset_bound_mas < default.nuis.offset_bound_mas
+    d = default.priors["cal.offset"]  # virgil 0.4.1: ±3 beams of each observation; the reported bound is the smallest
+    assert np.allclose(np.asarray(d.low), -np.asarray(d.high)) and default.offset_bound_mas == np.asarray(d.high).min()
+    d = bounded.priors["cal.offset"]
+    assert np.allclose(np.asarray(d.low), -100.0) and np.allclose(np.asarray(d.high), 100.0)
     for k in default.priors:  # nothing else changes
         if k != "cal.offset" and hasattr(default.priors[k], "low"):
             assert np.allclose(np.asarray(default.priors[k].low), np.asarray(bounded.priors[k].low))
