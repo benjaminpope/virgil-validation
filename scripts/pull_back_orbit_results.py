@@ -6,8 +6,8 @@ RESULTS_DIR is anywhere above the per-system output directories of reanalyse_orb
 (e.g. ozstar_scripts/results/orbit_aliases/<tag>): every directory under it holding a
 bands.json and named after a registered system is used. A cold run is recognized by its own meta.json
 (args.no_init true, no init orbit), never by the tag name, and is kept as <system>-cold beside the warm
-result; a run with no meta.json is skipped, as its start cannot be known. Only gl229-cold is rendered. Copies bands.json, meta.json
-and the PNGs to docs/assets/orbit_aliases/<system>/, regenerates docs/orbits/index.md (scripts/build_orbits_page.py),
+result; a run with no meta.json is skipped, as its start cannot be known. Cold runs are kept but not rendered. Copies bands.json, meta.json
+and the PNGs to docs/assets/orbit_aliases/<system>/, regenerates docs/orbits/index.md and the alias pages (scripts/build_orbits_page.py),
 then `.venv/bin/zensical build --clean` (add --strict as CI does). Needs no JAX.
 """
 
@@ -50,8 +50,8 @@ def main(argv=None):
             if name is None:
                 print(f"skipped {bj.parent}: no meta.json, so a cold run cannot be told from a warm one")
                 continue
-            if name.endswith("-cold") and name != "gl229-cold":
-                print(f"warning: {name} is copied but the page renders no cold run of any system but gl229")
+            if name.endswith("-cold"):
+                print(f"warning: {name} is copied but the alias pages render no cold run")
             found[name] = bj.parent
     if not found:
         sys.exit(f"no <system>/bands.json under {a.results} for any of {sorted(known)}")

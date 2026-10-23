@@ -77,7 +77,7 @@
 .og-p2 { stroke: var(--og-p2); fill: var(--og-p2); } .og-p3 { stroke: var(--og-p3); fill: var(--og-p3); }
 .og-alt { stroke: var(--og-alt); fill: none; opacity: .5; }
 .og-line { fill: none; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
-.og-thumb .og-line { stroke-width: 2; }
+.og-thumb .og-line { stroke-width: 1.5; }
 .og-thumb .og-dot { stroke-width: 1.5; }
 .og-dash { stroke-dasharray: 7 5; }
 .og-thumb .og-dash { stroke-dasharray: 3.5 3; }
