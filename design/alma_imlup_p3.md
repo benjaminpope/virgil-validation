@@ -292,3 +292,103 @@ Goal: claim an *improvement* (or parity) of virgil's IM Lup MaxEnt image over MP
 - Code: `src/external_bridge/{cv_folds,cv_compare}.py`, tasks in `mpol_worker.py`, `scripts/alma_imlup_maxent.py cv-compare`, tests `tests/test_alma_mpol_cv.py`,
   formats in `docs/alma_conventions.md` Part 6. The OzSTAR job is `alma_mpol_cv` (ozstar_scripts).
 
+
+## Built: speed comparison with MPoL (2026-10-23)
+
+Ben: "let's keep working until we are as good as or better than MPoL from a cold start. I would also like to see a speed comparison with MPoL."
+`alma_imlup_maxent.py speed` compares virgil's L-BFGS fit with MPoL's two-stage AdamW run on one axis, from small saved JSON only (no data, no GPU):
+
+    python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol RUN_DIR --out DIR [--log FILE ...] [--target LABEL=R ...]
+        [--vg-seconds LO HI] [--mpol-startup-s S]
+
+`--fit DIR` holds a config-R fit's `result.json` (and optionally `anchors.json`, below); `--mpol RUN_DIR` is `alma_mpol_ref`'s `out/<run>/` (`stage<N>.time.json`,
+`export/objective.json`, and `export/objective_chk0.json` when it exists); `--log [mpol=|virgil=]FILE` are job logs or digests with the `job=… host=…` and GPU lines (the prefix says whose run; a log without one counts as MPoL's only if its job is in `stage<N>.time.json`, else it is reported as unattributed). It writes `speed.json`,
+`speed.md` (raw χ²/N first, the definitions, the tables, the fairness notes) and `speed.png` (objective against wall time, both codes, the targets as horizontal lines, with a
+zoom). Code `src/crosscheck/alma_speed.py` (numpy only), tests `tests/test_alma_speed.py` (synthetic trajectories of a known cost, compile time, restarts and constant).
+
+**Definitions.**
+- **Objective** is MPoL's `R = −ln L + λ_R S_M` in float64 on all data (C3, C4); MPoL's own value is `objective_full`'s `objective_R`. virgil's fit loss equals R up to a constant, taken from the final
+  point (`objective_R − loss_final`; the report evaluates R at eps 1e-12, the loss is at eps 1e-6). The speed report compares that constant between fits and with any anchor (a second evaluation of R
+  at another step: `anchors.json`, a list of `{steps, objective, loss}`); a spread above 5 fails the check and the curve is not to be trusted. Within one fit `fit` records no second evaluation of R
+  (the report runs at the end only), so the check is across fits. Three existing fits (03531b4/R on DATA, R_mpol and R_mpolwf on CORRECTED_DATA) give the constant −189,545,489.39 to 1e-3.
+- **virgil wall time** is the sum of the stages' `wall_s` (the optimiser loop of each stage: it includes the jit compile of each round and the restarts' overhead; the p3 route's SB stage counts in the time
+  and not on the curve, its loss being on fewer data). The problem build before the first stage (`result.json` `wall_s` minus the stages) is reported as start-up; reading the npz is not timed. The
+  compile of each round is estimated as its first 200-step chunk minus the median chunk.
+- **MPoL wall time** is the whole `sgd.py` process per stage (`stage<N>.time.json`: asdf load, CUDA start-up, epochs); it is known only at the checkpoints, so its curve has two points: chk0 and chk1.
+- **Time to target**: the wall time of the first record at or below the target (every 200 steps), with the linearly interpolated crossing beside it; for MPoL the end of the first stage whose checkpoint
+  is at or below it (an upper bound). Targets: MPoL's final objective (−108,232,184), MPoL's chk0 objective (when evaluated), the best objective known in the inputs, and any `--target`. Warm starts
+  (`--init`) give no time to target (they start at or near it) and are drawn dashed.
+- **Cost per pass**: MPoL's s/epoch (per stage and its ratio) and s/minibatch (N/40,000 ≈ 1,061); virgil's s/step (median of the 200-step chunks inside rounds, with the 10–90 % spread and the
+  first and last quarters, since the line search works harder late). virgil's `info` records **no evaluation count**, so evaluations per step are *estimated* as s/step over the bench's s per
+  value+gradient (0.44–0.53 s at 4.24e7 points, f64, eps 1e-6, A100: job 18862592); `--vg-seconds` overrides it. A "pass" is one value+gradient (virgil) or one epoch (MPoL).
+- **Fairness notes** (in `speed.md`): hardware from the job logs (host, GPU; "not recorded" when absent), MPoL's 2× stage difference flagged as possible node contention, precision (MPoL float32
+  training, virgil float64 at eps 1e-6, every reported objective at 1e-12), start-up and compile separated, data loading in MPoL's wall time and not in virgil's (the bias favours virgil, by minutes),
+  MPoL unmodified (C14), AdamW's weight decay.
+
+**MPoL's chk0 objective.** `analyze.sbatch` evaluated only chk1. ozstar_scripts adds `objective_full` on chk0 to `analyze.sbatch`, and `submit.sh --only-chk0 --run=NAME` reruns just that
+evaluation for an existing run (ozstar_scripts#63); it writes `out/<run>/export/objective_chk0.json`, which `speed` then picks up as MPoL's second point and a second target.
+
+### Preliminary numbers (OLD env: virgil 0.3.0, jobs 18968244 and the MPoL reference 18913982/18913983; NOT converged)
+
+Both virgil fits stopped at `max_steps` 20,000 without C8 and are from a pre-fix environment, so they say where the comparison stands, not where it ends. Read from the fits' `result.json`
+(`speed.md` and `speed.png`, the latter in `docs/imaging/imlup/speed.png`).
+
+| | start | steps / epochs | wall | final R | raw χ²/N | reaches MPoL's final R? |
+|---|---|---:|---:|---:|---:|---|
+| MPoL (AdamW, float32, 2 × 10 epochs; gina1) | flat | 20 epochs | 21,728 s (6,983 + 14,745; 698 and 1,474 s/epoch) | −108,232,184 | 2.7062 | by definition, at its end |
+| virgil `R_mpolwf` (L-BFGS, float64; gina301) | MPoL's flat start | 20,000 steps | 17,078 s (0.80 s/step) | −107,726,506 | 2.7306 | **no**: 505,678 above, not converged |
+| virgil `R_mpol` (L-BFGS, float64; gina303) | **warm**, MPoL's solution | 20,000 steps | 15,789 s (0.79 s/step) | −108,304,297 | 2.7052 | not a cold start; ends 72,113 *below* MPoL's |
+
+Per pass virgil is about three orders of magnitude cheaper and needs far more passes: an MPoL epoch (698–1,474 s) is about 880–1,880 virgil steps, or 1,300–3,350 value+gradient
+evaluations (at 0.44–0.53 s), while a virgil step is about 1.5–1.8 evaluations; 20,000 steps are about 30,000 evaluations against MPoL's 20 epochs.
+
+**Time to target, cold start: virgil did not reach MPoL's final objective in 17,078 s; MPoL did in 21,728 s.** The ordering does not hinge on MPoL's unexplained 2.1× slowdown of stage 1: at its
+stage-0 rate MPoL would take about 13,960 s, and `R_mpolwf` was then still 544,000 above the target (−107,687,746 at 13,552 s). Its last hours fell by about 40,000 per hour against a gap of 505,678, so the
+extrapolation is more than 12 h and the rate was still falling; this is a statement about this run (flat start, no preconditioner, old env), not about the best virgil can do. `R_mpolwf` also lost about 1,000 s at
+its round-2 restart (its first round stopped at step 60; the record does not say why). The two virgil fits ran on different nodes (gina301, gina303), both A100; MPoL on gina1, also an A100. Not yet known: the time on the
+fixed env and with `--offset-bound-mas` or `--precondition diag`, and MPoL's chk0 objective.
+
+## Finding: the cold-start R ob100 fit has dead pixels, and the floor start (2026-10-23)
+
+R from the p3 workflow's 1″ Gaussian start with `--offset-bound-mas 100` and no preconditioner (vv 32a303e had no such flag; job 18968246_0, tag `32a303e-cd-ob100`) ended with a better objective than MPoL's
+(−108,309,995.3 against −108,232,183.7; χ²/N 2.7052 against 2.7062; largest |offset| 0.028 of the bound) and an image that does not pass the cold-start gate: an optimiser artefact, not a result.
+
+- **What was measured (local copy).** 64 % of the pixels are below 1e-6 of the peak, with a median of 9e-10 of the peak beyond 2.4″; MPoL's solution and R_mpol have none. The live region ends at 1.78″ and the bright
+  arcs (peak 0.11 Jy/arcsec², at 1.4–1.7″) sit on that boundary. No flux lies beyond 1.8″; MPoL has about 10 % of its flux there, which accounts for most of the 0.05 Jy our image is missing.
+- **Why.** The image is `flux · softmax(b)`, so ∂L/∂b_i is proportional to I_i. A pixel the Gaussian start leaves at 1e-8 to 1e-15 of the peak cannot grow back, although the entropy term's interior
+  optimum puts every pixel above zero (∂S/∂I = ln(I/M) → −∞ as I → 0). The flux that belongs there piles into the outermost live pixels.
+- **Fix.** `fit` raises the Gaussian start to MPoL's entropy floor p = 1e-4 Jy/arcsec², as R_clean already does (`--start-floor`, default `va.MPOL["prior"]`; 0 restores the bare Gaussian; R and F; not
+  `--workflow mpol`, whose start is uniform, nor `clean`, which has its own floor). That adds about 2.6 mJy (1 % of the flux) at 1028² × 5 mas, and every pixel starts above 1e-6 of the peak (floor / peak ≈ 4.5e-4).
+  `result.json` records `start_floor` (also in the first stage) and the arguments.
+- **Diagnostic.** `write_report` (so also `report`) logs and records `dead_pixels`: the fractions of pixels below 1e-6 of the peak and below 1e-3 of the floor, the median brightness beyond 2.4″ over the peak, and the
+  largest live radius; it prints `!!! DEAD PIXELS … !!!` when more than 1 % are dead, like the offset-bound warning. `report` on the old directory gives the numbers above without refitting.
+- **Tests.** `tests/test_alma_start_floor.py` (CPU, seconds): the floored start reads back through `image_of` exactly in R and F, the report flags the bare Gaussian and passes the floored one, and `fit`
+  records both. The cold-start gate is rerun with the floor start (arm R, same settings) before it is called passed.
+
+## Decision: the cold-start gate (2026-10-23, approved by Ben)
+
+A cold-start fit (no MPoL information) is called a pass only when the numbers **and the image** agree. `compare` prints and records (`compare.md`, `compare.json` key `gate`) five checks, each PASS or FAIL
+(`NOT EVALUATED` when its input is missing, e.g. no `--data`); **the verdict is PASS only if all five pass** (a failed check gives FAIL, a missing one with none failed gives INCOMPLETE):
+
+| | check | source |
+|---|---|---|
+| a | `objective_R` at or below MPoL's own | R's objective at our solution against MPoL's solution evaluated in virgil, both at eps 1e-12 (`objective.ours_le_mpol`) |
+| b | raw χ²/N at s = 1 at or below MPoL's solution evaluated in virgil | the same two evaluations |
+| c | C8 converged in every stage | the stages of the fit's `result.json` |
+| d | pixels below 1e-6 of the peak under 1 % | `va.dead_pixel_report` of the fit's image (see the finding above) |
+| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else the 0.253 Jy of MPoL's example (`MPOL["f_tot"]`, `sgd.py:298–302`; the first draft said DSHARP's 0.255 Jy, which has no source in the repo); the reference used is recorded |
+
+Flux is the fit's, in MPoL's obs-0 gauge (`gauge_to_obs0`), so a fit with another `--ref-obs` is compared fairly. Code: `virgil_bridge.alma_start.cold_start_gate`, tests `tests/test_alma_start_floor.py`.
+
+## Option: `fit --start gauss-fit`, a data-driven start (2026-10-23)
+
+The p3 workflow starts from a fixed 1″, 0.25 Jy circular Gaussian. `--start gauss-fit` instead fits an **elliptical Gaussian** (flux, centroid, major and minor FWHM, position angle) by weighted least squares
+to the visibilities below `--gauss-fit-max-klambda` (default 40 kλ, the short baselines that see the disc's flux, centroid and overall size), from four starting position angles, the lowest χ² kept
+(`vs.fit_gaussian`; at most 2 million points, a fixed random subset). The model is that of CASA's `uvmodelfit` (component type G, fitted there by Levenberg–Marquardt); the code is ours, so only the model is CASA's.
+Gains and offsets are not fitted (the start has none). The image is the fitted Gaussian on the fit's grid (`vs.gaussian_log_image`), its flux is the fitted flux, and it is then raised to `--start-floor`
+as the default start is. Opt-in: the default stays `--start gauss`. `result.json` records the fitted parameters, the points used, χ² per point and the source as `start_gauss_fit` (and in the first stage).
+
+All that is claimed for it: among positive images with a given flux, centroid and second moments the Gaussian has the largest Shannon differential entropy, so it is the maximum-entropy image given those
+constraints. That is not our fit's entropy S_M (relative to the flat prior, on a tapered pixel grid), and the fit matches the true moments only as far as the data below the cut see them. Refused with `--workflow mpol`,
+`clean` and `--init`, which have their own starts. Tests check that the fit recovers a known ellipse (also with the axes named the other way round) and that the rendered image is the one virgil's forward
+model sees (χ² far below the East–West and North–South mirrors).

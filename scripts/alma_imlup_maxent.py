@@ -10,6 +10,7 @@
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
+    python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
 
 ``--data DIR`` holds ``ddid_NN.npz`` (the vv format of ``alma_imlup_read``; no default, so nothing runs on
 data by accident). Every path is an argument. Float64 throughout; the fits use the NUFFT at eps 1e-6 and
@@ -120,6 +121,11 @@ def run_stages(args, data, prob_for, init_dir, save=None):
     if image_first and (workflow == "clean" or init_dir):
         raise SystemExit("--image-first is for the p3 and mpol starts (clean has its own image-fixed stage; --init has an image already)")
     held = None  # the log_brightness held in the current stage
+    floor_info = None  # info of the Gaussian start's floor (``--start-floor``)
+    gfit_info = None  # the fitted Gaussian of ``--start gauss-fit``
+    gauss_fit = getattr(args, "start", "gauss") == "gauss-fit"
+    if gauss_fit and (workflow in ("mpol", "clean") or init_dir):
+        raise SystemExit("--start gauss-fit is the p3 workflow's cold start: --workflow mpol and clean have their own starts, and --init an image already")
     if mpol and not init_dir:
         plan = [("all", None)]
         values = None
@@ -147,6 +153,17 @@ def run_stages(args, data, prob_for, init_dir, save=None):
                     values["cal.sigma"] = jnp.asarray(shat, float)
         if values is None:
             values = va.mpol_start_values(prob) if mpol else va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
+            if gauss_fit:  # a data-driven start: the elliptical Gaussian a least-squares fit to the short baselines gives (CASA uvmodelfit's model), not the fixed 1" one
+                gfit_info = vs.fit_gaussian(data.u, data.v, data.vis, data.weight, q_max=1e3 * args.gauss_fit_max_klambda)
+                say(f"start: elliptical Gaussian fitted to {gfit_info['n_used']:,} of {gfit_info['n_in_cut']:,} visibilities below {gfit_info['q_max']:g} wavelengths: flux {gfit_info['flux_jy']:.5f} Jy, "
+                    f"centroid ({gfit_info['east_mas']:.1f}, {gfit_info['north_mas']:.1f}) mas E, N, FWHM {gfit_info['major_mas']:.1f} x {gfit_info['minor_mas']:.1f} mas at PA {gfit_info['pa_deg']:.1f} deg, chi2/point {gfit_info['chi2_per_point']:.3f}")
+                values["log_brightness"] = jnp.asarray(vs.gaussian_log_image(prob.npix, prob.pixel_mas, gfit_info["east_mas"], gfit_info["north_mas"], gfit_info["major_mas"], gfit_info["minor_mas"], gfit_info["pa_deg"]))
+                values["cal.flux"] = jnp.asarray(gfit_info["flux_jy"])
+            if not mpol and getattr(args, "start_floor", 0):  # the Gaussian's outer pixels are 1e-8..1e-15 of the peak and cannot grow back: raise them to MPoL's entropy floor
+                log_pb = va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None
+                eta, flux0, floor_info = va.floor_start(values, prob.npix, prob.pixel_mas, args.start_floor, log_pb=log_pb)
+                values["log_brightness"], values["cal.flux"] = jnp.asarray(eta), jnp.asarray(flux0)
+                say(f"start: 1\" Gaussian raised to the floor {args.start_floor:g} Jy/arcsec^2 at {floor_info['n_raised']:,} pixels (+{floor_info['flux_added_jy']:.5f} Jy on {floor_info['flux_before_jy']:.5f} Jy)")
         if fixed is not None:  # the held image is no free site: the optimiser sees the nuisances only
             values.pop("log_brightness")
         limit = args.prestage_max_steps if name in ("selfcal", "image") else args.max_steps
@@ -166,6 +183,9 @@ def run_stages(args, data, prob_for, init_dir, save=None):
 
         out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
         stages.append(stage_summary(name, info, traj, time.time() - t, why))
+        if floor_info is not None or gfit_info is not None:  # the first stage's start (it is the only one that is not warm)
+            stages[-1].update({k: v for k, v in (("start_floor", floor_info), ("start_gauss_fit", gfit_info)) if v is not None})
+            floor_info = gfit_info = None
         if clean and name == "selfcal":
             stages[-1]["clean_start"] = start_info
             stages[-1]["selfcal_check"] = chk = vs.selfcal_check(out, ref_obs=args.ref_obs)
@@ -254,6 +274,8 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         clean_start=next((s["clean_start"] for s in stages if "clean_start" in s), None),
+        start_floor=next((s["start_floor"] for s in stages if "start_floor" in s), None),
+        start_gauss_fit=next((s["start_gauss_fit"] for s in stages if "start_gauss_fit" in s), None),
         alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
         offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested, bound_obs=prob.offset_bound_obs, ref_obs=getattr(args, "ref_obs", 0)),
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
@@ -267,6 +289,11 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     say(f"offset bound ±{ob['bound_mas']:.6g} mas ({'--offset-bound-mas' if ob['requested_mas'] is not None else 'virgil default'}); largest |offset|/bound {ob['max_abs_over_bound']:.3g}")
     if ob["warning"]:
         say(ob["warning"])
+    dead = va.dead_pixel_report(va.image_of(values, prob.npix, prob.pixel_mas, va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None), prob.pixel_mas)
+    res["dead_pixels"] = dead
+    say(f"dead pixels: {dead['frac_below_1e-6_peak']:.2%} below 1e-6 of the peak, {dead['frac_below_1e-3_floor']:.2%} below 1e-3 of the floor; largest live radius {dead['largest_live_radius_arcsec']:.2f} arcsec")
+    if dead["warning"]:
+        say(dead["warning"])
     if shat is not None:
         res["shat"] = shat
         res["acceptance_C13"] = acceptance(sigma, shat)
@@ -401,13 +428,14 @@ def cmd_cv_task(args):
     import jax.numpy as jnp
 
     t = time.time()
-    values, info, traj, why = va.run_fit_c8(prob, va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob), max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol)
+    values, info, traj, why = va.run_fit_c8(prob, va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob), max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, precondition=args.precondition)
     wall = time.time() - t
     ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     tr = va.score(data, prob.scene, values, prob.nuis, mask=train, chunk_size=args.chunk_size)
     res = dict(command="cv-task", config=args.config, lam=lam, lam_train=lam_train, fold=args.fold, n_train=int(train.sum()), n_test=int(test.sum()), folds_sha256=fmeta["sha256"],
                versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], stopped_because=why, convergence=va.convergence(traj, info), trajectory=traj,
+               precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []),
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
                             by_ddid_s1=ho1["by_ddid"], by_annulus_s1=ho1["by_annulus"]),
                train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]), alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1])
@@ -572,6 +600,23 @@ def grad_table(groups):
     return md
 
 
+def cold_start_gate_of(res, vres, image, px, flux, clean_dir):
+    """The cold-start gate (``vs.cold_start_gate``) of a compare: ``res`` holds the objective comparison (empty without ``--data``: (a) and (b) are then not evaluated and
+    the verdict is INCOMPLETE), ``vres`` the fit's result.json (its stages' C8 flags), ``image`` the fit's image."""
+    o = res.get("objective")
+    n = o["ours"]["n"] if o else None
+    raw = lambda x: sum(x["by_ddid"]["chi2_raw"]) / (2 * n)  # noqa: E731
+    if clean_dir:
+        ref, name = float(vs.read_clean(clean_dir)[3]["flux_jy"]), f"CLEAN ({clean_dir})"
+    else:
+        ref, name = vs.REFERENCE_FLUX_JY, "MPoL F_tot"
+    stages = [bool(st["convergence"]["converged"]) for st in vres.get("stages", [])]
+    return vs.cold_start_gate(
+        objective_ours=o and o["ours"]["objective"], objective_mpol=o and o["mpol_solution_in_virgil"]["objective"],
+        chi2n_ours=o and raw(o["ours"]), chi2n_mpol=o and raw(o["mpol_solution_in_virgil"]), stages_converged=stages,
+        dead_fraction=va.dead_pixel_report(image, px)["frac_below_1e-6_peak"], flux_ours=flux, flux_ref=ref, flux_ref_name=name)
+
+
 def cmd_compare(args):
     import jax.numpy as jnp
 
@@ -651,8 +696,10 @@ def cmd_compare(args):
         np.save(out / "f_clean_beam.npy", conv.astype(np.float32))
         np.save(out / "dsharp_regridded.npy", d_on.astype(np.float32))
         res["F_vs_dsharp"] = dict(beam_mas_deg=beam, **cx.difference_stats(conv, d_on))
+    gate = cold_start_gate_of(res, vres, img_o, px, flux_o, args.clean_dir)
+    res["gate"] = gate
     dump(out / "compare.json", res)
-    md = ["# R against MPoL", ""]
+    md = ["# R against MPoL", ""] + vs.gate_markdown(gate) + [""]
     if ref != 0:
         md += [f"**Our fit's reference observation is {ref}, not 0** (`--ref-obs`): gains, flux and offsets below are renormalised to MPoL's obs-0 convention ({res['ref_obs']['note']}).", ""]
     if "objective" in res:
@@ -693,6 +740,51 @@ def cmd_mpol_init(args):
     dump(out / "mpol_init.json", dict(command="mpol-init", mpol=str(args.mpol), n_ddid=n_ddid, obs_of_ddid=obs_of, keys=sorted(values),
                                       flux_jy=float(values["cal.flux"]), gain=values["cal.gain"], offset_mas=values["cal.offset"], sigma=values["cal.sigma"]))
     say(f"wrote {out / 'values.npz'}: {sorted(values)}, image {values['log_brightness'].shape}, flux {float(values['cal.flux']):.5f} Jy")
+
+
+def cmd_speed(args):
+    """Speed of virgil's L-BFGS against MPoL's AdamW run (``crosscheck.alma_speed``): objective against wall time, time to targets, cost per
+    full-data pass, fairness notes. Reads small JSON only (each fit's ``result.json``, MPoL's ``stage<N>.time.json``, ``export/objective.json``
+    and, if it exists, ``export/objective_chk0.json``) and optional job logs; needs no data and no GPU. Writes speed.json, speed.md, speed.png."""
+    from crosscheck import alma_speed as sp
+
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    fits = {}
+    for spec in args.fit:
+        label, _, d = spec.rpartition("=") if "=" in spec else ("", "", spec)
+        d = pathlib.Path(d)
+        res = json.loads((d / "result.json").read_text())
+        if (d / "anchors.json").exists():  # optional second evaluations of R inside the fit: [{"steps", "objective", "loss"}]
+            res["anchors"] = json.loads((d / "anchors.json").read_text())
+        fits[label or d.name] = res
+    mdir = pathlib.Path(args.mpol)
+    run = mdir.parent if (mdir.name == "export" and not list(mdir.glob("stage*.time.json"))) else mdir
+    stages = [json.loads(p.read_text()) for p in sorted(run.glob("stage*.time.json"))]
+    if not stages:
+        raise SystemExit(f"no stage<N>.time.json in {run} (train.sbatch of alma_mpol_ref writes them)")
+    odir = run / "export" if (run / "export" / "objective.json").exists() else run
+    objective = json.loads((odir / "objective.json").read_text())
+    chk0 = json.loads((odir / "objective_chk0.json").read_text()) if (odir / "objective_chk0.json").exists() else None
+    mpol = sp.mpol_summary(stages, objective, chk0, startup_s=args.mpol_startup_s)
+    logs, owners = {}, {}
+    for spec in args.log:  # [mpol=|virgil=]FILE
+        owner, _, f = spec.partition("=") if spec.partition("=")[0] in ("mpol", "virgil") else ("", "", spec)
+        logs[f] = pathlib.Path(f).read_text()
+        if owner:
+            owners[f] = owner
+    hardware = sp.parse_logs(logs, owners)
+    extra = {}
+    for t in args.target:
+        k, _, v = t.rpartition("=")
+        extra[k or f"target {v}"] = float(v)
+    res = sp.build(fits, mpol, extra, vg_seconds=tuple(args.vg_seconds), hardware=hardware)
+    res["fairness_notes"] = sp.fairness_notes(res)
+    res["command"], res["versions"] = "speed", versions()
+    dump(out / "speed.json", res)
+    (out / "speed.md").write_text(sp.markdown(res, res["fairness_notes"]))
+    sp.plot(res, out / "speed.png")
+    say((out / "speed.md").read_text())
 
 
 def cmd_lambda0(args):
@@ -736,6 +828,12 @@ def main(argv=None):
     p.add_argument("--clean-smooth-mas", type=float, default=10.0, help="clean: FWHM (mas) of the small circular positivity kernel the CLEAN model is convolved with (default two fit pixels; keeps the long baselines' power)")
     p.add_argument("--clean-beam-frac", type=float, default=0.0, help="clean: instead smooth with this fraction of the restoring beam (0: off, the default; 1 removes the long baselines' power and biases their gains)")
     p.add_argument("--clean-floor", type=float, default=va.MPOL["prior"], help="clean: floor of the start image, Jy/arcsec^2 (default MPoL's entropy prior p = 1e-4)")
+    p.add_argument("--start", choices=["gauss", "gauss-fit"], default="gauss",
+                   help="p3 workflow's cold start: gauss (default): the fixed 1\" Gaussian of 0.25 Jy; gauss-fit: an elliptical Gaussian (flux, centroid, FWHMs, PA) fitted by least squares to "
+                        "the visibilities below --gauss-fit-max-klambda (CASA uvmodelfit's model), recorded in result.json (start_gauss_fit). Both are then raised to --start-floor")
+    p.add_argument("--gauss-fit-max-klambda", type=float, default=vs.GAUSS_FIT_MAX_Q / 1e3, help="gauss-fit: the short baselines used, in kilo-wavelengths")
+    p.add_argument("--start-floor", type=float, default=va.MPOL["prior"], help="p3 workflow: raise the 1\" Gaussian start to this level (Jy/arcsec^2) so every pixel starts alive (default MPoL's entropy prior 1e-4, as R_clean; "
+                   "0: the bare Gaussian, whose outer pixels are 1e-8..1e-15 of the peak and cannot grow back: R ob100, job 18968246_0). Ignored by --workflow mpol and clean (their own starts) and by --init")
     p.add_argument("--prestage-max-steps", type=int, default=3000, help="clean, --image-first: step budget of the selfcal / image stage (stops earlier when C8 holds)")
     p.add_argument("--image-first", action="store_true", help="p3, mpol: a first stage fits only the image and flux (gains 1, offsets 0, s = 1), then the workflow's own stages release the nuisances")
     p.add_argument("--ref-obs", default="0", help="the observation whose gain is 1 and offset 0 (the flux gauge): an index, or 'auto' = the SB observation with the largest sum of weights; "
@@ -793,6 +891,7 @@ def main(argv=None):
     p.add_argument("--data", default=None, help="needed for the objective comparison")
     p.add_argument("--f-dir", default=None)
     p.add_argument("--dsharp", default=None)
+    p.add_argument("--clean-dir", default=None, help="gate (e): the output directory of alma_imlup_clean.py run (clean.json); its flux is the reference (default MPoL's F_tot, 0.253 Jy)")
     p.add_argument("--out", required=True)
     p.add_argument("--no-grad", action="store_true", help="skip the gradient-scaling diagnostic (two value-and-gradient evaluations on --data)")
     p.add_argument("--no-dirty", action="store_true", help="skip the residual dirty images of MPoL's solution (resid_dirty_mpol_obs*.npy, 4 MB each; one NUFFT pass and one gridding of all points)")
@@ -804,6 +903,18 @@ def main(argv=None):
     p.add_argument("--data", default=None, help="optional: the ddid -> observation map is read from it (default IM Lup's obsid_dict)")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_mpol_init)
+
+    p = sub.add_parser("speed", help="virgil's L-BFGS against MPoL's AdamW: objective vs wall time, time to target, cost per pass (small JSON only)")
+    p.add_argument("--fit", action="append", required=True, help="a fit directory with result.json (config R), optionally LABEL=DIR; repeat for several fits")
+    p.add_argument("--mpol", required=True, help="MPoL's run directory (stage<N>.time.json; export/objective.json and optional export/objective_chk0.json)")
+    p.add_argument("--out", required=True)
+    p.add_argument("--log", action="append", default=[], help="[mpol=|virgil=]FILE: a job log or digest with `job=… host=…` lines (and the GPU model), for the hardware note; the prefix says whose run it is "
+                   "(without it the log counts as MPoL's only if its job is in stage<N>.time.json, else unattributed); repeat")
+    p.add_argument("--target", action="append", default=[], help="an extra target LABEL=R (objective R); repeat")
+    p.add_argument("--vg-seconds", type=float, nargs=2, default=list(__import__("crosscheck.alma_speed", fromlist=["x"]).BENCH_VG_S), metavar=("LO", "HI"),
+                   help="seconds per value+gradient on the A100 bench (job 18862592) used to estimate evaluations per step; virgil's info records none")
+    p.add_argument("--mpol-startup-s", type=float, default=0.0, help="MPoL start-up (asdf load, CUDA) per stage to subtract; default 0 (unmeasured, left in)")
+    p.set_defaults(fn=cmd_speed)
 
     p = sub.add_parser("lambda0")
     p.add_argument("--n", type=int, required=True)

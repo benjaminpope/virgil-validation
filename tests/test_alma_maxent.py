@@ -435,6 +435,30 @@ def test_r3_cv_task_and_aggregate_on_two_lambdas_and_two_folds(syn, tmp_path):
     assert tot == n
 
 
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_cv_task_passes_precondition_to_the_fit_and_records_it(syn, tmp_path, monkeypatch):
+    """``cv-task --precondition diag`` reaches ``run_fit_c8`` (it used to be accepted and ignored)."""
+    folds = tmp_path / "folds.npz"
+    _call("folds", "--data", syn, "--out", folds, "--k", 2)
+    init = tmp_path / "init"
+    _call("fit", "--config", "F", "--data", syn, "--out", init, "--npix", 32, "--lam", 1e3, "--max-steps", 10, "--no-dirty")
+    real = va.run_fit_c8
+    seen = {}
+
+    def fake(*a, **k):
+        seen.update(k)
+        k.pop("precondition")  # the installed virgil need not have the argument
+        values, info, traj, why = real(*a, **k)
+        return values, dict(info, precondition="diag", precondition_rounds=[dict(decades=1.5, floored=0.25)]), traj, why
+
+    monkeypatch.setattr(va, "run_fit_c8", fake)
+    _call("cv-task", "--data", syn, "--folds", folds, "--fold", 0, "--init", init, "--lam", 1e2, "--npix", 32, "--max-steps", 10,
+          "--precondition", "diag", "--out", tmp_path / "cv")
+    assert seen["precondition"] == "diag"
+    r = json.loads((tmp_path / "cv" / "cv.json").read_text())
+    assert r["precondition"] == "diag" and r["precondition_rounds"] == [dict(decades=1.5, floored=0.25)]
+
+
 # ------------------------------------------------------------------ R4
 
 
@@ -472,6 +496,9 @@ def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path)
     o = c["objective"]
     assert abs(o["ours"]["objective"] - o["mpol_solution_in_virgil"]["objective"]) < 1e-9 * abs(o["ours"]["objective"])
     assert (out / "compare.md").exists()
+    g = c["gate"]  # the cold-start gate: five items, MPoL's F_tot as the reference (no --clean-dir), the same solution on both sides
+    assert [i["key"] for i in g["items"]] == list("abcde") and g["flux_reference"]["name"] == "MPoL F_tot" and abs(g["items"][0]["value"]) < 1e-6 * abs(o["ours"]["objective"])
+    assert [i["status"] for i in g["items"][:2]] == ["PASS", "PASS"] and g["verdict"] in ("PASS", "FAIL") and "Cold-start gate" in (out / "compare.md").read_text()
     # the residual dirty images of MPoL's solution (for docs/imaging/imlup.md): the same solution as the fit's own, so the same images
     for e in range(7):
         np.testing.assert_allclose(np.load(out / f"resid_dirty_mpol_obs{e}.npy"), np.load(r_fit / f"resid_dirty_obs{e}.npy"), rtol=1e-4, atol=1e-7 * np.abs(np.load(r_fit / f"resid_dirty_obs{e}.npy")).max())
@@ -501,7 +528,7 @@ def test_r4_compare_reports_both_solutions_term_by_term_and_the_gradient_scaling
     gg = c["grad_groups"]["ours"]
     assert set(gg) >= {"log_brightness", "cal.flux", "cal.gain", "cal.offset", "cal.sigma"}
     assert abs(gg["log_brightness"]["dxdz_median"] - 1) < 1e-12
-    assert gg["cal.offset"]["dxdz_median"] > 30 * gg["cal.gain"]["dxdz_median"]  # the offsets' box is ±3 beams in mas (virgil 0.4.1): tens of mas against 1 for ln gain
+    assert gg["cal.offset"]["dxdz_median"] > 10 * gg["cal.gain"]["dxdz_median"]  # a logit of x / bound in mas: the bound is virgil's own, per observation (3 beams, ~150 mas here) or 1/(2 q_min)
     md = (out / "compare.md").read_text()
     for head in ("Raw chi^2/N (s = 1", "term by term", "Gains and offsets, side by side", "Gradient scaling"):
         assert head in md

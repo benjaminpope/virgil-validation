@@ -409,7 +409,8 @@ def gauge_to_obs0(gain, offset, flux, ref_obs):
 
 
 def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
-    """C9's start: a circular Gaussian of FWHM 1" and flux 0.25 Jy, s_d at ŝ_d (or 1)."""
+    """C9's start: a circular Gaussian of FWHM 1" and flux 0.25 Jy, s_d at ŝ_d (or 1). The bare Gaussian leaves the outer
+    pixels at 1e-8 to 1e-15 of the peak, which the fit can never revive (``dead_pixel_report``): ``floor_start`` raises them."""
     import jax.numpy as jnp
 
     from crosscheck.alma_maxent import gaussian_log_image
@@ -420,6 +421,50 @@ def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
     if shat is not None and "cal.sigma" in v:
         v["cal.sigma"] = jnp.asarray(shat, float)
     return v
+
+
+def floor_start(values, npix, pixel_mas, floor, log_pb=None):
+    """``(log_brightness, cal.flux, info)`` of ``values``' start image with every sky pixel raised to at least ``floor`` Jy/arcsec^2
+    (MPoL's entropy prior p = 1e-4 is the level a pixel takes with no data; R_clean does the same). ``image_of`` of the result is
+    exactly the floored image, in config F too (``log_pb`` the beam: ``cal.flux`` is then the apparent flux, sky x beam)."""
+    image = image_of(values, npix, pixel_mas, log_pb)
+    floored = np.maximum(image, floor)
+    area = (pixel_mas / 1000.0) ** 2
+    pb = 1.0 if log_pb is None else np.exp(np.asarray(log_pb))
+    info = dict(floor_jy_arcsec2=float(floor), n_raised=int((image < floor).sum()), flux_before_jy=float(image.sum() * area),
+                flux_added_jy=float((floored - image).sum() * area), peak_jy_arcsec2=float(floored.max()))
+    return np.log(floored / floored.max()), float((floored * pb).sum() * area), info
+
+
+DEAD_FRACTION_OF_PEAK = 1e-6  # below this fraction of the peak a pixel's gradient (d loss / d b_i is proportional to I_i) is too small to move it
+DEAD_FRACTION_WARN = 0.01
+
+
+def dead_pixel_report(image, pixel_mas, *, floor=MPOL["prior"]):
+    """The pixels the optimiser cannot revive. With ``I = flux softmax(b)`` the gradient on ``b_i`` is proportional to ``I_i``, so a pixel
+    far below the peak stays there whatever the entropy term wants (its interior optimum has every pixel above zero, ``dS/dI = ln(I/M)``).
+    Returns the fraction of pixels below 1e-6 of the peak and below 1e-3 of the entropy ``floor``, the median brightness beyond 2.4 arcsec
+    over the peak, the largest live radius (arcsec from the phase-centre cell; live = at least 1e-6 of the peak) and a ``warning``
+    (None if at most 1 % are dead). R_mpol and MPoL's own solution have none dead; R ob100 (18968246_0) had 64 %."""
+    from crosscheck.alma_maxent import phase_centre_cell
+
+    img = np.asarray(image, float)
+    n = img.shape[0]
+    peak = float(img.max())
+    dead = img < DEAD_FRACTION_OF_PEAK * peak
+    r0, c0 = phase_centre_cell(n)
+    rr, cc = np.meshgrid(np.arange(n) - r0, np.arange(n) - c0, indexing="ij")
+    radius = np.hypot(rr, cc) * pixel_mas / 1000.0
+    frac = float(dead.mean())
+    outer = radius > 2.4
+    out = {"peak_jy_arcsec2": peak, "frac_below_1e-6_peak": frac, "frac_below_1e-3_floor": float((img < 1e-3 * floor).mean()),
+           "median_beyond_2p4_arcsec_over_peak": float(np.median(img[outer]) / peak) if outer.any() else None,
+           "largest_live_radius_arcsec": float(radius[~dead].max()) if (~dead).any() else 0.0}
+    out["warning"] = None if frac <= DEAD_FRACTION_WARN else (
+        f"!!! DEAD PIXELS: {frac:.1%} of the pixels are below {DEAD_FRACTION_OF_PEAK:g} of the peak (live out to {out['largest_live_radius_arcsec']:.2f} arcsec). "
+        "The gradient on a softmax logit is proportional to the pixel's brightness, so they cannot grow back and their flux piles into the outermost live pixels: "
+        "start from the entropy floor (--start-floor) or treat this fit as an optimiser artefact !!!")
+    return out
 
 
 def mpol_base_jy_arcsec2():
@@ -451,6 +496,17 @@ def mpol_start_values(prob):
     return v
 
 
+def _plain(v):
+    """A scalar as a Python number, an array as a list, anything else unchanged (so a field virgil adds to its
+    per-round record cannot lose a stage's work after ``fit`` has returned)."""
+    try:
+        if np.ndim(v) == 0 and hasattr(v, "item"):
+            return v.item()
+        return np.asarray(v).tolist() if np.ndim(v) else v
+    except (TypeError, ValueError):  # ragged or otherwise unconvertible
+        return v
+
+
 def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None):
     """L-BFGS through ``virgil.fit`` (C8). Returns ``(values, info, trajectory)``: the fitted values as
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
@@ -460,8 +516,9 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
 
     from virgil import fit
 
+    precondition = None if precondition in (None, "none") else precondition
     kw = {}
-    if precondition not in (None, "none"):
+    if precondition is not None:
         if "precondition" not in inspect.signature(fit).parameters:
             raise RuntimeError(f"precondition={precondition!r} needs a virgil whose fit() has the precondition argument "
                                "(virgil >= the release that includes fit(precondition=...)); the installed one has not")
@@ -481,7 +538,7 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
     values = {k: np.asarray(v) for k, v in res.values.items()}
     info = {k: (v.item() if hasattr(v, "item") else v) for k, v in res.info.items() if np.ndim(v) == 0}
     info.update({k: np.asarray(v).tolist() for k, v in res.info.items() if np.ndim(v) > 0 and k != "precondition_rounds"})
-    info["precondition_rounds"] = [{k: float(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])]
+    info["precondition_rounds"] = [{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])]
     return values, info, traj
 
 
@@ -500,6 +557,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
     ``max_rounds``."""
     import time
 
+    precondition = None if precondition in (None, "none") else precondition  # one spelling of "off"
     t0, total, traj, values, why, idle = time.time(), 0, [], init, "max_rounds", 0
     pc_rounds, restarts = [], []  # the diagonal scaling's per-L-BFGS-round stats and each restart's steps and wall time
     info = dict(steps=0, rounds=0, stop="time", loss=float("nan"), converged=False)
@@ -509,7 +567,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
             why = "time_limit"
             break
         t_fit = time.time()
-        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, **({} if precondition is None else {"precondition": precondition}))
+        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition)
         steps = int(info["steps"])
         pc_rounds += info.get("precondition_rounds", [])
         restarts.append(dict(steps=steps, wall_s=time.time() - t_fit, loss=float(info["loss"])))

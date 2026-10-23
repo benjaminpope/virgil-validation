@@ -369,3 +369,13 @@ virgil's `design/radio_imaging_innovations.md` records every radio-imaging metho
 | B4, coarse-to-fine uv cut | experimental | none yet (listed in `trust/not_covered.md`) | none |
 
 **The entropy metric is w·b·(1 − b), not w·b.** The register and `gauss_newton_diag`'s docstring write the diagonal on entropy pixels as `weight * b`. Through the unit-sum softmax the Skilling–Bryan metric `weight Σ db²/b` has diagonal `weight * b * (1 − b)`, which is what virgil returns (to 1e-15). The two agree for b ≪ 1, as for any image of many pixels; the test pins the exact form (finding F23 in the ledger).
+
+## Part 8. Speed comparison of virgil with MPoL
+
+`alma_imlup_maxent.py speed --fit DIR [--fit DIR ...] --mpol DIR --out DIR` (`crosscheck/alma_speed.py`) writes `speed.json`, `speed.md` and `speed.png` from saved results only. The definitions it prints are these.
+
+- **Objective.** R = −ln L + λ_R S_M with λ_R = 2Nλ_M, MPoL's entropy on the tapered image. virgil's fit loss is R plus a constant, taken from the fit's final point as `objective_R − loss_final`; the constant must agree across fits to 5 (otherwise the check reports a problem, and with one fit and no anchor it reports **NOT CHECKED**).
+- **Wall time.** Cumulative optimizer time on the `all` stage, restarts included; the problem build and the compile of each round are reported separately. MPoL's start-up (`--mpol-startup-s`) is subtracted from each of its stage wall times.
+- **Time to target.** The first (linearly interpolated) time at which R is at or below the target: MPoL's final objective, its stage-0 (`chk0`) objective when `export/objective_chk0.json` exists, and the best known. A warm start (`--init`) has no cold time-to-target. MPoL's objective is known only at its checkpoints, so its curve has one point per stage.
+- **Cost per pass.** MPoL: stage wall time per epoch (one pass over N visibilities in 40,000-sample minibatches). virgil: median seconds per step, divided by the benchmarked seconds per value+gradient evaluation (`--vg-seconds`, A100, float64) to estimate evaluations per step; `fit` records no evaluation count.
+- **Fairness.** MPoL runs float32 PyTorch, virgil float64 JAX; hardware is attributed per run from `--log mpol=FILE` and `--log virgil=FILE`, and a run whose node or GPU is not recorded is reported as such.
