@@ -350,7 +350,7 @@ fixed env and with `--offset-bound-mas` or `--precondition diag`, and MPoL's chk
 
 ## Finding: the cold-start R ob100 fit has dead pixels, and the floor start (2026-10-23)
 
-R from the p3 workflow's 1″ Gaussian start with `--offset-bound-mas 100 --precondition diag` (job 18968246_0, tag `32a303e-cd-ob100`) ended with a better objective than MPoL's
+R from the p3 workflow's 1″ Gaussian start with `--offset-bound-mas 100` and no preconditioner (vv 32a303e had no such flag; job 18968246_0, tag `32a303e-cd-ob100`) ended with a better objective than MPoL's
 (−108,309,995.3 against −108,232,183.7; χ²/N 2.7052 against 2.7062; largest |offset| 0.028 of the bound) and an image that does not pass the cold-start gate: an optimiser artefact, not a result.
 
 - **What was measured (local copy).** 64 % of the pixels are below 1e-6 of the peak, with a median of 9e-10 of the peak beyond 2.4″; MPoL's solution and R_mpol have none. The live region ends at 1.78″ and the bright
@@ -367,7 +367,7 @@ R from the p3 workflow's 1″ Gaussian start with `--offset-bound-mas 100 --prec
 
 ## Decision: the cold-start gate (2026-10-23, approved by Ben)
 
-An unconverged-from-nothing fit is called a pass only when the numbers **and the image** agree. `compare` prints and records (`compare.md`, `compare.json` key `gate`) five checks, each PASS or FAIL
+A cold-start fit (no MPoL information) is called a pass only when the numbers **and the image** agree. `compare` prints and records (`compare.md`, `compare.json` key `gate`) five checks, each PASS or FAIL
 (`NOT EVALUATED` when its input is missing, e.g. no `--data`); **the verdict is PASS only if all five pass** (a failed check gives FAIL, a missing one with none failed gives INCOMPLETE):
 
 | | check | source |
