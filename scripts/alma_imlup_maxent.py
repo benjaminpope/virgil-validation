@@ -2,7 +2,7 @@
 
     python scripts/alma_imlup_maxent.py lambda0 --n N [--flux F]
     python scripts/alma_imlup_maxent.py folds --data DIR --out FILE.npz
-    python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--sb-only] [--init DIR]
+    python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--sb-only] [--init DIR] [--workflow {p3,mpol,clean} [--clean-dir DIR]]
                                             [--shat DIR] [--folds FILE.npz --fold J] [--max-steps N] [--time-limit S]
     python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
@@ -35,6 +35,7 @@ import jax  # noqa: E402
 jax.config.update("jax_enable_x64", True)
 
 import virgil_bridge.alma as va  # noqa: E402
+import virgil_bridge.alma_start as vs  # noqa: E402
 from crosscheck import alma_maxent as cx  # noqa: E402
 
 RA_DEG, DEC_DEG = (15 + 56 / 60 + 9.20 / 3600) * 15, -(37 + 56 / 60 + 6.42 / 3600)  # the MS's phase centre (docs/alma_conventions.md)
@@ -99,47 +100,105 @@ def run_stages(args, data, prob_for, init_dir, save=None):
     """C9: stage 1 on SB, stage 2 on all (warm-started); with ``--init`` a single stage. Each stage runs until C8
     holds or its budget (``--max-steps``, ``--time-limit``) runs out (``va.run_fit_c8``). ``save(prob, values,
     stages)`` is called after every round and stage, so a later failure never loses a fit; ``stages`` then ends with
-    the stage in progress (``in_progress`` true)."""
+    the stage in progress (``in_progress`` true).
+
+    ``--workflow clean`` (no MPoL information): the start is our own CLEAN model (``vs.clean_start``); stage ``selfcal``
+    holds that image and fits only the nuisances (flux, gains, offsets, s), stage ``all`` releases everything.
+    ``--image-first`` (workflows p3 and mpol): a first stage ``image`` on the first stage's data fits only the image and
+    the flux, with gains 1, offsets 0 and s = 1, before the workflow's own stages release the nuisances (the opposite
+    of selfcal: the image is made right before the nuisances can wander). ``--prestage-max-steps`` budgets both.
+    ``prob_for(use, fixed, image_only)`` builds a stage's problem; ``fixed`` is a held ``log_brightness`` or None."""
     import jax.numpy as jnp
 
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
     stages = []
-    mpol = getattr(args, "workflow", "p3") == "mpol"
-    if mpol and args.sb_only:
-        raise SystemExit("--workflow mpol is one all-data stage from MPoL's own start: no --sb-only")
-    if mpol and not init_dir:  # with --init (resume or continue) the stage is the same all-data stage from the saved values
+    workflow = getattr(args, "workflow", "p3")
+    mpol = workflow == "mpol"
+    clean = workflow == "clean" and not init_dir  # with --init (resume or continue) the stage is the same all-data stage from the saved values
+    image_first = bool(getattr(args, "image_first", False))
+    if (mpol or workflow == "clean") and args.sb_only:
+        raise SystemExit(f"--workflow {workflow} is all-data stages from its own start: no --sb-only")
+    if image_first and (workflow == "clean" or init_dir):
+        raise SystemExit("--image-first is for the p3 and mpol starts (clean has its own image-fixed stage; --init has an image already)")
+    held = None  # the log_brightness held in the current stage
+    if mpol and not init_dir:
         plan = [("all", None)]
         values = None
     elif init_dir:
         z = np.load(pathlib.Path(init_dir) / "values.npz")
         values = {k: jnp.asarray(z[k]) for k in z.files}
         plan = [("all", None)]
+    elif clean:
+        values, held, start_info = clean_start_values(args, prob_for(None, None, False), shat)
+        plan = [("selfcal", None), ("all", None)]
     else:
         plan = [("sb", data.select(obs=va.SB_OBS))] + ([] if args.sb_only else [("all", None)])
         values = None
-    prob = None
+    if image_first:
+        plan = [("image", plan[0][1])] + plan
+    prob, previous = None, None
     for name, use in plan:
-        prob = prob_for(use)
+        fixed = held if name == "selfcal" else None
+        prob = prob_for(use, fixed, name == "image")
         if values is not None:
             values = va.drop_unused_sites(values, prob)
+            if previous == "image":  # the nuisances start where a fresh fit starts them
+                values = {**prob.init, **values}
+                if shat is not None and "cal.sigma" in values:
+                    values["cal.sigma"] = jnp.asarray(shat, float)
         if values is None:
             values = va.mpol_start_values(prob) if mpol else va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
-        say(f"stage {name}: max_steps {args.max_steps}, time limit {args.time_limit}, gtol {args.gtol}")
+        if fixed is not None:  # the held image is no free site: the optimiser sees the nuisances only
+            values.pop("log_brightness")
+        limit = args.prestage_max_steps if name in ("selfcal", "image") else args.max_steps
+        say(f"stage {name}: max_steps {limit}, time limit {args.time_limit}, gtol {args.gtol}")
         t = time.time()
 
-        def on_round(vals, info, traj, rnd, name=name, t=t, prob=prob):
+        def with_image(vals, fixed=fixed):
+            """``vals`` as numpy, with the held image put back (a saved fit always has its image)."""
+            vals = {k: np.asarray(v) for k, v in vals.items()}
+            return vals if fixed is None else {**vals, "log_brightness": np.asarray(fixed)}
+
+        def on_round(vals, info, traj, rnd, name=name, t=t, prob=prob, with_image=with_image):
             say(f"stage {name}: round {rnd} done, {info['steps']} steps, stop {info['stop']}, loss {info['loss']:.3f}")
             if save:
                 part = stage_summary(name, info, traj, time.time() - t, "in_progress")
-                save(prob, {k: np.asarray(v) for k, v in vals.items()}, stages + [dict(part, in_progress=True)])
+                save(prob, with_image(vals), stages + [dict(part, in_progress=True)])
 
-        out, info, traj, why = va.run_fit_c8(prob, values, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
+        out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
         stages.append(stage_summary(name, info, traj, time.time() - t, why))
+        if clean and name == "selfcal":
+            stages[-1]["clean_start"] = start_info
+            stages[-1]["selfcal_check"] = chk = vs.selfcal_check(out, ref_obs=args.ref_obs)
+            say(f"selfcal: gains {chk['gain_min']:.4f}-{chk['gain_max']:.4f} (LB obs 5, 6: {np.round(chk['gain_lb_obs5_6'], 4)}; R_mpol 1.02-1.03, MPoL 0.94-0.98), flux {chk['flux_jy']:.5f} Jy, "
+                f"largest offset {chk['offset_max_abs_mas']:.2f} mas" + ("; !!! A GAIN IS OUTSIDE THE REFERENCE RANGE: the held image may be biased !!!" if chk["gain_outside_reference"] else ""))
         say(f"stage {name}: stopped because {why} after {info['steps']} steps in {info['rounds']} rounds; C8 converged: {stages[-1]['convergence']['converged']}")
-        values = {k: jnp.asarray(v) for k, v in out.items()}
+        values = {k: jnp.asarray(v) for k, v in with_image(out).items()}
+        previous = name
         if save:
-            save(prob, {k: np.asarray(v) for k, v in out.items()}, stages)
+            save(prob, with_image(out), stages)
     return prob, {k: np.asarray(v) for k, v in values.items()}, stages, shat
+
+
+def clean_start_values(args, prob, shat):
+    """``(values, log_brightness, info)`` of ``--workflow clean``: ``prob``'s defaults with the image and flux of our CLEAN model
+    (``vs.clean_start``) and s at ŝ (``--shat``) or 1; ``prob`` is a free-image problem, only its grid and defaults are used."""
+    import jax.numpy as jnp
+
+    if not args.clean_dir:
+        raise SystemExit("--workflow clean needs --clean-dir (the output directory of alma_imlup_clean.py run: model.fits, clean.json)")
+    model, px, beam, cinfo = vs.read_clean(args.clean_dir)
+    eta, flux, info = vs.clean_start(model, px, beam, npix=prob.npix, pixel_mas=prob.pixel_mas, smooth_mas=args.clean_smooth_mas, beam_frac=args.clean_beam_frac, floor=args.clean_floor)
+    info.update(cinfo, source_pixel_mas=px)
+    say(f"CLEAN start from {args.clean_dir}: model {cinfo['flux_jy']:.5f} Jy on {cinfo['shape'][0]}^2 x {px:g} mas, beam {beam}, smoothing {args.clean_smooth_mas:g} mas (beam fraction {args.clean_beam_frac:g}); "
+        f"on {prob.npix}^2 x {prob.pixel_mas:g} mas: flux {flux:.5f} Jy (in field {info['flux_in_field_jy']:.5f}, negative clipped {info['negative_flux_clipped_jy']:.2e}, "
+        f"floor {args.clean_floor:g} Jy/arcsec^2 at {info['n_at_floor']:,} pixels)")
+    values = dict(prob.init)
+    values["log_brightness"] = jnp.asarray(eta)
+    values["cal.flux"] = jnp.asarray(flux)
+    if shat is not None and "cal.sigma" in values:
+        values["cal.sigma"] = jnp.asarray(shat, float)
+    return values, jnp.asarray(eta), info
 
 
 def acceptance(sigma, shat):
@@ -173,7 +232,7 @@ def write_state(out, args, prob, values, stages, lam, n):
     dump(out / "result.json", dict(
         command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n),
         npix=prob.npix, pixel_mas=prob.pixel_mas, versions=versions(), stages=stages, converged=last["convergence"]["converged"],
-        stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"])))
+        stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"]), ref_obs=getattr(args, "ref_obs", 0)))
 
 
 def res_workflow(args):
@@ -195,11 +254,16 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
+        clean_start=next((s["clean_start"] for s in stages if "clean_start" in s), None),
         alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
-        offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested),
+        offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested, bound_obs=prob.offset_bound_obs, ref_obs=getattr(args, "ref_obs", 0)),
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
     )
+    b3 = va.offset_beam_bounds(data)
+    res.update(ref_obs=getattr(args, "ref_obs", 0), ref_obs_info=getattr(args, "ref_obs_info", None),
+               offset_bound_3beam=dict(per_obs_mas=b3, bound_in_force_mas=prob.offset_bound_mas, tighter_than_all=bool(np.all(prob.offset_bound_obs < b3)),
+                                       note="3 / q_max of each observation: a proxy for 3 nominal beams, not virgil's own definition"))
     ob = res["offset_bound"]
     say(f"offset bound ±{ob['bound_mas']:.6g} mas ({'--offset-bound-mas' if ob['requested_mas'] is not None else 'virgil default'}); largest |offset|/bound {ob['max_abs_over_bound']:.3g}")
     if ob["warning"]:
@@ -233,9 +297,10 @@ def _train_mask(args, data):
 
 
 def _prob_for(args, data, lam, mask):
-    def prob_for(use):
+    def prob_for(use, fixed=None, image_only=False):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
-        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
+        return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None),
+                              fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0))
 
     return prob_for
 
@@ -248,14 +313,25 @@ def resolve_alpha(args):
 
 def cmd_fit(args):
     resolve_alpha(args)
-    if args.workflow == "mpol" and args.config != "R":
-        raise SystemExit("--workflow mpol is defined for config R only (MPoL has no beam, no free alpha)")
+    if args.workflow in ("mpol", "clean") and args.config != "R":
+        raise SystemExit(f"--workflow {args.workflow} is defined for config R only (MPoL has no beam, no free alpha)")
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
     n = len(data.u)
     lam = lam_of(args, n)
     mask = _train_mask(args, data)
+    args.ref_obs, args.ref_obs_info = va.resolve_ref_obs(data, args.ref_obs)
+    say(f"reference observation {args.ref_obs} (--ref-obs {args.ref_obs_info['spec']}; sum of weights of obs {list(va.SB_OBS)}: {np.array2string(args.ref_obs_info['sb_sum_weight'], precision=4)})")
+    if args.init:  # a warm start is in its own fit's gauge
+        init_json = pathlib.Path(args.init) / "result.json"
+        init_ref = int(json.loads(init_json.read_text()).get("ref_obs", 0)) if init_json.exists() else 0
+        if init_ref != args.ref_obs:
+            raise SystemExit(f"--init {args.init} was fitted with reference observation {init_ref}, not {args.ref_obs}: its gains, flux and offsets are in that gauge")
+    bound = va.offset_beam_bounds(data)
+    ob = args.offset_bound_mas
+    verdict = "virgil's own bound applies" if not ob else f"--offset-bound-mas {ob:g} is tighter than {int((bound > ob).sum())} of {len(bound)}"
+    say(f"3 nominal beams (3 / q_max) per observation, mas: {np.array2string(bound, precision=1)}; {verdict}")
     say(f"config {args.config}, alpha {'free' if getattr(args, 'alpha_free', None) else va.ALPHA_FIXED_LABEL}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
     t0 = time.time()
     save = lambda prob, values, stages: write_state(out, args, prob, values, stages, lam, n)  # noqa: E731
@@ -288,7 +364,7 @@ def cmd_report(args):
     if args.grad and (mask is not None or use is not None):
         say("--grad skipped: the diagnostic evaluates the all-data, unmasked objective, not this fit's (fold mask or SB-only last stage)")
     elif args.grad and args.config == "R":
-        groups = {"report": va.grad_groups(data, values, lam=lam, pixel_mas=args.pixel_mas or 5.0, chunk_size=args.chunk_size, offset_bound_mas=getattr(args, "offset_bound_mas", None))}
+        groups = {"report": va.grad_groups(data, values, lam=lam, pixel_mas=args.pixel_mas or 5.0, chunk_size=args.chunk_size, offset_bound_mas=getattr(args, "offset_bound_mas", None), ref_obs=getattr(args, "ref_obs", 0))}
         dump(out / "grad_groups.json", groups)
         (out / "grad_groups.md").write_text("\n".join(grad_table(groups)) + "\n")
         say("\n".join(grad_table(groups)))
@@ -317,6 +393,10 @@ def cmd_cv_task(args):
     n_all = len(data.u)
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
+    init_json = pathlib.Path(args.init) / "result.json"
+    init_ref = int(json.loads(init_json.read_text()).get("ref_obs", 0)) if init_json.exists() else 0
+    if init_ref != 0:  # cv-task builds the default problem (reference obs 0): another reference's n-1 gains and offsets would land on the wrong observations
+        raise SystemExit(f"--init {args.init} was fitted with reference observation {init_ref}: cv-task supports reference observation 0 only")
     prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
@@ -518,14 +598,17 @@ def cmd_compare(args):
     s_ours = np.asarray(vz["cal.sigma"], float)
     s_map = s_ours / (amp[obs_of] * sig_m)  # s_ours = g s_MPoL (docs/alma_conventions.md, Part 3)
     res["sigma"] = dict(s_ours=s_ours, g_times_s_mpol=amp[obs_of] * sig_m, ratio=s_map, max_abs_dev=float(np.max(np.abs(s_map - 1))))
-    res["gain"] = dict(ours=np.concatenate([[1.0], vz["cal.gain"]]), mpol=amp, max_abs_diff=float(np.max(np.abs(np.concatenate([[1.0], vz["cal.gain"]]) - amp))))
+    ref = int(vres.get("ref_obs", 0))  # our reference observation; MPoL's is obs 0: put ours in its convention (gauge_to_obs0)
+    g_o, off_o, flux_o = va.gauge_to_obs0(vz["cal.gain"], vz["cal.offset"], vz["cal.flux"], ref)
+    res["ref_obs"] = dict(ours=ref, mpol=0, note="gains, flux and offsets below are renormalised to obs 0 = (gain 1, offset 0), MPoL's convention; "
+                          "the offsets' common shift is a translation of the whole sky (not applied to the images); -ln L is gauge invariant and the entropy is evaluated at the obs-0-gauge flux, so the objective below compares like with like")
+    res["gain"] = dict(ours=g_o, mpol=amp, max_abs_diff=float(np.max(np.abs(g_o - amp))), ours_in_fit_gauge=np.insert(np.asarray(vz["cal.gain"], float), ref, 1.0))
     off_m = 1000.0 * np.stack([mz["delta_ra_arcsec"], mz["delta_dec_arcsec"]], -1)
-    off_o = np.concatenate([np.zeros((1, 2)), vz["cal.offset"]])
     res["offset_mas"] = dict(ours=off_o, mpol=off_m, max_abs_diff=float(np.max(np.abs(off_o - off_m))))
     dx = float(mz["cell_size_arcsec"])
     flux_m = float(np.sum(mz["base_image"]) * dx**2)
-    res["flux_jy"] = dict(ours=float(vz["cal.flux"]), mpol=flux_m, diff=float(vz["cal.flux"]) - flux_m)
-    img_o = np.load(vdir / "image.npy").astype(float)
+    res["flux_jy"] = dict(ours=flux_o, mpol=flux_m, diff=flux_o - flux_m, ours_in_fit_gauge=float(vz["cal.flux"]))
+    img_o = np.load(vdir / "image.npy").astype(float) * (flux_o / float(vz["cal.flux"]))  # the image in the same flux gauge
     base_m, tap_m = np.asarray(mz["base_image"], float), np.asarray(mz["image"], float)
     assert img_o.shape == base_m.shape, "R and MPoL's grid must be the same 1028^2 (map D11)"
     tap_o = va.tapered_image(img_o, px)
@@ -541,16 +624,17 @@ def cmd_compare(args):
         lam = va.lam_r(len(data.u))
         v_ours = {k: jnp.asarray(vz[k]) for k in vz.files}
         v_mpol = va.values_from_mpol_export(mz, obs_of)
-        o_ours = va.r_objective(data, v_ours, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
+        # -ln L is gauge invariant but S_M scales with the flux: compare in MPoL's (obs-0) gauge, with S_M at flux_o = flux g_0 (the offsets' translation gauge needs no change: it never enters S_M)
+        o_ours = va.r_objective(data, v_ours, lam=lam, pixel_mas=px, chunk_size=args.chunk_size, ref_obs=ref, entropy_flux=flux_o if ref != 0 else None)
         o_mpol = va.r_objective(data, v_mpol, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
-        res["objective"] = dict(lam_R=lam, ours=o_ours, mpol_solution_in_virgil=o_mpol, mpol_own=obj_m and {k: obj_m.get(k) for k in ("neg_log_likelihood", "entropy", "objective_R")},
+        res["objective"] = dict(lam_R=lam, gauge="obs 0 (MPoL's): entropy at flux·g_0" if ref != 0 else "obs 0", ours=o_ours, mpol_solution_in_virgil=o_mpol, mpol_own=obj_m and {k: obj_m.get(k) for k in ("neg_log_likelihood", "entropy", "objective_R")},
                                 ours_le_mpol=bool(o_ours["objective"] <= o_mpol["objective"]),
                                 finding=None if o_ours["objective"] <= o_mpol["objective"] else "our optimiser ended above MPoL's solution: a finding about the fit, not tuned away")
         if not args.no_grad:
             res["grad_groups"] = {}
             for label, v in (("ours", v_ours), ("mpol_solution_in_virgil", v_mpol)):
                 try:
-                    res["grad_groups"][label] = va.grad_groups(data, v, lam=lam, pixel_mas=px, chunk_size=args.chunk_size)
+                    res["grad_groups"][label] = va.grad_groups(data, v, lam=lam, pixel_mas=px, chunk_size=args.chunk_size, ref_obs=ref if label == "ours" else 0)
                 except Exception as e:  # a diagnostic: never loses the comparison
                     res["grad_groups"][label] = dict(error=f"{type(e).__name__}: {e}")
         if not args.no_dirty:  # the residual dirty image of MPoL's solution per observation, beside the ones `fit` saves for ours (docs/imaging/imlup.md)
@@ -570,12 +654,14 @@ def cmd_compare(args):
         res["F_vs_dsharp"] = dict(beam_mas_deg=beam, **cx.difference_stats(conv, d_on))
     dump(out / "compare.json", res)
     md = ["# R against MPoL", ""]
+    if ref != 0:
+        md += [f"**Our fit's reference observation is {ref}, not 0** (`--ref-obs`): gains, flux and offsets below are renormalised to MPoL's obs-0 convention ({res['ref_obs']['note']}).", ""]
     if "objective" in res:
         n_tot = res["objective"]["ours"]["n"]
         raw = lambda o: sum(o["by_ddid"]["chi2_raw"]) / (2 * n_tot)  # noqa: E731
         md += [f"**Raw chi^2/N (s = 1, quoted weights): ours {raw(res['objective']['ours']):.4f}; MPoL's solution evaluated in virgil {raw(res['objective']['mpol_solution_in_virgil']):.4f}** (N = {n_tot:,}, eps 1e-12).", ""]
     md += [f"s_ours / (g s_MPoL): max |ratio − 1| = {res['sigma']['max_abs_dev']:.4g}",
-          f"gain: max |diff| = {res['gain']['max_abs_diff']:.4g}; offsets: max |diff| = {res['offset_mas']['max_abs_diff']:.4g} mas; flux {res['flux_jy']['ours']:.5f} vs {flux_m:.5f} Jy", ""]
+          f"gain: max |diff| = {res['gain']['max_abs_diff']:.4g}; offsets: max |diff| = {res['offset_mas']['max_abs_diff']:.4g} mas; flux {res['flux_jy']['ours']:.5f} vs {flux_m:.5f} Jy (ours in obs-0 gauge; reference obs {ref})", ""]
     for k, v in res["image"].items():
         md.append(f"- image {k}: " + ", ".join(f"{a} {b:.4g}" for a, b in v.items() if isinstance(b, float)))
     if "objective" in res:
@@ -688,9 +774,18 @@ def main(argv=None):
     common(p)
     p.add_argument("--config", choices=["R", "F"], required=True)
     p.add_argument("--sb-only", action="store_true")
-    p.add_argument("--workflow", choices=["p3", "mpol"], default="p3",
+    p.add_argument("--workflow", choices=["p3", "mpol", "clean"], default="p3",
                    help="p3 (default): C9's SB stage then all data from a 1\" Gaussian, s at ŝ. mpol (config R only): one all-data stage from MPoL's own start "
-                        "(uniform softplus(-3) image, g = 1, offsets 0, s = 1; sgd.py:49-59, images.py BaseCube)")
+                        "(uniform softplus(-3) image, g = 1, offsets 0, s = 1; sgd.py:49-59, images.py BaseCube). clean (config R only, no MPoL information): start from "
+                        "our own CLEAN model (--clean-dir), stage selfcal fits flux, gains, offsets and s with the image held, stage all releases everything")
+    p.add_argument("--clean-dir", default=None, help="clean: the output directory of alma_imlup_clean.py run (model.fits, clean.json)")
+    p.add_argument("--clean-smooth-mas", type=float, default=10.0, help="clean: FWHM (mas) of the small circular positivity kernel the CLEAN model is convolved with (default two fit pixels; keeps the long baselines' power)")
+    p.add_argument("--clean-beam-frac", type=float, default=0.0, help="clean: instead smooth with this fraction of the restoring beam (0: off, the default; 1 removes the long baselines' power and biases their gains)")
+    p.add_argument("--clean-floor", type=float, default=va.MPOL["prior"], help="clean: floor of the start image, Jy/arcsec^2 (default MPoL's entropy prior p = 1e-4)")
+    p.add_argument("--prestage-max-steps", type=int, default=3000, help="clean, --image-first: step budget of the selfcal / image stage (stops earlier when C8 holds)")
+    p.add_argument("--image-first", action="store_true", help="p3, mpol: a first stage fits only the image and flux (gains 1, offsets 0, s = 1), then the workflow's own stages release the nuisances")
+    p.add_argument("--ref-obs", default="0", help="the observation whose gain is 1 and offset 0 (the flux gauge): an index, or 'auto' = the SB observation with the largest sum of weights; "
+                   "result.json records it, and compare puts gains, flux and offsets back in MPoL's obs-0 convention")
     p.add_argument("--init", default=None, help="a previous fit's directory (values.npz): one stage on all data")
     p.add_argument("--shat", default=None, help="directory of ddid_NN.json (alma_imlup_read): s_d starts at ŝ_d; C13 is checked")
     p.add_argument("--folds", default=None)

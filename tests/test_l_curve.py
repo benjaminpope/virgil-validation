@@ -78,7 +78,14 @@ def sweep(tmp_path_factory):
                      dec_deg=-30.0, sigma_v2=0.01, sigma_cp_deg=1.0, rng=np.random.default_rng(1))
     model = vm.Image(np.zeros((N, N)), PIXEL)
     lc = imaging.l_curve(model, imaging.image_priors(model), OIData(str(path)), imaging.TSV(1.0), WEIGHTS)
+    # softmax(log_b) is unchanged by a uniform shift, so the fit drifts along that null direction by an amount set by rounding (|x| ~ 3e5 on
+    # one jax, ~3e10 on another), and it pushes the pixels it has darkened to zero brightness ever further down. Past ~1e10, x +- 1e-6 == x in
+    # float64 and the finite-difference gradients below come out exactly 0. Recentre on the brightest pixel and floor the dark ones at -1000:
+    # exp(-1000) is already exactly 0 in float64, so the image, chi2 and the penalty are unchanged, and a pixel at zero brightness has a
+    # legitimately zero gradient.
     log_b = [np.asarray(r.values["log_brightness"]) for r in lc.results]
+    log_b = [np.maximum(x - x.max(), -1000.0) for x in log_b]
+    assert all(np.sum(x > -1000.0) >= 2 for x in log_b), "a fit collapsed to one pixel: every gradient below would be 0"
     return lc, log_b, ours.load(path)
 
 
@@ -113,6 +120,7 @@ def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
         g_chi = gradient(lambda y: chi2_image(d, softmax(y)), x)
         g_pen = w * gradient(lambda y: tsv(softmax(y)), x)
         kappa = -(g_chi @ g_pen) / (g_pen @ g_pen)
+        assert np.isfinite(kappa), f"kappa is {kappa} at w={w}: a zero penalty gradient, not a stationary point"  # max(0.0, nan) is 0.0
         left = np.max(np.abs(g_chi + 2.0 * g_pen)) / scale
         worst_kappa, worst_left = max(worst_kappa, abs(kappa - 2.0)), max(worst_left, left)
     record("max_abs_kappa_minus_2", worst_kappa)
@@ -130,6 +138,7 @@ def test_chi2_plus_once_the_penalty_is_not_stationary(sweep):
     scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
     w, x = float(np.asarray(lc.weights)[0]), log_b[0]
     g = gradient(lambda y: chi2_image(d, softmax(y)) + w * tsv(softmax(y)), x)
+    record("control_gradient_over_scale", float(np.max(np.abs(g)) / scale))
     assert np.max(np.abs(g)) / scale > 1e-4
 
 

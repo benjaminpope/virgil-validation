@@ -143,6 +143,11 @@ nodes:
   virgil.radio.ComplexVisData.chi2_by_ddid: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData.model], doc: alma_conventions.md}
   virgil.radio.primary_beam: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.models.Image], doc: alma_conventions.md}
   virgil.radio.dartboard_folds: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  # Register items B2, B5, B6 (virgil design/radio_imaging_innovations.md): tests/test_radio_innovations.py. These need
+  # virgil after 0.4.0 (gauss_newton_diag) or unmerged (radio_toeplitz, virgil#516); they skip on CI's pin.
+  virgil.fitting.gauss_newton_diag: {layer: imaging, source: [src/virgil/fitting.py], depends: [virgil.fitting.fit, virgil.imaging.MaxEntropy, virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
+  virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
+  crosscheck.radio_innovations.DeltaProblem: {layer: references, doc: alma_conventions.md}  # B6, float32 linear-delta-V loss: the method alone, virgil has no code for it yet
 
   # ----------------------------------------------------------- likelihood
   virgil.oidata.OIData.cp_noise:  # correlated closure phases (Kammerer et al. 2020)
@@ -548,6 +553,7 @@ nodes:
   external_bridge.cv_compare: {layer: references, doc: alma_conventions.md}  # MPoL's held-out scores beside virgil's, per fold and annulus (numpy only; `alma_imlup_maxent.py cv-compare`)
   virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
   virgil_bridge.alma: {layer: references, doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
+  virgil_bridge.alma_start: {layer: references, doc: alma_conventions.md}  # IM Lup MaxEnt cold starts: our CLEAN model regridded to the fit grid, the image-fixed stage's gain check
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
   crosscheck.alma_speed: {layer: references, doc: alma_conventions.md}  # virgil's L-BFGS against MPoL's AdamW on IM Lup: objective vs wall time, time to target, cost per pass (numpy only; `alma_imlup_maxent.py speed`)
