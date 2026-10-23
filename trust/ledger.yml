@@ -439,7 +439,7 @@
   evidence: []
   status: open
   links: [https://github.com/benjaminpope/virgil/issues/309]
-  decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring.'
+  decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring. Accepted again for virgil 0.4.1 (Ben, 2026-10-23): stated in the 0.4.1 release notes under Known issues, fix tracked in virgil#309; status stays open.'
   note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
 
 
@@ -506,3 +506,13 @@
   referee: mathematics (the PASS/FAIL comparison of the two readings, point by point)
   evidence: [tests/test_alma_npz_compare.py::test_control_a_different_data_column_fails, tests/test_alma_npz_compare.py::test_passes_whichever_way_either_side_orders_its_channels]
   status: open
+
+- id: C3
+  title: the independent CLEAN beam fit (crosscheck.alma_clean.fit_beam) was changed to fit the lobe's pixels only, after virgil 0.4.1 did, and is not yet checked against CASA's own fit
+  objects: [virgil.radio_clean.clean]
+  ruling: crosscheck
+  kind: 'reference changed (our fit used the whole bounding box of the lobe; CASA tclean documents the beam as a Gaussian fitted to the main lobe above psfcutoff, default 0.35, which we take to mean the lobe pixels only; the change was prompted by virgil 0.4.1 and rests on the documentation alone)'
+  referee: CASA tclean documentation (psfcutoff); a beam fit by real casatools on the test PSF is still to run
+  evidence: [tests/test_alma_clean.py::test_virgil_radio_clean_agrees_with_the_independent_loop]
+  status: open
+  decision: 'deferred to virgil 0.4.2 with the rest of the radio work (Ben, 2026-10-23): compare alma_clean.fit_beam with a casatools beam fit on the test PSF in 0.4.2.'

@@ -62,3 +62,16 @@ def test_a_release_needs_the_dirty_state_unless_it_is_virgils_own_ci(tmp_path):
 def test_committed_evidence_is_pinned_to_one_commit():
     expect = os.environ.get("VALIDATION_RELEASE_COMMIT") or None
     assert pin.problems(sorted((ROOT / "trust" / "evidence").glob("*.jsonl")), expect, release=True) == []
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_a_non_strict_xfail_records_xfailed_or_passed_never_a_failure():
+    """A flaky test marked xfail(strict=False) is a pass when it passes and xfailed when it does not;
+    the Trust page counts xpassed as failing, so the plugin must not record it."""
+    from types import SimpleNamespace
+
+    from evidence.plugin import _outcome
+
+    assert _outcome(SimpleNamespace(wasxfail="flaky", skipped=True, outcome="skipped")) == "xfailed"
+    assert _outcome(SimpleNamespace(wasxfail="flaky", skipped=False, outcome="passed")) == "passed"
+    assert _outcome(SimpleNamespace(skipped=False, outcome="failed")) == "failed"

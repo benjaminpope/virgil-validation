@@ -291,7 +291,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
 
     ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
 
-    ``offset_bound_mas`` (mas, default None: virgil's own ±1/(2 q_min), about 10^4 mas for IM Lup) sets the offsets' uniform prior to
+    ``offset_bound_mas`` (mas, default None: virgil's own default, ±3 beams of each observation, about 150 mas for IM Lup; 0.4.0's ±1/(2 q_min) is about 10^4 mas) sets the offsets' uniform prior to
     ``(-X, X)`` through ``CalibrationNuisance.priors(offset=...)``. A flat prior is flat at any bound, so the objective is unchanged
     unless a fitted offset reaches the bound (``offset_bound_report``), but L-BFGS moves in the logit z of ``x/bound`` and dx/dz is
     about half the bound: a bound near the offsets (say 100 mas) conditions them far better. ``prob.offset_bound_mas`` is the bound in force.
@@ -335,6 +335,10 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
     init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
     bound = np.broadcast_to(np.asarray(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas, float), (len(data.obs_ids),)).copy()
+    if offset_bound_mas is None and "cal.offset" in priors:  # virgil 0.4.1's default box is ±3 beams of each observation, not nuis.offset_bound_mas
+        half = np.abs(np.asarray(priors["cal.offset"].high, float)).reshape(len(data.obs_ids) - 1, -1).max(axis=1)
+        bound[:] = half.max()  # the reference observation has no offset; it takes the largest
+        bound[[o for o in range(len(bound)) if o != ref_obs]] = half
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam),
                                  offset_bound_mas=float(bound.max()), offset_bound_obs=bound,  # virgil's bound may be one per observation: the largest, and all of them

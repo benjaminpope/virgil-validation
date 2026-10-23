@@ -47,7 +47,8 @@ def fit_beam(psf, pixel_mas, cutoff=0.35):
     """(bmaj_mas, bmin_mas, pa_deg, centre) of the Gaussian fitted to the PSF's main lobe.
 
     The lobe is the connected region around the peak where ``psf >= cutoff`` (plus a one-pixel margin); the fit is
-    least squares on the PSF with the peak fixed at 1 and the centre free (so even grids work).
+    least squares over the lobe's pixels only, as CASA's ``psfcutoff`` fit does (virgil 0.4.1 restricts its fit the same way),
+    with the peak fixed at 1 and the centre free (so even grids work).
     """
     psf = np.asarray(psf, float)
     peak = np.unravel_index(np.argmax(psf), psf.shape)
@@ -57,12 +58,13 @@ def fit_beam(psf, pixel_mas, cutoff=0.35):
     r0, r1 = max(rows.min() - 1, 0), min(rows.max() + 2, psf.shape[0])
     c0, c1 = max(cols.min() - 1, 0), min(cols.max() + 2, psf.shape[1])
     sub = psf[r0:r1, c0:c1]
+    lobe_sub = lobe[r0:r1, c0:c1]
     area = lobe.sum()
     r_eq = np.sqrt(area / np.pi)  # a circular start from the lobe's area at the cutoff
     start = [peak[0] - r0, peak[1] - c0, 2.0 * r_eq * np.sqrt(np.log(2) / np.log(1 / cutoff)), 2.0 * r_eq * np.sqrt(np.log(2) / np.log(1 / cutoff)) * 0.9, 0.0]
 
     def resid(p):
-        return (gaussian_image(sub.shape, (p[0], p[1]), p[2], p[3], p[4]) - sub).ravel()
+        return ((gaussian_image(sub.shape, (p[0], p[1]), p[2], p[3], p[4]) - sub) * lobe_sub).ravel()
 
     best = None
     for pa0 in (0.0, 45.0, 90.0, 135.0):  # the position angle is periodic and poorly conditioned for a round start
