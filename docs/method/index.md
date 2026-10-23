@@ -355,6 +355,8 @@ virgil's release checklist gains these items (also in virgil's
    changed since its evidence, has a known bug, is failing or is not yet
    checked, or the release notes say which ones remain and why.
 
+*Waiver, 0.4.1:* Ben waived the rerun of the `numpyro_model` SBC campaign for 0.4.1 (2026-10-23), so `campaigns.jsonl` stays at 0.4.0 (8c51dc5) and the pin check fails on it by design for this release.
+
 ## Order of work
 
 1. ✅ **Evidence records**: the `validates` marker and plugin here, tagging
