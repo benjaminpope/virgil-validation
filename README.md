@@ -109,6 +109,7 @@ noticed) once virgil changes.
 | 18 | `epochs.marginal_loglike` | With `s_max`, the grid in ln s is too coarse where the likelihood falls steeply from a bound: a model with s about 5 against `s_max` = 1.2 differs from `scipy.integrate.quad` of the same bounded integral by 0.1-0.7 in m (the mirror image, with a smooth integrand, agrees to 1e-3). | low | fixed, [virgil#295](https://github.com/benjaminpope/virgil/pull/295) |
 | 19 | `models.ExpTail` | The docstring promises 1e-5 with about 16 · 2πqL Gauss-Laguerre nodes; at 2πqL = 7.3 that is 117 nodes, and 128 give 2e-4 (4e-5 at the 150-node cap) against our own Gauss-Legendre Hankel transform. The smooth profiles reach 1e-9 to 1e-12. | numerics / docs | open |
 | 20 | `models.Harmonics` | `c`, `s`, `re`, `im` given as arrays (the array paths `fit` and `laplace_cov` advertise, e.g. `"disk.harmonics.re"` with `Normal(0, 1).expand([3])`) raise `ValueError: truth value of an array ... is ambiguous` in `Harmonics._at` (`if not entries`); per-element paths (`disk.harmonics.re.0`) work. | bug | open |
+| 23 | `fitting.gauss_newton_diag` | The docstring (and virgil's radio innovation register) give the diagonal on `MaxEntropy` pixels as `weight * b`; through the unit-sum softmax the Skilling–Bryan metric `weight Σ db²/b` has diagonal `weight * b * (1 − b)`, which is what virgil returns (1e-15). They agree for b ≪ 1; the 6×6 test differs by up to 20 %. Documentation only: the test pins the exact form. | note | open |
 
 Differences with other packages (all in the [Findings](docs/method/findings.md)):
 

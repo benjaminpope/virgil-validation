@@ -442,6 +442,16 @@
   decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring. Accepted again for virgil 0.4.1 (Ben, 2026-10-23): stated in the 0.4.1 release notes under Known issues, fix tracked in virgil#309; status stays open.'
   note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
 
+
+- id: F23
+  title: gauss_newton_diag's docstring and the radio innovation register give the entropy-pixel diagonal as weight * b; virgil returns weight * b * (1 - b)
+  objects: [virgil.fitting.gauss_newton_diag]
+  ruling: virgil
+  kind: 'documentation (through the unit-sum softmax the Skilling-Bryan metric weight * sum db^2/b has diagonal weight * b * (1 - b), which virgil returns to 1e-15; weight * b is its b << 1 limit, 1e-6 off on a million-pixel image and up to 20% on the 6 x 6 test. Nothing is wrong numerically, so there is no strict xfail: the test pins the exact form and fails if the diagonal ever becomes weight * b)'
+  referee: mathematics (the metric pulled back through the softmax, dense Jacobian)
+  evidence: [tests/test_radio_innovations.py::test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric]
+  status: open
+
 - id: D14
   title: noise-free recovery is judged in units of the statistical error, not at a raw relative tolerance of 1e-6
   objects: [virgil.fitting.fit]

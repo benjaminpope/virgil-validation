@@ -213,13 +213,15 @@ def _entropy_term_class():
         f_tot: float = eqx.field(static=True)
         image_site: str = eqx.field(static=True, default="log_brightness")
         flux_site: str = eqx.field(static=True, default="cal.flux")
+        fixed_image: object = None  # a held log_brightness (the self-calibration stage): used instead of the fitted site
         has_log_norm = True
 
         def __call__(self, values):
             return jnp.zeros((0,))
 
         def entropy(self, values):
-            return mpol_entropy_jax(values[self.image_site], values[self.flux_site], pixel_mas=self.pixel_mas,
+            eta = values[self.image_site] if self.fixed_image is None else self.fixed_image
+            return mpol_entropy_jax(eta, values[self.flux_site], pixel_mas=self.pixel_mas,
                                     taper_mas=self.taper_mas, prior=self.prior, f_tot=self.f_tot)
 
         def log_norm(self, values):
@@ -271,7 +273,7 @@ def read_shat(path, n_ddid=26):
 
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
-                  alpha_free=None, offset_bound_mas=None):
+                  alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -280,6 +282,14 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     ``init`` (defaults; the caller sets the image, flux and sigma), ``terms``, ``regs`` and ``model``
     for ``virgil.fit``. Priors are the house defaults (C6): log-uniform flux, gains and error scales,
     uniform offsets (and alpha when ``alpha_free``), and a flat prior on the pixels' log-brightness.
+
+    ``fixed_log_brightness`` (config R, an (npix, npix) array) holds the image: it is no free site, the scene and the entropy use it,
+    and the fit moves only the nuisances (the self-calibration stage of ``--workflow clean``).
+
+    ``image_only`` (the image-first stage) leaves the gains, offsets and error scales out of the fit: the nuisance model has gains 1, offsets 0
+    and s = 1, so the free sites are the image and the flux.
+
+    ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
 
     ``offset_bound_mas`` (mas, default None: virgil's own default, ±3 beams of each observation, about 150 mas for IM Lup; 0.4.0's ±1/(2 q_min) is about 10^4 mas) sets the offsets' uniform prior to
     ``(-X, X)`` through ``CalibrationNuisance.priors(offset=...)``. A flat prior is flat at any bound, so the objective is unchanged
@@ -293,16 +303,25 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     from virgil.radio import primary_beam
 
     config = config.upper()
+    off = dict(gains=False, offsets=False, sigmas=False) if image_only else {}
     alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
     if config == "R":
         npix = npix or MPOL["npix"]
-        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, taper_fwhm_mas=MPOL["taper_mas"])
+        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, taper_fwhm_mas=MPOL["taper_mas"], **off)
         scene, regs = grid_scene(npix, pixel_mas), []
+        if fixed_log_brightness is not None:
+            held = jnp.asarray(fixed_log_brightness, float)
+            if held.shape != (npix, npix):
+                raise ValueError(f"fixed_log_brightness is {held.shape}, not {(npix, npix)}")
+            free_scene = scene
+            scene = lambda values: free_scene({**values, "log_brightness": held})  # noqa: E731
     elif config == "F":
+        if fixed_log_brightness is not None:
+            raise ValueError("a held image is defined for config R only")
         npix = npix or FULL["npix"]
         pb = dict(freq_hz=FULL["nu0_hz"], dish_m=FULL["dish_m"], factor=FULL["pb_factor"])
-        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=alpha_free, nu0_hz=FULL["nu0_hz"])
+        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=alpha_free, nu0_hz=FULL["nu0_hz"], **off)
         scene = grid_scene(npix, pixel_mas, pb)
         # the pixels are sky x beam; the default image of the entropy is the beam, so the penalty is the
         # entropy of the sky relative to a flat sky (docs: "the default image q ... normalised here")
@@ -310,40 +329,83 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     else:
         raise ValueError(f"config must be R or F, not {config!r}")
     term = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size)
-    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas)] if config == "R" else [])
+    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
     priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
-    priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
-    # virgil's default offset box differs by observation; the smallest half-width is the conservative bound for the report
-    bound = float(np.min(np.asarray(priors["cal.offset"].high))) if offset_bound_mas is None and "cal.offset" in priors else None
+    if fixed_log_brightness is None:
+        priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
     init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
+    bound = np.broadcast_to(np.asarray(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas, float), (len(data.obs_ids),)).copy()
+    if offset_bound_mas is None and "cal.offset" in priors:  # virgil 0.4.1's default box is ±3 beams of each observation, not nuis.offset_bound_mas
+        half = np.abs(np.asarray(priors["cal.offset"].high, float)).reshape(len(data.obs_ids) - 1, -1).max(axis=1)
+        bound[:] = half.max()  # the reference observation has no offset; it takes the largest
+        bound[[o for o in range(len(bound)) if o != ref_obs]] = half
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam),
-                                 offset_bound_mas=float(offset_bound_mas) if bound is None and offset_bound_mas is not None else float(bound if bound is not None else nuis.offset_bound_mas),
+                                 offset_bound_mas=float(bound.max()), offset_bound_obs=bound,  # virgil's bound may be one per observation: the largest, and all of them
                                  offset_bound_requested=None if offset_bound_mas is None else float(offset_bound_mas))
 
 
 OFFSET_EDGE = 0.05  # report warns when a fitted offset is within this fraction of the bound
 
 
-def offset_bound_report(offsets, bound_mas, requested=None, edge=OFFSET_EDGE):
-    """Is the offsets' uniform bound binding? ``offsets`` is the fitted ``cal.offset`` (mas, (n_obs - 1, 2); None for none).
-    A fitted offset within ``edge`` of ``bound_mas`` means the bound shapes the fit, so the objective is no longer the unbounded one.
-    Returns bound, requested, the largest |offset|/bound, the offending (obs, axis, mas) entries and a ``warning`` string (None if clear)."""
+def offset_bound_report(offsets, bound_mas, requested=None, edge=OFFSET_EDGE, bound_obs=None, ref_obs=0):
+    """Is the offsets' uniform bound binding? ``offsets`` is the fitted ``cal.offset`` (mas, (n_obs - 1, 2), the observations but ``ref_obs``;
+    None for none). A fitted offset within ``edge`` of its bound means the bound shapes the fit, so the objective is no longer the unbounded one.
+    ``bound_obs`` (n_obs,) is the bound of each observation where virgil's is per observation (``prob.offset_bound_obs``; default ``bound_mas``
+    for all), and each offset is judged against its own. Returns bound (the largest), requested, the largest |offset|/own bound, the offending
+    (obs, axis, mas) entries and a ``warning`` string (None if clear)."""
     off = np.zeros((0, 2)) if offsets is None else np.asarray(offsets, float).reshape(-1, 2)
-    frac = np.abs(off) / bound_mas
-    near = [dict(obs=int(i) + 1, axis=["ra", "dec"][int(j)], offset_mas=float(off[i, j])) for i, j in zip(*np.nonzero(frac >= 1.0 - edge))]
+    obs = np.array([e for e in range(len(off) + 1 if bound_obs is None else len(bound_obs)) if e != ref_obs][:len(off)], int)
+    own = np.full(len(off), float(bound_mas)) if bound_obs is None else np.asarray(bound_obs, float)[obs]
+    frac = np.abs(off) / own[:, None] if len(off) else np.zeros((0, 2))
+    near = [dict(obs=int(obs[i]), axis=["ra", "dec"][int(j)], offset_mas=float(off[i, j])) for i, j in zip(*np.nonzero(frac >= 1.0 - edge))]
     warning = None
     if near:
-        warning = (f"!!! OFFSET BOUND BINDING: {len(near)} fitted offset(s) within {edge:.0%} of the ±{bound_mas:g} mas bound "
+        warning = (f"!!! OFFSET BOUND BINDING: {len(near)} fitted offset(s) within {edge:.0%} of their bound (±{bound_mas:g} mas at most) "
                    f"({', '.join('obs %d %s %.4g' % (n['obs'], n['axis'], n['offset_mas']) for n in near)}); the bound is changing the objective: "
                    f"raise --offset-bound-mas or drop it !!!")
-    return dict(bound_mas=float(bound_mas), requested_mas=requested, max_abs_over_bound=float(frac.max()) if frac.size else 0.0, near_bound=near, warning=warning)
+    return dict(bound_mas=float(bound_mas), bound_obs=None if bound_obs is None else [float(b) for b in bound_obs], requested_mas=requested,
+                max_abs_over_bound=float(frac.max()) if frac.size else 0.0, near_bound=near, warning=warning)
 
 
 def drop_unused_sites(values, prob):
     """``values`` without the ``cal.*`` sites ``prob`` does not have: a warm start or report from a free-alpha F fit
     (``cal.alpha`` saved) must not re-enable or report the alpha that is now fixed at 0."""
     return {k: v for k, v in values.items() if not k.startswith("cal.") or k in prob.init}
+
+
+def resolve_ref_obs(data, spec="0"):
+    """The reference observation (gain 1, offset 0): an index, or ``"auto"``, the short-baseline observation (``SB_OBS``) with the largest total
+    weight sum(w), whose amplitude scale is best fixed by the data. Returns ``(index, info)``; ``info`` has the spec and the sum(w) of each SB
+    observation, for the log and result.json."""
+    obs, w = np.asarray(data.obs), np.asarray(data.weight, float)
+    weight = np.array([float(w[obs == o].sum()) for o in SB_OBS])
+    if str(spec).lower() == "auto":
+        ref = int(SB_OBS[int(np.argmax(weight))])
+    else:
+        ref = int(spec)
+        if not 0 <= ref < len(data.obs_ids):
+            raise ValueError(f"--ref-obs {spec!r} is not an observation index (0..{len(data.obs_ids) - 1}) or 'auto'")
+    return ref, dict(spec=str(spec), ref_obs=ref, sb_obs=list(SB_OBS), sb_sum_weight=weight)
+
+
+def offset_beam_bounds(data, n_beams=3.0):
+    """A proxy for the per-observation offset bound of ``n_beams`` beams: ``n_beams / q_max`` of each observation, in mas, with the nominal beam
+    ``1 / q_max`` (q_max its longest baseline in wavelengths). ``offset_bound_mas`` in force is to be compared with it observation by observation;
+    the bound virgil applies, where it has one per observation, is its own (``prob.offset_bound_mas``)."""
+    obs = np.asarray(data.obs)
+    q = np.hypot(np.asarray(data.u, float), np.asarray(data.v, float))
+    qmax = np.array([q[obs == o].max() for o in range(len(data.obs_ids))])
+    return n_beams / qmax * (180.0 / np.pi * 3600.0 * 1000.0)
+
+
+def gauge_to_obs0(gain, offset, flux, ref_obs):
+    """The gains, offsets and flux of a fit with reference observation ``ref_obs`` in MPoL's convention (obs 0 has gain 1 and offset 0). The
+    model ``flux * g_e V`` is unchanged by ``g -> g / g_0``, ``flux -> flux g_0``, and the offsets' common shift ``o -> o - o_0`` is a translation of
+    the whole sky: it is applied here to the table only (the image is not translated). Returns full ``(n_obs,)`` gains, ``(n_obs, 2)`` offsets and the flux."""
+    g = np.insert(np.asarray(gain, float), ref_obs, 1.0)
+    o = np.insert(np.asarray(offset, float).reshape(-1, 2), ref_obs, 0.0, axis=0)
+    return g / g[0], o - o[0], float(flux) * g[0]
 
 
 def start_values(prob, *, flux=0.25, fwhm_mas=1000.0, shat=None):
@@ -696,19 +758,23 @@ def values_from_mpol_export(export, obs_of_ddid):
     )
 
 
-def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=EPS_SCORE, chunk_size=CHUNK):
+def r_objective(data, values, *, lam, mask=None, npix=None, pixel_mas=5.0, eps=EPS_SCORE, chunk_size=CHUNK, ref_obs=0, entropy_flux=None):
     """R's objective -ln L + lam S_M at ``values``, in float64 at NUFFT accuracy ``eps`` (the
-    normalising constant of -ln L included), and its two parts."""
+    normalising constant of -ln L included), and its two parts. -ln L is invariant under the gain gauge (g -> g / g_0, flux -> flux g_0), S_M
+    is not (it scales with the image's flux): ``entropy_flux`` evaluates S_M at that flux instead of ``values['cal.flux']``, to compare a fit
+    whose reference observation is not 0 with MPoL's in MPoL's gauge (``entropy_fit_gauge`` is then the entropy at the fit's own flux)."""
     import jax.numpy as jnp
 
     npix = npix or values["log_brightness"].shape[0]
-    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, mask=mask)
+    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, mask=mask, ref_obs=ref_obs)
     sc = score(data, prob.scene, values, prob.nuis, mask=mask, eps=eps, chunk_size=chunk_size)
-    s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
-    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s, by_ddid=sc["by_ddid"], n=sc["n"])
+    jv = {k: jnp.asarray(v) for k, v in values.items()}
+    s_fit = float(prob.terms[1].entropy(jv))
+    s = s_fit if entropy_flux is None else float(prob.terms[1].entropy({**jv, "cal.flux": jnp.asarray(entropy_flux)}))
+    return dict(nll=sc["nll"], entropy=s, penalty=lam * s, objective=sc["nll"] + lam * s, by_ddid=sc["by_ddid"], n=sc["n"], entropy_fit_gauge=s_fit)
 
 
-def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chunk_size=CHUNK, offset_bound_mas=None):
+def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chunk_size=CHUNK, offset_bound_mas=None, ref_obs=0):
     """How well scaled R's parameters are for L-BFGS, at ``values``: per site (image pixels, flux, gain, offset, sigma), the
     gradient of the loss ``virgil.fit`` minimises with respect to the unconstrained coordinates z it optimises
     (``|g_z|`` max and 2-norm), the median Jacobian ``dx/dz`` of the site's value x (1 for the pixels; for ``cal.offset`` about
@@ -720,7 +786,7 @@ def grad_groups(data, values, *, lam, npix=None, pixel_mas=5.0, eps=EPS_FIT, chu
     from virgil.fitting import _Objective
 
     npix = npix or values["log_brightness"].shape[0]
-    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, chunk_size=chunk_size, offset_bound_mas=offset_bound_mas)
+    prob = build_problem(data, "R", lam=lam, npix=npix, pixel_mas=pixel_mas, chunk_size=chunk_size, offset_bound_mas=offset_bound_mas, ref_obs=ref_obs)
     obj = _Objective(prob.model, prob.priors, (), tuple(prob.regs), None, tuple(prob.terms))
     z = obj.init({k: jnp.asarray(v) for k, v in values.items() if k in obj.sites})
     with ft_eps(eps):
