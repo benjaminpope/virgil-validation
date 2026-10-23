@@ -159,7 +159,8 @@ def _where(item):
 
 def _outcome(report):
     if hasattr(report, "wasxfail"):
-        return "xfailed" if report.skipped else "xpassed"
+        # a strict XPASS never gets here (pytest reports it failed); a non-strict one is a flaky test that passed
+        return "xfailed" if report.skipped else "passed"
     return report.outcome
 
 
