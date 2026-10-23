@@ -111,8 +111,10 @@ def test_fit_chi2_toeplitz_records_engine_precompute_and_at_bound_and_the_compar
     _call("fit", "--config", "R", "--data", syn7, "--out", d, "--npix", NPIX, "--max-steps", 5, "--no-dirty")
     rd = json.loads((d / "result.json").read_text())
     assert rd["chi2_engine"] == "direct" and rd["toeplitz_precompute_s"] is None and rd["args"]["chi2"] == "direct"
-    _call("report", "--data", syn7, "--out", out, "--no-dirty")  # recomputes the report with the direct scorer, keeps the engine
-    assert json.loads((out / "result.json").read_text())["chi2_engine"] == "toeplitz"
+    assert r["args"]["offset_bound_mas"] == va.TOEPLITZ_OFFSET_BOUND_MAS and r["offset_bound"]["bound_mas"] == va.TOEPLITZ_OFFSET_BOUND_MAS
+    _call("report", "--data", syn7, "--out", out, "--no-dirty")  # recomputes the report with the direct scorer, keeps the engine and the fitted box
+    rr = json.loads((out / "result.json").read_text())
+    assert rr["chi2_engine"] == "toeplitz" and rr["offset_bound"]["bound_mas"] == va.TOEPLITZ_OFFSET_BOUND_MAS
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="control")
@@ -133,10 +135,10 @@ def test_at_bound_flags_a_flux_and_an_offset_at_their_prior_bounds_and_only_thos
 def test_chi2_toeplitz_is_refused_with_offsets_it_cannot_take_and_for_config_f(syn, syn7, tmp_path):
     """Control: pixels so large that the baselines pass the Nyquist margin free offsets allow are refused with virgil's reason (the box is kept inside the
     precompute, so it is the baselines that refuse); config F is refused; ``--chi2 direct`` takes the same problem."""
-    with pytest.raises(SystemExit, match="cannot take this problem exactly"):
+    with pytest.raises(SystemExit, match=r"cannot take this problem exactly: .*Nyquist"):
         _call("fit", "--config", "R", "--chi2", "toeplitz", "--data", syn7, "--out", tmp_path / "a", "--npix", 16, "--pixel-mas", 60.0, "--max-steps", 2)
     with pytest.raises(SystemExit, match="config R only"):
         _call("fit", "--config", "F", "--chi2", "toeplitz", "--data", syn, "--out", tmp_path / "b", "--npix", 16)
-    with pytest.raises(va.ToeplitzRefused):
+    with pytest.raises(va.ToeplitzRefused, match=r"Nyquist"):
         va.build_problem(va.load_dir(syn), "R", lam=1.0, npix=16, pixel_mas=60.0, chi2="toeplitz")
     va.build_problem(va.load_dir(syn), "R", lam=1.0, npix=16, pixel_mas=60.0)  # the direct engine takes it

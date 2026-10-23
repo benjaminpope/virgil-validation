@@ -360,6 +360,8 @@ def cmd_fit(args):
         raise SystemExit(f"--workflow {args.workflow} is defined for config R only (MPoL has no beam, no free alpha)")
     if args.chi2 == "toeplitz" and args.config != "R":
         raise SystemExit("--chi2 toeplitz is defined for config R only (one Image, no fitted alpha)")
+    if args.chi2 == "toeplitz" and args.offset_bound_mas is None:  # the precompute's box: recorded, so report and --grad replay the fitted prior
+        args.offset_bound_mas = va.TOEPLITZ_OFFSET_BOUND_MAS
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
