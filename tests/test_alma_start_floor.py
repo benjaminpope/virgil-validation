@@ -206,3 +206,10 @@ def test_fit_start_gauss_fit_records_the_fitted_gaussian_and_is_refused_where_th
     for extra in (["--workflow", "mpol"], ["--init", out2]):
         with pytest.raises(SystemExit):
             _call("fit", "--config", "R", "--data", syn, "--out", tmp_path / "x", "--npix", 64, "--max-steps", 2, "--start", "gauss-fit", *extra)
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_gate_reference_flux_is_the_measured_dsharp_clean_flux():
+    """0.2548 Jy is the measured sum of DSHARP's CLEAN image over its beam area (0.2547964, design/alma_imlup_p3.md), not MPoL's entropy flux."""
+    assert vs.REFERENCE_FLUX_JY == 0.2548 and abs(vs.REFERENCE_FLUX_JY - 0.2547964445056623) < 5e-5
+    assert vs.REFERENCE_FLUX_NAME == "DSHARP CLEAN image flux (measured)"

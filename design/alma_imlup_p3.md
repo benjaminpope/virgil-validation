@@ -376,7 +376,16 @@ A cold-start fit (no MPoL information) is called a pass only when the numbers **
 | b | raw χ²/N at s = 1 at or below MPoL's solution evaluated in virgil | the same two evaluations |
 | c | C8 converged in every stage | the stages of the fit's `result.json` |
 | d | pixels below 1e-6 of the peak under 1 % | `va.dead_pixel_report` of the fit's image (see the finding above) |
-| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else the 0.253 Jy of MPoL's example (`MPOL["f_tot"]`, `sgd.py:298–302`; the first draft said DSHARP's 0.255 Jy, which has no source in the repo); the reference used is recorded |
+| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else the DSHARP CLEAN image's measured flux, 0.2548 Jy (`vs.REFERENCE_FLUX_JY`, named "DSHARP CLEAN image flux (measured)"; provenance below); the reference used is recorded |
+
+**Provenance of gate (e)'s reference flux (0.2548 Jy).** Not a published number: it is measured. The sum of the public DSHARP IM Lup continuum
+CLEAN image (DSHARP data release; Andrews et al. 2018, ApJL 869, L41) over the image, in Jy/beam, divided by the beam area
+(0.0021708422 arcsec²), is 0.2547964445 Jy (CLEAN peak 3.2735176 Jy/arcsec²). The measurement is recorded in
+`/Users/benpope/data/alma_imlup/mpol_ref/out/p3a/compare_CLEAN_mpol.txt` (the same file has MPoL's image: peak 5.4047747 Jy/arcsec²,
+flux 0.2944790 Jy). `vs.REFERENCE_FLUX_JY` hard-codes it to 0.2548: the gate runs on the cluster, where that FITS is not at hand, and
+`--clean-dir` is the route that computes the reference from a file. It replaces an earlier 0.255 Jy that had no source, and MPoL's F_tot
+(0.253 Jy, `sgd.py:298–302`) that stood in for it in between: that is the flux MPoL's *entropy* is normalised by, not a measurement of the sky. The
+two differ by 0.7 %, far inside the gate's 10 %.
 
 Flux is the fit's, in MPoL's obs-0 gauge (`gauge_to_obs0`), so a fit with another `--ref-obs` is compared fairly. Code: `virgil_bridge.alma_start.cold_start_gate`, tests `tests/test_alma_start_floor.py`.
 
