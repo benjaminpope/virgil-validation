@@ -376,7 +376,27 @@ A cold-start fit (no MPoL information) is called a pass only when the numbers **
 | b | raw χ²/N at s = 1 at or below MPoL's solution evaluated in virgil | the same two evaluations |
 | c | C8 converged in every stage | the stages of the fit's `result.json` |
 | d | pixels below 1e-6 of the peak under 1 % | `va.dead_pixel_report` of the fit's image (see the finding above) |
-| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else the 0.253 Jy of MPoL's example (`MPOL["f_tot"]`, `sgd.py:298–302`; the first draft said DSHARP's 0.255 Jy, which has no source in the repo); the reference used is recorded |
+| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else the DSHARP CLEAN image's measured flux, 0.2548 Jy (`vs.REFERENCE_FLUX_JY`, named "DSHARP CLEAN image flux (measured)"; provenance below); the reference used is recorded |
+
+**Provenance of gate (e)'s reference flux (0.2548 Jy).** Not a published number: it is measured. DSHARP's IM Lup continuum CLEAN image
+(`images/IMLup_continuum.fits` of the DSHARP data release, Andrews et al. 2018, ApJL 869, L41; `alma_mpol_ref` downloads it as `dsharp.fits`) is in
+Jy/beam. Its flux is `Σ I_pix(Jy/beam) × pixel area / beam area` = `Σ I_pix / (beam area in pixels)`, the beam area being π bmaj bmin / (4 ln 2) from the
+header (here 0.0021708422 arcsec²), the pixel area from CDELT1, CDELT2 (the DSHARP FITS's pixel scale is not recorded in the file below; the function reads it). Equivalently the
+image in Jy/arcsec² (divided by the beam area) summed over the pixels and multiplied by the pixel area; the sum alone has the units Jy·pixel/arcsec², not Jy.
+MPoL's `compare_CLEAN_mpol.py chk1 dsharp.fits` (`alma_mpol_ref`, step 4) printed 0.2547964445 Jy (CLEAN peak 3.2735176 Jy/arcsec² = 7.106 mJy/beam) into
+`/Users/benpope/data/alma_imlup/mpol_ref/out/p3a/compare_CLEAN_mpol.txt` (a laptop file; the same file has MPoL's image: peak 5.4047747 Jy/arcsec²,
+flux 0.2944790 Jy, `mpol_0.03.fits`). `vs.clean_image_flux(fits)` is that measurement as a function (tested on a synthetic CLEAN image of known flux at 3 and 5 mas
+pixels, `tests/test_alma_start_floor.py`), and **`compare --dsharp FITS` takes gate (e)'s reference from the FITS** (name "DSHARP CLEAN image flux (<file>)"), so on the cluster
+the constant is only used when no FITS is given: `vs.REFERENCE_FLUX_JY = 0.2548` is the recorded value of that measurement, and the pin test does not reproduce it (it needs the FITS).
+It replaces an earlier 0.255 Jy that had no source, and MPoL's F_tot (0.253 Jy, `sgd.py:298–302`), the flux MPoL's *entropy* is normalised by, not a measurement of the sky.
+
+**Control: does MPoL's own solution pass (e)? No, and that is a finding about MPoL, not a fault of the gate (Ben's ruling, 2026-10-23).** From `compare.json` of the 32a303e-cd R_mpol
+comparison (flux in MPoL's obs-0 gauge; `Σ image × (5 mas)²` of MPoL's export gives the same number): MPoL's solution has **0.2943 Jy, +15.5 %** against DSHARP CLEAN's 0.2548 Jy
+(+16.4 % against 0.253), so it fails (e) (`cold_start_gate` run on that flux, everything else self-consistent). Our R_mpol warm restart has 0.2661 Jy (+4.4 %) and passes.
+The excess is mostly MPoL's faint outer floor: about 10 % of MPoL's flux lies beyond 1.8″, where CLEAN has none. That is consistent with an unconverged remnant of its
+softplus(−3) uniform start, which our warm restart lowered (median 0.0018 → 0.0013 Jy/arcsec²). (The flux–gain gauge, the missing CLEAN short spacings and the taper were the other
+candidates; the outer floor is the one the numbers point to, and the 10 % outside-1.8″ share and the medians are from the local MPoL disagreements log, not recomputed in this repository.)
+**Decision: the gate is unchanged.** (e) stays at 10 % against CLEAN: it tests physical flux, not agreement with MPoL, so a cold start that reproduces MPoL's solution is *meant* to fail it.
 
 Flux is the fit's, in MPoL's obs-0 gauge (`gauge_to_obs0`), so a fit with another `--ref-obs` is compared fairly. Code: `virgil_bridge.alma_start.cold_start_gate`, tests `tests/test_alma_start_floor.py`.
 

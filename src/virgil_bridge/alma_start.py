@@ -123,7 +123,29 @@ def selfcal_check(values, ref=REF_GAIN_RANGE, margin=GAIN_MARGIN, ref_obs=0):
 
 # ------------------------------------------------------------------ the cold-start gate
 
-REFERENCE_FLUX_JY = MPOL["f_tot"]  # 0.253 Jy: IM Lup's total flux as MPoL's example takes it (sgd.py:298-302, ``MPOL``); the reference when no CLEAN of ours is given. DSHARP's own value is not sourced here
+REFERENCE_FLUX_JY = 0.2548  # Jy: sum(DSHARP's IM Lup CLEAN image in Jy/beam) * pixel area / beam area = 0.2547964 (design/alma_imlup_p3.md, "Provenance of gate (e)'s reference flux"); MEASURED, not quoted from a paper. The reference when neither --clean-dir nor --dsharp is given; ``clean_image_flux`` recomputes it from the FITS
+REFERENCE_FLUX_NAME = "DSHARP CLEAN image flux (measured)"
+
+
+def clean_image_flux(path):
+    """Total flux (Jy) of a CLEAN image in Jy/beam, e.g. DSHARP's ``IMLup_continuum.fits``: ``sum(image) * pixel_area / beam_area``, the beam area
+    pi bmaj bmin / (4 ln 2) from the header's BMAJ and BMIN, the pixel area from CDELT1 and CDELT2 (both in arcsec^2). Equivalently the image in
+    Jy/arcsec^2 (divided by the beam area) summed over the pixels. Returns ``dict(flux_jy, sum_jy_per_beam, pixel_mas, beam_area_arcsec2, beam_area_pixels, path)``."""
+    from astropy.io import fits
+
+    with fits.open(path) as hdul:
+        hdr = hdul[0].header
+        data = np.asarray(hdul[0].data, float)
+    unit = str(hdr.get("BUNIT", "")).strip().lower()
+    if unit != "jy/beam":
+        raise ValueError(f"{path}: BUNIT is {hdr.get('BUNIT')!r}, not Jy/beam")
+    pix_arcsec = (abs(float(hdr["CDELT1"])) * 3600.0, abs(float(hdr["CDELT2"])) * 3600.0)
+    beam_area = cx.beam_area_arcsec2(float(hdr["BMAJ"]) * 3.6e6, float(hdr["BMIN"]) * 3.6e6)
+    total = float(np.nansum(data))
+    return dict(flux_jy=total * pix_arcsec[0] * pix_arcsec[1] / beam_area, sum_jy_per_beam=total, pixel_mas=1000.0 * pix_arcsec[0],
+                beam_area_arcsec2=float(beam_area), beam_area_pixels=float(beam_area / (pix_arcsec[0] * pix_arcsec[1])), path=str(path))
+
+
 GATE_FLUX_TOL = 0.10
 GATE_DEAD_TOL = 0.01
 
@@ -137,7 +159,7 @@ def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, s
     b. raw chi^2/N at s = 1, ``chi2n_ours`` <= ``chi2n_mpol`` (MPoL's solution evaluated in virgil);
     c. C8 converged in every stage (``stages_converged``, a list of bools);
     d. the fraction of pixels below 1e-6 of the peak (``dead_fraction``) is under ``dead_tol`` (1 %);
-    e. ``flux_ours`` within ``flux_tol`` (10 %) of ``flux_ref``: the CLEAN flux of ours when one is given, else MPoL's 0.253 Jy (``REFERENCE_FLUX_JY``; ``flux_ref_name`` says which)."""
+    e. ``flux_ours`` within ``flux_tol`` (10 %) of ``flux_ref``: the CLEAN flux of ours when one is given, else the DSHARP CLEAN image's measured 0.2548 Jy (``REFERENCE_FLUX_JY``, ``REFERENCE_FLUX_NAME``; ``flux_ref_name`` says which)."""
     def item(key, label, ok, value, limit):
         return dict(key=key, label=label, value=value, limit=limit, status="NOT EVALUATED" if ok is None else ("PASS" if ok else "FAIL"))
 

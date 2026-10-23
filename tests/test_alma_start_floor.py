@@ -206,3 +206,47 @@ def test_fit_start_gauss_fit_records_the_fitted_gaussian_and_is_refused_where_th
     for extra in (["--workflow", "mpol"], ["--init", out2]):
         with pytest.raises(SystemExit):
             _call("fit", "--config", "R", "--data", syn, "--out", tmp_path / "x", "--npix", 64, "--max-steps", 2, "--start", "gauss-fit", *extra)
+
+
+
+def _dsharp_like_fits(path, flux, pixel_mas=3.0, beam=(44.0, 43.0, 115.0), n=801, bunit="Jy/beam"):
+    """A CLEAN-image FITS of a point source of ``flux`` Jy: the restoring beam (peak ``flux`` Jy/beam) on a ``pixel_mas`` grid."""
+    from astropy.io import fits
+
+    bmaj, bmin, pa = beam
+    yy, xx = np.meshgrid(np.arange(n) - n // 2, np.arange(n) - n // 2, indexing="ij")
+    x, y = xx * pixel_mas, yy * pixel_mas
+    t = np.deg2rad(pa)
+    u, v = x * np.sin(t) + y * np.cos(t), x * np.cos(t) - y * np.sin(t)  # along and across the major axis
+    img = flux * np.exp(-4 * np.log(2) * ((u / bmaj) ** 2 + (v / bmin) ** 2))
+    h = fits.PrimaryHDU(img.astype(np.float32)[None, None])
+    h.header.update(BUNIT=bunit, CDELT1=-pixel_mas / 3.6e6, CDELT2=pixel_mas / 3.6e6, BMAJ=bmaj / 3.6e6, BMIN=bmin / 3.6e6, BPA=pa)
+    h.writeto(path, overwrite=True)
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_clean_image_flux_is_the_sum_over_the_beam_area_in_pixels(tmp_path):
+    """A point source of 0.2548 Jy as a CLEAN image: sum(Jy/beam) / (beam area in pixels) recovers it, at 3 mas pixels (the wrong units, dividing the
+    sum by the beam area in arcsec^2, would be off by the pixel area) and at 5 mas; a header that is not Jy/beam is refused."""
+    for px in (3.0, 5.0):
+        _dsharp_like_fits(tmp_path / "d.fits", 0.2548, pixel_mas=px, n=int(2400 / px) | 1)
+        r = vs.clean_image_flux(tmp_path / "d.fits")
+        assert abs(r["flux_jy"] / 0.2548 - 1) < 2e-3 and r["pixel_mas"] == pytest.approx(px)
+        assert r["beam_area_pixels"] == pytest.approx(r["beam_area_arcsec2"] / (px / 1000) ** 2)
+        assert abs(r["sum_jy_per_beam"] / r["beam_area_arcsec2"] - r["flux_jy"] / (px / 1000) ** 2) < 1e-6 * r["sum_jy_per_beam"]  # not the flux
+    _dsharp_like_fits(tmp_path / "bad.fits", 0.25, bunit="Jy/pixel")
+    with pytest.raises(ValueError, match="BUNIT"):
+        vs.clean_image_flux(tmp_path / "bad.fits")
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_gate_reference_flux_priority_and_the_recorded_constant(tmp_path):
+    """Gate (e)'s reference: ``--clean-dir``, else the flux of the ``--dsharp`` FITS, else ``REFERENCE_FLUX_JY``. The constant is the *recorded* measurement of DSHARP's own
+    IMLup_continuum.fits (0.2547964, design/alma_imlup_p3.md); it is not recomputed here, which needs that FITS (the cluster's alma_mpol_ref/dsharp.fits)."""
+    assert vs.REFERENCE_FLUX_JY == 0.2548 and vs.REFERENCE_FLUX_NAME == "DSHARP CLEAN image flux (measured)"
+    _dsharp_like_fits(tmp_path / "d.fits", 0.3000)
+    args = (dict(), dict(stages=[]), np.ones((8, 8)), 5.0, 0.25)
+    g_const = script.cold_start_gate_of(*args, None)
+    g_fits = script.cold_start_gate_of(*args, None, str(tmp_path / "d.fits"))
+    assert g_const["flux_reference"] == dict(name=vs.REFERENCE_FLUX_NAME, flux_jy=0.2548)
+    assert g_fits["flux_reference"]["name"] == "DSHARP CLEAN image flux (d.fits)" and abs(g_fits["flux_reference"]["flux_jy"] / 0.3 - 1) < 2e-3
