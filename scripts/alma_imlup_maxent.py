@@ -609,7 +609,7 @@ def cold_start_gate_of(res, vres, image, px, flux, clean_dir):
     if clean_dir:
         ref, name = float(vs.read_clean(clean_dir)[3]["flux_jy"]), f"CLEAN ({clean_dir})"
     else:
-        ref, name = vs.DSHARP_FLUX_JY, "DSHARP"
+        ref, name = vs.REFERENCE_FLUX_JY, "MPoL F_tot"
     stages = [bool(st["convergence"]["converged"]) for st in vres.get("stages", [])]
     return vs.cold_start_gate(
         objective_ours=o and o["ours"]["objective"], objective_mpol=o and o["mpol_solution_in_virgil"]["objective"],
@@ -891,7 +891,7 @@ def main(argv=None):
     p.add_argument("--data", default=None, help="needed for the objective comparison")
     p.add_argument("--f-dir", default=None)
     p.add_argument("--dsharp", default=None)
-    p.add_argument("--clean-dir", default=None, help="gate (e): the output directory of alma_imlup_clean.py run (clean.json); its flux is the reference (default DSHARP's 0.255 Jy)")
+    p.add_argument("--clean-dir", default=None, help="gate (e): the output directory of alma_imlup_clean.py run (clean.json); its flux is the reference (default MPoL's F_tot, 0.253 Jy)")
     p.add_argument("--out", required=True)
     p.add_argument("--no-grad", action="store_true", help="skip the gradient-scaling diagnostic (two value-and-gradient evaluations on --data)")
     p.add_argument("--no-dirty", action="store_true", help="skip the residual dirty images of MPoL's solution (resid_dirty_mpol_obs*.npy, 4 MB each; one NUFFT pass and one gridding of all points)")

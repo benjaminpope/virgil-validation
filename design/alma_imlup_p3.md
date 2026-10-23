@@ -376,7 +376,7 @@ A cold-start fit (no MPoL information) is called a pass only when the numbers **
 | b | raw χ²/N at s = 1 at or below MPoL's solution evaluated in virgil | the same two evaluations |
 | c | C8 converged in every stage | the stages of the fit's `result.json` |
 | d | pixels below 1e-6 of the peak under 1 % | `va.dead_pixel_report` of the fit's image (see the finding above) |
-| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else DSHARP's 0.255 Jy; the reference used is recorded |
+| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else the 0.253 Jy of MPoL's example (`MPOL["f_tot"]`, `sgd.py:298–302`; the first draft said DSHARP's 0.255 Jy, which has no source in the repo); the reference used is recorded |
 
 Flux is the fit's, in MPoL's obs-0 gauge (`gauge_to_obs0`), so a fit with another `--ref-obs` is compared fairly. Code: `virgil_bridge.alma_start.cold_start_gate`, tests `tests/test_alma_start_floor.py`.
 

@@ -496,9 +496,9 @@ def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path)
     o = c["objective"]
     assert abs(o["ours"]["objective"] - o["mpol_solution_in_virgil"]["objective"]) < 1e-9 * abs(o["ours"]["objective"])
     assert (out / "compare.md").exists()
-    g = c["gate"]  # the cold-start gate: five items, DSHARP's flux as the reference (no --clean-dir), the same solution on both sides
-    assert [i["key"] for i in g["items"]] == list("abcde") and g["flux_reference"]["name"] == "DSHARP" and abs(g["items"][0]["value"]) < 1e-6 * abs(o["ours"]["objective"])
-    assert g["verdict"] in ("PASS", "FAIL") and "Cold-start gate" in (out / "compare.md").read_text()
+    g = c["gate"]  # the cold-start gate: five items, MPoL's F_tot as the reference (no --clean-dir), the same solution on both sides
+    assert [i["key"] for i in g["items"]] == list("abcde") and g["flux_reference"]["name"] == "MPoL F_tot" and abs(g["items"][0]["value"]) < 1e-6 * abs(o["ours"]["objective"])
+    assert [i["status"] for i in g["items"][:2]] == ["PASS", "PASS"] and g["verdict"] in ("PASS", "FAIL") and "Cold-start gate" in (out / "compare.md").read_text()
     # the residual dirty images of MPoL's solution (for docs/imaging/imlup.md): the same solution as the fit's own, so the same images
     for e in range(7):
         np.testing.assert_allclose(np.load(out / f"resid_dirty_mpol_obs{e}.npy"), np.load(r_fit / f"resid_dirty_obs{e}.npy"), rtol=1e-4, atol=1e-7 * np.abs(np.load(r_fit / f"resid_dirty_obs{e}.npy")).max())

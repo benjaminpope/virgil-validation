@@ -123,7 +123,7 @@ def selfcal_check(values, ref=REF_GAIN_RANGE, margin=GAIN_MARGIN, ref_obs=0):
 
 # ------------------------------------------------------------------ the cold-start gate
 
-DSHARP_FLUX_JY = 0.255  # DSHARP's CLEAN flux of IM Lup (the reference when no CLEAN of ours is given)
+REFERENCE_FLUX_JY = MPOL["f_tot"]  # 0.253 Jy: IM Lup's total flux as MPoL's example takes it (sgd.py:298-302, ``MPOL``); the reference when no CLEAN of ours is given. DSHARP's own value is not sourced here
 GATE_FLUX_TOL = 0.10
 GATE_DEAD_TOL = 0.01
 
@@ -137,7 +137,7 @@ def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, s
     b. raw chi^2/N at s = 1, ``chi2n_ours`` <= ``chi2n_mpol`` (MPoL's solution evaluated in virgil);
     c. C8 converged in every stage (``stages_converged``, a list of bools);
     d. the fraction of pixels below 1e-6 of the peak (``dead_fraction``) is under ``dead_tol`` (1 %);
-    e. ``flux_ours`` within ``flux_tol`` (10 %) of ``flux_ref``: the CLEAN flux of ours when one is given, else DSHARP's 0.255 Jy (``flux_ref_name`` says which)."""
+    e. ``flux_ours`` within ``flux_tol`` (10 %) of ``flux_ref``: the CLEAN flux of ours when one is given, else MPoL's 0.253 Jy (``REFERENCE_FLUX_JY``; ``flux_ref_name`` says which)."""
     def item(key, label, ok, value, limit):
         return dict(key=key, label=label, value=value, limit=limit, status="NOT EVALUATED" if ok is None else ("PASS" if ok else "FAIL"))
 

@@ -86,7 +86,7 @@ def test_fit_p3_records_the_floor_start_by_default_and_the_dead_pixels(tmp_path,
 # ------------------------------------------------------------------ the cold-start gate
 
 
-GOOD = dict(objective_ours=-10.0, objective_mpol=-9.0, chi2n_ours=2.70, chi2n_mpol=2.71, stages_converged=[True, True], dead_fraction=0.0, flux_ours=0.25, flux_ref=0.255, flux_ref_name="DSHARP")
+GOOD = dict(objective_ours=-10.0, objective_mpol=-9.0, chi2n_ours=2.70, chi2n_mpol=2.71, stages_converged=[True, True], dead_fraction=0.0, flux_ours=0.25, flux_ref=0.255, flux_ref_name="reference")
 
 
 @pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
@@ -123,6 +123,27 @@ def _gauss_data(tmp_path, truth, n=3000, q_hi=3e4, seed=1, noise=1e-3):
 
 
 @pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"])
+def test_gaussian_visibility_is_the_dft_of_the_rendered_image():
+    """The analytic visibility (flux, centroid, FWHMs, PA) against a direct DFT, written out here, of ``exp(gaussian_log_image)`` on the fit's grid
+    (x East towards column 0, y North towards row 0, V = sum I exp(-2 pi i (u x + v y)), normalised to the flux): this pins the Fourier sign, the PA
+    (East of North), the FWHM factor and the centroid against the image convention, independently of the formula, to 1e-6 of the flux."""
+    n, px = 201, 10.0
+    pars = (0.3, 120.0, -80.0, 420.0, 250.0, 35.0)
+    img = np.exp(vs.gaussian_log_image(n, px, *pars[1:]))
+    img *= pars[0] / img.sum()
+    r0, c0 = cx.phase_centre_cell(n)
+    rr, cc = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    x, y = ((c0 - cc) * px).ravel() * cx.MAS, ((r0 - rr) * px).ravel() * cx.MAS
+    rng = np.random.default_rng(4)
+    q, phi = rng.uniform(2e3, 8e4, 40), rng.uniform(0, 2 * np.pi, 40)
+    u, v = q * np.cos(phi), q * np.sin(phi)
+    dft = np.array([np.sum(img.ravel() * np.exp(-2j * np.pi * (a * x + b * y))) for a, b in zip(u, v)])
+    assert np.max(np.abs(dft - vs.gaussian_visibility(u, v, *pars))) < 1e-6 * pars[0]
+    assert np.max(np.abs(dft - vs.gaussian_visibility(-u, -v, *pars))) > 1e-3 * pars[0]  # the control: the conjugate (a Fourier-sign error) is far off
+    record("dft_max_abs_diff_over_flux", float(np.max(np.abs(dft - vs.gaussian_visibility(u, v, *pars))) / pars[0]))
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"])
 def test_fit_gaussian_recovers_an_elliptical_gaussian_and_orders_the_axes(tmp_path):
     """Noisy visibilities of a known elliptical Gaussian (flux 0.3 Jy, 200 mas East and -150 mas North, 2200 x 1300 mas FWHM at PA 35 deg): the fit gets the flux,
     centroid, FWHMs and PA back (also when started with the axes swapped: major >= minor and PA in [0, 180)), and chi^2 per point is about 1."""
@@ -144,7 +165,7 @@ def test_fit_gaussian_recovers_an_elliptical_gaussian_and_orders_the_axes(tmp_pa
 @pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
 def test_the_fitted_gaussian_start_is_the_image_virgils_model_sees_not_its_mirror(tmp_path):
     """End to end through virgil's own forward model: the start image rendered from the fitted parameters (``gaussian_log_image`` on the fit's grid, East towards
-    column 0) gives a chi^2 on the data far below the same image mirrored East-West or North-South; the conventions of the image, the sign of u and the PA agree."""
+    column 0) gives a chi^2 on the data far below the same image mirrored East-West, North-South or through the centre (the point reflection a Fourier-sign error makes); the conventions of the image, the sign of u and the PA agree."""
     truth = (0.30, 80.0, -50.0, 220.0, 130.0, 35.0)
     syn = _gauss_data(tmp_path, truth, n=1500, q_hi=1.5e5, noise=1e-3)
     data = va.load_dir(syn)
@@ -161,9 +182,11 @@ def test_the_fitted_gaussian_start_is_the_image_virgils_model_sees_not_its_mirro
     good = chi2(vs.gaussian_log_image(n, px, *args))
     flip_ew = chi2(vs.gaussian_log_image(n, px, -args[0], args[1], args[2], args[3], -args[4]))
     flip_ns = chi2(vs.gaussian_log_image(n, px, args[0], -args[1], args[2], args[3], -args[4]))
-    assert good < 0.05 * min(flip_ew, flip_ns), (good, flip_ew, flip_ns)
+    flip_both = chi2(vs.gaussian_log_image(n, px, -args[0], -args[1], *args[2:]))  # the point reflection: what a Fourier-sign error does to an ellipse
+    assert good < 3.0, good  # noise is 1/sqrt(w) per component: chi^2 per component is O(1) up to pixelisation, so the control cannot pass because every candidate is bad
+    assert good < 0.05 * min(flip_ew, flip_ns, flip_both), (good, flip_ew, flip_ns, flip_both)
     record("chi2n_fitted_start", good)
-    record("chi2n_mirrored_start", min(flip_ew, flip_ns))
+    record("chi2n_mirrored_start", min(flip_ew, flip_ns, flip_both))
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
