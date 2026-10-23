@@ -378,14 +378,24 @@ A cold-start fit (no MPoL information) is called a pass only when the numbers **
 | d | pixels below 1e-6 of the peak under 1 % | `va.dead_pixel_report` of the fit's image (see the finding above) |
 | e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else the DSHARP CLEAN image's measured flux, 0.2548 Jy (`vs.REFERENCE_FLUX_JY`, named "DSHARP CLEAN image flux (measured)"; provenance below); the reference used is recorded |
 
-**Provenance of gate (e)'s reference flux (0.2548 Jy).** Not a published number: it is measured. The sum of the public DSHARP IM Lup continuum
-CLEAN image (DSHARP data release; Andrews et al. 2018, ApJL 869, L41) over the image, in Jy/beam, divided by the beam area
-(0.0021708422 arcsec²), is 0.2547964445 Jy (CLEAN peak 3.2735176 Jy/arcsec²). The measurement is recorded in
-`/Users/benpope/data/alma_imlup/mpol_ref/out/p3a/compare_CLEAN_mpol.txt` (the same file has MPoL's image: peak 5.4047747 Jy/arcsec²,
-flux 0.2944790 Jy). `vs.REFERENCE_FLUX_JY` hard-codes it to 0.2548: the gate runs on the cluster, where that FITS is not at hand, and
-`--clean-dir` is the route that computes the reference from a file. It replaces an earlier 0.255 Jy that had no source, and MPoL's F_tot
-(0.253 Jy, `sgd.py:298–302`) that stood in for it in between: that is the flux MPoL's *entropy* is normalised by, not a measurement of the sky. The
-two differ by 0.7 %, far inside the gate's 10 %.
+**Provenance of gate (e)'s reference flux (0.2548 Jy).** Not a published number: it is measured. DSHARP's IM Lup continuum CLEAN image
+(`images/IMLup_continuum.fits` of the DSHARP data release, Andrews et al. 2018, ApJL 869, L41; `alma_mpol_ref` downloads it as `dsharp.fits`) is in
+Jy/beam. Its flux is `Σ I_pix(Jy/beam) × pixel area / beam area` = `Σ I_pix / (beam area in pixels)`, the beam area being π bmaj bmin / (4 ln 2) from the
+header (here 0.0021708422 arcsec²), the pixel area from CDELT1, CDELT2 (the DSHARP FITS's pixel scale is not recorded in the file below; the function reads it). Equivalently the
+image in Jy/arcsec² (divided by the beam area) summed over the pixels and multiplied by the pixel area; the sum alone has the units Jy·pixel/arcsec², not Jy.
+MPoL's `compare_CLEAN_mpol.py chk1 dsharp.fits` (`alma_mpol_ref`, step 4) printed 0.2547964445 Jy (CLEAN peak 3.2735176 Jy/arcsec² = 7.106 mJy/beam) into
+`/Users/benpope/data/alma_imlup/mpol_ref/out/p3a/compare_CLEAN_mpol.txt` (a laptop file; the same file has MPoL's image: peak 5.4047747 Jy/arcsec²,
+flux 0.2944790 Jy, `mpol_0.03.fits`). `vs.clean_image_flux(fits)` is that measurement as a function (tested on a synthetic CLEAN image of known flux at 3 and 5 mas
+pixels, `tests/test_alma_start_floor.py`), and **`compare --dsharp FITS` takes gate (e)'s reference from the FITS** (name "DSHARP CLEAN image flux (<file>)"), so on the cluster
+the constant is only used when no FITS is given: `vs.REFERENCE_FLUX_JY = 0.2548` is the recorded value of that measurement, and the pin test does not reproduce it (it needs the FITS).
+It replaces an earlier 0.255 Jy that had no source, and MPoL's F_tot (0.253 Jy, `sgd.py:298–302`), the flux MPoL's *entropy* is normalised by, not a measurement of the sky.
+
+**Control: does MPoL's own solution pass (e)?** No. From `compare.json` of the 32a303e-cd R_mpol comparison (flux in MPoL's obs-0 gauge; `Σ image × (5 mas)²` of MPoL's export
+gives the same 0.2943): MPoL's solution is 0.29430 Jy, **+15.5 %** from 0.2548 (+16.4 % from 0.253): (e) FAILS for it (`cold_start_gate` run on that flux, everything else self-consistent).
+The R_mpol fit (ours, warm-started at MPoL's solution, gains moved to 1.02–1.03) is 0.26611 Jy, +4.4 %: PASS. So gate (e) as written asks the cold start to be 11 percentage points
+closer to the CLEAN flux than MPoL's own solution is, and a cold-start fit that *reproduces* MPoL's solution fails it. The cause is not decided here: candidates are the flux–gain
+gauge (our R_mpol moved 10 % with the gains), short-spacing flux that CLEAN misses (CLEAN is a masked, beam-restored flux), or the taper. This needs Ben's decision before (e) is
+used as a verdict: widen the tolerance, compare in a gauge where MPoL's solution is the reference, or keep (e) as a CLEAN-flux sanity check that is reported but not part of PASS.
 
 Flux is the fit's, in MPoL's obs-0 gauge (`gauge_to_obs0`), so a fit with another `--ref-obs` is compared fairly. Code: `virgil_bridge.alma_start.cold_start_gate`, tests `tests/test_alma_start_floor.py`.
 
