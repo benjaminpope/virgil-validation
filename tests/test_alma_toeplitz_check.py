@@ -88,8 +88,9 @@ def test_the_speedup_limit_is_judged_on_an_a100_and_reported_elsewhere():
 
     key = "speed-up per value+grad (direct at eps 1e-6)"
     assert table(34, a100)[key] == (">= 30x on A100", True)
+    assert table(34, "NVIDIA A100-PCIE-40GB")[key][1] is True  # any A100 variant
     assert table(16, a100)[key] == (">= 30x on A100", False)
-    for gpu in (blackwell, "cpu", None, "NVIDIA H100"):  # None: a report from before the GPU was recorded
+    for gpu in (blackwell, "cpu", None, "NVIDIA H100", "NVIDIA RTX A1000 Laptop GPU"):  # A1000 is not an A100  # None: a report from before the GPU was recorded
         for speedup in (16, 34):
             lim, ok = table(speedup, gpu)[key]
             assert ok is None and "report only" in lim and (gpu or "unknown") in lim

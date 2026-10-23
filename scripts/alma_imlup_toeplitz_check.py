@@ -23,6 +23,7 @@ path; the direct path's peak is reported as information.
 import argparse
 import json
 import pathlib
+import re
 import sys
 import time
 
@@ -210,7 +211,7 @@ SPEEDUP_GPU = "A100"  # the speed-up limit is judged on this GPU type only; on a
 def speedup_gated(t):
     """Whether the speed-up limit applies: both timing runs were on an A100. Reports from before the GPU was recorded count as unknown."""
     gpus = {t[m].get("gpu", "unknown") for m in ("toeplitz", "direct")}
-    return all(SPEEDUP_GPU in g.upper() for g in gpus), t["toeplitz"].get("gpu", "unknown")
+    return all(re.search(rf"\b{SPEEDUP_GPU}\b", g.upper()) for g in gpus), t["toeplitz"].get("gpu", "unknown")  # the model as a whole token: not an A1000
 
 
 def acceptance(a, t):
