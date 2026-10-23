@@ -508,11 +508,11 @@
   status: open
 
 - id: C3
-  title: the independent CLEAN beam fit (crosscheck.alma_clean.fit_beam) was changed to fit the lobe's pixels only, after virgil 0.4.1 did, and is not yet checked against CASA's own fit
+  title: the independent CLEAN beam fit (crosscheck.alma_clean.fit_beam) fits the lobe's pixels only, as virgil 0.4.1 does, and gives CASA's restoring beam to within 2 % on the major axis
   objects: [virgil.radio_clean.clean]
   ruling: crosscheck
-  kind: 'reference changed (our fit used the whole bounding box of the lobe; CASA tclean documents the beam as a Gaussian fitted to the main lobe above psfcutoff, default 0.35, which we take to mean the lobe pixels only; the change was prompted by virgil 0.4.1 and rests on the documentation alone)'
-  referee: CASA tclean documentation (psfcutoff); a beam fit by real casatools on the test PSF is still to run
-  evidence: [tests/test_alma_clean.py::test_virgil_radio_clean_agrees_with_the_independent_loop]
-  status: open
-  decision: 'deferred to virgil 0.4.2 with the rest of the radio work (Ben, 2026-10-23): compare alma_clean.fit_beam with a casatools beam fit on the test PSF in 0.4.2.'
+  kind: 'reference changed (our fit used the whole bounding box of the lobe; it now fits the lobe pixels above psfcutoff 0.35 only, after virgil 0.4.1). Checked against real casatools/casatasks 6.7.0.31: tclean fits the beam to its own PSF (25 mas cells, about 5 pixels per beam) as 170.48 x 127.76 mas at PA 161.2; the lobe-only fit gives a major axis 1.9 % smaller (167.2 mas), a minor axis 0.08 % smaller and a position angle 0.24 degrees away, and virgil radio_clean.fit_beam gives the same to 1e-4 on CASA''s PSF and on its own dirty beam. The two fits are therefore the same estimator to 1e-4 and CASA''s differs by a stated 2 % (its own pixel weighting is not documented; we accept 3 %), recorded not tuned away'
+  referee: casa (real tclean on a CASA-simulated measurement set, tests/test_radio_trust_casa.py)
+  evidence: [tests/test_alma_clean.py::test_virgil_radio_clean_agrees_with_the_independent_loop, tests/test_radio_trust_casa.py::test_fit_beam_and_the_lobe_only_reference_agree_with_the_beam_tclean_fits, tests/test_radio_trust_casa.py::test_control_a_whole_psf_fit_does_not_reproduce_the_tclean_beam]
+  status: documented
+  decision: 'settled in virgil 0.4.2 (the deferred item of Ben, 2026-10-23): checked against casatools, 2 % on the major axis recorded.'

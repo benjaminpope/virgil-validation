@@ -129,8 +129,10 @@ nodes:
     properties: {conjugation: 1}  # DATA is conj(V) at u = +UVW[0] nu / c: CASA's own prediction
     doc: alma_conventions.md
   virgil.radio.ComplexVisData.dirty_image: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil.radio.ComplexVisData.dirty_beam: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
   virgil.radio_clean.clean: {layer: imaging, source: [src/virgil/radio_clean.py], depends: [virgil.radio.ComplexVisData, virgil.radio.ComplexVisData.dirty_image, virgil.radio.ComplexVisData.model]}
   virgil.radio.CalibrationNuisance: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil._antenna_gains.marginal: {layer: likelihood, source: [src/virgil/_antenna_gains.py], depends: [virgil.radio.CalibrationNuisance], doc: alma_conventions.md}  # B7 Stage 1 (Laplace): tests/test_radio_trust_numpy.py against Gauss-Hermite quadrature
   virgil.radio.ComplexVisData.model:
     layer: likelihood
     source: [src/virgil/radio.py]
@@ -144,9 +146,13 @@ nodes:
   virgil.radio.primary_beam: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.models.Image], doc: alma_conventions.md}
   virgil.radio.dartboard_folds: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
   # Register items B2, B5, B6 (virgil design/radio_imaging_innovations.md): tests/test_radio_innovations.py. These need
-  # virgil after 0.4.0 (gauss_newton_diag) or unmerged (radio_toeplitz, virgil#516); they skip on CI's pin.
+  # virgil after 0.4.0 (gauss_newton_diag, radio_toeplitz); CI's pin has both since the F6 bump (virgil#533).
+  # tests/test_radio_trust_numpy.py (tier A, numpy references) and tests/test_radio_trust_casa.py (tier B, real casatools and
+  # casatasks in .venv-alma) add: from_arrays, dirty_image/dirty_beam, the joint default nuisance fit (F2), gauss_newton_diag
+  # against finite differences, the antenna-gain Laplace marginal, read_ms against raw columns, fit_beam and clean against tclean.
   virgil.fitting.gauss_newton_diag: {layer: imaging, source: [src/virgil/fitting.py], depends: [virgil.fitting.fit, virgil.imaging.MaxEntropy, virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
+  crosscheck.radio_trust: {layer: references, doc: alma_conventions.md}  # numpy dirty image/beam sums, Briggs weights, gain-marginal quadrature (virgil#533)
   crosscheck.radio_innovations.DeltaProblem: {layer: references, doc: alma_conventions.md}  # B6, float32 linear-delta-V loss: the method alone, virgil has no code for it yet
 
   # ----------------------------------------------------------- likelihood
