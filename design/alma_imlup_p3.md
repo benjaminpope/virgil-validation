@@ -309,3 +309,31 @@ R from the p3 workflow's 1″ Gaussian start with `--offset-bound-mas 100 --prec
   largest live radius; it prints `!!! DEAD PIXELS … !!!` when more than 1 % are dead, like the offset-bound warning. `report` on the old directory gives the numbers above without refitting.
 - **Tests.** `tests/test_alma_start_floor.py` (CPU, seconds): the floored start reads back through `image_of` exactly in R and F, the report flags the bare Gaussian and passes the floored one, and `fit`
   records both. The cold-start gate is rerun with the floor start (arm R, same settings) before it is called passed.
+
+## Decision: the cold-start gate (2026-10-23, approved by Ben)
+
+An unconverged-from-nothing fit is called a pass only when the numbers **and the image** agree. `compare` prints and records (`compare.md`, `compare.json` key `gate`) five checks, each PASS or FAIL
+(`NOT EVALUATED` when its input is missing, e.g. no `--data`); **the verdict is PASS only if all five pass** (a failed check gives FAIL, a missing one with none failed gives INCOMPLETE):
+
+| | check | source |
+|---|---|---|
+| a | `objective_R` at or below MPoL's own | R's objective at our solution against MPoL's solution evaluated in virgil, both at eps 1e-12 (`objective.ours_le_mpol`) |
+| b | raw χ²/N at s = 1 at or below MPoL's solution evaluated in virgil | the same two evaluations |
+| c | C8 converged in every stage | the stages of the fit's `result.json` |
+| d | pixels below 1e-6 of the peak under 1 % | `va.dead_pixel_report` of the fit's image (see the finding above) |
+| e | total flux within 10 % of the CLEAN flux | `--clean-dir` (an `alma_imlup_clean` output: `clean.json`) when given, else DSHARP's 0.255 Jy; the reference used is recorded |
+
+Flux is the fit's, in MPoL's obs-0 gauge (`gauge_to_obs0`), so a fit with another `--ref-obs` is compared fairly. Code: `virgil_bridge.alma_start.cold_start_gate`, tests `tests/test_alma_start_floor.py`.
+
+## Option: `fit --start gauss-fit`, a data-driven start (2026-10-23)
+
+The p3 workflow starts from a fixed 1″, 0.25 Jy circular Gaussian. `--start gauss-fit` instead fits an **elliptical Gaussian** (flux, centroid, major and minor FWHM, position angle) by weighted least squares
+to the visibilities below `--gauss-fit-max-klambda` (default 40 kλ, the short baselines that see the disc's flux, centroid and overall size), from four starting position angles, the lowest χ² kept
+(`vs.fit_gaussian`; at most 2 million points, a fixed random subset). The model is that of CASA's `uvmodelfit` (component type G, fitted there by Levenberg–Marquardt); the code is ours, so only the model is CASA's.
+Gains and offsets are not fitted (the start has none). The image is the fitted Gaussian on the fit's grid (`vs.gaussian_log_image`), its flux is the fitted flux, and it is then raised to `--start-floor`
+as the default start is. Opt-in: the default stays `--start gauss`. `result.json` records the fitted parameters, the points used, χ² per point and the source as `start_gauss_fit` (and in the first stage).
+
+All that is claimed for it: among positive images with a given flux, centroid and second moments the Gaussian has the largest Shannon differential entropy, so it is the maximum-entropy image given those
+constraints. That is not our fit's entropy S_M (relative to the flat prior, on a tapered pixel grid), and the fit matches the true moments only as far as the data below the cut see them. Refused with `--workflow mpol`,
+`clean` and `--init`, which have their own starts. Tests check that the fit recovers a known ellipse (also with the axes named the other way round) and that the rendered image is the one virgil's forward
+model sees (χ² far below the East–West and North–South mirrors).
