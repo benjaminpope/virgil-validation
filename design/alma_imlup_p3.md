@@ -390,12 +390,13 @@ pixels, `tests/test_alma_start_floor.py`), and **`compare --dsharp FITS` takes g
 the constant is only used when no FITS is given: `vs.REFERENCE_FLUX_JY = 0.2548` is the recorded value of that measurement, and the pin test does not reproduce it (it needs the FITS).
 It replaces an earlier 0.255 Jy that had no source, and MPoL's F_tot (0.253 Jy, `sgd.py:298–302`), the flux MPoL's *entropy* is normalised by, not a measurement of the sky.
 
-**Control: does MPoL's own solution pass (e)?** No. From `compare.json` of the 32a303e-cd R_mpol comparison (flux in MPoL's obs-0 gauge; `Σ image × (5 mas)²` of MPoL's export
-gives the same 0.2943): MPoL's solution is 0.29430 Jy, **+15.5 %** from 0.2548 (+16.4 % from 0.253): (e) FAILS for it (`cold_start_gate` run on that flux, everything else self-consistent).
-The R_mpol fit (ours, warm-started at MPoL's solution, gains moved to 1.02–1.03) is 0.26611 Jy, +4.4 %: PASS. So gate (e) as written asks the cold start to be 11 percentage points
-closer to the CLEAN flux than MPoL's own solution is, and a cold-start fit that *reproduces* MPoL's solution fails it. The cause is not decided here: candidates are the flux–gain
-gauge (our R_mpol moved 10 % with the gains), short-spacing flux that CLEAN misses (CLEAN is a masked, beam-restored flux), or the taper. This needs Ben's decision before (e) is
-used as a verdict: widen the tolerance, compare in a gauge where MPoL's solution is the reference, or keep (e) as a CLEAN-flux sanity check that is reported but not part of PASS.
+**Control: does MPoL's own solution pass (e)? No, and that is a finding about MPoL, not a fault of the gate (Ben's ruling, 2026-10-23).** From `compare.json` of the 32a303e-cd R_mpol
+comparison (flux in MPoL's obs-0 gauge; `Σ image × (5 mas)²` of MPoL's export gives the same number): MPoL's solution has **0.2943 Jy, +15.5 %** against DSHARP CLEAN's 0.2548 Jy
+(+16.4 % against 0.253), so it fails (e) (`cold_start_gate` run on that flux, everything else self-consistent). Our R_mpol warm restart has 0.2661 Jy (+4.4 %) and passes.
+The excess is mostly MPoL's faint outer floor: about 10 % of MPoL's flux lies beyond 1.8″, where CLEAN has none. That is consistent with an unconverged remnant of its
+softplus(−3) uniform start, which our warm restart lowered (median 0.0018 → 0.0013 Jy/arcsec²). (The flux–gain gauge, the missing CLEAN short spacings and the taper were the other
+candidates; the outer floor is the one the numbers point to, and the 10 % outside-1.8″ share and the medians are from the local MPoL disagreements log, not recomputed in this repository.)
+**Decision: the gate is unchanged.** (e) stays at 10 % against CLEAN: it tests physical flux, not agreement with MPoL, so a cold start that reproduces MPoL's solution is *meant* to fail it.
 
 Flux is the fit's, in MPoL's obs-0 gauge (`gauge_to_obs0`), so a fit with another `--ref-obs` is compared fairly. Code: `virgil_bridge.alma_start.cold_start_gate`, tests `tests/test_alma_start_floor.py`.
 
