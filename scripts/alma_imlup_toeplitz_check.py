@@ -10,9 +10,12 @@ grid at its half-pixel map offset, a 30 mas taper, alpha fixed at 0, fitted gain
 data term is compared (no entropy). float64 throughout. The agreement is measured against the direct NUFFT at eps 1e-12 (EPS_SCORE, C7); the
 speed-up against the direct NUFFT at eps 1e-6 (EPS_FIT), the accuracy a fit runs at (the 1e-12 time is reported beside it).
 
-``agree`` (one process): precompute, χ² per ddid, loss, loss difference to a perturbed image, gradient per site.
+``agree`` (one process): precompute, χ² per ddid, loss, loss difference to a perturbed image, gradient per site. The gradients are compared
+twice: at the saved solution (reported) and at a point moved off it (ŝ x 1.1, gains x 1.05, offsets +-2 mas; gated), because at the optimum
+dL/dŝ ~ 0 by cancellation and a difference relative to that gradient's own max measures roundoff. Each site's max |grad| is recorded.
 ``time`` (one process per method, so the GPU peak memory is that method's): compile and run value+grad. ``--method direct`` does not
-build the Toeplitz precompute, so its peak is the direct term's alone (the larger of its two accuracies).
+build the Toeplitz precompute, so its peak is the direct term's alone (the larger of its two accuracies). The memory limit applies to the Toeplitz
+path; the direct path's peak is reported as information.
 ``summary``: one table from the JSON files.
 """
 
@@ -115,6 +118,21 @@ def rel_max_diff(a, b):
     return num / den if den > 0 else (0.0 if num == 0 else float("inf"))
 
 
+def moved_point(values, max_offset_mas, seed=0):
+    """``values`` moved off the optimum: ŝ x 1.1, gains x 1.05, each offset component +-2 mas (signs from ``seed``). At the fit's optimum
+    dL/ds ~ 0 by cancellation (-2 chi2/s^3 + N/s), so a gradient compared "relative to its own max" divides roundoff by roundoff there."""
+    rng = np.random.default_rng(seed)
+    off = np.asarray(values["cal.offset"], float)
+    off = off + 2.0 * rng.choice([-1.0, 1.0], size=off.shape)
+    assert np.max(np.abs(off)) < max_offset_mas, f"the moved offsets ({np.max(np.abs(off)):.2f} mas) are past --max-offset-mas"
+    return dict(values, **{"cal.sigma": 1.1 * values["cal.sigma"], "cal.gain": 1.05 * values["cal.gain"], "cal.offset": jnp.asarray(off)})
+
+
+def grad_scales(g):
+    """Per site, max |g|: the number a relative gradient difference is divided by."""
+    return {k: float(jnp.max(jnp.abs(v))) for k, v in g.items()}
+
+
 def cmd_agree(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -126,9 +144,13 @@ def cmd_agree(args):
         check = tdata.crosscheck(prob.scene, values, prob.nuis, chunk_size=args.chunk_size)
         lt, gt = vg_toeplitz(values, term)
         ld, gd = direct_vg()(values, direct)
+        moved = moved_point(values, args.max_offset_mas)
+        lt_m, gt_m = vg_toeplitz(moved, term)
+        ld_m, gd_m = direct_vg()(moved, direct)
         dt = float(loss_toeplitz(term, v2) - loss_toeplitz(term, values))
         dd = float(loss_direct(direct, v2) - loss_direct(direct, values))
-    grad_rel = {k: rel_max_diff(gt[k], gd[k]) for k in gd}
+    grad_rel = {k: rel_max_diff(gt[k], gd[k]) for k in gd}  # at the fit's optimum: reported, not gated (see moved_point)
+    grad_rel_moved = {k: rel_max_diff(gt_m[k], gd_m[k]) for k in gd_m}  # the gated gradient comparison
     # The comparison is made here from the two paths' outputs; virgil's own crosscheck verdict is kept beside it, not used for the table.
     chi2, chi2_direct = np.asarray(check["chi2"], float), np.asarray(check["chi2_direct"], float)
     loss, loss_d = float(lt + term.loss_constant), float(ld)
@@ -137,9 +159,11 @@ def cmd_agree(args):
                   chi2=chi2.tolist(), chi2_direct=chi2_direct.tolist(), loss=loss, loss_direct=loss_d,
                   chi2_rel=chi2_rel, loss_rel=loss_rel, max_rel=float(np.max([chi2_rel, loss_rel])), max_rel_virgil=float(check["max_rel"]),
                   dloss_toeplitz=dt, dloss_direct=dd, dloss_rel=abs(dt - dd) / abs(dd), dloss_abs=abs(dt - dd),
-                  grad_rel=grad_rel, peak_gb=peak_gb())
+                  grad_rel=grad_rel, grad_scale=grad_scales(gd), grad_rel_moved=grad_rel_moved, grad_scale_moved=grad_scales(gd_m),
+                  loss_rel_moved=abs(float(lt_m + term.loss_constant) - float(ld_m)) / abs(float(ld_m)),
+                  moved="sigma x 1.1, gain x 1.05, offsets +-2 mas (seed 0)", peak_gb=peak_gb())
     (out / "agree.json").write_text(json.dumps(report, indent=1))
-    say(json.dumps({k: report[k] for k in ("max_rel", "max_rel_virgil", "dloss_rel", "dloss_abs", "grad_rel")}, indent=1))
+    say(json.dumps({k: report[k] for k in ("max_rel", "max_rel_virgil", "dloss_rel", "dloss_abs", "grad_rel", "grad_rel_moved")}, indent=1))
 
 
 def time_vg(vg, term, values, repeats):
@@ -178,17 +202,17 @@ ACCEPT = dict(max_rel=1e-10, dloss_rel=1e-6, dloss_abs=1e-2, grad_rel=1e-8, spee
 
 def acceptance(a, t):
     """The acceptance table: ``(quantity, value text, limit text, passed)``, from agree.json ``a`` and the two time_*.json ``t``."""
-    worst_grad = float(np.max(np.asarray(list(a["grad_rel"].values()), float)))  # NaN propagates, and fails below
+    worst_grad = float(np.max(np.asarray(list(a["grad_rel_moved"].values()), float)))  # at the moved point; NaN propagates, and fails below
     speedup = t["direct"]["s_per_vg"] / t["toeplitz"]["s_per_vg"]
-    peak = max(t["toeplitz"]["peak_gb"], t["direct"]["peak_gb"])
+    peak = t["toeplitz"]["peak_gb"]  # the limit is the Toeplitz path's; the dense direct reference's peak is reported, not gated
     return [
         ("chi2 per ddid + loss, max rel diff", f"{a['max_rel']:.2e}", "<= 1e-10", a["max_rel"] <= ACCEPT["max_rel"]),
         ("loss difference to perturbed image, rel", f"{a['dloss_rel']:.2e}", "<= 1e-6", a["dloss_rel"] <= ACCEPT["dloss_rel"]),
         ("loss difference to perturbed image, abs", f"{a['dloss_abs']:.2e}", "<= 1e-2", a["dloss_abs"] <= ACCEPT["dloss_abs"]),
-        ("gradient, worst site, rel to its max", f"{worst_grad:.2e}", "<= 1e-8", worst_grad <= ACCEPT["grad_rel"]),
+        ("gradient at a moved point, worst site, rel", f"{worst_grad:.2e}", "<= 1e-8", worst_grad <= ACCEPT["grad_rel"]),
         ("Nyquist fraction below margin", f"{a['nyquist_fraction']:.3f} / {a['margin']:.4f}", "fraction < margin", a["nyquist_fraction"] < a["margin"]),
         ("speed-up per value+grad (direct at eps 1e-6)", f"{speedup:.0f}x", ">= 30x", speedup >= ACCEPT["speedup"]),
-        ("GPU peak per process (worst of two)", f"{peak:.2f} GB", "< 20 GB", peak < ACCEPT["peak_gb"]),
+        ("GPU peak, Toeplitz path", f"{peak:.2f} GB", "< 20 GB", peak < ACCEPT["peak_gb"]),
     ]
 
 
@@ -202,11 +226,13 @@ def cmd_summary(args):
         ("precompute (s)", f"{a['precompute_s']:.1f}"),
         ("Toeplitz arrays (GB)", f"{a['arrays_gb']:.2f}"),
         ("chi2 / loss max rel diff (virgil's crosscheck)", f"{a['max_rel_virgil']:.2e}"),
-        *[(f"  grad {k}", f"{v:.2e}") for k, v in a["grad_rel"].items()],
+        *[(f"  grad {k}, at the optimum / moved: rel diff", f"{v:.2e} / {a['grad_rel_moved'][k]:.2e}") for k, v in a["grad_rel"].items()],
+        *[(f"  grad {k}, max |grad| it is divided by", f"{a['grad_scale'][k]:.3e} / {a['grad_scale_moved'][k]:.3e}") for k in a["grad_rel"]],
         ("value+grad toeplitz / direct eps 1e-6 (ms)", f"{t['toeplitz']['s_per_vg'] * 1e3:.1f} / {t['direct']['s_per_vg'] * 1e3:.1f}"),
         ("direct at eps 1e-12 (ms), speed-up", f"{t['direct']['s_per_vg_score'] * 1e3:.1f}, {t['direct']['s_per_vg_score'] / t['toeplitz']['s_per_vg']:.0f}x"),
         ("compile toeplitz / direct (s)", f"{t['toeplitz']['compile_s']:.1f} / {t['direct']['compile_s']:.1f}"),
-        ("peak GPU toeplitz / direct, either eps (GB)", f"{t['toeplitz']['peak_gb']:.2f} / {t['direct']['peak_gb']:.2f}"),
+        ("peak GPU toeplitz / direct (GB; direct is information)", f"{t['toeplitz']['peak_gb']:.2f} / {t['direct']['peak_gb']:.2f}"),
+        ("moved point", a["moved"]),
     ]
     text = "\n".join(
         ["Acceptance (virgil#516 Toeplitz chi^2 against the direct NUFFT term, IM Lup at R_mpol):", ""]
