@@ -357,3 +357,15 @@ solution with fine pixel-scale structure the NuFFT's own error would be the floo
 `alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR` (`external_bridge/cv_compare.py`) lines the two up: raw χ²/N first, then −ln L at the
 fitted s and profiled, in total, per fold and per annulus, for MPoL, virgil at λ* and virgil at the grid λ nearest `λ₀ = λ_F-equivalent(2 N λ_M)` (C11); a score.json without the provenance above (or for another fold), a different folds hash, unequal held-out counts or a fold without `stage<N>.time.json` is listed under **Problems**, and a per-fold table of training effort (MPoL's epochs and wall time per stage, virgil's steps, wall time and stop reason at λ*) ends the report.
 
+## Part 7. The innovation register (B2, B4, B5, B6)
+
+virgil's `design/radio_imaging_innovations.md` records every radio-imaging method beyond published practice, with a status (established, derived, experimental). `tests/test_radio_innovations.py` checks the derived and experimental items against numpy references that share nothing with virgil (`crosscheck.radio_innovations`). On a virgil without the feature a test skips, so CI's pinned virgil (0.4.0) runs only the B6 reference tests.
+
+| Item | Status | Check | Reference |
+|---|---|---|---|
+| B2, `precondition="diag"` (`gauss_newton_diag`) | derived | the exact diagonal equals the dense `JᵀJ` diagonal to 1e-9; 1024 Rademacher probes are within 4√(2/m) per coordinate and 1.5√(2/m) rms; the entropy metric is the Skilling–Bryan metric pulled back through the softmax | Schraudolph 2002 (doi:10.1162/08997660260028683); Bekas et al. 2007 (`2007ApNM...57.1214B`); Skilling & Bryan 1984 (`1984MNRAS.211..111S`) |
+| B5, free offsets of the Toeplitz χ² (`ToeplitzVisData`, virgil#516) | derived | per-ddid χ² equals a direct DFT χ² to 1e-12 for offsets up to the bound and baselines to the documented Nyquist margin; both conditions are refused past the limit | Barnett et al. 2019 (`2019SJSC...41C.479B`) |
+| B6, float32 linear-δV loss | derived, experimental | virgil has no code yet: the method (V = V_ref + F(I_ref expm1(z − z_ref))) is checked alone, float32 against float64 to 1e-6 of the sum of absolute terms | Higham 2002 (doi:10.1137/1.9780898718027) |
+| B4, coarse-to-fine uv cut | experimental | none yet (listed in `trust/not_covered.md`) | none |
+
+**The entropy metric is w·b·(1 − b), not w·b.** The register and `gauss_newton_diag`'s docstring write the diagonal on entropy pixels as `weight * b`. Through the unit-sum softmax the Skilling–Bryan metric `weight Σ db²/b` has diagonal `weight * b * (1 − b)`, which is what virgil returns (to 1e-15). The two agree for b ≪ 1, as for any image of many pixels; the test pins the exact form.
