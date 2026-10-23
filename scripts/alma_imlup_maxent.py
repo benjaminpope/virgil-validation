@@ -10,6 +10,7 @@
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
+    python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
 
 ``--data DIR`` holds ``ddid_NN.npz`` (the vv format of ``alma_imlup_read``; no default, so nothing runs on
 data by accident). Every path is an argument. Float64 throughout; the fits use the NUFFT at eps 1e-6 and
@@ -695,6 +696,51 @@ def cmd_mpol_init(args):
     say(f"wrote {out / 'values.npz'}: {sorted(values)}, image {values['log_brightness'].shape}, flux {float(values['cal.flux']):.5f} Jy")
 
 
+def cmd_speed(args):
+    """Speed of virgil's L-BFGS against MPoL's AdamW run (``crosscheck.alma_speed``): objective against wall time, time to targets, cost per
+    full-data pass, fairness notes. Reads small JSON only (each fit's ``result.json``, MPoL's ``stage<N>.time.json``, ``export/objective.json``
+    and, if it exists, ``export/objective_chk0.json``) and optional job logs; needs no data and no GPU. Writes speed.json, speed.md, speed.png."""
+    from crosscheck import alma_speed as sp
+
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    fits = {}
+    for spec in args.fit:
+        label, _, d = spec.rpartition("=") if "=" in spec else ("", "", spec)
+        d = pathlib.Path(d)
+        res = json.loads((d / "result.json").read_text())
+        if (d / "anchors.json").exists():  # optional second evaluations of R inside the fit: [{"steps", "objective", "loss"}]
+            res["anchors"] = json.loads((d / "anchors.json").read_text())
+        fits[label or d.name] = res
+    mdir = pathlib.Path(args.mpol)
+    run = mdir.parent if (mdir.name == "export" and not list(mdir.glob("stage*.time.json"))) else mdir
+    stages = [json.loads(p.read_text()) for p in sorted(run.glob("stage*.time.json"))]
+    if not stages:
+        raise SystemExit(f"no stage<N>.time.json in {run} (train.sbatch of alma_mpol_ref writes them)")
+    odir = run / "export" if (run / "export" / "objective.json").exists() else run
+    objective = json.loads((odir / "objective.json").read_text())
+    chk0 = json.loads((odir / "objective_chk0.json").read_text()) if (odir / "objective_chk0.json").exists() else None
+    mpol = sp.mpol_summary(stages, objective, chk0, startup_s=args.mpol_startup_s)
+    logs, owners = {}, {}
+    for spec in args.log:  # [mpol=|virgil=]FILE
+        owner, _, f = spec.partition("=") if spec.partition("=")[0] in ("mpol", "virgil") else ("", "", spec)
+        logs[f] = pathlib.Path(f).read_text()
+        if owner:
+            owners[f] = owner
+    hardware = sp.parse_logs(logs, owners)
+    extra = {}
+    for t in args.target:
+        k, _, v = t.rpartition("=")
+        extra[k or f"target {v}"] = float(v)
+    res = sp.build(fits, mpol, extra, vg_seconds=tuple(args.vg_seconds), hardware=hardware)
+    res["fairness_notes"] = sp.fairness_notes(res)
+    res["command"], res["versions"] = "speed", versions()
+    dump(out / "speed.json", res)
+    (out / "speed.md").write_text(sp.markdown(res, res["fairness_notes"]))
+    sp.plot(res, out / "speed.png")
+    say((out / "speed.md").read_text())
+
+
 def cmd_lambda0(args):
     r = va.lam_r(args.n)
     say(json.dumps(dict(n=args.n, lam_M=va.MPOL["lam_m"], lam_R=r, flux=args.flux, lam_F_equivalent=va.lam_f_equivalent(r, flux=args.flux))))
@@ -804,6 +850,18 @@ def main(argv=None):
     p.add_argument("--data", default=None, help="optional: the ddid -> observation map is read from it (default IM Lup's obsid_dict)")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_mpol_init)
+
+    p = sub.add_parser("speed", help="virgil's L-BFGS against MPoL's AdamW: objective vs wall time, time to target, cost per pass (small JSON only)")
+    p.add_argument("--fit", action="append", required=True, help="a fit directory with result.json (config R), optionally LABEL=DIR; repeat for several fits")
+    p.add_argument("--mpol", required=True, help="MPoL's run directory (stage<N>.time.json; export/objective.json and optional export/objective_chk0.json)")
+    p.add_argument("--out", required=True)
+    p.add_argument("--log", action="append", default=[], help="[mpol=|virgil=]FILE: a job log or digest with `job=… host=…` lines (and the GPU model), for the hardware note; the prefix says whose run it is "
+                   "(without it the log counts as MPoL's only if its job is in stage<N>.time.json, else unattributed); repeat")
+    p.add_argument("--target", action="append", default=[], help="an extra target LABEL=R (objective R); repeat")
+    p.add_argument("--vg-seconds", type=float, nargs=2, default=list(__import__("crosscheck.alma_speed", fromlist=["x"]).BENCH_VG_S), metavar=("LO", "HI"),
+                   help="seconds per value+gradient on the A100 bench (job 18862592) used to estimate evaluations per step; virgil's info records none")
+    p.add_argument("--mpol-startup-s", type=float, default=0.0, help="MPoL start-up (asdf load, CUDA) per stage to subtract; default 0 (unmeasured, left in)")
+    p.set_defaults(fn=cmd_speed)
 
     p = sub.add_parser("lambda0")
     p.add_argument("--n", type=int, required=True)

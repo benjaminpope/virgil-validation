@@ -556,6 +556,7 @@ nodes:
   virgil_bridge.alma_start: {layer: references, doc: alma_conventions.md}  # IM Lup MaxEnt cold starts: our CLEAN model regridded to the fit grid, the image-fixed stage's gain check
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
+  crosscheck.alma_speed: {layer: references, doc: alma_conventions.md}  # virgil's L-BFGS against MPoL's AdamW on IM Lup: objective vs wall time, time to target, cost per pass (numpy only; `alma_imlup_maxent.py speed`)
   mpol: {layer: references, doc: alma_conventions.md}  # the external package itself (problems P11, P12)
   external_bridge.pmoired_models: {layer: references}
   evidence: {layer: references}
