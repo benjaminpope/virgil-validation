@@ -402,13 +402,14 @@ def cmd_cv_task(args):
     import jax.numpy as jnp
 
     t = time.time()
-    values, info, traj, why = va.run_fit_c8(prob, va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob), max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol)
+    values, info, traj, why = va.run_fit_c8(prob, va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob), max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, precondition=args.precondition)
     wall = time.time() - t
     ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     tr = va.score(data, prob.scene, values, prob.nuis, mask=train, chunk_size=args.chunk_size)
     res = dict(command="cv-task", config=args.config, lam=lam, lam_train=lam_train, fold=args.fold, n_train=int(train.sum()), n_test=int(test.sum()), folds_sha256=fmeta["sha256"],
                versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], stopped_because=why, convergence=va.convergence(traj, info), trajectory=traj,
+               precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []),
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
                             by_ddid_s1=ho1["by_ddid"], by_annulus_s1=ho1["by_annulus"]),
                train=dict(nll=tr["nll"], chi2_fit=tr["chi2_fit"]), sigma=values["cal.sigma"], flux_jy=float(values["cal.flux"]), alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1])

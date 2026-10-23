@@ -447,6 +447,17 @@ def mpol_start_values(prob):
     return v
 
 
+def _plain(v):
+    """A scalar as a Python number, an array as a list, anything else unchanged (so a field virgil adds to its
+    per-round record cannot lose a stage's work after ``fit`` has returned)."""
+    try:
+        if np.ndim(v) == 0 and hasattr(v, "item"):
+            return v.item()
+        return np.asarray(v).tolist() if np.ndim(v) else v
+    except (TypeError, ValueError):  # ragged or otherwise unconvertible
+        return v
+
+
 def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None):
     """L-BFGS through ``virgil.fit`` (C8). Returns ``(values, info, trajectory)``: the fitted values as
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
@@ -456,8 +467,9 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
 
     from virgil import fit
 
+    precondition = None if precondition in (None, "none") else precondition
     kw = {}
-    if precondition not in (None, "none"):
+    if precondition is not None:
         if "precondition" not in inspect.signature(fit).parameters:
             raise RuntimeError(f"precondition={precondition!r} needs a virgil whose fit() has the precondition argument "
                                "(virgil >= the release that includes fit(precondition=...)); the installed one has not")
@@ -477,7 +489,7 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
     values = {k: np.asarray(v) for k, v in res.values.items()}
     info = {k: (v.item() if hasattr(v, "item") else v) for k, v in res.info.items() if np.ndim(v) == 0}
     info.update({k: np.asarray(v).tolist() for k, v in res.info.items() if np.ndim(v) > 0 and k != "precondition_rounds"})
-    info["precondition_rounds"] = [{k: float(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])]
+    info["precondition_rounds"] = [{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])]
     return values, info, traj
 
 
@@ -496,6 +508,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
     ``max_rounds``."""
     import time
 
+    precondition = None if precondition in (None, "none") else precondition  # one spelling of "off"
     t0, total, traj, values, why, idle = time.time(), 0, [], init, "max_rounds", 0
     pc_rounds, restarts = [], []  # the diagonal scaling's per-L-BFGS-round stats and each restart's steps and wall time
     info = dict(steps=0, rounds=0, stop="time", loss=float("nan"), converged=False)
@@ -505,7 +518,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
             why = "time_limit"
             break
         t_fit = time.time()
-        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, **({} if precondition is None else {"precondition": precondition}))
+        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition)
         steps = int(info["steps"])
         pc_rounds += info.get("precondition_rounds", [])
         restarts.append(dict(steps=steps, wall_s=time.time() - t_fit, loss=float(info["loss"])))

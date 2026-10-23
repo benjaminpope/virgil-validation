@@ -435,6 +435,30 @@ def test_r3_cv_task_and_aggregate_on_two_lambdas_and_two_folds(syn, tmp_path):
     assert tot == n
 
 
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_cv_task_passes_precondition_to_the_fit_and_records_it(syn, tmp_path, monkeypatch):
+    """``cv-task --precondition diag`` reaches ``run_fit_c8`` (it used to be accepted and ignored)."""
+    folds = tmp_path / "folds.npz"
+    _call("folds", "--data", syn, "--out", folds, "--k", 2)
+    init = tmp_path / "init"
+    _call("fit", "--config", "F", "--data", syn, "--out", init, "--npix", 32, "--lam", 1e3, "--max-steps", 10, "--no-dirty")
+    real = va.run_fit_c8
+    seen = {}
+
+    def fake(*a, **k):
+        seen.update(k)
+        k.pop("precondition")  # the installed virgil need not have the argument
+        values, info, traj, why = real(*a, **k)
+        return values, dict(info, precondition="diag", precondition_rounds=[dict(decades=1.5, floored=0.25)]), traj, why
+
+    monkeypatch.setattr(va, "run_fit_c8", fake)
+    _call("cv-task", "--data", syn, "--folds", folds, "--fold", 0, "--init", init, "--lam", 1e2, "--npix", 32, "--max-steps", 10,
+          "--precondition", "diag", "--out", tmp_path / "cv")
+    assert seen["precondition"] == "diag"
+    r = json.loads((tmp_path / "cv" / "cv.json").read_text())
+    assert r["precondition"] == "diag" and r["precondition_rounds"] == [dict(decades=1.5, floored=0.25)]
+
+
 # ------------------------------------------------------------------ R4
 
 
