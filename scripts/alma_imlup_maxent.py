@@ -2,7 +2,7 @@
 
     python scripts/alma_imlup_maxent.py lambda0 --n N [--flux F]
     python scripts/alma_imlup_maxent.py folds --data DIR --out FILE.npz
-    python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--sb-only] [--init DIR] [--workflow {p3,mpol,clean} [--clean-dir DIR]]
+    python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--chi2 {direct,toeplitz}] [--sb-only] [--init DIR] [--workflow {p3,mpol,clean} [--clean-dir DIR]]
                                             [--shat DIR] [--folds FILE.npz --fold J] [--max-steps N] [--time-limit S]
     python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
@@ -16,6 +16,10 @@
 data by accident). Every path is an argument. Float64 throughout; the fits use the NUFFT at eps 1e-6 and
 every reported -ln L, chi^2 and score eps 1e-12 (C7). The design, the decisions C1-C14 and the output
 files are in ``design/alma_imlup_p3.md``; the helpers are in ``virgil_bridge.alma``.
+
+``fit --chi2 toeplitz`` (config R) runs every stage's data term through virgil's Toeplitz dirty-beam chi^2 (equal to the direct term to ~1e-13, ~30x faster per
+value+gradient on a GPU); the reports and ``compare`` always score with the direct term at eps 1e-12. Fitted offsets need a prior box inside the precompute:
+``--offset-bound-mas`` defaults to 20 mas then, and a problem Toeplitz cannot take exactly (baselines past its Nyquist margin) is refused.
 """
 
 import argparse
@@ -178,11 +182,11 @@ def run_stages(args, data, prob_for, init_dir, save=None):
         def on_round(vals, info, traj, rnd, name=name, t=t, prob=prob, with_image=with_image):
             say(f"stage {name}: round {rnd} done, {info['steps']} steps, stop {info['stop']}, loss {info['loss']:.3f}")
             if save:
-                part = stage_summary(name, info, traj, time.time() - t, "in_progress")
+                part = dict(stage_summary(name, info, traj, time.time() - t, "in_progress"), chi2=prob.chi2_info)
                 save(prob, with_image(vals), stages + [dict(part, in_progress=True)])
 
         out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
-        stages.append(stage_summary(name, info, traj, time.time() - t, why))
+        stages.append(dict(stage_summary(name, info, traj, time.time() - t, why), chi2=prob.chi2_info))
         if floor_info is not None or gfit_info is not None:  # the first stage's start (it is the only one that is not warm)
             stages[-1].update({k: v for k, v in (("start_floor", floor_info), ("start_gauss_fit", gfit_info)) if v is not None})
             floor_info = gfit_info = None
@@ -251,7 +255,17 @@ def write_state(out, args, prob, values, stages, lam, n):
     dump(out / "result.json", dict(
         command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n),
         npix=prob.npix, pixel_mas=prob.pixel_mas, versions=versions(), stages=stages, converged=last["convergence"]["converged"],
-        stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"]), ref_obs=getattr(args, "ref_obs", 0)))
+        stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"]), ref_obs=getattr(args, "ref_obs", 0),
+        at_bound=va.at_bound_report(values, prob.priors), **chi2_record(stages)))
+
+
+def chi2_record(stages):
+    """``chi2_engine`` and the Toeplitz precompute of each stage (time, array size), from the stages' ``chi2`` records."""
+    infos = [dict(stage=s["name"], **s["chi2"]) for s in stages if "chi2" in s]
+    engine = infos[-1]["engine"] if infos else "direct"
+    pre = [i for i in infos if i["engine"] == "toeplitz"]
+    return dict(chi2_engine=engine, chi2_stages=infos, toeplitz_precompute_s=sum(i["precompute_s"] for i in pre) if pre else None,
+                toeplitz_arrays_gb=max((i["arrays_gb"] for i in pre), default=None))
 
 
 def res_workflow(args):
@@ -277,6 +291,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         start_floor=next((s["start_floor"] for s in stages if "start_floor" in s), None),
         start_gauss_fit=next((s["start_gauss_fit"] for s in stages if "start_gauss_fit" in s), None),
         alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
+        at_bound=va.at_bound_report(values, prob.priors), **chi2_record(stages),
         offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested, bound_obs=prob.offset_bound_obs, ref_obs=getattr(args, "ref_obs", 0)),
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
         chi2_s1=chi2_table(sc_s1, "s = 1 (quoted weights), fitted g, offsets, image"), chi2_fitted_s=chi2_table(sc_raw, "fitted s"),
@@ -289,6 +304,8 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     say(f"offset bound ±{ob['bound_mas']:.6g} mas ({'--offset-bound-mas' if ob['requested_mas'] is not None else 'virgil default'}); largest |offset|/bound {ob['max_abs_over_bound']:.3g}")
     if ob["warning"]:
         say(ob["warning"])
+    say(f"chi2 engine {res['chi2_engine']}" + (f": precompute {res['toeplitz_precompute_s']:.1f} s over {len(res['chi2_stages'])} stage(s), arrays {res['toeplitz_arrays_gb']:.2f} GB" if res["toeplitz_precompute_s"] is not None else ""))
+    say(res["at_bound"]["warning"] or f"at bound: none of {res['at_bound']['n_checked']} bounded parameters within {res['at_bound']['edge']:.0%} of a prior bound")
     dead = va.dead_pixel_report(va.image_of(values, prob.npix, prob.pixel_mas, va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None), prob.pixel_mas)
     res["dead_pixels"] = dead
     say(f"dead pixels: {dead['frac_below_1e-6_peak']:.2%} below 1e-6 of the peak, {dead['frac_below_1e-3_floor']:.2%} below 1e-3 of the floor; largest live radius {dead['largest_live_radius_arcsec']:.2f} arcsec")
@@ -322,11 +339,11 @@ def _train_mask(args, data):
     return mask
 
 
-def _prob_for(args, data, lam, mask):
+def _prob_for(args, data, lam, mask, chi2=None):
     def prob_for(use, fixed=None, image_only=False):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
         return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None),
-                              fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0))
+                              fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct")
 
     return prob_for
 
@@ -341,6 +358,8 @@ def cmd_fit(args):
     resolve_alpha(args)
     if args.workflow in ("mpol", "clean") and args.config != "R":
         raise SystemExit(f"--workflow {args.workflow} is defined for config R only (MPoL has no beam, no free alpha)")
+    if args.chi2 == "toeplitz" and args.config != "R":
+        raise SystemExit("--chi2 toeplitz is defined for config R only (one Image, no fitted alpha)")
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data = load(args)
@@ -361,7 +380,10 @@ def cmd_fit(args):
     say(f"config {args.config}, alpha {'free' if getattr(args, 'alpha_free', None) else va.ALPHA_FIXED_LABEL}, lambda {lam:.6g} (lam_R at N = {n:,} is {va.lam_r(n):.6g})")
     t0 = time.time()
     save = lambda prob, values, stages: write_state(out, args, prob, values, stages, lam, n)  # noqa: E731
-    prob, values, stages, shat = run_stages(args, data, _prob_for(args, data, lam, mask), args.init, save)
+    try:
+        prob, values, stages, shat = run_stages(args, data, _prob_for(args, data, lam, mask), args.init, save)
+    except va.ToeplitzRefused as e:
+        raise SystemExit(str(e)) from e
     write_report(args, out, data, prob, values, stages, shat, lam, mask, time.time() - t0)
 
 
@@ -382,7 +404,7 @@ def cmd_report(args):
     mask = _train_mask(args, data)
     stages = saved["stages"]
     use = data.select(obs=va.SB_OBS) if stages[-1]["name"] == "sb" else None
-    prob = _prob_for(args, data, lam, mask)(use)
+    prob = _prob_for(args, data, lam, mask, chi2="direct")(use)  # the report scores with the direct term; the fit's engine is in its stages' records
     values = va.drop_unused_sites(values, prob)
     shat = va.read_shat(args.shat, int(np.asarray(data.ddid).max()) + 1) if args.shat else None
     say(f"report of {out}: config {args.config}, lambda {lam:.6g}, stages {[s['name'] for s in stages]}")
@@ -600,6 +622,21 @@ def grad_table(groups):
     return md
 
 
+def fit_notes(vres):
+    """Markdown for the gate output: the fit's chi^2 engine and which fitted parameters ended at a prior bound (result.json's ``at_bound``)."""
+    ab = vres.get("at_bound")
+    pre = vres.get("toeplitz_precompute_s")
+    md = [f"chi^2 engine of the fit: **{vres.get('chi2_engine', 'direct')}**" + (f" (precompute {pre:.1f} s, arrays {vres['toeplitz_arrays_gb']:.2f} GB)" if pre is not None else "") + "."]
+    if ab is None:
+        md.append("At a prior bound: not recorded (a fit made before `at_bound` existed; `report` recomputes it).")
+    elif ab["at_bound"]:
+        md += [f"**At a prior bound ({len(ab['at_bound'])} of {ab['n_checked']} bounded parameters, within {ab['edge']:.0%} of the range):**", "",
+               "| parameter | value | bound |", "|---|---:|---:|"] + [f"| {h['site']}{h['index']} | {h['value']:.6g} | {h['side']} {h['bound']:.6g} |" for h in ab["at_bound"]]
+    else:
+        md.append(f"At a prior bound: none of {ab['n_checked']} bounded parameters is within {ab['edge']:.0%} of its range of a bound.")
+    return md
+
+
 def cold_start_gate_of(res, vres, image, px, flux, clean_dir, dsharp=None):
     """The cold-start gate (``vs.cold_start_gate``) of a compare: ``res`` holds the objective comparison (empty without ``--data``: (a) and (b) are then not evaluated and
     the verdict is INCOMPLETE), ``vres`` the fit's result.json (its stages' C8 flags), ``image`` the fit's image."""
@@ -701,7 +738,7 @@ def cmd_compare(args):
     gate = cold_start_gate_of(res, vres, img_o, px, flux_o, args.clean_dir, args.dsharp)
     res["gate"] = gate
     dump(out / "compare.json", res)
-    md = ["# R against MPoL", ""] + vs.gate_markdown(gate) + [""]
+    md = ["# R against MPoL", ""] + vs.gate_markdown(gate) + [""] + fit_notes(vres) + [""]
     if ref != 0:
         md += [f"**Our fit's reference observation is {ref}, not 0** (`--ref-obs`): gains, flux and offsets below are renormalised to MPoL's obs-0 convention ({res['ref_obs']['note']}).", ""]
     if "objective" in res:
@@ -821,6 +858,8 @@ def main(argv=None):
     p = sub.add_parser("fit")
     common(p)
     p.add_argument("--config", choices=["R", "F"], required=True)
+    p.add_argument("--chi2", choices=va.CHI2_ENGINES, default="direct", help="config R: the data term's engine. toeplitz: virgil's dirty-beam chi^2 in every stage (equal to direct to ~1e-13, cost independent of N; "
+                   "fitted offsets then need their box inside the precompute: --offset-bound-mas defaults to 20, and baselines past its Nyquist margin are refused). The report and compare always score with the direct term")
     p.add_argument("--sb-only", action="store_true")
     p.add_argument("--workflow", choices=["p3", "mpol", "clean"], default="p3",
                    help="p3 (default): C9's SB stage then all data from a 1\" Gaussian, s at ŝ. mpol (config R only): one all-data stage from MPoL's own start "

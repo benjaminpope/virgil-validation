@@ -412,3 +412,11 @@ All that is claimed for it: among positive images with a given flux, centroid an
 constraints. That is not our fit's entropy S_M (relative to the flat prior, on a tapered pixel grid), and the fit matches the true moments only as far as the data below the cut see them. Refused with `--workflow mpol`,
 `clean` and `--init`, which have their own starts. Tests check that the fit recovers a known ellipse (also with the axes named the other way round) and that the rendered image is the one virgil's forward
 model sees (χ² far below the East–West and North–South mirrors).
+
+## `fit --chi2 {direct,toeplitz}` and `at_bound`
+
+`--chi2 toeplitz` (config R) builds every stage's data term with virgil's public `ComplexVisData.toeplitz` (the dirty-beam form of virgil#516: equal to the direct term to about 1e-13, about 22 ms per value+gradient on an A100 against 735 ms) instead of the direct NUFFT; the entropy, taper and starts are unchanged. The report, `compare` and every score still use the direct term at eps 1e-12 (C7), so a Toeplitz fit is judged by the same numbers as a direct one.
+
+Fitted offsets are an opt-in extension of the Toeplitz term: its precompute holds the offsets' prior box, so `--offset-bound-mas` defaults to 20 mas under `--chi2 toeplitz` (R_mpol's largest |offset| is 4.4 mas; the direct fit's default is virgil's 3-beam box, about 150 mas) and the box is the precompute's. A problem it cannot take exactly (baselines past the Nyquist margin that free offsets allow, config F) is refused with virgil's reason. The image-first stage has no offsets and uses `offsets="none"`. `result.json` records `chi2_engine`, `chi2_stages` (per stage: precompute time, arrays in GB, sizes, Nyquist fraction against its margin), `toeplitz_precompute_s` and `toeplitz_arrays_gb`.
+
+`at_bound` (result.json, the report's summary line and `compare`'s gate output) lists the fitted parameters within 1 % of their prior range (log range for the flux) of a bound: `cal.flux` (log-uniform 1e-4 to 100 Jy) and `cal.offset` (the box). Gains, error scales and pixels have unbounded priors. The 0.4.2 audit's unvalidated settings (3-beam offset box, the 100 mas bound) matter exactly when this list is not empty.
