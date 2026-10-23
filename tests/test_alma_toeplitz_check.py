@@ -41,12 +41,16 @@ def test_toeplitz_check_agrees_with_the_direct_term_and_writes_the_acceptance_ta
         chk.main(["time", "--method", method, "--repeats", "1", *map(str, common)])
     chk.main(["summary", "--out", str(out)])
     a = json.loads((out / "agree.json").read_text())
+    t = {m: json.loads((out / f"time_{m}.json").read_text()) for m in ("toeplitz", "direct")}
     assert a["max_rel"] < 1e-10 and a["dloss_rel"] < 1e-6 and max(a["grad_rel"].values()) < 1e-8
+    assert a["max_rel"] == max(a["chi2_rel"], a["loss_rel"]) and np.isfinite(a["max_rel_virgil"])  # the table's number is this script's own
+    assert t["direct"]["precompute_s"] is None and t["direct"]["s_per_vg_score"] > 0 and t["direct"]["eps_fit"] == va.EPS_FIT
     text = (out / "toeplitz_check.txt").read_text()
     rows = [line for line in text.splitlines() if line.startswith(("PASS", "FAIL"))]
     assert len(rows) == 7 and "accept <= 1e-10" in text and ("ALL ACCEPTED" in text or "NOT ACCEPTED" in text)
-    table = dict((q, ok) for q, _, _, ok in chk.acceptance(a, {m: json.loads((out / f"time_{m}.json").read_text()) for m in ("toeplitz", "direct")}))
-    assert table["chi2 per ddid + loss, max rel diff"] and table["gradient, worst site, rel to its max"]
+    table = {q: ok for q, _, _, ok in chk.acceptance(a, t)}
+    agreement = {q: ok for q, ok in table.items() if not q.startswith(("speed-up", "GPU peak"))}  # speed and memory can't be met on CPU at 32^2
+    assert len(agreement) == 5 and all(agreement.values()), agreement
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="control")
@@ -56,5 +60,6 @@ def test_the_acceptance_table_fails_a_slow_or_large_or_disagreeing_run():
     t = {"toeplitz": dict(s_per_vg=0.01, peak_gb=8.0), "direct": dict(s_per_vg=0.5, peak_gb=6.0)}
     assert all(ok for *_, ok in chk.acceptance(good, t))
     for patch, tpatch in [(dict(max_rel=1e-9), {}), (dict(dloss_rel=1e-5), {}), (dict(dloss_abs=0.1), {}), (dict(grad_rel={"a": 1e-7}), {}),
+                          (dict(grad_rel={"a": 1e-12, "b": float("nan")}), {}), (dict(grad_rel={"a": float("nan"), "b": 1e-12}), {}), (dict(max_rel=float("nan")), {}),
                           (dict(nyquist_fraction=0.995), {}), ({}, dict(toeplitz=dict(s_per_vg=0.1, peak_gb=8.0))), ({}, dict(toeplitz=dict(s_per_vg=0.01, peak_gb=25.0)))]:
         assert not all(ok for *_, ok in chk.acceptance({**good, **patch}, {**t, **tpatch}))

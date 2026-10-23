@@ -7,10 +7,12 @@
 For virgil-validation ``scripts/``. ``--data`` holds ``ddid_NN.npz`` (``alma_imlup_read``); ``--fit`` is a config-R
 fit directory (``values.npz``, ``result.json``), e.g. R_mpol. Config R as ``va.build_problem``: MPoL's 1028² x 5 mas
 grid at its half-pixel map offset, a 30 mas taper, alpha fixed at 0, fitted gains, offsets and error scales. Only the
-data term is compared (no entropy). float64 throughout; the direct term uses the NUFFT at eps 1e-12 (EPS_SCORE, C7).
+data term is compared (no entropy). float64 throughout. The agreement is measured against the direct NUFFT at eps 1e-12 (EPS_SCORE, C7); the
+speed-up against the direct NUFFT at eps 1e-6 (EPS_FIT), the accuracy a fit runs at (the 1e-12 time is reported beside it).
 
 ``agree`` (one process): precompute, χ² per ddid, loss, loss difference to a perturbed image, gradient per site.
-``time`` (one process per method, so the GPU peak memory is that method's): compile and run value+grad.
+``time`` (one process per method, so the GPU peak memory is that method's): compile and run value+grad. ``--method direct`` does not
+build the Toeplitz precompute, so its peak is the direct term's alone (the larger of its two accuracies).
 ``summary``: one table from the JSON files.
 """
 
@@ -53,8 +55,8 @@ def peak_gb():
     return stats.get("peak_bytes_in_use", float("nan")) / 1e9
 
 
-def setup(args):
-    """Data, the R problem's scene and nuisance, the saved values, the Toeplitz precompute (timed)."""
+def setup(args, precompute=True):
+    """Data, the R problem's scene and nuisance, the saved values, the Toeplitz precompute (timed; ``tdata`` is None without it)."""
     from virgil import Image
 
     data = va.load_dir(args.data)
@@ -63,14 +65,16 @@ def setup(args):
     values = {k: jnp.asarray(z[k]) for k in z.files if k in prob.priors}
     shift = -prob.pixel_mas / 2.0  # va.grid_scene's half-pixel map offset
     template = Image(np.zeros((prob.npix, prob.npix)), pixel_scale_mas=prob.pixel_mas, dra=shift, ddec=shift)
-    t = time.time()
-    tdata = data.toeplitz(template, prob.nuis, offsets="spread", max_offset_mas=args.max_offset_mas)
-    jax.block_until_ready(tdata.arrays)
-    pre = dict(precompute_s=time.time() - t, nyquist_fraction=tdata.nyquist_fraction, margin=tdata.margin,
-               max_shift_pix=tdata.max_shift_pix, sizes=list(tdata.sizes),
-               arrays_gb=sum(x.nbytes for x in jax.tree.leaves(tdata.arrays)) / 1e9, n_points=len(data.u))
-    say(f"precompute {pre['precompute_s']:.1f} s; Nyquist {pre['nyquist_fraction']:.3f} of margin {pre['margin']:.4f}; "
-        f"sizes {pre['sizes']}; arrays {pre['arrays_gb']:.2f} GB")
+    tdata, pre = None, dict(precompute_s=None, n_points=len(data.u))
+    if precompute:
+        t = time.time()
+        tdata = data.toeplitz(template, prob.nuis, offsets="spread", max_offset_mas=args.max_offset_mas)
+        jax.block_until_ready(tdata.arrays)
+        pre = dict(precompute_s=time.time() - t, nyquist_fraction=tdata.nyquist_fraction, margin=tdata.margin,
+                   max_shift_pix=tdata.max_shift_pix, sizes=list(tdata.sizes),
+                   arrays_gb=sum(x.nbytes for x in jax.tree.leaves(tdata.arrays)) / 1e9, n_points=len(data.u))
+        say(f"precompute {pre['precompute_s']:.1f} s; Nyquist {pre['nyquist_fraction']:.3f} of margin {pre['margin']:.4f}; "
+            f"sizes {pre['sizes']}; arrays {pre['arrays_gb']:.2f} GB")
     biggest = float(np.max(np.abs(np.asarray(values["cal.offset"]))))
     assert biggest < args.max_offset_mas, f"a fitted offset ({biggest:.2f} mas) is past --max-offset-mas"
     return data, prob, values, tdata, pre
@@ -83,14 +87,25 @@ def loss_toeplitz(term, values):
     return 0.5 * chi2 + log_norm  # less term.loss_constant
 
 
-@eqx.filter_jit
-def loss_direct(term, values):
+def _loss_direct(term, values):
     r, log_norm = term.residuals_and_log_norm(values)
     return 0.5 * jnp.sum(r**2) + log_norm
 
 
+loss_direct = eqx.filter_jit(_loss_direct)
 vg_toeplitz = eqx.filter_jit(eqx.filter_value_and_grad(lambda v, t: loss_toeplitz(t, v)))
-vg_direct = eqx.filter_jit(eqx.filter_value_and_grad(lambda v, t: loss_direct(t, v)))
+
+
+def direct_vg():
+    """A fresh jitted value+grad of the direct term. ``ft_eps`` is read when the program is traced and a jit cache ignores it, so each
+    NUFFT accuracy needs its own function."""
+    return eqx.filter_jit(eqx.filter_value_and_grad(lambda v, t: _loss_direct(t, v)))
+
+
+def rel_max_diff(a, b):
+    """max|a - b| / max|b|; 0 where both vanish, inf where only b does. A NaN in a or b stays NaN."""
+    num, den = float(jnp.max(jnp.abs(a - b))), float(jnp.max(jnp.abs(b)))
+    return num / den if den > 0 else (0.0 if num == 0 else float("inf"))
 
 
 def cmd_agree(args):
@@ -103,40 +118,52 @@ def cmd_agree(args):
     with va.ft_eps(EPS_DIRECT):
         check = tdata.crosscheck(prob.scene, values, prob.nuis, chunk_size=args.chunk_size)
         lt, gt = vg_toeplitz(values, term)
-        ld, gd = vg_direct(values, direct)
+        ld, gd = direct_vg()(values, direct)
         dt = float(loss_toeplitz(term, v2) - loss_toeplitz(term, values))
         dd = float(loss_direct(direct, v2) - loss_direct(direct, values))
-    grad_rel = {k: float(jnp.max(jnp.abs(gt[k] - gd[k])) / jnp.max(jnp.abs(gd[k]))) for k in gd}
+    grad_rel = {k: rel_max_diff(gt[k], gd[k]) for k in gd}
+    # The comparison is made here from the two paths' outputs; virgil's own crosscheck verdict is kept beside it, not used for the table.
+    chi2, chi2_direct = np.asarray(check["chi2"], float), np.asarray(check["chi2_direct"], float)
+    loss, loss_d = float(lt + term.loss_constant), float(ld)
+    chi2_rel, loss_rel = float(np.max(np.abs(chi2 - chi2_direct) / np.abs(chi2_direct))), abs(loss - loss_d) / abs(loss_d)
     report = dict(versions=versions(), fit=str(args.fit), **pre,
-                  chi2=np.asarray(check["chi2"]).tolist(), chi2_direct=np.asarray(check["chi2_direct"]).tolist(),
-                  loss=float(lt + term.loss_constant), loss_direct=float(ld), max_rel=check["max_rel"],
+                  chi2=chi2.tolist(), chi2_direct=chi2_direct.tolist(), loss=loss, loss_direct=loss_d,
+                  chi2_rel=chi2_rel, loss_rel=loss_rel, max_rel=float(np.max([chi2_rel, loss_rel])), max_rel_virgil=float(check["max_rel"]),
                   dloss_toeplitz=dt, dloss_direct=dd, dloss_rel=abs(dt - dd) / abs(dd), dloss_abs=abs(dt - dd),
                   grad_rel=grad_rel, peak_gb=peak_gb())
     (out / "agree.json").write_text(json.dumps(report, indent=1))
-    say(json.dumps({k: report[k] for k in ("max_rel", "dloss_rel", "dloss_abs", "grad_rel")}, indent=1))
+    say(json.dumps({k: report[k] for k in ("max_rel", "max_rel_virgil", "dloss_rel", "dloss_abs", "grad_rel")}, indent=1))
+
+
+def time_vg(vg, term, values, repeats):
+    """``(compile_s, s_per_vg)`` of the jitted value+grad ``vg``."""
+    t = time.time()
+    jax.block_until_ready(vg(values, term))
+    compile_s = time.time() - t
+    t = time.time()
+    for _ in range(repeats):
+        jax.block_until_ready(vg(values, term))
+    return compile_s, (time.time() - t) / repeats
 
 
 def cmd_time(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    data, prob, values, tdata, pre = setup(args)
+    data, prob, values, tdata, pre = setup(args, precompute=args.method == "toeplitz")
+    report = dict(versions=versions(), method=args.method, repeats=args.repeats, precompute_s=pre["precompute_s"])
     if args.method == "toeplitz":
-        term, vg = tdata.term(prob.scene, prob.nuis), vg_toeplitz
+        report["compile_s"], report["s_per_vg"] = time_vg(vg_toeplitz, tdata.term(prob.scene, prob.nuis), values, args.repeats)
     else:
-        term, vg = tdata.direct_term(prob.scene, prob.nuis, chunk_size=args.chunk_size), vg_direct
-        del tdata  # free the precompute before measuring the direct term's peak
-    with va.ft_eps(EPS_DIRECT):
-        t = time.time()
-        jax.block_until_ready(vg(values, term))
-        compile_s = time.time() - t
-        t = time.time()
-        for _ in range(args.repeats):
-            jax.block_until_ready(vg(values, term))
-        s_per_vg = (time.time() - t) / args.repeats
-    report = dict(versions=versions(), method=args.method, compile_s=compile_s, s_per_vg=s_per_vg,
-                  repeats=args.repeats, peak_gb=peak_gb(), precompute_s=pre["precompute_s"])
+        term = data.term(prob.scene, prob.nuis, chunk_size=args.chunk_size)  # tdata.direct_term's term (no mask), without the precompute
+        with va.ft_eps(va.EPS_FIT):  # what a fit runs at: the speed-up is measured against this
+            report["compile_s"], report["s_per_vg"] = time_vg(direct_vg(), term, values, args.repeats)
+        with va.ft_eps(EPS_DIRECT):  # the scoring accuracy, for reference
+            report["compile_s_score"], report["s_per_vg_score"] = time_vg(direct_vg(), term, values, args.repeats)
+        report.update(eps_fit=va.EPS_FIT, eps_score=EPS_DIRECT)
+    report["peak_gb"] = peak_gb()
     (out / f"time_{args.method}.json").write_text(json.dumps(report, indent=1))
-    say(f"{args.method}: compile {compile_s:.1f} s, {s_per_vg * 1e3:.1f} ms per value+grad, peak {report['peak_gb']:.2f} GB")
+    say(f"{args.method}: compile {report['compile_s']:.1f} s, {report['s_per_vg'] * 1e3:.1f} ms per value+grad, peak {report['peak_gb']:.2f} GB"
+        + (f"; at eps {EPS_DIRECT:g}: {report['s_per_vg_score'] * 1e3:.1f} ms" if args.method == "direct" else ""))
 
 
 ACCEPT = dict(max_rel=1e-10, dloss_rel=1e-6, dloss_abs=1e-2, grad_rel=1e-8, speedup=30.0, peak_gb=20.0)  # toeplitz_ozstar_spec.md
@@ -144,7 +171,7 @@ ACCEPT = dict(max_rel=1e-10, dloss_rel=1e-6, dloss_abs=1e-2, grad_rel=1e-8, spee
 
 def acceptance(a, t):
     """The acceptance table: ``(quantity, value text, limit text, passed)``, from agree.json ``a`` and the two time_*.json ``t``."""
-    worst_grad = max(a["grad_rel"].values())
+    worst_grad = float(np.max(np.asarray(list(a["grad_rel"].values()), float)))  # NaN propagates, and fails below
     speedup = t["direct"]["s_per_vg"] / t["toeplitz"]["s_per_vg"]
     peak = max(t["toeplitz"]["peak_gb"], t["direct"]["peak_gb"])
     return [
@@ -153,7 +180,7 @@ def acceptance(a, t):
         ("loss difference to perturbed image, abs", f"{a['dloss_abs']:.2e}", "<= 1e-2", a["dloss_abs"] <= ACCEPT["dloss_abs"]),
         ("gradient, worst site, rel to its max", f"{worst_grad:.2e}", "<= 1e-8", worst_grad <= ACCEPT["grad_rel"]),
         ("Nyquist fraction below margin", f"{a['nyquist_fraction']:.3f} / {a['margin']:.4f}", "fraction < margin", a["nyquist_fraction"] < a["margin"]),
-        ("speed-up per value+grad", f"{speedup:.0f}x", ">= 30x", speedup >= ACCEPT["speedup"]),
+        ("speed-up per value+grad (direct at eps 1e-6)", f"{speedup:.0f}x", ">= 30x", speedup >= ACCEPT["speedup"]),
         ("GPU peak per process (worst of two)", f"{peak:.2f} GB", "< 20 GB", peak < ACCEPT["peak_gb"]),
     ]
 
@@ -167,14 +194,16 @@ def cmd_summary(args):
         ("points", f"{a['n_points']:,}"),
         ("precompute (s)", f"{a['precompute_s']:.1f}"),
         ("Toeplitz arrays (GB)", f"{a['arrays_gb']:.2f}"),
+        ("chi2 / loss max rel diff (virgil's crosscheck)", f"{a['max_rel_virgil']:.2e}"),
         *[(f"  grad {k}", f"{v:.2e}") for k, v in a["grad_rel"].items()],
-        ("value+grad toeplitz / direct (ms)", f"{t['toeplitz']['s_per_vg'] * 1e3:.1f} / {t['direct']['s_per_vg'] * 1e3:.1f}"),
+        ("value+grad toeplitz / direct eps 1e-6 (ms)", f"{t['toeplitz']['s_per_vg'] * 1e3:.1f} / {t['direct']['s_per_vg'] * 1e3:.1f}"),
+        ("direct at eps 1e-12 (ms), speed-up", f"{t['direct']['s_per_vg_score'] * 1e3:.1f}, {t['direct']['s_per_vg_score'] / t['toeplitz']['s_per_vg']:.0f}x"),
         ("compile toeplitz / direct (s)", f"{t['toeplitz']['compile_s']:.1f} / {t['direct']['compile_s']:.1f}"),
-        ("peak GPU toeplitz / direct (GB)", f"{t['toeplitz']['peak_gb']:.2f} / {t['direct']['peak_gb']:.2f}"),
+        ("peak GPU toeplitz / direct, either eps (GB)", f"{t['toeplitz']['peak_gb']:.2f} / {t['direct']['peak_gb']:.2f}"),
     ]
     text = "\n".join(
         ["Acceptance (virgil#516 Toeplitz chi^2 against the direct NUFFT term, IM Lup at R_mpol):", ""]
-        + [f"{'PASS' if ok else 'FAIL'}  {q:42s} {v:>22s}   accept {lim}" for q, v, lim, ok in table]
+        + [f"{'PASS' if ok else 'FAIL'}  {q:46s} {v:>22s}   accept {lim}" for q, v, lim, ok in table]
         + ["", "ALL ACCEPTED" if all(ok for *_, ok in table) else "NOT ACCEPTED: " + ", ".join(q for q, _, _, ok in table if not ok), "", "Detail:"]
         + [f"{k:40s} {v}" for k, v in rows])
     (out / "toeplitz_check.txt").write_text(text + "\n")
