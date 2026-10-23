@@ -101,7 +101,9 @@ def test_dirty_image_and_beam_are_the_direct_sums_with_briggs_weights_and_the_ga
     weights w the natural 1/sigma^2 times Briggs's density factor (square cells of 1/FoV, Hermitian partners
     in one cell) times the Fourier transform of the Gaussian taper; both agree with an explicit loop over
     the points to 1e-9 of the peak."""
-    u, v, vis, w, freq = _points()
+    cell = 1.0 / (case["npix"] * case["pix"] * MAS)
+    # baselines out to 25 cells, so the density weights see tens of occupied cells on both sides of the Hermitian fold
+    u, v, vis, w, freq = _points(n=600, qmax=25 * cell)
     data = radio.ComplexVisData.from_arrays(u, v, vis, w, freq)
     kw = {k: case[k] for k in ("weighting", "robust", "uvtaper") if k in case}
     got_i = np.asarray(data.dirty_image(case["npix"], case["pix"], **kw))
@@ -113,6 +115,10 @@ def test_dirty_image_and_beam_are_the_direct_sums_with_briggs_weights_and_the_ga
     err_b = np.abs(got_b - ref_b).max()
     record("max_rel_error_dirty_image", err_i)
     record("max_abs_error_dirty_beam", err_b)
+    if case["weighting"] != "natural":
+        folded = [(int(np.floor((a if b >= 0 else -a) / cell)), int(np.floor(abs(b) / cell))) for a, b in zip(u, v)]
+        record("occupied_uv_cells", len(set(folded)))
+        assert len(set(folded)) > 50  # the weighting is exercised
     assert err_i < 1e-9 and err_b < 1e-9
     if case["npix"] % 2:  # a pixel on the phase centre: the beam is exactly 1 there
         c = case["npix"] // 2
@@ -355,7 +361,7 @@ def test_laplace_antenna_gain_marginal_matches_gauss_hermite_quadrature_and_impr
     from an 11^6-point Gauss-Hermite rule centred on the numerically found mode by less than 0.05 at a
     posterior width of 0.1 and by less than 0.01 at four times the weights, the error shrinks by more than
     2x when the information is quadrupled (Laplace is exact as w grows), and the solution is the
-    numerical mode to 1e-3."""
+    numerical mode to 1e-5 (BFGS to a gradient of 1e-10)."""
     pytest.importorskip("virgil._antenna_gains")
     errs = []
     for scale in (1.0, 4.0):
@@ -365,7 +371,7 @@ def test_laplace_antenna_gain_marginal_matches_gauss_hermite_quadrature_and_impr
         errs.append(abs(got - ref))
         record(f"abs_error_scale_{scale:g}", errs[-1])
         record(f"mode_error_scale_{scale:g}", np.abs(sol - mode).max())
-        assert np.abs(sol - mode).max() < 1e-3
+        assert np.abs(sol - mode).max() < 1e-5
     assert errs[0] < 0.05 and errs[1] < 0.01
     assert errs[1] < errs[0] / 2
 

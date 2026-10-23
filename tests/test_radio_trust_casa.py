@@ -109,7 +109,7 @@ def test_read_ms_equals_the_documented_reduction_of_the_raw_casatools_columns(fl
         path = path2
     res = _worker("casa_clean_worker.py", {"task": "columns", "ms": path, "out": str(tmp / f"cols{int(flagged)}.npz")})
     ref = _reference_samples(dict(np.load(res["npz"])), None)
-    got = radio.ComplexVisData.read_ms(path)
+    got = radio.ComplexVisData.read_ms(path, datacolumn="DATA")  # pinned: the simulated MS also has CORRECTED_DATA
     assert len(got) == len(ref["u"])
     ids = np.asarray(got.ddid_ids)[np.asarray(got.ddid)]
     order_g = np.lexsort((np.asarray(got.chan), ids, np.asarray(got.ant2), np.asarray(got.ant1), np.asarray(got.time)))
@@ -140,7 +140,7 @@ def _close(a, b, rel):
     return abs(a - b) / abs(b) <= rel
 
 
-@pytest.mark.validates("virgil.radio_clean.clean", roots=["casa"], tier="B")
+@pytest.mark.validates("virgil.radio_clean.clean", "virgil.radio.ComplexVisData.dirty_beam", roots=["casa"], tier="B")
 def test_fit_beam_and_the_lobe_only_reference_agree_with_the_beam_tclean_fits(tclean, data):
     """CASA's restoring beam (the Gaussian `tclean` fits to its PSF above psfcutoff 0.35) against virgil's `fit_beam` and the
     repository's lobe-only reference `crosscheck.alma_clean.fit_beam` (psfcutoff 0.35), each applied to CASA's own PSF and,
@@ -161,6 +161,12 @@ def test_fit_beam_and_the_lobe_only_reference_agree_with_the_beam_tclean_fits(tc
         record(f"{name}_minor_rel_diff", b / bmin - 1)
         record(f"{name}_pa_diff_deg", dpa)
         assert _close(a, bmaj, 0.03) and _close(b, bmin, 0.03) and dpa < 1.0, (name, (a, b, p), (bmaj, bmin, pa))
+    # virgil and the independent lobe-only reference are the same estimator on the same PSF: tight, not the CASA tolerance
+    va, vb, vp = fits["virgil_on_casa_psf"]
+    ra, rb, rp = fits["lobe_reference_on_casa_psf"]
+    record("virgil_vs_reference_major_rel_diff", va / ra - 1)
+    record("virgil_vs_reference_minor_rel_diff", vb / rb - 1)
+    assert _close(va, ra, 1e-3) and _close(vb, rb, 1e-3) and abs((vp - rp + 90) % 180 - 90) < 0.05
     record("casa_bmaj_mas", bmaj)
     record("casa_bmin_mas", bmin)
     record("max_abs_psf_difference", np.abs(psf_virgil - tclean["psf"]).max())
@@ -168,11 +174,27 @@ def test_fit_beam_and_the_lobe_only_reference_agree_with_the_beam_tclean_fits(tc
 
 
 @pytest.mark.validates("virgil.radio_clean.clean", roots=["casa"], tier="B", kind="control")
-def test_control_a_whole_psf_fit_does_not_reproduce_the_tclean_beam(tclean):
-    """The beam tests above are not vacuous: fitting the lobe above a cutoff of 0.9 (a few pixels around the peak) misses CASA's
-    axes by more than their 3 % tolerance."""
+def test_control_the_bounding_box_fit_of_the_lobe_misses_the_tclean_beam(tclean):
+    """The beam tolerance separates the lobe-only fit from the earlier bounding-box fit (ledger C3): a Gaussian fitted to every
+    pixel of the lobe's bounding box (including those below the cutoff) misses CASA's minor axis by more than 3 %, while the
+    lobe-pixel fit above is within 0.1 %."""
+    from scipy.ndimage import label
+    from scipy.optimize import least_squares
+
+    psf = tclean["psf"]
+    peak = np.unravel_index(np.argmax(psf), psf.shape)
+    lab, _ = label(psf >= 0.35)
+    rows, cols = np.where(lab == lab[peak])
+    r0, r1, c0, c1 = rows.min(), rows.max() + 1, cols.min(), cols.max() + 1
+    sub = psf[r0:r1, c0:c1]
+    best = None
+    for pa0 in (0.0, 45.0, 90.0, 135.0):
+        fit = least_squares(lambda p: (ac.gaussian_image(sub.shape, (p[0], p[1]), p[2], p[3], p[4]) - sub).ravel(),
+                            [peak[0] - r0, peak[1] - c0, 8.0, 7.0, pa0])
+        if best is None or fit.cost < best.cost:
+            best = fit
+    a, b = sorted(abs(best.x[2:4]) * CELL, reverse=True)
     bmaj, bmin, _ = tclean["beam_mas_deg"]
-    a, b, _ = rc.fit_beam(tclean["psf"], CELL, psfcutoff=0.9)
     miss = max(abs(a / bmaj - 1), abs(b / bmin - 1))
     record("control_miss", miss)
     assert miss > 0.03
