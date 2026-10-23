@@ -496,6 +496,9 @@ def test_r4_compare_self_comparison_gives_zero_differences(syn, r_fit, tmp_path)
     o = c["objective"]
     assert abs(o["ours"]["objective"] - o["mpol_solution_in_virgil"]["objective"]) < 1e-9 * abs(o["ours"]["objective"])
     assert (out / "compare.md").exists()
+    g = c["gate"]  # the cold-start gate: five items, DSHARP's flux as the reference (no --clean-dir), the same solution on both sides
+    assert [i["key"] for i in g["items"]] == list("abcde") and g["flux_reference"]["name"] == "DSHARP" and abs(g["items"][0]["value"]) < 1e-6 * abs(o["ours"]["objective"])
+    assert g["verdict"] in ("PASS", "FAIL") and "Cold-start gate" in (out / "compare.md").read_text()
     # the residual dirty images of MPoL's solution (for docs/imaging/imlup.md): the same solution as the fit's own, so the same images
     for e in range(7):
         np.testing.assert_allclose(np.load(out / f"resid_dirty_mpol_obs{e}.npy"), np.load(r_fit / f"resid_dirty_obs{e}.npy"), rtol=1e-4, atol=1e-7 * np.abs(np.load(r_fit / f"resid_dirty_obs{e}.npy")).max())
@@ -525,7 +528,7 @@ def test_r4_compare_reports_both_solutions_term_by_term_and_the_gradient_scaling
     gg = c["grad_groups"]["ours"]
     assert set(gg) >= {"log_brightness", "cal.flux", "cal.gain", "cal.offset", "cal.sigma"}
     assert abs(gg["log_brightness"]["dxdz_median"] - 1) < 1e-12
-    assert gg["cal.offset"]["dxdz_median"] > 100 * gg["cal.gain"]["dxdz_median"]  # the offsets' bound is 1/(2 q_min) in mas: thousands
+    assert gg["cal.offset"]["dxdz_median"] > 10 * gg["cal.gain"]["dxdz_median"]  # a logit of x / bound in mas: the bound is virgil's own, per observation (3 beams, ~150 mas here) or 1/(2 q_min)
     md = (out / "compare.md").read_text()
     for head in ("Raw chi^2/N (s = 1", "term by term", "Gains and offsets, side by side", "Gradient scaling"):
         assert head in md
