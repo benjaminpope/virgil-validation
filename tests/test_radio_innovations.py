@@ -98,12 +98,14 @@ def test_probe_estimate_is_within_its_stated_stochastic_error_of_the_exact_diago
     stated = np.sqrt(2.0 / m)
     record("max_probe_error_over_stated", np.abs(rel).max() / stated)
     record("rms_probe_error_over_stated", np.sqrt(np.mean(rel**2)) / stated)
+    record("mean_probe_error_over_stated", rel.mean() / stated)
     assert np.abs(rel).max() < 4 * stated
     assert np.sqrt(np.mean(rel**2)) < 1.5 * stated
+    assert abs(rel.mean()) < 0.5 * stated  # unbiased: a uniform scale error above 2% fails
 
 
 @needs_diag
-@pytest.mark.validates("virgil.fitting.gauss_newton_diag", "virgil.imaging.MaxEntropy", roots=["mathematics", "literature"])
+@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"])
 @pytest.mark.parametrize("weight", [1e-3, 1.0, 1e3])
 def test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric(weight):
     """With MaxEntropy(weight) the diagonal on the image pixels is the Skilling-Bryan metric
@@ -221,9 +223,12 @@ def test_baselines_past_the_margin_and_offsets_past_the_bound_are_refused(margin
     over = _toeplitz_case(margin + 0.03, [[1.0, 1.0], [1.0, 1.0]])
     with pytest.raises(ValueError):
         over["data"].toeplitz(over["template"], over["nuis"], offsets="spread", max_offset_mas=OFFSET_BOUND)
+    inside = _toeplitz_case(0.3, [[OFFSET_BOUND - 1.0, 0.0], [0.0, 0.0]])
+    tdata = inside["data"].toeplitz(inside["template"], inside["nuis"], offsets="spread", max_offset_mas=OFFSET_BOUND)
+    tdata.chi2_by_ddid(inside["scene"], inside["values"], inside["nuis"])  # 1 mas inside the bound: evaluates
     case = _toeplitz_case(0.3, [[OFFSET_BOUND + 1.0, 0.0], [0.0, 0.0]])
     tdata = case["data"].toeplitz(case["template"], case["nuis"], offsets="spread", max_offset_mas=OFFSET_BOUND)
-    with pytest.raises(Exception):  # noqa: B017  (a checkify error from inside jit, whatever its class)
+    with pytest.raises(Exception, match="(?i)offset"):  # noqa: B017  (a checkify error from inside jit, whatever its class)
         tdata.chi2_by_ddid(case["scene"], case["values"], case["nuis"])
 
 
