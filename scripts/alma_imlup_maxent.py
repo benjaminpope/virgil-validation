@@ -120,6 +120,7 @@ def run_stages(args, data, prob_for, init_dir, save=None):
     if image_first and (workflow == "clean" or init_dir):
         raise SystemExit("--image-first is for the p3 and mpol starts (clean has its own image-fixed stage; --init has an image already)")
     held = None  # the log_brightness held in the current stage
+    floor_info = None  # info of the Gaussian start's floor (``--start-floor``)
     if mpol and not init_dir:
         plan = [("all", None)]
         values = None
@@ -147,6 +148,11 @@ def run_stages(args, data, prob_for, init_dir, save=None):
                     values["cal.sigma"] = jnp.asarray(shat, float)
         if values is None:
             values = va.mpol_start_values(prob) if mpol else va.start_values(prob, flux=0.25, fwhm_mas=1000.0, shat=shat)
+            if not mpol and getattr(args, "start_floor", 0):  # the Gaussian's outer pixels are 1e-8..1e-15 of the peak and cannot grow back: raise them to MPoL's entropy floor
+                log_pb = va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None
+                eta, flux0, floor_info = va.floor_start(values, prob.npix, prob.pixel_mas, args.start_floor, log_pb=log_pb)
+                values["log_brightness"], values["cal.flux"] = jnp.asarray(eta), jnp.asarray(flux0)
+                say(f"start: 1\" Gaussian raised to the floor {args.start_floor:g} Jy/arcsec^2 at {floor_info['n_raised']:,} pixels (+{floor_info['flux_added_jy']:.5f} Jy on {floor_info['flux_before_jy']:.5f} Jy)")
         if fixed is not None:  # the held image is no free site: the optimiser sees the nuisances only
             values.pop("log_brightness")
         limit = args.prestage_max_steps if name in ("selfcal", "image") else args.max_steps
@@ -166,6 +172,9 @@ def run_stages(args, data, prob_for, init_dir, save=None):
 
         out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
         stages.append(stage_summary(name, info, traj, time.time() - t, why))
+        if floor_info is not None:  # the first stage's start (it is the only one that is not warm)
+            stages[-1]["start_floor"] = floor_info
+            floor_info = None
         if clean and name == "selfcal":
             stages[-1]["clean_start"] = start_info
             stages[-1]["selfcal_check"] = chk = vs.selfcal_check(out, ref_obs=args.ref_obs)
@@ -254,6 +263,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         clean_start=next((s["clean_start"] for s in stages if "clean_start" in s), None),
+        start_floor=next((s["start_floor"] for s in stages if "start_floor" in s), None),
         alpha=va.alpha_report(values if "cal.alpha" in prob.init else {})[0], alpha_label=va.alpha_report(values if "cal.alpha" in prob.init else {})[1],
         offset_bound=va.offset_bound_report(values.get("cal.offset"), prob.offset_bound_mas, prob.offset_bound_requested, bound_obs=prob.offset_bound_obs, ref_obs=getattr(args, "ref_obs", 0)),
         nll=sc_raw["nll"], chi2_raw=sc_raw["chi2_raw"], chi2_fit=sc_raw["chi2_fit"],
@@ -267,6 +277,11 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     say(f"offset bound ±{ob['bound_mas']:.6g} mas ({'--offset-bound-mas' if ob['requested_mas'] is not None else 'virgil default'}); largest |offset|/bound {ob['max_abs_over_bound']:.3g}")
     if ob["warning"]:
         say(ob["warning"])
+    dead = va.dead_pixel_report(va.image_of(values, prob.npix, prob.pixel_mas, va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None), prob.pixel_mas)
+    res["dead_pixels"] = dead
+    say(f"dead pixels: {dead['frac_below_1e-6_peak']:.2%} below 1e-6 of the peak, {dead['frac_below_1e-3_floor']:.2%} below 1e-3 of the floor; largest live radius {dead['largest_live_radius_arcsec']:.2f} arcsec")
+    if dead["warning"]:
+        say(dead["warning"])
     if shat is not None:
         res["shat"] = shat
         res["acceptance_C13"] = acceptance(sigma, shat)
@@ -736,6 +751,8 @@ def main(argv=None):
     p.add_argument("--clean-smooth-mas", type=float, default=10.0, help="clean: FWHM (mas) of the small circular positivity kernel the CLEAN model is convolved with (default two fit pixels; keeps the long baselines' power)")
     p.add_argument("--clean-beam-frac", type=float, default=0.0, help="clean: instead smooth with this fraction of the restoring beam (0: off, the default; 1 removes the long baselines' power and biases their gains)")
     p.add_argument("--clean-floor", type=float, default=va.MPOL["prior"], help="clean: floor of the start image, Jy/arcsec^2 (default MPoL's entropy prior p = 1e-4)")
+    p.add_argument("--start-floor", type=float, default=va.MPOL["prior"], help="p3 workflow: raise the 1\" Gaussian start to this level (Jy/arcsec^2) so every pixel starts alive (default MPoL's entropy prior 1e-4, as R_clean; "
+                   "0: the bare Gaussian, whose outer pixels are 1e-8..1e-15 of the peak and cannot grow back: R ob100, job 18968246_0). Ignored by --workflow mpol and clean (their own starts) and by --init")
     p.add_argument("--prestage-max-steps", type=int, default=3000, help="clean, --image-first: step budget of the selfcal / image stage (stops earlier when C8 holds)")
     p.add_argument("--image-first", action="store_true", help="p3, mpol: a first stage fits only the image and flux (gains 1, offsets 0, s = 1), then the workflow's own stages release the nuisances")
     p.add_argument("--ref-obs", default="0", help="the observation whose gain is 1 and offset 0 (the flux gauge): an index, or 'auto' = the SB observation with the largest sum of weights; "

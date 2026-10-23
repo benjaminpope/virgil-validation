@@ -292,3 +292,20 @@ Goal: claim an *improvement* (or parity) of virgil's IM Lup MaxEnt image over MP
 - Code: `src/external_bridge/{cv_folds,cv_compare}.py`, tasks in `mpol_worker.py`, `scripts/alma_imlup_maxent.py cv-compare`, tests `tests/test_alma_mpol_cv.py`,
   formats in `docs/alma_conventions.md` Part 6. The OzSTAR job is `alma_mpol_cv` (ozstar_scripts).
 
+
+## Finding: the cold-start R ob100 fit has dead pixels, and the floor start (2026-10-23)
+
+R from the p3 workflow's 1″ Gaussian start with `--offset-bound-mas 100 --precondition diag` (job 18968246_0, tag `32a303e-cd-ob100`) ended with a better objective than MPoL's
+(−108,309,995.3 against −108,232,183.7; χ²/N 2.7052 against 2.7062; largest |offset| 0.028 of the bound) and an image that does not pass the cold-start gate: an optimiser artefact, not a result.
+
+- **What was measured (local copy).** 64 % of the pixels are below 1e-6 of the peak, with a median of 9e-10 of the peak beyond 2.4″; MPoL's solution and R_mpol have none. The live region ends at 1.78″ and the bright
+  arcs (peak 0.11 Jy/arcsec², at 1.4–1.7″) sit on that boundary. No flux lies beyond 1.8″; MPoL has about 10 % of its flux there, which accounts for most of the 0.05 Jy our image is missing.
+- **Why.** The image is `flux · softmax(b)`, so ∂L/∂b_i is proportional to I_i. A pixel the Gaussian start leaves at 1e-8 to 1e-15 of the peak cannot grow back, although the entropy term's interior
+  optimum puts every pixel above zero (∂S/∂I = ln(I/M) → −∞ as I → 0). The flux that belongs there piles into the outermost live pixels.
+- **Fix.** `fit` raises the Gaussian start to MPoL's entropy floor p = 1e-4 Jy/arcsec², as R_clean already does (`--start-floor`, default `va.MPOL["prior"]`; 0 restores the bare Gaussian; R and F; not
+  `--workflow mpol`, whose start is uniform, nor `clean`, which has its own floor). That adds about 2.6 mJy (1 % of the flux) at 1028² × 5 mas, and every pixel starts above 1e-6 of the peak (floor / peak ≈ 4.5e-4).
+  `result.json` records `start_floor` (also in the first stage) and the arguments.
+- **Diagnostic.** `write_report` (so also `report`) logs and records `dead_pixels`: the fractions of pixels below 1e-6 of the peak and below 1e-3 of the floor, the median brightness beyond 2.4″ over the peak, and the
+  largest live radius; it prints `!!! DEAD PIXELS … !!!` when more than 1 % are dead, like the offset-bound warning. `report` on the old directory gives the numbers above without refitting.
+- **Tests.** `tests/test_alma_start_floor.py` (CPU, seconds): the floored start reads back through `image_of` exactly in R and F, the report flags the bare Gaussian and passes the floored one, and `fit`
+  records both. The cold-start gate is rerun with the floor start (arm R, same settings) before it is called passed.
