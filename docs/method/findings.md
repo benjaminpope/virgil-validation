@@ -71,6 +71,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | --- | --- | --- | --- |
 | <span id="C1">C1</span> | `external_bridge.pmoired_models` | Our PMOIRED parameter mapping had the wrong sign of d(ratio)/d(incl) | fixed [virgil-validation#11](https://github.com/benjaminpope/virgil-validation/pull/11) |
 | <span id="C2">C2</span> | `crosscheck.oifits_writer` | Our OIFITS writer wrote DATE_OBS (a Python keyword argument) instead of the DATE-OBS keyword OIFITS v2 requires, with a fixed date | fixed |
+| <span id="C3">C3</span> | `radio_clean.clean` | the independent CLEAN beam fit (crosscheck.alma_clean.fit_beam) was changed to fit the lobe's pixels only, after virgil 0.4.1 did, and is not yet checked against CASA's own fit | open |
 
 ## Definition changes in virgil
 
