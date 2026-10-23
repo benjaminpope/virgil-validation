@@ -138,6 +138,7 @@ def test_chi2_plus_once_the_penalty_is_not_stationary(sweep):
     scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
     w, x = float(np.asarray(lc.weights)[0]), log_b[0]
     g = gradient(lambda y: chi2_image(d, softmax(y)) + w * tsv(softmax(y)), x)
+    record("control_gradient_over_scale", float(np.max(np.abs(g)) / scale))
     assert np.max(np.abs(g)) / scale > 1e-4
 
 
