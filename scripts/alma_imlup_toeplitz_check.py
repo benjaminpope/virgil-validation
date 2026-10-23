@@ -46,8 +46,15 @@ def say(*a):
 def versions():
     import importlib.metadata as m
 
-    return dict(jax=jax.__version__, virgil=m.version("virgil-astro"), nufftax=m.version("nufftax"),
-                devices=[str(d) for d in jax.devices()])
+    import virgil
+
+    # virgil is a snapshot on PYTHONPATH on the cluster, so the installed distribution's version may not be the one imported
+    try:
+        dist = m.version("virgil-astro")
+    except m.PackageNotFoundError:
+        dist = None
+    return dict(jax=jax.__version__, virgil=dist, virgil_from=virgil.__file__,
+                nufftax=m.version("nufftax"), devices=[str(d) for d in jax.devices()])
 
 
 def peak_gb():
