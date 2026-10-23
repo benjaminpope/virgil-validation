@@ -16,7 +16,8 @@ dL/dŝ ~ 0 by cancellation and a difference relative to that gradient's own max 
 ``time`` (one process per method, so the GPU peak memory is that method's): compile and run value+grad. ``--method direct`` does not
 build the Toeplitz precompute, so its peak is the direct term's alone (the larger of its two accuracies). The memory limit applies to the Toeplitz
 path; the direct path's peak is reported as information.
-``summary``: one table from the JSON files.
+``summary``: one table from the JSON files. The speed-up limit (>= 30x) is judged on an A100 only: the ``time`` runs record the GPU name
+(``jax.devices()[0].device_kind``), and on any other device the speed-up row is labelled REPORT (value and GPU shown) and cannot make the run NOT ACCEPTED.
 """
 
 import argparse
@@ -58,6 +59,11 @@ def versions():
         dist = None
     return dict(jax=jax.__version__, virgil=dist, virgil_from=virgil.__file__,
                 nufftax=m.version("nufftax"), devices=[str(d) for d in jax.devices()])
+
+
+def gpu_name():
+    """The device the run is on, as JAX names it (e.g. ``NVIDIA A100-SXM4-40GB``; ``cpu`` without a GPU)."""
+    return jax.devices()[0].device_kind
 
 
 def peak_gb():
@@ -181,7 +187,7 @@ def cmd_time(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     data, prob, values, tdata, pre = setup(args, precompute=args.method == "toeplitz")
-    report = dict(versions=versions(), method=args.method, repeats=args.repeats, precompute_s=pre["precompute_s"])
+    report = dict(versions=versions(), gpu=gpu_name(), method=args.method, repeats=args.repeats, precompute_s=pre["precompute_s"])
     if args.method == "toeplitz":
         report["compile_s"], report["s_per_vg"] = time_vg(vg_toeplitz, tdata.term(prob.scene, prob.nuis), values, args.repeats)
     else:
@@ -193,17 +199,26 @@ def cmd_time(args):
         report.update(eps_fit=va.EPS_FIT, eps_score=EPS_DIRECT)
     report["peak_gb"] = peak_gb()
     (out / f"time_{args.method}.json").write_text(json.dumps(report, indent=1))
-    say(f"{args.method}: compile {report['compile_s']:.1f} s, {report['s_per_vg'] * 1e3:.1f} ms per value+grad, peak {report['peak_gb']:.2f} GB"
+    say(f"{args.method} on {report['gpu']}: compile {report['compile_s']:.1f} s, {report['s_per_vg'] * 1e3:.1f} ms per value+grad, peak {report['peak_gb']:.2f} GB"
         + (f"; at eps {EPS_DIRECT:g}: {report['s_per_vg_score'] * 1e3:.1f} ms" if args.method == "direct" else ""))
 
 
 ACCEPT = dict(max_rel=1e-10, dloss_rel=1e-6, dloss_abs=1e-2, grad_rel=1e-8, speedup=30.0, peak_gb=20.0)  # toeplitz_ozstar_spec.md
+SPEEDUP_GPU = "A100"  # the speed-up limit is judged on this GPU type only; on any other device it is reported
+
+
+def speedup_gated(t):
+    """Whether the speed-up limit applies: both timing runs were on an A100. Reports from before the GPU was recorded count as unknown."""
+    gpus = {t[m].get("gpu", "unknown") for m in ("toeplitz", "direct")}
+    return all(SPEEDUP_GPU in g.upper() for g in gpus), t["toeplitz"].get("gpu", "unknown")
 
 
 def acceptance(a, t):
-    """The acceptance table: ``(quantity, value text, limit text, passed)``, from agree.json ``a`` and the two time_*.json ``t``."""
+    """The acceptance table: ``(quantity, value text, limit text, status)``, from agree.json ``a`` and the two time_*.json ``t``.
+    ``status`` is True (PASS), False (FAIL) or None (REPORT: shown, not judged; the speed-up on a GPU other than an A100)."""
     worst_grad = float(np.max(np.asarray(list(a["grad_rel_moved"].values()), float)))  # at the moved point; NaN propagates, and fails below
     speedup = t["direct"]["s_per_vg"] / t["toeplitz"]["s_per_vg"]
+    gated, gpu = speedup_gated(t)
     peak = t["toeplitz"]["peak_gb"]  # the limit is the Toeplitz path's; the dense direct reference's peak is reported, not gated
     return [
         ("chi2 per ddid + loss, max rel diff", f"{a['max_rel']:.2e}", "<= 1e-10", a["max_rel"] <= ACCEPT["max_rel"]),
@@ -211,7 +226,8 @@ def acceptance(a, t):
         ("loss difference to perturbed image, abs", f"{a['dloss_abs']:.2e}", "<= 1e-2", a["dloss_abs"] <= ACCEPT["dloss_abs"]),
         ("gradient at a moved point, worst site, rel", f"{worst_grad:.2e}", "<= 1e-8", worst_grad <= ACCEPT["grad_rel"]),
         ("Nyquist fraction below margin", f"{a['nyquist_fraction']:.3f} / {a['margin']:.4f}", "fraction < margin", a["nyquist_fraction"] < a["margin"]),
-        ("speed-up per value+grad (direct at eps 1e-6)", f"{speedup:.0f}x", ">= 30x", speedup >= ACCEPT["speedup"]),
+        ("speed-up per value+grad (direct at eps 1e-6)", f"{speedup:.0f}x",
+         f">= 30x on {SPEEDUP_GPU}" if gated else f"report only on {gpu} (>= 30x on {SPEEDUP_GPU})", speedup >= ACCEPT["speedup"] if gated else None),
         ("GPU peak, Toeplitz path", f"{peak:.2f} GB", "< 20 GB", peak < ACCEPT["peak_gb"]),
     ]
 
@@ -228,6 +244,7 @@ def cmd_summary(args):
         ("chi2 / loss max rel diff (virgil's crosscheck)", f"{a['max_rel_virgil']:.2e}"),
         *[(f"  grad {k}, at the optimum / moved: rel diff", f"{v:.2e} / {a['grad_rel_moved'][k]:.2e}") for k, v in a["grad_rel"].items()],
         *[(f"  grad {k}, max |grad| it is divided by", f"{a['grad_scale'][k]:.3e} / {a['grad_scale_moved'][k]:.3e}") for k in a["grad_rel"]],
+        ("GPU (toeplitz / direct)", f"{t['toeplitz'].get('gpu', 'unknown')} / {t['direct'].get('gpu', 'unknown')}"),
         ("value+grad toeplitz / direct eps 1e-6 (ms)", f"{t['toeplitz']['s_per_vg'] * 1e3:.1f} / {t['direct']['s_per_vg'] * 1e3:.1f}"),
         ("direct at eps 1e-12 (ms), speed-up", f"{t['direct']['s_per_vg_score'] * 1e3:.1f}, {t['direct']['s_per_vg_score'] / t['toeplitz']['s_per_vg']:.0f}x"),
         ("compile toeplitz / direct (s)", f"{t['toeplitz']['compile_s']:.1f} / {t['direct']['compile_s']:.1f}"),
@@ -236,8 +253,8 @@ def cmd_summary(args):
     ]
     text = "\n".join(
         ["Acceptance (virgil#516 Toeplitz chi^2 against the direct NUFFT term, IM Lup at R_mpol):", ""]
-        + [f"{'PASS' if ok else 'FAIL'}  {q:46s} {v:>22s}   accept {lim}" for q, v, lim, ok in table]
-        + ["", "ALL ACCEPTED" if all(ok for *_, ok in table) else "NOT ACCEPTED: " + ", ".join(q for q, _, _, ok in table if not ok), "", "Detail:"]
+        + [f"{'REPORT' if ok is None else 'PASS' if ok else 'FAIL':<6s} {q:46s} {v:>22s}   accept {lim}" for q, v, lim, ok in table]
+        + ["", "NOT ACCEPTED: " + ", ".join(q for q, _, _, ok in table if ok is False) if any(ok is False for *_, ok in table) else "ALL ACCEPTED", "", "Detail:"]
         + [f"{k:40s} {v}" for k, v in rows])
     (out / "toeplitz_check.txt").write_text(text + "\n")
     say(text)
