@@ -9,6 +9,7 @@ caller passes the pixel scale, the dish and so on.
 
 import os
 import pathlib
+import time
 
 import numpy as np
 
@@ -272,8 +273,38 @@ def read_shat(path, n_ddid=26):
     return np.array([json.loads((path / f"ddid_{d:02d}.json").read_text())["sigma"]["all"]["s"] for d in range(n_ddid)])
 
 
+CHI2_ENGINES = ("direct", "toeplitz")
+TOEPLITZ_OFFSET_BOUND_MAS = 20.0  # the offsets' box of a Toeplitz fit unless --offset-bound-mas says otherwise (R_mpol's largest |offset| is 4.4 mas)
+
+
+class ToeplitzRefused(ValueError):
+    """``--chi2 toeplitz`` cannot take the problem exactly (virgil refused the precompute, or the config has no one-Image scene)."""
+
+
+def toeplitz_term(use, scene, nuis, *, npix, pixel_mas, mask, max_offset_mas):
+    """``(term, info)``: the Toeplitz chi^2 of ``use`` (virgil's public ``ComplexVisData.toeplitz``) for the one-Image scene of ``grid_scene``.
+    Fitted offsets need ``offsets="spread"`` with ``max_offset_mas`` the half-width of their prior box; ``info`` records the precompute (time, arrays).
+    A ``ValueError`` of virgil's (baselines past the Nyquist margin, antenna gains, a fitted alpha) is raised as one that names the fix."""
+    import jax
+    from virgil import Image
+
+    shift = -pixel_mas / 2.0  # grid_scene's half-pixel map offset
+    template = Image(np.zeros((npix, npix)), pixel_scale_mas=pixel_mas, dra=shift, ddec=shift)
+    spread = bool(nuis.offsets)
+    t = time.time()
+    try:
+        tdata = use.toeplitz(template, nuis, mask=None if mask is None else np.asarray(mask, bool), offsets="spread" if spread else "none", max_offset_mas=max_offset_mas if spread else None)
+    except ValueError as e:
+        raise ToeplitzRefused(f"--chi2 toeplitz cannot take this problem exactly: {e} (offsets fitted: {spread}, bound ±{max_offset_mas} mas; use --chi2 direct)") from e
+    jax.block_until_ready(tdata.arrays)
+    info = dict(engine="toeplitz", precompute_s=time.time() - t, n_points=len(use), arrays_gb=sum(x.nbytes for x in jax.tree.leaves(tdata.arrays)) / 1e9,
+                sizes=list(tdata.sizes), nyquist_fraction=float(tdata.nyquist_fraction), margin=None if tdata.margin is None else float(tdata.margin),
+                offsets="spread" if spread else "none", max_offset_mas=max_offset_mas if spread else None)
+    return tdata.term(scene, nuis), info
+
+
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
-                  alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False):
+                  alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct"):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -291,6 +322,10 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
 
     ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
 
+    ``chi2`` is the engine of the data term: ``direct`` (the NUFFT of every point; default) or ``toeplitz`` (virgil's dirty-beam form, equal to the direct
+    term to ~1e-13 at a cost independent of N; config R only). With fitted offsets Toeplitz needs the prior box inside its precompute, so
+    ``offset_bound_mas`` defaults to ``TOEPLITZ_OFFSET_BOUND_MAS``. ``prob.chi2_info`` records the engine and the precompute.
+
     ``offset_bound_mas`` (mas, default None: virgil's own default, ±3 beams of each observation, about 150 mas for IM Lup; 0.4.0's ±1/(2 q_min) is about 10^4 mas) sets the offsets' uniform prior to
     ``(-X, X)`` through ``CalibrationNuisance.priors(offset=...)``. A flat prior is flat at any bound, so the objective is unchanged
     unless a fitted offset reaches the bound (``offset_bound_report``), but L-BFGS moves in the logit z of ``x/bound`` and dx/dz is
@@ -303,6 +338,13 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     from virgil.radio import primary_beam
 
     config = config.upper()
+    if chi2 not in CHI2_ENGINES:
+        raise ValueError(f"chi2 must be one of {CHI2_ENGINES}, not {chi2!r}")
+    if chi2 == "toeplitz":
+        if config != "R":
+            raise ToeplitzRefused("--chi2 toeplitz is defined for config R only (one Image, no fitted alpha)")
+        if offset_bound_mas is None and not image_only:
+            offset_bound_mas = TOEPLITZ_OFFSET_BOUND_MAS
     off = dict(gains=False, offsets=False, sigmas=False) if image_only else {}
     alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
@@ -328,7 +370,10 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         regs = [MaxEntropy(float(lam), prior=np.exp(np.asarray(primary_beam(npix, pixel_mas, **pb))))]
     else:
         raise ValueError(f"config must be R or F, not {config!r}")
-    term = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size)
+    if chi2 == "toeplitz":
+        term, chi2_info = toeplitz_term(use, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=mask, max_offset_mas=None if offset_bound_mas is None else float(offset_bound_mas))
+    else:
+        term, chi2_info = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size), dict(engine="direct")
     terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
     priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
     if fixed_log_brightness is None:
@@ -342,7 +387,32 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam),
                                  offset_bound_mas=float(bound.max()), offset_bound_obs=bound,  # virgil's bound may be one per observation: the largest, and all of them
-                                 offset_bound_requested=None if offset_bound_mas is None else float(offset_bound_mas))
+                                 offset_bound_requested=None if offset_bound_mas is None else float(offset_bound_mas), chi2_info=chi2_info)
+
+
+AT_BOUND_EDGE = 0.01  # at_bound_report: within this fraction of a prior's range (of its log range for a LogUniform) of an end
+
+
+def at_bound_report(values, priors, edge=AT_BOUND_EDGE):
+    """Which fitted parameters ended at a bound of their prior? ``priors`` is ``prob.priors``; a site is checked when its prior has a finite ``low`` and ``high``
+    (``cal.flux``: log-uniform; ``cal.offset``: uniform, a box per observation). Flat priors with no bound (gains, error scales, pixels) cannot be at one.
+    A parameter within ``edge`` of the range of an end is listed: ``dict(site, index, value, bound, side, fraction)``. Returns ``dict(edge, at_bound, n_checked, warning)``."""
+    hits, n = [], 0
+    for site, prior in priors.items():
+        lo, hi = getattr(prior, "low", None), getattr(prior, "high", None)
+        if site not in values or lo is None or hi is None:
+            continue
+        x = np.asarray(values[site], float)
+        lo, hi = np.broadcast_to(np.asarray(lo, float), x.shape), np.broadcast_to(np.asarray(hi, float), x.shape)
+        log = type(prior).__name__ == "LogUniform"
+        f = (lambda a: np.log(a)) if log else (lambda a: a)  # noqa: E731
+        frac = (f(x) - f(lo)) / (f(hi) - f(lo))
+        n += x.size
+        for i in map(tuple, np.argwhere((frac <= edge) | (frac >= 1 - edge))):
+            side = "low" if frac[i] <= edge else "high"
+            hits.append(dict(site=site, index=[int(j) for j in i], value=float(x[i]), bound=float((lo if side == "low" else hi)[i]), side=side, fraction=float(frac[i])))
+    warning = f"!!! {len(hits)} PARAMETER(S) AT A PRIOR BOUND (within {edge:.0%} of its range): " + ", ".join(f"{h['site']}{h['index']} {h['value']:.6g} ({h['side']} bound {h['bound']:.6g})" for h in hits) if hits else None
+    return dict(edge=edge, at_bound=hits, n_checked=n, warning=warning)
 
 
 OFFSET_EDGE = 0.05  # report warns when a fitted offset is within this fraction of the bound
