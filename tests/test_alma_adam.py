@@ -135,7 +135,7 @@ def test_fit_converged_is_virgils_and_c8_converged_is_vvs_for_both_methods():
     assert lb["fit_converged"] is False and lb["c8_converged"] is True
 
 
-@pytest.mark.validates("virgil_bridge.alma.blur_post_step", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
 def test_post_step_blur_conserves_flux_revives_a_dead_pixel_and_is_off_at_zero():
     """dorito's blur: the normalised image keeps unit mass and ``cal.flux`` is untouched; a pixel at 1e-12 of the peak beside live ones is raised above 1e-6 of
     the peak in one step; width 0 or None gives no callable; absent ``log_brightness`` (a held-image stage) passes through."""
@@ -150,11 +150,17 @@ def test_post_step_blur_conserves_flux_revives_a_dead_pixel_and_is_off_at_zero()
     lb = np.full((n, n), -30.0)
     lb[4:12, 4:12] = 0.0
     lb[8, 8] = -30.0  # a dead pixel inside the live block
+    lb[0, :] = lb[:, 0] = lb[n - 1, 5] = 0.0  # flux on the border, where a leaky padding shows
     params = {"log_brightness": jnp.asarray(lb), "cal.flux": jnp.asarray(0.3), "cal.gain": jnp.ones(3)}
     out = step(params)
     p0 = jax.nn.softmax(params["log_brightness"].reshape(-1))
     p1 = jax.nn.softmax(out["log_brightness"].reshape(-1))
-    assert float(p1.sum()) == pytest.approx(1.0, abs=1e-6)
+    from scipy.ndimage import gaussian_filter
+
+    img0 = np.asarray(p0, float).reshape(n, n)
+    ref = gaussian_filter(img0, 0.25, mode="reflect", truncate=3.0)  # scipy's reflect repeats the edge pixel: mass-conserving
+    assert ref.sum() == pytest.approx(img0.sum(), rel=1e-12)
+    np.testing.assert_allclose(np.asarray(p1, float).reshape(n, n), ref / ref.sum(), rtol=1e-4)  # the step's float32 softmax
     assert float(out["cal.flux"]) == 0.3 and np.array_equal(out["cal.gain"], params["cal.gain"])
     out_img = np.asarray(p1).reshape(n, n)
     in_img = np.asarray(p0).reshape(n, n)

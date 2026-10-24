@@ -603,7 +603,7 @@ def blur_post_step(sigma_px):
 
     dorito normalises the image to unit sum, fits ``log`` of it and, every fitting epoch, convolves the image with a Gaussian of sigma about 0.25 pixel so that flux
     cannot stay in a few spikes. Here the image is ``flux * softmax(log_brightness)``, so the step blurs ``softmax(log_brightness)`` with a separable Gaussian
-    (sigma ``sigma_px`` pixels, radius ``ceil(3 sigma)``, reflected edges so the mass is conserved) and sets ``log_brightness`` to the log of the result. The
+    (sigma ``sigma_px`` pixels, radius ``ceil(3 sigma)``, symmetric edges (the edge pixel repeated) so the mass is conserved) and sets ``log_brightness`` to the log of the result. The
     softmax normalises it, so the flux ``cal.flux`` and every other parameter pass through unchanged."""
     if not sigma_px:
         return None
@@ -620,7 +620,7 @@ def blur_post_step(sigma_px):
     def smooth(a, axis):
         pad = [(0, 0)] * a.ndim
         pad[axis] = (r, r)
-        a = jnp.pad(a, pad, mode="reflect")
+        a = jnp.pad(a, pad, mode="symmetric")
         return sum(k[i] * jax.lax.slice_in_dim(a, i, i + a.shape[axis] - 2 * r, axis=axis) for i in range(2 * r + 1))
 
     def post_step(params):
@@ -629,7 +629,7 @@ def blur_post_step(sigma_px):
         lb = params["log_brightness"]
         p = jax.nn.softmax(lb.reshape(-1)).reshape(lb.shape)
         q = smooth(smooth(p, 0), 1)
-        return {**params, "log_brightness": jnp.log(q)}
+        return {**params, "log_brightness": jnp.log(jnp.maximum(q, jnp.finfo(q.dtype).tiny))}
 
     return post_step
 
