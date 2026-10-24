@@ -322,10 +322,14 @@ def test_an_offset_just_past_the_bound_is_refused_in_value_and_gradient(which):
 def test_the_default_bound_is_the_prior_box_of_the_nuisance():
     """Documented: without ``max_offset_mas`` the bound is that of ``nuisance.priors()`` (the offsets' prior
     box, read here from the prior's own limits, 60.18 mas for this nuisance): an offset a part in 1e9 inside the
-    box's largest edge evaluates and equals the reference (to 1e-8 relative), and 1% beyond it raises. (Exactly
+    box's largest edge evaluates, and chi-squared and the offset gradient equal the reference within the derived
+    tolerances of the module docstring (the one place the precompute is sized from the box), and 1% beyond it raises. (Exactly
     at a bound that is not a binary fraction the comparison is at the mercy of the last bit: an offset equal
     to this 60.18 raised, while the exactly representable 20.0 evaluates; the claim is therefore made a part
     in 1e9 inside.)"""
+    import equinox as eqx
+    import jax.numpy as jnp
+
     case = base._toeplitz_case(FRACTION, [[0.0, 0.0], [0.0, 0.0]])
     tdata = case["data"].toeplitz(case["template"], case["nuis"], offsets="spread")
     prior = case["nuis"].priors()["cal.offset"]
@@ -337,6 +341,14 @@ def test_the_default_bound_is_the_prior_box_of_the_nuisance():
     ref = base.ri.direct_chi2_by_ddid(case["u"], case["v"], case["vis"], case["weight"], case["ddid"], case["obs"],
                                       softmax_image(case["eta"]), PIXEL, FLUX, gain, off)
     got = tdata.chi2_by_ddid(case["scene"], values, case["nuis"])[0]
-    assert np.abs(got / ref - 1).max() < 1e-8
+    chi2_tol, tol = _tolerances(case, values)
+    record("default_bound_chi2_error_over_tolerance", float((np.abs(got - ref) / chi2_tol).max()))
+    assert np.all(np.abs(got - ref) < chi2_tol), (np.abs(got - ref), chi2_tol)
+    term = tdata.term(case["scene"], case["nuis"])
+    g = eqx.filter_grad(lambda v: term.chi2_and_log_norm(v)[0])({k: jnp.asarray(v, float) for k, v in values.items()})
+    _, exact = ro.chi2_and_gradient(case["u"], case["v"], case["vis"], case["weight"], case["obs"], case["eta"], PIXEL, FLUX, gain, off)
+    diff = np.linalg.norm(np.asarray(g["cal.offset"]) - exact["offset"][1:])
+    record("default_bound_offset_gradient_error_over_tolerance", float(diff / tol["cal.offset"]))
+    assert diff < tol["cal.offset"], (diff, tol["cal.offset"])
     with pytest.raises(Exception, match="(?i)beyond the bound"):  # noqa: B017
         tdata.chi2_by_ddid(case["scene"], dict(values, **{"cal.offset": 1.01 * edge * np.array([[1.0, 0.0], [0.0, 0.0]])}), case["nuis"])
