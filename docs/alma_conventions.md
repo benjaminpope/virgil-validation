@@ -359,7 +359,7 @@ fitted s and profiled, in total, per fold and per annulus, for MPoL, virgil at Œ
 
 ## Part 7. The innovation register (B2, B4, B5, B6)
 
-virgil's `design/radio_imaging_innovations.md` records every radio-imaging method beyond published practice, with a status (established, derived, experimental). `tests/test_radio_innovations.py` checks the derived and experimental items against numpy references that share nothing with virgil (`crosscheck.radio_innovations`). On a virgil without the feature a test skips, so CI's pinned virgil (0.4.0) runs only the B6 reference tests.
+virgil's `design/radio_imaging_innovations.md` records every radio-imaging method beyond published practice, with a status (established, derived, experimental). `tests/test_radio_innovations.py` checks the derived and experimental items against numpy references that share nothing with virgil (`crosscheck.radio_innovations`). `tests/test_radio_spread_offsets.py` checks B5's free offsets (`offsets="spread"`) further, against an exact phase-ramp chi-squared with an analytic gradient and Fisher information (`crosscheck.radio_offsets`): chi-squared and every gradient site at a moved and an edge point, recovery of injected offsets against the Cram√©r-Rao scatter, and the documented bound. On a virgil without the feature a test skips, so CI's pinned virgil (0.4.0) runs only the B6 reference tests.
 
 | Item | Status | Check | Reference |
 |---|---|---|---|
