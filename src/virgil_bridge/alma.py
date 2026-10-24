@@ -513,7 +513,7 @@ DEAD_FRACTION_WARN = 0.01
 def dead_pixel_report(image, pixel_mas, *, floor=MPOL["prior"]):
     """The pixels the optimiser cannot revive. With ``I = flux softmax(b)`` the gradient on ``b_i`` is proportional to ``I_i``, so a pixel
     far below the peak stays there whatever the entropy term wants (its interior optimum has every pixel above zero, ``dS/dI = ln(I/M)``).
-    Returns the fraction of pixels below 1e-6 of the peak and below 1e-3 of the entropy ``floor``, the median brightness beyond 2.4 arcsec
+    Returns the fraction of pixels below 1e-6 and below 1e-4 of the peak (``frac_below_1e-6_peak``, ``frac_below_1e-4_peak``) and below 1e-3 of the entropy ``floor``, the median brightness beyond 2.4 arcsec
     over the peak, the largest live radius (arcsec from the phase-centre cell; live = at least 1e-6 of the peak) and a ``warning``
     (None if at most 1 % are dead). R_mpol and MPoL's own solution have none dead; R ob100 (18968246_0) had 64 %."""
     from crosscheck.alma_maxent import phase_centre_cell
@@ -577,64 +577,90 @@ def _plain(v):
         return v
 
 
-# virgil.fit's Adam keywords (virgil 0.4.2 PR, local_1ddbca2a; not on main until it merges): Adam's epsilon and the stop once
-# loss[t - ftol_window] - loss[t] < ftol_abs (C8: 0.1 over 100 steps); info["loss_history"] is the unscaled per-step loss.
-ADAM_KEYWORDS = ("adam_eps", "ftol_abs")
+# virgil.fit's Adam keywords (virgil 0.4.2 PR; time_limit and progress for Adam are virgil#548): Adam's epsilon and the stop once
+# loss[t - ftol_window] - loss[t] < ftol_abs; info["loss_history"] is the unscaled per-step loss. All are checked before any data is read.
+ADAM_KEYWORDS = ("adam_eps", "ftol_abs", "ftol_window", "time_limit", "progress")
 
 
-def require_adam(fit):
-    """Raise a clear error unless ``fit`` (``virgil.fit``) has the Adam keywords of ``ADAM_KEYWORDS``."""
+def missing_params(fit, names):
+    """The ``names`` that ``fit`` (``virgil.fit``) does not accept as keywords."""
     import inspect
 
-    missing = [k for k in ADAM_KEYWORDS if k not in inspect.signature(fit).parameters]
+    params = inspect.signature(fit).parameters
+    return [k for k in names if k not in params]
+
+
+def require_adam(fit, precondition=None):
+    """Raise a clear error unless ``fit`` has every keyword ``run_adam`` passes (``ADAM_KEYWORDS``, and ``precondition`` if used)."""
+    missing = missing_params(fit, ADAM_KEYWORDS + (("precondition",) if precondition not in (None, "none") else ()))
     if missing:
-        raise RuntimeError(f"--method adam needs a virgil whose fit() has {', '.join(missing)} (the Adam epsilon, the C8-style stop and the per-step loss history, "
-                           "added after virgil 0.4.1); the installed one has not")
+        raise RuntimeError(f"--method adam needs a virgil whose fit() has {', '.join(missing)} (Adam's epsilon, the ftol stop, time_limit and progress for Adam, the per-step loss history, "
+                           "precondition: added after virgil 0.4.1); the installed one has not")
+
+
+def convergence_window(losses, tol=0.1, window=100):
+    """C8 for a non-monotone (Adam) loss: converged when over the last ``window`` steps the loss ranged by less than ``tol`` (max - min) and its mean
+    is not lower than the mean of the window before by more than ``tol`` (it is not still falling). Needs two windows of steps. Returns the verdict
+    with the numbers it rests on; the L-BFGS verdict (``convergence``) is a two-point test of a monotone loss and stays as it is."""
+    x = np.asarray(losses, float)
+    if len(x) < 2 * window:
+        return dict(converged=False, change=None, mean_drop=None, window_steps=int(len(x)), reason=f"fewer than {2 * window} steps")
+    last, prev = x[-window:], x[-2 * window:-window]
+    rng, drop = float(last.max() - last.min()), float(prev.mean() - last.mean())
+    return dict(converged=bool(rng < tol and drop <= tol), change=rng, mean_drop=drop, window_steps=int(window), reason="range and drift of the loss over the last window")
 
 
 def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10):
-    """Adam through ``virgil.fit`` (``method="adam"``), stopping on C8 (loss change < ``tol`` over ``window`` steps) or at ``steps`` or ``time_limit``.
-    Returns ``(values, info, trajectory, why)`` like ``run_fit_c8``: the trajectory is virgil's per-step loss history thinned to every ``stride``
-    steps (and the last), ``info['adam']`` records lr, epsilon, steps taken, final loss and the C8 verdict on the full history, and ``why`` is
-    ``c8``, ``max_steps``, ``time_limit`` or ``non_finite``."""
+    """Adam through ``virgil.fit`` (``method="adam"``), stopping on virgil's ftol test (``ftol_abs=tol`` over ``window`` steps) or at ``steps`` or ``time_limit``.
+    Returns ``(values, info, trajectory, why)`` like ``run_fit_c8``. The trajectory is virgil's per-step loss history thinned to every ``stride``
+    steps (and the last); ``elapsed`` is set only at the steps virgil's ``progress`` reported (else None). vv's own C8 verdict (``convergence_window``
+    on the full history) is ``info['adam']['c8']``; ``info['converged']`` stays virgil's. ``why`` is ``c8``, ``ftol`` (virgil stopped on its two-point
+    test but the window test disagrees), ``max_steps``, ``time_limit`` or ``non_finite``."""
     import time
 
     from virgil import fit
 
-    require_adam(fit)
     precondition = None if precondition in (None, "none") else precondition
+    require_adam(fit, precondition)
     kw = {} if precondition is None else {"precondition": precondition}
+    prog = {}
     t0 = time.time()
     with ft_eps(eps), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="adam", max_steps=steps, learning_rate=lr,
-                  adam_eps=adam_eps, ftol_abs=tol, ftol_window=window, time_limit=time_limit, **kw)
+                  adam_eps=adam_eps, ftol_abs=tol, ftol_window=window, time_limit=time_limit, progress=lambda d: prog.update({int(d["steps"]): d}), **kw)
     wall = time.time() - t0
     if "loss_history" not in res.info:
         raise RuntimeError("virgil.fit(method='adam') returned no info['loss_history']: C8 cannot be judged (needs the virgil PR that records it)")
     hist = np.asarray(res.info["loss_history"], float)
     n = len(hist)
-    full = [dict(steps=float(i + 1), loss=float(h)) for i, h in enumerate(hist)]
-    verdict = convergence(full) if n >= 2 else convergence([], dict(converged=False))
-    keep = sorted(set(range(0, n, stride)) | {n - 1}) if n else []
-    traj = [dict(steps=float(i + 1), loss=float(hist[i]), grad_norm=float("nan"), elapsed=wall * (i + 1) / n, round=1) for i in keep]
+    verdict = convergence_window(hist, tol, window)
+    keep = sorted(set(range(0, n, stride)) | ({n - 1} if n else set()) | {k - 1 for k in prog if 0 < k <= n})
+    traj = []
+    for i in keep:
+        d = prog.get(i + 1, {})
+        traj.append(dict(steps=float(i + 1), loss=float(hist[i]), grad_norm=float(d["grad_norm"]) if "grad_norm" in d else float("nan"),
+                         elapsed=float(d["elapsed"]) if "elapsed" in d else None, round=1))
     if log:
-        log(f"  adam: {n} steps, loss {hist[-1] if n else float('nan'):.6f}, {wall:.0f} s ({1e3 * wall / max(n, 1):.1f} ms/step incl. compile)")
+        log(f"  adam: {n} steps, loss {hist[-1] if n else float('nan'):.6f}, {wall:.0f} s ({1e3 * wall / max(n, 1):.1f} ms/step incl. compile and setup)")
     values = {k: np.asarray(v) for k, v in res.values.items()}
     info = {k: (v.item() if hasattr(v, "item") else v) for k, v in res.info.items() if np.ndim(v) == 0}
     finite = np.isfinite(float(res.info["loss"])) and all(np.all(np.isfinite(v)) for v in values.values())
     stop = res.info.get("stop")
     if not finite:
         why = "non_finite"
-    elif verdict["converged"] and (verdict["window_steps"] or 0) >= window:
+    elif verdict["converged"]:
         why = "c8"
     elif stop == "time":
         why = "time_limit"
+    elif res.info.get("converged") and stop is None and n < steps:
+        why = "ftol"
     else:
         why = "max_steps"
-    info.update(steps=n, rounds=1, stop=stop if stop is not None else why, virgil_converged=res.info.get("converged"), converged=bool(verdict["converged"]), precondition=precondition,
+    info.update(steps=n, rounds=1, stop=stop if stop is not None else why, precondition=precondition, wall_s=wall,
                 precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
-                adam=dict(lr=lr, eps=adam_eps, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict, ms_per_step=1e3 * wall / max(n, 1)))
+                adam=dict(lr=lr, eps=adam_eps, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
+                          wall_s=wall, ms_per_step_incl_setup=1e3 * wall / max(n, 1)))
     return values, info, traj, why
 
 
@@ -643,14 +669,13 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
     steps. The loss is in -ln L units up to the constant of the priors' normalisation. ``precondition`` (``"diag"``
     or None) is ``virgil.fit``'s opt-in diagonal Gauss-Newton scaling; it needs a virgil that has the argument."""
-    import inspect
 
     from virgil import fit
 
     precondition = None if precondition in (None, "none") else precondition
     kw = {}
     if precondition is not None:
-        if "precondition" not in inspect.signature(fit).parameters:
+        if missing_params(fit, ("precondition",)):
             raise RuntimeError(f"precondition={precondition!r} needs a virgil whose fit() has the precondition argument "
                                "(virgil >= the release that includes fit(precondition=...)); the installed one has not")
         kw["precondition"] = precondition

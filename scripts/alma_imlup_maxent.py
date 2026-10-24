@@ -103,8 +103,11 @@ def stage_dead_pixels(values, prob, config):
 
 
 def stage_summary(name, info, traj, wall, why):
-    return dict(name=name, method=info.get("method", "lbfgs"), adam=info.get("adam"), steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"],
-                wall_s=wall, convergence=(info["adam"]["c8"] if info.get("adam") else va.convergence(traj, info)), loss_final=info["loss"], trajectory=traj,
+    """``fit_converged`` is virgil's own ``info['converged']`` for both methods; ``c8_converged`` is vv's C8 verdict (``convergence``: the two-point test for L-BFGS,
+    ``va.convergence_window`` for Adam), which the cold-start gate uses."""
+    conv = info["adam"]["c8"] if info.get("adam") else va.convergence(traj, info)
+    return dict(name=name, method=info.get("method", "lbfgs"), adam=info.get("adam"), steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"], c8_converged=conv["converged"],
+                wall_s=wall, convergence=conv, loss_final=info["loss"], trajectory=traj,
                 precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []), restarts=info.get("restarts", []))
 
 
@@ -378,7 +381,7 @@ def cmd_fit(args):
         import virgil
 
         try:
-            va.require_adam(virgil.fit)
+            va.require_adam(virgil.fit, args.precondition)
         except RuntimeError as e:
             raise SystemExit(str(e)) from e
     if args.workflow in ("mpol", "clean") and args.config != "R":
@@ -684,7 +687,7 @@ def cold_start_gate_of(res, vres, image, px, flux, clean_dir, dsharp=None):
         ref, name = vs.clean_image_flux(dsharp)["flux_jy"], f"DSHARP CLEAN image flux ({pathlib.Path(dsharp).name})"
     else:
         ref, name = vs.REFERENCE_FLUX_JY, vs.REFERENCE_FLUX_NAME
-    stages = [bool(st["convergence"]["converged"]) for st in vres.get("stages", [])]
+    stages = [bool(st.get("c8_converged", st["convergence"]["converged"])) for st in vres.get("stages", [])]
     return vs.cold_start_gate(
         objective_ours=o and o["ours"]["objective"], objective_mpol=o and o["mpol_solution_in_virgil"]["objective"],
         chi2n_ours=o and raw(o["ours"]), chi2n_mpol=o and raw(o["mpol_solution_in_virgil"]), stages_converged=stages,

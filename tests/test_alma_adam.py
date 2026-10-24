@@ -30,7 +30,7 @@ def _call(*argv):
 def _stub_adam(monkeypatch, history, seen=None):
     """A ``virgil.fit`` with the Adam keywords that returns ``init`` unchanged and the given per-step loss history."""
     def fit(model, priors, data, regularizers=(), *, likelihoods=(), init=None, method=None, max_steps=None, learning_rate=1e-2, adam_eps=1e-8,
-            ftol_abs=None, ftol_window=None, time_limit=None, precondition=None, **kw):
+            ftol_abs=None, ftol_window=None, time_limit=None, progress=None, precondition=None, **kw):
         if seen is not None:
             seen.update(method=method, max_steps=max_steps, learning_rate=learning_rate, adam_eps=adam_eps, ftol_abs=ftol_abs, ftol_window=ftol_window)
         return types.SimpleNamespace(values=dict(init), info=dict(loss=float(history[-1]), loss_history=list(history), stop=None, converged=True, method=method))
@@ -51,9 +51,10 @@ def test_adam_loss_history_gives_the_c8_verdict_and_records_the_stage(monkeypatc
     assert seen == dict(method="adam", max_steps=800, learning_rate=3e-3, adam_eps=1e-6, ftol_abs=0.1, ftol_window=100)
     a = info["adam"]
     assert a["lr"] == 3e-3 and a["eps"] == 1e-6 and a["steps"] == 800 and a["loss_final"] == pytest.approx(flat[-1]) and a["c8"]["converged"] and a["virgil_converged"] is True
+    assert info["converged"] is True and all(t["elapsed"] is None for t in traj)  # virgil's flag unchanged; no made-up per-step time
     _stub_adam(monkeypatch, 1000.0 - np.arange(1, 801))
     _, info, traj, why = va.run_adam(prob, {"x": np.zeros(2)}, steps=800)
-    assert why == "max_steps" and not info["converged"] and not info["adam"]["c8"]["converged"]
+    assert why == "max_steps" and not info["adam"]["c8"]["converged"]
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
@@ -90,3 +91,45 @@ def test_stage_dead_pixels_are_recorded_for_lbfgs_and_adam(tmp_path, monkeypatch
     for s in r["stages"]:
         assert s["method"] == "adam" and s["adam"]["steps"] > 0 and s["adam"]["c8"]["converged"] in (True, False) and s["convergence"] == s["adam"]["c8"]
         assert s["dead_pixels"]["base"]["frac_below_1e-6_peak"] >= 0
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_adam_c8_is_a_window_test_that_an_oscillating_loss_fails():
+    """100 + 5 sin(2 pi t / 100) passes a two-point test at some steps but ranges by 10 over a window: not converged. A flat loss with noise passes; a loss
+    still drifting down by more than 0.1 per window (a small range, a falling mean) does not; fewer than two windows never does."""
+    t = np.arange(1, 1001)
+    assert not va.convergence_window(100 + 5 * np.sin(2 * np.pi * t / 100))["converged"]
+    rng = np.random.default_rng(0)
+    assert va.convergence_window(100 + 0.01 * rng.normal(size=1000))["converged"]
+    drift = va.convergence_window(100 - 0.0015 * t)  # 0.15 per 100 steps, no noise
+    assert not drift["converged"] and drift["mean_drop"] > 0.1
+    assert not va.convergence_window(np.ones(150))["converged"]
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_every_adam_keyword_and_precondition_are_checked_before_data(tmp_path, monkeypatch):
+    """A virgil with adam_eps and ftol_abs but not ftol_window, or not precondition when asked for, is refused with that name, before data is read."""
+    def fit(model, priors, data, *, adam_eps=1e-8, ftol_abs=None, time_limit=None, progress=None, **kw):
+        return None
+
+    monkeypatch.setattr(virgil, "fit", fit)
+    with pytest.raises(SystemExit, match="ftol_window"):
+        _call("fit", "--config", "R", "--data", tmp_path / "nodata", "--out", tmp_path / "o", "--method", "adam")
+
+    def fit2(model, priors, data, *, adam_eps=1e-8, ftol_abs=None, ftol_window=100, time_limit=None, progress=None):
+        return None
+
+    monkeypatch.setattr(virgil, "fit", fit2)
+    with pytest.raises(SystemExit, match="precondition"):
+        _call("fit", "--config", "R", "--data", tmp_path / "nodata", "--out", tmp_path / "o", "--method", "adam", "--precondition", "diag")
+    va.require_adam(fit2)  # without precondition it is complete
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_fit_converged_is_virgils_and_c8_converged_is_vvs_for_both_methods():
+    """Both methods' stage records carry ``fit_converged`` (virgil's ``info['converged']``) and ``c8_converged`` (vv's verdict)."""
+    adam = dict(steps=300, rounds=1, stop="limit", converged=True, loss=1.0, adam=dict(c8=dict(converged=False, change=9.0)))
+    s = script.stage_summary("all", adam, [], 1.0, "max_steps")
+    assert s["fit_converged"] is True and s["c8_converged"] is False and s["convergence"]["converged"] is False
+    lb = script.stage_summary("all", dict(steps=300, rounds=1, stop=None, converged=False, loss=1.0), [dict(steps=1.0, loss=5.0), dict(steps=300.0, loss=4.99)], 1.0, "c8")
+    assert lb["fit_converged"] is False and lb["c8_converged"] is True
