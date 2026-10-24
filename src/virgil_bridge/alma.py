@@ -527,7 +527,7 @@ def dead_pixel_report(image, pixel_mas, *, floor=MPOL["prior"]):
     radius = np.hypot(rr, cc) * pixel_mas / 1000.0
     frac = float(dead.mean())
     outer = radius > 2.4
-    out = {"peak_jy_arcsec2": peak, "frac_below_1e-6_peak": frac, "frac_below_1e-3_floor": float((img < 1e-3 * floor).mean()),
+    out = {"peak_jy_arcsec2": peak, "frac_below_1e-6_peak": frac, "frac_below_1e-4_peak": float((img < 1e-4 * peak).mean()), "frac_below_1e-3_floor": float((img < 1e-3 * floor).mean()),
            "median_beyond_2p4_arcsec_over_peak": float(np.median(img[outer]) / peak) if outer.any() else None,
            "largest_live_radius_arcsec": float(radius[~dead].max()) if (~dead).any() else 0.0}
     out["warning"] = None if frac <= DEAD_FRACTION_WARN else (
@@ -575,6 +575,67 @@ def _plain(v):
         return np.asarray(v).tolist() if np.ndim(v) else v
     except (TypeError, ValueError):  # ragged or otherwise unconvertible
         return v
+
+
+# Keywords of virgil.fit's Adam path that the 0.4.2 coordinator's PR adds (GUESSED names until it is on virgil main): Adam's epsilon, the
+# C8-style stop (stop when the loss moved by less than ftol_abs over ftol_window steps) and the per-step loss in info["loss_history"].
+ADAM_KEYWORDS = ("adam_eps", "ftol_abs", "ftol_window")
+
+
+def require_adam(fit):
+    """Raise a clear error unless ``fit`` (``virgil.fit``) has the Adam keywords of ``ADAM_KEYWORDS``."""
+    import inspect
+
+    missing = [k for k in ADAM_KEYWORDS if k not in inspect.signature(fit).parameters]
+    if missing:
+        raise RuntimeError(f"--method adam needs a virgil whose fit() has {', '.join(missing)} (the Adam epsilon, the C8-style stop and the per-step loss history, "
+                           "added after virgil 0.4.1); the installed one has not")
+
+
+def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10):
+    """Adam through ``virgil.fit`` (``method="adam"``), stopping on C8 (loss change < ``tol`` over ``window`` steps) or at ``steps`` or ``time_limit``.
+    Returns ``(values, info, trajectory, why)`` like ``run_fit_c8``: the trajectory is virgil's per-step loss history thinned to every ``stride``
+    steps (and the last), ``info['adam']`` records lr, epsilon, steps taken, final loss and the C8 verdict on the full history, and ``why`` is
+    ``c8``, ``max_steps``, ``time_limit`` or ``non_finite``."""
+    import time
+
+    from virgil import fit
+
+    require_adam(fit)
+    precondition = None if precondition in (None, "none") else precondition
+    kw = {} if precondition is None else {"precondition": precondition}
+    t0 = time.time()
+    with ft_eps(eps), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="adam", max_steps=steps, learning_rate=lr,
+                  adam_eps=adam_eps, ftol_abs=tol, ftol_window=window, time_limit=time_limit, **kw)
+    wall = time.time() - t0
+    if "loss_history" not in res.info:
+        raise RuntimeError("virgil.fit(method='adam') returned no info['loss_history']: C8 cannot be judged (needs the virgil PR that records it)")
+    hist = np.asarray(res.info["loss_history"], float)
+    n = len(hist)
+    full = [dict(steps=float(i + 1), loss=float(h)) for i, h in enumerate(hist)]
+    verdict = convergence(full) if n >= 2 else convergence([], dict(converged=False))
+    keep = sorted(set(range(0, n, stride)) | {n - 1}) if n else []
+    traj = [dict(steps=float(i + 1), loss=float(hist[i]), grad_norm=float("nan"), elapsed=wall * (i + 1) / n, round=1) for i in keep]
+    if log:
+        log(f"  adam: {n} steps, loss {hist[-1] if n else float('nan'):.6f}, {wall:.0f} s ({1e3 * wall / max(n, 1):.1f} ms/step incl. compile)")
+    values = {k: np.asarray(v) for k, v in res.values.items()}
+    info = {k: (v.item() if hasattr(v, "item") else v) for k, v in res.info.items() if np.ndim(v) == 0}
+    finite = np.isfinite(float(res.info["loss"])) and all(np.all(np.isfinite(v)) for v in values.values())
+    stop = res.info.get("stop")
+    if not finite:
+        why = "non_finite"
+    elif verdict["converged"] and (verdict["window_steps"] or 0) >= window:
+        why = "c8"
+    elif stop == "time":
+        why = "time_limit"
+    else:
+        why = "max_steps"
+    info.update(steps=n, rounds=1, stop=stop if stop is not None else why, converged=bool(verdict["converged"]), precondition=precondition,
+                precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
+                adam=dict(lr=lr, eps=adam_eps, steps=n, loss_final=float(res.info["loss"]), c8=verdict, ms_per_step=1e3 * wall / max(n, 1)))
+    return values, info, traj, why
 
 
 def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None):
