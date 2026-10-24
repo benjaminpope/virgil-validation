@@ -133,3 +133,63 @@ def test_fit_converged_is_virgils_and_c8_converged_is_vvs_for_both_methods():
     assert s["fit_converged"] is True and s["c8_converged"] is False and s["convergence"]["converged"] is False
     lb = script.stage_summary("all", dict(steps=300, rounds=1, stop=None, converged=False, loss=1.0), [dict(steps=1.0, loss=5.0), dict(steps=300.0, loss=4.99)], 1.0, "c8")
     assert lb["fit_converged"] is False and lb["c8_converged"] is True
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_post_step_blur_conserves_flux_revives_a_dead_pixel_and_is_off_at_zero():
+    """dorito's blur: the normalised image keeps unit mass and ``cal.flux`` is untouched; a pixel at 1e-12 of the peak beside live ones is raised above 1e-6 of
+    the peak in one step; width 0 or None gives no callable; absent ``log_brightness`` (a held-image stage) passes through."""
+    import jax
+    import jax.numpy as jnp
+
+    assert va.blur_post_step(0) is None and va.blur_post_step(None) is None
+    with pytest.raises(ValueError):
+        va.blur_post_step(-1.0)
+    step = va.blur_post_step(0.25)
+    n = 16
+    lb = np.full((n, n), -30.0)
+    lb[4:12, 4:12] = 0.0
+    lb[8, 8] = -30.0  # a dead pixel inside the live block
+    lb[0, :] = lb[:, 0] = lb[n - 1, 5] = 0.0  # flux on the border, where a leaky padding shows
+    params = {"log_brightness": jnp.asarray(lb), "cal.flux": jnp.asarray(0.3), "cal.gain": jnp.ones(3)}
+    out = step(params)
+    p0 = jax.nn.softmax(params["log_brightness"].reshape(-1))
+    p1 = jax.nn.softmax(out["log_brightness"].reshape(-1))
+    from scipy.ndimage import gaussian_filter
+
+    img0 = np.asarray(p0, float).reshape(n, n)
+    ref = gaussian_filter(img0, 0.25, mode="reflect", truncate=3.0)  # scipy's reflect repeats the edge pixel: mass-conserving
+    assert ref.sum() == pytest.approx(img0.sum(), rel=1e-12)
+    np.testing.assert_allclose(np.asarray(p1, float).reshape(n, n), ref / ref.sum(), rtol=1e-4)  # the step's float32 softmax
+    assert float(out["cal.flux"]) == 0.3 and np.array_equal(out["cal.gain"], params["cal.gain"])
+    out_img = np.asarray(p1).reshape(n, n)
+    in_img = np.asarray(p0).reshape(n, n)
+    assert in_img[8, 8] < 1e-6 * in_img.max()
+    assert out_img[8, 8] > 1e-6 * out_img.max()
+    held = {"cal.flux": jnp.asarray(0.3)}
+    assert step(held) is held
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_post_step_blur_is_adam_only_and_reaches_virgil_fit(tmp_path, monkeypatch):
+    """lbfgs refuses it before any data is read; Adam needs ``post_step`` in virgil.fit (named in the error); with it the callable is passed and the width recorded."""
+    monkeypatch.setattr(virgil, "fit", lambda model, priors, data, **kw: None)
+    with pytest.raises(SystemExit, match="needs --method adam"):
+        _call("fit", "--config", "R", "--data", tmp_path / "nodata", "--out", tmp_path / "o", "--post-step-blur-px", "0.25")
+    seen = {}
+
+    def fit(model, priors, data, regularizers=(), *, likelihoods=(), init=None, method=None, max_steps=None, learning_rate=1e-2, adam_eps=1e-8,
+            ftol_abs=None, ftol_window=None, time_limit=None, progress=None, precondition=None, post_step=None, **kw):
+        seen["post_step"] = post_step
+        return types.SimpleNamespace(values=dict(init), info=dict(loss=1.0, loss_history=[1.0] * 3, stop=None, converged=True, method=method))
+
+    prob = types.SimpleNamespace(model=None, priors={}, regs=(), terms=())
+    monkeypatch.setattr(virgil, "fit", lambda model, priors, data, **kw: None)
+    with pytest.raises(RuntimeError, match="post_step"):
+        va.run_adam(prob, {}, steps=1, post_step_blur_px=0.25)
+    monkeypatch.setattr(virgil, "fit", fit)
+    _, info, _, _ = va.run_adam(prob, {"x": np.zeros(2)}, steps=3, post_step_blur_px=0.25)
+    assert callable(seen["post_step"]) and info["adam"]["post_step_blur_px"] == 0.25
+    seen.clear()
+    _, info, _, _ = va.run_adam(prob, {"x": np.zeros(2)}, steps=3)
+    assert seen["post_step"] is None and info["adam"]["post_step_blur_px"] is None
