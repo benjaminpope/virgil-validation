@@ -9,8 +9,6 @@ OzSTAR under `/fred/oz440/bpope/eso_binaries/`.
 | system | instrument | data path | epochs (MJD) | reference orbit | used here |
 |---|---|---|---|---|---|
 | Gl 229 Ba-Bb | GRAVITY K, SC closure phases | `~/data/eso_binaries/gravity/oifits/<night>/` (40 files) | 7 nights: 60304.2, 60308.2, 60368.1, 60398.0, 60429.97, 60663.3, 60718.1 | Xuan+2024, Nature 634, 1070, Table 1: P 12.13 d, e 0.23, i 31 deg, a 7.3 mas (`xuan2024_table1.json`; omega is the primary's; Omega node unverified) | yes, p_range 10-14 d |
-| Apep | GRAVITY dual-field | `~/data/apep_gravity/{reduced,calibrated}/` | 6 nights, 60042.2 to 60747.3 | plume-model elements (White+2025), Omega convention unresolved | no: calibration script outside the repo, data not on /fred |
-| Apep | NACO SAM | `~/data/apep_naco/oifits/` | 4 nights in one run (58562-58566) | none | no: not an orbit |
 | 9 Sgr, delta Vel, HD 136164 | NACO SAM | `~/data/eso_binaries/naco/oifits/<sys>/` | 1 epoch each | Fabry+2021; none; Balmer+2024 | no: one epoch |
 | HR 4049 | PIONIER H | `~/code/nuHor/data/HR4049_pionier_data_all/` | 7 nights, 58884-58899 | none (no period) | no: no period, notebook loaders only |
 | hd41255 | GRAVITY K | `trackb/hd41255/oifits/` | 14, 59231-59968 | Gallenne+2023 Table 6: P 148.3 d | yes |

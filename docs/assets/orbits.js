@@ -354,6 +354,8 @@
       '<div class="og-dhead"><h2 class="og-dtitle" tabindex="-1">' + esc(t.target) + "</h2>" + badge(t) + '<span class="og-chips">' + chips(t, false) + "</span></div>" +
       '<div class="og-muted og-sub">' + esc(t.instrument) + " · " + esc(scope(t)) + (nights(t) ? " · " + nights(t) : "") + "</div>" +
       '<p class="og-about-t">' + esc(t.about) + "</p>";
+    // t.aliases: the system's period-alias page, added by scripts/build_orbits_page.py
+    if (t.aliases) h += '<p class="og-cite"><a class="og-aliases" href="' + esc(t.aliases) + '">Period aliases →</a> the alias bands, their evidence and which one wins.</p>';
     if (t.status === "awaiting") h += '<p class="og-note">The ' + esc(t.awaiting || "fit") + " for this target is not in yet; whatever else exists is shown.</p>";
     else if (t.status_why) h += '<p class="og-why og-why-' + esc(t.status) + '">' + esc(t.status_why) + "</p>";
     h += flagTags(t);
