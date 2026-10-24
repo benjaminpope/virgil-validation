@@ -4,6 +4,7 @@
     python scripts/alma_imlup_maxent.py folds --data DIR --out FILE.npz
     python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--chi2 {direct,toeplitz}] [--sb-only] [--init DIR] [--workflow {p3,mpol,clean} [--clean-dir DIR]]
                                             [--shat DIR] [--folds FILE.npz --fold J] [--max-steps N] [--time-limit S]
+                                            [--method {lbfgs,adam} [--adam-lr LR] [--adam-steps N] [--adam-eps E]]
     python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
     python scripts/alma_imlup_maxent.py cv-aggregate DIR [--out DIR]
@@ -94,9 +95,19 @@ def lam_of(args, n):
     return va.lam_f_equivalent(va.lam_r(n) if args.lam_r_equiv is None else args.lam_r_equiv, flux=args.flux)
 
 
+def stage_dead_pixels(values, prob, config):
+    """The dead-pixel fractions (below 1e-6 and 1e-4 of the peak) and the largest live radius of the stage's base image and of the image tapered to
+    MPoL's beam (``va.dead_pixel_report`` of each)."""
+    image = va.image_of(values, prob.npix, prob.pixel_mas, va.beam_log(prob.npix, prob.pixel_mas) if config == "F" else None)
+    return dict(base=va.dead_pixel_report(image, prob.pixel_mas), tapered=va.dead_pixel_report(va.tapered_image(image, prob.pixel_mas), prob.pixel_mas))
+
+
 def stage_summary(name, info, traj, wall, why):
-    return dict(name=name, steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"],
-                wall_s=wall, convergence=va.convergence(traj, info), loss_final=info["loss"], trajectory=traj,
+    """``fit_converged`` is virgil's own ``info['converged']`` for both methods; ``c8_converged`` is vv's C8 verdict (``convergence``: the two-point test for L-BFGS,
+    ``va.convergence_window`` for Adam), which the cold-start gate uses."""
+    conv = info["adam"]["c8"] if info.get("adam") else va.convergence(traj, info)
+    return dict(name=name, method=info.get("method", "lbfgs"), adam=info.get("adam"), steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"], c8_converged=conv["converged"],
+                wall_s=wall, convergence=conv, loss_final=info["loss"], trajectory=traj,
                 precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []), restarts=info.get("restarts", []))
 
 
@@ -171,7 +182,10 @@ def run_stages(args, data, prob_for, init_dir, save=None):
         if fixed is not None:  # the held image is no free site: the optimiser sees the nuisances only
             values.pop("log_brightness")
         limit = args.prestage_max_steps if name in ("selfcal", "image") else args.max_steps
-        say(f"stage {name}: max_steps {limit}, time limit {args.time_limit}, gtol {args.gtol}")
+        if getattr(args, "method", "lbfgs") == "adam":
+            say(f"stage {name}: Adam lr {args.adam_lr:g}, eps {args.adam_eps:g}, steps {args.adam_steps}, time limit {args.time_limit}")
+        else:
+            say(f"stage {name}: max_steps {limit}, time limit {args.time_limit}, gtol {args.gtol}")
         t = time.time()
 
         def with_image(vals, fixed=fixed):
@@ -185,8 +199,15 @@ def run_stages(args, data, prob_for, init_dir, save=None):
                 part = dict(stage_summary(name, info, traj, time.time() - t, "in_progress"), chi2=prob.chi2_info)
                 save(prob, with_image(vals), stages + [dict(part, in_progress=True)])
 
-        out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
+        if getattr(args, "method", "lbfgs") == "adam":
+            out, info, traj, why = va.run_adam(prob, values, steps=args.adam_steps, lr=args.adam_lr, adam_eps=args.adam_eps, time_limit=args.time_limit, log=say, precondition=args.precondition)
+            info["method"] = "adam"
+        else:
+            out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
         stages.append(dict(stage_summary(name, info, traj, time.time() - t, why), chi2=prob.chi2_info))
+        stages[-1]["dead_pixels"] = dp = stage_dead_pixels(with_image(out), prob, args.config)
+        say(f"stage {name}: dead pixels, base {dp['base']['frac_below_1e-6_peak']:.2%} below 1e-6 and {dp['base']['frac_below_1e-4_peak']:.2%} below 1e-4 of the peak, live to {dp['base']['largest_live_radius_arcsec']:.2f} arcsec; "
+            f"tapered {dp['tapered']['frac_below_1e-6_peak']:.2%} / {dp['tapered']['frac_below_1e-4_peak']:.2%}, live to {dp['tapered']['largest_live_radius_arcsec']:.2f} arcsec")
         if floor_info is not None or gfit_info is not None:  # the first stage's start (it is the only one that is not warm)
             stages[-1].update({k: v for k, v in (("start_floor", floor_info), ("start_gauss_fit", gfit_info)) if v is not None})
             floor_info = gfit_info = None
@@ -356,6 +377,13 @@ def resolve_alpha(args):
 
 def cmd_fit(args):
     resolve_alpha(args)
+    if args.method == "adam":
+        import virgil
+
+        try:
+            va.require_adam(virgil.fit, args.precondition)
+        except RuntimeError as e:
+            raise SystemExit(str(e)) from e
     if args.workflow in ("mpol", "clean") and args.config != "R":
         raise SystemExit(f"--workflow {args.workflow} is defined for config R only (MPoL has no beam, no free alpha)")
     if args.chi2 == "toeplitz" and args.config != "R":
@@ -636,6 +664,14 @@ def fit_notes(vres):
                "| parameter | value | bound |", "|---|---:|---:|"] + [f"| {h['site']}{h['index']} | {h['value']:.6g} | {h['side']} {h['bound']:.6g} |" for h in ab["at_bound"]]
     else:
         md.append(f"At a prior bound: none of {ab['n_checked']} bounded parameters is within {ab['edge']:.0%} of its range of a bound.")
+    st = [x for x in vres.get("stages", []) if "dead_pixels" in x]
+    if st:
+        md += ["", "Dead pixels after each stage (fraction of pixels below a fraction of the peak; base image / tapered to MPoL's beam):", "",
+               "| stage | method | steps | final loss | C8 | base <1e-6 | base <1e-4 | base live radius (arcsec) | tapered <1e-6 | tapered <1e-4 | tapered live radius (arcsec) |", "|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|"]
+        for x in st:
+            b, t = x["dead_pixels"]["base"], x["dead_pixels"]["tapered"]
+            md.append(f"| {x['name']} | {x.get('method', 'lbfgs')} | {x['steps']} | {x['loss_final']:.2f} | {x['convergence']['converged']} | {b['frac_below_1e-6_peak']:.2%} | {b['frac_below_1e-4_peak']:.2%} | "
+                      f"{b['largest_live_radius_arcsec']:.2f} | {t['frac_below_1e-6_peak']:.2%} | {t['frac_below_1e-4_peak']:.2%} | {t['largest_live_radius_arcsec']:.2f} |")
     return md
 
 
@@ -651,7 +687,7 @@ def cold_start_gate_of(res, vres, image, px, flux, clean_dir, dsharp=None):
         ref, name = vs.clean_image_flux(dsharp)["flux_jy"], f"DSHARP CLEAN image flux ({pathlib.Path(dsharp).name})"
     else:
         ref, name = vs.REFERENCE_FLUX_JY, vs.REFERENCE_FLUX_NAME
-    stages = [bool(st["convergence"]["converged"]) for st in vres.get("stages", [])]
+    stages = [bool(st.get("c8_converged", st["convergence"]["converged"])) for st in vres.get("stages", [])]
     return vs.cold_start_gate(
         objective_ours=o and o["ours"]["objective"], objective_mpol=o and o["mpol_solution_in_virgil"]["objective"],
         chi2n_ours=o and raw(o["ours"]), chi2n_mpol=o and raw(o["mpol_solution_in_virgil"]), stages_converged=stages,
@@ -862,6 +898,11 @@ def main(argv=None):
     p.add_argument("--config", choices=["R", "F"], required=True)
     p.add_argument("--chi2", choices=va.CHI2_ENGINES, default="direct", help="config R: the data term's engine. toeplitz: virgil's dirty-beam chi^2 in every stage (equal to direct to ~1e-13, cost independent of N; "
                    "fitted offsets then need their box inside the precompute: --offset-bound-mas defaults to 20, and baselines past its Nyquist margin are refused). The report and compare always score with the direct term")
+    p.add_argument("--method", choices=["lbfgs", "adam"], default="lbfgs", help="lbfgs (default): L-BFGS restarted until C8. adam: virgil.fit's Adam, one run per stage of --adam-steps, stopped early on C8 "
+                   "(per-coordinate steps keep unconstrained pixels alive where L-BFGS drives them to logit -inf; needs a virgil with the Adam keywords)")
+    p.add_argument("--adam-lr", type=float, default=1e-2, help="adam: learning rate in the unconstrained coordinates")
+    p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
+    p.add_argument("--adam-eps", type=float, default=1e-8, help="adam: the epsilon in the denominator of the update")
     p.add_argument("--sb-only", action="store_true")
     p.add_argument("--workflow", choices=["p3", "mpol", "clean"], default="p3",
                    help="p3 (default): C9's SB stage then all data from a 1\" Gaussian, s at ŝ. mpol (config R only): one all-data stage from MPoL's own start "
