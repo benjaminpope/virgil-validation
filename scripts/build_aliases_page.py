@@ -113,6 +113,10 @@ def section(name, label, instrument, sysdir, rel):
     if ref:
         out.append(f"Reference period {ref['period']:.4f} d lies in band N = {ref['n']} (p = {fmt(ref.get('p'), '.3f')}); "
                    f"{'it is the winner' if ref.get('is_winner') else 'it is not the winner'}.\n")
+    if not is_cold(meta):
+        out.append('!!! warning "Not a cold start"\n    This run is not a cold start (`args.no_init` is false, or an initial orbit was used): '
+                   "agreement with the reference is not independent.\n")
+        out.append(cold_line(name, sysdir, rel))
     out.append(table(bands) + "\n")
     sp = meta.get("sky_plane")
     if sp:
@@ -160,15 +164,36 @@ def is_cold(meta):
     return (meta.get("args") or {}).get("no_init") is True and meta.get("init") is None
 
 
+def cold_line(name, sysdir, rel, ref_n=None):
+    """One line citing the stored cold run ``<name>-cold`` (winner and the reference band's rank), or "" if none."""
+    cdir = sysdir.parent / f"{name}-cold"
+    if not (cdir / "bands.json").exists() or not (cdir / "meta.json").exists():
+        return ""
+    meta = json.load(open(cdir / "meta.json"))
+    if not is_cold(meta):
+        return ""
+    bands = json.load(open(cdir / "bands.json"))["bands"]
+    ref = (json.load(open(sysdir / "meta.json")).get("reference_band") or {}) if (sysdir / "meta.json").exists() else {}
+    n_ref = ref_n if ref_n is not None else ref.get("n")
+    rank = next((i + 1 for i, b in enumerate(bands) if b["n"] == n_ref), None)
+    tail = f"; the reference band N = {n_ref} ranks {rank} of {len(bands)}" if rank else ""
+    return (f"A stored cold run (`--no-init`, [`{name}-cold`]({rel}/{name}-cold/bands.json)) ranks N = {bands[0]['n']} first{tail}. "
+            "It is the independent result; the table below is not.\n")
+
+
 def verdict_tally(assets, names):
-    """Winning-band verdicts of every system with a stored sky-plane row, under the current rule."""
+    """Winning-band verdicts of every system with a stored sky-plane row, under the current rule. ``cold`` counts
+    those whose run was a cold start; the rest were warm or reference-informed."""
     verdicts = {}
+    cold = 0
     for n in names:
         mj = pathlib.Path(assets) / n / "meta.json"
-        top = (json.load(open(mj)).get("sky_plane") or {}).get("top") if mj.exists() else None
+        meta = json.load(open(mj)) if mj.exists() else {}
+        top = (meta.get("sky_plane") or {}).get("top")
         if top:
             verdicts[n] = current_verdict(top)
-    return dict(total=len(verdicts), verdicts=verdicts,
+            cold += is_cold(meta)
+    return dict(total=len(verdicts), verdicts=verdicts, cold=cold,
                 **{"pass": sum(v == "SAME-SKY-ORBIT" for v in verdicts.values())})
 
 
@@ -185,7 +210,8 @@ def tally_sentence(assets, names):
     tally = verdict_tally(assets, names)
     return (f"Under the current sky-plane rule (rms offset under {SAME_FRACTION:.0%} of the separation and under "
             f"{SAME_SIGMA:g} posterior spreads), {tally['pass']} of {tally['total']} systems have a winning-band orbit on the "
-            "reference's sky orbit, recomputed from the stored statistics.")
+            f"reference's sky orbit (warm or reference-informed starts; {tally['cold']} of them cold), "
+            "recomputed from the stored statistics. This is not a blind result.")
 
 
 def skipped():

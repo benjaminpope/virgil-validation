@@ -347,10 +347,8 @@ virgil's release checklist gains these items (also in virgil's
 3. No ledger finding ruled `virgil` with severity `bug` (its `kind` begins
    `bug`) is open without a recorded decision: fixed, or accepted with a
    reason in the entry's `decision` field and in the release notes.
-4. The `orbit_aliases` search for Gl 229, run cold (`--no-init`) at the
-   release commit, ranks the N = 34 band (P = 12.134 d) first with
-   Δlog Z > 10 over every other band
-   ([the aliases page](../orbits/index.md#period-aliases)).
+4. Gl 229 is no longer a release gate (after 0.4.1). Its alias result is on the
+   [aliases pages](../orbits/index.md#period-aliases), marked as a warm start, with the stored cold result.
 5. For anything the release changes, the trust page shows no node that is
    changed since its evidence, has a known bug, is failing or is not yet
    checked, or the release notes say which ones remain and why.

@@ -27,7 +27,7 @@ TEMPLATE = REPO / "scripts" / "templates" / "orbits_page.md.tmpl"
 GALLERY = REPO / "build" / "orbit_gallery.md"
 OUT = REPO / "docs" / "orbits" / "index.md"
 # Links between the pages this one replaces, now anchors within it.
-LINKS = {"(aliases.md)": "(#period-aliases)", "(binaries.md)": "(#orbit-gallery)"}
+LINKS = {"(aliases.md)": "(#period-aliases)"}
 NO_GALLERY = ('!!! note "Gallery not built"\n'
               "    Run `scripts/orbit_gallery.py render --out build/orbit_gallery.md --json docs/assets/orbits.json`, "
               "then this script again.\n")
@@ -81,7 +81,7 @@ def split(gallery):
 def aliases_sentence(assets, names):
     pages = ", ".join(f"[{v['label']}]({B.PAGES}/{n}.md)" for n, v in names.items())
     return (f"Where the nights are few, the cycle count between them is ambiguous, and each undersampled system has a "
-            f"page of its alias bands, their evidence and which one wins, linked from its tile: {pages}. "
+            f"page of its alias bands, their evidence and which one wins, linked from its tile, or from this list where it has no tile: {pages}. "
             f"{B.tally_sentence(assets, names)}\n\n"
             '??? note "Systems with no alias search"\n\n' + "\n".join("    " + line for line in B.skipped().splitlines()) + "\n")
 

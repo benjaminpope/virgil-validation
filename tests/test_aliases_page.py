@@ -45,3 +45,31 @@ def test_pull_back_files_a_run_by_its_own_record(tmp_path):
     nometa = tmp_path / "x" / "gl229"
     nometa.mkdir(parents=True)
     assert P.destination(nometa) is None
+
+
+def test_non_cold_run_carries_the_caveat_and_cites_the_cold_run(tmp_path):
+    def mk(name, no_init):
+        d = tmp_path / name
+        d.mkdir()
+        bands = [{"n": 39, "period": 12.0, "p": 1.0}, {"n": 34, "period": 13.0, "p": 0.0}]
+        json.dump({"bands": bands}, open(d / "bands.json", "w"))
+        json.dump({"args": {"no_init": no_init}, "reference_band": {"n": 34, "period": 13.0}}, open(d / "meta.json", "w"))
+        return d
+
+    warm = B.section("gl229", "Gl 229", "GRAVITY", mk("gl229", False), "../a")
+    mk("gl229-cold", True)
+    warm = B.section("gl229", "Gl 229", "GRAVITY", tmp_path / "gl229", "../a")
+    assert "not independent" in warm and "ranks N = 39 first" in warm and "N = 34 ranks 2 of 2" in warm
+    assert "../a/gl229-cold/bands.json" in warm
+    assert "not independent" not in B.section("gl229-cold", "Gl 229", "GRAVITY", tmp_path / "gl229-cold", "../a")
+
+
+def test_tally_does_not_count_warm_runs_as_blind(tmp_path, monkeypatch):
+    for name, no_init in (("a", False), ("b", True)):
+        (tmp_path / name).mkdir()
+        json.dump({"args": {"no_init": no_init}, "sky_plane": {"top": {"x": 1}}}, open(tmp_path / name / "meta.json", "w"))
+    monkeypatch.setattr(B, "current_verdict", lambda row: "SAME-SKY-ORBIT")
+    t = B.verdict_tally(tmp_path, ["a", "b"])
+    assert t["total"] == 2 and t["cold"] == 1
+    s = B.tally_sentence(tmp_path, ["a", "b"])
+    assert "warm or reference-informed" in s and "1 of them cold" in s and "not a blind result" in s
