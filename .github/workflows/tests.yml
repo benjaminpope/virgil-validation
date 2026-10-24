@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: ee5757d15d80c3ba8bbbd2deab692a80bf770701
+  VIRGIL_REF: 3690a9b09ddfce559e7c3dbcf4c06fae113dcf01  # virgil main 2026-10-23: radio_toeplitz, gauss_newton_diag (F6, virgil#533)
 
 jobs:
   validate:
@@ -25,7 +25,7 @@ jobs:
           if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; fi
           echo "Testing virgil at $ref"
           uv pip install --python .venv/bin/python -e ".[external]" \
-            "virgil-astro[orbits] @ git+https://github.com/benjaminpope/virgil@$ref"
+            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref"
       - name: imaging-contest data cache
         uses: actions/cache@v4
         with:
@@ -35,8 +35,8 @@ jobs:
         run: .venv/bin/python scripts/fetch_contests.py --year 2004 2006 2008 2010
       - name: CANDID (own environment, pinned commit)
         run: bash scripts/setup_candid.sh
-      - name: eht-imaging, MPoL, fouriever and orbitize! (own environments, pinned versions)
-        run: bash scripts/setup_external.sh ehtim mpol fouriever orbitize
+      - name: eht-imaging, MPoL, fouriever, orbitize! and CASA (own environments, pinned versions)
+        run: bash scripts/setup_external.sh ehtim mpol fouriever orbitize alma
       - name: orbit page (generated, git-ignored; the docs-link tests and the Trust page read it)
         run: |
           .venv/bin/python scripts/orbit_gallery.py render --out build/orbit_gallery.md --json docs/assets/orbits.json
@@ -110,7 +110,7 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python -e ".[external]" \
-            "virgil-astro[orbits] @ git+https://github.com/benjaminpope/virgil@main"
+            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@main"
       - name: report
         run: .venv/bin/python scripts/report.py --pulls 200
       - uses: actions/upload-artifact@v4

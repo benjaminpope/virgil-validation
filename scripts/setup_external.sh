@@ -27,7 +27,7 @@ pin() {
     mpol) echo "mpol==0.3.1 asdf tensorboard matplotlib" ;;
     fouriever) echo "fouriever==0.4.3" ;;
     orbitize) echo "orbitize==3.4.0" ;;
-    alma) echo "casatools==6.7.0.31 casadata==2025.9.22 casaconfig==1.5.2 visread==0.0.5 asdf numpy" ;;
+    alma) echo "casatools==6.7.0.31 casatasks==6.7.0.31 casadata==2025.9.22 casaconfig==1.5.2 visread==0.0.5 asdf numpy" ;;
     *) echo "unknown package: $1" >&2; exit 1 ;;
   esac
 }
