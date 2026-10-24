@@ -33,7 +33,7 @@ def _stub_adam(monkeypatch, history, seen=None):
             ftol_abs=None, ftol_window=None, time_limit=None, precondition=None, **kw):
         if seen is not None:
             seen.update(method=method, max_steps=max_steps, learning_rate=learning_rate, adam_eps=adam_eps, ftol_abs=ftol_abs, ftol_window=ftol_window)
-        return types.SimpleNamespace(values=dict(init), info=dict(loss=float(history[-1]), loss_history=list(history), stop=None, converged=None, method=method))
+        return types.SimpleNamespace(values=dict(init), info=dict(loss=float(history[-1]), loss_history=list(history), stop=None, converged=True, method=method))
 
     monkeypatch.setattr(virgil, "fit", fit)
 
@@ -50,7 +50,7 @@ def test_adam_loss_history_gives_the_c8_verdict_and_records_the_stage(monkeypatc
     assert why == "c8" and info["converged"] and info["steps"] == 800 and va.convergence(traj)["converged"]
     assert seen == dict(method="adam", max_steps=800, learning_rate=3e-3, adam_eps=1e-6, ftol_abs=0.1, ftol_window=100)
     a = info["adam"]
-    assert a["lr"] == 3e-3 and a["eps"] == 1e-6 and a["steps"] == 800 and a["loss_final"] == pytest.approx(flat[-1]) and a["c8"]["converged"]
+    assert a["lr"] == 3e-3 and a["eps"] == 1e-6 and a["steps"] == 800 and a["loss_final"] == pytest.approx(flat[-1]) and a["c8"]["converged"] and a["virgil_converged"] is True
     _stub_adam(monkeypatch, 1000.0 - np.arange(1, 801))
     _, info, traj, why = va.run_adam(prob, {"x": np.zeros(2)}, steps=800)
     assert why == "max_steps" and not info["converged"] and not info["adam"]["c8"]["converged"]

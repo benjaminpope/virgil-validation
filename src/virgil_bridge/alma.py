@@ -577,9 +577,9 @@ def _plain(v):
         return v
 
 
-# Keywords of virgil.fit's Adam path that the 0.4.2 coordinator's PR adds (GUESSED names until it is on virgil main): Adam's epsilon, the
-# C8-style stop (stop when the loss moved by less than ftol_abs over ftol_window steps) and the per-step loss in info["loss_history"].
-ADAM_KEYWORDS = ("adam_eps", "ftol_abs", "ftol_window")
+# virgil.fit's Adam keywords (virgil 0.4.2 PR, local_1ddbca2a; not on main until it merges): Adam's epsilon and the stop once
+# loss[t - ftol_window] - loss[t] < ftol_abs (C8: 0.1 over 100 steps); info["loss_history"] is the unscaled per-step loss.
+ADAM_KEYWORDS = ("adam_eps", "ftol_abs")
 
 
 def require_adam(fit):
@@ -632,9 +632,9 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
         why = "time_limit"
     else:
         why = "max_steps"
-    info.update(steps=n, rounds=1, stop=stop if stop is not None else why, converged=bool(verdict["converged"]), precondition=precondition,
+    info.update(steps=n, rounds=1, stop=stop if stop is not None else why, virgil_converged=res.info.get("converged"), converged=bool(verdict["converged"]), precondition=precondition,
                 precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
-                adam=dict(lr=lr, eps=adam_eps, steps=n, loss_final=float(res.info["loss"]), c8=verdict, ms_per_step=1e3 * wall / max(n, 1)))
+                adam=dict(lr=lr, eps=adam_eps, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict, ms_per_step=1e3 * wall / max(n, 1)))
     return values, info, traj, why
 
 
