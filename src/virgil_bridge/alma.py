@@ -590,12 +590,48 @@ def missing_params(fit, names):
     return [k for k in names if k not in params]
 
 
-def require_adam(fit, precondition=None):
-    """Raise a clear error unless ``fit`` has every keyword ``run_adam`` passes (``ADAM_KEYWORDS``, and ``precondition`` if used)."""
-    missing = missing_params(fit, ADAM_KEYWORDS + (("precondition",) if precondition not in (None, "none") else ()))
+def require_adam(fit, precondition=None, post_step_blur_px=None):
+    """Raise a clear error unless ``fit`` has every keyword ``run_adam`` passes (``ADAM_KEYWORDS``, ``precondition`` and ``post_step`` if used)."""
+    missing = missing_params(fit, ADAM_KEYWORDS + (("precondition",) if precondition not in (None, "none") else ()) + (("post_step",) if post_step_blur_px else ()))
     if missing:
         raise RuntimeError(f"--method adam needs a virgil whose fit() has {', '.join(missing)} (Adam's epsilon, the ftol stop, time_limit and progress for Adam, the per-step loss history, "
                            "precondition: added after virgil 0.4.1); the installed one has not")
+
+
+def blur_post_step(sigma_px):
+    """The dorito post-step blur (Charles et al. 2026, PASA 43, 48, sect. 2) as a ``post_step`` for ``virgil.fit(method="adam")``, or None for ``sigma_px`` of 0 or None.
+
+    dorito normalises the image to unit sum, fits ``log`` of it and, every fitting epoch, convolves the image with a Gaussian of sigma about 0.25 pixel so that flux
+    cannot stay in a few spikes. Here the image is ``flux * softmax(log_brightness)``, so the step blurs ``softmax(log_brightness)`` with a separable Gaussian
+    (sigma ``sigma_px`` pixels, radius ``ceil(3 sigma)``, reflected edges so the mass is conserved) and sets ``log_brightness`` to the log of the result. The
+    softmax normalises it, so the flux ``cal.flux`` and every other parameter pass through unchanged."""
+    if not sigma_px:
+        return None
+    import jax
+    import jax.numpy as jnp
+
+    sigma = float(sigma_px)
+    if not sigma > 0:
+        raise ValueError(f"post-step blur width must be positive, got {sigma_px!r}")
+    r = max(1, int(np.ceil(3 * sigma)))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k = jnp.asarray(k / k.sum())
+
+    def smooth(a, axis):
+        pad = [(0, 0)] * a.ndim
+        pad[axis] = (r, r)
+        a = jnp.pad(a, pad, mode="reflect")
+        return sum(k[i] * jax.lax.slice_in_dim(a, i, i + a.shape[axis] - 2 * r, axis=axis) for i in range(2 * r + 1))
+
+    def post_step(params):
+        if "log_brightness" not in params:  # the held-image stages have no image to blur
+            return params
+        lb = params["log_brightness"]
+        p = jax.nn.softmax(lb.reshape(-1)).reshape(lb.shape)
+        q = smooth(smooth(p, 0), 1)
+        return {**params, "log_brightness": jnp.log(q)}
+
+    return post_step
 
 
 def convergence_window(losses, tol=0.1, window=100):
@@ -610,19 +646,21 @@ def convergence_window(losses, tol=0.1, window=100):
     return dict(converged=bool(rng < tol and drop <= tol), change=rng, mean_drop=drop, window_steps=int(window), reason="range and drift of the loss over the last window")
 
 
-def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10):
+def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10, post_step_blur_px=None):
     """Adam through ``virgil.fit`` (``method="adam"``), stopping on virgil's ftol test (``ftol_abs=tol`` over ``window`` steps) or at ``steps`` or ``time_limit``.
     Returns ``(values, info, trajectory, why)`` like ``run_fit_c8``. The trajectory is virgil's per-step loss history thinned to every ``stride``
     steps (and the last); ``elapsed`` is set only at the steps virgil's ``progress`` reported (else None). vv's own C8 verdict (``convergence_window``
     on the full history) is ``info['adam']['c8']``; ``info['converged']`` stays virgil's. ``why`` is ``c8``, ``ftol`` (virgil stopped on its two-point
-    test but the window test disagrees), ``max_steps``, ``time_limit`` or ``non_finite``."""
+    test but the window test disagrees), ``max_steps``, ``time_limit`` or ``non_finite``. ``post_step_blur_px`` (default off) is ``blur_post_step``'s width, applied after every optimiser step."""
     import time
 
     from virgil import fit
 
     precondition = None if precondition in (None, "none") else precondition
-    require_adam(fit, precondition)
+    require_adam(fit, precondition, post_step_blur_px)
     kw = {} if precondition is None else {"precondition": precondition}
+    if post_step_blur_px:
+        kw["post_step"] = blur_post_step(post_step_blur_px)
     prog = {}
     t0 = time.time()
     with ft_eps(eps), warnings.catch_warnings():
@@ -659,7 +697,7 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
         why = "max_steps"
     info.update(steps=n, rounds=1, stop=stop if stop is not None else why, precondition=precondition, wall_s=wall,
                 precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
-                adam=dict(lr=lr, eps=adam_eps, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
+                adam=dict(lr=lr, eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
                           wall_s=wall, ms_per_step_incl_setup=1e3 * wall / max(n, 1)))
     return values, info, traj, why
 
