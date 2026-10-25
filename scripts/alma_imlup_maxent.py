@@ -106,7 +106,7 @@ def stage_summary(name, info, traj, wall, why):
     """``fit_converged`` is virgil's own ``info['converged']`` for both methods; ``c8_converged`` is vv's C8 verdict (``convergence``: the two-point test for L-BFGS,
     ``va.convergence_window`` for Adam), which the cold-start gate uses."""
     conv = info["adam"]["c8"] if info.get("adam") else va.convergence(traj, info)
-    return dict(name=name, method=info.get("method", "lbfgs"), adam=info.get("adam"), steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"], c8_converged=conv["converged"],
+    return dict(name=name, method=info.get("method", "lbfgs"), adam=info.get("adam"), post_step_blur_px=(info.get("adam") or {}).get("post_step_blur_px"), steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"], c8_converged=conv["converged"],
                 wall_s=wall, convergence=conv, loss_final=info["loss"], trajectory=traj,
                 precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []), restarts=info.get("restarts", []))
 
@@ -200,7 +200,8 @@ def run_stages(args, data, prob_for, init_dir, save=None):
                 save(prob, with_image(vals), stages + [dict(part, in_progress=True)])
 
         if getattr(args, "method", "lbfgs") == "adam":
-            out, info, traj, why = va.run_adam(prob, values, steps=args.adam_steps, lr=args.adam_lr, adam_eps=args.adam_eps, time_limit=args.time_limit, log=say, precondition=args.precondition)
+            out, info, traj, why = va.run_adam(prob, values, steps=args.adam_steps, lr=args.adam_lr, adam_eps=args.adam_eps, time_limit=args.time_limit, log=say, precondition=args.precondition,
+                                                post_step_blur_px=args.post_step_blur_px)
             info["method"] = "adam"
         else:
             out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
@@ -377,11 +378,15 @@ def resolve_alpha(args):
 
 def cmd_fit(args):
     resolve_alpha(args)
+    if args.post_step_blur_px and args.method != "adam":
+        raise SystemExit("--post-step-blur-px needs --method adam (virgil's post_step hook is not available to L-BFGS)")
+    if args.post_step_blur_px is not None and args.post_step_blur_px < 0:
+        raise SystemExit("--post-step-blur-px must be >= 0")
     if args.method == "adam":
         import virgil
 
         try:
-            va.require_adam(virgil.fit, args.precondition)
+            va.require_adam(virgil.fit, args.precondition, args.post_step_blur_px)
         except RuntimeError as e:
             raise SystemExit(str(e)) from e
     if args.workflow in ("mpol", "clean") and args.config != "R":
@@ -902,6 +907,8 @@ def main(argv=None):
                    "(per-coordinate steps keep unconstrained pixels alive where L-BFGS drives them to logit -inf; needs a virgil with the Adam keywords)")
     p.add_argument("--adam-lr", type=float, default=1e-2, help="adam: learning rate in the unconstrained coordinates")
     p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
+    p.add_argument("--post-step-blur-px", type=float, default=None, help="adam only: after every optimiser step blur the normalised image with a Gaussian of this sigma in pixels (dorito's recipe, "
+                   "Charles et al. 2026: 0.25) and re-express it as log_brightness; default off. Needs a virgil whose fit() has post_step")
     p.add_argument("--adam-eps", type=float, default=1e-8, help="adam: the epsilon in the denominator of the update")
     p.add_argument("--sb-only", action="store_true")
     p.add_argument("--workflow", choices=["p3", "mpol", "clean"], default="p3",
