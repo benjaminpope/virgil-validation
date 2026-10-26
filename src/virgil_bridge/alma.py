@@ -590,9 +590,35 @@ def missing_params(fit, names):
     return [k for k in names if k not in params]
 
 
-def require_adam(fit, precondition=None, post_step_blur_px=None):
+# Markers (lower-case substrings of ``virgil.fit``'s docstring) of the two virgil features the Adam run uses when present: the ftol stop as a test on the window of
+# losses rather than on two points, and ``learning_rate`` as an optax schedule (virgil PR "virgil.fit Adam: window ftol + lr schedule"). A virgil without the first
+# gets ``ftol_abs=None`` (the full step budget, C8 judged afterwards); one without the second refuses ``--adam-lr-decay``.
+WINDOW_FTOL_MARKER = "windowed ftol"
+LR_SCHEDULE_MARKER = "optax schedule"
+
+
+def virgil_has(fit, marker):
+    """Whether ``fit``'s docstring (case-insensitive) carries ``marker``."""
+    return marker in (getattr(fit, "__doc__", None) or "").lower()
+
+
+def lr_schedule(lr, decay_per_1000):
+    """``learning_rate`` for ``virgil.fit``: the float ``lr`` for a ``decay_per_1000`` of None or 0, else ``optax.exponential_decay`` that multiplies it by
+    ``decay_per_1000`` (in (0, 1)) every 1000 steps, smoothly."""
+    if not decay_per_1000:
+        return lr
+    if not 0 < decay_per_1000 < 1:
+        raise ValueError(f"the lr decay per 1000 steps must be in (0, 1), got {decay_per_1000!r}")
+    import optax
+
+    return optax.exponential_decay(init_value=lr, transition_steps=1000, decay_rate=float(decay_per_1000))
+
+
+def require_adam(fit, precondition=None, post_step_blur_px=None, lr_decay=None):
     """Raise a clear error unless ``fit`` has every keyword ``run_adam`` passes (``ADAM_KEYWORDS``, ``precondition`` and ``post_step`` if used)."""
     missing = missing_params(fit, ADAM_KEYWORDS + (("precondition",) if precondition not in (None, "none") else ()) + (("post_step",) if post_step_blur_px else ()))
+    if lr_decay and not virgil_has(fit, LR_SCHEDULE_MARKER):
+        raise RuntimeError("--adam-lr-decay needs a virgil whose fit() accepts an optax schedule as learning_rate (virgil PR 'virgil.fit Adam: window ftol + lr schedule'); the installed one has not")
     if missing:
         raise RuntimeError(f"--method adam needs a virgil whose fit() has {', '.join(missing)} (Adam's epsilon, the ftol stop, time_limit and progress for Adam, the per-step loss history, "
                            "precondition: added after virgil 0.4.1); the installed one has not")
@@ -646,8 +672,10 @@ def convergence_window(losses, tol=0.1, window=100):
     return dict(converged=bool(rng < tol and drop <= tol), change=rng, mean_drop=drop, window_steps=int(window), reason="range and drift of the loss over the last window")
 
 
-def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10, post_step_blur_px=None):
-    """Adam through ``virgil.fit`` (``method="adam"``), stopping on virgil's ftol test (``ftol_abs=tol`` over ``window`` steps) or at ``steps`` or ``time_limit``.
+def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10, post_step_blur_px=None, lr_decay=None):
+    """Adam through ``virgil.fit`` (``method="adam"``) for ``steps`` or ``time_limit``, stopping early only on virgil's windowed ftol test (``ftol_abs=tol`` over ``window`` steps)
+    when the installed virgil has it (``WINDOW_FTOL_MARKER``); an older virgil's two-point test fires by chance on an oscillating loss, so it gets ``ftol_abs=None`` and the full budget.
+    ``lr_decay`` (default off) multiplies the learning rate by that factor every 1000 steps (``lr_schedule``).
     Returns ``(values, info, trajectory, why)`` like ``run_fit_c8``. The trajectory is virgil's per-step loss history thinned to every ``stride``
     steps (and the last); ``elapsed`` is set only at the steps virgil's ``progress`` reported (else None). vv's own C8 verdict (``convergence_window``
     on the full history) is ``info['adam']['c8']``; ``info['converged']`` stays virgil's. ``why`` is ``c8``, ``ftol`` (virgil stopped on its two-point
@@ -657,7 +685,8 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
     from virgil import fit
 
     precondition = None if precondition in (None, "none") else precondition
-    require_adam(fit, precondition, post_step_blur_px)
+    require_adam(fit, precondition, post_step_blur_px, lr_decay)
+    windowed = virgil_has(fit, WINDOW_FTOL_MARKER)
     kw = {} if precondition is None else {"precondition": precondition}
     if post_step_blur_px:
         kw["post_step"] = blur_post_step(post_step_blur_px)
@@ -665,8 +694,8 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
     t0 = time.time()
     with ft_eps(eps), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="adam", max_steps=steps, learning_rate=lr,
-                  adam_eps=adam_eps, ftol_abs=tol, ftol_window=window, time_limit=time_limit, progress=lambda d: prog.update({int(d["steps"]): d}), **kw)
+        res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="adam", max_steps=steps, learning_rate=lr_schedule(lr, lr_decay),
+                  adam_eps=adam_eps, ftol_abs=tol if windowed else None, ftol_window=window, time_limit=time_limit, progress=lambda d: prog.update({int(d["steps"]): d}), **kw)
     wall = time.time() - t0
     if "loss_history" not in res.info:
         raise RuntimeError("virgil.fit(method='adam') returned no info['loss_history']: C8 cannot be judged (needs the virgil PR that records it)")
@@ -697,7 +726,7 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
         why = "max_steps"
     info.update(steps=n, rounds=1, stop=stop if stop is not None else why, precondition=precondition, wall_s=wall,
                 precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
-                adam=dict(lr=lr, eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
+                adam=dict(lr=lr, lr_decay_per_1000=lr_decay or None, window_ftol=windowed, eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
                           wall_s=wall, ms_per_step_incl_setup=1e3 * wall / max(n, 1)))
     return values, info, traj, why
 

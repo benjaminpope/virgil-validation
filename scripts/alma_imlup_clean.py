@@ -210,17 +210,22 @@ def clean(imager, *, scales_pix, mask, gain, bias, threshold, niter, cycleniter,
     return dict(model=model, components=comps, residual=resid, psf=psf, beam=(bmaj, bmin, pa), history=history, stop=stop, iterations=total, norm=norm, sidelobe=side)
 
 
-def clean_virgil(data, args, scales_pix, mask, log=say):
-    """The same loop by ``virgil.radio_clean.clean`` (the feature under test); returns ``clean``'s dict (no components)."""
-    from virgil.radio_clean import clean as vclean
-
-    res = vclean(
-        data, args.npix, args.pixel_mas, deconvolver="multiscale", scales=scales_pix, weighting="briggs", robust=args.robust,
+def virgil_clean_kwargs(args, scales_pix, mask):
+    """Keywords of ``virgil.radio_clean.clean`` (after the data, ``npix`` and ``pixel_scale_mas``). virgil#553 renamed ``scales`` (pixels) to ``scales_mas`` (mas)."""
+    return dict(
+        deconvolver="multiscale", scales_mas=[float(s) * args.pixel_mas for s in scales_pix], weighting="briggs", robust=args.robust,
         uvtaper=None if args.no_taper else tuple(args.taper), niter=args.niter, gain=args.gain, threshold=args.threshold_jy,
         cycleniter=args.cycleniter, cyclefactor=args.cyclefactor, smallscalebias=args.bias, psfpatch=args.patch, mask=mask,
         restoringbeam=args.beam, uv_cell=1.0 / (args.uv_cell_npix * args.pixel_mas * ac.MAS), chunk_size=args.chunk_size,
         time_limit=args.time_limit or None, verbose=True,
     )
+
+
+def clean_virgil(data, args, scales_pix, mask, log=say):
+    """The same loop by ``virgil.radio_clean.clean`` (the feature under test); returns ``clean``'s dict (no components)."""
+    from virgil.radio_clean import clean as vclean
+
+    res = vclean(data, args.npix, args.pixel_mas, **virgil_clean_kwargs(args, scales_pix, mask))
     history = [dict(major=i, iterations=h["iterations"], peak_residual_jy=h["peak_residual"], model_flux_jy=h["model_flux"], wall_s=h["wall_s"]) for i, h in enumerate(res.history)]
     return dict(
         model=res.model, components=None, residual=res.residual, psf=res.psf, beam=res.beam, history=history, stop=res.stop,

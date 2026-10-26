@@ -27,7 +27,7 @@ def _call(*argv):
     script.main([str(a) for a in argv])
 
 
-def _stub_adam(monkeypatch, history, seen=None):
+def _stub_adam(monkeypatch, history, seen=None, doc=None):
     """A ``virgil.fit`` with the Adam keywords that returns ``init`` unchanged and the given per-step loss history."""
     def fit(model, priors, data, regularizers=(), *, likelihoods=(), init=None, method=None, max_steps=None, learning_rate=1e-2, adam_eps=1e-8,
             ftol_abs=None, ftol_window=None, time_limit=None, progress=None, precondition=None, **kw):
@@ -35,6 +35,7 @@ def _stub_adam(monkeypatch, history, seen=None):
             seen.update(method=method, max_steps=max_steps, learning_rate=learning_rate, adam_eps=adam_eps, ftol_abs=ftol_abs, ftol_window=ftol_window)
         return types.SimpleNamespace(values=dict(init), info=dict(loss=float(history[-1]), loss_history=list(history), stop=None, converged=True, method=method))
 
+    fit.__doc__ = doc
     monkeypatch.setattr(virgil, "fit", fit)
 
 
@@ -48,7 +49,7 @@ def test_adam_loss_history_gives_the_c8_verdict_and_records_the_stage(monkeypatc
     prob = types.SimpleNamespace(model=None, priors={}, regs=(), terms=())
     _, info, traj, why = va.run_adam(prob, {"x": np.zeros(2)}, steps=800, lr=3e-3, adam_eps=1e-6)
     assert why == "c8" and info["converged"] and info["steps"] == 800 and va.convergence(traj)["converged"]
-    assert seen == dict(method="adam", max_steps=800, learning_rate=3e-3, adam_eps=1e-6, ftol_abs=0.1, ftol_window=100)
+    assert seen == dict(method="adam", max_steps=800, learning_rate=3e-3, adam_eps=1e-6, ftol_abs=None, ftol_window=100)  # this stub has no windowed ftol: no virgil stop, the full budget
     a = info["adam"]
     assert a["lr"] == 3e-3 and a["eps"] == 1e-6 and a["steps"] == 800 and a["loss_final"] == pytest.approx(flat[-1]) and a["c8"]["converged"] and a["virgil_converged"] is True
     assert info["converged"] is True and all(t["elapsed"] is None for t in traj)  # virgil's flag unchanged; no made-up per-step time
@@ -193,3 +194,40 @@ def test_post_step_blur_is_adam_only_and_reaches_virgil_fit(tmp_path, monkeypatc
     seen.clear()
     _, info, _, _ = va.run_adam(prob, {"x": np.zeros(2)}, steps=3)
     assert seen["post_step"] is None and info["adam"]["post_step_blur_px"] is None
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_adam_uses_virgils_window_ftol_only_when_it_has_it_and_stops_on_c8_only_when_the_window_passes(monkeypatch):
+    """A virgil with the windowed ftol gets ``ftol_abs=0.1``; one without gets None. A virgil stop on a loss still falling is ``ftol``, not ``c8``."""
+    prob = types.SimpleNamespace(model=None, priors={}, regs=(), terms=())
+    seen = {}
+    flat = 100.0 + 50.0 * np.exp(-np.arange(1, 401) / 20.0)
+    _stub_adam(monkeypatch, flat, seen, doc="Adam. Windowed ftol stop.")
+    _, info, _, why = va.run_adam(prob, {"x": np.zeros(2)}, steps=1000)
+    assert seen["ftol_abs"] == 0.1 and why == "c8" and info["adam"]["window_ftol"] is True
+    _stub_adam(monkeypatch, 1000.0 - np.arange(1, 401), seen, doc="Windowed ftol.")
+    _, info, _, why = va.run_adam(prob, {"x": np.zeros(2)}, steps=1000)
+    assert why == "ftol" and not info["adam"]["c8"]["converged"]
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_adam_lr_decay_is_an_optax_schedule_refused_without_virgil_support_and_recorded(monkeypatch, tmp_path):
+    """Default off (a float lr); with decay the schedule multiplies lr by the factor per 1000 steps; an old virgil refuses it by name; bad factors are refused."""
+    optax = pytest.importorskip("optax")
+    prob = types.SimpleNamespace(model=None, priors={}, regs=(), terms=())
+    seen = {}
+    _stub_adam(monkeypatch, [1.0] * 300, seen, doc="learning_rate may be an optax schedule.")
+    _, info, _, _ = va.run_adam(prob, {"x": np.zeros(2)}, steps=300, lr=1e-2)
+    assert seen["learning_rate"] == 1e-2 and info["adam"]["lr_decay_per_1000"] is None
+    _, info, _, _ = va.run_adam(prob, {"x": np.zeros(2)}, steps=300, lr=1e-2, lr_decay=0.5)
+    sched = seen["learning_rate"]
+    assert callable(sched) and float(sched(0)) == pytest.approx(1e-2) and float(sched(2000)) == pytest.approx(2.5e-3) and info["adam"]["lr_decay_per_1000"] == 0.5
+    _stub_adam(monkeypatch, [1.0] * 300, seen, doc="no schedules here")
+    with pytest.raises(RuntimeError, match="optax schedule"):
+        va.run_adam(prob, {"x": np.zeros(2)}, steps=300, lr_decay=0.5)
+    with pytest.raises(SystemExit, match="optax schedule"):
+        _call("fit", "--config", "R", "--data", tmp_path / "nodata", "--out", tmp_path / "o", "--method", "adam", "--adam-lr-decay", "0.5")
+    with pytest.raises(SystemExit, match=r"in \(0, 1\)"):
+        _call("fit", "--config", "R", "--data", tmp_path / "nodata", "--out", tmp_path / "o", "--method", "adam", "--adam-lr-decay", "1.5")
+    with pytest.raises(SystemExit, match="--method adam"):
+        _call("fit", "--config", "R", "--data", tmp_path / "nodata", "--out", tmp_path / "o", "--adam-lr-decay", "0.5")

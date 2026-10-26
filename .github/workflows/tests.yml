@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: 3690a9b09ddfce559e7c3dbcf4c06fae113dcf01  # virgil main 2026-10-23: radio_toeplitz, gauss_newton_diag (F6, virgil#533)
+  VIRGIL_REF: 5306cd4f5aee590842e0f10fd9857a416ac30171  # virgil main 2026-10-26: radio_clean scales_mas (virgil#553), Adam post_step (#558)
 
 jobs:
   validate:

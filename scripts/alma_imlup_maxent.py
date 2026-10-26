@@ -4,7 +4,7 @@
     python scripts/alma_imlup_maxent.py folds --data DIR --out FILE.npz
     python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--chi2 {direct,toeplitz}] [--sb-only] [--init DIR] [--workflow {p3,mpol,clean} [--clean-dir DIR]]
                                             [--shat DIR] [--folds FILE.npz --fold J] [--max-steps N] [--time-limit S]
-                                            [--method {lbfgs,adam} [--adam-lr LR] [--adam-steps N] [--adam-eps E]]
+                                            [--method {lbfgs,adam} [--adam-lr LR] [--adam-lr-decay F] [--adam-steps N] [--adam-eps E]]
     python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
     python scripts/alma_imlup_maxent.py cv-aggregate DIR [--out DIR]
@@ -201,7 +201,7 @@ def run_stages(args, data, prob_for, init_dir, save=None):
 
         if getattr(args, "method", "lbfgs") == "adam":
             out, info, traj, why = va.run_adam(prob, values, steps=args.adam_steps, lr=args.adam_lr, adam_eps=args.adam_eps, time_limit=args.time_limit, log=say, precondition=args.precondition,
-                                                post_step_blur_px=args.post_step_blur_px)
+                                                post_step_blur_px=args.post_step_blur_px, lr_decay=args.adam_lr_decay)
             info["method"] = "adam"
         else:
             out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
@@ -380,13 +380,15 @@ def cmd_fit(args):
     resolve_alpha(args)
     if args.post_step_blur_px and args.method != "adam":
         raise SystemExit("--post-step-blur-px needs --method adam (virgil's post_step hook is not available to L-BFGS)")
+    if args.adam_lr_decay is not None and (args.method != "adam" or not 0 < args.adam_lr_decay < 1):
+        raise SystemExit("--adam-lr-decay needs --method adam and a factor in (0, 1)")
     if args.post_step_blur_px is not None and args.post_step_blur_px < 0:
         raise SystemExit("--post-step-blur-px must be >= 0")
     if args.method == "adam":
         import virgil
 
         try:
-            va.require_adam(virgil.fit, args.precondition, args.post_step_blur_px)
+            va.require_adam(virgil.fit, args.precondition, args.post_step_blur_px, args.adam_lr_decay)
         except RuntimeError as e:
             raise SystemExit(str(e)) from e
     if args.workflow in ("mpol", "clean") and args.config != "R":
@@ -906,6 +908,8 @@ def main(argv=None):
     p.add_argument("--method", choices=["lbfgs", "adam"], default="lbfgs", help="lbfgs (default): L-BFGS restarted until C8. adam: virgil.fit's Adam, one run per stage of --adam-steps, stopped early on C8 "
                    "(per-coordinate steps keep unconstrained pixels alive where L-BFGS drives them to logit -inf; needs a virgil with the Adam keywords)")
     p.add_argument("--adam-lr", type=float, default=1e-2, help="adam: learning rate in the unconstrained coordinates")
+    p.add_argument("--adam-lr-decay", type=float, default=None, help="adam only: multiply the learning rate by this factor in (0, 1) every 1000 steps (optax exponential decay, per stage); default off. "
+                   "Needs a virgil whose fit() takes an optax schedule")
     p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
     p.add_argument("--post-step-blur-px", type=float, default=None, help="adam only: after every optimiser step blur the normalised image with a Gaussian of this sigma in pixels (dorito's recipe, "
                    "Charles et al. 2026: 0.25) and re-express it as log_brightness; default off. Needs a virgil whose fit() has post_step")
