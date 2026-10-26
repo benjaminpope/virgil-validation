@@ -905,7 +905,7 @@ def main(argv=None):
     p.add_argument("--config", choices=["R", "F"], required=True)
     p.add_argument("--chi2", choices=va.CHI2_ENGINES, default="direct", help="config R: the data term's engine. toeplitz: virgil's dirty-beam chi^2 in every stage (equal to direct to ~1e-13, cost independent of N; "
                    "fitted offsets then need their box inside the precompute: --offset-bound-mas defaults to 20, and baselines past its Nyquist margin are refused). The report and compare always score with the direct term")
-    p.add_argument("--method", choices=["lbfgs", "adam"], default="lbfgs", help="lbfgs (default): L-BFGS restarted until C8. adam: virgil.fit's Adam, one run per stage of --adam-steps, stopped early on C8 "
+    p.add_argument("--method", choices=["lbfgs", "adam"], default="lbfgs", help="lbfgs (default): L-BFGS restarted until C8. adam: virgil.fit's Adam, one run per stage of --adam-steps (the full budget, or the time limit, unless the installed virgil has the windowed ftol; C8 is judged afterwards) "
                    "(per-coordinate steps keep unconstrained pixels alive where L-BFGS drives them to logit -inf; needs a virgil with the Adam keywords)")
     p.add_argument("--adam-lr", type=float, default=1e-2, help="adam: learning rate in the unconstrained coordinates")
     p.add_argument("--adam-lr-decay", type=float, default=None, help="adam only: multiply the learning rate by this factor in (0, 1) every 1000 steps (optax exponential decay, per stage); default off. "

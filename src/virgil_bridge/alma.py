@@ -598,7 +598,8 @@ LR_SCHEDULE_MARKER = "optax schedule"
 
 
 def virgil_has(fit, marker):
-    """Whether ``fit``'s docstring (case-insensitive) carries ``marker``."""
+    """Whether ``fit``'s docstring (case-insensitive) carries ``marker``. A substring is a weak test (a docstring saying a feature is *not* supported would match), so the
+    stage record carries ``window_ftol`` and ``virgil_version`` to show which path ran; replace by a signature or attribute check once the virgil PR fixes one."""
     return marker in (getattr(fit, "__doc__", None) or "").lower()
 
 
@@ -678,8 +679,8 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
     ``lr_decay`` (default off) multiplies the learning rate by that factor every 1000 steps (``lr_schedule``).
     Returns ``(values, info, trajectory, why)`` like ``run_fit_c8``. The trajectory is virgil's per-step loss history thinned to every ``stride``
     steps (and the last); ``elapsed`` is set only at the steps virgil's ``progress`` reported (else None). vv's own C8 verdict (``convergence_window``
-    on the full history) is ``info['adam']['c8']``; ``info['converged']`` stays virgil's. ``why`` is ``c8``, ``ftol`` (virgil stopped on its two-point
-    test but the window test disagrees), ``max_steps``, ``time_limit`` or ``non_finite``. ``post_step_blur_px`` (default off) is ``blur_post_step``'s width, applied after every optimiser step."""
+    on the full history) is ``info['adam']['c8']``; ``info['converged']`` stays virgil's. ``why`` is ``c8``, ``ftol`` (virgil stopped on its windowed ftol
+    but vv's window test disagrees; unreachable without the windowed ftol, which then gets ``ftol_abs=None``), ``max_steps``, ``time_limit`` or ``non_finite``. ``post_step_blur_px`` (default off) is ``blur_post_step``'s width, applied after every optimiser step."""
     import time
 
     from virgil import fit
@@ -726,7 +727,7 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
         why = "max_steps"
     info.update(steps=n, rounds=1, stop=stop if stop is not None else why, precondition=precondition, wall_s=wall,
                 precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
-                adam=dict(lr=lr, lr_decay_per_1000=lr_decay or None, window_ftol=windowed, eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
+                adam=dict(lr=lr, lr_decay_per_1000=lr_decay or None, window_ftol=windowed, virgil_version=getattr(__import__("virgil"), "__version__", None), eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
                           wall_s=wall, ms_per_step_incl_setup=1e3 * wall / max(n, 1)))
     return values, info, traj, why
 

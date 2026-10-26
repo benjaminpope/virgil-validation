@@ -230,7 +230,7 @@ def test_virgil_radio_clean_agrees_with_the_independent_loop():
     assert res.model.sum() == pytest.approx(ref["model"].sum(), rel=0.02)
 
 
-@pytest.mark.validates("crosscheck.alma_clean", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil.radio_clean.clean", roots=["self-consistency"], kind="guard")
 def test_virgil_clean_keywords_bind_to_the_installed_signature(monkeypatch):
     """The keywords ``clean_virgil`` passes bind to ``virgil.radio_clean.clean`` (a renamed argument fails here, not on the cluster); the scales go in mas."""
     import inspect
@@ -245,5 +245,6 @@ def test_virgil_clean_keywords_bind_to_the_installed_signature(monkeypatch):
     script.main(["run", "--data", "d", "--out", "o"])
     args = got["args"]
     kw = script.virgil_clean_kwargs(args, [0, 10.0], np.ones((3, 3), bool))
+    assert not any(p.kind is p.VAR_KEYWORD for p in inspect.signature(vclean).parameters.values())  # **kwargs would accept any name
     inspect.signature(vclean).bind(None, args.npix, args.pixel_mas, **kw)  # TypeError on an unknown or missing keyword
     assert kw["scales_mas"] == [0.0, 10.0 * args.pixel_mas]

@@ -211,7 +211,7 @@ def clean(imager, *, scales_pix, mask, gain, bias, threshold, niter, cycleniter,
 
 
 def virgil_clean_kwargs(args, scales_pix, mask):
-    """Keywords of ``virgil.radio_clean.clean`` (after the data, ``npix`` and ``pixel_scale_mas``). virgil#553 renamed ``scales`` (pixels) to ``scales_mas`` (mas)."""
+    """Keywords of ``virgil.radio_clean.clean`` (after the data, ``npix`` and ``pixel_scale_mas``). the public keyword is ``scales_mas`` (mas); vv passed ``scales`` (pixels), which virgil never accepted."""
     return dict(
         deconvolver="multiscale", scales_mas=[float(s) * args.pixel_mas for s in scales_pix], weighting="briggs", robust=args.robust,
         uvtaper=None if args.no_taper else tuple(args.taper), niter=args.niter, gain=args.gain, threshold=args.threshold_jy,
