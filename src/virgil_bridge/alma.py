@@ -303,6 +303,21 @@ def toeplitz_term(use, scene, nuis, *, npix, pixel_mas, mask, max_offset_mas):
     return tdata.term(scene, nuis), info
 
 
+def nuisance_sites(nuis, data, *, offset_bound_mas=None, ref_obs=0):
+    """``(priors, init, bound)`` of the calibration nuisances ``nuis`` of ``data``: virgil's default priors (the offsets' box ``(-X, X)`` when ``offset_bound_mas`` is X),
+    their default values as jax arrays, and the offsets' bound per observation (mas, ``(n_obs,)``; the reference observation takes the largest)."""
+    import jax.numpy as jnp
+
+    priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
+    init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
+    bound = np.broadcast_to(np.asarray(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas, float), (len(data.obs_ids),)).copy()
+    if offset_bound_mas is None and "cal.offset" in priors:  # virgil 0.4.1's default box is ±3 beams of each observation, not nuis.offset_bound_mas
+        half = np.abs(np.asarray(priors["cal.offset"].high, float)).reshape(len(data.obs_ids) - 1, -1).max(axis=1)
+        bound[:] = half.max()  # the reference observation has no offset; it takes the largest
+        bound[[o for o in range(len(bound)) if o != ref_obs]] = half
+    return priors, init, bound
+
+
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
                   alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None, entropy_on="blurred"):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
@@ -384,15 +399,9 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     else:
         term, chi2_info = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size), dict(engine="direct")
     terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, taper_mas=entropy_taper, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
-    priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
+    priors, init, bound = nuisance_sites(nuis, data, offset_bound_mas=offset_bound_mas, ref_obs=ref_obs)
     if fixed_log_brightness is None:
         priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
-    init = {k: jnp.asarray(v) for k, v in nuis.defaults().items()}
-    bound = np.broadcast_to(np.asarray(nuis.offset_bound_mas if offset_bound_mas is None else offset_bound_mas, float), (len(data.obs_ids),)).copy()
-    if offset_bound_mas is None and "cal.offset" in priors:  # virgil 0.4.1's default box is ±3 beams of each observation, not nuis.offset_bound_mas
-        half = np.abs(np.asarray(priors["cal.offset"].high, float)).reshape(len(data.obs_ids) - 1, -1).max(axis=1)
-        bound[:] = half.max()  # the reference observation has no offset; it takes the largest
-        bound[[o for o in range(len(bound)) if o != ref_obs]] = half
     return types.SimpleNamespace(config=config, npix=npix, pixel_mas=pixel_mas, scene=scene, nuis=nuis, priors=priors, init=init,
                                  terms=terms, regs=regs, model=lambda **values: scene(values), lam=float(lam),
                                  offset_bound_mas=float(bound.max()), offset_bound_obs=bound,  # virgil's bound may be one per observation: the largest, and all of them
