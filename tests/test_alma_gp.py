@@ -77,18 +77,31 @@ def test_the_multipole_field_through_the_toeplitz_chi2_equals_the_direct_chi2_in
     record("gp_toeplitz_grad_rel_diff_max", max(worst.values()))
 
 
-@pytest.mark.validates("virgil_bridge.alma_gp", roots=["self-consistency"], kind="control")
-def test_the_toeplitz_comparison_sees_a_different_field(syn):
-    """Control: the same comparison with the latent of one engine perturbed by 1e-3 differs by far more than the 1e-8 of the check, so it can fail."""
+def _mistakes(v):
+    """``v`` with one realistic mistake in the nuisances the Toeplitz term is given, each of which a wrong engine could make."""
+    return {
+        "offsets with their sign flipped": {**v, "cal.offset": -v["cal.offset"]},
+        "offsets shifted by 0.5 mas": {**v, "cal.offset": v["cal.offset"] + 0.5},
+        "one observation's gain changed by 1e-4": {**v, "cal.gain": v["cal.gain"].at[0].add(1e-4)},
+    }
+
+
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
+def test_the_toeplitz_comparison_fails_when_the_engine_is_given_wrong_nuisances(syn):
+    """Control, on the engine side: the Toeplitz term is evaluated at the main test's values with one realistic mistake (offsets sign-flipped, offsets shifted by 0.5 mas,
+    one observation's gain changed by 1e-4) while the direct term keeps the true values; the main test's comparison then fails at its own 1e-8, in the value or in the gradient
+    (the gain's gradient, the offsets' gradient), so a Toeplitz engine that mishandled the spread offsets or the gains would be caught."""
     data = va.load_dir(syn)
     direct = vg.build_gp_problem(data, chi2="direct", **FIELD)
     toep = vg.build_gp_problem(data, chi2="toeplitz", **FIELD)
     v = _values(direct)
-    w = {**v, "field.latent": v["field.latent"] + 1e-3}
     with va.ft_eps(1e-12):
-        ld, _ = _vg(direct.terms[0], v)
-        lt, _ = _vg(toep.terms[0], w)
-    assert float(abs(ld - lt) / abs(ld)) > 1e-6
+        ld, gd = _vg(direct.terms[0], v)
+        for what, w in _mistakes(v).items():
+            lt, gt = _vg(toep.terms[0], w)
+            value = float(abs(ld - lt) / abs(ld))
+            grad = max(_rel(gt[k], gd[k]) for k in gd)
+            assert value > 1e-8 or grad > 1e-8, (what, value, grad)
 
 
 @pytest.mark.validates("virgil_bridge.alma_gp", roots=["self-consistency"], kind="guard")
@@ -124,6 +137,55 @@ def test_image_of_is_the_flux_times_the_unit_sum_brightness_and_flux_beyond_coun
     assert vg.flux_beyond(dark, 5.0, 0.2) > 0 and vg.flux_beyond(dark, 5.0, 0.3) == 0.0
 
 
+def _axes(img):
+    """(position angle of the major axis in degrees East of North in [0, 180), minor/major axis ratio) of the image's second moments. ``img`` has rows North first and columns
+    East first, so a pixel is at (east, north) = (-column, -row) up to the origin, which the moments do not need."""
+    rr, cc = np.indices(img.shape, dtype=float)
+    w = np.asarray(img, float) / np.sum(img)
+    east, north = -cc, -rr
+    e, n = np.sum(w * east), np.sum(w * north)
+    cov = np.array([[np.sum(w * (east - e) ** 2), np.sum(w * (east - e) * (north - n))], [np.sum(w * (east - e) * (north - n)), np.sum(w * (north - n) ** 2)]])
+    evals, evecs = np.linalg.eigh(cov)
+    major = evecs[:, -1]  # (east, north) of the larger eigenvalue
+    return float(np.degrees(np.arctan2(major[0], major[1])) % 180.0), float(np.sqrt(evals[0] / evals[1]))
+
+
+def _ring_image(pa, inc=60.0):
+    """``MultipoleField``'s brightness on the fit grid (``FIELD``'s npix and pixel scale) for a latent that varies only in radius (one bump at half the radius), mean ``None``: an
+    axisymmetric ring in the disc frame, so its sky image is an ellipse whose major axis is the field's ``pa``."""
+    x = np.linspace(0.0, 1.0, N_R)
+    latent = np.tile(8.0 * np.exp(-0.5 * ((x - 0.5) / 0.15) ** 2)[:, None], (1, N_TH))
+    scene = vg.field_scene(NPIX, 5.0, r_max_mas=FIELD["r_max_mas"], inc=inc, pa=pa, length_r=FIELD["length_r"], length_theta=FIELD["length_theta"])
+    return np.asarray(scene({"field.latent": jnp.asarray(latent)}).brightness, float)
+
+
+def _angle_apart(a, b):
+    """The angle between two axis directions (degrees, mod 180), in [0, 90]."""
+    return abs((a - b + 90.0) % 180.0 - 90.0)
+
+
+@pytest.mark.validates("virgil_bridge.alma_gp", roots=["mathematics"])
+def test_the_fields_pa_is_the_major_axis_east_of_north_in_the_row0_north_layout():
+    """Pins the ``pa`` convention that DSHARP's 144.5 deg goes into: a ring in ``MultipoleField`` (a latent varying only in radius, ``inc`` = 60 deg, ``mean`` None) has its major
+    axis at ``pa`` East of North in the vv layout (row 0 North, column 0 East), to 1 deg, and the minor/major axis ratio is cos(inc). The measuring helper is first pinned against
+    ``crosscheck.alma_clean.gaussian_image``, which documents that layout, so the check does not rest on the helper's own convention."""
+    from crosscheck.alma_clean import gaussian_image
+
+    for pa in (35.5, 100.0, 144.5):  # a Gaussian of known PA on a grid: the helper returns it
+        assert _angle_apart(_axes(gaussian_image((65, 65), (32, 32), 16.0, 8.0, pa))[0], pa) < 0.1
+    for pa in (144.5, 54.5):  # the field at the DSHARP PA and 90 deg from it
+        measured, ratio = _axes(_ring_image(pa))
+        assert _angle_apart(measured, pa) < 1.0 and ratio == pytest.approx(np.cos(np.radians(60.0)), abs=0.03), (pa, measured, ratio)
+
+
+@pytest.mark.validates("virgil_bridge.alma_gp", roots=["mathematics"], kind="control")
+def test_the_pa_check_fails_for_a_field_turned_by_90_degrees():
+    """Control: a field at ``pa`` = 54.5 deg (the minor-axis reading of 144.5) has its major axis 90 deg from 144.5, far outside the 1 deg of the check; so does the mirror image
+    (360 - 144.5 = 215.5, i.e. 35.5 deg), the opposite handedness."""
+    for wrong in (54.5, 35.5):
+        assert _angle_apart(_axes(_ring_image(wrong))[0], 144.5) > 30.0, wrong
+
+
 # ------------------------------------------------------------------ the script (alma_imlup_gp.py) end to end, toy size
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
@@ -144,7 +206,7 @@ def _fake_clean(path, npix=121, pixel_mas=3.0, beam=(40.0, 30.0, 20.0), flux=0.2
     return path, flux, beam
 
 
-@pytest.mark.validates("virgil_bridge.alma_gp", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma_gp", roots=["mathematics"], kind="reference")
 def test_restored_clean_is_in_jy_per_arcsec2_on_the_fit_grid_with_its_flux_and_beam(tmp_path):
     """The restored CLEAN image (Jy/beam, a Gaussian blob) regridded to the fit's grid: its flux is the blob's inside the field (to 1 %) and is conserved by the resampling, its peak is on the
     phase-centre cell, and the beam is the header's."""
@@ -194,9 +256,36 @@ def test_the_gp_fit_runs_end_to_end_and_reports_the_scored_chi2_the_nuisances_an
     assert float(jnp.sum(r**2)) == pytest.approx(res["chi2_fit"], rel=1e-8)
 
 
-@pytest.mark.validates("virgil_bridge.alma_gp", roots=["self-consistency"], kind="control")
+@pytest.mark.validates("virgil_bridge.alma_gp", roots=["self-consistency"], kind="guard")
+def test_a_non_finite_stage_stops_the_fit_without_overwriting_the_last_finite_values(syn, tmp_path, monkeypatch):
+    """``run_fit_c8`` returns the bad round's values on ``non_finite`` and does not call ``on_round`` for them: the script must not save those NaNs over ``values.npz`` (stage ``all`` would
+    destroy stage ``held``'s result). Stage ``all`` is made to return NaN values after its real rounds: the script exits with the stage named, ``values.npz`` is byte-for-byte what the
+    last good round wrote and finite, and ``result.json`` is provisional (``complete`` false) with both stages recorded and no flux."""
+    import json
+
+    real, seen = script.va.run_fit_c8, {}
+    out = tmp_path / "gp"
+
+    def fake(prob, start, **kw):
+        values, info, traj, why = real(prob, start, **kw)
+        if not prob.held:  # stage 2: the real rounds saved finite values; now hand back a blown-up round
+            seen["good"] = (out / "values.npz").read_bytes()
+            return {k: jnp.full_like(v, jnp.nan) for k, v in values.items()}, info, traj, "non_finite"
+        return values, info, traj, why
+
+    monkeypatch.setattr(script.va, "run_fit_c8", fake)
+    with pytest.raises(SystemExit, match="stage all went non-finite"):
+        script.main(["--data", str(syn), "--out", str(out)] + SMALL)
+    assert (out / "values.npz").read_bytes() == seen["good"]
+    z = np.load(out / "values.npz")
+    assert all(np.all(np.isfinite(z[k])) for k in z.files) and {"field.latent", "cal.gain"} <= set(z.files)
+    res = json.loads((out / "result.json").read_text())
+    assert res["complete"] is False and [s["name"] for s in res["stages"]] == ["held", "all"] and res["stages"][1]["stopped_because"] == "non_finite" and res["flux_jy"] is None
+
+
+@pytest.mark.validates("virgil_bridge.alma_gp", roots=["self-consistency"], kind="guard")
 def test_nuisances_of_the_wrong_shape_or_gauge_are_refused(syn, tmp_path):
-    """Control: a ``values.npz`` with the wrong number of error scales, and one from a fit with another reference observation, stop the script before any fit."""
+    """Input validation: a ``values.npz`` with the wrong number of error scales, and one from a fit with another reference observation, stop the script before any fit."""
     bad = tmp_path / "bad"
     bad.mkdir()
     np.savez(bad / "values.npz", **{"cal.gain": np.array([1.0]), "cal.offset": np.zeros((1, 2)), "cal.sigma": np.ones(26)})

@@ -35,4 +35,4 @@ flux beyond 1.8″, nuisances, hyperparameters, timing, `dots` (`dots_report`, w
 ## Provenance
 
 GP imaging of interferometer data: Junklewitz et al. 2016 (RESOLVE, A&A 586, A76), Arras et al. 2019 (A&A 627, A134), Arras et al. 2022 (Nat. Astron. 6, 259); the kernels and JAX
-implementation follow Edenhofer et al. 2024 (NIFTy.re, JOSS 9, 6593). Each checked on ADS on 2026-10-27. `MultipoleField` is provisional in virgil; this check counts towards promoting it.
+implementation follow Edenhofer et al. 2024 (NIFTy.re, JOSS 9, 6593). Each checked on ADS on 2026-10-27. `MultipoleField` is provisional in virgil. What is checked here is the bridge, not the field: the Toeplitz χ² accepts this scene and agrees with the direct χ² (`ToeplitzVisData`, self-consistency, with a wrong-nuisances control), and the field's `pa` is the major axis East of North in vv's layout. Its kernel, whitening and polar-to-sky map are not tested against anything independent.

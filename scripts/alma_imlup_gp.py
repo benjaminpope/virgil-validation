@@ -106,9 +106,11 @@ def fit(args, data):
                  nu=vg.GP["nu"], sigma_prior=list(vg.GP["sigma_range"]), mean_from_clean=args.mean_from_clean, mean_floor=args.mean_floor if args.mean_from_clean else None)
 
     def save(values, stages, complete=False):
-        np.savez(out / "values.npz", **full(values))
+        """``values.npz`` and ``result.json``; with ``values=None`` only ``result.json`` (a non-finite stage: ``values.npz`` keeps the last finite round)."""
+        if values is not None:
+            np.savez(out / "values.npz", **full(values))
         mx.dump(out / "result.json", dict(command="fit", complete=complete, args={k: v for k, v in vars(args).items() if k != "fn"}, hyperparameters=hyper, stages=stages,
-                                          flux_jy=float(values["cal.flux"]), versions=mx.versions()))
+                                          flux_jy=None if values is None else float(values["cal.flux"]), versions=mx.versions()))
 
     budget = args.time_limit
     t_fit = time.time()
@@ -127,9 +129,9 @@ def fit(args, data):
         stages.append(stage_record(name, info, traj, time.time() - t0, why, eval_s))
         say(f"stage {name}: {stages[-1]['steps']} steps in {stages[-1]['wall_s']:.0f} s ({stages[-1]['s_per_step']:.3f} s/step), stopped because {why}; "
             f"C8 {'converged' if stages[-1]['c8_converged'] else 'NOT converged'}")
-        if why == "non_finite":
-            save(values, stages)
-            raise SystemExit(f"stage {name} went non-finite; the last finite state is not saved")
+        if why == "non_finite":  # run_fit_c8 returns the bad round's values and skips on_round for them: never overwrite the last good save with NaNs
+            save(None, stages)
+            raise SystemExit(f"stage {name} went non-finite; values.npz (if there is one) is the last finite round's")
         save(values, stages)
     fit_s = time.time() - t_fit
 
