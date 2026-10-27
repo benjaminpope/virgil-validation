@@ -694,7 +694,9 @@ def dots_report(base, tapered, pixel_mas, inc=47.5, pa=144.5, *, taper_mas=MPOL[
     least ``disk_fraction`` of its peak, the share whose base is below 1 % of the tapered value), ``ring_intermittency`` (in deprojected ``annulus_mas`` annuli to ``r_max_arcsec``, around the
     tapered centroid, the azimuthal coefficient of variation over ``n_sector`` sectors of the base over that of the tapered: ``median`` and ``per_annulus`` with their radii), ``sub_taper_power``
     (the share of the base's power at spatial frequencies where the taper's transfer is below 0.1), ``peak_ratio`` (base over tapered peak) and ``dead`` (the fractions below 1e-6 and 1e-4
-    of the peak for base and tapered, inside and outside the disk)."""
+    of the peak for base and tapered, inside and outside the disk). Headline metrics, which rank MPoL < Adam < R_mpol < cold L-BFGS < preconditioned L-BFGS on the saved runs: ``sub_taper_power``
+    and ``n_eff_ratio`` (base over tapered N_eff); also ``base_dead_in_disk_1e4`` (in-disk base fraction below 1e-4 of its peak) and ``tapered_dead_outside_1e4`` (the tapered fraction in the disk is
+    zero by construction, the mask being 1e-3). ``ring_intermittency`` is secondary: near 1.1-1.2 for every run but the preconditioned one."""
     base, tap = np.asarray(base, float), np.asarray(tapered, float)
     n = base.shape[0]
     disk = tap >= disk_fraction * tap.max()
@@ -730,9 +732,11 @@ def dots_report(base, tapered, pixel_mas, inc=47.5, pa=144.5, *, taper_mas=MPOL[
         for frac in (1e-6, 1e-4):
             below = img < frac * img.max()
             dead[f"{name}_below_{frac:g}"] = dict(in_disk=float(below[disk].mean()) if disk.any() else None, outside=float(below[~disk].mean()) if (~disk).any() else None)
-    return dict(n_eff=dict(base=_n_eff(base), tapered=_n_eff(tap)), hole_fraction=float((base[disk] < 0.01 * tap[disk]).mean()),
+    n_b, n_t = _n_eff(base), _n_eff(tap)
+    return dict(sub_taper_power=float(power[low].sum() / power.sum()), n_eff_ratio=float(n_b / n_t), base_dead_in_disk_1e4=dead["base_below_0.0001"]["in_disk"],
+                tapered_dead_outside_1e4=dead["tapered_below_0.0001"]["outside"], n_eff=dict(base=n_b, tapered=n_t), hole_fraction=float((base[disk] < 0.01 * tap[disk]).mean()),
                 ring_intermittency=dict(median=float(np.nanmedian(per)) if per else None, per_annulus=per, radius_mas=mid),
-                sub_taper_power=float(power[low].sum() / power.sum()), peak_ratio=float(base.max() / tap.max()), dead=dead)
+                peak_ratio=float(base.max() / tap.max()), dead=dead)
 
 
 def blur_post_step(sigma_px):

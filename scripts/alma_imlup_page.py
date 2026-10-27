@@ -771,14 +771,14 @@ def dots_block(arms, clean):
         rows.append(("CLEAN model", clean["run"]["dots"], {}))
     if not rows:
         return pending("the dots table", "Needs fits whose result.json has `dots` (virgil-validation with `dots_report`) and/or a CLEAN that has it.")
-    out = ["| run | N_eff base / tapered | hole fraction | ring intermittency (median) | sub-taper power | base / tapered peak | tapered peak (Jy/arcsec²) | dead <1e-6 base (disk / outside) |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |"]
+    out = ["| run | sub-taper power | N_eff base / tapered (ratio) | base dead <1e-4 in disk | hole fraction | tapered dead <1e-4 outside | ring intermittency (median) | base / tapered peak | tapered peak (Jy/arcsec²) |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for label, d, s in rows:
         im = d["ring_intermittency"]["median"]
-        dead = d["dead"]["base_below_1e-06"]
         pk = s.get("peak_tapered_jy_arcsec2")
-        out.append(f"| {label} | {d['n_eff']['base']:.0f} / {d['n_eff']['tapered']:.0f} | {d['hole_fraction']:.2%} | {'n/a' if im is None else f'{im:.2f}'} | {d['sub_taper_power']:.2e} | {d['peak_ratio']:.2f} | "
-                   f"{'n/a' if pk is None else f'{pk:.3g}'} | {dead['in_disk']:.2%} / {dead['outside']:.2%} |")
-    return "\n".join(out) + ("\n\nHow far the base image has broken into dots against the same image tapered to MPoL's beam (`dots_report`): a smooth ring has holes ≈ 0 and N_eff close to its tapered value; a chain of dots has a low N_eff, holes and a base peak well above the tapered one.")
+        pc = lambda v: "n/a" if v is None else f"{v:.2%}"  # noqa: E731
+        out.append(f"| {label} | {d['sub_taper_power']:.2f} | {d['n_eff']['base']:.0f} / {d['n_eff']['tapered']:.0f} ({d['n_eff_ratio']:.2f}) | {pc(d['base_dead_in_disk_1e4'])} | {d['hole_fraction']:.2%} | "
+                   f"{pc(d['tapered_dead_outside_1e4'])} | {'n/a' if im is None else f'{im:.2f}'} | {d['peak_ratio']:.2f} | {'n/a' if pk is None else f'{pk:.3g}'} |")
+    return "\n".join(out) + ("\n\nHow far the base image has broken into dots against the same image tapered to MPoL's beam (`dots_report`): the headline columns are the sub-taper power share and the N_eff ratio (MPoL lowest, a chain of dots high power and low ratio); the ring intermittency is secondary.")
 
 
 # ------------------------------------------------------------------ generated blocks

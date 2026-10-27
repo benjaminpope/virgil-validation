@@ -282,6 +282,8 @@ def test_dots_report_separates_a_smooth_ring_from_the_same_ring_as_sparse_points
     assert rs["hole_fraction"] < 0.05 and rs["ring_intermittency"]["median"] < 1.5 and rs["n_eff"]["base"] > 0.8 * rs["n_eff"]["tapered"] and rs["sub_taper_power"] < 0.05
     assert rd["hole_fraction"] > 0.5 and np.isfinite(rd["ring_intermittency"]["median"]) and rd["n_eff"]["base"] < 0.2 * rd["n_eff"]["tapered"] and rd["sub_taper_power"] > rs["sub_taper_power"]
     assert rd["peak_ratio"] > 5 * rs["peak_ratio"] and rd["dead"]["base_below_1e-06"]["in_disk"] > rs["dead"]["base_below_1e-06"]["in_disk"]
+    assert rd["n_eff_ratio"] < 0.2 < 0.8 < rs["n_eff_ratio"] and rd["n_eff_ratio"] == pytest.approx(rd["n_eff"]["base"] / rd["n_eff"]["tapered"])
+    assert rd["base_dead_in_disk_1e4"] == rd["dead"]["base_below_0.0001"]["in_disk"] and rd["tapered_dead_outside_1e4"] == rd["dead"]["tapered_below_0.0001"]["outside"]
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
