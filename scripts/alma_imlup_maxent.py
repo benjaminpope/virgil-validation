@@ -375,7 +375,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
         import jax.numpy as jnp
 
         s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
-        res.update(entropy_SM=s, objective_R=sc_raw["nll"] + lam * s)
+        res.update(entropy_on=getattr(args, "entropy_on", None) or "blurred", entropy_SM=s, objective_R=sc_raw["nll"] + lam * s)
         s30 = float(va.MPoLEntropy(lam, pixel_mas=prob.pixel_mas).entropy({k: jnp.asarray(v) for k, v in values.items()}))  # the standard R (30 mas taper) of this image
         res.update(entropy_SM_taper30=s30, objective_R_taper30=sc_raw["nll"] + lam * s30)
         image = va.image_of(values, prob.npix, prob.pixel_mas)
@@ -403,7 +403,8 @@ def _prob_for(args, data, lam, mask, chi2=None):
     def prob_for(use, fixed=None, image_only=False):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
         return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None),
-                              fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct", taper_mas=getattr(args, "taper_mas", None))
+                              fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct", taper_mas=getattr(args, "taper_mas", None),
+                              entropy_on=getattr(args, "entropy_on", None) or "blurred")
 
     return prob_for
 
@@ -426,6 +427,8 @@ def cmd_fit(args):
         raise SystemExit("--adam-const-steps needs --adam-lr-decay and a non-negative number of steps")
     if args.adam_ftol_abs is not None and not args.adam_ftol_abs >= 0:
         raise SystemExit("--adam-ftol-abs must be >= 0")
+    if getattr(args, "entropy_on", None) not in (None, "blurred") and args.config != "R":
+        raise SystemExit("--entropy-on base is for config R")
     if args.taper_mas is not None and (args.taper_mas < 0 or args.config != "R"):
         raise SystemExit("--taper-mas is defined for config R only and must be >= 0")
     if args.post_step_blur_px is not None and args.post_step_blur_px < 0:
@@ -969,6 +972,7 @@ def main(argv=None):
     p.add_argument("--adam-ftol-abs", type=float, default=None, help="adam only: virgil's windowed ftol (over 100 steps; needs virgil#562); default off: the full budget, C8 judged afterwards")
     p.add_argument("--adam-snapshot-every", type=int, default=va.SNAPSHOT_EVERY, help="adam only: keep the image every this many steps (0: off) and write its dots_report and loss to result.json's trajectory")
     p.add_argument("--taper-mas", type=float, default=None, help="config R: Gaussian taper (FWHM mas) of the model and of the entropy's image (default MPoL's 30); 0 is classic MEM: no taper, entropy of the untapered image")
+    p.add_argument("--entropy-on", choices=["blurred", "base"], default="blurred", help="config R: the entropy of the image blurred by --taper-mas (default, MPoL's R) or of the unblurred base image while the blurring kernel stays on the model (MEM's intrinsic correlation function, Gull 1989)")
     p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
     p.add_argument("--post-step-blur-px", type=float, default=None, help="adam only: after every optimiser step blur the normalised image with a Gaussian of this sigma in pixels (dorito's recipe, "
                    "Charles et al. 2026: 0.25) and re-express it as log_brightness; default off. Needs a virgil whose fit() has post_step")

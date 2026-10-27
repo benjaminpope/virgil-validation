@@ -395,3 +395,27 @@ def test_lam_m_resolves_to_lam_r_and_a_lam_r_below_1e_4_is_refused():
         script.lam_of(ns(lam=1e-9), n)
     with pytest.raises(SystemExit, match="exclusive"):
         script.lam_of(ns(lam=0.05, lam_m=1e-9), n)
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_entropy_on_base_is_the_untapered_entropy_while_the_model_keeps_the_kernel(tmp_path):
+    """``entropy_on="base"`` (MEM's intrinsic correlation function, Gull 1989): the entropy term is ``mpol_entropy_jax(taper_mas=0)`` of the base image, the data term is that of the default problem (the
+    model keeps its 30 mas kernel, so the model visibilities are unchanged), and the default ``"blurred"`` is the entropy of the blurred image, as before; with ``taper_mas=0`` the two coincide."""
+    import jax.numpy as jnp
+
+    data = va.load_dir(synthetic_dir(tmp_path / "s"))
+    kw = dict(lam=0.5, npix=24)
+    blurred, base = va.build_problem(data, "R", **kw), va.build_problem(data, "R", entropy_on="base", **kw)
+    v = {k: jnp.asarray(x) for k, x in blurred.init.items()}
+    v["log_brightness"] = jnp.asarray(np.random.default_rng(0).normal(size=(24, 24)))
+    s_base = float(base.terms[1].entropy(v))
+    ref = float(va.mpol_entropy_jax(v["log_brightness"], v["cal.flux"], pixel_mas=blurred.pixel_mas, taper_mas=0.0, prior=va.MPOL["prior"], f_tot=va.MPOL["f_tot"]))
+    assert s_base == pytest.approx(ref, rel=1e-10)
+    assert float(blurred.terms[1].entropy(v)) == pytest.approx(float(va.mpol_entropy_jax(v["log_brightness"], v["cal.flux"], pixel_mas=blurred.pixel_mas, taper_mas=30.0, prior=va.MPOL["prior"], f_tot=va.MPOL["f_tot"])), rel=1e-10)
+    assert s_base != pytest.approx(float(blurred.terms[1].entropy(v)), rel=1e-6)
+    with va.ft_eps(1e-9):
+        a, b = np.asarray(base.terms[0](v)), np.asarray(blurred.terms[0](v))
+    assert np.max(np.abs(a - b)) <= 1e-12 * np.max(np.abs(a))
+    assert float(va.build_problem(data, "R", entropy_on="base", taper_mas=0, **kw).terms[1].entropy(v)) == pytest.approx(float(va.build_problem(data, "R", taper_mas=0, **kw).terms[1].entropy(v)), rel=1e-12)
+    with pytest.raises(ValueError):
+        va.build_problem(data, "R", entropy_on="nope", **kw)

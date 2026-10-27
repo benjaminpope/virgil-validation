@@ -976,7 +976,7 @@ def build(args):
             blocks["residuals"] += "\n\n" + pending("MPoL's residual dirty images", "The `compare` stage writes `resid_dirty_mpol_obs{0..6}.npy` when run with `--data` (OzSTAR, A100); pass its directory as `--compare`.")
     else:
         blocks["residuals"] = pending("residual dirty images", "Written by `fit` (`resid_dirty_obs*.npy`) for virgil and by `compare` (`resid_dirty_mpol_obs*.npy`) for MPoL.")
-    arms = load_arms(args.arm) + [dict(label=label, **runs[k]) for k, label, _ in RUNS if runs.get(k) is not None and runs[k]["image"] is not None]
+    arms = load_arms(args.arm + [f"{label}={d}" for label, d in (("classic MEM", args.mem), ("ICF (kernel on model, entropy on base)", args.icf)) if d]) + [dict(label=label, **runs[k]) for k, label, _ in RUNS if runs.get(k) is not None and runs[k]["image"] is not None]
     arms_fig = fig_arms(assets, arms, clean, half=args.half)
     blocks["clean"] = clean_block(clean, assets)
     blocks["arms"] = (f"![arms at the CLEAN beam](imlup/{arms_fig})" if arms_fig else pending("the arm panels", "Needs `--clean` and at least one fit (`--r`, `--arm LABEL=DIR`)."))
@@ -998,6 +998,8 @@ def build(args):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--arm", action="append", default=[], metavar="LABEL=DIR", help="a further fit directory to compare at the CLEAN beam and in the dots table (R arms, classic MEM, GP), repeatable")
+    ap.add_argument("--mem", default=None, help="the classic-MEM fit directory (--taper-mas 0): no blurring kernel, entropy of the image itself")
+    ap.add_argument("--icf", default=None, help="the ICF fit directory (--entropy-on base): the 30 mas blurring kernel stays on the model, the entropy moves to the unblurred image (Gull 1989)")
     for a in ("r", "r-mpol", "r-mpolwf", "mpol", "compare", "clean", "dsharp", "dsharp-profile", "cv"):
         ap.add_argument(f"--{a}", default=None)
     ap.add_argument("--job-id", action="append", default=[], metavar="NAME=ID", help="job id to show (names: R, R_mpol, R_mpolwf, MPoL), repeatable")

@@ -304,7 +304,7 @@ def toeplitz_term(use, scene, nuis, *, npix, pixel_mas, mask, max_offset_mas):
 
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
-                  alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None):
+                  alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None, entropy_on="blurred"):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -320,6 +320,9 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     ``image_only`` (the image-first stage) leaves the gains, offsets and error scales out of the fit: the nuisance model has gains 1, offsets 0
     and s = 1, so the free sites are the image and the flux.
 
+    ``entropy_on`` (config R): ``"blurred"`` (default; MPoL's R) puts the entropy on the image blurred by ``taper_mas``; ``"base"`` leaves the blurring kernel on the model and puts the entropy on the unblurred
+    image b, MEM's intrinsic correlation function (visible image = kernel * hidden image, entropy on the hidden one). Source: Gull 1989, doi:10.1007/978-94-015-7860-8_4 (intrinsic correlation function;
+    entropy on the hidden image); applied in Marshall, Hobson & Gull 2002, 2002MNRAS.335.1037M. With ``taper_mas`` 0 the two coincide (classic MEM).
     ``taper_mas`` (config R; default None: MPoL's 30 mas) is the Gaussian taper of the model and of the entropy's image; 0 is classic MEM: no taper on the model, the entropy of the untapered image.
 
     ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
@@ -351,6 +354,9 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
     taper_mas = MPOL["taper_mas"] if taper_mas is None else float(taper_mas)
+    if entropy_on not in ("blurred", "base"):
+        raise ValueError(f"entropy_on must be blurred or base, got {entropy_on!r}")
+    entropy_taper = 0.0 if entropy_on == "base" else taper_mas
     if config == "R":
         npix = npix or MPOL["npix"]
         nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, taper_fwhm_mas=taper_mas or None, **off)
@@ -377,7 +383,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         term, chi2_info = toeplitz_term(use, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=mask, max_offset_mas=None if offset_bound_mas is None else float(offset_bound_mas))
     else:
         term, chi2_info = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size), dict(engine="direct")
-    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, taper_mas=taper_mas, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
+    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, taper_mas=entropy_taper, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
     priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
     if fixed_log_brightness is None:
         priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
