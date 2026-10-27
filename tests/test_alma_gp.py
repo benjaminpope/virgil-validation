@@ -240,6 +240,7 @@ def test_the_gp_fit_runs_end_to_end_and_reports_the_scored_chi2_the_nuisances_an
     nu = res["nuisances"]
     assert nu["gain"][0] == 1.0 and len(nu["gain"]) == 2 and np.shape(nu["offset_mas"]) == (2, 2) and len(nu["sigma"]) == 4
     assert res["flux_beyond_1p8_arcsec_jy"] == 0.0  # the 32 x 5 mas grid is 80 mas across
+    assert res["offset_bound"]["bound_mas"] == 20.0 and res["toeplitz_info"]["max_offset_mas"] == 20.0  # config R's +-20 mas box (7ca7c0b-cd-ob20) is the default, in both stages
     assert (res["dots"] is None) == (not hasattr(va, "dots_report"))
     z = np.load(out / "values.npz")
     assert {"field.latent", "field.sigma", "cal.flux", "cal.gain", "cal.offset", "cal.sigma"} <= set(z.files) and z["field.latent"].shape == (8, 12)
