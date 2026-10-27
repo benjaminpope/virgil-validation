@@ -86,13 +86,21 @@ def load(args):
     return data
 
 
+MIN_LAM_R = 1e-4  # -ln L units: below this the entropy is off, which is what --lam 1e-9 (a lambda_M) would have done
+
+
 def lam_of(args, n):
-    """``--lam`` or ``--lam-r-equiv`` (C11: lam_R's F-equivalent at ``--flux``)."""
+    """``--lam`` (lam_R, -ln L units), ``--lam-m`` (MPoL's lambda_M: lam_R = 2 N lambda_M, C4) or ``--lam-r-equiv`` (C11: lam_R's F-equivalent at ``--flux``)."""
     if args.lam is not None:
+        if args.lam_m is not None:
+            raise SystemExit("--lam and --lam-m are exclusive (--lam is lam_R, --lam-m is MPoL's lambda_M)")
+        if args.lam < MIN_LAM_R:
+            raise SystemExit(f"--lam {args.lam:g} is lam_R in -ln L units (default {va.lam_r(n):.4g} at N = {n:,}); no sensible lam_R is below {MIN_LAM_R:g}. MPoL's lambda_M (default 1e-9) is --lam-m")
         return args.lam
+    lam_r = va.lam_r(n) if args.lam_m is None else va.lam_r(n, args.lam_m)
     if args.config == "R":
-        return va.lam_r(n)  # MPoL's lambda_M = 1e-9, C4
-    return va.lam_f_equivalent(va.lam_r(n) if args.lam_r_equiv is None else args.lam_r_equiv, flux=args.flux)
+        return lam_r  # MPoL's lambda_M = 1e-9 unless --lam-m, C4
+    return va.lam_f_equivalent(lam_r if args.lam_r_equiv is None else args.lam_r_equiv, flux=args.flux)
 
 
 def snapshot_trajectory(snapshots, values, traj, prob):
@@ -289,7 +297,7 @@ def write_state(out, args, prob, values, stages, lam, n):
     cx.write_fits(out / "image.fits", image, prob.pixel_mas, RA_DEG, DEC_DEG, OBJECT="IM Lup", ORIGIN=f"virgil {args.config}")
     last = stages[-1]
     dump(out / "result.json", dict(
-        command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n),
+        command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n),
         npix=prob.npix, pixel_mas=prob.pixel_mas, versions=versions(), stages=stages, converged=last["convergence"]["converged"],
         stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"]), ref_obs=getattr(args, "ref_obs", 0),
         at_bound=va.at_bound_report(values, prob.priors), **chi2_record(stages)))
@@ -320,7 +328,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     sc_s1 = va.score(final_data, prob.scene, {**values, "cal.sigma": np.ones_like(sigma)}, prob.nuis, mask=final_mask, chunk_size=ck)  # s = 1 first (C10)
     say(f"workflow {res_workflow(args)}: chi2/(2N) raw (s = 1) {sc_raw['chi2_raw'] / (2 * final_data.u.shape[0]):.4f}; -ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
     res = dict(
-        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
+        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         clean_start=next((s["clean_start"] for s in stages if "clean_start" in s), None),
@@ -931,7 +939,8 @@ def main(argv=None):
         p.add_argument("--ddids", type=int, nargs="*", default=None)
         p.add_argument("--out", required=True)
         if fit:
-            p.add_argument("--lam", type=float, default=None, help="strength in -ln L units (R: lam_R; F: virgil MaxEntropy weight)")
+            p.add_argument("--lam", type=float, default=None, help="strength in -ln L units (R: lam_R; F: virgil MaxEntropy weight); refused below 1e-4, where MPoL's lambda_M is meant (--lam-m)")
+            p.add_argument("--lam-m", type=float, default=None, help="MPoL's lambda_M (default 1e-9): lam_R = 2 N lambda_M (C4); exclusive with --lam")
             p.add_argument("--lam-r-equiv", type=float, default=None, help="instead of --lam: F's equivalent of this lam_R (C11), at --flux")
             p.add_argument("--flux", type=float, default=va.MPOL["f_tot"], help="flux (Jy) of the conversion lam_R -> lam_F")
             p.add_argument("--npix", type=int, default=None)

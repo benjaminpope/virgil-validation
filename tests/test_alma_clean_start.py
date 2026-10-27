@@ -372,9 +372,26 @@ def test_release_arm_flag_combinations_clean_start_adam_toeplitz_and_classic_mem
     d, _ = _clean_dir(tmp_path / "c")
     common = ("--config", "R", "--data", syn, "--npix", 32, "--method", "adam", "--adam-steps", 30, "--adam-lr", 1e-2, "--adam-const-steps", 10, "--adam-lr-decay", 0.7, "--chi2", "toeplitz",
               "--offset-bound-mas", 20, "--adam-snapshot-every", 20, "--no-dirty")
-    _call("fit", *common, "--workflow", "clean", "--clean-dir", d, "--lam", 1e-9, "--out", tmp_path / "clean")
+    _call("fit", *common, "--workflow", "clean", "--clean-dir", d, "--lam-m", 1e-9, "--out", tmp_path / "clean")
     r = json.loads((tmp_path / "clean/result.json").read_text())
     assert r["chi2_engine"] == "toeplitz" and [s["name"] for s in r["stages"]] == ["selfcal", "all"] and r["args"]["method"] == "adam"
-    _call("fit", *common, "--workflow", "mpol", "--taper-mas", 0, "--lam", 1e-9, "--out", tmp_path / "mem")
+    _call("fit", *common, "--workflow", "mpol", "--taper-mas", 0, "--lam-m", 1e-9, "--out", tmp_path / "mem")
     r = json.loads((tmp_path / "mem/result.json").read_text())
     assert r["chi2_engine"] == "toeplitz" and r["summary"]["taper_mas"] == 0 and r["trajectory"]
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_lam_m_resolves_to_lam_r_and_a_lam_r_below_1e_4_is_refused():
+    """``--lam-m 3e-10`` is lam_R = 2 N lambda_M = 0.025452679 at N = 42,421,131 (the default lambda_M = 1e-9 gives 0.0848...); ``--lam 1e-9`` (a lambda_M given as lam_R, which turns the entropy
+    off) and ``--lam`` with ``--lam-m`` are refused."""
+    import argparse
+
+    n = 42_421_131
+    ns = lambda **k: argparse.Namespace(**{**dict(lam=None, lam_m=None, config="R", lam_r_equiv=None, flux=0.25), **k})  # noqa: E731
+    assert script.lam_of(ns(lam_m=3e-10), n) == pytest.approx(0.025452679, rel=1e-6)
+    assert script.lam_of(ns(), n) == pytest.approx(va.lam_r(n))
+    assert script.lam_of(ns(lam=0.05), n) == 0.05
+    with pytest.raises(SystemExit, match="--lam-m"):
+        script.lam_of(ns(lam=1e-9), n)
+    with pytest.raises(SystemExit, match="exclusive"):
+        script.lam_of(ns(lam=0.05, lam_m=1e-9), n)

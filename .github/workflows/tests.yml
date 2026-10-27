@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: 5306cd4f5aee590842e0f10fd9857a416ac30171  # virgil main 2026-10-26: radio_clean scales_mas (virgil#553), Adam post_step (#558)
+  VIRGIL_REF: da4d09d4af2ef0f3c0edb2f5dd9415c06aac476f  # virgil#562 head (contains main): radio_clean scales_mas (#553), Adam post_step (#558), windowed ftol and lr schedules (#562)
 
 jobs:
   validate:
