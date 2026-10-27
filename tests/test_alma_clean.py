@@ -228,3 +228,44 @@ def test_virgil_radio_clean_agrees_with_the_independent_loop():
     record("radio_clean vs independent loop, max image difference over peak", err)
     assert err < 0.03
     assert res.model.sum() == pytest.approx(ref["model"].sum(), rel=0.02)
+
+
+@pytest.mark.validates("virgil.radio_clean.clean", roots=["self-consistency"], kind="guard")
+def test_virgil_clean_keywords_bind_to_the_installed_signature(monkeypatch):
+    """The keywords ``clean_virgil`` passes bind to ``virgil.radio_clean.clean`` (a renamed argument fails here, not on the cluster); the scales go in mas."""
+    import inspect
+
+    pytest.importorskip("virgil.radio_clean")
+    from virgil.radio_clean import clean as vclean
+
+    import alma_imlup_clean as script
+
+    got = {}
+    monkeypatch.setattr(script, "cmd_run", lambda args: got.setdefault("args", args))
+    script.main(["run", "--data", "d", "--out", "o"])
+    args = got["args"]
+    kw = script.virgil_clean_kwargs(args, [0, 10.0], np.ones((3, 3), bool))
+    assert not any(p.kind is p.VAR_KEYWORD for p in inspect.signature(vclean).parameters.values())  # **kwargs would accept any name
+    inspect.signature(vclean).bind(None, args.npix, args.pixel_mas, **kw)  # TypeError on an unknown or missing keyword
+    assert kw["scales_mas"] == [0.0, 10.0 * args.pixel_mas]
+
+
+@pytest.mark.validates("crosscheck.alma_clean", roots=["self-consistency"], kind="guard")
+def test_run_writes_npy_pngs_flux_and_dots_for_the_maxent_start_and_the_page(tmp_path):
+    """A short ``run`` on small synthetic data writes the restored image, model, residual, PSF and beam as .npy, a PNG of each, and result.json with the model and restored flux and
+    ``dots`` (the page and the gate (e) reference read these); clean.json keeps what ``--start`` reads (``model.fits``, ``beam_mas_deg``)."""
+    import json
+
+    from test_alma_maxent import synthetic_dir
+
+    import alma_imlup_clean as script
+
+    syn = synthetic_dir(tmp_path / "s")
+    out = tmp_path / "o"
+    script.main(["run", "--data", str(syn), "--out", str(out), "--npix", "65", "--pixel-mas", "20", "--niter", "30", "--scales-pix", "0", "3", "--cycleniter", "10", "--patch", "32",
+                "--uv-cell-npix", "65", "--threshold-jy", "0"])
+    for f in ("image.npy", "model.npy", "residual.npy", "psf.npy", "beam.npy", "image.png", "model.png", "residual.png", "image.fits", "model.fits", "clean.json"):
+        assert (out / f).stat().st_size > 0, f
+    r = json.loads((out / "result.json").read_text())
+    assert r["flux"]["model_sum_jy"] == pytest.approx(float(np.load(out / "model.npy").sum()), rel=1e-5) and {"n_eff", "hole_fraction", "sub_taper_power"} <= set(r["dots"])
+    assert len(np.load(out / "beam.npy")) == 3 and json.loads((out / "clean.json").read_text())["restored_flux_jy"] == pytest.approx(r["flux"]["restored_jy"])
