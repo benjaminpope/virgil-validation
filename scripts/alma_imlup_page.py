@@ -674,6 +674,113 @@ def fig_profile(assets, head, mpol, clean, dsharp, dsharp_profile, half=2.5):
     return "profile.png"
 
 
+# ------------------------------------------------------------------ our CLEAN, the arms and the dots
+
+
+def load_arms(specs):
+    """``--arm LABEL=DIR`` (a fit directory: result.json, image.npy in Jy/arcsec^2, 5 mas pixels): the arms to compare (R arms, classic MEM, a GP image saved the same way); missing ones are skipped."""
+    arms = []
+    for spec in specs:
+        label, _, path = spec.partition("=")
+        f = load_fit(path)
+        if f is not None and f["image"] is not None:
+            arms.append(dict(label=label, **f))
+    return arms
+
+
+def convolve_to_beam(image, pixel_mas, beam):
+    """``image`` (Jy/arcsec^2, row 0 North, column 0 East) convolved with the unit-area elliptical Gaussian of FWHM ``beam`` = (bmaj, bmin mas, PA deg East of North), in Jy/arcsec^2 (FFT; the
+    kernel's transfer function is exact, so the image's flux is conserved)."""
+    ny, nx = image.shape
+    fc, fr = np.fft.fftfreq(nx, d=pixel_mas)[None, :], np.fft.fftfreq(ny, d=pixel_mas)[:, None]  # cycles per mas
+    pa = math.radians(beam[2])
+    along, across = fc * math.sin(pa) + fr * math.cos(pa), fc * math.cos(pa) - fr * math.sin(pa)
+    s_maj, s_min = beam[0] / (2 * math.sqrt(2 * math.log(2))), beam[1] / (2 * math.sqrt(2 * math.log(2)))
+    return np.fft.ifft2(np.fft.fft2(image) * np.exp(-2 * math.pi**2 * ((s_maj * along) ** 2 + (s_min * across) ** 2))).real
+
+
+def _sample(image, centre_rc, pixel_mas, half_arcsec, step_mas=5.0):
+    """``image`` resampled (bilinear) onto a ``2 half`` arcsec square of ``step_mas`` pixels about the phase centre, which sits in cell ``centre_rc`` (fractional) of ``image``."""
+    from scipy.ndimage import map_coordinates
+
+    m = int(round(half_arcsec * 1000 / step_mas))
+    off = (np.arange(-m, m + 1) * step_mas) / pixel_mas
+    rows, cols = centre_rc[0] + off[:, None] * np.ones(len(off))[None, :], centre_rc[1] + np.ones(len(off))[:, None] * off[None, :]
+    return map_coordinates(np.asarray(image, float), [rows, cols], order=1, mode="constant", cval=0.0)
+
+
+def fig_arms(assets, arms, clean, mpol_image=None, half=2.5):
+    """Side-by-side panels of CLEAN's restored image and of each arm (and MPoL's image when given) convolved to the CLEAN beam, in Jy/beam, with each minus CLEAN below; None without CLEAN or arms."""
+    if clean is None or not (arms or mpol_image is not None):
+        return None
+    plt = _mpl()
+    beam = clean["beam"]
+    area = cx.beam_area_arcsec2(beam[0], beam[1])
+    g = clean["grid"]
+    ref = _sample(clean["image"], (g.cr, g.cc), g.dx * 1000, half)
+    panels = [("CLEAN (restored)", ref)]
+    items = [(a["label"], a["image"], 5.0) for a in arms] + ([("MPoL", mpol_image, 5.0)] if mpol_image is not None else [])
+    for label, img, px in items:
+        n = img.shape[0]
+        panels.append((label, _sample(convolve_to_beam(img, px, beam) * area, (n // 2 - 1, n // 2 - 1), px, half)))
+    vmax = float(np.percentile(ref, 99.9))
+    fig, axes = plt.subplots(2, len(panels), figsize=(2.6 * len(panels), 5.4), squeeze=False)
+    ext = [half, -half, -half, half]
+    for j, (label, im) in enumerate(panels):
+        axes[0, j].imshow(im, origin="upper", extent=ext, cmap="magma", vmin=0, vmax=vmax)
+        axes[0, j].set_title(label)
+        if j:
+            d = im - ref
+            axes[1, j].imshow(d, origin="upper", extent=ext, cmap="RdBu_r", vmin=-0.1 * vmax, vmax=0.1 * vmax)
+            axes[1, j].set_title(f"{label} − CLEAN (rms {np.sqrt(np.mean(d**2)) / vmax:.3f} of peak)")
+        else:
+            axes[1, j].axis("off")
+    for ax in axes.ravel():
+        ax.set(xticks=[], yticks=[])
+    fig.suptitle(f"Convolved to the CLEAN beam {beam[0]:.0f} × {beam[1]:.0f} mas, Jy/beam; residual scale ±10% of the CLEAN peak")
+    fig.tight_layout()
+    name = "arms.png"
+    save_small(fig, assets / name)
+    plt.close(fig)
+    return name
+
+
+def clean_block(clean, assets):
+    """Our CLEAN: the rendered image, model and residual (``alma_imlup_clean.py`` writes PNGs), the beam, and the flux."""
+    if clean is None:
+        return pending("our CLEAN", "Needs `--clean DIR`, an `alma_imlup_clean.py run` output (the OzSTAR `alma_imlup_clean` job).")
+    d, run = clean["path"].parent, clean["run"]
+    rows = []
+    for name in ("image", "model", "residual"):
+        if (d / f"{name}.png").exists():
+            shutil.copy(d / f"{name}.png", assets / f"clean_{name}.png")
+            rows.append(f"![CLEAN {name}](imlup/clean_{name}.png)")
+    b = clean["beam"]
+    fl = f"model {run.get('model_flux_jy', float('nan')):.5f} Jy, restored {run.get('restored_flux_jy', float('nan')):.5f} Jy, in the mask {run.get('flux_in_mask_jy', float('nan')):.5f} Jy"
+    return "\n".join(rows) + f"\n\nBeam {b[0]:.1f} × {b[1]:.1f} mas, PA {b[2]:.1f}°; flux: {fl}; stop `{run.get('stop')}` after {run.get('iterations')} iterations." + (
+        "" if rows else "\n\n" + pending("CLEAN renders", "This CLEAN predates the PNG outputs; rerun `alma_imlup_clean.py run`."))
+
+
+def dots_block(arms, clean):
+    """One row per run of the ``dots`` block of its result.json (and of CLEAN's model)."""
+    rows = []
+    for a in arms:
+        if a["result"].get("dots"):
+            rows.append((a["label"], a["result"]["dots"], a["result"].get("summary", {})))
+    if clean is not None and clean["run"].get("dots"):
+        rows.append(("CLEAN model", clean["run"]["dots"], {}))
+    if not rows:
+        return pending("the dots table", "Needs fits whose result.json has `dots` (virgil-validation with `dots_report`) and/or a CLEAN that has it.")
+    out = ["| run | sub-taper power | N_eff base / tapered (ratio) | base dead <1e-4 in disk | hole fraction | tapered dead <1e-4 outside | ring intermittency (median) | base / tapered peak | tapered peak (Jy/arcsec²) |", "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"]
+    for label, d, s in rows:
+        im = d["ring_intermittency"]["median"]
+        pk = s.get("peak_tapered_jy_arcsec2")
+        pc = lambda v: "n/a" if v is None else f"{v:.2%}"  # noqa: E731
+        out.append(f"| {label} | {d['sub_taper_power']:.2f} | {d['n_eff']['base']:.0f} / {d['n_eff']['tapered']:.0f} ({d['n_eff_ratio']:.2f}) | {pc(d['base_dead_in_disk_1e4'])} | {d['hole_fraction']:.2%} | "
+                   f"{pc(d['tapered_dead_outside_1e4'])} | {'n/a' if im is None else f'{im:.2f}'} | {d['peak_ratio']:.2f} | {'n/a' if pk is None else f'{pk:.3g}'} |")
+    return "\n".join(out) + ("\n\nHow far the base image has broken into dots against the same image tapered to MPoL's beam (`dots_report`): the headline columns are the sub-taper power share and the N_eff ratio (MPoL lowest, a chain of dots high power and low ratio); the ring intermittency is secondary.")
+
+
 # ------------------------------------------------------------------ generated blocks
 
 
@@ -869,6 +976,11 @@ def build(args):
             blocks["residuals"] += "\n\n" + pending("MPoL's residual dirty images", "The `compare` stage writes `resid_dirty_mpol_obs{0..6}.npy` when run with `--data` (OzSTAR, A100); pass its directory as `--compare`.")
     else:
         blocks["residuals"] = pending("residual dirty images", "Written by `fit` (`resid_dirty_obs*.npy`) for virgil and by `compare` (`resid_dirty_mpol_obs*.npy`) for MPoL.")
+    arms = load_arms(args.arm + [f"{label}={d}" for label, d in (("classic MEM", args.mem), ("ICF (kernel on model, entropy on base)", args.icf)) if d]) + [dict(label=label, **runs[k]) for k, label, _ in RUNS if runs.get(k) is not None and runs[k]["image"] is not None]
+    arms_fig = fig_arms(assets, arms, clean, half=args.half)
+    blocks["clean"] = clean_block(clean, assets)
+    blocks["arms"] = (f"![arms at the CLEAN beam](imlup/{arms_fig})" if arms_fig else pending("the arm panels", "Needs `--clean` and at least one fit (`--r`, `--arm LABEL=DIR`)."))
+    blocks["dots"] = dots_block(arms, clean)
     blocks["cv"] = cv_block(args.cv, assets)
     blocks["science"] = science_block(prof, args.dsharp_profile)
     blocks["provenance"] = provenance_block(runs, mpol, clean, dsharp, job_ids, inputs, git_head())
@@ -885,6 +997,9 @@ def build(args):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--arm", action="append", default=[], metavar="LABEL=DIR", help="a further fit directory to compare at the CLEAN beam and in the dots table (R arms, classic MEM, GP), repeatable")
+    ap.add_argument("--mem", default=None, help="the classic-MEM fit directory (--taper-mas 0): no blurring kernel, entropy of the image itself")
+    ap.add_argument("--icf", default=None, help="the ICF fit directory (--entropy-on base): the 30 mas blurring kernel stays on the model, the entropy moves to the unblurred image (Gull 1989)")
     for a in ("r", "r-mpol", "r-mpolwf", "mpol", "compare", "clean", "dsharp", "dsharp-profile", "cv"):
         ap.add_argument(f"--{a}", default=None)
     ap.add_argument("--job-id", action="append", default=[], metavar="NAME=ID", help="job id to show (names: R, R_mpol, R_mpolwf, MPoL), repeatable")

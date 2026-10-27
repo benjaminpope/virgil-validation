@@ -148,17 +148,18 @@ def clean_image_flux(path):
 
 GATE_FLUX_TOL = 0.10
 GATE_DEAD_TOL = 0.01
+GATE_REFERENCE_FLAG = 0.05  # flag our CLEAN flux and DSHARP's differing by more than this
 
 
 def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, stages_converged, dead_fraction, flux_ours, flux_ref, flux_ref_name,
-                    flux_tol=GATE_FLUX_TOL, dead_tol=GATE_DEAD_TOL):
+                    flux_tol=GATE_FLUX_TOL, dead_tol=GATE_DEAD_TOL, dead_fraction_base=None, flux_ref_alt=None, flux_ref_alt_name=None):
     """The cold-start gate (``design/alma_imlup_p3.md``, 2026-10-23, approved by Ben): five checks, each PASS or FAIL (``NOT EVALUATED`` when its input is
     None), and a verdict that is PASS only if all five pass.
 
     a. ``objective_ours`` <= ``objective_mpol`` (R's objective, both evaluated by virgil at eps 1e-12);
     b. raw chi^2/N at s = 1, ``chi2n_ours`` <= ``chi2n_mpol`` (MPoL's solution evaluated in virgil);
     c. C8 converged in every stage (``stages_converged``, a list of bools);
-    d. the fraction of pixels below 1e-6 of the peak (``dead_fraction``) is under ``dead_tol`` (1 %);
+    d. the fraction of pixels of the image tapered to MPoL's beam below 1e-6 of its peak (``dead_fraction``; Ben, 2026-10-27: the base image may break into dots, MPoL's own is judged tapered) is under ``dead_tol`` (1 %); the base image's fraction (``dead_fraction_base``) is only recorded;
     e. ``flux_ours`` within ``flux_tol`` (10 %) of ``flux_ref``: the CLEAN flux of ours when one is given, else the DSHARP CLEAN image's measured 0.2548 Jy (``REFERENCE_FLUX_JY``, ``REFERENCE_FLUX_NAME``; ``flux_ref_name`` says which)."""
     def item(key, label, ok, value, limit):
         return dict(key=key, label=label, value=value, limit=limit, status="NOT EVALUATED" if ok is None else ("PASS" if ok else "FAIL"))
@@ -171,12 +172,18 @@ def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, s
         item("a", "objective_R at or below MPoL's", None if o is None else o[0] <= o[1], None if o is None else o[0] - o[1], "<= 0"),
         item("b", "raw chi^2/N (s = 1) at or below MPoL's solution in virgil", None if c is None else c[0] <= c[1], None if c is None else c[0] - c[1], "<= 0"),
         item("c", "C8 converged in every stage", None if sc is None else all(sc), None if sc is None else f"{sum(sc)}/{len(sc)} stages", "all"),
-        item("d", f"pixels below 1e-6 of the peak under {dead_tol:.0%}", None if dead_fraction is None else dead_fraction < dead_tol, dead_fraction, f"< {dead_tol:g}"),
+        item("d", f"tapered-image pixels below 1e-6 of the peak under {dead_tol:.0%}", None if dead_fraction is None else dead_fraction < dead_tol, dead_fraction, f"< {dead_tol:g}"),
         item("e", f"total flux within {flux_tol:.0%} of the {flux_ref_name} flux ({flux_ref:.5f} Jy)" if flux_ref else "total flux within 10% of the reference flux",
              None if rel is None else rel <= flux_tol, rel, f"<= {flux_tol:g}"),
     ]
+    alt = None
+    if flux_ref_alt and flux_ref:
+        diff = flux_ref / flux_ref_alt - 1
+        alt = dict(name=flux_ref_alt_name, flux_jy=flux_ref_alt, relative_difference=diff, flag=bool(abs(diff) > GATE_REFERENCE_FLAG),
+                   note=f"the two reference fluxes differ by {diff:+.1%}" + (f" (more than {GATE_REFERENCE_FLAG:.0%})" if abs(diff) > GATE_REFERENCE_FLAG else ""))
     verdict = "PASS" if all(i["status"] == "PASS" for i in items) else ("INCOMPLETE" if any(i["status"] == "NOT EVALUATED" for i in items) and not any(i["status"] == "FAIL" for i in items) else "FAIL")
-    return dict(verdict=verdict, items=items, flux_reference=dict(name=flux_ref_name, flux_jy=flux_ref), flux_ours_jy=flux_ours,
+    return dict(verdict=verdict, items=items, flux_reference=dict(name=flux_ref_name, flux_jy=flux_ref), flux_ours_jy=flux_ours, dead_fraction_base=dead_fraction_base,
+                flux_reference_alt=alt,
                 rule="PASS only if (a)-(e) all pass; design/alma_imlup_p3.md, 2026-10-23, approved by Ben")
 
 
@@ -185,6 +192,9 @@ def gate_markdown(gate):
     rows = [f"**Cold-start gate: {gate['verdict']}** ({gate['rule']})", "", "| | check | value | limit | |", "|---|---|---|---|---|"]
     fmt = lambda v: "" if v is None else (v if isinstance(v, str) else f"{v:.6g}")  # noqa: E731
     rows += [f"| {i['key']} | {i['label']} | {fmt(i['value'])} | {i['limit']} | {i['status']} |" for i in gate["items"]]
+    alt = gate.get("flux_reference_alt")
+    if alt:
+        rows += ["", f"Alternative reference {alt['name']} {alt['flux_jy']:.5g} Jy: {alt['note']}."]
     return rows
 
 

@@ -355,3 +355,67 @@ def test_cv_task_refuses_an_init_fitted_with_another_reference_observation(tmp_p
     with pytest.raises(SystemExit, match="reference observation 2"):
         _call("cv-task", "--config", "R", "--data", syn, "--folds", folds, "--fold", 0, "--init", init, "--lam", 1.0, "--npix", 24, "--max-steps", 2,
               "--out", tmp_path / "cv")
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_release_arm_flag_combinations_clean_start_adam_toeplitz_and_classic_mem(tmp_path):
+    """The flags of the release arms are accepted together: the CLEAN start (``--workflow clean``) with Adam, Toeplitz chi^2 and a decaying lr schedule, and the classic-MEM arm
+    (``--taper-mas 0``) with Adam and Toeplitz, all on small synthetic data; Adam's lr schedule needs virgil#562, so those runs are skipped without it."""
+    import inspect
+
+    import virgil
+
+    ok, err = va.adam_features_probe(virgil.fit)
+    if not ok or any(k not in inspect.signature(virgil.fit).parameters for k in va.ADAM_KEYWORDS + ("post_step",)):
+        pytest.skip(f"installed virgil predates virgil#562: {err}")
+    syn = synthetic_dir(tmp_path / "s")
+    d, _ = _clean_dir(tmp_path / "c")
+    common = ("--config", "R", "--data", syn, "--npix", 32, "--method", "adam", "--adam-steps", 30, "--adam-lr", 1e-2, "--adam-const-steps", 10, "--adam-lr-decay", 0.7, "--chi2", "toeplitz",
+              "--offset-bound-mas", 20, "--adam-snapshot-every", 20, "--no-dirty")
+    _call("fit", *common, "--workflow", "clean", "--clean-dir", d, "--lam-m", 1e-9, "--out", tmp_path / "clean")
+    r = json.loads((tmp_path / "clean/result.json").read_text())
+    assert r["chi2_engine"] == "toeplitz" and [s["name"] for s in r["stages"]] == ["selfcal", "all"] and r["args"]["method"] == "adam"
+    _call("fit", *common, "--workflow", "mpol", "--taper-mas", 0, "--lam-m", 1e-9, "--out", tmp_path / "mem")
+    r = json.loads((tmp_path / "mem/result.json").read_text())
+    assert r["chi2_engine"] == "toeplitz" and r["summary"]["taper_mas"] == 0 and r["trajectory"]
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_lam_m_resolves_to_lam_r_and_a_lam_r_below_1e_4_is_refused():
+    """``--lam-m 3e-10`` is lam_R = 2 N lambda_M = 0.025452679 at N = 42,421,131 (the default lambda_M = 1e-9 gives 0.0848...); ``--lam 1e-9`` (a lambda_M given as lam_R, which turns the entropy
+    off) and ``--lam`` with ``--lam-m`` are refused."""
+    import argparse
+
+    n = 42_421_131
+    ns = lambda **k: argparse.Namespace(**{**dict(lam=None, lam_m=None, config="R", lam_r_equiv=None, flux=0.25), **k})  # noqa: E731
+    assert script.lam_of(ns(lam_m=3e-10), n) == pytest.approx(0.025452679, rel=1e-6)
+    assert script.lam_of(ns(), n) == pytest.approx(va.lam_r(n))
+    assert script.lam_of(ns(lam=0.05), n) == 0.05
+    with pytest.raises(SystemExit, match="--lam-m"):
+        script.lam_of(ns(lam=1e-9), n)
+    with pytest.raises(SystemExit, match="exclusive"):
+        script.lam_of(ns(lam=0.05, lam_m=1e-9), n)
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_entropy_on_base_is_the_untapered_entropy_while_the_model_keeps_the_kernel(tmp_path):
+    """``entropy_on="base"`` (MEM's intrinsic correlation function, Gull 1989): the entropy term is ``mpol_entropy_jax(taper_mas=0)`` of the base image, the data term is that of the default problem (the
+    model keeps its 30 mas kernel, so the model visibilities are unchanged), and the default ``"blurred"`` is the entropy of the blurred image, as before; with ``taper_mas=0`` the two coincide."""
+    import jax.numpy as jnp
+
+    data = va.load_dir(synthetic_dir(tmp_path / "s"))
+    kw = dict(lam=0.5, npix=24)
+    blurred, base = va.build_problem(data, "R", **kw), va.build_problem(data, "R", entropy_on="base", **kw)
+    v = {k: jnp.asarray(x) for k, x in blurred.init.items()}
+    v["log_brightness"] = jnp.asarray(np.random.default_rng(0).normal(size=(24, 24)))
+    s_base = float(base.terms[1].entropy(v))
+    ref = float(va.mpol_entropy_jax(v["log_brightness"], v["cal.flux"], pixel_mas=blurred.pixel_mas, taper_mas=0.0, prior=va.MPOL["prior"], f_tot=va.MPOL["f_tot"]))
+    assert s_base == pytest.approx(ref, rel=1e-10)
+    assert float(blurred.terms[1].entropy(v)) == pytest.approx(float(va.mpol_entropy_jax(v["log_brightness"], v["cal.flux"], pixel_mas=blurred.pixel_mas, taper_mas=30.0, prior=va.MPOL["prior"], f_tot=va.MPOL["f_tot"])), rel=1e-10)
+    assert s_base != pytest.approx(float(blurred.terms[1].entropy(v)), rel=1e-6)
+    with va.ft_eps(1e-9):
+        a, b = np.asarray(base.terms[0](v)), np.asarray(blurred.terms[0](v))
+    assert np.max(np.abs(a - b)) <= 1e-12 * np.max(np.abs(a))
+    assert float(va.build_problem(data, "R", entropy_on="base", taper_mas=0, **kw).terms[1].entropy(v)) == pytest.approx(float(va.build_problem(data, "R", taper_mas=0, **kw).terms[1].entropy(v)), rel=1e-12)
+    with pytest.raises(ValueError):
+        va.build_problem(data, "R", entropy_on="nope", **kw)

@@ -143,6 +143,20 @@ Zawadzki et al. (2023) and as MPoL's example left undone.
 
 <!-- /gen:cv -->
 
+## Our CLEAN, the arms and the dots
+
+<!-- gen:clean -->
+
+<!-- /gen:clean -->
+
+<!-- gen:arms -->
+
+<!-- /gen:arms -->
+
+<!-- gen:dots -->
+
+<!-- /gen:dots -->
+
 ## Science
 
 <!-- gen:science -->
