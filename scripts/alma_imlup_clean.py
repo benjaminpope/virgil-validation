@@ -233,6 +233,32 @@ def clean_virgil(data, args, scales_pix, mask, log=say):
     )
 
 
+def render_png(path, image, pixel_mas, beam, title, unit, half_arcsec=2.5):
+    """``image`` (row 0 North, column 0 East, the phase centre at the middle) as a PNG of the central ``2 half_arcsec``: East to the left, the beam ellipse (``beam`` = bmaj, bmin
+    mas and PA deg East of North) in the lower left, ``unit`` on the colour bar. Residuals get a symmetric diverging scale, other images an asinh-free linear one from 0."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Ellipse
+
+    n = image.shape[0]
+    h = int(round(half_arcsec * 1000 / pixel_mas))
+    c = (n - 1) // 2
+    crop = np.asarray(image, float)[max(c - h, 0): c + h + 1, max(c - h, 0): c + h + 1]
+    half = crop.shape[0] // 2 * pixel_mas / 1000.0
+    signed = "residual" in title.lower()
+    lim = float(np.percentile(np.abs(crop), 99.9)) or 1.0
+    fig, ax = plt.subplots(figsize=(5.2, 4.6))
+    im = ax.imshow(crop, origin="upper", extent=[half, -half, -half, half], cmap="RdBu_r" if signed else "magma", vmin=-lim if signed else 0.0, vmax=lim if signed else float(crop.max()))
+    ax.add_patch(Ellipse((0.8 * half, -0.8 * half), beam[0] / 1000.0, beam[1] / 1000.0, angle=90.0 - beam[2], fill=False, edgecolor="w" if not signed else "k", lw=1.2))
+    ax.set(xlabel="East offset (arcsec)", ylabel="North offset (arcsec)", title=title)
+    fig.colorbar(im, ax=ax, label=unit, shrink=0.85)
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+
+
 def cmd_run(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -263,6 +289,11 @@ def cmd_run(args):
     write_fits(out / "residual.fits", res["residual"], px, "Jy/beam", beam)
     write_fits(out / "model.fits", res["model"], px, "Jy/pixel")
     write_fits(out / "psf.fits", res["psf"], px, "", beam)
+    for name, arr in (("image", restored), ("model", res["model"]), ("residual", res["residual"]), ("psf", res["psf"])):
+        np.save(out / f"{name}.npy", np.asarray(arr, np.float32))
+    np.save(out / "beam.npy", np.asarray(beam, float))  # bmaj_mas, bmin_mas, pa_deg
+    for name, arr, unit in (("image", restored, "Jy/beam"), ("model", res["model"], "Jy/pixel"), ("residual", res["residual"], "Jy/beam")):
+        render_png(out / f"{name}.png", arr, px, beam, f"IM Lup CLEAN {name} ({args.engine} engine)", unit)
     if res["components"] is not None:
         np.savez_compressed(out / "components.npz", **{f"scale_{s:g}": np.nonzero(cmp) + (cmp[np.nonzero(cmp)],) for s, cmp in zip(scales_pix, res["components"])})
     beam_area_pix = np.pi * bmaj * bmin / (4 * np.log(2)) / px**2
@@ -272,10 +303,22 @@ def cmd_run(args):
         iterations=res["iterations"], majors=len(res["history"]), model_flux_jy=float(res["model"].sum()), flux_in_mask_jy=flux_mask,
         peak_jy_per_beam=float(restored.max()), n_points=len(data), wall_s=time.time() - t0, history=res["history"], versions=versions(),
     )
+    area_px = px**2 / 1e6  # arcsec^2
+    model_sb = res["model"] / area_px
+    summary.update(restored_flux_jy=float(restored.sum() / beam_area_pix), dots=va_dots(model_sb, px))
     dump(out / "clean.json", summary)
+    dump(out / "result.json", dict(command="run", flux=dict(model_sum_jy=summary["model_flux_jy"], restored_jy=summary["restored_flux_jy"], restored_in_mask_jy=flux_mask), dots=summary["dots"],
+                                   stop=res["stop"], iterations=res["iterations"], beam_mas_deg=beam, pixel_mas=px, wall_s=summary["wall_s"], versions=summary["versions"]))
     say(f"done: {res['stop']}, {res['iterations']} iterations, {len(res['history'])} major cycles, model {summary['model_flux_jy']:.5f} Jy, flux in mask {flux_mask:.5f} Jy, peak {summary['peak_jy_per_beam'] * 1e3:.4f} mJy/beam, {summary['wall_s']:.0f} s")
     if args.dsharp:
         compare(out, args.dsharp, out)
+
+
+def va_dots(model_sb, pixel_mas):
+    """``dots_report`` of the CLEAN model (Jy/arcsec^2) against its 30 mas tapering (MPoL's beam): the model is a set of Gaussian components on a pixel grid."""
+    import virgil_bridge.alma as va
+
+    return va.dots_report(model_sb, va.tapered_image(model_sb, pixel_mas), pixel_mas)
 
 
 def versions():

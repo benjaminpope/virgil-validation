@@ -355,3 +355,26 @@ def test_cv_task_refuses_an_init_fitted_with_another_reference_observation(tmp_p
     with pytest.raises(SystemExit, match="reference observation 2"):
         _call("cv-task", "--config", "R", "--data", syn, "--folds", folds, "--fold", 0, "--init", init, "--lam", 1.0, "--npix", 24, "--max-steps", 2,
               "--out", tmp_path / "cv")
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_release_arm_flag_combinations_clean_start_adam_toeplitz_and_classic_mem(tmp_path):
+    """The flags of the release arms are accepted together: the CLEAN start (``--workflow clean``) with Adam, Toeplitz chi^2 and a decaying lr schedule, and the classic-MEM arm
+    (``--taper-mas 0``) with Adam and Toeplitz, all on small synthetic data; Adam's lr schedule needs virgil#562, so those runs are skipped without it."""
+    import inspect
+
+    import virgil
+
+    ok, err = va.adam_features_probe(virgil.fit)
+    if not ok or any(k not in inspect.signature(virgil.fit).parameters for k in va.ADAM_KEYWORDS + ("post_step",)):
+        pytest.skip(f"installed virgil predates virgil#562: {err}")
+    syn = synthetic_dir(tmp_path / "s")
+    d, _ = _clean_dir(tmp_path / "c")
+    common = ("--config", "R", "--data", syn, "--npix", 32, "--method", "adam", "--adam-steps", 30, "--adam-lr", 1e-2, "--adam-const-steps", 10, "--adam-lr-decay", 0.7, "--chi2", "toeplitz",
+              "--offset-bound-mas", 20, "--adam-snapshot-every", 20, "--no-dirty")
+    _call("fit", *common, "--workflow", "clean", "--clean-dir", d, "--lam", 1e-9, "--out", tmp_path / "clean")
+    r = json.loads((tmp_path / "clean/result.json").read_text())
+    assert r["chi2_engine"] == "toeplitz" and [s["name"] for s in r["stages"]] == ["selfcal", "all"] and r["args"]["method"] == "adam"
+    _call("fit", *common, "--workflow", "mpol", "--taper-mas", 0, "--lam", 1e-9, "--out", tmp_path / "mem")
+    r = json.loads((tmp_path / "mem/result.json").read_text())
+    assert r["chi2_engine"] == "toeplitz" and r["summary"]["taper_mas"] == 0 and r["trajectory"]

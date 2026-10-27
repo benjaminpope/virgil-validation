@@ -304,7 +304,7 @@ def toeplitz_term(use, scene, nuis, *, npix, pixel_mas, mask, max_offset_mas):
 
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
-                  alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct"):
+                  alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -319,6 +319,8 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
 
     ``image_only`` (the image-first stage) leaves the gains, offsets and error scales out of the fit: the nuisance model has gains 1, offsets 0
     and s = 1, so the free sites are the image and the flux.
+
+    ``taper_mas`` (config R; default None: MPoL's 30 mas) is the Gaussian taper of the model and of the entropy's image; 0 is classic MEM: no taper on the model, the entropy of the untapered image.
 
     ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
 
@@ -348,9 +350,10 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     off = dict(gains=False, offsets=False, sigmas=False) if image_only else {}
     alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
+    taper_mas = MPOL["taper_mas"] if taper_mas is None else float(taper_mas)
     if config == "R":
         npix = npix or MPOL["npix"]
-        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, taper_fwhm_mas=MPOL["taper_mas"], **off)
+        nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, taper_fwhm_mas=taper_mas or None, **off)
         scene, regs = grid_scene(npix, pixel_mas), []
         if fixed_log_brightness is not None:
             held = jnp.asarray(fixed_log_brightness, float)
@@ -374,7 +377,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         term, chi2_info = toeplitz_term(use, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=mask, max_offset_mas=None if offset_bound_mas is None else float(offset_bound_mas))
     else:
         term, chi2_info = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size), dict(engine="direct")
-    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
+    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, taper_mas=taper_mas, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
     priors = nuis.priors(**({} if offset_bound_mas is None else {"offset": (-float(offset_bound_mas), float(offset_bound_mas))}))
     if fixed_log_brightness is None:
         priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))
@@ -590,39 +593,146 @@ def missing_params(fit, names):
     return [k for k in names if k not in params]
 
 
-# Markers (lower-case substrings of ``virgil.fit``'s docstring) of the two virgil features the Adam run uses when present: the ftol stop as a test on the window of
-# losses rather than on two points, and ``learning_rate`` as an optax schedule (virgil PR "virgil.fit Adam: window ftol + lr schedule"). A virgil without the first
-# gets ``ftol_abs=None`` (the full step budget, C8 judged afterwards); one without the second refuses ``--adam-lr-decay``.
-WINDOW_FTOL_MARKER = "windowed ftol"
-LR_SCHEDULE_MARKER = "optax schedule"
+def adam_features_probe(fit):
+    """Whether ``fit`` (``virgil.fit``) has the windowed Adam ftol and takes an optax schedule as ``learning_rate`` (virgil#562, which brought both): a 3-step Adam fit of a
+    one-parameter toy with a schedule and ``ftol_abs`` set, which raises on an older virgil. Takes a second or two; ``require_adam`` runs it before any data is read.
+    Returns ``(ok, error)``. Behaviour, not the docstring, decides."""
+    import equinox as eqx
+    import jax.numpy as jnp
+    import numpyro.distributions as dist
+    import optax
+
+    class Toy(eqx.Module):
+        has_log_norm = True
+
+        def __call__(self, values):
+            return jnp.zeros((0,))
+
+        def log_norm(self, values):
+            return (values["x"] - 1.0) ** 2
+
+        def loglike(self, values):
+            return -self.log_norm(values)
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            res = fit(lambda **v: v, {"x": dist.ImproperUniform(dist.constraints.real, (), ())}, (), likelihoods=[Toy()], init={"x": jnp.asarray(0.0)}, method="adam", max_steps=3,
+                      learning_rate=optax.exponential_decay(1e-2, 1000, 0.9), ftol_abs=0.1, ftol_window=1)
+        return "loss_history" in res.info, None
+    except Exception as e:  # noqa: BLE001  any failure means the installed virgil lacks a feature
+        return False, f"{type(e).__name__}: {e}"
 
 
-def virgil_has(fit, marker):
-    """Whether ``fit``'s docstring (case-insensitive) carries ``marker``. A substring is a weak test (a docstring saying a feature is *not* supported would match), so the
-    stage record carries ``window_ftol`` and ``virgil_version`` to show which path ran; replace by a signature or attribute check once the virgil PR fixes one."""
-    return marker in (getattr(fit, "__doc__", None) or "").lower()
-
-
-def lr_schedule(lr, decay_per_1000):
-    """``learning_rate`` for ``virgil.fit``: the float ``lr`` for a ``decay_per_1000`` of None or 0, else ``optax.exponential_decay`` that multiplies it by
-    ``decay_per_1000`` (in (0, 1)) every 1000 steps, smoothly."""
+def lr_schedule(lr, decay_per_1000, const_steps=0):
+    """``learning_rate`` for ``virgil.fit``: the float ``lr`` for no decay, else an optax schedule: ``lr`` constant for ``const_steps`` steps, then ``optax.exponential_decay``
+    from ``lr`` by ``decay_per_1000`` (in (0, 1)) every 1000 steps, smoothly (``optax.join_schedules``)."""
     if not decay_per_1000:
         return lr
     if not 0 < decay_per_1000 < 1:
         raise ValueError(f"the lr decay per 1000 steps must be in (0, 1), got {decay_per_1000!r}")
     import optax
 
-    return optax.exponential_decay(init_value=lr, transition_steps=1000, decay_rate=float(decay_per_1000))
+    decay = optax.exponential_decay(init_value=lr, transition_steps=1000, decay_rate=float(decay_per_1000))
+    if not const_steps:
+        return decay
+    return optax.join_schedules([optax.constant_schedule(lr), decay], [int(const_steps)])
 
 
-def require_adam(fit, precondition=None, post_step_blur_px=None, lr_decay=None):
-    """Raise a clear error unless ``fit`` has every keyword ``run_adam`` passes (``ADAM_KEYWORDS``, ``precondition`` and ``post_step`` if used)."""
+_PROBED = {}
+
+
+def require_adam(fit, precondition=None, post_step_blur_px=None, new_features=False):
+    """Raise a clear error unless ``fit`` has every keyword ``run_adam`` passes (``ADAM_KEYWORDS``, ``precondition`` and ``post_step`` if used), and, with ``new_features``
+    (an lr schedule or the windowed ftol: ``--adam-lr-decay``, ``--adam-const-steps``, ``--adam-ftol-abs``), that ``adam_features_probe`` passes (virgil#562)."""
     missing = missing_params(fit, ADAM_KEYWORDS + (("precondition",) if precondition not in (None, "none") else ()) + (("post_step",) if post_step_blur_px else ()))
-    if lr_decay and not virgil_has(fit, LR_SCHEDULE_MARKER):
-        raise RuntimeError("--adam-lr-decay needs a virgil whose fit() accepts an optax schedule as learning_rate (virgil PR 'virgil.fit Adam: window ftol + lr schedule'); the installed one has not")
     if missing:
         raise RuntimeError(f"--method adam needs a virgil whose fit() has {', '.join(missing)} (Adam's epsilon, the ftol stop, time_limit and progress for Adam, the per-step loss history, "
                            "precondition: added after virgil 0.4.1); the installed one has not")
+    if new_features:
+        if fit not in _PROBED:
+            _PROBED[fit] = adam_features_probe(fit)
+        ok, err = _PROBED[fit]
+        if not ok:
+            raise RuntimeError("--adam-lr-decay, --adam-const-steps and --adam-ftol-abs need a virgil with the Adam lr schedule and windowed ftol (virgil#562); a 3-step probe fit failed on "
+                               f"the installed one: {err}")
+
+
+SNAPSHOT_EVERY = 2000
+
+
+def snapshot_post_step(sink, every=SNAPSHOT_EVERY, inner=None):
+    """A ``post_step`` for ``virgil.fit(method="adam")`` that hands ``sink(step, log_brightness)`` (numpy) the image logit every ``every`` optimiser steps through a host
+    callback with a host-side counter (the optimiser's moments and the trajectory are untouched), after ``inner`` (another ``post_step``, e.g. the blur) if given."""
+    import jax
+
+    count = [0]
+
+    def host(lb):
+        count[0] += 1
+        if count[0] % every == 0:
+            sink(count[0], np.asarray(lb))
+
+    def post_step(params):
+        if inner is not None:
+            params = inner(params)
+        if "log_brightness" in params:
+            jax.debug.callback(host, params["log_brightness"], ordered=True)
+        return params
+
+    return post_step
+
+
+def _n_eff(image):
+    x = np.asarray(image, float)
+    return float(x.sum() ** 2 / (x**2).sum())
+
+
+def dots_report(base, tapered, pixel_mas, inc=47.5, pa=144.5, *, taper_mas=MPOL["taper_mas"], annulus_mas=50.0, r_max_arcsec=1.4, n_sector=64, disk_fraction=1e-3):
+    """How far the base image has broken into chains of dots, against its image tapered to MPoL's beam (both Jy/arcsec^2, row 0 North, column 0 East). ``inc`` and ``pa`` (degrees;
+    the major axis East of North) deproject the annuli. Returns ``n_eff`` (``(sum I)^2 / sum I^2``, base and tapered), ``hole_fraction`` (of the in-disk pixels, those whose tapered value is at
+    least ``disk_fraction`` of its peak, the share whose base is below 1 % of the tapered value), ``ring_intermittency`` (in deprojected ``annulus_mas`` annuli to ``r_max_arcsec``, around the
+    tapered centroid, the azimuthal coefficient of variation over ``n_sector`` sectors of the base over that of the tapered: ``median`` and ``per_annulus`` with their radii), ``sub_taper_power``
+    (the share of the base's power at spatial frequencies where the taper's transfer is below 0.1), ``peak_ratio`` (base over tapered peak) and ``dead`` (the fractions below 1e-6 and 1e-4
+    of the peak for base and tapered, inside and outside the disk)."""
+    base, tap = np.asarray(base, float), np.asarray(tapered, float)
+    n = base.shape[0]
+    disk = tap >= disk_fraction * tap.max()
+    rr, cc = np.indices(base.shape, dtype=float)
+    w = np.maximum(tap, 0)
+    r0, c0 = (rr * w).sum() / w.sum(), (cc * w).sum() / w.sum()
+    east, north = -(cc - c0) * pixel_mas, -(rr - r0) * pixel_mas
+    p, i = np.deg2rad(pa), np.deg2rad(inc)
+    along = east * np.sin(p) + north * np.cos(p)
+    across = (east * np.cos(p) - north * np.sin(p)) / np.cos(i)
+    radius, phi = np.hypot(along, across), np.arctan2(across, along)
+    sector = np.minimum(((phi + np.pi) / (2 * np.pi) * n_sector).astype(int), n_sector - 1)
+
+    def cv(img, sel):
+        m = np.bincount(sector[sel], img[sel], n_sector) / np.maximum(np.bincount(sector[sel], minlength=n_sector), 1)
+        return float(m.std() / m.mean()) if m.mean() > 0 else float("nan")
+
+    edges = np.arange(0.0, r_max_arcsec * 1000 + annulus_mas, annulus_mas)
+    per, mid = [], []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        sel = (radius >= lo) & (radius < hi)
+        if sel.sum() < 4 * n_sector:
+            continue
+        ct = cv(tap, sel)
+        per.append(cv(base, sel) / ct if ct > 0 else float("nan"))
+        mid.append(0.5 * (lo + hi))
+    k = np.hypot(*np.meshgrid(np.fft.fftfreq(n, d=pixel_mas), np.fft.fftfreq(n, d=pixel_mas), indexing="ij"))  # cycles per mas
+    sigma = taper_mas / (2 * np.sqrt(2 * np.log(2)))
+    low = np.exp(-2 * np.pi**2 * sigma**2 * k**2) < 0.1
+    power = np.abs(np.fft.fft2(base)) ** 2
+    dead = {}
+    for name, img in (("base", base), ("tapered", tap)):
+        for frac in (1e-6, 1e-4):
+            below = img < frac * img.max()
+            dead[f"{name}_below_{frac:g}"] = dict(in_disk=float(below[disk].mean()) if disk.any() else None, outside=float(below[~disk].mean()) if (~disk).any() else None)
+    return dict(n_eff=dict(base=_n_eff(base), tapered=_n_eff(tap)), hole_fraction=float((base[disk] < 0.01 * tap[disk]).mean()),
+                ring_intermittency=dict(median=float(np.nanmedian(per)) if per else None, per_annulus=per, radius_mas=mid),
+                sub_taper_power=float(power[low].sum() / power.sum()), peak_ratio=float(base.max() / tap.max()), dead=dead)
 
 
 def blur_post_step(sigma_px):
@@ -673,37 +783,39 @@ def convergence_window(losses, tol=0.1, window=100):
     return dict(converged=bool(rng < tol and drop <= tol), change=rng, mean_drop=drop, window_steps=int(window), reason="range and drift of the loss over the last window")
 
 
-def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10, post_step_blur_px=None, lr_decay=None):
-    """Adam through ``virgil.fit`` (``method="adam"``) for ``steps`` or ``time_limit``, stopping early only on virgil's windowed ftol test (``ftol_abs=tol`` over ``window`` steps)
-    when the installed virgil has it (``WINDOW_FTOL_MARKER``); an older virgil's two-point test fires by chance on an oscillating loss, so it gets ``ftol_abs=None`` and the full budget.
-    ``lr_decay`` (default off) multiplies the learning rate by that factor every 1000 steps (``lr_schedule``).
+def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10, post_step_blur_px=None, lr_decay=None, const_steps=0, ftol_abs=None, on_snapshot=None, snapshot_every=SNAPSHOT_EVERY):
+    """Adam through ``virgil.fit`` (``method="adam"``) for ``steps`` or ``time_limit``: the full budget unless ``ftol_abs`` is given (virgil's windowed ftol over ``window`` steps,
+    needs virgil#562), and C8 is judged afterwards by ``convergence_window``. ``lr_decay`` (default off) multiplies the learning rate by that factor every 1000 steps after
+    ``const_steps`` constant ones (``lr_schedule``). ``on_snapshot(step, log_brightness)``, if given, is called every ``snapshot_every`` steps with the image logit (``snapshot_post_step``, as ``sink``).
     Returns ``(values, info, trajectory, why)`` like ``run_fit_c8``. The trajectory is virgil's per-step loss history thinned to every ``stride``
     steps (and the last); ``elapsed`` is set only at the steps virgil's ``progress`` reported (else None). vv's own C8 verdict (``convergence_window``
     on the full history) is ``info['adam']['c8']``; ``info['converged']`` stays virgil's. ``why`` is ``c8``, ``ftol`` (virgil stopped on its windowed ftol
-    but vv's window test disagrees; unreachable without the windowed ftol, which then gets ``ftol_abs=None``), ``max_steps``, ``time_limit`` or ``non_finite``. ``post_step_blur_px`` (default off) is ``blur_post_step``'s width, applied after every optimiser step."""
+    but vv's window test disagrees; only with ``ftol_abs``), ``max_steps``, ``time_limit`` or ``non_finite``. ``post_step_blur_px`` (default off) is ``blur_post_step``'s width, applied after every optimiser step."""
     import time
 
     from virgil import fit
 
     precondition = None if precondition in (None, "none") else precondition
-    require_adam(fit, precondition, post_step_blur_px, lr_decay)
-    windowed = virgil_has(fit, WINDOW_FTOL_MARKER)
+    require_adam(fit, precondition, post_step_blur_px or on_snapshot, bool(lr_decay or const_steps or ftol_abs is not None))
     kw = {} if precondition is None else {"precondition": precondition}
-    if post_step_blur_px:
+    snap_steps = []
+    if post_step_blur_px or on_snapshot:
         kw["post_step"] = blur_post_step(post_step_blur_px)
+        if on_snapshot:
+            kw["post_step"] = snapshot_post_step(lambda k, lb: (snap_steps.append(k), on_snapshot(k, lb)), snapshot_every, inner=kw["post_step"])
     prog = {}
     t0 = time.time()
     with ft_eps(eps), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="adam", max_steps=steps, learning_rate=lr_schedule(lr, lr_decay),
-                  adam_eps=adam_eps, ftol_abs=tol if windowed else None, ftol_window=window, time_limit=time_limit, progress=lambda d: prog.update({int(d["steps"]): d}), **kw)
+        res = fit(prob.model, prob.priors, (), regularizers=prob.regs, likelihoods=prob.terms, init=init, method="adam", max_steps=steps, learning_rate=lr_schedule(lr, lr_decay, const_steps),
+                  adam_eps=adam_eps, ftol_abs=ftol_abs, ftol_window=window, time_limit=time_limit, progress=lambda d: prog.update({int(d["steps"]): d}), **kw)
     wall = time.time() - t0
     if "loss_history" not in res.info:
         raise RuntimeError("virgil.fit(method='adam') returned no info['loss_history']: C8 cannot be judged (needs the virgil PR that records it)")
     hist = np.asarray(res.info["loss_history"], float)
     n = len(hist)
     verdict = convergence_window(hist, tol, window)
-    keep = sorted(set(range(0, n, stride)) | ({n - 1} if n else set()) | {k - 1 for k in prog if 0 < k <= n})
+    keep = sorted(set(range(0, n, stride)) | ({n - 1} if n else set()) | {k - 1 for k in prog if 0 < k <= n} | {k - 1 for k in snap_steps if 0 < k <= n})
     traj = []
     for i in keep:
         d = prog.get(i + 1, {})
@@ -727,7 +839,7 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
         why = "max_steps"
     info.update(steps=n, rounds=1, stop=stop if stop is not None else why, precondition=precondition, wall_s=wall,
                 precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
-                adam=dict(lr=lr, lr_decay_per_1000=lr_decay or None, window_ftol=windowed, virgil_version=getattr(__import__("virgil"), "__version__", None), eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
+                adam=dict(lr=lr, lr_decay_per_1000=lr_decay or None, const_steps=const_steps or None, ftol_abs=ftol_abs, virgil_version=getattr(__import__("virgil"), "__version__", None), eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
                           wall_s=wall, ms_per_step_incl_setup=1e3 * wall / max(n, 1)))
     return values, info, traj, why
 

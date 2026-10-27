@@ -95,6 +95,17 @@ def lam_of(args, n):
     return va.lam_f_equivalent(va.lam_r(n) if args.lam_r_equiv is None else args.lam_r_equiv, flux=args.flux)
 
 
+def snapshot_trajectory(snapshots, values, traj, prob):
+    """The Adam snapshots (``(step, log_brightness)``) as ``dict(step, loss, dots)``: the loss at that step from the stage's trajectory and ``va.dots_report`` of the image
+    ``flux softmax(log_brightness)`` (the stage's final flux) against its image tapered to MPoL's beam."""
+    loss = {int(t["steps"]): t["loss"] for t in traj}
+    rows = []
+    for k, lb in snapshots:
+        img = va.image_of({"log_brightness": lb, "cal.flux": values["cal.flux"]}, prob.npix, prob.pixel_mas)
+        rows.append(dict(step=int(k), loss=loss.get(int(k)), dots=va.dots_report(img, va.tapered_image(img, prob.pixel_mas), prob.pixel_mas)))
+    return rows
+
+
 def stage_dead_pixels(values, prob, config):
     """The dead-pixel fractions (below 1e-6 and 1e-4 of the peak) and the largest live radius of the stage's base image and of the image tapered to
     MPoL's beam (``va.dead_pixel_report`` of each)."""
@@ -107,7 +118,7 @@ def stage_summary(name, info, traj, wall, why):
     ``va.convergence_window`` for Adam), which the cold-start gate uses."""
     conv = info["adam"]["c8"] if info.get("adam") else va.convergence(traj, info)
     return dict(name=name, method=info.get("method", "lbfgs"), adam=info.get("adam"), post_step_blur_px=(info.get("adam") or {}).get("post_step_blur_px"), steps=info["steps"], rounds=info.get("rounds"), stop=info["stop"], stopped_because=why, fit_converged=info["converged"], c8_converged=conv["converged"],
-                wall_s=wall, convergence=conv, loss_final=info["loss"], trajectory=traj,
+                wall_s=wall, convergence=conv, loss_final=info["loss"], trajectory=traj, snapshots=info.get("snapshots"),
                 precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []), restarts=info.get("restarts", []))
 
 
@@ -200,8 +211,11 @@ def run_stages(args, data, prob_for, init_dir, save=None):
                 save(prob, with_image(vals), stages + [dict(part, in_progress=True)])
 
         if getattr(args, "method", "lbfgs") == "adam":
+            snapshots = []
             out, info, traj, why = va.run_adam(prob, values, steps=args.adam_steps, lr=args.adam_lr, adam_eps=args.adam_eps, time_limit=args.time_limit, log=say, precondition=args.precondition,
-                                                post_step_blur_px=args.post_step_blur_px, lr_decay=args.adam_lr_decay)
+                                                post_step_blur_px=args.post_step_blur_px, lr_decay=args.adam_lr_decay, const_steps=args.adam_const_steps or 0, ftol_abs=args.adam_ftol_abs,
+                                                on_snapshot=(lambda k, lb: snapshots.append((k, lb))) if args.adam_snapshot_every and "log_brightness" in values else None, snapshot_every=args.adam_snapshot_every or va.SNAPSHOT_EVERY)
+            info["snapshots"] = snapshot_trajectory(snapshots, out, traj, prob)
             info["method"] = "adam"
         else:
             out, info, traj, why = va.run_fit_c8(prob, values, max_steps=limit, time_limit=args.time_limit, log=say, gtol=args.gtol, on_round=on_round, precondition=args.precondition)
@@ -333,6 +347,19 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     say(f"dead pixels: {dead['frac_below_1e-6_peak']:.2%} below 1e-6 of the peak, {dead['frac_below_1e-3_floor']:.2%} below 1e-3 of the floor; largest live radius {dead['largest_live_radius_arcsec']:.2f} arcsec")
     if dead["warning"]:
         say(dead["warning"])
+    image = va.image_of(values, prob.npix, prob.pixel_mas, va.beam_log(prob.npix, prob.pixel_mas) if args.config == "F" else None)
+    tap = va.tapered_image(image, prob.pixel_mas)  # MPoL's 30 mas beam whatever --taper-mas was: the arms compare on it
+    res["dots"] = va.dots_report(image, tap, prob.pixel_mas)
+    d = res["dots"]
+    say(f"dots: N_eff base {d['n_eff']['base']:.0f} / tapered {d['n_eff']['tapered']:.0f}; holes {d['hole_fraction']:.2%}; ring intermittency {d['ring_intermittency']['median']}; sub-taper power {d['sub_taper_power']:.2e}; peak ratio {d['peak_ratio']:.2f}")
+    res["trajectory"] = [dict(stage=s["name"], **t) for s in stages for t in (s.get("snapshots") or [])]
+    from crosscheck.alma_maxent import phase_centre_cell
+
+    r0, c0 = phase_centre_cell(prob.npix)
+    rr, cc = np.indices(image.shape)
+    beyond = np.hypot(rr - r0, cc - c0) * prob.pixel_mas / 1000.0 > 1.8
+    res["summary"] = dict(chi2n_raw=sc_raw["chi2_raw"] / (2 * final_data.u.shape[0]), peak_tapered_jy_arcsec2=float(tap.max()), peak_base_jy_arcsec2=float(image.max()),
+                          flux_beyond_1p8_arcsec_jy=float(image[beyond].sum() * (prob.pixel_mas / 1000.0) ** 2), taper_mas=getattr(args, "taper_mas", None) if args.config == "R" else None)
     if shat is not None:
         res["shat"] = shat
         res["acceptance_C13"] = acceptance(sigma, shat)
@@ -341,10 +368,13 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
 
         s = float(prob.terms[1].entropy({k: jnp.asarray(v) for k, v in values.items()}))
         res.update(entropy_SM=s, objective_R=sc_raw["nll"] + lam * s)
+        s30 = float(va.MPoLEntropy(lam, pixel_mas=prob.pixel_mas).entropy({k: jnp.asarray(v) for k, v in values.items()}))  # the standard R (30 mas taper) of this image
+        res.update(entropy_SM_taper30=s30, objective_R_taper30=sc_raw["nll"] + lam * s30)
         image = va.image_of(values, prob.npix, prob.pixel_mas)
         np.save(out / "image_tapered.npy", va.tapered_image(image, prob.pixel_mas).astype(np.float32))
     if args.flux_lam0:
         res["lam0_at_fitted_flux"] = va.lam_f_equivalent(va.lam_r(n), flux=float(values["cal.flux"]), pixel_mas=prob.pixel_mas)
+    res = {"summary": res.pop("summary"), **res}  # the raw chi^2/N first
     dump(out / "result.json", res)  # before the dirty images: the numbers are not lost if they fail
     if not args.no_dirty:
         for e, img in va.residual_dirty_images(final_data, prob.scene, values, prob.nuis, chunk_size=ck).items():
@@ -365,7 +395,7 @@ def _prob_for(args, data, lam, mask, chi2=None):
     def prob_for(use, fixed=None, image_only=False):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
         return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None),
-                              fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct")
+                              fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct", taper_mas=getattr(args, "taper_mas", None))
 
     return prob_for
 
@@ -380,17 +410,28 @@ def cmd_fit(args):
     resolve_alpha(args)
     if args.post_step_blur_px and args.method != "adam":
         raise SystemExit("--post-step-blur-px needs --method adam (virgil's post_step hook is not available to L-BFGS)")
-    if args.adam_lr_decay is not None and (args.method != "adam" or not 0 < args.adam_lr_decay < 1):
-        raise SystemExit("--adam-lr-decay needs --method adam and a factor in (0, 1)")
+    if (args.adam_lr_decay, args.adam_const_steps, args.adam_ftol_abs) != (None, None, None) and args.method != "adam":
+        raise SystemExit("--adam-lr-decay, --adam-const-steps and --adam-ftol-abs need --method adam")
+    if args.adam_lr_decay is not None and not 0 < args.adam_lr_decay < 1:
+        raise SystemExit("--adam-lr-decay needs a factor in (0, 1)")
+    if args.adam_const_steps is not None and (args.adam_const_steps < 0 or args.adam_lr_decay is None):
+        raise SystemExit("--adam-const-steps needs --adam-lr-decay and a non-negative number of steps")
+    if args.adam_ftol_abs is not None and not args.adam_ftol_abs >= 0:
+        raise SystemExit("--adam-ftol-abs must be >= 0")
+    if args.taper_mas is not None and (args.taper_mas < 0 or args.config != "R"):
+        raise SystemExit("--taper-mas is defined for config R only and must be >= 0")
     if args.post_step_blur_px is not None and args.post_step_blur_px < 0:
         raise SystemExit("--post-step-blur-px must be >= 0")
     if args.method == "adam":
         import virgil
 
         try:
-            va.require_adam(virgil.fit, args.precondition, args.post_step_blur_px, args.adam_lr_decay)
+            va.require_adam(virgil.fit, args.precondition, args.post_step_blur_px, args.adam_lr_decay is not None or args.adam_const_steps is not None or args.adam_ftol_abs is not None)
         except RuntimeError as e:
             raise SystemExit(str(e)) from e
+        if args.adam_snapshot_every and va.missing_params(virgil.fit, ("post_step",)):
+            say("note: this virgil's fit() has no post_step: no Adam snapshots")
+            args.adam_snapshot_every = 0
     if args.workflow in ("mpol", "clean") and args.config != "R":
         raise SystemExit(f"--workflow {args.workflow} is defined for config R only (MPoL has no beam, no free alpha)")
     if args.chi2 == "toeplitz" and args.config != "R":
@@ -694,11 +735,16 @@ def cold_start_gate_of(res, vres, image, px, flux, clean_dir, dsharp=None):
         ref, name = vs.clean_image_flux(dsharp)["flux_jy"], f"DSHARP CLEAN image flux ({pathlib.Path(dsharp).name})"
     else:
         ref, name = vs.REFERENCE_FLUX_JY, vs.REFERENCE_FLUX_NAME
+    alt = {}
+    if clean_dir:  # our CLEAN is the reference; DSHARP's measured flux is recorded beside it
+        d_ref = vs.clean_image_flux(dsharp)["flux_jy"] if dsharp else vs.REFERENCE_FLUX_JY
+        alt = dict(flux_ref_alt=d_ref, flux_ref_alt_name="DSHARP CLEAN image flux")
     stages = [bool(st.get("c8_converged", st["convergence"]["converged"])) for st in vres.get("stages", [])]
     return vs.cold_start_gate(
         objective_ours=o and o["ours"]["objective"], objective_mpol=o and o["mpol_solution_in_virgil"]["objective"],
         chi2n_ours=o and raw(o["ours"]), chi2n_mpol=o and raw(o["mpol_solution_in_virgil"]), stages_converged=stages,
-        dead_fraction=va.dead_pixel_report(image, px)["frac_below_1e-6_peak"], flux_ours=flux, flux_ref=ref, flux_ref_name=name)
+        dead_fraction=va.dead_pixel_report(va.tapered_image(image, px), px)["frac_below_1e-6_peak"], dead_fraction_base=va.dead_pixel_report(image, px)["frac_below_1e-6_peak"],
+        flux_ours=flux, flux_ref=ref, flux_ref_name=name, **alt)
 
 
 def cmd_compare(args):
@@ -910,6 +956,10 @@ def main(argv=None):
     p.add_argument("--adam-lr", type=float, default=1e-2, help="adam: learning rate in the unconstrained coordinates")
     p.add_argument("--adam-lr-decay", type=float, default=None, help="adam only: multiply the learning rate by this factor in (0, 1) every 1000 steps (optax exponential decay, per stage); default off. "
                    "Needs a virgil whose fit() takes an optax schedule")
+    p.add_argument("--adam-const-steps", type=int, default=None, help="adam only, with --adam-lr-decay: hold the learning rate constant for this many steps, then decay it (optax.join_schedules)")
+    p.add_argument("--adam-ftol-abs", type=float, default=None, help="adam only: virgil's windowed ftol (over 100 steps; needs virgil#562); default off: the full budget, C8 judged afterwards")
+    p.add_argument("--adam-snapshot-every", type=int, default=va.SNAPSHOT_EVERY, help="adam only: keep the image every this many steps (0: off) and write its dots_report and loss to result.json's trajectory")
+    p.add_argument("--taper-mas", type=float, default=None, help="config R: Gaussian taper (FWHM mas) of the model and of the entropy's image (default MPoL's 30); 0 is classic MEM: no taper, entropy of the untapered image")
     p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
     p.add_argument("--post-step-blur-px", type=float, default=None, help="adam only: after every optimiser step blur the normalised image with a Gaussian of this sigma in pixels (dorito's recipe, "
                    "Charles et al. 2026: 0.25) and re-express it as log_brightness; default off. Needs a virgil whose fit() has post_step")
