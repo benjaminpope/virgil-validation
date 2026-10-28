@@ -137,7 +137,7 @@ def test_chi2_toeplitz_is_refused_with_offsets_it_cannot_take_and_for_config_f(s
     precompute, so it is the baselines that refuse); config F is refused; ``--chi2 direct`` takes the same problem."""
     with pytest.raises(SystemExit, match=r"cannot take this problem exactly: .*Nyquist"):
         _call("fit", "--config", "R", "--chi2", "toeplitz", "--data", syn7, "--out", tmp_path / "a", "--npix", 16, "--pixel-mas", 60.0, "--max-steps", 2)
-    with pytest.raises(SystemExit, match="config R only"):
+    with pytest.raises(SystemExit, match="config R, or F with --reg"):
         _call("fit", "--config", "F", "--chi2", "toeplitz", "--data", syn, "--out", tmp_path / "b", "--npix", 16)
     with pytest.raises(va.ToeplitzRefused, match=r"Nyquist"):
         va.build_problem(va.load_dir(syn), "R", lam=1.0, npix=16, pixel_mas=60.0, chi2="toeplitz")

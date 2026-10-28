@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: da4d09d4af2ef0f3c0edb2f5dd9415c06aac476f  # virgil#562 head (contains main): radio_clean scales_mas (#553), Adam post_step (#558), windowed ftol and lr schedules (#562)
+  VIRGIL_REF: 884aa7e0cfc263be9f1f49a55aa2ed0910a6cd07  # virgil#565 merged (origin/main): blur_fwhm_mas, with the old taper_fwhm_mas, smooth_fwhm_mas names as FutureWarning aliases; contains #562
 
 jobs:
   validate:

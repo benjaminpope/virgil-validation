@@ -229,7 +229,7 @@ def run_virgil(theta, pts, *, grad=True, wrong_scene=None, wrong_image=None):
     from virgil.radio import CalibrationNuisance, ComplexVisData
 
     data = ComplexVisData.from_arrays(pts["u"], pts["v"], pts["vis"], pts["w"], pts["freq"], ddid=pts["ddid"], obs=pts["obs"])
-    nuis = CalibrationNuisance(data, ref_obs=0, alpha=False, taper_fwhm_mas=1000 * FWHM)
+    nuis = CalibrationNuisance(data, ref_obs=0, alpha=False, blur_fwhm_mas=1000 * FWHM)
     scene = wrong_scene or vbm.imlup_scene(NPIX, PIXEL)
     term = data.term(scene, nuis)
     th = {k: jnp.asarray(a) for k, a in theta.items()}

@@ -5,11 +5,16 @@
     python scripts/alma_imlup_maxent.py fit --config {R,F} --lam X --data DIR --out DIR [--chi2 {direct,toeplitz}] [--sb-only] [--init DIR] [--workflow {p3,mpol,clean} [--clean-dir DIR]]
                                             [--shat DIR] [--folds FILE.npz --fold J] [--max-steps N] [--time-limit S]
                                             [--method {lbfgs,adam} [--adam-lr LR] [--adam-lr-decay F] [--adam-steps N] [--adam-eps E]]
+    python scripts/alma_imlup_maxent.py fit --config F --reg mem:1e-9,tsv:1e-4 ...        (virgil MaxEntropy / TSV on the unblurred image; --lam* are then refused)
+    python scripts/alma_imlup_maxent.py fit --config R --blur-mas 30 --workflow mpol-replica [--replica-stages all,all] [--replica-no-wd] [--replica-softmax] [--replica-steps N]
     python scripts/alma_imlup_maxent.py report --data DIR --out FITDIR [--shat DIR] [--chunk-size N]
     python scripts/alma_imlup_maxent.py cv-task --lam X --fold J --init DIR --folds FILE.npz --data DIR --out DIR
+    python scripts/alma_imlup_maxent.py cv-task --config {R,F,G} [--reg SPEC | --length-r-mas L --length-theta-rad T --r-max-mas R --sigma-min A --sigma-max B] --fold J ...   (G = the GP of alma_gp)
     python scripts/alma_imlup_maxent.py cv-aggregate DIR [--out DIR]
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
+    python scripts/alma_imlup_maxent.py replica-compare --fit DIR --mpol DIR --out DIR
+    python scripts/alma_imlup_maxent.py better --fit DIR [--cv-compare JSON] [--synth JSON] [--synth-r JSON] [--clean-dir DIR] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
     python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
 
@@ -17,6 +22,9 @@
 data by accident). Every path is an argument. Float64 throughout; the fits use the NUFFT at eps 1e-6 and
 every reported -ln L, chi^2 and score eps 1e-12 (C7). The design, the decisions C1-C14 and the output
 files are in ``design/alma_imlup_p3.md``; the helpers are in ``virgil_bridge.alma``.
+
+``--reg`` (config F): ``mem:X`` is virgil's ``MaxEntropy(smoothed=False)`` on the unit-sum image with MPoL's prior_intensity convention and X = MPoL's lambda_M (weight 2 N X / dx^2 at flux 0.253 Jy,
+``lam_f_equivalent(lam_r(N, X))``); ``tsv:X`` is ``TSV(smoothed=False)`` with weight X. ``--blur-mas`` (old ``--taper-mas``) is virgil's ``blur_fwhm_mas``: a kernel inside the forward model.
 
 ``fit --chi2 toeplitz`` (config R) runs every stage's data term through virgil's Toeplitz dirty-beam chi^2 (equal to the direct term to ~1e-13, ~30x faster per
 value+gradient on a GPU); the reports and ``compare`` always score with the direct term at eps 1e-12. Fitted offsets need a prior box inside the precompute:
@@ -40,6 +48,8 @@ import jax  # noqa: E402
 jax.config.update("jax_enable_x64", True)
 
 import virgil_bridge.alma as va  # noqa: E402
+import virgil_bridge.alma_gp as vg  # noqa: E402
+import virgil_bridge.alma_replica as vr  # noqa: E402
 import virgil_bridge.alma_start as vs  # noqa: E402
 from crosscheck import alma_maxent as cx  # noqa: E402
 
@@ -91,6 +101,10 @@ MIN_LAM_R = 1e-4  # -ln L units: below this the entropy is off, which is what --
 
 def lam_of(args, n):
     """``--lam`` (lam_R, -ln L units), ``--lam-m`` (MPoL's lambda_M: lam_R = 2 N lambda_M, C4) or ``--lam-r-equiv`` (C11: lam_R's F-equivalent at ``--flux``)."""
+    if getattr(args, "reg", None):
+        if args.lam is not None or args.lam_m is not None or args.lam_r_equiv is not None:
+            raise SystemExit("--reg sets the strengths (mem:LAMBDA_M, tsv:WEIGHT): no --lam, --lam-m or --lam-r-equiv")
+        return 0.0  # unused: the regularisers carry their own weights
     if args.lam is not None:
         if args.lam_m is not None:
             raise SystemExit("--lam and --lam-m are exclusive (--lam is lam_R, --lam-m is MPoL's lambda_M)")
@@ -245,6 +259,54 @@ def run_stages(args, data, prob_for, init_dir, save=None):
         if save:
             save(prob, with_image(out), stages)
     return prob, {k: np.asarray(v) for k, v in values.items()}, stages, shat
+
+
+REPLICA_OFFSET_BOUND_MAS = 100.0
+
+
+def run_replica(args, data, prob_for, save=None):
+    """``--workflow mpol-replica`` (``virgil_bridge.alma_replica``): MPoL's procedure in vv's own optax loop, not ``virgil.fit``. Returns ``(prob, values, stages, shat)`` like ``run_stages``. Per stage (``--replica-stages``,
+    default MPoL's p3a: two stages on all the data) the loss ``-ln L / (2 n) + lambda_M S_M`` (``--lam-m``, default 1e-9) is minimised by full-batch AdamW (lr 1e-2, weight decay 1e-2 unless ``--replica-no-wd``) from MPoL's start
+    (softplus pixels at -3, ``--replica-softmax``: virgil's softmax parametrisation), for MPoL's step count (``--replica-steps`` N: N in all). The blur (``--blur-mas``, default 30) is in the model, the entropy on the
+    blurred image unless ``--entropy-on base``."""
+    import jax.numpy as jnp
+
+    if args.init or args.sb_only or args.folds or args.lam is not None or args.lam_r_equiv is not None:
+        raise SystemExit("--workflow mpol-replica starts from MPoL's start: no --init, --sb-only, --folds, --lam or --lam-r-equiv (the strength is --lam-m)")
+    lam_m = va.MPOL["lam_m"] if args.lam_m is None else args.lam_m
+    blur = va.MPOL["taper_mas"] if args.taper_mas is None else args.taper_mas
+    eblur = 0.0 if (getattr(args, "entropy_on", None) or "blurred") == "base" else blur
+    plan = vr.stage_plan(args.replica_stages, data, args.replica_steps)
+    obs_of = vr.obs_of_ddid_of(data)
+    opt = vr.make_optimizer(weight_decay=0.0 if args.replica_no_wd else vr.MPOL_RUN["weight_decay"])
+    stages, params, prob, values = [], None, None, None
+    for name, use, steps in plan:
+        prob = prob_for(use, None, False)
+        if params is None:
+            params = vr.start_params(prob, prob.init["cal.gain"].shape[0] + 1, prob.init["cal.sigma"].shape[0], softmax=args.replica_softmax)
+        n = len(use.u) if use is not None else len(data.u)
+        kw = dict(n_points=n, obs_of_ddid=jnp.asarray(obs_of[:prob.init["cal.sigma"].shape[0]]), pixel_mas=prob.pixel_mas, lam_m=lam_m, blur_mas=blur, entropy_blur_mas=eblur, softmax=args.replica_softmax)
+        say(f"stage {name}: replica AdamW, {steps} steps on {n:,} points, lambda_M {lam_m:g}, blur {blur:g} mas (entropy on {'the base image' if not eblur else 'the blurred image'}), "
+            f"{'softmax' if args.replica_softmax else 'softplus'} pixels, weight decay {0.0 if args.replica_no_wd else vr.MPOL_RUN['weight_decay']:g}")
+        t = time.time()
+        params, losses, wall, stopped = vr.run_stage(params, prob.terms[0], steps=steps, opt=opt, loss_kw=kw, time_limit=args.time_limit, log=say)
+        hist = np.asarray(losses, float)
+        c8 = va.convergence_window(hist)
+        why = stopped or ("c8" if c8["converged"] else "max_steps")
+        keep = sorted(set(range(0, len(hist), 10)) | ({len(hist) - 1} if len(hist) else set()))
+        traj = [dict(steps=float(i + 1), loss=float(hist[i]), grad_norm=float("nan"), elapsed=None, round=1) for i in keep]
+        info = dict(method="adam", steps=len(hist), rounds=1, stop=stopped or why, converged=bool(c8["converged"]), loss=float(hist[-1]) if len(hist) else float("nan"), precondition=None, precondition_rounds=[], restarts=[],
+                    adam=dict(lr=vr.MPOL_RUN["lr"], eps=1e-8, optimiser="optax.adamw", weight_decay=0.0 if args.replica_no_wd else vr.MPOL_RUN["weight_decay"], float32=True, replica=True, steps=len(hist), c8=c8,
+                              loss_final=float(hist[-1]) if len(hist) else None, wall_s=wall, post_step_blur_px=None))
+        values = {k: np.asarray(v, float) for k, v in vr.values_of(params, prob.pixel_mas, jnp.asarray(obs_of[:prob.init["cal.sigma"].shape[0]]), args.replica_softmax).items()}
+        stages.append(dict(stage_summary(name, info, traj, time.time() - t, why), chi2=prob.chi2_info))
+        stages[-1]["dead_pixels"] = dp = stage_dead_pixels(values, prob, "R")
+        say(f"stage {name}: {len(hist)} steps, loss {info['loss']:.8f}, dead pixels base {dp['base']['frac_below_1e-4_peak']:.2%} below 1e-4 of the peak; C8 converged: {c8['converged']}")
+        if save:
+            save(prob, values, stages)
+        if stopped == "non_finite":
+            raise SystemExit(f"stage {name} went non-finite")
+    return prob, values, stages, None
 
 
 def clean_start_values(args, prob, shat):
@@ -404,7 +466,7 @@ def _prob_for(args, data, lam, mask, chi2=None):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
         return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None),
                               fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct", taper_mas=getattr(args, "taper_mas", None),
-                              entropy_on=getattr(args, "entropy_on", None) or "blurred")
+                              entropy_on=getattr(args, "entropy_on", None) or "blurred", reg=getattr(args, "reg", None), reg_n=len(data.u))
 
     return prob_for
 
@@ -430,7 +492,14 @@ def cmd_fit(args):
     if getattr(args, "entropy_on", None) not in (None, "blurred") and args.config != "R":
         raise SystemExit("--entropy-on base is for config R")
     if args.taper_mas is not None and (args.taper_mas < 0 or args.config != "R"):
-        raise SystemExit("--taper-mas is defined for config R only and must be >= 0")
+        raise SystemExit("--blur-mas is defined for config R only and must be >= 0")
+    if args.reg:
+        if args.config != "F":
+            raise SystemExit("--reg is for config F (regularisers on the unblurred image); config R is MPoL's objective with its kernel")
+        try:
+            va.parse_reg(args.reg)
+        except ValueError as e:
+            raise SystemExit(str(e)) from e
     if args.post_step_blur_px is not None and args.post_step_blur_px < 0:
         raise SystemExit("--post-step-blur-px must be >= 0")
     if args.method == "adam":
@@ -443,10 +512,14 @@ def cmd_fit(args):
         if args.adam_snapshot_every and va.missing_params(virgil.fit, ("post_step",)):
             say("note: this virgil's fit() has no post_step: no Adam snapshots")
             args.adam_snapshot_every = 0
-    if args.workflow in ("mpol", "clean") and args.config != "R":
+    if args.workflow in ("mpol", "clean", "mpol-replica") and args.config != "R":
         raise SystemExit(f"--workflow {args.workflow} is defined for config R only (MPoL has no beam, no free alpha)")
-    if args.chi2 == "toeplitz" and args.config != "R":
-        raise SystemExit("--chi2 toeplitz is defined for config R only (one Image, no fitted alpha)")
+    if args.workflow == "mpol-replica":
+        args.chi2 = "toeplitz"  # full batch: the data term is virgil's Toeplitz chi^2
+        if args.offset_bound_mas is None:  # MPoL's offsets are unbounded (lr 1e-2 arcsec per step); the Toeplitz precompute needs a box, and an offset beyond it is a runtime error: 100 mas, 5x the default
+            args.offset_bound_mas = REPLICA_OFFSET_BOUND_MAS
+    if args.chi2 == "toeplitz" and args.config != "R" and not args.reg:
+        raise SystemExit("--chi2 toeplitz is defined for config R, or F with --reg (one Image, no fitted alpha)")
     if args.chi2 == "toeplitz" and args.offset_bound_mas is None:  # the precompute's box: recorded, so report and --grad replay the fitted prior
         args.offset_bound_mas = va.TOEPLITZ_OFFSET_BOUND_MAS
     out = pathlib.Path(args.out)
@@ -470,7 +543,8 @@ def cmd_fit(args):
     t0 = time.time()
     save = lambda prob, values, stages: write_state(out, args, prob, values, stages, lam, n)  # noqa: E731
     try:
-        prob, values, stages, shat = run_stages(args, data, _prob_for(args, data, lam, mask), args.init, save)
+        prob, values, stages, shat = (run_replica(args, data, _prob_for(args, data, lam, mask), save) if args.workflow == "mpol-replica"
+                                      else run_stages(args, data, _prob_for(args, data, lam, mask), args.init, save))
     except va.ToeplitzRefused as e:
         raise SystemExit(str(e)) from e
     write_report(args, out, data, prob, values, stages, shat, lam, mask, time.time() - t0)
@@ -519,6 +593,37 @@ def cmd_folds(args):
     say(json.dumps(meta))
 
 
+def cv_problem(args, data, n_all, train):
+    """``(prob, lam, x, key, arm)`` of a cross-validation task trained on ``train``: ``x`` is the grid variable written as ``lam`` in cv.json (the strength; for G the radial length) and
+    ``key`` names the arm's point. R and F with MaxEntropy: ``lam_of``, scaled by the training fraction (the data-to-penalty balance of the final fit). F with ``--reg``: ``va.reg_regularisers``
+    scaled the same way, Toeplitz chi^2. G: ``vg.build_gp_problem`` with its fixed hyperparameters, Toeplitz chi^2."""
+    frac = int(train.sum()) / n_all
+    chi2 = args.chi2 or ("toeplitz" if args.config == "G" or args.reg else "direct")
+    if args.config == "G":
+        if args.reg:
+            raise SystemExit("--reg is for config F; G has no regularisers (the GP prior is the regulariser)")
+        n_r, n_th = (args.n_r or 0, args.n_theta or 0)
+        auto = vg.auto_grid(args.r_max_mas, args.length_r_mas, args.length_theta_rad)
+        n_r, n_th = n_r or auto[0], n_th or auto[1]
+        prob = vg.build_gp_problem(data, length_r=args.length_r_mas, length_theta=args.length_theta_rad, npix=args.npix or vg.GP["npix"], pixel_mas=args.pixel_mas, n_r=n_r, n_theta=n_th, r_max_mas=args.r_max_mas,
+                                   sigma_range=(args.sigma_min, args.sigma_max), mask=train, chi2=chi2, offset_bound_mas=args.offset_bound_mas or va.TOEPLITZ_OFFSET_BOUND_MAS)
+        return prob, None, float(args.length_r_mas), f"lr{args.length_r_mas:g}_lt{args.length_theta_rad:g}", dict(length_r_mas=args.length_r_mas, length_theta_rad=args.length_theta_rad, n_r=n_r, n_theta=n_th,
+                                                                                                                  r_max_mas=args.r_max_mas, sigma_range=[args.sigma_min, args.sigma_max])
+    common = dict(npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None), chi2=chi2)
+    if args.reg:
+        if args.config != "F":
+            raise SystemExit("--reg is for config F")
+        try:
+            first = va.parse_reg(args.reg)[0][1]
+        except ValueError as e:
+            raise SystemExit(str(e)) from e
+        prob = va.build_problem(data, "F", lam=0.0, reg=args.reg, reg_n=n_all, reg_scale=frac, **common)
+        return prob, None, first, args.reg, dict(reg=args.reg, reg_scale=frac)
+    lam = lam_of(args, n_all)  # the full-data strength (the grid key)
+    prob = va.build_problem(data, args.config, lam=lam * frac, **common)
+    return prob, lam, lam, f"{lam:g}", dict(lam_train=lam * frac)
+
+
 def cmd_cv_task(args):
     resolve_alpha(args)
     out = pathlib.Path(args.out)
@@ -528,23 +633,29 @@ def cmd_cv_task(args):
     train, test = fold != args.fold, fold == args.fold
     assert not np.any(train & test) and np.all(train | test)
     n_all = len(data.u)
-    lam = lam_of(args, n_all)  # the full-data strength (the grid key)
-    lam_train = lam * int(train.sum()) / n_all  # the likelihood has (k-1)/k of the points: keep the data-to-penalty balance of the final fit
     init_json = pathlib.Path(args.init) / "result.json"
     init_ref = int(json.loads(init_json.read_text()).get("ref_obs", 0)) if init_json.exists() else 0
     if init_ref != 0:  # cv-task builds the default problem (reference obs 0): another reference's n-1 gains and offsets would land on the wrong observations
         raise SystemExit(f"--init {args.init} was fitted with reference observation {init_ref}: cv-task supports reference observation 0 only")
-    prob = va.build_problem(data, args.config, lam=lam_train, npix=args.npix, pixel_mas=args.pixel_mas, mask=train, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None))
+    try:
+        prob, lam, x, key, arm = cv_problem(args, data, n_all, train)
+    except va.ToeplitzRefused as e:
+        raise SystemExit(str(e)) from e
     z = np.load(pathlib.Path(args.init) / "values.npz")
     import jax.numpy as jnp
 
+    start = va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob)
+    bad = [k for k, v in start.items() if k in prob.init and tuple(np.shape(v)) != tuple(np.shape(prob.init[k]))]
+    bad += [k for k, v in start.items() if k in prob.priors and k not in prob.init and getattr(prob.priors[k], 'event_shape', None) is not None and tuple(np.shape(v)) != tuple(prob.priors[k].shape())]
+    if bad:
+        raise SystemExit(f"--init {args.init}: {bad} have the wrong shape for this arm (G: the init GP fit needs the same n_r x n_theta, see vg.auto_grid)")
     t = time.time()
-    values, info, traj, why = va.run_fit_c8(prob, va.drop_unused_sites({k: jnp.asarray(z[k]) for k in z.files}, prob), max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, precondition=args.precondition)
+    values, info, traj, why = va.run_fit_c8(prob, start, max_steps=args.max_steps, time_limit=args.time_limit, log=say, gtol=args.gtol, precondition=args.precondition)
     wall = time.time() - t
     ho = va.score(data, prob.scene, values, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     ho1 = va.score(data, prob.scene, {**values, "cal.sigma": np.ones_like(values["cal.sigma"])}, prob.nuis, mask=test, annulus=annulus, chunk_size=args.chunk_size)
     tr = va.score(data, prob.scene, values, prob.nuis, mask=train, chunk_size=args.chunk_size)
-    res = dict(command="cv-task", config=args.config, lam=lam, lam_train=lam_train, fold=args.fold, n_train=int(train.sum()), n_test=int(test.sum()), folds_sha256=fmeta["sha256"],
+    res = dict(command="cv-task", config=args.config, lam=x, key=key, arm=arm, lam_train=arm.get("lam_train"), fold=args.fold, n_train=int(train.sum()), n_test=int(test.sum()), folds_sha256=fmeta["sha256"],
                versions=versions(), wall_s=wall, steps=info["steps"], stop=info["stop"], stopped_because=why, convergence=va.convergence(traj, info), trajectory=traj,
                precondition=info.get("precondition"), precondition_rounds=info.get("precondition_rounds", []),
                heldout=dict(nll=ho["nll"], chi2_s1=ho1["chi2_raw"], chi2_fit=ho["chi2_fit"], by_ddid=ho["by_ddid"], by_annulus=ho["by_annulus"],
@@ -568,6 +679,13 @@ def cmd_cv_aggregate(args):
     out.mkdir(parents=True, exist_ok=True)
     lams = sorted({r["lam"] for r in recs})
     folds = sorted({r["fold"] for r in recs})
+    seen = {}
+    for r in recs:  # one arm per directory: a GP grid of several length_theta, or reg arms with other second strengths, would overwrite each other
+        k = (r["lam"], r["fold"])
+        if k in seen and seen[k] != r.get("key"):
+            raise SystemExit(f"cv-aggregate: two arms ({seen[k]!r}, {r.get('key')!r}) share lam {r['lam']:g}, fold {r['fold']}: aggregate one arm per directory")
+        seen[k] = r.get("key")
+    arm_keys = sorted({str(r.get("key")) for r in recs})
     shas = {r["folds_sha256"] for r in recs}
     S = np.full((len(lams), len(folds)), np.nan)
     A = np.full((len(lams), len(folds), len(recs[0]["heldout"]["by_annulus"]["nll"])), np.nan)
@@ -585,7 +703,7 @@ def cmd_cv_aggregate(args):
     se = np.nanstd(d, 1, ddof=1) / np.sqrt(len(folds)) if len(folds) > 1 else np.zeros(len(lams))
     within = [i for i in cand if i == best or np.nanmean(d[i]) <= se[i]]
     one_se = int(max(within, key=lambda i: lams[i]))
-    res = dict(lams=lams, folds=folds, n_records=len(recs), folds_sha256=sorted(shas), complete=full.tolist(), heldout_nll=S, sum=total, mean=mean, sd=sd,
+    res = dict(lams=lams, folds=folds, n_records=len(recs), arm_keys=arm_keys, folds_sha256=sorted(shas), complete=full.tolist(), heldout_nll=S, sum=total, mean=mean, sd=sd,
                lam_star=lams[best], lam_one_se=lams[one_se], at_edge=bool(best in (0, len(lams) - 1)),
                edge="low" if best == 0 else ("high" if best == len(lams) - 1 else None),
                annulus_sum=np.nansum(A, 1), annulus_best_lam=[lams[int(np.nanargmin(np.nansum(A, 1)[:, a]))] for a in range(A.shape[2])],
@@ -756,6 +874,47 @@ def cold_start_gate_of(res, vres, image, px, flux, clean_dir, dsharp=None):
         chi2n_ours=o and raw(o["ours"]), chi2n_mpol=o and raw(o["mpol_solution_in_virgil"]), stages_converged=stages,
         dead_fraction=va.dead_pixel_report(va.tapered_image(image, px), px)["frac_below_1e-6_peak"], dead_fraction_base=va.dead_pixel_report(image, px)["frac_below_1e-6_peak"],
         flux_ours=flux, flux_ref=ref, flux_ref_name=name, **alt)
+
+
+def cmd_replica_compare(args):
+    """The replica pass (``vr.replica_compare``) of a ``--workflow mpol-replica`` fit against MPoL's export (``export.npz``: ``base_image``, ``image``, ``cell_size_arcsec``)."""
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    fit = json.loads((pathlib.Path(args.fit) / "result.json").read_text())
+    px = float(fit["pixel_mas"])
+    mz = np.load(pathlib.Path(args.mpol) / "export.npz")
+    mpol_base = np.asarray(mz["base_image"], float)
+    base = np.load(pathlib.Path(args.fit) / "image.npy").astype(float)
+    if base.shape != mpol_base.shape:
+        raise SystemExit(f"replica image {base.shape} and MPoL's {mpol_base.shape} differ")
+    area = (px / 1000.0) ** 2
+    res = vr.replica_compare(base, vr.blurred_of(base, px), mpol_base, np.asarray(mz["image"], float), float(base.sum() * area), mpol_flux=float(mpol_base.sum() * float(mz["cell_size_arcsec"]) ** 2), pixel_mas=px)
+    res.update(fit=str(args.fit), mpol_dir=str(args.mpol), workflow=fit.get("workflow"), args={k: fit.get("args", {}).get(k) for k in ("replica_no_wd", "replica_softmax", "replica_steps", "replica_stages")})
+    dump(out / "replica_compare.json", res)
+    (out / "replica_compare.md").write_text("\n".join(vr.replica_markdown(res)) + "\n")
+    say("\n".join(vr.replica_markdown(res)))
+
+
+def cmd_better(args):
+    """The Track A pass (``vs.better_than_mpol``) of one arm from files, for any config: ``--fit`` (the arm's result.json: raw chi^2/N, flux, C8), ``--cv-compare`` (``mpol_cv_compare.json``
+    of ``cv-compare``), ``--synth`` (the arm's synth.json) and ``--synth-r`` (config R's). A missing input leaves its check NOT EVALUATED."""
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    load = lambda f: None if f is None else json.loads(pathlib.Path(f).read_text())  # noqa: E731
+    fit, cvc = load(str(pathlib.Path(args.fit) / "result.json")), load(args.cv_compare)
+    tot = (cvc or {}).get("total") or {}
+    ho = lambda k: (tot.get(k) or {}).get("chi2_raw_per_n")  # noqa: E731
+    if args.clean_dir:
+        ref, name = float(vs.read_clean(args.clean_dir)[3]["flux_jy"]), f"CLEAN ({args.clean_dir})"
+    else:
+        ref, name = vs.REFERENCE_FLUX_JY, vs.REFERENCE_FLUX_NAME
+    stages = [bool(st.get("c8_converged", st["convergence"]["converged"])) for st in fit.get("stages", [])]
+    b = vs.better_than_mpol(heldout_ours=ho("virgil_lam_star"), heldout_mpol=ho("mpol"), chi2n_ours=(fit.get("summary") or {}).get("chi2n_raw"), synth=load(args.synth), synth_r=load(args.synth_r),
+                            flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages_converged=stages)
+    b.update(fit=str(args.fit), config=fit.get("config"), workflow=fit.get("workflow"))
+    dump(out / "better_than_mpol.json", b)
+    (out / "better_than_mpol.md").write_text("\n".join(vs.better_markdown(b)) + "\n")
+    say("\n".join(vs.better_markdown(b)))
 
 
 def cmd_compare(args):
@@ -971,17 +1130,26 @@ def main(argv=None):
     p.add_argument("--adam-const-steps", type=int, default=None, help="adam only, with --adam-lr-decay: hold the learning rate constant for this many steps, then decay it (optax.join_schedules)")
     p.add_argument("--adam-ftol-abs", type=float, default=None, help="adam only: virgil's windowed ftol (over 100 steps; needs virgil#562); default off: the full budget, C8 judged afterwards")
     p.add_argument("--adam-snapshot-every", type=int, default=va.SNAPSHOT_EVERY, help="adam only: keep the image every this many steps (0: off) and write its dots_report and loss to result.json's trajectory")
-    p.add_argument("--taper-mas", type=float, default=None, help="config R: Gaussian taper (FWHM mas) of the model and of the entropy's image (default MPoL's 30); 0 is classic MEM: no taper, entropy of the untapered image")
+    p.add_argument("--blur-mas", "--taper-mas", dest="taper_mas", type=float, default=None, help="config R: FWHM (mas) of the Gaussian blur inside the forward model (virgil's blur_fwhm_mas; MPoL's \"Gaussian base layer\") and of the entropy's image "
+                   "(default MPoL's 30); 0 is classic MEM: no kernel, entropy of the image itself. --taper-mas is the old name")
+    p.add_argument("--reg", default=None, help="config F, Track A (standard practice: no kernel, regularisers on the unblurred image), e.g. mem:1e-9,tsv:1e-4. mem:L is virgil's MaxEntropy at MPoL's lambda_M = L (weight 2 N L / dx^2 "
+                   "on the unit-sum image, prior = the primary beam; the prior_intensity p enters only a flux-only term); tsv:W is virgil's TSV at weight W. Same nuisances as R, Toeplitz chi^2 with --chi2 toeplitz. Exclusive with --lam, --lam-m")
     p.add_argument("--entropy-on", choices=["blurred", "base"], default="blurred", help="config R: the entropy of the image blurred by --taper-mas (default, MPoL's R) or of the unblurred base image while the blurring kernel stays on the model (MEM's intrinsic correlation function, Gull 1989)")
     p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
     p.add_argument("--post-step-blur-px", type=float, default=None, help="adam only: after every optimiser step blur the normalised image with a Gaussian of this sigma in pixels (dorito's recipe, "
                    "Charles et al. 2026: 0.25) and re-express it as log_brightness; default off. Needs a virgil whose fit() has post_step")
     p.add_argument("--adam-eps", type=float, default=1e-8, help="adam: the epsilon in the denominator of the update")
     p.add_argument("--sb-only", action="store_true")
-    p.add_argument("--workflow", choices=["p3", "mpol", "clean"], default="p3",
+    p.add_argument("--workflow", choices=["p3", "mpol", "clean", "mpol-replica"], default="p3",
                    help="p3 (default): C9's SB stage then all data from a 1\" Gaussian, s at ŝ. mpol (config R only): one all-data stage from MPoL's own start "
                         "(uniform softplus(-3) image, g = 1, offsets 0, s = 1; sgd.py:49-59, images.py BaseCube). clean (config R only, no MPoL information): start from "
-                        "our own CLEAN model (--clean-dir), stage selfcal fits flux, gains, offsets and s with the image held, stage all releases everything")
+                        "our own CLEAN model (--clean-dir), stage selfcal fits flux, gains, offsets and s with the image held, stage all releases everything. mpol-replica (config R only, vv's own optax loop, "
+                        "not virgil.fit): MPoL's procedure from a cold start: softplus pixels from -3, the 30 mas blur in the model, entropy on the blurred image, AdamW(1e-2, wd 1e-2), MPoL's step count, float32, "
+                        "stages sb then all, full batch; --blur-mas, --entropy-on and --lam-m act as in R")
+    p.add_argument("--replica-stages", default=",".join(vr.MPOL_RUN["stages"]), help="mpol-replica: comma list of stages, each sb (obs 0-4) or all; default all,all, which is what MPoL's p3a ran (train.sbatch: no --sb_only in either stage)")
+    p.add_argument("--replica-no-wd", action="store_true", help="mpol-replica ablation: AdamW with weight decay 0")
+    p.add_argument("--replica-softmax", action="store_true", help="mpol-replica ablation: the pixels are flux softmax(eta) (virgil's parametrisation) instead of softplus")
+    p.add_argument("--replica-steps", type=int, default=None, help="mpol-replica: total steps over both stages (default MPoL's: %d, split %d sb : %d all)" % (vr.MPOL_STEPS["sb"] + vr.MPOL_STEPS["all"], vr.MPOL_STEPS["sb"], vr.MPOL_STEPS["all"]))
     p.add_argument("--clean-dir", default=None, help="clean: the output directory of alma_imlup_clean.py run (model.fits, clean.json)")
     p.add_argument("--clean-smooth-mas", type=float, default=10.0, help="clean: FWHM (mas) of the small circular positivity kernel the CLEAN model is convolved with (default two fit pixels; keeps the long baselines' power)")
     p.add_argument("--clean-beam-frac", type=float, default=0.0, help="clean: instead smooth with this fraction of the restoring beam (0: off, the default; 1 removes the long baselines' power and biases their gains)")
@@ -1023,12 +1191,21 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=0)
     p.set_defaults(fn=cmd_folds)
 
-    p = sub.add_parser("cv-task")
+    p = sub.add_parser("cv-task", help="one (strength, fold) task: F with MaxEntropy (--lam), F with --reg, R, or G (the MultipoleField GP, fixed --length-r-mas and --length-theta-rad)")
     common(p)
-    p.add_argument("--config", choices=["R", "F"], default="F")
+    p.add_argument("--config", choices=["R", "F", "G"], default="F")
+    p.add_argument("--reg", default=None, help="config F: mem:L,tsv:W as `fit --reg` (the grid variable, `lam` in cv.json, is the first item's strength; keep one arm per directory)")
+    p.add_argument("--chi2", choices=va.CHI2_ENGINES, default=None, help="default toeplitz for --reg and G, else direct")
     p.add_argument("--fold", type=int, required=True)
-    p.add_argument("--init", required=True)
+    p.add_argument("--init", required=True, help="a fit's directory (values.npz): the all-data fit of the arm (G: any GP fit, whose whitened latents start the task)")
     p.add_argument("--folds", required=True)
+    p.add_argument("--length-r-mas", type=float, default=40.0, help="G: radial correlation length (mas); the grid key `lam` of cv.json (CV grid 10 ... )")
+    p.add_argument("--length-theta-rad", type=float, default=1.0, help="G: azimuthal correlation length (rad; CV grid down to 0.1); one value per directory")
+    p.add_argument("--r-max-mas", type=float, default=vg.GP["r_max_mas"], help="G: outer radius of the field (beyond 2400 removes the outer cut-off)")
+    p.add_argument("--n-r", type=int, default=None, help="G: radial nodes (default vg.auto_grid)")
+    p.add_argument("--n-theta", type=int, default=None, help="G: azimuthal nodes (default vg.auto_grid)")
+    p.add_argument("--sigma-min", type=float, default=vg.GP["sigma_range"][0], help="G: lower bound of the field sigma's prior")
+    p.add_argument("--sigma-max", type=float, default=vg.GP["sigma_range"][1], help="G: upper bound of the field sigma's prior")
     p.set_defaults(fn=cmd_cv_task, max_steps=1500, time_limit=3000.0)
 
     p = sub.add_parser("cv-aggregate")
@@ -1042,6 +1219,21 @@ def main(argv=None):
     p.add_argument("--lam-ent", type=float, default=va.MPOL["lam_m"], help="MPoL's entropy weight lam_M (C4/C11: lam_R = 2 N lam_M)")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_cv_compare)
+
+    p = sub.add_parser("replica-compare", help="the replica pass: a --workflow mpol-replica fit against MPoL's export")
+    p.add_argument("--fit", required=True)
+    p.add_argument("--mpol", required=True, help="MPoL's directory (export.npz)")
+    p.add_argument("--out", required=True)
+    p.set_defaults(fn=cmd_replica_compare)
+
+    p = sub.add_parser("better", help="the Track A pass block (better than MPoL) of one arm, from its result.json, cv-compare, synth.json files")
+    p.add_argument("--fit", required=True, help="the arm's fit directory (result.json)")
+    p.add_argument("--cv-compare", default=None, help="mpol_cv_compare.json of cv-compare run on this arm's cv directory")
+    p.add_argument("--synth", default=None, help="this arm's synth.json (alma_imlup_synth.py)")
+    p.add_argument("--synth-r", default=None, help="config R's synth.json, the control")
+    p.add_argument("--clean-dir", default=None, help="CLEAN output directory: its flux is the reference, else the DSHARP constant")
+    p.add_argument("--out", required=True)
+    p.set_defaults(fn=cmd_better)
 
     p = sub.add_parser("compare")
     p.add_argument("--virgil", required=True)

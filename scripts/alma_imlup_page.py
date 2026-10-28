@@ -1,7 +1,7 @@
 """IM Lup: virgil against MPoL and CLEAN. Builds the figures and the generated blocks of docs/imaging/imlup.md.
 
     python scripts/alma_imlup_page.py --r DIR [--r-mpol DIR] [--r-mpolwf DIR] --mpol DIR [--compare DIR]
-        [--clean DIR] [--dsharp FITS] [--dsharp-profile TXT] [--cv DIR] [--job-id NAME=ID ...]
+        [--clean DIR] [--dsharp FITS] [--dsharp-profile TXT] [--cv DIR] [--better DIR] [--job-id NAME=ID ...]
         [--assets docs/imaging/imlup] [--page docs/imaging/imlup.md]
 
 Every input is a directory (or file) argument and every one is optional: a missing input leaves a clearly marked
@@ -18,6 +18,7 @@ Inputs, as the OzSTAR jobs write them:
     --clean                     our CLEAN (``alma_imlup_clean.py run``: image.fits, clean.json)
     --dsharp, --dsharp-profile  DSHARP's IMLup_continuum.fits and IMLup.profile.txt
     --cv                        ``cv-aggregate`` output (cv_summary.json, cv_curve.png, cv_annulus.png)
+    --better                    ``alma_imlup_maxent.py better`` output (better_than_mpol.json): the Track A pass table
 
 Images follow ``crosscheck.alma_maxent``: ``image[row, col]`` with row 0 North and column 0 East, so ``imshow`` with its
 default origin has North up and East left. Every panel is drawn with an explicit extent (``grid_extent``) in arcsec East
@@ -885,6 +886,17 @@ def cv_block(cv, assets):
     return "\n".join(txt)
 
 
+def better_block(better):
+    """The Track A pass table of ``alma_imlup_maxent.py better`` (``better_than_mpol.json``), or a pending card."""
+    p = pathlib.Path(better) / "better_than_mpol.json" if better else None
+    if p is None or not p.exists():
+        return pending("the better-than-MPoL pass", "`--better DIR` takes the output of `alma_imlup_maxent.py better` (one arm: its fit, `cv-compare`, `synth.json` and config R's `synth.json`).")
+    b = json.loads(p.read_text())
+    fmt = lambda v: "" if v is None else (v if isinstance(v, str) else f"{v:.6g}")  # noqa: E731
+    rows = [f"**{b['verdict']}**: arm `{b.get('config')}` / `{b.get('workflow')}` ({b['fit']}). {b['rule']}.", "", "| | check | value | limit | |", "|---|---|---|---|---|"]
+    return "\n".join(rows + [f"| {i['key']} | {i['label']} | {fmt(i['value'])} | {i['limit']} | {i['status']} |" for i in b["items"]])
+
+
 def science_block(profile_name, dsharp_profile):
     txt = []
     if profile_name is None:
@@ -953,7 +965,7 @@ def build(args):
     clean, dsharp = load_clean(args.clean), load_sky_fits(args.dsharp)
     job_ids = dict(j.split("=", 1) for j in args.job_id)
     inputs = {"--r": args.r, "--r-mpol": args.r_mpol, "--r-mpolwf": args.r_mpolwf, "--mpol": args.mpol, "--compare": args.compare, "--clean": args.clean,
-              "--dsharp": args.dsharp, "--dsharp-profile": args.dsharp_profile, "--cv": args.cv}
+              "--dsharp": args.dsharp, "--dsharp-profile": args.dsharp_profile, "--cv": args.cv, "--better": args.better}
     images, metrics = fig_images(assets, head, mpol, clean, dsharp, half=args.half, zoom=args.zoom)
     cal, chi2 = fig_calibration(assets, head, mpol), fig_chi2(assets, head, mpol)
     resid, rstats = fig_residuals(assets, head, compare)
@@ -982,6 +994,7 @@ def build(args):
     blocks["arms"] = (f"![arms at the CLEAN beam](imlup/{arms_fig})" if arms_fig else pending("the arm panels", "Needs `--clean` and at least one fit (`--r`, `--arm LABEL=DIR`)."))
     blocks["dots"] = dots_block(arms, clean)
     blocks["cv"] = cv_block(args.cv, assets)
+    blocks["better"] = better_block(args.better)
     blocks["science"] = science_block(prof, args.dsharp_profile)
     blocks["provenance"] = provenance_block(runs, mpol, clean, dsharp, job_ids, inputs, git_head())
     page = pathlib.Path(args.page)
@@ -1000,7 +1013,7 @@ def main(argv=None):
     ap.add_argument("--arm", action="append", default=[], metavar="LABEL=DIR", help="a further fit directory to compare at the CLEAN beam and in the dots table (R arms, classic MEM, GP), repeatable")
     ap.add_argument("--mem", default=None, help="the classic-MEM fit directory (--taper-mas 0): no blurring kernel, entropy of the image itself")
     ap.add_argument("--icf", default=None, help="the ICF fit directory (--entropy-on base): the 30 mas blurring kernel stays on the model, the entropy moves to the unblurred image (Gull 1989)")
-    for a in ("r", "r-mpol", "r-mpolwf", "mpol", "compare", "clean", "dsharp", "dsharp-profile", "cv"):
+    for a in ("r", "r-mpol", "r-mpolwf", "mpol", "compare", "clean", "dsharp", "dsharp-profile", "cv", "better"):
         ap.add_argument(f"--{a}", default=None)
     ap.add_argument("--job-id", action="append", default=[], metavar="NAME=ID", help="job id to show (names: R, R_mpol, R_mpolwf, MPoL), repeatable")
     ap.add_argument("--assets", default=str(ROOT / "docs" / "imaging" / "imlup"))

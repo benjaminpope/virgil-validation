@@ -198,6 +198,47 @@ def gate_markdown(gate):
     return rows
 
 
+MPOL_RAW_CHI2N = 2.7062  # MPoL's solution, raw chi^2/(2N) at s = 1 in virgil (the 2026-10-27 round)
+BETTER_NEFF, BETTER_DEAD = 0.7, 0.01
+
+
+def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages_converged,
+                     chi2n_limit=MPOL_RAW_CHI2N, flux_tol=GATE_FLUX_TOL, neff_min=BETTER_NEFF, dead_max=BETTER_DEAD):
+    """The "better than MPoL" pass of Track A (``design/alma_imlup_p3.md``, Ben 2026-10-28): one arm must do all five, each PASS / FAIL / NOT EVALUATED (None input):
+
+    1. held-out raw chi^2/N on the cross-validation folds below MPoL's on the same folds (``heldout_ours`` against ``heldout_mpol``, the ``total`` entries of ``cv-compare``);
+    2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than ``chi2n_limit`` = MPoL's 2.7062;
+    3. on the synthetic truth, NRMSE at 0.5 CLEAN beam below config R's (``synth`` and ``synth_r`` are ``synth.json`` dicts), N_eff ratio of the base image >= ``neff_min`` and base pixels below 1e-4 of the in-disk peak under ``dead_max``;
+    4. ``flux_ours`` within ``flux_tol`` of ``flux_ref``;
+    5. C8 converged in every stage."""
+    def item(key, label, ok, value, limit):
+        return dict(key=key, label=label, value=value, limit=limit, status="NOT EVALUATED" if ok is None else ("PASS" if ok else "FAIL"))
+
+    h = None if heldout_ours is None or heldout_mpol is None else heldout_ours - heldout_mpol
+    s = None if synth is None else synth
+    nr = None if s is None or synth_r is None else (s["nrmse"]["0.5"], synth_r["nrmse"]["0.5"])
+    syn_ok = None if s is None or nr is None else (nr[0] < nr[1] and s["n_eff_ratio"] >= neff_min and s["base_dead_in_disk_1e4"] < dead_max)
+    syn_val = None if s is None or nr is None else f"NRMSE {nr[0]:.4f} vs R {nr[1]:.4f}; N_eff ratio {s['n_eff_ratio']:.3f}; dead {s['base_dead_in_disk_1e4']:.2%}"
+    rel = None if flux_ours is None or not flux_ref else abs(flux_ours / flux_ref - 1)
+    sc = None if stages_converged is None or len(stages_converged) == 0 else [bool(x) for x in stages_converged]
+    items = [
+        item("1", "held-out chi^2/N below MPoL's on the same folds", None if h is None else h < 0, h, "< 0"),
+        item("2", f"raw chi^2/N (s = 1) at or below {chi2n_limit:g}", None if chi2n_ours is None else chi2n_ours <= chi2n_limit, chi2n_ours, f"<= {chi2n_limit:g}"),
+        item("3", f"synthetic truth: NRMSE at 0.5 beam below R's, N_eff ratio >= {neff_min:g}, base dead < {dead_max:.0%}", syn_ok, syn_val, "all three"),
+        item("4", f"total flux within {flux_tol:.0%} of the {flux_ref_name} flux ({flux_ref:.5f} Jy)" if flux_ref else "total flux within 10% of CLEAN", None if rel is None else rel <= flux_tol, rel, f"<= {flux_tol:g}"),
+        item("5", "C8 converged in every stage", None if sc is None else all(sc), None if sc is None else f"{sum(sc)}/{len(sc)} stages", "all"),
+    ]
+    verdict = "PASS" if all(i["status"] == "PASS" for i in items) else ("INCOMPLETE" if any(i["status"] == "NOT EVALUATED" for i in items) and not any(i["status"] == "FAIL" for i in items) else "FAIL")
+    return dict(verdict=verdict, items=items, rule="PASS only if 1-5 all pass; design/alma_imlup_p3.md, Track A, Ben 2026-10-28")
+
+
+def better_markdown(b):
+    """``better_than_mpol``'s result as markdown lines (a table and the verdict)."""
+    rows = [f"**Better than MPoL: {b['verdict']}** ({b['rule']})", "", "| | check | value | limit | |", "|---|---|---|---|---|"]
+    fmt = lambda v: "" if v is None else (v if isinstance(v, str) else f"{v:.6g}")  # noqa: E731
+    return rows + [f"| {i['key']} | {i['label']} | {fmt(i['value'])} | {i['limit']} | {i['status']} |" for i in b["items"]]
+
+
 # ------------------------------------------------------------------ a data-driven start: the elliptical Gaussian of CASA's uvmodelfit
 
 GAUSS_FIT_MAX_Q = 4.0e4  # wavelengths: the short baselines (resolution 1/q = 5 arcsec) that see the disc's flux, centroid and overall size

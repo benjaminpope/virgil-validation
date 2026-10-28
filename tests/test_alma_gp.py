@@ -61,7 +61,7 @@ def test_the_multipole_field_through_the_toeplitz_chi2_equals_the_direct_chi2_in
     data = va.load_dir(syn)
     direct = vg.build_gp_problem(data, chi2="direct", **FIELD)
     toep = vg.build_gp_problem(data, chi2="toeplitz", **FIELD)
-    assert direct.nuis.taper_fwhm_mas is None and toep.chi2_info["engine"] == "toeplitz" and toep.chi2_info["offsets"] == "spread"
+    assert direct.nuis.blur_fwhm_mas is None and toep.chi2_info["engine"] == "toeplitz" and toep.chi2_info["offsets"] == "spread"
     assert set(direct.init) == {"field.latent", "field.sigma", "cal.flux", "cal.gain", "cal.offset", "cal.sigma"}
     v = _values(direct)
     with va.ft_eps(1e-12):

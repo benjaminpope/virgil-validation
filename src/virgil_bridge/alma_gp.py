@@ -9,7 +9,7 @@ L42, "DSHARP II": i = 47.5 deg, PA = 144.5 deg) and the centre at the phase cent
 
 The problem has the shape of ``alma.build_problem``'s (``scene``, ``nuis``, ``priors``, ``init``, ``terms``, ``model``), so ``alma.run_fit``,
 ``alma.score`` and ``alma.residual_dirty_images`` take it unchanged. The sites are ``field.latent`` (n_r, n_theta), ``field.sigma`` and the
-nuisances' ``cal.*``; the nuisances have no taper (``taper_fwhm_mas=None``), since the field sets the resolution.
+nuisances' ``cal.*``; the nuisances have no taper (``blur_fwhm_mas=None``), since the field sets the resolution.
 """
 
 import types
@@ -19,8 +19,17 @@ import numpy as np
 from .alma import CHI2_ENGINES, TOEPLITZ_OFFSET_BOUND_MAS, nuisance_sites, toeplitz_term
 
 GP = dict(npix=1028, pixel_mas=5.0, r_max_mas=2400.0, n_r=160, n_theta=256, inc_deg=47.5, pa_deg=144.5, nu=1.5, sigma_range=(0.05, 5.0), mean_floor=1e-3)
+NODE_PER_LENGTH = 2.0  # the polar grid keeps at least this many nodes per correlation length (radially) when its size is automatic
 OUTER_ARCSEC = 1.8  # the flux beyond this radius is reported: the disc is inside it
 HELD_SITES = ("cal.gain", "cal.offset", "cal.sigma")
+
+
+def auto_grid(r_max_mas, length_r, length_theta):
+    """``(n_r, n_theta)`` of the polar grid for the wider hyperparameter grid (length_r down to 10 mas, length_theta down to 0.1 rad, r_max beyond 2.4 arcsec): the default 160 x 256 at r_max
+    2.4 arcsec (15 mas spacing), scaled with ``r_max_mas``, and never coarser than ``NODE_PER_LENGTH`` nodes per ``length_r`` radially or per ``length_theta`` azimuthally."""
+    n_r = max(int(round(GP["n_r"] * r_max_mas / GP["r_max_mas"])), int(np.ceil(NODE_PER_LENGTH * r_max_mas / length_r)))
+    n_theta = max(GP["n_theta"], int(np.ceil(2 * np.pi * NODE_PER_LENGTH / length_theta)))
+    return n_r, n_theta
 
 
 def field_scene(npix, pixel_mas, *, r_max_mas=GP["r_max_mas"], inc=GP["inc_deg"], pa=GP["pa_deg"], length_r, length_theta, sigma=1.0, nu=GP["nu"], mean=None,
@@ -94,7 +103,7 @@ def build_gp_problem(data, *, length_r, length_theta, npix=GP["npix"], pixel_mas
     if chi2 not in CHI2_ENGINES:
         raise ValueError(f"chi2 must be one of {CHI2_ENGINES}, not {chi2!r}")
     use = data if use is None else use
-    nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, taper_fwhm_mas=None)
+    nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, blur_fwhm_mas=None)
     scene = field_scene(npix, pixel_mas, r_max_mas=r_max_mas, inc=inc, pa=pa, length_r=length_r, length_theta=length_theta, sigma=sigma, nu=nu, mean=mean, mean_floor=mean_floor)
     m = None if mask is None else np.asarray(mask, bool)
     if chi2 == "toeplitz":
