@@ -1,0 +1,5 @@
+# SSH public keys allowed to sign off `by:` entries in trust/signoffs.yml
+# (ssh-keygen ALLOWED SIGNERS format, one key per line):
+#   benjamin.pope@mq.edu.au namespaces="git" sk-ssh-ed25519@openssh.com AAAA...
+# Keep the key hardware-backed or approval-gated (see docs/method/index.md).
+# Until a key is listed here, every `by:` sign-off falls back to "convention".

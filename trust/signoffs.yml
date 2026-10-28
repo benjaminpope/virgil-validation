@@ -6,6 +6,12 @@
 # entry here confirms one convention of one part, by either
 #   citation: a paper, equation and page that defines it, or
 #   by, date, commit: Ben's sign-off after reading the code at that virgil commit.
+#     A `by:` entry counts only when the commit that added its lines is SSH-signed
+#     by a key listed in trust/allowed_signers; otherwise it stays "convention".
+#     The key must need a human action for each signature (a FIDO/hardware key such
+#     as sk-ssh-ed25519 with touch, or 1Password's SSH agent with approval prompts):
+#     a key left unlocked in ssh-agent can be used by any agent on the machine.
+#     This checks who signed, not who wrote the text.
 #
 # node:
 #   property:

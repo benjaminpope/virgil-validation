@@ -217,65 +217,57 @@ def test_render_is_not_an_external_or_allowed_root(trust):
     assert "render" not in trust.EXTERNAL
 
 
-def test_agent_authored_signoffs_are_rejected(trust, tmp_path):
-    """A 'by: Benjamin Pope' sign-off counts only if committed on a non-boundary
-    commit in a full clone by Ben with no agent attribution trailer."""
+def test_signoffs_need_a_listed_ssh_signature(trust, tmp_path):
+    """A 'by:' sign-off counts only if the commit that added it is SSH-signed by a key
+    in trust/allowed_signers (non-boundary, full clone); a citation always counts."""
+    import os
     import subprocess
 
+    env = {**os.environ, "HOME": str(tmp_path), "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig"),
+           "GIT_CONFIG_SYSTEM": os.devnull, "GIT_AUTHOR_NAME": "Benjamin Pope", "GIT_AUTHOR_EMAIL": "b@example.com",
+           "GIT_COMMITTER_NAME": "Benjamin Pope", "GIT_COMMITTER_EMAIL": "b@example.com"}
+
+    def run(*cmd, cwd=None):
+        subprocess.run(cmd, check=True, capture_output=True, env=env, cwd=cwd)
+
+    for name in ("good", "other"):
+        run("ssh-keygen", "-t", "ed25519", "-N", "", "-q", "-f", str(tmp_path / name))
+    pub = (tmp_path / "good.pub").read_text().split()
     repo = tmp_path / "repo"
-    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    (repo / "trust").mkdir(parents=True)
+    (repo / "trust" / "allowed_signers").write_text(f"ben@example.com {pub[0]} {pub[1]}\n")
     sig = repo / "signoffs.yml"
-    content = (
-        "virgil.a:\n"
-        "  sense:\n"
-        "    by: Benjamin Pope\n"
-        "    date: 2026-10-28\n"
-        "    commit: " + "a" * 40 + "\n"
-        "  cited:\n"
-        "    citation: 'Author (2020), eq. 1'\n"
-    )
-    sig.write_text(content)
+    sig.write_text(
+        "virgil.a:\n  sense:\n    by: Benjamin Pope\n    date: 2026-10-28\n    commit: " + "a" * 40 + "\n"
+        "  cited:\n    citation: 'Author (2020), eq. 1'\n")
+    cited = {"virgil.a": {"cited": {"citation": "Author (2020), eq. 1"}}}
+    run("git", "init", "-q", str(repo))
+    run("git", "add", "-A", cwd=repo)
 
-    # Uncommitted sign-off is rejected; citation still counts
-    assert trust.load_signoffs(sig, repo=repo) == {"virgil.a": {"cited": {"citation": "Author (2020), eq. 1"}}}
+    def sensed(where=repo):
+        return "sense" in trust.load_signoffs(where / "signoffs.yml", repo=where).get("virgil.a", {})
 
-    env = {"GIT_AUTHOR_NAME": "Benjamin Pope", "GIT_AUTHOR_EMAIL": "ben@example.com",
-           "GIT_COMMITTER_NAME": "Benjamin Pope", "GIT_COMMITTER_EMAIL": "ben@example.com"}
+    def commit(msg, key=None):
+        flags = ["-c", "gpg.format=ssh", "-c", f"user.signingkey={tmp_path / key}"] if key else []
+        run("git", *flags, "commit", "-q", *(["-S"] if key else []), "--allow-empty", "-m", msg, cwd=repo)
 
-    # Root (boundary) commit is rejected even with clean human metadata
-    subprocess.run(["git", "-C", str(repo), "add", "signoffs.yml"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "commit", "-m", "Root commit"],
-        check=True, capture_output=True, env=env,
-    )
-    assert "sense" not in trust.load_signoffs(sig, repo=repo).get("virgil.a", {})
+    assert trust.load_signoffs(sig, repo=repo) == cited  # uncommitted: rejected, citation kept
+    commit("root", "good")
+    assert not sensed()  # boundary commit, even though well signed
+    sig.write_text(sig.read_text() + "\n")
+    run("git", "commit", "-q", "-am", "unsigned, with a human name", cwd=repo)
+    assert trust.load_signoffs(sig, repo=repo) == cited  # a matching name is not a signature
 
-    # Re-create signoffs.yml on a non-boundary commit with an agent Co-Authored-By trailer: rejected
-    subprocess.run(["git", "-C", str(repo), "rm", "-f", "signoffs.yml"], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "Remove signoffs"],
-        check=True, capture_output=True, env=env,
-    )
-    sig.write_text(content)
-    subprocess.run(["git", "-C", str(repo), "add", "signoffs.yml"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "commit", "-m", "Sign off\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"],
-        check=True, capture_output=True, env=env,
-    )
-    assert "sense" not in trust.load_signoffs(sig, repo=repo).get("virgil.a", {})
+    text = sig.read_text()
+    for key, ok in (("other", False), ("good", True)):
+        run("git", "rm", "-q", "-f", "signoffs.yml", cwd=repo)
+        commit("drop")
+        sig.write_text(text)
+        run("git", "add", "signoffs.yml", cwd=repo)
+        commit("sign off", key)
+        assert sensed() is ok, key
+    assert trust.load_signoffs(sig, repo=repo)["virgil.a"]["cited"]
 
-    # Re-committed cleanly by Benjamin Pope (even mentioning 'claude' in prose or committed via GitHub web UI): accepted
-    web_env = {**env, "GIT_COMMITTER_NAME": "GitHub", "GIT_COMMITTER_EMAIL": "noreply@github.com"}
-    subprocess.run(
-        ["git", "-C", str(repo), "commit", "--amend", "-m", "Human sign-off after reviewing claude report"],
-        check=True, capture_output=True, env=web_env,
-    )
-    assert "sense" in trust.load_signoffs(sig, repo=repo).get("virgil.a", {})
-
-    # Shallow clone of the same repository: rejected
     shallow = tmp_path / "shallow"
-    subprocess.run(
-        ["git", "clone", "--depth", "1", f"file://{repo}", str(shallow)],
-        check=True, capture_output=True,
-    )
-    assert "sense" not in trust.load_signoffs(shallow / "signoffs.yml", repo=shallow).get("virgil.a", {})
+    run("git", "clone", "-q", "--depth", "1", f"file://{repo}", str(shallow))
+    assert not sensed(shallow)
