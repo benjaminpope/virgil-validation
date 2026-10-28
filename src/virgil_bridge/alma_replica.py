@@ -104,9 +104,10 @@ def replica_loss(params, term, *, n_points, obs_of_ddid, pixel_mas, lam_m, blur_
     return term_loss(term, vals) / (2.0 * n_points) + lam_m * mpol_entropy(gauss_blur(img, entropy_blur_mas, pixel_mas), prior, tot_flux)
 
 
-def run_stage(params, term, *, steps, opt, loss_kw, chunk=100, time_limit=None, log=None, to32=True):
+def run_stage(params, term, *, steps, opt, loss_kw, chunk=100, time_limit=None, log=None, to32=True, stats=None):
     """``steps`` full-batch AdamW steps on ``term`` from ``params`` (a fresh optimiser, as MPoL's second stage). Returns ``(params, losses, wall_s, stopped)``: ``losses`` the per-step loss (numpy),
-    run in ``chunk``-step ``lax.scan`` blocks (compiled once per block length); ``time_limit`` (s) stops after a block. Parameters and optimiser state are float32 unless ``to32`` is false."""
+    run in ``chunk``-step ``lax.scan`` blocks (compiled once per block length); ``time_limit`` (s) stops after a block. Parameters and optimiser state are float32 unless ``to32`` is false.
+    ``stats`` (a dict) receives ``peak_offset_mas``: the largest |offset| (mas) the optimiser visited, which the Toeplitz term's offset box has to contain (MPoL's offsets are unbounded)."""
     import equinox as eqx
     import jax
     import jax.numpy as jnp
@@ -124,19 +125,27 @@ def run_stage(params, term, *, steps, opt, loss_kw, chunk=100, time_limit=None, 
             g = jax.tree.map(lambda a, b: a.astype(b.dtype), g, p)
             upd, s = opt.update(g, s, p)
             p = optax.apply_updates(p, upd)
-            return (p, s), loss
+            return (p, s), (loss, 1000.0 * jnp.max(jnp.abs(p["delta"]), initial=0.0))
 
-        (p, s), losses = jax.lax.scan(body, (params, state), None, length=n)
-        return p, s, losses
+        (p, s), (losses, peaks) = jax.lax.scan(body, (params, state), None, length=n)
+        return p, s, losses, jnp.max(peaks)
 
-    t0, done, out, stopped = time.time(), 0, [], None
+    t0, done, out, stopped, peak = time.time(), 0, [], None, 0.0
     while done < steps:
         n = min(chunk, steps - done)
-        params, state, ls = block(params, state, term, n)
+        try:
+            params, state, ls, pk = block(params, state, term, n)
+        except eqx.EquinoxRuntimeError:  # an offset left the Toeplitz box inside this block: say how far the completed blocks had gone, then fail as before
+            if log:
+                log(f"  replica: offset left the Toeplitz box in steps {done + 1}-{done + n}; peak |offset| over the {done} completed steps was {peak:.1f} mas")
+            raise
         out.append(np.asarray(ls, float))
+        peak = max(peak, float(pk))
+        if stats is not None:
+            stats["peak_offset_mas"] = peak
         done += n
         if log and (done % (10 * chunk) == 0 or done == steps):
-            log(f"  replica: {done}/{steps} steps, loss {out[-1][-1]:.8f}, {time.time() - t0:.0f} s")
+            log(f"  replica: {done}/{steps} steps, loss {out[-1][-1]:.8f}, peak |offset| {peak:.1f} mas, {time.time() - t0:.0f} s")
         if not np.all(np.isfinite(out[-1])):
             stopped = "non_finite"
             break
