@@ -45,7 +45,7 @@ needs_toeplitz = pytest.mark.skipif(not _has_toeplitz(), reason="virgil.radio_to
 # ------------------------------------------------------------------ the registered criteria
 
 
-@pytest.mark.validates("design.toeplitz_reexam_042", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="guard")
 def test_the_registered_hash_is_the_criteria_file_and_the_registered_scenes_are_held_out():
     """REGISTERED_SHA256 is the sha256 of the criteria file; at least three distinct held-out images; no registered scene uses a
     development image (random log-normal pixels on a uniform uv disc) or IM Lup."""
@@ -57,7 +57,7 @@ def test_the_registered_hash_is_the_criteria_file_and_the_registered_scenes_are_
     assert cfg["verdict"]["combine_runs"] is False
 
 
-@pytest.mark.validates("design.toeplitz_reexam_042", roots=["self-consistency"], kind="control")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
 def test_a_changed_criteria_file_is_refused(tmp_path, monkeypatch):
     changed = tmp_path / "c.yml"
     changed.write_text(tr.CRITERIA_FILE.read_text().replace("speedup_min: 30.0", "speedup_min: 15.0"))
@@ -206,7 +206,7 @@ def test_tier2_and_summary_on_a_tiny_set(tmp_path, monkeypatch):
     assert "VERDICT: INCOMPLETE" in (out / "reexam.txt").read_text()
 
 
-@pytest.mark.validates("design.toeplitz_reexam_042", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="guard")
 def test_verdicts_and_the_no_combining_rule(tmp_path):
     assert tr.verdict(["PASS", "PASS"]) == "ACCEPTED"
     assert tr.verdict(["PASS", "NOT EVALUATED"]) == "INCOMPLETE"
@@ -221,7 +221,7 @@ def test_verdicts_and_the_no_combining_rule(tmp_path):
         tr.main(["summary", "--out", str(tmp_path)])
 
 
-@pytest.mark.validates("design.toeplitz_reexam_042", roots=["self-consistency"], kind="control")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
 def test_performance_off_the_registered_gpu_is_not_evaluated_and_on_it_is_judged():
     perf = dict(gpu="A100", speedup_min=30.0, peak_gb_max=20.0)
     t = {"toeplitz": dict(device="NVIDIA RTX PRO 6000 Blackwell Server Edition", s_per_vg=0.044, peak_gb=13.75),
