@@ -218,14 +218,13 @@ def test_render_is_not_an_external_or_allowed_root(trust):
 
 
 def test_agent_authored_signoffs_are_rejected(trust, tmp_path):
-    """A 'by: Benjamin Pope' sign-off counts only if committed by Ben with no agent co-author trailer."""
+    """A 'by: Benjamin Pope' sign-off counts only if committed on a non-boundary
+    commit in a full clone by Ben with no agent attribution trailer."""
     import subprocess
 
-    # The existing entry in trust/signoffs.yml was added in 67c90c30 with Co-Authored-By: Claude Opus 5.5
-    assert "calibration" not in trust.load_signoffs().get("virgil.orbits.PositionData", {})
-
-    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
-    sig = tmp_path / "signoffs.yml"
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    sig = repo / "signoffs.yml"
     content = (
         "virgil.a:\n"
         "  sense:\n"
@@ -238,21 +237,45 @@ def test_agent_authored_signoffs_are_rejected(trust, tmp_path):
     sig.write_text(content)
 
     # Uncommitted sign-off is rejected; citation still counts
-    assert trust.load_signoffs(sig, repo=tmp_path) == {"virgil.a": {"cited": {"citation": "Author (2020), eq. 1"}}}
+    assert trust.load_signoffs(sig, repo=repo) == {"virgil.a": {"cited": {"citation": "Author (2020), eq. 1"}}}
 
-    # Committed with an agent Co-Authored-By trailer: rejected
-    subprocess.run(["git", "-C", str(tmp_path), "add", "signoffs.yml"], check=True)
     env = {"GIT_AUTHOR_NAME": "Benjamin Pope", "GIT_AUTHOR_EMAIL": "ben@example.com",
            "GIT_COMMITTER_NAME": "Benjamin Pope", "GIT_COMMITTER_EMAIL": "ben@example.com"}
-    subprocess.run(
-        ["git", "-C", str(tmp_path), "commit", "-m", "Sign off\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"],
-        check=True, capture_output=True, env=env,
-    )
-    assert "sense" not in trust.load_signoffs(sig, repo=tmp_path).get("virgil.a", {})
 
-    # Re-committed cleanly by Benjamin Pope with no agent marker: accepted
+    # Root (boundary) commit is rejected even with clean human metadata
+    subprocess.run(["git", "-C", str(repo), "add", "signoffs.yml"], check=True)
     subprocess.run(
-        ["git", "-C", str(tmp_path), "commit", "--amend", "-m", "Human sign-off"],
+        ["git", "-C", str(repo), "commit", "-m", "Root commit"],
         check=True, capture_output=True, env=env,
     )
-    assert "sense" in trust.load_signoffs(sig, repo=tmp_path).get("virgil.a", {})
+    assert "sense" not in trust.load_signoffs(sig, repo=repo).get("virgil.a", {})
+
+    # Re-create signoffs.yml on a non-boundary commit with an agent Co-Authored-By trailer: rejected
+    subprocess.run(["git", "-C", str(repo), "rm", "-f", "signoffs.yml"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "--allow-empty", "-m", "Remove signoffs"],
+        check=True, capture_output=True, env=env,
+    )
+    sig.write_text(content)
+    subprocess.run(["git", "-C", str(repo), "add", "signoffs.yml"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-m", "Sign off\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"],
+        check=True, capture_output=True, env=env,
+    )
+    assert "sense" not in trust.load_signoffs(sig, repo=repo).get("virgil.a", {})
+
+    # Re-committed cleanly by Benjamin Pope (even mentioning 'claude' in prose or committed via GitHub web UI): accepted
+    web_env = {**env, "GIT_COMMITTER_NAME": "GitHub", "GIT_COMMITTER_EMAIL": "noreply@github.com"}
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "--amend", "-m", "Human sign-off after reviewing claude report"],
+        check=True, capture_output=True, env=web_env,
+    )
+    assert "sense" in trust.load_signoffs(sig, repo=repo).get("virgil.a", {})
+
+    # Shallow clone of the same repository: rejected
+    shallow = tmp_path / "shallow"
+    subprocess.run(
+        ["git", "clone", "--depth", "1", f"file://{repo}", str(shallow)],
+        check=True, capture_output=True,
+    )
+    assert "sense" not in trust.load_signoffs(shallow / "signoffs.yml", repo=shallow).get("virgil.a", {})

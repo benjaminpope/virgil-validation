@@ -329,19 +329,31 @@ UNFIXED = {"open", "to-raise", "raised"}
 EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature",
             "frank", "visr", "frap", "oimodeler"}
 
-_AGENT_MARKERS = ("co-authored-by:", "claude", "argon", "anthropic", "cursor", "copilot", "gemini", "openai")
+_AGENT_TRAILER_RE = re.compile(r"^\s*(?:co-authored-by\s*:|generated with\b|🤖)", re.I | re.M)
 _HUMAN_SIGNERS = {"Benjamin Pope", "Ben Pope"}
+_HUMAN_COMMITTERS = _HUMAN_SIGNERS | {"GitHub"}
 
 
 def _is_human_signoff(path, start_line, end_line, repo=ROOT):
-    """True iff every line in [start_line, end_line] is committed in ``repo``
-    by Benjamin Pope with no AI co-author trailer or agent marker."""
+    """True iff every line in [start_line, end_line] is committed in a non-shallow
+    ``repo`` (on a non-boundary commit) with author Benjamin Pope, committer
+    Benjamin Pope or GitHub, and no AI attribution trailer. Checks git metadata
+    and trailers rather than cryptographic signatures, so it catches agents that
+    disclose themselves via attribution trailers."""
     try:
+        shallow = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--is-shallow-repository"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        if shallow != "false":
+            return False
         blame = subprocess.run(
             ["git", "-C", str(repo), "blame", "--porcelain", f"-L{start_line},{end_line}", "--", str(path)],
             capture_output=True, text=True, check=True,
         ).stdout
     except (OSError, subprocess.CalledProcessError):
+        return False
+    if any(line == "boundary" for line in blame.splitlines()):
         return False
     shas = {
         line.split()[0]
@@ -359,10 +371,10 @@ def _is_human_signoff(path, start_line, end_line, repo=ROOT):
         except (OSError, subprocess.CalledProcessError):
             return False
         lines = info.splitlines()
-        if len(lines) < 2 or lines[0].strip() not in _HUMAN_SIGNERS or lines[1].strip() not in _HUMAN_SIGNERS:
+        if len(lines) < 2 or lines[0].strip() not in _HUMAN_SIGNERS or lines[1].strip() not in _HUMAN_COMMITTERS:
             return False
-        body = "\n".join(lines[2:]).lower()
-        if any(marker in body for marker in _AGENT_MARKERS):
+        body = "\n".join(lines[2:])
+        if _AGENT_TRAILER_RE.search(body):
             return False
     return True
 
@@ -370,7 +382,8 @@ def _is_human_signoff(path, start_line, end_line, repo=ROOT):
 def load_signoffs(path=ROOT / "trust" / "signoffs.yml", repo=ROOT):
     """{node: {property: entry}}: conventions confirmed by a cited paper or Ben's sign-off.
     A ``by:`` sign-off counts only if its lines in ``signoffs.yml`` were committed by Ben
-    with no agent co-author trailer."""
+    on a non-boundary commit in a full clone with no agent attribution trailer (catches
+    self-disclosing agent commits via git metadata, not cryptographic signatures)."""
     path = pathlib.Path(path)
     if not path.exists():
         return {}

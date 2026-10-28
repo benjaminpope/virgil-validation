@@ -263,7 +263,10 @@ The verdicts are:
   they test (a rotation sense, which side of a disk is near) is defined only
   by virgil's documentation, which our code was written from too. It needs
   another code or a published result to agree, or an entry in
-  `trust/signoffs.yml` (a paper equation, or Ben's sign-off at a commit);
+  `trust/signoffs.yml` (a paper equation, or Ben's sign-off at a commit;
+  `by:` entries are checked via `git blame` for human author metadata and
+  no `Co-Authored-By:` trailer, which catches agents that disclose themselves
+  rather than cryptographic signatures);
 * **partly checked**: evidence from too few independent roots, overall or
   for one of the properties the graph lists for the part (a model's
   profile and its modulation sense are separate properties, each with its
