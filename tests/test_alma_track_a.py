@@ -59,6 +59,15 @@ def test_reg_mem_is_mpols_lambda_m_pull_and_tsv_is_the_zero_padded_squared_diffe
         pad = lambda x: np.pad(x, 1)  # noqa: E731
         sq = lambda x: np.sum(np.diff(pad(x), axis=0) ** 2) + np.sum(np.diff(pad(x), axis=1) ** 2)  # noqa: E731
         assert val(tsv, eta[0]) == pytest.approx(scale * 1e-4 * sq(b[0]), rel=1e-10)
+    # the pull, not only the value: the gradient of the virgil term in the log-pixels equals that of 2 n L x MPoL's loss term, written out as in mpol 0.3.1 losses.entropy
+    # (1 / tot_flux * sum(cube * log(cube / prior_intensity))) on the cube I = F softmax(eta) / dx^2
+    import jax
+
+    mem = va.reg_regularisers(va.parse_reg(f"mem:{lam}"), n=n, pixel_mas=PIX)[0]
+    mpol_entropy = lambda e: (lambda I: jnp.sum(I * jnp.log(I / 1e-4)) / 0.253)(0.253 * jax.nn.softmax(e.ravel()).reshape(e.shape) / (PIX / 1000) ** 2)  # noqa: E731
+    g_v = jax.grad(lambda e: mem.value(scene({"log_brightness": e})))(jnp.asarray(eta[0]))
+    g_m = 2 * n * lam * jax.grad(mpol_entropy)(jnp.asarray(eta[0]))
+    assert float(jnp.max(jnp.abs(g_v - g_m)) / jnp.max(jnp.abs(g_m))) < 1e-5
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
@@ -180,6 +189,7 @@ def test_synthetic_truth_has_no_dots_in_the_mem_arm_but_r_with_a_wide_blur_has_f
         _call("fit", *extra, "--data", tmp_path / "synth", "--out", out, "--npix", 48, "--pixel-mas", PIX, "--max-steps", 200, "--no-dirty")
         arms[name] = vy.score_image(np.load(out / "image.npy").astype(float), truth, PIX, (60.0, 40.0, 30.0), taper_mas=30.0)
     assert arms["mem"]["n_eff_ratio"] >= 0.7, arms["mem"]["n_eff_ratio"]
+    assert arms["r30"]["n_eff_ratio"] < 0.7, arms["r30"]["n_eff_ratio"]  # R really fails the dots criterion (N_eff ratio >= 0.7), not only "lower than MEM"
     assert arms["r30"]["n_eff_ratio"] < arms["mem"]["n_eff_ratio"] - 0.1, (arms["r30"]["n_eff_ratio"], arms["mem"]["n_eff_ratio"])
 
 
@@ -192,6 +202,15 @@ def test_replica_entropy_equals_mpols_formula_on_a_toy_cube():
     cube = np.exp(rng.normal(size=(32, 32)) - 2.0)
     got = float(vr.mpol_entropy(jnp.asarray(cube)))
     assert got == pytest.approx(cx.mpol_entropy(cube, 1e-4, 0.253), rel=1e-12)
+    written = float(1 / 0.253 * np.sum(cube * np.log(cube / 1e-4)))  # mpol 0.3.1 losses.entropy: 1 / tot_flux * torch.sum(cube * torch.log(cube / prior_intensity))
+    assert got == pytest.approx(written, rel=1e-12)
+    try:  # and the package itself, where it can be imported
+        import torch
+        from mpol import losses
+
+        assert got == pytest.approx(float(losses.entropy(torch.tensor(cube), 1e-4, 0.253)), rel=1e-10)
+    except ImportError:
+        pass
     blur = np.asarray(vr.gauss_blur(jnp.asarray(cube), 30.0, PIX))
     assert np.allclose(blur, cx.convolve(cube, PIX, 30.0), atol=1e-12 * cube.max())
 
@@ -303,3 +322,43 @@ def test_replica_compare_warns_when_the_export_is_not_the_p3a_run():
     other = 3.0 * base  # another MPoL run: peak 3x outside the band
     res = vr.replica_compare(base, vr.blurred_of(base, PIX), other, vr.blurred_of(other, PIX), 0.294, mpol_flux=1.0, pixel_mas=PIX)
     assert res["warning"] and res["mpol"]["export_in_band"]["peak_base"] is False and "Warning" in "\n".join(vr.replica_markdown(res))
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_blur_mas_alias_zero_and_none_and_the_flag_conflict(syn, tmp_path):
+    data = va.load_dir(syn)
+    assert va.build_problem(data, "R", lam=1e-5, npix=48, blur_mas=0).nuis.blur_fwhm_mas is None  # 0: classic MEM, no kernel
+    assert va.build_problem(data, "R", lam=1e-5, npix=48, blur_mas=None).nuis.blur_fwhm_mas == va.MPOL["taper_mas"]  # None: MPoL's 30 mas
+    assert va.build_problem(data, "R", lam=1e-5, npix=48, taper_mas=12.0).nuis.blur_fwhm_mas == 12.0  # the old keyword
+    assert va.build_problem(data, "R", lam=1e-5, npix=48, blur_mas=7.0, taper_mas=12.0).nuis.blur_fwhm_mas == 7.0
+    outs = {}
+    for flag in ("--blur-mas", "--taper-mas"):
+        out = tmp_path / flag.strip("-")
+        _call("fit", "--config", "R", flag, 20, "--data", syn, "--out", out, "--npix", 32, "--max-steps", 3, "--no-dirty")
+        outs[flag] = json.loads((out / "result.json").read_text())["args"]["taper_mas"]
+    assert outs["--blur-mas"] == outs["--taper-mas"] == 20.0
+    with pytest.raises(SystemExit):
+        _call("fit", "--config", "R", "--blur-mas", 20, "--taper-mas", 20, "--data", syn, "--out", tmp_path / "both", "--npix", 32)
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_cv_task_refuses_lam_with_reg_and_replica_refuses_the_other_engines(syn, tmp_path):
+    folds = tmp_path / "folds.npz"
+    _call("folds", "--data", syn, "--out", folds, "--k", 2)
+    with pytest.raises(SystemExit, match="no --lam"):
+        _call("cv-task", "--config", "F", "--reg", "mem:1e-9", "--lam-m", 1e-9, "--data", syn, "--folds", folds, "--fold", 0, "--init", tmp_path, "--npix", 32, "--out", tmp_path / "x")
+    with pytest.raises(SystemExit, match="do not apply"):
+        _call("fit", "--config", "R", "--workflow", "mpol-replica", "--method", "adam", "--data", syn, "--out", tmp_path / "y", "--npix", 32)
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_old_virgil_is_refused_with_the_required_version(monkeypatch):
+    import virgil
+
+    class Old:
+        def __init__(self, data, taper_fwhm_mas=None):
+            pass
+
+    monkeypatch.setattr(virgil, "CalibrationNuisance", Old)
+    with pytest.raises(RuntimeError, match="884aa7e"):
+        va.require_blur_fwhm()

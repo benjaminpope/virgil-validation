@@ -276,6 +276,19 @@ def read_shat(path, n_ddid=26):
 REG_KINDS = ("mem", "tsv")
 
 
+MIN_VIRGIL_BLUR = "884aa7e0cfc263be9f1f49a55aa2ed0910a6cd07"  # virgil#565: CalibrationNuisance(blur_fwhm_mas=...), with taper_fwhm_mas a deprecated alias
+
+
+def require_blur_fwhm():
+    """Refuse an older virgil (0.4.1 and before) with a message that names the one needed: the bridge builds ``CalibrationNuisance(blur_fwhm_mas=...)``."""
+    import inspect
+
+    from virgil import CalibrationNuisance
+
+    if "blur_fwhm_mas" not in inspect.signature(CalibrationNuisance).parameters:
+        raise RuntimeError(f"this virgil-validation needs virgil >= {MIN_VIRGIL_BLUR[:7]} (CalibrationNuisance(blur_fwhm_mas=...), virgil#565); the installed virgil predates it: update the environment (on OzSTAR too)")
+
+
 def parse_reg(spec):
     """``"mem:1e-9,tsv:1e-4"`` as ``[("mem", 1e-9), ("tsv", 1e-4)]``: the ``--reg`` list of Track A (regularisers on the unblurred image). Kinds are ``REG_KINDS``, each at most once, strengths positive."""
     out = []
@@ -295,7 +308,7 @@ def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0):
     """virgil's regularisers of ``--reg`` (``virgil.imaging``, ``smoothed=False``: on the unblurred pixels, no kernel) for a fit on ``n`` full-data points.
 
     ``mem:L``: ``MaxEntropy`` (``prior`` the default image, flat if None) whose weight is MPoL's lambda_M = L converted as ``lam_f_equivalent(lam_r(n, L))`` at the flux ``MPOL['f_tot']``,
-    i.e. ``2 n L / dx^2`` on the unit-sum image: the same pull as MPoL's ``lambda_M sum I ln(I / p) / F_tot`` with I = F_tot b / dx^2 (Jy/arcsec^2), the prior_intensity p entering only a flux-only term (exact for a flat ``prior``, which the test evaluates). ``build_problem`` passes config F's primary beam as the prior (the pixels are sky x beam), so there ``mem:L`` is MPoL's lambda_M up to the extra linear term ``-sum b ln q`` (ln q about -0.01 at IM Lup's radius, 1.2 arcsec in a 24 arcsec beam).
+    i.e. ``2 n L / dx^2`` on the unit-sum image: the same pull as MPoL's ``lambda_M sum I ln(I / p) / F_tot`` with I = F_tot b / dx^2 (Jy/arcsec^2), the prior_intensity p entering only a flux-only term (exact for a flat ``prior``, which the tests evaluate). Only *approximately* MPoL-comparable: the weight is fixed at the flux ``MPOL['f_tot']`` = 0.253 Jy, whereas MPoL's effective weight grows with its fitted flux, and MPoL's flux-only entropy term is dropped. ``build_problem``'s ``reg_prior`` is ``"flat"`` (default: a flat prior on the image's pixels, MPoL's convention) or ``"beam"`` (F's primary beam as the default image, which adds ``-sum b ln q``, ln q about -0.01 at IM Lup's radius).
     ``tsv:W``: ``TSV`` at weight W on the unit-sum image (virgil's own units, no conversion). ``scale`` (the training fraction in cross-validation) multiplies every weight, as ``lam_train``."""
     from virgil.imaging import TSV, MaxEntropy
 
@@ -355,7 +368,7 @@ def nuisance_sites(nuis, data, *, offset_bound_mas=None, ref_obs=0):
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
                   alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None, entropy_on="blurred",
-                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0):
+                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat"):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -398,7 +411,10 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     from virgil.imaging import MaxEntropy
     from virgil.radio import primary_beam
 
+    require_blur_fwhm()
     config = config.upper()
+    if reg_prior not in ("flat", "beam"):
+        raise ValueError(f"reg_prior must be flat or beam, not {reg_prior!r}")
     if chi2 not in CHI2_ENGINES:
         raise ValueError(f"chi2 must be one of {CHI2_ENGINES}, not {chi2!r}")
     if chi2 == "toeplitz":
@@ -438,7 +454,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         # the pixels are sky x beam; the default image of the entropy is the beam, so the penalty is the
         # entropy of the sky relative to a flat sky (docs: "the default image q ... normalised here")
         beam_prior = np.exp(np.asarray(primary_beam(npix, pixel_mas, **pb)))
-        regs = reg_regularisers(reg, n=reg_n or len(data), pixel_mas=pixel_mas, prior=beam_prior, scale=reg_scale) if reg else [MaxEntropy(float(lam), prior=beam_prior)]
+        regs = reg_regularisers(reg, n=reg_n or len(data), pixel_mas=pixel_mas, prior=beam_prior if reg_prior == "beam" else None, scale=reg_scale) if reg else [MaxEntropy(float(lam), prior=beam_prior)]
     else:
         raise ValueError(f"config must be R or F, not {config!r}")
     if chi2 == "toeplitz":

@@ -57,8 +57,8 @@ def pick_lams(recs, summary, lam0):
         if not full:
             raise ValueError("no lambda has every fold")
         star = min(full, key=lambda lam: sum(recs[(lam, f)]["heldout"]["nll"] for f in folds))
-    match = min(lams, key=lambda lam: abs(np.log(lam / lam0)))
-    return star, float(match)
+    match = None if lam0 is None else min(lams, key=lambda lam: abs(np.log(lam / lam0)))  # lam0 None: no MPoL-equivalent point on this grid (a GP arm)
+    return star, None if match is None else float(match)
 
 
 def _sums(tally, key):
@@ -97,11 +97,13 @@ def compare(mpol, virgil, summary, lam0, lam_ent=1e-9):
         raise ValueError("no MPoL scores")
     lam_star, lam_match = pick_lams(virgil, summary, lam0)
     problems = []
-    shas = {mpol[f]["folds_sha256"] for f in folds} | {virgil[(lam, f)]["folds_sha256"] for lam in (lam_star, lam_match) for f in folds if (lam, f) in virgil}
+    shas = {mpol[f]["folds_sha256"] for f in folds} | {virgil[(lam, f)]["folds_sha256"] for lam in (lam_star, lam_match) if lam is not None for f in folds if (lam, f) in virgil}
     if len(shas) != 1:
         problems.append(f"the two codes were scored on different folds (sha256 {sorted(shas)})")
     sources = {"mpol": {f: mpol[f]["heldout"] for f in folds}}
     for name, lam in (("virgil_lam_star", lam_star), ("virgil_lam_match", lam_match)):
+        if lam is None:
+            continue
         missing = [f for f in folds if (lam, f) not in virgil]
         if missing:
             problems.append(f"virgil has no cv.json for lambda {lam:g} fold(s) {missing}")
@@ -115,10 +117,10 @@ def compare(mpol, virgil, summary, lam0, lam_ent=1e-9):
             problems.append(f"fold {f}: the checkpoint's recorded training fold is {r.get('checkpoint_trained_fold')!r}, not {f} (None: no record)")
     for f in folds:
         n_m = int(sum(mpol[f]["heldout"]["by_ddid"]["n"]))
-        for name in ("virgil_lam_star", "virgil_lam_match"):
+        for name in [n for n in ("virgil_lam_star", "virgil_lam_match") if n in sources]:
             if f in sources[name] and int(sum(sources[name][f]["by_ddid"]["n"])) != n_m:
                 problems.append(f"fold {f}: {n_m} held-out points for MPoL, {int(sum(sources[name][f]['by_ddid']['n']))} for {name}")
-    res = dict(folds=folds, lam_star=lam_star, lam_match=lam_match, lam0=float(lam0), lam_ent=float(lam_ent), folds_sha256=sorted(shas), problems=problems,
+    res = dict(folds=folds, lam_star=lam_star, lam_match=lam_match, lam0=None if lam0 is None else float(lam0), lam_ent=float(lam_ent), folds_sha256=sorted(shas), problems=problems,
                codes={}, per_fold={}, total={})
     for name, by_fold in sources.items():
         full = [f for f in folds if f in by_fold]
@@ -137,7 +139,7 @@ def markdown(res):
     """The report: raw chi^2/N first, then -ln L, in total, per fold and per annulus."""
     names = [n for n in ("mpol", "virgil_lam_star", "virgil_lam_match") if res["total"].get(n)]
     label = {"mpol": f"MPoL (lam_ent {res['lam_ent']:g})", "virgil_lam_star": f"virgil at lambda* = {res['lam_star']:.4g}",
-             "virgil_lam_match": f"virgil at the grid lambda nearest MPoL's, {res['lam_match']:.4g} (lambda_0 = {res['lam0']:.4g})"}
+             "virgil_lam_match": None if res["lam_match"] is None else f"virgil at the grid lambda nearest MPoL's, {res['lam_match']:.4g} (lambda_0 = {res['lam0']:.4g})"}
     md = ["# MPoL and virgil on the same held-out dartboard folds", "",
           f"Folds {res['folds']} (sha256 {', '.join(s[:16] for s in res['folds_sha256'])}). Raw chi^2/N is the held-out chi^2 with the quoted weights (s = 1) over 2 N real "
           "components, so 1 is a perfect error model. -ln L is summed over the folds (lower is better); 'profiled' puts one error scale per set at its "

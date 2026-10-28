@@ -466,7 +466,7 @@ def _prob_for(args, data, lam, mask, chi2=None):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
         return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None),
                               fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct", taper_mas=getattr(args, "taper_mas", None),
-                              entropy_on=getattr(args, "entropy_on", None) or "blurred", reg=getattr(args, "reg", None), reg_n=len(data.u))
+                              entropy_on=getattr(args, "entropy_on", None) or "blurred", reg=getattr(args, "reg", None), reg_n=len(data.u), reg_prior=getattr(args, "reg_prior", None) or "flat")
 
     return prob_for
 
@@ -515,6 +515,9 @@ def cmd_fit(args):
     if args.workflow in ("mpol", "clean", "mpol-replica") and args.config != "R":
         raise SystemExit(f"--workflow {args.workflow} is defined for config R only (MPoL has no beam, no free alpha)")
     if args.workflow == "mpol-replica":
+        given = [f for f, v in (("--method", args.method != "lbfgs"), ("--adam-lr-decay/--adam-const-steps/--adam-ftol-abs", (args.adam_lr_decay, args.adam_const_steps, args.adam_ftol_abs) != (None, None, None))) if v]
+        if given:
+            raise SystemExit(f"--workflow mpol-replica is vv's own full-batch AdamW loop on the Toeplitz chi^2: {', '.join(given)} do not apply")
         args.chi2 = "toeplitz"  # full batch: the data term is virgil's Toeplitz chi^2
         if args.offset_bound_mas is None:  # MPoL's offsets are unbounded (lr 1e-2 arcsec per step); the Toeplitz precompute needs a box, and an offset beyond it is a runtime error: 100 mas, 5x the default
             args.offset_bound_mas = REPLICA_OFFSET_BOUND_MAS
@@ -598,6 +601,8 @@ def cv_problem(args, data, n_all, train):
     ``key`` names the arm's point. R and F with MaxEntropy: ``lam_of``, scaled by the training fraction (the data-to-penalty balance of the final fit). F with ``--reg``: ``va.reg_regularisers``
     scaled the same way, Toeplitz chi^2. G: ``vg.build_gp_problem`` with its fixed hyperparameters, Toeplitz chi^2."""
     frac = int(train.sum()) / n_all
+    if (args.reg or args.config == "G") and (args.lam is not None or args.lam_m is not None or args.lam_r_equiv is not None):
+        raise SystemExit("--reg and --config G set their own strengths: no --lam, --lam-m or --lam-r-equiv")
     chi2 = args.chi2 or ("toeplitz" if args.config == "G" or args.reg else "direct")
     if args.config == "G":
         if args.reg:
@@ -617,8 +622,8 @@ def cv_problem(args, data, n_all, train):
             first = va.parse_reg(args.reg)[0][1]
         except ValueError as e:
             raise SystemExit(str(e)) from e
-        prob = va.build_problem(data, "F", lam=0.0, reg=args.reg, reg_n=n_all, reg_scale=frac, **common)
-        return prob, None, first, args.reg, dict(reg=args.reg, reg_scale=frac)
+        prob = va.build_problem(data, "F", lam=0.0, reg=args.reg, reg_n=n_all, reg_scale=frac, reg_prior=args.reg_prior or "flat", **common)
+        return prob, None, first, args.reg, dict(reg=args.reg, reg_scale=frac, reg_prior=args.reg_prior or "flat")
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     prob = va.build_problem(data, args.config, lam=lam * frac, **common)
     return prob, lam, lam, f"{lam:g}", dict(lam_train=lam * frac)
@@ -764,7 +769,13 @@ def cmd_cv_compare(args):
         raise SystemExit(f"no cv.json under {args.virgil}")
     rec = next(iter(virgil.values()))
     n_all = sum(next(r for (lam, f), r in virgil.items() if f == fold)["n_test"] for fold in sorted({f for _, f in virgil}))  # every point is held out once
-    lam0 = va.lam_f_equivalent(va.lam_r(n_all, args.lam_ent))
+    arm = rec.get("arm") or {}
+    if arm.get("reg"):  # the grid variable is the first strength: MPoL's lambda_M itself for mem, nothing MPoL-equivalent for tsv
+        lam0 = args.lam_ent if va.parse_reg(arm["reg"])[0][0] == "mem" else None
+    elif "length_theta_rad" in arm:
+        lam0 = None  # a GP arm: no MPoL-equivalent lambda
+    else:
+        lam0 = va.lam_f_equivalent(va.lam_r(n_all, args.lam_ent))
     res = cc.compare(mpol, virgil, summary, lam0, args.lam_ent)
     res["n_all"], res["lam_r"] = int(n_all), va.lam_r(n_all, args.lam_ent)
     res["virgil_versions"] = rec.get("versions")
@@ -918,15 +929,20 @@ def cmd_better(args):
     folds = sorted(set(ours) & set(mpol))
     # criterion 1 is the CV optimum's: the fit must be at it (a PASS from different points of the grid is no arm's)
     fa, hyper, lam_star = fit.get("args") or {}, fit.get("hyperparameters") or {}, (cvc or {}).get("lam_star")
-    point = None
     if fa.get("reg"):
         point = va.parse_reg(fa["reg"])[0][1]
     elif hyper.get("length_r_mas") is not None:
         point = float(hyper["length_r_mas"])
-    if cvc and lam_star is not None and point is not None and abs(point / float(lam_star) - 1) > 1e-9:
-        problems.append(f"the fit is at grid point {point:g} but the cross-validation optimum is {float(lam_star):g}: fit the arm at lambda*")
-    if cvc and not folds:
-        problems.append("no folds are scored by both codes")
+    else:  # a plain --lam arm: the fit's resolved strength in the cv grid's units (cv.json's lam is lam_of's value)
+        point = fit.get("lam")
+    if cvc and lam_star is not None:
+        if point is None:
+            problems.append("cannot tell which grid point the fit is at (no reg, GP length_r or lam recorded): fit the arm at lambda*")
+        elif abs(float(point) / float(lam_star) - 1) > 1e-9:
+            problems.append(f"the fit is at grid point {float(point):g} but the cross-validation optimum is {float(lam_star):g}: fit the arm at lambda*")
+    cv_folds = sorted(str(f) for f in (cvc or {}).get("folds", []))
+    if cvc and not (folds and folds == cv_folds == sorted(ours) == sorted(mpol)):
+        problems.append(f"the two codes do not cover the same held-out folds (ours {sorted(ours)}, MPoL {sorted(mpol)}, cv-compare {cv_folds})")
     ok1 = bool(cvc) and not problems and bool(folds)
     if args.clean_dir:
         ref, name = float(vs.read_clean(args.clean_dir)[3]["flux_jy"]), f"CLEAN ({args.clean_dir})"
@@ -1156,10 +1172,12 @@ def main(argv=None):
     p.add_argument("--adam-const-steps", type=int, default=None, help="adam only, with --adam-lr-decay: hold the learning rate constant for this many steps, then decay it (optax.join_schedules)")
     p.add_argument("--adam-ftol-abs", type=float, default=None, help="adam only: virgil's windowed ftol (over 100 steps; needs virgil#562); default off: the full budget, C8 judged afterwards")
     p.add_argument("--adam-snapshot-every", type=int, default=va.SNAPSHOT_EVERY, help="adam only: keep the image every this many steps (0: off) and write its dots_report and loss to result.json's trajectory")
-    p.add_argument("--blur-mas", "--taper-mas", dest="taper_mas", type=float, default=None, help="config R: FWHM (mas) of the Gaussian blur inside the forward model (virgil's blur_fwhm_mas; MPoL's \"Gaussian base layer\") and of the entropy's image "
+    p.add_argument("--taper-mas", dest="taper_mas_old", type=float, default=None, help=argparse.SUPPRESS)
+    p.add_argument("--blur-mas", dest="taper_mas", type=float, default=None, help="config R: FWHM (mas) of the Gaussian blur inside the forward model (virgil's blur_fwhm_mas; MPoL's \"Gaussian base layer\") and of the entropy's image "
                    "(default MPoL's 30); 0 is classic MEM: no kernel, entropy of the image itself. --taper-mas is the old name")
     p.add_argument("--reg", default=None, help="config F, Track A (standard practice: no kernel, regularisers on the unblurred image), e.g. mem:1e-9,tsv:1e-4. mem:L is virgil's MaxEntropy at MPoL's lambda_M = L (weight 2 N L / dx^2 "
-                   "on the unit-sum image, prior = the primary beam; the prior_intensity p enters only a flux-only term); tsv:W is virgil's TSV at weight W. Same nuisances as R, Toeplitz chi^2 with --chi2 toeplitz. Exclusive with --lam, --lam-m")
+                   "on the unit-sum image at a fixed 0.253 Jy: only approximately MPoL-comparable, since MPoL's effective weight grows with its fitted flux and its flux-only term is dropped); tsv:W is virgil's TSV at weight W. Same nuisances as R, Toeplitz chi^2 with --chi2 toeplitz. Exclusive with --lam, --lam-m")
+    p.add_argument("--reg-prior", choices=["flat", "beam"], default="flat", help="--reg mem: the default image of the entropy: flat (default, MPoL's convention) or the primary beam (F's pixels are sky x beam; adds -sum b ln q)")
     p.add_argument("--entropy-on", choices=["blurred", "base"], default="blurred", help="config R: the entropy of the image blurred by --taper-mas (default, MPoL's R) or of the unblurred base image while the blurring kernel stays on the model (MEM's intrinsic correlation function, Gull 1989)")
     p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
     p.add_argument("--post-step-blur-px", type=float, default=None, help="adam only: after every optimiser step blur the normalised image with a Gaussian of this sigma in pixels (dorito's recipe, "
@@ -1175,7 +1193,7 @@ def main(argv=None):
     p.add_argument("--replica-stages", default=",".join(vr.MPOL_RUN["stages"]), help="mpol-replica: comma list of stages, each sb (obs 0-4) or all; default all,all, which is what MPoL's p3a ran (train.sbatch: no --sb_only in either stage)")
     p.add_argument("--replica-no-wd", action="store_true", help="mpol-replica ablation: AdamW with weight decay 0")
     p.add_argument("--replica-softmax", action="store_true", help="mpol-replica ablation: the pixels are flux softmax(eta) (virgil's parametrisation) instead of softplus")
-    p.add_argument("--replica-steps", type=int, default=None, help="mpol-replica: total steps over both stages (default MPoL's: %d, split %d sb : %d all)" % (vr.MPOL_STEPS["sb"] + vr.MPOL_STEPS["all"], vr.MPOL_STEPS["sb"], vr.MPOL_STEPS["all"]))
+    p.add_argument("--replica-steps", type=int, default=None, help="mpol-replica: total steps over all stages (default MPoL's: 10 epochs x ceil(N / 40000) batches per stage on that stage's points, 10,610 on all of IM Lup's data, so 21,220 for all,all; shared in proportion to those if N is given)")
     p.add_argument("--clean-dir", default=None, help="clean: the output directory of alma_imlup_clean.py run (model.fits, clean.json)")
     p.add_argument("--clean-smooth-mas", type=float, default=10.0, help="clean: FWHM (mas) of the small circular positivity kernel the CLEAN model is convolved with (default two fit pixels; keeps the long baselines' power)")
     p.add_argument("--clean-beam-frac", type=float, default=0.0, help="clean: instead smooth with this fraction of the restoring beam (0: off, the default; 1 removes the long baselines' power and biases their gains)")
@@ -1221,6 +1239,7 @@ def main(argv=None):
     common(p)
     p.add_argument("--config", choices=["R", "F", "G"], default="F")
     p.add_argument("--reg", default=None, help="config F: mem:L,tsv:W as `fit --reg` (the grid variable, `lam` in cv.json, is the first item's strength; keep one arm per directory)")
+    p.add_argument("--reg-prior", choices=["flat", "beam"], default="flat", help="--reg mem: flat (default) or the primary beam as the default image, as `fit --reg-prior`")
     p.add_argument("--chi2", choices=va.CHI2_ENGINES, default=None, help="default toeplitz for --reg and G, else direct")
     p.add_argument("--fold", type=int, required=True)
     p.add_argument("--init", required=True, help="a fit's directory (values.npz): the all-data fit of the arm (G: any GP fit, whose whitened latents start the task)")
@@ -1298,6 +1317,11 @@ def main(argv=None):
     p.set_defaults(fn=cmd_lambda0)
 
     args = ap.parse_args(argv)
+    old = getattr(args, "taper_mas_old", None)
+    if old is not None:  # --taper-mas is the old name of --blur-mas
+        if getattr(args, "taper_mas", None) is not None:
+            raise SystemExit("--blur-mas and --taper-mas are the same option (--taper-mas is the old name): give one")
+        args.taper_mas = old
     args.fn(args)
 
 

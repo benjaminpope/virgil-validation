@@ -16,7 +16,7 @@ import types
 
 import numpy as np
 
-from .alma import CHI2_ENGINES, TOEPLITZ_OFFSET_BOUND_MAS, nuisance_sites, toeplitz_term
+from .alma import CHI2_ENGINES, TOEPLITZ_OFFSET_BOUND_MAS, nuisance_sites, require_blur_fwhm, toeplitz_term
 
 GP = dict(npix=1028, pixel_mas=5.0, r_max_mas=2400.0, n_r=160, n_theta=256, inc_deg=47.5, pa_deg=144.5, nu=1.5, sigma_range=(0.05, 5.0), mean_floor=1e-3)
 NODE_PER_LENGTH = 2.0  # the polar grid keeps at least this many nodes per correlation length (radially) when its size is automatic
@@ -99,6 +99,8 @@ def build_gp_problem(data, *, length_r, length_theta, npix=GP["npix"], pixel_mas
     import numpyro.distributions as dist
     from virgil import CalibrationNuisance
     from virgil.fields import multipole_field_priors
+
+    require_blur_fwhm()
 
     if chi2 not in CHI2_ENGINES:
         raise ValueError(f"chi2 must be one of {CHI2_ENGINES}, not {chi2!r}")
