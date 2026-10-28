@@ -121,18 +121,154 @@ def test_gp_grid_follows_the_hyperparameters():
 # ------------------------------------------------------------------ the pass block
 
 
+def _pinned(monkeypatch):
+    """The registered CRITERIA with the CLEAN truth pinned to a dummy sha (the real pin is entered once the file's hash is known)."""
+    import copy
+
+    crit = copy.deepcopy(vs.CRITERIA)
+    for t in crit["synth"]["truths"]:
+        if t["id"] == "clean_model":
+            t["sha256"] = "c" * 64
+    monkeypatch.setattr(vs, "CRITERIA", crit)
+    return crit
+
+
+def _synth(tid, cov, **kw):
+    spec = vs.truth_spec(tid)
+    base = dict(nrmse={"0.5": 0.10, "1": 0.05}, n_eff_ratio=0.9, base_dead_in_disk_1e4=0.0, truth_id=tid, coverage=cov, development=False, truth_source_sha256=vs.truth_source_sha(spec), criteria_hash=vs.criteria_hash())
+    return {**base, **kw}
+
+
+def _cells(**kw):
+    return {(t, c): _synth(t, c, **kw) for t, c in vs.cells()}
+
+
+def _stages(good=True):
+    t = np.arange(400)
+    adam_hist = (100 + 0.001 * np.sin(t)).tolist() if good else (100 + 5 * np.sin(t / 5)).tolist()
+    adam = dict(name="all", method="adam", adam=dict(loss_history=adam_hist), c8_converged=good)
+    lb = dict(name="sb", trajectory=[dict(steps=200.0 * (i + 1), loss=50.0 + (0.01 if i < 5 else 0.0)) for i in range(8)], c8_converged=True)
+    return [lb, adam]
+
+
 @pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
-def test_better_than_mpol_passes_only_when_all_five_do():
-    good = dict(nrmse={"0.5": 0.10, "1": 0.05}, n_eff_ratio=0.9, base_dead_in_disk_1e4=0.0)
-    r = dict(nrmse={"0.5": 0.20, "1": 0.06}, n_eff_ratio=0.12, base_dead_in_disk_1e4=0.5)
-    kw = dict(heldout_ours=[2.69, 2.69, 2.69, 2.69, 2.69], heldout_mpol=[2.70, 2.70, 2.70, 2.70, 2.70], chi2n_ours=2.7044, synth=good, synth_r=r, flux_ours=0.26, flux_ref=0.2548, flux_ref_name="CLEAN", stages_converged=[True, True])
-    assert vs.better_than_mpol(**kw)["verdict"] == "PASS"
-    for key, bad in (("heldout_ours", [2.71] * 5), ("heldout_ours", [2.60, 2.80, 2.60, 2.80, 2.69]), ("chi2n_ours", 2.71), ("flux_ours", 0.30), ("stages_converged", [True, False]),
-                     ("synth", {**good, "n_eff_ratio": 0.5}), ("synth", {**good, "nrmse": {"0.5": 0.3}}), ("synth", {**good, "base_dead_in_disk_1e4": 0.02})):
+def test_better_than_mpol_passes_only_when_all_five_do(monkeypatch):
+    _pinned(monkeypatch)
+    r = _cells(nrmse={"0.5": 0.20, "1": 0.06}, n_eff_ratio=0.12, base_dead_in_disk_1e4=0.5)
+    good = _cells()
+    kw = dict(heldout_ours=[2.69, 2.69, 2.69, 2.69, 2.69], heldout_mpol=[2.70, 2.70, 2.70, 2.70, 2.70], chi2n_ours=2.7044, synth=good, synth_r=r, flux_ours=0.26, flux_ref=0.2548, flux_ref_name="CLEAN", stages=_stages())
+    res = vs.better_than_mpol(**kw)
+    assert res["verdict"] == "PASS" and res["criteria_hash"] == vs.criteria_hash()
+    assert [(v["name"], v["converged"]) for v in res["c8_stages"]] == [("sb", True), ("all", True)] and all("change" in v for v in res["c8_stages"])
+    one_bad = {**good, ("ring_gap", "sb"): _synth("ring_gap", "sb", n_eff_ratio=0.5)}  # one cell failing fails criterion 3: it must pass on every truth x coverage
+    for key, bad in (("heldout_ours", [2.71] * 5), ("heldout_ours", [2.60, 2.80, 2.60, 2.80, 2.69]), ("chi2n_ours", 2.71), ("flux_ours", 0.30), ("synth", one_bad),
+                     ("synth", _cells(nrmse={"0.5": 0.3, "1": 0.3})), ("synth", _cells(base_dead_in_disk_1e4=0.02))):
         assert vs.better_than_mpol(**{**kw, key: bad})["verdict"] == "FAIL", key
     assert vs.better_than_mpol(**{**kw, "synth": None})["verdict"] == "INCOMPLETE"
+    assert vs.better_than_mpol(**{**kw, "synth": {k: v for k, v in good.items() if k != ("mpol_export", "full")}})["verdict"] == "INCOMPLETE"
     assert "no uncertainty" in vs.better_than_mpol(**{**kw, "heldout_ours": 2.69, "heldout_mpol": 2.70})["items"][0]["value"]
-    assert "PASS" in vs.better_markdown(vs.better_than_mpol(**kw))[0]
+    assert "PASS" in vs.better_markdown(res)[0]
+    assert vs.better_than_mpol(**{**kw, "stages": _stages(good=False)[:1] + [{**_stages(False)[1], "c8_converged": False}]})["verdict"] == "FAIL"
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_better_refuses_a_hash_mismatch_in_any_input(monkeypatch):
+    _pinned(monkeypatch)
+    kw = dict(heldout_ours=None, heldout_mpol=None, chi2n_ours=2.0, synth=_cells(), synth_r=_cells(nrmse={"0.5": 0.2, "1": 0.2}), flux_ours=0.26, flux_ref=0.2548, flux_ref_name="CLEAN", stages=_stages())
+    assert vs.better_than_mpol(**kw)["items"][2]["status"] == "PASS"
+    for key in ("synth", "synth_r"):
+        bad = _cells() if key == "synth" else _cells(nrmse={"0.5": 0.2, "1": 0.2})
+        bad[("ring_gap", "full")]["criteria_hash"] = "0" * 64
+        with pytest.raises(vs.GateRefused, match="criteria_hash"):
+            vs.better_than_mpol(**{**kw, key: bad})
+    missing = _cells()
+    del missing[("ring_gap", "full")]["criteria_hash"]
+    with pytest.raises(vs.GateRefused, match="criteria_hash"):
+        vs.better_than_mpol(**{**kw, "synth": missing})
+    with pytest.raises(vs.GateRefused, match="criteria_hash"):
+        vs.require_criteria({"criteria_hash": "1" * 64}, "x")
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_the_hash_covers_every_threshold_and_there_is_no_threshold_keyword(monkeypatch):
+    import copy
+    import inspect
+
+    h0 = vs.criteria_hash()
+    for path in (("better", "chi2n_limit"), ("c8", "tol"), ("replica", "flux_tol"), ("synth", "blur_mas")):
+        crit = copy.deepcopy(vs.CRITERIA)
+        crit[path[0]][path[1]] *= 1.01
+        monkeypatch.setattr(vs, "CRITERIA", crit)
+        assert vs.criteria_hash() != h0, path
+        monkeypatch.undo()
+    crit = copy.deepcopy(vs.CRITERIA)
+    crit["synth"]["truths"].pop()
+    monkeypatch.setattr(vs, "CRITERIA", crit)
+    assert vs.criteria_hash() != h0
+    monkeypatch.undo()
+    assert vs.criteria_hash() == h0 and len(h0) == 64
+    for fn in (vs.better_than_mpol, vr.replica_compare):
+        params = set(inspect.signature(fn).parameters)
+        assert not params & {"chi2n_limit", "neff_min", "dead_max", "flux_tol", "ref"}, fn
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_a_development_or_unregistered_truth_is_refused_and_the_array_is_enumerated_from_criteria(monkeypatch):
+    _pinned(monkeypatch)
+    assert vs.cells() == [(t["id"], c["id"]) for t in vs.CRITERIA["synth"]["truths"] for c in vs.CRITERIA["synth"]["coverages"]] and len(vs.cells()) == 6
+    assert {t for t, _ in vs.cells()} == {"ring_gap", "mpol_export", "clean_model"} and {c for _, c in vs.cells()} == {"full", "sb"}
+    for tid in ("dev_mem", "dev_image", "nonsense"):
+        with pytest.raises(vs.GateRefused):
+            vs.truth_spec(tid)
+    dev = _synth("ring_gap", "full", development=True)
+    with pytest.raises(vs.GateRefused, match="development"):
+        vs.check_synth(dev, "ring_gap", "full", "x")
+    with pytest.raises(vs.GateRefused, match="development-only"):  # an old-style dev synth.json (truth_id dev_mem) in a registered cell
+        vs.check_synth(_synth("ring_gap", "full", truth_id="dev_mem"), "dev_mem", "full", "x")
+    with pytest.raises(vs.GateRefused, match="truth"):
+        vs.check_synth(_synth("ring_gap", "full", truth_id="mpol_export"), "ring_gap", "full", "x")
+    with pytest.raises(vs.GateRefused, match="sha256"):
+        vs.check_synth(_synth("mpol_export", "sb", truth_source_sha256="d" * 64), "mpol_export", "sb", "x")
+    monkeypatch.undo()
+    with pytest.raises(vs.GateRefused, match="pin"):  # as registered, the CLEAN truth is unpinned
+        vs.check_synth(_synth("clean_model", "full", truth_source_sha256="c" * 64), "clean_model", "full", "x")
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_c8_is_recomputed_from_the_saved_history_and_a_disagreeing_flag_is_refused():
+    ok, noisy = _stages(True), _stages(False)
+    v = [vs.c8_recompute(st) for st in ok]
+    assert all(x["converged"] for x in v) and v[1]["change"] is not None and v[1]["mean_drop"] is not None
+    with pytest.raises(vs.GateRefused, match="c8_converged"):  # stored True, the trajectory oscillates
+        vs.c8_recompute({**noisy[1], "c8_converged": True})
+    with pytest.raises(vs.GateRefused, match="c8_converged"):  # stored False, the history is flat
+        vs.c8_recompute({**ok[1], "c8_converged": False})
+    with pytest.raises(vs.GateRefused, match="c8_converged"):  # L-BFGS: stored True, loss still falling by 1
+        vs.c8_recompute({**ok[0], "trajectory": [dict(steps=200.0 * (i + 1), loss=60.0 - i) for i in range(8)]})
+    with pytest.raises(vs.GateRefused, match="loss_history"):
+        vs.c8_recompute({"name": "all", "adam": {}, "method": "adam", "c8_converged": True})
+    assert vs.CRITERIA["c8"]["tol"] == va.C8_TOL == 0.1 and vs.CRITERIA["c8"]["tol_derivation"] and vs.CRITERIA["c8"]["lbfgs"]
+
+
+@pytest.mark.validates("virgil_bridge.alma_synth", roots=["self-consistency"], kind="guard")
+def test_registered_truths_ring_gap_geometry_and_file_pins(tmp_path):
+    rec = vs.CRITERIA["synth"]["truths"][0]["recipe"]
+    img = vy.ring_gap_image(1028, 5.0, rec)
+    assert img.shape == (1028, 1028) and np.all(img > 0)
+    # the gap (743 mas) is dimmer than the ring (845 mas) along the major axis (PA 144.5 East of North), and the disk is elongated along it
+    r0, c0 = cx.phase_centre_cell(1028)
+    at = lambda r_mas, pa: img[int(round(r0 - r_mas * np.cos(np.deg2rad(pa)) / 5)), int(round(c0 - r_mas * np.sin(np.deg2rad(pa)) / 5))]  # noqa: E731
+    assert at(743, 144.5) < at(845, 144.5) * 1.5 and at(743, 144.5) < at(660, 144.5)
+    assert at(500, 144.5) > at(500, 144.5 + 90)
+    truth, sha, spec = vy.registered_truth("ring_gap")
+    assert truth.sum() * 0.005**2 == pytest.approx(0.25, rel=1e-6) and sha == vs.truth_source_sha(spec)
+    assert vy.exponential_scale(0.95) == pytest.approx(4.7439, abs=1e-3)
+    bad = tmp_path / "export.npz"
+    np.savez(bad, image=np.ones((8, 8)))
+    with pytest.raises(vs.GateRefused, match="sha256"):
+        vy.registered_truth("mpol_export", file=bad)
+    with pytest.raises(vs.GateRefused):
+        vy.registered_truth("dev_mem")
 
 
 # ------------------------------------------------------------------ the synthetic truth
@@ -305,23 +441,42 @@ def test_synth_script_make_run_score_and_the_better_and_replica_compare_commands
     truth_img = tmp_path / "base.npy"
     np.save(truth_img, _truth(48) + 0.0)
     out = tmp_path / "s"
-    synth.main(["make", "--data", str(syn), "--out", str(out), "--truth-image", str(truth_img), "--truth-blur-mas", "0", "--flux", "0.25", "--pixel-mas", str(PIX)])
+    synth.main(["make", "--data", str(syn), "--out", str(out), "--dev-truth-image", str(truth_img), "--truth-blur-mas", "0", "--flux", "0.25", "--pixel-mas", str(PIX)])
+    mk = json.loads((out / "synth_make.json").read_text())
+    assert mk["development"] is True and mk["truth_id"] == "dev_image" and mk["criteria_hash"] if "criteria_hash" in mk else True
+    with pytest.raises(SystemExit):  # neither a registered truth nor a development one
+        synth.main(["make", "--data", str(syn), "--out", str(tmp_path / "x"), "--pixel-mas", str(PIX)])
     assert (out / "truth.npy").exists() and len(list(out.glob("ddid_*.npz"))) == 14
     fit = tmp_path / "fit"
-    synth.main(["run", "--arm", "maxent", "--data", str(out), "--truth", str(out / "truth.npy"), "--out", str(fit), "--beam", "60", "40", "30", "--", "--config", "F", "--reg", "mem:1e-9", "--npix", "48",
+    synth.main(["run", "--arm", "maxent", "--data", str(out), "--truth", str(out / "truth.npy"), "--coverage", "full", "--out", str(fit), "--beam", "60", "40", "30", "--", "--config", "F", "--reg", "mem:1e-9", "--npix", "48",
                 "--pixel-mas", str(PIX), "--max-steps", "10", "--no-dirty"])
     sc = json.loads((fit / "synth.json").read_text())
     assert set(sc["nrmse"]) == {"0.5", "1"} and np.isfinite(sc["flux_error"]) and sc["n_eff_ratio"] > 0
-    _call("better", "--fit", fit, "--synth", fit / "synth.json", "--synth-r", fit / "synth.json", "--out", tmp_path / "b")
+    assert sc["development"] is True and sc["truth_id"] == "dev_image" and sc["coverage"] == "full" and sc["criteria_hash"] == vs.criteria_hash()
+    assert json.loads((fit / "result.json").read_text())["criteria_hash"] == vs.criteria_hash()
+    with pytest.raises(SystemExit):  # an unregistered coverage
+        synth.main(["run", "--arm", "maxent", "--data", str(out), "--truth", str(out / "truth.npy"), "--coverage", "nope", "--out", str(tmp_path / "f2"), "--beam", "60", "40", "30", "--"])
+    with pytest.raises(vs.GateRefused, match="single synth.json"):  # a development synth.json is not a gate input
+        _call("better", "--fit", fit, "--synth", fit / "synth.json", "--synth-r", fit / "synth.json", "--out", tmp_path / "b")
+    _call("better", "--fit", fit, "--out", tmp_path / "b")
     b = json.loads((tmp_path / "b" / "better_than_mpol.json").read_text())
-    assert b["verdict"] in ("FAIL", "INCOMPLETE") and {i["key"]: i["status"] for i in b["items"]}["1"] == "NOT EVALUATED"
+    assert b["verdict"] in ("FAIL", "INCOMPLETE") and {i["key"]: i["status"] for i in b["items"]}["1"] == "NOT EVALUATED" and b["criteria_hash"] == vs.criteria_hash()
+    old = json.loads((fit / "result.json").read_text())
+    old["criteria_hash"] = "0" * 64
+    (fit / "result.json").write_text(json.dumps(old))
+    with pytest.raises(vs.GateRefused, match="criteria_hash"):
+        _call("better", "--fit", fit, "--out", tmp_path / "b2")
+    (fit / "result.json").write_text(json.dumps({**old, "criteria_hash": vs.criteria_hash()}))
     mp = tmp_path / "mp"
     mp.mkdir()
     img = np.load(fit / "image.npy").astype(float)
     np.savez(mp / "export.npz", base_image=img, image=vr.blurred_of(img, PIX), cell_size_arcsec=PIX / 1000.0)
     _call("replica-compare", "--fit", fit, "--mpol", mp, "--out", tmp_path / "rc")
     rc = json.loads((tmp_path / "rc" / "replica_compare.json").read_text())
-    assert {i["key"]: i["status"] for i in rc["items"]}["a"] == "PASS"
+    assert {i["key"]: i["status"] for i in rc["items"]}["a"] == "PASS" and rc["criteria_hash"] == vs.criteria_hash()
+    (fit / "result.json").write_text(json.dumps({**old, "criteria_hash": "0" * 64}))
+    with pytest.raises(vs.GateRefused, match="criteria_hash"):
+        _call("replica-compare", "--fit", fit, "--mpol", mp, "--out", tmp_path / "rc2")
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")

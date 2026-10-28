@@ -5,6 +5,7 @@ Layout throughout is the repository's: row 0 North, column 0 East (``crosscheck.
 ``(r0, c0) = phase_centre_cell(npix)``; the CLEAN grid is odd with the phase centre on its middle pixel.
 """
 
+import hashlib
 import json
 import pathlib
 
@@ -12,7 +13,7 @@ import numpy as np
 
 from crosscheck import alma_maxent as cx
 
-from .alma import MPOL, gauge_to_obs0
+from .alma import C8_TOL, C8_WINDOW, MPOL, convergence, convergence_window, gauge_to_obs0
 
 
 def clean_centre(npix):
@@ -198,19 +199,144 @@ def gate_markdown(gate):
     return rows
 
 
-MPOL_RAW_CHI2N = 2.7062  # MPoL's solution, raw chi^2/(2N) at s = 1 in virgil (the 2026-10-27 round)
-BETTER_NEFF, BETTER_DEAD = 0.7, 0.01
+# ------------------------------------------------------------------ the "better than MPoL" criteria, hashed
+
+# ONE place for every Track A and replica threshold (design/alma_imlup_p3.md, Track A; Ben 2026-10-28). ``criteria_hash`` is written into every result.json, synth.json, replica_compare.json
+# and better_than_mpol.json, and ``better``, the replica compare and the trackab summary refuse inputs stamped with another hash. Never edit a value after a run to fit its result: a changed
+# criterion needs a new hash, hence a new run. Every number states why.
+CRITERIA = dict(
+    version=1,
+    better=dict(
+        heldout="mean(d) + se(d) < 0 for the per-fold raw chi^2/N differences d (ours - MPoL's, same folds), se = sd / sqrt(K): below MPoL's by more than the fold-to-fold scatter",
+        chi2n_limit=2.7062,  # MPoL's solution, raw chi^2/(2N) at s = 1 evaluated in virgil (the 2026-10-27 round): not worse than the reference fit of the data
+        flux_tol=0.10,  # total flux within 10 % of CLEAN's: the gate's gate (e), the approved tolerance on the one model-independent flux
+        neff_min=0.7,  # N_eff of the base image over that of its 30 mas taper: below it the image is dominated by a few points (dots); MPoL's own base is 0.78
+        dead_max=0.01,  # base pixels in the disk below 1e-4 of the peak: under 1 %, i.e. the image is not mostly holes
+        nrmse_beam_fraction="0.5",  # NRMSE of images smoothed to half the CLEAN beam: the finest scale the data constrain without the score being dominated by noise
+        rationale="thresholds as approved by Ben 2026-10-28 (design/alma_imlup_p3.md, Track A); none was chosen after a result",
+    ),
+    c8=dict(
+        tol=C8_TOL, window=C8_WINDOW,
+        tol_derivation=("the loss is -ln L (plus priors), so a change of 1/2 is chi^2 changing by 1, one effective degree of freedom at one sigma: a loss that changes by less than that cannot change "
+                        "any inference. 0.1 is a fifth of it, i.e. chi^2 by 0.2, and a still-falling loss at 0.1 per 100 steps leaves a total displacement of order sqrt(2 x 0.1) = 0.45 sigma in the "
+                        "Hessian norm. It is an absolute -ln L tolerance and was fixed before r1b, not after any result."),
+        lbfgs=("L-BFGS stages, including the GP, keep the two-point test (|loss(last) - loss(>= window steps earlier)| < tol): L-BFGS with a line search never raises the loss, so the window test's range "
+               "condition (max - min over the last window) equals the two-point change for it, and the oscillation the window test exists to catch (Adam) cannot occur. The window test's drift "
+               "condition has no L-BFGS counterpart: it would admit a loss still falling by less than tol per window, which is the tolerance by definition. Records are every 200 steps, "
+               "so the reference is the latest one at least window steps earlier."),
+        recompute="better recomputes C8 from the saved per-stage history (Adam: adam.loss_history, convergence_window; L-BFGS: trajectory, convergence) and refuses a stage whose stored c8_converged disagrees",
+    ),
+    synth=dict(
+        blur_mas=15.0, flux_jy=0.25, pixel_mas=5.0, npix=1028,  # the 15 mas blur removes dots from the truth by construction (below the data's resolution); 0.25 Jy is IM Lup's flux
+        truths=[
+            dict(id="ring_gap", kind="parametric", sha256=None,
+                 recipe=dict(source="Huang et al. 2018, DSHARP II, ApJ 869 L42 (2018ApJ...869L..42H), Tables 1 and 2: IM Lup; distance 158 pc from 743 mas = 117.4 au",
+                             distance_pc=158.0, inc_deg=47.5, pa_deg=144.5, gap_r_mas=743.0, gap_fwhm_au=15.8, gap_depth=0.66, ring_r_mas=845.0, ring_fwhm_au=18.4,
+                             ring_contrast=0.5, dust_radius_au=264.0, dust_radius_enclosed_flux=0.95,
+                             profile="I(r) = E(r) (1 - gap_depth G(r; gap_r, gap_fwhm)) (1 + ring_contrast G(r; ring_r, ring_fwhm)), E the exponential holding 95 % of the flux within dust_radius_au (Table 2's R_dust), r the deprojected radius, G a Gaussian of unit peak",
+                             note="the ring contrast is not tabulated for the B rings in Table 1: 0.5 is our choice, fixed here"),
+                 blur_mas=15.0),
+            dict(id="mpol_export", kind="image", sha256="3f7450b17c1fd91d5b9926735594fbe352d7cd18285995dadc23e9111c44ba76",
+                 recipe=dict(source="MPoL p3a export.npz (alma_mpol_ref out/p3a/export), array 'image' (Jy/arcsec^2, row 0 North, 1028^2 at 5 mas); sha256 is of the file"), blur_mas=15.0),
+            dict(id="clean_model", kind="clean", sha256=None,
+                 recipe=dict(source="our CLEAN model.fits (alma_imlup_clean run output, Jy/pixel), smoothed at its own pixel and regridded flux-preserving (alma_start.regrid) to the fit's grid; sha256 is of model.fits",
+                             pin="UNPINNED: the file is on OzSTAR; `better` refuses this truth until its sha256 is entered here (a new criteria hash, before any synth run)"),
+                 blur_mas=15.0),
+        ],
+        development_truths=["dev_mem", "dev_image"],  # the classic-MEM arm's image (or any --truth-image): made by a candidate arm, so never scored for the gate
+        coverages=[dict(id="full", ddids=None), dict(id="sb", ddids=list(range(18)))],  # ddids 0-17 are the short-baseline observations 0-4 (SB_OBS); 18-25 the long-baseline EBs
+        coverage_rationale="a reconstruction that is better only with the long baselines (or only without) shows on the reduced-coverage truth",
+        pass_rule="criterion 3 passes only if, on EVERY truth x coverage cell, the arm's NRMSE at the fraction above is below config R's on the same cell, N_eff ratio >= neff_min and base dead < dead_max; a missing cell is NOT EVALUATED",
+    ),
+    replica=dict(correlation=0.99, n_eff_ratio=0.78, n_eff_ratio_tol=0.20, peak_base=10.0, peak_factor=2.0, flux=0.294, flux_tol=0.05),  # Ben's pass, 2026-10-28: the p3a export's numbers
+)
+MPOL_RAW_CHI2N = CRITERIA["better"]["chi2n_limit"]
+BETTER_NEFF, BETTER_DEAD = CRITERIA["better"]["neff_min"], CRITERIA["better"]["dead_max"]
 
 
-def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages_converged,
-                     chi2n_limit=MPOL_RAW_CHI2N, flux_tol=GATE_FLUX_TOL, neff_min=BETTER_NEFF, dead_max=BETTER_DEAD):
-    """The "better than MPoL" pass of Track A (``design/alma_imlup_p3.md``, Ben 2026-10-28): one arm must do all five, each PASS / FAIL / NOT EVALUATED (None input):
+class GateRefused(SystemExit):
+    """An input the gate will not score (another criteria hash, a development truth, a C8 flag its trajectory contradicts): a ``SystemExit`` with the reason."""
+
+
+def criteria_hash():
+    """sha256 of ``CRITERIA`` as canonical JSON (sorted keys, no spaces)."""
+    return hashlib.sha256(json.dumps(CRITERIA, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def require_criteria(record, what):
+    """Refuse ``record`` (a result.json / synth.json / ... dict) unless it carries the current ``criteria_hash``."""
+    h = (record or {}).get("criteria_hash")
+    if h != criteria_hash():
+        raise GateRefused(f"{what}: criteria_hash {h!r} is not the current {criteria_hash()}: it was produced under other criteria (or none); rerun it, never edit the hash")
+
+
+def cells():
+    """The ``(truth id, coverage id)`` cells of criterion 3, in ``CRITERIA`` order."""
+    return [(t["id"], c["id"]) for t in CRITERIA["synth"]["truths"] for c in CRITERIA["synth"]["coverages"]]
+
+
+def truth_spec(truth_id):
+    """The ``CRITERIA`` entry of a registered truth; a development truth or unknown id is refused."""
+    if truth_id in CRITERIA["synth"]["development_truths"]:
+        raise GateRefused(f"truth {truth_id!r} is development-only (made from a candidate arm): it is never scored for the gate")
+    for t in CRITERIA["synth"]["truths"]:
+        if t["id"] == truth_id:
+            return t
+    raise GateRefused(f"truth {truth_id!r} is not registered in CRITERIA['synth']['truths']")
+
+
+def truth_source_sha(spec):
+    """The registered identity of a truth's source: its pinned file sha256, or for a parametric truth the sha256 of its recipe, blur and grid as canonical JSON. None if a file truth is unpinned."""
+    if spec["kind"] == "parametric":
+        syn = CRITERIA["synth"]
+        blob = dict(recipe=spec["recipe"], blur_mas=spec["blur_mas"], flux_jy=syn["flux_jy"], pixel_mas=syn["pixel_mas"], npix=syn["npix"])
+        return hashlib.sha256(json.dumps(blob, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return spec["sha256"]
+
+
+def check_synth(record, truth_id, coverage_id, what):
+    """Refuse a synth.json that is stamped with another hash, is not the registered (``truth_id``, ``coverage_id``) cell, has a development or unpinned truth, or whose truth file is not the registered one."""
+    require_criteria(record, what)
+    spec = truth_spec(truth_id)
+    if record.get("development"):
+        raise GateRefused(f"{what}: marked development")
+    if (record.get("truth_id"), record.get("coverage")) != (truth_id, coverage_id):
+        raise GateRefused(f"{what}: is truth {record.get('truth_id')!r} / coverage {record.get('coverage')!r}, not {truth_id!r} / {coverage_id!r}")
+    want = truth_source_sha(spec)
+    if want is None:
+        raise GateRefused(f"{what}: truth {truth_id!r} has no sha256 pinned in CRITERIA: pin it first")
+    if record.get("truth_source_sha256") != want:
+        raise GateRefused(f"{what}: truth source sha256 {record.get('truth_source_sha256')!r} is not the registered {want}")
+
+
+def c8_recompute(stage):
+    """C8 of a saved stage from its own history: Adam from ``adam.loss_history`` (``convergence_window``), L-BFGS from ``trajectory`` (``convergence``), both at ``CRITERIA['c8']``. Refuses a stage whose stored
+    ``c8_converged`` differs. Returns the verdict dict with ``name``."""
+    tol, window = CRITERIA["c8"]["tol"], CRITERIA["c8"]["window"]
+    adam = stage.get("adam") or {}
+    if stage.get("method") == "adam" or adam:
+        hist = adam.get("loss_history")
+        if not hist:
+            raise GateRefused(f"stage {stage.get('name')!r}: Adam stage without adam.loss_history: C8 cannot be recomputed (rerun with this vv)")
+        v = convergence_window(hist, tol, window)
+    else:
+        v = convergence(stage.get("trajectory") or [], None, tol, window)
+    if bool(v["converged"]) != bool(stage.get("c8_converged")):
+        raise GateRefused(f"stage {stage.get('name')!r}: stored c8_converged={stage.get('c8_converged')} but its own history gives {v['converged']} (change {v['change']}, mean_drop {v.get('mean_drop')})")
+    return dict(v, name=stage.get("name"), method="adam" if adam else "lbfgs")
+
+
+def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages):
+    """The "better than MPoL" pass of Track A (``design/alma_imlup_p3.md``, Ben 2026-10-28): one arm must do all five, each PASS / FAIL / NOT EVALUATED (None input). Every threshold is ``CRITERIA['better']`` (hashed):
+    there is no keyword to change one.
 
     1. held-out raw chi^2/N below MPoL's on the same folds by more than its uncertainty: ``heldout_ours`` and ``heldout_mpol`` are per-fold lists (``cv-compare``'s ``per_fold``), and ``mean(d) + se(d) < 0`` for the per-fold differences d (se = sd / sqrt(K)); a pair of scalars is compared without an uncertainty and is flagged in the value;
-    2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than ``chi2n_limit`` = MPoL's 2.7062;
-    3. on the synthetic truth, NRMSE at 0.5 CLEAN beam below config R's (``synth`` and ``synth_r`` are ``synth.json`` dicts), N_eff ratio of the base image >= ``neff_min`` and base pixels below 1e-4 of the in-disk peak under ``dead_max``;
-    4. ``flux_ours`` within ``flux_tol`` of ``flux_ref``;
-    5. C8 converged in every stage."""
+    2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than MPoL's 2.7062;
+    3. on every registered synthetic truth x coverage (``cells``): ``synth`` and ``synth_r`` map ``(truth id, coverage id)`` to the arm's and config R's ``synth.json`` dicts (``check_synth`` refuses any other hash, a development truth or an unpinned or
+       other truth file); NRMSE at 0.5 CLEAN beam below R's, N_eff ratio >= 0.7 and base pixels below 1e-4 of the in-disk peak under 1 %, in every cell;
+    4. ``flux_ours`` within 10 % of ``flux_ref``;
+    5. C8 converged in every stage, recomputed from each stage's saved history (``c8_recompute``); ``stages`` are the fit's stage records; ``change`` and ``mean_drop`` go in the table."""
+    b = c = CRITERIA["better"]
     def item(key, label, ok, value, limit):
         return dict(key=key, label=label, value=value, limit=limit, status="NOT EVALUATED" if ok is None else ("PASS" if ok else "FAIL"))
 
@@ -220,21 +346,33 @@ def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, 
         se = float(np.std(d, ddof=1) / np.sqrt(len(d))) if len(d) > 1 else 0.0
         h = float(d.mean()) + se
         h_txt = f"mean diff {d.mean():+.6g} + se {se:.3g} over {len(d)} fold(s)" + ("" if len(d) > 1 else " (no uncertainty: one value)")
-    s = None if synth is None else synth
-    nr = None if s is None or synth_r is None else (s["nrmse"]["0.5"], synth_r["nrmse"]["0.5"])
-    syn_ok = None if s is None or nr is None else (nr[0] < nr[1] and s["n_eff_ratio"] >= neff_min and s["base_dead_in_disk_1e4"] < dead_max)
-    syn_val = None if s is None or nr is None else f"NRMSE {nr[0]:.4f} vs R {nr[1]:.4f}; N_eff ratio {s['n_eff_ratio']:.3f}; dead {s['base_dead_in_disk_1e4']:.2%}"
+    frac = b["nrmse_beam_fraction"]
+    syn_rows, syn_ok = [], None
+    if synth is not None and synth_r is not None:
+        for t, cv in cells():
+            if (t, cv) not in synth or (t, cv) not in synth_r:
+                syn_rows.append(f"{t}/{cv}: missing")
+                continue
+            check_synth(synth[(t, cv)], t, cv, f"synth {t}/{cv}")
+            check_synth(synth_r[(t, cv)], t, cv, f"synth-r {t}/{cv}")
+            s, r = synth[(t, cv)], synth_r[(t, cv)]
+            ok = s["nrmse"][frac] < r["nrmse"][frac] and s["n_eff_ratio"] >= c["neff_min"] and s["base_dead_in_disk_1e4"] < c["dead_max"]
+            syn_rows.append(f"{t}/{cv}: {'ok' if ok else 'FAIL'} (NRMSE {s['nrmse'][frac]:.4f} vs R {r['nrmse'][frac]:.4f}, N_eff {s['n_eff_ratio']:.3f}, dead {s['base_dead_in_disk_1e4']:.2%})")
+            syn_ok = ok if syn_ok is None else (syn_ok and ok)
+        if any("missing" in x for x in syn_rows) and syn_ok is not False:
+            syn_ok = None
     rel = None if flux_ours is None or not flux_ref else abs(flux_ours / flux_ref - 1)
-    sc = None if stages_converged is None or len(stages_converged) == 0 else [bool(x) for x in stages_converged]
+    c8 = None if not stages else [c8_recompute(st) for st in stages]
+    c8_txt = None if c8 is None else "; ".join(f"{v['name']} {'ok' if v['converged'] else 'FAIL'} (change {v['change']}, mean_drop {v.get('mean_drop')})" for v in c8)
     items = [
         item("1", "held-out chi^2/N below MPoL's on the same folds by more than the fold standard error", None if h is None else h < 0, h_txt, "mean + se < 0"),
-        item("2", f"raw chi^2/N (s = 1) at or below {chi2n_limit:g}", None if chi2n_ours is None else chi2n_ours <= chi2n_limit, chi2n_ours, f"<= {chi2n_limit:g}"),
-        item("3", f"synthetic truth: NRMSE at 0.5 beam below R's, N_eff ratio >= {neff_min:g}, base dead < {dead_max:.0%}", syn_ok, syn_val, "all three"),
-        item("4", f"total flux within {flux_tol:.0%} of the {flux_ref_name} flux ({flux_ref:.5f} Jy)" if flux_ref else "total flux within 10% of CLEAN", None if rel is None else rel <= flux_tol, rel, f"<= {flux_tol:g}"),
-        item("5", "C8 converged in every stage", None if sc is None else all(sc), None if sc is None else f"{sum(sc)}/{len(sc)} stages", "all"),
+        item("2", f"raw chi^2/N (s = 1) at or below {b['chi2n_limit']:g}", None if chi2n_ours is None else chi2n_ours <= b["chi2n_limit"], chi2n_ours, f"<= {b['chi2n_limit']:g}"),
+        item("3", f"every synthetic truth x coverage: NRMSE at {frac} beam below R's, N_eff ratio >= {b['neff_min']:g}, base dead < {b['dead_max']:.0%}", syn_ok, "; ".join(syn_rows) if syn_rows else None, "all cells, all three"),
+        item("4", f"total flux within {b['flux_tol']:.0%} of the {flux_ref_name} flux ({flux_ref:.5f} Jy)" if flux_ref else "total flux within 10% of CLEAN", None if rel is None else rel <= b["flux_tol"], rel, f"<= {b['flux_tol']:g}"),
+        item("5", f"C8 converged in every stage (recomputed: tol {CRITERIA['c8']['tol']:g}, window {CRITERIA['c8']['window']})", None if c8 is None else all(v["converged"] for v in c8), c8_txt, "all"),
     ]
     verdict = "PASS" if all(i["status"] == "PASS" for i in items) else ("INCOMPLETE" if any(i["status"] == "NOT EVALUATED" for i in items) and not any(i["status"] == "FAIL" for i in items) else "FAIL")
-    return dict(verdict=verdict, items=items, rule="PASS only if 1-5 all pass; design/alma_imlup_p3.md, Track A, Ben 2026-10-28")
+    return dict(verdict=verdict, items=items, c8_stages=c8, cells=[list(x) for x in cells()], criteria_hash=criteria_hash(), rule="PASS only if 1-5 all pass; design/alma_imlup_p3.md, Track A, Ben 2026-10-28")
 
 
 def better_markdown(b):

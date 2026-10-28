@@ -135,6 +135,7 @@ def alpha_report(values):
     return None, ALPHA_FIXED_LABEL
 
 SB_OBS = (0, 1, 2, 3, 4)
+C8_TOL, C8_WINDOW = 0.1, 100  # C8 tolerance (-ln L) and window (steps): hashed in ``alma_start.CRITERIA`` with its derivation; never a call-site argument of the gate
 EPS_FIT, EPS_SCORE = 1e-6, 1e-12  # C7
 LN2PI = float(np.log(2 * np.pi))
 
@@ -853,7 +854,7 @@ def blur_post_step(sigma_px):
     return post_step
 
 
-def convergence_window(losses, tol=0.1, window=100):
+def convergence_window(losses, tol=C8_TOL, window=C8_WINDOW):
     """C8 for a non-monotone (Adam) loss: converged when over the last ``window`` steps the loss ranged by less than ``tol`` (max - min) and its mean
     is not lower than the mean of the window before by more than ``tol`` (it is not still falling). Needs two windows of steps. Returns the verdict
     with the numbers it rests on; the L-BFGS verdict (``convergence``) is a two-point test of a monotone loss and stays as it is."""
@@ -865,7 +866,7 @@ def convergence_window(losses, tol=0.1, window=100):
     return dict(converged=bool(rng < tol and drop <= tol), change=rng, mean_drop=drop, window_steps=int(window), reason="range and drift of the loss over the last window")
 
 
-def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=0.1, window=100, stride=10, post_step_blur_px=None, lr_decay=None, const_steps=0, ftol_abs=None, on_snapshot=None, snapshot_every=SNAPSHOT_EVERY):
+def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=EPS_FIT, log=None, precondition=None, tol=C8_TOL, window=C8_WINDOW, stride=10, post_step_blur_px=None, lr_decay=None, const_steps=0, ftol_abs=None, on_snapshot=None, snapshot_every=SNAPSHOT_EVERY):
     """Adam through ``virgil.fit`` (``method="adam"``) for ``steps`` or ``time_limit``: the full budget unless ``ftol_abs`` is given (virgil's windowed ftol over ``window`` steps,
     needs virgil#562), and C8 is judged afterwards by ``convergence_window``. ``lr_decay`` (default off) multiplies the learning rate by that factor every 1000 steps after
     ``const_steps`` constant ones (``lr_schedule``). ``on_snapshot(step, log_brightness)``, if given, is called every ``snapshot_every`` steps with the image logit (``snapshot_post_step``, as ``sink``).
@@ -921,7 +922,7 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
         why = "max_steps"
     info.update(steps=n, rounds=1, stop=stop if stop is not None else why, precondition=precondition, wall_s=wall,
                 precondition_rounds=[{k: _plain(v) for k, v in r.items()} for r in res.info.get("precondition_rounds", [])], restarts=[],
-                adam=dict(lr=lr, lr_decay_per_1000=lr_decay or None, const_steps=const_steps or None, ftol_abs=ftol_abs, virgil_version=getattr(__import__("virgil"), "__version__", None), eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
+                adam=dict(loss_history=hist.tolist(), lr=lr, lr_decay_per_1000=lr_decay or None, const_steps=const_steps or None, ftol_abs=ftol_abs, virgil_version=getattr(__import__("virgil"), "__version__", None), eps=adam_eps, post_step_blur_px=post_step_blur_px or None, steps=n, virgil_converged=res.info.get("converged"), virgil_stop=stop, loss_final=float(res.info["loss"]), c8=verdict,
                           wall_s=wall, ms_per_step_incl_setup=1e3 * wall / max(n, 1)))
     return values, info, traj, why
 
@@ -1022,7 +1023,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
     return values, info, traj, why
 
 
-def convergence(traj, info=None, tol=0.1, window=100):
+def convergence(traj, info=None, tol=C8_TOL, window=C8_WINDOW):
     """C8: converged when the loss changed by less than ``tol`` (-ln L units, i.e. chi^2 by less than
     2 tol) over the last ``window`` steps. ``fit`` reports its progress every chunk of 200 steps, so
     the last record is compared with the latest one at least ``window`` steps earlier (the first record
