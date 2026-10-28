@@ -102,13 +102,11 @@ def spec(text=None):
 
 def design_hash():
     """The experiment apart from the criteria: population and simulator code,
-    the geometry and visibility modules they use, and this script's fit and
-    extraction code. Rows are combined only when it matches."""
+    the geometry and visibility modules they use, and this whole script. Rows are combined only when it matches."""
     h = hashlib.sha256()
     for name in ("orbit_population.py", "array.py", "sky.py", "orbits.py", "oifits_writer.py"):
         h.update((ROOT / "src" / "crosscheck" / name).read_bytes())
-    for fn in (run_system, settings_for, band_table, posterior_summary, thin, mixture_u, oracle_init):
-        h.update(inspect.getsource(fn).encode())
+    h.update(pathlib.Path(__file__).read_bytes())  # the whole script: fit, oracle and extraction code
     return h.hexdigest()[:16]
 
 
@@ -384,13 +382,12 @@ def _virgil_run(part, system, paths, work):
     settings = settings_for(system)
     through = None
     if part == "oracle":
-        settings = dict(settings, drop_outlier_night=False)  # the refit changes neither M4 nor M8
         through = "modes"
     run = work / "run"
     pipeline = OrbitPipeline.from_oifits([str(p) for p in paths], output=run, **settings)
     n_is = pipeline.settings["n_is"]
     if part == "oracle":
-        _with_init(system, lambda: pipeline.run(through=through, resume=False))
+        init_calls = _with_init(system, lambda: pipeline.run(through=through, resume=False))
     else:
         pipeline.run(resume=False)
     aliases = AliasResult.load(run / "stages" / "search" / "aliases.json")
@@ -405,6 +402,8 @@ def _virgil_run(part, system, paths, work):
     out = dict(bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
                primary_diam=search.get("primary_diam"), outliers=search.get("outliers"),
                night_flags=search.get("night_flags"), n_bands=search.get("n_bands"))
+    if part == "oracle":
+        out["oracle_init_calls"] = init_calls
     if part == "fit":
         from crosscheck import orbit_population as op
 
@@ -421,16 +420,21 @@ def _with_init(system, call):
     import virgil.aliases as aliases
 
     original = aliases.fit_orbit_aliases
+    calls = []
 
     def with_truth(*args, **kwargs):
+        calls.append(1)
         t_ref = float(np.round(np.mean(np.asarray(kwargs["times"], float)), 1))  # the engine's default t_ref
         return original(*args, **{**kwargs, "t_ref": t_ref, "init": oracle_init(system, t_ref)})
 
     aliases.fit_orbit_aliases = with_truth
     try:
-        return call()
+        call()
     finally:
         aliases.fit_orbit_aliases = original
+    if not calls:
+        raise RuntimeError("init= was never passed: the search stage does not look up virgil.aliases.fit_orbit_aliases at call time")
+    return len(calls)
 
 
 # ------------------------------------------------------------- aggregation
@@ -438,8 +442,8 @@ def _with_init(system, call):
 
 def true_band(r):
     """The fitted band row holding the true period, or None (outside the window)."""
-    n = r["truth"]["band"]
-    return next((b for b in r.get("bands", []) if b["n"] == n), None)
+    period = r["truth"]["period"]
+    return next((b for b in r.get("bands", []) if b["p_lo"] <= period <= b["p_hi"]), None)
 
 
 def band_p(r):
@@ -517,7 +521,7 @@ def aggregate_results(results, s, rng_seed):
         p = band_p(r)
         i = int(np.argmax(p)) if p.size else None
         map_p.append(float(p[i]) if p.size else 0.0)
-        map_hit += i is not None and r["bands"][i]["n"] == r["truth"]["band"]
+        map_hit += i is not None and r["bands"][i] is true_band(r)
     mp = np.array(map_p)
     pv["M3a"] = poisson_binomial_p(map_hit, mp, "under") if b else 1.0
     out["reported"]["M3a"] = dict(n=len(b), hits=int(map_hit), expected=float(mp.sum()))
@@ -538,28 +542,31 @@ def aggregate_results(results, s, rng_seed):
     out["must_hold"]["M3b"] = {}
     for name, rs in (("B_all", b), ("B_misspecified", mis)):
         conf = [r for r, p in zip(b, map_p) if p >= spec3["p_map_min"] and r in rs]
-        wrong = sum(1 for r in conf if r["bands"][int(np.argmax(band_p(r)))]["n"] != r["truth"]["band"])
+        wrong = sum(1 for r in conf if r["bands"][int(np.argmax(band_p(r)))] is not true_band(r))
         limit = binomial_q99(len(conf), 0.01) if conf else 0
         out["must_hold"]["M3b"][name] = dict(n_conf=len(conf), wrong=int(wrong), limit=limit, **{"pass": bool(wrong <= limit)})
 
     # M4 and M8 need the oracle runs
     spec4, spec8 = m["M4_search_misses"], m["M8_false_no_orbit"]
-    misses, compared = [], 0
+    n_b = strata_sizes()["B"]
+    misses, no_oracle, no_true_band = [], [], []
     for r in b:
         o = oracle.get(r["truth"]["index"])
-        if o is None or o["status"] != "ok":
+        if o is None or o["status"] != "ok" or not o.get("oracle_init_calls"):
+            no_oracle.append(r["truth"]["index"])  # a missing or invalid oracle is a failure, not a skipped system
             continue
-        compared += 1
         ob, bb = true_band(o), true_band(r)
-        zo = None if ob is None else ob["log_z"]
-        if zo is None:
+        if ob is None or ob["log_z"] is None:
+            no_true_band.append(r["truth"]["index"])
             continue
         zb = None if bb is None else bb["log_z"]
         se = math.hypot((bb or {}).get("se_lnz") or 0.0, ob.get("se_lnz") or 0.0)
-        if zb is None or zo - zb > spec4["nats"] + spec4["plus_se_multiple"] * se:
+        if zb is None or ob["log_z"] - zb > spec4["nats"] + spec4["plus_se_multiple"] * se:
             misses.append(r["truth"]["index"])
-    out["must_hold"]["M4"] = dict(compared=compared, misses=len(misses), limit=spec4["max_fraction"] * compared,
-                                  **{"pass": bool(compared > 0 and len(misses) <= spec4["max_fraction"] * compared)},
+    bad = len(misses) + len(no_oracle) + len(no_true_band)
+    out["must_hold"]["M4"] = dict(n=n_b, misses=len(misses), missing_or_invalid_oracle=len(no_oracle),
+                                  oracle_without_true_band=len(no_true_band), limit=spec4["max_fraction"] * n_b,
+                                  **{"pass": bool(len(b) == n_b and bad <= spec4["max_fraction"] * n_b)},
                                   se_sources=sorted({str(x.get("se_source")) for r in b for x in r["bands"]}))
     qualifying = [r for r in b if r["truth"]["index"] in oracle and _qualifies(oracle[r["truth"]["index"]])]
     lost = [r for r in qualifying if (r.get("verdict") or {}).get("value") == "no-orbit"]
@@ -587,12 +594,17 @@ def aggregate_results(results, s, rng_seed):
     inaccurate = [r for r in b if _inaccurate(r, fail_flags, m9["m"])]
     expected = {k: v for k, v in strata_sizes().items()}
     present = {k: len({r["truth"]["index"] for r in by[k]}) for k in "ABND"}
-    out["must_hold"]["M7"] = dict(failed=len(crashed), missing={k: expected[k] - present[k] for k in "ABND" if present[k] < expected[k]},
-                                  inaccurate_credible_set=len(inaccurate),
-                                  **{"pass": bool(not crashed and not inaccurate and all(present[k] == expected[k] for k in "ABND"))})
+    expected["oracle"], present["oracle"] = expected["B"], len(oracle)
+    invalid_oracle = [i for i, o in oracle.items() if o["status"] == "ok" and not o.get("oracle_init_calls")]
     flags_seen = sorted({f for r in b for x in r["bands"] for f in x["flags"]})
+    flags_observable = bool(fail_flags & set(flags_seen)) or any(x["se_source"] == "reported" for r in b for x in r["bands"])
+    complete = bool(not crashed and not invalid_oracle and all(present[k] == expected[k] for k in expected))
+    out["must_hold"]["M7"] = dict(failed=len(crashed), missing={k: expected[k] - present[k] for k in expected if present[k] < expected[k]},
+                                  invalid_oracle=len(invalid_oracle), inaccurate_credible_set=len(inaccurate),
+                                  **{"pass": False if not complete or inaccurate else (True if flags_observable else None)})
+    out["reported"]["band_label_mismatch"] = sum(1 for r in a + b if (true_band(r) or {}).get("n") != r["truth"]["band"])
     out["reported"]["flags_seen_in_B"] = flags_seen
-    if not fail_flags & set(flags_seen) and not any(x["se_source"] == "reported" for r in b for x in r["bands"]):
+    if not flags_observable:
         out["unavailable"].append("evidence-noisy / evidence-failed flags and per-band standard errors: not reported by this virgil commit; M7's accuracy rule can only count flags it sees, and M4 uses the ESS-based SE (se_source 'ess')")
     out["unavailable"].append("per-data-set empirical FAP verdict: not in virgil 0.4.x (orbit_dehack Stage 4); M6 and M8 use the shipped verdict")
     out["reported"].update(recovery_by_cell(b), tempering_vs_c=_tempering(b), wall_s=_summ([r["seconds"] for r in results]),
@@ -605,9 +617,11 @@ def aggregate_results(results, s, rng_seed):
     out["rejected"] = sorted(k for k, v in rejected.items() if v)
     out["tests"] = len(pv)
     must = [v["pass"] for k, v in out["must_hold"].items() if "pass" in v]
-    must += [v["pass"] for k, v in out["must_hold"].items() if "pass" not in v for v in v.values()]
+    must += [w["pass"] for k, v in out["must_hold"].items() if "pass" not in v for w in v.values()]
     out["counts"] = {k: len(by[k]) for k in "ABND"} | {"oracle": len(oracle)}
-    out["pass"] = bool(pv and not out["rejected"] and all(must))
+    failed = bool(not pv or out["rejected"] or any(x is False for x in must))
+    # True only if every registered test ran as registered; None ("incomplete") when nothing failed but some did not.
+    out["pass"] = False if failed else (None if out["unavailable"] or any(x is None for x in must) else True)
     return out
 
 
@@ -690,7 +704,7 @@ def recovery_by_cell(b):
     cells = {}
     for r in b:
         p = band_p(r)
-        hit = bool(p.size and r["bands"][int(np.argmax(p))]["n"] == r["truth"]["band"])
+        hit = bool(p.size and r["bands"][int(np.argmax(p))] is true_band(r))
         dmag = -2.5 * math.log10(r["truth"]["flux"])
         key = f"{r['truth']['schedule']}|K{r['truth']['n_nights']}|dmag{int(min(dmag // 1.5, 2)) * 1.5:g}+"
         e = cells.setdefault(key, [0, 0])
@@ -708,7 +722,7 @@ def _sufficiency(b):
     out = {}
     for r in b:
         p = band_p(r)
-        hit = bool(p.size and r["bands"][int(np.argmax(p))]["n"] == r["truth"]["band"])
+        hit = bool(p.size and r["bands"][int(np.argmax(p))] is true_band(r))
         cov = r["truth"]["phase_coverage"]
         key = f"K{r['truth']['n_nights']}|coverage>={int(cov * 4) / 4:.2f}"
         e = out.setdefault(key, [0, 0])
@@ -743,9 +757,8 @@ def cmd_fit(args, part):
         old = json.loads(path.read_text())
         if {k: old.get(k) for k in head if k != "device"} != {k: head[k] for k in head if k != "device"}:
             raise SystemExit(f"{path} was made differently: move it before rerunning")
-        if old["status"] == "ok":
-            print(f"{path} is complete")
-            return
+        print(f"{path} is complete (status {old['status']}; a failure stays a failure)")
+        return
     result = run_system(part, stratum, index, out, keep_work=args.keep_work)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps({**head, **result}))

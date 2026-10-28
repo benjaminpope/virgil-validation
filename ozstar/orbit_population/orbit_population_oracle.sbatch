@@ -6,9 +6,10 @@
 #SBATCH --error=logs/%x-%A_%a.err
 #SBATCH --time=02:00:00          # not measured: the oracle stops after the modes stage, no NUTS
 #SBATCH --ntasks=1
+#SBATCH --gres=gpu:1              # gate section 8: GPU nodes (CPU JAX jobs abort with LLVM allocation errors)
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
-#SBATCH --array=0-239
+#SBATCH --array=0-239%8           # at most 8 GPUs at once
 set -eo pipefail  # not -u: lmod and conda read unset variables
 
 : "${MYFRED:=/fred/${OZ_PROJECT:-oz440}/$USER}"
@@ -22,8 +23,9 @@ mkdir -p "$OUT"
 module -q load conda
 conda activate virgil
 export PYTHONPATH=$PIN_PATH${PYTHONPATH:+:$PYTHONPATH}
-export JAX_PLATFORMS=cpu JAX_COMPILATION_CACHE_DIR=$MYFRED/.cache/jax MPLBACKEND=Agg
+export JAX_COMPILATION_CACHE_DIR=$MYFRED/.cache/jax MPLBACKEND=Agg
 
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || { echo "no GPU on $(hostname)" >&2; exit 1; }
 echo "job=${SLURM_JOB_ID} task=${SLURM_ARRAY_TASK_ID} host=$(hostname) pins=\"$PIN_DESC\" start=$(date)"
 start=$(date +%s)
 srun python "$VV/scripts/orbit_population.py" oracle --task "$SLURM_ARRAY_TASK_ID" --out "$OUT"

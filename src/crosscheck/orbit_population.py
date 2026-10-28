@@ -335,7 +335,7 @@ def vis_elliptical_disk(u, v, wavel, major, ratio, pa):
     An ellipse is the linear image of a disc, so its visibility is the
     circular one at the transformed frequency (Bracewell, The Fourier
     Transform and Its Applications, similarity theorem)."""
-    fu, fv = u / wavel * MAS, v / wavel * MAS
+    fu, fv = sky._q(u, v, wavel)  # cycles per mas (sky.MAS is radians per mas; this module's MAS is the inverse)
     p = math.radians(pa)
     q_major, q_minor = fu * math.sin(p) + fv * math.cos(p), fu * math.cos(p) - fv * math.sin(p)
     x = np.pi * major * np.hypot(q_major, ratio * q_minor)
