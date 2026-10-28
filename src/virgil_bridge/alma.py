@@ -295,7 +295,7 @@ def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0):
     """virgil's regularisers of ``--reg`` (``virgil.imaging``, ``smoothed=False``: on the unblurred pixels, no kernel) for a fit on ``n`` full-data points.
 
     ``mem:L``: ``MaxEntropy`` (``prior`` the default image, flat if None) whose weight is MPoL's lambda_M = L converted as ``lam_f_equivalent(lam_r(n, L))`` at the flux ``MPOL['f_tot']``,
-    i.e. ``2 n L / dx^2`` on the unit-sum image: the same pull as MPoL's ``lambda_M sum I ln(I / p) / F_tot`` with I = F_tot b / dx^2 (Jy/arcsec^2), the prior_intensity p entering only a flux-only term.
+    i.e. ``2 n L / dx^2`` on the unit-sum image: the same pull as MPoL's ``lambda_M sum I ln(I / p) / F_tot`` with I = F_tot b / dx^2 (Jy/arcsec^2), the prior_intensity p entering only a flux-only term (exact for a flat ``prior``, which the test evaluates). ``build_problem`` passes config F's primary beam as the prior (the pixels are sky x beam), so there ``mem:L`` is MPoL's lambda_M up to the extra linear term ``-sum b ln q`` (ln q about -0.01 at IM Lup's radius, 1.2 arcsec in a 24 arcsec beam).
     ``tsv:W``: ``TSV`` at weight W on the unit-sum image (virgil's own units, no conversion). ``scale`` (the training fraction in cross-validation) multiplies every weight, as ``lam_train``."""
     from virgil.imaging import TSV, MaxEntropy
 

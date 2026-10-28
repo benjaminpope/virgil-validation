@@ -61,7 +61,9 @@ def score_fit(args, fit_dir, out_json):
     res = json_load(fit_dir / "result.json")
     px = float(res["pixel_mas"])
     sc = vy.score_image(image, truth, px, beam_of(args))
-    sc.update(command="synth", fit=str(fit_dir), truth=str(args.truth), config=res.get("config"), workflow=res.get("workflow"), converged=res.get("converged"),
+    made = pathlib.Path(args.truth).parent / "synth_make.json"
+    origin = json_load(made).get("truth_from") if made.exists() else None
+    sc.update(truth_origin=origin, truth_origin_note="a candidate arm's own image biases the NRMSE contest towards that arm: also score on an independent truth (CLEAN model, analytic ring)" if origin and "image" in str(origin) else None, command="synth", fit=str(fit_dir), truth=str(args.truth), config=res.get("config"), workflow=res.get("workflow"), converged=res.get("converged"),
               chi2n_raw=(res.get("summary") or {}).get("chi2n_raw", res.get("chi2_raw_over_n")), versions=mx.versions())
     mx.dump(out_json, sc)
     say(f"synth: NRMSE {sc['nrmse']} (0.5 / 1.0 CLEAN beam), N_eff ratio {sc['n_eff_ratio']:.3f}, base dead in disk {sc['base_dead_in_disk_1e4']:.2%}, flux error {sc['flux_error']:+.2%}; wrote {out_json}")

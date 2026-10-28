@@ -158,7 +158,9 @@ def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=N
     - Pearson correlation of the two blurred images >= ``ref['correlation']`` (0.99);
     - the base image's N_eff ratio (base over blurred, ``dots_report``) within ``ref['n_eff_ratio_tol']`` (20 %) of ``ref['n_eff_ratio']`` (0.78);
     - the base peak within a factor ``ref['peak_factor']`` (2) of ``ref['peak_base']`` (10 Jy/arcsec^2);
-    - the flux within ``ref['flux_tol']`` (5 %) of ``ref['flux']`` (0.294 Jy; ``mpol_flux``, the export's, is recorded beside it).
+    - the flux within ``ref['flux_tol']`` (5 %) of ``ref['flux']`` (0.294 Jy: the flux of MPoL's p3a base image, ``sum(base_image) dx^2`` of its export, not the 0.253 Jy of its entropy's ``tot_flux``; ``mpol_flux``, the export's own, is recorded beside it).
+
+    (b)-(d) are judged against these constants, which are the p3a export's numbers. The export passed in is checked against the same bands (``mpol['export_in_band']``): when it is another MPoL run (another lambda, more epochs) the bands do not describe it, and the result carries ``warning`` and the markdown says so, so the verdict is not read as agreement with that run.
 
     MPoL's own numbers from the export (correlation 1, its N_eff ratio, base peak, flux) are returned beside them. Returns ``dict(verdict, items, mpol)``."""
     base, blurred, mb, mt = (np.asarray(x, float) for x in (base, blurred, mpol_base, mpol_blurred))
@@ -174,8 +176,12 @@ def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=N
              f"{ref['peak_base'] / ref['peak_factor']:.3g} to {ref['peak_base'] * ref['peak_factor']:.3g}"),
         item("d", f"flux within {ref['flux_tol']:.0%} of {ref['flux']:g} Jy", float(flux), abs(flux / ref["flux"] - 1) <= ref["flux_tol"], f"{ref['flux'] * (1 - ref['flux_tol']):.4g} to {ref['flux'] * (1 + ref['flux_tol']):.4g}"),
     ]
-    return dict(verdict="PASS" if all(i["status"] == "PASS" for i in items) else "FAIL", items=items,
-                mpol=dict(n_eff_ratio=dm["n_eff_ratio"], peak_base=float(mb.max()), flux=mpol_flux, base_dead_in_disk_1e4=dm["base_dead_in_disk_1e4"]),
+    band = dict(n_eff_ratio=bool(abs(dm["n_eff_ratio"] / ref["n_eff_ratio"] - 1) <= ref["n_eff_ratio_tol"]), peak_base=bool(ref["peak_base"] / ref["peak_factor"] <= mb.max() <= ref["peak_base"] * ref["peak_factor"]),
+                flux=None if mpol_flux is None else bool(abs(mpol_flux / ref["flux"] - 1) <= ref["flux_tol"]))
+    in_band = all(v is not False for v in band.values())
+    warning = None if in_band else f"MPoL's export is outside the replica bands ({[k for k, v in band.items() if v is False]}): (b)-(d) judge the replica against the p3a constants, not against this export"
+    return dict(verdict="PASS" if all(i["status"] == "PASS" for i in items) else "FAIL", items=items, warning=warning,
+                mpol=dict(n_eff_ratio=dm["n_eff_ratio"], peak_base=float(mb.max()), flux=mpol_flux, base_dead_in_disk_1e4=dm["base_dead_in_disk_1e4"], export_in_band=band),
                 replica=dict(n_eff_ratio=dr["n_eff_ratio"], base_dead_in_disk_1e4=dr["base_dead_in_disk_1e4"], sub_taper_power=dr["sub_taper_power"]))
 
 
@@ -185,6 +191,8 @@ def replica_markdown(res):
     rows += [f"| {i['key']} | {i['label']} | {i['value']:.6g} | {i['limit']} | {i['status']} |" for i in res["items"]]
     m = res["mpol"]
     rows += ["", f"MPoL's own export: N_eff ratio {m['n_eff_ratio']:.3f}, base peak {m['peak_base']:.3f} Jy/arcsec^2, flux {m['flux']}, base dead in disk (1e-4) {m['base_dead_in_disk_1e4']:.3%}."]
+    if res.get("warning"):
+        rows += ["", f"**Warning:** {res['warning']}."]
     return rows
 
 

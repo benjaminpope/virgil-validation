@@ -665,6 +665,17 @@ def cmd_cv_task(args):
     say(f"held-out -ln L {ho['nll']:.4f} on {ho['n']:,} points; wrote {out / 'cv.json'}")
 
 
+def arm_signature(r):
+    """What a cv.json record's arm is, apart from its grid variable: config, the other reg kinds and strengths (all but the first), the GP's other hyperparameters, the plain arm's nothing."""
+    a = r.get("arm") or {}
+    if a.get("reg"):
+        regs = va.parse_reg(a["reg"])
+        return f"{r.get('config')} reg kinds {[k for k, _ in regs]} other strengths {[x for _, x in regs[1:]]}"
+    if "length_theta_rad" in a:
+        return f"{r.get('config')} GP length_theta {a['length_theta_rad']:g} r_max {a['r_max_mas']:g} n_r {a['n_r']} n_theta {a['n_theta']} sigma {a['sigma_range']}"
+    return f"{r.get('config')} plain"
+
+
 def cmd_cv_aggregate(args):
     import matplotlib
 
@@ -679,12 +690,11 @@ def cmd_cv_aggregate(args):
     out.mkdir(parents=True, exist_ok=True)
     lams = sorted({r["lam"] for r in recs})
     folds = sorted({r["fold"] for r in recs})
-    seen = {}
-    for r in recs:  # one arm per directory: a GP grid of several length_theta, or reg arms with other second strengths, would overwrite each other
-        k = (r["lam"], r["fold"])
-        if k in seen and seen[k] != r.get("key"):
-            raise SystemExit(f"cv-aggregate: two arms ({seen[k]!r}, {r.get('key')!r}) share lam {r['lam']:g}, fold {r['fold']}: aggregate one arm per directory")
-        seen[k] = r.get("key")
+    sigs = {}
+    for r in recs:  # one arm per directory: grids of different regularisers, GP length_theta or sigma bounds must not be aggregated as one curve
+        sigs.setdefault(arm_signature(r), []).append(str(r.get("key")))
+    if len(sigs) > 1:
+        raise SystemExit("cv-aggregate: the records are of more than one arm (aggregate one arm per directory): " + "; ".join(f"{sig} ({len(k)} tasks, e.g. {k[0]})" for sig, k in sigs.items()))
     arm_keys = sorted({str(r.get("key")) for r in recs})
     shas = {r["folds_sha256"] for r in recs}
     S = np.full((len(lams), len(folds)), np.nan)
@@ -902,15 +912,31 @@ def cmd_better(args):
     out.mkdir(parents=True, exist_ok=True)
     load = lambda f: None if f is None else json.loads(pathlib.Path(f).read_text())  # noqa: E731
     fit, cvc = load(str(pathlib.Path(args.fit) / "result.json")), load(args.cv_compare)
-    tot = (cvc or {}).get("total") or {}
-    ho = lambda k: (tot.get(k) or {}).get("chi2_raw_per_n")  # noqa: E731
+    problems = list((cvc or {}).get("problems") or [])
+    pf = (cvc or {}).get("per_fold") or {}
+    ours, mpol = pf.get("virgil_lam_star") or {}, pf.get("mpol") or {}
+    folds = sorted(set(ours) & set(mpol))
+    # criterion 1 is the CV optimum's: the fit must be at it (a PASS from different points of the grid is no arm's)
+    fa, hyper, lam_star = fit.get("args") or {}, fit.get("hyperparameters") or {}, (cvc or {}).get("lam_star")
+    point = None
+    if fa.get("reg"):
+        point = va.parse_reg(fa["reg"])[0][1]
+    elif hyper.get("length_r_mas") is not None:
+        point = float(hyper["length_r_mas"])
+    if cvc and lam_star is not None and point is not None and abs(point / float(lam_star) - 1) > 1e-9:
+        problems.append(f"the fit is at grid point {point:g} but the cross-validation optimum is {float(lam_star):g}: fit the arm at lambda*")
+    if cvc and not folds:
+        problems.append("no folds are scored by both codes")
+    ok1 = bool(cvc) and not problems and bool(folds)
     if args.clean_dir:
         ref, name = float(vs.read_clean(args.clean_dir)[3]["flux_jy"]), f"CLEAN ({args.clean_dir})"
     else:
         ref, name = vs.REFERENCE_FLUX_JY, vs.REFERENCE_FLUX_NAME
     stages = [bool(st.get("c8_converged", st["convergence"]["converged"])) for st in fit.get("stages", [])]
-    b = vs.better_than_mpol(heldout_ours=ho("virgil_lam_star"), heldout_mpol=ho("mpol"), chi2n_ours=(fit.get("summary") or {}).get("chi2n_raw"), synth=load(args.synth), synth_r=load(args.synth_r),
-                            flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages_converged=stages)
+    chi2n = (fit.get("summary") or {}).get("chi2n_raw", fit.get("chi2_raw_over_n"))  # alma_imlup_gp.py writes the latter at the top level
+    b = vs.better_than_mpol(heldout_ours=[ours[f]["chi2_raw_per_n"] for f in folds] if ok1 else None, heldout_mpol=[mpol[f]["chi2_raw_per_n"] for f in folds] if ok1 else None, chi2n_ours=chi2n,
+                            synth=load(args.synth), synth_r=load(args.synth_r), flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages_converged=stages)
+    b["cv_problems"] = problems
     b.update(fit=str(args.fit), config=fit.get("config"), workflow=fit.get("workflow"))
     dump(out / "better_than_mpol.json", b)
     (out / "better_than_mpol.md").write_text("\n".join(vs.better_markdown(b)) + "\n")

@@ -1,6 +1,6 @@
 """Synthetic truth for the IM Lup arms (Track A of ``design/alma_imlup_p3.md``): a smooth, dot-free image observed at the real uv and weights, and the scores of a reconstruction against it.
 
-The truth is a supplied image (the default recipe: the classic-MEM arm's base image blurred to 15 mas, renormalised to 0.25 Jy), so it has no dots by construction. The data are its model
+The truth is a supplied image (the default recipe: the classic-MEM arm's base image blurred to 15 mas, renormalised to 0.25 Jy), so it has no dots by construction. That recipe takes the truth from a candidate arm, which favours that arm in the NRMSE contest: ``alma_imlup_synth.py make`` records the origin in ``synth_make.json`` and ``synth.json`` (``truth_origin``), and an independent truth (the CLEAN model, an analytic ring) is the cross-check: pass criterion 3 on both. The data are its model
 visibilities at the real (u, v) and weights with Gaussian noise of variance ``1 / w`` per component (the quoted weights, ``s = 1``) and no gains, offsets or error scales. A reconstruction is
 scored by NRMSE of the images smoothed to a fraction of the CLEAN beam, by ``dots_report`` on its base image and by its flux, so a method that makes dots from smooth data shows it.
 """
