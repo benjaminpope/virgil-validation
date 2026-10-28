@@ -562,6 +562,8 @@ nodes:
   virgil_bridge.alma: {layer: references, doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
   virgil_bridge.alma_start: {layer: references, doc: alma_conventions.md}  # IM Lup MaxEnt cold starts: our CLEAN model regridded to the fit grid, the image-fixed stage's gain check
   virgil_bridge.alma_gp: {layer: references, doc: alma_conventions.md}  # IM Lup GP image: Image(MultipoleField) with config R's nuisances through the Toeplitz chi^2; stage 1 holds the nuisances (`alma_imlup_gp.py`)
+  virgil_bridge.alma_synth: {layer: references, doc: alma_conventions.md}  # IM Lup synthetic truth: smooth disk, real uv and weights, dots/NRMSE scoring (`alma_imlup_synth.py`)
+  virgil_bridge.alma_replica: {layer: references, doc: alma_conventions.md}  # MPoL replica: softplus pixels, in-model blur, AdamW, MPoL step counts; replica-vs-MPoL bands (`alma_imlup_maxent.py fit --workflow mpol-replica`)
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
   crosscheck.alma_speed: {layer: references, doc: alma_conventions.md}  # virgil's L-BFGS against MPoL's AdamW on IM Lup: objective vs wall time, time to target, cost per pass (numpy only; `alma_imlup_maxent.py speed`)
