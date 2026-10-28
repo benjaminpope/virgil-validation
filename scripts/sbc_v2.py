@@ -260,16 +260,16 @@ def run(args, replicate_fn=None):
     import virgil
 
     s = spec()
-    if regime not in s["regimes"]:
-        raise SystemExit(f"unknown regime {regime}: {sorted(s['regimes'])}")
-    reps_per_task = args.replicates or s["regimes"][regime]["replicates_per_task"]
+    if args.regime not in s["regimes"]:
+        raise SystemExit(f"unknown regime {args.regime}: {sorted(s['regimes'])}")
+    reps_per_task = args.replicates or s["regimes"][args.regime]["replicates_per_task"]
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     commit = virgil_commit()
     if not commit:
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
-    path = out_dir / f"task_{regime}_{args.task:04d}.json"
-    head = {"regime": regime, "task": args.task, "virgil_commit": commit, "criteria_hash": criteria_hash(),
+    path = out_dir / f"task_{args.regime}_{args.task:04d}.json"
+    head = {"regime": args.regime, "task": args.task, "virgil_commit": commit, "criteria_hash": criteria_hash(),
             "design_hash": design_hash(), "replicates_planned": reps_per_task, "registered": reg.registered,
             **({} if reg.registered else {"stamp": prereg.UNREGISTERED_STAMP}),
             "override": [args.warmup, args.samples, args.chains] if args.warmup else None}
@@ -281,7 +281,7 @@ def run(args, replicate_fn=None):
         results = list(old["replicates"])
     done = {r["seed"] for r in results}
     replicate_fn = replicate_fn or replicate
-    seeds = [args.seed_base + SEED_OFFSET[regime] + args.task * reps_per_task + k for k in range(reps_per_task)]
+    seeds = [args.seed_base + SEED_OFFSET[args.regime] + args.task * reps_per_task + k for k in range(reps_per_task)]
 
     def write():
         record = {**head, "virgil": getattr(virgil, "__version__", "?"), "complete": len(results) == len(seeds),
@@ -296,9 +296,9 @@ def run(args, replicate_fn=None):
         if seed in done:
             continue
         t0 = time.time()
-        results.append(replicate_fn(seed, regime, head["override"]))
+        results.append(replicate_fn(seed, args.regime, head["override"]))
         write()
-        print(f"replicate regime={regime} seed={seed} elapsed={time.time() - t0:.1f}s "
+        print(f"replicate regime={args.regime} seed={seed} elapsed={time.time() - t0:.1f}s "
               f"ranks={results[-1]['ranks']}", flush=True)
     write()
     print(f"wrote {path} elapsed={time.time() - start:.0f}s")

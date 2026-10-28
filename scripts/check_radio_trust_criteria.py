@@ -1,4 +1,7 @@
-"""Gate: the radio trust nodes of trust/graph.yml ask for at least what design/radio_trust_criteria.yml registers.
+"""Gate: the radio trust nodes of trust/graph.yml are all present and ask for at least the roots design/radio_trust_criteria.yml registers.
+
+It pins the node set and each node's ``roots`` and ``properties`` as written in the graph. Every radio node registers the default of one root,
+so in practice it guards the node list and the ``conjugation`` property; the status rules themselves are scripts/trust.py's.
 
 The criteria file is pinned in design/criteria_registry.json (``crosscheck.preregistration``); the script exits
 non-zero if it is not the pinned file, or if a radio node in the graph needs fewer roots or properties than registered

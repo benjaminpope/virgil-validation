@@ -3,6 +3,8 @@
 # origin/main 473d8cc. changed after seeing a result: no (extraction only; no value differs).
 # scripts/check_radio_trust_criteria.py exits non-zero if this file is not the hash pinned in
 # design/criteria_registry.json, or if a node in graph.yml asks for less than it says here.
+# It pins the node set and the property roots (read_ms: conjugation); every node registers the default of one root, as in the graph.
+# Status rules are scripts/trust.py's and are not pinned here.
 nodes:
   virgil.radio.ComplexVisData: {roots: 1}
   virgil.radio.ComplexVisData.read_ms: {roots: 1, properties: {conjugation: 1}}

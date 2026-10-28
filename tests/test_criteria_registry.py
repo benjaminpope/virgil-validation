@@ -56,6 +56,8 @@ def test_the_unregistered_flag_stamps_the_output(tmp_path, capsys):
     out = prereg.stamp({"pass": True, "verdict": "PASS"}, r)
     assert out["stamp"] == prereg.UNREGISTERED_STAMP == "UNREGISTERED: not gate evidence"
     assert out["registered"] is False and out["pass"] is False
+    assert out["verdict"] == "UNREGISTERED"  # the IM Lup gates report a verdict, not a pass flag
+    assert prereg.stamp({"verdict": "FAIL"}, r)["verdict"] == "FAIL"  # only a PASS is downgraded
     lines = prereg.stamp_lines(["table"], r)
     assert lines[0].startswith(f"**{prereg.UNREGISTERED_STAMP}**") and lines[-1] == "table"
     assert prereg.UNREGISTERED_STAMP in capsys.readouterr().err
@@ -106,8 +108,8 @@ def test_campaign_scripts_exit_on_a_changed_criteria_file(tmp_path, monkeypatch,
 @pytest.mark.parametrize("name", ["detection_campaign", "pull_campaign", "sbc_v2", "alma_imlup_toeplitz_check", "alma_imlup_maxent", "check_radio_trust_criteria"])
 def test_every_gate_script_uses_the_helper(name):
     src = (ROOT / "scripts" / f"{name}.py").read_text()
-    assert "crosscheck.preregistration" in src and "prereg.check(" in src or "prereg.for_args(" in src
-    assert "prereg.add_argument(" in src or name == "alma_imlup_toeplitz_check" and "prereg.add_argument(p)" in src
+    assert "crosscheck.preregistration" in src and ("prereg.check(" in src or "prereg.for_args(" in src)
+    assert "prereg.add_argument(" in src
 
 
 def test_the_toeplitz_limits_are_the_ones_the_script_had():
@@ -140,3 +142,16 @@ def test_the_radio_trust_gate(tmp_path):
     assert any("conjugation" in b for b in bad) and any("primary_beam: not in the graph" in b for b in bad)
     out = tmp_path / "r.json"
     assert mod.main(["--out", str(out)]) == 0 and json.loads(out.read_text())["registered"] is True
+
+
+def test_gate_scripts_have_no_undefined_names():
+    """A blanket edit once left ``regime`` undefined in sbc_v2.run, which the refusal tests never reach."""
+    import shutil
+    import subprocess
+
+    ruff = shutil.which("ruff")
+    if ruff is None:
+        pytest.skip("ruff is not installed")
+    files = [f"scripts/{n}.py" for n in ("detection_campaign", "pull_campaign", "sbc_v2", "alma_imlup_toeplitz_check", "alma_imlup_maxent", "check_radio_trust_criteria")]
+    done = subprocess.run([ruff, "check", "--select", "F821", "--no-cache", *files, "src/crosscheck/preregistration.py"], cwd=ROOT, capture_output=True, text=True)
+    assert done.returncode == 0, done.stdout

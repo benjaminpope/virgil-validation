@@ -88,6 +88,8 @@ def stamp(record: dict, reg: Registration) -> dict:
         out["stamp"] = UNREGISTERED_STAMP
         if "pass" in out:
             out["pass"] = False  # an unregistered run is never a pass
+        if out.get("verdict") == "PASS":
+            out["verdict"] = "UNREGISTERED"  # the IM Lup gates report a verdict, not a pass flag
         out.setdefault("unregistered_reason", reg.reason)
     return out
 

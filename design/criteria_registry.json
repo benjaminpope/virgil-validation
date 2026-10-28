@@ -32,7 +32,7 @@
    "pinned_at": "extracted verbatim from origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
   },
   "design/radio_trust_criteria.yml": {
-   "sha256": "7d8d0733385e687eb66a80acb1242b5e1debbc057f4d9da12d5420f49e83b88c",
+   "sha256": "7676d467d2a8c26af9274d5bcaa1b2aca68b299d21dd72f814218c92a748a882",
    "used_by": "scripts/check_radio_trust_criteria.py",
    "changed_after_seeing_a_result": "no",
    "pinned_at": "extracted verbatim from origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
