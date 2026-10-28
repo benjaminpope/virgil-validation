@@ -7,6 +7,18 @@ criteria file. ``check`` hashes the file now and compares it with the pin; a gat
 hash exits non-zero. ``--allow-unregistered`` (``add_argument``) is for development runs only: it lets the
 run go ahead, and every output then carries ``UNREGISTERED_STAMP`` and ``registered: false``.
 
+API, for a gate script:
+
+    import crosscheck.preregistration as prereg
+    prereg.add_argument(parser)                          # adds --allow-unregistered
+    reg = prereg.check(CRITERIA_FILE, allow_unregistered=args.allow_unregistered)   # or prereg.for_args(args, CRITERIA_FILE)
+    record = prereg.stamp(record, reg)                   # JSON: criteria_file, criteria_hash, registered; stamp + pass False if not
+    lines = prereg.stamp_lines(markdown_lines, reg)      # text: stamp and hash header
+    prereg.require_registered_runs(run_records, reg)     # an aggregate refuses unregistered runs
+
+Pin a new file by adding {"sha256", "used_by", "changed_after_seeing_a_result", "pinned_at"} under its repo-relative path in the
+registry (``python -m crosscheck.preregistration FILE`` prints the hash). ``stamp`` also turns a verdict of PASS into UNREGISTERED.
+
 Changing a pinned file means changing its pin in the same commit, so the diff shows it. A change after a
 result was seen is "post-hoc": say so in the registry entry (``changed_after_seeing_a_result``) and the
 release notes. Nothing here changes a criterion's value.
