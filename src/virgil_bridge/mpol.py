@@ -12,7 +12,7 @@ In short, for pixel size ``dx`` (mas) and ``N`` pixels:
   So ``virgil = unpacked[::-1, ::-1]`` with ``dra = ddec = -dx/2`` and
   ``flux = sum(I) dx^2``.
 * ``cal.gain = g``, ``cal.sigma = g * s_M`` per ddid, ``cal.offset = 1000 *
-  (delta_ra, delta_dec)`` mas, ``taper_fwhm_mas = 1000 * FWHM``, ``alpha`` off.
+  (delta_ra, delta_dec)`` mas, ``blur_fwhm_mas = 1000 * FWHM``, ``alpha`` off.
 
 Only this module imports virgil (the independence rule); everything MPoL
 runs in ``external_bridge.mpol_worker``.

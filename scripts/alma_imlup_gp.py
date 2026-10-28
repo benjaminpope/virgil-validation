@@ -70,6 +70,12 @@ def stage_record(name, info, traj, wall, why, eval_s):
                 loss_final=float(info["loss"]), trajectory=traj)
 
 
+def resolve_grid(args):
+    """``(n_r, n_theta)``: ``--n-r`` and ``--n-theta`` where given, else ``vg.auto_grid`` (the 160 x 256 of the gate at r_max 2.4 arcsec, finer for short lengths and larger r_max)."""
+    auto = vg.auto_grid(args.r_max_mas, args.length_r_mas, args.length_theta_rad)
+    return args.n_r or auto[0], args.n_theta or auto[1]
+
+
 def fit(args, data):
     """The two-stage fit of ``args`` on ``data`` (a ``ComplexVisData``); writes the outputs of the module docstring into ``args.out`` and returns ``result.json``'s dict."""
     t_start = time.time()
@@ -82,8 +88,9 @@ def fit(args, data):
         say(f"restored CLEAN image {clean_info['clean_dir']}: flux in the field {clean_info['flux_in_field_jy']:.5f} Jy, beam {beam[0]:.1f} x {beam[1]:.1f} mas @ {beam[2]:.0f} deg")
         if not args.mean_from_clean:
             mean = None  # the beam only
+    args.n_r, args.n_theta = resolve_grid(args)
     field = dict(length_r=args.length_r_mas, length_theta=args.length_theta_rad, npix=args.npix, pixel_mas=args.pixel_mas, n_r=args.n_r, n_theta=args.n_theta,
-                 r_max_mas=args.r_max_mas, inc=args.inc, pa=args.pa, mean=mean, mean_floor=args.mean_floor)
+                 r_max_mas=args.r_max_mas, inc=args.inc, pa=args.pa, mean=mean, mean_floor=args.mean_floor, sigma_range=(args.sigma_min, args.sigma_max))
     try:
         prob = vg.build_gp_problem(data, ref_obs=ref_obs, offset_bound_mas=args.offset_bound_mas, **field)
     except va.ToeplitzRefused as e:
@@ -103,7 +110,7 @@ def fit(args, data):
     full = lambda values: {**{k: np.asarray(v) for k, v in held.items()}, **{k: np.asarray(v) for k, v in values.items()}}  # noqa: E731
     stages = []
     hyper = dict(length_r_mas=args.length_r_mas, length_theta_rad=args.length_theta_rad, n_r=args.n_r, n_theta=args.n_theta, r_max_mas=args.r_max_mas, inc_deg=args.inc, pa_deg=args.pa,
-                 nu=vg.GP["nu"], sigma_prior=list(vg.GP["sigma_range"]), mean_from_clean=args.mean_from_clean, mean_floor=args.mean_floor if args.mean_from_clean else None)
+                 nu=vg.GP["nu"], sigma_prior=[args.sigma_min, args.sigma_max], mean_from_clean=args.mean_from_clean, mean_floor=args.mean_floor if args.mean_from_clean else None)
 
     def save(values, stages, complete=False):
         """``values.npz`` and ``result.json``; with ``values=None`` only ``result.json`` (a non-finite stage: ``values.npz`` keeps the last finite round)."""
@@ -193,9 +200,11 @@ def parser():
     p.add_argument("--mean-floor", type=float, default=vg.GP["mean_floor"], help="floor of the restored CLEAN template, as a fraction of its peak")
     p.add_argument("--npix", type=int, default=vg.GP["npix"])
     p.add_argument("--pixel-mas", type=float, default=vg.GP["pixel_mas"])
-    p.add_argument("--n-r", type=int, default=vg.GP["n_r"], help="radial nodes of the polar grid (about 15 mas apart at 160)")
-    p.add_argument("--n-theta", type=int, default=vg.GP["n_theta"])
-    p.add_argument("--r-max-mas", type=float, default=vg.GP["r_max_mas"])
+    p.add_argument("--n-r", type=int, default=None, help="radial nodes of the polar grid (default: 160 per 2.4 arcsec, and at least 2 per --length-r-mas)")
+    p.add_argument("--n-theta", type=int, default=None, help="azimuthal nodes (default: 256, and at least 2 per --length-theta-rad)")
+    p.add_argument("--r-max-mas", type=float, default=vg.GP["r_max_mas"], help="outer radius of the field; beyond the disc's 2.4 arcsec removes the outer cut-off")
+    p.add_argument("--sigma-min", type=float, default=vg.GP["sigma_range"][0], help="lower bound of the log-uniform prior of the field amplitude sigma")
+    p.add_argument("--sigma-max", type=float, default=vg.GP["sigma_range"][1], help="upper bound of the field amplitude sigma's prior (raise it if the fit ends at the bound)")
     p.add_argument("--inc", type=float, default=vg.GP["inc_deg"], help="disc inclination (deg, fixed): DSHARP, Huang et al. 2018")
     p.add_argument("--pa", type=float, default=vg.GP["pa_deg"], help="disc major-axis position angle (deg, fixed)")
     p.add_argument("--ref-obs", type=int, default=0, help="the observation whose gain is 1 and offset 0")

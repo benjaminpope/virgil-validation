@@ -301,7 +301,7 @@ def problem():
     data = virgil_data(z)
     nu0 = float(np.sum(z["weight"] * z["freq"]) / np.sum(z["weight"]))
     return dict(z=z, eta=eta, b=brightness, data=data, nu0=nu0,
-                nuis=radio.CalibrationNuisance(data, nu0_hz=nu0, taper_fwhm_mas=TAPER))
+                nuis=radio.CalibrationNuisance(data, nu0_hz=nu0, blur_fwhm_mas=TAPER))
 
 
 def _model(problem, nuis=None):
@@ -361,7 +361,7 @@ def test_control_the_offset_with_the_opposite_sign_does_not_match(problem):
 @pytest.mark.validates("virgil.radio.CalibrationNuisance", roots=["mathematics"])
 def test_default_reference_frequency_is_the_weight_averaged_frequency(problem):
     """Without `nu0_hz` the spectral index pivots at sum(w nu)/sum(w), as documented."""
-    nuis = radio.CalibrationNuisance(problem["data"], taper_fwhm_mas=TAPER)
+    nuis = radio.CalibrationNuisance(problem["data"], blur_fwhm_mas=TAPER)
     with ft_defaults(ft="dft"):
         got = _model(problem, nuis)
     ref = _ref(problem)
@@ -468,7 +468,7 @@ def test_half_chi2_plus_log_norm_is_the_negative_scipy_log_density_up_to_a_const
     values = _two_parameter_sets()[which]
     z, vis = problem["z"], noisy_vis(problem)
     data = virgil_data(z, vis)
-    nuis = radio.CalibrationNuisance(data, nu0_hz=problem["nu0"], taper_fwhm_mas=TAPER)
+    nuis = radio.CalibrationNuisance(data, nu0_hz=problem["nu0"], blur_fwhm_mas=TAPER)
     term = data.term(lambda _: virgil_scene(problem["eta"]), nuis)
     with ft_defaults(ft="dft"):
         res = np.asarray(term(values))
@@ -501,7 +501,7 @@ def test_masked_points_drop_out_of_chi2_and_the_normalisation(problem):
     out = []
     for v in (vis, np.where(mask, vis, 1e3 + 1e3j)):  # the second corrupts the masked points
         data = virgil_data(z, v)
-        nuis = radio.CalibrationNuisance(data, nu0_hz=problem["nu0"], taper_fwhm_mas=TAPER)
+        nuis = radio.CalibrationNuisance(data, nu0_hz=problem["nu0"], blur_fwhm_mas=TAPER)
         term = data.term(lambda _: virgil_scene(problem["eta"]), nuis, mask=mask)
         with ft_defaults(ft="dft"):
             res = np.asarray(term(values))
@@ -559,7 +559,7 @@ def test_chi2_by_ddid_of_a_held_out_fold_matches_numpy(problem):
     points and their count, against numpy with the independent model; with no mask, all points."""
     z, vis = problem["z"], noisy_vis(problem)
     data = virgil_data(z, vis)
-    nuis = radio.CalibrationNuisance(data, nu0_hz=problem["nu0"], taper_fwhm_mas=TAPER)
+    nuis = radio.CalibrationNuisance(data, nu0_hz=problem["nu0"], blur_fwhm_mas=TAPER)
     fold = np.asarray(radio.dartboard_folds(data, k=5)[0])
     ref = _ref(problem)
     s = NUISANCE["cal.sigma"][z["ddid"]]
