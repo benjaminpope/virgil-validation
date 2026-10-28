@@ -65,7 +65,7 @@ VERDICTS = {
 }
 ROOT_NAMES = {
     "mathematics": "mathematics", "standards": "standards", "statistics": "statistics",
-    "literature": "published result", "render": "independent render", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
+    "literature": "published result", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
     "fouriever": "fouriever", "frank": "frank / FRAP (one root)", "visr": "vis-r", "frap": "FRAP", "oimodeler": "oimodeler",
     "ehtim": "eht-imaging", "mpol": "MPoL", "casa": "CASA", "orbitize": "orbitize!",
     "self-consistency": "virgil itself",
@@ -137,7 +137,8 @@ def load_golden(path=ROOT / "trust" / "golden.yml"):
 
 # frank and FRAP both apply the Baddour-Chouinard Fourier-Bessel matrix on the J0 zeros: they agree to ~1e-16 for
 # the same Rmax and N, so together they are one independent root. Records are counted under the first name.
-ROOT_ALIAS = {"frap": "frank"}
+# Legacy "render" records in older evidence files map to "mathematics".
+ROOT_ALIAS = {"frap": "frank", "render": "mathematics"}
 
 
 def roots_of(record, golden):
@@ -323,17 +324,83 @@ def doc_url(doc):
 
 UNFIXED = {"open", "to-raise", "raised"}
 # Roots that can confirm a convention taken from virgil's documentation: code
-# or results written by other people, or an image we render from the physical
-# geometry (what the convention means on the sky) rather than from virgil's
-# formula. Mathematics and standards are our own transcriptions of the
-# documented formula, so they cannot.
-EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature", "render",
+# or results written by other people. Mathematics and standards are our own
+# transcriptions of the documented formula, so they cannot.
+EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature",
             "frank", "visr", "frap", "oimodeler"}
 
+_AGENT_MARKERS = ("co-authored-by:", "claude", "argon", "anthropic", "cursor", "copilot", "gemini", "openai")
+_HUMAN_SIGNERS = {"Benjamin Pope", "Ben Pope"}
 
-def load_signoffs(path=ROOT / "trust" / "signoffs.yml"):
-    """{node: {property: entry}}: conventions confirmed by a cited paper or Ben's sign-off."""
-    return (yaml.safe_load(open(path)) or {}) if pathlib.Path(path).exists() else {}
+
+def _is_human_signoff(path, start_line, end_line, repo=ROOT):
+    """True iff every line in [start_line, end_line] is committed in ``repo``
+    by Benjamin Pope with no AI co-author trailer or agent marker."""
+    try:
+        blame = subprocess.run(
+            ["git", "-C", str(repo), "blame", "--porcelain", f"-L{start_line},{end_line}", "--", str(path)],
+            capture_output=True, text=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    shas = {
+        line.split()[0]
+        for line in blame.splitlines()
+        if re.match(r"^[0-9a-f]{40} \d+ \d+", line)
+    }
+    if not shas or ("0" * 40) in shas:
+        return False
+    for sha in shas:
+        try:
+            info = subprocess.run(
+                ["git", "-C", str(repo), "show", "-s", "--format=%an%n%cn%n%B", sha],
+                capture_output=True, text=True, check=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError):
+            return False
+        lines = info.splitlines()
+        if len(lines) < 2 or lines[0].strip() not in _HUMAN_SIGNERS or lines[1].strip() not in _HUMAN_SIGNERS:
+            return False
+        body = "\n".join(lines[2:]).lower()
+        if any(marker in body for marker in _AGENT_MARKERS):
+            return False
+    return True
+
+
+def load_signoffs(path=ROOT / "trust" / "signoffs.yml", repo=ROOT):
+    """{node: {property: entry}}: conventions confirmed by a cited paper or Ben's sign-off.
+    A ``by:`` sign-off counts only if its lines in ``signoffs.yml`` were committed by Ben
+    with no agent co-author trailer."""
+    path = pathlib.Path(path)
+    if not path.exists():
+        return {}
+    text = path.read_text()
+    n_lines = len(text.splitlines())
+    raw = yaml.safe_load(text) or {}
+    root_node = yaml.compose(text)
+    if root_node is None or not isinstance(root_node, yaml.MappingNode) or n_lines == 0:
+        return {}
+    out = {}
+    for node_k, props_v in root_node.value:
+        node_name = node_k.value
+        if not isinstance(props_v, yaml.MappingNode):
+            continue
+        kept = {}
+        for prop_k, entry_v in props_v.value:
+            prop_name = prop_k.value
+            entry = (raw.get(node_name) or {}).get(prop_name)
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("citation"):
+                kept[prop_name] = entry
+            elif entry.get("by"):
+                start = prop_k.start_mark.line + 1
+                end = min(n_lines, max(start, entry_v.end_mark.line))
+                if _is_human_signoff(path, start, end, repo=repo):
+                    kept[prop_name] = entry
+        if kept:
+            out[node_name] = kept
+    return out
 
 
 def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None):

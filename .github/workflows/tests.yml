@@ -24,7 +24,7 @@ jobs:
           ref="$VIRGIL_REF"
           if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; fi
           echo "Testing virgil at $ref"
-          uv pip install --python .venv/bin/python -e ".[external]" \
+          uv pip install --python .venv/bin/python -e ".[external,polar-disk]" \
             "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref"
       - name: imaging-contest data cache
         uses: actions/cache@v4
@@ -68,7 +68,6 @@ jobs:
           fetch-depth: 0
       - name: trust page
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-        continue-on-error: true
         run: |
           extra=$( [ -f virgil-evidence.jsonl ] && echo "--evidence virgil-evidence.jsonl" )
           .venv/bin/python scripts/trust.py --evidence evidence.jsonl $extra \

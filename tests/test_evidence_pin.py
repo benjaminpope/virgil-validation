@@ -65,13 +65,50 @@ def test_committed_evidence_is_pinned_to_one_commit():
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
-def test_a_non_strict_xfail_records_xfailed_or_passed_never_a_failure():
-    """A flaky test marked xfail(strict=False) is a pass when it passes and xfailed when it does not;
-    the Trust page counts xpassed as failing, so the plugin must not record it."""
+def test_xfail_records_xfailed_or_xpassed_never_passed():
+    """An expected failure is recorded as xfailed, and an unexpected pass (XPASS)
+    is recorded as xpassed so that the Trust page treats it as failing."""
     from types import SimpleNamespace
 
     from evidence.plugin import _outcome
 
-    assert _outcome(SimpleNamespace(wasxfail="flaky", skipped=True, outcome="skipped")) == "xfailed"
-    assert _outcome(SimpleNamespace(wasxfail="flaky", skipped=False, outcome="passed")) == "passed"
+    assert _outcome(SimpleNamespace(wasxfail="bug", skipped=True, outcome="skipped")) == "xfailed"
+    assert _outcome(SimpleNamespace(wasxfail="bug", skipped=False, outcome="passed")) == "xpassed"
     assert _outcome(SimpleNamespace(skipped=False, outcome="failed")) == "failed"
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_collection_enforces_strict_xfail_and_finding_bi_implication(tmp_path):
+    """xfail requires strict=True and kind in ('finding', 'upstream'), and vice versa."""
+    from types import SimpleNamespace
+
+    from evidence.plugin import pytest_collection_modifyitems
+
+    dummy_file = tmp_path / "test_dummy.py"
+    dummy_file.write_text("pass\n")
+    cfg = SimpleNamespace(getoption=lambda name: True)
+
+    def make_item(kind, xfail_kwargs=None):
+        v_mark = pytest.mark.validates("virgil.models.UniformDisk", roots=["mathematics"], kind=kind).mark
+        x_marks = [] if xfail_kwargs is None else [pytest.mark.xfail(**xfail_kwargs).mark]
+
+        def iter_markers(name):
+            return [v_mark] if name == "validates" else (x_marks if name == "xfail" else [])
+
+        return SimpleNamespace(nodeid="test_dummy.py::test_x", path=dummy_file, iter_markers=iter_markers)
+
+    # Valid combinations pass collection
+    pytest_collection_modifyitems(cfg, [make_item("check")])
+    pytest_collection_modifyitems(cfg, [make_item("finding", {"strict": True})])
+    pytest_collection_modifyitems(cfg, [make_item("upstream", {"strict": True})])
+
+    # Invalid combinations fail collection
+    for bad in (
+        make_item("check", {"strict": True}),
+        make_item("check", {"strict": False}),
+        make_item("finding", {"strict": False}),
+        make_item("finding"),
+        make_item("upstream"),
+    ):
+        with pytest.raises(pytest.UsageError, match="invalid xfail / finding markers"):
+            pytest_collection_modifyitems(cfg, [bad])

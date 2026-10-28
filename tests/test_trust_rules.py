@@ -208,3 +208,51 @@ def test_provenance_is_taken_before_the_evidence_file_exists(tmp_path, monkeypat
     plugin.pytest_sessionfinish(session)
     assert seen == [False]
     assert json.loads(path.read_text().splitlines()[0]) == {"record": "run"}
+
+
+def test_render_is_not_an_external_or_allowed_root(trust):
+    import evidence
+
+    assert "render" not in evidence.ROOTS
+    assert "render" not in trust.EXTERNAL
+
+
+def test_agent_authored_signoffs_are_rejected(trust, tmp_path):
+    """A 'by: Benjamin Pope' sign-off counts only if committed by Ben with no agent co-author trailer."""
+    import subprocess
+
+    # The existing entry in trust/signoffs.yml was added in 67c90c30 with Co-Authored-By: Claude Opus 5.5
+    assert "calibration" not in trust.load_signoffs().get("virgil.orbits.PositionData", {})
+
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    sig = tmp_path / "signoffs.yml"
+    content = (
+        "virgil.a:\n"
+        "  sense:\n"
+        "    by: Benjamin Pope\n"
+        "    date: 2026-10-28\n"
+        "    commit: " + "a" * 40 + "\n"
+        "  cited:\n"
+        "    citation: 'Author (2020), eq. 1'\n"
+    )
+    sig.write_text(content)
+
+    # Uncommitted sign-off is rejected; citation still counts
+    assert trust.load_signoffs(sig, repo=tmp_path) == {"virgil.a": {"cited": {"citation": "Author (2020), eq. 1"}}}
+
+    # Committed with an agent Co-Authored-By trailer: rejected
+    subprocess.run(["git", "-C", str(tmp_path), "add", "signoffs.yml"], check=True)
+    env = {"GIT_AUTHOR_NAME": "Benjamin Pope", "GIT_AUTHOR_EMAIL": "ben@example.com",
+           "GIT_COMMITTER_NAME": "Benjamin Pope", "GIT_COMMITTER_EMAIL": "ben@example.com"}
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "-m", "Sign off\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"],
+        check=True, capture_output=True, env=env,
+    )
+    assert "sense" not in trust.load_signoffs(sig, repo=tmp_path).get("virgil.a", {})
+
+    # Re-committed cleanly by Benjamin Pope with no agent marker: accepted
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "commit", "--amend", "-m", "Human sign-off"],
+        check=True, capture_output=True, env=env,
+    )
+    assert "sense" in trust.load_signoffs(sig, repo=tmp_path).get("virgil.a", {})
