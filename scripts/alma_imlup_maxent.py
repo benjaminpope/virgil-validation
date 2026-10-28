@@ -262,7 +262,7 @@ def run_stages(args, data, prob_for, init_dir, save=None):
 
 
 # MPoL's offsets are free (arcsec, AdamW lr 1e-2 = 10 mas a step): the Toeplitz precompute must contain every offset the optimiser visits, or the run dies on an equinox error (job 19396964, at 100 mas).
-# 2000 mas is far outside any real offset and costs little on IM Lup (npix 1028 x 5 mas): the D grid 2160^2 -> 3750^2 and its 26 ddid arrays 1.9 -> 5.9 GB (c128). A run that still leaves the box reports the peak.
+# 2000 mas is far outside any real offset and costs little on IM Lup (npix 1028 x 5 mas): the D grid 2160^2 -> 3750^2 and its 26 ddid arrays 1.9 -> 5.9 GB (c128). A run that stays inside the box reports its peak; one that leaves it logs the peak of the steps completed before the failing block.
 REPLICA_OFFSET_BOUND_MAS = 2000.0
 
 

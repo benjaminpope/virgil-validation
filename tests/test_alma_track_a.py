@@ -274,7 +274,6 @@ def test_replica_offsets_may_leave_the_default_toeplitz_box_but_not_the_replicas
 
     losses, stopped, stats = run(script.REPLICA_OFFSET_BOUND_MAS)
     assert stopped is None and np.all(np.isfinite(losses)) and stats["peak_offset_mas"] > 400.0
-    assert script.REPLICA_OFFSET_BOUND_MAS > 10 * 20.0
     with pytest.raises(eqx.EquinoxRuntimeError, match="beyond the bound"):
         run(va.TOEPLITZ_OFFSET_BOUND_MAS)
 

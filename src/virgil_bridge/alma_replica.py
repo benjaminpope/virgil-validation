@@ -133,7 +133,12 @@ def run_stage(params, term, *, steps, opt, loss_kw, chunk=100, time_limit=None, 
     t0, done, out, stopped, peak = time.time(), 0, [], None, 0.0
     while done < steps:
         n = min(chunk, steps - done)
-        params, state, ls, pk = block(params, state, term, n)
+        try:
+            params, state, ls, pk = block(params, state, term, n)
+        except eqx.EquinoxRuntimeError:  # an offset left the Toeplitz box inside this block: say how far the completed blocks had gone, then fail as before
+            if log:
+                log(f"  replica: offset left the Toeplitz box in steps {done + 1}-{done + n}; peak |offset| over the {done} completed steps was {peak:.1f} mas")
+            raise
         out.append(np.asarray(ls, float))
         peak = max(peak, float(pk))
         if stats is not None:
