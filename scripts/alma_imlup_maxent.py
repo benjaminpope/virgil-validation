@@ -261,7 +261,9 @@ def run_stages(args, data, prob_for, init_dir, save=None):
     return prob, {k: np.asarray(v) for k, v in values.items()}, stages, shat
 
 
-REPLICA_OFFSET_BOUND_MAS = 100.0
+# MPoL's offsets are free (arcsec, AdamW lr 1e-2 = 10 mas a step): the Toeplitz precompute must contain every offset the optimiser visits, or the run dies on an equinox error (job 19396964, at 100 mas).
+# 2000 mas is far outside any real offset and costs little on IM Lup (npix 1028 x 5 mas): the D grid 2160^2 -> 3750^2 and its 26 ddid arrays 1.9 -> 5.9 GB (c128). A run that still leaves the box reports the peak.
+REPLICA_OFFSET_BOUND_MAS = 2000.0
 
 
 def run_replica(args, data, prob_for, save=None):
@@ -289,7 +291,9 @@ def run_replica(args, data, prob_for, save=None):
         say(f"stage {name}: replica AdamW, {steps} steps on {n:,} points, lambda_M {lam_m:g}, blur {blur:g} mas (entropy on {'the base image' if not eblur else 'the blurred image'}), "
             f"{'softmax' if args.replica_softmax else 'softplus'} pixels, weight decay {0.0 if args.replica_no_wd else vr.MPOL_RUN['weight_decay']:g}")
         t = time.time()
-        params, losses, wall, stopped = vr.run_stage(params, prob.terms[0], steps=steps, opt=opt, loss_kw=kw, time_limit=args.time_limit, log=say)
+        run_stats = {}
+        params, losses, wall, stopped = vr.run_stage(params, prob.terms[0], steps=steps, opt=opt, loss_kw=kw, time_limit=args.time_limit, log=say, stats=run_stats)
+        say(f"stage {name}: peak |offset| {run_stats.get('peak_offset_mas', 0.0):.1f} mas of the Toeplitz box ±{prob.offset_bound_mas:g} mas")
         hist = np.asarray(losses, float)
         c8 = va.convergence_window(hist)
         why = stopped or ("c8" if c8["converged"] else "max_steps")
@@ -299,7 +303,7 @@ def run_replica(args, data, prob_for, save=None):
                     adam=dict(lr=vr.MPOL_RUN["lr"], eps=1e-8, optimiser="optax.adamw", weight_decay=0.0 if args.replica_no_wd else vr.MPOL_RUN["weight_decay"], float32=True, replica=True, steps=len(hist), c8=c8,
                               loss_final=float(hist[-1]) if len(hist) else None, wall_s=wall, post_step_blur_px=None))
         values = {k: np.asarray(v, float) for k, v in vr.values_of(params, prob.pixel_mas, jnp.asarray(obs_of[:prob.init["cal.sigma"].shape[0]]), args.replica_softmax).items()}
-        stages.append(dict(stage_summary(name, info, traj, time.time() - t, why), chi2=prob.chi2_info))
+        stages.append(dict(stage_summary(name, info, traj, time.time() - t, why), chi2=prob.chi2_info, peak_offset_mas=run_stats.get("peak_offset_mas")))
         stages[-1]["dead_pixels"] = dp = stage_dead_pixels(values, prob, "R")
         say(f"stage {name}: {len(hist)} steps, loss {info['loss']:.8f}, dead pixels base {dp['base']['frac_below_1e-4_peak']:.2%} below 1e-4 of the peak; C8 converged: {c8['converged']}")
         if save:
@@ -519,7 +523,7 @@ def cmd_fit(args):
         if given:
             raise SystemExit(f"--workflow mpol-replica is vv's own full-batch AdamW loop on the Toeplitz chi^2: {', '.join(given)} do not apply")
         args.chi2 = "toeplitz"  # full batch: the data term is virgil's Toeplitz chi^2
-        if args.offset_bound_mas is None:  # MPoL's offsets are unbounded (lr 1e-2 arcsec per step); the Toeplitz precompute needs a box, and an offset beyond it is a runtime error: 100 mas, 5x the default
+        if args.offset_bound_mas is None:  # MPoL's offsets are unbounded (lr 1e-2 arcsec per step); the Toeplitz precompute needs a box, and an offset beyond it is a runtime error: REPLICA_OFFSET_BOUND_MAS
             args.offset_bound_mas = REPLICA_OFFSET_BOUND_MAS
     if args.chi2 == "toeplitz" and args.config != "R" and not args.reg:
         raise SystemExit("--chi2 toeplitz is defined for config R, or F with --reg (one Image, no fitted alpha)")

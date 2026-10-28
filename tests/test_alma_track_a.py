@@ -19,7 +19,7 @@ import virgil_bridge.alma_start as vs  # noqa: E402
 import virgil_bridge.alma_synth as vy  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_alma_maxent import _call, synthetic_dir  # noqa: E402
+from test_alma_maxent import _call, script, synthetic_dir  # noqa: E402
 
 PIX = 5.0
 
@@ -252,6 +252,31 @@ def test_replica_workflow_runs_end_to_end_and_ablation_flags_change_the_run(syn,
         outs[name] = np.load(out / "image.npy")
         assert np.all(np.isfinite(outs[name])) and outs[name].min() >= 0
     assert not np.allclose(outs["base"], outs["nowd"]) and not np.allclose(outs["base"], outs["softmax"])
+
+
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], kind="guard")
+def test_replica_offsets_may_leave_the_default_toeplitz_box_but_not_the_replicas(syn):
+    """MPoL's offsets are free (AdamW at lr 1e-2 arcsec: 10 mas a step), so the replica's Toeplitz box must contain wherever they go (job 19396964 died on the 100 mas box). From a start with
+    offsets of 0.5 arcsec, past both the 20 mas default and the old 100 mas box, steps run in the replica's box with the peak reported, and a 20 mas box raises."""
+    import equinox as eqx
+
+    data = va.load_dir(syn)
+    n_obs, n_ddid = len(np.unique(np.asarray(data.obs))), int(np.asarray(data.ddid).max()) + 1
+
+    def run(bound):
+        prob = va.build_problem(data, "R", lam=va.lam_r(len(data.u)), npix=32, pixel_mas=PIX, chi2="toeplitz", offset_bound_mas=bound)
+        params = vr.start_params(prob, n_obs, n_ddid)
+        params["delta"] = jnp.full_like(params["delta"], 0.5)
+        kw = dict(n_points=len(data.u), obs_of_ddid=jnp.asarray(vr.obs_of_ddid_of(data)), pixel_mas=PIX, lam_m=1e-9, blur_mas=30.0, entropy_blur_mas=30.0, softmax=False)
+        stats = {}
+        _, losses, _, stopped = vr.run_stage(params, prob.terms[0], steps=3, opt=vr.make_optimizer(), loss_kw=kw, chunk=3, stats=stats)
+        return losses, stopped, stats
+
+    losses, stopped, stats = run(script.REPLICA_OFFSET_BOUND_MAS)
+    assert stopped is None and np.all(np.isfinite(losses)) and stats["peak_offset_mas"] > 400.0
+    assert script.REPLICA_OFFSET_BOUND_MAS > 10 * 20.0
+    with pytest.raises(eqx.EquinoxRuntimeError, match="beyond the bound"):
+        run(va.TOEPLITZ_OFFSET_BOUND_MAS)
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
