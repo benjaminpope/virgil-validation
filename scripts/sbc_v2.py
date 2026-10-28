@@ -43,6 +43,8 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import crosscheck.preregistration as prereg  # noqa: E402
+
 CRITERIA_FILE = ROOT / "design" / "sbc_v2.yml"
 SEED_OFFSET = {"bright": 0, "low": 10_000_000}
 
@@ -251,23 +253,25 @@ def replicate(seed, regime, override=None):
 
 
 def run(args, replicate_fn=None):
+    reg = prereg.for_args(args, CRITERIA_FILE)  # refuses before any draw is made
     import jax
 
     jax.config.update("jax_enable_x64", True)
     import virgil
 
     s = spec()
-    if args.regime not in s["regimes"]:
-        raise SystemExit(f"unknown regime {args.regime}: {sorted(s['regimes'])}")
-    reps_per_task = args.replicates or s["regimes"][args.regime]["replicates_per_task"]
+    if regime not in s["regimes"]:
+        raise SystemExit(f"unknown regime {regime}: {sorted(s['regimes'])}")
+    reps_per_task = args.replicates or s["regimes"][regime]["replicates_per_task"]
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     commit = virgil_commit()
     if not commit:
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
-    path = out_dir / f"task_{args.regime}_{args.task:04d}.json"
-    head = {"regime": args.regime, "task": args.task, "virgil_commit": commit, "criteria_hash": criteria_hash(),
-            "design_hash": design_hash(), "replicates_planned": reps_per_task,
+    path = out_dir / f"task_{regime}_{args.task:04d}.json"
+    head = {"regime": regime, "task": args.task, "virgil_commit": commit, "criteria_hash": criteria_hash(),
+            "design_hash": design_hash(), "replicates_planned": reps_per_task, "registered": reg.registered,
+            **({} if reg.registered else {"stamp": prereg.UNREGISTERED_STAMP}),
             "override": [args.warmup, args.samples, args.chains] if args.warmup else None}
     results, start = [], time.time()
     if path.exists():  # resume a task stopped by its time limit
@@ -277,7 +281,7 @@ def run(args, replicate_fn=None):
         results = list(old["replicates"])
     done = {r["seed"] for r in results}
     replicate_fn = replicate_fn or replicate
-    seeds = [args.seed_base + SEED_OFFSET[args.regime] + args.task * reps_per_task + k for k in range(reps_per_task)]
+    seeds = [args.seed_base + SEED_OFFSET[regime] + args.task * reps_per_task + k for k in range(reps_per_task)]
 
     def write():
         record = {**head, "virgil": getattr(virgil, "__version__", "?"), "complete": len(results) == len(seeds),
@@ -292,9 +296,9 @@ def run(args, replicate_fn=None):
         if seed in done:
             continue
         t0 = time.time()
-        results.append(replicate_fn(seed, args.regime, head["override"]))
+        results.append(replicate_fn(seed, regime, head["override"]))
         write()
-        print(f"replicate regime={args.regime} seed={seed} elapsed={time.time() - t0:.1f}s "
+        print(f"replicate regime={regime} seed={seed} elapsed={time.time() - t0:.1f}s "
               f"ranks={results[-1]['ranks']}", flush=True)
     write()
     print(f"wrote {path} elapsed={time.time() - start:.0f}s")
@@ -346,23 +350,27 @@ def analyse(by_regime, s):
 
 
 def aggregate(args):
+    reg = prereg.for_args(args, CRITERIA_FILE)
     s = spec()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("task_*_*.json"))]
     if not files:
         raise SystemExit(f"no results found (no task_<regime>_<task>.json) in {', '.join(map(str, args.dirs))}")
     by_regime = {}
     hashes, designs, commits, versions, seeds, partial = set(), set(), set(), set(), [], 0
+    runs = []
     for f in files:
         r = json.loads(f.read_text())
         if r.get("override"):
             raise SystemExit(f"{f} is a smoke run (sampler overridden): remove it")
         partial += not r.get("complete", True)
         hashes.add(r["criteria_hash"])
+        runs.append(r)
         designs.add(r.get("design_hash"))
         commits.add(r.get("virgil_commit"))
         versions.add(r.get("virgil"))
         by_regime.setdefault(r["regime"], []).extend(r["replicates"])
         seeds += [x["seed"] for x in r["replicates"]]
+    prereg.require_registered_runs(runs, reg)
     if hashes != {criteria_hash()}:
         raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
     if designs != {design_hash()}:
@@ -376,7 +384,7 @@ def aggregate(args):
     summary = {"version": 2, "tasks": len(files), "incomplete_tasks": partial, "virgil": sorted(map(str, versions)),
                "virgil_commit": commits.pop(), "criteria_hash": criteria_hash(), "design_hash": design_hash(),
                "criteria": s, **out}
-    text = json.dumps(summary, indent=1)
+    text = json.dumps(prereg.stamp(summary, reg), indent=1)
     if args.summary:
         pathlib.Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.summary).write_text(text + "\n")
@@ -395,9 +403,11 @@ def main():
     r.add_argument("--samples", type=int, default=0)
     r.add_argument("--chains", type=int, default=0)
     r.add_argument("--out", required=True)
+    prereg.add_argument(r)
     a = sub.add_parser("aggregate")
     a.add_argument("dirs", nargs="+")
     a.add_argument("--summary")
+    prereg.add_argument(a)
     args = ap.parse_args()
     run(args) if args.cmd == "run" else aggregate(args)
 

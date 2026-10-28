@@ -1,0 +1,47 @@
+{
+ "note": "Pre-registered criteria files and their SHA-256 pins (crosscheck.preregistration). Edit a pin only in the same commit as its file, and label a change made after a result post-hoc.",
+ "criteria": {
+  "design/detection_v2.yml": {
+   "sha256": "f725b11fcd58ff1e854abf3e086239ed0a0999441b78c4609aff67447b714076",
+   "used_by": "scripts/detection_campaign.py (run, aggregate)",
+   "changed_after_seeing_a_result": "unknown: registered earlier; see git log of the file",
+   "pinned_at": "content of origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  },
+  "design/pull_campaign.yml": {
+   "sha256": "75fa91a25fa8dc1d3faefa7a6e5fcf064b842ec7aeb5694384577082460a6439",
+   "used_by": "scripts/pull_campaign.py (run, aggregate)",
+   "changed_after_seeing_a_result": "unknown: registered earlier; see git log of the file",
+   "pinned_at": "content of origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  },
+  "design/sbc_v2.yml": {
+   "sha256": "e7537647d8d5d74747dc275d20eea3bab77f9614239da94e245565ae3907afc9",
+   "used_by": "scripts/sbc_v2.py (run, aggregate)",
+   "changed_after_seeing_a_result": "unknown: registered earlier; see git log of the file",
+   "pinned_at": "content of origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  },
+  "design/toeplitz_acceptance.yml": {
+   "sha256": "cb933f2287482478c3220f3e7ac06ec51f99677bce86d9ab03c451b547f4e5da",
+   "used_by": "scripts/alma_imlup_toeplitz_check.py (agree, time, summary)",
+   "changed_after_seeing_a_result": "no",
+   "pinned_at": "extracted verbatim from origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  },
+  "design/alma_imlup_gate_criteria.yml": {
+   "sha256": "3c6767bec513f0c6dc83271f0c06270e3d7f85f305caaeeab063efe663610452",
+   "used_by": "scripts/alma_imlup_maxent.py (compare: cold-start gate; better: Track A)",
+   "changed_after_seeing_a_result": "no",
+   "pinned_at": "extracted verbatim from origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  },
+  "design/radio_trust_criteria.yml": {
+   "sha256": "7d8d0733385e687eb66a80acb1242b5e1debbc057f4d9da12d5420f49e83b88c",
+   "used_by": "scripts/check_radio_trust_criteria.py",
+   "changed_after_seeing_a_result": "no",
+   "pinned_at": "extracted verbatim from origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  },
+  "design/trackb_criteria.md": {
+   "sha256": "702d4f0a3de4e28d8e60012d3b4235d0b51d8db988d796822ea7a56518ba3e53",
+   "used_by": "scripts/trackb_fit.py (already pinned in the script as CRITERIA_SHA256; frozen file, left as it is; tests/test_criteria_registry.py checks the two agree)",
+   "changed_after_seeing_a_result": "unknown: registered earlier; see git log of the file",
+   "pinned_at": "content of origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  }
+ }
+}
