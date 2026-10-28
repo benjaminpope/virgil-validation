@@ -135,7 +135,8 @@ def _pinned(monkeypatch):
 
 def _synth(tid, cov, **kw):
     spec = vs.truth_spec(tid)
-    base = dict(nrmse={"0.5": 0.10, "1": 0.05}, n_eff_ratio=0.9, base_dead_in_disk_1e4=0.0, truth_id=tid, coverage=cov, development=False, truth_source_sha256=vs.truth_source_sha(spec), criteria_hash=vs.criteria_hash())
+    base = dict(nrmse={"0.5": 0.10, "1": 0.05}, n_eff_ratio=0.9, base_dead_in_disk_1e4=0.0, truth_id=tid, coverage=cov, development=False, truth_source_sha256=vs.truth_source_sha(spec), criteria_hash=vs.criteria_hash(),
+                config="R", fit_ddids=vs.coverage_ddids(cov), data_is_truth_dir=True, truth_npy_matches_make=True)
     return {**base, **kw}
 
 
@@ -229,6 +230,20 @@ def test_a_development_or_unregistered_truth_is_refused_and_the_array_is_enumera
         vs.check_synth(_synth("ring_gap", "full", truth_id="mpol_export"), "ring_gap", "full", "x")
     with pytest.raises(vs.GateRefused, match="sha256"):
         vs.check_synth(_synth("mpol_export", "sb", truth_source_sha256="d" * 64), "mpol_export", "sb", "x")
+    with pytest.raises(vs.GateRefused, match="config"):  # R's cells must be config R's; the arm's must be the gated fit's
+        vs.check_synth(_synth("ring_gap", "full", config="F"), "ring_gap", "full", "x", config="R")
+    with pytest.raises(vs.GateRefused, match="workflow"):
+        vs.check_synth(_synth("ring_gap", "full", workflow="p3"), "ring_gap", "full", "x", workflow="mpol")
+    with pytest.raises(vs.GateRefused, match="ddids"):  # an sb cell filled from a full-coverage fit, and the reverse
+        vs.check_synth(_synth("ring_gap", "sb", fit_ddids=None), "ring_gap", "sb", "x")
+    with pytest.raises(vs.GateRefused, match="ddids"):
+        vs.check_synth(_synth("ring_gap", "full", fit_ddids=[0, 1]), "ring_gap", "full", "x")
+    with pytest.raises(vs.GateRefused, match="data are not"):
+        vs.check_synth(_synth("ring_gap", "full", data_is_truth_dir=False), "ring_gap", "full", "x")
+    with pytest.raises(vs.GateRefused, match="data are not"):
+        vs.check_synth(_synth("ring_gap", "full", truth_npy_matches_make=False), "ring_gap", "full", "x")
+    short = vs.c8_recompute({"name": "s", "method": "lbfgs", "trajectory": [dict(steps=200.0, loss=1.0)], "c8_converged": True})  # not evidence either way: NOT EVALUATED, not "tampered"
+    assert short["converged"] is None and "fewer than two" in short["reason"]
     monkeypatch.undo()
     with pytest.raises(vs.GateRefused, match="pin"):  # as registered, the CLEAN truth is unpinned
         vs.check_synth(_synth("clean_model", "full", truth_source_sha256="c" * 64), "clean_model", "full", "x")
@@ -258,7 +273,18 @@ def test_registered_truths_ring_gap_geometry_and_file_pins(tmp_path):
     # the gap (743 mas) is dimmer than the ring (845 mas) along the major axis (PA 144.5 East of North), and the disk is elongated along it
     r0, c0 = cx.phase_centre_cell(1028)
     at = lambda r_mas, pa: img[int(round(r0 - r_mas * np.cos(np.deg2rad(pa)) / 5)), int(round(c0 - r_mas * np.sin(np.deg2rad(pa)) / 5))]  # noqa: E731
-    assert at(743, 144.5) < at(845, 144.5) * 1.5 and at(743, 144.5) < at(660, 144.5)
+    e = lambda r_mas: np.exp(-r_mas / (rec["dust_radius_au"] * 1000 / rec["distance_pc"] / vy.exponential_scale(rec["dust_radius_enclosed_flux"])))  # noqa: E731
+    mpa = 1000 / rec["distance_pc"]  # mas per au
+    G = lambda r, r0, fwhm_au: np.exp(-0.5 * ((r - r0) / (fwhm_au * mpa / 2.3548)) ** 2)  # noqa: E731
+    model = lambda r: e(r) * (1 - rec["gap_depth"] * G(r, rec["gap_r_mas"], rec["gap_fwhm_au"])) * (1 + rec["ring_contrast"] * G(r, rec["ring_r_mas"], rec["ring_fwhm_au"]))  # noqa: E731
+    assert at(743, 144.5) / at(845, 144.5) == pytest.approx(model(743) / model(845), rel=0.05)
+    assert model(743) / model(845) < 0.5 * e(743) / e(845)  # the gap and ring are really there: without them the ratio would be e(743) / e(845)
+    # independent of the formula: the gap and ring sit at the registered radii (within 2 px) in the profile with the exponential divided out, and the axis ratio is cos(i)
+    radii = np.arange(600.0, 951.0, 5.0)
+    prof = np.array([at(r, 144.5) / e(r) for r in radii])
+    inner = radii < 800
+    assert abs(radii[inner][np.argmin(prof[inner])] - rec["gap_r_mas"]) <= 10 and abs(radii[~inner][np.argmax(prof[~inner])] - rec["ring_r_mas"]) <= 10
+    assert at(500 * np.cos(np.deg2rad(rec["inc_deg"])), 144.5 + 90) == pytest.approx(at(500, 144.5), rel=0.05)
     assert at(500, 144.5) > at(500, 144.5 + 90)
     truth, sha, spec = vy.registered_truth("ring_gap")
     assert truth.sum() * 0.005**2 == pytest.approx(0.25, rel=1e-6) and sha == vs.truth_source_sha(spec)
@@ -443,7 +469,7 @@ def test_synth_script_make_run_score_and_the_better_and_replica_compare_commands
     out = tmp_path / "s"
     synth.main(["make", "--data", str(syn), "--out", str(out), "--dev-truth-image", str(truth_img), "--truth-blur-mas", "0", "--flux", "0.25", "--pixel-mas", str(PIX)])
     mk = json.loads((out / "synth_make.json").read_text())
-    assert mk["development"] is True and mk["truth_id"] == "dev_image" and mk["criteria_hash"] if "criteria_hash" in mk else True
+    assert mk["development"] is True and mk["truth_id"] == "dev_image" and "criteria_hash" not in mk
     with pytest.raises(SystemExit):  # neither a registered truth nor a development one
         synth.main(["make", "--data", str(syn), "--out", str(tmp_path / "x"), "--pixel-mas", str(PIX)])
     assert (out / "truth.npy").exists() and len(list(out.glob("ddid_*.npz"))) == 14
@@ -452,6 +478,7 @@ def test_synth_script_make_run_score_and_the_better_and_replica_compare_commands
                 "--pixel-mas", str(PIX), "--max-steps", "10", "--no-dirty"])
     sc = json.loads((fit / "synth.json").read_text())
     assert set(sc["nrmse"]) == {"0.5", "1"} and np.isfinite(sc["flux_error"]) and sc["n_eff_ratio"] > 0
+    assert sc["fit_ddids"] is None and sc["data_is_truth_dir"] and sc["truth_npy_matches_make"]
     assert sc["development"] is True and sc["truth_id"] == "dev_image" and sc["coverage"] == "full" and sc["criteria_hash"] == vs.criteria_hash()
     assert json.loads((fit / "result.json").read_text())["criteria_hash"] == vs.criteria_hash()
     with pytest.raises(SystemExit):  # an unregistered coverage

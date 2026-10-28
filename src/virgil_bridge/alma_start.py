@@ -294,8 +294,14 @@ def truth_source_sha(spec):
     return spec["sha256"]
 
 
-def check_synth(record, truth_id, coverage_id, what):
-    """Refuse a synth.json that is stamped with another hash, is not the registered (``truth_id``, ``coverage_id``) cell, has a development or unpinned truth, or whose truth file is not the registered one."""
+def coverage_ddids(coverage_id):
+    """The ddids a registered coverage fits (None: all of them)."""
+    return next(c["ddids"] for c in CRITERIA["synth"]["coverages"] if c["id"] == coverage_id)
+
+
+def check_synth(record, truth_id, coverage_id, what, config=None, workflow=None):
+    """Refuse a synth.json that is stamped with another hash, is not the registered (``truth_id``, ``coverage_id``) cell, has a development or unpinned truth, whose truth file is not the registered one, that scores a
+    fit of another ``config`` / ``workflow`` than expected (None: unchecked), a fit whose own ``--ddids`` are not the coverage's, or a fit whose data or ``truth.npy`` are not those ``make`` wrote."""
     require_criteria(record, what)
     spec = truth_spec(truth_id)
     if record.get("development"):
@@ -307,6 +313,14 @@ def check_synth(record, truth_id, coverage_id, what):
         raise GateRefused(f"{what}: truth {truth_id!r} has no sha256 pinned in CRITERIA: pin it first")
     if record.get("truth_source_sha256") != want:
         raise GateRefused(f"{what}: truth source sha256 {record.get('truth_source_sha256')!r} is not the registered {want}")
+    for key, want_v in (("config", config), ("workflow", workflow)):
+        if want_v is not None and record.get(key) != want_v:
+            raise GateRefused(f"{what}: scores a fit with {key} {record.get(key)!r}, not the expected {want_v!r}")
+    got, exp = record.get("fit_ddids"), coverage_ddids(coverage_id)
+    if (None if got is None else sorted(got)) != (None if exp is None else sorted(exp)):
+        raise GateRefused(f"{what}: the fit used ddids {got!r}, not coverage {coverage_id!r}'s {exp!r}")
+    if not (record.get("data_is_truth_dir") and record.get("truth_npy_matches_make")):
+        raise GateRefused(f"{what}: the fit's data are not the directory the truth was made in, or truth.npy is not the one synth_make.json hashed")
 
 
 def c8_recompute(stage):
@@ -320,13 +334,16 @@ def c8_recompute(stage):
             raise GateRefused(f"stage {stage.get('name')!r}: Adam stage without adam.loss_history: C8 cannot be recomputed (rerun with this vv)")
         v = convergence_window(hist, tol, window)
     else:
-        v = convergence(stage.get("trajectory") or [], None, tol, window)
+        traj = stage.get("trajectory") or []
+        if len(traj) < 2:
+            return dict(converged=None, change=None, mean_drop=None, name=stage.get("name"), method="lbfgs", reason="fewer than two trajectory records: C8 cannot be recomputed (the fit's own flag is not evidence)")
+        v = convergence(traj, None, tol, window)
     if bool(v["converged"]) != bool(stage.get("c8_converged")):
         raise GateRefused(f"stage {stage.get('name')!r}: stored c8_converged={stage.get('c8_converged')} but its own history gives {v['converged']} (change {v['change']}, mean_drop {v.get('mean_drop')})")
     return dict(v, name=stage.get("name"), method="adam" if adam else "lbfgs")
 
 
-def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages):
+def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages, fit_config=None, fit_workflow=None):
     """The "better than MPoL" pass of Track A (``design/alma_imlup_p3.md``, Ben 2026-10-28): one arm must do all five, each PASS / FAIL / NOT EVALUATED (None input). Every threshold is ``CRITERIA['better']`` (hashed):
     there is no keyword to change one.
 
@@ -353,8 +370,8 @@ def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, 
             if (t, cv) not in synth or (t, cv) not in synth_r:
                 syn_rows.append(f"{t}/{cv}: missing")
                 continue
-            check_synth(synth[(t, cv)], t, cv, f"synth {t}/{cv}")
-            check_synth(synth_r[(t, cv)], t, cv, f"synth-r {t}/{cv}")
+            check_synth(synth[(t, cv)], t, cv, f"synth {t}/{cv}", config=fit_config, workflow=fit_workflow)
+            check_synth(synth_r[(t, cv)], t, cv, f"synth-r {t}/{cv}", config="R")
             s, r = synth[(t, cv)], synth_r[(t, cv)]
             ok = s["nrmse"][frac] < r["nrmse"][frac] and s["n_eff_ratio"] >= c["neff_min"] and s["base_dead_in_disk_1e4"] < c["dead_max"]
             syn_rows.append(f"{t}/{cv}: {'ok' if ok else 'FAIL'} (NRMSE {s['nrmse'][frac]:.4f} vs R {r['nrmse'][frac]:.4f}, N_eff {s['n_eff_ratio']:.3f}, dead {s['base_dead_in_disk_1e4']:.2%})")
@@ -363,13 +380,13 @@ def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, 
             syn_ok = None
     rel = None if flux_ours is None or not flux_ref else abs(flux_ours / flux_ref - 1)
     c8 = None if not stages else [c8_recompute(st) for st in stages]
-    c8_txt = None if c8 is None else "; ".join(f"{v['name']} {'ok' if v['converged'] else 'FAIL'} (change {v['change']}, mean_drop {v.get('mean_drop')})" for v in c8)
+    c8_txt = None if c8 is None else "; ".join(f"{v['name']} {'NOT EVALUATED' if v['converged'] is None else 'ok' if v['converged'] else 'FAIL'} (change {v['change']}, mean_drop {v.get('mean_drop')})" for v in c8)
     items = [
         item("1", "held-out chi^2/N below MPoL's on the same folds by more than the fold standard error", None if h is None else h < 0, h_txt, "mean + se < 0"),
         item("2", f"raw chi^2/N (s = 1) at or below {b['chi2n_limit']:g}", None if chi2n_ours is None else chi2n_ours <= b["chi2n_limit"], chi2n_ours, f"<= {b['chi2n_limit']:g}"),
         item("3", f"every synthetic truth x coverage: NRMSE at {frac} beam below R's, N_eff ratio >= {b['neff_min']:g}, base dead < {b['dead_max']:.0%}", syn_ok, "; ".join(syn_rows) if syn_rows else None, "all cells, all three"),
         item("4", f"total flux within {b['flux_tol']:.0%} of the {flux_ref_name} flux ({flux_ref:.5f} Jy)" if flux_ref else "total flux within 10% of CLEAN", None if rel is None else rel <= b["flux_tol"], rel, f"<= {b['flux_tol']:g}"),
-        item("5", f"C8 converged in every stage (recomputed: tol {CRITERIA['c8']['tol']:g}, window {CRITERIA['c8']['window']})", None if c8 is None else all(v["converged"] for v in c8), c8_txt, "all"),
+        item("5", f"C8 converged in every stage (recomputed: tol {CRITERIA['c8']['tol']:g}, window {CRITERIA['c8']['window']})", None if c8 is None or (all(v["converged"] is not False for v in c8) and any(v["converged"] is None for v in c8)) else all(v["converged"] for v in c8), c8_txt, "all"),
     ]
     verdict = "PASS" if all(i["status"] == "PASS" for i in items) else ("INCOMPLETE" if any(i["status"] == "NOT EVALUATED" for i in items) and not any(i["status"] == "FAIL" for i in items) else "FAIL")
     return dict(verdict=verdict, items=items, c8_stages=c8, cells=[list(x) for x in cells()], criteria_hash=criteria_hash(), rule="PASS only if 1-5 all pass; design/alma_imlup_p3.md, Track A, Ben 2026-10-28")

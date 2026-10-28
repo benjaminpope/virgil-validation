@@ -39,6 +39,10 @@ def beam_of(args):
     raise SystemExit("the CLEAN beam is needed: --clean-dir DIR (alma_imlup_clean.py output) or --beam BMAJ_MAS BMIN_MAS PA_DEG")
 
 
+def sha256_file(path):
+    return vy.sha256_file(path)
+
+
 def cmd_cells(args):
     for t, c in vs.cells():
         print(t, c)
@@ -64,7 +68,7 @@ def cmd_make(args):
     say(f"truth: {truth.shape} x {args.pixel_mas:g} mas, blurred to {args.truth_blur_mas:g} mas, {args.flux:g} Jy; {len(files)} ddids")
     written = vy.make_data(files, out, truth, args.pixel_mas, seed=args.seed, chunk_size=args.chunk_size, noise=not args.no_noise)
     mx.dump(out / "synth_make.json", dict(command="make", truth_id=truth_id, development=dev, truth_source_sha256=source_sha, truth_from=args.truth_from, truth_blur_mas=args.truth_blur_mas, flux_jy=args.flux, pixel_mas=args.pixel_mas, seed=args.seed,
-                                          noise=not args.no_noise, n_ddid=len(written), source_data=str(args.data), versions=mx.versions()))
+                                          noise=not args.no_noise, truth_npy_sha256=sha256_file(out / "truth.npy"), n_ddid=len(written), source_data=str(args.data), versions=mx.versions()))
     say(f"wrote {out} ({len(written)} ddids)")
 
 
@@ -83,7 +87,12 @@ def score_fit(args, fit_dir, out_json):
     cov = getattr(args, "coverage", None)
     if cov is not None and cov not in [c["id"] for c in vs.CRITERIA["synth"]["coverages"]]:
         raise SystemExit(f"coverage {cov!r} is not registered in CRITERIA")
-    sc.update(truth_id=mk.get("truth_id"), coverage=cov, development=bool(mk.get("development", True)), truth_source_sha256=mk.get("truth_source_sha256"), truth_origin=origin, truth_origin_note="a candidate arm's own image biases the NRMSE contest towards that arm: also score on an independent truth (CLEAN model, analytic ring)" if origin and "image" in str(origin) else None, command="synth", fit=str(fit_dir), truth=str(args.truth), config=res.get("config"), workflow=res.get("workflow"), converged=res.get("converged"),
+    fa = res.get("args") or {}
+    # coverage and provenance from the fit itself, not from a label: its own --ddids, its --data the directory truth.npy was made in, truth.npy the file make hashed
+    fit_ddids = fa.get("ddids")
+    data_is_truth_dir = fa.get("data") is not None and pathlib.Path(fa["data"]).resolve() == pathlib.Path(args.truth).resolve().parent
+    truth_npy_matches_make = mk.get("truth_npy_sha256") is not None and sha256_file(args.truth) == mk["truth_npy_sha256"]
+    sc.update(fit_ddids=fit_ddids, data_is_truth_dir=bool(data_is_truth_dir), truth_npy_matches_make=bool(truth_npy_matches_make), truth_id=mk.get("truth_id"), coverage=cov, development=bool(mk.get("development", True)), truth_source_sha256=mk.get("truth_source_sha256"), truth_origin=origin, truth_origin_note="a candidate arm's own image biases the NRMSE contest towards that arm: also score on an independent truth (CLEAN model, analytic ring)" if origin and "image" in str(origin) else None, command="synth", fit=str(fit_dir), truth=str(args.truth), config=res.get("config"), workflow=res.get("workflow"), converged=res.get("converged"),
               chi2n_raw=(res.get("summary") or {}).get("chi2n_raw", res.get("chi2_raw_over_n")), versions=mx.versions())
     mx.dump(out_json, sc)
     say(f"synth: NRMSE {sc['nrmse']} (0.5 / 1.0 CLEAN beam), N_eff ratio {sc['n_eff_ratio']:.3f}, base dead in disk {sc['base_dead_in_disk_1e4']:.2%}, flux error {sc['flux_error']:+.2%}; wrote {out_json}")

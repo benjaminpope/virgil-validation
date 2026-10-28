@@ -974,7 +974,7 @@ def cmd_better(args):
     chi2n = (fit.get("summary") or {}).get("chi2n_raw", fit.get("chi2_raw_over_n"))  # alma_imlup_gp.py writes the latter at the top level
     synth, synth_r = load_cells(args.synth), load_cells(args.synth_r)
     b = vs.better_than_mpol(heldout_ours=[ours[f]["chi2_raw_per_n"] for f in folds] if ok1 else None, heldout_mpol=[mpol[f]["chi2_raw_per_n"] for f in folds] if ok1 else None, chi2n_ours=chi2n,
-                            synth=synth, synth_r=synth_r, flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages=fit.get("stages", []))
+                            synth=synth, synth_r=synth_r, flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages=fit.get("stages", []), fit_config=fit.get("config"), fit_workflow=fit.get("workflow"))
     b["cv_problems"] = problems
     b.update(fit=str(args.fit), config=fit.get("config"), workflow=fit.get("workflow"))
     dump(out / "better_than_mpol.json", b)
