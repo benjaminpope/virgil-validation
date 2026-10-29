@@ -1,0 +1,15 @@
+# Thresholds of the IM Lup gates in src/virgil_bridge/alma_start.py: the cold-start gate
+# (cold_start_gate) and the Track A "better than MPoL" pass (better_than_mpol).
+# Extracted verbatim from that module's constants on origin/main 473d8cc (rules: design/alma_imlup_p3.md).
+# changed after seeing a result: no (extraction only; no value differs).
+# The gate commands record this file's SHA-256 and exit non-zero if it is not the hash pinned in
+# design/criteria_registry.json. The check lists (a)-(e) and 1-5 stay in the docstrings of cold_start_gate and
+# better_than_mpol; only their numbers live here.
+cold_start:
+  flux_tol: 0.10           # GATE_FLUX_TOL
+  dead_tol: 0.01           # GATE_DEAD_TOL
+  reference_flag: 0.05     # GATE_REFERENCE_FLAG
+better_than_mpol:
+  mpol_raw_chi2n: 2.7062   # MPOL_RAW_CHI2N
+  neff_min: 0.7            # BETTER_NEFF
+  dead_max: 0.01           # BETTER_DEAD

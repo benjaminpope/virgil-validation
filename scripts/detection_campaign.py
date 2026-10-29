@@ -41,6 +41,8 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import crosscheck.preregistration as prereg  # noqa: E402
+
 UTS4 = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
 OBS = dict(hour_angles_h=np.linspace(-3, 3, 5), wavelengths=np.linspace(1.5e-6, 2.4e-6, 4), dec_deg=-50.0,
            sigma_v2=0.01, sigma_cp_deg=0.5)
@@ -150,6 +152,7 @@ def draw(part, seed, tmp):
 
 
 def run(args):
+    reg = prereg.for_args(args, CRITERIA_FILE)  # refuses before any draw is made
     import jax
 
     jax.config.update("jax_enable_x64", True)
@@ -160,7 +163,9 @@ def run(args):
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
     seed0 = args.seed_base + {"null": 0, "inject": 10_000_000, "virgil": 20_000_000}[args.part] + args.task * args.draws
     head = {"part": args.part, "task": args.task, "draws": args.draws, "seed0": seed0, "virgil_commit": commit,
-            "criteria_hash": criteria_hash(), "design_hash": design_hash()}
+            "criteria_hash": criteria_hash(), "design_hash": design_hash(), "registered": reg.registered}
+    if not reg.registered:
+        head["stamp"] = prereg.UNREGISTERED_STAMP
     start = time.time()
     if args.part == "virgil":
         from virgil import detection, models
@@ -218,6 +223,7 @@ def run(args):
 
 
 def aggregate(args):
+    reg = prereg.for_args(args, CRITERIA_FILE)
     from scipy import stats
 
     from virgil.detection import DetectionMC
@@ -240,6 +246,7 @@ def aggregate(args):
                 parts["virgil"].append(DetectionMC.load(f.parent / c))
         else:
             parts[r["part"]] += r["rows"]
+    prereg.require_registered_runs([json.loads(f.read_text()) for f in files], reg)
     if hashes != {criteria_hash()}:
         raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
     if designs != {design_hash()}:
@@ -348,6 +355,7 @@ def aggregate(args):
     out["counts"] = {"null": len(null), "inject": len(inj), "virgil": n_virgil}
     enough = len(null) >= c["min_null"] and len(inj) >= c["min_injected"] and n_virgil >= c["min_virgil"]
     out["pass"] = bool(enough and not out["rejected"] and out["must_hold"]["bookkeeping"]["pass"])
+    out = prereg.stamp(out, reg)
     text = json.dumps(out, indent=1)
     if args.summary:
         pathlib.Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
@@ -364,9 +372,11 @@ def main():
     r.add_argument("--draws", type=int, default=100)
     r.add_argument("--seed-base", type=int, default=20261006)
     r.add_argument("--out", required=True)
+    prereg.add_argument(r)
     g = sub.add_parser("aggregate")
     g.add_argument("dirs", nargs="+")
     g.add_argument("--summary")
+    prereg.add_argument(g)
     args = ap.parse_args()
     run(args) if args.cmd == "run" else aggregate(args)
 

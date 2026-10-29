@@ -9,6 +9,7 @@ import json
 import pathlib
 
 import numpy as np
+import yaml
 
 from crosscheck import alma_maxent as cx
 
@@ -146,9 +147,11 @@ def clean_image_flux(path):
                 beam_area_arcsec2=float(beam_area), beam_area_pixels=float(beam_area / (pix_arcsec[0] * pix_arcsec[1])), path=str(path))
 
 
-GATE_FLUX_TOL = 0.10
-GATE_DEAD_TOL = 0.01
-GATE_REFERENCE_FLAG = 0.05  # flag our CLEAN flux and DSHARP's differing by more than this
+CRITERIA_FILE = pathlib.Path(__file__).resolve().parents[2] / "design" / "alma_imlup_gate_criteria.yml"  # pre-registered: pinned in design/criteria_registry.json
+_CRITERIA = yaml.safe_load(CRITERIA_FILE.read_text())
+GATE_FLUX_TOL = _CRITERIA["cold_start"]["flux_tol"]
+GATE_DEAD_TOL = _CRITERIA["cold_start"]["dead_tol"]
+GATE_REFERENCE_FLAG = _CRITERIA["cold_start"]["reference_flag"]  # flag our CLEAN flux and DSHARP's differing by more than this
 
 
 def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, stages_converged, dead_fraction, flux_ours, flux_ref, flux_ref_name,
@@ -198,8 +201,8 @@ def gate_markdown(gate):
     return rows
 
 
-MPOL_RAW_CHI2N = 2.7062  # MPoL's solution, raw chi^2/(2N) at s = 1 in virgil (the 2026-10-27 round)
-BETTER_NEFF, BETTER_DEAD = 0.7, 0.01
+MPOL_RAW_CHI2N = _CRITERIA["better_than_mpol"]["mpol_raw_chi2n"]  # MPoL's solution, raw chi^2/(2N) at s = 1 in virgil (the 2026-10-27 round)
+BETTER_NEFF, BETTER_DEAD = _CRITERIA["better_than_mpol"]["neff_min"], _CRITERIA["better_than_mpol"]["dead_max"]
 
 
 def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages_converged,

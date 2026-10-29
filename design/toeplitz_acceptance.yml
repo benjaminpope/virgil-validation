@@ -1,0 +1,13 @@
+# Acceptance limits of the Toeplitz chi^2 check (scripts/alma_imlup_toeplitz_check.py summary).
+# Extracted verbatim from that script's ACCEPT and SPEEDUP_GPU (source comment: toeplitz_ozstar_spec.md)
+# on origin/main 473d8cc. changed after seeing a result: no (extraction only; no value differs).
+# The summary records this file's SHA-256 and exits non-zero if it is not the hash pinned in
+# design/criteria_registry.json. The re-examination (vv#202) registers its own criteria file.
+accept:
+  max_rel: 1.0e-10
+  dloss_rel: 1.0e-6
+  dloss_abs: 1.0e-2
+  grad_rel: 1.0e-8
+  speedup: 30.0
+  peak_gb: 20.0
+speedup_gpu: A100

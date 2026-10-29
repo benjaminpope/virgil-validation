@@ -47,6 +47,7 @@ import jax  # noqa: E402
 
 jax.config.update("jax_enable_x64", True)
 
+import crosscheck.preregistration as prereg  # noqa: E402
 import virgil_bridge.alma as va  # noqa: E402
 import virgil_bridge.alma_gp as vg  # noqa: E402
 import virgil_bridge.alma_replica as vr  # noqa: E402
@@ -923,6 +924,7 @@ def cmd_replica_compare(args):
 def cmd_better(args):
     """The Track A pass (``vs.better_than_mpol``) of one arm from files, for any config: ``--fit`` (the arm's result.json: raw chi^2/N, flux, C8), ``--cv-compare`` (``mpol_cv_compare.json``
     of ``cv-compare``), ``--synth`` (the arm's synth.json) and ``--synth-r`` (config R's). A missing input leaves its check NOT EVALUATED."""
+    reg = prereg.check(vs.CRITERIA_FILE, allow_unregistered=args.allow_unregistered)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     load = lambda f: None if f is None else json.loads(pathlib.Path(f).read_text())  # noqa: E731
@@ -958,14 +960,17 @@ def cmd_better(args):
                             synth=load(args.synth), synth_r=load(args.synth_r), flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages_converged=stages)
     b["cv_problems"] = problems
     b.update(fit=str(args.fit), config=fit.get("config"), workflow=fit.get("workflow"))
+    b = prereg.stamp(b, reg)
+    lines = prereg.stamp_lines(vs.better_markdown(b), reg)
     dump(out / "better_than_mpol.json", b)
-    (out / "better_than_mpol.md").write_text("\n".join(vs.better_markdown(b)) + "\n")
-    say("\n".join(vs.better_markdown(b)))
+    (out / "better_than_mpol.md").write_text("\n".join(lines) + "\n")
+    say("\n".join(lines))
 
 
 def cmd_compare(args):
     import jax.numpy as jnp
 
+    reg = prereg.check(vs.CRITERIA_FILE, allow_unregistered=args.allow_unregistered)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     vdir, mdir = pathlib.Path(args.virgil), pathlib.Path(args.mpol)
@@ -1042,10 +1047,10 @@ def cmd_compare(args):
         np.save(out / "f_clean_beam.npy", conv.astype(np.float32))
         np.save(out / "dsharp_regridded.npy", d_on.astype(np.float32))
         res["F_vs_dsharp"] = dict(beam_mas_deg=beam, **cx.difference_stats(conv, d_on))
-    gate = cold_start_gate_of(res, vres, img_o, px, flux_o, args.clean_dir, args.dsharp)
+    gate = prereg.stamp(cold_start_gate_of(res, vres, img_o, px, flux_o, args.clean_dir, args.dsharp), reg)
     res["gate"] = gate
     dump(out / "compare.json", res)
-    md = ["# R against MPoL", ""] + vs.gate_markdown(gate) + [""] + fit_notes(vres) + [""]
+    md = ["# R against MPoL", ""] + prereg.stamp_lines(vs.gate_markdown(gate), reg) + [""] + fit_notes(vres) + [""]
     if ref != 0:
         md += [f"**Our fit's reference observation is {ref}, not 0** (`--ref-obs`): gains, flux and offsets below are renormalised to MPoL's obs-0 convention ({res['ref_obs']['note']}).", ""]
     if "objective" in res:
@@ -1282,6 +1287,7 @@ def main(argv=None):
     p.add_argument("--synth-r", default=None, help="config R's synth.json, the control")
     p.add_argument("--clean-dir", default=None, help="CLEAN output directory: its flux is the reference, else the DSHARP constant")
     p.add_argument("--out", required=True)
+    prereg.add_argument(p)
     p.set_defaults(fn=cmd_better)
 
     p = sub.add_parser("compare")
@@ -1295,6 +1301,7 @@ def main(argv=None):
     p.add_argument("--no-grad", action="store_true", help="skip the gradient-scaling diagnostic (two value-and-gradient evaluations on --data)")
     p.add_argument("--no-dirty", action="store_true", help="skip the residual dirty images of MPoL's solution (resid_dirty_mpol_obs*.npy, 4 MB each; one NUFFT pass and one gridding of all points)")
     p.add_argument("--chunk-size", type=int, default=va.CHUNK)
+    prereg.add_argument(p)
     p.set_defaults(fn=cmd_compare)
 
     p = sub.add_parser("mpol-init", help="values.npz from MPoL's export, the --init of `fit --config R` (a warm start at MPoL's solution)")
