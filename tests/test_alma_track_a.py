@@ -236,7 +236,8 @@ def test_a_development_or_unregistered_truth_is_refused_and_the_array_is_enumera
     short = vs.c8_recompute({"name": "s", "method": "lbfgs", "trajectory": [dict(steps=200.0, loss=1.0)], "c8_converged": True})  # not evidence either way: NOT EVALUATED, not "tampered"
     assert short["converged"] is None and "fewer than two" in short["reason"]
     monkeypatch.undo()
-    with pytest.raises(vs.GateRefused, match="pin"):  # as registered, the CLEAN truth is unpinned
+    assert vs.truth_source_sha(vs.truth_spec("clean_model")) == "ea648e884c155e227a5f536f681ddc47d59d6f7e1a8d26c837be07fb2f0eb90d"  # as registered, the CLEAN truth is pinned (run 799234c-15fecaa-cd)
+    with pytest.raises(vs.GateRefused, match="sha256"):  # ... and another file is refused
         vs.check_synth(_synth("clean_model", "full", truth_source_sha256="c" * 64), "clean_model", "full", "x")
 
 

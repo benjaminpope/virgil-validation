@@ -26,9 +26,9 @@
    "pinned_at": "extracted verbatim from origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
   },
   "design/alma_imlup_gate_criteria.yml": {
-   "sha256": "d586159315ecc7cb188f4f0a49a6d3055f3a8a590cbfa74d991919b68ba0a748",
+   "sha256": "141c12b07ff8ff9a489fb5663aefcffe935d57f4f31c82e17651ef842f374f3f",
    "used_by": "scripts/alma_imlup_maxent.py (compare: cold-start gate; better: Track A; replica-compare), alma_imlup_synth.py (registered truths and coverages)",
-   "changed_after_seeing_a_result": "yes, by addition only: after the r1b round showed the Track A pass could be gamed, the file gained the multi-truth synthetic cells, the recomputed-C8 rule and the replica pass (virgil-validation#205). No value already in the file changed and none was loosened; the new values were written before any run that uses them.",
+   "changed_after_seeing_a_result": "yes, by addition only: after the r1b round showed the Track A pass could be gamed, the file gained the multi-truth synthetic cells, the recomputed-C8 rule and the replica pass (virgil-validation#205). No value already in the file changed and none was loosened; the new values were written before any run that uses them. The CLEAN model.fits sha256 was then entered (run 799234c-15fecaa-cd) before any synthetic run.",
    "pinned_at": "virgil-validation#205 (extends the extraction at origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69)"
   },
   "design/radio_trust_criteria.yml": {
