@@ -14,7 +14,7 @@
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py replica-compare --fit DIR --mpol DIR --out DIR
-    python scripts/alma_imlup_maxent.py better --fit DIR [--cv-compare JSON] [--synth JSON] [--synth-r JSON] [--clean-dir DIR] --out DIR
+    python scripts/alma_imlup_maxent.py better --fit DIR [--cv-compare JSON] [--synth DIR] [--synth-r DIR] [--clean-dir DIR] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
     python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
 
@@ -62,8 +62,13 @@ def say(*a):
     print(*a, flush=True)
 
 
+STAMPED = ("result.json", "synth.json", "replica_compare.json")  # the files the gate reads: each carries the registered criteria file's hash and whether it was registered (``prereg.stamp``)
+
+
 def dump(path, obj):
-    """JSON, written to a temporary file and renamed, so that a crash never leaves a half-written file."""
+    """JSON, written to a temporary file and renamed, so that a crash never leaves a half-written file. The files in ``STAMPED`` are stamped with the criteria file's hash and registration (a run on unregistered criteria is stamped so and is never gate evidence)."""
+    if pathlib.Path(path).name in STAMPED and isinstance(obj, dict):
+        obj = prereg.stamp(obj, prereg.check(vs.CRITERIA_FILE, allow_unregistered=True))
     def default(o):
         if isinstance(o, (np.floating, np.integer)):
             return o.item()
@@ -301,7 +306,7 @@ def run_replica(args, data, prob_for, save=None):
         keep = sorted(set(range(0, len(hist), 10)) | ({len(hist) - 1} if len(hist) else set()))
         traj = [dict(steps=float(i + 1), loss=float(hist[i]), grad_norm=float("nan"), elapsed=None, round=1) for i in keep]
         info = dict(method="adam", steps=len(hist), rounds=1, stop=stopped or why, converged=bool(c8["converged"]), loss=float(hist[-1]) if len(hist) else float("nan"), precondition=None, precondition_rounds=[], restarts=[],
-                    adam=dict(lr=vr.MPOL_RUN["lr"], eps=1e-8, optimiser="optax.adamw", weight_decay=0.0 if args.replica_no_wd else vr.MPOL_RUN["weight_decay"], float32=True, replica=True, steps=len(hist), c8=c8,
+                    adam=dict(loss_history=hist.tolist(), lr=vr.MPOL_RUN["lr"], eps=1e-8, optimiser="optax.adamw", weight_decay=0.0 if args.replica_no_wd else vr.MPOL_RUN["weight_decay"], float32=True, replica=True, steps=len(hist), c8=c8,
                               loss_final=float(hist[-1]) if len(hist) else None, wall_s=wall, post_step_blur_px=None))
         values = {k: np.asarray(v, float) for k, v in vr.values_of(params, prob.pixel_mas, jnp.asarray(obs_of[:prob.init["cal.sigma"].shape[0]]), args.replica_softmax).items()}
         stages.append(dict(stage_summary(name, info, traj, time.time() - t, why), chi2=prob.chi2_info, peak_offset_mas=run_stats.get("peak_offset_mas")))
@@ -904,9 +909,12 @@ def cold_start_gate_of(res, vres, image, px, flux, clean_dir, dsharp=None):
 
 def cmd_replica_compare(args):
     """The replica pass (``vr.replica_compare``) of a ``--workflow mpol-replica`` fit against MPoL's export (``export.npz``: ``base_image``, ``image``, ``cell_size_arcsec``)."""
+    reg = prereg.check(vs.CRITERIA_FILE, allow_unregistered=args.allow_unregistered)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     fit = json.loads((pathlib.Path(args.fit) / "result.json").read_text())
+    vs.require_criteria(fit, f"{args.fit}/result.json")
+    prereg.require_registered_runs([fit], reg)
     px = float(fit["pixel_mas"])
     mz = np.load(pathlib.Path(args.mpol) / "export.npz")
     mpol_base = np.asarray(mz["base_image"], float)
@@ -923,12 +931,26 @@ def cmd_replica_compare(args):
 
 def cmd_better(args):
     """The Track A pass (``vs.better_than_mpol``) of one arm from files, for any config: ``--fit`` (the arm's result.json: raw chi^2/N, flux, C8), ``--cv-compare`` (``mpol_cv_compare.json``
-    of ``cv-compare``), ``--synth`` (the arm's synth.json) and ``--synth-r`` (config R's). A missing input leaves its check NOT EVALUATED."""
+    of ``cv-compare``), ``--synth`` and ``--synth-r`` (the arm's and config R's synthetic directories, ``<truth>/<coverage>/synth.json`` of every registered cell). A missing input leaves its check NOT EVALUATED; an input with another criteria hash, a development truth
+    or a C8 flag its own history contradicts is refused (``vs.GateRefused``). No threshold can be passed."""
     reg = prereg.check(vs.CRITERIA_FILE, allow_unregistered=args.allow_unregistered)
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     load = lambda f: None if f is None else json.loads(pathlib.Path(f).read_text())  # noqa: E731
     fit, cvc = load(str(pathlib.Path(args.fit) / "result.json")), load(args.cv_compare)
+    vs.require_criteria(fit, f"{args.fit}/result.json")
+    prereg.require_registered_runs([fit], reg)
+    if fit.get("workflow") == "mpol-replica":
+        raise vs.GateRefused(f"{args.fit}: a replica is Track B (replica-compare), not an arm of the Track A pass")
+
+    def load_cells(d):
+        """``{(truth, coverage): synth.json}`` of a directory laid out ``<truth>/<coverage>/synth.json`` (those that exist); None without a directory."""
+        if d is None:
+            return None
+        if pathlib.Path(d).is_file():
+            raise vs.GateRefused(f"{d} is a single synth.json: the gate scores the registered truth x coverage cells (a directory of <truth>/<coverage>/synth.json), never one file")
+        return {(t, c): load(pathlib.Path(d) / t / c / "synth.json") for t, c in vs.cells() if (pathlib.Path(d) / t / c / "synth.json").exists()}
+
     problems = list((cvc or {}).get("problems") or [])
     pf = (cvc or {}).get("per_fold") or {}
     ours, mpol = pf.get("virgil_lam_star") or {}, pf.get("mpol") or {}
@@ -954,10 +976,11 @@ def cmd_better(args):
         ref, name = float(vs.read_clean(args.clean_dir)[3]["flux_jy"]), f"CLEAN ({args.clean_dir})"
     else:
         ref, name = vs.REFERENCE_FLUX_JY, vs.REFERENCE_FLUX_NAME
-    stages = [bool(st.get("c8_converged", st["convergence"]["converged"])) for st in fit.get("stages", [])]
     chi2n = (fit.get("summary") or {}).get("chi2n_raw", fit.get("chi2_raw_over_n"))  # alma_imlup_gp.py writes the latter at the top level
+    synth, synth_r = load_cells(args.synth), load_cells(args.synth_r)
+    prereg.require_registered_runs([r for cells_ in (synth, synth_r) for r in (cells_ or {}).values()], reg)
     b = vs.better_than_mpol(heldout_ours=[ours[f]["chi2_raw_per_n"] for f in folds] if ok1 else None, heldout_mpol=[mpol[f]["chi2_raw_per_n"] for f in folds] if ok1 else None, chi2n_ours=chi2n,
-                            synth=load(args.synth), synth_r=load(args.synth_r), flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages_converged=stages)
+                            synth=synth, synth_r=synth_r, flux_ours=fit.get("flux_jy"), flux_ref=ref, flux_ref_name=name, stages=fit.get("stages", []), fit_config=fit.get("config"), fit_workflow=fit.get("workflow"))
     b["cv_problems"] = problems
     b.update(fit=str(args.fit), config=fit.get("config"), workflow=fit.get("workflow"))
     b = prereg.stamp(b, reg)
@@ -1278,13 +1301,14 @@ def main(argv=None):
     p.add_argument("--fit", required=True)
     p.add_argument("--mpol", required=True, help="MPoL's directory (export.npz)")
     p.add_argument("--out", required=True)
+    prereg.add_argument(p)
     p.set_defaults(fn=cmd_replica_compare)
 
     p = sub.add_parser("better", help="the Track A pass block (better than MPoL) of one arm, from its result.json, cv-compare, synth.json files")
     p.add_argument("--fit", required=True, help="the arm's fit directory (result.json)")
     p.add_argument("--cv-compare", default=None, help="mpol_cv_compare.json of cv-compare run on this arm's cv directory")
-    p.add_argument("--synth", default=None, help="this arm's synth.json (alma_imlup_synth.py)")
-    p.add_argument("--synth-r", default=None, help="config R's synth.json, the control")
+    p.add_argument("--synth", default=None, help="this arm's synthetic directory: <truth>/<coverage>/synth.json of every registered cell (alma_imlup_synth.py run)")
+    p.add_argument("--synth-r", default=None, help="config R's synthetic directory, the control, laid out the same")
     p.add_argument("--clean-dir", default=None, help="CLEAN output directory: its flux is the reference, else the DSHARP constant")
     p.add_argument("--out", required=True)
     prereg.add_argument(p)

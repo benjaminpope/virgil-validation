@@ -19,10 +19,11 @@ import time
 import numpy as np
 
 from .alma import MPOL, ARCSEC, SB_OBS, dots_report, image_of, tapered_image
+from .alma_start import CRITERIA
 
 MPOL_RUN = dict(lr=1e-2, weight_decay=1e-2, batch_size=40000, epochs=10, stages=("all", "all"), base_start=-3.0, lam_m=1e-9)  # p3a's flags (train.sbatch); both of its stages ran on all the data
 MPOL_STEPS = dict(sb=10 * 273, all=10 * 1061)  # IM Lup: epochs x ceil(N / batch_size), N = 10,883,819 (obs 0-4) and 42,421,131 (p3a summary.md)
-REPLICA_PASS = dict(correlation=0.99, n_eff_ratio=0.78, n_eff_ratio_tol=0.20, peak_base=10.0, peak_factor=2.0, flux=0.294, flux_tol=0.05)  # Ben's pass, 2026-10-28
+REPLICA_PASS = CRITERIA["replica"]  # Ben's pass, 2026-10-28: hashed with the rest of the criteria
 
 
 def steps_for(n_points, epochs=MPOL_RUN["epochs"], batch=MPOL_RUN["batch_size"]):
@@ -161,7 +162,7 @@ def obs_of_ddid_of(data):
     return np.array([ob[dd == d][0] if np.any(dd == d) else 0 for d in range(int(dd.max()) + 1)])
 
 
-def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=None, pixel_mas=MPOL["pixel_mas"], ref=REPLICA_PASS):
+def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=None, pixel_mas=MPOL["pixel_mas"]):
     """The replica pass (Ben, 2026-10-28) of a replica ``base`` image (Jy/arcsec^2, row 0 North) and its 30 mas ``blurred`` image against MPoL's export (``base_image``, ``image``):
 
     - Pearson correlation of the two blurred images >= ``ref['correlation']`` (0.99);
@@ -169,9 +170,10 @@ def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=N
     - the base peak within a factor ``ref['peak_factor']`` (2) of ``ref['peak_base']`` (10 Jy/arcsec^2);
     - the flux within ``ref['flux_tol']`` (5 %) of ``ref['flux']`` (0.294 Jy: the flux of MPoL's p3a base image, ``sum(base_image) dx^2`` of its export, not the 0.253 Jy of its entropy's ``tot_flux``; ``mpol_flux``, the export's own, is recorded beside it).
 
-    (b)-(d) are judged against these constants, which are the p3a export's numbers. The export passed in is checked against the same bands (``mpol['export_in_band']``): when it is another MPoL run (another lambda, more epochs) the bands do not describe it, and the result carries ``warning`` and the markdown says so, so the verdict is not read as agreement with that run.
+    (b)-(d) are judged against these constants (``CRITERIA['replica']``, hashed; not overridable), which are the p3a export's numbers. The export passed in is checked against the same bands (``mpol['export_in_band']``): when it is another MPoL run (another lambda, more epochs) the bands do not describe it, and the result carries ``warning`` and the markdown says so, so the verdict is not read as agreement with that run.
 
     MPoL's own numbers from the export (correlation 1, its N_eff ratio, base peak, flux) are returned beside them. Returns ``dict(verdict, items, mpol)``."""
+    ref = REPLICA_PASS
     base, blurred, mb, mt = (np.asarray(x, float) for x in (base, blurred, mpol_base, mpol_blurred))
     corr = float(np.corrcoef(blurred.ravel(), mt.ravel())[0, 1])
     dr = dots_report(base, blurred, pixel_mas)

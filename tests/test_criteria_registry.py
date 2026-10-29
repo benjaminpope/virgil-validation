@@ -123,7 +123,9 @@ def test_the_imlup_thresholds_are_the_ones_the_module_had():
     """Extracted verbatim from alma_start's constants (origin/main 473d8cc)."""
     c = yaml.safe_load((ROOT / "design" / "alma_imlup_gate_criteria.yml").read_text())
     assert c["cold_start"] == dict(flux_tol=0.10, dead_tol=0.01, reference_flag=0.05)
-    assert c["better_than_mpol"] == dict(mpol_raw_chi2n=2.7062, neff_min=0.7, dead_max=0.01)
+    b = c["better_than_mpol"]  # the extracted values are unchanged (virgil-validation#205 only added keys: flux_tol 0.10 is cold_start's, the rest are the NRMSE fraction and prose)
+    assert {k: b[k] for k in ("mpol_raw_chi2n", "neff_min", "dead_max")} == dict(mpol_raw_chi2n=2.7062, neff_min=0.7, dead_max=0.01)
+    assert b["flux_tol"] == c["cold_start"]["flux_tol"] == 0.10
 
 
 def test_trackb_pin_in_the_script_agrees_with_the_registry():
