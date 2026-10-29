@@ -159,7 +159,7 @@ def test_better_than_mpol_passes_only_when_all_five_do(monkeypatch):
     good = _cells()
     kw = dict(heldout_ours=[2.69, 2.69, 2.69, 2.69, 2.69], heldout_mpol=[2.70, 2.70, 2.70, 2.70, 2.70], chi2n_ours=2.7044, synth=good, synth_r=r, flux_ours=0.26, flux_ref=0.2548, flux_ref_name="CLEAN", stages=_stages())
     res = vs.better_than_mpol(**kw)
-    assert res["verdict"] == "PASS" and res["criteria_hash"] == vs.criteria_hash()
+    assert res["verdict"] == "PASS"
     assert [(v["name"], v["converged"]) for v in res["c8_stages"]] == [("sb", True), ("all", True)] and all("change" in v for v in res["c8_stages"])
     one_bad = {**good, ("ring_gap", "sb"): _synth("ring_gap", "sb", n_eff_ratio=0.5)}  # one cell failing fails criterion 3: it must pass on every truth x coverage
     for key, bad in (("heldout_ours", [2.71] * 5), ("heldout_ours", [2.60, 2.80, 2.60, 2.80, 2.69]), ("chi2n_ours", 2.71), ("flux_ours", 0.30), ("synth", one_bad),
@@ -191,23 +191,14 @@ def test_better_refuses_a_hash_mismatch_in_any_input(monkeypatch):
 
 
 @pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
-def test_the_hash_covers_every_threshold_and_there_is_no_threshold_keyword(monkeypatch):
-    import copy
+def test_the_criteria_are_the_registered_file_and_there_is_no_threshold_keyword():
     import inspect
 
-    h0 = vs.criteria_hash()
-    for path in (("better", "chi2n_limit"), ("c8", "tol"), ("replica", "flux_tol"), ("synth", "blur_mas")):
-        crit = copy.deepcopy(vs.CRITERIA)
-        crit[path[0]][path[1]] *= 1.01
-        monkeypatch.setattr(vs, "CRITERIA", crit)
-        assert vs.criteria_hash() != h0, path
-        monkeypatch.undo()
-    crit = copy.deepcopy(vs.CRITERIA)
-    crit["synth"]["truths"].pop()
-    monkeypatch.setattr(vs, "CRITERIA", crit)
-    assert vs.criteria_hash() != h0
-    monkeypatch.undo()
-    assert vs.criteria_hash() == h0 and len(h0) == 64
+    import crosscheck.preregistration as prereg
+
+    reg = prereg.check(vs.CRITERIA_FILE)  # exits unless the file's hash is the pinned one in design/criteria_registry.json
+    assert reg.registered and vs.criteria_hash() == reg.sha256 and len(reg.sha256) == 64
+    assert vs.CRITERIA["better_than_mpol"]["mpol_raw_chi2n"] == vs.MPOL_RAW_CHI2N and vs.CRITERIA["replica"] == vr.REPLICA_PASS
     for fn in (vs.better_than_mpol, vr.replica_compare):
         params = set(inspect.signature(fn).parameters)
         assert not params & {"chi2n_limit", "neff_min", "dead_max", "flux_tol", "ref"}, fn
