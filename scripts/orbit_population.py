@@ -32,6 +32,7 @@ import importlib.util
 import inspect
 import json
 import math
+import os
 import pathlib
 import re
 import sys
@@ -39,10 +40,14 @@ import time
 
 import numpy as np
 
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import crosscheck.preregistration as prereg  # noqa: E402
+
 GATE_FILE = ROOT / "design" / "orbit_gate_042.md"
+CRITERIA_FILE = "design/orbit_gate_042.md"  # a verbatim copy of virgil main's file; runs record its git commit
 RANKED = ("period", "ecc", "a_mas", "cos_inc", "flux")  # gate M2
 UNLIMITED = 10_000  # max_modes: sample every band above posterior_p_min (stratum A)
 LOG2 = math.log(2.0)
@@ -81,23 +86,15 @@ def gate_hash(text=None):
 
 
 def spec(text=None):
-    """The parsed criteria block. The block as registered is not valid YAML
-    (its ``null_choice`` line is not indented like the other must_hold
-    entries); the strict parse is tried first and, only if it fails, the
-    lines after ``must_hold:`` are indented into it. The summary records
-    which parse was used (``spec_repaired``); the gate file itself is never
-    edited here."""
+    """The parsed criteria block, strictly: a block that does not parse as YAML
+    fails the run (the file is fixed, with a change-log entry and a new pin;
+    nothing is repaired at run time)."""
     import yaml
 
-    block = gate_block(text)
     try:
-        return yaml.safe_load(block), False
-    except yaml.YAMLError:
-        out, inside = [], False
-        for line in block.split("\n"):
-            out.append(("  " + line) if inside and line and not line.startswith(" ") else line)
-            inside = inside or line.startswith("must_hold:")
-        return yaml.safe_load("\n".join(out)), True
+        return yaml.safe_load(gate_block(text))
+    except yaml.YAMLError as err:
+        raise SystemExit(f"the criteria block of {CRITERIA_FILE} is not valid YAML: {err}") from err
 
 
 def design_hash():
@@ -115,7 +112,7 @@ def virgil_commit():
 
 
 def strata_sizes():
-    s = spec()[0]["strata"]
+    s = spec()["strata"]
     return {k: v["n"] for k, v in s.items()}
 
 
@@ -323,7 +320,7 @@ def truth_record(system):
                 schedule=system.get("schedule"), misspecified=system["misspecified"],
                 misspecification=(system.get("misspecification") or {}).get("kind"),
                 envelope_fraction=(system.get("misspecification") or {}).get("fraction"),
-                near_twin=o.get("near_twin"), flux=o.get("flux"), c=system["noise"]["c"],
+                near_twin=o.get("near_twin"), flux=o.get("flux"), c=system["noise"]["c"], s_v2=system["noise"].get("s_v2"), s_cp=system["noise"].get("s_cp"),
                 n_redraws=system["n_redraws"], contaminants=system["contaminants"],
                 primary_diam_mas=system["primary"]["diam_mas"], disc_on=system["primary"]["disc_on"],
                 period=o.get("period"), ecc=o.get("ecc"), a_mas=o.get("a_mas"), cos_inc=o.get("cos_inc"),
@@ -372,6 +369,15 @@ def run_system(part, stratum, index, out, keep_work=False):
     return result
 
 
+def null_verdict(modes):
+    """The verdict virgil ships at this commit, from ``stages/modes/report.json`` (``no_orbit.verdict`` and ``delta_log_z``)."""
+    null = modes.get("no_orbit") or {}
+    raw = null.get("verdict")
+    return dict(value=None if raw is None else ("no-orbit" if str(raw).startswith("no-orbit") else "orbit"), raw=raw,
+                source="stages/modes/report.json no_orbit.verdict (the verdict virgil ships at this commit)",
+                winner_n=(modes.get("winner") or {}).get("n"), delta_nats=null.get("delta_log_z"))
+
+
 def _virgil_run(part, system, paths, work):
     import jax
 
@@ -394,11 +400,7 @@ def _virgil_run(part, system, paths, work):
     bands = band_table(aliases, n_is)
     modes = json.loads((run / "stages" / "modes" / "report.json").read_text())
     search = json.loads((run / "stages" / "search" / "report.json").read_text())
-    null = modes.get("no_orbit") or {}
-    raw = null.get("verdict")
-    verdict = dict(value=None if raw is None else ("no-orbit" if str(raw).startswith("no-orbit") else "orbit"), raw=raw,
-                   source="stages/modes/report.json no_orbit.verdict (the verdict virgil ships at this commit)",
-                   winner_n=(modes.get("winner") or {}).get("n"), delta_nats=null.get("delta"))
+    verdict = null_verdict(modes)
     out = dict(bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
                primary_diam=search.get("primary_diam"), outliers=search.get("outliers"),
                night_flags=search.get("night_flags"), n_bands=search.get("n_bands"))
@@ -486,7 +488,7 @@ def aggregate_results(results, s, rng_seed):
     sbc = _load("sbc_v2")
     health = sbc.spec()["sampler_health"]  # the registered chain-health rule, unchanged
     pv = {}
-    out = dict(pvalues=pv, must_hold={}, reported={}, unavailable=[])
+    out = dict(pvalues=pv, must_hold={}, reported={}, unavailable=[], incomplete=[])
     fits = [r for r in results if r["part"] == "fit"]
     by = {k: [r for r in fits if r["truth"]["stratum"] == k] for k in "ABND"}
     oracle = {r["truth"]["index"]: r for r in results if r["part"] == "oracle"}
@@ -496,18 +498,24 @@ def aggregate_results(results, s, rng_seed):
     # M1 and M2 on A (calibration)
     a = ok(by["A"])
     for level in t["M1_band_calibration"]["levels"]:
-        pv[f"M1:{level}"] = coverage_test(a, level, t["M1_band_calibration"]["sided"])["p"]
+        if a:
+            pv[f"M1:{level}"] = coverage_test(a, level, t["M1_band_calibration"]["sided"])["p"]
+        else:
+            out["incomplete"].append(f"M1:{level}: no stratum A system to test")
     sampled = [r for r in a if (r.get("posterior") or {}).get("sampled")]
     rng = np.random.default_rng(np.random.SeedSequence([s["master_seed"], 99]))
     spec2 = t["M2_parameter_coverage"]
     cover = {}
     for q in spec2["params"]:
         u = np.array([r["posterior"]["u"][q] for r in sampled])
-        pv[f"M2:{q}:ks"] = float(stats.kstest(u, "uniform").pvalue) if u.size else 1.0
+        if not u.size:
+            out["incomplete"].append(f"M2:{q}: no sampled stratum A system")
+            continue
+        pv[f"M2:{q}:ks"] = float(stats.kstest(u, "uniform").pvalue)
         for level in spec2["intervals"]:
             k = int(np.sum(np.abs(u - 0.5) <= level / 2))
             cover[f"{q}:{level}"] = [k, int(u.size)]
-            pv[f"M2:{q}:cover{level}"] = float(stats.binomtest(k, u.size, level).pvalue) if u.size else 1.0
+            pv[f"M2:{q}:cover{level}"] = float(stats.binomtest(k, u.size, level).pvalue)
     unhealthy = [r for r in sampled if _unhealthy(r["posterior"], health, sbc)]
     out["reported"]["A"] = dict(n=len(by["A"]), n_ok=len(a), n_sampled=len(sampled), coverage=cover,
                                 unhealthy=len(unhealthy), unhealthy_fraction=len(unhealthy) / max(len(sampled), 1),
@@ -523,7 +531,10 @@ def aggregate_results(results, s, rng_seed):
         map_p.append(float(p[i]) if p.size else 0.0)
         map_hit += i is not None and r["bands"][i] is true_band(r)
     mp = np.array(map_p)
-    pv["M3a"] = poisson_binomial_p(map_hit, mp, "under") if b else 1.0
+    if b:
+        pv["M3a"] = poisson_binomial_p(map_hit, mp, "under")
+    else:
+        out["incomplete"].append("M3a: no stratum B system")
     out["reported"]["M3a"] = dict(n=len(b), hits=int(map_hit), expected=float(mp.sum()))
     spec5 = t["M5_coverage_contaminated"]
     floor = float(spec5["condition"].split("_ge_")[1])
@@ -531,7 +542,10 @@ def aggregate_results(results, s, rng_seed):
            and (r.get("posterior") or {}).get("sampled")]
     for q in spec5["params"]:
         k = int(sum(r["posterior"]["covers95"][q] for r in sel))
-        pv[f"M5:{q}"] = float(stats.binom.cdf(k, len(sel), spec5["interval"])) if sel else 1.0
+        if sel:
+            pv[f"M5:{q}"] = float(stats.binom.cdf(k, len(sel), spec5["interval"]))
+        else:
+            out["incomplete"].append(f"M5:{q}: no B system with the true band at p >= {floor}")
     out["reported"]["M5"] = dict(n=len(sel), covered={q: int(sum(r["posterior"]["covers95"][q] for r in sel))
                                                        for q in spec5["params"]},
                                  misspecified=_m5_split(sel))
@@ -544,7 +558,8 @@ def aggregate_results(results, s, rng_seed):
         conf = [r for r, p in zip(b, map_p) if p >= spec3["p_map_min"] and r in rs]
         wrong = sum(1 for r in conf if r["bands"][int(np.argmax(band_p(r)))] is not true_band(r))
         limit = binomial_q99(len(conf), 0.01) if conf else 0
-        out["must_hold"]["M3b"][name] = dict(n_conf=len(conf), wrong=int(wrong), limit=limit, **{"pass": bool(wrong <= limit)})
+        out["must_hold"]["M3b"][name] = dict(n_conf=len(conf), wrong=int(wrong), limit=limit,
+                                             **{"pass": bool(wrong <= limit) if conf else None})  # nothing confident: nothing was tested
 
     # M4 and M8 need the oracle runs
     spec4, spec8 = m["M4_search_misses"], m["M8_false_no_orbit"]
@@ -566,12 +581,12 @@ def aggregate_results(results, s, rng_seed):
     bad = len(misses) + len(no_oracle) + len(no_true_band)
     out["must_hold"]["M4"] = dict(n=n_b, misses=len(misses), missing_or_invalid_oracle=len(no_oracle),
                                   oracle_without_true_band=len(no_true_band), limit=spec4["max_fraction"] * n_b,
-                                  **{"pass": bool(len(b) == n_b and bad <= spec4["max_fraction"] * n_b)},
+                                  judged_by="virgil", **{"provisional_pass": bool(len(b) == n_b and bad <= spec4["max_fraction"] * n_b)},
                                   se_sources=sorted({str(x.get("se_source")) for r in b for x in r["bands"]}))
     qualifying = [r for r in b if r["truth"]["index"] in oracle and _qualifies(oracle[r["truth"]["index"]])]
     lost = [r for r in qualifying if (r.get("verdict") or {}).get("value") == "no-orbit"]
-    out["must_hold"]["M8"] = dict(qualifying=len(qualifying), lost=len(lost),
-                                  **{"pass": bool(len(lost) <= spec8["max_fraction"] * len(qualifying))},
+    out["must_hold"]["M8"] = dict(qualifying=len(qualifying), lost=len(lost), judged_by="virgil",
+                                  **{"provisional_pass": bool(len(lost) <= spec8["max_fraction"] * len(qualifying)) if qualifying else None},
                                   basis="oracle verdict 'orbit' (FAP at the Monte Carlo floor is not available at this commit)")
     out["reported"]["M8_by_K"] = _count_by(lost, lambda r: r["truth"]["n_nights"])
 
@@ -583,7 +598,8 @@ def aggregate_results(results, s, rng_seed):
         false = [r for r in rs if _false_orbit(r)]
         limit = spec6["N_all"]["max_count"] if name == "N_all" and len(rs) == spec6["N_all"]["n"] else m6_limit(len(rs), spec6["limits_by_n"])
         out["must_hold"]["M6"][name] = dict(n=len(rs), false_orbits=len(false), limit=int(limit),
-                                            static_companion=sum(1 for r in rs if _static(r)), **{"pass": bool(len(false) <= limit)})
+                                            static_companion=sum(1 for r in rs if _static(r)), judged_by="virgil",
+                                            **{"provisional_pass": bool(len(false) <= limit) if rs else None})
     out["reported"]["M6_by_template"] = _rates(n_, "template")
     out["reported"]["M6_by_kind"] = _rates(n_, "misspecification")
     out["reported"]["M6_by_envelope_fraction"] = _by_envelope(n_)
@@ -616,17 +632,25 @@ def aggregate_results(results, s, rng_seed):
     rejected = sbc.v1.holm(pv, s["family_alpha"]) if pv else {}
     out["rejected"] = sorted(k for k, v in rejected.items() if v)
     out["tests"] = len(pv)
-    must = [v["pass"] for k, v in out["must_hold"].items() if "pass" in v]
-    must += [w["pass"] for k, v in out["must_hold"].items() if "pass" not in v for w in v.values()]
+    flat = [v for v in out["must_hold"].values()]
+    flat = [w for v in flat for w in (v.values() if not ({"pass", "provisional_pass"} & set(v)) else [v])]
+    must = [w["pass"] if "pass" in w else w["provisional_pass"] for w in flat]
     out["counts"] = {k: len(by[k]) for k in "ABND"} | {"oracle": len(oracle)}
+    out["judged_by_virgil"] = ["M4", "M6", "M8"]
     failed = bool(not pv or out["rejected"] or any(x is False for x in must))
-    # True only if every registered test ran as registered; None ("incomplete") when nothing failed but some did not.
-    out["pass"] = False if failed else (None if out["unavailable"] or any(x is None for x in must) else True)
+    # True only if every registered test ran as registered. M4, M6 and M8 are judged by virgil's own verdict and
+    # oracle (the independent FAP is not implemented): their results are provisional_pass, a failure still fails the
+    # run, but a run with them (or any empty subset) is INCOMPLETE, never a pass.
+    out["pass"] = False if failed else (None if out["unavailable"] or out["incomplete"] or out["judged_by_virgil"]
+                                        or any(x is None for x in must) else True)
+    why = ([f"missing data: {'; '.join(out['incomplete'])}"] if out["incomplete"] else []) + (
+        ["M4, M6 and M8 are judged by virgil's own verdict, not the registered independent FAP"] if out["judged_by_virgil"] else [])
+    out["label"] = "INCOMPLETE: " + " | ".join(why) if out["pass"] is None else None
     return out
 
 
 def _under(c):
-    return dict(c, **{"pass": bool(c["p"] > 0.01 or c["hits"] >= c["expected"])}, note="one-sided under-coverage; p from the Poisson-binomial normal approximation")
+    return dict(c, **{"pass": (bool(c["p"] > 0.01 or c["hits"] >= c["expected"]) if c["n"] else None)}, note="one-sided under-coverage; p from the Poisson-binomial normal approximation")
 
 
 def _unhealthy(post, health, sbc):
@@ -743,15 +767,16 @@ def cmd_fit(args, part):
         stratum, index = locate(args.task)
     if part == "oracle" and not 0 <= index < strata_sizes()["B"]:
         raise SystemExit("oracle tasks are B systems 0..239")
-    block, _ = spec()
+    crit_commit = prereg.criteria_commit(CRITERIA_FILE)  # refuses uncommitted criteria before any draw is made
     commit = virgil_commit()
     if not commit:
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
     import jax
 
-    head = dict(part=part, stratum=stratum, index=index, virgil_commit=commit, criteria_hash=criteria_hash(),
-                gate_hash=gate_hash(), design_hash=design_hash(), jax=jax.__version__,
+    head = dict(part=part, stratum=stratum, index=index, virgil_commit=commit, criteria_block_hash=criteria_hash(),
+                design_hash=design_hash(), jax=jax.__version__,
                 device=jax.devices()[0].platform)
+    head["criteria_commit"] = crit_commit
     path = out / f"{part}_{stratum}{index:04d}.json"
     if path.exists():  # resume: a finished system is not rerun
         old = json.loads(path.read_text())
@@ -776,10 +801,10 @@ def cmd_draw(args):
     print(json.dumps([str(p) for p in op.write_system(system, out)]))
 
 
-def cmd_criteria(_):
-    parsed, repaired = spec()
-    print(json.dumps(dict(criteria_hash=criteria_hash(), gate_hash=gate_hash(), design_hash=design_hash(),
-                          spec_repaired=repaired, master_seed=parsed["master_seed"]), indent=1))
+def cmd_criteria(args):
+    parsed = spec()
+    print(json.dumps(dict(criteria_commit=prereg.criteria_commit(CRITERIA_FILE), criteria_block_hash=criteria_hash(),
+                          design_hash=design_hash(), master_seed=parsed["master_seed"]), indent=1))
 
 
 def cmd_check_gate(args):
@@ -788,14 +813,34 @@ def cmd_check_gate(args):
 
     text = subprocess.run(["git", "-C", args.virgil_repo, "show", f"{args.commit}:design/orbit_gate_042.md"],
                           capture_output=True, text=True, check=True).stdout
-    same = criteria_hash(text) == criteria_hash()
-    print(json.dumps(dict(commit=args.commit, block_matches=same, file_matches=gate_hash(text) == gate_hash(),
-                          virgil_criteria_hash=criteria_hash(text), vendored_criteria_hash=criteria_hash())))
+    same = gate_hash(text) == gate_hash()
+    print(json.dumps(dict(commit=args.commit, file_matches=same, block_matches=criteria_hash(text) == criteria_hash(),
+                          virgil_file_hash=gate_hash(text), vendored_file_hash=gate_hash())))
     if not same:
-        raise SystemExit("virgil's section 6 block differs from the vendored copy: the change log needs an entry, and Ben re-registers")
+        raise SystemExit("virgil's gate file differs from the vendored copy: copy it and commit it, and record who approved it in the file's change log")
+
+
+def verify_criteria_content(crit_commit):
+    """The criteria file here is the file at ``crit_commit``: compared with ``git show`` where a repository exists,
+    else with CRITERIA_FILE_SHA256, which the OzSTAR submit script computes from the same git object. With neither
+    the check cannot be made, and the aggregate fails (there is no silent skip)."""
+    import subprocess
+
+    shown = subprocess.run(["git", "-C", str(ROOT), "show", f"{crit_commit}:{CRITERIA_FILE}"], capture_output=True)
+    if shown.returncode == 0:
+        want = hashlib.sha256(shown.stdout).hexdigest()
+    else:
+        want = os.environ.get("CRITERIA_FILE_SHA256", "")
+        if not want:
+            raise SystemExit(f"cannot compare {CRITERIA_FILE} with criteria commit {crit_commit}: no git object and no "
+                             "CRITERIA_FILE_SHA256; not aggregating")
+    have = hashlib.sha256((ROOT / CRITERIA_FILE).read_bytes()).hexdigest()
+    if have != want:
+        raise SystemExit(f"{CRITERIA_FILE} here ({have}) is not the file at criteria commit {crit_commit} ({want})")
 
 
 def cmd_aggregate(args):
+    crit_commit = prereg.criteria_commit(CRITERIA_FILE)
     files = sorted(f for d in args.dirs for f in pathlib.Path(d).glob("*_[ABND]*.json") if not f.name.startswith("truth_"))
     if not files:
         raise SystemExit(f"no results found in {', '.join(map(str, args.dirs))}")
@@ -803,17 +848,19 @@ def cmd_aggregate(args):
     keys = [(r["part"], r["stratum"], r["index"]) for r in results]
     if len(set(keys)) != len(keys):
         raise SystemExit("a system appears twice (a results directory is given twice, or two runs are mixed)")
-    for name, now in (("criteria_hash", criteria_hash()), ("design_hash", design_hash())):
+    if prereg.require_same_commit(results) != crit_commit:  # no override: changed criteria mean a rerun
+        raise SystemExit(f"the runs used criteria commit {prereg.require_same_commit(results)}, this checkout has {crit_commit}: rerun")
+    for name, now in (("criteria_block_hash", criteria_hash()), ("design_hash", design_hash())):
         seen = {r[name] for r in results}
-        if seen != {now} and not (name == "criteria_hash" and seen <= set(args.allow_hash)):
-            raise SystemExit(f"{name} changed since the runs: {seen} vs {now} (a changed criteria block needs a gate change-log entry; --allow-hash H records it)")
+        if seen != {now}:
+            raise SystemExit(f"{name} changed since the runs: {seen} vs {now}")
+    verify_criteria_content(crit_commit)
     commits = {r["virgil_commit"] for r in results}
     if len(commits) != 1:
         raise SystemExit(f"the systems ran on different virgil commits: {commits}")
-    parsed, repaired = spec()
-    summary = dict(version=1, virgil_commit=commits.pop(), criteria_hash=criteria_hash(), gate_hash=gate_hash(),
-                   design_hash=design_hash(), spec_repaired=repaired, devices=sorted({r["device"] for r in results}),
-                   jax=sorted({r["jax"] for r in results}), allowed_hashes=args.allow_hash)
+    parsed = spec()
+    summary = dict(version=1, virgil_commit=commits.pop(), criteria_commit=crit_commit, criteria_block_hash=criteria_hash(), design_hash=design_hash(),
+                   devices=sorted({r["device"] for r in results}), jax=sorted({r["jax"] for r in results}))
     summary.update(aggregate_results(results, parsed, parsed["master_seed"]))
     text = json.dumps(summary, indent=1)
     if args.summary:
@@ -841,7 +888,6 @@ def main():
     a = sub.add_parser("aggregate")
     a.add_argument("dirs", nargs="+")
     a.add_argument("--summary")
-    a.add_argument("--allow-hash", action="append", default=[])
     args = ap.parse_args()
     {"criteria": cmd_criteria, "check-gate": cmd_check_gate, "draw": cmd_draw, "aggregate": cmd_aggregate,
      "fit": lambda x: cmd_fit(x, "fit"), "oracle": lambda x: cmd_fit(x, "oracle")}[args.cmd](args)

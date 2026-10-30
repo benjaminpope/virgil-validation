@@ -15,7 +15,7 @@ spec = importlib.util.spec_from_file_location("orbit_population_script", ROOT / 
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
-REGISTERED = "b0a81b29cf9743602d4be134582d3581f5eb948070bd903ab6e135c068351ec2"
+REGISTERED = "31fd09f6a81645fc7c2d34ebd2e3435530342dd514b0b57ab534925cfb96ceaa"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -32,8 +32,8 @@ def test_criteria_hash_covers_only_the_block():
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_spec_parses_and_sizes():
-    s, repaired = gate.spec()
-    assert s["master_seed"] == 20261028 and isinstance(repaired, bool)
+    s = gate.spec()
+    assert s["master_seed"] == 20261028
     assert gate.strata_sizes() == {"A": 200, "B": 240, "N": 100, "D": 120}
     assert gate.locate(0) == ("A", 0) and gate.locate(200) == ("B", 0) and gate.locate(659) == ("D", 119)
     with pytest.raises(SystemExit):
@@ -54,7 +54,7 @@ def test_draws_are_reproducible_and_distinct():
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_m6_limit_table_is_the_binomial_q99():
-    s, _ = gate.spec()
+    s = gate.spec()
     table = s["must_hold"]["M6_false_orbits"]["limits_by_n"]
     for n in (2, 15, 16, 44, 45, 83, 84, 100, 129):
         assert gate.m6_limit(n, table) == gate.binomial_q99(n, 0.01)
@@ -116,28 +116,29 @@ def _toy():
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_aggregate_clean_toy_has_no_failures_but_is_incomplete():
-    s, _ = gate.spec()
+    s = gate.spec()
     out = gate.aggregate_results(_toy(), s, s["master_seed"])
     assert out["counts"] == {"A": 200, "B": 240, "N": 100, "D": 120, "oracle": 240}
     assert out["rejected"] == []
-    assert out["must_hold"]["M6"]["N_all"]["pass"] and out["must_hold"]["M4"]["pass"]
+    assert {"M1:0.68", "M1:0.95", "M3a"} <= set(out["pvalues"])  # the M1 levels are the gate's, and each is evaluated
+    assert out["must_hold"]["M6"]["N_all"]["provisional_pass"] and out["must_hold"]["M4"]["provisional_pass"]
     assert out["must_hold"]["M7"]["pass"] is None  # the fail flags cannot be observed on this virgil commit
     assert out["pass"] is None and out["unavailable"]  # never True while registered tests were not evaluated
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_aggregate_flags_false_orbits_and_missing_oracles():
-    s, _ = gate.spec()
+    s = gate.spec()
     toy = _toy()
     bad = [dict(r, verdict=dict(value="orbit", winner_n=1)) if r["stratum"] == "N" else r for r in toy]
     out = gate.aggregate_results(bad, s, s["master_seed"])
-    assert out["must_hold"]["M6"]["N_all"]["pass"] is False and out["pass"] is False
-    assert out["must_hold"]["M4"]["pass"] and out["rejected"] == []  # only M6 flipped
+    assert out["must_hold"]["M6"]["N_all"]["provisional_pass"] is False and out["pass"] is False
+    assert out["must_hold"]["M4"]["provisional_pass"] and out["rejected"] == []  # only M6 flipped
     few = [r for r in toy if r["part"] == "fit" or r["index"] < 10]
     out = gate.aggregate_results(few, s, s["master_seed"])
-    assert out["must_hold"]["M4"]["pass"] is False and out["must_hold"]["M7"]["pass"] is False
+    assert out["must_hold"]["M4"]["provisional_pass"] is False and out["must_hold"]["M7"]["pass"] is False
     unhooked = [dict(r, oracle_init_calls=0) if r["part"] == "oracle" else r for r in toy]
-    assert gate.aggregate_results(unhooked, s, s["master_seed"])["must_hold"]["M4"]["pass"] is False
+    assert gate.aggregate_results(unhooked, s, s["master_seed"])["must_hold"]["M4"]["provisional_pass"] is False
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -168,3 +169,171 @@ def test_elliptical_disk_matches_the_uniform_disk_and_a_numerical_transform():
     fu, fv = sky._q(u, v, wavel)
     numerical = np.exp(-2j * np.pi * (np.outer(fu, east) + np.outer(fv, north))).mean(axis=1)
     np.testing.assert_allclose(op.vis_elliptical_disk(u, v, wavel, major, ratio, pa), numerical.real, atol=0.02)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_virgil_judged_metrics_make_every_run_incomplete():
+    s = gate.spec()
+    out = gate.aggregate_results(_toy(), s, s["master_seed"])
+    assert out["judged_by_virgil"] == ["M4", "M6", "M8"]
+    assert out["must_hold"]["M4"]["judged_by"] == "virgil" and out["must_hold"]["M4"]["provisional_pass"]
+    assert out["pass"] is None and out["label"].startswith("INCOMPLETE")
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_an_empty_subset_has_no_verdict_of_its_own():
+    s = gate.spec()
+    no_n = [r for r in _toy() if r["stratum"] != "N"]
+    m6 = gate.aggregate_results(no_n, s, s["master_seed"])["must_hold"]["M6"]["N_all"]
+    assert m6["provisional_pass"] is None  # nothing to test: not True
+    assert gate.aggregate_results(no_n, s, s["master_seed"])["pass"] is not True
+
+
+GATE_COMMIT = "05e50c28f0945dcd265f9a895db71bc22eff4a9b"  # virgil main this copy was taken from
+GATE_SHA256 = "902c0e7097a858cdcf02cb4054f7c113cf9f66dc24ad6e771fa82c407d4e9c3e"
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_gate_copy_has_the_content_hash_of_virgil_main():
+    import hashlib
+
+    assert hashlib.sha256((ROOT / gate.CRITERIA_FILE).read_bytes()).hexdigest() == GATE_SHA256, (
+        "design/orbit_gate_042.md is not the copy taken from virgil main: re-sync it and update GATE_COMMIT/GATE_SHA256")
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_gate_copy_is_byte_identical_to_virgil_at_the_pinned_commit():
+    import os
+    import subprocess
+
+    virgil = pathlib.Path(os.environ.get("VIRGIL_REPO", pathlib.Path.home() / "code" / "virgil"))
+    ref = subprocess.run(["git", "-C", str(virgil), "show", f"{GATE_COMMIT}:design/orbit_gate_042.md"], capture_output=True)
+    if ref.returncode:
+        pytest.skip("no virgil checkout (set VIRGIL_REPO); the content hash test above runs everywhere")
+    assert (ROOT / gate.CRITERIA_FILE).read_bytes() == ref.stdout
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_stratum_a_noise_scales_and_d_nulls_have_discs():
+    import math
+
+    from crosscheck import orbit_population as pop
+
+    scales = [pop.draw_system("A", i)["noise"] for i in range(40)]
+    assert all(abs(math.log(n["s_v2"])) <= math.log(pop.S_MAX) and abs(math.log(n["s_cp"])) <= math.log(pop.S_MAX) for n in scales)
+    assert len({n["s_v2"] for n in scales}) == 40 and any(n["s_v2"] != n["s_cp"] for n in scales)
+    assert "s_v2" not in pop.draw_system("B", 0)["noise"]
+    for i in (60, 89, 90, 119):  # D 60..119 are the N population 0..59; the first 30 carry a disc primary
+        assert (pop.draw_system("D", i)["primary"]["disc_on"] == "single") == (i - 60 < pop.N_DISC_FIRST)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_criteria_commit_is_the_last_commit_and_refuses_edits(tmp_path):
+    import subprocess
+
+    from crosscheck import preregistration as prereg
+
+    def git(*a):
+        return subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    git("init", "-q")
+    (tmp_path / "gate.md").write_text("a\n")
+    git("add", "gate.md")
+    git("commit", "-qm", "one")
+    first = git("rev-parse", "HEAD")
+    assert prereg.criteria_commit("gate.md", root=tmp_path) == first
+    (tmp_path / "other.txt").write_text("x\n")
+    git("add", "other.txt")
+    git("commit", "-qm", "unrelated")
+    assert prereg.criteria_commit("gate.md", root=tmp_path) == first  # the last commit that touched the file
+    (tmp_path / "gate.md").write_text("b\n")
+    with pytest.raises(SystemExit):
+        prereg.criteria_commit("gate.md", root=tmp_path)  # edited criteria cannot be run
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_runs_from_different_criteria_commits_are_not_combined():
+    from crosscheck import preregistration as prereg
+
+    assert prereg.require_same_commit([{"criteria_commit": "a"}, {"criteria_commit": "a"}]) == "a"
+    for bad in ([{"criteria_commit": "a"}, {"criteria_commit": "b"}], [{"criteria_commit": "a"}, {}]):
+        with pytest.raises(SystemExit):
+            prereg.require_same_commit(bad)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_the_recorded_criteria_commit_is_the_last_commit_that_touched_the_file(capsys):
+    import subprocess
+
+    from crosscheck import preregistration as prereg
+
+    if subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--", gate.CRITERIA_FILE],
+                      capture_output=True, text=True).stdout.strip():
+        pytest.skip("the gate file has uncommitted edits")
+    want = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%H", "--", gate.CRITERIA_FILE],
+                          capture_output=True, text=True, check=True).stdout.strip()
+    assert prereg.criteria_commit(gate.CRITERIA_FILE) == want
+    gate.cmd_criteria(None)  # the record a run writes uses the same value
+    assert json.loads(capsys.readouterr().out)["criteria_commit"] == want
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_null_verdict_reads_virgils_delta_log_z_not_a_decoy():
+    modes = {"winner": {"n": 2}, "no_orbit": {"verdict": "no-orbit (weak)", "delta_log_z": -3.5, "delta": 99.0, "delta_nats": 98.0}}
+    v = gate.null_verdict(modes)
+    assert v["delta_nats"] == -3.5 and v["value"] == "no-orbit" and v["winner_n"] == 2
+    assert gate.null_verdict({})["delta_nats"] is None
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+@pytest.mark.parametrize("drop,metric", [("A", None), ("B", "M4"), ("B", "M8"), ("N", "M6")])
+def test_empty_subsets_never_give_a_pass_per_metric(drop, metric):
+    s = gate.spec()
+    out = gate.aggregate_results([r for r in _toy() if r["stratum"] != drop], s, s["master_seed"])
+    assert out["pass"] is not True
+    if metric:
+        entry = out["must_hold"][metric]
+        flat = [entry] if "provisional_pass" in entry else list(entry.values())
+        assert all(e["provisional_pass"] is not True for e in flat if isinstance(e, dict) and "provisional_pass" in e)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_m3b_with_no_confident_systems_has_no_pass():
+    s = gate.spec()
+    toy = [dict(r, bands=[dict(b, p=0.5) for b in r["bands"]]) if r["stratum"] == "B" else r for r in _toy()]
+    out = gate.aggregate_results(toy, s, s["master_seed"])
+    assert all(v["pass"] is None for v in out["must_hold"]["M3b"].values()) and out["pass"] is not True
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_the_criteria_content_check_does_not_skip(monkeypatch, tmp_path):
+
+    monkeypatch.setattr(gate, "ROOT", tmp_path)  # a directory with no git object for the commit and no env hash
+    (tmp_path / "design").mkdir()
+    (tmp_path / "design" / "orbit_gate_042.md").write_text("g\n")
+    monkeypatch.delenv("CRITERIA_FILE_SHA256", raising=False)
+    with pytest.raises(SystemExit, match="not aggregating"):
+        gate.verify_criteria_content("deadbeef")
+    import hashlib
+
+    monkeypatch.setenv("CRITERIA_FILE_SHA256", hashlib.sha256(b"g\n").hexdigest())
+    gate.verify_criteria_content("deadbeef")
+    monkeypatch.setenv("CRITERIA_FILE_SHA256", "0" * 64)
+    with pytest.raises(SystemExit, match="not the file at criteria commit"):
+        gate.verify_criteria_content("deadbeef")
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_criteria_commit_trusts_the_environment_only_outside_a_repository(monkeypatch, tmp_path):
+    import subprocess
+
+    from crosscheck import preregistration as prereg
+
+    monkeypatch.setenv("CRITERIA_COMMIT", "abc")
+    (tmp_path / "gate.md").write_text("a\n")
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    assert prereg.criteria_commit("gate.md", root=tmp_path) == "abc"  # a git-archive snapshot
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+    with pytest.raises(SystemExit, match="not tracked"):  # in a repository the variable is ignored
+        prereg.criteria_commit("gate.md", root=tmp_path)

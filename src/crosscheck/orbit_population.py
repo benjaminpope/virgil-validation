@@ -91,6 +91,7 @@ MJD0 = 60000.0
 HOUR_ANGLES = (-3.0, 3.0)
 SNAPSHOTS = (4, 8)
 DEV_B = 60  # D: indices below are drawn as B, the rest as N (gate section 3.5)
+S_MAX = 10.0  # stratum A: ln s_g ~ U[-ln S_MAX, ln S_MAX] (gate section 3.1, approved 2026-10-29; virgil `_NUMERIC_S_MAX`)
 
 
 def system_streams(stratum, index):
@@ -121,7 +122,10 @@ def sampling_limit(a_mas, night_days, res_mas):
 def band_of(period, span):
     """The alias band N = round(T/P) of a period, T the span (the definition
     of virgil's documentation: band N holds T/(N + 1/2) <= P <= T/(N - 1/2);
-    N = 0 above 2T)."""
+    N = 0 above 2T). This is a COPY of that definition, not an import from virgil: if virgil changes its band
+    edges, the gate's true band and virgil's reported bands disagree. The aggregate reports every system whose
+    reported window does not contain the true period as ``band_label_mismatch``, and the true band is read from
+    the reported [p_lo, p_hi], so a drift shows up there rather than silently shifting a metric."""
     return int(math.floor(span / period + 0.5))
 
 
@@ -174,9 +178,14 @@ def _orbit(rng, elements):
                 Omega=float(rng.uniform(0.0, 180.0)), tau=float(rng.uniform(0.0, 1.0)), **elements)
 
 
-def _noise(rng, correlated):
-    return dict(sigma_v2=float(_loguniform(rng, *SIGMA_V2)), sigma_cp_deg=float(_loguniform(rng, *SIGMA_CP_DEG)),
-                c=float(rng.choice(C_CHOICES)) if correlated else 0.0)
+def _noise(rng, correlated, scales=False):
+    """Quoted sigmas, then the tempering fraction c; stratum A (``scales``) last draws one noise scale s_g per
+    calibration group (V2, CP), so the A streams before them are unchanged."""
+    noise = dict(sigma_v2=float(_loguniform(rng, *SIGMA_V2)), sigma_cp_deg=float(_loguniform(rng, *SIGMA_CP_DEG)),
+                 c=float(rng.choice(C_CHOICES)) if correlated else 0.0)
+    if scales:
+        noise["s_v2"], noise["s_cp"] = (float(math.exp(rng.uniform(-math.log(S_MAX), math.log(S_MAX)))) for _ in range(2))
+    return noise
 
 
 def _contaminants(rng, nights, null):
@@ -263,7 +272,7 @@ def _draw_a(rng, s):
                  omega=float(rng.uniform(0.0, 360.0)), Omega=float(rng.uniform(0.0, 180.0)))
     orbit["a_mas"] = float(_loguniform(rng, *a_range))
     orbit["flux"] = float(_loguniform(rng, *A_FLUX_RANGE))
-    s.update(nights=nights, noise=_noise(rng, correlated=False), orbit=_finish_orbit(orbit, mean_times),
+    s.update(nights=nights, noise=_noise(rng, correlated=False, scales=True), orbit=_finish_orbit(orbit, mean_times),
              primary=dict(diam_mas=0.0, disc_on="none"), contaminants={}, misspecified=False,
              n_redraws=0, span_days=span, p_range=list(p_range), a_range=list(a_range),
              flux_range=list(A_FLUX_RANGE), ecc_max=A_ECC_MAX, band=band_of(period, span))
@@ -317,7 +326,7 @@ def _draw_n(rng, s):
     nights = _snapshots(rng, _nights_b(rng, schedule, k), window=False)
     span = float(np.ptp([n["mjd_mean"] for n in nights]))
     diam = float(rng.uniform(*DISC_RES) * res)
-    disc = s["index"] < N_DISC_FIRST
+    disc = s["index"] - (DEV_B if s["stratum"] == "D" else 0) < N_DISC_FIRST  # index within the null population: D 60..119 are N 0..59
     noise = _noise(rng, correlated=True)
     contaminants = _contaminants(rng, nights, null=True)
     misspec = _misspecified_null(rng, res, TEMPLATES[s["template"]]["n_channels"])
@@ -434,7 +443,8 @@ def _write_night(path, system, k, night, rng):
     bc = np.array([index[(b, c)] for a, b, c in tris])
     ac = np.array([index[(a, c)] for a, b, c in tris])
     sv, scp, c = system["noise"]["sigma_v2"], system["noise"]["sigma_cp_deg"], system["noise"]["c"]
-    cp_noise = scp * (BAD_NIGHT["cp_noise_factor"] if night["bad"] else 1.0)
+    sv_true, scp_true = sv * system["noise"].get("s_v2", 1.0), scp * system["noise"].get("s_cp", 1.0)  # A: the noise drawn is s_g x the quoted sigma
+    cp_noise = scp_true * (BAD_NIGHT["cp_noise_factor"] if night["bad"] else 1.0)
     rec = {k_: [] for k_ in ("vis2", "u", "v", "sta", "mjd")}
     t3 = {k_: [] for k_ in ("phi", "u1", "v1", "u2", "v2", "sta", "mjd")}
     for ha, mjd in zip(night["ha_h"], night["mjd"]):
@@ -446,8 +456,8 @@ def _write_night(path, system, k, night, rng):
         vis = scene(system, companion=comp)(u[:, None], v[:, None], wl[None, :])
         v2 = night["v2_factor"] * np.abs(vis) ** 2
         rms = np.sqrt(np.mean(v2**2, axis=1, keepdims=True))
-        gain = np.where(rms > 0, math.sqrt(c) * sv / np.where(rms > 0, rms, 1.0), 0.0) * rng.standard_normal((len(u), 1))
-        v2_obs = v2 * (1.0 + gain) + math.sqrt(1.0 - c) * sv * rng.standard_normal(v2.shape)
+        gain = np.where(rms > 0, math.sqrt(c) * sv_true / np.where(rms > 0, rms, 1.0), 0.0) * rng.standard_normal((len(u), 1))
+        v2_obs = v2 * (1.0 + gain) + math.sqrt(1.0 - c) * sv_true * rng.standard_normal(v2.shape)
         phase = np.exp(1j * np.deg2rad(cp_noise / math.sqrt(3.0)) * rng.standard_normal(vis.shape))
         noisy = vis * phase
         cp = np.angle(noisy[ab] * noisy[bc] * np.conj(noisy[ac]))
