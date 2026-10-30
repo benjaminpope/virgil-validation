@@ -161,10 +161,13 @@ def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, s
     """The cold-start gate (``design/alma_imlup_p3.md``, 2026-10-23, approved by Ben): five checks, each PASS or FAIL (``NOT EVALUATED`` when its input is
     None), and a verdict that is PASS only if all five pass.
 
-    a. ``objective_ours`` <= ``objective_mpol`` (R's objective, both evaluated by virgil at eps 1e-12);
-    b. raw chi^2/N at s = 1, ``chi2n_ours`` <= ``chi2n_mpol`` (MPoL's solution evaluated in virgil);
+    a. ``objective_ours`` <= ``objective_mpol`` (R's objective, both evaluated by virgil at eps 1e-12; virgil judges both arms, so (a) and (b) rest on virgil's chi^2 being right: the independent check is
+       ``tests/test_alma_radio.py::test_half_chi2_plus_log_norm_is_the_negative_scipy_log_density_up_to_a_constant`` and ``::test_chi2_by_ddid_of_a_held_out_fold_matches_numpy``, against an independent DFT and SciPy);
+    b. raw chi^2/N at s = 1, ``chi2n_ours`` <= ``chi2n_mpol`` (MPoL's solution evaluated in virgil; the Track A value 2.7062 is from the MPoL reference run, jobs 18913982/18913983, ``design/alma_imlup_p3.md`` preliminary-numbers table);
     c. C8 converged in every stage (``stages_converged``, a list of bools);
-    d. the fraction of pixels of the image tapered to MPoL's beam below 1e-6 of its peak (``dead_fraction``; Ben, 2026-10-27: the base image may break into dots, MPoL's own is judged tapered) is under ``dead_tol`` (1 %); the base image's fraction (``dead_fraction_base``) is only recorded;
+    d. the fraction of pixels of the image tapered to MPoL's beam below 1e-6 of its peak (``dead_fraction``) is under ``dead_tol`` (1 %); the base image's fraction (``dead_fraction_base``) is only recorded.
+       POST-HOC CHANGE: the gate approved on 2026-10-23 (88b1e7d) judged (d) on the base image; on 2026-10-27 (aa0c2e3), after the base image showed dots, Ben moved it to the tapered image
+       (the caller passes the tapered fraction as ``dead_fraction``). A cold-start (d) PASS is therefore a pass on the tapered image; the thresholds did not change, the rule did;
     e. ``flux_ours`` within ``flux_tol`` (10 %) of ``flux_ref``: the CLEAN flux of ours when one is given, else the DSHARP CLEAN image's measured 0.2548 Jy (``REFERENCE_FLUX_JY``, ``REFERENCE_FLUX_NAME``; ``flux_ref_name`` says which)."""
     def item(key, label, ok, value, limit):
         return dict(key=key, label=label, value=value, limit=limit, status="NOT EVALUATED" if ok is None else ("PASS" if ok else "FAIL"))
@@ -301,7 +304,7 @@ def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, 
     """The "better than MPoL" pass of Track A (``design/alma_imlup_p3.md``, Ben 2026-10-28): one arm must do all five, each PASS / FAIL / NOT EVALUATED (None input). Every threshold is ``CRITERIA['better']`` (hashed):
     there is no keyword to change one.
 
-    1. held-out raw chi^2/N below MPoL's on the same folds by more than its uncertainty: ``heldout_ours`` and ``heldout_mpol`` are per-fold lists (``cv-compare``'s ``per_fold``), and ``mean(d) + se(d) < 0`` for the per-fold differences d (se = sd / sqrt(K)); a pair of scalars is compared without an uncertainty and is flagged in the value;
+    1. held-out raw chi^2/N below MPoL's on the same folds by more than its uncertainty: ``heldout_ours`` and ``heldout_mpol`` are per-fold lists (``cv-compare``'s ``per_fold``), and ``mean(d) + se(d) < 0`` for the per-fold differences d (se = sd / sqrt(K)); fewer than two folds (including none) has no uncertainty, so the check is NOT EVALUATED, never a pass;
     2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than MPoL's 2.7062;
     3. on every registered synthetic truth x coverage (``cells``): ``synth`` and ``synth_r`` map ``(truth id, coverage id)`` to the arm's and config R's ``synth.json`` dicts (``check_synth`` refuses any other hash, a development truth or an unpinned or
        other truth file); NRMSE at 0.5 CLEAN beam below R's, N_eff ratio >= 0.7 and base pixels below 1e-4 of the in-disk peak under 1 %, in every cell;
@@ -314,9 +317,12 @@ def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, 
     h, h_txt = None, None
     if heldout_ours is not None and heldout_mpol is not None:
         d = np.atleast_1d(np.asarray(heldout_ours, float) - np.asarray(heldout_mpol, float))
-        se = float(np.std(d, ddof=1) / np.sqrt(len(d))) if len(d) > 1 else 0.0
-        h = float(d.mean()) + se
-        h_txt = f"mean diff {d.mean():+.6g} + se {se:.3g} over {len(d)} fold(s)" + ("" if len(d) > 1 else " (no uncertainty: one value)")
+        if len(d) > 1:
+            se = float(np.std(d, ddof=1) / np.sqrt(len(d)))
+            h = float(d.mean()) + se
+            h_txt = f"mean diff {d.mean():+.6g} + se {se:.3g} over {len(d)} fold(s)"
+        else:
+            h_txt = f"{len(d)} fold(s): no uncertainty, not evaluated"
     frac = b["nrmse_beam_fraction"]
     syn_rows, syn_ok = [], None
     if synth is not None and synth_r is not None:
