@@ -94,7 +94,7 @@ def hd9312():
 def test_an_orbit_on_the_measured_positions_is_the_same_sky_orbit(hd9312):
     r, best, t_ref, table = hd9312
     rows, verdict = PB.sky_rows(best, t_ref, r, table, WINDOW, False, False, 1.0)
-    assert verdict == "SAME-SKY-ORBIT"
+    assert verdict == "INCOMPLETE"  # D-C: the paper's positions carry no posterior samples, so the spread gate cannot run
     assert rows[0]["ours"] < 1e-6
     assert "band N=5 (rank 1 of 2" in rows[1]["note"]
 
@@ -106,7 +106,7 @@ def test_a_point_reflection_without_a_label_swap_is_not_agreement(hd9312):
     _, verdict = PB.sky_rows(reflected, t_ref, r, table, WINDOW, False, False, 1.0)
     assert verdict == "UNEXPLAINED-FLIP"
     _, accepted = PB.sky_rows(reflected, t_ref, r, table, WINDOW, True, False, 1.0)
-    assert accepted == "SAME-SKY-ORBIT"
+    assert accepted == "INCOMPLETE"  # accepted as a reflection, but still point estimates only (D-C)
 
 
 @pytest.mark.validates("evidence", roots=["self-consistency"], kind="control")
@@ -115,7 +115,8 @@ def test_another_alias_band_is_a_different_sky_orbit(hd9312):
     far = dict(best, period=best["period"] * 2.5)
     rows, verdict = PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, None)
     assert verdict == "DIFFERENT"  # without a raw chi2/N the paper is not blamed
-    assert PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, 1.0)[1] == "REFERENCE-DISAGREES"
+    # sky_rows passes chi2/N but not N, so no fit is called good (verdict rule 3): REFERENCE-DISAGREES needs n_data
+    assert PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, 1.0)[1] == "DIFFERENT"
 
 
 def test_the_newest_run_folder_wins_by_time_not_by_name(tmp_path):
@@ -190,7 +191,7 @@ def _gl229b_rows(best, flipped=False, t_ref=60000.0):
 def test_the_published_orbit_comparison_reproduces_xuans_orbit_and_rejects_its_reflection():
     best = _xuan_best()
     rows, verdict = _gl229b_rows(best)
-    assert rows[0]["ours"] < 1e-6 and verdict == "SAME-SKY-ORBIT"
+    assert rows[0]["ours"] < 1e-6 and verdict == "INCOMPLETE"  # D-C: no samples
     assert "published orbit's positions at our nights" in rows[0]["quantity"]
     assert rows[1]["pub"] == pytest.approx(12.134) and "band N=34" in rows[1]["note"]
     _, flipped = _gl229b_rows(dict(best, Omega=best["Omega"] + 180.0))  # (dRA, dDec) -> (-dRA, -dDec)

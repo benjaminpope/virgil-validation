@@ -48,6 +48,11 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D11">D11</span> | `mpol`, `models.Image` | MPoL's image centre is pixel N/2 of the unpacked cube; virgil's is ((N-1)/2, (N-1)/2), so the two scenes differ by half a pixel in both axes | documented |
 | <span id="D12">D12</span> | `mpol`, `imaging.MaxEntropy` | MPoL's entropy is of the tapered image in Jy/arcsec^2 against a constant prior 1e-4, normalised by F_tot; virgil's MaxEntropy is of the unit-sum untapered image | documented |
 | <span id="D13">D13</span> | `mpol` | MPoL's IM Lup export reads CORRECTED_DATA; our first read used DATA, which differs from it by 0.03 Jy (ddid 0) to 1.6 Jy (ddids 22-25) | open |
+| <span id="D15">D15</span> | `epochs.rank_orbits` | Gl 229: the night 2024-12-19 (ESO files; not in the OiDB collection) is left out of the orbit fits (scripts/oidb_fit.py GL229_EXCLUDED_NIGHTS) | open [virgil-validation#69](https://github.com/benjaminpope/virgil-validation/issues/69) |
+| <span id="D16">D16</span> | `epochs.rank_orbits` | Gl 229: the exposure GRAVI.2023-12-26T05_51_29.891 is left out (oidb_fit.py GL229_EXCLUDED_FILES, reanalyse_orbits.py GL229_EXCLUDE) | documented |
+| <span id="D17">D17</span> | `epochs.rank_orbits` | Gl 229: the nights 2024-02-28 and 2024-03-29 are flagged as single-night alias peaks (oidb_fit.py GL229_FLAGGED) and seed no position; with exclude_flagged they are dropped | documented |
+| <span id="D18">D18</span> | `epochs.rank_orbits` | Halbwachs+2020 published ellipses are adopted as 1 sigma as rescaled; the unrescaled variant divides by 0.1626 * 1.0856 = 0.17652 (crosscheck.astrometry.published_position) | documented |
+| <span id="D19">D19</span> | `epochs.rank_orbits` | Waisberg+2025 give no covariance; isotropic per-axis scatter 40 uas (zeta Boo) and 20 uas (eta Oph) is assumed (crosscheck.astrometry.WAISBERG_SIGMA); Rowan+2026 errors are multiplied by their published s_ast = e^0.8 | documented |
 
 ## Problems found in other packages
 

@@ -85,11 +85,11 @@ def published_position(rec, paper):
                    convention="Le Bouquin+2017 FWHM axes / 2.3548")
     elif paper.startswith("2020MNRAS.496.1355H"):  # Halbwachs+2020: rescaled, adopted as 1 sigma
         out.update(cov=ellipse_covariance(smaj, smin, th), convention="Halbwachs+2020 rescaled ellipse as published")
-        k = 0.1626 * 1.0856
+        k = 0.1626 * 1.0856  # Halbwachs+2020 rescaling, ledger D18
         out.update(cov_alt=ellipse_covariance(smaj / k, smin / k, th), alt_note="unrescaled (/0.17652)")
     elif paper.startswith("2026PASP..138b4203R"):  # Rowan+2026: sigmas and rho in the note, times s_ast
         sra, sdec, rho = rowan_sigmas(rec["note"])
-        s = math.exp(0.8)
+        s = math.exp(0.8)  # Rowan+2026 published s_ast; inflates the errors (ledger D19)
         out.update(cov=correlated_covariance(s * sra, s * sdec, rho), convention="Rowan+2026 x s_ast = e^0.8")
         out.update(cov_alt=correlated_covariance(sra, sdec, rho), alt_note="bootstrap errors unscaled")
     elif paper.startswith("2025OJAp....8E..63W"):  # Waisberg+2025: per system, see published_for_system
@@ -104,6 +104,7 @@ def published_position(rec, paper):
     return out
 
 
+# Isotropic epoch scatter (mas) per system from Waisberg+2025; ledger D19.
 WAISBERG_SIGMA = {"zet_boo": 0.040, "eta_oph": 0.020}
 
 
