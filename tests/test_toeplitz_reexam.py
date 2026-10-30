@@ -260,3 +260,11 @@ def test_the_script_pin_is_the_registry_pin():
 
     entry = prereg.load_registry()["design/toeplitz_reexam_042.yml"]
     assert entry["sha256"] == tr.REGISTERED_SHA256 == prereg.sha256_file(tr.CRITERIA_FILE)
+
+
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="guard")
+def test_old_check_sets_the_registration():
+    """Tier II imports the old check module, whose time command stamps outputs with ``REG``; only its own ``main`` sets
+    that, so ``old_check`` must, whatever ran first in the process."""
+    old = tr.old_check()
+    assert old.REG is not None and old.REG.registered

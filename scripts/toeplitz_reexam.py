@@ -64,6 +64,15 @@ def criteria():
     return yaml.safe_load(CRITERIA_FILE.read_text())
 
 
+def old_check():
+    """``alma_imlup_toeplitz_check``, with the registration its own ``main`` would set: its time command stamps
+    every output with it and fails on ``None`` when imported bare."""
+    import alma_imlup_toeplitz_check as old
+
+    old.REG = old.prereg.check(old.CRITERIA_FILE)
+    return old
+
+
 def virgil_commit():
     """The virgil commit imported: ``$VIRGIL_COMMIT``, else a 40-hex directory in virgil's path (the cluster's snapshots), else
     ``git rev-parse HEAD`` in its source tree (with ``+dirty`` for local changes), else ``unknown``."""
@@ -369,7 +378,7 @@ def cmd_tier2_agree(args):
     """At the saved solution and the two moved points of ``alma_imlup_toeplitz_check`` (552da46): loss, chi2 per ddid and every
     gradient site, Toeplitz against direct at eps 1e-12, within the budget with ``eps_ref = eps_direct``."""
     cfg = criteria()
-    import alma_imlup_toeplitz_check as old
+    old = old_check()
 
     from crosscheck import radio_exact as rx
 
@@ -459,7 +468,7 @@ def cmd_tier2_agree(args):
 
 def cmd_tier2_time(args):
     criteria()
-    import alma_imlup_toeplitz_check as old
+    old = old_check()
 
     old.cmd_time(args)
     path = pathlib.Path(args.out) / f"time_{args.method}.json"
