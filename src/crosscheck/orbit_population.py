@@ -121,7 +121,10 @@ def sampling_limit(a_mas, night_days, res_mas):
 def band_of(period, span):
     """The alias band N = round(T/P) of a period, T the span (the definition
     of virgil's documentation: band N holds T/(N + 1/2) <= P <= T/(N - 1/2);
-    N = 0 above 2T)."""
+    N = 0 above 2T). This is a COPY of that definition, not an import from virgil: if virgil changes its band
+    edges, the gate's true band and virgil's reported bands disagree. The aggregate reports every system whose
+    reported window does not contain the true period as ``band_label_mismatch``, and the true band is read from
+    the reported [p_lo, p_hi], so a drift shows up there rather than silently shifting a metric."""
     return int(math.floor(span / period + 0.5))
 
 
