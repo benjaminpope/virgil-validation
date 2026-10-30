@@ -159,7 +159,7 @@ def test_no_pull_campaign_scene_reaches_an_arc_function():
     import virgil_bridge as vb
 
     reached = set()
-    for fn in [pc.draw, *(getattr(vb, "binary" if s == "uniform_disk" else s) for s in S_SCENES)]:
+    for fn in [pc.draw, *(getattr(vb, s) for s in pc.SCENES)]:  # uniform_disk is drawn inline by ``draw``
         reached |= names_in(ast.parse(inspect.getsource(fn)))
     frontier = reached & set(sky_defs)
     while frontier:
