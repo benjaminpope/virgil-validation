@@ -279,7 +279,61 @@ def test_the_recorded_criteria_commit_is_the_last_commit_that_touched_the_file(c
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_null_verdict_reads_virgils_delta_log_z_key(monkeypatch):
-    import inspect
+def test_null_verdict_reads_virgils_delta_log_z_not_a_decoy():
+    modes = {"winner": {"n": 2}, "no_orbit": {"verdict": "no-orbit (weak)", "delta_log_z": -3.5, "delta": 99.0, "delta_nats": 98.0}}
+    v = gate.null_verdict(modes)
+    assert v["delta_nats"] == -3.5 and v["value"] == "no-orbit" and v["winner_n"] == 2
+    assert gate.null_verdict({})["delta_nats"] is None
 
-    assert 'null.get("delta_log_z")' in inspect.getsource(gate)  # virgil's _null_verdict reports delta_log_z
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+@pytest.mark.parametrize("drop,metric", [("A", None), ("B", "M4"), ("B", "M8"), ("N", "M6")])
+def test_empty_subsets_never_give_a_pass_per_metric(drop, metric):
+    s = gate.spec()
+    out = gate.aggregate_results([r for r in _toy() if r["stratum"] != drop], s, s["master_seed"])
+    assert out["pass"] is not True
+    if metric:
+        entry = out["must_hold"][metric]
+        flat = [entry] if "provisional_pass" in entry else list(entry.values())
+        assert all(e["provisional_pass"] is not True for e in flat if isinstance(e, dict) and "provisional_pass" in e)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_m3b_with_no_confident_systems_has_no_pass():
+    s = gate.spec()
+    toy = [dict(r, bands=[dict(b, p=0.5) for b in r["bands"]]) if r["stratum"] == "B" else r for r in _toy()]
+    out = gate.aggregate_results(toy, s, s["master_seed"])
+    assert all(v["pass"] is None for v in out["must_hold"]["M3b"].values()) and out["pass"] is not True
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_the_criteria_content_check_does_not_skip(monkeypatch, tmp_path):
+
+    monkeypatch.setattr(gate, "ROOT", tmp_path)  # a directory with no git object for the commit and no env hash
+    (tmp_path / "design").mkdir()
+    (tmp_path / "design" / "orbit_gate_042.md").write_text("g\n")
+    monkeypatch.delenv("CRITERIA_FILE_SHA256", raising=False)
+    with pytest.raises(SystemExit, match="not aggregating"):
+        gate.verify_criteria_content("deadbeef")
+    import hashlib
+
+    monkeypatch.setenv("CRITERIA_FILE_SHA256", hashlib.sha256(b"g\n").hexdigest())
+    gate.verify_criteria_content("deadbeef")
+    monkeypatch.setenv("CRITERIA_FILE_SHA256", "0" * 64)
+    with pytest.raises(SystemExit, match="not the file at criteria commit"):
+        gate.verify_criteria_content("deadbeef")
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_criteria_commit_trusts_the_environment_only_outside_a_repository(monkeypatch, tmp_path):
+    import subprocess
+
+    from crosscheck import preregistration as prereg
+
+    monkeypatch.setenv("CRITERIA_COMMIT", "abc")
+    (tmp_path / "gate.md").write_text("a\n")
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    assert prereg.criteria_commit("gate.md", root=tmp_path) == "abc"  # a git-archive snapshot
+    subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
+    with pytest.raises(SystemExit, match="not tracked"):  # in a repository the variable is ignored
+        prereg.criteria_commit("gate.md", root=tmp_path)

@@ -41,11 +41,13 @@ def criteria_commit(path, root=None) -> str:
     path = pathlib.Path(path)
     rel = (path if path.is_absolute() else root / path).resolve().relative_to(root.resolve()).as_posix()
     git = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
-    if git("rev-parse", "--git-dir").returncode:
+    if git("rev-parse", "--git-dir").returncode:  # not inside any repository: a git-archive snapshot
         commit = os.environ.get("CRITERIA_COMMIT", "")
         if not commit:
             raise CriteriaError(f"{rel}: not a git checkout and CRITERIA_COMMIT is not set")
         return commit
+    if git("ls-files", "--error-unmatch", "--", rel).returncode:  # in a repository, CRITERIA_COMMIT is never trusted
+        raise CriteriaError(f"{rel} is not tracked by git")
     if git("status", "--porcelain", "--", rel).stdout.strip():
         raise CriteriaError(f"{rel} has uncommitted changes: commit it, so the run records the criteria it used")
     commit = git("log", "-n1", "--format=%H", "--", rel).stdout.strip()

@@ -32,6 +32,7 @@ import importlib.util
 import inspect
 import json
 import math
+import os
 import pathlib
 import re
 import sys
@@ -368,6 +369,15 @@ def run_system(part, stratum, index, out, keep_work=False):
     return result
 
 
+def null_verdict(modes):
+    """The verdict virgil ships at this commit, from ``stages/modes/report.json`` (``no_orbit.verdict`` and ``delta_log_z``)."""
+    null = modes.get("no_orbit") or {}
+    raw = null.get("verdict")
+    return dict(value=None if raw is None else ("no-orbit" if str(raw).startswith("no-orbit") else "orbit"), raw=raw,
+                source="stages/modes/report.json no_orbit.verdict (the verdict virgil ships at this commit)",
+                winner_n=(modes.get("winner") or {}).get("n"), delta_nats=null.get("delta_log_z"))
+
+
 def _virgil_run(part, system, paths, work):
     import jax
 
@@ -390,11 +400,7 @@ def _virgil_run(part, system, paths, work):
     bands = band_table(aliases, n_is)
     modes = json.loads((run / "stages" / "modes" / "report.json").read_text())
     search = json.loads((run / "stages" / "search" / "report.json").read_text())
-    null = modes.get("no_orbit") or {}
-    raw = null.get("verdict")
-    verdict = dict(value=None if raw is None else ("no-orbit" if str(raw).startswith("no-orbit") else "orbit"), raw=raw,
-                   source="stages/modes/report.json no_orbit.verdict (the verdict virgil ships at this commit)",
-                   winner_n=(modes.get("winner") or {}).get("n"), delta_nats=null.get("delta_log_z"))
+    verdict = null_verdict(modes)
     out = dict(bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
                primary_diam=search.get("primary_diam"), outliers=search.get("outliers"),
                night_flags=search.get("night_flags"), n_bands=search.get("n_bands"))
@@ -637,8 +643,9 @@ def aggregate_results(results, s, rng_seed):
     # run, but a run with them (or any empty subset) is INCOMPLETE, never a pass.
     out["pass"] = False if failed else (None if out["unavailable"] or out["incomplete"] or out["judged_by_virgil"]
                                         or any(x is None for x in must) else True)
-    out["label"] = ("INCOMPLETE: M4, M6 and M8 are judged by virgil's own verdict, not the registered independent FAP"
-                    if out["pass"] is None else None)
+    why = ([f"missing data: {'; '.join(out['incomplete'])}"] if out["incomplete"] else []) + (
+        ["M4, M6 and M8 are judged by virgil's own verdict, not the registered independent FAP"] if out["judged_by_virgil"] else [])
+    out["label"] = "INCOMPLETE: " + " | ".join(why) if out["pass"] is None else None
     return out
 
 
@@ -813,6 +820,25 @@ def cmd_check_gate(args):
         raise SystemExit("virgil's gate file differs from the vendored copy: copy it and commit it, and record who approved it in the file's change log")
 
 
+def verify_criteria_content(crit_commit):
+    """The criteria file here is the file at ``crit_commit``: compared with ``git show`` where a repository exists,
+    else with CRITERIA_FILE_SHA256, which the OzSTAR submit script computes from the same git object. With neither
+    the check cannot be made, and the aggregate fails (there is no silent skip)."""
+    import subprocess
+
+    shown = subprocess.run(["git", "-C", str(ROOT), "show", f"{crit_commit}:{CRITERIA_FILE}"], capture_output=True)
+    if shown.returncode == 0:
+        want = hashlib.sha256(shown.stdout).hexdigest()
+    else:
+        want = os.environ.get("CRITERIA_FILE_SHA256", "")
+        if not want:
+            raise SystemExit(f"cannot compare {CRITERIA_FILE} with criteria commit {crit_commit}: no git object and no "
+                             "CRITERIA_FILE_SHA256; not aggregating")
+    have = hashlib.sha256((ROOT / CRITERIA_FILE).read_bytes()).hexdigest()
+    if have != want:
+        raise SystemExit(f"{CRITERIA_FILE} here ({have}) is not the file at criteria commit {crit_commit} ({want})")
+
+
 def cmd_aggregate(args):
     crit_commit = prereg.criteria_commit(CRITERIA_FILE)
     files = sorted(f for d in args.dirs for f in pathlib.Path(d).glob("*_[ABND]*.json") if not f.name.startswith("truth_"))
@@ -828,13 +854,7 @@ def cmd_aggregate(args):
         seen = {r[name] for r in results}
         if seen != {now}:
             raise SystemExit(f"{name} changed since the runs: {seen} vs {now}")
-    # The commit alone is not tied to the content (CRITERIA_COMMIT is set by the job script): every run's recorded
-    # block hash must be the block at that commit, where a repository can say.
-    import subprocess
-
-    shown = subprocess.run(["git", "-C", str(ROOT), "show", f"{crit_commit}:{CRITERIA_FILE}"], capture_output=True, text=True)
-    if shown.returncode == 0 and {r["criteria_block_hash"] for r in results} != {criteria_hash(shown.stdout)}:
-        raise SystemExit(f"the runs' criteria block is not the block at criteria commit {crit_commit}")
+    verify_criteria_content(crit_commit)
     commits = {r["virgil_commit"] for r in results}
     if len(commits) != 1:
         raise SystemExit(f"the systems ran on different virgil commits: {commits}")
