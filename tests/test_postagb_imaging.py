@@ -134,3 +134,48 @@ def test_the_postagb_page_matches_the_stored_results():
     text = page.read_text()
     assert postagb_page.build(text) == text
     assert text.count("<!-- gen:") == text.count("<!-- /gen:") > 0
+
+
+def _previous_result(**over):
+    return dict(chi2_per_point=1.1, gp_converged=True, gp_on_edge=False, star_index_source="ORGANIC SIND1",
+                f_prim_pct=60.0, f_sec_pct=5.0, **over)
+
+
+def _reuse_args(**over):
+    import argparse
+
+    return argparse.Namespace(smoke=False, reuse_converged=True, target="t", **over)
+
+
+@needs_multipole
+def test_reuse_converged_needs_the_flag_and_a_clean_previous_result(tmp_path):
+    import json
+
+    cfg = {"key": "t"}
+    (tmp_path / "t_image.json").write_text(json.dumps(_previous_result()))
+    assert P.skip_clean_reason(tmp_path, cfg, "gp-aniso", _reuse_args()) == "converged, interior of its grid"
+    # controls: each way a previous result is not clean reruns it
+    off = _reuse_args()
+    off.reuse_converged = False
+    assert P.skip_clean_reason(tmp_path, cfg, "gp-aniso", off) is None
+    for bad in (dict(gp_converged=False), dict(gp_on_edge=True), dict(chi2_per_point=5.0), dict(f_sec_pct=30.0)):
+        (tmp_path / "t_image.json").write_text(json.dumps(_previous_result() | bad))
+        assert P.skip_clean_reason(tmp_path, cfg, "gp-aniso", _reuse_args()) is None, bad
+    (tmp_path / "t_image.json").write_text(json.dumps(_previous_result()))
+    assert P.skip_clean_reason(tmp_path, {"key": "t", "fov_override": 1}, "gp-aniso", _reuse_args()) is None
+
+
+@needs_multipole
+def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    prev = tmp_path / "t_image.json"
+    prev.write_text(json.dumps(_previous_result()))
+    monkeypatch.setattr(P, "cfg_of", lambda args: {"key": "t"})
+    P.image_one(_reuse_args(), tmp_path, "gp-aniso")
+    rec = json.loads((tmp_path / "t_gp-aniso_reused.json").read_text())
+    assert rec["reuse_converged"] is True and rec["strategy"] == "gp-aniso"
+    assert rec["kept_file"] == "t_image.json" and rec["kept_sha256"] == hashlib.sha256(prev.read_bytes()).hexdigest()
+    assert rec["reason"] == "converged, interior of its grid" and rec["utc"]
+    assert json.loads(prev.read_text()) == _previous_result()  # the kept result is untouched
