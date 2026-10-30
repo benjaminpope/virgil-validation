@@ -302,24 +302,31 @@ def run_replica(args, data, prob_for, save=None):
         run_stats = {}
         if mb:
             bsz = vr.MPOL_RUN["batch_size"]
-            params, losses, wall, stopped = vr.run_stage_minibatch(params, stage_data, lambda d, p=prob: d.term(p.scene, p.nuis, chunk_size=bsz), steps=steps, opt=opt, loss_kw=kw, batch=bsz, seed=args.replica_seed,
+            params, losses, wall, stopped = vr.run_stage_minibatch(params, stage_data, lambda d, p=prob: d.term(p.scene, p.nuis, chunk_size=bsz), steps=steps, opt=opt, loss_kw=kw, batch=bsz, seed=args.replica_seed, stage=len(stages),
                                                                    time_limit=args.time_limit, log=say, stats=run_stats)
             say(f"stage {name}: peak |offset| {run_stats.get('peak_offset_mas', 0.0):.1f} mas (direct chi2: no offset box)")
         else:
             params, losses, wall, stopped = vr.run_stage(params, prob.terms[0], steps=steps, opt=opt, loss_kw=kw, time_limit=args.time_limit, log=say, stats=run_stats)
             say(f"stage {name}: peak |offset| {run_stats.get('peak_offset_mas', 0.0):.1f} mas of the Toeplitz box ±{prob.offset_bound_mas:g} mas")
-        hist = np.asarray(losses, float)
-        c8 = va.convergence_window(hist)
-        why = stopped or ("c8" if c8["converged"] else "max_steps")
-        keep = sorted(set(range(0, len(hist), 10)) | ({len(hist) - 1} if len(hist) else set()))
-        traj = [dict(steps=float(i + 1), loss=float(hist[i]), grad_norm=float("nan"), elapsed=None, round=1) for i in keep]
-        info = dict(method="adam", steps=len(hist), rounds=1, stop=stopped or why, converged=bool(c8["converged"]), loss=float(hist[-1]) if len(hist) else float("nan"), precondition=None, precondition_rounds=[], restarts=[],
-                    adam=dict(loss_history=hist.tolist(), lr=vr.MPOL_RUN["lr"], eps=1e-8, optimiser="optax.adamw", weight_decay=0.0 if args.replica_no_wd else vr.MPOL_RUN["weight_decay"], float32=True, replica=True, minibatch=bool(mb), batch_size=vr.MPOL_RUN["batch_size"] if mb else None, seed=args.replica_seed if mb else None, steps=len(hist), c8=c8,
+        batch_hist = np.asarray(losses, float)
+        if mb:  # a batch's loss is of its own points (the last of an epoch partial) and its noise is far below C8's tolerance: the stage's loss is the n_b-weighted mean over its last epoch, and C8 is not assessed
+            hist, steps_at = np.asarray(run_stats["epoch_loss"], float), [float(k) for k in run_stats["epoch_steps"]]
+            c8 = dict(converged=None, change=None, mean_drop=None, window_steps=0, reason="minibatch: batch losses are of different points and their noise is far below C8's tolerance, so C8 is not assessed")
+            why = stopped or "max_steps"
+            traj = [dict(steps=k, loss=float(h), grad_norm=float("nan"), elapsed=None, round=1) for k, h in zip(steps_at, hist)]
+        else:
+            hist = batch_hist
+            c8 = va.convergence_window(hist)
+            why = stopped or ("c8" if c8["converged"] else "max_steps")
+            keep = sorted(set(range(0, len(hist), 10)) | ({len(hist) - 1} if len(hist) else set()))
+            traj = [dict(steps=float(i + 1), loss=float(hist[i]), grad_norm=float("nan"), elapsed=None, round=1) for i in keep]
+        info = dict(method="adam", steps=len(batch_hist), rounds=1, stop=stopped or why, converged=None if mb else bool(c8["converged"]), loss=float(hist[-1]) if len(hist) else float("nan"), precondition=None, precondition_rounds=[], restarts=[],
+                    adam=dict(loss_history=hist.tolist(), batch_loss_history=batch_hist.tolist() if mb else None, lr=vr.MPOL_RUN["lr"], eps=1e-8, optimiser="optax.adamw", weight_decay=0.0 if args.replica_no_wd else vr.MPOL_RUN["weight_decay"], float32=True, replica=True, minibatch=bool(mb), batch_size=vr.MPOL_RUN["batch_size"] if mb else None, seed=args.replica_seed if mb else None, steps=len(batch_hist), c8=c8,
                               loss_final=float(hist[-1]) if len(hist) else None, wall_s=wall, post_step_blur_px=None))
         values = {k: np.asarray(v, float) for k, v in vr.values_of(params, prob.pixel_mas, jnp.asarray(obs_of[:prob.init["cal.sigma"].shape[0]]), args.replica_softmax).items()}
         stages.append(dict(stage_summary(name, info, traj, time.time() - t, why), chi2=prob.chi2_info, peak_offset_mas=run_stats.get("peak_offset_mas")))
         stages[-1]["dead_pixels"] = dp = stage_dead_pixels(values, prob, "R")
-        say(f"stage {name}: {len(hist)} steps, loss {info['loss']:.8f}, dead pixels base {dp['base']['frac_below_1e-4_peak']:.2%} below 1e-4 of the peak; C8 converged: {c8['converged']}")
+        say(f"stage {name}: {len(batch_hist)} steps, {'last-epoch mean batch ' if mb else ''}loss {info['loss']:.8f}, dead pixels base {dp['base']['frac_below_1e-4_peak']:.2%} below 1e-4 of the peak; C8 converged: {c8['converged']}")
         if save:
             save(prob, values, stages)
         if stopped == "non_finite":
@@ -1237,7 +1244,7 @@ def main(argv=None):
     p.add_argument("--replica-softmax", action="store_true", help="mpol-replica ablation: the pixels are flux softmax(eta) (virgil's parametrisation) instead of softplus")
     p.add_argument("--replica-minibatch", action="store_true", help="mpol-replica: MPoL's minibatches instead of full batch: per epoch the points are reshuffled (seeded) into batches of 40,000 (the last partial), each step is on one batch's direct (non-Toeplitz) chi^2 with the loss normalised by that batch's size, "
                    "one extra optimizer.step() with the last gradient after each epoch (sgd.py:457), a fresh AdamW per stage; steps per epoch ceil(N / 40000). Opt-in: the default stays full batch")
-    p.add_argument("--replica-seed", type=int, default=0, help="mpol-replica --replica-minibatch: the seed of the per-epoch shuffles")
+    p.add_argument("--replica-seed", type=int, default=0, help="mpol-replica --replica-minibatch: the seed of the per-epoch shuffles (each stage has its own order, as one DataLoader's running RNG would give)")
     p.add_argument("--replica-steps", type=int, default=None, help="mpol-replica: total steps over all stages (default MPoL's: 10 epochs x ceil(N / 40000) batches per stage on that stage's points, 10,610 on all of IM Lup's data, so 21,220 for all,all; shared in proportion to those if N is given)")
     p.add_argument("--clean-dir", default=None, help="clean: the output directory of alma_imlup_clean.py run (model.fits, clean.json)")
     p.add_argument("--clean-smooth-mas", type=float, default=10.0, help="clean: FWHM (mas) of the small circular positivity kernel the CLEAN model is convolved with (default two fit pixels; keeps the long baselines' power)")

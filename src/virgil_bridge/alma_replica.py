@@ -156,10 +156,10 @@ def run_stage(params, term, *, steps, opt, loss_kw, chunk=100, time_limit=None, 
     return params, np.concatenate(out) if out else np.zeros(0), time.time() - t0, stopped
 
 
-def epoch_batches(n, batch=MPOL_RUN["batch_size"], seed=0, epoch=0):
-    """The index batches of one epoch as ``DataLoader(shuffle=True, drop_last=False)`` makes them: a seeded permutation of ``range(n)`` (a function of ``seed`` and ``epoch``) cut into ``batch`` points, the last
+def epoch_batches(n, batch=MPOL_RUN["batch_size"], seed=0, epoch=0, stage=0):
+    """The index batches of one epoch as ``DataLoader(shuffle=True, drop_last=False)`` makes them: a seeded permutation of ``range(n)`` (a function of ``seed``, ``stage`` and ``epoch``: the stages do not repeat each other's order) cut into ``batch`` points, the last
     batch partial. Every point is in exactly one batch; there are ``ceil(n / batch)`` of them."""
-    perm = np.random.default_rng([int(seed), int(epoch)]).permutation(n)
+    perm = np.random.default_rng([int(seed), int(stage), int(epoch)]).permutation(n)
     return [perm[i:i + batch] for i in range(0, n, batch)]
 
 
@@ -171,11 +171,11 @@ def take(data, idx):
     return type(data)(**{f.name: (getattr(data, f.name) if f.name in keep or getattr(data, f.name) is None else getattr(data, f.name)[idx]) for f in dataclasses.fields(data)})
 
 
-def run_stage_minibatch(params, data, make_term, *, steps, opt, loss_kw, batch=MPOL_RUN["batch_size"], seed=0, time_limit=None, log=None, to32=True, stats=None, log_every=1000):
+def run_stage_minibatch(params, data, make_term, *, steps, opt, loss_kw, batch=MPOL_RUN["batch_size"], seed=0, stage=0, time_limit=None, log=None, to32=True, stats=None, log_every=1000):
     """``steps`` minibatch AdamW steps as MPoL's ``train`` loop (``sgd.py``): per epoch the points are reshuffled (``epoch_batches``) and each batch takes one step on its own loss ``-ln L_b / (2 n_b) + lambda_M S_M``
     (``replica_loss`` with ``n_points`` the batch's size, the last batch of an epoch partial), the data term ``make_term(batch_data)`` the direct (non-Toeplitz) term of that batch. After each full epoch one more
     ``optimizer.step()`` is taken with the last batch's gradient, as ``sgd.py`` does (its ``zero_grad`` is at the top of the batch loop, so the gradient is still there): it is not counted in ``steps`` and has
-    no loss. The optimiser is fresh (a second stage starts a new one). Returns ``(params, losses, wall_s, stopped)`` like ``run_stage``; ``losses`` has one entry per batch step."""
+    no loss. The optimiser is fresh (a second stage starts a new one). Returns ``(params, losses, wall_s, stopped)`` like ``run_stage``; ``losses`` has one entry per batch step (each the loss of one batch: its points and its ``n_b``, not the stage's objective). ``stats`` also receives ``epoch_loss`` (the ``n_b``-weighted mean of each epoch's batch losses, the last perhaps partial) and ``epoch_steps`` (the steps done at each epoch's end)."""
     import equinox as eqx
     import jax
     import jax.numpy as jnp
@@ -198,12 +198,14 @@ def run_stage_minibatch(params, data, make_term, *, steps, opt, loss_kw, batch=M
         return optax.apply_updates(params, upd), state
 
     t0, done, out, stopped, peak, epoch, n = time.time(), 0, [], None, 0.0, 0, len(data.u)
+    ep_loss, ep_steps = [], []
     while done < steps and stopped is None:
-        g = None
-        batches = epoch_batches(n, batch, seed, epoch)
+        g, wsum = None, 0.0
+        batches = epoch_batches(n, batch, seed, epoch, stage)
         for i, idx in enumerate(batches):
             params, state, loss, g = step(params, state, make_term(take(data, idx)))
             out.append(float(loss))
+            wsum += out[-1] * len(idx)
             done += 1
             peak = max(peak, 1000.0 * float(jnp.max(jnp.abs(params["delta"]), initial=0.0)))
             if stats is not None:
@@ -218,7 +220,11 @@ def run_stage_minibatch(params, data, make_term, *, steps, opt, loss_kw, batch=M
                 break
         else:  # the epoch ran to its end: MPoL's extra optimizer.step() with the last batch's gradient
             params, state = extra(params, state, g)
+        ep_loss.append(wsum / sum(len(x) for x in batches[:i + 1]))
+        ep_steps.append(done)
         epoch += 1
+    if stats is not None:
+        stats.update(epoch_loss=ep_loss, epoch_steps=ep_steps)
     return params, np.asarray(out, float), time.time() - t0, stopped
 
 
