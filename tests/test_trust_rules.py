@@ -280,9 +280,9 @@ def test_a_resurrected_campaign_pass_is_flagged_with_its_commit_and_shown_as_a_b
     got, model = verdicts(trust, tmp_path, None, files=[camp, new])
     assert got["virgil.a"] == "verified"  # the verdict is unchanged: the fallback is deliberate
     assert model["older_campaigns"] == [("t::x", "a" * 40)]
-    assert "aaaaaaa" in trust._older_campaigns_html(model["older_campaigns"], "bbbbbbb")
-    assert trust._older_campaigns_html(model["older_campaigns"], "aaaaaaa") == ""
-    assert trust._older_campaigns_html([], "bbbbbbb") == ""
+    assert "aaaaaaa" in trust._older_campaigns_html(model["older_campaigns"], ["bbbbbbb"])
+    assert trust._older_campaigns_html(model["older_campaigns"], ["bbbbbbb", "aaaaaaa"]) == ""
+    assert trust._older_campaigns_html([], ["bbbbbbb"]) == ""
 
 
 def test_a_negative_control_is_never_the_headline_of_a_part(trust):

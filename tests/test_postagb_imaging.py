@@ -158,9 +158,21 @@ def test_reuse_converged_needs_the_flag_and_a_clean_previous_result(tmp_path):
     off = _reuse_args()
     off.reuse_converged = False
     assert P.skip_clean_reason(tmp_path, cfg, "gp-aniso", off) is None
-    for bad in (dict(gp_converged=False), dict(gp_on_edge=True), dict(chi2_per_point=5.0), dict(f_sec_pct=30.0)):
+    for bad in (dict(gp_converged=False), dict(gp_on_edge=True), dict(chi2_per_point=5.0), dict(chi2_per_point=0.1),
+                dict(f_sec_pct=30.0), dict(smoke=True), dict(star_index_source="FIXED")):
         (tmp_path / "t_image.json").write_text(json.dumps(_previous_result() | bad))
         assert P.skip_clean_reason(tmp_path, cfg, "gp-aniso", _reuse_args()) is None, bad
+    (tmp_path / "t_image.json").write_text(json.dumps({k: v for k, v in _previous_result().items() if k != "gp_on_edge"}))
+    assert P.skip_clean_reason(tmp_path, cfg, "gp-aniso", _reuse_args()) is None  # an unknown edge status reruns
+    smoke = _reuse_args()
+    smoke.smoke = True
+    (tmp_path / "t_image.json").write_text(json.dumps(_previous_result()))
+    assert P.skip_clean_reason(tmp_path, cfg, "gp-aniso", smoke) is None
+    # the disc+res strategy also needs its render guard and the 192-ring grid
+    assert P.skip_clean_reason(tmp_path, cfg, "disc+res", _reuse_args()) is None
+    full = _previous_result(render_ok=True, d_env_shared=1.0, n_r=192)
+    (tmp_path / "t_image.json").write_text(json.dumps(full))
+    assert P.skip_clean_reason(tmp_path, cfg, "disc+res", _reuse_args()).endswith("render guard passed")
     (tmp_path / "t_image.json").write_text(json.dumps(_previous_result()))
     assert P.skip_clean_reason(tmp_path, {"key": "t", "fov_override": 1}, "gp-aniso", _reuse_args()) is None
 

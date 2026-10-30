@@ -996,9 +996,9 @@ def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
             f'{refs_ok} of {refs_total} verified.</div></div>')
 
 
-def _older_campaigns_html(older, pin):
-    """A banner when a campaign result on the page is from another virgil commit than the latest run."""
-    gap = [(t, c) for t, c in older if c and not (pin and c.startswith(pin))]
+def _older_campaigns_html(older, current):
+    """A banner when a campaign result on the page is from another virgil commit than the latest run. ``current``: the short shas the latest run(s) measured."""
+    gap = [(t, c) for t, c in older if c and not any(c.startswith(p) for p in current)]
     if not gap:
         return ""
     commits = ", ".join(f"<code>{e(c[:7])}</code>" for c in sorted({c for _, c in gap}))
@@ -1017,6 +1017,7 @@ def render(model, base=""):
     commits = sorted({r["virgil"][:7] for r in model["runs"] if r.get("virgil")})
     ours = [r for r in model["runs"] if r.get("runner") != "virgil-ci"]
     pin = (ours[0]["virgil"] or "")[:7] if ours and ours[0].get("virgil") else ", ".join(commits)
+    current = [pin] if ours and ours[0].get("virgil") else commits
     fresh = ("" if model["changed"] is None else
              f'<i aria-hidden="true">⏲</i> virgil has changed {model["changed"]} of these parts since; the weekly run refreshes the evidence')
     real = [p for p in model["pipelines"] if p["data"] == "real"]
@@ -1039,7 +1040,7 @@ def render(model, base=""):
         "[How this works](method/index.md).\n",
         '<div class="vt">',
         _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
-        _older_campaigns_html(model.get("older_campaigns", []), pin),
+        _older_campaigns_html(model.get("older_campaigns", []), current),
         _bar(counts, total),
         _legend(counts),
         '<h2 id="showcase">Results on real data</h2>',
