@@ -205,6 +205,7 @@ The new run must stand on its own.
 | — | vv `tests/test_alma_toeplitz_check.py` | Inherits the relative 1e-8 at the moved point | yes (inherited from 5ece518) |
 | 2026-10-28 | this note + `toeplitz_reexam_042.yml` | Absolute worst-case tolerances; all three points gated; Tier I independent reference on held-out scenes; off an A100 the verdict is INCOMPLETE instead of the speed-up becoming report-only | **yes**: written after reading both old runs, before any run under these criteria |
 | 2026-10-30 | vv PR #202 review | (a) η-gradient budget 2√P → 4‖b‖₂ (tighter); (b) sequential reductions: n = max(N_d, P, n_fft) → N_d + 2P (the FFT stays in ρ; larger at R_mpol, where the old n understated the bound); (c) a gradient site missing from either side is a FAIL row, a truncated output FAILs; (d) every output records a run id and `summary` refuses several; (e) the S3_edge_filled_no_offsets claim narrowed to what the driver runs | no: before any run under these criteria. The yml is unchanged, so its hash is unchanged; the budget's code changed, and no run used either version |
+| 2026-10-30 | §9, Ben's decision | Ben approved all three judgement calls in §9, verbatim: "I approve of all of these runs." (relayed by the coordinating session). The criteria do not change; the memory row keeps its "changed after seeing a result: yes" flag (5ece518) | no criteria change |
 
 Later changes go here first, with the new hash, and make every earlier result under the old hash void for G2.
 
@@ -217,3 +218,7 @@ Later changes go here first, with the new hash, and make every earlier result un
    Changing it is a criteria change (section 8).
 2. **Memory on the Toeplitz path** (section 6): kept from 5ece518, and flagged as made after a result.
 3. **The cold-start fit** in the original §7 is not part of G2. It belongs to the IM Lup fit gate.
+
+**Decision (Ben, 2026-10-30):** "I approve of all of these runs." This approves all three calls above: the
+rigorous γ_n worst-case bound, the memory limit on the Toeplitz path (still flagged as changed after a result,
+section 8), and leaving the cold-start fit out of G2.
