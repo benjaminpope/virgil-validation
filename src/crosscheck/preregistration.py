@@ -1,27 +1,20 @@
-"""Pre-registered gate criteria: a committed file, its pinned SHA-256, and the check every gate script runs.
+"""Gate criteria and the git commit they were run at.
 
-The rule (virgil 0.4.2 release review, section 3.1): a criteria file is committed and hashed before any
-run; the run records the hash; a mismatch fails. ``design/criteria_registry.json`` pins one hash per
-criteria file. ``check`` hashes the file now and compares it with the pin; a gate script writes the returned
-``Registration`` into its output with ``stamp`` (JSON) or ``stamp_lines`` (text). A gate run with another
-hash exits non-zero. ``--allow-unregistered`` (``add_argument``) is for development runs only: it lets the
-run go ahead, and every output then carries ``UNREGISTERED_STAMP`` and ``registered: false``.
+The rule (Ben, 2026-10-30): a gate's criteria file is a committed file; a run is made only on a clean copy and
+records the last commit that touched it; an aggregate refuses to combine runs from different criteria commits.
+Changed criteria mean a rerun, with no override flag. Post-hoc changes are recorded in the change-log table
+inside the criteria file ("changed after seeing a result: yes/no").
 
-API, for a gate script:
+    commit = prereg.criteria_commit("design/orbit_gate_042.md")   # raises if the file has uncommitted changes
+    record["criteria_commit"] = commit
+    prereg.require_same_commit(run_records)                        # the aggregator
 
-    import crosscheck.preregistration as prereg
-    prereg.add_argument(parser)                          # adds --allow-unregistered
-    reg = prereg.check(CRITERIA_FILE, allow_unregistered=args.allow_unregistered)   # or prereg.for_args(args, CRITERIA_FILE)
-    record = prereg.stamp(record, reg)                   # JSON: criteria_file, criteria_hash, registered; stamp + pass False if not
-    lines = prereg.stamp_lines(markdown_lines, reg)      # text: stamp and hash header
-    prereg.require_registered_runs(run_records, reg)     # an aggregate refuses unregistered runs
+A checkout is asked with git. A snapshot made by ``git archive`` (the OzSTAR jobs) has no repository: it is
+committed content by construction, and the commit comes from ``CRITERIA_COMMIT`` (the job script sets it from the
+snapshot's directory name).
 
-Pin a new file by adding {"sha256", "used_by", "changed_after_seeing_a_result", "pinned_at"} under its repo-relative path in the
-registry (``python -m crosscheck.preregistration FILE`` prints the hash). ``stamp`` also turns a verdict of PASS into UNREGISTERED.
-
-Changing a pinned file means changing its pin in the same commit, so the diff shows it. A change after a
-result was seen is "post-hoc": say so in the registry entry (``changed_after_seeing_a_result``) and the
-release notes. Nothing here changes a criterion's value.
+Everything below ``LEGACY`` is the earlier SHA-256 registry (``design/criteria_registry.json``), kept only
+for the gate scripts that still call it. It is removed when they move to ``criteria_commit``.
 """
 
 from __future__ import annotations
@@ -30,16 +23,48 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
 import pathlib
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-REGISTRY = ROOT / "design" / "criteria_registry.json"
-UNREGISTERED_STAMP = "UNREGISTERED: not gate evidence"
 
 
 class CriteriaError(SystemExit):
-    """Raised (as an exit) when a gate would run on criteria that are not the pinned ones."""
+    """Raised (as an exit) when a gate would run on criteria that are not a committed, single version."""
+
+
+def criteria_commit(path, root=None) -> str:
+    """The last commit that touched ``path`` (repo-relative or absolute). Raises if the file has uncommitted changes."""
+    root = pathlib.Path(root or ROOT)
+    path = pathlib.Path(path)
+    rel = (path if path.is_absolute() else root / path).resolve().relative_to(root.resolve()).as_posix()
+    git = lambda *a: subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+    if git("rev-parse", "--git-dir").returncode:
+        commit = os.environ.get("CRITERIA_COMMIT", "")
+        if not commit:
+            raise CriteriaError(f"{rel}: not a git checkout and CRITERIA_COMMIT is not set")
+        return commit
+    if git("status", "--porcelain", "--", rel).stdout.strip():
+        raise CriteriaError(f"{rel} has uncommitted changes: commit it, so the run records the criteria it used")
+    commit = git("log", "-n1", "--format=%H", "--", rel).stdout.strip()
+    if not commit:
+        raise CriteriaError(f"{rel} is not committed")
+    return commit
+
+
+def require_same_commit(records) -> str:
+    """The single ``criteria_commit`` of ``records``; raises if the runs disagree or any lacks one."""
+    seen = {r.get("criteria_commit") for r in records}
+    if len(seen) != 1 or None in seen:
+        raise CriteriaError(f"runs come from different criteria commits (or none): {sorted(map(str, seen))}; rerun")
+    return seen.pop()
+
+
+# LEGACY: the SHA-256 registry, for the gate scripts not yet migrated. Remove with design/criteria_registry.json.
+REGISTRY = ROOT / "design" / "criteria_registry.json"
+UNREGISTERED_STAMP = "UNREGISTERED: not gate evidence"
 
 
 @dataclasses.dataclass(frozen=True)

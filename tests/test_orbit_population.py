@@ -15,7 +15,7 @@ spec = importlib.util.spec_from_file_location("orbit_population_script", ROOT / 
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
-REGISTERED = "b0a81b29cf9743602d4be134582d3581f5eb948070bd903ab6e135c068351ec2"
+REGISTERED = "31fd09f6a81645fc7c2d34ebd2e3435530342dd514b0b57ab534925cfb96ceaa"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -32,8 +32,8 @@ def test_criteria_hash_covers_only_the_block():
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_spec_parses_and_sizes():
-    s, repaired = gate.spec()
-    assert s["master_seed"] == 20261028 and isinstance(repaired, bool)
+    s = gate.spec()
+    assert s["master_seed"] == 20261028
     assert gate.strata_sizes() == {"A": 200, "B": 240, "N": 100, "D": 120}
     assert gate.locate(0) == ("A", 0) and gate.locate(200) == ("B", 0) and gate.locate(659) == ("D", 119)
     with pytest.raises(SystemExit):
@@ -54,7 +54,7 @@ def test_draws_are_reproducible_and_distinct():
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_m6_limit_table_is_the_binomial_q99():
-    s, _ = gate.spec()
+    s = gate.spec()
     table = s["must_hold"]["M6_false_orbits"]["limits_by_n"]
     for n in (2, 15, 16, 44, 45, 83, 84, 100, 129):
         assert gate.m6_limit(n, table) == gate.binomial_q99(n, 0.01)
@@ -116,28 +116,28 @@ def _toy():
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_aggregate_clean_toy_has_no_failures_but_is_incomplete():
-    s, _ = gate.spec()
+    s = gate.spec()
     out = gate.aggregate_results(_toy(), s, s["master_seed"])
     assert out["counts"] == {"A": 200, "B": 240, "N": 100, "D": 120, "oracle": 240}
     assert out["rejected"] == []
-    assert out["must_hold"]["M6"]["N_all"]["pass"] and out["must_hold"]["M4"]["pass"]
+    assert out["must_hold"]["M6"]["N_all"]["provisional_pass"] and out["must_hold"]["M4"]["provisional_pass"]
     assert out["must_hold"]["M7"]["pass"] is None  # the fail flags cannot be observed on this virgil commit
     assert out["pass"] is None and out["unavailable"]  # never True while registered tests were not evaluated
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_aggregate_flags_false_orbits_and_missing_oracles():
-    s, _ = gate.spec()
+    s = gate.spec()
     toy = _toy()
     bad = [dict(r, verdict=dict(value="orbit", winner_n=1)) if r["stratum"] == "N" else r for r in toy]
     out = gate.aggregate_results(bad, s, s["master_seed"])
-    assert out["must_hold"]["M6"]["N_all"]["pass"] is False and out["pass"] is False
-    assert out["must_hold"]["M4"]["pass"] and out["rejected"] == []  # only M6 flipped
+    assert out["must_hold"]["M6"]["N_all"]["provisional_pass"] is False and out["pass"] is False
+    assert out["must_hold"]["M4"]["provisional_pass"] and out["rejected"] == []  # only M6 flipped
     few = [r for r in toy if r["part"] == "fit" or r["index"] < 10]
     out = gate.aggregate_results(few, s, s["master_seed"])
-    assert out["must_hold"]["M4"]["pass"] is False and out["must_hold"]["M7"]["pass"] is False
+    assert out["must_hold"]["M4"]["provisional_pass"] is False and out["must_hold"]["M7"]["pass"] is False
     unhooked = [dict(r, oracle_init_calls=0) if r["part"] == "oracle" else r for r in toy]
-    assert gate.aggregate_results(unhooked, s, s["master_seed"])["must_hold"]["M4"]["pass"] is False
+    assert gate.aggregate_results(unhooked, s, s["master_seed"])["must_hold"]["M4"]["provisional_pass"] is False
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -168,3 +168,67 @@ def test_elliptical_disk_matches_the_uniform_disk_and_a_numerical_transform():
     fu, fv = sky._q(u, v, wavel)
     numerical = np.exp(-2j * np.pi * (np.outer(fu, east) + np.outer(fv, north))).mean(axis=1)
     np.testing.assert_allclose(op.vis_elliptical_disk(u, v, wavel, major, ratio, pa), numerical.real, atol=0.02)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_m4_m6_m8_are_labelled_virgil_judged_and_the_run_is_incomplete():
+    s = gate.spec()
+    out = gate.aggregate_results(_toy(), s, s["master_seed"])
+    assert out["judged_by_virgil"] == ["M4", "M6", "M8"]
+    assert out["must_hold"]["M4"]["judged_by"] == "virgil"
+    assert out["pass"] is None and out["label"].startswith("INCOMPLETE")
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_an_empty_subset_never_passes():
+    s = gate.spec()
+    no_n = [r for r in _toy() if r["stratum"] != "N"]
+    out = gate.aggregate_results(no_n, s, s["master_seed"])
+    assert out["pass"] is not True  # fails (or, for tests with nothing to run, INCOMPLETE): never a pass
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_gate_copy_is_byte_identical_to_virgil_main():
+    import subprocess
+
+    virgil = pathlib.Path.home() / "code" / "virgil"
+    ref = subprocess.run(["git", "-C", str(virgil), "show", "origin/main:design/orbit_gate_042.md"], capture_output=True)
+    if ref.returncode:
+        pytest.skip("no virgil checkout with origin/main")
+    assert (ROOT / gate.CRITERIA_FILE).read_bytes() == ref.stdout, "re-sync design/orbit_gate_042.md from virgil main"
+
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_criteria_commit_is_the_last_commit_and_refuses_edits(tmp_path):
+    import subprocess
+
+    from crosscheck import preregistration as prereg
+
+    def git(*a):
+        return subprocess.run(["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    git("init", "-q")
+    (tmp_path / "gate.md").write_text("a\n")
+    git("add", "gate.md")
+    git("commit", "-qm", "one")
+    first = git("rev-parse", "HEAD")
+    assert prereg.criteria_commit("gate.md", root=tmp_path) == first
+    (tmp_path / "other.txt").write_text("x\n")
+    git("add", "other.txt")
+    git("commit", "-qm", "unrelated")
+    assert prereg.criteria_commit("gate.md", root=tmp_path) == first  # the last commit that touched the file
+    (tmp_path / "gate.md").write_text("b\n")
+    with pytest.raises(SystemExit):
+        prereg.criteria_commit("gate.md", root=tmp_path)  # edited criteria cannot be run
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_runs_from_different_criteria_commits_are_not_combined():
+    from crosscheck import preregistration as prereg
+
+    assert prereg.require_same_commit([{"criteria_commit": "a"}, {"criteria_commit": "a"}]) == "a"
+    for bad in ([{"criteria_commit": "a"}, {"criteria_commit": "b"}], [{"criteria_commit": "a"}, {}]):
+        with pytest.raises(SystemExit):
+            prereg.require_same_commit(bad)
