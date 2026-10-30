@@ -319,7 +319,7 @@ def truth_record(system):
                 schedule=system.get("schedule"), misspecified=system["misspecified"],
                 misspecification=(system.get("misspecification") or {}).get("kind"),
                 envelope_fraction=(system.get("misspecification") or {}).get("fraction"),
-                near_twin=o.get("near_twin"), flux=o.get("flux"), c=system["noise"]["c"],
+                near_twin=o.get("near_twin"), flux=o.get("flux"), c=system["noise"]["c"], s_v2=system["noise"].get("s_v2"), s_cp=system["noise"].get("s_cp"),
                 n_redraws=system["n_redraws"], contaminants=system["contaminants"],
                 primary_diam_mas=system["primary"]["diam_mas"], disc_on=system["primary"]["disc_on"],
                 period=o.get("period"), ecc=o.get("ecc"), a_mas=o.get("a_mas"), cos_inc=o.get("cos_inc"),
@@ -635,7 +635,8 @@ def aggregate_results(results, s, rng_seed):
     # True only if every registered test ran as registered. M4, M6 and M8 are judged by virgil's own verdict and
     # oracle (the independent FAP is not implemented): their results are provisional_pass, a failure still fails the
     # run, but a run with them (or any empty subset) is INCOMPLETE, never a pass.
-    out["pass"] = False if failed else (None if out["unavailable"] or out["incomplete"] or any(x is None for x in must) else True)
+    out["pass"] = False if failed else (None if out["unavailable"] or out["incomplete"] or out["judged_by_virgil"]
+                                        or any(x is None for x in must) else True)
     out["label"] = ("INCOMPLETE: M4, M6 and M8 are judged by virgil's own verdict, not the registered independent FAP"
                     if out["pass"] is None else None)
     return out
@@ -827,6 +828,13 @@ def cmd_aggregate(args):
         seen = {r[name] for r in results}
         if seen != {now}:
             raise SystemExit(f"{name} changed since the runs: {seen} vs {now}")
+    # The commit alone is not tied to the content (CRITERIA_COMMIT is set by the job script): every run's recorded
+    # block hash must be the block at that commit, where a repository can say.
+    import subprocess
+
+    shown = subprocess.run(["git", "-C", str(ROOT), "show", f"{crit_commit}:{CRITERIA_FILE}"], capture_output=True, text=True)
+    if shown.returncode == 0 and {r["criteria_block_hash"] for r in results} != {criteria_hash(shown.stdout)}:
+        raise SystemExit(f"the runs' criteria block is not the block at criteria commit {crit_commit}")
     commits = {r["virgil_commit"] for r in results}
     if len(commits) != 1:
         raise SystemExit(f"the systems ran on different virgil commits: {commits}")

@@ -171,32 +171,59 @@ def test_elliptical_disk_matches_the_uniform_disk_and_a_numerical_transform():
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_m4_m6_m8_are_labelled_virgil_judged_and_the_run_is_incomplete():
+def test_virgil_judged_metrics_make_every_run_incomplete():
     s = gate.spec()
     out = gate.aggregate_results(_toy(), s, s["master_seed"])
     assert out["judged_by_virgil"] == ["M4", "M6", "M8"]
-    assert out["must_hold"]["M4"]["judged_by"] == "virgil"
+    assert out["must_hold"]["M4"]["judged_by"] == "virgil" and out["must_hold"]["M4"]["provisional_pass"]
     assert out["pass"] is None and out["label"].startswith("INCOMPLETE")
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_an_empty_subset_never_passes():
+def test_an_empty_subset_has_no_verdict_of_its_own():
     s = gate.spec()
     no_n = [r for r in _toy() if r["stratum"] != "N"]
-    out = gate.aggregate_results(no_n, s, s["master_seed"])
-    assert out["pass"] is not True  # fails (or, for tests with nothing to run, INCOMPLETE): never a pass
+    m6 = gate.aggregate_results(no_n, s, s["master_seed"])["must_hold"]["M6"]["N_all"]
+    assert m6["provisional_pass"] is None  # nothing to test: not True
+    assert gate.aggregate_results(no_n, s, s["master_seed"])["pass"] is not True
+
+
+GATE_COMMIT = "05e50c28f0945dcd265f9a895db71bc22eff4a9b"  # virgil main this copy was taken from
+GATE_SHA256 = "902c0e7097a858cdcf02cb4054f7c113cf9f66dc24ad6e771fa82c407d4e9c3e"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_gate_copy_is_byte_identical_to_virgil_main():
+def test_gate_copy_has_the_content_hash_of_virgil_main():
+    import hashlib
+
+    assert hashlib.sha256((ROOT / gate.CRITERIA_FILE).read_bytes()).hexdigest() == GATE_SHA256, (
+        "design/orbit_gate_042.md is not the copy taken from virgil main: re-sync it and update GATE_COMMIT/GATE_SHA256")
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_gate_copy_is_byte_identical_to_virgil_at_the_pinned_commit():
+    import os
     import subprocess
 
-    virgil = pathlib.Path.home() / "code" / "virgil"
-    ref = subprocess.run(["git", "-C", str(virgil), "show", "origin/main:design/orbit_gate_042.md"], capture_output=True)
+    virgil = pathlib.Path(os.environ.get("VIRGIL_REPO", pathlib.Path.home() / "code" / "virgil"))
+    ref = subprocess.run(["git", "-C", str(virgil), "show", f"{GATE_COMMIT}:design/orbit_gate_042.md"], capture_output=True)
     if ref.returncode:
-        pytest.skip("no virgil checkout with origin/main")
-    assert (ROOT / gate.CRITERIA_FILE).read_bytes() == ref.stdout, "re-sync design/orbit_gate_042.md from virgil main"
+        pytest.skip("no virgil checkout (set VIRGIL_REPO); the content hash test above runs everywhere")
+    assert (ROOT / gate.CRITERIA_FILE).read_bytes() == ref.stdout
 
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_stratum_a_noise_scales_and_d_nulls_have_discs():
+    import math
+
+    from crosscheck import orbit_population as pop
+
+    scales = [pop.draw_system("A", i)["noise"] for i in range(40)]
+    assert all(abs(math.log(n["s_v2"])) <= math.log(pop.S_MAX) and abs(math.log(n["s_cp"])) <= math.log(pop.S_MAX) for n in scales)
+    assert len({n["s_v2"] for n in scales}) == 40 and any(n["s_v2"] != n["s_cp"] for n in scales)
+    assert "s_v2" not in pop.draw_system("B", 0)["noise"]
+    for i in (60, 89, 90, 119):  # D 60..119 are the N population 0..59; the first 30 carry a disc primary
+        assert (pop.draw_system("D", i)["primary"]["disc_on"] == "single") == (i - 60 < pop.N_DISC_FIRST)
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
