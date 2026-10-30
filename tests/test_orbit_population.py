@@ -232,3 +232,19 @@ def test_runs_from_different_criteria_commits_are_not_combined():
     for bad in ([{"criteria_commit": "a"}, {"criteria_commit": "b"}], [{"criteria_commit": "a"}, {}]):
         with pytest.raises(SystemExit):
             prereg.require_same_commit(bad)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_the_recorded_criteria_commit_is_the_last_commit_that_touched_the_file(capsys):
+    import subprocess
+
+    from crosscheck import preregistration as prereg
+
+    if subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--", gate.CRITERIA_FILE],
+                      capture_output=True, text=True).stdout.strip():
+        pytest.skip("the gate file has uncommitted edits")
+    want = subprocess.run(["git", "-C", str(ROOT), "log", "-1", "--format=%H", "--", gate.CRITERIA_FILE],
+                          capture_output=True, text=True, check=True).stdout.strip()
+    assert prereg.criteria_commit(gate.CRITERIA_FILE) == want
+    gate.cmd_criteria(None)  # the record a run writes uses the same value
+    assert json.loads(capsys.readouterr().out)["criteria_commit"] == want

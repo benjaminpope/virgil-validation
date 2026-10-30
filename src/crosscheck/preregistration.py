@@ -10,8 +10,8 @@ inside the criteria file ("changed after seeing a result: yes/no").
     prereg.require_same_commit(run_records)                        # the aggregator
 
 A checkout is asked with git. A snapshot made by ``git archive`` (the OzSTAR jobs) has no repository: it is
-committed content by construction, and the commit comes from ``CRITERIA_COMMIT`` (the job script sets it from the
-snapshot's directory name).
+committed content by construction, and the commit comes from ``CRITERIA_COMMIT``, which the submit script computes
+with the same definition (the last commit that touched the file), so the Mac and the cluster record one value.
 
 Everything below ``LEGACY`` is the earlier SHA-256 registry (``design/criteria_registry.json``), kept only
 for the gate scripts that still call it. It is removed when they move to ``criteria_commit``.
@@ -62,7 +62,8 @@ def require_same_commit(records) -> str:
     return seen.pop()
 
 
-# LEGACY: the SHA-256 registry, for the gate scripts not yet migrated. Remove with design/criteria_registry.json.
+# LEGACY: the SHA-256 registry, kept only until the follow-up PR that migrates the other gate scripts to
+# criteria_commit; that PR deletes everything below and design/criteria_registry.json.
 REGISTRY = ROOT / "design" / "criteria_registry.json"
 UNREGISTERED_STAMP = "UNREGISTERED: not gate evidence"
 
