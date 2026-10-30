@@ -121,11 +121,34 @@ def _claims(item):
 
 def pytest_collection_modifyitems(config, items):
     # fail early on malformed markers, even without --evidence
-    missing = [item.nodeid for item in items if not _claims(item)]
+    missing = []
+    bad_xfail = []
+    for item in items:
+        claims = _claims(item)
+        if not claims:
+            missing.append(item.nodeid)
+            continue
+        xfail_marks = list(item.iter_markers("xfail"))
+        has_finding = any(c["kind"] in ("finding", "upstream") for c in claims)
+        if xfail_marks:
+            if not all(m.kwargs.get("strict") is True for m in xfail_marks):
+                bad_xfail.append(f"{item.nodeid}: xfail must set strict=True")
+            if not has_finding:
+                bad_xfail.append(
+                    f"{item.nodeid}: xfail requires kind='finding' or kind='upstream'"
+                )
+        elif has_finding:
+            bad_xfail.append(
+                f"{item.nodeid}: kind='finding' or 'upstream' requires @pytest.mark.xfail(strict=True)"
+            )
     if missing and config.getoption("--require-validates"):
         raise pytest.UsageError(
             "tests without a validates marker (docs/method/index.md):\n  "
             + "\n  ".join(missing)
+        )
+    if bad_xfail:
+        raise pytest.UsageError(
+            "invalid xfail / finding markers:\n  " + "\n  ".join(bad_xfail)
         )
 
 
@@ -159,8 +182,7 @@ def _where(item):
 
 def _outcome(report):
     if hasattr(report, "wasxfail"):
-        # a strict XPASS never gets here (pytest reports it failed); a non-strict one is a flaky test that passed
-        return "xfailed" if report.skipped else "passed"
+        return "xfailed" if report.skipped else "xpassed"
     return report.outcome
 
 

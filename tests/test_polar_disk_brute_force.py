@@ -71,7 +71,7 @@ def test_axisymmetric_profiles_match_our_hankel_transform(name):
 
 
 @polar
-@pytest.mark.validates("virgil.models.ExpTail", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.models.ExpTail", roots=["mathematics"], kind="check")
 def test_exp_tail_reaches_documented_accuracy_at_the_documented_node_count():
     """F19 (fixed in virgil 1eae3e4 by correcting the docstring, not the numerics): ExpTail used to promise
     1e-5 at about 16 * 2 pi q L nodes; the docstring now states what we measured, about 2e-4 at 128
@@ -112,7 +112,7 @@ CASES = {  # case name -> attribute of the benchmark module (resolved lazily, se
 
 @polar
 @pytest.mark.validates("virgil.models.PolarDisk", "virgil.models.Harmonics", "virgil.models.VonMises",
-                       "virgil.models.Cone", "virgil.models.PowerLawHeight", roots=["render"])
+                       "virgil.models.Cone", "virgil.models.PowerLawHeight", roots=["mathematics"])
 @pytest.mark.parametrize("name", sorted(CASES))
 def test_brute_force_render(name):
     bf = _bf()
@@ -126,7 +126,7 @@ def test_brute_force_render(name):
 
 
 @polar
-@pytest.mark.validates("virgil.models.PolarDisk", roots=["render"])
+@pytest.mark.validates("virgil.models.PolarDisk", roots=["mathematics"])
 def test_chromatic_system_weight(request):
     bf = _bf()
     u, v = bf.baselines(60)
@@ -159,7 +159,7 @@ def test_rendered_inclined_ring_matches_the_bessel_closed_form():
 
 
 @polar
-@pytest.mark.validates("virgil.models.Harmonics", roots=["mathematics"], kind="finding")
+@pytest.mark.validates("virgil.models.Harmonics", roots=["mathematics"], kind="check")
 def test_harmonic_coefficients_accept_array_paths():
     """F20 (fixed in virgil 1eae3e4): Harmonics.re/im/c/s given as arrays, as the fit and laplace_cov paths
     like 'disk.harmonics.re' require, used to fail in Harmonics._at ('if not entries' on an array)."""
