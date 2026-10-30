@@ -66,7 +66,9 @@ The pieces of the bound:
 
 - **Sums.** A sum of n terms in an unknown order has relative error at most γ_n = nu/(1 − nu) of Σ|terms|
   (Higham 2002, *Accuracy and Stability of Numerical Algorithms*, Lemma 3.1, eq. 4.4). The order is unknown
-  because GPU scatter-adds and XLA reductions do not fix it. Take n = max(N_d, P, n_fft). The bound applies to
+  because GPU scatter-adds and XLA reductions do not fix it. The three reductions of the Toeplitz path run one after another (the data sum over N_d, the image
+  contraction with the dirty image, and with the convolved beam), and sequential sums add, γ_a + γ_b ≤ γ_{a+b}
+  (Higham 2002, Lemma 3.3). Take n = N_d + 2P. The FFT is counted in ρ below, not in n. The bound applies to
   both sides, hence 2γ_n.
 - **FFT convolution.** A radix-2 FFT of n points has relative l2 error log₂n·η/(1 − log₂n·η), with η = u + γ₄(√2 + u)
   (Higham 2002, Thm 24.2). The beam convolution uses three FFTs. Its error, contracted with a unit-sum image, is
@@ -91,7 +93,9 @@ How τ_d bounds each quantity:
   - 2/F for flux;
   - 2/g_e for gains;
   - 2·2π·MAS·q_max for offsets;
-  - 2√P for η (the softmax Jacobian has norm ≤ 1).
+  - 4‖b‖₂ for η, with b = softmax(η). Each pixel's error in ∂L/∂b is at most 2Σwt (l∞). The softmax Jacobian
+    J = diag(b) − bbᵀ gives ‖Jδ‖₂ ≤ ‖b∘δ‖₂ + ‖b‖₂|bᵀδ| ≤ 2‖b‖₂‖δ‖∞, because Σb = 1 (‖x∘y‖₂ ≤ ‖x‖₂‖y‖∞, and
+    Cauchy–Schwarz; Horn & Johnson 2013, *Matrix Analysis*, §5.6). A unit-sum blur has l2 norm ≤ 1 and does not raise it.
 - **σ (fitted mode):** τ_d/s³ + u(χ²_d/s³ + 2N_d/s).
 
 Gating on worst-case accumulation is a judgement call, made after the old runs were seen; section 8 flags it.
@@ -134,7 +138,7 @@ images on uniform uv discs, plus R_mpol.
 | S1_ringed_disc | inclined disc, 3 rings, 2 gaps | 128² × 4 mas | 40 ant × 64 times, 3 obs, 4 ddid, reach 0.6 Nyquist | spread, ±15 mas | sharp radial structure, spread offsets |
 | S2_sources_on_halo | 5 point sources over 1e4 in brightness, one in a corner pixel, on a 1e-4 halo | 97² (odd) × 3 mas | 36 × 60, 2 obs, 4 ddid, reach 1.4 (beyond Nyquist) | none | dynamic range, odd grid, aliasing, longest lags |
 | S3_edge_filled | log-normal field filling every pixel | 256² × 2 mas | 50 × 120, 3 obs, 6 ddid, reach 0.9 | spread, ±10 mas | every lag of the beam in use |
-| S3_edge_filled_no_offsets | as S3 | as S3 | as S3 | none | the `auto` (exact) path at scale |
+| S3_edge_filled_no_offsets | as S3 | as S3 | as S3 | none | the no-offset (integer-lag) Toeplitz path at scale, built with `data.toeplitz`; that `chi2="auto"` selects it is not tested here |
 
 The uv tracks are Earth-rotation tracks over 8 h at dec −30°, from log-uniform antenna radii. The weights are
 10^N(3, 0.3). The noise variance is s_d²/w, with s_d log-uniform in 10^±0.15.
@@ -200,6 +204,7 @@ The new run must stand on its own.
 | 2026-10-23 23:39 | vv 552da46 | Adds an edge-offset moved point | yes (adds a check, loosens nothing) |
 | — | vv `tests/test_alma_toeplitz_check.py` | Inherits the relative 1e-8 at the moved point | yes (inherited from 5ece518) |
 | 2026-10-28 | this note + `toeplitz_reexam_042.yml` | Absolute worst-case tolerances; all three points gated; Tier I independent reference on held-out scenes; off an A100 the verdict is INCOMPLETE instead of the speed-up becoming report-only | **yes**: written after reading both old runs, before any run under these criteria |
+| 2026-10-30 | vv PR #202 review | (a) η-gradient budget 2√P → 4‖b‖₂ (tighter); (b) sequential reductions: n = max(N_d, P, n_fft) → N_d + 2P (the FFT stays in ρ; larger at R_mpol, where the old n understated the bound); (c) a gradient site missing from either side is a FAIL row, a truncated output FAILs; (d) every output records a run id and `summary` refuses several; (e) the S3_edge_filled_no_offsets claim narrowed to what the driver runs | no: before any run under these criteria. The yml is unchanged, so its hash is unchanged; the budget's code changed, and no run used either version |
 
 Later changes go here first, with the new hash, and make every earlier result under the old hash void for G2.
 

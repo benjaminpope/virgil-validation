@@ -91,6 +91,28 @@ def virgil_commit():
         return "unknown"
 
 
+def run_id():
+    """One run's identity: ``$SLURM_JOB_ID`` (every step of the cluster job), else ``$REEXAM_RUN_ID``, else host and process (one
+    local process). ``summary`` refuses outputs of more than one run."""
+    import socket
+
+    return os.environ.get("SLURM_JOB_ID") or os.environ.get("REEXAM_RUN_ID") or f"{socket.gethostname()}-pid{os.getpid()}"
+
+
+def vv_commit():
+    """This repository's commit (the budget's code is part of the criteria): ``$PIN_COMMIT`` (the cluster's snapshot has no
+    .git), else ``git rev-parse HEAD`` (with ``+dirty`` for local changes to src/ or scripts/), else ``unknown``."""
+    if re.fullmatch(r"[0-9a-f]{40}", os.environ.get("PIN_COMMIT", "")):
+        return os.environ["PIN_COMMIT"]
+    try:
+        git = ["git", "-C", str(ROOT)]
+        head = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run([*git, "status", "--porcelain", "--", "src", "scripts"], capture_output=True, text=True, check=True).stdout
+        return head + ("+dirty" if dirty.strip() else "")
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
 def provenance():
     import importlib.metadata as m
 
@@ -99,6 +121,8 @@ def provenance():
 
     return dict(
         criteria_sha256=criteria_hash(),
+        run_id=run_id(),
+        vv_commit=vv_commit(),
         virgil_commit=virgil_commit(),
         virgil_from=virgil.__file__,
         jax=jax.__version__,
@@ -160,9 +184,14 @@ def compare(where, ref, got, tol, tol_prob):
             tol_prob["chi2_d"][k],
             abs(ref["chi2_d"][k]),
         )
-    for site, g in got["grad"].items():
-        r = np.asarray(ref["grad"][site], float)
-        e = np.asarray(g, float) - r
+    for site in sorted(set(got["grad"]) - set(ref["grad"])):  # a site the reference has no value for cannot pass
+        row(f"grad {site}", float("inf"), 0.0, 0.0, 0.0)
+    for site, r in ref["grad"].items():
+        if site not in got["grad"]:  # a site the implementation did not return fails, never drops out of the gate
+            row(f"grad {site}", float("inf"), 0.0, 0.0, 0.0)
+            continue
+        r = np.asarray(r, float)
+        e = np.asarray(got["grad"][site], float) - r
         if site == "sigma":
             k = int(np.argmax(np.abs(e) / tol["grad"]["sigma"]))
             row(
@@ -282,7 +311,7 @@ def tier1_scene(spec, tcfg, chunk=8192, toeplitz_eps=None):
             )
             if mode == "fixed":
                 got["chi2_d"] = np.asarray(tdata.chi2_by_ddid(scene, v, nuis)[0])
-            st = rx.stats(case, float(vals["flux"]), vals["gain"])
+            st = rx.stats(case, float(vals["flux"]), vals["gain"], vals["eta"])
             eps_ref = rx.phase_error(case, vals["offset"]) + rx.gamma(case.npix**2)
             args = (
                 st,
@@ -300,8 +329,8 @@ def tier1_scene(spec, tcfg, chunk=8192, toeplitz_eps=None):
                 rx.tolerances(*args, worst_case=True),
                 rx.tolerances(*args, worst_case=False),
             )
-            if not spread:
-                got["grad"].pop("offset", None)
+            if not spread:  # offsets are not fitted without spread: neither side has the site
+                ref_g.pop("offset")
             rows += compare(
                 f"{spec['name']}/{mode}/{pname}",
                 dict(ref, grad=ref_g),
@@ -371,6 +400,8 @@ def cmd_tier2_agree(args):
         for pname, v in pts.items():
             lt, gt = old.vg_toeplitz(v, term)
             ld, gd = old.direct_vg()(v, direct)
+            if set(gd) != set(gt) or set(gd) - set(SITES):  # every site is compared: none may drop out
+                raise SystemExit(f"gradient sites differ or are unknown: toeplitz {sorted(gt)}, direct {sorted(gd)}, known {sorted(SITES)}")
             check = tdata.crosscheck(
                 prob.scene, v, prob.nuis, chunk_size=args.chunk_size
             )
@@ -382,7 +413,7 @@ def cmd_tier2_agree(args):
             flux = float(v["cal.flux"])
             gain = np.concatenate([[1.0], np.asarray(v["cal.gain"], float)])
             tol_args = (
-                rx.stats(case, flux, gain),
+                rx.stats(case, flux, gain, np.asarray(v["log_brightness"], float)),
                 chi2_d,
                 float(ld),
                 "fitted",
@@ -396,12 +427,12 @@ def cmd_tier2_agree(args):
             ref = dict(
                 loss=float(ld),
                 chi2_d=chi2_d,
-                grad={SITES[k]: np.asarray(g) for k, g in gd.items() if k in SITES},
+                grad={SITES[k]: np.asarray(g) for k, g in gd.items()},
             )
             got = dict(
                 loss=float(lt + term.loss_constant),
                 chi2_d=chi2_t,
-                grad={SITES[k]: np.asarray(g) for k, g in gt.items() if k in SITES},
+                grad={SITES[k]: np.asarray(g) for k, g in gt.items()},
             )
             rows += compare(
                 f"R_mpol/{pname}",
@@ -482,6 +513,32 @@ def verdict(statuses):
     return "ACCEPTED"
 
 
+def expected_tier1(spec, tcfg):
+    """Every ``(where, quantity)`` row a complete Tier I scene writes."""
+    spread = spec["offsets"] == "spread"
+    out = set()
+    for mode in tcfg["modes"]:
+        for point in tcfg["points"]:
+            if point == "edge" and not spread:
+                continue
+            sites = ["eta", "flux", "gain"] + (["offset"] if spread else []) + (["sigma"] if mode == "fitted" else [])
+            where = f"{spec['name']}/{mode}/{point}"
+            out |= {(where, "loss")} | {(where, f"grad {s}") for s in sites} | ({(where, "chi2_d")} if mode == "fixed" else set())
+    return out
+
+
+def expected_tier2(t2):
+    """Every ``(where, quantity)`` row a complete Tier II agreement writes (fitted mode, free offsets)."""
+    sites = ["eta", "flux", "gain", "offset", "sigma"]
+    return {(f"R_mpol/{p}", q) for p in t2["points"] for q in ["loss", "chi2_d"] + [f"grad {s}" for s in sites]}
+
+
+def missing_rows(rows, expected):
+    """A FAIL row for every expected ``(where, quantity)`` an output lacks: a truncated output cannot pass."""
+    have = {(r["where"], r["quantity"]) for r in rows}
+    return [dict(where=w, quantity=q, value=None, limit="row present", status="FAIL") for w, q in sorted(expected - have)]
+
+
 def cmd_summary(args):
     cfg = criteria()
     out = pathlib.Path(args.out)
@@ -494,6 +551,10 @@ def cmd_summary(args):
     commits = {f["virgil_commit"] for f in files.values()}
     if hashes - {REGISTERED_SHA256}:
         raise SystemExit(f"outputs from other criteria: {hashes}")
+    for key, what in (("run_id", "runs"), ("vv_commit", "virgil-validation commits")):
+        found = {f.get(key) for f in files.values()}
+        if len(found) > 1 or None in found and files:
+            raise SystemExit(f"outputs from several {what} (or unrecorded), never combined: {found}")
     if len(commits) > 1:
         raise SystemExit(
             f"outputs from several virgil commits, never combined: {commits}"
@@ -515,6 +576,7 @@ def cmd_summary(args):
         gated += [
             dict(r, value=r["error"], limit=f"<= {r['tol']:.2e}") for r in f["rows"]
         ]
+        gated += missing_rows(f["rows"], expected_tier1(spec, cfg["tier1"]))
         report += [
             dict(
                 r,
@@ -550,6 +612,7 @@ def cmd_summary(args):
         gated += [
             dict(r, value=r["error"], limit=f"<= {r['tol']:.2e}") for r in a["rows"]
         ]
+        gated += missing_rows(a["rows"], expected_tier2(cfg["tier2"]))
         report += [
             dict(
                 r,
@@ -602,7 +665,7 @@ def cmd_summary(args):
         return "-" if x is None else f"{x:.3e}" if isinstance(x, float) else str(x)
 
     lines = [
-        f"Toeplitz re-examination (G2). criteria sha256 {REGISTERED_SHA256}; virgil {commits.pop() if commits else 'none'}",
+        f"Toeplitz re-examination (G2). criteria sha256 {REGISTERED_SHA256}; virgil {', '.join(sorted(commits)) or 'none'}",
         "",
         f"{'status':13s} {'where':34s} {'quantity':40s} {'value':>11s}   limit",
     ]

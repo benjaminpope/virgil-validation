@@ -210,32 +210,36 @@ def budget(case, values, mode, eps_impl, n_fft, eps_ref=None, worst_case=True, r
     if eps_ref is None:
         eps_ref = phase_error(case, values["offset"]) + gamma(case.npix**2)
     ref = ref or evaluate(case, values, mode)
-    return tolerances(stats(case, flux, gain), ref["chi2_d"], ref["loss"], mode, values.get("sigma"), flux, gain, eps_impl, n_fft,
+    return tolerances(stats(case, flux, gain, values["eta"]), ref["chi2_d"], ref["loss"], mode, values.get("sigma"), flux, gain, eps_impl, n_fft,
                       eps_ref, worst_case)
 
 
-def stats(case, flux, gain):
-    """What a budget needs of the data: ``strengths``, the points per ddid, the observation of each ddid, ``q_max``, pixels."""
+def stats(case, flux, gain, eta):
+    """What a budget needs of the data: ``strengths``, the points per ddid, the observation of each ddid, ``q_max``, pixels, and
+    ``||b||_2`` of the image ``b = softmax(eta)`` (the image-gradient bound uses it)."""
     s_d, c_d, _ = strengths(case, flux, gain)
     return dict(s_d=s_d, c_d=c_d, n_d=case.n_d, obs_of_ddid=case.obs_of_ddid, n_obs=case.n_obs, p=case.npix**2,
-                q_max=float(np.max(np.hypot(case.u, case.v))))
+                q_max=float(np.max(np.hypot(case.u, case.v))), b_l2=float(np.linalg.norm(softmax_image(eta))))
 
 
 def tolerances(st, chi2_d, loss, mode, sigma, flux, gain, eps_impl, n_fft, eps_ref, worst_case=True):
     """The budget from ``stats`` ``st`` and the reference's ``chi2_d`` (at unit error scales) and ``loss``.
 
-    Per ddid: ``tau_d = (eps_impl + 2 eps_ref + 2 g_acc + rho) S_d + 2 g_acc C_d``, with ``g_acc = gamma(n)`` for the longest
-    reduction ``n = max(N_d, P, n_fft)`` (both sides: hence 2) and ``rho = 3 fft_factor(n_fft) sqrt(n_fft)`` (a convolution by
-    three FFTs; the l2 error of the convolved beam, at most ``sqrt(n_fft)`` times its l-infinity norm ``sum w``, contracted with
-    a unit-sum image, l2 norm <= 1). The reference enters twice (``|delta chi2| <= 2 sum w |r| |delta M|`` and
-    ``sum w|r| <= S_d / g``). Gradients: ``d chi2_d / d theta`` has the same structure times the derivative's factor: ``2 / F``
-    (flux), ``2 / g_e`` (gain), ``2 x 2 pi MAS q_max`` (offset, rad per mas), ``2`` per pixel of ``b`` (l2 over pixels:
-    ``sqrt(P)``; the softmax Jacobian has norm <= 1). The loss and gradient bounds weight each ddid by ``|dL/d chi2_d|`` (to first
-    order in ``tau`` where it moves with chi2, the profiled mode); the fitted ``dL/ds_d = -chi2_d/s^3 + 2N/s`` has error
-    ``tau_d / s^3 + u (chi2_d / s^3 + 2 N_d / s)``. Returns ``dict(chi2_d, loss, grad)``, the gradient ones as l2 norms per site
-    (per element for ``sigma``)."""
+    Per ddid: ``tau_d = (eps_impl + 2 eps_ref + 2 g_acc + rho) S_d + 2 g_acc C_d``, with ``g_acc = gamma(n)`` for the reductions
+    the paths run one after another, ``n = N_d + 2 P`` (the data sum, the image contraction with the dirty image, and with the
+    convolved beam; sequential sums add, ``gamma_a + gamma_b <= gamma_{a+b}``; both sides: hence 2), and ``rho =
+    3 fft_factor(n_fft) sqrt(n_fft)`` (the beam convolution's three FFTs, counted here and not in ``n``: the l2 error of the
+    convolved beam, at most ``sqrt(n_fft)`` times its l-infinity norm ``sum w``, contracted with a unit-sum image, l2 norm <= 1).
+    The reference enters twice (``|delta chi2| <= 2 sum w |r| |delta M|`` and ``sum w|r| <= S_d / g``). Gradients:
+    ``d chi2_d / d theta`` has the same structure times the derivative's factor: ``2 / F`` (flux), ``2 / g_e`` (gain),
+    ``2 x 2 pi MAS q_max`` (offset, rad per mas), and for the image ``4 ||b||_2``: each pixel's error in ``dL/db`` is at most
+    ``2 sum wt`` (l-infinity), and the softmax Jacobian ``J = diag(b) - b b^T`` gives ``||J d||_2 <= ||b o d||_2 + ||b||_2
+    |b^T d| <= 2 ||b||_2 ||d||_inf`` (``sum b = 1``; an image-plane blur with a unit-sum kernel has l2 norm <= 1 and does not
+    raise it). The loss and gradient bounds weight each ddid by ``|dL/d chi2_d|`` (to first order in ``tau`` where it moves with
+    chi2, the profiled mode); the fitted ``dL/ds_d = -chi2_d/s^3 + 2N/s`` has error ``tau_d / s^3 + u (chi2_d / s^3 + 2 N_d / s)``.
+    Returns ``dict(chi2_d, loss, grad)``, the gradient ones as l2 norms per site (per element for ``sigma``)."""
     s_d, c_d, n_d, p = st["s_d"], st["c_d"], np.asarray(st["n_d"]), st["p"]
-    n = max(int(n_d.max()), p, int(n_fft))
+    n = int(n_d.max()) + 2 * p
     acc = gamma(n) if worst_case else gamma_probabilistic(n)
     rho = 3 * fft_factor(n_fft) * math.sqrt(n_fft) if n_fft else 0.0
     tau = (eps_impl + 2 * eps_ref + 2 * acc + rho) * s_d + 2 * acc * c_d
@@ -247,7 +251,7 @@ def tolerances(st, chi2_d, loss, mode, sigma, flux, gain, eps_impl, n_fft, eps_r
     per_obs = np.array([np.sum(wt[obs_of_ddid == e]) for e in range(n_obs)])
     gain = np.asarray(gain, float)
     tol = {"chi2_d": tau, "loss": float(np.sum(wt)) + U * abs(loss)}
-    tol["grad"] = {"eta": math.sqrt(p) * 2 * float(np.sum(wt)), "flux": 2 * float(np.sum(wt)) / flux,
+    tol["grad"] = {"eta": 4 * st["b_l2"] * float(np.sum(wt)), "flux": 2 * float(np.sum(wt)) / flux,
                    "gain": float(np.linalg.norm(2 * per_obs[1:] / gain[1:])),
                    "offset": float(np.linalg.norm(2 * 2 * np.pi * MAS * st["q_max"] * np.repeat(per_obs[1:], 2)))}
     if mode == "fitted":

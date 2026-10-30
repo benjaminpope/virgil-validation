@@ -151,8 +151,7 @@ def test_tier1_rows_pass_on_tiny_unregistered_scenes(spec):
     rows, facts = tr.tier1_scene(spec, TCFG)
     bad = [r for r in rows if r["status"] != "PASS"]
     assert not bad, bad
-    n_points = 3 if spec["offsets"] == "spread" else 2
-    assert len({r["where"] for r in rows}) == 3 * n_points
+    assert {(r["where"], r["quantity"]) for r in rows} == tr.expected_tier1(dict(spec, name=spec["name"]), TCFG)  # no site dropped
     if spec["offsets"] == "spread":
         assert facts["nyquist_fraction"] < facts["margin"]
     opt = [r for r in rows if r["where"].endswith("fitted/optimum") and r["quantity"] == "grad sigma"]
@@ -199,9 +198,11 @@ def test_tier2_and_summary_on_a_tiny_set(tmp_path, monkeypatch):
     a = json.loads((out / "tier2_agree.json").read_text())
     assert a["criteria_sha256"] == tr.REGISTERED_SHA256 and a["virgil_commit"]
     assert all(r["status"] == "PASS" for r in a["rows"]), [r for r in a["rows"] if r["status"] != "PASS"]
-    assert {r["where"] for r in a["rows"]} == {"R_mpol/optimum", "R_mpol/moved", "R_mpol/edge"}
+    assert {(r["where"], r["quantity"]) for r in a["rows"]} == tr.expected_tier2(tr.criteria()["tier2"])
+    assert len({a["run_id"]} | {json.loads((out / f"time_{m}.json").read_text())["run_id"] for m in ("toeplitz", "direct")}) == 1
     s = json.loads((out / "reexam.json").read_text())
     assert s["verdict"] == "INCOMPLETE"
+    assert s["virgil_commit"] == [a["virgil_commit"]] and a["virgil_commit"] in (out / "reexam.txt").read_text()  # the header must not empty it
     assert any(r["status"] == "NOT EVALUATED" and "speed-up" in r["quantity"] for r in s["gated"])
     assert "VERDICT: INCOMPLETE" in (out / "reexam.txt").read_text()
 
@@ -211,14 +212,33 @@ def test_verdicts_and_the_no_combining_rule(tmp_path):
     assert tr.verdict(["PASS", "PASS"]) == "ACCEPTED"
     assert tr.verdict(["PASS", "NOT EVALUATED"]) == "INCOMPLETE"
     assert tr.verdict(["NOT EVALUATED", "FAIL"]) == "NOT ACCEPTED"
-    base = dict(criteria_sha256=tr.REGISTERED_SHA256, rows=[], facts=dict(nyquist_fraction=0.1, margin=0.9))
+    base = dict(criteria_sha256=tr.REGISTERED_SHA256, run_id="1", vv_commit="c" * 40, rows=[],
+                facts=dict(nyquist_fraction=0.1, margin=0.9))
     (tmp_path / "tier1_S1_ringed_disc.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40)))
+    tr.main(["summary", "--out", str(tmp_path)])  # one run, but its rows are missing: a truncated output fails, never passes
+    s = json.loads((tmp_path / "reexam.json").read_text())
+    assert s["verdict"] == "NOT ACCEPTED"
+    assert any(r["quantity"] == "grad offset" and r["status"] == "FAIL" and r["value"] is None for r in s["gated"])
+    (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40, run_id="2")))
+    with pytest.raises(SystemExit, match="several runs"):  # e.g. a later A100 timing job written into the same directory
+        tr.main(["summary", "--out", str(tmp_path)])
     (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="b" * 40)))
     with pytest.raises(SystemExit, match="several virgil commits"):
         tr.main(["summary", "--out", str(tmp_path)])
     (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40, criteria_sha256="0" * 64)))
     with pytest.raises(SystemExit, match="other criteria"):
         tr.main(["summary", "--out", str(tmp_path)])
+
+
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
+def test_a_gradient_site_the_implementation_omits_fails():
+    """A site the reference has and the implementation does not return (or the reverse) is a FAIL row, not a skipped one."""
+    ref = dict(loss=1.0, grad=dict(eta=np.ones(4), offset=np.ones(2)))
+    tol = dict(loss=1e-9, grad=dict(eta=1e-9, offset=1e-9))
+    rows = tr.compare("x", ref, dict(loss=1.0, grad=dict(eta=np.ones(4))), tol, tol)
+    assert {r["quantity"]: r["status"] for r in rows} == {"loss": "PASS", "grad eta": "PASS", "grad offset": "FAIL"}
+    rows = tr.compare("x", ref, dict(loss=1.0, grad=dict(eta=np.ones(4), offset=np.ones(2), sigma=np.ones(1))), tol, tol)
+    assert {r["quantity"]: r["status"] for r in rows}["grad sigma"] == "FAIL"
 
 
 @pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
@@ -232,3 +252,11 @@ def test_performance_off_the_registered_gpu_is_not_evaluated_and_on_it_is_judged
     assert [r["status"] for r in tr.performance_rows(t, perf)] == ["FAIL", "PASS", "REPORT"]  # 16x on an A100 would fail
     t["toeplitz"]["device"] = "NVIDIA A1000"
     assert tr.performance_rows(t, perf)[0]["status"] == "NOT EVALUATED"
+
+
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="guard")
+def test_the_script_pin_is_the_registry_pin():
+    import crosscheck.preregistration as prereg
+
+    entry = prereg.load_registry()["design/toeplitz_reexam_042.yml"]
+    assert entry["sha256"] == tr.REGISTERED_SHA256 == prereg.sha256_file(tr.CRITERIA_FILE)
