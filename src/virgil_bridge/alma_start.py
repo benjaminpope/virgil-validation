@@ -163,7 +163,7 @@ def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, s
 
     a. ``objective_ours`` <= ``objective_mpol`` (R's objective, both evaluated by virgil at eps 1e-12; virgil judges both arms, so (a) and (b) rest on virgil's chi^2 being right: the independent check is
        ``tests/test_alma_radio.py::test_half_chi2_plus_log_norm_is_the_negative_scipy_log_density_up_to_a_constant`` and ``::test_chi2_by_ddid_of_a_held_out_fold_matches_numpy``, against an independent DFT and SciPy);
-    b. raw chi^2/N at s = 1, ``chi2n_ours`` <= ``chi2n_mpol`` (MPoL's solution evaluated in virgil; the Track A value 2.7062 is from the MPoL reference run, jobs 18913982/18913983, ``design/alma_imlup_p3.md`` preliminary-numbers table);
+    b. raw chi^2/N at s = 1, ``chi2n_ours`` <= ``chi2n_mpol`` (MPoL's solution evaluated in virgil; the Track A value 2.7062 is from the MPoL reference run, jobs 18913982/18913983, in the PRELIMINARY, virgil 0.3.0 environment, not converged: ``design/alma_imlup_p3.md`` preliminary-numbers table; it is re-evaluated in the pinned virgil before the gate is run, see virgil-validation#210);
     c. C8 converged in every stage (``stages_converged``, a list of bools);
     d. the fraction of pixels of the image tapered to MPoL's beam below 1e-6 of its peak (``dead_fraction``) is under ``dead_tol`` (1 %); the base image's fraction (``dead_fraction_base``) is only recorded.
        POST-HOC CHANGE: the gate approved on 2026-10-23 (88b1e7d) judged (d) on the base image; on 2026-10-27 (aa0c2e3), after the base image showed dots, Ben moved it to the tapered image
@@ -305,7 +305,7 @@ def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, 
     there is no keyword to change one.
 
     1. held-out raw chi^2/N below MPoL's on the same folds by more than its uncertainty: ``heldout_ours`` and ``heldout_mpol`` are per-fold lists (``cv-compare``'s ``per_fold``), and ``mean(d) + se(d) < 0`` for the per-fold differences d (se = sd / sqrt(K)); fewer than two folds (including none) has no uncertainty, so the check is NOT EVALUATED, never a pass;
-    2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than MPoL's 2.7062;
+    2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than MPoL's 2.7062 (a value from the preliminary virgil 0.3.0 environment; not yet re-evaluated in the pinned virgil);
     3. on every registered synthetic truth x coverage (``cells``): ``synth`` and ``synth_r`` map ``(truth id, coverage id)`` to the arm's and config R's ``synth.json`` dicts (``check_synth`` refuses any other hash, a development truth or an unpinned or
        other truth file); NRMSE at 0.5 CLEAN beam below R's, N_eff ratio >= 0.7 and base pixels below 1e-4 of the in-disk peak under 1 %, in every cell;
     4. ``flux_ours`` within 10 % of ``flux_ref``;

@@ -151,10 +151,12 @@ def test_fit_gaussian_recovers_an_elliptical_gaussian_and_orders_the_axes(tmp_pa
     d = va.load_dir(_gauss_data(tmp_path, truth))
     f = vs.fit_gaussian(d.u, d.v, d.vis, d.weight, q_max=3e4)
     got = (f["flux_jy"], f["east_mas"], f["north_mas"], f["major_mas"], f["minor_mas"], f["pa_deg"])
-    # Purely relative, no absolute slack: 2 % on flux and the two FWHMs is five times tighter than the pre-registered flux gate (within 10 % of CLEAN,
-    # design/alma_imlup_gate_criteria.yml) and several times the statistical error of 3000 points at sigma 1e-3. The centroid is zero-crossing-prone
-    # (truth can be near 0), so east/north are asserted in mas below, and the PA in degrees.
-    np.testing.assert_allclose([got[0], got[3], got[4]], [truth[0], truth[3], truth[4]], rtol=0.02, atol=0.0)
+    # Purely relative, no absolute slack. The data are generated from the fitted model itself, so this checks the optimiser, not the formula (pinned by the DFT test above).
+    # Measured relative errors: flux 2e-5, major 5e-4, minor 1.3e-3 (seed 1, 3000 points at sigma 1e-3); the tolerance is 5e-3, about four times the largest.
+    # East/north are asserted in mas and the PA in degrees below.
+    for name, g, t in (("flux", got[0], truth[0]), ("major", got[3], truth[3]), ("minor", got[4], truth[4])):
+        record(f"{name}_rel_error", abs(g / t - 1))
+    np.testing.assert_allclose([got[0], got[3], got[4]], [truth[0], truth[3], truth[4]], rtol=5e-3, atol=0.0)
     assert abs(f["pa_deg"] - 35.0) < 1.5 and abs(f["east_mas"] - 200) < 15 and abs(f["north_mas"] + 150) < 15 and 0.8 < f["chi2_per_point"] < 1.2
     swapped = (0.30, 200.0, -150.0, 1300.0, 2200.0, 125.0)  # the same ellipse with the axes named the other way round
     d2 = va.load_dir(_gauss_data(tmp_path / "s", swapped))
