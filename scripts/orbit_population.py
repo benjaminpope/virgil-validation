@@ -394,7 +394,7 @@ def _virgil_run(part, system, paths, work):
     raw = null.get("verdict")
     verdict = dict(value=None if raw is None else ("no-orbit" if str(raw).startswith("no-orbit") else "orbit"), raw=raw,
                    source="stages/modes/report.json no_orbit.verdict (the verdict virgil ships at this commit)",
-                   winner_n=(modes.get("winner") or {}).get("n"), delta_nats=null.get("delta"))
+                   winner_n=(modes.get("winner") or {}).get("n"), delta_nats=null.get("delta_log_z"))
     out = dict(bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
                primary_diam=search.get("primary_diam"), outliers=search.get("outliers"),
                night_flags=search.get("night_flags"), n_bands=search.get("n_bands"))

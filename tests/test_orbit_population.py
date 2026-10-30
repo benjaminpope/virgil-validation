@@ -120,6 +120,7 @@ def test_aggregate_clean_toy_has_no_failures_but_is_incomplete():
     out = gate.aggregate_results(_toy(), s, s["master_seed"])
     assert out["counts"] == {"A": 200, "B": 240, "N": 100, "D": 120, "oracle": 240}
     assert out["rejected"] == []
+    assert {"M1:0.68", "M1:0.95", "M3a"} <= set(out["pvalues"])  # the M1 levels are the gate's, and each is evaluated
     assert out["must_hold"]["M6"]["N_all"]["provisional_pass"] and out["must_hold"]["M4"]["provisional_pass"]
     assert out["must_hold"]["M7"]["pass"] is None  # the fail flags cannot be observed on this virgil commit
     assert out["pass"] is None and out["unavailable"]  # never True while registered tests were not evaluated
@@ -275,3 +276,10 @@ def test_the_recorded_criteria_commit_is_the_last_commit_that_touched_the_file(c
     assert prereg.criteria_commit(gate.CRITERIA_FILE) == want
     gate.cmd_criteria(None)  # the record a run writes uses the same value
     assert json.loads(capsys.readouterr().out)["criteria_commit"] == want
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_null_verdict_reads_virgils_delta_log_z_key(monkeypatch):
+    import inspect
+
+    assert 'null.get("delta_log_z")' in inspect.getsource(gate)  # virgil's _null_verdict reports delta_log_z
