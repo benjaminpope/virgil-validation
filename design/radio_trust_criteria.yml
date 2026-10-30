@@ -1,0 +1,25 @@
+# What the radio trust nodes of trust/graph.yml must show to count as trusted: the independent strong roots
+# each needs (default 1) and its per-property roots. Extracted verbatim from the graph's radio section on
+# origin/main 473d8cc. changed after seeing a result: no (extraction only; no value differs).
+# scripts/check_radio_trust_criteria.py exits non-zero if this file is not the hash pinned in
+# design/criteria_registry.json, or if a node in graph.yml asks for less than it says here.
+# It pins the node set and the property roots (read_ms: conjugation); every node registers the default of one root, as in the graph.
+# Status rules are scripts/trust.py's and are not pinned here.
+nodes:
+  virgil.radio.ComplexVisData: {roots: 1}
+  virgil.radio.ComplexVisData.read_ms: {roots: 1, properties: {conjugation: 1}}
+  virgil.radio.ComplexVisData.dirty_image: {roots: 1}
+  virgil.radio.ComplexVisData.dirty_beam: {roots: 1}
+  virgil.radio_clean.clean: {roots: 1}
+  virgil.radio.CalibrationNuisance: {roots: 1}
+  virgil._antenna_gains.marginal: {roots: 1}
+  virgil.radio.ComplexVisData.model: {roots: 1}
+  virgil.radio.ComplexVisData.term: {roots: 1}
+  virgil.radio.ComplexVisData.chi2_by_ddid: {roots: 1}
+  virgil.radio.primary_beam: {roots: 1}
+  virgil.radio.dartboard_folds: {roots: 1}
+  virgil.fitting.gauss_newton_diag: {roots: 1}
+  virgil.radio_toeplitz.ToeplitzVisData: {roots: 1}
+  crosscheck.radio_trust: {roots: 1}
+  crosscheck.radio_offsets: {roots: 1}
+  crosscheck.radio_innovations.DeltaProblem: {roots: 1}

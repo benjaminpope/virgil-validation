@@ -5,14 +5,17 @@ Layout throughout is the repository's: row 0 North, column 0 East (``crosscheck.
 ``(r0, c0) = phase_centre_cell(npix)``; the CLEAN grid is odd with the phase centre on its middle pixel.
 """
 
+import hashlib
 import json
 import pathlib
 
 import numpy as np
+import yaml
 
+import crosscheck.preregistration as prereg
 from crosscheck import alma_maxent as cx
 
-from .alma import MPOL, gauge_to_obs0
+from .alma import C8_TOL, C8_WINDOW, MPOL, convergence, convergence_window, gauge_to_obs0
 
 
 def clean_centre(npix):
@@ -146,9 +149,11 @@ def clean_image_flux(path):
                 beam_area_arcsec2=float(beam_area), beam_area_pixels=float(beam_area / (pix_arcsec[0] * pix_arcsec[1])), path=str(path))
 
 
-GATE_FLUX_TOL = 0.10
-GATE_DEAD_TOL = 0.01
-GATE_REFERENCE_FLAG = 0.05  # flag our CLEAN flux and DSHARP's differing by more than this
+CRITERIA_FILE = pathlib.Path(__file__).resolve().parents[2] / "design" / "alma_imlup_gate_criteria.yml"  # pre-registered: pinned in design/criteria_registry.json
+_CRITERIA = yaml.safe_load(CRITERIA_FILE.read_text())
+GATE_FLUX_TOL = _CRITERIA["cold_start"]["flux_tol"]
+GATE_DEAD_TOL = _CRITERIA["cold_start"]["dead_tol"]
+GATE_REFERENCE_FLAG = _CRITERIA["cold_start"]["reference_flag"]  # flag our CLEAN flux and DSHARP's differing by more than this
 
 
 def cold_start_gate(*, objective_ours, objective_mpol, chi2n_ours, chi2n_mpol, stages_converged, dead_fraction, flux_ours, flux_ref, flux_ref_name,
@@ -198,19 +203,111 @@ def gate_markdown(gate):
     return rows
 
 
-MPOL_RAW_CHI2N = 2.7062  # MPoL's solution, raw chi^2/(2N) at s = 1 in virgil (the 2026-10-27 round)
-BETTER_NEFF, BETTER_DEAD = 0.7, 0.01
+CRITERIA = _CRITERIA  # the registered file's content: Track A, the synthetic truths, C8 and the replica pass live there too (a changed value changes the file's pin)
+MPOL_RAW_CHI2N = _CRITERIA["better_than_mpol"]["mpol_raw_chi2n"]  # MPoL's solution, raw chi^2/(2N) at s = 1 in virgil (the 2026-10-27 round)
+BETTER_NEFF, BETTER_DEAD = _CRITERIA["better_than_mpol"]["neff_min"], _CRITERIA["better_than_mpol"]["dead_max"]
 
 
-def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages_converged,
-                     chi2n_limit=MPOL_RAW_CHI2N, flux_tol=GATE_FLUX_TOL, neff_min=BETTER_NEFF, dead_max=BETTER_DEAD):
-    """The "better than MPoL" pass of Track A (``design/alma_imlup_p3.md``, Ben 2026-10-28): one arm must do all five, each PASS / FAIL / NOT EVALUATED (None input):
+class GateRefused(SystemExit):
+    """An input the gate will not score (another criteria hash, a development truth, a C8 flag its trajectory contradicts): a ``SystemExit`` with the reason."""
+
+
+def criteria_hash():
+    """sha256 of the registered criteria file (``crosscheck.preregistration``): what every gate input must have been produced under."""
+    return prereg.sha256_file(CRITERIA_FILE)
+
+
+def require_criteria(record, what):
+    """Refuse ``record`` (a result.json / synth.json / ... dict) unless its ``criteria_hash`` is the registered file's now."""
+    h = (record or {}).get("criteria_hash")
+    if h != criteria_hash():
+        raise GateRefused(f"{what}: criteria_hash {h!r} is not the current {criteria_hash()}: it was produced under other criteria (or none); rerun it, never edit the hash")
+
+
+def cells():
+    """The ``(truth id, coverage id)`` cells of criterion 3, in ``CRITERIA`` order."""
+    return [(t["id"], c["id"]) for t in CRITERIA["synth"]["truths"] for c in CRITERIA["synth"]["coverages"]]
+
+
+def truth_spec(truth_id):
+    """The ``CRITERIA`` entry of a registered truth; a development truth or unknown id is refused."""
+    if truth_id in CRITERIA["synth"]["development_truths"]:
+        raise GateRefused(f"truth {truth_id!r} is development-only (made from a candidate arm): it is never scored for the gate")
+    for t in CRITERIA["synth"]["truths"]:
+        if t["id"] == truth_id:
+            return t
+    raise GateRefused(f"truth {truth_id!r} is not registered in CRITERIA['synth']['truths']")
+
+
+def truth_source_sha(spec):
+    """The registered identity of a truth's source: its pinned file sha256, or for a parametric truth the sha256 of its recipe, blur and grid as canonical JSON. None if a file truth is unpinned."""
+    if spec["kind"] == "parametric":
+        syn = CRITERIA["synth"]
+        blob = dict(recipe=spec["recipe"], blur_mas=spec["blur_mas"], flux_jy=syn["flux_jy"], pixel_mas=syn["pixel_mas"], npix=syn["npix"])
+        return hashlib.sha256(json.dumps(blob, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return spec["sha256"]
+
+
+def coverage_ddids(coverage_id):
+    """The ddids a registered coverage fits (None: all of them)."""
+    return next(c["ddids"] for c in CRITERIA["synth"]["coverages"] if c["id"] == coverage_id)
+
+
+def check_synth(record, truth_id, coverage_id, what, config=None, workflow=None):
+    """Refuse a synth.json that is stamped with another hash, is not the registered (``truth_id``, ``coverage_id``) cell, has a development or unpinned truth, whose truth file is not the registered one, that scores a
+    fit of another ``config`` / ``workflow`` than expected (None: unchecked), a fit whose own ``--ddids`` are not the coverage's, or a fit whose data or ``truth.npy`` are not those ``make`` wrote."""
+    require_criteria(record, what)
+    spec = truth_spec(truth_id)
+    if record.get("development"):
+        raise GateRefused(f"{what}: marked development")
+    if (record.get("truth_id"), record.get("coverage")) != (truth_id, coverage_id):
+        raise GateRefused(f"{what}: is truth {record.get('truth_id')!r} / coverage {record.get('coverage')!r}, not {truth_id!r} / {coverage_id!r}")
+    want = truth_source_sha(spec)
+    if want is None:
+        raise GateRefused(f"{what}: truth {truth_id!r} has no sha256 pinned in CRITERIA: pin it first")
+    if record.get("truth_source_sha256") != want:
+        raise GateRefused(f"{what}: truth source sha256 {record.get('truth_source_sha256')!r} is not the registered {want}")
+    for key, want_v in (("config", config), ("workflow", workflow)):
+        if want_v is not None and record.get(key) != want_v:
+            raise GateRefused(f"{what}: scores a fit with {key} {record.get(key)!r}, not the expected {want_v!r}")
+    got, exp = record.get("fit_ddids"), coverage_ddids(coverage_id)
+    if (None if got is None else sorted(got)) != (None if exp is None else sorted(exp)):
+        raise GateRefused(f"{what}: the fit used ddids {got!r}, not coverage {coverage_id!r}'s {exp!r}")
+    if not (record.get("data_is_truth_dir") and record.get("truth_npy_matches_make")):
+        raise GateRefused(f"{what}: the fit's data are not the directory the truth was made in, or truth.npy is not the one synth_make.json hashed")
+
+
+def c8_recompute(stage):
+    """C8 of a saved stage from its own history: Adam from ``adam.loss_history`` (``convergence_window``), L-BFGS from ``trajectory`` (``convergence``), both at ``CRITERIA['c8']``. Refuses a stage whose stored
+    ``c8_converged`` differs. Returns the verdict dict with ``name``."""
+    tol, window = CRITERIA["c8"]["tol"], CRITERIA["c8"]["window"]
+    adam = stage.get("adam") or {}
+    if stage.get("method") == "adam" or adam:
+        hist = adam.get("loss_history")
+        if not hist:
+            raise GateRefused(f"stage {stage.get('name')!r}: Adam stage without adam.loss_history: C8 cannot be recomputed (rerun with this vv)")
+        v = convergence_window(hist, tol, window)
+    else:
+        traj = stage.get("trajectory") or []
+        if len(traj) < 2:
+            return dict(converged=None, change=None, mean_drop=None, name=stage.get("name"), method="lbfgs", reason="fewer than two trajectory records: C8 cannot be recomputed (the fit's own flag is not evidence)")
+        v = convergence(traj, None, tol, window)
+    if bool(v["converged"]) != bool(stage.get("c8_converged")):
+        raise GateRefused(f"stage {stage.get('name')!r}: stored c8_converged={stage.get('c8_converged')} but its own history gives {v['converged']} (change {v['change']}, mean_drop {v.get('mean_drop')})")
+    return dict(v, name=stage.get("name"), method="adam" if adam else "lbfgs")
+
+
+def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, flux_ours, flux_ref, flux_ref_name, stages, fit_config=None, fit_workflow=None):
+    """The "better than MPoL" pass of Track A (``design/alma_imlup_p3.md``, Ben 2026-10-28): one arm must do all five, each PASS / FAIL / NOT EVALUATED (None input). Every threshold is ``CRITERIA['better']`` (hashed):
+    there is no keyword to change one.
 
     1. held-out raw chi^2/N below MPoL's on the same folds by more than its uncertainty: ``heldout_ours`` and ``heldout_mpol`` are per-fold lists (``cv-compare``'s ``per_fold``), and ``mean(d) + se(d) < 0`` for the per-fold differences d (se = sd / sqrt(K)); a pair of scalars is compared without an uncertainty and is flagged in the value;
-    2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than ``chi2n_limit`` = MPoL's 2.7062;
-    3. on the synthetic truth, NRMSE at 0.5 CLEAN beam below config R's (``synth`` and ``synth_r`` are ``synth.json`` dicts), N_eff ratio of the base image >= ``neff_min`` and base pixels below 1e-4 of the in-disk peak under ``dead_max``;
-    4. ``flux_ours`` within ``flux_tol`` of ``flux_ref``;
-    5. C8 converged in every stage."""
+    2. raw chi^2/N at s = 1 (``chi2n_ours``) no worse than MPoL's 2.7062;
+    3. on every registered synthetic truth x coverage (``cells``): ``synth`` and ``synth_r`` map ``(truth id, coverage id)`` to the arm's and config R's ``synth.json`` dicts (``check_synth`` refuses any other hash, a development truth or an unpinned or
+       other truth file); NRMSE at 0.5 CLEAN beam below R's, N_eff ratio >= 0.7 and base pixels below 1e-4 of the in-disk peak under 1 %, in every cell;
+    4. ``flux_ours`` within 10 % of ``flux_ref``;
+    5. C8 converged in every stage, recomputed from each stage's saved history (``c8_recompute``); ``stages`` are the fit's stage records; ``change`` and ``mean_drop`` go in the table."""
+    b = c = CRITERIA["better_than_mpol"]
     def item(key, label, ok, value, limit):
         return dict(key=key, label=label, value=value, limit=limit, status="NOT EVALUATED" if ok is None else ("PASS" if ok else "FAIL"))
 
@@ -220,21 +317,33 @@ def better_than_mpol(*, heldout_ours, heldout_mpol, chi2n_ours, synth, synth_r, 
         se = float(np.std(d, ddof=1) / np.sqrt(len(d))) if len(d) > 1 else 0.0
         h = float(d.mean()) + se
         h_txt = f"mean diff {d.mean():+.6g} + se {se:.3g} over {len(d)} fold(s)" + ("" if len(d) > 1 else " (no uncertainty: one value)")
-    s = None if synth is None else synth
-    nr = None if s is None or synth_r is None else (s["nrmse"]["0.5"], synth_r["nrmse"]["0.5"])
-    syn_ok = None if s is None or nr is None else (nr[0] < nr[1] and s["n_eff_ratio"] >= neff_min and s["base_dead_in_disk_1e4"] < dead_max)
-    syn_val = None if s is None or nr is None else f"NRMSE {nr[0]:.4f} vs R {nr[1]:.4f}; N_eff ratio {s['n_eff_ratio']:.3f}; dead {s['base_dead_in_disk_1e4']:.2%}"
+    frac = b["nrmse_beam_fraction"]
+    syn_rows, syn_ok = [], None
+    if synth is not None and synth_r is not None:
+        for t, cv in cells():
+            if (t, cv) not in synth or (t, cv) not in synth_r:
+                syn_rows.append(f"{t}/{cv}: missing")
+                continue
+            check_synth(synth[(t, cv)], t, cv, f"synth {t}/{cv}", config=fit_config, workflow=fit_workflow)
+            check_synth(synth_r[(t, cv)], t, cv, f"synth-r {t}/{cv}", config="R")
+            s, r = synth[(t, cv)], synth_r[(t, cv)]
+            ok = s["nrmse"][frac] < r["nrmse"][frac] and s["n_eff_ratio"] >= c["neff_min"] and s["base_dead_in_disk_1e4"] < c["dead_max"]
+            syn_rows.append(f"{t}/{cv}: {'ok' if ok else 'FAIL'} (NRMSE {s['nrmse'][frac]:.4f} vs R {r['nrmse'][frac]:.4f}, N_eff {s['n_eff_ratio']:.3f}, dead {s['base_dead_in_disk_1e4']:.2%})")
+            syn_ok = ok if syn_ok is None else (syn_ok and ok)
+        if any("missing" in x for x in syn_rows) and syn_ok is not False:
+            syn_ok = None
     rel = None if flux_ours is None or not flux_ref else abs(flux_ours / flux_ref - 1)
-    sc = None if stages_converged is None or len(stages_converged) == 0 else [bool(x) for x in stages_converged]
+    c8 = None if not stages else [c8_recompute(st) for st in stages]
+    c8_txt = None if c8 is None else "; ".join(f"{v['name']} {'NOT EVALUATED' if v['converged'] is None else 'ok' if v['converged'] else 'FAIL'} (change {v['change']}, mean_drop {v.get('mean_drop')})" for v in c8)
     items = [
         item("1", "held-out chi^2/N below MPoL's on the same folds by more than the fold standard error", None if h is None else h < 0, h_txt, "mean + se < 0"),
-        item("2", f"raw chi^2/N (s = 1) at or below {chi2n_limit:g}", None if chi2n_ours is None else chi2n_ours <= chi2n_limit, chi2n_ours, f"<= {chi2n_limit:g}"),
-        item("3", f"synthetic truth: NRMSE at 0.5 beam below R's, N_eff ratio >= {neff_min:g}, base dead < {dead_max:.0%}", syn_ok, syn_val, "all three"),
-        item("4", f"total flux within {flux_tol:.0%} of the {flux_ref_name} flux ({flux_ref:.5f} Jy)" if flux_ref else "total flux within 10% of CLEAN", None if rel is None else rel <= flux_tol, rel, f"<= {flux_tol:g}"),
-        item("5", "C8 converged in every stage", None if sc is None else all(sc), None if sc is None else f"{sum(sc)}/{len(sc)} stages", "all"),
+        item("2", f"raw chi^2/N (s = 1) at or below {b['mpol_raw_chi2n']:g}", None if chi2n_ours is None else chi2n_ours <= b["mpol_raw_chi2n"], chi2n_ours, f"<= {b['mpol_raw_chi2n']:g}"),
+        item("3", f"every synthetic truth x coverage: NRMSE at {frac} beam below R's, N_eff ratio >= {b['neff_min']:g}, base dead < {b['dead_max']:.0%}", syn_ok, "; ".join(syn_rows) if syn_rows else None, "all cells, all three"),
+        item("4", f"total flux within {b['flux_tol']:.0%} of the {flux_ref_name} flux ({flux_ref:.5f} Jy)" if flux_ref else "total flux within 10% of CLEAN", None if rel is None else rel <= b["flux_tol"], rel, f"<= {b['flux_tol']:g}"),
+        item("5", f"C8 converged in every stage (recomputed: tol {CRITERIA['c8']['tol']:g}, window {CRITERIA['c8']['window']})", None if c8 is None or (all(v["converged"] is not False for v in c8) and any(v["converged"] is None for v in c8)) else all(v["converged"] for v in c8), c8_txt, "all"),
     ]
     verdict = "PASS" if all(i["status"] == "PASS" for i in items) else ("INCOMPLETE" if any(i["status"] == "NOT EVALUATED" for i in items) and not any(i["status"] == "FAIL" for i in items) else "FAIL")
-    return dict(verdict=verdict, items=items, rule="PASS only if 1-5 all pass; design/alma_imlup_p3.md, Track A, Ben 2026-10-28")
+    return dict(verdict=verdict, items=items, c8_stages=c8, cells=[list(x) for x in cells()], rule="PASS only if 1-5 all pass; design/alma_imlup_p3.md, Track A, Ben 2026-10-28")
 
 
 def better_markdown(b):

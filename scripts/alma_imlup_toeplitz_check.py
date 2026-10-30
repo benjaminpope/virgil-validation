@@ -30,6 +30,7 @@ import sys
 import time
 
 import numpy as np
+import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -41,6 +42,7 @@ jax.config.update("jax_enable_x64", True)
 import equinox as eqx  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 
+import crosscheck.preregistration as prereg  # noqa: E402
 import virgil_bridge.alma as va  # noqa: E402
 
 EPS_DIRECT = 1e-12
@@ -188,7 +190,7 @@ def cmd_agree(args):
                   moved="sigma x 1.1, gain x 1.05, offsets +-2 mas (seed 0)",
                   edge=f"sigma x 1.1, gain x 1.05, offsets +-{EDGE_FRACTION * args.max_offset_mas:g} mas (random signs per observation and axis, seed 1)",
                   peak_gb=peak_gb())
-    (out / "agree.json").write_text(json.dumps(report, indent=1))
+    (out / "agree.json").write_text(json.dumps(prereg.stamp(report, REG), indent=1))
     say(json.dumps({k: report[k] for k in ("max_rel", "max_rel_virgil", "dloss_rel", "dloss_abs", "grad_rel", "grad_rel_moved", "loss_rel_edge", "grad_rel_edge")}, indent=1))
 
 
@@ -218,13 +220,15 @@ def cmd_time(args):
             report["compile_s_score"], report["s_per_vg_score"] = time_vg(direct_vg(), term, values, args.repeats)
         report.update(eps_fit=va.EPS_FIT, eps_score=EPS_DIRECT)
     report["peak_gb"] = peak_gb()
-    (out / f"time_{args.method}.json").write_text(json.dumps(report, indent=1))
+    (out / f"time_{args.method}.json").write_text(json.dumps(prereg.stamp(report, REG), indent=1))
     say(f"{args.method} on {report['gpu']}: compile {report['compile_s']:.1f} s, {report['s_per_vg'] * 1e3:.1f} ms per value+grad, peak {report['peak_gb']:.2f} GB"
         + (f"; at eps {EPS_DIRECT:g}: {report['s_per_vg_score'] * 1e3:.1f} ms" if args.method == "direct" else ""))
 
 
-ACCEPT = dict(max_rel=1e-10, dloss_rel=1e-6, dloss_abs=1e-2, grad_rel=1e-8, speedup=30.0, peak_gb=20.0)  # toeplitz_ozstar_spec.md
-SPEEDUP_GPU = "A100"  # the speed-up limit is judged on this GPU type only; on any other device it is reported
+CRITERIA_FILE = ROOT / "design" / "toeplitz_acceptance.yml"  # pre-registered: pinned in design/criteria_registry.json
+_CRITERIA = yaml.safe_load(CRITERIA_FILE.read_text())
+ACCEPT = _CRITERIA["accept"]  # toeplitz_ozstar_spec.md
+SPEEDUP_GPU = _CRITERIA["speedup_gpu"]  # the speed-up limit is judged on this GPU type only; on any other device it is reported
 
 
 def speedup_gated(t):
@@ -281,12 +285,19 @@ def cmd_summary(args):
         + [f"{'REPORT' if ok is None else 'PASS' if ok else 'FAIL':<6s} {q:46s} {v:>22s}   accept {lim}" for q, v, lim, ok in table]
         + ["", "NOT ACCEPTED: " + ", ".join(q for q, _, _, ok in table if ok is False) if any(ok is False for *_, ok in table) else "ALL ACCEPTED", "", "Detail:"]
         + [f"{k:40s} {v}" for k, v in rows])
+    prereg.require_registered_runs([a, t["toeplitz"], t["direct"]], REG)
+    text = "\n".join(prereg.stamp_lines(text.splitlines(), REG))
     (out / "toeplitz_check.txt").write_text(text + "\n")
     say(text)
 
 
+REG = None  # the criteria's registration, set by main: every subcommand checks the pin before it runs
+
+
 def main(argv=None):
+    global REG
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    prereg.add_argument(p)
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("agree", "time"):
         q = sub.add_parser(name)
@@ -303,6 +314,7 @@ def main(argv=None):
     q = sub.add_parser("summary")
     q.add_argument("--out", required=True)
     args = p.parse_args(argv)
+    REG = prereg.check(CRITERIA_FILE, allow_unregistered=args.allow_unregistered)
     {"agree": cmd_agree, "time": cmd_time, "summary": cmd_summary}[args.cmd](args)
 
 

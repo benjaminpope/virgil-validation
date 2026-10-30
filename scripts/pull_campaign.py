@@ -30,6 +30,8 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import crosscheck.preregistration as prereg  # noqa: E402
+
 CRITERIA_FILE = ROOT / "design" / "pull_campaign.yml"
 UTS4 = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
 UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
@@ -158,6 +160,7 @@ def draw(cell, seed, tmp):
 
 
 def run(args, draw_fn=None):
+    reg = prereg.for_args(args, CRITERIA_FILE)  # refuses before any draw is made
     import jax
 
     jax.config.update("jax_enable_x64", True)
@@ -173,7 +176,8 @@ def run(args, draw_fn=None):
     cell_index = list(s["cells"]).index(args.cell)
     seed0 = args.seed_base + cell_index * 1_000_000 + args.task * draws
     head = {"cell": args.cell, "task": args.task, "draws": draws, "seed0": seed0, "virgil_commit": commit,
-            "criteria_hash": criteria_hash(), "design_hash": design_hash(), "params": param_names(args.cell)}
+            "criteria_hash": criteria_hash(), "design_hash": design_hash(), "params": param_names(args.cell),
+            "registered": reg.registered, **({} if reg.registered else {"stamp": prereg.UNREGISTERED_STAMP})}
     path = out_dir / f"pull_{args.cell}_{args.task:04d}.json"
     rows, start = [], time.time()
     if path.exists():  # resume after a time limit
@@ -256,6 +260,7 @@ def analyse(cells, s):
 
 
 def aggregate(args):
+    reg = prereg.for_args(args, CRITERIA_FILE)
     s = spec()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("pull_*_*.json"))]
     if len({f.resolve() for f in files}) != len(files):
@@ -263,9 +268,11 @@ def aggregate(args):
     if not files:
         raise SystemExit(f"no results found in {', '.join(map(str, args.dirs))}")
     cells, hashes, designs, commits, seeds, partial = {}, set(), set(), set(), [], 0
+    runs = []
     for f in files:
         r = json.loads(f.read_text())
         hashes.add(r["criteria_hash"])
+        runs.append(r)
         designs.add(r.get("design_hash"))
         commits.add(r["virgil_commit"])
         partial += not r.get("complete", True)
@@ -274,6 +281,7 @@ def aggregate(args):
             raise SystemExit(f"{r['cell']}: tasks disagree on the parameters")
         rows += r["rows"]
         seeds += [x["seed"] for x in r["rows"]]
+    prereg.require_registered_runs(runs, reg)
     if hashes != {criteria_hash()}:
         raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
     if designs != {design_hash()}:
@@ -286,7 +294,7 @@ def aggregate(args):
     summary = {"version": 1, "virgil_commit": commits.pop(), "criteria_hash": criteria_hash(),
                "design_hash": design_hash(), "tasks": len(files), "incomplete_tasks": partial, "criteria": s,
                **analyse(cells, s)}
-    text = json.dumps(summary, indent=1)
+    text = json.dumps(prereg.stamp(summary, reg), indent=1)
     if args.summary:
         pathlib.Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.summary).write_text(text + "\n")
@@ -302,9 +310,11 @@ def main():
     r.add_argument("--draws", type=int, default=0, help="per task (default: the registered number)")
     r.add_argument("--seed-base", type=int, default=20261008)
     r.add_argument("--out", required=True)
+    prereg.add_argument(r)
     g = sub.add_parser("aggregate")
     g.add_argument("dirs", nargs="+")
     g.add_argument("--summary")
+    prereg.add_argument(g)
     args = ap.parse_args()
     run(args) if args.cmd == "run" else aggregate(args)
 

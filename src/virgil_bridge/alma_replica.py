@@ -9,7 +9,7 @@ What MPoL's ``sgd.py`` does (mpol 0.3.1, the p3a run: ``--lr 1e-2 --FWHM 0.03 --
 - the loss of a batch is ``-ln L_b / (2 n_b) + lambda_M S_M`` (``neg_log_likelihood_avg``), batches of 40,000 points, 10 epochs per stage, about 1,061 batches per epoch on all the data.
 
 Here the same loss is taken on all the data at once (full batch, virgil's Toeplitz chi^2, the blur through virgil's ``blur_fwhm_mas``), for the same number of steps, with optax's AdamW at weight
-decay 1e-2 on the same parametrisation; the parameters and the optimiser state are float32. The minibatch noise is the one difference by design. Ablations: no weight decay, the softmax
+decay 1e-2 on the same parametrisation; the parameters and the optimiser state are float32. The minibatch noise is the one difference by design; ``run_stage_minibatch`` (``--replica-minibatch``) removes it, with MPoL's shuffled 40,000-point batches and per-epoch extra step. Ablations: no weight decay, the softmax
 parametrisation of virgil in place of softplus, another step count.
 """
 
@@ -19,10 +19,11 @@ import time
 import numpy as np
 
 from .alma import MPOL, ARCSEC, SB_OBS, dots_report, image_of, tapered_image
+from .alma_start import CRITERIA
 
 MPOL_RUN = dict(lr=1e-2, weight_decay=1e-2, batch_size=40000, epochs=10, stages=("all", "all"), base_start=-3.0, lam_m=1e-9)  # p3a's flags (train.sbatch); both of its stages ran on all the data
 MPOL_STEPS = dict(sb=10 * 273, all=10 * 1061)  # IM Lup: epochs x ceil(N / batch_size), N = 10,883,819 (obs 0-4) and 42,421,131 (p3a summary.md)
-REPLICA_PASS = dict(correlation=0.99, n_eff_ratio=0.78, n_eff_ratio_tol=0.20, peak_base=10.0, peak_factor=2.0, flux=0.294, flux_tol=0.05)  # Ben's pass, 2026-10-28
+REPLICA_PASS = CRITERIA["replica"]  # Ben's pass, 2026-10-28: hashed with the rest of the criteria
 
 
 def steps_for(n_points, epochs=MPOL_RUN["epochs"], batch=MPOL_RUN["batch_size"]):
@@ -155,13 +156,85 @@ def run_stage(params, term, *, steps, opt, loss_kw, chunk=100, time_limit=None, 
     return params, np.concatenate(out) if out else np.zeros(0), time.time() - t0, stopped
 
 
+def epoch_batches(n, batch=MPOL_RUN["batch_size"], seed=0, epoch=0, stage=0):
+    """The index batches of one epoch as ``DataLoader(shuffle=True, drop_last=False)`` makes them: a seeded permutation of ``range(n)`` (a function of ``seed``, ``stage`` and ``epoch``: the stages do not repeat each other's order) cut into ``batch`` points, the last
+    batch partial. Every point is in exactly one batch; there are ``ceil(n / batch)`` of them."""
+    perm = np.random.default_rng([int(seed), int(stage), int(epoch)]).permutation(n)
+    return [perm[i:i + batch] for i in range(0, n, batch)]
+
+
+def take(data, idx):
+    """The points ``idx`` (any order) of a ``ComplexVisData``, labels unchanged (``ComplexVisData.subset`` with an index in place of a mask, which would cost O(N) per batch)."""
+    import dataclasses
+
+    keep = ("ddid_ids", "obs_ids", "ddid_obs")
+    return type(data)(**{f.name: (getattr(data, f.name) if f.name in keep or getattr(data, f.name) is None else getattr(data, f.name)[idx]) for f in dataclasses.fields(data)})
+
+
+def run_stage_minibatch(params, data, make_term, *, steps, opt, loss_kw, batch=MPOL_RUN["batch_size"], seed=0, stage=0, time_limit=None, log=None, to32=True, stats=None, log_every=1000):
+    """``steps`` minibatch AdamW steps as MPoL's ``train`` loop (``sgd.py``): per epoch the points are reshuffled (``epoch_batches``) and each batch takes one step on its own loss ``-ln L_b / (2 n_b) + lambda_M S_M``
+    (``replica_loss`` with ``n_points`` the batch's size, the last batch of an epoch partial), the data term ``make_term(batch_data)`` the direct (non-Toeplitz) term of that batch. After each full epoch one more
+    ``optimizer.step()`` is taken with the last batch's gradient, as ``sgd.py`` does (its ``zero_grad`` is at the top of the batch loop, so the gradient is still there): it is not counted in ``steps`` and has
+    no loss. The optimiser is fresh (a second stage starts a new one). Returns ``(params, losses, wall_s, stopped)`` like ``run_stage``; ``losses`` has one entry per batch step (each the loss of one batch: its points and its ``n_b``, not the stage's objective). ``stats`` also receives ``epoch_loss`` (the ``n_b``-weighted mean of each epoch's batch losses, the last perhaps partial) and ``epoch_steps`` (the steps done at each epoch's end)."""
+    import equinox as eqx
+    import jax
+    import jax.numpy as jnp
+    import optax
+
+    if to32:
+        params = jax.tree.map(lambda x: jnp.asarray(x, jnp.float32), params)
+    state = opt.init(params)
+
+    @eqx.filter_jit
+    def step(params, state, term):
+        loss, g = jax.value_and_grad(lambda q: replica_loss(q, term, **{**loss_kw, "n_points": term.n}))(params)  # term.n is static: the batch's own size
+        g = jax.tree.map(lambda a, b: a.astype(b.dtype), g, params)
+        upd, state = opt.update(g, state, params)
+        return optax.apply_updates(params, upd), state, loss, g
+
+    @eqx.filter_jit
+    def extra(params, state, g):
+        upd, state = opt.update(g, state, params)
+        return optax.apply_updates(params, upd), state
+
+    t0, done, out, stopped, peak, epoch, n = time.time(), 0, [], None, 0.0, 0, len(data.u)
+    ep_loss, ep_steps = [], []
+    while done < steps and stopped is None:
+        g, wsum = None, 0.0
+        batches = epoch_batches(n, batch, seed, epoch, stage)
+        for i, idx in enumerate(batches):
+            params, state, loss, g = step(params, state, make_term(take(data, idx)))
+            out.append(float(loss))
+            wsum += out[-1] * len(idx)
+            done += 1
+            peak = max(peak, 1000.0 * float(jnp.max(jnp.abs(params["delta"]), initial=0.0)))
+            if stats is not None:
+                stats["peak_offset_mas"] = peak
+            if log and done % log_every == 0:
+                log(f"  replica: {done}/{steps} minibatch steps (epoch {epoch + 1}), loss {out[-1]:.8f}, peak |offset| {peak:.1f} mas, {time.time() - t0:.0f} s")
+            if not np.isfinite(out[-1]):
+                stopped = "non_finite"
+            elif time_limit is not None and time.time() - t0 > time_limit and done < steps:
+                stopped = "time_limit"
+            if stopped or (done >= steps and i < len(batches) - 1):  # a stop, or the steps used up inside an epoch (no extra step then; at an epoch's end they get it)
+                break
+        else:  # the epoch ran to its end: MPoL's extra optimizer.step() with the last batch's gradient
+            params, state = extra(params, state, g)
+        ep_loss.append(wsum / sum(len(x) for x in batches[:i + 1]))
+        ep_steps.append(done)
+        epoch += 1
+    if stats is not None:
+        stats.update(epoch_loss=ep_loss, epoch_steps=ep_steps)
+    return params, np.asarray(out, float), time.time() - t0, stopped
+
+
 def obs_of_ddid_of(data):
     """The observation of each ddid (index by ddid) from the data's points."""
     dd, ob = np.asarray(data.ddid), np.asarray(data.obs)
     return np.array([ob[dd == d][0] if np.any(dd == d) else 0 for d in range(int(dd.max()) + 1)])
 
 
-def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=None, pixel_mas=MPOL["pixel_mas"], ref=REPLICA_PASS):
+def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=None, pixel_mas=MPOL["pixel_mas"]):
     """The replica pass (Ben, 2026-10-28) of a replica ``base`` image (Jy/arcsec^2, row 0 North) and its 30 mas ``blurred`` image against MPoL's export (``base_image``, ``image``):
 
     - Pearson correlation of the two blurred images >= ``ref['correlation']`` (0.99);
@@ -169,9 +242,10 @@ def replica_compare(base, blurred, mpol_base, mpol_blurred, flux, *, mpol_flux=N
     - the base peak within a factor ``ref['peak_factor']`` (2) of ``ref['peak_base']`` (10 Jy/arcsec^2);
     - the flux within ``ref['flux_tol']`` (5 %) of ``ref['flux']`` (0.294 Jy: the flux of MPoL's p3a base image, ``sum(base_image) dx^2`` of its export, not the 0.253 Jy of its entropy's ``tot_flux``; ``mpol_flux``, the export's own, is recorded beside it).
 
-    (b)-(d) are judged against these constants, which are the p3a export's numbers. The export passed in is checked against the same bands (``mpol['export_in_band']``): when it is another MPoL run (another lambda, more epochs) the bands do not describe it, and the result carries ``warning`` and the markdown says so, so the verdict is not read as agreement with that run.
+    (b)-(d) are judged against these constants (``CRITERIA['replica']``, hashed; not overridable), which are the p3a export's numbers. The export passed in is checked against the same bands (``mpol['export_in_band']``): when it is another MPoL run (another lambda, more epochs) the bands do not describe it, and the result carries ``warning`` and the markdown says so, so the verdict is not read as agreement with that run.
 
     MPoL's own numbers from the export (correlation 1, its N_eff ratio, base peak, flux) are returned beside them. Returns ``dict(verdict, items, mpol)``."""
+    ref = REPLICA_PASS
     base, blurred, mb, mt = (np.asarray(x, float) for x in (base, blurred, mpol_base, mpol_blurred))
     corr = float(np.corrcoef(blurred.ravel(), mt.ravel())[0, 1])
     dr = dots_report(base, blurred, pixel_mas)

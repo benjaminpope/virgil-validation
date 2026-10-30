@@ -184,7 +184,7 @@ def test_modulated_rim_is_not_blurred_isotropically_on_the_sky(uvw):
 @pytest.mark.parametrize(
     "radius,length", [(5.0, 4.0), (15.0, 20.0), (5.0, 40.0)]
 )
-@pytest.mark.validates("virgil.models.GaussianArc", roots=["render"], property="orientation")
+@pytest.mark.validates("virgil.models.GaussianArc", roots=["mathematics"], property="orientation")
 def test_gaussian_arc_matches_untruncated_arc(uvw, radius, length):
     """The arc weight is virgil's documented von Mises function of the
     position angle, exp(kappa cos(phi - pa)) with kappa = (2 sqrt(2 ln 2)

@@ -148,7 +148,7 @@ def test_flared_disk_near_side_is_at_pa_plus_90():
 
 @pytest.mark.parametrize(
     "name,value",
-    [pytest.param(n, v, marks=pytest.mark.validates(f"virgil.models.{n}", roots=["render"], property="near_side"))
+    [pytest.param(n, v, marks=pytest.mark.validates(f"virgil.models.{n}", roots=["mathematics"], property="near_side"))
      for n, v in [("FlaredDiskHG", 0.6), ("FlaredDiskHG", -0.4), ("FlaredDiskGaussian", 40.0), ("FlaredDiskPowerLaw", 3.0)]],
 )
 def test_flared_disk_bright_side_follows_the_scattering(name, value):

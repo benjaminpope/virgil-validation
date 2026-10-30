@@ -1,0 +1,110 @@
+# Thresholds of the IM Lup gates in src/virgil_bridge/alma_start.py: the cold-start gate
+# (cold_start_gate) and the Track A "better than MPoL" pass (better_than_mpol).
+# Extracted verbatim from that module's constants on origin/main 473d8cc (rules: design/alma_imlup_p3.md).
+# changed after seeing a result: no (extraction only; no value differs).
+# The gate commands record this file's SHA-256 and exit non-zero if it is not the hash pinned in
+# design/criteria_registry.json. The check lists (a)-(e) and 1-5 stay in the docstrings of cold_start_gate and
+# better_than_mpol; only their numbers live here.
+cold_start:
+  flux_tol: 0.10           # GATE_FLUX_TOL
+  dead_tol: 0.01           # GATE_DEAD_TOL
+  reference_flag: 0.05     # GATE_REFERENCE_FLAG
+better_than_mpol:
+  mpol_raw_chi2n: 2.7062   # MPOL_RAW_CHI2N
+  neff_min: 0.7            # BETTER_NEFF
+  dead_max: 0.01           # BETTER_DEAD
+  flux_tol: 0.1
+  nrmse_beam_fraction: '0.5'
+  heldout: 'mean(d) + se(d) < 0 for the per-fold raw chi^2/N differences d (ours - MPoL''s, same folds), se = sd / sqrt(K): below MPoL''s by more than the fold-to-fold scatter'
+  rationale: thresholds as approved by Ben 2026-10-28 (design/alma_imlup_p3.md, Track A); none was chosen after a result
+# Track A multi-truth synthetic test, recomputed C8 and the replica pass (virgil-validation#205). Every value is the one first committed on that PR, before any run that uses it;
+# none was tuned to a result. Never edit after a run to fit it: a changed value needs a new pin (and a new run).
+c8:
+  tol: 0.1
+  window: 100
+  tol_derivation: 'the loss is -ln L (plus priors), so a change of 1/2 is chi^2 changing by 1, one effective degree of freedom at one sigma: a loss that changes by less than that cannot
+    change any inference. 0.1 is a fifth of it, i.e. chi^2 by 0.2, and a still-falling loss at 0.1 per 100 steps leaves a total displacement of order sqrt(2 x 0.1) = 0.45 sigma in the
+    Hessian norm. It is an absolute -ln L tolerance and was fixed before r1b, not after any result.'
+  lbfgs: 'L-BFGS stages, including the GP, keep the two-point test (|loss(last) - loss(>= window steps earlier)| < tol): L-BFGS with a line search never raises the loss, so the window
+    test''s range condition (max - min over the last window) equals the two-point change for it, and the oscillation the window test exists to catch (Adam) cannot occur. The window test''s
+    drift condition has no L-BFGS counterpart: it would admit a loss still falling by less than tol per window, which is the tolerance by definition. Records are every 200 steps, so
+    the reference is the latest one at least window steps earlier.'
+  recompute: 'better recomputes C8 from the saved per-stage history (Adam: adam.loss_history, convergence_window; L-BFGS: trajectory, convergence) and refuses a stage whose stored c8_converged
+    disagrees'
+synth:
+  blur_mas: 15.0
+  flux_jy: 0.25
+  pixel_mas: 5.0
+  npix: 1028
+  truths:
+  - id: ring_gap
+    kind: parametric
+    sha256: null
+    recipe:
+      source: 'Huang et al. 2018, DSHARP II, ApJ 869 L42 (2018ApJ...869L..42H), Tables 1 and 2: IM Lup; distance 158 pc from 743 mas = 117.4 au'
+      distance_pc: 158.0
+      inc_deg: 47.5
+      pa_deg: 144.5
+      gap_r_mas: 743.0
+      gap_fwhm_au: 15.8
+      gap_depth: 0.66
+      ring_r_mas: 845.0
+      ring_fwhm_au: 18.4
+      ring_contrast: 0.5
+      dust_radius_au: 264.0
+      dust_radius_enclosed_flux: 0.95
+      profile: I(r) = E(r) (1 - gap_depth G(r; gap_r, gap_fwhm)) (1 + ring_contrast G(r; ring_r, ring_fwhm)), E the exponential holding 95 % of the flux within dust_radius_au (Table
+        2's R_dust), r the deprojected radius, G a Gaussian of unit peak
+      note: 'the ring contrast is not tabulated for the B rings in Table 1: 0.5 is our choice, fixed here'
+    blur_mas: 15.0
+  - id: mpol_export
+    kind: image
+    sha256: 3f7450b17c1fd91d5b9926735594fbe352d7cd18285995dadc23e9111c44ba76
+    recipe:
+      source: MPoL p3a export.npz (alma_mpol_ref out/p3a/export), array 'image' (Jy/arcsec^2, row 0 North, 1028^2 at 5 mas); sha256 is of the file
+    blur_mas: 15.0
+  - id: clean_model
+    kind: clean
+    sha256: ea648e884c155e227a5f536f681ddc47d59d6f7e1a8d26c837be07fb2f0eb90d
+    recipe:
+      source: our CLEAN model.fits (alma_imlup_clean run output, Jy/pixel), smoothed at its own pixel and regridded flux-preserving (alma_start.regrid) to the fit's grid; sha256 is of
+        model.fits
+      run: 799234c-15fecaa-cd  # the only CLEAN run with a model.fits; hashed from the local pull of 2026-10-28; the job passes it explicitly, never "the latest"
+    blur_mas: 15.0
+  development_truths:
+  - dev_mem
+  - dev_image
+  coverages:
+  - id: full
+    ddids: null
+  - id: sb
+    ddids:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+  coverage_rationale: a reconstruction that is better only with the long baselines (or only without) shows on the reduced-coverage truth
+  pass_rule: criterion 3 passes only if, on EVERY truth x coverage cell, the arm's NRMSE at the fraction above is below config R's on the same cell, N_eff ratio >= neff_min and base
+    dead < dead_max; a missing cell is NOT EVALUATED
+replica:
+  correlation: 0.99
+  n_eff_ratio: 0.78
+  n_eff_ratio_tol: 0.2
+  peak_base: 10.0
+  peak_factor: 2.0
+  flux: 0.294
+  flux_tol: 0.05

@@ -208,3 +208,66 @@ def test_provenance_is_taken_before_the_evidence_file_exists(tmp_path, monkeypat
     plugin.pytest_sessionfinish(session)
     assert seen == [False]
     assert json.loads(path.read_text().splitlines()[0]) == {"record": "run"}
+
+
+def test_render_is_not_an_external_or_allowed_root(trust):
+    import evidence
+
+    assert "render" not in evidence.ROOTS
+    assert "render" not in trust.EXTERNAL
+
+
+def test_signoffs_need_a_listed_ssh_signature(trust, tmp_path):
+    """A 'by:' sign-off counts only if the commit that added it is SSH-signed by a key
+    in trust/allowed_signers (non-boundary, full clone); a citation always counts."""
+    import os
+    import subprocess
+
+    env = {**os.environ, "HOME": str(tmp_path), "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig"),
+           "GIT_CONFIG_SYSTEM": os.devnull, "GIT_AUTHOR_NAME": "Benjamin Pope", "GIT_AUTHOR_EMAIL": "b@example.com",
+           "GIT_COMMITTER_NAME": "Benjamin Pope", "GIT_COMMITTER_EMAIL": "b@example.com"}
+
+    def run(*cmd, cwd=None):
+        subprocess.run(cmd, check=True, capture_output=True, env=env, cwd=cwd)
+
+    for name in ("good", "other"):
+        run("ssh-keygen", "-t", "ed25519", "-N", "", "-q", "-f", str(tmp_path / name))
+    pub = (tmp_path / "good.pub").read_text().split()
+    repo = tmp_path / "repo"
+    (repo / "trust").mkdir(parents=True)
+    (repo / "trust" / "allowed_signers").write_text(f"ben@example.com {pub[0]} {pub[1]}\n")
+    sig = repo / "signoffs.yml"
+    sig.write_text(
+        "virgil.a:\n  sense:\n    by: Benjamin Pope\n    date: 2026-10-28\n    commit: " + "a" * 40 + "\n"
+        "  cited:\n    citation: 'Author (2020), eq. 1'\n")
+    cited = {"virgil.a": {"cited": {"citation": "Author (2020), eq. 1"}}}
+    run("git", "init", "-q", str(repo))
+    run("git", "add", "-A", cwd=repo)
+
+    def sensed(where=repo):
+        return "sense" in trust.load_signoffs(where / "signoffs.yml", repo=where).get("virgil.a", {})
+
+    def commit(msg, key=None):
+        flags = ["-c", "gpg.format=ssh", "-c", f"user.signingkey={tmp_path / key}"] if key else []
+        run("git", *flags, "commit", "-q", *(["-S"] if key else []), "--allow-empty", "-m", msg, cwd=repo)
+
+    assert trust.load_signoffs(sig, repo=repo) == cited  # uncommitted: rejected, citation kept
+    commit("root", "good")
+    assert not sensed()  # boundary commit, even though well signed
+    sig.write_text(sig.read_text() + "\n")
+    run("git", "commit", "-q", "-am", "unsigned, with a human name", cwd=repo)
+    assert trust.load_signoffs(sig, repo=repo) == cited  # a matching name is not a signature
+
+    text = sig.read_text()
+    for key, ok in (("other", False), ("good", True)):
+        run("git", "rm", "-q", "-f", "signoffs.yml", cwd=repo)
+        commit("drop")
+        sig.write_text(text)
+        run("git", "add", "signoffs.yml", cwd=repo)
+        commit("sign off", key)
+        assert sensed() is ok, key
+    assert trust.load_signoffs(sig, repo=repo)["virgil.a"]["cited"]
+
+    shallow = tmp_path / "shallow"
+    run("git", "clone", "-q", "--depth", "1", f"file://{repo}", str(shallow))
+    assert not sensed(shallow)
