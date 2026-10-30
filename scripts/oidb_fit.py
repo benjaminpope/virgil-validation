@@ -757,6 +757,7 @@ XUAN_2024 = dict(period=12.134, t_peri=60377.88, ecc=0.234, inc=31.4, omega=180.
 # files; the paper's nights are 2024-02-27 and 2024-03-28 (the observing night starts the evening before).
 GL229_FLAGGED = {"2024-02-28": "single-night alias peak (Xuan et al. flag 2024-02-27: weak signal)",
                  "2024-03-29": "single-night alias peak (Xuan et al. flag 2024-03-28: failing fringe tracker)"}
+# Every exclusion below is in trust/ledger.yml (D15 night, D16 file, D17 flagged nights) with whether it followed a result.
 # A night left out altogether: Xuan et al. do not flag 2024-12-18, and its disagreement with their orbit is open
 # (plan_eso_binaries.md; virgil-validation#69). Its files are dated 2024-12-19. Only the full ESO set has it; the
 # OiDB collection does not. One exposure is also left out, as in reanalyse_orbits.GL229_EXCLUDE.

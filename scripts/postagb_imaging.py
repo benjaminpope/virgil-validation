@@ -50,6 +50,8 @@ outputs carry ``_vlti`` / ``_flat`` in their names. The geometry of the polar GP
 """
 
 import argparse
+import datetime
+import hashlib
 from scipy.ndimage import rotate as rotate_img
 import glob
 import json
@@ -1152,14 +1154,11 @@ def warm_params(out, cfg, strat, args):
     return w, f.name
 
 
-SKIP_FLAG = pathlib.Path("/private/tmp/claude-501/skip_clean.flag")  # while it exists, a cleanly converged earlier result is kept
-
-
 def skip_clean_reason(out, cfg, strat, args):
     """Why this target x strategy need not be rerun (its previous result converged, was not on a grid edge, and for the disc
-    passed the render guard), or None. PS Gem and HR 4049 changed field size, so they always rerun; MEM does not use the GP grids."""
+    passed the render guard), or None. Only with ``--reuse-converged``; the reuse is recorded by `image_one`. PS Gem and HR 4049 changed field size, so they always rerun; MEM does not use the GP grids."""
     f = out / f"{cfg['key']}_image.json"
-    if args.smoke or not SKIP_FLAG.exists() or not f.exists() or cfg.get("fov_override"):
+    if args.smoke or not args.reuse_converged or not f.exists() or cfg.get("fov_override"):
         return None
     j = json.load(open(f))
     if j.get("smoke") or not (0.2 < j.get("chi2_per_point", 9.0) < 3.0) or j.get("gp_converged", True) is False:
@@ -1183,6 +1182,11 @@ def image_one(args, out, strat):
     why = skip_clean_reason(out, cfg, strat, args)
     if why:
         print("skipped", strat, "-", why, flush=True)
+        prev = out / f"{cfg['key']}_image.json"
+        json.dump(dict(strategy=strat, reuse_converged=True, reason=why, kept_file=prev.name,
+                       kept_sha256=hashlib.sha256(prev.read_bytes()).hexdigest(),
+                       utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")),
+                  open(path(out, cfg, f"{strat}_reused.json"), "w"), indent=1)
         return
     data_s, data0, s, files = load_scaled(cfg, args, out)
     geo_file = scale_file(out, cfg, args.noise)
@@ -1873,6 +1877,9 @@ def main():
     p.add_argument("outdir", type=Path)
     p.add_argument("--target", default="IW_Car", choices=list(TARGETS))
     p.add_argument("--smoke", action="store_true", help="tiny run: three files, coarse grid, few steps")
+    p.add_argument("--reuse-converged", action="store_true",
+                   help="skip a target x strategy whose earlier image.json converged (recorded in <key>_<strategy>_reused.json); "
+                        "off by default, so a gate run always refits")
     p.add_argument("--strategy", default="all", choices=("all",) + STRATEGIES, help="imaging strategy for the image and compare stages")
     p.add_argument("--star-index", type=float, default=None, help="one-off: stellar power-law index of the image scene (default -4), written as <target>_si<n>_*")
     p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")

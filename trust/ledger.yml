@@ -516,3 +516,52 @@
   evidence: [tests/test_alma_clean.py::test_virgil_radio_clean_agrees_with_the_independent_loop, tests/test_radio_trust_casa.py::test_fit_beam_and_the_lobe_only_reference_agree_with_the_beam_tclean_fits, tests/test_radio_trust_casa.py::test_control_the_bounding_box_fit_of_the_lobe_misses_the_tclean_beam]
   status: documented
   decision: 'settled in virgil 0.4.2 (the deferred item of Ben, 2026-10-23): checked against casatools, 2 % on the major axis recorded.'
+
+# Analysis conventions and exclusions decided by us (virgil-validation#207, V6 and V8, WP-19 of the 0.4.2 integrity pass).
+# ruling `definition`: not a bug in either code, a choice or a convention the checks depend on. `post_result` says
+# whether the choice was made after seeing a fit result; anything the repository cannot show is marked unconfirmed.
+- id: D15
+  title: 'Gl 229: the night 2024-12-19 (ESO files; not in the OiDB collection) is left out of the orbit fits (scripts/oidb_fit.py GL229_EXCLUDED_NIGHTS)'
+  objects: [virgil.epochs.rank_orbits]
+  ruling: definition
+  kind: 'analysis choice, post_result: true. Xuan et al. 2024 do not flag this night as an alias, yet its positions disagree with their orbit (plan_eso_binaries.md; virgil-validation#69), and it was left out as an open per-night disagreement. The exclusion therefore followed a result and is not a pre-registered cut. It removes a night that disagrees with the published orbit, so any agreement quoted for the Gl 229 fit is conditional on it; the fits that keep the night are the open disagreement itself'
+  referee: crosscheck (the comparison against the published orbit, docs/orbits/aliases.md); no independent second review yet
+  evidence: []
+  status: open
+  links: [https://github.com/benjaminpope/virgil-validation/issues/69]
+
+- id: D16
+  title: 'Gl 229: the exposure GRAVI.2023-12-26T05_51_29.891 is left out (oidb_fit.py GL229_EXCLUDED_FILES, reanalyse_orbits.py GL229_EXCLUDE)'
+  objects: [virgil.epochs.rank_orbits]
+  ruling: definition
+  kind: 'analysis choice, post_result: unconfirmed. The stated reason is a property of the file alone (closure phases +38 to +57 deg on all triangles, errors 5-10x the night''s), not of its effect on the orbit; the repository history (d0e8bd8, 2026-10-09, 7322f45, 2026-10-15) does not show whether it was decided before or after a fit result, so it is recorded as not shown to be pre-registered'
+  referee: mathematics (the closure phases of the file against the night''s others)
+  evidence: []
+  status: documented
+
+- id: D17
+  title: 'Gl 229: the nights 2024-02-28 and 2024-03-29 are flagged as single-night alias peaks (oidb_fit.py GL229_FLAGGED) and seed no position; with exclude_flagged they are dropped'
+  objects: [virgil.epochs.rank_orbits]
+  ruling: definition
+  kind: 'analysis choice, post_result: false in intent. The flags are Xuan et al. 2024''s own (2024-02-27 weak signal, 2024-03-28 failing fringe tracker; our file dates are one UT day later), taken from the paper before the fits (design/orbit_comparison.md section 5), so the cut follows the published reference rather than our fit. The date shift by one UT day is our mapping and is not independently reviewed'
+  referee: standards (Xuan et al. 2024 flagged nights)
+  evidence: []
+  status: documented
+
+- id: D18
+  title: 'Halbwachs+2020 published ellipses are adopted as 1 sigma as rescaled; the unrescaled variant divides by 0.1626 * 1.0856 = 0.17652 (crosscheck.astrometry.published_position)'
+  objects: [virgil.epochs.rank_orbits]
+  ruling: definition
+  kind: 'convention. The factor is the rescaling that Halbwachs+2020 (2020MNRAS.496.1355H) apply to their formal errors, as transcribed from the paper by an earlier worker; this worker did not re-read it, so the value is unconfirmed against the paper. The adopted covariance (cov) is the published rescaled ellipse; the divided one (cov_alt) is reported beside it and never used for a verdict'
+  referee: standards (Halbwachs et al. 2020, 2020MNRAS.496.1355H)
+  evidence: [tests/test_trackb_astrometry.py::test_published_conventions]
+  status: documented
+
+- id: D19
+  title: 'Waisberg+2025 give no covariance; isotropic per-axis scatter 40 uas (zeta Boo) and 20 uas (eta Oph) is assumed (crosscheck.astrometry.WAISBERG_SIGMA); Rowan+2026 errors are multiplied by their published s_ast = e^0.8'
+  objects: [virgil.epochs.rank_orbits]
+  ruling: definition
+  kind: 'convention. WAISBERG_SIGMA is the epoch scatter read from Waisberg+2025 (2025OJAp....8E..63W) by an earlier worker, per system and isotropic; not re-read from the paper by this worker, so unconfirmed. The Rowan+2026 (2026PASP..138b4203R) factor e^0.8 = 2.23 is the paper''s own published s_ast scaling of its bootstrap errors: it INFLATES the adopted errors (the unscaled ones are kept as cov_alt), so a claim that it deflates the d2 statistic is backwards (Argon''s V8 in vv#207, corrected in the 0.4.2 consolidated work packages). Inflating errors makes a pull comparison easier to pass, which is why the factor is the paper''s and not ours'
+  referee: standards (Waisberg et al. 2025; Rowan et al. 2026)
+  evidence: [tests/test_trackb_astrometry.py::test_published_conventions]
+  status: documented

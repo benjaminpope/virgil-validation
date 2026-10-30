@@ -25,6 +25,7 @@ changes.
 """
 
 import numpy as np
+from scipy.stats import chi2 as _chi2
 
 from . import orbits as O
 from .orbits import thiele_innes  # the one Thiele-Innes implementation (the copy that was here is deleted)
@@ -39,8 +40,12 @@ VARIANTS = {
 }
 SAME_FRACTION = 0.02  # rms offset below this fraction of the mean separation, and
 SAME_SIGMA = 3.0  # below this many posterior spreads, is the same sky orbit (published residuals are ~0.1 mas)
-VERDICT_RULE_VERSION = 2  # 2: position match needs fraction AND sigma; 1 used the fraction alone. Bump on any rule change.
-GOOD_CHI2_N = 2.0  # raw chi^2/N at or below this: the fit describes its data, so a far reference is REFERENCE-DISAGREES
+VERDICT_RULE_VERSION = 3  # 3: INCOMPLETE without samples, N-aware chi^2 p-value; 2: fraction AND sigma; 1: fraction alone. Bump on any rule change.
+# A fit "describes its data" when the upper-tail probability of its raw chi^2 under chi^2_N is at least GOOD_FIT_ALPHA. Stated
+# before looking at any system: 1e-3 only rejects a gross misfit (the white errors of these fits are approximate, so a stricter
+# alpha would reject fits for noise-model slack, not for the orbit). It was not chosen to make any system pass or fail.
+GOOD_FIT_ALPHA = 1e-3
+N_ORBIT_FREE = 7  # the orbital elements, always fitted: the least n_free the chi^2 can have absorbed (more free parameters would only tighten the test)
 
 
 def _pos(mjd, period, t_peri, ecc, inc, omega, Omega, a):
@@ -99,29 +104,42 @@ def _rms(d):
     return float(np.sqrt(np.mean(np.sum(d**2, -1))))
 
 
-def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, labels_free=False, chi2_n=None):
+def good_fit(chi2_n, n_data, n_free=N_ORBIT_FREE):
+    """Whether a raw chi^2/N of ``chi2_n`` over ``n_data`` points, with ``n_free`` parameters fitted, is consistent with the data:
+    P(chi^2_{N - n_free} >= chi^2) >= ``GOOD_FIT_ALPHA``. False when chi^2/N or N is missing, or when N <= n_free (nothing then
+    says the fit is good). ``n_free`` defaults to the seven orbital elements; pass more when the fit also fitted fluxes or gains."""
+    if chi2_n is None or n_data is None or not np.isfinite(chi2_n) or n_data <= n_free:
+        return False
+    return bool(_chi2.sf(chi2_n * n_data, n_data - n_free) >= GOOD_FIT_ALPHA)
+
+
+def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, labels_free=False, chi2_n=None, n_data=None, n_free=N_ORBIT_FREE):
     """The verdict rule of :func:`score`, applied to stored statistics (so a stored run can be re-judged).
 
     The position match needs ``frac_sep < SAME_FRACTION`` AND, when there are posterior samples
     (``offset_over_spread`` finite), ``offset_over_spread < SAME_SIGMA``. A far orbit whose raw chi^2/N
-    (``chi2_n``) is at most ``GOOD_CHI2_N`` is REFERENCE-DISAGREES; without chi^2/N it is DIFFERENT. A match only as
+    (``chi2_n`` over ``n_data`` points) passes `good_fit` (with ``n_free`` fitted parameters) is REFERENCE-DISAGREES; without chi^2/N and N it is DIFFERENT.
+    A sky match by point estimates alone (``offset_over_spread`` missing: no posterior samples) is INCOMPLETE, since the
+    spread gate has not been applied; a failure by the fraction, or an unexplained reflection, needs no spread. A match only as
     the reference's point reflection (``mirror``) needs the fit to have swapped labels or ``labels_free``; otherwise
     UNEXPLAINED-FLIP.
     """
     sky_ok = frac_sep < SAME_FRACTION
-    if offset_over_spread is not None and np.isfinite(offset_over_spread):
+    no_spread = offset_over_spread is None or not np.isfinite(offset_over_spread)
+    if not no_spread:
         sky_ok = sky_ok and offset_over_spread < SAME_SIGMA
     if not sky_ok:
         # A fit that describes its own data but is far from the reference is a disagreement with the reference,
         # not a failed fit (the caller supplies the raw chi^2/N; without it the verdict is DIFFERENT).
-        good_fit = chi2_n is not None and chi2_n <= GOOD_CHI2_N
-        return "REFERENCE-DISAGREES" if good_fit else "DIFFERENT"
+        return "REFERENCE-DISAGREES" if good_fit(chi2_n, n_data, n_free) else "DIFFERENT"
     if mirror and not (flipped or labels_free):
         return "UNEXPLAINED-FLIP"
+    if no_spread:
+        return "INCOMPLETE"
     return "SAME-SKY-ORBIT"
 
 
-def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False, chi2_n=None):
+def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False, chi2_n=None, n_data=None, n_free=N_ORBIT_FREE):
     """Compare a fitted orbit with ``meta["reference"]`` on the sky at ``meta["mjd"]``.
 
     Parameters
@@ -142,8 +160,12 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         apart). Never derived from a list of system names. Only with this or ``flipped`` is a point-reflected
         match accepted.
     chi2_n : float, optional
-        The fit's raw chi^2 per data point. When it is at most ``GOOD_CHI2_N`` and the orbit is far from the
+        The fit's raw chi^2 per data point. With ``n_data``, when `good_fit` holds and the orbit is far from the
         reference, the verdict is REFERENCE-DISAGREES rather than DIFFERENT.
+    n_data : int, optional
+        The number of data points behind ``chi2_n``; without it the fit is never called good.
+    n_free : int
+        Parameters the fit fitted (default `N_ORBIT_FREE`); the chi^2 is tested against N - n_free degrees of freedom.
 
     Returns
     -------
@@ -151,7 +173,7 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         rms and max offset (mas), the rms as a fraction of the mean separation (``frac_sep``), the rms over the
         posterior spread, whether the reference's point reflection matches (``flux_flip_matches``), the rms of each
         convention variant, the Thiele-Innes constants, ``rule_version`` (``VERDICT_RULE_VERSION``) and the
-        ``verdict``: SAME-SKY-ORBIT, DIFFERENT, REFERENCE-DISAGREES, or UNEXPLAINED-FLIP (matches only as a point
+        ``verdict``: SAME-SKY-ORBIT, DIFFERENT, REFERENCE-DISAGREES, INCOMPLETE (a match with no ``samples``), or UNEXPLAINED-FLIP (matches only as a point
         reflection, though the fit did not swap labels and ``labels_free`` is false). The position match needs
         both frac_sep < SAME_FRACTION and, with samples, offset_over_spread < SAME_SIGMA.
     """
@@ -180,6 +202,8 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         flipped=bool(flipped),
         labels_free=bool(labels_free),
         chi2_n=None if chi2_n is None else float(chi2_n),
+        n_data=None if n_data is None else int(n_data),
+        n_free=int(n_free),
         rms=rms,
         max=float(dist.max()),
         mean_sep=float(np.mean(sep)),
@@ -212,5 +236,5 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         spread = float(np.sqrt(np.mean(np.sum(tracks.var(0), -1))))
         out["spread"], out["offset_over_spread"] = spread, rms / max(spread, 1e-12)
     out["verdict"] = verdict_from_stats(out["frac_sep"], out["offset_over_spread"], sign < 0, flipped,
-                                        labels_free, chi2_n)
+                                        labels_free, chi2_n, n_data, n_free)
     return out

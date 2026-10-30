@@ -42,6 +42,15 @@ def record(name, value):
     return value
 
 
+def metrics_of(user_properties):
+    """{name: value} of the recorded properties. A name recorded more than once keeps every value, as a list in
+    recording order (``dict()`` would keep only the last, hiding the other numbers a test checked)."""
+    values = {}
+    for name, value in user_properties:
+        values.setdefault(name, []).append(value)
+    return {name: v[0] if len(v) == 1 else v for name, v in values.items()}
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_call(item):
     _CONFIG["item"] = item
@@ -218,7 +227,7 @@ def pytest_runtest_logreport(report):
                     "outcome": outcome,
                     "duration_s": round(decisive.duration, 3),
                     # the teardown report carries every recorded property
-                    "metrics": dict(report.user_properties),
+                    "metrics": metrics_of(report.user_properties),
                     **getattr(report, "validates_where", {}),
                 }
             )
