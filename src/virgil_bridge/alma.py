@@ -1193,7 +1193,7 @@ def save_folds(path, data, fold, annulus, params):
 
 
 def load_folds(path, data):
-    """``(fold, annulus, meta)`` of a file written by ``save_folds``, in the order of ``data``'s points."""
+    """``(fold, annulus, meta)`` of a file written by ``save_folds``, in the order of ``data``'s points. The folds are checked (uv hashes per ddid, the file checksum over all stored fold arrays); the annuli are not."""
     z = np.load(path)
     ids = np.asarray(data.ddid_ids)[np.asarray(data.ddid)]
     fold, annulus = np.zeros(len(ids), np.int8), np.zeros(len(ids), np.int8)
@@ -1205,9 +1205,14 @@ def load_folds(path, data):
     meta = json.loads(str(z["meta"]))
     for d in np.unique(ids):
         want = meta.get("uv_sha256", {}).get(str(int(d)))
-        if want is not None and _uv_sha256(data, ids == d) != want:
+        if want is None:  # fail closed: a file without the points' hash cannot say it was made for these points
+            raise ValueError(f"ddid {d}: the fold file records no uv_sha256 for it, so it cannot be tied to these points; remake it with save_folds")
+        if _uv_sha256(data, ids == d) != want:
             raise ValueError(f"ddid {d}: the points differ (count or order) from those the fold file was made for")
-    if len(np.unique(ids)) == len(set(int(k[5:]) for k in z.files if k.startswith("fold_"))) and folds_sha256(by) != meta["sha256"]:
+    # NOTE: only the fold arrays are hashed; the annulus arrays are NOT verified (no annulus checksum is stored)
+    # the file's own checksum covers every ddid stored in it, so it is checked whatever subset of ddids ``data`` holds
+    stored = {int(k[5:]): z[k] for k in z.files if k.startswith("fold_")}
+    if folds_sha256(stored) != meta["sha256"]:
         raise ValueError("fold file does not match its own checksum")
     return fold, annulus, meta
 

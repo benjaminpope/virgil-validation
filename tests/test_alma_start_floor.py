@@ -151,7 +151,12 @@ def test_fit_gaussian_recovers_an_elliptical_gaussian_and_orders_the_axes(tmp_pa
     d = va.load_dir(_gauss_data(tmp_path, truth))
     f = vs.fit_gaussian(d.u, d.v, d.vis, d.weight, q_max=3e4)
     got = (f["flux_jy"], f["east_mas"], f["north_mas"], f["major_mas"], f["minor_mas"], f["pa_deg"])
-    np.testing.assert_allclose(got, truth, rtol=0.02, atol=20.0)
+    # Purely relative, no absolute slack. The data are generated from the fitted model itself, so this checks the optimiser, not the formula (pinned by the DFT test above).
+    # Measured relative errors: flux 2e-5, major 5e-4, minor 1.3e-3 (seed 1, 3000 points at sigma 1e-3); the tolerance is 5e-3, about four times the largest.
+    # East/north are asserted in mas and the PA in degrees below.
+    for name, g, t in (("flux", got[0], truth[0]), ("major", got[3], truth[3]), ("minor", got[4], truth[4])):
+        record(f"{name}_rel_error", abs(g / t - 1))
+    np.testing.assert_allclose([got[0], got[3], got[4]], [truth[0], truth[3], truth[4]], rtol=5e-3, atol=0.0)
     assert abs(f["pa_deg"] - 35.0) < 1.5 and abs(f["east_mas"] - 200) < 15 and abs(f["north_mas"] + 150) < 15 and 0.8 < f["chi2_per_point"] < 1.2
     swapped = (0.30, 200.0, -150.0, 1300.0, 2200.0, 125.0)  # the same ellipse with the axes named the other way round
     d2 = va.load_dir(_gauss_data(tmp_path / "s", swapped))
@@ -250,3 +255,48 @@ def test_gate_reference_flux_priority_and_the_recorded_constant(tmp_path):
     g_fits = script.cold_start_gate_of(*args, None, str(tmp_path / "d.fits"))
     assert g_const["flux_reference"] == dict(name=vs.REFERENCE_FLUX_NAME, flux_jy=0.2548)
     assert g_fits["flux_reference"]["name"] == "DSHARP CLEAN image flux (d.fits)" and abs(g_fits["flux_reference"]["flux_jy"] / 0.3 - 1) < 2e-3
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_better_than_mpol_heldout_with_no_or_one_fold_is_not_evaluated_never_a_pass():
+    """VV-9: an empty or single-fold held-out comparison has no uncertainty, so criterion 1 is NOT EVALUATED (the verdict cannot be PASS)."""
+    kw = dict(chi2n_ours=2.0, synth=None, synth_r=None, flux_ours=0.25, flux_ref=0.25, flux_ref_name="CLEAN", stages=[])
+    for ours, mpol in (([], []), ([2.69], [2.70]), (2.69, 2.70)):
+        res = vs.better_than_mpol(heldout_ours=ours, heldout_mpol=mpol, **kw)
+        assert res["items"][0]["status"] == "NOT EVALUATED", (ours, mpol)
+        assert res["verdict"] != "PASS"
+
+
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+def test_cold_start_gate_with_empty_inputs_is_incomplete_never_pass():
+    """VV-9: no stages and no data for any check: INCOMPLETE, not PASS."""
+    g = vs.cold_start_gate(objective_ours=None, objective_mpol=None, chi2n_ours=None, chi2n_mpol=None, stages_converged=[], dead_fraction=None,
+                           flux_ours=None, flux_ref=None, flux_ref_name="CLEAN")
+    assert g["verdict"] == "INCOMPLETE" and all(i["status"] == "NOT EVALUATED" for i in g["items"])
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_load_folds_refuses_a_file_without_uv_hashes_and_checks_the_checksum_on_a_ddid_subset(tmp_path):
+    """V12: a fold file lacking ``uv_sha256`` for a loaded ddid is refused (not skipped), and a corrupted fold array fails the file's checksum even when
+    only a subset of its ddids is loaded."""
+    syn = synthetic_dir(tmp_path / "d")
+    data = va.load_dir(syn)
+    k = 3
+    ids = np.asarray(data.ddid_ids)[np.asarray(data.ddid)]
+    fold = (np.arange(len(ids)) % k).astype(np.int8)
+    f = tmp_path / "folds.npz"
+    meta = va.save_folds(f, data, fold, np.zeros(len(ids), np.int8), dict(k=k))
+    z = dict(np.load(f))
+    strip = json.loads(str(z["meta"]))
+    strip.pop("uv_sha256")
+    np.savez(tmp_path / "nouv.npz", **{**z, "meta": json.dumps(strip)})
+    with pytest.raises(ValueError, match="uv_sha256"):
+        va.load_folds(tmp_path / "nouv.npz", data)
+    d0 = int(np.unique(ids)[0])
+    z2 = dict(z)
+    last = [key for key in z2 if key.startswith("fold_")][-1]
+    z2[last] = (z2[last] + 1).astype(np.int8) % k
+    np.savez(tmp_path / "bad.npz", **z2)
+    sub = va.load_dir(syn, ddids=[d0])
+    with pytest.raises(ValueError, match="checksum"):
+        va.load_folds(tmp_path / "bad.npz", sub)
