@@ -341,3 +341,11 @@ def test_stored_gl229_summary_keeps_both_alias_nights(og):
     eps = _target(data, "gl229b")["epochs"]
     assert {e["label"] for e in eps if e.get("alias")} == og.ALIAS_NIGHTS[GL229]
     assert not any(e.get("flag") for e in eps if e.get("alias"))
+
+
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
+def test_the_gl229_tile_labels_its_exclusions_as_post_hoc(og):
+    tile = next(t for t in og.TILES if t["cid"] == GL229)
+    note = next(n for n in tile["notes"] if n["title"] == "Post-hoc exclusions")
+    assert "2024-12-19" in note["text"] and "GRAVI.2023-12-26T05_51_29.891" in note["text"]
+    assert "has not been run" in note["text"]  # no all-nights fit exists; the page must not imply one
