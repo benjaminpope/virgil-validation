@@ -45,6 +45,7 @@ VERDICT_RULE_VERSION = 3  # 3: INCOMPLETE without samples, N-aware chi^2 p-value
 # before looking at any system: 1e-3 only rejects a gross misfit (the white errors of these fits are approximate, so a stricter
 # alpha would reject fits for noise-model slack, not for the orbit). It was not chosen to make any system pass or fail.
 GOOD_FIT_ALPHA = 1e-3
+N_ORBIT_FREE = 7  # the orbital elements, always fitted: the least n_free the chi^2 can have absorbed (more free parameters would only tighten the test)
 
 
 def _pos(mjd, period, t_peri, ecc, inc, omega, Omega, a):
@@ -103,20 +104,21 @@ def _rms(d):
     return float(np.sqrt(np.mean(np.sum(d**2, -1))))
 
 
-def good_fit(chi2_n, n_data):
-    """Whether a raw chi^2/N of ``chi2_n`` over ``n_data`` points is consistent with the data: P(chi^2_N >= chi^2) >= ``GOOD_FIT_ALPHA``.
-    False when either is missing (nothing then says the fit is good)."""
-    if chi2_n is None or n_data is None or not (n_data > 0) or not np.isfinite(chi2_n):
+def good_fit(chi2_n, n_data, n_free=N_ORBIT_FREE):
+    """Whether a raw chi^2/N of ``chi2_n`` over ``n_data`` points, with ``n_free`` parameters fitted, is consistent with the data:
+    P(chi^2_{N - n_free} >= chi^2) >= ``GOOD_FIT_ALPHA``. False when chi^2/N or N is missing, or when N <= n_free (nothing then
+    says the fit is good). ``n_free`` defaults to the seven orbital elements; pass more when the fit also fitted fluxes or gains."""
+    if chi2_n is None or n_data is None or not np.isfinite(chi2_n) or n_data <= n_free:
         return False
-    return bool(_chi2.sf(chi2_n * n_data, n_data) >= GOOD_FIT_ALPHA)
+    return bool(_chi2.sf(chi2_n * n_data, n_data - n_free) >= GOOD_FIT_ALPHA)
 
 
-def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, labels_free=False, chi2_n=None, n_data=None):
+def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, labels_free=False, chi2_n=None, n_data=None, n_free=N_ORBIT_FREE):
     """The verdict rule of :func:`score`, applied to stored statistics (so a stored run can be re-judged).
 
     The position match needs ``frac_sep < SAME_FRACTION`` AND, when there are posterior samples
     (``offset_over_spread`` finite), ``offset_over_spread < SAME_SIGMA``. A far orbit whose raw chi^2/N
-    (``chi2_n`` over ``n_data`` points) passes `good_fit` is REFERENCE-DISAGREES; without chi^2/N and N it is DIFFERENT.
+    (``chi2_n`` over ``n_data`` points) passes `good_fit` (with ``n_free`` fitted parameters) is REFERENCE-DISAGREES; without chi^2/N and N it is DIFFERENT.
     A sky match by point estimates alone (``offset_over_spread`` missing: no posterior samples) is INCOMPLETE, since the
     spread gate has not been applied; a failure by the fraction, or an unexplained reflection, needs no spread. A match only as
     the reference's point reflection (``mirror``) needs the fit to have swapped labels or ``labels_free``; otherwise
@@ -129,7 +131,7 @@ def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, labe
     if not sky_ok:
         # A fit that describes its own data but is far from the reference is a disagreement with the reference,
         # not a failed fit (the caller supplies the raw chi^2/N; without it the verdict is DIFFERENT).
-        return "REFERENCE-DISAGREES" if good_fit(chi2_n, n_data) else "DIFFERENT"
+        return "REFERENCE-DISAGREES" if good_fit(chi2_n, n_data, n_free) else "DIFFERENT"
     if mirror and not (flipped or labels_free):
         return "UNEXPLAINED-FLIP"
     if no_spread:
@@ -137,7 +139,7 @@ def verdict_from_stats(frac_sep, offset_over_spread, mirror, flipped=False, labe
     return "SAME-SKY-ORBIT"
 
 
-def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False, chi2_n=None, n_data=None):
+def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False, chi2_n=None, n_data=None, n_free=N_ORBIT_FREE):
     """Compare a fitted orbit with ``meta["reference"]`` on the sky at ``meta["mjd"]``.
 
     Parameters
@@ -162,6 +164,8 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         reference, the verdict is REFERENCE-DISAGREES rather than DIFFERENT.
     n_data : int, optional
         The number of data points behind ``chi2_n``; without it the fit is never called good.
+    n_free : int
+        Parameters the fit fitted (default `N_ORBIT_FREE`); the chi^2 is tested against N - n_free degrees of freedom.
 
     Returns
     -------
@@ -199,6 +203,7 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         labels_free=bool(labels_free),
         chi2_n=None if chi2_n is None else float(chi2_n),
         n_data=None if n_data is None else int(n_data),
+        n_free=int(n_free),
         rms=rms,
         max=float(dist.max()),
         mean_sep=float(np.mean(sep)),
@@ -231,5 +236,5 @@ def score(meta, best, t_ref=None, samples=None, flipped=False, labels_free=False
         spread = float(np.sqrt(np.mean(np.sum(tracks.var(0), -1))))
         out["spread"], out["offset_over_spread"] = spread, rms / max(spread, 1e-12)
     out["verdict"] = verdict_from_stats(out["frac_sep"], out["offset_over_spread"], sign < 0, flipped,
-                                        labels_free, chi2_n, n_data)
+                                        labels_free, chi2_n, n_data, n_free)
     return out

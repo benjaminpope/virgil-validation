@@ -115,8 +115,10 @@ def test_another_alias_band_is_a_different_sky_orbit(hd9312):
     far = dict(best, period=best["period"] * 2.5)
     rows, verdict = PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, None)
     assert verdict == "DIFFERENT"  # without a raw chi2/N the paper is not blamed
-    # sky_rows passes chi2/N but not N, so no fit is called good (verdict rule 3): REFERENCE-DISAGREES needs n_data
+    # chi2/N reaches the verdict only with N (rule 3): a good fit far from the paper blames the paper, a poor one does not
     assert PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, 1.0)[1] == "DIFFERENT"
+    assert PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, 1.0, n_data=200)[1] == "REFERENCE-DISAGREES"
+    assert PB.sky_rows(far, t_ref, r, table, WINDOW, False, False, 25.0, n_data=200)[1] == "DIFFERENT"
 
 
 def test_the_newest_run_folder_wins_by_time_not_by_name(tmp_path):

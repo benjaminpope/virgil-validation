@@ -155,3 +155,14 @@ def test_there_is_one_thiele_innes():
     from crosscheck import orbits as O
 
     assert S.thiele_innes is O.thiele_innes
+
+
+def test_the_goodness_of_fit_uses_n_minus_the_fitted_parameters():
+    """14 positions at chi2/N = 2.5 (chi2 = 35): against 14 degrees of freedom p = 1.5e-3 passes alpha, against the
+    14 - 7 = 7 left after the orbital elements p = 1e-5 does not. Control: the same chi2/N over 2000 points is the usual case."""
+    from scipy.stats import chi2
+    assert chi2.sf(35.0, 14) >= S.GOOD_FIT_ALPHA > chi2.sf(35.0, 7)
+    assert not S.good_fit(2.5, 14)  # default n_free = 7 orbital elements
+    assert S.good_fit(2.5, 14, n_free=0)  # the N-blind reading the review objected to
+    assert not S.good_fit(1.0, 7) and not S.good_fit(1.0, 5)  # N <= n_free: nothing to test against
+    assert S.good_fit(1.05, 2000)

@@ -87,9 +87,9 @@ def published_orbit_epochs(record, mjds):
     return [(float(m), float(a), float(d)) for m, a, d in zip(mjds, dra, ddec)], el["period_day"]
 
 
-def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2_n, pub_orbit=None):
+def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2_n, pub_orbit=None, n_data=None):
     """Table rows and the verdict: the winning orbit against the paper's measured positions, and the paper's period
-    against the band ranking. ``band_rows`` are all the bands with a finite evidence (not the short table of the pipeline's
+    against the band ranking. ``n_data``: the number of data points behind ``chi2_n`` (None: REFERENCE-DISAGREES is unreachable). ``band_rows`` are all the bands with a finite evidence (not the short table of the pipeline's
     summary), best first. The reference is used here only."""
     from crosscheck import skyplane as SP
 
@@ -107,7 +107,7 @@ def sky_rows(best, t_ref, record, band_rows, p_range, flipped, labels_free, chi2
         rms = {s: float(np.sqrt(np.mean(np.sum((ours - s * target) ** 2, -1)))) for s in (1, -1)}
         sign = 1 if rms[1] <= rms[-1] else -1
         mean_sep = float(np.mean(np.hypot(dra, ddec)))
-        verdict = SP.verdict_from_stats(rms[sign] / mean_sep, None, sign < 0, flipped, labels_free, chi2_n)
+        verdict = SP.verdict_from_stats(rms[sign] / mean_sep, None, sign < 0, flipped, labels_free, chi2_n, n_data)
         rows.append(dict(quantity=f"sky rms vs {what} (mas)", ours=rms[sign], err=None, pub=0.0, pub_err=None,
                          pull=None, status="REPORT",
                          note=f"{verdict}; {len(pub)} epochs; {rms[sign] / mean_sep:.1%} of the mean separation; "
@@ -155,7 +155,8 @@ def summary_of(folder, record):
     band_rows = [dict(rank=i, n=b["n"], p_lo=b["p_lo"], p_hi=b["p_hi"], delta_log_z=z - top) for i, (z, b) in enumerate(bands)]
     pub_orbit = published_orbit_epochs(record, [p["mjd"] for p in positions])
     rows, verdict = sky_rows(winner["best"], t_ref, record, band_rows, search["p_range"], bool(winner.get("flipped")),
-                             bool(winner.get("labels_free")), raw_chi2, pub_orbit)
+                             bool(winner.get("labels_free")), raw_chi2, pub_orbit,
+                             n_data=s["chi2"].get("n_data"))  # the pipeline summary's N, when it records one; else no fit is called good
     flags = []
     delta = s["modes"]["delta_log_z"]  # winner minus runner-up, so >= 0 (the band table's own column is <= 0)
     if delta is not None and abs(delta) < ALIAS_NATS:

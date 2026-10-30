@@ -179,14 +179,25 @@ def changed_files(virgil, commit, paths):
 # --------------------------------------------------------------- the model
 
 
+def _worst(value):
+    """A metric recorded more than once is a list (evidence.plugin.metrics_of); the headline is its worst case: a
+    non-finite entry (stored as a string) if there is one, else the entry of largest magnitude."""
+    if not isinstance(value, list):
+        return value
+    odd = [v for v in value if not isinstance(v, (int, float))]
+    return odd[0] if odd else max(value, key=abs)
+
+
 def _headline(record):
     """The number that summarises a check: the marker's ``headline``, else
-    the first recorded metric that measures agreement."""
+    the first recorded metric that measures agreement. A repeated metric is
+    reduced to its worst case."""
     metrics = record.get("metrics") or {}
     name = record.get("headline")
     if name in metrics:
-        return name, metrics[name]
+        return name, _worst(metrics[name])
     for key, value in metrics.items():
+        value = _worst(value)
         if AGREEMENT.search(key) and isinstance(value, (int, float)):
             return key, value
     return None, None
