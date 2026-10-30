@@ -9,6 +9,7 @@ import pytest
 
 pytest.importorskip("virgil.radio")
 
+import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 
 import crosscheck.alma_maxent as cx  # noqa: E402
@@ -560,3 +561,94 @@ def test_old_virgil_is_refused_with_the_required_version(monkeypatch):
     monkeypatch.setattr(virgil, "CalibrationNuisance", Old)
     with pytest.raises(RuntimeError, match="884aa7e"):
         va.require_blur_fwhm()
+
+
+# ------------------------------------------------------------------ the replica's minibatch mode (--replica-minibatch)
+
+
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["mathematics"])
+def test_replica_epoch_batches_cover_every_point_once_and_reshuffle():
+    n, b = 10_007, 4_000
+    for epoch in (0, 1):
+        batches = vr.epoch_batches(n, b, seed=3, epoch=epoch)
+        assert [len(x) for x in batches] == [b, b, n - 2 * b] and len(batches) == vr.steps_for(n, 1, b)  # ceil(n / b), the last partial
+        assert np.array_equal(np.sort(np.concatenate(batches)), np.arange(n))
+    e0, e1 = (np.concatenate(vr.epoch_batches(n, b, 3, e)) for e in (0, 1))
+    assert not np.array_equal(e0, e1) and np.array_equal(e0, np.concatenate(vr.epoch_batches(n, b, 3, 0)))  # reshuffled per epoch, reproducible
+    assert not np.array_equal(e0, np.concatenate(vr.epoch_batches(n, b, 4, 0)))
+    assert len(vr.epoch_batches(42_421_131)) == 1061 and vr.steps_for(42_421_131) == 10_610
+
+
+def _toy_term_problem(syn):
+    data = va.load_dir(syn)
+    prob = va.build_problem(data, "R", lam=1e-9, npix=24, pixel_mas=PIX, chi2="direct", taper_mas=30.0)
+    return data, prob
+
+
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"])
+def test_replica_batch_loss_is_mpols_per_batch_normalisation(syn):
+    """A batch's loss is -ln L_b / (2 n_b) + lambda S (``neg_log_likelihood_avg`` is ``-ln L / (2 N)`` of the batch it is given): compared with the formula written out from the batch's own term."""
+    data, prob = _toy_term_problem(syn)
+    obs_of = jnp.asarray(vr.obs_of_ddid_of(data)[:prob.init["cal.sigma"].shape[0]])
+    params = vr.start_params(prob, prob.init["cal.gain"].shape[0] + 1, prob.init["cal.sigma"].shape[0])
+    kw = dict(obs_of_ddid=obs_of, pixel_mas=prob.pixel_mas, lam_m=1e-9, blur_mas=30.0, entropy_blur_mas=30.0, softmax=False)
+    idx = vr.epoch_batches(len(data.u), 47, seed=0, epoch=0)[-1]  # the partial batch
+    assert 0 < len(idx) < 47
+    term = vr.take(data, idx).term(prob.scene, prob.nuis, chunk_size=47)
+    vals = vr.values_of(params, prob.pixel_mas, obs_of, False)
+    nll = vg.term_loss(term, vals)
+    ent = vr.mpol_entropy(vr.gauss_blur(vr.pixels(params, prob.pixel_mas, False), 30.0, prob.pixel_mas))
+    ref = nll / (2.0 * len(idx)) + 1e-9 * ent
+    assert float(vr.replica_loss(params, term, n_points=term.n, **kw)) == pytest.approx(float(ref), rel=1e-6) and term.n == len(idx)
+
+
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], kind="control")
+def test_replica_minibatch_stage_takes_the_extra_step_per_epoch(syn):
+    """``steps`` batch steps over two epochs plus one extra optimizer.step() after each full epoch: replayed by hand with the same batches and optimiser, the parameters agree; without the extra steps they would not."""
+    import optax
+
+    data, prob = _toy_term_problem(syn)
+    n_ddid = prob.init["cal.sigma"].shape[0]
+    obs_of = jnp.asarray(vr.obs_of_ddid_of(data)[:n_ddid])
+    kw = dict(obs_of_ddid=obs_of, pixel_mas=prob.pixel_mas, lam_m=1e-9, blur_mas=30.0, entropy_blur_mas=30.0, softmax=False)
+    p0 = vr.start_params(prob, prob.init["cal.gain"].shape[0] + 1, n_ddid)
+    data = data.subset(np.arange(len(data.u)) < 331)  # a few batches, so the replay is a handful of steps
+    b, nb = 70, -(-len(data.u) // 70)
+    opt = vr.make_optimizer()
+    mk = lambda d: d.term(prob.scene, prob.nuis, chunk_size=b)  # noqa: E731
+    got, losses, _, stopped = vr.run_stage_minibatch(p0, data, mk, steps=2 * nb, opt=opt, loss_kw=kw, batch=b, seed=1)
+    assert stopped is None and len(losses) == 2 * nb
+
+    def replay(extra):
+        p = jax_tree32(p0)
+        s = opt.init(p)
+        for epoch in range(2):
+            for idx in vr.epoch_batches(len(data.u), b, 1, epoch):
+                term = mk(vr.take(data, idx))
+                g = jax.grad(lambda q: vr.replica_loss(q, term, **{**kw, "n_points": term.n}))(p)
+                upd, s = opt.update(g, s, p)
+                p = optax.apply_updates(p, upd)
+            if extra:
+                upd, s = opt.update(g, s, p)
+                p = optax.apply_updates(p, upd)
+        return p
+
+    with_extra, without = replay(True), replay(False)
+    d_with = max(float(jnp.max(jnp.abs(got[k] - with_extra[k]))) for k in got)
+    d_without = max(float(jnp.max(jnp.abs(got[k] - without[k]))) for k in got)
+    assert d_with < 1e-5 and d_without > 100 * max(d_with, 1e-9)
+
+
+def jax_tree32(p):
+    return jax.tree.map(lambda x: jnp.asarray(x, jnp.float32), p)
+
+
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"])
+def test_replica_minibatch_workflow_runs_and_is_opt_in(syn, tmp_path):
+    out = tmp_path / "mb"
+    _call("fit", "--config", "R", "--taper-mas", 30, "--workflow", "mpol-replica", "--replica-minibatch", "--replica-stages", "all", "--replica-steps", 6, "--data", syn, "--out", out, "--npix", 24, "--pixel-mas", PIX, "--no-dirty")
+    res = json.loads((out / "result.json").read_text())
+    assert np.all(np.isfinite(np.load(out / "image.npy")))
+    assert res["stages"][0]["steps"] == 6 and res["stages"][0]["chi2"]["engine"] == "direct"
+    with pytest.raises(SystemExit):
+        _call("fit", "--config", "R", "--replica-minibatch", "--data", syn, "--out", tmp_path / "bad", "--npix", 24)  # not a mpol-replica workflow
