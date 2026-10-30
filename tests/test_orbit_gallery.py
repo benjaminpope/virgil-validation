@@ -38,7 +38,7 @@ def _target(data, slug):
     return next(t for t in data["targets"] if t["slug"] == slug)
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_extract_trims_a_fit_to_the_committed_summary(og, tmp_path):
     (path,) = og.extract(FIX, tmp_path)
     summary = json.loads(path.read_text())
@@ -53,7 +53,7 @@ def test_extract_trims_a_fit_to_the_committed_summary(og, tmp_path):
     assert summary["instrument"] == "VLTI/GRAVITY"
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_compare_reads_summaries_through_the_adapter(og):
     summary = json.loads((FIX / "summaries" / f"{GL229}.json").read_text())
     import oidb_compare as oc
@@ -64,7 +64,7 @@ def test_compare_reads_summaries_through_the_adapter(og):
     assert not [r for r in mine if r["status"] in ("FAIL", "MISSING")]
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_every_reference_target_gets_a_section(og, data):
     refs = {p.stem for p in (ROOT / "oidb" / "references").glob("*.json")} - {PI1GRU, HD45166, og.ESO_9SGR, og.ESO_HD168137}  # pi1 Gru is a single star: no tile; 9 Sgr and HD 168137 are off the page (no JMMC pipeline setup)
     trackb = {f"trackb-{p.stem}" for p in og.TRACKB.glob("*.json")}  # the Track B targets are tiles of their own

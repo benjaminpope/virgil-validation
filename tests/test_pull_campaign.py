@@ -171,6 +171,3 @@ def test_no_pull_campaign_scene_reaches_an_arc_function():
     assert not reached & arcs, reached & arcs
     # and the cells use no scene outside the ones walked
     assert {c["scene"] for c in S["cells"].values()} <= set(pc.SCENES) | {"uniform_disk"}
-
-
-S_SCENES = pc.SCENES
