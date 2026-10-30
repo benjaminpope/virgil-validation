@@ -129,13 +129,18 @@ def test_a_good_fit_far_from_the_reference_is_a_reference_disagreement():
 
 
 def test_the_goodness_of_fit_depends_on_n():
-    """chi2/N = 1.5 is a gross misfit for 2000 points (p ~ 1e-27) and unremarkable for 10 (p ~ 0.13); the old rule
-    (chi2/N <= 2, N-blind) called both good. The tail probability is checked against SciPy's chi-square survival
-    function, and alpha is the module's stated constant."""
+    """The test is chi^2 against N - 7 degrees of freedom (seven orbital elements fitted). chi2/N = 1.5 is a gross
+    misfit for 2000 points (p ~ 1e-44) and, for 10 points, p = chi2.sf(15, 3) = 0.0018, above alpha; the old rule
+    (chi2/N <= 2, N-blind) called both good. For 10 points chi2/N = 2.0 separates the dof: p = 0.029 against N dof
+    but 1.7e-4 against N - 7, so only the latter is rejected. Checked against SciPy's chi-square survival function,
+    with alpha the module's stated constant."""
     from scipy.stats import chi2
     assert S.GOOD_FIT_ALPHA == 1e-3
     assert S.good_fit(1.5, 10) and not S.good_fit(1.5, 2000)
-    assert S.good_fit(1.5, 10) == (chi2.sf(15.0, 10) >= S.GOOD_FIT_ALPHA)
+    assert S.good_fit(1.5, 10) == (chi2.sf(15.0, 3) >= S.GOOD_FIT_ALPHA)
+    assert chi2.sf(20.0, 10) >= S.GOOD_FIT_ALPHA > chi2.sf(20.0, 3)  # the dof matters here
+    assert not S.good_fit(2.0, 10)  # rejected only on N - 7 dof
+    assert S.good_fit(2.0, 10, n_free=0)  # control: the same chi2 on N dof is acceptable
     assert not S.good_fit(None, 10) and not S.good_fit(1.0, None) and not S.good_fit(float("nan"), 10)
     far = _best(inc=100.0, a_mas=4.0)
     assert S.score(META, far, t_ref=60000.0, chi2_n=1.5, n_data=10)["verdict"] == "REFERENCE-DISAGREES"
