@@ -818,7 +818,9 @@ def run(name, args):
         # does not report it yet (virgil#324 follow-up, OrbitPipeline), so until it does this is the fit setting
         # the run was given; a result that carries ``labels_free`` wins.
         labels_free = bool(getattr(result, "labels_free", sysd.sign_free))
-        meta["sky_plane"] = attempt("sky_plane", lambda: sky_plane(result, meta, ref, labels_free, init is not None))
+        # N behind result chi2_red (its nu-weighted mean over the epochs): the independent observables of the data fitted
+        n_data = int(sum(d.n_independent for d in loaded.data))
+        meta["sky_plane"] = attempt("sky_plane", lambda: sky_plane(result, meta, ref, labels_free, init is not None, n_data))
         if init is not None and result.best.best:
             meta["init_check"] = attempt(
                 "init_check", lambda: init_check(result, loaded, init, primary_diam, meta["mjd"])
@@ -896,12 +898,13 @@ def run(name, args):
     print(f"wrote {outdir} in {time.time() - t0:.0f} s")
 
 
-def sky_plane(result, meta, ref, labels_free=False, warm_started=False):
+def sky_plane(result, meta, ref, labels_free=False, warm_started=False, n_data=None):
     """Sky-plane agreement with the reference (crosscheck.skyplane) for the winning band and the reference's
     band: rms and max offset at the epochs, the point-reflection (flux flip) used, and the verdict. A reflection
     is accepted only if the band's fit swapped the labels (band.flipped or fitted flux > 1) or the fit reported its
     labels free (``labels_free``). Each band's raw chi2/N goes to the score so that a good fit far from the reference
-    reads REFERENCE-DISAGREES. ``warm_started``: the reference band's fit began at the reference orbit."""
+    reads REFERENCE-DISAGREES. ``warm_started``: the reference band's fit began at the reference orbit. ``n_data``: the independent observables
+    fitted, with which the chi2/N becomes a goodness of fit (without it no fit is called good)."""
     from crosscheck import skyplane as SP
 
     m = dict(mjd=meta["mjd"], reference=ref)
@@ -915,7 +918,7 @@ def sky_plane(result, meta, ref, labels_free=False, warm_started=False):
             continue
         flipped = bool(getattr(b, "flipped", False)) or (b.best.get("flux") or 0.0) > 1.0
         sc = SP.score(m, b.best, result.t_ref, result.samples.get(b.n), flipped=flipped, labels_free=labels_free,
-                      chi2_n=getattr(b, "chi2_red", None))
+                      chi2_n=getattr(b, "chi2_red", None), n_data=n_data)
         warm = warm_started and b is hit
         out[k] = dict(sc, band=b.n, period=b.best["period"], p=b.p, flipped=flipped, warm_started=warm)
     return out

@@ -88,6 +88,13 @@ TILES = [
                           "of the six usable nights of the ESO archive; no posterior sampling yet; the "
                           "table lists the modes. The five-night OiDB collection alone (125 d) lands in the same band "
                           "but constrains the elements more loosely."),
+                dict(kind="caveat", title="Post-hoc exclusions",
+                     text="Two data choices were made after seeing the fits, not before: the night of 2024-12-18, whose files are dated 2024-12-19 (an open "
+                          "per-night disagreement with the published orbit, virgil-validation#69) and the exposure "
+                          "GRAVI.2023-12-26T05_51_29.891 (closure phases +38 to +57° on all triangles, errors 5 to 10 times "
+                          "the night's) are left out. The two single-night alias peaks are flagged by virgil's own rule. "
+                          "A fit with every night and exposure included has not been run, so there is no all-nights result "
+                          "to show beside this one yet: the orbit on this page is conditional on these choices."),
                 dict(kind="caveat", title="Radial velocities",
                      text="The paper combines the astrometry with radial velocities; ours is astrometry only. Orbital "
                           "elements are therefore reported, not scored.")]),

@@ -165,3 +165,13 @@ def test_a_reference_that_misses_the_published_positions_is_an_error():
 def test_every_system_has_a_primary_diameter_entry():
     assert set(R.PRIMARY_DIAM) == set(R.SYSTEMS)
     assert all(v is None or v == "fit" or v > 0 for v in R.PRIMARY_DIAM.values())
+
+
+def test_sky_plane_passes_n_data_so_a_good_fit_far_from_the_reference_blames_the_reference():
+    ref = dict(P=100.0, t_peri=57000.0, ecc=0.1, inc=60.0, omega=100.0, Omega=10.0, a_mas=10.0)
+    far = dict(period=250.0, dt_peri=-3.0, ecc=0.1, inc=60.0, omega=100.0, Omega=10.0, a_mas=10.0)  # another alias
+    band = types.SimpleNamespace(n=2, p_lo=200.0, p_hi=300.0, p=0.9, best=far, chi2_red=1.0)
+    result = types.SimpleNamespace(best=band, bands=[band], t_ref=57000.0, samples={})
+    meta = dict(mjd=57000.0 + np.array([5.0, 20.0, 40.0, 70.0]), reference=ref)
+    assert R.sky_plane(result, meta, ref, n_data=200)["top"]["verdict"] == "REFERENCE-DISAGREES"
+    assert R.sky_plane(result, meta, ref)["top"]["verdict"] == "DIFFERENT"  # no N: no fit is called good

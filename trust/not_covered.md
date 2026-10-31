@@ -1,7 +1,9 @@
 ## Outside the trust graph
 
-- **Bandwidth smearing.** virgil does not model it; PMOIRED, CANDID and
-  fouriever do.
+- **Bandwidth smearing.** virgil models it (`virgil.models.smeared_model`,
+  documented in its `spectro_observables.md`), but nothing here checks that
+  model independently: not independently validated. PMOIRED and CANDID model
+  smearing too, and fouriever can; none has been compared with virgil's here.
 - **harmonix's maps.** Only virgil's wrapper is checked here; the maps are
   harmonix's to validate.
 - **AMIGO DISCO mode bases.**

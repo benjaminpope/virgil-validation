@@ -156,7 +156,7 @@ def summary_of(folder, record):
     pub_orbit = published_orbit_epochs(record, [p["mjd"] for p in positions])
     rows, verdict = sky_rows(winner["best"], t_ref, record, band_rows, search["p_range"], bool(winner.get("flipped")),
                              bool(winner.get("labels_free")), raw_chi2, pub_orbit,
-                             n_data=s["chi2"].get("n_data"))  # the pipeline summary's N, when it records one; else no fit is called good
+                             n_data=s["chi2"].get("n_independent"))  # N of the pipeline's pooled chi2 (OrbitPipeline summary "chi2.n_independent")
     flags = []
     delta = s["modes"]["delta_log_z"]  # winner minus runner-up, so >= 0 (the band table's own column is <= 0)
     if delta is not None and abs(delta) < ALIAS_NATS:

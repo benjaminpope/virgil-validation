@@ -271,3 +271,24 @@ def test_signoffs_need_a_listed_ssh_signature(trust, tmp_path):
     shallow = tmp_path / "shallow"
     run("git", "clone", "-q", "--depth", "1", f"file://{repo}", str(shallow))
     assert not sensed(shallow)
+
+
+def test_a_resurrected_campaign_pass_is_flagged_with_its_commit_and_shown_as_a_banner(trust, tmp_path):
+    camp = evidence(tmp_path, "campaigns.jsonl", [record("t::x", "virgil.a")], date="2026-10-01", commit="a" * 40)
+    new = evidence(tmp_path, "new.jsonl", [record("t::y", "virgil.a"), record("t::x", "virgil.a", outcome="skipped")],
+                   date="2026-10-06", commit="b" * 40)
+    got, model = verdicts(trust, tmp_path, None, files=[camp, new])
+    assert got["virgil.a"] == "verified"  # the verdict is unchanged: the fallback is deliberate
+    assert model["older_campaigns"] == [("t::x", "a" * 40)]
+    assert "aaaaaaa" in trust._older_campaigns_html(model["older_campaigns"], ["bbbbbbb"])
+    assert trust._older_campaigns_html(model["older_campaigns"], ["bbbbbbb", "aaaaaaa"]) == ""
+    assert trust._older_campaigns_html([], ["bbbbbbb"]) == ""
+
+
+def test_a_negative_control_is_never_the_headline_of_a_part(trust):
+    base = {"test": "t::c", "roots": ["mathematics"], "tier": "A", "outcome": "passed", "_source": "ours",
+            "metrics": {"wrong_mapping_rel_err": 0.4}}
+    assert trust._headline({**base, "kind": "control"}) == (None, None)
+    assert trust._headline({**base, "kind": "check"}) == ("wrong_mapping_rel_err", 0.4)
+    # an explicit headline on a control is still honoured
+    assert trust._headline({**base, "kind": "control", "headline": "wrong_mapping_rel_err"})[1] == 0.4

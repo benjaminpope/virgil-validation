@@ -28,7 +28,7 @@ def folder(tmp_path):
     _write(tmp_path / "hd_9312" / "gallery.json", dict(instrument="GRAVITY", virgil_commit="abc", validation_commit="def"))
     table = [dict(rank=0, n=2, period=100.0, p_lo=80.0, p_hi=120.0, log_z=-10.0, delta_log_z=0.0, p=0.6, chi2_red=1.0, labels_free=False, flags=[]),
              dict(rank=1, n=3, period=60.0, p_lo=50.0, p_hi=79.0, log_z=-12.0, delta_log_z=-2.0, p=0.4, chi2_red=1.1, labels_free=False, flags=[])]
-    _write(run / "summary.json", dict(status="complete", worst_check="warn", chi2=dict(best_orbit_reduced=1.0), checks=[dict(name="r_hat", status="fail"), dict(name="ess", status="warn")],
+    _write(run / "summary.json", dict(status="complete", worst_check="warn", chi2=dict(n_independent=120, best_orbit_reduced=1.0, nights={}), checks=[dict(name="r_hat", status="fail"), dict(name="ess", status="warn")],
            modes=dict(table=table, delta_log_z=2.0, winner=dict(n=2), runner_up=dict(n=3), no_orbit=dict(verdict="orbit"))))
     _write(run / "stages" / "search" / "report.json", dict(t_ref=59000.0, p_range=[1, 400], n_bands=9, primary_diam=None))
     _write(run / "stages" / "epochs" / "report.json", dict(nights=[
@@ -215,3 +215,24 @@ def test_the_pull_back_summaries_render_with_the_gallery(folder, tmp_path):
         record = json.loads((ROOT / "oidb" / "trackb" / f"{slug}.json").read_text())
         (summaries / f"trackb-{slug}.json").write_text(json.dumps(G._clean(PB.summary_of(folder, record))))
     G.build(summaries)  # oidb_compare.compare must not trip on a blind-shaped summary
+
+
+def test_the_pipeline_summarys_n_independent_reaches_the_sky_verdict(folder, monkeypatch):
+    """OrbitPipeline's summary has chi2.{n_independent, best_orbit_reduced, nights} (virgil pipeline/orbit.py); there
+    is no chi2.n_data, so reading that key would leave REFERENCE-DISAGREES unreachable."""
+    seen = {}
+    real = PB.sky_rows
+
+    def spy(*args, **kw):
+        seen.update(kw)
+        return real(*args, **kw)
+
+    monkeypatch.setattr(PB, "sky_rows", spy)
+    record = json.loads((ROOT / "oidb" / "trackb" / "hd_9312.json").read_text())
+    PB.summary_of(folder, record)
+    assert seen["n_data"] == 120
+    summary = json.loads((folder / "run" / "summary.json").read_text())
+    del summary["chi2"]["n_independent"]
+    (folder / "run" / "summary.json").write_text(json.dumps(summary))
+    PB.summary_of(folder, record)
+    assert seen["n_data"] is None  # no N recorded: no fit is called good

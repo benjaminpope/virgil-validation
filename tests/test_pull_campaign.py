@@ -138,3 +138,36 @@ def test_smoke_real_draw(tmp_path):
     for cell in S["cells"]:
         p = pc.draw(cell, 7, tmp_path)
         assert len(p) == len(pc.param_names(cell)) and np.all(np.isfinite(p))
+
+
+@pytest.mark.validates("virgil.inference.laplace_cov", roots=["statistics"], kind="guard")
+def test_no_pull_campaign_scene_reaches_an_arc_function():
+    """design_hash() leaves the arc functions of sky.py out, so that reweighting the arc did not invalidate the
+    committed campaign. That is sound only while nothing the campaign draws can call them: walk, by name, from
+    each scene factory and from ``draw`` through the functions of sky.py."""
+    import ast
+
+    arcs = {"arc_curve", "arc_curve_gaussian"}
+    sky_defs = {n.name: n for n in ast.parse((ROOT / "src" / "crosscheck" / "sky.py").read_text()).body
+                if isinstance(n, ast.FunctionDef)}
+
+    def names_in(node):
+        return {n.id for n in ast.walk(node) if isinstance(n, ast.Name)} | {
+            n.attr for n in ast.walk(node) if isinstance(n, ast.Attribute)}
+
+    import inspect
+    import virgil_bridge as vb
+
+    reached = set()
+    for fn in [pc.draw, *(getattr(vb, s) for s in pc.SCENES)]:  # uniform_disk is drawn inline by ``draw``
+        reached |= names_in(ast.parse(inspect.getsource(fn)))
+    frontier = reached & set(sky_defs)
+    while frontier:
+        new = set()
+        for name in frontier:
+            new |= names_in(sky_defs[name]) & set(sky_defs) - reached
+        reached |= new
+        frontier = new
+    assert not reached & arcs, reached & arcs
+    # and the cells use no scene outside the ones walked
+    assert {c["scene"] for c in S["cells"].values()} <= set(pc.SCENES) | {"uniform_disk"}
