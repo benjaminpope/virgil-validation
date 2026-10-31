@@ -21,6 +21,7 @@ N_SYSTEMS = 20  # system.json files in the Track B data (19 contribute counted e
 N_COUNTED = 121  # counted epochs fixed by the registered criteria
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
+CRITERIA_FILE = REPO / "design" / "trackb_criteria.md"
 sys.path.insert(0, str(REPO / "src"))
 from crosscheck import astrometry as A  # noqa: E402
 from crosscheck import preregistration as prereg  # noqa: E402
@@ -35,7 +36,9 @@ def main():
     ]
     if any("sha256" in r["criteria"] for r in results):
         raise SystemExit("some results were made under the earlier SHA-256 registry (criteria has a sha256, not a last commit): not gate evidence; rerun")
-    prereg.require_same_commit([{"criteria_commit": r["criteria"].get("commit")} for r in results])
+    commit = prereg.require_same_commit([{"criteria_commit": r["criteria"].get("commit")} for r in results])
+    if commit != prereg.criteria_commit(CRITERIA_FILE):  # no override: changed criteria mean a rerun
+        raise SystemExit(f"the results used criteria commit {commit}, this checkout has {prereg.criteria_commit(CRITERIA_FILE)}: rerun")
     counted, flags, scale_fail, unfitted, systems = [], [], [], [], {}
     for r in results:
         for e in r["epochs"]:
@@ -71,7 +74,7 @@ def main():
         unfitted or missing or ks["n"] != N_COUNTED or len(results) != N_SYSTEMS
     )
     out = dict(
-        criteria=json.loads(crit.pop()),
+        criteria=dict(file=CRITERIA_FILE.relative_to(REPO).as_posix(), commit=commit),
         n_systems=len(results),
         overall=ks,
         epoch_flags=flags,

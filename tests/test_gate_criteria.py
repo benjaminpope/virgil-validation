@@ -60,7 +60,7 @@ def test_every_gate_script_records_the_criteria_commit_and_has_no_override_flag(
     assert "--allow" not in src
 
 
-@pytest.mark.parametrize("aggregating", ["detection_campaign", "pull_campaign", "sbc_v2", "sbc_numpyro", "orbit_population", "alma_imlup_toeplitz_check"])
+@pytest.mark.parametrize("aggregating", ["detection_campaign", "pull_campaign", "sbc_v2", "sbc_numpyro", "orbit_population", "alma_imlup_toeplitz_check", "trackb_summary"])
 def test_every_aggregate_refuses_mixed_commits(aggregating):
     src = (ROOT / "scripts" / f"{aggregating}.py").read_text()
     assert "require_same_commit(" in src
@@ -189,7 +189,7 @@ def test_gate_scripts_have_no_undefined_names():
     ruff = shutil.which("ruff")
     if ruff is None:
         pytest.skip("ruff is not installed")
-    files = [f"scripts/{n}.py" for n in GATES]
+    files = [f"scripts/{n}.py" for n in [*GATES, "trackb_summary"]]  # the aggregator is a script of its own
     done = subprocess.run([ruff, "check", "--select", "F821", "--no-cache", *files, "src/crosscheck/preregistration.py"], cwd=ROOT, capture_output=True, text=True)
     assert done.returncode == 0, done.stdout
 
@@ -235,3 +235,15 @@ def test_the_sbc_numpyro_thresholds_are_in_the_criteria_file_under_its_change_lo
     assert s.CRITERIA == yaml.safe_load((ROOT / "design" / "sbc_addendum.yml").read_text())["campaign"]
     assert s.CRITERIA == {"draws_per_replicate": 99, "rank_bins": 20, "family_alpha": 0.01, "coverage_levels": [0.68, 0.95],
                           "coverage_band": 0.99, "min_bulk_ess": 400, "max_rhat": 1.01, "min_replicates": 400}
+
+
+def test_the_trackb_summary_refuses_results_from_another_criteria_commit(tmp_path, monkeypatch):
+    mod = script("trackb_summary")
+    (tmp_path / "sys.json").write_text(json.dumps({"system": "s", "epochs": [], "criteria": {"file": "design/trackb_criteria.md", "commit": "0" * 40}}))
+    monkeypatch.setattr(mod.sys, "argv", ["trackb_summary", str(tmp_path)])
+    with pytest.raises(SystemExit, match="rerun"):
+        mod.main()
+    # control: results that name no commit are refused too
+    (tmp_path / "sys.json").write_text(json.dumps({"system": "s", "epochs": [], "criteria": {"file": "design/trackb_criteria.md"}}))
+    with pytest.raises(SystemExit, match="rerun"):
+        mod.main()
