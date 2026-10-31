@@ -4,7 +4,13 @@ A blind reanalysis of the 39-star VLTI/GRAVITY survey of Galactic Wolf-Rayet
 stars (Deshmukh et al. 2024) with virgil, using an empirical null for the
 detection threshold and flagging, rather than gating on, the treatments in
 the original paper that we think are suboptimal. Status: working page, MED
-data only; the numbers below come from the `real1` run of 45 epochs.
+data only; the numbers below come from the `real1` run of 45 epochs
+(`catalogue.csv`, SHA-256 `b73a60c9…a58cc`, written 2026-10-30; the catalogue is
+not committed, and the figures are made from it by `scripts/wr_gravity_figures.py`).
+
+!!! note "Not validation evidence"
+    This page is a science application of virgil. It has no independent root of
+    trust and is not evidence that virgil is correct.
 
 ## What is different from the paper
 
@@ -39,25 +45,33 @@ faint WR star against a bright calibrator.
 ## Results (45 epochs, MED)
 
 - 26 epochs pass the Δχ² rule.
-- 11 epochs have a poor fit (reduced χ² above 2.98, 1.5× the largest null
-  value, from the 8 nulls available locally) and 8 have the fitted halo at its
-  upper bound. The poor fits are WR 57 (seven nights), WR 31a (three) and WR 81;
-the halo cases are WR 57 and WR 9 night 294.
-- 18 of the 26 survive the rule plus a good fit.
+- Over all 45 epochs, 11 have a poor fit (reduced χ² above 2.98, 1.5× the
+  largest null value, from the 8 nulls available locally) and 8 have the fitted
+  halo at its upper bound. The two sets overlap: the poor fits are WR 57 (seven
+  nights), WR 31a (three) and WR 81; the halo cases are the same seven WR 57
+  nights and WR 9 night 294.
+- 8 of the 26 rule-passing epochs have a poor fit or halo at the bound, so 18
+  survive the rule plus a good fit.
 - Of 8 candidates (rule plus flux cut), 5 survive the fit-quality and halo
   cuts:
 
-| Star | Night (MJD−60000) | Δχ² | Physical flux | Reduced χ² | Flags |
-| --- | --- | --- | --- | --- | --- |
-| WR 89 | 108 | 2.2e5 | 0.25 | 0.98 | shared calibrator |
-| WR 89 | 174 | 4.7e5 | 0.26 | 1.62 | shared calibrator |
-| WR 115 | 179 | 3.7e4 | 0.33 | 1.09 | shared calibrator |
-| WR 79b | 108 | 1.0e3 | 0.045 | 0.43 | paper calibration, paper poor |
-| WR 92 | 145 | 2.1e2 | 0.044 | 1.71 | none |
+| Star | Night (MJD−60000) | Δχ² | Separation (mas) | Coupling | Physical flux | Reduced χ² | Flags |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| WR 89 | 108 | 2.2e5 | 6 | 1.00 | 0.25 | 0.98 | shared calibrator |
+| WR 89 | 174 | 4.7e5 | 5 | 1.00 | 0.26 | 1.62 | shared calibrator |
+| WR 115 | 179 | 3.7e4 | 199 | 0.18 | 0.33 | 1.09 | shared calibrator |
+| WR 79b | 108 | 1.0e3 | 58 | 0.86 | 0.045 | 0.43 | paper calibration, paper poor |
+| WR 92 | 145 | 2.1e2 | 7 | 1.00 | 0.044 | 1.71 | none |
+
+The coupling is the fibre response at the fitted position (coupled flux over
+physical flux). Only WR 115 lies outside the range where the fibre model is
+trusted.
 
 - WR 89 and WR 115 are the detections that match the paper. For WR 115 the
-  fibre correction matters: the companion's physical flux is about 0.3,
-  not the 0.05 the paper reports.
+  fibre correction would raise the companion's flux from about the paper's 0.05
+  to about 0.3, but WR 115 is at about 200 mas, outside the roughly 100 mas
+  range where the fibre model is trusted, so this is not yet a disagreement
+  with the paper.
 - All three WR 57 candidates, and the other WR 57 nights, are model
   failures (reduced χ² 3.3–7.8, halo pinned at its bound with the likelihood
   still rising), not companions.
