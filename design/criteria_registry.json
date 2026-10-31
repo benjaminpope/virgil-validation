@@ -42,12 +42,6 @@
    "used_by": "scripts/trackb_fit.py (already pinned in the script as CRITERIA_SHA256; frozen file, left as it is; tests/test_criteria_registry.py checks the two agree)",
    "changed_after_seeing_a_result": "unknown: registered earlier; see git log of the file",
    "pinned_at": "content of origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
-  },
-  "design/orbit_stage4_criteria.yml": {
-   "sha256": "72d4622e8122931e067edc52d606e4c879f025704c25ae56224f742994907c7a",
-   "used_by": "none yet: the Stage 4 harness is written after sign-off; this file is the pre-registration",
-   "changed_after_seeing_a_result": "no",
-   "pinned_at": "commit introducing this file (proposed, awaiting Ben's sign-off)"
   }
  }
 }

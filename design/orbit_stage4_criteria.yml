@@ -3,6 +3,9 @@
 # before any Stage 4 run, and no threshold below was chosen by looking at a gallery target, a
 # G1 aggregate, or any per-system output. A change after a result is seen is a logged amendment
 # in this file's change log, with whether it was made after seeing a result.
+# Pre-registration is this file's git commit (no hash registry, no override flags): the Stage 4 harness
+# records prereg.criteria_commit("design/orbit_stage4_criteria.yml") and refuses a dirty file. Approval is
+# the commit Ben signs off.
 # The tests are independent of virgil's own: truths and simulators are vv's, and vv's checks of
 # coordinates and of the exact evidence do not import virgil's search code.
 
@@ -35,7 +38,13 @@ reported:               # reported, never gated
   - band_undersampled   # count of bands flagged
   - leg2_luger_ratio    # acceptance of the leg-2 Luger move measured in Stage 3b
 
+# Change log (a change after a result is seen is a new row, labelled):
+#
+# | date       | change       | changed after seeing a result | by                                 |
+# |------------|--------------|-------------------------------|------------------------------------|
+# | 2026-11-01 | file created | no                            | Claude (Sonnet), for Ben, proposed |
 change_log:
   - date: 2026-11-01
     change: file created
-    after_seeing_a_result: no
+    changed_after_seeing_a_result: no
+    by: Claude (Sonnet), for Ben, proposed
