@@ -1,5 +1,5 @@
 """Pull campaign: are virgil's fits unbiased and its Laplace uncertainties
-right? (Criteria and design registered in design/pull_campaign.yml, whose
+right? (Criteria and design committed in design/pull_campaign.yml, whose
 SHA-256 is recorded in every task output and in the summary.)
 
 For each cell (a scene and a fitter), N >= 1000 noisy realisations from our
@@ -13,7 +13,7 @@ calibration claim.
     python scripts/pull_campaign.py aggregate DIR [DIR ...] --summary FILE
 
 ``run`` writes DIR/pull_<cell>_<T>.json after every draw (a task stopped by
-its time limit resumes). ``aggregate`` applies the registered criteria.
+its time limit resumes). ``aggregate`` applies the committed criteria.
 """
 
 import argparse
@@ -46,10 +46,6 @@ def spec():
     import yaml
 
     return yaml.safe_load(CRITERIA_FILE.read_text())
-
-
-def criteria_hash():
-    return hashlib.sha256(CRITERIA_FILE.read_bytes()).hexdigest()
 
 
 def sky_source_without_arcs():
@@ -160,7 +156,7 @@ def draw(cell, seed, tmp):
 
 
 def run(args, draw_fn=None):
-    reg = prereg.for_args(args, CRITERIA_FILE)  # refuses before any draw is made
+    crit_commit = prereg.criteria_commit(CRITERIA_FILE)  # refuses uncommitted criteria before any draw is made
     import jax
 
     jax.config.update("jax_enable_x64", True)
@@ -176,8 +172,7 @@ def run(args, draw_fn=None):
     cell_index = list(s["cells"]).index(args.cell)
     seed0 = args.seed_base + cell_index * 1_000_000 + args.task * draws
     head = {"cell": args.cell, "task": args.task, "draws": draws, "seed0": seed0, "virgil_commit": commit,
-            "criteria_hash": criteria_hash(), "design_hash": design_hash(), "params": param_names(args.cell),
-            "registered": reg.registered, **({} if reg.registered else {"stamp": prereg.UNREGISTERED_STAMP})}
+            "criteria_commit": crit_commit, "design_hash": design_hash(), "params": param_names(args.cell)}
     path = out_dir / f"pull_{args.cell}_{args.task:04d}.json"
     rows, start = [], time.time()
     if path.exists():  # resume after a time limit
@@ -260,18 +255,17 @@ def analyse(cells, s):
 
 
 def aggregate(args):
-    reg = prereg.for_args(args, CRITERIA_FILE)
+    crit_commit = prereg.criteria_commit(CRITERIA_FILE)
     s = spec()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("pull_*_*.json"))]
     if len({f.resolve() for f in files}) != len(files):
         raise SystemExit("a results directory is given twice")
     if not files:
         raise SystemExit(f"no results found in {', '.join(map(str, args.dirs))}")
-    cells, hashes, designs, commits, seeds, partial = {}, set(), set(), set(), [], 0
+    cells, designs, commits, seeds, partial = {}, set(), set(), [], 0
     runs = []
     for f in files:
         r = json.loads(f.read_text())
-        hashes.add(r["criteria_hash"])
         runs.append(r)
         designs.add(r.get("design_hash"))
         commits.add(r["virgil_commit"])
@@ -281,9 +275,8 @@ def aggregate(args):
             raise SystemExit(f"{r['cell']}: tasks disagree on the parameters")
         rows += r["rows"]
         seeds += [x["seed"] for x in r["rows"]]
-    prereg.require_registered_runs(runs, reg)
-    if hashes != {criteria_hash()}:
-        raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
+    if prereg.require_same_commit(runs) != crit_commit:  # no override: changed criteria mean a rerun
+        raise SystemExit(f"the runs used criteria commit {prereg.require_same_commit(runs)}, this checkout has {crit_commit}: rerun")
     if designs != {design_hash()}:
         raise SystemExit(f"the experiment changed since the runs (design {designs} vs {design_hash()})")
     if len(commits) != 1:
@@ -291,10 +284,10 @@ def aggregate(args):
     if len(set(seeds)) != len(seeds):
         raise SystemExit(f"{len(seeds) - len(set(seeds))} draws repeat a seed: each must be counted once")
     print(f"{len(files)} task files ({partial} incomplete), {len(seeds)} draws", file=sys.stderr)
-    summary = {"version": 1, "virgil_commit": commits.pop(), "criteria_hash": criteria_hash(),
-               "design_hash": design_hash(), "tasks": len(files), "incomplete_tasks": partial, "criteria": s,
+    summary = {"version": 1, "virgil_commit": commits.pop(), "criteria_file": CRITERIA_FILE.relative_to(ROOT).as_posix(),
+               "criteria_commit": crit_commit, "design_hash": design_hash(), "tasks": len(files), "incomplete_tasks": partial, "criteria": s,
                **analyse(cells, s)}
-    text = json.dumps(prereg.stamp(summary, reg), indent=1)
+    text = json.dumps(summary, indent=1)
     if args.summary:
         pathlib.Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.summary).write_text(text + "\n")
@@ -310,11 +303,9 @@ def main():
     r.add_argument("--draws", type=int, default=0, help="per task (default: the registered number)")
     r.add_argument("--seed-base", type=int, default=20261008)
     r.add_argument("--out", required=True)
-    prereg.add_argument(r)
     g = sub.add_parser("aggregate")
     g.add_argument("dirs", nargs="+")
     g.add_argument("--summary")
-    prereg.add_argument(g)
     args = ap.parse_args()
     run(args) if args.cmd == "run" else aggregate(args)
 
