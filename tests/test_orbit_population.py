@@ -366,6 +366,8 @@ def test_p_cut_equals_the_engines_period_cut():
         times = rng.uniform(0.0, 800.0, int(rng.integers(2, 13)))
         a, night, res = rng.uniform(1.0, 30.0), rng.uniform(0.0, 0.4), rng.uniform(1.0, 5.0)
         assert pop.p_cut(times, a, night, res) == pytest.approx(aliases.period_cut(times, a, night, resolution=res), rel=1e-12)
+    for times in ([5.0, 5.0, 30.0, 90.0], [0.0, 10.0, 10.0]):  # repeated night times: both must merge them
+        assert pop.p_cut(times, 3.0, 0.2, 2.0) == pytest.approx(aliases.period_cut(np.array(times), 3.0, 0.2, resolution=2.0), rel=1e-12)
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -375,8 +377,20 @@ def test_b_draws_exclude_and_count_truths_below_p_cut_without_changing_the_strea
     systems = [pop.draw_system("B", i) for i in range(40)]
     assert all(s["below_p_cut"] == (s["orbit"]["period"] < s["p_cut"]) for s in systems)
     assert any(s["below_p_cut"] for s in systems) and not all(s["below_p_cut"] for s in systems)
-    again = pop.draw_system("B", 3)  # p_cut consumes no generator state: the registered stream
-    assert again["orbit"] == systems[3]["orbit"] and again["n_redraws"] == systems[3]["n_redraws"]
+    # Literals taken from origin/main's draw_system before p_cut existed (period, redraws, a, noise drawn after
+    # the orbit): the stream is the registered one, so runs before and after this commit pair draw for draw.
+    pinned = {3: (13.113151543301496, 0, 3.9355384005970357, 0.009677465716676437),
+              7: (62.30282307210372, 0, 1.9052667611152811, 0.005315406235919474)}
+    for i, (period, redraws, a_mas, sigma_v2) in pinned.items():
+        s = systems[i]
+        assert (s["orbit"]["period"], s["n_redraws"], s["orbit"]["a_mas"], s["noise"]["sigma_v2"]) == (period, redraws, a_mas, sigma_v2)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_a_b_prime_truth_is_fitted_with_the_wide_window_and_no_other_b_truth_is():
+    s = {"kind": "B", "below_p_cut": True, "span_days": 400.0}
+    assert gate.settings_for(s) == {"period_range": (1.0, 1200.0)}
+    assert gate.settings_for(dict(s, below_p_cut=False)) == {} and gate.settings_for(dict(s, kind="D")) == {}
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")

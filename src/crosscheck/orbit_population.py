@@ -122,11 +122,10 @@ def sampling_limit(a_mas, night_days, res_mas):
 def p_cut(mean_times, a_mas, night_days, res_mas):
     """Shortest period (d) of virgil's declared prior: ``max(2 * dt_min, P_night)``, from the TRUTH only.
 
-    ``dt_min`` is the shortest gap between consecutive nights; ``P_night`` is
-    ``sampling_limit`` at the truth's own semi-major axis (``field``). A copy of
-    ``virgil.aliases.period_cut`` (orbit_gate_042 section 3.3), kept equal to it by
-    ``test_p_cut_equals_the_engines_period_cut``. Never read from a fit: the exclusion is a property of the
-    population, not of the method's output."""
+    ``dt_min`` is the shortest gap between distinct night times (repeated times merge); ``P_night`` is
+    ``sampling_limit`` at the truth's own semi-major axis. Written from orbit_gate_042 section 3.3 and
+    orbit_alias_cycles section 1.3; ``test_p_cut_equals_the_engines_period_cut`` checks it against the engine's
+    function. Never read from a fit: the exclusion is a property of the population, not of the method's output."""
     t = np.unique(np.asarray(mean_times, float))
     p_night = sampling_limit(a_mas, night_days, res_mas)
     return float(max(2.0 * np.min(np.diff(t)), p_night)) if t.size > 1 else float(p_night)

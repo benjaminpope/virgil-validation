@@ -200,7 +200,11 @@ def settings_for(system):
     explicitly (gate sections 3.2 and 4) and samples every band with
     p >= 0.01 whatever the shipped no-orbit verdict says (the smallest
     positive ``no_orbit_nats`` keeps the verdict from skipping the sampler);
-    B, N and D are the defaults as shipped."""
+    B, N and D are the defaults as shipped, except a B truth below P_cut (the reported stratum B', gate
+    section 3.3), which is fitted once with ``period_range`` = [1 d, 3 x span] to show what the declared prior
+    excludes."""
+    if system["kind"] == "B" and system.get("below_p_cut"):
+        return dict(period_range=(1.0, 3.0 * system["span_days"]))
     if system["kind"] != "A":
         return {}
     return dict(period_range=tuple(system["p_range"]), a_range=tuple(system["a_range"]),
