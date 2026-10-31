@@ -346,9 +346,16 @@ def test_p_cut_equals_the_engines_period_cut():
 
     from crosscheck import orbit_population as pop
 
-    aliases = pytest.importorskip("virgil.aliases")
-    if not hasattr(aliases, "period_cut"):
-        pytest.skip("this virgil has no aliases.period_cut (virgil#625)")
+    import os
+
+    gate_run = bool(os.environ.get("VV_GATE_RUN"))  # in a gate run a skipped cross-check is a failure
+    try:
+        aliases = importlib.import_module("virgil.aliases")
+    except ImportError:
+        aliases = None
+    if aliases is None or not hasattr(aliases, "period_cut"):
+        msg = "this virgil has no aliases.period_cut (virgil#625)"
+        pytest.fail(msg) if gate_run else pytest.skip(msg)
     rng = onp.random.default_rng(0)
     for _ in range(200):
         times = rng.uniform(0.0, 800.0, int(rng.integers(2, 13)))
@@ -375,3 +382,17 @@ def test_aggregate_excludes_below_p_cut_truths_and_reports_them_as_b_prime():
     out = gate.aggregate_results(toy, s, s["master_seed"])
     assert out["counts"]["B"] == 180 and out["counts"]["B_below_p_cut"] == 60 and out["counts"]["oracle"] == 180
     assert out["reported"]["B_prime"]["n"] == 60 and out["reported"]["B_prime"]["indices"][:3] == [0, 4, 8]
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_clean_toy_with_b_prime_passes_m4_and_m7_and_b_prime_failures_are_not_counted():
+    s = gate.spec()
+    toy = [dict(r, truth=dict(r["truth"], below_p_cut=r["index"] % 4 == 0, p_cut=9.0)) if r["stratum"] == "B" else r for r in _toy()]
+    out = gate.aggregate_results(toy, s, s["master_seed"])
+    assert out["must_hold"]["M4"]["provisional_pass"] and out["must_hold"]["M4"]["limit"] == s["must_hold"]["M4_search_misses"]["max_fraction"] * 180
+    assert out["must_hold"]["M7"]["missing"] == {} and out["must_hold"]["M7"]["failed"] == 0
+    # a crashed B' fit and its crashed oracle change nothing; a crashed A fit with the same index still counts
+    broken = [dict(r, status="crashed") if r["truth"]["index"] == 0 and (r["truth"]["stratum"] == "B") else r for r in toy]
+    assert gate.aggregate_results(broken, s, s["master_seed"])["must_hold"]["M7"]["failed"] == 0
+    broken_a = [dict(r, status="crashed") if r["truth"]["index"] == 0 and r["truth"]["stratum"] == "A" else r for r in toy]
+    assert gate.aggregate_results(broken_a, s, s["master_seed"])["must_hold"]["M7"]["failed"] == 1

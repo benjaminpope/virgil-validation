@@ -569,7 +569,7 @@ def aggregate_results(results, s, rng_seed):
 
     # M4 and M8 need the oracle runs
     spec4, spec8 = m["M4_search_misses"], m["M8_false_no_orbit"]
-    n_b = strata_sizes()["B"]
+    n_b = strata_sizes()["B"] - len(b_prime)  # the scored B count: B' is excluded from M4's denominator
     misses, no_oracle, no_true_band = [], [], []
     for r in b:
         o = oracle.get(r["truth"]["index"])
@@ -612,9 +612,11 @@ def aggregate_results(results, s, rng_seed):
 
     # M7: completion and the accuracy rule
     fail_flags = set(m["M7_complete"]["credible_set_accurate"]["fail_flags"])
-    crashed = [r for r in results if r["status"] != "ok"]
+    in_b_prime = lambda r: r["truth"]["stratum"] == "B" and r["truth"]["index"] in excluded  # noqa: E731
+    crashed = [r for r in results if r["status"] != "ok" and not in_b_prime(r)]  # B' failures are reported, not counted
     inaccurate = [r for r in b if _inaccurate(r, fail_flags, m9["m"])]
     expected = {k: v for k, v in strata_sizes().items()}
+    expected["B"] -= len(b_prime)  # B' is excluded from the scored sets (gate section 3.3)
     present = {k: len({r["truth"]["index"] for r in by[k]}) for k in "ABND"}
     expected["oracle"], present["oracle"] = expected["B"], len(oracle)
     invalid_oracle = [i for i, o in oracle.items() if o["status"] == "ok" and not o.get("oracle_init_calls")]
