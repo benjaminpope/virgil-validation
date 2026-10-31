@@ -119,21 +119,17 @@ def sampling_limit(a_mas, night_days, res_mas):
     return max(2.0 * math.pi * a_mas * night_days / (MOTION_FRACTION * res_mas), night_days, P_FLOOR)
 
 
-def two_dt_min(mean_times):
-    """Twice the shortest gap (d) between consecutive nights: the alias part of virgil's declared P_cut.
+def p_cut(mean_times, a_mas, night_days, res_mas):
+    """Shortest period (d) of virgil's declared prior: ``max(2 * dt_min, P_night)``, from the TRUTH only.
 
-    The other part, ``P_night``, is the lower end of the period window the engine itself computed from the
-    data; the aggregator reads it from the fit (orbit_gate_042 section 3.3)."""
+    ``dt_min`` is the shortest gap between consecutive nights; ``P_night`` is
+    ``sampling_limit`` at the truth's own semi-major axis (``field``). A copy of
+    ``virgil.aliases.period_cut`` (orbit_gate_042 section 3.3), kept equal to it by
+    ``test_p_cut_equals_the_engines_period_cut``. Never read from a fit: the exclusion is a property of the
+    population, not of the method's output."""
     t = np.unique(np.asarray(mean_times, float))
-    return float(2.0 * np.min(np.diff(t))) if t.size > 1 else 0.0
-
-
-def p_cut_of_fit(two_dt, window_lo):
-    """``P_cut`` of one fit: ``max(2 * dt_min, lower end of the window the engine searched)``.
-
-    Equals ``virgil.aliases.period_cut`` evaluated with the engine's own field and night bound
-    (``test_p_cut_of_fit_equals_the_engines_period_cut``)."""
-    return float(max(two_dt, window_lo))
+    p_night = sampling_limit(a_mas, night_days, res_mas)
+    return float(max(2.0 * np.min(np.diff(t)), p_night)) if t.size > 1 else float(p_night)
 
 
 def band_of(period, span):
@@ -334,7 +330,8 @@ def _draw_b(rng, s):
     s.update(nights=nights, noise=noise, orbit=_finish_orbit(orbit, mean_times), primary=primary,
              contaminants=contaminants, misspecified=bool(miss), misspecification=third if miss else None,
              schedule=schedule, n_redraws=redraws, span_days=span, band=band_of(period, span))
-    s.update(two_dt_min=two_dt_min(mean_times))  # no draw is consumed: the stream is unchanged
+    cut = p_cut(mean_times, a_mas, longest, res)  # no draw is consumed: the stream is unchanged
+    s.update(p_cut=cut, below_p_cut=bool(period < cut))
 
 
 def _draw_n(rng, s):

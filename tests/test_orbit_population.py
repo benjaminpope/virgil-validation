@@ -15,7 +15,7 @@ spec = importlib.util.spec_from_file_location("orbit_population_script", ROOT / 
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
-REGISTERED = "96e9ae513f9a9f7c16c5820084b7ae5fdf8676fc162050ddde8821bcc630d574"
+REGISTERED = "b54cc5e71987cc2dbdbd1b44a7fe285be2f69c5ff54281463c914c47d3e1177b"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -92,7 +92,7 @@ def _fit(stratum, index, **kw):
     truth = dict(stratum=stratum, index=index, kind=stratum, template="T1", n_nights=6, band=1 if hit else 2,
                  period=15.0 if hit else 25.0, span_days=100.0, schedule="s", misspecified=False,
                  misspecification=None, envelope_fraction=None, flux=0.1, c=0.0, n_redraws=0, phase_coverage=0.8,
-                 two_dt_min=1.0)
+                 p_cut=1.0, below_p_cut=False)
     bands = [dict(n=1, p_lo=10.0, p_hi=20.0, p=0.9, log_z=0.0, se_lnz=0.1, se_source="ess", flags=[]),
              dict(n=2, p_lo=20.0, p_hi=30.0, p=0.1, log_z=-2.0, se_lnz=0.1, se_source="ess", flags=[])]
     r = dict(part="fit", stratum=stratum, index=index, status="ok", truth=truth, bands=bands, p_range=[0.2, 400.0], seconds=1.0, peak_rss_mb=1.0,
@@ -190,8 +190,8 @@ def test_an_empty_subset_has_no_verdict_of_its_own():
     assert gate.aggregate_results(no_n, s, s["master_seed"])["pass"] is not True
 
 
-GATE_COMMIT = "58b56ad3e74353acb79e7f23f93d57504d4629a7"  # virgil#625 head this copy was taken from; becomes main when #625 merges
-GATE_SHA256 = "d328c3b3129930b4c8fabbc0dea63110b0680ad6c35366307d22f5c04f1aa08c"
+GATE_COMMIT = "4f8693197133553fbc6da0b2d9e4693a837eb82f"  # virgil#625 head this copy was taken from; becomes main when #625 merges
+GATE_SHA256 = "03a7671dc044ce8aa6533ae699389a181778811cd84abd9f8ddcac9da4c0d98d"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -341,15 +341,14 @@ def test_criteria_commit_trusts_the_environment_only_outside_a_repository(monkey
 
 
 def _below(r, every=4):
-    """The toy B fit whose engine window starts above its true period (so P_cut exceeds it)."""
-    return dict(r, p_range=[30.0, 400.0]) if r["stratum"] == "B" and r["index"] % every == 0 else r
+    """The toy B systems whose truth lies below P_cut (decided at the draw)."""
+    return dict(r, truth=dict(r["truth"], below_p_cut=True, p_cut=40.0)) if r["stratum"] == "B" and r["index"] % every == 0 else r
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_p_cut_of_fit_equals_the_engines_period_cut_end_to_end():
-    """vv's rule (max(2 dt_min, the fit's window lower end)) against the engine's own functions, on a simulated
-    dataset through the real epochs-level helpers: field = the engine's median-separation rule, night length and
-    resolution from the data, ``period_window`` and ``period_cut``."""
+def test_p_cut_equals_the_engines_period_cut():
+    """The independence rule allows this copy of the engine's P_cut only with a cross-check against it (the truth's a
+    as ``field``, as the gate specifies)."""
     import os
 
     from crosscheck import orbit_population as pop
@@ -364,23 +363,19 @@ def test_p_cut_of_fit_equals_the_engines_period_cut_end_to_end():
         pytest.fail(msg) if gate_run else pytest.skip(msg)
     rng = np.random.default_rng(0)
     for _ in range(200):
-        times = np.sort(rng.uniform(0.0, 800.0, int(rng.integers(2, 13))))
-        field, night, res = rng.uniform(1.0, 30.0), rng.uniform(0.0, 0.4), rng.uniform(1.0, 5.0)
-        try:
-            lo = aliases.period_window(times, field, night, resolution=res)[0]
-        except ValueError:
-            continue
-        cut = aliases.period_cut(times, field, night, resolution=res)
-        assert pop.p_cut_of_fit(pop.two_dt_min(times), lo) == pytest.approx(cut, rel=1e-12)
+        times = rng.uniform(0.0, 800.0, int(rng.integers(2, 13)))
+        a, night, res = rng.uniform(1.0, 30.0), rng.uniform(0.0, 0.4), rng.uniform(1.0, 5.0)
+        assert pop.p_cut(times, a, night, res) == pytest.approx(aliases.period_cut(times, a, night, resolution=res), rel=1e-12)
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_draws_record_two_dt_min_without_changing_the_stream():
+def test_b_draws_exclude_and_count_truths_below_p_cut_without_changing_the_stream():
     from crosscheck import orbit_population as pop
 
-    systems = [pop.draw_system("B", i) for i in range(10)]
-    assert all(s["two_dt_min"] > 0 for s in systems)
-    again = pop.draw_system("B", 3)  # the stream is the registered one: two_dt_min consumes no generator state
+    systems = [pop.draw_system("B", i) for i in range(40)]
+    assert all(s["below_p_cut"] == (s["orbit"]["period"] < s["p_cut"]) for s in systems)
+    assert any(s["below_p_cut"] for s in systems) and not all(s["below_p_cut"] for s in systems)
+    again = pop.draw_system("B", 3)  # p_cut consumes no generator state: the registered stream
     assert again["orbit"] == systems[3]["orbit"] and again["n_redraws"] == systems[3]["n_redraws"]
 
 
@@ -409,8 +404,13 @@ def test_clean_toy_with_b_prime_passes_m4_and_m7_and_b_prime_failures_are_not_co
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_a_b_fit_that_failed_before_recording_its_window_is_a_failure_not_an_exclusion():
+def test_window_disagreement_is_reported_both_ways_and_a_crashed_fit_is_an_m7_failure():
     s = gate.spec()
-    toy = [dict(r, status="crashed", p_range=None) if r["stratum"] == "B" and r["index"] == 5 and r["part"] == "fit" else r for r in _toy()]
+    toy = [_below(r) for r in _toy()]
+    # a scored truth outside the engine's window (search failure) and an excluded truth inside it
+    toy = [dict(r, p_range=[20.0, 400.0]) if r["stratum"] == "B" and r["part"] == "fit" and r["index"] % 4 == 1 else r for r in toy]
     out = gate.aggregate_results(toy, s, s["master_seed"])
-    assert out["counts"]["B_below_p_cut"] == 0 and out["must_hold"]["M7"]["failed"] == 1
+    d = out["reported"]["window_disagreement"]
+    assert d["scored_below_window"] > 0 and d["scored_above_window"] == 0 and d["excluded_inside_window"] == 60
+    crashed = [dict(r, status="crashed", p_range=None) if r["stratum"] == "B" and r["index"] == 5 and r["part"] == "fit" else r for r in toy]
+    assert gate.aggregate_results(crashed, s, s["master_seed"])["must_hold"]["M7"]["failed"] == 1
