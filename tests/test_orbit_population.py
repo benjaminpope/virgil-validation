@@ -383,7 +383,8 @@ def test_b_draws_exclude_and_count_truths_below_p_cut_without_changing_the_strea
               7: (62.30282307210372, 0, 1.9052667611152811, 0.005315406235919474)}
     for i, (period, redraws, a_mas, sigma_v2) in pinned.items():
         s = systems[i]
-        assert (s["orbit"]["period"], s["n_redraws"], s["orbit"]["a_mas"], s["noise"]["sigma_v2"]) == (period, redraws, a_mas, sigma_v2)
+        assert s["n_redraws"] == redraws  # floats agree to the last digit only across platforms
+        assert (s["orbit"]["period"], s["orbit"]["a_mas"], s["noise"]["sigma_v2"]) == pytest.approx((period, a_mas, sigma_v2), rel=1e-12)
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
