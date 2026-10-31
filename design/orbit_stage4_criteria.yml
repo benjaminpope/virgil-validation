@@ -15,6 +15,7 @@
 # | 2026-10-31 | file created | no                            | Claude (Sonnet), for Ben, proposed |
 # | 2026-10-31 | rewritten after review: machine-readable tests, pass lines, decision rule, named targets | no | Claude (Sonnet), for Ben, proposed |
 # | 2026-10-31 | plan Validation items 1 to 6 filled in; pending_definitions replaced by needs_ben_signoff | no | Claude (Sonnet), for Ben, proposed |
+# | 2026-11-01 | replicate-spread criterion replaced by single-run variance calibration (production SMC is 1 replicate per band); variance_degenerate fraction reported | no | Claude (Sonnet), for Ben, proposed |
 
 family:
   alpha: 0.01            # FWER 1% for the Holm family below: the value registered for the G1 gate and the detection campaigns
@@ -59,7 +60,8 @@ tests:
 
   # --- plan Validation item 2: references -------------------------------------------------------------------------
   - {id: "vis_level_vs_vv_nested", kind: "gate", roots: "independent", metric: "|ln Z_N(virgil) - ln Z_N(vv nested sampling, vv's own numpy likelihood with gains and offsets)| on small simulated sets", comparator: "<= threshold + 2 * combined SE", threshold: 0.5, unit: "nat", n: "20 small sets", derivation: "half the 1 nat decision scale plus the two estimators' own errors (PROPOSED)"}
-  - {id: "replicate_spread_matches_reported_error", kind: "gate", roots: "independent", metric: "pooled ratio of the empirical replicate sd to the reported SE, over bands with two replicates", comparator: "within [lo, hi]", threshold: "[0.67, 1.5]", n: "50 bands", derivation: "one pair gives 1 degree of freedom; pooled over 50 pairs the ratio's sampling sd is about 0.1, so [0.67, 1.5] is a +-4 sd window (PROPOSED)"}
+  - {id: "single_run_variance_calibrated", kind: "gate", roots: "independent", metric: "pooled ratio of the mean single-run genealogy variance estimate of ln Z_hat (Lee & Whiteley 2018; Du & Guyader 2021) to the empirical variance of ln Z_hat over independent runs", comparator: "within [lo, hi]", threshold: "[0.67, 1.5]", n: "3 toys x 200 independent runs", derivation: "the variance of a sample variance over 200 runs has relative sd sqrt(2/199) = 0.1, so [0.67, 1.5] is about a +-4 sd window (PROPOSED)"}
+  - {id: "variance_degenerate_fraction", kind: "reported", note: "reported, not gated: the fraction of bands flagged variance_degenerate, per toy and per epoch pattern"}
 
   # --- plan Validation item 3: calibration on simulated populations -------------------------------------------------
   - {id: "sbc_true_N", kind: "p_value", roots: "independent", metric: "KS of the randomized PIT of the true band N under p(N), weighted distinct particles", comparator: "Holm-adjusted p >= family.alpha", n: "500 simulated systems, population: random orbits on the gallery's real epoch patterns, truths with P < P_cut excluded and counted (the gate's rule)"}
@@ -82,7 +84,7 @@ tests:
 
 must_hold:                # deterministic, exactly true
   precision_recorded: every acceptance test writes the data precision it ran at; the harness fails a missing record
-  replicate_diagnostic_only: no code path feeds the replicate difference into p(N) or the pruning rule (a grep of the harness and of virgil's pipeline, recorded)
+  variance_diagnostic_only: no code path feeds the single-run variance estimate or the variance_degenerate flag into p(N) or the pruning rule (a grep of the harness and of virgil's pipeline, recorded)
   pruning_measured:
     delta: 1.0e-3         # derived: p(N) is reported to three decimals, so a dropped mass below 1e-3 is below reporting precision
     n_se: 3
@@ -124,7 +126,7 @@ named_targets:
 needs_ben_signoff:        # definitions the plan leaves open; the rule written above is a proposal
   - the constant 1e3 in stage1_vs_surface_oracle's tolerance
   - cell_partition_invariance 0.3 nat and vis_level_vs_vv_nested 0.5 nat (+2 combined SE)
-  - the replicate-spread window [0.67, 1.5]
+  - the single-run variance calibration window [0.67, 1.5] and its 200 independent runs
   - the efficiency factor 2
   - the Holm family of 13 and alpha 0.01
   - "SBC invariants: P, a, e, cos i"
@@ -133,3 +135,4 @@ change_log:
   - {date: 2026-10-31, change: file created, changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
   - {date: 2026-10-31, change: "rewritten after review: machine-readable tests, pass lines, decision rule, named targets", changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
   - {date: 2026-10-31, change: "plan Validation items 1 to 6 filled in; pending_definitions replaced by needs_ben_signoff", changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
+  - {date: 2026-11-01, change: "replicate-spread criterion replaced by single-run variance calibration (production SMC is 1 replicate per band); variance_degenerate fraction reported", changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
