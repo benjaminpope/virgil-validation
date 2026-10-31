@@ -29,8 +29,8 @@ is concentrated in one mode.
 
 ``run`` writes DIR/task_<T>.json: per replicate, the truth, the rank of
 each parameter among L thinned draws, the bulk ESS, R-hat and divergences.
-``aggregate`` applies the criteria registered below (CRITERIA, whose hash is
-recorded in the summary) to every replicate found.
+``aggregate`` applies the criteria below (CRITERIA, whose hash is recorded
+in the summary) and design/sbc_addendum.yml (whose last git commit is recorded) to every replicate found.
 """
 
 import argparse
@@ -54,7 +54,7 @@ UTS3 = np.array([[-9.925, -20.335, 0.0], [14.887, 30.502, 0.0], [103.306, 43.999
 WAVELENGTHS = np.linspace(1.5e-6, 2.4e-6, 6)
 HOUR_ANGLES = np.linspace(-3.0, 3.0, 7)
 
-# Registered before the campaign is run; the summary records their hash.
+# Fixed before the campaign is run; the summary records this block's hash (the addendum file's commit is recorded separately).
 CRITERIA = {
     "draws_per_replicate": 99,  # L: ranks take values 0..99
     "rank_bins": 20,

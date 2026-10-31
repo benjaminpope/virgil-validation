@@ -4,7 +4,7 @@ Reads <dir>/<system>.json from scripts/trackb_fit.py and writes <dir>/summary.js
 per-epoch flags (d2 > 13.816), per-system chi2_{2N} tests, the overall KS test of the
 counted d2 against chi2_2 (fails if the one-sided p for d2 too large is below 0.01),
 epochs whose fitted error scale exceeds 3, counted epochs without a fit, and the criteria
-block of every result (they must all name the same registered file).
+block of every result (they must all name the same last commit of the criteria file).
 
 The verdict is "incomplete" (not "pass") unless the run is whole: 20 systems with a
 .json and a .done marker each, 121 counted epochs (design/trackb_criteria.md) and no
