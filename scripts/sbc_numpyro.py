@@ -29,12 +29,10 @@ is concentrated in one mode.
 
 ``run`` writes DIR/task_<T>.json: per replicate, the truth, the rank of
 each parameter among L thinned draws, the bulk ESS, R-hat and divergences.
-``aggregate`` applies the criteria below (CRITERIA, whose hash is recorded
-in the summary) and design/sbc_addendum.yml (whose last git commit is recorded) to every replicate found.
+``aggregate`` applies the criteria below (CRITERIA, the ``campaign:`` block of design/sbc_addendum.yml) and design/sbc_addendum.yml (whose last git commit is recorded) to every replicate found.
 """
 
 import argparse
-import hashlib
 import json
 import pathlib
 import sys
@@ -54,22 +52,9 @@ UTS3 = np.array([[-9.925, -20.335, 0.0], [14.887, 30.502, 0.0], [103.306, 43.999
 WAVELENGTHS = np.linspace(1.5e-6, 2.4e-6, 6)
 HOUR_ANGLES = np.linspace(-3.0, 3.0, 7)
 
-# Fixed before the campaign is run; the summary records this block's hash (the addendum file's commit is recorded separately).
-CRITERIA = {
-    "draws_per_replicate": 99,  # L: ranks take values 0..99
-    "rank_bins": 20,
-    # rank uniformity per parameter: chi-squared over the bins, Bonferroni
-    # over the parameters at a family-wise 1%
-    "family_alpha": 0.01,
-    # central 68% and 95% posterior intervals cover the truth within the
-    # 99% binomial band
-    "coverage_levels": [0.68, 0.95],
-    "coverage_band": 0.99,
-    # sampler health (reported; replicates failing it are counted, not dropped)
-    "min_bulk_ess": 400,
-    "max_rhat": 1.01,
-    "min_replicates": 400,
-}
+ADDENDUM = ROOT / "design" / "sbc_addendum.yml"  # the criteria file: one file per gate
+# The pass/fail thresholds are the ``campaign:`` block of the criteria file, so its commit and change log cover them.
+CRITERIA = __import__("yaml").safe_load(ADDENDUM.read_text())["campaign"]
 
 
 def virgil_commit():
@@ -82,11 +67,6 @@ def virgil_commit():
     from evidence.meta import virgil_source
 
     return virgil_source()["commit"]
-
-
-def criteria_block_hash():
-    """Hash of the CRITERIA dict above (it lives in this script, not in a criteria file)."""
-    return hashlib.sha256(json.dumps(CRITERIA, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def draw_truth(rng):
@@ -199,7 +179,7 @@ def run(args, replicate_fn=None):
         # resume a task stopped by its time limit: keep its replicates when
         # they were made the same way, and run only the seeds still missing
         old = json.loads(path.read_text())
-        same = (old.get("virgil_commit") == commit and old.get("criteria_commit") == crit_commit and old.get("criteria_block_hash") == criteria_block_hash()
+        same = (old.get("virgil_commit") == commit and old.get("criteria_commit") == crit_commit
                 and old.get("settings") == settings and old.get("replicates_planned", args.replicates) == args.replicates)
         if not same:
             raise SystemExit(f"{path} was made with another commit, criteria or settings: move it before rerunning")
@@ -211,7 +191,7 @@ def run(args, replicate_fn=None):
         # after every replicate, so a task stopped by its time limit keeps
         # what it finished; "complete" marks a task that ran every replicate
         record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "virgil_commit": commit,
-                  "criteria_commit": crit_commit, "criteria_block_hash": criteria_block_hash(), "replicates_planned": args.replicates, "complete": complete,
+                  "criteria_commit": crit_commit, "replicates_planned": args.replicates, "complete": complete,
                   "settings": settings,
                   "replicates": results, "elapsed_s": time.time() - start}
         tmp = path.with_suffix(".tmp")
@@ -232,8 +212,6 @@ def run(args, replicate_fn=None):
         write(complete=True)
     print(f"wrote {path} elapsed={time.time() - start:.0f}s")
 
-
-ADDENDUM = ROOT / "design" / "sbc_addendum.yml"
 
 
 def rank_pvalues(ranks, L, bins, tests, sims=10000, seed=0):
@@ -327,7 +305,7 @@ def aggregate(args):
     from scipy import stats
 
     crit_commit = prereg.criteria_commit(ADDENDUM)
-    reps, tasks, records, hashes, versions, commits = [], [], [], set(), set(), set()
+    reps, tasks, records, versions, commits = [], [], [], set(), set(), set()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("task_*.json"))]
     if not files:
         raise SystemExit(f"no results found (no task_*.json) in {', '.join(map(str, args.dirs))}: "
@@ -336,7 +314,6 @@ def aggregate(args):
     for f in files:
         r = json.loads(f.read_text())
         partial += not r.get("complete", True)
-        hashes.add(r["criteria_block_hash"])
         records.append(r)
         versions.add(r["virgil"])
         commits.add(r.get("virgil_commit"))
@@ -344,8 +321,6 @@ def aggregate(args):
         tasks += [r["task"]] * len(r["replicates"])
     if prereg.require_same_commit(records) != crit_commit:  # no override: changed criteria mean a rerun
         raise SystemExit(f"the runs used criteria commit {prereg.require_same_commit(records)}, this checkout has {crit_commit}: rerun")
-    if hashes != {criteria_block_hash()}:
-        raise SystemExit(f"the CRITERIA block changed since the runs: {hashes} vs {criteria_block_hash()}")
     if len(commits) != 1 or None in commits:
         raise SystemExit(f"the tasks ran on different or unknown virgil commits: {commits}")
     seeds = [r["seed"] for r in reps]
@@ -355,8 +330,7 @@ def aggregate(args):
     alpha = CRITERIA["family_alpha"] / len(PARAMS)
     print(f"{len(files)} task files ({partial} incomplete), {n} replicates", file=sys.stderr)
     summary = {"replicates": n, "tasks": len(files), "incomplete_tasks": partial, "virgil": sorted(versions), "virgil_commit": commits.pop(), "criteria": CRITERIA,
-               "criteria_file": ADDENDUM.relative_to(ROOT).as_posix(), "criteria_commit": crit_commit,
-               "criteria_block_hash": criteria_block_hash(), "parameters": {}}
+               "criteria_file": ADDENDUM.relative_to(ROOT).as_posix(), "criteria_commit": crit_commit, "parameters": {}}
     ok = n >= CRITERIA["min_replicates"]
     for name in PARAMS:
         ranks = np.array([r["ranks"][name] for r in reps])

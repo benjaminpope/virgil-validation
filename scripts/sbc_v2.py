@@ -2,7 +2,7 @@
 
 Version 1 (scripts/sbc_numpyro.py) started every chain at the truth, in one
 bright regime. Version 2 (criteria and design committed in design/sbc_v2.yml,
-whose SHA-256 is recorded in every task output and in the summary) tests the
+whose last git commit is recorded in every task output and in the summary) tests the
 pipeline a user runs:
 
 * each replicate's chains start from virgil's own grid search and MAP fit on

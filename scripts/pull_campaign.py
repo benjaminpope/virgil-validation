@@ -1,6 +1,6 @@
 """Pull campaign: are virgil's fits unbiased and its Laplace uncertainties
 right? (Criteria and design committed in design/pull_campaign.yml, whose
-SHA-256 is recorded in every task output and in the summary.)
+last git commit is recorded in every task output and in the summary.)
 
 For each cell (a scene and a fitter), N >= 1000 noisy realisations from our
 simulator (crosscheck.simulate.observe) are fitted by virgil, and each

@@ -64,10 +64,22 @@ def say(*a):
 STAMPED = ("result.json", "synth.json", "replica_compare.json")  # the files the gate reads: each carries the criteria file and its last commit
 
 
+_CRITERIA_COMMIT = None  # the criteria file's last commit, read once when a gate-producing command starts
+
+
+def pin_criteria():
+    """Read the criteria commit once, at the start of a command that writes ``STAMPED`` files: a dirty criteria file is
+    refused before any work, and every file the run writes carries the commit the run started under, even if the file is
+    committed again while a long fit runs."""
+    global _CRITERIA_COMMIT
+    _CRITERIA_COMMIT = vs.criteria_commit()
+    return _CRITERIA_COMMIT
+
+
 def dump(path, obj):
     """JSON, written to a temporary file and renamed, so that a crash never leaves a half-written file. The files in ``STAMPED`` record the criteria file and its last commit (a dirty criteria file is refused)."""
     if pathlib.Path(path).name in STAMPED and isinstance(obj, dict):
-        obj = {**obj, "criteria_file": vs.CRITERIA_FILE.relative_to(ROOT).as_posix(), "criteria_commit": vs.criteria_commit()}
+        obj = {**obj, "criteria_file": vs.CRITERIA_FILE.relative_to(ROOT).as_posix(), "criteria_commit": _CRITERIA_COMMIT or vs.criteria_commit()}
     def default(o):
         if isinstance(o, (np.floating, np.integer)):
             return o.item()
@@ -502,6 +514,7 @@ def resolve_alpha(args):
 
 
 def cmd_fit(args):
+    pin_criteria()  # refuses uncommitted criteria before the fit starts
     resolve_alpha(args)
     if args.post_step_blur_px and args.method != "adam":
         raise SystemExit("--post-step-blur-px needs --method adam (virgil's post_step hook is not available to L-BFGS)")
@@ -925,7 +938,7 @@ def cold_start_gate_of(res, vres, image, px, flux, clean_dir, dsharp=None):
 
 def cmd_replica_compare(args):
     """The replica pass (``vr.replica_compare``) of a ``--workflow mpol-replica`` fit against MPoL's export (``export.npz``: ``base_image``, ``image``, ``cell_size_arcsec``)."""
-    vs.criteria_commit()  # refuses uncommitted criteria
+    pin_criteria()  # refuses uncommitted criteria
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     fit = json.loads((pathlib.Path(args.fit) / "result.json").read_text())

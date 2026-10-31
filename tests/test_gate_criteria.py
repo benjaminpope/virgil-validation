@@ -208,3 +208,30 @@ def test_nothing_of_the_old_registry_layer_is_left():
     assert not (ROOT / "design" / "criteria_registry.json").exists()
     assert not (ROOT / "trust" / "allowed_signers").exists() and not (ROOT / "trust" / "signoffs.yml").exists()
     assert not hasattr(prereg, "check") and not hasattr(prereg, "stamp") and not hasattr(prereg, "REGISTRY")
+
+
+def test_the_alma_gate_files_carry_the_commit_the_run_started_under(tmp_path, monkeypatch):
+    """pin_criteria() reads the commit once, at the start of a command: a later commit of the criteria file (a change-log
+    row added while a long fit runs) must not relabel the files the run writes."""
+    sys_path = str(ROOT / "scripts")
+    import sys
+    sys.path.insert(0, sys_path)
+    try:
+        import alma_imlup_maxent as m
+    finally:
+        sys.path.remove(sys_path)
+    monkeypatch.setattr(m.vs, "criteria_commit", lambda: "a" * 40)
+    monkeypatch.setattr(m, "_CRITERIA_COMMIT", None)
+    assert m.pin_criteria() == "a" * 40
+    monkeypatch.setattr(m.vs, "criteria_commit", lambda: "b" * 40)  # the file is committed again mid-run
+    m.dump(tmp_path / "result.json", {"x": 1})
+    assert json.loads((tmp_path / "result.json").read_text())["criteria_commit"] == "a" * 40
+
+
+def test_the_sbc_numpyro_thresholds_are_in_the_criteria_file_under_its_change_log():
+    """The pass/fail thresholds are the ``campaign:`` block of design/sbc_addendum.yml, not a dict in the script, so its
+    commit and change log cover them. Values as they were in the script when the campaign was registered."""
+    s = script("sbc_numpyro")
+    assert s.CRITERIA == yaml.safe_load((ROOT / "design" / "sbc_addendum.yml").read_text())["campaign"]
+    assert s.CRITERIA == {"draws_per_replicate": 99, "rank_bins": 20, "family_alpha": 0.01, "coverage_levels": [0.68, 0.95],
+                          "coverage_band": 0.99, "min_bulk_ess": 400, "max_rhat": 1.01, "min_replicates": 400}

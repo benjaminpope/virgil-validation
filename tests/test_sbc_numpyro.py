@@ -43,7 +43,6 @@ def test_sbc_ranks_are_uniform():
                     "not gate evidence; rerun the campaign at the release commit")
     s = script()
     assert summary["criteria_commit"] == criteria_commit(s.ADDENDUM), "criteria changed after the campaign ran"
-    assert summary["criteria_block_hash"] == s.criteria_block_hash(), "the CRITERIA block changed after the campaign ran"
     installed = virgil_source()["commit"]
     if summary.get("virgil_commit") != installed:
         pytest.skip(f"the campaign ran on virgil {str(summary.get('virgil_commit'))[:7]}, not the installed "
@@ -82,7 +81,7 @@ def test_sbc_aggregate_refuses_repeats_and_mixed_commits(tmp_path):
     s = script()
     rep = {"seed": 1, "truth": {}, "ranks": {p: 50 for p in s.PARAMS}, "ess": {p: 1e3 for p in s.PARAMS},
            "rhat": {p: 1.0 for p in s.PARAMS}, "divergences": 0}
-    task = {"task": 0, "virgil": "x", "virgil_commit": "a" * 40, "criteria_commit": criteria_commit(s.ADDENDUM), "criteria_block_hash": s.criteria_block_hash(),
+    task = {"task": 0, "virgil": "x", "virgil_commit": "a" * 40, "criteria_commit": criteria_commit(s.ADDENDUM),
             "replicates": [rep]}
     (tmp_path / "task_0000.json").write_text(json.dumps(task))
     run = lambda *dirs: subprocess.run([sys.executable, str(ROOT / "scripts" / "sbc_numpyro.py"), "aggregate",  # noqa: E731
