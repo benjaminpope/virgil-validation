@@ -1,50 +1,93 @@
 # Criteria for Stage 4 of the orbit-alias redesign (virgil design/orbit_alias_cycles.md, PR #624).
-# STATUS: proposed, awaiting Ben's sign-off. This file is the pre-registration: it is committed
-# before any Stage 4 run, and no threshold below was chosen by looking at a gallery target, a
-# G1 aggregate, or any per-system output. A change after a result is seen is a logged amendment
-# in this file's change log, with whether it was made after seeing a result.
-# Pre-registration is this file's git commit (no hash registry, no override flags): the Stage 4 harness
-# records prereg.criteria_commit("design/orbit_stage4_criteria.yml") and refuses a dirty file. Approval is
-# the commit Ben signs off.
-# The tests are independent of virgil's own: truths and simulators are vv's, and vv's checks of
-# coordinates and of the exact evidence do not import virgil's search code.
-
-family_alpha: 0.01      # Holm over every p-value below
-
-tests:
-  # coordinates (design §3): prior recovery from the charts, run on 2e5 draws each
-  chart_recovery_ks: KS of cos i, ln a, w+O, w-O (z chart) and e/e_max (zeta chart) against uniform; each a p-value
-  jacobians: |det| of z->(ln a, cos i, w+O, w-O), z->TI, zeta->(k,h), the zeta chart, and the anchor rotation, each within 1e-9 of the closed form on 50 points
-  # SMC evidence (design §6): calibration against exact ln Z on toys with label enumeration
-  smc_evidence_unbiased: z-test of mean(ln Z_hat - ln Z_exact) = 0 over >= 10 replicates, per toy (generic and face-on truth), with the replicate sd
-  smc_evidence_sd: the replicate sd of ln Z_hat is reported against the criterion sd <= 1.5 x the Joker-style cross-check's on the face-on toy (design §6.5)
-  # no-orbit verdict (design §8): false-alarm probability from simulated single-star nulls
-  fap_uniform: KS of the null FAP against uniform on (0,1] over >= 400 independent null data sets
-  fap_stepping: the stepwise rule (n_null 100, 200, 400, 800, cap 1000) never reports FAP < alpha with its 95% interval including alpha
-  # outlier contract (design §2)
-  b_k_continuity: b_k with the uniform-disc, sigma_v -> infinity prior equals virgil#618's b_k^static within the cubature tolerance
-  b_k_tolerance: b_k changes < 0.05 nats from 2^20 to 2^21 prior-predictive points
-  # acceptance tests inherited from virgil#618
-  six_618_tests: the six #618 tests pass at BOTH float32 and float64 with the data precision pinned (no test order dependence)
-
-must_hold:              # not p-values: each must be exactly true
-  - pinned_precision    # every acceptance test states and fixes the data precision it ran at
-  - no_gate_tuning      # no orbit-library constant, threshold or prior was tuned to a named target
-  - pruning_measured    # pruning stays opt-in unless mean(pruned vis-level band mass) + 3 SE <= delta = 1e-3, measured on simulated populations on real epoch patterns (design §7); the pruned mass is reported either way
-  - replicate_diagnostic_only  # the replicate difference never enters p(N) or the pruning rule
-
-reported:               # reported, never gated
-  - cost_table          # design §9 table (T_compile, g_pos, g_vis, T_b, T_summ, T_null; S1, S2, B, ESS, f_tune) per device
-  - band_undersampled   # count of bands flagged
-  - leg2_luger_ratio    # acceptance of the leg-2 Luger move measured in Stage 3b
-
+# STATUS: proposed, awaiting Ben's sign-off. NOT SIGNABLE until `pending_definitions` below is empty.
+# Pre-registration is this file's git commit (no hash registry, no override flags): the Stage 4 harness records
+# prereg.criteria_commit("design/orbit_stage4_criteria.yml") and refuses a dirty file. Approval is the commit Ben
+# signs off. Every threshold is derived or a declared budget set from the DECISION SCALE it protects, never from a
+# run, a G1 aggregate, a gallery result or a per-system output. Each entry states whether its comparison is
+# independent of virgil (vv-side truths and references: roots "independent") or virgil against itself (roots
+# "self-consistency", a guard that counts for nothing toward the independence rule).
+#
 # Change log (a change after a result is seen is a new row, labelled):
 #
 # | date       | change       | changed after seeing a result | by                                 |
 # |------------|--------------|-------------------------------|------------------------------------|
-# | 2026-11-01 | file created | no                            | Claude (Sonnet), for Ben, proposed |
+# | 2026-10-31 | file created | no                            | Claude (Sonnet), for Ben, proposed |
+# | 2026-10-31 | rewritten after review: machine-readable tests, pass lines, decision rule, named targets | no | Claude (Sonnet), for Ben, proposed |
+
+family:
+  alpha: 0.01            # FWER 1% for the Holm family below: the value registered for the G1 gate and the detection campaigns
+  holm_members:          # the whole family, m = 8; every other entry is a deterministic gate or reported-only
+    - chart_ks_cos_i
+    - chart_ks_ln_a
+    - chart_ks_w_plus_O
+    - chart_ks_w_minus_O
+    - chart_ks_ecc
+    - chart_joint_cosi_wplusO
+    - chart_joint_lna_cosi
+    - fap_tail
+
+tests:
+  # --- coordinates (design §3); independent: vv draws the prior and applies virgil's chart maps -------------------
+  - {id: "chart_ks_cos_i", kind: "p_value", roots: "independent", metric: "KS of cos i vs U(-1,1)", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d. from the prior (never a chain)"}
+  - {id: "chart_ks_ln_a", kind: "p_value", roots: "independent", metric: "KS of ln a vs uniform", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_ks_w_plus_O", kind: "p_value", roots: "independent", metric: "KS of w+O vs U(-pi,pi)", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_ks_w_minus_O", kind: "p_value", roots: "independent", metric: "KS of w-O vs U(-pi,pi)", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_ks_ecc", kind: "p_value", roots: "independent", metric: "KS of e/e_max vs U(0,1) from the zeta chart", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_joint_cosi_wplusO", kind: "p_value", roots: "independent", metric: "binned chi-square of (cos i, w+O) vs the product of uniforms", bins: "20x20", comparator: "Holm-adjusted p >= family.alpha", n: 200000, note: "catches a chart with correct marginals and a wrong joint"}
+  - {id: "chart_joint_lna_cosi", kind: "p_value", roots: "independent", metric: "binned chi-square of (ln a, cos i)", bins: "20x20", comparator: "Holm-adjusted p >= family.alpha", n: 200000}
+  - {id: "jacobians", kind: "gate", roots: "independent", metric: "max relative error |det|/closed form - 1 at float64 for z->(ln a, cos i, w+O, w-O), z->TI, zeta->(k,h), the zeta chart, the anchor rotation", comparator: "<=", threshold: 1.0e-9, n: "50 points per map", points: "|z| scale 0.5 to 5, |y| 0.2 to 4", derivation: "float64 roundoff of a 4x4 determinant is ~1e-14; 1e-9 leaves five orders for conditioning"}
+
+  # --- SMC evidence (design §6); exact references are vv's own enumeration/quadrature on vv-defined toys ----------
+  - {id: "smc_evidence_bias", kind: "gate", roots: "independent", metric: "|mean(ln Z_hat - ln Z_exact)| + 2 SE", comparator: "<=", threshold: 0.3, unit: "nat", n: "50 replicates per toy", toys: "[generic truth, face-on truth]", derivation: "0.3 nat is a 35% change of a band probability, the smallest error that could flip a verdict between nearly equal bands; absolute, so a noisier sampler cannot pass more easily"}
+  - {id: "smc_evidence_sd", kind: "gate", roots: "independent", metric: "replicate sd of ln Z_hat", comparator: "<=", threshold: 1.0, unit: "nat", n: "50 replicates per toy", derivation: "an evidence error of 1 nat changes a band probability by a factor e, the decision scale of p(N)"}
+  - {id: "smc_vs_joker_sd", kind: "reported", note: "reported, not gated; the Joker-style cross-check is virgil's own code, so the comparison is virgil against itself"}
+  - {id: "band_evidence_vs_reference", kind: "gate", roots: "independent", metric: "|Delta ln Z_N| of each band holding at least 1e-3 of the reference mass, against the exact or nested reference", comparator: "<=", threshold: 0.5, unit: "nat", n: "3 toys x 50 replicates", derivation: "half the 1 nat decision scale; bands below 1e-3 mass cannot matter at delta"}
+
+  # --- no-orbit verdict (design §8); the null simulator is vv's own single-star simulator, not virgil's -----------
+  - {id: "fap_tail", kind: "p_value", roots: "independent", metric: "one-sided binomial test of #(FAP <= alpha_fap) against N*alpha_fap (too many false alarms)", alpha_fap: 0.01, comparator: "Holm-adjusted p >= family.alpha", n: "3000 independent null data sets", derivation: "at N = 3000 a doubling of the false-alarm rate (60 vs 30 expected) is detected with power > 0.95"}
+  - {id: "fap_stepping", kind: "gate", roots: "self-consistency", metric: "number of nulls where the stepwise rule (100, 200, 400, 800, cap 1000) reports FAP < alpha_fap while its 95% interval contains alpha_fap", comparator: "==", threshold: 0, n: "all fap_tail nulls"}
+
+  # --- outlier contract (design §2) -------------------------------------------------------------------------------
+  - {id: "b_k_continuity", kind: "gate", roots: "independent", metric: "|b_k(virgil, uniform disc, sigma_v -> infinity) - b_k(vv SciPy quadrature)|", comparator: "<=", threshold: 0.05, unit: "nat per night", n: "30 random nights", derivation: "0.05 nat = a 5% change of a night's outlier floor, below any verdict"}
+  - {id: "b_k_convergence", kind: "gate", roots: "self-consistency", metric: "|b_k(2^21 points) - b_k(2^20 points)|", comparator: "<=", threshold: 0.05, unit: "nat", n: "30 random nights", note: "a convergence check of virgil against itself; it cannot detect a wrong integrand"}
+
+  # --- inherited acceptance, a guard --------------------------------------------------------------------------------
+  - {id: "six_618_tests", kind: "gate", roots: "self-consistency", metric: "virgil#618's six tests run in vv at BOTH float32 and float64", comparator: "all pass at both precisions", tolerances: "the tolerances in virgil's tests at the commit under test, recorded per precision before the first run; a change after a first run is a logged post-hoc amendment", note: "a guard; counts for nothing toward the independence rule"}
+
+must_hold:                # deterministic, exactly true
+  precision_recorded: every acceptance test writes the data precision it ran at; the harness fails a missing record
+  replicate_diagnostic_only: no code path feeds the replicate difference into p(N) or the pruning rule (a grep of the harness and of virgil's pipeline, recorded)
+  pruning_measured:
+    delta: 1.0e-3         # derived: p(N) is reported to three decimals, so a dropped mass below 1e-3 is below reporting precision
+    n_se: 3
+    rule: pruning becomes default only if mean(dropped visibility-level band mass) + n_se * SE <= delta; the mean and SE are reported either way
+    n: 200
+    population: the G1 generator's schedules S1 to S3 (design/orbit_gate_042.md section 3.3) with its stream, master seed 20261101 for these draws
+
+decision_rule: >
+  Candidate noise-floor models are (ii) the constant night floor and (iii') the inflation floor
+  (virgil design/orbit_alias_cycles.md section 1.1). Adopt the cheapest candidate that passes every gate and every
+  Holm member above, ordered (ii) before (iii'). If none passes, stop and report to Ben: no constant, prior or
+  threshold is changed to make a candidate pass.
+
+named_targets:
+  gl229: regression only (never a pass line or a tuned quantity)
+  gallery_stars: >
+    Held out only under the rule "no constant changed after viewing gallery results". Their c31b1fe results
+    HAVE been seen. A violation is any change to a constant, prior, threshold, noise model or search setting in a
+    Stage PR dated after a gallery result of that PR's commit was viewed, unless it is accompanied by a new
+    held-out set.
+  no_gate_tuning: >
+    Checkable form: each Stage PR carries a table of the constants it touches (the generality rule), the harness
+    diffs the constants of the commit under test against design/orbit_alias_cycles.md section 10 and fails an
+    unlisted change. The orbit library constants were tuned to Gl 229 and iota Peg once; none may be tuned to a
+    named target again.
+
+pending_definitions:      # the plan's wording is not in this repository; the file is not signable until each is filled
+  - submode weight accuracy: metric, threshold, n, derivation (plan Validation item 5)
+  - gallery period-space comparison against a main baseline: baseline commit, comparator, threshold (plan Validation item 6)
+  - screen false-dismissal rate and true-N rank: the plan's definition and pass line (plan Validation item 3 or 5)
+
 change_log:
-  - date: 2026-11-01
-    change: file created
-    changed_after_seeing_a_result: no
-    by: Claude (Sonnet), for Ben, proposed
+  - {date: 2026-10-31, change: file created, changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
+  - {date: 2026-10-31, change: "rewritten after review: machine-readable tests, pass lines, decision rule, named targets", changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
