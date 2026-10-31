@@ -305,7 +305,7 @@ def aggregate(args):
     from scipy import stats
 
     crit_commit = prereg.criteria_commit(ADDENDUM)
-    reps, tasks, records, versions, commits = [], [], [], set(), set(), set()
+    reps, tasks, records, versions, commits = [], [], [], set(), set()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("task_*.json"))]
     if not files:
         raise SystemExit(f"no results found (no task_*.json) in {', '.join(map(str, args.dirs))}: "
