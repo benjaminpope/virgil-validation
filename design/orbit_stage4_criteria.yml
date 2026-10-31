@@ -1,0 +1,41 @@
+# Criteria for Stage 4 of the orbit-alias redesign (virgil design/orbit_alias_cycles.md, PR #624).
+# STATUS: proposed, awaiting Ben's sign-off. This file is the pre-registration: it is committed
+# before any Stage 4 run, and no threshold below was chosen by looking at a gallery target, a
+# G1 aggregate, or any per-system output. A change after a result is seen is a logged amendment
+# in this file's change log, with whether it was made after seeing a result.
+# The tests are independent of virgil's own: truths and simulators are vv's, and vv's checks of
+# coordinates and of the exact evidence do not import virgil's search code.
+
+family_alpha: 0.01      # Holm over every p-value below
+
+tests:
+  # coordinates (design §3): prior recovery from the charts, run on 2e5 draws each
+  chart_recovery_ks: KS of cos i, ln a, w+O, w-O (z chart) and e/e_max (zeta chart) against uniform; each a p-value
+  jacobians: |det| of z->(ln a, cos i, w+O, w-O), z->TI, zeta->(k,h), the zeta chart, and the anchor rotation, each within 1e-9 of the closed form on 50 points
+  # SMC evidence (design §6): calibration against exact ln Z on toys with label enumeration
+  smc_evidence_unbiased: z-test of mean(ln Z_hat - ln Z_exact) = 0 over >= 10 replicates, per toy (generic and face-on truth), with the replicate sd
+  smc_evidence_sd: the replicate sd of ln Z_hat is reported against the criterion sd <= 1.5 x the Joker-style cross-check's on the face-on toy (design §6.5)
+  # no-orbit verdict (design §8): false-alarm probability from simulated single-star nulls
+  fap_uniform: KS of the null FAP against uniform on (0,1] over >= 400 independent null data sets
+  fap_stepping: the stepwise rule (n_null 100, 200, 400, 800, cap 1000) never reports FAP < alpha with its 95% interval including alpha
+  # outlier contract (design §2)
+  b_k_continuity: b_k with the uniform-disc, sigma_v -> infinity prior equals virgil#618's b_k^static within the cubature tolerance
+  b_k_tolerance: b_k changes < 0.05 nats from 2^20 to 2^21 prior-predictive points
+  # acceptance tests inherited from virgil#618
+  six_618_tests: the six #618 tests pass at BOTH float32 and float64 with the data precision pinned (no test order dependence)
+
+must_hold:              # not p-values: each must be exactly true
+  - pinned_precision    # every acceptance test states and fixes the data precision it ran at
+  - no_gate_tuning      # no orbit-library constant, threshold or prior was tuned to a named target
+  - pruning_measured    # pruning stays opt-in unless mean(pruned vis-level band mass) + 3 SE <= delta = 1e-3, measured on simulated populations on real epoch patterns (design §7); the pruned mass is reported either way
+  - replicate_diagnostic_only  # the replicate difference never enters p(N) or the pruning rule
+
+reported:               # reported, never gated
+  - cost_table          # design §9 table (T_compile, g_pos, g_vis, T_b, T_summ, T_null; S1, S2, B, ESS, f_tune) per device
+  - band_undersampled   # count of bands flagged
+  - leg2_luger_ratio    # acceptance of the leg-2 Luger move measured in Stage 3b
+
+change_log:
+  - date: 2026-11-01
+    change: file created
+    after_seeing_a_result: no
