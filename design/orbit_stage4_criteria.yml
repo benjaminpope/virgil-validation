@@ -18,6 +18,8 @@
 
 family:
   alpha: 0.01            # FWER 1% for the Holm family below: the value registered for the G1 gate and the detection campaigns
+  # m = 13 counts the p-values of the SIMULATED tests only (7 chart tests, fap_tail, 5 SBC). The 14 gallery systems are not
+  # in this family: the real-data checks (real_data_not_held_out) use their own Bonferroni level 0.01/14 across the 14 systems.
   holm_members:          # the whole family, m = 13; every other entry is a deterministic gate or reported-only
     - chart_ks_cos_i
     - chart_ks_ln_a
