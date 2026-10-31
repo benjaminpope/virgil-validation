@@ -138,11 +138,19 @@ def test_the_other_gates_refuse_an_edited_criteria_file_too(tmp_path, monkeypatc
     k = scratch_repo("design/trackb_criteria.md", (ROOT / "design" / "trackb_criteria.md").read_text())
     monkeypatch.setattr(tb, "REPO", tmp_path)
     cases.append((tb.criteria_block, k))
-    for call, file in cases:
-        call()  # clean: fine (a missing graph or data is not reached before the criteria check, or is not needed)
-        file.write_text(file.read_text() + "\n# edited after the commit\n")
-        with pytest.raises(SystemExit, match="uncommitted changes"):
+    def refuses(call):
+        try:
             call()
+        except SystemExit as e:
+            return "uncommitted changes" in str(e)
+        except Exception:  # a later step may fail for want of data: the criteria check came first and passed
+            return False
+        return False
+
+    for call, file in cases:
+        assert not refuses(call)  # clean: the criteria check passes
+        file.write_text(file.read_text() + "\n# edited after the commit\n")
+        assert refuses(call)
 
 
 def test_the_toeplitz_limits_are_the_ones_the_script_had():

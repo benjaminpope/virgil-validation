@@ -336,7 +336,7 @@ changed, "changed after seeing a result: yes/no/unknown", note. The scheme is gi
   `require_same_commit` and refuses runs from different commits (or none);
 * output headers read "Criteria: `<file>` at commit `<sha>`";
 * a changed criterion means a rerun. There is no hash, no signature and no
-  override flag (`--allow-unregistered` is gone), and an edit made after a
+  override flag, and an edit made after a
   result is not hidden: it is a row in the change log with "yes".
 * On OzSTAR a `git archive` snapshot has no repository; the submit script sets
   `CRITERIA_COMMIT` to the same value (last commit touching the file), and the
