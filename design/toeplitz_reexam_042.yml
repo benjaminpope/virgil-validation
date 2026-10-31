@@ -1,0 +1,45 @@
+# Pre-registered criteria of the Toeplitz re-examination (virgil 0.4.2 gate G2). Prose: toeplitz_reexam_042.md.
+# scripts/toeplitz_reexam.py refuses to run unless sha256 of this file equals its REGISTERED_SHA256.
+# Changing anything here changes the hash; every change goes in the .md change log first.
+version: 1
+gate: G2
+virgil_feature: virgil.radio_toeplitz (ComplexVisData.toeplitz, chi2="auto")
+
+# Tier I: virgil's Toeplitz term against crosscheck.radio_exact (numpy, imports nothing from virgil), held-out scenes.
+tier1:
+  modes: [fixed, fitted, profiled]          # error-scale modes: sigmas=False, True, "profile"
+  points: [optimum, moved, edge]            # edge only where offsets == spread (toeplitz_scenes.points)
+  eps_kernel: 1.0e-14                       # virgil's documented spreading tolerance (toeplitz eps default)
+  eps_psi_hat: 4.0e-14                      # virgil's documented psi-hat quadrature error, added with offsets == spread
+  quantities: [chi2_d, loss, grad]          # grad: every fitted site, l2 per site; sigma per element
+  rule: "|virgil - reference| <= radio_exact.budget(worst_case=True) for every quantity, scene, mode and point"
+  report_only: [probabilistic_budget, relative_error_vs_1e-10]
+  scenes:
+    - {name: S1_ringed_disc, image: ringed_disc, npix: 128, pixel_mas: 4.0, n_ant: 40, n_times: 64, n_obs: 3, n_ddid: 4,
+       reach: 0.6, offsets: spread, offset_bound_mas: 15.0}
+    - {name: S2_sources_on_halo, image: sources_on_halo, npix: 97, pixel_mas: 3.0, n_ant: 36, n_times: 60, n_obs: 2, n_ddid: 4,
+       reach: 1.4, offsets: none}
+    - {name: S3_edge_filled, image: edge_filled, npix: 256, pixel_mas: 2.0, n_ant: 50, n_times: 120, n_obs: 3, n_ddid: 6,
+       reach: 0.9, offsets: spread, offset_bound_mas: 10.0}
+    - {name: S3_edge_filled_no_offsets, image: edge_filled, npix: 256, pixel_mas: 2.0, n_ant: 50, n_times: 120, n_obs: 3, n_ddid: 6,
+       reach: 0.9, offsets: none}
+
+# Tier II: at IM Lup's scale (42,421,131 points, 1028^2 x 5 mas, config R), virgil's Toeplitz term against virgil's direct
+# NUFFT term (self-consistency; Tier I is the independent part). Same budget, with the direct term's eps as eps_ref.
+tier2:
+  solution: R_mpol                          # alma_imlup_maxent out/32a303e-cd/R_mpol, data 15fecaa-cd
+  eps_direct: 1.0e-12
+  points: [optimum, moved, edge]            # optimum = the saved solution; moved, edge as alma_imlup_toeplitz_check 552da46
+  rule: "|toeplitz - direct| <= budget(eps_impl = 1e-14 + 4e-14, eps_ref = eps_direct, worst_case=True), per ddid chi2, loss, every gradient site"
+  nyquist: "nyquist_fraction < margin"
+  performance:
+    gpu: A100                               # device_kind must contain the token A100; otherwise the rows are NOT EVALUATED
+    speedup_min: 30.0                       # value+grad, direct at eps 1e-6 (EPS_FIT); design/toeplitz_likelihood.md section 7
+    peak_gb_max: 20.0                       # the Toeplitz path's own process; the direct reference's peak is reported
+    repeats: 10
+
+verdict:
+  accepted: every gated row PASS on one run of one virgil commit
+  not_accepted: any gated row FAIL
+  incomplete: any gated row NOT EVALUATED (e.g. no A100) and none FAIL
+  combine_runs: false                       # rows from different runs or commits are never combined
