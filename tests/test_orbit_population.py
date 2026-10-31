@@ -15,7 +15,7 @@ spec = importlib.util.spec_from_file_location("orbit_population_script", ROOT / 
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
-REGISTERED = "31fd09f6a81645fc7c2d34ebd2e3435530342dd514b0b57ab534925cfb96ceaa"
+REGISTERED = "f22ae8aa3ea35ec4ff7f2bc3ef2f8e4ec3962eab9ad014667e44baaf443dbdd7"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -118,7 +118,7 @@ def _toy():
 def test_aggregate_clean_toy_has_no_failures_but_is_incomplete():
     s = gate.spec()
     out = gate.aggregate_results(_toy(), s, s["master_seed"])
-    assert out["counts"] == {"A": 200, "B": 240, "N": 100, "D": 120, "oracle": 240}
+    assert out["counts"] == {"A": 200, "B": 240, "N": 100, "D": 120, "oracle": 240, "B_below_p_cut": 0}
     assert out["rejected"] == []
     assert {"M1:0.68", "M1:0.95", "M3a"} <= set(out["pvalues"])  # the M1 levels are the gate's, and each is evaluated
     assert out["must_hold"]["M6"]["N_all"]["provisional_pass"] and out["must_hold"]["M4"]["provisional_pass"]
@@ -189,8 +189,8 @@ def test_an_empty_subset_has_no_verdict_of_its_own():
     assert gate.aggregate_results(no_n, s, s["master_seed"])["pass"] is not True
 
 
-GATE_COMMIT = "05e50c28f0945dcd265f9a895db71bc22eff4a9b"  # virgil main this copy was taken from
-GATE_SHA256 = "902c0e7097a858cdcf02cb4054f7c113cf9f66dc24ad6e771fa82c407d4e9c3e"
+GATE_COMMIT = "12251f59fec79890fede1fed4ced473cfe2580bf"  # virgil#625 head this copy was taken from; becomes main when #625 merges
+GATE_SHA256 = "d954defef54b7e4a7f3264185d4631d83216ff9c79301a3ffbeb1e033343a841"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -337,3 +337,41 @@ def test_criteria_commit_trusts_the_environment_only_outside_a_repository(monkey
     subprocess.run(["git", "-C", str(tmp_path), "init", "-q"], check=True)
     with pytest.raises(SystemExit, match="not tracked"):  # in a repository the variable is ignored
         prereg.criteria_commit("gate.md", root=tmp_path)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_p_cut_equals_the_engines_period_cut():
+    """The independence rule allows this copy of the engine's P_cut only with a cross-check against it."""
+    import numpy as onp
+
+    from crosscheck import orbit_population as pop
+
+    aliases = pytest.importorskip("virgil.aliases")
+    if not hasattr(aliases, "period_cut"):
+        pytest.skip("this virgil has no aliases.period_cut (virgil#625)")
+    rng = onp.random.default_rng(0)
+    for _ in range(200):
+        times = rng.uniform(0.0, 800.0, int(rng.integers(2, 13)))
+        a, night, res = rng.uniform(1.0, 30.0), rng.uniform(0.0, 0.4), rng.uniform(1.0, 5.0)
+        assert pop.p_cut(times, a, night, res) == pytest.approx(aliases.period_cut(times, a, night, resolution=res), rel=1e-12)
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_b_draws_exclude_and_count_truths_below_p_cut_without_changing_the_stream():
+    from crosscheck import orbit_population as pop
+
+    systems = [pop.draw_system("B", i) for i in range(40)]
+    assert all(s["below_p_cut"] == (s["orbit"]["period"] < s["p_cut"]) for s in systems)
+    assert any(s["below_p_cut"] for s in systems) and not all(s["below_p_cut"] for s in systems)
+    # the draws themselves are those of the registered stream: p_cut consumes no generator state
+    again = pop.draw_system("B", 3)
+    assert again["orbit"] == systems[3]["orbit"] and again["n_redraws"] == systems[3]["n_redraws"]
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_aggregate_excludes_below_p_cut_truths_and_reports_them_as_b_prime():
+    s = gate.spec()
+    toy = [dict(r, truth=dict(r["truth"], below_p_cut=r["index"] % 4 == 0, p_cut=9.0)) if r["stratum"] == "B" else r for r in _toy()]
+    out = gate.aggregate_results(toy, s, s["master_seed"])
+    assert out["counts"]["B"] == 180 and out["counts"]["B_below_p_cut"] == 60 and out["counts"]["oracle"] == 180
+    assert out["reported"]["B_prime"]["n"] == 60 and out["reported"]["B_prime"]["indices"][:3] == [0, 4, 8]

@@ -119,6 +119,18 @@ def sampling_limit(a_mas, night_days, res_mas):
     return max(2.0 * math.pi * a_mas * night_days / (MOTION_FRACTION * res_mas), night_days, P_FLOOR)
 
 
+def p_cut(mean_times, a_mas, night_days, res_mas):
+    """Shortest period (d) of virgil's declared prior: ``max(2 * dt_min, P_night)``.
+
+    ``dt_min`` is the shortest gap between consecutive nights; ``P_night`` is
+    ``sampling_limit`` at the system's own semi-major axis. A copy of
+    ``virgil.aliases.period_cut`` (orbit_gate_042 section 3.3), kept equal to it by
+    ``test_p_cut_equals_the_engines_period_cut``."""
+    t = np.unique(np.asarray(mean_times, float))
+    p_night = sampling_limit(a_mas, night_days, res_mas)
+    return float(max(2.0 * np.min(np.diff(t)), p_night)) if t.size > 1 else float(p_night)
+
+
 def band_of(period, span):
     """The alias band N = round(T/P) of a period, T the span (the definition
     of virgil's documentation: band N holds T/(N + 1/2) <= P <= T/(N - 1/2);
@@ -317,6 +329,8 @@ def _draw_b(rng, s):
     s.update(nights=nights, noise=noise, orbit=_finish_orbit(orbit, mean_times), primary=primary,
              contaminants=contaminants, misspecified=bool(miss), misspecification=third if miss else None,
              schedule=schedule, n_redraws=redraws, span_days=span, band=band_of(period, span))
+    cut = p_cut(mean_times, a_mas, longest, res)  # no draw is consumed: the stream is unchanged
+    s.update(p_cut=cut, below_p_cut=bool(period < cut))
 
 
 def _draw_n(rng, s):

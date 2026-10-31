@@ -322,6 +322,7 @@ def truth_record(system):
                 envelope_fraction=(system.get("misspecification") or {}).get("fraction"),
                 near_twin=o.get("near_twin"), flux=o.get("flux"), c=system["noise"]["c"], s_v2=system["noise"].get("s_v2"), s_cp=system["noise"].get("s_cp"),
                 n_redraws=system["n_redraws"], contaminants=system["contaminants"],
+                p_cut=system.get("p_cut"), below_p_cut=system.get("below_p_cut", False),
                 primary_diam_mas=system["primary"]["diam_mas"], disc_on=system["primary"]["disc_on"],
                 period=o.get("period"), ecc=o.get("ecc"), a_mas=o.get("a_mas"), cos_inc=o.get("cos_inc"),
                 phase_coverage=_phase_coverage(system))
@@ -491,7 +492,12 @@ def aggregate_results(results, s, rng_seed):
     out = dict(pvalues=pv, must_hold={}, reported={}, unavailable=[], incomplete=[])
     fits = [r for r in results if r["part"] == "fit"]
     by = {k: [r for r in fits if r["truth"]["stratum"] == k] for k in "ABND"}
-    oracle = {r["truth"]["index"]: r for r in results if r["part"] == "oracle"}
+    # gate section 3.3: truths with P < P_cut lie outside virgil's declared prior; they are excluded from every
+    # scored metric and counted, and form the reported stratum B' (the same draws, never scored)
+    b_prime = [r for r in by["B"] if r["truth"].get("below_p_cut")]
+    by["B"] = [r for r in by["B"] if not r["truth"].get("below_p_cut")]
+    excluded = {r["truth"]["index"] for r in b_prime}
+    oracle = {r["truth"]["index"]: r for r in results if r["part"] == "oracle" and r["truth"]["index"] not in excluded}
     ok = lambda rs: [r for r in rs if r["status"] == "ok"]  # noqa: E731
     t, m = s["tests"], s["must_hold"]
 
@@ -635,7 +641,10 @@ def aggregate_results(results, s, rng_seed):
     flat = [v for v in out["must_hold"].values()]
     flat = [w for v in flat for w in (v.values() if not ({"pass", "provisional_pass"} & set(v)) else [v])]
     must = [w["pass"] if "pass" in w else w["provisional_pass"] for w in flat]
-    out["counts"] = {k: len(by[k]) for k in "ABND"} | {"oracle": len(oracle)}
+    out["counts"] = {k: len(by[k]) for k in "ABND"} | {"oracle": len(oracle), "B_below_p_cut": len(b_prime)}
+    out["reported"]["B_prime"] = dict(n=len(b_prime), indices=sorted(excluded), periods=[r["truth"]["period"] for r in b_prime],
+                                      p_cuts=[r["truth"].get("p_cut") for r in b_prime],
+                                      statuses={k: sum(r["status"] == k for r in b_prime) for k in sorted({r["status"] for r in b_prime})})
     out["judged_by_virgil"] = ["M4", "M6", "M8"]
     failed = bool(not pv or out["rejected"] or any(x is False for x in must))
     # True only if every registered test ran as registered. M4, M6 and M8 are judged by virgil's own verdict and
