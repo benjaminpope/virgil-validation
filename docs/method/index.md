@@ -262,15 +262,8 @@ The verdicts are:
 * **convention from virgil's docs**: the checks agree, but a convention
   they test (a rotation sense, which side of a disk is near) is defined only
   by virgil's documentation, which our code was written from too. It needs
-  another code or a published result to agree, or an entry in
-  `trust/signoffs.yml` (a paper equation, or Ben's sign-off at a commit;
-  a `by:` entry counts only when the commit that added its lines is
-  SSH-signed by a key listed in `trust/allowed_signers`, and otherwise stays
-  "convention". The key must need a human action for each signature (a
-  FIDO/hardware key such as `sk-ssh-ed25519` with touch, or 1Password's SSH
-  agent with approval prompts): a key left unlocked in `ssh-agent` can be
-  used by any agent on the machine, and then the check proves nothing. It
-  checks who signed, not who wrote the text);
+  another code or a published result to agree. There are no sign-offs: a
+  convention confirmed only by a person's say-so stays "convention".
 * **partly checked**: evidence from too few independent roots, overall or
   for one of the properties the graph lists for the part (a model's
   profile and its modulation sense are separate properties, each with its
