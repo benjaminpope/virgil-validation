@@ -87,7 +87,8 @@ rule.
 
 *Figure 1. Best-companion Δχ² per epoch, grouped by star. Dashed line: the
 frozen 83.1 threshold (largest of the 17 nulls); dotted: the 51.1 sensitivity
-value. Epochs with a poor fit or the halo at its bound are shown in yellow.*
+value. Epochs with a poor fit or the halo at its bound are shown in yellow.
+Three WR 31a epochs have Δχ² = 0 (no improvement on the null) and are drawn at 1.*
 
 ![Physical flux against reduced chi-squared for rule-passing epochs](flux_vs_chi2.png)
 

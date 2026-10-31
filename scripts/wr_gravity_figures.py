@@ -21,6 +21,7 @@ OUT = REPO / "docs" / "wr_gravity"
 CATALOGUE = pathlib.Path("~/data/wr_gravity/products/real1/catalogue.csv").expanduser()
 RULE, SENSITIVITY = 83.1, 51.1
 CHI2_CUT, FLUX_CUT = 2.98, 0.037
+FLOOR = 1.0  # where delta-chi2 <= 0 is drawn on the log axis
 GOOD, BAD = plt.cm.viridis(0.15), plt.cm.viridis(0.85)
 
 
@@ -39,7 +40,8 @@ def delta_chi2(rows, path):
     rows = sorted(rows, key=lambda r: (int(r["wr"].rstrip("ab")), r["wr"], int(r["night"])))
     fig, ax = plt.subplots(figsize=(10, 4.2))
     for good, colour, label in ((True, GOOD, "good fit"), (False, BAD, "poor fit or halo at bound")):
-        sel = [(i, r["dchi2_max"]) for i, r in enumerate(rows) if r["good_fit"] == good]
+        # a best companion that does not improve on the null has dchi2_max = 0, which a log axis would drop
+        sel = [(i, max(r["dchi2_max"], FLOOR)) for i, r in enumerate(rows) if r["good_fit"] == good]
         ax.scatter([i for i, _ in sel], [y for _, y in sel], color=colour, s=28, label=label, zorder=3)
     ax.axhline(RULE, color="k", ls="--", lw=1, label=f"frozen rule ({RULE})")
     ax.axhline(SENSITIVITY, color="0.4", ls=":", lw=1, label=f"sensitivity ({SENSITIVITY})")
