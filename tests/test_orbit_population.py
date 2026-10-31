@@ -189,8 +189,8 @@ def test_an_empty_subset_has_no_verdict_of_its_own():
     assert gate.aggregate_results(no_n, s, s["master_seed"])["pass"] is not True
 
 
-GATE_COMMIT = "12251f59fec79890fede1fed4ced473cfe2580bf"  # virgil#625 head this copy was taken from; becomes main when #625 merges
-GATE_SHA256 = "d954defef54b7e4a7f3264185d4631d83216ff9c79301a3ffbeb1e033343a841"
+GATE_COMMIT = "e330795cf7d30240414970564c111181b2633f78"  # virgil#625 head this copy was taken from; becomes main when #625 merges
+GATE_SHA256 = "357160422ef07589804feebfa7223eab424139c27ae9311a87b9d27d886f5d42"
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
