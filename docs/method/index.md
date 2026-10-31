@@ -324,6 +324,31 @@ criteria and sample size **before** it runs.
 The pulls already in `tests/test_vlti.py` become the first campaign, with
 a 60-draw smoke version left in CI.
 
+### Gate criteria are committed files
+
+Every gate has one criteria file under `design/` (markdown or YAML) and a **change-log table inside it**: commit, what
+changed, "changed after seeing a result: yes/no/unknown", note. The scheme is git, nothing more:
+
+* a gate run first asks git for the last commit that touched its criteria file
+  (`crosscheck.preregistration.criteria_commit`) and **refuses** a file that is
+  untracked or has uncommitted changes, before any draw is made;
+* every run record carries `criteria_commit`; the aggregate calls
+  `require_same_commit` and refuses runs from different commits (or none);
+* output headers read "Criteria: `<file>` at commit `<sha>`";
+* a changed criterion means a rerun. There is no hash, no signature and no
+  override flag (`--allow-unregistered` is gone), and an edit made after a
+  result is not hidden: it is a row in the change log with "yes".
+* On OzSTAR a `git archive` snapshot has no repository; the submit script sets
+  `CRITERIA_COMMIT` to the same value (last commit touching the file), and the
+  scripts trust it only outside a git checkout.
+
+A committed campaign summary without `criteria_commit` was made under the earlier
+SHA-256 registry. It is not gate evidence: the tests that read it skip with that
+reason, and a rerun at the release commit replaces it.
+
+`tests/test_gate_criteria.py` checks that each gate script is wired this way, has
+no override flag, and that every criteria file is tracked and has its change log.
+
 ### Cost tiers
 
 | Tier | Runs | Budget | Contents |
