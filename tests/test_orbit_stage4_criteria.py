@@ -17,7 +17,7 @@ def test_the_file_parses_and_the_holm_family_is_the_listed_p_values():
     spec = load()
     ids = {t["id"]: t for t in spec["tests"]}
     p_values = {k for k, t in ids.items() if t["kind"] == "p_value"}
-    assert set(spec["family"]["holm_members"]) == p_values and len(p_values) == 8
+    assert set(spec["family"]["holm_members"]) == p_values and len(p_values) == 13
 
 
 def test_every_gated_entry_states_its_comparator_threshold_and_sample_size():
@@ -34,3 +34,7 @@ def test_every_gated_entry_states_its_comparator_threshold_and_sample_size():
 def test_pruning_threshold_is_data_not_a_comment():
     pruning = load()["must_hold"]["pruning_measured"]
     assert pruning["delta"] == 1.0e-3 and pruning["n_se"] == 3
+
+
+def test_nothing_is_left_pending():
+    assert "pending_definitions" not in load() and load()["needs_ben_signoff"]
