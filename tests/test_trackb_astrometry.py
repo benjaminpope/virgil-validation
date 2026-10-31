@@ -123,21 +123,15 @@ def test_every_comparable_epoch_has_a_valid_covariance():
 
 
 @pytest.mark.validates("crosscheck.astrometry", roots=["self-consistency"], kind="guard")
-def test_fit_script_names_the_registered_criteria():
-    """scripts/trackb_fit.py carries the commit and SHA-256 of design/trackb_criteria.md."""
-    import hashlib
-    import subprocess
-    root = pathlib.Path(__file__).resolve().parents[1]
-    src = (root / "scripts" / "trackb_fit.py").read_text()
-    sha = hashlib.sha256((root / "design" / "trackb_criteria.md").read_bytes()).hexdigest()
-    assert f'CRITERIA_SHA256 = "{sha}"' in src
-    commit = src.split('CRITERIA_COMMIT = "')[1][:40]
-    try:
-        blob = subprocess.run(["git", "-C", str(root), "show", f"{commit}:design/trackb_criteria.md"],
-                              capture_output=True, check=True).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pytest.skip("no git history (e.g. a source snapshot)")
-    assert hashlib.sha256(blob).hexdigest() == sha
+def test_fit_script_records_the_criteria_commit_and_refuses_a_missing_file(monkeypatch, tmp_path):
+    """scripts/trackb_fit.py records the last commit of design/trackb_criteria.md, and fails when the file is missing."""
+    mod = _fit_script()
+    assert not hasattr(mod, "CRITERIA_SHA256") and not hasattr(mod, "CRITERIA_COMMIT")
+    block = mod.criteria_block()
+    assert block == {"file": "design/trackb_criteria.md", "commit": mod.prereg.criteria_commit(mod.REPO / mod.CRITERIA_FILE)}
+    monkeypatch.setattr(mod, "REPO", tmp_path)  # a checkout without the file
+    with pytest.raises(SystemExit, match="missing"):
+        mod.criteria_block()
 
 
 def _fit_script():

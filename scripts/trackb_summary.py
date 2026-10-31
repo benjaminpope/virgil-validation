@@ -23,6 +23,7 @@ N_COUNTED = 121  # counted epochs fixed by the registered criteria
 REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from crosscheck import astrometry as A  # noqa: E402
+from crosscheck import preregistration as prereg  # noqa: E402
 
 
 def main():
@@ -32,9 +33,9 @@ def main():
         for p in sorted(d.glob("*.json"))
         if p.name != "summary.json"
     ]
-    crit = {json.dumps(r["criteria"], sort_keys=True) for r in results}
-    if len(crit) != 1:
-        raise SystemExit(f"results from different criteria versions: {crit}")
+    if any("sha256" in r["criteria"] for r in results):
+        raise SystemExit("some results were made under the earlier SHA-256 registry (criteria has a sha256, not a last commit): not gate evidence; rerun")
+    prereg.require_same_commit([{"criteria_commit": r["criteria"].get("commit")} for r in results])
     counted, flags, scale_fail, unfitted, systems = [], [], [], [], {}
     for r in results:
         for e in r["epochs"]:

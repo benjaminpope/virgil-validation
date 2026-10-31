@@ -45,6 +45,7 @@ import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+from crosscheck import preregistration as prereg  # noqa: E402
 
 PARAMS = ("diam", "flux", "sep", "pa", "vis_scale")
 BOUNDS = {"diam": (0.5, 3.0), "flux": (0.02, 0.1), "sep": (5.0, 25.0), "vis_scale": (0.7, 1.5)}
@@ -83,7 +84,8 @@ def virgil_commit():
     return virgil_source()["commit"]
 
 
-def criteria_hash():
+def criteria_block_hash():
+    """Hash of the CRITERIA dict above (it lives in this script, not in a criteria file)."""
     return hashlib.sha256(json.dumps(CRITERIA, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -179,6 +181,7 @@ def replicate(seed, warmup, samples, chains):
 
 
 def run(args, replicate_fn=None):
+    crit_commit = prereg.criteria_commit(ADDENDUM)  # refuses uncommitted criteria before any draw is made
     import jax
 
     jax.config.update("jax_enable_x64", True)
@@ -196,7 +199,7 @@ def run(args, replicate_fn=None):
         # resume a task stopped by its time limit: keep its replicates when
         # they were made the same way, and run only the seeds still missing
         old = json.loads(path.read_text())
-        same = (old.get("virgil_commit") == commit and old.get("criteria_hash") == criteria_hash()
+        same = (old.get("virgil_commit") == commit and old.get("criteria_commit") == crit_commit and old.get("criteria_block_hash") == criteria_block_hash()
                 and old.get("settings") == settings and old.get("replicates_planned", args.replicates) == args.replicates)
         if not same:
             raise SystemExit(f"{path} was made with another commit, criteria or settings: move it before rerunning")
@@ -208,7 +211,7 @@ def run(args, replicate_fn=None):
         # after every replicate, so a task stopped by its time limit keeps
         # what it finished; "complete" marks a task that ran every replicate
         record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "virgil_commit": commit,
-                  "criteria_hash": criteria_hash(), "replicates_planned": args.replicates, "complete": complete,
+                  "criteria_commit": crit_commit, "criteria_block_hash": criteria_block_hash(), "replicates_planned": args.replicates, "complete": complete,
                   "settings": settings,
                   "replicates": results, "elapsed_s": time.time() - start}
         tmp = path.with_suffix(".tmp")
@@ -231,10 +234,6 @@ def run(args, replicate_fn=None):
 
 
 ADDENDUM = ROOT / "design" / "sbc_addendum.yml"
-
-
-def addendum_hash():
-    return hashlib.sha256(ADDENDUM.read_bytes()).hexdigest()
 
 
 def rank_pvalues(ranks, L, bins, tests, sims=10000, seed=0):
@@ -279,12 +278,12 @@ def holm(pvalues, alpha):
 
 
 def apply_addendum(reps, tasks, L, bins):
-    """The analyses registered in design/sbc_addendum.yml (hash recorded)."""
+    """The analyses stated in design/sbc_addendum.yml (its commit is recorded by the aggregate)."""
     import yaml
     from scipy import stats
 
     spec = yaml.safe_load(ADDENDUM.read_text())
-    out = {"sha256": addendum_hash(), "primary": {}, "confirmatory": {}, "descriptive": {}}
+    out = {"primary": {}, "confirmatory": {}, "descriptive": {}}
     pv = {}
     for name in PARAMS:
         ranks = np.array([r["ranks"][name] for r in reps])
@@ -327,7 +326,8 @@ def binomial_band(n, p, level):
 def aggregate(args):
     from scipy import stats
 
-    reps, tasks, hashes, versions, commits = [], [], set(), set(), set()
+    crit_commit = prereg.criteria_commit(ADDENDUM)
+    reps, tasks, records, hashes, versions, commits = [], [], [], set(), set(), set()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("task_*.json"))]
     if not files:
         raise SystemExit(f"no results found (no task_*.json) in {', '.join(map(str, args.dirs))}: "
@@ -336,13 +336,16 @@ def aggregate(args):
     for f in files:
         r = json.loads(f.read_text())
         partial += not r.get("complete", True)
-        hashes.add(r["criteria_hash"])
+        hashes.add(r["criteria_block_hash"])
+        records.append(r)
         versions.add(r["virgil"])
         commits.add(r.get("virgil_commit"))
         reps += r["replicates"]
         tasks += [r["task"]] * len(r["replicates"])
-    if hashes != {criteria_hash()}:
-        raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
+    if prereg.require_same_commit(records) != crit_commit:  # no override: changed criteria mean a rerun
+        raise SystemExit(f"the runs used criteria commit {prereg.require_same_commit(records)}, this checkout has {crit_commit}: rerun")
+    if hashes != {criteria_block_hash()}:
+        raise SystemExit(f"the CRITERIA block changed since the runs: {hashes} vs {criteria_block_hash()}")
     if len(commits) != 1 or None in commits:
         raise SystemExit(f"the tasks ran on different or unknown virgil commits: {commits}")
     seeds = [r["seed"] for r in reps]
@@ -352,8 +355,8 @@ def aggregate(args):
     alpha = CRITERIA["family_alpha"] / len(PARAMS)
     print(f"{len(files)} task files ({partial} incomplete), {n} replicates", file=sys.stderr)
     summary = {"replicates": n, "tasks": len(files), "incomplete_tasks": partial, "virgil": sorted(versions), "virgil_commit": commits.pop(), "criteria": CRITERIA,
-               "criteria_hash": criteria_hash(),
-               "parameters": {}}
+               "criteria_file": ADDENDUM.relative_to(ROOT).as_posix(), "criteria_commit": crit_commit,
+               "criteria_block_hash": criteria_block_hash(), "parameters": {}}
     ok = n >= CRITERIA["min_replicates"]
     for name in PARAMS:
         ranks = np.array([r["ranks"][name] for r in reps])
