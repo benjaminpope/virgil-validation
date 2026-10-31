@@ -1,15 +1,14 @@
 """Simulation-based calibration of virgil.likelihood.numpyro_model, version 2
-(scripts/sbc_v2.py; criteria and design registered in design/sbc_v2.yml).
+(scripts/sbc_v2.py; criteria and design committed in design/sbc_v2.yml).
 
 Chains start from virgil's grid fit on each replicate's own data, jittered;
 the mass matrix is dense on (pa_vec, sep, flux) with a narrower angle ring;
 a bright and a low-SNR regime; the joint log-likelihood rank as a sixth test
 quantity. This file reads the committed summary (it skips until the OzSTAR
-job sbc_v2 has run and been aggregated), and checks the registered file, the
+job sbc_v2 has run and been aggregated), and checks the committed file, the
 aggregator and the task files on synthetic input.
 """
 
-import hashlib
 import importlib.util
 import json
 import pathlib
@@ -19,6 +18,7 @@ import sys
 import numpy as np
 import pytest
 
+from crosscheck.preregistration import criteria_commit
 from evidence.meta import virgil_source
 from evidence.plugin import record
 
@@ -38,7 +38,10 @@ def script():
 def test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy():
     s = script()
     summary = json.loads(SUMMARY.read_text())
-    assert summary["criteria_hash"] == s.criteria_hash(), "criteria changed after the campaign ran"
+    if "criteria_commit" not in summary:
+        pytest.skip("the committed summary was produced under the earlier SHA-256 registry (no criteria_commit): "
+                    "not gate evidence; rerun the campaign at the release commit")
+    assert summary["criteria_commit"] == criteria_commit(s.CRITERIA_FILE), "criteria changed after the campaign ran"
     assert summary["design_hash"] == s.design_hash(), "the experiment changed after the campaign ran"
     installed = virgil_source()["commit"]
     if summary.get("virgil_commit") != installed:
@@ -54,12 +57,12 @@ def test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy():
 
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
-def test_sbc_v2_registered_file_is_what_the_script_runs():
-    """The hash is the committed file's; the file's noise levels are v1's
+def test_sbc_v2_committed_file_is_what_the_script_runs():
+    """The file's noise levels are v1's
     (the script reuses v1's simulator); the family is the stated 60 tests."""
     s = script()
     spec = s.spec()
-    assert s.criteria_hash() == hashlib.sha256((ROOT / "design" / "sbc_v2.yml").read_bytes()).hexdigest()
+    assert s.CRITERIA_FILE == ROOT / "design" / "sbc_v2.yml"
     assert spec["generative"]["sigma_v2"] == s.v1.SIGMA_V2 and spec["generative"]["sigma_cp_deg"] == s.v1.SIGMA_CP_DEG
     assert (spec["generative"]["diam"]["lo"], spec["generative"]["diam"]["hi"]) == s.v1.BOUNDS["diam"]
     assert (spec["generative"]["sep"]["lo"], spec["generative"]["sep"]["hi"]) == s.v1.BOUNDS["sep"]
@@ -91,7 +94,7 @@ def _rep(seed, regime, rank, healthy=True):
 
 def _write(path, regime, task, reps, commit="a" * 40, **over):
     s = script()
-    record_ = {"regime": regime, "task": task, "virgil_commit": commit, "criteria_hash": s.criteria_hash(),
+    record_ = {"regime": regime, "task": task, "virgil_commit": commit, "criteria_commit": criteria_commit(s.CRITERIA_FILE),
                "design_hash": s.design_hash(), "replicates_planned": len(reps), "override": None, "virgil": "x",
                "complete": True, "replicates": reps, **over}
     (pathlib.Path(path) / f"task_{regime}_{task:04d}.json").write_text(json.dumps(record_))
@@ -150,7 +153,7 @@ def test_sbc_v2_aggregate_passes_uniform_ranks_and_fails_bias_and_ill_health(tmp
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
 def test_sbc_v2_aggregate_refuses_mixed_runs(tmp_path):
     """Replicates are counted once each, from one virgil commit, one
-    registered file and one design; smoke runs are refused."""
+    criteria commit and one design; smoke runs are refused."""
     rank = lambda k: 50  # noqa: E731
     a, b = tmp_path / "a", tmp_path / "b"
     a.mkdir()
@@ -161,8 +164,8 @@ def test_sbc_v2_aggregate_refuses_mixed_runs(tmp_path):
     _write(b, "low", 0, [_rep(2, "low", rank)], commit="b" * 40)
     assert "different or unknown virgil commits" in _run(a, b).stderr
     (b / "task_low_0000.json").unlink()
-    _write(b, "low", 0, [_rep(2, "low", rank)], criteria_hash="0" * 64)
-    assert "criteria changed" in _run(a, b).stderr
+    _write(b, "low", 0, [_rep(2, "low", rank)], criteria_commit="0" * 40)
+    assert "criteria commit" in _run(a, b).stderr
     (b / "task_low_0000.json").unlink()
     _write(b, "low", 0, [_rep(2, "low", rank)], design_hash="0" * 16)
     assert "experiment changed" in _run(a, b).stderr

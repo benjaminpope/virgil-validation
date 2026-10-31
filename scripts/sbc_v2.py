@@ -1,7 +1,7 @@
 """Simulation-based calibration of virgil.likelihood.numpyro_model, version 2.
 
 Version 1 (scripts/sbc_numpyro.py) started every chain at the truth, in one
-bright regime. Version 2 (criteria and design registered in design/sbc_v2.yml,
+bright regime. Version 2 (criteria and design committed in design/sbc_v2.yml,
 whose SHA-256 is recorded in every task output and in the summary) tests the
 pipeline a user runs:
 
@@ -23,7 +23,7 @@ priors, data from crosscheck.simulate.observe.
     python scripts/sbc_v2.py aggregate DIR [DIR ...] --summary FILE
 
 ``run`` writes DIR/task_<regime>_<T>.json after every replicate (a task
-stopped by its time limit resumes). ``aggregate`` applies the registered
+stopped by its time limit resumes). ``aggregate`` applies the committed
 criteria: Holm at 1% over every rank test of every regime and quantity, and a
 sampler-health criterion per regime.
 """
@@ -63,10 +63,6 @@ def spec():
     import yaml
 
     return yaml.safe_load(CRITERIA_FILE.read_text())
-
-
-def criteria_hash():
-    return hashlib.sha256(CRITERIA_FILE.read_bytes()).hexdigest()
 
 
 def design_hash():
@@ -253,7 +249,7 @@ def replicate(seed, regime, override=None):
 
 
 def run(args, replicate_fn=None):
-    reg = prereg.for_args(args, CRITERIA_FILE)  # refuses before any draw is made
+    crit_commit = prereg.criteria_commit(CRITERIA_FILE)  # refuses uncommitted criteria before any draw is made
     import jax
 
     jax.config.update("jax_enable_x64", True)
@@ -269,9 +265,8 @@ def run(args, replicate_fn=None):
     if not commit:
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
     path = out_dir / f"task_{args.regime}_{args.task:04d}.json"
-    head = {"regime": args.regime, "task": args.task, "virgil_commit": commit, "criteria_hash": criteria_hash(),
-            "design_hash": design_hash(), "replicates_planned": reps_per_task, "registered": reg.registered,
-            **({} if reg.registered else {"stamp": prereg.UNREGISTERED_STAMP}),
+    head = {"regime": args.regime, "task": args.task, "virgil_commit": commit, "criteria_commit": crit_commit,
+            "design_hash": design_hash(), "replicates_planned": reps_per_task,
             "override": [args.warmup, args.samples, args.chains] if args.warmup else None}
     results, start = [], time.time()
     if path.exists():  # resume a task stopped by its time limit
@@ -350,29 +345,27 @@ def analyse(by_regime, s):
 
 
 def aggregate(args):
-    reg = prereg.for_args(args, CRITERIA_FILE)
+    crit_commit = prereg.criteria_commit(CRITERIA_FILE)
     s = spec()
     files = [f for d in args.dirs for f in sorted(pathlib.Path(d).glob("task_*_*.json"))]
     if not files:
         raise SystemExit(f"no results found (no task_<regime>_<task>.json) in {', '.join(map(str, args.dirs))}")
     by_regime = {}
-    hashes, designs, commits, versions, seeds, partial = set(), set(), set(), set(), [], 0
+    designs, commits, versions, seeds, partial = set(), set(), set(), [], 0
     runs = []
     for f in files:
         r = json.loads(f.read_text())
         if r.get("override"):
             raise SystemExit(f"{f} is a smoke run (sampler overridden): remove it")
         partial += not r.get("complete", True)
-        hashes.add(r["criteria_hash"])
         runs.append(r)
         designs.add(r.get("design_hash"))
         commits.add(r.get("virgil_commit"))
         versions.add(r.get("virgil"))
         by_regime.setdefault(r["regime"], []).extend(r["replicates"])
         seeds += [x["seed"] for x in r["replicates"]]
-    prereg.require_registered_runs(runs, reg)
-    if hashes != {criteria_hash()}:
-        raise SystemExit(f"criteria changed since the runs: {hashes} vs {criteria_hash()}")
+    if prereg.require_same_commit(runs) != crit_commit:  # no override: changed criteria mean a rerun
+        raise SystemExit(f"the runs used criteria commit {prereg.require_same_commit(runs)}, this checkout has {crit_commit}: rerun")
     if designs != {design_hash()}:
         raise SystemExit(f"the experiment changed since the runs (design {designs} vs {design_hash()})")
     if len(commits) != 1 or None in commits:
@@ -382,9 +375,9 @@ def aggregate(args):
     print(f"{len(files)} task files ({partial} incomplete), {len(seeds)} replicates", file=sys.stderr)
     out = analyse(by_regime, s)
     summary = {"version": 2, "tasks": len(files), "incomplete_tasks": partial, "virgil": sorted(map(str, versions)),
-               "virgil_commit": commits.pop(), "criteria_hash": criteria_hash(), "design_hash": design_hash(),
-               "criteria": s, **out}
-    text = json.dumps(prereg.stamp(summary, reg), indent=1)
+               "virgil_commit": commits.pop(), "criteria_file": CRITERIA_FILE.relative_to(ROOT).as_posix(), "criteria_commit": crit_commit,
+               "design_hash": design_hash(), "criteria": s, **out}
+    text = json.dumps(summary, indent=1)
     if args.summary:
         pathlib.Path(args.summary).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.summary).write_text(text + "\n")
@@ -403,11 +396,9 @@ def main():
     r.add_argument("--samples", type=int, default=0)
     r.add_argument("--chains", type=int, default=0)
     r.add_argument("--out", required=True)
-    prereg.add_argument(r)
     a = sub.add_parser("aggregate")
     a.add_argument("dirs", nargs="+")
     a.add_argument("--summary")
-    prereg.add_argument(a)
     args = ap.parse_args()
     run(args) if args.cmd == "run" else aggregate(args)
 
