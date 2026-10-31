@@ -1,11 +1,18 @@
+# CHANGE LOG. One row per change to this file. "changed after seeing a result" is yes, no or unknown. A run records the last
+# commit that touched this file and refuses a dirty file; changed criteria mean a rerun (no hash, no override flag).
+# | commit | what changed | changed after seeing a result: yes/no | note |
+# |---|---|---|---|
+# | 98dc073 | the file as last committed before this log ("N >= 1000 per cell, Holm 1% over mean and sd tests, registered criteria") | unknown: registered before this log; see git log | the header says: registered 2026-10-06, before any draw was run (a claim by the file, not checked here) |
+# | this WP-2 commit | SHA-256 registry sentences in this header replaced by the git scheme; this change log added | no | bookkeeping only: no criteria value changed (loaded before and after, equal); no result is involved |
+#
 # Criteria and design for the pull campaign (scripts/pull_campaign.py).
 # Registered on 2026-10-06, before any draw was run. The pull tests of a few
 # hundred draws (tests/test_pmoired_fits.py, test_v2_only.py,
 # test_grids_limits.py) are regression smoke tests: at N = 200 an sd has a
 # standard error of 0.05, so their bands cannot see a 10% error in the
 # uncertainties. This campaign carries the calibration claim.
-# The script records this file's SHA-256 (criteria_hash) in every task output
-# and in the summary; the aggregator refuses outputs made under another hash.
+# The script records this file's last commit (criteria_commit) in every task output
+# and in the summary; the aggregator refuses outputs made at another commit.
 #
 # A pull is (fitted value - truth) / (virgil's Laplace sigma) for one
 # parameter of one fit. If the fit is unbiased and its sigma is right the
