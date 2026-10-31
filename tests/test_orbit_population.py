@@ -414,3 +414,14 @@ def test_window_disagreement_is_reported_both_ways_and_a_crashed_fit_is_an_m7_fa
     assert d["scored_below_window"] > 0 and d["scored_above_window"] == 0 and d["excluded_inside_window"] == 60
     crashed = [dict(r, status="crashed", p_range=None) if r["stratum"] == "B" and r["index"] == 5 and r["part"] == "fit" else r for r in toy]
     assert gate.aggregate_results(crashed, s, s["master_seed"])["must_hold"]["M7"]["failed"] == 1
+
+
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+def test_a_scored_b_fit_with_status_ok_but_no_recorded_window_fails_m7():
+    s = gate.spec()
+    clean = gate.aggregate_results(_toy(), s, s["master_seed"])["must_hold"]["M7"]
+    assert clean["no_recorded_window"] == 0
+    for missing in (None, []):
+        toy = [dict(r, p_range=missing) if r["stratum"] == "B" and r["part"] == "fit" and r["index"] == 7 else r for r in _toy()]
+        m7 = gate.aggregate_results(toy, s, s["master_seed"])["must_hold"]["M7"]
+        assert m7["no_recorded_window"] == 1 and m7["pass"] is False

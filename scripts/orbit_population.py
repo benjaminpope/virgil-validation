@@ -624,8 +624,10 @@ def aggregate_results(results, s, rng_seed):
     invalid_oracle = [i for i, o in oracle.items() if o["status"] == "ok" and not o.get("oracle_init_calls")]
     flags_seen = sorted({f for r in b for x in r["bands"] for f in x["flags"]})
     flags_observable = bool(fail_flags & set(flags_seen)) or any(x["se_source"] == "reported" for r in b for x in r["bands"])
-    complete = bool(not crashed and not invalid_oracle and all(present[k] == expected[k] for k in expected))
-    out["must_hold"]["M7"] = dict(failed=len(crashed), missing={k: expected[k] - present[k] for k in expected if present[k] < expected[k]},
+    # a scored B fit that reports ok but recorded no window cannot be checked against the engine's window: a failure
+    no_window = [r for r in by["B"] if r["status"] == "ok" and not r.get("p_range")]
+    complete = bool(not crashed and not no_window and not invalid_oracle and all(present[k] == expected[k] for k in expected))
+    out["must_hold"]["M7"] = dict(failed=len(crashed), no_recorded_window=len(no_window), missing={k: expected[k] - present[k] for k in expected if present[k] < expected[k]},
                                   invalid_oracle=len(invalid_oracle), inaccurate_credible_set=len(inaccurate),
                                   **{"pass": False if not complete or inaccurate else (True if flags_observable else None)})
     out["reported"]["band_label_mismatch"] = sum(1 for r in a + b if (true_band(r) or {}).get("n") != r["truth"]["band"])
