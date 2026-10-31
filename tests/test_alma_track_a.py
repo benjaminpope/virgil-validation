@@ -136,7 +136,7 @@ def _pinned(monkeypatch):
 
 def _synth(tid, cov, **kw):
     spec = vs.truth_spec(tid)
-    base = dict(nrmse={"0.5": 0.10, "1": 0.05}, n_eff_ratio=0.9, base_dead_in_disk_1e4=0.0, truth_id=tid, coverage=cov, development=False, truth_source_sha256=vs.truth_source_sha(spec), criteria_hash=vs.criteria_hash(),
+    base = dict(nrmse={"0.5": 0.10, "1": 0.05}, n_eff_ratio=0.9, base_dead_in_disk_1e4=0.0, truth_id=tid, coverage=cov, development=False, truth_source_sha256=vs.truth_source_sha(spec), criteria_commit=vs.criteria_commit(),
                 config="R", fit_ddids=vs.coverage_ddids(cov), data_is_truth_dir=True, truth_npy_matches_make=True)
     return {**base, **kw}
 
@@ -180,25 +180,24 @@ def test_better_refuses_a_hash_mismatch_in_any_input(monkeypatch):
     assert vs.better_than_mpol(**kw)["items"][2]["status"] == "PASS"
     for key in ("synth", "synth_r"):
         bad = _cells() if key == "synth" else _cells(nrmse={"0.5": 0.2, "1": 0.2})
-        bad[("ring_gap", "full")]["criteria_hash"] = "0" * 64
-        with pytest.raises(vs.GateRefused, match="criteria_hash"):
+        bad[("ring_gap", "full")]["criteria_commit"] = "0" * 40
+        with pytest.raises(vs.GateRefused, match="criteria_commit"):
             vs.better_than_mpol(**{**kw, key: bad})
     missing = _cells()
-    del missing[("ring_gap", "full")]["criteria_hash"]
-    with pytest.raises(vs.GateRefused, match="criteria_hash"):
+    del missing[("ring_gap", "full")]["criteria_commit"]
+    with pytest.raises(vs.GateRefused, match="criteria_commit"):
         vs.better_than_mpol(**{**kw, "synth": missing})
-    with pytest.raises(vs.GateRefused, match="criteria_hash"):
-        vs.require_criteria({"criteria_hash": "1" * 64}, "x")
+    with pytest.raises(vs.GateRefused, match="criteria_commit"):
+        vs.require_criteria({"criteria_commit": "1" * 40}, "x")
 
 
 @pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
-def test_the_criteria_are_the_registered_file_and_there_is_no_threshold_keyword():
+def test_the_criteria_are_the_committed_file_and_there_is_no_threshold_keyword():
     import inspect
 
     import crosscheck.preregistration as prereg
 
-    reg = prereg.check(vs.CRITERIA_FILE)  # exits unless the file's hash is the pinned one in design/criteria_registry.json
-    assert reg.registered and vs.criteria_hash() == reg.sha256 and len(reg.sha256) == 64
+    assert vs.criteria_commit() == prereg.criteria_commit(vs.CRITERIA_FILE) and len(vs.criteria_commit()) == 40  # raises on a dirty file
     assert vs.CRITERIA["better_than_mpol"]["mpol_raw_chi2n"] == vs.MPOL_RAW_CHI2N and vs.CRITERIA["replica"] == vr.REPLICA_PASS
     for fn in (vs.better_than_mpol, vr.replica_compare):
         params = set(inspect.signature(fn).parameters)
@@ -462,7 +461,7 @@ def test_synth_script_make_run_score_and_the_better_and_replica_compare_commands
     out = tmp_path / "s"
     synth.main(["make", "--data", str(syn), "--out", str(out), "--dev-truth-image", str(truth_img), "--truth-blur-mas", "0", "--flux", "0.25", "--pixel-mas", str(PIX)])
     mk = json.loads((out / "synth_make.json").read_text())
-    assert mk["development"] is True and mk["truth_id"] == "dev_image" and "criteria_hash" not in mk
+    assert mk["development"] is True and mk["truth_id"] == "dev_image" and "criteria_commit" not in mk
     with pytest.raises(SystemExit):  # neither a registered truth nor a development one
         synth.main(["make", "--data", str(syn), "--out", str(tmp_path / "x"), "--pixel-mas", str(PIX)])
     assert (out / "truth.npy").exists() and len(list(out.glob("ddid_*.npz"))) == 14
@@ -472,30 +471,30 @@ def test_synth_script_make_run_score_and_the_better_and_replica_compare_commands
     sc = json.loads((fit / "synth.json").read_text())
     assert set(sc["nrmse"]) == {"0.5", "1"} and np.isfinite(sc["flux_error"]) and sc["n_eff_ratio"] > 0
     assert sc["fit_ddids"] is None and sc["data_is_truth_dir"] and sc["truth_npy_matches_make"]
-    assert sc["development"] is True and sc["truth_id"] == "dev_image" and sc["coverage"] == "full" and sc["criteria_hash"] == vs.criteria_hash()
-    assert json.loads((fit / "result.json").read_text())["criteria_hash"] == vs.criteria_hash()
+    assert sc["development"] is True and sc["truth_id"] == "dev_image" and sc["coverage"] == "full" and sc["criteria_commit"] == vs.criteria_commit()
+    assert json.loads((fit / "result.json").read_text())["criteria_commit"] == vs.criteria_commit()
     with pytest.raises(SystemExit):  # an unregistered coverage
         synth.main(["run", "--arm", "maxent", "--data", str(out), "--truth", str(out / "truth.npy"), "--coverage", "nope", "--out", str(tmp_path / "f2"), "--beam", "60", "40", "30", "--"])
     with pytest.raises(vs.GateRefused, match="single synth.json"):  # a development synth.json is not a gate input
         _call("better", "--fit", fit, "--synth", fit / "synth.json", "--synth-r", fit / "synth.json", "--out", tmp_path / "b")
     _call("better", "--fit", fit, "--out", tmp_path / "b")
     b = json.loads((tmp_path / "b" / "better_than_mpol.json").read_text())
-    assert b["verdict"] in ("FAIL", "INCOMPLETE") and {i["key"]: i["status"] for i in b["items"]}["1"] == "NOT EVALUATED" and b["criteria_hash"] == vs.criteria_hash()
+    assert b["verdict"] in ("FAIL", "INCOMPLETE") and {i["key"]: i["status"] for i in b["items"]}["1"] == "NOT EVALUATED" and b["criteria_commit"] == vs.criteria_commit()
     old = json.loads((fit / "result.json").read_text())
-    old["criteria_hash"] = "0" * 64
+    old["criteria_commit"] = "0" * 40
     (fit / "result.json").write_text(json.dumps(old))
-    with pytest.raises(vs.GateRefused, match="criteria_hash"):
+    with pytest.raises(vs.GateRefused, match="criteria_commit"):
         _call("better", "--fit", fit, "--out", tmp_path / "b2")
-    (fit / "result.json").write_text(json.dumps({**old, "criteria_hash": vs.criteria_hash()}))
+    (fit / "result.json").write_text(json.dumps({**old, "criteria_commit": vs.criteria_commit()}))
     mp = tmp_path / "mp"
     mp.mkdir()
     img = np.load(fit / "image.npy").astype(float)
     np.savez(mp / "export.npz", base_image=img, image=vr.blurred_of(img, PIX), cell_size_arcsec=PIX / 1000.0)
     _call("replica-compare", "--fit", fit, "--mpol", mp, "--out", tmp_path / "rc")
     rc = json.loads((tmp_path / "rc" / "replica_compare.json").read_text())
-    assert {i["key"]: i["status"] for i in rc["items"]}["a"] == "PASS" and rc["criteria_hash"] == vs.criteria_hash()
-    (fit / "result.json").write_text(json.dumps({**old, "criteria_hash": "0" * 64}))
-    with pytest.raises(vs.GateRefused, match="criteria_hash"):
+    assert {i["key"]: i["status"] for i in rc["items"]}["a"] == "PASS" and rc["criteria_commit"] == vs.criteria_commit()
+    (fit / "result.json").write_text(json.dumps({**old, "criteria_commit": "0" * 40}))
+    with pytest.raises(vs.GateRefused, match="criteria_commit"):
         _call("replica-compare", "--fit", fit, "--mpol", mp, "--out", tmp_path / "rc2")
 
 
