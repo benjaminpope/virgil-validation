@@ -249,7 +249,7 @@ REFERENCE_DOCS = {
 NOT_TOPIC_PAGES = {"index.md", "trust.md", "evidence.md", "results.md", "tests/index.md"}
 # Showcase pages (real-data results): the explanation of a part only when no
 # function-test page covers it, like the method pages.
-SHOWCASE_PAGES = {"imaging/postagb.md", "orbits/index.md", "imaging/imlup.md"}
+SHOWCASE_PAGES = {"imaging/postagb.md", "orbits/index.md", "imaging/imlup.md", "wr_gravity/index.md"}
 
 
 def slugify(text):
