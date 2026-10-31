@@ -322,7 +322,7 @@ def truth_record(system):
                 envelope_fraction=(system.get("misspecification") or {}).get("fraction"),
                 near_twin=o.get("near_twin"), flux=o.get("flux"), c=system["noise"]["c"], s_v2=system["noise"].get("s_v2"), s_cp=system["noise"].get("s_cp"),
                 n_redraws=system["n_redraws"], contaminants=system["contaminants"],
-                p_cut=system.get("p_cut"), below_p_cut=system.get("below_p_cut", False),
+                two_dt_min=system.get("two_dt_min"),
                 primary_diam_mas=system["primary"]["diam_mas"], disc_on=system["primary"]["disc_on"],
                 period=o.get("period"), ecc=o.get("ecc"), a_mas=o.get("a_mas"), cos_inc=o.get("cos_inc"),
                 phase_coverage=_phase_coverage(system))
@@ -402,7 +402,8 @@ def _virgil_run(part, system, paths, work):
     modes = json.loads((run / "stages" / "modes" / "report.json").read_text())
     search = json.loads((run / "stages" / "search" / "report.json").read_text())
     verdict = null_verdict(modes)
-    out = dict(bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
+    out = dict(p_range=list(aliases.p_range), window_capped=aliases.window_capped,  # the window the engine searched
+               bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
                primary_diam=search.get("primary_diam"), outliers=search.get("outliers"),
                night_flags=search.get("night_flags"), n_bands=search.get("n_bands"))
     if part == "oracle":
@@ -481,6 +482,21 @@ def m6_limit(n, table):
     return binomial_q99(n, 0.01)
 
 
+def p_cut_of(r):
+    """``P_cut`` of a fit: max(2 dt_min, lower end of the period window the engine searched), or None."""
+    lo = (r.get("p_range") or [None])[0]
+    if r.get("status") != "ok" or lo is None or r["truth"].get("two_dt_min") is None:
+        return None
+    from crosscheck import orbit_population as op
+
+    return op.p_cut_of_fit(r["truth"]["two_dt_min"], lo)
+
+
+def below_p_cut(r):
+    cut = p_cut_of(r)
+    return cut is not None and r["truth"]["period"] < cut
+
+
 def aggregate_results(results, s, rng_seed):
     """The registered analysis of per-system results (dicts as ``fit`` and
     ``oracle`` write them). Reads truths and virgil outputs only."""
@@ -494,8 +510,9 @@ def aggregate_results(results, s, rng_seed):
     by = {k: [r for r in fits if r["truth"]["stratum"] == k] for k in "ABND"}
     # gate section 3.3: truths with P < P_cut lie outside virgil's declared prior; they are excluded from every
     # scored metric and counted, and form the reported stratum B' (the same draws, never scored)
-    b_prime = [r for r in by["B"] if r["truth"].get("below_p_cut")]
-    by["B"] = [r for r in by["B"] if not r["truth"].get("below_p_cut")]
+    # a B fit with no recorded window (it failed before the search) is a failure, never an exclusion
+    b_prime = [r for r in by["B"] if below_p_cut(r)]
+    by["B"] = [r for r in by["B"] if not below_p_cut(r)]
     excluded = {r["truth"]["index"] for r in b_prime}
     oracle = {r["truth"]["index"]: r for r in results if r["part"] == "oracle" and r["truth"]["index"] not in excluded}
     ok = lambda rs: [r for r in rs if r["status"] == "ok"]  # noqa: E731
@@ -645,7 +662,7 @@ def aggregate_results(results, s, rng_seed):
     must = [w["pass"] if "pass" in w else w["provisional_pass"] for w in flat]
     out["counts"] = {k: len(by[k]) for k in "ABND"} | {"oracle": len(oracle), "B_below_p_cut": len(b_prime)}
     out["reported"]["B_prime"] = dict(n=len(b_prime), indices=sorted(excluded), periods=[r["truth"]["period"] for r in b_prime],
-                                      p_cuts=[r["truth"].get("p_cut") for r in b_prime],
+                                      p_cuts=[p_cut_of(r) for r in b_prime],
                                       statuses={k: sum(r["status"] == k for r in b_prime) for k in sorted({r["status"] for r in b_prime})})
     out["judged_by_virgil"] = ["M4", "M6", "M8"]
     failed = bool(not pv or out["rejected"] or any(x is False for x in must))
