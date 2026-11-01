@@ -1,7 +1,7 @@
 """Track B: virgil per-epoch binary fits compared with published positions.
 
-Implements design/trackb_criteria.md (registered at commit CRITERIA_COMMIT; its
-SHA-256 is checked at start-up and written into every result). One system per
+Implements design/trackb_criteria.md (a refusal to run if the file is missing or
+has uncommitted changes; its last commit is written into every result). One system per
 invocation, all its epochs:
 
   1. per epoch, the Phase 3 files named by its phase3_dp_ids: GRAVITY closure
@@ -25,7 +25,6 @@ with no grid or fit (safe on a laptop).
 """
 
 import argparse
-import hashlib
 import json
 import os
 import pathlib
@@ -38,10 +37,9 @@ import numpy as np
 REPO = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from crosscheck import astrometry as A  # noqa: E402
+from crosscheck import preregistration as prereg  # noqa: E402
 
 CRITERIA_FILE = "design/trackb_criteria.md"
-CRITERIA_COMMIT = "30f70e18ef4f2b9b2e5bfd6394d994c75ed39356"
-CRITERIA_SHA256 = "702d4f0a3de4e28d8e60012d3b4235d0b51d8db988d796822ea7a56518ba3e53"
 
 MAS_PER_RAD = 180.0 / np.pi * 3600e3
 GRAVITY_RANGES = [(2.05e-6, 2.155e-6), (2.175e-6, 2.38e-6)]
@@ -59,10 +57,9 @@ FLAG_EXCLUSIONS = {("eta_oph", "2023-06-16")}
 
 def criteria_block():
     path = REPO / CRITERIA_FILE
-    sha = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
-    if sha is not None and sha != CRITERIA_SHA256:
-        raise SystemExit(f"{CRITERIA_FILE} has changed since registration (sha256 {sha}): a new campaign version")
-    return dict(file=CRITERIA_FILE, commit=CRITERIA_COMMIT, sha256=CRITERIA_SHA256, checked=sha is not None)
+    if not path.exists():
+        raise SystemExit(f"{CRITERIA_FILE} is missing: the criteria must be a committed file")
+    return dict(file=CRITERIA_FILE, commit=prereg.criteria_commit(path))  # refuses a dirty or untracked file
 
 
 def diameters(system, s):
@@ -355,7 +352,7 @@ def main():
     fmax = 2.0 if a.system in A.NEAR_EQUAL else 1.0
     eps = epochs_of(a.system, s, root)
     print(f"{a.system}: {len(eps)} epochs ({sum(e['counted'] for e in eps)} counted); diameters {diam}; "
-          f"flux prior LogUniform({FLUX_MIN}, {fmax}); criteria {crit['commit'][:12]} (sha256 checked: {crit['checked']})",
+          f"flux prior LogUniform({FLUX_MIN}, {fmax}); criteria {CRITERIA_FILE} at commit {crit['commit'][:12]}",
           flush=True)
     rows = []
     for ep in eps:

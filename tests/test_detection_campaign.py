@@ -4,8 +4,8 @@ ozstar_scripts job detection_mc_v2): 2x10^4 companion-free and 2x10^4
 injected four-UT files from our own simulator, near the detection threshold,
 and 10^5 of virgil's own null simulations.
 
-The criteria are registered in design/detection_v2.yml (SHA-256 in the
-summary): Chernoff's mixture at a fixed position; virgil's gaussian_null
+The criteria are committed in design/detection_v2.yml (its last commit is
+in the summary): Chernoff's mixture at a fixed position; virgil's gaussian_null
 against our simulator in the bulk (Anderson-Darling) and in the tail
 (exceedances, Fisher); DetectionMC's bookkeeping; and delta_chi2 at an
 injected companion's true position against max(0, sqrt(lambda) + Z)^2. One
@@ -20,6 +20,7 @@ import pathlib
 
 import pytest
 
+from crosscheck.preregistration import criteria_commit
 from evidence.meta import virgil_source
 from evidence.plugin import record
 
@@ -39,7 +40,10 @@ def script():
                        "virgil.detection.DetectionMC", "virgil.detection.gaussian_null", roots=["statistics"], tier="C")
 def test_detection_campaign_meets_its_criteria():
     summary = json.loads(SUMMARY.read_text())
-    assert summary["criteria_hash"] == script().criteria_hash(), "criteria changed after the campaign ran"
+    if "criteria_commit" not in summary:
+        pytest.skip("the committed summary was produced under the earlier SHA-256 registry (no criteria_commit): "
+                    "not gate evidence; rerun the campaign at the release commit")
+    assert summary["criteria_commit"] == criteria_commit(script().CRITERIA_FILE), "criteria changed after the campaign ran"
     installed = virgil_source()["commit"]
     if summary["virgil_commit"] != installed:
         pytest.skip(f"the campaign ran on virgil {summary['virgil_commit'][:7]}, not the installed {str(installed)[:7]}")
@@ -62,7 +66,7 @@ def test_detection_campaign_refuses_empty_and_mixed_runs(tmp_path):
     run = lambda *d: subprocess.run([sys.executable, str(ROOT / "scripts" / "detection_campaign.py"), "aggregate",  # noqa: E731
                                      *map(str, d)], capture_output=True, text=True)
     assert "no results found" in run(tmp_path).stderr
-    head = {"part": "null", "draws": 1, "criteria_hash": s.criteria_hash(), "design_hash": s.design_hash(),
+    head = {"part": "null", "draws": 1, "criteria_commit": criteria_commit(s.CRITERIA_FILE), "design_hash": s.design_hash(),
             "complete": True, "rows": [{"seed": 1, "grid": {}, "fixed": 0.0}]}
     (tmp_path / "null_0000.json").write_text(json.dumps({**head, "task": 0, "seed0": 1, "virgil_commit": "a" * 40}))
     (tmp_path / "null_0001.json").write_text(json.dumps({**head, "task": 1, "seed0": 2, "virgil_commit": "b" * 40,

@@ -1,8 +1,8 @@
 # OiDB binaries: per-epoch positions, registered criteria
 
 Registered on 2026-10-08, before any fit was run. `scripts/oidb_binaries_fit.py`
-(not yet written) implements this file. Each result records this file's commit
-and SHA-256 (`criteria`, as in Track B). A change to anything here after the
+(not yet written) implements this file. Each result records this file's last commit
+(`criteria`, as in Track B), and the script refuses a file with uncommitted changes. A change to anything here after the
 first run is a new version of the campaign: the new version gets a new file,
 and the old results stay as they were. The plan that motivates these criteria
 is `design/plan_oidb_binaries.md`; it may be edited freely, this file may not.
@@ -188,3 +188,13 @@ section.
 
 As Track B's, with `criteria` also recording `references_hash`, and each epoch
 carrying its `class`, `windowed`, `observables`, and the matched granules.
+
+## Change log
+
+One row per change to this file. A run records the last commit that touched it and refuses a file with uncommitted changes; changed criteria mean a rerun (no hash, no override flag). No script enforces this file yet: `scripts/oidb_binaries_fit.py` is not written (see the first paragraph), so it will have to call `crosscheck.preregistration.criteria_commit` when it is.
+
+| commit | what changed | changed after seeing a result: yes/no | note |
+|---|---|---|---|
+| e34f135 | registered the per-epoch criteria | unknown: registered before this log; see git log | commit message: "register per-epoch criteria before any fit" |
+| 8a530b5 | pre-fit amendments: moving epochs, smearing, windowed search, dropped triangles, SAM family | unknown: registered before this log; see git log | commit message: "no fit or reference record exists yet" |
+| this WP-2 commit | the SHA-256 sentence replaced by the git scheme; this change log added | no | bookkeeping only: no criterion changed; no fit script or result exists (the file says the script is not yet written) |

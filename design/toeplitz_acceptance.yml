@@ -1,8 +1,15 @@
+# CHANGE LOG. One row per change to this file. "changed after seeing a result" is yes, no or unknown. A run records the last
+# commit that touched this file and refuses a dirty file; changed criteria mean a rerun (no hash, no override flag).
+# | commit | what changed | changed after seeing a result: yes/no | note |
+# |---|---|---|---|
+# | 5ab23a7 | extracted verbatim from scripts/alma_imlup_toeplitz_check.py (ACCEPT, SPEEDUP_GPU) at origin/main 473d8cc | no | from the old registry: extraction only, no value differs; the file's own header says the same |
+# | this WP-2 commit | SHA-256 registry sentences in this header replaced by the git scheme; this change log added | no | bookkeeping only: no criteria value changed (loaded before and after, equal); no result is involved |
+#
 # Acceptance limits of the Toeplitz chi^2 check (scripts/alma_imlup_toeplitz_check.py summary).
 # Extracted verbatim from that script's ACCEPT and SPEEDUP_GPU (source comment: toeplitz_ozstar_spec.md)
 # on origin/main 473d8cc. changed after seeing a result: no (extraction only; no value differs).
-# The summary records this file's SHA-256 and exits non-zero if it is not the hash pinned in
-# design/criteria_registry.json. The re-examination (vv#202) registers its own criteria file.
+# The summary records this file's last commit and refuses a file with uncommitted changes.
+# The re-examination (vv#202) has its own criteria file.
 accept:
   max_rel: 1.0e-10
   dloss_rel: 1.0e-6

@@ -262,15 +262,8 @@ The verdicts are:
 * **convention from virgil's docs**: the checks agree, but a convention
   they test (a rotation sense, which side of a disk is near) is defined only
   by virgil's documentation, which our code was written from too. It needs
-  another code or a published result to agree, or an entry in
-  `trust/signoffs.yml` (a paper equation, or Ben's sign-off at a commit;
-  a `by:` entry counts only when the commit that added its lines is
-  SSH-signed by a key listed in `trust/allowed_signers`, and otherwise stays
-  "convention". The key must need a human action for each signature (a
-  FIDO/hardware key such as `sk-ssh-ed25519` with touch, or 1Password's SSH
-  agent with approval prompts): a key left unlocked in `ssh-agent` can be
-  used by any agent on the machine, and then the check proves nothing. It
-  checks who signed, not who wrote the text);
+  another code or a published result to agree. There are no sign-offs: a
+  convention confirmed only by a person's say-so stays "convention".
 * **partly checked**: evidence from too few independent roots, overall or
   for one of the properties the graph lists for the part (a model's
   profile and its modulation sense are separate properties, each with its
@@ -330,6 +323,31 @@ criteria and sample size **before** it runs.
 
 The pulls already in `tests/test_vlti.py` become the first campaign, with
 a 60-draw smoke version left in CI.
+
+### Gate criteria are committed files
+
+Every gate has one criteria file under `design/` (markdown or YAML) and a **change-log table inside it**: commit, what
+changed, "changed after seeing a result: yes/no/unknown", note. The scheme is git, nothing more:
+
+* a gate run first asks git for the last commit that touched its criteria file
+  (`crosscheck.preregistration.criteria_commit`) and **refuses** a file that is
+  untracked or has uncommitted changes, before any draw is made;
+* every run record carries `criteria_commit`; the aggregate calls
+  `require_same_commit` and refuses runs from different commits (or none);
+* output headers read "Criteria: `<file>` at commit `<sha>`";
+* a changed criterion means a rerun. There is no hash, no signature and no
+  override flag, and an edit made after a
+  result is not hidden: it is a row in the change log with "yes".
+* On OzSTAR a `git archive` snapshot has no repository; the submit script sets
+  `CRITERIA_COMMIT` to the same value (last commit touching the file), and the
+  scripts trust it only outside a git checkout.
+
+A committed campaign summary without `criteria_commit` was made under the earlier
+SHA-256 registry. It is not gate evidence: the tests that read it skip with that
+reason, and a rerun at the release commit replaces it.
+
+`tests/test_gate_criteria.py` checks that each gate script is wired this way, has
+no override flag, and that every criteria file is tracked and has its change log.
 
 ### Cost tiers
 

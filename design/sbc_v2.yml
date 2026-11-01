@@ -1,3 +1,10 @@
+# CHANGE LOG. One row per change to this file. "changed after seeing a result" is yes, no or unknown. A run records the last
+# commit that touched this file and refuses a dirty file; changed criteria mean a rerun (no hash, no override flag).
+# | commit | what changed | changed after seeing a result: yes/no | note |
+# |---|---|---|---|
+# | 2381481 | the file as last committed before this log ("fit-started jittered chains, dense mass, low-SNR regime, joint log-likelihood rank") | unknown: registered before this log; see git log | the header says: registered 2026-10-06, before any v2 replicate was run (a claim by the file, not checked here) |
+# | this WP-2 commit | SHA-256 registry sentences in this header replaced by the git scheme; this change log added | no | bookkeeping only: no criteria value changed (loaded before and after, equal); no result is involved |
+#
 # Criteria and design for the numpyro_model SBC, version 2 (scripts/sbc_v2.py).
 # Registered on 2026-10-06, before any v2 replicate was run.
 # Version 1 (scripts/sbc_numpyro.py; trust/campaigns/sbc_numpyro_model.json)
@@ -13,9 +20,9 @@
 #   * a joint test quantity, the log-likelihood of the data, whose rank at the
 #     truth among its values at the posterior draws is uniform if the
 #     posterior is right (Modrak et al. 2023, Bayesian Analysis).
-# The scripts record this file's SHA-256 (criteria_hash) in each task output
-# and in the summary; the aggregator refuses outputs made under another hash.
-# Every number the experiment depends on is here, so the hash covers the design.
+# The scripts record this file's last commit (criteria_commit) in each task output
+# and in the summary; the aggregator refuses outputs made at another commit.
+# Every number the experiment depends on is here, so the commit covers the design.
 
 draws_per_replicate: 99      # L: ranks take values 0..99
 rank_bins: 20

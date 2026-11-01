@@ -1,7 +1,7 @@
-"""Pull campaign (scripts/pull_campaign.py; criteria and design registered in
+"""Pull campaign (scripts/pull_campaign.py; criteria and design committed in
 design/pull_campaign.yml). The first test reads the committed summary (it
 skips until the OzSTAR job pull_campaign has run and been aggregated); the
-rest check the registered file, the aggregator and the task files on
+rest check the committed file, the aggregator and the task files on
 synthetic input."""
 
 import argparse
@@ -11,6 +11,8 @@ import pathlib
 
 import numpy as np
 import pytest
+
+from crosscheck.preregistration import criteria_commit
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec_ = importlib.util.spec_from_file_location("pull_campaign", ROOT / "scripts" / "pull_campaign.py")
@@ -25,7 +27,10 @@ SUMMARY = ROOT / "trust" / "campaigns" / "pull_campaign.json"
 @pytest.mark.validates("virgil.inference.laplace_cov", roots=["statistics"], tier="C")
 def test_pull_campaign_pulls_are_standard_normal():
     s = json.loads(SUMMARY.read_text())
-    assert s["criteria_hash"] == pc.criteria_hash() and s["design_hash"] == pc.design_hash()
+    if "criteria_commit" not in s:
+        pytest.skip("the committed summary was produced under the earlier SHA-256 registry (no criteria_commit): "
+                    "not gate evidence; rerun the campaign at the release commit")
+    assert s["criteria_commit"] == criteria_commit(pc.CRITERIA_FILE) and s["design_hash"] == pc.design_hash()
     assert s["pass"], s["rejected"]
 
 
@@ -53,7 +58,7 @@ def agg(out, monkeypatch, min_draws):
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
-def test_registered_design():
+def test_committed_design():
     assert S["family_alpha"] == 0.01
     assert S["counts"]["min_draws_per_cell"] >= 1000
     assert S["counts"]["draws_per_task"] * S["counts"]["tasks_per_cell"] >= 1250
@@ -65,7 +70,7 @@ def test_calibrated_passes(tmp_path, monkeypatch, capsys):
     run_all(tmp_path, 300)
     s = agg(tmp_path, monkeypatch, 300)
     assert s["pass"] and s["rejected"] == [] and s["tests"] == 40
-    assert s["criteria_hash"] == pc.criteria_hash() and s["design_hash"] == pc.design_hash()
+    assert s["criteria_commit"] == criteria_commit(pc.CRITERIA_FILE) and s["design_hash"] == pc.design_hash()
 
 
 @pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
@@ -101,7 +106,7 @@ def test_mixed_runs_refused(tmp_path, monkeypatch, capsys):
     run_all(tmp_path, 20)
     f = next(tmp_path.glob("pull_*.json"))
     r = json.loads(f.read_text())
-    r["criteria_hash"] = "0" * 64
+    r["criteria_commit"] = "0" * 40
     f.write_text(json.dumps(r))
     with pytest.raises(SystemExit):
         agg(tmp_path, monkeypatch, 20)

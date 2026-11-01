@@ -14,8 +14,8 @@
 #             from checks marked property="name".
 #   convention: properties defined only by virgil's own documentation. The
 #             part stays "convention from virgil's docs" until a check from
-#             another code or published result confirms each one, or
-#             trust/signoffs.yml records a paper equation or Ben's sign-off.
+#             another code or published result confirms each one (a
+#             sign-off does not count).
 #             Roots come from one pool (src/evidence/__init__.py): mathematics,
 #             standards, statistics, literature, and the trusted packages
 #             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!). Any of

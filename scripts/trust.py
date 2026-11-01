@@ -59,7 +59,7 @@ VERDICTS = {
     "bug": ("Known bug, fix pending", "the checks found a mistake in virgil that is not fixed yet"),
     "partly": ("Partly checked", "it needs another independent check"),
     "convention": ("Convention from virgil's docs", "its checks agree, but a convention they rest on is taken from "
-                   "virgil's own documentation and is not yet confirmed by another code, a paper or a sign-off"),
+                   "virgil's own documentation and is not yet confirmed by another code or a published result"),
     "failing": ("Check failing", "a check of it fails"),
     "unchecked": ("Not yet checked", "no independent check yet"),
 }
@@ -347,88 +347,9 @@ UNFIXED = {"open", "to-raise", "raised"}
 EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature",
             "frank", "visr", "frap", "oimodeler"}
 
-def _is_human_signoff(path, start_line, end_line, repo=ROOT):
-    """True iff every line in [start_line, end_line] was added by a commit in a
-    non-shallow ``repo`` (not a boundary commit) with a good SSH signature from a key
-    in ``trust/allowed_signers``. Names, trailers and GitHub's own web-UI signature
-    say nothing about who held the key, so they do not count."""
-    try:
-        shallow = subprocess.run(
-            ["git", "-C", str(repo), "rev-parse", "--is-shallow-repository"],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-        if shallow != "false":
-            return False
-        blame = subprocess.run(
-            ["git", "-C", str(repo), "blame", "--porcelain", f"-L{start_line},{end_line}", "--", str(path)],
-            capture_output=True, text=True, check=True,
-        ).stdout
-    except (OSError, subprocess.CalledProcessError):
-        return False
-    if any(line == "boundary" for line in blame.splitlines()):
-        return False
-    shas = {
-        line.split()[0]
-        for line in blame.splitlines()
-        if re.match(r"^[0-9a-f]{40} \d+ \d+", line)
-    }
-    if not shas or ("0" * 40) in shas:
-        return False
-    allowed = pathlib.Path(repo) / "trust" / "allowed_signers"
-    for sha in shas:
-        try:
-            status = subprocess.run(
-                ["git", "-C", str(repo), "-c", "gpg.format=ssh", "-c", f"gpg.ssh.allowedSignersFile={allowed}",
-                 "log", "-1", "--format=%G?", sha],
-                capture_output=True, text=True, check=True,
-            ).stdout.strip()
-        except (OSError, subprocess.CalledProcessError):
-            return False
-        if status != "G":
-            return False
-    return True
-
-
-def load_signoffs(path=ROOT / "trust" / "signoffs.yml", repo=ROOT):
-    """{node: {property: entry}}: conventions confirmed by a cited paper or Ben's sign-off.
-    A ``by:`` sign-off counts only if its lines in ``signoffs.yml`` were added by a commit
-    SSH-signed with a key listed in ``trust/allowed_signers`` (see ``_is_human_signoff``)."""
-    path = pathlib.Path(path)
-    if not path.exists():
-        return {}
-    text = path.read_text()
-    n_lines = len(text.splitlines())
-    raw = yaml.safe_load(text) or {}
-    root_node = yaml.compose(text)
-    if root_node is None or not isinstance(root_node, yaml.MappingNode) or n_lines == 0:
-        return {}
-    out = {}
-    for node_k, props_v in root_node.value:
-        node_name = node_k.value
-        if not isinstance(props_v, yaml.MappingNode):
-            continue
-        kept = {}
-        for prop_k, entry_v in props_v.value:
-            prop_name = prop_k.value
-            entry = (raw.get(node_name) or {}).get(prop_name)
-            if not isinstance(entry, dict):
-                continue
-            if entry.get("citation"):
-                kept[prop_name] = entry
-            elif entry.get("by"):
-                start = prop_k.start_mark.line + 1
-                end = min(n_lines, max(start, entry_v.end_mark.line))
-                if _is_human_signoff(path, start, end, repo=repo):
-                    kept[prop_name] = entry
-        if kept:
-            out[node_name] = kept
-    return out
-
-
-def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None):
+def build(graph, ledger, records, runs, virgil=None, golden=None):
     nodes = graph["nodes"]
     golden = load_golden() if golden is None else golden
-    signoffs = load_signoffs() if signoffs is None else signoffs
     by_obj = collections.defaultdict(list)
     for r in records:
         for obj in r["objects"]:
@@ -499,10 +420,9 @@ def build(graph, ledger, records, runs, virgil=None, golden=None, signoffs=None)
         return sorted(p for p, n in (nodes[name].get("properties") or {}).items() if len(prop_roots.get(p, ())) < n)
 
     def unconfirmed_conventions(name, prop_roots):
-        """Conventions taken from virgil's docs with no external root and no sign-off."""
-        signed = signoffs.get(name) or {}
+        """Conventions taken from virgil's docs with no external root."""
         return sorted(p for p in nodes[name].get("convention") or []
-                      if not (prop_roots.get(p, set()) & EXTERNAL) and p not in signed)
+                      if not (prop_roots.get(p, set()) & EXTERNAL))
 
     def reference_verdicts():
         """Our reference nodes, decided first: verified only if their own

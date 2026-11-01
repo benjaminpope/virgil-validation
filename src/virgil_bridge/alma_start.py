@@ -149,7 +149,7 @@ def clean_image_flux(path):
                 beam_area_arcsec2=float(beam_area), beam_area_pixels=float(beam_area / (pix_arcsec[0] * pix_arcsec[1])), path=str(path))
 
 
-CRITERIA_FILE = pathlib.Path(__file__).resolve().parents[2] / "design" / "alma_imlup_gate_criteria.yml"  # pre-registered: pinned in design/criteria_registry.json
+CRITERIA_FILE = pathlib.Path(__file__).resolve().parents[2] / "design" / "alma_imlup_gate_criteria.yml"  # committed: every run records its last commit
 _CRITERIA = yaml.safe_load(CRITERIA_FILE.read_text())
 GATE_FLUX_TOL = _CRITERIA["cold_start"]["flux_tol"]
 GATE_DEAD_TOL = _CRITERIA["cold_start"]["dead_tol"]
@@ -206,7 +206,7 @@ def gate_markdown(gate):
     return rows
 
 
-CRITERIA = _CRITERIA  # the registered file's content: Track A, the synthetic truths, C8 and the replica pass live there too (a changed value changes the file's pin)
+CRITERIA = _CRITERIA  # the committed file's content: Track A, the synthetic truths, C8 and the replica pass live there too (a changed value is a new commit, so a rerun)
 MPOL_RAW_CHI2N = _CRITERIA["better_than_mpol"]["mpol_raw_chi2n"]  # MPoL's solution, raw chi^2/(2N) at s = 1 in virgil (the 2026-10-27 round)
 BETTER_NEFF, BETTER_DEAD = _CRITERIA["better_than_mpol"]["neff_min"], _CRITERIA["better_than_mpol"]["dead_max"]
 
@@ -215,16 +215,24 @@ class GateRefused(SystemExit):
     """An input the gate will not score (another criteria hash, a development truth, a C8 flag its trajectory contradicts): a ``SystemExit`` with the reason."""
 
 
-def criteria_hash():
-    """sha256 of the registered criteria file (``crosscheck.preregistration``): what every gate input must have been produced under."""
-    return prereg.sha256_file(CRITERIA_FILE)
+def criteria_commit():
+    """The last commit that touched the criteria file (``crosscheck.preregistration``), refusing a dirty or untracked file: what every gate input must have been produced under."""
+    return prereg.criteria_commit(CRITERIA_FILE)
 
 
 def require_criteria(record, what):
-    """Refuse ``record`` (a result.json / synth.json / ... dict) unless its ``criteria_hash`` is the registered file's now."""
-    h = (record or {}).get("criteria_hash")
-    if h != criteria_hash():
-        raise GateRefused(f"{what}: criteria_hash {h!r} is not the current {criteria_hash()}: it was produced under other criteria (or none); rerun it, never edit the hash")
+    """Refuse ``record`` (a result.json / synth.json / ... dict) unless its ``criteria_commit`` is the criteria file's now."""
+    c = (record or {}).get("criteria_commit")
+    if c != criteria_commit():
+        raise GateRefused(f"{what}: criteria_commit {c!r} is not the current {criteria_commit()}: it was produced under other criteria (or none); rerun it, never edit the commit")
+
+
+def require_same_criteria(records):
+    """Refuse a set of gate inputs that were not all produced at one criteria commit (the one now checked out)."""
+    now = criteria_commit()
+    seen = {(r or {}).get("criteria_commit") for r in records}
+    if seen != {now}:
+        raise GateRefused(f"inputs come from criteria commits {sorted(map(str, seen))}, not the current {now}: rerun them")
 
 
 def cells():
@@ -257,7 +265,7 @@ def coverage_ddids(coverage_id):
 
 
 def check_synth(record, truth_id, coverage_id, what, config=None, workflow=None):
-    """Refuse a synth.json that is stamped with another hash, is not the registered (``truth_id``, ``coverage_id``) cell, has a development or unpinned truth, whose truth file is not the registered one, that scores a
+    """Refuse a synth.json that is stamped with another criteria commit, is not the registered (``truth_id``, ``coverage_id``) cell, has a development or unpinned truth, whose truth file is not the registered one, that scores a
     fit of another ``config`` / ``workflow`` than expected (None: unchecked), a fit whose own ``--ddids`` are not the coverage's, or a fit whose data or ``truth.npy`` are not those ``make`` wrote."""
     require_criteria(record, what)
     spec = truth_spec(truth_id)

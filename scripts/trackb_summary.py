@@ -4,7 +4,7 @@ Reads <dir>/<system>.json from scripts/trackb_fit.py and writes <dir>/summary.js
 per-epoch flags (d2 > 13.816), per-system chi2_{2N} tests, the overall KS test of the
 counted d2 against chi2_2 (fails if the one-sided p for d2 too large is below 0.01),
 epochs whose fitted error scale exceeds 3, counted epochs without a fit, and the criteria
-block of every result (they must all name the same registered file).
+block of every result (they must all name the same last commit of the criteria file).
 
 The verdict is "incomplete" (not "pass") unless the run is whole: 20 systems with a
 .json and a .done marker each, 121 counted epochs (design/trackb_criteria.md) and no
@@ -21,8 +21,10 @@ N_SYSTEMS = 20  # system.json files in the Track B data (19 contribute counted e
 N_COUNTED = 121  # counted epochs fixed by the registered criteria
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
+CRITERIA_FILE = REPO / "design" / "trackb_criteria.md"
 sys.path.insert(0, str(REPO / "src"))
 from crosscheck import astrometry as A  # noqa: E402
+from crosscheck import preregistration as prereg  # noqa: E402
 
 
 def main():
@@ -32,9 +34,11 @@ def main():
         for p in sorted(d.glob("*.json"))
         if p.name != "summary.json"
     ]
-    crit = {json.dumps(r["criteria"], sort_keys=True) for r in results}
-    if len(crit) != 1:
-        raise SystemExit(f"results from different criteria versions: {crit}")
+    if any("sha256" in r["criteria"] for r in results):
+        raise SystemExit("some results were made under the earlier SHA-256 registry (criteria has a sha256, not a last commit): not gate evidence; rerun")
+    commit = prereg.require_same_commit([{"criteria_commit": r["criteria"].get("commit")} for r in results])
+    if commit != prereg.criteria_commit(CRITERIA_FILE):  # no override: changed criteria mean a rerun
+        raise SystemExit(f"the results used criteria commit {commit}, this checkout has {prereg.criteria_commit(CRITERIA_FILE)}: rerun")
     counted, flags, scale_fail, unfitted, systems = [], [], [], [], {}
     for r in results:
         for e in r["epochs"]:
@@ -70,7 +74,7 @@ def main():
         unfitted or missing or ks["n"] != N_COUNTED or len(results) != N_SYSTEMS
     )
     out = dict(
-        criteria=json.loads(crit.pop()),
+        criteria=dict(file=CRITERIA_FILE.relative_to(REPO).as_posix(), commit=commit),
         n_systems=len(results),
         overall=ks,
         epoch_flags=flags,
