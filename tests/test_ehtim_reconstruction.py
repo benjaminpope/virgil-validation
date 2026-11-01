@@ -10,8 +10,9 @@ the image, up to a constant and two differences of definition:
 * data: ½ χ²(amplitudes) + ½ χ²(closure phases). eht-imaging's cost is
   Σ α_d (χ²_d / N_d − 1), so α_d = N_d / 2; its closure-phase term is the
   chord one, as virgil's (tests/test_ehtim_imaging.py).
-* regulariser: w Σ (Δb)², virgil's TSV(w) and eht-imaging's 'tv2' with
-  β = w, unnormalised. Both pad the image with zeros, but eht-imaging
+* regulariser: w Σ (Δb)², virgil's TSV(w (p/B)⁴, beam_mas=B) (its weight is
+  normalised by F² (p/B)⁴, F = 1) and eht-imaging's 'tv2' with β = w,
+  unnormalised. Both pad the image with zeros, but eht-imaging
   counts only the steps out of the last row and column, virgil the steps
   across all four edges: TSV(w) = w (tv2 + Σ b[0, :]² + Σ b[:, 0]²)
   (edge_sum below; row 0 North, column 0 East in both).
@@ -52,6 +53,12 @@ pytestmark = [
 MAS = np.pi / 180 / 3600 / 1000
 UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
 N, PIXEL, SIGMA, WEIGHT = 24, 0.5, 0.01, 3e4
+BEAM = 3.0  # mas, an arbitrary beam: p / B = 1/6
+
+
+def tsv(weight):
+    """virgil's TSV equal to eht-imaging's unnormalised tv2 at beta = weight: virgil divides by F² (p/B)⁴ (F = 1, the softmax), so multiply by it."""
+    return vi.TSV(weight * (PIXEL / BEAM) ** 4, beam_mas=BEAM)
 
 
 def scene(u, v, w):
@@ -93,7 +100,7 @@ def build_problem(path, vis_fn=scene, sigma=SIGMA):
 
 def virgil_loss(b, data):
     image = vm.Image(np.log(np.maximum(b, 1e-300)), PIXEL)
-    return 0.5 * float(np.sum(np.asarray(whitened_residuals(image, data)) ** 2)) + float(vi.TSV(WEIGHT).value(image))
+    return 0.5 * float(np.sum(np.asarray(whitened_residuals(image, data)) ** 2)) + float(tsv(WEIGHT).value(image))
 
 
 def ehtim(rows, start, n_amp, n_cp, score=()):
@@ -108,7 +115,7 @@ def ehtim(rows, start, n_amp, n_cp, score=()):
 
 def virgil_fit(start, data):
     template = vm.Image(np.log(np.maximum(start, 1e-300)), PIXEL)
-    result = fit(template, vi.image_priors(template), data, regularisers=(vi.TSV(WEIGHT),))
+    result = fit(template, vi.image_priors(template), data, regularisers=(tsv(WEIGHT),))
     return np.asarray(result.model.brightness)
 
 
@@ -130,7 +137,7 @@ def _gradients(b, data, weight):
         return 0.5 * jnp.sum(whitened_residuals(vm.Image(logits, PIXEL), data) ** 2)
 
     def reg_term(logits):
-        return vi.TSV(weight).value(vm.Image(logits, PIXEL))
+        return tsv(weight).value(vm.Image(logits, PIXEL))
 
     logits = jnp.log(jnp.maximum(jnp.asarray(b), 1e-300))
     return np.asarray(jax.grad(data_term)(logits)), np.asarray(jax.grad(reg_term)(logits))
@@ -196,7 +203,7 @@ def _logit_gradients(b, data, weight, edges=True):
 
     def reg_term(z):
         image = vm.Image(z, PIXEL)
-        return vi.TSV(weight).value(image) - (weight * edge_sum(image.brightness) if edges else 0.0)
+        return tsv(weight).value(image) - (weight * edge_sum(image.brightness) if edges else 0.0)
 
     z = jnp.log(jnp.maximum(jnp.asarray(b), 1e-300))
     return np.asarray(jax.grad(data_term)(z)), np.asarray(jax.grad(reg_term)(z))
@@ -234,7 +241,7 @@ def test_objective_matches_ehtim(well_posed):
     for b, r in zip(images, res["results"]):
         w = np.asarray(whitened_residuals(vm.Image(np.log(b), PIXEL), data))
         amp, cp = 0.5 * np.sum(w[:n_amp] ** 2), 0.5 * np.sum(w[n_amp:] ** 2)
-        tsv = float(vi.TSV(WEIGHT_HI).value(vm.Image(np.log(b), PIXEL)))
+        tsv = float(tsv(WEIGHT_HI).value(vm.Image(np.log(b), PIXEL)))
         pairs = [(amp, n_amp / 2 * r["chi2_amp"]), (cp, n_cp / 2 * r["chi2_cphase"]),
                  (tsv, WEIGHT_HI * (r["tv2"] + edge_sum(b))),
                  (amp + cp + tsv - WEIGHT_HI * edge_sum(b), r["cost"] + n_amp / 2 + n_cp / 2)]

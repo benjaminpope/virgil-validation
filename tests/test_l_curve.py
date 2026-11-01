@@ -38,7 +38,7 @@ from virgil.oidata import OIData  # noqa: E402
 pytestmark = pytest.mark.x64
 
 UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
-N, PIXEL = 8, 1.0
+N, PIXEL = 8, 1.0  # mas; the TSV beam is the pixel, so p / B = 1 and the weights keep their unnormalised meaning (the grid still brackets the corner)
 WEIGHTS = [1e3, 3e2, 1e2, 3e1, 1e1]
 
 
@@ -77,7 +77,7 @@ def sweep(tmp_path_factory):
     simulate.observe(path, scene, UTS3, hour_angles_h=np.linspace(-3, 3, 5), wavelengths=np.array([1.65e-6, 2.2e-6]),
                      dec_deg=-30.0, sigma_v2=0.01, sigma_cp_deg=1.0, rng=np.random.default_rng(1))
     model = vm.Image(np.zeros((N, N)), PIXEL)
-    lc = imaging.l_curve(model, imaging.image_priors(model), OIData(str(path)), imaging.TSV(1.0), WEIGHTS)
+    lc = imaging.l_curve(model, imaging.image_priors(model), OIData(str(path)), imaging.TSV(1.0, beam_mas=PIXEL), WEIGHTS)
     # softmax(log_b) is unchanged by a uniform shift, so the fit drifts along that null direction by an amount set by rounding (|x| ~ 3e5 on
     # one jax, ~3e10 on another), and it pushes the pixels it has darkened to zero brightness ever further down. Past ~1e10, x +- 1e-6 == x in
     # float64 and the finite-difference gradients below come out exactly 0. Recentre on the brightest pixel and floor the dark ones at -1000:

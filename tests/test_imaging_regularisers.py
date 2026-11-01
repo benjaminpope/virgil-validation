@@ -45,6 +45,7 @@ pytestmark = pytest.mark.x64
 N = 24
 EPS_FRACTION = 1e-2
 WEIGHT = 1.7
+BEAM = 1.0  # mas, = the pixel scale: p / B = 1, so virgil's normalised weights equal the unnormalised ones of eht-imaging and MPoL
 
 needs_ehtim = pytest.mark.skipif(not sp.available("ehtim"), reason="eht-imaging not installed (scripts/setup_external.sh)")
 needs_mpol = pytest.mark.skipif(not sp.available("mpol"), reason="MPoL not installed (scripts/setup_external.sh)")
@@ -99,7 +100,7 @@ def test_tsv_matches_ehtim(scene):
     eta, support, b = scene
     e = sp.run("ehtim", "ehtim_worker.py", {"task": "regularisers", "images": [b.tolist()],
                                             "priors": [np.ones_like(b).tolist()], "tv_epsilon": 0.0})["results"][0]
-    value, grad = virgil_value_and_grad(vi.TSV(WEIGHT), eta, support)
+    value, grad = virgil_value_and_grad(vi.TSV(WEIGHT, beam_mas=BEAM), eta, support)
     want = -WEIGHT * e["tv2"]
     want_grad = chain(b, support, -WEIGHT * np.asarray(e["tv2_grad"]))
     record("rel_value", abs(value / want - 1))
@@ -116,7 +117,7 @@ def test_tv_matches_ehtim(scene):
     eps = EPS_FRACTION / b.size
     res = sp.run("ehtim", "ehtim_worker.py", {"task": "regularisers", "images": [f.tolist() for f in flips(b)],
                                               "priors": [np.ones_like(b).tolist()] * 4, "tv_epsilon": eps**2})["results"]
-    value, grad = virgil_value_and_grad(vi.TV(WEIGHT, epsilon=EPS_FRACTION), eta, support)
+    value, grad = virgil_value_and_grad(vi.TV(WEIGHT, epsilon=EPS_FRACTION, beam_mas=BEAM), eta, support)
     extra = (N + 1) ** 2 - N**2  # virgil's cells beyond eht-imaging's, each sqrt(eps²)
     want = WEIGHT * (np.mean([-r["tv"] for r in res]) + extra * eps)
     want_grad = chain(b, support, -WEIGHT * np.mean(unflip([r["tv_grad"] for r in res]), axis=0))
@@ -158,10 +159,10 @@ def test_tsv_and_tv_match_mpol(scene):
     eps = EPS_FRACTION / b.size
     res = sp.run("mpol", "mpol_worker.py", {"task": "regularisers", "images": [f.tolist() for f in flips(b)],
                                             "priors": [None] * 4, "tv_epsilon": eps**2})["results"]
-    value, grad = virgil_value_and_grad(vi.TSV(WEIGHT), eta, support)
+    value, grad = virgil_value_and_grad(vi.TSV(WEIGHT, beam_mas=BEAM), eta, support)
     assert abs(value / (WEIGHT * res[0]["tsv"]) - 1) < 1e-12
     assert rel(grad, chain(b, support, WEIGHT * np.asarray(res[0]["tsv_grad"]))) < 1e-12
-    value, grad = virgil_value_and_grad(vi.TV(WEIGHT, epsilon=EPS_FRACTION), eta, support)
+    value, grad = virgil_value_and_grad(vi.TV(WEIGHT, epsilon=EPS_FRACTION, beam_mas=BEAM), eta, support)
     extra = (N + 1) ** 2 - (N - 1) ** 2
     want = WEIGHT * (np.mean([r["tv"] for r in res]) + extra * eps)
     want_grad = chain(b, support, WEIGHT * np.mean(unflip([r["tv_grad"] for r in res]), axis=0))
