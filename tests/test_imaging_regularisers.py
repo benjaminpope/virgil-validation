@@ -111,6 +111,32 @@ def test_tsv_matches_ehtim(scene):
 
 @needs_ehtim
 @pytest.mark.external
+@pytest.mark.validates("virgil.imaging.TSV", "virgil.imaging.TV", roots=["ehtim"])
+@pytest.mark.parametrize("beam", [0.4, 2.5])
+def test_normalised_weights_match_ehtim_norm_reg(scene, beam):
+    """B != p: eht-imaging's own norm_reg=True (flux 1, pixel 1 mas, beam_size B), with n_data omitted (default 1) and then 3."""
+    eta, support, b = scene
+    eps = EPS_FRACTION / b.size
+    res = sp.run("ehtim", "ehtim_worker.py", {"task": "regularisers", "images": [f.tolist() for f in flips(b)],
+                                              "priors": [np.ones_like(b).tolist()] * 4, "tv_epsilon": eps**2,
+                                              "psize": 1.0, "beam": beam})["results"]
+    for n_data in (None, 3.0):
+        kw = {} if n_data is None else {"n_data": n_data}
+        k = n_data or 1.0
+        value, grad = virgil_value_and_grad(vi.TSV(WEIGHT, beam_mas=beam, **kw), eta, support)
+        assert abs(value / (-k * WEIGHT * res[0]["tv2_norm"]) - 1) < 1e-12
+        assert rel(grad, chain(b, support, -k * WEIGHT * np.asarray(res[0]["tv2_norm_grad"]))) < 1e-12
+        value, grad = virgil_value_and_grad(vi.TV(WEIGHT, epsilon=EPS_FRACTION, beam_mas=beam, **kw), eta, support)
+        extra = (N + 1) ** 2 - N**2  # virgil's cells beyond eht-imaging's, each sqrt(eps²) before the normalisation
+        norm = beam  # eht-imaging divides by flux * psize / beam = 1 / beam (flux 1, pixel 1 mas): virgil's extra epsilon cells are divided by it too
+        want = k * WEIGHT * (np.mean([-r["tv_norm"] for r in res]) + extra * eps * norm)
+        want_grad = chain(b, support, -k * WEIGHT * np.mean(unflip([r["tv_norm_grad"] for r in res]), axis=0))
+        assert abs(value / want - 1) < 1e-12
+        assert rel(grad, want_grad) < 1e-12
+
+
+@needs_ehtim
+@pytest.mark.external
 @pytest.mark.validates("virgil.imaging.TV", roots=["ehtim"])
 def test_tv_matches_ehtim(scene):
     eta, support, b = scene

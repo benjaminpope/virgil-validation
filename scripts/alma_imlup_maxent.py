@@ -384,7 +384,7 @@ def write_state(out, args, prob, values, stages, lam, n):
     cx.write_fits(out / "image.fits", image, prob.pixel_mas, RA_DEG, DEC_DEG, OBJECT="IM Lup", ORIGIN=f"virgil {args.config}")
     last = stages[-1]
     dump(out / "result.json", dict(
-        command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n),
+        command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, reg_beam_mas=reg_beam_mas(args), lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n),
         npix=prob.npix, pixel_mas=prob.pixel_mas, versions=versions(), stages=stages, converged=last["convergence"]["converged"],
         stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"]), ref_obs=getattr(args, "ref_obs", 0),
         at_bound=va.at_bound_report(values, prob.priors), **chi2_record(stages)))
@@ -415,7 +415,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     sc_s1 = va.score(final_data, prob.scene, {**values, "cal.sigma": np.ones_like(sigma)}, prob.nuis, mask=final_mask, chunk_size=ck)  # s = 1 first (C10)
     say(f"workflow {res_workflow(args)}: chi2/(2N) raw (s = 1) {sc_raw['chi2_raw'] / (2 * final_data.u.shape[0]):.4f}; -ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
     res = dict(
-        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
+        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, reg_beam_mas=reg_beam_mas(args), lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         clean_start=next((s["clean_start"] for s in stages if "clean_start" in s), None),
@@ -490,7 +490,9 @@ def reg_beam_mas(args):
     """The beam (mas) that normalises ``--reg tsv``: ``--reg-beam-mas``, else the geometric mean of the CLEAN beam of ``--clean-dir``; None if no tsv is asked for."""
     if not args.reg or "tsv" not in [k for k, _ in va.parse_reg(args.reg)]:
         return None
-    if getattr(args, "reg_beam_mas", None):
+    if getattr(args, "reg_beam_mas", None) is not None:
+        if not args.reg_beam_mas > 0:
+            raise SystemExit(f"--reg-beam-mas {args.reg_beam_mas} must be positive")
         return float(args.reg_beam_mas)
     beam = vs.read_clean(args.clean_dir)[2] if getattr(args, "clean_dir", None) else None
     if beam is None:
@@ -662,7 +664,7 @@ def cv_problem(args, data, n_all, train):
         except ValueError as e:
             raise SystemExit(str(e)) from e
         prob = va.build_problem(data, "F", lam=0.0, reg=args.reg, reg_n=n_all, reg_scale=frac, reg_prior=args.reg_prior or "flat", reg_beam_mas=reg_beam_mas(args), **common)
-        return prob, None, first, args.reg, dict(reg=args.reg, reg_scale=frac, reg_prior=args.reg_prior or "flat")
+        return prob, None, first, args.reg, dict(reg=args.reg, reg_scale=frac, reg_prior=args.reg_prior or "flat", reg_beam_mas=reg_beam_mas(args))
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     prob = va.build_problem(data, args.config, lam=lam * frac, **common)
     return prob, lam, lam, f"{lam:g}", dict(lam_train=lam * frac)
@@ -714,7 +716,7 @@ def arm_signature(r):
     a = r.get("arm") or {}
     if a.get("reg"):
         regs = va.parse_reg(a["reg"])
-        return f"{r.get('config')} reg kinds {[k for k, _ in regs]} other strengths {[x for _, x in regs[1:]]}"
+        return f"{r.get('config')} reg kinds {[k for k, _ in regs]} other strengths {[x for _, x in regs[1:]]} tsv beam {a.get('reg_beam_mas')}"
     if "length_theta_rad" in a:
         return f"{r.get('config')} GP length_theta {a['length_theta_rad']:g} r_max {a['r_max_mas']:g} n_r {a['n_r']} n_theta {a['n_theta']} sigma {a['sigma_range']}"
     return f"{r.get('config')} plain"
@@ -1237,7 +1239,7 @@ def main(argv=None):
     p.add_argument("--blur-mas", dest="taper_mas", type=float, default=None, help="config R: FWHM (mas) of the Gaussian blur inside the forward model (virgil's blur_fwhm_mas; MPoL's \"Gaussian base layer\") and of the entropy's image "
                    "(default MPoL's 30); 0 is classic MEM: no kernel, entropy of the image itself. --taper-mas is the old name")
     p.add_argument("--reg", default=None, help="config F, Track A (standard practice: no kernel, regularisers on the unblurred image), e.g. mem:1e-9,tsv:1e-4. mem:L is virgil's MaxEntropy at MPoL's lambda_M = L (weight 2 N L / dx^2 "
-                   "on the unit-sum image at a fixed 0.253 Jy: only approximately MPoL-comparable, since MPoL's effective weight grows with its fitted flux and its flux-only term is dropped); tsv:W is virgil's TSV (virgil#614) at the dimensionless weight W, normalised as eht-imaging's norm_reg by --reg-beam-mas and scaled by N, so W about 1 is comparable to the data term, W about 1e-3 a light touch. Same nuisances as R, Toeplitz chi^2 with --chi2 toeplitz. Exclusive with --lam, --lam-m")
+                   "on the unit-sum image at a fixed 0.253 Jy: only approximately MPoL-comparable, since MPoL's effective weight grows with its fitted flux and its flux-only term is dropped); tsv:W is virgil's TSV (virgil#614) at the dimensionless weight W, in eht-imaging's norm_reg form with the CLEAN beam (--reg-beam-mas; eht-imaging itself uses the nominal resolution 1/|u|max, so W is not directly eht-imaging's) and scaled by N, so W about 1 is comparable to the data term, W about 1e-3 a light touch. Same nuisances as R, Toeplitz chi^2 with --chi2 toeplitz. Exclusive with --lam, --lam-m")
     p.add_argument("--reg-beam-mas", type=float, default=None, help="--reg tsv: the CLEAN beam FWHM in mas that normalises the weight (default: the geometric mean of the beam of --clean-dir's clean.json)")
     p.add_argument("--reg-prior", choices=["flat", "beam"], default="flat", help="--reg mem: the default image of the entropy: flat (default, MPoL's convention) or the primary beam (F's pixels are sky x beam; adds -sum b ln q)")
     p.add_argument("--entropy-on", choices=["blurred", "base"], default="blurred", help="config R: the entropy of the image blurred by --taper-mas (default, MPoL's R) or of the unblurred base image while the blurring kernel stays on the model (MEM's intrinsic correlation function, Gull 1989)")
@@ -1304,7 +1306,7 @@ def main(argv=None):
     common(p)
     p.add_argument("--config", choices=["R", "F", "G"], default="F")
     p.add_argument("--reg", default=None, help="config F: mem:L,tsv:W as `fit --reg` (the grid variable, `lam` in cv.json, is the first item's strength; keep one arm per directory)")
-    p.add_argument("--reg-beam-mas", type=float, default=None, help="--reg tsv: the CLEAN beam FWHM in mas that normalises the weight, as `fit --reg-beam-mas` (required with tsv)")
+    p.add_argument("--reg-beam-mas", type=float, default=None, help="--reg tsv: the CLEAN beam FWHM in mas that normalises the weight, as `fit --reg-beam-mas` (default: the geometric mean of the beam of --clean-dir's clean.json)")
     p.add_argument("--clean-dir", default=None, help="--reg tsv: take the beam from this CLEAN output directory (clean.json) unless --reg-beam-mas is given")
     p.add_argument("--reg-prior", choices=["flat", "beam"], default="flat", help="--reg mem: flat (default) or the primary beam as the default image, as `fit --reg-prior`")
     p.add_argument("--chi2", choices=va.CHI2_ENGINES, default=None, help="default toeplitz for --reg and G, else direct")

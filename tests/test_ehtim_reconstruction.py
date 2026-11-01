@@ -241,10 +241,10 @@ def test_objective_matches_ehtim(well_posed):
     for b, r in zip(images, res["results"]):
         w = np.asarray(whitened_residuals(vm.Image(np.log(b), PIXEL), data))
         amp, cp = 0.5 * np.sum(w[:n_amp] ** 2), 0.5 * np.sum(w[n_amp:] ** 2)
-        tsv = float(tsv(WEIGHT_HI).value(vm.Image(np.log(b), PIXEL)))
+        tsv_value = float(tsv(WEIGHT_HI).value(vm.Image(np.log(b), PIXEL)))
         pairs = [(amp, n_amp / 2 * r["chi2_amp"]), (cp, n_cp / 2 * r["chi2_cphase"]),
-                 (tsv, WEIGHT_HI * (r["tv2"] + edge_sum(b))),
-                 (amp + cp + tsv - WEIGHT_HI * edge_sum(b), r["cost"] + n_amp / 2 + n_cp / 2)]
+                 (tsv_value, WEIGHT_HI * (r["tv2"] + edge_sum(b))),
+                 (amp + cp + tsv_value - WEIGHT_HI * edge_sum(b), r["cost"] + n_amp / 2 + n_cp / 2)]
         worst_value = max(worst_value, *(abs(x / y - 1) for x, y in pairs))
         g_data, g_reg = _logit_gradients(b, data, WEIGHT_HI)
         g = np.array(r["grad_log"])  # b * dcost/db
