@@ -64,6 +64,7 @@ nav:
       - "Post-AGB discs": imaging/postagb.md
       - "IM Lup: virgil against MPoL and CLEAN": imaging/imlup.md
   - "Binary orbits": orbits/index.md
+  - "Wolf-Rayet survey": wr_gravity/index.md
   - "Function tests":
       - tests/index.md
       - Data:
