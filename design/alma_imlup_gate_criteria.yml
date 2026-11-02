@@ -108,3 +108,26 @@ replica:
   peak_factor: 2.0
   flux: 0.294
   flux_tol: 0.05
+lambda_selection:
+  rule: discrepancy
+  statement: 'Choose the regulariser weight w at which the raw chi^2/N of the image fit, with the per-ddid
+    sigma factors FIXED (below), equals 1 (Morozov). virgil.imaging.l_curve over the grid below, then
+    LCurve.discrepancy(target=N), log-interpolated between the bracketing grid points; the final image is
+    refitted at that w.'
+  sigma_factors: 'per-ddid factors s_k fixed once, before any regularised fit, from an unregularised fit
+    (regularizers=[], same crop, same nuisances, L-BFGS to C8): s_k^2 = chi^2_k / N_k of that fit. Never
+    refitted jointly with w (joint fitting makes chi^2/N = 1 for every w and the rule empty).
+    Overfitting bias of s_k^2 is n_pix / N, below 0.5 % here; recorded, not corrected.'
+  grid: 'log-uniform, 8 points per decade; MEM 1e3-1e7, StarletL1 1e3-1e7 (in the #614 normalised units at
+    this crop). If the crossing falls at a grid edge, extend the grid by one decade and record the extension;
+    never stop at an edge.'
+  arms: [mem, starlet_l1]   # MEM (flat prior) and StarletL1: best two in the synthetic fast loop (2026-11-02)
+  crop: {npix: 384, pixel_mas: 7.5}
+  optimiser: 'L-BFGS, warm-started along the grid from strong to weak w, each point run to C8 (no step cap;
+    the 900 s cap of the fast loop is not used)'
+  secondary_reported_not_selecting: [corner, classic_maxent_if_feasible]
+  validation: 'the same rule on the synthetic ring_gap truth (fast loop, 2026-11-02) gave NRMSE(0.5 beam)
+    0.059 (MEM) and 0.061 (StarletL1) against 0.076 unregularised; that run used known sigma and is the
+    development check, not a held-out one'
+  changed_after_seeing_a_result: 'no real-data result exists for this rule; the arm choice uses only the
+    synthetic fast loop'
