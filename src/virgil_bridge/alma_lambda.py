@@ -12,6 +12,9 @@ The grid, the arms and the crop are read from the registered block, never branch
     final/<arm>/lambda_final.json, values.npz, image_raw.npy, image_blur.npy
 """
 
+import hashlib
+import json
+import os
 import pathlib
 import re
 import time
@@ -173,7 +176,16 @@ def point_dir(out, arm, k):
 
 
 def save_values(path, values):
-    np.savez(path, **{k: np.asarray(v) for k, v in values.items()})
+    """Written to a temporary file and renamed, so that a shard reading its neighbour never sees half a file."""
+    path = pathlib.Path(path)
+    tmp = path.with_name(f".{path.stem}.{os.getpid()}.tmp.npz")
+    np.savez(tmp, **{k: np.asarray(v) for k, v in values.items()})
+    os.replace(tmp, path)
+
+
+def sigma_hash(sigma):
+    """Identifies the fixed s_k vector a point was fitted with."""
+    return hashlib.sha256(json.dumps([float(x) for x in sigma]).encode()).hexdigest()[:16]
 
 
 def load_values(path):
@@ -185,8 +197,6 @@ def load_values(path):
 
 def load_sigma(sigma_dir):
     """``(record, values)`` of stage ``sigma``."""
-    import json
-
     d = pathlib.Path(sigma_dir)
     return json.loads((d / "sigma.json").read_text()), load_values(d / "sigma_values.npz")
 
@@ -205,17 +215,20 @@ def dots_of(values, prob):
     return {k: d.get(k) for k in ("n_eff_ratio", "base_dead_in_disk_1e4", "sub_taper_power", "hole_fraction", "peak_ratio")}
 
 
-def ensure_point(prob, out, arm, k, sigma_values, per_decade, write_json, *, force=False, **kw):
-    """The record of grid point ``(arm, k)`` under ``out``, fitted now unless it is there. Starts from the stronger neighbour, else the weaker, else a flat image (``flat_start``)."""
-    import json
-
+def ensure_point(prob, out, arm, k, sigma_values, per_decade, write_json, *, sigma, force=False, **kw):
+    """The record of grid point ``(arm, k)`` under ``out``, fitted now unless it is there (a cached point must have been fitted with these s_k: ``sigma``). Starts from the stronger neighbour, else the weaker, else a flat image (``flat_start``); the record says which (``start_from``), since it depends on which shards have finished. ``point.json`` is written after ``values.npz`` and marks the point done."""
     d = point_dir(out, arm, k)
+    h = sigma_hash(sigma)
     if (d / "point.json").exists() and not force:
-        return json.loads((d / "point.json").read_text())
-    start = next((load_values(point_dir(out, arm, j) / "values.npz") for j in (k + 1, k - 1) if (point_dir(out, arm, j) / "values.npz").exists()), None)
-    start = flat_start(sigma_values) if start is None else start
+        rec = json.loads((d / "point.json").read_text())
+        if rec.get("sigma_hash") != h:
+            raise SystemExit(f"{d}/point.json was fitted with other s_k (hash {rec.get('sigma_hash')}, sigma.json has {h}); rerun it with --force, or use a new --out")
+        return rec
+    src = next((j for j in (k + 1, k - 1) if (point_dir(out, arm, j) / "values.npz").exists()), None)
+    start = flat_start(sigma_values) if src is None else load_values(point_dir(out, arm, src) / "values.npz")
     d.mkdir(parents=True, exist_ok=True)
     rec, values = point_stage(prob, arm, weight(k, per_decade), start, k=k, **kw)
+    rec.update(start_from="flat" if src is None else int(src), sigma_hash=h)
     save_values(d / "values.npz", values)
     write_json(d / "point.json", rec)
     return rec
@@ -235,9 +248,9 @@ def setup(data, sigma_dir, *, npix, pixel_mas, ref_obs=0, chunk_size=va.CHUNK):
 def sweep_stage(data, out, sigma_dir, arm, ks, write_json, *, npix, pixel_mas, ref_obs=0, chunk_size=va.CHUNK, force=False, time_limit=None, gtol=1e-4, log=print):
     """Fit the grid points ``ks`` of ``arm`` (default the registered range, strong to weak, each warm-started from the one before)."""
     r = rule()
-    prob, _, _, sv = setup(data, sigma_dir, npix=npix, pixel_mas=pixel_mas, ref_obs=ref_obs, chunk_size=chunk_size)
+    prob, _, sig, sv = setup(data, sigma_dir, npix=npix, pixel_mas=pixel_mas, ref_obs=ref_obs, chunk_size=chunk_size)
     ks = sorted(ks if ks else range(r["k_range"][arm][0], r["k_range"][arm][1] + 1), reverse=True)
-    return [ensure_point(prob, out, arm, k, sv, r["per_decade"], write_json, force=force, time_limit=time_limit, gtol=gtol, log=log) for k in ks]
+    return [ensure_point(prob, out, arm, k, sv, r["per_decade"], write_json, sigma=sig["sigma"], force=force, time_limit=time_limit, gtol=gtol, log=log) for k in ks]
 
 
 def final_stage(data, out, sigma_dir, arm, write_json, *, npix, pixel_mas, beam=None, ref_obs=0, chunk_size=va.CHUNK, max_extend=3, time_limit=None, gtol=1e-4, log=print):
@@ -247,7 +260,7 @@ def final_stage(data, out, sigma_dir, arm, write_json, *, npix, pixel_mas, beam=
     per, (lo, hi) = r["per_decade"], r["k_range"][arm]
     prob, data_s, sig, sv = setup(data, sigma_dir, npix=npix, pixel_mas=pixel_mas, ref_obs=ref_obs, chunk_size=chunk_size)
     kw = dict(time_limit=time_limit, gtol=gtol, log=log)
-    point = lambda k: ensure_point(prob, out, arm, k, sv, per, write_json, **kw)  # noqa: E731
+    point = lambda k: ensure_point(prob, out, arm, k, sv, per, write_json, sigma=sig["sigma"], **kw)  # noqa: E731
     recs = {k: point(k) for k in range(hi, lo - 1, -1)}
     extensions, status, w = [], "ok", None
     while True:
@@ -265,11 +278,16 @@ def final_stage(data, out, sigma_dir, arm, write_json, *, npix, pixel_mas, beam=
         log(f"extending the grid by a decade at the {side} end: k = {new[0]}..{new[-1]}")
         recs.update({k: point(k) for k in new})
     table = [{k: v for k, v in x.items() if k not in ("c8",)} for _, x in sorted(recs.items(), reverse=True)]
+    if w is not None:  # the interpolation rests on the two points that bracket chi^2/N = 1: both must have reached C8
+        order = sorted(recs, reverse=True)  # strong to weak
+        pair = next((a, b) for a, b in zip(order, order[1:]) if recs[a]["chi2_over_N"] > 1 >= recs[b]["chi2_over_N"])
+        if not all(recs[k]["c8_converged"] for k in pair):
+            status = "unconverged_bracket"
     try:
         corner = lcurve_of(list(recs.values())).corner()
     except (ValueError, FloatingPointError):
         corner = None
-    res = dict(arm=arm, status=status, selected_weight=w, corner_weight=corner, corner_note="reported only: it does not select", grid_k=sorted(recs, reverse=True), per_decade=per, extensions=extensions, points=table,
+    res = dict(arm=arm, status=status, selected_weight=w, corner_weight=corner, corner_note="reported only: it does not select", grid_k=sorted(recs, reverse=True), per_decade=per, extensions=extensions, max_extend=max_extend, max_extend_note="a cap of this driver, not in the registered block", unconverged_points=sorted((k for k, x in recs.items() if not x["c8_converged"]), reverse=True), points=table,
                registered_grid=dict(k_range=[lo, hi]), sigma=sig["sigma"], npix=int(npix), pixel_mas=float(pixel_mas))
     if w is None:
         return res
@@ -286,6 +304,8 @@ def final_stage(data, out, sigma_dir, arm, write_json, *, npix, pixel_mas, beam=
     if beam is not None:
         blur = beam_blur(image, prob.pixel_mas, beam)
         np.save(d / "image_blur.npy", blur.astype(np.float32))
+    if not rec["c8_converged"]:
+        res["status"] = "unconverged_final"
     res["final"] = dict(rec, chi2_over_N_fixed_s=chi2_s / (2 * n_s), chi2_over_N_s1=chi2_1 / (2 * n_1), flux_jy=float(values["cal.flux"]), image_flux_jy=float(image.sum() * (prob.pixel_mas / 1000.0) ** 2),
                         beam_mas_deg=None if beam is None else list(beam), blur_fraction=0.5 if beam is not None else None, peak_raw=float(image.max()), peak_blur=None if blur is None else float(blur.max()))
     return res

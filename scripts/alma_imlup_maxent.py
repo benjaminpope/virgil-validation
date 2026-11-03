@@ -1220,6 +1220,8 @@ def cmd_lambda_rule(args):
         d.mkdir(parents=True, exist_ok=True)
         dump(d / "lambda_final.json", dict(res, versions=versions()))
         say(f"{args.arm}: {res['status']}, selected weight {res['selected_weight']}, corner {res['corner_weight']} (reported only), extensions {len(res['extensions'])}; wrote {d / 'lambda_final.json'}")
+        if res["status"].startswith("unconverged"):
+            raise SystemExit(f"{args.arm}: {res['status']}: a fit that sets or bounds the selected weight did not reach C8 (unconverged grid points {res['unconverged_points']}); the result is not evidence. Refit those points with --force and a longer --time-limit")
         if res["status"] != "ok":
             c = [p["chi2_over_N"] for p in res["points"]]
             raise SystemExit(f"{args.arm}: no chi^2/N = 1 crossing after {len(res['extensions'])} extension(s) (chi^2/N from {max(c):.4g} at the strongest to {min(c):.4g} at the weakest weight); no weight is selected and no edge weight is used. "

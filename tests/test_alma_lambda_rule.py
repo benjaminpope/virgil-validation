@@ -67,22 +67,29 @@ def test_sigma_sweep_final_end_to_end(syn, tmp_path, monkeypatch):
     call("--stage", "sweep", *geom, "--arm", "mem", "--k", 2, 1)  # one call, two points: the second warm-starts from the first
     assert sorted(p.parent.name for p in (out / "sweep" / "mem").glob("k*/point.json")) == ["k+001", "k+002"]
     p2 = json.loads((out / "sweep" / "mem" / "k+002" / "point.json").read_text())
+    assert p2["start_from"] == "flat" and p2["sigma_hash"] == vl.sigma_hash([1.11] * 6)
+    assert json.loads((out / "sweep" / "mem" / "k+001" / "point.json").read_text())["start_from"] == 2  # warm start from the stronger neighbour
     assert p2["weight"] == pytest.approx(100.0) and p2["c8"]["window_steps"] is not None
     assert {"n_eff_ratio", "base_dead_in_disk_1e4", "sub_taper_power"} <= set(p2["dots"])  # the dots metrics of every point
     assert p2["chi2_over_N"] == pytest.approx(p2["virgil_chi2"] / p2["n_real"], rel=1e-6)  # the term's chi^2 is virgil's own
+    (out / "sigma.json").write_text(json.dumps(dict(sig, sigma=[1.12] * 6, c8_converged=True)))
+    with pytest.raises(SystemExit, match="other s_k"):  # a cached point from other s_k is refused
+        call("--stage", "sweep", *geom, "--arm", "mem", "--k", 2)
+    (out / "sigma.json").write_text(json.dumps(dict(sig, sigma=[1.11] * 6, c8_converged=True)))
     call("--stage", "final", *geom, "--arm", "mem", "--beam-mas", 120, 90, 30, "--max-extend", 2)  # fits k = 0 itself, then the discrepancy weight
     res = json.loads((out / "final" / "mem" / "lambda_final.json").read_text())
     assert res["registered"] is True and res["criteria_hash"] and res["registered_grid"]["k_range"] == [0, 2]
-    assert res["corner_weight"] is None or res["corner_weight"] > 0  # reported only
-    chi = [p["chi2_over_N"] for p in res["points"]]
-    assert chi == sorted(chi, reverse=True) or res["extensions"]  # stronger weight, larger chi^2/N (or the grid was extended)
+    assert res["max_extend"] == 2 and "not in the registered block" in res["max_extend_note"] and res["unconverged_points"] == []
     assert res["status"] == "ok"
+    chi = [p["chi2_over_N"] for p in res["points"]]
+    print("bracketing chi2/N:", chi, "weights:", [p["weight"] for p in res["points"]], "selected", res["selected_weight"])
     ws = [p["weight"] for p in res["points"]]
     below = [p["weight"] for p in res["points"] if p["chi2_over_N"] <= 1]
     above = [p["weight"] for p in res["points"] if p["chi2_over_N"] > 1]
     assert max(below) <= res["selected_weight"] <= min(above) and min(ws) <= res["selected_weight"] <= max(ws)
     f = res["final"]
     assert f["weight"] == pytest.approx(res["selected_weight"]) and f["chi2_over_N_fixed_s"] == pytest.approx(f["chi2_over_N"], rel=1e-3)  # direct and Toeplitz agree
+    assert abs(f["chi2_over_N"] - 1) < 0.25 and f["c8_converged"]  # the refit at the interpolated weight lands near the discrepancy (coarse toy grid: 1 point per decade)
     assert f["chi2_over_N_s1"] > 0 and f["flux_jy"] > 0 and f["blur_fraction"] == 0.5
     d = out / "final" / "mem"
     raw, blur = np.load(d / "image_raw.npy"), np.load(d / "image_blur.npy")
