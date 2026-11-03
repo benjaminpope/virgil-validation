@@ -82,10 +82,10 @@ def start_from_scratch(prob, flux=0.25, fwhm_mas=1000.0):
 
 
 def term_chi2(term, values):
-    """Raw chi^2 (on the data weights of the term, constants included) at ``values``: the Toeplitz term's ``full_chi2_and_log_norm`` (its ``chi2_and_log_norm`` drops the data-only constant)."""
+    """Raw chi^2 (on the data weights of the term, constants included) at ``values``: the Toeplitz term's ``chi2_and_log_norm`` plus its ``chi2_constant`` (the data-only part it drops)."""
     import jax.numpy as jnp
 
-    return float(term.full_chi2_and_log_norm({k: jnp.asarray(v) for k, v in values.items()})[0])
+    return float(term.chi2_and_log_norm({k: jnp.asarray(v) for k, v in values.items()})[0] + term.chi2_constant)
 
 
 def one_point_fit(arm, w, held):

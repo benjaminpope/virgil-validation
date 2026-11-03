@@ -990,7 +990,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
             why = "time_limit"
             break
         t_fit = time.time()
-        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition, fit_fn=fit_fn)
+        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition, **({} if fit_fn is None else dict(fit_fn=fit_fn)))
         steps = int(info["steps"])
         pc_rounds += info.get("precondition_rounds", [])
         restarts.append(dict(steps=steps, wall_s=time.time() - t_fit, loss=float(info["loss"])))
