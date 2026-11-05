@@ -14,6 +14,7 @@
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py replica-compare --fit DIR --mpol DIR --out DIR
+    python scripts/alma_imlup_maxent.py lambda-rule --stage {sigma,sweep,final} --data DIR --out DIR [--arm {mem,starlet_l1} [--k K ...]] [--clean-dir DIR | --beam-mas BMAJ BMIN PA]   (the registered discrepancy rule, design/alma_imlup_gate_criteria.yml)
     python scripts/alma_imlup_maxent.py better --fit DIR [--cv-compare JSON] [--synth DIR] [--synth-r DIR] [--clean-dir DIR] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
     python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
@@ -50,6 +51,7 @@ jax.config.update("jax_enable_x64", True)
 import crosscheck.preregistration as prereg  # noqa: E402
 import virgil_bridge.alma as va  # noqa: E402
 import virgil_bridge.alma_gp as vg  # noqa: E402
+import virgil_bridge.alma_lambda as vl  # noqa: E402
 import virgil_bridge.alma_replica as vr  # noqa: E402
 import virgil_bridge.alma_start as vs  # noqa: E402
 from crosscheck import alma_maxent as cx  # noqa: E402
@@ -62,7 +64,7 @@ def say(*a):
     print(*a, flush=True)
 
 
-STAMPED = ("result.json", "synth.json", "replica_compare.json")  # the files the gate reads: each carries the registered criteria file's hash and whether it was registered (``prereg.stamp``)
+STAMPED = ("result.json", "synth.json", "replica_compare.json", "sigma.json", "point.json", "lambda_final.json")  # the files the gate reads: each carries the registered criteria file's hash and whether it was registered (``prereg.stamp``)
 
 
 def dump(path, obj):
@@ -1183,6 +1185,49 @@ def cmd_lambda0(args):
     say(json.dumps(dict(n=args.n, lam_M=va.MPOL["lam_m"], lam_R=r, flux=args.flux, lam_F_equivalent=va.lam_f_equivalent(r, flux=args.flux))))
 
 
+def cmd_lambda_rule(args):
+    """The registered discrepancy-principle rule (``virgil_bridge.alma_lambda``): stage sigma, sweep (one arm, optionally one grid point) or final."""
+    prereg.for_args(args, vs.CRITERIA_FILE)
+    r = vl.rule()
+    npix, px = args.npix or r["crop"]["npix"], args.pixel_mas or r["crop"]["pixel_mas"]
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    data = load(args)
+    ref_obs, _ = va.resolve_ref_obs(data, "0")
+    common = dict(npix=npix, pixel_mas=px, ref_obs=ref_obs, chunk_size=args.chunk_size)
+    run = dict(time_limit=args.time_limit, gtol=args.gtol, log=say)
+    sigma_dir = args.sigma or out
+    if args.stage != "sigma" and not args.arm:
+        raise SystemExit(f"--stage {args.stage} needs --arm {{{','.join(r['arms'])}}}")
+    if args.arm and args.arm not in r["arms"]:
+        raise SystemExit(f"--arm must be one of the registered arms {r['arms']}")
+    if args.stage == "sigma":
+        rec, values = vl.sigma_stage(data, **common, **run)
+        vl.save_values(out / "sigma_values.npz", values)
+        dump(out / "sigma.json", dict(rec, versions=versions()))
+        say(f"sigma factors fixed: s_k in [{min(rec['sigma']):.4f}, {max(rec['sigma']):.4f}], raw chi^2/N {rec['chi2_over_N']:.4f}, C8 {rec['c8_converged']}; wrote {out / 'sigma.json'}")
+        if not rec["c8_converged"]:
+            raise SystemExit(f"sigma stage did not reach C8 (stopped because {rec['stopped_because']}): its s_k are too large, which leaves no chi^2/N = 1 crossing. Rerun it with a longer --time-limit; the sweep refuses this sigma.json")
+    elif args.stage == "sweep":
+        recs = vl.sweep_stage(data, out, sigma_dir, args.arm, args.k, dump, force=args.force, **common, **run)
+        say("; ".join(f"k={x['k']:+d} w={x['weight']:.4g} chi2/N={x['chi2_over_N']:.5f} C8={x['c8_converged']}" for x in recs))
+    else:
+        beam = tuple(args.beam_mas) if args.beam_mas else (vs.read_clean(args.clean_dir)[2] if args.clean_dir else None)
+        if beam is None:
+            raise SystemExit("--stage final needs the CLEAN beam: --clean-dir, or --beam-mas BMAJ BMIN PA")
+        res = vl.final_stage(data, out, sigma_dir, args.arm, dump, beam=beam, max_extend=args.max_extend, **common, **run)
+        d = out / "final" / args.arm
+        d.mkdir(parents=True, exist_ok=True)
+        dump(d / "lambda_final.json", dict(res, versions=versions()))
+        say(f"{args.arm}: {res['status']}, selected weight {res['selected_weight']}, corner {res['corner_weight']} (reported only), extensions {len(res['extensions'])}; wrote {d / 'lambda_final.json'}")
+        if res["status"].startswith("unconverged"):
+            raise SystemExit(f"{args.arm}: {res['status']}: a fit that sets or bounds the selected weight did not reach C8 (unconverged grid points {res['unconverged_points']}); the result is not evidence. Refit those points with --force and a longer --time-limit")
+        if res["status"] != "ok":
+            c = [p["chi2_over_N"] for p in res["points"]]
+            raise SystemExit(f"{args.arm}: no chi^2/N = 1 crossing after {len(res['extensions'])} extension(s) (chi^2/N from {max(c):.4g} at the strongest to {min(c):.4g} at the weakest weight); no weight is selected and no edge weight is used. "
+                             f"Check the sigma stage (C8, s_k too large leaves chi^2/N below 1) before widening anything")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1333,6 +1378,26 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     prereg.add_argument(p)
     p.set_defaults(fn=cmd_better)
+
+    p = sub.add_parser("lambda-rule", help="the registered discrepancy rule for the regulariser weight (design/alma_imlup_gate_criteria.yml, lambda_selection): sigma, sweep, final")
+    p.add_argument("--stage", choices=["sigma", "sweep", "final"], required=True, help="sigma: unregularised fit, fixes s_k. sweep: grid points of --arm (all, or --k). final: complete the grid, extend if needed, discrepancy weight, refit, images")
+    p.add_argument("--data", required=True, help="directory of ddid_NN.npz (no default)")
+    p.add_argument("--ddids", type=int, nargs="*", default=None)
+    p.add_argument("--out", required=True, help="stage sigma writes sigma.json here; sweep and final write sweep/<arm>/k*/ and final/<arm>/")
+    p.add_argument("--sigma", default=None, help="the directory of sigma.json (default: --out)")
+    p.add_argument("--arm", default=None, help="mem (flat prior) or starlet_l1 (the registered arms)")
+    p.add_argument("--k", type=int, nargs="*", default=None, help="sweep: grid indices, weight 10^(k / points per decade) (default: the registered range; an array task passes one)")
+    p.add_argument("--force", action="store_true", help="sweep: refit points that are already on disk")
+    p.add_argument("--clean-dir", default=None, help="final: CLEAN output directory (clean.json) for the restoring beam, as the other commands")
+    p.add_argument("--beam-mas", type=float, nargs=3, default=None, metavar=("BMAJ", "BMIN", "PA_DEG"), help="final: the beam instead of --clean-dir's")
+    p.add_argument("--npix", type=int, default=None, help="default: the registered crop")
+    p.add_argument("--pixel-mas", type=float, default=None, help="default: the registered crop")
+    p.add_argument("--max-extend", type=int, default=3, help="final: decades to extend the grid by when chi^2/N = 1 is not bracketed (each recorded)")
+    p.add_argument("--time-limit", type=float, default=None, help="seconds per fit (default none: C8 decides)")
+    p.add_argument("--gtol", type=float, default=1e-4)
+    p.add_argument("--chunk-size", type=int, default=va.CHUNK)
+    prereg.add_argument(p)
+    p.set_defaults(fn=cmd_lambda_rule)
 
     p = sub.add_parser("compare")
     p.add_argument("--virgil", required=True)
