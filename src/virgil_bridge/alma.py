@@ -305,12 +305,12 @@ def parse_reg(spec):
     return out
 
 
-def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0):
+def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0, beam_mas=None):
     """virgil's regularisers of ``--reg`` (``virgil.imaging``, ``smoothed=False``: on the unblurred pixels, no kernel) for a fit on ``n`` full-data points.
 
     ``mem:L``: ``MaxEntropy`` (``prior`` the default image, flat if None) whose weight is MPoL's lambda_M = L converted as ``lam_f_equivalent(lam_r(n, L))`` at the flux ``MPOL['f_tot']``,
     i.e. ``2 n L / dx^2`` on the unit-sum image: the same pull as MPoL's ``lambda_M sum I ln(I / p) / F_tot`` with I = F_tot b / dx^2 (Jy/arcsec^2), the prior_intensity p entering only a flux-only term (exact for a flat ``prior``, which the tests evaluate). Only *approximately* MPoL-comparable: the weight is fixed at the flux ``MPOL['f_tot']`` = 0.253 Jy, whereas MPoL's effective weight grows with its fitted flux, and MPoL's flux-only entropy term is dropped. ``build_problem``'s ``reg_prior`` is ``"flat"`` (default: a flat prior on the image's pixels, MPoL's convention) or ``"beam"`` (F's primary beam as the default image, which adds ``-sum b ln q``, ln q about -0.01 at IM Lup's radius).
-    ``tsv:W``: ``TSV`` at weight W on the unit-sum image (virgil's own units, no conversion). ``scale`` (the training fraction in cross-validation) multiplies every weight, as ``lam_train``."""
+    ``tsv:W``: virgil's ``TSV`` at the dimensionless weight W (eht-imaging's ``norm_reg`` form, virgil#614, but with ``beam_mas`` the CLEAN beam FWHM (required), where eht-imaging uses its nominal resolution) and ``n_data=n``, so that W is relative to the data term: W about 1 is comparable to it. ``scale`` (the training fraction in cross-validation) multiplies every weight, as ``lam_train``."""
     from virgil.imaging import TSV, MaxEntropy
 
     out = []
@@ -318,7 +318,9 @@ def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0):
         if kind == "mem":
             out.append(MaxEntropy(float(scale * lam_f_equivalent(lam_r(n, x), flux=MPOL["f_tot"], pixel_mas=pixel_mas)), prior=prior, smoothed=False))
         else:
-            out.append(TSV(float(scale * x), smoothed=False))
+            if beam_mas is None:
+                raise ValueError("tsv needs beam_mas, the CLEAN beam FWHM in mas (virgil's TSV weight is normalised by it)")
+            out.append(TSV(float(scale * x), smoothed=False, beam_mas=float(beam_mas), n_data=float(n)))
     return out
 
 
@@ -369,7 +371,7 @@ def nuisance_sites(nuis, data, *, offset_bound_mas=None, ref_obs=0):
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
                   alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None, entropy_on="blurred",
-                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat", sigmas=True):
+                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat", reg_beam_mas=None, sigmas=True):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -457,7 +459,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         # the pixels are sky x beam; the default image of the entropy is the beam, so the penalty is the
         # entropy of the sky relative to a flat sky (docs: "the default image q ... normalised here")
         beam_prior = np.exp(np.asarray(primary_beam(npix, pixel_mas, **pb)))
-        regs = reg_regularisers(reg, n=reg_n or len(data), pixel_mas=pixel_mas, prior=beam_prior if reg_prior == "beam" else None, scale=reg_scale) if reg else [MaxEntropy(float(lam), prior=beam_prior)]
+        regs = reg_regularisers(reg, n=reg_n or len(data), pixel_mas=pixel_mas, prior=beam_prior if reg_prior == "beam" else None, scale=reg_scale, beam_mas=reg_beam_mas) if reg else [MaxEntropy(float(lam), prior=beam_prior)]
     else:
         raise ValueError(f"config must be R or F, not {config!r}")
     if chi2 == "toeplitz":

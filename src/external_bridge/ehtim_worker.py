@@ -33,6 +33,14 @@ def regularisers(task):
             "tv2": float(iu.stv2(vec, nx, ny, 1.0, 1.0, norm_reg=False)),
             "tv2_grad": iu.stv2grad(vec, nx, ny, 1.0, 1.0, norm_reg=False).reshape(ny, nx).tolist(),
         })
+        if "beam" in task:  # norm_reg=True at pixel scale psize and beam_size beam (any common unit), flux 1
+            p, bm = float(task["psize"]), float(task["beam"])
+            out[-1].update({
+                "tv_norm": float(iu.stv(vec, nx, ny, p, 1.0, norm_reg=True, beam_size=bm, epsilon=eps)),
+                "tv_norm_grad": iu.stvgrad(vec, nx, ny, p, 1.0, norm_reg=True, beam_size=bm, epsilon=eps).reshape(ny, nx).tolist(),
+                "tv2_norm": float(iu.stv2(vec, nx, ny, p, 1.0, norm_reg=True, beam_size=bm)),
+                "tv2_norm_grad": iu.stv2grad(vec, nx, ny, p, 1.0, norm_reg=True, beam_size=bm).reshape(ny, nx).tolist(),
+            })
     return {"results": out}
 
 

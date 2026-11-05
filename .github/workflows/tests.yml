@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: 884aa7e0cfc263be9f1f49a55aa2ed0910a6cd07  # virgil#565 merged (origin/main): blur_fwhm_mas, with the old taper_fwhm_mas, smooth_fwhm_mas names as FutureWarning aliases; contains #562
+  VIRGIL_REF: 8ad1d11456eb0a861e1a84ee5e845fbb562972f8  # virgil#614 merged: TSV and TV weights normalised as in eht-imaging (beam_mas required, n_data optional); contains #565, #562
 
 jobs:
   validate:

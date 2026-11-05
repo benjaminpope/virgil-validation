@@ -161,8 +161,16 @@ def test_regularized_inverse_and_its_warning():
     worst = 0.0
     for ridge in (0.0, 1e-10, 0.3):
         got = np.asarray(inference.regularized_inverse(jnp.asarray(M), ridge=ridge))
-        want = np.linalg.inv(M + ridge * np.eye(4))
+        want = np.linalg.inv(M)  # positive definite: inverted as it is, whatever the ridge
         worst = max(worst, np.max(np.abs(got - want)) / np.max(np.abs(want)))
+    # not positive definite: ridge * |M_ii| is added to each diagonal entry (virgil 0.4.x: relative to each parameter's own curvature)
+    N = np.array([[4.0, 1.0, 0.0], [1.0, 0.01, 0.0], [0.0, 0.0, 9.0]])
+    assert np.linalg.eigvalsh(N).min() < 0
+    ridge = 0.5
+    with pytest.warns(RuntimeWarning):  # the ridge was needed (and here is not enough)
+        got = np.asarray(inference.regularized_inverse(jnp.asarray(N), ridge=ridge))
+    want = np.linalg.inv(N + ridge * np.diag(np.abs(np.diag(N))))
+    worst = max(worst, np.max(np.abs(got - want)) / np.max(np.abs(want)))
     record("max_rel_dinv", worst)
     assert worst < 1e-12
     with pytest.warns(RuntimeWarning):
