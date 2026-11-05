@@ -371,7 +371,7 @@ def nuisance_sites(nuis, data, *, offset_bound_mas=None, ref_obs=0):
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
                   alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None, entropy_on="blurred",
-                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat", reg_beam_mas=None):
+                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat", reg_beam_mas=None, sigmas=True):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -398,6 +398,8 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     TSV on the unblurred pixels, no kernel, so ``lam`` is unused. With ``reg`` the Toeplitz chi^2 is allowed for F (alpha fixed).
 
     ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
+
+    ``sigmas`` False drops the per-ddid error scales from the fit (s = 1; the lambda rule folds its fixed s_k into the data weights instead).
 
     ``chi2`` is the engine of the data term: ``direct`` (the NUFFT of every point; default) or ``toeplitz`` (virgil's dirty-beam form, equal to the direct
     term to ~1e-13 at a cost independent of N; config R only). With fitted offsets Toeplitz needs the prior box inside its precompute, so
@@ -427,7 +429,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
             raise ToeplitzRefused("--chi2 toeplitz needs alpha fixed")
         if offset_bound_mas is None and not image_only:
             offset_bound_mas = TOEPLITZ_OFFSET_BOUND_MAS
-    off = dict(gains=False, offsets=False, sigmas=False) if image_only else {}
+    off = dict(gains=False, offsets=False, sigmas=False) if image_only else ({} if sigmas else dict(sigmas=False))
     alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
     taper_mas = blur_mas if blur_mas is not None else taper_mas
@@ -929,13 +931,15 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
     return values, info, traj, why
 
 
-def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None):
+def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None, fit_fn=None):
     """L-BFGS through ``virgil.fit`` (C8). Returns ``(values, info, trajectory)``: the fitted values as
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
     steps. The loss is in -ln L units up to the constant of the priors' normalisation. ``precondition`` (``"diag"``
-    or None) is ``virgil.fit``'s opt-in diagonal Gauss-Newton scaling; it needs a virgil that has the argument."""
+    or None) is ``virgil.fit``'s opt-in diagonal Gauss-Newton scaling; it needs a virgil that has the argument. ``fit_fn`` replaces ``virgil.fit`` (same signature; the lambda rule routes it through ``l_curve``)."""
 
     from virgil import fit
+
+    fit = fit_fn or fit
 
     precondition = None if precondition in (None, "none") else precondition
     kw = {}
@@ -963,7 +967,7 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
     return values, info, traj
 
 
-def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, on_round=None, max_rounds=50, precondition=None):
+def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, on_round=None, max_rounds=50, precondition=None, fit_fn=None):
     """L-BFGS through ``virgil.fit`` until C8 holds (loss change < 0.1 over >= 100 steps), the step or the time
     budget (``max_steps`` and ``time_limit``, per call) runs out, or the optimiser can go no further.
 
@@ -988,7 +992,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
             why = "time_limit"
             break
         t_fit = time.time()
-        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition)
+        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition, **({} if fit_fn is None else dict(fit_fn=fit_fn)))
         steps = int(info["steps"])
         pc_rounds += info.get("precondition_rounds", [])
         restarts.append(dict(steps=steps, wall_s=time.time() - t_fit, loss=float(info["loss"])))
