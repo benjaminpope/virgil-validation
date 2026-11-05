@@ -8,6 +8,7 @@ import sys
 
 import numpy as np
 import pytest
+import yaml
 
 pytest.importorskip("virgil.radio_toeplitz")
 
@@ -24,6 +25,32 @@ PER = 1  # points per decade of the toy grid
 pytestmark = pytest.mark.validates("virgil_bridge.alma_lambda", roots=["self-consistency"], kind="guard")
 
 
+DRAFT = yaml.safe_load("""\nlambda_selection:
+  rule: discrepancy
+  statement: 'Choose the regulariser weight w at which the raw chi^2/N of the image fit, with the per-ddid
+    sigma factors FIXED (below), equals 1 (Morozov). virgil.imaging.l_curve over the grid below, then
+    LCurve.discrepancy(target=N), log-interpolated between the bracketing grid points; the final image is
+    refitted at that w.'
+  sigma_factors: 'per-ddid factors s_k fixed once, before any regularised fit, from an unregularised fit
+    (regularizers=[], same crop, same nuisances, L-BFGS to C8): s_k^2 = chi^2_k / N_k of that fit. Never
+    refitted jointly with w (joint fitting makes chi^2/N = 1 for every w and the rule empty).
+    Overfitting bias of s_k^2 is n_pix / N, below 0.5 % here; recorded, not corrected.'
+  grid: 'log-uniform, 8 points per decade; MEM 1e3-1e7, StarletL1 1e3-1e7 (in the #614 normalised units at
+    this crop). If the crossing falls at a grid edge, extend the grid by one decade and record the extension;
+    never stop at an edge.'
+  arms: [mem, starlet_l1]   # MEM (flat prior) and StarletL1: best two in the synthetic fast loop (2026-11-02)
+  crop: {npix: 384, pixel_mas: 7.5}
+  optimiser: 'L-BFGS, warm-started along the grid from strong to weak w, each point run to C8 (no step cap;
+    the 900 s cap of the fast loop is not used)'
+  secondary_reported_not_selecting: [corner, classic_maxent_if_feasible]
+  validation: 'the same rule on the synthetic ring_gap truth (fast loop, 2026-11-02) gave NRMSE(0.5 beam)
+    0.059 (MEM) and 0.061 (StarletL1) against 0.076 unregularised; that run used known sigma and is the
+    development check, not a held-out one'
+  changed_after_seeing_a_result: 'no real-data result exists for this rule; the arm choice uses only the
+    synthetic fast loop'
+""")["lambda_selection"]  # the withdrawn first draft of the rule, which this driver implements (the registered block is the revised one)
+
+
 def call(*argv):
     script.main(["lambda-rule", *[str(a) for a in argv]])
 
@@ -33,8 +60,13 @@ def syn(tmp_path_factory):
     return synthetic_dir(tmp_path_factory.mktemp("syn"), n=30, n_obs=3, per_obs=2)
 
 
-def test_the_registered_grid_is_parsed_from_the_criteria_file():
-    r = vl.rule()
+def test_the_driver_refuses_the_revised_registered_rule():
+    with pytest.raises(SystemExit, match="withdrawn draft"):
+        vl.rule()
+
+
+def test_the_draft_grid_is_parsed():
+    r = vl.rule(DRAFT)
     assert r["per_decade"] == 8 and r["arms"] == ["mem", "starlet_l1"] and r["crop"] == {"npix": 384, "pixel_mas": 7.5}
     assert r["k_range"] == {"mem": (24, 56), "starlet_l1": (24, 56)}  # 1e3 to 1e7 at 8 per decade
     assert vl.weight(24, 8) == pytest.approx(1e3) and vl.weight(56, 8) == pytest.approx(1e7)
@@ -49,6 +81,8 @@ def test_discrepancy_interpolates_in_log_weight_and_reports_a_missing_crossing()
 
 def test_sigma_sweep_final_end_to_end(syn, tmp_path, monkeypatch):
     out = tmp_path / "run"
+    base = vl.rule(DRAFT)
+    monkeypatch.setattr(vl, "rule", lambda: dict(base, per_decade=PER, k_range={a: (0, 2) for a in base["arms"]}))  # the draft with a toy grid: w = 1, 10, 100
     geom = ["--data", syn, "--out", out, "--npix", NPIX, "--pixel-mas", PIX]
     with pytest.raises(SystemExit, match="did not reach C8"):  # a cut sigma stage is refused (its s_k would be too large), but its record is kept
         call("--stage", "sigma", *geom, "--time-limit", 2)
@@ -60,8 +94,6 @@ def test_sigma_sweep_final_end_to_end(syn, tmp_path, monkeypatch):
     assert sig["overfit_bias"] == pytest.approx(NPIX**2 / sig["n_real"])
     (out / "sigma.json").write_text(json.dumps(dict(sig, sigma=[1.11] * 6, c8_converged=True)))  # the toy model leaves chi^2/N = 1.2 even unregularised (s = 1.11 puts that at 1); the cut fit above would give s too large for a crossing
 
-    base = vl.rule()
-    monkeypatch.setattr(vl, "rule", lambda: dict(base, per_decade=PER, k_range={a: (0, 2) for a in base["arms"]}))  # toy grid: w = 1, 10, 100
     call("--stage", "sweep", *geom, "--arm", "starlet_l1", "--k", 1)  # the second arm: one shard
     assert json.loads((out / "sweep" / "starlet_l1" / "k+001" / "point.json").read_text())["arm"] == "starlet_l1"
     call("--stage", "sweep", *geom, "--arm", "mem", "--k", 2, 1)  # one call, two points: the second warm-starts from the first

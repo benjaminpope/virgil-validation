@@ -29,9 +29,13 @@ ARM_LABEL = {"mem": "MEM", "starlet_l1": "StarletL1"}  # the names the registere
 MAX_STEPS, MAX_ROUNDS = 10**7, 10**4  # "no step cap": C8 or a stalled optimiser ends a point
 
 
-def rule():
-    """The registered ``lambda_selection`` block with its grid parsed: ``per_decade`` and, per arm, the ``k`` range ``(lo, hi)`` of ``w = 10^(k / per_decade)``."""
-    block = dict(vs.CRITERIA["lambda_selection"])
+def rule(block=None):
+    """The ``lambda_selection`` block (default: the registered one) with its grid parsed: ``per_decade`` and, per arm, the ``k`` range ``(lo, hi)`` of ``w = 10^(k / per_decade)``.
+    This driver implements the first, withdrawn draft of the rule (fixed s_k from an unregularised fit, MEM and StarletL1 swept to C8); the registered block is the revised
+    one, and the driver refuses to run on it until it is reimplemented."""
+    block = dict(vs.CRITERIA["lambda_selection"] if block is None else block)
+    if "grid" not in block:
+        raise SystemExit(f"lambda_selection in the registered criteria is the revised rule ({block.get('rule')}); this driver implements the withdrawn draft (discrepancy on s_k from an unregularised fit) and does not run on it")
     text = block["grid"]
     per = int(re.search(r"(\d+) points per decade", text).group(1))
     ks = {}

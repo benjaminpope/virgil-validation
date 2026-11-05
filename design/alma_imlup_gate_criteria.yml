@@ -109,25 +109,43 @@ replica:
   flux: 0.294
   flux_tol: 0.05
 lambda_selection:
-  rule: discrepancy
-  statement: 'Choose the regulariser weight w at which the raw chi^2/N of the image fit, with the per-ddid
-    sigma factors FIXED (below), equals 1 (Morozov). virgil.imaging.l_curve over the grid below, then
-    LCurve.discrepancy(target=N), log-interpolated between the bracketing grid points; the final image is
-    refitted at that w.'
-  sigma_factors: 'per-ddid factors s_k fixed once, before any regularised fit, from an unregularised fit
-    (regularizers=[], same crop, same nuisances, L-BFGS to C8): s_k^2 = chi^2_k / N_k of that fit. Never
-    refitted jointly with w (joint fitting makes chi^2/N = 1 for every w and the rule empty).
-    Overfitting bias of s_k^2 is n_pix / N, below 0.5 % here; recorded, not corrected.'
-  grid: 'log-uniform, 8 points per decade; MEM 1e3-1e7, StarletL1 1e3-1e7 (in the #614 normalised units at
-    this crop). If the crossing falls at a grid edge, extend the grid by one decade and record the extension;
-    never stop at an edge.'
-  arms: [mem, starlet_l1]   # MEM (flat prior) and StarletL1: best two in the synthetic fast loop (2026-11-02)
+  # Revised 2026-11-05, before any real-data run, after the synthetic diagnosis (testC/P/M/S/E in ~/data/alma_imlup/diagnosis/) found the
+  # first draft flawed: s_k^2 from the unregularised fit makes the discrepancy target the chi^2 floor, so it selects w -> 0.
+  rule: discrepancy_dof_corrected
+  primary_arm: mem_sqrt_pixels
+  dropped_arms: [starlet_l1]
+  exploratory_arms: [gaussian_field_order4, multipole_field]
   crop: {npix: 384, pixel_mas: 7.5}
-  optimiser: 'L-BFGS, warm-started along the grid from strong to weak w, each point run to C8 (no step cap;
-    the 900 s cap of the fast loop is not used)'
-  secondary_reported_not_selecting: [corner, classic_maxent_if_feasible]
-  validation: 'the same rule on the synthetic ring_gap truth (fast loop, 2026-11-02) gave NRMSE(0.5 beam)
-    0.059 (MEM) and 0.061 (StarletL1) against 0.076 unregularised; that run used known sigma and is the
-    development check, not a held-out one'
-  changed_after_seeing_a_result: 'no real-data result exists for this rule; the arm choice uses only the
-    synthetic fast loop'
+  text: |
+    **Primary arm: maximum entropy on √I pixels.**
+    1. **Noise scale.** Rescale visibility weights by s², estimated from the data scatter on the full data (successive differences
+       per baseline, spw and scan, as CASA `statwt`), never from an image fit. Record s² and its uncertainty; the relative
+       uncertainty must be ≤ 2e-3. Report raw χ²/N with the quoted weights first.
+    2. **Pixels and solver.** Maximum entropy on √I pixels (x = √I, L-BFGS), started flat or from a blurred CLEAN image.
+    3. **Fast loop.** On the Σw-preserving subsample, fit w on a log grid with steps of ×√10, warm-started from large w. At each w
+       compute χ²_q and G = Tr[K(K + wI)⁻¹] (Hutchinson, 16 Rademacher probes, CG relative tolerance 1e-4; report the standard
+       error).
+    4. **Choice of w.** w is the root in ln w of m(w) = χ²_q/s² − (n_real − G): interpolate, take one secant step, and accept when
+       |m| ≤ 3·se(G). Also report w at s² ± 2σ_s. Report classic MaxEnt's h(w) = 2(w/s²)KL − G as a diagnostic only.
+    5. **Full data.** Fit at the same w, and check G on the full data once against the fast loop.
+    6. **Convergence (replaces C8).** kkt_w (rms of g − μ over pixels with b > 1e-3·b_max, in units of w/F) < 1e-4, and the band
+       limit f_eta/f_floor < 2.
+    7. **Nuisances (gains, offsets, σ factors), staged.** (1) Image with the nuisances at nominal; (2) nuisances with the image
+       fixed; (3) joint refinement with its own KKT check. Fix one reference gain at 1. The fit fails if any nuisance ends within
+       5% of its prior box edge. When σ factors are fitted, apply w in w/s² units on the fast loop at the matching noise scale.
+    8. **Report.** Raw χ²/N, s², G, w, w/s², rms ψ_hp on the disc and in two brightness bins, f_eta/f_floor, nuisance values with
+       their box edges.
+    9. **Known bias, stated in advance.** On synthetic spiral discs this arm under-recovers spiral and ring contrast by about 20%
+       at the chosen w (testS: m = 2 amplitude ratio 0.77/0.79). Contrast claims carry this caveat.
+
+    **Dropped arms.** StarletL1 (dots, ψ_hp 0.47/0.59, lowest contrast in testS).
+
+    **Field arms (GaussianField order 4, MultipoleField).** Not pre-registered; exploratory only. Any field-arm image is reported
+    as exploratory, with its hyperparameters and how they were chosen, and carries no gate weight. (testE, pre-stated in
+    evidence_rule_spec.md: the Laplace-evidence choice was not within 1.15× of the arm's own best NRMSE on 4/4 cases for
+    GaussianField order 4 and 3/4 for MultipoleField.)
+  changed_after_seeing_a_result: 'yes: this block replaces the draft appended earlier in this PR (a discrepancy rule with s_k fixed from an
+    unregularised fit, MEM and StarletL1 swept on a log grid to C8). The rule was revised after the synthetic tests testC, testP, testM,
+    testS and testE (~/data/alma_imlup/diagnosis/), which showed that the draft selects the chi^2 floor, that StarletL1 gives dots, and
+    that the Laplace-evidence choice for the field arms fails. No real-data result exists for either version; this revision precedes
+    every real-data run of the rule.'
