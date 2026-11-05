@@ -154,6 +154,8 @@ nodes:
   virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   crosscheck.radio_trust: {layer: references, doc: alma_conventions.md}  # numpy dirty image/beam sums, Briggs weights, gain-marginal quadrature (virgil#533)
   crosscheck.radio_offsets: {layer: references, doc: alma_conventions.md}  # B5 free offsets: exact phase-ramp chi2, analytic gradient, Fisher information (numpy only); tests/test_radio_spread_offsets.py
+  crosscheck.radio_exact: {layer: references, doc: alma_conventions.md}  # G2: numpy-only direct-sum chi2, loss, gradients and the derived round-off budget (design/toeplitz_reexam_042.md)
+  crosscheck.toeplitz_scenes: {layer: references, doc: alma_conventions.md}  # G2: held-out synthetic scenes and coverages, seeds from hashed names
   crosscheck.radio_innovations.DeltaProblem: {layer: references, doc: alma_conventions.md}  # B6, float32 linear-delta-V loss: the method alone, virgil has no code for it yet
 
   # ----------------------------------------------------------- likelihood

@@ -42,6 +42,12 @@
    "used_by": "scripts/trackb_fit.py (already pinned in the script as CRITERIA_SHA256; frozen file, left as it is; tests/test_criteria_registry.py checks the two agree)",
    "changed_after_seeing_a_result": "unknown: registered earlier; see git log of the file",
    "pinned_at": "content of origin/main 473d8cc1fc5dc5f0b74cc398760fd80126708f69"
+  },
+  "design/toeplitz_reexam_042.yml": {
+   "sha256": "95dfbecd17854d88211bcd106cefcef730ba5c2bec702df3a05159d9dcccd1bf",
+   "used_by": "scripts/toeplitz_reexam.py (every command; it keeps its own REGISTERED_SHA256, which a test ties to this pin)",
+   "changed_after_seeing_a_result": "yes, as logged in design/toeplitz_reexam_042.md section 8 (written after reading both old runs, before any run under these criteria)",
+   "pinned_at": "vv PR #202"
   }
  }
 }
