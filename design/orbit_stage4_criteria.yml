@@ -1,0 +1,138 @@
+# Criteria for Stage 4 of the orbit-alias redesign (virgil design/orbit_alias_cycles.md, PR #624).
+# STATUS: proposed, awaiting Ben's sign-off. Source: the approved plan, Validation items 1 to 6, "The period cutoff" and "Rules for
+# every PR". Where the plan leaves a definition open the rule below is a PROPOSAL listed under `needs_ben_signoff`.
+# Pre-registration is this file's git commit (no hash registry, no override flags): the Stage 4 harness records
+# prereg.criteria_commit("design/orbit_stage4_criteria.yml") and refuses a dirty file. Approval is the commit Ben
+# signs off. Every threshold is derived or a declared budget set from the DECISION SCALE it protects, never from a
+# run, a G1 aggregate, a gallery result or a per-system output. Each entry states whether its comparison is
+# independent of virgil (vv-side truths and references: roots "independent") or virgil against itself (roots
+# "self-consistency", a guard that counts for nothing toward the independence rule).
+#
+# Change log (a change after a result is seen is a new row, labelled):
+#
+# | date       | change       | changed after seeing a result | by                                 |
+# |------------|--------------|-------------------------------|------------------------------------|
+# | 2026-10-31 | file created | no                            | Claude (Sonnet), for Ben, proposed |
+# | 2026-10-31 | rewritten after review: machine-readable tests, pass lines, decision rule, named targets | no | Claude (Sonnet), for Ben, proposed |
+# | 2026-10-31 | plan Validation items 1 to 6 filled in; pending_definitions replaced by needs_ben_signoff | no | Claude (Sonnet), for Ben, proposed |
+# | 2026-11-01 | replicate-spread criterion replaced by single-run variance calibration (production SMC is 1 replicate per band); variance_degenerate fraction reported | no | Claude (Sonnet), for Ben, proposed |
+
+family:
+  alpha: 0.01            # FWER 1% for the Holm family below: the value registered for the G1 gate and the detection campaigns
+  # m = 13 counts the p-values of the SIMULATED tests only (7 chart tests, fap_tail, 5 SBC). The 14 gallery systems are not
+  # in this family: the real-data checks (real_data_not_held_out) use their own Bonferroni level 0.01/14 across the 14 systems.
+  holm_members:          # the whole family, m = 13; every other entry is a deterministic gate or reported-only
+    - chart_ks_cos_i
+    - chart_ks_ln_a
+    - chart_ks_w_plus_O
+    - chart_ks_w_minus_O
+    - chart_ks_ecc
+    - chart_joint_cosi_wplusO
+    - chart_joint_lna_cosi
+    - fap_tail
+    - sbc_true_N
+    - sbc_period
+    - sbc_a_mas
+    - sbc_ecc
+    - sbc_cos_inc
+
+tests:
+  # --- coordinates (design §3); independent: vv draws the prior and applies virgil's chart maps -------------------
+  - {id: "chart_ks_cos_i", kind: "p_value", roots: "independent", metric: "KS of cos i vs U(-1,1)", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d. from the prior (never a chain)"}
+  - {id: "chart_ks_ln_a", kind: "p_value", roots: "independent", metric: "KS of ln a vs uniform", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_ks_w_plus_O", kind: "p_value", roots: "independent", metric: "KS of w+O vs U(-pi,pi)", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_ks_w_minus_O", kind: "p_value", roots: "independent", metric: "KS of w-O vs U(-pi,pi)", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_ks_ecc", kind: "p_value", roots: "independent", metric: "KS of e/e_max vs U(0,1) from the zeta chart", comparator: "Holm-adjusted p >= family.alpha", n: 200000, draws: "i.i.d."}
+  - {id: "chart_joint_cosi_wplusO", kind: "p_value", roots: "independent", metric: "binned chi-square of (cos i, w+O) vs the product of uniforms", bins: "20x20", comparator: "Holm-adjusted p >= family.alpha", n: 200000, note: "catches a chart with correct marginals and a wrong joint"}
+  - {id: "chart_joint_lna_cosi", kind: "p_value", roots: "independent", metric: "binned chi-square of (ln a, cos i)", bins: "20x20", comparator: "Holm-adjusted p >= family.alpha", n: 200000}
+  - {id: "jacobians", kind: "gate", roots: "independent", metric: "max relative error |det|/closed form - 1 at float64 for z->(ln a, cos i, w+O, w-O), z->TI, zeta->(k,h), the zeta chart, the anchor rotation", comparator: "<=", threshold: 1.0e-9, n: "50 points per map", points: "|z| scale 0.5 to 5, |y| 0.2 to 4", derivation: "float64 roundoff of a 4x4 determinant is ~1e-14; 1e-9 leaves five orders for conditioning"}
+
+  # --- SMC evidence (design §6); exact references are vv's own enumeration/quadrature on vv-defined toys ----------
+  - {id: "smc_evidence_bias", kind: "gate", roots: "independent", metric: "|mean(ln Z_hat - ln Z_exact)| + 2 SE", comparator: "<=", threshold: 0.3, unit: "nat", n: "50 replicates per toy", toys: "[generic truth, face-on truth]", derivation: "0.3 nat is a 35% change of a band probability, the smallest error that could flip a verdict between nearly equal bands; absolute, so a noisier sampler cannot pass more easily"}
+  - {id: "smc_evidence_sd", kind: "gate", roots: "independent", metric: "replicate sd of ln Z_hat", comparator: "<=", threshold: 1.0, unit: "nat", n: "50 replicates per toy", derivation: "an evidence error of 1 nat changes a band probability by a factor e, the decision scale of p(N)"}
+  - {id: "smc_vs_joker_sd", kind: "reported", note: "reported, not gated; the Joker-style cross-check is virgil's own code, so the comparison is virgil against itself"}
+  - {id: "band_evidence_vs_reference", kind: "gate", roots: "independent", metric: "|Delta ln Z_N| of each band holding at least 1e-3 of the reference mass, against the exact or nested reference", comparator: "<=", threshold: 0.5, unit: "nat", n: "3 toys x 50 replicates", derivation: "half the 1 nat decision scale; bands below 1e-3 mass cannot matter at delta"}
+
+  # --- plan Validation item 1: unit tests; guards (roots self-consistency) ------------------------------------------
+  - {id: "stage1_vs_surface_oracle", kind: "gate", roots: "self-consistency", metric: "Stage 1 values, gradients and Hessians against the _Surface oracle, float32 and float64", comparator: "relative error <= tol", tolerances: "tol = 1.0e3 * eps(precision) * max(1, condition number) * max(1, q/chi2) (the plan says the tolerance scales with q/chi2 and the condition number; the constant 1e3 is PROPOSED)", n: "the oracle's test points", note: "a guard"}
+  - {id: "cell_partition_invariance", kind: "gate", roots: "self-consistency", metric: "|ln Z_hat(Campbell) - ln Z_hat(new coordinates)| on toys", comparator: "<=", threshold: 0.3, unit: "nat", n: "3 toys x 20 replicates", derivation: "the smc_evidence_bias scale (PROPOSED)", note: "a guard"}
+  - {id: "existing_suite_unchanged", kind: "gate", roots: "self-consistency", metric: "virgil's existing test suite at unchanged tolerances", comparator: "all pass", tolerances: "no tolerance in the suite is edited by the PRs under test (a diff of tests/ is recorded)", note: "a guard"}
+
+  # --- plan Validation item 2: references -------------------------------------------------------------------------
+  - {id: "vis_level_vs_vv_nested", kind: "gate", roots: "independent", metric: "|ln Z_N(virgil) - ln Z_N(vv nested sampling, vv's own numpy likelihood with gains and offsets)| on small simulated sets", comparator: "<= threshold + 2 * combined SE", threshold: 0.5, unit: "nat", n: "20 small sets", derivation: "half the 1 nat decision scale plus the two estimators' own errors (PROPOSED)"}
+  - {id: "single_run_variance_calibrated", kind: "gate", roots: "independent", metric: "pooled ratio of the mean single-run genealogy variance estimate of ln Z_hat (Lee & Whiteley 2018; Du & Guyader 2021) to the empirical variance of ln Z_hat over independent runs", comparator: "within [lo, hi]", threshold: "[0.67, 1.5]", n: "3 toys x 200 independent runs", derivation: "the variance of a sample variance over 200 runs has relative sd sqrt(2/199) = 0.1, so [0.67, 1.5] is about a +-4 sd window (PROPOSED)"}
+  - {id: "variance_degenerate_fraction", kind: "reported", note: "reported, not gated: the fraction of bands flagged variance_degenerate, per toy and per epoch pattern"}
+
+  # --- plan Validation item 3: calibration on simulated populations -------------------------------------------------
+  - {id: "sbc_true_N", kind: "p_value", roots: "independent", metric: "KS of the randomized PIT of the true band N under p(N), weighted distinct particles", comparator: "Holm-adjusted p >= family.alpha", n: "500 simulated systems, population: random orbits on the gallery's real epoch patterns, truths with P < P_cut excluded and counted (the gate's rule)"}
+  - {id: "sbc_period", kind: "p_value", roots: "independent", metric: "KS of the SBC rank of P (weighted, distinct particles)", comparator: "Holm-adjusted p >= family.alpha", n: "500 simulated systems"}
+  - {id: "sbc_a_mas", kind: "p_value", roots: "independent", metric: "KS of the SBC rank of a", comparator: "Holm-adjusted p >= family.alpha", n: "500 simulated systems"}
+  - {id: "sbc_ecc", kind: "p_value", roots: "independent", metric: "KS of the SBC rank of e", comparator: "Holm-adjusted p >= family.alpha", n: "500 simulated systems"}
+  - {id: "sbc_cos_inc", kind: "p_value", roots: "independent", metric: "KS of the SBC rank of cos i", comparator: "Holm-adjusted p >= family.alpha", n: "500 simulated systems"}
+  - {id: "p_cut_truncation_count", kind: "reported", note: "reported, not gated: the number of simulated truths excluded below P_cut, per epoch pattern"}
+
+  # --- no-orbit verdict (design §8); the null simulator is vv's own single-star simulator, not virgil's -----------
+  - {id: "fap_tail", kind: "p_value", roots: "independent", metric: "one-sided binomial test of #(FAP <= alpha_fap) against N*alpha_fap (too many false alarms)", alpha_fap: 0.01, comparator: "Holm-adjusted p >= family.alpha", n: "3000 independent null data sets", derivation: "at N = 3000 a doubling of the false-alarm rate (60 vs 30 expected) is detected with power > 0.95"}
+  - {id: "fap_stepping", kind: "gate", roots: "self-consistency", metric: "number of nulls where the stepwise rule (100, 200, 400, 800, cap 1000) reports FAP < alpha_fap while its 95% interval contains alpha_fap", comparator: "==", threshold: 0, n: "all fap_tail nulls"}
+
+  # --- outlier contract (design §2) -------------------------------------------------------------------------------
+  - {id: "b_k_continuity", kind: "gate", roots: "independent", metric: "|b_k(virgil, uniform disc, sigma_v -> infinity) - b_k(vv SciPy quadrature)|", comparator: "<=", threshold: 0.05, unit: "nat per night", n: "30 random nights", derivation: "0.05 nat = a 5% change of a night's outlier floor, below any verdict"}
+  - {id: "b_k_convergence", kind: "gate", roots: "self-consistency", metric: "|b_k(2^21 points) - b_k(2^20 points)|", comparator: "<=", threshold: 0.05, unit: "nat", n: "30 random nights", note: "a convergence check of virgil against itself; it cannot detect a wrong integrand"}
+
+  # --- inherited acceptance, a guard --------------------------------------------------------------------------------
+  - {id: "six_618_tests", kind: "gate", roots: "self-consistency", metric: "virgil#618's six tests run in vv at BOTH float32 and float64", comparator: "all pass at both precisions", tolerances: "the tolerances in virgil's tests at the commit under test, recorded per precision before the first run; a change after a first run is a logged post-hoc amendment", note: "a guard; counts for nothing toward the independence rule"}
+
+must_hold:                # deterministic, exactly true
+  precision_recorded: every acceptance test writes the data precision it ran at; the harness fails a missing record
+  variance_diagnostic_only: no code path feeds the single-run variance estimate or the variance_degenerate flag into p(N) or the pruning rule (a grep of the harness and of virgil's pipeline, recorded)
+  pruning_measured:
+    delta: 1.0e-3         # derived: p(N) is reported to three decimals, so a dropped mass below 1e-3 is below reporting precision
+    n_se: 3
+    rule: pruning becomes default only if mean(dropped visibility-level band mass) + n_se * SE <= delta; the mean and SE are reported either way
+    n: 200
+    population: random orbits on the gallery's real epoch patterns (the 14 gallery systems' epoch sets), simulated data only; master seed 20261101
+
+  # plan Validation item 4: the G1 gate runs under design/orbit_gate_042.md at its own criteria commit (not duplicated
+  # here); the baseline 19560581 and its oracle 19560586 on 05e50c2 are not resubmitted; M4's init= oracle becomes a
+  # reference component at the truth; any other criteria change needs Ben's sign-off.
+  real_data_not_held_out:   # plan Validation item 5 (Ben, 2026-11-01): required, NOT held out: the gallery has been seen
+    systems: the 14 gallery systems
+    a_N_pub_in_99_percent_set: "per system: the published N (N_pub) lies in the 99% credible set of p(N); a failure is investigated and reported, never tuned away"
+    b_joint_mahalanobis: "per system at N_pub, one joint Mahalanobis distance in the invariants after aligning label and fold; threshold: the chi-square quantile at level 0.01/14 (Bonferroni across the 14 systems), dof = the number of published invariants"
+    published_without_errors: report only
+  efficiency:               # plan Validation item 6
+    gate: "all 14 gallery systems finish within the cost formula: measured wall time / formula prediction (Stage 0 and 1 measurements) <= 2 (the factor 2 is PROPOSED)"
+    reported: wall time per leg and per system on the laptop (4 and 10 threads) and the A100, against the c31b1fe and G1 baselines; reported, not gated
+
+decision_rule: >
+  Candidate noise-floor models are (ii) the constant night floor and (iii') the inflation floor
+  (virgil design/orbit_alias_cycles.md section 1.1). Adopt the cheapest candidate that passes every gate and every
+  Holm member above, ordered (ii) before (iii'). If none passes, stop and report to Ben: no constant, prior or
+  threshold is changed to make a candidate pass.
+
+named_targets:
+  gl229: regression only (never a pass line or a tuned quantity)
+  gallery_stars: >
+    NOT held out (Ben, 2026-11-01): their c31b1fe results have been seen, and the real-data checks above are
+    required but are not a held-out test. Development uses simulated populations only. A violation is any change to
+    a constant, prior, threshold, noise model or search setting in a Stage PR dated after a gallery result of that
+    PR's commit was viewed; a gallery failure is investigated and reported, never tuned away.
+  no_gate_tuning: >
+    Checkable form: each Stage PR carries a table of the constants it touches (the generality rule), the harness
+    diffs the constants of the commit under test against design/orbit_alias_cycles.md section 10 and fails an
+    unlisted change. The orbit library constants were tuned to Gl 229 and iota Peg once; none may be tuned to a
+    named target again.
+
+needs_ben_signoff:        # definitions the plan leaves open; the rule written above is a proposal
+  - the constant 1e3 in stage1_vs_surface_oracle's tolerance
+  - cell_partition_invariance 0.3 nat and vis_level_vs_vv_nested 0.5 nat (+2 combined SE)
+  - the single-run variance calibration window [0.67, 1.5] and its 200 independent runs
+  - the efficiency factor 2
+  - the Holm family of 13 and alpha 0.01
+  - "SBC invariants: P, a, e, cos i"
+
+change_log:
+  - {date: 2026-10-31, change: file created, changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
+  - {date: 2026-10-31, change: "rewritten after review: machine-readable tests, pass lines, decision rule, named targets", changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
+  - {date: 2026-10-31, change: "plan Validation items 1 to 6 filled in; pending_definitions replaced by needs_ben_signoff", changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
+  - {date: 2026-11-01, change: "replicate-spread criterion replaced by single-run variance calibration (production SMC is 1 replicate per band); variance_degenerate fraction reported", changed_after_seeing_a_result: no, by: "Claude (Sonnet), for Ben, proposed"}
