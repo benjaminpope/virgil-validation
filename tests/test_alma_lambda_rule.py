@@ -201,10 +201,27 @@ def test_sweep_fails_when_m_stays_above_3_se_after_the_secant_steps(data, sigma,
     assert e.value.record["status"] == "failed" and e.value.record["secant_trace"]
 
 
+def finite_band(monkeypatch):
+    """The toy's image can be flat at the root, where virgil's band limit is NaN (platform-dependent); the happy paths take a finite one, the NaN failure has its own test."""
+    real = vl.kkt_of
+    monkeypatch.setattr(vl, "kkt_of", lambda report: (lambda k, b: (k, 1.0 if np.isnan(b) else b))(*real(report)))
+
+
 @pytest.fixture(scope="module")
 def finished(data, sigma, swept):
     rec, start = swept
-    return vl.final_stage(data, rec, sigma, start, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
+    with pytest.MonkeyPatch.context() as mp:
+        finite_band(mp)
+        return vl.final_stage(data, rec, sigma, start, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
+
+
+@pytest.mark.slow
+def test_final_fails_on_a_nan_band_limit(data, sigma, swept, monkeypatch):
+    real = vl.kkt_of
+    monkeypatch.setattr(vl, "kkt_of", lambda report: (real(report)[0], float("nan")))
+    rec, start = swept
+    with pytest.raises(vl.RuleFailure, match="f_eta/f_floor"):
+        vl.final_stage(data, rec, sigma, start, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
 
 
 def test_final_reports_item_8_and_checks_g_against_the_fast_loop(finished, swept, sigma):
@@ -250,6 +267,7 @@ def call(*argv):
 
 
 def test_the_command_runs_the_stages_in_order_and_refuses_the_sweep_without_d4(cols, tmp_path, monkeypatch):
+    finite_band(monkeypatch)
     from virgil_bridge import alma_synth as syn
 
     d, out = write_dir(tmp_path / "data", cols), tmp_path / "run"

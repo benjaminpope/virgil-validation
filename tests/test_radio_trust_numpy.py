@@ -294,8 +294,8 @@ def test_data_diagonal_is_the_finite_difference_diagonal_of_jtj_and_the_entropy_
     """6 x 6 image of softmax logits: (a) the data diagonal of J^T J, J the central finite-difference
     Jacobian (step 1e-6) of the weighted residual sqrt(w) [Re M, Im M] with respect to the logits, M my own
     DFT of the softmax image, matches `gauss_newton_diag` to 1e-6; (b) with `MaxEntropy(weight)` the diagonal
-    equals that of the finite-difference Jacobian of 2 sqrt(weight b) (the Skilling-Bryan metric rows),
-    which is weight * b * (1 - b) (D13), and differs from weight * b by more than 5% at this size."""
+    equals the data diagonal of (a) plus that of the finite-difference Jacobian of 2 sqrt(weight b) (the
+    Skilling-Bryan metric rows, weight * b * (1 - b), D13); virgil adds the metric to the data curvature."""
     from virgil.imaging import MaxEntropy
 
     p = _gn_problem()
@@ -317,11 +317,10 @@ def test_data_diagonal_is_the_finite_difference_diagonal_of_jtj_and_the_entropy_
     b = rt.softmax(p["eta"])
     assert np.allclose(ref_e, weight * b * (1 - b), rtol=1e-8)  # the reference is itself the closed form
     got_e = _gn_diag(p, regularizers=[MaxEntropy(weight)])
-    err_e = np.abs(got_e / ref_e - 1).max()
+    err_e = np.abs(got_e / (ref + ref_e) - 1).max()
     record("max_rel_error_entropy_metric", err_e)
-    record("max_rel_difference_from_w_b", np.abs(got_e / (weight * b) - 1).max())
     assert err_e < 1e-6
-    assert np.abs(got_e / (weight * b) - 1).max() > 0.05
+    assert np.abs((got_e - ref) / (weight * b) - 1).max() > 0.05  # the 1 - b factor is real at this size
 
 
 # ------------------------------------------------ 6. antenna gains, Stage 1
