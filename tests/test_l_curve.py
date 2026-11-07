@@ -78,6 +78,9 @@ def sweep(tmp_path_factory):
                      dec_deg=-30.0, sigma_v2=0.01, sigma_cp_deg=1.0, rng=np.random.default_rng(1))
     model = vm.Image(np.zeros((N, N)), PIXEL)
     lc = imaging.l_curve(model, imaging.image_priors(model), OIData(str(path)), imaging.TSV(1.0, beam_mas=PIXEL), WEIGHTS)
+    # A fit that stops at max_steps is not a minimiser, and every optimality test below would then judge a random iterate (#183): fail loudly.
+    not_converged = [(w, r.info["steps"]) for w, r in zip(np.asarray(lc.weights), lc.results) if not r.info["converged"]]
+    assert not not_converged, f"#183: l_curve fits did not converge (weight, steps): {not_converged}; the tests below need exact minimizers"
     # softmax(log_b) is unchanged by a uniform shift, so the fit drifts along that null direction by an amount set by rounding (|x| ~ 3e5 on
     # one jax, ~3e10 on another), and it pushes the pixels it has darkened to zero brightness ever further down. Past ~1e10, x +- 1e-6 == x in
     # float64 and the finite-difference gradients below come out exactly 0. Recentre on the brightest pixel and floor the dark ones at -1000:
@@ -107,7 +110,6 @@ def test_points_match_our_chi2_and_penalty(sweep):
     assert rel_chi2 < 1e-8 and rel_red < 1e-8 and rel_pen < 1e-8
 
 
-@pytest.mark.skip(reason="#183: the L-curve fit is not reproducible between processes (saturated softmax)")
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])
 def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
     """At each fitted image our gradients satisfy g_χ² + κ w g_TSV = 0 with
@@ -130,7 +132,6 @@ def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
     assert worst_left < 1e-5
 
 
-@pytest.mark.skip(reason="#183: LM drifts along the softmax gauge at the strongest weight")
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"], kind="control")
 def test_chi2_plus_once_the_penalty_is_not_stationary(sweep):
     """The other reading of "added to the loss", χ² + w TSV, leaves a
