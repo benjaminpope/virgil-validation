@@ -14,7 +14,7 @@
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py replica-compare --fit DIR --mpol DIR --out DIR
-    python scripts/alma_imlup_maxent.py lambda-rule --stage {sigma,d4,sweep,final} --data DIR --out DIR [--clean-dir DIR] [--stride N]   (the registered rule, design/alma_imlup_gate_criteria.yml)
+    python scripts/alma_imlup_maxent.py lambda-rule --stage {sigma,d4,sweep,final} --data DIR --out DIR [--clean-dir DIR]   (the registered rule, design/alma_imlup_gate_criteria.yml)
     python scripts/alma_imlup_maxent.py better --fit DIR [--cv-compare JSON] [--synth DIR] [--synth-r DIR] [--clean-dir DIR] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
     python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
@@ -1226,7 +1226,7 @@ def cmd_lambda_rule(args):
             raise SystemExit(f"{out}/sigma.json is a failed stage or of another data set; rerun stage sigma")
         if args.stage == "sweep":
             vl.require_d4(vl.read_json(out / "d4.json") if (out / "d4.json").exists() else None, data)
-            return vl.sweep_stage(data, sigma, npix=npix, pixel_mas=px, stride=args.stride, seed=args.seed, gtol=args.gtol, time_limit=args.time_limit, cg_maxit=args.cg_maxit, log=say)
+            return vl.sweep_stage(data, sigma, npix=npix, pixel_mas=px, seed=args.seed, gtol=args.gtol, time_limit=args.time_limit, cg_maxit=args.cg_maxit, log=say)
         sweep = vl.read_json(out / "sweep.json")
         if sweep.get("status") != "ok":
             raise SystemExit(f"{out}/sweep.json failed ({sweep.get('reason')}); there is no weight to fit")
@@ -1410,7 +1410,6 @@ def main(argv=None):
     p.add_argument("--ddids", type=int, nargs="*", default=None)
     p.add_argument("--out", required=True, help="every stage reads and writes its JSON here: sigma.json, d4.json, sweep.json (+ sweep_values.npz), lambda_final.json (+ final_values.npz, image.npy)")
     p.add_argument("--clean-dir", default=None, help="d4: the CLEAN output directory holding the pinned model.fits")
-    p.add_argument("--stride", type=int, default=20, help="sweep: keep 1/stride of each ddid's rows, weights scaled to keep sum w")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--npix", type=int, default=None, help="default: the registered crop")
     p.add_argument("--pixel-mas", type=float, default=None, help="default: the registered crop")

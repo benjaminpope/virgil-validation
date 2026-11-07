@@ -1,12 +1,12 @@
-"""The pre-registered regulariser-weight rule of the IM Lup deconvolutions (``lambda_selection`` in ``design/alma_imlup_gate_criteria.yml``, items 1-9 and D1-D5).
+"""The pre-registered regulariser-weight rule of the IM Lup deconvolutions (``lambda_selection`` in ``design/alma_imlup_gate_criteria.yml``, items 1-9 and D1-D6).
 
 Primary arm only: maximum entropy on sqrt(I) pixels (``LinearImage(parametrisation="sqrt")``, ``MaxEntropy``, L-BFGS-B), the weight w the root of the
 degrees-of-freedom-corrected discrepancy m(w) = chi2_q / s^2 - (n_real - G(w)). Stages, each writing one JSON and ending the run with a written reason when it fails::
 
     sigma  -> sigma.json    s^2 from the data scatter (full data), its error, raw chi^2/N, lag-1 correlation; fails if sigma_s / s^2 > 2e-3
     d4     -> d4.json       bias of that estimator on the pinned CLEAN model plus noise of known s^2; the sweep refuses without a pass
-    sweep  -> sweep.json    the fast loop on the sum-w-preserving subsample: grid, G, m, the root, w at s^2 +/- 2 sigma_s, h(w)
-    final  -> lambda_final.json   the full data at that w: G against the fast loop, staged nuisances, KKT and band limit, the item-8 report
+    sweep  -> sweep.json    the fast loop on the full data (D6): grid, G, m, the root, w at s^2 +/- 2 sigma_s, h(w)
+    final  -> lambda_final.json   the full data at that w: staged nuisances, KKT and band limit, the item-8 report
 
 There is no fallback weight anywhere: no root, an unmet |m| <= 3 se(G), a nuisance at a box edge or an unconverged KKT test ends the run.
 """
@@ -40,6 +40,7 @@ PHRASES = (  # what the constants above implement, as the criteria text says it
     "kkt_w (rms of g − μ over pixels with b > 1e-3·b_max, in units of w/F) < 1e-4",
     "f_eta/f_floor < 2",
     "within 5% of its prior box edge",
+    "D6. **The fast loop runs on the full data** (stride 1)",
 )
 HP_FWHM_MAS = 60.0  # the high-pass of psi_hp (the diagnosis' smoothing)
 
@@ -183,22 +184,6 @@ def require_d4(verdict, data):
 # ---------------------------------------------------------------- the model and its fits
 
 
-def subsample(data, stride, seed=0):
-    """``(subset, n_real)``: every ddid thinned to 1 / ``stride`` of its rows at random, the kept weights scaled so that each ddid keeps its sum of weights (item 3). ``n_real`` is the number of real data
-    the scaled set stands for, ``2 sum(w_new / w_old)``: the chi^2 at the truth is s^2 times it, not s^2 times twice the number of rows kept."""
-    rng = np.random.default_rng(seed)
-    ddid, w = np.asarray(data.ddid), np.asarray(data.weight, float)
-    keep, scale = np.zeros(len(w), bool), np.ones(len(w))
-    for d in np.unique(ddid):
-        idx = np.flatnonzero(ddid == d)
-        sel = np.sort(rng.choice(idx, max(1, idx.size // int(stride)), replace=False))
-        keep[sel] = True
-        scale[sel] = w[idx].sum() / w[sel].sum()
-    sub = data.subset(keep)
-    sub = dataclasses.replace(sub, weight=np.asarray(sub.weight, float) * scale[keep])
-    return sub, float(2.0 * scale[keep].sum())
-
-
 @dataclasses.dataclass
 class Problem:
     """Forward model on the crop: sqrt-pixel image, Toeplitz chi^2, nuisances at nominal."""
@@ -264,7 +249,7 @@ def kkt_of(report):
 
 def fit_point(prob, w, init, *, gtol=1e-4, max_rounds=8, max_steps=20000, time_limit=None, n_real=None, log=print):
     """``(FitResult, kkt_report, rounds)``: ``MaxEntropy(w)`` fitted by L-BFGS-B from ``init``, refitted warm with ``gtol`` / 10 each round until ``kkt_w < 1e-4`` or ``max_rounds``
-    (virgil's own stop leaves kkt_w at about 1e-2). ``n_real`` replaces the result's data count (a subsample)."""
+    (virgil's own stop leaves kkt_w at about 1e-2). ``n_real`` replaces the result's data count."""
     from virgil import fit
     from virgil.fitting import kkt_report
     from virgil.imaging import MaxEntropy
@@ -313,16 +298,16 @@ def psi_hp(pixels, pixel_mas, floor=1e-30):
 # ---------------------------------------------------------------- sweep stage (items 3, 4, D1, D2, D5)
 
 
-def sweep_stage(data, sigma, *, npix, pixel_mas, stride, seed=0, gtol=1e-4, time_limit=None, cg_maxit=2000, max_steps=20000, log=print):
+def sweep_stage(data, sigma, *, npix, pixel_mas, seed=0, gtol=1e-4, time_limit=None, cg_maxit=2000, max_steps=20000, log=print):
     """The fast loop. Returns ``(record, start_values)``: the grid fitted from large w down, G by Hutchinson, the D5 crossing with up to ``MAX_SECANT`` secant refits;
     ``RuleFailure`` (with the record) on D1 (m <= 0 at the first point, no sign change) or D2 (|m| > 3 se(G) after the secant steps). ``start_values`` is the root's fit, the start of the final stage."""
     from virgil.imaging import LCurve, MaxEntropy
 
     s2, sigma_s = float(sigma["s2"]), float(sigma["sigma_s"])
-    sub, n_eff = subsample(data, stride, seed)
-    prob = build(sub, npix=npix, pixel_mas=pixel_mas, flux=sigma["flux_jy"], ref_obs=sigma["ref_obs"])
+    n_eff = 2.0 * len(data.u)
+    prob = build(data, npix=npix, pixel_mas=pixel_mas, flux=sigma["flux_jy"], ref_obs=sigma["ref_obs"])
     weights = grid(s2)
-    log(f"sweep: {len(sub.u):,} of {len(data.u):,} rows (stride {stride}), n_real {n_eff:.6g}; {len(weights)} weights, w/s2 {GRID_MAX:g} to {GRID_MIN:g}")
+    log(f"sweep: {len(data.u):,} rows (full data, D6), n_real {n_eff:.6g}; {len(weights)} weights, w/s2 {GRID_MAX:g} to {GRID_MIN:g}")
     results, reports, x0, unconverged = [], [], prob.start(), []
     for w in weights:
         res, rep, _ = fit_point(prob, w, x0, gtol=gtol, time_limit=time_limit, n_real=n_eff, max_steps=max_steps, log=log)
@@ -345,7 +330,7 @@ def sweep_stage(data, sigma, *, npix, pixel_mas, stride, seed=0, gtol=1e-4, time
         out = curve.dof_discrepancy((), MaxEntropy(1.0), noise_scale2=s2, noise_scale_sigma=sigma_s, nprobe=NPROBE, tol=CG_TOL, maxit=cg_maxit, seed=seed, secant=True, max_secant=MAX_SECANT, curvature=prob.curvature)
     kkt = [kkt_of(r) for r in reports]
     table = [dict(weight=float(w), w_over_s2=float(w) / s2, chi2=float(c), m=float(m), g=float(g), kkt_w=k[0], band_limit=k[1]) for w, c, m, g, k in zip(weights, chi2, out.m_sweep, out.g_sweep, kkt)]
-    rec = dict(stage="sweep", s2=s2, sigma_s=sigma_s, fingerprint=sigma["fingerprint"], stride=int(stride), seed=int(seed), n_rows=len(sub.u), n_real=n_eff, npix=int(npix), pixel_mas=float(pixel_mas), flux_jy=float(sigma["flux_jy"]),
+    rec = dict(stage="sweep", s2=s2, sigma_s=sigma_s, fingerprint=sigma["fingerprint"], seed=int(seed), n_rows=len(data.u), n_real=n_eff, npix=int(npix), pixel_mas=float(pixel_mas), flux_jy=float(sigma["flux_jy"]),
                ref_obs=int(sigma["ref_obs"]), points=table, crossings=[float(x) for x in out.roots], crossings_w_over_s2=[float(x) / s2 for x in out.roots], nprobe=NPROBE, cg_tol=CG_TOL, cg_maxit=int(cg_maxit),
                weight_band=None if out.weight_band is None else [None if x is None else float(x) for x in out.weight_band], band_note="w at s2 + 2 sigma_s and s2 - 2 sigma_s, from the grid fits alone",
                secant_trace=[dict(weight=float(a), m=float(b), g_se=float(c)) for a, b, c in out.trace], max_secant=MAX_SECANT, warnings=sorted({str(x.message) for x in caught}), status="ok")
@@ -374,7 +359,6 @@ def final_stage(data, sweep, sigma, start, *, npix, pixel_mas, gtol=1e-8, max_st
     (reference gain at the largest sum of weights, D3), the KKT and band-limit report and the item-8 numbers. ``RuleFailure`` (record attached) on a nuisance within 5% of its box edge
     or kkt_w >= 1e-4 or f_eta/f_floor >= 2 of the joint fit."""
     from virgil.imaging import MaxEntropy
-    from virgil.imaging import _dof_point as dof_point
     from virgil.radio import fit_staged_nuisances
 
     w, s2 = float(sweep["weight"]), float(sweep["s2"])
@@ -383,22 +367,17 @@ def final_stage(data, sweep, sigma, start, *, npix, pixel_mas, gtol=1e-8, max_st
         raise SystemExit(f"the reference observation of this data ({ref}) is not the sigma stage's ({sigma['ref_obs']}): another data set")
     prob = build(data, npix=npix, pixel_mas=pixel_mas, flux=sigma["flux_jy"], ref_obs=ref)
     res1, rep1, rounds = fit_point(prob, w, start, gtol=1e-4, max_steps=max_steps, time_limit=time_limit, log=log)
-    n_real = float(sum(res1.info["ndata"]))
-    point = dof_point(res1, MaxEntropy(1.0), w, (), s2, n_real, (NPROBE, CG_TOL, cg_maxit, 0), prob.curvature)
-    z = (point["g"] - sweep["g"]) / float(np.hypot(point["se"], sweep["g_se"]))
-    m_full = float(sum(res1.info["chi2"])) / s2 - (n_real - point["g"])
+    n_real = 2.0 * len(data.u)
     chi2_nominal = float(sum(res1.info["chi2"]))
-    log(f"final: image at w = {w:.5g} (w/s2 {w / s2:.5g}); raw chi2/N {chi2_nominal / n_real:.5g}; G {point['g']:.6g} +- {point['se']:.3g} against the fast loop's {sweep['g']:.6g} +- {sweep['g_se']:.3g}")
+    log(f"final: image at w = {w:.5g} (w/s2 {w / s2:.5g}); raw chi2/N {chi2_nominal / n_real:.5g}; G {sweep['g']:.6g} +- {sweep['g_se']:.3g} (the sweep's, on the same data)")
     staged = fit_staged_nuisances(data, prob.scene, prob.priors, [MaxEntropy(w)], init={k: v for k, v in res1.values.items() if k in prob.priors}, ref_obs=ref, edge=EDGE, weight=w,
                                   nuisance=dict(alpha=False, gains=True, offsets=True, sigmas=False, fit_flux=False), chi2="toeplitz", method="lbfgsb", lbfgs_memory=100, gtol=gtol, max_steps=max_steps, time_limit=time_limit)
     s3 = staged.stages[2]
     kkt_w, band = kkt_of(staged.kkt)
     pixels = np.asarray(s3.values["pixels"], float)
     nuis = {k: dict(value=np.asarray(v["value"]), lower=np.asarray(v["lower"]), upper=np.asarray(v["upper"]), edge_frac=np.asarray(v["edge_frac"]), at_edge=np.asarray(staged.edge[k])) for k, v in staged.nuisances.items()}
-    rec = dict(stage="final", raw_chi2_over_N=float(sum(s3.info["chi2"])) / n_real, raw_chi2_over_N_nominal=chi2_nominal / n_real, s2=s2, sigma_s=float(sweep["sigma_s"]), g=point["g"], g_se=point["se"], g_fast=sweep["g"], g_fast_se=sweep["g_se"], g_check_z=float(z),
-               g_check_note="reported, with no registered threshold", m_full=m_full, m_full_over_se=float(m_full / point["se"]),
-               m_full_note="m(w) on the full data at the chosen w, a diagnostic with no registered threshold (the fast loop's m uses a subsample whose chi2 expectation is n_real - stride G)",
-               sigma_factors="not fitted (weights rescaled by s2, item 1)", weight=w, w_over_s2=w / s2, psi_hp=psi_hp(pixels, pixel_mas), kkt_w=kkt_w, kkt_w_max=KKT_W_MAX, band_limit=band, band_limit_max=BAND_MAX, f_eta_over_f_floor=band,
+    rec = dict(stage="final", raw_chi2_over_N=float(sum(s3.info["chi2"])) / n_real, raw_chi2_over_N_nominal=chi2_nominal / n_real, s2=s2, sigma_s=float(sweep["sigma_s"]), g=sweep["g"], g_se=sweep["g_se"],
+                              sigma_factors="not fitted (weights rescaled by s2, item 1)", weight=w, w_over_s2=w / s2, psi_hp=psi_hp(pixels, pixel_mas), kkt_w=kkt_w, kkt_w_max=KKT_W_MAX, band_limit=band, band_limit_max=BAND_MAX, f_eta_over_f_floor=band,
                image_rounds=rounds, nuisances=nuis, edge=EDGE, ref_obs=int(staged.ref_obs), sum_weights=sums, flux_jy=float(np.sum(pixels**2)), flux_reference_jy=float(sigma["flux_jy"]), npix=int(npix), pixel_mas=float(pixel_mas),
                converged_report=bool(staged.kkt.get("converged")), status="ok")
     edges = sorted(k for k, v in nuis.items() if v["at_edge"].any())

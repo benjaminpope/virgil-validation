@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import alma_imlup_maxent as script  # noqa: E402
 
-NPIX, PIX, STRIDE = 8, 12.0, 4
+NPIX, PIX = 8, 12.0
 pytestmark = pytest.mark.validates("virgil_bridge.alma_lambda", roots=["self-consistency"], kind="guard")
 
 
@@ -76,7 +76,7 @@ def sigma(data):
 
 @pytest.fixture(scope="module")
 def swept(data, sigma):
-    return vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, stride=STRIDE, log=lambda *a: None)
+    return vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
 
 
 # ---------------------------------------------------------------- the registered text and grid
@@ -95,6 +95,15 @@ def test_the_grid_runs_from_1e8_to_1e2_in_steps_of_root_ten():
     g = vl.grid(2.0)
     assert len(g) == 13 and g[0] == pytest.approx(2e8) and g[-1] == pytest.approx(2e2)
     assert np.allclose(g[:-1] / g[1:], np.sqrt(10.0))
+
+
+def test_the_fast_loop_runs_on_the_full_data_with_no_way_to_thin_it(data, sigma):
+    """D6: no subsample function, no --stride option, and the sweep takes no stride."""
+    import inspect
+
+    assert not hasattr(vl, "subsample") and "stride" not in inspect.signature(vl.sweep_stage).parameters
+    with pytest.raises(SystemExit):
+        script.main(["lambda-rule", "--stage", "sweep", "--stride", "4"])
 
 
 # ---------------------------------------------------------------- sigma stage and D4
@@ -120,15 +129,6 @@ def test_sigma_needs_the_scan_columns(cols, tmp_path):
     bare = {k: v for k, v in cols.items() if k not in ("scan", "time")}
     with pytest.raises(SystemExit, match="sigma stage"):
         vl.sigma_stage(va.load_dir(write_dir(tmp_path / "bare", bare)))
-
-
-def test_the_subsample_keeps_sum_w_per_ddid_and_counts_the_data_it_stands_for(data):
-    sub, n_eff = vl.subsample(data, STRIDE)
-    assert len(sub.u) == len(data.u) // STRIDE
-    for d in range(4):
-        a, b = (np.asarray(x.weight)[np.asarray(x.ddid) == d].sum() for x in (sub, data))
-        assert a == pytest.approx(b, rel=1e-12)
-    assert n_eff == pytest.approx(2 * len(data.u), rel=0.03)
 
 
 def test_d4_passes_on_unbiased_scatter_and_fails_on_a_biased_one(data, cols, monkeypatch):
@@ -161,12 +161,12 @@ def test_sweep_finds_the_root_at_the_largest_crossing(swept, sigma):
 
 def test_sweep_fails_when_m_is_not_positive_at_the_first_point(data, sigma):
     with pytest.raises(vl.RuleFailure, match="D1: m = .* <= 0 at the first grid point"):
-        vl.sweep_stage(data, dict(sigma, s2=100.0 * sigma["s2"]), npix=NPIX, pixel_mas=PIX, stride=STRIDE, log=lambda *a: None)
+        vl.sweep_stage(data, dict(sigma, s2=100.0 * sigma["s2"]), npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
 
 
 def test_sweep_fails_without_a_sign_change_and_never_extends_the_grid(data, sigma):
     with pytest.raises(vl.RuleFailure, match="D1: m\\(w\\) has no sign change") as e:  # R1: a noise scale 20% too small has no root
-        vl.sweep_stage(data, dict(sigma, s2=0.8 * sigma["s2"]), npix=NPIX, pixel_mas=PIX, stride=STRIDE, log=lambda *a: None)
+        vl.sweep_stage(data, dict(sigma, s2=0.8 * sigma["s2"]), npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
     assert len(e.value.record["points"]) == 13 and e.value.record["status"] == "failed"
 
 
@@ -177,7 +177,7 @@ def test_sweep_fails_when_a_fast_loop_fit_has_not_converged(data, sigma, monkeyp
     monkeypatch.setattr(vl, "fit_point", functools.partial(vl.fit_point, max_rounds=1))
     monkeypatch.setattr(vl, "kkt_of", lambda report: (1.0, float("nan")))
     with pytest.raises(vl.RuleFailure, match="item 6") as e:
-        vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, stride=STRIDE, log=lambda *a: None)
+        vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
     assert e.value.record["unconverged_fits"]
 
 
@@ -196,7 +196,7 @@ def test_sweep_fails_when_m_stays_above_3_se_after_the_secant_steps(data, sigma,
 
     monkeypatch.setattr(LCurve, "dof_discrepancy", tight)
     with pytest.raises(vl.RuleFailure, match="D2: \\|m\\|") as e:
-        vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, stride=STRIDE, log=lambda *a: None)
+        vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
     assert (calls[0]["nprobe"], calls[0]["tol"], calls[0]["max_secant"]) == (16, 1e-4, 5)
     assert e.value.record["status"] == "failed" and e.value.record["secant_trace"]
 
@@ -228,11 +228,11 @@ def test_final_reports_item_8_and_checks_g_against_the_fast_loop(finished, swept
     rec, values = finished
     sweep = swept[0]
     assert list(rec)[0] == "stage" and rec["raw_chi2_over_N"] > 0 and rec["s2"] == sigma["s2"] and rec["weight"] == sweep["weight"] and rec["w_over_s2"] == pytest.approx(sweep["w_over_s2"])
-    assert rec["kkt_w"] < 1e-4 and rec["band_limit"] < 2 and abs(rec["g_check_z"]) < 3 and rec["ref_obs"] == sigma["ref_obs"]
+    assert rec["kkt_w"] < 1e-4 and rec["band_limit"] < 2 and rec["ref_obs"] == sigma["ref_obs"]
     assert set(rec["psi_hp"]) == {"disc", "lo", "hi"} and set(rec["nuisances"]) == {"cal.gain", "cal.offset"}
     assert all(v["edge_frac"].min() > 0.05 and not v["at_edge"].any() for v in rec["nuisances"].values())
     assert set(values) >= {"pixels", "cal.gain", "cal.offset"}
-    assert "m_full" in rec and rec["sigma_factors"].startswith("not fitted")
+    assert "m_full" not in rec and "g_check_z" not in rec and rec["g"] > 0 and rec["sigma_factors"].startswith("not fitted")
 
 
 @pytest.mark.slow
@@ -281,7 +281,7 @@ def test_the_command_runs_the_stages_in_order_and_refuses_the_sweep_without_d4(c
     monkeypatch.setattr(vl, "SIGMA_REL_MAX", 0.05)
     call("--stage", "sigma", *geom)
     with pytest.raises(SystemExit, match="passing D4 verdict"):
-        call("--stage", "sweep", *geom, "--stride", STRIDE)
+        call("--stage", "sweep", *geom)
     monkeypatch.setattr(vl, "D4_REL_MAX", 0.05)
     toy_truth = np.zeros((16, 16))
     toy_truth[7:9, 7:9] = 1.0
@@ -289,7 +289,7 @@ def test_the_command_runs_the_stages_in_order_and_refuses_the_sweep_without_d4(c
     call("--stage", "d4", *geom, "--clean-dir", tmp_path)
     verdict = json.loads((out / "d4.json").read_text())
     assert verdict["pass"] is True and verdict["clean_model_sha256"] == "0" * 64
-    call("--stage", "sweep", *geom, "--stride", STRIDE)
+    call("--stage", "sweep", *geom)
     sweep = json.loads((out / "sweep.json").read_text())
     assert sweep["status"] == "ok" and sweep["weight"] > 0 and (out / "sweep_values.npz").exists()
     call("--stage", "final", *geom)
