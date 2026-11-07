@@ -200,7 +200,11 @@ def settings_for(system):
     explicitly (gate sections 3.2 and 4) and samples every band with
     p >= 0.01 whatever the shipped no-orbit verdict says (the smallest
     positive ``no_orbit_nats`` keeps the verdict from skipping the sampler);
-    B, N and D are the defaults as shipped."""
+    B, N and D are the defaults as shipped, except a B truth below P_cut (the reported stratum B', gate
+    section 3.3), which is fitted once with ``period_range`` = [1 d, 3 x span] to show what the declared prior
+    excludes."""
+    if system["kind"] == "B" and system.get("below_p_cut"):
+        return dict(period_range=(1.0, 3.0 * system["span_days"]))
     if system["kind"] != "A":
         return {}
     return dict(period_range=tuple(system["p_range"]), a_range=tuple(system["a_range"]),
@@ -322,6 +326,7 @@ def truth_record(system):
                 envelope_fraction=(system.get("misspecification") or {}).get("fraction"),
                 near_twin=o.get("near_twin"), flux=o.get("flux"), c=system["noise"]["c"], s_v2=system["noise"].get("s_v2"), s_cp=system["noise"].get("s_cp"),
                 n_redraws=system["n_redraws"], contaminants=system["contaminants"],
+                p_cut=system.get("p_cut"), below_p_cut=system.get("below_p_cut", False),
                 primary_diam_mas=system["primary"]["diam_mas"], disc_on=system["primary"]["disc_on"],
                 period=o.get("period"), ecc=o.get("ecc"), a_mas=o.get("a_mas"), cos_inc=o.get("cos_inc"),
                 phase_coverage=_phase_coverage(system))
@@ -401,7 +406,8 @@ def _virgil_run(part, system, paths, work):
     modes = json.loads((run / "stages" / "modes" / "report.json").read_text())
     search = json.loads((run / "stages" / "search" / "report.json").read_text())
     verdict = null_verdict(modes)
-    out = dict(bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
+    out = dict(p_range=list(aliases.p_range), window_capped=aliases.window_capped,  # the window the engine searched
+               bands=bands, verdict=verdict, tempering=search.get("tempering"), labels_free=modes.get("labels_free"),
                primary_diam=search.get("primary_diam"), outliers=search.get("outliers"),
                night_flags=search.get("night_flags"), n_bands=search.get("n_bands"))
     if part == "oracle":
@@ -491,7 +497,13 @@ def aggregate_results(results, s, rng_seed):
     out = dict(pvalues=pv, must_hold={}, reported={}, unavailable=[], incomplete=[])
     fits = [r for r in results if r["part"] == "fit"]
     by = {k: [r for r in fits if r["truth"]["stratum"] == k] for k in "ABND"}
-    oracle = {r["truth"]["index"]: r for r in results if r["part"] == "oracle"}
+    # gate section 3.3: truths with P < P_cut lie outside virgil's declared prior; they are excluded from every
+    # scored metric and counted, and form the reported stratum B' (the same draws, never scored)
+    # decided at the draw, from the truth only (never from a fit); a B fit that failed is an M7 failure
+    b_prime = [r for r in by["B"] if r["truth"].get("below_p_cut")]
+    by["B"] = [r for r in by["B"] if not r["truth"].get("below_p_cut")]
+    excluded = {r["truth"]["index"] for r in b_prime}
+    oracle = {r["truth"]["index"]: r for r in results if r["part"] == "oracle" and r["truth"]["index"] not in excluded}
     ok = lambda rs: [r for r in rs if r["status"] == "ok"]  # noqa: E731
     t, m = s["tests"], s["must_hold"]
 
@@ -563,7 +575,7 @@ def aggregate_results(results, s, rng_seed):
 
     # M4 and M8 need the oracle runs
     spec4, spec8 = m["M4_search_misses"], m["M8_false_no_orbit"]
-    n_b = strata_sizes()["B"]
+    n_b = strata_sizes()["B"] - len(b_prime)  # the scored B count: B' is excluded from M4's denominator
     misses, no_oracle, no_true_band = [], [], []
     for r in b:
         o = oracle.get(r["truth"]["index"])
@@ -606,16 +618,20 @@ def aggregate_results(results, s, rng_seed):
 
     # M7: completion and the accuracy rule
     fail_flags = set(m["M7_complete"]["credible_set_accurate"]["fail_flags"])
-    crashed = [r for r in results if r["status"] != "ok"]
+    in_b_prime = lambda r: r["truth"]["stratum"] == "B" and r["truth"]["index"] in excluded  # noqa: E731
+    crashed = [r for r in results if r["status"] != "ok" and not in_b_prime(r)]  # B' failures are reported, not counted
     inaccurate = [r for r in b if _inaccurate(r, fail_flags, m9["m"])]
     expected = {k: v for k, v in strata_sizes().items()}
+    expected["B"] -= len(b_prime)  # B' is excluded from the scored sets (gate section 3.3)
     present = {k: len({r["truth"]["index"] for r in by[k]}) for k in "ABND"}
     expected["oracle"], present["oracle"] = expected["B"], len(oracle)
     invalid_oracle = [i for i, o in oracle.items() if o["status"] == "ok" and not o.get("oracle_init_calls")]
     flags_seen = sorted({f for r in b for x in r["bands"] for f in x["flags"]})
     flags_observable = bool(fail_flags & set(flags_seen)) or any(x["se_source"] == "reported" for r in b for x in r["bands"])
-    complete = bool(not crashed and not invalid_oracle and all(present[k] == expected[k] for k in expected))
-    out["must_hold"]["M7"] = dict(failed=len(crashed), missing={k: expected[k] - present[k] for k in expected if present[k] < expected[k]},
+    # a scored B fit that reports ok but recorded no window cannot be checked against the engine's window: a failure
+    no_window = [r for r in by["B"] if r["status"] == "ok" and not r.get("p_range")]
+    complete = bool(not crashed and not no_window and not invalid_oracle and all(present[k] == expected[k] for k in expected))
+    out["must_hold"]["M7"] = dict(failed=len(crashed), no_recorded_window=len(no_window), missing={k: expected[k] - present[k] for k in expected if present[k] < expected[k]},
                                   invalid_oracle=len(invalid_oracle), inaccurate_credible_set=len(inaccurate),
                                   **{"pass": False if not complete or inaccurate else (True if flags_observable else None)})
     out["reported"]["band_label_mismatch"] = sum(1 for r in a + b if (true_band(r) or {}).get("n") != r["truth"]["band"])
@@ -635,7 +651,22 @@ def aggregate_results(results, s, rng_seed):
     flat = [v for v in out["must_hold"].values()]
     flat = [w for v in flat for w in (v.values() if not ({"pass", "provisional_pass"} & set(v)) else [v])]
     must = [w["pass"] if "pass" in w else w["provisional_pass"] for w in flat]
-    out["counts"] = {k: len(by[k]) for k in "ABND"} | {"oracle": len(oracle)}
+    out["counts"] = {k: len(by[k]) for k in "ABND"} | {"oracle": len(oracle), "B_below_p_cut": len(b_prime)}
+    out["reported"]["B_prime"] = dict(n=len(b_prime), indices=sorted(excluded), periods=[r["truth"]["period"] for r in b_prime],
+                                      p_cuts=[r["truth"].get("p_cut") for r in b_prime],
+                                      statuses={k: sum(r["status"] == k for r in b_prime) for k in sorted({r["status"] for r in b_prime})})
+    # engine/truth window disagreement, both ways, raw: a scored truth outside the engine's own window is a search
+    # failure (it is scored, as a miss); an excluded truth inside the engine's window is reported, never rescored
+    def window(r):
+        return None if r["status"] != "ok" or not r.get("p_range") else r["p_range"]
+
+    scored_b = [r for r in by["B"] if window(r)]
+    out["reported"]["window_disagreement"] = dict(
+        scored_below_window=sum(r["truth"]["period"] < window(r)[0] for r in scored_b),
+        scored_above_window=sum(r["truth"]["period"] > window(r)[1] for r in scored_b),
+        scored_with_window=len(scored_b),
+        excluded_inside_window=sum(window(r) is not None and window(r)[0] <= r["truth"]["period"] <= window(r)[1] for r in b_prime),
+        excluded_with_window=sum(window(r) is not None for r in b_prime))
     out["judged_by_virgil"] = ["M4", "M6", "M8"]
     failed = bool(not pv or out["rejected"] or any(x is False for x in must))
     # True only if every registered test ran as registered. M4, M6 and M8 are judged by virgil's own verdict and

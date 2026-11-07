@@ -23,6 +23,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from test_alma_maxent import _call, script, synthetic_dir  # noqa: E402
 
 PIX = 5.0
+BEAM = 30.0  # mas, a CLEAN beam FWHM
 
 
 @pytest.fixture(scope="module")
@@ -31,6 +32,17 @@ def syn(tmp_path_factory):
 
 
 # ------------------------------------------------------------------ --reg
+
+
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+def test_tsv_needs_a_beam_and_acts_on_the_image():
+    with pytest.raises(ValueError, match="beam_mas"):
+        va.reg_regularisers([("tsv", 1.0)], n=100, pixel_mas=PIX)
+    (tsv,) = va.reg_regularisers([("tsv", 1.0)], n=100, pixel_mas=PIX, beam_mas=BEAM)
+    scene = va.grid_scene(32, PIX)
+    eta = np.random.default_rng(0).normal(size=(32, 32))
+    # a weight of 1 is comparable to the data term: on this image it is of order n, not 1e-12 of it
+    assert float(tsv.value(scene({"log_brightness": jnp.asarray(eta)}))) > 1.0
 
 
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
@@ -52,14 +64,14 @@ def test_reg_mem_is_mpols_lambda_m_pull_and_tsv_is_the_zero_padded_squared_diffe
     eta = [rng.normal(size=(npix, npix)) for _ in range(2)]
     b = [np.exp(e) / np.exp(e).sum() for e in eta]
     for scale in (1.0, 0.8):
-        mem, tsv = va.reg_regularisers(va.parse_reg(f"mem:{lam},tsv:1e-4"), n=n, pixel_mas=PIX, scale=scale)
+        mem, tsv = va.reg_regularisers(va.parse_reg(f"mem:{lam},tsv:1e-4"), n=n, pixel_mas=PIX, scale=scale, beam_mas=BEAM)
         assert not mem.smoothed and not tsv.smoothed
         val = lambda r, e: float(r.value(scene({"log_brightness": jnp.asarray(e)})))  # noqa: E731
         ent = lambda x: cx.mpol_entropy(0.253 * x / (PIX / 1000) ** 2, 1e-4, 0.253)  # noqa: E731
         assert val(mem, eta[1]) - val(mem, eta[0]) == pytest.approx(scale * 2 * n * lam * (ent(b[1]) - ent(b[0])), rel=1e-5)
         pad = lambda x: np.pad(x, 1)  # noqa: E731
         sq = lambda x: np.sum(np.diff(pad(x), axis=0) ** 2) + np.sum(np.diff(pad(x), axis=1) ** 2)  # noqa: E731
-        assert val(tsv, eta[0]) == pytest.approx(scale * 1e-4 * sq(b[0]), rel=1e-10)
+        assert val(tsv, eta[0]) == pytest.approx(scale * 1e-4 * n * sq(b[0]) / (PIX / BEAM) ** 4, rel=1e-10)  # eht-imaging's norm_reg: / (F (p/B)^2)^2, F = 1, with n_data = n
     # the pull, not only the value: the gradient of the virgil term in the log-pixels equals that of 2 n L x MPoL's loss term, written out as in mpol 0.3.1 losses.entropy
     # (1 / tot_flux * sum(cube * log(cube / prior_intensity))) on the cube I = F softmax(eta) / dx^2
     import jax
@@ -76,7 +88,7 @@ def test_reg_is_config_f_only_and_toeplitz_equals_direct(syn):
     data = va.load_dir(syn)
     with pytest.raises(ValueError):
         va.build_problem(data, "R", lam=0.0, npix=48, reg="mem:1e-9")
-    kw = dict(lam=0.0, npix=48, pixel_mas=PIX, reg="mem:1e-9,tsv:1e-4", reg_n=len(data.u))
+    kw = dict(lam=0.0, npix=48, pixel_mas=PIX, reg="mem:1e-9,tsv:1e-4", reg_n=len(data.u), reg_beam_mas=BEAM)
     pd, pt = va.build_problem(data, "F", chi2="direct", **kw), va.build_problem(data, "F", chi2="toeplitz", **kw)
     v = {k: jnp.asarray(x) for k, x in pd.init.items()}
     v["log_brightness"] = jnp.asarray(np.random.default_rng(0).normal(size=(48, 48)))
@@ -89,7 +101,7 @@ def test_reg_is_config_f_only_and_toeplitz_equals_direct(syn):
 @pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
 def test_fit_reg_runs_refuses_lam_and_cv_task_takes_reg_and_gp_arms(syn, tmp_path):
     out = tmp_path / "f"
-    _call("fit", "--config", "F", "--reg", "mem:1e-9,tsv:1e-4", "--chi2", "toeplitz", "--data", syn, "--out", out, "--npix", 48, "--max-steps", 5, "--no-dirty")
+    _call("fit", "--config", "F", "--reg", "mem:1e-9,tsv:1e-4", "--chi2", "toeplitz", "--data", syn, "--out", out, "--npix", 48, "--max-steps", 5, "--no-dirty", "--reg-beam-mas", 30)
     res = json.loads((out / "result.json").read_text())
     assert res["config"] == "F" and np.isfinite(res["nll"])
     with pytest.raises(SystemExit):
@@ -100,13 +112,13 @@ def test_fit_reg_runs_refuses_lam_and_cv_task_takes_reg_and_gp_arms(syn, tmp_pat
     _call("folds", "--data", syn, "--out", folds, "--k", 2)
     cv = tmp_path / "cv"
     for j in (0, 1):
-        _call("cv-task", "--config", "F", "--reg", "mem:1e-9,tsv:1e-4", "--data", syn, "--folds", folds, "--fold", j, "--init", out, "--npix", 48, "--max-steps", 5, "--out", cv / f"a_{j}")
+        _call("cv-task", "--config", "F", "--reg", "mem:1e-9,tsv:1e-4", "--data", syn, "--folds", folds, "--fold", j, "--init", out, "--npix", 48, "--max-steps", 5, "--out", cv / f"a_{j}", "--reg-beam-mas", 30)
     r = json.loads((cv / "a_0" / "cv.json").read_text())
     assert r["arm"] and r["key"] == "mem:1e-9,tsv:1e-4" and np.isfinite(r["heldout"]["nll"])
     _call("cv-aggregate", cv)
     assert json.loads((cv / "cv_summary.json").read_text())["folds"] == [0, 1]
     # a second arm under the same directory is refused (one arm per cv directory)
-    _call("cv-task", "--config", "F", "--reg", "mem:1e-9,tsv:2e-4", "--data", syn, "--folds", folds, "--fold", 0, "--init", out, "--npix", 48, "--max-steps", 5, "--out", cv / "b_0")
+    _call("cv-task", "--config", "F", "--reg", "mem:1e-9,tsv:2e-4", "--data", syn, "--folds", folds, "--fold", 0, "--init", out, "--npix", 48, "--max-steps", 5, "--out", cv / "b_0", "--reg-beam-mas", 30)
     with pytest.raises(SystemExit):
         _call("cv-aggregate", cv)
 
@@ -508,7 +520,7 @@ def test_cv_aggregate_refuses_a_mix_of_arms_even_with_distinct_grid_points(syn, 
     cv = tmp_path / "cv"
     for j in (0, 1):
         for reg in ("mem:1e-9", "tsv:1e-4"):  # two regulariser grids, no lam in common
-            _call("cv-task", "--config", "F", "--reg", reg, "--data", syn, "--folds", folds, "--fold", j, "--init", init, "--npix", 48, "--max-steps", 3, "--out", cv / f"{reg}_{j}")
+            _call("cv-task", "--config", "F", "--reg", reg, "--data", syn, "--folds", folds, "--fold", j, "--init", init, "--npix", 48, "--max-steps", 3, "--out", cv / f"{reg}_{j}", "--reg-beam-mas", 30)
     with pytest.raises(SystemExit, match="more than one arm"):
         _call("cv-aggregate", cv)
 
