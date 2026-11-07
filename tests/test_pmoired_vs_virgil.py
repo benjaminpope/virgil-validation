@@ -53,9 +53,19 @@ def mask_file(tmp_path_factory):
     return path
 
 
-def compare(path, scene, params, setup=None):
+def assert_recorded_once(request, *names):
+    """Each named check metric was recorded exactly once in this test, so a
+    control or coarse run cannot become the check's headline number."""
+    recorded = [n for n, _ in request.node.user_properties]
+    for name in names:
+        assert recorded.count(name) == 1, (name, recorded)
+
+
+def compare(path, scene, params, setup=None, prefix=""):
     """Largest |dV^2| and |d closure phase| (deg) between the codes, and
-    the largest |closure phase| (the test's sensitivity)."""
+    the largest |closure phase| (the test's sensitivity). Recorded as
+    ``<prefix>max_abs_dV2`` etc.: a control or a coarse run passes its own
+    ``prefix`` so that the check's names are recorded exactly once."""
     s = model_samples(path, params, setup)
     # u/wl in m/um: evaluate virgil at wavelength 1 um, baselines u/wl m
     def vis(u, v):
@@ -69,9 +79,9 @@ def compare(path, scene, params, setup=None):
     )
     dcp = (np.rad2deg(np.angle(t3)) - s["t3phi"] + 180.0) % 360.0 - 180.0
     return (
-        record("max_abs_dV2", np.max(np.abs(v2 - s["v2"]))),
-        record("max_abs_dCP_deg", np.max(np.abs(dcp))),
-        record("max_abs_CP_deg", np.max(np.abs(s["t3phi"]))),
+        record(f"{prefix}max_abs_dV2", np.max(np.abs(v2 - s["v2"]))),
+        record(f"{prefix}max_abs_dCP_deg", np.max(np.abs(dcp))),
+        record(f"{prefix}max_abs_CP_deg", np.max(np.abs(s["t3phi"]))),
     )
 
 
@@ -122,7 +132,7 @@ def test_binary_angular(vlti_file):
 
 @pytest.mark.validates("virgil.models.Rotated", roots=["pmoired"], property="rotation_sense")
 @pytest.mark.parametrize("angle", [35.0, 250.0])
-def test_rotation_is_by_position_angle_in_pmoired(vlti_file, angle):
+def test_rotation_is_by_position_angle_in_pmoired(vlti_file, angle, request):
     """Rotated by an angle, a scene with a companion at position angle 20
     degrees matches PMOIRED's scene with the companion at 20 + angle (x
     East, y North): rotation runs North through East."""
@@ -132,7 +142,9 @@ def test_rotation_is_by_position_angle_in_pmoired(vlti_file, angle):
     dv2, dcp, cp_max = compare(vlti_file, scene, params)
     assert cp_max > 1 and dv2 < 1e-10 and dcp < 1e-6
     wrong = {**pm_ud("star", 1.8), **pm_point("comp", 0.05, *_east_north(sep, pa - angle))}
-    assert compare(vlti_file, scene, wrong)[1] > 100 * max(dcp, 1e-8)  # the other sense: a control
+    control = compare(vlti_file, scene, wrong, prefix="control_")[1]  # the other sense
+    assert control > 100 * max(dcp, 1e-8)
+    assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")
 
 
 def _east_north(sep, pa):
@@ -266,7 +278,7 @@ class _Cloud:
 
 
 @pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control")
-def test_modulated_rim_definitions_differ(vlti_file):
+def test_modulated_rim_definitions_differ(vlti_file, request):
     """With modulation the two packages define different things, both
     exactly. PMOIRED multiplies the radial profile by (1 + A cos m phi);
     virgil blurs the modulated thin ring, which gives harmonic m the
@@ -288,12 +300,13 @@ def test_modulated_rim_definitions_differ(vlti_file):
         RIM["diam"], RIM["fwhm"], RIM["inc"], RIM["pa"],
         np.array(amps), np.array(pas),
     )
-    dv2, dcp, _ = compare(vlti_file, scene, params, {"Nr": 3000})
-    assert 1e-4 < dv2 < 1e-2  # (m sigma / r0)^2 ~ 0.02 times the modulated part
+    dv2, dcp, _ = compare(vlti_file, scene, params, {"Nr": 3000}, prefix="definition_")
+    assert 1e-4 < dv2 < 1e-2
+    assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")  # (m sigma / r0)^2 ~ 0.02 times the modulated part
 
 
 @pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense")
-def test_modulation_sense_agrees_with_pmoired(vlti_file):
+def test_modulation_sense_agrees_with_pmoired(vlti_file, request):
     """The definitions differ only at O(m^2 sigma^2 / r0^2) (D-code above),
     so the sense of the modulation can still be checked against PMOIRED:
     virgil's rim at the same amplitudes and angles is 10 times closer to
@@ -306,12 +319,15 @@ def test_modulation_sense_agrees_with_pmoired(vlti_file):
         return vm.ModulatedGaussianRim(RIM["diam"], RIM["fwhm"], RIM["inc"], RIM["pa"], np.array(amps), np.array(angles))
 
     _, dcp, cp_max = compare(vlti_file, rim(pas), params, {"Nr": 3000})
-    _, turned, _ = compare(vlti_file, rim([p + 180.0 for p in pas]), params, {"Nr": 3000})
-    _, reflected, _ = compare(vlti_file, rim([2 * RIM["pa"] - p for p in pas]), params, {"Nr": 3000})
+    _, turned, _ = compare(vlti_file, rim([p + 180.0 for p in pas]), params, {"Nr": 3000}, prefix="control_turned_")
+    _, reflected, _ = compare(
+        vlti_file, rim([2 * RIM["pa"] - p for p in pas]), params, {"Nr": 3000}, prefix="control_reflected_"
+    )
     record("dcp_ratio_turned", turned / dcp)
     record("dcp_ratio_reflected", reflected / dcp)
     assert cp_max > 30
     assert turned > 10 * dcp and reflected > 10 * dcp
+    assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")
 
 
 # ------------------------------------------------------ limb darkening
@@ -344,7 +360,7 @@ LIMB_TOL = {"quadratic": (1e-6, 2e-3), "square-root": (1e-5, 2e-2)}
         ),
     ],
 )
-def test_limb_darkened_star_and_companion(vlti_file, law):
+def test_limb_darkened_star_and_companion(vlti_file, law, request):
     """PMOIRED integrates a sampled radial profile; it converges on virgil's
     analytic visibility as the sampling is refined (|dV^2| ~ Nr^-1.5 for the
     quadratic law, a little slower for the square-root law, whose
@@ -364,9 +380,10 @@ def test_limb_darkened_star_and_companion(vlti_file, law):
         **pm_profile_disk("star", diam, profile, dra=dra, ddec=ddec),
         **pm_point("comp", 0.03, -14.0, 9.0),
     }
-    coarse, _, _ = compare(vlti_file, scene, params, {"Nr": 1000})
+    coarse, _, _ = compare(vlti_file, scene, params, {"Nr": 1000}, prefix="coarse_")
     dv2, dcp, cp = compare(vlti_file, scene, params, {"Nr": 10000})
     record("convergence_1000_to_10000", coarse / dv2)
     assert coarse / dv2 > 10  # the difference is PMOIRED's sampling
     tol_v2, tol_cp = LIMB_TOL[law]
     assert dv2 < tol_v2 and dcp < tol_cp and cp > 1.0
+    assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")

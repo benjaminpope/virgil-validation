@@ -34,7 +34,7 @@ def builder():
     return module
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_twelve_systems_in_three_kinds():
     assert len(SLUGS) == 12
     kinds = [_rec(s)["kind"] for s in SLUGS]
@@ -43,7 +43,7 @@ def test_twelve_systems_in_three_kinds():
     record("systems", len(SLUGS))
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 @pytest.mark.parametrize("slug", SLUGS)
 def test_record_cites_its_paper_and_elements(slug):
     r = _rec(slug)
@@ -139,7 +139,7 @@ def test_published_orbit_reproduces_the_published_positions(slug):
     record("max_miss_mas", float(m[~suspect].max()))
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 @pytest.mark.parametrize("slug", SLUGS)
 def test_split_is_consistent(slug):
     r = _rec(slug)
@@ -165,7 +165,7 @@ def test_split_is_consistent(slug):
     assert sp["heldout_nights"] == len({f["night_mjd"] for f in files if f["role"] == "heldout"})
 
 
-@pytest.mark.validates("pipeline:binary-orbits", roots=["standards"], kind="guard")
+@pytest.mark.validates("pipeline:binary-orbits", roots=["self-consistency"], kind="guard")
 def test_classify_roles_by_time_and_night(builder):
     pub = [58000.20, 58010.30]
     rows = [dict(dp_id=f"ADP.{i}", instrument_name="GRAVITY", t_min=str(t), t_max=str(t + 0.01), proposal_id="x",
