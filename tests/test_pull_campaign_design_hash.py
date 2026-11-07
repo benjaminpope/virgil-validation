@@ -65,5 +65,8 @@ def test_any_other_edit_to_sky_py_changes_the_hash_input(monkeypatch):
     arc_line = next(ln for ln in SKY.splitlines() if ln.startswith("def arc_curve("))
     assert stripped_of(monkeypatch, SKY.replace(arc_line, arc_line + "\n    _x = 1", 1)) == base
     assert pc.design_hash() == h0
+    gauss_line = next(ln for ln in SKY.splitlines() if ln.startswith("def arc_curve_gaussian("))
+    assert stripped_of(monkeypatch, SKY.replace(gauss_line, gauss_line + "\n    _x = 1", 1)) == base
+    assert pc.design_hash() == h0
     assert stripped_of(monkeypatch, SKY + "\n\n\n") == base
     assert pc.design_hash() == h0
