@@ -323,15 +323,20 @@ def sweep_stage(data, sigma, *, npix, pixel_mas, stride, seed=0, gtol=1e-4, time
     prob = build(sub, npix=npix, pixel_mas=pixel_mas, flux=sigma["flux_jy"], ref_obs=sigma["ref_obs"])
     weights = grid(s2)
     log(f"sweep: {len(sub.u):,} of {len(data.u):,} rows (stride {stride}), n_real {n_eff:.6g}; {len(weights)} weights, w/s2 {GRID_MAX:g} to {GRID_MIN:g}")
-    results, reports, x0 = [], [], prob.start()
+    results, reports, x0, unconverged = [], [], prob.start(), []
     for w in weights:
         res, rep, _ = fit_point(prob, w, x0, gtol=gtol, time_limit=time_limit, n_real=n_eff, max_steps=max_steps, log=log)
+        if not kkt_of(rep)[0] < KKT_W_MAX:
+            unconverged.append(dict(weight=float(w), kkt_w=kkt_of(rep)[0]))
         results.append(res)
         reports.append(rep)
         x0 = dict(res.values)
 
     def refit(weight, init):
-        return fit_point(prob, weight, init, gtol=gtol, time_limit=time_limit, n_real=n_eff, max_steps=max_steps, log=log)[0]
+        res, rep, _ = fit_point(prob, weight, init, gtol=gtol, time_limit=time_limit, n_real=n_eff, max_steps=max_steps, log=log)
+        if not kkt_of(rep)[0] < KKT_W_MAX:
+            unconverged.append(dict(weight=float(weight), kkt_w=kkt_of(rep)[0]))
+        return res
 
     chi2 = np.array([float(sum(r.info["chi2"])) for r in results])
     curve = LCurve(weights, chi2, (chi2 / n_eff)[:, None], np.array([penalty_of(r, w) for r, w in zip(results, weights)]), results, refit=refit, others=())
@@ -344,6 +349,9 @@ def sweep_stage(data, sigma, *, npix, pixel_mas, stride, seed=0, gtol=1e-4, time
                ref_obs=int(sigma["ref_obs"]), points=table, crossings=[float(x) for x in out.roots], crossings_w_over_s2=[float(x) / s2 for x in out.roots], nprobe=NPROBE, cg_tol=CG_TOL, cg_maxit=int(cg_maxit),
                weight_band=None if out.weight_band is None else [None if x is None else float(x) for x in out.weight_band], band_note="w at s2 + 2 sigma_s and s2 - 2 sigma_s, from the grid fits alone",
                secant_trace=[dict(weight=float(a), m=float(b), g_se=float(c)) for a, b, c in out.trace], max_secant=MAX_SECANT, warnings=sorted({str(x.message) for x in caught}), status="ok")
+    rec["unconverged_fits"] = unconverged
+    if unconverged:
+        raise RuleFailure(f"item 6: {len(unconverged)} fast-loop fit(s) ended with kkt_w >= {KKT_W_MAX:g} (e.g. w = {unconverged[0]['weight']:.5g}, kkt_w {unconverged[0]['kkt_w']:.3g}); refit with a smaller --gtol", rec)
     first_m = float(out.m_sweep[0])
     if not first_m > 0:
         raise RuleFailure(f"D1: m = {first_m:.4g} <= 0 at the first grid point (w/s2 = {GRID_MAX:g}); no weight is chosen", rec)
@@ -378,6 +386,7 @@ def final_stage(data, sweep, sigma, start, *, npix, pixel_mas, gtol=1e-8, max_st
     n_real = float(sum(res1.info["ndata"]))
     point = dof_point(res1, MaxEntropy(1.0), w, (), s2, n_real, (NPROBE, CG_TOL, cg_maxit, 0), prob.curvature)
     z = (point["g"] - sweep["g"]) / float(np.hypot(point["se"], sweep["g_se"]))
+    m_full = float(sum(res1.info["chi2"])) / s2 - (n_real - point["g"])
     chi2_nominal = float(sum(res1.info["chi2"]))
     log(f"final: image at w = {w:.5g} (w/s2 {w / s2:.5g}); raw chi2/N {chi2_nominal / n_real:.5g}; G {point['g']:.6g} +- {point['se']:.3g} against the fast loop's {sweep['g']:.6g} +- {sweep['g_se']:.3g}")
     staged = fit_staged_nuisances(data, prob.scene, prob.priors, [MaxEntropy(w)], init={k: v for k, v in res1.values.items() if k in prob.priors}, ref_obs=ref, edge=EDGE, weight=w,
@@ -387,7 +396,9 @@ def final_stage(data, sweep, sigma, start, *, npix, pixel_mas, gtol=1e-8, max_st
     pixels = np.asarray(s3.values["pixels"], float)
     nuis = {k: dict(value=np.asarray(v["value"]), lower=np.asarray(v["lower"]), upper=np.asarray(v["upper"]), edge_frac=np.asarray(v["edge_frac"]), at_edge=np.asarray(staged.edge[k])) for k, v in staged.nuisances.items()}
     rec = dict(stage="final", raw_chi2_over_N=float(sum(s3.info["chi2"])) / n_real, raw_chi2_over_N_nominal=chi2_nominal / n_real, s2=s2, sigma_s=float(sweep["sigma_s"]), g=point["g"], g_se=point["se"], g_fast=sweep["g"], g_fast_se=sweep["g_se"], g_check_z=float(z),
-               g_check_note="reported, with no registered threshold", weight=w, w_over_s2=w / s2, psi_hp=psi_hp(pixels, pixel_mas), kkt_w=kkt_w, kkt_w_max=KKT_W_MAX, band_limit=band, band_limit_max=BAND_MAX, f_eta_over_f_floor=band,
+               g_check_note="reported, with no registered threshold", m_full=m_full, m_full_over_se=float(m_full / point["se"]),
+               m_full_note="m(w) on the full data at the chosen w, a diagnostic with no registered threshold (the fast loop's m uses a subsample whose chi2 expectation is n_real - stride G)",
+               sigma_factors="not fitted (weights rescaled by s2, item 1)", weight=w, w_over_s2=w / s2, psi_hp=psi_hp(pixels, pixel_mas), kkt_w=kkt_w, kkt_w_max=KKT_W_MAX, band_limit=band, band_limit_max=BAND_MAX, f_eta_over_f_floor=band,
                image_rounds=rounds, nuisances=nuis, edge=EDGE, ref_obs=int(staged.ref_obs), sum_weights=sums, flux_jy=float(np.sum(pixels**2)), flux_reference_jy=float(sigma["flux_jy"]), npix=int(npix), pixel_mas=float(pixel_mas),
                converged_report=bool(staged.kkt.get("converged")), status="ok")
     edges = sorted(k for k, v in nuis.items() if v["at_edge"].any())

@@ -1230,6 +1230,8 @@ def cmd_lambda_rule(args):
         sweep = vl.read_json(out / "sweep.json")
         if sweep.get("status") != "ok":
             raise SystemExit(f"{out}/sweep.json failed ({sweep.get('reason')}); there is no weight to fit")
+        if not sweep["fingerprint"] == sigma["fingerprint"] == vl.fingerprint(data) or sweep["s2"] != sigma["s2"]:
+            raise SystemExit(f"{out}/sweep.json was made under another sigma.json (fingerprint or s2 differ); rerun stage sweep")
         import jax.numpy as jnp
 
         z = np.load(out / "sweep_values.npz")

@@ -170,6 +170,17 @@ def test_sweep_fails_without_a_sign_change_and_never_extends_the_grid(data, sigm
     assert len(e.value.record["points"]) == 13 and e.value.record["status"] == "failed"
 
 
+def test_sweep_fails_when_a_fast_loop_fit_has_not_converged(data, sigma, monkeypatch):
+    """Item 6 holds on the fast loop: a grid point or secant refit with kkt_w >= 1e-4 ends the run."""
+    import functools
+
+    monkeypatch.setattr(vl, "fit_point", functools.partial(vl.fit_point, max_rounds=1))
+    monkeypatch.setattr(vl, "kkt_of", lambda report: (1.0, float("nan")))
+    with pytest.raises(vl.RuleFailure, match="item 6") as e:
+        vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, stride=STRIDE, log=lambda *a: None)
+    assert e.value.record["unconverged_fits"]
+
+
 def test_sweep_fails_when_m_stays_above_3_se_after_the_secant_steps(data, sigma, monkeypatch):
     """virgil's registered call (16 probes, CG 1e-4, at most 5 secant steps) is made; a G whose error is far smaller than |m| ends the run (D2)."""
     import dataclasses
@@ -204,6 +215,7 @@ def test_final_reports_item_8_and_checks_g_against_the_fast_loop(finished, swept
     assert set(rec["psi_hp"]) == {"disc", "lo", "hi"} and set(rec["nuisances"]) == {"cal.gain", "cal.offset"}
     assert all(v["edge_frac"].min() > 0.05 and not v["at_edge"].any() for v in rec["nuisances"].values())
     assert set(values) >= {"pixels", "cal.gain", "cal.offset"}
+    assert "m_full" in rec and rec["sigma_factors"].startswith("not fitted")
 
 
 @pytest.mark.slow
