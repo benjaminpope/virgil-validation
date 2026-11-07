@@ -59,14 +59,16 @@ def test_the_criteria_file_is_committed_and_the_registered_scenes_are_held_out()
 
 
 @pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
-def test_a_changed_criteria_file_is_refused(tmp_path, monkeypatch):
-    changed = tmp_path / "c.yml"
-    changed.write_text(tr.CRITERIA_FILE.read_text().replace("speedup_min: 30.0", "speedup_min: 15.0"))
-    monkeypatch.setattr(tr, "CRITERIA_FILE", changed)
-    with pytest.raises(SystemExit, match="not the registered"):
-        tr.criteria()
-    with pytest.raises(SystemExit):
-        tr.main(["summary", "--out", str(tmp_path)])
+def test_a_changed_criteria_file_is_refused(tmp_path):
+    original = tr.CRITERIA_FILE.read_text()
+    try:
+        tr.CRITERIA_FILE.write_text(original.replace("speedup_min: 30.0", "speedup_min: 15.0"))  # edited, not committed
+        with pytest.raises(SystemExit, match="uncommitted changes"):
+            tr.criteria()
+        with pytest.raises(SystemExit, match="uncommitted changes"):
+            tr.main(["summary", "--out", str(tmp_path)])
+    finally:
+        tr.CRITERIA_FILE.write_text(original)
 
 
 @pytest.mark.validates("crosscheck.toeplitz_scenes", roots=["self-consistency"], kind="guard")
@@ -260,4 +262,4 @@ def test_old_check_sets_the_criteria_commit():
     """Tier II imports the old check module, whose time command stamps outputs with ``CRIT``; only its own ``main`` sets
     that, so ``old_check`` must, whatever ran first in the process."""
     old = tr.old_check()
-    assert old.CRIT == tr.criteria_commit()
+    assert old.CRIT == old.prereg.criteria_commit(old.CRITERIA_FILE)
