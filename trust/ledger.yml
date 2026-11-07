@@ -565,3 +565,35 @@
   referee: standards (Waisberg et al. 2025; Rowan et al. 2026)
   evidence: [tests/test_trackb_astrometry.py::test_published_conventions]
   status: documented
+
+# Added from virgil-validation#204 (finding 7) and #207 (finding 10): rulings that were only in AGENTS.md and design notes.
+# The categories (ruling `definition`, post_result) are the worker's mapping, for Ben to check; no ruling is changed.
+- id: D20
+  title: 'HD 45166: the paper''s adopted calibrator value (Deshmukh+2025, mean over four calibrations, error their dispersion) is the reference, scored as "adopted" within 1 sigma (scripts/oidb_compare.py CRITERIA["adopted"], cmp_hd45166)'
+  objects: [virgil.models.BinaryModelCartesian]
+  ruling: definition
+  kind: 'analysis choice, post_result: unconfirmed. The "adopted" criterion (1 sigma against the paper''s mean over its four calibrations, because virgil fits one of them) first appears in 9a04c4ee (2026-10-07 13:59), the same commit as the first fit recipes and comparison table, so the history does not show whether it was fixed before or after a fit result. Later, f1185a87 (2026-10-08) scored the uncalibrated closure phases after a failed fit (raw chi2/N 1234); the target is dropped from the gallery and the paper''s position is not reproduced (design/hd45166_diagnosis.md). The criterion is a 1 sigma test against an adopted value, and a scored value virgil does not deliver counts as a failure'
+  referee: literature (Deshmukh et al. 2025, A&A 695, L20); PMOIRED agrees with virgil on the raw closure phases (design/hd45166_diagnosis.md); no second review of the choice itself
+  evidence: [tests/test_oidb_fits.py::test_compare_table_passes_the_published_numbers]  # a fit at the published HD 45166 position passes cmp_hd45166; the adopted mean itself is not pinned by a test
+  status: documented
+  links: [https://github.com/benjaminpope/virgil-validation/issues/204]
+
+- id: D21
+  title: 'HR 6819 (Be decretion disk): reported, never scored; oidb_compare hardcodes every row NOT-CLEAN (CRITERIA["not_clean"], cmp_hr6819), ruling of Ben 2026-10-07'
+  objects: [virgil.models.BinaryModelCartesian]
+  ruling: definition
+  kind: 'analysis choice, post_result: unconfirmed. The "not clean" label (binary plus resolved decretion disk) is in plan_oidb.md at 2aad1619 (2026-10-07 09:13), before the first fits (9a04c4ee, 13:59), so the label preceded any result. The wording "compared, never scored" is not in the repository history before the fits, and the orbit stage later ran as a MAP without NUTS after a 12 h timeout (f1185a87), so the order of the never-scored ruling and the results is not shown. Consequence: HR 6819 can never fail the OiDB comparison, so any agreement or disagreement quoted for it is descriptive, not a test'
+  referee: literature (Klement et al. 2025, A&A 694, A208); no independent second review
+  evidence: [tests/test_oidb_fits.py::test_compare_table_passes_the_published_numbers, tests/test_oidb_fits.py::test_hr6819_omega_table3_equals_table2_so_no_shift]
+  status: documented
+  links: [https://github.com/benjaminpope/virgil-validation/issues/204]
+
+- id: D22
+  title: 'Pull campaign: the design hash (scripts/pull_campaign.py design_hash) hashes src/crosscheck/sky.py without the functions arc_curve and arc_curve_gaussian and without blank lines (sky_source_without_arcs)'
+  objects: [virgil.inference.laplace_cov]
+  ruling: definition
+  kind: 'analysis exclusion, post_result: true. Made in e74f17a0 (2026-10-15), after the committed campaign result (cbfb712c, 2026-10-06), when the arc reference curve was changed to follow virgil 9061a1d''s von Mises weight (ca3c0873); the exclusion keeps the committed result valid across that change. It is justified because no pull-campaign scene draws an arc (tests/test_pull_campaign.py::test_no_pull_campaign_scene_reaches_an_arc_function), but the hash no longer protects those two functions, so a scene that drew an arc would only be caught by that test. Any other edit to sky.py still changes the hash input (tests/test_pull_campaign_design_hash.py). No hash value changed'
+  referee: self-consistency (guard tests on the stripped source and on design_hash; the soundness of the exclusion rests on the call-graph walk in tests/test_pull_campaign.py); no independent second review
+  evidence: [tests/test_pull_campaign.py::test_no_pull_campaign_scene_reaches_an_arc_function, tests/test_pull_campaign_design_hash.py::test_only_the_arc_functions_and_blank_lines_are_stripped, tests/test_pull_campaign_design_hash.py::test_any_other_edit_to_sky_py_changes_the_hash_input]
+  status: documented
+  links: [https://github.com/benjaminpope/virgil-validation/issues/207]
