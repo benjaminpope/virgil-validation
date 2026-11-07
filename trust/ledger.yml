@@ -593,7 +593,7 @@
   objects: [virgil.inference.laplace_cov]
   ruling: definition
   kind: 'analysis exclusion, post_result: true. Made in e74f17a0 (2026-10-15), after the committed campaign result (cbfb712c, 2026-10-06), when the arc reference curve was changed to follow virgil 9061a1d''s von Mises weight (ca3c0873); the exclusion keeps the committed result valid across that change. It is justified because no pull-campaign scene draws an arc (tests/test_pull_campaign.py::test_no_pull_campaign_scene_reaches_an_arc_function), but the hash no longer protects those two functions, so a scene that drew an arc would only be caught by that test. Any other edit to sky.py still changes the hash input (tests/test_pull_campaign_design_hash.py). No hash value changed'
-  referee: mathematics (an AST comparison of the stripped source with the full file)
-  evidence: [tests/test_pull_campaign_design_hash.py::test_only_the_arc_functions_and_blank_lines_are_stripped, tests/test_pull_campaign_design_hash.py::test_any_other_edit_to_sky_py_changes_the_hash_input]
+  referee: self-consistency (guard tests on the stripped source and on design_hash; the soundness of the exclusion rests on the call-graph walk in tests/test_pull_campaign.py); no independent second review
+  evidence: [tests/test_pull_campaign.py::test_no_pull_campaign_scene_reaches_an_arc_function, tests/test_pull_campaign_design_hash.py::test_only_the_arc_functions_and_blank_lines_are_stripped, tests/test_pull_campaign_design_hash.py::test_any_other_edit_to_sky_py_changes_the_hash_input]
   status: documented
   links: [https://github.com/benjaminpope/virgil-validation/issues/207]
