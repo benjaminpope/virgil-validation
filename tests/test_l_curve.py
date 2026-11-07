@@ -39,6 +39,9 @@ pytestmark = pytest.mark.x64
 
 UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
 N, PIXEL = 8, 1.0  # mas; the TSV beam is the pixel, so p / B = 1 and the weights keep their unnormalised meaning (the grid still brackets the corner)
+# float64 resolves differences of 1e-6 only below ~1e10 and any difference below ~1e16; a ptp past 1e15 means the drift has reached the point
+# where the recentring itself loses the live pixels. The observed drift is ~1e13 (the clamp, not convergence, is what handles it).
+PTP_BOUND = 1e15
 WEIGHTS = [1e3, 3e2, 1e2, 3e1, 1e1]
 
 
@@ -78,25 +81,59 @@ def sweep(tmp_path_factory):
                      dec_deg=-30.0, sigma_v2=0.01, sigma_cp_deg=1.0, rng=np.random.default_rng(1))
     model = vm.Image(np.zeros((N, N)), PIXEL)
     lc = imaging.l_curve(model, imaging.image_priors(model), OIData(str(path)), imaging.TSV(1.0, beam_mas=PIXEL), WEIGHTS)
-    # A fit that stops at max_steps is not a minimiser, and every optimality test below would then judge a random iterate (#183): fail loudly.
-    not_converged = [(w, r.info["steps"]) for w, r in zip(np.asarray(lc.weights), lc.results) if not r.info["converged"]]
-    assert not not_converged, f"#183: l_curve fits did not converge (weight, steps): {not_converged}; the tests below need exact minimizers"
     # softmax(log_b) is unchanged by a uniform shift, so the fit drifts along that null direction by an amount set by rounding (|x| ~ 3e5 on
     # one jax, ~3e10 on another), and it pushes the pixels it has darkened to zero brightness ever further down. Past ~1e10, x +- 1e-6 == x in
     # float64 and the finite-difference gradients below come out exactly 0. Recentre on the brightest pixel and floor the dark ones at -1000:
     # exp(-1000) is already exactly 0 in float64, so the image, chi2 and the penalty are unchanged, and a pixel at zero brightness has a
     # legitimately zero gradient.
+    # Which of the clamp and convergence is load-bearing: the clamp fixes #183's gauge drift (finite differences read exactly 0 without it);
+    # convergence is a separate property, checked per weight in test_every_lcurve_fit_converged and used to select exact minimisers below.
     log_b = [np.asarray(r.values["log_brightness"]) for r in lc.results]
-    log_b = [np.maximum(x - x.max(), -1000.0) for x in log_b]
+    recentred = [x - x.max() for x in log_b]
+    log_b = [np.maximum(x, -1000.0) for x in recentred]
     assert all(np.sum(x > -1000.0) >= 2 for x in log_b), "a fit collapsed to one pixel: every gradient below would be 0"
-    return lc, log_b, ours.load(path)
+    fits = [dict(weight=float(w), converged=bool(r.info["converged"]), stop=r.info["stop"], steps=int(r.info["steps"]), ptp=float(np.ptp(x)))
+            for w, r, x in zip(np.asarray(lc.weights), lc.results, recentred)]
+    return lc, log_b, ours.load(path), fits
+
+
+def exact_minimizers(fits):
+    """Indices of the converged weights; records how many were excluded."""
+    keep = [i for i, f in enumerate(fits) if f["converged"]]
+    record("n_excluded_unconverged", len(fits) - len(keep))
+    if not keep:
+        pytest.skip("#183: no l_curve fit converged, so none is an exact minimiser")
+    return keep
+
+
+@pytest.mark.validates("virgil.imaging.l_curve", roots=["self-consistency"], kind="guard")
+def test_every_lcurve_fit_converged(sweep):
+    """Every weight's fit reports converged with no stop reason (no max_steps
+    exit). virgil's tolerance is relative to each fit's own starting gradient,
+    so warm starts see different tolerances: this is reported, not assumed."""
+    lc, log_b, d, fits = sweep
+    n_bad = sum(not f["converged"] or f["stop"] is not None for f in fits)
+    record("n_unconverged", n_bad)
+    listing = [(f["weight"], f["steps"], f["stop"]) for f in fits]
+    assert n_bad == 0, f"#183: unconverged l_curve fits, (weight, steps, stop): {listing}"
+
+
+@pytest.mark.validates("virgil.imaging.l_curve", roots=["self-consistency"], kind="guard")
+def test_softmax_gauge_drift_is_bounded(sweep):
+    """After recentring on the brightest pixel and before the -1000 floor, the
+    log-brightness range stays below PTP_BOUND, so #183's gauge drift (the
+    reason for the clamp) cannot grow silently."""
+    lc, log_b, d, fits = sweep
+    worst = max(f["ptp"] for f in fits)
+    record("max_log_brightness_ptp", worst)
+    assert worst < PTP_BOUND, f"gauge drift ptp {worst:.3g} >= {PTP_BOUND:.0e}: {[(f['weight'], f['ptp']) for f in fits]}"
 
 
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])
 def test_points_match_our_chi2_and_penalty(sweep):
     """Weights largest first; per weight, χ², χ² per point and the penalty
     equal ours of the fitted image (rel. 1e-8)."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
     images = [softmax(x) for x in log_b]
     assert list(np.asarray(lc.weights)) == sorted(WEIGHTS, reverse=True)
     chi2 = np.array([chi2_image(d, b) for b in images])
@@ -115,11 +152,12 @@ def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
     """At each fitted image our gradients satisfy g_χ² + κ w g_TSV = 0 with
     κ = 2 (to 1 %), and what is left over is below 1e-5 of the gradient
     of χ² at the flat starting image."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
     flat = np.zeros((N, N))
     scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
     worst_kappa, worst_left = 0.0, 0.0
-    for w, x in zip(np.asarray(lc.weights), log_b):
+    keep = exact_minimizers(fits)
+    for w, x in zip(np.asarray(lc.weights)[keep], [log_b[i] for i in keep]):
         g_chi = gradient(lambda y: chi2_image(d, softmax(y)), x)
         g_pen = w * gradient(lambda y: tsv(softmax(y)), x)
         kappa = -(g_chi @ g_pen) / (g_pen @ g_pen)
@@ -136,9 +174,13 @@ def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
 def test_chi2_plus_once_the_penalty_is_not_stationary(sweep):
     """The other reading of "added to the loss", χ² + w TSV, leaves a
     gradient ten times the tolerance above at the strongest weight."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
     flat = np.zeros((N, N))
     scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
+    if not fits[0]["converged"]:
+        record("n_excluded_unconverged", 1)
+        pytest.skip("#183: the strongest-weight fit did not converge")
+    record("n_excluded_unconverged", 0)
     w, x = float(np.asarray(lc.weights)[0]), log_b[0]
     g = gradient(lambda y: chi2_image(d, softmax(y)) + w * tsv(softmax(y)), x)
     record("control_gradient_over_scale", float(np.max(np.abs(g)) / scale))
@@ -150,13 +192,14 @@ def test_the_curve_is_monotone_and_discrepancy_interpolates(sweep):
     """As the weight falls, our χ² does not rise and our TSV does not fall
     (exact minimizers; slack 1e-6 relative). LCurve.discrepancy at a target
     between two fitted χ² per point is our linear interpolation in log w."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
     images = [softmax(x) for x in log_b]
     w = np.asarray(lc.weights)
     chi2 = np.array([chi2_image(d, b) for b in images])
     pen = np.array([tsv(b) for b in images])
-    assert np.all(np.diff(chi2) <= 1e-6 * chi2[:-1])
-    assert np.all(np.diff(pen) >= -1e-6 * pen[:-1])
+    keep = exact_minimizers(fits)  # monotonicity is a property of exact minimizers only; the interpolation below is not
+    assert np.all(np.diff(chi2[keep]) <= 1e-6 * chi2[keep][:-1])
+    assert np.all(np.diff(pen[keep]) >= -1e-6 * pen[keep][:-1])
     red = chi2 / ours.n_data(d)
     target = 0.5 * (red[1] + red[2])
     t = (target - red[1]) / (red[2] - red[1])
