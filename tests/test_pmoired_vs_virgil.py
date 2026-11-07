@@ -54,11 +54,16 @@ def mask_file(tmp_path_factory):
 
 
 def assert_recorded_once(request, *names):
-    """Each named check metric was recorded exactly once in this test, so a
-    control or coarse run cannot become the check's headline number."""
+    """Each named check metric was recorded exactly once in this test, and
+    the marker names the check's headline, so a control or coarse run
+    cannot become the number the trust page shows (trust._headline otherwise
+    takes the first agreement-like metric in recording order)."""
     recorded = [n for n, _ in request.node.user_properties]
     for name in names:
         assert recorded.count(name) == 1, (name, recorded)
+    marker = request.node.get_closest_marker("validates")
+    if marker.kwargs.get("kind") != "control":
+        assert marker.kwargs.get("headline") in names, marker.kwargs
 
 
 def compare(path, scene, params, setup=None, prefix=""):
@@ -130,7 +135,7 @@ def test_binary_angular(vlti_file):
     assert dv2 < 1e-12 and dcp < 1e-9
 
 
-@pytest.mark.validates("virgil.models.Rotated", roots=["pmoired"], property="rotation_sense")
+@pytest.mark.validates("virgil.models.Rotated", roots=["pmoired"], property="rotation_sense", headline="max_abs_dV2")
 @pytest.mark.parametrize("angle", [35.0, 250.0])
 def test_rotation_is_by_position_angle_in_pmoired(vlti_file, angle, request):
     """Rotated by an angle, a scene with a companion at position angle 20
@@ -301,11 +306,11 @@ def test_modulated_rim_definitions_differ(vlti_file, request):
         np.array(amps), np.array(pas),
     )
     dv2, dcp, _ = compare(vlti_file, scene, params, {"Nr": 3000}, prefix="definition_")
-    assert 1e-4 < dv2 < 1e-2
-    assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")  # (m sigma / r0)^2 ~ 0.02 times the modulated part
+    assert 1e-4 < dv2 < 1e-2  # (m sigma / r0)^2 ~ 0.02 times the modulated part
+    assert_recorded_once(request, "max_abs_dV2", "max_abs_dCP_deg", "max_abs_CP_deg")
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense")
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired"], property="modulation_sense", headline="max_abs_dCP_deg")
 def test_modulation_sense_agrees_with_pmoired(vlti_file, request):
     """The definitions differ only at O(m^2 sigma^2 / r0^2) (D-code above),
     so the sense of the modulation can still be checked against PMOIRED:
@@ -352,11 +357,11 @@ LIMB_TOL = {"quadratic": (1e-6, 2e-3), "square-root": (1e-5, 2e-2)}
     [
         pytest.param(
             "quadratic",
-            marks=pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"]),
+            marks=pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"], headline="max_abs_dV2"),
         ),
         pytest.param(
             "square-root",
-            marks=pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"]),
+            marks=pytest.mark.validates("virgil.models.SquareRootLimbDarkenedDisk", "virgil.models.System", roots=["pmoired"], headline="max_abs_dV2"),
         ),
     ],
 )
