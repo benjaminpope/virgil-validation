@@ -10,7 +10,7 @@ on:
 env:
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: 8ad1d11456eb0a861e1a84ee5e845fbb562972f8  # virgil#614 merged: TSV and TV weights normalised as in eht-imaging (beam_mas required, n_data optional); contains #565, #562
+  VIRGIL_REF: d79696de9d970396d9f2d007312bcffc3bcf11e7  # virgil#664 merged: sqrt-pixel LinearImage, L-BFGS-B, kkt_report, LCurve.dof_discrepancy, fit_staged_nuisances (the registered IM Lup lambda rule)
 
 jobs:
   validate:

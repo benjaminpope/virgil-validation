@@ -32,7 +32,7 @@ def load_npz(zs, ddids=None):
     The reader of W2 has already conjugated ``DATA``; ``re``/``im`` (or a complex ``vis``, as the
     full-data files of the OzSTAR read have) are V. ``ddid`` and ``obs`` are the MS's own ids, as
     virgil's ``from_arrays`` wants them. ``ddids`` keeps only those ddids; the optional columns
-    (``time``, ``ant1``, ``ant2``, ``chan``) are passed on only when every file has them.
+    (``time``, ``ant1``, ``ant2``, ``chan``, ``scan``) are passed on only when every file has them.
     """
     from virgil.radio import ComplexVisData
 
@@ -42,7 +42,7 @@ def load_npz(zs, ddids=None):
     cat = lambda k: np.concatenate([np.asarray(z[k]) for z in zs])  # noqa: E731
     n = [len(z["u"]) for z in zs]
     vis = np.concatenate([np.asarray(z["vis"]) if "vis" in z else np.asarray(z["re"], float) + 1j * np.asarray(z["im"], float) for z in zs])
-    opt = {k: cat(k) for k in ("time", "ant1", "ant2", "chan") if all(k in z for z in zs)}
+    opt = {k: cat(k) for k in ("time", "ant1", "ant2", "chan", "scan") if all(k in z for z in zs)}
     return ComplexVisData.from_arrays(
         cat("u"), cat("v"), vis.astype(complex), cat("weight").astype(float), cat("freq"),
         ddid=np.repeat([int(z["ddid"]) for z in zs], n), obs=np.repeat([int(z["obsid"]) for z in zs], n), **opt,
