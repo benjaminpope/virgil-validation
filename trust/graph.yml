@@ -154,6 +154,8 @@ nodes:
   virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   crosscheck.radio_trust: {layer: references, doc: alma_conventions.md}  # numpy dirty image/beam sums, Briggs weights, gain-marginal quadrature (virgil#533)
   crosscheck.radio_offsets: {layer: references, doc: alma_conventions.md}  # B5 free offsets: exact phase-ramp chi2, analytic gradient, Fisher information (numpy only); tests/test_radio_spread_offsets.py
+  crosscheck.radio_exact: {layer: references, doc: alma_conventions.md}  # G2: numpy-only direct-sum chi2, loss, gradients and the derived round-off budget (design/toeplitz_reexam_042.md)
+  crosscheck.toeplitz_scenes: {layer: references, doc: alma_conventions.md}  # G2: held-out synthetic scenes and coverages, seeds from hashed names
   crosscheck.radio_innovations.DeltaProblem: {layer: references, doc: alma_conventions.md}  # B6, float32 linear-delta-V loss: the method alone, virgil has no code for it yet
 
   # ----------------------------------------------------------- likelihood
@@ -564,6 +566,7 @@ nodes:
   virgil_bridge.alma_gp: {layer: references, doc: alma_conventions.md}  # IM Lup GP image: Image(MultipoleField) with config R's nuisances through the Toeplitz chi^2; stage 1 holds the nuisances (`alma_imlup_gp.py`)
   virgil_bridge.alma_synth: {layer: references, doc: alma_conventions.md}  # IM Lup synthetic truth: smooth disk, real uv and weights, dots/NRMSE scoring (`alma_imlup_synth.py`)
   virgil_bridge.alma_replica: {layer: references, doc: alma_conventions.md}  # MPoL replica: softplus pixels, in-model blur, AdamW, MPoL step counts; replica-vs-MPoL bands (`alma_imlup_maxent.py fit --workflow mpol-replica`)
+  virgil_bridge.alma_lambda: {layer: references, doc: alma_conventions.md}  # the registered IM Lup lambda rule: fixed s_k, strong-to-weak weight sweep, chi^2/N = 1 interpolation (`alma_imlup_maxent.py lambda-rule`)
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
   crosscheck.alma_speed: {layer: references, doc: alma_conventions.md}  # virgil's L-BFGS against MPoL's AdamW on IM Lup: objective vs wall time, time to target, cost per pass (numpy only; `alma_imlup_maxent.py speed`)

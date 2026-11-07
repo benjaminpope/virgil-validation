@@ -14,6 +14,7 @@
     python scripts/alma_imlup_maxent.py cv-compare --mpol DIR --virgil DIR [--lam-ent 1e-9] --out DIR
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py replica-compare --fit DIR --mpol DIR --out DIR
+    python scripts/alma_imlup_maxent.py lambda-rule --stage {sigma,sweep,final} --data DIR --out DIR [--arm {mem,starlet_l1} [--k K ...]] [--clean-dir DIR | --beam-mas BMAJ BMIN PA]   (the registered discrepancy rule, design/alma_imlup_gate_criteria.yml)
     python scripts/alma_imlup_maxent.py better --fit DIR [--cv-compare JSON] [--synth DIR] [--synth-r DIR] [--clean-dir DIR] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
     python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
@@ -49,6 +50,7 @@ jax.config.update("jax_enable_x64", True)
 
 import virgil_bridge.alma as va  # noqa: E402
 import virgil_bridge.alma_gp as vg  # noqa: E402
+import virgil_bridge.alma_lambda as vl  # noqa: E402
 import virgil_bridge.alma_replica as vr  # noqa: E402
 import virgil_bridge.alma_start as vs  # noqa: E402
 from crosscheck import alma_maxent as cx  # noqa: E402
@@ -61,7 +63,7 @@ def say(*a):
     print(*a, flush=True)
 
 
-STAMPED = ("result.json", "synth.json", "replica_compare.json")  # the files the gate reads: each carries the criteria file and its last commit
+STAMPED = ("result.json", "synth.json", "replica_compare.json", "sigma.json", "point.json", "lambda_final.json")  # the files the gate reads: each carries the criteria file and its last commit
 
 
 _CRITERIA_COMMIT = None  # the criteria file's last commit, read once when a gate-producing command starts
@@ -395,7 +397,7 @@ def write_state(out, args, prob, values, stages, lam, n):
     cx.write_fits(out / "image.fits", image, prob.pixel_mas, RA_DEG, DEC_DEG, OBJECT="IM Lup", ORIGIN=f"virgil {args.config}")
     last = stages[-1]
     dump(out / "result.json", dict(
-        command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n),
+        command="fit", complete=False, config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, reg_beam_mas=reg_beam_mas(args), lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n),
         npix=prob.npix, pixel_mas=prob.pixel_mas, versions=versions(), stages=stages, converged=last["convergence"]["converged"],
         stop=last["stop"], stopped_because=last["stopped_because"], flux_jy=float(values["cal.flux"]), ref_obs=getattr(args, "ref_obs", 0),
         at_bound=va.at_bound_report(values, prob.priors), **chi2_record(stages)))
@@ -426,7 +428,7 @@ def write_report(args, out, data, prob, values, stages, shat, lam, mask, wall):
     sc_s1 = va.score(final_data, prob.scene, {**values, "cal.sigma": np.ones_like(sigma)}, prob.nuis, mask=final_mask, chunk_size=ck)  # s = 1 first (C10)
     say(f"workflow {res_workflow(args)}: chi2/(2N) raw (s = 1) {sc_raw['chi2_raw'] / (2 * final_data.u.shape[0]):.4f}; -ln L (eps 1e-12) {sc_raw['nll']:.6f}; chi2 raw {sc_raw['chi2_raw']:.1f} fitted {sc_raw['chi2_fit']:.1f}")
     res = dict(
-        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
+        command="fit", complete=not any(s.get("in_progress") for s in stages), config=args.config, workflow=getattr(args, "workflow", None) or "p3", args={k: v for k, v in vars(args).items() if k != "fn"}, reg_beam_mas=reg_beam_mas(args), lam=lam, lam_M=args.lam_m, lam_R_resolved=lam if args.config == "R" else None, lam_R_at_N=va.lam_r(n), n=int(final_data.u.shape[0]), npix=prob.npix, pixel_mas=prob.pixel_mas,
         versions=versions(), wall_s=wall, stages=stages, converged=stages[-1]["convergence"]["converged"], stop=stages[-1]["stop"], stopped_because=stages[-1]["stopped_because"],
         flux_jy=float(values["cal.flux"]), gain=values.get("cal.gain"), offset_mas=values.get("cal.offset"), sigma=sigma,
         clean_start=next((s["clean_start"] for s in stages if "clean_start" in s), None),
@@ -497,12 +499,26 @@ def _train_mask(args, data):
     return mask
 
 
+def reg_beam_mas(args):
+    """The beam (mas) that normalises ``--reg tsv``: ``--reg-beam-mas``, else the geometric mean of the CLEAN beam of ``--clean-dir``; None if no tsv is asked for."""
+    if not args.reg or "tsv" not in [k for k, _ in va.parse_reg(args.reg)]:
+        return None
+    if getattr(args, "reg_beam_mas", None) is not None:
+        if not args.reg_beam_mas > 0:
+            raise SystemExit(f"--reg-beam-mas {args.reg_beam_mas} must be positive")
+        return float(args.reg_beam_mas)
+    beam = vs.read_clean(args.clean_dir)[2] if getattr(args, "clean_dir", None) else None
+    if beam is None:
+        raise SystemExit("--reg tsv needs the CLEAN beam: --reg-beam-mas, or --clean-dir with a beam in clean.json")
+    return float(np.sqrt(beam[0] * beam[1]))
+
+
 def _prob_for(args, data, lam, mask, chi2=None):
     def prob_for(use, fixed=None, image_only=False):
         m = None if mask is None else (mask if use is None else mask[np.isin(np.asarray(data.obs), va.SB_OBS)])
         return va.build_problem(data, args.config, lam=lam, npix=args.npix, pixel_mas=args.pixel_mas, mask=m, use=use, chunk_size=args.chunk_size, alpha_free=getattr(args, "alpha_free", None), offset_bound_mas=getattr(args, "offset_bound_mas", None),
                               fixed_log_brightness=fixed, image_only=image_only, ref_obs=getattr(args, "ref_obs", 0), chi2=chi2 or getattr(args, "chi2", None) or "direct", taper_mas=getattr(args, "taper_mas", None),
-                              entropy_on=getattr(args, "entropy_on", None) or "blurred", reg=getattr(args, "reg", None), reg_n=len(data.u), reg_prior=getattr(args, "reg_prior", None) or "flat")
+                              entropy_on=getattr(args, "entropy_on", None) or "blurred", reg=getattr(args, "reg", None), reg_n=len(data.u), reg_prior=getattr(args, "reg_prior", None) or "flat", reg_beam_mas=reg_beam_mas(args))
 
     return prob_for
 
@@ -661,8 +677,8 @@ def cv_problem(args, data, n_all, train):
             first = va.parse_reg(args.reg)[0][1]
         except ValueError as e:
             raise SystemExit(str(e)) from e
-        prob = va.build_problem(data, "F", lam=0.0, reg=args.reg, reg_n=n_all, reg_scale=frac, reg_prior=args.reg_prior or "flat", **common)
-        return prob, None, first, args.reg, dict(reg=args.reg, reg_scale=frac, reg_prior=args.reg_prior or "flat")
+        prob = va.build_problem(data, "F", lam=0.0, reg=args.reg, reg_n=n_all, reg_scale=frac, reg_prior=args.reg_prior or "flat", reg_beam_mas=reg_beam_mas(args), **common)
+        return prob, None, first, args.reg, dict(reg=args.reg, reg_scale=frac, reg_prior=args.reg_prior or "flat", reg_beam_mas=reg_beam_mas(args))
     lam = lam_of(args, n_all)  # the full-data strength (the grid key)
     prob = va.build_problem(data, args.config, lam=lam * frac, **common)
     return prob, lam, lam, f"{lam:g}", dict(lam_train=lam * frac)
@@ -714,7 +730,7 @@ def arm_signature(r):
     a = r.get("arm") or {}
     if a.get("reg"):
         regs = va.parse_reg(a["reg"])
-        return f"{r.get('config')} reg kinds {[k for k, _ in regs]} other strengths {[x for _, x in regs[1:]]}"
+        return f"{r.get('config')} reg kinds {[k for k, _ in regs]} other strengths {[x for _, x in regs[1:]]} tsv beam {a.get('reg_beam_mas')}"
     if "length_theta_rad" in a:
         return f"{r.get('config')} GP length_theta {a['length_theta_rad']:g} r_max {a['r_max_mas']:g} n_r {a['n_r']} n_theta {a['n_theta']} sigma {a['sigma_range']}"
     return f"{r.get('config')} plain"
@@ -1193,6 +1209,49 @@ def cmd_lambda0(args):
     say(json.dumps(dict(n=args.n, lam_M=va.MPOL["lam_m"], lam_R=r, flux=args.flux, lam_F_equivalent=va.lam_f_equivalent(r, flux=args.flux))))
 
 
+def cmd_lambda_rule(args):
+    """The registered discrepancy-principle rule (``virgil_bridge.alma_lambda``): stage sigma, sweep (one arm, optionally one grid point) or final."""
+    pin_criteria()
+    r = vl.rule()
+    npix, px = args.npix or r["crop"]["npix"], args.pixel_mas or r["crop"]["pixel_mas"]
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    data = load(args)
+    ref_obs, _ = va.resolve_ref_obs(data, "0")
+    common = dict(npix=npix, pixel_mas=px, ref_obs=ref_obs, chunk_size=args.chunk_size)
+    run = dict(time_limit=args.time_limit, gtol=args.gtol, log=say)
+    sigma_dir = args.sigma or out
+    if args.stage != "sigma" and not args.arm:
+        raise SystemExit(f"--stage {args.stage} needs --arm {{{','.join(r['arms'])}}}")
+    if args.arm and args.arm not in r["arms"]:
+        raise SystemExit(f"--arm must be one of the registered arms {r['arms']}")
+    if args.stage == "sigma":
+        rec, values = vl.sigma_stage(data, **common, **run)
+        vl.save_values(out / "sigma_values.npz", values)
+        dump(out / "sigma.json", dict(rec, versions=versions()))
+        say(f"sigma factors fixed: s_k in [{min(rec['sigma']):.4f}, {max(rec['sigma']):.4f}], raw chi^2/N {rec['chi2_over_N']:.4f}, C8 {rec['c8_converged']}; wrote {out / 'sigma.json'}")
+        if not rec["c8_converged"]:
+            raise SystemExit(f"sigma stage did not reach C8 (stopped because {rec['stopped_because']}): its s_k are too large, which leaves no chi^2/N = 1 crossing. Rerun it with a longer --time-limit; the sweep refuses this sigma.json")
+    elif args.stage == "sweep":
+        recs = vl.sweep_stage(data, out, sigma_dir, args.arm, args.k, dump, force=args.force, **common, **run)
+        say("; ".join(f"k={x['k']:+d} w={x['weight']:.4g} chi2/N={x['chi2_over_N']:.5f} C8={x['c8_converged']}" for x in recs))
+    else:
+        beam = tuple(args.beam_mas) if args.beam_mas else (vs.read_clean(args.clean_dir)[2] if args.clean_dir else None)
+        if beam is None:
+            raise SystemExit("--stage final needs the CLEAN beam: --clean-dir, or --beam-mas BMAJ BMIN PA")
+        res = vl.final_stage(data, out, sigma_dir, args.arm, dump, beam=beam, max_extend=args.max_extend, **common, **run)
+        d = out / "final" / args.arm
+        d.mkdir(parents=True, exist_ok=True)
+        dump(d / "lambda_final.json", dict(res, versions=versions()))
+        say(f"{args.arm}: {res['status']}, selected weight {res['selected_weight']}, corner {res['corner_weight']} (reported only), extensions {len(res['extensions'])}; wrote {d / 'lambda_final.json'}")
+        if res["status"].startswith("unconverged"):
+            raise SystemExit(f"{args.arm}: {res['status']}: a fit that sets or bounds the selected weight did not reach C8 (unconverged grid points {res['unconverged_points']}); the result is not evidence. Refit those points with --force and a longer --time-limit")
+        if res["status"] != "ok":
+            c = [p["chi2_over_N"] for p in res["points"]]
+            raise SystemExit(f"{args.arm}: no chi^2/N = 1 crossing after {len(res['extensions'])} extension(s) (chi^2/N from {max(c):.4g} at the strongest to {min(c):.4g} at the weakest weight); no weight is selected and no edge weight is used. "
+                             f"Check the sigma stage (C8, s_k too large leaves chi^2/N below 1) before widening anything")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1235,7 +1294,8 @@ def main(argv=None):
     p.add_argument("--blur-mas", dest="taper_mas", type=float, default=None, help="config R: FWHM (mas) of the Gaussian blur inside the forward model (virgil's blur_fwhm_mas; MPoL's \"Gaussian base layer\") and of the entropy's image "
                    "(default MPoL's 30); 0 is classic MEM: no kernel, entropy of the image itself. --taper-mas is the old name")
     p.add_argument("--reg", default=None, help="config F, Track A (standard practice: no kernel, regularisers on the unblurred image), e.g. mem:1e-9,tsv:1e-4. mem:L is virgil's MaxEntropy at MPoL's lambda_M = L (weight 2 N L / dx^2 "
-                   "on the unit-sum image at a fixed 0.253 Jy: only approximately MPoL-comparable, since MPoL's effective weight grows with its fitted flux and its flux-only term is dropped); tsv:W is virgil's TSV at weight W. Same nuisances as R, Toeplitz chi^2 with --chi2 toeplitz. Exclusive with --lam, --lam-m")
+                   "on the unit-sum image at a fixed 0.253 Jy: only approximately MPoL-comparable, since MPoL's effective weight grows with its fitted flux and its flux-only term is dropped); tsv:W is virgil's TSV (virgil#614) at the dimensionless weight W, in eht-imaging's norm_reg form with the CLEAN beam (--reg-beam-mas; eht-imaging itself uses the nominal resolution 1/|u|max, so W is not directly eht-imaging's) and scaled by N, so W about 1 is comparable to the data term, W about 1e-3 a light touch. Same nuisances as R, Toeplitz chi^2 with --chi2 toeplitz. Exclusive with --lam, --lam-m")
+    p.add_argument("--reg-beam-mas", type=float, default=None, help="--reg tsv: the CLEAN beam FWHM in mas that normalises the weight (default: the geometric mean of the beam of --clean-dir's clean.json)")
     p.add_argument("--reg-prior", choices=["flat", "beam"], default="flat", help="--reg mem: the default image of the entropy: flat (default, MPoL's convention) or the primary beam (F's pixels are sky x beam; adds -sum b ln q)")
     p.add_argument("--entropy-on", choices=["blurred", "base"], default="blurred", help="config R: the entropy of the image blurred by --taper-mas (default, MPoL's R) or of the unblurred base image while the blurring kernel stays on the model (MEM's intrinsic correlation function, Gull 1989)")
     p.add_argument("--adam-steps", type=int, default=5000, help="adam: step budget per stage (all stages, selfcal and image included)")
@@ -1301,6 +1361,8 @@ def main(argv=None):
     common(p)
     p.add_argument("--config", choices=["R", "F", "G"], default="F")
     p.add_argument("--reg", default=None, help="config F: mem:L,tsv:W as `fit --reg` (the grid variable, `lam` in cv.json, is the first item's strength; keep one arm per directory)")
+    p.add_argument("--reg-beam-mas", type=float, default=None, help="--reg tsv: the CLEAN beam FWHM in mas that normalises the weight, as `fit --reg-beam-mas` (default: the geometric mean of the beam of --clean-dir's clean.json)")
+    p.add_argument("--clean-dir", default=None, help="--reg tsv: take the beam from this CLEAN output directory (clean.json) unless --reg-beam-mas is given")
     p.add_argument("--reg-prior", choices=["flat", "beam"], default="flat", help="--reg mem: flat (default) or the primary beam as the default image, as `fit --reg-prior`")
     p.add_argument("--chi2", choices=va.CHI2_ENGINES, default=None, help="default toeplitz for --reg and G, else direct")
     p.add_argument("--fold", type=int, required=True)
@@ -1341,6 +1403,25 @@ def main(argv=None):
     p.add_argument("--clean-dir", default=None, help="CLEAN output directory: its flux is the reference, else the DSHARP constant")
     p.add_argument("--out", required=True)
     p.set_defaults(fn=cmd_better)
+
+    p = sub.add_parser("lambda-rule", help="the registered discrepancy rule for the regulariser weight (design/alma_imlup_gate_criteria.yml, lambda_selection): sigma, sweep, final")
+    p.add_argument("--stage", choices=["sigma", "sweep", "final"], required=True, help="sigma: unregularised fit, fixes s_k. sweep: grid points of --arm (all, or --k). final: complete the grid, extend if needed, discrepancy weight, refit, images")
+    p.add_argument("--data", required=True, help="directory of ddid_NN.npz (no default)")
+    p.add_argument("--ddids", type=int, nargs="*", default=None)
+    p.add_argument("--out", required=True, help="stage sigma writes sigma.json here; sweep and final write sweep/<arm>/k*/ and final/<arm>/")
+    p.add_argument("--sigma", default=None, help="the directory of sigma.json (default: --out)")
+    p.add_argument("--arm", default=None, help="mem (flat prior) or starlet_l1 (the registered arms)")
+    p.add_argument("--k", type=int, nargs="*", default=None, help="sweep: grid indices, weight 10^(k / points per decade) (default: the registered range; an array task passes one)")
+    p.add_argument("--force", action="store_true", help="sweep: refit points that are already on disk")
+    p.add_argument("--clean-dir", default=None, help="final: CLEAN output directory (clean.json) for the restoring beam, as the other commands")
+    p.add_argument("--beam-mas", type=float, nargs=3, default=None, metavar=("BMAJ", "BMIN", "PA_DEG"), help="final: the beam instead of --clean-dir's")
+    p.add_argument("--npix", type=int, default=None, help="default: the registered crop")
+    p.add_argument("--pixel-mas", type=float, default=None, help="default: the registered crop")
+    p.add_argument("--max-extend", type=int, default=3, help="final: decades to extend the grid by when chi^2/N = 1 is not bracketed (each recorded)")
+    p.add_argument("--time-limit", type=float, default=None, help="seconds per fit (default none: C8 decides)")
+    p.add_argument("--gtol", type=float, default=1e-4)
+    p.add_argument("--chunk-size", type=int, default=va.CHUNK)
+    p.set_defaults(fn=cmd_lambda_rule)
 
     p = sub.add_parser("compare")
     p.add_argument("--virgil", required=True)

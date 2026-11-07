@@ -305,12 +305,12 @@ def parse_reg(spec):
     return out
 
 
-def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0):
+def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0, beam_mas=None):
     """virgil's regularisers of ``--reg`` (``virgil.imaging``, ``smoothed=False``: on the unblurred pixels, no kernel) for a fit on ``n`` full-data points.
 
     ``mem:L``: ``MaxEntropy`` (``prior`` the default image, flat if None) whose weight is MPoL's lambda_M = L converted as ``lam_f_equivalent(lam_r(n, L))`` at the flux ``MPOL['f_tot']``,
     i.e. ``2 n L / dx^2`` on the unit-sum image: the same pull as MPoL's ``lambda_M sum I ln(I / p) / F_tot`` with I = F_tot b / dx^2 (Jy/arcsec^2), the prior_intensity p entering only a flux-only term (exact for a flat ``prior``, which the tests evaluate). Only *approximately* MPoL-comparable: the weight is fixed at the flux ``MPOL['f_tot']`` = 0.253 Jy, whereas MPoL's effective weight grows with its fitted flux, and MPoL's flux-only entropy term is dropped. ``build_problem``'s ``reg_prior`` is ``"flat"`` (default: a flat prior on the image's pixels, MPoL's convention) or ``"beam"`` (F's primary beam as the default image, which adds ``-sum b ln q``, ln q about -0.01 at IM Lup's radius).
-    ``tsv:W``: ``TSV`` at weight W on the unit-sum image (virgil's own units, no conversion). ``scale`` (the training fraction in cross-validation) multiplies every weight, as ``lam_train``."""
+    ``tsv:W``: virgil's ``TSV`` at the dimensionless weight W (eht-imaging's ``norm_reg`` form, virgil#614, but with ``beam_mas`` the CLEAN beam FWHM (required), where eht-imaging uses its nominal resolution) and ``n_data=n``, so that W is relative to the data term: W about 1 is comparable to it. ``scale`` (the training fraction in cross-validation) multiplies every weight, as ``lam_train``."""
     from virgil.imaging import TSV, MaxEntropy
 
     out = []
@@ -318,7 +318,9 @@ def reg_regularisers(reg, *, n, pixel_mas, prior=None, scale=1.0):
         if kind == "mem":
             out.append(MaxEntropy(float(scale * lam_f_equivalent(lam_r(n, x), flux=MPOL["f_tot"], pixel_mas=pixel_mas)), prior=prior, smoothed=False))
         else:
-            out.append(TSV(float(scale * x), smoothed=False))
+            if beam_mas is None:
+                raise ValueError("tsv needs beam_mas, the CLEAN beam FWHM in mas (virgil's TSV weight is normalised by it)")
+            out.append(TSV(float(scale * x), smoothed=False, beam_mas=float(beam_mas), n_data=float(n)))
     return out
 
 
@@ -369,7 +371,7 @@ def nuisance_sites(nuis, data, *, offset_bound_mas=None, ref_obs=0):
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
                   alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None, entropy_on="blurred",
-                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat"):
+                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat", reg_beam_mas=None, sigmas=True):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -396,6 +398,8 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     TSV on the unblurred pixels, no kernel, so ``lam`` is unused. With ``reg`` the Toeplitz chi^2 is allowed for F (alpha fixed).
 
     ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
+
+    ``sigmas`` False drops the per-ddid error scales from the fit (s = 1; the lambda rule folds its fixed s_k into the data weights instead).
 
     ``chi2`` is the engine of the data term: ``direct`` (the NUFFT of every point; default) or ``toeplitz`` (virgil's dirty-beam form, equal to the direct
     term to ~1e-13 at a cost independent of N; config R only). With fitted offsets Toeplitz needs the prior box inside its precompute, so
@@ -425,7 +429,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
             raise ToeplitzRefused("--chi2 toeplitz needs alpha fixed")
         if offset_bound_mas is None and not image_only:
             offset_bound_mas = TOEPLITZ_OFFSET_BOUND_MAS
-    off = dict(gains=False, offsets=False, sigmas=False) if image_only else {}
+    off = dict(gains=False, offsets=False, sigmas=False) if image_only else ({} if sigmas else dict(sigmas=False))
     alpha_free = FULL["alpha_free"] if alpha_free is None else bool(alpha_free)  # F only; R never fits alpha
     use = data if use is None else use
     taper_mas = blur_mas if blur_mas is not None else taper_mas
@@ -455,7 +459,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         # the pixels are sky x beam; the default image of the entropy is the beam, so the penalty is the
         # entropy of the sky relative to a flat sky (docs: "the default image q ... normalised here")
         beam_prior = np.exp(np.asarray(primary_beam(npix, pixel_mas, **pb)))
-        regs = reg_regularisers(reg, n=reg_n or len(data), pixel_mas=pixel_mas, prior=beam_prior if reg_prior == "beam" else None, scale=reg_scale) if reg else [MaxEntropy(float(lam), prior=beam_prior)]
+        regs = reg_regularisers(reg, n=reg_n or len(data), pixel_mas=pixel_mas, prior=beam_prior if reg_prior == "beam" else None, scale=reg_scale, beam_mas=reg_beam_mas) if reg else [MaxEntropy(float(lam), prior=beam_prior)]
     else:
         raise ValueError(f"config must be R or F, not {config!r}")
     if chi2 == "toeplitz":
@@ -927,13 +931,15 @@ def run_adam(prob, init, *, steps, lr=1e-2, adam_eps=1e-8, time_limit=None, eps=
     return values, info, traj, why
 
 
-def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None):
+def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, precondition=None, fit_fn=None):
     """L-BFGS through ``virgil.fit`` (C8). Returns ``(values, info, trajectory)``: the fitted values as
     numpy arrays, ``fit``'s diagnostics and one dict (steps, loss, grad_norm, elapsed) per chunk of
     steps. The loss is in -ln L units up to the constant of the priors' normalisation. ``precondition`` (``"diag"``
-    or None) is ``virgil.fit``'s opt-in diagonal Gauss-Newton scaling; it needs a virgil that has the argument."""
+    or None) is ``virgil.fit``'s opt-in diagonal Gauss-Newton scaling; it needs a virgil that has the argument. ``fit_fn`` replaces ``virgil.fit`` (same signature; the lambda rule routes it through ``l_curve``)."""
 
     from virgil import fit
+
+    fit = fit_fn or fit
 
     precondition = None if precondition in (None, "none") else precondition
     kw = {}
@@ -961,7 +967,7 @@ def run_fit(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gt
     return values, info, traj
 
 
-def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, on_round=None, max_rounds=50, precondition=None):
+def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None, gtol=1e-4, on_round=None, max_rounds=50, precondition=None, fit_fn=None):
     """L-BFGS through ``virgil.fit`` until C8 holds (loss change < 0.1 over >= 100 steps), the step or the time
     budget (``max_steps`` and ``time_limit``, per call) runs out, or the optimiser can go no further.
 
@@ -986,7 +992,7 @@ def run_fit_c8(prob, init, *, max_steps, time_limit=None, eps=EPS_FIT, log=None,
             why = "time_limit"
             break
         t_fit = time.time()
-        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition)
+        values, info, part = run_fit(prob, values, max_steps=max_steps - total, time_limit=left, eps=eps, log=log, gtol=gtol, precondition=precondition, **({} if fit_fn is None else dict(fit_fn=fit_fn)))
         steps = int(info["steps"])
         pc_rounds += info.get("precondition_rounds", [])
         restarts.append(dict(steps=steps, wall_s=time.time() - t_fit, loss=float(info["loss"])))
