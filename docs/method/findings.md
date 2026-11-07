@@ -53,6 +53,9 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D17">D17</span> | `epochs.rank_orbits` | Gl 229: the nights 2024-02-28 and 2024-03-29 are flagged as single-night alias peaks (oidb_fit.py GL229_FLAGGED) and seed no position; with exclude_flagged they are dropped | documented |
 | <span id="D18">D18</span> | `epochs.rank_orbits` | Halbwachs+2020 published ellipses are adopted as 1 sigma as rescaled; the unrescaled variant divides by 0.1626 * 1.0856 = 0.17652 (crosscheck.astrometry.published_position) | documented |
 | <span id="D19">D19</span> | `epochs.rank_orbits` | Waisberg+2025 give no covariance; isotropic per-axis scatter 40 uas (zeta Boo) and 20 uas (eta Oph) is assumed (crosscheck.astrometry.WAISBERG_SIGMA); Rowan+2026 errors are multiplied by their published s_ast = e^0.8 | documented |
+| <span id="D20">D20</span> | `models.BinaryModelCartesian` | HD 45166: the paper's adopted calibrator value (Deshmukh+2025, mean over four calibrations, error their dispersion) is the reference, scored as "adopted" within 1 sigma (scripts/oidb_compare.py CRITERIA["adopted"], cmp_hd45166) | documented [virgil-validation#204](https://github.com/benjaminpope/virgil-validation/issues/204) |
+| <span id="D21">D21</span> | `models.BinaryModelCartesian` | HR 6819 (Be decretion disk): reported, never scored; oidb_compare hardcodes every row NOT-CLEAN (CRITERIA["not_clean"], cmp_hr6819), ruling of Ben 2026-10-07 | documented [virgil-validation#204](https://github.com/benjaminpope/virgil-validation/issues/204) |
+| <span id="D22">D22</span> | `inference.laplace_cov` | Pull campaign: the design hash (scripts/pull_campaign.py design_hash) hashes src/crosscheck/sky.py without the functions arc_curve and arc_curve_gaussian and without blank lines (sky_source_without_arcs) | documented [virgil-validation#207](https://github.com/benjaminpope/virgil-validation/issues/207) |
 
 ## Problems found in other packages
 
