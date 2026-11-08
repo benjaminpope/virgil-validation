@@ -226,7 +226,7 @@ def ensure_point(prob, out, arm, k, sigma_values, per_decade, write_json, *, sig
     if (d / "point.json").exists() and not force:
         rec = json.loads((d / "point.json").read_text())
         if rec.get("sigma_hash") != h:
-            raise SystemExit(f"{d}/point.json was fitted with other s_k (hash {rec.get('sigma_hash')}, sigma.json has {h}); rerun it with --force, or use a new --out")
+            raise SystemExit(f"{d}/point.json was fitted with other s_k (hash {rec.get('sigma_hash')}, sigma.json has {h}); rerun it with --refit, or use a new --out")
         return rec
     src = next((j for j in (k + 1, k - 1) if (point_dir(out, arm, j) / "values.npz").exists()), None)
     start = flat_start(sigma_values) if src is None else load_values(point_dir(out, arm, src) / "values.npz")

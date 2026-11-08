@@ -241,7 +241,7 @@ def test_verdicts_and_the_no_combining_rule(tmp_path):
     with pytest.raises(SystemExit, match="several virgil commits"):
         tr.main(["summary", "--out", str(tmp_path)])
     (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40, criteria_commit="0" * 40)))
-    with pytest.raises(SystemExit, match="another criteria commit"):
+    with pytest.raises(SystemExit, match="different criteria commits"):
         tr.main(["summary", "--out", str(tmp_path)])
 
 
