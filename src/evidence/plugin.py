@@ -179,6 +179,14 @@ def pytest_runtest_makereport(item, call):
     report = outcome.get_result()
     report.validates = _claims(item)
     report.validates_where = _where(item)
+    if call.when == "call" and report.passed and not hasattr(report, "wasxfail"):
+        recorded = {name for name, _ in report.user_properties}
+        for claim in report.validates:
+            name = claim.get("headline")
+            if name is not None and name not in recorded:
+                report.outcome = "failed"
+                report.longrepr = f"headline {name} is not a recorded metric"
+                break
 
 
 def _where(item):

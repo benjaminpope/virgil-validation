@@ -506,7 +506,7 @@ def test_the_sigma_and_gain_gradients_obey_the_chain_rule_of_the_map(case):
 IMLUP_SIGMA = [1.12, 1.15, 1.13, 1.13, 1.13, 1.14, 1.14, 1.14, 1.14, 1.13, 1.14, 1.11, 1.10, 1.08, 1.06, 1.13, 1.13, 1.07, 1.67, 1.67, 1.66, 1.75, 1.99, 1.99, 1.99, 2.08]
 
 
-@pytest.mark.validates("pipeline:alma-imlup", roots=["mpol", "mathematics"], tier="B", headline="MPoL's objective on IM Lup")
+@pytest.mark.validates("pipeline:alma-imlup", roots=["mpol", "mathematics"], tier="B", headline="rel_virgil_vs_exact")
 @pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason="the stride-1000 subsample is not in ~/data/alma_imlup/subsample_1000")
 def test_the_objective_matches_mpol_on_all_26_ddids_and_7_observations_of_im_lup(tmp_path):
     """On the whole stride-1000 subsample (42,424 visibilities, 26 ddids, 7 observations) at MPoL-like

@@ -288,7 +288,7 @@ def _image(res):
 
 @pytest.mark.validates(
     "virgil.imaging.TSV", "virgil.models.Image", "virgil.likelihood.whitened_residuals", "pipeline:rml-imaging",
-    roots=["ehtim"],
+    roots=["ehtim"], headline="rel_gradient_at_ehtim_minimum",
 )
 @pytest.mark.parametrize("factor", [1, 2])
 def test_ehtim_minimum_is_stationary_on_a_well_posed_problem(well_posed, ehtim_converged, factor):

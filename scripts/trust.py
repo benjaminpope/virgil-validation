@@ -200,6 +200,9 @@ def _headline(record):
     name = record.get("headline")
     if name in metrics:
         return name, _worst(metrics[name])
+    if name:
+        # an explicit headline that was not recorded: show no number rather than one the test did not choose
+        return None, None
     if record.get("kind") == "control":
         # a negative control is built to disagree: its "error" metrics are not a result to headline
         return None, None
@@ -208,6 +211,20 @@ def _headline(record):
         if AGREEMENT.search(key) and isinstance(value, (int, float)):
             return key, value
     return None, None
+
+
+def _headline_by_order(records):
+    """Tests whose headline is chosen by recording order: a check with no ``headline=`` and more than one
+    candidate metric (a distinct number that measures agreement)."""
+    out = set()
+    for r in records:
+        if r.get("kind") != "check" or r.get("headline"):
+            continue
+        cands = [k for k, v in (r.get("metrics") or {}).items()
+                 if AGREEMENT.search(k) and isinstance(_worst(v), (int, float))]
+        if len(cands) > 1:
+            out.add(r["test"].partition("[")[0])  # one entry per test function, not per parameter set
+    return sorted(out)
 
 
 def _check(record):
@@ -542,6 +559,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         "changed": None if unknown else changed,
         # campaign passes kept although the newest ordinary run skipped them, with the commit each was measured at
         "older_campaigns": sorted((r["test"], r["_commit"] or "") for r in records if r.get("_resurrected")),
+        "headline_by_order": _headline_by_order(records),
         "nodes": out_nodes,
         "pipelines": pipelines,
         "ledger": ledger,
@@ -926,6 +944,16 @@ def _older_campaigns_html(older, current):
             f'commit ({commits}) than the latest run, which skipped them; they are kept because campaigns are expensive to rerun.</div>')
 
 
+def _headline_by_order_html(tests):
+    """A warning when a check shows a number chosen by recording order, not by its test (no ``headline=``)."""
+    if not tests:
+        return ""
+    names = ", ".join(f"<code>{e(t.partition('::')[2] or t)}</code>" for t in tests)
+    return (f'<details class="vt-muted vt-stale"><summary>Headline chosen by order: {len(tests)} test function(s) '
+            f'record several agreement metrics and name none as their headline, so the number shown is the first one recorded.'
+            f'</summary>{names}</details>')
+
+
 def render(model, base=""):
     nodes = model["nodes"]
     ours_nodes = [n for n in nodes.values() if n["id"].startswith("virgil.")]
@@ -961,6 +989,7 @@ def render(model, base=""):
         '<div class="vt">',
         _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
         _older_campaigns_html(model.get("older_campaigns", []), current),
+        _headline_by_order_html(model.get("headline_by_order", [])),
         _bar(counts, total),
         _legend(counts),
         '<h2 id="showcase">Results on real data</h2>',
