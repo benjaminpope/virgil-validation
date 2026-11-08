@@ -228,6 +228,35 @@ def test_a_resurrected_campaign_pass_is_flagged_with_its_commit_and_shown_as_a_b
     assert trust._older_campaigns_html([], ["bbbbbbb"]) == ""
 
 
+def test_a_failure_on_another_virgil_commit_is_shown_not_overwritten(trust, tmp_path):
+    """An old weekly failure at commit X, then a newer push pass at commit Y: the pass is kept and the verdict
+    unchanged, but the part and the page carry a badge and a banner naming the failing run."""
+    weekly = evidence(tmp_path, "weekly.jsonl", [record("t::x", "virgil.a", outcome="failed")],
+                      date="2026-10-01", commit="a" * 40)
+    head, *rest = weekly.read_text().splitlines()
+    weekly.write_text("\n".join([json.dumps(json.loads(head) | {"run_url": "https://ci/weekly"}), *rest]) + "\n")
+    push = evidence(tmp_path, "push.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit="b" * 40)
+    got, model = verdicts(trust, tmp_path, None, files=[weekly, push])
+    assert got["virgil.a"] == "verified"  # display only: the verdict is B4's decision
+    assert model["nodes"]["virgil.a"]["fails_elsewhere"] == ["t::x"]
+    [fail] = model["fails_elsewhere"]
+    assert (fail["test"], fail["commit"], fail["run_url"]) == ("t::x", "a" * 40, "https://ci/weekly")
+    html = trust._fails_elsewhere_html(model["fails_elsewhere"])
+    assert "aaaaaaa" in html and "https://ci/weekly" in html and "virgil.a" in html
+    assert "fails on another virgil commit" in trust._fails_badge(model["nodes"]["virgil.a"])
+    assert trust._fails_elsewhere_html([]) == "" and trust._fails_badge({"fails_elsewhere": []}) == ""
+
+
+def test_no_failure_badge_when_the_same_commit_failed_or_the_other_commit_passed(trust, tmp_path):
+    old = evidence(tmp_path, "old.jsonl", [record("t::x", "virgil.a", outcome="failed")], date="2026-10-01", commit="a" * 40)
+    new = evidence(tmp_path, "new.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit="a" * 40)
+    _, model = verdicts(trust, tmp_path, None, files=[old, new])  # fixed on the same commit: not a commit gap
+    assert model["fails_elsewhere"] == []
+    ok = evidence(tmp_path, "ok.jsonl", [record("t::x", "virgil.a")], date="2026-10-01", commit="b" * 40)
+    _, model = verdicts(trust, tmp_path, None, files=[ok, new])
+    assert model["fails_elsewhere"] == [] and model["nodes"]["virgil.a"]["fails_elsewhere"] == []
+
+
 def test_a_negative_control_is_never_the_headline_of_a_part(trust):
     base = {"test": "t::c", "roots": ["mathematics"], "tier": "A", "outcome": "passed", "_source": "ours",
             "metrics": {"wrong_mapping_rel_err": 0.4}}
