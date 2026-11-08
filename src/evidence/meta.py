@@ -7,7 +7,7 @@ import platform
 import subprocess
 from importlib import metadata
 
-PACKAGES = ("virgil-astro", "jax", "numpy", "scipy", "dLux", "pmoired", "astropy", "frank", "vis-r", "astro-frap",
+PACKAGES = ("virgil-astro", "virgil-vlti", "jax", "numpy", "scipy", "dLux", "pmoired", "astropy", "frank", "vis-r", "astro-frap",
             "oimodeler")
 
 
@@ -53,6 +53,18 @@ def virgil_source():
     return {"commit": commit, "url": url, "dirty": dirty}
 
 
+def _git_source(dist_name):
+    """Where an installed distribution came from, from the installer's record
+    (PEP 610): ``{"commit", "url"}``, both None if it is not installed or was
+    not installed from git."""
+    try:
+        dist = metadata.distribution(dist_name)
+    except metadata.PackageNotFoundError:
+        return {"commit": None, "url": None}
+    info = json.loads(dist.read_text("direct_url.json") or "{}")
+    return {"commit": info.get("vcs_info", {}).get("commit_id"), "url": info.get("url")}
+
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 
@@ -93,6 +105,7 @@ def run_header():
             timespec="seconds"
         ),
         "virgil": {"version": _version("virgil-astro"), **virgil_source()},
+        "virgil_vlti": {"version": _version("virgil-vlti"), **_git_source("virgil-vlti")},
         "validation_commit": own_commit(),
         # uncommitted changes, other than evidence files being written
         "validation_dirty": _dirty(ROOT, ignore=("trust/evidence/",)),

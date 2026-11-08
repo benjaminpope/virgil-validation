@@ -1,6 +1,7 @@
 """scripts/calibrated_load.py and its callers read ESO data only through virgil-vlti's loader (small synthetic files)."""
 
 import json
+import os
 import pathlib
 import sys
 
@@ -10,7 +11,10 @@ from astropy.io import fits
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-pytest.importorskip("virgil_vlti")
+if os.environ.get("VV_REQUIRE_VLTI"):  # CI: a missing or broken virgil-vlti fails here instead of skipping
+    import virgil_vlti  # noqa: F401
+else:
+    pytest.importorskip("virgil_vlti")
 import calibrated_load as C  # noqa: E402
 import gallery_orbits as G  # noqa: E402
 import reanalyse_orbits as R  # noqa: E402
