@@ -67,6 +67,19 @@ def own_commit():
         return None
 
 
+def invocation(config):
+    """How pytest was asked to select tests: the arguments and the ``-m`` and
+    ``-k`` expressions, so that a record set can be read against what was
+    meant to run. The plugin adds how many tests they deselected."""
+    params = getattr(config, "invocation_params", None)
+    option = getattr(config, "option", None)
+    return {
+        "argv": [str(a) for a in getattr(params, "args", ())],
+        "markexpr": getattr(option, "markexpr", "") or "",
+        "keyword": getattr(option, "keyword", "") or "",
+    }
+
+
 def candid():
     """The CANDID the tests run (it lives in its own environment, so it is
     not among the installed packages): see external_bridge.candid_bridge."""
