@@ -109,7 +109,7 @@ def _golden_names():
     import yaml
 
     path = pathlib.Path(__file__).resolve().parents[2] / "trust" / "golden.yml"
-    return frozenset(yaml.safe_load(open(path)) or {}) if path.exists() else frozenset()
+    return frozenset(yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else frozenset()
 
 
 def _claims(item):
