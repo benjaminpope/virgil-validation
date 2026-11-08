@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-LEDGER = yaml.safe_load(open(ROOT / "trust" / "ledger.yml"))
+LEDGER = yaml.safe_load((ROOT / "trust" / "ledger.yml").read_text())
 STATUSES = {"open", "to-raise", "raised", "documented", "fixed"}
 UNFIXED = {"open", "to-raise", "raised"}
 
@@ -77,25 +77,25 @@ def test_every_status_is_in_the_vocabulary():
 def test_every_upstream_or_finding_test_is_cited_by_an_unfixed_entry_with_the_matching_ruling():
     problems = []
     for test, kind in _kind_tests().items():
-        citing = [e for e in LEDGER if test in e["evidence"]]
+        citing = [e for e in LEDGER if test in (e.get("evidence") or ())]
         if kind == "finding":
-            ok = [e for e in citing if e["ruling"] == "virgil"]
+            ok = [e for e in citing if e.get("ruling", "") == "virgil"]
         else:
-            ok = [e for e in citing if e["ruling"].startswith("external:")]
+            ok = [e for e in citing if e.get("ruling", "").startswith("external:")]
         ok = [e for e in ok if e["status"] in UNFIXED]
         if not ok:
-            problems.append((test, kind, [(e["id"], e["status"], e["ruling"]) for e in citing]))
+            problems.append((test, kind, [(e["id"], e["status"], e.get("ruling")) for e in citing]))
     assert not problems, problems
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_every_fixed_entry_cites_a_test():
-    assert not [e["id"] for e in LEDGER if e["status"] == "fixed" and not e["evidence"]]
+    assert not [e["id"] for e in LEDGER if e["status"] == "fixed" and not e.get("evidence")]
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_an_entry_without_evidence_says_why_it_is_pending():
-    bad = [e["id"] for e in LEDGER if not e["evidence"] and not str(e.get("pending", "")).strip()]
+    bad = [e["id"] for e in LEDGER if not e.get("evidence") and not str(e.get("pending", "")).strip()]
     assert not bad, bad
 
 
