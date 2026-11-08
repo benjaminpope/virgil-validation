@@ -97,7 +97,7 @@ def provenance_problem(run, repo=ROOT):
     return None if ok else f"ran on {commit[:7]}, which is not in this branch's history"
 
 
-def load_evidence(paths, strict=False):
+def load_evidence(paths, strict=False, virgil=None):
     """Runs and test records. A test that appears in several runs keeps only
     its newest outcome, so an old pass cannot outlive a newer skip or failure;
     the exception is a campaign summary (files named campaigns*.jsonl), which
@@ -105,7 +105,8 @@ def load_evidence(paths, strict=False):
     surviving campaign pass is flagged ``_resurrected`` so the page can show
     the commit gap.
 
-    With ``strict``, a run with a provenance problem is left out entirely."""
+    With ``strict``, a run with a provenance problem is left out entirely.
+    ``virgil``: a virgil checkout, used to tell whether a failing commit is newer than the kept one."""
     runs, by_test = [], {}
     for path in paths:
         lines = [json.loads(line) for line in open(path)]
@@ -132,17 +133,36 @@ def load_evidence(paths, strict=False):
             if ran:
                 # kept deliberately (campaigns are expensive), but the page must say it is older evidence
                 newest = dict(ran[-1], _resurrected=True)
-        if (other := _fails_on_other_commit(recs, newest)):
+        if (other := _fails_on_other_commit(recs, newest, virgil)):
             newest = dict(newest, _fails_elsewhere=other)
         records.append(newest)
     return runs, records
 
 
-def _fails_on_other_commit(recs, kept):
+def _is_newer_commit(virgil, kept, other, other_date, kept_date):
+    """Is virgil commit ``other`` newer than ``kept``? By git ancestry when a
+    virgil checkout can tell (``kept`` is an ancestor of ``other``). Without one
+    the run dates decide, which is conservative: the usual case (a weekly run on
+    virgil main older than the push run on the pin) is then not flagged, so the
+    published page, which has the checkout, is what shows it. The run dates
+    alone cannot say which commit is newer, so this never badges a failure at an
+    old pin that a later bump fixed."""
+    if virgil is not None:
+        try:
+            return subprocess.run(["git", "-C", str(virgil), "merge-base", "--is-ancestor", kept, other],
+                                  capture_output=True).returncode == 0
+        except OSError:
+            pass
+    return other_date > kept_date
+
+
+def _fails_on_other_commit(recs, kept, virgil=None):
     """The newest failure of a test that the kept record hides: its newest
-    record on some *other* virgil commit failed while the kept record passed
-    (typically a weekly run on virgil main, then a push run on the older pin).
-    ``None`` if there is none. Display only: it never changes a verdict."""
+    record on some *other* virgil commit that is *newer* than the kept record's
+    commit failed while the kept record passed (typically a weekly run on virgil
+    main, then a push run on the older pin). A failure at an older commit that a
+    later one fixed is not flagged. ``None`` if there is none. Display only: it
+    never changes a verdict."""
     if kept["outcome"] not in GOOD or not kept["_commit"]:
         return None
     latest = {}
@@ -150,7 +170,8 @@ def _fails_on_other_commit(recs, kept):
         if r["_commit"] and r["_commit"] != kept["_commit"] and (
                 r["_commit"] not in latest or r["_date"] >= latest[r["_commit"]]["_date"]):
             latest[r["_commit"]] = r
-    failed = [r for r in latest.values() if r["outcome"] in BAD]
+    failed = [r for r in latest.values() if r["outcome"] in BAD
+              and _is_newer_commit(virgil, kept["_commit"], r["_commit"], r["_date"], kept["_date"])]
     if not failed:
         return None
     r = max(failed, key=lambda r: r["_date"])
@@ -1086,8 +1107,8 @@ def main():
     args = ap.parse_args()
     graph = yaml.safe_load(open(args.graph))
     ledger = yaml.safe_load(open(args.ledger))
-    runs, records = load_evidence(args.evidence, strict=args.strict_provenance)
     virgil = args.virgil.expanduser() if args.virgil else None
+    runs, records = load_evidence(args.evidence, strict=args.strict_provenance, virgil=virgil)
     model = build(graph, ledger, records, runs, virgil)
     model["docs"] = resolve_docs(graph)
     out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None

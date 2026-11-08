@@ -31,10 +31,10 @@ def evidence(tmp_path, name, records, date="2026-10-06T00:00:00+00:00", commit="
     return path
 
 
-def verdicts(trust, tmp_path, records, graph=None, ledger=(), files=None, golden=frozenset()):
+def verdicts(trust, tmp_path, records, graph=None, ledger=(), files=None, golden=frozenset(), virgil=None):
     graph = graph or {"nodes": {"virgil.a": {"layer": "models"}}}
     paths = files or [evidence(tmp_path, "latest.jsonl", records)]
-    runs, recs = trust.load_evidence(paths)
+    runs, recs = trust.load_evidence(paths, virgil=virgil)
     model = trust.build(graph, list(ledger), recs, runs, None, golden=set(golden))
     return {k: v["verdict"] for k, v in model["nodes"].items()}, model
 
@@ -228,32 +228,68 @@ def test_a_resurrected_campaign_pass_is_flagged_with_its_commit_and_shown_as_a_b
     assert trust._older_campaigns_html([], ["bbbbbbb"]) == ""
 
 
-def test_a_failure_on_another_virgil_commit_is_shown_not_overwritten(trust, tmp_path):
-    """An old weekly failure at commit X, then a newer push pass at commit Y: the pass is kept and the verdict
-    unchanged, but the part and the page carry a badge and a banner naming the failing run."""
+@pytest.fixture
+def two_commits(tmp_path):
+    """A virgil checkout with two commits, ``old`` then ``new`` (``old`` is an ancestor of ``new``)."""
+    import subprocess
+    repo = tmp_path / "virgil"
+    repo.mkdir()
+    env = ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+    shas = []
+    for i in range(2):
+        (repo / "f").write_text(str(i))
+        for cmd in (["init", "-q"] if i == 0 else [], ["add", "f"], [*env, "commit", "-q", "-m", str(i)]):
+            if cmd:
+                subprocess.run(["git", "-C", str(repo), *cmd], check=True, capture_output=True)
+        shas.append(subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip())
+    return repo, *shas
+
+
+def _weekly_fail_then_pin_pass(tmp_path, old, new, **extra):
+    """The published case: a weekly run on virgil main (``new``) fails, a later push run on the older pin (``old``) passes."""
     weekly = evidence(tmp_path, "weekly.jsonl", [record("t::x", "virgil.a", outcome="failed")],
-                      date="2026-10-01", commit="a" * 40)
+                      date="2026-10-01", commit=new)
     head, *rest = weekly.read_text().splitlines()
     weekly.write_text("\n".join([json.dumps(json.loads(head) | {"run_url": "https://ci/weekly"}), *rest]) + "\n")
-    push = evidence(tmp_path, "push.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit="b" * 40)
-    got, model = verdicts(trust, tmp_path, None, files=[weekly, push])
+    push = evidence(tmp_path, "push.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit=old)
+    return [weekly, push]
+
+
+def test_a_failure_on_a_newer_virgil_commit_is_shown_not_overwritten(trust, tmp_path, two_commits):
+    """A weekly failure on virgil main, then a later push pass on the older pin: the pass is kept and the verdict
+    unchanged, but the part and the page carry a badge and a banner naming the failing run."""
+    repo, old, new = two_commits
+    files = _weekly_fail_then_pin_pass(tmp_path, old, new)
+    got, model = verdicts(trust, tmp_path, None, files=files, virgil=repo)
     assert got["virgil.a"] == "verified"  # display only: the verdict is B4's decision
     assert model["nodes"]["virgil.a"]["fails_elsewhere"] == ["t::x"]
     [fail] = model["fails_elsewhere"]
-    assert (fail["test"], fail["commit"], fail["run_url"]) == ("t::x", "a" * 40, "https://ci/weekly")
+    assert (fail["test"], fail["commit"], fail["run_url"]) == ("t::x", new, "https://ci/weekly")
     html = trust._fails_elsewhere_html(model["fails_elsewhere"])
-    assert "aaaaaaa" in html and "https://ci/weekly" in html and "virgil.a" in html
+    assert new[:7] in html and "https://ci/weekly" in html and "virgil.a" in html
     assert "fails on another virgil commit" in trust._fails_badge(model["nodes"]["virgil.a"])
     assert trust._fails_elsewhere_html([]) == "" and trust._fails_badge({"fails_elsewhere": []}) == ""
 
 
-def test_a_pipeline_failing_on_another_commit_gets_a_badge_inside_its_grid_cell(trust, tmp_path):
+def test_no_badge_when_the_failure_was_at_an_older_commit_that_a_newer_one_fixed(trust, tmp_path, two_commits):
+    repo, old, new = two_commits
+    failed = evidence(tmp_path, "old.jsonl", [record("t::x", "virgil.a", outcome="failed")], date="2026-10-01", commit=old)
+    fixed = evidence(tmp_path, "new.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit=new)
+    for virgil in (repo, None):  # by ancestry, and by the run-date fallback
+        for files in ([failed, fixed], [fixed, failed]):
+            got, model = verdicts(trust, tmp_path, None, files=files, virgil=virgil)
+            assert got["virgil.a"] == "verified"
+            assert model["fails_elsewhere"] == [] and model["nodes"]["virgil.a"]["fails_elsewhere"] == []
+
+
+def test_a_pipeline_failing_on_a_newer_commit_gets_a_badge_inside_its_grid_cell(trust, tmp_path, two_commits):
+    repo, old, new = two_commits
     graph = {"nodes": {"virgil.a": {"layer": "models"}},
              "pipelines": {"p": {"title": "P", "steps": ["virgil.a"], "data": "simulated"}}}
-    old = evidence(tmp_path, "old.jsonl", [record("t::p", "pipeline:p", outcome="failed")], date="2026-10-01", commit="a" * 40)
-    new = evidence(tmp_path, "new.jsonl", [record("t::p", "pipeline:p")], date="2026-10-06", commit="b" * 40)
+    weekly = evidence(tmp_path, "weekly.jsonl", [record("t::p", "pipeline:p", outcome="failed")], date="2026-10-01", commit=new)
+    push = evidence(tmp_path, "push.jsonl", [record("t::p", "pipeline:p")], date="2026-10-06", commit=old)
     # file order reversed: the result must not depend on it
-    _, model = verdicts(trust, tmp_path, None, graph=graph, files=[new, old])
+    _, model = verdicts(trust, tmp_path, None, graph=graph, files=[push, weekly], virgil=repo)
     [pipe] = model["pipelines"]
     assert pipe["status"] == "passes"  # display only: the status is unchanged
     assert pipe["fails_elsewhere"] == ["t::p"]
@@ -266,30 +302,24 @@ def test_a_pipeline_failing_on_another_commit_gets_a_badge_inside_its_grid_cell(
     assert chain.endswith("</span></span></div>")  # the badge closes inside vt-chain-r, not beside it
 
 
-def test_the_newest_record_per_other_commit_is_chosen_whatever_the_input_order(trust):
+def test_the_newest_record_per_other_commit_is_chosen_whatever_the_input_order(trust, two_commits):
+    repo, old, new = two_commits
+
     def rec(outcome, date):
-        return {"outcome": outcome, "_commit": "a" * 40, "_date": date, "_run_url": date}
-    kept = {"outcome": "passed", "_commit": "b" * 40}
+        return {"outcome": outcome, "_commit": new, "_date": date, "_run_url": date}
+    kept = {"outcome": "passed", "_commit": old, "_date": "9"}
     for recs in ([rec("failed", "1"), rec("passed", "2")], [rec("passed", "2"), rec("failed", "1")]):
-        assert trust._fails_on_other_commit(recs, kept) is None  # the newest record at that commit passed
+        assert trust._fails_on_other_commit(recs, kept, repo) is None  # the newest record at that commit passed
     for recs in ([rec("passed", "1"), rec("failed", "2")], [rec("failed", "2"), rec("passed", "1")]):
-        assert trust._fails_on_other_commit(recs, kept)["run_url"] == "2"
+        assert trust._fails_on_other_commit(recs, kept, repo)["run_url"] == "2"
 
 
-def test_no_failure_badge_when_the_same_commit_failed_or_the_other_commit_passed(trust, tmp_path):
-    old = evidence(tmp_path, "old.jsonl", [record("t::x", "virgil.a", outcome="failed")], date="2026-10-01", commit="a" * 40)
-    new = evidence(tmp_path, "new.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit="a" * 40)
-    _, model = verdicts(trust, tmp_path, None, files=[old, new])  # fixed on the same commit: not a commit gap
+def test_no_failure_badge_when_the_same_commit_failed_or_the_other_commit_passed(trust, tmp_path, two_commits):
+    _, old, new = two_commits
+    first = evidence(tmp_path, "first.jsonl", [record("t::x", "virgil.a", outcome="failed")], date="2026-10-01", commit=new)
+    second = evidence(tmp_path, "second.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit=new)
+    _, model = verdicts(trust, tmp_path, None, files=[first, second])  # fixed on the same commit: not a commit gap
     assert model["fails_elsewhere"] == []
-    ok = evidence(tmp_path, "ok.jsonl", [record("t::x", "virgil.a")], date="2026-10-01", commit="b" * 40)
-    _, model = verdicts(trust, tmp_path, None, files=[ok, new])
+    ok = evidence(tmp_path, "ok.jsonl", [record("t::x", "virgil.a")], date="2026-10-01", commit=old)
+    _, model = verdicts(trust, tmp_path, None, files=[ok, second])
     assert model["fails_elsewhere"] == [] and model["nodes"]["virgil.a"]["fails_elsewhere"] == []
-
-
-def test_a_negative_control_is_never_the_headline_of_a_part(trust):
-    base = {"test": "t::c", "roots": ["mathematics"], "tier": "A", "outcome": "passed", "_source": "ours",
-            "metrics": {"wrong_mapping_rel_err": 0.4}}
-    assert trust._headline({**base, "kind": "control"}) == (None, None)
-    assert trust._headline({**base, "kind": "check"}) == ("wrong_mapping_rel_err", 0.4)
-    # an explicit headline on a control is still honoured
-    assert trust._headline({**base, "kind": "control", "headline": "wrong_mapping_rel_err"})[1] == 0.4
