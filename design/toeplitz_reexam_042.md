@@ -1,8 +1,8 @@
 # Toeplitz χ² re-examination (virgil 0.4.2 gate G2): pre-registered criteria
 
-Machine-readable criteria: `design/toeplitz_reexam_042.yml`. `scripts/toeplitz_reexam.py` hashes the file
-and refuses to run unless the hash equals its `REGISTERED_SHA256`. Every output records that hash and the
-virgil commit. This note and the criteria were written **before any run under them**, but **after** both old
+Machine-readable criteria: `design/toeplitz_reexam_042.yml`. `scripts/toeplitz_reexam.py` records the
+file's last commit, refuses a dirty or untracked file, and `summary` refuses outputs of other commits. Every output
+records that criteria commit and the virgil commit. This note and the criteria were written **before any run under them**, but **after** both old
 A100 runs had been read. Section 8 says what that means.
 
 ## 1. Why a re-examination
@@ -208,7 +208,7 @@ The new run must stand on its own.
 | 2026-10-30 | §9, Ben's decision | Ben approved all three judgement calls in §9, verbatim: "I approve of all of these runs." (relayed by the coordinating session). The criteria do not change; the memory row keeps its "changed after seeing a result: yes" flag (5ece518) | no criteria change |
 | 2026-10-30 | Run 19551312 (vv b6249ca65ccc6b32d36fa79cb9818d3825120f06, virgil 05e50c28f0945dcd265f9a895db71bc22eff4a9b, A100) | Tier I ran: 158 rows, 0 FAIL, worst error/tolerance 2.5e-4. Tier II crashed before any row: the job snapshot lacked `design/toeplitz_acceptance.yml`, which the old check script loads on import (ozstar_scripts fix), and its time command needs the module's registration, which only its own `main` set (`old_check` sets it). No verdict; the gate reruns in full at the fixed commit | no criteria change |
 
-Later changes go here first, with the new hash, and make every earlier result under the old hash void for G2.
+Later changes go here first and make every earlier result under the old criteria commit void for G2.
 
 ## 9. Judgement calls for Ben
 

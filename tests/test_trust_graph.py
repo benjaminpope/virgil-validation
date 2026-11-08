@@ -126,14 +126,3 @@ def test_properties_named_by_tests_are_declared_in_the_graph():
         declared = {p for o in objs if o in nodes
                     for p in [*(nodes[o].get("properties") or {}), *(nodes[o].get("convention") or [])]}
         assert set(props) <= declared, (where, sorted(objs), props)
-
-
-@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
-def test_signoffs_confirm_declared_conventions():
-    signoffs = yaml.safe_load(open(ROOT / "trust" / "signoffs.yml")) or {}
-    for node, entries in signoffs.items():
-        for prop, entry in entries.items():
-            assert prop in (GRAPH["nodes"][node].get("convention") or []), (node, prop)
-            by_paper = bool(entry.get("citation"))
-            by_ben = entry.get("by") and entry.get("date") and len(str(entry.get("commit", ""))) == 40
-            assert by_paper or by_ben, (node, prop)

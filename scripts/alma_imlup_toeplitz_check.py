@@ -190,7 +190,7 @@ def cmd_agree(args):
                   moved="sigma x 1.1, gain x 1.05, offsets +-2 mas (seed 0)",
                   edge=f"sigma x 1.1, gain x 1.05, offsets +-{EDGE_FRACTION * args.max_offset_mas:g} mas (random signs per observation and axis, seed 1)",
                   peak_gb=peak_gb())
-    (out / "agree.json").write_text(json.dumps(prereg.stamp(report, REG), indent=1))
+    (out / "agree.json").write_text(json.dumps(stamped(report), indent=1))
     say(json.dumps({k: report[k] for k in ("max_rel", "max_rel_virgil", "dloss_rel", "dloss_abs", "grad_rel", "grad_rel_moved", "loss_rel_edge", "grad_rel_edge")}, indent=1))
 
 
@@ -220,12 +220,12 @@ def cmd_time(args):
             report["compile_s_score"], report["s_per_vg_score"] = time_vg(direct_vg(), term, values, args.repeats)
         report.update(eps_fit=va.EPS_FIT, eps_score=EPS_DIRECT)
     report["peak_gb"] = peak_gb()
-    (out / f"time_{args.method}.json").write_text(json.dumps(prereg.stamp(report, REG), indent=1))
+    (out / f"time_{args.method}.json").write_text(json.dumps(stamped(report), indent=1))
     say(f"{args.method} on {report['gpu']}: compile {report['compile_s']:.1f} s, {report['s_per_vg'] * 1e3:.1f} ms per value+grad, peak {report['peak_gb']:.2f} GB"
         + (f"; at eps {EPS_DIRECT:g}: {report['s_per_vg_score'] * 1e3:.1f} ms" if args.method == "direct" else ""))
 
 
-CRITERIA_FILE = ROOT / "design" / "toeplitz_acceptance.yml"  # pre-registered: pinned in design/criteria_registry.json
+CRITERIA_FILE = ROOT / "design" / "toeplitz_acceptance.yml"  # committed: every run records its last commit
 _CRITERIA = yaml.safe_load(CRITERIA_FILE.read_text())
 ACCEPT = _CRITERIA["accept"]  # toeplitz_ozstar_spec.md
 SPEEDUP_GPU = _CRITERIA["speedup_gpu"]  # the speed-up limit is judged on this GPU type only; on any other device it is reported
@@ -285,19 +285,24 @@ def cmd_summary(args):
         + [f"{'REPORT' if ok is None else 'PASS' if ok else 'FAIL':<6s} {q:46s} {v:>22s}   accept {lim}" for q, v, lim, ok in table]
         + ["", "NOT ACCEPTED: " + ", ".join(q for q, _, _, ok in table if ok is False) if any(ok is False for *_, ok in table) else "ALL ACCEPTED", "", "Detail:"]
         + [f"{k:40s} {v}" for k, v in rows])
-    prereg.require_registered_runs([a, t["toeplitz"], t["direct"]], REG)
-    text = "\n".join(prereg.stamp_lines(text.splitlines(), REG))
+    if prereg.require_same_commit([a, t["toeplitz"], t["direct"]]) != CRIT:  # no override: changed criteria mean a rerun
+        raise SystemExit(f"the runs used another criteria commit than this checkout's {CRIT}: rerun")
+    text = "\n".join([f"Criteria: `{CRITERIA_FILE.relative_to(ROOT).as_posix()}` at commit `{CRIT}`", ""] + text.splitlines())
     (out / "toeplitz_check.txt").write_text(text + "\n")
     say(text)
 
 
-REG = None  # the criteria's registration, set by main: every subcommand checks the pin before it runs
+CRIT = None  # the criteria file's last commit, set by main: every subcommand checks the file is committed before it runs
+
+
+def stamped(report):
+    """``report`` with the criteria file and the commit it was run at."""
+    return {**report, "criteria_file": CRITERIA_FILE.relative_to(ROOT).as_posix(), "criteria_commit": CRIT}
 
 
 def main(argv=None):
-    global REG
+    global CRIT
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    prereg.add_argument(p)
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("agree", "time"):
         q = sub.add_parser(name)
@@ -314,7 +319,7 @@ def main(argv=None):
     q = sub.add_parser("summary")
     q.add_argument("--out", required=True)
     args = p.parse_args(argv)
-    REG = prereg.check(CRITERIA_FILE, allow_unregistered=args.allow_unregistered)
+    CRIT = prereg.criteria_commit(CRITERIA_FILE)
     {"agree": cmd_agree, "time": cmd_time, "summary": cmd_summary}[args.cmd](args)
 
 

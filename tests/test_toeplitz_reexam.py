@@ -7,6 +7,7 @@ verdict logic. None of these runs a registered scene.
 """
 
 import hashlib
+import re
 import json
 import math
 import pathlib
@@ -46,10 +47,10 @@ needs_toeplitz = pytest.mark.skipif(not _has_toeplitz(), reason="virgil.radio_to
 
 
 @pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="guard")
-def test_the_registered_hash_is_the_criteria_file_and_the_registered_scenes_are_held_out():
-    """REGISTERED_SHA256 is the sha256 of the criteria file; at least three distinct held-out images; no registered scene uses a
+def test_the_criteria_file_is_committed_and_the_registered_scenes_are_held_out():
+    """the criteria file has a commit; at least three distinct held-out images; no registered scene uses a
     development image (random log-normal pixels on a uniform uv disc) or IM Lup."""
-    assert tr.REGISTERED_SHA256 == hashlib.sha256(tr.CRITERIA_FILE.read_bytes()).hexdigest()
+    assert re.fullmatch(r"[0-9a-f]{40}", tr.criteria_commit())
     cfg = tr.criteria()
     images = {s["image"] for s in cfg["tier1"]["scenes"]}
     assert len(images) >= 3 and images <= {"ringed_disc", "sources_on_halo", "edge_filled"}
@@ -59,12 +60,26 @@ def test_the_registered_hash_is_the_criteria_file_and_the_registered_scenes_are_
 
 @pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
 def test_a_changed_criteria_file_is_refused(tmp_path, monkeypatch):
-    changed = tmp_path / "c.yml"
-    changed.write_text(tr.CRITERIA_FILE.read_text().replace("speedup_min: 30.0", "speedup_min: 15.0"))
-    monkeypatch.setattr(tr, "CRITERIA_FILE", changed)
-    with pytest.raises(SystemExit, match="not the registered"):
+    """A scratch repository holds a copy of the criteria; the tracked file is never touched."""
+    import os
+    import subprocess
+
+    import crosscheck.preregistration as prereg
+
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+    git = lambda *a: subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True, env=env)  # noqa: E731
+    copy = tmp_path / "c.yml"
+    copy.write_text(tr.CRITERIA_FILE.read_text())
+    git("init", "-q")
+    git("add", "c.yml")
+    git("commit", "-q", "-m", "criteria")
+    monkeypatch.setattr(prereg, "ROOT", tmp_path)
+    monkeypatch.setattr(tr, "CRITERIA_FILE", copy)
+    assert re.fullmatch(r"[0-9a-f]{40}", tr.criteria_commit())  # clean: accepted
+    copy.write_text(copy.read_text().replace("speedup_min: 30.0", "speedup_min: 15.0"))  # edited, not committed
+    with pytest.raises(SystemExit, match="uncommitted changes"):
         tr.criteria()
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit, match="uncommitted changes"):
         tr.main(["summary", "--out", str(tmp_path)])
 
 
@@ -196,7 +211,7 @@ def test_tier2_and_summary_on_a_tiny_set(tmp_path, monkeypatch):
         tr.main(["tier2-time", "--method", method, "--repeats", "1", *map(str, common)])
     tr.main(["summary", "--out", str(out)])
     a = json.loads((out / "tier2_agree.json").read_text())
-    assert a["criteria_sha256"] == tr.REGISTERED_SHA256 and a["virgil_commit"]
+    assert a["criteria_commit"] == tr.criteria_commit() and a["virgil_commit"]
     assert all(r["status"] == "PASS" for r in a["rows"]), [r for r in a["rows"] if r["status"] != "PASS"]
     assert {(r["where"], r["quantity"]) for r in a["rows"]} == tr.expected_tier2(tr.criteria()["tier2"])
     assert len({a["run_id"]} | {json.loads((out / f"time_{m}.json").read_text())["run_id"] for m in ("toeplitz", "direct")}) == 1
@@ -212,7 +227,7 @@ def test_verdicts_and_the_no_combining_rule(tmp_path):
     assert tr.verdict(["PASS", "PASS"]) == "ACCEPTED"
     assert tr.verdict(["PASS", "NOT EVALUATED"]) == "INCOMPLETE"
     assert tr.verdict(["NOT EVALUATED", "FAIL"]) == "NOT ACCEPTED"
-    base = dict(criteria_sha256=tr.REGISTERED_SHA256, run_id="1", vv_commit="c" * 40, rows=[],
+    base = dict(criteria_commit=tr.criteria_commit(), run_id="1", vv_commit="c" * 40, rows=[],
                 facts=dict(nyquist_fraction=0.1, margin=0.9))
     (tmp_path / "tier1_S1_ringed_disc.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40)))
     tr.main(["summary", "--out", str(tmp_path)])  # one run, but its rows are missing: a truncated output fails, never passes
@@ -225,8 +240,8 @@ def test_verdicts_and_the_no_combining_rule(tmp_path):
     (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="b" * 40)))
     with pytest.raises(SystemExit, match="several virgil commits"):
         tr.main(["summary", "--out", str(tmp_path)])
-    (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40, criteria_sha256="0" * 64)))
-    with pytest.raises(SystemExit, match="other criteria"):
+    (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40, criteria_commit="0" * 40)))
+    with pytest.raises(SystemExit, match="different criteria commits"):
         tr.main(["summary", "--out", str(tmp_path)])
 
 
@@ -255,16 +270,8 @@ def test_performance_off_the_registered_gpu_is_not_evaluated_and_on_it_is_judged
 
 
 @pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="guard")
-def test_the_script_pin_is_the_registry_pin():
-    import crosscheck.preregistration as prereg
-
-    entry = prereg.load_registry()["design/toeplitz_reexam_042.yml"]
-    assert entry["sha256"] == tr.REGISTERED_SHA256 == prereg.sha256_file(tr.CRITERIA_FILE)
-
-
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="guard")
-def test_old_check_sets_the_registration():
-    """Tier II imports the old check module, whose time command stamps outputs with ``REG``; only its own ``main`` sets
+def test_old_check_sets_the_criteria_commit():
+    """Tier II imports the old check module, whose time command stamps outputs with ``CRIT``; only its own ``main`` sets
     that, so ``old_check`` must, whatever ran first in the process."""
     old = tr.old_check()
-    assert old.REG is not None and old.REG.registered
+    assert old.CRIT == old.prereg.criteria_commit(old.CRITERIA_FILE)

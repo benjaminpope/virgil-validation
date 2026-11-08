@@ -1,7 +1,7 @@
 # Track B: per-epoch binary positions, registered criteria
 
 Registered on 2026-10-07, before any fit was run. `scripts/trackb_fit.py`
-implements this file. Each result records this file's commit and SHA-256
+implements this file. Each result records this file's last commit, and the script refuses to run if the file is missing or has uncommitted changes
 (`criteria` in the summary schema below). A change to anything here after the
 first run is a new version of the campaign. The new version gets a new file,
 and the old results stay as they were.
@@ -274,7 +274,7 @@ Every flagged epoch and system is examined, and each outcome is entered in
 
 Each `<system>.json` written by `scripts/trackb_fit.py` holds:
 
-- `criteria`: `{file, commit, sha256}`;
+- `criteria`: `{file, commit}` (the file's last commit);
 - `virgil`: version and commit;
 - `system`, and `epochs[]`. Each epoch has:
   - date, mjd, files, instrument, n_obs;
@@ -295,3 +295,14 @@ Each `<system>.json` written by `scripts/trackb_fit.py` holds:
 - the epochs with a fitted scale above 3;
 - the verdict;
 - the `criteria` block.
+
+## Change log
+
+One row per change to this file. A run records the last commit that touched it and refuses a file with uncommitted changes; changed criteria mean a rerun (no hash, no override flag). The commit messages below are the evidence for "before any fit"; they were not checked against the run history.
+
+| commit | what changed | changed after seeing a result: yes/no | note |
+|---|---|---|---|
+| 0a148ae | registered the per-epoch binary criteria | unknown: registered before this log; see git log | commit message: "register ... before any fit" |
+| 1d2b3e6 | unreadable files and unreferenced nights | unknown: registered before this log; see git log | commit message: "amended before any fit" |
+| 30f70e1 | prior-free 2Δloss, d2 not rewarding worse fits, flag exclusions, convention refits, no fitted wavelength scale | unknown: registered before this log; see git log | commit message: "amended before any fit" |
+| this WP-2 commit | SHA-256 and "registered at commit" wording replaced by the git scheme (`criteria` is `{file, commit}`); this change log added | no | bookkeeping only: no criterion changed; no result is involved |

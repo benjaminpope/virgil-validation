@@ -67,6 +67,13 @@ refuses a header that does not record `dirty`; `virgil.jsonl` is exempt
 (`"runner": "virgil-ci"`), because virgil's own CI is ingested from a fresh
 checkout at the sha and cannot record it. Never edit a header to make it agree.
 
+**Gate criteria are committed files.** Each gate has one criteria file under `design/` with a change-log table inside it
+(commit, what changed, "changed after seeing a result: yes/no/unknown", note). A gate run records the file's last commit
+(`crosscheck.preregistration.criteria_commit`) and refuses a dirty or untracked file before any draw; an aggregate refuses runs
+from different commits (`require_same_commit`). No hashing, signing or override flag. A changed criterion means a rerun, and an
+edit made after a result is a change-log row saying "yes". A committed summary without `criteria_commit` predates this scheme
+and is not gate evidence. `tests/test_gate_criteria.py` enforces the wiring.
+
 ## Verifying reviews
 
 An adversarial review, by a person or a model, is a set of claims, not

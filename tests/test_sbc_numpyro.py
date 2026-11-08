@@ -18,6 +18,7 @@ import pathlib
 
 import pytest
 
+from crosscheck.preregistration import criteria_commit
 from evidence.meta import virgil_source
 from evidence.plugin import record
 
@@ -37,7 +38,11 @@ def script():
 @pytest.mark.validates("virgil.likelihood.numpyro_model", roots=["statistics"], tier="C")
 def test_sbc_ranks_are_uniform():
     summary = json.loads(SUMMARY.read_text())
-    assert summary["criteria_hash"] == script().criteria_hash(), "criteria changed after the campaign ran"
+    if "criteria_commit" not in summary:
+        pytest.skip("the committed summary was produced under the earlier SHA-256 registry (no criteria_commit): "
+                    "not gate evidence; rerun the campaign at the release commit")
+    s = script()
+    assert summary["criteria_commit"] == criteria_commit(s.ADDENDUM), "criteria changed after the campaign ran"
     installed = virgil_source()["commit"]
     if summary.get("virgil_commit") != installed:
         pytest.skip(f"the campaign ran on virgil {str(summary.get('virgil_commit'))[:7]}, not the installed "
@@ -51,7 +56,6 @@ def test_sbc_ranks_are_uniform():
         pytest.skip(f"campaign incomplete: {summary['replicates']} of the {PREREGISTERED} preregistered replicates")
     assert summary["replicates"] >= summary["criteria"]["min_replicates"]
     # the analysis addendum registered before tasks 50-99 were seen (design/sbc_addendum.yml)
-    assert summary["addendum"]["sha256"] == script().addendum_hash(), "addendum changed after the campaign ran"
     failing = [k for k, p in summary["parameters"].items() if not p["pass"]]
     assert not failing, f"ranks not uniform or coverage off for {failing}"
 
@@ -77,7 +81,7 @@ def test_sbc_aggregate_refuses_repeats_and_mixed_commits(tmp_path):
     s = script()
     rep = {"seed": 1, "truth": {}, "ranks": {p: 50 for p in s.PARAMS}, "ess": {p: 1e3 for p in s.PARAMS},
            "rhat": {p: 1.0 for p in s.PARAMS}, "divergences": 0}
-    task = {"task": 0, "virgil": "x", "virgil_commit": "a" * 40, "criteria_hash": s.criteria_hash(),
+    task = {"task": 0, "virgil": "x", "virgil_commit": "a" * 40, "criteria_commit": criteria_commit(s.ADDENDUM),
             "replicates": [rep]}
     (tmp_path / "task_0000.json").write_text(json.dumps(task))
     run = lambda *dirs: subprocess.run([sys.executable, str(ROOT / "scripts" / "sbc_numpyro.py"), "aggregate",  # noqa: E731

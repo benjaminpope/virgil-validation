@@ -1,11 +1,18 @@
+# CHANGE LOG. One row per change to this file. "changed after seeing a result" is yes, no or unknown. A run records the last
+# commit that touched this file and refuses a dirty file; changed criteria mean a rerun (no hash, no override flag).
+# | commit | what changed | changed after seeing a result: yes/no | note |
+# |---|---|---|---|
+# | d5d9242 | the file as last committed before this log | unknown: registered before this log; see git log | the header says: registered 2026-10-06, before any v2 draw was run (a claim by the file, not checked here) |
+# | this WP-2 commit | SHA-256 registry sentences in this header replaced by the git scheme; this change log added | no | bookkeeping only: no criteria value changed (loaded before and after, equal); no result is involved |
+#
 # Criteria for the detection campaign, version 2 (scripts/detection_campaign.py).
 # Registered on 2026-10-06, before any v2 draw was run. Version 1 (OzSTAR job
 # detection_mc, submitted 2026-10-06) is superseded and never credited: its
 # companions were far too bright (lambda 146-2582) for its noncentral test to
 # say anything near the detection threshold, and its tail tests had no power
 # at false-alarm probabilities near 1e-3. Rationale: design/detection_v2.md.
-# The aggregator records this file's SHA-256 in the summary, and
-# tests/test_detection_campaign.py checks it against the committed file.
+# The aggregator records this file's last commit in the summary (a dirty file is refused), and
+# tests/test_detection_campaign.py checks it against the current commit.
 
 family_alpha: 0.01      # Holm over every p-value below
 tests:

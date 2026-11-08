@@ -275,7 +275,7 @@ def test_the_command_runs_the_stages_in_order_and_refuses_the_sweep_without_d4(c
     with pytest.raises(SystemExit, match="sigma FAILED"):
         call("--stage", "sigma", *geom)  # registered precision: fails, writes the reason
     failed = json.loads((out / "sigma.json").read_text())
-    assert failed["status"] == "failed" and "sigma_s / s^2" in failed["reason"] and failed["registered"] is True
+    assert failed["status"] == "failed" and "sigma_s / s^2" in failed["reason"] and failed["criteria_commit"]
     with pytest.raises(SystemExit, match="failed stage"):
         call("--stage", "sweep", *geom)
     monkeypatch.setattr(vl, "SIGMA_REL_MAX", 0.05)
@@ -294,4 +294,4 @@ def test_the_command_runs_the_stages_in_order_and_refuses_the_sweep_without_d4(c
     assert sweep["status"] == "ok" and sweep["weight"] > 0 and (out / "sweep_values.npz").exists()
     call("--stage", "final", *geom)
     final = json.loads((out / "lambda_final.json").read_text())
-    assert final["status"] == "ok" and final["weight"] == sweep["weight"] and final["registered"] is True and np.load(out / "image.npy").shape == (NPIX, NPIX)
+    assert final["status"] == "ok" and final["weight"] == sweep["weight"] and final["criteria_commit"] and np.load(out / "image.npy").shape == (NPIX, NPIX)

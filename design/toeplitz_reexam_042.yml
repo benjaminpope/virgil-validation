@@ -1,6 +1,11 @@
 # Pre-registered criteria of the Toeplitz re-examination (virgil 0.4.2 gate G2). Prose: toeplitz_reexam_042.md.
-# scripts/toeplitz_reexam.py refuses to run unless sha256 of this file equals its REGISTERED_SHA256.
-# Changing anything here changes the hash; every change goes in the .md change log first.
+# scripts/toeplitz_reexam.py records the last commit that touched this file and refuses a dirty or untracked file; changed
+# criteria mean a rerun (no hash, no override flag). Every change goes in the .md change log (section 8) first.
+#
+# CHANGE LOG. The full table is in toeplitz_reexam_042.md section 8; this one row covers the move to the git scheme.
+# | commit | what changed | changed after seeing a result: yes/no | note |
+# |---|---|---|---|
+# | this WP-2 merge commit | SHA-256 header sentences replaced by the git scheme | no | bookkeeping only: no criteria value changed; no result is involved |
 version: 1
 gate: G2
 virgil_feature: virgil.radio_toeplitz (ComplexVisData.toeplitz, chi2="auto")

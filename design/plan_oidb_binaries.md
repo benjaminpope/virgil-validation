@@ -8,9 +8,7 @@ registered in `design/oidb_binaries_criteria.md`. First registered in commit
 plan and before any fit. Review then found five faults, and the file was
 amended, still before any fit, in commit
 `8a530b54eae970c4dcff36fc6e3e8310b6636652` (its "Amendments (before any fit)"
-section lists them). The registered file now has SHA-256
-`654754392e870b1af0d5a4f0596d5040019af0c70ab59bd068904d27edfb895a`, and results
-record that commit and hash.
+section lists them). Results record the criteria file's last commit (see the change log at the end of the file).
 
 ## Why
 
@@ -116,7 +114,7 @@ Reviewed, no astrometry (category X):
 
 ## (b) Preregistered criteria
 
-Registered in `design/oidb_binaries_criteria.md` (hash above), committed before
+Registered in `design/oidb_binaries_criteria.md` (commits in its change log), committed before
 this plan was written and before any fit. In short:
 
 - **Reused from Track B.** d² = Δᵀ(C_v + C_p)⁻¹Δ with the larger of the scaled
@@ -250,7 +248,7 @@ Agreed with the orbit-fitting session on 2026-10-08.
   already theirs. Orbits fitted without RVs are compared with the reference
   in the projected degrees of freedom (sky track, projected elements, folded
   corner plots), never by raw ω and Ω pulls (`design/orbit_comparison.md`).
-  `design/oidb_binaries_criteria.md` is hashed and is not edited here: systems
+  `design/oidb_binaries_criteria.md` is a committed gate file and is not edited here (a change is a row in its change log): systems
   not yet fitted need a pre-fit amendment to it saying so, and any system
   already fitted gets the comparison post hoc, labelled as not preregistered.
   The staged files say that orbital elements are not yet

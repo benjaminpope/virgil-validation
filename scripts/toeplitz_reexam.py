@@ -4,10 +4,11 @@
     python scripts/toeplitz_reexam.py tier2-agree --data DIR --fit DIR --out DIR [--max-offset-mas 20]
     python scripts/toeplitz_reexam.py tier2-time --method {toeplitz,direct} --data DIR --fit DIR --out DIR
     python scripts/toeplitz_reexam.py summary --out DIR
-    python scripts/toeplitz_reexam.py hash
+    python scripts/toeplitz_reexam.py criteria-commit
 
-Every command but ``hash`` refuses to run unless the criteria file's sha256 is ``REGISTERED_SHA256``, and every JSON it writes
-records that hash and the virgil commit. ``summary`` refuses JSON files whose hash or virgil commit differ (rows from different
+Every command refuses to run while the criteria file has uncommitted changes (``crosscheck.preregistration.criteria_commit``), and
+every JSON it writes records the criteria file's last commit and the virgil commit. ``summary`` refuses JSON files whose criteria
+commit or virgil commit differ (rows from different
 runs are never combined) and writes ``reexam.txt``: a row per gated quantity (PASS, FAIL or NOT EVALUATED), the report-only
 numbers, and the verdict (ACCEPTED, NOT ACCEPTED or INCOMPLETE).
 
@@ -18,7 +19,6 @@ the Toeplitz path's GPU peak on an A100 (``alma_imlup_toeplitz_check``'s timing,
 """
 
 import argparse
-import hashlib
 import json
 import os
 import pathlib
@@ -33,7 +33,6 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 CRITERIA_FILE = ROOT / "design" / "toeplitz_reexam_042.yml"
-REGISTERED_SHA256 = "95dfbecd17854d88211bcd106cefcef730ba5c2bec702df3a05159d9dcccd1bf"  # sha256 of CRITERIA_FILE as registered; tests/test_toeplitz_reexam.py checks it
 MODES = {
     "fixed": False,
     "fitted": True,
@@ -48,28 +47,27 @@ SITES = {
 }
 
 
-def criteria_hash():
-    return hashlib.sha256(CRITERIA_FILE.read_bytes()).hexdigest()
+def criteria_commit():
+    """The criteria file's last commit; ``SystemExit`` if the file is dirty or untracked."""
+    from crosscheck import preregistration as prereg
+
+    return prereg.criteria_commit(CRITERIA_FILE)
 
 
 def criteria():
-    """The registered criteria; ``SystemExit`` if the file is not the registered one."""
+    """The registered criteria (the committed file); ``SystemExit`` if it has uncommitted changes."""
     import yaml
 
-    if criteria_hash() != REGISTERED_SHA256:
-        raise SystemExit(
-            f"{CRITERIA_FILE.name} has sha256 {criteria_hash()}, not the registered {REGISTERED_SHA256}: "
-            "criteria changed after registration (log the change in the .md, then re-register)"
-        )
+    criteria_commit()
     return yaml.safe_load(CRITERIA_FILE.read_text())
 
 
 def old_check():
-    """``alma_imlup_toeplitz_check``, with the registration its own ``main`` would set: its time command stamps
+    """``alma_imlup_toeplitz_check``, with the criteria commit its own ``main`` would set: its time command stamps
     every output with it and fails on ``None`` when imported bare."""
     import alma_imlup_toeplitz_check as old
 
-    old.REG = old.prereg.check(old.CRITERIA_FILE)
+    old.CRIT = old.prereg.criteria_commit(old.CRITERIA_FILE)
     return old
 
 
@@ -129,7 +127,7 @@ def provenance():
     import virgil
 
     return dict(
-        criteria_sha256=criteria_hash(),
+        criteria_commit=criteria_commit(),
         run_id=run_id(),
         vv_commit=vv_commit(),
         virgil_commit=virgil_commit(),
@@ -556,10 +554,11 @@ def cmd_summary(args):
         for p in sorted(out.glob("*.json"))
         if p.name != "reexam.json"
     }
-    hashes = {f["criteria_sha256"] for f in files.values()}
-    commits = {f["virgil_commit"] for f in files.values()}
-    if hashes - {REGISTERED_SHA256}:
-        raise SystemExit(f"outputs from other criteria: {hashes}")
+    commits = {f.get("virgil_commit") for f in files.values()}
+    from crosscheck import preregistration as prereg
+
+    if prereg.require_same_commit(files.values()) != criteria_commit():  # a file without the key (a legacy output) is refused too
+        raise SystemExit("outputs from another criteria commit than this checkout's: rerun")
     for key, what in (("run_id", "runs"), ("vv_commit", "virgil-validation commits")):
         found = {f.get(key) for f in files.values()}
         if len(found) > 1 or None in found and files:
@@ -674,7 +673,7 @@ def cmd_summary(args):
         return "-" if x is None else f"{x:.3e}" if isinstance(x, float) else str(x)
 
     lines = [
-        f"Toeplitz re-examination (G2). criteria sha256 {REGISTERED_SHA256}; virgil {', '.join(sorted(commits)) or 'none'}",
+        f"Toeplitz re-examination (G2). criteria commit {criteria_commit()}; virgil {', '.join(sorted(commits)) or 'none'}",
         "",
         f"{'status':13s} {'where':34s} {'quantity':40s} {'value':>11s}   limit",
     ]
@@ -701,7 +700,7 @@ def cmd_summary(args):
         out / "reexam.json",
         dict(
             verdict=v,
-            criteria_sha256=REGISTERED_SHA256,
+            criteria_commit=criteria_commit(),
             virgil_commit=list(commits),
             gated=gated,
             report=report,
@@ -736,11 +735,10 @@ def main(argv=None):
             q.add_argument("--method", choices=("toeplitz", "direct"), required=True)
             q.add_argument("--repeats", type=int, default=10)
     sub.add_parser("summary").add_argument("--out", required=True)
-    sub.add_parser("hash")
+    sub.add_parser("criteria-commit")
     args = p.parse_args(argv)
-    if args.cmd == "hash":
-        print(criteria_hash())
-        criteria()  # exits non-zero unless the hash is the registered one (the cluster preflight relies on this)
+    if args.cmd == "criteria-commit":
+        print(criteria_commit())  # exits non-zero if the criteria file is uncommitted
         return
     {
         "tier1": cmd_tier1,

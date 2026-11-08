@@ -1,8 +1,15 @@
+# CHANGE LOG. One row per change to this file. "changed after seeing a result" is yes, no or unknown. A run records the last
+# commit that touched this file and refuses a dirty file; changed criteria mean a rerun (no hash, no override flag).
+# | commit | what changed | changed after seeing a result: yes/no | note |
+# |---|---|---|---|
+# | 5ab23a7 | extracted verbatim from the graph's radio section at origin/main 473d8cc | no | from the old registry: extraction only, no value differs; the file's own header says the same |
+# | this WP-2 commit | SHA-256 registry sentences in this header replaced by the git scheme; this change log added | no | bookkeeping only: no criteria value changed (loaded before and after, equal); no result is involved |
+#
 # What the radio trust nodes of trust/graph.yml must show to count as trusted: the independent strong roots
 # each needs (default 1) and its per-property roots. Extracted verbatim from the graph's radio section on
 # origin/main 473d8cc. changed after seeing a result: no (extraction only; no value differs).
-# scripts/check_radio_trust_criteria.py exits non-zero if this file is not the hash pinned in
-# design/criteria_registry.json, or if a node in graph.yml asks for less than it says here.
+# scripts/check_radio_trust_criteria.py refuses a file with uncommitted changes, records its last commit,
+# and exits non-zero if a node in graph.yml asks for less than it says here.
 # It pins the node set and the property roots (read_ms: conjugation); every node registers the default of one root, as in the graph.
 # Status rules are scripts/trust.py's and are not pinned here.
 nodes:
