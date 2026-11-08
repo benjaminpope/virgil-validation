@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from evidence.meta import _dirty, _evidence_path, _relative_to_root
+from evidence.meta import _dirty, _relative_to_root, jax_info
 
 pytestmark = pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
 
@@ -58,8 +58,56 @@ def test_a_new_untracked_source_file_reads_dirty(checkout):
     assert _dirty(str(checkout)) is True
 
 
-def test_the_evidence_path_comes_from_the_command_line():
-    assert _evidence_path(["pytest", "--evidence", "e.jsonl"]) == "e.jsonl"
-    assert _evidence_path(["pytest", "--evidence=e.jsonl"]) == "e.jsonl"
-    assert _evidence_path(["pytest"]) is None
-    assert _relative_to_root("/elsewhere/e.jsonl") is None
+def test_a_sibling_evidence_file_is_dirty_when_edited_but_the_output_is_exempt(checkout):
+    (checkout / "trust/evidence/other.jsonl").write_text("{}\n")
+    _git(checkout, "add", ".")
+    _git(checkout, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "more")
+    (checkout / "trust/evidence/other.jsonl").write_text("edited\n")
+    assert _dirty(str(checkout), ignore=("trust/evidence/campaigns.jsonl",)) is True
+    (checkout / "trust/evidence/other.jsonl").write_text("{}\n")
+    (checkout / "trust/evidence/campaigns.jsonl").write_text("being written\n")
+    assert _dirty(str(checkout), ignore=("trust/evidence/campaigns.jsonl",)) is False
+
+
+def test_a_rename_reads_dirty_by_its_new_path(checkout):
+    _git(checkout, "mv", "src/a.py", "src/renamed.py")
+    assert _dirty(str(checkout)) is True
+    assert _dirty(str(checkout), ignore=("src/renamed.py",)) is False  # the new path, not "old -> new"
+
+
+def test_odd_file_names_are_not_mangled(checkout):
+    (checkout / "src/sp ace \u00e9.py").write_text("")
+    assert _dirty(str(checkout)) is True
+    assert _dirty(str(checkout), ignore=("src/sp ace \u00e9.py",)) is False
+
+
+def test_not_a_git_checkout_cannot_be_told(tmp_path):
+    assert _dirty(str(tmp_path)) is None
+
+
+def test_the_evidence_path_is_relative_to_the_checkout_after_resolving_symlinks(tmp_path):
+    root = tmp_path / "root"
+    (root / "trust/evidence").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (root / "link_out").symlink_to(outside)
+    (root / "link_in").symlink_to(root / "trust/evidence")
+    (tmp_path / "root_sibling").mkdir()
+    assert _relative_to_root(str(root / "trust/evidence/e.jsonl"), root=root) == "trust/evidence/e.jsonl"
+    assert _relative_to_root(str(root / "link_in/e.jsonl"), root=root) == "trust/evidence/e.jsonl"
+    assert _relative_to_root(str(root / "link_out/e.jsonl"), root=root) is None
+    assert _relative_to_root(str(tmp_path / "root_sibling/e.jsonl"), root=root) is None  # not a prefix match
+    assert _relative_to_root(str(root / "..foo"), root=root) == "..foo"  # a name starting "..", still inside
+    assert _relative_to_root(None, root=root) is None
+
+
+def test_jax_info_records_a_backend_failure_instead_of_hiding_it(monkeypatch):
+    jax = pytest.importorskip("jax")
+
+    def boom(*a):
+        raise RuntimeError("no backend")
+
+    monkeypatch.setattr(jax, "devices", boom)
+    assert jax_info() == {"error": "RuntimeError: no backend"}
+
+

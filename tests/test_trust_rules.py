@@ -193,7 +193,7 @@ def test_provenance_is_taken_before_the_evidence_file_exists(tmp_path, monkeypat
 
     path = tmp_path / "evidence.jsonl"
     seen = []
-    monkeypatch.setattr(plugin, "run_header", lambda: seen.append(path.exists()) or {"record": "run"})
+    monkeypatch.setattr(plugin, "run_header", lambda evidence=None: seen.append(path.exists()) or {"record": "run"})
 
     class Config:
         stash = _pytest.Stash()

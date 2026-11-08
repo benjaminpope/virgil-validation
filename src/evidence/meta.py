@@ -6,8 +6,8 @@ import os
 import platform
 import socket
 import subprocess
-import sys
 from importlib import metadata
+from pathlib import Path
 
 PACKAGES = ("virgil-astro", "jax", "numpy", "scipy", "dLux", "pmoired", "astropy", "frank", "vis-r", "astro-frap",
             "oimodeler")
@@ -23,10 +23,34 @@ def _version(name):
 def _tracked_dirs(path):
     """Top-level folders of the checkout that hold tracked files (None if git fails)."""
     try:
-        out = subprocess.check_output(["git", "-C", path, "ls-files"], text=True, stderr=subprocess.DEVNULL)
+        out = subprocess.check_output(["git", "-C", path, "ls-files", "-z"], text=True, stderr=subprocess.DEVNULL)
     except (OSError, subprocess.CalledProcessError):
         return None
-    return {line.split("/", 1)[0] for line in out.splitlines() if "/" in line}
+    return {name.split("/", 1)[0] for name in out.split("\0") if "/" in name}
+
+
+def _status_entries(path):
+    """``(status, path)`` for each entry of ``git status --porcelain -z``
+    (None if git fails). NUL-separated, so paths are never quoted; a rename or
+    copy gives its new path, and its old path is dropped."""
+    try:
+        out = subprocess.check_output(["git", "-C", path, "status", "--porcelain", "-z", "--untracked-files=all"],
+                                      text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    fields = out.split("\0")
+    entries = []
+    i = 0
+    while i < len(fields):
+        field = fields[i]
+        i += 1
+        if len(field) < 4:  # the empty tail after the last NUL, or a malformed entry
+            continue
+        status, name = field[:2], field[3:]
+        if "R" in status or "C" in status:
+            i += 1  # the next field is the old path
+        entries.append((status, name))
+    return entries
 
 
 def _dirty(path, ignore=()):
@@ -39,16 +63,13 @@ def _dirty(path, ignore=()):
     not part of the code under test. ``ignore`` lists paths, relative to the
     checkout, that never count: exactly those files, not folders."""
     tracked = _tracked_dirs(path)
-    try:
-        out = subprocess.check_output(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"],
-                                      text=True, stderr=subprocess.DEVNULL)
-    except (OSError, subprocess.CalledProcessError):
+    entries = _status_entries(path)
+    if entries is None:
         return None
-    for line in out.splitlines():
-        name = line[3:].strip('"')
+    for status, name in entries:
         if name in ignore:
             continue
-        if line.startswith("??") and (tracked is None or name.split("/", 1)[0] not in tracked):
+        if status == "??" and (tracked is None or name.split("/", 1)[0] not in tracked):
             continue
         return True
     return False
@@ -112,24 +133,16 @@ def external():
     return {name: _subprocess.version(name) for name in ("ehtim", "mpol", "fouriever", "orbitize")}
 
 
-def _evidence_path(argv=None):
-    """The ``--evidence PATH`` of this pytest run, read from the command line
-    (the plugin may also pass it to ``run_header`` directly)."""
-    argv = sys.argv if argv is None else argv
-    for i, arg in enumerate(argv):
-        if arg == "--evidence" and i + 1 < len(argv):
-            return argv[i + 1]
-        if arg.startswith("--evidence="):
-            return arg.split("=", 1)[1]
-    return None
-
-
-def _relative_to_root(path):
-    """``path`` as git names it inside the checkout, or None if it is outside."""
+def _relative_to_root(path, root=None):
+    """``path`` as git names it inside the checkout, or None if it is outside.
+    Symlinks are resolved on both sides first."""
     if not path:
         return None
-    rel = os.path.relpath(os.path.abspath(path), ROOT)
-    return None if rel.startswith("..") else rel.replace(os.sep, "/")
+    root = Path(ROOT if root is None else root).resolve()
+    target = Path(path).resolve()
+    if not target.is_relative_to(root):
+        return None
+    return target.relative_to(root).as_posix()
 
 
 def jax_info():
@@ -139,8 +152,10 @@ def jax_info():
         return {"version": jax.__version__, "backend": jax.default_backend(),
                 "devices": [str(d) for d in jax.devices()],
                 "jax_enable_x64": bool(jax.config.read("jax_enable_x64"))}
-    except Exception:  # no JAX, or no usable backend: the header must still be written
+    except ImportError:
         return None
+    except Exception as e:  # no usable backend: the header must still be written, saying why
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def run_header(evidence=None):
@@ -149,9 +164,9 @@ def run_header(evidence=None):
     ``runner`` is only the runner's claim (it reads ``GITHUB_ACTIONS``, which
     anyone can set); ``github_run_id`` is the raw environment value.
     ``validation_dirty`` ignores only the evidence output file itself
-    (``evidence``, default the command line's ``--evidence``), so a hand-edited
+    (``evidence``, the plugin's ``--evidence`` path; None exempts nothing), so a hand-edited
     file under ``trust/evidence/`` makes the run dirty."""
-    ignore = tuple(p for p in (_relative_to_root(evidence or _evidence_path()),) if p)
+    ignore = tuple(p for p in (_relative_to_root(evidence),) if p)
     return {
         "record": "run",
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(
