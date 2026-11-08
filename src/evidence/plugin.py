@@ -5,6 +5,7 @@ import ast
 import functools
 import json
 import math
+import pathlib
 
 import pytest
 
@@ -102,6 +103,15 @@ def _module_via(path):
     return tuple(sorted(found - _PLUMBING))
 
 
+@functools.lru_cache(maxsize=1)
+def _golden_names():
+    """Names listed in trust/golden.yml (the only golden roots that count)."""
+    import yaml
+
+    path = pathlib.Path(__file__).resolve().parents[2] / "trust" / "golden.yml"
+    return frozenset(yaml.safe_load(open(path)) or {}) if path.exists() else frozenset()
+
+
 def _claims(item):
     claims = []
     for mark in item.iter_markers("validates"):
@@ -116,6 +126,11 @@ def _claims(item):
         if bad or kind not in KINDS or tier not in ("A", "B", "C"):
             raise pytest.UsageError(
                 f"{item.nodeid}: unknown roots {bad}, kind {kind!r} or tier {tier!r}"
+            )
+        unlisted = [r for r in roots if r.startswith("golden:") and r[7:] not in _golden_names()]
+        if unlisted:
+            raise pytest.UsageError(
+                f"{item.nodeid}: golden roots {unlisted} are not listed in trust/golden.yml"
             )
         via = set(_module_via(str(item.path))) | set(mark.kwargs.get("via", ()))
         prop = mark.kwargs.get("property", ())
