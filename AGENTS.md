@@ -35,7 +35,9 @@ read, model and fit them.
 - A disagreement is a finding, not something to tune away. Keep it as a
   test: a passing test pinned to the behaviour virgil documents, and a
   `pytest.mark.xfail(strict=True)` test stating what is wrong, so that it
-  flips when virgil is fixed. Record it in the README's findings table.
+  flips when virgil is fixed. Add an entry to `trust/ledger.yml` with
+  `id`, `title`, `objects`, `ruling`, `referee`, `evidence` (test ids),
+  `status` and `links`, and `kind` where it is a documentation finding.
 
 ## Evidence records
 
