@@ -235,3 +235,19 @@ def test_a_negative_control_is_never_the_headline_of_a_part(trust):
     assert trust._headline({**base, "kind": "check"}) == ("wrong_mapping_rel_err", 0.4)
     # an explicit headline on a control is still honoured
     assert trust._headline({**base, "kind": "control", "headline": "wrong_mapping_rel_err"})[1] == 0.4
+
+
+def test_an_explicit_headline_that_was_not_recorded_shows_no_number(trust):
+    assert trust._headline({"metrics": {"rel_a": 1e-9}, "headline": "rel_b"}) == (None, None)
+
+
+@pytest.mark.parametrize("tests, expected", [
+    ([("t.py::a", {"rel_a": 1e-9, "rel_b": 2e-9}, None)], ["t.py::a"]),  # two agreement metrics, no headline
+    ([("t.py::a", {"rel_a": 1e-9, "rel_b": 2e-9}, "rel_a")], []),  # an explicit headline is not by order
+    ([("t.py::a[x]", {"rel_a": 1e-9, "rel_b": 2e-9}, None), ("t.py::a[y]", {"rel_a": 1e-9, "rel_b": 2e-9}, None)],
+     ["t.py::a"]),  # one entry per test function, not per parameter set
+    ([("t.py::a", {"rel_a": 1e-9, "n": 3.0}, None)], []),  # one candidate only
+])
+def test_headline_by_order(trust, tests, expected):
+    records = [{"test": t, "kind": "check", "metrics": m, **({"headline": h} if h else {})} for t, m, h in tests]
+    assert trust._headline_by_order(records) == expected
