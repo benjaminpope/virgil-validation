@@ -239,15 +239,22 @@ def test_a_negative_control_is_never_the_headline_of_a_part(trust):
 
 def test_an_explicit_headline_that_was_not_recorded_shows_no_number(trust):
     assert trust._headline({"metrics": {"rel_a": 1e-9}, "headline": "rel_b"}) == (None, None)
+    assert trust._headline({"metrics": {"rel_a": 1e-9}, "headline": ""}) == (None, None)  # an empty name is still explicit
+
+
+def test_the_order_warning_names_the_file_and_the_function(trust):
+    html = trust._headline_by_order_html(["tests/test_x.py::test_fn"])
+    assert "<code>test_x.py::test_fn</code>" in html and "tests/" not in html
 
 
 @pytest.mark.parametrize("tests, expected", [
     ([("t.py::a", {"rel_a": 1e-9, "rel_b": 2e-9}, None)], ["t.py::a"]),  # two agreement metrics, no headline
     ([("t.py::a", {"rel_a": 1e-9, "rel_b": 2e-9}, "rel_a")], []),  # an explicit headline is not by order
+    ([("t.py::a", {"rel_a": 1e-9, "rel_b": 2e-9}, "")], []),  # an empty headline is still explicit
     ([("t.py::a[x]", {"rel_a": 1e-9, "rel_b": 2e-9}, None), ("t.py::a[y]", {"rel_a": 1e-9, "rel_b": 2e-9}, None)],
      ["t.py::a"]),  # one entry per test function, not per parameter set
     ([("t.py::a", {"rel_a": 1e-9, "n": 3.0}, None)], []),  # one candidate only
 ])
 def test_headline_by_order(trust, tests, expected):
-    records = [{"test": t, "kind": "check", "metrics": m, **({"headline": h} if h else {})} for t, m, h in tests]
+    records = [{"test": t, "kind": "check", "metrics": m, **({"headline": h} if h is not None else {})} for t, m, h in tests]
     assert trust._headline_by_order(records) == expected

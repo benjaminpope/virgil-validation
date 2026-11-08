@@ -200,7 +200,7 @@ def _headline(record):
     name = record.get("headline")
     if name in metrics:
         return name, _worst(metrics[name])
-    if name:
+    if name is not None:
         # an explicit headline that was not recorded: show no number rather than one the test did not choose
         return None, None
     if record.get("kind") == "control":
@@ -218,7 +218,7 @@ def _headline_by_order(records):
     candidate metric (a distinct number that measures agreement)."""
     out = set()
     for r in records:
-        if r.get("kind") != "check" or r.get("headline"):
+        if r.get("kind") != "check" or r.get("headline") is not None:
             continue
         cands = [k for k, v in (r.get("metrics") or {}).items()
                  if AGREEMENT.search(k) and isinstance(_worst(v), (int, float))]
@@ -948,7 +948,7 @@ def _headline_by_order_html(tests):
     """A warning when a check shows a number chosen by recording order, not by its test (no ``headline=``)."""
     if not tests:
         return ""
-    names = ", ".join(f"<code>{e(t.partition('::')[2] or t)}</code>" for t in tests)
+    names = ", ".join(f"<code>{e(t.rpartition('/')[2])}</code>" for t in tests)  # file basename::function
     return (f'<details class="vt-muted vt-stale"><summary>Headline chosen by order: {len(tests)} test function(s) '
             f'record several agreement metrics and name none as their headline, so the number shown is the first one recorded.'
             f'</summary>{names}</details>')
