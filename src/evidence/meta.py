@@ -20,17 +20,38 @@ def _version(name):
         return None
 
 
+def _tracked_dirs(path):
+    """Top-level folders of the checkout that hold tracked files (None if git fails)."""
+    try:
+        out = subprocess.check_output(["git", "-C", path, "ls-files"], text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return {line.split("/", 1)[0] for line in out.splitlines() if "/" in line}
+
+
 def _dirty(path, ignore=()):
     """Whether a git checkout has uncommitted changes (None if it cannot be told).
 
-    ``ignore`` lists paths, relative to the checkout, that do not count: exactly
-    those files, not folders, so an edited neighbour still reads as dirty."""
+    Any edit to a tracked file counts. An untracked file counts only inside a
+    top-level folder that already holds tracked files (``trust/``, ``src/``,
+    ``tests/``, ...): CI leaves its own untracked material beside the tests
+    (the virgil checkout, downloaded artefacts, ``evidence.jsonl``), which is
+    not part of the code under test. ``ignore`` lists paths, relative to the
+    checkout, that never count: exactly those files, not folders."""
+    tracked = _tracked_dirs(path)
     try:
         out = subprocess.check_output(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"],
                                       text=True, stderr=subprocess.DEVNULL)
     except (OSError, subprocess.CalledProcessError):
         return None
-    return any(line[3:].strip('"') not in ignore for line in out.splitlines())
+    for line in out.splitlines():
+        name = line[3:].strip('"')
+        if name in ignore:
+            continue
+        if line.startswith("??") and (tracked is None or name.split("/", 1)[0] not in tracked):
+            continue
+        return True
+    return False
 
 
 def virgil_source():
