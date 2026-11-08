@@ -4,7 +4,9 @@ import datetime
 import json
 import os
 import platform
+import socket
 import subprocess
+import sys
 from importlib import metadata
 
 PACKAGES = ("virgil-astro", "jax", "numpy", "scipy", "dLux", "pmoired", "astropy", "frank", "vis-r", "astro-frap",
@@ -19,13 +21,16 @@ def _version(name):
 
 
 def _dirty(path, ignore=()):
-    """Whether a git checkout has uncommitted changes (None if it cannot be told)."""
+    """Whether a git checkout has uncommitted changes (None if it cannot be told).
+
+    ``ignore`` lists paths, relative to the checkout, that do not count: exactly
+    those files, not folders, so an edited neighbour still reads as dirty."""
     try:
-        out = subprocess.check_output(["git", "-C", path, "status", "--porcelain"], text=True,
-                                      stderr=subprocess.DEVNULL)
+        out = subprocess.check_output(["git", "-C", path, "status", "--porcelain", "--untracked-files=all"],
+                                      text=True, stderr=subprocess.DEVNULL)
     except (OSError, subprocess.CalledProcessError):
         return None
-    return any(not line[3:].startswith(ignore) for line in out.splitlines())
+    return any(line[3:].strip('"') not in ignore for line in out.splitlines())
 
 
 def virgil_source():
@@ -86,7 +91,46 @@ def external():
     return {name: _subprocess.version(name) for name in ("ehtim", "mpol", "fouriever", "orbitize")}
 
 
-def run_header():
+def _evidence_path(argv=None):
+    """The ``--evidence PATH`` of this pytest run, read from the command line
+    (the plugin may also pass it to ``run_header`` directly)."""
+    argv = sys.argv if argv is None else argv
+    for i, arg in enumerate(argv):
+        if arg == "--evidence" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--evidence="):
+            return arg.split("=", 1)[1]
+    return None
+
+
+def _relative_to_root(path):
+    """``path`` as git names it inside the checkout, or None if it is outside."""
+    if not path:
+        return None
+    rel = os.path.relpath(os.path.abspath(path), ROOT)
+    return None if rel.startswith("..") else rel.replace(os.sep, "/")
+
+
+def jax_info():
+    """JAX version, backend, devices and the x64 flag as set when the header is taken."""
+    try:
+        import jax
+        return {"version": jax.__version__, "backend": jax.default_backend(),
+                "devices": [str(d) for d in jax.devices()],
+                "jax_enable_x64": bool(jax.config.read("jax_enable_x64"))}
+    except Exception:  # no JAX, or no usable backend: the header must still be written
+        return None
+
+
+def run_header(evidence=None):
+    """The header line of an evidence file.
+
+    ``runner`` is only the runner's claim (it reads ``GITHUB_ACTIONS``, which
+    anyone can set); ``github_run_id`` is the raw environment value.
+    ``validation_dirty`` ignores only the evidence output file itself
+    (``evidence``, default the command line's ``--evidence``), so a hand-edited
+    file under ``trust/evidence/`` makes the run dirty."""
+    ignore = tuple(p for p in (_relative_to_root(evidence or _evidence_path()),) if p)
     return {
         "record": "run",
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(
@@ -94,12 +138,19 @@ def run_header():
         ),
         "virgil": {"version": _version("virgil-astro"), **virgil_source()},
         "validation_commit": own_commit(),
-        # uncommitted changes, other than evidence files being written
-        "validation_dirty": _dirty(ROOT, ignore=("trust/evidence/",)),
+        # uncommitted changes, other than the evidence file being written
+        "validation_dirty": _dirty(ROOT, ignore=ignore),
         "versions": {p: _version(p) for p in PACKAGES},
         "candid": candid(),
         "external": external(),
         "python": platform.python_version(),
+        "platform": {"system": platform.system(), "release": platform.release(), "machine": platform.machine()},
+        "jax": jax_info(),
+        "env": {k: os.environ.get(k) for k in ("XLA_FLAGS", "OMP_NUM_THREADS", "JAX_NUM_THREADS")},
+        "host": socket.gethostname(),
+        "slurm": {k: os.environ[k] for k in ("SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID")
+                  if k in os.environ},
+        "github_run_id": os.environ.get("GITHUB_RUN_ID"),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") else "local",
         "run_url": (
             f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
