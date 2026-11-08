@@ -102,12 +102,17 @@ def test_collection_enforces_strict_xfail_and_finding_bi_implication(tmp_path):
     pytest_collection_modifyitems(cfg, [make_item("finding", {"strict": True, "raises": AssertionError})])
     pytest_collection_modifyitems(cfg, [make_item("upstream", {"strict": True, "raises": AssertionError})])
 
+    pytest_collection_modifyitems(cfg, [make_item("finding", {"strict": True, "raises": (AssertionError, RuntimeError)})])
+
     # Invalid combinations fail collection
     for bad in (
         make_item("check", {"strict": True, "raises": AssertionError}),
         make_item("check", {"strict": False, "raises": AssertionError}),
         make_item("finding", {"strict": False, "raises": AssertionError}),
         make_item("finding", {"strict": True}),  # no raises=
+        make_item("finding", {"strict": True, "raises": Exception}),
+        make_item("upstream", {"strict": True, "raises": BaseException}),
+        make_item("finding", {"strict": True, "raises": (AssertionError, Exception)}),
         make_item("upstream", {"strict": True}),  # no raises=
         make_item("finding"),
         make_item("upstream"),
