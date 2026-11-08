@@ -59,16 +59,28 @@ def test_the_criteria_file_is_committed_and_the_registered_scenes_are_held_out()
 
 
 @pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], kind="control")
-def test_a_changed_criteria_file_is_refused(tmp_path):
-    original = tr.CRITERIA_FILE.read_text()
-    try:
-        tr.CRITERIA_FILE.write_text(original.replace("speedup_min: 30.0", "speedup_min: 15.0"))  # edited, not committed
-        with pytest.raises(SystemExit, match="uncommitted changes"):
-            tr.criteria()
-        with pytest.raises(SystemExit, match="uncommitted changes"):
-            tr.main(["summary", "--out", str(tmp_path)])
-    finally:
-        tr.CRITERIA_FILE.write_text(original)
+def test_a_changed_criteria_file_is_refused(tmp_path, monkeypatch):
+    """A scratch repository holds a copy of the criteria; the tracked file is never touched."""
+    import os
+    import subprocess
+
+    import crosscheck.preregistration as prereg
+
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.com", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.com"}
+    git = lambda *a: subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True, env=env)  # noqa: E731
+    copy = tmp_path / "c.yml"
+    copy.write_text(tr.CRITERIA_FILE.read_text())
+    git("init", "-q")
+    git("add", "c.yml")
+    git("commit", "-q", "-m", "criteria")
+    monkeypatch.setattr(prereg, "ROOT", tmp_path)
+    monkeypatch.setattr(tr, "CRITERIA_FILE", copy)
+    assert re.fullmatch(r"[0-9a-f]{40}", tr.criteria_commit())  # clean: accepted
+    copy.write_text(copy.read_text().replace("speedup_min: 30.0", "speedup_min: 15.0"))  # edited, not committed
+    with pytest.raises(SystemExit, match="uncommitted changes"):
+        tr.criteria()
+    with pytest.raises(SystemExit, match="uncommitted changes"):
+        tr.main(["summary", "--out", str(tmp_path)])
 
 
 @pytest.mark.validates("crosscheck.toeplitz_scenes", roots=["self-consistency"], kind="guard")
@@ -229,7 +241,7 @@ def test_verdicts_and_the_no_combining_rule(tmp_path):
     with pytest.raises(SystemExit, match="several virgil commits"):
         tr.main(["summary", "--out", str(tmp_path)])
     (tmp_path / "tier1_S2_sources_on_halo.json").write_text(json.dumps(dict(base, virgil_commit="a" * 40, criteria_commit="0" * 40)))
-    with pytest.raises(SystemExit, match="other criteria"):
+    with pytest.raises(SystemExit, match="another criteria commit"):
         tr.main(["summary", "--out", str(tmp_path)])
 
 

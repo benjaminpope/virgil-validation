@@ -554,10 +554,11 @@ def cmd_summary(args):
         for p in sorted(out.glob("*.json"))
         if p.name != "reexam.json"
     }
-    crit = {f["criteria_commit"] for f in files.values()}
-    commits = {f["virgil_commit"] for f in files.values()}
-    if crit - {criteria_commit()}:
-        raise SystemExit(f"outputs from other criteria commits than this checkout's: {crit}")
+    commits = {f.get("virgil_commit") for f in files.values()}
+    from crosscheck import preregistration as prereg
+
+    if prereg.require_same_commit(files.values()) != criteria_commit():  # a file without the key (a legacy output) is refused too
+        raise SystemExit("outputs from another criteria commit than this checkout's: rerun")
     for key, what in (("run_id", "runs"), ("vv_commit", "virgil-validation commits")):
         found = {f.get(key) for f in files.values()}
         if len(found) > 1 or None in found and files:

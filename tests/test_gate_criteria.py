@@ -32,7 +32,7 @@ GATES = {
     "check_radio_trust_criteria": "design/radio_trust_criteria.yml",
     "trackb_fit": "design/trackb_criteria.md",
     "orbit_population": "design/orbit_gate_042.md",
-    "toeplitz_reexam": "design/toeplitz_reexam_042.md",
+    "toeplitz_reexam": "design/toeplitz_reexam_042.yml",
 }
 # criteria files that no script enforces yet (the script is not written): the file is still tracked and has its change log
 UNENFORCED = ["design/oidb_binaries_criteria.md"]
@@ -55,13 +55,17 @@ def test_every_gate_script_records_the_criteria_commit_and_has_no_override_flag(
     src = (ROOT / "scripts" / f"{name}.py").read_text()
     if name == "alma_imlup_maxent":  # the gate module is virgil_bridge.alma_start: the script asks it
         assert "vs.criteria_commit(" in src
-        src = (ROOT / "src" / "virgil_bridge" / "alma_start.py").read_text()
+        sources = [src, (ROOT / "src" / "virgil_bridge" / "alma_start.py").read_text()]  # the CLI flags live in the script, the check in the module
+        src = sources[1]
+    else:
+        sources = [src]
     assert "criteria_commit(" in src and "preregistration" in src
-    assert not OVERRIDE_FLAG.search(src), f"{name} has an override flag"
-    assert "--allow" not in src
+    for text in sources:
+        assert not OVERRIDE_FLAG.search(text), f"{name} has an override flag"
+        assert "--allow" not in text
 
 
-@pytest.mark.parametrize("aggregating", ["detection_campaign", "pull_campaign", "sbc_v2", "sbc_numpyro", "orbit_population", "alma_imlup_toeplitz_check", "trackb_summary"])
+@pytest.mark.parametrize("aggregating", ["detection_campaign", "pull_campaign", "sbc_v2", "sbc_numpyro", "orbit_population", "alma_imlup_toeplitz_check", "trackb_summary", "toeplitz_reexam"])
 def test_every_aggregate_refuses_mixed_commits(aggregating):
     src = (ROOT / "scripts" / f"{aggregating}.py").read_text()
     assert "require_same_commit(" in src
