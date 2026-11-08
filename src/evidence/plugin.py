@@ -153,7 +153,7 @@ def pytest_collection_modifyitems(config, items):
                 )
         elif has_finding:
             bad_xfail.append(
-                f"{item.nodeid}: kind='finding' or 'upstream' requires @pytest.mark.xfail(strict=True)"
+                f"{item.nodeid}: kind='finding' or 'upstream' requires @pytest.mark.xfail(strict=True, raises=<exception class>)"
             )
     if missing and config.getoption("--require-validates"):
         raise pytest.UsageError(
