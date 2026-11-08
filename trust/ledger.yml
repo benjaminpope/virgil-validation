@@ -437,6 +437,7 @@
   kind: 'bug (a model visibility V passing through 0 changes its phase by pi, so every closure phase through that baseline jumps by pi and the chi-squared by ~2/sigma^2 over a step of |V|/|dV/dx|; d(phase)/dx ~ 1/|V|. Reproduced on synthetic 3-telescope data: a flat-start MEM fit ends with a model visibility of 4e-12 and does not converge, AD 6e6 against FD -4e7 at eps 1e-5. V^2 and MaxEntropy terms have AD = FD at the same point)'
   referee: mathematics (the phase of a complex number is discontinuous at 0; a loss built from it has no bounded gradient there; the bispectrum form is polynomial in V)
   evidence: []
+  pending: 'its tests are on the branch review/integration (tests/test_mem_null_discontinuity.py, nine tests) and are not yet on main, so no test id can be cited here; cite them when that branch lands'
   status: open
   links: [https://github.com/benjaminpope/virgil/issues/309]
   decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring. Accepted again for virgil 0.4.1 (Ben, 2026-10-23): stated in the 0.4.1 release notes under Known issues, fix tracked in virgil#309; status stays open.'
@@ -527,6 +528,7 @@
   kind: 'analysis choice, post_result: true. Xuan et al. 2024 do not flag this night as an alias, yet its positions disagree with their orbit (plan_eso_binaries.md; virgil-validation#69), and it was left out as an open per-night disagreement. The exclusion therefore followed a result and is not a pre-registered cut. It removes a night that disagrees with the published orbit, so any agreement quoted for the Gl 229 fit is conditional on it; the fits that keep the night are the open disagreement itself'
   referee: crosscheck (the comparison against the published orbit, docs/orbits/aliases.md); no independent second review yet
   evidence: []
+  pending: 'an analysis exclusion, not a behaviour a unit test can pin: it is applied in scripts/oidb_fit.py (GL229_EXCLUDED_NIGHTS) and has no test'
   status: open
   links: [https://github.com/benjaminpope/virgil-validation/issues/69]
 
@@ -537,6 +539,7 @@
   kind: 'analysis choice, post_result: unconfirmed. The stated reason is a property of the file alone (closure phases +38 to +57 deg on all triangles, errors 5-10x the night''s), not of its effect on the orbit; the repository history (d0e8bd8, 2026-10-09, 7322f45, 2026-10-15) does not show whether it was decided before or after a fit result, so it is recorded as not shown to be pre-registered'
   referee: mathematics (the closure phases of the file against the night''s others)
   evidence: []
+  pending: 'an analysis exclusion, not a behaviour a unit test can pin: it is applied in oidb_fit.py (GL229_EXCLUDED_FILES) and reanalyse_orbits.py (GL229_EXCLUDE) and has no test'
   status: documented
 
 - id: D17
@@ -546,6 +549,7 @@
   kind: 'analysis choice, post_result: false in intent. The flags are Xuan et al. 2024''s own (2024-02-27 weak signal, 2024-03-28 failing fringe tracker; our file dates are one UT day later), taken from the paper before the fits (design/orbit_comparison.md section 5), so the cut follows the published reference rather than our fit. The date shift by one UT day is our mapping and is not independently reviewed'
   referee: standards (Xuan et al. 2024 flagged nights)
   evidence: []
+  pending: 'an analysis exclusion, not a behaviour a unit test can pin: it is applied in oidb_fit.py (GL229_FLAGGED, exclude_flagged) and has no test'
   status: documented
 
 - id: D18
