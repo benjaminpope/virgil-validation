@@ -528,7 +528,7 @@
   kind: 'analysis choice, post_result: true. Xuan et al. 2024 do not flag this night as an alias, yet its positions disagree with their orbit (plan_eso_binaries.md; virgil-validation#69), and it was left out as an open per-night disagreement. The exclusion therefore followed a result and is not a pre-registered cut. It removes a night that disagrees with the published orbit, so any agreement quoted for the Gl 229 fit is conditional on it; the fits that keep the night are the open disagreement itself'
   referee: crosscheck (the comparison against the published orbit, docs/orbits/aliases.md); no independent second review yet
   evidence: []
-  pending: 'an analysis exclusion, not a behaviour a unit test can pin: it is applied in scripts/oidb_fit.py (GL229_EXCLUDED_NIGHTS) and has no test'
+  pending: 'applied in scripts/oidb_fit.py (GL229_EXCLUDED_NIGHTS); test pending: plan phase 3 (per-night flag row), as in AGENTS.md'
   status: open
   links: [https://github.com/benjaminpope/virgil-validation/issues/69]
 
@@ -549,7 +549,7 @@
   kind: 'analysis choice, post_result: false in intent. The flags are Xuan et al. 2024''s own (2024-02-27 weak signal, 2024-03-28 failing fringe tracker; our file dates are one UT day later), taken from the paper before the fits (design/orbit_comparison.md section 5), so the cut follows the published reference rather than our fit. The date shift by one UT day is our mapping and is not independently reviewed'
   referee: standards (Xuan et al. 2024 flagged nights)
   evidence: []
-  pending: 'an analysis exclusion, not a behaviour a unit test can pin: it is applied in oidb_fit.py (GL229_FLAGGED, exclude_flagged) and has no test'
+  pending: 'the mechanism is tested (tests/test_oidb_fits.py::test_orbit_search_is_blind_and_a_flagged_night_seeds_no_position for exclude_flagged, ::test_check_epochs_flags_nights_that_may_not_seed_the_orbits for the flagged bar) but with stand-in nights; no test pins the GL229_FLAGGED dates or their one-UT-day shift from Xuan et al. 2024'
   status: documented
 
 - id: D18
