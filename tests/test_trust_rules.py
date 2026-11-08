@@ -237,15 +237,88 @@ def test_a_negative_control_is_never_the_headline_of_a_part(trust):
     assert trust._headline({**base, "kind": "control", "headline": "wrong_mapping_rel_err"})[1] == 0.4
 
 
-def test_virgils_ingested_ci_evidence_survives_strict_provenance(trust, tmp_path, monkeypatch):
-    """The ingest script records this repository's commit, so the file is not
-    dropped as 'does not say which commit it ran on'."""
-    import subprocess
+def _ingest_module(monkeypatch):
     import sys
 
     monkeypatch.syspath_prepend(str(ROOT / "scripts"))
     sys.modules.pop("ingest_virgil_evidence", None)
-    ingest = importlib.import_module("ingest_virgil_evidence")
+    return importlib.import_module("ingest_virgil_evidence")
+
+
+def _git_repo(path):
+    """A git repo at ``path`` with committed ``tracked.txt`` and ``trust/evidence/e.jsonl``."""
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True)
+
+    path.mkdir()
+    git("init", "-q")
+    git("config", "user.email", "t@example.org")
+    git("config", "user.name", "t")
+    git("config", "commit.gpgsign", "false")
+    (path / "tracked.txt").write_text("a\n")
+    (path / "trust" / "evidence").mkdir(parents=True)
+    (path / "trust" / "evidence" / "e.jsonl").write_text("{}\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "init")
+
+
+def test_own_provenance_reports_commit_and_a_clean_checkout_as_not_dirty(monkeypatch, tmp_path):
+    import subprocess
+
+    ingest = _ingest_module(monkeypatch)
+    _git_repo(tmp_path / "r")
+    head = subprocess.check_output(["git", "-C", str(tmp_path / "r"), "rev-parse", "HEAD"], text=True).strip()
+    assert ingest.own_provenance(root=tmp_path / "r") == (head, False)
+
+
+def test_own_provenance_a_tracked_modification_is_dirty(monkeypatch, tmp_path):
+    ingest = _ingest_module(monkeypatch)
+    _git_repo(tmp_path / "r")
+    (tmp_path / "r" / "tracked.txt").write_text("changed\n")
+    commit, dirty = ingest.own_provenance(root=tmp_path / "r")
+    assert len(commit) == 40 and dirty is True
+
+
+def test_own_provenance_ignores_untracked_files_anywhere(monkeypatch, tmp_path):
+    """This implementation passes ``--untracked-files=no``: an untracked file counts as clean, even
+    inside a folder of tracked files (``trust/``) or beside tracked code at the root."""
+    ingest = _ingest_module(monkeypatch)
+    _git_repo(tmp_path / "r")
+    (tmp_path / "r" / "stray.txt").write_text("x\n")
+    (tmp_path / "r" / "trust" / "stray.py").write_text("x\n")
+    assert ingest.own_provenance(root=tmp_path / "r")[1] is False
+
+
+def test_own_provenance_exempts_any_tracked_edit_under_trust_evidence(monkeypatch, tmp_path):
+    """The exemption is a path prefix: editing a committed file under ``trust/evidence/`` stays clean,
+    while a tracked edit elsewhere still makes the run dirty."""
+    ingest = _ingest_module(monkeypatch)
+    _git_repo(tmp_path / "r")
+    (tmp_path / "r" / "trust" / "evidence" / "e.jsonl").write_text('{"hand": "edited"}\n')
+    assert ingest.own_provenance(root=tmp_path / "r")[1] is False
+    (tmp_path / "r" / "tracked.txt").write_text("changed\n")
+    assert ingest.own_provenance(root=tmp_path / "r")[1] is True
+
+
+def test_own_provenance_is_none_none_outside_a_git_checkout(monkeypatch, tmp_path):
+    ingest = _ingest_module(monkeypatch)
+    (tmp_path / "plain").mkdir()
+    assert ingest.own_provenance(root=tmp_path / "plain") == (None, None)
+
+
+def test_virgils_ingested_ci_evidence_survives_strict_provenance(trust, tmp_path, monkeypatch):
+    """The ingest script records this repository's commit, so the file is not
+    dropped as 'does not say which commit it ran on'. Dirtiness is fixed to a
+    clean checkout of this repository's HEAD, so the test does not depend on the
+    state of the working tree; own_provenance itself is tested directly above."""
+    import subprocess
+    import sys
+
+    ingest = _ingest_module(monkeypatch)
+    head = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    monkeypatch.setattr(ingest, "own_provenance", lambda: (head, False))
     junit = tmp_path / "junit-evidence.xml"
     claim = json.dumps({"objects": ["virgil.a"], "roots": ["mathematics"], "kind": "check", "tier": "A",
                         "properties": []}).replace('"', "&quot;")
@@ -256,10 +329,7 @@ def test_virgils_ingested_ci_evidence_survives_strict_provenance(trust, tmp_path
     monkeypatch.setattr(sys, "argv", ["ingest", str(junit), str(out), "--commit", "d" * 40])
     ingest.main()
     header = json.loads(out.read_text().splitlines()[0])
-    head = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
     assert header["validation_commit"] == head
-    assert "validation_dirty" in header
-    # the working tree's own dirtiness is not under test, only that a clean header is kept
-    out.write_text(out.read_text().replace('"validation_dirty": true', '"validation_dirty": false'))
+    assert isinstance(header["validation_dirty"], bool) and header["validation_dirty"] is False
     runs, recs = trust.load_evidence([out], strict=True)
     assert len(runs) == 1 and len(recs) == 1 and recs[0]["_source"] == "virgil-ci"
