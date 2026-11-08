@@ -6,6 +6,7 @@ import functools
 import json
 import math
 import os
+import pathlib
 import re
 
 import pytest
@@ -253,7 +254,7 @@ def pytest_sessionfinish(session):
     # known only now: what the run was asked to select and what it left out
     header["invocation"] = {
         **invocation(session.config),
-        "deselected": len(session.config.stash.get(_DESELECTED, ())),
+        "deselected": len(set(session.config.stash.get(_DESELECTED, ()))),
     }
     with open(path, "w") as f:
         f.write(json.dumps(header) + "\n")
@@ -326,14 +327,19 @@ def _marker_claim(call):
     ] or ["<computed>"]
     kwargs = {k.arg: literal(k.value) for k in call.keywords if k.arg}
     prop = kwargs.get("property") or ()
-    return {
+    roots = kwargs.get("roots") or ()
+    headline = kwargs.get("headline")
+    claim = {
         "objects": objects,
-        "roots": list(kwargs.get("roots") or ()),
+        "roots": [roots] if isinstance(roots, str) else list(roots),
         "kind": kwargs.get("kind") or "check",
         "tier": kwargs.get("tier") or "A",
         "via": sorted(set(kwargs.get("via") or ()) - set(objects)),
         "properties": [prop] if isinstance(prop, str) else list(prop),
     }
+    if headline is not None:
+        claim["headline"] = str(headline)
+    return claim
 
 
 def _validates_calls(node):
@@ -348,7 +354,7 @@ def tests_in_file(path):
     """[(name, line, doc, claims)] for every test function of a file, read
     with the AST because the file could not be imported. Module-level
     ``pytestmark`` claims apply to every test."""
-    tree = ast.parse(open(path).read())
+    tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
     module = []
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
@@ -382,9 +388,16 @@ def pytest_collectreport(report):
     reason = _skip_reason(report)
     try:
         tests = tests_in_file(config.rootpath / report.nodeid)
-    except (OSError, SyntaxError):
+    except (OSError, SyntaxError, ValueError):  # ValueError includes UnicodeDecodeError
         return
     records = config.stash[_RECORDS]
+    unmarked = [f"{report.nodeid}::{name}" for name, _, _, claims in tests if not claims]
+    if unmarked and config.getoption("--require-validates"):
+        # the skipped module has no items, so pytest_collection_modifyitems never sees these
+        raise pytest.UsageError(
+            "tests without a validates marker (docs/method/index.md):\n  "
+            + "\n  ".join(unmarked)
+        )
     for name, line, doc, claims in tests:
         for claim in claims:
             records.append(

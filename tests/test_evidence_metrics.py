@@ -91,6 +91,49 @@ def test_a_missing_virgil_module_is_a_collection_error_when_required(pytester, m
 
 
 @pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_collection_records_keep_a_string_root_whole_and_the_headline(pytester, monkeypatch):
+    monkeypatch.delenv("VV_REQUIRE_VIRGIL_IMPORTS", raising=False)
+    pytester.makepyfile(
+        test_gone='''
+import pytest
+
+pytest.importorskip("virgil.nope")
+
+
+@pytest.mark.validates("evidence", roots="mathematics", headline="err")
+def test_one():
+    pass
+'''
+    )
+    pytester.runpytest_subprocess("--evidence", "ev.jsonl")
+    (record,) = _records(pytester.path / "ev.jsonl")[1:]
+    assert record["roots"] == ["mathematics"]
+    assert record["headline"] == "err"
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_an_unmarked_test_in_a_skipped_file_fails_require_validates(pytester, monkeypatch):
+    monkeypatch.delenv("VV_REQUIRE_VIRGIL_IMPORTS", raising=False)
+    pytester.makepyfile(
+        test_gone='''
+import pytest
+
+pytest.importorskip("virgil.nope")
+
+
+def test_unmarked():
+    pass
+'''
+    )
+    result = pytester.runpytest_subprocess("--require-validates")
+    assert result.ret != 0
+    result.stderr.fnmatch_lines(["*test_gone.py::test_unmarked*"])
+    # without the option nothing is raised, and no record is made for it
+    assert pytester.runpytest_subprocess("--evidence", "ev.jsonl").ret == pytest.ExitCode.NO_TESTS_COLLECTED
+    assert not _records(pytester.path / "ev.jsonl")[1:]
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
 def test_only_a_missing_virgil_module_is_required():
     from evidence.plugin import _missing_virgil
 
