@@ -39,7 +39,7 @@ Packages that touch the same core file must land one at a time:
 | `src/evidence/meta.py` | A4, A7 |
 
 Suggested order:
-1. Wave 1, in parallel (only A1 touches core files): A1, A8a, A9, A10, A12, A13, A14, A15, A16.
+1. Wave 1, in parallel (only A1 touches core files): A1, A8a, A9, A10, A12, A13, A14, A15.
 2. Wave 2, one per core file: A2 (`trust.py`), A3 (`plugin.py`), A7 (`meta.py`).
 3. Wave 3: A11 (`trust.py`), A4 (`plugin.py` and `meta.py`), then A5 (`plugin.py`) and A6 (`trust.py`).
 4. Wave 4: A1b, A1c and A1d (markers only, parallel), then A8b (`trust.py`).
@@ -254,20 +254,22 @@ A1 must land before A1b-d.
 - **Size:** S.
 - **Coordination note:** A4 makes this gap visible first; A10 closes it. They can land in either order.
 
-### A11. Weekly failures on virgil main are shown, not overwritten (new)
+### A11. Weekly failures on a newer virgil commit are shown, not overwritten (new)
 
-- **Goal.** The newest weekly run (41381202862, virgil main 8ad1d11) has **18 failed and 2 errored** tests:
+> **Corrected 2026-11-09: the 20 failures were on virgil 8ad1d11, an ancestor of the pin d79696d; the pin fixes them. Nothing is hidden today. #236 keeps a badge for the case where a weekly run on a NEWER commit fails, which does not occur in current evidence.**
+
+- **Goal.** The newest weekly run (41381202862, virgil 8ad1d11, an ancestor of the pin) has 18 failed and 2 errored tests, all fixed at the pin:
   - `TSV.__init__() missing ... 'beam_mas'` across `test_imaging_regularisers`, `test_l_curve` and `test_ehtim_reconstruction`;
   - `test_inference_joint.py::test_regularized_inverse_and_its_warning`, which asserts 1.47 < 1e-12.
-  - `load_evidence` (`trust.py:100-136`) keeps the newest record per test by run date. The later push run at the *older* pin d79696d passed all 20, so every failure is overwritten. The page shows `virgil.imaging.TSV`, `TV`, `models.Image`, `inference.regularized_inverse` and `virgil_bridge.alma` as verified, with no sign that they fail on virgil main.
+  - `load_evidence` (`trust.py:100-136`) keeps the newest record per test by run date. The later push run at the pin d79696d, a newer virgil commit, passed all 20, so they are correctly superseded. The case to catch is a weekly run on a commit newer than the pin that fails.
 - **Change (display only):**
   - in `build`, collect tests whose newest record from a run on a *different virgil commit* failed while the kept record passed;
-  - render a "fails on virgil main (8ad1d11, run link)" badge on those nodes, plus a banner listing them, next to `_older_campaigns_html`;
+  - render a "fails on a newer virgil commit (commit, run link)" badge on those nodes, plus a banner listing them, next to `_older_campaigns_html`;
   - do not change the verdict; that is tier B (B4).
 - **Done when:**
   - a synthetic case in `tests/test_trust_rules.py` (an old failure at commit X, then a newer pass at commit Y) shows the badge;
   - the badge applies only when the failing run's virgil commit is newer than the kept record's. A synthetic reverse-order case (a pass at the newer commit Y, and a failure at the older commit X, so the kept record is the newer one) must show no badge. Being fixed in PR #236;
-  - on the published evidence the banner lists the 20 tests and these nodes: TSV, Image, whitened_residuals, TV, l_curve, fitting.fit, regularized_inverse, `virgil_bridge.alma`, `pipeline:rml-imaging`.
+  - on the published evidence the banner is empty (the 20 weekly failures are at 8ad1d11, an ancestor of the pin, so no badge);
 - **Tests:** `tests/test_trust_rules.py`, `tests/test_docs_links.py`.
 - **Core files:** `trust.py`.
 - **Page change:** a banner and badges. No verdict changes.
@@ -313,18 +315,4 @@ A1 must land before A1b-d.
 - **Tests:** `tests/test_docs_links.py`.
 - **Core files:** none.
 - **Page change:** none.
-- **Size:** S.
-
-### A16. Triage the 20 weekly failures into ledger entries
-
-- **Goal.** AGENTS.md says a disagreement is kept as a test and recorded in `trust/ledger.yml`. The 20 failures of weekly run 41381202862 (virgil main 8ad1d11) include `test_inference_joint.py::test_regularized_inverse_and_its_warning` (1.47 against `< 1e-12`). That is a finding, not only something for A11 to display.
-- **Change:** one entry per failure, or per shared cause (for example the `TSV.__init__() missing ... 'beam_mas'` group), in `trust/ledger.yml`:
-  - `ruling: virgil` if virgil regressed;
-  - `ruling: crosscheck` if the test code has to follow a virgil API change;
-  - `status: open`.
-- **Needs Ben.** Choosing the ruling needs a look at each failure (reproduce it first, per AGENTS.md). Rule only the clear cases. List borderline ones in the PR for Ben; do not guess.
-- **Done when:** every one of the 20 tests is cited by an open ledger entry, and the ledger lint (A8a, if landed) passes.
-- **Tests:** `tests/test_docs_links.py`.
-- **Core files:** none.
-- **Page change:** new open ledger rows. No verdict changes.
 - **Size:** S.

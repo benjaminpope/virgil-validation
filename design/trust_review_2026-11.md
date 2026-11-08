@@ -21,7 +21,7 @@ Today 124 virgil parts are verified. For **97 of them, every root is one written
 
 ### The five most important problems
 
-1. **The page hides failures on virgil's main branch.** The weekly run (2026-11-02, virgil main 8ad1d11) had 20 failing tests: a `TSV` API change, and `regularized_inverse` off by 1.47 against a 1e-12 bound. The next push run, on the *older* pinned virgil, passed them. The page keeps the newest run, so all 20 failures vanished. `TSV`, `TV`, `Image`, `regularized_inverse` and `virgil_bridge.alma` show as verified.
+1. **The page hides failures on virgil's main branch.** The weekly run (2026-11-02, virgil main 8ad1d11) had 20 failing tests: a `TSV` API change, and `regularized_inverse` off by 1.47 against a 1e-12 bound. The next push run, on the pinned virgil, passed them. **Corrected 2026-11-09: the 20 failures were on virgil 8ad1d11, an ancestor of the pin d79696d; the pin fixes them. Nothing is hidden today. #236 keeps a badge for the case where a weekly run on a NEWER commit fails, which does not occur in current evidence.**
 2. **Tests can disappear without trace.** 84 module-level `virgil.*` import skips across 61 files skip themselves if a `virgil.*` module is missing, and a skip at that stage writes no record. If virgil renames a module, those tests vanish and CI stays green. `test_calibrated_load.py` has never run in CI.
 3. **The ledger can clear a bug unseen.** A ledger status outside the five allowed words reads as "fixed", and nothing checks the status. Decisions made after seeing a result (D15, D22) are not shown on the cards they affect.
 4. **Headline numbers are picked by the order of `record()` calls.** This is true for 105 records, and only 6 tests name their headline. The live rml-imaging card shows eht-imaging's own convergence (6e-5), not virgil's gradient, which is what the test checks.
@@ -50,7 +50,6 @@ These packages change no science number, threshold or criteria file. They make h
 - **A13:** graph source paths must exist.
 - **A14:** every PR gets a verdict diff in its job summary.
 - **A15:** AGENTS.md points findings at the ledger.
-- **A16:** the 20 weekly failures are triaged into open ledger entries (may need Ben for borderline cases).
 
 Expected page changes:
 - `alma-imlup` and `orbitize-posterior` read "not run";
@@ -62,7 +61,7 @@ No other verdict changes.
 
 ### What needs your decision
 
-- **Which commit is the verdict for?** Should the page judge each part at the pinned virgil, at virgil main, or show both? The 20 masked failures make this live (B4).
+- **Which commit is the verdict for?** Should the page judge each part at the pinned virgil, at virgil main, or show both? The 20 weekly failures were at an older commit than the pin (see the correction in 1.1), so this is not live today (B4).
 - **Should roots written here count as independent?** 97 of 124 verified parts rest only on them. A shadow column would show the drop first (B2).
 - **The change log inside the gated criteria file** cannot audit itself. Should it move beside the file (C7)? And is a byte-for-byte content comparison, with no hashing, acceptable for snapshot integrity (B9)?
 - **Should open post-result decisions cap a pipeline at "passes"** (B5)?
@@ -104,8 +103,8 @@ I ran 98b7dda's `trust.py` `build()` over exactly those files. The push run for 
 
 **Where I disagree with the critique** (one line each, measured):
 - *"T2 cascades through `external_bridge.*`."* No. With the fix applied, a simulated XPASS moves only that node (pmoired or ehtim: partly → failing). The external nodes are already "partly", so they are never trusted references.
-- *"The weekly run's evidence has no failed records."* It has 18 failed and 2 errors. All 20 are overwritten by the newer push run's passes at the older pin. That is problem 1 above.
-- *"R4 (per-commit verdicts) has no effect today."* It does. Five verified nodes fail on virgil main (A11 and B4).
+- *"The weekly run's evidence has no failed records."* It has 18 failed and 2 errors. All 20 are superseded by the newer push run's passes at the pin, which is a newer virgil commit that fixes them. See the correction in problem 1.
+- *"R4 (per-commit verdicts) has no effect today."* Not on current evidence: the weekly failures were at an ancestor of the pin. It would matter if a weekly run on a newer commit failed (A11 and B4).
 - *"The ledger's ruling is not validated."* The ruling vocabulary is validated (`tests/test_trust_graph.py:61-63`). Status is not. A `virgil` → `definition` edit is still in vocabulary and unchecked.
 - *"12 test functions have no record."* True of the tree at b70b370. At 98b7dda it is 46, because #213 added tests that no published run has executed yet. The persistent class is `test_calibrated_load` (9), plus slow tests until the next weekly run (3 in `test_alma_lambda_rule`).
 
@@ -115,10 +114,11 @@ I ran 98b7dda's `trust.py` `build()` over exactly those files. The push run for 
 
 ### Q1. What "verified" means
 
-**1.1 The page shows a verdict at a mix of virgil commits, and hides failures on main (severe, new).**
+**1.1 The page shows a verdict at a mix of virgil commits (corrected: no failures are hidden today).**
 - `load_evidence` (`scripts/trust.py:100-136`) keeps each test's newest record *by run date*. The fast suite runs on every push at the pinned `VIRGIL_REF` (`.github/workflows/tests.yml:13`, d79696d). The full suite runs weekly on virgil **main**.
 - A weekly failure on main is overwritten by the next push's pass on the older pin.
-- Measured: all 20 failing or erroring records of run 41381202862 are superseded this way. Examples: `TSV.__init__() missing ... 'beam_mas'` in `test_imaging_regularisers`, `test_l_curve` and `test_ehtim_reconstruction`, and `test_inference_joint.py::test_regularized_inverse_and_its_warning` (1.47 against < 1e-12). Under AGENTS.md this one is a finding, not a display problem: every weekly failure needs a `trust/ledger.yml` entry (`ruling: virgil` or `crosscheck`, `status: open`). That is A16, and it may need Ben for borderline cases.
+- Measured: all 20 failing or erroring records of run 41381202862 are superseded this way. Examples: `TSV.__init__() missing ... 'beam_mas'` in `test_imaging_regularisers`, `test_l_curve` and `test_ehtim_reconstruction`, and `test_inference_joint.py::test_regularized_inverse_and_its_warning` (1.47 against < 1e-12).
+- **Corrected 2026-11-09: the 20 failures were on virgil 8ad1d11, an ancestor of the pin d79696d; the pin fixes them. Nothing is hidden today. #236 keeps a badge for the case where a weekly run on a NEWER commit fails, which does not occur in current evidence.**
 - Verified nodes affected: `virgil.imaging.TSV`, `virgil.imaging.TV`, `virgil.models.Image`, `virgil.inference.regularized_inverse`, `virgil_bridge.alma`.
 - The freshness dot hints that virgil changed, but nothing says a test fails there.
 - Fixes: A11 (display), B4 (verdict).
@@ -228,7 +228,7 @@ What remains:
 | Move | Detected today? | After tier A |
 |---|---|---|
 | A virgil module renamed, so 61 files (84 import skips) silently skip | No | A4: CI error |
-| A weekly failure on main overwritten by a pass at the pin | No | A11: banner (B4 for the verdict) |
+| A weekly failure on a newer commit than the pin overwritten by a pass at the pin | No | A11: banner (B4 for the verdict) |
 | Ledger status typo, or a valid but false status change | No | A8a catches typos; A14 shows the change in the PR |
 | `virgil` → `definition` ruling edit | No | A14 shows it; B3 can fail it |
 | Retag a check as `upstream` with a strict xfail | No | A8a: an upstream test must be cited by an unfixed external entry |
@@ -267,7 +267,6 @@ What remains:
 | A13 | Graph `source` paths exist at the pin | R9 step 1 | S |
 | A14 | Verdict and marker diff in each PR's job summary (never fails) | T16 (display) | M |
 | A15 | AGENTS.md:38 points at the ledger | W-c (half) | S |
-| A16 | Triage the 20 weekly failures into ledger entries | AGENTS.md ledger rule | S (Ben for borderline) |
 
 ### Tier B: changes what a verdict means (draft PR, marked needs-Ben)
 
