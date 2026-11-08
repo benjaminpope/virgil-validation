@@ -378,12 +378,10 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         reference_node = node.get("layer", "references") == "references"
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         counted = [r for r in recs if r["kind"] in agreeing or r["kind"] == "regression"]
-        # finding/upstream records are expected failures: xfailed is fine, but a strict XPASS
-        # (pytest records it as failed, with no wasxfail) means the bug is gone or the xfail is
-        # stale, so it counts as a failing check like any other.
-        failing = [r for r in recs
-                   if (r["outcome"] in BAD if r["kind"] not in ("finding", "upstream")
-                       else r["outcome"] in ("failed", "error"))]
+        # xfailed is not in BAD, so an expected failure is fine; a strict XPASS (pytest records it
+        # as failed, with no wasxfail) or a non-strict one (xpassed) means the bug is gone or the
+        # xfail is stale, so finding/upstream records count as failing like any other.
+        failing = [r for r in recs if r["outcome"] in BAD]
         good = [r for r in counted if r["outcome"] == "passed"]
         strong, weak, blocked_roots, blocked_by = set(), set(), set(), set()
         prop_roots = collections.defaultdict(set)

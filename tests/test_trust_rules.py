@@ -118,7 +118,7 @@ def test_failure_outweighs_passes(trust, tmp_path):
 
 
 @pytest.mark.parametrize("kind", ["finding", "upstream"])
-@pytest.mark.parametrize("outcome, verdict", [("failed", "failing"), ("error", "failing"), ("xfailed", "verified")])
+@pytest.mark.parametrize("outcome, verdict", [("failed", "failing"), ("error", "failing"), ("xpassed", "failing"), ("xfailed", "verified")])
 def test_a_strict_xpass_of_an_expected_failure_marks_the_node_failing(trust, tmp_path, kind, outcome, verdict):
     # pytest records a strict XPASS as "failed" with no wasxfail; an xfail that still fails is fine
     graph = {"nodes": {"pkg": {"layer": "references"}}}
