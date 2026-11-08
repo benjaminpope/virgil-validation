@@ -12,6 +12,8 @@ virgil's roots, so the evidence page can show self-consistency as weaker.
 import argparse
 import datetime
 import json
+import pathlib
+import subprocess
 import xml.etree.ElementTree as ET
 
 
@@ -23,6 +25,25 @@ def outcome(case):
         kind = skipped.get("type", "")
         return "xfailed" if "xfail" in kind else "skipped"
     return "passed"
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def own_provenance(root=ROOT):
+    """This repository's commit and whether tracked files have uncommitted
+    changes, as the run header of our own evidence records them. Untracked
+    files are ignored: in CI the evidence being built and the downloaded
+    virgil artefact sit untracked in the checkout. (None, None) when it
+    cannot be told, which the strict loader then refuses."""
+    try:
+        commit = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True,
+                                         stderr=subprocess.DEVNULL).strip()
+        status = subprocess.check_output(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+                                         text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return None, None
+    return commit, any(not line[3:].startswith("trust/evidence/") for line in status.splitlines())
 
 
 def main():
@@ -51,11 +72,13 @@ def main():
                     "source": "virgil-ci",
                 }
             )
+    validation_commit, validation_dirty = own_provenance()
     header = {
         "record": "run",
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "virgil": {"version": None, "commit": args.commit, "url": "https://github.com/benjaminpope/virgil"},
-        "validation_commit": None,
+        "validation_commit": validation_commit,
+        "validation_dirty": validation_dirty,
         "versions": {},
         "python": None,
         "runner": "virgil-ci",

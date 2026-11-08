@@ -235,3 +235,31 @@ def test_a_negative_control_is_never_the_headline_of_a_part(trust):
     assert trust._headline({**base, "kind": "check"}) == ("wrong_mapping_rel_err", 0.4)
     # an explicit headline on a control is still honoured
     assert trust._headline({**base, "kind": "control", "headline": "wrong_mapping_rel_err"})[1] == 0.4
+
+
+def test_virgils_ingested_ci_evidence_survives_strict_provenance(trust, tmp_path, monkeypatch):
+    """The ingest script records this repository's commit, so the file is not
+    dropped as 'does not say which commit it ran on'."""
+    import subprocess
+    import sys
+
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    sys.modules.pop("ingest_virgil_evidence", None)
+    ingest = importlib.import_module("ingest_virgil_evidence")
+    junit = tmp_path / "junit-evidence.xml"
+    claim = json.dumps({"objects": ["virgil.a"], "roots": ["mathematics"], "kind": "check", "tier": "A",
+                        "properties": []}).replace('"', "&quot;")
+    junit.write_text(f'<testsuites><testsuite><testcase classname="tests.t" name="test_x" time="0.1">'
+                     f'<properties><property name="validates" value="{claim}"/></properties>'
+                     f"</testcase></testsuite></testsuites>")
+    out = tmp_path / "virgil-evidence.jsonl"
+    monkeypatch.setattr(sys, "argv", ["ingest", str(junit), str(out), "--commit", "d" * 40])
+    ingest.main()
+    header = json.loads(out.read_text().splitlines()[0])
+    head = subprocess.check_output(["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True).strip()
+    assert header["validation_commit"] == head
+    assert "validation_dirty" in header
+    # the working tree's own dirtiness is not under test, only that a clean header is kept
+    out.write_text(out.read_text().replace('"validation_dirty": true', '"validation_dirty": false'))
+    runs, recs = trust.load_evidence([out], strict=True)
+    assert len(runs) == 1 and len(recs) == 1 and recs[0]["_source"] == "virgil-ci"
