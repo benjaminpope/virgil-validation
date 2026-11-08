@@ -524,6 +524,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             status = "validated"
         elif good:
             status = "passes"
+        elif recs and all(r["outcome"] == "skipped" for r in recs):
+            status = "not run"  # its checks exist but none ran, so the hand-written state would mislead
         else:
             status = p.get("state", "planned")
         pipelines.append({
@@ -594,7 +596,8 @@ def _value(v):
 
 def _pipeline_card(p, nodes):
     badge = {"validated": "agrees", "passes": "agrees (some steps not yet verified)", "failing": "disagrees",
-             "planned": "planned", "running": "running"}.get(p["status"], p["status"])
+             "planned": "planned", "running": "running",
+             "not run": f'not run (all {len(p["checks"])} check{"s" if len(p["checks"]) != 1 else ""} skipped)'}.get(p["status"], p["status"])
     ref = e(p["reference"]) if p["reference"] else ""
     if p.get("url") and ref:
         ref = f'<a href="{e(p["url"])}">{ref}</a>'
@@ -608,7 +611,7 @@ def _pipeline_card(p, nodes):
     elif p.get("headline"):
         head = e(p["headline"])
     return (
-        f'<div class="vt-card vt-p-{e(p["status"])}"><div class="vt-card-t">{title}</div>'
+        f'<div class="vt-card vt-p-{e(p["status"].replace(" ", "-"))}"><div class="vt-card-t">{title}</div>'
         f'<div class="vt-muted">{e(p["dataset"] or "")}{" · " + ref if ref else ""}</div>'
         f'<div class="vt-card-h">{head}</div><span class="vt-badge">{e(badge)}</span></div>'
     )
