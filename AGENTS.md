@@ -37,7 +37,11 @@ read, model and fit them.
   `pytest.mark.xfail(strict=True)` test stating what is wrong, so that it
   flips when virgil is fixed. Add an entry to `trust/ledger.yml` with
   `id`, `title`, `objects`, `ruling`, `referee`, `evidence` (test ids),
-  `status` and `links`, and `kind` where it is a documentation finding.
+  and `status`. Optional: `links`, and `kind`, a free-text severity or category such as `bug (...)`, `numerics` or
+  `documentation`. Release criterion 3 reads `kind` beginning `bug`, so an
+  open bug needs a `decision` (fixed, or accepted with a reason). Then
+  regenerate the findings page with `scripts/trust.py --findings
+  docs/method/findings.md`; `tests/test_docs_links.py` checks it matches.
 
 ## Evidence records
 
