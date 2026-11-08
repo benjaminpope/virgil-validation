@@ -79,7 +79,7 @@ def test_xfail_records_xfailed_or_xpassed_never_passed():
 
 @pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
 def test_collection_enforces_strict_xfail_and_finding_bi_implication(tmp_path):
-    """xfail requires strict=True and kind in ('finding', 'upstream'), and vice versa."""
+    """xfail requires strict=True, raises= and kind in ('finding', 'upstream'), and vice versa."""
     from types import SimpleNamespace
 
     from evidence.plugin import pytest_collection_modifyitems
@@ -99,14 +99,16 @@ def test_collection_enforces_strict_xfail_and_finding_bi_implication(tmp_path):
 
     # Valid combinations pass collection
     pytest_collection_modifyitems(cfg, [make_item("check")])
-    pytest_collection_modifyitems(cfg, [make_item("finding", {"strict": True})])
-    pytest_collection_modifyitems(cfg, [make_item("upstream", {"strict": True})])
+    pytest_collection_modifyitems(cfg, [make_item("finding", {"strict": True, "raises": AssertionError})])
+    pytest_collection_modifyitems(cfg, [make_item("upstream", {"strict": True, "raises": AssertionError})])
 
     # Invalid combinations fail collection
     for bad in (
-        make_item("check", {"strict": True}),
-        make_item("check", {"strict": False}),
-        make_item("finding", {"strict": False}),
+        make_item("check", {"strict": True, "raises": AssertionError}),
+        make_item("check", {"strict": False, "raises": AssertionError}),
+        make_item("finding", {"strict": False, "raises": AssertionError}),
+        make_item("finding", {"strict": True}),  # no raises=
+        make_item("upstream", {"strict": True}),  # no raises=
         make_item("finding"),
         make_item("upstream"),
     ):

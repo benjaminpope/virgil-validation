@@ -146,6 +146,11 @@ def pytest_collection_modifyitems(config, items):
                 bad_xfail.append(
                     f"{item.nodeid}: xfail requires kind='finding' or kind='upstream'"
                 )
+            if not all(m.kwargs.get("raises") for m in xfail_marks):
+                bad_xfail.append(
+                    f"{item.nodeid}: xfail must set raises=<exception class> "
+                    "(a strict xfail counts only the failure it states)"
+                )
         elif has_finding:
             bad_xfail.append(
                 f"{item.nodeid}: kind='finding' or 'upstream' requires @pytest.mark.xfail(strict=True)"
