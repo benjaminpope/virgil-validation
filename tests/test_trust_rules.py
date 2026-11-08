@@ -247,6 +247,35 @@ def test_a_failure_on_another_virgil_commit_is_shown_not_overwritten(trust, tmp_
     assert trust._fails_elsewhere_html([]) == "" and trust._fails_badge({"fails_elsewhere": []}) == ""
 
 
+def test_a_pipeline_failing_on_another_commit_gets_a_badge_inside_its_grid_cell(trust, tmp_path):
+    graph = {"nodes": {"virgil.a": {"layer": "models"}},
+             "pipelines": {"p": {"title": "P", "steps": ["virgil.a"], "data": "simulated"}}}
+    old = evidence(tmp_path, "old.jsonl", [record("t::p", "pipeline:p", outcome="failed")], date="2026-10-01", commit="a" * 40)
+    new = evidence(tmp_path, "new.jsonl", [record("t::p", "pipeline:p")], date="2026-10-06", commit="b" * 40)
+    # file order reversed: the result must not depend on it
+    _, model = verdicts(trust, tmp_path, None, graph=graph, files=[new, old])
+    [pipe] = model["pipelines"]
+    assert pipe["status"] == "passes"  # display only: the status is unchanged
+    assert pipe["fails_elsewhere"] == ["t::p"]
+    for html in (trust._chain(pipe, model["nodes"]), trust._pipeline_card(pipe, model["nodes"])):
+        assert "vt-failelse" in html
+    chain = trust._chain(pipe, model["nodes"])
+    # the badge sits inside the third grid cell, so .vt-chain keeps exactly three children
+    assert [chain.count(f'<span class="{c}"') for c in ("vt-chain-t", "vt-steps", "vt-chain-r")] == [1, 1, 1]
+    assert chain.index("vt-chain-r") < chain.index("vt-failelse")
+    assert chain.endswith("</span></span></div>")  # the badge closes inside vt-chain-r, not beside it
+
+
+def test_the_newest_record_per_other_commit_is_chosen_whatever_the_input_order(trust):
+    def rec(outcome, date):
+        return {"outcome": outcome, "_commit": "a" * 40, "_date": date, "_run_url": date}
+    kept = {"outcome": "passed", "_commit": "b" * 40}
+    for recs in ([rec("failed", "1"), rec("passed", "2")], [rec("passed", "2"), rec("failed", "1")]):
+        assert trust._fails_on_other_commit(recs, kept) is None  # the newest record at that commit passed
+    for recs in ([rec("passed", "1"), rec("failed", "2")], [rec("failed", "2"), rec("passed", "1")]):
+        assert trust._fails_on_other_commit(recs, kept)["run_url"] == "2"
+
+
 def test_no_failure_badge_when_the_same_commit_failed_or_the_other_commit_passed(trust, tmp_path):
     old = evidence(tmp_path, "old.jsonl", [record("t::x", "virgil.a", outcome="failed")], date="2026-10-01", commit="a" * 40)
     new = evidence(tmp_path, "new.jsonl", [record("t::x", "virgil.a")], date="2026-10-06", commit="a" * 40)

@@ -146,8 +146,9 @@ def _fails_on_other_commit(recs, kept):
     if kept["outcome"] not in GOOD or not kept["_commit"]:
         return None
     latest = {}
-    for r in recs:  # oldest first, so the last record per commit is its newest
-        if r["_commit"] and r["_commit"] != kept["_commit"]:
+    for r in recs:  # compare dates explicitly: the result must not depend on the order of ``recs``
+        if r["_commit"] and r["_commit"] != kept["_commit"] and (
+                r["_commit"] not in latest or r["_date"] >= latest[r["_commit"]]["_date"]):
             latest[r["_commit"]] = r
     failed = [r for r in latest.values() if r["outcome"] in BAD]
     if not failed:
@@ -668,7 +669,7 @@ def _chain(p, nodes):
         result += f'<br><span class="vt-muted">{e(good[0]["headline"])} = {_value(good[0]["value"])}</span>'
     return (
         f'<div class="vt-chain"><span class="vt-chain-t">{e(p["title"])}</span>'
-        f'<span class="vt-steps">{" › ".join(steps)}</span><span class="vt-chain-r">{result}</span>{_fails_badge(p)}</div>'
+        f'<span class="vt-steps">{" › ".join(steps)}</span><span class="vt-chain-r">{result}{_fails_badge(p)}</span></div>'
     )
 
 
