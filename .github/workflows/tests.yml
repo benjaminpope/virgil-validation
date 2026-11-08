@@ -76,6 +76,35 @@ jobs:
             --evidence trust/evidence/campaigns.jsonl \
             --virgil virgil-src --out trust.md --json trust.json
           cat trust.md >> "$GITHUB_STEP_SUMMARY"
+      - name: verdict diff against main (informational, never fails the job)
+        # The Trust page's verdicts on this PR's evidence against those on the
+        # newest push run on main, and the validates-marker changes in the
+        # diff. Each side is built by its own tree's scripts/trust.py.
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Verdict diff against ${{ github.base_ref }}"
+            git worktree add ../base "origin/${{ github.base_ref }}" > /dev/null 2>&1 || { echo "base tree unavailable"; exit 0; }
+            echo
+            echo "### Markers (tests added, removed or re-marked)"
+            .venv/bin/python scripts/marker_inventory.py ../base . || echo "marker diff failed"
+            echo
+            echo "### Verdicts (PR's fast-test evidence against main's newest push run)"
+            if [ ! -f evidence.jsonl ]; then echo "no evidence from this run"; exit 0; fi
+            mkdir -p ../base-ci
+            if ! scripts/fetch_ci_evidence.sh ../base-ci > /dev/null 2>&1 || [ ! -f ../base-ci/push/evidence.jsonl ]; then
+              echo "main's push evidence could not be fetched"; exit 0
+            fi
+            .venv/bin/python scripts/trust.py --evidence evidence.jsonl --evidence trust/evidence/campaigns.jsonl \
+              --out ../after.md --json ../after.json > /dev/null 2>&1 || { echo "trust.py failed on the PR's evidence"; exit 0; }
+            (cd ../base && "$GITHUB_WORKSPACE/.venv/bin/python" scripts/trust.py --evidence ../base-ci/push/evidence.jsonl \
+              --evidence trust/evidence/campaigns.jsonl --out ../before.md --json ../before.json > /dev/null 2>&1) \
+              || { echo "trust.py failed on main's evidence"; exit 0; }
+            .venv/bin/python scripts/trust_diff.py ../before.json ../after.json || echo "trust_diff failed"
+          } >> "$GITHUB_STEP_SUMMARY" 2>&1
       - name: evidence table
         if: always()
         run: |
