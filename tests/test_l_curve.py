@@ -83,17 +83,36 @@ def sweep(tmp_path_factory):
     # float64 and the finite-difference gradients below come out exactly 0. Recentre on the brightest pixel and floor the dark ones at -1000:
     # exp(-1000) is already exactly 0 in float64, so the image, chi2 and the penalty are unchanged, and a pixel at zero brightness has a
     # legitimately zero gradient.
+    # The -1000 floor is the fix for #183's gauge drift; convergence is a separate property, asserted per test (assert_all_converged).
     log_b = [np.asarray(r.values["log_brightness"]) for r in lc.results]
     log_b = [np.maximum(x - x.max(), -1000.0) for x in log_b]
     assert all(np.sum(x > -1000.0) >= 2 for x in log_b), "a fit collapsed to one pixel: every gradient below would be 0"
-    return lc, log_b, ours.load(path)
+    fits = [dict(weight=float(w), converged=bool(r.info["converged"]), stop=r.info["stop"], steps=int(r.info["steps"]))
+            for w, r in zip(np.asarray(lc.weights), lc.results)]
+    return lc, log_b, ours.load(path), fits
+
+
+def assert_all_converged(fits):
+    """The tests that need exact minimizers fail, not skip, if any fit stopped early (#183)."""
+    listing = [(f["weight"], f["steps"], f["stop"]) for f in fits]
+    assert all(f["converged"] and f["stop"] is None for f in fits), f"#183: unconverged l_curve fits, (weight, steps, stop): {listing}"
+
+
+@pytest.mark.validates("virgil.imaging.l_curve", roots=["self-consistency"], kind="guard")
+def test_every_lcurve_fit_converged(sweep):
+    """Every weight's fit reports converged with no stop reason (no max_steps
+    exit). virgil's tolerance is relative to each fit's own starting gradient,
+    so warm starts see different tolerances: this is reported, not assumed."""
+    lc, log_b, d, fits = sweep
+    record("n_unconverged", sum(not f["converged"] or f["stop"] is not None for f in fits))
+    assert_all_converged(fits)
 
 
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])
 def test_points_match_our_chi2_and_penalty(sweep):
     """Weights largest first; per weight, χ², χ² per point and the penalty
     equal ours of the fitted image (rel. 1e-8)."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
     images = [softmax(x) for x in log_b]
     assert list(np.asarray(lc.weights)) == sorted(WEIGHTS, reverse=True)
     chi2 = np.array([chi2_image(d, b) for b in images])
@@ -107,13 +126,13 @@ def test_points_match_our_chi2_and_penalty(sweep):
     assert rel_chi2 < 1e-8 and rel_red < 1e-8 and rel_pen < 1e-8
 
 
-@pytest.mark.skip(reason="#183: the L-curve fit is not reproducible between processes (saturated softmax)")
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])
 def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
     """At each fitted image our gradients satisfy g_χ² + κ w g_TSV = 0 with
     κ = 2 (to 1 %), and what is left over is below 1e-5 of the gradient
     of χ² at the flat starting image."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
+    assert_all_converged(fits)
     flat = np.zeros((N, N))
     scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
     worst_kappa, worst_left = 0.0, 0.0
@@ -130,12 +149,12 @@ def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
     assert worst_left < 1e-5
 
 
-@pytest.mark.skip(reason="#183: LM drifts along the softmax gauge at the strongest weight")
 @pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"], kind="control")
 def test_chi2_plus_once_the_penalty_is_not_stationary(sweep):
     """The other reading of "added to the loss", χ² + w TSV, leaves a
     gradient ten times the tolerance above at the strongest weight."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
+    assert_all_converged(fits)
     flat = np.zeros((N, N))
     scale = np.max(np.abs(gradient(lambda x: chi2_image(d, softmax(x)), flat)))
     w, x = float(np.asarray(lc.weights)[0]), log_b[0]
@@ -149,14 +168,16 @@ def test_the_curve_is_monotone_and_discrepancy_interpolates(sweep):
     """As the weight falls, our χ² does not rise and our TSV does not fall
     (exact minimizers; slack 1e-6 relative). LCurve.discrepancy at a target
     between two fitted χ² per point is our linear interpolation in log w."""
-    lc, log_b, d = sweep
+    lc, log_b, d, fits = sweep
     images = [softmax(x) for x in log_b]
     w = np.asarray(lc.weights)
     chi2 = np.array([chi2_image(d, b) for b in images])
     pen = np.array([tsv(b) for b in images])
+    assert_all_converged(fits)
     assert np.all(np.diff(chi2) <= 1e-6 * chi2[:-1])
     assert np.all(np.diff(pen) >= -1e-6 * pen[:-1])
     red = chi2 / ours.n_data(d)
+    assert red[2] < red[1], "the interpolation bracket must have a nonzero width"
     target = 0.5 * (red[1] + red[2])
     t = (target - red[1]) / (red[2] - red[1])
     want = float(np.exp(np.log(w[1]) + t * (np.log(w[2]) - np.log(w[1]))))
