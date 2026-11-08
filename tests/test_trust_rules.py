@@ -117,6 +117,16 @@ def test_failure_outweighs_passes(trust, tmp_path):
     assert got["virgil.a"] == "failing"
 
 
+@pytest.mark.parametrize("kind", ["finding", "upstream"])
+@pytest.mark.parametrize("outcome, verdict", [("failed", "failing"), ("error", "failing"), ("xfailed", "verified")])
+def test_a_strict_xpass_of_an_expected_failure_marks_the_node_failing(trust, tmp_path, kind, outcome, verdict):
+    # pytest records a strict XPASS as "failed" with no wasxfail; an xfail that still fails is fine
+    graph = {"nodes": {"pkg": {"layer": "references"}}}
+    recs = [record("t::ok", "pkg", kind="reference"), record("t::x", "pkg", kind=kind, outcome=outcome)]
+    got, _ = verdicts(trust, tmp_path, recs, graph)
+    assert got["pkg"] == verdict
+
+
 def test_a_part_relying_on_an_unverified_part_is_not_verified(trust, tmp_path):
     graph = {"nodes": {"virgil.a": {"layer": "models", "depends": ["virgil.b"]}, "virgil.b": {"layer": "models"}}}
     got, _ = verdicts(trust, tmp_path, [record("t::x", "virgil.a")], graph)
