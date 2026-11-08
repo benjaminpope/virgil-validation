@@ -86,7 +86,7 @@ def test_gn_diagonal_equals_the_dense_diagonal_of_jtj():
 
 
 @needs_diag
-@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["statistics"])
+@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["statistics"], headline="max_probe_error_over_stated")
 def test_probe_estimate_is_within_its_stated_stochastic_error_of_the_exact_diagonal():
     """12 x 12 image, 1024 Rademacher probes: every coordinate is within 4 sqrt(2/m) of the dense diagonal and
     the rms error is within 1.5 sqrt(2/m) (the stated per-coordinate error of m probes). Source: Bekas et al.

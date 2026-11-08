@@ -279,7 +279,7 @@ def test_orbitize_period_is_keplers_third_law(runs):
 # ----------------------------------------------------------------- ephemerides
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["orbitize"], property="sky_position")
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", roots=["orbitize"], property="sky_position", headline="max_rel_position")
 def test_relative_astrometry_matches_orbitize(grid):
     """KeplerOrbit.relative (dra, ddec) and separation_pa against
     orbitize!'s calc_orbit and radec2seppa over the element grid (47 orbits,
@@ -332,7 +332,7 @@ def _well_posed(el):
     return el["ecc"] > 1e-3 and 1.0 < math.degrees(el["inc"]) < 179.0
 
 
-@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["orbitize", "mathematics"])
+@pytest.mark.validates("virgil.orbits.ThieleInnesOrbit", roots=["orbitize", "mathematics"], headline="max_rel_position")
 def test_thiele_innes_orbit_matches_orbitize(grid):
     """A ThieleInnesOrbit built from the constants of virgil's design note
     §2.4 (A = a(cos w cos W - sin w sin W cos i), ...) reproduces orbitize!'s

@@ -315,7 +315,7 @@ def _ref(problem, **kw):
 # ----------------------------------------------- 2. model against the DFT (A)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mathematics"], headline="max_pointwise_rel_error_dft")
 def test_model_matches_the_float64_dft_of_the_pixel_image_with_every_nuisance_set(problem):
     """F, per-observation gains and offsets, a spectral index, the Gaussian taper and a
     point source on top of a random 64 x 64 image, 5000 uv points in four ddids and
@@ -459,7 +459,7 @@ def _two_parameter_sets():
     return [a, b]
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", roots=["statistics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", roots=["statistics"], headline="diff_half_chi2_plus_log_norm")
 @pytest.mark.parametrize("which", [0, 1])
 def test_half_chi2_plus_log_norm_is_the_negative_scipy_log_density_up_to_a_constant(problem, which):
     """1/2 sum(r^2) + log_norm(values) = -sum norm.logpdf(Re, Im; sigma = s_d/sqrt(w)) minus

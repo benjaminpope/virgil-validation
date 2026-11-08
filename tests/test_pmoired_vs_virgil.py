@@ -176,7 +176,7 @@ def test_star_and_elliptical_envelope(vlti_file):
     assert cp_max > 1 and dv2 < 1e-12 and dcp < 1e-9
 
 
-@pytest.mark.validates("virgil.models.Resolved", roots=["pmoired"])
+@pytest.mark.validates("virgil.models.Resolved", roots=["pmoired"], headline="max_abs_dV2")
 def test_resolved_flux(vlti_file):
     scene = vm.System(star=vm.UniformDisk(2.0), halo=vm.Resolved(0.3))
     params = {**pm_ud("star", 2.0), "halo,f": 0.3}
