@@ -39,7 +39,7 @@ Packages that touch the same core file must land one at a time:
 | `src/evidence/meta.py` | A4, A7 |
 
 Suggested order:
-1. Wave 1, in parallel (only A1 touches core files): A1, A8a, A9, A10, A12, A13, A14, A15.
+1. Wave 1, in parallel (only A1 touches core files): A1, A8a, A9, A10, A12, A13, A14, A15, A16.
 2. Wave 2, one per core file: A2 (`trust.py`), A3 (`plugin.py`), A7 (`meta.py`).
 3. Wave 3: A11 (`trust.py`), A4 (`plugin.py` and `meta.py`), then A5 (`plugin.py`) and A6 (`trust.py`).
 4. Wave 4: A1b, A1c and A1d (markers only, parallel), then A8b (`trust.py`).
@@ -118,6 +118,7 @@ A1 must land before A1b-d.
   - Not `tests/test_evidence_pin.py:93`: that is the plugin's self-test, not a finding.
 - **Files and changes:**
   - `src/evidence/plugin.py:140-152`: for `finding`/`upstream`, also require a `raises=` kwarg.
+  - The same lint rejects `raises=Exception` and `raises=BaseException`, also inside a tuple, because they match any failure. For `AssertionError`, the `reason=` must name the asserted quantity. Implemented in PR #234.
   - The 9 sites: take the exception type from the CI log of the newest push run. Use `gh run view <id> --log` and look at the xfail reason, or run the test locally once.
   - Update `tests/test_evidence_pin.py::test_collection_enforces_strict_xfail_and_finding_bi_implication`.
 - **Done when:**
@@ -132,18 +133,18 @@ A1 must land before A1b-d.
 ### A4. Make missing evidence visible: collection skips, test selection, and virgil import skips (old T5, plus the critique's addition)
 
 - **Goal.** No test vanishes without trace.
-  - Module-level skips leave no record, because the plugin writes records only in `pytest_runtest_logreport` (`plugin.py:198-233`). There are 98 such sites in 61 files: `importorskip` plus `skip(allow_module_level=True)`. The single `pytestmark = skipif` site (`test_radio_trust_casa.py:45`) does record.
-  - **84 of the 98 import `virgil.*`.** If virgil removes or renames a module, 84 files' tests disappear and CI stays green.
+  - Module-level skips leave no record, because the plugin writes records only in `pytest_runtest_logreport` (`plugin.py:198-233`). There are 98 such sites in 67 files (counted by AST over `tests/*.py`): `importorskip` plus `skip(allow_module_level=True)`. The single `pytestmark = skipif` site (`test_radio_trust_casa.py:45`) does record.
+  - **84 of the 98 are `importorskip("virgil.…")` imports, across 61 files.** If virgil removes or renames a module, those 61 files' tests disappear and CI stays green.
 - **Files and changes:**
   - (a) `src/evidence/plugin.py`: add `pytest_collectreport`. When a module is skipped, read its `validates` markers with the AST (the way `tests/test_trust_graph.py:_validates_objects` does). Write one record per test function with `outcome: "skipped"`, `phase: "collection"` and the reason.
-  - (b) Same file: when the environment variable `VV_REQUIRE_VIRGIL_IMPORTS=1` is set, a collection skip whose reason is a failed import of `virgil` or `virgil.*` is a collection **error**. Do not edit the 84 test files.
+  - (b) Same file: when the environment variable `VV_REQUIRE_VIRGIL_IMPORTS=1` is set, a collection skip whose reason is a failed import of `virgil` or `virgil.*` is a collection **error**. Do not edit the 61 test files.
   - (c) `src/evidence/meta.py` `run_header` (89): add `argv` (`config.invocation_params.args`), the `-m`/`-k` expressions, and the deselected count. `pytest_sessionstart` (236) takes the header, so pass `config` in or fill these at `pytest_sessionfinish` (244).
   - (d) `.github/workflows/tests.yml`: set `VV_REQUIRE_VIRGIL_IMPORTS=1` on the pytest steps (48 and the full-run step).
 - **Done when:**
   - running `tests/test_calibrated_load.py` without `virgil_vlti` writes 9 records with `phase: "collection"`;
   - a pytester test shows a module importing a nonexistent `virgil.nope` errors with the variable set and skips without it;
   - the header names `-m "not slow"`;
-  - the PR's own CI run is green (all 84 virgil imports resolve at `VIRGIL_REF`). If one does not resolve, that is a real finding: report it.
+  - the PR's own CI run is green (all 84 virgil import skips resolve at `VIRGIL_REF`). If one does not resolve, that is a real finding: report it.
 - **Tests:** a new pytester test in `tests/test_evidence_metrics.py`; `tests/test_trust_rules.py::test_provenance_is_taken_before_the_evidence_file_exists`.
 - **Core files:** `plugin.py`, `meta.py`.
 - **Page change:** nodes gain skipped records. The only file fully skipped in CI today is `test_calibrated_load.py`, 9 guards on node `evidence`. No verdict changes.
@@ -265,6 +266,7 @@ A1 must land before A1b-d.
   - do not change the verdict; that is tier B (B4).
 - **Done when:**
   - a synthetic case in `tests/test_trust_rules.py` (an old failure at commit X, then a newer pass at commit Y) shows the badge;
+  - the badge applies only when the failing run's virgil commit is newer than the kept record's. A synthetic reverse-order case (a pass at the newer commit Y, and a failure at the older commit X, so the kept record is the newer one) must show no badge. Being fixed in PR #236;
   - on the published evidence the banner lists the 20 tests and these nodes: TSV, Image, whitened_residuals, TV, l_curve, fitting.fit, regularized_inverse, `virgil_bridge.alma`, `pipeline:rml-imaging`.
 - **Tests:** `tests/test_trust_rules.py`, `tests/test_docs_links.py`.
 - **Core files:** `trust.py`.
@@ -311,4 +313,18 @@ A1 must land before A1b-d.
 - **Tests:** `tests/test_docs_links.py`.
 - **Core files:** none.
 - **Page change:** none.
+- **Size:** S.
+
+### A16. Triage the 20 weekly failures into ledger entries
+
+- **Goal.** AGENTS.md says a disagreement is kept as a test and recorded in `trust/ledger.yml`. The 20 failures of weekly run 41381202862 (virgil main 8ad1d11) include `test_inference_joint.py::test_regularized_inverse_and_its_warning` (1.47 against `< 1e-12`). That is a finding, not only something for A11 to display.
+- **Change:** one entry per failure, or per shared cause (for example the `TSV.__init__() missing ... 'beam_mas'` group), in `trust/ledger.yml`:
+  - `ruling: virgil` if virgil regressed;
+  - `ruling: crosscheck` if the test code has to follow a virgil API change;
+  - `status: open`.
+- **Needs Ben.** Choosing the ruling needs a look at each failure (reproduce it first, per AGENTS.md). Rule only the clear cases. List borderline ones in the PR for Ben; do not guess.
+- **Done when:** every one of the 20 tests is cited by an open ledger entry, and the ledger lint (A8a, if landed) passes.
+- **Tests:** `tests/test_docs_links.py`.
+- **Core files:** none.
+- **Page change:** new open ledger rows. No verdict changes.
 - **Size:** S.

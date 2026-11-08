@@ -22,7 +22,7 @@ Today 124 virgil parts are verified. For **97 of them, every root is one written
 ### The five most important problems
 
 1. **The page hides failures on virgil's main branch.** The weekly run (2026-11-02, virgil main 8ad1d11) had 20 failing tests: a `TSV` API change, and `regularized_inverse` off by 1.47 against a 1e-12 bound. The next push run, on the *older* pinned virgil, passed them. The page keeps the newest run, so all 20 failures vanished. `TSV`, `TV`, `Image`, `regularized_inverse` and `virgil_bridge.alma` show as verified.
-2. **Tests can disappear without trace.** 84 test files skip themselves at import if a `virgil.*` module is missing, and a skip at that stage writes no record. If virgil renames a module, those tests vanish and CI stays green. `test_calibrated_load.py` has never run in CI.
+2. **Tests can disappear without trace.** 84 module-level `virgil.*` import skips across 61 files skip themselves if a `virgil.*` module is missing, and a skip at that stage writes no record. If virgil renames a module, those tests vanish and CI stays green. `test_calibrated_load.py` has never run in CI.
 3. **The ledger can clear a bug unseen.** A ledger status outside the five allowed words reads as "fixed", and nothing checks the status. Decisions made after seeing a result (D15, D22) are not shown on the cards they affect.
 4. **Headline numbers are picked by the order of `record()` calls.** This is true for 105 records, and only 6 tests name their headline. The live rml-imaging card shows eht-imaging's own convergence (6e-5), not virgil's gradient, which is what the test checks.
 5. **Provenance thins out beyond the Trust page.**
@@ -50,6 +50,7 @@ These packages change no science number, threshold or criteria file. They make h
 - **A13:** graph source paths must exist.
 - **A14:** every PR gets a verdict diff in its job summary.
 - **A15:** AGENTS.md points findings at the ledger.
+- **A16:** the 20 weekly failures are triaged into open ledger entries (may need Ben for borderline cases).
 
 Expected page changes:
 - `alma-imlup` and `orbitize-posterior` read "not run";
@@ -91,7 +92,7 @@ I ran 98b7dda's `trust.py` `build()` over exactly those files. The push run for 
   - 54 meet both;
   - 97 rest only on roots written here.
 - **Showcase JSONs:** 1 of 170 records a commit (`orbit_aliases/gl229-cold/meta.json`), not 10.
-- **Module-level skips:** 98, not 107. 84 of them import `virgil.*`. `pytestmark = skipif` does leave records.
+- **Module-level skips:** 98, not 107. 84 of them import `virgil.*`. Counted by AST over `tests/*.py`: 98 sites in 67 files; the 84 `importorskip("virgil.…")` sites are in 61 files. `pytestmark = skipif` does leave records.
 - **alma-mpol headline:** `test_alma_mpol.py:509`'s prose headline is latent (the test skips in CI). The live case is rml-imaging.
 - **Strict xfails without `raises=`:** 9, not 10. `test_evidence_pin.py:93` is the plugin's self-test.
 - **Finding tests:** there are no `kind="finding"` tests at all. The 10 strict xfails are `upstream`.
@@ -117,7 +118,7 @@ I ran 98b7dda's `trust.py` `build()` over exactly those files. The push run for 
 **1.1 The page shows a verdict at a mix of virgil commits, and hides failures on main (severe, new).**
 - `load_evidence` (`scripts/trust.py:100-136`) keeps each test's newest record *by run date*. The fast suite runs on every push at the pinned `VIRGIL_REF` (`.github/workflows/tests.yml:13`, d79696d). The full suite runs weekly on virgil **main**.
 - A weekly failure on main is overwritten by the next push's pass on the older pin.
-- Measured: all 20 failing or erroring records of run 41381202862 are superseded this way. Examples: `TSV.__init__() missing ... 'beam_mas'` in `test_imaging_regularisers`, `test_l_curve` and `test_ehtim_reconstruction`, and `test_inference_joint.py::test_regularized_inverse_and_its_warning` (1.47 against < 1e-12).
+- Measured: all 20 failing or erroring records of run 41381202862 are superseded this way. Examples: `TSV.__init__() missing ... 'beam_mas'` in `test_imaging_regularisers`, `test_l_curve` and `test_ehtim_reconstruction`, and `test_inference_joint.py::test_regularized_inverse_and_its_warning` (1.47 against < 1e-12). Under AGENTS.md this one is a finding, not a display problem: every weekly failure needs a `trust/ledger.yml` entry (`ruling: virgil` or `crosscheck`, `status: open`). That is A16, and it may need Ben for borderline cases.
 - Verified nodes affected: `virgil.imaging.TSV`, `virgil.imaging.TV`, `virgil.models.Image`, `virgil.inference.regularized_inverse`, `virgil_bridge.alma`.
 - The freshness dot hints that virgil changed, but nothing says a test fails there.
 - Fixes: A11 (display), B4 (verdict).
@@ -177,8 +178,8 @@ I ran 98b7dda's `trust.py` `build()` over exactly those files. The push run for 
 ### Q2. Provenance
 
 **2.1 Missing evidence is invisible (severe).**
-- Module-level `importorskip` and `skip(allow_module_level=True)` occur at 98 sites. They leave no record, because the plugin writes only in `pytest_runtest_logreport` (`plugin.py:198-233`).
-- 84 of them import `virgil.*`, so a removed or renamed virgil module turns those 61 files into silent skips.
+- Module-level `importorskip` and `skip(allow_module_level=True)` occur at 98 sites in 67 files. They leave no record, because the plugin writes only in `pytest_runtest_logreport` (`plugin.py:198-233`).
+- 84 of them (across 61 files) import `virgil.*`, so a removed or renamed virgil module turns those 61 files into silent skips.
 - `test_calibrated_load.py:13` (9 guards) has never run in CI.
 - Fixes: A4, A10.
 
@@ -226,7 +227,7 @@ What remains:
 
 | Move | Detected today? | After tier A |
 |---|---|---|
-| A virgil module renamed, so 84 files silently skip | No | A4: CI error |
+| A virgil module renamed, so 61 files (84 import skips) silently skip | No | A4: CI error |
 | A weekly failure on main overwritten by a pass at the pin | No | A11: banner (B4 for the verdict) |
 | Ledger status typo, or a valid but false status change | No | A8a catches typos; A14 shows the change in the PR |
 | `virgil` → `definition` ruling edit | No | A14 shows it; B3 can fail it |
@@ -266,6 +267,7 @@ What remains:
 | A13 | Graph `source` paths exist at the pin | R9 step 1 | S |
 | A14 | Verdict and marker diff in each PR's job summary (never fails) | T16 (display) | M |
 | A15 | AGENTS.md:38 points at the ledger | W-c (half) | S |
+| A16 | Triage the 20 weekly failures into ledger entries | AGENTS.md ledger rule | S (Ben for borderline) |
 
 ### Tier B: changes what a verdict means (draft PR, marked needs-Ben)
 
