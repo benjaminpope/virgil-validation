@@ -63,6 +63,7 @@ nav:
   - "Disc images":
       - "Post-AGB discs": imaging/postagb.md
       - "IM Lup: virgil against MPoL and CLEAN": imaging/imlup.md
+      - "IM Lup: MaxEnt deconvolution with a pre-registered weight rule": imaging/imlup_maxent.md
   - "Binary orbits": orbits/index.md
   - "Wolf-Rayet survey": wr_gravity/index.md
   - "Function tests":

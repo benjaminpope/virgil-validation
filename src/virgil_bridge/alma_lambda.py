@@ -281,6 +281,13 @@ def penalty_of(result, w):
 
 def psi_hp(pixels, pixel_mas, floor=1e-30):
     """rms of the high-passed ln b (the diagnosis' psi_hp) on the disc (pixels above 1e-3 of the peak) and in two brightness bins (1e-2 to 1e-1 and above 1e-1 of the peak)."""
+    psi, rel = psi_hp_map(pixels, pixel_mas, floor)
+    disc = rel >= 1e-3
+    return dict(disc=float(psi[disc].std()), lo=float(psi[disc & (rel < 1e-1) & (rel >= 1e-2)].std()), hi=float(psi[rel >= 1e-1].std()))
+
+
+def psi_hp_map(pixels, pixel_mas, floor=1e-30):
+    """``(psi, rel)``: the high-passed ln b of sqrt-pixel ``pixels`` (zero off the disc) and the flux relative to the peak."""
     from scipy.ndimage import gaussian_filter
 
     flux = np.asarray(pixels, float) ** 2
@@ -291,8 +298,7 @@ def psi_hp(pixels, pixel_mas, floor=1e-30):
     disc = rel >= 1e-3
     sig = HP_FWHM_MAS / 2.3548 / pixel_mas
     smooth = gaussian_filter(np.where(disc, eta, 0.0), sig, mode="constant") / np.maximum(gaussian_filter(disc.astype(float), sig, mode="constant"), 1e-12)
-    psi = np.where(disc, eta - smooth, 0.0)
-    return dict(disc=float(psi[disc].std()), lo=float(psi[disc & (rel < 1e-1) & (rel >= 1e-2)].std()), hi=float(psi[rel >= 1e-1].std()))
+    return np.where(disc, eta - smooth, 0.0), rel
 
 
 # ---------------------------------------------------------------- sweep stage (items 3, 4, D1, D2, D5)

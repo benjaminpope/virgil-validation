@@ -15,6 +15,7 @@
     python scripts/alma_imlup_maxent.py compare --virgil DIR --mpol DIR --data DIR [--f-dir DIR] [--dsharp FITS] [--no-grad] [--no-dirty] --out DIR
     python scripts/alma_imlup_maxent.py replica-compare --fit DIR --mpol DIR --out DIR
     python scripts/alma_imlup_maxent.py lambda-rule --stage {sigma,d4,sweep,final} --data DIR --out DIR [--clean-dir DIR]   (the registered rule, design/alma_imlup_gate_criteria.yml)
+    python scripts/alma_imlup_maxent.py lambda-report --run DIR [--mpol DIR] [--clean DIR] [--page docs/imaging/imlup_maxent.md]   (report.md and figures of a lambda-rule run; refits nothing)
     python scripts/alma_imlup_maxent.py better --fit DIR [--cv-compare JSON] [--synth DIR] [--synth-r DIR] [--clean-dir DIR] --out DIR
     python scripts/alma_imlup_maxent.py mpol-init --mpol DIR --out DIR [--data DIR]
     python scripts/alma_imlup_maxent.py speed --fit [LABEL=]DIR [--fit ...] --mpol DIR --out DIR [--log [mpol=|virgil=]FILE ...] [--target LABEL=R ...]
@@ -1199,6 +1200,14 @@ def cmd_lambda0(args):
     say(json.dumps(dict(n=args.n, lam_M=va.MPOL["lam_m"], lam_R=r, flux=args.flux, lam_F_equivalent=va.lam_f_equivalent(r, flux=args.flux))))
 
 
+def cmd_lambda_report(args):
+    """``report.md`` and figures of a ``lambda-rule`` run directory (``virgil_bridge.alma_lambda_report``); it reads the stage records and refits nothing."""
+    from virgil_bridge import alma_lambda_report as rep
+
+    rep.write(args.run, mpol=args.mpol, clean=args.clean, page=args.page, assets=args.assets)
+    say(f"wrote {pathlib.Path(args.run) / 'report.md'}")
+
+
 def cmd_lambda_rule(args):
     """The registered rule (``virgil_bridge.alma_lambda``): stage sigma, d4, sweep or final; each writes one JSON and a failure exits non-zero with its reason."""
     prereg.for_args(args, vs.CRITERIA_FILE)
@@ -1420,6 +1429,14 @@ def main(argv=None):
     p.add_argument("--chunk-size", type=int, default=va.CHUNK)
     prereg.add_argument(p)
     p.set_defaults(fn=cmd_lambda_rule)
+
+    p = sub.add_parser("lambda-report", help="the report of a lambda-rule run directory (report.md and figures); refits nothing")
+    p.add_argument("--run", required=True, help="the lambda-rule --out directory (sigma.json, d4.json, sweep.json, lambda_final.json, final_values.npz)")
+    p.add_argument("--mpol", default="~/data/alma_imlup/mpol_ref/out/p3a", help="MPoL's export directory (export.npz); the report says so if it is not found")
+    p.add_argument("--clean", default=None, help="our CLEAN output directory (image.fits); the report says so if it is not found")
+    p.add_argument("--page", default=None, help="a docs page with a gen:lambda-report block to fill (e.g. docs/imaging/imlup_maxent.md)")
+    p.add_argument("--assets", default=None, help="the folder of --page's figures (default: the page's name without .md)")
+    p.set_defaults(fn=cmd_lambda_report)
 
     p = sub.add_parser("compare")
     p.add_argument("--virgil", required=True)
