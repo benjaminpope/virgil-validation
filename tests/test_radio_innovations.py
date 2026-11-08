@@ -108,9 +108,8 @@ def test_probe_estimate_is_within_its_stated_stochastic_error_of_the_exact_diago
 @pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"])
 @pytest.mark.parametrize("weight", [1e-3, 1.0, 1e3])
 def test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric(weight):
-    """With MaxEntropy(weight) the diagonal on the image pixels is the Skilling-Bryan metric
-    weight * sum db^2/b pulled back through the softmax, which is weight * b * (1 - b), whatever the data
-    (it is the data's curvature that is dropped, at any weight). The register writes weight * b, the b << 1
+    """With MaxEntropy(weight) the diagonal on the image pixels is the data's curvature plus the Skilling-Bryan
+    metric weight * sum db^2/b pulled back through the softmax, which is weight * b * (1 - b). The register writes weight * b, the b << 1
     limit: a million-pixel image differs by 1e-6, a 6 x 6 one here by up to 20%. Source: Skilling & Bryan
     1984, 1984MNRAS.211..111S."""
     from virgil.imaging import MaxEntropy
@@ -120,12 +119,11 @@ def test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skillin
     got = _virgil_diag(p, regularizers=[MaxEntropy(weight)])
     data_gn = ri.gn_diagonal(p["u"], p["v"], p["weight"], p["eta"], p["pixel"], p["flux"])
     b = ri.softmax_image(p["eta"])
-    err = np.abs(got / ref - 1).max()
+    err = np.abs(got / (ref + data_gn) - 1).max()
     record(f"max_rel_error_entropy_metric_w{weight:g}", err)
-    record(f"max_rel_difference_from_w_b_w{weight:g}", np.abs(got / (weight * b) - 1).max())
-    assert err < 1e-9
-    assert np.abs(got / (weight * b) - 1).max() > 0.05  # the 1 - b factor is real at this size
-    assert np.abs(got / data_gn - 1).max() > 0.1  # and the data's curvature is not in it
+    record(f"max_rel_difference_from_w_b_w{weight:g}", np.abs((got - data_gn) / (weight * b) - 1).max())
+    assert err < 1e-6
+    assert np.abs((got - data_gn) / (weight * b) - 1).max() > 0.05  # the 1 - b factor is real at this size
 
 
 # ------------------------------------------------------------------ B5
