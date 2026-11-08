@@ -78,7 +78,7 @@ def test_gallery_provenance_records_the_data_path(tmp_path, monkeypatch):
     root = tmp_path / "root"
     for date, cp in (("2020-12-08", False), ("2020-12-13", True), ("2021-01-02", True)):
         _file(root / "trackb" / "hd_9312" / "calibrated" / "HIGH" / date / "f.fits", cp_only=cp)
-    monkeypatch.setattr(C, "load_gravity_night", lambda n, ranges=None: n["path"])
+    monkeypatch.setattr(C, "load_gravity_night", lambda n, ranges=None, template=None: n["path"])
     nights, prov = G.load_nights("hd_9312", root)
     assert list(nights) == ["MJD 59191", "MJD 59196", "MJD 59216"]  # one mode: no suffix
     assert prov["data_path"] == "mixed"
