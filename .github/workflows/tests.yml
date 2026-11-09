@@ -12,6 +12,10 @@ env:
   # deliberately; the weekly and manual runs test virgil's main instead.
   VIRGIL_REF: d79696de9d970396d9f2d007312bcffc3bcf11e7  # virgil#664 merged: sqrt-pixel LinearImage, L-BFGS-B, kkt_report, LCurve.dof_discrepancy, fit_staged_nuisances (the registered IM Lup lambda rule)
 
+  # The virgil-vlti commit (public; the loader behind tests/test_calibrated_load.py,
+  # which skips without it). Bump deliberately; weekly and manual runs use main.
+  VLTI_REF: 29dfaa77dd80338b9cf25d9c354e4055c6f93c4a  # virgil-vlti main at 2026-10-22: release-packaging merge (#1)
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -24,10 +28,12 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           ref="$VIRGIL_REF"
-          if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; fi
-          echo "Testing virgil at $ref"
+          vlti_ref="$VLTI_REF"
+          if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; vlti_ref=main; fi
+          echo "Testing virgil at $ref, virgil-vlti at $vlti_ref"
           uv pip install --python .venv/bin/python -e ".[external,polar-disk]" \
-            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref"
+            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref" \
+            "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti@$vlti_ref"
       - name: imaging-contest data cache
         uses: actions/cache@v4
         with:
@@ -45,9 +51,13 @@ jobs:
           .venv/bin/python scripts/build_orbits_page.py
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        env:
+          VV_REQUIRE_VLTI: "1"  # tests/test_calibrated_load.py must not skip silently
         run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl
       - name: all tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          VV_REQUIRE_VLTI: "1"
         run: .venv/bin/python -m pytest -v --evidence evidence.jsonl
       - name: virgil's own evidence
         # weekly and manual runs: the JUnit evidence from virgil's latest
