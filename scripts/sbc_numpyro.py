@@ -57,6 +57,19 @@ ADDENDUM = ROOT / "design" / "sbc_addendum.yml"  # the criteria file: one file p
 CRITERIA = __import__("yaml").safe_load(ADDENDUM.read_text())["campaign"]
 
 
+def virgil_dirty():
+    """Whether the virgil tree the campaign runs was edited (recorded with the summary; ``stamp_campaign`` refuses a
+    dirty or unrecorded one). An OzSTAR job pinned by PIN_COMMIT runs a snapshot at that sha, so it is clean by
+    construction; otherwise the installed package says."""
+    import os
+
+    if os.environ.get("PIN_COMMIT"):
+        return False
+    from evidence.meta import virgil_source
+
+    return bool(virgil_source().get("dirty", True))
+
+
 def virgil_commit():
     """The virgil commit the campaign runs: the OzSTAR job's pinned snapshot
     (PIN_COMMIT, from its submit.sh), else the installed package's record."""
@@ -191,7 +204,7 @@ def run(args, replicate_fn=None):
         # after every replicate, so a task stopped by its time limit keeps
         # what it finished; "complete" marks a task that ran every replicate
         record = {"task": args.task, "virgil": getattr(virgil, "__version__", "?"), "virgil_commit": commit,
-                  "criteria_commit": crit_commit, "replicates_planned": args.replicates, "complete": complete,
+                  "virgil_dirty": virgil_dirty(), "criteria_commit": crit_commit, "replicates_planned": args.replicates, "complete": complete,
                   "settings": settings,
                   "replicates": results, "elapsed_s": time.time() - start}
         tmp = path.with_suffix(".tmp")
@@ -329,7 +342,8 @@ def aggregate(args):
     n, L, bins = len(reps), CRITERIA["draws_per_replicate"], CRITERIA["rank_bins"]
     alpha = CRITERIA["family_alpha"] / len(PARAMS)
     print(f"{len(files)} task files ({partial} incomplete), {n} replicates", file=sys.stderr)
-    summary = {"replicates": n, "tasks": len(files), "incomplete_tasks": partial, "virgil": sorted(versions), "virgil_commit": commits.pop(), "criteria": CRITERIA,
+    summary = {"replicates": n, "tasks": len(files), "incomplete_tasks": partial, "virgil": sorted(versions), "virgil_commit": commits.pop(),
+               "virgil_dirty": any(r.get("virgil_dirty", True) for r in records), "criteria": CRITERIA,
                "criteria_file": ADDENDUM.relative_to(ROOT).as_posix(), "criteria_commit": crit_commit, "parameters": {}}
     ok = n >= CRITERIA["min_replicates"]
     for name in PARAMS:
