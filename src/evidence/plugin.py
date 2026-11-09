@@ -12,6 +12,7 @@ from . import KINDS, ROOTS
 from .meta import run_header
 
 _RECORDS = pytest.StashKey[list]()
+_STAMP = pytest.StashKey[dict]()
 _HEADER = pytest.StashKey[dict]()
 _CONFIG = {}
 
@@ -40,6 +41,22 @@ def record(name, value):
     value = float(value)
     item.user_properties.append((name, value if math.isfinite(value) else str(value)))
     return value
+
+
+def stamp_campaign(summary):
+    """For a test that reads a campaign summary (``trust/campaigns/*.json``): put the commits the summary was made at
+    into the test's evidence record, as ``virgil_commit`` and ``criteria_commit``. The Trust page reads a test's
+    ``virgil_commit`` in preference to its run's, so a campaign measured on one virgil commit is shown at that commit
+    whichever virgil the run installed. A summary without a ``criteria_commit`` predates the criteria-commit scheme and is
+    not gate evidence (AGENTS.md), and one without a ``virgil_commit`` cannot be placed: both skip, as before."""
+    if not summary.get("criteria_commit"):
+        pytest.skip("the committed summary has no criteria_commit (it predates the criteria-commit scheme): "
+                    "not gate evidence; rerun the campaign at the release commit")
+    if not summary.get("virgil_commit"):
+        pytest.skip("the committed summary does not say which virgil commit it ran on: rerun the campaign")
+    item = _CONFIG.get("item")
+    if item is not None:
+        item.stash[_STAMP] = {"virgil_commit": summary["virgil_commit"], "criteria_commit": summary["criteria_commit"]}
 
 
 def metrics_of(user_properties):
@@ -193,7 +210,7 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
     report.validates = _claims(item)
-    report.validates_where = _where(item)
+    report.validates_where = {**_where(item), **item.stash.get(_STAMP, {})}
 
 
 def _where(item):

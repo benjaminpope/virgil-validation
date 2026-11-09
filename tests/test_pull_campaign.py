@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from crosscheck.preregistration import criteria_commit
+from evidence.plugin import stamp_campaign
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec_ = importlib.util.spec_from_file_location("pull_campaign", ROOT / "scripts" / "pull_campaign.py")
@@ -27,9 +28,7 @@ SUMMARY = ROOT / "trust" / "campaigns" / "pull_campaign.json"
 @pytest.mark.validates("virgil.inference.laplace_cov", roots=["statistics"], tier="C")
 def test_pull_campaign_pulls_are_standard_normal():
     s = json.loads(SUMMARY.read_text())
-    if "criteria_commit" not in s:
-        pytest.skip("the committed summary was produced under the earlier SHA-256 registry (no criteria_commit): "
-                    "not gate evidence; rerun the campaign at the release commit")
+    stamp_campaign(s)  # skips a summary without criteria_commit; the record carries the summary's commits
     assert s["criteria_commit"] == criteria_commit(pc.CRITERIA_FILE) and s["design_hash"] == pc.design_hash()
     assert s["pass"], s["rejected"]
 
