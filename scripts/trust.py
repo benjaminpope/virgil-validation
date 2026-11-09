@@ -97,7 +97,7 @@ def provenance_problem(run, repo=ROOT):
     return None if ok else f"ran on {commit[:7]}, which is not in this branch's history"
 
 
-def load_evidence(paths, strict=False):
+def load_evidence(paths, strict=False, virgil=None):
     """Runs and test records. A test that appears in several runs keeps only
     its newest outcome, so an old pass cannot outlive a newer skip or failure;
     the exception is a campaign summary (files named campaigns*.jsonl), which
@@ -105,7 +105,8 @@ def load_evidence(paths, strict=False):
     surviving campaign pass is flagged ``_resurrected`` so the page can show
     the commit gap.
 
-    With ``strict``, a run with a provenance problem is left out entirely."""
+    With ``strict``, a run with a provenance problem is left out entirely.
+    ``virgil``: a virgil checkout, used to tell whether a failing commit is newer than the kept one."""
     runs, by_test = [], {}
     for path in paths:
         lines = [json.loads(line) for line in open(path)]
@@ -121,6 +122,7 @@ def load_evidence(paths, strict=False):
             t["_date"] = run.get("date") or ""
             t["_campaign"] = campaign
             t["_validation_commit"] = run.get("validation_commit")
+            t["_run_url"] = run.get("run_url")
             by_test.setdefault(t["test"], []).append(t)
     records = []
     for recs in by_test.values():
@@ -131,8 +133,49 @@ def load_evidence(paths, strict=False):
             if ran:
                 # kept deliberately (campaigns are expensive), but the page must say it is older evidence
                 newest = dict(ran[-1], _resurrected=True)
+        if (other := _fails_on_other_commit(recs, newest, virgil)):
+            newest = dict(newest, _fails_elsewhere=other)
         records.append(newest)
     return runs, records
+
+
+def _is_newer_commit(virgil, kept, other, other_date, kept_date):
+    """Is virgil commit ``other`` newer than ``kept``? By git ancestry when a
+    virgil checkout can tell (``kept`` is an ancestor of ``other``). Without one
+    the run dates decide, which is conservative: the usual case (a weekly run on
+    virgil main older than the push run on the pin) is then not flagged, so the
+    published page, which has the checkout, is what shows it. The run dates
+    alone cannot say which commit is newer, so this never badges a failure at an
+    old pin that a later bump fixed."""
+    if virgil is not None:
+        try:
+            return subprocess.run(["git", "-C", str(virgil), "merge-base", "--is-ancestor", kept, other],
+                                  capture_output=True).returncode == 0
+        except OSError:
+            pass
+    return other_date > kept_date
+
+
+def _fails_on_other_commit(recs, kept, virgil=None):
+    """The newest failure of a test that the kept record hides: its newest
+    record on some *other* virgil commit that is *newer* than the kept record's
+    commit failed while the kept record passed (typically a weekly run on virgil
+    main, then a push run on the older pin). A failure at an older commit that a
+    later one fixed is not flagged. ``None`` if there is none. Display only: it
+    never changes a verdict."""
+    if kept["outcome"] not in GOOD or not kept["_commit"]:
+        return None
+    latest = {}
+    for r in recs:  # compare dates explicitly: the result must not depend on the order of ``recs``
+        if r["_commit"] and r["_commit"] != kept["_commit"] and (
+                r["_commit"] not in latest or r["_date"] >= latest[r["_commit"]]["_date"]):
+            latest[r["_commit"]] = r
+    failed = [r for r in latest.values() if r["outcome"] in BAD
+              and _is_newer_commit(virgil, kept["_commit"], r["_commit"], r["_date"], kept["_date"])]
+    if not failed:
+        return None
+    r = max(failed, key=lambda r: r["_date"])
+    return {"commit": r["_commit"], "outcome": r["outcome"], "run_url": r.get("_run_url"), "date": r["_date"]}
 
 
 def load_golden(path=ROOT / "trust" / "golden.yml"):
@@ -395,7 +438,10 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         reference_node = node.get("layer", "references") == "references"
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         counted = [r for r in recs if r["kind"] in agreeing or r["kind"] == "regression"]
-        failing = [r for r in recs if r["kind"] not in ("finding", "upstream") and r["outcome"] in BAD]
+        # xfailed is not in BAD, so an expected failure is fine; a strict XPASS (pytest records it
+        # as failed, with no wasxfail) or a non-strict one (xpassed) means the bug is gone or the
+        # xfail is stale, so finding/upstream records count as failing like any other.
+        failing = [r for r in recs if r["outcome"] in BAD]
         good = [r for r in counted if r["outcome"] == "passed"]
         strong, weak, blocked_roots, blocked_by = set(), set(), set(), set()
         prop_roots = collections.defaultdict(set)
@@ -550,6 +596,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "unverified": unverified, "checks": [_check(r) for r in recs],
         })
 
+    fails_elsewhere = _mark_fails_elsewhere(records, out_nodes, pipelines)
+
     counts = collections.Counter(n["verdict"] for n in out_nodes.values())
     changed = sum(1 for n in out_nodes.values() if n["changed"])
     unknown = all(n["changed"] is None for n in out_nodes.values() if n["commits"])
@@ -563,7 +611,25 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         "nodes": out_nodes,
         "pipelines": pipelines,
         "ledger": ledger,
+        # tests that fail on another virgil commit than the one whose passing record the page keeps (display only)
+        "fails_elsewhere": fails_elsewhere,
     }
+
+
+def _mark_fails_elsewhere(records, out_nodes, pipelines):
+    """The tests that fail on another virgil commit than the kept record, as a
+    list for the banner. Each affected node and pipeline gets a
+    ``fails_elsewhere`` list of those tests for its badge. Verdicts are untouched."""
+    found = [r for r in records if r.get("_fails_elsewhere")]
+    for item in [*out_nodes.values(), *pipelines]:
+        item["fails_elsewhere"] = []
+    for r in found:
+        for obj in r["objects"]:
+            item = out_nodes.get(obj) or next((p for p in pipelines if f"pipeline:{p['id']}" == obj), None)
+            if item is not None and r["test"] not in item["fails_elsewhere"]:
+                item["fails_elsewhere"].append(r["test"])
+    return sorted(({"test": r["test"], "objects": sorted(r["objects"]), **r["_fails_elsewhere"]} for r in found),
+                  key=lambda f: f["test"])
 
 
 # ------------------------------------------------------------------ render
@@ -628,7 +694,7 @@ def _pipeline_card(p, nodes):
     return (
         f'<div class="vt-card vt-p-{e(p["status"])}"><div class="vt-card-t">{title}</div>'
         f'<div class="vt-muted">{e(p["dataset"] or "")}{" · " + ref if ref else ""}</div>'
-        f'<div class="vt-card-h">{head}</div><span class="vt-badge">{e(badge)}</span></div>'
+        f'<div class="vt-card-h">{head}</div><span class="vt-badge">{e(badge)}</span>{_fails_badge(p)}</div>'
     )
 
 
@@ -645,7 +711,7 @@ def _chain(p, nodes):
         result += f'<br><span class="vt-muted">{e(good[0]["headline"])} = {_value(good[0]["value"])}</span>'
     return (
         f'<div class="vt-chain"><span class="vt-chain-t">{e(p["title"])}</span>'
-        f'<span class="vt-steps">{" › ".join(steps)}</span><span class="vt-chain-r">{result}</span></div>'
+        f'<span class="vt-steps">{" › ".join(steps)}</span><span class="vt-chain-r">{result}{_fails_badge(p)}</span></div>'
     )
 
 
@@ -665,6 +731,15 @@ def layers(nodes):
     return [layer for layer in LAYER_ORDER if layer in present] + sorted(present - set(LAYER_ORDER))
 
 
+def _fails_badge(item):
+    """A badge on a part or pipeline whose passing record hides a failure on another virgil commit."""
+    tests = item.get("fails_elsewhere")
+    if not tests:
+        return ""
+    return (f'<span class="vt-failelse" title="{len(tests)} check(s) of this fail on another virgil commit '
+            f'than the passing record shown: see the notice at the top of the page">⚠ fails on another virgil commit</span>')
+
+
 def _map(nodes, base=""):
     rows = []
     for layer in layers(nodes):
@@ -675,6 +750,7 @@ def _map(nodes, base=""):
             f'<button type="button" class="vt-chip vt-{n["verdict"]}" data-node="{e(n["id"])}" title="{e(_tooltip(n))}">'
             f'<span aria-hidden="true">{ICON[n["verdict"]]}</span> {e(n["label"])}'
             + ('<span class="vt-fresh" title="virgil has changed this since">●</span>' if n["changed"] else "")
+            + _fails_badge(n)
             + "</button>"
             for n in chips
         )
@@ -953,6 +1029,22 @@ def _headline_by_order_html(tests):
             f'record several agreement metrics and name none as their headline, so the number shown is the first one recorded.'
             f'</summary>{names}</details>')
 
+def _fails_elsewhere_html(fails):
+    """A banner listing tests that fail on another virgil commit than the kept (passing) record, with run links."""
+    if not fails:
+        return ""
+    items = "".join(
+        f'<li><code>{e(f["test"])}</code>: {e(f["outcome"])} on virgil <code>{e(f["commit"][:7])}</code>'
+        + (f' (<a href="{e(f["run_url"])}">run</a>)' if f.get("run_url") else "") + "</li>"
+        for f in fails)
+    affected = sorted({o for f in fails for o in f["objects"]})
+    commits = ", ".join(f"<code>{e(c[:7])}</code>" for c in sorted({f["commit"] for f in fails}))
+    return (f'<div class="vt-stale vt-failelse-banner"><strong>{len(fails)} test(s) fail on a different virgil commit '
+            f'({commits}) than the passing result this page shows.</strong> A newer run on another commit passed them, '
+            f'so the page keeps that pass; the failure is shown here and the verdicts are unchanged. '
+            f'Parts and pipelines affected: {", ".join(f"<code>{e(o)}</code>" for o in affected)}.'
+            f'<details><summary>The tests</summary><ul>{items}</ul></details></div>')
+
 
 def render(model, base=""):
     nodes = model["nodes"]
@@ -990,6 +1082,7 @@ def render(model, base=""):
         _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
         _older_campaigns_html(model.get("older_campaigns", []), current),
         _headline_by_order_html(model.get("headline_by_order", [])),
+        _fails_elsewhere_html(model.get("fails_elsewhere", [])),
         _bar(counts, total),
         _legend(counts),
         '<h2 id="showcase">Results on real data</h2>',
@@ -1045,8 +1138,8 @@ def main():
     args = ap.parse_args()
     graph = yaml.safe_load(open(args.graph))
     ledger = yaml.safe_load(open(args.ledger))
-    runs, records = load_evidence(args.evidence, strict=args.strict_provenance)
     virgil = args.virgil.expanduser() if args.virgil else None
+    runs, records = load_evidence(args.evidence, strict=args.strict_provenance, virgil=virgil)
     model = build(graph, ledger, records, runs, virgil)
     model["docs"] = resolve_docs(graph)
     out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None

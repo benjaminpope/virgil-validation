@@ -126,3 +126,21 @@ def test_properties_named_by_tests_are_declared_in_the_graph():
         declared = {p for o in objs if o in nodes
                     for p in [*(nodes[o].get("properties") or {}), *(nodes[o].get("convention") or [])]}
         assert set(props) <= declared, (where, sorted(objs), props)
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_every_graph_source_path_exists_in_virgil():
+    """``source:`` paths drive the freshness dot (scripts/trust.py changed_files); a wrong one reads as
+    "unchanged" for ever. Graph paths are repo-relative (``src/virgil/x.py``); the installed package
+    holds the same files at ``virgil/x.py``."""
+    import virgil
+
+    package = pathlib.Path(virgil.__file__).resolve().parent
+    prefix = "src/virgil/"
+    missing = []
+    for name, node in GRAPH["nodes"].items():
+        for path in node.get("source", []):
+            assert path.startswith(prefix), (name, path)
+            if not (package / path[len(prefix):]).exists():
+                missing.append((name, path))
+    assert not missing, missing
