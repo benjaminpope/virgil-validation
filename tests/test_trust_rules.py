@@ -4,6 +4,7 @@
 import importlib.util
 import json
 import pathlib
+import subprocess
 
 import pytest
 
@@ -228,7 +229,7 @@ def test_render_is_not_an_external_or_allowed_root(trust):
 
 def test_a_records_own_virgil_commit_replaces_its_run_headers(trust, tmp_path):
     """A campaign test stamps the commit its summary ran on; the page reads the node at that commit."""
-    stamped = record("t::x", "virgil.a", virgil_commit="a" * 40, criteria_commit="f" * 40)
+    stamped = record("t::x", "virgil.a", virgil_commit="a" * 40, virgil_dirty=False, criteria_commit="f" * 40)
     plain = record("t::y", "virgil.a")
     f = evidence(tmp_path, "run.jsonl", [stamped, plain], commit="b" * 40)
     runs, recs = trust.load_evidence([f])
@@ -237,16 +238,36 @@ def test_a_records_own_virgil_commit_replaces_its_run_headers(trust, tmp_path):
     assert model["nodes"]["virgil.a"]["commits"] == ["a" * 40, "b" * 40]
 
 
+def test_a_virgil_commit_without_criteria_commit_does_not_override_the_header(trust, tmp_path):
+    loose = record("t::x", "virgil.a", virgil_commit="a" * 40)
+    _, recs = trust.load_evidence([evidence(tmp_path, "run.jsonl", [loose], commit="b" * 40)])
+    assert recs[0]["_commit"] == "b" * 40
+
+
+def test_strict_provenance_leaves_out_a_stamped_record_that_is_not_recorded_clean(trust, tmp_path):
+    head = subprocess.check_output(["git", "-C", str(trust.ROOT), "rev-parse", "HEAD"], text=True).strip()
+    recs = [record(f"t::{n}", "virgil.a", virgil_commit="a" * 40, criteria_commit="f" * 40, **extra)
+            for n, extra in (("clean", {"virgil_dirty": False}), ("dirty", {"virgil_dirty": True}), ("unrecorded", {}))]
+    path = tmp_path / "run.jsonl"
+    path.write_text("\n".join(json.dumps(x) for x in [
+        {"record": "run", "date": "2026-10-06T00:00:00+00:00", "virgil": {"commit": "b" * 40, "dirty": False},
+         "validation_commit": head, "validation_dirty": False, "runner": "test"}, *recs]) + "\n")
+    _, kept = trust.load_evidence([path], strict=True)
+    assert [r["test"] for r in kept] == ["t::clean"]
+    _, kept = trust.load_evidence([path])  # the unpublished (non-strict) build keeps all three
+    assert len(kept) == 3
+
+
 def test_a_stamped_records_commit_decides_whether_a_failure_elsewhere_is_newer(trust, tmp_path, two_commits):
     """The pass is stamped ``old`` although its run installed ``new``: a failure at ``new`` is then on a newer commit and
     shown; stamped ``new``, the same failure at ``old`` is on an older commit and not shown."""
     repo, old, new = two_commits
     fail = evidence(tmp_path, "fail.jsonl", [record("t::x", "virgil.a", outcome="failed")], date="2026-10-01", commit=new)
-    ok_old = evidence(tmp_path, "ok_old.jsonl", [record("t::x", "virgil.a", virgil_commit=old)], date="2026-10-06", commit=new)
+    ok_old = evidence(tmp_path, "ok_old.jsonl", [record("t::x", "virgil.a", virgil_commit=old, criteria_commit="f" * 40)], date="2026-10-06", commit=new)
     _, recs = trust.load_evidence([fail, ok_old], virgil=repo)
     assert recs[0]["_commit"] == old and recs[0]["_fails_elsewhere"]["commit"] == new
     fail_old = evidence(tmp_path, "fail_old.jsonl", [record("t::x", "virgil.a", outcome="failed")], date="2026-10-01", commit=old)
-    ok_new = evidence(tmp_path, "ok_new.jsonl", [record("t::x", "virgil.a", virgil_commit=new)], date="2026-10-06", commit=old)
+    ok_new = evidence(tmp_path, "ok_new.jsonl", [record("t::x", "virgil.a", virgil_commit=new, criteria_commit="f" * 40)], date="2026-10-06", commit=old)
     _, recs = trust.load_evidence([fail_old, ok_new], virgil=repo)
     assert recs[0]["_commit"] == new and "_fails_elsewhere" not in recs[0]
 

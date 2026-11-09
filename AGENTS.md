@@ -68,8 +68,14 @@ the CI job summary). Roots are listed in `src/evidence/__init__.py`;
 commit, from a clean tree: regenerate them rather than mixing commits. There
 is no committed campaign evidence: a campaign test (tier C) reads its summary
 in `trust/campaigns/` and CI records it with the summary's `virgil_commit` and
-`criteria_commit` (`evidence.plugin.stamp_campaign`); a summary without a
-`criteria_commit` skips, so rerun the campaign at the release commit. `scripts/check_evidence_pin.py
+`criteria_commit` (`evidence.plugin.stamp_campaign`). A summary without a
+`criteria_commit`, or whose `virgil_dirty` is true or missing, skips (the
+campaign scripts record `virgil_dirty`; rerun from a clean virgil). Under
+`--release`, `check_evidence_pin.py` also reads each non-skipped record's own
+`virgil_commit`, so a campaign summary made at another commit than the
+release fails the gate: rerun the campaign at the release commit.
+`scripts/trust.py --strict-provenance` leaves out a stamped record that does
+not record `virgil_dirty: false`. `scripts/check_evidence_pin.py
 --release --expect <sha>` fails otherwise; `tests/test_evidence_pin.py` runs
 the same check as a tier B test under `VALIDATION_RELEASE=1`. The gate also
 refuses a header that does not record `dirty`; `virgil.jsonl` is exempt

@@ -100,9 +100,11 @@ def provenance_problem(run, repo=ROOT):
 def load_evidence(paths, strict=False, virgil=None):
     """Runs and test records. A test that appears in several runs keeps only
     its newest outcome, so an old pass cannot outlive a newer skip or failure.
-    A record's own ``virgil_commit`` (a campaign test stamps the commit its
-    summary was measured at, ``evidence.plugin.stamp_campaign``) takes the
-    place of its run header's.
+    A record that carries both ``virgil_commit`` and ``criteria_commit`` (a
+    campaign test stamps the commits its summary was measured at,
+    ``evidence.plugin.stamp_campaign``) is read at its own commit instead of
+    its run header's; with ``strict`` it is left out unless it records
+    ``virgil_dirty: false``.
 
     With ``strict``, a run with a provenance problem is left out entirely.
     ``virgil``: a virgil checkout, used to tell whether a failing commit is newer than the kept one."""
@@ -115,7 +117,11 @@ def load_evidence(paths, strict=False, virgil=None):
             continue
         runs.append(run)
         for t in tests:
-            t["_commit"] = t.get("virgil_commit") or (run.get("virgil") or {}).get("commit")
+            stamped = bool(t.get("virgil_commit") and t.get("criteria_commit"))
+            if strict and stamped and t.get("virgil_dirty") is not False:
+                print(f"left out {t['test']} of {path}: stamped with virgil {t['virgil_commit'][:7]} but not recorded as a clean tree")
+                continue
+            t["_commit"] = t["virgil_commit"] if stamped else (run.get("virgil") or {}).get("commit")
             t["_source"] = t.get("source", "ours")
             t["_date"] = run.get("date") or ""
             t["_validation_commit"] = run.get("validation_commit")

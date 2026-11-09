@@ -30,12 +30,17 @@ def run(tmp_path, summary):
 
 @pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
 def test_a_summary_with_commits_is_stamped_into_the_record(tmp_path):
-    (rec,) = run(tmp_path, {"virgil_commit": V, "criteria_commit": C})
+    (rec,) = run(tmp_path, {"virgil_commit": V, "criteria_commit": C, "virgil_dirty": False})
     assert rec["outcome"] == "passed" and rec["virgil_commit"] == V and rec["criteria_commit"] == C
+    assert rec["virgil_dirty"] is False
 
 
 @pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
-@pytest.mark.parametrize("summary", [{"virgil_commit": V}, {"criteria_commit": C}, {"virgil_commit": V, "criteria_commit": None}])
+@pytest.mark.parametrize("summary", [
+    {"virgil_commit": V, "virgil_dirty": False}, {"criteria_commit": C, "virgil_dirty": False},
+    {"virgil_commit": V, "criteria_commit": None, "virgil_dirty": False},
+    {"virgil_commit": V, "criteria_commit": C},  # virgil_dirty missing
+    {"virgil_commit": V, "criteria_commit": C, "virgil_dirty": True}])
 def test_a_summary_without_both_commits_skips_and_is_not_stamped(tmp_path, summary):
     (rec,) = run(tmp_path, summary)
     assert rec["outcome"] == "skipped" and "virgil_commit" not in rec and "criteria_commit" not in rec
