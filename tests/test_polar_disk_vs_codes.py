@@ -120,7 +120,7 @@ def test_matches_oimodeler_rings():
 
 
 @pytest.mark.validates("virgil.models.ExpTail", roots=["oimodeler"], kind="upstream")
-@pytest.mark.xfail(strict=True, reason="P9: oimodeler's image-based ExpRing is 8e-3 away from the exact transform of "
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P9: oimodeler's image-based ExpRing is 8e-3 away from the exact transform of "
                    "its own documented profile at every grid size; virgil agrees with the exact value to 1e-14")
 def test_oimodeler_exp_ring_matches_the_exact_transform():
     pytest.importorskip("oimodeler")
@@ -159,7 +159,7 @@ def test_vis_r_bridge_is_within_its_discretization_of_the_truth():
 
 # ---------------------------------------------------------------- what the other codes get wrong or cannot do
 @pytest.mark.validates("visr", roots=["mathematics"], kind="upstream")
-@pytest.mark.xfail(strict=True, reason="P10: vis-r's r_prof_erf2_power_ggap indexes its parameters wrongly "
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P10: vis-r's r_prof_erf2_power_ggap indexes its parameters wrongly "
                    "(depth read as the radius and the radius as the depth); r_prof_erf2_power_ggap2 is right")
 def test_vis_r_single_gap_profile_matches_its_two_gap_form():
     pytest.importorskip("vis_r")
