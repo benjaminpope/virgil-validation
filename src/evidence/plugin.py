@@ -146,9 +146,24 @@ def pytest_collection_modifyitems(config, items):
                 bad_xfail.append(
                     f"{item.nodeid}: xfail requires kind='finding' or kind='upstream'"
                 )
+            if not all(m.kwargs.get("raises") for m in xfail_marks):
+                bad_xfail.append(
+                    f"{item.nodeid}: xfail must set raises=<exception class> "
+                    "(a strict xfail counts only the failure it states)"
+                )
+            else:
+                for m in xfail_marks:
+                    raises = m.kwargs["raises"]
+                    classes = raises if isinstance(raises, tuple) else (raises,)
+                    if any(c in (Exception, BaseException) for c in classes):
+                        bad_xfail.append(
+                            f"{item.nodeid}: xfail raises= must name the specific exception class, "
+                            "not Exception or BaseException (they match any failure, including an API change)"
+                        )
+                        break
         elif has_finding:
             bad_xfail.append(
-                f"{item.nodeid}: kind='finding' or 'upstream' requires @pytest.mark.xfail(strict=True)"
+                f"{item.nodeid}: kind='finding' or 'upstream' requires @pytest.mark.xfail(strict=True, raises=<exception class>)"
             )
     if missing and config.getoption("--require-validates"):
         raise pytest.UsageError(
