@@ -17,7 +17,7 @@ def _git(path, *args):
 def checkout(tmp_path):
     (tmp_path / "trust/evidence").mkdir(parents=True)
     (tmp_path / "src").mkdir()
-    (tmp_path / "trust/evidence/campaigns.jsonl").write_text("{}\n")
+    (tmp_path / "trust/evidence/latest.jsonl").write_text("{}\n")
     (tmp_path / "src/a.py").write_text("x = 1\n")
     (tmp_path / ".gitignore").write_text(".venv/\n")
     _git(tmp_path, "init", "-q")
@@ -42,7 +42,7 @@ def test_a_ci_checkout_with_its_own_untracked_material_reads_clean(checkout):
 
 
 def test_edited_or_new_files_in_tracked_folders_read_dirty(checkout):
-    evidence = "trust/evidence/campaigns.jsonl"
+    evidence = "trust/evidence/latest.jsonl"
     (checkout / evidence).write_text("{}\nedited\n")
     assert _dirty(str(checkout)) is True
     assert _dirty(str(checkout), ignore=(evidence,)) is False  # the file being written is exempt
@@ -63,10 +63,10 @@ def test_a_sibling_evidence_file_is_dirty_when_edited_but_the_output_is_exempt(c
     _git(checkout, "add", ".")
     _git(checkout, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "more")
     (checkout / "trust/evidence/other.jsonl").write_text("edited\n")
-    assert _dirty(str(checkout), ignore=("trust/evidence/campaigns.jsonl",)) is True
+    assert _dirty(str(checkout), ignore=("trust/evidence/latest.jsonl",)) is True
     (checkout / "trust/evidence/other.jsonl").write_text("{}\n")
-    (checkout / "trust/evidence/campaigns.jsonl").write_text("being written\n")
-    assert _dirty(str(checkout), ignore=("trust/evidence/campaigns.jsonl",)) is False
+    (checkout / "trust/evidence/latest.jsonl").write_text("being written\n")
+    assert _dirty(str(checkout), ignore=("trust/evidence/latest.jsonl",)) is False
 
 
 def test_a_rename_reads_dirty_by_its_new_path(checkout):

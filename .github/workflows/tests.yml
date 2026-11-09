@@ -85,7 +85,6 @@ jobs:
         run: |
           extra=$( [ -f virgil-evidence.jsonl ] && echo "--evidence virgil-evidence.jsonl" )
           .venv/bin/python scripts/trust.py --evidence evidence.jsonl $extra \
-            --evidence trust/evidence/campaigns.jsonl \
             --virgil virgil-src --out trust.md --json trust.json
           cat trust.md >> "$GITHUB_STEP_SUMMARY"
       - name: verdict diff against main (informational, never fails the job)
@@ -115,10 +114,10 @@ jobs:
             if ! scripts/fetch_ci_evidence.sh --push-only ../base-ci > /dev/null || [ ! -f ../base-ci/push/evidence.jsonl ]; then
               echo "main's push evidence could not be fetched"; exit 0
             fi
-            .venv/bin/python scripts/trust.py --evidence evidence.jsonl --evidence trust/evidence/campaigns.jsonl \
+            .venv/bin/python scripts/trust.py --evidence evidence.jsonl \
               --out ../after.md --json ../after.json > /dev/null || { echo "trust.py failed on the PR's evidence"; exit 0; }
             (cd ../base && "$GITHUB_WORKSPACE/.venv/bin/python" scripts/trust.py --evidence ../base-ci/push/evidence.jsonl \
-              --evidence trust/evidence/campaigns.jsonl --out ../before.md --json ../before.json > /dev/null) \
+              --out ../before.md --json ../before.json > /dev/null) \
               || { echo "trust.py failed on main's evidence"; exit 0; }
             .venv/bin/python scripts/trust_diff.py ../before.json ../after.json || echo "trust_diff failed"
           } >> "$GITHUB_STEP_SUMMARY" 2>&1

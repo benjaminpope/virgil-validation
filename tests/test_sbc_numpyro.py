@@ -19,8 +19,7 @@ import pathlib
 import pytest
 
 from crosscheck.preregistration import criteria_commit
-from evidence.meta import virgil_source
-from evidence.plugin import record
+from evidence.plugin import record, stamp_campaign
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SUMMARY = ROOT / "trust" / "campaigns" / "sbc_numpyro_model.json"
@@ -38,15 +37,9 @@ def script():
 @pytest.mark.validates("virgil.likelihood.numpyro_model", roots=["statistics"], tier="C")
 def test_sbc_ranks_are_uniform():
     summary = json.loads(SUMMARY.read_text())
-    if "criteria_commit" not in summary:
-        pytest.skip("the committed summary was produced under the earlier SHA-256 registry (no criteria_commit): "
-                    "not gate evidence; rerun the campaign at the release commit")
+    stamp_campaign(summary)  # skips a summary without criteria_commit; the record carries the summary's commits
     s = script()
     assert summary["criteria_commit"] == criteria_commit(s.ADDENDUM), "criteria changed after the campaign ran"
-    installed = virgil_source()["commit"]
-    if summary.get("virgil_commit") != installed:
-        pytest.skip(f"the campaign ran on virgil {str(summary.get('virgil_commit'))[:7]}, not the installed "
-                    f"{str(installed)[:7]}: rerun it")
     for name, p in summary["parameters"].items():
         record(f"chi2_p_{name}", p["chi2_p"])
     record("replicates", summary["replicates"])
