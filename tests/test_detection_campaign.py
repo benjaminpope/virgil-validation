@@ -21,8 +21,7 @@ import pathlib
 import pytest
 
 from crosscheck.preregistration import criteria_commit
-from evidence.meta import virgil_source
-from evidence.plugin import record
+from evidence.plugin import record, stamp_campaign
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SUMMARY = ROOT / "trust" / "campaigns" / "detection_mc_v2.json"
@@ -40,13 +39,8 @@ def script():
                        "virgil.detection.DetectionMC", "virgil.detection.gaussian_null", roots=["statistics"], tier="C")
 def test_detection_campaign_meets_its_criteria():
     summary = json.loads(SUMMARY.read_text())
-    if "criteria_commit" not in summary:
-        pytest.skip("the committed summary was produced under the earlier SHA-256 registry (no criteria_commit): "
-                    "not gate evidence; rerun the campaign at the release commit")
+    stamp_campaign(summary)  # skips a summary without criteria_commit; the record carries the summary's commits
     assert summary["criteria_commit"] == criteria_commit(script().CRITERIA_FILE), "criteria changed after the campaign ran"
-    installed = virgil_source()["commit"]
-    if summary["virgil_commit"] != installed:
-        pytest.skip(f"the campaign ran on virgil {summary['virgil_commit'][:7]}, not the installed {str(installed)[:7]}")
     criteria = script().criteria()
     for name, p in summary["pvalues"].items():
         record(f"p_{name}", p)

@@ -99,11 +99,12 @@ def provenance_problem(run, repo=ROOT):
 
 def load_evidence(paths, strict=False, virgil=None):
     """Runs and test records. A test that appears in several runs keeps only
-    its newest outcome, so an old pass cannot outlive a newer skip or failure;
-    the exception is a campaign summary (files named campaigns*.jsonl), which
-    an ordinary run skips because it ran on another virgil commit. Such a
-    surviving campaign pass is flagged ``_resurrected`` so the page can show
-    the commit gap.
+    its newest outcome, so an old pass cannot outlive a newer skip or failure.
+    A record that carries both ``virgil_commit`` and ``criteria_commit`` (a
+    campaign test stamps the commits its summary was measured at,
+    ``evidence.plugin.stamp_campaign``) is read at its own commit instead of
+    its run header's; with ``strict`` it is left out unless it records
+    ``virgil_dirty: false``.
 
     With ``strict``, a run with a provenance problem is left out entirely.
     ``virgil``: a virgil checkout, used to tell whether a failing commit is newer than the kept one."""
@@ -115,12 +116,14 @@ def load_evidence(paths, strict=False, virgil=None):
             print(f"left out {path}: {why}")
             continue
         runs.append(run)
-        campaign = pathlib.Path(path).name.startswith("campaigns")
         for t in tests:
-            t["_commit"] = (run.get("virgil") or {}).get("commit")
+            stamped = bool(t.get("virgil_commit") and t.get("criteria_commit"))
+            if strict and stamped and t.get("virgil_dirty") is not False:
+                print(f"left out {t['test']} of {path}: stamped with virgil {t['virgil_commit'][:7]} but not recorded as a clean tree")
+                continue
+            t["_commit"] = t["virgil_commit"] if stamped else (run.get("virgil") or {}).get("commit")
             t["_source"] = t.get("source", "ours")
             t["_date"] = run.get("date") or ""
-            t["_campaign"] = campaign
             t["_validation_commit"] = run.get("validation_commit")
             t["_run_url"] = run.get("run_url")
             by_test.setdefault(t["test"], []).append(t)
@@ -128,11 +131,6 @@ def load_evidence(paths, strict=False, virgil=None):
     for recs in by_test.values():
         recs.sort(key=lambda r: r["_date"])
         newest = recs[-1]
-        if newest["outcome"] == "skipped":
-            ran = [r for r in recs if r["_campaign"] and r["outcome"] != "skipped"]
-            if ran:
-                # kept deliberately (campaigns are expensive), but the page must say it is older evidence
-                newest = dict(ran[-1], _resurrected=True)
         if (other := _fails_on_other_commit(recs, newest, virgil)):
             newest = dict(newest, _fails_elsewhere=other)
         records.append(newest)
@@ -587,6 +585,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             status = "validated"
         elif good:
             status = "passes"
+        elif recs and all(r["outcome"] == "skipped" for r in recs):
+            status = "not run"  # its checks exist but none ran, so the hand-written state would mislead
         else:
             status = p.get("state", "planned")
         pipelines.append({
@@ -605,8 +605,6 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         "runs": [{k: r.get(k) for k in ("date", "runner", "run_url")} | {"virgil": (r.get("virgil") or {}).get("commit")} for r in runs],
         "counts": dict(counts),
         "changed": None if unknown else changed,
-        # campaign passes kept although the newest ordinary run skipped them, with the commit each was measured at
-        "older_campaigns": sorted((r["test"], r["_commit"] or "") for r in records if r.get("_resurrected")),
         "headline_by_order": _headline_by_order(records),
         "nodes": out_nodes,
         "pipelines": pipelines,
@@ -678,7 +676,8 @@ def _value(v):
 
 def _pipeline_card(p, nodes):
     badge = {"validated": "agrees", "passes": "agrees (some steps not yet verified)", "failing": "disagrees",
-             "planned": "planned", "running": "running"}.get(p["status"], p["status"])
+             "planned": "planned", "running": "running",
+             "not run": f'not run (all {len(p["checks"])} check{"s" if len(p["checks"]) != 1 else ""} skipped)'}.get(p["status"], p["status"])
     ref = e(p["reference"]) if p["reference"] else ""
     if p.get("url") and ref:
         ref = f'<a href="{e(p["url"])}">{ref}</a>'
@@ -692,7 +691,7 @@ def _pipeline_card(p, nodes):
     elif p.get("headline"):
         head = e(p["headline"])
     return (
-        f'<div class="vt-card vt-p-{e(p["status"])}"><div class="vt-card-t">{title}</div>'
+        f'<div class="vt-card vt-p-{e(p["status"].replace(" ", "-"))}"><div class="vt-card-t">{title}</div>'
         f'<div class="vt-muted">{e(p["dataset"] or "")}{" · " + ref if ref else ""}</div>'
         f'<div class="vt-card-h">{head}</div><span class="vt-badge">{e(badge)}</span>{_fails_badge(p)}</div>'
     )
@@ -1010,16 +1009,6 @@ def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
             f'{refs_ok} of {refs_total} verified.</div></div>')
 
 
-def _older_campaigns_html(older, current):
-    """A banner when a campaign result on the page is from another virgil commit than the latest run. ``current``: the short shas the latest run(s) measured."""
-    gap = [(t, c) for t, c in older if c and not any(c.startswith(p) for p in current)]
-    if not gap:
-        return ""
-    commits = ", ".join(f"<code>{e(c[:7])}</code>" for c in sorted({c for _, c in gap}))
-    return (f'<div class="vt-muted vt-stale">{len(gap)} campaign result(s) on this page were measured on an earlier virgil '
-            f'commit ({commits}) than the latest run, which skipped them; they are kept because campaigns are expensive to rerun.</div>')
-
-
 def _headline_by_order_html(tests):
     """A warning when a check shows a number chosen by recording order, not by its test (no ``headline=``)."""
     if not tests:
@@ -1028,6 +1017,7 @@ def _headline_by_order_html(tests):
     return (f'<details class="vt-muted vt-stale"><summary>Headline chosen by order: {len(tests)} test function(s) '
             f'record several agreement metrics and name none as their headline, so the number shown is the first one recorded.'
             f'</summary>{names}</details>')
+
 
 def _fails_elsewhere_html(fails):
     """A banner listing tests that fail on another virgil commit than the kept (passing) record, with run links."""
@@ -1055,9 +1045,6 @@ def render(model, base=""):
     refs = [n for n in nodes.values() if not n["id"].startswith("virgil.")]
     refs_ok = sum(1 for n in refs if n["verdict"] == "verified")
     commits = sorted({r["virgil"][:7] for r in model["runs"] if r.get("virgil")})
-    ours = [r for r in model["runs"] if r.get("runner") != "virgil-ci"]
-    pin = (ours[0]["virgil"] or "")[:7] if ours and ours[0].get("virgil") else ", ".join(commits)
-    current = [pin] if ours and ours[0].get("virgil") else commits
     fresh = ("" if model["changed"] is None else
              f'<i aria-hidden="true">⏲</i> virgil has changed {model["changed"]} of these parts since; the weekly run refreshes the evidence')
     real = [p for p in model["pipelines"] if p["data"] == "real"]
@@ -1080,7 +1067,6 @@ def render(model, base=""):
         "[How this works](method/index.md).\n",
         '<div class="vt">',
         _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
-        _older_campaigns_html(model.get("older_campaigns", []), current),
         _headline_by_order_html(model.get("headline_by_order", [])),
         _fails_elsewhere_html(model.get("fails_elsewhere", [])),
         _bar(counts, total),

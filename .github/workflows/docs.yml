@@ -44,12 +44,13 @@ jobs:
           .venv/bin/python scripts/build_orbits_page.py
           # the Trust page from CI's evidence only (scripts/fetch_ci_evidence.sh):
           # the newest run on main and the newest weekly or manual run, each test
-          # keeping its newest outcome. campaigns.jsonl: OzSTAR campaigns' summaries,
-          # each read under the virgil commit the campaign ran on.
+          # keeping its newest outcome. Campaign tests (tier C) read the committed
+          # summaries in trust/campaigns and stamp each summary's virgil_commit into
+          # their record, so a campaign is shown at the commit it ran on.
           scripts/fetch_ci_evidence.sh ci
           extra=$(for f in ci/full/evidence.jsonl ci/full/virgil-evidence.jsonl; do [ -f "$f" ] && echo "--evidence $f"; done)
           .venv/bin/python scripts/trust.py --strict-provenance --evidence ci/push/evidence.jsonl $extra \
-            --evidence trust/evidence/campaigns.jsonl --virgil virgil-src \
+            --virgil virgil-src \
             --out docs/index.md --json docs/assets/trust.json \
             --findings docs/method/findings.md --coverage docs/method/coverage.md --tests docs/tests/index.md
           # Zensical, as virgil (it reads mkdocs.yml); strict fails on warnings

@@ -228,8 +228,10 @@ on OzSTAR `/fred` with a checksum in the record.
 cannot be read together: a pass at one commit says nothing about another,
 and the Trust page would show a verdict for no virgil that exists. Before a
 virgil release, every evidence file (`trust/evidence/latest.jsonl`,
-`virgil.jsonl`, `campaigns.jsonl`) is regenerated against the release commit
-and carries a run header naming that one commit, from a clean tree.
+`virgil.jsonl`) is regenerated against the release commit
+and carries a run header naming that one commit, from a clean tree. Campaign
+results are not a committed file: each campaign test records its summary's own
+virgil and criteria commits when CI runs it.
 `scripts/check_evidence_pin.py --release --expect <sha>` (also the tier B
 test `tests/test_evidence_pin.py`, run with `VALIDATION_RELEASE=1`) fails
 when the headers name more than one commit, when a header does not record
@@ -378,7 +380,7 @@ virgil's release checklist gains these items (also in virgil's
    changed since its evidence, has a known bug, is failing or is not yet
    checked, or the release notes say which ones remain and why.
 
-*Waiver, 0.4.1:* Ben waived the rerun of the `numpyro_model` SBC campaign for 0.4.1 (2026-10-23), so `campaigns.jsonl` stays at 0.4.0 (8c51dc5) and the pin check fails on it by design for this release.
+*Waiver, 0.4.1:* Ben waived the rerun of the `numpyro_model` SBC campaign for 0.4.1 (2026-10-23), so the SBC summary stays at 0.4.0 (8c51dc5). It has no `criteria_commit`, so its test skips and the Trust page no longer shows it (the hand-committed campaign evidence file that once carried it was retired).
 
 ## Order of work
 

@@ -15,6 +15,7 @@ from . import KINDS, ROOTS
 from .meta import invocation, run_header
 
 _RECORDS = pytest.StashKey[list]()
+_STAMP = pytest.StashKey[dict]()
 _HEADER = pytest.StashKey[dict]()
 _DESELECTED = pytest.StashKey[list]()
 _CONFIG = {}
@@ -44,6 +45,29 @@ def record(name, value):
     value = float(value)
     item.user_properties.append((name, value if math.isfinite(value) else str(value)))
     return value
+
+
+def stamp_campaign(summary):
+    """For a test that reads a campaign summary (``trust/campaigns/*.json``): put the commits the summary was made at
+    into the test's evidence record, as ``virgil_commit`` and ``criteria_commit``. The Trust page reads a test's
+    ``virgil_commit`` in preference to its run's, so a campaign measured on one virgil commit is shown at that commit
+    whichever virgil the run installed. A summary without a ``criteria_commit`` predates the criteria-commit scheme and is
+    not gate evidence (AGENTS.md), one without a ``virgil_commit`` cannot be placed, and one whose ``virgil_dirty`` is
+    true or missing ran on an edited or unknown virgil tree: all skip. The record also carries ``virgil_dirty: false``,
+    which ``scripts/trust.py --strict-provenance`` requires of a stamped record. ``check_evidence_pin.py --release``
+    fails a stamped record at any commit but the release's."""
+    if not summary.get("criteria_commit"):
+        pytest.skip("the committed summary has no criteria_commit (it predates the criteria-commit scheme): "
+                    "not gate evidence; rerun the campaign at the release commit")
+    if not summary.get("virgil_commit"):
+        pytest.skip("the committed summary does not say which virgil commit it ran on: rerun the campaign")
+    if summary.get("virgil_dirty") is not False:
+        pytest.skip("the committed summary does not record a clean virgil tree (virgil_dirty is "
+                    f"{summary.get('virgil_dirty')!r}): rerun the campaign from a clean virgil checkout")
+    item = _CONFIG.get("item")
+    if item is not None:
+        item.stash[_STAMP] = {"virgil_commit": summary["virgil_commit"], "virgil_dirty": False,
+                              "criteria_commit": summary["criteria_commit"]}
 
 
 def metrics_of(user_properties):
@@ -198,7 +222,7 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
     report.validates = _claims(item)
-    report.validates_where = _where(item)
+    report.validates_where = {**_where(item), **item.stash.get(_STAMP, {})}
     # call phase only: a headline metric recorded in fixture teardown (after a yield) is not yet in user_properties here
     # and would fail with a misleading "not a recorded metric"; record headline metrics in the test body
     if call.when == "call" and report.passed and not hasattr(report, "wasxfail"):
