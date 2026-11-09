@@ -216,7 +216,9 @@ def test_provenance_is_taken_before_the_evidence_file_exists(tmp_path, monkeypat
     plugin.pytest_sessionstart(session)
     plugin.pytest_sessionfinish(session)
     assert seen == [False]
-    assert json.loads(path.read_text().splitlines()[0]) == {"record": "run"}
+    header = json.loads(path.read_text().splitlines()[0])
+    # provenance from the start of the session, plus how tests were selected, known at its end
+    assert header == {"record": "run", "invocation": {"argv": [], "markexpr": "", "keyword": "", "deselected": 0}}
 
 
 def test_render_is_not_an_external_or_allowed_root(trust):
