@@ -64,3 +64,144 @@ def test_a_passing_test_whose_explicit_headline_was_not_recorded_fails(tmp_path)
 def test_a_test_that_recorded_its_explicit_headline_passes(tmp_path):
     code, out = _run_inner(tmp_path, _INNER.format(headline="rel_a"))
     assert code == 0 and "not a recorded metric" not in out
+
+
+# --- missing evidence made visible: collection skips, selection, virgil import skips ---
+
+pytest_plugins = ["pytester"]
+
+_SKIPPING_MODULE = '''
+import pytest
+
+pytest.importorskip("virgil.nope")
+
+pytestmark = pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+
+
+def test_one():
+    """First paragraph of the docstring."""
+
+
+@pytest.mark.validates("virgil.models.UniformDisk", roots=["mathematics"], tier="B")
+def test_two():
+    pass
+'''
+
+
+def _records(path):
+    import json
+
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_a_module_skipped_at_import_leaves_one_record_per_test(pytester, monkeypatch):
+    monkeypatch.delenv("VV_REQUIRE_VIRGIL_IMPORTS", raising=False)
+    pytester.makepyfile(test_gone=_SKIPPING_MODULE)
+    result = pytester.runpytest_subprocess("--evidence", "ev.jsonl")
+    assert result.ret == pytest.ExitCode.NO_TESTS_COLLECTED  # a skip is not an error
+    header, *records = _records(pytester.path / "ev.jsonl")
+    assert header["record"] == "run"
+    by_test = {}
+    for r in records:
+        assert r["outcome"] == "skipped" and r["phase"] == "collection"
+        assert "virgil.nope" in r["reason"]
+        by_test.setdefault(r["test"], []).append(r)
+    assert sorted(by_test) == ["test_gone.py::test_one", "test_gone.py::test_two"]
+    # the module-level marker covers both tests; the decorator adds a second claim to test_two
+    assert [c["objects"] for c in by_test["test_gone.py::test_one"]] == [["evidence"]]
+    assert [c["tier"] for c in by_test["test_gone.py::test_two"]] == ["A", "B"]
+    assert by_test["test_gone.py::test_one"][0]["doc"] == "First paragraph of the docstring."
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_a_missing_virgil_module_is_a_collection_error_when_required(pytester, monkeypatch):
+    monkeypatch.setenv("VV_REQUIRE_VIRGIL_IMPORTS", "1")
+    pytester.makepyfile(test_gone=_SKIPPING_MODULE)
+    result = pytester.runpytest_subprocess("--evidence", "ev.jsonl")
+    assert result.ret != 0
+    result.stdout.fnmatch_lines(["*VV_REQUIRE_VIRGIL_IMPORTS=1*"])
+    assert not _records(pytester.path / "ev.jsonl")[1:]  # an error is not recorded as a skip
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_collection_records_keep_a_string_root_whole_and_the_headline(pytester, monkeypatch):
+    monkeypatch.delenv("VV_REQUIRE_VIRGIL_IMPORTS", raising=False)
+    pytester.makepyfile(
+        test_gone='''
+import pytest
+
+pytest.importorskip("virgil.nope")
+
+
+@pytest.mark.validates("evidence", roots="mathematics", headline="err")
+def test_one():
+    pass
+'''
+    )
+    pytester.runpytest_subprocess("--evidence", "ev.jsonl")
+    (record,) = _records(pytester.path / "ev.jsonl")[1:]
+    assert record["roots"] == ["mathematics"]
+    assert record["headline"] == "err"
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_an_unmarked_test_in_a_skipped_file_fails_require_validates(pytester, monkeypatch):
+    monkeypatch.delenv("VV_REQUIRE_VIRGIL_IMPORTS", raising=False)
+    pytester.makepyfile(
+        test_gone='''
+import pytest
+
+pytest.importorskip("virgil.nope")
+
+
+def test_unmarked():
+    pass
+'''
+    )
+    result = pytester.runpytest_subprocess("--require-validates")
+    assert result.ret != 0
+    result.stderr.fnmatch_lines(["*test_gone.py::test_unmarked*"])
+    # without the option nothing is raised, and no record is made for it
+    assert pytester.runpytest_subprocess("--evidence", "ev.jsonl").ret == pytest.ExitCode.NO_TESTS_COLLECTED
+    assert not _records(pytester.path / "ev.jsonl")[1:]
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_only_a_missing_virgil_module_is_required():
+    from evidence.plugin import _missing_virgil
+
+    assert _missing_virgil("could not import 'virgil.nope': No module named 'virgil.nope'")
+    assert _missing_virgil("could not import 'virgil': No module named 'virgil'")
+    # a virgil module whose own optional dependency is absent stays a skip
+    assert not _missing_virgil("could not import 'virgil.radio': No module named 'casatools'")
+    # other modules, including ones whose names begin with virgil
+    assert not _missing_virgil("could not import 'virgil_vlti': No module named 'virgil_vlti'")
+    assert not _missing_virgil("could not import 'pmoired': No module named 'pmoired'")
+    assert not _missing_virgil("virgil without imaging.clean")
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_the_header_records_how_tests_were_selected(pytester):
+    pytester.makepyfile(
+        test_sel='''
+import pytest
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_fast():
+    pass
+
+@pytest.mark.slow
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_slow():
+    pass
+'''
+    )
+    pytester.makeini("[pytest]\nmarkers =\n    slow: slow\n")
+    result = pytester.runpytest_subprocess("-m", "not slow", "--evidence", "ev.jsonl")
+    assert result.ret == 0
+    invocation = _records(pytester.path / "ev.jsonl")[0]["invocation"]
+    assert invocation["markexpr"] == "not slow"
+    assert invocation["keyword"] == ""
+    assert invocation["deselected"] == 1
+    assert "not slow" in invocation["argv"]
