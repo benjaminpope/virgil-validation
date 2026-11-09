@@ -661,6 +661,6 @@ pipelines:
     reference: MPoL 04-IMLup-multi-EB; DSHARP II/III
     url: https://github.com/benjaminpope/virgil-validation/blob/main/design/alma_imlup.md
     headline: virgil.radio on the 26 ddids of IM Lup against MPoL's multi-observation example and the DSHARP images
-    state: planned  # the readers, model and likelihood are validated, and equal MPoL's (tests/test_alma_mpol.py); the IM Lup fit is not run yet
+    state: planned  # CI runs one check: the likelihood objective equals MPoL's and an exact DFT on all 26 ddids (tests/test_alma_mpol.py). The IM Lup image fit (design P3/P4) has not run
     steps: [virgil.radio.ComplexVisData.read_ms, virgil.radio.ComplexVisData.model, virgil.radio.ComplexVisData.term,
             virgil.radio.primary_beam, virgil.radio.dartboard_folds, virgil.models.Image, virgil.fitting.fit]
