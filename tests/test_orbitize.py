@@ -481,7 +481,7 @@ def test_radial_velocities_match_orbitize_system(runs):
     assert max(diffs) < TOL_SYSTEM
 
 
-@pytest.mark.xfail(strict=True, reason="P7: orbitize! adds gamma to companion RVs when primary RVs are present")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P7: orbitize! adds gamma to companion RVs when primary RVs are present")
 @pytest.mark.validates("orbitize", roots=["mathematics"], kind="upstream")
 def test_p7_companion_rvs_are_barycentric_as_documented(runs):
     """orbitize!'s read_input asks for the RVs of non-primary bodies
