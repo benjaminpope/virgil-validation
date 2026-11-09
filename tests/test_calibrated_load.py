@@ -1,6 +1,7 @@
 """scripts/calibrated_load.py and its callers read ESO data only through virgil-vlti's loader (small synthetic files)."""
 
 import json
+import os
 import pathlib
 import sys
 
@@ -10,7 +11,10 @@ from astropy.io import fits
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-pytest.importorskip("virgil_vlti")
+if os.environ.get("VV_REQUIRE_VLTI"):  # CI: a missing or broken virgil-vlti fails here instead of skipping
+    import virgil_vlti  # noqa: F401
+else:
+    pytest.importorskip("virgil_vlti")
 import calibrated_load as C  # noqa: E402
 import gallery_orbits as G  # noqa: E402
 import reanalyse_orbits as R  # noqa: E402
@@ -78,7 +82,7 @@ def test_gallery_provenance_records_the_data_path(tmp_path, monkeypatch):
     root = tmp_path / "root"
     for date, cp in (("2020-12-08", False), ("2020-12-13", True), ("2021-01-02", True)):
         _file(root / "trackb" / "hd_9312" / "calibrated" / "HIGH" / date / "f.fits", cp_only=cp)
-    monkeypatch.setattr(C, "load_gravity_night", lambda n, ranges=None: n["path"])
+    monkeypatch.setattr(C, "load_gravity_night", lambda n, ranges=None, template=None: n["path"])
     nights, prov = G.load_nights("hd_9312", root)
     assert list(nights) == ["MJD 59191", "MJD 59196", "MJD 59216"]  # one mode: no suffix
     assert prov["data_path"] == "mixed"

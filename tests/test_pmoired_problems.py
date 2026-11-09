@@ -33,7 +33,7 @@ def _annulus_file(path, n_ha, n_wl):
     return path
 
 
-@pytest.mark.xfail(strict=True, reason="P1: auto wl kernel gives NaN models")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P1: auto wl kernel gives NaN models")
 @pytest.mark.validates("pmoired", roots=["mathematics"], kind="upstream")
 def test_p1_default_setup_gives_finite_models(tmp_path):
     import pmoired.oimodels as om
@@ -47,7 +47,7 @@ def test_p1_default_setup_gives_finite_models(tmp_path):
     assert np.all(np.isfinite(v2))
 
 
-@pytest.mark.xfail(strict=True, reason="P2: default ring sampling is not Nr = 100")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P2: default ring sampling is not Nr = 100")
 @pytest.mark.validates("pmoired", roots=["mathematics"], kind="upstream")
 def test_p2_default_nr_is_100(tmp_path):
     path = _annulus_file(tmp_path / "p2.fits", 3, 4)
@@ -65,7 +65,7 @@ def test_p3_rings_exact_up_to_30_samples(tmp_path):
 
 
 @pytest.mark.xfail(
-    strict=True, reason="P3: rings stop at ~1e-4 beyond 30 samples per baseline"
+    strict=True, raises=AssertionError, reason="P3: rings stop at ~1e-4 beyond 30 samples per baseline"
 )
 @pytest.mark.parametrize("n_ha,n_wl", [(1, 35), (7, 6)])
 @pytest.mark.validates("pmoired", roots=["mathematics"], kind="upstream")
