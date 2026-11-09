@@ -35,7 +35,8 @@ the checks found, for a reader who has not followed the work.
   docstring and an optional `headline=` metric.
 - `trust/graph.yml` pipelines carry `data` (real or simulated), `dataset`,
   `reference`, `url`, `headline` and, while there is no evidence yet,
-  `state` (planned or running).
+  `state` (planned or running; a pipeline whose checks all skipped shows
+  `not run` instead).
 - `docs/assets/trust.css` and `trust.js` style the page and add its
   interaction.
 - The docs workflow regenerates the page at deploy, from the committed

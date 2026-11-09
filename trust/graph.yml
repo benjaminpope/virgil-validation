@@ -31,7 +31,8 @@
 #   reference: what it is compared with (a paper, a package, the truth)
 #   url:       optional link for the reference
 #   headline:  what agreement means, shown until evidence gives the number
-#   state:     planned or running, while there is no evidence yet
+#   state:     planned or running, while there is no evidence yet (a pipeline
+#              whose checks all skipped shows "not run" instead)
 
 nodes:
   # ---------------------------------------------------------------- data

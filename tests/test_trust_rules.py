@@ -117,6 +117,20 @@ def test_failure_outweighs_passes(trust, tmp_path):
     assert got["virgil.a"] == "failing"
 
 
+def test_a_pipeline_whose_checks_all_skipped_is_not_run(trust, tmp_path):
+    graph = {"nodes": {"virgil.a": {"layer": "models"}},
+             "pipelines": {"p": {"title": "P", "steps": ["virgil.a"], "state": "running"},
+                           "q": {"title": "Q", "steps": ["virgil.a"], "state": "running"},
+                           "r": {"title": "R", "steps": ["virgil.a"], "state": "planned"}}}
+    recs = [record("t::p", "pipeline:p", outcome="skipped"),
+            record("t::q1", "pipeline:q", outcome="skipped"), record("t::q2", "pipeline:q", outcome="failed")]
+    _, model = verdicts(trust, tmp_path, recs, graph)
+    status = {p["id"]: p["status"] for p in model["pipelines"]}
+    assert status == {"p": "not run", "q": "failing", "r": "planned"}  # no checks at all keeps the written state
+    card = trust._pipeline_card(model["pipelines"][0], model["nodes"])
+    assert "not run (all 1 check skipped)" in card and "vt-p-not-run" in card
+
+
 @pytest.mark.parametrize("kind", ["finding", "upstream"])
 @pytest.mark.parametrize("outcome, verdict", [("failed", "failing"), ("error", "failing"), ("xpassed", "failing"), ("xfailed", "verified")])
 def test_a_strict_xpass_of_an_expected_failure_marks_the_node_failing(trust, tmp_path, kind, outcome, verdict):
