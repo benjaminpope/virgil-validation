@@ -7,7 +7,7 @@ import pytest
 import yaml
 from conftest import EXAMPLES, STEP, commit
 
-from mandate import audit, work
+from mandate import audit, scaffold, work
 from mandate.cli import main
 from mandate.model import Campaign, MandateError
 from mandate.orders import expand, find, superseded
@@ -369,3 +369,67 @@ def test_the_gravity_sketch_groups_epochs_by_night_and_by_target():
     assert {o.key_str: len(o.units) for o in orders["orbit"]} == {"TOY-BIN-1": 3, "TOY-BIN-2": 1}
     models = {o.key_str: o.decisions["model"] for o in orders["epoch_fit"]}
     assert models["g04"] == {"value": "disk", "source": "rule:0"} and models["g01"]["source"] == "default"
+
+
+# ---- what a person meets: starting, reading the plan back, answering ---------------------------
+
+
+def test_init_gives_a_campaign_that_checks_and_says_what_to_do_next(tmp_path, capsys):
+    assert main(["init", str(tmp_path / "new"), "--name", "trial"]) == 0
+    assert "mandate guide" in capsys.readouterr().out
+    assert Campaign(tmp_path / "new").problems() == []
+    assert main(["init", str(tmp_path / "new")]) == 2  # never overwrites a plan
+    assert "Never invent a column" in scaffold.GUIDE and main(["guide"]) == 0
+
+
+def test_columns_lists_what_a_plan_may_select_on_and_hides_sealed_values(make):
+    text = scaffold.columns(Campaign(make(PLAN, ROWS)))
+    assert "role    ref (3), sci (1)" in text and "answer  (sealed)" in text
+
+
+def test_explain_reads_the_plan_back_in_plain_words(make):
+    text = scaffold.explain(Campaign(make(PLAN, ROWS)))
+    assert "Once per band, over rows where role is ref." in text
+    assert "Reads every passing result of fit with the same band; needs at least 2." in text
+    assert "Reads the 1 passing results nearest in t of fit with the same band." in text
+    assert "Choice order: 2 by default (allowed: 1, 2); an agent may change it for one order, with a reason." in text
+    assert "Choice prior: flat by default (allowed: flat, log); a change needs a person." in text
+    assert "Passes only if these checks pass: ok." in text and "No required checks" in text
+    assert "fit -> basis, sci" in text and "score  [code, sealed]" in text
+
+
+def test_check_suggests_the_name_you_probably_meant(make):
+    plan = json.loads(json.dumps(PLAN))
+    plan["stages"]["fit"]["over"] = {"rol": "ref"}
+    plan["stages"]["fit"]["require"] = ["ok"]
+    problems = Campaign(make(plan, ROWS)).problems()
+    assert "stage fit: column 'rol' is not in the registry (did you mean 'role'?)" in problems
+    assert "stage fit: unknown key 'require' (did you mean 'requires'?)" in problems
+
+
+def test_the_home_screen_says_what_is_waiting_and_what_to_run_next(make):
+    root = make(PLAN, ROWS)
+    c = run_all(root, "fit")
+    c.append("request", why="saturated", stage="basis", key="K")
+    text = scaffold.home(Campaign(root))
+    assert "Waiting for a person (1)" in text and "mandate review" in text
+    assert "1 failed: give each brief to a worker agent" in text
+    (root / "mandate.yaml").write_text((root / "mandate.yaml").read_text() + "\n")
+    assert "uncommitted changes" in scaffold.home(Campaign(root))
+
+
+def test_review_walks_a_person_through_the_docket_and_says_what_each_answer_changes(make):
+    root = make(PLAN, ROWS)
+    c = run_all(root, "fit")
+    c.append("exclude", why="a binary", where={"id": "r1"}, stages=["basis"])
+    c.append("decide", why="looks log-like", stage="fit", key="r2", set={"prior": "log"})
+    said = []
+    scaffold.review(Campaign(root), listing=True, say=said.append)
+    assert "    if approved: to redo: basis/K" in said and "    if approved: to redo: fit/r2, basis/K" in said
+    c.append("request", why="saturated; no option covers it", stage="fit", key="r3")
+    with pytest.raises(MandateError, match="not one of the plan's humans"):
+        scaffold.review(Campaign(root), ask=lambda _: "a")
+    answers = iter(["a", "", "d", "the flat prior is registered", "c", ""])  # the last has no reason: skipped
+    n = scaffold.review(Campaign(root), by="ben", ask=lambda _: next(answers), say=said.append)
+    c = Campaign(root)
+    assert n == 2 and [c.state(e) for e in c.docket[:3]] == ["active", "denied", "open"]

@@ -65,10 +65,36 @@ binary reference star, and files a request for a target it cannot classify. It e
 `mandate verify` and the status page. `examples/gravity_sketch/` is the same shape for VLTI data
 (per-night calibration, epochs grouped into orbits); it is checked, not run.
 
+## Starting from a chat
+
+```bash
+mandate init my-campaign
+mandate -C my-campaign ingest sheet.csv
+```
+
+Then tell a chat agent: "run `mandate guide` and help me write the plan". The guide tells the
+agent what to ask you (units, kinds of data, steps, combined products, checks, choices, published
+answers, people) and what never to invent (a column, a command, a check, an option). It uses
+`mandate columns` to see what the registry offers, writes `mandate.yaml`, runs `mandate check`, and
+shows you `mandate explain`: the plan in plain words. You approve by committing.
+
+## Day to day
+
+`mandate` with no arguments is the home screen: what is waiting for a person, a count of orders
+per stage and state, and the next commands to run. `mandate review` walks you through everything
+waiting for you, says what each approval would change (new orders, orders to redo), and takes
+approve, deny, approve-all-of-this-kind or skip.
+
 ## Commands
 
 | | |
 |---|---|
+| `mandate` | Home screen: waiting for a person, counts, what to do next. |
+| `mandate init DIR` | Start a campaign directory. |
+| `mandate guide` | Instructions for an agent helping someone write a plan. |
+| `mandate columns` | The registry's columns and their values. |
+| `mandate explain` | The plan in plain words. |
+| `mandate review [--list]` | Answer everything waiting for a person, with the effect of each answer. |
 | `mandate ingest FILE_OR_URL` | Snapshot a CSV (or a sheet's CSV export URL) as the registry; reports added, removed, changed. |
 | `mandate check` | Validate the plan against the registry. |
 | `mandate status [--write]` | The status page: waiting for a person, counts per stage, failures, departures from defaults, what ensembles dropped, reruns. |

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import difflib
 import hashlib
 import json
 import os
@@ -269,9 +270,13 @@ class Campaign:
         if not self.humans:
             out.append("the plan lists no humans: nobody can approve a proposal or close a request")
         known = set(self.plan.get("versions") or {})
+        def hint(word: str, known: set) -> str:
+            close = difflib.get_close_matches(str(word), sorted(known), n=1)
+            return f" (did you mean {close[0]!r}?)" if close else ""
+
         for name, st in self.stages.items():
             for key in set(st) - STAGE_KEYS:
-                out.append(f"stage {name}: unknown key {key!r}")
+                out.append(f"stage {name}: unknown key {key!r}" + hint(key, STAGE_KEYS))
             worker = st.get("worker", "code")
             if worker not in ("code", "agent"):
                 out.append(f"stage {name}: worker must be code or agent")
@@ -284,13 +289,13 @@ class Campaign:
                     out.append(f"stage {name}: {ref} file {st[ref]} is missing")
             for col in list(st.get("over") or {}) + list(st.get("by") or []):
                 if columns and col not in columns | promoted:
-                    out.append(f"stage {name}: column {col!r} is not in the registry")
+                    out.append(f"stage {name}: column {col!r} is not in the registry" + hint(col, columns | promoted))
             for col in (st.get("over") or {}):
                 if col in self.sealed_columns and not st.get("sealed"):
                     out.append(f"stage {name}: selects on sealed column {col!r} but is not a sealed stage")
             for up, need in (st.get("needs") or {}).items():
                 if up not in self.stages:
-                    out.append(f"stage {name}: needs unknown stage {up!r}")
+                    out.append(f"stage {name}: needs unknown stage {up!r}" + hint(up, set(self.stages)))
                 elif self.stages[up].get("sealed") and not st.get("sealed"):
                     out.append(f"stage {name}: reads sealed stage {up!r} but is not sealed itself")
                 for col in (need or {}).get("match") or []:

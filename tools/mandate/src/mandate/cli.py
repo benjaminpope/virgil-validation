@@ -10,7 +10,7 @@ import pathlib
 import sys
 import urllib.request
 
-from . import audit, work
+from . import audit, scaffold, work
 from .model import UNITS, Campaign, MandateError
 from .orders import expand, find
 
@@ -100,7 +100,16 @@ def ingest(root: pathlib.Path, source: str, id_column: str | None) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="mandate", description="Fan agents and jobs out over datasets, under a plan.")
     p.add_argument("-C", dest="root", default=os.environ.get("MANDATE_ROOT", "."), help="campaign directory")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
+    a = sub.add_parser("init", help="start a campaign directory")
+    a.add_argument("directory")
+    a.add_argument("--name")
+    sub.add_parser("guide", help="print instructions for an agent helping someone write a plan")
+    sub.add_parser("columns", help="list the registry's columns and their values")
+    sub.add_parser("explain", help="read the plan back in plain words")
+    a = sub.add_parser("review", help="answer everything that is waiting for a person")
+    a.add_argument("--by", help="who is answering (default: MANDATE_ACTOR or USER)")
+    a.add_argument("--list", action="store_true", help="only list what is waiting, with the commands to answer")
     sub.add_parser("check", help="validate the plan, registry and docket")
     sub.add_parser("protocol", help="print how agents and people work a campaign")
     a = sub.add_parser("ingest", help="snapshot a CSV (file or URL) as the registry")
@@ -157,6 +166,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def dispatch(args) -> int:
     root = pathlib.Path(args.root)
+    if args.cmd == "init":
+        print(scaffold.init(pathlib.Path(args.directory), args.name))
+        return 0
+    if args.cmd == "guide":
+        print(scaffold.GUIDE)
+        return 0
     if args.cmd == "protocol":
         print(PROTOCOL)
         return 0
@@ -164,6 +179,18 @@ def dispatch(args) -> int:
         print(ingest(root, args.source, args.id))
         return 0
     c = Campaign(root)
+    if args.cmd is None:
+        print(scaffold.home(c))
+        return 0
+    if args.cmd == "columns":
+        print(scaffold.columns(c))
+        return 0
+    if args.cmd == "explain":
+        print(scaffold.explain(c))
+        return 0
+    if args.cmd == "review":
+        scaffold.review(c, by=args.by, listing=args.list)
+        return 0
     if args.cmd == "check":
         problems = c.problems()
         for line in problems:
@@ -171,6 +198,7 @@ def dispatch(args) -> int:
         if not problems:
             orders = expand(c)
             print(f"ok: {len(c.units)} units, " + ", ".join(f"{s} {len(o)}" for s, o in orders.items()))
+            print("Read it back with `mandate explain`.")
         return 1 if problems else 0
     if args.cmd == "status":
         page = audit.status_page(c)
