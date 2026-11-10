@@ -55,7 +55,7 @@ def test_downstream_waits_then_an_ensemble_lists_its_members_and_what_it_dropped
     basis = find(c, "basis/K")
     assert basis.state == "ready"
     assert [m["key"] for m in basis.inputs["fit"]] == ["r1", "r2"]
-    assert basis.dropped["fit"] == [{"key": "r3", "why": "fail"}]
+    assert basis.dropped["fit"] == [{"stage": "fit", "key": "r3", "why": "fail"}]
 
 
 def test_too_few_members_blocks_instead_of_running_on_less(make):
@@ -277,7 +277,7 @@ def test_the_demo_campaign_end_to_end(demo, monkeypatch):
     basis = find(c, "basis/F444W")
     assert [m["key"] for m in basis.inputs["wavefront"]] == [
         "toy_ref_a_f444w", "toy_ref_b_f444w", "toy_ref_c_f444w", "toy_ref_e_f444w"]
-    assert {"key": "toy_ref_d_f444w", "why": "excluded"} in basis.dropped["wavefront"]
+    assert {"stage": "wavefront", "key": "toy_ref_d_f444w", "why": "excluded"} in basis.dropped["wavefront"]
     assert find(c, "basis/F200W").state == "blocked"
 
     assert expand(c)["planet_search"] == []  # no science case yet: the agents have not classified
@@ -434,3 +434,63 @@ def test_review_walks_a_person_through_the_docket_and_says_what_each_answer_chan
     n = scaffold.review(Campaign(root), by="ben", ask=lambda _: next(answers), say=said.append)
     c = Campaign(root)
     assert n == 2 and [c.state(e) for e in c.docket[:3]] == ["active", "denied", "open"]
+
+
+# ---- links between datasets, and the small conveniences --------------------------------------
+
+
+def test_a_need_can_follow_the_registrys_links_and_two_needs_can_read_one_stage(make):
+    plan = json.loads(json.dumps(PLAN))
+    plan["stages"]["sci"]["needs"] = {
+        "fit": {"match": ["band"], "nearest": {"by": "t", "k": 1}},
+        "own_ref": {"stage": "fit", "link": "psf_reference", "min": 0},
+    }
+    root = make(plan, ROWS)
+    (root / "registry" / "links.csv").write_text("from,to,kind,source\nr1,s1,psf_reference,APT\n")
+    commit(root)
+    c = run_all(root, "fit")
+    sci = find(c, "sci/s1")
+    assert [m["key"] for m in sci.inputs["fit"]] == ["r2"]  # nearest in time
+    assert [m["key"] for m in sci.inputs["own_ref"]] == ["r1"]  # the one its programme declared
+    given = work.order_record(c, sci, "x")["inputs"]["own_ref"][0]
+    assert given["stage"] == "fit" and given["path"].endswith(f"fit/{given['order']}")
+    assert "link: r1 --psf_reference--> s1 (APT)" in work.brief(c, sci)
+    assert "that the registry links to it as psf_reference" in scaffold.explain(c)
+    assert "link   r1 --psf_reference--> s1   (APT)" in scaffold.unit(c, "s1")
+    plan["stages"]["sci"]["needs"]["own_ref"]["link"] = "psf_referense"
+    (root / "mandate.yaml").write_text(yaml.safe_dump({"humans": ["ben"], "unit_id": "id", **plan}))
+    (root / "registry" / "links.csv").write_text("from,to,kind,source\nr1,nope,psf_reference,APT\n")
+    problems = Campaign(root).problems()
+    assert any("no link of kind 'psf_referense'" in p and "did you mean 'psf_reference'" in p for p in problems)
+    assert "links.csv: 'nope' (psf_reference) is not a unit" in problems
+
+
+def test_an_option_can_name_the_flag_it_puts_in_the_command_and_a_stage_can_pass_on_a_clean_exit(make):
+    plan = {"stages": {"go": {
+        "over": {"role": "ref"}, "result": "exit",
+        "run": "echo flags=[{decision.nights}] > {out}/seen.txt",
+        "decisions": {"nights": {"default": "paper", "options": {"paper": "", "all": "--include-extra"}}}}}}
+    root = make(plan, ROWS[:2])
+    c = Campaign(root)
+    c.append("decide", why="held-out nights wanted", by="ben", stage="go", key="r2", set={"nights": "all"})
+    with pytest.raises(MandateError, match="not an option"):
+        c.append("decide", why="x", by="ben", stage="go", key="r1", set={"nights": "--include-extra"})
+    c = run_all(root, "go")
+    assert states(c, "go") == {"r1": "pass", "r2": "pass"}
+    assert (work.out_dir(c, find(c, "go/r1")) / "seen.txt").read_text() == "flags=[]\n"
+    assert (work.out_dir(c, find(c, "go/r2")) / "seen.txt").read_text() == "flags=[--include-extra]\n"
+
+
+def test_why_traces_a_blocked_order_to_its_cause_and_an_author_may_withdraw(make, capsys):
+    root = make(PLAN, [dict(r, want="fail") if r["id"] == "r2" else r for r in ROWS])
+    c = run_all(root, "fit")
+    text = scaffold.why(c, "score/s1")
+    assert text.splitlines()[0].startswith("score/s1: blocked") and "basis/K: blocked (fit: 1 of at least 2)" in text
+    assert "fit/r2-" in text and "mandate brief fit/r2" in text
+    entry = c.append("exclude", why="oops", where={"id": "r1"}, stages=["basis"])
+    assert main(["-C", str(root), "withdraw", entry["id"], "--by", "someone-else"]) == 2
+    assert main(["-C", str(root), "withdraw", entry["id"]]) == 0  # MANDATE_ACTOR is the author
+    assert Campaign(root).state(Campaign(root).docket[0]) == "denied"
+    (root / "notes").mkdir()
+    assert main(["-C", str(root / "notes"), "orders", "--state", "fail"]) == 0  # found from a subfolder
+    assert "fit/r2-" in capsys.readouterr().out

@@ -45,6 +45,13 @@ order lists its members and what it dropped and why. Change the membership of a 
 basis is a new order; everything downstream of the old one shows as waiting again, and the old
 results stay in the ledger as superseded.
 
+**Links** say which datasets belong together when no column can: `registry/links.csv` is a table
+of `from,to,kind,source` rows, one per relation, such as the PSF reference star a programme
+observed for a science target, two rolls of one sequence, or a calibrator bracketing a science
+exposure. A stage follows them with `needs: {own_reference: {stage: wavefront, link:
+psf_reference}}`. Columns carry hierarchy (programme, target, night, filter), links carry pairings
+that are many-to-many and come with a source, and notes attach documents to any selection of rows.
+
 The **docket** is the one list of everything that is not the plan's default: a decision changed
 for one order, units excluded, a registry column filled in by an agent, a request. Each entry has
 a reason and an author. Entries the plan reserves for people are `proposed` until one of the
@@ -95,6 +102,9 @@ approve, deny, approve-all-of-this-kind or skip.
 | `mandate columns` | The registry's columns and their values. |
 | `mandate explain` | The plan in plain words. |
 | `mandate review [--list]` | Answer everything waiting for a person, with the effect of each answer. |
+| `mandate why ORDER` | Why an order is waiting, blocked or failed, traced back to the order that causes it. |
+| `mandate unit ID` | Everything about one dataset: its row, links, notes, orders and docket entries. |
+| `mandate withdraw ID` | Take back a proposal or request you made. |
 | `mandate ingest FILE_OR_URL` | Snapshot a CSV (or a sheet's CSV export URL) as the registry; reports added, removed, changed. |
 | `mandate check` | Validate the plan against the registry. |
 | `mandate status [--write]` | The status page: waiting for a person, counts per stage, failures, departures from defaults, what ensembles dropped, reruns. |
@@ -132,15 +142,17 @@ stages:
     by: [obs_id]                   # default: one order per unit; [] is one order for everything
     needs:
       upstream_stage: {match: [filter], min: 3, nearest: {by: t_min, k: 2, within: 30}}
+      own_reference: {stage: upstream_stage, link: psf_reference, min: 0}   # follow registry/links.csv
     run: python fit.py --order {order} --modes {decision.n_modes}
-    result: result.json            # JSON with a status (pass, warn, fail) and named checks
+    result: result.json            # JSON with a status (pass, warn, fail) and named checks;
+                                   # `exit` means a clean exit is a pass; may use {key.COL}
     status_key: status             # `worst_check` reads a virgil pipeline's summary.json
     requires: [fit_converged]      # checks that must be present and passing
     digest: ["summary.json", "*.h5"]   # what to hash; default is everything but logs
     decisions:
       n_modes:
         default: 6
-        options: [4, 6, 8]
+        options: [4, 6, 8]         # or a map of name to command text: {paper: "", all: "--include-extra"}
         authority: agent           # default is human: an agent's choice is a proposal
         rules: [{when: {filter: F200W}, use: 8}]
     uses: [nircam]                 # which pinned versions this stage depends on (default: all)

@@ -10,7 +10,7 @@ import collections
 import pathlib
 
 from .audit import STATES, describe
-from .model import PLAN, Campaign, MandateError, actor, git
+from .model import PLAN, Campaign, MandateError, actor, git, option_names
 from .orders import Order, expand, unassigned
 
 TEMPLATE = """\
@@ -66,6 +66,9 @@ What to ask
 - Combined products (a basis, a calibration, a catalogue). What goes into each, what is the
   least it needs to be worth building, and what must be kept out?
 - "Nearest" inputs. Does a step use the calibrators closest in time or position? How many?
+- Pairings. Is any dataset tied to particular others by the observing plan (a science target
+  and its PSF reference, two rolls, a calibrator and its science exposure)? Those go in
+  `registry/links.csv` as `from,to,kind,source`; ask where the pairing is recorded.
 - Success. For each step, which named checks must pass? If they have none, say so plainly:
   a stage with no required checks passes whenever its command exits cleanly.
 - Choices. What legitimately varies between datasets (a model family, a number of modes, a
@@ -101,13 +104,15 @@ The plan
         by: [COLUMN, ...]                             # default [unit_id]; [] = one order for all
         needs:
           UPSTREAM: {match: [COLUMN], min: N, nearest: {by: COLUMN, k: N, within: X}}
+          NAME: {stage: UPSTREAM, link: KIND}         # follow registry/links.csv (from,to,kind,source)
         run: COMMAND                                  # may use {order} {out} {root} {key.COLUMN}
                                                       # {unit.COLUMN} {decision.NAME} {input.STAGE}
-        result: result.json                           # JSON: {"status": pass|warn|fail, "checks": ...}
+        result: result.json                           # JSON: {"status": pass|warn|fail, "checks": ...};
+                                                      # or `exit`: a clean exit is a pass
         status_key: status                            # `worst_check` for a virgil pipeline's summary.json
         requires: [CHECK, ...]
         decisions:
-          NAME: {default: V, options: [V, ...], authority: agent|human,
+          NAME: {default: V, options: [V, ...], authority: agent|human,   # options may be {NAME: "flag text"}
                  rules: [{when: {COLUMN: VALUE}, use: V}], doc: when to change it}
         sealed: true                                  # may see sealed columns, notes and stages
         slurm: ["--gres=gpu:1", "--time=02:00:00"]
@@ -185,8 +190,8 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
         lines.append(f"Code: {name} " + (f"pinned to {spec['pin']}" if spec.get("pin") else "recorded, not pinned") + ".")
     feeds = collections.defaultdict(list)
     for stage, st in c.stages.items():
-        for up in st.get("needs") or {}:
-            feeds[up].append(stage)
+        for label, need in (st.get("needs") or {}).items():
+            feeds[(need or {}).get("stage", label)].append(stage)
         for col in (st.get("promote") or {}).values():
             feeds[stage] += [f"{s} (through column {col})" for s, other in c.stages.items()
                              if col in (other.get("over") or {}) and s != stage]
@@ -207,6 +212,9 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
             which = "every passing result" if not need.get("nearest") else (
                 f"the {need['nearest'].get('k', 1)} passing results nearest in {need['nearest']['by']}")
             same = f" with the same {' and '.join(need['match'])}" if need.get("match") else ""
+            if need.get("link"):
+                same += f" that the registry links to it as {need['link']}"
+            up = need.get("stage", up)
             least = int(need.get("min", 1))
             floor = "; none is fine" if least == 0 else (f"; needs at least {least}" if least > 1 else "")
             lines.append(f"  Reads {which} of {up}{same}{floor}.")
@@ -223,7 +231,7 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
         elif st.get("worker", "code") == "code":
             lines.append("  No required checks: it passes whenever its result says so.")
         for dname, d in (st.get("decisions") or {}).items():
-            options = ", ".join(str(o) for o in d.get("options", [d.get("default")]))
+            options = ", ".join(option_names(d))
             who = "an agent may change it for one order, with a reason" if d.get("authority") == "agent" else (
                 "a change needs a person")
             lines.append(f"  Choice {dname}: {d.get('default')} by default (allowed: {options}); {who}.")
@@ -353,3 +361,78 @@ def review(c: Campaign, by: str | None = None, ask=input, say=print, listing: bo
     say(f"\n{answered} answered, {len(c.pending())} still waiting. Commit docket.jsonl to keep them.")
     return answered
 
+
+
+def why(c: Campaign, ref: str) -> str:
+    """Why an order is in the state it is in, traced back to the orders that cause it."""
+    from .orders import find
+
+    orders = expand(c)
+    by_key = {(o.stage, o.key_str): o for os_ in orders.values() for o in os_}
+    lines: list[str] = []
+    seen: set[tuple[str, str]] = set()
+
+    def walk(o: Order, depth: int) -> None:
+        pad = "  " * depth
+        if (o.stage, o.key_str) in seen or depth > 6:
+            return
+        seen.add((o.stage, o.key_str))
+        last = o.attempts[-1] if o.attempts else {}
+        detail = o.reason or last.get("problem") or ""
+        lines.append(f"{pad}{o.ref}: {o.state}" + (f" ({detail})" if detail else ""))
+        if o.state in ("fail", "error"):
+            lines.append(f"{pad}  -> give a worker `mandate brief {o.stage}/{o.key_str}`, or rerun with `mandate run {o.stage}/{o.key_str}`")
+        elif o.state == "ready":
+            verb = "brief" if c.stages[o.stage].get("worker") == "agent" else "run"
+            lines.append(f"{pad}  -> mandate {verb} {o.stage}/{o.key_str}")
+        elif o.state == "parked":
+            for e in c.pending():
+                if e["kind"] == "request" and e.get("stage") == o.stage and e.get("key") in (o.key_str, None):
+                    lines.append(f"{pad}  -> waiting for a person: {e['id']} \"{e['why']}\" (mandate review)")
+        for name, dropped in o.dropped.items():
+            for d in dropped:
+                if d["why"] == "excluded":
+                    lines.append(f"{pad}  {d.get('stage', name)}/{d['key']}: excluded by the docket")
+                elif d["why"] != "not nearest" and (d.get("stage", name), d["key"]) in by_key and o.state == "blocked":
+                    walk(by_key[(d.get("stage", name), d["key"])], depth + 1)
+        for ref_ in o.waiting:
+            stage, _, rest = ref_.partition("/")
+            up = next((p for p in orders.get(stage, []) if rest in (p.id, p.key_str)), None)
+            if up:
+                walk(up, depth + 1)
+
+    walk(find(c, ref, orders), 0)
+    return "\n".join(lines)
+
+
+def unit(c: Campaign, selector: str) -> str:
+    """Everything about one dataset: its row, its links, the notes on it, and its orders at every stage."""
+    from .model import matches, read_notes
+
+    where = dict([selector.split("=", 1)]) if "=" in selector else {c.unit_id: selector}
+    rows = [u for u in c.units if matches(u, where)]
+    if not rows:
+        raise MandateError(f"no unit matches {selector!r}")
+    orders = expand(c)
+    lines = []
+    for u in rows[:5]:
+        uid = u.get(c.unit_id, "?")
+        lines += [uid, "  " + ", ".join(f"{k}={v}" for k, v in c.open_row(u).items() if v and k != c.unit_id)]
+        for r in c.links:
+            if uid in (r.get("from"), r.get("to")):
+                lines.append(f"  link   {r.get('from')} --{r.get('kind')}--> {r.get('to')}"
+                             + (f"   ({r['source']})" if r.get("source") else ""))
+        for n in read_notes(c, [u], "", sealed=False):
+            if not n["meta"].get("stages"):
+                lines.append(f"  note   notes/{n['file']}")
+        for os_ in orders.values():
+            for o in os_:
+                if any(x.get(c.unit_id) == uid for x in o.units):
+                    lines.append(f"  order  {o.ref}: {o.state}" + (f" ({o.reason})" if o.reason else ""))
+        for e in c.docket:
+            if e["kind"] in ("exclude", "annotate") and matches(u, e.get("where") or {}):
+                lines.append("  docket " + describe(e).replace("`", "") + f" [{c.state(e)}]")
+        lines.append("")
+    if len(rows) > 5:
+        lines.append(f"... and {len(rows) - 5} more units match")
+    return "\n".join(lines).rstrip()

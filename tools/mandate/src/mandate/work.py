@@ -17,7 +17,7 @@ import shutil
 import socket
 import subprocess
 
-from .model import Campaign, MandateError, actor, now, read_notes
+from .model import Campaign, MandateError, actor, now, option_names, option_text, read_notes
 from .orders import Order
 
 NOT_HASHED = ("order.json", "attempt-*.json", "run.log", "*.log")
@@ -57,7 +57,7 @@ def order_record(c: Campaign, o: Order, plan_commit: str) -> dict:
     unless the stage is."""
     sealed = bool(c.stages[o.stage].get("sealed"))
     inputs = {
-        up: [{**m, "path": str(c.runs_root / up / m["order"])} for m in members]
+        up: [{**m, "path": str(c.runs_root / m["stage"] / m["order"])} for m in members]
         for up, members in o.inputs.items()
     }
     record = {
@@ -119,7 +119,7 @@ def fill(template: str, c: Campaign, o: Order, record: dict) -> str:
         if head == "unit" and o.value(rest) is not None and rest not in _hidden(c, o):
             return str(o.value(rest))
         if head == "decision" and rest in o.decisions:
-            return str(o.decisions[rest]["value"])
+            return option_text(c.stages[o.stage]["decisions"][rest], o.decisions[rest]["value"])
         if head == "input" and len(record["inputs"].get(rest, [])) == 1:
             return record["inputs"][rest][0]["path"]
         raise MandateError(f"stage {o.stage}: cannot fill {{{name}}} for {o.ref}")
@@ -149,9 +149,12 @@ def read_result(c: Campaign, o: Order) -> tuple[str, dict, str]:
     """(status, checks, problem). The stage's own result file decides; ``requires`` names checks
     that must be present and passing, so a step cannot pass by leaving a check out."""
     st = c.stages[o.stage]
-    path = out_dir(c, o) / st.get("result", "result.json")
+    if st.get("result") == "exit":  # no result file: the command's clean exit is the result
+        return "pass", {}, ""
+    name = fill(st.get("result", "result.json"), c, o, {"out": str(out_dir(c, o)), "inputs": {}})
+    path = out_dir(c, o) / name
     if not path.exists():
-        return "error", {}, f"no {path.name}"
+        return "error", {}, f"no {name}"
     try:
         result = json.loads(path.read_text())
     except json.JSONDecodeError as e:
@@ -288,12 +291,17 @@ def brief(c: Campaign, o: Order) -> str:
         for d in o.dropped.get(up, []):
             if d["why"] != "not nearest":
                 lines.append(f"  - dropped {d['key']}: {d['why']}")
+    for u in o.units[:20]:
+        for r in c.links:
+            if u.get(c.unit_id) in (r.get("from"), r.get("to")):
+                lines.append(f"- link: {r.get('from')} --{r.get('kind')}--> {r.get('to')}"
+                             + (f" ({r['source']})" if r.get("source") else ""))
     if not o.inputs:
         lines.append("None: this stage reads the registry and the archive only.")
     lines += ["", "## Decisions", ""]
     for name, d in o.decisions.items():
         menu = st["decisions"][name]
-        options = ", ".join(str(x) for x in menu.get("options", [menu.get("default")]))
+        options = ", ".join(option_names(menu))
         who = "you may change it" if menu.get("authority", "human") == "agent" else "a person approves a change"
         lines.append(f"- `{name}` = `{d['value']}` ({d['source']}). Options: {options}; {who}."
                      + (f" {menu['doc']}" if menu.get("doc") else ""))

@@ -62,7 +62,7 @@ def status_page(c: Campaign, orders: dict[str, list[Order]] | None = None) -> st
     dropped = [(o, up, d) for os_ in orders.values() for o in os_ for up, ds in o.dropped.items() for d in ds
                if d["why"] != "not nearest"]
     lines += [f"## Dropped from ensembles ({len(dropped)})", ""]
-    lines += [f"- `{o.ref}` dropped {up}/{d['key']}: {d['why']}" for o, up, d in dropped] or ["None."]
+    lines += [f"- `{o.ref}` dropped {d.get('stage', up)}/{d['key']}: {d['why']}" for o, up, d in dropped] or ["None."]
     retried = [o for os_ in orders.values() for o in os_ if len(o.attempts) > 1]
     lines += ["", f"## Orders attempted more than once ({len(retried)})", ""]
     for o in retried:

@@ -28,6 +28,7 @@ import yaml
 
 PLAN = "mandate.yaml"
 UNITS = "registry/units.csv"
+LINKS = "registry/links.csv"
 DOCKET = "docket.jsonl"
 # Paths that define the mandate: a run refuses unless these are committed and clean.
 MANDATE_PATHS = (PLAN, "registry")
@@ -56,6 +57,17 @@ def canonical(obj) -> str:
 
 def slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9.+-]+", "_", str(text)).strip("_") or "_"
+
+
+def option_names(decision: dict) -> list[str]:
+    """A decision's allowed values. ``options`` is a list, or a map of name to the text it puts
+    in the command (``{paper_nights: "", all_nights: "--include-extra"}``)."""
+    return [str(o) for o in decision.get("options", [decision.get("default")])]
+
+
+def option_text(decision: dict, value) -> str:
+    options = decision.get("options")
+    return str(options[value]) if isinstance(options, dict) and value in options else str(value)
 
 
 def matches(row: dict, where: dict) -> bool:
@@ -93,6 +105,7 @@ class Campaign:
         self.docket = self._read_docket()
         self._index()
         self.units = self._read_units()
+        self.links = self._read_links()
 
     # ---- registry -------------------------------------------------------------------------
 
@@ -107,6 +120,23 @@ class Campaign:
                 if matches(row, entry["where"]):
                     row.update({k: str(v) for k, v in entry["set"].items()})
         return rows
+
+    def _read_links(self) -> list[dict]:
+        """Typed links between units: ``from,to,kind`` and where each came from. The registry's
+        columns say what a unit is; links say which other units it belongs with."""
+        path = self.root / LINKS
+        self._linked: dict[tuple[str, str], set[str]] = {}
+        if not path.exists():
+            return []
+        with open(path, newline="") as f:
+            rows = [dict(r) for r in csv.DictReader(f)]
+        for r in rows:
+            self._linked.setdefault((r.get("kind", ""), r.get("from", "")), set()).add(r.get("to", ""))
+            self._linked.setdefault((r.get("kind", ""), r.get("to", "")), set()).add(r.get("from", ""))
+        return rows
+
+    def linked(self, kind: str, unit_id: str) -> set[str]:
+        return self._linked.get((kind, unit_id), set())
 
     def open_row(self, row: dict, sealed: bool = False) -> dict:
         """A registry row as a stage may see it: sealed columns only reach sealed stages."""
@@ -182,7 +212,8 @@ class Campaign:
                 raise MandateError(f"no docket entry {fields['of']!r}")
             if self.resolution(target):
                 raise MandateError(f"{fields['of']} is already resolved")
-            if self.humans and (by or actor()) not in self.humans:
+            own = fields["verdict"] == "deny" and (by or actor()) == target.get("by")  # withdrawing one's own
+            if self.humans and (by or actor()) not in self.humans and not own:
                 raise MandateError(f"only the plan's humans ({', '.join(sorted(self.humans))}) resolve docket entries")
         entry = {"kind": kind, **fields, "why": why.strip(), "by": by or actor(), "at": now()}
         # A content hash, not a counter: two branches can append without clashing.
@@ -200,7 +231,7 @@ class Campaign:
         for name, value in chosen.items():
             if name not in menu:
                 raise MandateError(f"stage {stage!r} has no decision {name!r}; file a request instead")
-            options = [str(o) for o in menu[name].get("options", [menu[name].get("default")])]
+            options = option_names(menu[name])
             if str(value) not in options:
                 raise MandateError(f"{name}={value!r} is not an option ({', '.join(options)}); file a request")
 
@@ -293,16 +324,21 @@ class Campaign:
             for col in (st.get("over") or {}):
                 if col in self.sealed_columns and not st.get("sealed"):
                     out.append(f"stage {name}: selects on sealed column {col!r} but is not a sealed stage")
-            for up, need in (st.get("needs") or {}).items():
+            for label, need in (st.get("needs") or {}).items():
+                up = (need or {}).get("stage", label)
                 if up not in self.stages:
                     out.append(f"stage {name}: needs unknown stage {up!r}" + hint(up, set(self.stages)))
                 elif self.stages[up].get("sealed") and not st.get("sealed"):
                     out.append(f"stage {name}: reads sealed stage {up!r} but is not sealed itself")
+                kinds = {r.get("kind") for r in self.links}
+                if (need or {}).get("link") and need["link"] not in kinds:
+                    out.append(f"stage {name}: no link of kind {need['link']!r} in registry/links.csv"
+                               + hint(need["link"], kinds))
                 for col in (need or {}).get("match") or []:
                     if columns and col not in columns | promoted:
                         out.append(f"stage {name}: match column {col!r} is not in the registry")
             for dname, d in (st.get("decisions") or {}).items():
-                options = [str(o) for o in d.get("options", [d.get("default")])]
+                options = option_names(d)
                 picks = [d.get("default")] + [r.get("use") for r in d.get("rules") or []]
                 for p in picks:
                     if str(p) not in options:
@@ -310,6 +346,11 @@ class Campaign:
             for v in st.get("uses") or []:
                 if v not in known:
                     out.append(f"stage {name}: uses unknown version {v!r}")
+        for r in self.links:
+            for end in ("from", "to"):
+                if ids and r.get(end) not in ids:
+                    out.append(f"links.csv: {r.get(end)!r} ({r.get('kind')}) is not a unit")
+                    break
         try:
             self.order_of_stages()
         except MandateError as e:
@@ -327,7 +368,11 @@ class Campaign:
         done: list[str] = []
         left = dict(self.stages)
         while left:
-            ready = [n for n, s in left.items() if all(u in done or u not in self.stages for u in s.get("needs") or {})]
+            def met(s: dict) -> bool:
+                ups = [(need or {}).get("stage", label) for label, need in (s.get("needs") or {}).items()]
+                return all(u in done or u not in self.stages for u in ups)
+
+            ready = [n for n, s in left.items() if met(s)]
             if not ready:
                 raise MandateError(f"stages need each other in a cycle: {', '.join(left)}")
             for n in ready:

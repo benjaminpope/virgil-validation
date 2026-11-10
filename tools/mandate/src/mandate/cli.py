@@ -11,7 +11,7 @@ import sys
 import urllib.request
 
 from . import audit, scaffold, work
-from .model import UNITS, Campaign, MandateError
+from .model import UNITS, Campaign, MandateError, matches
 from .orders import expand, find
 
 PROTOCOL = """\
@@ -107,6 +107,14 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("guide", help="print instructions for an agent helping someone write a plan")
     sub.add_parser("columns", help="list the registry's columns and their values")
     sub.add_parser("explain", help="read the plan back in plain words")
+    a = sub.add_parser("why", help="why an order is waiting, blocked or failed, traced to its cause")
+    a.add_argument("order")
+    a = sub.add_parser("unit", help="everything about one dataset: row, links, notes, orders")
+    a.add_argument("selector", help="a unit id, or COLUMN=VALUE")
+    a = sub.add_parser("withdraw", help="take back a proposal or request you made")
+    a.add_argument("id")
+    a.add_argument("--why", default="withdrawn by its author")
+    a.add_argument("--by")
     a = sub.add_parser("review", help="answer everything that is waiting for a person")
     a.add_argument("--by", help="who is answering (default: MANDATE_ACTOR or USER)")
     a.add_argument("--list", action="store_true", help="only list what is waiting, with the commands to answer")
@@ -164,6 +172,16 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
+def find_root(start: str) -> pathlib.Path:
+    """The campaign directory: the one named, or the nearest parent holding mandate.yaml."""
+    here = pathlib.Path(start).resolve()
+    for folder in (here, *here.parents):
+        if (folder / "mandate.yaml").exists():
+            return folder
+    raise MandateError(f"no mandate.yaml in {here} or above it. Start one with `mandate init DIR`, "
+                       "or point at one with `mandate -C DIR`.")
+
+
 def dispatch(args) -> int:
     root = pathlib.Path(args.root)
     if args.cmd == "init":
@@ -178,7 +196,7 @@ def dispatch(args) -> int:
     if args.cmd == "ingest":
         print(ingest(root, args.source, args.id))
         return 0
-    c = Campaign(root)
+    c = Campaign(find_root(args.root))
     if args.cmd is None:
         print(scaffold.home(c))
         return 0
@@ -187,6 +205,16 @@ def dispatch(args) -> int:
         return 0
     if args.cmd == "explain":
         print(scaffold.explain(c))
+        return 0
+    if args.cmd == "why":
+        print(scaffold.why(c, args.order))
+        return 0
+    if args.cmd == "unit":
+        print(scaffold.unit(c, args.selector))
+        return 0
+    if args.cmd == "withdraw":
+        entry = c.append("resolve", why=args.why, by=args.by, of=args.id, verdict="deny")
+        print(f"{entry['id']}\twithdrew {args.id}")
         return 0
     if args.cmd == "review":
         scaffold.review(c, by=args.by, listing=args.list)
@@ -198,6 +226,14 @@ def dispatch(args) -> int:
         if not problems:
             orders = expand(c)
             print(f"ok: {len(c.units)} units, " + ", ".join(f"{s} {len(o)}" for s, o in orders.items()))
+            for stage, st in c.stages.items():
+                if st.get("worker", "code") == "code" and not st.get("requires") and st.get("result") == "exit":
+                    print(f"note: {stage} has no result file: it passes whenever its command exits cleanly")
+                elif st.get("worker", "code") == "code" and not st.get("requires"):
+                    print(f"note: {stage} names no required checks: it passes whenever its result says so")
+            loose = len([u for u in c.units if not any(matches(u, s.get("over")) for s in c.stages.values())])
+            if loose:
+                print(f"note: {loose} units are selected by no stage (`mandate explain` lists them)")
             print("Read it back with `mandate explain`.")
         return 1 if problems else 0
     if args.cmd == "status":
@@ -207,15 +243,14 @@ def dispatch(args) -> int:
             (c.root / "STATUS.md").write_text(page)
         return 0
     if args.cmd == "orders":
-        for stage, os_ in expand(c).items():
-            for o in os_:
-                if args.stage and stage != args.stage:
-                    continue
-                if args.state and o.state not in args.state:
-                    continue
-                if args.worker and c.stages[stage].get("worker", "code") != args.worker:
-                    continue
-                print(f"{o.ref}\t{o.state}\t{o.reason}")
+        shown = [o for stage, os_ in expand(c).items() for o in os_
+                 if (not args.stage or stage == args.stage) and (not args.state or o.state in args.state)
+                 and (not args.worker or c.stages[stage].get("worker", "code") == args.worker)]
+        width = max([len(o.ref) for o in shown] + [1])
+        for o in shown:
+            print(f"{o.ref:<{width}}  {o.state:<8} {o.reason}".rstrip())
+        if not shown:
+            print("no orders match")
         return 0
     if args.cmd == "brief":
         o = find(c, args.order)
@@ -241,16 +276,18 @@ def dispatch(args) -> int:
                 script = work.slurm_script(c, stage, [o for o in chosen if o.stage == stage])
                 print(f"sbatch {script}")
             return 0
-        worst = 0
-        for o in chosen:
+        tally: dict[str, int] = {}
+        width = max(len(o.ref) for o in chosen)
+        for i, o in enumerate(chosen, 1):
             attempt = work.run(c, o, fresh=args.fresh)
-            print(f"{o.ref}\t{attempt['status']}\t{attempt.get('problem', '')}")
-            worst = max(worst, 0 if attempt["status"] in ("pass", "warn") else 1)
-        return worst
+            tally[attempt["status"]] = tally.get(attempt["status"], 0) + 1
+            print(f"[{i}/{len(chosen)}] {o.ref:<{width}}  {attempt['status']:<5} {attempt.get('problem', '')}".rstrip())
+        print(", ".join(f"{n} {s}" for s, n in tally.items()) + ". `mandate` shows what to do next.")
+        return 0 if set(tally) <= {"pass", "warn"} else 1
     if args.cmd == "submit":
         o = find(c, args.order)
         attempt = work.submit(c, o)
-        print(f"{o.ref}\t{attempt['status']}\t{attempt.get('problem', '')}")
+        print(f"{o.ref}  {attempt['status']}  {attempt.get('problem', '')}".rstrip())
         return 0
     if args.cmd in ("decide", "exclude", "annotate", "request", "resolve"):
         fields = {
@@ -266,7 +303,7 @@ def dispatch(args) -> int:
         if args.cmd in ("exclude", "annotate") and not audit.touched(c, entry["where"]):
             print("warning: the selector matches no unit", file=sys.stderr)
         state = c.state(entry) if args.cmd != "resolve" else args.verdict
-        print(f"{entry['id']}\t{args.cmd}\t{state}")
+        print(f"{entry['id']}  {args.cmd}  {state}")
         return 0
     if args.cmd == "verify":
         report = audit.verify(c, args.base)

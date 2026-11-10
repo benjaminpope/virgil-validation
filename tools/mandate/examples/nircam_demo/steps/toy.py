@@ -71,7 +71,8 @@ def science(order: dict, out: pathlib.Path, kind: str) -> None:
     resid = (target - mean) - comps.T @ (comps @ (target - mean))
     rms = float(np.sqrt(np.mean(resid**2)))
     local_rms = float(np.sqrt(np.mean((target - local) ** 2)))
-    numbers = {"psf_residual_rms": round(rms, 4), "nearest_reference_rms": round(local_rms, 4)}
+    numbers = {"psf_residual_rms": round(rms, 4), "nearest_reference_rms": round(local_rms, 4),
+               "own_references": [m["key"] for m in order["inputs"].get("own_reference", [])]}
     if kind == "planet":
         numbers["separation_mas"] = round(400.0 + 20.0 * abs(noise(unit["target_name"], 1)[0]) + 10.0 * rms, 1)
         write(out, "pass", {"injection_recovery": "pass" if rms < 1.0 else "fail"}, **numbers)

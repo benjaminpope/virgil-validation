@@ -42,11 +42,13 @@ stages:
       n_components: {default: 2, options: [1, 2, 3], authority: human}
 
   planet_search:
-    doc: Point-source search with the filter's basis and the two reference stars nearest in time.
+    doc: Point-source search with the filter's basis, the two reference stars nearest in time, and the
+      reference star its own programme observed for it.
     over: {role: science, science_case: planet}
     needs:
       basis: {match: [filter]}
       wavefront: {match: [filter], nearest: {by: t_min, k: 2}}
+      own_reference: {stage: wavefront, link: psf_reference, min: 0}   # from registry/links.csv
     run: python steps/toy.py planet --order {order}
     requires: [injection_recovery]
 

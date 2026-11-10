@@ -30,6 +30,7 @@ class Order:
     state: str = "waiting"
     reason: str = ""
     attempts: list[dict] = dataclasses.field(default_factory=list)
+    waiting: list[str] = dataclasses.field(default_factory=list)  # upstream orders not settled yet
 
     @property
     def key_str(self) -> str:
@@ -99,6 +100,11 @@ def stage_identity(c: Campaign, stage: str) -> dict:
     return ident
 
 
+def upstream(name: str, need: dict | None) -> str:
+    """The stage a need reads. Its name, unless it says ``stage:`` (two needs may read one stage)."""
+    return (need or {}).get("stage", name)
+
+
 def read_attempts(c: Campaign, stage: str, order_id: str) -> list[dict]:
     folder = c.root / "ledger" / stage / order_id
     return [json.loads(p.read_text()) for p in sorted(folder.glob("attempt-*.json"))] if folder.exists() else []
@@ -119,11 +125,11 @@ def expand(c: Campaign) -> dict[str, list[Order]]:
             groups.setdefault(tuple(key.values()), Order(stage, key, [])).units.append(u)
         orders = sorted(groups.values(), key=lambda o: o.key_str)
         index: dict[str, dict[tuple, list[Order]]] = {}
-        for up, need in (st.get("needs") or {}).items():
+        for name, need in (st.get("needs") or {}).items():
             match = (need or {}).get("match") or []
-            index[up] = {}
-            for p in out.get(up, []):
-                index[up].setdefault(tuple(p.value(col) for col in match), []).append(p)
+            index[name] = {}
+            for p in out.get(upstream(name, need), []):
+                index[name].setdefault(tuple(p.value(col) for col in match), []).append(p)
         gone: dict[str, bool] = {}  # upstream orders whose every unit is excluded from this stage
         for o in orders:
             _resolve(c, o, index, gone, parked)
@@ -135,20 +141,25 @@ def _resolve(c: Campaign, o: Order, index: dict, gone: dict[str, bool], parked: 
     st = c.stages[o.stage]
     o.decisions = resolve_decisions(c, o.stage, o)
     waiting, short = [], []
-    for up, need in (st.get("needs") or {}).items():
+    for name, need in (st.get("needs") or {}).items():
         need = need or {}
+        up = upstream(name, need)
         mine = tuple(o.value(col) for col in need.get("match") or [])
-        candidates = [] if None in mine else index[up].get(mine, [])
+        candidates = [] if None in mine else index[name].get(mine, [])
+        if need.get("link"):
+            # Only upstream orders with a unit the registry links to one of ours, in either direction.
+            partners = set().union(*(c.linked(need["link"], u.get(c.unit_id, "")) for u in o.units))
+            candidates = [p for p in candidates if any(u.get(c.unit_id) in partners for u in p.units)]
         members, dropped = [], []
         for p in candidates:
             if p.ref not in gone:
                 gone[p.ref] = all(excluded(c, u, o.stage) for u in p.units)
             if gone[p.ref]:
-                dropped.append({"key": p.key_str, "why": "excluded"})
+                dropped.append({"stage": up, "key": p.key_str, "why": "excluded"})
             elif p.state in SETTLED_OK:
                 members.append(p)
             elif p.state in SETTLED_BAD:
-                dropped.append({"key": p.key_str, "why": p.state})
+                dropped.append({"stage": up, "key": p.key_str, "why": p.state})
             else:
                 waiting.append(p.ref)
         near = need.get("nearest")
@@ -159,12 +170,14 @@ def _resolve(c: Campaign, o: Order, index: dict, gone: dict[str, bool], parked: 
             kept = ranked[: int(near.get("k", 1))]
             if near.get("within") is not None:
                 kept = [p for p in kept if abs(p.number(near["by"]) - here) <= float(near["within"])]
-            dropped += [{"key": p.key_str, "why": "not nearest"} for p in members if p not in kept]
+            dropped += [{"stage": up, "key": p.key_str, "why": "not nearest"} for p in members if p not in kept]
             members = kept
-        o.inputs[up] = [{"order": p.id, "key": p.key_str, "status": p.state, "digest": p.digest} for p in members]
-        o.dropped[up] = dropped
+        o.inputs[name] = [{"stage": up, "order": p.id, "key": p.key_str, "status": p.state, "digest": p.digest}
+                          for p in members]
+        o.dropped[name] = dropped
         if len(members) < int(need.get("min", 1)):
-            short.append(f"{up}: {len(members)} of at least {need.get('min', 1)}")
+            short.append(f"{name}: {len(members)} of at least {need.get('min', 1)}")
+    o.waiting = waiting
     if waiting:
         o.state, o.reason = "waiting", "on " + ", ".join(waiting[:3]) + (" ..." if len(waiting) > 3 else "")
         return
