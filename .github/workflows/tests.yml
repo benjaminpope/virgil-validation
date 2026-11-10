@@ -12,6 +12,10 @@ env:
   # deliberately; the weekly and manual runs test virgil's main instead.
   VIRGIL_REF: d79696de9d970396d9f2d007312bcffc3bcf11e7  # virgil#664 merged: sqrt-pixel LinearImage, L-BFGS-B, kkt_report, LCurve.dof_discrepancy, fit_staged_nuisances (the registered IM Lup lambda rule)
 
+  # The virgil-vlti commit (public; the loader behind tests/test_calibrated_load.py,
+  # which skips without it). Bump deliberately; weekly and manual runs use main.
+  VLTI_REF: 29dfaa77dd80338b9cf25d9c354e4055c6f93c4a  # virgil-vlti main at 2026-10-22: release-packaging merge (#1)
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -24,10 +28,12 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           ref="$VIRGIL_REF"
-          if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; fi
-          echo "Testing virgil at $ref"
+          vlti_ref="$VLTI_REF"
+          if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; vlti_ref=main; fi
+          echo "Testing virgil at $ref, virgil-vlti at $vlti_ref"
           uv pip install --python .venv/bin/python -e ".[external,polar-disk]" \
-            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref"
+            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref" \
+            "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti@$vlti_ref"
       - name: imaging-contest data cache
         uses: actions/cache@v4
         with:
@@ -45,9 +51,15 @@ jobs:
           .venv/bin/python scripts/build_orbits_page.py
       - name: fast tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+        env:
+          VV_REQUIRE_VLTI: "1"  # tests/test_calibrated_load.py must not skip silently
+          VV_REQUIRE_VIRGIL_IMPORTS: "1"  # a missing virgil module is a collection error, not a silent skip
         run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl
       - name: all tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          VV_REQUIRE_VLTI: "1"
+          VV_REQUIRE_VIRGIL_IMPORTS: "1"
         run: .venv/bin/python -m pytest -v --evidence evidence.jsonl
       - name: virgil's own evidence
         # weekly and manual runs: the JUnit evidence from virgil's latest
@@ -73,9 +85,42 @@ jobs:
         run: |
           extra=$( [ -f virgil-evidence.jsonl ] && echo "--evidence virgil-evidence.jsonl" )
           .venv/bin/python scripts/trust.py --evidence evidence.jsonl $extra \
-            --evidence trust/evidence/campaigns.jsonl \
             --virgil virgil-src --out trust.md --json trust.json
           cat trust.md >> "$GITHUB_STEP_SUMMARY"
+      - name: verdict diff against main (informational, never fails the job)
+        # The Trust page's verdicts on this PR's evidence against those on the
+        # newest push run on main, and the validates-marker changes in the
+        # diff. Each side is built by its own tree's scripts/trust.py.
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## Verdict diff against ${{ github.base_ref }}"
+            # the checkout is shallow, so fetch the base ref before using it
+            if ! git fetch --depth=1 origin "${{ github.base_ref }}":refs/remotes/origin/"${{ github.base_ref }}" \
+               || ! git worktree add ../base "origin/${{ github.base_ref }}" > /dev/null; then
+              echo "**Base tree for \`${{ github.base_ref }}\` could not be built (git error above): no marker or verdict diff was made.**"
+              exit 0
+            fi
+            echo
+            echo "### Markers (tests added, removed or re-marked)"
+            .venv/bin/python scripts/marker_inventory.py ../base . || echo "marker diff failed"
+            echo
+            echo "### Verdicts (PR's fast-test evidence against main's newest push run)"
+            if [ ! -f evidence.jsonl ]; then echo "no evidence from this run"; exit 0; fi
+            mkdir -p ../base-ci
+            if ! scripts/fetch_ci_evidence.sh --push-only ../base-ci > /dev/null || [ ! -f ../base-ci/push/evidence.jsonl ]; then
+              echo "main's push evidence could not be fetched"; exit 0
+            fi
+            .venv/bin/python scripts/trust.py --evidence evidence.jsonl \
+              --out ../after.md --json ../after.json > /dev/null || { echo "trust.py failed on the PR's evidence"; exit 0; }
+            (cd ../base && "$GITHUB_WORKSPACE/.venv/bin/python" scripts/trust.py --evidence ../base-ci/push/evidence.jsonl \
+              --out ../before.md --json ../before.json > /dev/null) \
+              || { echo "trust.py failed on main's evidence"; exit 0; }
+            .venv/bin/python scripts/trust_diff.py ../before.json ../after.json || echo "trust_diff failed"
+          } >> "$GITHUB_STEP_SUMMARY" 2>&1
       - name: evidence table
         if: always()
         run: |

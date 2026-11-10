@@ -42,10 +42,24 @@ def headers(path):
     return out
 
 
+def stamped_commits(path):
+    """The ``virgil_commit`` of every test record that carries its own and did not skip (a campaign test stamps the
+    commit its summary ran on; ``evidence.plugin.stamp_campaign``). A skipped record counts for nothing."""
+    out = set()
+    for line in pathlib.Path(path).read_text().splitlines():
+        if line.strip():
+            rec = json.loads(line)
+            if rec.get("record") == "test" and rec.get("virgil_commit") and rec.get("outcome") != "skipped":
+                out.add(rec["virgil_commit"])
+    return out
+
+
 def problems(paths, expect=None, release=False):
     """Human-readable reasons the evidence in ``paths`` is not pinned to one commit."""
     found, bad = {}, []
     for path in map(pathlib.Path, paths):
+        for commit in stamped_commits(path):
+            found.setdefault(commit, set()).add(path.name + " (a campaign record)")
         runs = headers(path)
         if not runs:
             bad.append(f"{path.name}: no run header")

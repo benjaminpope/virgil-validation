@@ -94,6 +94,19 @@ def observe(path, f, x, y, rng):
     simulate.observe(path, vis_fn(f, x, y), UTS4, rng=rng, **OBS)
 
 
+def virgil_dirty():
+    """Whether the virgil tree the campaign runs was edited (recorded with the summary; ``stamp_campaign`` refuses a
+    dirty or unrecorded one). An OzSTAR job pinned by PIN_COMMIT runs a snapshot at that sha, so it is clean by
+    construction; otherwise the installed package says."""
+    import os
+
+    if os.environ.get("PIN_COMMIT"):
+        return False
+    from evidence.meta import virgil_source
+
+    return bool(virgil_source().get("dirty", True))
+
+
 def virgil_commit():
     import os
 
@@ -159,6 +172,7 @@ def run(args):
         raise SystemExit("cannot tell which virgil commit is running: set PIN_COMMIT")
     seed0 = args.seed_base + {"null": 0, "inject": 10_000_000, "virgil": 20_000_000}[args.part] + args.task * args.draws
     head = {"part": args.part, "task": args.task, "draws": args.draws, "seed0": seed0, "virgil_commit": commit,
+            "virgil_dirty": virgil_dirty(),
             "criteria_commit": crit_commit, "design_hash": design_hash()}
     start = time.time()
     if args.part == "virgil":
@@ -253,7 +267,7 @@ def aggregate(args):
         if len(set(seeds)) != len(seeds):
             raise SystemExit(f"{p}: repeated seeds")
     spec = criteria()
-    out = {"version": 2, "virgil_commit": commits.pop(), "criteria_file": CRITERIA_FILE.relative_to(ROOT).as_posix(),
+    out = {"version": 2, "virgil_dirty": any(r.get("virgil_dirty", True) for r in records), "virgil_commit": commits.pop(), "criteria_file": CRITERIA_FILE.relative_to(ROOT).as_posix(),
            "criteria_commit": crit_commit, "design_hash": design_hash(), "pvalues": {}, "must_hold": {}, "reported": {}}
     null, inj = parts["null"], parts["inject"]
     pv = out["pvalues"]

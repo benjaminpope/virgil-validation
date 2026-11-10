@@ -186,7 +186,7 @@ def test_plain_residual_across_the_phase_cut(tmp_path):
     assert np.max(np.abs(got / plain - 1)) < 1e-12
 
 
-@pytest.mark.xfail(strict=True, reason="P5: fouriever's closure-phase residual is not wrapped")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P5: fouriever's closure-phase residual is not wrapped")
 @pytest.mark.validates("fouriever", roots=["mathematics"], kind="upstream")
 def test_p5_residual_wraps_across_the_phase_cut(tmp_path):
     """A near-equal binary (flux ratio 0.99, within fouriever's fitting

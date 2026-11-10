@@ -3,7 +3,23 @@
 Some results in this repository and on its documentation site are derived
 from data that other people published. This file records where those data
 come from and the terms that apply to them. The data files themselves are
-never committed.
+never committed, with one named exception (next section).
+
+## Exception: the IM Lup subsample (ALMA)
+
+`data/alma_imlup/subsample_1000/` is committed, by Ben Pope's decision of 2026-11-09. It is a 2.5 MB derived
+subsample (every 1000th row of each of the 26 spectral windows, 42,424 visibilities with their uv coordinates and
+weights; no images, no raw measurement set), kept so that CI can run the MPoL objective check
+(`tests/test_alma_mpol.py`). The 1.9 GB measurement set itself is never committed.
+
+- **Source.** The ALMA Science Archive, public data on IM Lup, calibrated and reduced for DSHARP (Andrews et al. 2018,
+  ApJ 869, L41).
+- **ALMA project codes.** 2013.1.00226.S, 2013.1.00694.S, 2013.1.00798.S and 2016.1.00484.L.
+- **Acknowledgement** (the standard ALMA text; no other ALMA acknowledgement is used in this repository). This work
+  makes use of the following ALMA data: ADS/JAO.ALMA#2013.1.00226.S, ADS/JAO.ALMA#2013.1.00694.S,
+  ADS/JAO.ALMA#2013.1.00798.S and ADS/JAO.ALMA#2016.1.00484.L. ALMA is a partnership of ESO (representing its member
+  states), NSF (USA) and NINS (Japan), together with NRC (Canada), MOST and ASIAA (Taiwan), and KASI (Republic of
+  Korea), in cooperation with the Republic of Chile. The Joint ALMA Observatory is operated by ESO, AUI/NRAO and NAOJ.
 
 ## JMMC OiDB
 

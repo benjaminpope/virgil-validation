@@ -78,6 +78,19 @@ def design_hash():
     return h.hexdigest()[:16]
 
 
+def virgil_dirty():
+    """Whether the virgil tree the campaign runs was edited (recorded with the summary; ``stamp_campaign`` refuses a
+    dirty or unrecorded one). An OzSTAR job pinned by PIN_COMMIT runs a snapshot at that sha, so it is clean by
+    construction; otherwise the installed package says."""
+    import os
+
+    if os.environ.get("PIN_COMMIT"):
+        return False
+    from evidence.meta import virgil_source
+
+    return bool(virgil_source().get("dirty", True))
+
+
 def virgil_commit():
     import os
 
@@ -172,6 +185,7 @@ def run(args, draw_fn=None):
     cell_index = list(s["cells"]).index(args.cell)
     seed0 = args.seed_base + cell_index * 1_000_000 + args.task * draws
     head = {"cell": args.cell, "task": args.task, "draws": draws, "seed0": seed0, "virgil_commit": commit,
+            "virgil_dirty": virgil_dirty(),
             "criteria_commit": crit_commit, "design_hash": design_hash(), "params": param_names(args.cell)}
     path = out_dir / f"pull_{args.cell}_{args.task:04d}.json"
     rows, start = [], time.time()
@@ -284,7 +298,7 @@ def aggregate(args):
     if len(set(seeds)) != len(seeds):
         raise SystemExit(f"{len(seeds) - len(set(seeds))} draws repeat a seed: each must be counted once")
     print(f"{len(files)} task files ({partial} incomplete), {len(seeds)} draws", file=sys.stderr)
-    summary = {"version": 1, "virgil_commit": commits.pop(), "criteria_file": CRITERIA_FILE.relative_to(ROOT).as_posix(),
+    summary = {"version": 1, "virgil_dirty": any(r.get("virgil_dirty", True) for r in runs), "virgil_commit": commits.pop(), "criteria_file": CRITERIA_FILE.relative_to(ROOT).as_posix(),
                "criteria_commit": crit_commit, "design_hash": design_hash(), "tasks": len(files), "incomplete_tasks": partial, "criteria": s,
                **analyse(cells, s)}
     text = json.dumps(summary, indent=1)

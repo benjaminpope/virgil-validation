@@ -4,12 +4,17 @@
 # and of the newest weekly or manual run (every test, on virgil's main, with
 # virgil's own CI evidence). Evidence measured on a laptop is not published.
 #
-#   scripts/fetch_ci_evidence.sh OUTDIR
+#   scripts/fetch_ci_evidence.sh [--push-only] OUTDIR
+#
+# With --push-only the weekly or manual run is neither looked up nor fetched
+# (so a failed one cannot abort the script) and only OUTDIR/push is written.
 #
 # writes OUTDIR/push/evidence.jsonl, OUTDIR/full/evidence.jsonl and, when
 # the full run fetched it, OUTDIR/full/virgil-evidence.jsonl. Needs gh with
 # actions: read on this repository.
 set -euo pipefail
+push_only=0
+if [ "${1:-}" = "--push-only" ]; then push_only=1; shift; fi
 out=${1:?usage: fetch_ci_evidence.sh OUTDIR}
 repo=${GITHUB_REPOSITORY:-benjaminpope/virgil-validation}
 
@@ -29,7 +34,9 @@ fetch() {  # fetch RUN's evidence artefact into DIR
 }
 
 push=$(newest push)
-full=$(newest schedule workflow_dispatch)
+full=
+[ "$push_only" = 1 ] || full=$(newest schedule workflow_dispatch)
 [ -n "$push" ] || { echo "no finished validation run on main" >&2; exit 1; }
 fetch "$push" "$out/push"
-if [ -n "$full" ]; then fetch "$full" "$out/full"; else echo "no weekly or manual run yet" >&2; fi
+if [ "$push_only" = 1 ]; then :
+elif [ -n "$full" ]; then fetch "$full" "$out/full"; else echo "no weekly or manual run yet" >&2; fi
