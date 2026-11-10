@@ -506,7 +506,7 @@ def test_what_a_paper_says_the_object_is_reaches_informed_stages_and_never_blind
             "blind": {"over": {"role": "sci"}, "run": STEP},
             "informed_fit": {"over": {"role": "sci"}, "informed": True, "run": STEP + " # {decision.model}",
                              "decisions": {"model": {"default": "image", "options": ["image", "spotted_star"],
-                                                     "rules": [{"when": {"paper_model": "spotted_star"}, "use": "spotted_star"}]}}},
+                                                     "default_from": "paper_model"}}},
             "score": {"over": {"role": "sci"}, "sealed": True, "run": STEP, "needs": {"informed_fit": {"match": ["id"]}}},
         },
     }
@@ -521,7 +521,7 @@ def test_what_a_paper_says_the_object_is_reaches_informed_stages_and_never_blind
     assert "bright spot" not in work.brief(c, blind) and "paper_model" not in work.brief(c, blind)
     text = work.brief(c, informed)
     assert "bright spot" in text and "INFORMED stage" in text and "2.5 mas" not in text and "| answer" not in text
-    assert informed.decisions["model"] == {"value": "spotted_star", "source": "rule:0"}
+    assert informed.decisions["model"] == {"value": "spotted_star", "source": "column:paper_model"}
     assert "2.5 mas" in work.brief(c, score) and "bright spot" in work.brief(c, score)
     c = run_all(root, "blind", "informed_fit")
     assert find(c, "informed_fit/s1").attempts[-1]["knowledge"] == "informed"

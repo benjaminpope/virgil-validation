@@ -1,12 +1,12 @@
 id,label,year,task,member,files,field_mas,field_source,start,star_given,star_source,channels_um,chromatic_star,member_star,member_halo,paper_model,paper_model_built
-2004_data1_m0,2004_data1,2004,0,0,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,point,no,star_in_shell,no
-2004_data1_m1,2004_data1,2004,0,1,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,no
-2004_data1_m2,2004_data1,2004,0,2,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,disk,no,star_in_shell,no
-2004_data1_m3,2004_data1,2004,0,3,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,no
-2004_data1_m4,2004_data1,2004,0,4,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,point,no,star_in_shell,no
-2004_data1_m5,2004_data1,2004,0,5,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,no
-2004_data1_m6,2004_data1,2004,0,6,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,disk,no,star_in_shell,no
-2004_data1_m7,2004_data1,2004,0,7,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,no
+2004_data1_m0,2004_data1,2004,0,0,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,point,no,star_in_shell,yes
+2004_data1_m1,2004_data1,2004,0,1,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,yes
+2004_data1_m2,2004_data1,2004,0,2,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,disk,no,star_in_shell,yes
+2004_data1_m3,2004_data1,2004,0,3,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,yes
+2004_data1_m4,2004_data1,2004,0,4,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,point,no,star_in_shell,yes
+2004_data1_m5,2004_data1,2004,0,5,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,yes
+2004_data1_m6,2004_data1,2004,0,6,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,disk,no,star_in_shell,yes
+2004_data1_m7,2004_data1,2004,0,7,2004/2004-data1.fits,,chosen from the data,CLEAN,no,,,no,none,no,star_in_shell,yes
 2004_data2_m0,2004_data2,2004,1,0,2004/2004-data2.fits,,chosen from the data,CLEAN,no,,,no,point,no,spotted_star_binary,yes
 2004_data2_m1,2004_data2,2004,1,1,2004/2004-data2.fits,,chosen from the data,CLEAN,no,,,no,none,no,spotted_star_binary,yes
 2004_data2_m2,2004_data2,2004,1,2,2004/2004-data2.fits,,chosen from the data,CLEAN,no,,,no,disk,no,spotted_star_binary,yes
@@ -15,126 +15,126 @@ id,label,year,task,member,files,field_mas,field_source,start,star_given,star_sou
 2004_data2_m5,2004_data2,2004,1,5,2004/2004-data2.fits,,chosen from the data,CLEAN,no,,,no,none,yes,spotted_star_binary,yes
 2004_data2_m6,2004_data2,2004,1,6,2004/2004-data2.fits,,chosen from the data,CLEAN,no,,,no,disk,yes,spotted_star_binary,yes
 2004_data2_m7,2004_data2,2004,1,7,2004/2004-data2.fits,,chosen from the data,CLEAN,no,,,no,none,yes,spotted_star_binary,yes
-2006_disk_m0,2006_disk,2006,2,0,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,point,no,thin_disk,no
-2006_disk_m1,2006_disk,2006,2,1,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,no
-2006_disk_m2,2006_disk,2006,2,2,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,disk,no,thin_disk,no
-2006_disk_m3,2006_disk,2006,2,3,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,no
-2006_disk_m4,2006_disk,2006,2,4,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,point,no,thin_disk,no
-2006_disk_m5,2006_disk,2006,2,5,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,no
-2006_disk_m6,2006_disk,2006,2,6,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,disk,no,thin_disk,no
-2006_disk_m7,2006_disk,2006,2,7,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,no
-2008_agb_J_m0,2008_agb_J,2008,3,0,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,no
-2008_agb_J_m1,2008_agb_J,2008,3,1,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_J_m2,2008_agb_J,2008,3,2,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,no
-2008_agb_J_m3,2008_agb_J,2008,3,3,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_J_m4,2008_agb_J,2008,3,4,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,no
-2008_agb_J_m5,2008_agb_J,2008,3,5,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_J_m6,2008_agb_J,2008,3,6,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,no
-2008_agb_J_m7,2008_agb_J,2008,3,7,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_H_m0,2008_agb_H,2008,4,0,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,no
-2008_agb_H_m1,2008_agb_H,2008,4,1,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_H_m2,2008_agb_H,2008,4,2,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,no
-2008_agb_H_m3,2008_agb_H,2008,4,3,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_H_m4,2008_agb_H,2008,4,4,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,no
-2008_agb_H_m5,2008_agb_H,2008,4,5,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_H_m6,2008_agb_H,2008,4,6,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,no
-2008_agb_H_m7,2008_agb_H,2008,4,7,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_K_m0,2008_agb_K,2008,5,0,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,no
-2008_agb_K_m1,2008_agb_K,2008,5,1,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_K_m2,2008_agb_K,2008,5,2,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,no
-2008_agb_K_m3,2008_agb_K,2008,5,3,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_K_m4,2008_agb_K,2008,5,4,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,no
-2008_agb_K_m5,2008_agb_K,2008,5,5,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agb_K_m6,2008_agb_K,2008,5,6,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,no
-2008_agb_K_m7,2008_agb_K,2008,5,7,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,no
-2008_agn_J_m0,2008_agn_J,2008,6,0,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,no
-2008_agn_J_m1,2008_agn_J,2008,6,1,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_J_m2,2008_agn_J,2008,6,2,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,no
-2008_agn_J_m3,2008_agn_J,2008,6,3,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_J_m4,2008_agn_J,2008,6,4,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,no
-2008_agn_J_m5,2008_agn_J,2008,6,5,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_J_m6,2008_agn_J,2008,6,6,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,no
-2008_agn_J_m7,2008_agn_J,2008,6,7,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_H_m0,2008_agn_H,2008,7,0,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,no
-2008_agn_H_m1,2008_agn_H,2008,7,1,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_H_m2,2008_agn_H,2008,7,2,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,no
-2008_agn_H_m3,2008_agn_H,2008,7,3,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_H_m4,2008_agn_H,2008,7,4,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,no
-2008_agn_H_m5,2008_agn_H,2008,7,5,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_H_m6,2008_agn_H,2008,7,6,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,no
-2008_agn_H_m7,2008_agn_H,2008,7,7,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_K_m0,2008_agn_K,2008,8,0,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,no
-2008_agn_K_m1,2008_agn_K,2008,8,1,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_K_m2,2008_agn_K,2008,8,2,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,no
-2008_agn_K_m3,2008_agn_K,2008,8,3,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_K_m4,2008_agn_K,2008,8,4,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,no
-2008_agn_K_m5,2008_agn_K,2008,8,5,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2008_agn_K_m6,2008_agn_K,2008,8,6,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,no
-2008_agn_K_m7,2008_agn_K,2008,8,7,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,no
-2010_lowH_m0,2010_lowH,2010,9,0,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,point,no,structured_supergiant_with_companion,no
-2010_lowH_m1,2010_lowH,2010,9,1,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,no,structured_supergiant_with_companion,no
-2010_lowH_m2,2010_lowH,2010,9,2,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,disk,no,structured_supergiant_with_companion,no
-2010_lowH_m3,2010_lowH,2010,9,3,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,no,structured_supergiant_with_companion,no
-2010_lowH_m4,2010_lowH,2010,9,4,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,point,yes,structured_supergiant_with_companion,no
-2010_lowH_m5,2010_lowH,2010,9,5,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,yes,structured_supergiant_with_companion,no
-2010_lowH_m6,2010_lowH,2010,9,6,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,disk,yes,structured_supergiant_with_companion,no
-2010_lowH_m7,2010_lowH,2010,9,7,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,yes,structured_supergiant_with_companion,no
-2022_gravity_m0,2022_gravity,2022,10,0,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,point,no,star_with_faint_companion,no
-2022_gravity_m1,2022_gravity,2022,10,1,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,no
-2022_gravity_m2,2022_gravity,2022,10,2,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,disk,no,star_with_faint_companion,no
-2022_gravity_m3,2022_gravity,2022,10,3,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,no
-2022_gravity_m4,2022_gravity,2022,10,4,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,point,no,star_with_faint_companion,no
-2022_gravity_m5,2022_gravity,2022,10,5,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,no
-2022_gravity_m6,2022_gravity,2022,10,6,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,disk,no,star_with_faint_companion,no
-2022_gravity_m7,2022_gravity,2022,10,7,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,no
-2022_ami_m0,2022_ami,2022,11,0,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,point,no,star_with_faint_companion,no
-2022_ami_m1,2022_ami,2022,11,1,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,no
-2022_ami_m2,2022_ami,2022,11,2,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,disk,no,star_with_faint_companion,no
-2022_ami_m3,2022_ami,2022,11,3,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,no
-2022_ami_m4,2022_ami,2022,11,4,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,point,no,star_with_faint_companion,no
-2022_ami_m5,2022_ami,2022,11,5,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,no
-2022_ami_m6,2022_ami,2022,11,6,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,disk,no,star_with_faint_companion,no
-2022_ami_m7,2022_ami,2022,11,7,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,no
-2024_obj1_pionier_m0,2024_obj1_pionier,2024,12,0,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_pionier_m1,2024_obj1_pionier,2024,12,1,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_pionier_m2,2024_obj1_pionier,2024,12,2,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_pionier_m3,2024_obj1_pionier,2024,12,3,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_pionier_m4,2024_obj1_pionier,2024,12,4,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_pionier_m5,2024_obj1_pionier,2024,12,5,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_pionier_m6,2024_obj1_pionier,2024,12,6,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_pionier_m7,2024_obj1_pionier,2024,12,7,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_gravity_m0,2024_obj1_gravity,2024,13,0,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_gravity_m1,2024_obj1_gravity,2024,13,1,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_gravity_m2,2024_obj1_gravity,2024,13,2,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_gravity_m3,2024_obj1_gravity,2024,13,3,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_gravity_m4,2024_obj1_gravity,2024,13,4,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_gravity_m5,2024_obj1_gravity,2024,13,5,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_gravity_m6,2024_obj1_gravity,2024,13,6,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_gravity_m7,2024_obj1_gravity,2024,13,7,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj2_pionier_m0,2024_obj2_pionier,2024,14,0,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,no,ringed_disk_with_companions,no
-2024_obj2_pionier_m1,2024_obj2_pionier,2024,14,1,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,no
-2024_obj2_pionier_m2,2024_obj2_pionier,2024,14,2,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,no,ringed_disk_with_companions,no
-2024_obj2_pionier_m3,2024_obj2_pionier,2024,14,3,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,no
-2024_obj2_pionier_m4,2024_obj2_pionier,2024,14,4,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,yes,ringed_disk_with_companions,no
-2024_obj2_pionier_m5,2024_obj2_pionier,2024,14,5,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,no
-2024_obj2_pionier_m6,2024_obj2_pionier,2024,14,6,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,yes,ringed_disk_with_companions,no
-2024_obj2_pionier_m7,2024_obj2_pionier,2024,14,7,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,no
-2024_obj2_gravity_m0,2024_obj2_gravity,2024,15,0,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,no,ringed_disk_with_companions,no
-2024_obj2_gravity_m1,2024_obj2_gravity,2024,15,1,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,no
-2024_obj2_gravity_m2,2024_obj2_gravity,2024,15,2,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,no,ringed_disk_with_companions,no
-2024_obj2_gravity_m3,2024_obj2_gravity,2024,15,3,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,no
-2024_obj2_gravity_m4,2024_obj2_gravity,2024,15,4,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,yes,ringed_disk_with_companions,no
-2024_obj2_gravity_m5,2024_obj2_gravity,2024,15,5,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,no
-2024_obj2_gravity_m6,2024_obj2_gravity,2024,15,6,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,yes,ringed_disk_with_companions,no
-2024_obj2_gravity_m7,2024_obj2_gravity,2024,15,7,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,no
-2010_lowK_m0,2010_lowK,2010,16,0,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,point,no,structured_supergiant_with_companion,no
-2010_lowK_m1,2010_lowK,2010,16,1,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,no,structured_supergiant_with_companion,no
-2010_lowK_m2,2010_lowK,2010,16,2,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,disk,no,structured_supergiant_with_companion,no
-2010_lowK_m3,2010_lowK,2010,16,3,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,no,structured_supergiant_with_companion,no
-2010_lowK_m4,2010_lowK,2010,16,4,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,point,yes,structured_supergiant_with_companion,no
-2010_lowK_m5,2010_lowK,2010,16,5,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,yes,structured_supergiant_with_companion,no
-2010_lowK_m6,2010_lowK,2010,16,6,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,disk,yes,structured_supergiant_with_companion,no
-2010_lowK_m7,2010_lowK,2010,16,7,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,yes,structured_supergiant_with_companion,no
+2006_disk_m0,2006_disk,2006,2,0,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,point,no,thin_disk,yes
+2006_disk_m1,2006_disk,2006,2,1,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,yes
+2006_disk_m2,2006_disk,2006,2,2,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,disk,no,thin_disk,yes
+2006_disk_m3,2006_disk,2006,2,3,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,yes
+2006_disk_m4,2006_disk,2006,2,4,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,point,no,thin_disk,yes
+2006_disk_m5,2006_disk,2006,2,5,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,yes
+2006_disk_m6,2006_disk,2006,2,6,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,disk,no,thin_disk,yes
+2006_disk_m7,2006_disk,2006,2,7,2006/2006-03-03.fits;2006/2006-03-04.fits;2006/2006-03-05.fits;2006/2006-03-06.fits,106.0,2006 clue.10.fits,CLEAN,no,,,no,none,no,thin_disk,yes
+2008_agb_J_m0,2008_agb_J,2008,3,0,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,yes
+2008_agb_J_m1,2008_agb_J,2008,3,1,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_J_m2,2008_agb_J,2008,3,2,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,yes
+2008_agb_J_m3,2008_agb_J,2008,3,3,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_J_m4,2008_agb_J,2008,3,4,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,yes
+2008_agb_J_m5,2008_agb_J,2008,3,5,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_J_m6,2008_agb_J,2008,3,6,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,yes
+2008_agb_J_m7,2008_agb_J,2008,3,7,2008/2008-Contest1_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m0,2008_agb_H,2008,4,0,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m1,2008_agb_H,2008,4,1,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m2,2008_agb_H,2008,4,2,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m3,2008_agb_H,2008,4,3,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m4,2008_agb_H,2008,4,4,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m5,2008_agb_H,2008,4,5,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m6,2008_agb_H,2008,4,6,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,yes
+2008_agb_H_m7,2008_agb_H,2008,4,7,2008/2008-Contest1_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m0,2008_agb_K,2008,5,0,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m1,2008_agb_K,2008,5,1,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m2,2008_agb_K,2008,5,2,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m3,2008_agb_K,2008,5,3,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m4,2008_agb_K,2008,5,4,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m5,2008_agb_K,2008,5,5,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m6,2008_agb_K,2008,5,6,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,evolved_star_with_surface_structure,yes
+2008_agb_K_m7,2008_agb_K,2008,5,7,2008/2008-Contest1_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,evolved_star_with_surface_structure,yes
+2008_agn_J_m0,2008_agn_J,2008,6,0,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,yes
+2008_agn_J_m1,2008_agn_J,2008,6,1,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_J_m2,2008_agn_J,2008,6,2,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,yes
+2008_agn_J_m3,2008_agn_J,2008,6,3,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_J_m4,2008_agn_J,2008,6,4,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,yes
+2008_agn_J_m5,2008_agn_J,2008,6,5,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_J_m6,2008_agn_J,2008,6,6,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,yes
+2008_agn_J_m7,2008_agn_J,2008,6,7,2008/2008-Contest2_J.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_H_m0,2008_agn_H,2008,7,0,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,yes
+2008_agn_H_m1,2008_agn_H,2008,7,1,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_H_m2,2008_agn_H,2008,7,2,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,yes
+2008_agn_H_m3,2008_agn_H,2008,7,3,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_H_m4,2008_agn_H,2008,7,4,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,yes
+2008_agn_H_m5,2008_agn_H,2008,7,5,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_H_m6,2008_agn_H,2008,7,6,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,yes
+2008_agn_H_m7,2008_agn_H,2008,7,7,2008/2008-Contest2_H.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_K_m0,2008_agn_K,2008,8,0,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,yes
+2008_agn_K_m1,2008_agn_K,2008,8,1,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_K_m2,2008_agn_K,2008,8,2,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,yes
+2008_agn_K_m3,2008_agn_K,2008,8,3,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_K_m4,2008_agn_K,2008,8,4,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,point,no,agn,yes
+2008_agn_K_m5,2008_agn_K,2008,8,5,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2008_agn_K_m6,2008_agn_K,2008,8,6,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,disk,no,agn,yes
+2008_agn_K_m7,2008_agn_K,2008,8,7,2008/2008-Contest2_K.oifits,30.0,2008 readme: 15 mas FWHM taper,gauss 15 mas,no,,,no,none,no,agn,yes
+2010_lowH_m0,2010_lowH,2010,9,0,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,point,no,structured_supergiant_with_companion,yes
+2010_lowH_m1,2010_lowH,2010,9,1,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,no,structured_supergiant_with_companion,yes
+2010_lowH_m2,2010_lowH,2010,9,2,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,disk,no,structured_supergiant_with_companion,yes
+2010_lowH_m3,2010_lowH,2010,9,3,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,no,structured_supergiant_with_companion,yes
+2010_lowH_m4,2010_lowH,2010,9,4,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,point,yes,structured_supergiant_with_companion,yes
+2010_lowH_m5,2010_lowH,2010,9,5,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,yes,structured_supergiant_with_companion,yes
+2010_lowH_m6,2010_lowH,2010,9,6,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,disk,yes,structured_supergiant_with_companion,yes
+2010_lowH_m7,2010_lowH,2010,9,7,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.4-1.9,yes,none,yes,structured_supergiant_with_companion,yes
+2022_gravity_m0,2022_gravity,2022,10,0,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,point,no,star_with_faint_companion,yes
+2022_gravity_m1,2022_gravity,2022,10,1,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,yes
+2022_gravity_m2,2022_gravity,2022,10,2,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,disk,no,star_with_faint_companion,yes
+2022_gravity_m3,2022_gravity,2022,10,3,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,yes
+2022_gravity_m4,2022_gravity,2022,10,4,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,point,no,star_with_faint_companion,yes
+2022_gravity_m5,2022_gravity,2022,10,5,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,yes
+2022_gravity_m6,2022_gravity,2022,10,6,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,disk,no,star_with_faint_companion,yes
+2022_gravity_m7,2022_gravity,2022,10,7,2022/c_imaging_contest1.fits,,chosen from the data,CLEAN,yes,"data: |V| ~0.7 on the shortest baselines (V² median 0.48), so an unresolved source carries most of the flux",,no,none,no,star_with_faint_companion,yes
+2022_ami_m0,2022_ami,2022,11,0,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,point,no,star_with_faint_companion,yes
+2022_ami_m1,2022_ami,2022,11,1,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,yes
+2022_ami_m2,2022_ami,2022,11,2,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,disk,no,star_with_faint_companion,yes
+2022_ami_m3,2022_ami,2022,11,3,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,yes
+2022_ami_m4,2022_ami,2022,11,4,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,point,no,star_with_faint_companion,yes
+2022_ami_m5,2022_ami,2022,11,5,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,yes
+2022_ami_m6,2022_ami,2022,11,6,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,disk,no,star_with_faint_companion,yes
+2022_ami_m7,2022_ami,2022,11,7,2022/c_imaging_contest2.fits,,chosen from the data,CLEAN,yes,data: V² ~0.9 on every baseline,,no,none,no,star_with_faint_companion,yes
+2024_obj1_pionier_m0,2024_obj1_pionier,2024,12,0,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_pionier_m1,2024_obj1_pionier,2024,12,1,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_pionier_m2,2024_obj1_pionier,2024,12,2,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_pionier_m3,2024_obj1_pionier,2024,12,3,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_pionier_m4,2024_obj1_pionier,2024,12,4,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_pionier_m5,2024_obj1_pionier,2024,12,5,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_pionier_m6,2024_obj1_pionier,2024,12,6,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_pionier_m7,2024_obj1_pionier,2024,12,7,2024/Obj1_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_gravity_m0,2024_obj1_gravity,2024,13,0,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_gravity_m1,2024_obj1_gravity,2024,13,1,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_gravity_m2,2024_obj1_gravity,2024,13,2,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_gravity_m3,2024_obj1_gravity,2024,13,3,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_gravity_m4,2024_obj1_gravity,2024,13,4,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_gravity_m5,2024_obj1_gravity,2024,13,5,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_gravity_m6,2024_obj1_gravity,2024,13,6,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_gravity_m7,2024_obj1_gravity,2024,13,7,2024/Obj1_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj2_pionier_m0,2024_obj2_pionier,2024,14,0,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,no,ringed_disk_with_companions,yes
+2024_obj2_pionier_m1,2024_obj2_pionier,2024,14,1,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,yes
+2024_obj2_pionier_m2,2024_obj2_pionier,2024,14,2,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,no,ringed_disk_with_companions,yes
+2024_obj2_pionier_m3,2024_obj2_pionier,2024,14,3,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,yes
+2024_obj2_pionier_m4,2024_obj2_pionier,2024,14,4,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,yes,ringed_disk_with_companions,yes
+2024_obj2_pionier_m5,2024_obj2_pionier,2024,14,5,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,yes
+2024_obj2_pionier_m6,2024_obj2_pionier,2024,14,6,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,yes,ringed_disk_with_companions,yes
+2024_obj2_pionier_m7,2024_obj2_pionier,2024,14,7,2024/Obj2_PIONIER_1.5-1.8.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,yes
+2024_obj2_gravity_m0,2024_obj2_gravity,2024,15,0,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,no,ringed_disk_with_companions,yes
+2024_obj2_gravity_m1,2024_obj2_gravity,2024,15,1,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,yes
+2024_obj2_gravity_m2,2024_obj2_gravity,2024,15,2,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,no,ringed_disk_with_companions,yes
+2024_obj2_gravity_m3,2024_obj2_gravity,2024,15,3,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,no,ringed_disk_with_companions,yes
+2024_obj2_gravity_m4,2024_obj2_gravity,2024,15,4,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,point,yes,ringed_disk_with_companions,yes
+2024_obj2_gravity_m5,2024_obj2_gravity,2024,15,5,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,yes
+2024_obj2_gravity_m6,2024_obj2_gravity,2024,15,6,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,disk,yes,ringed_disk_with_companions,yes
+2024_obj2_gravity_m7,2024_obj2_gravity,2024,15,7,2024/Obj2_GRAVITY_2.0-2.5.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,yes,none,yes,ringed_disk_with_companions,yes
+2010_lowK_m0,2010_lowK,2010,16,0,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,point,no,structured_supergiant_with_companion,yes
+2010_lowK_m1,2010_lowK,2010,16,1,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,no,structured_supergiant_with_companion,yes
+2010_lowK_m2,2010_lowK,2010,16,2,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,disk,no,structured_supergiant_with_companion,yes
+2010_lowK_m3,2010_lowK,2010,16,3,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,no,structured_supergiant_with_companion,yes
+2010_lowK_m4,2010_lowK,2010,16,4,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,point,yes,structured_supergiant_with_companion,yes
+2010_lowK_m5,2010_lowK,2010,16,5,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,yes,structured_supergiant_with_companion,yes
+2010_lowK_m6,2010_lowK,2010,16,6,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,disk,yes,structured_supergiant_with_companion,yes
+2010_lowK_m7,2010_lowK,2010,16,7,2010/Mystery-Low_HK.oifits,,chosen from the data,CLEAN,no,,1.9-2.6,yes,none,yes,structured_supergiant_with_companion,yes
 2018_disk_m0,2018_disk,2018,17,0,2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits,,chosen from the data,CLEAN,yes,readme: a young star's disk,,no,point,no,star_rim_planet_disk,yes
 2018_disk_m1,2018_disk,2018,17,1,2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits,,chosen from the data,CLEAN,yes,readme: a young star's disk,,no,none,no,star_rim_planet_disk,yes
 2018_disk_m2,2018_disk,2018,17,2,2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits,,chosen from the data,CLEAN,yes,readme: a young star's disk,,no,disk,no,star_rim_planet_disk,yes
@@ -143,35 +143,35 @@ id,label,year,task,member,files,field_mas,field_source,start,star_given,star_sou
 2018_disk_m5,2018_disk,2018,17,5,2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits,,chosen from the data,CLEAN,yes,readme: a young star's disk,,no,none,no,star_rim_planet_disk,yes
 2018_disk_m6,2018_disk,2018,17,6,2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits,,chosen from the data,CLEAN,yes,readme: a young star's disk,,no,disk,no,star_rim_planet_disk,yes
 2018_disk_m7,2018_disk,2018,17,7,2018/Aspro2_Altair_MIRC_6T_1_47493-1_75256-8ch_S1-S2-E1-E2-W1-W2_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-B2-C1-D0_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_A0-G1-J2-J3_2018-08-02_FAKE.fits;2018/Aspro2_Altair_PIONIER_1_533-1_772-6ch_D0-G2-J3-K0_2018-08-02_FAKE.fits,,chosen from the data,CLEAN,yes,readme: a young star's disk,,no,none,no,star_rim_planet_disk,yes
-2024_obj1_matisseL_m0,2024_obj1_matisseL,2024,18,0,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_matisseL_m1,2024_obj1_matisseL,2024,18,1,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_matisseL_m2,2024_obj1_matisseL,2024,18,2,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_matisseL_m3,2024_obj1_matisseL,2024,18,3,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_matisseL_m4,2024_obj1_matisseL,2024,18,4,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_matisseL_m5,2024_obj1_matisseL,2024,18,5,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_matisseL_m6,2024_obj1_matisseL,2024,18,6,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_matisseL_m7,2024_obj1_matisseL,2024,18,7,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_matisseN_m0,2024_obj1_matisseN,2024,19,0,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_matisseN_m1,2024_obj1_matisseN,2024,19,1,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_matisseN_m2,2024_obj1_matisseN,2024,19,2,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_matisseN_m3,2024_obj1_matisseN,2024,19,3,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_matisseN_m4,2024_obj1_matisseN,2024,19,4,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_spiral,no
-2024_obj1_matisseN_m5,2024_obj1_matisseN,2024,19,5,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj1_matisseN_m6,2024_obj1_matisseN,2024,19,6,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_spiral,no
-2024_obj1_matisseN_m7,2024_obj1_matisseN,2024,19,7,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_spiral,no
-2024_obj2_matisseL_m0,2024_obj2_matisseL,2024,20,0,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,no
-2024_obj2_matisseL_m1,2024_obj2_matisseL,2024,20,1,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
-2024_obj2_matisseL_m2,2024_obj2_matisseL,2024,20,2,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,no
-2024_obj2_matisseL_m3,2024_obj2_matisseL,2024,20,3,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
-2024_obj2_matisseL_m4,2024_obj2_matisseL,2024,20,4,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,no
-2024_obj2_matisseL_m5,2024_obj2_matisseL,2024,20,5,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
-2024_obj2_matisseL_m6,2024_obj2_matisseL,2024,20,6,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,no
-2024_obj2_matisseL_m7,2024_obj2_matisseL,2024,20,7,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m0,2024_obj2_matisseN,2024,21,0,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m1,2024_obj2_matisseN,2024,21,1,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m2,2024_obj2_matisseN,2024,21,2,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m3,2024_obj2_matisseN,2024,21,3,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m4,2024_obj2_matisseN,2024,21,4,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m5,2024_obj2_matisseN,2024,21,5,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m6,2024_obj2_matisseN,2024,21,6,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,no
-2024_obj2_matisseN_m7,2024_obj2_matisseN,2024,21,7,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,no
+2024_obj1_matisseL_m0,2024_obj1_matisseL,2024,18,0,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_matisseL_m1,2024_obj1_matisseL,2024,18,1,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_matisseL_m2,2024_obj1_matisseL,2024,18,2,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_matisseL_m3,2024_obj1_matisseL,2024,18,3,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_matisseL_m4,2024_obj1_matisseL,2024,18,4,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_matisseL_m5,2024_obj1_matisseL,2024,18,5,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_matisseL_m6,2024_obj1_matisseL,2024,18,6,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_matisseL_m7,2024_obj1_matisseL,2024,18,7,2024/Obj1_MATISSE_2.9-4.2.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m0,2024_obj1_matisseN,2024,19,0,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m1,2024_obj1_matisseN,2024,19,1,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m2,2024_obj1_matisseN,2024,19,2,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m3,2024_obj1_matisseN,2024,19,3,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m4,2024_obj1_matisseN,2024,19,4,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,point,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m5,2024_obj1_matisseN,2024,19,5,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m6,2024_obj1_matisseN,2024,19,6,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,disk,no,pinwheel_arcs,yes
+2024_obj1_matisseN_m7,2024_obj1_matisseN,2024,19,7,2024/Obj1_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a hot star with an environment,,no,none,no,pinwheel_arcs,yes
+2024_obj2_matisseL_m0,2024_obj2_matisseL,2024,20,0,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,yes
+2024_obj2_matisseL_m1,2024_obj2_matisseL,2024,20,1,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes
+2024_obj2_matisseL_m2,2024_obj2_matisseL,2024,20,2,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,yes
+2024_obj2_matisseL_m3,2024_obj2_matisseL,2024,20,3,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes
+2024_obj2_matisseL_m4,2024_obj2_matisseL,2024,20,4,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,yes
+2024_obj2_matisseL_m5,2024_obj2_matisseL,2024,20,5,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes
+2024_obj2_matisseL_m6,2024_obj2_matisseL,2024,20,6,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,yes
+2024_obj2_matisseL_m7,2024_obj2_matisseL,2024,20,7,2024/Obj2_MATISSE_2.9-4.0.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m0,2024_obj2_matisseN,2024,21,0,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m1,2024_obj2_matisseN,2024,21,1,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m2,2024_obj2_matisseN,2024,21,2,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m3,2024_obj2_matisseN,2024,21,3,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m4,2024_obj2_matisseN,2024,21,4,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,point,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m5,2024_obj2_matisseN,2024,21,5,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m6,2024_obj2_matisseN,2024,21,6,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,disk,no,ringed_disk_with_companions,yes
+2024_obj2_matisseN_m7,2024_obj2_matisseN,2024,21,7,2024/Obj2_MATISSE_8-13.fits,,chosen from the data,CLEAN,yes,contest page: a young star,,no,none,no,ringed_disk_with_companions,yes

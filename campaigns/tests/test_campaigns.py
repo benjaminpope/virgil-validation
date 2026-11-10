@@ -108,11 +108,16 @@ def test_the_ensemble_step_reads_its_datasets_row():
 def test_the_informed_track_is_given_what_the_paper_says_the_object_is_and_none_of_its_values():
     c = Campaign(HERE / "contests")
     orders = expand(c)
-    assert sorted(o.key_str for o in orders["informed_fit"]) == ["2004_data2", "2018_disk"]  # the built families
+    assert len(orders["informed_fit"]) == len(orders["ensemble"]) == 22  # every dataset has a family
     assert c.level("informed_fit") == "informed" and c.level("member") == "open"
     fit = find(c, "informed_fit/2004_data2", orders)
     assert fit.decisions["model"]["value"] == "spotted_star_binary"
-    assert find(c, "informed_fit/2018_disk", orders).decisions["model"] == {"value": "star_rim_planet_disk", "source": "rule:0"}
+    assert find(c, "informed_fit/2018_disk", orders).decisions["model"] == {
+        "value": "star_rim_planet_disk", "source": "column:paper_model"}
+    script = (REPO / "scripts" / "contest_informed.py").read_text()
+    for o in orders["informed_fit"]:  # each dataset's family is one the script builds and the plan offers
+        assert o.decisions["model"]["source"] == "column:paper_model", o.key_str
+        assert f'"{o.decisions["model"]["value"]}": [' in script, o.key_str
     text = work.brief(c, fit)
     assert "limb-darkened elliptical disk with one bright spot" in text and "INFORMED stage" in text
     assert "sealed_2004.md" not in text and "5.5 mas" not in text and "PA 90" not in text  # the paper's values

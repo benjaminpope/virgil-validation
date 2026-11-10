@@ -4,8 +4,8 @@
     python scripts/contest_informed.py --task N --model FAMILY [--data DIR] [--out DIR] [--starts 32] [--smoke]
 
 This is **not** a blind reconstruction, and its results must never be quoted as one. It uses what a contest paper
-said the object *is* (a spotted star with a companion; a star, a disk rim, a planet and an outer disk) to choose a
-parametric model. It uses nothing the paper said about the *values*: no diameter, position, flux ratio or angle
+said the object *is* (a spotted star with a companion; a thin disk; a star, a disk rim, a planet and an outer disk;
+a ringed disk with companions) to choose a parametric model. It uses nothing the paper said about the *values*: no diameter, position, flux ratio or angle
 from a paper is a start, a bound or a constant here. Every start is drawn from priors whose scales come from the
 data's own baselines, so the published parameters stay a test of the fit (they are compared afterwards, by the
 campaign's sealed stage).
@@ -44,6 +44,7 @@ from virgil.oidata import OIData  # noqa: E402
 REPO = pathlib.Path(__file__).resolve().parents[1]
 REACH = 1.5  # positions are searched out to this many fringe periods of the shortest baseline (see prior_of)
 PEAKS = 6  # likelihood-map peaks refined per new component
+TIME_LIMIT = 300.0  # seconds per start; a start that runs out is recorded as not converged
 AGREE = 1.01  # a start "reached the best" when its chi2 is within 1% of it
 MIN_AGREE = 2  # fewer starts than this at the best chi2: the optimum was found once, by luck
 
@@ -70,36 +71,106 @@ def scales(datasets):
     return mas / (2.0 * longest), mas / shortest
 
 
-# Each family: rungs of (name, {component: (class, {parameter: prior kind})}). Prior kinds are scale-free words that
-# `prior_of` turns into distributions from the data's resolution and field; no number here comes from a paper.
-STAR = ("EllipticalLimbDarkenedDisk", {"diam": "size", "ratio": "ratio", "pa": "angle", "u": "limb"})
+# Each family is a ladder of rungs, simplest first: (name, {component: (maker, {parameter path: prior kind})}).
+# A maker is a virgil class, or "RingedDisk" (make_component). Prior kinds are scale-free words that `prior_of`
+# turns into distributions from the data's resolution and field; no number here comes from a paper. The first
+# component of a rung is the flux reference (flux 1); every other component's flux is relative to it.
+POINT = ("PointSource", {})
+SMALL_STAR = ("UniformDisk", {"diam": "small"})
+LD_STAR = ("LimbDarkenedDisk", {"diam": "size", "u": "limb"})
+ELLIPTICAL_STAR = ("EllipticalLimbDarkenedDisk", {"diam": "size", "ratio": "ratio", "pa": "angle", "u": "limb"})
+COMPANION = ("PointSource", {"flux": "faint", "dra": "far", "ddec": "far"})
+SMALL_DISK = ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "far", "ddec": "far"})
+SPOT = ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "near", "ddec": "near"})
+SURFACE_SPOT = ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "far", "ddec": "far"})
+HALO = ("GaussianDisk", {"sigma": "size", "flux": "bright"})
+ELLIPSE = ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "bright"})
+RIM = ("ModulatedGaussianRim", {"diam": "size", "fwhm": "size", "inc": "inclination", "pa": "angle",
+                                "az_amps": "modulation", "az_pas": "full_angle", "flux": "bright"})
+ARC = ("GaussianArc", {"radius": "size", "width": "size", "length": "size", "pa": "full_angle", "flux": "bright"})
+
+
+def rings(*names):
+    """An inclined disk of Gaussian rings; each ring after the first has a weight relative to the first."""
+    params = {"inc": "inclination", "pa": "angle", "flux": "bright"}
+    for i, name in enumerate(names):
+        params[f"profile.{name}.radius"] = "size"
+        params[f"profile.{name}.sigma"] = "size"
+        if i:
+            params[f"profile.{name}.weight"] = "bright"
+    return ("RingedDisk", params)
+
+
 FAMILIES = {
-    # 2004 data2, Lawson et al. 2004: "a binary, the primary a limb-darkened elliptical disk with a bright spot".
-    "spotted_star_binary": [
-        ("star", {"star": STAR}),
-        ("star+companion", {"star": STAR, "companion": ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "far", "ddec": "far"})}),
-        ("star+companion+spot", {"star": STAR,
-                                 "companion": ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "far", "ddec": "far"}),
-                                 "spot": ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "near", "ddec": "near"})}),
+    # Lawson et al. 2004, data1: a star inside an asymmetric shell.
+    "star_in_shell": [
+        ("star+halo", {"star": SMALL_STAR, "halo": HALO}),
+        ("star+shell", {"star": SMALL_STAR, "shell": RIM}),
+        ("star+shell+halo", {"star": SMALL_STAR, "shell": RIM, "halo": HALO}),
     ],
-    # 2018, Sanchez-Bermudez et al.: a star, an inner disk with a bright rim, a planet, and an outer disk.
+    # Lawson et al. 2004, data2: a binary whose primary is a limb-darkened elliptical disk with a bright spot.
+    "spotted_star_binary": [
+        ("star", {"star": ELLIPTICAL_STAR}),
+        ("star+companion", {"star": ELLIPTICAL_STAR, "companion": SMALL_DISK}),
+        ("star+companion+spot", {"star": ELLIPTICAL_STAR, "companion": SMALL_DISK, "spot": SPOT}),
+    ],
+    # Lawson et al. 2006: a geometrically thin disk.
+    "thin_disk": [
+        ("disk", {"disk": ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle"})}),
+        ("star+disk", {"star": POINT, "disk": ELLIPSE}),
+        ("star+ring", {"star": POINT, "ring": RIM}),
+        ("star+ring+disk", {"star": POINT, "ring": RIM, "disk": ELLIPSE}),
+    ],
+    # Cotton et al. 2008: an AGB star. A limb-darkened disk, an envelope, and structure on the surface.
+    "evolved_star_with_surface_structure": [
+        ("star", {"star": LD_STAR}),
+        ("star+envelope", {"star": LD_STAR, "envelope": HALO}),
+        ("star+envelope+spot", {"star": LD_STAR, "envelope": HALO, "spot": SURFACE_SPOT}),
+        ("star+envelope+two spots", {"star": LD_STAR, "envelope": HALO, "spot": SURFACE_SPOT, "spot_b": SURFACE_SPOT}),
+    ],
+    # Cotton et al. 2008: an AGN. An unresolved core and elongated extended emission.
+    "agn": [
+        ("core+dust", {"core": POINT, "dust": ELLIPSE}),
+        ("core+dust+extended", {"core": POINT, "dust": ELLIPSE, "extended": ELLIPSE}),
+    ],
+    # Malbet et al. 2010: a red supergiant's structured surface, and a much fainter companion far outside the disk.
+    "structured_supergiant_with_companion": [
+        ("star", {"star": LD_STAR}),
+        ("star+companion", {"star": LD_STAR, "companion": COMPANION}),
+        ("star+companion+spot", {"star": LD_STAR, "companion": COMPANION, "spot": SURFACE_SPOT}),
+        ("star+companion+two spots", {"star": LD_STAR, "companion": COMPANION, "spot": SURFACE_SPOT, "spot_b": SURFACE_SPOT}),
+    ],
+    # Sanchez-Bermudez et al. 2018: a star, an inner disk with a bright rim, a planet, and an outer disk.
     "star_rim_planet_disk": [
-        ("star+outer", {"star": ("UniformDisk", {"diam": "small"}),
-                        "outer": ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "bright"})}),
-        ("star+rim+outer", {"star": ("UniformDisk", {"diam": "small"}),
-                            "rim": ("ModulatedGaussianRim", {"diam": "size", "fwhm": "small", "inc": "inclination", "pa": "angle",
-                                                             "az_amps": "modulation", "az_pas": "full_angle", "flux": "bright"}),
-                            "outer": ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "bright"})}),
-        ("star+rim+outer+planet", {"star": ("UniformDisk", {"diam": "small"}),
-                                   "rim": ("ModulatedGaussianRim", {"diam": "size", "fwhm": "small", "inc": "inclination", "pa": "angle",
-                                                                    "az_amps": "modulation", "az_pas": "full_angle", "flux": "bright"}),
-                                   "outer": ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "bright"}),
-                                   "planet": ("PointSource", {"flux": "faint", "dra": "far", "ddec": "far"})}),
+        ("star+outer", {"star": SMALL_STAR, "outer": ELLIPSE}),
+        ("star+rim+outer", {"star": SMALL_STAR, "rim": RIM, "outer": ELLIPSE}),
+        ("star+rim+outer+planet", {"star": SMALL_STAR, "rim": RIM, "outer": ELLIPSE, "planet": COMPANION}),
+    ],
+    # The 2022 contest: high-contrast tests. A star, possibly extended light, and a faint companion.
+    "star_with_faint_companion": [
+        ("star", {"star": SMALL_STAR}),
+        ("star+halo", {"star": SMALL_STAR, "halo": HALO}),
+        ("star+halo+companion", {"star": SMALL_STAR, "halo": HALO, "companion": COMPANION}),
+    ],
+    # The 2024 contest, Obj1: a Wolf-Rayet pinwheel of several turns. virgil has no spiral component, so each turn is
+    # approximated by one arc; the arcs are not tied to a common pitch. A stand-in until a spiral exists in virgil.
+    "pinwheel_arcs": [
+        ("star+envelope", {"star": POINT, "envelope": HALO}),
+        ("star+envelope+arc", {"star": POINT, "envelope": HALO, "arc": ARC}),
+        ("star+envelope+two arcs", {"star": POINT, "envelope": HALO, "arc": ARC, "arc_b": ARC}),
+        ("star+envelope+three arcs", {"star": POINT, "envelope": HALO, "arc": ARC, "arc_b": ARC, "arc_c": ARC}),
+    ],
+    # The 2024 contest, Obj2: an inclined disk with several rings and gaps, and point-like companions.
+    "ringed_disk_with_companions": [
+        ("star+one ring", {"star": POINT, "disk": rings("a")}),
+        ("star+two rings", {"star": POINT, "disk": rings("a", "b")}),
+        ("star+three rings", {"star": POINT, "disk": rings("a", "b", "c")}),
+        ("star+three rings+companion", {"star": POINT, "disk": rings("a", "b", "c"), "companion": COMPANION}),
     ],
 }
 # A value for the constructor before fitting; every free parameter is then set from a prior draw.
-PLACEHOLDER = {"diam": 1.0, "fwhm": 1.0, "ratio": 0.9, "pa": 0.0, "u": 0.5, "inc": 30.0, "az_amps": 0.1, "az_pas": 0.0,
-               "flux": 0.1, "dra": 0.0, "ddec": 0.0}
+PLACEHOLDER = {"diam": 1.0, "fwhm": 1.0, "sigma": 1.0, "radius": 1.0, "width": 1.0, "length": 1.0, "ratio": 0.9, "pa": 0.0,
+               "u": 0.5, "inc": 30.0, "az_amps": 0.1, "az_pas": 0.0, "flux": 0.1, "weight": 1.0, "dra": 0.0, "ddec": 0.0}
 
 
 def prior_of(kind, res, field):
@@ -124,15 +195,30 @@ def prior_of(kind, res, field):
 VECTORS = ("u", "az_amps", "az_pas")  # parameters that are arrays of one coefficient here
 
 
+def make_component(maker, values):
+    """A virgil component from ``{parameter path: number}``."""
+    if maker != "RingedDisk":
+        return getattr(vm, maker)(**values)
+    parts = {}
+    for path, value in values.items():
+        if path.startswith("profile."):
+            _, ring, what = path.split(".")
+            parts.setdefault(ring, {})[what] = value
+    profile = vm.RadialSum(**{ring: (vm.GaussianRing(radius=v["radius"], sigma=v["sigma"]), v.get("weight", 1.0))
+                              for ring, v in parts.items()})
+    return vm.MultipoleDisk(profile, inc=values["inc"], pa=values["pa"], flux=values["flux"])
+
+
 def build(rung, res, field, values=None):
     """(template System, {path: prior}) of one rung, with any given ``values`` ({path: number}) set on the template."""
     parts, priors = {}, {}
-    for name, (cls, params) in rung.items():
+    for name, (maker, params) in rung.items():
         kwargs = {}
         for p in params:
-            value = (values or {}).get(f"{name}.{p}", PLACEHOLDER[p])
-            kwargs[p] = np.array([value]) if p in VECTORS else value
-        parts[name] = getattr(vm, cls)(**kwargs)
+            leaf = p.rsplit(".", 1)[-1]
+            value = (values or {}).get(f"{name}.{p}", PLACEHOLDER[leaf])
+            kwargs[p] = np.array([value]) if leaf in VECTORS else value
+        parts[name] = make_component(maker, kwargs)
         for p, kind in params.items():
             priors[f"{name}.{p}"] = prior_of(kind, res, field)
     return vm.System(**parts), priors
@@ -193,7 +279,7 @@ def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, be
         init = {k: (np.array([float(np.ravel(v)[0])]) if k.rsplit(".", 1)[-1] in VECTORS else float(np.ravel(v)[0]))
                 for k, v in init.items() if k in priors}
         try:
-            r = fit(template, priors, data, init=init, max_steps=max_steps)
+            r = fit(template, priors, data, init=init, max_steps=max_steps, time_limit=TIME_LIMIT)
         except Exception as err:  # noqa: BLE001 a start that fails is recorded, not hidden
             runs.append({"chi2": float("inf"), "error": f"{type(err).__name__}: {err}"})
             continue
@@ -212,7 +298,16 @@ def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, be
 def run(task, family, data_dir, out_dir, starts=32, smoke=False):
     spec = tasks()[task]
     label = f"{spec['label']}_{family}"
-    datasets = [OIData(str(pathlib.Path(data_dir) / f)) for f in spec["files"]]
+    paths = [pathlib.Path(data_dir) / f for f in spec["files"]]
+    if spec.get("wavel"):  # the same channel selection as the blind images of this task
+        import tempfile
+
+        sys.path.insert(0, str(REPO / "scripts"))
+        import contest_images
+
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        paths = [contest_images.select_channels(p, spec["wavel"], tmp) for p in paths]
+    datasets = [OIData(str(p)) for p in paths]
     res, field = scales(datasets)
     rng = np.random.default_rng(7000 + task)
     t0, rungs, carry, below = time.time(), [], {}, ()

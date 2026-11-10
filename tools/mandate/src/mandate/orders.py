@@ -12,7 +12,7 @@ from __future__ import annotations
 import dataclasses
 import json
 
-from .model import Campaign, canonical, matches, sha, slug
+from .model import Campaign, canonical, matches, option_names, sha, slug
 
 SETTLED_OK = ("pass", "warn")
 SETTLED_BAD = ("fail", "error", "blocked")
@@ -78,6 +78,11 @@ def resolve_decisions(c: Campaign, stage: str, order: Order) -> dict:
     out = {}
     for name, d in (c.stages[stage].get("decisions") or {}).items():
         out[name] = {"value": d.get("default"), "source": "default"}
+        column = d.get("default_from")  # the default is a registry column's value, where every unit shares one
+        if column:
+            seen = {str(c.open_row(u, c.level(stage)).get(column, "") or "") for u in order.units}
+            if len(seen) == 1 and seen != {""} and next(iter(seen)) in option_names(d):
+                out[name] = {"value": next(iter(seen)), "source": f"column:{column}"}
         for i, rule in enumerate(d.get("rules") or []):
             if all(matches(c.open_row(u, c.level(stage)), rule.get("when") or {}) for u in order.units):
                 out[name] = {"value": rule["use"], "source": f"rule:{i}"}

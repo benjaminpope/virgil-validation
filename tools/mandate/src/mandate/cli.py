@@ -170,6 +170,9 @@ def main(argv: list[str] | None = None) -> int:
     except MandateError as e:
         print(f"mandate: refused: {e}", file=sys.stderr)
         return 2
+    except BrokenPipeError:  # piped into `head`: the reader has what it wanted
+        sys.stderr.close()
+        return 0
 
 
 def find_root(start: str) -> pathlib.Path:

@@ -69,8 +69,8 @@ stages:
     result: exit
 
   informed_fit:
-    doc: Fit the model family the contest paper describes (a spotted star with a companion; a star, a rim, a planet
-      and a disk) as a ladder of nested models compared by BIC. Structure from the paper, every value from the
+    doc: Fit the model family the contest paper describes (a spotted star with a companion; a thin disk; a ringed
+      disk with companions; and so on) as a ladder of nested models compared by BIC. Structure from the paper, every value from the
       data, starting from likelihood maps and random draws scaled by the data's own baselines. Not a blind result.
     informed: true
     playbook: playbooks/informed.md
@@ -84,12 +84,13 @@ stages:
     slurm: ["--gres=gpu:1", "--time=02:00:00", "--mem=32G"]
     decisions:
       model:
-        doc: The family named in informed_models.yml for this dataset. A new family is a new entry there and in
+        doc: The family informed_models.yml names for this dataset. A new family is a new entry there and in
           scripts/contest_informed.py, by pull request, not a choice made here.
-        default: spotted_star_binary
-        options: [spotted_star_binary, star_rim_planet_disk]
-        rules:
-          - {when: {paper_model: star_rim_planet_disk}, use: star_rim_planet_disk}
+        default: star_with_faint_companion
+        default_from: paper_model
+        options: [star_in_shell, spotted_star_binary, thin_disk, evolved_star_with_surface_structure, agn,
+                  structured_supergiant_with_companion, star_rim_planet_disk, star_with_faint_companion,
+                  pinwheel_arcs, ringed_disk_with_companions]
       effort:
         default: full
         options: {full: "", smoke: "--smoke"}

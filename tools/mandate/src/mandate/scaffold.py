@@ -120,6 +120,7 @@ The plan
         requires: [CHECK, ...]
         decisions:
           NAME: {default: V, options: [V, ...], authority: agent|human,   # options may be {NAME: "flag text"}
+                 default_from: COLUMN,                                    # the default is that column's value
                  rules: [{when: {COLUMN: VALUE}, use: V}], doc: when to change it}
         sealed: true                                  # may see sealed columns, notes and stages
         informed: true                                # may see informed columns and notes; results are not blind
@@ -249,7 +250,9 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
             options = ", ".join(option_names(d))
             who = "an agent may change it for one order, with a reason" if d.get("authority") == "agent" else (
                 "a change needs a person")
-            lines.append(f"  Choice {dname}: {d.get('default')} by default (allowed: {options}); {who}.")
+            start = f"the unit's {d['default_from']} column, else {d.get('default')}" if d.get("default_from") else (
+                f"{d.get('default')} by default")
+            lines.append(f"  Choice {dname}: {start} (allowed: {options}); {who}.")
             for rule in d.get("rules") or []:
                 lines.append(f"    {rule['use']} for {_where(rule.get('when'))}.")
         if st.get("sealed"):
