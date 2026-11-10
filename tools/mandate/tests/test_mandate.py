@@ -425,7 +425,8 @@ def test_review_walks_a_person_through_the_docket_and_says_what_each_answer_chan
     c.append("decide", why="looks log-like", stage="fit", key="r2", set={"prior": "log"})
     said = []
     scaffold.review(Campaign(root), listing=True, say=said.append)
-    assert "    if approved: to redo: basis/K" in said and "    if approved: to redo: fit/r2, basis/K" in said
+    assert "      then  to redo: basis/K" in said and "      then  to redo: fit/r2, basis/K" in said
+    assert "exclude   id=r1 from basis    (" in said[0] and said[1] == "      why   a binary"
     c.append("request", why="saturated; no option covers it", stage="fit", key="r3")
     with pytest.raises(MandateError, match="not one of the plan's humans"):
         scaffold.review(Campaign(root), ask=lambda _: "a")

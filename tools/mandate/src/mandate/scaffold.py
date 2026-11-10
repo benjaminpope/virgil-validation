@@ -252,7 +252,8 @@ def home(c: Campaign) -> str:
     pending = c.pending()
     lines += ["", f"Waiting for a person ({len(pending)})"]
     for e in pending[:8]:
-        lines.append("  " + describe(e).replace("`", ""))
+        text = describe(e).replace("`", "")
+        lines.append("  " + (text if len(text) <= 110 else text[:107] + "..."))
     if len(pending) > 8:
         lines.append(f"  ... and {len(pending) - 8} more")
     if not pending:
@@ -277,6 +278,14 @@ def home(c: Campaign) -> str:
     lines += ["", "Next"]
     lines += [f"  {what:<46} {cmd}" for what, cmd in todo] or ["  Nothing to do: every order is finished or waiting on something above."]
     return "\n".join(lines)
+
+
+def card(c: Campaign, e: dict) -> list[str]:
+    """One docket entry as a person reads it: what, why, who, and what saying yes would change."""
+    head = describe(e).replace("`", "").partition(". ")[0]
+    what = head.split(" ", 2)[2] if head.count(" ") >= 2 else head
+    return [f"{e['kind']:<9} {what}    ({e['id']})", f"      why   {e['why']}", f"      by    {e['by']}, {e['at'][:10]}",
+            f"      then  {effect(c, e)}"]
 
 
 def effect(c: Campaign, entry: dict) -> str:
@@ -308,9 +317,9 @@ def review(c: Campaign, by: str | None = None, ask=input, say=print, listing: bo
         return 0
     if listing:
         for e in pending:
-            say(describe(e).replace("`", ""))
-            say(f"    {'if closed' if e['kind'] == 'request' else 'if approved'}: {effect(c, e)}")
-            say(f"    mandate resolve {e['id']} approve --why \"...\"     mandate resolve {e['id']} deny --why \"...\"")
+            for line in card(c, e):
+                say(line)
+            say(f"      mandate resolve {e['id']} approve --why \"...\"   |   mandate resolve {e['id']} deny --why \"...\"")
         return 0
     if c.humans and who not in c.humans:
         raise MandateError(f"{who!r} is not one of the plan's humans ({', '.join(sorted(c.humans))}); pass --by")
@@ -320,11 +329,13 @@ def review(c: Campaign, by: str | None = None, ask=input, say=print, listing: bo
             c.append("resolve", why="approved in review (all of this kind)", by=who, of=e["id"], verdict="approve")
             answered += 1
             continue
-        say(f"\n[{i}/{len(pending)}] {describe(e).replace('`', '')}")
+        lines = card(c, e)
+        say(f"\n[{i}/{len(pending)}] " + lines[0])
+        for line in lines[1:]:
+            say(line)
         request = e["kind"] == "request"
-        say(f"    {'if closed' if request else 'if approved'}: {effect(c, e)}")
-        choice = ask("    (c)lose as answered, (s)kip, (q)uit: " if request
-                     else "    (a)pprove, (d)eny, (A)pprove all of this kind, (s)kip, (q)uit: ").strip()
+        choice = ask("      (c)lose as answered, (s)kip, (q)uit > " if request
+                     else "      (a)pprove, (d)eny, (A)pprove all of this kind, (s)kip, (q)uit > ").strip()
         if choice == "q":
             break
         if choice == "A" and not request:
@@ -333,9 +344,9 @@ def review(c: Campaign, by: str | None = None, ask=input, say=print, listing: bo
         if choice not in ("a", "d", "c"):
             continue
         verdict = "deny" if choice == "d" else "approve"
-        why = ask("    reason" + (" (required): " if verdict == "deny" or request else " (Enter for 'approved'): ")).strip()
+        why = ask("      reason" + (" (required) > " if verdict == "deny" or request else " (Enter for 'approved') > ")).strip()
         if not why and (verdict == "deny" or request):
-            say("    skipped: that needs a reason")
+            say("      skipped: that needs a reason")
             continue
         c.append("resolve", why=why or "approved", by=who, of=e["id"], verdict=verdict)
         answered += 1
