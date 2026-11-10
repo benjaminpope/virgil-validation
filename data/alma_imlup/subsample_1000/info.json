@@ -1,0 +1,369 @@
+{
+ "ddids": [
+  {
+   "ddid": 0,
+   "obsid": 0,
+   "n_rows": 92103,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 231392195556.67523,
+   "freq_max_hz": 231392195556.67523,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 1,
+   "obsid": 0,
+   "n_rows": 92103,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 231303755615.26898,
+   "freq_max_hz": 231303755615.26898,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 2,
+   "obsid": 0,
+   "n_rows": 92103,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 231202620361.36273,
+   "freq_max_hz": 231202620361.36273,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 3,
+   "obsid": 0,
+   "n_rows": 92103,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 230519942138.70648,
+   "freq_max_hz": 230519942138.70648,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 4,
+   "obsid": 0,
+   "n_rows": 92103,
+   "nchan": 4,
+   "chan_width_hz": 117187500.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 234741927001.98773,
+   "freq_max_hz": 235093489501.98773,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 5,
+   "obsid": 1,
+   "n_rows": 94938,
+   "nchan": 1,
+   "chan_width_hz": 117187500.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 245511321874.27353,
+   "freq_max_hz": 245511321874.27353,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 6,
+   "obsid": 1,
+   "n_rows": 94938,
+   "nchan": 1,
+   "chan_width_hz": 117187500.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 245541869969.97665,
+   "freq_max_hz": 245541869969.97665,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 7,
+   "obsid": 1,
+   "n_rows": 94938,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 241540252716.05582,
+   "freq_max_hz": 241540252716.05582,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 8,
+   "obsid": 1,
+   "n_rows": 94938,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 241678924591.05582,
+   "freq_max_hz": 241678924591.05582,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 9,
+   "obsid": 1,
+   "n_rows": 94938,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 241745941192.61832,
+   "freq_max_hz": 241745941192.61832,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 10,
+   "obsid": 1,
+   "n_rows": 94938,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 241770141632.07144,
+   "freq_max_hz": 241770141632.07144,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 11,
+   "obsid": 2,
+   "n_rows": 97567,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 241080189550.01294,
+   "freq_max_hz": 242955189550.01294,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 12,
+   "obsid": 2,
+   "n_rows": 97567,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 242809689550.01294,
+   "freq_max_hz": 244684689550.01294,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 13,
+   "obsid": 3,
+   "n_rows": 129935,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 241063718666.02792,
+   "freq_max_hz": 242938718666.02792,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 14,
+   "obsid": 3,
+   "n_rows": 129935,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 242793218666.02792,
+   "freq_max_hz": 244668218666.02792,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 15,
+   "obsid": 4,
+   "n_rows": 221344,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 231216693314.67126,
+   "freq_max_hz": 231216693314.67126,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 16,
+   "obsid": 4,
+   "n_rows": 221344,
+   "nchan": 1,
+   "chan_width_hz": 58593750.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 230534015092.015,
+   "freq_max_hz": 230534015092.015,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 17,
+   "obsid": 4,
+   "n_rows": 221276,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.048,
+   "freq_min_hz": 231760692287.54346,
+   "freq_max_hz": 233635692287.54346,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 18,
+   "obsid": 5,
+   "n_rows": 282509,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 231643921109.6744,
+   "freq_max_hz": 233518921109.6744,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 19,
+   "obsid": 5,
+   "n_rows": 282509,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 244031929120.62454,
+   "freq_max_hz": 245906929120.62454,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 20,
+   "obsid": 5,
+   "n_rows": 282509,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 245948929120.62454,
+   "freq_max_hz": 247823929120.62454,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 21,
+   "obsid": 5,
+   "n_rows": 282509,
+   "nchan": 8,
+   "chan_width_hz": 117187500.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 230109429561.5896,
+   "freq_max_hz": 230929742061.5896,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 22,
+   "obsid": 6,
+   "n_rows": 341408,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 231651251970.975,
+   "freq_max_hz": 233526251970.975,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 23,
+   "obsid": 6,
+   "n_rows": 341408,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 244039454111.0747,
+   "freq_max_hz": 245914454111.0747,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 24,
+   "obsid": 6,
+   "n_rows": 356929,
+   "nchan": 16,
+   "chan_width_hz": 125000000.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 245956454111.0747,
+   "freq_max_hz": 247831454111.0747,
+   "corr_type": [
+    9,
+    12
+   ]
+  },
+  {
+   "ddid": 25,
+   "obsid": 6,
+   "n_rows": 356929,
+   "nchan": 8,
+   "chan_width_hz": 117187500.0,
+   "t_int_s": 6.047999588012695,
+   "freq_min_hz": 230116695434.7733,
+   "freq_max_hz": 230937007934.7733,
+   "corr_type": [
+    9,
+    12
+   ]
+  }
+ ],
+ "casatools": "6.7.0-31"
+}

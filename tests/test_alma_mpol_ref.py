@@ -27,6 +27,7 @@ import textwrap
 import numpy as np
 import pytest
 
+from crosscheck import alma
 from evidence.plugin import record
 from external_bridge import _subprocess as sp
 
@@ -34,7 +35,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 EXAMPLES = pathlib.Path(os.environ.get("MPOL_EXAMPLES", ROOT / ".external" / "mpol-examples"))
 EXAMPLES_COMMIT = "5a7c3f0b373f62341ca4baf5869f95e916bbabb3"
 WORKER_DIR = ROOT / "src" / "external_bridge"
-SUBSAMPLE = pathlib.Path("~/data/alma_imlup/subsample_1000").expanduser()
+SUBSAMPLE = alma.imlup_subsample()
 OBSID_DICT = {0: [0, 1, 2, 3, 4], 1: [5, 6, 7, 8, 9, 10], 2: [11, 12], 3: [13, 14], 4: [15, 16, 17], 5: [18, 19, 20, 21], 6: [22, 23, 24, 25]}
 C = 299792458.0
 ARCSEC = np.pi / 180.0 / 3600.0
@@ -61,7 +62,7 @@ pytestmark = [
     pytest.mark.skipif(_example_commit() != EXAMPLES_COMMIT, reason=f"MPoL-dev/examples not cloned at {EXAMPLES_COMMIT[:8]} in {EXAMPLES}"),
 ]
 
-needs_subsample = pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason="the stride-1000 subsample is not in ~/data/alma_imlup/subsample_1000")
+needs_subsample = pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason=f"the stride-1000 subsample is not in {SUBSAMPLE}")
 needs_asdf = pytest.mark.skipif(not _asdf_ok(), reason="asdf/visread not in .venv-mpol (rerun scripts/setup_external.sh mpol)")
 
 

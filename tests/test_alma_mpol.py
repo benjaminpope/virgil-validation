@@ -20,11 +20,11 @@ virgil.radio"); in float64 throughout.
 * test 3, objective and gradients (tier A): -ln L and its gradients with
   respect to the pixels and every nuisance, torch autograd against jax, and
   against exact references;
-* test 4, IM Lup scale (tier B): the objective on all 26 ddids and 7
+* test 4, IM Lup scale (tier A, as it runs on every PR): the objective on all 26 ddids and 7
   observations of the stride-1000 subsample.
 
-CI's pinned virgil has no ``virgil.radio`` and CI has no `.venv-mpol`, so the
-module skips there.
+The module skips only where ``virgil.radio`` or `.venv-mpol` is missing; CI installs
+both, and the IM Lup subsample is committed under data/, so CI runs it.
 """
 
 import os
@@ -48,7 +48,8 @@ from external_bridge import _subprocess as sp  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 EXAMPLES = pathlib.Path(os.environ.get("MPOL_EXAMPLES", ROOT / ".external" / "mpol-examples"))
 EXAMPLES_COMMIT = "5a7c3f0b373f62341ca4baf5869f95e916bbabb3"  # MPoL-dev/examples, fetched 2026-10-19
-SUBSAMPLE = pathlib.Path("~/data/alma_imlup/subsample_1000").expanduser()
+# committed under data/ (2.5 MB, see its README) so CI runs the test; IMLUP_SUBSAMPLE overrides (and must exist)
+SUBSAMPLE = alma.imlup_subsample()
 MAS = alma.MAS
 OBSID_DICT = {0: [0, 1, 2, 3, 4], 1: [5, 6, 7, 8, 9, 10], 2: [11, 12], 3: [13, 14], 4: [15, 16, 17], 5: [18, 19, 20, 21], 6: [22, 23, 24, 25]}
 OBS_MAP = vbm.obs_of_ddid(OBSID_DICT, 26)
@@ -506,8 +507,8 @@ def test_the_sigma_and_gain_gradients_obey_the_chain_rule_of_the_map(case):
 IMLUP_SIGMA = [1.12, 1.15, 1.13, 1.13, 1.13, 1.14, 1.14, 1.14, 1.14, 1.13, 1.14, 1.11, 1.10, 1.08, 1.06, 1.13, 1.13, 1.07, 1.67, 1.67, 1.66, 1.75, 1.99, 1.99, 1.99, 2.08]
 
 
-@pytest.mark.validates("pipeline:alma-imlup", roots=["mpol", "mathematics"], tier="B", headline="rel_mpol_vs_virgil")
-@pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason="the stride-1000 subsample is not in ~/data/alma_imlup/subsample_1000")
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], tier="A", headline="rel_mpol_vs_virgil")
+@pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason=f"the stride-1000 subsample is not in {SUBSAMPLE}")
 def test_the_objective_matches_mpol_on_all_26_ddids_and_7_observations_of_im_lup(tmp_path):
     """On the whole stride-1000 subsample (42,424 visibilities, 26 ddids, 7 observations) at MPoL-like
     parameters (the model-free sigma scales as sigma factors, amplitude factors within 4%, offsets of

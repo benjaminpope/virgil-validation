@@ -32,7 +32,7 @@ C = 299792458.0
 MAS = np.pi / 180 / 3600 / 1000
 SOURCES = [(0.010, 300.0, 100.0), (0.005, -200.0, -400.0)]  # Jy, East mas, North mas (the CASA simulation)
 IMLUP_MS = pathlib.Path("~/data/alma_imlup/ms/IMLup_continuum.ms").expanduser()
-SUBSAMPLE = pathlib.Path("~/data/alma_imlup/subsample_1000").expanduser()
+SUBSAMPLE = alma.imlup_subsample()
 
 
 def _have_casa(name, module="casatools"):
