@@ -103,3 +103,31 @@ def test_the_ensemble_step_reads_its_datasets_row():
     table = "| dataset | kept | best χ²/N |\n|---|---|---|\n| 2008_agb_J | 6/8 | 0.70 |\n| 2010_lowH | 1/8 | 2512 |\n"
     assert step.number(step.row_of(table, "2008_agb_J")[1]) == 6 and step.number(step.row_of(table, "2010_lowH")[2]) == 2512
     assert step.row_of(table, "2024_obj1_pionier") is None
+
+
+def test_the_informed_track_is_given_what_the_paper_says_the_object_is_and_none_of_its_values():
+    c = Campaign(HERE / "contests")
+    orders = expand(c)
+    assert sorted(o.key_str for o in orders["informed_fit"]) == ["2004_data2", "2018_disk"]  # the built families
+    assert c.level("informed_fit") == "informed" and c.level("member") == "open"
+    fit = find(c, "informed_fit/2004_data2", orders)
+    assert fit.decisions["model"]["value"] == "spotted_star_binary"
+    assert find(c, "informed_fit/2018_disk", orders).decisions["model"] == {"value": "star_rim_planet_disk", "source": "rule:0"}
+    text = work.brief(c, fit)
+    assert "limb-darkened elliptical disk with one bright spot" in text and "INFORMED stage" in text
+    assert "sealed_2004.md" not in text and "5.5 mas" not in text and "PA 90" not in text  # the paper's values
+    # The blind members of the same dataset are given none of it.
+    member = find(c, "member/2004_data2_m0", orders)
+    assert "paper_model" not in json.dumps(work.order_record(c, member, "x")["units"])
+    assert "informed_2004.md" not in work.brief(c, member) and "spot" not in work.brief(c, member)
+    # No number in the informed table: structure only.
+    table = (HERE / "contests" / "informed_models.yml").read_text()
+    says = [line for line in table.splitlines() if line.strip().startswith("says:")]
+    assert says and not any(re.search(r"\d", line) for line in says)
+
+
+def test_the_informed_families_take_no_number_from_a_paper():
+    source = (REPO / "scripts" / "contest_informed.py").read_text()
+    families = source[source.index("FAMILIES = {"):source.index("# A value for the constructor")]
+    code = "\n".join(line.split("#")[0] for line in families.splitlines())  # comments cite the papers; code must not
+    assert not re.search(r"\d", code)  # prior kinds are words; their scales come from the data's baselines

@@ -186,6 +186,11 @@ A note is a Markdown file with optional front matter: `applies_to` (a selector),
 - **`verify`** recomputes each run folder's hash against its record, checks attempt numbering and
   docket references, and with `--base` reports a changed or deleted ledger record or docket line
   as a violation and any edit to the plan, registry, notes or prompts as `MANDATE CHANGED`.
+- **Three levels of knowledge.** *Open* is what a blind analysis may use. *Informed* is what a
+  publication says the object is (a model family, a source class): notes with `visibility: informed`
+  and `informed_columns` reach only stages marked `informed: true`, every record of such a stage
+  says `informed`, and `check` refuses a blind stage that reads an informed one. *Sealed* is the
+  published values.
 - **Sealed material** (the published answer, for a blind reanalysis) reaches only stages marked
   `sealed`, and `check` refuses a plan that routes a sealed stage into an open one. With
   `sealed_root` the answers are not in the campaign at all, and a sealed stage refuses to run on a

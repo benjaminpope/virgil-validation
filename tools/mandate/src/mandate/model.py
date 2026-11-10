@@ -35,7 +35,7 @@ MANDATE_PATHS = (PLAN, "registry")
 KINDS = ("decide", "exclude", "annotate", "request", "resolve")
 STAGE_KEYS = {
     "doc", "over", "by", "needs", "run", "worker", "prompt", "playbook", "decisions", "result", "status_key",
-    "requires", "expects", "promote", "review", "sealed", "uses", "slurm", "digest",
+    "requires", "expects", "promote", "review", "sealed", "informed", "uses", "slurm", "digest",
 }
 
 
@@ -70,6 +70,10 @@ def option_text(decision: dict, value) -> str:
     return str(options[value]) if isinstance(options, dict) and value in options else str(value)
 
 
+def _rank(level) -> int:
+    return {"open": 0, "informed": 1, "sealed": 2}.get(level, 2 if level is True else 0)
+
+
 def matches(row: dict, where: dict) -> bool:
     """A selector is ``{column: value}`` or ``{column: [values]}``; every column must match."""
     for col, want in (where or {}).items():
@@ -98,6 +102,7 @@ class Campaign:
         self.stages: dict[str, dict] = self.plan.get("stages") or {}
         self.unit_id: str = self.plan.get("unit_id", "id")
         self.sealed_columns = set(self.plan.get("sealed_columns") or [])
+        self.informed_columns = set(self.plan.get("informed_columns") or [])
         self.humans = set(self.plan.get("humans") or [])
         runs = os.environ.get("MANDATE_RUNS") or self.plan.get("runs_root", "runs")
         self.runs_root = (self.root / runs).resolve()
@@ -138,9 +143,22 @@ class Campaign:
     def linked(self, kind: str, unit_id: str) -> set[str]:
         return self._linked.get((kind, unit_id), set())
 
-    def open_row(self, row: dict, sealed: bool = False) -> dict:
-        """A registry row as a stage may see it: sealed columns only reach sealed stages."""
-        return row if sealed else {k: v for k, v in row.items() if k not in self.sealed_columns}
+    def level(self, stage: str) -> str:
+        """What a stage may know: ``open`` (blind), ``informed`` or ``sealed``.
+
+        Three levels of knowledge about the answer. *Open* is what a blind analysis may use: the data and facts
+        about the data. *Informed* adds what a publication says the object is (a model family, a source class),
+        so an informed stage's results are never blind results. *Sealed* adds the published values themselves and
+        is for scoring only.
+        """
+        st = self.stages.get(stage) or {}
+        return "sealed" if st.get("sealed") else ("informed" if st.get("informed") else "open")
+
+    def open_row(self, row: dict, sealed: bool | str = False) -> dict:
+        """A registry row as a stage of the given level may see it (``sealed`` is a level, or True for sealed)."""
+        rank = _rank(sealed)
+        hidden = (self.sealed_columns if rank < 2 else set()) | (self.informed_columns if rank < 1 else set())
+        return {k: v for k, v in row.items() if k not in hidden}
 
     # ---- docket ---------------------------------------------------------------------------
 
@@ -324,12 +342,16 @@ class Campaign:
             for col in (st.get("over") or {}):
                 if col in self.sealed_columns and not st.get("sealed"):
                     out.append(f"stage {name}: selects on sealed column {col!r} but is not a sealed stage")
+                if col in self.informed_columns and self.level(name) == "open":
+                    out.append(f"stage {name}: selects on informed column {col!r} but is a blind stage")
             for label, need in (st.get("needs") or {}).items():
                 up = (need or {}).get("stage", label)
                 if up not in self.stages:
                     out.append(f"stage {name}: needs unknown stage {up!r}" + hint(up, set(self.stages)))
                 elif self.stages[up].get("sealed") and not st.get("sealed"):
                     out.append(f"stage {name}: reads sealed stage {up!r} but is not sealed itself")
+                elif _rank(self.level(up)) > _rank(self.level(name)):
+                    out.append(f"stage {name}: is blind but reads informed stage {up!r}; its results would not be blind")
                 kinds = {r.get("kind") for r in self.links}
                 if (need or {}).get("link") and need["link"] not in kinds:
                     out.append(f"stage {name}: no link of kind {need['link']!r} in registry/links.csv"
@@ -386,8 +408,10 @@ def actor() -> str:
     return os.environ.get("MANDATE_ACTOR") or os.environ.get("USER") or "unknown"
 
 
-def read_notes(c: Campaign, units: list[dict], stage: str, sealed: bool) -> list[dict]:
-    """Notes that apply to these units at this stage. Sealed notes reach sealed stages only."""
+def read_notes(c: Campaign, units: list[dict], stage: str, sealed: bool | str) -> list[dict]:
+    """Notes that apply to these units at this stage. A note's ``visibility`` (open, informed, sealed) must not
+    exceed the stage's level (``sealed``: a level, or True for sealed)."""
+    sealed, level = _rank(sealed) == 2, _rank(sealed)
     out = []
     paths = sorted((c.root / "notes").glob("*.md"))
     vault = c.sealed_root()
@@ -399,7 +423,7 @@ def read_notes(c: Campaign, units: list[dict], stage: str, sealed: bool) -> list
         if text.startswith("---"):
             _, head, body = text.split("---", 2)
             meta = yaml.safe_load(head) or {}
-        if meta.get("visibility", "open") == "sealed" and not sealed:
+        if _rank(meta.get("visibility", "open")) > level:
             continue
         if meta.get("stages") and stage not in meta["stages"]:
             continue

@@ -82,7 +82,14 @@ def contests():
     """{relative path: text} of the contest campaign's generated files."""
     tasks = assigned("scripts/contest_images.py", "TASKS")
     stars = assigned("scripts/contest_images.py", "MEMBER_STARS")
+    informed = yaml.safe_load((HERE / "contests" / "informed_models.yml").read_text())["datasets"]
     out, rows = {}, []
+
+    def paper(label):
+        """The informed entry of a dataset: its own label, or the longest entry its label starts with."""
+        keys = [k for k in informed if label == k or label.startswith(k)]
+        return informed[max(keys, key=len)] if keys else {}
+
     for index, t in enumerate(tasks):
         for k in range(MEMBERS):
             rows.append({
@@ -96,6 +103,9 @@ def contests():
                 # What this member tries: contest_images.member_settings.
                 "member_star": stars[k % len(stars)],
                 "member_halo": "yes" if t.get("halo_members") and k % 8 >= 4 else "no",
+                # Informed: what the contest paper says the object is (informed_models.yml). Never given to a blind stage.
+                "paper_model": paper(t["label"]).get("family", ""),
+                "paper_model_built": "yes" if paper(t["label"]).get("built") else "no",
             })
     out["contests/registry/units.csv"] = table(rows)
     manifest = yaml.safe_load((REPO / "contests" / "manifest.yml").read_text())["contests"]
@@ -113,6 +123,19 @@ def contests():
         out[f"contests/notes/given_{year}.md"] = note(
             {"applies_to": {"year": year}, "source": f"contests/manifest.yml ({c.get('bibcode')})",
              "generated_by": "campaigns/build_registries.py"}, "\n".join(body))
+        entries = {k: v for k, v in informed.items() if k.startswith(year)}
+        if entries:
+            head = (f"What the {year} contest paper ({c.get('bibcode')}) says each object is. Structure only: no published "
+                    + "value is here, and none may be used as a start, a bound or a constant.")
+            body = [head, ""]
+            for label, e in entries.items():
+                body.append(f"- {label}: {e['says']}. Model family: `{e['family']}`"
+                            + ("" if e.get("built") else " (not built)") + "."
+                            + (f" Spectra: {e['spectra']}." if e.get("spectra") else ""))
+            out[f"contests/notes/informed_{year}.md"] = note(
+                {"applies_to": {"year": year}, "visibility": "informed",
+                 "source": f"campaigns/contests/informed_models.yml ({c.get('bibcode')})",
+                 "generated_by": "campaigns/build_registries.py"}, "\n".join(body))
         targets = c.get("targets") or {}
         body = ["Revealed after the deadline. For scoring only, never for imaging.", "",
                 f"Instrument and simulation: {c.get('instrument')}", "",

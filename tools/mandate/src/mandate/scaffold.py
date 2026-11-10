@@ -75,6 +75,11 @@ What to ask
   subtraction method)? List the allowed values. May an agent pick, or must a person approve?
 - Published answers. Which datasets have a published result, and in which column or note does
   it live? Those become sealed, with a scoring stage that is the only one to see them.
+- Published descriptions. Should an analysis use what a paper says the object *is* (a spotted
+  star, a ringed disk, a binary) to choose its model? That knowledge is `informed`: it goes in
+  notes with `visibility: informed` and in `informed_columns`, an agent stage can extract it from
+  the paper with a verbatim quote and a person approving, and only stages marked `informed: true`
+  see it. Keep a blind stage beside the informed one where you can; never mix their results.
 - Code. Which repositories should be pinned to a commit?
 - People. Who may approve?
 
@@ -87,14 +92,16 @@ Rules for you
 - Leave `authority` out (it then needs a person) unless they said an agent may choose.
 - A per-dataset special case does not go in the plan. It goes in the docket later, with a reason.
 - Human notes and paper extracts go in `notes/` as Markdown, each with `applies_to` and, for
-  anything that reveals a published result, `visibility: sealed`.
+  anything that says what a paper found the object to be, `visibility: informed`; for anything
+  that gives a published value, `visibility: sealed`.
 
 The plan
 --------
     campaign: NAME
     unit_id: COLUMN
     humans: [NAME, ...]
-    sealed_columns: [COLUMN, ...]
+    sealed_columns: [COLUMN, ...]                     # published values: scoring stages only
+    informed_columns: [COLUMN, ...]                   # what a paper says the object is: informed stages only
     ignore_columns: [COLUMN, ...]
     versions: {NAME: {git: PATH, pin: COMMIT}}        # or {cmd: SHELL, pin: TEXT}
     stages:
@@ -115,6 +122,7 @@ The plan
           NAME: {default: V, options: [V, ...], authority: agent|human,   # options may be {NAME: "flag text"}
                  rules: [{when: {COLUMN: VALUE}, use: V}], doc: when to change it}
         sealed: true                                  # may see sealed columns, notes and stages
+        informed: true                                # may see informed columns and notes; results are not blind
         slurm: ["--gres=gpu:1", "--time=02:00:00"]
       AGENT_STAGE:
         worker: agent
@@ -161,6 +169,8 @@ def columns(c: Campaign) -> str:
         empty = values.pop("", 0)
         if name in c.sealed_columns:
             shown = "(sealed)"
+        elif name in c.informed_columns:
+            shown = "(informed) " + ", ".join(f"{v} ({n})" for v, n in values.most_common(8))
         elif len(values) > 8:
             shown = f"{len(values)} different values, e.g. " + ", ".join(v for v, _ in values.most_common(3))
         else:
@@ -186,6 +196,9 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
     lines.append("People who approve: " + (", ".join(sorted(c.humans)) or "NOBODY (add `humans:`)") + ".")
     if c.sealed_columns:
         lines.append("Sealed answers, seen only by sealed stages: " + ", ".join(sorted(c.sealed_columns)) + ".")
+    if c.informed_columns:
+        lines.append("Informed by publications, seen only by informed and sealed stages: "
+                     + ", ".join(sorted(c.informed_columns)) + ".")
     for name, spec in (c.plan.get("versions") or {}).items():
         lines.append(f"Code: {name} " + (f"pinned to {spec['pin']}" if spec.get("pin") else "recorded, not pinned") + ".")
     feeds = collections.defaultdict(list)
@@ -201,7 +214,7 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
     for stage in c.order_of_stages():
         st = c.stages[stage]
         by = st.get("by", [c.unit_id])
-        kind = st.get("worker", "code") + (", sealed" if st.get("sealed") else "")
+        kind = st.get("worker", "code") + ("" if c.level(stage) == "open" else ", " + c.level(stage))
         lines += ["", f"{stage}  [{kind}]  {len(orders.get(stage, []))} order(s) now"]
         if st.get("doc"):
             lines.append(f"  {st['doc'].strip()}")
@@ -241,6 +254,8 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
                 lines.append(f"    {rule['use']} for {_where(rule.get('when'))}.")
         if st.get("sealed"):
             lines.append("  May see the sealed columns and notes.")
+        elif st.get("informed"):
+            lines.append("  Informed: may use what a publication says the object is, never its values. Its results are not blind.")
     loose = unassigned(c)
     if loose:
         lines += ["", f"{len(loose)} units are selected by no stage: "

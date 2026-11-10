@@ -494,3 +494,43 @@ def test_why_traces_a_blocked_order_to_its_cause_and_an_author_may_withdraw(make
     (root / "notes").mkdir()
     assert main(["-C", str(root / "notes"), "orders", "--state", "fail"]) == 0  # found from a subfolder
     assert "fit/r2-" in capsys.readouterr().out
+
+
+# ---- three levels of knowledge: blind, informed by a publication, sealed -----------------------
+
+
+def test_what_a_paper_says_the_object_is_reaches_informed_stages_and_never_blind_ones(make):
+    plan = {
+        "informed_columns": ["paper_model"], "sealed_columns": ["answer"],
+        "stages": {
+            "blind": {"over": {"role": "sci"}, "run": STEP},
+            "informed_fit": {"over": {"role": "sci"}, "informed": True, "run": STEP + " # {decision.model}",
+                             "decisions": {"model": {"default": "image", "options": ["image", "spotted_star"],
+                                                     "rules": [{"when": {"paper_model": "spotted_star"}, "use": "spotted_star"}]}}},
+            "score": {"over": {"role": "sci"}, "sealed": True, "run": STEP, "needs": {"informed_fit": {"match": ["id"]}}},
+        },
+    }
+    rows = [dict(r, paper_model="spotted_star" if r["id"] == "s1" else "") for r in ROWS]
+    root = make(plan, rows)
+    (root / "notes").mkdir()
+    (root / "notes" / "paper.md").write_text("---\napplies_to: {id: s1}\nvisibility: informed\n---\na star with one bright spot\n")
+    (root / "notes" / "truth.md").write_text("---\napplies_to: {id: s1}\nvisibility: sealed\n---\nspot at 2.5 mas\n")
+    commit(root)
+    c = Campaign(root)
+    blind, informed, score = find(c, "blind/s1"), find(c, "informed_fit/s1"), find(c, "score/s1")
+    assert "bright spot" not in work.brief(c, blind) and "paper_model" not in work.brief(c, blind)
+    text = work.brief(c, informed)
+    assert "bright spot" in text and "INFORMED stage" in text and "2.5 mas" not in text and "| answer" not in text
+    assert informed.decisions["model"] == {"value": "spotted_star", "source": "rule:0"}
+    assert "2.5 mas" in work.brief(c, score) and "bright spot" in work.brief(c, score)
+    c = run_all(root, "blind", "informed_fit")
+    assert find(c, "informed_fit/s1").attempts[-1]["knowledge"] == "informed"
+    assert find(c, "blind/s1").attempts[-1]["knowledge"] == "open"
+    assert "informed_fit  [code, informed]" in scaffold.explain(c) and "| informed_fit | code, informed |" in audit.status_page(c)
+    # A blind stage may neither read an informed one nor select on an informed column.
+    plan["stages"]["blind"]["needs"] = {"informed_fit": {"match": ["id"]}}
+    plan["stages"]["blind"]["over"] = {"paper_model": "spotted_star"}
+    (root / "mandate.yaml").write_text(yaml.safe_dump({"humans": ["ben"], "unit_id": "id", **plan}))
+    problems = Campaign(root).problems()
+    assert any("is blind but reads informed stage" in p for p in problems)
+    assert any("selects on informed column" in p for p in problems)

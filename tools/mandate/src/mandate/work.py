@@ -55,7 +55,7 @@ def require_issuable(o: Order) -> None:
 def order_record(c: Campaign, o: Order, plan_commit: str) -> dict:
     """What the worker is given: units, decisions, inputs and where to write. Nothing sealed
     unless the stage is."""
-    sealed = bool(c.stages[o.stage].get("sealed"))
+    sealed = c.level(o.stage)
     inputs = {
         up: [{**m, "path": str(c.runs_root / m["stage"] / m["order"])} for m in members]
         for up, members in o.inputs.items()
@@ -71,8 +71,9 @@ def order_record(c: Campaign, o: Order, plan_commit: str) -> dict:
         "out": str(out_dir(c, o)),
         "plan_commit": plan_commit,
         "campaign": c.plan.get("campaign"),
+        "knowledge": sealed,
     }
-    if sealed and c.sealed_root() is not None:
+    if sealed == "sealed" and c.sealed_root() is not None:
         if not c.sealed_root().exists():
             raise MandateError(f"{o.ref} is a sealed stage and {c.sealed_root()} is not on this machine")
         record["sealed_root"] = str(c.sealed_root())
@@ -128,7 +129,7 @@ def fill(template: str, c: Campaign, o: Order, record: dict) -> str:
 
 
 def _hidden(c: Campaign, o: Order) -> set:
-    return set() if c.stages[o.stage].get("sealed") else c.sealed_columns
+    return set(o.units[0]) - set(c.open_row(o.units[0], c.level(o.stage))) if o.units else set()
 
 
 def digest(folder: pathlib.Path, include: list[str] | None = None) -> str:
@@ -184,6 +185,7 @@ def record_attempt(c: Campaign, o: Order, **fields) -> dict:
         "finished": now(),
         "campaign": c.campaign_state(),
         "digest": digest(out, st.get("digest")),
+        "knowledge": c.level(o.stage),
         **fields,
     }
     text = json.dumps(attempt, indent=1, sort_keys=True) + "\n"
@@ -261,10 +263,14 @@ def brief(c: Campaign, o: Order) -> str:
     A fresh agent given only this text can do the work, so no context is lost between sessions.
     """
     st = c.stages[o.stage]
-    sealed = bool(st.get("sealed"))
+    sealed = c.level(o.stage)
     out = out_dir(c, o) if o.id else None
     lines = [f"# Work order {o.ref}", "", f"Campaign: {c.plan.get('campaign', c.root.name)}. State: {o.state}"
              + (f" ({o.reason})." if o.reason else "."), "", "## Your mandate", "", RULES]
+    if sealed == "informed":
+        note = ("This is an INFORMED stage: it may use what a publication says the object is (the notes marked "
+                + "informed), so nothing it produces is a blind result. It may not use published values.")
+        lines += [note, ""]
     lines += [f"Run folder: `{out}`" if out else "Run folder: none yet (the order is not issuable).", ""]
     lines += ["## The task", "", (st.get("doc") or "").strip() or "(the plan gives no description)", ""]
     if st.get("worker") == "agent":

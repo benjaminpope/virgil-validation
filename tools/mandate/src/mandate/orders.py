@@ -69,7 +69,7 @@ def unit_hash(c: Campaign, stage: str, unit: dict) -> str:
     the plan lists under ``ignore_columns`` and the ones this stage itself writes are left out."""
     st = c.stages[stage]
     skip = c.ignore_columns | set((st.get("promote") or {}).values())
-    row = {k: v for k, v in c.open_row(unit, bool(st.get("sealed"))).items() if k not in skip}
+    row = {k: v for k, v in c.open_row(unit, c.level(stage)).items() if k not in skip}
     return sha(canonical(row), 12)
 
 
@@ -79,7 +79,7 @@ def resolve_decisions(c: Campaign, stage: str, order: Order) -> dict:
     for name, d in (c.stages[stage].get("decisions") or {}).items():
         out[name] = {"value": d.get("default"), "source": "default"}
         for i, rule in enumerate(d.get("rules") or []):
-            if all(matches(u, rule.get("when") or {}) for u in order.units):
+            if all(matches(c.open_row(u, c.level(stage)), rule.get("when") or {}) for u in order.units):
                 out[name] = {"value": rule["use"], "source": f"rule:{i}"}
                 break
     for e in c.active("decide"):

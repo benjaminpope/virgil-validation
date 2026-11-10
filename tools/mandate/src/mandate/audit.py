@@ -43,7 +43,7 @@ def status_page(c: Campaign, orders: dict[str, list[Order]] | None = None) -> st
               "|---|---|---|" + "---|" * len(STATES)]
     for stage, os_ in orders.items():
         counts = [str(sum(o.state == s for o in os_) or "") for s in STATES]
-        worker = c.stages[stage].get("worker", "code") + (", sealed" if c.stages[stage].get("sealed") else "")
+        worker = c.stages[stage].get("worker", "code") + ("" if c.level(stage) == "open" else ", " + c.level(stage))
         lines.append(f"| {stage} | {worker} | {len(os_)} | " + " | ".join(counts) + " |")
     trouble = [o for os_ in orders.values() for o in os_ if o.state in ("fail", "error", "blocked", "parked")]
     lines += ["", f"## Needs attention ({len(trouble)})", ""]

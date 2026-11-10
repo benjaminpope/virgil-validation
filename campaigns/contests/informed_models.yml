@@ -1,0 +1,63 @@
+# What each contest's paper says its object *is*, and the model family that follows from it.
+#
+# This is the "informed" level of knowledge: only stages marked `informed: true` are given it, and what they
+# produce is never a blind result. It holds the structure a paper describes and none of its values: no
+# diameter, position, flux ratio or angle. Those stay sealed, so the published parameters remain a test.
+#
+#   says      the structure, in our words, from the description in contests/manifest.yml (`targets`)
+#   family    the model family in scripts/contest_informed.py (FAMILIES), or a name for one not built yet
+#   built     whether that family exists; only built families get an `informed_fit` order
+#   spectra   spectrophotometric information the contest supplied, and whether a stage uses it
+#
+# Drafted by an agent from the manifest. A person should check each `says` against the paper before relying on it.
+datasets:
+  2004_data1:
+    says: a star inside an asymmetric shell
+    family: star_in_shell
+    built: false
+    note: the blind track already images this with and without an analytic central star
+  2004_data2:
+    says: a binary whose primary is a limb-darkened elliptical disk with one bright spot; the companion is a small disk
+    family: spotted_star_binary
+    built: true
+  2006_disk:
+    says: a geometrically thin disk
+    family: thin_disk
+    built: false
+  2008_agb:
+    says: an AGB star (given before the deadline as well)
+    family: evolved_star_with_surface_structure
+    built: false
+    spectra: three bands, grey within each band; imaged per band already
+  2008_agn:
+    says: an AGN (given before the deadline as well)
+    family: agn
+    built: false
+    spectra: three bands, grey within each band; imaged per band already
+  2010_low:
+    says: the surface of a red supergiant with convective structure, and a much fainter companion far outside the stellar disk
+    family: structured_supergiant_with_companion
+    built: false
+    spectra: a spectral energy distribution per channel was given before the deadline; the blind track uses it for a star and an image with different spectra
+  2018_disk:
+    says: a star as a small uniform disk, an inner disk with a bright rim, a point-like planet, and an extended outer disk
+    family: star_rim_planet_disk
+    built: true
+  2022_gravity:
+    says: a high-contrast test
+    family: star_with_faint_companion
+    built: false
+  2022_ami:
+    says: a high-contrast test
+    family: star_with_faint_companion
+    built: false
+  2024_obj1:
+    says: a Wolf-Rayet binary with a pinwheel spiral of several turns
+    family: pinwheel_spiral
+    built: false
+    spectra: uncalibrated OI_FLUX spectra were supplied; cubes per wavelength were asked for; not used by any stage yet
+  2024_obj2:
+    says: an inclined Herbig disk with several rings and gaps, and point-like companions with their own spectra
+    family: ringed_disk_with_companions
+    built: false
+    spectra: uncalibrated OI_FLUX spectra were supplied; the companions have their own spectra; not used by any stage yet

@@ -12,11 +12,16 @@
 # scripts/contest_images.py, and use only what contestants had before the deadline (notes/given_<year>.md). Truths,
 # targets, winners and scores are sealed (notes/sealed_<year>.md) and reach the scoring stage only.
 #
-# The registry and the given_/sealed_ notes are generated: python campaigns/build_registries.py
+# There is also an informed track, kept apart from the blind one. `informed_fit` is given what the contest paper
+# says the object *is* (notes/informed_<year>.md, from informed_models.yml) and fits that model family from the
+# data; it is given none of the paper's values, which stay sealed. Its results are never blind results.
+#
+# The registry and the given_/informed_/sealed_ notes are generated: python campaigns/build_registries.py
 campaign: imaging-contests
 unit_id: id
 runs_root: runs                      # set MANDATE_RUNS to a /fred path on OzSTAR
 humans: [ben]
+informed_columns: [paper_model, paper_model_built]   # what the contest paper says the object is (informed_models.yml)
 versions:
   virgil: {cmd: "python -c 'import virgil; print(virgil.__version__)'"}
 
@@ -62,3 +67,29 @@ stages:
       python {root}/../../scripts/score_2004.py {input.ensemble}/2004_data2_ensemble.npz
       --data "${CONTEST_DATA:-$HOME/data/imaging_contests}" --out {out}
     result: exit
+
+  informed_fit:
+    doc: Fit the model family the contest paper describes (a spotted star with a companion; a star, a rim, a planet
+      and a disk) as a ladder of nested models compared by BIC. Structure from the paper, every value from the
+      data, starting from likelihood maps and random draws scaled by the data's own baselines. Not a blind result.
+    informed: true
+    playbook: playbooks/informed.md
+    over: {paper_model_built: "yes"}
+    by: [label]
+    run: >-
+      python {root}/../../scripts/contest_informed.py --task {unit.task} --model {decision.model}
+      --data "${CONTEST_DATA:-$HOME/data/imaging_contests}" --out {out} {decision.effort}
+    requires: [converged]
+    digest: ["*.json"]
+    slurm: ["--gres=gpu:1", "--time=02:00:00", "--mem=32G"]
+    decisions:
+      model:
+        doc: The family named in informed_models.yml for this dataset. A new family is a new entry there and in
+          scripts/contest_informed.py, by pull request, not a choice made here.
+        default: spotted_star_binary
+        options: [spotted_star_binary, star_rim_planet_disk]
+        rules:
+          - {when: {paper_model: star_rim_planet_disk}, use: star_rim_planet_disk}
+      effort:
+        default: full
+        options: {full: "", smoke: "--smoke"}
