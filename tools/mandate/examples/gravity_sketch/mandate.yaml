@@ -1,0 +1,50 @@
+# A sketch of a VLTI/GRAVITY campaign with virgil: the same shape as the NIRCam one.
+# Calibrators are fitted one by one and combined into a per-night calibration; each science
+# epoch is fitted with its night's calibration; epochs of one target are then combined into an
+# orbit. The commands are placeholders for the group's own thin drivers: this plan is checked
+# by `mandate check` and expanded by the tests, not run.
+campaign: gravity-sketch
+unit_id: obs_id
+humans: [ben]
+versions:
+  virgil: {cmd: "python -c 'import virgil; print(virgil.__version__)'"}
+
+stages:
+  calibrator_fit:
+    doc: Fit a uniform disk to one calibrator observation.
+    over: {role: calibrator}
+    run: virgil-pipeline star {unit.path} --output {out}
+    result: summary.json
+    status_key: worst_check
+
+  night_calibration:
+    doc: Per-night transfer function and error floor from that night's calibrators.
+    over: {role: calibrator}
+    by: [night]
+    needs:
+      calibrator_fit: {match: [night]}
+    run: python drivers/night_calibration.py --order {order}
+
+  epoch_fit:
+    doc: One science epoch, with its night's calibration. The model follows the science case.
+    over: {role: science}
+    needs:
+      night_calibration: {match: [night]}
+    run: python drivers/epoch_fit.py --order {order} --model {decision.model}
+    decisions:
+      model:
+        default: binary
+        options: [binary, disk, star]
+        authority: human
+        rules:
+          - {when: {science_case: disk}, use: disk}
+
+  orbit:
+    doc: A blind orbit from every passing epoch of one binary. Needs at least three epochs.
+    over: {role: science, science_case: binary}
+    by: [target]
+    needs:
+      epoch_fit: {match: [target], min: 3}
+    run: python drivers/orbit.py --order {order}
+    result: summary.json
+    status_key: worst_check

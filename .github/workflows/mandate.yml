@@ -1,0 +1,27 @@
+name: mandate
+on:
+  push:
+    branches: [main]
+    paths: ["tools/mandate/**", ".github/workflows/mandate.yml"]
+  pull_request:
+    paths: ["tools/mandate/**", ".github/workflows/mandate.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/mandate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: environment
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -e ".[test]" ruff
+      - name: lint
+        run: .venv/bin/ruff check .
+      - name: tests
+        run: .venv/bin/python -m pytest -v
+      - name: demo campaign, end to end
+        run: PATH="$PWD/.venv/bin:$PATH" bash examples/nircam_demo/demo.sh

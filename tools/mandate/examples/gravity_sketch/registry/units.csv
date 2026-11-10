@@ -1,0 +1,10 @@
+obs_id,target,night,mjd,role,science_case,programme,published,path
+g01,TOY-BIN-1,2024-01-10,60319,science,binary,0112.C-0001,yes,data/g01.fits
+g02,TOY-BIN-1,2024-03-02,60371,science,binary,0112.C-0001,yes,data/g02.fits
+g03,TOY-BIN-1,2025-02-11,60717,science,binary,0114.C-0007,no,data/g03.fits
+g04,TOY-YSO-1,2024-01-10,60319,science,disk,0112.C-0002,no,data/g04.fits
+g05,TOY-BIN-2,2024-03-02,60371,science,binary,0112.C-0003,no,data/g05.fits
+c01,TOY-CAL-A,2024-01-10,60319,calibrator,,0112.C-0001,,data/c01.fits
+c02,TOY-CAL-B,2024-01-10,60319,calibrator,,0112.C-0002,,data/c02.fits
+c03,TOY-CAL-A,2024-03-02,60371,calibrator,,0112.C-0001,,data/c03.fits
+c04,TOY-CAL-C,2025-02-11,60717,calibrator,,0114.C-0007,,data/c04.fits

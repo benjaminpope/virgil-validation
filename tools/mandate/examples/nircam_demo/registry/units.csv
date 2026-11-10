@@ -1,0 +1,15 @@
+obs_id,target_name,filter,t_min,proposal_id,role,published,published_sep_mas
+toy_ref_a_f444w,TOY-REF-A,F444W,100,9001,reference,,
+toy_ref_b_f444w,TOY-REF-B,F444W,140,9001,reference,,
+toy_ref_c_f444w,TOY-REF-C,F444W,200,9002,reference,,
+toy_ref_d_f444w,TOY-REF-D,F444W,260,9002,reference,,
+toy_ref_e_f444w,TOY-REF-E,F444W,300,9003,reference,,
+toy_ref_a_f200w,TOY-REF-A,F200W,100,9001,reference,,
+toy_ref_c_f200w,TOY-REF-C,F200W,200,9002,reference,,
+toy_ref_e_f200w,TOY-REF-E,F200W,300,9003,reference,,
+toy_sci_1_f444w,TOY-PLANET-1,F444W,150,9001,science,yes,412
+toy_sci_1_f200w,TOY-PLANET-1,F200W,150,9001,science,yes,412
+toy_sci_2_f444w,TOY-DISK-1,F444W,250,9002,science,no,
+toy_sci_3_f444w,TOY-PLANET-2,F444W,290,9003,science,no,
+toy_sci_4_f444w,TOY-UNKNOWN,F444W,310,9003,science,no,
+toy_planned_f444w,TOY-PLANNED,F444W,,9004,,,
