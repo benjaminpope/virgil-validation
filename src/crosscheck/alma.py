@@ -14,9 +14,27 @@ inverse transform (Thompson, Moran and Swenson, *Interferometry and
 Synthesis in Radio Astronomy*, ch. 5).
 """
 
+import os
+import pathlib
+
 import numpy as np
 
 MAS = np.pi / 180.0 / 3600.0 / 1000.0  # radians per milliarcsecond
+
+
+def imlup_subsample():
+    """Directory of the stride-1000 IM Lup subsample (26 ``ddid_NN.npz``).
+
+    ``IMLUP_SUBSAMPLE`` overrides and must hold ``ddid_*.npz`` (``RuntimeError`` otherwise, no fallback).
+    Without it, the copy committed under ``data/alma_imlup/subsample_1000``, then ``~/data/alma_imlup/subsample_1000``.
+    """
+    if "IMLUP_SUBSAMPLE" in os.environ:
+        path = pathlib.Path(os.environ["IMLUP_SUBSAMPLE"]).expanduser()
+        if not list(path.glob("ddid_*.npz")):
+            raise RuntimeError(f"IMLUP_SUBSAMPLE={path} has no ddid_*.npz")
+        return path
+    path = pathlib.Path(__file__).resolve().parents[2] / "data" / "alma_imlup" / "subsample_1000"
+    return path if list(path.glob("ddid_*.npz")) else pathlib.Path("~/data/alma_imlup/subsample_1000").expanduser()
 
 
 def pixel_offsets(npix, pixel_scale_mas):
