@@ -228,8 +228,10 @@ def explain(c: Campaign, orders: dict[str, list[Order]] | None = None) -> str:
             lines.append(f"  Runs: {(st.get('run') or '').strip()}")
         if st.get("requires"):
             lines.append("  Passes only if these checks pass: " + ", ".join(st["requires"]) + ".")
+        elif st.get("worker", "code") == "code" and st.get("result") == "exit":
+            lines.append("  No result file: it passes whenever its command exits cleanly.")
         elif st.get("worker", "code") == "code":
-            lines.append("  No required checks: it passes whenever its result says so.")
+            lines.append(f"  No required checks: it passes on the `{st.get('status_key', 'status')}` of its result file.")
         for dname, d in (st.get("decisions") or {}).items():
             options = ", ".join(option_names(d))
             who = "an agent may change it for one order, with a reason" if d.get("authority") == "agent" else (

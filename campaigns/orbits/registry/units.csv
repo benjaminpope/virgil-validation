@@ -1,0 +1,16 @@
+slug,target,instrument,band,source,bibcode,template,phase3_files,phase3_nights,heldout_nights,published_kind,published_epochs_below_resolution
+ak_for,AK For,GRAVITY,K,trackb,2023A&A...672A.119G,,22,21,9,sb2_subresolution,12
+gl229b_blind,"Gl 229 B, calibrated blind fit",GRAVITY,K,trackb,2024Natur.634.1070X,,0,0,2,alias_track,0
+hd188088,HD 188088,GRAVITY,K,trackb,2023A&A...672A.119G,,23,22,6,alias_track,0
+hd210763,HD 210763,GRAVITY,K,trackb,2023A&A...672A.119G,,13,12,3,alias_track,2
+hd41255,HD 41255,GRAVITY,K,trackb,2023A&A...672A.119G,,15,15,1,alias_track,0
+hd70937,HD 70937,GRAVITY,K,trackb,2023A&A...672A.119G,,19,18,4,alias_track,4
+hd_224974,HD 224974,GRAVITY,K,trackb,2023A&A...672A.119G,,13,13,1,sb2_subresolution,7
+hd_9312,HD 9312,GRAVITY,K,trackb,2023A&A...672A.119G,,13,13,3,sb2_subresolution,4
+hr6819_blind,"HR 6819, calibrated blind fit",GRAVITY,K,trackb,2025A&A...694A.208K,gravity_single_high_combined_2023-2025,0,0,0,alias_track,0
+iota_peg,iota peg,MIRC-X,H,oidb,,,,,,,
+kap_vel,"kappa Vel (Markeb, HD 81188, HIP 45941)",GRAVITY,K,trackb,2026PASP..138b4203R,,8,8,0,short_arc,0
+ll_aqr,LL Aqr,GRAVITY,K,trackb,2023A&A...672A.119G,,32,29,20,sb2_subresolution,7
+nn_del,NN Del,PIONIER,H,trackb,2019A&A...632A..31G,,12,6,2,short_arc,1
+omi_leo,o Leo,GRAVITY,K,trackb,2023A&A...672A.119G,,11,11,2,alias_track,0
+v963_cen,V963 Cen,GRAVITY,K,trackb,2023A&A...672A.119G,,26,20,12,sb2_subresolution,8

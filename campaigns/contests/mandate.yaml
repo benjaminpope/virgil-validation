@@ -1,0 +1,64 @@
+# Blind images of the interferometric imaging contests' data.
+#
+# The image model and its starts are the ones this repository's contest campaign settled on, from the methods of
+# the winning entries taken together (design/plan_imaging_contests.md, C2d; design/contest_convergence_diagnosis.md):
+# a Gaussian-process image in a whitened basis, started from a CLEAN image, with the hyperparameters chosen by the
+# evidence; an ensemble of 8 members per dataset that alternates an analytic central star (point, none, disk, none)
+# and randomises the field, the pixel scale and the CLEAN gain; a refit with rescaled errors when they are off by
+# more than 1.3x; then a chi2 filter and an average over the members. A per-pixel maximum-entropy fit from a
+# Gaussian start stalls on these data and is not offered.
+#
+# Each dataset's settings (field, start, star, channels) are the registry's columns, read from TASKS in
+# scripts/contest_images.py, and use only what contestants had before the deadline (notes/given_<year>.md). Truths,
+# targets, winners and scores are sealed (notes/sealed_<year>.md) and reach the scoring stage only.
+#
+# The registry and the given_/sealed_ notes are generated: python campaigns/build_registries.py
+campaign: imaging-contests
+unit_id: id
+runs_root: runs                      # set MANDATE_RUNS to a /fred path on OzSTAR
+humans: [ben]
+versions:
+  virgil: {cmd: "python -c 'import virgil; print(virgil.__version__)'"}
+
+stages:
+  member:
+    doc: One ensemble member of one dataset, a CLEAN-started Gaussian-process image. The member number fixes
+      whether it has a central star and a halo and seeds its field, pixel scale and CLEAN gain.
+    playbook: playbooks/imaging.md
+    run: >-
+      python {root}/../../scripts/contest_images.py --task {unit.task} --member {unit.member}
+      --data "${CONTEST_DATA:-$HOME/data/imaging_contests}" --out {out} {decision.effort}
+      && python steps/member_result.py {out} {unit.label}_m{unit.member}
+    requires: [finished]
+    digest: ["*.npz", "*.txt"]
+    slurm: ["--gres=gpu:1", "--time=06:00:00", "--mem=48G"]
+    decisions:
+      effort:
+        doc: "`smoke` checks that the script runs (three weights, 50 steps). It is never a result."
+        default: full
+        options: {full: "", smoke: "--smoke"}
+
+  ensemble:
+    doc: Combine a dataset's members. Keeps those whose chi2/N on the quoted errors is within 1.5x of the best
+      (or of 1), averages them on a common grid with a per-pixel standard deviation, and compares the best
+      evidence with and without a star.
+    playbook: playbooks/imaging.md
+    over: {}
+    by: [label]
+    needs:
+      member: {match: [label], min: 4}   # fewer than half the members is not an ensemble
+    run: python steps/combine.py --order {order}
+    requires: [members_kept]
+
+  score_2004:
+    doc: Score the 2004 data2 ensemble with the contest's own metric against the truth rebuilt from the paper.
+      The only stage given anything revealed after a deadline.
+    sealed: true
+    over: {label: 2004_data2}
+    by: [label]
+    needs:
+      ensemble: {match: [label]}
+    run: >-
+      python {root}/../../scripts/score_2004.py {input.ensemble}/2004_data2_ensemble.npz
+      --data "${CONTEST_DATA:-$HOME/data/imaging_contests}" --out {out}
+    result: exit

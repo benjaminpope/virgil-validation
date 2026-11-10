@@ -394,7 +394,7 @@ def test_explain_reads_the_plan_back_in_plain_words(make):
     assert "Reads the 1 passing results nearest in t of fit with the same band." in text
     assert "Choice order: 2 by default (allowed: 1, 2); an agent may change it for one order, with a reason." in text
     assert "Choice prior: flat by default (allowed: flat, log); a change needs a person." in text
-    assert "Passes only if these checks pass: ok." in text and "No required checks" in text
+    assert "Passes only if these checks pass: ok." in text and "No required checks: it passes on the `status` of its result file." in text
     assert "fit -> basis, sci" in text and "score  [code, sealed]" in text
 
 

@@ -2,9 +2,9 @@ name: mandate
 on:
   push:
     branches: [main]
-    paths: ["tools/mandate/**", ".github/workflows/mandate.yml"]
+    paths: ["tools/mandate/**", "campaigns/**", "oidb/trackb/**", "contests/manifest.yml", "scripts/contest_images.py", "scripts/gallery_orbits.py", ".github/workflows/mandate.yml"]
   pull_request:
-    paths: ["tools/mandate/**", ".github/workflows/mandate.yml"]
+    paths: ["tools/mandate/**", "campaigns/**", "oidb/trackb/**", "contests/manifest.yml", "scripts/contest_images.py", "scripts/gallery_orbits.py", ".github/workflows/mandate.yml"]
 
 jobs:
   test:
@@ -25,3 +25,9 @@ jobs:
         run: .venv/bin/python -m pytest -v
       - name: demo campaign, end to end
         run: PATH="$PWD/.venv/bin:$PATH" bash examples/nircam_demo/demo.sh
+      - name: campaigns (registries in step with their sources; plans valid; nothing sealed in the open)
+        run: |
+          .venv/bin/python ../../campaigns/build_registries.py --check
+          .venv/bin/mandate -C ../../campaigns/orbits check
+          .venv/bin/mandate -C ../../campaigns/contests check
+          .venv/bin/python -m pytest -v ../../campaigns/tests -c /dev/null --rootdir ../../campaigns
