@@ -14,6 +14,10 @@ A family is a ladder of nested models, simplest first (FAMILIES). Each rung is f
 from its priors, plus the best fit of the rung below; the best start of each rung is kept and the rungs are compared
 by BIC on the quoted errors. Writes into --out:
 
+Spectral information is used in two ways. When the data have more than one channel, every component but the
+reference gets its own spectral index, so the model is chromatic wherever the object can be. And where a file
+carries OI_FLUX spectra they are fitted with the visibilities (scale and linear trend marginalised).
+
 - <label>_<family>.json: per rung, the best parameters, chi2, N, k, BIC, how many starts reached the best chi2
   (a small number means the optimum is hard to find or not unique), and the chosen rung;
 - result.json: status and checks for the campaign (`converged`, `starts_agree`), with chi2/N of the chosen rung.
@@ -40,6 +44,7 @@ import virgil.models as vm  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
 from virgil.grid_fit import likelihood_grid  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
+from virgil.spectra import PowerLaw  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 REACH = 1.5  # positions are searched out to this many fringe periods of the shortest baseline (see prior_of)
@@ -183,6 +188,8 @@ def prior_of(kind, res, field):
         "inclination": dist.Uniform(0.0, 80.0),
         "limb": dist.Uniform(0.0, 1.0),
         "modulation": dist.Uniform(0.0, 1.0),
+        # A component's spectrum relative to the reference component: flux ratio x (lambda / lambda_0) ** index.
+        "colour": dist.Uniform(-8.0, 8.0),
         "faint": dist.LogUniform(1e-4, 1.0),  # relative to the star, which is fixed at flux 1
         "bright": dist.LogUniform(1e-3, 10.0),
         # Anywhere the data can place a source. lambda / B_min is the fringe period of the shortest baseline, not an
@@ -195,8 +202,27 @@ def prior_of(kind, res, field):
 VECTORS = ("u", "az_amps", "az_pas")  # parameters that are arrays of one coefficient here
 
 
-def make_component(maker, values):
+def chromatic(rung):
+    """The rung with every fitted flux given its own spectral index: ``flux`` becomes ``flux.ratio`` (at the data's
+    median wavelength) and ``flux.index``. Used whenever the data have more than one channel, so each component
+    may have its own colour, as the contests' polychromatic objects do."""
+    out = {}
+    for name, (maker, params) in rung.items():
+        new = {}
+        for path, kind in params.items():
+            if path == "flux":
+                new["flux.ratio"], new["flux.index"] = kind, "colour"
+            else:
+                new[path] = kind
+        out[name] = (maker, new)
+    return out
+
+
+def make_component(maker, values, wavel0=None):
     """A virgil component from ``{parameter path: number}``."""
+    values = dict(values)
+    if "flux.ratio" in values:
+        values["flux"] = PowerLaw(values.pop("flux.ratio"), values.pop("flux.index"), wavel0)
     if maker != "RingedDisk":
         return getattr(vm, maker)(**values)
     parts = {}
@@ -209,22 +235,23 @@ def make_component(maker, values):
     return vm.MultipoleDisk(profile, inc=values["inc"], pa=values["pa"], flux=values["flux"])
 
 
-def build(rung, res, field, values=None):
-    """(template System, {path: prior}) of one rung, with any given ``values`` ({path: number}) set on the template."""
+def build(rung, res, field, values=None, wavel0=None):
+    """(template System, {path: prior}) of one rung, with any given ``values`` ({path: number}) set on the template.
+    ``wavel0`` is the reference wavelength of chromatic fluxes (see `chromatic`)."""
     parts, priors = {}, {}
     for name, (maker, params) in rung.items():
         kwargs = {}
         for p in params:
             leaf = p.rsplit(".", 1)[-1]
-            value = (values or {}).get(f"{name}.{p}", PLACEHOLDER[leaf])
+            value = (values or {}).get(f"{name}.{p}", 0.0 if p == "flux.index" else PLACEHOLDER["flux" if p == "flux.ratio" else leaf])
             kwargs[p] = np.array([value]) if leaf in VECTORS else value
-        parts[name] = make_component(maker, kwargs)
+        parts[name] = make_component(maker, kwargs, wavel0)
         for p, kind in params.items():
             priors[f"{name}.{p}"] = prior_of(kind, res, field)
     return vm.System(**parts), priors
 
 
-def seeds_from_map(name, rung, datasets, res, field, carry):
+def seeds_from_map(name, rung, datasets, res, field, carry, wavel0=None):
     """Starts for a newly added component, from a likelihood map over its position and flux with the rest of the
     scene held at the best fit of the rung below. The map's highest, well separated peaks are returned as
     ``{path: value}`` (virgil's documented companion search; nothing is assumed about where the component is)."""
@@ -233,8 +260,9 @@ def seeds_from_map(name, rung, datasets, res, field, carry):
     n = int(min(121, 2 * round(2.0 * half / res) + 1))  # about half a resolution element per step
     axis = np.linspace(-half, half, n)
     fluxes = 10.0 ** np.linspace(-3.5, 0.0, 12)
-    template, _ = build(rung, res, field, carry)
-    grid = {f"{name}.dra": axis, f"{name}.ddec": axis, f"{name}.flux": fluxes}
+    template, _ = build(rung, res, field, carry, wavel0)
+    flux_path = f"{name}.flux.ratio" if "flux.ratio" in kinds else f"{name}.flux"
+    grid = {f"{name}.dra": axis, f"{name}.ddec": axis, flux_path: fluxes}
     data = datasets[0] if len(datasets) == 1 else datasets
     loglike = np.asarray(likelihood_grid(template, data=data, grid=grid))
     best_flux = np.argmax(loglike, axis=2)
@@ -243,8 +271,10 @@ def seeds_from_map(name, rung, datasets, res, field, carry):
     for flat in np.argsort(surface, axis=None)[::-1]:
         i, j = np.unravel_index(flat, surface.shape)
         if all(np.hypot(axis[i] - q[f"{name}.dra"], axis[j] - q[f"{name}.ddec"]) > 2.0 * res for q in seeds):
-            seeds.append({f"{name}.dra": float(axis[i]), f"{name}.ddec": float(axis[j]),
-                          f"{name}.flux": float(fluxes[best_flux[i, j]])})
+            seed = {f"{name}.dra": float(axis[i]), f"{name}.ddec": float(axis[j]), flux_path: float(fluxes[best_flux[i, j]])}
+            if "flux.index" in kinds:
+                seed[f"{name}.flux.index"] = 0.0  # the map is made grey; the fit then frees the colour
+            seeds.append(seed)
         if len(seeds) == PEAKS:
             break
     return seeds
@@ -262,14 +292,14 @@ def draw(priors, rng):
     return out
 
 
-def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, below=()):
-    template, priors = build(rung, res, field)
+def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, below=(), wavel0=None):
+    template, priors = build(rung, res, field, None, wavel0)
     data = datasets[0] if len(datasets) == 1 else datasets
     # Starts: for each component this rung adds that has a position, the peaks of its likelihood map with the rest
     # of the scene at the best fit below; then random draws from the priors.
     inits = []
     for comp in [c for c in rung if c not in below and "dra" in rung[c][1]]:
-        for seed in seeds_from_map(comp, rung, datasets, res, field, carry):
+        for seed in seeds_from_map(comp, rung, datasets, res, field, carry, wavel0):
             inits.append({**draw(priors, rng), **carry, **seed})
     if carry and not inits:
         inits.append({**draw(priors, rng), **carry})
@@ -295,7 +325,7 @@ def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, be
             "values": best.get("values", {})}
 
 
-def run(task, family, data_dir, out_dir, starts=32, smoke=False):
+def run(task, family, data_dir, out_dir, starts=32, smoke=False, grey=False, use_spectra=True):
     spec = tasks()[task]
     label = f"{spec['label']}_{family}"
     paths = [pathlib.Path(data_dir) / f for f in spec["files"]]
@@ -307,22 +337,47 @@ def run(task, family, data_dir, out_dir, starts=32, smoke=False):
 
         tmp = pathlib.Path(tempfile.mkdtemp())
         paths = [contest_images.select_channels(p, spec["wavel"], tmp) for p in paths]
-    datasets = [OIData(str(p)) for p in paths]
+    datasets, spectra = [], 0
+    for path in paths:
+        from astropy.io import fits
+
+        with fits.open(path) as hdus:
+            has_flux = any(h.name == "OI_FLUX" for h in hdus)
+        if has_flux and use_spectra:
+            # The contest's flux spectra are fitted with the visibilities. They are uncalibrated, so their scale and
+            # a linear trend in wavelength are marginalised: what is left constrains the components' relative colours.
+            d = OIData(str(path), extras="flux")
+            level = float(np.nanmedian(np.asarray(d.extras[0].values)))
+            d = d.with_flux_scale(scale=(level, abs(level)), per="dataset", poly_order=1)
+            spectra += 1
+        else:
+            d = OIData(str(path))
+        datasets.append(d)
+    channels = len(np.unique(np.round(np.concatenate([np.ravel(np.asarray(d.wavel, float)) for d in datasets]) * 1e9)))
+    wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel, float)) for d in datasets]))) if channels > 1 and not grey else None
     res, field = scales(datasets)
     rng = np.random.default_rng(7000 + task)
     t0, rungs, carry, below = time.time(), [], {}, ()
     for name, rung in FAMILIES[family]:
-        got = fit_rung(name, rung, datasets, res, field, rng, 3 if smoke else starts, carry, 50 if smoke else None, below)
+        rung = chromatic(rung) if wavel0 else rung
+        got = fit_rung(name, rung, datasets, res, field, rng, 3 if smoke else starts, carry, 50 if smoke else None, below, wavel0)
         carry, below = {k: v[0] for k, v in got["values"].items() if len(v) == 1}, tuple(rung)
         rungs.append(got)
         print(f"{label} {name}: chi2/N={got['chi2_red']:.3f} k={got['k']} BIC={got['bic']:.1f} "
               f"starts at best {got['starts_at_best']}/{got['starts']}")
     chosen = min(rungs, key=lambda x: x["bic"])
+    # chi2/N is on the quoted errors, which several contests made very small. The typical quoted error says what a
+    # given chi2/N means in the data's own units: residuals of about sqrt(chi2/N) times these.
+    errors = {"median_vis_error": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_vis, float)) for d in datasets]))),
+              "median_phase_error_deg": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_phi, float)) for d in datasets])))}
+    errors["implied_vis_residual"] = float(np.sqrt(chosen["chi2_red"]) * errors["median_vis_error"])
+    errors["implied_phase_residual_deg"] = float(np.sqrt(chosen["chi2_red"]) * errors["median_phase_error_deg"])
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     report = {"label": label, "task": task, "family": family, "knowledge": "informed: model family from the contest paper; no value",
-              "files": spec["files"], "resolution_mas": res, "field_mas": field, "virgil": getattr(virgil, "__version__", None),
-              "rungs": rungs, "chosen": chosen["rung"], "elapsed_s": time.time() - t0, "smoke": smoke}
+              "files": spec["files"], "resolution_mas": res, "field_mas": field, "channels": channels,
+              "chromatic": bool(wavel0), "reference_wavelength_m": wavel0, "flux_spectra_fitted": spectra, "virgil": getattr(virgil, "__version__", None),
+              "quoted_errors": errors, "rungs": rungs, "chosen": chosen["rung"], "elapsed_s": time.time() - t0, "smoke": smoke}
     (out_dir / f"{label}.json").write_text(json.dumps(report, indent=1) + "\n")
     agree = chosen["starts_at_best"] >= MIN_AGREE
     checks = {"converged": "pass" if chosen["converged"] else "fail", "starts_agree": "pass" if agree else "warn"}
@@ -342,6 +397,8 @@ def main(argv=None):
     ap.add_argument("--out", default="contest_informed")
     ap.add_argument("--starts", type=int, default=32, help="random starts per rung")
     ap.add_argument("--smoke", action="store_true", help="three starts of 50 steps: check that it runs")
+    ap.add_argument("--grey", action="store_true", help="one flux per component at every wavelength (the default gives each a spectral index when the data have more than one channel)")
+    ap.add_argument("--no-spectra", action="store_true", dest="no_spectra", help="do not fit the files' OI_FLUX spectra")
     a = ap.parse_args(argv)
     if a.list:
         for name, rungs in FAMILIES.items():
@@ -349,7 +406,7 @@ def main(argv=None):
         return 0
     if a.task is None or a.model is None:
         ap.error("--task and --model are required")
-    run(a.task, a.model, pathlib.Path(a.data).expanduser(), pathlib.Path(a.out).expanduser(), a.starts, a.smoke)
+    run(a.task, a.model, pathlib.Path(a.data).expanduser(), pathlib.Path(a.out).expanduser(), a.starts, a.smoke, a.grey, not a.no_spectra)
     return 0
 
 
