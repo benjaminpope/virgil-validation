@@ -1,0 +1,81 @@
+{
+ "label": "2008_agn_J_agn",
+ "task": 6,
+ "family": "agn",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2008/2008-Contest2_J.oifits"
+ ],
+ "resolution_mas": 0.3465033037424047,
+ "field_mas": 8.674160502204437,
+ "virgil": "0.4.1",
+ "rungs": [
+  {
+   "rung": "core+dust",
+   "k": 4,
+   "n": 1000,
+   "chi2": 446746.46275702934,
+   "chi2_red": 446.74646275702935,
+   "bic": 446774.09377814527,
+   "converged": true,
+   "starts": 8,
+   "starts_at_best": 8,
+   "failed_starts": 0,
+   "values": {
+    "dust.flux": [
+     9.99999635796879
+    ],
+    "dust.fwhm": [
+     2.7594788626466222
+    ],
+    "dust.pa": [
+     174.11265573968623
+    ],
+    "dust.ratio": [
+     0.6213134379895946
+    ]
+   }
+  },
+  {
+   "rung": "core+dust+extended",
+   "k": 8,
+   "n": 1000,
+   "chi2": 35968.208439735,
+   "chi2_red": 35.968208439734994,
+   "bic": 36023.470481966855,
+   "converged": false,
+   "starts": 9,
+   "starts_at_best": 4,
+   "failed_starts": 0,
+   "values": {
+    "dust.flux": [
+     9.999997140717955
+    ],
+    "dust.fwhm": [
+     2.523087348006843
+    ],
+    "dust.pa": [
+     164.54826932835928
+    ],
+    "dust.ratio": [
+     0.5335408452523976
+    ],
+    "extended.flux": [
+     9.999912028929888
+    ],
+    "extended.fwhm": [
+     2.9575625979659885
+    ],
+    "extended.pa": [
+     3.904261201012812
+    ],
+    "extended.ratio": [
+     0.5149793306329599
+    ]
+   }
+  }
+ ],
+ "chosen": "core+dust+extended",
+ "elapsed_s": 19.55806255340576,
+ "smoke": false
+}

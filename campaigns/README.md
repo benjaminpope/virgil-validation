@@ -8,7 +8,7 @@ drivers that already exist in `scripts/`; neither adds a fit path or a model.
 | Units | 15 systems (14 Track B records, plus iota Peg on MIRC-X) | 22 contest datasets x 8 ensemble members |
 | Model | virgil's `OrbitPipeline`, every setting its default | CLEAN-started Gaussian-process image, evidence-chosen hyperparameters, star on and off |
 | Stages | `data` (dry run) -> `orbit` -> `compare` (sealed) | `member` -> `ensemble` -> `score_2004` (sealed) |
-| Informed track | none | `informed_fit`: the model family the contest paper describes, fitted from the data (2004 data2, 2018) |
+| Informed track | none | `informed_fit`: the model family the contest paper describes, fitted from the data (all 22 datasets) |
 | Open knowledge | `notes/*.md`: data facts from the papers and our records | `notes/given_<year>.md`: what contestants had before the deadline |
 | Sealed | the published orbit (`notes/sealed_*.md`, `oidb/trackb/`) | targets, truths, winners, scores (`notes/sealed_<year>.md`) |
 
@@ -36,9 +36,9 @@ scoring. An informed result is never a blind one and is labelled so in every rec
 dataset: add its line to `informed_models.yml`, add the family to `scripts/contest_informed.py`, and add the option
 to the plan.
 
-`informed_fit` has been run once through mandate, on 2004 data2 on a CPU: it converges on a star, a companion and a
-spot from the data alone, with chi2/N about 28, so the family is recovered and the fit is not yet good. The 2018
-family has only been smoke-tested, on the 2004 file.
+Every dataset has a family, and each has been run once on its real data except 2018 (data not downloadable) and
+2024 Obj2 MATISSE N (did not finish): `contests/first_run/README.md` has the table. Seven of twenty reach chi2/N below
+3; most optima were reached by only one or two of the starts.
 
 Known limits. `scripts/gallery_orbits.py` still opens `oidb/trackb/<slug>.json`, which holds the published orbit
 next to the file list, for the instrument and template; `tests/test_gallery_orbits.py` is what keeps it from reading

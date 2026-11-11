@@ -1,0 +1,187 @@
+{
+ "label": "2024_obj1_matisseL_pinwheel_arcs",
+ "task": 18,
+ "family": "pinwheel_arcs",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2024/Obj1_MATISSE_2.9-4.2.fits"
+ ],
+ "resolution_mas": 1.747902646971275,
+ "field_mas": 118.0153385177928,
+ "virgil": "0.4.1",
+ "rungs": [
+  {
+   "rung": "star+envelope",
+   "k": 2,
+   "n": 16845,
+   "chi2": 143242.20089471573,
+   "chi2_red": 8.503544131476149,
+   "bic": 143261.6645130274,
+   "converged": true,
+   "starts": 8,
+   "starts_at_best": 7,
+   "failed_starts": 0,
+   "values": {
+    "envelope.flux": [
+     8.577054017245601
+    ],
+    "envelope.sigma": [
+     13.397228416737807
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+arc",
+   "k": 7,
+   "n": 16845,
+   "chi2": 54781.765685278166,
+   "chi2_red": 3.252108381435332,
+   "bic": 54849.88834936905,
+   "converged": true,
+   "starts": 9,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "arc.flux": [
+     3.2011314110225255
+    ],
+    "arc.length": [
+     7.452988668580725
+    ],
+    "arc.pa": [
+     110.46298004876678
+    ],
+    "arc.radius": [
+     6.6314165170332755
+    ],
+    "arc.width": [
+     6.037804994850388
+    ],
+    "envelope.flux": [
+     9.999993100746202
+    ],
+    "envelope.sigma": [
+     12.790450545257048
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+two arcs",
+   "k": 12,
+   "n": 16845,
+   "chi2": 47634.11740806774,
+   "chi2_red": 2.8277896947502366,
+   "bic": 47750.89911793783,
+   "converged": true,
+   "starts": 9,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "arc.flux": [
+     7.6147628001293555
+    ],
+    "arc.length": [
+     4.811618065267314
+    ],
+    "arc.pa": [
+     90.44123091364278
+    ],
+    "arc.radius": [
+     5.578314811414842
+    ],
+    "arc.width": [
+     7.738562366811042
+    ],
+    "arc_b.flux": [
+     6.28818585208523
+    ],
+    "arc_b.length": [
+     44.055139717259344
+    ],
+    "arc_b.pa": [
+     359.8910785192494
+    ],
+    "arc_b.radius": [
+     13.302028918929999
+    ],
+    "arc_b.width": [
+     4.645717692945881
+    ],
+    "envelope.flux": [
+     9.9992730077037
+    ],
+    "envelope.sigma": [
+     26.510859056949396
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+three arcs",
+   "k": 17,
+   "n": 16845,
+   "chi2": 40547.94889819533,
+   "chi2_red": 2.407120741952825,
+   "bic": 40713.38965384462,
+   "converged": false,
+   "starts": 9,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "arc.flux": [
+     0.11870091128792407
+    ],
+    "arc.length": [
+     0.349580529394255
+    ],
+    "arc.pa": [
+     7.723907376069034
+    ],
+    "arc.radius": [
+     19.312245705962955
+    ],
+    "arc.width": [
+     0.349580529394255
+    ],
+    "arc_b.flux": [
+     9.999999999999993
+    ],
+    "arc_b.length": [
+     21.479181719663043
+    ],
+    "arc_b.pa": [
+     58.75402275888019
+    ],
+    "arc_b.radius": [
+     11.269571457778312
+    ],
+    "arc_b.width": [
+     7.340891708666991
+    ],
+    "arc_c.flux": [
+     3.037272064535207
+    ],
+    "arc_c.length": [
+     0.349580529394255
+    ],
+    "arc_c.pa": [
+     96.55895598904667
+    ],
+    "arc_c.radius": [
+     5.038834206566364
+    ],
+    "arc_c.width": [
+     5.1140707870349456
+    ],
+    "envelope.flux": [
+     9.999999999999993
+    ],
+    "envelope.sigma": [
+     27.58726659391135
+    ]
+   }
+  }
+ ],
+ "chosen": "star+envelope+three arcs",
+ "elapsed_s": 1988.8826341629028,
+ "smoke": false
+}

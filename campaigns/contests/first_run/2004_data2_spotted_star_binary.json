@@ -1,0 +1,131 @@
+{
+ "label": "2004_data2_spotted_star_binary",
+ "task": 1,
+ "family": "spotted_star_binary",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2004/2004-data2.fits"
+ ],
+ "resolution_mas": 0.9472986513710331,
+ "field_mas": 13.669097325858104,
+ "virgil": "0.4.1",
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 4,
+   "n": 325,
+   "chi2": 104127.08110045693,
+   "chi2_red": 320.3910187706367,
+   "bic": 104150.21640118625,
+   "converged": true,
+   "starts": 8,
+   "starts_at_best": 4,
+   "failed_starts": 0,
+   "values": {
+    "star.diam": [
+     5.911214409578377
+    ],
+    "star.pa": [
+     145.9368209866809
+    ],
+    "star.ratio": [
+     0.6375395204711154
+    ],
+    "star.u": [
+     4.1303687304053576e-05
+    ]
+   }
+  },
+  {
+   "rung": "star+companion",
+   "k": 8,
+   "n": 325,
+   "chi2": 17705.65923666798,
+   "chi2_red": 54.47895149743994,
+   "bic": 17751.929838126616,
+   "converged": true,
+   "starts": 14,
+   "starts_at_best": 3,
+   "failed_starts": 0,
+   "values": {
+    "companion.ddec": [
+     0.05427556240166709
+    ],
+    "companion.diam": [
+     0.048028898418566474
+    ],
+    "companion.dra": [
+     10.014046860966076
+    ],
+    "companion.flux": [
+     0.10701285361822226
+    ],
+    "star.diam": [
+     5.398903104473544
+    ],
+    "star.pa": [
+     128.5795496209112
+    ],
+    "star.ratio": [
+     0.6328111244659289
+    ],
+    "star.u": [
+     1.750166696393168e-05
+    ]
+   }
+  },
+  {
+   "rung": "star+companion+spot",
+   "k": 12,
+   "n": 325,
+   "chi2": 9214.957840664321,
+   "chi2_red": 28.353716432813297,
+   "bic": 9284.363742852278,
+   "converged": true,
+   "starts": 14,
+   "starts_at_best": 3,
+   "failed_starts": 0,
+   "values": {
+    "companion.ddec": [
+     -0.028759040212460008
+    ],
+    "companion.diam": [
+     0.048028553551897175
+    ],
+    "companion.dra": [
+     10.0075057174003
+    ],
+    "companion.flux": [
+     0.10592470742189863
+    ],
+    "spot.ddec": [
+     -2.1155857909019837
+    ],
+    "spot.diam": [
+     1.2264203886418665
+    ],
+    "spot.dra": [
+     1.2038704324116485
+    ],
+    "spot.flux": [
+     0.08478835079100248
+    ],
+    "star.diam": [
+     4.986539341159477
+    ],
+    "star.pa": [
+     115.67529700155501
+    ],
+    "star.ratio": [
+     0.668608956057126
+    ],
+    "star.u": [
+     1.7499166176809915e-05
+    ]
+   }
+  }
+ ],
+ "chosen": "star+companion+spot",
+ "elapsed_s": 64.60430335998535,
+ "smoke": false
+}
