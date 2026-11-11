@@ -1,0 +1,241 @@
+{
+ "label": "2024_obj1_gravity_pinwheel_arcs",
+ "task": 13,
+ "family": "pinwheel_arcs",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2024/Obj1_GRAVITY_2.0-2.5.fits"
+ ],
+ "resolution_mas": 1.5958627972419839,
+ "field_mas": 70.00687173383808,
+ "channels": 14,
+ "chromatic": true,
+ "reference_wavelength_m": 2.2404999526770553e-06,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.01152473969425262,
+  "median_phase_error_deg": 0.16709841778334092,
+  "implied_vis_residual": 0.012478694705075904,
+  "implied_phase_residual_deg": 0.18092991221826996
+ },
+ "residual_image": {
+  "chi2_red": 1.1724525984051233,
+  "flux_relative_to_model": 0.0004506395860897343,
+  "npix": 64,
+  "pixel_scale_mas": 0.7979313986209919,
+  "field_mas": 51.067609511743484,
+  "converged": true,
+  "file": "2024_obj1_gravity_pinwheel_arcs_rest.npz"
+ },
+ "gp_disk": null,
+ "rungs": [
+  {
+   "rung": "star+envelope",
+   "k": 3,
+   "n": 565,
+   "chi2": 1309.0083325293372,
+   "chi2_red": 2.3168289071315704,
+   "bic": 1328.0188097227765,
+   "converged": true,
+   "starts": 4,
+   "starts_at_best": 2,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "envelope.flux.index": [
+     2.1144960198553537
+    ],
+    "envelope.flux.ratio": [
+     2.982771719379683
+    ],
+    "envelope.sigma": [
+     12.578483427173923
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+arc",
+   "k": 9,
+   "n": 565,
+   "chi2": 1023.6802639086751,
+   "chi2_red": 1.8118234759445577,
+   "bic": 1080.711695488993,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "arc.flux.index": [
+     4.628895720218434
+    ],
+    "arc.flux.ratio": [
+     0.158646668623618
+    ],
+    "arc.length": [
+     0.5410432328903656
+    ],
+    "arc.pa": [
+     176.1282998054419
+    ],
+    "arc.radius": [
+     43.06506624059491
+    ],
+    "arc.width": [
+     22.49212931317124
+    ],
+    "envelope.flux.index": [
+     1.6130913148094006
+    ],
+    "envelope.flux.ratio": [
+     2.9055046149476302
+    ],
+    "envelope.sigma": [
+     12.113707085638133
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+two arcs",
+   "k": 15,
+   "n": 565,
+   "chi2": 735.8788623375452,
+   "chi2_red": 1.3024404643142393,
+   "bic": 830.9312483047419,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "arc.flux.index": [
+     0.547303796462602
+    ],
+    "arc.flux.ratio": [
+     1.9764543138252566
+    ],
+    "arc.length": [
+     22.36685984204115
+    ],
+    "arc.pa": [
+     78.58896943625471
+    ],
+    "arc.radius": [
+     10.933504675253293
+    ],
+    "arc.width": [
+     19.970061901680552
+    ],
+    "arc_b.flux.index": [
+     3.2412104244114612
+    ],
+    "arc_b.flux.ratio": [
+     0.5588755471284412
+    ],
+    "arc_b.length": [
+     19.895829112084712
+    ],
+    "arc_b.pa": [
+     213.1138753517424
+    ],
+    "arc_b.radius": [
+     12.715468855329252
+    ],
+    "arc_b.width": [
+     8.163600503786785
+    ],
+    "envelope.flux.index": [
+     4.630408499262439
+    ],
+    "envelope.flux.ratio": [
+     0.3665118350978971
+    ],
+    "envelope.sigma": [
+     56.46290637601005
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+three arcs",
+   "k": 21,
+   "n": 565,
+   "chi2": 662.406396329395,
+   "chi2_red": 1.1724007014679556,
+   "bic": 795.4797366834703,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "arc.flux.index": [
+     -1.7441719141674517
+    ],
+    "arc.flux.ratio": [
+     0.7337540827403264
+    ],
+    "arc.length": [
+     31.107765756945888
+    ],
+    "arc.pa": [
+     82.66788659403251
+    ],
+    "arc.radius": [
+     13.871562174131258
+    ],
+    "arc.width": [
+     0.4765220047443862
+    ],
+    "arc_b.flux.index": [
+     2.349769225687254
+    ],
+    "arc_b.flux.ratio": [
+     1.4389131507383843
+    ],
+    "arc_b.length": [
+     48.41251417078756
+    ],
+    "arc_b.pa": [
+     124.56408866847454
+    ],
+    "arc_b.radius": [
+     20.25461310036264
+    ],
+    "arc_b.width": [
+     16.053464338248283
+    ],
+    "arc_c.flux.index": [
+     1.4194628376680782
+    ],
+    "arc_c.flux.ratio": [
+     0.9230870144824511
+    ],
+    "arc_c.length": [
+     12.749342759550046
+    ],
+    "arc_c.pa": [
+     213.5867693854991
+    ],
+    "arc_c.radius": [
+     9.80445937685204
+    ],
+    "arc_c.width": [
+     7.214701329962271
+    ],
+    "envelope.flux.index": [
+     -7.867143646652301
+    ],
+    "envelope.flux.ratio": [
+     0.20261508432771969
+    ],
+    "envelope.sigma": [
+     3.3761417672524856
+    ]
+   }
+  }
+ ],
+ "chosen": "star+envelope+three arcs",
+ "elapsed_s": 243.4548749923706,
+ "smoke": false
+}

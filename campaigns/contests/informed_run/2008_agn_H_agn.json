@@ -1,0 +1,130 @@
+{
+ "label": "2008_agn_H_agn",
+ "task": 7,
+ "family": "agn",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2008/2008-Contest2_H.oifits"
+ ],
+ "resolution_mas": 0.4725044888252368,
+ "field_mas": 10.84270097994765,
+ "channels": 8,
+ "chromatic": true,
+ "reference_wavelength_m": 1.6250000385298335e-06,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.000490649908897467,
+  "median_phase_error_deg": 0.8257979509493005,
+  "implied_vis_residual": 0.002171255311744591,
+  "implied_phase_residual_deg": 3.654373831344504
+ },
+ "residual_image": {
+  "chi2_red": 1.1780322356516109,
+  "flux_relative_to_model": 1.9972040056514069,
+  "npix": 46,
+  "pixel_scale_mas": 0.2362522444126184,
+  "field_mas": 10.867603242980447,
+  "converged": false,
+  "file": "2008_agn_H_agn_rest.npz"
+ },
+ "gp_disk": null,
+ "rungs": [
+  {
+   "rung": "core+dust",
+   "k": 7,
+   "n": 1000,
+   "chi2": 360049.86895329243,
+   "chi2_red": 360.04986895329245,
+   "bic": 360098.2232402453,
+   "converged": true,
+   "starts": 10,
+   "starts_at_best": 6,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "dust.ddec": [
+     0.16943270045278158
+    ],
+    "dust.dra": [
+     0.004679984795266323
+    ],
+    "dust.flux.index": [
+     -0.4540796311647659
+    ],
+    "dust.flux.ratio": [
+     9.999949118324805
+    ],
+    "dust.fwhm": [
+     3.188191179559718
+    ],
+    "dust.pa": [
+     0.00016049517775713928
+    ],
+    "dust.ratio": [
+     0.5771228044235062
+    ]
+   }
+  },
+  {
+   "rung": "core+dust+extended",
+   "k": 14,
+   "n": 1000,
+   "chi2": 19582.960266488495,
+   "chi2_red": 19.582960266488495,
+   "bic": 19679.668840394246,
+   "converged": false,
+   "starts": 10,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "dust.ddec": [
+     -1.028374741827381
+    ],
+    "dust.dra": [
+     0.3508188078888763
+    ],
+    "dust.flux.index": [
+     7.998126726473933
+    ],
+    "dust.flux.ratio": [
+     9.999998332219942
+    ],
+    "dust.fwhm": [
+     2.1379851995820442
+    ],
+    "dust.pa": [
+     3.950246611157156
+    ],
+    "dust.ratio": [
+     0.5002657508495439
+    ],
+    "extended.ddec": [
+     0.8890517279309016
+    ],
+    "extended.dra": [
+     -0.3005519883776575
+    ],
+    "extended.flux.index": [
+     -7.985410492642901
+    ],
+    "extended.flux.ratio": [
+     9.999998335886094
+    ],
+    "extended.fwhm": [
+     2.5001025521237765
+    ],
+    "extended.pa": [
+     120.7172216407537
+    ],
+    "extended.ratio": [
+     0.4262067465735486
+    ]
+   }
+  }
+ ],
+ "chosen": "core+dust+extended",
+ "elapsed_s": 177.11741876602173,
+ "smoke": false
+}

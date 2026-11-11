@@ -36,9 +36,9 @@ scoring. An informed result is never a blind one and is labelled so in every rec
 dataset: add its line to `informed_models.yml`, add the family to `scripts/contest_informed.py`, and add the option
 to the plan.
 
-Every dataset has a family, and each has been run once on its real data except 2018 (data not downloadable) and
-2024 Obj2 MATISSE N (did not finish): `contests/first_run/README.md` has the table. Seven of twenty reach chi2/N below
-3; most optima were reached by only one or two of the starts.
+Every dataset has a family. `contests/informed_run/README.md` has the table of the second pass (17 of 22 datasets), with
+what a non-parametric image on top of each model and a multipolar GP disk find. The first pass's families were
+mis-specified; several of the second pass's still are, and the table says which.
 
 Known limits. `scripts/gallery_orbits.py` still opens `oidb/trackb/<slug>.json`, which holds the published orbit
 next to the file list, for the instrument and template; `tests/test_gallery_orbits.py` is what keeps it from reading
