@@ -1,0 +1,17 @@
+{
+ "campaign": "gallery-orbits",
+ "decisions": {},
+ "dropped": {},
+ "id": "nn_del-4fb719bb",
+ "inputs": {},
+ "issued": "2026-11-11T09:01:44Z",
+ "key": {
+  "slug": "nn_del"
+ },
+ "knowledge": "open",
+ "plan_commit": "aa08b0f532ba3a65a7ddbdac0a46f82f17328f63",
+ "stage": "data",
+ "units": [
+  "nn_del"
+ ]
+}
