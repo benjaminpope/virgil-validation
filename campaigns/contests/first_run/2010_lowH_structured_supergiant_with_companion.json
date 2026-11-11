@@ -1,0 +1,160 @@
+{
+ "label": "2010_lowH_structured_supergiant_with_companion",
+ "task": 9,
+ "family": "structured_supergiant_with_companion",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2010/Mystery-Low_HK.oifits"
+ ],
+ "resolution_mas": 1.1919583645072784,
+ "field_mas": 45.298764510832974,
+ "virgil": "0.4.1",
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 2,
+   "n": 1952,
+   "chi2": 12411573.727558263,
+   "chi2_red": 6358.388180101569,
+   "bic": 12411588.880777797,
+   "converged": false,
+   "starts": 8,
+   "starts_at_best": 5,
+   "failed_starts": 0,
+   "values": {
+    "star.diam": [
+     19.554622998586943
+    ],
+    "star.u": [
+     0.9999999999999998
+    ]
+   }
+  },
+  {
+   "rung": "star+companion",
+   "k": 5,
+   "n": 1952,
+   "chi2": 10159177.234036267,
+   "chi2_red": 5204.496533830054,
+   "bic": 10159215.117085101,
+   "converged": false,
+   "starts": 14,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "companion.ddec": [
+     -67.32203977904265
+    ],
+    "companion.dra": [
+     -7.238403285932051
+    ],
+    "companion.flux": [
+     0.009903717211264023
+    ],
+    "star.diam": [
+     18.45410385700236
+    ],
+    "star.u": [
+     0.6756352826577313
+    ]
+   }
+  },
+  {
+   "rung": "star+companion+spot",
+   "k": 9,
+   "n": 1952,
+   "chi2": 9339437.157915808,
+   "chi2_red": 4784.547724342115,
+   "bic": 9339505.34740371,
+   "converged": false,
+   "starts": 14,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "companion.ddec": [
+     -67.49849817916724
+    ],
+    "companion.dra": [
+     -7.293901814063759
+    ],
+    "companion.flux": [
+     0.01052489256520207
+    ],
+    "spot.ddec": [
+     9.796767768451389
+    ],
+    "spot.diam": [
+     1.3013080845689953
+    ],
+    "spot.dra": [
+     -1.1347017038780791
+    ],
+    "spot.flux": [
+     0.006773495700538543
+    ],
+    "star.diam": [
+     18.38237256581554
+    ],
+    "star.u": [
+     0.6773972758234382
+    ]
+   }
+  },
+  {
+   "rung": "star+companion+two spots",
+   "k": 13,
+   "n": 1952,
+   "chi2": 8774648.861395478,
+   "chi2_red": 4495.20945768211,
+   "bic": 8774747.357322449,
+   "converged": false,
+   "starts": 14,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "companion.ddec": [
+     -67.58755503924498
+    ],
+    "companion.dra": [
+     -7.211705543063189
+    ],
+    "companion.flux": [
+     0.01091039252576037
+    ],
+    "spot.ddec": [
+     9.460155980146823
+    ],
+    "spot.diam": [
+     2.062701842901084
+    ],
+    "spot.dra": [
+     -0.9258866207315748
+    ],
+    "spot.flux": [
+     0.007736661382253218
+    ],
+    "spot_b.ddec": [
+     13.288798267965063
+    ],
+    "spot_b.diam": [
+     1.2345489788366937
+    ],
+    "spot_b.dra": [
+     -25.22786274297617
+    ],
+    "spot_b.flux": [
+     0.004930471623889118
+    ],
+    "star.diam": [
+     18.313105512134285
+    ],
+    "star.u": [
+     0.6573983980445858
+    ]
+   }
+  }
+ ],
+ "chosen": "star+companion+two spots",
+ "elapsed_s": 802.7806763648987,
+ "smoke": false
+}

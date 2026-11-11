@@ -1,0 +1,25 @@
+[project]
+name = "mandate"
+version = "0.1.0"
+description = "Fan agents and jobs out over many datasets under one human-approved plan, and audit what they did"
+requires-python = ">=3.11"
+dependencies = ["pyyaml"]
+
+[project.optional-dependencies]
+test = ["pytest", "numpy"]
+
+[project.scripts]
+mandate = "mandate.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120

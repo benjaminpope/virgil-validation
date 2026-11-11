@@ -1,0 +1,151 @@
+{
+ "label": "2008_agb_J_evolved_star_with_surface_structure",
+ "task": 3,
+ "family": "evolved_star_with_surface_structure",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2008/2008-Contest1_J.oifits"
+ ],
+ "resolution_mas": 0.3465033037424047,
+ "field_mas": 8.674160502204437,
+ "virgil": "0.4.1",
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 2,
+   "n": 1000,
+   "chi2": 3802.514079547596,
+   "chi2_red": 3.802514079547596,
+   "bic": 3816.3295901055603,
+   "converged": false,
+   "starts": 8,
+   "starts_at_best": 2,
+   "failed_starts": 0,
+   "values": {
+    "star.diam": [
+     4.380381668995058
+    ],
+    "star.u": [
+     0.9999999999999998
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope",
+   "k": 4,
+   "n": 1000,
+   "chi2": 1291.4615575387515,
+   "chi2_red": 1.2914615575387516,
+   "bic": 1319.09257865468,
+   "converged": false,
+   "starts": 9,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "envelope.flux": [
+     2.7080308984082877
+    ],
+    "envelope.sigma": [
+     1.2565228547662
+    ],
+    "star.diam": [
+     1.9292192128311885
+    ],
+    "star.u": [
+     0.9960223957252583
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+spot",
+   "k": 8,
+   "n": 1000,
+   "chi2": 941.4360763307448,
+   "chi2_red": 0.9414360763307448,
+   "bic": 996.6981185626018,
+   "converged": false,
+   "starts": 14,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "envelope.flux": [
+     1.9991186567182666
+    ],
+    "envelope.sigma": [
+     1.442496987157644
+    ],
+    "spot.ddec": [
+     0.0001881939058581139
+    ],
+    "spot.diam": [
+     1.0338164138371833
+    ],
+    "spot.dra": [
+     -0.031772305090269626
+    ],
+    "spot.flux": [
+     0.08974901019572543
+    ],
+    "star.diam": [
+     2.112929030977209
+    ],
+    "star.u": [
+     0.9999972162560308
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope+two spots",
+   "k": 12,
+   "n": 1000,
+   "chi2": 809.6169775569707,
+   "chi2_red": 0.8096169775569707,
+   "bic": 892.5100409047564,
+   "converged": false,
+   "starts": 14,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "values": {
+    "envelope.flux": [
+     2.132958101147375
+    ],
+    "envelope.sigma": [
+     1.3992333519722018
+    ],
+    "spot.ddec": [
+     -0.022170731831975488
+    ],
+    "spot.diam": [
+     1.0323766659086924
+    ],
+    "spot.dra": [
+     -0.04885932923494707
+    ],
+    "spot.flux": [
+     0.09535071266053817
+    ],
+    "spot_b.ddec": [
+     -3.8140715027162884
+    ],
+    "spot_b.diam": [
+     0.06121058804816056
+    ],
+    "spot_b.dra": [
+     -1.3073610447313389
+    ],
+    "spot_b.flux": [
+     0.012187353745148672
+    ],
+    "star.diam": [
+     2.0814362347086464
+    ],
+    "star.u": [
+     0.9999972162565948
+    ]
+   }
+  }
+ ],
+ "chosen": "star+envelope+two spots",
+ "elapsed_s": 465.8758656978607,
+ "smoke": false
+}

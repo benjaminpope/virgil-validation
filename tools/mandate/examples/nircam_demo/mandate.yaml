@@ -1,0 +1,79 @@
+# A toy of the NIRCam workflow: fit a wavefront to every PSF reference star, build a PCA basis
+# per filter from the fits, then analyse each science target with that basis and with the
+# reference stars taken closest in time. Every name and number here is synthetic.
+campaign: nircam-demo
+unit_id: obs_id
+runs_root: runs
+humans: [ben, hayden]            # only these names approve proposals and close requests
+sealed_columns: [published_sep_mas]   # answers: only a sealed stage sees them
+
+stages:
+  classify:
+    doc: Decide what each science target is for, from the proposal and the notes. Do not analyse data.
+    worker: agent
+    prompt: prompts/classify.md
+    over: {role: science}
+    by: [target_name]
+    expects: {science_case: [planet, disk]}
+    promote: {science_case: science_case}   # becomes a registry column once a person approves
+    review: human
+
+  wavefront:
+    doc: Fit a wavefront model to one PSF reference observation.
+    over: {role: reference}
+    run: python steps/toy.py wavefront --order {order} --modes {decision.n_modes}
+    requires: [fit_converged, residual_rms]
+    decisions:
+      n_modes:
+        doc: Fewer modes for short or faint reference exposures that do not constrain the high orders.
+        default: 6
+        options: [4, 6, 8]
+        authority: agent
+
+  basis:
+    doc: PCA over every passing wavefront fit in one filter. The order lists its members.
+    over: {role: reference}
+    by: [filter]
+    needs:
+      wavefront: {match: [filter], min: 3}
+    run: python steps/toy.py basis --order {order} --components {decision.n_components}
+    requires: [enough_members]
+    decisions:
+      n_components: {default: 2, options: [1, 2, 3], authority: human}
+
+  planet_search:
+    doc: Point-source search with the filter's basis, the two reference stars nearest in time, and the
+      reference star its own programme observed for it.
+    over: {role: science, science_case: planet}
+    needs:
+      basis: {match: [filter]}
+      wavefront: {match: [filter], nearest: {by: t_min, k: 2}}
+      own_reference: {stage: wavefront, link: psf_reference, min: 0}   # from registry/links.csv
+    run: python steps/toy.py planet --order {order}
+    requires: [injection_recovery]
+
+  disk_deconvolution:
+    doc: Deconvolve an extended source with the filter's basis; then search for embedded point sources.
+    over: {role: science, science_case: disk}
+    needs:
+      basis: {match: [filter]}
+      wavefront: {match: [filter], nearest: {by: t_min, k: 2}}
+    run: python steps/toy.py disk --order {order}
+    requires: [residual_structure]
+
+  score:
+    doc: Compare a blind result with the published one. The only stage that sees the answer.
+    sealed: true
+    over: {role: science, science_case: planet, published: "yes"}
+    needs:
+      planet_search: {match: [obs_id]}
+    run: python steps/toy.py score --order {order}
+
+  catalogue:
+    doc: One table of every science result.
+    over: {role: science}
+    by: []
+    needs:
+      planet_search: {min: 0}
+      disk_deconvolution: {min: 0}
+    run: python steps/toy.py catalogue --order {order}

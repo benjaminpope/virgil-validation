@@ -1,0 +1,89 @@
+{
+ "label": "2022_ami_star_with_faint_companion",
+ "task": 11,
+ "family": "star_with_faint_companion",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2022/c_imaging_contest2.fits"
+ ],
+ "resolution_mas": 74.919411708424,
+ "field_mas": 599.5305058668067,
+ "virgil": "0.4.1",
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 1,
+   "n": 36,
+   "chi2": 115866826.80926426,
+   "chi2_red": 3218522.966924007,
+   "bic": 115866830.3927832,
+   "converged": true,
+   "starts": 8,
+   "starts_at_best": 8,
+   "failed_starts": 0,
+   "values": {
+    "star.diam": [
+     83.41107278961147
+    ]
+   }
+  },
+  {
+   "rung": "star+halo",
+   "k": 3,
+   "n": 36,
+   "chi2": 110561456.9694889,
+   "chi2_red": 3071151.582485803,
+   "bic": 110561467.72004572,
+   "converged": true,
+   "starts": 9,
+   "starts_at_best": 7,
+   "failed_starts": 0,
+   "values": {
+    "halo.flux": [
+     0.22005614058320003
+    ],
+    "halo.sigma": [
+     83.768930934902
+    ],
+    "star.diam": [
+     3.746276306664448
+    ]
+   }
+  },
+  {
+   "rung": "star+halo+companion",
+   "k": 6,
+   "n": 36,
+   "chi2": 50040006.16622332,
+   "chi2_red": 1390000.171283981,
+   "bic": 50040027.66733695,
+   "converged": true,
+   "starts": 14,
+   "starts_at_best": 5,
+   "failed_starts": 0,
+   "values": {
+    "companion.ddec": [
+     -578.4385896528008
+    ],
+    "companion.dra": [
+     462.2740501391288
+    ],
+    "companion.flux": [
+     0.02633224974950652
+    ],
+    "halo.flux": [
+     0.16209247353494607
+    ],
+    "halo.sigma": [
+     92.70670478630993
+    ],
+    "star.diam": [
+     3.7459707026557654
+    ]
+   }
+  }
+ ],
+ "chosen": "star+halo+companion",
+ "elapsed_s": 22.98252248764038,
+ "smoke": false
+}

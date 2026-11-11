@@ -1,0 +1,7 @@
+from,to,kind,source
+toy_ref_a_f444w,toy_sci_1_f444w,psf_reference,programme 9001 observing plan
+toy_ref_a_f200w,toy_sci_1_f200w,psf_reference,programme 9001 observing plan
+toy_ref_c_f444w,toy_sci_2_f444w,psf_reference,programme 9002 observing plan
+toy_ref_e_f444w,toy_sci_3_f444w,psf_reference,programme 9003 observing plan
+toy_ref_e_f444w,toy_sci_4_f444w,psf_reference,programme 9003 observing plan
+toy_sci_1_f444w,toy_sci_1_f200w,same_visit,programme 9001 observing plan

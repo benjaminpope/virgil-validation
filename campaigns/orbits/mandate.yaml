@@ -1,0 +1,59 @@
+# Blind binary orbits of the orbit gallery's systems, through virgil's OrbitPipeline.
+#
+# The model and its starting points are the pipeline's own and are the same for every system: a per-night position
+# search with automatic night flags, an alias-band scan over a period window computed from the data, label swap,
+# flux flip, per-night V^2 amplitudes, an automatic uniform-disk primary, a `no-orbit` comparison, and NUTS per
+# significant mode. scripts/gallery_orbits.py passes no period, window, eccentricity cap, diameter or starting
+# orbit, and this plan offers none as a choice: a published value used to set one would be the leak this
+# repository's AGENTS.md rules out. What a paper says about the *data* is in notes/; what it says about the
+# *orbit* is sealed and reaches the compare stage only.
+#
+# The registry and the sealed notes are generated: python campaigns/build_registries.py
+campaign: gallery-orbits
+unit_id: slug
+runs_root: runs                      # set MANDATE_RUNS to a /fred path on OzSTAR
+humans: [ben]
+sealed_columns: [published_kind, published_epochs_below_resolution]
+versions:
+  virgil: {cmd: "python -c 'import virgil; print(virgil.__version__)'"}
+  virgil_commit: {cmd: "echo ${VIRGIL_COMMIT:-unset}"}
+  virgil_vlti_commit: {cmd: "echo ${VIRGIL_VLTI_COMMIT:-unset}"}
+
+stages:
+  data:
+    doc: Load and group one system's nights exactly as the fit will, without fitting. Fails when calibrated
+      files are missing or fewer than three nights load. Cheap; run it for every system before any GPU time.
+    playbook: playbooks/orbit.md
+    run: python {root}/../../scripts/gallery_orbits.py --system {key.slug} --out {out} --dry-run
+    result: exit
+
+  orbit:
+    doc: The blind orbit fit of one system. Every setting is the pipeline's default.
+    playbook: playbooks/orbit.md
+    needs:
+      data: {match: [slug]}
+    run: python {root}/../../scripts/gallery_orbits.py --system {key.slug} --out {out} {decision.nights} {decision.effort}
+    result: "{key.slug}/run/summary.json"
+    status_key: worst_check            # virgil's own checks: convergence, r_hat, ess, divergences, chi2 on quoted errors
+    must_equal: {status: complete}     # a run cut short leaves a summary whose checks so far all pass
+    digest: ["*/run/summary.json", "*/gallery.json"]
+    slurm: ["--gres=gpu:1", "--time=12:00:00", "--mem=64G"]
+    decisions:
+      nights:
+        doc: PIONIER systems only. `all` adds the nights the paper has no epoch for (oifits_extra/). GRAVITY
+          systems read calibrated/ only and refuse `all`.
+        default: paper
+        options: {paper: "", all: "--include-extra"}
+      effort:
+        doc: "`quick` is a smoke test of the plumbing, never a result."
+        default: full
+        options: {full: "", quick: "--quick"}
+
+  compare:
+    doc: Put the blind orbit beside the published one, on the sky, after the fit. The only stage that reads the
+      published solution. It reports; it does not score (every row of a blind tile reads "reported").
+    sealed: true
+    needs:
+      orbit: {match: [slug]}
+    run: python steps/compare.py --order {order}
+    requires: [summary_written]
