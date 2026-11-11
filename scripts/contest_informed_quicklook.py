@@ -49,8 +49,8 @@ def extent_of(values, field):
     reach = 0.0
     for path, v in values.items():
         leaf = path.rsplit(".", 1)[-1]
-        if leaf in ("dra", "ddec", "diam", "fwhm", "radius", "sigma"):
-            reach = max(reach, abs(v[0]) * (1.0 if leaf in ("dra", "ddec", "radius") else 0.75))
+        if leaf in ("dra", "ddec", "diam", "fwhm", "radius", "sigma", "r_out"):
+            reach = max(reach, abs(v[0]) * (1.0 if leaf in ("dra", "ddec", "radius", "r_out") else 0.75))
     return float(min(max(2.6 * reach, field / 3.0), 2.0 * C.REACH * field))
 
 
@@ -58,16 +58,24 @@ def figure(report, data_dir, out_dir):
     spec = C.tasks()[report["task"]]
     rungs = dict(C.FAMILIES[report["family"]])
     chosen = next(r for r in report["rungs"] if r["rung"] == report["chosen"])
-    rung = rungs[report["chosen"]]
     wavel0 = report.get("reference_wavelength_m") if report.get("chromatic") else None
-    if wavel0:
-        rung = C.chromatic(rung)
     values = {k: v[0] for k, v in chosen["values"].items()}
-    model, _ = C.build(rung, report["resolution_mas"], report["field_mas"], values, wavel0)
+    model = C.model_of(rungs[report["chosen"]], values, report["resolution_mas"], report["field_mas"], wavel0)
     datasets = datasets_of(spec, data_dir)
     fov = extent_of(chosen["values"], report["field_mas"])
 
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.3))
+    folder = pathlib.Path(report["_folder"])
+    extras = []  # (title, image, field of view): what a non-parametric model finds beyond or instead of the ladder's
+    rest = report.get("residual_image") or {}
+    if rest.get("file") and (folder / rest["file"]).exists():
+        z = np.load(folder / rest["file"])
+        extras.append((f"left over: GP image on top\nflux {rest['flux_relative_to_model']:.2g} of the model's, chi2/N {rest['chi2_red']:.3g}",
+                       z["image"], float(z["pixel_scale_mas"]) * z["image"].shape[0]))
+    gp = report.get("gp_disk") or {}
+    if gp.get("file") and (folder / gp["file"]).exists():
+        z = np.load(folder / gp["file"])
+        extras.append((f"multipolar GP disk instead\nchi2/N {gp['chi2_red']:.3g}, {gp['starts_at_best']}/{gp['starts']} starts", z["image"], float(z["fov_mas"])))
+    fig, axes = plt.subplots(1, 3 + len(extras), figsize=(4.5 * (3 + len(extras)), 4.3))
     # The colour scale saturates at the 99th percentile, or an unresolved component would be the only thing visible.
     plot_model(model, fov_mas=fov, npix=256, ax=axes[0], saturate=0.99, title=f"{report['chosen']}  (field {fov:.3g} mas)")
     seen_vis, model_vis, seen_phi, model_phi = [], [], [], []
@@ -84,6 +92,12 @@ def figure(report, data_dir, out_dir):
                 mp = got[ov.size:]
                 seen_phi.append(op[keep_p])
                 model_phi.append((op + (mp - op + np.pi) % (2.0 * np.pi) - np.pi)[keep_p])  # the model on the data's branch
+    for ax, (title, image, width) in zip(axes[3:], extras):
+        half = width / 2.0
+        top = np.quantile(image, 0.995) or image.max() or 1.0
+        ax.imshow(image, origin="lower", cmap="magma", extent=[half, -half, -half, half], vmin=0.0, vmax=top)
+        ax.set(title=title, xlabel="ΔRA (mas)", ylabel="ΔDec (mas)")
+        ax.title.set_fontsize(9)
     for ax, seen, pred, name in ((axes[1], seen_vis, model_vis, "visibility"), (axes[2], seen_phi, model_phi, "phase")):
         if not seen:
             ax.text(0.5, 0.5, f"no {name} data to show", ha="center", va="center", transform=ax.transAxes)
@@ -112,6 +126,7 @@ def figure(report, data_dir, out_dir):
             "chi2_red": chosen["chi2_red"], "converged": chosen["converged"], "starts_at_best": chosen["starts_at_best"],
             "starts": chosen["starts"], "chromatic": bool(wavel0), "channels": report.get("channels"),
             "flux_spectra_fitted": report.get("flux_spectra_fitted", 0), "quoted_errors": report.get("quoted_errors"),
+            "residual_image": report.get("residual_image"), "gp_disk": {k: v for k, v in (report.get("gp_disk") or {}).items() if k != "values"},
             "values": values, "png": path.name, **rms}
 
 
@@ -130,6 +145,7 @@ def main(argv=None):
         report = json.loads(path.read_text())
         if "rungs" not in report:
             continue
+        report["_folder"] = str(path.parent)
         try:
             rows.append(figure(report, pathlib.Path(a.data).expanduser(), out))
             print("drew", rows[-1]["png"])
