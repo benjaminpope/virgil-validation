@@ -35,6 +35,7 @@ stages:
     run: python {root}/../../scripts/gallery_orbits.py --system {key.slug} --out {out} {decision.nights} {decision.effort}
     result: "{key.slug}/run/summary.json"
     status_key: worst_check            # virgil's own checks: convergence, r_hat, ess, divergences, chi2 on quoted errors
+    must_equal: {status: complete}     # a run cut short leaves a summary whose checks so far all pass
     digest: ["*/run/summary.json", "*/gallery.json"]
     slurm: ["--gres=gpu:1", "--time=12:00:00", "--mem=64G"]
     decisions:

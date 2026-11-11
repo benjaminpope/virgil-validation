@@ -118,6 +118,7 @@ The plan
                                                       # or `exit`: a clean exit is a pass
         status_key: status                            # `worst_check` for a virgil pipeline's summary.json
         requires: [CHECK, ...]
+        must_equal: {FIELD: VALUE}                    # result fields that must hold this value, e.g. {status: complete}
         decisions:
           NAME: {default: V, options: [V, ...], authority: agent|human,   # options may be {NAME: "flag text"}
                  default_from: COLUMN,                                    # the default is that column's value

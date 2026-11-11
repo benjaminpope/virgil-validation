@@ -148,6 +148,7 @@ stages:
                                    # `exit` means a clean exit is a pass; may use {key.COL}
     status_key: status             # `worst_check` reads a virgil pipeline's summary.json
     requires: [fit_converged]      # checks that must be present and passing
+    must_equal: {status: complete} # result fields that must hold this value (a cut-short run can pass its checks so far)
     digest: ["summary.json", "*.h5"]   # what to hash; default is everything but logs
     decisions:
       n_modes:

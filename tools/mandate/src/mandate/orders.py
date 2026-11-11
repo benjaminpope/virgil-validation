@@ -97,7 +97,7 @@ def resolve_decisions(c: Campaign, stage: str, order: Order) -> dict:
 
 def stage_identity(c: Campaign, stage: str) -> dict:
     st = c.stages[stage]
-    ident = {k: st.get(k) for k in ("run", "worker", "result", "status_key", "requires", "expects", "needs", "digest")}
+    ident = {k: st.get(k) for k in ("run", "worker", "result", "status_key", "requires", "must_equal", "expects", "needs", "digest")}
     if st.get("prompt") and (c.root / st["prompt"]).exists():
         ident["prompt"] = sha((c.root / st["prompt"]).read_text(), 16)
     versions = c.plan.get("versions") or {}

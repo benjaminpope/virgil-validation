@@ -35,7 +35,7 @@ MANDATE_PATHS = (PLAN, "registry")
 KINDS = ("decide", "exclude", "annotate", "request", "resolve")
 STAGE_KEYS = {
     "doc", "over", "by", "needs", "run", "worker", "prompt", "playbook", "decisions", "result", "status_key",
-    "requires", "expects", "promote", "review", "sealed", "informed", "uses", "slurm", "digest",
+    "requires", "must_equal", "expects", "promote", "review", "sealed", "informed", "uses", "slurm", "digest",
 }
 
 

@@ -534,3 +534,13 @@ def test_what_a_paper_says_the_object_is_reaches_informed_stages_and_never_blind
     problems = Campaign(root).problems()
     assert any("is blind but reads informed stage" in p for p in problems)
     assert any("selects on informed column" in p for p in problems)
+
+
+def test_a_run_cut_short_does_not_pass_on_the_checks_it_got_through(make):
+    step = ("python3 -c \"import json,os; json.dump({'status': 'running', 'worst_check': 'pass'}, "
+            "open(os.path.join(os.environ['MANDATE_OUT'], 'summary.json'), 'w'))\"")
+    plan = {"stages": {"fit": {"over": {"role": "ref"}, "run": step, "result": "summary.json", "status_key": "worst_check",
+                               "must_equal": {"status": "complete"}}}}
+    c = run_all(make(plan, ROWS[:1]), "fit")
+    o = find(c, "fit/r1")
+    assert o.state == "fail" and o.attempts[-1]["problem"] == "status is 'running', not 'complete'"

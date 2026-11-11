@@ -165,6 +165,11 @@ def read_result(c: Campaign, o: Order) -> tuple[str, dict, str]:
     checks = {x["name"]: x.get("status") for x in raw} if isinstance(raw, list) else dict(raw)
     if status not in ("pass", "warn", "fail"):
         return "error", checks, f"{path.name} gives status {status!r}, not pass, warn or fail"
+    # Fields of the result file that must hold a given value, e.g. a pipeline's own `status: complete`:
+    # a run that was cut short can leave a result file whose checks all pass so far.
+    wrong = [f"{k} is {result.get(k)!r}, not {v!r}" for k, v in (st.get("must_equal") or {}).items() if result.get(k) != v]
+    if wrong:
+        return "fail", checks, "; ".join(wrong)
     missing = [n for n in st.get("requires") or [] if checks.get(n) not in ("pass", "warn")]
     if missing:
         return "fail", checks, "required checks absent or failing: " + ", ".join(missing)
