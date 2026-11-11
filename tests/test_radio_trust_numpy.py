@@ -200,7 +200,7 @@ def _flat(values):
     return np.concatenate([np.ravel(values[k]) for k in ("cal.flux", "cal.gain", "cal.offset", "cal.sigma", "cal.alpha")])
 
 
-@pytest.mark.validates("virgil.radio.CalibrationNuisance", "virgil.radio.ComplexVisData.term", roots=["statistics"])
+@pytest.mark.validates("virgil.radio.CalibrationNuisance", "virgil.radio.ComplexVisData.term", roots=["statistics"], headline="max_abs_pull")
 def test_joint_default_fit_of_every_nuisance_is_unbiased_to_the_fisher_errors():
     """F2: with the defaults (flux, 2 gains, 2 offsets, 6 per-ddid error scales and the spectral index all
     fitted at once, default priors, cold start) on 900 synthetic points of a known scene, injected with

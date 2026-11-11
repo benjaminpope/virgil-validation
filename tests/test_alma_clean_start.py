@@ -45,7 +45,7 @@ def _clean_dir(path, n=51, px=3.0, east_mas=20.0, north_mas=-10.0, flux=0.2, bea
     return path, img
 
 
-@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"], headline="flux_rel_error")
 def test_regrid_preserves_flux_places_the_source_and_keeps_east_and_north():
     """A Gaussian 20 mas East and 10 mas South of the phase centre, regridded from 3 mas (odd grid) to 5 mas (the fit's grid): the flux
     is the source's within the field to 1e-12, the centroid is where it was to 0.05 mas, East is still East (columns) and North North (rows)."""

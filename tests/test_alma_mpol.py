@@ -323,7 +323,7 @@ def _mpol_loglike(p, tmp):
     return sp.run("mpol", "mpol_worker.py", _task("loglike", npz=str(tmp / "norm.npz"), npix=8))
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"], headline="rel_error_vs_virgil_loglike")
 def test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol(tmp_path):
     """On random complex data, model and weights, with g != 1 and s_M != 1: MPoL's
     `log_likelihood` = -(1/2 sum r^2 + log_norm) - sum_d (N_d ln 2 pi - sum_k ln w_k), with
@@ -373,7 +373,7 @@ def test_control_the_map_s_equal_s_mpol_does_not_match(tmp_path):
 # ------------------------------------------------ 2. forward model (A)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", "virgil.models.Image", roots=["mpol", "mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", "virgil.models.Image", roots=["mpol", "mathematics"], headline="rel_l2_virgil_vs_dft")
 def test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model(case):
     """MPoL's forward visibilities (torchkbnufft, the example's Net with its nuisance layers),
     virgil's `data.model` and a float64 numpy DFT, on the IM Lup uv of 10^4 points: virgil is
@@ -434,7 +434,7 @@ def test_control_a_wrong_pixel_map_misses_mpol_by_far_more_than_the_matched_map_
 # ------------------------------------------------ 3. objective and gradients (A)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], headline="rel_virgil_vs_exact")
 def test_objective_agrees_and_each_equals_its_own_loss_formula(case):
     """-ln L (normalising constant included) at the same parameters: MPoL's equals the closed
     formula N ln 2 pi - sum ln w + 1/2 sum w |d - M|^2 evaluated on MPoL's own model and weights, virgil's the same

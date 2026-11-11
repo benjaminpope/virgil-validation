@@ -188,7 +188,7 @@ def linear_problem(seed=4, n=30, p=3):
     return J, sigma, y
 
 
-@pytest.mark.validates("virgil.inference.laplace_covariance", roots=["mathematics"])
+@pytest.mark.validates("virgil.inference.laplace_covariance", roots=["mathematics"], headline="max_rel_dcov")
 def test_laplace_covariance_is_exact_for_a_linear_model():
     J, sigma, y = linear_problem()
     Ci = np.diag(1 / sigma**2)

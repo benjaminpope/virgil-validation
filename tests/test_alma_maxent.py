@@ -88,7 +88,7 @@ def r_fit(syn, tmp_path_factory):
 # ------------------------------------------------------------------ the pieces, in numpy
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], headline="rel_error_vs_numpy")
 def test_entropy_of_the_tapered_image_equals_the_numpy_formula():
     """`mpol_entropy_jax` (softmax image, flux, FFT taper) against ``crosscheck.alma_maxent`` (the EHT-IV formula on a numpy
     Gaussian convolution of the same image), to 1e-12; the taper changes S_M by far more than that."""
@@ -210,7 +210,7 @@ def _virgil_side(npix, pts, theta, lam_m):
     return data, prob, values, sc, lam
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mpol", "mathematics"])
+@pytest.mark.validates("virgil_bridge.alma", roots=["mpol", "mathematics"], headline="rel_error_objective_lam_m_1e-05")
 @pytest.mark.skipif(not sp.available("mpol", "mpol"), reason="MPoL not installed (scripts/setup_external.sh mpol)")
 @pytest.mark.skipif(tm._example_commit() != tm.EXAMPLES_COMMIT, reason="MPoL-dev/examples not cloned at the pinned commit")
 def test_r1_the_r_objective_equals_2n_times_mpols_loss(tmp_path):

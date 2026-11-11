@@ -250,7 +250,7 @@ def test_absil_limits_match_candids_criterion(files, cps):
 @pytest.mark.parametrize(
     "cps",
     [
-        pytest.param(c, id=i, marks=pytest.mark.validates("virgil.limits.injection_limits", roots=["candid"]))
+        pytest.param(c, id=i, marks=pytest.mark.validates("virgil.limits.injection_limits", roots=["candid"], headline="max_rel_limit_difference"))
         for c, i in [(False, "v2"), (True, "v2+cp")]
     ],
 )

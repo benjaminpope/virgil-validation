@@ -125,7 +125,7 @@ def test_closure_phase_correlation_matches_fouriever(files):
 
 @pytest.mark.validates(
     "virgil.likelihood.whitened_residuals", "virgil.oidata.OIData.cp_noise",
-    roots=["fouriever", "mathematics"], property="correlation",
+    roots=["fouriever", "mathematics"], property="correlation", headline="rel_virgil_vs_fouriever_at_truth",
 )
 def test_correlated_chi2_matches_fouriever(files):
     """Equal errors: fouriever equals our plain-residual r^T C^+ r, and

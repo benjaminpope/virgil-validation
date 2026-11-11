@@ -357,7 +357,7 @@ def test_file_reproduces_virgil_model(tmp_path, make):
 
 @pytest.mark.x64
 @pytest.mark.parametrize("make", vb.LIMB_SCENES, ids=lambda f: f.__name__)
-@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", "virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics"])
+@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", "virgil.models.QuadraticLimbDarkenedDisk", roots=["mathematics"], headline="max_err_in_sigma")
 def test_noise_free_recovery(tmp_path, make):
     scene = make()
     path = tmp_path / "s.fits"

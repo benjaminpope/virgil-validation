@@ -37,7 +37,7 @@ def result(tmp_path_factory):
     return imaging.clean(OIData(str(path)), NPIX, PIXEL, base=vm.UniformDisk(0.3), max_iterations=2000)
 
 
-@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"])
+@pytest.mark.validates("virgil.imaging.clean", roots=["mathematics"], headline="rel_flux_error")
 def test_clean_recovers_the_companion(result):
     """Within one pixel of the companion: its flux to 5%, the flux-weighted
     centre to half a pixel; elsewhere less than 5% of it; and the final

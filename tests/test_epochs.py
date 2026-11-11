@@ -370,7 +370,7 @@ def positions(nights):
 
 
 @pytest.mark.validates("virgil.epochs.epoch_positions", "virgil.epochs.EpochPositions", "virgil.epochs.Epochs",
-                       roots=["mathematics"])
+                       roots=["mathematics"], headline="max_rel_gap")
 def test_epoch_positions_grid_and_gaps(nights, positions):
     """Our own grid search of m and of -χ²/2: with ``refine=False`` the same best
     grid point and flux and the same gap_marginal (on m; virgil 0.4 removed
@@ -525,7 +525,7 @@ def test_epochs_loglike_normalised(orbit_epochs):
 
 @pytest.mark.parametrize("scales", ["quoted", "marginal"])
 @pytest.mark.validates("virgil.epochs.rank_orbits", "virgil.epochs.RankedOrbits", "virgil.models.OrbitalBinary",
-                       roots=["mathematics"])
+                       roots=["mathematics"], headline="max_abs_diff_scores")
 def test_rank_orbits_against_our_orbit_chi2(orbit_epochs, scales):
     """The ranking and score differences of trial orbits equal ours: -Δχ²/2
     on the quoted errors, or Δm with each block's scale integrated out;
