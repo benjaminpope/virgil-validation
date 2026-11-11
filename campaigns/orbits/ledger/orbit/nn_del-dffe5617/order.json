@@ -1,0 +1,38 @@
+{
+ "campaign": "gallery-orbits",
+ "decisions": {
+  "effort": {
+   "source": "default",
+   "value": "full"
+  },
+  "nights": {
+   "source": "default",
+   "value": "paper"
+  }
+ },
+ "dropped": {
+  "data": []
+ },
+ "id": "nn_del-dffe5617",
+ "inputs": {
+  "data": [
+   {
+    "digest": "e3b0c44298fc1c14",
+    "key": "nn_del",
+    "order": "nn_del-6aed96ee",
+    "stage": "data",
+    "status": "pass"
+   }
+  ]
+ },
+ "issued": "2026-11-11T03:32:31Z",
+ "key": {
+  "slug": "nn_del"
+ },
+ "knowledge": "open",
+ "plan_commit": "36522694e1813f9154f6cbc55cb8bce55088b078",
+ "stage": "orbit",
+ "units": [
+  "nn_del"
+ ]
+}

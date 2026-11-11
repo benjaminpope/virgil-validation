@@ -1,0 +1,32 @@
+{
+ "by": "agent-runner",
+ "campaign": {
+  "commit": "c41e847aaff4561dac4f78b2d8b430161becda6f",
+  "dirty": false
+ },
+ "checks": {},
+ "command": "python /home/user/virgil-validation/campaigns/orbits/../../scripts/gallery_orbits.py --system nn_del --out /tmp/claude-0/-home-user/5ef38429-0e1a-5731-97ea-de6493ab3e56/scratchpad/orbit_runs/data/nn_del-6aed96ee --dry-run",
+ "digest": "e3b0c44298fc1c14",
+ "exit_code": 0,
+ "finished": "2026-11-11T03:32:17Z",
+ "host": "vm",
+ "knowledge": "open",
+ "n": 1,
+ "order": "nn_del-6aed96ee",
+ "problem": "",
+ "slurm_job": null,
+ "stage": "data",
+ "started": "2026-11-11T03:32:11Z",
+ "status": "pass",
+ "versions": {
+  "virgil": {
+   "value": "0.4.1"
+  },
+  "virgil_commit": {
+   "value": "192e44fef2ce0dfc94f4f06633932f66b196a7a4"
+  },
+  "virgil_vlti_commit": {
+   "value": "unset"
+  }
+ }
+}
