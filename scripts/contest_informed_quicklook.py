@@ -75,12 +75,15 @@ def figure(report, data_dir, out_dir):
         ov, op = np.ravel(np.asarray(d.vis, float)), np.ravel(np.asarray(d.phi, float))
         got = np.ravel(np.asarray(d.model(model), float))  # the visibilities, then the phases, as the data hold them
         if got.size == ov.size + op.size:
-            seen_vis.append(ov)
-            model_vis.append(got[: ov.size])
+            # Flagged points (channels a task leaves out, bad data) are not fitted and are not shown.
+            keep_v = ~np.ravel(np.asarray(d.v2_flag, bool)) if np.size(d.v2_flag) == ov.size else np.ones(ov.size, bool)
+            keep_p = ~np.ravel(np.asarray(d.cp_flag, bool)) if np.size(d.cp_flag) == op.size else np.ones(op.size, bool)
+            seen_vis.append(ov[keep_v])
+            model_vis.append(got[: ov.size][keep_v])
             if op.size:
                 mp = got[ov.size:]
-                seen_phi.append(op)
-                model_phi.append(op + (mp - op + np.pi) % (2.0 * np.pi) - np.pi)  # the model's phase on the data's branch
+                seen_phi.append(op[keep_p])
+                model_phi.append((op + (mp - op + np.pi) % (2.0 * np.pi) - np.pi)[keep_p])  # the model on the data's branch
     for ax, seen, pred, name in ((axes[1], seen_vis, model_vis, "visibility"), (axes[2], seen_phi, model_phi, "phase")):
         if not seen:
             ax.text(0.5, 0.5, f"no {name} data to show", ha="center", va="center", transform=ax.transAxes)
