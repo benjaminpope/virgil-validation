@@ -135,4 +135,6 @@ def test_the_informed_families_take_no_number_from_a_paper():
     source = (REPO / "scripts" / "contest_informed.py").read_text()
     families = source[source.index("FAMILIES = {"):source.index("# A value for the constructor")]
     code = "\n".join(line.split("#")[0] for line in families.splitlines())  # comments cite the papers; code must not
-    assert not re.search(r"\d", code)  # prior kinds are words; their scales come from the data's baselines
+    # Prior kinds are words and their scales come from the data's baselines. The only digits allowed are the orders
+    # of a ladder (a surface of degree 2, two azimuthal harmonics): single digits, never a measured quantity.
+    assert not re.search(r"\d\.\d|\d{2,}", code)

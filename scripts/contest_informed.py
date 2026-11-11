@@ -14,6 +14,9 @@ A family is a ladder of nested models, simplest first (FAMILIES). Each rung is f
 from its priors, plus the best fit of the rung below; the best start of each rung is kept and the rungs are compared
 by BIC on the quoted errors. Writes into --out:
 
+After the ladder, a simple non-parametric image (a Gaussian-process field) is fitted on top of the chosen model,
+held fixed, to show what resolved light the parametric model leaves out (<label>_<family>_rest.npz).
+
 Spectral information is used in two ways. When the data have more than one channel, every component but the
 reference gets its own spectral index, so the model is chromatic wherever the object can be. And where a file
 carries OI_FLUX spectra they are fitted with the visibilities (scale and linear trend marginalised).
@@ -90,6 +93,7 @@ SPOT = ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "near", "ddec":
 SURFACE_SPOT = ("UniformDisk", {"diam": "small", "flux": "faint", "dra": "far", "ddec": "far"})
 HALO = ("GaussianDisk", {"sigma": "size", "flux": "bright"})
 ELLIPSE = ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "bright"})
+OFFSET_ELLIPSE = ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "bright", "dra": "near", "ddec": "near"})
 RIM = ("ModulatedGaussianRim", {"diam": "size", "fwhm": "size", "inc": "inclination", "pa": "angle",
                                 "az_amps": "modulation", "az_pas": "full_angle", "flux": "bright"})
 ARC = ("GaussianArc", {"radius": "size", "width": "size", "length": "size", "pa": "full_angle", "flux": "bright"})
@@ -106,12 +110,95 @@ def rings(*names):
     return ("RingedDisk", params)
 
 
+class Scene:
+    """A rung built by a function of named parameters, for models a flat template cannot express: a stellar surface
+    in spherical harmonics, a disk with azimuthal structure. ``kinds`` maps parameter names to prior kinds, ``make``
+    turns ``{name: value}`` into a virgil model, ``components`` names its parts, and ``positions`` names the parts
+    that are placed by a likelihood map when the rung adds them."""
+
+    def __init__(self, kinds, make, components, positions=()):
+        self._kinds, self.make, self.components, self.positions = kinds, make, tuple(components), tuple(positions)
+
+    def kinds(self, wavel0=None):
+        if not wavel0:
+            return dict(self._kinds)
+        out = {}
+        for name, kind in self._kinds.items():
+            if name.endswith(".flux"):
+                out[name + ".ratio"], out[name + ".index"] = kind, "colour"
+            else:
+                out[name] = kind
+        return out
+
+
+def flux_of(p, name, wavel0):
+    """A component's flux from the fitted parameters: a number, or a power law when the model is chromatic."""
+    if f"{name}.flux.ratio" in p:
+        return PowerLaw(p[f"{name}.flux.ratio"], p[f"{name}.flux.index"], wavel0)
+    return p[f"{name}.flux"]
+
+
+def harmonic_star(degree, envelope=False, companion=False):
+    """A limb-darkened star whose surface brightness is a spherical-harmonic map of the given degree (harmonix), so
+    structure sits on the stellar disk by construction and is resolved only as far as the degree allows. Degree 0 is
+    a plain limb-darkened disk. The star is seen once, so its axis is fixed (equator-on, no obliquity): the
+    coefficients describe the visible hemisphere. Optionally a Gaussian envelope, and a point companion."""
+    n = (degree + 1) ** 2 - 1
+    kinds = {"star.radius": "size", "star.u": "limb", **{f"star.y{i}": "harmonic" for i in range(n)}}
+    components = ["star"]
+    if envelope:
+        kinds |= {"envelope.sigma": "size", "envelope.flux": "bright"}
+        components.append("envelope")
+    if companion:
+        kinds |= {"companion.flux": "faint", "companion.dra": "far", "companion.ddec": "far"}
+        components.append("companion")
+
+    def make(p, wavel0=None):
+        import jax.numpy as jnp
+        from harmonix.harmonix import Harmonix
+        from jaxoplanet.starry import Surface, Ylm
+
+        y = jnp.concatenate([jnp.ones(1), jnp.stack([jnp.asarray(p[f"star.y{i}"], float).reshape(()) for i in range(n)])]) if n else jnp.ones(1)
+        surface = Surface(y=Ylm.from_dense(y), inc=jnp.pi / 2.0, obl=0.0, period=1.0, u=[p["star.u"]])
+        parts = {"star": vm.HarmonixModel(Harmonix(surface, p["star.radius"]), observation_time=0.0)}
+        if envelope:
+            parts["envelope"] = vm.GaussianDisk(sigma=p["envelope.sigma"], flux=flux_of(p, "envelope", wavel0))
+        if companion:
+            parts["companion"] = vm.PointSource(flux=flux_of(p, "companion", wavel0), dra=p["companion.dra"], ddec=p["companion.ddec"])
+        return vm.System(**parts)
+
+    return Scene(kinds, make, components, positions=("companion",) if companion else ())
+
+
+def modulated_disk(order, star=True):
+    """An inclined disk with a power-law radial profile between an inner and an outer radius, whose brightness varies
+    around the disk with azimuthal harmonics up to ``order`` (0 is axisymmetric), and optionally a central star.
+    An inclined disk is brighter on one side, so there is no reason to expect it to be symmetric."""
+    kinds = {"disk.r_out": "size", "disk.inner": "fraction", "disk.index": "slope", "disk.inc": "inclination", "disk.pa": "angle"}
+    for m in range(1, order + 1):
+        kinds |= {f"disk.c{m}": "wave", f"disk.s{m}": "wave"}
+    if star:
+        kinds["disk.flux"] = "bright"
+
+    def make(p, wavel0=None):
+        import jax.numpy as jnp
+
+        profile = vm.RadialPowerLaw(r_in=p["disk.inner"] * p["disk.r_out"], r_out=p["disk.r_out"], index=p["disk.index"])
+        waves = vm.Harmonics(c=jnp.stack([jnp.asarray(p[f"disk.c{m}"], float).reshape(()) for m in range(1, order + 1)]),
+                             s=jnp.stack([jnp.asarray(p[f"disk.s{m}"], float).reshape(()) for m in range(1, order + 1)])) if order else None
+        disk = vm.MultipoleDisk(profile, harmonics=waves, inc=p["disk.inc"], pa=p["disk.pa"],
+                                flux=flux_of(p, "disk", wavel0) if star else 1.0)
+        return vm.System(star=vm.PointSource(), disk=disk) if star else vm.System(disk=disk)
+
+    return Scene(kinds, make, ["star", "disk"] if star else ["disk"])
+
+
 FAMILIES = {
-    # Lawson et al. 2004, data1: a star inside an asymmetric shell.
+    # Lawson et al. 2004, data1: a star inside an asymmetric shell. The star is a point at the centre of every rung.
     "star_in_shell": [
-        ("star+halo", {"star": SMALL_STAR, "halo": HALO}),
-        ("star+shell", {"star": SMALL_STAR, "shell": RIM}),
-        ("star+shell+halo", {"star": SMALL_STAR, "shell": RIM, "halo": HALO}),
+        ("star+halo", {"star": POINT, "halo": HALO}),
+        ("star+shell", {"star": POINT, "shell": RIM}),
+        ("star+shell+halo", {"star": POINT, "shell": RIM, "halo": HALO}),
     ],
     # Lawson et al. 2004, data2: a binary whose primary is a limb-darkened elliptical disk with a bright spot.
     "spotted_star_binary": [
@@ -119,31 +206,35 @@ FAMILIES = {
         ("star+companion", {"star": ELLIPTICAL_STAR, "companion": SMALL_DISK}),
         ("star+companion+spot", {"star": ELLIPTICAL_STAR, "companion": SMALL_DISK, "spot": SPOT}),
     ],
-    # Lawson et al. 2006: a geometrically thin disk.
+    # Lawson et al. 2006: a geometrically thin disk. Inclined, so one side is brighter: the ladder adds azimuthal
+    # structure, which a centro-symmetric model cannot have (its closure phases are all zero or pi).
     "thin_disk": [
-        ("disk", {"disk": ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle"})}),
-        ("star+disk", {"star": POINT, "disk": ELLIPSE}),
-        ("star+ring", {"star": POINT, "ring": RIM}),
-        ("star+ring+disk", {"star": POINT, "ring": RIM, "disk": ELLIPSE}),
+        ("disk", modulated_disk(0, star=False)),
+        ("star+disk", modulated_disk(0)),
+        ("star+disk, one azimuthal harmonic", modulated_disk(1)),
+        ("star+disk, two azimuthal harmonics", modulated_disk(2)),
     ],
-    # Cotton et al. 2008: an AGB star. A limb-darkened disk, an envelope, and structure on the surface.
+    # Cotton et al. 2008: an AGB star. A stellar surface in spherical harmonics, inside an envelope.
     "evolved_star_with_surface_structure": [
-        ("star", {"star": LD_STAR}),
-        ("star+envelope", {"star": LD_STAR, "envelope": HALO}),
-        ("star+envelope+spot", {"star": LD_STAR, "envelope": HALO, "spot": SURFACE_SPOT}),
-        ("star+envelope+two spots", {"star": LD_STAR, "envelope": HALO, "spot": SURFACE_SPOT, "spot_b": SURFACE_SPOT}),
+        ("star", harmonic_star(0)),
+        ("star+envelope", harmonic_star(0, envelope=True)),
+        ("surface degree 1+envelope", harmonic_star(1, envelope=True)),
+        ("surface degree 2+envelope", harmonic_star(2, envelope=True)),
+        ("surface degree 3+envelope", harmonic_star(3, envelope=True)),
     ],
-    # Cotton et al. 2008: an AGN. An unresolved core and elongated extended emission.
+    # Cotton et al. 2008: an AGN. An unresolved core and elongated emission that need not be centred on it.
     "agn": [
-        ("core+dust", {"core": POINT, "dust": ELLIPSE}),
-        ("core+dust+extended", {"core": POINT, "dust": ELLIPSE, "extended": ELLIPSE}),
+        ("core+dust", {"core": POINT, "dust": OFFSET_ELLIPSE}),
+        ("core+dust+extended", {"core": POINT, "dust": OFFSET_ELLIPSE, "extended": OFFSET_ELLIPSE}),
     ],
     # Malbet et al. 2010: a red supergiant's structured surface, and a much fainter companion far outside the disk.
+    # The surface is a spherical-harmonic map on the stellar disk; only the companion is free to sit elsewhere.
     "structured_supergiant_with_companion": [
-        ("star", {"star": LD_STAR}),
-        ("star+companion", {"star": LD_STAR, "companion": COMPANION}),
-        ("star+companion+spot", {"star": LD_STAR, "companion": COMPANION, "spot": SURFACE_SPOT}),
-        ("star+companion+two spots", {"star": LD_STAR, "companion": COMPANION, "spot": SURFACE_SPOT, "spot_b": SURFACE_SPOT}),
+        ("star", harmonic_star(0)),
+        ("star+companion", harmonic_star(0, companion=True)),
+        ("surface degree 1+companion", harmonic_star(1, companion=True)),
+        ("surface degree 2+companion", harmonic_star(2, companion=True)),
+        ("surface degree 3+companion", harmonic_star(3, companion=True)),
     ],
     # Sanchez-Bermudez et al. 2018: a star, an inner disk with a bright rim, a planet, and an outer disk.
     "star_rim_planet_disk": [
@@ -187,6 +278,10 @@ def prior_of(kind, res, field):
         "full_angle": dist.Uniform(0.0, 360.0),
         "inclination": dist.Uniform(0.0, 80.0),
         "limb": dist.Uniform(0.0, 1.0),
+        "harmonic": dist.Normal(0.0, 0.3),  # a spherical-harmonic coefficient of the surface, relative to the mean
+        "wave": dist.Uniform(-0.7, 0.7),  # an azimuthal harmonic of a disk's brightness, relative to its mean
+        "fraction": dist.Uniform(0.02, 0.95),
+        "slope": dist.Uniform(-3.0, 1.0),
         "modulation": dist.Uniform(0.0, 1.0),
         # A component's spectrum relative to the reference component: flux ratio x (lambda / lambda_0) ** index.
         "colour": dist.Uniform(-8.0, 8.0),
@@ -284,7 +379,9 @@ def draw(priors, rng):
     """One start: each parameter drawn from its own prior."""
     out = {}
     for path, p in priors.items():
-        if isinstance(p, dist.LogUniform):
+        if isinstance(p, dist.Normal):
+            value = float(rng.normal(float(p.loc), float(p.scale)))
+        elif isinstance(p, dist.LogUniform):
             value = float(np.exp(rng.uniform(np.log(float(p.low)), np.log(float(p.high)))))
         else:
             value = float(rng.uniform(float(p.low), float(p.high)))
@@ -292,24 +389,67 @@ def draw(priors, rng):
     return out
 
 
-def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, below=(), wavel0=None):
-    template, priors = build(rung, res, field, None, wavel0)
+def model_of(rung, values, res, field, wavel0=None):
+    """The virgil model of a rung at ``{parameter: value}`` (for a template rung, of its chromatic form if ``wavel0``)."""
+    if isinstance(rung, Scene):
+        return rung.make(values, wavel0)
+    return build(chromatic(rung) if wavel0 else rung, res, field, values, wavel0)[0]
+
+
+def map_seeds(base, datasets, res, field):
+    """Peaks of a likelihood map for one more point source beside ``base`` (a fitted model, held fixed)."""
+    half = REACH * field
+    n = int(min(121, 2 * round(2.0 * half / res) + 1))
+    axis, fluxes = np.linspace(-half, half, n), 10.0 ** np.linspace(-3.5, 0.0, 12)
+    template = vm.System(base=base, extra=vm.PointSource(flux=1e-3))
     data = datasets[0] if len(datasets) == 1 else datasets
-    # Starts: for each component this rung adds that has a position, the peaks of its likelihood map with the rest
-    # of the scene at the best fit below; then random draws from the priors.
+    loglike = np.asarray(likelihood_grid(template, data=data, grid={"extra.dra": axis, "extra.ddec": axis, "extra.flux": fluxes}))
+    surface, best_flux = np.max(loglike, axis=2), np.argmax(loglike, axis=2)
+    seeds = []
+    for flat in np.argsort(surface, axis=None)[::-1]:
+        i, j = np.unravel_index(flat, surface.shape)
+        if all(np.hypot(axis[i] - q[0], axis[j] - q[1]) > 2.0 * res for q in seeds):
+            seeds.append((float(axis[i]), float(axis[j]), float(fluxes[best_flux[i, j]])))
+        if len(seeds) == PEAKS:
+            break
+    return seeds
+
+
+def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, below=(), wavel0=None, previous=None):
+    data = datasets[0] if len(datasets) == 1 else datasets
     inits = []
-    for comp in [c for c in rung if c not in below and "dra" in rung[c][1]]:
-        for seed in seeds_from_map(comp, rung, datasets, res, field, carry, wavel0):
-            inits.append({**draw(priors, rng), **carry, **seed})
-    if carry and not inits:
-        inits.append({**draw(priors, rng), **carry})
+    if isinstance(rung, Scene):
+        priors = {k: prior_of(kind, res, field) for k, kind in rung.kinds(wavel0).items()}
+        target = lambda **p: rung.make(p, wavel0)  # noqa: E731
+        # A component with a position that this rung adds is placed by a likelihood map beside the fit below.
+        for comp in [c for c in rung.positions if c not in below]:
+            if previous is not None and carry:
+                for dra, ddec, flux in map_seeds(model_of(previous, carry, res, field, wavel0), datasets, res, field):
+                    seed = {f"{comp}.dra": dra, f"{comp}.ddec": ddec,
+                            (f"{comp}.flux.ratio" if wavel0 else f"{comp}.flux"): flux}
+                    if wavel0:
+                        seed[f"{comp}.flux.index"] = 0.0
+                    inits.append({**draw(priors, rng), **carry, **seed})
+        # New surface or azimuthal coefficients start at zero from the fit below: the simpler model is the start.
+        if carry:
+            grown = {k: 0.0 for k, kind in rung.kinds(wavel0).items() if kind in ("harmonic", "wave") and k not in carry}
+            inits.append({**draw(priors, rng), **grown, **carry})
+    else:
+        target, priors = build(rung, res, field, None, wavel0)
+        # Starts: for each component this rung adds that has a position, the peaks of its likelihood map with the
+        # rest of the scene at the best fit below; then random draws from the priors.
+        for comp in [c for c in rung if c not in below and "dra" in rung[c][1]]:
+            for seed in seeds_from_map(comp, rung, datasets, res, field, carry, wavel0):
+                inits.append({**draw(priors, rng), **carry, **seed})
+        if carry and not inits:
+            inits.append({**draw(priors, rng), **carry})
     inits += [draw(priors, rng) for _ in range(starts)]
     runs, n = [], 0
     for init in inits:
-        init = {k: (np.array([float(np.ravel(v)[0])]) if k.rsplit(".", 1)[-1] in VECTORS else float(np.ravel(v)[0]))
-                for k, v in init.items() if k in priors}
+        init = {k: (np.array([float(np.ravel(v)[0])]) if k.rsplit(".", 1)[-1] in VECTORS and not isinstance(rung, Scene)
+                    else float(np.ravel(v)[0])) for k, v in init.items() if k in priors}
         try:
-            r = fit(template, priors, data, init=init, max_steps=max_steps, time_limit=TIME_LIMIT)
+            r = fit(target, priors, data, init=init, max_steps=max_steps, time_limit=TIME_LIMIT)
         except Exception as err:  # noqa: BLE001 a start that fails is recorded, not hidden
             runs.append({"chi2": float("inf"), "error": f"{type(err).__name__}: {err}"})
             continue
@@ -319,13 +459,99 @@ def fit_rung(name, rung, datasets, res, field, rng, starts, carry, max_steps, be
     best = min(runs, key=lambda x: x["chi2"])
     k = len(priors)
     agree = sum(x["chi2"] <= AGREE * best["chi2"] for x in runs)
+    errors = sorted({x["error"] for x in runs if "error" in x})
     return {"rung": name, "k": k, "n": n, "chi2": best["chi2"], "chi2_red": best["chi2"] / max(n, 1),
             "bic": best["chi2"] + k * float(np.log(max(n, 1))), "converged": best.get("converged", False),
             "starts": len(inits), "starts_at_best": int(agree), "failed_starts": sum("error" in x for x in runs),
-            "values": best.get("values", {})}
+            "errors": errors[:3], "values": best.get("values", {})}
 
 
-def run(task, family, data_dir, out_dir, starts=32, smoke=False, grey=False, use_spectra=True):
+# Families whose object is a disk also get a non-parametric disk: (azimuthal degree, name of a point companion or None).
+GP_DISKS = {"thin_disk": (2, None), "star_in_shell": (2, None), "star_rim_planet_disk": (1, "planet"),
+            "ringed_disk_with_companions": (1, "companion")}
+
+
+def gp_disk(family, chosen, datasets, res, field, wavel0, rng, starts, max_steps, out_path):
+    """A multipolar Gaussian-process disk in place of the parametric one: a central star and one inclined
+    `MultipoleDisk` whose radial profile is a Gaussian process in radius and whose azimuthal harmonics (to the
+    family's degree) are Gaussian processes in radius too, so rings, gaps and lopsidedness need not be named in
+    advance. A point companion the ladder found keeps its parametric form and starts where the ladder put it.
+    The hyperparameters are fixed, not fitted: the profile varies by e^2 over three resolution elements between
+    half a resolution element and the edge of the field. It has too many latent parameters for BIC to mean
+    anything, so it is reported beside the ladder and never chosen by it."""
+    from virgil import gp_priors
+
+    degree, companion = GP_DISKS[family]
+    r_in, r_out = res / 2.0, REACH * field / 2.0
+    ell = 3.0 * res
+    values = {k: v[0] for k, v in chosen["values"].items()}
+
+    def scene(inc, pa, flux):
+        disk = vm.MultipoleDisk(
+            vm.RadialGP(r_in, r_out, sigma=2.0, ell=ell),
+            harmonics=vm.Harmonics(degree=degree, prior=vm.MultipoleKernel(ell_r=ell, ell_theta=8.0, sigma=0.5, n=10, r_in=r_in, r_out=r_out)),
+            inc=inc, pa=pa, n_r=48, flux=PowerLaw(flux, 0.0, wavel0) if wavel0 else flux)
+        parts = {"star": vm.PointSource(), "disk": disk}
+        if companion and f"{companion}.dra" in values:
+            ratio = values.get(f"{companion}.flux.ratio", values.get(f"{companion}.flux", 1e-2))
+            parts[companion] = vm.PointSource(dra=values[f"{companion}.dra"], ddec=values[f"{companion}.ddec"],
+                                               flux=PowerLaw(ratio, values.get(f"{companion}.flux.index", 0.0), wavel0) if wavel0 else ratio)
+        return vm.System(**parts)
+
+    flux_path = "disk.flux.ratio" if wavel0 else "disk.flux"
+    template = scene(30.0, 0.0, 0.5)
+    priors = gp_priors(template) | {flux_path: prior_of("bright", res, field), "disk.inc": prior_of("inclination", res, field),
+                                    "disk.pa": prior_of("angle", res, field)}
+    if wavel0:
+        priors["disk.flux.index"] = prior_of("colour", res, field)
+    if companion and f"{companion}.dra" in values:
+        priors |= {f"{companion}.dra": prior_of("far", res, field), f"{companion}.ddec": prior_of("far", res, field),
+                   (f"{companion}.flux.ratio" if wavel0 else f"{companion}.flux"): prior_of("faint", res, field)}
+    data = datasets[0] if len(datasets) == 1 else datasets
+    runs = []
+    for _ in range(max(2, starts // 2)):
+        start = scene(float(rng.uniform(0.0, 70.0)), float(rng.uniform(0.0, 180.0)), float(np.exp(rng.uniform(np.log(0.05), np.log(3.0)))))
+        try:
+            r = fit(start, priors, data, max_steps=max_steps, time_limit=2.0 * TIME_LIMIT)
+        except Exception as err:  # noqa: BLE001
+            runs.append((float("inf"), None, f"{type(err).__name__}: {err}"))
+            continue
+        runs.append((float(np.sum(r.info["chi2"])), r, None))
+    chi2, best, _ = min(runs, key=lambda x: x[0])
+    if best is None:
+        return {"error": runs[0][2]}
+    n = int(np.sum(best.info["ndata"]))
+    fov = 2.0 * r_out * 1.1
+    np.savez_compressed(out_path, image=np.asarray(best.model.render(npix=256, fov_mas=fov)), fov_mas=fov)
+    scalars = {k: float(np.ravel(v)[0]) for k, v in best.values.items() if np.size(v) == 1}
+    return {"chi2_red": chi2 / max(n, 1), "converged": bool(best.info.get("converged")), "azimuthal_degree": degree,
+            "starts": len(runs), "starts_at_best": int(sum(c <= AGREE * chi2 for c, _, _ in runs)),
+            "r_in_mas": r_in, "r_out_mas": r_out, "length_mas": ell, "values": scalars, "file": pathlib.Path(out_path).name}
+
+
+def residual_image(model, datasets, res, field, out_path):
+    """What resolved light is left once the parametric model is taken out: a simple non-parametric image fitted on
+    top of the chosen model, which is held fixed. The image is a Gaussian-process field (virgil's documented image
+    model) on a grid of half-resolution pixels across the field, with a correlation length of two resolution
+    elements; only it and its share of the flux are fitted. Returns its numbers and saves the image."""
+    from virgil.fields import GaussianField
+    from virgil.imaging import image_priors
+
+    scale = res / 2.0
+    npix = int(min(64, max(16, round(field / scale))))
+    extra = vm.Image(GaussianField(np.zeros((npix, npix)), sigma=2.0, length_mas=2.0 * res), scale, flux=0.05)
+    scene = vm.System(base=model, rest=extra)
+    data = datasets[0] if len(datasets) == 1 else datasets
+    r = fit(scene, image_priors(scene) | {"rest.flux": dist.LogUniform(1e-4, 2.0)}, data, time_limit=2.0 * TIME_LIMIT)
+    image = np.asarray(r.model.rest.render(npix=npix, fov_mas=npix * scale))
+    share = float(np.ravel(r.values["rest.flux"])[0])
+    np.savez_compressed(out_path, image=image, pixel_scale_mas=scale, flux=share)
+    n = int(np.sum(r.info["ndata"]))
+    return {"chi2_red": float(np.sum(r.info["chi2"])) / max(n, 1), "flux_relative_to_model": share, "npix": npix,
+            "pixel_scale_mas": scale, "field_mas": npix * scale, "converged": bool(r.info.get("converged")), "file": pathlib.Path(out_path).name}
+
+
+def run(task, family, data_dir, out_dir, starts=32, smoke=False, grey=False, use_spectra=True, residual=True, no_gp=False):
     spec = tasks()[task]
     label = f"{spec['label']}_{family}"
     paths = [pathlib.Path(data_dir) / f for f in spec["files"]]
@@ -347,9 +573,13 @@ def run(task, family, data_dir, out_dir, starts=32, smoke=False, grey=False, use
             # The contest's flux spectra are fitted with the visibilities. They are uncalibrated, so their scale and
             # a linear trend in wavelength are marginalised: what is left constrains the components' relative colours.
             d = OIData(str(path), extras="flux")
-            level = float(np.nanmedian(np.asarray(d.extras[0].values)))
-            d = d.with_flux_scale(scale=(level, abs(level)), per="dataset", poly_order=1)
-            spectra += 1
+            values = np.asarray(d.extras[0].values, float)
+            level = float(np.median(values[np.isfinite(values) & (values > 0)])) if np.any(np.isfinite(values) & (values > 0)) else np.nan
+            if np.isfinite(level):
+                d = d.with_flux_scale(scale=(level, level), per="dataset", poly_order=1)
+                spectra += 1
+            else:  # a spectrum with no positive finite value cannot set its own scale: fit the visibilities alone
+                d = OIData(str(path))
         else:
             d = OIData(str(path))
         datasets.append(d)
@@ -357,27 +587,44 @@ def run(task, family, data_dir, out_dir, starts=32, smoke=False, grey=False, use
     wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel, float)) for d in datasets]))) if channels > 1 and not grey else None
     res, field = scales(datasets)
     rng = np.random.default_rng(7000 + task)
-    t0, rungs, carry, below = time.time(), [], {}, ()
-    for name, rung in FAMILIES[family]:
-        rung = chromatic(rung) if wavel0 else rung
-        got = fit_rung(name, rung, datasets, res, field, rng, 3 if smoke else starts, carry, 50 if smoke else None, below, wavel0)
-        carry, below = {k: v[0] for k, v in got["values"].items() if len(v) == 1}, tuple(rung)
+    t0, rungs, carry, below, previous = time.time(), [], {}, (), None
+    for name, plain in FAMILIES[family]:
+        rung = plain if isinstance(plain, Scene) else (chromatic(plain) if wavel0 else plain)
+        got = fit_rung(name, rung, datasets, res, field, rng, 3 if smoke else starts, carry, 50 if smoke else None, below,
+                       wavel0, previous)
+        carry = {k: v[0] for k, v in got["values"].items() if len(v) == 1}
+        below, previous = (rung.components if isinstance(rung, Scene) else tuple(rung)), plain
         rungs.append(got)
         print(f"{label} {name}: chi2/N={got['chi2_red']:.3f} k={got['k']} BIC={got['bic']:.1f} "
               f"starts at best {got['starts_at_best']}/{got['starts']}")
     chosen = min(rungs, key=lambda x: x["bic"])
     # chi2/N is on the quoted errors, which several contests made very small. The typical quoted error says what a
     # given chi2/N means in the data's own units: residuals of about sqrt(chi2/N) times these.
+    gp = None
+    if family in GP_DISKS and not no_gp:
+        pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
+        gp = gp_disk(family, chosen, datasets, res, field, wavel0, rng, 3 if smoke else starts, 50 if smoke else None,
+                     pathlib.Path(out_dir) / f"{label}_gp_disk.npz")
+        if gp and "chi2_red" in gp:
+            print(f"{label} multipolar GP disk: chi2/N={gp['chi2_red']:.3f} starts at best {gp['starts_at_best']}/{gp['starts']}")
     errors = {"median_vis_error": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_vis, float)) for d in datasets]))),
               "median_phase_error_deg": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_phi, float)) for d in datasets])))}
     errors["implied_vis_residual"] = float(np.sqrt(chosen["chi2_red"]) * errors["median_vis_error"])
     errors["implied_phase_residual_deg"] = float(np.sqrt(chosen["chi2_red"]) * errors["median_phase_error_deg"])
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    rest = None
+    if residual and np.isfinite(chosen["chi2"]):
+        try:
+            best = model_of(dict(FAMILIES[family])[chosen["rung"]], {k: v[0] for k, v in chosen["values"].items()}, res, field, wavel0)
+            rest = residual_image(best, datasets, res, field, out_dir / f"{label}_rest.npz")
+            print(f"{label} residual image: chi2/N {chosen['chi2_red']:.3g} -> {rest['chi2_red']:.3g}, flux {rest['flux_relative_to_model']:.3g} of the model's")
+        except Exception as err:  # noqa: BLE001 the parametric result stands without it
+            rest = {"error": f"{type(err).__name__}: {err}"}
     report = {"label": label, "task": task, "family": family, "knowledge": "informed: model family from the contest paper; no value",
               "files": spec["files"], "resolution_mas": res, "field_mas": field, "channels": channels,
               "chromatic": bool(wavel0), "reference_wavelength_m": wavel0, "flux_spectra_fitted": spectra, "virgil": getattr(virgil, "__version__", None),
-              "quoted_errors": errors, "rungs": rungs, "chosen": chosen["rung"], "elapsed_s": time.time() - t0, "smoke": smoke}
+              "quoted_errors": errors, "residual_image": rest, "gp_disk": gp, "rungs": rungs, "chosen": chosen["rung"], "elapsed_s": time.time() - t0, "smoke": smoke}
     (out_dir / f"{label}.json").write_text(json.dumps(report, indent=1) + "\n")
     agree = chosen["starts_at_best"] >= MIN_AGREE
     checks = {"converged": "pass" if chosen["converged"] else "fail", "starts_agree": "pass" if agree else "warn"}
@@ -398,6 +645,8 @@ def main(argv=None):
     ap.add_argument("--starts", type=int, default=32, help="random starts per rung")
     ap.add_argument("--smoke", action="store_true", help="three starts of 50 steps: check that it runs")
     ap.add_argument("--grey", action="store_true", help="one flux per component at every wavelength (the default gives each a spectral index when the data have more than one channel)")
+    ap.add_argument("--no-gp-disk", action="store_true", dest="no_gp", help="skip the multipolar Gaussian-process disk of the disk families")
+    ap.add_argument("--no-residual-image", action="store_true", dest="no_residual", help="skip the non-parametric image fitted on top of the chosen model")
     ap.add_argument("--no-spectra", action="store_true", dest="no_spectra", help="do not fit the files' OI_FLUX spectra")
     a = ap.parse_args(argv)
     if a.list:
@@ -406,7 +655,7 @@ def main(argv=None):
         return 0
     if a.task is None or a.model is None:
         ap.error("--task and --model are required")
-    run(a.task, a.model, pathlib.Path(a.data).expanduser(), pathlib.Path(a.out).expanduser(), a.starts, a.smoke, a.grey, not a.no_spectra)
+    run(a.task, a.model, pathlib.Path(a.data).expanduser(), pathlib.Path(a.out).expanduser(), a.starts, a.smoke, a.grey, not a.no_spectra, not a.no_residual, a.no_gp)
     return 0
 
 

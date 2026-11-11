@@ -20,7 +20,7 @@ datasets:
     family: spotted_star_binary
     built: true
   2006_disk:
-    says: a geometrically thin disk
+    says: a geometrically thin disk, inclined, so not expected to be symmetric
     family: thin_disk
     built: true
   2008_agb:
