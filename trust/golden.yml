@@ -5,3 +5,7 @@ dholakia:
   what: GravityDarkenedStar visibilities and ELR11 fluxes
   produced_by: Shashank Dholakia's jax-interferometry ELR_Model, commit 70689ed
   used_in: virgil's own tests (tests/test_elr.py, tests/test_gravity_darkened_star.py), so they arrive through virgil's CI evidence
+visread:
+  what: MS reading (u, v, frequency, time, visibilities, weights) as MPoL's reader sees it, including its DATA conjugation
+  produced_by: visread 0.0.5 (the version design/alma_imlup_p3.md names; no commit pinned), run in the casatools worker environment through the alma_worker bridge
+  used_in: tests/test_alma_conventions.py::test_our_reader_agrees_with_visread, a tier-B comparison on the synthetic MS, so it arrives through this repo's own CI evidence

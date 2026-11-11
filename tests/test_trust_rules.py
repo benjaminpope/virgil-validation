@@ -288,6 +288,37 @@ def test_a_stamped_records_commit_decides_whether_a_failure_elsewhere_is_newer(t
     assert recs[0]["_commit"] == new and "_fails_elsewhere" not in recs[0]
 
 
+def test_a_negative_control_is_never_the_headline_of_a_part(trust):
+    base = {"test": "t::c", "roots": ["mathematics"], "tier": "A", "outcome": "passed", "_source": "ours",
+            "metrics": {"wrong_mapping_rel_err": 0.4}}
+    assert trust._headline({**base, "kind": "control"}) == (None, None)
+    assert trust._headline({**base, "kind": "check"}) == ("wrong_mapping_rel_err", 0.4)
+    # an explicit headline on a control is still honoured
+    assert trust._headline({**base, "kind": "control", "headline": "wrong_mapping_rel_err"})[1] == 0.4
+
+
+def test_a_golden_root_not_listed_in_golden_yml_fails_collection(tmp_path):
+    """roots_of drops an unlisted golden root, so the plugin must refuse it at
+    collection instead of letting it silently count for nothing."""
+    from types import SimpleNamespace
+
+    from evidence.plugin import pytest_collection_modifyitems
+
+    dummy = tmp_path / "test_dummy.py"
+    dummy.write_text("pass\n")
+    cfg = SimpleNamespace(getoption=lambda name: True)
+
+    def item(root):
+        mark = pytest.mark.validates("virgil.models.UniformDisk", roots=[root]).mark
+        return SimpleNamespace(nodeid="test_dummy.py::test_x", path=dummy,
+                               iter_markers=lambda name: [mark] if name == "validates" else [])
+
+    pytest_collection_modifyitems(cfg, [item("golden:dholakia")])  # listed
+    pytest_collection_modifyitems(cfg, [item("golden:visread")])  # listed
+    with pytest.raises(pytest.UsageError, match=r"golden roots \['golden:unlisted'\]"):
+        pytest_collection_modifyitems(cfg, [item("golden:unlisted")])
+
+
 @pytest.fixture
 def two_commits(tmp_path):
     """A virgil checkout with two commits, ``old`` then ``new`` (``old`` is an ancestor of ``new``)."""
