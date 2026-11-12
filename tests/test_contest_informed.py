@@ -375,7 +375,8 @@ def small_scales():
 def test_a_ring_width_prior_reaches_below_the_collapse_limit_so_a_collapsed_ring_is_inside_the_prior():
     sc = small_scales()
     width, sigma = C.prior_of("width", sc), C.prior_of("ring_width", sc)
-    assert float(width.low) == pytest.approx(IS.WIDTH_FLOOR * sc.resolution) < IS.RING_FRACTION * sc.resolution
+    assert float(width.low) == pytest.approx(IS.WIDTH_FLOOR * sc.resolution)
+    assert float(width.low) < IS.RING_FRACTION * sc.resolution
     assert float(sigma.low) * IS.FWHM_PER_SIGMA == pytest.approx(float(width.low))  # the same bound, as a sigma
     rung = dict(C.ladder("ringed_disk_with_companions"))["star+one ring"]
     kinds = C.flat_kinds(rung)
