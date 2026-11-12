@@ -852,37 +852,52 @@ def chromatic_rung(grey, rung, below_rung, below_final, ctx, wavel0):
     kinds, priors = flat_kinds(rung, wavel0), build_priors(rung, sc, wavel0)
     data, noise = as_data(datasets), noise_priors(datasets)
 
-    def from_grey(values, fluxes=None):
+    def from_grey(values, fluxes=None, index=0.0):
         out = {}
         for path in priors:
             if path.endswith(".flux.ratio"):
                 base = path[: -len(".ratio")]
                 out[path] = (fluxes or {}).get(base, values.get(base, 0.1))
             elif path.endswith(".flux.index"):
-                out[path] = 0.0
+                out[path] = index
             else:
                 out[path] = values.get(path, 0.0)
         return out
 
-    starts = [from_grey(grey["values"])]
+    # Starts of the chromatic stage, each with an origin: the grey best with every index at zero, the rung below's
+    # chromatic fit with the new parts at negligible flux, and the grey best with every index at +1 and at -1 (so the
+    # stage has more than one start, and `starts_agree` is a test of the chromatic optimum itself).
+    starts = [("grey_best", from_grey(grey["values"]))]
     if below_final is not None:
         old = set(components_of(below_rung))
         init = from_grey(grey["values"], {f"{c}.flux": NEGLIGIBLE for c in components_of(rung) if c not in old})
         init.update({k: v for k, v in below_final["values"].items() if k in priors and comp_of(k) in old})
-        starts.append(init)
-    best = None
-    for init in starts:
+        starts.append(("below", init))
+    starts += [("index+1", from_grey(grey["values"], index=1.0)), ("index-1", from_grey(grey["values"], index=-1.0))]
+    recs = []
+    for origin, init in starts:
         r, error = fit_start(rung, priors, data, {**init, **{k: v for k, v in grey["noise"].items()}}, wavel0, noise, ctx["max_steps"])
         if r is None:
+            recs.append({"origin": origin, "error": error})
             continue
-        rec = final_record(r, rung, datasets, wavel0, sc)
-        if best is None or rec["minus2lnl"] < best["minus2lnl"]:
-            best = rec
-    if best is None:
+        recs.append({"origin": origin, **final_record(r, rung, datasets, wavel0, sc)})
+    done = [x for x in recs if "minus2lnl" in x]
+    if not done:
         return None
+    best = dict(min(done, key=lambda x: x["minus2lnl"]))
+    best.pop("origin")
+    tol = IS.tolerance(best["n"])
+    at_best = [x for x in done if x["minus2lnl"] <= best["minus2lnl"] + tol]
+    origins = sorted({x["origin"] for x in recs})
     k = len(priors) + len(noise_names(datasets))
     best |= {"k": k, "bic": best["minus2lnl"] + k * float(np.log(max(best["n"], 1))), "chi2_red": best["chi2_quoted"] / max(best["n"], 1),
-             "bounds": {k_: list(v) for k_, v in bounds_of(priors, kinds).items()}}
+             "bounds": {k_: list(v) for k_, v in bounds_of(priors, kinds).items()},
+             # the chromatic stage's own start statistics (the checks and the report use these for a chromatic rung)
+             "starts": len(recs), "starts_refit": len(done), "starts_at_best": len(at_best),
+             "failed_starts": len(recs) - len(done), "errors": sorted({x["error"] for x in recs if "error" in x})[:3],
+             "starts_by_origin": {o: sum(x["origin"] == o for x in recs) for o in origins},
+             "starts_at_best_by_origin": {o: sum(x["origin"] == o for x in at_best) for o in origins},
+             "minus2lnl_of_refit_starts": [x["minus2lnl"] for x in done]}
     return best
 
 
@@ -1027,7 +1042,10 @@ def checks_of(rungs, chosen, ladder_rungs, rest, sc, converged):
              for r in rungs]
     put("nested", IS.nested(table, chosen["n"]))
     put("starts_agree", IS.starts_agree(chosen["minus2lnl_of_refit_starts"], chosen["n"]))
-    put("family_complete", IS.family_complete(None if not rest or "flux_relative_to_model" not in rest else rest["flux_relative_to_model"]))
+    if rest and "error" in rest:  # the image step ran and failed: a failure, not a missing measurement
+        out["family_complete"] = {"status": "fail", "detail": {"error": rest["error"]}}
+    else:  # skipped by --no-residual-image: nothing measured, so a warn
+        put("family_complete", IS.family_complete(None if not rest or "flux_relative_to_model" not in rest else rest["flux_relative_to_model"]))
     put("no_collapse", IS.no_collapse(collapse_components(rung, chosen["values"], kinds), sc.resolution))
     put("extent_known", (sc.extent_known, {"extent_source": sc.extent_source}))
     return out
@@ -1069,13 +1087,9 @@ def load_datasets(spec, data_dir, use_spectra):
 
 def run(task, family, data_dir, out_dir, starts=RANDOM_STARTS, smoke=False, grey=False, use_spectra=True, residual=True, no_gp=False,
         budget=None):
-    criteria = None
-    try:
-        criteria = preregistration.criteria_commit(CRITERIA, REPO)  # refuses a dirty or untracked criteria file, before any draw
-    except preregistration.CriteriaError as err:
-        if "CRITERIA_COMMIT is not set" not in str(err):
-            raise
-        print(f"WARNING: {err}; the report records no criteria_commit and is not gate evidence")
+    # Refuses before any draw when the criteria file is dirty or untracked, or when there is no git checkout and no
+    # CRITERIA_COMMIT: an unpinned fit must not reach the `informed_fit` gate.
+    criteria = preregistration.criteria_commit(CRITERIA, REPO)
     spec = tasks()[task]
     label = f"{spec['label']}_{family}"
     datasets, spectra = load_datasets(spec, data_dir, use_spectra)
@@ -1096,7 +1110,9 @@ def run(task, family, data_dir, out_dir, starts=RANDOM_STARTS, smoke=False, grey
         if wavel0:
             chrom = chromatic_rung(got, rung, below_rung, below_final, ctx, wavel0)
             if chrom is not None:
-                got = {**got, **chrom, "grey": {k: got[k] for k in ("minus2lnl", "bic", "chi2_quoted", "chi2_red", "values", "noise")}}
+                got = {**got, **chrom, "grey": {k: got[k] for k in ("minus2lnl", "bic", "chi2_quoted", "chi2_red", "values", "noise", "starts",
+                                                                      "starts_refit", "starts_at_best", "starts_by_origin",
+                                                                      "starts_at_best_by_origin", "minus2lnl_of_refit_starts")}}
         carry, below_rung, below_final = grey_values, rung, got
         ctx["noise0"] = dict(got.get("grey", got)["noise"])
         rungs.append(got)

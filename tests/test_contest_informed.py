@@ -306,3 +306,57 @@ def test_the_report_and_result_json_carry_the_new_fields(tmp_path, monkeypatch):
     assert {"no_bounds", "nested", "starts_agree", "family_complete", "no_collapse", "extent_known", "converged"} <= set(result["checks"])
     assert result["status"] in ("pass", "warn", "fail")
     assert report["rungs"][0]["starts_by_origin"]
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Review fixes: what a check may and may not wave through
+
+
+def hand_made_fit(starts=(0.0, 0.1)):
+    rung = dict(C.ladder("star_with_faint_companion"))["star"]
+    chosen = {"rung": "star", "minus2lnl": 0.0, "n": 100, "values": {}, "bounds": {}, "minus2lnl_of_refit_starts": list(starts)}
+    return rung, chosen, IS.scales_of(1.0 / (2.0 * 1.0 * IS.MAS), 1.0 / (50.0 * IS.MAS), None)
+
+
+def test_family_complete_fails_when_the_image_step_errored_and_warns_only_when_it_was_skipped():
+    rung, chosen, sc = hand_made_fit()
+    run = lambda rest: C.checks_of([chosen], chosen, [("star", rung)], rest, sc, True)["family_complete"]
+    assert run({"error": "RuntimeError: boom"})["status"] == "fail"
+    assert run(None)["status"] == "warn"
+    assert run({"flux_relative_to_model": 0.05})["status"] == "pass"
+    assert run({"flux_relative_to_model": 2.0})["status"] == "fail"
+
+
+def test_a_chromatic_rung_reports_the_start_statistics_of_its_own_stage(monkeypatch):
+    # three of four chromatic starts agree on the optimum; the grey stage's own counts must not leak into the result
+    data = synthetic(vm.System(star=vm.PointSource(), halo=vm.GaussianDisk(sigma=5.0, flux=0.5)), n=40)
+    sc, _, datasets = scales_for([data])
+    rung = dict(C.ladder("star_with_faint_companion"))["star+halo"]
+    grey = {"values": {"star.diam": 0.5, "halo.sigma": 4.0, "halo.flux": 0.4}, "noise": {"noise.vis_error_rel": 0.1}}
+    below = {"values": {"star.diam": 0.5}}
+    minus2lnl = iter([-100.0, -100.2, -100.1, -50.0])
+
+    def final_record(*args, **kwargs):
+        return {"minus2lnl": next(minus2lnl), "chi2_quoted": 120.0, "n": 100, "noise": {}, "values": {}, "converged": True, "at_bound": []}
+
+    monkeypatch.setattr(C, "fit_start", lambda *a, **k: (object(), None))
+    monkeypatch.setattr(C, "final_record", final_record)
+    ctx = {"datasets": datasets, "scales": sc, "max_steps": 5}
+    got = C.chromatic_rung(grey, rung, dict(C.ladder("star_with_faint_companion"))["star"], below, ctx, 1.65e-6)
+    assert got["starts"] == 4 and got["starts_refit"] == 4
+    assert set(got["starts_by_origin"]) == {"grey_best", "below", "index+1", "index-1"}
+    assert got["starts_at_best"] == 3 and got["minus2lnl_of_refit_starts"] == [-100.0, -100.2, -100.1, -50.0]
+    assert got["minus2lnl"] == -100.2
+    # starts_agree is then run on these: three of four within tolerance pass; a lone optimum does not
+    assert IS.starts_agree(got["minus2lnl_of_refit_starts"], 100)[0]
+    assert not IS.starts_agree([-100.2, 49.0, -50.0, -10.0], 100)[0]
+
+
+def test_a_run_without_a_pinned_criteria_commit_is_refused_before_any_data_is_read(tmp_path, monkeypatch):
+    def refuse(path, root=None):
+        raise C.preregistration.CriteriaError("design/contest_informed_criteria.md: not a git checkout and CRITERIA_COMMIT is not set")
+
+    monkeypatch.setattr(C.preregistration, "criteria_commit", refuse)
+    monkeypatch.setattr(C, "load_datasets", lambda *a, **k: pytest.fail("data were read before the criteria were pinned"))
+    with pytest.raises(C.preregistration.CriteriaError):
+        C.run(0, "star_with_faint_companion", tmp_path, tmp_path, smoke=True)
