@@ -102,8 +102,9 @@ def moment_fit(u, v, v2, err, theta_range, fit_amplitude=False, floor=SYSTEMATIC
     are quoted errors added in quadrature with ``floor`` (a start must not chase error bars of 1e-4).
 
     Returns ``compact``, ``extended``, ``resolved``, ``fwhm``, ``ratio``, ``pa``, ``amplitude``, ``chi2_quoted`` and
-    ``n`` (chi2 of the fit on the *quoted* errors), ``rms``, ``short_v2`` (the largest V^2 on the shortest quarter of
-    the baselines), ``longest_tenth`` (the median |V| on the longest tenth: a second estimate of ``compact``) and
+    ``n`` (chi2 of the fit on the *quoted* errors), ``rms``, ``short_v2`` (the largest V^2 - 3 sigma on the shortest quarter
+    of the baselines: pure noise on a source resolved everywhere gives about zero, not the noise's maximum),
+    ``longest_tenth`` (the median |V| on the longest tenth: a second estimate of ``compact``) and
     ``at_upper_edge`` (the size reached the top of the grid: the data bound the extent only from below), or ``None``
     with fewer than six usable points."""
     u, v, v2, err = (np.ravel(np.asarray(x, float)) for x in (u, v, v2, err))
@@ -171,7 +172,7 @@ def moment_fit(u, v, v2, err, theta_range, fit_amplitude=False, floor=SYSTEMATIC
     longest = q >= np.quantile(q, 0.9)
     return {"compact": fp, "extended": fg, "resolved": float(max(0.0, 1.0 - fp - fg)), "fwhm": fwhm, "ratio": ratio,
             "pa": float(pa % 180.0), "amplitude": a, "chi2_quoted": chi2, "n": int(u.size),
-            "rms": float(np.sqrt(np.mean((model - v2) ** 2))), "short_v2": float(np.max(v2[shortest])),
+            "rms": float(np.sqrt(np.mean((model - v2) ** 2))), "short_v2": float(np.max(v2[shortest] - 3.0 * err[shortest])),
             "longest_tenth": float(np.median(amp[longest])), "at_upper_edge": bool(fwhm >= 0.95 * theta_range[1])}
 
 
@@ -209,6 +210,8 @@ class Scales:
 
 
 MAX_PIXELS = 128  # pixels a side of any image of the informed fits
+SHORT_V2_MIN = 0.03  # extent_known: V^2 - 3 sigma on the shortest quarter of baselines must reach this
+EXTENDED_MIN = 0.05  # extent_known: the moment fit's extended light must be at least this fraction of the flux
 
 
 def scales_of(b_max, b_min, moments=None, field=None, field_source=None, tapered=False):
@@ -219,8 +222,9 @@ def scales_of(b_max, b_min, moments=None, field=None, field_source=None, tapered
     extent E: the given field; otherwise 4 x the extended light's major FWHM, at least 8 resolution elements.
     reach S: half the given field when the contest tapered it, else 3 lambda / B_min.
     pixel: lambda / (4 B_max), the field being E; more than ``MAX_PIXELS`` a side coarsens the pixel, and says so.
-    When the data bound the extent only from below (V^2 below 0.03 on every short baseline, or the fitted size at the
-    top of its grid) and no field was given, E is the reach and ``extent_known`` is False."""
+    When the data bound the extent only from below (V^2 - 3 sigma below ``SHORT_V2_MIN`` on every short baseline, the
+    fitted size at the top of its grid, or under ``EXTENDED_MIN`` of the flux in extended light, so that the size is
+    not a measurement) and no field was given, E is the reach and ``extent_known`` is False."""
     resolution = 1.0 / (2.0 * b_max) / MAS
     fringe = 1.0 / b_min / MAS  # lambda / B_min
     warnings = []
@@ -228,7 +232,8 @@ def scales_of(b_max, b_min, moments=None, field=None, field_source=None, tapered
         reach, reach_source = 0.5 * field, "half the given field (the contest tapered the data)"
     else:
         reach, reach_source = 3.0 * fringe, "3 x lambda / B_min"
-    bounded_below = moments is None or moments["short_v2"] < 0.03 or moments["at_upper_edge"]
+    bounded_below = (moments is None or moments["short_v2"] < SHORT_V2_MIN or moments["at_upper_edge"]
+                     or moments.get("extended", 1.0) < EXTENDED_MIN)
     if field:
         extent, source, known = float(field), f"the contest's field ({field_source})", True
     elif moments is not None and not bounded_below:
@@ -237,8 +242,9 @@ def scales_of(b_max, b_min, moments=None, field=None, field_source=None, tapered
     else:
         extent, known = reach, False
         source = "the reach: the data bound the extent only from below, and no field was given"
-        warnings.append("extent_unconstrained: V^2 is below 0.03 on every short baseline or the fitted size is at the top "
-                        "of its grid, so the extent is only a lower limit")
+        warnings.append(f"extent_unconstrained: V^2 - 3 sigma is below {SHORT_V2_MIN} on every short baseline, the fitted size "
+                        f"is at the top of its grid, or the extended light is under {EXTENDED_MIN} of the flux, so the "
+                        "extent is only a lower limit")
     pixel = 0.25 / b_max / MAS
     wanted = int(np.ceil(extent / pixel))
     npix = min(wanted, MAX_PIXELS)
@@ -333,6 +339,7 @@ AGREE_FRACTION = 0.01  # starts_agree / nested: -2 ln L within this fraction of 
 MIN_AGREE = 2  # starts_agree: at least this many starts at the best
 FAMILY_FLUX_LIMIT = 0.2  # family_complete: the image on top may carry at most this fraction of the model's flux
 RING_FRACTION = 0.2  # no_collapse: a ring narrower than this fraction of the resolution
+WIDTH_FLOOR = 0.05  # a ring's width prior (FWHM) starts at this fraction of the resolution: below RING_FRACTION, so a collapse is inside the prior
 COMPANION_ELEMENTS = 2.0  # no_collapse: a companion closer than this many resolution elements to the star
 PERIODIC = ("angle", "full_angle")  # prior kinds that wrap: no_bounds does not apply
 
@@ -356,8 +363,11 @@ def no_bounds(values, bounds, edge=BOUND_EDGE):
 
 
 def tolerance(n):
-    """The -2 ln L difference below which two fits count as the same optimum: ``AGREE_FRACTION`` of one chi2 per datum."""
-    return AGREE_FRACTION * max(int(n), 1)
+    """The -2 ln L difference below which two fits count as the same optimum: ``AGREE_FRACTION`` of one chi2 per datum,
+    but never more than ln N, the BIC cost of one parameter (so a large data set cannot hide a gap that would pick a
+    rung)."""
+    n = max(int(n), 1)
+    return min(AGREE_FRACTION * n, float(np.log(n)) if n > 1 else AGREE_FRACTION)
 
 
 def nested(rungs, n):

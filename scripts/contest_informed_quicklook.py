@@ -80,6 +80,10 @@ def figure(report, data_dir, out_dir):
     values = {k: scalar(v) for k, v in chosen["values"].items()}
     model = C.model_of(rungs[report["chosen"]], values, wavel0)
     datasets = datasets_of(spec, data_dir)
+    scale = report.get("visibility_scale") or {}
+    if scale.get("applied"):  # the fit was made on data divided by the fitted amplitude: show the data it saw
+        a = float(scale["amplitude_v2"])
+        datasets = [C.divided(d, a if d.v2_flag else float(np.sqrt(a))) for d in datasets]
     fov = extent_of(chosen["values"], field_of(report))
 
     folder = pathlib.Path(report["_folder"])

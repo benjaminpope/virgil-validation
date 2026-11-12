@@ -177,7 +177,7 @@ SURFACE_SPOT = ("UniformDisk", {"diam": "small", "flux": "flux", "dra": "far", "
 HALO = ("GaussianDisk", {"sigma": "size", "flux": "flux"})
 ELLIPSE = ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "flux"})
 OFFSET_ELLIPSE = ("EllipticalGaussian", {"fwhm": "size", "ratio": "ratio", "pa": "angle", "flux": "flux", "dra": "near", "ddec": "near"})
-RIM = ("ModulatedGaussianRim", {"diam": "size", "fwhm": "size", "inc": "inclination", "pa": "angle",
+RIM = ("ModulatedGaussianRim", {"diam": "size", "fwhm": "width", "inc": "inclination", "pa": "angle",
                                 "az_amps": "modulation", "az_pas": "full_angle", "flux": "flux"})
 ARC = ("GaussianArc", {"radius": "size", "width": "size", "length": "size", "pa": "full_angle", "flux": "flux"})
 RESOLVED = ("Resolved", {"flux": "flux"})  # over-resolved light: visibility zero on every baseline
@@ -188,7 +188,7 @@ def rings(*names):
     params = {"inc": "inclination", "pa": "angle", "flux": "flux"}
     for i, name in enumerate(names):
         params[f"profile.{name}.radius"] = "size"
-        params[f"profile.{name}.sigma"] = "size"
+        params[f"profile.{name}.sigma"] = "ring_width"
         if i:
             params[f"profile.{name}.weight"] = "flux"
     return ("RingedDisk", params)
@@ -377,6 +377,10 @@ def prior_of(kind, sc):
     return {
         "size": dist.LogUniform(res / 5.0, extent),  # anything from well under the resolution to the whole extent
         "small": dist.LogUniform(res / 20.0, 4.0 * res),  # barely resolved or unresolved
+        # a ring's width (FWHM) may be well under the resolution; the floor sits below `no_collapse`'s RING_FRACTION, so a
+        # ring that has collapsed is inside the prior, not at its edge
+        "width": dist.LogUniform(IS.WIDTH_FLOOR * res, extent),
+        "ring_width": dist.LogUniform(IS.WIDTH_FLOOR * res / IS.FWHM_PER_SIGMA, extent / IS.FWHM_PER_SIGMA),  # the same, as a sigma
         "ratio": dist.Uniform(0.3, 1.0),
         "angle": dist.Uniform(0.0, 180.0),
         "full_angle": dist.Uniform(0.0, 360.0),
@@ -542,7 +546,7 @@ def centre_of(rung, kinds, priors, sc, m):
     for path, kind in kinds.items():
         comp, leaf = comp_of(path), leaf_of(path)
         ring = any(l in RING_LEAVES for l in leaves[comp])
-        if kind in ("size", "small"):
+        if kind in ("size", "small", "width", "ring_width"):
             if "profile" in path:  # a ring of a disk: its radius and width
                 index = 0.5 * (1.0 + (ord(path.split(".")[-2]) - ord("a")) * 0.5) if leaf == "radius" else 0.0
                 value = theta * index if leaf == "radius" else max(sc.resolution, theta / 8.0)
@@ -604,11 +608,10 @@ def stratified_starts(rung, kinds, priors, sc, m, centre):
     leaves = {}
     for path in kinds:
         leaves.setdefault(comp_of(path), {})[leaf_of(path)] = path
-    for comp, ls in leaves.items():  # sizes, one at a time
-        for leaf in SIZE_LEAVES:
-            if leaf in ls and kinds[ls[leaf]] == "size" and "profile" not in ls[leaf]:
-                for size in IS.log_steps(centre[ls[leaf]]):
-                    out.append(make({ls[leaf]: size}))
+    for path, kind in kinds.items():  # sizes, one at a time (each ring of a disk has its own radius and width)
+        if leaf_of(path) in SIZE_LEAVES and kind in ("size", "width", "ring_width"):
+            for size in IS.log_steps(centre[path]):
+                out.append(make({path: size}))
     inclined = [ls for ls in leaves.values() if "inc" in ls and "pa" in ls]
     elliptic = [ls for ls in leaves.values() if "inc" not in ls and "ratio" in ls and "pa" in ls and kinds[ls["pa"]] == "angle"]
     if inclined or elliptic:
@@ -626,6 +629,46 @@ def stratified_starts(rung, kinds, priors, sc, m, centre):
                 out.append(make({ls["pa"]: pa}))
             for length in np.geomspace(sc.resolution * 2.0, sc.extent, 3):
                 out.append(make({ls["length"]: float(length)}))
+    return out
+
+
+def seeded(start, seed, priors, kinds):
+    """``start`` with the values of a map ``seed`` put in, each moved inside its prior: a peak on the edge of the map, a
+    flux under 1e-4 or over a planet's cap must not start a fit on or outside the prior's support."""
+    bounds, out = bounds_of(priors, kinds), dict(start)
+    for path, value in seed.items():
+        lo, hi, log, _ = bounds[path]
+        out[path] = IS.inside(value, lo, hi, log) if np.isfinite(lo) and np.isfinite(hi) else float(value)
+    return out
+
+
+FLUX_KINDS = ("flux", "planet")  # prior kinds of a flux (ratio to the reference component), a ring weight included
+
+
+def embed_below(rung, below_rung, kinds, priors, start, wavel0=None):
+    """``start`` with ``rung`` made to reproduce ``below_rung``: every flux or ring weight the rung adds starts at
+    ``NEGLIGIBLE`` (a new ring, a new companion, the over-resolved light), and when the rung adds a reference component
+    (one with no flux parameter: its flux is 1 and the rest are ratios to it, as when a star is added to a disk) the
+    fluxes of the old components start at the top of their priors, so that the reference is the negligible part.
+    New parameters are found from the parameter names, not the component names: a ring of an existing disk is new too."""
+    bounds = bounds_of(priors, kinds)
+    out = dict(start)
+
+    def put(path, value):
+        lo, hi, log, _ = bounds[path]
+        out[path] = IS.inside(value, lo, hi, log)
+
+    old = set(flat_kinds(below_rung, wavel0))
+    for path, kind in kinds.items():
+        if path not in old and kind in FLUX_KINDS:
+            put(path, NEGLIGIBLE)
+    old_comps = set(components_of(below_rung))
+    gained = [c for c in components_of(rung) if c not in old_comps
+              and not any(comp_of(p) == c and k in FLUX_KINDS for p, k in kinds.items())]
+    if gained:
+        for path, kind in kinds.items():
+            if path in old and kind == "flux" and "profile" not in path and leaf_of(path) in ("flux", "ratio"):
+                put(path, 1e4)
     return out
 
 
@@ -784,14 +827,11 @@ def fit_rung(name, rung, below_rung, ctx, carry, rng):
         if carry and below_rung is not None:
             seeds, record = map_seeds(comp, below_rung if isinstance(rung, Scene) else rung, tempered, sc, carry, kinds, ctx["smoke"])
             maps.append(record)
-            map_starts += [("map", {**centre, **carry, **seed}) for seed in seeds[:2 if ctx["smoke"] else PEAKS]]
+            for seed in seeds[:2 if ctx["smoke"] else PEAKS]:
+                map_starts.append(("map", seeded({**centre, **{k: v for k, v in carry.items() if k in priors}}, seed, priors, kinds)))
     if carry and below_rung is not None:
         # the rung below, new parts at negligible flux (a part that is positioned goes where the map's best peak is)
-        below = {**centre, **{k: v for k, v in carry.items() if k in priors}}
-        for path, kind in kinds.items():
-            if comp_of(path) in new and leaf_of(path) == "flux":
-                lo, hi, log, _ = bounds_of(priors, kinds)[path]
-                below[path] = IS.inside(NEGLIGIBLE, lo, hi, log)
+        below = embed_below(rung, below_rung, kinds, priors, {**centre, **{k: v for k, v in carry.items() if k in priors}})
         if map_starts:
             below.update({k: v for k, v in map_starts[0][1].items() if leaf_of(k) in ("dra", "ddec")})
         starts.append(("below", below))
@@ -867,16 +907,18 @@ def chromatic_rung(grey, rung, below_rung, below_final, ctx, wavel0):
     # Starts of the chromatic stage, each with an origin: the grey best with every index at zero, the rung below's
     # chromatic fit with the new parts at negligible flux, and the grey best with every index at +1 and at -1 (so the
     # stage has more than one start, and `starts_agree` is a test of the chromatic optimum itself).
-    starts = [("grey_best", from_grey(grey["values"]))]
+    # Every start's noise terms are where its own source left them: the grey fit's, or the rung below's for "below".
+    starts = [("grey_best", from_grey(grey["values"]), grey["noise"])]
     if below_final is not None:
-        old = set(components_of(below_rung))
-        init = from_grey(grey["values"], {f"{c}.flux": NEGLIGIBLE for c in components_of(rung) if c not in old})
-        init.update({k: v for k, v in below_final["values"].items() if k in priors and comp_of(k) in old})
-        starts.append(("below", init))
-    starts += [("index+1", from_grey(grey["values"], index=1.0)), ("index-1", from_grey(grey["values"], index=-1.0))]
+        old = set(flat_kinds(below_rung, wavel0))
+        init = embed_below(rung, below_rung, kinds, priors, from_grey(grey["values"]), wavel0)
+        init.update({k: v for k, v in below_final["values"].items() if k in priors and k in old})
+        starts.append(("below", init, below_final["noise"]))
+    starts += [("index+1", from_grey(grey["values"], index=1.0), grey["noise"]),
+               ("index-1", from_grey(grey["values"], index=-1.0), grey["noise"])]
     recs = []
-    for origin, init in starts:
-        r, error = fit_start(rung, priors, data, {**init, **{k: v for k, v in grey["noise"].items()}}, wavel0, noise, ctx["max_steps"])
+    for origin, init, start_noise in starts:
+        r, error = fit_start(rung, priors, data, {**init, **start_noise}, wavel0, noise, ctx["max_steps"])
         if r is None:
             recs.append({"origin": origin, "error": error})
             continue
@@ -901,6 +943,22 @@ def chromatic_rung(grey, rung, below_rung, below_final, ctx, wavel0):
     return best
 
 
+def as_chromatic(grey, rung, sc, wavel0):
+    """The grey fit of a rung in the chromatic form (``<comp>.flux`` becomes ``<comp>.flux.ratio`` with index 0, and the
+    bounds are the chromatic ones), for when the chromatic stage failed everywhere: the model, the images and the
+    checks of a chromatic run all read chromatic parameters. The grey likelihood, BIC and parameter count stay, and
+    ``chromatic_failed`` says so."""
+    chromatic_kinds = flat_kinds(rung, wavel0)
+    values = {}
+    for path, value in grey["values"].items():
+        if f"{path}.ratio" in chromatic_kinds:
+            values[f"{path}.ratio"], values[f"{path}.index"] = value, 0.0
+        else:
+            values[path] = value
+    bounds = {k: list(v) for k, v in bounds_of(build_priors(rung, sc, wavel0), chromatic_kinds).items()}
+    return {"values": values, "bounds": bounds, "chromatic_failed": True}
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Non-parametric images on top of, or instead of, the ladder
 
@@ -910,12 +968,15 @@ GP_DISKS = {"thin_disk": (2, None), "star_in_shell": (2, None), "star_rim_planet
             "ringed_disk_with_companions": (1, "companion")}
 
 
-def fixed_noise(noise_values):
-    """The fitted noise of a rung held fixed (virgil's tied terms: a function of the values returns the constant)."""
-    out = {}
-    for key, value in noise_values.items():
-        out[key.split(".", 1)[1]] = (lambda v, c=float(value): c)
-    return out
+def fixed_noise(noise_values, datasets):
+    """The fitted noise of a rung held fixed (virgil's tied terms: a function of the values returns the constant), in
+    the shape `noise_priors` has: one dict for one dataset, a list with one dict per dataset for several, each holding
+    only the terms that dataset has."""
+    sets = [{} for _ in datasets]
+    for key, (i, term) in noise_names(datasets).items():
+        if key in noise_values:
+            sets[i][term] = (lambda v, c=float(noise_values[key]): c)
+    return sets[0] if len(datasets) == 1 else sets
 
 
 def gp_disk(family, chosen, ctx, wavel0, rng, starts, max_steps, out_path):
@@ -960,7 +1021,7 @@ def gp_disk(family, chosen, ctx, wavel0, rng, starts, max_steps, out_path):
     for _ in range(max(2, starts // 2)):
         start = scene(float(rng.uniform(0.0, 70.0)), float(rng.uniform(0.0, 180.0)), float(np.exp(rng.uniform(np.log(0.05), np.log(3.0)))))
         try:
-            r = fit(start, priors, data, noise=fixed_noise(chosen["noise"]), max_steps=max_steps, time_limit=2.0 * TIME_LIMIT)
+            r = fit(start, priors, data, noise=fixed_noise(chosen["noise"], datasets), max_steps=max_steps, time_limit=2.0 * TIME_LIMIT)
         except Exception as err:  # noqa: BLE001
             runs.append((float("inf"), None, f"{type(err).__name__}: {err}"))
             continue
@@ -991,7 +1052,7 @@ def residual_image(model, ctx, noise_values, out_path):
     extra = vm.Image(GaussianField(np.zeros((npix, npix)), sigma=2.0, length_mas=2.0 * sc.resolution), scale, flux=0.05)
     scene = vm.System(base=model, rest=extra)
     data = as_data(datasets)
-    r = fit(scene, image_priors(scene) | {"rest.flux": dist.LogUniform(1e-4, 2.0)}, data, noise=fixed_noise(noise_values), time_limit=2.0 * TIME_LIMIT)
+    r = fit(scene, image_priors(scene) | {"rest.flux": dist.LogUniform(1e-4, 2.0)}, data, noise=fixed_noise(noise_values, datasets), time_limit=2.0 * TIME_LIMIT)
     image = np.asarray(r.model.rest.render(npix=npix, fov_mas=npix * scale))
     share = float(np.ravel(r.values["rest.flux"])[0])
     np.savez_compressed(out_path, image=image, pixel_scale_mas=scale, flux=share)
@@ -1109,10 +1170,11 @@ def run(task, family, data_dir, out_dir, starts=RANDOM_STARTS, smoke=False, grey
         grey_values = dict(got["values"])
         if wavel0:
             chrom = chromatic_rung(got, rung, below_rung, below_final, ctx, wavel0)
-            if chrom is not None:
-                got = {**got, **chrom, "grey": {k: got[k] for k in ("minus2lnl", "bic", "chi2_quoted", "chi2_red", "values", "noise", "starts",
-                                                                      "starts_refit", "starts_at_best", "starts_by_origin",
-                                                                      "starts_at_best_by_origin", "minus2lnl_of_refit_starts")}}
+            if chrom is None:  # no chromatic start survived: the grey fit stands, written in the chromatic form
+                chrom = as_chromatic(got, rung, ctx["scales"], wavel0)
+            got = {**got, **chrom, "grey": {k: got[k] for k in ("minus2lnl", "bic", "chi2_quoted", "chi2_red", "values", "noise", "starts",
+                                                                  "starts_refit", "starts_at_best", "starts_by_origin",
+                                                                  "starts_at_best_by_origin", "minus2lnl_of_refit_starts")}}
         carry, below_rung, below_final = grey_values, rung, got
         ctx["noise0"] = dict(got.get("grey", got)["noise"])
         rungs.append(got)

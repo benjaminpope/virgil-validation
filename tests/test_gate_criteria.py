@@ -144,6 +144,12 @@ def test_the_other_gates_refuse_an_edited_criteria_file_too(tmp_path, monkeypatc
     k = scratch_repo("design/trackb_criteria.md", (ROOT / "design" / "trackb_criteria.md").read_text())
     monkeypatch.setattr(tb, "REPO", tmp_path)
     cases.append((tb.criteria_block, k))
+    ci = script("contest_informed")
+    m = scratch_repo("design/contest_informed_criteria.md", (ROOT / "design" / "contest_informed_criteria.md").read_text())
+    monkeypatch.setattr(ci, "REPO", tmp_path)
+    # the run refuses before it reads any data; with a clean file it goes on and fails for want of the data (not an exit)
+    cases.append((lambda: ci.run(0, "star_with_faint_companion", tmp_path / "no_data", tmp_path / "out", smoke=True), m))
+
     def refuses(call):
         try:
             call()

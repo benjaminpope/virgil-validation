@@ -22,7 +22,9 @@ from virgil.oidata import OIData  # noqa: E402
 
 from crosscheck import informed_starts as IS  # noqa: E402
 
-pytestmark = pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
+# These tests simulate data with `OIData.with_model`, fit it with virgil, and check the wiring and the report: the
+# data's own model is the oracle, so the root is self-consistency, not a closed-form expression.
+pytestmark = pytest.mark.validates("pipeline:contest-imaging", roots=["self-consistency"], kind="guard")
 
 SCRIPTS = pathlib.Path(__file__).parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -333,7 +335,7 @@ def test_a_chromatic_rung_reports_the_start_statistics_of_its_own_stage(monkeypa
     sc, _, datasets = scales_for([data])
     rung = dict(C.ladder("star_with_faint_companion"))["star+halo"]
     grey = {"values": {"star.diam": 0.5, "halo.sigma": 4.0, "halo.flux": 0.4}, "noise": {"noise.vis_error_rel": 0.1}}
-    below = {"values": {"star.diam": 0.5}}
+    below = {"values": {"star.diam": 0.5}, "noise": {"noise.vis_error_rel": 0.3}}
     minus2lnl = iter([-100.0, -100.2, -100.1, -50.0])
 
     def final_record(*args, **kwargs):
@@ -360,3 +362,96 @@ def test_a_run_without_a_pinned_criteria_commit_is_refused_before_any_data_is_re
     monkeypatch.setattr(C, "load_datasets", lambda *a, **k: pytest.fail("data were read before the criteria were pinned"))
     with pytest.raises(C.preregistration.CriteriaError):
         C.run(0, "star_with_faint_companion", tmp_path, tmp_path, smoke=True)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Review fixes: rings, embedding the rung below, seeds, noise of several datasets, the chromatic fallback
+
+
+def small_scales():
+    return IS.scales_of(1.0 / (2.0 * 2.0 * IS.MAS), 1.0 / (60.0 * IS.MAS), None)
+
+
+def test_a_ring_width_prior_reaches_below_the_collapse_limit_so_a_collapsed_ring_is_inside_the_prior():
+    sc = small_scales()
+    width, sigma = C.prior_of("width", sc), C.prior_of("ring_width", sc)
+    assert float(width.low) == pytest.approx(IS.WIDTH_FLOOR * sc.resolution) < IS.RING_FRACTION * sc.resolution
+    assert float(sigma.low) * IS.FWHM_PER_SIGMA == pytest.approx(float(width.low))  # the same bound, as a sigma
+    rung = dict(C.ladder("ringed_disk_with_companions"))["star+one ring"]
+    kinds = C.flat_kinds(rung)
+    assert kinds["disk.profile.a.sigma"] == "ring_width"
+    collapsed = {"disk.profile.a.sigma": 0.1 * sc.resolution / IS.FWHM_PER_SIGMA}  # a FWHM of a tenth of the resolution
+    resolved = {"disk.profile.a.sigma": 0.5 * sc.resolution / IS.FWHM_PER_SIGMA}
+    assert not IS.no_collapse(C.collapse_components(rung, collapsed, kinds), sc.resolution)[0]
+    assert IS.no_collapse(C.collapse_components(rung, resolved, kinds), sc.resolution)[0]
+
+
+def test_the_stratified_starts_scan_the_radius_of_every_ring_of_a_ringed_disk():
+    sc = small_scales()
+    rung = dict(C.ladder("ringed_disk_with_companions"))["star+two rings"]
+    kinds, priors = C.flat_kinds(rung), C.build_priors(rung, sc)
+    centre = C.centre_of(rung, kinds, priors, sc, None)
+    moved = {p for s in C.stratified_starts(rung, kinds, priors, sc, None, centre) for p in kinds if s[p] != centre[p]}
+    assert {"disk.profile.a.radius", "disk.profile.b.radius"} <= moved
+
+
+def test_a_ring_added_to_a_disk_starts_at_negligible_weight_and_a_star_added_to_a_disk_makes_the_disk_the_whole_object():
+    sc = small_scales()
+    rungs = dict(C.ladder("ringed_disk_with_companions"))
+    rung, below = rungs["star+two rings"], rungs["star+one ring"]
+    start = C.embed_below(rung, below, C.flat_kinds(rung), C.build_priors(rung, sc), {})
+    assert start["disk.profile.b.weight"] == pytest.approx(C.NEGLIGIBLE) and "disk.flux" not in start  # the disk keeps its flux
+    thin = dict(C.ladder("thin_disk"))
+    rung, below = thin["star+disk"], thin["disk"]
+    start = C.embed_below(rung, below, rung.kinds(), C.build_priors(rung, sc), {})
+    assert start["disk.flux"] > 1e3  # the star is the negligible part: the disk's flux relative to it is at the top of its prior
+
+
+def test_a_map_seed_is_moved_inside_the_prior():
+    sc = small_scales()
+    rung = dict(C.ladder("star_with_faint_companion"))["star+halo+companion"]
+    kinds, priors = C.flat_kinds(rung), C.build_priors(rung, sc)
+    seed = {"companion.dra": sc.reach, "companion.ddec": -sc.reach, "companion.flux": 5.0}  # on the edge of the map, over the planet's cap
+    start = C.seeded({}, seed, priors, kinds)
+    for path, (lo, hi, _, _) in C.bounds_of(priors, kinds).items():
+        if path in start:
+            assert lo < start[path] < hi, path
+    assert start["companion.flux"] < 0.1
+
+
+def test_the_fitted_noise_of_several_datasets_is_held_per_dataset():
+    a = synthetic(vm.System(star=vm.PointSource()), n=20)
+    b = synthetic(vm.System(star=vm.PointSource()), n=20, seed=1)
+    fixed = C.fixed_noise({"noise[0].vis_error_rel": 0.1, "noise[1].vis_error_rel": 0.2}, [a, b])
+    assert isinstance(fixed, list) and len(fixed) == 2
+    assert fixed[0]["vis_error_rel"](None) == 0.1 and fixed[1]["vis_error_rel"](None) == 0.2
+    one = C.fixed_noise({"noise.vis_error_rel": 0.3}, [a])
+    assert one["vis_error_rel"](None) == 0.3
+
+
+def test_a_grey_fit_kept_in_a_chromatic_run_is_written_in_the_chromatic_form():
+    sc = small_scales()
+    rung = dict(C.ladder("star_with_faint_companion"))["star+halo"]
+    grey = {"values": {"star.diam": 0.5, "halo.sigma": 4.0, "halo.flux": 0.4}}
+    got = C.as_chromatic(grey, rung, sc, 1.65e-6)
+    assert got["values"]["halo.flux.ratio"] == 0.4 and got["values"]["halo.flux.index"] == 0.0 and "halo.flux" not in got["values"]
+    assert "halo.flux.ratio" in got["bounds"] and "halo.flux" not in got["bounds"] and got["chromatic_failed"]
+
+
+def test_the_chromatic_below_start_carries_the_noise_of_the_rung_below(monkeypatch):
+    data = synthetic(vm.System(star=vm.PointSource(), halo=vm.GaussianDisk(sigma=5.0, flux=0.5)), n=40)
+    sc, _, datasets = scales_for([data])
+    ladder = dict(C.ladder("star_with_faint_companion"))
+    seen = {}
+
+    def fit_start(rung, priors, data, init, *args, **kwargs):
+        seen.setdefault("inits", []).append(init)
+        return None, "stop"
+
+    monkeypatch.setattr(C, "fit_start", fit_start)
+    grey = {"values": {"star.diam": 0.5, "halo.sigma": 4.0, "halo.flux": 0.4}, "noise": {"noise.vis_error_rel": 0.1}}
+    below = {"values": {"star.diam": 0.5}, "noise": {"noise.vis_error_rel": 0.3}}
+    C.chromatic_rung(grey, ladder["star+halo"], ladder["star"], below, {"datasets": datasets, "scales": sc, "max_steps": 5}, 1.65e-6)
+    noises = [i["noise.vis_error_rel"] for i in seen["inits"]]
+    assert noises == [0.1, 0.3, 0.1, 0.1]  # grey_best, below, index+1, index-1
+    assert seen["inits"][1]["halo.flux.ratio"] == pytest.approx(C.NEGLIGIBLE)  # the new halo at negligible flux

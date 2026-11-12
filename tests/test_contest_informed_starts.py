@@ -63,7 +63,49 @@ def test_the_moment_fit_flags_a_source_resolved_on_every_baseline():
     u, v = coverage(b_min=40.0)
     v2, err = observe(u, v, 0.0, 0.3, 80.0, 0.4, 90.0)  # a large source: V^2 ~ 0 on every baseline
     fit = S.moment_fit(u, v, v2, err, theta_range=(0.2, 60.0))
-    assert fit["short_v2"] < 0.03 or fit["at_upper_edge"]
+    assert fit["short_v2"] < S.SHORT_V2_MIN or fit["at_upper_edge"]
+
+
+def test_noise_on_a_source_resolved_everywhere_does_not_pass_for_a_measurement_of_the_extent():
+    # quoted sigma 0.012 on ~100 short points: the largest of pure noise is about 0.03, which the old statistic (the
+    # largest V^2) took for a signal; V^2 - 3 sigma is about zero
+    u, v = coverage(n=800, b_min=40.0)
+    v2, err = observe(u, v, 0.0, 0.0, 80.0, 0.4, 90.0, sigma=0.012)  # no light on these baselines at all
+    fit = S.moment_fit(u, v, v2, err, theta_range=(0.2, 60.0))
+    assert fit["short_v2"] < S.SHORT_V2_MIN
+    b = np.hypot(u, v)
+    assert not S.scales_of(b.max(), b.min(), fit).extent_known
+
+
+def test_a_moment_fit_with_no_extended_light_does_not_measure_the_extent():
+    u, v = coverage()
+    b = np.hypot(u, v)
+    fit = {"fwhm": 5.0, "short_v2": 0.5, "at_upper_edge": False, "extended": 0.5 * S.EXTENDED_MIN}  # a compact star, a faint companion
+    s = S.scales_of(b.max(), b.min(), fit)
+    assert not s.extent_known and s.extent == s.reach and any("extended light" in w for w in s.warnings)
+    assert S.scales_of(b.max(), b.min(), {**fit, "extended": 2.0 * S.EXTENDED_MIN}).extent_known
+
+
+def test_the_tolerance_is_a_percent_of_n_but_never_more_than_ln_n():
+    assert S.tolerance(500) == pytest.approx(5.0)  # 1% of N
+    assert S.tolerance(20000) == pytest.approx(np.log(20000))  # not 200
+    # on a large data set two optima 200 apart are not the same optimum, and a richer rung 200 worse is not nested
+    assert not S.starts_agree([1000.0, 1200.0], n=20000)[0]
+    ok, bad = S.nested([{"rung": "a", "minus2lnl": 1000.0, "contains": []}, {"rung": "b", "minus2lnl": 1200.0, "contains": ["a"]}], n=20000)
+    assert not ok and bad[0]["rung"] == "b"
+
+
+def test_the_criteria_file_and_the_code_agree_on_every_constant():
+    import pathlib
+    import re
+
+    text = (pathlib.Path(__file__).resolve().parents[1] / "design" / "contest_informed_criteria.md").read_text()
+    table = {m.group(1): float(m.group(2)) for m in re.finditer(r"^\| `([A-Z_0-9]+)` \| ([0-9.]+) \|", text, re.M)}
+    assert set(table) == {"BOUND_EDGE", "AGREE_FRACTION", "MIN_AGREE", "FAMILY_FLUX_LIMIT", "RING_FRACTION", "WIDTH_FLOOR",
+                          "COMPANION_ELEMENTS", "SHORT_V2_MIN", "EXTENDED_MIN"}
+    for name, value in table.items():
+        assert getattr(S, name) == pytest.approx(value), name
+    assert S.WIDTH_FLOOR * (1.0 + S.BOUND_EDGE) < S.RING_FRACTION  # a collapsed ring is not at the prior's edge
 
 
 def test_the_moment_fit_finds_an_amplitude_above_one_when_asked():
