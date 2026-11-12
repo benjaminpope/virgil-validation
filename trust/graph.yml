@@ -473,6 +473,7 @@ nodes:
     source: [src/virgil/metrics.py]
     depends: [virgil.metrics.ncc]
     doc: imaging/metrics_ensembles.md#metrics
+  virgil.metrics.ring_features: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}  # virgil#715
   virgil.metrics.score:
     layer: imaging
     source: [src/virgil/metrics.py]
@@ -556,6 +557,12 @@ nodes:
   crosscheck.elr: {layer: references}
   crosscheck.nrm: {layer: references}
   crosscheck.image_metrics: {layer: references}
+  crosscheck.ring_extraction: {layer: references}  # Lai et al. 2026 eqs 4-9 (EHT Paper IV REX); design/m87_replication.md
+  external_bridge.m87_worker: {layer: references}  # Lai et al.'s own RingFit (GenDIReCT archive), in .venv-basis
+  virgil_bridge.m87_fit: {layer: references}  # M87* stages 3-5: JAX closure invariants (N^2-3N+1 per scan), xsringauss-equivalent System, full-covariance CI likelihood, native models, RML/CLEAN runners
+  external_bridge.basis_worker: {layer: references}  # Lai et al.'s BASIS (xsringauss + gauss + gauss, closure-invariant likelihood, bilby) in .venv-basis
+  external_bridge.basis_bridge: {layer: references}
+  external_bridge.m87_casa_worker: {layer: references}  # casatools importuvfits of the EHT UVFITS, in .venv-alma
   crosscheck.alma: {layer: references, doc: alma_conventions.md}  # incl. the exact DFT image_visibilities and its adjoint
   external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
   external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4) and the cross-validation tasks export_fold_asdf, score_fold (tests/test_alma_mpol_cv.py, conventions Part 6)
@@ -665,3 +672,13 @@ pipelines:
     state: planned  # CI runs tests/test_alma_mpol.py; its IM Lup check is that the objective equals MPoL's and an exact DFT on all 26 ddids. The IM Lup image fit (design P3/P4) has not run
     steps: [virgil.radio.ComplexVisData.read_ms, virgil.radio.ComplexVisData.model, virgil.radio.ComplexVisData.term,
             virgil.radio.primary_beam, virgil.radio.dartboard_folds, virgil.models.Image, virgil.fitting.fit]
+
+  m87-closure-invariants:
+    title: EHT M87* 2017/2018/2021, Lai et al. 2026 ring features and geometric fits
+    data: real
+    dataset: EHT M87* fiducial days 2017-04-11, 2018-04-21, 2021-04-18 (HOPS network-calibrated, Stokes I)
+    reference: Lai et al. 2026, Nature 659, 317 (Table 1, ED Table 1, Fig. 3) and their published reconstructions
+    url: https://github.com/benjaminpope/virgil-validation/blob/main/design/m87_replication.md
+    headline: ring diameter and orientation of their published images, then their xsringauss fits in virgil
+    state: running  # stage 1 (ring features of their images) runs locally; stages 2-5 are OzSTAR jobs
+    steps: [virgil.metrics.ring_features]
