@@ -21,7 +21,8 @@ Every summary gives the raw chi^2/N on the quoted sigma first, then posterior me
 virgil-validation and virgil, and ``criteria_commit`` (the last commit of ``design/m87_replication.md``, which the run
 refuses if the plan has uncommitted edits). Data: ``--vis`` (a directory of ``ddid_NN.npz`` from
 ``scripts/m87_uvfits_to_ms.py``, or ``eht_reading.npz``), default ``$M87_DATA/ms/<day>``; stage 3 also needs the UVFITS
-(for BASIS's sigma), default under ``$M87_DATA/zenodo/gendirect``.
+(for BASIS's sigma), default under ``$M87_DATA/zenodo/gendirect``; for 3b, ``--basis-result`` instead reads the output of
+``basis_worker.py``'s ``invariants`` task, run beforehand in BASIS's own environment (OzSTAR: ``basis.sif``).
 """
 
 import argparse
@@ -170,7 +171,10 @@ def stage_3b(args):
     data = load_data(args)
     uvfits = args.uvfits or find_uvfits(args.day)
     noise = NOISE[args.noise]
-    b = basis_bridge.invariants(uvfits, params=[], seed=args.seed, **noise)
+    if args.basis_result:  # computed beforehand by basis_worker.py in BASIS's own environment (e.g. basis.sif)
+        b = json.loads(pathlib.Path(args.basis_result).read_text())
+    else:
+        b = basis_bridge.invariants(uvfits, params=[], seed=args.seed, **noise)
     fit = mf.ci_fit_from_data(data, full=args.likelihood in ("full", "both"))
     pick = mf.match_labels(fit, b["labels"])
     fit.sigma = mf.reorder(b["sigma"], pick)
@@ -311,6 +315,8 @@ def main(argv=None):
     ap.add_argument("--vis", help="directory of ddid_NN.npz, or eht_reading.npz (default $M87_DATA/ms/<day>)")
     ap.add_argument("--uvfits", help="the day's UVFITS for BASIS's sigma (stage 3; default under $M87_DATA)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--basis-result", help="3b: JSON result of basis_worker.py's 'invariants' task for this day, noise "
+                    "setting and seed (params []), instead of calling BASIS through the bridge (OzSTAR: basis.sif)")
     ap.add_argument("--draws", type=int, default=3, help="3a: random parameter draws")
     ap.add_argument("--settings", choices=["paper", "example", "both"], default="both", help="3a: BASIS noise settings")
     ap.add_argument("--noise", choices=sorted(NOISE), default="paper", help="3b: BASIS noise setting")
