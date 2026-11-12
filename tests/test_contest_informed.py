@@ -456,3 +456,43 @@ def test_the_chromatic_below_start_carries_the_noise_of_the_rung_below(monkeypat
     noises = [i["noise.vis_error_rel"] for i in seen["inits"]]
     assert noises == [0.1, 0.3, 0.1, 0.1]  # grey_best, below, index+1, index-1
     assert seen["inits"][1]["halo.flux.ratio"] == pytest.approx(C.NEGLIGIBLE)  # the new halo at negligible flux
+
+
+def test_a_rung_above_the_first_places_a_new_companion_at_a_map_peak_and_inherits_the_rung_below(monkeypatch):
+    """The likelihood map is made before the starts: no start of a rung above the first leaves the new companion on the
+    star or draws its position at random, and the starts take the rung below's values for what it inherits."""
+    truth = vm.System(star=vm.UniformDisk(diam=0.4), halo=vm.GaussianDisk(sigma=5.0, flux=0.6),
+                      companion=vm.PointSource(flux=0.02, dra=8.0, ddec=-5.0))
+    ctx = context([synthetic(truth, n=60, b_max=330.0, sigma=0.004, seed=2)], budget=3, randoms=3)
+    sc, ladder = ctx["scales"], dict(C.ladder("star_with_faint_companion"))
+    below_rung, rung = ladder["star+halo"], ladder["star+halo+companion"]
+    kinds_below, priors_below = C.flat_kinds(below_rung), C.build_priors(below_rung, sc)
+    carry = {k: 1.05 * v for k, v in C.centre_of(below_rung, kinds_below, priors_below, sc, ctx["moments"]).items()}
+    peaks = [{"companion.dra": 1.5, "companion.ddec": -1.0, "companion.flux": 0.02},
+             {"companion.dra": -2.0, "companion.ddec": 2.5, "companion.flux": 0.01}]
+    seen = []
+    monkeypatch.setattr(C, "map_seeds", lambda *a, **k: (peaks, {"component": "companion", "peaks": []}))
+    monkeypatch.setattr(C, "fit_start", lambda rung, priors, data, init, *a, **k: (seen.append(init), (None, "stop"))[1])
+    with pytest.raises(RuntimeError):
+        C.fit_rung("star+halo+companion", rung, below_rung, ctx, carry, np.random.default_rng(0))
+    allowed = {(1.5, -1.0), (-2.0, 2.5)}
+    assert len(seen) >= 1 + 1 + 1 + 2 + 3  # moments, a stratum or more, below, two map peaks, three random
+    for init in seen:
+        assert (round(init["companion.dra"], 6), round(init["companion.ddec"], 6)) in allowed
+    inherited = [k for k in carry if k in seen[0]]
+    assert inherited and all(seen[0][k] == pytest.approx(carry[k]) for k in inherited)  # moments start
+    assert all(seen[-1][k] == pytest.approx(carry[k]) for k in inherited)  # a random start
+
+
+def test_on_peaks_cycles_through_the_peaks_and_leaves_what_a_stratum_varies():
+    sc = small_scales()
+    rung = dict(C.ladder("star_with_faint_companion"))["star+halo+companion"]
+    kinds, priors = C.flat_kinds(rung), C.build_priors(rung, sc)
+    start = {k: 0.0 for k in priors}
+    peaks = {"companion": [{"companion.dra": 1.0, "companion.ddec": 2.0}, {"companion.dra": -1.0, "companion.ddec": -2.0}]}
+    carry = {"star.diam": 0.123, "halo.sigma": 3.0}
+    a = C.on_peaks(start, 0, peaks, priors, kinds, carry, keep={"halo.sigma"})
+    b = C.on_peaks(start, 1, peaks, priors, kinds, carry)
+    assert (a["companion.dra"], a["companion.ddec"]) == (1.0, 2.0) and (b["companion.dra"], b["companion.ddec"]) == (-1.0, -2.0)
+    assert a["star.diam"] == pytest.approx(0.123) and a["halo.sigma"] == 0.0 and b["halo.sigma"] == 3.0
+    assert C.on_peaks(start, 0, {}, priors, kinds, {}) == start  # nothing to place, nothing inherited: unchanged

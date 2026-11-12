@@ -642,6 +642,18 @@ def seeded(start, seed, priors, kinds):
     return out
 
 
+def on_peaks(start, index, peaks, priors, kinds, inherited, keep=()):
+    """``start`` for a rung above the first: the parameters it inherits from the rung below (``inherited``, except those
+    in ``keep``) at the rung below's values, and each new positioned component's ``dra``/``ddec`` at a map peak (the
+    ``index``-th, cycling, so the starts spread over the best peaks). With no peaks for a component its position is left."""
+    out = {**start, **{k: v for k, v in inherited.items() if k in priors and k not in keep}}
+    for found in peaks.values():
+        if found:
+            seed = found[index % len(found)]
+            out = seeded(out, {k: v for k, v in seed.items() if leaf_of(k) in ("dra", "ddec")}, priors, kinds)
+    return out
+
+
 FLUX_KINDS = ("flux", "planet")  # prior kinds of a flux (ratio to the reference component), a ring weight included
 
 
@@ -818,24 +830,32 @@ def fit_rung(name, rung, below_rung, ctx, carry, rng):
     kinds, priors = flat_kinds(rung), build_priors(rung, sc)
     data, tdata = as_data(datasets), as_data(tempered)
     centre = centre_of(rung, kinds, priors, sc, m)
-    starts, maps = [("moments", centre)], []
-    strata = [("grid", s) for s in thin(stratified_starts(rung, kinds, priors, sc, m, centre), ctx["budget"], rng)]
+    maps = []
     new = [c for c in components_of(rung) if not below_rung or c not in components_of(below_rung)]
     positioned = [c for c in new if (c in rung.positions if isinstance(rung, Scene) else "dra" in rung[c][1])]
-    map_starts = []
+    # The likelihood map comes first: on a rung above the first, a new component's position is never the star's or a random
+    # draw, so every start places it at a map peak and takes the parameters it inherits from the rung below.
+    map_starts, peaks = [], {}
     for comp in positioned:
         if carry and below_rung is not None:
             seeds, record = map_seeds(comp, below_rung if isinstance(rung, Scene) else rung, tempered, sc, carry, kinds, ctx["smoke"])
             maps.append(record)
-            for seed in seeds[:2 if ctx["smoke"] else PEAKS]:
+            peaks[comp] = seeds[:2 if ctx["smoke"] else PEAKS]
+            for seed in peaks[comp]:
                 map_starts.append(("map", seeded({**centre, **{k: v for k, v in carry.items() if k in priors}}, seed, priors, kinds)))
+    inherited = carry if below_rung is not None else {}
+    starts = [("moments", on_peaks(centre, 0, peaks, priors, kinds, inherited))]
+    strata = []
+    for i, s in enumerate(thin(stratified_starts(rung, kinds, priors, sc, m, centre), ctx["budget"], rng)):
+        stratified = {k for k in s if s[k] != centre[k]}  # what the stratum varies is not overwritten by the rung below
+        strata.append(("grid", on_peaks(s, i, peaks, priors, kinds, inherited, keep=stratified)))
     if carry and below_rung is not None:
         # the rung below, new parts at negligible flux (a part that is positioned goes where the map's best peak is)
         below = embed_below(rung, below_rung, kinds, priors, {**centre, **{k: v for k, v in carry.items() if k in priors}})
         if map_starts:
             below.update({k: v for k, v in map_starts[0][1].items() if leaf_of(k) in ("dra", "ddec")})
         starts.append(("below", below))
-    randoms = [("random", draw(priors, kinds, sc, rng)) for _ in range(ctx["random"])]
+    randoms = [("random", on_peaks(draw(priors, kinds, sc, rng), i, peaks, priors, kinds, inherited)) for i in range(ctx["random"])]
     starts = starts + strata + map_starts + randoms
     # tempered first pass
     runs = []
