@@ -1,0 +1,108 @@
+# Signed off by Ben on 2026-11-12 ("you're ready to go"), with two rulings: no structure taken from truth figures for now;
+# the 2010 surface is tried as an image on a disk first. Not read by any code yet: it replaces informed_models.yml entry
+# by entry as each family is built.
+#
+# Each `says` is taken from the text of the contest paper (~/data/imaging_contests/papers/<year>.pdf), or from files
+# entrants were given before the deadline. Nothing here comes from a truth figure, and no value is here: no
+# diameter, position, flux ratio or angle. `says` lines hold no digit (campaigns/tests/test_campaigns.py).
+#
+#   says        the structure, in our words
+#   source      where the paper or the given file says it
+#   family      the model family; `built: false` means scripts/contest_informed.py does not have it yet
+#   components  the virgil components the family would use (all exist on virgil main unless marked)
+#   change      what differs from the current informed_models.yml entry, and why
+#   signed_off  Ben's sign-off; no informed fit of this dataset runs before it is true
+datasets:
+  2004_data1:
+    says: a star inside an extended asymmetric shell
+    source: "Lawson et al. 2004, sec. 2 (guidelines: compact sources embedded in an extended asymmetric shell) and Fig. 1 caption (a model of LkHa 101)"
+    family: star_in_shell
+    built: true
+    components: [PointSource, ModulatedGaussianRim, GaussianDisk]
+    change: wording only. The family is right; the fit failed on its priors (the shell's flux was capped relative to the star) and on too few starts.
+    signed_off: true
+  2004_data2:
+    says: a binary whose primary is a limb-darkened elliptical disk with one bright spot; the companion is a small disk
+    source: "Lawson et al. 2004, Fig. 2 (the OYSTER model file)"
+    family: spotted_star_binary
+    built: true
+    components: [EllipticalLimbDarkenedDisk, UniformDisk, UniformDisk]
+    change: none to the entry. The data convention (visibilities normalised without the spot's flux) has to reach the fit.
+    signed_off: true
+  2006_disk:
+    says: an optically thin disk with a sharp inner rim and extended emission that the baselines mostly resolve out; the clue image given to entrants shows it elongated and filling that image's field
+    source: "Lawson et al. 2006, sec. 2 (semi-realistic optically thin disk model; extended flux and the sharp feature at the inner disk rim); pre_submission/clue.10.fits"
+    family: optically_thin_disk
+    built: false
+    components: [MultipoleDisk with a sharp-edged RadialPowerLaw, Resolved]
+    change: was "a geometrically thin disk, inclined", which the paper does not say. An optically thin disk seen at any inclination up to edge-on, sizes drawn from the clue image's field and not from the shortest baseline, and an over-resolved component. No star is described.
+    signed_off: true
+  2008_agb:
+    says: an AGB star with an extended, mottled envelope and a faint companion; the components have different colours
+    source: "Cotton et al. 2008, sec. 2; 2008-readme (field tapered by a Gaussian)"
+    family: star_envelope_companion
+    built: false
+    components: [LimbDarkenedDisk, GaussianDisk, PointSource, Image on top for the mottling]
+    change: was a spherical-harmonic stellar surface inside an envelope, with no companion. The paper puts the mottling in the envelope and names a companion.
+    spectra: three bands, grey within each band; imaged per band already
+    signed_off: true
+  2008_agn:
+    says: an AGN made of an accretion disk and a two-sided relativistic jet; the components have different colours
+    source: "Cotton et al. 2008, sec. 2; 2008-readme (field tapered by a Gaussian)"
+    family: disk_with_jet
+    built: false
+    components: [EllipticalGaussian for the disk, two thin EllipticalGaussian on one line through the centre for the jet and counter-jet]
+    change: was a point core and two offset elliptical Gaussians. A jet is long and thin, so its axis ratio and length need their own priors (length up to the tapered field); the two sides share a position angle and may differ in flux.
+    spectra: three bands, grey within each band; imaged per band already
+    signed_off: true
+  2010_low:
+    says: the surface of a red supergiant with convective structure on scales far smaller than the star, and a much fainter unresolved companion several stellar radii away
+    source: "Malbet et al. 2010, sec. 2 and 2.1 (a radiative-hydrodynamic simulation of a supergiant surface; a faint companion)"
+    family: granulated_supergiant_with_companion
+    built: false
+    components: [LimbDarkenedDisk, Image confined to the stellar disk, PointSource]
+    change: was a spherical-harmonic surface of low degree, which cannot hold convective cells. The surface becomes an image on the disk; the companion is searched out to many fitted stellar radii, not to a multiple of the shortest baseline's fringe spacing.
+    spectra: a spectral energy distribution per channel was given before the deadline; the blind track uses it for a star and an image with different spectra
+    signed_off: true
+  2018_disk:
+    says: a star as a small uniform disk, an inner ringed disk with a bright rim, a planet as a small uniform disk, and an extended outer disk
+    source: "Merand et al. 2018, sec. 2"
+    family: star_rim_planet_disk
+    built: true
+    components: [UniformDisk, ModulatedGaussianRim, EllipticalGaussian, UniformDisk]
+    change: wording only (the planet is a small disk in the paper, a point in the family). Not yet fitted.
+    signed_off: true
+  2022_gravity:
+    says: a young star with an inclined ring whose brightness varies around it, and a stellar companion
+    source: "Sanchez-Bermudez et al. 2022, sec. 2.1"
+    family: star_ring_companion
+    built: false
+    components: [PointSource, ModulatedGaussianRim, PointSource]
+    change: was "a high-contrast test" fitted as a star, a Gaussian halo and a faint companion. The companion is stellar, so its flux prior must not assume it is faint.
+    signed_off: true
+  2022_ami:
+    says: a star and the arc of a stellar bow shock
+    source: "Sanchez-Bermudez et al. 2022, sec. 2.2"
+    family: star_with_bow_shock
+    built: false
+    components: [PointSource, GaussianArc]
+    change: was "a high-contrast test" fitted as a star, a Gaussian halo and a faint companion.
+    signed_off: true
+  2024_obj1:
+    says: a pinwheel spiral nebula of several turns around an interacting binary, hollow in the middle, with the binary giving a small share of the flux
+    source: "Millour et al. 2024, sec. 2.1 and Table 1 (the AMHRA spiral model)"
+    family: pinwheel_spiral
+    built: false
+    components: [PointSource, ArchimedeanSpiral (virgil PR 706, not merged)]
+    change: was three untied arcs, which collapsed to points and circles in the fit. Waits for the spiral component.
+    spectra: uncalibrated OI_FLUX spectra were supplied; cubes per wavelength were asked for; not used by any stage yet
+    signed_off: true
+  2024_obj2:
+    says: an inclined, optically thick, mildly flared dust disk of concentric rings separated by gaps around a young star, with point-like planets that have their own spectra
+    source: "Millour et al. 2024, sec. 2.2 and Table 2"
+    family: ringed_disk_with_companions
+    built: true
+    components: [PointSource, MultipoleDisk of GaussianRing, PointSource per planet]
+    change: wording, and the planets' priors. A planet must sit away from the star and be far fainter than it; the fit put its one companion on the star at the top of its flux prior. The ladder needs one more ring than it has.
+    spectra: uncalibrated OI_FLUX spectra were supplied; the companions have their own spectra; not used by any stage yet
+    signed_off: true
