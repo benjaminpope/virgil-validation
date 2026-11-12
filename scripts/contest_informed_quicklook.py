@@ -44,32 +44,51 @@ def datasets_of(spec, data_dir):
     return [OIData(str(p)) for p in paths]
 
 
+def draw_image(ax, image, width, **kw):
+    """Draw a model image of side ``width`` (mas) as virgil's ``render`` lays it out: row 0 is north and column 0 is
+    east, so north is up and east is left (``origin="upper"`` with the x axis reversed)."""
+    half = width / 2.0
+    top = np.quantile(image, 0.995) or image.max() or 1.0
+    return ax.imshow(image, origin="upper", cmap="magma", extent=[half, -half, -half, half], vmin=0.0, vmax=top, **kw)
+
+
+def scalar(v):
+    """A fitted value as a number (older reports hold one-element lists)."""
+    return float(np.ravel(v)[0])
+
+
+def field_of(report):
+    """The field of the fit: the extent E of the scales (newer reports), else the single field of the older ones."""
+    return float(report["scales"]["extent"]) if "scales" in report else float(report["field_mas"])
+
+
 def extent_of(values, field):
     """A field of view that holds every fitted component: twice the largest offset or size, at least a third of the field."""
     reach = 0.0
     for path, v in values.items():
         leaf = path.rsplit(".", 1)[-1]
         if leaf in ("dra", "ddec", "diam", "fwhm", "radius", "sigma", "r_out"):
-            reach = max(reach, abs(v[0]) * (1.0 if leaf in ("dra", "ddec", "radius", "r_out") else 0.75))
-    return float(min(max(2.6 * reach, field / 3.0), 2.0 * C.REACH * field))
+            reach = max(reach, abs(scalar(v)) * (1.0 if leaf in ("dra", "ddec", "radius", "r_out") else 0.75))
+    return float(min(max(2.6 * reach, field / 3.0), 2.0 * field))
 
 
 def figure(report, data_dir, out_dir):
     spec = C.tasks()[report["task"]]
-    rungs = dict(C.FAMILIES[report["family"]])
+    rungs = dict(C.ladder(report["family"]))
     chosen = next(r for r in report["rungs"] if r["rung"] == report["chosen"])
     wavel0 = report.get("reference_wavelength_m") if report.get("chromatic") else None
-    values = {k: v[0] for k, v in chosen["values"].items()}
-    model = C.model_of(rungs[report["chosen"]], values, report["resolution_mas"], report["field_mas"], wavel0)
+    values = {k: scalar(v) for k, v in chosen["values"].items()}
+    model = C.model_of(rungs[report["chosen"]], values, wavel0)
     datasets = datasets_of(spec, data_dir)
-    fov = extent_of(chosen["values"], report["field_mas"])
+    fov = extent_of(chosen["values"], field_of(report))
 
     folder = pathlib.Path(report["_folder"])
     extras = []  # (title, image, field of view): what a non-parametric model finds beyond or instead of the ladder's
     rest = report.get("residual_image") or {}
     if rest.get("file") and (folder / rest["file"]).exists():
         z = np.load(folder / rest["file"])
-        extras.append((f"left over: GP image on top\nflux {rest['flux_relative_to_model']:.2g} of the model's, chi2/N {rest['chi2_red']:.3g}",
+        chi2 = rest.get("chi2_red_inflated", rest.get("chi2_red"))
+        extras.append((f"left over: GP image on top\nflux {rest['flux_relative_to_model']:.2g} of the model's, chi2/N {chi2:.3g}",
                        z["image"], float(z["pixel_scale_mas"]) * z["image"].shape[0]))
     gp = report.get("gp_disk") or {}
     if gp.get("file") and (folder / gp["file"]).exists():
@@ -93,9 +112,7 @@ def figure(report, data_dir, out_dir):
                 seen_phi.append(op[keep_p])
                 model_phi.append((op + (mp - op + np.pi) % (2.0 * np.pi) - np.pi)[keep_p])  # the model on the data's branch
     for ax, (title, image, width) in zip(axes[3:], extras):
-        half = width / 2.0
-        top = np.quantile(image, 0.995) or image.max() or 1.0
-        ax.imshow(image, origin="lower", cmap="magma", extent=[half, -half, -half, half], vmin=0.0, vmax=top)
+        draw_image(ax, image, width)
         ax.set(title=title, xlabel="ΔRA (mas)", ylabel="ΔDec (mas)")
         ax.title.set_fontsize(9)
     for ax, seen, pred, name in ((axes[1], seen_vis, model_vis, "visibility"), (axes[2], seen_phi, model_phi, "phase")):

@@ -33,6 +33,7 @@ GATES = {
     "trackb_fit": "design/trackb_criteria.md",
     "orbit_population": "design/orbit_gate_042.md",
     "toeplitz_reexam": "design/toeplitz_reexam_042.yml",
+    "contest_informed": "design/contest_informed_criteria.md",
 }
 # criteria files that no script enforces yet (the script is not written): the file is still tracked and has its change log
 UNENFORCED = ["design/oidb_binaries_criteria.md"]

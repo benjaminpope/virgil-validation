@@ -71,7 +71,9 @@ stages:
   informed_fit:
     doc: Fit the model family the contest paper describes (a spotted star with a companion; a thin disk; a ringed
       disk with companions; and so on) as a ladder of nested models compared by BIC. Structure from the paper, every value from the
-      data, starting from likelihood maps and random draws scaled by the data's own baselines. Not a blind result.
+      data, starting from the visibility moments, stratified geometry, tiled likelihood maps and random draws scaled by
+      the data's own baselines. Not a blind result. The checks' thresholds are design/contest_informed_criteria.md
+      (proposed, awaiting Ben); the report records the criteria commit.
     informed: true
     playbook: playbooks/informed.md
     over: {paper_model_built: "yes"}
@@ -79,7 +81,7 @@ stages:
     run: >-
       python {root}/../../scripts/contest_informed.py --task {unit.task} --model {decision.model}
       --data "${CONTEST_DATA:-$HOME/data/imaging_contests}" --out {out} {decision.effort}
-    requires: [converged]
+    requires: [converged, no_bounds, nested, starts_agree, family_complete, no_collapse, extent_known]
     digest: ["*.json"]
     slurm: ["--gres=gpu:1", "--time=02:00:00", "--mem=32G"]
     decisions:
