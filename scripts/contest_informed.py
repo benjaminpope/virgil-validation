@@ -671,16 +671,19 @@ def embed_below(rung, below_rung, kinds, priors, start, wavel0=None):
         out[path] = IS.inside(value, lo, hi, log)
 
     old = set(flat_kinds(below_rung, wavel0))
-    for path, kind in kinds.items():
-        if path not in old and kind in FLUX_KINDS:
-            put(path, NEGLIGIBLE)
     old_comps = set(components_of(below_rung))
     gained = [c for c in components_of(rung) if c not in old_comps
               and not any(comp_of(p) == c and k in FLUX_KINDS for p, k in kinds.items())]
-    if gained:
-        for path, kind in kinds.items():
-            if path in old and kind == "flux" and "profile" not in path and leaf_of(path) in ("flux", "ratio"):
-                put(path, 1e4)
+    for path, kind in kinds.items():
+        if kind not in FLUX_KINDS:
+            continue
+        # a reference gained: the old components' fluxes (new parameters, as the old reference had none) go to the top
+        # of their priors; every other new flux or weight starts negligible
+        old_part = (kind == "flux" and "profile" not in path and leaf_of(path) in ("flux", "ratio") and comp_of(path) in old_comps)
+        if gained and old_part:
+            put(path, 1e4)
+        elif path not in old:
+            put(path, NEGLIGIBLE)
     return out
 
 
