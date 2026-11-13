@@ -136,6 +136,22 @@ def test_a_size_an_angle_and_a_position_have_practical_tolerances():
     assert S.same_optimum(wrapped, a, 1.0) == []  # a position angle is modulo 180
 
 
+def test_the_sigmas_of_the_rings_follow_the_rings_when_the_letters_are_swapped():
+    pre = "d.profile."
+    a = {f"{pre}a.radius": 1.0, f"{pre}a.sigma": 0.2, f"{pre}a.weight": 1.0, f"{pre}b.radius": 3.0, f"{pre}b.sigma": 0.2, f"{pre}b.weight": 0.5}
+    # the same disk with its ring letters swapped; ring b (radius 3) is poorly measured
+    sig_a = {**{k: 0.001 for k in a}, f"{pre}b.radius": 0.5, f"{pre}b.weight": 0.05}
+    swapped = {f"{pre}a.radius": 3.0, f"{pre}a.sigma": 0.2, f"{pre}a.weight": 1.0, f"{pre}b.radius": 1.0, f"{pre}b.sigma": 0.2, f"{pre}b.weight": 2.0}
+    sig_s = {**{k: 0.001 for k in a}, f"{pre}a.radius": 0.5, f"{pre}a.weight": 0.05}
+    values, sig = S.relabel(swapped, sig_s)
+    assert values[f"{pre}b.radius"] == 3.0 and sig[f"{pre}b.radius"] == 0.5 and sig[f"{pre}a.radius"] == 0.001
+    assert values[f"{pre}b.weight"] == pytest.approx(0.5) and sig[f"{pre}b.weight"] > 0.0
+    # a radius 1.8 off at a ring with sigma 0.5 on both fits is 2.5 combined sigma: the same optimum however the letters fall, but not if the poor ring's sigma were read off the wrong ring
+    moved = {**a, f"{pre}b.radius": 3.0 + 1.8}
+    got = S.same_optimum({"values": moved, "sigma": sig_a, "chi2q": 1.0}, {"values": swapped, "sigma": sig_s, "chi2q": 1.0}, 1e-9)
+    assert got == [], got
+
+
 def test_the_rings_of_a_disk_are_compared_in_order_of_radius():
     pre = "d.profile."
     a = {f"{pre}a.radius": 1.0, f"{pre}a.sigma": 0.2, f"{pre}a.weight": 1.0, f"{pre}b.radius": 3.0, f"{pre}b.sigma": 0.2, f"{pre}b.weight": 0.5}
@@ -153,6 +169,21 @@ def test_the_first_rung_needs_start_agree_of_the_broad_starts_at_one_optimum():
     r = S.start_agreement(fewer, 1.0, AGREE_BOUNDS)
     assert not r["passes"] and r["at_best"] == S.START_AGREE - 1 and r["others"][0]["differs_in"]
     assert not S.start_agreement([], 1.0, AGREE_BOUNDS)["passes"]
+
+
+def test_the_first_rung_needs_the_whole_budget_so_a_smaller_one_cannot_weaken_the_check():
+    other = {"s.diam": 4.0, "c.dra": 3.0, "c.ddec": -1.0, "c.flux.ratio": 0.1}
+    # 3 of 4 is the same fraction as 6 of 8 and still fails: fewer than START_OF broad starts cannot pass
+    small = [fit(100.0) for _ in range(3)] + [fit(150.0, other)]
+    assert not S.start_agreement(small, 1.0, AGREE_BOUNDS)["passes"]
+    assert not S.start_agreement([fit(100.0) for _ in range(S.START_OF - 1)], 1.0, AGREE_BOUNDS)["passes"]
+    assert S.start_agreement([fit(100.0) for _ in range(S.START_OF)], 1.0, AGREE_BOUNDS)["passes"]
+    # a larger budget needs the same fraction: 15 of 20 passes (6 of 8), 14 of 20 does not
+    def of_twenty(n_best):
+        return [fit(100.0) for _ in range(n_best)] + [fit(150.0, other) for _ in range(20 - n_best)]
+
+    assert S.start_agreement(of_twenty(15), 1.0, AGREE_BOUNDS)["passes"]
+    assert not S.start_agreement(of_twenty(14), 1.0, AGREE_BOUNDS)["passes"]
 
 
 def test_a_higher_rung_needs_the_best_peak_and_its_jitters_at_one_optimum_and_the_next_optimum_worse_by_the_margin():
@@ -215,7 +246,7 @@ def test_the_criteria_file_and_the_code_agree_on_every_constant():
 
     text = (pathlib.Path(__file__).resolve().parents[1] / "design" / "contest_informed_criteria.md").read_text()
     table = {m.group(1): float(m.group(2)) for m in re.finditer(r"^\| `([A-Z_0-9]+)` \| ([0-9.]+) \|", text, re.M)}
-    assert set(table) == {"BOUND_EDGE", "START_AGREE", "START_MARGIN", "SAME_DELTA", "SAME_SIGMA", "SIZE_TOLERANCE", "ANGLE_TOLERANCE",
+    assert set(table) == {"BOUND_EDGE", "START_AGREE", "START_OF", "START_MARGIN", "SAME_DELTA", "SAME_SIGMA", "SIZE_TOLERANCE", "ANGLE_TOLERANCE",
                           "POSITION_ELEMENTS", "FIT_RMS_MAX", "INFORMATIVE_SNR", "INFORMATIVE_SHARE", "FAMILY_FLUX_LIMIT",
                           "RING_FRACTION", "WIDTH_FLOOR", "COMPANION_ELEMENTS", "SHORT_V2_MIN", "EXTENDED_MIN"}
     for name, value in table.items():

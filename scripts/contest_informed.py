@@ -27,11 +27,11 @@ A family is a ladder of nested models, simplest first (FAMILIES), ending in the 
   peaks (never thresholded) each start a `map` fit, and `jitter` starts move the inherited values narrowly around the best
   peak (a rung that places nothing starts from the rung below and its jitters).
 - **Errors** (plan 3): every fit of the ladder is on errors inflated by one factor, sqrt(chi2/N) of the rung-0 fit
-  (tempered); rungs are compared by chi2 on the quoted errors with ln N per added parameter. The error terms
+  (tempered); rungs are compared by chi2 on those tempered errors with ln N per added parameter. The error terms
   (`vis_error_rel`, `phi_error`) are free only in one last fit of the chosen rung. Fluxes have no cap (LogUniform(1e-4,
   1e4) ratios); a multi-channel data set is chromatic, each component with a spectral index in Uniform(-4, 4).
 - **Checks** (plan 5) in result.json: `converged`, `no_bounds`, `nested`, `starts_agree`, `fit_standard` (normalised
-  residual rms of the last fit at most 2 on V^2 and on the informative closure phases, else the fit is incomplete),
+  residual rms of the last fit, at the tempered errors, at most 2 on V^2 and on the informative closure phases, else the fit is incomplete),
   `family_complete`, `no_collapse`, `extent_known`; the mandate stage requires them.
 
 After the ladder, and not as a rung: a simple non-parametric image (a Gaussian-process field) is fitted on top of the
@@ -86,7 +86,7 @@ GAIN_WIDTH = 0.1  # the global visibility gain's prior width on log |V|: calibra
 N_PEAKS = 5  # likelihood-map peaks that each start a fit
 N_JITTER = 3  # more starts at the best peak, the inherited values moved narrowly
 JITTER = {"size": 0.2, "flux": 0.2, "angle": 10.0, "position": 0.1, "colour": 0.2}  # fractions; degrees; resolution elements; index
-START_BUDGET = 8  # broad stratified starts of the first rung (and starts of a rung that places nothing)
+START_BUDGET = IS.START_OF  # broad stratified starts of the first rung (and starts of a rung that places nothing)
 IMAGE_SIGMA, IMAGE_LENGTH, IMAGE_AGREE, IMAGE_SECS = 2.0, 2.0, 0.9, 1800.0  # image step: log-brightness sigma; length in resolution elements; pixel correlation; s per fit
 PROBE_CHUNK, PROBE_MAX = 250, 500  # CLEAN iterations per call, and in all
 RC_MORE = 75  # exit code of a call that used its time budget: not finished, call again
@@ -1197,16 +1197,19 @@ def fit_ladder(ladder, ctx, rng, scan=False):
 
 
 def chosen_rung(ladder, rungs, ctx):
-    """Index of the last rung that earns its parameters. Each rung's chi2 on the **quoted** errors (the gains marginalised) is
-    measured at its best fit; the walk up the ladder goes on while chi2 falls by more than ln N per added parameter, and a rung
-    that adds nothing (over-resolved light that is not there) is not final. Writes ``chi2_quoted``, ``minus2lnl`` (the same: the
-    errors are fixed, so the likelihood's normalisation is a constant), ``n``, ``chi2_red`` and ``bic`` into each record."""
+    """Index of the last rung that earns its parameters. Each rung's chi2 on the **tempered** errors (the quoted ones times the
+    rung-0 factor, the gains marginalised: the errors the ladder was fitted on) is measured at its best fit; the walk up the
+    ladder goes on while chi2 falls by more than ln N per added parameter, and a rung that adds nothing (over-resolved light
+    that is not there) is not final. Writes ``minus2lnl`` (that chi2: the errors are fixed, so the likelihood's normalisation is a
+    constant; it is the scale of the `nested` check, and of the starts' agreement), ``chi2_quoted`` and ``chi2_red`` (on the quoted
+    errors, reported beside it), ``n`` and ``bic`` (on ``minus2lnl``) into each record."""
     n = sum(int(d.n_independent) for d in ctx["datasets"])
     for rec, (_, rung) in zip(rungs, ladder):
-        chi2 = chi2_quoted(model_of(rung, rec["values"], ctx.get("wavel0")), ctx["datasets"])[0]
-        rec |= {"chi2_quoted": chi2, "minus2lnl": chi2, "n": n, "chi2_red": chi2 / n, "bic": chi2 + rec["k"] * float(np.log(n))}
+        model = model_of(rung, rec["values"], ctx.get("wavel0"))
+        chi2, quoted = chi2_quoted(model, ctx["tempered"])[0], chi2_quoted(model, ctx["datasets"])[0]
+        rec |= {"minus2lnl": chi2, "chi2_quoted": quoted, "n": n, "chi2_red": quoted / n, "bic": chi2 + rec["k"] * float(np.log(n))}
     k = 0
-    while k + 1 < len(rungs) and rungs[k]["chi2_quoted"] - rungs[k + 1]["chi2_quoted"] > (rungs[k + 1]["k"] - rungs[k]["k"]) * np.log(n):
+    while k + 1 < len(rungs) and rungs[k]["minus2lnl"] - rungs[k + 1]["minus2lnl"] > (rungs[k + 1]["k"] - rungs[k]["k"]) * np.log(n):
         k += 1
     return k
 
@@ -1239,9 +1242,10 @@ def sigma_fn(rung, names, data, wavel0=None):
 
 
 def start_check(ladder, rungs, ctx):
-    """Start agreement of every rung from its saved starts (`IS.start_agreement`: -2 ln L on the quoted errors, gains marginalised,
-    each parameter's sigma from the joint Gauss-Newton curvature). ``{rung name: record}``."""
-    datasets, sc, wavel0 = ctx["datasets"], ctx["scales"], ctx.get("wavel0")
+    """Start agreement of every rung from its saved starts (`IS.start_agreement`: chi2 on the tempered errors, the scale the starts
+    were fitted on, gains marginalised; each parameter's sigma from the joint Gauss-Newton curvature at those errors).
+    ``{rung name: record}``."""
+    datasets, sc, wavel0 = ctx["tempered"], ctx["scales"], ctx.get("wavel0")
     out = {}
     for (name, rung), rec in zip(ladder, rungs):
         kinds, priors = flat_kinds(rung, wavel0), build_priors(rung, sc, wavel0)
@@ -1257,9 +1261,11 @@ def start_check(ladder, rungs, ctx):
 
 
 def residual_stats(model, datasets, noise_values, masks):
-    """The fit standard's numbers: the normalised residuals (residual over the effective error, the gains marginalised, with
-    the fitted error terms ``noise_values`` in) of ``model`` on every dataset, their rms on V^2 and on the closure phases of
-    the informative triangles ``masks`` (and on all of them, beside)."""
+    """The fit standard's numbers: the normalised residuals (residual over the error, the gains marginalised, with the error
+    terms ``noise_values`` in when given) of ``model`` on every dataset, their rms on V^2 and on the closure phases of the
+    informative triangles ``masks`` (and on all of them, beside). The fit standard is judged with no error terms (on the
+    tempered datasets): error terms fitted to these residuals set the effective variance to the residuals' own, so the rms
+    would be about 1 whatever the model leaves behind."""
     names = noise_names(datasets)
     vis, phase, every = [], [], []
     for i, d in enumerate(datasets):
@@ -1720,7 +1726,7 @@ def run(task, family, data_dir, out_dir, smoke=False, grey=False, use_spectra=Fa
         do_probe=True, image=False, profile_maps=True, scale_vis=False, cache_dir=None, time_budget=None):
     """The whole recipe for one task and family (design/contest_informed_plan.md, playbooks/informed.md). In order: the criteria's commit
     is pinned; the data are read; the information check; the scales and the visibility moments; the gain nuisance; the
-    ladder, every fit on tempered errors (`fit_ladder`); the rung chosen by chi2 on the quoted errors; one last fit of it with the
+    ladder, every fit on tempered errors (`fit_ladder`); the rung chosen by chi2 on the tempered errors; one last fit of it with the
     error terms free (`final_fit`); start agreement and the fit standard; the checks; and, after the ladder and not as a rung, the
     non-parametric image on top (`residual_image`, `gp_disk`), the CLEAN probe and, with ``image``, the image step."""
     # Refuses before any draw when the criteria file is dirty or untracked, or when there is no git checkout and no
@@ -1753,7 +1759,9 @@ def run(task, family, data_dir, out_dir, smoke=False, grey=False, use_spectra=Fa
     for r in rungs:
         r["starts_at_best"] = agreement[r["rung"]]["at_best"]
     model = model_of(rung, final["values"], wavel0)
-    stats = residual_stats(model, datasets, final["noise"], masks)
+    stats = residual_stats(model, ctx["tempered"], {}, masks)  # judged at the tempered errors, never at the error terms the last fit chose
+    for name, (errs, terms) in {"at_quoted_errors": (datasets, {}), "at_fitted_error_terms": (datasets, final["noise"])}.items():
+        stats[name] = {k: v for k, v in residual_stats(model, errs, terms, masks).items() if k.startswith("rms")}  # reported beside it
     print(f"{label}: chosen {chosen['rung']}; final fit -2lnL {final['minus2lnl']:.1f}; normalised residual rms V2 {stats['rms_v2']} "
           f"closure phase {stats['rms_cp']}; starts at best {chosen['starts_at_best']}/{agreement[chosen['rung']]['n']}", flush=True)
     out_dir = pathlib.Path(out_dir)

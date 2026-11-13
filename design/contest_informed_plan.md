@@ -52,6 +52,7 @@ virgil already documents helpers for part of this: `imaging.second_moment_fwhm`,
   0.0012 degrees). Fit with virgil's noise terms (`vis_error_rel`, `phi_error`, or `vis_scale` / `phi_scale`; see
   virgil's docs/common_arguments.md) so the likelihood carries its normalisation, and compare rungs by BIC on that
   likelihood. Report chi2 on the quoted errors beside it, never choose by it.
+  *Superseded by the recipe move: the rung is chosen by chi2 on the tempered errors, chi2 on the quoted errors reported beside it.*
 - **Tempering.** Start every rung with errors inflated by `sqrt(chi2/N)` of the visibility-moment fit
   (`OIData.with_error_scale`), then refit at the fitted noise. A smooth first landscape is what the blind track
   found it needed.

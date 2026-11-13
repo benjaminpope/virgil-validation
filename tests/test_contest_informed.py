@@ -323,11 +323,12 @@ def test_a_richer_rung_is_never_worse_than_the_rung_it_contains_beyond_the_same_
     assert report["checks"]["nested"]["status"] == "pass", report["checks"]["nested"]["detail"]
 
 
-def test_the_choice_of_rung_uses_chi2_on_the_quoted_errors_and_the_bic_is_reported_beside_it(recipe):
+def test_the_choice_of_rung_uses_chi2_on_the_tempered_errors_and_the_quoted_chi2_is_reported_beside_it(recipe):
+    T = recipe[0]["temper_factor"]
     for r in recipe[0]["rungs"]:
         assert r["chi2_quoted"] > 0 and r["chi2_red"] == pytest.approx(r["chi2_quoted"] / r["n"])
-        assert r["bic"] == pytest.approx(r["chi2_quoted"] + r["k"] * np.log(r["n"]))
-        assert r["minus2lnl"] == pytest.approx(r["chi2_quoted"])  # the errors are fixed in the ladder: the normalisation is a constant
+        assert r["bic"] == pytest.approx(r["minus2lnl"] + r["k"] * np.log(r["n"]))
+        assert r["minus2lnl"] == pytest.approx(r["chi2_quoted"] / T**2, rel=2e-3)  # the ladder's errors are the quoted ones times T
 
 
 def test_the_checks_are_assembled_into_pass_warn_fail_and_the_fit_standard_follows_the_residual_rms(recipe):
@@ -336,6 +337,9 @@ def test_the_checks_are_assembled_into_pass_warn_fail_and_the_fit_standard_follo
     assert all(c["status"] in ("pass", "warn", "fail") for c in checks.values())
     assert checks["family_complete"]["status"] == "warn", "no image was fitted on top: a missing measurement, not a pass"
     assert checks["extent_known"]["status"] == "pass"
+    # the standard is judged at the tempered errors; the rms at the quoted errors and at the fitted error terms are reported beside it
+    assert set(stats["at_quoted_errors"]) >= {"rms_v2", "rms_cp"} and set(stats["at_fitted_error_terms"]) >= {"rms_v2", "rms_cp"}
+    assert stats["at_quoted_errors"]["rms_v2"] == pytest.approx(stats["rms_v2"] * report["temper_factor"], rel=1e-3)
     ok, _ = IS.fit_standard(stats["rms_v2"], stats["rms_cp"], stats["n_informative_triangles"])
     assert (checks["fit_standard"]["status"] == "pass") == ok and checks["fit_standard"]["detail"]["verdict"] == ("complete" if ok else "incomplete")
     assert stats["n_informative_triangles"] > 0 and stats["rms_cp"] is not None

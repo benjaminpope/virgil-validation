@@ -342,7 +342,8 @@ def map_peaks(axis, surface, k, separation, exclude=0.0):
 # Checks (plan section 5). Each returns (ok, detail). Thresholds are the proposals of design/contest_informed_criteria.md.
 
 BOUND_EDGE = 0.01  # no_bounds: within this fraction of the range of a prior bound
-START_AGREE = 6  # starts_agree, first rung: at least this many of the broad starts end at the best optimum
+START_AGREE = 6  # starts_agree, first rung: at least START_AGREE of START_OF broad starts end at the best optimum (the same fraction of more)
+START_OF = 8  # ... and there must be at least this many broad starts: the budget of the first rung
 START_MARGIN = 25.0  # starts_agree, higher rungs: the next distinct optimum is worse than the best by at least this in -2 ln L
 SAME_DELTA = 2.0  # same optimum, and nested: -2 ln L within this
 SAME_SIGMA = 3.0  # same optimum: every parameter within this many combined sigma (or within the practical tolerances below)
@@ -449,18 +450,32 @@ def differs(values, ref, resolution):
     return why
 
 
-def canonical(values):
-    """Rings of a disk relabelled in order of radius (their letters are arbitrary); weights relative to the first."""
+def relabel(values, sigma=None):
+    """Rings of a disk relabelled in order of radius (their letters are arbitrary); weights relative to the first. ``sigma`` (the 1 sigma
+    of each value, same keys) follows its ring: a radius or width keeps its own sigma, and a weight w_old / w_first has
+    the sigma of a ratio (relative errors added in quadrature). Returns ``(values, sigma)``; sigma is None when not given."""
     letters = sorted({k.split(".")[2] for k in values if ".profile." in k})
     if len(letters) < 2:
-        return values
+        return values, sigma
     pre, out = next(k for k in values if ".profile." in k).rsplit(".profile.", 1)[0] + ".profile.", dict(values)
+    sig = None if sigma is None else dict(sigma)
     order = sorted(letters, key=lambda letter: values[f"{pre}{letter}.radius"])
     amp = {letter: values.get(f"{pre}{letter}.weight", 1.0) for letter in letters}
     for new, old in zip(letters, order):
         out |= {f"{pre}{new}.radius": values[f"{pre}{old}.radius"], f"{pre}{new}.sigma": values[f"{pre}{old}.sigma"]}
-        out |= {f"{pre}{new}.weight": amp[old] / amp[order[0]]} if new != letters[0] else {}
-    return out
+        if sig is not None:
+            sig |= {f"{pre}{new}.radius": sigma[f"{pre}{old}.radius"], f"{pre}{new}.sigma": sigma[f"{pre}{old}.sigma"]}
+        if new != letters[0]:
+            out[f"{pre}{new}.weight"] = amp[old] / amp[order[0]]
+            if sig is not None:
+                s_old, s_first = sigma[f"{pre}{old}.weight"], sigma[f"{pre}{order[0]}.weight"]
+                sig[f"{pre}{new}.weight"] = abs(out[f"{pre}{new}.weight"]) * float(np.hypot(s_old / amp[old], s_first / amp[order[0]]))
+    return out, sig
+
+
+def canonical(values):
+    """The values of `relabel` alone."""
+    return relabel(values)[0]
 
 
 def same_optimum(a, b, resolution):
@@ -468,7 +483,7 @@ def same_optimum(a, b, resolution):
     -2 ln L on the quoted errors) are one optimum when their -2 ln L differ by under ``SAME_DELTA`` and every parameter
     agrees within ``SAME_SIGMA`` combined sigma, or, for a size, angle or position, within the practical tolerances of
     `differs` where those are looser. Returns the list of what differs (empty: one optimum)."""
-    va, vb = canonical(a["values"]), canonical(b["values"])
+    (va, sa), (vb, sb) = relabel(a["values"], a["sigma"]), relabel(b["values"], b["sigma"])  # the sigmas follow their rings
     tol, why = set(differs(va, vb, resolution)), (["-2lnL"] if abs(a["chi2q"] - b["chi2q"]) >= SAME_DELTA else [])
     for k in va:
         leaf = k.rsplit(".", 1)[-1]
@@ -477,7 +492,7 @@ def same_optimum(a, b, resolution):
             continue
         d = va[k] - vb[k]
         d = (d + period / 2) % period - period / 2 if period else d
-        if abs(d) > SAME_SIGMA * np.hypot(a["sigma"][k], b["sigma"][k]):
+        if abs(d) > SAME_SIGMA * np.hypot(sa[k], sb[k]):
             why.append(k)
     return why
 
@@ -490,7 +505,8 @@ def start_agreement(starts, resolution, bounds):
     """Start agreement of one rung. ``starts`` is a list of ``{"origin", "values", "sigma", "chi2q"}`` (``chi2q``: -2 ln L on
     the quoted errors, gains marginalised; ``sigma`` as in `same_optimum`), in the order they were run.
 
-    First rung (every counted start is a broad ``grid`` start): at least ``START_AGREE`` of them at the best optimum. Above:
+    First rung (every counted start is a broad ``grid`` start): at least ``START_OF`` of them, and ``START_AGREE`` / ``START_OF`` of
+    them at the best optimum (a smaller budget cannot weaken the check). Above:
     the best map peak and the jittered starts (every start when the rung places nothing) are all at the best optimum, and
     the best distinct optimum is worse by at least ``START_MARGIN``. The moment start and control draws are not counted.
     ``bounds`` is ``{path: (low, high, log, kind)}``; parameters whose sigma exceeds half their prior range, or their value,
@@ -507,10 +523,11 @@ def start_agreement(starts, resolution, bounds):
     broad = all(f["origin"] in BROAD_ORIGINS for f in group)
     first_peak = next((f for f in group if f["origin"] == "map"), None)
     mine = [f for f in group if f["origin"] != "map"] + ([first_peak] if first_peak is not None else [])  # the best peak and its jitters
-    ok = len(group) - len(others) >= START_AGREE if broad else all(not f["differs_in"] for f in mine) and margin >= START_MARGIN
+    need = int(np.ceil(START_AGREE * len(group) / START_OF - 1e-9))  # 6 of 8; 15 of 20; a budget under START_OF cannot pass
+    ok = (len(group) >= START_OF and len(group) - len(others) >= need) if broad else all(not f["differs_in"] for f in mine) and margin >= START_MARGIN
     free = {k: float(best["sigma"][k]) for k in best["values"]
             if k in bounds and (best["sigma"][k] > 0.5 * (bounds[k][1] - bounds[k][0]) or best["sigma"][k] > abs(best["values"][k]))}
-    return {"passes": bool(ok), "rule": f"{START_AGREE} of the broad starts" if broad else "best peak and jitters, next optimum by the margin",
+    return {"passes": bool(ok), "rule": f"{START_AGREE} of {START_OF} broad starts (the same fraction of more; fewer than {START_OF} cannot pass)" if broad else "best peak and jitters, next optimum by the margin",
             "n": len(group), "at_best": len(group) - len(others), "best_chi2_quoted": float(best["chi2q"]),
             "margin_to_distinct_other": float(margin),
             "others": [{"origin": f["origin"], "chi2_quoted": float(f["chi2q"]), "differs_in": f["differs_in"][:6]} for f in others],
