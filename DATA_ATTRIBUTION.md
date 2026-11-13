@@ -89,3 +89,22 @@ with published ones. Scripts: `scripts/postagb_data.py`,
 | ORGANIC image reconstructions and observation logs for De Prins et al. 2026, Zenodo record [10.5281/zenodo.20155600](https://doi.org/10.5281/zenodo.20155600) (version 10.5281/zenodo.22839953) | Zenodo, CC-BY-4.0; fetched to `~/data/postagb_pionier/literature/`; only derived arrays and figures are committed | CC-BY-4.0: credit T. De Prins, A. Corporaal, J. Kluska, D. Kamath, H. Van Winckel et al. The images were made by Toon De Prins and his supervisors, who cleared their use (Ben Pope, 2026-10-16) |
 | PIONIER OIFITS of IRAS 08544-4431, ESO programme 094.D-0865 (PI Michel Hillen), nights 2015-01-21, 2015-01-24 and 2015-02-23 (27 observing blocks) | The authors' reduced copy (`pndrs`), kept in `~/code/nuHor/data/ep1/{A,B}`; ESO has no Phase 3 products for this programme; never committed | Based on observations collected at the European Southern Observatory under programme 094.D-0865; cite Hillen et al. (2016). Data are shown only as derived images and fits |
 | Hillen et al. 2016, *Imaging the dust sublimation front of a circumbinary disc*, A&A 588, L1, arXiv:1603.03023 | Figure 4 (upper panel), a raster in the arXiv source, in `docs/imaging/postagb/literature/` with an array recovered from its colour bar | Reproduced from the arXiv version. Ben Pope cleared it (2026-10-16) because Devika Kamath (Macquarie University) is a co-author, and she gives permission for any paper she co-authored. The caption carries the arXiv ID and figure number |
+
+## M87*: Event Horizon Telescope data and Lai et al. (2026) products
+
+Used by the M87* replication (`design/m87_replication.md`, `scripts/setup_m87.sh`). Nothing is committed: the files
+live in `$M87_DATA` (default `~/data/m87_eht/`).
+
+- **EHT data products** 2019-D01-01 (2017 M87*, <https://github.com/eventhorizontelescope/2019-D01-01>, commit
+  27ae76aacb9067a83388395c3826012b97aac371), 2024-D01-01 (2018 M87*, <https://github.com/eventhorizontelescope/2024-D01-01>,
+  commit fda41da417419fd9b54505ea3fa70a8cf6fb60ec) and 2026-D01-01 (2018 and 2021 polarimetric, CyVerse Data Commons,
+  not fetched by script). Released by the Event Horizon Telescope Collaboration; the data files are public domain
+  (ODC-PDDL 1.0, each repository's LICENSE.txt; its scripts are GPL-3 and not used). Results derived from them cite EHT Collaboration 2019 (ApJL 875, L1–L6), 2024 (A&A 681, A79) and 2025
+  (A&A 704, A91), and the release.
+- **Lai et al. (2026) products** (MIT licence, copyright the authors): GenDIReCT v1.1.0-paperM87
+  (doi:10.5281/zenodo.22764433; md5 764aae1d4ed17b24fdcef7b3c5883037), whose `results/*_225_sample.npy` reconstructions
+  and post-processed UVFITS (`uvfits/`, the three fiducial days) we use; BASIS v0.1.0 (doi:10.5281/zenodo.21090230; md5
+  32aab34893130a467b15bedae3973c95); ClosureInvariants v1.0.0 (doi:10.5281/zenodo.15524509; md5
+  a2780931ea0e4ad18ad5ac7426bbecfe). Their code runs only in `.venv-basis` through `src/external_bridge/` workers and is
+  not copied into this repository. Cite Lai, Thyagarajan, Wong & Diakogiannis 2026, Nature 659, 317, and the Zenodo
+  records.
