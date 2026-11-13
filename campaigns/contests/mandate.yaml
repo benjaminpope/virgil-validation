@@ -75,8 +75,8 @@ stages:
       visibility moments and broad stratified starts, higher rungs from the peaks of tiled likelihood maps (which rank
       starts and never threshold) and narrow jitters; the error terms are free only in one last fit; the image step runs
       after the ladder and is not a rung. The fit standard (residual rms on V^2 and informative closure phases) is computed and
-      reported, not a gate: whether a fit is accepted is an evaluator's judgement. Not a blind result. The checks' thresholds are design/contest_informed_criteria.md
-      (proposed, awaiting Ben); the report records the criteria commit.
+      reported, not a gate (whether a fit is accepted is an evaluator's judgement). Not a blind result. The process checks and their constants are design/contest_informed_criteria.md
+      (proposed by the design session); the report records the criteria commit.
     informed: true
     playbook: playbooks/informed.md
     over: {paper_model_built: "yes"}
