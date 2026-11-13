@@ -12,7 +12,9 @@ virgil's own estimate and a check is testable without a fit:
 - ``Scales`` and ``scales_of`` (plan 2): extent, reach and pixel, each with its source.
 - Stratified geometry (plan 4.2): ``log_steps``, ``inc_pa_grid``, ``angle_steps``.
 - ``tiled_map`` and ``map_peaks`` (plan 4.3): a map over the whole reach in tiles, and its separated peaks.
-- The checks of plan section 5 as pure functions of plain numbers.
+- The checks of plan section 5 as pure functions of plain numbers, and the ladder policy's agreement tests
+  (``same_optimum``, ``start_agreement``, ``fit_standard``) and ``informative_triangles``, which take precomputed
+  numbers: the calls that need virgil (a Gauss-Newton sigma, -2 ln L, residuals) are in ``scripts/contest_informed.py``.
 
 Spatial frequencies are in cycles per radian (baseline over wavelength), ``u`` East and ``v`` North; position angles
 are in degrees East of North, of the major axis; sizes are in milliarcseconds.
@@ -292,10 +294,12 @@ def inside(x, low, high, log=False, edge=0.01):
 # Tiled maps (plan 4.3)
 
 
-def tiled_map(evaluate, half, step, tile=256, max_axis=4096):
+def tiled_map(evaluate, half, step, tile=256, max_axis=4096, memo=None):
     """A map of ``evaluate(dra_axis, ddec_axis) -> (len(dra_axis), len(ddec_axis))`` over [-half, half]^2 at ``step``
     (mas), computed in tiles of ``tile`` points a side so memory stays bounded however wide the reach. Returns
-    ``(axis, surface, step)``; an axis longer than ``max_axis`` points is coarsened (and ``step`` says by how much)."""
+    ``(axis, surface, step)``; an axis longer than ``max_axis`` points is coarsened (and ``step`` says by how much).
+    ``memo(i, j, compute)``, when given, returns the block of the tile starting at (i, j), calling ``compute()`` for it
+    only if it has not been computed before (a caller that keeps tiles on disk resumes a map)."""
     n = int(round(2.0 * half / step)) + 1
     if n > max_axis:
         n = max_axis
@@ -304,7 +308,10 @@ def tiled_map(evaluate, half, step, tile=256, max_axis=4096):
     surface = np.full((n, n), -np.inf, dtype=np.float32)
     for i in range(0, n, tile):
         for j in range(0, n, tile):
-            block = np.asarray(evaluate(axis[i:i + tile], axis[j:j + tile]), float)
+            def compute(i=i, j=j):
+                return np.asarray(evaluate(axis[i:i + tile], axis[j:j + tile]), float)
+
+            block = np.asarray(compute() if memo is None else memo(i, j, compute), float)
             surface[i:i + block.shape[0], j:j + block.shape[1]] = block
     return axis, surface, step
 
@@ -335,13 +342,24 @@ def map_peaks(axis, surface, k, separation, exclude=0.0):
 # Checks (plan section 5). Each returns (ok, detail). Thresholds are the proposals of design/contest_informed_criteria.md.
 
 BOUND_EDGE = 0.01  # no_bounds: within this fraction of the range of a prior bound
-AGREE_FRACTION = 0.01  # starts_agree / nested: -2 ln L within this fraction of N of the best
-MIN_AGREE = 2  # starts_agree: at least this many starts at the best
+START_AGREE = 6  # starts_agree, first rung: at least START_AGREE of START_OF broad starts end at the best optimum (the same fraction of more)
+START_OF = 8  # ... and there must be at least this many broad starts: the budget of the first rung
+START_MARGIN = 25.0  # starts_agree, higher rungs: the next distinct optimum is worse than the best by at least this in -2 ln L
+SAME_DELTA = 2.0  # same optimum, and nested: -2 ln L within this
+SAME_SIGMA = 3.0  # same optimum: every parameter within this many combined sigma (or within the practical tolerances below)
+SIZE_TOLERANCE = 0.05  # same optimum, practical tolerance: a size within this fraction
+ANGLE_TOLERANCE = 5.0  # same optimum, practical tolerance: an angle within this many degrees (modulo its period)
+POSITION_ELEMENTS = 0.25  # same optimum, practical tolerance: a position within this fraction of a resolution element
+FIT_RMS_MAX = 2.0  # fit_standard: normalised residual rms of the last fit, on V^2 and on informative closure phases
+INFORMATIVE_SNR = 3.0  # a closure phase is informative when all three V^2 of its triangle exceed this many sigma
+INFORMATIVE_SHARE = 0.05  # closure phases are flagged as carrying no information when fewer than this share of triangles are informative
 FAMILY_FLUX_LIMIT = 0.2  # family_complete: the image on top may carry at most this fraction of the model's flux
 RING_FRACTION = 0.2  # no_collapse: a ring narrower than this fraction of the resolution
 WIDTH_FLOOR = 0.05  # a ring's width prior (FWHM) starts at this fraction of the resolution: below RING_FRACTION, so a collapse is inside the prior
 COMPANION_ELEMENTS = 2.0  # no_collapse: a companion closer than this many resolution elements to the star
 PERIODIC = ("angle", "full_angle")  # prior kinds that wrap: no_bounds does not apply
+SIZE_LEAVES_TOLERANT = ("diam", "fwhm", "sigma", "radius", "r_out", "width", "length")  # parameters compared with the size tolerance
+ANGLE_PERIOD = {"pa": 180.0, "inc": 180.0, "az_pas": 360.0}  # angle parameters, and the period they are compared modulo
 
 
 def no_bounds(values, bounds, edge=BOUND_EDGE):
@@ -362,36 +380,173 @@ def no_bounds(values, bounds, edge=BOUND_EDGE):
     return not hits, hits
 
 
-def tolerance(n):
-    """The -2 ln L difference below which two fits count as the same optimum: ``AGREE_FRACTION`` of one chi2 per datum,
-    but never more than ln N, the BIC cost of one parameter (so a large data set cannot hide a gap that would pick a
-    rung)."""
-    n = max(int(n), 1)
-    return min(AGREE_FRACTION * n, float(np.log(n)) if n > 1 else AGREE_FRACTION)
-
-
-def nested(rungs, n):
+def nested(rungs, delta=SAME_DELTA):
     """Fails when a rung fits worse than a rung it contains. ``rungs`` is a list of
-    ``{"rung": name, "minus2lnl": float, "contains": [names]}``; worse means larger -2 ln L by more than
-    ``tolerance(n)``. ``detail`` lists the pairs."""
+    ``{"rung": name, "minus2lnl": float, "contains": [names]}``; worse means larger -2 ln L by more than ``delta``
+    (``SAME_DELTA``, the difference under which two fits are one optimum). ``detail`` lists the pairs."""
     by_name = {r["rung"]: r for r in rungs}
     bad = []
     for r in rungs:
         for below in r.get("contains", []):
-            if below in by_name and r["minus2lnl"] > by_name[below]["minus2lnl"] + tolerance(n):
+            if below in by_name and r["minus2lnl"] > by_name[below]["minus2lnl"] + delta:
                 bad.append({"rung": r["rung"], "contains": below, "minus2lnl": r["minus2lnl"],
                             "contained_minus2lnl": by_name[below]["minus2lnl"]})
     return not bad, bad
 
 
-def starts_agree(minus2lnl, n, minimum=MIN_AGREE):
-    """Fails when fewer than ``minimum`` of the starts are within ``tolerance(n)`` of the best -2 ln L.
-    Returns (ok, {"at_best": count, "starts": count})."""
-    values = np.asarray([x for x in minus2lnl if np.isfinite(x)], float)
-    if values.size == 0:
-        return False, {"at_best": 0, "starts": 0}
-    count = int(np.sum(values <= values.min() + tolerance(n)))
-    return count >= minimum, {"at_best": count, "starts": int(values.size)}
+# ---------------------------------------------------------------------------------------------------------------
+# The ladder policy: what the data can tell, when two fits are one optimum, whether starts agree, the fit standard.
+# Every function takes numbers the caller computed (the Gauss-Newton sigma and -2 ln L need virgil: they are made in
+# scripts/contest_informed.py), so each is testable without a fit.
+
+
+def informative_triangles(vis, d_vis, legs, v2=True, vis_index=None, phi_index=None, snr=INFORMATIVE_SNR):
+    """One boolean per closure phase: all three baselines of its triangle have V^2 above ``snr`` sigma.
+
+    ``vis`` and ``d_vis`` are the visibility observable and its error (V^2 when ``v2``, else |V|, whose V^2 error is
+    2 |V| e); ``vis_index`` places each row on its sample (default: row i is sample i); ``legs`` is the three arrays of
+    sample indices of each triangle's baselines, and ``phi_index`` selects the closure phases that exist (default: all).
+    A closure phase over a baseline with no V^2 is not informative. With no triangles the result is empty."""
+    vis, err = np.ravel(np.asarray(vis, float)), np.ravel(np.asarray(d_vis, float))
+    legs = np.stack([np.ravel(np.asarray(i)) for i in legs]) if legs is not None and len(legs) else np.zeros((3, 0), int)
+    if legs.shape[1] == 0:
+        return np.zeros(0, bool)
+    rows = np.arange(vis.size) if vis_index is None else np.ravel(np.asarray(vis_index))
+    snr_of = np.zeros(int(max(legs.max(), rows.max() if rows.size else 0)) + 1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        snr_of[rows] = np.nan_to_num(vis / err if v2 else vis / (2.0 * err))  # V^2 = |V|^2, its error 2 |V| e
+    chosen = legs[:, np.arange(legs.shape[1]) if phi_index is None else np.ravel(np.asarray(phi_index))]
+    return np.all(snr_of[chosen] > snr, axis=0)
+
+
+def information_record(n_triangles, n_informative, median_v2, median_cp_error_rad=None):
+    """The information check, before any fit: median V^2, median quoted closure-phase error, how many triangles have all
+    three V^2 above ``INFORMATIVE_SNR`` sigma, and whether closure phases carry information (at least
+    ``INFORMATIVE_SHARE`` of the triangles). Closure phases that carry none are still fitted; the fit is judged on V^2
+    and nothing is oriented by them."""
+    informative = bool(n_triangles and n_informative >= INFORMATIVE_SHARE * n_triangles)
+    return {"median_v2": float(median_v2),
+            "median_quoted_cp_error_deg": None if median_cp_error_rad is None else float(np.degrees(median_cp_error_rad)),
+            "triangles": int(n_triangles), "triangles_all_v2_above_3_sigma": int(n_informative),
+            "closure_phases_informative": informative,
+            "judged_on": "V2 and closure phases" if informative else "V2 only: the closure phases carry no information"}
+
+
+def differs(values, ref, resolution):
+    """What of a fit differs from ``ref`` by more than the practical tolerances: a size by more than ``SIZE_TOLERANCE``, an
+    angle by more than ``ANGLE_TOLERANCE`` degrees (position angles modulo their period), a position by more than
+    ``POSITION_ELEMENTS`` of a resolution element. Returns the list of parameter names."""
+    why = []
+    for k, x in values.items():
+        y, leaf = ref[k], k.rsplit(".", 1)[-1]
+        if leaf in SIZE_LEAVES_TOLERANT and abs(x - y) > SIZE_TOLERANCE * abs(y):
+            why.append(k)
+        elif leaf in ANGLE_PERIOD:
+            d = (x - y) % ANGLE_PERIOD[leaf]
+            if min(d, ANGLE_PERIOD[leaf] - d) > ANGLE_TOLERANCE:
+                why.append(k)
+        elif leaf in ("dra", "ddec") and abs(x - y) > POSITION_ELEMENTS * resolution:
+            why.append(k)
+    return why
+
+
+def relabel(values, sigma=None):
+    """Rings of a disk relabelled in order of radius (their letters are arbitrary); weights relative to the first. ``sigma`` (the 1 sigma
+    of each value, same keys) follows its ring: a radius or width keeps its own sigma, and a weight w_old / w_first has
+    the sigma of a ratio (relative errors added in quadrature). Returns ``(values, sigma)``; sigma is None when not given."""
+    letters = sorted({k.split(".")[2] for k in values if ".profile." in k})
+    if len(letters) < 2:
+        return values, sigma
+    pre, out = next(k for k in values if ".profile." in k).rsplit(".profile.", 1)[0] + ".profile.", dict(values)
+    sig = None if sigma is None else dict(sigma)
+    order = sorted(letters, key=lambda letter: values[f"{pre}{letter}.radius"])
+    amp = {letter: values.get(f"{pre}{letter}.weight", 1.0) for letter in letters}
+    for new, old in zip(letters, order):
+        out |= {f"{pre}{new}.radius": values[f"{pre}{old}.radius"], f"{pre}{new}.sigma": values[f"{pre}{old}.sigma"]}
+        if sig is not None:
+            sig |= {f"{pre}{new}.radius": sigma[f"{pre}{old}.radius"], f"{pre}{new}.sigma": sigma[f"{pre}{old}.sigma"]}
+        if new != letters[0]:
+            out[f"{pre}{new}.weight"] = amp[old] / amp[order[0]]
+            if sig is not None:
+                s_old, s_first = sigma[f"{pre}{old}.weight"], sigma[f"{pre}{order[0]}.weight"]
+                sig[f"{pre}{new}.weight"] = abs(out[f"{pre}{new}.weight"]) * float(np.hypot(s_old / amp[old], s_first / amp[order[0]]))
+    return out, sig
+
+
+def canonical(values):
+    """The values of `relabel` alone."""
+    return relabel(values)[0]
+
+
+def same_optimum(a, b, resolution):
+    """``a`` and ``b`` (``{"values", "sigma", "chi2q"}``: fitted values, their 1 sigma from the joint Gauss-Newton curvature, and
+    -2 ln L on the quoted errors) are one optimum when their -2 ln L differ by under ``SAME_DELTA`` and every parameter
+    agrees within ``SAME_SIGMA`` combined sigma, or, for a size, angle or position, within the practical tolerances of
+    `differs` where those are looser. Returns the list of what differs (empty: one optimum)."""
+    (va, sa), (vb, sb) = relabel(a["values"], a["sigma"]), relabel(b["values"], b["sigma"])  # the sigmas follow their rings
+    tol, why = set(differs(va, vb, resolution)), (["-2lnL"] if abs(a["chi2q"] - b["chi2q"]) >= SAME_DELTA else [])
+    for k in va:
+        leaf = k.rsplit(".", 1)[-1]
+        period = ANGLE_PERIOD.get(leaf)
+        if (leaf in SIZE_LEAVES_TOLERANT or leaf in ANGLE_PERIOD or leaf in ("dra", "ddec")) and k not in tol:
+            continue
+        d = va[k] - vb[k]
+        d = (d + period / 2) % period - period / 2 if period else d
+        if abs(d) > SAME_SIGMA * np.hypot(sa[k], sb[k]):
+            why.append(k)
+    return why
+
+
+BROAD_ORIGINS = ("grid",)  # origins of the broad stratified starts of the first rung
+CONTROL_ORIGINS = ("moments", "random")  # starts that are not counted: the moment start and control draws from the priors
+
+
+def start_agreement(starts, resolution, bounds):
+    """Start agreement of one rung. ``starts`` is a list of ``{"origin", "values", "sigma", "chi2q"}`` (``chi2q``: -2 ln L on
+    the quoted errors, gains marginalised; ``sigma`` as in `same_optimum`), in the order they were run.
+
+    First rung (every counted start is a broad ``grid`` start): at least ``START_OF`` of them, and ``START_AGREE`` / ``START_OF`` of
+    them at the best optimum (a smaller budget cannot weaken the check). Above:
+    the best map peak and the jittered starts (every start when the rung places nothing) are all at the best optimum, and
+    the best distinct optimum is worse by at least ``START_MARGIN``. The moment start and control draws are not counted.
+    ``bounds`` is ``{path: (low, high, log, kind)}``; parameters whose sigma exceeds half their prior range, or their value,
+    are listed as not constrained by the data. Returns a record with ``passes``."""
+    group = [dict(f) for f in starts if f["origin"] not in CONTROL_ORIGINS and "values" in f]
+    if not group:
+        return {"passes": False, "n": 0, "at_best": 0, "best_chi2_quoted": None, "margin_to_distinct_other": None, "others": [],
+                "not_constrained_by_the_data": {}, "rule": None}
+    best = min(group, key=lambda f: f["chi2q"])
+    for f in group:
+        f["differs_in"] = same_optimum(f, best, resolution)
+    others = [f for f in group if f["differs_in"]]
+    margin = min((f["chi2q"] for f in others), default=np.inf) - best["chi2q"]
+    broad = all(f["origin"] in BROAD_ORIGINS for f in group)
+    first_peak = next((f for f in group if f["origin"] == "map"), None)
+    mine = [f for f in group if f["origin"] != "map"] + ([first_peak] if first_peak is not None else [])  # the best peak and its jitters
+    need = int(np.ceil(START_AGREE * len(group) / START_OF - 1e-9))  # 6 of 8; 15 of 20; a budget under START_OF cannot pass
+    ok = (len(group) >= START_OF and len(group) - len(others) >= need) if broad else all(not f["differs_in"] for f in mine) and margin >= START_MARGIN
+    free = {k: float(best["sigma"][k]) for k in best["values"]
+            if k in bounds and (best["sigma"][k] > 0.5 * (bounds[k][1] - bounds[k][0]) or best["sigma"][k] > abs(best["values"][k]))}
+    return {"passes": bool(ok), "rule": f"{START_AGREE} of {START_OF} broad starts (the same fraction of more; fewer than {START_OF} cannot pass)" if broad else "best peak and jitters, next optimum by the margin",
+            "n": len(group), "at_best": len(group) - len(others), "best_chi2_quoted": float(best["chi2q"]),
+            "margin_to_distinct_other": float(margin),
+            "others": [{"origin": f["origin"], "chi2_quoted": float(f["chi2q"]), "differs_in": f["differs_in"][:6]} for f in others],
+            "not_constrained_by_the_data": free}
+
+
+def fit_standard(rms_v2, rms_cp=None, n_triangles=0, limit=FIT_RMS_MAX):
+    """The fit standard after the last fit, with the error terms free: the normalised residual rms (residual over the effective
+    error) on V^2, and on the informative closure phases when there are any, is at most ``limit``. A fit that misses it
+    converged, perhaps, but is **incomplete**: the model leaves structure the data show. A missing or non-finite rms is a
+    failure, never a pass. Returns ``(ok, detail)``; ``detail["verdict"]`` is ``"complete"`` or ``"incomplete"``."""
+    judged = {"V2": rms_v2}
+    if n_triangles and rms_cp is not None:
+        judged["closure phase (informative triangles)"] = rms_cp
+    missing = [k for k, v in judged.items() if v is None or not np.isfinite(v)]
+    over = {k: float(v) for k, v in judged.items() if k not in missing and v > limit}
+    ok = not missing and not over
+    return ok, {"verdict": "complete" if ok else "incomplete", "limit": limit, "rms": {k: (None if v is None else float(v)) for k, v in judged.items()},
+                "informative_triangles": int(n_triangles), "over_the_limit": over, "not_measured": missing}
 
 
 def family_complete(rest_flux, limit=FAMILY_FLUX_LIMIT):

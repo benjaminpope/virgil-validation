@@ -86,13 +86,158 @@ def test_a_moment_fit_with_no_extended_light_does_not_measure_the_extent():
     assert S.scales_of(b.max(), b.min(), {**fit, "extended": 2.0 * S.EXTENDED_MIN}).extent_known
 
 
-def test_the_tolerance_is_a_percent_of_n_but_never_more_than_ln_n():
-    assert S.tolerance(500) == pytest.approx(5.0)  # 1% of N
-    assert S.tolerance(20000) == pytest.approx(np.log(20000))  # not 200
-    # on a large data set two optima 200 apart are not the same optimum, and a richer rung 200 worse is not nested
-    assert not S.starts_agree([1000.0, 1200.0], n=20000)[0]
-    ok, bad = S.nested([{"rung": "a", "minus2lnl": 1000.0, "contains": []}, {"rung": "b", "minus2lnl": 1200.0, "contains": ["a"]}], n=20000)
-    assert not ok and bad[0]["rung"] == "b"
+def test_nested_allows_a_richer_rung_to_be_worse_only_by_the_same_optimum_delta():
+    good = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "ab", "minus2lnl": 80.0, "contains": ["a"]}]
+    assert S.nested(good)[0]
+    bad = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "ab", "minus2lnl": 130.0, "contains": ["a"]}]
+    ok, detail = S.nested(bad)
+    assert not ok and detail[0]["rung"] == "ab" and detail[0]["contains"] == "a"
+    just_in = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "ab", "minus2lnl": 100.0 + S.SAME_DELTA, "contains": ["a"]}]
+    assert S.nested(just_in)[0]  # within SAME_DELTA: one optimum
+    just_out = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "ab", "minus2lnl": 100.0 + 1.01 * S.SAME_DELTA, "contains": ["a"]}]
+    assert not S.nested(just_out)[0]
+    # the old rule grew with N (200 apart passed on a large data set only by a cap); the new one is a flat -2 ln L
+    large = [{"rung": "a", "minus2lnl": 1000.0, "contains": []}, {"rung": "b", "minus2lnl": 1200.0, "contains": ["a"]}]
+    assert not S.nested(large)[0]
+    # a rung that does not contain another is never compared with it
+    swap = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "b", "minus2lnl": 300.0, "contains": []}]
+    assert S.nested(swap)[0]
+
+
+def fit(chi2q, values=None, sigma=None, origin="grid"):
+    values = {"s.diam": 2.0, "c.dra": 3.0, "c.ddec": -1.0, "c.flux.ratio": 0.1} if values is None else values
+    return {"origin": origin, "values": values, "sigma": sigma or {k: 0.01 * max(abs(v), 1.0) for k, v in values.items()}, "chi2q": chi2q}
+
+
+AGREE_BOUNDS = {"s.diam": (0.1, 10.0, True, "size"), "c.flux.ratio": (0.0, 1.0, False, "flux")}
+
+
+def test_two_fits_are_one_optimum_within_delta_in_minus_two_ln_l_and_three_sigma_in_every_parameter():
+    a = fit(100.0)
+    assert S.same_optimum(fit(100.0 + 0.9 * S.SAME_DELTA), a, 1.0) == []
+    assert S.same_optimum(fit(100.0 + 1.1 * S.SAME_DELTA), a, 1.0) == ["-2lnL"]
+    # a flux ratio is compared in sigma only: 5 sigma away is another optimum, 2 sigma away is the same
+    far = {**a["values"], "c.flux.ratio": 0.1 + 5.0 * 0.01}
+    assert S.same_optimum(fit(100.0, far), a, 1.0) == ["c.flux.ratio"]
+    near = {**a["values"], "c.flux.ratio": 0.1 + 2.0 * 0.01 / np.sqrt(0.5) * 0.5}
+    assert S.same_optimum(fit(100.0, near), a, 1.0) == []
+
+
+def test_a_size_an_angle_and_a_position_have_practical_tolerances():
+    a = fit(100.0, {"s.diam": 2.0, "s.pa": 10.0, "c.dra": 3.0}, {"s.diam": 1e-6, "s.pa": 1e-6, "c.dra": 1e-6})
+    # sigmas far tighter than any practical difference: the tolerances decide
+    same = fit(100.0, {"s.diam": 2.0 * (1 + 0.5 * S.SIZE_TOLERANCE), "s.pa": 10.0 + 0.5 * S.ANGLE_TOLERANCE, "c.dra": 3.0 + 0.5 * S.POSITION_ELEMENTS},
+               a["sigma"])
+    assert S.same_optimum(same, a, 1.0) == []
+    other = fit(100.0, {"s.diam": 2.0 * (1 + 2.0 * S.SIZE_TOLERANCE), "s.pa": 10.0 + 2.0 * S.ANGLE_TOLERANCE, "c.dra": 3.0 + 2.0 * S.POSITION_ELEMENTS},
+                a["sigma"])
+    assert set(S.same_optimum(other, a, 1.0)) == {"s.diam", "s.pa", "c.dra"}
+    wrapped = fit(100.0, {"s.diam": 2.0, "s.pa": 10.0 + 180.0, "c.dra": 3.0}, a["sigma"])
+    assert S.same_optimum(wrapped, a, 1.0) == []  # a position angle is modulo 180
+
+
+def test_the_sigmas_of_the_rings_follow_the_rings_when_the_letters_are_swapped():
+    pre = "d.profile."
+    a = {f"{pre}a.radius": 1.0, f"{pre}a.sigma": 0.2, f"{pre}a.weight": 1.0, f"{pre}b.radius": 3.0, f"{pre}b.sigma": 0.2, f"{pre}b.weight": 0.5}
+    # the same disk with its ring letters swapped; ring b (radius 3) is poorly measured
+    sig_a = {**{k: 0.001 for k in a}, f"{pre}b.radius": 0.5, f"{pre}b.weight": 0.05}
+    swapped = {f"{pre}a.radius": 3.0, f"{pre}a.sigma": 0.2, f"{pre}a.weight": 1.0, f"{pre}b.radius": 1.0, f"{pre}b.sigma": 0.2, f"{pre}b.weight": 2.0}
+    sig_s = {**{k: 0.001 for k in a}, f"{pre}a.radius": 0.5, f"{pre}a.weight": 0.05}
+    values, sig = S.relabel(swapped, sig_s)
+    assert values[f"{pre}b.radius"] == 3.0 and sig[f"{pre}b.radius"] == 0.5 and sig[f"{pre}a.radius"] == 0.001
+    assert values[f"{pre}b.weight"] == pytest.approx(0.5) and sig[f"{pre}b.weight"] > 0.0
+    # a radius 1.8 off at a ring with sigma 0.5 on both fits is 2.5 combined sigma: the same optimum however the letters fall, but not if the poor ring's sigma were read off the wrong ring
+    moved = {**a, f"{pre}b.radius": 3.0 + 1.8}
+    got = S.same_optimum({"values": moved, "sigma": sig_a, "chi2q": 1.0}, {"values": swapped, "sigma": sig_s, "chi2q": 1.0}, 1e-9)
+    assert got == [], got
+
+
+def test_the_rings_of_a_disk_are_compared_in_order_of_radius():
+    pre = "d.profile."
+    a = {f"{pre}a.radius": 1.0, f"{pre}a.sigma": 0.2, f"{pre}a.weight": 1.0, f"{pre}b.radius": 3.0, f"{pre}b.sigma": 0.2, f"{pre}b.weight": 0.5}
+    swapped = {f"{pre}a.radius": 3.0, f"{pre}a.sigma": 0.2, f"{pre}a.weight": 1.0, f"{pre}b.radius": 1.0, f"{pre}b.sigma": 0.2, f"{pre}b.weight": 2.0}
+    sig = {k: 0.001 for k in a}
+    assert S.same_optimum({"values": a, "sigma": sig, "chi2q": 1.0}, {"values": swapped, "sigma": sig, "chi2q": 1.0}, 1.0) == []
+
+
+def test_the_first_rung_needs_start_agree_of_the_broad_starts_at_one_optimum():
+    other = {"s.diam": 4.0, "c.dra": 3.0, "c.ddec": -1.0, "c.flux.ratio": 0.1}
+    starts = [fit(100.0) for _ in range(S.START_AGREE)] + [fit(150.0, other), fit(160.0, other)]
+    r = S.start_agreement([fit(100.0, origin="moments")] + starts, 1.0, AGREE_BOUNDS)  # the moment start is not counted
+    assert r["passes"] and r["n"] == 8 and r["at_best"] == S.START_AGREE
+    fewer = [fit(100.0) for _ in range(S.START_AGREE - 1)] + [fit(150.0, other) for _ in range(3)]
+    r = S.start_agreement(fewer, 1.0, AGREE_BOUNDS)
+    assert not r["passes"] and r["at_best"] == S.START_AGREE - 1 and r["others"][0]["differs_in"]
+    assert not S.start_agreement([], 1.0, AGREE_BOUNDS)["passes"]
+
+
+def test_the_first_rung_needs_the_whole_budget_so_a_smaller_one_cannot_weaken_the_check():
+    other = {"s.diam": 4.0, "c.dra": 3.0, "c.ddec": -1.0, "c.flux.ratio": 0.1}
+    # 3 of 4 is the same fraction as 6 of 8 and still fails: fewer than START_OF broad starts cannot pass
+    small = [fit(100.0) for _ in range(3)] + [fit(150.0, other)]
+    assert not S.start_agreement(small, 1.0, AGREE_BOUNDS)["passes"]
+    assert not S.start_agreement([fit(100.0) for _ in range(S.START_OF - 1)], 1.0, AGREE_BOUNDS)["passes"]
+    assert S.start_agreement([fit(100.0) for _ in range(S.START_OF)], 1.0, AGREE_BOUNDS)["passes"]
+    # a larger budget needs the same fraction: 15 of 20 passes (6 of 8), 14 of 20 does not
+    def of_twenty(n_best):
+        return [fit(100.0) for _ in range(n_best)] + [fit(150.0, other) for _ in range(20 - n_best)]
+
+    assert S.start_agreement(of_twenty(15), 1.0, AGREE_BOUNDS)["passes"]
+    assert not S.start_agreement(of_twenty(14), 1.0, AGREE_BOUNDS)["passes"]
+
+
+def test_a_higher_rung_needs_the_best_peak_and_its_jitters_at_one_optimum_and_the_next_optimum_worse_by_the_margin():
+    other = {"s.diam": 4.0, "c.dra": 3.0, "c.ddec": -1.0, "c.flux.ratio": 0.1}
+    peak = [fit(100.0, origin="map")] + [fit(100.0 + 0.1 * i, origin="jitter") for i in range(3)]
+    worse_peak = [fit(100.0 + S.START_MARGIN + 1.0, other, origin="map")]  # a second peak, a distinct optimum, far worse
+    r = S.start_agreement(peak + worse_peak, 1.0, AGREE_BOUNDS)
+    assert r["passes"] and r["margin_to_distinct_other"] > S.START_MARGIN
+    close = [fit(100.0 + S.START_MARGIN - 5.0, other, origin="jitter")]  # a distinct optimum within the margin
+    r = S.start_agreement(peak + close, 1.0, AGREE_BOUNDS)
+    assert not r["passes"] and r["margin_to_distinct_other"] < S.START_MARGIN
+    split = [fit(100.0, origin="map"), fit(100.0, origin="jitter"), fit(100.0 + S.START_MARGIN + 30.0, other, origin="jitter")]
+    assert not S.start_agreement(split, 1.0, AGREE_BOUNDS)["passes"]  # a jitter of the best peak that left it
+
+
+def test_a_parameter_the_data_do_not_constrain_is_listed_not_hidden():
+    values = {"s.diam": 2.0, "c.flux.ratio": 0.1}
+    wide = {"s.diam": 0.01, "c.flux.ratio": 2.0}  # sigma far beyond half the prior range of the flux ratio
+    r = S.start_agreement([fit(100.0, values, wide) for _ in range(S.START_AGREE)], 1.0, AGREE_BOUNDS)
+    assert "c.flux.ratio" in r["not_constrained_by_the_data"] and "s.diam" not in r["not_constrained_by_the_data"]
+
+
+def test_the_fit_standard_is_an_rms_on_v2_and_on_the_informative_closure_phases():
+    ok, d = S.fit_standard(1.1, 1.3, 40)
+    assert ok and d["verdict"] == "complete"
+    ok, d = S.fit_standard(S.FIT_RMS_MAX * 1.01, 1.0, 40)
+    assert not ok and d["verdict"] == "incomplete" and "V2" in d["over_the_limit"]
+    ok, d = S.fit_standard(1.0, S.FIT_RMS_MAX * 1.5, 40)
+    assert not ok and "closure phase (informative triangles)" in d["over_the_limit"]
+    # closure phases with no informative triangle are not judged; a missing V2 rms is a failure, never a pass
+    assert S.fit_standard(1.0, 50.0, 0)[0]
+    ok, d = S.fit_standard(None, 1.0, 10)
+    assert not ok and d["not_measured"] == ["V2"]
+    assert not S.fit_standard(float("nan"), None, 0)[0]
+    assert S.fit_standard(S.FIT_RMS_MAX, None, 0)[0]  # at the limit passes
+
+
+def test_a_closure_phase_is_informative_when_all_three_of_its_baselines_are_resolved_above_the_noise():
+    snr = np.array([10.0, 10.0, 1.0, 10.0])  # V^2 / error of four baselines
+    legs = ([0, 0], [1, 3], [2, 3])  # two triangles: (0, 1, 2) has a noisy leg, (0, 3, 3) does not
+    got = S.informative_triangles(snr * 0.01, np.full(4, 0.01), legs)
+    assert list(got) == [False, True]
+    assert S.informative_triangles(snr, np.ones(4), None).size == 0
+    # visibility amplitudes: the V^2 error is 2 |V| e
+    amp = np.array([0.5, 0.5, 0.5, 0.5])
+    assert list(S.informative_triangles(amp, np.full(4, 0.2 * 0.5 / 2.0), legs, v2=False)) == [True, True]
+
+
+def test_the_information_record_says_what_the_closure_phases_can_judge():
+    r = S.information_record(100, 40, 0.5, 0.02)
+    assert r["closure_phases_informative"] and r["judged_on"] == "V2 and closure phases"
+    r = S.information_record(100, 2, 0.5, 0.02)
+    assert not r["closure_phases_informative"] and "V2 only" in r["judged_on"]
+    assert not S.information_record(0, 0, 0.5)["closure_phases_informative"]
 
 
 def test_the_criteria_file_and_the_code_agree_on_every_constant():
@@ -101,8 +246,9 @@ def test_the_criteria_file_and_the_code_agree_on_every_constant():
 
     text = (pathlib.Path(__file__).resolve().parents[1] / "design" / "contest_informed_criteria.md").read_text()
     table = {m.group(1): float(m.group(2)) for m in re.finditer(r"^\| `([A-Z_0-9]+)` \| ([0-9.]+) \|", text, re.M)}
-    assert set(table) == {"BOUND_EDGE", "AGREE_FRACTION", "MIN_AGREE", "FAMILY_FLUX_LIMIT", "RING_FRACTION", "WIDTH_FLOOR",
-                          "COMPANION_ELEMENTS", "SHORT_V2_MIN", "EXTENDED_MIN"}
+    assert set(table) == {"BOUND_EDGE", "START_AGREE", "START_OF", "START_MARGIN", "SAME_DELTA", "SAME_SIGMA", "SIZE_TOLERANCE", "ANGLE_TOLERANCE",
+                          "POSITION_ELEMENTS", "FIT_RMS_MAX", "INFORMATIVE_SNR", "INFORMATIVE_SHARE", "FAMILY_FLUX_LIMIT",
+                          "RING_FRACTION", "WIDTH_FLOOR", "COMPANION_ELEMENTS", "SHORT_V2_MIN", "EXTENDED_MIN"}
     for name, value in table.items():
         assert getattr(S, name) == pytest.approx(value), name
     assert S.WIDTH_FLOOR * (1.0 + S.BOUND_EDGE) < S.RING_FRACTION  # a collapsed ring is not at the prior's edge
@@ -238,24 +384,15 @@ def test_no_bounds_fires_on_a_parameter_at_a_bound_and_passes_in_the_interior():
 
 def test_nested_fires_when_a_richer_rung_fits_worse_and_passes_otherwise():
     good = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "ab", "minus2lnl": 80.0, "contains": ["a"]}]
-    assert S.nested(good, n=500)[0]
+    assert S.nested(good)[0]
     bad = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "ab", "minus2lnl": 130.0, "contains": ["a"]}]
-    ok, detail = S.nested(bad, n=500)
+    ok, detail = S.nested(bad)
     assert not ok and detail[0]["rung"] == "ab" and detail[0]["contains"] == "a"
     within = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "ab", "minus2lnl": 101.0, "contains": ["a"]}]
-    assert S.nested(within, n=500)[0]  # 1 < 1% of 500 = 5: the same optimum
+    assert S.nested(within)[0]  # 1 is under SAME_DELTA: the same optimum
     # a rung that does not contain another is never compared with it
     swap = [{"rung": "a", "minus2lnl": 100.0, "contains": []}, {"rung": "b", "minus2lnl": 300.0, "contains": []}]
-    assert S.nested(swap, n=500)[0]
-
-
-def test_starts_agree_fires_when_one_start_found_the_best():
-    ok, detail = S.starts_agree([100.0, 100.2, 300.0, 250.0], n=500)  # tolerance 5
-    assert ok and detail == {"at_best": 2, "starts": 4}
-    ok, detail = S.starts_agree([100.0, 140.0, 300.0], n=500)
-    assert not ok and detail["at_best"] == 1
-    assert not S.starts_agree([float("inf"), float("nan")], n=10)[0]
-    assert S.starts_agree([-50.0, -49.0], n=100)[0]  # a normalised likelihood can be negative
+    assert S.nested(swap)[0]
 
 
 def test_family_complete_fires_when_the_image_on_top_carries_much_of_the_flux():

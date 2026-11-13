@@ -14,6 +14,9 @@ polar-disk = ["frank==1.2.3", "vis-r @ git+https://github.com/drgmk/vis-r@f53467
 orbit-aliases = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@9061a1d0044c990fad941aae03e051cc582ff9e8", "corner"]
 # The post-AGB imaging scripts need MultipoleField/MultipoleDisk, which are on virgil main but not in the CI pin, which the orbit pages need.
 postagb = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@f1e6dae00e4afca3dff1cf1ba9ca7b58f7246055"]
+# The contest recipe (scripts/contest_informed.py) needs OIData.with_gains, likelihood.whitened_residuals and the imaging/fields modules, which
+# are on virgil main but not in the CI pin.
+contests = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@79d973f81b1e3ca8b4d117af44d61ad6e10df202"]
 docs = ["mkdocs<2", "mkdocs-material", "zensical>=0.0.62,<0.1"]  # built with Zensical, as virgil is
 
 # The evidence plugin loads whenever the package is installed, so its options
