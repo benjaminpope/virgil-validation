@@ -132,6 +132,10 @@ An image seed is a start, never a prior or a bound.
 Each rung starts once from the rung below with the new component at negligible flux, and keeps 8 random draws as a
 control. If only seeded starts reach the best, the report says so.
 
+*Superseded by the recipe move (design/contest_informed_criteria.md, change log): there are no random control draws; a
+rung above the first starts at the peaks of its likelihood map and at jitters of the best one, and the first at the moment
+fit and broad stratified starts. The steps in order are in `campaigns/contests/playbooks/informed.md`.*
+
 ### 4.6 Starts by dataset
 
 | dataset | family | starts |
@@ -157,7 +161,8 @@ criteria file under `design/` with a change log once Ben agrees them.
 |---|---|
 | `no_bounds` | any fitted parameter lies within 1% of a prior bound (log scale for log priors) |
 | `nested` | a rung fits worse than the rung below it |
-| `starts_agree` | fewer than two starts within 1% of the best chi2 |
+| `starts_agree` | *(as proposed here; replaced, see the criteria file)* fewer than two starts within 1% of the best chi2 |
+| `fit_standard` | *(added by the recipe move)* after the last fit the normalised residual rms exceeds 2 on V^2 or on the informative closure phases |
 | `family_complete` | the image fitted on top carries more than 0.2 of the model's flux |
 | `no_collapse` | a component has shrunk to something else: an arc shorter than the resolution, a ring narrower than a fifth of it, a companion within two resolution elements of the star |
 | `extent_known` | `E` came from neither a given field nor a constrained moment fit |

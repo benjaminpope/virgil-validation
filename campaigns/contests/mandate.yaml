@@ -70,9 +70,12 @@ stages:
 
   informed_fit:
     doc: Fit the model family the contest paper describes (a spotted star with a companion; a thin disk; a ringed
-      disk with companions; and so on) as a ladder of nested models compared by BIC. Structure from the paper, every value from the
-      data, starting from the visibility moments, stratified geometry, tiled likelihood maps and random draws scaled by
-      the data's own baselines. Not a blind result. The checks' thresholds are design/contest_informed_criteria.md
+      disk with companions; and so on) as a ladder of nested models. Structure from the paper, every value from the
+      data. An information check first; a global visibility gain marginalised; the first rung starts from the
+      visibility moments and broad stratified starts, higher rungs from the peaks of tiled likelihood maps (which rank
+      starts and never threshold) and narrow jitters; the error terms are free only in one last fit; the image step runs
+      after the ladder and is not a rung. The fit standard (residual rms on V^2 and informative closure phases) is computed and
+      reported, not a gate: whether a fit is accepted is an evaluator's judgement. Not a blind result. The checks' thresholds are design/contest_informed_criteria.md
       (proposed, awaiting Ben); the report records the criteria commit.
     informed: true
     playbook: playbooks/informed.md

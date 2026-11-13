@@ -1,7 +1,7 @@
 """Informed fits of the imaging contests' data: the model family the contest paper describes, fitted from the data.
 
     python scripts/contest_informed.py --list
-    python scripts/contest_informed.py --task N --model FAMILY [--data DIR] [--out DIR] [--starts 8] [--budget N] [--smoke]
+    python scripts/contest_informed.py --task N --model FAMILY [--data DIR] [--out DIR] [--budget N] [--smoke] [--image]
 
 This is **not** a blind reconstruction, and its results must never be quoted as one. It uses what a contest paper
 said the object *is* (a spotted star with a companion; a thin disk; a star, a disk rim, a planet and an outer disk;
@@ -17,24 +17,31 @@ A family is a ladder of nested models, simplest first (FAMILIES), ending in the 
 - **Scales** (plan 2): the extent E (size limit, field of every image), the reach S (how far a compact companion is
   searched for) and the pixel, each written to the report with its source. E is the contest's field where it gave
   one, else 4 x the major FWHM of the visibility-moment fit, at least 8 resolution elements.
-- **Starts** (plan 4), each recorded with its origin: `moments` (the visibility-moment fit), `grid` (stratified
-  geometry: sizes, inclination x angle, arc angles and lengths), `map` (peaks of a tiled likelihood map for a new
-  compact component), `below` (the rung below with the new component at negligible flux) and `random` (control draws
-  from the priors). The report counts the starts at the best by origin.
-- **Errors** (plan 3): every start is fitted first on errors inflated by sqrt(chi2/N) of the moment fit (a smooth
-  landscape), the best are then refitted with virgil's fitted noise terms (`vis_error_rel`, `phi_error`), so the
-  likelihood carries its normalisation. Rungs are compared by BIC on that likelihood; chi2 on the quoted errors is
-  reported beside it and never chooses. Fluxes have no cap (LogUniform(1e-4, 1e4) ratios); colours are fitted grey
-  first, then the spectral indices are freed from zero in Uniform(-4, 4).
-- **Checks** (plan 5) in result.json: `no_bounds`, `nested`, `starts_agree`, `family_complete`, `no_collapse`,
-  `extent_known`; the mandate stage requires them.
+- **Information** (before any fit): median V^2, the median quoted closure-phase error, how many triangles have all
+  three V^2 above 3 sigma. Closure phases that carry no information are still fitted; the fit is then judged on V^2.
+- **Nuisance**: one global visibility gain (on log |V|, prior width 0.1) is marginalised in every fit, never estimated
+  and never divided out.
+- **Starts** (plan 4), each recorded with its origin. Rung 0: `moments` (the visibility-moment fit) and `START_BUDGET`
+  broad `grid` starts (stratified geometry: sizes, inclination x angle, arc angles and lengths). A rung above: the rung
+  below with what it adds at negligible flux; a new positioned component first gets a tiled likelihood map whose ranked
+  peaks (never thresholded) each start a `map` fit, and `jitter` starts move the inherited values narrowly around the best
+  peak (a rung that places nothing starts from the rung below and its jitters).
+- **Errors** (plan 3): every fit of the ladder is on errors inflated by one factor, sqrt(chi2/N) of the rung-0 fit
+  (tempered); rungs are compared by chi2 on the quoted errors with ln N per added parameter. The error terms
+  (`vis_error_rel`, `phi_error`) are free only in one last fit of the chosen rung. Fluxes have no cap (LogUniform(1e-4,
+  1e4) ratios); a multi-channel data set is chromatic, each component with a spectral index in Uniform(-4, 4).
+- **Checks** (plan 5) in result.json: `converged`, `no_bounds`, `nested`, `starts_agree`, `fit_standard` (normalised
+  residual rms of the last fit at most 2 on V^2 and on the informative closure phases, else the fit is incomplete),
+  `family_complete`, `no_collapse`, `extent_known`; the mandate stage requires them.
 
-After the ladder, a simple non-parametric image (a Gaussian-process field) is fitted on top of the chosen model,
-held fixed, to show what resolved light the parametric model leaves out (<label>_<family>_rest.npz).
+After the ladder, and not as a rung: a simple non-parametric image (a Gaussian-process field) is fitted on top of the
+final model, held fixed, to show what resolved light the parametric model leaves out (<label>_rest.npz); virgil's CLEAN
+probe on top of the final fit (<label>_probe.json, .npz, .png); and, with --image, a Gaussian-process image in place of
+the extended light (<label>_image.json).
 
 Spectral information is used in two ways. When the data have more than one channel, every component but the
-reference gets its own spectral index, so the model is chromatic wherever the object can be. And where a file
-carries OI_FLUX spectra they are fitted with the visibilities (scale and linear trend marginalised).
+reference gets its own spectral index, so the model is chromatic wherever the object can be. And with --spectra the
+files' OI_FLUX spectra are fitted with the visibilities (scale and linear trend marginalised).
 
 Writes into --out: <label>_<family>.json (the report) and result.json (status and checks for the campaign).
 
@@ -43,7 +50,8 @@ Task numbers and files are those of scripts/contest_images.py (TASKS).
 
 import argparse
 import ast
-import dataclasses
+import hashlib
+import itertools
 import json
 import pathlib
 import sys
@@ -54,6 +62,7 @@ import jax
 
 jax.config.update("jax_enable_x64", True)
 
+import jax.numpy as jnp  # noqa: E402
 import numpy as np  # noqa: E402
 import numpyro.distributions as dist  # noqa: E402
 
@@ -72,14 +81,20 @@ from crosscheck import informed_starts as IS  # noqa: E402
 from crosscheck import preregistration  # noqa: E402
 
 CRITERIA = "design/contest_informed_criteria.md"
-PEAKS = 6  # likelihood-map peaks refined per new component
-REFIT = 12  # at most this many starts per rung are refitted at fitted noise (the best by tempered chi2)
-REFIT_BAND = 1.5  # ... and only those whose tempered chi2 is within this factor of the best
+# The recipe's policy constants (plan 3 and 4). The checks' thresholds are in crosscheck.informed_starts and the criteria file.
+GAIN_WIDTH = 0.1  # the global visibility gain's prior width on log |V|: calibration scale is never known better than 10 %
+N_PEAKS = 5  # likelihood-map peaks that each start a fit
+N_JITTER = 3  # more starts at the best peak, the inherited values moved narrowly
+JITTER = {"size": 0.2, "flux": 0.2, "angle": 10.0, "position": 0.1, "colour": 0.2}  # fractions; degrees; resolution elements; index
+START_BUDGET = 8  # broad stratified starts of the first rung (and starts of a rung that places nothing)
+IMAGE_SIGMA, IMAGE_LENGTH, IMAGE_AGREE, IMAGE_SECS = 2.0, 2.0, 0.9, 1800.0  # image step: log-brightness sigma; length in resolution elements; pixel correlation; s per fit
+PROBE_CHUNK, PROBE_MAX = 250, 500  # CLEAN iterations per call, and in all
+RC_MORE = 75  # exit code of a call that used its time budget: not finished, call again
 TIME_LIMIT = 300.0  # seconds per start; a start that runs out is recorded as not converged
-RANDOM_STARTS = 8  # control draws from the priors per rung (plan 4.5)
 NEGLIGIBLE = 1e-3  # flux ratio of a component added at negligible flux (the prior reaches 1e-4)
 NOISE = {"vis_error_rel": dist.LogUniform(1e-4, 3.0), "phi_error": dist.LogUniform(1e-4, 3.0)}  # plan 3; phi in radians
 VIS_SCALE = ("2004_data2",)  # datasets normalised without part of their flux (scripts/score_2004.py): V^2 above 1 at zero baseline
+TURNS_MAX = 8.0  # the prior of a spiral's turns reaches well past several
 SIZE_LEAVES = ("diam", "fwhm", "sigma", "radius", "r_out")  # the principal sizes: scanned by the stratified starts
 RING_LEAVES = ("diam", "radius", "r_out")  # a component with one of these and a width leaf is a ring: the width is a width
 
@@ -397,6 +412,11 @@ def prior_of(kind, sc):
         "planet": dist.LogUniform(1e-4, 0.1),  # a planet or faint companion: at most a tenth of the reference
         "far": dist.Uniform(-reach, reach),  # a compact companion is searched for out to the reach
         "near": dist.Uniform(-extent / 2.0, extent / 2.0),  # a part of the object: within half the extent
+        # Shapes of a thin, long part and of a spiral arm, all from the scales (no number from a paper).
+        "thin": dist.LogUniform(res / 5.0 / extent, 1.0),  # an axis ratio: the minor FWHM from a fifth of a resolution element to the major's
+        "span": dist.Uniform(-extent / 2.0, extent / 2.0),  # where along its axis a part starts, within half the extent
+        "turns": dist.Uniform(0.5, TURNS_MAX),  # turns of a spiral: from half a turn to well past several
+        "arm_width": dist.LogUniform(res, extent / 4.0),  # width of a spiral arm: at least a resolution element
     }[kind]
 
 
@@ -459,7 +479,7 @@ def model_of(rung, values, wavel0=None):
         for p in params:
             leaf = p.rsplit(".", 1)[-1]
             value = (values or {}).get(f"{name}.{p}", 0.0 if p == "flux.index" else PLACEHOLDER["flux" if p == "flux.ratio" else leaf])
-            kwargs[p] = np.array([value]) if leaf in VECTORS else value
+            kwargs[p] = jnp.array([value]) if leaf in VECTORS else value  # traced values (maps, curvature) must stay traced
         parts[name] = make_component(maker, kwargs, wavel0)
     return vm.System(**parts)
 
@@ -545,8 +565,10 @@ def centre_of(rung, kinds, priors, sc, m):
     out = {}
     for path, kind in kinds.items():
         comp, leaf = comp_of(path), leaf_of(path)
-        ring = any(l in RING_LEAVES for l in leaves[comp])
-        if kind in ("size", "small", "width", "ring_width"):
+        ring = any(name in RING_LEAVES for name in leaves[comp])
+        if kind == "colour":  # a spectral index: grey to start
+            value = 0.0
+        elif kind in ("size", "small", "width", "ring_width"):
             if "profile" in path:  # a ring of a disk: its radius and width
                 index = 0.5 * (1.0 + (ord(path.split(".")[-2]) - ord("a")) * 0.5) if leaf == "radius" else 0.0
                 value = theta * index if leaf == "radius" else max(sc.resolution, theta / 8.0)
@@ -564,7 +586,7 @@ def centre_of(rung, kinds, priors, sc, m):
                 value = float(np.sqrt(float(priors[path].low) * float(priors[path].high)))
             else:
                 value = theta
-        elif leaf == "ratio":
+        elif leaf == "ratio" and kind == "ratio":  # an axis ratio (not the ``ratio`` of a chromatic ``flux.ratio``)
             value = ratio0
         elif leaf in ("pa", "az_pas") and kind in ("angle", "full_angle"):
             value = pa0 if leaf == "pa" else 0.0
@@ -609,7 +631,7 @@ def stratified_starts(rung, kinds, priors, sc, m, centre):
     for path in kinds:
         leaves.setdefault(comp_of(path), {})[leaf_of(path)] = path
     for path, kind in kinds.items():  # sizes, one at a time (each ring of a disk has its own radius and width)
-        if leaf_of(path) in SIZE_LEAVES and kind in ("size", "width", "ring_width"):
+        if leaf_of(path) in SIZE_LEAVES and kind in ("size", "small", "width", "ring_width"):  # a barely resolved star is a size too: rung 0 always has broad starts
             for size in IS.log_steps(centre[path]):
                 out.append(make({path: size}))
     inclined = [ls for ls in leaves.values() if "inc" in ls and "pa" in ls]
@@ -639,18 +661,6 @@ def seeded(start, seed, priors, kinds):
     for path, value in seed.items():
         lo, hi, log, _ = bounds[path]
         out[path] = IS.inside(value, lo, hi, log) if np.isfinite(lo) and np.isfinite(hi) else float(value)
-    return out
-
-
-def on_peaks(start, index, peaks, priors, kinds, inherited, keep=()):
-    """``start`` for a rung above the first: the parameters it inherits from the rung below (``inherited``, except those
-    in ``keep``) at the rung below's values, and each new positioned component's ``dra``/``ddec`` at a map peak (the
-    ``index``-th, cycling, so the starts spread over the best peaks). With no peaks for a component its position is left."""
-    out = {**start, **{k: v for k, v in inherited.items() if k in priors and k not in keep}}
-    for found in peaks.values():
-        if found:
-            seed = found[index % len(found)]
-            out = seeded(out, {k: v for k, v in seed.items() if leaf_of(k) in ("dra", "ddec")}, priors, kinds)
     return out
 
 
@@ -695,49 +705,323 @@ def thin(starts, budget, rng):
     return [starts[i] for i in keep]
 
 
-def map_seeds(name, rung, tempered, sc, carry, kinds, smoke=False):
-    """Peaks of a tiled likelihood map for a component the rung adds (plan 4.3): the rung below at its best fit, the
-    new component's position scanned over the whole reach (or half the extent for a part of the object) at half a
-    resolution element, in tiles so memory stays bounded. The score is the improvement in chi2 of a linear flux
-    (virgil's `linear_flux_grid`, which solves the flux at each position; datasets are combined by inverse variance),
-    on the tempered errors, so a companion carrying under a hundredth of the flux shows beside a poor surface model.
-    Returns ``(seeds, record)`` with ``seeds = [{path: value}]``."""
-    comp_kinds = {leaf_of(p): k for p, k in kinds.items() if comp_of(p) == name}
-    half = sc.reach if comp_kinds.get("dra") == "far" else sc.extent / 2.0
-    step = sc.resolution / 2.0
-    if smoke:
-        step = max(step, 2.0 * half / 60.0)
-    exclude = IS.COMPANION_ELEMENTS * sc.resolution if comp_kinds.get("flux") == "planet" else 0.0
-    if isinstance(rung, Scene):
-        base = model_of(rung, carry)  # the caller passes the rung below here
-        template = vm.System(base=base, **{name: vm.PointSource(flux=1e-3)})
-    else:
-        template = model_of(rung, carry)
-    flux_path = f"{name}.flux"
+# ---------------------------------------------------------------------------------------------------------------
+# The recipe's machinery (plan 3 and 4): what the data can tell, the gain nuisance, a cache, maps and grids that start a rung
+
+
+def informative(d):
+    """One boolean per closure phase of ``d``: all three baselines of its triangle have V^2 above 3 sigma."""
+    if d.i_cps1 is None or not np.size(d.phi):
+        return np.zeros(0, bool)
+    return IS.informative_triangles(d.vis, d.d_vis, (d.i_cps1, d.i_cps2, d.i_cps3), v2=bool(d.v2_flag), vis_index=d.vis_index,
+                                    phi_index=d.phi_index)
+
+
+def information(datasets):
+    """The information check, before any fit: ``(record, masks)`` with the record of `IS.information_record` (median V^2,
+    median quoted closure-phase error, triangles with all three V^2 above 3 sigma, what the fit will be judged on) and
+    one mask of informative closure phases per dataset. Closure phases that carry no information are still fitted, the fit
+    is judged on V^2, and nothing is oriented by them."""
+    masks = [informative(d) for d in datasets]
+    v2 = np.concatenate([np.ravel(np.asarray(d.vis, float)) ** (1 if d.v2_flag else 2) for d in datasets])
+    cp_err = np.concatenate([np.ravel(np.asarray(d.d_phi, float)) for d in datasets if np.size(d.phi)] or [np.zeros(0)])
+    record = IS.information_record(sum(m.size for m in masks), sum(int(m.sum()) for m in masks),
+                                   float(np.median(v2)) if v2.size else float("nan"), float(np.median(cp_err)) if cp_err.size else None)
+    return record, masks
+
+
+def with_gain(d, width=GAIN_WIDTH):
+    """``d`` with one global visibility gain marginalised, not estimated: a gain on log |V|, the same for every sample, of prior
+    width ``width`` (the calibration scale is never known better than that), free at every rung. A rung that lacks structure
+    cannot bias it, and nothing is divided out of the data."""
+    gained = d.with_gains(modes=np.ones((1, int(np.size(d.u)))))
+    return eqx.tree_at(lambda x: x.gains.widths, gained, np.array([width]))
+
+
+class Pause(Exception):
+    """The time budget of this call is used up: the work so far is in the cache, run again to continue."""
+
+
+def _key(*parts):
+    """A short stable name for a cache file."""
+    return hashlib.sha1(json.dumps(parts, sort_keys=True, default=repr).encode()).hexdigest()[:16]
+
+
+class Cache:
+    """Fits, grid points and map tiles memoised on disk (``path``), and a wall-clock budget (``budget`` seconds) after which
+    no new piece of work starts and `Pause` is raised, so a long ladder can be run in short calls. With no ``path`` nothing is
+    stored (and with no ``budget`` nothing pauses)."""
+
+    def __init__(self, path=None, budget=None):
+        self.path, self.budget, self.t0 = (pathlib.Path(path) if path else None), budget, time.time()
+        if self.path:
+            self.path.mkdir(parents=True, exist_ok=True)
+
+    def spent(self):
+        if self.budget is not None and time.time() - self.t0 > self.budget:
+            raise Pause()
+
+    def memo(self, kind, parts, compute):
+        """``compute()`` (a JSON-able result), or the stored result of the same ``kind`` and ``parts``."""
+        if self.path is None:
+            self.spent()
+            return json.loads(json.dumps(compute(), default=float))
+        f = self.path / f"{kind}_{_key(*parts)}.json"
+        if not f.exists():
+            self.spent()
+            f.write_text(json.dumps(compute(), default=float))
+        return json.loads(f.read_text())
+
+    def block(self, name, compute):
+        """The array ``compute()`` returns, kept as ``name``."""
+        if self.path is None:
+            self.spent()
+            return np.asarray(compute(), float)
+        f = self.path / f"{name}.npy"
+        if not f.exists():
+            self.spent()
+            np.save(f, np.asarray(compute(), float))
+        return np.load(f)
+
+    def arrays(self, name, compute):
+        """The ``{key: array}`` that ``compute()`` returns, kept as ``name`` (strings and numbers come back as 0-d arrays)."""
+        if self.path is None:
+            self.spent()
+            return {k: np.asarray(v) for k, v in compute().items()}
+        f = self.path / f"{name}.npz"
+        if not f.exists():
+            self.spent()
+            np.savez(f, **{k: np.asarray(v) for k, v in compute().items()})
+        with np.load(f) as z:
+            return {k: z[k] for k in z.files}
+
+
+def grey_values(values):
+    """Fitted values with every ``<c>.flux.ratio`` as ``<c>.flux`` and the spectral indices dropped: a map is grey in the new part."""
+    return {(k[: -len(".ratio")] if k.endswith(".flux.ratio") else k): v for k, v in values.items() if not k.endswith(".flux.index")}
+
+
+def placed(rung, below):
+    """The components a rung adds that a likelihood map places (those with a position of their own)."""
+    return [c for c in components_of(rung) if c not in components_of(below)
+            and (c in rung.positions if isinstance(rung, Scene) else "dra" in rung[c][1])]
+
+
+def resolved_primary(rung):
+    """Whether the rung's reference component (its first) has a size of its own: then the rung below is poorly known where a new
+    component is searched for, and the map lets its parameters move at every position."""
+    first = components_of(rung)[0]
+    return any(comp_of(p) == first and leaf_of(p) in SIZE_LEAVES and k == "size" for p, k in flat_kinds(rung).items())
+
+
+def linear_flux(template, comp, data, dra, ddec):
+    """The linear flux of ``comp`` and its weight at every (dra, ddec) of a grid, datasets combined by inverse variance
+    (virgil's `linear_flux_grid` solves the flux at each position)."""
+    num = den = 0.0
+    for d in data:
+        g = linear_flux_grid(template, d, {f"{comp}.dra": dra, f"{comp}.ddec": ddec, f"{comp}.flux": np.array([1e-3])})
+        w = 1.0 / np.asarray(g.flux_error) ** 2  # one axis per coordinate; the flux is solved for, not scanned
+        num, den = num + np.nan_to_num(np.asarray(g.flux) * w), den + np.nan_to_num(w)
+    return num, den
+
+
+def profile_evaluator(rung, comp, base, priors, kinds, free, tdata, iters=20):
+    """Score (chi2 gained over the rung below) of a new component at each position, with the base's ``free`` parameters and the
+    flux re-optimised at every point by a few Levenberg-Marquardt steps from the rung below's values (the base is poorly
+    known when the primary is resolved; virgil's `optimized_likelihood_grid` optimises the flux only). Returns
+    ``(evaluate(dra_axis, ddec_axis), flux_at(dra, ddec))``. Everything here is grey: ``base`` and ``free`` are grey values."""
+    names = [*free, f"{comp}.flux"]
+    bounds = bounds_of(priors, kinds)
+    lo, hi = jnp.array([bounds[n][0] for n in names]), jnp.array([bounds[n][1] for n in names])
+    fixed = {k: v for k, v in base.items() if k not in names and k not in (f"{comp}.dra", f"{comp}.ddec")}
+
+    def resid(x, p):
+        vals = {**fixed, **{n: x[i] for i, n in enumerate(names)}, f"{comp}.dra": p[0], f"{comp}.ddec": p[1]}
+        m = model_of(rung, vals)
+        return jnp.concatenate([likelihood.whitened_residuals(m, d) for d in tdata])
+
+    def lm(x0, p):
+        def chi(x):
+            return jnp.sum(resid(x, p) ** 2)
+
+        def body(_, s):
+            x, lam, c = s
+            r, J = resid(x, p), jax.jacfwd(resid)(x, p)
+            A = J.T @ J
+            step = jnp.linalg.solve(A + lam * jnp.diag(jnp.diag(A)) + 1e-12 * jnp.eye(A.shape[0]), -J.T @ r)
+            xn = jnp.clip(x + step, lo, hi)
+            cn = chi(xn)
+            ok = jnp.isfinite(cn) & (cn < c)
+            return jnp.where(ok, xn, x), jnp.where(ok, lam / 3.0, lam * 4.0), jnp.where(ok, cn, c)
+
+        x, _, c = jax.lax.fori_loop(0, iters, body, (x0, 1e-2, chi(x0)))
+        return x[-1], c
+
+    solve = jax.jit(jax.vmap(lm))
+    template = model_of(rung, base)
+    c0 = float(sum(np.sum(np.asarray(likelihood.whitened_residuals(model_of(rung, {**base, f"{comp}.flux": 1e-9}), d)) ** 2) for d in tdata))
+    x_free = jnp.array([base[n] for n in free])
 
     def evaluate(dra, ddec):
-        num, den = 0.0, 0.0
-        for d in tempered:
-            g = linear_flux_grid(template, d, {f"{name}.dra": dra, f"{name}.ddec": ddec, flux_path: np.array([1e-3])})
-            w = 1.0 / np.asarray(g.flux_error) ** 2  # one axis per coordinate; the flux is solved for, not scanned
-            num, den = num + np.nan_to_num(np.asarray(g.flux) * w), den + np.nan_to_num(w)
-        flux = num / np.where(den > 0, den, np.inf)
-        return np.where(flux > 0, np.nan_to_num(num**2 / np.where(den > 0, den, np.inf)), 0.0)
+        grid_a, grid_d = np.meshgrid(dra, ddec, indexing="ij")
+        num, den = linear_flux(template, comp, tdata, dra, ddec)
+        flux0 = np.clip(np.nan_to_num(num / np.where(den > 0, den, np.inf)).ravel(), 1e-3, float(hi[-1]))
+        pts = np.stack([grid_a.ravel(), grid_d.ravel()], 1)
+        out = np.empty(len(pts))
+        for i in range(0, len(pts), 256):
+            x0 = jnp.concatenate([jnp.tile(x_free, (len(pts[i:i + 256]), 1)), jnp.asarray(flux0[i:i + 256])[:, None]], 1)
+            out[i:i + 256] = np.asarray(solve(x0, jnp.asarray(pts[i:i + 256]))[1])
+        return np.where(np.isfinite(out), c0 - out, -np.inf).reshape(grid_a.shape)
 
-    axis, surface, actual = IS.tiled_map(evaluate, half, step)
-    peaks = IS.map_peaks(axis, surface, PEAKS, 2.0 * sc.resolution, exclude)
+    def flux_at(dra, ddec):
+        num, den = linear_flux(template, comp, tdata, np.array([dra]), np.array([ddec]))
+        flux = float(np.clip(np.nan_to_num(num / np.where(den > 0, den, np.inf)).ravel()[0], 1e-3, float(hi[-1])))
+        return float(solve(jnp.concatenate([x_free, jnp.array([flux])])[None], jnp.array([[dra, ddec]]))[0][0])
+
+    return evaluate, flux_at
+
+
+def tiled(cache, tag, half, step, evaluate, tile):
+    """`IS.tiled_map` with every tile kept in ``cache`` (a call that pauses resumes the map where it stopped)."""
+    return IS.tiled_map(evaluate, half, step, tile=tile, memo=lambda i, j, compute: cache.block(f"tile_{tag}_{i}_{j}", compute))
+
+
+def map_seeds(comp, rung, base, below_rung, carry, ctx):
+    """Ranked peaks of the likelihood map of a component the rung adds (plan 4.3), no threshold: the best ``N_PEAKS`` go on to be
+    refitted, whatever their significance. The rung below is held at its fit (``base``: the new rung's values with the new
+    part at negligible flux), and the new component's position is scanned over the reach (half the extent for a part of
+    the object) at half a resolution element, in tiles so memory stays bounded. The score is the improvement in chi2 of
+    a linear flux solved at each position, on the tempered errors, so a companion carrying under a hundredth of the
+    flux shows beside a poor surface model. With a resolved primary (`resolved_primary`) the rung below's parameters are
+    also re-optimised at each position, coarsely and then on a finer map around the best peaks. The map is grey in the
+    new part. Returns ``(seeds, record)``; a seed is ``{path: value}`` with a ``score``."""
+    sc, tdata, cache, wavel0 = ctx["scales"], ctx["tempered"], ctx["cache"], ctx.get("wavel0")
+    kinds, priors = flat_kinds(rung), build_priors(rung, sc)
+    gbase, gcarry = grey_values(base), grey_values(carry)
+    ck = {leaf_of(p): k for p, k in kinds.items() if comp_of(p) == comp}
+    half = sc.reach if ck.get("dra") == "far" else sc.extent / 2.0
+    exclude = max(IS.COMPANION_ELEMENTS * sc.resolution if ck.get("flux") == "planet" else 0.0, ctx.get("exclude", 0.0))
+    profile = bool(ctx.get("profile_maps", True)) and resolved_primary(below_rung)
+    smoke = ctx.get("smoke", False)
+    free = [k for k in gcarry if k in priors and comp_of(k) in components_of(below_rung)]
+    step = sc.resolution if profile else sc.resolution / 2.0
+    requested = step
+    if smoke:
+        step = max(step, 2.0 * half / (24 if profile else 60))
+    tag = _key(comp, sorted(gbase.items()), half, sc.resolution, profile, exclude, step)
+    if profile:
+        evaluate, flux_at = profile_evaluator(rung, comp, gbase, priors, kinds, free, tdata)
+        axis, surface, actual = tiled(cache, tag, half, step, evaluate, 32)
+    else:
+        template = model_of(rung, gbase)
+
+        def evaluate(dra, ddec):
+            num, den = linear_flux(template, comp, tdata, dra, ddec)
+            return np.where(num > 0, num**2 / np.where(den > 0, den, np.inf), 0.0)
+
+        axis, surface, actual = tiled(cache, tag, half, step, evaluate, 128)
+    peaks = IS.map_peaks(axis, surface, 20, 2.0 * sc.resolution, exclude)
+    key = f"{comp}.flux.ratio" if wavel0 else f"{comp}.flux"
     seeds = []
-    for dra, ddec, score in peaks:
-        # the flux at the peak: the map's own linear solution there
-        num = den = 0.0
-        for d in tempered:
-            g = linear_flux_grid(template, d, {f"{name}.dra": np.array([dra]), f"{name}.ddec": np.array([ddec]), flux_path: np.array([1e-3])})
-            w = 1.0 / np.ravel(np.asarray(g.flux_error))[0] ** 2
-            num, den = num + np.nan_to_num(np.ravel(np.asarray(g.flux))[0] * w), den + np.nan_to_num(w)
-        flux = float(num / den) if den > 0 else 1e-3
-        seeds.append({f"{name}.dra": dra, f"{name}.ddec": ddec, flux_path: max(flux, 1e-4)})
-    return seeds, {"component": name, "half_mas": float(half), "step_mas": float(actual), "requested_step_mas": float(step),
-                   "points": int(axis.size) ** 2, "peaks": [(p[0], p[1], p[2]) for p in peaks]}
+    for dra, ddec, score in peaks[: ctx.get("n_peaks", N_PEAKS)]:
+        if profile:  # a finer map around the peak (a quarter of the coarse step), and the flux re-optimised there
+            fine = sc.resolution / 4.0
+            ax = np.arange(-4, 5) * fine
+            local = np.asarray(evaluate(dra + ax, ddec + ax))
+            i, j = np.unravel_index(np.argmax(local), local.shape)
+            dra, ddec, score = dra + ax[i], ddec + ax[j], float(local[i, j])
+            flux = flux_at(dra, ddec)
+        else:
+            num, den = linear_flux(template, comp, tdata, np.array([dra]), np.array([ddec]))
+            flux = float(np.ravel(num / np.where(den > 0, den, np.inf))[0])
+        seeds.append({f"{comp}.dra": float(dra), f"{comp}.ddec": float(ddec), key: float(max(flux, 1e-4)), "score": float(score)})
+    return seeds, {"component": comp, "profile": profile, "half_mas": float(half), "step_mas": float(actual), "requested_step_mas": float(requested),
+                   "points": int(axis.size) ** 2, "peaks": [(p[0], p[1], p[2]) for p in peaks], "seeds": seeds}
+
+
+# Grids that start what the moments cannot: an angle, and the shape a rung adds that no map places.
+SCAN_FRACTIONS, SCAN_FLUXES = (0.2, 0.5, 0.8), tuple(np.geomspace(0.01, 10.0, 7))  # candidates: a fraction; a flux relative to the reference
+
+
+def asymmetry(rung, centre, ctx, n_angles=24, amplitudes=(0.25, 0.5, 0.75), skip=()):
+    """An angle the moments cannot give (the bright side of an azimuthally modulated component: an amplitude and angle, or the cosine
+    and sine terms of harmonic m, or the direction an arc points, a ``full_angle`` ``pa``) is started from a likelihood grid over
+    that angle, everything else at its moment start. The amplitude is not known either, so it is stepped over the middle of its
+    prior (0 to 1; +-0.7 for a cosine or sine term). ``skip``: values already fitted (a rung below), whose angles are kept.
+    Returns ``(changed centre, record)``."""
+    wavel0, tempered, cache = ctx.get("wavel0"), ctx["tempered"], ctx["cache"]
+    out, rec = dict(centre), {}
+    kinds = flat_kinds(rung, wavel0)
+    for comp in components_of(rung):
+        modes = [(comp, f"{comp}.az_pas", lambda a, t, comp=comp: {f"{comp}.az_amps": a, f"{comp}.az_pas": t})] * (f"{comp}.az_pas" in centre)
+        modes += [(f"{comp}.m{m}", f"{comp}.c{m}", lambda a, t, m=m, comp=comp: {f"{comp}.c{m}": 0.7 * a * np.cos(np.radians(t)), f"{comp}.s{m}": 0.7 * a * np.sin(np.radians(t))})
+                  for m in range(1, 9) if f"{comp}.c{m}" in centre]
+        modes += [(f"{comp}.pa", f"{comp}.pa", lambda a, t, comp=comp: {f"{comp}.pa": t})] * (kinds.get(f"{comp}.pa") == "full_angle")  # where an arc points
+        for name, key, setter in [x for x in modes if x[1] not in skip]:
+            def compute(setter=setter, key=key, comp=comp):
+                grid = []
+                for a in (0.0,) if key == f"{comp}.pa" else amplitudes:  # an arc's direction has no amplitude
+                    for ang in np.arange(n_angles) * 360.0 / n_angles:
+                        cache.spent()
+                        grid.append({"amp": a, "angle": float(ang), "chi2": chi2_quoted(model_of(rung, {**centre, **setter(a, float(ang))}, wavel0), tempered)[0]})
+                return grid
+
+            grid = cache.memo("asym", (name, sorted(centre.items())), compute)
+            best = min(grid, key=lambda g: g["chi2"])
+            out |= setter(best["amp"], best["angle"])
+            rec[name] = {"best": best, "chi2_range": [best["chi2"], max(g["chi2"] for g in grid)]}
+    return out, rec
+
+
+def shape_scan(rung, base, carry, ctx):
+    """Parameters a rung adds that no map places (the radius of a ring, the gap of an annulus, the size and flux of a halo) start from a
+    likelihood grid, the rest at the rung below's fit: a size at 8 log steps around its start, a fraction at 0.2, 0.5 and
+    0.8, a flux at 7 steps from 0.01 to 10 times the reference. Returns ``(changed base, record or None when nothing is new)``."""
+    wavel0, tempered, cache = ctx.get("wavel0"), ctx["tempered"], ctx["cache"]
+    kinds = flat_kinds(rung, wavel0)
+    new = [p for p, k in kinds.items() if p not in carry and k in ("size", "fraction", "flux")]
+    if not new:
+        return base, None
+    axes = [IS.log_steps(base[p]) if kinds[p] == "size" else SCAN_FRACTIONS if kinds[p] == "fraction" else SCAN_FLUXES for p in new]
+
+    def compute():
+        grid = []
+        for point in itertools.product(*axes):
+            cache.spent()
+            c = chi2_quoted(model_of(rung, {**base, **dict(zip(new, point))}, wavel0), tempered)[0]
+            grid.append({"values": dict(zip(new, map(float, point))), "chi2": float(c) if np.isfinite(c) else float("inf")})
+        return grid
+
+    grid = cache.memo("scan", (new, sorted(base.items())), compute)
+    best = min(grid, key=lambda g: g["chi2"])
+    return {**base, **best["values"]}, {"scanned": new, "best": best, "chi2_range": [best["chi2"], max(g["chi2"] for g in grid)]}
+
+
+def jittered(values, kinds, res, rng):
+    """Inherited values moved narrowly: sizes and fluxes within 20 %, angles within 10 degrees, positions within a tenth of a
+    resolution element, spectral indices within 0.2."""
+    out = {}
+    for k, v in values.items():
+        kind = kinds.get(k)
+        if kind in ("angle", "full_angle", "inclination"):
+            out[k] = v + rng.uniform(-1, 1) * JITTER["angle"]
+        elif kind in ("far", "near"):
+            out[k] = v + rng.uniform(-1, 1) * JITTER["position"] * res
+        elif kind in ("modulation", "harmonic", "wave"):
+            out[k] = v + rng.uniform(-0.1, 0.1)
+        elif kind == "colour":
+            out[k] = v + rng.uniform(-1, 1) * JITTER["colour"]
+        else:
+            out[k] = v * rng.uniform(1 - JITTER["size"], 1 + JITTER["size"])
+    return out
+
+
+def rung_start(rung, ctx):
+    """``(kinds, priors, centre)`` of a rung: its parameters' kinds, the priors built from the scales, and the data-only start
+    (the visibility moments, plan 4.1)."""
+    sc, wavel0 = ctx["scales"], ctx.get("wavel0")
+    kinds, priors = flat_kinds(rung, wavel0), build_priors(rung, sc, wavel0)
+    return kinds, priors, centre_of(rung, kinds, priors, sc, ctx["moments"])
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -827,85 +1111,171 @@ def final_record(result, rung, datasets, wavel0, sc):
             "converged": bool(result.info.get("converged")), "at_bound": list(result.info.get("at_bound") or [])}
 
 
-def fit_rung(name, rung, below_rung, ctx, carry, rng):
-    """One rung, grey: the starts of plan 4, a tempered first pass, and the best refitted at fitted noise."""
-    datasets, tempered, sc, m = ctx["datasets"], ctx["tempered"], ctx["scales"], ctx["moments"]
-    kinds, priors = flat_kinds(rung), build_priors(rung, sc)
-    data, tdata = as_data(datasets), as_data(tempered)
-    centre = centre_of(rung, kinds, priors, sc, m)
-    maps = []
-    new = [c for c in components_of(rung) if not below_rung or c not in components_of(below_rung)]
-    positioned = [c for c in new if (c in rung.positions if isinstance(rung, Scene) else "dra" in rung[c][1])]
-    # The likelihood map comes first: on a rung above the first, a new component's position is never the star's or a random
-    # draw, so every start places it at a map peak and takes the parameters it inherits from the rung below.
-    map_starts, peaks = [], {}
-    for comp in positioned:
-        if carry and below_rung is not None:
-            seeds, record = map_seeds(comp, below_rung if isinstance(rung, Scene) else rung, tempered, sc, carry, kinds, ctx["smoke"])
-            maps.append(record)
-            peaks[comp] = seeds[:2 if ctx["smoke"] else PEAKS]
-            for seed in peaks[comp]:
-                map_starts.append(("map", seeded({**centre, **{k: v for k, v in carry.items() if k in priors}}, seed, priors, kinds)))
-    inherited = carry if below_rung is not None else {}
-    starts = [("moments", on_peaks(centre, 0, peaks, priors, kinds, inherited))]
-    strata = []
-    for i, s in enumerate(thin(stratified_starts(rung, kinds, priors, sc, m, centre), ctx["budget"], rng)):
-        stratified = {k for k in s if s[k] != centre[k]}  # what the stratum varies is not overwritten by the rung below
-        strata.append(("grid", on_peaks(s, i, peaks, priors, kinds, inherited, keep=stratified)))
-    if carry and below_rung is not None:
-        # the rung below, new parts at negligible flux (a part that is positioned goes where the map's best peak is)
-        below = embed_below(rung, below_rung, kinds, priors, {**centre, **{k: v for k, v in carry.items() if k in priors}})
-        if map_starts:
-            below.update({k: v for k, v in map_starts[0][1].items() if leaf_of(k) in ("dra", "ddec")})
-        starts.append(("below", below))
-    randoms = [("random", on_peaks(draw(priors, kinds, sc, rng), i, peaks, priors, kinds, inherited)) for i in range(ctx["random"])]
-    starts = starts + strata + map_starts + randoms
-    # tempered first pass
-    runs = []
-    for origin, init in starts:
-        r, error = fit_start(rung, priors, tdata, init, max_steps=ctx["max_steps"])
+def fitc(tag, rung, priors, data, init, ctx, noise=None):
+    """One fit, memoised in ``ctx["cache"]`` (a fit that failed is recorded as ``{"error"}``, not hidden). ``tag`` names the rung and
+    the data (quoted or tempered errors) so keys cannot collide. Without ``noise`` the record holds the values and chi2 on
+    the errors fitted to; with ``noise`` it is `final_record` (the error terms are fitted)."""
+    init = {k: float(np.ravel(v)[0]) for k, v in init.items()}
+    wavel0 = ctx.get("wavel0")
+
+    def compute():
+        r, error = fit_start(rung, priors, as_data(data), init, wavel0, noise, ctx.get("max_steps"))
         if r is None:
-            runs.append({"origin": origin, "error": error, "chi2_tempered": float("inf")})
-            continue
-        chi2 = float(np.sum(r.info["chi2"]))
-        runs.append({"origin": origin, "chi2_tempered": chi2 if np.isfinite(chi2) else float("inf"), "values": scalars(r.values),
-                     "converged": bool(r.info.get("converged"))})
-    ok = [x for x in runs if "values" in x]
-    # refit the best at fitted noise
-    best_t = min((x["chi2_tempered"] for x in ok), default=float("inf"))
-    chosen = sorted((x for x in ok if x["chi2_tempered"] <= REFIT_BAND * best_t), key=lambda x: x["chi2_tempered"])[: ctx["refit"]]
-    # the start from the rung below is always refitted (it is what makes a richer rung no worse than the one it contains)
-    chosen += [x for x in ok if x["origin"] == "below" and x not in chosen]
-    noise = noise_priors(datasets)
-    # fitted noise starts where the rung below left it (0.1 for the first rung)
-    start_noise = {k: float((ctx.get("noise0") or {}).get(k, 0.1)) for k in noise_names(datasets)}
-    refits = []
-    for x in chosen:
-        r, error = fit_start(rung, priors, data, {**x["values"], **start_noise}, noise=noise, max_steps=ctx["max_steps"])
-        if r is None:
-            x["error"] = error
-            continue
-        rec = final_record(r, rung, datasets, None, sc)
-        x["refit"] = rec
-        refits.append(x)
-    if not refits:
-        raise RuntimeError(f"{name}: no start survived: {sorted({x['error'] for x in runs if 'error' in x})[:3]}")
-    best = min(refits, key=lambda x: x["refit"]["minus2lnl"])
-    final = best["refit"]
-    tol = IS.tolerance(final["n"])
-    at_best = [x for x in refits if x["refit"]["minus2lnl"] <= final["minus2lnl"] + tol]
-    k = len(priors) + len(noise_names(datasets))
-    origins = sorted({x["origin"] for x in runs})
-    return {"rung": name, "k": k, "n": final["n"], "minus2lnl": final["minus2lnl"], "bic": final["minus2lnl"] + k * float(np.log(max(final["n"], 1))),
-            "chi2_quoted": final["chi2_quoted"], "chi2_red": final["chi2_quoted"] / max(final["n"], 1), "noise": final["noise"],
-            "converged": final["converged"], "at_bound": final["at_bound"], "values": final["values"],
-            "starts": len(runs), "starts_refit": len(refits), "starts_at_best": len(at_best),
-            "failed_starts": sum("error" in x for x in runs), "errors": sorted({x["error"] for x in runs if "error" in x})[:3],
-            "starts_by_origin": {o: sum(x["origin"] == o for x in runs) for o in origins},
-            "starts_at_best_by_origin": {o: sum(x["origin"] == o for x in at_best) for o in origins},
-            "only_seeded_starts_reach_the_best": bool(at_best) and not any(x["origin"] == "random" for x in at_best),
-            "minus2lnl_of_refit_starts": [x["refit"]["minus2lnl"] for x in refits], "maps": maps,
-            "bounds": {k_: list(v) for k_, v in bounds_of(priors, kinds).items()}}
+            return {"error": error}
+        if noise is None:
+            chi2 = float(np.sum(r.info["chi2"]))
+            return {"values": scalars(r.values), "chi2": chi2 if np.isfinite(chi2) else float("inf"), "converged": bool(r.info.get("converged")),
+                    "at_bound": list(r.info.get("at_bound") or [])}
+        return final_record(r, rung, ctx["datasets"], wavel0, ctx["scales"])
+
+    return ctx["cache"].memo("fit", (tag, sorted(priors), init, noise is not None, ctx.get("max_steps")), compute)
+
+
+def fit_ladder(ladder, ctx, rng, scan=False):
+    """The ladder (plan 4), every fit on the **tempered** errors (the quoted ones times one factor, fixed by the rung-0 fit) with the
+    gain nuisance marginalised; the error terms are fitted once, after the ladder (`final_fit`). Rung 0 starts at the moment
+    values and at ``START_BUDGET`` broad stratified starts. Every rung above is started from the rung below, with what it adds
+    at negligible flux: a rung that adds a positioned component makes a likelihood map first, starts a fit at each of its
+    best ``N_PEAKS`` peaks, and ``N_JITTER`` more at the best peak with the inherited values moved narrowly; a rung that
+    places nothing starts from the rung below and ``START_BUDGET - 1`` jitters of it (``scan``: the shape parameters it adds
+    first from a grid). Returns one record per rung, each with its best fit on the tempered errors and every start."""
+    datasets, sc, wavel0 = ctx["datasets"], ctx["scales"], ctx.get("wavel0")
+    n = sum(int(d.n_independent) for d in datasets)
+    budget, n_jitter = ctx.get("budget") or START_BUDGET, ctx.get("n_jitter", N_JITTER)
+    rungs, carry, below = [], {}, None
+    for k, (name, rung) in enumerate(ladder):
+        kinds, priors, centre = rung_start(rung, ctx)
+        ctx.update(kinds=kinds, priors=priors)
+        rec = {"rung": name, "k": len(priors), "maps": [], "scan": None}
+        if k == 0:
+            first = fitc(f"{name}|quoted", rung, priors, datasets, centre, ctx)  # the rung-0 fit that fixes the tempering
+            if "values" not in first:
+                raise RuntimeError(f"{name}: the first fit failed: {first['error']}")
+            ctx["temper"] = round(float(max(1.0, np.sqrt(first["chi2"] / n))), 3)
+            ctx["tempered"] = [d.with_error_scale(ctx["temper"]) for d in datasets]
+            centre, rec["asymmetry"] = asymmetry(rung, centre, ctx)
+            starts = [("moments", centre)] + [("grid", s) for s in thin(stratified_starts(rung, kinds, priors, sc, ctx["moments"], centre), budget, rng)]
+        else:
+            inherited = {p: v for p, v in carry.items() if p in priors}
+            base = embed_below(rung, below, kinds, priors, seeded(centre, inherited, priors, kinds), wavel0)
+            base, rec["asymmetry"] = asymmetry(rung, base, ctx, skip=carry)  # a bright side the rung below lacked
+            new, seeds = placed(rung, below), []
+            for extra in new[1:]:  # a rung that adds several positioned components: the others at their best peak
+                found, record = map_seeds(extra, rung, base, below, carry, ctx)
+                rec["maps"].append(record)
+                if found:
+                    base = seeded(base, {p: v for p, v in found[0].items() if p != "score"}, priors, kinds)
+            if new:
+                seeds, record = map_seeds(new[0], rung, base, below, carry, ctx)
+                rec["maps"].append(record)
+            if seeds:
+                starts = [("map", seeded(base, {p: v for p, v in s.items() if p != "score"}, priors, kinds)) for s in seeds]
+                best = {p: v for p, v in seeds[0].items() if p != "score"}
+                starts += [("jitter", seeded(seeded(base, jittered(inherited, kinds, sc.resolution, rng), priors, kinds), best, priors, kinds))
+                           for _ in range(n_jitter)]
+            else:
+                if scan:
+                    base, rec["scan"] = shape_scan(rung, base, carry, ctx)
+                starts = [("scan" if rec["scan"] else "below", base)]
+                starts += [("jitter", seeded(base, jittered(inherited, kinds, sc.resolution, rng), priors, kinds)) for _ in range(budget - 1)]
+        fits = []
+        for origin, init in starts:
+            fits.append({"origin": origin, **fitc(f"{name}|t{ctx['temper']}", rung, priors, ctx["tempered"], init, ctx)})
+        ok = [f for f in fits if "values" in f]
+        if not ok:
+            raise RuntimeError(f"{name}: no start survived: {sorted({f['error'] for f in fits if 'error' in f})[:3]}")
+        best = min(ok, key=lambda f: f["chi2"])
+        rec |= {"chi2_tempered": best["chi2"], "values": best["values"], "converged": best["converged"], "at_bound": best["at_bound"],
+                "best_origin": best["origin"], "starts": len(fits), "failed_starts": len(fits) - len(ok),
+                "errors": sorted({f["error"] for f in fits if "error" in f})[:3],
+                "starts_by_origin": {o: sum(f["origin"] == o for f in fits) for o in sorted({f["origin"] for f in fits})},
+                "start_runs": [{x: f[x] for x in ("origin", "chi2", "values", "converged") if x in f} for f in ok]}
+        rungs.append(rec)
+        carry, below = dict(best["values"]), rung
+        print(f"{name}: tempered chi2 {best['chi2']:.1f} (x{ctx['temper']}) from {len(ok)}/{len(fits)} starts; best from {best['origin']}", flush=True)
+    return rungs
+
+
+def chosen_rung(ladder, rungs, ctx):
+    """Index of the last rung that earns its parameters. Each rung's chi2 on the **quoted** errors (the gains marginalised) is
+    measured at its best fit; the walk up the ladder goes on while chi2 falls by more than ln N per added parameter, and a rung
+    that adds nothing (over-resolved light that is not there) is not final. Writes ``chi2_quoted``, ``minus2lnl`` (the same: the
+    errors are fixed, so the likelihood's normalisation is a constant), ``n``, ``chi2_red`` and ``bic`` into each record."""
+    n = sum(int(d.n_independent) for d in ctx["datasets"])
+    for rec, (_, rung) in zip(rungs, ladder):
+        chi2 = chi2_quoted(model_of(rung, rec["values"], ctx.get("wavel0")), ctx["datasets"])[0]
+        rec |= {"chi2_quoted": chi2, "minus2lnl": chi2, "n": n, "chi2_red": chi2 / n, "bic": chi2 + rec["k"] * float(np.log(n))}
+    k = 0
+    while k + 1 < len(rungs) and rungs[k]["chi2_quoted"] - rungs[k + 1]["chi2_quoted"] > (rungs[k + 1]["k"] - rungs[k]["k"]) * np.log(n):
+        k += 1
+    return k
+
+
+def final_fit(ladder, rungs, ctx, k):
+    """One last fit of rung ``k`` with virgil's error terms free (`vis_error_rel`, `phi_error`), on the quoted errors, from that
+    rung's tempered optimum. The only fit with the error terms free; `final_record` says what it found."""
+    name, rung = ladder[k]
+    priors = build_priors(rung, ctx["scales"], ctx.get("wavel0"))
+    start = {**rungs[k]["values"], **{kk: 0.1 for kk in noise_names(ctx["datasets"])}}
+    got = fitc(f"{name}|final", rung, priors, ctx["datasets"], start, ctx, noise=noise_priors(ctx["datasets"]))
+    if "minus2lnl" not in got:
+        raise RuntimeError(f"{name}: the final fit failed: {got.get('error')}")
+    return got
+
+
+def sigma_fn(rung, names, data, wavel0=None):
+    """``values -> {name: 1 sigma}`` from the Gauss-Newton curvature J^T J of the whitened residuals of all ``data`` together
+    (the gains marginalised), compiled once for a rung. A direction the data do not constrain gets an enormous sigma, never zero."""
+    jac = jax.jit(jax.jacfwd(lambda x: jnp.concatenate([likelihood.whitened_residuals(model_of(rung, dict(zip(names, x)), wavel0), d) for d in data])))
+
+    def sigma(values):
+        J = np.asarray(jac(jnp.array([float(values[k]) for k in names])))
+        A = J.T @ J
+        D = np.where(np.diag(A) > 0, np.sqrt(np.diag(A)), 1.0)
+        s = np.sqrt(np.abs(np.diag(np.linalg.inv(A / np.outer(D, D) + 1e-9 * np.eye(len(names)))))) / D
+        return dict(zip(names, np.where(np.isfinite(s), s, np.inf)))
+
+    return sigma
+
+
+def start_check(ladder, rungs, ctx):
+    """Start agreement of every rung from its saved starts (`IS.start_agreement`: -2 ln L on the quoted errors, gains marginalised,
+    each parameter's sigma from the joint Gauss-Newton curvature). ``{rung name: record}``."""
+    datasets, sc, wavel0 = ctx["datasets"], ctx["scales"], ctx.get("wavel0")
+    out = {}
+    for (name, rung), rec in zip(ladder, rungs):
+        kinds, priors = flat_kinds(rung, wavel0), build_priors(rung, sc, wavel0)
+        runs = [f for f in rec["start_runs"] if f["origin"] not in IS.CONTROL_ORIGINS]
+        scored = []
+        if runs:
+            sigma = sigma_fn(rung, sorted(runs[0]["values"]), datasets, wavel0)
+            for f in runs:
+                chi2 = chi2_quoted(model_of(rung, f["values"], wavel0), datasets)[0]
+                scored.append({"origin": f["origin"], "values": f["values"], "chi2q": chi2 if np.isfinite(chi2) else float("inf"), "sigma": sigma(f["values"])})
+        out[name] = IS.start_agreement(scored, sc.resolution, bounds_of(priors, kinds))
+    return out
+
+
+def residual_stats(model, datasets, noise_values, masks):
+    """The fit standard's numbers: the normalised residuals (residual over the effective error, the gains marginalised, with
+    the fitted error terms ``noise_values`` in) of ``model`` on every dataset, their rms on V^2 and on the closure phases of
+    the informative triangles ``masks`` (and on all of them, beside)."""
+    names = noise_names(datasets)
+    vis, phase, every = [], [], []
+    for i, d in enumerate(datasets):
+        terms = {t: float(noise_values[k]) for k, (j, t) in names.items() if j == i and k in noise_values}
+        w = np.ravel(np.asarray(likelihood.whitened_residuals(model, d, **terms)))
+        nv, nphi = int(np.size(d.vis)), int(np.size(d.phi))
+        vis.append(w[:nv])
+        phases = w[nv:nv + nphi]
+        every.append(phases)
+        if masks[i].size == phases.size:
+            phase.append(phases[masks[i]])
+    def rms(parts):
+        return float(np.sqrt(np.mean(np.concatenate(parts) ** 2))) if parts and np.concatenate(parts).size else None
+
+    return {"rms_v2": rms(vis), "rms_cp": rms(phase), "rms_cp_all_triangles": rms(every), "n_v2": int(sum(v.size for v in vis)),
+            "n_informative_triangles": int(sum(p.size for p in phase)), "n_triangles": int(sum(e.size for e in every))}
 
 
 def chromatic_rung(grey, rung, below_rung, below_final, ctx, wavel0):
@@ -951,7 +1321,7 @@ def chromatic_rung(grey, rung, below_rung, below_final, ctx, wavel0):
         return None
     best = dict(min(done, key=lambda x: x["minus2lnl"]))
     best.pop("origin")
-    tol = IS.tolerance(best["n"])
+    tol = IS.SAME_DELTA
     at_best = [x for x in done if x["minus2lnl"] <= best["minus2lnl"] + tol]
     origins = sorted({x["origin"] for x in recs})
     k = len(priors) + len(noise_names(datasets))
@@ -1056,7 +1426,7 @@ def gp_disk(family, chosen, ctx, wavel0, rng, starts, max_steps, out_path):
     fov = 2.0 * r_out * 1.1
     np.savez_compressed(out_path, image=np.asarray(best.model.render(npix=256, fov_mas=fov)), fov_mas=fov)
     return {"chi2_red": chi2 / max(n, 1), "converged": bool(best.info.get("converged")), "azimuthal_degree": degree,
-            "starts": len(runs), "starts_at_best": int(sum(c <= IS.tolerance(n) + chi2 for c, _, _ in runs)),
+            "starts": len(runs), "starts_at_best": int(sum(c <= IS.SAME_DELTA + chi2 for c, _, _ in runs)),
             "r_in_mas": r_in, "r_out_mas": r_out, "length_mas": ell, "values": scalars(best.values), "file": pathlib.Path(out_path).name}
 
 
@@ -1085,6 +1455,163 @@ def residual_image(model, ctx, noise_values, out_path):
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# After the ladder: the residual probe, and the image step (neither is a rung)
+
+
+def flat(model):
+    """The leaf components of a (nested) System, by name."""
+    return {k: v for n, c in model.components.items() for k, v in (flat(c).items() if isinstance(c, vm.System) else [(n, c)])}
+
+
+def offsets(model):
+    """(dra, ddec) of every component with a position."""
+    return [(float(np.ravel(np.asarray(c.dra))[0]), float(np.ravel(np.asarray(c.ddec))[0])) for c in flat(model).values() if hasattr(c, "dra")]
+
+
+def field_half(model, extent):
+    """Half-width of the probe's and the figure's field: half the extent, or 1.3 x the farthest positioned component (a planet
+    or companion may lie beyond the extent), whichever is larger."""
+    return max(extent / 2.0, 1.3 * max((np.hypot(*o) for o in offsets(model)), default=0.0))
+
+
+def probe(model, datasets, ctx, tag=""):
+    """virgil's CLEAN on top of the fitted ``model``, held fixed, on a support of the extent: where its components cluster says what
+    the next rung should add. It runs ``PROBE_CHUNK`` iterations at a time, up to ``PROBE_MAX`` (each chunk is cached, so a
+    call that pauses resumes), and stops when the fit stalls. Returns ``(record, components)``; the record's
+    ``flux_share_of_model`` is the share of the model's total light that the image carries."""
+    sc, cache = ctx["scales"], ctx["cache"]
+    pix = sc.resolution / 2.0
+    half = field_half(model, sc.extent)
+    npix = int(np.ceil(2.0 * half / pix))
+    npix += npix % 2
+    support = vm.circular_support(npix, pix, half)
+    state, done, first = None, 0, None
+    for i in range(0, PROBE_MAX, PROBE_CHUNK):
+        def compute(state=state):
+            r = imaging.clean(as_data(datasets), npix, pix, base=model, support=support, max_iterations=PROBE_CHUNK,
+                              init=None if state is None else state["components"])
+            return {"components": np.asarray(r.components, float), "chi2_red": np.asarray(r.chi2_red, float), "stop": str(r.stop)}
+
+        state = cache.arrays(f"probe_{tag}_{i}", compute)
+        first = float(state["chi2_red"][0]) if first is None else first  # the fitted model alone
+        done += max(len(state["chi2_red"]) - 1, 0)
+        if str(state["stop"]) != "max_iterations":
+            break
+    comp, chi2 = np.asarray(state["components"], float), np.asarray(state["chi2_red"], float)
+    ys, xs = np.nonzero(comp > 0)
+    dra, ddec = (npix / 2.0 - xs) * pix, (npix / 2.0 - ys) * pix  # east left, north up (row 0 is north)
+    w = comp[ys, xs]
+    order = np.argsort(w)[::-1][:5]
+    # CLEAN's pixel fluxes are relative to the base's reference component (flux 1) and the model is normalised by its total flux,
+    # so ``comp.sum()`` alone says nothing: the share of the model's light that the image carries is clean / (clean + the base's own total).
+    base_total = float(sum(np.ravel(np.asarray(getattr(getattr(c, "flux", 1.0), "ratio", getattr(c, "flux", 1.0))))[0] for c in model.components.values()))
+    return {"flux_relative_to_reference": float(comp.sum()), "flux_share_of_model": float(comp.sum() / (comp.sum() + base_total)), "iterations": done,
+            "stop": str(state["stop"]), "chi2_red_before": first, "chi2_red_after": float(chi2[-1]), "npix": npix, "pixel_mas": pix,
+            "support_radius_mas": half, "flux_weighted_radius_mas": float(np.sum(w * np.hypot(dra, ddec)) / max(w.sum(), 1e-300)),
+            "five_largest_components": [{"dra": float(dra[i]), "ddec": float(ddec[i]), "share_of_clean_flux": float(w[i] / w.sum())} for i in order]}, comp
+
+
+def probe_figure(path, model, comp, rec, title):
+    """The fitted model beside the CLEAN components found on top of it, saved to ``path``."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    half = comp.shape[0] * rec["pixel_mas"] / 2.0
+    img = np.asarray(model.render(npix=comp.shape[0], fov_mas=2 * half), float)
+    fig, ax = plt.subplots(1, 2, figsize=(9, 4.2), dpi=90)
+    for a, z, name in ((ax[0], np.clip(img, 0, None) ** 0.5, "fitted model (square root)"), (ax[1], comp, "CLEAN components on the model")):
+        a.imshow(z, origin="upper", cmap="gray", extent=[half, -half, -half, half])
+        a.set_title(name, fontsize=9)
+        a.set_xlabel("RA offset (mas), east left")
+        for dra, ddec in offsets(model):  # ring every positioned component: a faint one is invisible at this stretch
+            if np.hypot(dra, ddec) > 0:
+                a.plot(dra, ddec, "o", mfc="none", mec="c", ms=12)
+    fig.suptitle(f"{title}; CLEAN flux {rec['flux_share_of_model']:.3g} of the model's; chi2/N {rec['chi2_red_before']:.3g} to {rec['chi2_red_after']:.3g}", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+
+
+def cp_rms(model, d, mask):
+    """Closure-phase rms (degrees) of ``model`` on the informative triangles ``mask`` of ``d``, beside their median quoted error."""
+    nv, nphi = int(np.size(d.vis)), int(np.size(d.phi))
+    r = np.ravel(np.asarray(d.residuals(d.model(model)), float))[nv:nv + nphi]
+    err = np.ravel(np.asarray(d.d_phi, float))
+    if not mask.any() or mask.size != r.size:
+        return None
+    return {"n_triangles": int(mask.sum()), "rms_deg": float(np.degrees(np.sqrt(np.mean(r[mask] ** 2)))),
+            "median_quoted_error_deg": float(np.degrees(np.median(err[mask])))}
+
+
+def image_step(rung, values, ctx, masks, raw, parametric=()):
+    """The image step, after the ladder and not a rung: where the family describes structure no parametric component holds, a Gaussian-process
+    image (fixed hyperparameters: a log-brightness sigma of ``IMAGE_SIGMA``, a length of ``IMAGE_LENGTH`` resolution elements) takes
+    the place of the fitted rung's extended light, confined by `circular_support` to the radius that holds 99 % of that
+    light (at most half the extent), at pixel lambda / (4 B_max). Positioned components and over-resolved light stay
+    parametric and free. An image has one colour, so each dataset (band) is imaged on its own. Convergence: two fits, one from
+    a flat image and one from the parametric model's image, must agree (pixel correlation above ``IMAGE_AGREE`` after smoothing
+    to the resolution); the closure-phase rms on informative triangles is reported beside their errors. ``parametric``: components kept
+    parametric besides those (a star that is not part of the extended light). ``raw``: the datasets without the gain nuisance."""
+    from scipy.fft import dctn
+    from scipy.ndimage import gaussian_filter
+    from virgil.fields import GaussianField, field_spectrum
+
+    sc, wavel0, cache = ctx["scales"], ctx.get("wavel0"), ctx["cache"]
+    kinds, priors = flat_kinds(rung, wavel0), build_priors(rung, sc, wavel0)
+    parts = flat(model_of(rung, values, wavel0))
+    keep = [c for c, m in parts.items() if f"{c}.dra" in kinds or isinstance(m, vm.Resolved) or c in parametric]
+    replaced = {c: m for c, m in parts.items() if c not in keep}
+    if not replaced:
+        return {"skipped": "every component is positioned or over-resolved: there is no extended light for an image to replace"}, {}
+    gone = vm.System(**replaced)
+    free = {k: v for k, v in priors.items() if comp_of(k) in keep}
+    limit, pix = sc.extent / 2.0, sc.resolution / 2.0
+    light = np.asarray(gone.render(npix=256, fov_mas=2.0 * limit), float)
+    radius = np.hypot(*np.meshgrid(*[(np.arange(256) - 127.5) * 2.0 * limit / 256] * 2))
+    cum = np.cumsum(light.ravel()[np.argsort(radius.ravel())]) / light.sum()
+    half = float(np.clip(np.sort(radius.ravel())[np.searchsorted(cum, 0.99)], sc.resolution, limit))
+    npix = int(np.ceil(2.0 * half / pix))
+    npix += npix % 2
+    support = vm.circular_support(npix, pix, half)
+    template = np.asarray(gone.render(npix=npix, fov_mas=npix * pix), float)
+    amp = np.sqrt(np.maximum(field_spectrum((npix, npix), pix, IMAGE_SIGMA, IMAGE_LENGTH * sc.resolution), 0.0))
+    start = {"flat": np.zeros((npix, npix)),  # the latents whose field is the template's log brightness (modes with no variance stay 0)
+             "parametric": np.where(amp > 0, dctn(np.log(template / template.max() + 1e-3), type=2, norm="ortho") / np.where(amp > 0, amp, 1.0), 0.0)}
+    rec = {"support_radius_mas": half, "npix": npix, "pixel_mas": pix, "kept_parametric": keep, "bands": []}
+    images = {}
+    for i, (d, r) in enumerate(zip(ctx["tempered"], raw)):
+        weight = float(sum(np.ravel(np.asarray(c._weight(float(np.median(np.asarray(r.wavel))))))[0] for c in replaced.values()))  # their light at this band
+
+        def target(latent, **p):
+            m = flat(model_of(rung, {**values, **p}, wavel0))
+            image = vm.Image(GaussianField(latent, IMAGE_SIGMA, IMAGE_LENGTH * sc.resolution), pix, support=support, flux=weight)
+            return vm.System(image=image, **{c: m[c] for c in keep})
+
+        runs = {}
+        for kind, latent0 in start.items():
+            def compute(d=d, latent0=latent0):
+                res = fit(target, {"latent": dist.Normal(np.zeros((npix, npix)), 1.0).to_event(2)} | free, d,
+                          init={"latent": latent0, **{k: float(values[k]) for k in free}}, method="lbfgs", time_limit=IMAGE_SECS)
+                return {"latent": np.asarray(res.values["latent"]), "free": json.dumps(scalars({k: v for k, v in res.values.items() if k in free})),
+                        "chi2": float(np.sum(res.info["chi2"])), "converged": bool(res.info.get("converged"))}
+
+            z = cache.arrays(f"image_{_key(sorted(values.items()), i, kind, npix)}", compute)
+            model = target(z["latent"], **json.loads(str(z["free"])))
+            runs[kind] = {"image": np.asarray(model.components["image"].brightness), "chi2_red_tempered": float(z["chi2"]) / int(d.n_independent),
+                          "converged": bool(z["converged"]), "closure_phase": cp_rms(model, r, masks[i])}
+        sm = {k: gaussian_filter(v["image"], sc.resolution / pix / IS.FWHM_PER_SIGMA)[support] for k, v in runs.items()}  # smoothed to the resolution
+        corr = float(np.corrcoef(sm["flat"], sm["parametric"])[0, 1])
+        rec["bands"].append({"dataset": i, "pixel_correlation_smoothed": corr, "runs_agree": bool(corr > IMAGE_AGREE),
+                             "closure_phase_parametric_rung": cp_rms(model_of(rung, values, wavel0), r, masks[i]),
+                             **{k: {x: y for x, y in v.items() if x != "image"} for k, v in runs.items()}})
+        images.update({f"band{i}_{k}": v["image"] for k, v in runs.items()})
+        images[f"band{i}_support"], images[f"band{i}_template"] = support, template
+    return rec, images
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Checks (plan 5) and the run
 
 
@@ -1108,29 +1635,38 @@ def collapse_components(rung, values, kinds):
     return out
 
 
-def checks_of(rungs, chosen, ladder_rungs, rest, sc, converged):
-    """The six checks of plan 5 and `converged`, each ``{"status", "detail"}``, from the fitted rungs."""
-    rung = dict(ladder_rungs)[chosen["rung"]]
-    kinds = flat_kinds(rung, "x" if any(k.endswith(".flux.index") for k in chosen["values"]) else None)
-    out = {"converged": {"status": "pass" if converged else "fail", "detail": None}}
+REPORT_ONLY = ("fit_standard",)  # computed and reported with every fit; not a gate (acceptance is an evaluator's judgement), so not in the status
+
+
+def checks_of(rungs, chosen, ladder_rungs, agreement, stats, rest, sc, final):
+    """The checks of plan 5 and `converged`, each ``{"status", "detail"}``, from the fitted rungs. ``agreement`` is
+    `start_check`'s ``{rung name: record}``, ``stats`` the `residual_stats` of the final fit, ``final`` the final fit (error
+    terms free); ``chosen`` is the chosen rung's record. The checks look at the final fit's values and at the chosen rung's
+    starts; `nested` looks at every rung."""
+    ladder_rungs = dict(ladder_rungs)
+    rung = ladder_rungs[chosen["rung"]]
+    kinds = flat_kinds(rung, "x" if any(k.endswith(".flux.index") for k in final["values"]) else None)
+    out = {"converged": {"status": "pass" if chosen["converged"] and final["converged"] else "fail",
+                         "detail": {"ladder": chosen["converged"], "final_fit": final["converged"]}}}
 
     def put(name, result):
         ok, detail = result
         out[name] = {"status": "warn" if ok is None else ("pass" if ok else "fail"), "detail": detail}
 
-    bounds = {k: tuple(v) for k, v in chosen["bounds"].items()}
-    put("no_bounds", IS.no_bounds(chosen["values"], bounds))
+    put("no_bounds", IS.no_bounds(final["values"], {k: tuple(v) for k, v in chosen["bounds"].items()}))
     names = [r["rung"] for r in rungs]
     table = [{"rung": r["rung"], "minus2lnl": r["minus2lnl"],
-              "contains": [n for n, below in ladder_rungs if n in names and n != r["rung"] and contains(dict(ladder_rungs)[r["rung"]], below)]}
+              "contains": [n for n, below in ladder_rungs.items() if n in names and n != r["rung"] and contains(ladder_rungs[r["rung"]], below)]}
              for r in rungs]
-    put("nested", IS.nested(table, chosen["n"]))
-    put("starts_agree", IS.starts_agree(chosen["minus2lnl_of_refit_starts"], chosen["n"]))
+    put("nested", IS.nested(table))
+    mine = agreement[chosen["rung"]]
+    put("starts_agree", (mine["passes"], {**mine, "all_rungs": {n: {"passes": a["passes"], "at_best": a["at_best"], "n": a["n"]} for n, a in agreement.items()}}))
+    put("fit_standard", IS.fit_standard(stats["rms_v2"], stats["rms_cp"], stats["n_informative_triangles"]))
     if rest and "error" in rest:  # the image step ran and failed: a failure, not a missing measurement
         out["family_complete"] = {"status": "fail", "detail": {"error": rest["error"]}}
     else:  # skipped by --no-residual-image: nothing measured, so a warn
         put("family_complete", IS.family_complete(None if not rest or "flux_relative_to_model" not in rest else rest["flux_relative_to_model"]))
-    put("no_collapse", IS.no_collapse(collapse_components(rung, chosen["values"], kinds), sc.resolution))
+    put("no_collapse", IS.no_collapse(collapse_components(rung, final["values"], kinds), sc.resolution))
     put("extent_known", (sc.extent_known, {"extent_source": sc.extent_source}))
     return out
 
@@ -1169,75 +1705,120 @@ def load_datasets(spec, data_dir, use_spectra):
     return datasets, spectra
 
 
-def run(task, family, data_dir, out_dir, starts=RANDOM_STARTS, smoke=False, grey=False, use_spectra=True, residual=True, no_gp=False,
-        budget=None):
+def plain(x):
+    """``json.dumps`` default: numpy numbers, booleans and arrays as the plain Python ones."""
+    if isinstance(x, np.ndarray):
+        return x.tolist()
+    if isinstance(x, np.bool_):
+        return bool(x)
+    if isinstance(x, np.integer):
+        return int(x)
+    return float(x)
+
+
+def run(task, family, data_dir, out_dir, smoke=False, grey=False, use_spectra=False, residual=True, no_gp=False, budget=None, scan=False,
+        do_probe=True, image=False, profile_maps=True, scale_vis=False, cache_dir=None, time_budget=None):
+    """The whole recipe for one task and family (design/contest_informed_plan.md, playbooks/informed.md). In order: the criteria's commit
+    is pinned; the data are read; the information check; the scales and the visibility moments; the gain nuisance; the
+    ladder, every fit on tempered errors (`fit_ladder`); the rung chosen by chi2 on the quoted errors; one last fit of it with the
+    error terms free (`final_fit`); start agreement and the fit standard; the checks; and, after the ladder and not as a rung, the
+    non-parametric image on top (`residual_image`, `gp_disk`), the CLEAN probe and, with ``image``, the image step."""
     # Refuses before any draw when the criteria file is dirty or untracked, or when there is no git checkout and no
     # CRITERIA_COMMIT: an unpinned fit must not reach the `informed_fit` gate.
     criteria = preregistration.criteria_commit(CRITERIA, REPO)
     spec = tasks()[task]
     label = f"{spec['label']}_{family}"
-    datasets, spectra = load_datasets(spec, data_dir, use_spectra)
-    channels = len(np.unique(np.round(np.concatenate([np.ravel(np.asarray(d.wavel, float)) for d in datasets]) * 1e9)))
-    wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel, float)) for d in datasets]))) if channels > 1 and not grey else None
-    sc, moments, datasets, vis_scale = measure(datasets, spec, scale_vis=spec["label"] in VIS_SCALE)
-    temper = temper_factor(moments)
-    tempered = [d.with_error_scale(temper) for d in datasets]
-    ctx = {"datasets": datasets, "tempered": tempered, "scales": sc, "moments": moments, "smoke": smoke, "budget": 4 if smoke and budget is None else budget,
-           "random": 2 if smoke else starts, "refit": 2 if smoke else REFIT, "max_steps": 50 if smoke else None}
-    print(f"{label}: resolution {sc.resolution:.3g} mas; extent {sc.extent:.3g} ({sc.extent_source}); reach {sc.reach:.3g} ({sc.reach_source}); "
-          f"temper x{temper:.3g}; moments {None if moments is None else {k: round(v, 3) for k, v in moments.items() if isinstance(v, float)}}")
+    raw, spectra = load_datasets(spec, data_dir, use_spectra)
+    info, masks = information(raw)  # before any fit
+    channels = len(np.unique(np.round(np.concatenate([np.ravel(np.asarray(d.wavel, float)) for d in raw]) * 1e9)))
+    wavel0 = float(np.median(np.concatenate([np.ravel(np.asarray(d.wavel, float)) for d in raw]))) if channels > 1 and not grey else None
+    sc, moments, raw, vis_scale = measure(raw, spec, scale_vis=scale_vis and spec["label"] in VIS_SCALE)
+    datasets = [with_gain(d) for d in raw]
+    ctx = {"datasets": datasets, "scales": sc, "moments": moments, "wavel0": wavel0, "cache": Cache(cache_dir, time_budget), "smoke": smoke,
+           "budget": 4 if smoke and budget is None else budget, "n_peaks": 2 if smoke else N_PEAKS, "n_jitter": 1 if smoke else N_JITTER,
+           "max_steps": 50 if smoke else None, "profile_maps": profile_maps}
+    print(f"{label}: information {info['judged_on']} ({info['triangles_all_v2_above_3_sigma']}/{info['triangles']} triangles informative); "
+          f"resolution {sc.resolution:.3g} mas; extent {sc.extent:.3g} ({sc.extent_source}); reach {sc.reach:.3g} ({sc.reach_source}); "
+          f"moments {None if moments is None else {k: round(v, 3) for k, v in moments.items() if isinstance(v, float)}}", flush=True)
     rng = np.random.default_rng(7000 + task)
-    t0, rungs, ladder_rungs, carry, below_rung, below_final = time.time(), [], ladder(family), {}, None, None
-    for name, rung in ladder_rungs:
-        got = fit_rung(name, rung, below_rung, ctx, carry, rng)
-        grey_values = dict(got["values"])
-        if wavel0:
-            chrom = chromatic_rung(got, rung, below_rung, below_final, ctx, wavel0)
-            if chrom is None:  # no chromatic start survived: the grey fit stands, written in the chromatic form
-                chrom = as_chromatic(got, rung, ctx["scales"], wavel0)
-            got = {**got, **chrom, "grey": {k: got[k] for k in ("minus2lnl", "bic", "chi2_quoted", "chi2_red", "values", "noise", "starts",
-                                                                  "starts_refit", "starts_at_best", "starts_by_origin",
-                                                                  "starts_at_best_by_origin", "minus2lnl_of_refit_starts")}}
-        carry, below_rung, below_final = grey_values, rung, got
-        ctx["noise0"] = dict(got.get("grey", got)["noise"])
-        rungs.append(got)
-        print(f"{label} {name}: -2lnL={got['minus2lnl']:.1f} k={got['k']} BIC={got['bic']:.1f} chi2/N (quoted errors)={got['chi2_red']:.3g} "
-              f"starts at best {got['starts_at_best']}/{got['starts_refit']} refit of {got['starts']} (by origin {got['starts_at_best_by_origin']})")
-    chosen = min(rungs, key=lambda x: x["bic"])
+    t0, ladder_rungs = time.time(), ladder(family)
+    rungs = fit_ladder(ladder_rungs, ctx, rng, scan)
+    for r in rungs:  # the bounds of each rung's priors, for `no_bounds`
+        rung = dict(ladder_rungs)[r["rung"]]
+        r["bounds"] = {k: list(v) for k, v in bounds_of(build_priors(rung, sc, wavel0), flat_kinds(rung, wavel0)).items()}
+    k = chosen_rung(ladder_rungs, rungs, ctx)
+    chosen, rung = rungs[k], ladder_rungs[k][1]
+    final = final_fit(ladder_rungs, rungs, ctx, k)
+    agreement = start_check(ladder_rungs, rungs, ctx)
+    for r in rungs:
+        r["starts_at_best"] = agreement[r["rung"]]["at_best"]
+    model = model_of(rung, final["values"], wavel0)
+    stats = residual_stats(model, datasets, final["noise"], masks)
+    print(f"{label}: chosen {chosen['rung']}; final fit -2lnL {final['minus2lnl']:.1f}; normalised residual rms V2 {stats['rms_v2']} "
+          f"closure phase {stats['rms_cp']}; starts at best {chosen['starts_at_best']}/{agreement[chosen['rung']]['n']}", flush=True)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     gp = None
     if family in GP_DISKS and not no_gp:
-        gp = gp_disk(family, chosen, ctx, wavel0, rng, 3 if smoke else starts, 50 if smoke else None, out_dir / f"{label}_gp_disk.npz")
+        gp = gp_disk(family, final, ctx, wavel0, rng, 3 if smoke else START_BUDGET, 50 if smoke else None, out_dir / f"{label}_gp_disk.npz")
         if gp and "chi2_red" in gp:
             print(f"{label} multipolar GP disk: chi2/N={gp['chi2_red']:.3f} starts at best {gp['starts_at_best']}/{gp['starts']}")
-    errors = {"median_vis_error": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_vis, float)) for d in datasets]))),
-              "median_phase_error_deg": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_phi, float)) for d in datasets])))}
+    errors = {"median_vis_error": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_vis, float)) for d in raw]))),
+              "median_phase_error_deg": float(np.nanmedian(np.concatenate([np.ravel(np.asarray(d.d_phi, float)) for d in raw if np.size(d.phi)] or [np.zeros(1)])))}
     errors["implied_vis_residual"] = float(np.sqrt(chosen["chi2_red"]) * errors["median_vis_error"])
     errors["implied_phase_residual_deg"] = float(np.sqrt(chosen["chi2_red"]) * errors["median_phase_error_deg"])
     rest = None
-    if residual and np.isfinite(chosen["minus2lnl"]):
+    if residual and np.isfinite(final["minus2lnl"]):
         try:
-            best = model_of(dict(ladder_rungs)[chosen["rung"]], chosen["values"], wavel0)
-            rest = residual_image(best, ctx, chosen["noise"], out_dir / f"{label}_rest.npz")
+            rest = residual_image(model, ctx, final["noise"], out_dir / f"{label}_rest.npz")
             print(f"{label} residual image: flux {rest['flux_relative_to_model']:.3g} of the model's")
         except Exception as err:  # noqa: BLE001 the parametric result stands without it
             rest = {"error": f"{type(err).__name__}: {err}"}
-    checks = checks_of(rungs, chosen, ladder_rungs, rest, sc, chosen["converged"])
+    checks = checks_of(rungs, chosen, ladder_rungs, agreement, stats, rest, sc, final)
+    probe_record = image_record = None
+    if do_probe:
+        try:
+            probe_record, components = probe(model, datasets, ctx, tag=_key(sorted(final["values"].items())))
+            (out_dir / f"{label}_probe.json").write_text(json.dumps(probe_record, indent=1, default=plain) + "\n")
+            np.savez_compressed(out_dir / f"{label}_probe.npz", components=components)
+            try:
+                probe_figure(out_dir / f"{label}_probe.png", model, components, probe_record, f"{label}, {chosen['rung']}")
+            except ImportError:  # the figure is a convenience
+                pass
+            print(f"{label} probe: CLEAN flux {probe_record['flux_share_of_model']:.3g} of the model's, chi2/N {probe_record['chi2_red_before']:.3g} to {probe_record['chi2_red_after']:.3g}")
+        except Pause:
+            raise
+        except Exception as err:  # noqa: BLE001 a probe that fails is recorded, the fit stands
+            probe_record = {"error": f"{type(err).__name__}: {err}"}
+    if image:
+        try:
+            image_record, pictures = image_step(rung, final["values"], ctx, masks, raw, image if isinstance(image, tuple) else ())
+            (out_dir / f"{label}_image.json").write_text(json.dumps(image_record, indent=1, default=plain) + "\n")
+            if pictures:
+                np.savez_compressed(out_dir / f"{label}_image.npz", **pictures)
+        except Pause:
+            raise
+        except Exception as err:  # noqa: BLE001
+            image_record = {"error": f"{type(err).__name__}: {err}"}
+    reported = [{**r, "values_tempered": r["values"], "values": final["values"], "noise": final["noise"], "final_fit": final} if r is chosen else r for r in rungs]
     report = {"label": label, "task": task, "family": family, "knowledge": "informed: model family from the contest paper; no value",
-              "files": spec["files"], "resolution_mas": sc.resolution, "scales": sc.asdict(), "moments": moments, "temper_factor": temper,
-              "visibility_scale": vis_scale, "channels": channels, "chromatic": bool(wavel0), "reference_wavelength_m": wavel0,
-              "flux_spectra_fitted": spectra, "virgil": getattr(virgil, "__version__", None), "criteria": CRITERIA, "criteria_commit": criteria,
-              "noise_terms": {"vis_error_rel": "LogUniform(1e-4, 3)", "phi_error": "LogUniform(1e-4, 3) radians"},
-              "quoted_errors": errors, "residual_image": rest, "gp_disk": gp, "rungs": rungs, "chosen": chosen["rung"], "checks": checks,
+              "files": spec["files"], "resolution_mas": sc.resolution, "scales": sc.asdict(), "moments": moments, "temper_factor": ctx["temper"],
+              "moment_temper_factor": temper_factor(moments), "information": info,
+              "nuisance": {"visibility_gain_width_log_v": GAIN_WIDTH, "applies_to": "every rung and the final fit, marginalised"},
+              "visibility_scale": vis_scale or {"applied": False, "why": "the global visibility gain is marginalised (width 0.1), nothing is divided out"},
+              "channels": channels, "chromatic": bool(wavel0), "reference_wavelength_m": wavel0, "flux_spectra_fitted": spectra,
+              "virgil": getattr(virgil, "__version__", None), "criteria": CRITERIA, "criteria_commit": criteria,
+              "noise_terms": {"vis_error_rel": "LogUniform(1e-4, 3)", "phi_error": "LogUniform(1e-4, 3) radians"}, "error_terms_fitted": "once, after the ladder",
+              "quoted_errors": errors, "fit_standard_numbers": stats, "start_agreement": agreement, "residual_image": rest, "gp_disk": gp,
+              "probe": probe_record, "image_step": image_record, "rungs": reported, "chosen": chosen["rung"], "checks": checks,
               "elapsed_s": time.time() - t0, "smoke": smoke, "budget": ctx["budget"]}
-    (out_dir / f"{label}.json").write_text(json.dumps(report, indent=1, default=float) + "\n")
-    states = {c["status"] for c in checks.values()}
+    (out_dir / f"{label}.json").write_text(json.dumps(report, indent=1, default=plain) + "\n")
+    states = {c["status"] for name, c in checks.items() if name not in REPORT_ONLY}
     status = "fail" if "fail" in states else ("warn" if "warn" in states else "pass")
     (out_dir / "result.json").write_text(json.dumps(
-        {"status": status, "checks": {k: v["status"] for k, v in checks.items()}, "chosen": chosen["rung"], "chi2_red_quoted": chosen["chi2_red"],
-         "minus2lnl": chosen["minus2lnl"], "starts_at_best": chosen["starts_at_best"], "knowledge": "informed", "criteria_commit": criteria,
-         "smoke": smoke}, indent=1) + "\n")
+        {"status": status, "checks": {name: v["status"] for name, v in checks.items()}, "chosen": chosen["rung"], "chi2_red_quoted": chosen["chi2_red"],
+         "minus2lnl": final["minus2lnl"], "starts_at_best": chosen["starts_at_best"], "fit_standard": checks["fit_standard"]["detail"]["verdict"],
+         "knowledge": "informed", "criteria_commit": criteria, "smoke": smoke}, indent=1) + "\n")
     return report
 
 
@@ -1248,13 +1829,19 @@ def main(argv=None):
     ap.add_argument("--model", choices=sorted(FAMILIES))
     ap.add_argument("--data", default="~/data/imaging_contests")
     ap.add_argument("--out", default="contest_informed")
-    ap.add_argument("--starts", type=int, default=RANDOM_STARTS, help="random control starts per rung")
-    ap.add_argument("--budget", type=int, default=None, help="at most this many stratified-geometry starts per rung, evenly spaced (default: all)")
+    ap.add_argument("--budget", type=int, default=None, help="at most this many stratified-geometry starts on the first rung, evenly spaced (default: 8)")
     ap.add_argument("--smoke", action="store_true", help="a few starts of 50 steps and a coarse map: check that it runs")
     ap.add_argument("--grey", action="store_true", help="one flux per component at every wavelength (the default gives each a spectral index when the data have more than one channel)")
+    ap.add_argument("--spectra", action="store_true", help="also fit the files' OI_FLUX spectra (scale and linear trend marginalised)")
+    ap.add_argument("--scan", action="store_true", help="start the shape parameters a rung adds that no map places from a likelihood grid")
+    ap.add_argument("--no-profile-map", action="store_true", dest="no_profile", help="never re-optimise the rung below at each map position, even with a resolved primary")
+    ap.add_argument("--no-probe", action="store_true", dest="no_probe", help="skip the CLEAN probe on top of the final fit")
+    ap.add_argument("--image", action="store_true", help="the image step: a Gaussian-process image in place of the extended light, after the ladder")
     ap.add_argument("--no-gp-disk", action="store_true", dest="no_gp", help="skip the multipolar Gaussian-process disk of the disk families")
     ap.add_argument("--no-residual-image", action="store_true", dest="no_residual", help="skip the non-parametric image fitted on top of the chosen model")
-    ap.add_argument("--no-spectra", action="store_true", dest="no_spectra", help="do not fit the files' OI_FLUX spectra")
+    ap.add_argument("--scale-vis", action="store_true", dest="scale_vis", help="also divide the datasets named in VIS_SCALE by their fitted V^2 amplitude (the gain is marginalised without it)")
+    ap.add_argument("--cache", default=None, help="keep every fit, grid and map tile here, so a call that pauses resumes")
+    ap.add_argument("--time-budget", type=float, default=None, dest="time_budget", help="seconds after which no new fit or tile starts and the call exits with 75 (run it again to continue)")
     a = ap.parse_args(argv)
     if a.list:
         for name in FAMILIES:
@@ -1262,8 +1849,12 @@ def main(argv=None):
         return 0
     if a.task is None or a.model is None:
         ap.error("--task and --model are required")
-    run(a.task, a.model, pathlib.Path(a.data).expanduser(), pathlib.Path(a.out).expanduser(), a.starts, a.smoke, a.grey, not a.no_spectra,
-        not a.no_residual, a.no_gp, a.budget)
+    try:
+        run(a.task, a.model, pathlib.Path(a.data).expanduser(), pathlib.Path(a.out).expanduser(), a.smoke, a.grey, a.spectra, not a.no_residual, a.no_gp,
+            a.budget, a.scan, not a.no_probe, a.image, not a.no_profile, a.scale_vis, a.cache, a.time_budget)
+    except Pause:
+        print(f"time budget used ({a.time_budget} s): run again with the same --cache to continue", flush=True)
+        return RC_MORE
     return 0
 
 
