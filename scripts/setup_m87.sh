@@ -45,12 +45,12 @@ data() {
 basis() {
   local venv="$ROOT/.venv-basis"
   uv venv -q --allow-existing --python 3.11 "$venv"
-  uv pip install -q --python "$venv/bin/python" "ehtim==1.3.2" "bilby==2.6.0" "dynesty==2.1.5" \
+  uv pip install -q --python "$venv/bin/python" "ehtim==1.3.2" "bilby==2.8.2" "dynesty==3.1.0" \
     torch opencv-python-headless uncertainties pandas tqdm matplotlib scipy "numpy<2.3"
   uv pip install -q --python "$venv/bin/python" --no-deps \
     "$DATA"/zenodo/closureinvariants/x/nithyanandan-ClosureInvariants-*/ \
     "$DATA"/zenodo/basis/x/samlaihei-BASIS-*/
-  "$venv/bin/python" -c "import BASIS, ClosureInvariants, ehtim, bilby; print('basis env ok')"
+  "$venv/bin/python" -c "import BASIS, ClosureInvariants, ehtim, bilby, dynesty; print('basis env ok: bilby', bilby.__version__, 'dynesty', dynesty.__version__)"
 }
 
 [ $# -eq 0 ] && set -- data basis
