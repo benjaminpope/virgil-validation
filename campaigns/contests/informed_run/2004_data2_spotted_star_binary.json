@@ -8,7 +8,27 @@
  ],
  "resolution_mas": 0.9472986513710331,
  "field_mas": 13.669097325858104,
+ "channels": 1,
+ "chromatic": false,
+ "reference_wavelength_m": null,
+ "flux_spectra_fitted": 0,
  "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.0018380590481683612,
+  "median_phase_error_deg": 0.057624319568276405,
+  "implied_vis_residual": 0.009787335007832536,
+  "implied_phase_residual_deg": 0.3068391740597995
+ },
+ "residual_image": {
+  "chi2_red": 28.37331856826029,
+  "flux_relative_to_model": 0.00010101039459859606,
+  "npix": 29,
+  "pixel_scale_mas": 0.47364932568551654,
+  "field_mas": 13.73583044487998,
+  "converged": true,
+  "file": "2004_data2_spotted_star_binary_rest.npz"
+ },
+ "gp_disk": null,
  "rungs": [
   {
    "rung": "star",
@@ -18,9 +38,10 @@
    "chi2_red": 320.3910187706367,
    "bic": 104150.21640118625,
    "converged": true,
-   "starts": 8,
-   "starts_at_best": 4,
+   "starts": 4,
+   "starts_at_best": 3,
    "failed_starts": 0,
+   "errors": [],
    "values": {
     "star.diam": [
      5.911214409578377
@@ -40,37 +61,38 @@
    "rung": "star+companion",
    "k": 8,
    "n": 325,
-   "chi2": 17705.65923666798,
-   "chi2_red": 54.47895149743994,
-   "bic": 17751.929838126616,
+   "chi2": 17705.659404984297,
+   "chi2_red": 54.4789520153363,
+   "bic": 17751.930006442934,
    "converged": true,
-   "starts": 14,
+   "starts": 10,
    "starts_at_best": 3,
    "failed_starts": 0,
+   "errors": [],
    "values": {
     "companion.ddec": [
-     0.05427556240166709
+     0.05427556031099812
     ],
     "companion.diam": [
-     0.048028898418566474
+     0.04802934143902874
     ],
     "companion.dra": [
-     10.014046860966076
+     10.014046860374584
     ],
     "companion.flux": [
-     0.10701285361822226
+     0.10701285383320747
     ],
     "star.diam": [
-     5.398903104473544
+     5.398903128392583
     ],
     "star.pa": [
-     128.5795496209112
+     128.5795495629299
     ],
     "star.ratio": [
-     0.6328111244659289
+     0.6328111241224749
     ],
     "star.u": [
-     1.750166696393168e-05
+     1.7563203524260956e-05
     ]
    }
   },
@@ -78,54 +100,55 @@
    "rung": "star+companion+spot",
    "k": 12,
    "n": 325,
-   "chi2": 9214.957840664321,
-   "chi2_red": 28.353716432813297,
-   "bic": 9284.363742852278,
+   "chi2": 9214.95779755734,
+   "chi2_red": 28.35371630017643,
+   "bic": 9284.363699745296,
    "converged": true,
-   "starts": 14,
+   "starts": 10,
    "starts_at_best": 3,
    "failed_starts": 0,
+   "errors": [],
    "values": {
     "companion.ddec": [
-     -0.028759040212460008
+     -0.028760770382795897
     ],
     "companion.diam": [
-     0.048028553551897175
+     0.04802668089131318
     ],
     "companion.dra": [
-     10.0075057174003
+     10.007506859149657
     ],
     "companion.flux": [
-     0.10592470742189863
+     0.10592481453956457
     ],
     "spot.ddec": [
-     -2.1155857909019837
+     -2.115577378742579
     ],
     "spot.diam": [
-     1.2264203886418665
+     1.226471597319118
     ],
     "spot.dra": [
-     1.2038704324116485
+     1.203871504387989
     ],
     "spot.flux": [
-     0.08478835079100248
+     0.08478981874325778
     ],
     "star.diam": [
-     4.986539341159477
+     4.986536067976806
     ],
     "star.pa": [
-     115.67529700155501
+     115.67523330705058
     ],
     "star.ratio": [
-     0.668608956057126
+     0.6686095358707604
     ],
     "star.u": [
-     1.7499166176809915e-05
+     1.7549428658359118e-05
     ]
    }
   }
  ],
  "chosen": "star+companion+spot",
- "elapsed_s": 64.60430335998535,
+ "elapsed_s": 76.37368941307068,
  "smoke": false
 }

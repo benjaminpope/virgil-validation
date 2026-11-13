@@ -1,0 +1,256 @@
+{
+ "label": "2008_agb_K_evolved_star_with_surface_structure",
+ "task": 5,
+ "family": "evolved_star_with_surface_structure",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2008/2008-Contest1_K.oifits"
+ ],
+ "resolution_mas": 0.630005961225854,
+ "field_mas": 14.560197834903688,
+ "channels": 8,
+ "chromatic": true,
+ "reference_wavelength_m": 2.1749999632447725e-06,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.0011253788834437728,
+  "median_phase_error_deg": 0.12319588042932923,
+  "implied_vis_residual": 0.0013498320833685365,
+  "implied_phase_residual_deg": 0.14776690267500575
+ },
+ "residual_image": {
+  "chi2_red": 0.9236500462902629,
+  "flux_relative_to_model": 0.07947544132107107,
+  "npix": 46,
+  "pixel_scale_mas": 0.315002980612927,
+  "field_mas": 14.490137108194642,
+  "converged": false,
+  "file": "2008_agb_K_evolved_star_with_surface_structure_rest.npz"
+ },
+ "gp_disk": null,
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 2,
+   "n": 1000,
+   "chi2": 485697.30415651464,
+   "chi2_red": 485.69730415651463,
+   "bic": 485711.1196670726,
+   "converged": false,
+   "starts": 4,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "star.radius": [
+     2.363222743949801
+    ],
+    "star.u": [
+     0.9997206828666251
+    ]
+   }
+  },
+  {
+   "rung": "star+envelope",
+   "k": 5,
+   "n": 1000,
+   "chi2": 19602.663338751445,
+   "chi2_red": 19.602663338751444,
+   "bic": 19637.202115146356,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "envelope.flux.index": [
+     0.06791330603801882
+    ],
+    "envelope.flux.ratio": [
+     5.242469583245721
+    ],
+    "envelope.sigma": [
+     1.2677301188037366
+    ],
+    "star.radius": [
+     0.7430317352299487
+    ],
+    "star.u": [
+     0.0064487586083140005
+    ]
+   }
+  },
+  {
+   "rung": "surface degree 1+envelope",
+   "k": 8,
+   "n": 1000,
+   "chi2": 6393.750573389271,
+   "chi2_red": 6.393750573389271,
+   "bic": 6449.012615621128,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "envelope.flux.index": [
+     0.11673217835210714
+    ],
+    "envelope.flux.ratio": [
+     5.646615904165287
+    ],
+    "envelope.sigma": [
+     1.1564459515334922
+    ],
+    "star.radius": [
+     1.0315652075303783
+    ],
+    "star.u": [
+     0.9662323891031079
+    ],
+    "star.y0": [
+     0.7839907884361168
+    ],
+    "star.y1": [
+     1.126709405909935
+    ],
+    "star.y2": [
+     1.7802723515509713
+    ]
+   }
+  },
+  {
+   "rung": "surface degree 2+envelope",
+   "k": 13,
+   "n": 1000,
+   "chi2": 4131.3078963292555,
+   "chi2_red": 4.131307896329256,
+   "bic": 4221.1087149560235,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "envelope.flux.index": [
+     -0.2548944850057895
+    ],
+    "envelope.flux.ratio": [
+     6.098445973115939
+    ],
+    "envelope.sigma": [
+     1.2167216830240188
+    ],
+    "star.radius": [
+     1.1552446482202123
+    ],
+    "star.u": [
+     0.008436552323751146
+    ],
+    "star.y0": [
+     -0.5072856994791717
+    ],
+    "star.y1": [
+     -0.5857775941107397
+    ],
+    "star.y2": [
+     0.16727697507828096
+    ],
+    "star.y3": [
+     -0.28646885948410955
+    ],
+    "star.y4": [
+     0.14593656820522602
+    ],
+    "star.y5": [
+     0.7757811593812718
+    ],
+    "star.y6": [
+     0.4594126833131435
+    ],
+    "star.y7": [
+     0.338154016702756
+    ]
+   }
+  },
+  {
+   "rung": "surface degree 3+envelope",
+   "k": 20,
+   "n": 1000,
+   "chi2": 1438.67258943935,
+   "chi2_red": 1.4386725894393502,
+   "bic": 1576.827695018993,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "envelope.flux.index": [
+     -0.35133883261663
+    ],
+    "envelope.flux.ratio": [
+     8.58254670028597
+    ],
+    "envelope.sigma": [
+     1.2873974603385538
+    ],
+    "star.radius": [
+     1.791359129829037
+    ],
+    "star.u": [
+     0.9977702099961304
+    ],
+    "star.y0": [
+     -0.6596071841982564
+    ],
+    "star.y1": [
+     -1.021855308558789
+    ],
+    "star.y10": [
+     -0.3106942107742658
+    ],
+    "star.y11": [
+     0.057964143700355346
+    ],
+    "star.y12": [
+     -0.11561735595415688
+    ],
+    "star.y13": [
+     0.028441056035193375
+    ],
+    "star.y14": [
+     -0.03430308779611978
+    ],
+    "star.y2": [
+     -0.4512239320029297
+    ],
+    "star.y3": [
+     -0.01044834762372146
+    ],
+    "star.y4": [
+     0.6724441182217646
+    ],
+    "star.y5": [
+     0.3941869794875601
+    ],
+    "star.y6": [
+     0.37247229696248346
+    ],
+    "star.y7": [
+     -0.09376723348891314
+    ],
+    "star.y8": [
+     0.04802621256282409
+    ],
+    "star.y9": [
+     0.019446563549028975
+    ]
+   }
+  }
+ ],
+ "chosen": "surface degree 3+envelope",
+ "elapsed_s": 209.5455665588379,
+ "smoke": false
+}

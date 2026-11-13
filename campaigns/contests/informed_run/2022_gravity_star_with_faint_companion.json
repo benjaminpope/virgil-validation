@@ -1,0 +1,121 @@
+{
+ "label": "2022_gravity_star_with_faint_companion",
+ "task": 10,
+ "family": "star_with_faint_companion",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2022/c_imaging_contest1.fits"
+ ],
+ "resolution_mas": 1.5396240503287992,
+ "field_mas": 47.4420284334423,
+ "channels": 11,
+ "chromatic": true,
+ "reference_wavelength_m": 2.1999999262334313e-06,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.0005838724336865297,
+  "median_phase_error_deg": 0.009059421487695195,
+  "implied_vis_residual": 0.03869359589057206,
+  "implied_phase_residual_deg": 0.6003735984484624
+ },
+ "residual_image": {
+  "chi2_red": 2883.9351925016767,
+  "flux_relative_to_model": 0.2062996011643039,
+  "npix": 62,
+  "pixel_scale_mas": 0.7698120251643996,
+  "field_mas": 47.72834556019278,
+  "converged": true,
+  "file": "2022_gravity_star_with_faint_companion_rest.npz"
+ },
+ "gp_disk": null,
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 1,
+   "n": 1485,
+   "chi2": 677855679.4441402,
+   "chi2_red": 456468.471006155,
+   "bic": 677855686.7473103,
+   "converged": true,
+   "starts": 4,
+   "starts_at_best": 4,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "star.diam": [
+     6.158496201315189
+    ]
+   }
+  },
+  {
+   "rung": "star+halo",
+   "k": 4,
+   "n": 1485,
+   "chi2": 12751307.855097191,
+   "chi2_red": 8586.739296361746,
+   "bic": 12751337.067777397,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "halo.flux.index": [
+     -0.6292219836386765
+    ],
+    "halo.flux.ratio": [
+     4.96600873352528
+    ],
+    "halo.sigma": [
+     6.085881691431627
+    ],
+    "star.diam": [
+     1.4040690093400898
+    ]
+   }
+  },
+  {
+   "rung": "star+halo+companion",
+   "k": 8,
+   "n": 1485,
+   "chi2": 6521818.28544412,
+   "chi2_red": 4391.796825214896,
+   "bic": 6521876.7108045295,
+   "converged": true,
+   "starts": 10,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "companion.ddec": [
+     -6.6617391242721595
+    ],
+    "companion.dra": [
+     -5.400597746964948
+    ],
+    "companion.flux.index": [
+     0.12951186188693242
+    ],
+    "companion.flux.ratio": [
+     0.8548170921461735
+    ],
+    "halo.flux.index": [
+     -1.4849426425498802
+    ],
+    "halo.flux.ratio": [
+     3.2063169943082706
+    ],
+    "halo.sigma": [
+     5.369888477294466
+    ],
+    "star.diam": [
+     3.5671705598184684
+    ]
+   }
+  }
+ ],
+ "chosen": "star+halo+companion",
+ "elapsed_s": 57.76509237289429,
+ "smoke": false
+}

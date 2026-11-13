@@ -1,0 +1,112 @@
+{
+ "label": "2022_ami_star_with_faint_companion",
+ "task": 11,
+ "family": "star_with_faint_companion",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2022/c_imaging_contest2.fits"
+ ],
+ "resolution_mas": 74.919411708424,
+ "field_mas": 599.5305058668067,
+ "channels": 1,
+ "chromatic": false,
+ "reference_wavelength_m": null,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.00033339432862203235,
+  "median_phase_error_deg": 2.0549910477735312e-05,
+  "implied_vis_residual": 0.39306614068781826,
+  "implied_phase_residual_deg": 0.024227988629407594
+ },
+ "residual_image": {
+  "chi2_red": 10609.99419318993,
+  "flux_relative_to_model": 1.9999990937006689,
+  "npix": 16,
+  "pixel_scale_mas": 37.459705854212,
+  "field_mas": 599.355293667392,
+  "converged": true,
+  "file": "2022_ami_star_with_faint_companion_rest.npz"
+ },
+ "gp_disk": null,
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 1,
+   "n": 36,
+   "chi2": 115866826.80926427,
+   "chi2_red": 3218522.9669240075,
+   "bic": 115866830.39278321,
+   "converged": true,
+   "starts": 4,
+   "starts_at_best": 4,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "star.diam": [
+     83.41107275328649
+    ]
+   }
+  },
+  {
+   "rung": "star+halo",
+   "k": 3,
+   "n": 36,
+   "chi2": 110561456.95828064,
+   "chi2_red": 3071151.5821744623,
+   "bic": 110561467.70883745,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 3,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "halo.flux": [
+     0.22005615228830697
+    ],
+    "halo.sigma": [
+     83.7689292787506
+    ],
+    "star.diam": [
+     3.746242500773759
+    ]
+   }
+  },
+  {
+   "rung": "star+halo+companion",
+   "k": 6,
+   "n": 36,
+   "chi2": 50040006.166223325,
+   "chi2_red": 1390000.1712839813,
+   "bic": 50040027.667336956,
+   "converged": true,
+   "starts": 10,
+   "starts_at_best": 4,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "companion.ddec": [
+     -578.4385896528006
+    ],
+    "companion.dra": [
+     462.2740501391288
+    ],
+    "companion.flux": [
+     0.02633224974950652
+    ],
+    "halo.flux": [
+     0.16209247353494607
+    ],
+    "halo.sigma": [
+     92.70670478630984
+    ],
+    "star.diam": [
+     3.7459707026557463
+    ]
+   }
+  }
+ ],
+ "chosen": "star+halo+companion",
+ "elapsed_s": 24.352259159088135,
+ "smoke": false
+}
