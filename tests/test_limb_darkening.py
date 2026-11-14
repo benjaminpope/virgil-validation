@@ -306,7 +306,7 @@ def test_render_matches_our_image():
 
 
 @pytest.mark.x64
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"], headline="max_abs_dV2")
 def test_pixel_image_through_oifits(tmp_path):
     """Item 2 of Issue #12: our image of an off-centre limb-darkened star
     (8x oversampled pixels) with a companion, written to OIFITS; virgil's

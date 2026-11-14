@@ -395,7 +395,7 @@ def test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model(case):
     assert case["info"]["taper_dtype"] == "torch.float32"  # GaussConvFourier's buffer: part of the measured error
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.models.Image", roots=["mpol", "mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.models.Image", roots=["mpol", "mathematics"], headline="rel_l2_mpol_sparse_vs_virgil")
 def test_mpol_with_its_accurate_nufft_agrees_to_1e_5(case):
     """With `sparse_matrices=True`, MPoL's own more accurate option, the same model matches the
     exact DFT and virgil to 1e-5: the 6e-4 above is table interpolation, so every convention in the map
@@ -461,7 +461,7 @@ def test_objective_agrees_and_each_equals_its_own_loss_formula(case):
 GRADIENT_KEYS = ("base_cube", "log10_sigma", "log10_amp", "delta_ra", "delta_dec")
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", "virgil.models.Image", roots=["mpol", "mathematics"])
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", "virgil.models.Image", roots=["mpol", "mathematics"], headline="rel_l2_grad_base_cube_mpol_vs_virgil")
 def test_gradients_of_the_objective_agree_with_respect_to_the_pixels_and_every_nuisance(case):
     """d(-ln L)/d(parameter) for the 65,536 base-cube pixels (packed layout, through the softplus and the
     orientation map), 26 sigma factors, 6 amplitude factors and 12 offsets: torch autograd through the

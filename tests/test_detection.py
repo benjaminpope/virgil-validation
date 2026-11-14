@@ -97,7 +97,7 @@ def trapezoid_log_weights(n):
     return np.log(w / w.sum())
 
 
-@pytest.mark.validates("virgil.detection.detection_statistics", roots=["mathematics"])
+@pytest.mark.validates("virgil.detection.detection_statistics", roots=["mathematics"], headline="abs_ddelta_chi2")
 def test_detection_statistics_rebuilt_on_the_grid(dataset):
     kind, data, d = dataset
     with np.errstate(all="ignore"):
