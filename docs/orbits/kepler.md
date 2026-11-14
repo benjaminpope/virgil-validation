@@ -1,6 +1,6 @@
 # Orbits
 
-`tests/test_orbits_more.py`, against our own textbook Kepler code
+`tests/test_orbits_more.py` and `tests/test_standalone_nodes.py`, against our own textbook Kepler code
 (`crosscheck.orbits`: Newton's method on Kepler's equation and the
 visual-binary projection) and SciPy. orbitize! covers `KeplerOrbit`,
 `ThieleInnesOrbit`, `StateVectorOrbit`, `RVData` and the posterior
@@ -13,6 +13,7 @@ visual-binary projection) and SciPy. orbitize! covers `KeplerOrbit`,
 | `orientation_from_varpi`, `orientation_priors` | ϖ = Ω + ω; Ω in [0°, 180°) from 2Ω; the documented keys | Mathematics | 1e-9 |
 | `position_angle_log_jacobian` | log\|∂M/∂θ\| by finite differences of our projection; integral over a turn is 2π | Mathematics | 1e-6; 1e-8 |
 | `starting_orbits` | each grid point's χ² equals our own weighted least squares in the unit orbit (X, Y); the best orbit is the one the positions came from | Mathematics | 1e-8 |
+| `period_grid` | uniform spacing in frequency 1/P from `p_min` to `p_max` with Δ(1/P) ≤ 1/(kT), bounding phase drift over baseline T to ≤ 1/k cycles; control: log-spaced periods violate the short-period bound | Mathematics | 3e-13 |
 | `models.Attached` (a companion on an orbit) | the static binary with the companion at our orbit position, at three times | Mathematics | 1e-12 |
 
 ## The position angle prior

@@ -1,6 +1,6 @@
 # Priors, angles and the MAP
 
-This page checks virgil's default priors against closed forms, quadrature and sampling tests (`tests/test_priors_angles.py`).
+This page checks virgil's default priors against closed forms, quadrature and sampling tests (`tests/test_priors_angles.py`, `tests/test_standalone_nodes.py`).
 The defaults are Jeffreys (invariant) measures, and `fit` optimizes each in the coordinate where it
 is flat ("Priors and the MAP" in virgil's conventions).
 
@@ -10,6 +10,7 @@ is flat ("Priors and the MAP" in virgil's conventions).
 | `IsotropicLatitude` (∝ cos lat, radians) | the same | Mathematics + Statistics | 1e-8 |
 | their flat coordinates | the CDF is affine in cos i and in sin lat | Mathematics | 1e-12 |
 | `AngleVector`: uniform, von Mises and axial, two ring widths | normalised over the plane; the angle's marginal is the stated density (SciPy's von Mises); half the squared residuals is −log p up to a constant; samples' angles and radii (KS) | Mathematics + Statistics | 1e-6 (quadrature), 1e-10 |
+| `PopulationScale`, `hierarchical_scales` | centred (`log s_k ~ 𝒩(log median, spread²)`) and non-centred (`s_k = median · exp(spread · z_k)`, zero population `log_prior`) parameterizations, quadrature normalization, and KS on 6 000 samples; controls: unlogged `median` and double-counted `z_k` density fail | Mathematics + Statistics | 1e-14 (density), 1e-11 (norm) |
 | `fit` with `LogUniform` priors on a diameter and a flux | the likelihood maximum by direct (Nelder–Mead) search on the same residuals | Mathematics | MAP within 1e-3 σ of it |
 | control: a tight `Normal` prior | — | Mathematics | moves the MAP, as it should (no flat coordinate) |
 

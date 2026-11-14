@@ -76,6 +76,7 @@ nodes:
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image.model_on_grid: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image]}
   virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
+  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
   virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Rotated: {layer: models, source: [src/virgil/models.py], convention: [rotation_sense]}
@@ -115,6 +116,7 @@ nodes:
     doc: models/limb_darkening.md#elliptical-disks
   virgil.spectra.Spectrum: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.flux_at: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
+  virgil.spectra.Scaled: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md}
   virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
@@ -205,6 +207,12 @@ nodes:
     depends: [virgil.likelihood.whitened_residuals]
   virgil.priors.IsotropicInclination: {layer: priors, source: [src/virgil/priors.py]}
   virgil.priors.IsotropicLatitude: {layer: priors, source: [src/virgil/priors.py]}
+  virgil.priors.PopulationScale: {layer: priors, source: [src/virgil/priors.py], doc: likelihood/priors.md}
+  virgil.priors.hierarchical_scales:
+    layer: priors
+    source: [src/virgil/priors.py]
+    depends: [virgil.priors.PopulationScale]
+    doc: likelihood/priors.md
   virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py], doc: likelihood/priors.md}
   virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
   virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
@@ -411,6 +419,13 @@ nodes:
     doc: inference/helpers.md
   virgil.inference.gaussian_fisher: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.fisher_projection: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.expected_fisher: {layer: inference, source: [src/virgil/inference.py], depends: [], doc: inference/helpers.md}
+  virgil.inference.objective_laplace_covariance: {layer: inference, source: [src/virgil/inference.py], depends: [], doc: inference/helpers.md}
+  virgil.inference.observed_information:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.likelihood.model_loglike, virgil.likelihood.build_model]
+    doc: inference/helpers.md
   virgil.inference.laplace_parameter_uncertainty:
     layer: inference
     source: [src/virgil/inference.py]
@@ -516,6 +531,7 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.period_grid: {layer: orbits, source: [src/virgil/orbits.py], doc: orbits/kepler.md}
   virgil.orbits.total_mass:
     layer: orbits
     source: [src/virgil/orbits.py]
