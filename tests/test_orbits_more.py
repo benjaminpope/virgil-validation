@@ -30,7 +30,8 @@ import pytest
 from astropy import units as u
 from scipy import integrate, optimize, special, stats
 
-from crosscheck import orbits as co, sky
+from crosscheck import orbits as co
+from crosscheck import sky
 from evidence.plugin import record
 
 vo = pytest.importorskip("virgil.orbits")
@@ -84,7 +85,12 @@ def _pa_sep(dra, ddec):
     return np.rad2deg(np.arctan2(dra, ddec)) % 360, np.hypot(dra, ddec)
 
 
-@pytest.mark.validates("virgil.orbits.PositionData", roots=["mathematics", "statistics"], property="likelihood")
+@pytest.mark.validates(
+    "virgil.orbits.PositionData",
+    roots=["mathematics", "statistics"],
+    property="likelihood",
+    headline="dloglike_cov",
+)
 def test_position_likelihood_is_the_gaussian_density():
     """PositionData.loglike, from separations and position angles and from a
     correlated covariance, against SciPy's multivariate normal density of our
@@ -165,7 +171,12 @@ def circ(x, period=360.0):
     return min(r, period - r)
 
 
-@pytest.mark.validates("virgil.orbits.orientation_from_varpi", "virgil.orbits.orientation_priors", roots=["mathematics"])
+@pytest.mark.validates(
+    "virgil.orbits.orientation_from_varpi",
+    "virgil.orbits.orientation_priors",
+    roots=["mathematics", "statistics"],
+    headline="abs_mean_cos2i_minus_third",
+)
 def test_orientation_bookkeeping():
     rng = np.random.default_rng(1)
     for varpi, Omega in rng.uniform(0, 360, (20, 2)):
@@ -177,6 +188,16 @@ def test_orientation_bookkeeping():
     priors = vo.orientation_priors()
     assert set(priors) == {"two_Omega", "varpi"}
     assert set(vo.orientation_priors(positions_only=False, prefix="orbit.")) == {"orbit.Omega", "orbit.varpi"}
+    with_inc = vo.orientation_priors(inclination=True, prefix="orbit.")
+    assert set(with_inc) == {"orbit.two_Omega", "orbit.varpi", "orbit.inc"}
+    inc_draws = np.asarray(with_inc["orbit.inc"].sample(jax.random.key(42), (40000,)))
+    cos_i = np.cos(np.deg2rad(inc_draws))
+    cos2_err = abs(float(np.mean(cos_i**2)) - 1.0 / 3.0)
+    ks_p = float(stats.kstest(cos_i, "uniform", args=(-1.0, 2.0)).pvalue)
+    record("abs_mean_cos2i_minus_third", cos2_err)
+    record("isotropic_inc_ks_pvalue", ks_p)
+    assert cos2_err < 4.0 * np.sqrt(4.0 / 45.0 / cos_i.size)
+    assert ks_p > 1e-3
     with pytest.raises(ValueError):
         vo.orientation_from_varpi(10.0)
 
