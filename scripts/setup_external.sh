@@ -50,6 +50,9 @@ for name in "$@"; do
     uv pip install -q --python "$ROOT/.venv-$name/bin/python" --no-deps visread==0.0.5
   fi
   if [ "$name" = alma ]; then
+    if [ "$(uname)" = Linux ] && command -v patchelf >/dev/null 2>&1; then
+      find "$ROOT/.venv-alma" -path '*casatools*/*.so*' -exec patchelf --clear-execstack {} + 2>/dev/null || true
+    fi
     site=$("$ROOT/.venv-alma/bin/python" -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
     cat > "$ROOT/.venv-alma/casasiteconfig.py" <<EOF
 import os

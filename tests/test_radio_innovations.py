@@ -105,7 +105,7 @@ def test_probe_estimate_is_within_its_stated_stochastic_error_of_the_exact_diago
 
 
 @needs_diag
-@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"])
+@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"], headline="max_rel_error_entropy_metric")
 @pytest.mark.parametrize("weight", [1e-3, 1.0, 1e3])
 def test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric(weight):
     """With MaxEntropy(weight) the diagonal on the image pixels is the data's curvature plus the Skilling-Bryan
@@ -120,6 +120,7 @@ def test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skillin
     data_gn = ri.gn_diagonal(p["u"], p["v"], p["weight"], p["eta"], p["pixel"], p["flux"])
     b = ri.softmax_image(p["eta"])
     err = np.abs(got / (ref + data_gn) - 1).max()
+    record("max_rel_error_entropy_metric", err)
     record(f"max_rel_error_entropy_metric_w{weight:g}", err)
     record(f"max_rel_difference_from_w_b_w{weight:g}", np.abs((got - data_gn) / (weight * b) - 1).max())
     assert err < 1e-6
@@ -179,7 +180,7 @@ def margin():
 
 
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_rel_error")
 @pytest.mark.parametrize("where", ["half", "at_margin"])
 @pytest.mark.parametrize("offsets", [[[3.1, -2.2], [-1.7, 4.4]], [[20.0, 0.0], [0.0, -20.0]], [[14.1, 14.1], [-14.1, 14.1]]],
                          ids=["few_mas", "axis_bound", "diagonal_bound"])
@@ -193,6 +194,7 @@ def test_free_offsets_chi2_equals_the_direct_dft_chi2_up_to_the_documented_bound
     tdata = case["data"].toeplitz(case["template"], case["nuis"], offsets="spread", max_offset_mas=OFFSET_BOUND)
     got, ref = _chi2_both_ways(case, tdata)
     err = np.abs(got / ref - 1).max()
+    record("max_rel_error", err)
     record(f"max_rel_error_{where}_{'-'.join(f'{abs(x):g}' for x in np.ravel(offsets))}", err)
     assert tdata.nyquist_fraction == pytest.approx(fraction, abs=1e-3)
     assert err < 1e-12
@@ -246,7 +248,7 @@ def _delta_problem(seed=4, npix=16, n=3000, pixel=5.0, noise=1e-3):
     return ri.DeltaProblem(dft, z_ref, vis, np.full(n, 1.0 / sigma**2)), rng
 
 
-@pytest.mark.validates("crosscheck.radio_innovations.DeltaProblem", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.radio_innovations.DeltaProblem", roots=["mathematics"], kind="reference", headline="delta_loss_error_over_scale")
 @pytest.mark.parametrize("step", [1e-2, 1e-3, 1e-4, 1e-5, 1e-6])
 def test_float32_delta_loss_matches_the_float64_chi2_difference(step):
     """3000 points, 16 x 16 image, steps of 1e-2 to 1e-6 in the log-brightness about a float64 reference: the
@@ -260,6 +262,7 @@ def test_float32_delta_loss_matches_the_float64_chi2_difference(step):
     scale = problem.absolute_scale(z)
     delta_err = abs(problem.delta_chi2_float32(z) - exact) / scale
     naive_err = abs(problem.naive_delta_float32(z) - exact) / scale
+    record("delta_loss_error_over_scale", delta_err)
     record(f"delta_loss_error_over_scale_step{step:g}", delta_err)
     record(f"naive_float32_error_over_scale_step{step:g}", naive_err)
     assert delta_err < 1e-6

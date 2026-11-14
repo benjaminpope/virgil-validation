@@ -39,11 +39,13 @@ def record(name, value):
     """Record a number with the evidence of the running test, e.g. the
     largest difference an assertion checked. Usable from helpers that have
     no access to fixtures."""
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"metric {name!r} must be finite, got {value!r}")
     item = _CONFIG.get("item")
     if item is None:
         return value
-    value = float(value)
-    item.user_properties.append((name, value if math.isfinite(value) else str(value)))
+    item.user_properties.append((name, value))
     return value
 
 
@@ -225,7 +227,9 @@ def metric(record_property):
 
     def record(name, value):
         value = float(value)
-        record_property(name, value if math.isfinite(value) else str(value))
+        if not math.isfinite(value):
+            raise ValueError(f"metric {name!r} must be finite, got {value!r}")
+        record_property(name, value)
         return value
 
     return record

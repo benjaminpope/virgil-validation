@@ -207,8 +207,20 @@ def roots_of(record, golden):
 def changed_files(virgil, commit, paths):
     """Files under ``paths`` changed in virgil between ``commit`` and
     origin/main ([] if none, None if that cannot be told)."""
-    if virgil is None or commit is None or not paths:
+    if virgil is None or commit is None:
         return None
+    if not paths:
+        try:
+            ok = all(
+                subprocess.run(
+                    ["git", "-C", str(virgil), "rev-parse", "--verify", f"{ref}^{{commit}}"],
+                    capture_output=True,
+                ).returncode == 0
+                for ref in (commit, "origin/main")
+            )
+        except OSError:
+            return None
+        return [] if ok else None
     try:
         out = subprocess.run(
             ["git", "-C", str(virgil), "diff", "--name-only", commit, "origin/main", "--", *paths],
@@ -443,6 +455,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         good = [r for r in counted if r["outcome"] == "passed"]
         strong, weak, blocked_roots, blocked_by = set(), set(), set(), set()
         prop_roots = collections.defaultdict(set)
+        prop_roots_all = collections.defaultdict(set)
         for r in good:
             s_, w_ = roots_of(r, golden)
             untrusted = set()
@@ -452,9 +465,12 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                 strong |= s_
                 for prop in r.get("properties", []):
                     prop_roots[prop] |= s_
+                    prop_roots_all[prop] |= s_
             elif r["kind"] in agreeing:
                 blocked_roots |= s_
                 blocked_by |= untrusted
+                for prop in r.get("properties", []):
+                    prop_roots_all[prop] |= s_
             weak |= w_ | (s_ if r["kind"] not in agreeing else set())
         strong, weak = sorted(strong), sorted(weak - set(strong))
         need = node.get("roots", 1)
@@ -469,7 +485,12 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         elif len(strong) >= need and not external_open.get(name):
             status = "ok"
         elif len(set(strong) | blocked_roots) >= need and not external_open.get(name):
-            status = "ok-via"  # its checks pass, but through reference code not yet verified
+            if properties_short(name, prop_roots_all):
+                status = "partly"
+            elif unconfirmed_conventions(name, prop_roots_all):
+                status = "convention"
+            else:
+                status = "ok-via"  # its checks pass, but through reference code not yet verified
         elif strong or weak or blocked_roots:
             status = "partly"
         else:
@@ -531,13 +552,17 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             found |= problems(dep, seen)
         return found
 
-    def changed_below(name, seen):
+    def changed_below(name, seen, caller_commits=()):
         """virgil files changed under this part or anything it relies on."""
         found = set(own[name]["changed"] or [])
         for dep in nodes[name].get("depends", []):
             if dep in nodes and dep not in seen:
                 seen.add(dep)
-                found |= changed_below(dep, seen)
+                if own[dep]["changed"] is None and not own[dep]["commits"] and caller_commits:
+                    dep_changes = [changed_files(virgil, c, nodes[dep].get("source", [])) for c in caller_commits]
+                    if dep_changes and not any(c is None for c in dep_changes):
+                        found |= {f for c in dep_changes for f in c}
+                found |= changed_below(dep, seen, caller_commits)
         return found
 
     out_nodes = {}
@@ -550,7 +575,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         if verdict == "ok":
             if not causes:
                 verdict = "verified"
-            elif any(own.get(c, {}).get("status") == "bug" for c in causes):
+            elif any(own.get(c, {}).get("status") in {"bug", "failing"} for c in causes):
                 verdict = "relies"
             else:
                 verdict = "relies-unverified"
@@ -568,7 +593,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "depends": node.get("depends", []), "dependents": dependents,
             "properties": o["properties"], "unconfirmed": o["unconfirmed"],
             "checks": o["checks"], "commits": o["commits"],
-            "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set())),
+            "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set(), o["commits"])),
             "skipped": o["skipped"],
             "source": node.get("source", []),
         }
@@ -579,7 +604,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         bad = [r for r in recs if r["outcome"] in BAD]
         good = [r for r in recs if r["outcome"] == "passed"]
         unverified = [s for s in p["steps"] if out_nodes.get(s, {}).get("verdict") != "verified"]
-        if bad:
+        step_failing = any(out_nodes.get(s, {}).get("verdict") == "failing" for s in p["steps"])
+        if bad or step_failing:
             status = "failing"
         elif good and not unverified:
             status = "validated"

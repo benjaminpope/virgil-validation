@@ -544,3 +544,125 @@ def test_no_failure_badge_when_the_same_commit_failed_or_the_other_commit_passed
     ok = evidence(tmp_path, "ok.jsonl", [record("t::x", "virgil.a")], date="2026-10-01", commit=old)
     _, model = verdicts(trust, tmp_path, None, files=[ok, second])
     assert model["fails_elsewhere"] == [] and model["nodes"]["virgil.a"]["fails_elsewhere"] == []
+
+
+def test_ok_via_does_not_mask_missing_property_roots_or_unconfirmed_conventions(trust, tmp_path):
+    """A part checked through an unverified ``via`` reference must still satisfy its own ``properties`` and
+    ``convention`` requirements when ``blocked_roots`` are counted; only once those hold may it become ``ok-via``."""
+    graph = {
+        "nodes": {
+            "crosscheck.r": {"layer": "references"},
+            "virgil.prop": {"layer": "models", "roots": 2, "properties": {"sense": 2}},
+            "virgil.conv": {"layer": "models", "convention": ["sense"]},
+        }
+    }
+    recs = [
+        record("t::p1", "virgil.prop", roots=["mathematics"], via=["crosscheck.r"], properties=["sense"]),
+        record("t::p2", "virgil.prop", roots=["pmoired"], via=["crosscheck.r"]),
+        record("t::c1", "virgil.conv", roots=["mathematics"], via=["crosscheck.r"], properties=["sense"]),
+    ]
+    got, _ = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.prop"] == "partly"
+    assert got["virgil.conv"] == "convention"
+
+    recs[1]["properties"] = ["sense"]
+    recs[2]["roots"] = ["pmoired"]
+    got, _ = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.prop"] == "relies-unverified"
+    assert got["virgil.conv"] == "relies-unverified"
+
+
+def test_upstream_failing_dependency_marks_dependent_relies_not_relies_unverified(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "virgil.a": {"layer": "models", "depends": ["virgil.b"]},
+            "virgil.b": {"layer": "models"},
+        }
+    }
+    recs = [record("t::a", "virgil.a"), record("t::b", "virgil.b", outcome="failed")]
+    got, model = verdicts(trust, tmp_path, recs, graph)
+    assert got == {"virgil.a": "relies", "virgil.b": "failing"}
+    assert model["nodes"]["virgil.a"]["because"] == [{"id": "virgil.b", "findings": [], "status": "failing"}]
+
+
+def test_changed_below_propagates_through_unchecked_dependencies_and_empty_source_callers(trust, tmp_path):
+    repo = tmp_path / "virgil"
+    repo.mkdir()
+    env = ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"]
+    (repo / "src" / "virgil").mkdir(parents=True)
+    (repo / "src" / "virgil" / "leaf.py").write_text("x = 1\n")
+    for cmd in (["init", "-q"], ["add", "."], [*env, "commit", "-q", "-m", "old"]):
+        subprocess.run(["git", "-C", str(repo), *cmd], check=True, capture_output=True)
+    old = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    (repo / "src" / "virgil" / "leaf.py").write_text("x = 2\n")
+    for cmd in (["add", "."], [*env, "commit", "-q", "-m", "new"]):
+        subprocess.run(["git", "-C", str(repo), *cmd], check=True, capture_output=True)
+    new = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    subprocess.run(["git", "-C", str(repo), "update-ref", "refs/remotes/origin/main", new], check=True, capture_output=True)
+
+    graph = {
+        "nodes": {
+            "virgil.top": {"layer": "imaging", "source": [], "depends": ["virgil.mid"]},
+            "virgil.mid": {"layer": "models", "source": [], "depends": ["virgil.leaf"]},
+            "virgil.leaf": {"layer": "data", "source": ["src/virgil/leaf.py"]},
+        }
+    }
+    path = evidence(tmp_path, "e.jsonl", [record("t::top", "virgil.top")], commit=old)
+    runs, recs = trust.load_evidence([path], virgil=repo)
+    model = trust.build(graph, [], recs, runs, virgil=repo, golden=set())
+    assert model["nodes"]["virgil.top"]["changed"] == ["src/virgil/leaf.py"]
+    assert model["nodes"]["virgil.leaf"]["changed"] is None  # unchecked itself: no commit of its own
+    assert model["changed"] == 1
+
+
+def test_pipeline_with_failing_step_is_failing_while_bug_step_keeps_passes(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "virgil.fail_step": {"layer": "data"},
+            "virgil.bug_step": {"layer": "likelihood"},
+        },
+        "pipelines": {
+            "p_fail": {"title": "Fail step", "steps": ["virgil.fail_step"]},
+            "p_bug": {"title": "Bug step", "steps": ["virgil.bug_step"]},
+        },
+    }
+    ledger = [{"id": "F1", "ruling": "virgil", "status": "open", "objects": ["virgil.bug_step"]}]
+    recs = [
+        record("t::fs", "virgil.fail_step", outcome="failed"),
+        record("t::bs", "virgil.bug_step"),
+        record("t::pf", "pipeline:p_fail"),
+        record("t::pb", "pipeline:p_bug"),
+    ]
+    _, model = verdicts(trust, tmp_path, recs, graph=graph, ledger=ledger)
+    by_id = {p["id"]: p["status"] for p in model["pipelines"]}
+    assert by_id == {"p_fail": "failing", "p_bug": "passes"}
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_evidence_record_and_metric_fixture_reject_non_finite_values(bad):
+    from evidence import plugin
+
+    with pytest.raises(ValueError, match="finite"):
+        plugin.record("err", bad)
+    recorded = []
+    inner = plugin.metric.__wrapped__(lambda k, v: recorded.append((k, v)))
+    assert inner("ok", 1.25) == 1.25 and recorded == [("ok", 1.25)]
+    with pytest.raises(ValueError, match="finite"):
+        inner("err", bad)
+
+
+def test_trust_diff_reports_pipeline_status_changes(tmp_path):
+    spec = importlib.util.spec_from_file_location("trust_diff", ROOT / "scripts" / "trust_diff.py")
+    td = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(td)
+    before = {
+        "nodes": {"virgil.a": {"verdict": "unchecked", "strong": []}},
+        "pipelines": [{"id": "contest-imaging", "status": "passes", "unverified": ["virgil.fitting.fit"]}],
+    }
+    after = {
+        "nodes": {"virgil.a": {"verdict": "verified", "strong": ["mathematics"]}},
+        "pipelines": [{"id": "contest-imaging", "status": "running", "unverified": ["virgil.fitting.fit"]}],
+    }
+    rows = td.diff_rows(before, after)
+    assert any("`virgil.a`" in r and "unchecked" in r and "verified" in r for r in rows)
+    assert any("`pipeline:contest-imaging`" in r and "passes" in r and "running" in r for r in rows)
