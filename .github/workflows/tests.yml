@@ -39,8 +39,19 @@ jobs:
           uv pip install --python .venv/bin/python -e ".[external,polar-disk]" \
             "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref" \
             "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti@$vlti_ref"
-          if [ "$(uname)" = Linux ] && command -v patchelf >/dev/null 2>&1; then
-            find .venv -path '*casatools*/*.so*' -exec patchelf --clear-execstack {} + 2>/dev/null || true
+          if [ "$(uname)" = Linux ] && [ "$(uname -m)" = x86_64 ]; then
+            # casatools' manylinux_2_34 wheel links Rocky 9's libssl.so.3 (requiring Red Hat's
+            # OPENSSL_3.0.1 symbol version) against Ubuntu's system libcrypto.so.3; manylinux_2_28
+            # bundles a self-contained OpenSSL 1.1 pair in casatools.libs/.
+            uv pip install --no-deps --python .venv/bin/python --reinstall-package casatools \
+              --python-platform x86_64-manylinux_2_28 "casatools>=6.6"
+          fi
+          if [ "$(uname)" = Linux ] && command -v patchelf >/dev/null 2>&1 && command -v readelf >/dev/null 2>&1; then
+            while IFS= read -r so; do
+              if readelf -W -l "$so" 2>/dev/null | grep -q 'GNU_STACK.*RWE'; then
+                patchelf --clear-execstack "$so" || true
+              fi
+            done < <(find .venv -path '*casatools*/*.so*')
           fi
       - name: imaging-contest data cache
         uses: actions/cache@v4
