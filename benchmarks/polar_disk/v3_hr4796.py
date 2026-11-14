@@ -48,7 +48,7 @@ from common import save
 from crosscheck import radial as R
 from external_bridge.safe_load import load_object_npy
 from external_bridge.radial_codes import quiet
-from virgil import GaussianRing, PolarDisk
+from virgil import GaussianRing, MultipoleDisk
 
 DATA = pathlib.Path(os.environ.get("V3_DATA", pathlib.Path.home() / "data" / "polar_disk_v3"))
 ARCSEC = np.pi / 180 / 3600
@@ -94,9 +94,9 @@ def virgil_model(u, v):
 
     @jax.jit
     def model(p):
-        disk = PolarDisk(GaussianRing(p[5] * 1e3, p[6] * 1e3), inc=p[3], pa=p[2],
-                         dra=-p[0] * 1e3, ddec=-p[1] * 1e3, n_r=128)  # sign: see CONVENTION in the docstring
-        vis = p[4] * disk.model(uj, vj, wl)  # PolarDisk is unit flux: the flux is the component weight
+        disk = MultipoleDisk(GaussianRing(p[5] * 1e3, p[6] * 1e3), inc=p[3], pa=p[2],
+                             dra=-p[0] * 1e3, ddec=-p[1] * 1e3, n_r=128)  # sign: see CONVENTION in the docstring
+        vis = p[4] * disk.model(uj, vj, wl)  # MultipoleDisk is unit flux: the flux is the component weight
         urot = uj * jnp.cos(jnp.deg2rad(p[2])) - vj * jnp.sin(jnp.deg2rad(p[2]))
         return vis * jnp.exp(-0.5 * jnp.square(p[7] * p[5] * jnp.sin(jnp.deg2rad(p[3])) * urot * ARCSEC * 2 * jnp.pi))
 

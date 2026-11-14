@@ -45,7 +45,7 @@ import numpy as np
 from common import save  # noqa: E402  (sets x64 and the path)
 from crosscheck import radial as R
 from external_bridge import radial_codes as X
-from virgil import Gap, GaussianRing, PolarDisk, ExpTail, RadialPowerLaw
+from virgil import ExpTail, Gap, GaussianRing, MultipoleDisk, RadialPowerLaw
 
 INC, PA = 50.0, 30.0
 ASPECT = 0.1  # vis-r scale height h = H / r
@@ -58,23 +58,23 @@ def scenes(s):
 
     out = {}
     out["gauss_ring"] = (
-        PolarDisk(GaussianRing(10 * s, 1.5 * s), inc=INC, pa=PA, n_r=64),
+        MultipoleDisk(GaussianRing(10 * s, 1.5 * s), inc=INC, pa=PA, n_r=64),
         R.gaussian_ring(10 * s, 1.5 * s),
         lambda r: vf.r_prof_gauss(r, [10 * a, 1.5 * a]), 64, 1e-6)
     par = [5 * a, -1.0, 0.3 / 5, 14 * a, 0.3 / 14]  # vis-r: r_i, power, sigma_i/r_i, r_o, sigma_o/r_o
     # one soft-edge width in virgil: 0.3 s at both edges, so vis-r's fractional widths are 0.3/r_i, 0.3/r_o
     out["erf_power"] = (
-        PolarDisk(RadialPowerLaw(5 * s, 14 * s, -1.0, edge=0.3 * s), inc=INC, pa=PA, n_r=96),
+        MultipoleDisk(RadialPowerLaw(5 * s, 14 * s, -1.0, edge_sigma=0.3 * s), inc=INC, pa=PA, n_r=96),
         R.erf_power(5 * s, 14 * s, -1.0, 0.3 * s),
         lambda r: vf.r_prof_erf2_power(r, par), 96, 1e-6)
     par2 = [4 * a, 0.0, 0.3 / 4, 20 * a, 0.3 / 20, 0.9, 12 * a, 0.8 * a, 0.0, 12 * a, 0.8 * a]
     out["gap_on_plateau"] = (
-        PolarDisk(Gap(RadialPowerLaw(4 * s, 20 * s, 0.0, edge=0.3 * s), r0=12 * s, width=0.8 * s, depth=0.9),
-                  inc=INC, pa=PA, n_r=128),
+        MultipoleDisk(Gap(RadialPowerLaw(4 * s, 20 * s, 0.0, edge_sigma=0.3 * s), radius=12 * s, sigma=0.8 * s, depth=0.9),
+                      inc=INC, pa=PA, n_r=128),
         R.with_gap(R.erf_power(4 * s, 20 * s, 0.0, 0.3 * s), 12 * s, 0.8 * s, 0.9),
         lambda r: vf.r_prof_erf2_power_ggap2(r, par2), 128, 1e-6)
     out["exp_tail"] = (
-        PolarDisk(ExpTail(2 * s, 3 * s), inc=INC, pa=PA, n_r=128),
+        MultipoleDisk(ExpTail(2 * s, 3 * s), inc=INC, pa=PA, n_r=128),
         R.exp_tail(2 * s, 3 * s), None, 128, 1e-5)
     return out
 
@@ -199,7 +199,7 @@ def convergence():
         row = {}
         for n_r in ((16, 32, 64, 128, 150) if name == "exp_tail" else (16, 32, 64, 128, 256)):  # Gauss-Laguerre: at most 150
             disk0 = scenes(1.0)[name][0]
-            disk = PolarDisk(disk0.profile, inc=INC, pa=PA, n_r=n_r)
+            disk = MultipoleDisk(disk0.profile, inc=INC, pa=PA, n_r=n_r)
             row[n_r] = float(np.abs(np.asarray(disk.model(u * 1.65e-6, v * 1.65e-6, 1.65e-6)).real - truth).max())
         out[name] = row
     return out

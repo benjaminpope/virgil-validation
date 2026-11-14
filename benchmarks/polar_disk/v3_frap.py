@@ -40,7 +40,7 @@ from scipy.optimize import minimize
 from common import save
 from external_bridge.radial_codes import Frap
 from external_bridge.safe_load import load_pickle
-from virgil import PolarDisk, RadialGP
+from virgil import MultipoleDisk, RadialGP
 
 DATA = pathlib.Path(os.environ.get("V3_DATA", pathlib.Path.home() / "data" / "polar_disk_v3"))
 R_OUT, N, SIGMA, ELL = 1300.0, 130, 2.0, 30.0  # mas
@@ -79,7 +79,7 @@ def one_band(name):
     t_f = time.time() - t0
     chi2_f = float(np.sum(w * (v - np.asarray(frap_model(jnp.asarray(rf.x)))) ** 2))
 
-    disk0 = PolarDisk(RadialGP(2.0, R_OUT, sigma=SIGMA, ell=ELL, nu=float("inf"), n=N), inc=0.0, pa=0.0, n_r=N)
+    disk0 = MultipoleDisk(RadialGP(2.0, R_OUT, sigma=SIGMA, ell=ELL, nu=float("inf")), inc=0.0, pa=0.0, n_r=N)
     qj = jnp.asarray(q)
     wl, zero = jnp.ones_like(qj), jnp.zeros_like(qj)
 

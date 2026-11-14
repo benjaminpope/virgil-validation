@@ -321,8 +321,17 @@ nodes:
   virgil.limits.contrast_to_flux: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.chi2ppf: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.radial_profile: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
-  # PolarDisk (virgil P1-P4): one disk class, radial profiles x azimuthal harmonics x height
-  virgil.models.PolarDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  # MultipoleDisk (formerly PolarDisk, virgil P1-P4): radial profiles x azimuthal harmonics x height
+  virgil.models.MultipoleDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.models.ThinRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.GaussianRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialPowerLaw: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.Gap: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialSum: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialLinear: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialPower: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialGP: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.MultipoleKernel: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.Harmonics:
     layer: models
     source: [src/virgil/models.py, src/virgil/harmonics.py]
@@ -332,6 +341,12 @@ nodes:
   virgil.models.Cone: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.PowerLawHeight: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.ExpTail: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}  # accuracy beyond the 150-node cap: F19
+  virgil.harmonics.to_image_harmonics: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.from_image_harmonics: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.from_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.to_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.rim_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.cone_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
   virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
@@ -339,6 +354,11 @@ nodes:
     layer: priors
     source: [src/virgil/fields.py]
     depends: [virgil.fields.field_spectrum]
+  virgil.fields.MultipoleField:
+    layer: priors
+    source: [src/virgil/fields.py]
+    depends: [virgil.fields.field_spectrum]
+    doc: models/polar_disk.md
   virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
   virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}
   virgil.likelihood.loglike:

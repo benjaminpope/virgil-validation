@@ -47,7 +47,7 @@ from common import save
 from crosscheck import radial as R
 from crosscheck import simulate
 from external_bridge.pmoired_models import model_samples
-from virgil import ExpTail, GaussianRing, Harmonics, PolarDisk, RadialPowerLaw, ThinRing
+from virgil import ExpTail, GaussianRing, Harmonics, MultipoleDisk, RadialPowerLaw, ThinRing
 
 UTS = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
 
@@ -85,8 +85,8 @@ def pmoired_section(tmp):
     inc, pa, dra, ddec = 50.0, -20.0, 0.5, -0.3
     for label, amps, phis in (("M1", (0.4,), (40.0,)), ("M2", (0.4, 0.3), (40.0, 100.0)),
                               ("M3", (0.4, 0.3, 0.2), (40.0, 100.0, -30.0))):
-        disk = PolarDisk(GaussianRing(6.0, 0.8), harmonics=harmonics_from_pmoired(amps, phis), inc=inc, pa=pa,
-                         dra=dra, ddec=ddec, n_r=96)
+        disk = MultipoleDisk(GaussianRing(6.0, 0.8), harmonics=harmonics_from_pmoired(amps, phis), inc=inc, pa=pa,
+                             dra=dra, ddec=ddec, n_r=96)
         r0, sg = 6.0, 0.8
         params = {"diamin": 2 * (r0 - 8 * sg), "diamout": 2 * (r0 + 8 * sg), "profile": f"np.exp(-0.5*(($R-{r0})/{sg})**2)",
                   "incl": inc, "projang": pa, "x": dra, "y": ddec}
@@ -95,8 +95,8 @@ def pmoired_section(tmp):
         row = compare_pmoired(path, disk, params)
         row["passed"] = bool(row["max_abs_dV2"] <= 1e-5 and row["max_abs_dCP_deg"] <= 1e-3 and row["max_abs_CP_deg"] >= 1.0)
         out[f"gaussian_ring_{label}"] = row
-    disk = PolarDisk(RadialPowerLaw(5.0, 14.0, -1.0), harmonics=harmonics_from_pmoired((0.5,), (70.0,)), inc=35.0, pa=110.0,
-                     dra=-0.4, ddec=0.6, n_r=96)
+    disk = MultipoleDisk(RadialPowerLaw(5.0, 14.0, -1.0), harmonics=harmonics_from_pmoired((0.5,), (70.0,)), inc=35.0, pa=110.0,
+                         dra=-0.4, ddec=0.6, n_r=96)
     params = {"diamin": 10.0, "diamout": 28.0, "profile": "$R**-1", "incl": 35.0, "projang": 110.0, "x": -0.4, "y": 0.6,
               "az amp1": 0.5, "az projang1": 70.0}
     row = compare_pmoired(path, disk, params)
@@ -126,11 +126,11 @@ def oimodeler_section():
     elong, pa, d = 1.5, 30.0, 12.0
     inc = np.rad2deg(np.arccos(1.0 / elong))
     ref = oim_vis(oim.oimEIRing(d=d, pa=pa, elong=elong, x=0.4, y=-0.7), u, v, wl)
-    out["O1_EIRing"] = {"max_abs_dV": float(np.abs(vg(PolarDisk(ThinRing(d / 2), inc=inc, pa=pa, dra=0.4, ddec=-0.7)) - ref).max())}
+    out["O1_EIRing"] = {"max_abs_dV": float(np.abs(vg(MultipoleDisk(ThinRing(d / 2), inc=inc, pa=pa, dra=0.4, ddec=-0.7)) - ref).max())}
     out["O1_EIRing"]["passed"] = out["O1_EIRing"]["max_abs_dV"] <= 1e-10
     # O2
     ref = oim_vis(oim.oimRing(din=6.0, dout=14.0), u, v, wl)
-    err = float(np.abs(vg(PolarDisk(RadialPowerLaw(3.0, 7.0, 0.0), n_r=64)) - ref).max())
+    err = float(np.abs(vg(MultipoleDisk(RadialPowerLaw(3.0, 7.0, 0.0), n_r=64)) - ref).max())
     out["O2_Ring"] = {"max_abs_dV": err, "passed": err <= 1e-6}
     # O3
     rows = {}
@@ -140,7 +140,7 @@ def oimodeler_section():
         delta = np.deg2rad(skwpa - pa_)
 
         def disk(c1, s1):
-            return PolarDisk(ThinRing(6.0), harmonics=Harmonics(c=(c1,), s=(s1,)), inc=inc_, pa=pa_)
+            return MultipoleDisk(ThinRing(6.0), harmonics=Harmonics(c=(c1,), s=(s1,)), inc=inc_, pa=pa_)
 
         good = float(np.abs(vg(disk(skw * np.cos(delta), skw * np.sin(delta))) - ref).max())
         swapped = float(np.abs(vg(disk(skw * np.sin(delta), skw * np.cos(delta))) - ref).max())
@@ -154,7 +154,7 @@ def oimodeler_section():
     row = {}
     for dim in (512, 2048):
         ref = oim_vis(oim.oimExpRing(d=d, fwhm=fwhm, dim=dim), u, v, wl)
-        disk = PolarDisk(ExpTail(d / 2, L, cutoff=n_cut), n_r=128)
+        disk = MultipoleDisk(ExpTail(d / 2, L, cutoff=n_cut), n_r=128)
         exact = R.hankel(R.exp_tail(d / 2, L, n_scales=n_cut), np.hypot(qu, qv))
         row[f"dim={dim}"] = {"virgil_vs_oimodeler": float(np.abs(vg(disk) - ref).max()),
                              "oimodeler_vs_exact": float(np.abs(ref - exact).max()),
