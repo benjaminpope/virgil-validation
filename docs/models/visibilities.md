@@ -70,10 +70,10 @@ integral over a uniform boxcar of width $\Delta\sigma = \Delta\lambda / \lambda_
 in wavenumber (`tests/test_042_spiral_and_smearing.py`):
 
 $$
-V_{\text{smeared}}(u, v, \lambda_0, \Delta\lambda) = \sum_k w_k\,V_k^{\text{centred}}(u, v, \lambda_0)\,e^{-2\pi i \tau_k / \lambda_0}\,\operatorname{sinc}\!\left(\frac{\Delta\lambda\,\tau_k}{\lambda_0^2}\right), \qquad \tau_k = (u\,\mathrm{dra}_k + v\,\mathrm{ddec}_k)\,\text{mas}
+V_{\text{smeared}}(u, v, \lambda_0, \Delta\lambda) = \sum_k w_k\,V_k^{\text{centred}}(u, v, \lambda_0)\,e^{-2\pi i \tau_k / \lambda_0}\,\frac{\sin(\pi x_k)}{\pi x_k}, \qquad x_k = \frac{\Delta\lambda\,\tau_k}{\lambda_0^2}, \quad \tau_k = (u\,\mathrm{dra}_k + v\,\mathrm{ddec}_k)\,\text{mas}
 $$
 
-where $\operatorname{sinc}(x) = \sin(\pi x) / (\pi x)$. Because $\sigma = 1/\lambda$
+(i.e. `np.sinc(x_k)` in NumPy's normalized convention). Because $\sigma = 1/\lambda$
 is nonlinear in $\lambda$, a uniform wavenumber boxcar agrees with a uniform
 wavelength boxcar to $O((\Delta\lambda / \lambda_0)^2)$ (`16.0×` error reduction
 per `4×` bandwidth narrowing). External interferometry packages adopt two
@@ -84,13 +84,15 @@ default `Nsmear = 3` averages complex $V$ coherently with equal weights
 $(1/3, 1/3, 1/3)$ at $\lambda_0 + (-1/2, 0, +1/2)\,\Delta\lambda$, which doubles
 the spectral variance from $\Delta\lambda^2 / 12$ to $\Delta\lambda^2 / 6$.
 
+![Bandwidth smearing definitions and wavenumber-vs-wavelength scaling](../assets/bandwidth_smearing_comparison.png)
+
 | virgil | Reference | Agreement |
 | --- | --- | --- |
-| `smeared_model` on `BinaryModelCartesian`, `BinaryModelAngular`, nested `System` (with `UniformDisk` and `Resolved`), and `Rotated` | 64-node Gauss–Legendre quadrature over uniform wavenumber $\sigma = 1/\lambda$ (`crosscheck.spiral_smearing`) | `< 1e-14` |
+| `smeared_model` on `BinaryModelCartesian`, `BinaryModelAngular`, nested `System` (with `UniformDisk` and `Resolved`), and `Rotated` | 64-node Gauss–Legendre quadrature over uniform wavenumber $\sigma = 1/\lambda$ and rotated `crosscheck` leaf closed forms (`crosscheck.spiral_smearing`, `crosscheck.sky`) | `< 1e-14` |
 | `smeared_model` vs uniform wavelength quadrature | 64-node Gauss–Legendre quadrature over $[\lambda_0 - \Delta\lambda/2, \lambda_0 + \Delta\lambda/2]$ at $\Delta\lambda/\lambda_0 = 0.008$ vs $0.002$ | $O((\Delta\lambda/\lambda_0)^2)$ ratio `16.0` |
-| `OIData(..., bandwidth=True)`, `with_bandwidth`, `OrbitalBinary` via `at(mjd)`, and `TypeError` on `Image` / direct `OrbitalBinary` | `EFF_BAND` round-trip and per-sample `smeared_model` evaluation | `< 1e-7` (float32 `EFF_BAND`) |
+| `OIData(..., bandwidth=True)`, `with_bandwidth`, `OrbitalBinary` via `at(mjd)`, and `TypeError` on `Image` / direct `OrbitalBinary` | independent `EFF_BAND` read-back via `crosscheck.chi2.load`, `crosscheck.orbits.position(mjd)` + `smeared_offset_phasor` (`1×` and `2×` bandwidth), and `TypeError` checks | `< 1e-7` (float32 `EFF_BAND`) |
 | `smeared_model` vs PMOIRED (`roots=["pmoired"]`) | explicit `setupFit({'wl kernel': K}, auto=False)` with variance-matched FWHM $K = \sqrt{2\ln 2 / 3}\,(\Delta\lambda / \delta\lambda)$ at $f = 0.02$ | V² `< 8e-5`, CP `< 5e-3°` |
-| `smeared_model` vs CANDID (`roots=["candid", "mathematics"]`) | CANDID `Nsmear = 3` with variance-matched `dwavel = dlambda / sqrt(2)` at $f = 0.15$ | $\chi^2_r = 0.04$ (unsmeared $\chi^2_r > 15$) |
+| `smeared_model` vs CANDID (`roots=["candid"]`, via `candid_bridge.chi2`) | CANDID `Nsmear = 3` with variance-matched `dwavel = dlambda / sqrt(2)` on OIFITS synthesized from `crosscheck.spiral_smearing` at $f = 0.15$ | $\chi^2_r = 0.04$ (unsmeared $\chi^2_r > 15$) |
 | definition controls (`kind="control"`, [D23](../method/findings.md#D23)) | incoherent $\langle\|V\|^2\rangle$ floor at $f = 0.45$, and unscaled CANDID `Nsmear = 3` (`dwavel = dlambda`, $2\times$ variance) | both fail (`> 0.077` in V²; $\chi^2_r > 15$) |
 
 ## Pixel images

@@ -147,6 +147,10 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     roots: 2
+    # Per 2026-11-15 convention ruling (ledger D27, as on FlaredDisk* D24 / PositionData D25): blur_projection is confirmed
+    # externally by native PMOIRED + mathematics and optical propagation by dLux; internal parameter definitions (exponential
+    # fade, sky-tangent pa deprojection, 1 px render floor) are pinned via properties + negative controls, not convention:.
+    properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1}
     depends: [virgil.models.Component]
     doc: models/cones_fields.md
   virgil.models.smeared_model:

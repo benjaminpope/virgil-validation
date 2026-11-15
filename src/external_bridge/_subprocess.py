@@ -16,15 +16,41 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
+def venv_root(name=None):
+    """Checkout holding ``.venv-<name>`` and ``.external``: ``ROOT`` directly,
+    or the parent repository when ``ROOT`` is a git worktree without its own
+    external virtualenvs."""
+    if name is not None and (ROOT / f".venv-{name}").exists():
+        return ROOT
+    if name is None and (ROOT / ".external").exists():
+        return ROOT
+    git_entry = ROOT / ".git"
+    if git_entry.is_file():
+        try:
+            text = git_entry.read_text(encoding="utf-8").strip()
+        except OSError:
+            text = ""
+        if text.startswith("gitdir:"):
+            gitdir = pathlib.Path(text.split(":", 1)[1].strip())
+            if not gitdir.is_absolute():
+                gitdir = (ROOT / gitdir).resolve()
+            if gitdir.parent.name == "worktrees" and gitdir.parent.parent.name == ".git":
+                main_root = gitdir.parent.parent.parent
+                if name is None or (main_root / f".venv-{name}").exists():
+                    return main_root
+    return ROOT
+
+
 def python(name):
-    return os.environ.get(f"{name.upper()}_PYTHON", str(ROOT / f".venv-{name}" / "bin" / "python"))
+    base = venv_root(name)
+    return os.environ.get(f"{name.upper()}_PYTHON", str(base / f".venv-{name}" / "bin" / "python"))
 
 
 def _env(name):
     """Environment for ``name``'s interpreter: CASA reads its measures data
     from the venv's own casasiteconfig.py (scripts/setup_external.sh)."""
     env = {**os.environ, "MPLBACKEND": "Agg"}
-    site = ROOT / f".venv-{name}" / "casasiteconfig.py"
+    site = venv_root(name) / f".venv-{name}" / "casasiteconfig.py"
     if site.exists():
         env.setdefault("CASASITECONFIG", str(site))
     return env

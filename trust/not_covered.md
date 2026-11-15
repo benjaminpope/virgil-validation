@@ -5,8 +5,9 @@
 - **AMIGO DISCO mode bases.**
 - **Coarse-to-fine uv cut (innovation register B4).** Each level of a multi-resolution radio fit cuts the uv data to its
   grid's Nyquist radius. Experimental in virgil's `design/radio_imaging_innovations.md` (no precedent found, not yet
-  built), so there is nothing to validate yet: not yet validated. The CLEAN start and the staging of nuisance and image
-  fits (B4's other parts) are published practice and have no independent check here either.
+  built), so there is nothing to validate yet: not yet validated. The multi-resolution CLEAN start (B4's remaining part)
+  has no independent check here yet (`fit_staged_nuisances` and `StagedFit` are checked in
+  `test_042_lcurve_ensemble_radio.py`).
 - **Non-scientific, CLI, plotting, and legacy surfaces.** Plotting helpers (`virgil.plotting.*`, matplotlib styling `STYLE`),
   command-line entry points (`virgil.pipeline.cli`), the deprecated `oifits_implaneia` compatibility shim
   (`virgil.legacy.oifits_implaneia.*`), static scalar/tuple constants and schema/tolerance registries (`GAIN_GROUPS`,

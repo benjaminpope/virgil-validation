@@ -3,10 +3,6 @@
 import contextlib
 import gc
 import io
-import json
-import os
-import pathlib
-import subprocess
 
 import jax
 import jax.numpy as jnp
@@ -14,15 +10,13 @@ from jax.test_util import check_grads
 import numpy as np
 import pytest
 
+import virgil.likelihood as vlike
 import virgil.models as vm
 import virgil.oidata as voidata
 import virgil.orbits as vorbits
 
-from crosscheck import nrm, simulate, sky, spiral_smearing
+from crosscheck import sky, spiral_smearing
 from evidence.plugin import record
-from external_bridge import _subprocess
-
-ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -32,94 +26,20 @@ def _clear_jax_caches():
     gc.collect()
 
 
-def _candid_python() -> str | None:
-    """Return a working CANDID Python interpreter (including git worktrees)."""
-    candidates = [_subprocess.python("candid")]
-    git_file = ROOT / ".git"
-    if "CANDID_PYTHON" not in os.environ and git_file.is_file():
-        text = git_file.read_text(encoding="utf-8").strip()
-        if text.startswith("gitdir:"):
-            gitdir = pathlib.Path(text.split(":", 1)[1].strip())
-            if gitdir.parent.name == "worktrees" and gitdir.parent.parent.name == ".git":
-                candidates.append(str(gitdir.parent.parent.parent / ".venv-candid" / "bin" / "python"))
-    for py in candidates:
-        if not py:
-            continue
-        try:
-            res = subprocess.run(
-                [py, "-c", "import candid"],
-                capture_output=True,
-                env={**os.environ, "MPLBACKEND": "Agg"},
-                timeout=30,
-            )
-            if res.returncode == 0:
-                return py
-        except OSError:
-            continue
-    return None
+def _candid_smear_chi2r(fits_path, dra: float, ddec: float, flux_pct: float, dwavel_um: float, n_smear: int) -> float:
+    """Evaluate CANDID's reduced chi^2 through external_bridge.candid_bridge."""
+    from external_bridge import candid_bridge as cb
 
-
-def _run_candid_smear_chi2(
-    fits_path: pathlib.Path,
-    dra: float,
-    ddec: float,
-    flux_pct: float,
-    dwavel_um: float,
-    n_smear: int,
-) -> dict:
-    """Evaluate CANDID's reduced chi^2 with explicit dwavel (um) and Nsmear."""
-    py = _candid_python()
-    if py is None:
+    if not cb.available():
         pytest.skip("CANDID environment (.venv-candid) is not installed")
-    code = """
-import json, sys, matplotlib
-matplotlib.use("Agg")
-import candid
-
-payload = json.loads(sys.argv[1])
-candid.CONFIG.update({
-    "Ncores": 1,
-    "long exec warning": None,
-    "progress bar": False,
-    "Nsmear": int(payload["n_smear"]),
-})
-o = candid.Open(payload["path"])
-o.observables = ["v2", "cp"]
-ins = o.instruments[0]
-dw = float(payload["dwavel_um"])
-o.dwavel = {k: dw for k in o.dwavel}
-param = {
-    "x": float(payload["dra"]),
-    "y": float(payload["ddec"]),
-    "f": float(payload["flux_pct"]),
-    "diam*": 0.0,
-    "alpha*": 0.0,
-}
-for k in o.dwavel:
-    param["dwavel;" + k] = dw
-c2 = float(candid._chi2Func(param, o._chi2Data, o.observables, o.instruments))
-print(json.dumps({"chi2r": c2, "ndata": int(o.ndata())}))
-"""
-    payload = json.dumps(
-        {
-            "path": str(fits_path),
-            "dra": dra,
-            "ddec": ddec,
-            "flux_pct": flux_pct,
-            "dwavel_um": dwavel_um,
-            "n_smear": n_smear,
-        }
+    res = cb.chi2(
+        fits_path,
+        [{"x": float(dra), "y": float(ddec), "f": float(flux_pct), "diam*": 0.0}],
+        observables=("v2", "cp"),
+        dwavel_um=float(dwavel_um),
+        n_smear=int(n_smear),
     )
-    out = subprocess.run(
-        [py, "-c", code, payload],
-        capture_output=True,
-        text=True,
-        env={**os.environ, "MPLBACKEND": "Agg"},
-        timeout=120,
-        check=True,
-    )
-    last_line = [ln for ln in out.stdout.splitlines() if ln.strip().startswith("{")][-1]
-    return json.loads(last_line)
+    return float(res["chi2r"][0])
 
 
 # ---------------------------------------------------------------------------
@@ -192,9 +112,8 @@ def test_reference_spiral_small_turns_and_arclength_identities():
 )
 def test_reference_smearing_wavenumber_and_incoherent_identities():
     """Gauss-Legendre quadrature over uniform wavenumber sigma = 1/lambda
-    matches the closed-form sinc envelope to machine precision, and the
-    3-endpoint incoherent rule has variance dlambda^2 / 6 and asymptote
-    (1 + f^2) / (1 + f)^2."""
+    matches the closed-form sin(pi x)/(pi x) envelope to machine precision, and
+    the incoherent rule approaches (1 + f^2) / (1 + f)^2 across washed fringes."""
     rng = np.random.default_rng(202)
     u = rng.uniform(-90.0, 90.0, 30)
     v = rng.uniform(-90.0, 90.0, 30)
@@ -243,6 +162,7 @@ def test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution(tmp_pa
     along the channel axis with ``discrete_gaussian_spectral_kernel``."""
     pmoired = pytest.importorskip("pmoired")
     import pmoired.oimodels as om
+    from crosscheck import simulate
 
     dra, ddec, f = 32.0, -21.0, 0.25
     cloud = sky.mix([sky.point(0.0, 0.0), sky.point(dra, ddec)], [1.0, f])
@@ -297,16 +217,21 @@ def test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution(tmp_pa
 @pytest.mark.external
 @pytest.mark.validates(
     "candid",
+    "external_bridge.candid_bridge",
+    "external_bridge.candid_worker",
     roots=["mathematics"],
     kind="reference",
     headline="candid_nsmear3_chi2r",
 )
 def test_candid_nsmear3_matches_coherent_three_endpoint_rule(tmp_path):
-    """Pin CANDID's default ``Nsmear = 3`` bandwidth smearing: it averages
-    complex visibilities coherently with equal weights ``(1/3, 1/3, 1/3)`` at
-    ``lambda + (-1/2, 0, +1/2) * dwavel`` (spectral variance ``dwavel^2 / 6``),
+    """Pin CANDID's default ``Nsmear = 3`` bandwidth smearing via candid_bridge:
+    it averages complex visibilities coherently with equal weights ``(1/3, 1/3, 1/3)``
+    at ``lambda + (-1/2, 0, +1/2) * dwavel`` (spectral variance ``dwavel^2 / 6``),
     and disables smearing when ``Nsmear <= 2``."""
-    if _candid_python() is None:
+    from crosscheck import simulate
+    from external_bridge import candid_bridge as cb
+
+    if not cb.available():
         pytest.skip("CANDID environment (.venv-candid) is not installed")
 
     dra, ddec, f = 40.0, -25.0, 0.30
@@ -314,8 +239,6 @@ def test_candid_nsmear3_matches_coherent_three_endpoint_rule(tmp_path):
     uts = np.array([[0.0, 0.0], [35.0, 12.0], [10.0, 48.0], [62.0, -15.0]])
     wls = np.linspace(2.05e-6, 2.35e-6, 7)
 
-    # Generate geometry via simulate.observe, then overwrite OI_VIS2 / OI_T3
-    # with exact 3-endpoint coherent observables.
     fits_path = tmp_path / "candid_nsmear3.fits"
     cloud = sky.mix([sky.point(0.0, 0.0), sky.point(dra, ddec)], [1.0, f])
     simulate.observe(
@@ -360,38 +283,39 @@ def test_candid_nsmear3_matches_coherent_three_endpoint_rule(tmp_path):
         hdul["OI_T3"].data["T3PHI"][:] = np.rad2deg(cp_rad)
         hdul.flush()
 
-    res_smeared = _run_candid_smear_chi2(
+    chi2r_smeared = _candid_smear_chi2r(
         fits_path, dra=dra, ddec=ddec, flux_pct=100.0 * f, dwavel_um=dlambda_m * 1e6, n_smear=3
     )
-    res_unsmeared = _run_candid_smear_chi2(
+    chi2r_unsmeared = _candid_smear_chi2r(
         fits_path, dra=dra, ddec=ddec, flux_pct=100.0 * f, dwavel_um=0.0, n_smear=3
     )
-    res_nsmear2 = _run_candid_smear_chi2(
+    chi2r_nsmear2 = _candid_smear_chi2r(
         fits_path, dra=dra, ddec=ddec, flux_pct=100.0 * f, dwavel_um=dlambda_m * 1e6, n_smear=2
     )
 
-    record("candid_nsmear3_chi2r", res_smeared["chi2r"])
-    record("candid_unsmeared_chi2r", res_unsmeared["chi2r"])
-    assert res_smeared["chi2r"] < 1e-6
-    assert res_unsmeared["chi2r"] > 50.0
-    assert abs(res_nsmear2["chi2r"] - res_unsmeared["chi2r"]) < 1e-10
+    record("candid_nsmear3_chi2r", chi2r_smeared)
+    record("candid_unsmeared_chi2r", chi2r_unsmeared)
+    assert chi2r_smeared < 1e-6
+    assert chi2r_unsmeared > 50.0
+    assert abs(chi2r_nsmear2 - chi2r_unsmeared) < 1e-10
 
 
 # ---------------------------------------------------------------------------
-# 2. virgil.models.ArchimedeanSpiral (roots: mathematics + dlux, + controls)
+# 2. virgil.models.ArchimedeanSpiral (roots: mathematics + dlux + pmoired)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.validates(
     "virgil.models.ArchimedeanSpiral",
     roots=["mathematics"],
+    property=("plume_geometry", "blur_projection"),
     headline="max_cvis_err_dense_nodes",
 )
 def test_archimedean_spiral_cvis_convergence_and_gradients():
     """ArchimedeanSpiral visibilities match independent Gauss-Legendre arc-length
-    Fourier quadrature across winding signs, inclinations, off-node sky PA,
-    in-plane exponential fade, System mixing, O(N^-2) trapezoidal convergence,
-    and AD gradients."""
+    Fourier quadrature across winding signs (including WR 104 clockwise geometry,
+    Tuthill et al. 2008), inclinations, off-node sky PA, in-plane exponential
+    fade, System mixing, O(N^-2) trapezoidal convergence, and AD gradients."""
     rng = np.random.default_rng(303)
     u = rng.uniform(-65.0, 65.0, 36)
     v = rng.uniform(-65.0, 65.0, 36)
@@ -399,7 +323,7 @@ def test_archimedean_spiral_cvis_convergence_and_gradients():
 
     cases = [
         dict(pitch=36.0, turns=1.35, width=4.0, pa=28.0, inc=0.0, node=0.0, fade=0.0, dra=0.0, ddec=0.0),
-        dict(pitch=-29.0, turns=1.75, width=3.6, pa=132.0, inc=0.0, node=0.0, fade=1.15, dra=-2.5, ddec=1.8),
+        dict(pitch=-65.5, turns=1.15, width=3.6, pa=0.0, inc=11.0, node=0.0, fade=0.85, dra=0.0, ddec=0.0),
         dict(pitch=42.0, turns=1.25, width=4.4, pa=76.0, inc=53.0, node=21.0, fade=0.85, dra=5.2, ddec=-3.4),
         dict(pitch=-31.0, turns=1.15, width=3.9, pa=-38.0, inc=61.0, node=112.0, fade=0.55, dra=-1.7, ddec=4.1),
     ]
@@ -412,6 +336,28 @@ def test_archimedean_spiral_cvis_convergence_and_gradients():
         v_def = np.asarray(vm.ArchimedeanSpiral(**kw).model(u, v, wavel))
         max_dense_err = max(max_dense_err, float(np.max(np.abs(v_dense - v_ref))))
         max_default_err = max(max_default_err, float(np.max(np.abs(v_def - v_ref))))
+
+    # WR 104 ballistic pinwheel sense (Tuthill et al. 2008, ApJ 675, 698:
+    # P = 241.5 d, v_inf = 1220 km/s, d = 2.6 kpc -> |pitch| = 65.5 mas/turn, inc = 11 deg):
+    # Departing North (pa = 0) over half a turn, pitch < 0 coils clockwise through West (East < 0),
+    # whereas pitch > 0 coils counter-clockwise through East (East > 0).
+    img_cw = np.asarray(
+        vm.ArchimedeanSpiral(pitch=-65.5, turns=0.5, width=4.0, pa=0.0, inc=11.0, node=0.0, fade=0.0).render(
+            npix=128, fov_mas=120.0
+        )
+    )
+    img_ccw = np.asarray(
+        vm.ArchimedeanSpiral(pitch=65.5, turns=0.5, width=4.0, pa=0.0, inc=11.0, node=0.0, fade=0.0).render(
+            npix=128, fov_mas=120.0
+        )
+    )
+    cl_cw = sky.pixel_image(img_cw, 120.0 / 128)
+    cl_ccw = sky.pixel_image(img_ccw, 120.0 / 128)
+    east_cw = float(np.sum(cl_cw.east * cl_cw.weight))
+    east_ccw = float(np.sum(cl_ccw.east * cl_ccw.weight))
+    assert east_cw < -10.0
+    assert east_ccw > 10.0
+    assert abs(east_cw + east_ccw) < 1e-12
 
     # Flux-weighted System mixing with a central star:
     kw_sys = cases[2]
@@ -466,17 +412,91 @@ def test_archimedean_spiral_cvis_convergence_and_gradients():
     assert 3.7 < conv_ratio < 4.3
 
 
+@pytest.mark.external
+@pytest.mark.validates(
+    "virgil.models.ArchimedeanSpiral",
+    roots=["pmoired"],
+    property="blur_projection",
+    headline="pmoired_blur_projection_v2_err",
+)
+def test_archimedean_spiral_pmoired_native_blur_projection(tmp_path):
+    """Non-circular external check: as turns -> 0+, ArchimedeanSpiral reduces
+    directly to PMOIRED's native inclined Gaussian ``{'fwhm': width, 'incl': inc,
+    'projang': node}`` (no crosscheck point cloud), confirming FWHM width,
+    cos(inc) foreshortening, and North-through-East major-axis node."""
+    pmoired = pytest.importorskip("pmoired")
+    import pmoired.oimodels as om
+    from crosscheck import simulate
+
+    uts = np.array([[0.0, 0.0], [38.0, 12.0], [14.0, 52.0], [64.0, -18.0]])
+    wls = np.linspace(2.0e-6, 2.4e-6, 9)
+    fits_path = tmp_path / "pm_spiral_blur.fits"
+    simulate.observe(
+        fits_path,
+        lambda u, v, w: sky.vis_point(u, v, w),
+        uts,
+        hour_angles_h=[0.0],
+        wavelengths=wls,
+        dec_deg=-30.0,
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        oi = pmoired.OI(str(fits_path), verbose=False)
+        oi.setupFit({"obs": ["V2"]}, auto=False)
+        pm_mod = om.VmodelOI(oi.data[0], {"g,fwhm": 6.5, "g,incl": 52.0, "g,projang": 37.0, "g,f": 1.0})
+        pm_pa90 = om.VmodelOI(oi.data[0], {"g,fwhm": 6.5, "g,incl": 52.0, "g,projang": 127.0, "g,f": 1.0})
+        pm_iso = om.VmodelOI(oi.data[0], {"g,fwhm": 6.5, "g,f": 1.0})
+
+    wl_m = np.asarray(oi.data[0]["WL"], float) * 1e-6
+    sp_lim = vm.ArchimedeanSpiral(pitch=1e-3, turns=1e-5, width=6.5, inc=52.0, node=37.0, pa=37.0, fade=0.0)
+
+    dv2_max = 0.0
+    gap_pa90 = 0.0
+    gap_iso = 0.0
+    for k in pm_mod["OI_VIS2"]:
+        u_m = np.full_like(wl_m, float(pm_mod["OI_VIS2"][k]["u"][0]))
+        v_m = np.full_like(wl_m, float(pm_mod["OI_VIS2"][k]["v"][0]))
+        vv_v2 = np.abs(np.asarray(sp_lim.model(u_m, v_m, wl_m))) ** 2
+        dv2_max = max(dv2_max, float(np.max(np.abs(vv_v2 - pm_mod["OI_VIS2"][k]["V2"][0]))))
+        gap_pa90 = max(gap_pa90, float(np.max(np.abs(vv_v2 - pm_pa90["OI_VIS2"][k]["V2"][0]))))
+        gap_iso = max(gap_iso, float(np.max(np.abs(vv_v2 - pm_iso["OI_VIS2"][k]["V2"][0]))))
+
+    record("pmoired_blur_projection_v2_err", dv2_max)
+    record("pmoired_blur_pa90_gap", gap_pa90)
+    assert dv2_max < 5e-7
+    assert gap_pa90 > 0.25
+    assert gap_iso > 0.25
+
+
 @pytest.mark.validates(
     "virgil.models.ArchimedeanSpiral",
     roots=["mathematics"],
-    headline="render_resolved_max_err",
+    property="render_fourier",
+    headline="render_dft_vs_model_err",
 )
 def test_archimedean_spiral_render_and_one_pixel_width_floor():
     """ArchimedeanSpiral.render produces a unit-sum East-left, North-up image
-    that agrees with continuous Gaussian-ridge rendering and floors sub-pixel
-    arm widths at 1 pixel."""
-    kw_res = dict(pitch=28.0, turns=1.15, width=6.0, pa=42.0, inc=46.0, node=16.0, fade=0.75, dra=3.0, ddec=-2.0)
-    img_res = np.asarray(vm.ArchimedeanSpiral(**kw_res, nodes=2048).render(npix=128, fov_mas=128.0))
+    whose direct 2D Fourier transform matches ArchimedeanSpiral.model (while
+    transpose and Dec-flip controls fail), agrees with continuous Gaussian-ridge
+    rendering, and floors sub-pixel arm widths at 1 pixel."""
+    kw_res = dict(pitch=24.0, turns=1.1, width=6.0, pa=42.0, inc=46.0, node=16.0, fade=0.85, dra=3.0, ddec=-2.0)
+    npix_dft, fov_dft = 192, 144.0
+    sp_mod = vm.ArchimedeanSpiral(**kw_res, nodes=2048)
+    img_dft = np.asarray(sp_mod.render(npix=npix_dft, fov_mas=fov_dft))
+
+    rng = np.random.default_rng(77)
+    u_dft = rng.uniform(-35.0, 35.0, 24)
+    v_dft = rng.uniform(-35.0, 35.0, 24)
+    w_dft = np.full(24, 2.2e-6)
+    cvis_mod = np.asarray(sp_mod.model(u_dft, v_dft, w_dft))
+    cvis_img = sky.visibility(sky.pixel_image(img_dft, fov_dft / npix_dft), u_dft, v_dft, w_dft)
+    cvis_img_t = sky.visibility(sky.pixel_image(img_dft.T, fov_dft / npix_dft), u_dft, v_dft, w_dft)
+    cvis_img_flip = sky.visibility(sky.pixel_image(img_dft[::-1, :], fov_dft / npix_dft), u_dft, v_dft, w_dft)
+
+    err_dft = float(np.max(np.abs(cvis_img - cvis_mod)))
+    gap_transpose = float(np.max(np.abs(cvis_img_t - cvis_mod)))
+    gap_dec_flip = float(np.max(np.abs(cvis_img_flip - cvis_mod)))
+
+    img_res = np.asarray(sp_mod.render(npix=128, fov_mas=128.0))
     ref_res = spiral_smearing.spiral_render(128, 128.0, **kw_res, n_quad=512, floor_px=True)
     err_res = float(np.max(np.abs(img_res - ref_res)))
 
@@ -487,10 +507,14 @@ def test_archimedean_spiral_render_and_one_pixel_width_floor():
     err_sub_floored = float(np.max(np.abs(img_sub - ref_sub_floored)))
     diff_unfloored = float(np.max(np.abs(img_sub - ref_sub_unfloored)))
 
+    record("render_dft_vs_model_err", err_dft)
     record("render_resolved_max_err", err_res)
     record("render_subpixel_floored_err", err_sub_floored)
     record("render_unfloored_gap", diff_unfloored)
-    assert np.isclose(np.sum(img_res), 1.0, atol=1e-7)
+    assert np.isclose(np.sum(img_dft), 1.0, atol=1e-7)
+    assert err_dft < 2e-6
+    assert gap_transpose > 0.30
+    assert gap_dec_flip > 0.30
     assert err_res < 2e-6
     assert err_sub_floored < 2e-5
     assert diff_unfloored > 2e-3
@@ -506,6 +530,7 @@ def test_archimedean_spiral_dlux_wavefront_propagation():
     star through dLux's 7-hole Fraunhofer optical model and compare calibrated
     squared visibilities and closure phases against virgil."""
     pytest.importorskip("dLux")
+    from crosscheck import nrm
 
     wavel = 4.3e-6
     npix, pixel_mas = 192, 25.0
@@ -518,7 +543,6 @@ def test_archimedean_spiral_dlux_wavefront_propagation():
     sci_img = nrm.image_dlux(scene_cloud, wavel, optics, chunk=192)
     cal_img = nrm.image_dlux(sky.point(0.0, 0.0), wavel, optics, chunk=192)
 
-    # Extract all 21 baselines and 35 closure triangles of the 7-hole mask:
     pairs = [(i, j) for i in range(len(nrm.HOLES)) for j in range(i + 1, len(nrm.HOLES))]
     bl = np.array([nrm.HOLES[j] - nrm.HOLES[i] for i, j in pairs])
     u_m, v_m = bl[:, 0], bl[:, 1]
@@ -590,8 +614,23 @@ def test_control_archimedean_spiral_wrong_winding_pa_fade_and_blur_fail():
 
 
 # ---------------------------------------------------------------------------
-# 3. virgil.models.smeared_model (roots: mathematics + pmoired, + CANDID D*)
+# 3. virgil.models.smeared_model (roots: mathematics + pmoired + candid)
 # ---------------------------------------------------------------------------
+
+
+def _nested_top_reference_cvis(u, v, wavel, bw):
+    """Independent crosscheck complex visibility of the nested System scene."""
+    w_origin = 1.0
+    w_halo = 0.3
+    w_inner = 0.7 * (1.0 / 1.4)
+    w_disk = 0.7 * (0.4 / 1.4)
+    w_tot = w_origin + w_halo + w_inner + w_disk
+    v_origin = sky.vis_uniform_disk(u, v, wavel, 1.2, 0.0, 0.0)
+    v_inner = spiral_smearing.smeared_offset_phasor(u, v, wavel, bw, 12.0, -6.0)
+    v_disk = sky.vis_uniform_disk(u, v, wavel, 1.8, 0.0, 0.0) * spiral_smearing.smeared_offset_phasor(
+        u, v, wavel, bw, 25.0, 4.0
+    )
+    return (w_origin * v_origin + w_inner * v_inner + w_disk * v_disk) / w_tot
 
 
 @pytest.mark.validates(
@@ -637,29 +676,17 @@ def test_smeared_model_wavenumber_identity_wavelength_scaling_and_trees():
         subsystem=sub,
     )
     v_top = np.asarray(vm.smeared_model(top, u, v, wavel, bw))
-
-    # Manual leaf combination: weights are 1.0, 0.3, and 0.7 split in ratio 1.0 : 0.4
-    w_origin = 1.0
-    w_halo = 0.3
-    w_inner = 0.7 * (1.0 / 1.4)
-    w_disk = 0.7 * (0.4 / 1.4)
-    w_tot = w_origin + w_halo + w_inner + w_disk
-    v_origin = sky.vis_uniform_disk(u, v, wavel, 1.2, 0.0, 0.0)  # zero offset: unsmeared!
-    v_inner = spiral_smearing.smeared_offset_phasor(u, v, wavel, bw, 12.0, -6.0)
-    v_disk = sky.vis_uniform_disk(u, v, wavel, 1.8, 0.0, 0.0) * spiral_smearing.smeared_offset_phasor(
-        u, v, wavel, bw, 25.0, 4.0
-    )
-    v_top_ref = (w_origin * v_origin + w_inner * v_inner + w_disk * v_disk) / w_tot
+    v_top_ref = _nested_top_reference_cvis(u, v, wavel, bw)
     err_nested = float(np.max(np.abs(v_top - v_top_ref)))
 
-    # 3. Rotated scene commutes with rotating (u, v):
+    # 3. Rotated scene evaluated against pure crosscheck leaf combination at rotated (u, v):
     rot_deg = 37.0
     rot_mod = vm.Rotated(top, rot_deg)
     v_rot = np.asarray(vm.smeared_model(rot_mod, u, v, wavel, bw))
     th = np.deg2rad(rot_deg)
     u_r = u * np.cos(th) - v * np.sin(th)
     v_r = u * np.sin(th) + v * np.cos(th)
-    v_rot_ref = np.asarray(vm.smeared_model(top, u_r, v_r, wavel, bw))
+    v_rot_ref = _nested_top_reference_cvis(u_r, v_r, wavel, bw)
     err_rot = float(np.max(np.abs(v_rot - v_rot_ref)))
 
     # 4. O((dlambda / lambda0)^2) convergence between sigma-boxcar and lambda-boxcar:
@@ -691,16 +718,30 @@ def test_smeared_model_wavenumber_identity_wavelength_scaling_and_trees():
     assert 15.6 < quad_scaling_ratio < 16.4
 
 
+def _crosscheck_oidata_predictions(d: dict, cvis_fn) -> np.ndarray:
+    """Compute [V^2_flat, CP_rad_flat] directly from crosscheck.chi2.load dict."""
+    v2_ref = np.abs(cvis_fn(d["u"], d["v"], d["wl"], d["v2_mjd"][:, None])) ** 2
+    c1 = cvis_fn(d["u1"], d["v1"], d["wl3"], d["t3_mjd"][:, None])
+    c2 = cvis_fn(d["u2"], d["v2_"], d["wl3"], d["t3_mjd"][:, None])
+    c3 = cvis_fn(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"], d["t3_mjd"][:, None])
+    cp_ref = np.angle(c1 * c2 * np.conj(c3))
+    cp_ref = np.where(cp_ref >= np.pi, cp_ref - 2.0 * np.pi, cp_ref)
+    return np.concatenate([v2_ref.ravel(), cp_ref.ravel()])
+
+
 @pytest.mark.validates(
     "virgil.models.smeared_model",
     roots=["mathematics"],
-    headline="oidata_bandwidth_roundtrip_err",
+    headline="oidata_bandwidth_crosscheck_err",
 )
 def test_smeared_model_oidata_bandwidth_orbital_binary_and_type_errors(tmp_path):
     """OIData(..., bandwidth=True) reads EFF_BAND, with_bandwidth overrides or
-    clears it, OIData smears OrbitalBinary via at(mjd) snapshots, and calling
-    smeared_model directly on Image or OrbitalBinary raises TypeError naming
-    the model."""
+    clears it, and OIData smears both static binaries and OrbitalBinary snapshots
+    in agreement with independent crosscheck.chi2 + crosscheck.orbits predictions;
+    calling smeared_model directly on Image or OrbitalBinary raises TypeError."""
+    from astropy.io import fits
+    from crosscheck import chi2 as xchi2, orbits as xorbits, simulate
+
     uts = np.array([[0.0, 0.0], [42.0, 15.0], [12.0, 55.0]])
     wls = np.array([2.1e-6, 2.2e-6, 2.3e-6])
     dlambda = 0.044e-6
@@ -716,50 +757,79 @@ def test_smeared_model_oidata_bandwidth_orbital_binary_and_type_errors(tmp_path)
         sigma_v2=0.002,
         sigma_cp_deg=0.1,
     )
-    from astropy.io import fits
-
     with fits.open(fits_path, mode="update") as hdul:
         hdul["OI_WAVELENGTH"].data["EFF_BAND"][:] = dlambda
+        eff_band_f32 = hdul["OI_WAVELENGTH"].data["EFF_BAND"].astype(float)
         hdul.flush()
 
+    d_raw = xchi2.load(fits_path)
     oid_off = voidata.OIData(fits_path, bandwidth=False)
     oid_on = voidata.OIData(fits_path, bandwidth=True)
     assert oid_off.bandwidth is None
     assert oid_on.bandwidth is not None
 
+    # 1. Compare OIData(bandwidth=True) and with_bandwidth(2 * dlambda) directly
+    # against pure crosscheck predictions (no virgil-vs-virgil comparison):
     scene = vm.BinaryModelCartesian(flux=0.25, dra=65.0, ddec=-40.0)
     pred_on = np.asarray(oid_on.model(scene))
-    pred_via_with = np.asarray(oid_off.with_bandwidth(dlambda).model(scene))
+    pred_2x = np.asarray(oid_off.with_bandwidth(2.0 * dlambda).model(scene))
     pred_cleared = np.asarray(oid_on.with_bandwidth(None).model(scene))
-    pred_off = np.asarray(oid_off.model(scene))
 
-    err_roundtrip = float(np.max(np.abs(pred_on - pred_via_with)))
-    err_cleared = float(np.max(np.abs(pred_cleared - pred_off)))
-    smearing_shift = float(np.max(np.abs(pred_on - pred_off)))
+    ref_on = _crosscheck_oidata_predictions(
+        d_raw,
+        lambda u, v, w, _t: (1.0 + 0.25 * spiral_smearing.smeared_offset_phasor(u, v, w, eff_band_f32[None, :], 65.0, -40.0))
+        / 1.25,
+    )
+    ref_2x = _crosscheck_oidata_predictions(
+        d_raw,
+        lambda u, v, w, _t: (1.0 + 0.25 * spiral_smearing.smeared_offset_phasor(u, v, w, 2.0 * dlambda, 65.0, -40.0))
+        / 1.25,
+    )
+    ref_off = _crosscheck_oidata_predictions(
+        d_raw,
+        lambda u, v, w, _t: (1.0 + 0.25 * sky.vis_point(u, v, w, 65.0, -40.0)) / 1.25,
+    )
 
-    # OrbitalBinary smeared per sample through OIData (via at(mjd)):
+    err_on = float(np.max(np.abs(pred_on - ref_on)))
+    err_2x = float(np.max(np.abs(pred_2x - ref_2x)))
+    err_cleared = float(np.max(np.abs(pred_cleared - ref_off)))
+    smearing_shift = float(np.max(np.abs(pred_on - ref_off)))
+    shift_1x_vs_2x = float(np.max(np.abs(pred_2x - pred_on)))
+
+    # 2. OrbitalBinary smeared per sample compared against crosscheck.orbits.position:
     orb = vorbits.KeplerOrbit(
         period=40.0, dt_peri=0.0, ecc=0.2, inc=42.0, omega=30.0, Omega=65.0, a_mas=28.0, t_ref=59000.0
     )
     ob_mod = vm.OrbitalBinary(orbit=orb, flux=0.3)
     pred_orb_sm = np.asarray(oid_on.model(ob_mod))
-    mjd = np.asarray(oid_on.mjd)
-    cvis_orb_ref = np.array(
-        [
-            np.asarray(
-                vm.smeared_model(
-                    ob_mod.at(float(mjd[k])),
-                    np.array([float(oid_on.u[k])]),
-                    np.array([float(oid_on.v[k])]),
-                    np.array([float(oid_on.wavel[k])]),
-                    np.array([dlambda]),
-                )
-            )[0]
-            for k in range(oid_on.u.size)
-        ]
+
+    def _orb_cvis_ref(u, v, w, mjd_col):
+        t_flat = np.broadcast_to(mjd_col, u.shape).ravel()
+        dra_t, ddec_t = xorbits.position(
+            t_flat, period=40.0, t_peri=59000.0, ecc=0.2, inc=42.0, omega=30.0, Omega=65.0, a=28.0
+        )
+        dra_arr = dra_t.reshape(u.shape)
+        ddec_arr = ddec_t.reshape(u.shape)
+        bw_arr = np.broadcast_to(eff_band_f32[None, :], u.shape)
+        tau_geom = (u * dra_arr + v * ddec_arr) * sky.MAS
+        phasor = np.exp(-2j * np.pi * tau_geom / w) * np.sinc(bw_arr * tau_geom / (w**2))
+        return (1.0 + 0.3 * phasor) / 1.3
+
+    ref_orb = _crosscheck_oidata_predictions(d_raw, _orb_cvis_ref)
+    err_orb = float(np.max(np.abs(pred_orb_sm - ref_orb)))
+
+    # Also verify whitened_residuals matches crosscheck.chi2.chi2 on smeared static binary:
+    chi2_vv = float(np.sum(np.asarray(vlike.whitened_residuals(scene, oid_on)) ** 2))
+    chi2_ref = float(
+        xchi2.chi2(
+            d_raw,
+            lambda u, v, w: (1.0 + 0.25 * spiral_smearing.smeared_offset_phasor(u, v, w, eff_band_f32[None, :], 65.0, -40.0))
+            / 1.25,
+            correlated=False,
+            chord=True,
+        )
     )
-    pred_orb_ref = np.asarray(oid_on.standardize_model(cvis_orb_ref))
-    err_orb = float(np.max(np.abs(pred_orb_sm - pred_orb_ref)))
+    err_chi2_rel = abs(chi2_vv - chi2_ref) / max(chi2_ref, 1.0)
 
     # Unsupported models raise TypeError naming the model class:
     img_mod = vm.Image(np.zeros((8, 8)), pixel_scale_mas=1.0)
@@ -768,12 +838,16 @@ def test_smeared_model_oidata_bandwidth_orbital_binary_and_type_errors(tmp_path)
     with pytest.raises(TypeError, match="OrbitalBinary"):
         vm.smeared_model(ob_mod, np.array([10.0]), np.array([5.0]), np.array([2.2e-6]), 0.02e-6)
 
-    record("oidata_bandwidth_roundtrip_err", max(err_roundtrip, err_cleared, err_orb))
+    worst_err = max(err_on, err_2x, err_cleared, err_orb, err_chi2_rel)
+    record("oidata_bandwidth_crosscheck_err", worst_err)
     record("oidata_smearing_shift", smearing_shift)
-    assert err_roundtrip < 1e-7  # EFF_BAND stored as float32 in OIFITS
+    assert err_on < 1e-7
+    assert err_2x < 1e-7
     assert err_cleared < 1e-14
-    assert err_orb < 1e-6
+    assert err_orb < 1e-7
+    assert err_chi2_rel < 1e-6
     assert smearing_shift > 1e-2
+    assert shift_1x_vs_2x > 1e-2
 
 
 @pytest.mark.external
@@ -787,6 +861,7 @@ def test_smeared_model_matches_pmoired_explicit_wl_kernel(tmp_path):
     with an explicit variance-matched ``'wl kernel'`` (``auto=False``)."""
     pmoired = pytest.importorskip("pmoired")
     import pmoired.oimodels as om
+    from crosscheck import simulate
 
     dra, ddec, f = 65.0, -42.0, 0.02
     cloud = sky.mix([sky.point(0.0, 0.0), sky.point(dra, ddec)], [1.0, f])
@@ -859,15 +934,19 @@ def test_smeared_model_matches_pmoired_explicit_wl_kernel(tmp_path):
 @pytest.mark.external
 @pytest.mark.validates(
     "virgil.models.smeared_model",
-    roots=["candid", "mathematics"],
+    roots=["candid"],
     headline="candid_variance_matched_chi2r",
 )
 def test_smeared_model_matches_variance_matched_candid_nsmear3(tmp_path):
     """Because CANDID's 3-endpoint stencil ``{-1/2, 0, +1/2} * dwavel`` has
     spectral variance ``dwavel^2 / 6`` (twice a continuous boxcar's
     ``dlambda^2 / 12``), setting ``dwavel = dlambda / sqrt(2)`` matches the
-    second moment so CANDID ``Nsmear = 3`` agrees with ``virgil.models.smeared_model``."""
-    if _candid_python() is None:
+    second moment so CANDID ``Nsmear = 3`` agrees with ``virgil.models.smeared_model``
+    on an OIFITS file synthesized independently via ``crosscheck.spiral_smearing``."""
+    from crosscheck import simulate
+    from external_bridge import candid_bridge as cb
+
+    if not cb.available():
         pytest.skip("CANDID environment (.venv-candid) is not installed")
 
     dra, ddec, f = 45.0, -28.0, 0.15
@@ -875,11 +954,12 @@ def test_smeared_model_matches_variance_matched_candid_nsmear3(tmp_path):
     uts = np.array([[0.0, 0.0], [38.0, 12.0], [11.0, 50.0], [64.0, -16.0]])
     wls = np.linspace(2.05e-6, 2.35e-6, 7)
 
-    v_mod = vm.BinaryModelCartesian(flux=f, dra=dra, ddec=ddec)
     fits_path = tmp_path / "candid_var_matched.fits"
     simulate.observe(
         fits_path,
-        lambda u, v, w: np.asarray(vm.smeared_model(v_mod, u, v, w, dlambda_m)),
+        lambda u, v, w: spiral_smearing.smeared_binary_wavenumber_quadrature(
+            u, v, w, dlambda_m, dra, ddec, f, n_quad=64
+        ),
         uts,
         hour_angles_h=[0.0],
         wavelengths=wls,
@@ -888,18 +968,28 @@ def test_smeared_model_matches_variance_matched_candid_nsmear3(tmp_path):
         sigma_cp_deg=0.05,
     )
 
+    oid = voidata.OIData(fits_path).with_bandwidth(dlambda_m)
+    v_mod = vm.BinaryModelCartesian(flux=f, dra=dra, ddec=ddec)
+    chi2r_virgil = float(np.mean(np.asarray(vlike.whitened_residuals(v_mod, oid)) ** 2))
+
     dw_matched_um = (dlambda_m / np.sqrt(2.0)) * 1e6
-    res_matched = _run_candid_smear_chi2(
+    chi2r_matched = _candid_smear_chi2r(
         fits_path, dra=dra, ddec=ddec, flux_pct=100.0 * f, dwavel_um=dw_matched_um, n_smear=3
     )
-    res_unsmeared = _run_candid_smear_chi2(
+    chi2r_unscaled = _candid_smear_chi2r(
+        fits_path, dra=dra, ddec=ddec, flux_pct=100.0 * f, dwavel_um=dlambda_m * 1e6, n_smear=3
+    )
+    chi2r_unsmeared = _candid_smear_chi2r(
         fits_path, dra=dra, ddec=ddec, flux_pct=100.0 * f, dwavel_um=0.0, n_smear=3
     )
 
-    record("candid_variance_matched_chi2r", res_matched["chi2r"])
-    record("candid_unsmeared_chi2r_gap", res_unsmeared["chi2r"])
-    assert res_unsmeared["chi2r"] > 15.0
-    assert res_matched["chi2r"] < 0.06
+    record("candid_variance_matched_chi2r", abs(chi2r_matched - chi2r_virgil))
+    record("candid_unscaled_chi2r_gap", chi2r_unscaled)
+    record("candid_unsmeared_chi2r_gap", chi2r_unsmeared)
+    assert chi2r_virgil < 1e-6
+    assert chi2r_unscaled > 15.0
+    assert chi2r_unsmeared > 15.0
+    assert chi2r_matched < 0.06
 
 
 @pytest.mark.validates(
@@ -908,7 +998,7 @@ def test_smeared_model_matches_variance_matched_candid_nsmear3(tmp_path):
     kind="control",
     headline="coherent_vs_incoherent_v2_gap",
 )
-def test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail(tmp_path):
+def test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail():
     """Pin both bandwidth-smearing definition differences against
     ``virgil.models.smeared_model``:
     (1) incoherent ``E[|V|^2]`` (PMOIRED ``'wl kernel'`` on ``V2``) retains an
@@ -959,24 +1049,3 @@ def test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail(tmp_pat
     record("boxcar_vs_unscaled_nsmear3_v2_gap", gap_nsmear3)
     assert gap_incoh > 0.8 * expected_floor_gap
     assert gap_nsmear3 > 0.005
-
-    # Also verify live CANDID Nsmear=3 with unscaled dwavel=dlambda rejects boxcar-smeared data:
-    if _candid_python() is not None:
-        uts = np.array([[0.0, 0.0], [38.0, 12.0], [11.0, 50.0], [64.0, -16.0]])
-        wls = np.linspace(2.05e-6, 2.35e-6, 7)
-        fits_path = tmp_path / "coh_vs_candid_ctrl.fits"
-        mod_ctrl = vm.BinaryModelCartesian(flux=0.15, dra=45.0, ddec=-28.0)
-        simulate.observe(
-            fits_path,
-            lambda uu, vv, ww: np.asarray(vm.smeared_model(mod_ctrl, uu, vv, ww, 0.035e-6)),
-            uts,
-            hour_angles_h=[0.0],
-            wavelengths=wls,
-            dec_deg=-30.0,
-            sigma_v2=5e-4,
-            sigma_cp_deg=0.05,
-        )
-        res_unscaled = _run_candid_smear_chi2(
-            fits_path, dra=45.0, ddec=-28.0, flux_pct=15.0, dwavel_um=0.035, n_smear=3
-        )
-        assert res_unscaled["chi2r"] > 15.0

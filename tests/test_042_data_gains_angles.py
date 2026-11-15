@@ -3,6 +3,7 @@
 import gc
 import warnings
 
+from astropy.io import fits
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -49,6 +50,35 @@ def _matern_corr(r: np.ndarray, ell: float, nu: float, jitter: float = 1e-6) -> 
     else:
         raise ValueError(f"Unsupported nu: {nu}")
     return c + jitter * np.eye(r.size)
+
+
+def _circle_overlap(s: np.ndarray, d: float) -> np.ndarray:
+    """Area common to two circular apertures of diameter d separated by s."""
+    r = 0.5 * float(d)
+    s_clip = np.minimum(np.abs(s), 2.0 * r)
+    return 2.0 * r**2 * np.arccos(s_clip / (2.0 * r)) - 0.5 * s_clip * np.sqrt(4.0 * r**2 - s_clip**2)
+
+
+def _mtf_closed_form(u: np.ndarray, v: np.ndarray, holes: np.ndarray, diameter: float = 0.82) -> np.ndarray:
+    """Closed-form pupil autocorrelation of circular mask holes, normalized to 1 at (0, 0)."""
+    total = np.zeros_like(u, dtype=float)
+    for xi in holes:
+        for xj in holes:
+            total = total + _circle_overlap(np.hypot(u - (xj[0] - xi[0]), v - (xj[1] - xi[1])), diameter)
+    return total / (len(holes) * float(_circle_overlap(np.array(0.0), diameter)))
+
+
+NIRISS_HOLES = np.array(
+    [
+        [0.0, -2.64],
+        [-2.28631, 0.0],
+        [2.28631, -1.32],
+        [-2.28631, 1.32],
+        [-1.14315, 1.98],
+        [2.28631, 1.32],
+        [1.14315, 1.98],
+    ]
+)
 
 
 # ---------------------------------------------------------------------------
@@ -125,15 +155,55 @@ def test_control_component_opposite_shift_sign_fails():
     assert gap > 0.5
 
 
+def _jacobi_anger_disk_ref(
+    uu: np.ndarray,
+    vv: np.ndarray,
+    r: np.ndarray,
+    w: np.ndarray,
+    inc: float,
+    pa: float,
+    blur_fwhm: float = 0.0,
+    c: np.ndarray | None = None,
+    s: np.ndarray | None = None,
+    height: np.ndarray | None = None,
+    stretch: float | None = None,
+) -> np.ndarray:
+    """Independent SciPy Jacobi-Anger Bessel sum for multipole_disk_cvis."""
+    pa_rad = np.deg2rad(pa)
+    inc_rad = np.deg2rad(inc)
+    q_maj = (uu * np.sin(pa_rad) + vv * np.cos(pa_rad)) * sky.MAS
+    q_min_sky = (uu * np.cos(pa_rad) - vv * np.sin(pa_rad)) * sky.MAS
+    st = np.cos(inc_rad) if stretch is None else float(stretch)
+    q_min = q_min_sky * st
+    q = np.hypot(q_maj, q_min)
+    phi = np.arctan2(q_min, q_maj)
+
+    h_phase = (
+        np.ones((uu.size, r.size), dtype=complex)
+        if height is None
+        else np.exp(-2j * np.pi * q_min_sky[:, None] * (height[None, :] * np.sin(inc_rad)))
+    )
+    bessel_sum = np.sum(w[None, :] * h_phase * jv(0, 2.0 * np.pi * q[:, None] * r[None, :]), axis=1)
+    if c is not None and s is not None:
+        for m in range(1, c.shape[0] + 1):
+            jm = jv(m, 2.0 * np.pi * q[:, None] * r[None, :])
+            ang = c[m - 1][None, :] * np.cos(m * phi[:, None]) + s[m - 1][None, :] * np.sin(m * phi[:, None])
+            bessel_sum = bessel_sum + ((-1j) ** m) * np.sum(w[None, :] * h_phase * ang * jm, axis=1)
+
+    sigma_blur = float(blur_fwhm) / sky.FWHM_PER_SIGMA
+    env = np.exp(-2.0 * np.pi**2 * sigma_blur**2 * q**2)
+    return bessel_sum * env
+
+
 @pytest.mark.validates(
     "virgil.models.multipole_disk_cvis",
     roots=["mathematics"],
     headline="multipole_disk_cvis_max_err",
 )
 def test_multipole_disk_cvis_jacobi_anger_height_blur_and_stretch():
-    """multipole_disk_cvis matches the exact Jacobi-Anger Bessel series with
-    uv deprojection, disk-plane Gaussian blur, conical ring height phase shift,
-    and negative stretch azimuth reflection."""
+    """multipole_disk_cvis matches the exact SciPy Jacobi-Anger Bessel series
+    with uv deprojection, disk-plane Gaussian blur, conical ring height phase
+    shift, and negative stretch minor-axis reflection."""
     rng = np.random.default_rng(22)
     uu = rng.uniform(-3.5e7, 3.5e7, 30)  # cycles / rad
     vv = rng.uniform(-3.5e7, 3.5e7, 30)
@@ -151,40 +221,14 @@ def test_multipole_disk_cvis_jacobi_anger_height_blur_and_stretch():
             uu, vv, r, w_raw, inc=inc, pa=pa, blur_fwhm=blur_fwhm, c=c, s=s, height=height
         )
     )
-
-    # Independent Jacobi-Anger sum from documented notes.md#multipoledisk:
-    pa_rad = np.deg2rad(pa)
-    inc_rad = np.deg2rad(inc)
-    # Major axis along pa (North->East), minor axis along pa + 90 deg (East of North):
-    q_maj = (uu * np.sin(pa_rad) + vv * np.cos(pa_rad)) * sky.MAS  # cycles / mas
-    q_min_sky = (uu * np.cos(pa_rad) - vv * np.sin(pa_rad)) * sky.MAS
-    q_min = q_min_sky * np.cos(inc_rad)
-    q = np.hypot(q_maj, q_min)
-    phi = np.arctan2(q_min, q_maj)
-
-    # Height shifts ring k by h_k * sin(inc) towards pa + 90 deg on the sky:
-    h_phase = np.exp(-2j * np.pi * q_min_sky[:, None] * (height[None, :] * np.sin(inc_rad)))
-
-    # Order 0 + orders +-1, +-2:
-    bessel_sum = np.sum(w[None, :] * h_phase * jv(0, 2.0 * np.pi * q[:, None] * r[None, :]), axis=1)
-    for m in (1, 2):
-        cm = c[m - 1]
-        sm = s[m - 1]
-        jm = jv(m, 2.0 * np.pi * q[:, None] * r[None, :])
-        # (-i)^m [ I_+m e^{+i m phi} + I_-m e^{-i m phi} ] = (-i)^m (c_m cos m phi + s_m sin m phi)
-        ang = cm[None, :] * np.cos(m * phi[:, None]) + sm[None, :] * np.sin(m * phi[:, None])
-        bessel_sum = bessel_sum + ((-1j) ** m) * np.sum(w[None, :] * h_phase * ang * jm, axis=1)
-
-    sigma_blur = blur_fwhm / sky.FWHM_PER_SIGMA
-    env = np.exp(-2.0 * np.pi**2 * sigma_blur**2 * q**2)
-    v_ref = bessel_sum * env
+    v_ref = _jacobi_anger_disk_ref(uu, vv, r, w, inc=inc, pa=pa, blur_fwhm=blur_fwhm, c=c, s=s, height=height)
     err_main = float(np.max(np.abs(v_vv - v_ref)))
 
-    # Negative stretch mirrors the minor-axis frequency (flips sign of s_m for odd/even sin m phi):
-    stretch_neg = -np.cos(inc_rad)
+    # Negative stretch compared directly against closed-form SciPy Bessel sum at q_min = q_min_sky * stretch_neg:
+    stretch_neg = -float(np.cos(np.deg2rad(inc)))
     v_neg = np.asarray(vm.multipole_disk_cvis(uu, vv, r, w_raw, inc=inc, pa=pa, c=c, s=s, stretch=stretch_neg))
-    v_mirror = np.asarray(vm.multipole_disk_cvis(uu, vv, r, w_raw, inc=inc, pa=pa, c=c, s=-s, stretch=-stretch_neg))
-    err_stretch = float(np.max(np.abs(v_neg - v_mirror)))
+    v_neg_ref = _jacobi_anger_disk_ref(uu, vv, r, w, inc=inc, pa=pa, c=c, s=s, stretch=stretch_neg)
+    err_stretch = float(np.max(np.abs(v_neg - v_neg_ref)))
 
     # Normalization V(0, 0) == 1:
     v0 = complex(np.asarray(vm.multipole_disk_cvis(0.0, 0.0, r, w_raw, inc=inc, pa=pa, c=c, s=s, height=height)))
@@ -192,7 +236,7 @@ def test_multipole_disk_cvis_jacobi_anger_height_blur_and_stretch():
 
     record("multipole_disk_cvis_max_err", max(err_main, err_stretch, err_v0))
     assert err_main < 1e-13
-    assert err_stretch < 1e-14
+    assert err_stretch < 1e-13
     assert err_v0 < 1e-15
 
 
@@ -235,8 +279,6 @@ def test_cvis_radial_dirac_delta_modulated_against_bessel_and_ring_cloud():
     err_bessel = float(np.max(np.abs(v_vv - v_bessel)))
     err_cloud = float(np.max(np.abs(v_vv - v_cloud)))
 
-    # Cardinal orientation check: m=1, phi=0 is bright North -> Im V < 0 at small +v;
-    # m=1, phi=90 is bright East -> Im V < 0 at small +u:
     v_north = complex(
         np.asarray(vm.cvis_radial_dirac_delta_modulated(0.0, 5.0 / wavel, r0, np.array([0.5]), np.array([0.0])))
     )
@@ -348,7 +390,6 @@ def test_radial_gp_function_and_gp_priors_across_scene():
     assert np.any(draws_signed < 0.0)
     assert np.all(draws_pos > 0.0)
 
-    # Full MultipoleDisk scene with RadialGP profile, MultipoleKernel harmonics, and RadialGPFunction spectral_index:
     disk = vm.MultipoleDisk(
         profile=vm.RadialGP(1.0, 12.0, sigma=0.8, ell=3.0),
         harmonics=vm.Harmonics(degree=2, prior=vm.MultipoleKernel(ell_r=3.0, ell_theta=2.5, sigma=0.25), form="linear"),
@@ -357,7 +398,6 @@ def test_radial_gp_function_and_gp_priors_across_scene():
         n_r=24,
     )
     scene = vm.System(star=vm.PointSource(flux=1.0), disk=disk)
-    # Chromatic evaluation exercises spectral_index RadialGPFunction on disk's profile range:
     cvis_20 = np.asarray(scene.model(np.array([35.0]), np.array([-20.0]), np.array([2.0e-6])))
     cvis_24 = np.asarray(scene.model(np.array([35.0]), np.array([-20.0]), np.array([2.4e-6])))
     assert np.all(np.isfinite(cvis_20)) and not np.allclose(cvis_20, cvis_24)
@@ -377,11 +417,9 @@ def test_radial_gp_function_and_gp_priors_across_scene():
     }
     assert set(priors_all.keys()) == expected_keys
 
-    # LogUniform scale invariance check: log_prob(x1) - log_prob(x2) == -log(x1 / x2)
     lp_diff = float(priors_all["disk.profile.sigma"].log_prob(0.2) - priors_all["disk.profile.sigma"].log_prob(0.8))
     lp_err = abs(lp_diff - (-np.log(0.2 / 0.8)))
 
-    # Leaving bounds None fixes hyperparameters and emits only latent z priors:
     priors_latents_only = vm.gp_priors(scene)
     assert set(priors_latents_only.keys()) == {"disk.profile.z", "disk.harmonics.z", "disk.spectral_index.z"}
 
@@ -398,7 +436,7 @@ def test_radial_gp_function_and_gp_priors_across_scene():
 @pytest.mark.validates(
     "virgil.fields.polar_interpolate",
     roots=["mathematics"],
-    headline="polar_interp_refinement_ratio",
+    headline="polar_interp_node_err",
 )
 def test_polar_interpolate_nodes_periodicity_edge_taper_and_second_order():
     """polar_interpolate reproduces grid nodes, wraps periodically in azimuth,
@@ -411,13 +449,11 @@ def test_polar_interpolate_nodes_periodicity_edge_taper_and_second_order():
     rr_g, tt_g = np.meshgrid(r_nodes, th_nodes, indexing="ij")
     vals = 1.2 + 0.5 * np.cos(rr_g / 4.0) * np.cos(tt_g - 0.4)
 
-    # Exact at grid nodes and periodic under theta + 2*pi:
     at_nodes = np.asarray(vfields.polar_interpolate(vals, r_min, spacing, rr_g, tt_g, fill=fill))
     at_wrapped = np.asarray(vfields.polar_interpolate(vals, r_min, spacing, rr_g, tt_g + 2.0 * np.pi, fill=fill))
     err_nodes = float(np.max(np.abs(at_nodes - vals)))
     err_wrap = float(np.max(np.abs(at_nodes - at_wrapped)))
 
-    # Linear ramp over one spacing outside [r_min, r_max] and constant fill beyond:
     r_max = r_min + (n_r - 1) * spacing  # 14.0
     th0 = th_nodes[3]
     v_inner_edge = float(vals[0, 3])
@@ -434,7 +470,6 @@ def test_polar_interpolate_nodes_periodicity_edge_taper_and_second_order():
     )
     err_edges = float(np.max(np.abs(got_edges - expected_edges)))
 
-    # Second-order O(h^2) convergence under 2x refinement in both r and theta:
     def analytic_fn(r, th):
         return np.exp(-0.02 * r**2) * (1.0 + 0.4 * np.cos(2.0 * th + 0.3) * np.sin(0.25 * r))
 
@@ -454,6 +489,7 @@ def test_polar_interpolate_nodes_periodicity_edge_taper_and_second_order():
 
     ratio = errors[0] / errors[1]
     record("polar_interp_node_err", max(err_nodes, err_wrap, err_edges))
+    record("polar_interp_interior_node_err", max(err_nodes, err_wrap))
     record("polar_interp_refinement_ratio", ratio)
     assert err_nodes < 1e-14
     assert err_wrap < 1e-14
@@ -463,15 +499,12 @@ def test_polar_interpolate_nodes_periodicity_edge_taper_and_second_order():
 
 @pytest.mark.validates(
     "virgil.fields.multipole_field_priors",
-    "virgil.fields.MultipoleField",
-    roots=["mathematics", "statistics"],
-    headline="origin_non_m0_std",
+    roots=["mathematics"],
+    headline="multipole_prior_logprob_err",
 )
-def test_multipole_field_priors_and_042_tanh_origin_regularity():
-    """multipole_field_priors returns bounded LogUniform scale priors, and in
-    0.4.2 MultipoleField(r_min_mas=0) multiplies azimuthal order m by
-    tanh(r / length_r)^|m| so the origin is single-valued (only m=0 free at r=0)
-    while an annulus (r_min_mas > 0) keeps a stationary inner edge."""
+def test_multipole_field_priors_bounds_and_log_uniform_scaling():
+    """multipole_field_priors builds bounded LogUniform scale priors on
+    (sigma, length_r, length_theta) with exact d(log p)/d(log x) == -1."""
     pri = vfields.multipole_field_priors(
         path="disk_img.log_brightness", sigma=(0.1, 3.0), length_r=(1.0, 25.0), length_theta=(0.2, 5.0)
     )
@@ -480,106 +513,113 @@ def test_multipole_field_priors_and_042_tanh_origin_regularity():
         "disk_img.log_brightness.length_r",
         "disk_img.log_brightness.length_theta",
     }
-    lp_gap = float(
-        pri["disk_img.log_brightness.length_r"].log_prob(2.0)
-        - pri["disk_img.log_brightness.length_r"].log_prob(8.0)
-    )
-    assert np.isclose(lp_gap, -np.log(2.0 / 8.0), atol=1e-14)
+    errs = []
+    for key, x1, x2 in [
+        ("disk_img.log_brightness.sigma", 0.2, 1.6),
+        ("disk_img.log_brightness.length_r", 2.0, 8.0),
+        ("disk_img.log_brightness.length_theta", 0.4, 2.0),
+    ]:
+        lp_gap = float(pri[key].log_prob(x1) - pri[key].log_prob(x2))
+        errs.append(abs(lp_gap - (-np.log(x1 / x2))))
+    max_err = max(errs)
+    record("multipole_prior_logprob_err", max_err)
+    assert max_err < 1e-14
 
-    # Probe origin regularity on odd npix=33 (exact centre pixel at (16, 16), r = 0):
-    rng = np.random.default_rng(66)
-    n_draws = 256
-    n_r, n_th = 16, 32
-    latents = rng.normal(size=(n_draws, n_r, n_th))
-    length_r = 6.0
 
-    # Sample rings at r = 0 (via centre pixel) and r = 3.0 mas = 0.5 * length_r:
-    # Build pixel grid of 65x65 with pixel_scale=0.5 mas so r=3.0 mas is 6 pixels out:
+@pytest.mark.validates(
+    "virgil.fields.MultipoleField",
+    roots=["mathematics", "statistics"],
+    headline="origin_non_m0_std",
+)
+def test_multipole_field_042_origin_taper_analytical_variance_and_nr_invariance():
+    """In 0.4.2, MultipoleField(r_min_mas=0) multiplies azimuthal order m by
+    tanh(r / length_r)^|m| using physical length_r (F25): only m=0 is free at
+    r=0, the azimuthal m != 0 variance matches sigma^2 * sum_{m!=0} S(m) tanh(r/ell_r)^{2|m|} / sum S(m)
+    both analytically (across n_r = 16 and n_r = 31) and over 512 Monte Carlo
+    draws, and an annulus (r_min_mas > 0) stays stationary at its inner edge."""
+    length_r, length_theta, nu_th, sigma = 6.0, 0.8, 1.5, 1.2
+    n_th = 32
+    r_max = 15.0
     npix, pix = 65, 0.5
     c_idx = (npix - 1) // 2
 
-    # Image(field) uses softmax(log_field); log(brightness) up to an additive constant recovers eta(x, y):
-    def log_eta(z_mat, r_min):
-        img = vm.Image(
-            vfields.MultipoleField(
-                z_mat,
+    m_orders = np.abs(np.fft.fftfreq(n_th, d=1.0 / n_th))
+    s_m = (1.0 + (m_orders * length_theta) ** 2 / (2.0 * nu_th)) ** (-nu_th - 0.5)
+
+    def _exact_ring_non0_var(n_r: int, r_min: float) -> np.ndarray:
+        z_zero = jnp.zeros((n_r, n_th))
+        jac = np.asarray(
+            jax.jacfwd(
+                lambda z: vfields.MultipoleField(
+                    z,
+                    image_shape=(npix, npix),
+                    r_max_mas=r_max,
+                    r_min_mas=r_min,
+                    sigma=sigma,
+                    length_r=length_r,
+                    length_theta=length_theta,
+                    nu_theta=nu_th,
+                ).polar_values()
+            )(z_zero)
+        ).reshape(n_r, n_th, -1)
+        jac_non0 = jac - jac.mean(axis=1, keepdims=True)
+        return np.mean(np.sum(jac_non0**2, axis=-1), axis=1)
+
+    # 1. Exact analytical variance profile & radial-grid resolution invariance (n_r=16 vs n_r=31):
+    var_16 = _exact_ring_non0_var(16, 0.0)
+    var_31 = _exact_ring_non0_var(31, 0.0)
+    radii_16 = np.linspace(0.0, r_max, 16)
+    taper_16 = np.tanh(radii_16[:, None] / length_r) ** (2.0 * m_orders[None, :])
+    var_formula_16 = sigma**2 * np.sum(s_m[None, 1:] * taper_16[:, 1:], axis=1) / np.sum(s_m)
+
+    err_formula_16 = float(np.max(np.abs(var_16 - var_formula_16)))
+    # Shared integer radii r = 0, 1, ..., 15 mas sit at indices 0..15 of n_r=16 and 0, 2, ..., 30 of n_r=31:
+    err_nr_invariance = float(np.max(np.abs(var_16 - var_31[::2])))
+    assert float(var_16[0]) < 1e-30
+    assert float(var_31[0]) < 1e-30
+
+    # Annulus (r_min_mas = 2.0) keeps untapered stationary m != 0 variance right to its inner edge:
+    var_ann = _exact_ring_non0_var(14, 2.0)
+    var_untapered = float(sigma**2 * np.sum(s_m[1:]) / np.sum(s_m))
+    err_annulus = float(np.max(np.abs(var_ann - var_untapered)))
+
+    # 2. Monte Carlo verification over 512 standard-normal draws Z ~ N(0, I):
+    rng = np.random.default_rng(66)
+    n_draws = 512
+    latents = rng.normal(size=(n_draws, 16, n_th))
+    pv_draws = np.asarray(
+        jax.vmap(
+            lambda z: vfields.MultipoleField(
+                z,
                 image_shape=(npix, npix),
-                r_max_mas=15.0,
-                r_min_mas=r_min,
-                sigma=1.0,
+                r_max_mas=r_max,
+                r_min_mas=0.0,
+                sigma=sigma,
                 length_r=length_r,
-                length_theta=0.8,
-                outside=-20.0,
-            ),
-            pixel_scale_mas=pix,
-        )
-        return jnp.log(img.brightness)
-
-    eta_zero = np.asarray(jax.vmap(lambda z: log_eta(z, 0.0))(jnp.asarray(latents)))
-    eta_ann = np.asarray(jax.vmap(lambda z: log_eta(z, 2.0))(jnp.asarray(latents)))
-
-    # 1. At r_min_mas=0, check azimuthal variation on 1-pixel cardinal neighbours
-    # (r = 0.5 mas = length_r / 12 -> tanh(1/12) ~ 0.083) vs outer ring at 20 pixels:
-    card_1px = np.stack(
-        [
-            eta_zero[:, c_idx - 1, c_idx],
-            eta_zero[:, c_idx, c_idx + 1],
-            eta_zero[:, c_idx + 1, c_idx],
-            eta_zero[:, c_idx, c_idx - 1],
-        ],
-        axis=-1,
-    )  # shape (n_draws, 4)
-    card_20px = np.stack(
-        [
-            eta_zero[:, c_idx - 20, c_idx],
-            eta_zero[:, c_idx, c_idx + 20],
-            eta_zero[:, c_idx + 20, c_idx],
-            eta_zero[:, c_idx, c_idx - 20],
-        ],
-        axis=-1,
+                length_theta=length_theta,
+                nu_theta=nu_th,
+            ).polar_values()
+        )(jnp.asarray(latents))
     )
-    # Remove m=0 mean around each 4-point ring to measure m >= 1 azimuthal std:
-    std_1px = float(np.sqrt(np.mean((card_1px - card_1px.mean(axis=-1, keepdims=True)) ** 2)))
-    std_20px = float(np.sqrt(np.mean((card_20px - card_20px.mean(axis=-1, keepdims=True)) ** 2)))
+    pv_non0 = pv_draws - pv_draws.mean(axis=-1, keepdims=True)
+    ring_sample_vars = np.mean(pv_non0**2, axis=-1)  # (n_draws, 16)
+    mc_mean = ring_sample_vars.mean(axis=0)
+    mc_se = ring_sample_vars.std(axis=0, ddof=1) / np.sqrt(n_draws)
+    # Check r > 0 rings lie within 3.5 standard errors of the analytical curve:
+    max_zscore = float(np.max(np.abs(mc_mean[1:] - var_formula_16[1:]) / mc_se[1:]))
 
-    # For annulus r_min_mas=2.0 mas (4 pixels from centre), inner ring at 4 px is untapered (~ same azimuthal std as 20 px):
-    ann_4px = np.stack(
-        [
-            eta_ann[:, c_idx - 4, c_idx],
-            eta_ann[:, c_idx, c_idx + 4],
-            eta_ann[:, c_idx + 4, c_idx],
-            eta_ann[:, c_idx, c_idx - 4],
-        ],
-        axis=-1,
-    )
-    ann_20px = np.stack(
-        [
-            eta_ann[:, c_idx - 20, c_idx],
-            eta_ann[:, c_idx, c_idx + 20],
-            eta_ann[:, c_idx + 20, c_idx],
-            eta_ann[:, c_idx, c_idx - 20],
-        ],
-        axis=-1,
-    )
-    std_ann_inner = float(np.sqrt(np.mean((ann_4px - ann_4px.mean(axis=-1, keepdims=True)) ** 2)))
-    std_ann_outer = float(np.sqrt(np.mean((ann_20px - ann_20px.mean(axis=-1, keepdims=True)) ** 2)))
-
-    # Check exact single-valuedness at r=0: a 90 deg azimuthal rotation of Z
-    # (shift = n_th // 4) maps the square Cartesian grid onto itself (preserving
-    # softmax normalization), shifts outer pixels by O(1), and leaves the exact
-    # origin pixel (c_idx, c_idx) strictly invariant because tanh(0 / length_r)^|m| == 0
-    # for all |m| >= 1!
+    # 3. Exact single-valuedness at the centre pixel (r = 0) of Image(MultipoleField) under 90 deg rotation:
     z0 = latents[0]
     z_rot90 = np.roll(z0, n_th // 4, axis=1)
     b_orig = np.asarray(
         vm.Image(
-            vfields.MultipoleField(z0, image_shape=(npix, npix), r_max_mas=15.0, r_min_mas=0.0, length_r=length_r),
+            vfields.MultipoleField(z0, image_shape=(npix, npix), r_max_mas=r_max, r_min_mas=0.0, length_r=length_r),
             pixel_scale_mas=pix,
         ).brightness
     )
     b_rot90 = np.asarray(
         vm.Image(
-            vfields.MultipoleField(z_rot90, image_shape=(npix, npix), r_max_mas=15.0, r_min_mas=0.0, length_r=length_r),
+            vfields.MultipoleField(z_rot90, image_shape=(npix, npix), r_max_mas=r_max, r_min_mas=0.0, length_r=length_r),
             pixel_scale_mas=pix,
         ).brightness
     )
@@ -588,11 +628,14 @@ def test_multipole_field_priors_and_042_tanh_origin_regularity():
     assert outer_rot_diff > 5e-5
 
     record("origin_non_m0_std", origin_m1_diff)
-    record("taper_inner_to_outer_std_ratio", std_1px / std_20px)
-    record("annulus_inner_to_outer_std_ratio", std_ann_inner / std_ann_outer)
+    record("multipole_taper_formula_err", err_formula_16)
+    record("multipole_nr_invariance_err", err_nr_invariance)
+    record("multipole_mc_max_zscore", max_zscore)
     assert origin_m1_diff < 1e-15
-    assert std_1px / std_20px < 0.15
-    assert 0.80 < std_ann_inner / std_ann_outer < 1.25
+    assert err_formula_16 < 5e-5
+    assert err_nr_invariance < 5e-5
+    assert err_annulus < 5e-5
+    assert max_zscore < 3.5
 
 
 # ---------------------------------------------------------------------------
@@ -643,18 +686,89 @@ def test_angle_vector_helpers_quadrants_sites_and_density():
     "virgil.amigo.validate_mixed_disco_record",
     "virgil.amigo.mixed_disco_fields",
     roots=["mathematics"],
-    headline="mixed_disco_projection_err",
+    headline="ami_grid_precision_rel_err",
 )
 def test_ami_grid_record_and_amigo_mixed_disco_validation_and_projection():
-    """ami_grid_record builds a valid mixed-DISCO record with SVD nuisance
-    nulling; is_mixed_disco_record, validate_mixed_disco_record, and
-    mixed_disco_fields enforce schema invariants and match A_logamp Re log V +
-    A_phase Im log V to machine precision."""
-    rec = vcov.ami_grid_record(wavelength_m=4.3e-6, pitch_m=0.8, rotation_deg=25.0, sigma=1e-4, keep=0.99)
+    """ami_grid_record builds the rotated half-plane square lattice where the
+    7-hole pupil autocorrelation is positive, projects out global log-amplitude
+    flux (A_logamp @ 1 == 0) and phase centroid shifts (A_phase @ [u, v] == 0)
+    with exact Fisher precision at keep=1.0, scales disco_sigma linearly with
+    sigma, and truncates rank according to keep; AMIGO validators enforce schema
+    invariants and match A_logamp log|V| + A_phase arg V at negated (-u, -v)."""
+    rec0 = vcov.ami_grid_record(
+        wavelength_m=4.3e-6, pitch_m=0.8, rotation_deg=0.0, sigma=1e-4, keep=0.99, holes=NIRISS_HOLES, diameter=0.82
+    )
+    rec = vcov.ami_grid_record(
+        wavelength_m=4.3e-6, pitch_m=0.8, rotation_deg=25.0, sigma=1e-4, keep=0.99, holes=NIRISS_HOLES, diameter=0.82
+    )
+    rec_2s = vcov.ami_grid_record(
+        wavelength_m=4.3e-6, pitch_m=0.8, rotation_deg=25.0, sigma=2e-4, keep=0.99, holes=NIRISS_HOLES, diameter=0.82
+    )
+    rec_k100 = vcov.ami_grid_record(
+        wavelength_m=4.3e-6, pitch_m=0.8, rotation_deg=25.0, sigma=1e-4, keep=1.0, holes=NIRISS_HOLES, diameter=0.82
+    )
+    rec_k80 = vcov.ami_grid_record(
+        wavelength_m=4.3e-6, pitch_m=0.8, rotation_deg=25.0, sigma=1e-4, keep=0.80, holes=NIRISS_HOLES, diameter=0.82
+    )
+
+    # 1. Exact half-plane pitch_m lattice where closed-form circular-hole MTF > 0, plus rotation_deg:
+    for pitch in (0.8, 0.6):
+        r_p = vcov.ami_grid_record(
+            wavelength_m=4.3e-6, pitch_m=pitch, rotation_deg=0.0, holes=NIRISS_HOLES, diameter=0.82
+        )
+        u_phys, v_phys = -r_p["u"], -r_p["v"]
+        n_max = int(np.ceil(7.0 / pitch))
+        ix, iy = np.meshgrid(np.arange(-n_max, n_max + 1), np.arange(0, n_max + 1))
+        hp = (iy > 0) | ((iy == 0) & (ix > 0))
+        ug, vg = ix[hp] * pitch, iy[hp] * pitch
+        pos_mtf = _mtf_closed_form(ug, vg, NIRISS_HOLES, 0.82) > 0.0
+        pts_got = {(round(float(a / pitch), 6), round(float(b / pitch), 6)) for a, b in zip(u_phys, v_phys)}
+        pts_ref = {(round(float(a / pitch), 6), round(float(b / pitch), 6)) for a, b in zip(ug[pos_mtf], vg[pos_mtf])}
+        assert pts_got == pts_ref
+
+    rot_rad = np.deg2rad(25.0)
+    u_rot = rec0["u"] * np.cos(rot_rad) + rec0["v"] * np.sin(rot_rad)
+    v_rot = -rec0["u"] * np.sin(rot_rad) + rec0["v"] * np.cos(rot_rad)
+    err_rot_uv = float(np.max(np.hypot(rec["u"] - u_rot, rec["v"] - v_rot)))
+    assert float(np.max(np.hypot(rec["u"] - rec0["u"], rec["v"] - rec0["v"]))) > 0.5
+
+    # 2. Direct operator nullspace checks (global log-amplitude piston 1 and phase tip/tilt [u, v]):
+    a_la = rec["disco_logamp_model_operator"]
+    a_ph = rec["disco_phase_model_operator"]
+    null_logamp_ones = float(np.max(np.abs(a_la @ np.ones_like(rec["u"]))))
+    null_phase_uv = float(np.max(np.abs(a_ph @ np.column_stack([rec["u"], rec["v"]]))))
+
+    # 3. Exact nuisance-projected Fisher precision reconstruction at keep=1.0, sigma scaling, and keep truncation:
+    mtf_cells = _mtf_closed_form(-rec0["u"], -rec0["v"], NIRISS_HOLES, 0.82)
+    w_cell = (mtf_cells / 1e-4) ** 2
+    p_la_ref = np.diag(w_cell) - (w_cell[:, None] @ w_cell[None, :]) / np.sum(w_cell)
+    xy = np.column_stack([rec["u"], rec["v"]])
+    w_xy = w_cell[:, None] * xy
+    p_ph_ref = np.diag(w_cell) - w_xy @ np.linalg.solve(xy.T @ w_xy, w_xy.T)
+
+    w_k100 = 1.0 / (rec_k100["disco_sigma"] ** 2)
+    p_la_100 = rec_k100["disco_logamp_model_operator"].T @ (w_k100[:, None] * rec_k100["disco_logamp_model_operator"])
+    p_ph_100 = rec_k100["disco_phase_model_operator"].T @ (w_k100[:, None] * rec_k100["disco_phase_model_operator"])
+    err_prec_la = float(np.linalg.norm(p_la_100 - p_la_ref) / np.linalg.norm(p_la_ref))
+    err_prec_ph = float(np.linalg.norm(p_ph_100 - p_ph_ref) / np.linalg.norm(p_ph_ref))
+    err_prec = max(err_prec_la, err_prec_ph)
+
+    err_sigma_scale = float(np.max(np.abs(rec_2s["disco_sigma"] / rec["disco_sigma"] - 2.0)))
+    assert rec_k80["disco_sigma"].size < rec["disco_sigma"].size < rec_k100["disco_sigma"].size
+    w_k99 = 1.0 / (rec["disco_sigma"] ** 2)
+    kept_frac_99 = float(
+        (
+            np.trace(a_la.T @ (w_k99[:, None] * a_la))
+            + np.trace(a_ph.T @ (w_k99[:, None] * a_ph))
+        )
+        / (np.trace(p_la_ref) + np.trace(p_ph_ref))
+    )
+    assert 0.99 <= kept_frac_99 < 1.0
+
+    # 4. AMIGO validators & negated (-u, -v) projection through OIData:
     assert vamigo.is_mixed_disco_record(rec) is True
     assert vamigo.is_mixed_disco_record({"u": np.zeros(4), "v": np.zeros(4)}) is False
     vamigo.validate_mixed_disco_record(rec)
-
     fields = vamigo.mixed_disco_fields(rec)
     assert fields["vis_encoding"] == "mixed_log_complex"
 
@@ -662,42 +776,39 @@ def test_ami_grid_record_and_amigo_mixed_disco_validation_and_projection():
     binary = vm.BinaryModelCartesian(dra=-45.0, ddec=160.0, flux=2e-3)
     oid_sim = oid.with_model(binary)
 
-    # AMIGO records store (-u, -v), which OIData negates to physical (+u, +v):
     cvis = np.asarray(binary.model(-rec["u"], -rec["v"], np.full_like(rec["u"], 4.3e-6)))
-    y_manual = rec["disco_logamp_model_operator"] @ np.log(np.abs(cvis)) + rec["disco_phase_model_operator"] @ np.angle(
-        cvis
-    )
+    y_manual = a_la @ np.log(np.abs(cvis)) + a_ph @ np.angle(cvis)
     cvis_unnegated = np.asarray(binary.model(rec["u"], rec["v"], np.full_like(rec["u"], 4.3e-6)))
-    y_wrong_sign = rec["disco_logamp_model_operator"] @ np.log(np.abs(cvis_unnegated)) + rec[
-        "disco_phase_model_operator"
-    ] @ np.angle(cvis_unnegated)
+    y_wrong_sign = a_la @ np.log(np.abs(cvis_unnegated)) + a_ph @ np.angle(cvis_unnegated)
     y_oid = np.asarray(oid_sim.model(binary))
     err_proj = float(np.max(np.abs(y_oid - y_manual)))
     assert float(np.max(np.abs(y_oid - y_wrong_sign))) > 5e-3
 
-    # SVD modes project out global flux scaling and first-order centroid shifts:
-    tiny_shift = vm.PointSource(dra=1e-3, ddec=-1e-3)
-    y_shift = np.asarray(oid.model(tiny_shift))
-    null_leak = float(np.max(np.abs(y_shift)))
+    # Sub-mas centroid shift and global constant log|V| shift both vanish:
+    null_leak = float(np.max(np.abs(np.asarray(oid.model(vm.PointSource(dra=1e-3, ddec=-1e-3))))))
 
-    # Validation rejects malformed records (missing key, mismatched operator shape, non-positive sigma):
     assert vamigo.is_mixed_disco_record({}) is False
     bad_no_tag = {k: v for k, v in rec.items() if k != "disco_coefficients"}
     assert vamigo.is_mixed_disco_record(bad_no_tag) is False
     bad_missing = {k: v for k, v in rec.items() if k != "disco_phase_model_operator"}
     with pytest.raises((KeyError, ValueError)):
         vamigo.validate_mixed_disco_record(bad_missing)
-
     bad_shape = {**rec, "disco_phase_model_operator": rec["disco_phase_model_operator"][:, :-1]}
     with pytest.raises(ValueError):
         vamigo.validate_mixed_disco_record(bad_shape)
-
     bad_sigma = {**rec, "disco_sigma": np.where(np.arange(rec["disco_sigma"].size) == 0, -1.0, rec["disco_sigma"])}
     with pytest.raises(ValueError):
         vamigo.validate_mixed_disco_record(bad_sigma)
 
+    record("ami_grid_precision_rel_err", err_prec)
     record("mixed_disco_projection_err", err_proj)
+    record("ami_grid_nullspace_max_err", max(null_logamp_ones, null_phase_uv))
     record("ami_grid_centroid_null_leak", null_leak)
+    assert err_rot_uv < 1e-14
+    assert null_logamp_ones < 1e-14
+    assert null_phase_uv < 1e-14
+    assert err_prec < 5e-15
+    assert err_sigma_scale < 1e-14
     assert err_proj < 1e-14
     assert null_leak < 1e-9
 
@@ -708,17 +819,16 @@ def test_ami_grid_record_and_amigo_mixed_disco_validation_and_projection():
 
 
 @pytest.mark.validates(
-    "virgil.oifits.build_hdulist",
     "virgil.oidata.cp_indices",
     "virgil.oidata.closure_phases",
     "virgil.observables.in_ranges",
-    roots=["standards", "mathematics"],
-    headline="oifits_hdulist_roundtrip_err",
+    roots=["mathematics"],
+    headline="closure_phases_wrap_max_err",
 )
-def test_build_hdulist_cp_indices_closure_phases_and_in_ranges(tmp_path):
-    """build_hdulist produces OIFITS2 extensions modifiable before writing;
-    cp_indices maps triangle legs with orientation checks; closure_phases wraps
-    bispectrum phases into [-pi, pi); and in_ranges selects wavelength windows."""
+def test_cp_indices_closure_phases_and_in_ranges():
+    """cp_indices maps oriented triangle legs (rejecting reversed legs);
+    closure_phases wraps bispectrum phases into [-pi, pi); and in_ranges selects
+    inclusive wavelength windows."""
     wls = np.array([2.0e-6, 2.15e-6, 2.3e-6, 2.45e-6], dtype=np.float32)
     mask = np.asarray(vobs.in_ranges(wls, [(1.95e-6, 2.05e-6), (2.28e-6, 2.46e-6)]))
     assert np.array_equal(mask, np.array([True, False, True, True]))
@@ -731,27 +841,41 @@ def test_build_hdulist_cp_indices_closure_phases_and_in_ranges(tmp_path):
     assert np.array_equal(i2, [1, 3])
     assert np.array_equal(i3, [2, 4])
 
-    # Reversed orientation on leg 3 must raise ValueError:
     with pytest.raises(ValueError):
         voidata.cp_indices(np.array([[1, 2], [2, 3], [3, 1]]), np.array([[1, 2, 3]]))
 
-    # closure_phases branch-cut wrap into [-pi, pi):
     phases = np.array([2.4, 2.5, -1.1, -2.2, 0.3])
     cvis = np.array([0.8, 0.7, 0.9, 0.6, 0.5]) * np.exp(1j * phases)
     cp = np.asarray(voidata.closure_phases(cvis, i1, i2, i3))
     cp_ref = np.angle(cvis[i1] * cvis[i2] * np.conj(cvis[i3]))
-    # Replace exact +pi with -pi if needed for [-pi, pi):
     cp_ref = np.where(cp_ref >= np.pi, cp_ref - 2.0 * np.pi, cp_ref)
     err_cp = float(np.max(np.abs(cp - cp_ref)))
     assert np.all((cp >= -np.pi) & (cp < np.pi))
 
-    # build_hdulist custom keyword injection + OIFITS2 round-trip:
+    record("closure_phases_wrap_max_err", err_cp)
+    assert err_cp < 1e-14
+
+
+@pytest.mark.validates(
+    "virgil.oifits.build_hdulist",
+    roots=["standards"],
+    headline="oifits_hdulist_crosscheck_err",
+)
+def test_build_hdulist_oifits2_headers_units_and_crosscheck_load(tmp_path):
+    """build_hdulist produces OIFITS2 extensions with standard OI_REVN=2 headers
+    and column units, supports primary-header customization before writing, and
+    round-trips cleanly through astropy.io.fits and crosscheck.chi2.load."""
+    from crosscheck import chi2 as xchi2
+
+    wls = np.array([2.0e-6, 2.15e-6, 2.3e-6, 2.45e-6], dtype=np.float32)
     tables = {
         "OI_WAVELENGTH": {"EFF_WAVE": wls, "EFF_BAND": np.full(4, 0.05e-6, dtype=np.float32)},
         "OI_VIS2": {
             "UCOORD": np.array([35.0, -20.0, 15.0]),
             "VCOORD": np.array([12.0, 28.0, 40.0]),
-            "VIS2DATA": np.full((3, 4), 0.88),
+            "VIS2DATA": np.array(
+                [[0.88, 0.84, 0.79, 0.75], [0.91, 0.89, 0.86, 0.83], [0.76, 0.72, 0.68, 0.64]]
+            ),
             "VIS2ERR": np.full((3, 4), 0.015),
             "STA_INDEX": np.array([[1, 2], [2, 3], [1, 3]], dtype=np.int16),
             "MJD": np.full(3, 60100.5),
@@ -768,19 +892,45 @@ def test_build_hdulist_cp_indices_closure_phases_and_in_ranges(tmp_path):
         },
     }
     hdul = voifits.build_hdulist(tables)
-    assert hdul["OI_VIS2"].header["OI_REVN"] == 2
     hdul[0].header["HIERARCH VIRGIL TESTTAG"] = "BATCH5"
     out_fits = tmp_path / "custom_hdulist.fits"
     hdul.writeto(out_fits)
 
-    oid = voidata.OIData(out_fits)
-    err_v2 = float(np.max(np.abs(np.asarray(oid.vis) - 0.88)))
-    err_t3 = float(np.max(np.abs(np.rad2deg(np.asarray(oid.phi)) - tables["OI_T3"]["T3PHI"].ravel())))
-    err_rt = max(err_cp, err_v2, err_t3)
+    # 1. Inspect OIFITS2 standard headers and column units directly via astropy.io.fits:
+    with fits.open(out_fits) as h:
+        assert h[0].header["HIERARCH VIRGIL TESTTAG"] == "BATCH5"
+        ext_names = {ext.name for ext in h[1:]}
+        assert {"OI_TARGET", "OI_WAVELENGTH", "OI_VIS2", "OI_T3"}.issubset(ext_names)
+        for ext_name in ("OI_TARGET", "OI_WAVELENGTH", "OI_VIS2", "OI_T3"):
+            assert h[ext_name].header["OI_REVN"] == 2
+        wl_cols = {c.name: c.unit for c in h["OI_WAVELENGTH"].columns}
+        t3_cols = {c.name: c.unit for c in h["OI_T3"].columns}
+        v2_cols = {c.name: c.unit for c in h["OI_VIS2"].columns}
+        assert wl_cols["EFF_WAVE"] == "m"
+        assert wl_cols["EFF_BAND"] == "m"
+        assert v2_cols["UCOORD"] == "m" and v2_cols["VCOORD"] == "m"
+        assert t3_cols["T3PHI"] in ("deg", "DEG", "degrees")
+        assert t3_cols["T3PHIERR"] in ("deg", "DEG", "degrees")
 
-    record("oifits_hdulist_roundtrip_err", err_rt)
-    assert err_cp < 1e-14
-    assert err_rt < 1e-12
+    # 2. Independent OIFITS read-back via crosscheck.chi2.load (not virgil's reader):
+    loaded = xchi2.load(out_fits)
+    err_wl = float(np.max(np.abs(loaded["wl"][0] - wls.astype(float))))
+    err_uv = max(
+        float(np.max(np.abs(loaded["u"][:, 0] - tables["OI_VIS2"]["UCOORD"]))),
+        float(np.max(np.abs(loaded["v"][:, 0] - tables["OI_VIS2"]["VCOORD"]))),
+    )
+    err_v2 = max(
+        float(np.max(np.abs(loaded["v2"] - tables["OI_VIS2"]["VIS2DATA"]))),
+        float(np.max(np.abs(loaded["dv2"] - tables["OI_VIS2"]["VIS2ERR"]))),
+    )
+    err_t3 = max(
+        float(np.max(np.abs(np.rad2deg(loaded["cp"]) - tables["OI_T3"]["T3PHI"]))),
+        float(np.max(np.abs(np.rad2deg(loaded["dcp"]) - tables["OI_T3"]["T3PHIERR"]))),
+    )
+    err_all = max(err_wl, err_uv, err_v2, err_t3)
+
+    record("oifits_hdulist_crosscheck_err", err_all)
+    assert err_all < 1e-7
 
 
 # ---------------------------------------------------------------------------
@@ -839,7 +989,6 @@ def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
     p = tmp_path / "gains_offsets.fits"
     voifits.build_hdulist(tables).writeto(p)
 
-    # 1. ClosureOffsets scale_penalty=True vs False at Delta = 175 deg (cos Delta < 0):
     oid_base = voidata.OIData(voifits.read_oifits(p))
     sigma_rad = np.deg2rad(2.0)
     sigma_off = 0.25
@@ -857,9 +1006,7 @@ def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
         float(np.max(np.abs(r_false[-2:] - pen_false_ref))),
     )
 
-    # 2. OIData.with_gains(include_extras=True vs False) against dense Cholesky log-likelihood:
     raw_ext = voifits.read_oifits(p, extras=("visamp", "t3amp"))
-    # Set T3PHI=0 so no closure-phase wrap occurs when checking amplitude gain marginalization:
     raw_ext["phi"] = np.zeros_like(raw_ext["phi"])
     oid_ext = voidata.OIData(raw_ext)
     tau_tel = 0.04
@@ -874,19 +1021,13 @@ def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
     v2_mod = v_abs**2
     t3_mod = v_abs[oid_ext.i_cps1] * v_abs[oid_ext.i_cps2] * v_abs[oid_ext.i_cps3]
 
-    # Telescope design matrix B on log|V| for 3 stations (station 1..3 -> columns 0..2):
-    # Each baseline (a, b) sums telescope gains g_a + g_b (all channels in 1 frame):
-    sta = np.asarray(raw_ext["stations"]) - 1  # shape (6, 2)
-    B_vis = np.zeros((6, 3))
+    sta = np.asarray(raw_ext["stations"]) - 1
+    b_vis = np.zeros((6, 3))
     for row_i, (sa, sb) in enumerate(sta):
-        B_vis[row_i, sa] += 1.0
-        B_vis[row_i, sb] += 1.0
-    # T3AMP sums over all three legs (2 * (g_1 + g_2 + g_3) on triangle (1,2,3)):
-    B_t3 = B_vis[oid_ext.i_cps1] + B_vis[oid_ext.i_cps2] + B_vis[oid_ext.i_cps3]
+        b_vis[row_i, sa] += 1.0
+        b_vis[row_i, sb] += 1.0
+    b_t3 = b_vis[oid_ext.i_cps1] + b_vis[oid_ext.i_cps2] + b_vis[oid_ext.i_cps3]
 
-    # Independent Gaussian log-likelihood (including -0.5*N*log(2*pi) or matching virgil's convention):
-    # Check difference Delta log L = log L(with_gains) - log L(no_gains) so any constant cancels,
-    # AND verify absolute log-determinant + Mahalanobis term directly!
     ll_no_gains = float(vlike.model_loglike(scene, oid_ext))
     ll_inc = float(vlike.model_loglike(scene, g_inc))
     ll_exc = float(vlike.model_loglike(scene, g_exc))
@@ -896,19 +1037,18 @@ def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
     s_all = np.concatenate([np.asarray(oid_ext.d_vis), np.full(6, 0.015), np.full(2, 0.025)])
     res_all = y_all - m_all
 
-    # Linearized Jacobian from log|V| modes to (V^2, |V|, T3AMP): (2*V^2, |V|, T3AMP)
-    J_inc = np.vstack([2.0 * v2_mod[:, None] * B_vis, v_abs[:, None] * B_vis, t3_mod[:, None] * B_t3]) * tau_tel
-    C_inc = np.diag(s_all**2) + J_inc @ J_inc.T
-    cf_inc = cho_factor(C_inc)
+    j_inc = np.vstack([2.0 * v2_mod[:, None] * b_vis, v_abs[:, None] * b_vis, t3_mod[:, None] * b_t3]) * tau_tel
+    c_inc = np.diag(s_all**2) + j_inc @ j_inc.T
+    cf_inc = cho_factor(c_inc)
     logdet_inc = 2.0 * np.sum(np.log(np.diag(cf_inc[0])))
     dll_inc_ref = -0.5 * (
         (logdet_inc + res_all @ cho_solve(cf_inc, res_all))
         - (np.sum(np.log(s_all**2)) + np.sum((res_all / s_all) ** 2))
     )
 
-    J_exc = (2.0 * v2_mod[:, None] * B_vis) * tau_tel
-    C_exc = np.diag(s_all[:6] ** 2) + J_exc @ J_exc.T
-    cf_exc = cho_factor(C_exc)
+    j_exc = (2.0 * v2_mod[:, None] * b_vis) * tau_tel
+    c_exc = np.diag(s_all[:6] ** 2) + j_exc @ j_exc.T
+    cf_exc = cho_factor(c_exc)
     logdet_exc = 2.0 * np.sum(np.log(np.diag(cf_exc[0])))
     dll_exc_ref = -0.5 * (
         (logdet_exc + res_all[:6] @ cho_solve(cf_exc, res_all[:6]))
@@ -931,8 +1071,10 @@ def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
 )
 def test_042_oidata_vis_mode_logamp_and_v2_conversions():
     """Pin 0.4.2 OIData vis_mode='logamp' (drops V^2 <= 0 with warning, transforms
-    sigma / (2 V^2), projects log|V_model| via vis_mat, and rejects unknown modes)
-    and vis_mode='v2' (exact variance sigma * sqrt(4 V^2 + 2 sigma^2))."""
+    sigma / (2 V^2), evaluates OIData.model and whitened_residuals on both
+    unprojected and vis_mat-projected log|V|, and rejects unknown modes) and
+    vis_mode='v2' (exact variance sigma * sqrt(4 V^2 + 2 sigma^2), forward V^2
+    model, and whitened residuals)."""
     rec_v2 = {
         "u": np.array([20.0, 35.0, 50.0, 65.0]),
         "v": np.array([10.0, -15.0, 25.0, -30.0]),
@@ -955,25 +1097,36 @@ def test_042_oidata_vis_mode_logamp_and_v2_conversions():
 
     kept_v2 = np.array([0.81, 0.49])
     kept_dv2 = np.array([0.04, 0.05])
-    err_logamp = max(
-        float(np.max(np.abs(np.asarray(oid_log.vis) - 0.5 * np.log(kept_v2)))),
-        float(np.max(np.abs(np.asarray(oid_log.d_vis) - kept_dv2 / (2.0 * kept_v2)))),
-    )
+    kept_idx = np.array([0, 3])
+    scene_p = vm.BinaryModelCartesian(dra=12.0, ddec=-8.0, flux=0.3)
+    cvis_all = sky.mix([sky.point(0.0, 0.0), sky.point(12.0, -8.0)], [1.0, 0.3])
+    cvis_ref = sky.visibility(cvis_all, rec_v2["u"], rec_v2["v"], rec_v2["wavel"])
 
-    # Projected vis_mat + vis_mode="logamp" projects log|V_model| linearly, and invalid vis_mode raises ValueError:
+    # Unprojected logamp forward model and whitened_residuals:
+    log_pred = np.asarray(oid_log.model(scene_p))
+    log_mod_ref = np.log(np.abs(cvis_ref[kept_idx]))
+    log_dat_ref = 0.5 * np.log(kept_v2)
+    log_sig_ref = kept_dv2 / (2.0 * kept_v2)
+    r_log = np.asarray(vlike.whitened_residuals(scene_p, oid_log))
+    err_logamp_enc = max(
+        float(np.max(np.abs(np.asarray(oid_log.vis) - log_dat_ref))),
+        float(np.max(np.abs(np.asarray(oid_log.d_vis) - log_sig_ref))),
+        float(np.max(np.abs(log_pred - log_mod_ref))),
+    )
+    err_logamp_white = float(np.max(np.abs(np.abs(r_log) - np.abs((log_mod_ref - log_dat_ref) / log_sig_ref))))
+
+    # Projected vis_mat + vis_mode="logamp" projects log|V_model| linearly:
     vis_mat = np.array([[0.6, 0.4, 0.0, 0.0], [0.0, -0.3, 0.5, 0.8]])
     oid_proj = voidata.OIData(
         {**rec_v2, "vis": np.array([0.05, -0.02]), "d_vis": np.array([0.01, 0.01]), "vis_mat": vis_mat, "vis_mode": "logamp"}
     )
-    scene_p = vm.BinaryModelCartesian(dra=12.0, ddec=-8.0, flux=0.3)
-    cvis_p = np.asarray(scene_p.model(rec_v2["u"], rec_v2["v"], rec_v2["wavel"]))
-    err_proj_logamp = float(np.max(np.abs(np.asarray(oid_proj.model(scene_p)) - (vis_mat @ np.log(np.abs(cvis_p))))))
+    err_proj_logamp = float(np.max(np.abs(np.asarray(oid_proj.model(scene_p)) - (vis_mat @ np.log(np.abs(cvis_ref))))))
     assert err_proj_logamp < 1e-15
 
     with pytest.raises(ValueError, match="Unsupported vis_mode"):
         voidata.OIData({**rec_v2, "vis": np.full(4, 0.8), "vis_mode": "bogus"})
 
-    # Amplitude input (v2_flag=False) converted to V^2 via vis_mode="v2":
+    # Amplitude input (v2_flag=False) converted to V^2 via vis_mode="v2", plus forward model & whitened_residuals:
     amp = np.array([0.9, 0.5, 0.2])
     sig = np.array([0.03, 0.04, 0.05])
     oid_v2 = voidata.OIData(
@@ -990,11 +1143,19 @@ def test_042_oidata_vis_mode_logamp_and_v2_conversions():
     )
     v2_ref = amp**2
     dv2_ref = sig * np.sqrt(4.0 * v2_ref + 2.0 * sig**2)
-    err_v2_conv = max(
+    v2_mod_ref = np.abs(cvis_ref[:3]) ** 2
+    v2_pred = np.asarray(oid_v2.model(scene_p))
+    r_v2 = np.asarray(vlike.whitened_residuals(scene_p, oid_v2))
+    err_v2_enc = max(
         float(np.max(np.abs(np.asarray(oid_v2.vis) - v2_ref))),
         float(np.max(np.abs(np.asarray(oid_v2.d_vis) - dv2_ref))),
+        float(np.max(np.abs(v2_pred - v2_mod_ref))),
     )
+    err_v2_white = float(np.max(np.abs(np.abs(r_v2) - np.abs((v2_mod_ref - v2_ref) / dv2_ref))))
 
-    record("vis_mode_encoding_err", max(err_logamp, err_v2_conv))
-    assert err_logamp < 1e-15
-    assert err_v2_conv < 1e-15
+    record("vis_mode_encoding_err", max(err_logamp_enc, err_proj_logamp, err_v2_enc))
+    record("vis_mode_whitened_err", max(err_logamp_white, err_v2_white))
+    assert err_logamp_enc < 1e-15
+    assert err_v2_enc < 1e-15
+    assert err_logamp_white < 1e-13
+    assert err_v2_white < 1e-13

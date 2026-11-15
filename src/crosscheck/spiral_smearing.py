@@ -236,9 +236,10 @@ def sinc_smearing_envelope(u, v, wavel, bandwidth, dra: float, ddec: float):
     """Exact fringe-washing envelope for a uniform boxcar channel in wavenumber
     sigma = 1 / lambda of width Delta_sigma = bandwidth / wavel^2:
 
-        sinc(pi * bandwidth * (u * alpha + v * delta) / wavel^2)
+        sin(pi * x) / (pi * x) == np.sinc(x),
+        x = bandwidth * (u * alpha + v * delta) / wavel^2,
 
-    where ``np.sinc(x) == sin(pi x) / (pi x)``.
+    with ``(alpha, delta) = (dra, ddec) * MAS`` in radians.
     """
     u, v, wavel, bandwidth = np.broadcast_arrays(
         np.asarray(u, float),

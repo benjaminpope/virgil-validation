@@ -616,6 +616,20 @@
   status: documented
   links: [https://github.com/benjaminpope/virgil-validation/issues/207]
 
+- id: D23
+  title: virgil.models.smeared_model washes complex visibilities over a uniform wavenumber boxcar (variance dlambda^2 / 12), whereas CANDID Nsmear = 3 averages V coherently over three equal-weight endpoints (variance dlambda^2 / 6) and PMOIRED 'wl kernel' convolves V^2 incoherently
+  objects: [virgil.models.smeared_model, candid, pmoired]
+  ruling: definition
+  kind: 'both right, different bandpass quadrature and observable-averaging definitions: virgil.models.smeared_model multiplies each component''s sky-offset phasor by sin(pi * x) / (pi * x) == np.sinc(x) with x = bandwidth * (u * dra + v * ddec) * MAS / wavel^2, the exact coherent integral over a uniform boxcar in wavenumber sigma = 1 / lambda (second moment dlambda^2 / 12 + O(dlambda^4 / lambda^2)). CANDID''s default Nsmear = 3 averages complex V coherently with equal weights (1/3, 1/3, 1/3) at lambda_0 + (-1/2, 0, +1/2) * dwavel (pinned to chi2_r = 7e-8), which puts 2/3 of the weight on the channel edges and doubles the spectral variance to dwavel^2 / 6 (setting dwavel = dlambda / sqrt(2) restores agreement to chi2_r = 0.04, whereas unscaled dwavel = dlambda fails at chi2_r > 15; Nsmear <= 2 disables smearing). PMOIRED''s explicit ''wl kernel'' (with auto=False to avoid P1) convolves T3 bispectra coherently but convolves OI_VIS2[''V2''] incoherently as E[|V|^2], retaining an O(f^2) floor f^2 / (1 + f)^2 when wide-binary fringes wash out; at f << 1 with variance-matched FWHM sqrt(2 ln 2 / 3) * (dlambda / dwl_step), PMOIRED and virgil agree to < 8e-5 in V^2 and < 5e-3 deg in closure phase'
+  referee: mathematics (uniform-wavenumber boxcar quadrature, discrete Gaussian convolution, and 3-endpoint stencil moments); pmoired; candid
+  evidence:
+    - tests/test_042_spiral_and_smearing.py::test_candid_nsmear3_matches_coherent_three_endpoint_rule
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_variance_matched_candid_nsmear3
+    - tests/test_042_spiral_and_smearing.py::test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_pmoired_explicit_wl_kernel
+    - tests/test_042_spiral_and_smearing.py::test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail
+  status: documented
+
 - id: D24
   title: 'FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an internal parameter-sign convention checked via properties: {near_side: 1} and wrong-sign controls'
   objects: [virgil.models.FlaredDiskGaussian, virgil.models.FlaredDiskHG, virgil.models.FlaredDiskPowerLaw]
@@ -653,6 +667,21 @@
     - tests/test_linear_marginals.py::test_closure_offsets_wrap_boundary_near_pi
   status: documented
 
+- id: D27
+  title: 'ArchimedeanSpiral: deprojected sky departure pa, pitch winding sign, and in-plane arc-length fade weight are internal parameter conventions checked via properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} and wrong-convention controls'
+  objects: [virgil.models.ArchimedeanSpiral]
+  ruling: definition
+  kind: 'convention (external OIFITS sky orientation, dLux 7-hole Fraunhofer propagation, and PMOIRED''s native inclined Gaussian in the turns -> 0+ limit confirm FWHM width, cos(inc) foreshortening, and North-through-East node independently of virgil, whereas parameterizing departure pa on the sky via tan(phi_0) = tan(pa - node) / cos(inc), pitch > 0 counter-clockwise vs pitch < 0 clockwise as in Tuthill et al. 2008 ApJ 675, 698 for WR 104, and fade as exp(-fade * theta / (2 pi)) * sqrt(1 + theta^2) dtheta are internal model-parameter choices pinned via properties and rejected by wrong-convention controls)'
+  referee: mathematics (continuous Gauss-Legendre arc-length quadrature, WR 104 ballistic sense, and pixel-DFT consistency, crosscheck.spiral_smearing); dlux; pmoired
+  evidence:
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_cvis_convergence_and_gradients
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_pmoired_native_blur_projection
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_render_and_one_pixel_width_floor
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_dlux_wavefront_propagation
+    - tests/test_042_spiral_and_smearing.py::test_control_archimedean_spiral_wrong_winding_pa_fade_and_blur_fail
+  status: documented
+  decision: 'ruled definition / documented (Ben, 2026-11-15): internal model parameter-sign and parameterization choices do not need to be convention trust-graph blockers; they are enforced via properties and wrong-convention controls alongside external dLux and native PMOIRED confirmation.'
+
 - id: P13
   title: oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90
   objects: [oimodeler]
@@ -670,17 +699,3 @@
   referee: mathematics (Roche/von Zeipel/ELR11 O(omega^2) centrifugal scaling of equator-on V^2 anisotropy)
   evidence: [tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling]
   status: to-raise
-
-- id: D23
-  title: virgil.models.smeared_model washes complex visibilities over a uniform wavenumber boxcar (variance dlambda^2 / 12), whereas CANDID Nsmear = 3 averages V coherently over three equal-weight endpoints (variance dlambda^2 / 6) and PMOIRED 'wl kernel' convolves V^2 incoherently
-  objects: [virgil.models.smeared_model, candid, pmoired]
-  ruling: definition
-  kind: 'both right, different bandpass quadrature and observable-averaging definitions: virgil.models.smeared_model multiplies each component''s sky-offset phasor by sinc(pi * bandwidth * (u * dra + v * ddec) / wavel^2), the exact coherent integral over a uniform boxcar in wavenumber sigma = 1 / lambda (second moment dlambda^2 / 12 + O(dlambda^4 / lambda^2)). CANDID''s default Nsmear = 3 averages complex V coherently with equal weights (1/3, 1/3, 1/3) at lambda_0 + (-1/2, 0, +1/2) * dwavel (pinned to chi2_r = 7e-8), which puts 2/3 of the weight on the channel edges and doubles the spectral variance to dwavel^2 / 6 (setting dwavel = dlambda / sqrt(2) restores agreement to chi2_r = 0.04, whereas unscaled dwavel = dlambda fails at chi2_r > 15; Nsmear <= 2 disables smearing). PMOIRED''s explicit ''wl kernel'' (with auto=False to avoid P1) convolves T3 bispectra coherently but convolves OI_VIS2[''V2''] incoherently as E[|V|^2], retaining an O(f^2) floor f^2 / (1 + f)^2 when wide-binary fringes wash out; at f << 1 with variance-matched FWHM sqrt(2 ln 2 / 3) * (dlambda / dwl_step), PMOIRED and virgil agree to < 8e-5 in V^2 and < 5e-3 deg in closure phase'
-  referee: mathematics (uniform-wavenumber boxcar quadrature, discrete Gaussian convolution, and 3-endpoint stencil moments); pmoired; candid
-  evidence:
-    - tests/test_042_spiral_and_smearing.py::test_candid_nsmear3_matches_coherent_three_endpoint_rule
-    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_variance_matched_candid_nsmear3
-    - tests/test_042_spiral_and_smearing.py::test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution
-    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_pmoired_explicit_wl_kernel
-    - tests/test_042_spiral_and_smearing.py::test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail
-  status: documented

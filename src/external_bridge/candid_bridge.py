@@ -38,10 +38,12 @@ def provenance():
     if out.returncode != 0:
         return None
     version, path = json.loads(out.stdout.strip().splitlines()[-1])
-    managed = ROOT / ".venv-candid"
+    interp = pathlib.Path(python())
+    base = interp.parents[2] if len(interp.parents) >= 3 and interp.parents[1].name == ".venv-candid" else ROOT
+    managed = base / ".venv-candid"
     commit = None
-    if pathlib.Path(path).resolve().is_relative_to(managed.resolve()):
-        src = ROOT / ".external" / "candid-src"
+    if managed.exists() and pathlib.Path(path).resolve().is_relative_to(managed.resolve()):
+        src = base / ".external" / "candid-src"
         try:
             head = subprocess.check_output(["git", "-C", str(src), "rev-parse", "HEAD"], text=True).strip()
             dirty = subprocess.check_output(["git", "-C", str(src), "status", "--porcelain"], text=True).strip()
@@ -55,3 +57,32 @@ def run(task, timeout=3600):
     """Run one worker task (a dict with "task" and its arguments) and return
     its result. Raises with CANDID's output if the worker fails."""
     return _subprocess.run("candid", "candid_worker.py", task, timeout=timeout)
+
+
+def chi2(
+    path,
+    params,
+    *,
+    observables=("v2", "cp"),
+    dwavel_um=0.0,
+    n_smear=3,
+    rmin=None,
+    rmax=None,
+    timeout=3600,
+):
+    """Evaluate CANDID's reduced chi-squared at ``params`` (list of dicts with
+    ``x``, ``y`` in mas, ``f`` in percent of primary, ``diam*`` in mas), with
+    optional uniform channel width ``dwavel_um`` (µm) and ``Nsmear = n_smear``."""
+    task = {
+        "task": "chi2",
+        "path": str(path),
+        "params": list(params),
+        "observables": list(observables),
+        "dwavel_um": float(dwavel_um),
+        "n_smear": int(n_smear),
+    }
+    if rmin is not None:
+        task["rmin"] = float(rmin)
+    if rmax is not None:
+        task["rmax"] = float(rmax)
+    return run(task, timeout=timeout)
