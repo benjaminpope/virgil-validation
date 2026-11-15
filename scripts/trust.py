@@ -535,6 +535,14 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
 
         return {n for n in refs if ok(n, {n})}
 
+    diff_cache = {}
+
+    def cached_changed_files(commit, paths):
+        key = (commit, paths)
+        if key not in diff_cache:
+            diff_cache[key] = changed_files(virgil, commit, list(paths))
+        return diff_cache[key]
+
     trusted = reference_verdicts()
     for name, node in nodes.items():
         reference_node = node.get("layer", "references") == "references"
@@ -542,7 +550,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             name, None if reference_node else trusted)
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         commits = sorted({r["_commit"] for r in good if r["_commit"]})
-        changes = [changed_files(virgil, c, node.get("source", [])) for c in commits]
+        src_paths = tuple(sorted(set(node.get("source", []))))
+        changes = [cached_changed_files(c, src_paths) for c in commits]
         changed = None if not changes or any(c is None for c in changes) else sorted({f for c in changes for f in c})
         own[name] = {
             "status": status, "strong": strong, "weak": weak, "need": need,
@@ -584,32 +593,49 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         visit(root)
         return found
 
-    diff_cache = {}
+    deps_cache = {}
+    ts_cache = {}
 
-    def cached_changed_files(commit, paths):
-        key = (commit, paths)
-        if key not in diff_cache:
-            diff_cache[key] = changed_files(virgil, commit, list(paths))
-        return diff_cache[key]
+    def reachable_deps(name):
+        if name not in deps_cache:
+            seen = {name}
+            stack = [d for d in nodes[name].get("depends", []) if d in nodes and d != name]
+            out = []
+            while stack:
+                d = stack.pop()
+                if d in seen:
+                    continue
+                seen.add(d)
+                out.append(d)
+                for nxt in nodes[d].get("depends", []):
+                    if nxt in nodes and nxt not in seen:
+                        stack.append(nxt)
+            deps_cache[name] = tuple(out)
+        return deps_cache[name]
 
-    def transitive_sources(name, seen=None):
+    def transitive_sources(name):
         """Union of virgil ``source`` paths on ``name`` and every part it relies on."""
-        seen = set() if seen is None else seen
-        seen.add(name)
-        paths = set(nodes[name].get("source", []))
-        for dep in nodes[name].get("depends", []):
-            if dep in nodes and dep not in seen:
-                paths |= set(transitive_sources(dep, seen))
-        return tuple(sorted(paths))
+        if name not in ts_cache:
+            paths = set(nodes[name].get("source", []))
+            for dep in reachable_deps(name):
+                paths.update(nodes[dep].get("source", ()))
+            ts_cache[name] = tuple(sorted(paths))
+        return ts_cache[name]
 
     def changed_below(name):
         """virgil files changed under this part or anything it relies on, evaluated
-        against this part's own evidence commits (``None`` when unknown or unreachable)."""
+        against both this part's own evidence commits and each dependency's own
+        evidence commits (``None`` when unknown or unreachable)."""
         commits = own[name]["commits"]
         if not commits:
             return None
-        all_paths = transitive_sources(name)
-        diffs = [cached_changed_files(c, all_paths) for c in commits]
+        pairs = [(c, transitive_sources(name)) for c in commits]
+        for dep in reachable_deps(name):
+            dep_commits = own[dep]["commits"]
+            if dep_commits:
+                dep_paths = transitive_sources(dep)
+                pairs.extend((c, dep_paths) for c in dep_commits)
+        diffs = [cached_changed_files(c, p) for c, p in pairs]
         if any(d is None for d in diffs):
             return None
         return sorted({f for d in diffs for f in d})
@@ -665,16 +691,29 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
 
     pipelines = []
     for name, p in graph.get("pipelines", {}).items():
-        recs = [r for r in by_obj.get(f"pipeline:{name}", []) if r["kind"] in AGREEING]
-        bad = [r for r in recs if r["outcome"] in BAD]
+        all_recs = by_obj.get(f"pipeline:{name}", [])
+        recs = [r for r in all_recs if r["kind"] in AGREEING]
+        bad = [r for r in all_recs if r["outcome"] in BAD]
         good = [r for r in recs if r["outcome"] == "passed"]
-        unverified = [s for s in p["steps"] if out_nodes.get(s, {}).get("verdict") != "verified"]
+        strong_good = [r for r in good if roots_of(r, golden)[0]]
+        trusted_good = [r for r in strong_good if not (set(r.get("via", [])) - trusted)]
+        untrusted_via = (
+            sorted({v for r in strong_good for v in r.get("via", []) if v not in trusted})
+            if not trusted_good
+            else []
+        )
+        via_failing = any(
+            own.get(v, {}).get("status") == "failing" or out_nodes.get(v, {}).get("verdict") == "failing"
+            for v in untrusted_via
+        )
+        unverified_steps = [s for s in p["steps"] if out_nodes.get(s, {}).get("verdict") != "verified"]
+        unverified = unverified_steps + [v for v in untrusted_via if v not in unverified_steps]
         step_failing = any(out_nodes.get(s, {}).get("verdict") == "failing" for s in p["steps"])
-        if bad or step_failing:
+        if bad or step_failing or via_failing:
             status = "failing"
-        elif good and not unverified:
+        elif trusted_good and not unverified:
             status = "validated"
-        elif good:
+        elif strong_good:
             status = "passes"
         elif recs and all(r["outcome"] == "skipped" for r in recs):
             status = "not run"  # its checks exist but none ran, so the hand-written state would mislead
@@ -684,7 +723,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "id": name, "title": p["title"], "data": p.get("data", "simulated"),
             "dataset": p.get("dataset"), "reference": p.get("reference"), "url": p.get("url"),
             "headline": p.get("headline"), "page": p.get("page"), "status": status, "steps": p["steps"],
-            "unverified": unverified, "checks": [_check(r) for r in recs],
+            "unverified": unverified, "failing_checks": [r["test"] for r in bad],
+            "checks": [_check(r) for r in recs],
         })
 
     fails_elsewhere = _mark_fails_elsewhere(records, out_nodes, pipelines)
