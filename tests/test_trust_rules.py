@@ -1497,3 +1497,207 @@ def test_item_via_walks_ancestor_conftest_and_fixture_args(tmp_path):
     plain_test.write_text("def test_ok():\n    assert 1 == 1\n", encoding="utf-8")
     plugin._module_via.cache_clear()
     assert plugin._item_via(str(plain_test), "test_ok", None, ()) == ("crosscheck.chi2",)
+
+
+def test_cross_module_subprocess_reexports_and_subpackage_init_fail_closed(tmp_path, monkeypatch):
+    from evidence import plugin
+
+    fake_repo = tmp_path / "repo"
+    fake_src = fake_repo / "src"
+    fake_tests = fake_repo / "tests"
+    (fake_src / "external_bridge").mkdir(parents=True)
+    (fake_src / "external_bridge" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_src / "external_bridge" / "_subprocess.py").write_text(
+        "def run(env, worker, task):\n    return None\n"
+        "def available(env, mod=None):\n    return True\n",
+        encoding="utf-8",
+    )
+    subpkg = fake_src / "crosscheck" / "subpkg"
+    subpkg.mkdir(parents=True)
+    (fake_src / "crosscheck" / "__init__.py").write_text("", encoding="utf-8")
+    (subpkg / "__init__.py").write_text(
+        "from external_bridge._subprocess import run as sp_run\n"
+        "from external_bridge import _subprocess as sp\n"
+        "def pkg_wrap(worker):\n"
+        "    return sp.run('alma', worker, {})\n",
+        encoding="utf-8",
+    )
+    fake_tests.mkdir(parents=True)
+    (fake_tests / "helper_reexport.py").write_text(
+        "from external_bridge._subprocess import run as sp_run\n"
+        "from external_bridge import _subprocess as sp\n"
+        "import external_bridge as eb\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(plugin, "_REPO_ROOT", fake_repo)
+    monkeypatch.setattr(plugin, "_SRC_ROOT", fake_src)
+    plugin._module_via.cache_clear()
+
+    # Static callers through run_aliases, sp_aliases, eb_aliases, and subpackage __init__.py
+    ok_file = fake_tests / "test_reexport_ok.py"
+    ok_file.write_text(
+        "from helper_reexport import sp_run, sp\n"
+        "import helper_reexport as hr\n"
+        "from crosscheck import subpkg\n"
+        "from crosscheck.subpkg import pkg_wrap\n"
+        "def test_all():\n"
+        "    sp_run('mpol', 'mpol_worker.py', {})\n"
+        "    sp.run('alma', 'alma_worker.py', {})\n"
+        "    hr.sp.run('ehtim', 'ehtim_worker.py', {})\n"
+        "    hr.eb._subprocess.run('candid', 'candid_worker.py', {})\n"
+        "    subpkg.pkg_wrap('fouriever_worker.py')\n"
+        "    pkg_wrap('orbitize_worker.py')\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(ok_file), "test_all", None, ()) == (
+        "crosscheck.subpkg",
+        "external_bridge.alma_worker",
+        "external_bridge.candid_worker",
+        "external_bridge.ehtim_worker",
+        "external_bridge.fouriever_worker",
+        "external_bridge.mpol_worker",
+        "external_bridge.orbitize_worker",
+    )
+
+    # Dynamic worker args, escaped callables/modules, and uncalled sp_run must emit _UNRESOLVED_WORKER
+    for idx, bad_src in enumerate([
+        "from helper_reexport import sp_run\ndef test_b(w):\n    return sp_run('mpol', w, {})\n",
+        "import helper_reexport\ndef test_b(w):\n    return helper_reexport.sp.run('mpol', w, {})\n",
+        "import helper_reexport\ndef test_b(w):\n    return helper_reexport.eb._subprocess.run('mpol', w, {})\n",
+        "from helper_reexport import sp\ndef test_b(w):\n    return sp.run('mpol', w, {})\n",
+        "import helper_reexport\ndef test_b():\n    s = helper_reexport.sp\n    return s\n",
+        "import helper_reexport\ndef test_b():\n    fn = helper_reexport.sp.run\n    return fn\n",
+        "from helper_reexport import sp_run\ndef test_b():\n    return 1\n",
+        "from crosscheck import subpkg\ndef test_b(w):\n    return subpkg.sp_run('mpol', w, {})\n",
+        "import crosscheck.subpkg as spkg\ndef test_b():\n    m = spkg\n    return m\n",
+    ]):
+        bf = fake_tests / f"test_reexport_bad_{idx}.py"
+        bf.write_text(bad_src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._UNRESOLVED_WORKER in plugin._item_via(str(bf), "test_b", None, ()), (idx, bad_src)
+        assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(bf)), (idx, bad_src)
+
+
+def test_spec_from_file_location_requires_leading_slash_for_external_suffix(tmp_path):
+    from evidence import plugin
+
+    tests_dir = tmp_path / "tests"
+    src_cc = tmp_path / "src" / "crosscheck"
+    tests_dir.mkdir(parents=True)
+    src_cc.mkdir(parents=True)
+    (src_cc / "alma.py").write_text("X = 1\n", encoding="utf-8")
+
+    # Mid-segment dynamic suffix f"{dyn_prefix}check/alma.py" must NOT be treated as external
+    mid_seg = tests_dir / "test_mid_seg.py"
+    mid_seg.write_text(
+        "import importlib.util\n"
+        "def test_mid(dyn_prefix):\n"
+        "    return importlib.util.spec_from_file_location('m', f'{dyn_prefix}check/alma.py')\n",
+        encoding="utf-8",
+    )
+    # Segment-aligned suffix matching an in-repo file must also fail closed
+    repo_seg = tests_dir / "test_repo_seg.py"
+    repo_seg.write_text(
+        "import importlib.util\n"
+        "def test_repo(dyn_prefix):\n"
+        "    return importlib.util.spec_from_file_location('m', f'{dyn_prefix}/crosscheck/alma.py')\n",
+        encoding="utf-8",
+    )
+    # Segment-aligned suffix starting with '/' that matches no repo file is provably external
+    ext_seg = tests_dir / "test_ext_seg.py"
+    ext_seg.write_text(
+        "import importlib.util\n"
+        "def test_ext(dyn_prefix):\n"
+        "    return importlib.util.spec_from_file_location('m', f'{dyn_prefix}/nonrepo_vendor_pkg/ext_only_tool.py')\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._UNRESOLVED_IMPORT in plugin._item_via(str(mid_seg), "test_mid", None, ())
+    assert plugin._UNRESOLVED_IMPORT in plugin._item_via(str(repo_seg), "test_repo", None, ())
+    assert plugin._item_via(str(ext_seg), "test_ext", None, ()) == ()
+
+
+def test_cross_module_dynamic_import_helpers_propagate_and_fail_closed(tmp_path):
+    from evidence import plugin
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir(parents=True)
+
+    # 1. Helper calls its own wrapper on 'math' AND re-exports import_module and importlib
+    (tests_dir / "dyn_helper_called.py").write_text(
+        "import importlib\n"
+        "import importlib.util\n"
+        "import pathlib\n"
+        "from importlib import import_module as reexported_imp\n"
+        "\n"
+        "def load_mod(name):\n"
+        "    return importlib.import_module(name)\n"
+        "\n"
+        "load_mod('math')\n"
+        "reexported_imp('math')\n",
+        encoding="utf-8",
+    )
+    # 2. Helper defines uncalled import and spec wrappers (using helper-local __file__)
+    (tests_dir / "dyn_helper_uncalled.py").write_text(
+        "import importlib\n"
+        "import importlib.util\n"
+        "import pathlib\n"
+        "from pytest import importorskip as skip_or_imp\n"
+        "\n"
+        "SRC = pathlib.Path(__file__).resolve().parents[1]\n"
+        "\n"
+        "def wrap_imp(modname):\n"
+        "    return importlib.import_module(modname)\n"
+        "\n"
+        "def wrap_spec(stem):\n"
+        "    return importlib.util.spec_from_file_location(stem, f'{SRC}/unused_{stem}.py')\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "unused_helper_target.py").write_text("from crosscheck import sky\n", encoding="utf-8")
+
+    caller_ok = tests_dir / "test_dyn_caller_ok.py"
+    caller_ok.write_text(
+        "from dyn_helper_called import load_mod, reexported_imp\n"
+        "import dyn_helper_called as dhc\n"
+        "from dyn_helper_uncalled import wrap_imp, wrap_spec, skip_or_imp\n"
+        "\n"
+        "def test_static():\n"
+        "    load_mod('crosscheck.alma')\n"
+        "    reexported_imp('crosscheck.limb')\n"
+        "    dhc.load_mod('crosscheck.radial')\n"
+        "    dhc.importlib.import_module('virgil_bridge.alma')\n"
+        "    wrap_imp('crosscheck.chi2')\n"
+        "    skip_or_imp('external_bridge.pmoired_models')\n"
+        "    wrap_spec('helper_target')\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(caller_ok), "test_static", None, ()) == (
+        "crosscheck.alma",
+        "crosscheck.chi2",
+        "crosscheck.limb",
+        "crosscheck.radial",
+        "crosscheck.sky",
+        "external_bridge.pmoired_models",
+        "virgil_bridge.alma",
+    )
+
+    for idx, bad_src in enumerate([
+        "from dyn_helper_called import load_mod\ndef test_b(m):\n    return load_mod(m)\n",
+        "from dyn_helper_called import reexported_imp\ndef test_b(m):\n    return reexported_imp(m)\n",
+        "import dyn_helper_called as dhc\ndef test_b(m):\n    return dhc.load_mod(m)\n",
+        "import dyn_helper_called as dhc\ndef test_b(m):\n    return dhc.importlib.import_module(m)\n",
+        "from dyn_helper_uncalled import wrap_spec\ndef test_b(s):\n    return wrap_spec(s)\n",
+        "from dyn_helper_called import load_mod\ndef test_b():\n    fn = load_mod\n    return fn\n",
+        "import dyn_helper_called as dhc\ndef test_b():\n    fn = dhc.load_mod\n    return fn\n",
+        "import dyn_helper_called as dhc\ndef test_b():\n    m = dhc\n    return m\n",
+        "from dyn_helper_uncalled import wrap_imp\ndef test_b():\n    return 1\n",
+    ]):
+        bf = tests_dir / f"test_dyn_bad_{idx}.py"
+        bf.write_text(bad_src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._UNRESOLVED_IMPORT in plugin._item_via(str(bf), "test_b", None, ()), (idx, bad_src)
+        assert plugin._UNRESOLVED_IMPORT in plugin._module_via(str(bf)), (idx, bad_src)
+

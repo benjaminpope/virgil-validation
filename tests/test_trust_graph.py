@@ -228,7 +228,8 @@ def test_reference_module_imports_are_declared_in_depends():
 
 
 def _executable_ast_nodes(stmt: ast.AST) -> list[ast.AST]:
-    """Executable Call/Attribute/Name AST nodes, skipping type annotations and isinstance/issubclass types."""
+    """Executable Call/Attribute/Name AST nodes in the current scope, skipping type annotations,
+    isinstance/issubclass types, and nested function/class/lambda bodies (recursed separately)."""
     found: list[ast.AST] = []
 
     class Visitor(ast.NodeVisitor):
@@ -241,10 +242,20 @@ def _executable_ast_nodes(stmt: ast.AST) -> list[ast.AST]:
                 self.visit(d)
             for default in node.args.defaults + [x for x in node.args.kw_defaults if x is not None]:
                 self.visit(default)
-            for s in node.body:
-                self.visit(s)
 
         visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_ClassDef(self, node: ast.ClassDef):
+            for d in node.decorator_list:
+                self.visit(d)
+            for b in node.bases:
+                self.visit(b)
+            for kw in node.keywords:
+                self.visit(kw.value)
+
+        def visit_Lambda(self, node: ast.Lambda):
+            for default in node.args.defaults + [x for x in node.args.kw_defaults if x is not None]:
+                self.visit(default)
 
         def visit_Call(self, node: ast.Call):
             if isinstance(node.func, ast.Name) and node.func.id in ("isinstance", "issubclass"):
@@ -270,10 +281,46 @@ def _executable_ast_nodes(stmt: ast.AST) -> list[ast.AST]:
     return found
 
 
+def _direct_nested_scopes(
+    stmts: list[ast.AST],
+) -> list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda]:
+    """Immediate nested function/class/lambda nodes inside ``stmts`` without crossing deeper scopes."""
+    nested: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda] = []
+
+    class ScopeFinder(ast.NodeVisitor):
+        def visit_FunctionDef(self, node: ast.FunctionDef):
+            for d in node.decorator_list:
+                self.visit(d)
+            for default in node.args.defaults + [x for x in node.args.kw_defaults if x is not None]:
+                self.visit(default)
+            nested.append(node)
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_ClassDef(self, node: ast.ClassDef):
+            for d in node.decorator_list:
+                self.visit(d)
+            for b in node.bases:
+                self.visit(b)
+            for kw in node.keywords:
+                self.visit(kw.value)
+            nested.append(node)
+
+        def visit_Lambda(self, node: ast.Lambda):
+            for default in node.args.defaults + [x for x in node.args.kw_defaults if x is not None]:
+                self.visit(default)
+            nested.append(node)
+
+    finder = ScopeFinder()
+    for s in stmts:
+        finder.visit(s)
+    return nested
+
+
 def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "virgil"):
     """Build static call/import adjacency across a package tree (default: installed ``virgil``),
-    including function-local lazy imports, class ``STAGES``, ``super()`` / MRO-inherited methods,
-    and module-level nodes."""
+    including function-local lazy imports, nested closures, class ``STAGES``, PEP 562 lazy bases,
+    ``super()`` / MRO-inherited template methods, and module-level nodes."""
     import collections
 
     def file_to_module(path: pathlib.Path) -> str:
@@ -291,6 +338,7 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
     parsed: dict[str, tuple[ast.Module, bool]] = {}
     for p in sorted(virgil_dir.rglob("*.py")):
         parsed[file_to_module(p)] = (ast.parse(p.read_text(encoding="utf-8"), filename=str(p)), p.name == "__init__.py")
+    parsed_mods_set = set(parsed)
 
     mod_imports: dict[str, dict[str, str]] = collections.defaultdict(dict)
     mod_defs: dict[str, set[str]] = collections.defaultdict(set)
@@ -330,27 +378,48 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
             cur = reexports[cur]
         return cur
 
+    origin_cache: dict[str, str] = {}
+
+    def origin_of(name: str) -> str:
+        if name not in origin_cache:
+            origin_cache[name] = _runtime_virgil_origin(name, parsed_mods_set, mod_prefix)
+        return origin_cache[name]
+
     adj: dict[str, set[str]] = collections.defaultdict(set)
     cls_bases: dict[str, list[str]] = collections.defaultdict(list)
     cls_methods: dict[str, set[str]] = collections.defaultdict(set)
     cls_attrs: dict[str, set[str]] = collections.defaultdict(set)
+    cls_method_self_attrs: dict[tuple[str, str], set[str]] = collections.defaultdict(set)
+    cls_method_super_calls: dict[tuple[str, str], set[tuple[str, str]]] = collections.defaultdict(set)
 
-    def collect_local_imports(stmts: list[ast.AST], mod: str, is_pkg: bool) -> dict[str, str]:
-        local_imp = dict(mod_imports[mod])
-        for stmt in stmts:
-            for sub in ast.walk(stmt):
-                if isinstance(sub, ast.Import):
+    def collect_own_imports(stmts: list[ast.AST], mod: str, is_pkg: bool) -> dict[str, str]:
+        own_imp: dict[str, str] = {}
+
+        class ImpFinder(ast.NodeVisitor):
+            def visit_FunctionDef(self, node):
+                return
+
+            visit_AsyncFunctionDef = visit_FunctionDef
+            visit_ClassDef = visit_FunctionDef
+            visit_Lambda = visit_FunctionDef
+
+            def visit_Import(self, sub: ast.Import):
+                for alias in sub.names:
+                    if alias.name == mod_prefix or alias.name.startswith(f"{mod_prefix}."):
+                        local = alias.asname or alias.name.split(".")[0]
+                        own_imp[local] = alias.name if alias.asname else alias.name.split(".")[0]
+
+            def visit_ImportFrom(self, sub: ast.ImportFrom):
+                src_mod = resolve_relative(mod, sub.level, sub.module, is_pkg)
+                if src_mod == mod_prefix or src_mod.startswith(f"{mod_prefix}."):
                     for alias in sub.names:
-                        if alias.name == mod_prefix or alias.name.startswith(f"{mod_prefix}."):
-                            local = alias.asname or alias.name.split(".")[0]
-                            local_imp[local] = alias.name if alias.asname else alias.name.split(".")[0]
-                elif isinstance(sub, ast.ImportFrom):
-                    src_mod = resolve_relative(mod, sub.level, sub.module, is_pkg)
-                    if src_mod == mod_prefix or src_mod.startswith(f"{mod_prefix}."):
-                        for alias in sub.names:
-                            if alias.name != "*":
-                                local_imp[alias.asname or alias.name] = f"{src_mod}.{alias.name}"
-        return local_imp
+                        if alias.name != "*":
+                            own_imp[alias.asname or alias.name] = f"{src_mod}.{alias.name}"
+
+        imp_finder = ImpFinder()
+        for s in stmts:
+            imp_finder.visit(s)
+        return own_imp
 
     def resolve_attr(node: ast.AST, mod: str, cur_cls: str | None, imports: dict[str, str]) -> list[str]:
         parts, cur = [], node
@@ -388,8 +457,12 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
                 for base in node.bases:
                     for b in resolve_attr(base, mod, None, mod_imports[mod]):
                         cb = canonical(b)
-                        if cb == mod_prefix or cb.startswith(f"{mod_prefix}."):
-                            cls_bases[cls_id].append(cb)
+                        ob = canonical(origin_of(cb))
+                        for cand_b in (cb, ob):
+                            if (
+                                cand_b == mod_prefix or cand_b.startswith(f"{mod_prefix}.")
+                            ) and cand_b not in cls_bases[cls_id]:
+                                cls_bases[cls_id].append(cand_b)
                 for it in node.body:
                     if isinstance(it, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         cls_methods[cls_id].add(it.name)
@@ -401,8 +474,8 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
                     elif isinstance(it, ast.AnnAssign) and isinstance(it.target, ast.Name):
                         cls_attrs[cls_id].add(it.target.id)
 
-    def _walk_scope_bindings(node: ast.AST, bound: set[str], reimported: set[str]):
-        """Collect lexical bindings and local imports within ``node`` without crossing nested scopes."""
+    def _walk_scope_bindings(node: ast.AST, bound: set[str]):
+        """Collect lexical bindings within ``node`` without crossing nested scopes."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             bound.add(node.name)
             for sub in (
@@ -414,16 +487,16 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
                 *([node.args.kwarg.annotation] if node.args.kwarg and node.args.kwarg.annotation else []),
                 *([node.returns] if node.returns else []),
             ):
-                _walk_scope_bindings(sub, bound, reimported)
+                _walk_scope_bindings(sub, bound)
             return
         if isinstance(node, ast.ClassDef):
             bound.add(node.name)
             for sub in (*node.decorator_list, *node.bases, *node.keywords):
-                _walk_scope_bindings(sub, bound, reimported)
+                _walk_scope_bindings(sub, bound)
             return
         if isinstance(node, ast.Lambda):
             for sub in (*node.args.defaults, *(d for d in node.args.kw_defaults if d is not None)):
-                _walk_scope_bindings(sub, bound, reimported)
+                _walk_scope_bindings(sub, bound)
             return
         if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             for sub in ast.walk(node):
@@ -435,7 +508,7 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             for alias in node.names:
                 if alias.name != "*":
-                    reimported.add(alias.asname or alias.name.split(".")[0])
+                    bound.add(alias.asname or alias.name.split(".")[0])
         elif isinstance(node, ast.ExceptHandler) and node.name:
             bound.add(node.name)
         elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
@@ -443,12 +516,11 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
         elif isinstance(node, ast.MatchMapping) and node.rest:
             bound.add(node.rest)
         for child in ast.iter_child_nodes(node):
-            _walk_scope_bindings(child, bound, reimported)
+            _walk_scope_bindings(child, bound)
 
-    def fn_local_vars(fn_node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[set[str], set[str]]:
-        """Parameter names and own-scope Store bindings inside ``fn_node``, plus own-scope local imports."""
+    def fn_local_vars(fn_node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+        """Parameter names and own-scope bindings inside ``fn_node``."""
         bound: set[str] = set()
-        reimported: set[str] = set()
         for a in (*fn_node.args.posonlyargs, *fn_node.args.args, *fn_node.args.kwonlyargs):
             bound.add(a.arg)
         if fn_node.args.vararg:
@@ -456,8 +528,8 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
         if fn_node.args.kwarg:
             bound.add(fn_node.args.kwarg.arg)
         for s in fn_node.body:
-            _walk_scope_bindings(s, bound, reimported)
-        return bound, reimported
+            _walk_scope_bindings(s, bound)
+        return bound
 
     def extract_refs(
         stmts: list[ast.AST],
@@ -465,23 +537,47 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
         mod: str,
         is_pkg: bool,
         cur_cls: str | None,
-        shadowed: set[str] = frozenset(),
-        reimported: set[str] = frozenset(),
+        parent_imports: dict[str, str],
+        parent_masked: frozenset[str] = frozenset(),
+        own_bound: set[str] | frozenset[str] = frozenset(),
+        self_attrs_out: set[str] | None = None,
+        super_calls_out: set[tuple[str, str]] | None = None,
     ):
-        local_only = collect_local_imports(stmts, mod, is_pkg)
-        # Parameter/local variable bindings in the enclosing scope shadow module-level imports/defs
-        masked = shadowed - reimported
-        imports = {k: v for k, v in local_only.items() if k not in masked}
+        own_imp = collect_own_imports(stmts, mod, is_pkg)
+        imports = {k: v for k, v in parent_imports.items() if k not in own_bound}
+        imports.update(own_imp)
+        masked = frozenset((parent_masked | set(own_bound)) - set(own_imp))
+
         for stmt in stmts:
             if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
                 continue
             for sub in _executable_ast_nodes(stmt):
                 if isinstance(sub, ast.Attribute):
                     cur_base = sub
+                    attr_chain = []
                     while isinstance(cur_base, ast.Attribute):
+                        attr_chain.append(cur_base.attr)
                         cur_base = cur_base.value
                     if isinstance(cur_base, ast.Name) and cur_base.id in masked and cur_base.id not in ("self", "cls"):
                         continue
+                    if (
+                        self_attrs_out is not None
+                        and isinstance(cur_base, ast.Name)
+                        and cur_base.id in ("self", "cls")
+                        and attr_chain
+                    ):
+                        self_attrs_out.add(attr_chain[-1])
+                    if (
+                        super_calls_out is not None
+                        and cur_cls
+                        and attr_chain
+                        and isinstance(cur_base, ast.Call)
+                        and isinstance(cur_base.func, ast.Name)
+                        and cur_base.func.id == "super"
+                    ):
+                        first_attr = attr_chain[-1]
+                        for b in cls_bases.get(cur_cls, ()):
+                            super_calls_out.add((b, first_attr))
                     for res in resolve_attr(sub, mod, cur_cls, imports):
                         if res == mod_prefix or res.startswith(f"{mod_prefix}."):
                             adj[owner].add(res)
@@ -495,15 +591,45 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
                     elif sub.id in mod_defs[mod]:
                         adj[owner].add(f"{mod}.{sub.id}")
 
+        for nscope in _direct_nested_scopes(stmts):
+            if isinstance(nscope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                nlvars = fn_local_vars(nscope)
+                extract_refs(
+                    nscope.body, owner, mod, is_pkg, cur_cls,
+                    imports, masked, nlvars, self_attrs_out, super_calls_out,
+                )
+            elif isinstance(nscope, ast.Lambda):
+                llvars = {a.arg for a in (*nscope.args.posonlyargs, *nscope.args.args, *nscope.args.kwonlyargs)}
+                if nscope.args.vararg:
+                    llvars.add(nscope.args.vararg.arg)
+                if nscope.args.kwarg:
+                    llvars.add(nscope.args.kwarg.arg)
+                extract_refs(
+                    [nscope.body], owner, mod, is_pkg, cur_cls,
+                    imports, masked, llvars, self_attrs_out, super_calls_out,
+                )
+            elif isinstance(nscope, ast.ClassDef):
+                cb_bound: set[str] = set()
+                for s in nscope.body:
+                    _walk_scope_bindings(s, cb_bound)
+                extract_refs(
+                    nscope.body, owner, mod, is_pkg, None,
+                    imports, masked, cb_bound, None, None,
+                )
+
     for mod, (tree, is_pkg) in parsed.items():
         top_stmts = []
+        base_imp = mod_imports[mod]
         for node in tree.body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 fn_id = f"{mod}.{node.name}"
                 adj[mod].add(fn_id)
-                lvars, reimp = fn_local_vars(node)
-                extract_refs(node.body, fn_id, mod, is_pkg, None, lvars, reimp)
-                extract_refs([*node.decorator_list, *node.args.defaults, *[d for d in node.args.kw_defaults if d is not None]], fn_id, mod, is_pkg, None)
+                lvars = fn_local_vars(node)
+                extract_refs(node.body, fn_id, mod, is_pkg, None, base_imp, frozenset(), lvars)
+                extract_refs(
+                    [*node.decorator_list, *node.args.defaults, *[d for d in node.args.kw_defaults if d is not None]],
+                    fn_id, mod, is_pkg, None, base_imp,
+                )
             elif isinstance(node, ast.ClassDef):
                 cls_id = f"{mod}.{node.name}"
                 adj[mod].add(cls_id)
@@ -514,9 +640,16 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
                     if isinstance(it, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         m_id = f"{cls_id}.{it.name}"
                         adj[cls_id].add(m_id)
-                        lvars, reimp = fn_local_vars(it)
-                        extract_refs(it.body, m_id, mod, is_pkg, cls_id, lvars, reimp)
-                        extract_refs([*it.decorator_list, *it.args.defaults, *[d for d in it.args.kw_defaults if d is not None]], m_id, mod, is_pkg, cls_id)
+                        lvars = fn_local_vars(it)
+                        extract_refs(
+                            it.body, m_id, mod, is_pkg, cls_id, base_imp, frozenset(), lvars,
+                            self_attrs_out=cls_method_self_attrs[(cls_id, it.name)],
+                            super_calls_out=cls_method_super_calls[(cls_id, it.name)],
+                        )
+                        extract_refs(
+                            [*it.decorator_list, *it.args.defaults, *[d for d in it.args.kw_defaults if d is not None]],
+                            m_id, mod, is_pkg, cls_id, base_imp,
+                        )
                     elif isinstance(it, ast.Assign):
                         attr_names = [
                             n.id for t in it.targets for n in ast.walk(t)
@@ -526,41 +659,70 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
                             for aname in attr_names:
                                 attr_id = f"{cls_id}.{aname}"
                                 adj[cls_id].add(attr_id)
-                                extract_refs([it], attr_id, mod, is_pkg, cls_id)
+                                extract_refs([it], attr_id, mod, is_pkg, cls_id, base_imp)
                         else:
                             other_cls_stmts.append(it)
                     elif isinstance(it, ast.AnnAssign) and isinstance(it.target, ast.Name):
                         attr_id = f"{cls_id}.{it.target.id}"
                         adj[cls_id].add(attr_id)
-                        extract_refs([it], attr_id, mod, is_pkg, cls_id)
+                        extract_refs([it], attr_id, mod, is_pkg, cls_id, base_imp)
                     else:
                         other_cls_stmts.append(it)
                 if other_cls_stmts:
-                    extract_refs(other_cls_stmts, cls_id, mod, is_pkg, cls_id)
+                    extract_refs(other_cls_stmts, cls_id, mod, is_pkg, cls_id, base_imp)
             else:
                 top_stmts.append(node)
-        extract_refs(top_stmts, mod, mod, is_pkg, None)
+        extract_refs(top_stmts, mod, mod, is_pkg, None, base_imp)
 
-    for cls_id in list(cls_bases):
-        seen_b, q_b = {cls_id}, collections.deque(cls_bases[cls_id])
+    mro_ancestors: dict[str, list[str]] = {}
+    all_classes = set(cls_bases) | set(cls_methods) | set(cls_attrs)
+    for cls_id in sorted(all_classes):
+        ancs: list[str] = []
+        seen_b, q_b = {cls_id}, collections.deque(cls_bases.get(cls_id, ()))
         while q_b:
-            b = canonical(q_b.popleft())
-            if b in seen_b:
-                continue
-            seen_b.add(b)
+            raw_b = q_b.popleft()
+            for b in (canonical(raw_b), canonical(origin_of(raw_b))):
+                if b in seen_b or not (b == mod_prefix or b.startswith(f"{mod_prefix}.")):
+                    continue
+                seen_b.add(b)
+                ancs.append(b)
+                q_b.extend(cls_bases.get(b, ()))
+        mro_ancestors[cls_id] = ancs
+
+    def effective_self_attrs(c: str, m: str, seen_sm: frozenset[tuple[str, str]] = frozenset()) -> set[str]:
+        if (c, m) in seen_sm:
+            return set()
+        nxt_seen = seen_sm | {(c, m)}
+        out = set(cls_method_self_attrs.get((c, m), ()))
+        for sb, sm in cls_method_super_calls.get((c, m), ()):
+            for anc in (sb, *mro_ancestors.get(sb, ())):
+                if sm in cls_methods.get(anc, ()):
+                    out |= effective_self_attrs(anc, sm, nxt_seen)
+                    break
+        return out
+
+    for cls_id, ancs in mro_ancestors.items():
+        for m_name in cls_methods.get(cls_id, ()):
+            m_id = f"{cls_id}.{m_name}"
+            for attr in effective_self_attrs(cls_id, m_name):
+                adj[m_id].add(f"{cls_id}.{attr}")
+        handled_methods = set(cls_methods.get(cls_id, ()))
+        handled_attrs = set(cls_attrs.get(cls_id, ()))
+        for b in ancs:
             for m_name in cls_methods.get(b, ()):
                 sub_m = f"{cls_id}.{m_name}"
-                base_m = f"{b}.{m_name}"
                 adj[cls_id].add(sub_m)
-                if m_name not in cls_methods.get(cls_id, ()):
-                    adj[sub_m].add(base_m)
+                if m_name not in handled_methods:
+                    handled_methods.add(m_name)
+                    adj[sub_m].add(f"{b}.{m_name}")
+                    for attr in effective_self_attrs(b, m_name):
+                        adj[sub_m].add(f"{cls_id}.{attr}")
             for a_name in cls_attrs.get(b, ()):
                 sub_a = f"{cls_id}.{a_name}"
-                base_a = f"{b}.{a_name}"
                 adj[cls_id].add(sub_a)
-                if a_name not in cls_attrs.get(cls_id, ()):
-                    adj[sub_a].add(base_a)
-            q_b.extend(cls_bases.get(b, ()))
+                if a_name not in handled_attrs:
+                    handled_attrs.add(a_name)
+                    adj[sub_a].add(f"{b}.{a_name}")
 
     for alias_id, target_id in reexports.items():
         adj[alias_id].add(target_id)
@@ -572,7 +734,7 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
             c = canonical(dst)
             if c != dst:
                 expanded[src].add(c)
-    return expanded, canonical, set(parsed)
+    return expanded, canonical, parsed_mods_set
 
 
 def _runtime_virgil_origin(node_name: str, parsed_mods: set[str], mod_prefix: str = "virgil") -> str:
@@ -764,7 +926,12 @@ def test_virgil_ast_reachability_synthetic_controls(tmp_path, monkeypatch):
     (pkg / "lazy" / "_impl.py").write_text(
         "from ..likelihood import _whiten_with_log_norm\n"
         "class RealPipe:\n"
-        "    def run(self, d, m): return _whiten_with_log_norm(d, m)\n",
+        "    def run(self, d, m): return _whiten_with_log_norm(d, m)\n"
+        "class TemplateBase:\n"
+        "    STAGES = ()\n"
+        "    def _hook(self, d, m): return ()\n"
+        "    def execute(self, d, m):\n"
+        "        return [s(d, m) for s in self.STAGES] + list(self._hook(d, m))\n",
         encoding="utf-8",
     )
     (pkg / "lazy" / "__init__.py").write_text(
@@ -772,12 +939,16 @@ def test_virgil_ast_reachability_synthetic_controls(tmp_path, monkeypatch):
         "    if name == 'LazyPipe':\n"
         "        from ._impl import RealPipe\n"
         "        return RealPipe\n"
+        "    if name == 'LazyTemplateBase':\n"
+        "        from ._impl import TemplateBase\n"
+        "        return TemplateBase\n"
         "    raise AttributeError(name)\n",
         encoding="utf-8",
     )
     (pkg / "pipelines.py").write_text(
         "from .likelihood import _whiten_with_log_norm\n"
         "from .fitting import fit\n"
+        "from .lazy import LazyTemplateBase\n"
         "def _stage_fn(d, m): return _whiten_with_log_norm(d, m)\n"
         "class BasePipe:\n"
         "    def run(self, d, m): return _whiten_with_log_norm(d, m)\n"
@@ -788,12 +959,24 @@ def test_virgil_ast_reachability_synthetic_controls(tmp_path, monkeypatch):
         "    def step(self, d, m): return super().step(d, m)\n"
         "class StagedPipe:\n"
         "    STAGES = (_stage_fn,)\n"
+        "class TemplateStageSub(LazyTemplateBase):\n"
+        "    STAGES = (_stage_fn,)\n"
+        "class TemplateHookSub(LazyTemplateBase):\n"
+        "    def _hook(self, d, m): return _whiten_with_log_norm(d, m)\n"
+        "class SilentTemplateSub(LazyTemplateBase):\n"
+        "    def _hook(self, d, m): return (d, m)\n"
         "def run_via_stages(d, m):\n"
         "    return [s(d, m) for s in StagedPipe.STAGES]\n"
         "def comp_does_not_mask_fit(m, xs):\n"
         "    _ = [fit for fit in xs]\n"
         "    def _inner(fit): return fit\n"
         "    return fit(m, data=(), likelihoods=())\n"
+        "def nested_closure_reimports_shadowed_name(fn, d, m):\n"
+        "    fn = None\n"
+        "    def _closure():\n"
+        "        from .likelihood import _whiten_with_log_norm as fn\n"
+        "        return fn(d, m)\n"
+        "    return _closure()\n"
         "def calls_pep562_hop(d, m):\n"
         "    from .lazy import LazyPipe\n"
         "    return LazyPipe().run(d, m)\n"
@@ -813,8 +996,12 @@ def test_virgil_ast_reachability_synthetic_controls(tmp_path, monkeypatch):
     assert _ast_bfs("fakepkg.pipelines.InheritedPipe.run", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
     assert _ast_bfs("fakepkg.pipelines.SuperPipe", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
     assert _ast_bfs("fakepkg.pipelines.StagedPipe.STAGES", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
+    assert _ast_bfs("fakepkg.pipelines.TemplateStageSub.execute", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
+    assert _ast_bfs("fakepkg.pipelines.TemplateHookSub.execute", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
+    assert _ast_bfs("fakepkg.pipelines.SilentTemplateSub.execute", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is None
     assert _ast_bfs("fakepkg.pipelines.run_via_stages", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
     assert _ast_bfs("fakepkg.pipelines.comp_does_not_mask_fit", expanded, canonical, fit_sinks, parsed_mods=parsed_mods, mod_prefix="fakepkg") is not None
+    assert _ast_bfs("fakepkg.pipelines.nested_closure_reimports_shadowed_name", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
     assert _ast_bfs("fakepkg.pipelines.calls_pep562_hop", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is not None
     assert _ast_bfs("fakepkg.orbits.astrometric_score", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is None
     assert _ast_bfs("fakepkg.pipelines.radio_staged", expanded, canonical, opt_sinks, parsed_mods=parsed_mods, stop_at=fit_sinks, mod_prefix="fakepkg") is None
