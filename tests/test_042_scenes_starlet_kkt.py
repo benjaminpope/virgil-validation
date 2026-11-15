@@ -38,7 +38,9 @@ def _clear_jax_caches():
     gc.collect()
 
 
-def _simple_v2_oidata(u_m: np.ndarray, v_m: np.ndarray, wavel_m: float, v2: np.ndarray, d_v2: np.ndarray):
+def _simple_v2_oidata(
+    u_m: np.ndarray, v_m: np.ndarray, wavel_m: float, v2: np.ndarray, d_v2: np.ndarray
+):
     """Build a minimal visibility-squared ``OIData`` without reading any file."""
     n = u_m.size
     return vo.OIData(
@@ -55,6 +57,7 @@ def _simple_v2_oidata(u_m: np.ndarray, v_m: np.ndarray, wavel_m: float, v2: np.n
 
 # ---------------------------------------------------------------------------
 # Reference self-checks (kind="reference" -> crosscheck.starlet_kkt_ref)
+# Every helper in crosscheck.starlet_kkt_ref is verified here from first principles.
 # ---------------------------------------------------------------------------
 
 
@@ -100,9 +103,8 @@ def test_ref_starlet_exact_synthesis_zero_pad_and_dirac_sum():
     kind="reference",
     headline="laplacian_eig_err",
 )
-def test_ref_scenes_moments_and_tsv_dirichlet_eigenvalues():
-    # Exact eigenvalues of the 2D 5-point Dirichlet Laplacian on an n x n grid:
-    # 4 sin^2(pi k_r / (2(n+1))) + 4 sin^2(pi k_c / (2(n+1)))
+def test_ref_scenes_beams_fwhm_and_regularizer_hessians():
+    # 1. Exact eigenvalues of 2D 5-point Dirichlet TSV Hessian + finite-difference MaxEntropy Hessian
     n = 6
     w, f0 = 2.3, 0.8
     hess = ref.tsv_dirichlet_hessian_ref(n, weight=w, reference_flux=f0)
@@ -112,15 +114,121 @@ def test_ref_scenes_moments_and_tsv_dirichlet_eigenvalues():
     want_eigs = np.sort((2.0 * w / (f0**2)) * (eig_1d[:, None] + eig_1d[None, :]).ravel())
     eig_err = float(np.max(np.abs(got_eigs - want_eigs)))
 
-    # Fine-grid Gaussian blob recovers exact first and second moments
+    rng = np.random.default_rng(12)
+    f_me = rng.uniform(0.05, 0.4, size=8)
+    m_me = rng.uniform(0.05, 0.4, size=8)
+
+    def skilling_kl(f_vec):
+        p = f_vec / f0
+        return w * float(np.sum(p * np.log(p / m_me) - (p - m_me)))
+
+    eps = 1e-3
+    fd_diag = np.array(
+        [
+            (
+                -skilling_kl(f_me + 2.0 * eps * np.eye(1, 8, k).ravel())
+                + 16.0 * skilling_kl(f_me + eps * np.eye(1, 8, k).ravel())
+                - 30.0 * skilling_kl(f_me)
+                + 16.0 * skilling_kl(f_me - eps * np.eye(1, 8, k).ravel())
+                - skilling_kl(f_me - 2.0 * eps * np.eye(1, 8, k).ravel())
+            )
+            / (12.0 * eps * eps)
+            for k in range(8)
+        ]
+    )
+    h_me = ref.maxent_hessian_ref(f_me, weight=w, reference_flux=f0)
+    maxent_hess_err = float(np.max(np.abs(np.diag(h_me) - fd_diag)))
+
+    # 2. Gaussian blob, inclined modulated ring, and Euclidean vs radial-cap Archimedean spiral
     blob = ref.gaussian_blob_ref(101, 0.5, sigma_mas=2.5, dra=1.7, ddec=-1.2)
     cent = ref.sky_centroid_ref(blob, 0.5, sigma_mas=2.0)
     centroid_err = float(np.max(np.abs(cent["centroid"] - np.array([1.7, -1.2]))))
 
+    ring = ref.ring_ref(
+        81, 0.75, radius_mas=14.0, width_mas=1.2, inc_deg=0.0, asymmetry=0.45, asymmetry_pa_deg=40.0
+    )
+    east_r, north_r = ref.sky_grid_mas(81, 0.75)
+    pa_r = np.arctan2(east_r, north_r)
+    dipole_est = 2.0 * float(np.sum(ring * np.cos(pa_r - np.deg2rad(40.0))))
+    ring_dipole_err = abs(dipole_est - 0.45)
+
+    sp_euc = ref.spiral_ref(
+        81, 1.0, step_mas=10.0, width_mas=1.6, turns=2.5, pa_deg=15.0, distance_mode="euclidean"
+    )
+    sp_rad = ref.spiral_ref(
+        81, 1.0, step_mas=10.0, width_mas=1.6, turns=2.5, pa_deg=15.0, distance_mode="radial_cap"
+    )
+    east_s, north_s = ref.sky_grid_mas(81, 1.0)
+    r_s = np.hypot(east_s, north_s)
+    # Outer turn (r > 18 mas, step/(2*pi*r) < 0.09) agrees closely; inner turn (r < 5 mas) differs
+    outer_diff = float(np.max(np.abs(sp_euc[r_s > 18.0] - sp_rad[r_s > 18.0])) / np.max(sp_euc))
+    inner_diff = float(np.max(np.abs(sp_euc[r_s < 5.0] - sp_rad[r_s < 5.0])) / np.max(sp_euc))
+
+    # 3. convolve_elliptical_beam_ref second moments & v2_point_residual_dirty_map_ref finite-diff check
+    imp = np.zeros((51, 51), dtype=float)
+    imp[25, 25] = 1.0
+    psf = ref.convolve_elliptical_beam_ref(imp, 0.5, 6.0, 3.0, 50.0, rotation_deg=15.0)
+    x_l, y_u = ref.sky_grid_mas(51, 0.5, rotation_deg=0.0)
+    ang = np.deg2rad(50.0 - 15.0)
+    u_maj = x_l * np.sin(ang) + y_u * np.cos(ang)
+    u_min = x_l * np.cos(ang) - y_u * np.sin(ang)
+    beam_sig_err = max(
+        abs(float(np.sqrt(np.sum(psf * u_maj**2))) - 6.0 / ref.FWHM_PER_SIGMA),
+        abs(float(np.sqrt(np.sum(psf * u_min**2))) - 3.0 / ref.FWHM_PER_SIGMA),
+        abs(float(np.sum(psf)) - 1.0),
+    )
+
+    u_v2 = np.array([15.0, -28.0, 42.0, 10.0, -35.0])
+    v_v2 = np.array([22.0, 18.0, -12.0, -40.0, -25.0])
+    lam = 2.2e-6
+    v2_obs = np.array([0.92, 0.88, 0.81, 0.86, 0.79])
+    sig_v2 = np.full(5, 0.02)
+    rmap = ref.v2_point_residual_dirty_map_ref(u_v2, v_v2, lam, v2_obs, sig_v2, 7, 2.0, rotation_deg=-20.0)
+    eg_m, ng_m = ref.sky_grid_mas(7, 2.0, rotation_deg=-20.0)
+
+    def v2_res_vec(eps_f, r_i, c_i):
+        ph = -2.0 * np.pi * (
+            (u_v2 / lam) * eg_m[r_i, c_i] * ref.MAS_TO_RAD
+            + (v_v2 / lam) * ng_m[r_i, c_i] * ref.MAS_TO_RAD
+        )
+        v_c = (1.0 + eps_f * np.exp(1j * ph)) / (1.0 + eps_f)
+        return (np.abs(v_c) ** 2 - v2_obs) / sig_v2
+
+    h_fd = 1e-7
+    r_p = v2_res_vec(h_fd, 2, 5)
+    r_m = v2_res_vec(-h_fd, 2, 5)
+    g_fd = (float(r_p @ r_p) - float(r_m @ r_m)) / (2.0 * h_fd)
+    j_fd = np.linalg.norm((r_p - r_m) / (2.0 * h_fd))
+    rmap_fd_err = abs(float(rmap[2, 5]) - (-g_fd / j_fd))
+
+    # 4. second_moment_fwhm_ref & image_field_ref exact analytical identities
+    rho_test = np.array([4.0e6, 8.0e6, 1.2e7, 1.6e7])
+    theta_rad = 4.2 * ref.MAS_TO_RAD
+    v2_gauss = np.exp(-0.5 * (np.pi**2 / np.log(2.0)) * (theta_rad**2) * (rho_test**2))
+    fwhm_no_int = ref.second_moment_fwhm_ref(rho_test, v2_gauss, np.full(4, 0.01), fit_intercept=False)
+    fwhm_int = ref.second_moment_fwhm_ref(
+        rho_test, 0.85 * v2_gauss, np.full(4, 0.01), fit_intercept=True
+    )
+    fwhm_ref_err = max(abs(float(fwhm_no_int) - 4.2), abs(float(fwhm_int) - 4.2))
+    assert ref.second_moment_fwhm_ref(rho_test[:1], v2_gauss[:1], np.array([0.01])) is None
+    assert ref.second_moment_fwhm_ref(rho_test, np.ones(4), np.full(4, 0.01)) == 0.0
+
+    fov_ceil = ref.image_field_ref(1.0e6, 2.0e7, None, aperture_mas=35.0)
+    fov_cross = ref.image_field_ref(1.0e6, 2.0e7, 5.0, inner_elements=500.0, aperture_mas=25.0)
+    assert abs(fov_ceil - 35.0) < 1e-12 and abs(fov_cross - 25.0) < 1e-12
+
     record("laplacian_eig_err", eig_err)
+    record("maxent_hess_fd_err", maxent_hess_err)
     record("blob_centroid_err", centroid_err)
+    record("beam_sig_err", beam_sig_err)
     assert eig_err < 1e-13
+    assert maxent_hess_err < 1e-6
     assert centroid_err < 1e-12
+    assert ring_dipole_err < 1e-3
+    assert outer_diff < 0.025 and inner_diff > 0.03
+    assert beam_sig_err < 5e-3
+    assert rmap_fd_err < 1e-7
+    assert fwhm_ref_err < 1e-12
 
 
 @pytest.mark.validates(
@@ -129,7 +237,7 @@ def test_ref_scenes_moments_and_tsv_dirichlet_eigenvalues():
     kind="reference",
     headline="rel_hutchinson_se_err",
 )
-def test_ref_hutchinson_variance_and_kkt_simplex_identities():
+def test_ref_hutchinson_variance_and_kkt_simplex_and_box_identities():
     rng = np.random.default_rng(7)
     d, m_data, nprobe = 14, 20, 16
     jac = rng.normal(scale=0.6, size=(m_data, d))
@@ -146,37 +254,181 @@ def test_ref_hutchinson_variance_and_kkt_simplex_identities():
     rel_se_err = abs(emp_sd - exact["se_rademacher"]) / exact["se_rademacher"]
     mean_z = abs(emp_mean - exact["g"]) / (exact["se_rademacher"] / np.sqrt(400.0))
 
-    # Simplex KKT residual vanishes at exact SciPy SLSQP optimum of strictly convex entropy objective
+    # 1. Simplex KKT residual vanishes at SciPy SLSQP optimum of strictly convex entropy objective
     a_mat = rng.normal(size=(10, 6))
     y_vec = rng.normal(size=10)
     w_ent = 0.25
 
-    def obj(b):
-        res = a_mat @ b - y_vec
-        return 0.5 * float(res @ res) + w_ent * float(np.sum(b * np.log(np.clip(b, 1e-30, None))))
+    def gd_fn(b):
+        return a_mat.T @ (a_mat @ b - y_vec)
 
-    def grad(b):
-        return a_mat.T @ (a_mat @ b - y_vec) + w_ent * (np.log(np.clip(b, 1e-30, None)) + 1.0)
+    def gp_fn(b):
+        return w_ent * (np.log(np.clip(b, 1e-30, None)) + 1.0)
 
     sol = optimize.minimize(
-        obj,
+        lambda b: 0.5 * float(np.sum((a_mat @ b - y_vec) ** 2))
+        + w_ent * float(np.sum(b * np.log(np.clip(b, 1e-30, None)))),
         np.full(6, 1.0 / 6.0),
-        jac=grad,
+        jac=lambda b: gd_fn(b) + gp_fn(b),
         method="SLSQP",
         bounds=[(1e-12, 1.0)] * 6,
         constraints=[{"type": "eq", "fun": lambda b: np.sum(b) - 1.0}],
         options={"ftol": 1e-14, "maxiter": 500},
     )
     assert sol.success
-    kkt = ref.kkt_simplex_metrics_ref(sol.x, grad(sol.x), weight=w_ent)
+    kkt = ref.kkt_simplex_metrics_ref(sol.x, gd_fn(sol.x), gp_fn(sol.x), flux=0.4, weight=w_ent)
+
+    # 2. Box-constrained f >= 0 KKT metrics vanish at SciPy L-BFGS-B optimum with active zeros,
+    #    and flag zero_violation > 0 when an active zero has negative reduced gradient
+    q_mat = a_mat.T @ a_mat + 0.5 * np.eye(6)
+    c_vec = np.array([-1.2, 0.8, -0.5, 1.5, 2.0, -0.9])
+    sol_box = optimize.minimize(
+        lambda f: 0.5 * float(f @ q_mat @ f) + float(c_vec @ f),
+        np.full(6, 0.2),
+        jac=lambda f: q_mat @ f + c_vec,
+        method="L-BFGS-B",
+        bounds=[(0.0, None)] * 6,
+        options={"ftol": 0.0, "gtol": 1e-14, "maxiter": 1000},
+    )
+    assert sol_box.success and int(np.sum(sol_box.x == 0.0)) >= 2
+    box_ok = ref.kkt_nonneg_linear_metrics_ref(
+        sol_box.x, q_mat @ sol_box.x, c_vec, weight=0.5
+    )
+    clamped = sol_box.x.copy()
+    clamped[int(np.argmax(clamped))] = 0.0
+    box_bad = ref.kkt_nonneg_linear_metrics_ref(
+        clamped, q_mat @ clamped, c_vec, weight=0.5
+    )
 
     record("rel_hutchinson_se_err", rel_se_err)
     record("hutchinson_mean_z", mean_z)
     record("simplex_kkt_rel", kkt["kkt_rel"])
+    record("box_opt_pg_rel", box_ok["pg_rel"])
     assert rel_se_err < 0.12
     assert mean_z < 3.0
     assert kkt["kkt_rel"] < 1e-7
     assert kkt["want_grow"] == 0.0
+    assert box_ok["pg_rel"] < 1e-8
+    assert box_ok["kkt_w"] < 1e-8
+    assert box_ok["zero_violation"] == 0.0
+    assert box_bad["zero_violation"] > 0.0
+
+
+@pytest.mark.validates(
+    "crosscheck.starlet_kkt_ref",
+    roots=["mathematics", "statistics"],
+    kind="reference",
+    headline="laplace_quad_err",
+)
+def test_ref_laplace_lcurve_classic_maxent_mythra_and_radio_differencing():
+    # 1. mackay_laplace_gp_ref against exact 2D numerical Gaussian integral + fixed-point residual
+    j_z = np.array([[1.4], [-0.8], [0.5], [1.1]])
+    j_ext = np.array([[0.3], [0.7], [-0.4], [0.2]])
+    r0 = np.array([0.6, -0.4, 0.9, -0.3])
+    z0 = np.array([0.25])
+    # At linear MAP (z0, theta0=0): J_joint^T r + [z0, 0] == 0 if we adjust r_map orthogonal to J_joint
+    # Even simpler: for linear Gaussian log p(y, z, theta) = -0.5 ||r0 + J_z dz + J_ext dtheta||^2 - 0.5 ||z0 + dz||^2 + lp_ext,
+    # when (z0, 0) IS the exact stationary point (J_z^T r0 + z0 == 0 and J_ext^T r0 == 0), Laplace is EXACT!
+    # Construct r0 in the nullspace of J_ext^T with J_z^T r0 = -z0:
+    # Solve [J_z^T; J_ext^T] r_map = [-z0[0], 0.0] via minimum-norm + nullspace component!
+    a_sys = np.vstack([j_z.T, j_ext.T])
+    r_map = np.linalg.lstsq(a_sys, np.array([-z0[0], 0.0]), rcond=None)[0]
+    u_null = np.eye(4) - a_sys.T @ np.linalg.inv(a_sys @ a_sys.T) @ a_sys
+    r_map = r_map + u_null @ np.array([1.2, -0.9, 0.7, -0.5])
+    assert abs(float((j_z.T @ r_map)[0] + z0[0])) < 1e-14
+    assert abs(float((j_ext.T @ r_map)[0])) < 1e-14
+
+    mk = ref.mackay_laplace_gp_ref(
+        r_map,
+        0.0,
+        z0,
+        j_z,
+        n_independent=4,
+        extra_jac=j_ext,
+        extra_log_prior=-1.2,
+        observable_blocks={"a": (slice(0, 2), 2), "b": (slice(2, 4), 2)},
+    )
+    # 2D midpoint quadrature over (dz, dtheta) on [-9, 9]^2 (exact for linear Gaussian!)
+    grid_1d = np.linspace(-9.0, 9.0, 361)
+    step = float(grid_1d[1] - grid_1d[0])
+    dz_g, dt_g = np.meshgrid(grid_1d, grid_1d, indexing="ij")
+    res_g = r_map[:, None, None] + j_z[:, 0][:, None, None] * dz_g[None] + j_ext[:, 0][:, None, None] * dt_g[None]
+    log_integrand = (
+        -0.5 * np.sum(res_g**2, axis=0)
+        - 0.5 * (z0[0] + dz_g) ** 2
+        - 0.5 * np.log(2.0 * np.pi)
+        - 1.2
+    )
+    m_max = float(np.max(log_integrand))
+    logz_quad = m_max + float(np.log(np.sum(np.exp(log_integrand - m_max)) * step * step))
+    laplace_quad_err = abs(float(mk["log_evidence"]) - logz_quad)
+
+    # Check scalar and block fixed-point residuals
+    s_fp = float(mk["s_fixed_point"])
+    sv = np.linalg.svdvals(j_z)
+    fp_res = abs(s_fp**2 * (4.0 - float(np.sum((sv / s_fp) ** 2 / (1.0 + (sv / s_fp) ** 2)))) - float(mk["chi2"]))
+    s_obs = mk["s_by_observable"]
+    assert isinstance(s_obs, dict) and set(s_obs.keys()) == {"a", "b"}
+
+    # 2. lcurve_corner_ref on symmetric log-log hyperbola (chi2 grows with w, penalty falls with w, max curvature at w = 1.0)
+    t_grid = np.linspace(3.0, -3.0, 13)
+    w_grid = np.exp(t_grid)
+    c2_sym = np.exp(t_grid + np.sqrt(t_grid**2 + 0.5))
+    pen_sym = np.exp(-t_grid + np.sqrt(t_grid**2 + 0.5))
+    assert abs(ref.lcurve_corner_ref(w_grid, c2_sym, pen_sym) - 1.0) < 1e-14
+
+    # 3. classic_maxent_weight_ref on analytical 2-pixel identity model:
+    # b = [0.5, 0.5], J_b = sqrt(2) * I_2 => rt_b * J_b = I_2 => eigvals = [1, 1], n_good(w) = 2 / (1 + w).
+    # With KL = 1 / (w * (1 + w))? Even better: constant KL = 1/3 => 2 w (1/3) = 2 / (1 + w) => w (1 + w) = 3
+    w_me = np.geomspace(10.0, 0.2, 41)
+    b_half = [np.array([0.5, 0.5])] * 41
+    j_id = [np.sqrt(2.0) * np.eye(2)] * 41
+    w_root_true = 0.5 * (-1.0 + np.sqrt(13.0))
+    w_got_me = ref.classic_maxent_weight_ref(w_me, np.full(41, 1.0 / 3.0), b_half, j_id)
+    classic_err = abs(float(w_got_me) - w_root_true)
+
+    # 4. mythra_filter_indices_ref deterministic rejection cascade
+    chi2_mat = np.array(
+        [
+            [1.00, 1.02],  # 0: kept (best)
+            [1.03, 1.01],  # 1: kept
+            [1.01, 1.04],  # 2: kept
+            [0.98, 0.99],  # 3: outside window -> "window"
+            [np.nan, 1.0], # 4: non-finite -> "diverged"
+            [2.40, 1.05],  # 5: > 2.0 * best on dataset 0 -> "chi2"
+            [1.55, 1.55],  # 6: < 2.0 * best, but > 5 MAD above {1.01, 1.02, 1.025} -> "outlier"
+        ]
+    )
+    in_win = np.array([True, True, True, False, True, True, True])
+    alive, reasons = ref.mythra_filter_indices_ref(chi2_mat, in_win, np.array([20.0, 20.0]))
+    assert alive == [0, 1, 2]
+    assert reasons == [None, None, None, "window", "diverged", "chi2", "outlier"]
+
+    # 5. radio_sigma_scale_group_ref Monte Carlo SE verification
+    rng = np.random.default_rng(55)
+    t_s = np.arange(80, dtype=float) * 5.0
+    w_s = np.full(80, 4.0e4)
+    s_true = 1.35
+    s_hats, s_ses = [], []
+    for _ in range(300):
+        v_s = 0.5 + (s_true / np.sqrt(w_s)) * (rng.normal(size=80) + 1j * rng.normal(size=80))
+        out = ref.radio_sigma_scale_group_ref(
+            t_s, np.zeros(80, int), np.ones(80, int), np.zeros(80, int), np.ones(80, int), np.zeros(80, int), v_s, w_s
+        )
+        s_hats.append(float(out["s"]))
+        s_ses.append(float(out["s_se"]))
+    mc_sd = float(np.std(s_hats, ddof=1))
+    mean_se = float(np.mean(s_ses))
+    radio_se_rel_err = abs(mc_sd - mean_se) / mc_sd
+
+    record("laplace_quad_err", laplace_quad_err)
+    record("fixed_point_res", fp_res)
+    record("classic_maxent_root_err", classic_err)
+    record("radio_se_rel_err", radio_se_rel_err)
+    assert laplace_quad_err < 1e-12
+    assert fp_res < 1e-12
+    assert classic_err < 2e-3
+    assert radio_se_rel_err < 0.12
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +448,6 @@ def test_gaussian_blob_matches_analytical_sky_grid_and_moments():
     max_err = float(np.max(np.abs(got - want)))
     sum_err = abs(float(np.sum(got)) - 1.0)
 
-    # Positive dra (East) lands in left half (col < 11.5); negative ddec (South) in bottom half (row > 11.5)
     peak_row, peak_col = np.unravel_index(int(np.argmax(got)), got.shape)
     cent = ref.sky_centroid_ref(got, scale, sigma_mas=1.0)
     cent_err = float(np.hypot(cent["centroid"][0] - 2.1, cent["centroid"][1] - (-1.8)))
@@ -256,7 +507,6 @@ def test_ring_matches_inclined_modulated_sky_reference():
     )
     max_err = float(np.max(np.abs(got - want)))
 
-    # Symmetric inclined ring inertia tensor recovers minor/major ratio cos(inc_deg) and major-axis PA
     sym = np.asarray(vs.ring(41, 1.5, radius_mas=15.0, width_mas=2.0, inc_deg=50.0, pa_deg=28.0))
     east, north = ref.sky_grid_mas(41, 1.5)
     cov = np.array(
@@ -299,7 +549,6 @@ def test_ring_in_plane_vs_on_sky_asymmetry_control():
             asymmetry_pa_deg=65.0,
         )
     )
-    # Wrong modulation: using deprojected disk-plane azimuth instead of on-sky PA
     east, north = ref.sky_grid_mas(npix, scale)
     pa = np.deg2rad(20.0)
     along = east * np.sin(pa) + north * np.cos(pa)
@@ -328,37 +577,50 @@ def test_spiral_width_is_sigma_ccw_winding_rounded_cap_and_radial_fade():
     with_fade = np.asarray(
         vs.spiral(npix, scale, step_mas=16.0, width_mas=2.2, turns=1.5, pa_deg=25.0, fade_mas=18.0)
     )
+    # Compare against BOTH independent arm-distance readings per AGENTS.md:
+    # 1. Exact Euclidean distance to the Archimedean curve (agrees to ~2% on outer turns where
+    #    step/(2*pi*r) << 1, while inner turns narrow by 1/sqrt(1 + (step/(2*pi*r))^2));
+    # 2. Ray-radial cross-section |r - r_arm| with endpoint Euclidean caps (virgil's exact choice).
+    want_euclidean = ref.spiral_ref(
+        npix, scale, step_mas=16.0, width_mas=2.2, turns=1.5, pa_deg=25.0, fade_mas=18.0, distance_mode="euclidean"
+    )
     want_radial = ref.spiral_ref(
         npix, scale, step_mas=16.0, width_mas=2.2, turns=1.5, pa_deg=25.0, fade_mas=18.0, distance_mode="radial_cap"
     )
     max_pixel_err = float(np.max(np.abs(with_fade - want_radial)))
 
-    # Exact pixelwise radial attenuation exp(-r / fade_mas) up to normalization
     east, north = ref.sky_grid_mas(npix, scale)
     r_sky = np.hypot(east, north)
+    # Renormalize outer annulus (r >= 16 mas) to compare local arm cross-section shape directly
+    outer = r_sky >= 16.0
+    got_outer = no_fade[outer] / np.sum(no_fade[outer])
+    euc_no_fade = ref.spiral_ref(
+        npix, scale, step_mas=16.0, width_mas=2.2, turns=1.5, pa_deg=25.0, fade_mas=None, distance_mode="euclidean"
+    )
+    euc_outer = euc_no_fade[outer] / np.sum(euc_no_fade[outer])
+    outer_euclidean_rel_diff = float(np.max(np.abs(got_outer - euc_outer)) / np.max(got_outer))
+
     predicted_faded = no_fade * np.exp(-r_sky / 18.0)
     predicted_faded /= np.sum(predicted_faded)
     fade_rel_err = float(np.max(np.abs(with_fade - predicted_faded)) / np.max(with_fade))
 
-    # Verify width_mas is Gaussian sigma (not FWHM) on an outer straight-crossing ray:
-    # For pa_deg=0, turns=1.5, at PA=90 deg (East, row=16, dra > 0), theta = pi/2 -> r_arm = step/4 = 5.0 mas
-    # Let's use step_mas=24.0, turns=1.0 -> at PA=180 deg (South, ddec < 0, dra = 0), theta = pi -> r_arm = 12.0 mas
+    # Verify width_mas is Gaussian sigma (not FWHM) on an outer crossing ray
     sp_south = np.asarray(vs.spiral(41, 1.0, step_mas=24.0, width_mas=2.5, turns=1.0, pa_deg=0.0))
-    # South axis: col=20 (dra=0), row=32 (ddec=-12 mas, on spine) vs row=34 (ddec=-14 mas, |dr|=2 mas)
     ratio_2mas = float(sp_south[34, 20] / sp_south[32, 20])
     want_sigma_ratio = float(np.exp(-0.5 * (2.0 / 2.5) ** 2))
 
-    # Rounded cap at arm end (turns=1.0, pa_deg=0 -> end at North ddec=+24 mas, row=16-24 on 65x65 grid)
+    # Rounded cap at arm end (turns=1.0, pa_deg=0 -> end at North ddec=+20 mas, row=12, col=32)
     sp_cap = np.asarray(vs.spiral(65, 1.0, step_mas=20.0, width_mas=2.5, turns=1.0, pa_deg=0.0))
-    # End point at (dra=0, ddec=+20) -> row=12, col=32. Beyond end along +North at (dra=0, ddec=+22.5) -> row=9.5:
-    # check row=10, col=32 (2 mas past tip) has smooth Gaussian cap exp(-0.5*(2/2.5)^2), not a hard zero cut!
     cap_ratio = float(sp_cap[10, 32] / sp_cap[12, 32])
 
     record("max_pixel_err", max_pixel_err)
+    record("outer_euclidean_rel_diff", outer_euclidean_rel_diff)
     record("fade_ratio_rel_err", fade_rel_err)
     record("sigma_profile_err", abs(ratio_2mas - want_sigma_ratio))
     record("cap_profile_err", abs(cap_ratio - want_sigma_ratio))
     assert abs(float(np.sum(with_fade)) - 1.0) < 1e-14
+    assert float(np.max(np.abs(with_fade - want_euclidean))) > 1e-3  # inner radial-vs-normal difference is measurable
+    assert outer_euclidean_rel_diff < 0.04
     assert fade_rel_err < 1e-13
     assert abs(ratio_2mas - want_sigma_ratio) < 0.03
     assert abs(cap_ratio - want_sigma_ratio) < 0.05
@@ -374,9 +636,14 @@ def test_spiral_width_is_sigma_ccw_winding_rounded_cap_and_radial_fade():
 def test_spiral_width_fwhm_and_reversed_winding_controls():
     got = np.asarray(vs.spiral(33, 2.0, step_mas=18.0, width_mas=3.0, turns=1.5, pa_deg=15.0))
     wrong_fwhm = ref.spiral_ref(
-        33, 2.0, step_mas=18.0, width_mas=3.0 / ref.FWHM_PER_SIGMA, turns=1.5, pa_deg=15.0
+        33,
+        2.0,
+        step_mas=18.0,
+        width_mas=3.0 / ref.FWHM_PER_SIGMA,
+        turns=1.5,
+        pa_deg=15.0,
+        distance_mode="euclidean",
     )
-    # Reversed (CW instead of CCW) winding mirrors across pa_deg=0 when pa_deg=0
     got0 = np.asarray(vs.spiral(33, 2.0, step_mas=18.0, width_mas=3.0, turns=1.25, pa_deg=0.0))
     wrong_cw = got0[:, ::-1]
     fwhm_diff = float(np.max(np.abs(got - wrong_fwhm)) / np.max(got))
@@ -401,7 +668,6 @@ def test_spiral_width_fwhm_and_reversed_winding_controls():
 )
 def test_starlet_exact_reconstruction_linearity_and_zero_padded_edges():
     rng = np.random.default_rng(19)
-    # Include bright edge pixels so zero-padding beyond boundaries is actively tested
     x = rng.normal(loc=1.5, scale=1.0, size=(20, 24))
     y = rng.normal(loc=-0.5, scale=0.8, size=(20, 24))
 
@@ -411,7 +677,6 @@ def test_starlet_exact_reconstruction_linearity_and_zero_padded_edges():
     max_coarse_err = float(np.max(np.abs(got_coarse - want_coarse)))
     recon_err = float(np.max(np.abs(got_det.sum(axis=0) + got_coarse - x)))
 
-    # Linearity: T(a X + b Y) == a T(X) + b T(Y)
     det_y, coarse_y = (np.asarray(a) for a in vi.starlet(y, scales=4))
     det_lin, coarse_lin = (np.asarray(a) for a in vi.starlet(1.7 * x - 0.9 * y, scales=4))
     lin_err = max(
@@ -419,7 +684,6 @@ def test_starlet_exact_reconstruction_linearity_and_zero_padded_edges():
         float(np.max(np.abs(coarse_lin - (1.7 * got_coarse - 0.9 * coarse_y)))),
     )
 
-    # Dyadic scale selectivity: fine impulse peaks in scale 0; broad sigma=3.5 px blob peaks in coarser detail scale
     imp = np.zeros((33, 33))
     imp[16, 16] = 1.0
     imp_det, _ = (np.asarray(a) for a in vi.starlet(imp, scales=4))
@@ -449,8 +713,6 @@ def test_starlet_exact_reconstruction_linearity_and_zero_padded_edges():
 def test_starlet_reflect_boundary_control():
     edge_img = np.ones((16, 16), dtype=float)
     got_det, _ = (np.asarray(a) for a in vi.starlet(edge_img, scales=3))
-    # Reflective or periodic boundary has identically zero detail planes on a constant image,
-    # whereas zero-padding ("beyond the edges the image is zero") sees the step at the border.
     wrong_det, _ = ref.starlet_ref(edge_img, scales=3, mode="reflect")
     diff = float(np.max(np.abs(got_det - wrong_det)))
     record("reflect_boundary_diff", diff)
@@ -465,10 +727,9 @@ def test_starlet_reflect_boundary_control():
 def test_centroid_sky_coordinates_shifts_rotations_and_grid_angle():
     rng = np.random.default_rng(11)
     eta = rng.normal(size=(16, 16))
-    eta[3, 4] += 3.0  # off-centre bright feature
+    eta[3, 4] += 3.0
     scale, sigma = 1.8, 2.5
 
-    # Rotated + shifted Image inside a System
     img = vm.Image(eta, scale, flux=0.4, dra=1.3, ddec=-0.9, rotation_deg=32.0)
     sys_model = vm.System(star=vm.PointSource(), env=img)
     cent_prior = vi.Centroid(sigma_mas=sigma, path="env")
@@ -484,7 +745,6 @@ def test_centroid_sky_coordinates_shifts_rotations_and_grid_angle():
     r_err = float(np.max(np.abs(got_r - want["residuals"])))
     v_err = abs(got_v - float(want["value"]))
 
-    # Gradient wrt log_brightness matches finite differences
     grad_ad = np.asarray(
         jax.grad(lambda x: vi.Centroid(sigma).value(vm.Image(x, scale, rotation_deg=32.0)))(jnp.asarray(eta))
     )
@@ -497,12 +757,10 @@ def test_centroid_sky_coordinates_shifts_rotations_and_grid_angle():
     ) / (2.0 * eps)
     grad_err = abs(float(grad_ad[3, 4]) - fd_34)
 
-    # rotation_deg="grid" uses the passed grid angle
     grid_img = vm.Image(eta, scale, dra=1.3, ddec=-0.9, rotation_deg="grid")
     got_grid_c = np.asarray(vi.Centroid(sigma).centroid(grid_img, grid=32.0))
     grid_c_err = float(np.max(np.abs(got_grid_c - want["centroid"])))
 
-    # LinearImage at rotation_deg = 0.0 and -22.0 matches sky_centroid_ref
     lin_flux = np.exp(0.3 * eta)
     lin0 = vm.LinearImage(lin_flux, scale, dra=-0.7, ddec=1.1, rotation_deg=0.0, parametrization="linear")
     want_lin0 = ref.sky_centroid_ref(lin_flux, scale, sigma_mas=sigma, dra=-0.7, ddec=1.1, rotation_deg=0.0)
@@ -538,7 +796,7 @@ def test_centroid_sky_coordinates_shifts_rotations_and_grid_angle():
 )
 def test_centroid_wrong_rotation_sign_control():
     eta = np.full((15, 15), -20.0)
-    eta[2, 7] = 5.0  # near local "up" axis
+    eta[2, 7] = 5.0
     img = vm.Image(eta, 2.0, rotation_deg=35.0)
     got_c = np.asarray(vi.Centroid(2.0).centroid(img))
     wrong = ref.sky_centroid_ref(np.asarray(img.brightness), 2.0, sigma_mas=2.0, rotation_deg=-35.0)
@@ -562,17 +820,14 @@ def test_image_priors_plain_gp_and_linear_images():
     priors = vi.image_priors(scene)
     assert set(priors.keys()) == {"plain.log_brightness", "gp.log_brightness.latent"}
 
-    # GaussianField latent prior is i.i.d. Normal(0, 1)
     rng = np.random.default_rng(3)
     z = rng.normal(size=np.asarray(gp_field.latent).shape)
     lp_got = float(np.sum(priors["gp.log_brightness.latent"].log_prob(z)))
     lp_want = float(np.sum(-0.5 * z**2 - 0.5 * np.log(2.0 * np.pi)))
     gp_lp_err = abs(lp_got - lp_want)
 
-    # Plain Image prior is flat (constant log_prob = 0)
     lp_plain = float(np.sum(priors["plain.log_brightness"].log_prob(rng.normal(size=(8, 8)))))
 
-    # LinearImage gets a flat prior on "pixels"
     lin = vm.LinearImage(np.full((8, 8), 0.02), 2.0)
     lin_priors = vi.image_priors(lin)
     assert set(lin_priors.keys()) == {"pixels"}
@@ -609,11 +864,9 @@ def test_second_moment_fwhm_wls_unresolved_and_insufficient_samples():
     want = ref.second_moment_fwhm_ref(rho, v2_exact, d_v2, v2_min=0.3, fit_intercept=False)
     fwhm_err = abs(float(got) - float(want))
 
-    # Unresolved source -> 0.0
     unresolved = _simple_v2_oidata(u_m, v_m, wavel, np.ones_like(u_m), d_v2)
     got_zero = vi.second_moment_fwhm(unresolved)
 
-    # Fewer than 2 samples above v2_min -> None; DISCO data -> None
     too_few = _simple_v2_oidata(u_m[:1], v_m[:1], wavel, np.array([0.8]), np.array([0.02]))
     disco = vo.OIData(vc.ami_grid_record(wavelength_m=4.8e-6))
 
@@ -639,7 +892,6 @@ def test_image_field_and_beam_floor_ceiling_and_restoration():
     b_min, b_max = 5.0 / wavel, 80.0 / wavel
     data = _simple_v2_oidata(u_m, v_m, wavel, np.array([0.95, 0.85, 0.50, 0.15]), np.full(4, 0.02))
 
-    # Intermediate FWHM, floor-clipped, ceiling-clipped, aperture-clipped, and crossover (floor > ceiling)
     cases = [
         (3.0, dict(field_fwhms=6.0, inner_elements=4.0, aperture_mas=None, largest_mas=500.0)),
         (0.1, dict(field_fwhms=6.0, inner_elements=4.0, aperture_mas=None, largest_mas=500.0)),
@@ -653,13 +905,11 @@ def test_image_field_and_beam_floor_ceiling_and_restoration():
         want = ref.image_field_ref(b_min, b_max, fwhm, **kw)
         max_field_err = max(max_field_err, abs(got - want))
 
-    # DISCO data has no V^2 amplitudes -> returns ceiling
     disco = vo.OIData(vc.ami_grid_record(wavelength_m=4.8e-6))
     got_disco = float(vi.image_field(disco, aperture_mas=320.0))
     want_disco = float(min(vi.field_of_view(disco), 320.0))
     max_field_err = max(max_field_err, abs(got_disco - want_disco))
 
-    # Beam dataclass + convolve_beam second moments
     bm = vi.Beam(major_mas=6.0, minor_mas=3.0, pa_deg=35.0)
     assert (bm.major_mas, bm.minor_mas, bm.pa_deg) == (6.0, 3.0, 35.0)
     delta = np.zeros((41, 41), dtype=float)
@@ -683,7 +933,7 @@ def test_image_field_and_beam_floor_ceiling_and_restoration():
 
 
 # ---------------------------------------------------------------------------
-# Lattice rotation_deg="grid" (#705) & CleanResult
+# Lattice rotation_deg="grid" (#705), residual_image, & CleanResult
 # ---------------------------------------------------------------------------
 
 
@@ -691,9 +941,32 @@ def test_image_field_and_beam_floor_ceiling_and_restoration():
     "virgil.imaging.CleanResult",
     "virgil.imaging.residual_image",
     roots=["mathematics"],
-    headline="grid_model_diff",
+    headline="v2_resid_ref_err",
 )
 def test_rotation_deg_grid_across_image_dirty_clean_and_residual():
+    # 1. Pure-NumPy V^2 Fourier reference check on residual_image (zero virgil calls on reference side)
+    rng_v = np.random.default_rng(33)
+    wavel_v2 = 2.2e-6
+    u_v2 = rng_v.uniform(-80.0, 80.0, size=32)
+    v_v2 = rng_v.uniform(-80.0, 80.0, size=32)
+    east_v, north_v = ref.sky_grid_mas(11, 1.5, rotation_deg=22.0)
+    # Inject a companion at pixel (2, 8) of the rotated 11x11 grid in pure NumPy
+    ph_comp = -2.0 * np.pi * (
+        (u_v2 / wavel_v2) * east_v[2, 8] * ref.MAS_TO_RAD
+        + (v_v2 / wavel_v2) * north_v[2, 8] * ref.MAS_TO_RAD
+    )
+    v2_comp = np.abs((1.0 + 0.08 * np.exp(1j * ph_comp)) / 1.08) ** 2
+    sig_v2 = np.full(32, 0.005)
+    v2_data = _simple_v2_oidata(u_v2, v_v2, wavel_v2, v2_comp, sig_v2)
+    got_v2_resid = np.asarray(vi.residual_image(vm.PointSource(), v2_data, 11, 1.5, rotation_deg=22.0))
+    want_v2_resid = ref.v2_point_residual_dirty_map_ref(
+        u_v2, v_v2, wavel_v2, v2_comp, sig_v2, 11, 1.5, rotation_deg=22.0
+    )
+    v2_resid_ref_err = float(np.max(np.abs(got_v2_resid - want_v2_resid)))
+    assert v2_resid_ref_err < 1e-10
+    assert float(got_v2_resid[2, 8]) > 10.0  # positive gradient where flux is missing
+
+    # 2. Rotated uv-lattice ("grid") across Image, dirty_image, residual_image, and CleanResult
     rot = -18.5
     template = vo.OIData(vc.ami_grid_record(wavelength_m=4.8e-6, rotation_deg=rot))
     assert abs(float(template.uv_grid.rotation_deg) - rot) < 1e-6
@@ -704,18 +977,15 @@ def test_rotation_deg_grid_across_image_dirty_clean_and_residual():
     scene_num = vm.System(star=vm.PointSource(), env=vm.Image(eta, 25.0, flux=0.08, rotation_deg=rot))
     grid_model_diff = float(np.max(np.abs(np.asarray(template.model(scene_grid) - template.model(scene_num)))))
 
-    # Without a uv lattice, rotation_deg="grid" falls back to North up (0.0)
     ungridded = eqx.tree_at(lambda d: d.uv_grid, template, None, is_leaf=lambda x: x is None)
     scene_zero = vm.System(star=vm.PointSource(), env=vm.Image(eta, 25.0, flux=0.08, rotation_deg=0.0))
     fallback_diff = float(np.max(np.abs(np.asarray(ungridded.model(scene_grid) - ungridded.model(scene_zero)))))
 
-    # Simulating a companion aligned with a pixel of the rotated lattice
     truth_pix = np.full((15, 15), -30.0)
     truth_pix[4, 10] = 0.0
     truth = vm.System(star=vm.PointSource(), comp=vm.Image(truth_pix, 25.0, flux=0.06, rotation_deg=rot))
     sim = template.with_model(truth, key=jax.random.PRNGKey(5))
 
-    # dirty_image and residual_image with rotation_deg="grid" match explicit rotation_deg=rot
     dirty_diff = float(
         np.max(
             np.abs(
@@ -728,7 +998,42 @@ def test_rotation_deg_grid_across_image_dirty_clean_and_residual():
     resid_num = np.asarray(vi.residual_image(vm.PointSource(), sim, 15, 25.0, rotation_deg=rot))
     resid_diff = float(np.max(np.abs(resid_grid - resid_num)))
 
-    # clean with rotation_deg="grid" populates CleanResult.rotation_deg andCleanResult.restored(beam)
+    # Verify rotated-lattice residual_image peak lands at injected companion pixel (4, 10)
+    # and matches central finite-difference -0.5 * (d chi^2 / d eps) / ||d r / d eps||_2
+    assert np.unravel_index(int(np.argmax(resid_grid)), resid_grid.shape) == (4, 10)
+    assert float(resid_grid[4, 10]) > 100.0
+    assert float(resid_grid[7, 7]) == 0.0  # phase-centre pixel has zero response around PointSource
+
+    east_g, north_g = ref.sky_grid_mas(15, 25.0, rotation_deg=rot)
+    eps_fd = 1e-5
+    r0_sim = np.asarray(vl.whitened_residuals(vm.PointSource(flux=1.0), sim))
+    fd_checks = []
+    for r_i, c_i in ((4, 10), (3, 9), (10, 4)):
+        r1 = np.asarray(
+            vl.whitened_residuals(
+                vm.System(
+                    star=vm.PointSource(flux=1.0),
+                    comp=vm.PointSource(dra=float(east_g[r_i, c_i]), ddec=float(north_g[r_i, c_i]), flux=eps_fd),
+                ),
+                sim,
+            )
+        )
+        r2 = np.asarray(
+            vl.whitened_residuals(
+                vm.System(
+                    star=vm.PointSource(flux=1.0),
+                    comp=vm.PointSource(dra=float(east_g[r_i, c_i]), ddec=float(north_g[r_i, c_i]), flux=2.0 * eps_fd),
+                ),
+                sim,
+            )
+        )
+        # Second-order non-negative forward difference at eps = 0 using fluxes (0, eps, 2*eps)
+        jac_col = (-3.0 * r0_sim + 4.0 * r1 - r2) / (2.0 * eps_fd)
+        dchi2 = 2.0 * float(r0_sim @ jac_col)
+        jnorm = float(np.linalg.norm(jac_col))
+        fd_checks.append(abs(float(resid_grid[r_i, c_i]) - (-dchi2 / jnorm)))
+    disco_fd_err = max(fd_checks)
+
     clean_res = vi.clean(
         sim,
         15,
@@ -741,27 +1046,37 @@ def test_rotation_deg_grid_across_image_dirty_clean_and_residual():
     assert isinstance(clean_res, vi.CleanResult)
     assert abs(float(clean_res.rotation_deg) - rot) < 1e-6
 
+    # Independent SciPy rotated elliptical Gaussian convolution (and wrong +rot sign control)
     bm = vi.Beam(major_mas=80.0, minor_mas=50.0, pa_deg=25.0)
     restored = np.asarray(clean_res.restored(bm))
-    want_restored = np.asarray(
-        vi.convolve_beam(clean_res.components, 25.0, vi.Beam(80.0, 50.0, 25.0 - rot))
+    comp_arr = np.asarray(clean_res.components)
+    want_restored = ref.convolve_elliptical_beam_ref(
+        comp_arr, 25.0, 80.0, 50.0, 25.0, rotation_deg=rot
+    )
+    wrong_sign_restored = ref.convolve_elliptical_beam_ref(
+        comp_arr, 25.0, 80.0, 50.0, 25.0, rotation_deg=-rot
     )
     restored_diff = float(np.max(np.abs(restored - want_restored)))
-    flux_conserved_err = abs(float(np.sum(restored) - np.sum(clean_res.components)))
+    wrong_sign_diff = float(np.max(np.abs(restored - wrong_sign_restored)) / max(float(np.max(restored)), 1e-12))
+    flux_conserved_err = abs(float(np.sum(restored) - np.sum(comp_arr)))
 
+    record("v2_resid_ref_err", v2_resid_ref_err)
+    record("disco_resid_fd_err", disco_fd_err)
     record("grid_model_diff", grid_model_diff)
-    record("dirty_and_resid_diff", max(dirty_diff, resid_diff))
     record("restored_beam_diff", restored_diff)
+    assert disco_fd_err < 1e-4
     assert grid_model_diff < 1e-13
     assert fallback_diff < 1e-13
     assert dirty_diff < 1e-13
     assert resid_diff < 1e-13
-    assert restored_diff < 1e-13
-    assert flux_conserved_err < 5e-2  # small edge leakage only if near border; interior component conserves flux
+    assert restored_diff < 1e-12
+    assert wrong_sign_diff > 5e-2
+    assert flux_conserved_err < 5e-2
 
 
 # ---------------------------------------------------------------------------
-# virgil.fitting.kkt_report (WF4: sqrt, linear, softmax, nuisance start= gate)
+# virgil.fitting.kkt_report (WF4: non-stationary + converged checks across
+# LinearImage("sqrt"), LinearImage("linear"), softmax Image, and nuisance start=)
 # ---------------------------------------------------------------------------
 
 _UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
@@ -785,7 +1100,7 @@ def _three_ut_oidata(path, scene, seed: int = 1):
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
-    headline="kkt_rel_diff",
+    headline="nonstat_sqrt_kkt_err",
 )
 def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path):
     n, scale, flux = 8, 1.0, 0.3
@@ -796,35 +1111,85 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
     )
     data = _three_ut_oidata(tmp_path / "sqrt.fits", truth, seed=3)
 
+    # 1. Non-stationary LinearImage("sqrt") check: O(1) kkt_rel & O(100) kkt_w must match starlet_kkt_ref
+    rng_ns = np.random.default_rng(71)
+    s_ns = np.abs(rng_ns.normal(scale=0.06, size=(n, n))) + 2e-3
+    s_ns[0, :] = 5e-5  # positive dark pixels (< 1e-6 * peak flux)
+    s_ns[0, 0] = 0.0   # exact x = 0 pixel (stationary under x^2, never counted in want_grow)
+    ns_model = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(s_ns, scale, parametrization="sqrt", reference_flux=flux),
+    )
+    priors = vi.image_priors(ns_model)
+    tsv_reg = [vi.TSV(15.0, beam_mas=scale, path="env")]
+    ns_rep = vfit.kkt_report(
+        vfit.FitResult(model=ns_model, values={"env.pixels": jnp.asarray(s_ns)}, info={}),
+        priors,
+        data,
+        tsv_reg,
+    )["images"]["env"]
+
+    f_ns = s_ns**2
+    gd_ns = np.asarray(
+        jax.grad(
+            lambda fa: -vl.model_loglike(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux)),
+                data,
+            )
+        )(jnp.asarray(f_ns))
+    )
+    gp_ns = np.asarray(
+        jax.grad(
+            lambda fa: tsv_reg[0].value(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux))
+            )
+        )(jnp.asarray(f_ns))
+    )
+    # On LinearImage("sqrt"), g = dJ/dflux with mu = 0; exact x == 0 pixel is excluded from want_grow
+    gt_ns = gd_ns + gp_ns
+    lit_ns = f_ns > 1e-3 * np.max(f_ns)
+    dark_ns = (f_ns < 1e-6 * np.max(f_ns)) & (s_ns != 0.0)
+    sc_ns = float(np.sqrt(np.mean(gd_ns[lit_ns] ** 2 + gp_ns[lit_ns] ** 2)))
+    want_ns_kkt_w = float(np.sqrt(np.mean(gt_ns[lit_ns] ** 2)) / (15.0 / float(np.sum(f_ns))))
+    want_ns_kkt_rel = float(np.sqrt(np.mean(gt_ns[lit_ns] ** 2)) / sc_ns)
+    want_ns_wg = float(
+        np.sum(gt_ns[dark_ns] < -3.0 * sc_ns * max(want_ns_kkt_rel, float(vfit.KKT_TOL))) / f_ns.size
+    )
+    nonstat_sqrt_err = max(
+        abs(float(ns_rep["kkt_w"]) - want_ns_kkt_w),
+        abs(float(ns_rep["kkt_rel"]) - want_ns_kkt_rel),
+        abs(float(ns_rep["want_grow"]) - want_ns_wg),
+    )
+    assert float(ns_rep["kkt_w"]) > 1.0
+    assert nonstat_sqrt_err < 1e-11
+
+    # 2. Converged MaxEntropy fit + exact x = 0 stationary pixel check
     init_sqrt = np.sqrt(np.full((n, n), flux / (n * n)))
     start = vm.System(
         star=vm.PointSource(),
         env=vm.LinearImage(init_sqrt, scale, parametrization="sqrt", reference_flux=flux),
     )
-    priors = vi.image_priors(start)
     reg = [vi.MaxEntropy(15.0, path="env")]
     done = vfit.fit(start, priors, data, reg, max_steps=2000, gtol=1e-12)
     rep = vfit.kkt_report(done, priors, data, reg, start={"env.pixels": init_sqrt})
     img_rep = rep["images"]["env"]
 
-    # Independent gradient wrt pixel fluxes f = x^2 at the solution
     f_opt = np.asarray(done.model.env.fluxes)
-
-    def loss_of_flux(f_arr):
-        m = vm.System(
-            star=vm.PointSource(),
-            env=vm.LinearImage(jnp.sqrt(f_arr), scale, parametrization="sqrt", reference_flux=flux),
-        )
-        return -vl.model_loglike(m, data) + reg[0].value(m)
-
-    grad_f = np.asarray(jax.grad(loss_of_flux)(jnp.asarray(f_opt)))
-    # For LinearImage("sqrt") mu = 0, and kkt_w normalizes by w / sum(f_opt)
+    grad_f = np.asarray(
+        jax.grad(
+            lambda fa: -vl.model_loglike(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(jnp.sqrt(fa), scale, parametrization="sqrt", reference_flux=flux)),
+                data,
+            )
+            + reg[0].value(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(jnp.sqrt(fa), scale, parametrization="sqrt", reference_flux=flux))
+            )
+        )(jnp.asarray(f_opt))
+    )
     lit = f_opt > 1e-3 * np.max(f_opt)
     want_kkt_w = float(np.sqrt(np.mean(grad_f[lit] ** 2)) / (15.0 / float(np.sum(f_opt))))
     kkt_w_diff = abs(float(img_rep["kkt_w"]) - want_kkt_w)
-    kkt_rel_val = float(img_rep["kkt_rel"])
 
-    # Exact x = 0 pixel is a stationary point of x^2 and is NOT flagged by want_grow
     x_zero = np.asarray(done.model.env.pixels).copy()
     x_zero[0, 0] = 0.0
     zero_res = dataclasses.replace(
@@ -835,15 +1200,15 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
         ),
         values={**done.values, "env.pixels": jnp.asarray(x_zero)},
     )
-    rep_zero = vfit.kkt_report(zero_res, priors, data, [vi.TSV(15.0, beam_mas=scale, path="env")])
+    rep_zero = vfit.kkt_report(zero_res, priors, data, tsv_reg)
 
-    record("kkt_rel_diff", kkt_w_diff)
-    record("kkt_rel", kkt_rel_val)
+    record("nonstat_sqrt_kkt_err", nonstat_sqrt_err)
+    record("opt_kkt_w_diff", kkt_w_diff)
     record("band_limit", float(img_rep["band_limit"]))
     assert rep["converged"] is True
     assert float(img_rep["band_limit"]) < float(vfit.BAND_TOL)
     assert kkt_w_diff < 1e-11
-    assert kkt_rel_val < float(vfit.KKT_TOL)
+    assert float(img_rep["kkt_rel"]) < float(vfit.KKT_TOL)
     assert float(img_rep["want_grow"]) == 0.0
     assert float(rep_zero["images"]["env"]["want_grow"]) == 0.0
 
@@ -851,11 +1216,10 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
-    headline="kkt_w_diff",
+    headline="nonstat_box_kkt_err",
 )
 def test_kkt_report_bounded_linear_image_projected_gradient_and_active_zeros(tmp_path):
     n, scale, flux = 8, 1.0, 0.25
-    # Compact source so outer pixels hit the active f = 0 lower bound under TSV
     shape = ref.gaussian_blob_ref(n, scale, sigma_mas=0.9, dra=0.8) * flux
     truth = vm.System(
         star=vm.PointSource(),
@@ -870,41 +1234,98 @@ def test_kkt_report_bounded_linear_image_projected_gradient_and_active_zeros(tmp
     )
     priors = vi.image_priors(start)
     reg = [vi.TSV(20.0, beam_mas=scale, path="env")]
+
+    # 1. Non-stationary LinearImage("linear") with active zeros (both g >= 0 feasible zeros and g < -KKT_TOL*top violations)
+    rng_ns = np.random.default_rng(83)
+    f_ns = np.abs(rng_ns.normal(scale=0.015, size=(n, n))) + 5e-4
+    f_ns[:2, :] = 0.0
+    peak_rc = np.unravel_index(int(np.argmax(shape)), shape.shape)
+    f_ns[peak_rc] = 0.0  # clamping true peak pixel to zero forces g < -KKT_TOL*top -> zero_violation > 0
+    ns_lin = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(f_ns, scale, parametrization="linear", reference_flux=flux),
+    )
+    ns_rep = vfit.kkt_report(
+        vfit.FitResult(model=ns_lin, values={"env.pixels": jnp.asarray(f_ns)}, info={}),
+        priors,
+        data,
+        reg,
+    )["images"]["env"]
+
+    gd_ns = np.asarray(
+        jax.grad(
+            lambda fa: -vl.model_loglike(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux)),
+                data,
+            )
+        )(jnp.asarray(f_ns))
+    )
+    gp_ns = np.asarray(
+        jax.grad(
+            lambda fa: reg[0].value(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux))
+            )
+        )(jnp.asarray(f_ns))
+    )
+    want_ns = ref.kkt_nonneg_linear_metrics_ref(
+        f_ns,
+        gd_ns,
+        gp_ns,
+        weight=20.0,
+        reference_flux=float(np.sum(f_ns)),
+        kkt_tol=float(vfit.KKT_TOL),
+    )
+    nonstat_box_err = max(
+        abs(float(ns_rep["kkt_w"]) - want_ns["kkt_w"]),
+        abs(float(ns_rep["pg_rel"]) - want_ns["pg_rel"]),
+        abs(float(ns_rep["zero_violation"]) - want_ns["zero_violation"]),
+    )
+    assert float(ns_rep["kkt_w"]) > 1.0
+    assert float(ns_rep["zero_violation"]) > 0.0
+    assert nonstat_box_err < 1e-11
+
+    # 2. Converged bounded L-BFGS-B optimum with active feasible zeros
     done = vfit.fit(start, priors, data, reg, method="lbfgsb", max_steps=2000)
     rep = vfit.kkt_report(done, priors, data, reg, start={"env.pixels": init_pix})
     img_rep = rep["images"]["env"]
 
     f_opt = np.asarray(done.model.env.fluxes)
-
-    def loss_of_flux(f_arr):
-        m = vm.System(
-            star=vm.PointSource(),
-            env=vm.LinearImage(f_arr, scale, parametrization="linear", reference_flux=flux),
-        )
-        return -vl.model_loglike(m, data) + reg[0].value(m)
-
-    grad_f = np.asarray(jax.grad(loss_of_flux)(jnp.asarray(f_opt)))
+    gd_opt = np.asarray(
+        jax.grad(
+            lambda fa: -vl.model_loglike(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux)),
+                data,
+            )
+        )(jnp.asarray(f_opt))
+    )
+    gp_opt = np.asarray(
+        jax.grad(
+            lambda fa: reg[0].value(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux))
+            )
+        )(jnp.asarray(f_opt))
+    )
     ref_lin = ref.kkt_nonneg_linear_metrics_ref(
-        f_opt, grad_f, weight=20.0, reference_flux=float(np.sum(f_opt))
+        f_opt, gd_opt, gp_opt, weight=20.0, reference_flux=float(np.sum(f_opt)), kkt_tol=float(vfit.KKT_TOL)
     )
     kkt_w_diff = abs(float(img_rep["kkt_w"]) - ref_lin["kkt_w"])
 
-    record("kkt_w_diff", kkt_w_diff)
+    record("nonstat_box_kkt_err", nonstat_box_err)
+    record("opt_kkt_w_diff", kkt_w_diff)
     record("pg_rel", float(img_rep["pg_rel"]))
     assert rep["converged"] is True
     assert float(img_rep["zero_violation"]) == 0.0
-    assert kkt_w_diff < 1e-6
+    assert kkt_w_diff < 1e-11
 
 
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
-    headline="nuisance_grad_rel",
+    headline="nonstat_fixed_flux_kkt_err",
 )
 def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     n, scale = 10, 0.65
     east, north = ref.sky_grid_mas(n, scale)
-    # Exclude central r < 1 mas so the envelope cannot mimic the central unresolved star
     support = np.hypot(east, north) >= 1.0
     blob = ref.gaussian_blob_ref(n, scale, sigma_mas=1.3, dra=1.5, ddec=-1.0) * support
     blob /= blob.sum()
@@ -912,48 +1333,132 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     init_blob /= init_blob.sum()
     init_eta = np.where(support, np.log(np.clip(init_blob, 1e-12, None)), 0.0)
 
-    truth = vm.System(star=vm.PointSource(), env=vm.Image.from_brightness(blob, scale, flux=0.22, support=support))
+    truth = vm.System(
+        star=vm.PointSource(),
+        env=vm.Image.from_brightness(blob, scale, flux=0.22, support=support),
+    )
     data = _three_ut_oidata(tmp_path / "softmax.fits", truth, seed=14)
 
+    # 1. Non-stationary FIXED-flux Image check: env.flux = 0.28 is NOT in priors, so
+    #    mu = sum_i b_i g_i = F * d(-loglike)/dF != 0, kkt_w = O(10), and want_grow > 0!
+    rng_ns = np.random.default_rng(91)
+    eta_ns = np.where(support, rng_ns.normal(scale=1.2, size=(n, n)), 0.0)
+    # Darken pixels around the true companion at (dra=1.5, ddec=-1.0) so the data strongly want them to grow
+    near_comp = support & (np.hypot(east - 1.5, north - (-1.0)) < 1.2)
+    eta_ns = np.where(near_comp, -20.0, eta_ns)
+    fixed_flux = 0.28
+    ns_im = vm.System(
+        star=vm.PointSource(),
+        env=vm.Image(eta_ns, scale, flux=fixed_flux, support=support),
+    )
+    reg = [vi.TSV(80.0, beam_mas=scale, path="env")]
+    ns_fixed_rep = vfit.kkt_report(
+        vfit.FitResult(model=ns_im, values={"env.log_brightness": jnp.asarray(eta_ns)}, info={}),
+        vi.image_priors(ns_im),
+        data,
+        reg,
+    )["images"]["env"]
+
+    b_ns = np.asarray(ns_im.env.brightness)
+    # Data gradient wrt unit-sum brightness b (fixing star flux=1.0 and scaling env flux = fixed_flux * sum(b)):
+    gd_b = np.asarray(
+        jax.grad(
+            lambda ba: -vl.model_loglike(
+                vm.System(
+                    star=vm.PointSource(flux=1.0),
+                    env=vm.LinearImage(fixed_flux * ba, scale, parametrization="linear", reference_flux=fixed_flux, support=support),
+                ),
+                data,
+            )
+        )(jnp.asarray(b_ns))
+    )
+    # Penalty gradient wrt unit-sum brightness b on Image (homogeneous of degree 0 in F, so mu_pen == 0):
+    ge_pen = np.asarray(
+        jax.grad(
+            lambda e: reg[0].value(
+                vm.System(star=vm.PointSource(), env=vm.Image(e, scale, flux=fixed_flux, support=support))
+            )
+        )(jnp.asarray(eta_ns))
+    )
+    gp_b = np.where(b_ns > 0.0, ge_pen / np.where(b_ns > 0.0, b_ns, 1.0), 0.0)
+    want_ns_sm = ref.kkt_simplex_metrics_ref(
+        b_ns,
+        gd_b,
+        gp_b,
+        support=support,
+        flux=fixed_flux,
+        free_flux=False,
+        weight=80.0,
+        kkt_tol=float(vfit.KKT_TOL),
+    )
+    wrong_free_flux = ref.kkt_simplex_metrics_ref(
+        b_ns,
+        gd_b,
+        gp_b,
+        support=support,
+        flux=fixed_flux,
+        free_flux=True,
+        weight=80.0,
+        kkt_tol=float(vfit.KKT_TOL),
+    )
+    nonstat_fixed_err = max(
+        abs(float(ns_fixed_rep["kkt_w"]) - want_ns_sm["kkt_w"]),
+        abs(float(ns_fixed_rep["kkt_rel"]) - want_ns_sm["kkt_rel"]),
+        abs(float(ns_fixed_rep["want_grow"]) - want_ns_sm["want_grow"]),
+    )
+    assert abs(want_ns_sm["mu"]) > 10.0  # genuinely non-zero simplex Lagrange multiplier
+    assert abs(float(ns_fixed_rep["kkt_rel"]) - wrong_free_flux["kkt_rel"]) > 0.02
+    assert nonstat_fixed_err < 1e-11
+
+    # 2. Converged free-flux Image fit + nuisance start= gate
     start = vm.System(star=vm.PointSource(), env=vm.Image(init_eta, scale, flux=0.28, support=support))
     priors = vi.image_priors(start) | {"env.flux": dist.LogUniform(1e-2, 1.0)}
-    reg = [vi.TSV(80.0, beam_mas=scale, path="env")]
     start_vals = {"env.log_brightness": init_eta, "env.flux": 0.28}
     done = vfit.fit(start, priors, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
 
+    rep_opt_only = vfit.kkt_report(done, priors, data, reg)
     rep_ok = vfit.kkt_report(done, priors, data, reg, start=start_vals)
     assert rep_ok["converged"] is True
     assert float(rep_ok["nuisances"]["env.flux"]["grad_rel"]) < float(vfit.NUISANCE_TOL)
 
-    # Verify independent simplex KKT stationarity metric against kkt_report on live support pixels
     b_opt = np.asarray(done.model.env.brightness)
     f_env = float(done.values["env.flux"])
+    gd_opt = np.asarray(
+        jax.grad(
+            lambda ba: -vl.model_loglike(
+                vm.System(
+                    star=vm.PointSource(flux=1.0),
+                    env=vm.LinearImage(f_env * ba, scale, parametrization="linear", reference_flux=f_env, support=support),
+                ),
+                data,
+            )
+        )(jnp.asarray(b_opt))
+    )
+    ge_opt_pen = np.asarray(
+        jax.grad(
+            lambda e: reg[0].value(
+                vm.System(star=vm.PointSource(), env=vm.Image(e, scale, flux=f_env, support=support))
+            )
+        )(jnp.asarray(done.values["env.log_brightness"]))
+    )
+    gp_opt = np.where(b_opt > 0.0, ge_opt_pen / np.where(b_opt > 0.0, b_opt, 1.0), 0.0)
+    ref_sm = ref.kkt_simplex_metrics_ref(
+        b_opt, gd_opt, gp_opt, support=support, flux=f_env, free_flux=True, weight=80.0
+    )
+    assert abs(float(rep_opt_only["images"]["env"]["kkt_w"]) - ref_sm["kkt_w"]) < 1e-12
+    assert abs(float(rep_opt_only["images"]["env"]["kkt_rel"]) - ref_sm["kkt_rel"]) < 1e-12
+    assert abs(float(rep_ok["images"]["env"]["kkt_w"]) - ref_sm["kkt_w"]) < 1e-12
+    # Passing start= incorporates the larger starting gradient scale into kkt_rel
+    assert float(rep_ok["images"]["env"]["kkt_rel"]) < float(rep_opt_only["images"]["env"]["kkt_rel"])
 
-    def loss_of_b(b_arr):
-        s_flux = 1.0 + f_env * (1.0 - jnp.sum(b_arr))
-        m_vis = vm.System(
-            star=vm.PointSource(flux=s_flux),
-            env=vm.LinearImage(b_arr * f_env, scale, parametrization="linear", reference_flux=f_env),
-        )
-        m_reg = vm.System(
-            star=vm.PointSource(),
-            env=vm.LinearImage(b_arr, scale, parametrization="linear", reference_flux=1.0),
-        )
-        return -vl.model_loglike(m_vis, data) + reg[0].value(m_reg)
-
-    grad_b = np.asarray(jax.grad(loss_of_b)(jnp.asarray(b_opt)))
-    ref_sm = ref.kkt_simplex_metrics_ref(b_opt, grad_b, support=support, flux=f_env, weight=80.0)
-    assert abs(float(rep_ok["images"]["env"]["kkt_w"]) - ref_sm["kkt_w"]) < 1e-9
-
-    # Perturb ONLY the nuisance "env.flux" while re-optimizing image pixels at the wrong flux:
-    # image KKT stays converged, so without start= converged is True, whereas with start=
-    # nuisance grad_rel >= NUISANCE_TOL flips converged to False (WF4)!
     bad_flux = float(done.values["env.flux"]) * 1.6
     fixed_flux_start = vm.System(
         star=vm.PointSource(),
         env=vm.Image(done.values["env.log_brightness"], scale, flux=bad_flux, support=support),
     )
-    img_only = vfit.fit(fixed_flux_start, vi.image_priors(fixed_flux_start), data, reg, max_steps=2000, gtol=1e-13)
+    img_only = vfit.fit(
+        fixed_flux_start, vi.image_priors(fixed_flux_start), data, reg, max_steps=2000, gtol=1e-13
+    )
     perturbed = dataclasses.replace(
         done,
         model=img_only.model,
@@ -963,6 +1468,7 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     rep_with_start = vfit.kkt_report(perturbed, priors, data, reg, start=start_vals)
     nuis_grad_rel = float(rep_with_start["nuisances"]["env.flux"]["grad_rel"])
 
+    record("nonstat_fixed_flux_kkt_err", nonstat_fixed_err)
     record("nuisance_grad_rel", nuis_grad_rel)
     assert rep_no_start["converged"] is True
     assert rep_with_start["converged"] is False
@@ -995,7 +1501,6 @@ def test_kkt_report_two_step_and_zero_violation_controls(tmp_path):
     rep_short = vfit.kkt_report(short, priors, data, reg)
     short_kkt_rel = float(rep_short["images"]["env"]["kkt_rel"])
 
-    # LinearImage("linear") with brightest pixel clamped to 0 -> negative gradient -> zero_violation > 0
     lin_start = vm.System(
         star=vm.PointSource(),
         env=vm.LinearImage(shape, scale, parametrization="linear", reference_flux=flux),

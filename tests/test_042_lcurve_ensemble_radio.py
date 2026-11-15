@@ -204,14 +204,6 @@ def test_lcurve_dof_discrepancy_maxent_h_diagnostic_and_custom_curvature():
     assert choice.accepted is True
     assert choice.h is not None
 
-    # Verify MaxEntropy h(w) = 2 (w / s^2) KL - G at chosen weight
-    refit_res = vfit.fit(start, priors, data, [vi.MaxEntropy(float(choice.weight), path="env")], max_steps=2500)
-    kl_unweighted = float(vi.MaxEntropy(1.0, path="env").value(refit_res.model))
-    want_h = 2.0 * float(choice.weight) * kl_unweighted - float(choice.g)
-    h_err = abs(float(choice.h) - want_h)
-
-    # Custom curvature= callable reproduces G when passed explicitly, and non-OIData sweep
-    # without curvature= raises ValueError
     jac_fn = jax.jit(
         jax.jacrev(
             lambda fv: vl.whitened_residuals(
@@ -224,6 +216,22 @@ def test_lcurve_dof_discrepancy_maxent_h_diagnostic_and_custom_curvature():
         )
     )
 
+    # Verify BOTH MaxEntropy h(w) = 2 (w / s^2) KL - G AND dense Skilling-Hessian ridge trace Tr[K (K + H_ME)^{-1}]
+    refit_res = vfit.fit(start, priors, data, [vi.MaxEntropy(float(choice.weight), path="env")], max_steps=2500)
+    kl_unweighted = float(vi.MaxEntropy(1.0, path="env").value(refit_res.model))
+    want_h = 2.0 * float(choice.weight) * kl_unweighted - float(choice.g)
+    h_err = abs(float(choice.h) - want_h)
+
+    f_hat = np.asarray(refit_res.model.env.fluxes)
+    free = f_hat > 0.0
+    jac_me = np.asarray(jac_fn(jnp.asarray(f_hat).ravel()))[:, free.ravel()]
+    k_me = jac_me.T @ jac_me
+    h_me = ref.maxent_hessian_ref(f_hat, float(choice.weight), flux, free_mask=free)
+    exact_me = ref.ridge_dof_and_hutchinson_se_ref(k_me, h_me, nprobe=64)
+    me_dof_z = abs(float(choice.g) - exact_me["g"]) / max(exact_me["se_rademacher"], 1e-6)
+
+    # Custom curvature= callable reproduces G when passed explicitly, and non-OIData sweep
+    # without curvature= raises ValueError
     def custom_curv(model):
         f0 = jnp.asarray(model.env.fluxes).ravel()
         jac = np.asarray(jac_fn(f0))
@@ -240,8 +248,10 @@ def test_lcurve_dof_discrepancy_maxent_h_diagnostic_and_custom_curvature():
         curve.dof_discrepancy((), reg, secant=False)
 
     record("h_diag_err", h_err)
+    record("maxent_dof_z_score", me_dof_z)
     record("custom_curvature_g_diff", curv_g_diff)
     assert h_err < 1e-2
+    assert me_dof_z < 3.5
     assert curv_g_diff < 1e-7
 
 
@@ -303,6 +313,11 @@ def test_lcurve_corner_discrepancy_and_classic_maxent():
     curve = vi.l_curve(start, priors, data, reg, weights, max_steps=2000)
 
     w_corner = float(curve.corner())
+    want_corner = ref.lcurve_corner_ref(
+        np.asarray(curve.weights), np.asarray(curve.chi2), np.asarray(curve.penalty)
+    )
+    corner_rel_err = abs(w_corner - float(want_corner)) / float(want_corner)
+
     w_disc = float(curve.discrepancy(target=1.0))
     w_classic = float(curve.classic_maxent(data, path="env"))
 
@@ -310,8 +325,6 @@ def test_lcurve_corner_discrepancy_and_classic_maxent():
     for res in curve.results:
         b = np.asarray(res.model.env.brightness)
         brightnesses.append(b)
-        # On unit-sum Image, log_brightness eta maps to b via db/deta = diag(b) - b b^T;
-        # dividing jac_eta by b converts to simplex brightness derivative in the entropy metric.
         jac_eta = np.asarray(
             jax.jacrev(
                 lambda eta_vec: vl.whitened_residuals(
@@ -328,9 +341,9 @@ def test_lcurve_corner_discrepancy_and_classic_maxent():
     rel_err = abs(w_classic - float(want_classic)) / float(want_classic)
 
     record("classic_maxent_rel_err", rel_err)
-    record("w_corner", w_corner)
+    record("corner_rel_err", corner_rel_err)
     record("w_discrepancy", w_disc)
-    assert weights[-1] < w_corner < weights[0]
+    assert corner_rel_err < 1e-12
     assert weights[-1] <= w_disc <= weights[0]
     assert rel_err < 1e-5
 
@@ -355,8 +368,6 @@ def test_envelope_fwhm_undiluted_by_bright_star_and_starting_image_modes():
     env_fwhm = float(vi.envelope_fwhm(data, star=True))
     rel_err = abs(env_fwhm - true_fwhm) / true_fwhm
 
-    # starting_image: moments, hole_mas support mask, pad_to_mas, star=False,
-    # closure-phase guard on start="dirty", and positive start="dirty" on DISCO data
     s_mom = vi.starting_image(data, star=True, oversample=2.0, start="moments", hole_mas=1.5)
     with pytest.raises(ValueError):
         vi.starting_image(data, star=True, oversample=2.0, start="dirty")
@@ -369,7 +380,6 @@ def test_envelope_fwhm_undiluted_by_bright_star_and_starting_image_modes():
 
     assert isinstance(s_mom, vm.System) and hasattr(s_mom, "env")
     assert s_mom.env.support is not None
-    # Central pixel(s) inside hole_mas=1.5 mas are excluded from support
     mid = s_mom.env.support.shape[0] // 2
     assert not bool(np.asarray(s_mom.env.support)[mid, mid])
     assert abs(float(np.sum(s_dirty.env.brightness)) - 1.0) < 1e-12
@@ -434,8 +444,6 @@ def test_gp_log_evidence_laplace_samples_and_error_scale_match_mackay_reference(
     got_logz = float(vi.log_evidence(done, data, path="env"))
     got_s = float(vi.error_scale(done, data, path="env"))
 
-    # Exact MacKay reference from whitened_residuals and latent Jacobian
-    # (for fixed-variance OIData, log_evidence drops data-only constants -> log_norm = 0)
     z_map = np.asarray(done.model.env.log_brightness.latent)
     res_vec = np.asarray(vl.whitened_residuals(done.model, data))
 
@@ -448,7 +456,7 @@ def test_gp_log_evidence_laplace_samples_and_error_scale_match_mackay_reference(
         res_vec, 0.0, z_map, jac_z, n_independent=int(data.n_independent)
     )
     logz_err = abs(got_logz - float(mk["log_evidence"]))
-    s_err = min(abs(got_s - float(mk["s_fixed_point"])), abs(got_s - float(mk["s_plugin"])))
+    s_fp_err = abs(got_s - float(mk["s_fixed_point"]))
 
     # Laplace posterior draws match N(z_map, (I + J^T J)^{-1})
     draws = vi.laplace_samples(
@@ -461,7 +469,8 @@ def test_gp_log_evidence_laplace_samples_and_error_scale_match_mackay_reference(
     assert draws["images"].shape == (4000, 12, 12)
     assert np.allclose(np.sum(draws["images"], axis=(1, 2)), 1.0, atol=1e-12)
 
-    # Error scale with over-quoted error bars (2x inflated -> true scale ~ 0.5) & by_observable=True
+    # Error scale with 2x inflated error bars: verify BOTH scalar and coupled per-observable
+    # fixed-point equations directly against mackay_laplace_gp_ref (and distinguish from s_plugin)
     inflated = _vlti_like_oidata(
         truth, seed=31, n_telescopes=4, vis_err=0.012, cp_err_deg=0.6, error_inflation=2.0
     )
@@ -470,15 +479,42 @@ def test_gp_log_evidence_laplace_samples_and_error_scale_match_mackay_reference(
     s_by_obs = vi.error_scale(done_inf, inflated, path="env", by_observable=True)
     assert set(s_by_obs.keys()) == {"vis", "phi"}
 
+    z_inf = np.asarray(done_inf.model.env.log_brightness.latent)
+    res_inf = np.asarray(vl.whitened_residuals(done_inf.model, inflated))
+    jac_inf = np.asarray(
+        jax.jacrev(
+            lambda zf: vl.whitened_residuals(
+                done_inf.model.set("env.log_brightness.latent", zf.reshape(z_inf.shape)),
+                inflated,
+            )
+        )(jnp.asarray(z_inf.ravel()))
+    )
+    # 4 telescopes x 6 frames: 36 V^2 rows (rank 36) followed by 24 T3 rows (rank 18)
+    mk_inf = ref.mackay_laplace_gp_ref(
+        res_inf,
+        0.0,
+        z_inf,
+        jac_inf,
+        n_independent=int(inflated.n_independent),
+        observable_blocks={"vis": (slice(0, 36), 36), "phi": (slice(36, len(res_inf)), 18)},
+    )
+    s_inf_fp_err = abs(s_inf - float(mk_inf["s_fixed_point"]))
+    s_by_obs_err = max(
+        abs(float(s_by_obs["vis"]) - float(mk_inf["s_by_observable"]["vis"])),
+        abs(float(s_by_obs["phi"]) - float(mk_inf["s_by_observable"]["phi"])),
+    )
+
     record("log_evidence_abs_err", logz_err)
+    record("s_fixed_point_err", max(s_fp_err, s_inf_fp_err))
+    record("s_by_observable_err", s_by_obs_err)
     record("cov_fro_rel_err", cov_fro_err)
-    record("inflated_error_scale", s_inf)
-    assert logz_err < 1e-4
-    assert s_err < 0.05
+    assert logz_err < 1e-10
+    assert s_fp_err < 1e-9
+    assert s_inf_fp_err < 1e-9
+    assert abs(s_inf - float(mk_inf["s_plugin"])) > 1e-2  # unrescaled plug-in misses by ~0.018
+    assert s_by_obs_err < 1e-9
     assert emp_mean_err < 0.08
     assert cov_fro_err < 0.15
-    assert 0.32 < s_inf < 0.72
-    assert 0.30 < float(s_by_obs["vis"]) < 0.78
 
 
 @pytest.mark.validates(
@@ -533,7 +569,6 @@ def test_chi2_by_observable_short_baseline_residual_and_diagnose():
     done = vfit.fit(gp_scene, vi.image_priors(gp_scene), data4, max_steps=1500)
 
     cbo = vi.chi2_by_observable(done.model, data4, path="env")
-    # 4 telescopes, 6 frames (3 angles x 2 wavelengths): 6*6 = 36 V^2, 6*3 = 18 independent CPs (24 triangles)
     assert cbo["n"]["vis"] == 36
     assert cbo["n"]["phi"] == 18
     assert cbo["n"]["total"] == 54
@@ -549,32 +584,28 @@ def test_chi2_by_observable_short_baseline_residual_and_diagnose():
     want_gamma = float(np.sum((svals**2) / (1.0 + svals**2)))
     gamma_err = abs(float(cbo["n_gamma"]) - want_gamma)
 
-    # short_baseline_residual: positive bias when extended envelope is omitted (PointSource alone gives V^2 = 1 > data)
     sb_true_mean, sb_se = vi.short_baseline_residual(truth, data4, quantile=0.25)
     sb_star_mean, _ = vi.short_baseline_residual(vm.PointSource(), data4, quantile=0.25)
     n_short = int(np.sum(np.hypot(data4.u, data4.v) / data4.wavel <= np.quantile(np.hypot(data4.u, data4.v) / data4.wavel, 0.25)))
     se_err = abs(float(sb_se) - 1.0 / np.sqrt(n_short))
 
-    # DISCO data raises ValueError in short_baseline_residual
     disco = vo.OIData(vc.ami_grid_record(wavelength_m=4.8e-6))
     with pytest.raises(ValueError):
         vi.short_baseline_residual(truth, disco)
 
-    # diagnose -> Diagnosis: healthy anchored fit vs unanchored / edge-flux / 180-deg flip pitfalls
     diag_ok = vi.diagnose(done.model, data4)
     assert isinstance(diag_ok, vi.Diagnosis)
     assert diag_ok.checks["anchored"] is True
     assert len(diag_ok.warnings) == 0
 
     edge_eta = np.full((12, 12), -20.0)
-    edge_eta[0, :] = 2.0  # bright flux in outer 2 border pixels, no star and no Centroid prior
+    edge_eta[0, :] = 2.0
     unanchored_edge = vm.Image(edge_eta, 1.5)
     diag_bad = vi.diagnose(unanchored_edge, data4)
     assert diag_bad.checks["anchored"] is False
     assert diag_bad.checks["edge_flux"][0] > 0.5
     assert len(diag_bad.warnings) >= 2
 
-    # Centroid regularizer anchors a lone Image
     diag_cent = vi.diagnose(vm.Image(ref.gaussian_blob_ref(12, 1.5, 2.0), 1.5), data4, regularizers=[vi.Centroid(1.0)])
     assert diag_cent.checks["anchored"] is True
 
@@ -601,43 +632,78 @@ def test_chi2_by_observable_short_baseline_residual_and_diagnose():
     headline="std_pixel_err",
 )
 def test_ensemble_containers_group_member_and_ensemble_summary():
-    draw = ve.Draw(
-        0,
-        family="tsv",
-        npix=8,
-        pixel_scale_mas=1.5,
-        start="moments",
-        weights=(10.0, 1.0),
+    # Compute Ensemble via a real multi-member combine() call with unequal envelope fluxes
+    # plus a diverged member, and check whole-sky normalized mean.flux, mean.brightness, and std!
+    u_m = np.array([15.0, 35.0, -25.0, 45.0, 60.0, -40.0])
+    v_m = np.array([20.0, -15.0, 50.0, 30.0, -35.0, 25.0])
+    data_v2 = vo.OIData(
+        {
+            "u": u_m,
+            "v": v_m,
+            "wavel": np.full(6, 2.2e-6),
+            "vis": np.full(6, 0.78),
+            "d_vis": np.full(6, 0.04),
+            "vis_mode": "v2",
+        }
     )
-    grp = ve.Group(draw=draw, curve=None)
-    assert grp.draw is draw and grp.curve is None and grp.gp == ()
+    draw = ve.Draw(0, family="gp", npix=8, pixel_scale_mas=1.5, start="moments", weights=())
+    im1 = vm.Image.from_brightness(ref.gaussian_blob_ref(8, 1.5, 2.0, dra=1.0), 1.5, flux=0.25)
+    im2 = vm.Image.from_brightness(ref.gaussian_blob_ref(8, 1.5, 2.0, dra=1.0, ddec=0.5), 1.5, flux=0.35)
+    im3 = vm.Image.from_brightness(ref.gaussian_blob_ref(8, 1.5, 2.2, dra=0.8, ddec=-0.4), 1.5, flux=0.20)
+    im_div = vm.Image.from_brightness(ref.gaussian_blob_ref(8, 1.5, 1.8), 1.5, flux=0.30)
 
-    # Build two synthetic FitResult-like dummy objects or real 0-step FitResults without OIData:
-    img1 = vm.Image.from_brightness(ref.gaussian_blob_ref(8, 1.5, 2.0, dra=1.0), 1.5)
-    img2 = vm.Image.from_brightness(ref.gaussian_blob_ref(8, 1.5, 2.0, dra=-1.0), 1.5)
-    r1 = vfit.FitResult(model=img1, values={}, info={})
-    r2 = vfit.FitResult(model=img2, values={}, info={})
-
-    m1 = ve.Member(draw=draw, weight=10.0, result=r1, chi2_red=(1.05, 1.15), kept=True, reason=None)
-    m2 = ve.Member(draw=draw, weight=1.0, result=r2, chi2_red=(2.50, 2.80), kept=False, reason="chi2")
-
-    mean_b = 0.5 * (np.asarray(img1.brightness) + np.asarray(img2.brightness))
-    std_b = np.std(np.stack([np.asarray(img1.brightness), np.asarray(img2.brightness)]), axis=0)
-    ens = ve.Ensemble(
-        model=vm.System(member0=img1),
-        mean=vm.Image.from_brightness(mean_b, 1.5),
-        std=std_b,
-        chi2_red=(1.05, 1.15),
-        trace=[(1.05, 1.15)],
-        members=[m1, m2],
-        groups=[grp],
+    gfits = []
+    for k, im in enumerate((im1, im2, im3)):
+        m = vm.System(star=vm.PointSource(), env=im)
+        c2 = float(np.sum(np.asarray(vl.whitened_residuals(m, data_v2)) ** 2))
+        fr = vfit.FitResult(model=m, values={}, info={"chi2": [c2], "ndata": [6]})
+        gfits.append(ve.GPFit("iso", 1.5 * (k + 1), 1.0, -4.0 - 0.1 * k, fr))
+    fr_div = vfit.FitResult(
+        model=vm.System(star=vm.PointSource(), env=im_div),
+        values={},
+        info={"chi2": [float("nan")], "ndata": [6]},
     )
-    assert ens.kept == [m1]
-    summary_text = ens.summary()
-    assert "tsv" in summary_text
-    std_err = float(np.max(np.abs(np.asarray(ens.std) - std_b)))
+    gfits.append(ve.GPFit("iso", 6.0, 1.0, -5.0, fr_div))
+
+    grp = ve.Group(draw=draw, curve=None, gp=tuple(gfits))
+    ens = ve.combine(
+        data_v2,
+        [grp],
+        spec=ve.EnsembleSpec(chi2_ratio=10.0, mad_cut=10.0, mean_rtol=10.0, min_kept=3),
+        star=True,
+    )
+    assert isinstance(ens, ve.Ensemble)
+    assert len(ens.members) == 4
+    assert all(isinstance(m, ve.Member) for m in ens.members)
+    assert len(ens.kept) == 3
+    assert any((not m.kept) and m.reason == "diverged" for m in ens.members)
+    assert "gp" in ens.summary()
+
+    # Independent whole-sky normalized aggregation: extended share e_k = (F_k / (1 + F_k)) * b_k
+    e_stack = np.stack(
+        [
+            (float(m.result.model.env.flux) / (1.0 + float(m.result.model.env.flux)))
+            * np.asarray(m.result.model.env.brightness)
+            for m in ens.kept
+        ],
+        axis=0,
+    )
+    e_mean = np.mean(e_stack, axis=0)
+    s_bar = 1.0 - float(np.sum(e_mean))
+    want_flux = (1.0 - s_bar) / s_bar
+    want_mean_b = e_mean / (1.0 - s_bar)
+    want_std_b = np.std(e_stack / (1.0 - s_bar), axis=0, ddof=0)
+
+    mean_err = max(
+        abs(float(ens.mean.flux) - want_flux),
+        float(np.max(np.abs(np.asarray(ens.mean.brightness) - want_mean_b))),
+    )
+    std_err = float(np.max(np.abs(np.asarray(ens.std) - want_std_b)))
+
     record("std_pixel_err", std_err)
-    assert std_err == 0.0
+    record("mean_sky_err", mean_err)
+    assert std_err < 1e-13
+    assert mean_err < 1e-13
 
 
 @pytest.mark.validates(
@@ -659,9 +725,11 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
     for st_img in starts.values():
         assert isinstance(st_img, vm.Image)
         assert abs(float(np.sum(st_img.brightness)) - 1.0) < 1e-12
+    # Closure-phase datasets without complex visibility phases must refuse start="dirty"
+    with pytest.raises(ValueError):
+        ve.reference_starts(vlti_data, star=True, starts=("dirty",))
 
     # DISCO complex-visibility modes provide all three starts ("moments", "flat", "dirty")
-    # and run fast matrix-transform ensemble fits cleanly (as in virgil's imaging_ensemble tutorial)
     npix, scale = 12, 32.0
     truth_blob = ref.gaussian_blob_ref(npix, scale, sigma_mas=42.0, dra=55.0, ddec=-40.0)
     disco_truth = vm.System(star=vm.PointSource(), env=vm.Image.from_brightness(truth_blob, scale, flux=0.35))
@@ -671,6 +739,14 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
     starts_disco = ve.reference_starts(disco_data, star=True, starts=("moments", "flat", "dirty"))
     assert set(starts_disco.keys()) == {"moments", "flat", "dirty"}
     assert abs(float(np.sum(starts_disco["dirty"].brightness)) - 1.0) < 1e-12
+
+    # Direct run_group check on a single Draw
+    direct_draw = ve.Draw(
+        0, family="tsv", npix=npix, pixel_scale_mas=scale, start="moments", weights=(50.0, 5.0)
+    )
+    grp_direct = ve.run_group(disco_data, direct_draw, star=True, starts=starts_disco, max_steps=1500)
+    assert isinstance(grp_direct, ve.Group)
+    assert grp_direct.curve is not None and len(grp_direct.curve.results) == 2
 
     spec = ve.EnsembleSpec(
         families=("tsv", "maxent"),
@@ -683,7 +759,7 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
         window_dex=1.5,
         min_kept=1,
     )
-    ens = ve.ensemble(disco_data, 2, jax.random.PRNGKey(7), spec=spec, star=True, max_steps=2500)
+    ens = ve.ensemble(disco_data, 2, jax.random.PRNGKey(7), spec=spec, star=True, max_steps=4000)
     assert isinstance(ens, ve.Ensemble)
     assert len(ens.groups) == 2
     assert len(ens.members) == 8
@@ -696,7 +772,6 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
     for step_chi2 in ens.trace:
         assert np.all(np.asarray(step_chi2) <= first * (1.0 + rtol + 1e-9))
 
-    # Mean image recovers the truth blob location with high correlation
     mean_b = np.asarray(ens.mean.brightness)
     e = mean_b.ravel() - np.mean(mean_b)
     t_resampled = ref.gaussian_blob_ref(
@@ -705,7 +780,61 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
     r = t_resampled.ravel() - np.mean(t_resampled)
     ncc_val = float((e @ r) / np.sqrt((e @ e) * (r @ r)))
 
+    # star=False sub-beam alignment check + full deterministic rejection cascade ("window", "diverged", "chi2", "outlier")
+    rng_ns = np.random.default_rng(66)
+    u_ns = np.array([12.0, 28.0, -18.0, 35.0, -30.0, 22.0])
+    v_ns = np.array([18.0, -12.0, 32.0, 24.0, -22.0, -28.0])
+    b_base = ref.gaussian_blob_ref(15, 2.0, sigma_mas=2.8, dra=0.0, ddec=0.0)
+    b_shift = ref.gaussian_blob_ref(15, 2.0, sigma_mas=2.8, dra=2.0, ddec=-2.0)  # 1px East, 1px South
+    im_base = vm.Image.from_brightness(b_base, 2.0)
+    im_shift = vm.Image.from_brightness(b_shift, 2.0)
+    v2_ns = np.abs(np.asarray(im_base.model(u_ns, v_ns, 2.2e-6))) ** 2 + rng_ns.normal(0.0, 0.012, size=6)
+    data_ns = vo.OIData(
+        {"u": u_ns, "v": v_ns, "wavel": np.full(6, 2.2e-6), "vis": v2_ns, "d_vis": np.full(6, 0.012), "vis_mode": "v2"}
+    )
+    c2_base = float(np.sum(np.asarray(vl.whitened_residuals(im_base, data_ns)) ** 2))
+    c2_shift = float(np.sum(np.asarray(vl.whitened_residuals(im_shift, data_ns)) ** 2))
+
+    # Build LCurve group (3 weights: 100.0 > corner 10.0 -> "window", 10.0 & 2.0 in window) + GP group with diverged, chi2, outlier
+    draw_lc = ve.Draw(0, family="tsv", npix=15, pixel_scale_mas=2.0, start="flat", weights=(100.0, 10.0, 2.0))
+    lc_c2 = np.array([c2_base + 0.4, c2_base + 0.05, c2_base])
+    lc_pen = np.array([0.02, 0.08, 0.90])  # corner at w = 10.0; w = 100.0 is above corner -> "window"
+    lc_res = [
+        vfit.FitResult(model=im_base, values={}, info={"chi2": [float(v)], "ndata": [6]})
+        for v in lc_c2
+    ]
+    grp_lc = ve.Group(
+        draw=draw_lc,
+        curve=vi.LCurve(weights=np.array([100.0, 10.0, 2.0]), chi2=lc_c2, chi2_red=(lc_c2 / 6.0)[:, None], penalty=lc_pen, results=lc_res),
+    )
+    draw_gp = ve.Draw(1, family="gp", npix=15, pixel_scale_mas=2.0, start="flat", weights=())
+    gp_entries = (
+        ve.GPFit("iso", 3.0, 1.0, -2.0, vfit.FitResult(model=im_shift, values={}, info={"chi2": [c2_shift], "ndata": [6]})),
+        ve.GPFit("iso", 4.0, 1.0, -2.1, vfit.FitResult(model=im_base, values={}, info={"chi2": [float("nan")], "ndata": [6]})),
+        ve.GPFit("iso", 5.0, 1.0, -2.2, vfit.FitResult(model=im_base, values={}, info={"chi2": [c2_base * 3.0 + 12.0], "ndata": [6]})),
+        ve.GPFit("iso", 6.0, 1.0, -2.3, vfit.FitResult(model=im_base, values={}, info={"chi2": [c2_base * 1.65], "ndata": [6]})),
+    )
+    grp_gp = ve.Group(draw=draw_gp, curve=None, gp=gp_entries)
+    spec_cascade = ve.EnsembleSpec(window_dex=1.0, chi2_ratio=2.0, mad_cut=5.0, mean_rtol=2.0, min_kept=2)
+    comb_ns = ve.combine(data_ns, [grp_lc, grp_gp], spec=spec_cascade, star=False)
+
+    chi2_red_mat = np.array([m.chi2_red for m in comb_ns.members], dtype=float)
+    in_win_mask = np.array([False, True, True, True, True, True, True])
+    want_alive, want_reasons = ref.mythra_filter_indices_ref(
+        chi2_red_mat, in_win_mask, np.array([6.0]), chi2_ratio=2.0, mad_cut=5.0
+    )
+    got_reasons = [m.reason for m in comb_ns.members]
+    assert got_reasons == want_reasons
+    assert set(got_reasons) >= {None, "window", "diverged", "chi2", "outlier"}
+    assert [i for i, m in enumerate(comb_ns.members) if m.kept] == sorted(want_alive)
+
+    # Sub-beam alignment in star=False brings im_shift onto im_base, shrinking spread sharply
+    unaligned_std = float(np.max(np.std(np.stack([b_base, b_shift], axis=0), axis=0)))
+    aligned_std = float(np.max(np.asarray(comb_ns.std)))
+    assert aligned_std < 0.05 * unaligned_std
+
     record("mean_ncc", ncc_val)
+    record("aligned_std_ratio", aligned_std / unaligned_std)
     record("n_kept", float(len(ens.kept)))
     assert ncc_val > 0.80
 
@@ -716,66 +845,74 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
     "virgil.ensemble.evidence_grid",
     "virgil.ensemble.gp_members",
     roots=["mathematics"],
-    headline="best_logz_diff",
+    headline="max_gpfit_logz_err",
 )
 def test_ensemble_gp_evidence_grid_and_gp_members():
-    truth = vm.System(
-        star=vm.PointSource(),
-        env=vm.Image.from_brightness(ref.gaussian_blob_ref(8, 1.6, sigma_mas=2.4, dra=1.4), 1.6, flux=0.25),
-    )
-    data = _vlti_like_oidata(truth, seed=73, n_telescopes=3, vis_err=0.015, cp_err_deg=0.7)
+    # Strongly elongated envelope (sigma_maj=3.8 mas, sigma_min=1.1 mas at PA 35 deg) so:
+    # 1. best sigma hits the upper edge of gp_sigmas=(0.15, 0.30) and triggers gp_growths=1 -> 3 sigmas & 3 lengths;
+    # 2. fitted Gaussian axis_ratio < gp_axis_ratio=0.95 triggers the "aniso" evidence grid!
+    east, north = ref.sky_grid_mas(12, 1.5)
+    pa = np.deg2rad(35.0)
+    along = east * np.sin(pa) + north * np.cos(pa)
+    across = east * np.cos(pa) - north * np.sin(pa)
+    elong = np.exp(-0.5 * ((along / 3.8) ** 2 + (across / 1.1) ** 2))
+    elong /= np.sum(elong)
+    truth = vm.System(star=vm.PointSource(), env=vm.Image.from_brightness(elong, 1.5, flux=0.40))
+    data = _vlti_like_oidata(truth, seed=73, n_telescopes=4, vis_err=0.01, cp_err_deg=0.5)
 
     draw = ve.Draw(
         0,
         family="gp",
         npix=8,
         pixel_scale_mas=1.6,
-        start="moments",
+        start="flat",
         weights=(),
     )
     spec = ve.EnsembleSpec(
-        gp_sigmas=(0.6, 1.2),
+        gp_sigmas=(0.15, 0.30),
         gp_lengths=(1.0, 2.0),
-        gp_growths=0,
+        gp_growths=1,
         gp_window_nats=2.0,
-        gp_axis_ratio=None,
+        gp_axis_ratio=0.95,
         min_kept=1,
     )
-    starts = ve.reference_starts(data, star=True, starts=("moments",))
-    grid = ve.evidence_grid(data, draw, star=True, starts=starts, spec=spec, max_steps=300)
+    starts = ve.reference_starts(data, star=True, starts=("flat",))
+    grid = ve.evidence_grid(data, draw, star=True, starts=starts, spec=spec, max_steps=400)
     assert isinstance(grid, ve.EvidenceGrid)
     assert isinstance(grid.best, ve.GPFit)
-    assert grid.log_evidence["iso"].shape == (2, 2)
+    assert set(grid.log_evidence.keys()) == {"iso", "aniso"}
+    assert len(grid.sigmas["iso"]) == 3 and len(grid.lengths_mas["iso"]) == 3
+    assert grid.axis_ratio is not None and float(grid.axis_ratio) < 0.95
+    assert grid.pa_deg is not None
 
-    flux_prior = {"env.flux": dist.LogUniform(1e-4, 1e3)}
-    direct_logz = float(
-        vi.log_evidence(
-            grid.best.result,
-            data,
-            path="env",
-            priors=vi.image_priors(grid.best.result.model) | flux_prior,
+    # Validate EVERY GPFit (both "iso" and "aniso") directly against our independent joint
+    # (z, ln flux) Laplace reference in crosscheck.starlet_kkt_ref (zero virgil.imaging.log_evidence calls!)
+    lp_lnf = -float(np.log(np.log(1e3 / 1e-4)))
+    max_logz_err = 0.0
+    variants_seen = set()
+    for gf in grid.fits.values():
+        variants_seen.add(gf.variant)
+        m = gf.result.model
+        z_m = np.asarray(m.env.log_brightness.latent)
+        f_m = float(m.env.flux)
+        r_m = np.asarray(vl.whitened_residuals(m, data))
+        j_z = np.asarray(
+            jax.jacrev(
+                lambda zf: vl.whitened_residuals(
+                    m.set("env.log_brightness.latent", zf.reshape(z_m.shape)), data
+                )
+            )(jnp.asarray(z_m.ravel()))
         )
-    )
-    # Pairwise log-evidence differences across grid points are invariant to any prior constant
-    all_gfits = list(grid.fits.values())
-    direct_vals = [
-        float(
-            vi.log_evidence(
-                gf.result,
-                data,
-                path="env",
-                priors=vi.image_priors(gf.result.model) | flux_prior,
+        j_lnf = np.asarray(
+            jax.jacrev(lambda lf: vl.whitened_residuals(m.set("env.flux", jnp.exp(lf)), data))(
+                jnp.log(jnp.float64(f_m))
             )
-        )
-        for gf in all_gfits
-    ]
-    grid_vals = [float(gf.log_evidence) for gf in all_gfits]
-    logz_diff = max(
-        abs(float(grid.best.log_evidence) - direct_logz),
-        float(np.max(np.abs((np.asarray(grid_vals) - grid_vals[0]) - (np.asarray(direct_vals) - direct_vals[0])))),
-    )
+        )[:, None]
+        mk = ref.mackay_laplace_gp_ref(r_m, 0.0, z_m, j_z, extra_jac=j_lnf, extra_log_prior=lp_lnf)
+        max_logz_err = max(max_logz_err, abs(float(gf.log_evidence) - float(mk["log_evidence"])))
+    assert variants_seen == {"iso", "aniso"}
 
-    gp_grp = ve.gp_members(data, draw, star=True, starts=starts, spec=spec, max_steps=300)
+    gp_grp = ve.gp_members(data, draw, star=True, starts=starts, spec=spec, max_steps=400)
     assert gp_grp.curve is None
     assert len(gp_grp.gp) >= 1
     for gfit in gp_grp.gp:
@@ -784,9 +921,10 @@ def test_ensemble_gp_evidence_grid_and_gp_members():
     comb = ve.combine(data, [gp_grp], spec=spec, star=True)
     assert len(comb.kept) >= 1
 
-    record("best_logz_diff", logz_diff)
+    record("max_gpfit_logz_err", max_logz_err)
+    record("fitted_axis_ratio", float(grid.axis_ratio))
     record("n_gp_members", float(len(gp_grp.gp)))
-    assert logz_diff < 1e-5
+    assert max_logz_err < 1e-9
 
 
 @pytest.mark.validates(
@@ -796,12 +934,7 @@ def test_ensemble_gp_evidence_grid_and_gp_members():
     headline="flipped_member_rejected",
 )
 def test_ensemble_combine_rejects_corrupted_member_from_running_mean_control():
-    # Classic MYTHRA degeneracy test: on V^2-only data (no closure phases) with an anchored
-    # star at the origin, an off-axis companion at (+dra, +ddec) and its 180-deg reflection
-    # at (-dra, -ddec) have IDENTICAL V^2 chi^2 (passing window, chi2_ratio, and MAD cuts),
-    # whereas their 50/50 average splits into a symmetric triple whose V^2 degrades sharply,
-    # so combine rejects the reflected member specifically with reason == "mean"!
-    n, scale = 9, 1.5  # odd npix so pixel grid is exactly symmetric about (0, 0)
+    n, scale = 9, 1.5
     truth_blob = ref.gaussian_blob_ref(n, scale, sigma_mas=1.4, dra=3.0, ddec=1.5)
     truth = vm.System(star=vm.PointSource(), env=vm.Image.from_brightness(truth_blob, scale, flux=0.35))
     rng = np.random.default_rng(88)
@@ -829,23 +962,16 @@ def test_ensemble_combine_rejects_corrupted_member_from_running_mean_control():
         m = vm.System(star=vm.PointSource(), env=env_img)
         c2 = float(np.sum(np.asarray(vl.whitened_residuals(m, data)) ** 2)) + slight_offset
         n_d = int(data.n_independent)
+        c2_arr = np.array([c2 + 4.0, c2 + 0.5, c2])
+        pen_arr = np.array([0.05, 0.12, 0.90])
         results = [
             vfit.FitResult(
                 model=m,
                 values={"env.log_brightness": env_img.log_brightness, "env.flux": jnp.asarray(0.35)},
-                info={"chi2": [c2], "ndata": [n_d]},
-            )
-            for _ in draw.weights
-        ]
-        # Monotone L-curve trade-off so corner() picks middle weight 1.5
-        c2_arr = np.array([c2 + 4.0, c2 + 0.5, c2])
-        pen_arr = np.array([0.05, 0.12, 0.90])
-        for k, val_c2 in enumerate(c2_arr):
-            results[k] = vfit.FitResult(
-                model=m,
-                values=results[k].values,
                 info={"chi2": [float(val_c2)], "ndata": [n_d]},
             )
+            for val_c2 in c2_arr
+        ]
         curve = vi.LCurve(
             weights=np.asarray(draw.weights, dtype=float),
             chi2=c2_arr,
@@ -856,7 +982,7 @@ def test_ensemble_combine_rejects_corrupted_member_from_running_mean_control():
         return ve.Group(draw=draw, curve=curve)
 
     grp_pos = make_group(pos_img, 0.0)
-    grp_neg = make_group(neg_img, 1e-4)  # essentially identical chi^2, ranked right after grp_pos
+    grp_neg = make_group(neg_img, 1e-4)
     spec = ve.EnsembleSpec(window_dex=1.0, chi2_ratio=2.0, mad_cut=5.0, mean_rtol=0.15, min_kept=1)
     comb = ve.combine(data, [grp_pos, grp_neg], spec=spec, star=True)
 
@@ -880,7 +1006,6 @@ def test_ensemble_combine_rejects_corrupted_member_from_running_mean_control():
 )
 def test_radio_sigma_scale_unbiased_on_white_noise_and_grouping():
     rng = np.random.default_rng(104)
-    # 3 ddids across 2 observations, multiple baselines, channels, scans, and an odd-length stream (last sample unpaired)
     true_scales = [1.0, 1.65, 0.75]
     ddid_obs_map = [0, 0, 1]
     u_all, v_all, vis_all, w_all, freq_all = [], [], [], [], []
@@ -890,10 +1015,8 @@ def test_radio_sigma_scale_unbiased_on_white_noise_and_grouping():
         for scan_id in (1, 2):
             for (a1, a2) in ((0, 1), (0, 2), (1, 2)):
                 for ch in (0, 1):
-                    # 13 time integrations -> 6 non-overlapping pairs, 13th integration left unpaired
                     n_t = 13
                     times = 60000.0 + scan_id * 100.0 + np.arange(n_t) * 6.0
-                    # Scramble row order so time-sorting is actively exercised
                     perm = rng.permutation(n_t)
                     w_stream = rng.uniform(2.0e5, 8.0e5, size=n_t)
                     base_vis = (0.4 - 0.05 * a2) * np.exp(1j * (0.3 * a1 - 0.2 * ch))
@@ -936,9 +1059,7 @@ def test_radio_sigma_scale_unbiased_on_white_noise_and_grouping():
     assert by_obs.labels == (0, 1)
     assert pooled.labels == (None,)
 
-    max_diff = 0.0
-    for g_idx, true_s in enumerate(true_scales):
-        mask = np.asarray(data.ddid) == g_idx
+    def _compare_group(got_obj: vr.SigmaScale, idx: int, mask: np.ndarray) -> float:
         want = ref.radio_sigma_scale_group_ref(
             np.asarray(data.time)[mask],
             np.asarray(data.ant1)[mask],
@@ -949,25 +1070,33 @@ def test_radio_sigma_scale_unbiased_on_white_noise_and_grouping():
             np.asarray(data.vis)[mask],
             np.asarray(data.weight)[mask],
         )
-        assert int(by_ddid.n_pairs[g_idx]) == want["n_pairs"] == 2 * 3 * 2 * 6  # 72 pairs per ddid
-        max_diff = max(
-            max_diff,
-            abs(float(by_ddid.s[g_idx]) - float(want["s"])),
-            abs(float(by_ddid.s_re[g_idx]) - float(want["s_re"])),
-            abs(float(by_ddid.s_im[g_idx]) - float(want["s_im"])),
-            abs(float(by_ddid.s_re_se[g_idx]) - float(want["s_re_se"])),
-            abs(float(by_ddid.s_im_se[g_idx]) - float(want["s_im_se"])),
+        assert int(got_obj.n_pairs[idx]) == want["n_pairs"]
+        return max(
+            abs(float(got_obj.s[idx]) - float(want["s"])),
+            abs(float(got_obj.s_se[idx]) - float(want["s_se"])),
+            abs(float(got_obj.s_re[idx]) - float(want["s_re"])),
+            abs(float(got_obj.s_im[idx]) - float(want["s_im"])),
+            abs(float(got_obj.s_re_se[idx]) - float(want["s_re_se"])),
+            abs(float(got_obj.s_im_se[idx]) - float(want["s_im_se"])),
+            abs(float(got_obj.lag_ratio[idx]) - float(want["lag_ratio"])),
         )
-        s_se_match = min(
-            abs(float(by_ddid.s_se[g_idx]) - float(want["s_se"])),
-            abs(float(by_ddid.s_se[g_idx]) - float(want["s_se_2n"])),
-        )
-        max_diff = max(max_diff, s_se_match)
-        # Unbiased recovery within 3 standard errors and lag_ratio ~ 1 on constant signal + white noise
+
+    max_diff = 0.0
+    for g_idx, true_s in enumerate(true_scales):
+        mask = np.asarray(data.ddid) == g_idx
+        assert int(by_ddid.n_pairs[g_idx]) == 72
+        max_diff = max(max_diff, _compare_group(by_ddid, g_idx, mask))
         assert abs(float(by_ddid.s[g_idx]) - true_s) < 3.0 * float(by_ddid.s_se[g_idx])
         assert 0.65 < float(by_ddid.lag_ratio[g_idx]) < 1.45
 
-    # Missing time/antenna/scan metadata raises
+    for o_idx, want_np in ((0, 144), (1, 72)):
+        mask_obs = np.asarray(data.obs) == o_idx
+        assert int(by_obs.n_pairs[o_idx]) == want_np
+        max_diff = max(max_diff, _compare_group(by_obs, o_idx, mask_obs))
+
+    assert int(pooled.n_pairs[0]) == 216
+    max_diff = max(max_diff, _compare_group(pooled, 0, np.ones(np.asarray(data.vis).shape, dtype=bool)))
+
     no_meta = vr.ComplexVisData.from_arrays(
         np.zeros(4), np.zeros(4), np.ones(4, dtype=complex), np.ones(4), np.full(4, 230e9)
     )
@@ -976,7 +1105,7 @@ def test_radio_sigma_scale_unbiased_on_white_noise_and_grouping():
 
     record("max_sigma_ref_diff", max_diff)
     record("ddid1_s_z", abs(float(by_ddid.s[1]) - 1.65) / float(by_ddid.s_se[1]))
-    assert max_diff < 1e-5
+    assert max_diff < 1e-12
 
 
 @pytest.mark.validates(
@@ -990,8 +1119,7 @@ def test_radio_sigma_scale_smooth_drift_upper_bound_and_lag_ratio_control():
     rng = np.random.default_rng(109)
     n_t = 40
     times = np.arange(n_t, dtype=float) * 6.0
-    weight = np.full(n_t, 1.0e6, dtype=float)  # sigma_noise = 1e-3 Jy
-    # Smooth atmospheric phase ramp + amplitude drift over the scan on a 0.25 Jy source
+    weight = np.full(n_t, 1.0e6, dtype=float)
     phase = 0.08 * np.arange(n_t, dtype=float)
     vis = 0.25 * np.exp(1j * phase) + 1.0e-3 * (rng.normal(size=n_t) + 1j * rng.normal(size=n_t))
     data = vr.ComplexVisData.from_arrays(
@@ -1012,7 +1140,7 @@ def test_radio_sigma_scale_smooth_drift_upper_bound_and_lag_ratio_control():
 
     record("drift_lag_ratio", lag)
     record("drift_s_hat", s_hat)
-    assert s_hat > 5.0  # strongly inflated upper bound above true noise scale 1.0
+    assert s_hat > 5.0
     assert lag > 5.0
 
 
@@ -1032,48 +1160,76 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
     ang = rng.uniform(0.0, 2.0 * np.pi, npts)
     u, v = radius * np.cos(ang), radius * np.sin(ang)
     obs = np.repeat(np.arange(3), 60)
-    # Observation 1 has largest sum of weights -> chosen automatically as ref_obs
     weight = np.repeat([300.0, 4000.0, 1200.0], 60)
     nominal = vr.ComplexVisData.from_arrays(u, v, np.ones(npts, dtype=complex), weight, np.full(npts, 230e9), obs=obs)
     fixed_nuis = vr.CalibrationNuisance(nominal, gains=False, offsets=False, alpha=False, sigmas=False, fit_flux=False)
 
     def scene(values):
-        return vm.LinearImage(values["pixels"], scale, ft="dft", parametrization="sqrt", reference_flux=1.0)
+        return vm.LinearImage(values["pixels"], scale, ft="dft", parametrization="linear", reference_flux=1.0)
 
-    truth_vals = {"pixels": jnp.sqrt(jnp.asarray(shape, dtype=float))}
+    truth_vals = {"pixels": jnp.asarray(shape, dtype=float)}
     model_vis = np.asarray(nominal.model(scene(truth_vals), truth_vals, fixed_nuis))
     true_gains = np.array([1.12, 1.0, 0.89])
     vis = true_gains[obs] * model_vis + (rng.normal(size=npts) + 1j * rng.normal(size=npts)) / np.sqrt(weight)
     radio = vr.ComplexVisData.from_arrays(u, v, vis, weight, np.full(npts, 230e9), obs=obs)
 
-    box_sq = dist.Uniform(jnp.full((n, n), 1e-2), jnp.full((n, n), 3.0))
+    box_lin = dist.Uniform(jnp.zeros((n, n)), jnp.full((n, n), 2.0))
     staged = vr.fit_staged_nuisances(
         radio,
         scene,
-        {"pixels": box_sq},
+        {"pixels": box_lin},
         [vi.TSV(50.0, beam_mas=scale)],
-        init={"pixels": jnp.sqrt(jnp.full((n, n), 1.0 / (n * n)))},
+        init={"pixels": jnp.full((n, n), 1.0 / (n * n))},
         nuisance=dict(offsets=False, sigmas=False, alpha=False, fit_flux=False),
         bounds={"gain": (0.7, 1.3)},
         weight=50.0,
-        max_steps=800,
+        max_steps=1500,
+        gtol=1e-6,
     )
     assert isinstance(staged, vr.StagedFit)
     assert len(staged.stages) == 3
+    assert all(s.info["stop"] is None for s in staged.stages)
     assert staged.ref_obs == 1
     assert np.allclose(staged.sum_weights, [1.8e4, 2.4e5, 7.2e4])
     assert staged.failed is False
     assert not np.any(staged.edge["cal.gain"])
 
-    raw_g = np.asarray(staged.nuisances["cal.gain"]["value"], dtype=float)
-    fitted_gains = np.exp(raw_g) if np.max(np.abs(raw_g)) < 0.5 else raw_g
-    max_gain_err = float(np.max(np.abs(fitted_gains - np.array([1.12, 0.89]))))
+    # Image block KKT certificate converges cleanly; Stage 3 passes Stage 2's already-minimized
+    # nuisances as `start=` to `kkt_report`, so raw nuisance `grad_norm` is tiny (~1e-3) while
+    # `grad_rel` (measured against Stage 2's near-zero gradient rather than nominal g=1) stays O(1).
+    img_kkt = staged.kkt["images"]["."]
+    assert img_kkt["kind"] == "linear"
+    assert float(img_kkt["pg_rel"]) < float(vfit.KKT_TOL)
+    assert float(img_kkt["zero_violation"]) == 0.0
+    assert float(img_kkt["kkt_w"]) < float(vfit.KKT_W_TOL)
+    nuis_kkt = staged.kkt["nuisances"]["cal.gain"]
+    assert float(nuis_kkt["grad_norm"]) < 5e-3
+    assert float(nuis_kkt["grad_rel"]) > float(vfit.NUISANCE_TOL)
+    assert staged.kkt["converged"] is False
+
+    # Verify linear constrained values["cal.gain"] AND log-space box metadata in nuisances["cal.gain"]
+    linear_gains = np.asarray(staged.values["cal.gain"], dtype=float)
+    nuis_g = staged.nuisances["cal.gain"]
+    log_g = np.asarray(nuis_g["value"], dtype=float)
+    lo_g = float(np.asarray(nuis_g["lower"]).ravel()[0])
+    hi_g = float(np.asarray(nuis_g["upper"]).ravel()[0])
+    want_edge_frac = np.minimum(log_g - np.log(0.7), np.log(1.3) - log_g) / np.log(1.3 / 0.7)
+
+    max_gain_err = float(np.max(np.abs(linear_gains - np.array([1.12, 0.89]))))
+    log_box_err = max(
+        float(np.max(np.abs(log_g - np.log(linear_gains)))),
+        abs(lo_g - float(np.log(0.7))),
+        abs(hi_g - float(np.log(1.3))),
+        float(np.max(np.abs(np.asarray(nuis_g["edge_frac"], dtype=float) - want_edge_frac))),
+    )
 
     record("max_gain_err", max_gain_err)
-    record("min_edge_frac", float(np.min(staged.nuisances["cal.gain"]["edge_frac"])))
+    record("log_box_metadata_err", log_box_err)
+    record("image_kkt_w", float(img_kkt["kkt_w"]))
+    record("min_edge_frac", float(np.min(nuis_g["edge_frac"])))
     assert max_gain_err < 0.02
+    assert log_box_err < 1e-12
     assert "pixels" in staged.values
-    assert "images" in staged.kkt
 
 
 @pytest.mark.validates(
@@ -1102,7 +1258,6 @@ def test_radio_fit_staged_nuisances_box_edge_failure_control():
 
     truth_vals = {"pixels": jnp.sqrt(jnp.asarray(shape, dtype=float))}
     model_vis = np.asarray(nominal.model(scene(truth_vals), truth_vals, fixed_nuis))
-    # Observation 0 has true gain 1.48, outside the (0.7, 1.3) box -> pins at upper bound 1.3!
     vis = np.array([1.48, 1.0, 0.89])[obs] * model_vis + (rng.normal(size=npts) + 1j * rng.normal(size=npts)) / np.sqrt(weight)
     radio = vr.ComplexVisData.from_arrays(u, v, vis, weight, np.full(npts, 230e9), obs=obs)
 

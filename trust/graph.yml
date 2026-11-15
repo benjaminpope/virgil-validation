@@ -175,7 +175,7 @@ nodes:
   virgil.fitting.gauss_newton_diag: {layer: imaging, source: [src/virgil/fitting.py], depends: [virgil.fitting.fit, virgil.imaging.MaxEntropy, virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   crosscheck.radio_trust: {layer: references, doc: alma_conventions.md}  # numpy dirty image/beam sums, Briggs weights, gain-marginal quadrature (virgil#533)
-  crosscheck.starlet_kkt_ref: {layer: references, doc: imaging/machinery.md#kkt-optimality-certificates}  # scenes, B3 starlet, KKT, DoF discrepancy, Laplace GP, MYTHRA & radio differencing
+  crosscheck.starlet_kkt_ref: {layer: references, doc: imaging/machinery.md#kkt-optimality-certificates}  # numpy/scipy scenes, B3 starlet, KKT, DoF discrepancy, L-curve corner, Laplace GP, MYTHRA & radio differencing (every helper self-checked in test_042_scenes_starlet_kkt.py)
   crosscheck.radio_offsets: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # B5 free offsets: exact phase-ramp chi2, analytic gradient, Fisher information (numpy only); tests/test_radio_spread_offsets.py
   crosscheck.radio_exact: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: numpy-only direct-sum chi2, loss, gradients and the derived round-off budget (design/toeplitz_reexam_042.md)
   crosscheck.toeplitz_scenes: {layer: references, depends: [crosscheck.radio_exact, crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: held-out synthetic scenes and coverages, seeds from hashed names
@@ -524,7 +524,7 @@ nodes:
     depends: [virgil.fitting.fit, virgil.likelihood.model_loglike, virgil.models.Image, virgil.models.LinearImage, virgil.imaging.MaxEntropy]
     doc: imaging/machinery.md#kkt-optimality-certificates
   virgil.scenes.ring: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
-  virgil.scenes.spiral: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
+  virgil.scenes.spiral: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}  # convention: ray-radial cross-section |r - r_arm| with circular Euclidean caps at theta = 0 and 2*pi*turns (see docs/imaging/machinery.md)
   virgil.scenes.gaussian_blob: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
   virgil.imaging.dirty_image: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
   virgil.imaging.beam: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
@@ -537,7 +537,7 @@ nodes:
     source: [src/virgil/imaging.py]
     depends: [virgil.oidata.OIData]
     doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
-  virgil.imaging.image_field:
+  virgil.imaging.image_field:  # convention: field_fwhms * FWHM clipped to [inner_elements * lambda/(2*B_max), min(lambda/B_min, largest_mas, aperture_mas)], ceiling winning on crossover
     layer: imaging
     source: [src/virgil/imaging.py]
     depends: [virgil.imaging.second_moment_fwhm, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view]
