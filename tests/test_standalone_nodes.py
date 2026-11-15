@@ -29,10 +29,12 @@
   negative controls.
 """
 
+import inspect
 import warnings
 
 import jax
 import jax.numpy as jnp
+from jax.test_util import check_grads
 import numpy as np
 import numpyro.distributions as dist
 import pytest
@@ -51,9 +53,24 @@ from virgil.oidata import OIData  # noqa: E402
 pytestmark = pytest.mark.x64
 
 UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
+UTS4 = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
 
 
 # ------------------------------------------------------- virgil.models.LinearImage
+
+_LINEAR_IMAGE_PARAM_KEY = (
+    "parametrization"
+    if "parametrization" in inspect.signature(vm.LinearImage).parameters
+    else "parametrisation"
+)
+
+
+def _make_linear_image(pixels, *, mode="linear", **kwargs):
+    return vm.LinearImage(pixels, **{_LINEAR_IMAGE_PARAM_KEY: mode}, **kwargs)
+
+
+def _regularized_pixels(img):
+    return getattr(img, "regularized_pixels") if hasattr(img, "regularized_pixels") else img.regularised_pixels
 
 
 @pytest.mark.validates(
@@ -63,8 +80,9 @@ UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
 )
 def test_linear_image_linear_and_sqrt_visibilities_and_system_flux():
     """LinearImage in both 'linear' and 'sqrt' (flux = w^2) parameterizations,
-    with support mask, sky shift, rotation, and inside a System, matches our
-    direct pixel-centre DFT and total-flux weighting."""
+    under default ft='auto' and explicit ft='dft', with support mask, sky shift,
+    rotation, and inside a System, matches our direct pixel-centre DFT,
+    total-flux weighting, and central-difference pixel gradients."""
     rng = np.random.default_rng(104)
     u, v = rng.uniform(-110.0, 110.0, (2, 200))
     wavel = rng.uniform(1.5e-6, 2.4e-6, 200)
@@ -86,37 +104,47 @@ def test_linear_image_linear_and_sqrt_visibilities_and_system_flux():
     cloud = sky.pixel_image(masked_flux, scale).rotated(rot).shifted(dra, ddec)
     want_img_vis = sky.visibility(cloud, u, v, wavel)
 
-    img_lin = vm.LinearImage(
+    img_auto = _make_linear_image(
         raw_flux,
+        mode="linear",
         pixel_scale_mas=scale,
         support=support,
         dra=dra,
         ddec=ddec,
         rotation_deg=rot,
-        ft="dft",
-        parametrisation="linear",
         reference_flux=0.8,
     )
-    img_sqrt = vm.LinearImage(
-        sqrt_weights,
+    img_lin = _make_linear_image(
+        raw_flux,
+        mode="linear",
         pixel_scale_mas=scale,
         support=support,
         dra=dra,
         ddec=ddec,
         rotation_deg=rot,
         ft="dft",
-        parametrisation="sqrt",
+        reference_flux=0.8,
+    )
+    img_sqrt = _make_linear_image(
+        sqrt_weights,
+        mode="sqrt",
+        pixel_scale_mas=scale,
+        support=support,
+        dra=dra,
+        ddec=ddec,
+        rotation_deg=rot,
+        ft="dft",
         reference_flux=0.8,
     )
 
     worst_dv = 0.0
-    for img in (img_lin, img_sqrt):
+    for img in (img_auto, img_lin, img_sqrt):
         got_vis = np.asarray(img.model(u, v, wavel))
         worst_dv = max(worst_dv, float(np.max(np.abs(got_vis - want_img_vis))))
         assert float(img.total_flux) == pytest.approx(total_f, rel=1e-14)
         np.testing.assert_allclose(np.asarray(img.fluxes), masked_flux, rtol=1e-14, atol=1e-16)
         np.testing.assert_allclose(np.asarray(img.brightness), masked_flux / total_f, rtol=1e-14, atol=1e-16)
-        np.testing.assert_allclose(np.asarray(img.regularised_pixels), masked_flux / 0.8, rtol=1e-14, atol=1e-16)
+        np.testing.assert_allclose(np.asarray(_regularized_pixels(img)), masked_flux / 0.8, rtol=1e-14, atol=1e-16)
         assert bool(img.is_physical())
 
         # Inside a System, LinearImage contributes weight = sum(fluxes), not 1
@@ -124,6 +152,25 @@ def test_linear_image_linear_and_sqrt_visibilities_and_system_flux():
         got_sys = np.asarray(scene.model(u, v, wavel))
         want_sys = (1.5 * sky.vis_point(u, v, wavel, -3.0, 1.0) + total_f * want_img_vis) / (1.5 + total_f)
         worst_dv = max(worst_dv, float(np.max(np.abs(got_sys - want_sys))))
+
+    # Reverse- and forward-mode pixel derivatives inside System in both modes
+    for mode, base_pix in (("linear", raw_flux), ("sqrt", sqrt_weights)):
+        def _sys_vis_loss(pix, mode=mode):
+            img_g = _make_linear_image(
+                pix,
+                mode=mode,
+                pixel_scale_mas=scale,
+                support=support,
+                dra=dra,
+                ddec=ddec,
+                rotation_deg=rot,
+                reference_flux=0.8,
+            )
+            sys_g = vm.System(star=vm.PointSource(1.5, -3.0, 1.0), env=img_g)
+            cvis = sys_g.model(jnp.asarray(u[:24]), jnp.asarray(v[:24]), jnp.asarray(wavel[:24]))
+            return jnp.sum(jnp.abs(cvis) ** 2 + 0.3 * jnp.imag(cvis))
+
+        check_grads(_sys_vis_loss, (jnp.asarray(base_pix),), order=1, modes=["fwd", "rev"], rtol=1e-5, atol=1e-6)
 
     # Bounds and physicality contracts
     lo, hi = img_lin.bounds()
@@ -155,7 +202,7 @@ def test_linear_image_sqrt_weights_and_system_flux_controls():
     wavel = 2.0e-6
 
     weights = np.array([[0.2, 0.8, 0.3], [0.1, 1.4, 0.5], [0.4, 0.2, 0.9]])
-    img_sqrt = vm.LinearImage(weights, pixel_scale_mas=2.5, ft="dft", parametrisation="sqrt")
+    img_sqrt = _make_linear_image(weights, mode="sqrt", pixel_scale_mas=2.5, ft="dft")
     got_vis = np.asarray(img_sqrt.model(u, v, wavel))
     wrong_linear_vis = sky.visibility(sky.pixel_image(weights, 2.5), u, v, wavel)
     assert np.max(np.abs(got_vis - wrong_linear_vis)) > 0.05
@@ -652,9 +699,35 @@ def test_observed_information_matches_half_chi2_hessian_and_noiseless_fisher(tmp
         data = OIData(str(path))
         d_ours = ours.load(path)
         got = np.asarray(inf.observed_information(probe, paths, template, data, ridge=0.0, dtype="float64"))
-        want = _richardson_hessian(lambda v: 0.5 * ours.chi2(d_ours, our_vis_from_vec(v), sine=True), probe, h=2e-4)
+        want = _richardson_hessian(lambda v: 0.5 * ours.chi2(d_ours, our_vis_from_vec(v)), probe, h=2e-4)
         scale = np.sqrt(np.outer(np.diag(want), np.diag(want)))
         worst_rel = max(worst_rel, float(np.max(np.abs(got - want) / scale)))
+
+    # 4-telescope correlated closure phases (equal per-snapshot sigma_cp_deg):
+    # exercises ClosureNoise.whiten and periodic (1 - cos Delta)/sigma penalty rows
+    corr_fits = tmp_path / "noisy_4ut.fits"
+    sim.observe(
+        corr_fits,
+        our_vis_from_vec(true_vals),
+        UTS4,
+        hour_angles_h=np.linspace(-2.5, 2.5, 4),
+        wavelengths=np.linspace(1.6e-6, 2.3e-6, 3),
+        dec_deg=-45.0,
+        sigma_v2=0.01,
+        sigma_cp_deg=0.5,
+        rng=np.random.default_rng(91),
+    )
+    data_4ut = OIData(str(corr_fits))
+    d_4ut = ours.load(corr_fits)
+    probe_4ut = np.array([1.72, 5.3, -3.6, 0.058])
+    got_4ut = np.asarray(inf.observed_information(probe_4ut, paths, template, data_4ut, ridge=0.0, dtype="float64"))
+    want_4ut = _richardson_hessian(
+        lambda v: 0.5 * ours.chi2(d_4ut, our_vis_from_vec(v), correlated=True, sine=True, whitened=True),
+        probe_4ut,
+        h=2e-4,
+    )
+    scale_4ut = np.sqrt(np.outer(np.diag(want_4ut), np.diag(want_4ut)))
+    worst_rel = max(worst_rel, float(np.max(np.abs(got_4ut - want_4ut) / scale_4ut)))
 
     # Noiseless data at the truth: observed_information == J^T Sigma^-1 J (zero residuals);
     # away from the truth: nonlinear residual curvature sum_i r_i nabla^2 r_i shifts it away from J^T Sigma^-1 J
@@ -668,7 +741,7 @@ def test_observed_information_matches_half_chi2_hessian_and_noiseless_fisher(tmp
 
     off_vals = np.array([2.2, 4.1, -2.2, 0.14])
     got_off = np.asarray(inf.observed_information(off_vals, paths, template, data_clean, ridge=0.0, dtype="float64"))
-    want_off = _richardson_hessian(lambda v: 0.5 * ours.chi2(d_clean, our_vis_from_vec(v), sine=True), off_vals, h=2e-4)
+    want_off = _richardson_hessian(lambda v: 0.5 * ours.chi2(d_clean, our_vis_from_vec(v)), off_vals, h=2e-4)
     gn_off = our_gauss_newton_fisher(d_clean, off_vals)
     scale_off = np.sqrt(np.outer(np.diag(gn_off), np.diag(gn_off)))
     worst_rel = max(worst_rel, float(np.max(np.abs(got_off - want_off) / np.sqrt(np.outer(np.diag(want_off), np.diag(want_off))))))
@@ -723,7 +796,6 @@ def test_observed_information_rejects_unhalved_chi2_hessian_control(tmp_path):
         lambda v: ours.chi2(
             d_ours,
             lambda u, vv, w: (sky.vis_point(u, vv, w) + v[2] * sky.vis_point(u, vv, w, v[0], v[1])) / (1.0 + v[2]),
-            sine=True,
         ),
         x,
     )

@@ -55,7 +55,7 @@ random baselines given in wavelengths.
 | virgil | Reference | Agreement |
 | --- | --- | --- |
 | `Image`, random 7 × 10 pixels, off-centre | direct transform of the pixel centres (row 0 North, column 0 East) | 3e-16 |
-| `LinearImage`, 7 × 9 pixels in `"linear"` and `"sqrt"` (F = w²) parameterizations, masked, rotated, off-centre, and flux-weighted in a `System` ([`test_standalone_nodes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_standalone_nodes.py)) | direct transform of the masked pixel centres and total-flux `System` weighting; controls: linear vs squared weights and unit-weight `System` fail | 2e-15 |
+| `LinearImage`, 7 × 9 pixels in `"linear"` and `"sqrt"` (F = w²) parameterizations (`ft="auto"` and `ft="dft"`), masked, rotated, off-centre, and flux-weighted in a `System`, with `check_grads` pixel derivatives ([`test_standalone_nodes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_standalone_nodes.py)) | direct transform of the masked pixel centres, total-flux `System` weighting, and central finite differences; controls: linear vs squared weights and unit-weight `System` fail | 2e-15 (vis), 1e-5 (grads) |
 
 ## Derivatives
 

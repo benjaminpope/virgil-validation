@@ -9,21 +9,25 @@ and virgil.detection.injection_recovery.
   [lower, upper], including boundary ties k = 0 and k = n.
   Control: rejects the uncalibrated plug-in fraction k / n at k = 0.
 * DetectionMC.completeness, contrast_curve, roc, auc: exact empirical step
-  curves, isotonic log-flux interpolation, Cartesian and angular sky-position
-  match_radius filtering, and convergence to closed-form Gaussian-shift ROC
-  theory (C(f) = 1 - Phi(Phi^-1(1 - alpha) - f / sigma_s), AUC = Phi(mu / sqrt(2))).
+  curves, cumulative-maximum (non-decreasing) log-flux interpolation, Cartesian
+  and angular sky-position match_radius filtering, and convergence to
+  closed-form Gaussian-shift ROC theory
+  (C(f) = 1 - Phi(Phi^-1(1 - alpha) - f / sigma_s), AUC = Phi(mu / sqrt(2))).
 * DetectionMC.concatenate, save, load: lossless chunk merging, .npz round-trip,
   and ValueError guards on duplicate seeds, incompatible metadata, or unknown
   file-format versions.
-* injection_recovery: noiseless 3-telescope VLTI datasets generated via
-  crosscheck.simulate and searched independently via crosscheck.chi2 +
-  crosscheck.sky (delta_chi2, log_bayes_factor, max_snr, best_dra, best_ddec,
-  best_flux), noisy 7-hole NRM batch/chunk invariance, and position-matched
-  rejection of off-grid interferometric aliases.
+* injection_recovery: noiseless and noisy (bootstrap_null sign-flip)
+  3-telescope VLTI datasets generated via crosscheck.simulate and searched
+  independently via crosscheck.chi2 + crosscheck.sky across all six outputs
+  (delta_chi2, log_bayes_factor, max_snr, best_dra, best_ddec, best_flux),
+  noisy 7-hole NRM batch/chunk invariance and draw distinctness, and
+  position-matched rejection of off-grid interferometric aliases.
 """
 
+import itertools
 import json
 
+from astropy.io import fits
 import numpy as np
 import pytest
 from scipy import integrate, optimize, special, stats
@@ -74,7 +78,7 @@ def _our_grid_search(d, grid):
             grid_c2 = np.array([c2(f) for f in fs])
             terms.append(-0.5 * (grid_c2 - null) + lw[i, j])
             f_hat = optimize.minimize_scalar(
-                c2, bounds=(-0.2, 1.0), method="bounded", options={"xatol": 1e-12}
+                c2, bounds=(-0.15, float(fs[-1]) * 1.25), method="bounded", options={"xatol": 1e-12}
             ).x
             f_pos = max(float(f_hat), 0.0)
             dc2 = null - c2(f_pos)
@@ -83,7 +87,8 @@ def _our_grid_search(d, grid):
                 best_x, best_y, best_f = float(x), float(y), f_pos
             h = 1e-4
             curv = (c2(f_hat + h) - 2.0 * c2(f_hat) + c2(f_hat - h)) / h**2
-            best_snr = max(best_snr, f_hat / np.sqrt(2.0 / curv))
+            if curv > 0.0:
+                best_snr = max(best_snr, float(f_hat) / float(np.sqrt(2.0 / curv)))
     log_b = float(special.logsumexp(np.concatenate([np.ravel(t) for t in terms])))
     return {
         "delta_chi2": float(best_dc2),
@@ -383,6 +388,30 @@ def test_detection_mc_gaussian_shift_roc_completeness_and_contrast_curve():
     _, mid_interp = mc_partial.contrast_curve("delta_chi2", 0.2, completeness=0.50)
     assert float(mid_interp[0]) == pytest.approx(np.sqrt(1e-3 * 5e-3), rel=1e-12)
 
+    # Non-monotone empirical completeness [0.25, 0.75, 0.50, 1.0]: cumulative
+    # maximum clamps [0.25, 0.75, 0.75, 1.0], so completeness=0.875 interpolates
+    # halfway in log-flux between 4e-3 and 8e-3 (4e-3 * sqrt(2)), distinct from
+    # pool-adjacent-violators isotonic regression (4e-3 * 2**(2/3))
+    nm_fluxes = np.repeat([1e-3, 2e-3, 4e-3, 8e-3], 4)
+    nm_inj = np.array(
+        [
+            15.0, 1.0, 1.0, 1.0,      # 0.25 at 1e-3
+            15.0, 15.0, 15.0, 1.0,    # 0.75 at 2e-3
+            15.0, 15.0, 1.0, 1.0,     # 0.50 at 4e-3 (non-monotone dip)
+            15.0, 15.0, 15.0, 15.0,   # 1.00 at 8e-3
+        ]
+    )
+    mc_nonmono = _make_synthetic_mc(
+        np.linspace(0.0, 9.0, 10),
+        inj_vals=nm_inj,
+        dra=np.full(16, 40.0),
+        ddec=np.zeros(16),
+        flux=nm_fluxes,
+    )
+    _, f_875 = mc_nonmono.contrast_curve("delta_chi2", 0.2, completeness=0.875)
+    assert float(f_875[0]) == pytest.approx(4e-3 * np.sqrt(2.0), rel=1e-12)
+    assert abs(float(f_875[0]) - 4e-3 * (2.0 ** (2.0 / 3.0))) > 5e-4
+
     # Angular (sep, pa) sky-distance matching under match_radius
     ang_mc = det.DetectionMC(
         null={"delta_chi2": np.linspace(0.0, 9.0, 10)},
@@ -488,10 +517,11 @@ def test_detection_mc_concatenate_and_npz_roundtrip(tmp_path):
     headline="max_rel_ddelta_chi2",
 )
 def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path):
-    """On noiseless 3-telescope VLTI datasets synthesized via crosscheck.simulate,
-    injection_recovery (with error_scale=0.0) matches our independent
-    crosscheck.chi2 + crosscheck.sky grid search across delta_chi2,
-    log_bayes_factor, max_snr, best_dra, best_ddec, and best_flux."""
+    """On both noiseless and noisy (bootstrap_null sign-flip) 3-telescope VLTI
+    datasets synthesized via crosscheck.simulate, injection_recovery matches our
+    independent crosscheck.chi2 + crosscheck.sky grid search across delta_chi2,
+    log_bayes_factor, max_snr, best_dra, best_ddec, and best_flux on null and
+    off/on-grid injected draws while realizing distinct noisy draws per key."""
     obs_kw = dict(
         hour_angles_h=np.linspace(-2.5, 2.5, 5),
         wavelengths=np.linspace(1.6e-6, 2.2e-6, 4),
@@ -504,15 +534,17 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
     template = OIData(str(tpl_path))
     null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
 
+    # Even grid count avoids the (0, 0) primary-star degeneracy; injections mix
+    # exact grid nodes ((5.4, -1.8), (-5.4, 5.4)) and off-node positions ((5.0, -2.1), (-5.1, 5.0))
     grid = {
-        "dra": np.linspace(-9.0, 9.0, 7),
-        "ddec": np.linspace(-9.0, 9.0, 7),
+        "dra": np.linspace(-9.0, 9.0, 6),
+        "ddec": np.linspace(-9.0, 9.0, 6),
         "flux": np.geomspace(1e-4, 2e-1, 45),
     }
     injections = {
-        "dra": np.array([6.0, -6.0, 3.0, -3.0]),
-        "ddec": np.array([-3.0, 3.0, 6.0, -6.0]),
-        "flux": np.array([2e-3, 8e-3, 2.5e-2, 7e-2]),
+        "dra": np.array([5.4, 5.0, -5.1, -5.4]),
+        "ddec": np.array([-1.8, -2.1, 5.0, 5.4]),
+        "flux": np.array([3e-3, 9e-3, 2.5e-2, 7e-2]),
     }
 
     sim0 = det.gaussian_null(null_scene, template, error_scale=0.0)
@@ -525,7 +557,7 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
         n_null=4,
         injections=injections,
         noise=sim0,
-        match_radius=1.5,
+        match_radius=3.0,
         draw_batch=2,
         progress=False,
     )
@@ -540,6 +572,8 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
             abs(float(mc.null["log_bayes_factor"][i]) - want_null["log_bayes_factor"])
             / max(1.0, abs(want_null["log_bayes_factor"])),
         )
+        worst_snr = max(worst_snr, abs(float(mc.null["max_snr"][i]) - want_null["max_snr"]))
+        worst_flux = max(worst_flux, abs(float(mc.null["best_flux"][i]) - want_null["best_flux"]))
 
     for k in range(mc.n_injected):
         inj_path = tmp_path / f"inj_{k}.fits"
@@ -574,6 +608,139 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
     assert np.all(mc.matched())
     assert np.all(mc.detected("delta_chi2", 0.25))
 
+    # Noisy per-draw verification via bootstrap_null on a 4-residual UTS3 OIFITS
+    # file (3 V^2 + 1 CP active on channel 0, channel 1 noiseless -> 2^4 = 16
+    # exact sign-flip states): verifies every realized noisy null & injected draw
+    # against _our_grid_search and proves PRNG key splitting across draws without
+    # touching private fold_in internals
+    boot_kw = dict(
+        hour_angles_h=np.array([0.5]),
+        wavelengths=np.array([1.8e-6, 2.2e-6]),
+        dec_deg=-45.0,
+        sigma_v2=0.015,
+        sigma_cp_deg=0.8,
+    )
+    clean_b = tmp_path / "boot_clean.fits"
+    noisy_b = tmp_path / "boot_noisy.fits"
+    simulate.observe(clean_b, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=None, **boot_kw)
+    simulate.observe(noisy_b, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=np.random.default_rng(2026), **boot_kw)
+    with fits.open(noisy_b, mode="update") as hdul:
+        hdul["OI_VIS2"].data["VIS2DATA"][:, 1] = 1.0
+        hdul["OI_T3"].data["T3PHI"][:, 1] = 0.0
+
+    d_bc = ours.load(clean_b)
+    d_bn = ours.load(noisy_b)
+    res_v2 = d_bn["v2"] - d_bc["v2"]
+    res_cp = d_bn["cp"] - d_bc["cp"]
+
+    grid_b = {
+        "dra": np.linspace(-8.0, 8.0, 4),
+        "ddec": np.linspace(-8.0, 8.0, 4),
+        "flux": np.geomspace(2e-4, 2e-1, 35),
+    }
+    inj_b = {
+        "dra": np.array([8.0, -4.2, 2.3]),
+        "ddec": np.array([-8.0, 3.8, -5.1]),
+        "flux": np.array([2.5e-2, 4e-2, 6e-2]),
+    }
+    boot_oi = OIData(str(noisy_b))
+    mc_noisy = det.injection_recovery(
+        vm.BinaryModelCartesian,
+        null_scene,
+        boot_oi,
+        grid_b,
+        12345,
+        n_null=24,
+        injections=inj_b,
+        noise=det.bootstrap_null(null_scene, boot_oi),
+        draw_batch=4,
+        progress=False,
+    )
+
+    null_catalog = []
+    for signs in itertools.product((-1.0, 1.0), repeat=4):
+        d_s = dict(d_bc)
+        sv = np.ones_like(res_v2)
+        sv[:, 0] = signs[:3]
+        sp = np.ones_like(res_cp)
+        sp[:, 0] = signs[3]
+        d_s["v2"] = d_bc["v2"] + sv * res_v2
+        d_s["cp"] = d_bc["cp"] + sp * res_cp
+        null_catalog.append(_our_grid_search(d_s, grid_b))
+
+    matched_states = set()
+    for i in range(mc_noisy.n_null):
+        best_s, best_dc2_e, best_lb_e, best_snr_e, best_f_e = None, np.inf, np.inf, np.inf, np.inf
+        best_tot = np.inf
+        for s_idx, ref in enumerate(null_catalog):
+            e_dc2 = abs(float(mc_noisy.null["delta_chi2"][i]) - ref["delta_chi2"]) / max(1.0, ref["delta_chi2"])
+            e_lb = abs(float(mc_noisy.null["log_bayes_factor"][i]) - ref["log_bayes_factor"]) / max(
+                1.0, abs(ref["log_bayes_factor"])
+            )
+            e_snr = abs(float(mc_noisy.null["max_snr"][i]) - ref["max_snr"]) / max(1.0, abs(ref["max_snr"]))
+            e_f = abs(float(mc_noisy.null["best_flux"][i]) - ref["best_flux"])
+            e_pos = (
+                max(
+                    abs(float(mc_noisy.null["best_dra"][i]) - ref["best_dra"]),
+                    abs(float(mc_noisy.null["best_ddec"][i]) - ref["best_ddec"]),
+                )
+                if ref["delta_chi2"] > 1e-8
+                else 0.0
+            )
+            tot = max(e_dc2, e_lb, e_snr, e_f, e_pos)
+            if tot < best_tot:
+                best_tot, best_s = tot, s_idx
+                best_dc2_e, best_lb_e, best_snr_e, best_f_e = e_dc2, e_lb, e_snr, e_f
+        matched_states.add(best_s)
+        assert best_tot < 1e-5
+        worst_dc2 = max(worst_dc2, best_dc2_e)
+        worst_logb = max(worst_logb, best_lb_e)
+        worst_snr = max(worst_snr, best_snr_e)
+        worst_flux = max(worst_flux, best_f_e)
+    assert len(matched_states) >= 6  # proves per-draw PRNG key splitting
+    assert np.any(mc_noisy.null["delta_chi2"] == 0.0) and np.any(mc_noisy.null["delta_chi2"] > 0.5)
+
+    for k in range(mc_noisy.n_injected):
+        pk = tmp_path / f"boot_inj_{k}.fits"
+        simulate.observe(
+            pk,
+            _binary_vis(float(inj_b["flux"][k]), float(inj_b["dra"][k]), float(inj_b["ddec"][k])),
+            UTS3,
+            rng=None,
+            **boot_kw,
+        )
+        d_ic = ours.load(pk)
+        best_tot = np.inf
+        best_dc2_e, best_lb_e, best_snr_e, best_f_e = np.inf, np.inf, np.inf, np.inf
+        for signs in itertools.product((-1.0, 1.0), repeat=4):
+            d_s = dict(d_ic)
+            sv = np.ones_like(res_v2)
+            sv[:, 0] = signs[:3]
+            sp = np.ones_like(res_cp)
+            sp[:, 0] = signs[3]
+            d_s["v2"] = d_ic["v2"] + sv * res_v2
+            d_s["cp"] = d_ic["cp"] + sp * res_cp
+            ref = _our_grid_search(d_s, grid_b)
+            e_dc2 = abs(float(mc_noisy.injected["delta_chi2"][k]) - ref["delta_chi2"]) / max(1.0, ref["delta_chi2"])
+            e_lb = abs(float(mc_noisy.injected["log_bayes_factor"][k]) - ref["log_bayes_factor"]) / max(
+                1.0, abs(ref["log_bayes_factor"])
+            )
+            e_snr = abs(float(mc_noisy.injected["max_snr"][k]) - ref["max_snr"]) / max(1.0, abs(ref["max_snr"]))
+            e_f = abs(float(mc_noisy.injected["best_flux"][k]) - ref["best_flux"]) / max(1e-6, ref["best_flux"])
+            e_pos = max(
+                abs(float(mc_noisy.injected["best_dra"][k]) - ref["best_dra"]),
+                abs(float(mc_noisy.injected["best_ddec"][k]) - ref["best_ddec"]),
+            )
+            tot = max(e_dc2, e_lb, e_snr, e_f, e_pos)
+            if tot < best_tot:
+                best_tot = tot
+                best_dc2_e, best_lb_e, best_snr_e, best_f_e = e_dc2, e_lb, e_snr, e_f
+        assert best_tot < 1e-5
+        worst_dc2 = max(worst_dc2, best_dc2_e)
+        worst_logb = max(worst_logb, best_lb_e)
+        worst_snr = max(worst_snr, best_snr_e)
+        worst_flux = max(worst_flux, best_f_e)
+
     record("max_rel_ddelta_chi2", worst_dc2)
     record("max_rel_dlogB", worst_logb)
     record("max_rel_dsnr", worst_snr)
@@ -591,8 +758,9 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
 )
 def test_injection_recovery_nrm_batch_and_chunk_invariance():
     """On a noisy 7-hole NRM UV template (n_null=24, n_inject=16),
-    injection_recovery produces identical per-draw statistics across
-    (draw_batch=1, chunk_size=None) and (draw_batch=4, chunk_size=8)."""
+    injection_recovery produces distinct noisy realizations across draws and
+    identical per-draw statistics across (draw_batch=1, chunk_size=None) and
+    (draw_batch=4, chunk_size=8)."""
     template = cov.nrm_oidata(wavelength_m=4.3e-6, sigma_v2=0.01, sigma_cp_deg=0.5)
     grid = {
         "dra": np.linspace(-150.0, 150.0, 7),
@@ -636,6 +804,9 @@ def test_injection_recovery_nrm_batch_and_chunk_invariance():
         progress=False,
     )
     assert mc_serial.n_null == 24 and mc_serial.n_injected == 16
+    assert np.unique(mc_serial.null["log_bayes_factor"]).size == mc_serial.n_null
+    assert np.unique(mc_serial.null["delta_chi2"]).size >= mc_serial.n_null - 2
+    assert float(np.std(mc_serial.null["delta_chi2"])) > 0.0
 
     worst_batch = 0.0
     for key_name in ("delta_chi2", "log_bayes_factor", "max_snr", "best_dra", "best_ddec", "best_flux"):
