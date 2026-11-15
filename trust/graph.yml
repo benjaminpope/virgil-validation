@@ -204,12 +204,18 @@ nodes:
     source: [src/virgil/tempering.py]
     depends: [virgil.tempering.channel_chains]
     doc: likelihood/spectra_phases.md
+  # Internal virgil diagnostic/API thresholds (flat_signature 0.15 & 3/sqrt(N),
+  # out_of_range (0.5, 2.0), MIN_CHAINS = 10 pooling fallback) have no external
+  # interferometry package counterpart in scripts/trust.py EXTERNAL; per Ben's
+  # 2026-11-15 Ruling 2 (convention: reserved for external sky/coordinate
+  # conventions), they are pinned via properties: and boundary/negative controls.
   virgil.tempering.flat_signature: {layer: likelihood, source: [src/virgil/tempering.py], doc: likelihood/spectra_phases.md}
   virgil.tempering.out_of_range: {layer: likelihood, source: [src/virgil/tempering.py], doc: likelihood/spectra_phases.md}
   virgil.tempering.estimate_factors:
     layer: likelihood
     source: [src/virgil/tempering.py]
     depends: [virgil.tempering.ChannelFactors, virgil.tempering.flat_signature]
+    properties: {variance_ratio: 1, fallback_rules: 1}
     doc: likelihood/spectra_phases.md
   virgil.likelihood.is_tied: {layer: priors, source: [src/virgil/likelihood.py], doc: likelihood/priors.md}
   virgil.likelihood.tied_log_prior:
@@ -278,10 +284,15 @@ nodes:
     source: [src/virgil/mode_search.py]
     depends: [virgil.mode_search.Mode]
     doc: inference/sampling.md
+  # Two-sided Mahalanobis threshold (MAHAL = 1.0) and inlier-floor sentinel
+  # (at_floor) are internal virgil API specifications without an external
+  # interferometry package counterpart (Ben's 2026-11-15 Ruling 2: pinned via
+  # properties: + boundary/one-sided negative controls rather than convention:).
   virgil.mode_search.distinct_modes:
     layer: inference
     source: [src/virgil/mode_search.py]
     depends: [virgil.mode_search.Mode]
+    properties: {two_sided_dedup: 1}
     doc: inference/sampling.md
   virgil.mode_search.DefensiveMixture:
     layer: inference
@@ -292,6 +303,7 @@ nodes:
     layer: inference
     source: [src/virgil/mode_search.py]
     depends: [virgil.mode_search.DefensiveMixture, virgil.mode_search.Evidence, virgil.mode_search.laplace_log_evidence, virgil.mode_search.logmeanexp]
+    properties: {is_estimator: 1, ess_floor: 1}
     doc: inference/sampling.md
   virgil.mode_search.resample_move:
     layer: inference

@@ -42,13 +42,13 @@ own observables on two simulated three-telescope files.
 ## Hierarchical outlier mixture and K-fold cross-validation
 
 `tests/test_042_svi_cv_likelihood.py` checks the exact Jeffreys
-$\mathrm{Beta}(1/2, 1/2)$ group outlier mixture and generic K-fold
-cross-validation against `crosscheck.smc_tempering_ref`.
+`Beta(1/2, 1/2)` group outlier mixture and generic K-fold cross-validation
+against `crosscheck.smc_tempering_ref`.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
-| `likelihood.group_outlier_mixture`, `likelihood.group_outlier_probabilities` | continuous $\theta \in [0, \pi]$ SciPy `quad` and quadrature-free $2^K$ combinatorial Beta-function expansion for $K \in \{1, 4, 9, 14\}$, plus thermodynamic identity $\partial \ln Z / \partial \ln B_k = q_k$; control: informative $\mathrm{Beta}(1, 9)$ differs by > 3.0 nats | Mathematics | < 1e-12 |
+| `likelihood.group_outlier_mixture`, `likelihood.group_outlier_probabilities` | continuous trigonometric SciPy `quad` over [0, π] and quadrature-free 2^K combinatorial Beta-function expansion for K in {1, 4, 9, 14}, plus exact derivative of `ln Z` wrt `outlier_loglikes`; control: informative `Beta(1, 9)` differs by > 3.0 nats | Mathematics | < 1e-12 |
 | `crossval.fold_masks`, `save_record`, `load_records`, `aggregate`, `aggregate_files` | exact fold partition, JSON round-trip, sample SD (`ddof = 1`), standard error, minimum-mean `best`, and Breiman et al. (1984) `one_se` rule (`larger_is_simpler` both ways) | Mathematics | 1e-14 |
-| `crossval.cv_task`, `crossval.cross_validate` | closed-form weighted linear ridge regression $(X_{T_k}^\top W_{T_k} X_{T_k} + \lambda I)^{-1} X_{T_k}^\top W_{T_k} y_{T_k}$ held-out score, raw $\chi^2$, and group breakdown; control: unmasked data leakage selects $\lambda \to 0$ on pure noise | Mathematics, statistics | < 1e-5 |
+| `crossval.cv_task`, `crossval.cross_validate` | closed-form weighted linear ridge regression held-out score, raw χ², and per-group breakdown across all folds; control: unmasked data leakage selects zero regularization on pure noise | Mathematics, statistics | < 1e-5 |
 
 

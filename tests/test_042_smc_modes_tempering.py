@@ -103,8 +103,69 @@ def test_smc_tempering_ref_against_quadrature_and_matrix_identities():
     err_bm_quad = abs(bm_ratio - 1.0)
     assert err_bm_quad < 1e-8
 
-    # Defensive Student-t mixture integrates to 1 over R^2
+    # Pointwise closed-form check + symmetry-image invariance + 2D normalization for defensive_mixture_log_q_ref
     inv_map = -np.eye(2)
+    x_pt = np.array([0.65, -0.40])
+    lp_fn = lambda pts: stats.multivariate_normal.logpdf(pts, mean=mu0, cov=cov0)
+    got_lq_pt = float(
+        ref.defensive_mixture_log_q_ref(
+            x_pt, [m1, m2], [-1.0, -1.5], [s1, s2], lp_fn, alpha=0.2, df=5.0, images=[inv_map]
+        )
+    )
+    lap1 = -1.0 + math.log(2.0 * math.pi) + 0.5 * math.log(float(linalg.det(s1)))
+    lap2 = -1.5 + math.log(2.0 * math.pi) + 0.5 * math.log(float(linalg.det(s2)))
+    w1_lap = math.exp(lap1) / (math.exp(lap1) + math.exp(lap2))
+    w2_lap = 1.0 - w1_lap
+    want_q_pt = 0.2 * float(stats.multivariate_normal.pdf(x_pt, mean=mu0, cov=cov0)) + 0.8 * (
+        0.5
+        * w1_lap
+        * (
+            float(stats.multivariate_t.pdf(x_pt, loc=m1, shape=s1, df=5.0))
+            + float(stats.multivariate_t.pdf(x_pt, loc=-m1, shape=s1, df=5.0))
+        )
+        + 0.5
+        * w2_lap
+        * (
+            float(stats.multivariate_t.pdf(x_pt, loc=m2, shape=s2, df=5.0))
+            + float(stats.multivariate_t.pdf(x_pt, loc=-m2, shape=s2, df=5.0))
+        )
+    )
+    err_dm_pt = abs(got_lq_pt - math.log(want_q_pt))
+    assert err_dm_pt < 1e-14
+
+    # Closed-form checks for logmeanexp_ref, laplace_log_evidence_ref, distinct_modes_ref, importance_diagnostics_ref
+    err_lme = abs(
+        ref.logmeanexp_ref(np.array([-1000.0, -1000.0 + math.log(3.0)]))
+        - (-1000.0 + math.log(2.0))
+    )
+    assert err_lme < 5e-13  # float64 ULP at magnitude 1000 is 2.22e-13
+    assert math.isinf(ref.logmeanexp_ref(np.array([-math.inf, -math.inf])))
+    err_lap = abs(ref.laplace_log_evidence_ref(-1.0, s1) - lap1)
+    assert err_lap < 1e-15
+
+    assert ref.distinct_modes_ref(
+        [np.array([0.0, 0.0]), np.array([0.8, 0.0]), np.array([1.2, 0.0])],
+        [5.0, 4.0, 3.0],
+        [np.eye(2), 0.01 * np.eye(2), np.eye(2)],
+        mahal=1.0,
+        two_sided=True,
+    ) == [0, 1, 2]
+    assert ref.distinct_modes_ref(
+        [np.array([0.0, 0.0]), np.array([0.8, 0.0]), np.array([1.2, 0.0])],
+        [5.0, 4.0, 3.0],
+        [np.eye(2), 0.01 * np.eye(2), np.eye(2)],
+        mahal=1.0,
+        two_sided=False,
+    ) == [0, 2]
+
+    imp_d = ref.importance_diagnostics_ref(np.array([0.0, math.log(3.0)]))
+    err_imp = max(
+        abs(imp_d["log_z"] - math.log(2.0)),
+        abs(imp_d["ess"] - 1.6),
+        abs(imp_d["log_z_error"] - math.sqrt(0.125)),
+    )
+    assert err_imp < 1e-15
+
     dm_norm, _ = integrate.dblquad(
         lambda y_c, x_c: math.exp(
             float(
@@ -113,7 +174,7 @@ def test_smc_tempering_ref_against_quadrature_and_matrix_identities():
                     [m1, m2],
                     [-1.0, -1.5],
                     [s1, s2],
-                    lambda pts: stats.multivariate_normal.logpdf(pts, mean=mu0, cov=cov0),
+                    lp_fn,
                     alpha=0.2,
                     df=5.0,
                     images=[inv_map],
@@ -130,7 +191,7 @@ def test_smc_tempering_ref_against_quadrature_and_matrix_identities():
     err_dm_norm = abs(dm_norm - 1.0)
     assert err_dm_norm < 5e-5
 
-    # Exact Toeplitz & equicorrelated quadratic-form identities 1^T Sigma 1 / n
+    # Exact Toeplitz, equicorrelated, finite-chain, lag-correlation, and block-DOF identities
     n_ch, rho, c_corr = 7, 0.68, 0.45
     idx = np.arange(n_ch)
     sigma_ar1 = rho ** np.abs(idx[:, None] - idx[None, :])
@@ -138,10 +199,44 @@ def test_smc_tempering_ref_against_quadrature_and_matrix_identities():
     np.fill_diagonal(sigma_cm, 1.0)
     err_ar1 = abs(ref.ar1_finite_chain_factor(n_ch, rho) - float(np.sum(sigma_ar1) / n_ch))
     err_cm = abs(ref.common_mode_chain_factor(n_ch, c_corr) - float(np.sum(sigma_cm) / n_ch))
+    err_ar1_lim = abs(
+        ref.ar1_finite_chain_factor(20000, rho) - ref.ar1_asymptotic_factor(rho)
+    )
     assert err_ar1 < 1e-14
     assert err_cm < 1e-14
+    assert err_ar1_lim < 1e-3
 
-    max_err = max(err_woodbury, err_beta_quad, err_bm_quad, err_ar1, err_cm)
+    f_raw_hw, f_fl_hw = ref.finite_chain_variance_ratio_ref(
+        [np.array([1.0, 2.0]), np.array([1.0, -1.0])]
+    )
+    _, f_alt_hw = ref.finite_chain_variance_ratio_ref([np.array([1.0, -1.0])])
+    rho1_hw, np1_hw = ref.chain_lag_correlation_ref([np.array([1.0, 2.0, 4.0])], lag=1)
+    rho2_hw, np2_hw = ref.chain_lag_correlation_ref([np.array([1.0, 2.0, 4.0])], lag=2)
+    err_temp_hw = max(
+        abs(f_raw_hw - 9.0 / 7.0),
+        abs(f_fl_hw - 9.0 / 7.0),
+        abs(f_alt_hw - 1.0),
+        abs(rho1_hw - 0.8),
+        abs(rho2_hw - 4.0 / 8.5),
+    )
+    assert err_temp_hw < 1e-15 and np1_hw == 2 and np2_hw == 1
+    assert ref.flat_signature_ref(0.4, 0.50, 400) is True
+    assert ref.flat_signature_ref(0.7, 0.52, 400) is False
+    assert ref.out_of_range_ref(1.0, 0.3) is True and ref.out_of_range_ref(1.4, 1.4) is False
+    assert ref.block_dof_ref({"a": 2.5, "b": 0.4}) == {"a": 0.4, "b": 1.0}
+
+    max_err = max(
+        err_woodbury,
+        err_beta_quad,
+        err_bm_quad,
+        err_dm_pt,
+        err_lme,
+        err_lap,
+        err_imp,
+        err_ar1,
+        err_cm,
+        err_temp_hw,
+    )
     record("max_ref_err", max_err)
     record("dm_tail_trunc_err", err_dm_norm)
 
@@ -229,9 +324,8 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
 
     lz_arr = np.asarray(res.log_z_replicates, dtype=np.float64)
     assert lz_arr.shape == (n_rep,)
+    assert float(res.log_z) == pytest.approx(ref.logmeanexp_ref(lz_arr), abs=1e-13)
     mean_lz_err = abs(float(res.log_z) - float(exact["log_z"]))
-    emp_se = float(np.std(lz_arr, ddof=1)) / math.sqrt(n_rep)
-    se_ratio = emp_se / float(res.log_z_error)
 
     pooled = np.asarray(res.particles)
     weights = np.asarray(res.weights)
@@ -248,9 +342,75 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     )
 
     assert mean_lz_err < max(4.0 * float(res.log_z_error), 0.05)
-    assert 0.25 <= se_ratio <= 3.00
     assert mean_zscore < 0.15
     assert cov_rel_err < 0.15
+
+    # Single-run (replicates=1) Lee-Whiteley genealogy SE calibration across 32 independent trials:
+    # under systematic resampling, Eve-index genealogy SE is slightly conservative (~1.3x empirical SD)
+    # relative to multinomial variance, and rules out any factor-of-2 genealogy bug.
+    c0_1d = -0.5 * math.log(2.0 * math.pi * 1.5)
+    cy_1d = -math.log(2.0 * math.pi) - 0.5 * math.log(0.10 * 0.12)
+    d_1d = jnp.array([[1.3], [-0.9]], dtype=jnp.float64)
+    y_1d = jnp.array([1.1, -0.7], dtype=jnp.float64)
+    py_1d = jnp.diag(jnp.array([10.0, 1.0 / 0.12], dtype=jnp.float64))
+    ex_1d = ref.gaussian_conjugate_tempering_ref(
+        np.array([0.2]), np.array([[1.5]]), np.array([[1.3], [-0.9]]), np.array([1.1, -0.7]), np.diag([0.10, 0.12])
+    )
+    single_lzs = []
+    single_ses = []
+    for t_idx in range(32):
+        r_single = vsmc.tempered_smc(
+            lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
+            lambda th: cy_1d - 0.5 * ((y_1d - d_1d @ th) @ py_1d @ (y_1d - d_1d @ th)),
+            lambda k_rng, n_p: 0.2 + math.sqrt(1.5) * jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
+            key=jax.random.PRNGKey(2000 + t_idx),
+            n_particles=384,
+            replicates=1,
+            steps=3,
+        )
+        single_lzs.append(float(r_single.log_z))
+        single_ses.append(float(r_single.log_z_error))
+    single_se_ratio = math.sqrt(float(np.mean(np.square(single_ses)))) / float(
+        np.std(single_lzs, ddof=1)
+    )
+    assert abs(float(np.mean(single_lzs)) - float(ex_1d["log_z"])) < 0.025
+    assert 0.85 <= single_se_ratio <= 1.65
+
+    # Dict particles ({"x": continuous, "k": discrete}) + custom Gibbs move leaving target invariant
+    def init_dict(k_rng, n_p):
+        kx, kk = jax.random.split(k_rng)
+        return {
+            "x": jax.random.normal(kx, (n_p, 1), dtype=jnp.float64),
+            "k": jax.random.bernoulli(kk, 0.5, (n_p,)).astype(jnp.int32),
+        }
+
+    def gibbs_k_move(k_rng, particle, logdensity):
+        ld0 = logdensity({**particle, "k": jnp.int32(0)})
+        ld1 = logdensity({**particle, "k": jnp.int32(1)})
+        k_new = jax.random.bernoulli(k_rng, jax.nn.sigmoid(ld1 - ld0)).astype(jnp.int32)
+        return {**particle, "k": k_new}, ()
+
+    res_dict = vsmc.tempered_smc(
+        lambda p: -0.5 * math.log(2.0 * math.pi) - 0.5 * jnp.sum(p["x"] ** 2) - math.log(2.0),
+        lambda p: -0.5 * math.log(2.0 * math.pi * 0.25**2)
+        - 0.5 * ((1.5 - (jnp.where(p["k"] == 1, 1.4, -1.2) + p["x"][0])) / 0.25) ** 2,
+        init_dict,
+        key=jax.random.PRNGKey(277),
+        n_particles=512,
+        steps=3,
+        moves=(gibbs_k_move,),
+    )
+    sd_marg = math.sqrt(1.0 + 0.25**2)
+    z_dict_exact = math.log(
+        0.5 * float(stats.norm.pdf(1.5, loc=-1.2, scale=sd_marg))
+        + 0.5 * float(stats.norm.pdf(1.5, loc=1.4, scale=sd_marg))
+    )
+    pk1_exact = 0.5 * float(stats.norm.pdf(1.5, loc=1.4, scale=sd_marg)) / math.exp(z_dict_exact)
+    pk1_got = float(
+        np.sum(np.asarray(res_dict.weights) * (np.asarray(res_dict.particles["k"]) == 1))
+    )
+    assert abs(float(res_dict.log_z) - z_dict_exact) < 0.15
+    assert abs(pk1_got - pk1_exact) < 0.05
 
     # Diagnostic flags: ess_target = 0.99 flags undersampled; max_stages = 1 stops early
     res_under = vsmc.tempered_smc(
@@ -277,7 +437,7 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     assert res_stopped.particles is None and math.isnan(res_stopped.log_z)
 
     record("abs_mean_log_z_err", mean_lz_err)
-    record("se_calibration_ratio", se_ratio)
+    record("se_calibration_ratio", single_se_ratio)
     record("posterior_mean_zscore", mean_zscore)
     record("posterior_cov_rel_err", cov_rel_err)
 
@@ -404,7 +564,33 @@ def test_bridge_smc_exact_linear_gaussian_bayes_factor():
     assert bf_err < 0.06
     assert cycle_err < 0.06
 
+    # Importance-weighted input cloud from an overdispersed proposal q(theta) = N(mean_1, 1.5 * cov_1)
+    prop_cov = 1.5 * np.asarray(r1["cov"])
+    prop_draws = rng.multivariate_normal(np.asarray(r1["mean"]), prop_cov, size=4096)
+    log_q = stats.multivariate_normal.logpdf(
+        prop_draws, mean=np.asarray(r1["mean"]), cov=prop_cov
+    )
+    log_p1 = np.asarray(jax.vmap(lambda th: logprior(th) + loglike_1(th))(jnp.asarray(prop_draws)))
+    lw_imp = log_p1 - log_q
+    lw_imp -= np.max(lw_imp)
+    w_imp = np.exp(lw_imp)
+    w_imp /= np.sum(w_imp)
+    fwd_weighted = vsmc.bridge_smc(
+        logprior,
+        loglike_1,
+        loglike_2,
+        jnp.asarray(prop_draws),
+        weights=jnp.asarray(w_imp),
+        n_particles=1536,
+        key=jax.random.PRNGKey(53),
+        steps=6,
+    )
+    weighted_bf_err = abs(float(fwd_weighted.log_z) - want_log_bf)
+    assert not fwd_weighted.stopped
+    assert weighted_bf_err < 0.08
+
     record("bridge_log_bf_err", bf_err)
+    record("bridge_weighted_bf_err", weighted_bf_err)
     record("bridge_cycle_err", cycle_err)
 
 
@@ -463,14 +649,20 @@ def test_smc_unnormalized_loglike_and_swapped_bridge_controls():
     "virgil.mode_search.Mode",
     "virgil.mode_search.logmeanexp",
     "virgil.mode_search.laplace_log_evidence",
+    roots=["mathematics"],
+    headline="max_laplace_err",
+)
+@pytest.mark.validates(
     "virgil.mode_search.distinct_modes",
+    property="two_sided_dedup",
     roots=["mathematics"],
     headline="max_laplace_err",
 )
 def test_mode_search_laplace_logmeanexp_and_two_sided_distinct_modes():
     """laplace_log_evidence and logmeanexp match closed forms to machine
     precision, and distinct_modes enforces two-sided Mahalanobis deduplication
-    so broad covariances never swallow sharp needle modes."""
+    at the documented threshold d^2 = 1.0 so broad covariances never swallow
+    sharp needle modes."""
     vals = jnp.array([-850.0, -848.5, -852.1, -849.0], dtype=jnp.float64)
     lme_err = abs(float(vms.logmeanexp(vals)) - ref.logmeanexp_ref(np.asarray(vals)))
     assert lme_err < 1e-13
@@ -509,12 +701,23 @@ def test_mode_search_laplace_logmeanexp_and_two_sided_distinct_modes():
         [np.asarray(m.x) for m in candidates],
         [m.log_target for m in candidates],
         [np.asarray(m.cov) for m in candidates],
-        mahal=vms.MAHAL,
+        mahal=1.0,
         two_sided=True,
     )
     assert len(kept) == len(want_idx) == 3
     for got_m, idx in zip(kept, want_idx, strict=True):
         np.testing.assert_allclose(np.asarray(got_m.x), np.asarray(candidates[idx].x), atol=1e-15)
+
+    # Unit-covariance boundary check around documented squared-Mahalanobis threshold 1.0
+    m_origin = vms.Mode(x=jnp.array([0.0, 0.0]), log_target=5.0, cov=jnp.eye(2), n_inliers=4.0)
+    m_inside = vms.Mode(
+        x=jnp.array([math.sqrt(0.94), 0.0]), log_target=4.0, cov=jnp.eye(2), n_inliers=4.0
+    )
+    m_outside = vms.Mode(
+        x=jnp.array([math.sqrt(1.06), 0.0]), log_target=4.0, cov=jnp.eye(2), n_inliers=4.0
+    )
+    assert len(vms.distinct_modes([m_origin, m_inside])) == 1
+    assert len(vms.distinct_modes([m_origin, m_outside])) == 2
 
     record("max_laplace_err", max_lap_err)
     record("logmeanexp_err", lme_err)
@@ -522,6 +725,7 @@ def test_mode_search_laplace_logmeanexp_and_two_sided_distinct_modes():
 
 @pytest.mark.validates(
     "virgil.mode_search.distinct_modes",
+    property="two_sided_dedup",
     roots=["mathematics"],
     kind="control",
     headline="swallowed_needle_modes",
@@ -547,7 +751,7 @@ def test_distinct_modes_one_sided_mahalanobis_control():
         [np.asarray(m.x) for m in candidates],
         [m.log_target for m in candidates],
         [np.asarray(m.cov) for m in candidates],
-        mahal=vms.MAHAL,
+        mahal=1.0,
         two_sided=False,
     )
     swallowed = len(kept_two_sided) - len(kept_one_sided)
@@ -637,11 +841,22 @@ def test_defensive_mixture_log_density_symmetry_and_sampling():
 
 
 @pytest.mark.validates(
-    "virgil.mode_search.importance_evidence",
     "virgil.mode_search.Evidence",
     "virgil.mode_search.resample_move",
     "virgil.mode_search.Move",
     roots=["mathematics", "statistics"],
+    headline="is_log_z_err",
+)
+@pytest.mark.validates(
+    "virgil.mode_search.importance_evidence",
+    property="is_estimator",
+    roots=["mathematics", "statistics"],
+    headline="is_log_z_err",
+)
+@pytest.mark.validates(
+    "virgil.mode_search.importance_evidence",
+    property="ess_floor",
+    roots=["mathematics"],
     headline="is_log_z_err",
 )
 def test_importance_evidence_floor_sentinel_and_resample_move():
@@ -758,10 +973,21 @@ def test_importance_evidence_floor_sentinel_and_resample_move():
 
 @pytest.mark.validates(
     "virgil.tempering.ChannelFactors",
-    "virgil.tempering.estimate_factors",
     "virgil.tempering.block_dof",
     "virgil.tempering.out_of_range",
     "virgil.tempering.flat_signature",
+    roots=["mathematics"],
+    headline="max_factor_err",
+)
+@pytest.mark.validates(
+    "virgil.tempering.estimate_factors",
+    property="variance_ratio",
+    roots=["mathematics"],
+    headline="max_factor_err",
+)
+@pytest.mark.validates(
+    "virgil.tempering.estimate_factors",
+    property="fallback_rules",
     roots=["mathematics"],
     headline="max_factor_err",
 )
@@ -830,10 +1056,15 @@ def test_tempering_exact_variance_ratio_floor_fallback_and_range_flags():
 
 
 @pytest.mark.validates(
-    "virgil.tempering.estimate_factors",
     "virgil.tempering.flat_signature",
     "virgil.tempering.channel_chains",
     "virgil.tempering.adjacent_channels",
+    roots=["mathematics", "statistics"],
+    headline="ar1_finite_chain_err",
+)
+@pytest.mark.validates(
+    "virgil.tempering.estimate_factors",
+    property="variance_ratio",
     roots=["mathematics", "statistics"],
     headline="ar1_finite_chain_err",
 )
@@ -910,6 +1141,7 @@ def test_tempering_finite_ar1_common_mode_and_oidata_channel_chains(tmp_path):
 
 @pytest.mark.validates(
     "virgil.tempering.estimate_factors",
+    property="variance_ratio",
     roots=["mathematics", "statistics"],
     kind="control",
     headline="asymptotic_bartlett_overprediction",

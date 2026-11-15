@@ -4,8 +4,13 @@ channel tempering, Jeffreys outlier mixtures, linearized flux Bayes factors,
 Gauss-Newton unconstrained precision, and K-fold ridge cross-validation.
 
 This module belongs to ``crosscheck`` and shares nothing with ``virgil``: it
-uses only the Python standard library, NumPy, and SciPy, with every formula
-derived from published statistical references cited in each docstring.
+uses only the Python standard library, NumPy, and SciPy. Published statistical
+and mathematical identities cite their literature sources in each docstring;
+helpers that encode ``virgil``'s documented internal diagnostic or deduplication
+specifications (``distinct_modes_ref``, ``chain_lag_correlation_ref``,
+``flat_signature_ref``, and ``out_of_range_ref``) explicitly state that they
+implement ``virgil``'s documented API specification rather than an external
+published theorem.
 """
 
 from __future__ import annotations
@@ -194,7 +199,10 @@ def distinct_modes_ref(
     two_sided: bool = True,
 ) -> list[int]:
     r"""Greedy highest-peak-first mode deduplication returning the kept original
-    indices.
+    indices, implementing the documented deduplication specification of
+    ``virgil.mode_search.distinct_modes`` (a documented ``virgil`` API rule with
+    default squared-Mahalanobis threshold ``mahal = 1.0``, rather than an
+    external published theorem).
 
     With ``two_sided=True``, candidate :math:`b` is merged into an already-kept
     mode :math:`a` if and only if the squared Mahalanobis distance is below
@@ -387,7 +395,8 @@ def chain_lag_correlation_ref(
     chains_z: Sequence[np.ndarray], lag: int = 1
 ) -> tuple[float, int]:
     """Zero-mean standardized lag-``k`` correlation across spectral chains,
-    normalized by the symmetric endpoint mean-square ``0.5 * (a.a + b.b)``."""
+    implementing ``virgil.tempering``'s documented symmetric endpoint
+    mean-square normalization ``0.5 * (a.a + b.b)`` (``docs/api/tempering.md``)."""
     a_parts = []
     b_parts = []
     for ch in chains_z:
@@ -409,7 +418,15 @@ def flat_signature_ref(
     rho1: float, rho2: float, n_pairs2: int, flat_excess: float = 0.15
 ) -> bool:
     """Lag-2 excess test distinguishing a flat baseline offset (``rho2 ~ rho1``)
-    from geometric AR(1) decay (``rho2 ~ rho1^2``)."""
+    from geometric AR(1) decay (``rho2 ~ rho1^2``), implementing the documented
+    diagnostic rule of ``virgil.tempering.flat_signature``
+    (``docs/api/tempering.md``: ``rho2 - rho1**2 > max(0.15, 3 / sqrt(n_pairs2))``).
+
+    Note: ``1 / sqrt(n_pairs2)`` is the white-noise lag-2 standard-error scale;
+    under a stationary AR(1) null with nonzero ``rho1``, Bartlett's formula
+    (Bartlett 1946, *J. R. Stat. Soc. Suppl.* 8, 27) gives an asymptotic
+    variance for ``rho2 - rho1**2`` that depends on ``rho1``.
+    """
     if n_pairs2 <= 0 or math.isnan(rho1) or math.isnan(rho2):
         return False
     excess = float(rho2) - float(rho1) ** 2
@@ -419,7 +436,9 @@ def flat_signature_ref(
 def out_of_range_ref(
     f: float, f_raw: float | None = None, flag_range: tuple[float, float] = (0.5, 2.0)
 ) -> bool:
-    """Flag strong anticorrelation (``f_raw < 0.5``) or strong positive correlation (``f > 2.0``)."""
+    """Flag strong anticorrelation (``f_raw < 0.5``) or strong positive
+    correlation (``f > 2.0``), implementing the documented diagnostic bounds of
+    ``virgil.tempering.out_of_range`` (``docs/api/tempering.md``)."""
     lo, hi = flag_range
     if float(f) > hi:
         return True

@@ -20,7 +20,7 @@ import numpyro.distributions as dist
 from numpyro.infer import NUTS
 import optax
 import pytest
-from scipy import integrate, linalg, optimize
+from scipy import integrate, linalg, optimize, special, stats
 
 from crosscheck import chi2 as xchi2, simulate as xsim, sky as xsky, smc_tempering_ref as ref
 from evidence.plugin import record
@@ -64,10 +64,13 @@ def _binary_cloud(flux: float, dra: float, ddec: float) -> xsky.Cloud:
     headline="max_outlier_quad_vs_subset_err",
 )
 def test_smc_tempering_ref_outlier_flux_and_ridge_identities():
-    """Verify crosscheck.smc_tempering_ref's exact combinatorial Jeffreys
-    subset expansion against continuous theta-quadrature, Luger Gaussian Bayes
-    factor against 1D quadrature, and closed-form ridge CV against numerical
-    minimization."""
+    """Verify every remaining oracle helper in crosscheck.smc_tempering_ref
+    against closed-form analytical identities and independent quadrature:
+    Jeffreys Beta(1/2, 1/2) subset & K=2 weights, all 3 outputs of Gaussian and
+    LogUniform linear-flux priors (including exp1/erf closed forms at f_hat=0),
+    all folds and aggregate rules of K-fold ridge CV, analytical nonlinear
+    Jacobian pullback for gauss_newton_precision_fd_ref, and analytical
+    correlated bivariate Gaussian moments/quantiles for posterior_2d_grid_moments_ref."""
     rng = np.random.default_rng(1024)
     max_sub_err = 0.0
     for k_groups in (1, 5, 10):
@@ -76,44 +79,173 @@ def test_smc_tempering_ref_outlier_flux_and_ridge_identities():
         lz_q, q_q = ref.beta_outlier_mixture_quad_ref(ll, ol, alpha=0.5, beta_param=0.5)
         lz_s, q_s = ref.jeffreys_outlier_mixture_exact_subset_ref(ll, ol)
         max_sub_err = max(max_sub_err, abs(lz_q - lz_s), float(np.max(np.abs(q_q - q_s))))
+    # Hand-expanded K = 2 Jeffreys weights: E[(1-e)^2] = 3/8, E[e(1-e)] = 1/8, E[e^2] = 3/8
+    ll2 = np.array([-1.2, -0.4])
+    ol2 = np.array([-0.7, -2.1])
+    L0, L1 = np.exp(ll2)
+    B0, B1 = np.exp(ol2)
+    z2_hand = 0.375 * L0 * L1 + 0.125 * (B0 * L1 + L0 * B1) + 0.375 * B0 * B1
+    q2_hand = np.array(
+        [(0.125 * B0 * L1 + 0.375 * B0 * B1) / z2_hand, (0.125 * L0 * B1 + 0.375 * B0 * B1) / z2_hand]
+    )
+    lz2_s, q2_s = ref.jeffreys_outlier_mixture_exact_subset_ref(ll2, ol2)
+    max_sub_err = max(max_sub_err, abs(lz2_s - math.log(z2_hand)), float(np.max(np.abs(q2_s - q2_hand))))
     assert max_sub_err < 1e-13
 
-    # Luger Gaussian prior Bayes factor vs direct quadrature over (-inf, inf)
+    # Luger Gaussian prior: log_bayes_factor, posterior_mean, and posterior_sd vs 1D quadrature
     fh, sf, mu0, tau0 = 0.024, 0.005, 0.004, 0.03
     g_closed = ref.linear_flux_gaussian_prior_ref(np.array([fh]), np.array([sf]), mu0, tau0)
-    bf_quad, _ = integrate.quad(
-        lambda f: math.exp(0.5 * (fh / sf) ** 2 - 0.5 * ((f - fh) / sf) ** 2)
+    g_weight = lambda f: (
+        math.exp(0.5 * (fh / sf) ** 2 - 0.5 * ((f - fh) / sf) ** 2)
         * math.exp(-0.5 * ((f - mu0) / tau0) ** 2)
-        / (tau0 * math.sqrt(2.0 * math.pi)),
-        -0.5,
-        0.5,
-        epsabs=1e-13,
-        epsrel=1e-13,
+        / (tau0 * math.sqrt(2.0 * math.pi))
     )
-    err_luger = abs(float(g_closed["log_bayes_factor"][0]) - math.log(bf_quad))
+    bf_quad, _ = integrate.quad(g_weight, -0.5, 0.5, epsabs=1e-14, epsrel=1e-13)
+    gm1_quad, _ = integrate.quad(lambda f: f * g_weight(f), -0.5, 0.5, epsabs=1e-14, epsrel=1e-13)
+    g_mean_q = gm1_quad / bf_quad
+    gv2_quad, _ = integrate.quad(
+        lambda f: ((f - g_mean_q) ** 2) * g_weight(f), -0.5, 0.5, epsabs=1e-14, epsrel=1e-13
+    )
+    err_luger = max(
+        abs(float(g_closed["log_bayes_factor"][0]) - math.log(bf_quad)),
+        abs(float(g_closed["posterior_mean"][0]) - g_mean_q),
+        abs(float(g_closed["posterior_sd"][0]) - math.sqrt(gv2_quad / bf_quad)),
+    )
     assert err_luger < 1e-12
 
-    # Ridge K-fold solution matches direct BFGS minimization on the training fold
+    # LogUniform linear-flux prior: exact exp1/erf closed forms at f_hat = 0 + linear-f quad at f_hat > 0
+    f_min, f_max, sf0 = 1e-3, 0.08, 0.01
+    lu0 = ref.linear_flux_loguniform_prior_ref(0.0, sf0, f_min, f_max)
+    a_lo = 0.5 * (f_min / sf0) ** 2
+    a_hi = 0.5 * (f_max / sf0) ** 2
+    j0 = 0.5 * float(special.exp1(a_lo) - special.exp1(a_hi))
+    j1 = sf0 * math.sqrt(0.5 * math.pi) * float(special.erf(math.sqrt(a_hi)) - special.erf(math.sqrt(a_lo)))
+    j2 = (sf0**2) * (math.exp(-a_lo) - math.exp(-a_hi))
+    lu0_mean_exact = j1 / j0
+    lu0_sd_exact = math.sqrt(j2 / j0 - lu0_mean_exact**2)
+    lu0_bf_exact = math.log(j0 / math.log(f_max / f_min))
+    err_lu_ref = max(
+        abs(lu0["log_bayes_factor"] - lu0_bf_exact),
+        abs(lu0["posterior_mean"] - lu0_mean_exact),
+        abs(lu0["posterior_sd"] - lu0_sd_exact),
+    )
+    lu_pos = ref.linear_flux_loguniform_prior_ref(fh, sf, f_min, f_max)
+    span_lu = math.log(f_max / f_min)
+    peak_lu = 0.5 * (fh / sf) ** 2
+    lu_f_w = lambda f: math.exp(-0.5 * ((f - fh) / sf) ** 2) / (f * span_lu)
+    z_lu_f, _ = integrate.quad(lu_f_w, f_min, f_max, points=[fh], epsabs=1e-14, epsrel=1e-13)
+    m1_lu_f, _ = integrate.quad(lambda f: f * lu_f_w(f), f_min, f_max, points=[fh], epsabs=1e-14, epsrel=1e-13)
+    mean_lu_f = m1_lu_f / z_lu_f
+    v2_lu_f, _ = integrate.quad(
+        lambda f: ((f - mean_lu_f) ** 2) * lu_f_w(f), f_min, f_max, points=[fh], epsabs=1e-14, epsrel=1e-13
+    )
+    err_lu_ref = max(
+        err_lu_ref,
+        abs(lu_pos["log_bayes_factor"] - (peak_lu + math.log(z_lu_f))),
+        abs(lu_pos["posterior_mean"] - mean_lu_f),
+        abs(lu_pos["posterior_sd"] - math.sqrt(v2_lu_f / z_lu_f)),
+    )
+    assert err_lu_ref < 1e-12
+
+    # Ridge K-fold CV across all folds (theta_hat, score, chi2, group_score) + aggregate_cv_ref
     x_mat = rng.normal(size=(12, 3))
     sig = rng.uniform(0.1, 0.3, size=12)
     y = x_mat @ np.array([0.8, -0.5, 0.3]) + rng.normal(0.0, 0.05, size=12)
     fold = np.tile(np.arange(3), 4)
-    recs = ref.ridge_kfold_cv_ref(x_mat, y, sig, fold, [0.4], include_log_norm=True)
-    tr0 = fold != 0
-    opt = optimize.minimize(
-        lambda th: 0.5 * np.sum(((y[tr0] - x_mat[tr0] @ th) / sig[tr0]) ** 2)
-        + 0.5 * 0.4 * np.sum(th**2),
-        np.zeros(3),
-        jac=lambda th: -(x_mat[tr0].T @ ((y[tr0] - x_mat[tr0] @ th) / (sig[tr0] ** 2))) + 0.4 * th,
-        method="BFGS",
-        options={"gtol": 1e-13},
-    )
-    err_ridge = float(linalg.norm(recs[0]["theta_hat"] - opt.x))
+    grps = np.where(np.arange(12) < 6, 0, 1)
+    recs = ref.ridge_kfold_cv_ref(x_mat, y, sig, fold, [0.1, 0.4, 2.0], groups=grps, include_log_norm=True)
+    err_ridge = 0.0
+    for rec in recs:
+        lam_v = rec["setting"]
+        k_id = rec["fold"]
+        tr_m = fold != k_id
+        te_m = fold == k_id
+        opt = optimize.minimize(
+            lambda th, tm=tr_m, lv=lam_v: 0.5 * np.sum(((y[tm] - x_mat[tm] @ th) / sig[tm]) ** 2)
+            + 0.5 * lv * np.sum(th**2),
+            np.zeros(3),
+            jac=lambda th, tm=tr_m, lv=lam_v: -(x_mat[tm].T @ ((y[tm] - x_mat[tm] @ th) / (sig[tm] ** 2)))
+            + lv * th,
+            method="BFGS",
+            options={"gtol": 1e-13},
+        )
+        r_te = (y[te_m] - x_mat[te_m] @ opt.x) / sig[te_m]
+        c2_want = float(np.sum(r_te**2))
+        sc_want = 0.5 * c2_want + float(np.sum(np.log(sig[te_m])))
+        g0_m = grps[te_m] == 0
+        g0_sc = 0.5 * float(np.sum(r_te[g0_m] ** 2)) + float(np.sum(np.log(sig[te_m][g0_m])))
+        err_ridge = max(
+            err_ridge,
+            float(linalg.norm(rec["theta_hat"] - opt.x)),
+            abs(rec["chi2"] - c2_want),
+            abs(rec["score"] - sc_want),
+            abs(rec["group_score"][0] - g0_sc),
+        )
     assert err_ridge < 1e-10
 
+    agg_hand = ref.aggregate_cv_ref(
+        [
+            {"setting": 0.1, "fold": 0, "score": 2.0, "chi2": 4.0},
+            {"setting": 0.1, "fold": 1, "score": 4.0, "chi2": 8.0},
+            {"setting": 0.1, "fold": 2, "score": 3.0, "chi2": 6.0},
+            {"setting": 1.0, "fold": 0, "score": 2.4, "chi2": 4.8},
+            {"setting": 1.0, "fold": 1, "score": 3.4, "chi2": 6.8},
+            {"setting": 1.0, "fold": 2, "score": 4.4, "chi2": 8.8},
+        ],
+        larger_is_simpler=True,
+    )
+    # Setting 0.1 has mean 3.0, sample SD 1.0, SE 1/sqrt(3) = 0.57735; setting 1.0 has mean 3.4 <= 3.57735
+    assert agg_hand["best"] == 0 and agg_hand["one_se"] == 1
+    assert abs(float(agg_hand["se"][0]) - 1.0 / math.sqrt(3.0)) < 1e-15
+
+    # Analytical nonlinear Jacobian pullback check for gauss_newton_precision_fd_ref
+    z_nl = np.array([math.log(1.5), -0.4])
+    gn_fd = ref.gauss_newton_precision_fd_ref(
+        lambda z: np.array([math.sqrt(2.0) * math.exp(z[0]) - 1.0, z[1] - 2.0 * z[0]]),
+        lambda z: -0.5 * (4.0 * z[0] ** 2 + 9.0 * z[1] ** 2),
+        z_nl,
+    )
+    j_exact = np.array([[math.sqrt(2.0) * 1.5, 0.0], [-2.0, 1.0]])
+    f_exact = j_exact.T @ j_exact + np.diag([4.0, 9.0])
+    inv_exact = linalg.inv(f_exact)
+    sd_e = np.sqrt(np.diag(inv_exact))
+    cond_exact = float(np.linalg.cond(inv_exact / np.outer(sd_e, sd_e)))
+    err_gn_ref = max(
+        float(linalg.norm(np.asarray(gn_fd["precision"]) - f_exact)),
+        float(linalg.norm(np.asarray(gn_fd["inverse_mass"]) - inv_exact)),
+        abs(float(gn_fd["condition"]) - cond_exact),
+    )
+    assert err_gn_ref < 1e-5  # second-order prior FD at eps_p = 1e-5 has ~1e-6 float64 rounding floor
+
+    # Analytical correlated bivariate Gaussian check for posterior_2d_grid_moments_ref
+    mu_2d = np.array([1.2, -0.7])
+    cov_2d = np.array([[0.36, -0.18], [-0.18, 0.25]])
+    prec_2d = linalg.inv(cov_2d)
+    log_z_2d_want = 1.75 + math.log(2.0 * math.pi) + 0.5 * math.log(float(linalg.det(cov_2d)))
+
+    def biv_log_post(xx: np.ndarray, yy: np.ndarray) -> np.ndarray:
+        dx = xx - mu_2d[0]
+        dy = yy - mu_2d[1]
+        q_form = prec_2d[0, 0] * dx**2 + 2.0 * prec_2d[0, 1] * dx * dy + prec_2d[1, 1] * dy**2
+        return 1.75 - 0.5 * q_form
+
+    g2d = ref.posterior_2d_grid_moments_ref(biv_log_post, (-3.6, 6.0), (-4.7, 3.3), n_grid=301)
+    z_q = stats.norm.ppf([0.16, 0.50, 0.84])
+    err_2d_mom = max(
+        abs(float(g2d["log_z"]) - log_z_2d_want),
+        float(np.max(np.abs(np.asarray(g2d["mean"]) - mu_2d))),
+        float(np.max(np.abs(np.asarray(g2d["cov"]) - cov_2d))),
+    )
+    err_2d_quant = max(
+        float(np.max(np.abs(np.asarray(g2d["quantiles_x"]) - (1.2 + 0.6 * z_q)))),
+        float(np.max(np.abs(np.asarray(g2d["quantiles_y"]) - (-0.7 + 0.5 * z_q)))),
+    )
+    assert err_2d_mom < 1e-9
+    assert err_2d_quant < 5e-4  # trapezoid + linear CDF interpolation at dx = 0.032
+
     record("max_outlier_quad_vs_subset_err", max_sub_err)
-    record("luger_quad_err", err_luger)
-    record("ridge_opt_err", err_ridge)
+    record("luger_quad_err", max(err_luger, err_lu_ref))
+    record("ridge_opt_err", max(err_ridge, err_gn_ref, err_2d_mom))
 
 
 # ---------------------------------------------------------------------------
@@ -367,6 +499,7 @@ def test_grid_fit_gaussian_loguniform_and_linear_flux_grid(tmp_path):
     res_lu = vgf.linear_flux_grid(BinaryModelCartesian, oid, grid, prior=lu_prior)
     err_lu_bf = 0.0
     err_lu_mean = 0.0
+    err_lu_sd = 0.0
     for i in range(grid["dra"].size):
         for j in range(grid["ddec"].size):
             want_lu = ref.linear_flux_loguniform_prior_ref(
@@ -377,8 +510,22 @@ def test_grid_fit_gaussian_loguniform_and_linear_flux_grid(tmp_path):
             )
             err_lu_bf = max(err_lu_bf, abs(float(res_lu.log_bayes_factor[i, j]) - want_lu["log_bayes_factor"]))
             err_lu_mean = max(err_lu_mean, abs(float(res_lu.posterior_mean[i, j]) - want_lu["posterior_mean"]))
+            err_lu_sd = max(err_lu_sd, abs(float(res_lu.posterior_sd[i, j]) - want_lu["posterior_sd"]))
     assert err_lu_bf < 1e-7
     assert err_lu_mean < 1e-7
+    assert err_lu_sd < 1e-7
+
+    # Direct NumPyro dist.Normal and dist.LogUniform coercion matches Gaussian and LogUniform wrappers
+    res_dist_g = vgf.linear_flux_grid(
+        BinaryModelCartesian, oid, grid, prior=dist.Normal(g_prior.mean, g_prior.sd)
+    )
+    res_dist_lu = vgf.linear_flux_grid(
+        BinaryModelCartesian, oid, grid, prior=dist.LogUniform(lu_prior.f_min, lu_prior.f_max)
+    )
+    np.testing.assert_allclose(res_dist_g.log_bayes_factor, res_g.log_bayes_factor, atol=1e-14)
+    np.testing.assert_allclose(res_dist_g.posterior_sd, res_g.posterior_sd, atol=1e-14)
+    np.testing.assert_allclose(res_dist_lu.log_bayes_factor, res_lu.log_bayes_factor, atol=1e-14)
+    np.testing.assert_allclose(res_dist_lu.posterior_sd, res_lu.posterior_sd, atol=1e-14)
 
     # Exact Occam factor at the high-SNR peak (0, 0) when widening LogUniform bounds across empty tails
     lu_wide = vgf.LogUniform(1e-5, 0.8)
@@ -387,7 +534,7 @@ def test_grid_fit_gaussian_loguniform_and_linear_flux_grid(tmp_path):
     got_occam = float(res_wide.log_bayes_factor[0, 0] - res_lu.log_bayes_factor[0, 0])
     assert abs(got_occam - want_occam) < 1e-9
 
-    max_bf_err = max(err_g_bf, err_lu_bf)
+    max_bf_err = max(err_g_bf, err_lu_bf, err_lu_sd)
     record("max_prior_bf_err", max_bf_err)
     record("occam_shift_err", abs(got_occam - want_occam))
 
@@ -464,7 +611,80 @@ def test_optimized_likelihood_grid_matches_independent_brent_profile(tmp_path):
     assert np.all(got_ll >= fixed_ll - 1e-9)
     assert float(got_ll[0, 0] - fixed_ll[0, 0]) > 25.0
 
-    record("max_opt_ll_err", max_err)
+    # 4-UT V^2 + correlated closure-phase dataset on noisy companion-free data,
+    # exercising chord closure-phase residuals and unconstrained negative-flux noise troughs
+    uts4 = np.array(
+        [[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]]
+    )
+    fits_cp = tmp_path / "null_v2_cp_4ut.fits"
+    xsim.observe(
+        fits_cp,
+        lambda u, v, wl: xsky.visibility(_binary_cloud(0.0, 0.0, 0.0), u, v, wl),
+        uts4,
+        hour_angles_h=[-1.0, 0.0, 1.0],
+        wavelengths=np.array([2.0e-6, 2.2e-6]),
+        sigma_v2=0.015,
+        sigma_cp_deg=0.8,
+        rng=np.random.default_rng(42),
+    )
+    oid_cp = OIData(read_oifits(str(fits_cp)))
+    loaded_cp = xchi2.load(fits_cp)
+
+    # Negative seed values in grid["flux"] are rejected by check_flux_axes
+    with pytest.raises(ValueError):
+        vgf.optimized_likelihood_grid(
+            BinaryModelCartesian,
+            oid_cp,
+            {"dra": np.array([5.0]), "ddec": np.array([5.0]), "flux": np.array([-0.01, 0.01])},
+        )
+
+    dra_cp = np.array([-6.0, 5.5, 11.0])
+    ddec_cp = np.array([-7.0, 6.5])
+    grid_cp = {"dra": dra_cp, "ddec": ddec_cp, "flux": np.array([0.002, 0.02])}
+    got_cp_ll = np.asarray(vgf.optimized_likelihood_grid(BinaryModelCartesian, oid_cp, grid_cp))
+    null_cp_ll = float(
+        vgf.likelihood_grid(
+            BinaryModelCartesian,
+            data=oid_cp,
+            grid={"dra": np.array([0.0]), "ddec": np.array([0.0]), "flux": np.array([0.0])},
+        )[0, 0, 0]
+    )
+    null_cp_c2 = float(
+        xchi2.chi2(
+            loaded_cp,
+            lambda u, v, wl: xsky.visibility(_binary_cloud(0.0, 0.0, 0.0), u, v, wl),
+            correlated=True,
+            sine=True,
+        )
+    )
+    cp_const = null_cp_ll + 0.5 * null_cp_c2
+
+    want_cp_ll = np.empty_like(got_cp_ll)
+    best_fluxes = []
+    for i, dra in enumerate(dra_cp):
+        for j, ddec in enumerate(ddec_cp):
+            def half_cp_chi2(f_val: float, dx: float = float(dra), dy: float = float(ddec)) -> float:
+                c = _binary_cloud(f_val, dx, dy)
+                return 0.5 * float(
+                    xchi2.chi2(
+                        loaded_cp,
+                        lambda u, v, wl, cl=c: xsky.visibility(cl, u, v, wl),
+                        correlated=True,
+                        sine=True,
+                    )
+                )
+
+            r_pos = optimize.minimize_scalar(half_cp_chi2, bounds=(0.0, 0.25), method="bounded")
+            r_neg = optimize.minimize_scalar(half_cp_chi2, bounds=(-0.25, 0.0), method="bounded")
+            best_res = r_neg if r_neg.fun < r_pos.fun else r_pos
+            best_fluxes.append(float(best_res.x))
+            want_cp_ll[i, j] = cp_const - float(best_res.fun)
+
+    assert min(best_fluxes) < -3e-4 and max(best_fluxes) > 3e-4  # both negative-flux troughs and positive peaks tested
+    max_cp_err = float(np.max(np.abs(got_cp_ll - want_cp_ll)))
+    assert max_cp_err < 1e-5
+
+    record("max_opt_ll_err", max(max_err, max_cp_err))
 
 
 @pytest.mark.validates(
@@ -905,6 +1125,7 @@ def test_gauss_newton_mass_rejects_constrained_space_jacobian_omission(tmp_path)
         closure_phases=False,
     )
     oid = OIData(read_oifits(str(fits_path)))
+    loaded_ctrl = xchi2.load(fits_path)
     priors = {
         "dra": dist.Normal(9.0, 5.0),
         "ddec": dist.Normal(-6.0, 5.0),
@@ -917,10 +1138,38 @@ def test_gauss_newton_mass_rejects_constrained_space_jacobian_omission(tmp_path)
     flux_idx = site_order.index("flux")
     var_z_flux = float(gnm["inverse_mass_matrix"][site_order][flux_idx, flux_idx])
 
-    # Constrained-space Fisher variance var(f) differs from unconstrained var(ln f) by ~ f^2
+    # Compute constrained-space Gauss-Newton covariance wrt (dra, ddec, flux) WITHOUT the exp(z_flux) pullback
+    x_star = np.array([float(fres.values[k]) for k in site_order], dtype=np.float64)
+    u_c = loaded_ctrl["u"].ravel()
+    v_c = loaded_ctrl["v"].ravel()
+    wl_c = loaded_ctrl["wl"].ravel()
+    v2_c, dv2_c = loaded_ctrl["v2"].ravel(), loaded_ctrl["dv2"].ravel()
+
+    def constrained_residual_fn(x_vec: np.ndarray) -> np.ndarray:
+        p = dict(zip(site_order, x_vec, strict=True))
+        c = _binary_cloud(float(p["flux"]), float(p["dra"]), float(p["ddec"]))
+        return ((np.abs(xsky.visibility(c, u_c, v_c, wl_c)) ** 2).ravel() - v2_c) / dv2_c
+
+    def constrained_log_prior_fn(x_vec: np.ndarray) -> float:
+        p = dict(zip(site_order, x_vec, strict=True))
+        f_p = float(p["flux"])
+        return float(
+            -0.5 * ((float(p["dra"]) - 9.0) / 5.0) ** 2
+            - 0.5 * ((float(p["ddec"]) - (-6.0)) / 5.0) ** 2
+            - math.log(f_p)
+            - 0.5 * ((math.log(f_p) - math.log(0.025)) / 1.0) ** 2
+        )
+
+    gn_constrained = ref.gauss_newton_precision_fd_ref(
+        constrained_residual_fn, constrained_log_prior_fn, x_star
+    )
+    var_flux_constrained = float(np.asarray(gn_constrained["inverse_mass"])[flux_idx, flux_idx])
     f_val = float(fres.values["flux"])
-    ratio = 1.0 / (f_val**2)
-    assert var_z_flux > 1e-4 and ratio > 1000.0
+    measured_ratio = var_z_flux / var_flux_constrained
+    pullback_rel_err = abs(var_z_flux - var_flux_constrained / (f_val**2)) / var_z_flux
+    assert measured_ratio > 1.0e3
+    # Data J^T J pulls back by exact f^2; constrained -ln(f) prior adds +1/f^2 (~7e-4 relative)
+    assert pullback_rel_err < 2e-3
 
     # Unconstrained uninformative direction ignored by model raises SingularCurvature
     with pytest.raises(vfit.SingularCurvature):
@@ -930,7 +1179,7 @@ def test_gauss_newton_mass_rejects_constrained_space_jacobian_omission(tmp_path)
             oid,
             {"dra": jnp.array(9.0), "ghost": jnp.array(0.0)},
         )
-    record("missing_jacobian_factor", ratio)
+    record("missing_jacobian_factor", measured_ratio)
 
 
 # ---------------------------------------------------------------------------
@@ -961,6 +1210,7 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
         closure_phases=False,
     )
     oid = OIData(read_oifits(str(fits_path)))
+    loaded_3d = xchi2.load(fits_path)
     priors_3d = {
         "dra": dist.Normal(8.0, 4.0),
         "ddec": dist.Normal(-5.0, 4.0),
@@ -970,10 +1220,32 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
     fres = vfit.fit(tmpl, priors_3d, oid)
     gnm = vfit.gauss_newton_mass(tmpl, priors_3d, oid, fres.values)
     site_order = next(iter(gnm["inverse_mass_matrix"].keys()))
-    gn_sd = np.sqrt(np.diag(np.asarray(gnm["inverse_mass_matrix"][site_order])))
+    gn_cov = np.asarray(gnm["inverse_mass_matrix"][site_order])
+    gn_sd = np.sqrt(np.diag(gn_cov))
+    z_map = np.array(
+        [math.log(float(fres.values[k])) if k == "flux" else float(fres.values[k]) for k in site_order],
+        dtype=np.float64,
+    )
+
+    # Exact unconstrained log-joint density at MAP from independent xchi2.chi2 + priors
+    c_map = _binary_cloud(
+        float(fres.values["flux"]), float(fres.values["dra"]), float(fres.values["ddec"])
+    )
+    dv2_3d = loaded_3d["dv2"].ravel()
+    ll_map = (
+        -0.5 * float(xchi2.chi2(loaded_3d, lambda u, v, wl: xsky.visibility(c_map, u, v, wl)))
+        - 0.5 * dv2_3d.size * math.log(2.0 * math.pi)
+        - float(np.sum(np.log(dv2_3d)))
+    )
+    lp_unconstr_map = (
+        float(stats.norm.logpdf(float(fres.values["dra"]), 8.0, 4.0))
+        + float(stats.norm.logpdf(float(fres.values["ddec"]), -5.0, 4.0))
+        + float(stats.norm.logpdf(math.log(float(fres.values["flux"])), math.log(0.03), 0.5))
+    )
+    want_log_joint = ll_map + lp_unconstr_map
 
     vi_lap = vsvi.variational(
-        tmpl, priors_3d, oid, start=fres, guide="laplace", num_samples=1500, key=jax.random.PRNGKey(11)
+        tmpl, priors_3d, oid, start=fres, guide="laplace", num_samples=4000, key=jax.random.PRNGKey(11)
     )
     vi_mvn = vsvi.variational(
         tmpl,
@@ -981,32 +1253,81 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
         oid,
         start=fres,
         guide="mvn",
-        steps=500,
+        steps=800,
         learning_rate=3e-3,
-        num_samples=1500,
+        num_samples=4000,
         key=jax.random.PRNGKey(12),
     )
-    for g_name, vi_res in (("laplace", vi_lap), ("mvn", vi_mvn)):
-        assert isinstance(vi_res, vsvi.VariationalResult)
-        assert vi_res.info["guide"] == g_name
-        assert vi_res.converged is True
-        if g_name == "laplace":
-            assert vi_res.info["khat"] is None
-        else:
-            assert vi_res.info["khat"] is not None and float(vi_res.info["khat"]) < 0.5
-            assert math.isfinite(float(vi_res.info["elbo"]))
+    assert isinstance(vi_lap, vsvi.VariationalResult) and vi_lap.converged is True
+    assert vi_lap.info["guide"] == "laplace"
+    assert vi_lap.info["khat"] is None and vi_lap.info["elbo"] is None
+    assert abs(float(vi_lap.info["log_joint"]) - want_log_joint) < 5e-4  # float32 EFF_WAVE + BFGS tolerance
 
-    # Compare MVN posterior mean & log-flux SD against GN/Laplace
-    mvn_zscores = []
-    for idx_s, name in enumerate(site_order):
-        draws = np.asarray(vi_mvn.samples[name])
-        if name == "flux":
-            z_diff = abs(float(np.mean(np.log(draws))) - math.log(float(fres.values["flux"]))) / gn_sd[idx_s]
-        else:
-            z_diff = abs(float(np.mean(draws)) - float(fres.values[name])) / gn_sd[idx_s]
-        mvn_zscores.append(z_diff)
-    max_mvn_z = max(mvn_zscores)
-    assert max_mvn_z < 0.20
+    assert isinstance(vi_mvn, vsvi.VariationalResult) and vi_mvn.converged is True
+    assert vi_mvn.info["guide"] == "mvn"
+    assert vi_mvn.info["khat"] is not None and float(vi_mvn.info["khat"]) < 0.5
+    assert math.isfinite(float(vi_mvn.info["elbo"]))
+
+    # Verify unconstrained posterior means AND full 3x3 covariances for both laplace and warm-start mvn
+    max_mvn_z = 0.0
+    max_cov_rel_3d = 0.0
+    for vi_res in (vi_lap, vi_mvn):
+        s_mat = np.column_stack(
+            [
+                np.log(np.asarray(vi_res.samples[k])) if k == "flux" else np.asarray(vi_res.samples[k])
+                for k in site_order
+            ]
+        )
+        z_err = float(np.max(np.abs(np.mean(s_mat, axis=0) - z_map) / gn_sd))
+        cov_emp = np.cov(s_mat, rowvar=False)
+        cov_rel = float(linalg.norm(cov_emp - gn_cov) / linalg.norm(gn_cov))
+        assert z_err < 0.12
+        assert cov_rel < 0.08
+        max_mvn_z = max(max_mvn_z, z_err)
+        max_cov_rel_3d = max(max_cov_rel_3d, cov_rel)
+
+    # Cold-start MVN without start=fres on displaced priors (> 15 posterior SD from MAP)
+    priors_cold = {
+        "dra": dist.Normal(8.6, 4.0),
+        "ddec": dist.Normal(-4.4, 4.0),
+        "flux": dist.LogNormal(math.log(0.022), 0.5),
+    }
+    tmpl_cold = BinaryModelCartesian(8.6, -4.4, 0.022)
+    fres_cold = vfit.fit(tmpl_cold, priors_cold, oid)
+    gnm_cold = vfit.gauss_newton_mass(tmpl_cold, priors_cold, oid, fres_cold.values)
+    gn_cov_cold = np.asarray(gnm_cold["inverse_mass_matrix"][site_order])
+    gn_sd_cold = np.sqrt(np.diag(gn_cov_cold))
+    z_map_cold = np.array(
+        [
+            math.log(float(fres_cold.values[k])) if k == "flux" else float(fres_cold.values[k])
+            for k in site_order
+        ],
+        dtype=np.float64,
+    )
+    vi_mvn_cold = vsvi.variational(
+        tmpl_cold,
+        priors_cold,
+        oid,
+        start=None,
+        guide="mvn",
+        steps=2500,
+        learning_rate=8e-3,
+        num_samples=4000,
+        key=jax.random.PRNGKey(13),
+    )
+    assert vi_mvn_cold.converged is True and float(vi_mvn_cold.info["khat"]) < 0.5
+    s_cold = np.column_stack(
+        [
+            np.log(np.asarray(vi_mvn_cold.samples[k])) if k == "flux" else np.asarray(vi_mvn_cold.samples[k])
+            for k in site_order
+        ]
+    )
+    cold_z_err = float(np.max(np.abs(np.mean(s_cold, axis=0) - z_map_cold) / gn_sd_cold))
+    cold_cov_rel = float(linalg.norm(np.cov(s_cold, rowvar=False) - gn_cov_cold) / linalg.norm(gn_cov_cold))
+    assert cold_z_err < 0.20
+    assert cold_cov_rel < 0.12
+    max_mvn_z = max(max_mvn_z, cold_z_err)
+    max_cov_rel_3d = max(max_cov_rel_3d, cold_cov_rel)
 
     # Non-Gaussian skewed 2D posterior on aperture-masking baselines: companion (dra, flux)
     # where u = ln(flux) has an asymmetric exponential-quadratic likelihood shape
@@ -1053,9 +1374,12 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
     exact_2d = ref.posterior_2d_grid_moments_ref(
         exact_log_post, (17.0, 53.0), (mu_logf - 2.0, mu_logf + 1.5), n_grid=121
     )
-    sd_exact = np.sqrt(np.diag(np.asarray(exact_2d["cov"])))
+    cov_exact_2d = np.asarray(exact_2d["cov"])
+    sd_exact = np.sqrt(np.diag(cov_exact_2d))
+    corr_exact_2d = float(cov_exact_2d[0, 1] / (sd_exact[0] * sd_exact[1]))
 
     flow_z_err = 0.0
+    flow_cov_rel = 0.0
     for seed_val, flow_name in ((3, "bnaf"), (4, "iaf")):
         vi_flow = vsvi.variational(
             tmpl_2d,
@@ -1065,7 +1389,7 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
             guide=flow_name,
             steps=2500,
             optimizer=optax.adam(8e-3),
-            num_samples=1500,
+            num_samples=3000,
             key=jax.random.PRNGKey(seed_val),
         )
         assert vi_flow.converged is True
@@ -1074,13 +1398,24 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
         logf_draws = np.log(np.asarray(vi_flow.samples["flux"]))
         z_dra = abs(float(np.mean(dra_draws)) - float(exact_2d["mean"][0])) / sd_exact[0]
         z_logf = abs(float(np.mean(logf_draws)) - float(exact_2d["mean"][1])) / sd_exact[1]
-        q_logf = np.quantile(logf_draws, [0.16, 0.50, 0.84])
-        q_err = float(np.max(np.abs(q_logf - np.asarray(exact_2d["quantiles_y"]))) / sd_exact[1])
+        qx_flow = np.quantile(dra_draws, [0.16, 0.50, 0.84])
+        qy_flow = np.quantile(logf_draws, [0.16, 0.50, 0.84])
+        qx_err = float(np.max(np.abs(qx_flow - np.asarray(exact_2d["quantiles_x"]))) / sd_exact[0])
+        qy_err = float(np.max(np.abs(qy_flow - np.asarray(exact_2d["quantiles_y"]))) / sd_exact[1])
+        cov_flow = np.cov(np.column_stack([dra_draws, logf_draws]), rowvar=False)
+        sd_flow = np.sqrt(np.diag(cov_flow))
+        corr_flow = float(cov_flow[0, 1] / (sd_flow[0] * sd_flow[1]))
+        cov_rel_2d = float(linalg.norm(cov_flow - cov_exact_2d) / linalg.norm(cov_exact_2d))
         flow_z_err = max(flow_z_err, z_dra, z_logf)
-        assert z_dra < 0.30 and z_logf < 0.30 and q_err < 0.30
+        flow_cov_rel = max(flow_cov_rel, cov_rel_2d)
+        assert z_dra < 0.32 and z_logf < 0.30
+        assert qx_err < 0.35 and qy_err < 0.30
+        assert cov_rel_2d < 0.18 and abs(corr_flow - corr_exact_2d) < 0.08
 
     record("svi_mvn_mean_zscore", max_mvn_z)
+    record("svi_mvn_cov_rel_err", max_cov_rel_3d)
     record("svi_flow_mean_zscore", flow_z_err)
+    record("svi_flow_cov_rel_err", flow_cov_rel)
 
 
 @pytest.mark.validates(
