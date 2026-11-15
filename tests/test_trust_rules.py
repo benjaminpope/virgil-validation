@@ -708,6 +708,100 @@ def test_module_via_is_fail_closed_expands_init_and_tracks_subprocess_workers(tm
     plugin._module_via.cache_clear()
     assert plugin._module_via(str(dyn_file)) == (plugin._UNRESOLVED_WORKER,)
 
+    # Reassigned module constant or locally shadowed worker parameter also fails closed
+    rebound = tmp_path / "test_rebound_via.py"
+    rebound.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "W = 'alma_worker.py'\n"
+        "if True:\n"
+        "    W = 'mpol_worker.py'\n"
+        "sp.run('alma', W, {})\n",
+        encoding="utf-8",
+    )
+    shadowed = tmp_path / "test_shadowed_via.py"
+    shadowed.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "W = 'alma_worker.py'\n"
+        "def run_one():\n"
+        "    W = 'mpol_worker.py'\n"
+        "    return sp.run('alma', W, {})\n"
+        "run_one()\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(rebound)) == (plugin._UNRESOLVED_WORKER,)
+    assert plugin._module_via(str(shadowed)) == (plugin._UNRESOLVED_WORKER,)
+
+
+def test_item_via_tracks_local_helper_scripts_and_isolates_function_local_imports(tmp_path):
+    from evidence import plugin
+
+    # 1. Synthetic layout with benchmarks/, scripts/, and tests/ helpers + function-local isolation
+    (tmp_path / "benchmarks" / "ring").mkdir(parents=True)
+    (tmp_path / "scripts").mkdir(parents=True)
+    (tmp_path / "tests").mkdir(parents=True)
+
+    (tmp_path / "benchmarks" / "ring" / "bench_ext.py").write_text(
+        "from crosscheck import simulate\n"
+        "from external_bridge.pmoired_models import model_samples\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "scripts" / "script_clean.py").write_text(
+        "from crosscheck import alma_maxent\n"
+        "def run_helper():\n"
+        "    import virgil_bridge.alma\n"
+        "    return 1\n"
+        "def unused_helper():\n"
+        "    import external_bridge.radial_codes\n"
+        "    return 2\n",
+        encoding="utf-8",
+    )
+    mixed_test = tmp_path / "tests" / "test_mixed.py"
+    mixed_test.write_text(
+        "import pytest\n"
+        "from crosscheck import radial\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def clean_fix():\n"
+        "    from script_clean import run_helper\n"
+        "    return run_helper()\n"
+        "\n"
+        "def test_with_bench_helper():\n"
+        "    import bench_ext\n"
+        "    return bench_ext\n"
+        "\n"
+        "def test_with_script_fixture(clean_fix):\n"
+        "    return clean_fix\n"
+        "\n"
+        "def test_isolated_reference():\n"
+        "    import math\n"
+        "    return math.pi\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(mixed_test), "test_with_bench_helper", None, ()) == (
+        "crosscheck.radial",
+        "crosscheck.simulate",
+        "external_bridge.pmoired_models",
+    )
+    assert plugin._item_via(str(mixed_test), "test_with_script_fixture", None, ("clean_fix",)) == (
+        "crosscheck.alma_maxent",
+        "crosscheck.radial",
+        "virgil_bridge.alma",
+    )
+    assert plugin._item_via(str(mixed_test), "test_isolated_reference", None, ()) == (
+        "crosscheck.radial",
+    )
+
+    # 2. Real repository checks on tests/test_polar_disk_vs_codes.py
+    polar_test = ROOT / "tests" / "test_polar_disk_vs_codes.py"
+    pmoired_via = plugin._item_via(str(polar_test), "test_matches_pmoired_ring_harmonics", None, ("tmp_path",))
+    assert "crosscheck.simulate" in pmoired_via
+    assert "external_bridge.pmoired_models" in pmoired_via
+    frank_ref_via = plugin._item_via(str(polar_test), "test_frank_hankel_matches_closed_form_gaussian", None, ())
+    assert frank_ref_via == ("crosscheck.radial",)
+    assert "external_bridge.radial_codes" not in frank_ref_via
+
 
 def test_reference_depends_cycle_fails_closed(trust, tmp_path):
     # 1. Mutual cycle between references: neither reference nor via-caller may be verified

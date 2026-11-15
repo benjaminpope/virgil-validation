@@ -29,5 +29,5 @@ visual-binary projection) and SciPy. orbitize! covers `KeplerOrbit`,
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `PositionData` (`likelihood`) | SciPy multivariate normal density (from `(sep, pa)` via finite-difference Jacobian and from full `2 × 2` covariances); blind 5-epoch astrometry and anisotropic uncertainties from `PMOIRED` (`VmodelOI` grid + `doFit`) and `CANDID` (`fitMap`) | Mathematics + Statistics + PMOIRED + CANDID | < 1e-6 (analytic), < 1e-8 (`loglike` value on external fits) |
-| `PositionData` (`calibration`: `θ_meas = θ_sky + north_angle`, `ρ_meas = plate_scale · ρ_sky`) | `crosscheck.orbits` positions and BFGS recovery of `(north_angle, plate_scale)` (`−north_angle` and `1/plate_scale` controls fail by > 50 σ; remains `convention` until checked against an external calibration-aware orbit code) | Mathematics | < 1e-10 (mas), < 1e-7 (deg) |
+| `PositionData` (`calibration`: `θ_meas = θ_sky + north_angle`, `ρ_meas = plate_scale · ρ_sky`) | `crosscheck.orbits` positions and BFGS recovery of `(north_angle, plate_scale)` (`−north_angle` and `1/plate_scale` controls fail by > 50 σ; internal parameter-sign definition per ledger **D25**, enforced via `properties: {calibration: 1}`) | Mathematics | < 1e-10 (mas), < 1e-7 (deg) |
 

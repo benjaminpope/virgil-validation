@@ -10,14 +10,12 @@ near-side rim at sky azimuth ``pa + 90 deg`` — for example, at ``(inc = 52 deg
 pa = 160 deg)``, in the West-Southwest sky quadrant (``dra < 0, ddec < 0``,
 sky PA ``250 deg``).
 
-Because no external Python package in CI implements a 3D flared scattered-light
-ring and no public archival scattered-light OIFITS dataset is bundled in the
-repository, these checks declare ``roots=["mathematics"]`` ONLY (using literal
-per-class ``@pytest.mark.validates`` decorators so static trust-graph and marker
-inventory tools inspect every node). Under ``scripts/trust.py``, ``mathematics``
-alone does not confirm a ``convention`` property, keeping ``FlaredDiskGaussian``,
-``FlaredDiskHG``, and ``FlaredDiskPowerLaw`` honestly at ``convention`` until
-confirmed against public archival data or an external 3D radiative-transfer code.
+Per ledger ``D24`` (Ben's 2026-11-15 ruling), the choice of which half-plane
+corresponds to ``inc in (0, 90)`` deg at a given ``pa`` is an internal
+parameter-sign definition rather than an external physical constant, enforced
+via ``properties: {near_side: 1}`` on ``FlaredDiskGaussian``, ``FlaredDiskHG``,
+and ``FlaredDiskPowerLaw`` using literal per-class ``@pytest.mark.validates``
+decorators (``roots=["mathematics"]``) paired with wrong-sign negative controls.
 """
 
 import jax.numpy as jnp

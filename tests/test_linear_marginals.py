@@ -390,6 +390,71 @@ def test_supplied_closure_offset_modes(cp_file):
     record("max_abs_dloglike", worst)
 
 
+@pytest.mark.validates(
+    "virgil.gains.ClosureOffsets",
+    "virgil.gains.closure_offsets",
+    "virgil.likelihood.model_loglike",
+    roots=["mathematics"],
+    headline="max_abs_dloglike_wrap",
+)
+def test_closure_offsets_wrap_boundary_near_pi(tmp_path):
+    """Across the +-180 deg phase-wrap cut (|Delta| ~ pi, where sin(Delta) ~ 0 and
+    q_pen = 2 sin^2(Delta / 2) ~ 2 carries the entire restoring penalty), both
+    scale_penalty=True and scale_penalty=False match the exact dense-Gaussian plus
+    periodic wrap reference and remain strictly 2*pi-periodic."""
+    from astropy.io import fits
+
+    path = tmp_path / "cp_wrap.fits"
+    simulate.observe(
+        path,
+        binary_vis(0.0, 0.0, 0.0),
+        UTS,
+        hour_angles_h=[-1.0, 1.0],
+        wavelengths=np.linspace(1.6e-6, 2.2e-6, 3),
+        dec_deg=-50.0,
+        sigma_v2=0.01,
+        sigma_cp_deg=5.0,
+        rng=np.random.default_rng(17),
+    )
+    rng = np.random.default_rng(18)
+    with fits.open(path, mode="update") as hdul:
+        t3phi = hdul["OI_T3"].data["T3PHI"]
+        # Place closure phases right across the +-180 deg branch cut (155..179.5 deg, signed)
+        signs = rng.choice([-1.0, 1.0], size=t3phi.shape)
+        hdul["OI_T3"].data["T3PHI"] = signs * rng.uniform(155.0, 179.5, size=t3phi.shape)
+        hdul.flush()
+
+    path_wrapped = tmp_path / "cp_wrap_plus_360.fits"
+    with fits.open(path) as hdul:
+        hdul["OI_T3"].data["T3PHI"] = hdul["OI_T3"].data["T3PHI"] + 360.0
+        hdul.writeto(path_wrapped)
+
+    d = ours.load(path)
+    data = OIData(str(path))
+    data_360 = OIData(str(path_wrapped))
+    model = vm.UniformDisk(0.01)  # model_cp == 0 everywhere, so Delta = -d["cp"] near +-pi
+    delta = -d["cp"]
+    assert np.min(np.abs(delta)) > 2.7  # genuinely in the far-hemisphere wrap regime
+
+    kw = dict(baseline=0.12, triangle=0.15)
+    base = float(model_loglike(model, data))
+    got_scaled = float(model_loglike(model, data.with_closure_offsets(**kw, scale_penalty=True))) - base
+    got_unscaled = float(model_loglike(model, data.with_closure_offsets(**kw, scale_penalty=False))) - base
+    want_scaled = closure_offsets_reference(d, delta, **kw, scale_penalty=True)
+    want_unscaled = closure_offsets_reference(d, delta, **kw, scale_penalty=False)
+
+    got_360 = float(model_loglike(model, data_360.with_closure_offsets(**kw, scale_penalty=True))) - float(
+        model_loglike(model, data_360)
+    )
+    wrap_periodicity_err = abs(got_scaled - got_360)
+    err = max(abs(got_scaled - want_scaled), abs(got_unscaled - want_unscaled), wrap_periodicity_err)
+
+    record("scaled_minus_unscaled_wrap_dloglike", got_scaled - got_unscaled)
+    record("max_abs_dloglike_wrap", err)
+    assert got_scaled - got_unscaled > 5.0  # wrap-penalty scaling changes log L by O(10+) nats near +-pi
+    assert err < 1e-11 * max(1.0, abs(want_scaled))
+
+
 # --------------------------------------------------------- RV zero points
 
 

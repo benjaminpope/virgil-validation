@@ -108,6 +108,7 @@ def pytest_configure(config):
 # _subprocess is the JSON-over-interpreter launcher; every _subprocess.run
 # call resolves its concrete worker module (or emits an unregistered sentinel).
 _SRC_ROOT = pathlib.Path(__file__).resolve().parents[2] / "src"
+_REPO_ROOT = _SRC_ROOT.parent
 _REFERENCE_PACKAGES = ("crosscheck", "external_bridge", "virgil_bridge")
 _PLUMBING = frozenset({"external_bridge._subprocess"})
 _UNRESOLVED_WORKER = "external_bridge.<unresolved_worker>"
@@ -118,15 +119,28 @@ def _keep_reference(mod):
     return mod not in _PLUMBING
 
 
+def _is_ref_module_file(parts):
+    return _SRC_ROOT.joinpath(*parts).with_suffix(".py").is_file()
+
+
+def _is_ref_package_dir(parts):
+    return (_SRC_ROOT.joinpath(*parts) / "__init__.py").is_file()
+
+
+def _is_ref_path(parts):
+    return _is_ref_module_file(parts) or _is_ref_package_dir(parts)
+
+
 def _is_submodule(pkg, name):
-    base = _SRC_ROOT / pkg
-    return (base / f"{name}.py").is_file() or (base / name / "__init__.py").is_file()
+    parts = (pkg, name) if isinstance(pkg, str) else (*pkg, name)
+    return _is_ref_path(parts)
 
 
 @functools.lru_cache(maxsize=None)
 def _init_exports(pkg):
-    """Top-level names defined or bound in ``src/<pkg>/__init__.py``."""
-    init_py = _SRC_ROOT / pkg / "__init__.py"
+    """Top-level names defined or bound in ``src/<pkg>/__init__.py`` (accepts str or tuple of parts)."""
+    parts = (pkg,) if isinstance(pkg, str) else tuple(pkg)
+    init_py = _SRC_ROOT.joinpath(*parts) / "__init__.py"
     if not init_py.is_file():
         return frozenset()
     try:
@@ -149,12 +163,73 @@ def _init_exports(pkg):
     return frozenset(names)
 
 
-def _current_reference_package(path):
+def _current_ref_package_parts(path):
     try:
         rel = pathlib.Path(path).resolve().relative_to(_SRC_ROOT.resolve())
     except ValueError:
         return None
-    return rel.parts[0] if len(rel.parts) >= 2 and rel.parts[0] in _REFERENCE_PACKAGES else None
+    if len(rel.parts) < 2 or rel.parts[0] not in _REFERENCE_PACKAGES:
+        return None
+    return rel.parts[:-1]
+
+
+def _is_under_src(path):
+    try:
+        path.resolve().relative_to(_SRC_ROOT.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _local_search_dirs(caller_path):
+    """Local directories where non-package repo helpers (``benchmarks/``, ``scripts/``, ``tests/``) live."""
+    try:
+        resolved = caller_path.resolve()
+    except OSError:
+        resolved = caller_path
+    try:
+        resolved.relative_to(_REPO_ROOT.resolve())
+        anchor = _REPO_ROOT.resolve()
+    except ValueError:
+        parent = resolved.parent
+        anchor = parent.parent if parent.name in ("tests", "scripts") else parent
+
+    candidates = [
+        resolved.parent,
+        anchor,
+        anchor / "scripts",
+        anchor / "tests",
+        anchor / "benchmarks",
+    ]
+    bench = anchor / "benchmarks"
+    if bench.is_dir():
+        candidates.extend(
+            d for d in sorted(bench.iterdir())
+            if d.is_dir() and not d.name.startswith(".")
+        )
+    out = []
+    seen_dirs = set()
+    for d in candidates:
+        if d.is_dir() and not _is_under_src(d) and d not in seen_dirs:
+            seen_dirs.add(d)
+            out.append(d)
+    return tuple(out)
+
+
+_SKIP_LOCAL_TOPS = frozenset({*_REFERENCE_PACKAGES, "virgil", "drpangloss", "jaxbessel", "evidence"})
+
+
+def _resolve_local_module(parts, search_dirs):
+    if not parts or parts[0] in _SKIP_LOCAL_TOPS:
+        return None
+    for d in search_dirs:
+        cand_py = d.joinpath(*parts).with_suffix(".py")
+        if cand_py.is_file() and not _is_under_src(cand_py):
+            return cand_py
+        cand_init = d.joinpath(*parts) / "__init__.py"
+        if cand_init.is_file() and not _is_under_src(cand_init):
+            return cand_init
+    return None
 
 
 def _call_arg_expr(call, index, keyword):
@@ -166,15 +241,98 @@ def _call_arg_expr(call, index, keyword):
     return None
 
 
-def _resolve_str(expr, const_strings):
+def _resolve_str(expr, const_strings, shadowed=frozenset()):
     if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
         return expr.value
-    if isinstance(expr, ast.Name) and expr.id in const_strings:
+    if isinstance(expr, ast.Name) and expr.id not in shadowed and expr.id in const_strings:
         return const_strings[expr.id]
     return None
 
 
-def _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp):
+_NESTED_SCOPE_NODES = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+    ast.Lambda,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
+
+
+def _count_scope_bindings(node, counts, *, enter_classes=False):
+    """Count every binding of a name within ``node``'s scope (stopping at nested function/comprehension scopes)."""
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            counts[child.name] = counts.get(child.name, 0) + 1
+            continue
+        if isinstance(child, ast.ClassDef):
+            counts[child.name] = counts.get(child.name, 0) + 1
+            if enter_classes:
+                _count_scope_bindings(child, counts, enter_classes=False)
+            continue
+        if isinstance(child, (ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            # Walrus ``:=`` inside a comprehension binds in the enclosing non-comprehension scope
+            for sub in ast.walk(child):
+                if isinstance(sub, ast.NamedExpr) and isinstance(sub.target, ast.Name):
+                    counts[sub.target.id] = counts.get(sub.target.id, 0) + 1
+            continue
+        if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del)):
+            counts[child.id] = counts.get(child.id, 0) + 1
+        elif isinstance(child, (ast.Import, ast.ImportFrom)):
+            for alias in child.names:
+                bound = alias.asname or alias.name.split(".")[0]
+                if bound != "*":
+                    counts[bound] = counts.get(bound, 0) + 1
+        elif isinstance(child, ast.ExceptHandler) and child.name:
+            counts[child.name] = counts.get(child.name, 0) + 1
+        _count_scope_bindings(child, counts, enter_classes=enter_classes)
+
+
+def _module_const_strings(tree):
+    """Top-level ``NAME = 'literal'`` bindings that are never rebound elsewhere at module scope."""
+    counts = {}
+    _count_scope_bindings(tree, counts)
+    candidates = {}
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+            for t in stmt.targets:
+                if isinstance(t, ast.Name):
+                    candidates[t.id] = stmt.value.value
+        elif (
+            isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+            and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str)
+        ):
+            candidates[stmt.target.id] = stmt.value.value
+    return {k: v for k, v in candidates.items() if counts.get(k, 0) == 1}
+
+
+def _scope_local_names(scope_node):
+    """Parameter and locally bound names inside a function, lambda, or comprehension scope."""
+    names = set()
+    if isinstance(scope_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        args = scope_node.args
+        for a in (*args.posonlyargs, *args.args, *args.kwonlyargs):
+            names.add(a.arg)
+        if args.vararg:
+            names.add(args.vararg.arg)
+        if args.kwarg:
+            names.add(args.kwarg.arg)
+    elif isinstance(scope_node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+        for gen in scope_node.generators:
+            for sub in ast.walk(gen.target):
+                if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store):
+                    names.add(sub.id)
+    counts = {}
+    _count_scope_bindings(scope_node, counts)
+    names.update(counts)
+    return frozenset(names)
+
+
+def _subprocess_workers(scope_tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp, const_strings=None):
     """Worker scripts invoked through ``external_bridge._subprocess.run`` or local wrappers.
 
     Any ``_subprocess.run`` call or dynamic alias usage that cannot be statically resolved
@@ -186,19 +344,8 @@ def _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp):
     if not sp_aliases and not run_aliases and not eb_aliases:
         return set()
 
-    const_strings = {}
-    for stmt in tree.body:
-        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
-            for t in stmt.targets:
-                if isinstance(t, ast.Name):
-                    const_strings[t.id] = stmt.value.value
-        elif (
-            isinstance(stmt, ast.AnnAssign)
-            and isinstance(stmt.target, ast.Name)
-            and isinstance(stmt.value, ast.Constant)
-            and isinstance(stmt.value.value, str)
-        ):
-            const_strings[stmt.target.id] = stmt.value.value
+    if const_strings is None:
+        const_strings = _module_const_strings(scope_tree)
 
     def _is_sp_module_expr(expr):
         return (
@@ -217,7 +364,7 @@ def _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp):
             or (isinstance(func, ast.Name) and func.id in run_aliases)
         )
 
-    fn_nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    fn_nodes = [n for n in ast.walk(scope_tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     wrappers = {}
     changed = True
     while changed:
@@ -248,17 +395,20 @@ def _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp):
     direct_call_funcs = set()
     attr_parents = {}
 
-    for parent in ast.walk(tree):
+    for parent in ast.walk(scope_tree):
         if isinstance(parent, ast.Call):
             direct_call_funcs.add(id(parent.func))
         elif isinstance(parent, ast.Attribute):
             attr_parents[id(parent.value)] = parent
 
-    def _scan_scope(scope_node, enclosing_wrapper_param):
+    def _scan_scope(scope_node, enclosing_wrapper_param, shadowed):
         for child in ast.iter_child_nodes(scope_node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 wparam = wrappers[child.name][1] if child.name in wrappers else None
-                _scan_scope(child, wparam)
+                _scan_scope(child, wparam, shadowed | _scope_local_names(child))
+                continue
+            if isinstance(child, (ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                _scan_scope(child, enclosing_wrapper_param, shadowed | _scope_local_names(child))
                 continue
             if isinstance(child, ast.Call):
                 handled = False
@@ -279,7 +429,7 @@ def _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp):
                     ):
                         pass
                     else:
-                        script = _resolve_str(wexpr, const_strings)
+                        script = _resolve_str(wexpr, const_strings, shadowed)
                         if script:
                             stem = pathlib.Path(script).stem if script.endswith(".py") else script
                             workers.add(f"external_bridge.{stem}")
@@ -307,118 +457,311 @@ def _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp):
                     workers.add(_UNRESOLVED_WORKER)
                 elif parent_attr.attr == "run" and id(parent_attr) not in direct_call_funcs:
                     workers.add(_UNRESOLVED_WORKER)
-            _scan_scope(child, enclosing_wrapper_param)
+            _scan_scope(child, enclosing_wrapper_param, shadowed)
 
-    _scan_scope(tree, None)
+    _scan_scope(scope_tree, None, frozenset())
     if set(wrappers) - called_wrappers:
         workers.add(_UNRESOLVED_WORKER)
     return workers
 
 
-def _scan_module_via(path, seen):
+@functools.lru_cache(maxsize=None)
+def _parsed_module(path):
     p = pathlib.Path(path)
     try:
         resolved = p.resolve()
     except OSError:
         resolved = p
-    if resolved in seen:
-        return set()
-    seen = seen | {resolved}
     try:
-        tree = ast.parse(p.read_text(encoding="utf-8"))
+        return resolved, ast.parse(p.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
-        return set()
+        return resolved, None
 
-    current_pkg = _current_reference_package(p)
+
+def _scan_stmts_via(stmts, full_tree, p, seen):
+    cur_pkg_parts = _current_ref_package_parts(p)
+    search_dirs = _local_search_dirs(p) if cur_pkg_parts is None else ()
     found = set()
     sp_aliases = set()
     run_aliases = set()
     eb_aliases = set()
     wildcard_sp = False
 
-    def _expand_init(pkg):
-        init_py = _SRC_ROOT / pkg / "__init__.py"
+    def _expand_init(pkg_parts):
+        init_py = _SRC_ROOT.joinpath(*pkg_parts) / "__init__.py"
         if init_py.is_file():
             found.update(_scan_module_via(init_py, seen))
 
-    for node in ast.walk(tree):
+    def _note_ref_mod(parts, *, asname=None, imported_names=None):
+        mod = ".".join(parts)
+        for k in range(2, len(parts)):
+            if _is_ref_package_dir(parts[:k]):
+                found.add(".".join(parts[:k]))
+                _expand_init(parts[:k])
+        found.add(mod)
+        if mod == "external_bridge._subprocess":
+            if imported_names is not None:
+                for alias in imported_names:
+                    if alias.name == "*":
+                        nonlocal wildcard_sp
+                        wildcard_sp = True
+                    elif alias.name == "run":
+                        run_aliases.add(alias.asname or "run")
+            elif asname is not None:
+                sp_aliases.add(asname)
+            else:
+                eb_aliases.add("external_bridge")
+
+    def _handle_from_ref(target_parts, names):
+        if len(target_parts) == 1 or _is_ref_package_dir(target_parts):
+            if len(target_parts) >= 2:
+                found.add(".".join(target_parts))
+            for alias in names:
+                child_parts = (*target_parts, alias.name)
+                if _is_ref_path(child_parts):
+                    _note_ref_mod(child_parts, asname=alias.asname or alias.name)
+                    if _is_ref_package_dir(child_parts):
+                        _expand_init(child_parts)
+                elif alias.name == "*" or alias.name in _init_exports(target_parts):
+                    _expand_init(target_parts)
+                else:
+                    _note_ref_mod(child_parts, asname=alias.asname or alias.name)
+        else:
+            _note_ref_mod(target_parts, imported_names=names)
+
+    scope_mod = ast.Module(body=list(stmts), type_ignores=[])
+    for node in ast.walk(scope_mod):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                parts = alias.name.split(".")
+                parts = tuple(alias.name.split("."))
                 top = parts[0]
                 if top in _REFERENCE_PACKAGES:
                     if len(parts) >= 2:
-                        mod = ".".join(parts[:2])
-                        found.add(mod)
-                        if mod == "external_bridge._subprocess":
-                            if alias.asname:
-                                sp_aliases.add(alias.asname)
-                            else:
-                                eb_aliases.add("external_bridge")
+                        _note_ref_mod(parts, asname=alias.asname)
+                        if _is_ref_package_dir(parts):
+                            _expand_init(parts)
                     else:
-                        _expand_init(top)
+                        _expand_init((top,))
                         if top == "external_bridge":
                             eb_aliases.add(alias.asname or "external_bridge")
-                elif len(parts) == 1 and current_pkg and _is_submodule(current_pkg, top):
-                    mod = f"{current_pkg}.{top}"
-                    found.add(mod)
-                    if mod == "external_bridge._subprocess":
-                        sp_aliases.add(alias.asname or "_subprocess")
+                elif len(parts) == 1 and cur_pkg_parts and _is_ref_path((*cur_pkg_parts, top)):
+                    _note_ref_mod((*cur_pkg_parts, top), asname=alias.asname or top)
+                elif search_dirs:
+                    local_mod = _resolve_local_module(parts, search_dirs)
+                    if local_mod is not None:
+                        found.update(_scan_module_via(local_mod, seen))
         elif isinstance(node, ast.ImportFrom):
-            if node.level == 1 and current_pkg:
-                if node.module:
-                    sub = node.module.split(".")[0]
-                    mod = f"{current_pkg}.{sub}"
-                    found.add(mod)
-                    if mod == "external_bridge._subprocess":
-                        for alias in node.names:
-                            if alias.name == "*":
-                                wildcard_sp = True
-                            elif alias.name == "run":
-                                run_aliases.add(alias.asname or "run")
-                else:
-                    for alias in node.names:
-                        if _is_submodule(current_pkg, alias.name) or alias.name not in _init_exports(current_pkg):
-                            mod = f"{current_pkg}.{alias.name}"
-                            found.add(mod)
-                            if mod == "external_bridge._subprocess":
-                                sp_aliases.add(alias.asname or "_subprocess")
-                        else:
-                            _expand_init(current_pkg)
-            elif node.level == 0 and node.module:
-                parts = node.module.split(".")
-                top = parts[0]
-                if top not in _REFERENCE_PACKAGES:
+            if node.level >= 1 and cur_pkg_parts:
+                up = node.level - 1
+                if up >= len(cur_pkg_parts):
+                    found.add(_UNRESOLVED_WORKER)
                     continue
-                if node.module == top:  # from crosscheck import sky, chi2 / from virgil_bridge import binary
+                base_parts = cur_pkg_parts[: len(cur_pkg_parts) - up]
+                target_parts = (*base_parts, *node.module.split(".")) if node.module else base_parts
+                _handle_from_ref(target_parts, node.names)
+            elif node.level == 0 and node.module:
+                parts = tuple(node.module.split("."))
+                top = parts[0]
+                if top in _REFERENCE_PACKAGES:
+                    _handle_from_ref(parts, node.names)
+                elif search_dirs:
+                    matched_any = False
                     for alias in node.names:
-                        if _is_submodule(top, alias.name):
-                            mod = f"{top}.{alias.name}"
-                            found.add(mod)
-                            if mod == "external_bridge._subprocess":
-                                sp_aliases.add(alias.asname or "_subprocess")
-                        elif alias.name == "*" or alias.name in _init_exports(top):
-                            _expand_init(top)
-                        else:
-                            found.add(f"{top}.{alias.name}")
-                else:  # from crosscheck.sky import vis_point
-                    mod = ".".join(parts[:2])
-                    found.add(mod)
-                    if mod == "external_bridge._subprocess":
-                        for alias in node.names:
-                            if alias.name == "*":
-                                wildcard_sp = True
-                            elif alias.name == "run":
-                                run_aliases.add(alias.asname or "run")
+                        if alias.name != "*":
+                            sub_local = _resolve_local_module((*parts, alias.name), search_dirs)
+                            if sub_local is not None:
+                                matched_any = True
+                                found.update(_scan_module_via(sub_local, seen))
+                    if not matched_any:
+                        local_mod = _resolve_local_module(parts, search_dirs)
+                        if local_mod is not None:
+                            for alias in node.names:
+                                if alias.name == "*":
+                                    found.update(_scan_module_via(local_mod, seen))
+                                else:
+                                    found.update(_scan_symbol_via(local_mod, alias.name, seen))
 
-    found |= _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp)
+    found |= _subprocess_workers(
+        scope_mod,
+        sp_aliases,
+        run_aliases,
+        eb_aliases,
+        wildcard_sp,
+        const_strings=_module_const_strings(full_tree),
+    )
     return {m for m in found if _keep_reference(m)}
 
 
+def _is_autouse_fixture(fn_node):
+    for dec in fn_node.decorator_list:
+        if isinstance(dec, ast.Call):
+            func = dec.func
+            is_fix = (
+                (isinstance(func, ast.Name) and func.id == "fixture")
+                or (isinstance(func, ast.Attribute) and func.attr == "fixture")
+            )
+            if is_fix:
+                for kw in dec.keywords:
+                    if kw.arg == "autouse" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                        return True
+    return False
+
+
+def _reachable_local_stmts(tree, func_name, cls_name=None, fixture_names=(), include_autouse=True):
+    """Top-level statements plus the target function/method and any local helpers/classes/fixtures it reaches."""
+    top_stmts = []
+    top_defs = {}
+    autouse = set()
+    classes = {}
+    for stmt in tree.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            top_defs[stmt.name] = stmt
+            if include_autouse and _is_autouse_fixture(stmt):
+                autouse.add(stmt.name)
+        elif isinstance(stmt, ast.ClassDef):
+            classes[stmt.name] = stmt
+            top_defs[stmt.name] = stmt
+        else:
+            top_stmts.append(stmt)
+
+    cls_non_methods = []
+    cls_methods = {}
+    cls_autouse = set()
+    if cls_name:
+        cls_node = classes.get(cls_name)
+        if cls_node is None:
+            return None
+        # Walk enclosing class and any in-file base classes
+        cls_queue = [cls_node]
+        seen_cls = set()
+        while cls_queue:
+            c = cls_queue.pop()
+            if c.name in seen_cls:
+                continue
+            seen_cls.add(c.name)
+            for b in c.bases:
+                if isinstance(b, ast.Name) and b.id in classes:
+                    cls_queue.append(classes[b.id])
+            for body_stmt in c.body:
+                if isinstance(body_stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    cls_methods.setdefault(body_stmt.name, body_stmt)
+                    if include_autouse and _is_autouse_fixture(body_stmt):
+                        cls_autouse.add(body_stmt.name)
+                else:
+                    cls_non_methods.append(body_stmt)
+        target_node = cls_methods.get(func_name)
+    else:
+        target_node = top_defs.get(func_name)
+
+    if target_node is None:
+        return None
+
+    seed_nodes = [target_node]
+    for fname in autouse | (set(fixture_names) & set(top_defs)):
+        seed_nodes.append(top_defs[fname])
+    for fname in cls_autouse | (set(fixture_names) & set(cls_methods)):
+        seed_nodes.append(cls_methods[fname])
+
+    visited_ids = set()
+    ordered_defs = []
+    queue = list(seed_nodes)
+
+    def _enqueue_refs(ast_root):
+        for sub in ast.walk(ast_root):
+            if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load) and sub.id in top_defs:
+                cand = top_defs[sub.id]
+                if id(cand) not in visited_ids:
+                    queue.append(cand)
+            elif isinstance(sub, ast.Attribute) and sub.attr in cls_methods:
+                m = cls_methods[sub.attr]
+                if id(m) not in visited_ids:
+                    queue.append(m)
+
+    for ts in (*top_stmts, *cls_non_methods):
+        _enqueue_refs(ts)
+
+    while queue:
+        curr = queue.pop()
+        if id(curr) in visited_ids:
+            continue
+        visited_ids.add(id(curr))
+        ordered_defs.append(curr)
+        _enqueue_refs(curr)
+
+    return [*top_stmts, *cls_non_methods, *ordered_defs]
+
+
+def _scan_symbol_via(path, symbol_name, seen):
+    resolved, tree = _parsed_module(str(path))
+    if tree is None:
+        return set()
+    key = (resolved, symbol_name)
+    if key in seen:
+        return set()
+    stmts = _reachable_local_stmts(tree, symbol_name, include_autouse=False)
+    if stmts is None:
+        return _scan_module_via(path, seen)
+    return _scan_stmts_via(stmts, tree, pathlib.Path(path), seen | {key})
+
+
+def _scan_module_via(path, seen):
+    resolved, tree = _parsed_module(str(path))
+    if tree is None or resolved in seen:
+        return set()
+    return _scan_stmts_via(tree.body, tree, pathlib.Path(path), seen | {resolved})
+
+
 @functools.lru_cache(maxsize=None)
+def _cached_module_via(path):
+    return tuple(sorted(_scan_module_via(path, frozenset())))
+
+
+@functools.lru_cache(maxsize=None)
+def _cached_item_via(path, func_name=None, cls_name=None, fixture_names=()):
+    """Reference modules and subprocess workers used by a single pytest item (top-level + reachable helpers/fixtures)."""
+    if func_name is None:
+        return _cached_module_via(path)
+    resolved, tree = _parsed_module(str(path))
+    if tree is None:
+        return ()
+    stmts = _reachable_local_stmts(tree, func_name, cls_name=cls_name, fixture_names=fixture_names, include_autouse=True)
+    if stmts is None:
+        found = set(_cached_module_via(path))
+    else:
+        found = set(_scan_stmts_via(stmts, tree, pathlib.Path(path), frozenset({(resolved, cls_name, func_name)})))
+    conftest_py = pathlib.Path(path).parent / "conftest.py"
+    if conftest_py.is_file():
+        _, ctree = _parsed_module(str(conftest_py))
+        if ctree is not None:
+            c_defs = {
+                s.name for s in ctree.body
+                if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and (_is_autouse_fixture(s) or s.name in fixture_names)
+            }
+            for cname in sorted(c_defs):
+                found.update(_scan_symbol_via(conftest_py, cname, frozenset()))
+    return tuple(sorted(found))
+
+
+def _item_via(path, func_name=None, cls_name=None, fixture_names=()):
+    """Reference modules and subprocess workers used by a single pytest item (top-level + reachable helpers/fixtures)."""
+    return _cached_item_via(path, func_name, cls_name, tuple(fixture_names))
+
+
 def _module_via(path):
     """Reference modules and subprocess workers a file imports or invokes, anywhere in it."""
-    return tuple(sorted(_scan_module_via(path, frozenset())))
+    return _cached_module_via(path)
+
+
+def _clear_via_caches():
+    _parsed_module.cache_clear()
+    _init_exports.cache_clear()
+    _cached_module_via.cache_clear()
+    _cached_item_via.cache_clear()
+
+
+_module_via.cache_clear = _clear_via_caches
+_item_via.cache_clear = _clear_via_caches
 
 
 @functools.lru_cache(maxsize=1)
@@ -431,6 +774,11 @@ def _golden_names():
 
 
 def _claims(item):
+    func_name = getattr(item, "originalname", None) or getattr(getattr(item, "obj", None), "__name__", None)
+    cls_obj = getattr(item, "cls", None)
+    cls_name = cls_obj.__name__ if cls_obj is not None else None
+    fixture_names = tuple(sorted(getattr(item, "fixturenames", ()) or ()))
+    base_via = set(_item_via(str(item.path), func_name, cls_name, fixture_names))
     claims = []
     for mark in item.iter_markers("validates"):
         objects = list(mark.args)
@@ -450,7 +798,7 @@ def _claims(item):
             raise pytest.UsageError(
                 f"{item.nodeid}: golden roots {unlisted} are not listed in trust/golden.yml"
             )
-        via = set(_module_via(str(item.path))) | set(mark.kwargs.get("via", ()))
+        via = base_via | set(mark.kwargs.get("via", ()))
         prop = mark.kwargs.get("property", ())
         claim = {"objects": objects, "roots": roots, "kind": kind, "tier": tier,
                  "via": sorted(via - set(objects)),

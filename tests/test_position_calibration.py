@@ -7,13 +7,12 @@ and CANDID.
      ``PositionData.model(orbit, north_angle=delta, plate_scale=m)`` maps true
      sky relative astrometry ``(rho_sky, theta_sky)`` to measured instrument
      astrometry via ``theta_meas = theta_sky + delta`` and ``rho_meas = m * rho_sky``.
-   * Because neither ``PMOIRED`` nor ``CANDID`` defines an astrometric
-     ``north_angle`` or ``plate_scale`` nuisance parameter (and no external
-     astrometric orbit package in CI defines those nuisances), the calibration
-     mapping and multi-epoch recovery of ``(delta, m)`` declare
-     ``roots=["mathematics"]`` ONLY, keeping ``PositionData`` honestly at
-     ``convention`` until confirmed against an external calibration-aware orbit
-     code or published multi-instrument astrometric epochs.
+   * Per ledger ``D25`` (Ben's 2026-11-15 ruling), the sign and direction of
+     ``north_angle`` and ``plate_scale`` are an internal parameter-sign
+     definition enforced via ``properties: {calibration: 1}``
+     (``roots=["mathematics"]``) paired with ``-north_angle`` and
+     ``1 / plate_scale`` negative controls, while ``property="likelihood"`` is
+     independently confirmed against ``PMOIRED`` and ``CANDID``.
 2. Independent external astrometry and likelihood checks on ``property="likelihood"``
    (``roots=["pmoired"]`` and ``roots=["candid"]``):
    * Realistic noisy 5-epoch OIFITS files (``sigma_v2 = 0.002``, ``sigma_cp_deg = 0.1``)

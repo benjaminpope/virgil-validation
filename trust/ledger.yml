@@ -616,6 +616,43 @@
   status: documented
   links: [https://github.com/benjaminpope/virgil-validation/issues/207]
 
+- id: D24
+  title: 'FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an internal parameter-sign convention checked via properties: {near_side: 1} and wrong-sign controls'
+  objects: [virgil.models.FlaredDiskGaussian, virgil.models.FlaredDiskHG, virgil.models.FlaredDiskPowerLaw]
+  ruling: definition
+  kind: 'convention (in Blakely et al. 2025 eqs. 2-9, tilting an inclined flared scattering surface z(rho) = h_0 (rho / r_0)^beta with major-axis line of nodes at pa East of North places the near rim at pa + 90 deg; flipping pa -> pa + 180 deg moves the near rim to pa - 90 deg and reverses every first-lobe closure phase. Which half-plane corresponds to inc in (0, 90) deg at a given pa is an internal parameter-sign choice rather than an external physical constant, pinned to < 1e-10 deg against our 3D surface Fourier sum and guarded by wrong-sign controls)'
+  referee: mathematics (3D flared scattering surface Fourier sum and first-lobe closure-phase sign, crosscheck.disks)
+  evidence:
+    - tests/test_flared_disk_nearside.py::test_flared_disk_gaussian_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_hg_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_powerlaw_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_farside_controls_flip_quadrant_and_closure_phase_sign
+  status: documented
+  decision: 'ruled definition / documented (Ben, 2026-11-15): the parameter sign does not need to be a convention trust-graph blocker; it is an arbitrary sign convention pinned via properties: {near_side: 1} and wrong-sign controls.'
+
+- id: D25
+  title: 'PositionData: astrometric calibration sign and scale (theta_meas = theta_sky + north_angle, rho_meas = plate_scale * rho_sky) is an internal parameter-sign convention checked via properties: {calibration: 1} and wrong-sign controls'
+  objects: [virgil.orbits.PositionData]
+  ruling: definition
+  kind: 'convention (PositionData.model follows Octofitter''s nuisance parameterization Thompson et al. 2023, AJ 166, 164, adding north_angle to the sky position angle and multiplying separation by plate_scale; defining north_angle with the opposite sign or plate_scale as its reciprocal is an equivalent reparameterization that our wrong-sign controls reject by > 50 sigma, while PositionData''s astrometric log-likelihood is independently confirmed against SciPy, PMOIRED, and CANDID)'
+  referee: mathematics (crosscheck.orbits multi-epoch calibration recovery and wrong-sign controls)
+  evidence:
+    - tests/test_position_calibration.py::test_position_data_calibration_model_and_recovery
+    - tests/test_position_calibration.py::test_position_data_wrong_calibration_sign_and_scale_fail_by_over_50_sigma
+  status: documented
+  decision: 'ruled definition / documented (Ben, 2026-11-15): the calibration nuisance sign does not need to be a convention trust-graph blocker; it is an arbitrary parameter-sign convention pinned via properties: {calibration: 1} alongside external PMOIRED and CANDID confirmation of PositionData.loglike.'
+
+- id: D26
+  title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode enters the wrap denominator when Delta != 0'
+  objects: [virgil.gains.ClosureOffsets, virgil.gains.closure_offsets]
+  ruling: definition
+  kind: 'formulation choice (in virgil 0.4.2, ClosureOffsets defaults to scale_penalty=True, dividing each closure phase''s periodic chord-minus-sine correction 2 sin^2(Delta / 2) by hypot(sigma_i, sigma_off,i) with sigma_off,i^2 = (M M^T)_ii computed per triangle before projecting onto the rank-3 column space of T. On a 4-telescope frame, a supplied mode along the 1D left null vector n with n^T T = 0 contributes zero to the projected sine covariance Q^T R Q + V V^T — leaving model_loglike strictly invariant under scale_penalty=False — whereas under scale_penalty=True its non-zero diagonal entry sigma_off,i^2 softens the unprojected wrap-penalty term whenever model_cp != data_cp)'
+  referee: mathematics (exact dense-Gaussian marginal + periodic wrap-penalty decomposition, tests/test_gains_algebra.py and tests/test_linear_marginals.py)
+  evidence:
+    - tests/test_gains_algebra.py::test_offsets_outside_the_span_of_T_do_not_enter
+    - tests/test_linear_marginals.py::test_closure_offsets_wrap_boundary_near_pi
+  status: documented
+
 - id: P13
   title: oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90
   objects: [oimodeler]
