@@ -294,6 +294,261 @@ nodes:
     source: [src/virgil/epochs.py]
     depends: [virgil.epochs.start_from_positions]
     doc: orbits/epochs.md
+  virgil.epochs.EpochPeaks:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    doc: orbits/epochs.md
+  virgil.epochs.NightFlag:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    doc: orbits/epochs.md
+  virgil.epochs.PrimaryDiameter:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    doc: orbits/epochs.md
+  virgil.epochs.broad_loglike:
+    layer: likelihood
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.marginal_loglike]
+    doc: orbits/epochs.md
+  virgil.epochs.estimate_primary_diameter:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.Epochs, virgil.epochs.PrimaryDiameter, virgil.fitting.fit]
+    doc: orbits/epochs.md
+  virgil.epochs.sidelobe_flags:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.NightFlag, virgil.epochs.EpochPositions, virgil.epochs.marginal_loglike]
+    doc: orbits/epochs.md
+  virgil.aliases.AliasBand:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    doc: orbits/epochs.md
+  virgil.aliases.alias_bands:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.AliasBand]
+    doc: orbits/epochs.md
+  virgil.aliases.period_cut:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    doc: orbits/epochs.md
+  virgil.aliases.period_window:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.period_cut]
+    doc: orbits/epochs.md
+  virgil.aliases.position_profile:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.AliasBand, virgil.orbits.period_grid, virgil.orbits.starting_orbits]
+    doc: orbits/epochs.md
+  virgil.aliases.AliasBandResult:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.models.OrbitalBinary, virgil.orbits.KeplerOrbit, virgil.likelihood.whitened_residuals]
+    doc: orbits/epochs.md
+  virgil.aliases.AliasResult:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.AliasBandResult]
+    doc: orbits/epochs.md
+  virgil.arcs.CycleCounts:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    depends: [virgil.aliases.AliasBand]
+    doc: orbits/epochs.md
+  virgil.arcs.NightMotion:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    doc: orbits/epochs.md
+  virgil.arcs.unwrap_cycles:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    depends: [virgil.arcs.CycleCounts, virgil.arcs.NightMotion, virgil.orbits.period_grid]
+    doc: orbits/epochs.md
+  virgil.arcs.arc_profile:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    depends: [virgil.arcs.NightMotion, virgil.orbits.ThieleInnesOrbit, virgil.orbits.period_grid, virgil.orbits.starting_orbits]
+    doc: orbits/epochs.md
+  virgil.arcs.night_motion:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    depends: [virgil.arcs.NightMotion, virgil.epochs.Epochs, virgil.fitting.fit]
+    doc: orbits/epochs.md
+  virgil.night_summaries.NightPeak:
+    layer: orbits
+    source: [src/virgil/night_summaries.py]
+    doc: orbits/epochs.md
+  virgil.night_summaries.NightSummary:
+    layer: orbits
+    source: [src/virgil/night_summaries.py]
+    depends: [virgil.night_summaries.NightPeak]
+    doc: orbits/epochs.md
+  virgil.night_summaries.keep_peaks:
+    layer: orbits
+    source: [src/virgil/night_summaries.py]
+    depends: [virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.night_summaries.night_summaries:
+    layer: orbits
+    source: [src/virgil/night_summaries.py]
+    depends: [virgil.night_summaries.NightSummary, virgil.epochs.Epochs, virgil.epochs.EpochPositions, virgil.fitting.fit]
+    doc: orbits/epochs.md
+  virgil.orbit_search.SharedFlux:
+    layer: orbits
+    source: [src/virgil/orbit_search.py]
+    doc: orbits/epochs.md
+  virgil.orbit_search.rank_scores:
+    layer: orbits
+    source: [src/virgil/orbit_search.py]
+    doc: orbits/epochs.md
+  virgil.orbit_search.OrbitScores:
+    layer: orbits
+    source: [src/virgil/orbit_search.py]
+    depends: [virgil.orbit_search.rank_scores]
+    doc: orbits/epochs.md
+  virgil.orbit_search.score_orbits:
+    layer: orbits
+    source: [src/virgil/orbit_search.py]
+    depends: [virgil.orbit_search.OrbitScores, virgil.orbit_search.SharedFlux, virgil.epochs.Epochs, virgil.epochs.marginal_loglike, virgil.fitting.fit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.PeriodDomain:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.Cell:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.OutlierPrior:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.CellFit:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.Cell]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.CellsResult:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.PeriodDomain, virgil.orbit_cells.CellFit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.period_domain:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.PeriodDomain, virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.choose_anchors:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.make_cells:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.Cell, virgil.aliases.alias_bands]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.outlier_prior:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.OutlierPrior, virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.outlier_log_density:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.OutlierPrior, virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.decode_particles:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.search_plan:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.Cell]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.search_cell:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.search_plan]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.position_leg:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.CellFit, virgil.orbit_cells.search_plan, virgil.orbit_cells.search_cell]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.fit_jitter:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.aliases.alias_bands, virgil.aliases.position_profile, virgil.orbits.PositionData]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.position_cells:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.CellsResult, virgil.orbit_cells.choose_anchors, virgil.orbit_cells.fit_jitter,
+              virgil.orbit_cells.make_cells, virgil.orbit_cells.outlier_log_density, virgil.orbit_cells.outlier_prior,
+              virgil.orbit_cells.position_leg]
+    doc: orbits/epochs.md
+  virgil.pipeline.Check:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_checks.py]
+    doc: orbits/epochs.md
+  virgil.pipeline.Stage:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_core.py]
+    doc: orbits/epochs.md
+  virgil.pipeline.SkyImage:
+    layer: imaging
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_io.py]
+    doc: orbits/epochs.md
+  virgil.pipeline.Result:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_io.py]
+    depends: [virgil.pipeline.Check, virgil.pipeline.SkyImage, virgil.aliases.AliasResult, virgil.oidata.OIData]
+    doc: orbits/epochs.md
+  virgil.pipeline.load:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_io.py]
+    depends: [virgil.pipeline.Result]
+    doc: orbits/epochs.md
+  virgil.pipeline.BinaryPipeline:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/binary.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.models.BinaryModelAngular,
+              virgil.models.BinaryModelCartesian, virgil.detection.detection_statistics,
+              virgil.limits.ruffio_upperlimit, virgil.limits.absil_limits, virgil.fitting.fit,
+              virgil.likelihood.numpyro_model]
+    doc: orbits/epochs.md
+  virgil.pipeline.StarPipeline:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/star.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.models.UniformDisk,
+              virgil.models.QuadraticLimbDarkenedDisk, virgil.fitting.fit, virgil.likelihood.numpyro_model]
+    doc: orbits/epochs.md
+  virgil.pipeline.DiskPipeline:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/disk.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.models.MultipoleDisk,
+              virgil.fitting.fit, virgil.likelihood.numpyro_model]
+    doc: orbits/epochs.md
+  virgil.pipeline.ImagingPipeline:
+    layer: imaging
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/image.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.pipeline.SkyImage,
+              virgil.models.Image, virgil.fitting.fit]
+    doc: orbits/epochs.md
+  virgil.pipeline.OrbitPipeline:
+    layer: orbits
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/orbit.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.epochs.Epochs,
+              virgil.epochs.epoch_positions, virgil.aliases.fit_orbit_aliases,
+              virgil.fitting.fit, virgil.likelihood.numpyro_model]
+    doc: orbits/epochs.md
   virgil.orbits.AxialVonMises: {layer: orbits, source: [src/virgil/orbits.py]}
   virgil.orbits.orientation_priors: {layer: orbits, source: [src/virgil/orbits.py], depends: [virgil.angles.AngleVector]}
   virgil.orbits.orientation_from_varpi: {layer: orbits, source: [src/virgil/orbits.py]}
@@ -599,6 +854,7 @@ nodes:
   crosscheck.orbit_population: {layer: references, depends: [crosscheck.array, crosscheck.oifits_writer, crosscheck.orbits, crosscheck.sky], doc: orbits/epochs.md}
   crosscheck.references: {layer: references, doc: orbits/epochs.md}
   crosscheck.skyplane: {layer: references, depends: [crosscheck.orbits], doc: orbits/epochs.md}
+  crosscheck.orbit_cells_ref: {layer: references, depends: [crosscheck.orbits], doc: orbits/epochs.md}
   crosscheck.disks: {layer: references}
   crosscheck.elr: {layer: references, depends: [crosscheck.sky]}
   crosscheck.nrm: {layer: references, depends: [crosscheck.sky]}
