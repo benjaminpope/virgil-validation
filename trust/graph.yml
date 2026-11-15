@@ -76,7 +76,7 @@ nodes:
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image.model_on_grid: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image]}
   virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
-  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
+  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], doc: models/visibilities.md}
   virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Rotated: {layer: models, source: [src/virgil/models.py], convention: [rotation_sense]}
@@ -116,7 +116,7 @@ nodes:
     doc: models/limb_darkening.md#elliptical-disks
   virgil.spectra.Spectrum: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.flux_at: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
-  virgil.spectra.Scaled: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md}
+  virgil.spectra.Scaled: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
@@ -420,7 +420,11 @@ nodes:
   virgil.inference.gaussian_fisher: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.fisher_projection: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.expected_fisher: {layer: inference, source: [src/virgil/inference.py], depends: [], doc: inference/helpers.md}
-  virgil.inference.objective_laplace_covariance: {layer: inference, source: [src/virgil/inference.py], depends: [], doc: inference/helpers.md}
+  virgil.inference.objective_laplace_covariance:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.inference.hessian_matrix, virgil.inference.regularized_inverse]
+    doc: inference/helpers.md
   virgil.inference.observed_information:
     layer: inference
     source: [src/virgil/inference.py]

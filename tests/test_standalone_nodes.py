@@ -398,6 +398,34 @@ def test_hierarchical_scales_and_population_scale_centred_and_noncentred():
     ks_p = float(stats.kstest(np.log(s0_draws), stats.norm(loc=np.log(median_val), scale=spread_val).cdf).pvalue)
     assert ks_p > 1e-3
 
+    # Curvature rows: empty in non-centred mode; in centred mode, row 0 has
+    # stop_gradient on spread and J_rho.T @ J_rho equals the expected Fisher
+    # block of -log N(log s_k | log median, spread^2) in (u_k, log median, log spread)
+    inv_s2 = 1.0 / spread_val**2
+    want_fisher_block = np.array(
+        [[inv_s2, -inv_s2, 0.0], [-inv_s2, inv_s2, 0.0], [0.0, 0.0, 2.0]]
+    )
+    worst_dcurv = 0.0
+    for k in range(n):
+        assert np.asarray(scales_nc[k].curvature_rows(vals_nc)).shape == (0,)
+        got_rows = np.asarray(scales_c[k].curvature_rows(vals_c))
+        want_rows = np.array(
+            [(u_vec[k] - np.log(median_val)) / spread_val, np.sqrt(2.0) * np.log(spread_val)]
+        )
+        worst_dcurv = max(worst_dcurv, float(np.max(np.abs(got_rows - want_rows))))
+
+        def _rows_log_coords(vec, idx=k):
+            u_arr = jnp.asarray(u_vec).at[idx].set(vec[0])
+            return scales_c[idx].curvature_rows(
+                {"err_s_median": jnp.exp(vec[1]), "err_s_spread": jnp.exp(vec[2]), "err_s_log": u_arr}
+            )
+
+        J_rho = np.asarray(
+            jax.jacfwd(_rows_log_coords)(jnp.array([u_vec[k], np.log(median_val), np.log(spread_val)]))
+        )
+        assert abs(float(J_rho[0, 2])) == 0.0  # stop_gradient wrt spread on row 0
+        worst_dcurv = max(worst_dcurv, float(np.max(np.abs(J_rho.T @ J_rho - want_fisher_block))))
+
     # Custom hyperpriors pass through
     custom_m, custom_s = dist.HalfNormal(2.0), dist.Exponential(3.0)
     pri_custom, _ = pr.hierarchical_scales("c", 2, median=custom_m, spread=custom_s)
@@ -405,7 +433,9 @@ def test_hierarchical_scales_and_population_scale_centred_and_noncentred():
 
     record("max_abs_dlogp", worst_dlogp)
     record("abs_norm_err", abs(norm_int - 1.0))
+    record("max_abs_dcurv_fisher", worst_dcurv)
     assert worst_dlogp < 1e-14
+    assert worst_dcurv < 1e-13
 
 
 @pytest.mark.validates(
@@ -569,8 +599,8 @@ def _richardson_hessian(fn, x, h=1e-4):
 def test_observed_information_matches_half_chi2_hessian_and_noiseless_fisher(tmp_path):
     """observed_information equals the Hessian of 1/2 our independent chi^2
     (crosscheck.chi2) for both a template System and a callable class, agrees
-    with expected_fisher on noiseless data at the truth, and shifts by the
-    nonlinear residual curvature away from the truth."""
+    with our Gauss-Newton Fisher matrix J^T Sigma^-1 J on noiseless data at the
+    truth, and shifts by the nonlinear residual curvature away from the truth."""
     true_vals = np.array([1.6, 5.5, -3.5, 0.06])  # diam, dra, ddec, flux
 
     def our_vis_from_vec(vec):
@@ -580,6 +610,27 @@ def test_observed_information_matches_half_chi2_hessian_and_noiseless_fisher(tmp
             return (sky.vis_uniform_disk(u, v, w, diam) + flux * sky.vis_point(u, v, w, dra, ddec)) / (1.0 + flux)
 
         return vis
+
+    def our_gauss_newton_fisher(d_ours, vec, h=1e-6):
+        """J^T Sigma^-1 J from central differences of crosscheck's V^2 and chord closure phases."""
+        def observables(x):
+            vis = our_vis_from_vec(x)
+            v2 = np.abs(vis(d_ours["u"], d_ours["v"], d_ours["wl"])) ** 2
+            cp_model = (
+                np.angle(vis(d_ours["u1"], d_ours["v1"], d_ours["wl3"]))
+                + np.angle(vis(d_ours["u2"], d_ours["v2_"], d_ours["wl3"]))
+                - np.angle(vis(d_ours["u1"] + d_ours["u2"], d_ours["v1"] + d_ours["v2_"], d_ours["wl3"]))
+            )
+            chord_cp = 2.0 * np.sin((cp_model - d_ours["cp"]) / 2.0)
+            return np.concatenate([v2.ravel(), chord_cp.ravel()])
+
+        inv_var = np.concatenate([d_ours["dv2"].ravel() ** -2, d_ours["dcp"].ravel() ** -2])
+        J = np.zeros((inv_var.size, vec.size))
+        for k in range(vec.size):
+            step = np.zeros_like(vec)
+            step[k] = h
+            J[:, k] = (observables(vec + step) - observables(vec - step)) / (2.0 * h)
+        return (J.T * inv_var) @ J
 
     clean_fits = tmp_path / "clean.fits"
     noisy_fits = tmp_path / "noisy.fits"
@@ -605,10 +656,27 @@ def test_observed_information_matches_half_chi2_hessian_and_noiseless_fisher(tmp
         scale = np.sqrt(np.outer(np.diag(want), np.diag(want)))
         worst_rel = max(worst_rel, float(np.max(np.abs(got - want) / scale)))
 
-    # Ridge and callable-model form (BinaryModelCartesian)
+    # Noiseless data at the truth: observed_information == J^T Sigma^-1 J (zero residuals);
+    # away from the truth: nonlinear residual curvature sum_i r_i nabla^2 r_i shifts it away from J^T Sigma^-1 J
     data_clean = OIData(str(clean_fits))
-    got_ridge = np.asarray(inf.observed_information(true_vals, paths, template, data_clean, ridge=2.5, dtype="float64"))
+    d_clean = ours.load(clean_fits)
     got_base = np.asarray(inf.observed_information(true_vals, paths, template, data_clean, ridge=0.0, dtype="float64"))
+    gn_true = our_gauss_newton_fisher(d_clean, true_vals)
+    scale_true = np.sqrt(np.outer(np.diag(gn_true), np.diag(gn_true)))
+    rel_gn_true = float(np.max(np.abs(got_base - gn_true) / scale_true))
+    assert rel_gn_true < 1e-8
+
+    off_vals = np.array([2.2, 4.1, -2.2, 0.14])
+    got_off = np.asarray(inf.observed_information(off_vals, paths, template, data_clean, ridge=0.0, dtype="float64"))
+    want_off = _richardson_hessian(lambda v: 0.5 * ours.chi2(d_clean, our_vis_from_vec(v), sine=True), off_vals, h=2e-4)
+    gn_off = our_gauss_newton_fisher(d_clean, off_vals)
+    scale_off = np.sqrt(np.outer(np.diag(gn_off), np.diag(gn_off)))
+    worst_rel = max(worst_rel, float(np.max(np.abs(got_off - want_off) / np.sqrt(np.outer(np.diag(want_off), np.diag(want_off))))))
+    rel_curv_shift = float(np.max(np.abs(got_off - gn_off) / scale_off))
+    assert rel_curv_shift > 0.25
+
+    # Ridge and callable-model form (BinaryModelCartesian)
+    got_ridge = np.asarray(inf.observed_information(true_vals, paths, template, data_clean, ridge=2.5, dtype="float64"))
     np.testing.assert_allclose(got_ridge, got_base + 2.5 * np.eye(4), rtol=1e-13, atol=1e-13)
 
     bin_vals = np.array([5.5, -3.5, 0.06])
@@ -622,6 +690,7 @@ def test_observed_information_matches_half_chi2_hessian_and_noiseless_fisher(tmp
     np.testing.assert_allclose(got_callable, got_pt_sys, rtol=1e-12, atol=1e-12)
 
     record("max_rel_dobs", worst_rel)
+    record("max_rel_dgn_truth", rel_gn_true)
     assert worst_rel < 1e-6
 
 

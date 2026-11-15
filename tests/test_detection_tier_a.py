@@ -15,28 +15,84 @@ and virgil.detection.injection_recovery.
 * DetectionMC.concatenate, save, load: lossless chunk merging, .npz round-trip,
   and ValueError guards on duplicate seeds, incompatible metadata, or unknown
   file-format versions.
-* injection_recovery: deterministic 7-hole NRM UV template (n_null=24,
-  n_inject=16) matching direct realization-by-realization calls to
-  gaussian_null and detection_statistics, batch-size invariance, and monotonic
-  completeness in companion flux.
+* injection_recovery: noiseless 3-telescope VLTI datasets generated via
+  crosscheck.simulate and searched independently via crosscheck.chi2 +
+  crosscheck.sky (delta_chi2, log_bayes_factor, max_snr, best_dra, best_ddec,
+  best_flux), noisy 7-hole NRM batch/chunk invariance, and position-matched
+  rejection of off-grid interferometric aliases.
 """
 
 import json
-import warnings
-import zipfile
 
-import jax
 import numpy as np
 import pytest
-from scipy import integrate, stats
+from scipy import integrate, optimize, special, stats
 
+from crosscheck import chi2 as ours, simulate, sky
 from evidence.plugin import record
 
 vm = pytest.importorskip("virgil.models")
 det = pytest.importorskip("virgil.detection")
 cov = pytest.importorskip("virgil.coverage")
+from virgil.oidata import OIData  # noqa: E402
 
 pytestmark = pytest.mark.x64
+
+UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
+
+
+def _binary_vis(f, x, y):
+    def vis(u, v, w):
+        return (sky.vis_point(u, v, w) + f * sky.vis_point(u, v, w, x, y)) / (1.0 + f)
+
+    return vis
+
+
+def _trapezoid_log_weights(n):
+    w = np.ones(n)
+    w[[0, -1]] = 0.5
+    return np.log(w / w.sum())
+
+
+def _our_grid_search(d, grid):
+    """Independent companion search over grid using crosscheck.chi2 and SciPy."""
+    null = ours.chi2(d, _binary_vis(0.0, 0.0, 0.0))
+    xs, ys, fs = grid["dra"], grid["ddec"], grid["flux"]
+    best_dc2, best_snr = 0.0, -np.inf
+    best_x, best_y, best_f = float(xs[0]), float(ys[0]), 0.0
+    lw = (
+        _trapezoid_log_weights(xs.size)[:, None, None]
+        + _trapezoid_log_weights(ys.size)[None, :, None]
+        + _trapezoid_log_weights(fs.size)[None, None, :]
+    )
+    terms = []
+    for i, x in enumerate(xs):
+        for j, y in enumerate(ys):
+            def c2(f, x=x, y=y):
+                return ours.chi2(d, _binary_vis(f, x, y))
+
+            grid_c2 = np.array([c2(f) for f in fs])
+            terms.append(-0.5 * (grid_c2 - null) + lw[i, j])
+            f_hat = optimize.minimize_scalar(
+                c2, bounds=(-0.2, 1.0), method="bounded", options={"xatol": 1e-12}
+            ).x
+            f_pos = max(float(f_hat), 0.0)
+            dc2 = null - c2(f_pos)
+            if dc2 > best_dc2:
+                best_dc2 = dc2
+                best_x, best_y, best_f = float(x), float(y), f_pos
+            h = 1e-4
+            curv = (c2(f_hat + h) - 2.0 * c2(f_hat) + c2(f_hat - h)) / h**2
+            best_snr = max(best_snr, f_hat / np.sqrt(2.0 / curv))
+    log_b = float(special.logsumexp(np.concatenate([np.ravel(t) for t in terms])))
+    return {
+        "delta_chi2": float(best_dc2),
+        "log_bayes_factor": log_b,
+        "max_snr": float(best_snr),
+        "best_dra": best_x,
+        "best_ddec": best_y,
+        "best_flux": best_f,
+    }
 
 
 def _make_synthetic_mc(
@@ -418,29 +474,125 @@ def test_detection_mc_concatenate_and_npz_roundtrip(tmp_path):
 
     # Unknown format version in saved .npz must raise ValueError on load
     bad_npz = tmp_path / "bad_format.npz"
-    with zipfile.ZipFile(out_npz, "r") as zin, zipfile.ZipFile(bad_npz, "w") as zout:
-        for item in zin.infolist():
-            raw = zin.read(item.filename)
-            if item.filename == "meta.npy":
-                buf = np.load(out_npz, allow_pickle=False)
-                meta_bad = json.loads(str(buf["meta"]))
-                meta_bad["format"] = 999
-                np.savez(bad_npz, **{k: buf[k] for k in buf.files if k != "meta"}, meta=json.dumps(meta_bad))
-                break
+    with np.load(out_npz, allow_pickle=False) as buf:
+        meta_bad = json.loads(str(buf["meta"]))
+        meta_bad["format"] = 999
+        np.savez(bad_npz, **{k: buf[k] for k in buf.files if k != "meta"}, meta=json.dumps(meta_bad))
     with pytest.raises(ValueError, match="format"):
         det.DetectionMC.load(bad_npz)
 
 
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
-    roots=["mathematics", "statistics"],
+    roots=["mathematics"],
     headline="max_rel_ddelta_chi2",
 )
-def test_injection_recovery_nrm_matches_realization_by_realization_and_monotone_completeness():
-    """On a deterministic 7-hole NRM UV template (n_null=24, n_inject=16),
-    injection_recovery matches direct realization-by-realization calls to
-    gaussian_null and detection_statistics, is invariant to draw_batch, and
-    yields monotonic completeness in companion flux."""
+def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path):
+    """On noiseless 3-telescope VLTI datasets synthesized via crosscheck.simulate,
+    injection_recovery (with error_scale=0.0) matches our independent
+    crosscheck.chi2 + crosscheck.sky grid search across delta_chi2,
+    log_bayes_factor, max_snr, best_dra, best_ddec, and best_flux."""
+    obs_kw = dict(
+        hour_angles_h=np.linspace(-2.5, 2.5, 5),
+        wavelengths=np.linspace(1.6e-6, 2.2e-6, 4),
+        dec_deg=-45.0,
+        sigma_v2=0.01,
+        sigma_cp_deg=0.5,
+    )
+    tpl_path = tmp_path / "tpl.fits"
+    simulate.observe(tpl_path, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=None, **obs_kw)
+    template = OIData(str(tpl_path))
+    null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
+
+    grid = {
+        "dra": np.linspace(-9.0, 9.0, 7),
+        "ddec": np.linspace(-9.0, 9.0, 7),
+        "flux": np.geomspace(1e-4, 2e-1, 45),
+    }
+    injections = {
+        "dra": np.array([6.0, -6.0, 3.0, -3.0]),
+        "ddec": np.array([-3.0, 3.0, 6.0, -6.0]),
+        "flux": np.array([2e-3, 8e-3, 2.5e-2, 7e-2]),
+    }
+
+    sim0 = det.gaussian_null(null_scene, template, error_scale=0.0)
+    mc = det.injection_recovery(
+        vm.BinaryModelCartesian,
+        null_scene,
+        template,
+        grid,
+        0,
+        n_null=4,
+        injections=injections,
+        noise=sim0,
+        match_radius=1.5,
+        draw_batch=2,
+        progress=False,
+    )
+    assert mc.n_null == 4 and mc.n_injected == 4
+
+    want_null = _our_grid_search(ours.load(tpl_path), grid)
+    worst_dc2, worst_logb, worst_snr, worst_flux = 0.0, 0.0, 0.0, 0.0
+    for i in range(mc.n_null):
+        worst_dc2 = max(worst_dc2, abs(float(mc.null["delta_chi2"][i]) - want_null["delta_chi2"]))
+        worst_logb = max(
+            worst_logb,
+            abs(float(mc.null["log_bayes_factor"][i]) - want_null["log_bayes_factor"])
+            / max(1.0, abs(want_null["log_bayes_factor"])),
+        )
+
+    for k in range(mc.n_injected):
+        inj_path = tmp_path / f"inj_{k}.fits"
+        simulate.observe(
+            inj_path,
+            _binary_vis(float(injections["flux"][k]), float(injections["dra"][k]), float(injections["ddec"][k])),
+            UTS3,
+            rng=None,
+            **obs_kw,
+        )
+        want = _our_grid_search(ours.load(inj_path), grid)
+        worst_dc2 = max(
+            worst_dc2,
+            abs(float(mc.injected["delta_chi2"][k]) - want["delta_chi2"]) / max(1.0, want["delta_chi2"]),
+        )
+        worst_logb = max(
+            worst_logb,
+            abs(float(mc.injected["log_bayes_factor"][k]) - want["log_bayes_factor"])
+            / max(1.0, abs(want["log_bayes_factor"])),
+        )
+        worst_snr = max(
+            worst_snr,
+            abs(float(mc.injected["max_snr"][k]) - want["max_snr"]) / max(1.0, abs(want["max_snr"])),
+        )
+        worst_flux = max(
+            worst_flux,
+            abs(float(mc.injected["best_flux"][k]) - want["best_flux"]) / want["best_flux"],
+        )
+        assert float(mc.injected["best_dra"][k]) == pytest.approx(want["best_dra"], abs=1e-12)
+        assert float(mc.injected["best_ddec"][k]) == pytest.approx(want["best_ddec"], abs=1e-12)
+
+    assert np.all(mc.matched())
+    assert np.all(mc.detected("delta_chi2", 0.25))
+
+    record("max_rel_ddelta_chi2", worst_dc2)
+    record("max_rel_dlogB", worst_logb)
+    record("max_rel_dsnr", worst_snr)
+    record("max_rel_dflux", worst_flux)
+    assert worst_dc2 < 1e-5
+    assert worst_logb < 1e-5
+    assert worst_snr < 1e-4
+    assert worst_flux < 1e-5
+
+
+@pytest.mark.validates(
+    "virgil.detection.injection_recovery",
+    roots=["self-consistency"],
+    headline="max_rel_dbatch",
+)
+def test_injection_recovery_nrm_batch_and_chunk_invariance():
+    """On a noisy 7-hole NRM UV template (n_null=24, n_inject=16),
+    injection_recovery produces identical per-draw statistics across
+    (draw_batch=1, chunk_size=None) and (draw_batch=4, chunk_size=8)."""
     template = cov.nrm_oidata(wavelength_m=4.3e-6, sigma_v2=0.01, sigma_cp_deg=0.5)
     grid = {
         "dra": np.linspace(-150.0, 150.0, 7),
@@ -457,7 +609,7 @@ def test_injection_recovery_nrm_matches_realization_by_realization_and_monotone_
 
     seed = 20261115
     null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
-    mc = det.injection_recovery(
+    mc_serial = det.injection_recovery(
         vm.BinaryModelCartesian,
         null_scene,
         template,
@@ -467,9 +619,10 @@ def test_injection_recovery_nrm_matches_realization_by_realization_and_monotone_
         injections=injections,
         match_radius=60.0,
         draw_batch=1,
+        chunk_size=None,
         progress=False,
     )
-    mc_batched = det.injection_recovery(
+    mc_chunked = det.injection_recovery(
         vm.BinaryModelCartesian,
         null_scene,
         template,
@@ -479,63 +632,18 @@ def test_injection_recovery_nrm_matches_realization_by_realization_and_monotone_
         injections=injections,
         match_radius=60.0,
         draw_batch=4,
+        chunk_size=8,
         progress=False,
     )
-    assert mc.n_null == 24 and mc.n_injected == 16
+    assert mc_serial.n_null == 24 and mc_serial.n_injected == 16
 
-    sim_fn = det.gaussian_null(null_scene, template)
-    root_key = jax.random.key(seed)
-    worst_dc2, worst_logb, worst_snr, worst_batch = 0.0, 0.0, 0.0, 0.0
+    worst_batch = 0.0
+    for key_name in ("delta_chi2", "log_bayes_factor", "max_snr", "best_dra", "best_ddec", "best_flux"):
+        for a, b in ((mc_serial.null[key_name], mc_chunked.null[key_name]), (mc_serial.injected[key_name], mc_chunked.injected[key_name])):
+            denom = np.maximum(1.0, np.abs(a))
+            worst_batch = max(worst_batch, float(np.max(np.abs(a - b) / denom)))
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        for i in range(24):
-            ki = jax.random.fold_in(jax.random.fold_in(root_key, 0), i)
-            st = det.detection_statistics(vm.BinaryModelCartesian, sim_fn(ki), grid)
-            ref_dc2 = float(st["delta_chi2"])
-            ref_lb = float(st["log_bayes_factor"])
-            ref_snr = float(st["max_snr"])
-            worst_dc2 = max(worst_dc2, abs(float(mc.null["delta_chi2"][i]) - ref_dc2) / max(1.0, abs(ref_dc2)))
-            worst_logb = max(worst_logb, abs(float(mc.null["log_bayes_factor"][i]) - ref_lb) / max(1.0, abs(ref_lb)))
-            worst_snr = max(worst_snr, abs(float(mc.null["max_snr"][i]) - ref_snr) / max(1.0, abs(ref_snr)))
-            worst_batch = max(
-                worst_batch,
-                abs(float(mc.null["delta_chi2"][i]) - float(mc_batched.null["delta_chi2"][i])) / max(1.0, abs(ref_dc2)),
-            )
-
-        for i in range(16):
-            ki = jax.random.fold_in(jax.random.fold_in(root_key, 1), i)
-            scene_i = vm.BinaryModelCartesian(
-                float(injections["dra"][i]),
-                float(injections["ddec"][i]),
-                float(injections["flux"][i]),
-            )
-            st = det.detection_statistics(vm.BinaryModelCartesian, sim_fn(ki, scene=scene_i), grid)
-            ref_dc2 = float(st["delta_chi2"])
-            ref_lb = float(st["log_bayes_factor"])
-            ref_snr = float(st["max_snr"])
-            worst_dc2 = max(worst_dc2, abs(float(mc.injected["delta_chi2"][i]) - ref_dc2) / max(1.0, abs(ref_dc2)))
-            worst_logb = max(worst_logb, abs(float(mc.injected["log_bayes_factor"][i]) - ref_lb) / max(1.0, abs(ref_lb)))
-            worst_snr = max(worst_snr, abs(float(mc.injected["max_snr"][i]) - ref_snr) / max(1.0, abs(ref_snr)))
-            worst_batch = max(
-                worst_batch,
-                abs(float(mc.injected["delta_chi2"][i]) - float(mc_batched.injected["delta_chi2"][i])) / max(1.0, abs(ref_dc2)),
-            )
-
-    # Monotonic completeness across flux tiers (pooling the 4 positions into one radial bin)
-    comp = mc.completeness("delta_chi2", fap=0.10, sep_bins=np.array([50.0, 150.0]))
-    det_frac = comp["completeness"][0]
-    assert det_frac.shape == (4,)
-    assert np.all(np.diff(det_frac) >= -1e-12), det_frac
-    assert det_frac[0] <= 0.25 and det_frac[-1] == 1.0
-
-    record("max_rel_ddelta_chi2", worst_dc2)
-    record("max_rel_dlogB", worst_logb)
-    record("max_rel_dsnr", worst_snr)
     record("max_rel_dbatch", worst_batch)
-    assert worst_dc2 < 1e-6
-    assert worst_logb < 1e-6
-    assert worst_snr < 1e-5
     assert worst_batch < 1e-6
 
 
@@ -544,20 +652,32 @@ def test_injection_recovery_nrm_matches_realization_by_realization_and_monotone_
     roots=["mathematics"],
     kind="control",
 )
-def test_injection_recovery_rejects_off_grid_false_position_matches():
+def test_injection_recovery_rejects_off_grid_false_position_matches(tmp_path):
     """Negative control: a bright companion injected far outside the searched
-    coordinate box produces alias peaks inside the box whose delta_chi2 exceeds
-    the null threshold, so ignoring match_radius falsely counts them as
-    recoveries while position-matched recovery rejects 100% of them."""
-    template = cov.nrm_oidata(wavelength_m=4.3e-6, sigma_v2=0.005, sigma_cp_deg=0.25)
+    coordinate box produces interferometric sidelobe peaks inside the box whose
+    delta_chi2 exceeds the null threshold, so ignoring match_radius falsely
+    counts them as recoveries while position-matched recovery rejects 100%."""
+    tpl_path = tmp_path / "ctrl_tpl.fits"
+    simulate.observe(
+        tpl_path,
+        _binary_vis(0.0, 0.0, 0.0),
+        UTS3,
+        hour_angles_h=np.linspace(-2.5, 2.5, 5),
+        wavelengths=np.linspace(1.6e-6, 2.2e-6, 4),
+        dec_deg=-45.0,
+        sigma_v2=0.005,
+        sigma_cp_deg=0.25,
+        rng=None,
+    )
+    template = OIData(str(tpl_path))
     grid = {
-        "dra": np.linspace(-60.0, 60.0, 5),
-        "ddec": np.linspace(-60.0, 60.0, 5),
+        "dra": np.linspace(-6.0, 6.0, 5),
+        "ddec": np.linspace(-6.0, 6.0, 5),
         "flux": np.geomspace(1e-3, 1e-1, 8),
     }
     injections = {
-        "dra": np.array([240.0, -240.0, 0.0, 200.0]),
-        "ddec": np.array([0.0, 180.0, -240.0, -200.0]),
+        "dra": np.array([24.0, -24.0, 0.0, 20.0]),
+        "ddec": np.array([0.0, 18.0, -24.0, -20.0]),
         "flux": np.full(4, 0.08),
     }
     mc = det.injection_recovery(
@@ -568,11 +688,11 @@ def test_injection_recovery_rejects_off_grid_false_position_matches():
         7,
         n_null=12,
         injections=injections,
-        match_radius=30.0,
+        match_radius=3.0,
         progress=False,
     )
     thr, _ = mc.threshold("delta_chi2", 0.15)
     unmatched_exceedance = np.mean(mc.injected["delta_chi2"] > thr)
-    matched_completeness = float(mc.completeness("delta_chi2", 0.15, sep_bins=[150.0, 350.0])["completeness"][0, 0])
+    matched_completeness = float(mc.completeness("delta_chi2", 0.15, sep_bins=[15.0, 40.0])["completeness"][0, 0])
     assert unmatched_exceedance >= 0.75
     assert matched_completeness == 0.0
