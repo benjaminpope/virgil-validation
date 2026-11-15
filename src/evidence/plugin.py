@@ -114,7 +114,7 @@ _REFERENCE_PACKAGES = ("crosscheck", "external_bridge", "virgil_bridge")
 _PLUMBING = frozenset({"external_bridge._subprocess"})
 _UNRESOLVED_WORKER = "external_bridge.<unresolved_worker>"
 _UNRESOLVED_IMPORT = "crosscheck.<unresolved_dynamic_import>"
-_SAFE_SP_ATTRS = frozenset({"run", "available", "python", "version", "_env", "ROOT"})
+_SAFE_SP_ATTRS = frozenset({"run", "available", "python", "version", "venv_root", "_env", "ROOT"})
 _SKIP_LOCAL_TOPS = frozenset({*_REFERENCE_PACKAGES, "virgil", "drpangloss", "jaxbessel", "evidence"})
 
 
@@ -277,6 +277,17 @@ def _local_search_dirs(caller_path):
     return tuple(out)
 
 
+def _ref_target_file(parts):
+    if len(parts) >= 2:
+        py = _SRC_ROOT.joinpath(*parts[:-1], f"{parts[-1]}.py")
+        if py.is_file():
+            return py
+    init_py = _SRC_ROOT.joinpath(*parts, "__init__.py")
+    if init_py.is_file():
+        return init_py
+    return None
+
+
 def _resolve_local_helper(parts, search_dirs):
     if not parts or parts[0] in _SKIP_LOCAL_TOPS:
         return None
@@ -419,6 +430,49 @@ def _collect_scope_bindings(node, counts, is_scope_root=False):
         _collect_scope_bindings(child, counts)
 
 
+_EMPTY_SP_EXPORT = {
+    "wrappers": {},
+    "sp_chains": frozenset(),
+    "eb_chains": frozenset(),
+    "wildcard": False,
+    "uncalled_names": frozenset(),
+}
+_WILDCARD_SP_EXPORT = {
+    "wrappers": {},
+    "sp_chains": frozenset(),
+    "eb_chains": frozenset(),
+    "wildcard": True,
+    "uncalled_names": frozenset(),
+}
+
+
+def _uniquely_bound_top_names(root_tree, module_counts, global_names):
+    """Module-scope names whose binding is provably unique (including ``import pkg; import pkg.sub``)."""
+    if module_counts["*"] > 0:
+        return frozenset()
+    top_imp_counts = collections.Counter()
+    top_imp_sources = collections.defaultdict(set)
+    for stmt in root_tree.body:
+        if isinstance(stmt, ast.Import):
+            for alias in stmt.names:
+                bname = alias.asname or alias.name.split(".")[0]
+                top_imp_counts[bname] += 1
+                top_imp_sources[bname].add(("import", alias.name if alias.asname else alias.name.split(".")[0]))
+        elif isinstance(stmt, ast.ImportFrom):
+            for alias in stmt.names:
+                if alias.name != "*":
+                    bname = alias.asname or alias.name
+                    top_imp_counts[bname] += 1
+                    top_imp_sources[bname].add(("from", stmt.level, stmt.module, alias.name))
+    return frozenset(
+        name
+        for name, cnt in module_counts.items()
+        if name != "*"
+        and name not in global_names
+        and (cnt == 1 or (cnt > 1 and top_imp_counts[name] == cnt and len(top_imp_sources[name]) == 1))
+    )
+
+
 def _subprocess_workers(
     scope_tree,
     sp_aliases,
@@ -429,6 +483,8 @@ def _subprocess_workers(
     *,
     imported_sp_wrappers=None,
     mod_sp_wrappers=None,
+    mod_sp_chains=frozenset(),
+    mod_eb_chains=frozenset(),
     allow_uncalled_wrappers=frozenset(),
     is_full_module=True,
     return_wrappers_only=False,
@@ -441,29 +497,53 @@ def _subprocess_workers(
     """
     imported_sp_wrappers = imported_sp_wrappers or {}
     mod_sp_wrappers = mod_sp_wrappers or {}
-    mod_sp_prefixes = {chain[:k] for chain in mod_sp_wrappers for k in range(1, len(chain))}
+    mod_sp_chains = frozenset(mod_sp_chains)
+    mod_eb_chains = frozenset(mod_eb_chains)
 
     if wildcard_sp:
-        return {} if return_wrappers_only else {_UNRESOLVED_WORKER}
+        return _WILDCARD_SP_EXPORT if return_wrappers_only else {_UNRESOLVED_WORKER}
     if (
         not sp_aliases
         and not run_aliases
         and not eb_aliases
         and not imported_sp_wrappers
         and not mod_sp_wrappers
+        and not mod_sp_chains
+        and not mod_eb_chains
     ):
-        return {} if return_wrappers_only else set()
+        return _EMPTY_SP_EXPORT if return_wrappers_only else set()
+
+    all_sp_chains = (
+        {(s,) for s in sp_aliases}
+        | {(e, "_subprocess") for e in eb_aliases}
+        | set(mod_sp_chains)
+        | {(*ec, "_subprocess") for ec in mod_eb_chains}
+    )
+    all_eb_chains = {(e,) for e in eb_aliases} | set(mod_eb_chains)
+    mod_sp_prefixes = {
+        chain[:k]
+        for chain in (*mod_sp_wrappers, *mod_sp_chains, *mod_eb_chains)
+        for k in range(1, len(chain))
+    }
 
     root_tree = full_tree if full_tree is not None else scope_tree
-    protected_import_names = set(imported_sp_wrappers) | {p[0] for p in mod_sp_prefixes}
+    protected_import_names = (
+        set(sp_aliases)
+        | set(run_aliases)
+        | set(eb_aliases)
+        | set(imported_sp_wrappers)
+        | {p[0] for p in mod_sp_prefixes}
+        | {c[0] for c in mod_sp_wrappers}
+        | {c[0] for c in mod_sp_chains}
+        | {c[0] for c in mod_eb_chains}
+    )
     if protected_import_names and (
         _has_non_import_binding(scope_tree, protected_import_names)
         or _has_non_import_binding(ast.Module(body=list(root_tree.body), type_ignores=[]), protected_import_names)
     ):
-        # Fail closed if an imported wrapper or module alias is rebound/shadowed
-        if not return_wrappers_only:
-            return {_UNRESOLVED_WORKER}
-        return {}
+        if return_wrappers_only:
+            return _WILDCARD_SP_EXPORT
+        return {_UNRESOLVED_WORKER}
 
     module_counts = collections.Counter()
     _collect_scope_bindings(root_tree, module_counts, is_scope_root=True)
@@ -490,21 +570,14 @@ def _subprocess_workers(
             ):
                 const_strings[stmt.target.id] = stmt.value.value
 
-    def _is_sp_module_expr(expr):
-        return (
-            (isinstance(expr, ast.Name) and expr.id in sp_aliases)
-            or (
-                isinstance(expr, ast.Attribute)
-                and expr.attr == "_subprocess"
-                and isinstance(expr.value, ast.Name)
-                and expr.value.id in eb_aliases
-            )
-        )
+    def _is_sp_module_expr(expr, shadowed=frozenset()):
+        chain = _attr_chain(expr)
+        return chain is not None and chain in all_sp_chains and chain[0] not in shadowed
 
-    def _is_sp_run(func):
+    def _is_sp_run(func, shadowed=frozenset()):
         return (
-            (isinstance(func, ast.Attribute) and func.attr == "run" and _is_sp_module_expr(func.value))
-            or (isinstance(func, ast.Name) and func.id in run_aliases)
+            (isinstance(func, ast.Attribute) and func.attr == "run" and _is_sp_module_expr(func.value, shadowed))
+            or (isinstance(func, ast.Name) and func.id in run_aliases and func.id not in shadowed)
         )
 
     fn_nodes = [n for n in ast.walk(scope_tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
@@ -546,7 +619,7 @@ def _subprocess_workers(
                     continue
                 wexpr = None
                 chain = _attr_chain(sub.func)
-                if _is_sp_run(sub.func):
+                if _is_sp_run(sub.func, fbound):
                     wexpr = _call_arg_expr(sub, 1, "worker")
                 elif isinstance(sub.func, ast.Name) and sub.func.id in wrappers and sub.func.id not in fbound:
                     idx, pname, _ = wrappers[sub.func.id]
@@ -570,23 +643,43 @@ def _subprocess_workers(
                     break
 
     if return_wrappers_only:
-        exported = {fn_name: (idx, pname) for fn_name, (idx, pname, _) in wrappers.items()}
-        if module_counts["*"] == 0:
-            for stmt in scope_tree.body:
-                if isinstance(stmt, ast.ImportFrom):
-                    for alias in stmt.names:
-                        bname = alias.asname or alias.name
-                        if (
-                            bname in imported_sp_wrappers
-                            and module_counts[bname] == 1
-                            and bname not in global_names
-                        ):
-                            exported[bname] = imported_sp_wrappers[bname]
-        return exported
+        if module_counts["*"] > 0:
+            return _WILDCARD_SP_EXPORT
+        top_unique = _uniquely_bound_top_names(root_tree, module_counts, global_names)
+        exp_wrappers = {(fn_name,): (idx, pname) for fn_name, (idx, pname, _) in wrappers.items()}
+        for rname in run_aliases:
+            if rname in top_unique:
+                exp_wrappers[(rname,)] = (1, "worker")
+        for wname, sig in imported_sp_wrappers.items():
+            if wname in top_unique:
+                exp_wrappers[(wname,)] = sig
+        for wchain, sig in mod_sp_wrappers.items():
+            if wchain[0] in top_unique:
+                exp_wrappers[wchain] = sig
+        exp_sp_chains = (
+            {(sname,) for sname in sp_aliases if sname in top_unique}
+            | {(ename, "_subprocess") for ename in eb_aliases if ename in top_unique}
+            | {schain for schain in mod_sp_chains if schain[0] in top_unique}
+            | {(*echain, "_subprocess") for echain in mod_eb_chains if echain[0] in top_unique}
+        )
+        exp_eb_chains = (
+            {(ename,) for ename in eb_aliases if ename in top_unique}
+            | {echain for echain in mod_eb_chains if echain[0] in top_unique}
+        )
+        uncalled = frozenset({c[0] for c in (*exp_wrappers, *exp_sp_chains, *exp_eb_chains) if len(c) == 1})
+        return {
+            "wrappers": exp_wrappers,
+            "sp_chains": frozenset(exp_sp_chains),
+            "eb_chains": frozenset(exp_eb_chains),
+            "wildcard": False,
+            "uncalled_names": uncalled,
+        }
 
     workers = set()
     called_wrappers = set()
     called_imported_wrappers = set()
+    called_run_aliases = set()
+    referenced_sp_roots = set()
     direct_call_funcs = set()
     attr_parents = {}
 
@@ -601,20 +694,22 @@ def _subprocess_workers(
             handled = False
             wexpr = None
             chain = _attr_chain(node.func)
-            if _is_sp_run(node.func):
+            if _is_sp_run(node.func, shadowed):
                 handled = True
+                if isinstance(node.func, ast.Name) and node.func.id in run_aliases:
+                    called_run_aliases.add(node.func.id)
                 wexpr = _call_arg_expr(node, 1, "worker")
             elif isinstance(node.func, ast.Name) and node.func.id in wrappers and node.func.id not in shadowed:
                 handled = True
                 called_wrappers.add(node.func.id)
                 idx, pname, _ = wrappers[node.func.id]
                 wexpr = _call_arg_expr(node, idx, pname)
-            elif isinstance(node.func, ast.Name) and node.func.id in imported_sp_wrappers:
+            elif isinstance(node.func, ast.Name) and node.func.id in imported_sp_wrappers and node.func.id not in shadowed:
                 handled = True
                 called_imported_wrappers.add(node.func.id)
                 idx, pname = imported_sp_wrappers[node.func.id]
                 wexpr = _call_arg_expr(node, idx, pname)
-            elif chain in mod_sp_wrappers:
+            elif chain in mod_sp_wrappers and chain[0] not in shadowed:
                 handled = True
                 idx, pname = mod_sp_wrappers[chain]
                 wexpr = _call_arg_expr(node, idx, pname)
@@ -633,9 +728,10 @@ def _subprocess_workers(
                     else:
                         workers.add(_UNRESOLVED_WORKER)
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            referenced_sp_roots.add(node.id)
             if node.id in run_aliases and id(node) not in direct_call_funcs:
                 workers.add(_UNRESOLVED_WORKER)
-            elif node.id in sp_aliases:
+            elif (node.id,) in all_sp_chains:
                 parent_attr = attr_parents.get(id(node))
                 if parent_attr is None or parent_attr.attr not in _SAFE_SP_ATTRS:
                     workers.add(_UNRESOLVED_WORKER)
@@ -645,25 +741,20 @@ def _subprocess_workers(
                 workers.add(_UNRESOLVED_WORKER)
             elif node.id in imported_sp_wrappers and id(node) not in direct_call_funcs:
                 workers.add(_UNRESOLVED_WORKER)
-            elif (node.id,) in mod_sp_prefixes and id(node) not in attr_parents:
+            elif ((node.id,) in mod_sp_prefixes or (node.id,) in all_eb_chains) and id(node) not in attr_parents:
                 workers.add(_UNRESOLVED_WORKER)
         elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
-            if (
-                node.attr == "_subprocess"
-                and isinstance(node.value, ast.Name)
-                and node.value.id in eb_aliases
-            ):
+            chain = _attr_chain(node)
+            if chain in all_sp_chains:
                 parent_attr = attr_parents.get(id(node))
                 if parent_attr is None or parent_attr.attr not in _SAFE_SP_ATTRS:
                     workers.add(_UNRESOLVED_WORKER)
                 elif parent_attr.attr == "run" and id(parent_attr) not in direct_call_funcs:
                     workers.add(_UNRESOLVED_WORKER)
-            else:
-                chain = _attr_chain(node)
-                if chain in mod_sp_wrappers and id(node) not in direct_call_funcs:
-                    workers.add(_UNRESOLVED_WORKER)
-                elif chain in mod_sp_prefixes and id(node) not in attr_parents:
-                    workers.add(_UNRESOLVED_WORKER)
+            elif chain in mod_sp_wrappers and id(node) not in direct_call_funcs:
+                workers.add(_UNRESOLVED_WORKER)
+            elif (chain in mod_sp_prefixes or chain in all_eb_chains) and id(node) not in attr_parents:
+                workers.add(_UNRESOLVED_WORKER)
 
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             for sub in (
@@ -715,8 +806,24 @@ def _subprocess_workers(
     _scan_node(scope_tree, None, frozenset())
     if set(wrappers) - called_wrappers - set(allow_uncalled_wrappers):
         workers.add(_UNRESOLVED_WORKER)
-    if is_full_module and (set(imported_sp_wrappers) - called_imported_wrappers - set(allow_uncalled_wrappers)):
-        workers.add(_UNRESOLVED_WORKER)
+    if is_full_module:
+        if set(imported_sp_wrappers) - called_imported_wrappers - set(allow_uncalled_wrappers):
+            workers.add(_UNRESOLVED_WORKER)
+        if set(run_aliases) - called_run_aliases - set(allow_uncalled_wrappers):
+            workers.add(_UNRESOLVED_WORKER)
+        if (set(sp_aliases) | set(eb_aliases)) - referenced_sp_roots - set(allow_uncalled_wrappers):
+            workers.add(_UNRESOLVED_WORKER)
+    else:
+        root_called = {
+            n.func.id for n in ast.walk(root_tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
+        root_loaded = {
+            n.id for n in ast.walk(root_tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+        }
+        if (set(imported_sp_wrappers) | set(run_aliases)) - root_called - set(allow_uncalled_wrappers):
+            workers.add(_UNRESOLVED_WORKER)
+        if (set(sp_aliases) | set(eb_aliases)) - root_loaded - set(allow_uncalled_wrappers):
+            workers.add(_UNRESOLVED_WORKER)
     return workers
 
 
@@ -755,7 +862,7 @@ def _import_call_kwargs_ok(node, kind):
 
 
 def _is_provably_external_py_suffix(suf, resolved_file):
-    if not suf or "/" not in suf or not suf.endswith(".py"):
+    if not suf or not suf.startswith("/") or not suf.endswith(".py"):
         return False
     rel = suf.lstrip("/")
     parts = rel.split("/")
@@ -778,6 +885,23 @@ def _is_provably_external_py_suffix(suf, resolved_file):
         return True
 
 
+_EMPTY_DYN_EXPORT = {
+    "call_kinds": {},
+    "imp_wrappers": {},
+    "spec_wrappers": {},
+    "importlib_chains": frozenset(),
+    "importlib_util_chains": frozenset(),
+    "pytest_chains": frozenset(),
+    "builtins_chains": frozenset(),
+    "wildcard": False,
+    "uncalled_names": frozenset(),
+}
+_WILDCARD_DYN_EXPORT = {
+    **_EMPTY_DYN_EXPORT,
+    "wildcard": True,
+}
+
+
 def _scan_call_imports(
     tree,
     resolved,
@@ -790,6 +914,7 @@ def _scan_call_imports(
     importlib_aliases,
     importlib_util_aliases,
     import_module_aliases,
+    dunder_import_aliases=frozenset(),
     spec_from_file_aliases,
     pytest_aliases,
     importorskip_aliases,
@@ -797,6 +922,20 @@ def _scan_call_imports(
     pathlib_aliases,
     path_cls_aliases,
     wildcard_import,
+    imported_call_kinds=None,
+    mod_call_kinds=None,
+    imported_imp_wrappers=None,
+    mod_imp_wrappers=None,
+    imported_spec_wrappers=None,
+    mod_spec_wrappers=None,
+    mod_importlib_chains=frozenset(),
+    mod_importlib_util_chains=frozenset(),
+    mod_pytest_chains=frozenset(),
+    mod_builtins_chains=frozenset(),
+    wildcard_dyn=False,
+    allow_uncalled_imp=frozenset(),
+    is_full_module=True,
+    return_exports_only=False,
 ):
     """Resolve ``importorskip``, ``import_module``, ``__import__``, and ``spec_from_file_location`` calls.
 
@@ -804,8 +943,22 @@ def _scan_call_imports(
     ``external_bridge._subprocess`` is dynamically loaded) whenever a target cannot
     be statically resolved or provably ruled out as external to the repository.
     """
+    if wildcard_dyn:
+        return _WILDCARD_DYN_EXPORT if return_exports_only else {_UNRESOLVED_IMPORT}
+
     extra = set()
     root_tree = full_tree if full_tree is not None else tree
+    imported_call_kinds = imported_call_kinds or {}
+    mod_call_kinds = mod_call_kinds or {}
+    imported_imp_wrappers = imported_imp_wrappers or {}
+    mod_imp_wrappers = mod_imp_wrappers or {}
+    imported_spec_wrappers = imported_spec_wrappers or {}
+    mod_spec_wrappers = mod_spec_wrappers or {}
+    mod_importlib_chains = frozenset(mod_importlib_chains)
+    mod_importlib_util_chains = frozenset(mod_importlib_util_chains)
+    mod_pytest_chains = frozenset(mod_pytest_chains)
+    mod_builtins_chains = frozenset(mod_builtins_chains)
+    dunder_import_aliases = set(dunder_import_aliases)
 
     def _is_path_ctor(func):
         return (
@@ -836,9 +989,54 @@ def _scan_call_imports(
                     elif _top == "pathlib":
                         pathlib_aliases.add("pathlib")
 
-    def _call_kind(func):
+    all_importlib_chains = {(a,) for a in importlib_aliases} | set(mod_importlib_chains)
+    all_importlib_util_chains = (
+        {(a,) for a in importlib_util_aliases}
+        | {(*c, "util") for c in all_importlib_chains}
+        | set(mod_importlib_util_chains)
+    )
+    all_pytest_chains = {(a,) for a in pytest_aliases} | set(mod_pytest_chains)
+    all_builtins_chains = {(a,) for a in builtins_aliases} | set(mod_builtins_chains)
+    mod_dyn_prefixes = {
+        chain[:k]
+        for chain in (
+            *mod_call_kinds,
+            *mod_imp_wrappers,
+            *mod_spec_wrappers,
+            *mod_importlib_chains,
+            *mod_importlib_util_chains,
+            *mod_builtins_chains,
+        )
+        for k in range(1, len(chain))
+    }
+
+    protected_dyn_names = (
+        set(import_module_aliases)
+        | set(dunder_import_aliases)
+        | set(importorskip_aliases)
+        | set(spec_from_file_aliases)
+        | set(imported_call_kinds)
+        | set(imported_imp_wrappers)
+        | set(imported_spec_wrappers)
+        | {p[0] for p in mod_dyn_prefixes}
+        | {c[0] for c in mod_call_kinds}
+        | {c[0] for c in mod_imp_wrappers}
+        | {c[0] for c in mod_spec_wrappers}
+        | {c[0] for c in mod_importlib_chains}
+        | {c[0] for c in mod_importlib_util_chains}
+        | {c[0] for c in mod_builtins_chains}
+    )
+    if protected_dyn_names and (
+        _has_non_import_binding(tree, protected_dyn_names)
+        or _has_non_import_binding(ast.Module(body=list(root_tree.body), type_ignores=[]), protected_dyn_names)
+    ):
+        return _WILDCARD_DYN_EXPORT if return_exports_only else {_UNRESOLVED_IMPORT}
+
+    def _call_kind(func, shadowed=frozenset()):
         if isinstance(func, ast.Name):
-            if func.id == "__import__":
+            if func.id in shadowed:
+                return None
+            if func.id == "__import__" or func.id in dunder_import_aliases:
                 return "__import__"
             if func.id in import_module_aliases:
                 return "import_module"
@@ -846,42 +1044,57 @@ def _scan_call_imports(
                 return "importorskip"
             if func.id in spec_from_file_aliases:
                 return "spec_from_file_location"
+            if func.id in imported_call_kinds:
+                return imported_call_kinds[func.id]
             return None
         if isinstance(func, ast.Attribute):
-            if func.attr == "__import__" and isinstance(func.value, ast.Name) and func.value.id in builtins_aliases:
+            chain = _attr_chain(func)
+            if chain is None or chain[0] in shadowed:
+                return None
+            if chain in mod_call_kinds:
+                return mod_call_kinds[chain]
+            prefix, attr = chain[:-1], chain[-1]
+            if attr == "__import__" and prefix in all_builtins_chains:
                 return "__import__"
-            if func.attr == "import_module" and isinstance(func.value, ast.Name) and func.value.id in importlib_aliases:
+            if attr == "import_module" and prefix in all_importlib_chains:
                 return "import_module"
-            if func.attr == "importorskip" and isinstance(func.value, ast.Name) and func.value.id in pytest_aliases:
+            if attr == "importorskip" and prefix in all_pytest_chains:
                 return "importorskip"
-            if func.attr == "spec_from_file_location":
-                if isinstance(func.value, ast.Name) and func.value.id in importlib_util_aliases:
-                    return "spec_from_file_location"
-                if (
-                    isinstance(func.value, ast.Attribute)
-                    and func.value.attr == "util"
-                    and isinstance(func.value.value, ast.Name)
-                    and func.value.value.id in importlib_aliases
-                ):
-                    return "spec_from_file_location"
+            if attr == "spec_from_file_location" and prefix in all_importlib_util_chains:
+                return "spec_from_file_location"
         return None
 
     has_any_call_or_alias = bool(
         import_module_aliases
+        | dunder_import_aliases
         | importorskip_aliases
         | spec_from_file_aliases
         | importlib_aliases
         | importlib_util_aliases
         | pytest_aliases
         | builtins_aliases
+        | set(imported_call_kinds)
+        | set(mod_call_kinds)
+        | set(imported_imp_wrappers)
+        | set(mod_imp_wrappers)
+        | set(imported_spec_wrappers)
+        | set(mod_spec_wrappers)
+        | set(mod_importlib_chains)
+        | set(mod_importlib_util_chains)
+        | set(mod_pytest_chains)
+        | set(mod_builtins_chains)
     )
-    if not has_any_call_or_alias:
-        has_dunder = any(
-            isinstance(n, ast.Name) and n.id == "__import__"
-            for n in ast.walk(tree)
-        )
-        if not has_dunder:
-            return extra
+    has_dunder = any(
+        isinstance(n, ast.Name) and n.id == "__import__"
+        for n in ast.walk(tree)
+    )
+    if not has_any_call_or_alias and not has_dunder:
+        return _EMPTY_DYN_EXPORT if return_exports_only else extra
+    if has_dunder and (
+        _has_non_import_binding(tree, {"__import__"})
+        or _has_non_import_binding(ast.Module(body=list(root_tree.body), type_ignores=[]), {"__import__"})
+    ):
+        return _WILDCARD_DYN_EXPORT if return_exports_only else {_UNRESOLVED_IMPORT}
 
     module_counts = collections.Counter()
     _collect_scope_bindings(root_tree, module_counts, is_scope_root=True)
@@ -1079,7 +1292,7 @@ def _scan_call_imports(
         return None
 
     def _parametrize_bindings(fn, outer_map):
-        if not pytest_aliases or "*" in fn_counts[id(fn)]:
+        if not all_pytest_chains or "*" in fn_counts[id(fn)]:
             return {}
         fc = fn_counts[id(fn)]
         bindings = {}
@@ -1090,8 +1303,7 @@ def _scan_call_imports(
                 and dec.func.attr == "parametrize"
                 and isinstance(dec.func.value, ast.Attribute)
                 and dec.func.value.attr == "mark"
-                and isinstance(dec.func.value.value, ast.Name)
-                and dec.func.value.value.id in pytest_aliases
+                and _attr_chain(dec.func.value.value) in all_pytest_chains
                 and len(dec.args) >= 2
             ):
                 continue
@@ -1143,6 +1355,25 @@ def _scan_call_imports(
         base.update(_single_assign_exprs(fn.body, fc, global_names))
         return base
 
+    def _is_pytest_entrypoint(fn):
+        if resolved.name.startswith("test_") and fn.name.startswith("test_"):
+            return True
+        if _parametrize_bindings(fn, mod_expr_map):
+            return True
+        for dec in fn.decorator_list:
+            target = dec.func if isinstance(dec, ast.Call) else dec
+            if isinstance(target, ast.Attribute) and target.attr == "fixture" and _attr_chain(target.value) in all_pytest_chains:
+                return True
+            if (
+                isinstance(target, ast.Attribute)
+                and target.attr == "validates"
+                and isinstance(target.value, ast.Attribute)
+                and target.value.attr == "mark"
+                and _attr_chain(target.value.value) in all_pytest_chains
+            ):
+                return True
+        return False
+
     top_fns = [
         stmt
         for stmt in tree.body
@@ -1150,63 +1381,202 @@ def _scan_call_imports(
         and module_counts["*"] == 0
         and module_counts[stmt.name] == 1
         and stmt.name not in global_names
+        and (return_exports_only or not _is_pytest_entrypoint(stmt))
     ]
 
     import_wrappers = {}
     spec_wrappers = {}
     wrapped_call_ids = set()
-    for fn in top_fns:
-        pos_params = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)]
-        kw_params = {a.arg for a in fn.args.kwonlyargs}
-        all_params = {p for p in (set(pos_params) | kw_params) if fn_counts[id(fn)][p] == 1 and p not in global_names}
-        if not all_params:
-            continue
-        fmap = _fn_active_map(fn, mod_expr_map)
-        imp_calls = []
-        spec_calls = []
-        for sub in ast.walk(fn):
-            if not isinstance(sub, ast.Call):
+    changed = True
+    while changed:
+        changed = False
+        for fn in top_fns:
+            if fn.name in import_wrappers or fn.name in spec_wrappers:
                 continue
-            kind = _call_kind(sub.func)
-            if kind in {"import_module", "importorskip", "__import__"}:
-                imp_calls.append((sub, kind))
-            elif kind == "spec_from_file_location":
-                spec_calls.append(sub)
-        if len(imp_calls) == 1 and not spec_calls:
-            sub, kind = imp_calls[0]
-            arg0 = _call_arg_expr(sub, 0, "name" if kind != "importorskip" else "modname")
-            pkg_kw = _call_arg_expr(sub, 1, "package") if kind == "import_module" else None
-            pkg_const = None
-            pkg_ok = pkg_kw is None or (isinstance(pkg_kw, ast.Constant) and (pkg_kw.value is None or isinstance(pkg_kw.value, str)))
-            if pkg_ok and isinstance(pkg_kw, ast.Constant) and isinstance(pkg_kw.value, str):
-                pkg_const = pkg_kw.value
-            if pkg_ok and isinstance(arg0, ast.Name) and arg0.id in all_params:
-                p_idx = pos_params.index(arg0.id) if arg0.id in pos_params else None
-                import_wrappers[fn.name] = (p_idx, arg0.id, pkg_const, id(fn))
-                wrapped_call_ids.add(id(sub))
-        elif len(spec_calls) == 1 and not imp_calls:
-            sub = spec_calls[0]
-            loc_arg = _call_arg_expr(sub, 1, "location")
-            loader_arg = _call_arg_expr(sub, 2, "loader")
-            loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
-                kw.arg is None for kw in sub.keywords
-            )
-            if loader_ok and loc_arg is not None and _eval_expr(loc_arg, fmap) is None:
-                used_params = _free_names(loc_arg) & all_params
-                if len(used_params) == 1:
-                    (pname,) = tuple(used_params)
-                    p_idx = pos_params.index(pname) if pname in pos_params else None
-                    spec_wrappers[fn.name] = (p_idx, pname, loc_arg, fmap, id(fn))
+            pos_params = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)]
+            kw_params = {a.arg for a in fn.args.kwonlyargs}
+            fbound = fn_bound[id(fn)]
+            all_params = {p for p in (set(pos_params) | kw_params) if fn_counts[id(fn)][p] == 1 and p not in global_names}
+            if not all_params:
+                continue
+            fmap = _fn_active_map(fn, mod_expr_map)
+            imp_calls = []
+            spec_calls = []
+            chained_imp = []
+            chained_spec = []
+            for sub in ast.walk(fn):
+                if not isinstance(sub, ast.Call):
+                    continue
+                kind = _call_kind(sub.func, fbound)
+                chain = _attr_chain(sub.func)
+                if kind in {"import_module", "importorskip", "__import__"}:
+                    imp_calls.append((sub, kind))
+                elif kind == "spec_from_file_location":
+                    spec_calls.append(sub)
+                elif isinstance(sub.func, ast.Name) and sub.func.id not in fbound:
+                    if sub.func.id in import_wrappers:
+                        idx, pname, pkg_c, orig_p, _ = import_wrappers[sub.func.id]
+                        chained_imp.append((sub, idx, pname, pkg_c, orig_p))
+                    elif sub.func.id in imported_imp_wrappers:
+                        idx, pname, pkg_c, orig_p = imported_imp_wrappers[sub.func.id]
+                        chained_imp.append((sub, idx, pname, pkg_c, orig_p))
+                    elif sub.func.id in spec_wrappers:
+                        idx, kw_p, tgt_p, loc_a, wfmap, orig_r, _ = spec_wrappers[sub.func.id]
+                        chained_spec.append((sub, idx, kw_p, tgt_p, loc_a, wfmap, orig_r))
+                    elif sub.func.id in imported_spec_wrappers:
+                        idx, kw_p, tgt_p, loc_a, wfmap, orig_r = imported_spec_wrappers[sub.func.id]
+                        chained_spec.append((sub, idx, kw_p, tgt_p, loc_a, wfmap, orig_r))
+                elif chain is not None and chain[0] not in fbound:
+                    if chain in mod_imp_wrappers:
+                        idx, pname, pkg_c, orig_p = mod_imp_wrappers[chain]
+                        chained_imp.append((sub, idx, pname, pkg_c, orig_p))
+                    elif chain in mod_spec_wrappers:
+                        idx, kw_p, tgt_p, loc_a, wfmap, orig_r = mod_spec_wrappers[chain]
+                        chained_spec.append((sub, idx, kw_p, tgt_p, loc_a, wfmap, orig_r))
+            total_calls = len(imp_calls) + len(spec_calls) + len(chained_imp) + len(chained_spec)
+            if total_calls != 1:
+                continue
+            if imp_calls:
+                sub, kind = imp_calls[0]
+                arg0 = _call_arg_expr(sub, 0, "name" if kind != "importorskip" else "modname")
+                pkg_kw = _call_arg_expr(sub, 1, "package") if kind == "import_module" else None
+                pkg_const = None
+                pkg_ok = _import_call_kwargs_ok(sub, kind) and (
+                    pkg_kw is None or (isinstance(pkg_kw, ast.Constant) and (pkg_kw.value is None or isinstance(pkg_kw.value, str)))
+                )
+                if pkg_ok and isinstance(pkg_kw, ast.Constant) and isinstance(pkg_kw.value, str):
+                    pkg_const = pkg_kw.value
+                if pkg_ok and isinstance(arg0, ast.Name) and arg0.id in all_params:
+                    p_idx = pos_params.index(arg0.id) if arg0.id in pos_params else None
+                    import_wrappers[fn.name] = (p_idx, arg0.id, pkg_const, pkg_parts, id(fn))
                     wrapped_call_ids.add(id(sub))
+                    changed = True
+            elif chained_imp:
+                sub, c_idx, c_pname, c_pkg, c_orig = chained_imp[0]
+                arg0 = _call_arg_expr(sub, c_idx, c_pname)
+                if isinstance(arg0, ast.Name) and arg0.id in all_params:
+                    p_idx = pos_params.index(arg0.id) if arg0.id in pos_params else None
+                    import_wrappers[fn.name] = (p_idx, arg0.id, c_pkg, c_orig, id(fn))
+                    wrapped_call_ids.add(id(sub))
+                    changed = True
+            elif spec_calls:
+                sub = spec_calls[0]
+                loc_arg = _call_arg_expr(sub, 1, "location")
+                loader_arg = _call_arg_expr(sub, 2, "loader")
+                loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
+                    kw.arg is None for kw in sub.keywords
+                )
+                if (
+                    loader_ok
+                    and loc_arg is not None
+                    and _eval_expr(loc_arg, fmap) is None
+                    and not _is_provably_external_py_suffix(_joinedstr_const_suffix(loc_arg, fmap), resolved)
+                ):
+                    used_params = _free_names(loc_arg) & all_params
+                    if len(used_params) == 1:
+                        (pname,) = tuple(used_params)
+                        p_idx = pos_params.index(pname) if pname in pos_params else None
+                        wfmap = dict(fmap)
+                        wfmap.setdefault("__file__", ast.Constant(value=str(resolved)))
+                        spec_wrappers[fn.name] = (p_idx, pname, pname, loc_arg, wfmap, resolved, id(fn))
+                        wrapped_call_ids.add(id(sub))
+                        changed = True
+            elif chained_spec:
+                sub, c_idx, c_kw, c_tgt, c_loc, c_fmap, c_orig = chained_spec[0]
+                arg0 = _call_arg_expr(sub, c_idx, c_kw)
+                if isinstance(arg0, ast.Name) and arg0.id in all_params:
+                    p_idx = pos_params.index(arg0.id) if arg0.id in pos_params else None
+                    spec_wrappers[fn.name] = (p_idx, arg0.id, c_tgt, c_loc, c_fmap, c_orig, id(fn))
+                    wrapped_call_ids.add(id(sub))
+                    changed = True
 
-    def _record_module_str(mod_str, pkg_str=None):
+    if return_exports_only:
+        if module_counts["*"] > 0:
+            return _WILDCARD_DYN_EXPORT
+
+        top_unique = _uniquely_bound_top_names(root_tree, module_counts, global_names)
+
+        def _top_bound(name):
+            return name in top_unique
+
+        exp_call_kinds = {}
+        for n in import_module_aliases:
+            if _top_bound(n):
+                exp_call_kinds[(n,)] = "import_module"
+        for n in dunder_import_aliases:
+            if _top_bound(n):
+                exp_call_kinds[(n,)] = "__import__"
+        for n in importorskip_aliases:
+            if _top_bound(n):
+                exp_call_kinds[(n,)] = "importorskip"
+        for n in spec_from_file_aliases:
+            if _top_bound(n):
+                exp_call_kinds[(n,)] = "spec_from_file_location"
+        for n, k in imported_call_kinds.items():
+            if _top_bound(n):
+                exp_call_kinds[(n,)] = k
+        for c, k in mod_call_kinds.items():
+            if _top_bound(c[0]):
+                exp_call_kinds[c] = k
+
+        exp_imp_wrappers = {
+            (fn_name,): (idx, pname, pkg_c, orig_p)
+            for fn_name, (idx, pname, pkg_c, orig_p, _) in import_wrappers.items()
+        }
+        for wname, sig in imported_imp_wrappers.items():
+            if _top_bound(wname):
+                exp_imp_wrappers[(wname,)] = sig
+        for wchain, sig in mod_imp_wrappers.items():
+            if _top_bound(wchain[0]):
+                exp_imp_wrappers[wchain] = sig
+
+        exp_spec_wrappers = {
+            (fn_name,): (idx, kw_p, tgt_p, loc_a, wfmap, orig_r)
+            for fn_name, (idx, kw_p, tgt_p, loc_a, wfmap, orig_r, _) in spec_wrappers.items()
+        }
+        for wname, sig in imported_spec_wrappers.items():
+            if _top_bound(wname):
+                exp_spec_wrappers[(wname,)] = sig
+        for wchain, sig in mod_spec_wrappers.items():
+            if _top_bound(wchain[0]):
+                exp_spec_wrappers[wchain] = sig
+
+        exp_il_chains = {c for c in all_importlib_chains if _top_bound(c[0])}
+        exp_ilu_chains = {c for c in all_importlib_util_chains if _top_bound(c[0])}
+        exp_py_chains = {c for c in all_pytest_chains if _top_bound(c[0])}
+        exp_bi_chains = {c for c in all_builtins_chains if _top_bound(c[0])}
+        uncalled = frozenset({
+            c[0]
+            for c in (
+                *exp_call_kinds,
+                *exp_imp_wrappers,
+                *exp_spec_wrappers,
+                *exp_il_chains,
+                *exp_ilu_chains,
+                *exp_bi_chains,
+            )
+            if len(c) == 1
+        })
+        return {
+            "call_kinds": exp_call_kinds,
+            "imp_wrappers": exp_imp_wrappers,
+            "spec_wrappers": exp_spec_wrappers,
+            "importlib_chains": frozenset(exp_il_chains),
+            "importlib_util_chains": frozenset(exp_ilu_chains),
+            "pytest_chains": frozenset(exp_py_chains),
+            "builtins_chains": frozenset(exp_bi_chains),
+            "wildcard": False,
+            "uncalled_names": uncalled,
+        }
+
+    def _record_module_str(mod_str, pkg_str=None, origin_pkg=pkg_parts):
         if not mod_str:
             extra.add(_UNRESOLVED_IMPORT)
             return
         if mod_str.startswith("."):
             level = len(mod_str) - len(mod_str.lstrip("."))
             rem = mod_str.lstrip(".")
-            anchor = tuple(pkg_str.split(".")) if pkg_str else pkg_parts
+            anchor = tuple(pkg_str.split(".")) if pkg_str else origin_pkg
             if not anchor or level > len(anchor):
                 extra.add(_UNRESOLVED_IMPORT)
                 return
@@ -1225,17 +1595,17 @@ def _scan_call_imports(
                 expand_pkg_parts(parts)
                 if top == "external_bridge":
                     extra.add(_UNRESOLVED_WORKER)
-        elif pkg_parts is not None and _is_submodule_parts(pkg_parts, top):
-            mod = ".".join((*pkg_parts, *parts))
+        elif origin_pkg is not None and _is_submodule_parts(origin_pkg, top):
+            mod = ".".join((*origin_pkg, *parts))
             extra.add(mod)
             if mod == "external_bridge._subprocess":
                 extra.add(_UNRESOLVED_WORKER)
-        elif pkg_parts is None:
+        elif origin_pkg is None:
             helper = _resolve_local_helper(parts, local_dirs)
             if helper is not None:
                 extra.update(_scan_module_via(helper, seen))
 
-    def _record_file_target(cand):
+    def _record_file_target(cand, origin_res=resolved):
         try:
             cand_res = pathlib.Path(cand).resolve()
         except OSError:
@@ -1260,32 +1630,75 @@ def _scan_call_imports(
         except ValueError:
             pass
         allowed_roots = [_REPO_ROOT.resolve()]
-        try:
-            resolved.relative_to(_REPO_ROOT.resolve())
-        except ValueError:
-            base = resolved.parent.parent if resolved.parent.name in {"tests", "scripts", "src"} else resolved.parent
-            allowed_roots.append(base.resolve())
+        for ref_base in (resolved, origin_res):
+            try:
+                ref_base.relative_to(_REPO_ROOT.resolve())
+            except ValueError:
+                base = ref_base.parent.parent if ref_base.parent.name in {"tests", "scripts", "src"} else ref_base.parent
+                allowed_roots.append(base.resolve())
         if any(cand_res == r or r in cand_res.parents for r in allowed_roots):
             extra.update(_scan_module_via(cand_res, seen))
         else:
             extra.add(_UNRESOLVED_IMPORT)
 
     direct_call_funcs = set()
+    attr_parents = {}
     for parent in ast.walk(tree):
         if isinstance(parent, ast.Call):
             direct_call_funcs.add(id(parent.func))
+        elif isinstance(parent, ast.Attribute):
+            attr_parents[id(parent.value)] = parent
 
     called_imp_wrappers = set()
     called_spec_wrappers = set()
-    all_wrapper_names = frozenset(set(import_wrappers) | set(spec_wrappers))
+    called_imported_imp = set()
+    called_imported_spec = set()
+    called_direct_aliases = set()
+    referenced_mod_roots = set()
+    all_wrapper_names = frozenset(
+        set(import_wrappers)
+        | set(spec_wrappers)
+        | set(imported_imp_wrappers)
+        | set(imported_spec_wrappers)
+    )
+    direct_callable_names = (
+        set(import_module_aliases)
+        | set(dunder_import_aliases)
+        | set(importorskip_aliases)
+        | set(spec_from_file_aliases)
+        | set(imported_call_kinds)
+        | {"__import__"}
+    )
+
+    def _eval_imp_wrapper_call(node, idx, pname, pkg_const, orig_pkg, active_map, param_bindings):
+        warg = _call_arg_expr(node, idx, pname)
+        vals = _eval_expr(warg, active_map, param_bindings)
+        if not vals or not all(isinstance(v, str) for v in vals):
+            extra.add(_UNRESOLVED_IMPORT)
+        else:
+            for v in vals:
+                _record_module_str(v, pkg_const, orig_pkg)
+
+    def _eval_spec_wrapper_call(node, idx, kw_p, tgt_p, loc_arg, w_fmap, orig_res, active_map, param_bindings):
+        warg = _call_arg_expr(node, idx, kw_p)
+        vals = _eval_expr(warg, active_map, param_bindings)
+        resolved_locs = _eval_expr(loc_arg, w_fmap, {tgt_p: vals}) if vals else None
+        if resolved_locs:
+            for loc in resolved_locs:
+                _record_file_target(loc, orig_res)
+        else:
+            extra.add(_UNRESOLVED_IMPORT)
 
     def _walk(node, active_map, shadowed, param_bindings):
         if isinstance(node, ast.Call):
             if id(node) in wrapped_call_ids:
                 pass
             else:
-                kind = _call_kind(node.func)
+                kind = _call_kind(node.func, shadowed)
+                chain = _attr_chain(node.func)
                 if kind in {"import_module", "importorskip", "__import__"}:
+                    if isinstance(node.func, ast.Name):
+                        called_direct_aliases.add(node.func.id)
                     arg0 = _call_arg_expr(node, 0, "name" if kind != "importorskip" else "modname")
                     vals = _eval_expr(arg0, active_map, param_bindings)
                     pkg_val = None
@@ -1310,6 +1723,8 @@ def _scan_call_imports(
                         for v in vals:
                             _record_module_str(v, pkg_val)
                 elif kind == "spec_from_file_location":
+                    if isinstance(node.func, ast.Name):
+                        called_direct_aliases.add(node.func.id)
                     loc_arg = _call_arg_expr(node, 1, "location")
                     loader_arg = _call_arg_expr(node, 2, "loader")
                     loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
@@ -1328,35 +1743,67 @@ def _scan_call_imports(
                 elif isinstance(node.func, ast.Name) and node.func.id not in shadowed:
                     if node.func.id in import_wrappers:
                         called_imp_wrappers.add(node.func.id)
-                        idx, pname, pkg_const, _ = import_wrappers[node.func.id]
-                        warg = _call_arg_expr(node, idx, pname)
-                        vals = _eval_expr(warg, active_map, param_bindings)
-                        if not vals or not all(isinstance(v, str) for v in vals):
-                            extra.add(_UNRESOLVED_IMPORT)
-                        else:
-                            for v in vals:
-                                _record_module_str(v, pkg_const)
+                        idx, pname, pkg_const, orig_pkg, _ = import_wrappers[node.func.id]
+                        _eval_imp_wrapper_call(node, idx, pname, pkg_const, orig_pkg, active_map, param_bindings)
+                    elif node.func.id in imported_imp_wrappers:
+                        called_imported_imp.add(node.func.id)
+                        idx, pname, pkg_const, orig_pkg = imported_imp_wrappers[node.func.id]
+                        _eval_imp_wrapper_call(node, idx, pname, pkg_const, orig_pkg, active_map, param_bindings)
                     elif node.func.id in spec_wrappers:
                         called_spec_wrappers.add(node.func.id)
-                        idx, pname, loc_arg, w_fmap, _ = spec_wrappers[node.func.id]
-                        warg = _call_arg_expr(node, idx, pname)
-                        vals = _eval_expr(warg, active_map, param_bindings)
-                        resolved_locs = _eval_expr(loc_arg, w_fmap, {pname: vals}) if vals else None
-                        if resolved_locs:
-                            for loc in resolved_locs:
-                                _record_file_target(loc)
-                        else:
-                            extra.add(_UNRESOLVED_IMPORT)
+                        idx, kw_p, tgt_p, loc_arg, w_fmap, orig_res, _ = spec_wrappers[node.func.id]
+                        _eval_spec_wrapper_call(node, idx, kw_p, tgt_p, loc_arg, w_fmap, orig_res, active_map, param_bindings)
+                    elif node.func.id in imported_spec_wrappers:
+                        called_imported_spec.add(node.func.id)
+                        idx, kw_p, tgt_p, loc_arg, w_fmap, orig_res = imported_spec_wrappers[node.func.id]
+                        _eval_spec_wrapper_call(node, idx, kw_p, tgt_p, loc_arg, w_fmap, orig_res, active_map, param_bindings)
+                elif chain is not None and chain[0] not in shadowed:
+                    if chain in mod_imp_wrappers:
+                        idx, pname, pkg_const, orig_pkg = mod_imp_wrappers[chain]
+                        _eval_imp_wrapper_call(node, idx, pname, pkg_const, orig_pkg, active_map, param_bindings)
+                    elif chain in mod_spec_wrappers:
+                        idx, kw_p, tgt_p, loc_arg, w_fmap, orig_res = mod_spec_wrappers[chain]
+                        _eval_spec_wrapper_call(node, idx, kw_p, tgt_p, loc_arg, w_fmap, orig_res, active_map, param_bindings)
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            referenced_mod_roots.add(node.id)
             if (
-                node.id in (import_module_aliases | importorskip_aliases | spec_from_file_aliases | {"__import__"})
+                node.id in direct_callable_names
+                and node.id not in shadowed
                 and id(node) not in direct_call_funcs
             ):
                 extra.add(_UNRESOLVED_IMPORT)
             elif node.id in all_wrapper_names and node.id not in shadowed and id(node) not in direct_call_funcs:
                 extra.add(_UNRESOLVED_IMPORT)
+            elif (
+                node.id not in shadowed
+                and (
+                    (node.id,) in all_importlib_chains
+                    or (node.id,) in all_importlib_util_chains
+                    or (node.id,) in all_builtins_chains
+                    or (node.id,) in mod_dyn_prefixes
+                )
+                and id(node) not in attr_parents
+            ):
+                extra.add(_UNRESOLVED_IMPORT)
         elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
-            if id(node) not in direct_call_funcs and _call_kind(node) is not None:
+            chain = _attr_chain(node)
+            if id(node) not in direct_call_funcs and (
+                _call_kind(node, shadowed) is not None
+                or (chain in mod_imp_wrappers and chain[0] not in shadowed)
+                or (chain in mod_spec_wrappers and chain[0] not in shadowed)
+            ):
+                extra.add(_UNRESOLVED_IMPORT)
+            elif (
+                chain is not None
+                and chain[0] not in shadowed
+                and (
+                    chain in all_importlib_chains
+                    or chain in all_importlib_util_chains
+                    or chain in all_builtins_chains
+                    or chain in mod_dyn_prefixes
+                )
+                and id(node) not in attr_parents
+            ):
                 extra.add(_UNRESOLVED_IMPORT)
 
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1371,7 +1818,7 @@ def _scan_call_imports(
             ):
                 _walk(sub, active_map, shadowed, param_bindings)
             fmap = _fn_active_map(node, active_map)
-            fshadow = (shadowed | fn_bound[id(node)]) if "*" not in fn_counts[id(node)] else all_wrapper_names
+            fshadow = (shadowed | fn_bound[id(node)]) if "*" not in fn_counts[id(node)] else (all_wrapper_names | direct_callable_names)
             fparams = _parametrize_bindings(node, active_map)
             for stmt in node.body:
                 _walk(stmt, fmap, fshadow, fparams)
@@ -1383,7 +1830,7 @@ def _scan_call_imports(
             _collect_scope_bindings(node, cls_counts, is_scope_root=True)
             cbound = frozenset(k for k in cls_counts if k != "*")
             cmap = {} if "*" in cls_counts else {k: v for k, v in active_map.items() if k not in cbound}
-            cshadow = (shadowed | cbound) if "*" not in cls_counts else all_wrapper_names
+            cshadow = (shadowed | cbound) if "*" not in cls_counts else (all_wrapper_names | direct_callable_names)
             for stmt in node.body:
                 _walk(stmt, cmap, cshadow, None)
             return
@@ -1409,8 +1856,29 @@ def _scan_call_imports(
             _walk(child, active_map, shadowed, param_bindings)
 
     _walk(tree, mod_expr_map, frozenset(), None)
-    if (set(import_wrappers) - called_imp_wrappers) or (set(spec_wrappers) - called_spec_wrappers):
+    if (
+        (set(import_wrappers) - called_imp_wrappers - set(allow_uncalled_imp))
+        or (set(spec_wrappers) - called_spec_wrappers - set(allow_uncalled_imp))
+    ):
         extra.add(_UNRESOLVED_IMPORT)
+    single_imported_callables = (
+        set(import_module_aliases)
+        | set(dunder_import_aliases)
+        | set(importorskip_aliases)
+        | set(spec_from_file_aliases)
+        | set(imported_call_kinds)
+        | set(imported_imp_wrappers)
+        | set(imported_spec_wrappers)
+    )
+    if is_full_module:
+        if single_imported_callables - (called_direct_aliases | called_imported_imp | called_imported_spec) - set(allow_uncalled_imp):
+            extra.add(_UNRESOLVED_IMPORT)
+    else:
+        root_called = {
+            n.func.id for n in ast.walk(root_tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
+        if single_imported_callables - root_called - set(allow_uncalled_imp):
+            extra.add(_UNRESOLVED_IMPORT)
     return extra
 
 
@@ -1423,14 +1891,50 @@ def _parsed_module(path):
         resolved = p
     try:
         return resolved, ast.parse(p.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
+    except (OSError, SyntaxError, UnicodeDecodeError):
         return resolved, None
+
+
+def _sp_has_any(exp):
+    return bool(exp["wildcard"] or exp["wrappers"] or exp["sp_chains"] or exp["eb_chains"])
+
+
+def _sp_has_symbol(sym_name, exp):
+    return any(c[0] == sym_name for c in (*exp["wrappers"], *exp["sp_chains"], *exp["eb_chains"]))
+
+
+def _dyn_has_any(exp):
+    return bool(
+        exp["wildcard"]
+        or exp["call_kinds"]
+        or exp["imp_wrappers"]
+        or exp["spec_wrappers"]
+        or exp["importlib_chains"]
+        or exp["importlib_util_chains"]
+        or exp["pytest_chains"]
+        or exp["builtins_chains"]
+    )
+
+
+def _dyn_has_symbol(sym_name, exp):
+    return any(
+        c[0] == sym_name
+        for c in (
+            *exp["call_kinds"],
+            *exp["imp_wrappers"],
+            *exp["spec_wrappers"],
+            *exp["importlib_chains"],
+            *exp["importlib_util_chains"],
+            *exp["pytest_chains"],
+            *exp["builtins_chains"],
+        )
+    )
 
 
 def _exported_sp_wrappers_inner(path, seen_w):
     resolved, tree = _parsed_module(str(path))
     if tree is None or resolved in seen_w:
-        return {}
+        return _EMPTY_SP_EXPORT
     next_seen = seen_w | {resolved}
     pkg_parts = _reference_pkg_parts(resolved)
     local_dirs = () if pkg_parts is not None else _local_search_dirs(resolved)
@@ -1440,18 +1944,45 @@ def _exported_sp_wrappers_inner(path, seen_w):
     wildcard_sp = False
     imported_sp_wrappers = {}
     mod_sp_wrappers = {}
+    mod_sp_chains = set()
+    mod_eb_chains = set()
 
     def _reg_mod_wrappers(prefix_parts, target_file):
+        nonlocal wildcard_sp
         if target_file is not None and target_file.is_file():
-            for wname, sig in _exported_sp_wrappers(target_file, next_seen).items():
-                mod_sp_wrappers[(*prefix_parts, wname)] = sig
+            exp = _exported_sp_wrappers(target_file, next_seen)
+            if exp["wildcard"]:
+                wildcard_sp = True
+            for wchain, sig in exp["wrappers"].items():
+                mod_sp_wrappers[(*prefix_parts, *wchain)] = sig
+            for schain in exp["sp_chains"]:
+                mod_sp_chains.add((*prefix_parts, *schain))
+            for echain in exp["eb_chains"]:
+                mod_eb_chains.add((*prefix_parts, *echain))
+
+    def _reg_sp_symbol(bname, sym_name, exp):
+        if (sym_name,) in exp["wrappers"]:
+            imported_sp_wrappers[bname] = exp["wrappers"][(sym_name,)]
+        for wchain, sig in exp["wrappers"].items():
+            if len(wchain) > 1 and wchain[0] == sym_name:
+                mod_sp_wrappers[(bname, *wchain[1:])] = sig
+        for schain in exp["sp_chains"]:
+            if len(schain) == 1 and schain[0] == sym_name:
+                sp_aliases.add(bname)
+            elif len(schain) > 1 and schain[0] == sym_name:
+                mod_sp_chains.add((bname, *schain[1:]))
+        for echain in exp["eb_chains"]:
+            if len(echain) == 1 and echain[0] == sym_name:
+                eb_aliases.add(bname)
+            elif len(echain) > 1 and echain[0] == sym_name:
+                mod_eb_chains.add((bname, *echain[1:]))
 
     def _from_ref(target_parts, aliases):
         nonlocal wildcard_sp
         mod_file = _SRC_ROOT.joinpath(*target_parts[:-1], f"{target_parts[-1]}.py") if len(target_parts) >= 2 else None
         if mod_file is not None and mod_file.is_file():
             mod = ".".join(target_parts)
-            exp_w = _exported_sp_wrappers(mod_file, next_seen) if mod != "external_bridge._subprocess" else {}
+            exp = _exported_sp_wrappers(mod_file, next_seen) if mod != "external_bridge._subprocess" else _EMPTY_SP_EXPORT
             for alias in aliases:
                 if mod == "external_bridge._subprocess":
                     if alias.name == "*":
@@ -1459,42 +1990,41 @@ def _exported_sp_wrappers_inner(path, seen_w):
                     elif alias.name == "run":
                         run_aliases.add(alias.asname or "run")
                 elif alias.name == "*":
-                    if exp_w:
+                    if _sp_has_any(exp):
                         wildcard_sp = True
-                elif alias.name in exp_w:
-                    imported_sp_wrappers[alias.asname or alias.name] = exp_w[alias.name]
+                elif _sp_has_symbol(alias.name, exp):
+                    _reg_sp_symbol(alias.asname or alias.name, alias.name, exp)
             return
         if _SRC_ROOT.joinpath(*target_parts).is_dir():
             exports = _init_exports(target_parts)
             init_py = _SRC_ROOT.joinpath(*target_parts, "__init__.py")
-            init_w = _exported_sp_wrappers(init_py, next_seen) if init_py.is_file() else {}
+            init_exp = _exported_sp_wrappers(init_py, next_seen) if init_py.is_file() else _EMPTY_SP_EXPORT
             for alias in aliases:
                 if _is_submodule_parts(target_parts, alias.name):
                     mod = ".".join((*target_parts, alias.name))
                     if mod == "external_bridge._subprocess":
                         sp_aliases.add(alias.asname or "_subprocess")
                     else:
-                        sub_py = _SRC_ROOT.joinpath(*target_parts, f"{alias.name}.py")
-                        _reg_mod_wrappers((alias.asname or alias.name,), sub_py)
-                elif alias.name == "*" and init_w:
+                        _reg_mod_wrappers((alias.asname or alias.name,), _ref_target_file((*target_parts, alias.name)))
+                elif alias.name == "*" and _sp_has_any(init_exp):
                     wildcard_sp = True
-                elif alias.name in exports and alias.name in init_w:
-                    imported_sp_wrappers[alias.asname or alias.name] = init_w[alias.name]
+                elif alias.name in exports and _sp_has_symbol(alias.name, init_exp):
+                    _reg_sp_symbol(alias.asname or alias.name, alias.name, init_exp)
 
     def _from_local(rel_parts, aliases, search_dirs):
         nonlocal wildcard_sp
         local_mod = _resolve_local_helper(rel_parts, search_dirs) if rel_parts else None
-        local_w = _exported_sp_wrappers(local_mod, next_seen) if local_mod is not None else {}
+        local_exp = _exported_sp_wrappers(local_mod, next_seen) if local_mod is not None else _EMPTY_SP_EXPORT
         for alias in aliases:
             if alias.name == "*":
-                if local_w:
+                if _sp_has_any(local_exp):
                     wildcard_sp = True
                 continue
             sub_local = _resolve_local_helper((*rel_parts, alias.name), search_dirs)
             if sub_local is not None:
                 _reg_mod_wrappers((alias.asname or alias.name,), sub_local)
-            elif alias.name in local_w:
-                imported_sp_wrappers[alias.asname or alias.name] = local_w[alias.name]
+            elif _sp_has_symbol(alias.name, local_exp):
+                _reg_sp_symbol(alias.asname or alias.name, alias.name, local_exp)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -1511,7 +2041,7 @@ def _exported_sp_wrappers_inner(path, seen_w):
                             else:
                                 eb_aliases.add("external_bridge")
                         else:
-                            _reg_mod_wrappers(bprefix, _SRC_ROOT.joinpath(*parts[:-1], f"{parts[-1]}.py"))
+                            _reg_mod_wrappers(bprefix, _ref_target_file(parts))
                     else:
                         if top == "external_bridge":
                             eb_aliases.add(alias.asname or "external_bridge")
@@ -1522,7 +2052,7 @@ def _exported_sp_wrappers_inner(path, seen_w):
                     if mod == "external_bridge._subprocess" and len(parts) == 1:
                         sp_aliases.add(alias.asname or "_subprocess")
                     else:
-                        _reg_mod_wrappers(bprefix, _SRC_ROOT.joinpath(*full_parts[:-1], f"{full_parts[-1]}.py"))
+                        _reg_mod_wrappers(bprefix, _ref_target_file(full_parts))
                 elif pkg_parts is None:
                     helper = _resolve_local_helper(parts, local_dirs)
                     if helper is not None:
@@ -1560,6 +2090,8 @@ def _exported_sp_wrappers_inner(path, seen_w):
         full_tree=tree,
         imported_sp_wrappers=imported_sp_wrappers,
         mod_sp_wrappers=mod_sp_wrappers,
+        mod_sp_chains=mod_sp_chains,
+        mod_eb_chains=mod_eb_chains,
         return_wrappers_only=True,
     )
 
@@ -1579,7 +2111,265 @@ def _exported_sp_wrappers(path, seen_w=frozenset()):
     return _exported_sp_wrappers_inner(resolved_str, seen_w)
 
 
-def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozenset()):
+def _exported_dyn_imports_inner(path, seen_d):
+    resolved, tree = _parsed_module(str(path))
+    if tree is None or resolved in seen_d:
+        return _EMPTY_DYN_EXPORT
+    next_seen = seen_d | {resolved}
+    pkg_parts = _reference_pkg_parts(resolved)
+    local_dirs = () if pkg_parts is not None else _local_search_dirs(resolved)
+    importlib_aliases = set()
+    importlib_util_aliases = set()
+    import_module_aliases = set()
+    dunder_import_aliases = set()
+    spec_from_file_aliases = set()
+    pytest_aliases = set()
+    importorskip_aliases = set()
+    builtins_aliases = set()
+    pathlib_aliases = set()
+    path_cls_aliases = set()
+    wildcard_import = False
+    wildcard_dyn = False
+    imported_call_kinds = {}
+    mod_call_kinds = {}
+    imported_imp_wrappers = {}
+    mod_imp_wrappers = {}
+    imported_spec_wrappers = {}
+    mod_spec_wrappers = {}
+    mod_importlib_chains = set()
+    mod_importlib_util_chains = set()
+    mod_pytest_chains = set()
+    mod_builtins_chains = set()
+
+    def _reg_dyn_mod(prefix_parts, target_file):
+        nonlocal wildcard_dyn
+        if target_file is not None and target_file.is_file():
+            exp = _exported_dyn_imports(target_file, next_seen)
+            if exp["wildcard"]:
+                wildcard_dyn = True
+            for cchain, k in exp["call_kinds"].items():
+                mod_call_kinds[(*prefix_parts, *cchain)] = k
+            for wchain, sig in exp["imp_wrappers"].items():
+                mod_imp_wrappers[(*prefix_parts, *wchain)] = sig
+            for wchain, sig in exp["spec_wrappers"].items():
+                mod_spec_wrappers[(*prefix_parts, *wchain)] = sig
+            for c in exp["importlib_chains"]:
+                mod_importlib_chains.add((*prefix_parts, *c))
+            for c in exp["importlib_util_chains"]:
+                mod_importlib_util_chains.add((*prefix_parts, *c))
+            for c in exp["pytest_chains"]:
+                mod_pytest_chains.add((*prefix_parts, *c))
+            for c in exp["builtins_chains"]:
+                mod_builtins_chains.add((*prefix_parts, *c))
+
+    def _reg_dyn_symbol(bname, sym_name, exp):
+        if (sym_name,) in exp["call_kinds"]:
+            imported_call_kinds[bname] = exp["call_kinds"][(sym_name,)]
+        for cchain, k in exp["call_kinds"].items():
+            if len(cchain) > 1 and cchain[0] == sym_name:
+                mod_call_kinds[(bname, *cchain[1:])] = k
+        if (sym_name,) in exp["imp_wrappers"]:
+            imported_imp_wrappers[bname] = exp["imp_wrappers"][(sym_name,)]
+        for wchain, sig in exp["imp_wrappers"].items():
+            if len(wchain) > 1 and wchain[0] == sym_name:
+                mod_imp_wrappers[(bname, *wchain[1:])] = sig
+        if (sym_name,) in exp["spec_wrappers"]:
+            imported_spec_wrappers[bname] = exp["spec_wrappers"][(sym_name,)]
+        for wchain, sig in exp["spec_wrappers"].items():
+            if len(wchain) > 1 and wchain[0] == sym_name:
+                mod_spec_wrappers[(bname, *wchain[1:])] = sig
+        for c in exp["importlib_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                importlib_aliases.add(bname)
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_importlib_chains.add((bname, *c[1:]))
+        for c in exp["importlib_util_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                importlib_util_aliases.add(bname)
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_importlib_util_chains.add((bname, *c[1:]))
+        for c in exp["pytest_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                pytest_aliases.add(bname)
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_pytest_chains.add((bname, *c[1:]))
+        for c in exp["builtins_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                builtins_aliases.add(bname)
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_builtins_chains.add((bname, *c[1:]))
+
+    def _from_ref(target_parts, aliases):
+        nonlocal wildcard_dyn
+        mod_file = _SRC_ROOT.joinpath(*target_parts[:-1], f"{target_parts[-1]}.py") if len(target_parts) >= 2 else None
+        if mod_file is not None and mod_file.is_file():
+            exp = _exported_dyn_imports(mod_file, next_seen)
+            for alias in aliases:
+                if alias.name == "*":
+                    if _dyn_has_any(exp):
+                        wildcard_dyn = True
+                elif _dyn_has_symbol(alias.name, exp):
+                    _reg_dyn_symbol(alias.asname or alias.name, alias.name, exp)
+            return
+        if _SRC_ROOT.joinpath(*target_parts).is_dir():
+            exports = _init_exports(target_parts)
+            init_py = _SRC_ROOT.joinpath(*target_parts, "__init__.py")
+            init_exp = _exported_dyn_imports(init_py, next_seen) if init_py.is_file() else _EMPTY_DYN_EXPORT
+            for alias in aliases:
+                if _is_submodule_parts(target_parts, alias.name):
+                    _reg_dyn_mod((alias.asname or alias.name,), _ref_target_file((*target_parts, alias.name)))
+                elif alias.name == "*" and _dyn_has_any(init_exp):
+                    wildcard_dyn = True
+                elif alias.name in exports and _dyn_has_symbol(alias.name, init_exp):
+                    _reg_dyn_symbol(alias.asname or alias.name, alias.name, init_exp)
+
+    def _from_local(rel_parts, aliases, search_dirs):
+        nonlocal wildcard_dyn
+        local_mod = _resolve_local_helper(rel_parts, search_dirs) if rel_parts else None
+        local_exp = _exported_dyn_imports(local_mod, next_seen) if local_mod is not None else _EMPTY_DYN_EXPORT
+        for alias in aliases:
+            if alias.name == "*":
+                if _dyn_has_any(local_exp):
+                    wildcard_dyn = True
+                continue
+            sub_local = _resolve_local_helper((*rel_parts, alias.name), search_dirs)
+            if sub_local is not None:
+                _reg_dyn_mod((alias.asname or alias.name,), sub_local)
+            elif _dyn_has_symbol(alias.name, local_exp):
+                _reg_dyn_symbol(alias.asname or alias.name, alias.name, local_exp)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                parts = tuple(alias.name.split("."))
+                top = parts[0]
+                bound_name = alias.asname or top
+                bprefix = (alias.asname,) if alias.asname else parts
+                if alias.name == "importlib":
+                    importlib_aliases.add(bound_name)
+                elif alias.name == "importlib.util":
+                    if alias.asname:
+                        importlib_util_aliases.add(alias.asname)
+                    else:
+                        importlib_aliases.add("importlib")
+                elif alias.name == "pytest":
+                    pytest_aliases.add(bound_name)
+                elif alias.name == "builtins":
+                    builtins_aliases.add(bound_name)
+                elif alias.name == "pathlib":
+                    pathlib_aliases.add(bound_name)
+                if top in _REFERENCE_PACKAGES:
+                    if len(parts) >= 2:
+                        _reg_dyn_mod(bprefix, _ref_target_file(parts))
+                    else:
+                        _reg_dyn_mod(bprefix, _SRC_ROOT.joinpath(top, "__init__.py"))
+                elif pkg_parts is not None and _is_submodule_parts(pkg_parts, top):
+                    _reg_dyn_mod(bprefix, _ref_target_file((*pkg_parts, *parts)))
+                elif pkg_parts is None:
+                    helper = _resolve_local_helper(parts, local_dirs)
+                    if helper is not None:
+                        _reg_dyn_mod(bprefix, helper)
+        elif isinstance(node, ast.ImportFrom):
+            if any(a.name == "*" for a in node.names):
+                wildcard_import = True
+            if node.level == 0 and node.module in {"importlib", "importlib.util", "pytest", "builtins", "pathlib"}:
+                for alias in node.names:
+                    bname = alias.asname or alias.name
+                    if node.module == "importlib" and alias.name == "import_module":
+                        import_module_aliases.add(bname)
+                    elif node.module == "importlib" and alias.name == "util":
+                        importlib_util_aliases.add(bname)
+                    elif node.module == "importlib.util" and alias.name == "spec_from_file_location":
+                        spec_from_file_aliases.add(bname)
+                    elif node.module == "pytest" and alias.name == "importorskip":
+                        importorskip_aliases.add(bname)
+                    elif node.module == "builtins" and alias.name == "__import__":
+                        dunder_import_aliases.add(bname)
+                    elif node.module == "pathlib" and alias.name == "Path":
+                        path_cls_aliases.add(bname)
+                    elif alias.name == "*" and node.module in {"importlib", "importlib.util", "pytest", "builtins"}:
+                        wildcard_dyn = True
+            if node.level >= 1 and pkg_parts is not None:
+                if node.level <= len(pkg_parts):
+                    anchor = pkg_parts[: len(pkg_parts) - (node.level - 1)]
+                    target_parts = (*anchor, *node.module.split(".")) if node.module else anchor
+                    _from_ref(target_parts, node.names)
+            elif node.level >= 1 and pkg_parts is None:
+                anchor_dir = resolved.parent
+                valid = True
+                for _ in range(node.level - 1):
+                    if anchor_dir.parent == anchor_dir:
+                        valid = False
+                        break
+                    anchor_dir = anchor_dir.parent
+                if valid:
+                    rel_parts = tuple(node.module.split(".")) if node.module else ()
+                    _from_local(rel_parts, node.names, (anchor_dir,))
+            elif node.level == 0 and node.module:
+                parts = tuple(node.module.split("."))
+                if parts[0] in _REFERENCE_PACKAGES:
+                    _from_ref(parts, node.names)
+                elif pkg_parts is None:
+                    _from_local(parts, node.names, local_dirs)
+
+    return _scan_call_imports(
+        tree,
+        resolved,
+        pkg_parts,
+        local_dirs,
+        frozenset(),
+        lambda _: None,
+        full_tree=tree,
+        importlib_aliases=importlib_aliases,
+        importlib_util_aliases=importlib_util_aliases,
+        import_module_aliases=import_module_aliases,
+        dunder_import_aliases=dunder_import_aliases,
+        spec_from_file_aliases=spec_from_file_aliases,
+        pytest_aliases=pytest_aliases,
+        importorskip_aliases=importorskip_aliases,
+        builtins_aliases=builtins_aliases,
+        pathlib_aliases=pathlib_aliases,
+        path_cls_aliases=path_cls_aliases,
+        wildcard_import=wildcard_import,
+        imported_call_kinds=imported_call_kinds,
+        mod_call_kinds=mod_call_kinds,
+        imported_imp_wrappers=imported_imp_wrappers,
+        mod_imp_wrappers=mod_imp_wrappers,
+        imported_spec_wrappers=imported_spec_wrappers,
+        mod_spec_wrappers=mod_spec_wrappers,
+        mod_importlib_chains=mod_importlib_chains,
+        mod_importlib_util_chains=mod_importlib_util_chains,
+        mod_pytest_chains=mod_pytest_chains,
+        mod_builtins_chains=mod_builtins_chains,
+        wildcard_dyn=wildcard_dyn,
+        return_exports_only=True,
+    )
+
+
+@functools.lru_cache(maxsize=None)
+def _exported_dyn_imports_cached(resolved_str):
+    return _exported_dyn_imports_inner(resolved_str, frozenset())
+
+
+def _exported_dyn_imports(path, seen_d=frozenset()):
+    try:
+        resolved_str = str(pathlib.Path(path).resolve())
+    except OSError:
+        resolved_str = str(path)
+    if not seen_d:
+        return _exported_dyn_imports_cached(resolved_str)
+    return _exported_dyn_imports_inner(resolved_str, seen_d)
+
+
+def _scan_stmts_via(
+    stmts,
+    full_tree,
+    p,
+    seen,
+    *,
+    allow_uncalled_wrappers=frozenset(),
+    allow_uncalled_imp=frozenset(),
+):
     try:
         resolved = p.resolve()
     except OSError:
@@ -1592,41 +2382,170 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
     eb_aliases = set()
     wildcard_sp = False
     wildcard_import = False
+    wildcard_dyn = False
     imported_sp_wrappers = {}
     mod_sp_wrappers = {}
+    mod_sp_chains = set()
+    mod_eb_chains = set()
     import_sources = collections.defaultdict(set)
     importlib_aliases = set()
     importlib_util_aliases = set()
     import_module_aliases = set()
+    dunder_import_aliases = set()
     spec_from_file_aliases = set()
     pytest_aliases = set()
     importorskip_aliases = set()
     builtins_aliases = set()
     pathlib_aliases = set()
     path_cls_aliases = set()
+    imported_call_kinds = {}
+    mod_call_kinds = {}
+    imported_imp_wrappers = {}
+    mod_imp_wrappers = {}
+    imported_spec_wrappers = {}
+    mod_spec_wrappers = {}
+    mod_importlib_chains = set()
+    mod_importlib_util_chains = set()
+    mod_pytest_chains = set()
+    mod_builtins_chains = set()
 
     def _register_mod_wrappers(prefix_parts, target_file):
+        nonlocal wildcard_sp, wildcard_dyn
         if target_file is not None and target_file.is_file():
-            exp_w = _exported_sp_wrappers(target_file)
-            for wname, sig in exp_w.items():
-                mod_sp_wrappers[(*prefix_parts, wname)] = sig
-            return exp_w
-        return {}
+            exp_sp = _exported_sp_wrappers(target_file)
+            if exp_sp["wildcard"]:
+                wildcard_sp = True
+            for wchain, sig in exp_sp["wrappers"].items():
+                mod_sp_wrappers[(*prefix_parts, *wchain)] = sig
+            for schain in exp_sp["sp_chains"]:
+                mod_sp_chains.add((*prefix_parts, *schain))
+            for echain in exp_sp["eb_chains"]:
+                mod_eb_chains.add((*prefix_parts, *echain))
 
-    def _expand_pkg_parts(target_parts):
+            exp_dyn = _exported_dyn_imports(target_file)
+            if exp_dyn["wildcard"]:
+                wildcard_dyn = True
+            for cchain, k in exp_dyn["call_kinds"].items():
+                mod_call_kinds[(*prefix_parts, *cchain)] = k
+            for wchain, sig in exp_dyn["imp_wrappers"].items():
+                mod_imp_wrappers[(*prefix_parts, *wchain)] = sig
+            for wchain, sig in exp_dyn["spec_wrappers"].items():
+                mod_spec_wrappers[(*prefix_parts, *wchain)] = sig
+            for c in exp_dyn["importlib_chains"]:
+                mod_importlib_chains.add((*prefix_parts, *c))
+            for c in exp_dyn["importlib_util_chains"]:
+                mod_importlib_util_chains.add((*prefix_parts, *c))
+            for c in exp_dyn["pytest_chains"]:
+                mod_pytest_chains.add((*prefix_parts, *c))
+            for c in exp_dyn["builtins_chains"]:
+                mod_builtins_chains.add((*prefix_parts, *c))
+            return exp_sp["uncalled_names"], exp_dyn["uncalled_names"]
+        return frozenset(), frozenset()
+
+    def _register_symbol_exports(bname, sym_name, exp_sp, exp_dyn):
+        sp_hit = False
+        if (sym_name,) in exp_sp["wrappers"]:
+            imported_sp_wrappers[bname] = exp_sp["wrappers"][(sym_name,)]
+            sp_hit = True
+        for wchain, sig in exp_sp["wrappers"].items():
+            if len(wchain) > 1 and wchain[0] == sym_name:
+                mod_sp_wrappers[(bname, *wchain[1:])] = sig
+                sp_hit = True
+        for schain in exp_sp["sp_chains"]:
+            if len(schain) == 1 and schain[0] == sym_name:
+                sp_aliases.add(bname)
+                sp_hit = True
+            elif len(schain) > 1 and schain[0] == sym_name:
+                mod_sp_chains.add((bname, *schain[1:]))
+                sp_hit = True
+        for echain in exp_sp["eb_chains"]:
+            if len(echain) == 1 and echain[0] == sym_name:
+                eb_aliases.add(bname)
+                sp_hit = True
+            elif len(echain) > 1 and echain[0] == sym_name:
+                mod_eb_chains.add((bname, *echain[1:]))
+                sp_hit = True
+
+        dyn_hit = False
+        if (sym_name,) in exp_dyn["call_kinds"]:
+            imported_call_kinds[bname] = exp_dyn["call_kinds"][(sym_name,)]
+            dyn_hit = True
+        for cchain, k in exp_dyn["call_kinds"].items():
+            if len(cchain) > 1 and cchain[0] == sym_name:
+                mod_call_kinds[(bname, *cchain[1:])] = k
+                dyn_hit = True
+        if (sym_name,) in exp_dyn["imp_wrappers"]:
+            imported_imp_wrappers[bname] = exp_dyn["imp_wrappers"][(sym_name,)]
+            dyn_hit = True
+        for wchain, sig in exp_dyn["imp_wrappers"].items():
+            if len(wchain) > 1 and wchain[0] == sym_name:
+                mod_imp_wrappers[(bname, *wchain[1:])] = sig
+                dyn_hit = True
+        if (sym_name,) in exp_dyn["spec_wrappers"]:
+            imported_spec_wrappers[bname] = exp_dyn["spec_wrappers"][(sym_name,)]
+            dyn_hit = True
+        for wchain, sig in exp_dyn["spec_wrappers"].items():
+            if len(wchain) > 1 and wchain[0] == sym_name:
+                mod_spec_wrappers[(bname, *wchain[1:])] = sig
+                dyn_hit = True
+        for c in exp_dyn["importlib_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                importlib_aliases.add(bname)
+                dyn_hit = True
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_importlib_chains.add((bname, *c[1:]))
+                dyn_hit = True
+        for c in exp_dyn["importlib_util_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                importlib_util_aliases.add(bname)
+                dyn_hit = True
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_importlib_util_chains.add((bname, *c[1:]))
+                dyn_hit = True
+        for c in exp_dyn["pytest_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                pytest_aliases.add(bname)
+                dyn_hit = True
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_pytest_chains.add((bname, *c[1:]))
+                dyn_hit = True
+        for c in exp_dyn["builtins_chains"]:
+            if len(c) == 1 and c[0] == sym_name:
+                builtins_aliases.add(bname)
+                dyn_hit = True
+            elif len(c) > 1 and c[0] == sym_name:
+                mod_builtins_chains.add((bname, *c[1:]))
+                dyn_hit = True
+        return sp_hit, dyn_hit
+
+    def _expand_pkg_parts(target_parts, allow_sp=frozenset(), allow_imp=frozenset()):
         init_py = _SRC_ROOT.joinpath(*target_parts, "__init__.py")
         if len(target_parts) == 1:
             if init_py.is_file():
                 if _has_executable_defs(init_py):
                     found.add(target_parts[0])
-                found.update(_scan_module_via(init_py, seen))
+                found.update(
+                    _scan_module_via(
+                        init_py,
+                        seen,
+                        allow_uncalled_wrappers=allow_sp,
+                        allow_uncalled_imp=allow_imp,
+                    )
+                )
         else:
             found.add(".".join(target_parts))
             if init_py.is_file():
-                found.update(_scan_module_via(init_py, seen))
+                found.update(
+                    _scan_module_via(
+                        init_py,
+                        seen,
+                        allow_uncalled_wrappers=allow_sp,
+                        allow_uncalled_imp=allow_imp,
+                    )
+                )
 
     def _handle_from_ref(target_parts, aliases):
-        nonlocal wildcard_sp
+        nonlocal wildcard_sp, wildcard_dyn
         mod_file = _SRC_ROOT.joinpath(*target_parts[:-1], f"{target_parts[-1]}.py") if len(target_parts) >= 2 else None
         if mod_file is not None and mod_file.is_file():
             mod = ".".join(target_parts)
@@ -1638,18 +2557,22 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
                     elif alias.name == "run":
                         run_aliases.add(alias.asname or "run")
             else:
-                exp_w = _exported_sp_wrappers(mod_file)
+                exp_sp = _exported_sp_wrappers(mod_file)
+                exp_dyn = _exported_dyn_imports(mod_file)
                 for alias in aliases:
                     if alias.name == "*":
-                        if exp_w:
+                        if _sp_has_any(exp_sp):
                             wildcard_sp = True
-                    elif alias.name in exp_w:
-                        imported_sp_wrappers[alias.asname or alias.name] = exp_w[alias.name]
+                        if _dyn_has_any(exp_dyn):
+                            wildcard_dyn = True
+                    else:
+                        _register_symbol_exports(alias.asname or alias.name, alias.name, exp_sp, exp_dyn)
             return
         if _SRC_ROOT.joinpath(*target_parts).is_dir():
             exports = _init_exports(target_parts)
             init_py = _SRC_ROOT.joinpath(*target_parts, "__init__.py")
-            init_w = _exported_sp_wrappers(init_py) if init_py.is_file() else {}
+            init_sp = _exported_sp_wrappers(init_py) if init_py.is_file() else _EMPTY_SP_EXPORT
+            init_dyn = _exported_dyn_imports(init_py) if init_py.is_file() else _EMPTY_DYN_EXPORT
             for alias in aliases:
                 if _is_submodule_parts(target_parts, alias.name):
                     mod = ".".join((*target_parts, alias.name))
@@ -1657,46 +2580,67 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
                     if mod == "external_bridge._subprocess":
                         sp_aliases.add(alias.asname or "_subprocess")
                     else:
-                        _register_mod_wrappers((alias.asname or alias.name,), _SRC_ROOT.joinpath(*target_parts, f"{alias.name}.py"))
+                        sub_target = _ref_target_file((*target_parts, alias.name))
+                        sub_sp, sub_imp = _register_mod_wrappers((alias.asname or alias.name,), sub_target)
+                        if sub_target is not None and sub_target.name == "__init__.py":
+                            _expand_pkg_parts((*target_parts, alias.name), sub_sp, sub_imp)
                 elif alias.name == "*" or alias.name in exports:
-                    _expand_pkg_parts(target_parts)
-                    if alias.name == "*" and init_w:
-                        wildcard_sp = True
-                    elif alias.name in init_w:
-                        imported_sp_wrappers[alias.asname or alias.name] = init_w[alias.name]
+                    _expand_pkg_parts(target_parts, init_sp["uncalled_names"], init_dyn["uncalled_names"])
+                    if alias.name == "*":
+                        if _sp_has_any(init_sp):
+                            wildcard_sp = True
+                        if _dyn_has_any(init_dyn):
+                            wildcard_dyn = True
+                    else:
+                        _register_symbol_exports(alias.asname or alias.name, alias.name, init_sp, init_dyn)
                 else:
                     found.add(".".join((*target_parts, alias.name)))
             return
         found.add(".".join(target_parts))
 
     def _handle_from_local(rel_parts, aliases, search_dirs):
-        nonlocal wildcard_sp
+        nonlocal wildcard_sp, wildcard_dyn
         local_mod = _resolve_local_helper(rel_parts, search_dirs) if rel_parts else None
-        local_w = _exported_sp_wrappers(local_mod) if local_mod is not None else {}
+        local_sp = _exported_sp_wrappers(local_mod) if local_mod is not None else _EMPTY_SP_EXPORT
+        local_dyn = _exported_dyn_imports(local_mod) if local_mod is not None else _EMPTY_DYN_EXPORT
         for alias in aliases:
             if alias.name == "*":
                 if local_mod is not None:
-                    if local_w:
+                    if _sp_has_any(local_sp):
                         wildcard_sp = True
-                    found.update(_scan_module_via(local_mod, seen))
+                    if _dyn_has_any(local_dyn):
+                        wildcard_dyn = True
+                    found.update(
+                        _scan_module_via(
+                            local_mod,
+                            seen,
+                            allow_uncalled_wrappers=local_sp["uncalled_names"],
+                            allow_uncalled_imp=local_dyn["uncalled_names"],
+                        )
+                    )
                 continue
             sub_local = _resolve_local_helper((*rel_parts, alias.name), search_dirs)
             if sub_local is not None:
-                sub_w = _register_mod_wrappers((alias.asname or alias.name,), sub_local)
-                found.update(_scan_module_via(sub_local, seen, allow_uncalled_wrappers=frozenset(sub_w)))
-            elif local_mod is not None:
-                if alias.name in local_w:
-                    imported_sp_wrappers[alias.asname or alias.name] = local_w[alias.name]
-                    found.update(
-                        _scan_symbol_via(
-                            local_mod,
-                            alias.name,
-                            seen,
-                            allow_uncalled_wrappers=frozenset({alias.name}),
-                        )
+                sub_sp, sub_imp = _register_mod_wrappers((alias.asname or alias.name,), sub_local)
+                found.update(
+                    _scan_module_via(
+                        sub_local,
+                        seen,
+                        allow_uncalled_wrappers=sub_sp,
+                        allow_uncalled_imp=sub_imp,
                     )
-                else:
-                    found.update(_scan_symbol_via(local_mod, alias.name, seen))
+                )
+            elif local_mod is not None:
+                _register_symbol_exports(alias.asname or alias.name, alias.name, local_sp, local_dyn)
+                found.update(
+                    _scan_symbol_via(
+                        local_mod,
+                        alias.name,
+                        seen,
+                        allow_uncalled_wrappers=local_sp["uncalled_names"],
+                        allow_uncalled_imp=local_dyn["uncalled_names"],
+                    )
+                )
 
     scope_mod = ast.Module(body=list(stmts), type_ignores=[])
     for node in ast.walk(scope_mod):
@@ -1706,7 +2650,7 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
                 top = parts[0]
                 bound_name = alias.asname or top
                 bprefix = (alias.asname,) if alias.asname else parts
-                import_sources[bound_name].add(("import", alias.name))
+                import_sources[bound_name].add(("import", alias.name if alias.asname else top))
                 if alias.name == "importlib":
                     importlib_aliases.add(bound_name)
                 elif alias.name == "importlib.util":
@@ -1730,12 +2674,15 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
                             else:
                                 eb_aliases.add("external_bridge")
                         else:
-                            _register_mod_wrappers(bprefix, _SRC_ROOT.joinpath(*parts[:-1], f"{parts[-1]}.py"))
+                            sub_target = _ref_target_file(parts)
+                            sub_sp, sub_imp = _register_mod_wrappers(bprefix, sub_target)
+                            if sub_target is not None and sub_target.name == "__init__.py":
+                                _expand_pkg_parts(parts, sub_sp, sub_imp)
                     else:
-                        _expand_pkg_parts(parts)
                         if top == "external_bridge":
                             eb_aliases.add(alias.asname or "external_bridge")
-                        _register_mod_wrappers(bprefix, _SRC_ROOT.joinpath(top, "__init__.py"))
+                        top_sp, top_imp = _register_mod_wrappers(bprefix, _SRC_ROOT.joinpath(top, "__init__.py"))
+                        _expand_pkg_parts(parts, top_sp, top_imp)
                 elif pkg_parts is not None and _is_submodule_parts(pkg_parts, top):
                     full_parts = (*pkg_parts, *parts)
                     mod = ".".join(full_parts)
@@ -1743,12 +2690,22 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
                     if mod == "external_bridge._subprocess" and len(parts) == 1:
                         sp_aliases.add(alias.asname or "_subprocess")
                     else:
-                        _register_mod_wrappers(bprefix, _SRC_ROOT.joinpath(*full_parts[:-1], f"{full_parts[-1]}.py"))
+                        sub_target = _ref_target_file(full_parts)
+                        sub_sp, sub_imp = _register_mod_wrappers(bprefix, sub_target)
+                        if sub_target is not None and sub_target.name == "__init__.py":
+                            _expand_pkg_parts(full_parts, sub_sp, sub_imp)
                 elif pkg_parts is None:
                     helper = _resolve_local_helper(parts, local_dirs)
                     if helper is not None:
-                        exp_w = _register_mod_wrappers(bprefix, helper)
-                        found.update(_scan_module_via(helper, seen, allow_uncalled_wrappers=frozenset(exp_w)))
+                        exp_sp_u, exp_imp_u = _register_mod_wrappers(bprefix, helper)
+                        found.update(
+                            _scan_module_via(
+                                helper,
+                                seen,
+                                allow_uncalled_wrappers=exp_sp_u,
+                                allow_uncalled_imp=exp_imp_u,
+                            )
+                        )
         elif isinstance(node, ast.ImportFrom):
             for alias in node.names:
                 if alias.name != "*":
@@ -1767,7 +2724,7 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
                     elif node.module == "pytest" and alias.name == "importorskip":
                         importorskip_aliases.add(bname)
                     elif node.module == "builtins" and alias.name == "__import__":
-                        import_module_aliases.add(bname)
+                        dunder_import_aliases.add(bname)
                     elif node.module == "pathlib" and alias.name == "Path":
                         path_cls_aliases.add(bname)
                     elif alias.name == "*" and node.module in {"importlib", "importlib.util", "pytest", "builtins"}:
@@ -1798,9 +2755,38 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
                 elif pkg_parts is None:
                     _handle_from_local(parts, node.names, local_dirs)
 
-    for w_alias in set(imported_sp_wrappers) | {chain[0] for chain in mod_sp_wrappers}:
+    for w_alias in (
+        set(imported_sp_wrappers)
+        | sp_aliases
+        | run_aliases
+        | eb_aliases
+        | {chain[0] for chain in (*mod_sp_wrappers, *mod_sp_chains, *mod_eb_chains)}
+    ):
         if len(import_sources.get(w_alias, ())) > 1:
             wildcard_sp = True
+
+    for d_alias in (
+        set(imported_call_kinds)
+        | set(imported_imp_wrappers)
+        | set(imported_spec_wrappers)
+        | import_module_aliases
+        | dunder_import_aliases
+        | importorskip_aliases
+        | spec_from_file_aliases
+        | {
+            chain[0]
+            for chain in (
+                *mod_call_kinds,
+                *mod_imp_wrappers,
+                *mod_spec_wrappers,
+                *mod_importlib_chains,
+                *mod_importlib_util_chains,
+                *mod_builtins_chains,
+            )
+        }
+    ):
+        if len(import_sources.get(d_alias, ())) > 1:
+            wildcard_dyn = True
 
     found |= _scan_call_imports(
         scope_mod,
@@ -1813,6 +2799,7 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
         importlib_aliases=importlib_aliases,
         importlib_util_aliases=importlib_util_aliases,
         import_module_aliases=import_module_aliases,
+        dunder_import_aliases=dunder_import_aliases,
         spec_from_file_aliases=spec_from_file_aliases,
         pytest_aliases=pytest_aliases,
         importorskip_aliases=importorskip_aliases,
@@ -1820,6 +2807,19 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
         pathlib_aliases=pathlib_aliases,
         path_cls_aliases=path_cls_aliases,
         wildcard_import=wildcard_import,
+        imported_call_kinds=imported_call_kinds,
+        mod_call_kinds=mod_call_kinds,
+        imported_imp_wrappers=imported_imp_wrappers,
+        mod_imp_wrappers=mod_imp_wrappers,
+        imported_spec_wrappers=imported_spec_wrappers,
+        mod_spec_wrappers=mod_spec_wrappers,
+        mod_importlib_chains=mod_importlib_chains,
+        mod_importlib_util_chains=mod_importlib_util_chains,
+        mod_pytest_chains=mod_pytest_chains,
+        mod_builtins_chains=mod_builtins_chains,
+        wildcard_dyn=wildcard_dyn,
+        allow_uncalled_imp=allow_uncalled_imp,
+        is_full_module=(stmts is full_tree.body),
     )
     found |= _subprocess_workers(
         scope_mod,
@@ -1830,6 +2830,8 @@ def _scan_stmts_via(stmts, full_tree, p, seen, *, allow_uncalled_wrappers=frozen
         full_tree=full_tree,
         imported_sp_wrappers=imported_sp_wrappers,
         mod_sp_wrappers=mod_sp_wrappers,
+        mod_sp_chains=mod_sp_chains,
+        mod_eb_chains=mod_eb_chains,
         allow_uncalled_wrappers=allow_uncalled_wrappers,
         is_full_module=(stmts is full_tree.body),
     )
@@ -1983,7 +2985,14 @@ def _reachable_local_stmts(tree, func_name, cls_name=None, fixture_names=(), inc
     return stmts
 
 
-def _scan_symbol_via(path, symbol_name, seen, *, allow_uncalled_wrappers=frozenset()):
+def _scan_symbol_via(
+    path,
+    symbol_name,
+    seen,
+    *,
+    allow_uncalled_wrappers=frozenset(),
+    allow_uncalled_imp=frozenset(),
+):
     resolved, tree = _parsed_module(str(path))
     if tree is None:
         return set()
@@ -1992,17 +3001,29 @@ def _scan_symbol_via(path, symbol_name, seen, *, allow_uncalled_wrappers=frozens
         return set()
     stmts = _reachable_local_stmts(tree, symbol_name, include_autouse=False)
     if stmts is None:
-        return _scan_module_via(path, seen, allow_uncalled_wrappers=allow_uncalled_wrappers)
+        return _scan_module_via(
+            path,
+            seen,
+            allow_uncalled_wrappers=allow_uncalled_wrappers,
+            allow_uncalled_imp=allow_uncalled_imp,
+        )
     return _scan_stmts_via(
         stmts,
         tree,
         pathlib.Path(path),
         seen | {key},
         allow_uncalled_wrappers=allow_uncalled_wrappers,
+        allow_uncalled_imp=allow_uncalled_imp,
     )
 
 
-def _scan_module_via(path, seen, *, allow_uncalled_wrappers=frozenset()):
+def _scan_module_via(
+    path,
+    seen,
+    *,
+    allow_uncalled_wrappers=frozenset(),
+    allow_uncalled_imp=frozenset(),
+):
     resolved, tree = _parsed_module(str(path))
     if tree is None or resolved in seen:
         return set()
@@ -2012,6 +3033,7 @@ def _scan_module_via(path, seen, *, allow_uncalled_wrappers=frozenset()):
         pathlib.Path(path),
         seen | {resolved},
         allow_uncalled_wrappers=allow_uncalled_wrappers,
+        allow_uncalled_imp=allow_uncalled_imp,
     )
 
 
@@ -2122,6 +3144,7 @@ def _clear_via_caches():
     _has_executable_defs.cache_clear()
     _repo_py_suffixes.cache_clear()
     _exported_sp_wrappers_cached.cache_clear()
+    _exported_dyn_imports_cached.cache_clear()
     _cached_module_via.cache_clear()
     _cached_item_via.cache_clear()
 
