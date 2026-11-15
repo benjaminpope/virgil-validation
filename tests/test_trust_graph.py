@@ -195,10 +195,11 @@ def test_reference_module_imports_are_declared_in_depends():
             init_unreg = sorted(set(plugin._module_via(str(init_py))) - ref_nodes)
             if init_unreg:
                 unregistered.append((f"{pkg}.__init__", init_unreg))
-        for py in sorted((ROOT / "src" / pkg).glob("*.py")):
-            if py.name == "__init__.py":
+        for py in sorted((ROOT / "src" / pkg).rglob("*.py")):
+            rel = py.relative_to(ROOT / "src")
+            if rel.parts == (pkg, "__init__.py"):
                 continue
-            mod = f"{pkg}.{py.stem}"
+            mod = ".".join(rel.parts[:-1]) if py.name == "__init__.py" else ".".join((*rel.parts[:-1], py.stem))
             if mod in plugin._PLUMBING:
                 continue
             if mod not in ref_nodes:

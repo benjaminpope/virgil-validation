@@ -89,7 +89,7 @@ def blur(image, pixel_mas, beam, fraction=1.0):
     bmaj, bmin, pa = (fraction * beam[0], fraction * beam[1], np.radians(beam[2]))
     fr = np.fft.fftfreq(image.shape[0], d=pixel_mas)[:, None]  # cycles/mas along rows (rows run towards South)
     fc = np.fft.fftfreq(image.shape[1], d=pixel_mas)[None, :]  # along columns (towards West): the quadratic form below is even in the common sign
-    sig = np.array([bmaj, bmin]) / 2.3548
+    sig = np.array([bmaj, bmin]) / (2.0 * np.sqrt(2.0 * np.log(2.0)))
     f_maj = fc * (-np.sin(pa)) + fr * (-np.cos(pa))  # major axis direction (East, North) = (sin PA, cos PA), in (col, row) the opposite signs
     f_min = fc * (-np.cos(pa)) + fr * np.sin(pa)
     kernel = np.exp(-2 * np.pi**2 * ((sig[0] * f_maj) ** 2 + (sig[1] * f_min) ** 2))
