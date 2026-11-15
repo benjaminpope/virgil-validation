@@ -53,19 +53,25 @@ nodes:
       - virgil.oidata.cp_indices
       - virgil.oidata.closure_phases
       - virgil.models.smeared_model
+      - virgil.observables.in_ranges
   virgil.oidata.find_uv_grid:
     layer: data
     source: [src/virgil/_geometry.py]
   virgil.coverage.vlti_oidata:
     layer: data
     source: [src/virgil/coverage.py]
+    depends: [virgil.oidata.OIData, virgil.oidata.cp_indices]
   virgil.amigo.load_oi_data:
     layer: data
     source: [src/virgil/amigo.py]
     depends: [virgil.oidata.OIData]
     doc: data/amigo.md
   virgil.coverage.mask_transfer: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
-  virgil.coverage.nrm_oidata: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
+  virgil.coverage.nrm_oidata:
+    layer: data
+    source: [src/virgil/coverage.py]
+    depends: [virgil.oidata.OIData, virgil.oidata.cp_indices]
+    doc: data/masking.md#mask-geometry
   virgil.amigo.is_mixed_disco_record: {layer: data, source: [src/virgil/amigo.py], doc: data/amigo.md}
   virgil.amigo.validate_mixed_disco_record: {layer: data, source: [src/virgil/amigo.py], doc: data/amigo.md}
   virgil.amigo.mixed_disco_fields:
@@ -90,12 +96,16 @@ nodes:
   virgil.models.UniformDisk: {layer: models, source: [src/virgil/models.py]}
   virgil.models.ModulatedGaussianRim:
     layer: models
-    source: [src/virgil/models.py]
-    depends: [virgil.models.Component, virgil.models.cvis_radial_dirac_delta_modulated]
+    source: [src/virgil/models.py, src/virgil/harmonics.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.harmonics.rim_coefficients]
     roots: 2
     properties: {profile: 2, modulation_sense: 1}  # PMOIRED's rim is modulated differently (D-code control)
     convention: [modulation_sense]
-  virgil.models.GaussianArc: {layer: models, source: [src/virgil/models.py], convention: [orientation]}
+  virgil.models.GaussianArc:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.VonMises]
+    convention: [orientation]
   virgil.models.BinaryModelCartesian: {layer: models, source: [src/virgil/models.py], roots: 2}
   virgil.models.BinaryModelAngular: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
@@ -240,7 +250,7 @@ nodes:
   virgil.fitting.fit:
     layer: likelihood
     source: [src/virgil/fitting.py, src/virgil/_precision.py]
-    depends: [virgil.likelihood.model_loglike]
+    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site]
     doc: data/long_baseline.md
 
   # ------------------------------------------------------------ inference
@@ -393,7 +403,7 @@ nodes:
   virgil.models.MultipoleDisk:
     layer: models
     source: [src/virgil/models.py, src/virgil/harmonics.py]
-    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.RadialGPFunction]
     doc: models/polar_disk.md
   virgil.models.ThinRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.GaussianRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
@@ -419,7 +429,10 @@ nodes:
   virgil.harmonics.to_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
   virgil.harmonics.rim_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
   virgil.harmonics.cone_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
-  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
+  virgil.models.TruncatedCone:  # tilt's sign: not observable (optically thin)
+    layer: models
+    source: [src/virgil/models.py, src/virgil/harmonics.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.Cone, virgil.models.ExpTail, virgil.harmonics.cone_coefficients]
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
   virgil.fields.GaussianField:
@@ -467,13 +480,13 @@ nodes:
   virgil.observables.FluxSpectrum:
     layer: likelihood
     source: [src/virgil/observables.py, src/virgil/_linear.py]
-    depends: [virgil.oidata.OIData, virgil._linear]
+    depends: [virgil.oidata.OIData, virgil.observables.in_ranges, virgil._linear]
   virgil.oidata.OIData.with_flux_scale: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.FluxSpectrum], doc: likelihood/spectra_phases.md}
   virgil.observables.DifferentialPhase:
     layer: likelihood
     # recheck when virgil#232 (cached Cholesky) lands
     source: [src/virgil/observables.py, src/virgil/_linear.py]
-    depends: [virgil.oidata.OIData, virgil.observables.continuum_operator, virgil._linear]
+    depends: [virgil.oidata.OIData, virgil.observables.continuum_operator, virgil.observables.in_ranges, virgil._linear]
   virgil.oidata.OIData.with_continuum: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.DifferentialPhase], doc: likelihood/spectra_phases.md}
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
@@ -506,7 +519,7 @@ nodes:
   virgil.likelihood.numpyro_model:
     layer: inference
     source: [src/virgil/likelihood.py]
-    depends: [virgil.likelihood.model_loglike]
+    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site]
   virgil.inference.hessian_matrix: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.regularized_inverse: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.laplace_covariance:

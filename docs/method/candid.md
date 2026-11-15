@@ -40,17 +40,27 @@ variance of a continuous uniform boxcar. Passing variance-matched
 comparison scores De Furio et al.'s CANDID flux and resolved-flux values under
 the 2σ parametric rule rather than the 0.25σ per-epoch rule.
 
-The bridge switches CANDID to V² and closure phases, zero channel width (no
-smearing) and one core. With those settings, the only difference of
-definition left is the closure-phase residual (ledger D5). On V²-only files
-the two codes agree to the float32 precision of the file.
+The bridge switches CANDID to V² and closure phases, zero channel width by
+default (`dwavel_um=0.0`, unless `dwavel_um` and optional `n_smear` are passed
+explicitly to `candid_bridge.chi2`) and one core. With those default unsmeared
+settings, the only difference of definition left is the closure-phase residual
+(ledger [D5](findings.md#D5)); with smearing enabled, see ledger
+[D23](findings.md#D23). On unsmeared V²-only files the two codes agree to the
+float32 precision of the file.
 
 ## Differences that are not errors
 
-* **D5, closure-phase residual.** The plain difference and the chord agree
+* **D5, closure-phase residual ([D5](findings.md#D5)).** The plain difference and the chord agree
   to O(Δ³). Near a good fit the two χ² values match to ~1e-6. Far from the
   data, where model closure phases are tens of degrees off, they differ by
   up to 1e-3.
+* **D23, bandwidth smearing ([D23](findings.md#D23)).** CANDID's default
+  `Nsmear = 3` averages complex visibilities coherently over three equal-weight
+  endpoints ($\lambda_0 - \Delta\lambda/2, \lambda_0, \lambda_0 + \Delta\lambda/2$,
+  spectral variance $\Delta\lambda^2 / 6$), whereas `virgil.models.smeared_model`
+  integrates analytically over a continuous uniform wavenumber boxcar
+  (variance $\Delta\lambda^2 / 12$). Matching variances (`dwavel = dlambda / sqrt(2)`)
+  or using dense `Nsmear` reconciles them to leading order in $\Delta\lambda / \lambda_0$.
 * **Significance at the float64 limit.** Both take the two-sided Gaussian
   equivalent of the χ² tail and agree to 1e-12 relative up to 27σ. Beyond
   ~37σ, where the tail probability underflows, CANDID returns `inf` (as
