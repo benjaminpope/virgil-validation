@@ -689,6 +689,13 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "source": node.get("source", []),
         }
 
+    def ref_broken(v):
+        if v not in nodes:
+            return False
+        return own[v]["status"] in {"bug", "failing"} or any(
+            own[d]["status"] in {"bug", "failing"} for d in problems(v) if d in own
+        )
+
     pipelines = []
     for name, p in graph.get("pipelines", {}).items():
         all_recs = by_obj.get(f"pipeline:{name}", [])
@@ -696,24 +703,27 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         bad = [r for r in all_recs if r["outcome"] in BAD]
         good = [r for r in recs if r["outcome"] == "passed"]
         strong_good = [r for r in good if roots_of(r, golden)[0]]
-        trusted_good = [r for r in strong_good if not (set(r.get("via", [])) - trusted)]
-        untrusted_via = (
-            sorted({v for r in strong_good for v in r.get("via", []) if v not in trusted})
-            if not trusted_good
-            else []
-        )
-        via_failing = any(
-            own.get(v, {}).get("status") == "failing" or out_nodes.get(v, {}).get("verdict") == "failing"
-            for v in untrusted_via
-        )
+        usable_good = [r for r in strong_good if not any(ref_broken(v) for v in r.get("via", []))]
+        trusted_good = [r for r in usable_good if not (set(r.get("via", [])) - trusted)]
+        via_failing = bool(strong_good and not usable_good)
+        if via_failing:
+            untrusted_via = sorted({v for r in strong_good for v in r.get("via", []) if v not in trusted})
+        elif not trusted_good:
+            untrusted_via = sorted({v for r in usable_good for v in r.get("via", []) if v not in trusted})
+        else:
+            untrusted_via = []
         unverified_steps = [s for s in p["steps"] if out_nodes.get(s, {}).get("verdict") != "verified"]
         unverified = unverified_steps + [v for v in untrusted_via if v not in unverified_steps]
-        step_failing = any(out_nodes.get(s, {}).get("verdict") == "failing" for s in p["steps"])
+        step_failing = any(
+            out_nodes.get(s, {}).get("verdict") == "failing"
+            or any(c.get("status") == "failing" for c in out_nodes.get(s, {}).get("because", []))
+            for s in p["steps"]
+        )
         if bad or step_failing or via_failing:
             status = "failing"
         elif trusted_good and not unverified:
             status = "validated"
-        elif strong_good:
+        elif usable_good:
             status = "passes"
         elif recs and all(r["outcome"] == "skipped" for r in recs):
             status = "not run"  # its checks exist but none ran, so the hand-written state would mislead
