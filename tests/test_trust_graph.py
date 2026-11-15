@@ -183,6 +183,7 @@ def test_reference_module_imports_are_declared_in_depends():
 
     plugin._module_via.cache_clear()
     plugin._init_exports.cache_clear()
+    plugin._has_executable_defs.cache_clear()
     ref_nodes = {
         name for name, node in GRAPH["nodes"].items()
         if (node or {}).get("layer", "references") == "references"
@@ -192,9 +193,19 @@ def test_reference_module_imports_are_declared_in_depends():
     for pkg in plugin._REFERENCE_PACKAGES:
         init_py = ROOT / "src" / pkg / "__init__.py"
         if init_py.is_file():
-            init_unreg = sorted(set(plugin._module_via(str(init_py))) - ref_nodes)
-            if init_unreg:
-                unregistered.append((f"{pkg}.__init__", init_unreg))
+            if plugin._has_executable_defs(init_py):
+                if pkg not in ref_nodes:
+                    unregistered.append(pkg)
+                else:
+                    imported_refs = set(plugin._module_via(str(init_py))) - {pkg}
+                    declared = set(GRAPH["nodes"][pkg].get("depends", []))
+                    missing = sorted(imported_refs - declared)
+                    if missing:
+                        undeclared.append((pkg, missing))
+            else:
+                init_unreg = sorted(set(plugin._module_via(str(init_py))) - ref_nodes)
+                if init_unreg:
+                    unregistered.append((f"{pkg}.__init__", init_unreg))
         for py in sorted((ROOT / "src" / pkg).rglob("*.py")):
             rel = py.relative_to(ROOT / "src")
             if rel.parts == (pkg, "__init__.py"):
@@ -567,6 +578,7 @@ def _build_virgil_ast_reachability(virgil_dir: pathlib.Path, mod_prefix: str = "
 def _runtime_virgil_origin(node_name: str, parsed_mods: set[str], mod_prefix: str = "virgil") -> str:
     """Resolve PEP 562 ``__getattr__`` re-exports (e.g. ``virgil.pipeline.BinaryPipeline``) to their defining symbol."""
     import importlib
+    import sys
 
     parts = node_name.split(".")
     for split in range(len(parts), 0, -1):
@@ -576,7 +588,15 @@ def _runtime_virgil_origin(node_name: str, parsed_mods: set[str], mod_prefix: st
             if not rest:
                 return node_name
             try:
-                obj = importlib.import_module(mod_name)
+                if mod_name in sys.modules:
+                    obj = sys.modules[mod_name]
+                elif mod_name == "virgil":
+                    obj = importlib.import_module("virgil")
+                elif mod_name.startswith("virgil."):
+                    sub = mod_name.removeprefix("virgil.")
+                    obj = importlib.import_module(f"virgil.{sub}")
+                else:
+                    return node_name
                 for attr in rest:
                     obj = getattr(obj, attr)
                 obj_mod, obj_qn = getattr(obj, "__module__", None), getattr(obj, "__qualname__", None)
@@ -783,6 +803,7 @@ def test_virgil_ast_reachability_synthetic_controls(tmp_path, monkeypatch):
     )
 
     monkeypatch.syspath_prepend(str(tmp_path))
+    import fakepkg.lazy  # noqa: F401 — populate sys.modules for synthetic PEP 562 test without dynamic non-virgil import_module
     expanded, canonical, parsed_mods = _build_virgil_ast_reachability(pkg, mod_prefix="fakepkg")
     opt_sinks = {"fakepkg.likelihood._whiten_with_log_norm", "fakepkg.likelihood.whitened_residuals"}
     fit_sinks = {"fakepkg.fitting.fit"}
