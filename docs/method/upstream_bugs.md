@@ -304,7 +304,7 @@ from fouriever import uvfit
 
 warnings.filterwarnings("ignore")
 wl = np.linspace(1.6e-6, 2.2e-6, 4)
-u, v = np.array([30.0, 55.0, -25.0]), np.array([20.0, -35.0, -55.0])
+u, v = np.array([30.0, 55.0, 85.0]), np.array([20.0, -35.0, -15.0])
 hdul = fits.HDUList([
     fits.PrimaryHDU(),
     fits.BinTableHDU.from_columns([fits.Column("EFF_WAVE", "D", unit="m", array=wl), fits.Column("EFF_BAND", "D", unit="m", array=np.full(4, 1e-8))],
