@@ -137,7 +137,7 @@ def _has_executable_defs_cached(init_py_str):
         return False
     try:
         tree = ast.parse(init_py.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
+    except (OSError, SyntaxError, UnicodeDecodeError):
         return True
     for i, stmt in enumerate(tree.body):
         if i == 0 and isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
@@ -155,6 +155,22 @@ def _has_executable_defs(init_py):
 
 _has_executable_defs.cache_clear = _has_executable_defs_cached.cache_clear
 
+_IGNORED_REPO_DIRS = frozenset({
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".external",
+    ".claude",
+    "build",
+    "site",
+    "virgil-src",
+    "virgil-ci",
+})
+
+
+def _is_ignored_repo_part(part):
+    return part.startswith(".venv") or part.endswith(".egg-info") or part in _IGNORED_REPO_DIRS
+
 
 @functools.lru_cache(maxsize=1)
 def _repo_py_suffixes():
@@ -162,7 +178,7 @@ def _repo_py_suffixes():
     out = []
     for p in root.rglob("*.py"):
         rel = p.relative_to(root)
-        if any(part.startswith(".venv") or part in {".git", "__pycache__"} for part in rel.parts):
+        if any(_is_ignored_repo_part(part) for part in rel.parts):
             continue
         out.append(rel.as_posix())
     return tuple(out)
@@ -180,7 +196,7 @@ def _init_exports_cached(src_root, pkg_parts):
         return frozenset()
     try:
         tree = ast.parse(init_py.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
+    except (OSError, SyntaxError, UnicodeDecodeError):
         return frozenset()
     names = set()
     for stmt in tree.body:
@@ -728,6 +744,16 @@ def _free_names(expr):
     return {n.id for n in ast.walk(expr) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
 
 
+def _import_call_kwargs_ok(node, kind):
+    if any(isinstance(a, ast.Starred) for a in node.args) or any(kw.arg is None for kw in node.keywords):
+        return False
+    if kind == "__import__":
+        lvl_arg = _call_arg_expr(node, 4, "level")
+        if lvl_arg is not None and not (isinstance(lvl_arg, ast.Constant) and lvl_arg.value == 0):
+            return False
+    return True
+
+
 def _is_provably_external_py_suffix(suf, resolved_file):
     if not suf or "/" not in suf or not suf.endswith(".py"):
         return False
@@ -743,7 +769,10 @@ def _is_provably_external_py_suffix(suf, resolved_file):
     except ValueError:
         base = resolved_file.parent.parent if resolved_file.parent.name in {"tests", "scripts", "src"} else resolved_file.parent
         for cand in base.rglob("*.py"):
-            cand_rel = cand.relative_to(base).as_posix()
+            cand_rel_path = cand.relative_to(base)
+            if any(_is_ignored_repo_part(part) for part in cand_rel_path.parts):
+                continue
+            cand_rel = cand_rel_path.as_posix()
             if cand_rel == rel or cand_rel.endswith("/" + rel):
                 return False
         return True
@@ -788,6 +817,24 @@ def _scan_call_imports(
                 and func.value.id in (pathlib_aliases | {"pathlib"})
             )
         )
+
+    importlib_aliases = set(importlib_aliases)
+    pytest_aliases = set(pytest_aliases)
+    builtins_aliases = set(builtins_aliases)
+    pathlib_aliases = set(pathlib_aliases)
+    for _n in ast.walk(tree):
+        if isinstance(_n, ast.Import):
+            for _alias in _n.names:
+                if _alias.asname is None:
+                    _top = _alias.name.split(".", 1)[0]
+                    if _top == "importlib":
+                        importlib_aliases.add("importlib")
+                    elif _top == "pytest":
+                        pytest_aliases.add("pytest")
+                    elif _top == "builtins":
+                        builtins_aliases.add("builtins")
+                    elif _top == "pathlib":
+                        pathlib_aliases.add("pathlib")
 
     def _call_kind(func):
         if isinstance(func, ast.Name):
@@ -1242,7 +1289,7 @@ def _scan_call_imports(
                     arg0 = _call_arg_expr(node, 0, "name" if kind != "importorskip" else "modname")
                     vals = _eval_expr(arg0, active_map, param_bindings)
                     pkg_val = None
-                    pkg_ok = True
+                    pkg_ok = _import_call_kwargs_ok(node, kind)
                     if kind == "import_module":
                         pkg_arg = _call_arg_expr(node, 1, "package")
                         if pkg_arg is not None and not (isinstance(pkg_arg, ast.Constant) and pkg_arg.value is None):
