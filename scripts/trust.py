@@ -521,7 +521,10 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         def ok(n, seen):
             if status.get(n) != "ok":
                 return False
-            return all(d not in status or (d in seen or ok(d, seen | {d})) for d in nodes[n].get("depends", []))
+            return all(
+                d in nodes and (d not in status or (d not in seen and ok(d, seen | {d})))
+                for d in nodes[n].get("depends", [])
+            )
 
         return {n for n in refs if ok(n, {n})}
 

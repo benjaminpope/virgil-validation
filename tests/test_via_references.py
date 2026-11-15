@@ -906,16 +906,39 @@ def test_alma_lambda_grid_flux_scale_reference_obs_and_white_noise_lag1():
 # ------------------------------------------------ 11. virgil_bridge.mpol
 
 
+def _mpol_direct_visibilities(packed_intensity, pixel_mas, u, v, obs, log10_amp, delta_ra_arcsec, delta_dec_arcsec):
+    """Independent NumPy forward model in MPoL's unpacked sky coordinates:
+    unpacked pixel ``(r, c)`` sits at East ``(c - N/2) * dx`` and North ``(r - N/2) * dx``
+    (in arcsec), scaled by ``g_obs`` and shifted by ``exp(-2 pi i (u * dra + v * ddec))``."""
+    arcsec_rad = np.pi / (180.0 * 3600.0)
+    cell_arcsec = pixel_mas / 1000.0
+    unpacked = np.fft.fftshift(np.asarray(packed_intensity, float))
+    npix = unpacked.shape[0]
+    east_rad = (np.arange(npix) - npix // 2) * cell_arcsec * arcsec_rad
+    north_rad = (np.arange(npix) - npix // 2) * cell_arcsec * arcsec_rad
+    flux_jy = unpacked * cell_arcsec**2
+    phase_sky = -2.0 * np.pi * (
+        u[:, None, None] * east_rad[None, None, :] + v[:, None, None] * north_rad[None, :, None]
+    )
+    vis_sky = np.sum(flux_jy[None, :, :] * np.exp(1j * phase_sky), axis=(1, 2))
+    gains = np.r_[1.0, 10.0 ** np.asarray(log10_amp, float)]
+    dra_rad = np.r_[0.0, np.asarray(delta_ra_arcsec, float)] * arcsec_rad
+    ddec_rad = np.r_[0.0, np.asarray(delta_dec_arcsec, float)] * arcsec_rad
+    phase_off = -2.0 * np.pi * (u * dra_rad[obs] + v * ddec_rad[obs])
+    return gains[obs] * vis_sky * np.exp(1j * phase_off)
+
+
 @pytest.mark.validates(
     "virgil_bridge.mpol",
     roots=["mathematics", "statistics"],
     kind="reference",
-    headline="nll_vs_scipy_abs_err",
+    headline="nll_vs_mpol_dft_abs_err",
 )
 def test_virgil_bridge_mpol_bijection_parameter_map_and_exact_log_likelihood():
-    """``pack``/``unpack`` and ``softplus``/``softplus_inverse`` are exact inverses,
-    ``virgil_values`` maps MPoL parameters onto virgil sites (``cal.sigma = g * s_M`` vs
-    ``s_M`` control), and ``neg_log_likelihood`` matches normalized ``scipy.stats.norm.logpdf``."""
+    """``unpack``/``pack`` map MPoL's ``(c - N/2, r - N/2)`` unpacked sky coordinates onto
+    virgil's ``(row 0 North, col 0 East)`` grid with ``-dx/2`` half-pixel shift,
+    ``virgil_values`` maps every MPoL site (including ``cal.gain`` and ``log_brightness``),
+    and ``neg_log_likelihood`` matches an independent NumPy pixel-DFT plus ``scipy.stats.norm.logpdf``."""
     import jax
     import jax.numpy as jnp
 
@@ -923,26 +946,42 @@ def test_virgil_bridge_mpol_bijection_parameter_map_and_exact_log_likelihood():
     from virgil_bridge import mpol as vbm
 
     rng = np.random.default_rng(44)
-    sky_im = rng.uniform(0.05, 5.0, (8, 8))
-    roundtrip_layout_err = float(np.max(np.abs(vbm.unpack(vbm.pack(sky_im)) - sky_im)))
-    base = vbm.softplus_inverse(sky_im)
-    softplus_err = float(np.max(np.abs(np.asarray(jax.nn.softplus(jnp.asarray(base))) - sky_im)))
+    npix = 8
+    unpacked_mpol = rng.uniform(0.05, 0.8, (npix, npix))
+    # Distinct asymmetric off-axis peaks in MPoL unpacked coordinates: (r=1, c=6) -> SE-ish (c>4 East, r<4 South)
+    unpacked_mpol[1, 6] = 7.5
+    unpacked_mpol[6, 2] = 4.2
+    packed = np.fft.ifftshift(unpacked_mpol)
+
+    sky_im = vbm.unpack(packed)
+    assert np.array_equal(sky_im, unpacked_mpol[::-1, ::-1])
+    assert sky_im[npix - 1 - 1, npix - 1 - 6] == 7.5
+    assert sky_im[npix - 1 - 6, npix - 1 - 2] == 4.2
+    roundtrip_layout_err = float(np.max(np.abs(vbm.pack(sky_im) - packed)))
+    base_packed = vbm.softplus_inverse(packed)
+    softplus_err = float(np.max(np.abs(np.asarray(jax.nn.softplus(jnp.asarray(base_packed))) - packed)))
     assert roundtrip_layout_err == 0.0
     assert softplus_err < 1e-13
 
     obs_map = vbm.obs_of_ddid({0: [0, 1], 1: [2], 2: [3]}, 4)
     assert list(obs_map) == [0, 0, 1, 2]
     pixel_mas = 5.0
+    s_m = np.array([1.1, 1.3, 0.9, 1.5])
+    amps = np.array([1.08, 0.92])
+    dra_arcsec = np.array([0.002, -0.003])
+    ddec_arcsec = np.array([-0.001, 0.004])
     theta = {
-        "base_cube": jnp.asarray(vbm.pack(base)),
-        "log10_sigma": jnp.log10(jnp.array([1.1, 1.3, 0.9, 1.5])),
-        "log10_amp": jnp.log10(jnp.array([1.08, 0.92])),
-        "delta_ra": jnp.array([0.002, -0.003]),
-        "delta_dec": jnp.array([-0.001, 0.004]),
+        "base_cube": jnp.asarray(base_packed),
+        "log10_sigma": jnp.log10(jnp.asarray(s_m)),
+        "log10_amp": jnp.log10(jnp.asarray(amps)),
+        "delta_ra": jnp.asarray(dra_arcsec),
+        "delta_dec": jnp.asarray(ddec_arcsec),
     }
     vals = vbm.virgil_values(theta, obs_map, pixel_mas, sigma_map="g_times_s")
     vals_ctrl = vbm.virgil_values(theta, obs_map, pixel_mas, sigma_map="s_only")
-    assert float(vals["cal.flux"]) == pytest.approx(float(sky_im.sum() * (pixel_mas / 1000.0) ** 2), rel=1e-13)
+    assert float(vals["cal.flux"]) == pytest.approx(float(unpacked_mpol.sum() * (pixel_mas / 1000.0) ** 2), rel=1e-13)
+    assert np.allclose(vals["cal.gain"], [1.08, 0.92], rtol=1e-13)
+    assert np.allclose(np.exp(np.asarray(vals["log_brightness"])), sky_im, rtol=1e-13)
     assert np.allclose(vals["cal.sigma"], [1.1, 1.3, 0.9 * 1.08, 1.5 * 0.92], rtol=1e-13)
     assert np.allclose(vals_ctrl["cal.sigma"], [1.1, 1.3, 0.9, 1.5], rtol=1e-13)
     assert np.allclose(vals["cal.offset"], [[2.0, -1.0], [-3.0, 4.0]], rtol=1e-13)
@@ -955,17 +994,77 @@ def test_virgil_bridge_mpol_bijection_parameter_map_and_exact_log_likelihood():
     vis = 0.05 * (rng.normal(size=24) + 1j * rng.normal(size=24))
     data = radio.ComplexVisData.from_arrays(u, v, vis, w, np.full(24, 230e9), ddid=ddid, obs=obs)
     nuis = radio.CalibrationNuisance(data, ref_obs=0, alpha=False)
-    scene = vbm.imlup_scene(8, pixel_mas)
+    scene = vbm.imlup_scene(npix, pixel_mas)
     term = data.term(scene, nuis)
     got_nll = float(vbm.neg_log_likelihood(term, vals, data))
-    mod_vis = np.asarray(data.model(scene(vals), vals, nuis))
-    sig = np.asarray(vals["cal.sigma"])[ddid] / np.sqrt(w)
-    want_nll = float(-(norm.logpdf(vis.real, mod_vis.real, sig).sum() + norm.logpdf(vis.imag, mod_vis.imag, sig).sum()))
+
+    # Independent MPoL forward model from theta alone (no call to imlup_scene, data.model, or vals)
+    mod_vis_mpol = _mpol_direct_visibilities(
+        packed, pixel_mas, u, v, obs, np.log10(amps), dra_arcsec, ddec_arcsec
+    )
+    got_vis = np.asarray(data.model(scene(vals), vals, nuis))
+    vis_dft_err = float(np.max(np.abs(got_vis - mod_vis_mpol)))
+    gains_full = np.r_[1.0, amps]
+    sig_mpol = (s_m * gains_full[obs_map])[ddid] / np.sqrt(w)
+    want_nll = float(
+        -(norm.logpdf(vis.real, mod_vis_mpol.real, sig_mpol).sum()
+          + norm.logpdf(vis.imag, mod_vis_mpol.imag, sig_mpol).sum())
+    )
     nll_err = abs(got_nll - want_nll)
 
-    record("nll_vs_scipy_abs_err", nll_err)
+    record("nll_vs_mpol_dft_abs_err", nll_err)
+    record("vis_vs_mpol_dft_abs_err", vis_dft_err)
     record("softplus_roundtrip_abs_err", softplus_err)
-    assert nll_err < 1e-11
+    assert vis_dft_err < 1e-11
+    assert nll_err < 1e-10
+
+
+@pytest.mark.validates(
+    "virgil_bridge.mpol",
+    roots=["mathematics"],
+    kind="control",
+    headline="min_wrong_map_vis_err",
+)
+def test_control_virgil_bridge_mpol_rejects_missing_half_pixel_or_unflipped_axes():
+    """Dropping the ``-pixel_mas / 2`` half-pixel shift or omitting the ``[::-1, ::-1]`` axis
+    reversal breaks agreement with MPoL's ``(c - N/2, r - N/2)`` sky visibilities on an asymmetric cube."""
+    import jax.numpy as jnp
+
+    radio = pytest.importorskip("virgil.radio")
+    from virgil_bridge import mpol as vbm
+
+    rng = np.random.default_rng(45)
+    npix, pixel_mas = 8, 25.0
+    unpacked_mpol = np.full((npix, npix), 0.05)
+    unpacked_mpol[1, 6] = 12.0
+    packed = np.fft.ifftshift(unpacked_mpol)
+    obs_map = np.array([0, 1])
+    theta = {
+        "base_cube": jnp.asarray(vbm.softplus_inverse(packed)),
+        "log10_sigma": jnp.zeros(2),
+        "log10_amp": jnp.zeros(1),
+        "delta_ra": jnp.zeros(1),
+        "delta_dec": jnp.zeros(1),
+    }
+    vals = vbm.virgil_values(theta, obs_map, pixel_mas)
+    u = rng.uniform(3e5, 8e5, 16)
+    v = rng.uniform(3e5, 8e5, 16)
+    ddid = np.arange(16) % 2
+    obs = obs_map[ddid]
+    data = radio.ComplexVisData.from_arrays(u, v, np.zeros(16, complex), np.ones(16), np.full(16, 230e9), ddid=ddid, obs=obs)
+    nuis = radio.CalibrationNuisance(data, ref_obs=0, alpha=False)
+    want_vis = _mpol_direct_visibilities(packed, pixel_mas, u, v, obs, [0.0], [0.0], [0.0])
+
+    no_shift_vis = np.asarray(data.model(vbm.imlup_scene(npix, pixel_mas, half_pixel=False)(vals), vals, nuis))
+    unflipped_vals = {**vals, "log_brightness": jnp.log(jnp.asarray(unpacked_mpol))}
+    unflipped_vis = np.asarray(data.model(vbm.imlup_scene(npix, pixel_mas)(unflipped_vals), unflipped_vals, nuis))
+
+    err_no_shift = float(np.max(np.abs(no_shift_vis - want_vis)) / np.max(np.abs(want_vis)))
+    err_unflipped = float(np.max(np.abs(unflipped_vis - want_vis)) / np.max(np.abs(want_vis)))
+    min_err = min(err_no_shift, err_unflipped)
+    record("min_wrong_map_vis_err", min_err)
+    assert err_no_shift > 0.05
+    assert err_unflipped > 0.2
 
 
 # ------------------------------------------------ 12. mpol (external package)
@@ -976,6 +1075,12 @@ def test_virgil_bridge_mpol_bijection_parameter_map_and_exact_log_likelihood():
 @pytest.mark.validates(
     "mpol",
     roots=["mathematics"],
+    kind="reference",
+    headline="max_grad_fd_rel_err",
+)
+@pytest.mark.validates(
+    "external_bridge.mpol_worker",
+    roots=["mpol", "mathematics"],
     kind="reference",
     headline="max_grad_fd_rel_err",
 )
@@ -1093,3 +1198,444 @@ def test_virgil_bridge_alma_lambda_scales_ring_geometry_and_mpol_entropy():
     record("mpol_entropy_dft_rel_err", ent_rel_err)
     record("ring_and_blob_sum_abs_err", abs(float(scene_im.sum()) - 1.0))
     assert ent_rel_err < 1e-13
+
+
+# ------------------------ 14. subprocess workers & safe_load (external_bridge)
+
+
+@pytest.mark.skipif(
+    not ext_sp.available("alma", "casatools"),
+    reason="CASA not installed (scripts/setup_external.sh alma)",
+)
+@pytest.mark.external
+@pytest.mark.validates(
+    "external_bridge.casa_clean_worker",
+    roots=["casa", "mathematics"],
+    kind="reference",
+    headline="orient_wcs_dft_abs_err",
+)
+def test_casa_clean_worker_orient_wcs_mapping_and_permuted_spw_columns(tmp_path):
+    """``casa_clean_worker._orient`` maps CASA's ``[x (East->West), y (South->North), pol, chan]``
+    WCS axes onto ``[row (North->South), col (East->West)]`` with identical sky-plane Fourier
+    phases, and ``columns`` indexes ``CHAN_FREQ`` through ``SPECTRAL_WINDOW_ID`` rather than row index."""
+    import shutil
+    from external_bridge import casa_clean_worker as ccw
+
+    # 1. WCS sky-plane Fourier invariance of _orient on an asymmetric 4D CASA cube
+    nx, ny, dx_mas = 12, 10, 5.0
+    mas_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    x0, y0 = (nx - 1) / 2.0, (ny - 1) / 2.0
+    rng = np.random.default_rng(71)
+    casa_cube = np.zeros((nx, ny, 1, 1))
+    # Place distinct off-axis sources in CASA [ix, iy]: CDELT1 = -dx (East at ix=0), CDELT2 = +dx (North at iy=ny-1)
+    casa_cube[2, 8, 0, 0] = 3.4  # NE
+    casa_cube[9, 1, 0, 0] = 1.9  # SW
+    casa_cube[1, 2, 0, 0] = 0.8  # SE
+    ix, iy = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
+    east_casa = (x0 - ix) * dx_mas * mas_rad
+    north_casa = (iy - y0) * dx_mas * mas_rad
+
+    oriented = ccw._orient(casa_cube)
+    assert oriented.shape == (ny, nx)
+    assert oriented[ny - 1 - 8, 2] == 3.4
+    assert oriented[ny - 1 - 1, 9] == 1.9
+    assert oriented[ny - 1 - 2, 1] == 0.8
+    rr, cc = np.indices((ny, nx), dtype=float)
+    east_repo = (x0 - cc) * dx_mas * mas_rad
+    north_repo = ((ny - 1 - y0) - rr) * dx_mas * mas_rad
+
+    u = rng.uniform(-3e5, 3e5, 20)
+    v = rng.uniform(-3e5, 3e5, 20)
+    vis_casa = np.sum(
+        casa_cube[:, :, 0, 0][None, :, :]
+        * np.exp(-2j * np.pi * (u[:, None, None] * east_casa[None] + v[:, None, None] * north_casa[None])),
+        axis=(1, 2),
+    )
+    vis_repo = np.sum(
+        oriented[None, :, :]
+        * np.exp(-2j * np.pi * (u[:, None, None] * east_repo[None] + v[:, None, None] * north_repo[None])),
+        axis=(1, 2),
+    )
+    orient_err = float(np.max(np.abs(vis_casa - vis_repo)))
+
+    # 2. Real CASA MeasurementSet with reversed SPECTRAL_WINDOW_ID = [1, 0]
+    ms_orig = tmp_path / "orig.ms"
+    ms_perm = tmp_path / "perm.ms"
+    ext_sp.run("alma", "alma_worker.py", {"task": "simulate_ms", "path": str(ms_orig)})
+    shutil.copytree(ms_orig, ms_perm)
+
+    import subprocess
+    perm_code = (
+        "import casatools, numpy as np, sys; "
+        "tb = casatools.table(); tb.open(sys.argv[1] + '/DATA_DESCRIPTION', nomodify=False); "
+        "tb.putcol('SPECTRAL_WINDOW_ID', np.array([1, 0], dtype=np.int32)); tb.close(); tb.done()"
+    )
+    subprocess.run(
+        [ext_sp.python("alma"), "-c", perm_code, str(ms_perm)],
+        check=True,
+        env=ext_sp._env("alma"),
+        capture_output=True,
+    )
+
+    out_orig = dict(
+        np.load(ext_sp.run("alma", "casa_clean_worker.py", {"task": "columns", "ms": str(ms_orig), "out": str(tmp_path / "c0.npz")})["npz"])
+    )
+    out_perm = dict(
+        np.load(ext_sp.run("alma", "casa_clean_worker.py", {"task": "columns", "ms": str(ms_perm), "out": str(tmp_path / "c1.npz")})["npz"])
+    )
+    spw_swap_err = float(
+        max(
+            np.max(np.abs(out_perm["ddid_freqs"][0] - out_orig["ddid_freqs"][1])),
+            np.max(np.abs(out_perm["ddid_freqs"][1] - out_orig["ddid_freqs"][0])),
+        )
+    )
+    assert np.max(np.abs(out_orig["ddid_freqs"][0] - out_orig["ddid_freqs"][1])) > 1e9
+    assert np.array_equal(out_perm["UVW"], out_orig["UVW"])
+    assert np.array_equal(out_perm["DATA"], out_orig["DATA"])
+
+    record("orient_wcs_dft_abs_err", orient_err)
+    record("permuted_spw_freq_hz_err", spw_swap_err)
+    assert orient_err < 1e-14
+    assert spw_swap_err == 0.0
+
+
+@pytest.mark.validates(
+    "external_bridge.casa_clean_worker",
+    roots=["mathematics"],
+    kind="control",
+    headline="unflipped_y_vis_miss",
+)
+def test_control_casa_clean_worker_transpose_without_y_flip_inverts_north_south():
+    """Omitting ``[:, ::-1]`` before ``.T`` maps CASA's South-to-North ``y`` axis upside down."""
+    from external_bridge import casa_clean_worker as ccw
+
+    nx, ny, dx_mas = 10, 10, 8.0
+    mas_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    cube = np.zeros((nx, ny, 1, 1))
+    cube[3, 8, 0, 0] = 2.5
+    right = ccw._orient(cube)
+    wrong = cube[:, :, 0, 0].T
+    c = (nx - 1) / 2.0
+    rr, _ = np.indices((ny, nx), dtype=float)
+    north = (c - rr) * dx_mas * mas_rad
+    v = np.linspace(1e5, 6e5, 12)
+    vis_right = np.sum(right[None] * np.exp(-2j * np.pi * v[:, None, None] * north[None]), axis=(1, 2))
+    vis_wrong = np.sum(wrong[None] * np.exp(-2j * np.pi * v[:, None, None] * north[None]), axis=(1, 2))
+    miss = float(np.max(np.abs(vis_right - vis_wrong)))
+    record("unflipped_y_vis_miss", miss)
+    assert miss > 1.0
+
+
+@pytest.mark.skipif(
+    not ext_sp.available("alma", "casatools"),
+    reason="CASA not installed (scripts/setup_external.sh alma)",
+)
+@pytest.mark.external
+@pytest.mark.validates(
+    "external_bridge.alma_worker",
+    roots=["casa", "mathematics"],
+    kind="reference",
+    headline="max_two_source_vis_abs_err",
+)
+def test_alma_worker_simulate_and_read_match_analytic_two_source_visibilities_and_weights(tmp_path):
+    """``alma_worker`` simulates two point sources in CASA and reads ``u = +UVW[0] * nu / c``,
+    ``v = +UVW[1] * nu / c``, conjugated ``DATA``, and ``WEIGHT_SPECTRUM`` parallel-hand sums
+    matching the analytic sky phase sum."""
+    ms = tmp_path / "aw.ms"
+    info = ext_sp.run("alma", "alma_worker.py", {"task": "simulate_ms", "path": str(ms)})
+    ext_sp.run("alma", "alma_worker.py", {"task": "add_weight_spectrum", "path": str(ms)})
+    read_out = ext_sp.run(
+        "alma",
+        "alma_worker.py",
+        {"task": "read", "path": str(ms), "out": str(tmp_path / "npz"), "conjugate": True},
+    )
+    unconj_out = ext_sp.run(
+        "alma",
+        "alma_worker.py",
+        {"task": "read", "path": str(ms), "out": str(tmp_path / "npz_raw"), "conjugate": False},
+    )
+    mas_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    worst_vis = 0.0
+    worst_w = 0.0
+    for entry, raw_entry in zip(read_out["files"], unconj_out["files"]):
+        z = dict(np.load(entry["file"]))
+        z_raw = dict(np.load(raw_entry["file"]))
+        assert str(z["weight_source"]) == "WEIGHT_SPECTRUM"
+        vis_got = z["re"].astype(float) + 1j * z["im"].astype(float)
+        vis_raw = z_raw["re"].astype(float) + 1j * z_raw["im"].astype(float)
+        vis_want = sum(
+            flux * np.exp(-2j * np.pi * (z["u"] * east + z["v"] * north) * mas_rad)
+            for flux, east, north in info["components"]
+        )
+        assert float(np.max(np.abs(vis_raw - np.conj(vis_got)))) == 0.0
+        assert float(np.max(np.abs(vis_raw - vis_want))) > 1e-3
+        w_want = 2.0 * (z["chan"].astype(float) + 1.0)
+        worst_vis = max(worst_vis, float(np.max(np.abs(vis_got - vis_want))))
+        worst_w = max(worst_w, float(np.max(np.abs(z["weight"].astype(float) - w_want))))
+
+    record("max_two_source_vis_abs_err", worst_vis)
+    record("max_weight_sum_abs_err", worst_w)
+    assert worst_vis < 5e-7
+    assert worst_w == 0.0
+
+
+@pytest.mark.skipif(
+    not ext_sp.available("ehtim", "ehtim"),
+    reason="eht-imaging not installed (scripts/setup_external.sh ehtim)",
+)
+@pytest.mark.external
+@pytest.mark.validates(
+    "external_bridge.ehtim_worker",
+    roots=["ehtim", "mathematics"],
+    kind="reference",
+    headline="max_ft_abs_err",
+)
+def test_ehtim_worker_ft_and_cphase_chisq_match_analytic_pixel_sum_and_chord_formula():
+    """``ehtim_worker.ft`` evaluates ``sum b exp(+2 pi i (u x + v y))`` in row-0-North /
+    col-0-East sky coordinates, and ``chisq_cphase`` negates ``(uv1, uv2)`` so closure phases
+    match OIFITS ``exp(-2 pi i (u x + v y))`` with ``(2 / N) sum (1 - cos Delta) / sigma^2``."""
+    rng = np.random.default_rng(73)
+    npix, scale_mas = 6, 1.2
+    mas_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    pdim = scale_mas * mas_rad
+    im = rng.uniform(0.02, 0.5, (npix, npix))
+    im[1, 4] = 3.0
+    im /= im.sum()
+    offs = ((npix - 1) / 2.0 - np.arange(npix)) * pdim
+    east, north = np.meshgrid(offs, offs)
+
+    uv = rng.uniform(-4e7, 4e7, (14, 2))
+    res_ft = ext_sp.run("ehtim", "ehtim_worker.py", {"task": "ft", "image": im.tolist(), "pdim": pdim, "uv": uv.tolist()})
+    got_ft = np.asarray(res_ft["re"]) + 1j * np.asarray(res_ft["im"])
+    want_ft = np.sum(
+        im[None, :, :] * np.exp(2j * np.pi * (uv[:, 0, None, None] * east[None] + uv[:, 1, None, None] * north[None])),
+        axis=(1, 2),
+    )
+    ft_err = float(np.max(np.abs(got_ft - want_ft)))
+
+    uv1 = rng.uniform(-3e7, 3e7, (8, 2))
+    uv2 = rng.uniform(-3e7, 3e7, (8, 2))
+    uv3 = -(uv1 + uv2)
+
+    def oifits_vis(uv_arr):
+        return np.sum(
+            im[None, :, :]
+            * np.exp(-2j * np.pi * (uv_arr[:, 0, None, None] * east[None] + uv_arr[:, 1, None, None] * north[None])),
+            axis=(1, 2),
+        )
+
+    mod_cp = np.angle(oifits_vis(uv1) * oifits_vis(uv2) * oifits_vis(uv3))
+    cp_deg = np.rad2deg(mod_cp) + rng.normal(0.0, 4.0, 8)
+    sigma_deg = rng.uniform(1.5, 3.5, 8)
+    res_cp = ext_sp.run(
+        "ehtim",
+        "ehtim_worker.py",
+        {
+            "task": "chisq_cphase",
+            "image": im.tolist(),
+            "pdim": pdim,
+            "uv1": uv1.tolist(),
+            "uv2": uv2.tolist(),
+            "cp_deg": cp_deg.tolist(),
+            "sigma_deg": sigma_deg.tolist(),
+        },
+    )
+    delta_rad = np.deg2rad(cp_deg) - mod_cp
+    want_chisq = float(np.mean(2.0 * (1.0 - np.cos(delta_rad)) / np.deg2rad(sigma_deg) ** 2))
+    cp_rel_err = abs(res_cp["chisq"] / want_chisq - 1.0)
+
+    record("max_ft_abs_err", ft_err)
+    record("cphase_chisq_rel_err", cp_rel_err)
+    assert ft_err < 1e-13
+    assert cp_rel_err < 1e-12
+
+
+@pytest.mark.skipif(
+    not ext_sp.available("candid", "candid"),
+    reason="CANDID not installed (scripts/setup_candid.sh)",
+)
+@pytest.mark.external
+@pytest.mark.validates(
+    "external_bridge.candid_worker",
+    roots=["candid", "mathematics"],
+    kind="reference",
+    headline="max_nsigma_rel_err",
+)
+def test_candid_worker_chi2_and_nsigma_match_analytic_binary_and_chi2_tail(tmp_path):
+    """``candid_worker`` maps ``x`` East (mas), ``y`` North (mas), and ``f = 100 * flux_ratio``
+    with monochromatic ``dwavel = 0``, and ``nsigma`` matches the two-sided Gaussian equivalent
+    of ``scipy.stats.chi2.sf``."""
+    from scipy.stats import chi2 as sp_chi2
+    from crosscheck import simulate as cx_sim, sky as cx_sky
+
+    uts3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
+    wl = np.linspace(1.6e-6, 2.2e-6, 4)
+    dra, ddec, flux, diam = 5.5, -3.2, 0.04, 0.8
+
+    def bin_vis(uu, vv, wavel):
+        return (cx_sky.vis_uniform_disk(uu, vv, wavel, diam) + flux * cx_sky.vis_point(uu, vv, wavel, dra, ddec)) / (1.0 + flux)
+
+    fits_path = tmp_path / "cand_ref.fits"
+    cx_sim.observe(
+        fits_path,
+        bin_vis,
+        uts3,
+        hour_angles_h=[-1.5, 0.0, 1.5],
+        wavelengths=wl,
+        dec_deg=-45.0,
+        sigma_v2=0.005,
+        sigma_cp_deg=0.3,
+        rng=None,
+        closure_phases=True,
+    )
+
+    out_chi2 = ext_sp.run(
+        "candid",
+        "candid_worker.py",
+        {
+            "task": "chi2",
+            "path": str(fits_path),
+            "params": [
+                {"x": dra, "y": ddec, "f": 100.0 * flux, "diam*": diam},
+                {"x": -dra, "y": ddec, "f": 100.0 * flux, "diam*": diam},
+                {"x": dra, "y": ddec, "f": flux, "diam*": diam},
+            ],
+        },
+    )
+    chi2r_true, chi2r_mirror, chi2r_unscaled = out_chi2["chi2r"]
+    assert chi2r_true < 1e-8
+    assert chi2r_mirror > 5.0
+    assert chi2r_unscaled > 5.0
+
+    cases = [(1.25, 80), (1.4, 200), (2.2, 120)]
+    got_ns = np.asarray(ext_sp.run("candid", "candid_worker.py", {"task": "nsigma", "cases": cases})["nsigma"])
+    want_ns = np.array([float(norm.isf(0.5 * sp_chi2.sf(n * r, n))) for r, n in cases])
+    ns_rel_err = float(np.max(np.abs(got_ns / want_ns - 1.0)))
+
+    record("max_nsigma_rel_err", ns_rel_err)
+    record("truth_chi2r", float(chi2r_true))
+    assert ns_rel_err < 1e-11
+
+
+@pytest.mark.skipif(
+    not ext_sp.available("orbitize", "orbitize"),
+    reason="orbitize! not installed (scripts/setup_external.sh orbitize)",
+)
+@pytest.mark.external
+@pytest.mark.validates(
+    "external_bridge.orbitize_worker",
+    roots=["orbitize", "mathematics"],
+    kind="reference",
+    headline="max_pos_over_sma_err",
+)
+def test_orbitize_worker_ephemeris_and_period_match_kepler_third_law_and_sky_projection():
+    """``orbitize_worker`` returns Kepler's-third-law periods (IAU ``G M_sun``) and relative
+    ``(raoff, deoff, vz)`` matching direct Newton-Raphson Keplerian projection."""
+    from crosscheck import orbits as cx_orb
+
+    au_m = 149597870700.0
+    gm_sun = 1.3271244e20
+    sma, ecc, inc_deg, aop_deg, pan_deg, tau, plx, mtot = 12.5, 0.34, 52.0, 73.0, 128.0, 0.18, 25.0, 1.65
+    tau_ref = 58849.0
+    epochs = np.linspace(58900.0, 61500.0, 15)
+    el = {
+        "sma": sma,
+        "ecc": ecc,
+        "inc": np.deg2rad(inc_deg),
+        "aop": np.deg2rad(aop_deg),
+        "pan": np.deg2rad(pan_deg),
+        "tau": tau,
+        "plx": plx,
+        "mtot": mtot,
+    }
+    res = ext_sp.run(
+        "orbitize",
+        "orbitize_worker.py",
+        {
+            "task": "batch",
+            "tasks": {
+                "p": {"task": "period", "cases": [[sma, mtot]]},
+                "e": {
+                    "task": "ephemeris",
+                    "orbits": [el],
+                    "epochs": epochs.tolist(),
+                    "tau_ref_epoch": tau_ref,
+                    "tolerance": 1e-14,
+                },
+            },
+        },
+    )["results"]
+    p_got = res["p"]["results"][0]["period_day"]
+    sma_back = res["p"]["results"][0]["sma_back"]
+    p_want = 2.0 * np.pi * np.sqrt((sma * au_m) ** 3 / (gm_sun * mtot)) / 86400.0
+    period_rel_err = abs(p_got / p_want - 1.0)
+    assert abs(sma_back / sma - 1.0) < 1e-14
+
+    ep = res["e"]["results"][0]
+    a_mas = sma * plx
+    t_peri = tau_ref + tau * p_got
+    dra_want, ddec_want = cx_orb.position(epochs, p_got, t_peri, ecc, inc_deg, aop_deg, pan_deg, a_mas)
+    vz_want = cx_orb.radial_velocity(epochs, p_got, t_peri, ecc, inc_deg, aop_deg, sma) * (au_m / 1000.0 / 86400.0)
+    pos_err = float(
+        max(np.max(np.abs(np.asarray(ep["raoff"]) - dra_want)), np.max(np.abs(np.asarray(ep["deoff"]) - ddec_want)))
+        / a_mas
+    )
+    rv_err = float(np.max(np.abs(np.asarray(ep["vz"]) - vz_want)) / np.max(np.abs(vz_want)))
+
+    record("max_pos_over_sma_err", pos_err)
+    record("period_kepler_rel_err", period_rel_err)
+    record("max_rv_rel_err", rv_err)
+    assert period_rel_err < 1e-13
+    assert pos_err < 1e-12
+    assert rv_err < 1e-12
+
+
+@pytest.mark.validates(
+    "external_bridge.safe_load",
+    roots=["standards"],
+    kind="reference",
+    headline="roundtrip_max_abs_err",
+)
+def test_safe_load_reconstructs_numpy_arrays_and_blocks_arbitrary_globals(tmp_path):
+    """``safe_load.load_pickle`` and ``load_object_npy`` (format 1.0 and 2.0 headers)
+    reconstruct whitelisted NumPy arrays and builtins while rejecting ``os.system`` payloads."""
+    import io
+    import pickle
+    from external_bridge import safe_load
+
+    payload = {"u": np.linspace(-5.0, 5.0, 9), "meta": ("hr4796", 3)}
+    pkl_path = tmp_path / "ok.pkl"
+    pkl_path.write_bytes(pickle.dumps(payload))
+    got_pkl = safe_load.load_pickle(pkl_path)
+    err_pkl = float(np.max(np.abs(got_pkl["u"] - payload["u"])))
+    assert got_pkl["meta"] == payload["meta"]
+
+    obj_arr = np.empty(2, dtype=object)
+    obj_arr[0] = np.array([1.25, -3.5, 4.0])
+    obj_arr[1] = {"k": 7}
+    err_npy = 0.0
+    for ver, name in (((1, 0), "v1.npy"), ((2, 0), "v2.npy")):
+        npy_path = tmp_path / name
+        with open(npy_path, "wb") as fh:
+            np.lib.format.write_array(fh, obj_arr, version=ver, allow_pickle=True)
+        got_npy = safe_load.load_object_npy(npy_path)
+        err_npy = max(err_npy, float(np.max(np.abs(got_npy[0] - obj_arr[0]))))
+        assert got_npy[1] == {"k": 7}
+
+    # Malicious pickle invoking os.system must raise pickle.UnpicklingError
+    bad_bytes = b"cos\nsystem\n(S'echo nope'\ntR."
+    bad_path = tmp_path / "bad.pkl"
+    bad_path.write_bytes(bad_bytes)
+    with pytest.raises(pickle.UnpicklingError, match="blocked global"):
+        safe_load.load_pickle(bad_path)
+
+    bad_npy = tmp_path / "bad.npy"
+    buf = io.BytesIO()
+    np.lib.format.write_array_header_1_0(buf, {"descr": "|O", "fortran_order": False, "shape": (1,)})
+    bad_npy.write_bytes(buf.getvalue() + bad_bytes)
+    with pytest.raises(pickle.UnpicklingError, match="blocked global"):
+        safe_load.load_object_npy(bad_npy)
+
+    worst = max(err_pkl, err_npy)
+    record("roundtrip_max_abs_err", worst)
+    assert worst == 0.0

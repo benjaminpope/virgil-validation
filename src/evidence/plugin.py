@@ -104,60 +104,209 @@ def pytest_configure(config):
 
 
 # Our reference code: a check that goes through one of these counts only if
-# that module is itself verified. _subprocess only runs other code; virgil_bridge
-# submodules count when registered under layer: references in trust/graph.yml.
+# that module is itself verified (fail-closed across all three packages).
+# _subprocess is the JSON-over-interpreter launcher (the worker script it
+# calls is recorded instead); alma_lambda_report is a plotting/markdown display helper.
+_SRC_ROOT = pathlib.Path(__file__).resolve().parents[2] / "src"
 _REFERENCE_PACKAGES = ("crosscheck", "external_bridge", "virgil_bridge")
-_PLUMBING = {"external_bridge._subprocess"}
-
-
-@functools.lru_cache(maxsize=1)
-def _registered_virgil_bridge():
-    """``virgil_bridge.*`` modules declared under ``layer: references`` in ``trust/graph.yml``."""
-    import yaml
-
-    path = pathlib.Path(__file__).resolve().parents[2] / "trust" / "graph.yml"
-    if not path.exists():
-        return frozenset()
-    nodes = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("nodes") or {}
-    return frozenset(
-        name
-        for name, node in nodes.items()
-        if name.startswith("virgil_bridge.") and (node or {}).get("layer", "references") == "references"
-    )
+_PLUMBING = frozenset({"external_bridge._subprocess", "virgil_bridge.alma_lambda_report"})
 
 
 def _keep_reference(mod):
-    if mod in _PLUMBING:
-        return False
-    if mod.startswith("virgil_bridge."):
-        return mod in _registered_virgil_bridge()
-    return True
+    return mod not in _PLUMBING
+
+
+def _is_submodule(pkg, name):
+    base = _SRC_ROOT / pkg
+    return (base / f"{name}.py").is_file() or (base / name / "__init__.py").is_file()
 
 
 @functools.lru_cache(maxsize=None)
-def _module_via(path):
-    """Reference modules a test file imports, anywhere in it."""
+def _init_exports(pkg):
+    """Top-level names defined or bound in ``src/<pkg>/__init__.py``."""
+    init_py = _SRC_ROOT / pkg / "__init__.py"
+    if not init_py.is_file():
+        return frozenset()
     try:
-        tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
+        tree = ast.parse(init_py.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
-        return ()
+        return frozenset()
+    names = set()
+    for stmt in tree.body:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(stmt.name)
+        elif isinstance(stmt, ast.Assign):
+            for t in stmt.targets:
+                if isinstance(t, ast.Name):
+                    names.add(t.id)
+        elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            names.add(stmt.target.id)
+        elif isinstance(stmt, (ast.Import, ast.ImportFrom)):
+            for alias in stmt.names:
+                names.add(alias.asname or alias.name.split(".")[0])
+    return frozenset(names)
+
+
+def _current_reference_package(path):
+    try:
+        rel = pathlib.Path(path).resolve().relative_to(_SRC_ROOT.resolve())
+    except ValueError:
+        return None
+    return rel.parts[0] if len(rel.parts) >= 2 and rel.parts[0] in _REFERENCE_PACKAGES else None
+
+
+def _call_arg_expr(call, index, keyword):
+    if index < len(call.args):
+        return call.args[index]
+    for kw in call.keywords:
+        if kw.arg == keyword:
+            return kw.value
+    return None
+
+
+def _resolve_str(expr, const_strings):
+    if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
+        return expr.value
+    if isinstance(expr, ast.Name) and expr.id in const_strings:
+        return const_strings[expr.id]
+    return None
+
+
+def _subprocess_workers(tree, sp_aliases, run_aliases):
+    """Worker scripts invoked through ``external_bridge._subprocess.run`` or local wrappers."""
+    if not sp_aliases and not run_aliases:
+        return set()
+    const_strings = {}
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
+            for t in stmt.targets:
+                if isinstance(t, ast.Name):
+                    const_strings[t.id] = stmt.value.value
+
+    def _is_sp_run(func):
+        return (
+            (isinstance(func, ast.Attribute) and func.attr == "run"
+             and isinstance(func.value, ast.Name) and func.value.id in sp_aliases)
+            or (isinstance(func, ast.Name) and func.id in run_aliases)
+        )
+
+    wrappers = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            params = [a.arg for a in node.args.args]
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and _is_sp_run(sub.func):
+                    wexpr = _call_arg_expr(sub, 1, "worker")
+                    if isinstance(wexpr, ast.Name) and wexpr.id in params:
+                        wrappers[node.name] = (params.index(wexpr.id), wexpr.id)
+
+    workers = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        wexpr = None
+        if _is_sp_run(node.func):
+            wexpr = _call_arg_expr(node, 1, "worker")
+        elif isinstance(node.func, ast.Name) and node.func.id in wrappers:
+            idx, pname = wrappers[node.func.id]
+            wexpr = _call_arg_expr(node, idx, pname)
+        script = _resolve_str(wexpr, const_strings)
+        if script:
+            stem = pathlib.Path(script).stem if script.endswith(".py") else script
+            workers.add(f"external_bridge.{stem}")
+    return workers
+
+
+def _scan_module_via(path, seen):
+    p = pathlib.Path(path)
+    try:
+        resolved = p.resolve()
+    except OSError:
+        resolved = p
+    if resolved in seen:
+        return set()
+    seen = seen | {resolved}
+    try:
+        tree = ast.parse(p.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return set()
+
+    current_pkg = _current_reference_package(p)
     found = set()
+    sp_aliases = set()
+    run_aliases = set()
+
+    def _expand_init(pkg):
+        init_py = _SRC_ROOT / pkg / "__init__.py"
+        if init_py.is_file():
+            found.update(_scan_module_via(init_py, seen))
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 parts = alias.name.split(".")
-                if parts[0] in _REFERENCE_PACKAGES and len(parts) >= 2:
-                    found.add(".".join(parts[:2]))
-        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            parts = node.module.split(".")
-            top = parts[0]
-            if top not in _REFERENCE_PACKAGES:
-                continue
-            if node.module == top:  # from crosscheck import sky, chi2
-                found |= {f"{top}.{alias.name}" for alias in node.names}
-            else:  # from crosscheck.sky import vis_point
-                found.add(".".join(parts[:2]))
-    return tuple(sorted(m for m in found if _keep_reference(m)))
+                top = parts[0]
+                if top in _REFERENCE_PACKAGES:
+                    if len(parts) >= 2:
+                        mod = ".".join(parts[:2])
+                        found.add(mod)
+                        if mod == "external_bridge._subprocess" and alias.asname:
+                            sp_aliases.add(alias.asname)
+                    else:
+                        _expand_init(top)
+                elif len(parts) == 1 and current_pkg and _is_submodule(current_pkg, top):
+                    found.add(f"{current_pkg}.{top}")
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 1 and current_pkg:
+                if node.module:
+                    sub = node.module.split(".")[0]
+                    mod = f"{current_pkg}.{sub}"
+                    found.add(mod)
+                    if mod == "external_bridge._subprocess":
+                        for alias in node.names:
+                            if alias.name == "run":
+                                run_aliases.add(alias.asname or "run")
+                else:
+                    for alias in node.names:
+                        if _is_submodule(current_pkg, alias.name) or alias.name not in _init_exports(current_pkg):
+                            mod = f"{current_pkg}.{alias.name}"
+                            found.add(mod)
+                            if mod == "external_bridge._subprocess":
+                                sp_aliases.add(alias.asname or "_subprocess")
+                        else:
+                            _expand_init(current_pkg)
+            elif node.level == 0 and node.module:
+                parts = node.module.split(".")
+                top = parts[0]
+                if top not in _REFERENCE_PACKAGES:
+                    continue
+                if node.module == top:  # from crosscheck import sky, chi2 / from virgil_bridge import binary
+                    for alias in node.names:
+                        if _is_submodule(top, alias.name):
+                            mod = f"{top}.{alias.name}"
+                            found.add(mod)
+                            if mod == "external_bridge._subprocess":
+                                sp_aliases.add(alias.asname or "_subprocess")
+                        elif alias.name == "*" or alias.name in _init_exports(top):
+                            _expand_init(top)
+                        else:
+                            found.add(f"{top}.{alias.name}")
+                else:  # from crosscheck.sky import vis_point
+                    mod = ".".join(parts[:2])
+                    found.add(mod)
+                    if mod == "external_bridge._subprocess":
+                        for alias in node.names:
+                            if alias.name == "run":
+                                run_aliases.add(alias.asname or "run")
+
+    found |= _subprocess_workers(tree, sp_aliases, run_aliases)
+    return {m for m in found if _keep_reference(m)}
+
+
+@functools.lru_cache(maxsize=None)
+def _module_via(path):
+    """Reference modules and subprocess workers a file imports or invokes, anywhere in it."""
+    return tuple(sorted(_scan_module_via(path, frozenset())))
 
 
 @functools.lru_cache(maxsize=1)

@@ -53,7 +53,7 @@ for name in "$@"; do
     if [ "$(uname)" = Linux ] && command -v patchelf >/dev/null 2>&1 && command -v readelf >/dev/null 2>&1; then
       while IFS= read -r so; do
         if readelf -W -l "$so" 2>/dev/null | grep -q 'GNU_STACK.*RWE'; then
-          patchelf --clear-execstack "$so" || true
+          patchelf --clear-execstack "$so"
         fi
       done < <(find "$ROOT/.venv-alma" -path '*casatools*/*.so*')
     fi

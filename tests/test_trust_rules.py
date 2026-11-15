@@ -646,21 +646,49 @@ def test_changed_below_propagates_through_unchecked_dependencies_and_empty_sourc
     assert model["nodes"]["virgil.top"]["changed"] is None
 
 
-def test_module_via_tracks_registered_virgil_bridge_references_only(tmp_path):
+def test_module_via_is_fail_closed_expands_init_and_tracks_subprocess_workers(tmp_path):
     from evidence import plugin
 
     test_file = tmp_path / "test_sample_via.py"
     test_file.write_text(
         "import virgil_bridge.alma as vba\n"
-        "from virgil_bridge import mpol, binary\n"
+        "from virgil_bridge import mpol, binary, unregistered_submod\n"
         "import virgil_bridge.alma_lambda_report as rep\n"
-        "from crosscheck.sky import vis_point\n"
-        "from external_bridge import _subprocess\n",
+        "from external_bridge import _subprocess as sp\n"
+        "def _w(s, t):\n"
+        "    return sp.run('alma', s, t)\n"
+        "_w('casa_clean_worker.py', {})\n"
+        "sp.run('ehtim', 'ehtim_worker.py', {})\n",
         encoding="utf-8",
     )
     plugin._module_via.cache_clear()
     got = plugin._module_via(str(test_file))
-    assert got == ("crosscheck.sky", "virgil_bridge.alma", "virgil_bridge.mpol")
+    assert got == (
+        "crosscheck.limb",
+        "crosscheck.sky",
+        "external_bridge.casa_clean_worker",
+        "external_bridge.ehtim_worker",
+        "virgil_bridge.alma",
+        "virgil_bridge.mpol",
+        "virgil_bridge.unregistered_submod",
+    )
+
+
+def test_reference_depends_cycle_fails_closed(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "virgil.x": {"layer": "models"},
+            "crosscheck.a": {"layer": "references", "depends": ["crosscheck.b"]},
+            "crosscheck.b": {"layer": "references", "depends": ["crosscheck.a"]},
+        }
+    }
+    recs = [
+        record("t::ra", "crosscheck.a", kind="reference"),
+        record("t::rb", "crosscheck.b", kind="reference"),
+        record("t::vx", "virgil.x", via=["crosscheck.a"]),
+    ]
+    got, _ = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.x"] == "relies-unverified"
 
 
 def test_pipeline_with_failing_step_is_failing_while_bug_step_keeps_passes(trust, tmp_path):

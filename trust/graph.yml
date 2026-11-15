@@ -567,7 +567,8 @@ nodes:
   crosscheck.informed_starts: {layer: references, doc: imaging/metrics_ensembles.md}
   crosscheck.alma: {layer: references, doc: alma_conventions.md}  # incl. the exact DFT image_visibilities and its adjoint
   external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
-  external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4) and the cross-validation tasks export_fold_asdf, score_fold (tests/test_alma_mpol_cv.py, conventions Part 6)
+  external_bridge.casa_clean_worker: {layer: references, doc: alma_conventions.md}
+  external_bridge.mpol_worker: {layer: references, depends: [external_bridge.cv_folds, external_bridge.npz_compare], doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4) and the cross-validation tasks export_fold_asdf, score_fold (tests/test_alma_mpol_cv.py, conventions Part 6)
   external_bridge.npz_compare: {layer: references, doc: alma_conventions.md}  # channel-rank matched visibility comparison between visread NPZ and virgil read_ms
   external_bridge.cv_folds: {layer: references, depends: [external_bridge.npz_compare], doc: alma_conventions.md}  # asdf points matched to virgil's dartboard fold file (numpy only); tallies and the profiled score of both codes (tests/test_alma_mpol_cv.py, conventions Part 6)
   external_bridge.cv_compare: {layer: references, depends: [external_bridge.cv_folds], doc: alma_conventions.md}  # MPoL's held-out scores beside virgil's, per fold and annulus (numpy only; `alma_imlup_maxent.py cv-compare`)
@@ -586,12 +587,16 @@ nodes:
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
   orbitize: {layer: references}  # the external package itself (problem P7)
-  external_bridge.orbitize_bridge: {layer: references}
+  external_bridge.orbitize_worker: {layer: references, doc: method/orbitize.md}
+  external_bridge.orbitize_bridge: {layer: references, depends: [external_bridge.orbitize_worker], doc: method/orbitize.md}
   candid: {layer: references}  # the external package itself (problem P4)
-  external_bridge.candid_bridge: {layer: references}
+  external_bridge.candid_worker: {layer: references, doc: method/candid.md}
+  external_bridge.candid_bridge: {layer: references, depends: [external_bridge.candid_worker], doc: method/candid.md}
   external_bridge.fouriever_worker: {layer: references}
   fouriever: {layer: references}  # the external package itself (problem P5)
+  external_bridge.ehtim_worker: {layer: references, doc: method/ehtim.md}
   ehtim: {layer: references}  # the external package itself (problem P6)
+  external_bridge.safe_load: {layer: references, doc: method/index.md}
   crosscheck.radial: {layer: references, doc: models/polar_disk.md}
   crosscheck.polar_images: {layer: references, depends: [crosscheck.sky], doc: models/polar_disk.md}
   external_bridge.radial_codes: {layer: references, doc: models/polar_disk.md}

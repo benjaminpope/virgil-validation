@@ -146,54 +146,70 @@ def test_every_graph_source_path_exists_in_virgil():
     assert not missing, missing
 
 
-def _reference_imports(path: pathlib.Path, current_pkg: str) -> set[str]:
-    """Internal ``crosscheck.*``, ``external_bridge.*``, and ``virgil_bridge.*`` module imports."""
-    pkgs = ("crosscheck", "external_bridge", "virgil_bridge")
-    found = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                parts = alias.name.split(".")
-                if parts[0] in pkgs and len(parts) >= 2:
-                    found.add(".".join(parts[:2]))
-        elif isinstance(node, ast.ImportFrom):
-            if node.level == 1:
-                if node.module:
-                    found.add(f"{current_pkg}.{node.module.split('.')[0]}")
-                else:
-                    for alias in node.names:
-                        found.add(f"{current_pkg}.{alias.name}")
-            elif node.level == 0 and node.module:
-                parts = node.module.split(".")
-                if parts[0] in pkgs:
-                    if node.module == parts[0]:
-                        for alias in node.names:
-                            found.add(f"{parts[0]}.{alias.name}")
-                    else:
-                        found.add(".".join(parts[:2]))
-    return found
+def _find_depends_cycles(nodes: dict) -> list[list[str]]:
+    """Cycles among ``depends`` edges in ``nodes`` (empty when ``depends`` is a DAG)."""
+    state = {}  # 0: unvisited, 1: active, 2: done
+    stack = []
+    cycles = []
+
+    def dfs(name: str):
+        state[name] = 1
+        stack.append(name)
+        for dep in (nodes.get(name) or {}).get("depends", []):
+            if dep not in nodes:
+                continue
+            st = state.get(dep, 0)
+            if st == 1:
+                idx = stack.index(dep)
+                cycles.append([*stack[idx:], dep])
+            elif st == 0:
+                dfs(dep)
+        stack.pop()
+        state[name] = 2
+
+    for name in sorted(nodes):
+        if state.get(name, 0) == 0:
+            dfs(name)
+    return cycles
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_reference_module_imports_are_declared_in_depends():
-    """``reference_verdicts()`` walks ``depends`` to check that every helper a reference
-    module calls is itself verified; an undeclared import between ``layer: references``
-    modules would let a broken helper pass silently."""
+    """Every ``src/{crosscheck,external_bridge,virgil_bridge}/*.py`` module (outside
+    explicit non-reference ``_PLUMBING``) must be registered under ``layer: references``,
+    every reference import or subprocess worker call (including via ``__init__.py``) must
+    be declared in ``depends``, and ``depends`` must be acyclic."""
+    from evidence import plugin
+
+    plugin._module_via.cache_clear()
+    plugin._init_exports.cache_clear()
     ref_nodes = {
         name for name, node in GRAPH["nodes"].items()
         if (node or {}).get("layer", "references") == "references"
     }
+    unregistered = []
     undeclared = []
-    for pkg in ("crosscheck", "external_bridge", "virgil_bridge"):
+    for pkg in plugin._REFERENCE_PACKAGES:
+        init_py = ROOT / "src" / pkg / "__init__.py"
+        if init_py.is_file():
+            init_unreg = sorted(set(plugin._module_via(str(init_py))) - ref_nodes)
+            if init_unreg:
+                unregistered.append((f"{pkg}.__init__", init_unreg))
         for py in sorted((ROOT / "src" / pkg).glob("*.py")):
             if py.name == "__init__.py":
                 continue
             mod = f"{pkg}.{py.stem}"
-            if mod not in ref_nodes:
+            if mod in plugin._PLUMBING:
                 continue
-            imported_refs = (_reference_imports(py, pkg) & ref_nodes) - {mod}
+            if mod not in ref_nodes:
+                unregistered.append(mod)
+                continue
+            imported_refs = set(plugin._module_via(str(py))) - {mod}
             declared = set(GRAPH["nodes"][mod].get("depends", []))
             missing = sorted(imported_refs - declared)
             if missing:
                 undeclared.append((mod, missing))
+    assert not unregistered, unregistered
     assert not undeclared, undeclared
+    cycles = _find_depends_cycles(GRAPH["nodes"])
+    assert not cycles, cycles

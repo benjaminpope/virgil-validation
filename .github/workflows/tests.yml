@@ -43,12 +43,12 @@ jobs:
             # OPENSSL_3.0.1 symbol version) against Ubuntu's system libcrypto.so.3; manylinux_2_28
             # bundles a self-contained OpenSSL 1.1 pair in casatools.libs/.
             uv pip install --no-deps --python .venv/bin/python --reinstall-package casatools \
-              --python-platform x86_64-manylinux_2_28 "casatools>=6.6"
+              --python-platform x86_64-manylinux_2_28 "casatools==6.7.6.14"
           fi
           if [ "$(uname)" = Linux ] && command -v patchelf >/dev/null 2>&1 && command -v readelf >/dev/null 2>&1; then
             while IFS= read -r so; do
               if readelf -W -l "$so" 2>/dev/null | grep -q 'GNU_STACK.*RWE'; then
-                patchelf --clear-execstack "$so" || true
+                patchelf --clear-execstack "$so"
               fi
             done < <(find .venv -path '*casatools*/*.so*')
           fi
@@ -66,7 +66,7 @@ jobs:
           bash scripts/setup_external.sh ehtim mpol fouriever orbitize alma
           echo "CASASITECONFIG=$GITHUB_WORKSPACE/.venv-alma/casasiteconfig.py" >> "$GITHUB_ENV"
       - name: verify casatools in .venv
-        run: .venv/bin/python -c "import casatools; print(casatools.version_string())"
+        run: .venv/bin/python -c "import casatools; tb = casatools.table(); me = casatools.measures(); loc = me.observatory('ALMA'); assert 'm0' in loc; me.done(); print(casatools.version_string())"
       - name: orbit page (generated, git-ignored; the docs-link tests and the Trust page read it)
         run: |
           .venv/bin/python scripts/orbit_gallery.py render --out build/orbit_gallery.md --json docs/assets/orbits.json

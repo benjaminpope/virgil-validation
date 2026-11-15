@@ -304,8 +304,8 @@ def test_virgil_restore_convolves_jy_per_pixel_into_jy_per_beam_and_adds_residua
     record("residual_additivity_abs_err", resid_add_err)
     assert np.unravel_index(np.argmax(restored0), (n, n)) == (28, 37)
     assert restored0.max() == pytest.approx(flux, rel=1e-6)
-    assert flux_rel_err < 1e-3
-    assert max_ref_diff < 1e-4
+    assert flux_rel_err < 1e-10
+    assert max_ref_diff < 1e-12
     assert resid_add_err < 1e-13
 
 
