@@ -3,7 +3,7 @@
 Cross-checking against external interferometry, imaging, and orbit-fitting packages surfaced thirteen upstream defects or documentation-versus-code mismatches (`P1`–`P11` and `P13`–`P14`) alongside one documented numerical-precision note (`P12`). All fourteen entries are recorded in `trust/ledger.yml` and summarized under [Findings](findings.md#problems-found-in-other-packages).
 
 !!! important "Upstream reporting policy"
-    Automated agents in this repository **never** open issues or pull requests on external repositories. Every upstream defect remains pinned locally by a `@pytest.mark.xfail(strict=True)` test (`kind="upstream"`) so that continuous integration alerts us immediately if a version upgrade changes or resolves the behaviour. Filing issues upstream is reserved for human review, using the standalone minimal working examples below.
+    Automated agents in this repository **never** open issues or pull requests on external repositories. Every runtime or numerical upstream defect (`P1`–`P10` and `P13`–`P14`) remains pinned locally by a `@pytest.mark.xfail(strict=True)` test (`kind="upstream"`) so that continuous integration alerts us immediately if a version upgrade changes or resolves the behaviour, whereas pure docstring mismatches whose implementation is already exact (`P11`) are pinned numerically by a passing `kind="check"` parity test alongside the standalone inspection snippet below. Filing issues upstream is reserved for human review, using the minimal working examples on this page.
 
 Every Python snippet on this page is completely self-contained: it imports only Python's standard library, `numpy`, `scipy`, `astropy`, `torch`, and the target package's public interface, with zero imports from this validation suite or the code under test and zero copied upstream source.
 
@@ -20,8 +20,8 @@ Entries `P1`–`P11` and `P13`–`P14` are upstream defects or documentation mis
 | [P5](#p5) | `fouriever` `0.4.3` | `util.chi2_bin` does not wrap closure-phase residuals modulo $360^\circ$, inflating $\chi^2$ across the $\pm 180^\circ$ branch cut | `raised` ([`fouriever#26`](https://github.com/kammerje/fouriever/issues/26)) | `tests/test_fouriever.py::test_p5_residual_wraps_across_the_phase_cut` |
 | [P6](#p6) | `ehtim` `1.3.2` | `Obsdata.tlist()` and `bllist()` coerce equal-length structured slices into 2-D tuple arrays under NumPy 2, breaking `c_phases()` | `to-raise` | `tests/test_ehtim_reconstruction.py::test_p6_closure_phases_with_equal_time_groups` |
 | [P7](#p7) | `orbitize` `3.4.0` | `System.compute_model` adds the primary's systemic velocity $\gamma$ to companion RVs despite `read_input` documenting companion RVs as barycentric | `to-raise` | `tests/test_orbitize.py::test_radial_velocities_match_orbitize_system`, `::test_p7_companion_rvs_are_barycentric_as_documented` |
-| [P8](#p8) | `fouriever` `0.4.3` | `uvfit.data.detlim` raises `TypeError` under NumPy 2 and SciPy 1.18 due to 1-element array-to-scalar conversions | `to-raise` | `tests/test_fouriever_limits.py::test_fouriever_public_detlim_against_its_exact_criteria` |
-| [P9](#p9) | `oimodeler` `0.8.1` | Image-based `oimExpRing` differs by $8 \times 10^{-3}$ from the exact Hankel transform of its documented profile across grid sizes | `to-raise` | `tests/test_polar_disk_vs_codes.py::test_oimodeler_exp_ring_matches_the_exact_transform` |
+| [P8](#p8) | `fouriever` `0.4.3` | `uvfit.data.detlim` fails with `TypeError` / `ValueError` under NumPy 2 and SciPy 1.18 due to 1-element array-to-scalar conversions | `to-raise` | `tests/test_fouriever_limits.py::test_fouriever_public_detlim_against_its_exact_criteria` |
+| [P9](#p9) | `oimodeler` `0.8.1` | Image-based `oimExpRing` differs by $8 \times 10^{-3}$ from the exact Hankel transform across grid sizes (under both $\ln 2$ and its `0.692` source profile) | `to-raise` | `tests/test_polar_disk_vs_codes.py::test_oimodeler_exp_ring_matches_the_exact_transform` |
 | [P10](#p10) | `vis-r` `0.0.1` (`f534670`) | `r_prof_erf2_power_ggap` swaps its gap depth and gap radius parameter indices relative to its docstring and `r_prof_erf2_power_ggap2` | `to-raise` | `tests/test_polar_disk_vs_codes.py::test_vis_r_single_gap_profile_matches_its_two_gap_form` |
 | [P11](#p11) | `mpol` `0.3.1` | `losses.log_likelihood` docstring writes $+\sum_i w_i$ instead of $+\sum_i \ln w_i$ for the Gaussian log-normalization | `to-raise` | `tests/test_alma_mpol.py::test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol` |
 | [P12](#p12) | `mpol` `0.3.1` | Precision note: default `NuFFT` table interpolation ($6.3 \times 10^{-4}$ relative $L_2$) and `float32` `GaussConvFourier.taper_2D` buffer under `float64` | `documented` | `tests/test_alma_mpol.py::test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model`, `::test_mpol_with_its_accurate_nufft_agrees_to_1e_5` |
@@ -173,7 +173,7 @@ n_samples=35: max |dV2| at Nr=3000 = 2.47e-05
 ### P4: `detectionLimit` (Absil method) underestimates $3\sigma$ flux limits via $1.4\times$ bracketing and linear interpolation { #p4 }
 
 * **Status**: `to-raise`
-* **Mechanism & diagnosis**: Under the [Absil et al. (2011)](https://doi.org/10.1051/0004-6361/201117719) detection-limit criterion – which converts the chi-squared tail probability between the single-star null and a fixed-position binary model into a two-sided Gaussian significance – `candid.Open.detectionLimit(methods=["Absil"])` brackets the $3\sigma$ flux ratio by stepping candidate companion fluxes in multiplicative factors of $1.4$ and linearly interpolating `candid._nSigmas` across the crossing. Because `_nSigmas(f)` is convex in companion flux $f$ (curving upward as $\Delta\chi^2$ grows quadratically with $f$), the linear secant chord lies above the curve and crosses $3\sigma$ at a lower flux than the exact root found by [Brent's method](https://en.wikipedia.org/wiki/Brent%27s_method) (which combines root bracketing, bisection, and inverse quadratic interpolation to machine precision). On the minimal 3-baseline ($N = 12$) synthetic file below, sublinear chi-squared-to-Gaussian tail scaling partially offsets the quadratic $\Delta\chi^2$ growth, leaving a mean bias of $-0.13\%$ and a worst-case bias of $-0.34\%$. On realistic 4-UT observations ($N \gtrsim 100$ data points in `tests/test_candid.py`), where a $3\sigma$ excursion is a small fractional perturbation ($\Delta\chi^2 \ll N$) and `_nSigmas` preserves steeper quadratic curvature in $f$, the secant underestimate averages $-1.0\%$ and reaches $-1.3\%$ ($\sim 0.01\text{ mag}$ optimistic).
+* **Mechanism & diagnosis**: Under the [Absil et al. (2011)](https://doi.org/10.1051/0004-6361/201117719) detection-limit criterion – which converts the chi-squared tail probability between the single-star null and a fixed-position binary model into a two-sided Gaussian significance – `candid.Open.detectionLimit(methods=["Absil"])` brackets the $3\sigma$ flux ratio by stepping candidate companion fluxes in multiplicative factors of $1.4$ and linearly interpolating `candid._nSigmas` across the crossing. Because `_nSigmas(f)` is convex in companion flux $f$ (curving upward as $\Delta\chi^2$ grows quadratically with $f$ when $\Delta\chi^2 \ll N$), the linear secant chord lies above the curve and crosses $3\sigma$ at a lower flux than the exact root found by [Brent's method](https://en.wikipedia.org/wiki/Brent%27s_method) (which combines root bracketing, bisection, and inverse quadratic interpolation to machine precision). On 3-telescope multi-epoch observations (7 hour angles across 6 spectral channels, $N = 168$, chosen so closure phases have no 4-telescope closure redundancy), the secant underestimate averages $-0.78\%$ and reaches $-1.16\%$ on the unresolved-star MWE below, and averages $-1.0\%$ (reaching $-1.3\%$, $\sim 0.01\text{ mag}$ optimistic) on the resolved-primary 3-UT test in `tests/test_candid.py`.
 * **Pinning tests**: `tests/test_candid.py::test_candid_public_limits_are_within_their_interpolation`, `tests/test_candid.py::test_p4_candid_public_limits_solve_its_criterion`
 
 **Standalone MWE**:
@@ -186,11 +186,15 @@ import candid
 
 warnings.filterwarnings("ignore")
 candid.CONFIG.update({"Ncores": 1, "progress bar": False, "long exec warning": None})
-wl = np.linspace(1.6e-6, 2.2e-6, 4)
-u, v = np.array([30.0, 55.0, -25.0]), np.array([20.0, -35.0, -55.0])
+rng, wl = np.random.default_rng(0), np.linspace(1.5e-6, 2.4e-6, 6)
+ha, dec = np.deg2rad(np.linspace(-45.0, 45.0, 7)), np.deg2rad(-50.0)
+bl_e, bl_n = np.array([25.0, 90.0, 115.0]), np.array([50.0, 15.0, 65.0])
+u = (bl_e[:, None] * np.cos(ha) - bl_n[:, None] * np.sin(dec) * np.sin(ha)).ravel()
+v = (bl_e[:, None] * np.sin(dec) * np.sin(ha) + bl_n[:, None] * np.cos(dec)).ravel()
+mjd = np.tile(60000.0 + np.linspace(0.0, 0.25, 7), 3)
 hdul = fits.HDUList([
     fits.PrimaryHDU(),
-    fits.BinTableHDU.from_columns([fits.Column("EFF_WAVE", "D", unit="m", array=wl), fits.Column("EFF_BAND", "D", unit="m", array=np.zeros(4))],
+    fits.BinTableHDU.from_columns([fits.Column("EFF_WAVE", "D", unit="m", array=wl), fits.Column("EFF_BAND", "D", unit="m", array=np.zeros(6))],
                                   name="OI_WAVELENGTH", header=fits.Header({"OI_REVN": 2, "INSNAME": "SYN"})),
     fits.BinTableHDU.from_columns([fits.Column("TARGET_ID", "I", array=[1]), fits.Column("TARGET", "8A", array=["S"])],
                                   name="OI_TARGET", header=fits.Header({"OI_REVN": 2})),
@@ -200,28 +204,38 @@ hdul = fits.HDUList([
         fits.Column("STAXYZ", "3D", unit="m", array=np.zeros((3, 3))),
     ], name="OI_ARRAY", header=fits.Header({"OI_REVN": 2, "ARRNAME": "A", "FRAME": "GEOCENTRIC", "ARRAYX": 0.0, "ARRAYY": 0.0, "ARRAYZ": 0.0})),
     fits.BinTableHDU.from_columns([
-        fits.Column("TARGET_ID", "I", array=[1, 1, 1]), fits.Column("MJD", "D", array=[60000.0]*3),
+        fits.Column("TARGET_ID", "I", array=np.ones(21, int)), fits.Column("MJD", "D", array=mjd),
         fits.Column("UCOORD", "D", unit="m", array=u), fits.Column("VCOORD", "D", unit="m", array=v),
-        fits.Column("VIS2DATA", "4D", array=np.full((3, 4), 0.985)), fits.Column("VIS2ERR", "4D", array=np.full((3, 4), 0.01)),
-        fits.Column("STA_INDEX", "2I", array=[[1, 2], [2, 3], [1, 3]]), fits.Column("FLAG", "4L", array=np.zeros((3, 4), bool)),
+        fits.Column("VIS2DATA", "6D", array=1.0 + rng.normal(0.0, 0.01, (21, 6))), fits.Column("VIS2ERR", "6D", array=np.full((21, 6), 0.01)),
+        fits.Column("STA_INDEX", "2I", array=np.repeat([[1, 2], [2, 3], [1, 3]], 7, axis=0)), fits.Column("FLAG", "6L", array=np.zeros((21, 6), bool)),
     ], name="OI_VIS2", header=fits.Header({"OI_REVN": 2, "INSNAME": "SYN", "ARRNAME": "A", "DATE-OBS": "2024-01-01"})),
+    fits.BinTableHDU.from_columns([
+        fits.Column("TARGET_ID", "I", array=np.ones(7, int)), fits.Column("MJD", "D", array=mjd[:7]),
+        fits.Column("T3AMP", "6D", array=np.ones((7, 6))), fits.Column("T3AMPERR", "6D", array=np.full((7, 6), 0.01)),
+        fits.Column("T3PHI", "6D", array=rng.normal(0.0, 0.5, (7, 6))), fits.Column("T3PHIERR", "6D", array=np.full((7, 6), 0.5)),
+        fits.Column("U1COORD", "D", unit="m", array=u[:7]), fits.Column("V1COORD", "D", unit="m", array=v[:7]),
+        fits.Column("U2COORD", "D", unit="m", array=u[7:14]), fits.Column("V2COORD", "D", unit="m", array=v[7:14]),
+        fits.Column("STA_INDEX", "3I", array=np.tile([1, 2, 3], (7, 1))), fits.Column("FLAG", "6L", array=np.zeros((7, 6), bool)),
+    ], name="OI_T3", header=fits.Header({"OI_REVN": 2, "INSNAME": "SYN", "ARRNAME": "A", "DATE-OBS": "2024-01-01"})),
 ])
 with tempfile.NamedTemporaryFile(suffix=".fits") as f, contextlib.redirect_stdout(io.StringIO()):
     hdul.writeto(f.name, overwrite=True)
-    o = candid.Open(f.name, rmin=2.0, rmax=10.0); o.observables = ["v2"]
-    o.detectionLimit(step=2.0, diam=0.0, fig=None, drawMaps=False, rmin=2.0, rmax=10.0, methods=["Absil"])
-    ax = np.linspace(-10.0, 10.0, int(np.ceil(20.0 / 2.0)))
-    c0 = candid._chi2Func({"x": 0.0, "y": 0.0, "f": 0.0, "diam*": 0.0, "alpha*": 0.0}, o._chi2Data, ["v2"], o.instruments)
+    o = candid.Open(f.name, rmin=2.0, rmax=12.0); o.observables = ["v2", "cp"]
+    o.dwavel = {k: 0.0 for k in o.dwavel}
+    o.detectionLimit(step=2.0, diam=0.0, fig=None, drawMaps=False, rmin=2.0, rmax=12.0, methods=["Absil"])
+    ax, ndata = np.linspace(-12.0, 12.0, int(np.ceil(24.0 / 2.0))), sum(c[-1].size for c in o._chi2Data if c[0].split(";")[0] in o.observables)
+    p0 = {"x": 0.0, "y": 0.0, "f": 0.0, "diam*": 0.0, "alpha*": 0.0, **{f"dwavel;{k}": 0.0 for k in o.dwavel}}
+    c0 = candid._chi2Func(p0, o._chi2Data, o.observables, o.instruments)
     diffs = [o.allf3s["Absil"][j, i] / brentq(lambda fp: candid._nSigmas(candid._chi2Func(
-        {"x": x0, "y": y0, "f": fp, "diam*": 0.0, "alpha*": 0.0}, o._chi2Data, ["v2"], o.instruments), c0, o.ndata()) - 3.0, 1e-3, 50.0) - 1
-        for j, y0 in enumerate(ax) for i, x0 in enumerate(ax) if 2.0 <= np.hypot(x0, y0) <= 10.0]
-print(f"n_cells={len(diffs)}: mean rel diff={np.mean(diffs):+.3%}, worst rel diff={min(diffs):+.3%}")
+        {**p0, "x": x0, "y": y0, "f": fp}, o._chi2Data, o.observables, o.instruments), c0, ndata) - 3.0, 1e-4, 50.0) - 1
+        for j, y0 in enumerate(ax) for i, x0 in enumerate(ax) if 2.0 <= np.hypot(x0, y0) <= 12.0]
+print(f"ndata={ndata}, n_cells={len(diffs)}: mean rel diff={np.mean(diffs):+.3%}, worst rel diff={min(diffs):+.3%}")
 ```
 
 **Observed output**:
 
 ```text
-n_cells=56: mean rel diff=-0.130%, worst rel diff=-0.343%
+ndata=168, n_cells=84: mean rel diff=-0.780%, worst rel diff=-1.160%
 ```
 
 * **Expected behaviour**: Interpolating in $f^2$ or refining the $1.4\times$ bracket with a few root-finding steps makes `o.allf3s["Absil"]` solve CANDID's own `_nSigmas == 3.0` criterion to $< 10^{-3}$ relative across both small and large `ndata`.
@@ -275,19 +289,20 @@ chi2 at cp_meas (expected 36.0): 509796.0
 
 * **Expected behaviour**: Wrapping the closure-phase residual into $(-\pi, \pi]$ before squaring (or before multiplying by the inverse covariance) yields $\chi^2 = 36.0$ for a $3.0^\circ$ residual at $0.5^\circ$ uncertainty.
 
-### P8: `uvfit.data.detlim` crashes with `TypeError` under NumPy 2 and SciPy 1.18 { #p8 }
+### P8: `uvfit.data.detlim` crashes with `TypeError` / `ValueError` under NumPy 2 and SciPy 1.18 { #p8 }
 
 * **Status**: `to-raise`
-* **Mechanism & diagnosis**: NumPy 2.0 removed implicit conversion of 1-element arrays to Python scalars (PEP 0050), and SciPy $\ge 1.14$ enforces scalar objective values in `scipy.optimize.minimize`. In `fouriever==0.4.3`, `uvfit.data.detlim` fails on two separate paths: when `v2` observables are included, formatting the fitted uniform-disk diameter via `'%.3f' % fit['p'][0]` passes a 1-D array of length 1 to `%` formatting; and on closure-phase-only runs (`observables=["cp"]`), `lim_absil` and `lim_injection` pass `util.nsigma`'s `(1,)`-shaped array output directly into `scipy.optimize.minimize(..., method="L-BFGS-B")`. Both paths raise `TypeError: only 0-dimensional arrays can be converted to Python scalars`.
+* **Mechanism & diagnosis**: NumPy 2.0 removed implicit conversion of non-0-D 1-element arrays to Python scalars (deprecated in NumPy 1.25; see the [NumPy 2.0 migration guide](https://numpy.org/doc/stable/numpy_2_0_migration_guide.html)), and `scipy.optimize.minimize` enforces scalar array assignments and objective values. In `fouriever==0.4.3`, `uvfit.data.detlim` fails on two separate paths: when `'v2'` observables are included, logging the fitted uniform-disk diameter via `'%.5f +/- %.5f' % (thetap['x'][0], thetae)` passes the 1-D length-1 uncertainty array `thetae` to `%` formatting, raising `TypeError: only 0-dimensional arrays can be converted to Python scalars`; and on closure-phase-only runs (`d.set_observables(["cp"])`), `minimize(..., method="L-BFGS-B")` passes a 1-D length-1 flux vector `f0` into `lim_absil` (and `lim_injection`), where `pp[0] = f0` raises the same `TypeError` chained into `ValueError: setting an array element with a sequence` (while `util.nsigma` likewise returns a `(1,)` array rather than a Python float).
 * **Pinning test**: `tests/test_fouriever_limits.py::test_fouriever_public_detlim_against_its_exact_criteria`
 
 **Standalone MWE**:
 
 ```python
-import os, tempfile, numpy as np
+import contextlib, io, os, tempfile, warnings, numpy as np
 from astropy.io import fits
 from fouriever import uvfit
 
+warnings.filterwarnings("ignore")
 wl = np.linspace(1.6e-6, 2.2e-6, 4)
 u, v = np.array([30.0, 55.0, -25.0]), np.array([20.0, -35.0, -55.0])
 hdul = fits.HDUList([
@@ -304,13 +319,13 @@ hdul = fits.HDUList([
     fits.BinTableHDU.from_columns([
         fits.Column("TARGET_ID", "I", array=[1, 1, 1]), fits.Column("MJD", "D", array=[60000.0]*3),
         fits.Column("UCOORD", "D", unit="m", array=u), fits.Column("VCOORD", "D", unit="m", array=v),
-        fits.Column("VIS2DATA", "4D", array=np.ones((3, 4))), fits.Column("VIS2ERR", "4D", array=np.full((3, 4), 0.01)),
+        fits.Column("VIS2DATA", "4D", array=np.full((3, 4), 0.99)), fits.Column("VIS2ERR", "4D", array=np.full((3, 4), 0.01)),
         fits.Column("STA_INDEX", "2I", array=[[1, 2], [2, 3], [1, 3]]), fits.Column("FLAG", "4L", array=np.zeros((3, 4), bool)),
     ], name="OI_VIS2", header=fits.Header({"OI_REVN": 2, "INSNAME": "SYN", "ARRNAME": "A", "DATE-OBS": "2024-01-01"})),
     fits.BinTableHDU.from_columns([
         fits.Column("TARGET_ID", "I", array=[1]), fits.Column("MJD", "D", array=[60000.0]),
         fits.Column("T3AMP", "4D", array=np.ones((1, 4))), fits.Column("T3AMPERR", "4D", array=np.full((1, 4), 0.01)),
-        fits.Column("T3PHI", "4D", array=np.zeros((1, 4))), fits.Column("T3PHIERR", "4D", array=np.full((1, 4), 0.5)),
+        fits.Column("T3PHI", "4D", array=np.full((1, 4), 0.5)), fits.Column("T3PHIERR", "4D", array=np.full((1, 4), 0.5)),
         fits.Column("U1COORD", "D", unit="m", array=[30.0]), fits.Column("V1COORD", "D", unit="m", array=[20.0]),
         fits.Column("U2COORD", "D", unit="m", array=[55.0]), fits.Column("V2COORD", "D", unit="m", array=[-35.0]),
         fits.Column("STA_INDEX", "3I", array=[[1, 2, 3]]), fits.Column("FLAG", "4L", array=np.zeros((1, 4), bool)),
@@ -318,21 +333,25 @@ hdul = fits.HDUList([
 ])
 with tempfile.TemporaryDirectory() as tmp:
     hdul.writeto(os.path.join(tmp, "syn.fits"), overwrite=True)
-    d = uvfit.data(tmp, ["syn.fits"])
-    try:
-        d.detlim(sigma=3.0, cov=False, sep_range=(2.0, 10.0), step_size=4.0)
-    except Exception as exc:
-        print("detlim raised:", repr(exc))
+    for obs in (["v2", "cp"], ["cp"]):
+        with contextlib.redirect_stdout(io.StringIO()):
+            d = uvfit.data(tmp, ["syn.fits"])
+            d.set_observables(obs)
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                d.detlim(sigma=3.0, cov=False, sep_range=(2.0, 10.0), step_size=4.0)
+        except Exception as exc:
+            print(f"obs={obs}: {exc!r} (cause: {exc.__cause__!r})")
 ```
 
 **Observed output**:
 
 ```text
-Computing best fit uniform disk diameter (DO NOT TRUST UNCERTAINTIES)
-detlim raised: TypeError('only 0-dimensional arrays can be converted to Python scalars')
+obs=['v2', 'cp']: TypeError('only 0-dimensional arrays can be converted to Python scalars') (cause: None)
+obs=['cp']: ValueError('setting an array element with a sequence.') (cause: TypeError('only 0-dimensional arrays can be converted to Python scalars'))
 ```
 
-* **Expected behaviour**: Extracting Python scalars via `.item()` (or `float(val[0])`) in diameter logging and inside `util.nsigma` / `lim_absil` / `lim_injection` allows `detlim` to complete under NumPy 2 and SciPy 1.18.
+* **Expected behaviour**: Extracting Python scalars via `.item()` in uniform-disk diameter logging (`thetae`), when assigning `f0` into `pp[0]` inside `lim_absil` / `lim_injection`, and in `util.nsigma` allows `detlim` to complete on both branches under NumPy 2 and SciPy 1.18.
 
 ---
 
@@ -439,10 +458,10 @@ difference (km/s): 7.0
 * **Upstream repository**: [`https://github.com/oimodeler/oimodeler`](https://github.com/oimodeler/oimodeler) (see [PolarDisk](../models/polar_disk.md) and [Rapid rotators](../models/rapid_rotators.md))
 * **Tested environment**: `oimodeler==0.8.1`, Python `3.12.12`, NumPy `2.5.4`, SciPy `1.18.1`, Astropy `8.0.2`
 
-### P9: Image-based `oimExpRing` differs by $8 \times 10^{-3}$ from the exact Hankel transform of its documented profile across grid resolutions { #p9 }
+### P9: Image-based `oimExpRing` differs by $8 \times 10^{-3}$ from the exact Hankel transform across grid resolutions { #p9 }
 
 * **Status**: `to-raise`
-* **Mechanism & diagnosis**: `oimExpRing` documents an axisymmetric sharp-inner-edge exponential ring profile $I(r) \propto \exp(-0.692\,(r - r_0) / \text{fwhm})$ for $r \ge r_0 = d / 2$, truncated at $r_0 + 8\,\text{fwhm}$. By circular symmetry, its normalized visibility is the order-zero [Hankel transform](https://en.wikipedia.org/wiki/Hankel_transform) ([NIST DLMF §10.22](https://dlmf.nist.gov/10.22), which reduces the 2-D Fourier transform of any axisymmetric sky brightness to a 1-D radial $J_0$ integral). Comparing `oimModel([oimExpRing(d=4.0, fwhm=2.1, dim=N)]).getComplexCoherentFlux` against adaptive Gauss–Kronrod quadrature (`scipy.integrate.quad`) of that exact radial profile leaves a resolution-invariant discrepancy of $8.0 \times 10^{-3}$ to $8.5 \times 10^{-3}$ across `dim = 256`, `512`, and `1024` (where Fourier-space components in `oimodeler` agree to $10^{-15}$).
+* **Mechanism & diagnosis**: `oimExpRing` exposes an axisymmetric sharp-inner-edge exponential ring parameterized by inner diameter `d` and half-maximum width `fwhm` (inheriting only the generic base-class docstring from `oimComponentRadialProfile`; mathematically a half-maximum decay implies $I(r) \propto \exp(-\ln 2\,(r - r_0) / \text{fwhm})$ for $r \ge r_0 = d / 2$, whereas `oimExpRing`'s source evaluates `exp(-0.692 * (r - r_0) / fwhm)` on an image grid truncated at `r_0 + 8 * fwhm`). By circular symmetry, the normalized visibility of either radial profile is its order-zero [Hankel transform](https://en.wikipedia.org/wiki/Hankel_transform) ([NIST DLMF §10.22](https://dlmf.nist.gov/10.22), which reduces the 2-D Fourier transform of any axisymmetric sky brightness to a 1-D radial $J_0$ integral). Comparing `oimModel([oimExpRing(d=4.0, fwhm=2.1, dim=dim)]).getComplexCoherentFlux` against adaptive Gauss–Kronrod quadrature (`scipy.integrate.quad`) leaves a resolution-invariant discrepancy of $8.0 \times 10^{-3}$ to $8.9 \times 10^{-3}$ across `dim = 256`, `512`, and `1024` under **both** the mathematical $\ln 2$ profile and the source's `0.692` truncated profile (whereas analytic Fourier-space components in `oimodeler` agree to $10^{-15}$).
 * **Pinning test**: `tests/test_polar_disk_vs_codes.py::test_oimodeler_exp_ring_matches_the_exact_transform`
 
 **Standalone MWE**:
@@ -457,25 +476,30 @@ mas = np.deg2rad(1.0 / 3.6e6)
 d, fwhm, wl = 4.0, 2.1, 2.2e-6
 r0, B = d / 2.0, np.linspace(0.0, 160.0, 32)
 qs = (B / wl) * mas
-den, _ = quad(lambda r: np.exp(-0.692 * (r - r0) / fwhm) * r, r0, r0 + 8 * fwhm, limit=400)
-v_exact = np.array([quad(lambda r: np.exp(-0.692 * (r - r0) / fwhm) * j0(2 * np.pi * q * r) * r,
-                         r0, r0 + 8 * fwhm, limit=400)[0] / den for q in qs])
+
+def exact_vis(c, r_max):
+    den, _ = quad(lambda r: np.exp(-c * (r - r0) / fwhm) * r, r0, r_max, limit=400)
+    return np.array([quad(lambda r: np.exp(-c * (r - r0) / fwhm) * j0(2 * np.pi * q * r) * r,
+                          r0, r_max, limit=400)[0] / den for q in qs])
+
+v_ln2, v_src = exact_vis(np.log(2.0), np.inf), exact_vis(0.692, r0 + 8.0 * fwhm)
 for dim in (256, 512, 1024):
     m = oim.oimModel([oim.oimExpRing(d=d, fwhm=fwhm, dim=dim)])
     ccf = m.getComplexCoherentFlux(B / wl, np.zeros_like(B), np.full_like(B, wl)).real
     v_oim = ccf / m.getComplexCoherentFlux(np.array([0.0]), np.array([0.0]), np.array([wl]))[0].real
-    print(f"dim={dim}: max |v_oim - v_exact| = {np.max(np.abs(v_oim - v_exact)):.4e}")
+    print(f"dim={dim}: max |dv|(ln2) = {np.max(np.abs(v_oim - v_ln2)):.4e}, "
+          f"max |dv|(0.692, 8*fwhm) = {np.max(np.abs(v_oim - v_src)):.4e}")
 ```
 
 **Observed output**:
 
 ```text
-dim=256: max |v_oim - v_exact| = 8.0136e-03
-dim=512: max |v_oim - v_exact| = 8.5240e-03
-dim=1024: max |v_oim - v_exact| = 8.1478e-03
+dim=256: max |dv|(ln2) = 8.8853e-03, max |dv|(0.692, 8*fwhm) = 8.0136e-03
+dim=512: max |dv|(ln2) = 8.3749e-03, max |dv|(0.692, 8*fwhm) = 8.5240e-03
+dim=1024: max |dv|(ln2) = 8.7512e-03, max |dv|(0.692, 8*fwhm) = 8.1478e-03
 ```
 
-* **Expected behaviour**: Refining the image grid `dim` from 256 to 1024 should drive `max |v_oim - v_exact|` monotonically toward zero rather than stalling near $8 \times 10^{-3}$.
+* **Expected behaviour**: Refining the image grid `dim` from 256 to 1024 should drive the visibility discrepancy monotonically toward zero rather than stalling near $8 \times 10^{-3}$.
 
 ### P13: `oimFastRotator` flips the visible pole's sky position angle by $180^\circ$ via `np.rot90` { #p13 }
 
@@ -592,7 +616,7 @@ at r=0.5: r_prof_erf2_power_ggap = 0.9969, r_prof_erf2_power_ggap2 (d2=0) = 0.10
 
 * **Status**: `to-raise`
 * **Mechanism & diagnosis**: For $N$ complex visibilities with inverse-variance weights $w_i = 1 / \sigma_i^2$ on both real and imaginary parts, the normalized circular complex Gaussian log-likelihood is $-N \ln(2\pi) + \sum_{i=1}^N \ln w_i - \frac{1}{2}\sum_{i=1}^N w_i |V_{\text{data},i} - V_{\text{model},i}|^2$. The implementation in `mpol.losses.log_likelihood` evaluates this exact expression (agreeing to `0.0` in `float64`), but its Sphinx docstring omits `\ln` in the weight normalization term and writes `- N \ln 2 \pi + \sum_i^N w_i - ...`.
-* **Pinning test**: `tests/test_alma_mpol.py::test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol`
+* **Pinning test**: `tests/test_alma_mpol.py::test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol` (passing `kind="check"` numerical parity test confirming the implementation evaluates the exact $+\sum_i \ln w_i$ log-density; the docstring typo itself is inspected by the snippet below)
 
 **Standalone MWE**:
 
