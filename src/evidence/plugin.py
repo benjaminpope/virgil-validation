@@ -1334,25 +1334,58 @@ def _scan_call_imports(
             return expr.elts
         return None
 
+    loaded_names = {
+        sub.id
+        for sub in ast.walk(root_tree)
+        if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load)
+    }
+    has_ns_reflection = bool(loaded_names & {"globals", "locals", "vars"})
+    param_eligible_fn_ids = {
+        id(stmt)
+        for stmt in tree.body
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not has_ns_reflection
+        and module_counts["*"] == 0
+        and module_counts[stmt.name] == 1
+        and stmt.name not in global_names
+        and stmt.name not in loaded_names
+    }
+
+    def _is_pytest_mark_attr(expr):
+        return (
+            isinstance(expr, ast.Attribute)
+            and isinstance(expr.value, ast.Attribute)
+            and expr.value.attr == "mark"
+            and _attr_chain(expr.value.value) in all_pytest_chains
+        )
+
     def _parametrize_bindings(fn, outer_map):
-        if not all_pytest_chains or "*" in fn_counts[id(fn)]:
+        if (
+            not all_pytest_chains
+            or id(fn) not in param_eligible_fn_ids
+            or "*" in fn_counts[id(fn)]
+        ):
             return {}
         fc = fn_counts[id(fn)]
         bindings = {}
+        poisoned = set()
         for dec in fn.decorator_list:
-            if not (
-                isinstance(dec, ast.Call)
-                and isinstance(dec.func, ast.Attribute)
-                and dec.func.attr == "parametrize"
-                and isinstance(dec.func.value, ast.Attribute)
-                and dec.func.value.attr == "mark"
-                and _attr_chain(dec.func.value.value) in all_pytest_chains
-                and len(dec.args) >= 2
+            if _is_pytest_mark_attr(dec):
+                if dec.attr == "parametrize":
+                    return {}
+                continue
+            if not (isinstance(dec, ast.Call) and _is_pytest_mark_attr(dec.func)):
+                return {}
+            if dec.func.attr != "parametrize":
+                continue
+            if any(isinstance(a, ast.Starred) for a in dec.args) or any(
+                kw.arg is None for kw in dec.keywords
             ):
-                continue
-            if any(kw.arg == "indirect" and not (isinstance(kw.value, ast.Constant) and not kw.value.value) for kw in dec.keywords):
-                continue
-            argnames_node, argvals_node = dec.args[0], dec.args[1]
+                return {}
+            argnames_node = _call_arg_expr(dec, 0, "argnames")
+            argvals_node = _call_arg_expr(dec, 1, "argvalues")
+            if argnames_node is None or argvals_node is None:
+                return {}
             if isinstance(argnames_node, ast.Constant) and isinstance(argnames_node.value, str):
                 pnames = [s.strip() for s in argnames_node.value.split(",") if s.strip()]
             elif isinstance(argnames_node, (ast.List, ast.Tuple)) and all(
@@ -1360,34 +1393,68 @@ def _scan_call_imports(
             ):
                 pnames = [e.value.strip() for e in argnames_node.elts if e.value.strip()]
             else:
+                return {}
+            if not pnames or len(set(pnames)) != len(pnames):
+                return {}
+            has_indirect = any(
+                kw.arg == "indirect"
+                and not (isinstance(kw.value, ast.Constant) and kw.value.value in (False, None))
+                for kw in dec.keywords
+            )
+            if has_indirect:
+                poisoned.update(pnames)
+                for p in pnames:
+                    bindings.pop(p, None)
                 continue
             if len(pnames) == 1:
+                pname = pnames[0]
                 vals = _eval_expr(argvals_node, outer_map)
-                if vals and fc[pnames[0]] == 1 and pnames[0] not in global_names:
-                    bindings[pnames[0]] = vals
-            elif len(pnames) > 1:
+                if (
+                    vals
+                    and fc[pname] == 1
+                    and pname not in global_names
+                    and pname not in poisoned
+                    and pname not in bindings
+                ):
+                    bindings[pname] = vals
+                else:
+                    poisoned.add(pname)
+                    bindings.pop(pname, None)
+            else:
                 rows = _unwrap_seq_expr(argvals_node, outer_map)
-                if not rows:
-                    continue
                 cols = [[] for _ in pnames]
-                ok_rows = True
-                for row in rows:
-                    row_elts = _unwrap_seq_expr(row, outer_map)
-                    if not row_elts or len(row_elts) != len(pnames):
-                        ok_rows = False
-                        break
-                    for j, cell in enumerate(row_elts):
-                        if cols[j] is None:
-                            continue
-                        cv = _eval_expr(cell, outer_map)
-                        if cv:
-                            cols[j].extend(cv)
-                        else:
-                            cols[j] = None
+                ok_rows = bool(rows)
                 if ok_rows:
+                    for row in rows:
+                        row_elts = _unwrap_seq_expr(row, outer_map)
+                        if not row_elts or len(row_elts) != len(pnames):
+                            ok_rows = False
+                            break
+                        for j, cell in enumerate(row_elts):
+                            if cols[j] is None:
+                                continue
+                            cv = _eval_expr(cell, outer_map)
+                            if cv:
+                                cols[j].extend(cv)
+                            else:
+                                cols[j] = None
+                if not ok_rows:
+                    poisoned.update(pnames)
+                    for pname in pnames:
+                        bindings.pop(pname, None)
+                else:
                     for j, pname in enumerate(pnames):
-                        if cols[j] and fc[pname] == 1 and pname not in global_names:
+                        if (
+                            cols[j]
+                            and fc[pname] == 1
+                            and pname not in global_names
+                            and pname not in poisoned
+                            and pname not in bindings
+                        ):
                             bindings[pname] = tuple(cols[j])
+                        else:
+                            poisoned.add(pname)
+                            bindings.pop(pname, None)
         return bindings
 
     def _fn_active_map(fn, outer_map):
@@ -1507,8 +1574,10 @@ def _scan_call_imports(
                 sub = spec_calls[0]
                 loc_arg = _call_arg_expr(sub, 1, "location")
                 loader_arg = _call_arg_expr(sub, 2, "loader")
-                loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
-                    kw.arg is None for kw in sub.keywords
+                loader_ok = (
+                    (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None))
+                    and not any(isinstance(a, ast.Starred) for a in sub.args)
+                    and not any(kw.arg is None for kw in sub.keywords)
                 )
                 if (
                     loader_ok
@@ -1776,8 +1845,10 @@ def _scan_call_imports(
                         called_direct_aliases.add(node.func.id)
                     loc_arg = _call_arg_expr(node, 1, "location")
                     loader_arg = _call_arg_expr(node, 2, "loader")
-                    loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
-                        kw.arg is None for kw in node.keywords
+                    loader_ok = (
+                        (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None))
+                        and not any(isinstance(a, ast.Starred) for a in node.args)
+                        and not any(kw.arg is None for kw in node.keywords)
                     )
                     vals = _eval_expr(loc_arg, active_map, param_bindings) if loader_ok else None
                     if not loader_ok:

@@ -1191,6 +1191,227 @@ def test_module_via_follows_local_helpers_rejects_shadowed_workers_and_resolves_
     )
 
 
+def test_transitive_depends_into_ok_via_expands_broken_reference_to_relies_and_pipeline_failing(trust, tmp_path):
+    spec = importlib.util.spec_from_file_location("trust_diff", ROOT / "scripts" / "trust_diff.py")
+    td = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(td)
+
+    graph = {
+        "nodes": {
+            "crosscheck.bad": {"layer": "references"},
+            "virgil.mid": {"layer": "models"},
+            "virgil.top": {"layer": "models", "depends": ["virgil.mid"]},
+        },
+        "pipelines": {
+            "chain": {"title": "Chain", "steps": ["virgil.top"]},
+        },
+    }
+    # 1. Failing reference -> virgil.mid (ok-via) -> virgil.top (depends, own ok) -> pipeline (steps=[virgil.top])
+    recs_fail = [
+        record("t::ref_fail", "crosscheck.bad", kind="reference", outcome="failed"),
+        record("t::mid", "virgil.mid", via=["crosscheck.bad"]),
+        record("t::top", "virgil.top"),
+        record("t::pipe", "pipeline:chain"),
+    ]
+    got_fail, model_fail = verdicts(trust, tmp_path, recs_fail, graph)
+    assert got_fail == {
+        "crosscheck.bad": "failing",
+        "virgil.mid": "relies",
+        "virgil.top": "relies",
+    }
+    assert model_fail["nodes"]["virgil.top"]["because"] == [
+        {"id": "crosscheck.bad", "findings": [], "status": "failing"},
+    ]
+    assert model_fail["pipelines"][0]["status"] == "failing"
+
+    recs_ok = [
+        record("t::ref_ok", "crosscheck.bad", kind="reference"),
+        record("t::mid", "virgil.mid", via=["crosscheck.bad"]),
+        record("t::top", "virgil.top"),
+        record("t::pipe", "pipeline:chain"),
+    ]
+    _, model_ok = verdicts(trust, tmp_path, recs_ok, graph)
+    assert model_ok["pipelines"][0]["status"] == "validated"
+    diff_lines = td.diff_rows(model_ok, model_fail)
+    assert any("`pipeline:chain`" in r and "failing steps: virgil.top" in r for r in diff_lines)
+
+    # 2. Open crosscheck bug -> virgil.mid (ok-via) -> virgil.top (depends, own ok) -> pipeline ("passes")
+    ledger_bug = [{"id": "C77", "ruling": "crosscheck", "status": "open", "objects": ["crosscheck.bad"]}]
+    got_bug, model_bug = verdicts(trust, tmp_path, recs_ok, graph, ledger=ledger_bug)
+    assert got_bug == {
+        "crosscheck.bad": "bug",
+        "virgil.mid": "relies",
+        "virgil.top": "relies",
+    }
+    assert model_bug["nodes"]["virgil.top"]["because"] == [
+        {"id": "crosscheck.bad", "findings": ["C77"], "status": "bug"},
+    ]
+    assert model_bug["pipelines"][0]["status"] == "passes"
+
+
+def test_module_via_fails_closed_on_parse_errors_unsafe_sp_imports_and_wrapper_kwargs(tmp_path):
+    from evidence import plugin
+
+    # 1. Unreadable, invalid-UTF-8, and SyntaxError files fail closed with _UNRESOLVED_IMPORT
+    missing_file = tmp_path / "does_not_exist.py"
+    bad_utf8 = tmp_path / "bad_utf8.py"
+    bad_utf8.write_bytes(b"import math\n# \xff\xfe invalid utf-8\n")
+    bad_syntax = tmp_path / "bad_syntax.py"
+    bad_syntax.write_text("def broken(:\n", encoding="utf-8")
+    for p in (missing_file, bad_utf8, bad_syntax):
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(p)) == (plugin._UNRESOLVED_IMPORT,)
+
+    # 2. Importing non-_SAFE_SP_ATTRS from external_bridge._subprocess emits _UNRESOLVED_WORKER
+    unsafe_sp = tmp_path / "unsafe_sp.py"
+    unsafe_sp.write_text("from external_bridge._subprocess import subprocess\n", encoding="utf-8")
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(unsafe_sp)) == (plugin._UNRESOLVED_WORKER,)
+
+    safe_sp = tmp_path / "safe_sp.py"
+    safe_sp.write_text("from external_bridge._subprocess import available\n", encoding="utf-8")
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(safe_sp)) == ()
+
+    # 3. Wrapped __import__(..., level=1), wrapped **kwargs, call-site **kwargs, and mid-component suffixes fail closed
+    for idx, src in enumerate([
+        "def wrap(name):\n    return __import__(name, globals(), locals(), (), 1)\nwrap('sky')\n",
+        "import importlib\ndef wrap(name, **kw):\n    return importlib.import_module(name, **kw)\nwrap('crosscheck.sky')\n",
+        "import importlib\ndef wrap(name, extra=None):\n    return importlib.import_module(name)\ndef f(kw):\n    return wrap('crosscheck.sky', **kw)\n",
+        "import importlib.util\nimport pathlib\nD = pathlib.Path(__file__).parent\ndef wrap(name, extra=None):\n    return importlib.util.spec_from_file_location('m', D / f'{name}.py')\ndef f(kw):\n    return wrap('safe_sp', **kw)\n",
+        "import importlib.util\ndef f(pref):\n    return importlib.util.spec_from_file_location('m', f'{pref}k/sky.py')\n",
+    ]):
+        p = tmp_path / f"wrap_kw_{idx}.py"
+        p.write_text(src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(p)) == (plugin._UNRESOLVED_IMPORT,)
+
+
+def test_decorated_wrappers_and_parametrize_guards_fail_closed(tmp_path):
+    from evidence import plugin
+
+    # Benign top-level @pytest.mark.* + @pytest.mark.parametrize resolves cleanly
+    ok_param = tmp_path / "ok_param.py"
+    ok_param.write_text(
+        "import importlib\nimport pytest\n"
+        "@pytest.mark.slow\n"
+        "@pytest.mark.parametrize('mod', ['crosscheck.sky'])\n"
+        "def test_dyn(mod):\n"
+        "    return importlib.import_module(mod)\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(ok_param)) == ("crosscheck.sky",)
+
+    # Decorated functions must not become wrappers or trust @pytest.mark.parametrize when invoked directly,
+    # wrapped by custom decorators, stacked with dynamic/duplicate/indirect parametrize, or inside classes.
+    bad_import_cases = [
+        "import importlib\ndef dec(f):\n    f('crosscheck.unverified')\n    return f\n@dec\ndef fn(mod):\n    return importlib.import_module(mod)\nfn('math')\n",
+        "import importlib\nimport pytest\n@pytest.mark.parametrize('mod', ['math'])\ndef fn(mod):\n    return importlib.import_module(mod)\nfn('crosscheck.unverified')\n",
+        "import importlib\nimport pytest\ndef get_mods():\n    return ['crosscheck.unverified']\n@pytest.mark.parametrize('mod', get_mods())\n@pytest.mark.parametrize('mod', ['math'])\ndef test_dup(mod):\n    return importlib.import_module(mod)\n",
+        "import importlib\nimport pytest\n@pytest.mark.parametrize('mod', ['math'])\n@pytest.mark.parametrize('mod', ['crosscheck.sky'])\ndef test_dup2(mod):\n    return importlib.import_module(mod)\n",
+        "import importlib\nimport pytest\n@pytest.mark.parametrize('mod', ['math'], indirect=True)\ndef test_ind(mod):\n    return importlib.import_module(mod)\n",
+        "import importlib\nimport pytest\ndef dec(f):\n    return lambda _: f('crosscheck.unverified')\n@dec\n@pytest.mark.parametrize('mod', ['math'])\ndef test_custom(mod):\n    return importlib.import_module(mod)\n",
+    ]
+    for idx, src in enumerate(bad_import_cases):
+        p = tmp_path / f"bad_dec_imp_{idx}.py"
+        p.write_text(src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(p)) == (plugin._UNRESOLVED_IMPORT,), f"case {idx}"
+
+    # Decorated worker helpers must not become _subprocess_workers wrappers either
+    bad_worker = tmp_path / "bad_worker_dec.py"
+    bad_worker.write_text(
+        "import pytest\nfrom external_bridge import _subprocess as sp\n"
+        "@pytest.mark.parametrize('w', ['mpol_worker.py'])\n"
+        "def run_w(w):\n"
+        "    return sp.run('mpol', w, {})\n"
+        "run_w('alma_worker.py')\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(bad_worker))
+
+
+def test_reference_nodes_fail_closed_on_unresolved_or_unregistered_via(trust, tmp_path):
+    from evidence import plugin
+
+    graph = {
+        "nodes": {
+            "crosscheck.sib": {"layer": "references"},
+            "crosscheck.ok_ref": {"layer": "references"},
+            "crosscheck.dyn_ref": {"layer": "references"},
+            "crosscheck.unreg_ref": {"layer": "references"},
+            "virgil.dep_dyn": {"layer": "models"},
+            "virgil.dep_unreg": {"layer": "models"},
+            "virgil.dep_ok": {"layer": "models"},
+        },
+        "pipelines": {},
+    }
+    recs = [
+        record("t::sib", "crosscheck.sib", kind="reference", via=[]),
+        record("t::ok_ref", "crosscheck.ok_ref", kind="reference", via=["crosscheck.sib"]),
+        record("t::dyn_ref", "crosscheck.dyn_ref", kind="reference", via=[plugin._UNRESOLVED_IMPORT]),
+        record("t::unreg_ref", "crosscheck.unreg_ref", kind="reference", via=["crosscheck.not_in_graph"]),
+        record("t::dep_ok", "virgil.dep_ok", via=["crosscheck.ok_ref"]),
+        record("t::dep_dyn", "virgil.dep_dyn", via=["crosscheck.dyn_ref"]),
+        record("t::dep_unreg", "virgil.dep_unreg", via=["crosscheck.unreg_ref"]),
+    ]
+    got, model = verdicts(trust, tmp_path, recs, graph)
+    assert got["crosscheck.ok_ref"] == "verified"
+    assert got["virgil.dep_ok"] == "verified"
+    assert got["crosscheck.dyn_ref"] == "relies-unverified"
+    assert [b["id"] for b in model["nodes"]["crosscheck.dyn_ref"]["because"]] == [plugin._UNRESOLVED_IMPORT]
+    assert got["virgil.dep_dyn"] == "relies-unverified"
+    assert got["crosscheck.unreg_ref"] == "relies-unverified"
+    assert [b["id"] for b in model["nodes"]["crosscheck.unreg_ref"]["because"]] == ["crosscheck.not_in_graph"]
+    assert got["virgil.dep_unreg"] == "relies-unverified"
+
+
+def test_supplementary_broken_via_check_does_not_demote_relies_unverified_node(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "crosscheck.unv": {"layer": "references"},
+            "crosscheck.bad": {"layer": "references"},
+            "virgil.one_root": {"layer": "models", "roots": 1},
+            "virgil.two_roots": {"layer": "models", "roots": 2},
+        },
+        "pipelines": {
+            "p_one": {"title": "One", "steps": ["virgil.one_root"]},
+            "p_two": {"title": "Two", "steps": ["virgil.two_roots"]},
+        },
+    }
+    base_recs = [
+        record("t::bad", "crosscheck.bad", outcome="failed", kind="reference"),
+        record("t::one", "virgil.one_root", roots=["mathematics"], via=["crosscheck.unv"]),
+        record("t::p1", "pipeline:p_one", roots=["mathematics"], via=["crosscheck.unv"]),
+        record("t::p2", "pipeline:p_two", roots=["mathematics"], via=["crosscheck.unv"]),
+    ]
+    got_before, before = verdicts(trust, tmp_path, base_recs, graph)
+    assert got_before["virgil.one_root"] == "relies-unverified"
+    assert {p["id"]: p["status"] for p in before["pipelines"]}["p_one"] == "passes"
+
+    # Adding a supplementary check via a failing reference must NOT demote virgil.one_root to "relies"
+    # or flip pipeline p_one to "failing", whereas virgil.two_roots genuinely needs both roots -> "relies".
+    extra_recs = [
+        *base_recs,
+        record("t::extra", "virgil.one_root", roots=["dLux"], via=["crosscheck.bad"]),
+        record("t::r1", "virgil.two_roots", roots=["mathematics"], via=["crosscheck.unv"]),
+        record("t::r2", "virgil.two_roots", roots=["dLux"], via=["crosscheck.bad"]),
+    ]
+    got_after, after = verdicts(trust, tmp_path, extra_recs, graph)
+    assert got_after["virgil.one_root"] == "relies-unverified"
+    assert [b["id"] for b in after["nodes"]["virgil.one_root"]["because"]] == ["crosscheck.unv"]
+    assert got_after["virgil.two_roots"] == "relies"
+    assert {b["id"] for b in after["nodes"]["virgil.two_roots"]["because"]} == {
+        "crosscheck.unv",
+        "crosscheck.bad",
+    }
+    pipes = {p["id"]: p["status"] for p in after["pipelines"]}
+    assert pipes["p_one"] == "passes"
+    assert pipes["p_two"] == "failing"
+
+
 def test_module_via_resolves_call_imports_and_wrapper_id_shadowing(tmp_path, monkeypatch):
     from evidence import plugin
 
