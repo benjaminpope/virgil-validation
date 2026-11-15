@@ -73,7 +73,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P10">P10</span> | `visr` | vis-r's r_prof_erf2_power_ggap (one Gaussian gap) reads its depth and radius from each other's position in the parameter list | to-raise |
 | <span id="P11">P11</span> | `mpol` | MPoL's log_likelihood docstring writes the normalisation as a sum of w_i, while the code (correctly) uses the sum of ln w_i | to-raise |
 | <span id="P12">P12</span> | `mpol` | MPoL's default NuFFT (torchkbnufft table interpolation) is 6e-4 from the exact transform of its image at 256 pixels, and its taper buffer is float32 | documented |
-| <span id="P13">P13</span> | `oimodeler` | oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg (np.rot90) and parameterizes gravity darkening with rot^0.4 and K = sin(1/3) pi | to-raise |
+| <span id="P13">P13</span> | `oimodeler` | oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90 | to-raise |
+| <span id="P14">P14</span> | `oimodeler` | oimodeler's oimFastRotator parametrizes gravity darkening with rot^0.4 and K = sin(1/3) pi instead of O(omega^2) Roche scaling | to-raise |
 
 ## Mistakes in our own checks
 
