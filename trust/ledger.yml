@@ -607,7 +607,7 @@
   objects: [oimodeler]
   ruling: external:oimodeler
   kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: calling np.rot90(im) before oimComponentImage maps row 0 to South places the hot visible pole at pa + 180 deg instead of pa, inverting every closure phase sign)'
-  referee: mathematics (OIFITS low-spatial-frequency photocentre phase slope); pmoired (rotastar.Vrota)
+  referee: mathematics (translation-invariant first-lobe closure-phase sign against crosscheck.elr.cloud); pmoired (rotastar.Vrota)
   evidence: [tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion]
   status: to-raise
 

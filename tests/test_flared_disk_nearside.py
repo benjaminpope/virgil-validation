@@ -8,7 +8,10 @@ towards the observer (smaller dust scattering angle). Forward-peaked dust
 scattering (or positive near-side ``skew``) therefore brightens the physical
 near-side rim at sky azimuth ``pa + 90 deg`` — for example, at ``(inc = 52 deg,
 pa = 160 deg)``, in the West-Southwest sky quadrant (``dra < 0, ddec < 0``,
-sky PA ``250 deg``).
+sky PA ``250 deg``). These sky-plane photocentre quadrant checks, orthogonal
+baseline ``V^2`` anisotropy checks, and backward-scattering (``g < 0``) negative
+controls complement the pointwise ``crosscheck.disks.brightness`` and
+``scattered_ring`` quadrature checks in ``tests/test_remaining_models.py:119-178``.
 
 Because no external Python package in CI implements a 3D flared scattered-light
 ring and no public archival scattered-light OIFITS dataset is bundled in the

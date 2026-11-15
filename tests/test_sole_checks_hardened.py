@@ -7,20 +7,24 @@ detection.gaussian_null.
   must agree in closure phase to ``dcp < 1e-4 deg`` on strong (> 15 deg)
   closure phases.
 * ``simulate.simulate`` and ``detection.gaussian_null``: standardized
-  closure-phase (``phi``) pulls are checked on BOTH a 3-telescope template
-  (uncorrelated scalar fallback, ``cp_noise is None``) AND a 4-telescope
-  template (``cp_noise is not None``, 4 closure triangles per snapshot/channel
-  with rank-3 covariance ``(T @ T.T) / 3``, four ``+1/3`` entries, two ``-1/3``
-  entries, and closure-of-closures null vector ``(1, -1, 1, -1)``), verifying
-  marginal zero mean and unit variance at effective sample size ``3 * G``,
-  Kolmogorov-Smirnov normality, the signed ``4 x 4`` correlation matrix, exact
-  null-space vanishing, and the chi-squared(df=3) Moore-Penrose quadratic form.
+  closure-phase (``phi``) pulls centred against independent ``crosscheck.chi2``
+  + ``crosscheck.sky`` noiseless closure phases of asymmetric binaries (and
+  exercising ``sim_null(key, scene=...)``) are checked on BOTH a 3-telescope
+  template (uncorrelated scalar fallback, ``cp_noise is None``) AND a
+  4-telescope template with heterogeneous ``T3PHIERR`` and distinct snapshot vs
+  channel dimensions (``5`` snapshots x ``4`` triangles x ``4`` channels,
+  ``cp_noise is not None``), verifying marginal zero mean and unit variance at
+  effective sample size ``3 * G``, Kolmogorov-Smirnov normality, the signed
+  ``4 x 4`` correlation matrix ``(T @ T.T) / 3``, heterogeneous non-vanishing of
+  unstandardized closure-of-closures vs vanishing on standardized pulls and
+  paired noise differences, and the chi-squared(df=3) Moore-Penrose quadratic form.
 """
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from astropy.io import fits
 from scipy import stats
 
 from crosscheck import chi2, sky
@@ -45,6 +49,21 @@ UTS4 = np.array([
 S2F = 2.0 * np.sqrt(2.0 * np.log(2.0))
 UTS4_TRIS = [(1, 2, 3), (1, 2, 4), (1, 3, 4), (2, 3, 4)]
 CLOSURE_NULL_VEC = np.array([1.0, -1.0, 1.0, -1.0])
+SCENE_A_ARGS = (4.0, -3.0, 0.05)
+SCENE_B_ARGS = (-3.5, 4.5, 0.06)
+
+
+def _crosscheck_closure_phases_rad(path, dra_mas, ddec_mas, flux):
+    """Independent noiseless closure phases (radians, flattened in OIFITS
+    row-by-channel order) computed via crosscheck.chi2.load + crosscheck.sky."""
+    d = chi2.load(path)
+    vis_fn = lambda u, v, w: (
+        sky.vis_point(u, v, w) + flux * sky.vis_point(u, v, w, dra_mas, ddec_mas)
+    ) / (1.0 + flux)
+    t1 = vis_fn(d["u1"], d["v1"], d["wl3"])
+    t2 = vis_fn(d["u2"], d["v2_"], d["wl3"])
+    t3 = vis_fn(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"])
+    return np.angle(t1 * t2 * np.conj(t3)).ravel()
 
 
 @pytest.fixture(scope="module")
@@ -65,43 +84,53 @@ def three_tel_template(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def four_tel_template(tmp_path_factory):
-    """4-station VLTI template (4 closure triangles per snapshot/channel) that
-    exercises virgil's correlated ClosureNoise.sample path."""
+    """4-station VLTI template (5 snapshots x 4 closure triangles x 4 channels)
+    with heterogeneous T3PHIERR across triangles and channels."""
     path = tmp_path_factory.mktemp("sole_checks_4t") / "uts4.fits"
     csim.observe(
         path,
         lambda u, v, w: (sky.vis_point(u, v, w) + 0.05 * sky.vis_point(u, v, w, 4.0, -3.0)) / 1.05,
         UTS4,
         hour_angles_h=np.linspace(-2.0, 2.0, 5),
-        wavelengths=np.linspace(1.6e-6, 2.2e-6, 5),
+        wavelengths=np.linspace(1.6e-6, 2.2e-6, 4),
         dec_deg=-40.0,
         sigma_v2=0.01,
         sigma_cp_deg=0.5,
     )
+    rng = np.random.default_rng(123)
+    with fits.open(path, mode="update") as hdul:
+        err = hdul["OI_T3"].data["T3PHIERR"]
+        hdul["OI_T3"].data["T3PHIERR"] = err * rng.uniform(0.5, 2.0, err.shape)
     data = OIData(str(path))
     assert data.cp_noise is not None
-    return path, data
+    yield path, data
+    jax.clear_caches()
 
 
-def _check_four_tel_correlated_quads(draws):
-    """Verify marginal moments (with exact effective sample size 3 * G), signed
-    4 x 4 correlation matrix (T @ T.T) / 3, closure-of-closures null space
-    quads @ [1, -1, 1, -1] == 0, and chi-squared(df=3) Moore-Penrose quadratic form."""
+def _check_four_tel_correlated_quads(raw_diffs, draws):
+    """Verify marginal moments (at exact effective sample size 3 * G), signed
+    4 x 4 correlation matrix (T @ T.T) / 3, heterogeneous raw non-vanishing vs
+    standardized closure-of-closures vanishing, and chi2(df=3) quadratic form."""
     pulls = draws.ravel()
     mean_err = float(abs(np.mean(pulls)))
     std_err = float(abs(np.std(pulls) - 1.0))
 
-    indep_pulls = draws.reshape(80, 5, 4, 5)[:, :, 0, :].ravel()
+    indep_pulls = draws.reshape(80, 5, 4, 4)[:, :, 0, :].ravel()
     n_eff = 3 * indep_pulls.size
     ks_p = float(stats.kstest(indep_pulls, "norm").pvalue)
 
-    quads = draws.reshape(80, 5, 4, 5).transpose(0, 1, 3, 2).reshape(-1, 4)
+    raw_quads = raw_diffs.reshape(80, 5, 4, 4).transpose(0, 1, 3, 2).reshape(-1, 4)
+    quads = draws.reshape(80, 5, 4, 4).transpose(0, 1, 3, 2).reshape(-1, 4)
+    diff_quads = (quads[0::2] - quads[1::2]) / np.sqrt(2.0)
+
     t_mat = chi2.triangle_matrix(UTS4_TRIS)
     want_corr = (t_mat @ t_mat.T) / 3.0
     corr = np.corrcoef(quads, rowvar=False)
     corr_err = float(np.max(np.abs(corr - want_corr)))
 
-    null_res = float(np.max(np.abs(quads @ CLOSURE_NULL_VEC)))
+    raw_null_res = float(np.max(np.abs(raw_quads @ CLOSURE_NULL_VEC)))
+    std_null_res = float(np.max(np.abs(quads @ CLOSURE_NULL_VEC)))
+    diff_null_res = float(np.max(np.abs(diff_quads @ CLOSURE_NULL_VEC)))
     q_mp = np.einsum("ni,ij,nj->n", quads, np.linalg.pinv(want_corr), quads)
     chi2_3_p = float(stats.kstest(q_mp, stats.chi2(3).cdf).pvalue)
     chi2_4_p = float(stats.kstest(q_mp, stats.chi2(4).cdf).pvalue)
@@ -109,14 +138,19 @@ def _check_four_tel_correlated_quads(draws):
     record("max_signed_corr_error", corr_err)
     record("abs_cp_pull_mean", mean_err)
     record("abs_cp_pull_std_minus_one", std_err)
-    record("max_closure_null_residual", null_res)
+    record("max_closure_null_residual", diff_null_res)
     record("mean_chi2_per_dof", float(np.mean(q_mp) / 3.0))
 
     assert mean_err < 4.5 / np.sqrt(n_eff)
     assert std_err < 4.5 / np.sqrt(2.0 * n_eff)
     assert ks_p > 1e-3
     assert corr_err < 0.08
-    assert null_res < 1e-12
+    # Heterogeneous T3PHIERR breaks unstandardized cancellation, while standardized
+    # pulls cancel to OIFITS float32 table precision (< 1e-4) and paired noise
+    # differences cancel to machine precision (< 1e-12).
+    assert raw_null_res > 0.01
+    assert std_null_res < 1e-4
+    assert diff_null_res < 1e-12
     assert chi2_3_p > 1e-3
     assert chi2_4_p < 1e-3
 
@@ -185,21 +219,19 @@ def test_thin_modulated_gaussian_rim_matches_pmoired_closure_phase_to_1e_4(three
     headline="abs_cp_pull_mean",
 )
 def test_simulate_closure_phase_pulls_are_standard_normal(three_tel_template, scale):
-    """Standardized closure-phase residuals (phi - phi_clean) / (scale * d_phi)
-    from simulate.simulate on 3-station data have zero mean and unit variance."""
-    _, data = three_tel_template
-    scene = vm.BinaryModelCartesian(4.0, -3.0, 0.05)
-    clean = vsim.simulate(scene, data)
+    """Standardized closure-phase residuals centred against independent
+    crosscheck noiseless closure phases on 3-station data have zero mean and
+    unit variance."""
+    path, data = three_tel_template
+    scene = vm.BinaryModelCartesian(*SCENE_A_ARGS)
+    ref_phi = _crosscheck_closure_phases_rad(path, *SCENE_A_ARGS)
+    assert float(np.rad2deg(np.max(np.abs(ref_phi)))) > 5.0
     d_phi = np.asarray(data.d_phi)
     pulls = np.concatenate([
         (
             np.angle(
                 np.exp(
-                    1j
-                    * (
-                        np.asarray(vsim.simulate(scene, data, key=jax.random.key(k), noise_scale=scale).phi)
-                        - np.asarray(clean.phi)
-                    )
+                    1j * (np.asarray(vsim.simulate(scene, data, key=jax.random.key(k), noise_scale=scale).phi) - ref_phi)
                 )
             )
             / (scale * d_phi)
@@ -223,52 +255,66 @@ def test_simulate_closure_phase_pulls_are_standard_normal(three_tel_template, sc
     headline="max_signed_corr_error",
 )
 def test_simulate_correlated_four_tel_closure_phase_pulls_and_covariance(four_tel_template, scale):
-    """On a 4-station array (cp_noise is not None, 4 triangles per snapshot and
-    channel), simulate.simulate produces standardized closure-phase pulls matching
-    the signed rank-3 correlation matrix (T @ T.T) / 3, exact closure-of-closures
-    linear dependence, and chi-squared(df=3) Moore-Penrose quadratic form."""
-    _, data = four_tel_template
+    """On a 4-station array with heterogeneous T3PHIERR and 5 snapshots x 4
+    channels, simulate.simulate produces standardized closure-phase pulls
+    centred on crosscheck's noiseless phases matching the signed rank-3
+    correlation matrix (T @ T.T) / 3, closure-of-closures null space, and chi2(df=3)."""
+    path, data = four_tel_template
     assert data.cp_noise is not None
-    scene = vm.BinaryModelCartesian(4.0, -3.0, 0.05)
-    clean_phi = np.asarray(vsim.simulate(scene, data).phi)
+    scene = vm.BinaryModelCartesian(*SCENE_A_ARGS)
+    ref_phi = _crosscheck_closure_phases_rad(path, *SCENE_A_ARGS)
     d_phi = np.asarray(data.d_phi)
-    draws = np.stack([
+    raw_diffs = np.stack([
         np.angle(
             np.exp(
-                1j
-                * (
-                    np.asarray(vsim.simulate(scene, data, key=jax.random.key(500 + k), noise_scale=scale).phi)
-                    - clean_phi
-                )
+                1j * (np.asarray(vsim.simulate(scene, data, key=jax.random.key(500 + k), noise_scale=scale).phi) - ref_phi)
             )
         )
-        / (scale * d_phi)
         for k in range(80)
     ], axis=0)
-    _check_four_tel_correlated_quads(draws)
+    draws = raw_diffs / (scale * d_phi)
+    _check_four_tel_correlated_quads(raw_diffs, draws)
 
 
 @pytest.mark.parametrize("scale", [1.0, 1.5])
 @pytest.mark.validates(
     "virgil.detection.gaussian_null",
-    roots=["statistics"],
+    roots=["mathematics", "statistics"],
     headline="abs_cp_pull_mean",
 )
 def test_gaussian_null_closure_phase_pulls_are_standard_normal(three_tel_template, scale):
-    """Standardized closure-phase pulls from detection.gaussian_null on 3-station
-    data have zero mean and unit variance under error_scale."""
-    _, data = three_tel_template
-    null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
-    clean_phi = np.asarray(vsim.simulate(null_scene, data).phi)
+    """Standardized closure-phase pulls from detection.gaussian_null around an
+    asymmetric non-zero-CP null_scene (and under sim_null(key, scene=...))
+    match independent crosscheck closure phases with zero mean and unit variance."""
+    path, data = three_tel_template
+    null_scene = vm.BinaryModelCartesian(*SCENE_A_ARGS)
+    alt_scene = vm.BinaryModelCartesian(*SCENE_B_ARGS)
+    ref_phi = _crosscheck_closure_phases_rad(path, *SCENE_A_ARGS)
+    ref_alt_phi = _crosscheck_closure_phases_rad(path, *SCENE_B_ARGS)
+    assert float(np.rad2deg(np.max(np.abs(ref_phi)))) > 5.0
+
     sim_null = vdet.gaussian_null(null_scene, data, error_scale=scale)
     d_phi = np.asarray(data.d_phi)
+    noisy_phis = [np.asarray(sim_null(jax.random.key(200 + k)).phi) for k in range(60)]
     pulls = np.concatenate([
+        (np.angle(np.exp(1j * (phi - ref_phi))) / (scale * d_phi)).ravel()
+        for phi in noisy_phis
+    ])
+    # Ignoring null_scene's closure phases (centring on 0) must fail decisively
+    uncentred_pulls = np.concatenate([(np.angle(np.exp(1j * phi)) / (scale * d_phi)).ravel() for phi in noisy_phis])
+    assert abs(float(np.mean(uncentred_pulls))) > 15.0 / np.sqrt(pulls.size)
+
+    # Also verify the documented scene=... override on sim_null(key, scene=alt_scene)
+    alt_pulls = np.concatenate([
         (
-            np.angle(np.exp(1j * (np.asarray(sim_null(jax.random.key(200 + k)).phi) - clean_phi)))
+            np.angle(np.exp(1j * (np.asarray(sim_null(jax.random.key(300 + k), scene=alt_scene).phi) - ref_alt_phi)))
             / (scale * d_phi)
         ).ravel()
-        for k in range(60)
+        for k in range(30)
     ])
+    assert abs(float(np.mean(alt_pulls))) < 4.0 / np.sqrt(alt_pulls.size)
+    assert abs(float(np.std(alt_pulls) - 1.0)) < 4.0 / np.sqrt(2.0 * alt_pulls.size)
+
     mean_err = float(abs(np.mean(pulls)))
     std_err = float(abs(np.std(pulls) - 1.0))
     ks_p = float(stats.kstest(pulls, "norm").pvalue)
@@ -286,18 +332,27 @@ def test_gaussian_null_closure_phase_pulls_are_standard_normal(three_tel_templat
     headline="max_signed_corr_error",
 )
 def test_gaussian_null_correlated_four_tel_closure_phase_pulls_and_covariance(four_tel_template, scale):
-    """On a 4-station array (cp_noise is not None), detection.gaussian_null
-    draws correlated closure phases matching the signed rank-3 correlation
-    matrix (T @ T.T) / 3, exact closure-of-closures null space, and chi2(df=3)."""
-    _, data = four_tel_template
+    """On a 4-station array with heterogeneous T3PHIERR and 5 snapshots x 4
+    channels, detection.gaussian_null around an asymmetric null_scene (and with
+    scene=alt_scene) draws correlated closure phases matching crosscheck's mean,
+    signed rank-3 correlation (T @ T.T) / 3, null space, and chi2(df=3)."""
+    path, data = four_tel_template
     assert data.cp_noise is not None
-    null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
-    clean_phi = np.asarray(vsim.simulate(null_scene, data).phi)
+    null_scene = vm.BinaryModelCartesian(*SCENE_A_ARGS)
+    alt_scene = vm.BinaryModelCartesian(*SCENE_B_ARGS)
+    ref_phi = _crosscheck_closure_phases_rad(path, *SCENE_A_ARGS)
+    ref_alt_phi = _crosscheck_closure_phases_rad(path, *SCENE_B_ARGS)
+
     sim_null = vdet.gaussian_null(null_scene, data, error_scale=scale)
     d_phi = np.asarray(data.d_phi)
-    draws = np.stack([
-        np.angle(np.exp(1j * (np.asarray(sim_null(jax.random.key(900 + k)).phi) - clean_phi)))
-        / (scale * d_phi)
+    raw_diffs = np.stack([
+        np.angle(np.exp(1j * (np.asarray(sim_null(jax.random.key(900 + k)).phi) - ref_phi)))
         for k in range(80)
     ], axis=0)
-    _check_four_tel_correlated_quads(draws)
+    draws = raw_diffs / (scale * d_phi)
+    _check_four_tel_correlated_quads(raw_diffs, draws)
+
+    # Check scene=alt_scene override on the correlated 4-station path as well
+    alt_raw = np.angle(np.exp(1j * (np.asarray(sim_null(jax.random.key(999), scene=alt_scene).phi) - ref_alt_phi)))
+    alt_quads = (alt_raw / (scale * d_phi)).reshape(5, 4, 4).transpose(0, 2, 1).reshape(-1, 4)
+    assert float(np.max(np.abs(alt_quads @ CLOSURE_NULL_VEC))) < 1e-4
