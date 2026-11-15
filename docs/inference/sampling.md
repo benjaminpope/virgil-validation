@@ -59,3 +59,20 @@ The ranks are uniform despite the divergences, but a calibration resting on
 unhealthy chains is weak. The second campaign changes the mass matrix and the
 ring width to remove them, starts chains away from the truth, and adds faint
 companions.
+
+## Tempered SMC, mode search, Gauss–Newton mass and variational inference
+
+`tests/test_042_smc_modes_tempering.py` and `tests/test_042_svi_cv_likelihood.py`
+validate `virgil.smc`, `virgil.mode_search`, `virgil.svi`,
+`virgil.fitting.gauss_newton_mass`, and `virgil.likelihood.chain_init_params`
+against `crosscheck.smc_tempering_ref` (`scipy`/`numpy` closed forms and
+2D numerical quadrature).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `smc.tempered_smc`, `smc.SMCResult`, `smc.bridge_smc` | closed-form conjugate Gaussian $\ln Z$, posterior moments, Lee–Whiteley genealogy SE calibration across replicates, 2D bimodal Gaussian-mixture $\ln Z$ and mode weights, and exact bridge $\ln(Z_2/Z_1)$; controls: unnormalized `loglike` biases $\ln Z$ and swapped bridge negates $\ln(Z_2/Z_1)$ | Mathematics, statistics | within 4 SE (conjugate), < 0.08 nats (bimodal), < 0.06 nats (bridge) |
+| `mode_search.Mode`, `logmeanexp`, `laplace_log_evidence`, `distinct_modes` | Tierney–Kadane Laplace $\ln Z$ and two-sided Mahalanobis deduplication preserving sharp needle modes inside broad outlier footprints; control: one-sided Mahalanobis swallows needle modes | Mathematics | 1e-14 |
+| `mode_search.DefensiveMixture`, `importance_evidence`, `Evidence`, `resample_move`, `Move` | SciPy multivariate Student-$t_\nu$ + prior log-density, symmetry images, Kish ESS and delta-method SE, `at_floor` sentinel, and HMC rejuvenation preserving bimodal target moments | Mathematics, statistics | 1e-13 (log $q$), < 0.03 nats ($\ln Z$) |
+| `fitting.FitResult`, `gauss_newton_mass`, `GaussNewtonMass`, `likelihood.chain_init_params` | unconstrained central-difference $F = J^\top J + \operatorname{diag}(P)$ (including the $\sqrt{2N}\ln s$ Fisher row for `vis_scale`), correlation condition number, and multi-chain unconstrained initialization; control: omitting bijection Jacobian mis-scales flux variance > 1000× | Mathematics | < 5e-6 relative |
+| `svi.variational`, `svi.VariationalResult` | `"laplace"` and `"mvn"` guides vs Gauss–Newton posterior ($\hat{k} < 0.5$), and `"bnaf"` / `"iaf"` normalizing flows vs 2D Simpson quadrature on a skewed low-SNR log-flux posterior ($\hat{k} < 0.6$); control: under-dispersed unconverged guide flags $\hat{k} > 0.7$ | Mathematics, statistics | < 0.30 posterior σ |
+

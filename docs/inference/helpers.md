@@ -39,3 +39,16 @@ own observables on two simulated three-telescope files.
 | `detection.injection_grid` | every separation and flux in the documented order; angles of (dra, ddec) uniform on [0°, 360°) (Kolmogorov–Smirnov; this does not pin the PA sign convention) | Mathematics, statistics | 1e-12; p > 1e-3 |
 | `detection.bootstrap_null` | sign flip: each whitened residual about our prediction keeps its magnitude (phases wrapped), also about another scene, with about half flipped; resample: residuals drawn only from their own block | Mathematics, statistics | 1e-8; within 4σ |
 
+## Hierarchical outlier mixture and K-fold cross-validation
+
+`tests/test_042_svi_cv_likelihood.py` checks the exact Jeffreys
+$\mathrm{Beta}(1/2, 1/2)$ group outlier mixture and generic K-fold
+cross-validation against `crosscheck.smc_tempering_ref`.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `likelihood.group_outlier_mixture`, `likelihood.group_outlier_probabilities` | continuous $\theta \in [0, \pi]$ SciPy `quad` and quadrature-free $2^K$ combinatorial Beta-function expansion for $K \in \{1, 4, 9, 14\}$, plus thermodynamic identity $\partial \ln Z / \partial \ln B_k = q_k$; control: informative $\mathrm{Beta}(1, 9)$ differs by > 3.0 nats | Mathematics | < 1e-12 |
+| `crossval.fold_masks`, `save_record`, `load_records`, `aggregate`, `aggregate_files` | exact fold partition, JSON round-trip, sample SD (`ddof = 1`), standard error, minimum-mean `best`, and Breiman et al. (1984) `one_se` rule (`larger_is_simpler` both ways) | Mathematics | 1e-14 |
+| `crossval.cv_task`, `crossval.cross_validate` | closed-form weighted linear ridge regression $(X_{T_k}^\top W_{T_k} X_{T_k} + \lambda I)^{-1} X_{T_k}^\top W_{T_k} y_{T_k}$ held-out score, raw $\chi^2$, and group breakdown; control: unmasked data leakage selects $\lambda \to 0$ on pure noise | Mathematics, statistics | < 1e-5 |
+
+
