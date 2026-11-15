@@ -1618,24 +1618,31 @@ def test_orbitize_worker_ephemeris_and_period_match_kepler_third_law_and_sky_pro
     headline="roundtrip_max_abs_err",
 )
 def test_safe_load_reconstructs_numpy_arrays_and_blocks_arbitrary_globals(tmp_path):
-    """``safe_load.load_pickle`` and ``load_object_npy`` (format 1.0 and 2.0 headers)
-    reconstruct whitelisted NumPy arrays and builtins while rejecting ``os.system`` payloads."""
+    """``safe_load.load_pickle`` and ``load_object_npy`` (format 1.0, 2.0, and 3.0 headers)
+    reconstruct allowlisted NumPy arrays, OrderedDict, and scalar/container builtins while
+    rejecting non-constructor globals across ``os``, ``builtins``, and ``numpy``."""
+    from collections import OrderedDict
     import io
     import pickle
     from external_bridge import safe_load
 
-    payload = {"u": np.linspace(-5.0, 5.0, 9), "meta": ("hr4796", 3)}
+    payload = {
+        "u": np.linspace(-5.0, 5.0, 9),
+        "meta": ("hr4796", 3, frozenset({"Band7"})),
+        "order": OrderedDict([("a", np.float64(1.5)), ("b", np.int64(4))]),
+    }
     pkl_path = tmp_path / "ok.pkl"
     pkl_path.write_bytes(pickle.dumps(payload))
     got_pkl = safe_load.load_pickle(pkl_path)
     err_pkl = float(np.max(np.abs(got_pkl["u"] - payload["u"])))
     assert got_pkl["meta"] == payload["meta"]
+    assert list(got_pkl["order"].items()) == [("a", 1.5), ("b", 4)]
 
     obj_arr = np.empty(2, dtype=object)
     obj_arr[0] = np.array([1.25, -3.5, 4.0])
     obj_arr[1] = {"k": 7}
     err_npy = 0.0
-    for ver, name in (((1, 0), "v1.npy"), ((2, 0), "v2.npy")):
+    for ver, name in (((1, 0), "v1.npy"), ((2, 0), "v2.npy"), ((3, 0), "v3.npy")):
         npy_path = tmp_path / name
         with open(npy_path, "wb") as fh:
             np.lib.format.write_array(fh, obj_arr, version=ver, allow_pickle=True)
@@ -1643,19 +1650,36 @@ def test_safe_load_reconstructs_numpy_arrays_and_blocks_arbitrary_globals(tmp_pa
         err_npy = max(err_npy, float(np.max(np.abs(got_npy[0] - obj_arr[0]))))
         assert got_npy[1] == {"k": 7}
 
-    # Malicious pickle invoking os.system must raise pickle.UnpicklingError
-    bad_bytes = b"cos\nsystem\n(S'echo nope'\ntR."
-    bad_path = tmp_path / "bad.pkl"
-    bad_path.write_bytes(bad_bytes)
-    with pytest.raises(pickle.UnpicklingError, match="blocked global"):
-        safe_load.load_pickle(bad_path)
+    # Non-object .npy and unsupported format versions fail closed with ValueError
+    plain_npy = tmp_path / "plain.npy"
+    np.save(plain_npy, np.arange(4.0))
+    with pytest.raises(ValueError, match="object-dtype"):
+        safe_load.load_object_npy(plain_npy)
+    bad_ver_npy = tmp_path / "v9.npy"
+    bad_ver_npy.write_bytes(b"\x93NUMPY\x09\x00\x00\x00")
+    with pytest.raises(ValueError, match="unsupported .npy format"):
+        safe_load.load_object_npy(bad_ver_npy)
 
-    bad_npy = tmp_path / "bad.npy"
-    buf = io.BytesIO()
-    np.lib.format.write_array_header_1_0(buf, {"descr": "|O", "fortran_order": False, "shape": (1,)})
-    bad_npy.write_bytes(buf.getvalue() + bad_bytes)
-    with pytest.raises(pickle.UnpicklingError, match="blocked global"):
-        safe_load.load_object_npy(bad_npy)
+    # Every non-constructor callable across os, builtins, and numpy must raise UnpicklingError
+    forbidden_payloads = [
+        b"cos\nsystem\n(S'echo nope'\ntR.",
+        b"cbuiltins\ndelattr\n(S'x'\nS'y'\ntR.",
+        b"cbuiltins\nglobals\n(tR.",
+        b"cnumpy\nmemmap\n(S'nope.dat'\ntR.",
+        b"cnumpy\nloadtxt\n(S'nope.txt'\ntR.",
+    ]
+    for idx, bad_bytes in enumerate(forbidden_payloads):
+        bad_path = tmp_path / f"bad_{idx}.pkl"
+        bad_path.write_bytes(bad_bytes)
+        with pytest.raises(pickle.UnpicklingError, match="blocked global"):
+            safe_load.load_pickle(bad_path)
+
+        bad_npy = tmp_path / f"bad_{idx}.npy"
+        buf = io.BytesIO()
+        np.lib.format.write_array_header_1_0(buf, {"descr": "|O", "fortran_order": False, "shape": (1,)})
+        bad_npy.write_bytes(buf.getvalue() + bad_bytes)
+        with pytest.raises(pickle.UnpicklingError, match="blocked global"):
+            safe_load.load_object_npy(bad_npy)
 
     worst = max(err_pkl, err_npy)
     record("roundtrip_max_abs_err", worst)
