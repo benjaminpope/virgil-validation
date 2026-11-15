@@ -288,26 +288,68 @@ def _ref_target_file(parts):
     return None
 
 
-def _resolve_local_helper(parts, search_dirs):
-    if not parts or parts[0] in _SKIP_LOCAL_TOPS:
-        return None
+def _enclosing_local_package_inits(dir_path):
+    """Outermost-first ``__init__.py`` files of local helper packages enclosing ``dir_path``."""
+    repo_root = _REPO_ROOT.resolve()
+    inits = []
+    cur = dir_path
+    while True:
+        try:
+            cur_res = cur.resolve()
+        except OSError:
+            cur_res = cur
+        if cur_res == repo_root:
+            break
+        init_py = cur / "__init__.py"
+        if not init_py.is_file() or _is_under_src(init_py):
+            break
+        inits.append(init_py)
+        if cur.parent == cur:
+            break
+        cur = cur.parent
+    inits.reverse()
+    return tuple(inits)
+
+
+def _resolve_local_helper_with_inits(parts, search_dirs):
+    """Return ``(target_file, enclosing_init_files)`` for a local helper import outside ``src/``."""
+    if not parts:
+        for base in search_dirs:
+            cand = base / "__init__.py"
+            if cand.is_file() and not _is_under_src(cand):
+                enc = tuple(p for p in _enclosing_local_package_inits(base.parent) if p != cand)
+                return cand, enc
+        return None, ()
+    if parts[0] in _SKIP_LOCAL_TOPS:
+        return None, ()
     for base in search_dirs:
         for cand in (
             base.joinpath(*parts[:-1], f"{parts[-1]}.py"),
             base.joinpath(*parts, "__init__.py"),
         ):
             if cand.is_file() and not _is_under_src(cand):
-                return cand
-    return None
+                seen_inits = []
+                for p in _enclosing_local_package_inits(base):
+                    if p != cand and p not in seen_inits:
+                        seen_inits.append(p)
+                for k in range(1, len(parts)):
+                    init_k = base.joinpath(*parts[:k], "__init__.py")
+                    if init_k.is_file() and not _is_under_src(init_k) and init_k != cand and init_k not in seen_inits:
+                        seen_inits.append(init_k)
+                return cand, tuple(seen_inits)
+    return None, ()
+
+
+def _resolve_local_helper(parts, search_dirs):
+    cand, _ = _resolve_local_helper_with_inits(parts, search_dirs)
+    return cand
 
 
 def _call_arg_expr(call, index, keyword):
-    if any(isinstance(a, ast.Starred) for a in call.args):
+    if any(isinstance(a, ast.Starred) for a in call.args) or any(kw.arg is None for kw in call.keywords):
         return None
     if index is not None and index < len(call.args):
         return call.args[index]
-    if any(kw.arg is None for kw in call.keywords):
-        return None
     for kw in call.keywords:
         if kw.arg == keyword:
             return kw.value
@@ -597,6 +639,7 @@ def _subprocess_workers(
         stmt
         for stmt in scope_tree.body
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not stmt.decorator_list
         and module_counts["*"] == 0
         and module_counts[stmt.name] == 1
         and stmt.name not in global_names
@@ -1291,25 +1334,58 @@ def _scan_call_imports(
             return expr.elts
         return None
 
+    loaded_names = {
+        sub.id
+        for sub in ast.walk(root_tree)
+        if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Load)
+    }
+    has_ns_reflection = bool(loaded_names & {"globals", "locals", "vars"})
+    param_eligible_fn_ids = {
+        id(stmt)
+        for stmt in tree.body
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not has_ns_reflection
+        and module_counts["*"] == 0
+        and module_counts[stmt.name] == 1
+        and stmt.name not in global_names
+        and stmt.name not in loaded_names
+    }
+
+    def _is_pytest_mark_attr(expr):
+        return (
+            isinstance(expr, ast.Attribute)
+            and isinstance(expr.value, ast.Attribute)
+            and expr.value.attr == "mark"
+            and _attr_chain(expr.value.value) in all_pytest_chains
+        )
+
     def _parametrize_bindings(fn, outer_map):
-        if not all_pytest_chains or "*" in fn_counts[id(fn)]:
+        if (
+            not all_pytest_chains
+            or id(fn) not in param_eligible_fn_ids
+            or "*" in fn_counts[id(fn)]
+        ):
             return {}
         fc = fn_counts[id(fn)]
         bindings = {}
+        poisoned = set()
         for dec in fn.decorator_list:
-            if not (
-                isinstance(dec, ast.Call)
-                and isinstance(dec.func, ast.Attribute)
-                and dec.func.attr == "parametrize"
-                and isinstance(dec.func.value, ast.Attribute)
-                and dec.func.value.attr == "mark"
-                and _attr_chain(dec.func.value.value) in all_pytest_chains
-                and len(dec.args) >= 2
+            if _is_pytest_mark_attr(dec):
+                if dec.attr == "parametrize":
+                    return {}
+                continue
+            if not (isinstance(dec, ast.Call) and _is_pytest_mark_attr(dec.func)):
+                return {}
+            if dec.func.attr != "parametrize":
+                continue
+            if any(isinstance(a, ast.Starred) for a in dec.args) or any(
+                kw.arg is None for kw in dec.keywords
             ):
-                continue
-            if any(kw.arg == "indirect" and not (isinstance(kw.value, ast.Constant) and not kw.value.value) for kw in dec.keywords):
-                continue
-            argnames_node, argvals_node = dec.args[0], dec.args[1]
+                return {}
+            argnames_node = _call_arg_expr(dec, 0, "argnames")
+            argvals_node = _call_arg_expr(dec, 1, "argvalues")
+            if argnames_node is None or argvals_node is None:
+                return {}
             if isinstance(argnames_node, ast.Constant) and isinstance(argnames_node.value, str):
                 pnames = [s.strip() for s in argnames_node.value.split(",") if s.strip()]
             elif isinstance(argnames_node, (ast.List, ast.Tuple)) and all(
@@ -1317,34 +1393,68 @@ def _scan_call_imports(
             ):
                 pnames = [e.value.strip() for e in argnames_node.elts if e.value.strip()]
             else:
+                return {}
+            if not pnames or len(set(pnames)) != len(pnames):
+                return {}
+            has_indirect = any(
+                kw.arg == "indirect"
+                and not (isinstance(kw.value, ast.Constant) and kw.value.value in (False, None))
+                for kw in dec.keywords
+            )
+            if has_indirect:
+                poisoned.update(pnames)
+                for p in pnames:
+                    bindings.pop(p, None)
                 continue
             if len(pnames) == 1:
+                pname = pnames[0]
                 vals = _eval_expr(argvals_node, outer_map)
-                if vals and fc[pnames[0]] == 1 and pnames[0] not in global_names:
-                    bindings[pnames[0]] = vals
-            elif len(pnames) > 1:
+                if (
+                    vals
+                    and fc[pname] == 1
+                    and pname not in global_names
+                    and pname not in poisoned
+                    and pname not in bindings
+                ):
+                    bindings[pname] = vals
+                else:
+                    poisoned.add(pname)
+                    bindings.pop(pname, None)
+            else:
                 rows = _unwrap_seq_expr(argvals_node, outer_map)
-                if not rows:
-                    continue
                 cols = [[] for _ in pnames]
-                ok_rows = True
-                for row in rows:
-                    row_elts = _unwrap_seq_expr(row, outer_map)
-                    if not row_elts or len(row_elts) != len(pnames):
-                        ok_rows = False
-                        break
-                    for j, cell in enumerate(row_elts):
-                        if cols[j] is None:
-                            continue
-                        cv = _eval_expr(cell, outer_map)
-                        if cv:
-                            cols[j].extend(cv)
-                        else:
-                            cols[j] = None
+                ok_rows = bool(rows)
                 if ok_rows:
+                    for row in rows:
+                        row_elts = _unwrap_seq_expr(row, outer_map)
+                        if not row_elts or len(row_elts) != len(pnames):
+                            ok_rows = False
+                            break
+                        for j, cell in enumerate(row_elts):
+                            if cols[j] is None:
+                                continue
+                            cv = _eval_expr(cell, outer_map)
+                            if cv:
+                                cols[j].extend(cv)
+                            else:
+                                cols[j] = None
+                if not ok_rows:
+                    poisoned.update(pnames)
+                    for pname in pnames:
+                        bindings.pop(pname, None)
+                else:
                     for j, pname in enumerate(pnames):
-                        if cols[j] and fc[pname] == 1 and pname not in global_names:
+                        if (
+                            cols[j]
+                            and fc[pname] == 1
+                            and pname not in global_names
+                            and pname not in poisoned
+                            and pname not in bindings
+                        ):
                             bindings[pname] = tuple(cols[j])
+                        else:
+                            poisoned.add(pname)
+                            bindings.pop(pname, None)
         return bindings
 
     def _fn_active_map(fn, outer_map):
@@ -1378,6 +1488,7 @@ def _scan_call_imports(
         stmt
         for stmt in tree.body
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and not stmt.decorator_list
         and module_counts["*"] == 0
         and module_counts[stmt.name] == 1
         and stmt.name not in global_names
@@ -1463,8 +1574,10 @@ def _scan_call_imports(
                 sub = spec_calls[0]
                 loc_arg = _call_arg_expr(sub, 1, "location")
                 loader_arg = _call_arg_expr(sub, 2, "loader")
-                loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
-                    kw.arg is None for kw in sub.keywords
+                loader_ok = (
+                    (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None))
+                    and not any(isinstance(a, ast.Starred) for a in sub.args)
+                    and not any(kw.arg is None for kw in sub.keywords)
                 )
                 if (
                     loader_ok
@@ -1601,7 +1714,9 @@ def _scan_call_imports(
             if mod == "external_bridge._subprocess":
                 extra.add(_UNRESOLVED_WORKER)
         elif origin_pkg is None:
-            helper = _resolve_local_helper(parts, local_dirs)
+            helper, enc_inits = _resolve_local_helper_with_inits(parts, local_dirs)
+            for init_py in enc_inits:
+                extra.update(_scan_init_top_via(init_py, seen))
             if helper is not None:
                 extra.update(_scan_module_via(helper, seen))
 
@@ -1637,6 +1752,9 @@ def _scan_call_imports(
                 base = ref_base.parent.parent if ref_base.parent.name in {"tests", "scripts", "src"} else ref_base.parent
                 allowed_roots.append(base.resolve())
         if any(cand_res == r or r in cand_res.parents for r in allowed_roots):
+            for init_py in _enclosing_local_package_inits(cand_res.parent):
+                if init_py.resolve() != cand_res:
+                    extra.update(_scan_init_top_via(init_py, seen))
             extra.update(_scan_module_via(cand_res, seen))
         else:
             extra.add(_UNRESOLVED_IMPORT)
@@ -1727,8 +1845,10 @@ def _scan_call_imports(
                         called_direct_aliases.add(node.func.id)
                     loc_arg = _call_arg_expr(node, 1, "location")
                     loader_arg = _call_arg_expr(node, 2, "loader")
-                    loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
-                        kw.arg is None for kw in node.keywords
+                    loader_ok = (
+                        (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None))
+                        and not any(isinstance(a, ast.Starred) for a in node.args)
+                        and not any(kw.arg is None for kw in node.keywords)
                     )
                     vals = _eval_expr(loc_arg, active_map, param_bindings) if loader_ok else None
                     if not loader_ok:
@@ -1989,6 +2109,8 @@ def _exported_sp_wrappers_inner(path, seen_w):
                         wildcard_sp = True
                     elif alias.name == "run":
                         run_aliases.add(alias.asname or "run")
+                    elif alias.name not in _SAFE_SP_ATTRS:
+                        wildcard_sp = True
                 elif alias.name == "*":
                     if _sp_has_any(exp):
                         wildcard_sp = True
@@ -2013,14 +2135,14 @@ def _exported_sp_wrappers_inner(path, seen_w):
 
     def _from_local(rel_parts, aliases, search_dirs):
         nonlocal wildcard_sp
-        local_mod = _resolve_local_helper(rel_parts, search_dirs) if rel_parts else None
+        local_mod, _ = _resolve_local_helper_with_inits(rel_parts, search_dirs)
         local_exp = _exported_sp_wrappers(local_mod, next_seen) if local_mod is not None else _EMPTY_SP_EXPORT
         for alias in aliases:
             if alias.name == "*":
                 if _sp_has_any(local_exp):
                     wildcard_sp = True
                 continue
-            sub_local = _resolve_local_helper((*rel_parts, alias.name), search_dirs)
+            sub_local, _ = _resolve_local_helper_with_inits((*rel_parts, alias.name), search_dirs)
             if sub_local is not None:
                 _reg_mod_wrappers((alias.asname or alias.name,), sub_local)
             elif _sp_has_symbol(alias.name, local_exp):
@@ -2054,7 +2176,12 @@ def _exported_sp_wrappers_inner(path, seen_w):
                     else:
                         _reg_mod_wrappers(bprefix, _ref_target_file(full_parts))
                 elif pkg_parts is None:
-                    helper = _resolve_local_helper(parts, local_dirs)
+                    helper, _ = _resolve_local_helper_with_inits(parts, local_dirs)
+                    if alias.asname is None:
+                        for k in range(1, len(parts)):
+                            init_k, _ = _resolve_local_helper_with_inits(parts[:k], local_dirs)
+                            if init_k is not None:
+                                _reg_mod_wrappers(parts[:k], init_k)
                     if helper is not None:
                         _reg_mod_wrappers(bprefix, helper)
         elif isinstance(node, ast.ImportFrom):
@@ -2225,14 +2352,14 @@ def _exported_dyn_imports_inner(path, seen_d):
 
     def _from_local(rel_parts, aliases, search_dirs):
         nonlocal wildcard_dyn
-        local_mod = _resolve_local_helper(rel_parts, search_dirs) if rel_parts else None
+        local_mod, _ = _resolve_local_helper_with_inits(rel_parts, search_dirs)
         local_exp = _exported_dyn_imports(local_mod, next_seen) if local_mod is not None else _EMPTY_DYN_EXPORT
         for alias in aliases:
             if alias.name == "*":
                 if _dyn_has_any(local_exp):
                     wildcard_dyn = True
                 continue
-            sub_local = _resolve_local_helper((*rel_parts, alias.name), search_dirs)
+            sub_local, _ = _resolve_local_helper_with_inits((*rel_parts, alias.name), search_dirs)
             if sub_local is not None:
                 _reg_dyn_mod((alias.asname or alias.name,), sub_local)
             elif _dyn_has_symbol(alias.name, local_exp):
@@ -2266,7 +2393,12 @@ def _exported_dyn_imports_inner(path, seen_d):
                 elif pkg_parts is not None and _is_submodule_parts(pkg_parts, top):
                     _reg_dyn_mod(bprefix, _ref_target_file((*pkg_parts, *parts)))
                 elif pkg_parts is None:
-                    helper = _resolve_local_helper(parts, local_dirs)
+                    helper, _ = _resolve_local_helper_with_inits(parts, local_dirs)
+                    if alias.asname is None:
+                        for k in range(1, len(parts)):
+                            init_k, _ = _resolve_local_helper_with_inits(parts[:k], local_dirs)
+                            if init_k is not None:
+                                _reg_dyn_mod(parts[:k], init_k)
                     if helper is not None:
                         _reg_dyn_mod(bprefix, helper)
         elif isinstance(node, ast.ImportFrom):
@@ -2556,6 +2688,8 @@ def _scan_stmts_via(
                         wildcard_sp = True
                     elif alias.name == "run":
                         run_aliases.add(alias.asname or "run")
+                    elif alias.name not in _SAFE_SP_ATTRS:
+                        wildcard_sp = True
             else:
                 exp_sp = _exported_sp_wrappers(mod_file)
                 exp_dyn = _exported_dyn_imports(mod_file)
@@ -2598,9 +2732,23 @@ def _scan_stmts_via(
             return
         found.add(".".join(target_parts))
 
+    def _scan_enclosing_inits(enc_inits):
+        for init_py in enc_inits:
+            try:
+                init_res = init_py.resolve()
+            except OSError:
+                init_res = init_py
+            if init_res == resolved:
+                continue
+            found.update(_scan_init_top_via(init_py, seen))
+
+    if pkg_parts is None:
+        _scan_enclosing_inits(_enclosing_local_package_inits(resolved.parent))
+
     def _handle_from_local(rel_parts, aliases, search_dirs):
         nonlocal wildcard_sp, wildcard_dyn
-        local_mod = _resolve_local_helper(rel_parts, search_dirs) if rel_parts else None
+        local_mod, local_enc = _resolve_local_helper_with_inits(rel_parts, search_dirs)
+        _scan_enclosing_inits(local_enc)
         local_sp = _exported_sp_wrappers(local_mod) if local_mod is not None else _EMPTY_SP_EXPORT
         local_dyn = _exported_dyn_imports(local_mod) if local_mod is not None else _EMPTY_DYN_EXPORT
         for alias in aliases:
@@ -2619,8 +2767,9 @@ def _scan_stmts_via(
                         )
                     )
                 continue
-            sub_local = _resolve_local_helper((*rel_parts, alias.name), search_dirs)
+            sub_local, sub_enc = _resolve_local_helper_with_inits((*rel_parts, alias.name), search_dirs)
             if sub_local is not None:
+                _scan_enclosing_inits(sub_enc)
                 sub_sp, sub_imp = _register_mod_wrappers((alias.asname or alias.name,), sub_local)
                 found.update(
                     _scan_module_via(
@@ -2695,7 +2844,21 @@ def _scan_stmts_via(
                         if sub_target is not None and sub_target.name == "__init__.py":
                             _expand_pkg_parts(full_parts, sub_sp, sub_imp)
                 elif pkg_parts is None:
-                    helper = _resolve_local_helper(parts, local_dirs)
+                    helper, enc_inits = _resolve_local_helper_with_inits(parts, local_dirs)
+                    _scan_enclosing_inits(enc_inits)
+                    if alias.asname is None:
+                        for k in range(1, len(parts)):
+                            init_k, _ = _resolve_local_helper_with_inits(parts[:k], local_dirs)
+                            if init_k is not None:
+                                init_sp_u, init_imp_u = _register_mod_wrappers(parts[:k], init_k)
+                                found.update(
+                                    _scan_module_via(
+                                        init_k,
+                                        seen,
+                                        allow_uncalled_wrappers=init_sp_u,
+                                        allow_uncalled_imp=init_imp_u,
+                                    )
+                                )
                     if helper is not None:
                         exp_sp_u, exp_imp_u = _register_mod_wrappers(bprefix, helper)
                         found.update(
@@ -2865,24 +3028,72 @@ def _is_autouse_fixture(fn_node):
     return False
 
 
+def _usefixtures_in_expr(expr):
+    out = set()
+    if expr is None:
+        return out
+    for node in ast.walk(expr):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "usefixtures"
+        ):
+            for arg in node.args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    out.add(arg.value)
+    return out
+
+
+def _usefixtures_in_stmts(stmts):
+    out = set()
+    for stmt in stmts:
+        if isinstance(stmt, ast.Assign):
+            targets = []
+            for t in stmt.targets:
+                if isinstance(t, ast.Name):
+                    targets.append(t.id)
+                elif isinstance(t, (ast.Tuple, ast.List)):
+                    targets.extend(elt.id for elt in t.elts if isinstance(elt, ast.Name))
+            if "pytestmark" in targets:
+                out |= _usefixtures_in_expr(stmt.value)
+        elif (
+            isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+            and stmt.target.id == "pytestmark"
+            and stmt.value is not None
+        ):
+            out |= _usefixtures_in_expr(stmt.value)
+        elif (
+            isinstance(stmt, ast.AugAssign)
+            and isinstance(stmt.target, ast.Name)
+            and stmt.target.id == "pytestmark"
+        ):
+            out |= _usefixtures_in_expr(stmt.value)
+    return out
+
+
 def _reachable_local_stmts_and_fixtures(
     tree,
     func_name,
     cls_name=None,
     fixture_names=(),
     include_autouse=True,
+    include_hooks=False,
     is_pytest_target=False,
 ):
     """Top-level statements plus the target function/method, reachable local helpers/fixtures, and requested fixture names."""
     top_stmts = []
     top_defs = {}
     autouse = set()
+    hooks = set()
     classes = {}
     for stmt in tree.body:
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
             top_defs[stmt.name] = stmt
             if include_autouse and _is_autouse_fixture(stmt):
                 autouse.add(stmt.name)
+            if include_hooks and stmt.name.startswith("pytest_"):
+                hooks.add(stmt.name)
         elif isinstance(stmt, ast.ClassDef):
             classes[stmt.name] = stmt
             top_defs[stmt.name] = stmt
@@ -2892,6 +3103,7 @@ def _reachable_local_stmts_and_fixtures(
     cls_non_methods = []
     cls_methods = {}
     cls_autouse = set()
+    cls_usefixtures = set()
     if cls_name:
         cls_node = classes.get(cls_name)
         if cls_node is None:
@@ -2904,6 +3116,8 @@ def _reachable_local_stmts_and_fixtures(
             if c.name in seen_cls:
                 continue
             seen_cls.add(c.name)
+            for dec in c.decorator_list:
+                cls_usefixtures |= _usefixtures_in_expr(dec)
             for b in c.bases:
                 if isinstance(b, ast.Name) and b.id in classes:
                     cls_queue.append(classes[b.id])
@@ -2914,19 +3128,35 @@ def _reachable_local_stmts_and_fixtures(
                         cls_autouse.add(body_stmt.name)
                 else:
                     cls_non_methods.append(body_stmt)
-        target_node = cls_methods.get(func_name)
-    else:
+        cls_usefixtures |= _usefixtures_in_stmts(cls_non_methods)
+        target_node = cls_methods.get(func_name) if func_name is not None else None
+        if func_name is not None and target_node is None:
+            return None, set()
+    elif func_name is not None:
         target_node = top_defs.get(func_name)
-
-    if target_node is None:
-        return None, set()
+        if target_node is None:
+            return None, set()
+    else:
+        target_node = None
 
     requested_fixtures = set(fixture_names)
-    seed_nodes = [target_node]
-    for fname in autouse | (requested_fixtures & set(top_defs)):
+    if is_pytest_target:
+        requested_fixtures |= _usefixtures_in_stmts(top_stmts) | cls_usefixtures
+        if target_node is not None:
+            for dec in target_node.decorator_list:
+                requested_fixtures |= _usefixtures_in_expr(dec)
+
+    seed_nodes = [target_node] if target_node is not None else []
+    for fname in autouse | hooks:
         seed_nodes.append(top_defs[fname])
-    for fname in cls_autouse | (requested_fixtures & set(cls_methods)):
+    for fname in requested_fixtures & set(top_defs):
+        if _is_fixture_def(top_defs[fname]):
+            seed_nodes.append(top_defs[fname])
+    for fname in cls_autouse:
         seed_nodes.append(cls_methods[fname])
+    for fname in requested_fixtures & set(cls_methods):
+        if _is_fixture_def(cls_methods[fname]):
+            seed_nodes.append(cls_methods[fname])
 
     visited_ids = set()
     ordered_defs = []
@@ -2934,18 +3164,23 @@ def _reachable_local_stmts_and_fixtures(
 
     def _enqueue_refs(ast_root):
         if isinstance(ast_root, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
-            _is_fixture_def(ast_root) or (is_pytest_target and ast_root is target_node)
+            _is_fixture_def(ast_root) or (is_pytest_target and target_node is not None and ast_root is target_node)
         ):
-            for a in (*ast_root.args.posonlyargs, *ast_root.args.args, *ast_root.args.kwonlyargs):
-                if a.arg == "self":
-                    continue
-                requested_fixtures.add(a.arg)
-                if a.arg in cls_methods and _is_fixture_def(cls_methods[a.arg]):
-                    m = cls_methods[a.arg]
+            inj_names = {
+                a.arg
+                for a in (*ast_root.args.posonlyargs, *ast_root.args.args, *ast_root.args.kwonlyargs)
+                if a.arg not in {"self", "cls"}
+            }
+            for dec in ast_root.decorator_list:
+                inj_names |= _usefixtures_in_expr(dec)
+            for fx in inj_names:
+                requested_fixtures.add(fx)
+                if fx in cls_methods and _is_fixture_def(cls_methods[fx]):
+                    m = cls_methods[fx]
                     if id(m) not in visited_ids:
                         queue.append(m)
-                if a.arg in top_defs and _is_fixture_def(top_defs[a.arg]):
-                    cand = top_defs[a.arg]
+                if fx in top_defs and _is_fixture_def(top_defs[fx]):
+                    cand = top_defs[fx]
                     if id(cand) not in visited_ids:
                         queue.append(cand)
         for sub in ast.walk(ast_root):
@@ -2995,7 +3230,7 @@ def _scan_symbol_via(
 ):
     resolved, tree = _parsed_module(str(path))
     if tree is None:
-        return set()
+        return {_UNRESOLVED_IMPORT} if _keep_reference(_UNRESOLVED_IMPORT) else set()
     key = (resolved, symbol_name)
     if key in seen:
         return set()
@@ -3017,6 +3252,26 @@ def _scan_symbol_via(
     )
 
 
+def _scan_init_top_via(path, seen):
+    resolved, tree = _parsed_module(str(path))
+    if tree is None:
+        return {_UNRESOLVED_IMPORT} if _keep_reference(_UNRESOLVED_IMPORT) else set()
+    key = (resolved, "<init-top>")
+    if key in seen or resolved in seen:
+        return set()
+    isp = _exported_sp_wrappers(path)
+    idyn = _exported_dyn_imports(path)
+    stmts, _ = _reachable_local_stmts_and_fixtures(tree, None, include_autouse=False)
+    return _scan_stmts_via(
+        stmts if stmts is not None else tree.body,
+        tree,
+        pathlib.Path(path),
+        seen | {key},
+        allow_uncalled_wrappers=isp["uncalled_names"],
+        allow_uncalled_imp=idyn["uncalled_names"],
+    )
+
+
 def _scan_module_via(
     path,
     seen,
@@ -3025,8 +3280,10 @@ def _scan_module_via(
     allow_uncalled_imp=frozenset(),
 ):
     resolved, tree = _parsed_module(str(path))
-    if tree is None or resolved in seen:
+    if resolved in seen:
         return set()
+    if tree is None:
+        return {_UNRESOLVED_IMPORT} if _keep_reference(_UNRESOLVED_IMPORT) else set()
     return _scan_stmts_via(
         tree.body,
         tree,
@@ -3074,13 +3331,14 @@ def _cached_item_via(path, func_name=None, cls_name=None, fixture_names=()):
         return _cached_module_via(path)
     resolved, tree = _parsed_module(str(path))
     if tree is None:
-        return ()
+        return (_UNRESOLVED_IMPORT,) if _keep_reference(_UNRESOLVED_IMPORT) else ()
     stmts, needed_fixtures = _reachable_local_stmts_and_fixtures(
         tree,
         func_name,
         cls_name=cls_name,
         fixture_names=fixture_names,
         include_autouse=True,
+        include_hooks=True,
         is_pytest_target=True,
     )
     if stmts is None:
@@ -3089,29 +3347,67 @@ def _cached_item_via(path, func_name=None, cls_name=None, fixture_names=()):
     else:
         found = set(_scan_stmts_via(stmts, tree, pathlib.Path(path), frozenset({(resolved, cls_name, func_name)})))
 
+    in_file_fixtures = {
+        n.name
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and _is_fixture_def(n)
+    }
+    scanned_test_fixtures = set(needed_fixtures) & in_file_fixtures
+
     conftest_trees = []
+    scanned_cdefs = set()
     for conftest_py in _ancestor_conftest_files(resolved):
         c_res, ctree = _parsed_module(str(conftest_py))
         if ctree is None:
+            if _keep_reference(_UNRESOLVED_IMPORT):
+                found.add(_UNRESOLVED_IMPORT)
             continue
         conftest_trees.append((conftest_py, c_res, ctree))
-        c_top_stmts = [
-            s for s in ctree.body
-            if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        ]
-        found.update(_scan_stmts_via(c_top_stmts, ctree, conftest_py, frozenset({(c_res, "<top>")})))
+        c_init_stmts, c_init_req = _reachable_local_stmts_and_fixtures(
+            ctree,
+            None,
+            include_autouse=True,
+            include_hooks=True,
+            is_pytest_target=True,
+        )
+        needed_fixtures.update(c_init_req)
+        for s in ctree.body:
+            if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)) and (
+                _is_autouse_fixture(s) or s.name.startswith("pytest_")
+            ):
+                scanned_cdefs.add((c_res, s.name))
+        if c_init_stmts is not None:
+            found.update(_scan_stmts_via(c_init_stmts, ctree, conftest_py, frozenset({(c_res, "<top>")})))
 
-    scanned_cdefs = set()
     changed = True
     while changed:
         changed = False
+        if stmts is not None:
+            newly_needed_in_test = (needed_fixtures & in_file_fixtures) - scanned_test_fixtures
+            if newly_needed_in_test:
+                scanned_test_fixtures.update(newly_needed_in_test)
+                changed = True
+                t_stmts, t_req = _reachable_local_stmts_and_fixtures(
+                    tree,
+                    func_name,
+                    cls_name=cls_name,
+                    fixture_names=tuple(sorted(needed_fixtures)),
+                    include_autouse=True,
+                    include_hooks=True,
+                    is_pytest_target=True,
+                )
+                needed_fixtures.update(t_req)
+                if t_stmts is not None:
+                    found.update(
+                        _scan_stmts_via(t_stmts, tree, pathlib.Path(path), frozenset({(resolved, cls_name, func_name)}))
+                    )
         for conftest_py, c_res, ctree in conftest_trees:
             for s in ctree.body:
                 if not isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
                 if (c_res, s.name) in scanned_cdefs:
                     continue
-                if _is_autouse_fixture(s) or (s.name in needed_fixtures and _is_fixture_def(s)):
+                if s.name in needed_fixtures and _is_fixture_def(s):
                     scanned_cdefs.add((c_res, s.name))
                     changed = True
                     c_stmts, c_req = _reachable_local_stmts_and_fixtures(

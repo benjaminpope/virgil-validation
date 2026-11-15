@@ -1838,15 +1838,18 @@ def test_alma_lambda_report_blur_moments_and_gate_checks_match_analytic_beam_and
     kind="reference",
     headline="scene_vis_max_abs_err",
 )
-def test_virgil_bridge_scenes_analytic_visibilities_and_fit_scene_recovery():
+def test_virgil_bridge_scenes_analytic_visibilities_and_fit_scene_recovery(tmp_path):
     """Every ``virgil_bridge`` scene's ``vis(u, v, wavel)`` matches closed-form Bessel / Fourier /
-    Kipping-Hankel integrals computed directly from SciPy without ``crosscheck``, and ``fit_scene``
-    recovers ``flat_truth`` with positive-definite Laplace covariance on noiseless VLTI data."""
+    Kipping-Hankel integrals computed directly from SciPy, ``data.model(sc.template)`` agrees with
+    OIFITS ``V^2`` and closure phases synthesized from ``sc.vis`` across all five scenes, and
+    ``fit_scene`` recovers ``flat_truth`` with Laplace covariance matching the central-difference
+    Gauss-Newton inverse Fisher matrix ``(J_FD^T W J_FD)^-1`` on a 3-station binary dataset."""
     from scipy.integrate import quad
     from scipy.special import j0, j1
 
+    from crosscheck import array, simulate
+
     vb = pytest.importorskip("virgil_bridge")
-    from virgil.coverage import vlti_oidata
 
     mas_rad = np.pi / (180.0 * 3600.0 * 1000.0)
     u = np.array([28.0, -64.0, 95.0, -112.0, 41.0])
@@ -1922,22 +1925,94 @@ def test_virgil_bridge_scenes_analytic_visibilities_and_fit_scene_recovery():
 
     max_vis_err = max(err_bin, err_ud, err_env, err_rim, err_ld)
 
-    # 6. fit_scene, flat_truth, and flat_values on noiseless VLTI UT data
+    # 6. Across all five scenes, OIFITS V^2 and closure phases synthesized from sc.vis match data.model(sc.template)
     uts = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
-    oidata = vlti_oidata(
-        stations=uts,
-        declination_deg=-50.0,
-        hour_angles_h=[-2.0, 0.0, 2.0],
-        wavelengths_m=np.array([1.6e-6, 2.2e-6]),
-    ).with_model(sc_bin.template)
-    fit_res, cov = vb.fit_scene(sc_bin, oidata)
+    ha3 = [-2.0, 0.0, 2.0]
+    wl3 = np.array([1.6e-6, 2.2e-6], dtype=np.float32).astype(float)
+    sigma_v2 = 0.01
+    sigma_cp_deg = 0.5
+    tpl_errs = []
+    for idx, sc in enumerate((sc_bin, sc_ud, sc_env, sc_rim, sc_ld)):
+        sc_path = tmp_path / f"scene_{idx}.fits"
+        simulate.observe(
+            sc_path,
+            sc.vis,
+            uts,
+            hour_angles_h=ha3,
+            wavelengths=wl3,
+            dec_deg=-50.0,
+            sigma_v2=sigma_v2,
+            sigma_cp_deg=sigma_cp_deg,
+        )
+        sc_data = vb.load(sc_path)
+        obs_vec, _ = sc_data.flatten_data()
+        mod_vec = sc_data.model(sc.template)
+        tpl_errs.append(float(np.max(np.abs(np.asarray(obs_vec) - np.asarray(mod_vec)))))
+    max_tpl_err = max(tpl_errs)
+
+    # 7. On a 3-station (single independent closure triangle per snapshot) noiseless binary OIFITS file
+    #    synthesized from sc_bin.vis, fit_scene recovers flat_truth and cov matches (J_FD^T W J_FD)^-1
+    uts3 = uts[:3]
+    bin3_path = tmp_path / "bin3.fits"
+    v2_clean, cp_deg_clean = simulate.observe(
+        bin3_path,
+        sc_bin.vis,
+        uts3,
+        hour_angles_h=ha3,
+        wavelengths=wl3,
+        dec_deg=-50.0,
+        sigma_v2=sigma_v2,
+        sigma_cp_deg=sigma_cp_deg,
+    )
+    oidata3 = vb.load(bin3_path)
+    fit_res, cov = vb.fit_scene(sc_bin, oidata3)
     truth_vec = vb.flat_truth(sc_bin)
     got_vec = vb.flat_values(sc_bin, fit_res.values)
     fit_err = float(np.max(np.abs(got_vec - truth_vec)))
-    eigvals = np.linalg.eigvalsh(cov)
-    assert cov.shape == (3, 3) and np.allclose(cov, cov.T, atol=1e-14) and float(eigvals.min()) > 0.0
+
+    uv_snaps = [array.snapshot_uv(uts3, h, -50.0, -24.6276) for h in ha3]
+
+    def _binary_obs_vec(theta):
+        dra_m, ddec_m, flx = float(theta[0]), float(theta[1]), float(theta[2])
+        v2_parts = []
+        cp_parts = []
+        for u_s, v_s in uv_snaps:
+            def _vfn(uu, vv, _dra=dra_m, _ddec=ddec_m, _flx=flx):
+                qu_s = uu[:, None] / wl3[None, :]
+                qv_s = vv[:, None] / wl3[None, :]
+                phase = -2.0 * np.pi * (qu_s * (_dra * mas_rad) + qv_s * (_ddec * mas_rad))
+                return (1.0 + _flx * np.exp(1j * phase)) / (1.0 + _flx)
+
+            v2_parts.append((np.abs(_vfn(u_s, v_s)) ** 2).ravel())
+            cp_rad, *_ = array.closure_phase(_vfn, u_s, v_s, len(uts3))
+            cp_parts.append(cp_rad.ravel())
+        return np.concatenate([*v2_parts, *cp_parts])
+
+    want_obs = np.concatenate([v2_clean.ravel(), np.deg2rad(cp_deg_clean).ravel()])
+    np.testing.assert_allclose(_binary_obs_vec(truth_vec), want_obs, atol=1e-13)
+
+    eps_fd = 1e-6
+    jac = np.empty((want_obs.size, truth_vec.size), dtype=float)
+    for j in range(truth_vec.size):
+        step = np.zeros_like(truth_vec)
+        step[j] = eps_fd
+        jac[:, j] = (_binary_obs_vec(truth_vec + step) - _binary_obs_vec(truth_vec - step)) / (2.0 * eps_fd)
+    n_v2 = v2_clean.size
+    n_cp = cp_deg_clean.size
+    weights = np.concatenate([
+        np.full(n_v2, 1.0 / sigma_v2**2),
+        np.full(n_cp, 1.0 / np.deg2rad(sigma_cp_deg) ** 2),
+    ])
+    cov_gn = np.linalg.inv(jac.T @ (weights[:, None] * jac))
+    cov_rel_err = float(np.max(np.abs(cov - cov_gn)) / np.max(np.abs(cov_gn)))
+    assert np.allclose(cov, cov_gn, rtol=1e-4)
+    assert not np.allclose(cov, cov_gn[np.ix_([1, 0, 2], [1, 0, 2])], rtol=1e-2)
 
     record("scene_vis_max_abs_err", max_vis_err)
+    record("scene_template_max_abs_err", max_tpl_err)
     record("fit_scene_max_param_err", fit_err)
+    record("fit_scene_cov_rel_err", cov_rel_err)
     assert max_vis_err < 1e-12
+    assert max_tpl_err < 1e-12
     assert fit_err < 1e-5
+    assert cov_rel_err < 1e-4
