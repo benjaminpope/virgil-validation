@@ -21,7 +21,15 @@ import pytest
 from astropy.io import fits
 from scipy import special
 
-from crosscheck import array as carray, oifits_writer, orbit_cells_ref as ref, simulate, sky
+from crosscheck import (
+    array as carray,
+    chi2 as ours_chi2,
+    oifits_writer,
+    orbit_cells_ref as ref,
+    orbits as co,
+    simulate,
+    sky,
+)
 from evidence.plugin import record
 
 pytest.importorskip("jaxoplanet")
@@ -30,7 +38,7 @@ pytest.importorskip("nbformat")
 vp = pytest.importorskip("virgil.pipeline")
 
 from virgil.aliases import AliasResult  # noqa: E402
-from virgil.models import BinaryModelAngular, System  # noqa: E402
+from virgil.models import BinaryModelAngular, QuadraticLimbDarkenedDisk, System, UniformDisk  # noqa: E402
 from virgil.oidata import OIData  # noqa: E402
 
 pytestmark = pytest.mark.x64
@@ -84,6 +92,7 @@ def _write_moving_binary_night(path, mjd_center: float, orbit_tuple, flux: float
     wl = np.atleast_1d(np.asarray(WAVELENGTHS, np.float32)).astype(float)
     pairs = np.array(carray.baselines(4))
     tris = np.array(carray.triangles(4))
+    tmat = ours_chi2.triangle_matrix(tris)
     rng = np.random.default_rng(seed)
 
     v2_rec = {k: [] for k in ("vis2", "u", "v", "sta", "mjd")}
@@ -98,14 +107,16 @@ def _write_moving_binary_night(path, mjd_center: float, orbit_tuple, flux: float
             uu2, vv2, ww2 = uu[:, None], vv[:, None], wl[None, :]
             return (sky.vis_point(uu2, vv2, ww2) + flux * sky.vis_point(uu2, vv2, ww2, x, y)) / (1.0 + flux)
 
-        v2_rec["vis2"].append(np.abs(vis_at(u, v)) ** 2)
+        v2_clean = np.abs(vis_at(u, v)) ** 2
+        v2_rec["vis2"].append(v2_clean + 0.008 * rng.standard_normal(v2_clean.shape))
         v2_rec["u"].append(u)
         v2_rec["v"].append(v)
         v2_rec["sta"].append(pairs)
         v2_rec["mjd"].append(np.full(len(u), mjd))
 
         cp, u1, v1, u2, v2_t3 = carray.closure_phase(vis_at, u, v, 4)
-        t3_rec["phi"].append(np.rad2deg(cp))
+        bl_noise = (0.5 / math.sqrt(3.0)) * rng.standard_normal((len(u), len(wl)))
+        t3_rec["phi"].append(np.rad2deg(cp) + (tmat @ bl_noise))
         t3_rec["u1"].append(u1)
         t3_rec["v1"].append(v1)
         t3_rec["u2"].append(u2)
@@ -115,8 +126,6 @@ def _write_moving_binary_night(path, mjd_center: float, orbit_tuple, flux: float
 
     v2 = {k: np.concatenate(val) for k, val in v2_rec.items()}
     t3 = {k: np.concatenate(val) for k, val in t3_rec.items()}
-    v2["vis2"] += 0.008 * rng.standard_normal(v2["vis2"].shape)
-    t3["phi"] += 0.5 * rng.standard_normal(t3["phi"].shape)
     v2["err"] = np.full(v2["vis2"].shape, 0.008)
     t3["err"] = np.full(t3["phi"].shape, 0.5)
     oifits_writer.write(path, wavelengths=wl, stations_xyz=stations, vis2=v2, t3=t3)
@@ -189,13 +198,13 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
         oifits_path,
         lambda u, v, w: (sky.vis_point(u, v, w) + true_flux * sky.vis_point(u, v, w, dra_true, ddec_true))
         / (1.0 + true_flux),
-        UTS3,
+        UTS4,
         hour_angles_h=np.linspace(-2.5, 2.5, 5),
         wavelengths=WAVELENGTHS,
         sigma_v2=0.008,
         sigma_cp_deg=0.5,
         rng=np.random.default_rng(701),
-        phase_noise="triangle",
+        phase_noise="baseline",
     )
 
     run_dir = tmp_path / "run_binary"
@@ -246,11 +255,27 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     comp = loaded.summary["companion"]
     sep_err_mas = abs(float(comp["sep_mas"]) - true_sep)
     pa_diff = abs(((float(comp["pa_deg"]) - true_pa + 180.0) % 360.0) - 180.0)
+    dra_err = abs(float(comp["dra_mas"]) - dra_true)
+    ddec_err = abs(float(comp["ddec_mas"]) - ddec_true)
+    flux_rel_err = abs(float(comp["flux"]) - true_flux) / true_flux
+    contrast_rel_err = abs(float(comp["contrast"]) - (1.0 / true_flux)) / (1.0 / true_flux)
+    dmag_err = abs(float(comp["delta_mag"]) - (-2.5 * math.log10(true_flux)))
+    by_name = {c.name: c.status for c in loaded.checks}
 
     record("sep_err_mas", sep_err_mas)
     record("pa_err_deg", pa_diff)
+    record("flux_rel_err", flux_rel_err)
+    record("contrast_rel_err", contrast_rel_err)
+    record("dmag_err", dmag_err)
     assert sep_err_mas < 0.15
     assert pa_diff < 2.0
+    assert dra_err < 0.15
+    assert ddec_err < 0.15
+    assert flux_rel_err < 0.05
+    assert contrast_rel_err < 0.05
+    assert dmag_err < 0.06
+    assert by_name["detection"] == "pass"
+    assert by_name["chi2"] == "pass"
 
 
 @pytest.mark.validates("virgil.pipeline.BinaryPipeline", roots=["mathematics"], kind="control")
@@ -305,7 +330,7 @@ def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
     headline="diam_err_mas",
 )
 def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
-    """StarPipeline recovers the angular diameter of a resolved uniform-disk star."""
+    """StarPipeline fits both uniform and limb-darkened stellar models and passes chi2 checks."""
     true_diam = 3.4
     star_path = tmp_path / "ud_star.fits"
     simulate.observe(
@@ -317,12 +342,12 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
         sigma_v2=0.006,
         sigma_cp_deg=0.4,
         rng=np.random.default_rng(710),
-        phase_noise="triangle",
+        phase_noise="baseline",
     )
     run_dir = tmp_path / "run_star"
     vp.StarPipeline.from_oifits(
         star_path,
-        model="uniform",
+        model=None,
         output=run_dir,
         n_scan=250,
         max_lobes=3,
@@ -334,13 +359,18 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
     loaded = vp.load(run_dir)
     diam_fit = float(loaded.summary["star"]["diam_mas"])
     diam_err_mas = abs(diam_fit - true_diam)
+    by_name = {c.name: c.status for c in loaded.checks}
 
     record("diam_err_mas", diam_err_mas)
     assert diam_err_mas < 0.12
-    assert loaded.model("uniform") is not None
+    assert isinstance(loaded.model("uniform"), UniformDisk)
+    assert isinstance(loaded.model("limb_darkened"), QuadraticLimbDarkenedDisk)
     vals_ud = loaded.model_values("uniform")
-    assert "diam" in vals_ud
+    vals_ld = loaded.model_values("limb_darkened")
     assert abs(float(vals_ud["diam"]) - true_diam) < 0.12
+    assert "diam" in vals_ld
+    assert by_name["chi2_uniform"] == "pass"
+    assert by_name["chi2_limb_darkened"] == "pass"
 
 
 @pytest.mark.validates("virgil.pipeline.StarPipeline", roots=["mathematics"], kind="control")
@@ -386,21 +416,23 @@ def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
     headline="ring_radius_rel_err",
 )
 def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
-    """DiskPipeline('rings') recovers radius, inclination, and axial position angle of an inclined ring."""
+    """DiskPipeline recovers ring geometry/flux/width ('rings') and RadialGP orientation/flux ('gp')."""
     true_r = 5.5
+    true_sigma = 0.7
+    true_flux = 0.8
     true_inc = 42.0
     true_pa = 68.0
     disk_path = tmp_path / "ring_disk.fits"
     simulate.observe(
         disk_path,
-        _inclined_gaussian_ring_vis(true_r, sigma_mas=0.7, inc_deg=true_inc, pa_deg=true_pa, disk_flux=0.8),
+        _inclined_gaussian_ring_vis(true_r, sigma_mas=true_sigma, inc_deg=true_inc, pa_deg=true_pa, disk_flux=true_flux),
         UTS4,
         hour_angles_h=np.linspace(-3.0, 3.0, 6),
         wavelengths=WAVELENGTHS,
         sigma_v2=0.008,
         sigma_cp_deg=0.5,
         rng=np.random.default_rng(720),
-        phase_noise="triangle",
+        phase_noise="baseline",
     )
     run_dir = tmp_path / "run_disk"
     vp.DiskPipeline.from_oifits(
@@ -419,20 +451,57 @@ def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
     assert isinstance(loaded.model(), System)
     disk_sum = loaded.summary["disk"]
     assert disk_sum["n_rings"] >= 1
-    r_fit = float(disk_sum["rings"][0]["r_mas"])
+    ring0 = disk_sum["rings"][0]
+    r_fit = float(ring0["r_mas"])
+    sig_fit = float(ring0["sigma_mas"])
+    flux_fit = float(ring0["flux"])
     inc_fit = float(disk_sum["inc_deg"])
     pa_fit = float(disk_sum["pa_deg"])
+    by_name = {c.name: c.status for c in loaded.checks}
 
     ring_radius_rel_err = abs(r_fit - true_r) / true_r
+    ring_flux_rel_err = abs(flux_fit - true_flux) / true_flux
+    ring_sigma_err = abs(sig_fit - true_sigma)
     inc_err_deg = abs(inc_fit - true_inc)
     pa_err_deg = abs(((pa_fit - true_pa + 90.0) % 180.0) - 90.0)
 
+    # Default model="gp" branch: RadialGP + MacKay empirical-Bayes error_scale + laplace_cov
+    run_gp = tmp_path / "run_disk_gp"
+    vp.DiskPipeline.from_oifits(
+        disk_path,
+        model="gp",
+        output=run_gp,
+        r_in_mas=1.5,
+        r_out_mas=10.5,
+        n_inc=6,
+        n_pa=8,
+        posterior=False,
+        quicklook_execute=False,
+    ).run()
+    loaded_gp = vp.load(run_gp)
+    gp_sum = loaded_gp.summary["disk"]
+    by_name_gp = {c.name: c.status for c in loaded_gp.checks}
+    gp_flux_rel_err = abs(float(gp_sum["flux"]) - true_flux) / true_flux
+    gp_inc_err_deg = abs(float(gp_sum["inc_deg"]) - true_inc)
+    gp_pa_err_deg = abs(((float(gp_sum["pa_deg"]) - true_pa + 90.0) % 180.0) - 90.0)
+
     record("ring_radius_rel_err", ring_radius_rel_err)
+    record("ring_flux_rel_err", ring_flux_rel_err)
     record("inc_err_deg", inc_err_deg)
     record("pa_err_deg", pa_err_deg)
+    record("gp_flux_rel_err", gp_flux_rel_err)
     assert ring_radius_rel_err < 0.10
+    assert ring_flux_rel_err < 0.18
+    assert ring_sigma_err < 0.35
     assert inc_err_deg < 5.0
     assert pa_err_deg < 5.0
+    assert by_name["chi2_reduced"] == "pass"
+    assert gp_sum["model"] == "gp"
+    assert gp_flux_rel_err < 0.25
+    assert gp_inc_err_deg < 10.0
+    assert gp_pa_err_deg < 10.0
+    assert by_name_gp["chi2_reduced"] == "pass"
+    assert by_name_gp["error_scale"] == "pass"
 
 
 @pytest.mark.validates("virgil.pipeline.DiskPipeline", roots=["mathematics"], kind="control")
@@ -477,16 +546,16 @@ def test_disk_pipeline_corrupted_errors_check_control(tmp_path):
 @pytest.mark.validates(
     "virgil.pipeline.ImagingPipeline",
     roots=["mathematics"],
-    headline="quadrant_flux_excess",
+    headline="centroid_err_mas",
 )
 def test_imaging_pipeline_staged_members_and_skyimage_recovery(tmp_path):
-    """ImagingPipeline reconstructs off-axis companion emission into the NE sky quadrant and writes FITS maps."""
-    dra_comp, ddec_comp = 3.2, 2.6
+    """ImagingPipeline reconstructs a non-diagonal off-axis source at its true world-coordinate centroid."""
+    dra_comp, ddec_comp = 4.2, 1.5
     img_oifits = tmp_path / "img_scene.fits"
     simulate.observe(
         img_oifits,
         lambda u, v, w: (
-            sky.vis_point(u, v, w) + 0.35 * sky.vis_gaussian(u, v, w, 1.2, dra_comp, ddec_comp)
+            sky.vis_point(u, v, w) + 0.35 * sky.vis_gaussian(u, v, w, 1.1, dra_comp, ddec_comp)
         )
         / 1.35,
         UTS4,
@@ -495,7 +564,7 @@ def test_imaging_pipeline_staged_members_and_skyimage_recovery(tmp_path):
         sigma_v2=0.008,
         sigma_cp_deg=0.5,
         rng=np.random.default_rng(730),
-        phase_noise="triangle",
+        phase_noise="baseline",
     )
     run_dir = tmp_path / "run_img"
     img_kwargs = dict(
@@ -519,22 +588,34 @@ def test_imaging_pipeline_staged_members_and_skyimage_recovery(tmp_path):
     assert (run_dir / "images" / "mean.fits").exists()
     assert (run_dir / "images" / "sigma.fits").exists()
 
-    mean_img = vp.load(run_dir).image("mean")
-    sig_img = vp.load(run_dir).image("sigma")
+    loaded = vp.load(run_dir)
+    mean_img = loaded.image("mean")
+    sig_img = loaded.image("sigma")
     assert isinstance(mean_img, vp.SkyImage)
     assert isinstance(sig_img, vp.SkyImage)
     assert np.all(np.isfinite(mean_img.pixels)) and np.all(mean_img.pixels >= -1e-12)
 
-    # SkyImage convention: row 0 is North (+dDec), col 0 is East (+dRA) -> NE quadrant is top-left [0:n//2, 0:n//2]
-    n = mean_img.pixels.shape[0]
-    ne_flux = float(np.sum(mean_img.pixels[: n // 2, : n // 2]))
-    sw_flux = float(np.sum(mean_img.pixels[n // 2 :, n // 2 :]))
-    total = max(float(np.sum(mean_img.pixels)), 1e-12)
-    quadrant_flux_excess = (ne_flux - sw_flux) / total
+    # SkyImage world coordinates: row 0 is North (+dDec), col 0 is East (+dRA)
+    n_row, n_col = mean_img.pixels.shape
+    dra_cols = mean_img.dra + (0.5 * (n_col - 1) - np.arange(n_col)) * mean_img.pixel_scale_mas
+    ddec_rows = mean_img.ddec + (0.5 * (n_row - 1) - np.arange(n_row)) * mean_img.pixel_scale_mas
+    w_pix = np.maximum(mean_img.pixels, 0.0)
+    w_tot = float(np.sum(w_pix))
+    assert w_tot > 0.0
+    dra_cent = float(np.sum(w_pix * dra_cols[None, :]) / w_tot)
+    ddec_cent = float(np.sum(w_pix * ddec_rows[:, None]) / w_tot)
+    centroid_err_mas = math.hypot(dra_cent - dra_comp, ddec_cent - ddec_comp)
+    transposed_err_mas = math.hypot(dra_cent - ddec_comp, ddec_cent - dra_comp)
+    by_name = {c.name: c.status for c in loaded.checks}
 
-    record("quadrant_flux_excess", quadrant_flux_excess)
-    assert quadrant_flux_excess > 0.02
-    assert ne_flux > sw_flux
+    record("centroid_err_mas", centroid_err_mas)
+    record("transposed_err_mas", transposed_err_mas)
+    assert centroid_err_mas < 0.9
+    assert transposed_err_mas > 2.5
+    assert by_name["chi2_reduced"] == "pass"
+    assert by_name["error_scale"] == "pass"
+    assert by_name["star"] == "pass"
+    assert by_name["orientation"] == "pass"
 
 
 @pytest.mark.validates("virgil.pipeline.ImagingPipeline", roots=["mathematics"], kind="control")
@@ -620,10 +701,57 @@ def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
     aliases = loaded.aliases()
     assert isinstance(aliases, AliasResult)
 
-    p_win = float(loaded.summary["modes"]["winner"]["elements"]["period"])
-    rel_period_err = abs(p_win - orbit[0]) / orbit[0]
+    # Posterior summary, MCMC samples, mirror-invariant Thiele-Innes sky positions, and quality checks
+    orb_sum = loaded.summary["orbit"]
+    assert orb_sum["verdict"] == "orbit"
+    assert orb_sum["source"] == "posterior"
+    assert orb_sum["n"] == 2
+    orb_el = orb_sum["elements"]
+
+    samples = loaded.samples()
+    assert set(samples) >= {"period", "dt_peri", "ecc", "inc", "omega", "Omega", "a_mas", "flux"}
+    assert np.asarray(samples["period"]).size == 80
+
+    p_med = float(orb_el["period"]["median"])
+    dtp_med = float(orb_el["dt_peri"]["median"])
+    ecc_med = float(orb_el["ecc"]["median"])
+    inc_med = float(orb_el["inc"]["median"])
+    om_med = float(orb_el["omega"]["median"])
+    Om_med = float(orb_el["Omega"]["median"])
+    a_med = float(orb_el["a_mas"]["median"])
+    flux_med = float(orb_el["flux"]["median"])
+
+    rel_period_err = abs(p_med - orbit[0]) / orbit[0]
+    rel_a_err = abs(a_med - orbit[6]) / orbit[6]
+    ecc_err = abs(ecc_med - orbit[2])
+    rel_flux_err = abs(flux_med - flux) / flux
+
+    # Mirror-invariant Thiele-Innes constants (A, B, F, G) and epoch sky positions
+    ti_fit = np.array(co.thiele_innes(a_med, inc_med, om_med, Om_med), dtype=float)
+    ti_true = np.array(co.thiele_innes(orbit[6], orbit[3], orbit[4], orbit[5]), dtype=float)
+    max_ti_err_mas = float(np.max(np.abs(ti_fit - ti_true)))
+
+    dra_fit, ddec_fit = co.position(
+        np.asarray(mjds) - float(aliases.t_ref), p_med, dtp_med, ecc_med, inc_med, om_med, Om_med, a_med
+    )
+    dra_true, ddec_true = co.position(np.asarray(mjds) - T0, *orbit)
+    max_sky_pos_err_mas = float(np.max(np.hypot(dra_fit - dra_true, ddec_fit - ddec_true)))
+    by_name = {c.name: c.status for c in loaded.checks}
+
     record("rel_period_err", rel_period_err)
-    assert rel_period_err < 0.03
+    record("rel_a_err", rel_a_err)
+    record("ecc_err", ecc_err)
+    record("rel_flux_err", rel_flux_err)
+    record("max_ti_err_mas", max_ti_err_mas)
+    record("max_sky_pos_err_mas", max_sky_pos_err_mas)
+    assert rel_period_err < 0.02
+    assert rel_a_err < 0.04
+    assert ecc_err < 0.04
+    assert rel_flux_err < 0.05
+    assert max_ti_err_mas < 0.20
+    assert max_sky_pos_err_mas < 0.15
+    assert by_name["no_orbit"] == "pass"
+    assert by_name["chi2"] == "pass"
 
 
 @pytest.mark.validates("virgil.pipeline.OrbitPipeline", roots=["mathematics"], kind="control")

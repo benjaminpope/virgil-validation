@@ -388,6 +388,132 @@ def quantum_rank_scores(scores, quantum=1e-3):
     return np.array([k[2] for k in keys], dtype=int)
 
 
+def _airy_uniform_disk(fu, fv, diam_mas: float):
+    """Complex visibility ``2 J_1(pi theta q) / (pi theta q)`` of a uniform circular disk (Born & Wolf 1999, sec. 8.5.2)."""
+    if float(diam_mas) <= 0.0:
+        return np.ones_like(fu, dtype=float)
+    x = np.pi * float(diam_mas) * np.hypot(fu, fv)
+    return np.where(x > 1e-12, 2.0 * special.j1(x) / np.where(x > 1e-12, x, 1.0), 1.0 - 0.125 * x * x)
+
+
+def _textbook_block_marginal(
+    chi2_v2,
+    dv2,
+    has_cp: bool,
+    chi2_cp,
+    dcp,
+    *,
+    dof_v2: float,
+    dof_cp: float,
+    s_max,
+    n_s: int,
+):
+    """Normalized textbook Gaussian V^2 + circular von Mises T3 scale marginal over ``u = ln s``.
+
+    * Squared visibilities use normalized Gaussian densities ``N(|V|^2, (s sigma_v2)^2)``:
+      ``-0.5 ln(2 pi) - ln(s sigma_v2) - 0.5 r^2 / s^2``.
+    * Closure phases on ``[0, 2 pi)`` use the normalized circular von Mises density
+      ``exp(kappa cos Delta) / (2 pi I_0(kappa))`` with ``kappa = 1 / (s sigma_cp)^2``
+      (Mardia & Jupp 2000, *Directional Statistics*, sec. 3.5.4):
+      ``-ln(2 pi) - 2 sin^2(Delta / 2) / (s sigma_cp)^2 - ln I_{0e}(kappa)``.
+    * Bounded ``s_max`` integrates against the normalized uniform prior ``du / (2 ln s_max)``
+      on ``[-ln s_max, +ln s_max]``; ``s_max=None`` uses the exact Jeffreys inverse-Gamma
+      integral ``0.5 Gamma(alpha nu / 2) (alpha chi^2 / 2)^(-alpha nu / 2)`` (Jeffreys 1946;
+      MacKay 1992, *Neural Comput.* 4, 415).
+    """
+    n_v2 = int(dv2.size)
+    norm_v2_fixed = -0.5 * n_v2 * math.log(2.0 * math.pi) - float(np.sum(np.log(dv2)))
+    if s_max is not None:
+        xs, ws_leg = special.roots_legendre(int(n_s))
+        half_u = math.log(float(s_max))
+        u_s = half_u * xs
+        s_s = np.exp(u_s)
+        # Normalized uniform prior on [-half_u, +half_u]: du / (2 * half_u) = 0.5 * dx
+        log_w_s = np.log(0.5 * ws_leg)
+        const_v2_s = norm_v2_fixed - n_v2 * u_s
+        lv = dof_v2 * (-0.5 * chi2_v2[:, None] / (s_s[None, :] ** 2) + const_v2_s[None, :]) + log_w_s[None, :]
+        mv = np.max(lv, axis=1, keepdims=True)
+        ll_pf = np.squeeze(mv, axis=1) + np.log(np.sum(np.exp(lv - mv), axis=1))
+        if has_cp:
+            const_cp_s = np.sum(
+                -math.log(2.0 * math.pi) - np.log(special.i0e(1.0 / (s_s[:, None] * dcp[None, :]) ** 2)),
+                axis=1,
+            )
+            lc = dof_cp * (-0.5 * chi2_cp[:, None] / (s_s[None, :] ** 2) + const_cp_s[None, :]) + log_w_s[None, :]
+            mc = np.max(lc, axis=1, keepdims=True)
+            ll_pf = ll_pf + np.squeeze(mc, axis=1) + np.log(np.sum(np.exp(lc - mc), axis=1))
+        return ll_pf
+
+    alpha_v2 = 0.5 * dof_v2 * n_v2
+    ll_pf = (
+        dof_v2 * norm_v2_fixed
+        - math.log(2.0)
+        + float(special.gammaln(alpha_v2))
+        - alpha_v2 * np.log(0.5 * dof_v2 * chi2_v2)
+    )
+    if has_cp:
+        n_cp = int(dcp.size)
+        norm_cp_fixed = -0.5 * n_cp * math.log(2.0 * math.pi) - float(np.sum(np.log(dcp)))
+        alpha_cp = 0.5 * dof_cp * n_cp
+        ll_pf = (
+            ll_pf
+            + dof_cp * norm_cp_fixed
+            - math.log(2.0)
+            + float(special.gammaln(alpha_cp))
+            - alpha_cp * np.log(0.5 * dof_cp * chi2_cp)
+        )
+    return ll_pf
+
+
+def point_source_marginal_loglike(
+    d_raw,
+    *,
+    dof=(1.0, 1.0),
+    s_max=10.0,
+    primary_diam_mas: float = 0.0,
+    n_s: int = 96,
+):
+    """Normalized textbook scale-marginalized log-likelihood of a single star (`f = 0`).
+
+    When ``primary_diam_mas == 0``, ``|V|^2 = 1`` and all closure phases vanish; when
+    ``primary_diam_mas > 0``, the star is a uniform circular Airy disk ``2 J_1(x) / x``
+    (Born & Wolf 1999, sec. 8.5.2). Subtracting ``point_source_marginal_loglike`` from
+    :func:`broad_disc_marginal_loglike` yields the normalization-invariant log Bayes factor
+    between the broad companion-disc hypothesis and the single-star null hypothesis.
+    """
+    fu_v2 = (np.asarray(d_raw["u"], dtype=float) / np.asarray(d_raw["wl"], dtype=float) * _MAS2RAD).ravel()
+    fv_v2 = (np.asarray(d_raw["v"], dtype=float) / np.asarray(d_raw["wl"], dtype=float) * _MAS2RAD).ravel()
+    v_pri_v2 = _airy_uniform_disk(fu_v2, fv_v2, primary_diam_mas)
+    v2_obs = np.asarray(d_raw["v2"], dtype=float).ravel()
+    dv2 = np.asarray(d_raw["dv2"], dtype=float).ravel()
+    chi2_v2 = np.array([np.sum(((np.abs(v_pri_v2) ** 2 - v2_obs) / dv2) ** 2)], dtype=float)
+
+    has_cp = "cp" in d_raw and np.asarray(d_raw["cp"]).size > 0
+    chi2_cp = None
+    dcp = None
+    if has_cp:
+        wl3 = np.asarray(d_raw["wl3"], dtype=float)
+        fu1 = (np.asarray(d_raw["u1"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        fv1 = (np.asarray(d_raw["v1"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        fu2 = (np.asarray(d_raw["u2"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        fv2 = (np.asarray(d_raw["v2_"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        vp1 = _airy_uniform_disk(fu1, fv1, primary_diam_mas)
+        vp2 = _airy_uniform_disk(fu2, fv2, primary_diam_mas)
+        vp3 = _airy_uniform_disk(fu1 + fu2, fv1 + fv2, primary_diam_mas)
+        cp_obs = np.asarray(d_raw["cp"], dtype=float).ravel()
+        dcp = np.asarray(d_raw["dcp"], dtype=float).ravel()
+        delta = (np.angle(vp1) + np.angle(vp2) - np.angle(vp3)) - cp_obs
+        chi2_cp = np.array([np.sum((2.0 * np.sin(0.5 * delta) / dcp) ** 2)], dtype=float)
+
+    dof_v2 = float(dof[0])
+    dof_cp = float(dof[1]) if len(dof) > 1 else dof_v2
+    return float(
+        _textbook_block_marginal(
+            chi2_v2, dv2, has_cp, chi2_cp, dcp, dof_v2=dof_v2, dof_cp=dof_cp, s_max=s_max, n_s=n_s
+        )[0]
+    )
+
+
 def broad_disc_marginal_loglike(
     d_raw,
     a_max,
@@ -395,21 +521,20 @@ def broad_disc_marginal_loglike(
     *,
     dof=(1.0, 1.0),
     s_max=10.0,
+    primary_diam_mas: float = 0.0,
     n_r=30,
     n_theta=60,
     n_flux=36,
     n_s=96,
 ):
-    """Log mean scale-marginalized likelihood over uniform disc ``|p| <= a_max`` and log-uniform ``flux_range``.
+    """Normalized textbook scale-marginalized log-evidence over disc ``|p| <= a_max`` and log-uniform ``flux_range``.
 
-    Evaluates the OIFITS binary visibility ``(1 + f exp(-2 pi i (u alpha + v delta) / lambda)) / (1 + f)``
-    (Pauls et al. 2005, *PASP* 117, 1255) on an ``n_r``-point Gauss-Legendre radial rule
-    (area weight ``2 r dr / a_max^2``), an ``n_theta``-point uniform azimuthal trapezoid rule,
-    and an ``n_flux``-point midpoint rule in ``ln f``. When ``s_max`` is given, each block's
-    error scale ``u = ln s`` is integrated over ``[-ln s_max, +ln s_max]`` by ``n_s``-point
-    Gauss-Legendre quadrature using Gaussian ``V^2`` and exact von Mises ``T3`` densities;
-    when ``s_max`` is ``None``, the Jeffreys closed form ``-0.5 * dof_b * nu_b * ln(chi2_b)``
-    (Jeffreys 1946; MacKay 1992) is integrated.
+    Evaluates the OIFITS binary visibility ``(V_pri + f exp(-2 pi i (u alpha + v delta) / lambda)) / (1 + f)``
+    (Pauls et al. 2005, *PASP* 117, 1255; Born & Wolf 1999, sec. 8.5.2 when ``primary_diam_mas > 0``)
+    on an ``n_r``-point Gauss-Legendre radial rule (area weight ``2 r dr / a_max^2``),
+    an ``n_theta``-point uniform azimuthal trapezoid rule, and an ``n_flux``-point midpoint
+    rule in ``ln f``, integrating normalized Gaussian ``V^2`` and circular von Mises ``T3``
+    block likelihoods (Mardia & Jupp 2000, sec. 3.5.4) via :func:`_textbook_block_marginal`.
     """
     radius = float(a_max)
     xr, wr_leg = special.roots_legendre(int(n_r))
@@ -429,17 +554,22 @@ def broad_disc_marginal_loglike(
 
     fu_v2 = (np.asarray(d_raw["u"], dtype=float) / np.asarray(d_raw["wl"], dtype=float) * _MAS2RAD).ravel()
     fv_v2 = (np.asarray(d_raw["v"], dtype=float) / np.asarray(d_raw["wl"], dtype=float) * _MAS2RAD).ravel()
+    v_pri_v2 = _airy_uniform_disk(fu_v2, fv_v2, primary_diam_mas)
     ph_v2 = np.exp(-2j * np.pi * (dra_g[:, None] * fu_v2[None, :] + ddec_g[:, None] * fv_v2[None, :]))
 
     v2_obs = np.asarray(d_raw["v2"], dtype=float).ravel()
     dv2 = np.asarray(d_raw["dv2"], dtype=float).ravel()
     has_cp = "cp" in d_raw and np.asarray(d_raw["cp"]).size > 0
+    dcp = None
     if has_cp:
         wl3 = np.asarray(d_raw["wl3"], dtype=float)
         fu1 = (np.asarray(d_raw["u1"], dtype=float) / wl3 * _MAS2RAD).ravel()
         fv1 = (np.asarray(d_raw["v1"], dtype=float) / wl3 * _MAS2RAD).ravel()
         fu2 = (np.asarray(d_raw["u2"], dtype=float) / wl3 * _MAS2RAD).ravel()
         fv2 = (np.asarray(d_raw["v2_"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        vp1 = _airy_uniform_disk(fu1, fv1, primary_diam_mas)
+        vp2 = _airy_uniform_disk(fu2, fv2, primary_diam_mas)
+        vp3 = _airy_uniform_disk(fu1 + fu2, fv1 + fv2, primary_diam_mas)
         ph1 = np.exp(-2j * np.pi * (dra_g[:, None] * fu1[None, :] + ddec_g[:, None] * fv1[None, :]))
         ph2 = np.exp(-2j * np.pi * (dra_g[:, None] * fu2[None, :] + ddec_g[:, None] * fv2[None, :]))
         ph3 = np.exp(-2j * np.pi * (dra_g[:, None] * (fu1 + fu2)[None, :] + ddec_g[:, None] * (fv1 + fv2)[None, :]))
@@ -449,44 +579,23 @@ def broad_disc_marginal_loglike(
     dof_v2 = float(dof[0])
     dof_cp = float(dof[1]) if len(dof) > 1 else dof_v2
 
-    if s_max is not None:
-        xs, ws_leg = special.roots_legendre(int(n_s))
-        half_u = math.log(float(s_max))
-        u_s = half_u * xs
-        s_s = np.exp(u_s)
-        log_w_s = np.log(half_u * ws_leg)
-        const_v2_s = -v2_obs.size * u_s
-        if has_cp:
-            const_cp_s = np.sum(
-                -0.5 * math.log(2.0 * math.pi)
-                + np.log(dcp[None, :])
-                - np.log(special.i0e(1.0 / (s_s[:, None] * dcp[None, :]) ** 2)),
-                axis=1,
-            )
-
     log_terms = []
     log_weights = []
     log_wpf = np.log(w_pos * w_f)
     for f in f_pts:
-        vis_v2 = (1.0 + f * ph_v2) / (1.0 + f)
+        vis_v2 = (v_pri_v2[None, :] + f * ph_v2) / (1.0 + f)
         chi2_v2 = np.sum(((np.abs(vis_v2) ** 2 - v2_obs[None, :]) / dv2[None, :]) ** 2, axis=1)
-        if s_max is not None:
-            lv = dof_v2 * (-0.5 * chi2_v2[:, None] / (s_s[None, :] ** 2) + const_v2_s[None, :]) + log_w_s[None, :]
-            mv = np.max(lv, axis=1, keepdims=True)
-            ll_pf = np.squeeze(mv, axis=1) + np.log(np.sum(np.exp(lv - mv), axis=1))
-        else:
-            ll_pf = -0.5 * dof_v2 * v2_obs.size * np.log(chi2_v2)
-
+        chi2_cp = None
         if has_cp:
-            delta = (np.angle(1.0 + f * ph1) + np.angle(1.0 + f * ph2) - np.angle(1.0 + f * ph3)) - cp_obs[None, :]
+            delta = (
+                np.angle(vp1[None, :] + f * ph1)
+                + np.angle(vp2[None, :] + f * ph2)
+                - np.angle(vp3[None, :] + f * ph3)
+            ) - cp_obs[None, :]
             chi2_cp = np.sum((2.0 * np.sin(0.5 * delta) / dcp[None, :]) ** 2, axis=1)
-            if s_max is not None:
-                lc = dof_cp * (-0.5 * chi2_cp[:, None] / (s_s[None, :] ** 2) + const_cp_s[None, :]) + log_w_s[None, :]
-                mc = np.max(lc, axis=1, keepdims=True)
-                ll_pf = ll_pf + np.squeeze(mc, axis=1) + np.log(np.sum(np.exp(lc - mc), axis=1))
-            else:
-                ll_pf = ll_pf - 0.5 * dof_cp * cp_obs.size * np.log(chi2_cp)
-
+        ll_pf = _textbook_block_marginal(
+            chi2_v2, dv2, has_cp, chi2_cp, dcp, dof_v2=dof_v2, dof_cp=dof_cp, s_max=s_max, n_s=n_s
+        )
         log_terms.append(ll_pf)
         log_weights.append(log_wpf)
 

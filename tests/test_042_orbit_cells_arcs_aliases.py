@@ -37,6 +37,7 @@ from virgil.spectra import PowerLaw  # noqa: E402
 pytestmark = pytest.mark.x64
 
 UTS3 = np.array([[-9.925, -20.335], [14.887, 30.502], [103.306, 43.999]])
+UTS4 = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
 WAVELENGTHS = np.linspace(2.0e-6, 2.4e-6, 4)
 T0 = 60000.0
 
@@ -48,6 +49,7 @@ def _write_moving_night(
     orbit_tuple,
     flux: float,
     *,
+    stations_enu=None,
     primary_diam_mas: float = 0.0,
     slope: float = 0.0,
     wavel0: float = 2.2e-6,
@@ -56,12 +58,15 @@ def _write_moving_night(
     intra_night_motion: bool = True,
     seed: int | None = None,
 ):
-    """Write a 3-telescope OIFITS night whose companion moves along ``orbit_tuple``."""
+    """Write a multi-telescope OIFITS night whose companion moves along ``orbit_tuple``."""
     period, dt_peri, ecc, inc, omega, Omega, a_mas = orbit_tuple
-    stations = np.column_stack([UTS3, np.zeros(len(UTS3))])
+    enu = UTS3 if stations_enu is None else np.asarray(stations_enu, dtype=float)
+    n_tel = len(enu)
+    stations = np.column_stack([enu, np.zeros(n_tel)])
     wl = np.atleast_1d(np.asarray(WAVELENGTHS, np.float32)).astype(float)
-    pairs = np.array(carray.baselines(3))
-    tris = np.array(carray.triangles(3))
+    pairs = np.array(carray.baselines(n_tel))
+    tris = np.array(carray.triangles(n_tel))
+    tmat = ours_chi2.triangle_matrix(tris)
     rng = np.random.default_rng(seed) if seed is not None else None
 
     v2_rec = {k: [] for k in ("vis2", "u", "v", "sta", "mjd")}
@@ -87,14 +92,21 @@ def _write_moving_night(
             v_sec = sky.vis_point(uu2, vv2, ww2, x, y)
             return (v_pri + f_wl * v_sec) / (1.0 + f_wl)
 
-        v2_rec["vis2"].append(np.abs(vis_at(u, v)) ** 2)
+        v2_snap = np.abs(vis_at(u, v)) ** 2
+        if rng is not None and n_tel >= 4:
+            v2_snap = v2_snap + sigma_v2 * rng.standard_normal(v2_snap.shape)
+        v2_rec["vis2"].append(v2_snap)
         v2_rec["u"].append(u)
         v2_rec["v"].append(v)
         v2_rec["sta"].append(pairs)
         v2_rec["mjd"].append(np.full(len(u), mjd))
 
-        cp, u1, v1, u2, v2_t3 = carray.closure_phase(vis_at, u, v, 3)
-        t3_rec["phi"].append(np.rad2deg(cp))
+        cp, u1, v1, u2, v2_t3 = carray.closure_phase(vis_at, u, v, n_tel)
+        phi_snap = np.rad2deg(cp)
+        if rng is not None and n_tel >= 4:
+            bl_noise = (sigma_cp_deg / math.sqrt(3.0)) * rng.standard_normal((len(u), len(wl)))
+            phi_snap = phi_snap + (tmat @ bl_noise)
+        t3_rec["phi"].append(phi_snap)
         t3_rec["u1"].append(u1)
         t3_rec["v1"].append(v1)
         t3_rec["u2"].append(u2)
@@ -104,7 +116,7 @@ def _write_moving_night(
 
     v2 = {k: np.concatenate(val) for k, val in v2_rec.items()}
     t3 = {k: np.concatenate(val) for k, val in t3_rec.items()}
-    if rng is not None:
+    if rng is not None and n_tel < 4:
         v2["vis2"] = v2["vis2"] + sigma_v2 * rng.standard_normal(v2["vis2"].shape)
         t3["phi"] = t3["phi"] + sigma_cp_deg * rng.standard_normal(t3["phi"].shape)
     v2["err"] = np.full(v2["vis2"].shape, max(sigma_v2, 1e-6))
@@ -332,6 +344,23 @@ def test_orbit_cells_ref_polar_disc_mc_kde_and_rescalable_quad(tmp_path):
     b_fine = ref.broad_disc_marginal_loglike(d_raw, 4.0, (0.05, 0.35), s_max=10.0, n_r=40, n_theta=80, n_flux=192)
     disc_conv_err = abs(b_med - b_fine)
 
+    # Zero-flux / zero-radius limit of broad_disc_marginal_loglike equals point_source_marginal_loglike
+    zero_smax = abs(
+        ref.broad_disc_marginal_loglike(d_raw, 1e-6, (1e-10, 2e-10), s_max=10.0, n_r=6, n_theta=8, n_flux=4)
+        - ref.point_source_marginal_loglike(d_raw, s_max=10.0)
+    )
+    zero_unb = abs(
+        ref.broad_disc_marginal_loglike(d_raw, 1e-6, (1e-10, 2e-10), s_max=None, n_r=6, n_theta=8, n_flux=4)
+        - ref.point_source_marginal_loglike(d_raw, s_max=None)
+    )
+    zero_ud = abs(
+        ref.broad_disc_marginal_loglike(
+            d_raw, 1e-6, (1e-10, 2e-10), s_max=10.0, primary_diam_mas=1.2, n_r=6, n_theta=8, n_flux=4
+        )
+        - ref.point_source_marginal_loglike(d_raw, s_max=10.0, primary_diam_mas=1.2)
+    )
+    assert max(zero_smax, zero_unb, zero_ud) < 1e-8
+
     # Exact Aitken WLS line recovery and ranking / rescaling / period-bound helpers
     dt = np.array([-0.1, 0.0, 0.15])
     proj = ref.wls_line_projection(dt, weights=np.array([1.0, 2.0, 1.5]))
@@ -405,12 +434,12 @@ def test_alias_bands_partition_and_period_window_bounds():
     ref_cut_flr = ref.period_cut_bound(np.array([0.0, 0.05, 10.0]) + T0, 0.02, 0.05, resolution=1.2, p_floor=0.4)
 
     # (d) Narrow-field regime (2*pi*field < motion_fraction*resolution, night_length=0.6 > p_floor=0.2):
-    # virgil's prose docs (orbit_methods.md) clamp at night_length (0.6 d), whereas API docstrings omit night_length (0.31416 d)
-    t_narrow = np.array([0.0, 0.1, 10.0]) + T0
+    # virgil's prose docs (orbit_methods.md) clamp at night_length (0.6 d); F28 tracks the API docstring omission
+    t_narrow = np.array([0.0, 0.05, 10.0]) + T0
     p_win_narrow = va.period_window(t_narrow, field=0.05, night_length=0.6, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
-    ref_win_narrow = ref.period_window_bounds(t_narrow, 0.05, 0.6, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    p_cut_narrow = va.period_cut(t_narrow, field=0.05, night_length=0.6, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
     assert abs(p_win_narrow[0] - 0.6) < 1e-13
-    assert abs(ref_win_narrow[0] - 2.0 * math.pi * 0.05 * 0.6 / 0.6) < 1e-13
+    assert abs(p_cut_narrow - 0.6) < 1e-13
 
     cut_err = max(
         abs(p_cut_a - ref_cut_a),
@@ -424,9 +453,33 @@ def test_alias_bands_partition_and_period_window_bounds():
 
     record("max_edge_err", max(max_edge_err, cut_err))
     record("dt_min_excess_days", float(p_cut_b - p_win_b[0]))
-    record("narrow_field_night_clamp_diff", float(p_win_narrow[0] - ref_win_narrow[0]))
     assert max_edge_err < 1e-13
     assert cut_err < 1e-13
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="F28: period_window and period_cut API docstrings omit the night_length floor in orbit_methods.md",
+)
+@pytest.mark.validates(
+    "virgil.aliases.period_window",
+    "virgil.aliases.period_cut",
+    roots=["mathematics"],
+    kind="finding",
+    headline="narrow_field_docstring_diff_days",
+)
+def test_f28_period_window_and_cut_match_api_docstring_without_night_length_clamp():
+    """F28: API docstrings state max(2*pi*field*night_length / (motion_fraction*resolution), p_floor) without night_length."""
+    t_narrow = np.array([0.0, 0.05, 10.0]) + T0
+    kw = dict(field=0.05, night_length=0.6, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    got_win = va.period_window(t_narrow, **kw)
+    got_cut = va.period_cut(t_narrow, **kw)
+    want_win = ref.period_window_bounds(t_narrow, **kw)
+    want_cut = ref.period_cut_bound(t_narrow, **kw)
+    diff_days = max(abs(float(got_win[0]) - want_win[0]), abs(float(got_cut) - want_cut))
+    record("narrow_field_docstring_diff_days", diff_days)
+    assert diff_days < 1e-6
 
 
 @pytest.mark.validates(
@@ -608,6 +661,186 @@ def test_alias_result_and_band_result_json_roundtrip_and_residuals(tmp_path):
 
     with pytest.raises(ValueError):
         reloaded.residuals(datasets[:-1])
+
+
+@pytest.mark.validates(
+    "virgil.aliases.AliasBandResult",
+    "virgil.aliases.AliasResult",
+    "virgil.arcs.night_motion",
+    "virgil.night_summaries.night_summaries",
+    "virgil.orbit_search.score_orbits",
+    roots=["mathematics"],
+    headline="max_4ut_chi2_diff",
+)
+def test_four_telescope_correlated_closure_phases_across_arcs_summaries_search_and_aliases(tmp_path):
+    """4-UT correlated rank-3 closure phases agree across night_motion, night_summaries, score_orbits, and AliasResult."""
+    # Dyadic MJD offsets and hour angles (multiples of 1/256 d) exact in float32 around MJD 60000
+    times = np.array([0.0, 2.5, 5.5, 9.75, 16.0]) + T0
+    orbit = (12.0, 1.0, 0.22, 42.0, 48.0, 108.0, 7.2)
+    flux = 0.20
+    has_snap = np.array([-12.0, -4.0, 4.0, 12.0]) * (24.0 / 256.0)
+
+    datasets = []
+    ep_dict = {}
+    raw_files = []
+    for k, mjd_k in enumerate(times):
+        p = _write_moving_night(
+            tmp_path / f"ut4_n{k}.fits",
+            float(mjd_k),
+            has_snap,
+            orbit,
+            flux,
+            stations_enu=UTS4 * 0.35,
+            sigma_v2=0.006,
+            sigma_cp_deg=0.4,
+            intra_night_motion=True,
+            seed=140 + k,
+        )
+        raw_files.append(ours_chi2.load(p))
+        d_k = OIData(str(p))
+        # 4 telescopes -> 4 closure triangles per snapshot x 4 snapshots x 4 wavelengths = 64 closure phases
+        assert d_k.phi.size == 4 * len(has_snap) * len(WAVELENGTHS)
+        datasets.append(d_k)
+        ep_dict[f"n{k}"] = d_k
+
+    epochs = ve.Epochs(ep_dict)
+    grid = {
+        "dra": np.linspace(-10.5, 10.5, 43),
+        "ddec": np.linspace(-10.5, 10.5, 43),
+        "flux": np.geomspace(0.08, 0.38, 7),
+    }
+    positions = ve.epoch_positions(epochs, grid, n_peaks=2)
+
+    # 1. night_motion & night_summaries on 4-UT correlated closure phases
+    motion = varcs.night_motion(epochs, positions, jitter=0.02)
+    assert np.all(motion.measured)
+    _, _, vra_true, vdec_true = ref.sky_state(motion.mjd - T0, *orbit)
+    vel_z_4ut = float(
+        max(
+            np.max(np.abs(motion.vel[:, 0] - vra_true) / np.sqrt(motion.cov[:, 0, 0])),
+            np.max(np.abs(motion.vel[:, 1] - vdec_true) / np.sqrt(motion.cov[:, 1, 1])),
+        )
+    )
+    summaries = vns.night_summaries(epochs, positions)
+    pos_errs_4ut = [
+        float(math.hypot(s.peaks[0].mean[0] - ref.sky_state(s.t_ref - T0, *orbit)[0][0],
+                         s.peaks[0].mean[1] - ref.sky_state(s.t_ref - T0, *orbit)[1][0]))
+        for s in summaries
+    ]
+
+    # 2. score_orbits on 4-UT correlated closure phases
+    cand_true = KeplerOrbit(
+        period=orbit[0], dt_peri=orbit[1], ecc=orbit[2], inc=orbit[3],
+        omega=orbit[4], Omega=orbit[5], a_mas=orbit[6], t_ref=T0,
+    )
+    cand_off = KeplerOrbit(
+        period=orbit[0] + 2.2, dt_peri=orbit[1], ecc=orbit[2], inc=orbit[3],
+        omega=orbit[4] + 30.0, Omega=orbit[5], a_mas=orbit[6], t_ref=T0,
+    )
+    scores_4ut = vos.score_orbits(
+        lambda o, f: OrbitalBinary(o, f),
+        epochs,
+        [cand_true, cand_off],
+        shared=vos.SharedFlux(grid=(0.06, 0.45, 15)),
+    )
+    assert int(scores_4ut.order()[0]) == 0
+    flux_err_4ut = abs(float(scores_4ut.flux[0, 0]) - flux) / flux
+
+    # 3. AliasResult.residuals & chi2_per_night on 4-UT nights vs correlated crosscheck.chi2 per snapshot
+    res_4ut = va.fit_orbit_aliases(
+        datasets,
+        p_range=(9.5, 15.0),
+        positions=positions,
+        times=times,
+        t_ref=T0,
+        a_range=(3.5, 12.0),
+        flux_range=(0.06, 0.45),
+        ecc_max=0.5,
+        n_candidates=24,
+        n_refine=2,
+        max_steps=150,
+        n_is=200,
+        n_samples=20,
+        vis_amp=False,
+        primary_diam=None,
+        short_arcs=False,
+        seed=5,
+    )
+    best = res_4ut.best.best
+    vg_resids = res_4ut.residuals(datasets)
+    vg_chi2 = res_4ut.chi2_per_night(datasets)
+
+    corr_diffs = []
+    uncorr_gaps = []
+    for d_raw, r_vg, c_vg in zip(raw_files, vg_resids, vg_chi2):
+        # Whitened 4-UT closure-phase residuals stack 3*4*4 = 48 rank-3 sin(Delta) rows + 4*4*4 = 64 wrap-penalty rows
+        n_proj = 3 * len(has_snap) * len(WAVELENGTHS)
+        n_wrap = 4 * len(has_snap) * len(WAVELENGTHS)
+        assert np.asarray(r_vg["phi"]).size == n_proj + n_wrap
+        f_fit = float(best["flux"])
+        chi2_corr = 0.0
+        chi2_uncorr = 0.0
+        wrap_pen = 0.0
+        for mjd_s in np.unique(d_raw["t3_mjd"]):
+            v2_sel = d_raw["v2_mjd"] == mjd_s
+            t3_sel = d_raw["t3_mjd"] == mjd_s
+            d_snap = {
+                "u": d_raw["u"][v2_sel],
+                "v": d_raw["v"][v2_sel],
+                "wl": d_raw["wl"][v2_sel],
+                "v2": d_raw["v2"][v2_sel],
+                "dv2": d_raw["dv2"][v2_sel],
+                "v2_mjd": d_raw["v2_mjd"][v2_sel],
+                "v2_sta": d_raw["v2_sta"][v2_sel],
+                "u1": d_raw["u1"][t3_sel],
+                "v1": d_raw["v1"][t3_sel],
+                "u2": d_raw["u2"][t3_sel],
+                "v2_": d_raw["v2_"][t3_sel],
+                "wl3": d_raw["wl3"][t3_sel],
+                "cp": d_raw["cp"][t3_sel],
+                "dcp": d_raw["dcp"][t3_sel],
+                "t3_mjd": d_raw["t3_mjd"][t3_sel],
+                "t3_sta": d_raw["t3_sta"][t3_sel],
+            }
+            dt_s = float(mjd_s - res_4ut.t_ref)
+            xr, yr = co.position(
+                dt_s,
+                best["period"],
+                best["dt_peri"],
+                best["ecc"],
+                best["inc"],
+                best["omega"],
+                best["Omega"],
+                best["a_mas"],
+            )
+            x_s, y_s = float(np.squeeze(xr)), float(np.squeeze(yr))
+            vis_fn = lambda u, v, w, f=f_fit, x=x_s, y=y_s: (
+                sky.vis_point(u, v, w) + f * sky.vis_point(u, v, w, x, y)
+            ) / (1.0 + f)
+            model_cp = (
+                np.angle(vis_fn(d_snap["u1"], d_snap["v1"], d_snap["wl3"]))
+                + np.angle(vis_fn(d_snap["u2"], d_snap["v2_"], d_snap["wl3"]))
+                - np.angle(vis_fn(d_snap["u1"] + d_snap["u2"], d_snap["v1"] + d_snap["v2_"], d_snap["wl3"]))
+            )
+            wrap_pen += float(np.sum(((1.0 - np.cos(model_cp - d_snap["cp"])) / d_snap["dcp"]) ** 2))
+            chi2_corr += float(ours_chi2.chi2(d_snap, vis_fn, correlated=True, sine=True))
+            chi2_uncorr += float(ours_chi2.chi2(d_snap, vis_fn, correlated=False, sine=True))
+        phi_arr = np.asarray(r_vg["phi"])
+        vg_sum = float(np.sum(np.asarray(r_vg["vis"]) ** 2) + np.sum(phi_arr**2))
+        corr_diffs.append(abs(vg_sum - chi2_corr) / float(c_vg["n"]))
+        corr_diffs.append(abs(float(np.sum(phi_arr[n_proj:] ** 2)) - wrap_pen) / float(c_vg["n"]))
+        corr_diffs.append(abs(float(c_vg["chi2"]) - (chi2_corr - wrap_pen)) / float(c_vg["n"]))
+        uncorr_gaps.append(abs((chi2_corr - wrap_pen) - chi2_uncorr))
+
+    max_4ut_chi2_diff = float(max(corr_diffs))
+    record("max_4ut_chi2_diff", max_4ut_chi2_diff)
+    record("uncorrelated_chi2_gap", float(sum(uncorr_gaps)))
+    assert vel_z_4ut < 3.0
+    assert max(pos_errs_4ut) < 0.15
+    assert flux_err_4ut < 0.08
+    assert float(scores_4ut.score[0] - scores_4ut.score[1]) > 30.0
+    assert max_4ut_chi2_diff < 1e-10
+    assert sum(uncorr_gaps) > 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -1133,10 +1366,11 @@ def test_epoch_peaks_night_flag_and_sidelobe_flags(tmp_path):
     headline="max_broad_diff",
 )
 def test_broad_loglike_matches_disc_loguniform_quadrature(tmp_path):
-    """broad_loglike at sub-fringe resolution with default coarse_nats matches independent polar-disc quadrature."""
+    """broad_loglike invariant log Bayes factors match textbook polar-disc quadrature (s_max, unbounded, UD primary, gains/offsets)."""
     uts_compact = UTS3 * 0.22  # finest fringe spacing ~14.4 mas
     p0 = tmp_path / "broad_bin.fits"
     p1 = tmp_path / "broad_weak.fits"
+    p_ud = tmp_path / "broad_ud.fits"
     simulate.observe(
         p0,
         lambda u, v, w: (sky.vis_point(u, v, w) + 0.18 * sky.vis_point(u, v, w, 2.4, -1.8)) / 1.18,
@@ -1159,44 +1393,103 @@ def test_broad_loglike_matches_disc_loguniform_quadrature(tmp_path):
         rng=np.random.default_rng(511),
         phase_noise="triangle",
     )
-    d0, d1 = OIData(str(p0)), OIData(str(p1))
-    r0, r1 = ours_chi2.load(p0), ours_chi2.load(p1)
+    simulate.observe(
+        p_ud,
+        lambda u, v, w: (sky.vis_uniform_disk(u, v, w, 2.5) + 0.18 * sky.vis_point(u, v, w, 2.2, -1.6)) / 1.18,
+        uts_compact,
+        hour_angles_h=[-1.5, 0.0, 1.5],
+        wavelengths=WAVELENGTHS,
+        sigma_v2=0.010,
+        sigma_cp_deg=0.8,
+        rng=np.random.default_rng(512),
+        phase_noise="triangle",
+    )
+    d0, d1, d_ud = OIData(str(p0)), OIData(str(p1)), OIData(str(p_ud))
+    r0, r1, r_ud = ours_chi2.load(p0), ours_chi2.load(p1), ours_chi2.load(p_ud)
 
     a_max = 4.5
     flux_range = (0.05, 0.35)
     dofs = [np.array([1.0, 0.8]), np.array([0.7, 0.9])]
+    bdofs = [{"vis": float(dv[0]), "phi": float(dv[1])} for dv in dofs]
 
-    # Sub-fringe step = 0.25 mas (< 1/50 fringe) with default coarse_nats=30.0 screening active
+    # 1. Normalization-invariant log Bayes factors (broad_loglike - marginal_loglike(PointSource)) for s_max=10 and s_max=None
     got_smax = ve.broad_loglike(
         [d0, d1], dofs, a_max=a_max, flux_range=flux_range, step=0.25, s_max=10.0, n_flux=41
+    ) - np.array(
+        [
+            float(ve.marginal_loglike(PointSource(1.0), d0, block_dof=bdofs[0], s_max=10.0)),
+            float(ve.marginal_loglike(PointSource(1.0), d1, block_dof=bdofs[1], s_max=10.0)),
+        ]
     )
     want_smax = np.array(
         [
-            ref.broad_disc_marginal_loglike(r0, a_max, flux_range, dof=dofs[0], s_max=10.0),
-            ref.broad_disc_marginal_loglike(r1, a_max, flux_range, dof=dofs[1], s_max=10.0),
+            ref.broad_disc_marginal_loglike(r0, a_max, flux_range, dof=dofs[0], s_max=10.0)
+            - ref.point_source_marginal_loglike(r0, dof=dofs[0], s_max=10.0),
+            ref.broad_disc_marginal_loglike(r1, a_max, flux_range, dof=dofs[1], s_max=10.0)
+            - ref.point_source_marginal_loglike(r1, dof=dofs[1], s_max=10.0),
         ],
         dtype=float,
     )
 
     got_unb = ve.broad_loglike(
         [d0, d1], dofs, a_max=a_max, flux_range=flux_range, step=0.25, s_max=None, n_flux=41
+    ) - np.array(
+        [
+            float(ve.marginal_loglike(PointSource(1.0), d0, block_dof=bdofs[0], s_max=None)),
+            float(ve.marginal_loglike(PointSource(1.0), d1, block_dof=bdofs[1], s_max=None)),
+        ]
     )
     want_unb = np.array(
         [
-            ref.broad_disc_marginal_loglike(r0, a_max, flux_range, dof=dofs[0], s_max=None),
-            ref.broad_disc_marginal_loglike(r1, a_max, flux_range, dof=dofs[1], s_max=None),
+            ref.broad_disc_marginal_loglike(r0, a_max, flux_range, dof=dofs[0], s_max=None)
+            - ref.point_source_marginal_loglike(r0, dof=dofs[0], s_max=None),
+            ref.broad_disc_marginal_loglike(r1, a_max, flux_range, dof=dofs[1], s_max=None)
+            - ref.point_source_marginal_loglike(r1, dof=dofs[1], s_max=None),
         ],
         dtype=float,
     )
 
+    # 2. Resolved uniform-disk primary (primary_diam = 2.5 mas) invariant log Bayes factor against UniformDisk(diam=2.5)
+    dof_ud = np.array([0.9, 0.85])
+    bdof_ud = {"vis": 0.9, "phi": 0.85}
+    got_ud = float(
+        ve.broad_loglike(
+            [d_ud], [dof_ud], a_max=4.5, flux_range=flux_range, step=0.18, s_max=10.0, n_flux=41, primary_diam=2.5
+        )[0]
+        - float(ve.marginal_loglike(UniformDisk(diam=2.5), d_ud, block_dof=bdof_ud, s_max=10.0))
+    )
+    want_ud = (
+        ref.broad_disc_marginal_loglike(
+            r_ud, 4.5, flux_range, dof=dof_ud, s_max=10.0, primary_diam_mas=2.5, n_r=36, n_theta=72, n_flux=41
+        )
+        - ref.point_source_marginal_loglike(r_ud, dof=dof_ud, s_max=10.0, primary_diam_mas=2.5)
+    )
+    err_ud = abs(got_ud - want_ud)
+
+    # 3. Numeric calibration surface (with_gains + with_closure_offsets) exercises coarse_nats=30.0 screening directly
+    d0_cal = d0.with_gains(telescope=0.003).with_closure_offsets(triangle=np.deg2rad(0.15))
+    d1_cal = d1.with_gains(telescope=0.003).with_closure_offsets(triangle=np.deg2rad(0.15))
+    cal_screened = ve.broad_loglike(
+        [d0_cal, d1_cal], dofs, a_max=a_max, flux_range=flux_range, step=0.4, s_max=10.0, n_flux=25, coarse_nats=30.0
+    )
+    cal_exact = ve.broad_loglike(
+        [d0_cal, d1_cal], dofs, a_max=a_max, flux_range=flux_range, step=0.4, s_max=10.0, n_flux=25, coarse_nats=None
+    )
+    coarse_screening_err = float(np.max(np.abs(cal_screened - cal_exact)))
+    bf_cal_bin = float(cal_screened[0] - float(ve.marginal_loglike(PointSource(1.0), d0_cal, block_dof=bdofs[0], s_max=10.0)))
+
     err_smax = float(np.max(np.abs(got_smax - want_smax)))
     err_unb = float(np.max(np.abs(got_unb - want_unb)))
-    max_broad_diff = max(err_smax, err_unb)
+    max_broad_diff = max(err_smax, err_unb, err_ud)
 
     record("max_broad_diff", max_broad_diff)
     record("broad_smax_err", err_smax)
     record("broad_unbounded_err", err_unb)
+    record("broad_ud_err", err_ud)
+    record("coarse_screening_err", coarse_screening_err)
     assert max_broad_diff < 0.025
+    assert coarse_screening_err < 1e-4
+    assert bf_cal_bin > 15.0
 
 
 @pytest.mark.validates(
@@ -1416,38 +1709,13 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
     ref_b3 = ref.laplace_outlier_log_density_fixed_scale([pk_pos_mf.loglike], [cov5], [mc_lp3_pos], velocity=False)
     bk_fixed_mc_err = max(abs(float(bk_fixed[0]) - ref_b5), abs(float(bk_fixed[1]) - ref_b3))
 
-    # 4. Default rescalable=True scale marginalization vs 1D adaptive quadrature over ln s:
-    # interior mode hat = 1.2 exhibits Laplace + Stirling O((3 d^2 + 6 d + 2) / (12 n)) = 107 / (12 n) convergence
-    # across n = 24, 96, 384, and boundary stationary point at s_max = 2.0 exhibits the half-Gaussian ln(2) shift.
+    # 4. Large-n interior asymptotic limit (n = 384, interior mode hat = 1.2) of rescalable=True;
+    # realistic finite-n, boundary-clipped s_max, and noisy m_f > 0 regimes are tracked as open finding F27 below.
     mc_lp5_sky = float(ref.mc_kepler_state_prior_log_density(
         state_in_mf, (5.0, 25.0), (1.0, 20.0), 0.85, prior.ln_f_floor, velocity=True, sigma_f=None, n_mc=8192, seed=11
     )[0]) + math.log(abs_ell)
-    vg_lp5_sky = float(np.squeeze(prior.log_density(state_in_mf, velocity=True, sigma_f=None))) + math.log(abs_ell)
-    sky_kde_diff = vg_lp5_sky - mc_lp5_sky
-
-    laplace_offsets = []
-    for n_val in (24.0, 96.0, 384.0):
-        chi2_val = 1.44 * n_val  # hat = sqrt(chi2 / n) = 1.2 inside [0.1, 10.0]
-        pk_in = vns.NightPeak(
-            mean=state_in_mf[0],
-            cov=cov5,
-            loglike=75.0,
-            n=np.array([n_val]),
-            chi2=np.array([chi2_val]),
-            hessian=np.linalg.inv(cov5)[None, :, :],
-            rescalable=True,
-        )
-        ns_in = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_in,), loglike_null=-50.0)
-        bk_vg = float(voc.outlier_log_density([ns_in], prior, s_max=10.0)[0])
-        bk_quad = ref.quad_rescalable_outlier_log_density(
-            [75.0], [cov5], [n_val], [chi2_val], [mc_lp5_sky], [-2.0], prior.ln_f_floor, velocity=True, s_max=10.0
-        )
-        # Subtract independent sky-KDE difference (vg_lp5 - mc_lp5) to isolate the 1D ln(s) Laplace error
-        laplace_offsets.append((bk_quad - bk_vg) + sky_kde_diff)
-
-    # Check positive-m_f rescalable=True at n = 384 directly against independent MC + quad
-    pk_res_pos = vns.NightPeak(
-        mean=state_pos_mf[0],
+    pk_n384 = vns.NightPeak(
+        mean=state_in_mf[0],
         cov=cov5,
         loglike=75.0,
         n=np.array([384.0]),
@@ -1455,37 +1723,17 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
         hessian=np.linalg.inv(cov5)[None, :, :],
         rescalable=True,
     )
-    ns_res_pos = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_res_pos,), loglike_null=-50.0)
-    bk_res_pos_vg = float(voc.outlier_log_density([ns_res_pos], prior, s_max=10.0)[0])
-    bk_res_pos_quad = ref.quad_rescalable_outlier_log_density(
-        [75.0], [cov5], [384.0], [1.44 * 384.0], [mc_lp5_sky], [+0.25], prior.ln_f_floor, velocity=True, s_max=10.0
+    ns_n384 = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_n384,), loglike_null=-50.0)
+    bk_n384_vg = float(voc.outlier_log_density([ns_n384], prior, s_max=10.0)[0])
+    bk_n384_quad = ref.quad_rescalable_outlier_log_density(
+        [75.0], [cov5], [384.0], [1.44 * 384.0], [mc_lp5_sky], [-2.0], prior.ln_f_floor, velocity=True, s_max=10.0
     )
-    rescalable_n384_err = abs(bk_res_pos_vg - bk_res_pos_quad)
-
-    # Boundary-clipped stationary point: chi2 = (n - 5) * s_max^2 puts exact mode on u = ln(s_max), giving half-Gaussian ln(2)
-    s_clip = 2.0
-    n_clip = 384.0
-    chi2_bdy = (n_clip - 5.0) * (s_clip**2)
-    pk_bdy = vns.NightPeak(
-        mean=state_in_mf[0],
-        cov=cov5,
-        loglike=75.0,
-        n=np.array([n_clip]),
-        chi2=np.array([chi2_bdy]),
-        hessian=np.linalg.inv(cov5)[None, :, :],
-        rescalable=True,
-    )
-    ns_bdy = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_bdy,), loglike_null=-500.0)
-    bk_bdy_vg = float(voc.outlier_log_density([ns_bdy], prior, s_max=s_clip)[0])
-    bk_bdy_quad = ref.quad_rescalable_outlier_log_density(
-        [75.0], [cov5], [n_clip], [chi2_bdy], [mc_lp5_sky], [-2.0], prior.ln_f_floor, velocity=True, s_max=s_clip
-    )
-    bdy_ln2_err = abs(((bk_bdy_vg - bk_bdy_quad) - sky_kde_diff) - math.log(2.0))
+    rescalable_n384_err = abs(bk_n384_vg - bk_n384_quad)
 
     record("max_log_flux_box_err", max_log_flux_box_err)
     record("norm_3d_err", norm_3d_err)
     record("norm_5d_err", norm_5d_err)
-    record("rescalable_n24_offset", laplace_offsets[0])
+    record("bk_fixed_mc_err", bk_fixed_mc_err)
     record("rescalable_n384_err", rescalable_n384_err)
     assert max_log_flux_box_err < 1e-12
     assert norm_3d_err < 5e-3
@@ -1493,22 +1741,71 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
     assert kde_3d_err < 0.05
     assert kde_5d_err < 0.14
     assert bk_fixed_mc_err < 0.14
-    # Asymptotic O((3 d^2 + 6 d + 2) / (12 n)) = 107 / (12 n) = 0.3715, 0.0929, 0.0232 nats (exact Gamma diff: 0.4062, 0.0948, 0.0233)
-    for idx, n_val in enumerate((24.0, 96.0, 384.0)):
-        exact_gamma_diff = (
-            float(special.gammaln(0.5 * (n_val - 5.0)))
-            - math.log(2.0)
-            - 0.5 * (n_val - 5.0) * math.log(0.5 * n_val)
-            + 0.5 * n_val
-            - 0.5 * math.log(math.pi / n_val)
-        )
-        assert abs(laplace_offsets[idx] - exact_gamma_diff) < 1e-4
-    assert abs(laplace_offsets[0] - 107.0 / (12.0 * 24.0)) < 0.04
-    assert abs(laplace_offsets[1] - 107.0 / (12.0 * 96.0)) < 0.003
-    assert abs(laplace_offsets[2] - 107.0 / (12.0 * 384.0)) < 0.0005
     assert rescalable_n384_err < 0.15
-    assert bdy_ln2_err < 0.01
-    assert abs((bk_bdy_vg - bk_bdy_quad) - math.log(2.0)) < 0.10
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="F27: outlier_log_density(rescalable=True) expands around clipped sqrt(chi2/n) with fixed interior width, missing 1D ln(s) quadrature by 0.4-3.5 nats",
+)
+@pytest.mark.validates(
+    "virgil.orbit_cells.outlier_log_density",
+    roots=["mathematics"],
+    kind="finding",
+    headline="max_rescalable_quad_err",
+)
+def test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature():
+    """F27: rescalable=True outlier_log_density should agree with 1D adaptive quadrature over u = ln s in [-ln s_max, ln s_max]."""
+    summaries = _make_synthetic_summaries(np.array([0.0, 3.0, 9.0, 18.0]) + T0, (11.0, 1.0, 0.2, 40.0, 50.0, 110.0, 8.0))
+    dom = voc.period_domain(summaries, p_range=(5.0, 25.0))
+    prior = voc.outlier_prior(dom, a_range=(1.0, 20.0), e_max=0.85, flux_floor=1e-4, n=8192, seed=0)
+    abs_ell = abs(prior.ln_f_floor)
+
+    cov_std = np.diag([0.08**2, 0.09**2, 0.35**2, 0.40**2, 0.30**2])
+    cov_twin = np.diag([0.08**2, 0.09**2, 0.35**2, 0.40**2, 0.25**2])
+    state_base = np.array([[4.5, -3.2, 0.4, -0.5, -2.0]])
+    mc_lp5_sky = float(
+        ref.mc_kepler_state_prior_log_density(
+            state_base, (5.0, 25.0), (1.0, 20.0), 0.85, prior.ln_f_floor, velocity=True, sigma_f=None, n_mc=8192, seed=11
+        )[0]
+    ) + math.log(abs_ell)
+
+    def _eval_case(cov_c, n_c: float, chi2_c: float, m_f_c: float, s_max_c: float) -> float:
+        mean_c = np.array([4.5, -3.2, 0.4, -0.5, m_f_c], dtype=float)
+        pk_c = vns.NightPeak(
+            mean=mean_c,
+            cov=cov_c,
+            loglike=75.0,
+            n=np.array([n_c]),
+            chi2=np.array([chi2_c]),
+            hessian=np.linalg.inv(cov_c)[None, :, :],
+            rescalable=True,
+        )
+        ns_c = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_c,), loglike_null=-500.0)
+        got = float(voc.outlier_log_density([ns_c], prior, s_max=s_max_c)[0])
+        want = ref.quad_rescalable_outlier_log_density(
+            [75.0], [cov_c], [n_c], [chi2_c], [mc_lp5_sky], [m_f_c], prior.ln_f_floor, velocity=True, s_max=s_max_c
+        )
+        return got - want
+
+    # (a) Typical interior night: n = 24, chi2 = 34.56, m_f = -2.0 (~ -0.41 nats per block)
+    err_interior_n24 = _eval_case(cov_std, 24.0, 34.56, -2.0, 10.0)
+    # (b) Stationary point on s_max: n = 30, s_max = 2.0, chi2 = (30 - 5) * 4 = 100 (~ +0.69 nats)
+    err_boundary = _eval_case(cov_std, 30.0, 100.0, -2.0, 2.0)
+    # (c) Steep clipped boundary (Watson's lemma regime): n = 30, s_max = 2.0, chi2 / n = 16 -> chi2 = 480 (~ +3.45 nats)
+    err_steep_clip = _eval_case(cov_std, 30.0, 480.0, -2.0, 2.0)
+    # (d) Noisy equal-flux twin (m_f > 0): n = 24, chi2 = 24, m_f = +0.90, sigma_f1 = 0.25 (~ -2.4 to -3.1 nats)
+    err_twin_mf = _eval_case(cov_twin, 24.0, 24.0, +0.90, 10.0)
+
+    max_rescalable_quad_err = max(
+        abs(err_interior_n24), abs(err_boundary), abs(err_steep_clip), abs(err_twin_mf)
+    )
+    record("max_rescalable_quad_err", max_rescalable_quad_err)
+    record("interior_n24_diff_nats", err_interior_n24)
+    record("steep_clip_diff_nats", err_steep_clip)
+    record("twin_positive_mf_diff_nats", err_twin_mf)
+    assert max_rescalable_quad_err < 0.15
 
 
 @pytest.mark.validates("virgil.orbit_cells.OutlierPrior", roots=["mathematics"], kind="control")
