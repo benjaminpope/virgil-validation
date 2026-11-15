@@ -174,20 +174,33 @@ def circ(x, period=360.0):
 @pytest.mark.validates(
     "virgil.orbits.orientation_from_varpi",
     "virgil.orbits.orientation_priors",
-    roots=["mathematics", "statistics"],
-    headline="abs_mean_cos2i_minus_third",
+    roots=["mathematics"],
 )
 def test_orientation_bookkeeping():
     rng = np.random.default_rng(1)
+    worst_wrap = 0.0
     for varpi, Omega in rng.uniform(0, 360, (20, 2)):
         omega, W = (float(x) for x in vo.orientation_from_varpi(varpi, Omega=Omega))
-        assert W == pytest.approx(Omega) and circ(omega + W - varpi) < 1e-9
+        err1 = circ(omega + W - varpi)
+        assert W == pytest.approx(Omega) and err1 < 1e-9
         omega2, W2 = (float(x) for x in vo.orientation_from_varpi(varpi, two_Omega=2 * Omega))
-        assert 0 <= W2 < 180 and circ(W2 - Omega, 180.0) < 1e-9
-        assert circ(omega2 + W2 - varpi) < 1e-9
+        err2 = max(circ(W2 - Omega, 180.0), circ(omega2 + W2 - varpi))
+        assert 0 <= W2 < 180 and err2 < 1e-9
+        worst_wrap = max(worst_wrap, err1, err2)
+    record("max_varpi_wrap_err_deg", float(worst_wrap))
     priors = vo.orientation_priors()
     assert set(priors) == {"two_Omega", "varpi"}
     assert set(vo.orientation_priors(positions_only=False, prefix="orbit.")) == {"orbit.Omega", "orbit.varpi"}
+    with pytest.raises(ValueError):
+        vo.orientation_from_varpi(10.0)
+
+
+@pytest.mark.validates(
+    "virgil.orbits.orientation_priors",
+    roots=["mathematics", "statistics"],
+    headline="abs_mean_cos2i_minus_third",
+)
+def test_orientation_priors_isotropic_inclination():
     with_inc = vo.orientation_priors(inclination=True, prefix="orbit.")
     assert set(with_inc) == {"orbit.two_Omega", "orbit.varpi", "orbit.inc"}
     inc_draws = np.asarray(with_inc["orbit.inc"].sample(jax.random.key(42), (40000,)))
@@ -198,8 +211,6 @@ def test_orientation_bookkeeping():
     record("isotropic_inc_ks_pvalue", ks_p)
     assert cos2_err < 4.0 * np.sqrt(4.0 / 45.0 / cos_i.size)
     assert ks_p > 1e-3
-    with pytest.raises(ValueError):
-        vo.orientation_from_varpi(10.0)
 
 
 def mean_anomaly_of_theta(theta_rad, ecc, inc, omega, Omega):
