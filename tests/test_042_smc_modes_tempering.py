@@ -345,36 +345,73 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     assert mean_zscore < 0.15
     assert cov_rel_err < 0.15
 
-    # Single-run (replicates=1) Lee-Whiteley genealogy SE calibration across 32 independent trials:
-    # under systematic resampling, Eve-index genealogy SE is slightly conservative (~1.3x empirical SD)
-    # relative to multinomial variance, and rules out any factor-of-2 genealogy bug.
+    # Single-run (replicates=1) Lee & Whiteley (2018, Theorem 1) genealogy variance identity
+    # across 96 independent trials under multinomial resampling (Du & Guyader 2021):
+    # (Z_hat)^2 * log_z_variance is an unbiased estimator of Var(Z_hat) when all finite
+    # non-degenerate draws (including negative unbiased realizations) are retained.
     c0_1d = -0.5 * math.log(2.0 * math.pi * 1.5)
     cy_1d = -math.log(2.0 * math.pi) - 0.5 * math.log(0.10 * 0.12)
     d_1d = jnp.array([[1.3], [-0.9]], dtype=jnp.float64)
     y_1d = jnp.array([1.1, -0.7], dtype=jnp.float64)
     py_1d = jnp.diag(jnp.array([10.0, 1.0 / 0.12], dtype=jnp.float64))
     ex_1d = ref.gaussian_conjugate_tempering_ref(
-        np.array([0.2]), np.array([[1.5]]), np.array([[1.3], [-0.9]]), np.array([1.1, -0.7]), np.diag([0.10, 0.12])
+        np.array([0.2]),
+        np.array([[1.5]]),
+        np.array([[1.3], [-0.9]]),
+        np.array([1.1, -0.7]),
+        np.diag([0.10, 0.12]),
     )
+    exact_lz_1d = float(ex_1d["log_z"])
     single_lzs = []
-    single_ses = []
-    for t_idx in range(32):
+    single_vars = []
+    single_deg = []
+    for t_idx in range(96):
         r_single = vsmc.tempered_smc(
             lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
             lambda th: cy_1d - 0.5 * ((y_1d - d_1d @ th) @ py_1d @ (y_1d - d_1d @ th)),
             lambda k_rng, n_p: 0.2 + math.sqrt(1.5) * jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
-            key=jax.random.PRNGKey(2000 + t_idx),
-            n_particles=384,
+            key=jax.random.PRNGKey(5000 + t_idx),
+            n_particles=128,
             replicates=1,
-            steps=3,
+            steps=1,
+            leapfrogs=2,
         )
         single_lzs.append(float(r_single.log_z))
-        single_ses.append(float(r_single.log_z_error))
-    single_se_ratio = math.sqrt(float(np.mean(np.square(single_ses)))) / float(
-        np.std(single_lzs, ddof=1)
+        single_vars.append(float(r_single.log_z_variance))
+        single_deg.append(bool(r_single.variance_degenerate))
+        if not r_single.variance_degenerate and r_single.log_z_variance > 0.0:
+            assert float(r_single.log_z_error) == pytest.approx(
+                math.sqrt(float(r_single.log_z_variance)), rel=1e-12
+            )
+
+    lzs_1d = np.asarray(single_lzs, dtype=np.float64)
+    vars_1d = np.asarray(single_vars, dtype=np.float64)
+    finite_1d = np.isfinite(vars_1d) & (~np.asarray(single_deg, dtype=bool))
+    assert int(np.sum(finite_1d)) >= 90
+    z_ratios = np.exp(lzs_1d[finite_1d] - exact_lz_1d)
+    var_hats = (z_ratios**2) * vars_1d[finite_1d]
+    est_var = float(np.mean(var_hats))
+    se_est = float(np.std(var_hats, ddof=1) / math.sqrt(var_hats.size))
+    emp_var = float(np.var(z_ratios, ddof=1))
+    rel_se = math.sqrt((se_est / emp_var) ** 2 + 2.0 / (var_hats.size - 1))
+    single_var_ratio = est_var / emp_var
+    assert abs(float(np.mean(z_ratios)) - 1.0) < 3.5 * math.sqrt(emp_var / var_hats.size)
+    assert rel_se < 0.22
+    assert abs(single_var_ratio - 1.0) < 3.0 * rel_se
+
+    # Collapsed genealogy (n_particles = 2): single surviving Eve lineage sets variance_degenerate and NaN
+    r_tiny = vsmc.tempered_smc(
+        lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
+        lambda th: cy_1d - 0.5 * ((y_1d - d_1d @ th) @ py_1d @ (y_1d - d_1d @ th)),
+        lambda k_rng, n_p: 0.2 + math.sqrt(1.5) * jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
+        key=jax.random.PRNGKey(5999),
+        n_particles=2,
+        replicates=1,
+        steps=1,
+        leapfrogs=2,
     )
-    assert abs(float(np.mean(single_lzs)) - float(ex_1d["log_z"])) < 0.025
-    assert 0.85 <= single_se_ratio <= 1.65
+    assert r_tiny.variance_degenerate is True
+    assert math.isnan(r_tiny.log_z_variance) and math.isnan(r_tiny.log_z_error)
 
     # Dict particles ({"x": continuous, "k": discrete}) + custom Gibbs move leaving target invariant
     def init_dict(k_rng, n_p):
@@ -437,7 +474,7 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     assert res_stopped.particles is None and math.isnan(res_stopped.log_z)
 
     record("abs_mean_log_z_err", mean_lz_err)
-    record("se_calibration_ratio", single_se_ratio)
+    record("genealogy_var_ratio", single_var_ratio)
     record("posterior_mean_zscore", mean_zscore)
     record("posterior_cov_rel_err", cov_rel_err)
 
@@ -908,6 +945,12 @@ def test_importance_evidence_floor_sentinel_and_resample_move():
     )
     assert isinstance(ev, vms.Evidence)
     assert ev.at_floor is False
+    assert ev.undersampled is False
+    assert ev.n_nonfinite == 0
+    assert ev.log_q is not None
+    np.testing.assert_allclose(
+        np.asarray(ev.log_q), np.asarray(jax.vmap(dm.log_q)(ev.x)), atol=1e-13
+    )
     diag_ref = ref.importance_diagnostics_ref(np.asarray(ev.log_w))
     is_lz_err = abs(ev.log_z - float(exact["log_z"]))
     ess_formula_err = abs(ev.ess - diag_ref["ess"])
@@ -915,6 +958,36 @@ def test_importance_evidence_floor_sentinel_and_resample_move():
     assert is_lz_err < max(3.5 * ev.log_z_error, 0.03)
     assert ess_formula_err < 1e-10
     assert se_formula_err < 1e-13
+
+    # undersampled flag when draw count guarantees ESS < ESS_TARGET (50)
+    inliers_5 = lambda x, th: jnp.asarray(5.0, dtype=jnp.float64)
+    ev_under = vms.importance_evidence(
+        log_target,
+        theta0,
+        dm,
+        jax.random.PRNGKey(706),
+        n=16,
+        inliers_fn=inliers_5,
+        log_floor=-20.0,
+    )
+    assert ev_under.undersampled is True
+
+    # Non-finite target evaluations (NaN and +inf) are counted in n_nonfinite and masked to -inf
+    def partly_nonfinite_target(x, theta):
+        base = log_target(x, theta)
+        return jnp.where(x[0] > 2.4, jnp.nan, jnp.where(x[0] < -2.4, jnp.inf, base))
+
+    ev_nf = vms.importance_evidence(
+        partly_nonfinite_target,
+        theta0,
+        dm,
+        jax.random.PRNGKey(707),
+        n=512,
+        inliers_fn=inliers_5,
+        log_floor=-20.0,
+    )
+    assert ev_nf.n_nonfinite > 0
+    assert math.isfinite(float(ev_nf.log_z))
 
     # Sentinel check: if weighted mean n_inliers < M_MIN while a mode has Laplace ln Z > log_floor + W
     ev_floor = vms.importance_evidence(
@@ -941,6 +1014,20 @@ def test_importance_evidence_floor_sentinel_and_resample_move():
     mv_w2_err = abs(float(np.mean(mv_pts[:, 0] > 0.0)) - float(exact["weights"][1]))
     assert mv_mean_err < 0.25
     assert mv_w2_err < 0.07
+
+    # Explicit HMC mass-covariance override cov=...
+    mv_cov = vms.resample_move(
+        log_target,
+        theta0,
+        ev,
+        jax.random.PRNGKey(705),
+        n_draws=400,
+        n_moves=5,
+        cov=0.2 * jnp.eye(2, dtype=jnp.float64),
+    )
+    assert mv_cov.stuck is False
+    assert 0.2 < mv_cov.acceptance <= 1.0
+    assert float(linalg.norm(np.mean(np.asarray(mv_cov.draws), axis=0) - np.asarray(exact["mean"]))) < 0.35
 
     mv_zero = vms.resample_move(
         log_target, theta0, ev, jax.random.PRNGKey(704), n_draws=64, n_moves=0
@@ -1006,6 +1093,61 @@ def test_tempering_exact_variance_ratio_floor_fallback_and_range_flags():
     assert cf.blocks["phi"] == pytest.approx(cf.f, abs=1e-15)
     assert cf.blocks["extra[0]"] == pytest.approx(cf.f, abs=1e-15)
 
+    # Multi-dataset input (len == 2): splitting 12 vis chains (6 + 6) and 6 phi chains (3 + 3)
+    # across two datasets matches the pooled single-dataset result identically
+    cf_multi = vtemp.estimate_factors(
+        [
+            {"vis": np.concatenate(vis_chains_z[:6]), "phi": np.concatenate(phi_chains_z[:3])},
+            {"vis": np.concatenate(vis_chains_z[6:]), "phi": np.concatenate(phi_chains_z[3:])},
+        ],
+        [
+            {
+                "vis": [np.arange(6 * i, 6 * (i + 1)) for i in range(6)],
+                "phi": [np.arange(5 * i, 5 * (i + 1)) for i in range(3)],
+            },
+            {
+                "vis": [np.arange(6 * i, 6 * (i + 1)) for i in range(6)],
+                "phi": [np.arange(5 * i, 5 * (i + 1)) for i in range(3)],
+            },
+        ],
+        names=("vis", "phi", "extra[0]"),
+    )
+    assert cf_multi.blocks["vis"] == pytest.approx(cf.blocks["vis"], abs=1e-15)
+    assert cf_multi.f == pytest.approx(cf.f, abs=1e-15)
+    assert cf_multi.f_raw == pytest.approx(cf.f_raw, abs=1e-15)
+    assert cf_multi.n_pairs == cf.n_pairs and cf_multi.n_pairs2 == cf.n_pairs2
+    assert set(cf_multi.fallback) == {"phi", "extra[0]"}
+
+    # All-blocks-short (< MIN_CHAINS = 10 each): both blocks fall back to pooled f,
+    # and single-wavelength / zero-chain input leaves tempering off (f = f_raw = 1.0)
+    want_short_raw, want_short_f = ref.finite_chain_variance_ratio_ref(
+        vis_chains_z[:4] + phi_chains_z[:3]
+    )
+    cf_short = vtemp.estimate_factors(
+        [{"vis": np.concatenate(vis_chains_z[:4]), "phi": np.concatenate(phi_chains_z[:3])}],
+        [
+            {
+                "vis": [np.arange(6 * i, 6 * (i + 1)) for i in range(4)],
+                "phi": [np.arange(5 * i, 5 * (i + 1)) for i in range(3)],
+            }
+        ],
+    )
+    assert set(cf_short.fallback) == {"vis", "phi"}
+    assert set(cf_short.raw.keys()) == {"pooled"}
+    assert cf_short.f == pytest.approx(want_short_f, abs=1e-14)
+    assert cf_short.f_raw == pytest.approx(want_short_raw, abs=1e-14)
+    assert cf_short.blocks["vis"] == pytest.approx(cf_short.f, abs=1e-15)
+    assert cf_short.blocks["phi"] == pytest.approx(cf_short.f, abs=1e-15)
+
+    cf_zero = vtemp.estimate_factors(
+        [{"vis": np.zeros(4), "phi": np.zeros(2)}],
+        [{"vis": [], "phi": []}],
+    )
+    assert cf_zero.f == pytest.approx(1.0, abs=1e-15)
+    assert cf_zero.f_raw == pytest.approx(1.0, abs=1e-15)
+    assert cf_zero.blocks == {"vis": 1.0, "phi": 1.0}
+    assert math.isnan(cf_zero.rho["pooled"])
+
     # block_dof and ChannelFactors.block_dof invert max(f_b, 1) and never sharpen (> 1)
     got_dof = vtemp.block_dof({"vis": cf.blocks["vis"], "anticorr": 0.4})
     want_dof = ref.block_dof_ref({"vis": cf.blocks["vis"], "anticorr": 0.4})
@@ -1019,6 +1161,11 @@ def test_tempering_exact_variance_ratio_floor_fallback_and_range_flags():
     assert cf_alt.f_raw == pytest.approx(0.0, abs=1e-15)
     assert cf_alt.f == pytest.approx(1.0, abs=1e-15)
     assert vtemp.out_of_range(cf_alt.f, cf_alt.f_raw) is True
+    assert vtemp.out_of_range(cf_alt.f) is False  # floored f=1.0 alone is inside [0.5, 2.0]
+    assert vtemp.out_of_range(0.4) is True  # single-argument f_raw=None checks f against [0.5, 2.0]
+    assert vtemp.out_of_range(2.2) is True
+    assert vtemp.out_of_range(1.4) is False
+    assert vtemp.out_of_range(1.0, 0.4) is True
     assert vtemp.out_of_range(2.2, 2.2) is True
     assert vtemp.out_of_range(1.4, 1.4) is False
 
@@ -1098,13 +1245,46 @@ def test_tempering_finite_ar1_common_mode_and_oidata_channel_chains(tmp_path):
     a_phi, b_phi = adj["phi"]
     assert a_vis.size == b_vis.size == n_bl * 4
     assert a_phi.size == b_phi.size == n_tri * 4
-    # Adjacent channel pairs share identical physical baseline (u_m, v_m)
+
+    # Visibility chains & adjacent pairs: identical physical baseline (u, v), station pair, MJD, and strictly increasing wavelength
     u_m_data = np.asarray(oid.u)
     v_m_data = np.asarray(oid.v)
+    mjd_data = np.asarray(oid.mjd)
+    wl_data = np.asarray(oid.wavel)
+    sta_data = np.asarray(oid.stations)
     max_bl_jump = float(
         np.max(np.hypot(u_m_data[a_vis] - u_m_data[b_vis], v_m_data[a_vis] - v_m_data[b_vis]))
     )
     assert max_bl_jump < 1e-6
+    assert np.array_equal(sta_data[a_vis], sta_data[b_vis])
+    assert float(np.max(np.abs(mjd_data[a_vis] - mjd_data[b_vis]))) == 0.0
+    assert bool(np.all(wl_data[a_vis] < wl_data[b_vis]))
+    for c_vis in chains["vis"]:
+        assert np.all(mjd_data[c_vis] == mjd_data[c_vis[0]])
+        assert np.all(sta_data[c_vis] == sta_data[c_vis[0]])
+        assert bool(np.all(np.diff(wl_data[c_vis]) > 0.0))
+
+    # Closure-phase chains & adjacent pairs: identical triangle legs (u1, v1, u2, v2, stations), snapshot MJD, and strictly increasing wavelength
+    i1 = np.asarray(oid.i_cps1)
+    i2 = np.asarray(oid.i_cps2)
+    i3 = np.asarray(oid.i_cps3)
+    tri_coords = np.column_stack(
+        [u_m_data[i1], v_m_data[i1], u_m_data[i2], v_m_data[i2], u_m_data[i3], v_m_data[i3]]
+    )
+    tri_sta = np.column_stack([sta_data[i1], sta_data[i2], sta_data[i3]])
+    tri_mjd = mjd_data[i1]
+    tri_wl = wl_data[i1]
+    assert float(np.max(np.abs(mjd_data[i1] - mjd_data[i2]))) == 0.0
+    assert float(np.max(np.abs(mjd_data[i1] - mjd_data[i3]))) == 0.0
+    max_tri_jump = float(np.max(np.linalg.norm(tri_coords[a_phi] - tri_coords[b_phi], axis=1)))
+    assert max_tri_jump < 1e-6
+    assert np.array_equal(tri_sta[a_phi], tri_sta[b_phi])
+    assert float(np.max(np.abs(tri_mjd[a_phi] - tri_mjd[b_phi]))) == 0.0
+    assert bool(np.all(tri_wl[a_phi] < tri_wl[b_phi]))
+    for c_phi in chains["phi"]:
+        assert np.all(tri_mjd[c_phi] == tri_mjd[c_phi[0]])
+        assert np.all(tri_sta[c_phi] == tri_sta[c_phi[0]])
+        assert bool(np.all(np.diff(tri_wl[c_phi]) > 0.0))
 
     record("ar1_finite_chain_err", ar1_err)
     record("common_mode_chain_err", cm_err)

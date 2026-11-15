@@ -49,7 +49,7 @@ against `crosscheck.smc_tempering_ref`.
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `likelihood.group_outlier_mixture`, `likelihood.group_outlier_probabilities` | continuous trigonometric SciPy `quad` over [0, π] and quadrature-free 2^K combinatorial Beta-function expansion for K in {1, 4, 9, 14}, plus exact derivative of `ln Z` wrt `outlier_loglikes`; control: informative `Beta(1, 9)` differs by > 3.0 nats | Mathematics | < 1e-12 |
-| `crossval.fold_masks`, `save_record`, `load_records`, `aggregate`, `aggregate_files` | exact fold partition, JSON round-trip, sample SD (`ddof = 1`), standard error, minimum-mean `best`, and Breiman et al. (1984) `one_se` rule (`larger_is_simpler` both ways) | Mathematics | 1e-14 |
-| `crossval.cv_task`, `crossval.cross_validate` | closed-form weighted linear ridge regression held-out score, raw χ², and per-group breakdown across all folds; control: unmasked data leakage selects zero regularization on pure noise | Mathematics, statistics | < 1e-5 |
+| `crossval.fold_masks`, `save_record`, `load_records`, `aggregate`, `aggregate_files` | exact fold partition, JSON round-trip, sample SD (`ddof = 1`), standard error, minimum-mean `best`, Breiman et al. (1984) `one_se` rule (`larger_is_simpler` both ways), boundary `edge` flag, string settings, `chi2 = None`, and `NaN` fold warning | Mathematics | 1e-14 |
+| `crossval.cv_task`, `crossval.cross_validate` | closed-form weighted linear ridge regression held-out score, raw χ², per-group breakdown, and `m = 2` complex-visibility residual accounting (`unit_scale = None`); control: unmasked data leakage selects zero regularization on pure noise | Mathematics, statistics | < 1e-5 |
 
 

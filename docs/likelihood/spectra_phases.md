@@ -33,9 +33,9 @@ boundary controls under Ruling 2.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
-| `estimate_factors`, `ChannelFactors`, `block_dof`, `out_of_range` | exact finite-chain variance ratio `f_raw`, `MIN_CHAINS = 10` pooled fallback, unit floor on alternating anticorrelated chains (`f_raw = 0 < 0.5`), and `FLAG_RANGE = (0.5, 2.0)` check | Mathematics | 1e-14 |
+| `estimate_factors`, `ChannelFactors`, `block_dof`, `out_of_range` | single- and multi-dataset finite-chain variance ratio `f_raw`, per-block and all-blocks-short `MIN_CHAINS = 10` pooled fallbacks, single-wavelength zero-chain `f = 1.0`, unit floor on alternating anticorrelated chains (`f_raw = 0 < 0.5`), and single- vs two-argument `(0.5, 2.0)` range checks | Mathematics | 1e-14 |
 | `estimate_factors` on stationary AR(1) chains (n = 6, ρ = 0.7) | exact finite-n Priestley Cesàro expectation (3.25); control: infinite-chain Bartlett ratio `(1 + ρ) / (1 − ρ) = 5.67` overpredicts by > 2.2 | Mathematics, statistics | < 0.12 (4 000 chains) |
 | `estimate_factors`, `flat_signature` on common-mode offsets (n = 8, c = 0.55) | exact common-mode factor `1 + (n − 1) c = 4.85` and lag-2 excess `ρ₂ − ρ₁² > 0.15` | Mathematics, statistics | < 0.20 (3 000 chains) |
-| `channel_chains`, `adjacent_channels` | 4-station × 3-snapshot × 5-channel OIFITS layout without crossing baseline or MJD boundaries | Mathematics | 1e-6 m |
+| `channel_chains`, `adjacent_channels` | 4-station × 3-snapshot × 5-channel OIFITS layout: identical baseline `(u, v)` / closure triangle legs, identical snapshot MJD, and strictly increasing channel wavelength along every `vis` and `phi` chain | Mathematics | 1e-6 m |
 
 

@@ -809,6 +809,45 @@ def test_crossval_fold_masks_io_and_breiman_one_se_aggregation(tmp_path):
     agg_small = vcv.aggregate(loaded, larger_is_simpler=False)
     assert agg_small["one_se"] == 1
 
+    # Grid-boundary edge=True checks (lower boundary index 0 and upper boundary index 3)
+    recs_lo = [
+        {**r, "score": (1.0 + 0.1 * r["fold"]) if r["setting"] == settings[0] else r["score"]}
+        for r in recs
+    ]
+    agg_lo = vcv.aggregate(recs_lo, larger_is_simpler=True)
+    assert agg_lo["best"] == 0 and agg_lo["edge"] is True
+
+    recs_hi = [
+        {**r, "score": (4.05 + 0.1 * r["fold"]) if r["setting"] == settings[-1] else r["score"]}
+        for r in recs
+    ]
+    agg_hi = vcv.aggregate(recs_hi, larger_is_simpler=True)
+    assert agg_hi["one_se"] == len(settings) - 1 and agg_hi["edge"] is True
+
+    # Non-numeric string setting labels and chi2=None (unit_scale=None)
+    str_labels = ["tv", "tsv", "mem"]
+    recs_str = [
+        {"setting": name, "fold": k, "score": float((idx + 1) * 2.0 + 0.1 * k), "chi2": None, "n_test": 3, "n_train": 9}
+        for idx, name in enumerate(str_labels)
+        for k in range(4)
+    ]
+    agg_str = vcv.aggregate(recs_str)
+    assert list(agg_str["settings"]) == str_labels
+    assert agg_str["best"] == 0
+    assert agg_str["one_se"] is None and agg_str["edge"] is None
+    assert agg_str["chi2"] is None
+
+    # Diverged NaN fold emits UserWarning and ranks last, never winning argmin
+    recs_nan = [
+        {**r, "score": float("nan")}
+        if (r["setting"] == settings[1] and r["fold"] == 0)
+        else dict(r)
+        for r in recs
+    ]
+    with pytest.warns(UserWarning, match="NaN scores"):
+        agg_nan = vcv.aggregate(recs_nan, larger_is_simpler=True)
+    assert agg_nan["best"] == 2  # setting[1] was best=1 before NaN, now excluded from argmin
+
     # Duplicate or missing records raise ValueError
     with pytest.raises(ValueError):
         vcv.aggregate(recs[:-1])
@@ -900,6 +939,44 @@ def test_cv_task_and_cross_validate_match_closed_form_ridge_regression():
     assert se_err < 1e-5
     assert summary["best"] == want_agg["best"]
     assert summary["one_se"] == want_agg["one_se"]
+
+    # Multi-component residuals per mask entry (m = 2 complex visibilities) + unit_scale=None
+    y_im = -0.5 * (design @ theta_true) + rng.normal(0.0, sigma)
+    y_im_j = jnp.asarray(y_im, dtype=jnp.float64)
+
+    class ComplexRidgeTerm:
+        has_log_norm = False
+
+        def __init__(self, mask):
+            self.mask = jnp.asarray(mask, dtype=bool)
+
+        def __call__(self, values):
+            r_re = jnp.where(self.mask, (y_j - x_j @ values["theta"]) / sig_j, 0.0)
+            r_im = jnp.where(self.mask, (y_im_j + 0.5 * (x_j @ values["theta"])) / sig_j, 0.0)
+            return jnp.concatenate([r_re, r_im])
+
+    rec_m2 = vcv.cv_task(
+        settings[2],
+        0,
+        fold,
+        fit_kwargs=fit_kwargs,
+        make_term=ComplexRidgeTerm,
+        init={"theta": jnp.zeros(p_dim)},
+        groups=groups,
+        unit_scale=None,
+    )
+    tr = fold != 0
+    te = fold == 0
+    x_tr_c = np.vstack([design[tr] / sigma[tr, None], -0.5 * design[tr] / sigma[tr, None]])
+    y_tr_c = np.concatenate([y[tr] / sigma[tr], y_im[tr] / sigma[tr]])
+    th_m2 = linalg.solve(x_tr_c.T @ x_tr_c + settings[2] * np.eye(p_dim), x_tr_c.T @ y_tr_c)
+    r_te_re = (y[te] - design[te] @ th_m2) / sigma[te]
+    r_te_im = (y_im[te] + 0.5 * (design[te] @ th_m2)) / sigma[te]
+    want_m2_score = 0.5 * float(np.sum(r_te_re**2 + r_te_im**2))
+    assert rec_m2["n_test"] == int(np.sum(te))
+    assert rec_m2["n_train"] == int(np.sum(tr))
+    assert rec_m2["chi2"] is None
+    assert abs(float(rec_m2["score"]) - want_m2_score) < 1e-6
 
     record("max_ridge_cv_score_err", score_err)
     record("max_ridge_cv_chi2_err", chi2_err)
@@ -1329,54 +1406,123 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
     max_mvn_z = max(max_mvn_z, cold_z_err)
     max_cov_rel_3d = max(max_cov_rel_3d, cold_cov_rel)
 
-    # Non-Gaussian skewed 2D posterior on aperture-masking baselines: companion (dra, flux)
-    # where u = ln(flux) has an asymmetric exponential-quadratic likelihood shape
-    uts_nrm = np.array([[0.0, 0.0], [2.5, 1.0], [-1.5, 3.0]])
+    # Genuinely skewed ~2.3-sigma faint-companion 2D posterior in (dra, u = ln flux):
+    # above the mode, exp(u) hits a steep interferometric chi^2 wall, while below the
+    # mode exp(u) -> 0 relaxes into the broad log-normal prior tail (left_w / right_w ~ 1.37).
     fits_low = tmp_path / "svi_skew2d.fits"
-    faint = _binary_cloud(0.04, 35.0, -25.0)
+    faint = _binary_cloud(0.010, 8.0, -5.0)
     xsim.observe(
         fits_low,
         lambda u, v, wl: xsky.visibility(faint, u, v, wl),
-        uts_nrm,
+        UTS3,
         hour_angles_h=[-1.0, 0.0, 1.0],
         wavelengths=np.array([2.1e-6, 2.3e-6]),
-        sigma_v2=0.012,
-        sigma_cp_deg=0.6,
+        sigma_v2=0.025,
+        sigma_cp_deg=2.2,
+        rng=np.random.default_rng(23),
     )
     oid_low = OIData(read_oifits(str(fits_low)))
     loaded_low = xchi2.load(fits_low)
 
-    mu_logf = math.log(0.04)
-    sd_logf = 0.5
+    mu_logf = math.log(0.006)
+    sd_logf = 1.0
+    sd_dra = 0.50
     priors_2d = {
-        "dra": dist.Normal(35.0, 6.0),
+        "dra": dist.Normal(8.0, sd_dra),
         "flux": dist.LogNormal(mu_logf, sd_logf),
     }
-    tmpl_2d = BinaryModelCartesian(35.0, -25.0, 0.04)
+    tmpl_2d = BinaryModelCartesian(8.0, -5.0, 0.010)
     fres_2d = vfit.fit(tmpl_2d, priors_2d, oid_low)
 
-    # Exact 2D posterior in (dra, u = ln flux) via Simpson quadrature of crosscheck chi^2
+    # Vectorized exact 2D log-posterior in (dra, u = ln flux) cross-checked against xchi2.chi2
+    u_v2 = loaded_low["u"].ravel()[None, None, :]
+    v_v2 = loaded_low["v"].ravel()[None, None, :]
+    wl_v2 = loaded_low["wl"].ravel()[None, None, :]
+    val_v2 = loaded_low["v2"].ravel()[None, None, :]
+    err_v2 = loaded_low["dv2"].ravel()[None, None, :]
+    u1 = loaded_low["u1"].ravel()[None, None, :]
+    v1 = loaded_low["v1"].ravel()[None, None, :]
+    u2 = loaded_low["u2"].ravel()[None, None, :]
+    v2 = loaded_low["v2_"].ravel()[None, None, :]
+    u3 = u1 + u2
+    v3 = v1 + v2
+    wl_t3 = loaded_low["wl3"].ravel()[None, None, :]
+    val_cp = loaded_low["cp"].ravel()[None, None, :]
+    err_cp = loaded_low["dcp"].ravel()[None, None, :]
+    ddec_rad = -5.0 * xsky.MAS
+
     def exact_log_post(dra_grid: np.ndarray, logf_grid: np.ndarray) -> np.ndarray:
-        out = np.empty_like(dra_grid, dtype=np.float64)
-        for i in range(dra_grid.shape[0]):
-            dx = float(dra_grid[i, 0])
-            for j in range(dra_grid.shape[1]):
-                lv = float(logf_grid[i, j])
-                c = _binary_cloud(math.exp(lv), dx, -25.0)
-                c2 = xchi2.chi2(loaded_low, lambda u, v, wl, cl=c: xsky.visibility(cl, u, v, wl))
-                out[i, j] = (
-                    -0.5 * c2
-                    - 0.5 * ((dx - 35.0) / 6.0) ** 2
-                    - 0.5 * ((lv - mu_logf) / sd_logf) ** 2
-                )
-        return out
+        dra_rad = (dra_grid * xsky.MAS)[:, :, None]
+        fr = np.exp(logf_grid)[:, :, None]
+        f1 = 1.0 / (1.0 + fr)
+        f2 = fr / (1.0 + fr)
+        ph_v2 = -2.0 * np.pi * (u_v2 * dra_rad + v_v2 * ddec_rad) / wl_v2
+        vis = f1 + f2 * np.exp(1j * ph_v2)
+        chi2_v2 = np.sum(((vis.real**2 + vis.imag**2 - val_v2) / err_v2) ** 2, axis=-1)
+        ph1 = -2.0 * np.pi * (u1 * dra_rad + v1 * ddec_rad) / wl_t3
+        ph2 = -2.0 * np.pi * (u2 * dra_rad + v2 * ddec_rad) / wl_t3
+        ph3 = -2.0 * np.pi * (u3 * dra_rad + v3 * ddec_rad) / wl_t3
+        model_cp = (
+            np.angle(f1 + f2 * np.exp(1j * ph1))
+            + np.angle(f1 + f2 * np.exp(1j * ph2))
+            - np.angle(f1 + f2 * np.exp(1j * ph3))
+        )
+        chi2_cp = np.sum((2.0 * np.sin((model_cp - val_cp) / 2.0) / err_cp) ** 2, axis=-1)
+        return (
+            -0.5 * (chi2_v2 + chi2_cp)
+            - 0.5 * ((dra_grid - 8.0) / sd_dra) ** 2
+            - 0.5 * ((logf_grid - mu_logf) / sd_logf) ** 2
+        )
+
+    chk_dra = np.array([[7.4, 8.3]])
+    chk_lf = np.array([[-5.8, -4.7]])
+    chk_vec = exact_log_post(chk_dra, chk_lf)
+    for j in range(2):
+        dx_j = float(chk_dra[0, j])
+        lv_j = float(chk_lf[0, j])
+        c2_j = xchi2.chi2(
+            loaded_low,
+            lambda u, v, wl, cl=_binary_cloud(math.exp(lv_j), dx_j, -5.0): xsky.visibility(cl, u, v, wl),
+        )
+        lp_ref = -0.5 * c2_j - 0.5 * ((dx_j - 8.0) / sd_dra) ** 2 - 0.5 * ((lv_j - mu_logf) / sd_logf) ** 2
+        assert float(chk_vec[0, j]) == pytest.approx(lp_ref, abs=1e-12)
 
     exact_2d = ref.posterior_2d_grid_moments_ref(
-        exact_log_post, (17.0, 53.0), (mu_logf - 2.0, mu_logf + 1.5), n_grid=121
+        exact_log_post,
+        (8.0 - 5.5 * sd_dra, 8.0 + 5.5 * sd_dra),
+        (mu_logf - 5.0 * sd_logf, mu_logf + 3.5 * sd_logf),
+        n_grid=221,
     )
     cov_exact_2d = np.asarray(exact_2d["cov"])
     sd_exact = np.sqrt(np.diag(cov_exact_2d))
-    corr_exact_2d = float(cov_exact_2d[0, 1] / (sd_exact[0] * sd_exact[1]))
+    qx_ex = np.asarray(exact_2d["quantiles_x"])
+    qy_ex = np.asarray(exact_2d["quantiles_y"])
+    exact_skew_ratio = float((qy_ex[1] - qy_ex[0]) / (qy_ex[2] - qy_ex[1]))
+    assert exact_skew_ratio > 1.30
+
+    # Symmetric "mvn" in unconstrained space cannot represent the skewed ln(flux) tail
+    vi_mvn_2d = vsvi.variational(
+        tmpl_2d,
+        priors_2d,
+        oid_low,
+        start=fres_2d,
+        guide="mvn",
+        steps=2000,
+        optimizer=optax.adam(8e-3),
+        num_samples=4000,
+        key=jax.random.PRNGKey(2),
+    )
+    lf_mvn = np.log(np.asarray(vi_mvn_2d.samples["flux"]))
+    qy_mvn = np.quantile(lf_mvn, [0.16, 0.50, 0.84])
+    mvn_skew_ratio = float((qy_mvn[1] - qy_mvn[0]) / (qy_mvn[2] - qy_mvn[1]))
+    qy_err_mvn = float(np.max(np.abs(qy_mvn - qy_ex)) / sd_exact[1])
+    cov_mvn_2d = np.cov(
+        np.column_stack([np.asarray(vi_mvn_2d.samples["dra"]), lf_mvn]),
+        rowvar=False,
+    )
+    cov_rel_mvn_2d = float(linalg.norm(cov_mvn_2d - cov_exact_2d) / linalg.norm(cov_exact_2d))
+    assert abs(mvn_skew_ratio - 1.0) < 0.10
+    assert qy_err_mvn > 0.15
 
     flow_z_err = 0.0
     flow_cov_rel = 0.0
@@ -1388,29 +1534,30 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
             start=fres_2d,
             guide=flow_name,
             steps=2500,
-            optimizer=optax.adam(8e-3),
-            num_samples=3000,
+            optimizer=optax.adam(4e-3),
+            num_samples=4000,
             key=jax.random.PRNGKey(seed_val),
         )
         assert vi_flow.converged is True
-        assert float(vi_flow.info["khat"]) < 0.6
+        assert float(vi_flow.info["khat"]) < 0.65
         dra_draws = np.asarray(vi_flow.samples["dra"])
         logf_draws = np.log(np.asarray(vi_flow.samples["flux"]))
         z_dra = abs(float(np.mean(dra_draws)) - float(exact_2d["mean"][0])) / sd_exact[0]
         z_logf = abs(float(np.mean(logf_draws)) - float(exact_2d["mean"][1])) / sd_exact[1]
         qx_flow = np.quantile(dra_draws, [0.16, 0.50, 0.84])
         qy_flow = np.quantile(logf_draws, [0.16, 0.50, 0.84])
-        qx_err = float(np.max(np.abs(qx_flow - np.asarray(exact_2d["quantiles_x"]))) / sd_exact[0])
-        qy_err = float(np.max(np.abs(qy_flow - np.asarray(exact_2d["quantiles_y"]))) / sd_exact[1])
+        flow_skew_ratio = float((qy_flow[1] - qy_flow[0]) / (qy_flow[2] - qy_flow[1]))
+        qx_err = float(np.max(np.abs(qx_flow - qx_ex)) / sd_exact[0])
+        qy_err = float(np.max(np.abs(qy_flow - qy_ex)) / sd_exact[1])
         cov_flow = np.cov(np.column_stack([dra_draws, logf_draws]), rowvar=False)
-        sd_flow = np.sqrt(np.diag(cov_flow))
-        corr_flow = float(cov_flow[0, 1] / (sd_flow[0] * sd_flow[1]))
         cov_rel_2d = float(linalg.norm(cov_flow - cov_exact_2d) / linalg.norm(cov_exact_2d))
         flow_z_err = max(flow_z_err, z_dra, z_logf)
         flow_cov_rel = max(flow_cov_rel, cov_rel_2d)
-        assert z_dra < 0.32 and z_logf < 0.30
-        assert qx_err < 0.35 and qy_err < 0.30
-        assert cov_rel_2d < 0.18 and abs(corr_flow - corr_exact_2d) < 0.08
+        assert flow_skew_ratio > 1.20
+        assert qy_err < qy_err_mvn and cov_rel_2d < cov_rel_mvn_2d
+        assert z_dra < 0.28 and z_logf < 0.15
+        assert qx_err < 0.25 and qy_err < 0.15
+        assert cov_rel_2d < 0.20
 
     record("svi_mvn_mean_zscore", max_mvn_z)
     record("svi_mvn_cov_rel_err", max_cov_rel_3d)

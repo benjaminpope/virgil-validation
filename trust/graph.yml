@@ -255,10 +255,10 @@ nodes:
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
     depends: [virgil.likelihood.whitened_residuals]
   virgil.grid_fit.Gaussian: {layer: inference, source: [src/virgil/grid_fit.py], doc: inference/grid_limits.md}
-  virgil.grid_fit.LogUniform: {layer: inference, source: [src/virgil/grid_fit.py], doc: inference/grid_limits.md}
+  virgil.grid_fit.LogUniform: {layer: inference, source: [src/virgil/grid_fit.py, src/virgil/_marginal.py], doc: inference/grid_limits.md}
   virgil.grid_fit.LinearFluxGrid:
     layer: inference
-    source: [src/virgil/grid_fit.py]
+    source: [src/virgil/grid_fit.py, src/virgil/_marginal.py]
     depends: [virgil.grid_fit.linear_flux_grid]
     doc: inference/grid_limits.md
   virgil.grid_fit.optimized_likelihood_grid:
@@ -303,7 +303,7 @@ nodes:
     doc: inference/sampling.md
   virgil.mode_search.importance_evidence:
     layer: inference
-    source: [src/virgil/mode_search.py]
+    source: [src/virgil/mode_search.py, src/virgil/night_summaries.py]
     depends: [virgil.mode_search.DefensiveMixture, virgil.mode_search.Evidence, virgil.mode_search.laplace_log_evidence, virgil.mode_search.logmeanexp]
     properties: {is_estimator: 1, ess_floor: 1}
     doc: inference/sampling.md
@@ -323,7 +323,7 @@ nodes:
     doc: inference/helpers.md
   virgil.crossval.cv_task:
     layer: inference
-    source: [src/virgil/crossval.py]
+    source: [src/virgil/crossval.py, src/virgil/_geometry.py]
     depends: [virgil.crossval.fold_masks, virgil.fitting.fit]
     doc: inference/helpers.md
   virgil.crossval.cross_validate:
@@ -338,22 +338,22 @@ nodes:
     doc: inference/sampling.md
   virgil.fitting.gauss_newton_mass:
     layer: inference
-    source: [src/virgil/fitting.py, src/virgil/_gauss_newton.py]
+    source: [src/virgil/fitting.py, src/virgil/_flat.py, src/virgil/_precision.py]
     depends: [virgil.likelihood.whitened_residuals]
     doc: inference/sampling.md
   virgil.fitting.GaussNewtonMass:
     layer: inference
-    source: [src/virgil/fitting.py, src/virgil/_gauss_newton.py]
+    source: [src/virgil/fitting.py, src/virgil/_flat.py, src/virgil/_precision.py]
     depends: [virgil.fitting.gauss_newton_mass]
     doc: inference/sampling.md
   virgil.likelihood.chain_init_params:
     layer: inference
-    source: [src/virgil/likelihood.py]
+    source: [src/virgil/likelihood.py, src/virgil/_flat.py]
     depends: [virgil.likelihood.numpyro_model]
     doc: inference/sampling.md
   virgil.svi.variational:
     layer: inference
-    source: [src/virgil/svi.py]
+    source: [src/virgil/svi.py, src/virgil/_flat.py]
     depends: [virgil.likelihood.numpyro_model, virgil.fitting.FitResult, virgil.fitting.gauss_newton_mass]
     doc: inference/sampling.md
   virgil.svi.VariationalResult:
@@ -584,7 +584,7 @@ nodes:
     depends: [virgil.grid_fit.optimized_flux_grid, virgil.grid_fit.laplace_flux_uncertainty_grid]
   virgil.likelihood.numpyro_model:
     layer: inference
-    source: [src/virgil/likelihood.py]
+    source: [src/virgil/likelihood.py, src/virgil/_flat.py]
     depends: [virgil.likelihood.model_loglike]
   virgil.inference.hessian_matrix: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.regularized_inverse: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
