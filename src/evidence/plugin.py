@@ -104,33 +104,60 @@ def pytest_configure(config):
 
 
 # Our reference code: a check that goes through one of these counts only if
-# that module is itself verified. _subprocess only runs other code.
-_REFERENCE_PACKAGES = ("crosscheck", "external_bridge")
+# that module is itself verified. _subprocess only runs other code; virgil_bridge
+# submodules count when registered under layer: references in trust/graph.yml.
+_REFERENCE_PACKAGES = ("crosscheck", "external_bridge", "virgil_bridge")
 _PLUMBING = {"external_bridge._subprocess"}
+
+
+@functools.lru_cache(maxsize=1)
+def _registered_virgil_bridge():
+    """``virgil_bridge.*`` modules declared under ``layer: references`` in ``trust/graph.yml``."""
+    import yaml
+
+    path = pathlib.Path(__file__).resolve().parents[2] / "trust" / "graph.yml"
+    if not path.exists():
+        return frozenset()
+    nodes = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("nodes") or {}
+    return frozenset(
+        name
+        for name, node in nodes.items()
+        if name.startswith("virgil_bridge.") and (node or {}).get("layer", "references") == "references"
+    )
+
+
+def _keep_reference(mod):
+    if mod in _PLUMBING:
+        return False
+    if mod.startswith("virgil_bridge."):
+        return mod in _registered_virgil_bridge()
+    return True
 
 
 @functools.lru_cache(maxsize=None)
 def _module_via(path):
     """Reference modules a test file imports, anywhere in it."""
     try:
-        tree = ast.parse(open(path).read())
+        tree = ast.parse(pathlib.Path(path).read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
         return ()
     found = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.split(".")[0] in _REFERENCE_PACKAGES and "." in alias.name:
-                    found.add(alias.name)
+                parts = alias.name.split(".")
+                if parts[0] in _REFERENCE_PACKAGES and len(parts) >= 2:
+                    found.add(".".join(parts[:2]))
         elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
-            top = node.module.split(".")[0]
+            parts = node.module.split(".")
+            top = parts[0]
             if top not in _REFERENCE_PACKAGES:
                 continue
             if node.module == top:  # from crosscheck import sky, chi2
                 found |= {f"{top}.{alias.name}" for alias in node.names}
             else:  # from crosscheck.sky import vis_point
-                found.add(node.module)
-    return tuple(sorted(found - _PLUMBING))
+                found.add(".".join(parts[:2]))
+    return tuple(sorted(m for m in found if _keep_reference(m)))
 
 
 @functools.lru_cache(maxsize=1)

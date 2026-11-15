@@ -288,6 +288,36 @@ def test_npz_compare_matches_channels_by_frequency_rank_and_handles_zero_u():
 # ------------------------------------------------ 4. crosscheck.informed_starts
 
 
+def _sky_gaussian_vis_quadrature(u, v, fwhm_mas, ratio, pa_deg, n_grid=201):
+    """Direct 2D sky-plane numerical quadrature of a unit-flux elliptical Gaussian.
+
+    Sky coordinates ``dra`` (East positive) and ``ddec`` (North positive) are in mas,
+    converted independently via ``pi / (180 * 3600 * 1000)``, with major axis along
+    ``dra * sin(pa) + ddec * cos(pa)``. Shares no formula or constant with ``informed_starts``.
+    """
+    mas_to_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    sigma_maj = fwhm_mas / (2.0 * np.sqrt(2.0 * np.log(2.0)))
+    sigma_min = ratio * sigma_maj
+    half = 6.0 * fwhm_mas
+    axis = np.linspace(-half, half, n_grid)
+    step = float(axis[1] - axis[0])
+    dra, ddec = np.meshgrid(axis, axis, indexing="xy")
+    pa = np.deg2rad(pa_deg)
+    along = dra * np.sin(pa) + ddec * np.cos(pa)
+    across = dra * np.cos(pa) - ddec * np.sin(pa)
+    density = (
+        np.exp(-0.5 * ((along / sigma_maj) ** 2 + (across / sigma_min) ** 2))
+        / (2.0 * np.pi * sigma_maj * sigma_min)
+        * step**2
+    )
+    dra_rad = (dra * mas_to_rad).ravel()
+    ddec_rad = (ddec * mas_to_rad).ravel()
+    w_sky = density.ravel()
+    # Centro-symmetric source has real visibility int I(dra, ddec) cos(2 pi (u dra + v ddec))
+    phase = 2.0 * np.pi * (np.outer(u, dra_rad) + np.outer(v, ddec_rad))
+    return np.cos(phase) @ w_sky
+
+
 @pytest.mark.validates(
     "crosscheck.informed_starts",
     roots=["mathematics"],
@@ -295,44 +325,84 @@ def test_npz_compare_matches_channels_by_frequency_rank_and_handles_zero_u():
     headline="moment_fit_fwhm_rel_err",
 )
 def test_informed_starts_moments_recover_analytic_elliptical_gaussian():
-    """``second_moments`` recovers the exact covariance eigenvalues and PA of a pure
-    elliptical Gaussian from ``-ln V^2``, and ``moment_fit`` recovers ``(compact, extended,
-    fwhm, ratio, pa)`` of a point-plus-Gaussian model."""
+    """Against direct 2D sky-plane numerical quadrature of an elliptical Gaussian (East positive,
+    North positive, major axis at ``pa`` East of North), ``gaussian_visibility`` and
+    ``moment_model_v2`` match the 2D Fourier integral, ``second_moments`` recovers the exact
+    covariance eigenvalues and PA from ``-ln V^2``, and ``moment_fit`` recovers
+    ``(compact, extended, fwhm, ratio, pa)`` of a point-plus-Gaussian sky."""
     rng = np.random.default_rng(19)
     u = rng.uniform(-3.0e7, 3.0e7, 80)
     v = rng.uniform(-3.0e7, 3.0e7, 80)
     fwhm_true, ratio_true, pa_true = 6.5, 0.6, 37.0
-    v2_gauss = ist.gaussian_visibility(u, v, fwhm_true, ratio_true, pa_true) ** 2
-    err = np.full_like(v2_gauss, 1e-3)
+    vis_quad = _sky_gaussian_vis_quadrature(u, v, fwhm_true, ratio_true, pa_true)
+    vis_model_err = float(np.max(np.abs(ist.gaussian_visibility(u, v, fwhm_true, ratio_true, pa_true) - vis_quad)))
+    assert vis_model_err < 1e-12
 
+    v2_gauss = vis_quad**2
+    err = np.full_like(v2_gauss, 1e-3)
     sm = ist.second_moments(u, v, v2_gauss, err, v2_min=0.2)
-    sigma_maj_true = fwhm_true / ist.FWHM_PER_SIGMA
+    sigma_maj_true = fwhm_true / (2.0 * np.sqrt(2.0 * np.log(2.0)))
     sm_err = max(
         abs(sm["sigma_major"] / sigma_maj_true - 1.0),
         abs(sm["ratio"] / ratio_true - 1.0),
     )
     assert not sm["isotropic"]
-    assert sm_err < 1e-10
-    assert abs((sm["pa"] - pa_true + 90.0) % 180.0 - 90.0) < 1e-8
+    assert sm_err < 1e-9
+    assert abs((sm["pa"] - pa_true + 90.0) % 180.0 - 90.0) < 1e-7
 
-    # Point + elliptical Gaussian + over-resolved flux across wide baselines
+    # Point + elliptical Gaussian + over-resolved flux from independent 2D sky quadrature
     q = np.geomspace(2.0e6, 1.5e8, 120)
     phi = rng.uniform(0.0, 2.0 * np.pi, 120)
     u2, v2_coord = q * np.cos(phi), q * np.sin(phi)
     fp_true, fg_true = 0.25, 0.55
-    v2_mix = ist.moment_model_v2(u2, v2_coord, fp_true, fg_true, fwhm_true, ratio_true, pa_true)
+    vis_quad2 = _sky_gaussian_vis_quadrature(u2, v2_coord, fwhm_true, ratio_true, pa_true)
+    v2_mix = (fp_true + fg_true * vis_quad2) ** 2
+    assert np.max(np.abs(ist.moment_model_v2(u2, v2_coord, fp_true, fg_true, fwhm_true, ratio_true, pa_true) - v2_mix)) < 1e-12
     mf = ist.moment_fit(u2, v2_coord, v2_mix, np.full(120, 5e-3), theta_range=(1.5, 25.0))
     assert mf is not None
     fwhm_rel_err = abs(mf["fwhm"] / fwhm_true - 1.0)
     flux_abs_err = max(abs(mf["compact"] - fp_true), abs(mf["extended"] - fg_true))
 
     record("moment_fit_fwhm_rel_err", float(fwhm_rel_err))
+    record("gaussian_vis_quad_abs_err", vis_model_err)
     record("second_moments_rel_err", float(sm_err))
     record("moment_fit_flux_abs_err", float(flux_abs_err))
     assert fwhm_rel_err < 2e-2
     assert abs(mf["ratio"] - ratio_true) < 2e-2
     assert abs((mf["pa"] - pa_true + 90.0) % 180.0 - 90.0) < 2.0
     assert flux_abs_err < 2e-2
+
+
+@pytest.mark.validates(
+    "crosscheck.informed_starts",
+    roots=["mathematics"],
+    kind="control",
+    headline="mirrored_pa_max_v2_diff",
+)
+def test_informed_starts_control_rejects_mirrored_position_angle():
+    """Negative control: mirroring the sky position angle (``180 - pa``) flips the sign of the
+    ``u * v`` cross-term in Fourier space and is strongly separated from ``pa`` by both
+    ``moment_model_v2`` and ``moment_fit``."""
+    rng = np.random.default_rng(29)
+    q = np.geomspace(4.0e6, 1.2e8, 100)
+    phi = rng.uniform(0.0, 2.0 * np.pi, 100)
+    u, v = q * np.cos(phi), q * np.sin(phi)
+    fwhm_true, ratio_true, pa_true = 7.0, 0.5, 37.0
+    pa_mirror = 180.0 - pa_true
+
+    v2_mirror = (0.2 + 0.65 * _sky_gaussian_vis_quadrature(u, v, fwhm_true, ratio_true, pa_mirror)) ** 2
+    v2_unmirrored = ist.moment_model_v2(u, v, 0.2, 0.65, fwhm_true, ratio_true, pa_true)
+    max_diff = float(np.max(np.abs(v2_mirror - v2_unmirrored)))
+    mf = ist.moment_fit(u, v, v2_mirror, np.full(100, 5e-3), theta_range=(1.5, 25.0))
+    assert mf is not None
+    pa_err_vs_true = abs((mf["pa"] - pa_true + 90.0) % 180.0 - 90.0)
+    pa_err_vs_mirror = abs((mf["pa"] - pa_mirror + 90.0) % 180.0 - 90.0)
+
+    record("mirrored_pa_max_v2_diff", max_diff)
+    record("mirrored_pa_fit_sep_deg", float(pa_err_vs_true))
+    assert max_diff > 0.1
+    assert pa_err_vs_true > 60.0
+    assert pa_err_vs_mirror < 2.0
 
 
 @pytest.mark.validates(
@@ -574,14 +644,15 @@ def test_skyplane_twin_invariance_point_reflection_and_verdict_rules():
     "crosscheck.radio_trust",
     roots=["mathematics"],
     kind="reference",
-    headline="zero_model_marginal_abs_err",
+    headline="three_ant_closed_triangle_abs_err",
 )
-def test_radio_trust_dirty_briggs_taper_and_zero_gain_marginal():
+def test_radio_trust_dirty_briggs_taper_image_model_and_closed_triangle_gain_marginal():
     """``dirty`` peaks at 1 on the phase centre and matches an analytical cosine fringe,
     ``density_weights`` folds Hermitian partners and interpolates between uniform and natural
-    limits, ``uv_taper`` matches the 2D Gaussian FT, and ``gain_marginal_brute_force`` equals
-    the exact closed-form integral at ``M = 0`` and matches 2D Gauss-Legendre quadrature on a
-    single-baseline non-zero model."""
+    limits, ``uv_taper`` matches 2D sky-plane Gaussian quadrature at an oblique PA, ``image_model``
+    matches analytic pixel phase ramps on both even and odd ``npix`` grids, and
+    ``gain_marginal_brute_force`` matches exact integrals at ``M = 0`` and on a closed 3-antenna
+    triangle in both coupled phase-closure and coupled 3-antenna log-amplitude limits."""
     # Dirty beam & off-centre point source
     u = np.array([1.0e5, -2.0e5, 3.0e5])
     v = np.array([0.5e5, 1.5e5, -1.0e5])
@@ -605,8 +676,40 @@ def test_radio_trust_dirty_briggs_taper_and_zero_gain_marginal():
     w_rob_uni = rt.density_weights(u_b, v_b, w_b, cell=100.0, kind="briggs", robust=-10.0)
     assert np.allclose(w_rob_uni / w_rob_uni.sum(), w_unif / w_unif.sum(), rtol=1e-12)
 
-    # Exact closed-form integral of gain_marginal_brute_force when model == 0:
-    # chi2(lam, phi) = sum w |vis|^2 is constant, so -log int exp(-chi2/2) N(lam) N(phi) = 0.5 * sum w |vis|^2
+    # uv_taper against direct 2D sky-plane elliptical Gaussian quadrature at oblique PA = 37 deg
+    rng = np.random.default_rng(71)
+    u_tap = rng.uniform(-4.0e6, 4.0e6, 24)
+    v_tap = rng.uniform(-4.0e6, 4.0e6, 24)
+    bmaj_mas, bmin_mas, pa_deg = 35.0, 18.0, 37.0
+    got_taper = rt.uv_taper(u_tap, v_tap, bmaj_mas, bmin_mas, pa_deg)
+    want_taper = _sky_gaussian_vis_quadrature(u_tap, v_tap, bmaj_mas, bmin_mas / bmaj_mas, pa_deg)
+    taper_err = float(np.max(np.abs(got_taper - want_taper)))
+    taper_wrong_pa = rt.uv_taper(u_tap, v_tap, bmaj_mas, bmin_mas, -pa_deg)
+    taper_mirrored_u = rt.uv_taper(-u_tap, v_tap, bmaj_mas, bmin_mas, pa_deg)
+    assert taper_err < 1e-12
+    assert float(np.max(np.abs(taper_wrong_pa - want_taper))) > 0.05
+    assert float(np.max(np.abs(taper_mirrored_u - want_taper))) > 0.05
+
+    # image_model against closed-form pixel phase ramps on both odd (npix=17) and even (npix=16) grids
+    mas_to_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    img_model_err = 0.0
+    for npix, pix_a, pix_b in ((17, (5, 11), (12, 3)), (16, (4, 10), (11, 2))):
+        eta = np.full((npix, npix), -80.0)
+        eta[pix_a] = np.log(0.7)
+        eta[pix_b] = np.log(0.3)
+        pixel_mas, flux = 8.0, 1.75
+        got_im = rt.image_model(eta, pixel_mas, u_tap, v_tap, flux=flux)
+        c0 = (npix - 1) / 2.0
+        xa, ya = (c0 - pix_a[1]) * pixel_mas * mas_to_rad, (c0 - pix_a[0]) * pixel_mas * mas_to_rad
+        xb, yb = (c0 - pix_b[1]) * pixel_mas * mas_to_rad, (c0 - pix_b[0]) * pixel_mas * mas_to_rad
+        want_im = flux * (
+            0.7 * np.exp(-2j * np.pi * (u_tap * xa + v_tap * ya))
+            + 0.3 * np.exp(-2j * np.pi * (u_tap * xb + v_tap * yb))
+        )
+        img_model_err = max(img_model_err, float(np.max(np.abs(got_im - want_im))))
+    assert img_model_err < 1e-14
+
+    # 1. Exact closed-form integral of gain_marginal_brute_force when model == 0:
     vis0 = np.array([0.3 - 0.4j, -0.2 + 0.5j, 0.1 + 0.2j])
     w0 = np.array([4.0, 7.0, 3.0])
     a1, a2 = np.array([0, 0, 1]), np.array([1, 2, 2])
@@ -617,38 +720,72 @@ def test_radio_trust_dirty_briggs_taper_and_zero_gain_marginal():
     zero_err = abs(float(got_zero) - want_zero)
     assert np.max(np.abs(mode_zero)) < 1e-7
 
-    # Non-zero 2-antenna, 1-baseline model: factorises into independent 2D amplitude sum & phase difference!
-    # s = lam_0 + lam_1 ~ N(0, 2 tau_a^2), d = phi_0 - phi_1 ~ N(0, 2 tau_p^2)
+    # 2. Closed 3-antenna triangle (p = 6, off-diagonal Cholesky Hessian across all 3 baselines):
     from scipy.integrate import dblquad
 
-    tau_a, tau_p = 0.12, 0.35
-    m1, v1, wt1 = np.array([0.8 + 0.3j]), np.array([0.92 + 0.18j]), np.array([8.0])
-    got_2ant, _ = rt.gain_marginal_brute_force(
-        m1, v1, wt1, np.array([0]), np.array([1]), n_ant=2, tau_a=tau_a, tau_p=tau_p, nodes=15
-    )
-    sig_s, sig_d = np.sqrt(2.0) * tau_a, np.sqrt(2.0) * tau_p
-    norm_2d = 2.0 * np.pi * sig_s * sig_d
-    integral_2d, _ = dblquad(
-        lambda d, s: np.exp(
-            -0.5 * wt1[0] * abs(v1[0] - np.exp(s + 1j * d) * m1[0]) ** 2
-            - 0.5 * (s / sig_s) ** 2
-            - 0.5 * (d / sig_d) ** 2
-        )
-        / norm_2d,
-        -6.0 * sig_s,
-        6.0 * sig_s,
-        -6.0 * sig_d,
-        6.0 * sig_d,
-        epsabs=1e-12,
-        epsrel=1e-12,
-    )
-    want_2ant = float(-np.log(integral_2d))
-    two_ant_err = abs(float(got_2ant) - want_2ant)
+    m3 = np.array([0.7 + 0.2j, -0.4 + 0.5j, 0.3 - 0.6j])
+    v3 = np.array([0.82 + 0.15j, -0.35 + 0.58j, 0.26 - 0.52j])
+    w3 = np.array([6.0, 9.0, 5.0])
 
+    # (a) Coupled phase-closure limit (tau_a = 1e-6, tau_p = 0.32):
+    # d1 = phi_0 - phi_1, d2 = phi_0 - phi_2 (so phi_1 - phi_2 = d2 - d1) have correlated
+    # Gaussian prior covariance tau_p^2 * [[2, 1], [1, 2]] (det = 3 * tau_p^4).
+    tau_p_tri = 0.32
+    got_tri_phase, _ = rt.gain_marginal_brute_force(
+        m3, v3, w3, a1, a2, n_ant=3, tau_a=1e-6, tau_p=tau_p_tri, nodes=9
+    )
+    norm_d = 2.0 * np.pi * np.sqrt(3.0) * tau_p_tri**2
+    lim_d = 7.0 * np.sqrt(2.0) * tau_p_tri
+    int_phase, _ = dblquad(
+        lambda d2, d1: np.exp(
+            -0.5
+            * (
+                w3[0] * abs(v3[0] - np.exp(1j * d1) * m3[0]) ** 2
+                + w3[1] * abs(v3[1] - np.exp(1j * d2) * m3[1]) ** 2
+                + w3[2] * abs(v3[2] - np.exp(1j * (d2 - d1)) * m3[2]) ** 2
+            )
+            - (d1**2 - d1 * d2 + d2**2) / (3.0 * tau_p_tri**2)
+        )
+        / norm_d,
+        -lim_d,
+        lim_d,
+        -lim_d,
+        lim_d,
+        epsabs=1e-11,
+        epsrel=1e-11,
+    )
+    tri_phase_err = abs(float(got_tri_phase) - float(-np.log(int_phase)))
+
+    # (b) Coupled 3-antenna log-amplitude limit (tau_a = 0.14, tau_p = 1e-6):
+    # On an odd cycle, (lam_0 + lam_1, lam_0 + lam_2, lam_1 + lam_2) is full-rank (det = -2)
+    # with full 3x3 off-diagonal coupling; integrate directly over (lam_0, lam_1, lam_2) by
+    # unwhitened 3D Gauss-Legendre quadrature (shares no mode, Hessian, or Cholesky with rt).
+    tau_a_tri = 0.14
+    got_tri_amp, _ = rt.gain_marginal_brute_force(
+        m3, v3, w3, a1, a2, n_ant=3, tau_a=tau_a_tri, tau_p=1e-6, nodes=9
+    )
+    gl_x, gl_w = np.polynomial.legendre.leggauss(48)
+    half_a = 7.5 * tau_a_tri
+    pts_a = half_a * gl_x
+    wts_a = half_a * gl_w / (np.sqrt(2.0 * np.pi) * tau_a_tri) * np.exp(-0.5 * (pts_a / tau_a_tri) ** 2)
+    l0, l1, l2 = np.meshgrid(pts_a, pts_a, pts_a, indexing="ij")
+    wt3 = np.einsum("i,j,k->ijk", wts_a, wts_a, wts_a)
+    chi2_amp = (
+        w3[0] * np.abs(v3[0] - np.exp(l0 + l1) * m3[0]) ** 2
+        + w3[1] * np.abs(v3[1] - np.exp(l0 + l2) * m3[1]) ** 2
+        + w3[2] * np.abs(v3[2] - np.exp(l1 + l2) * m3[2]) ** 2
+    )
+    want_tri_amp = float(-np.log(np.sum(wt3 * np.exp(-0.5 * chi2_amp))))
+    tri_amp_err = abs(float(got_tri_amp) - want_tri_amp)
+    tri_err = max(tri_phase_err, tri_amp_err)
+
+    record("three_ant_closed_triangle_abs_err", float(tri_err))
+    record("uv_taper_quad_abs_err", taper_err)
+    record("image_model_exact_abs_err", img_model_err)
     record("zero_model_marginal_abs_err", float(zero_err))
-    record("two_antenna_reduced_2d_abs_err", float(two_ant_err))
     assert zero_err < 1e-12
-    assert two_ant_err < 1e-8
+    assert tri_phase_err < 1e-7
+    assert tri_amp_err < 1e-7
 
 
 # ------------------------------------------------ 9. crosscheck.toeplitz_scenes
@@ -899,3 +1036,60 @@ def test_mpol_losses_match_analytic_entropy_tv_tsv_and_central_differences():
     record("max_value_rel_err", float(val_err))
     assert val_err < 1e-12
     assert max_grad_err < 1e-8
+
+
+# ------------------------------------------------ 13. virgil_bridge.alma
+
+
+@pytest.mark.validates(
+    "virgil_bridge.alma",
+    roots=["mathematics"],
+    kind="reference",
+    headline="mpol_entropy_dft_rel_err",
+)
+def test_virgil_bridge_alma_lambda_scales_ring_geometry_and_mpol_entropy():
+    """``lam_r`` and ``lam_f_equivalent`` satisfy their exact analytical scalings,
+    ``ring_and_blob`` has unit sum and concentrates the blob in the expected sky quadrant,
+    and ``mpol_entropy_jax`` matches an explicit NumPy discrete Fourier Gaussian blur plus
+    Shannon relative entropy."""
+    import jax.numpy as jnp
+
+    pytest.importorskip("virgil.radio")
+    from virgil_bridge import alma as vba
+
+    assert vba.lam_r(50_000, lam_m=1e-9) == pytest.approx(1e-4, rel=1e-15)
+    assert vba.lam_f_equivalent(1e-4, flux=0.5, pixel_mas=5.0, f_tot=0.25) == pytest.approx(
+        1e-4 * 0.5 / (0.25 * (5.0 / 1000.0) ** 2), rel=1e-15
+    )
+
+    scene_im = vba.ring_and_blob(npix=33, pixel_mas=20.0, blob=(0.4, 140.0, -160.0, 40.0))
+    assert scene_im.shape == (33, 33)
+    assert np.all(scene_im >= 0.0)
+    assert float(scene_im.sum()) == pytest.approx(1.0, rel=1e-14)
+    # Blob at (+140 mas East -> col < 16, -160 mas North -> row > 16): SE quadrant brighter than NW
+    assert float(scene_im[17:, :16].sum()) > float(scene_im[:16, 17:].sum())
+
+    rng = np.random.default_rng(61)
+    npix = 16
+    pixel_mas, taper_mas, flux, prior, f_tot = 5.0, 20.0, 0.32, 1e-4, 0.25
+    eta = rng.normal(0.0, 0.8, (npix, npix))
+    got_ent = float(
+        vba.mpol_entropy_jax(
+            jnp.asarray(eta), flux, pixel_mas=pixel_mas, taper_mas=taper_mas, prior=prior, f_tot=f_tot
+        )
+    )
+    dx_arcsec = pixel_mas / 1000.0
+    arcsec_rad = np.pi / (180.0 * 3600.0)
+    b = np.exp(eta - eta.max())
+    b /= b.sum()
+    sb = flux * b / dx_arcsec**2
+    freq = np.fft.fftfreq(npix, d=dx_arcsec * arcsec_rad)
+    q2 = freq[:, None] ** 2 + freq[None, :] ** 2
+    taper_ft = np.exp(-((np.pi * (taper_mas / 1000.0) * arcsec_rad) ** 2) * q2 / (4.0 * np.log(2.0)))
+    sb_tap = np.maximum(np.fft.ifft2(np.fft.fft2(sb) * taper_ft).real, 1e-30)
+    want_ent = float(np.sum(sb_tap * np.log(sb_tap / prior)) / f_tot)
+    ent_rel_err = abs(got_ent / want_ent - 1.0)
+
+    record("mpol_entropy_dft_rel_err", ent_rel_err)
+    record("ring_and_blob_sum_abs_err", abs(float(scene_im.sum()) - 1.0))
+    assert ent_rel_err < 1e-13

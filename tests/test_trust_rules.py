@@ -548,11 +548,13 @@ def test_no_failure_badge_when_the_same_commit_failed_or_the_other_commit_passed
 
 def test_ok_via_does_not_mask_missing_property_roots_or_unconfirmed_conventions(trust, tmp_path):
     """A part checked through an unverified ``via`` reference must still satisfy its own ``properties`` and
-    ``convention`` requirements when ``blocked_roots`` are counted; only once those hold may it become ``ok-via``."""
+    ``convention`` requirements when ``blocked_roots`` are counted; only once those hold may it become ``ok-via``.
+    Adding a passing trusted check must never demote ``relies-unverified`` to ``partly`` or ``convention``."""
     graph = {
         "nodes": {
             "crosscheck.r": {"layer": "references"},
             "virgil.prop": {"layer": "models", "roots": 2, "properties": {"sense": 2}},
+            "virgil.prop_mix": {"layer": "models", "roots": 1, "properties": {"sense": 2}},
             "virgil.conv": {"layer": "models", "convention": ["sense"]},
         }
     }
@@ -567,9 +569,23 @@ def test_ok_via_does_not_mask_missing_property_roots_or_unconfirmed_conventions(
 
     recs[1]["properties"] = ["sense"]
     recs[2]["roots"] = ["pmoired"]
-    got, _ = verdicts(trust, tmp_path, recs, graph)
+    got, model = verdicts(trust, tmp_path, recs, graph)
     assert got["virgil.prop"] == "relies-unverified"
     assert got["virgil.conv"] == "relies-unverified"
+    assert [c["id"] for c in model["nodes"]["virgil.conv"]["because"]] == ["crosscheck.r"]
+
+    # Monotonicity under mixed evidence: adding a trusted mathematics check must not demote relies-unverified
+    recs_mixed = [
+        *recs,
+        record("t::c2", "virgil.conv", roots=["mathematics"], properties=["sense"]),
+        record("t::pm1", "virgil.prop_mix", roots=["mathematics"], properties=["sense"]),
+        record("t::pm2", "virgil.prop_mix", roots=["pmoired"], via=["crosscheck.r"], properties=["sense"]),
+    ]
+    got, model = verdicts(trust, tmp_path, recs_mixed, graph)
+    assert got["virgil.conv"] == "relies-unverified"
+    assert got["virgil.prop_mix"] == "relies-unverified"
+    assert [c["id"] for c in model["nodes"]["virgil.conv"]["because"]] == ["crosscheck.r"]
+    assert [c["id"] for c in model["nodes"]["virgil.prop_mix"]["because"]] == ["crosscheck.r"]
 
 
 def test_upstream_failing_dependency_marks_dependent_relies_not_relies_unverified(trust, tmp_path):
@@ -607,12 +623,44 @@ def test_changed_below_propagates_through_unchecked_dependencies_and_empty_sourc
             "virgil.leaf": {"layer": "data", "source": ["src/virgil/leaf.py"]},
         }
     }
+    # 1. Unchecked leaf + empty-source caller at old commit: leaf.py change propagates to top
     path = evidence(tmp_path, "e.jsonl", [record("t::top", "virgil.top")], commit=old)
     runs, recs = trust.load_evidence([path], virgil=repo)
     model = trust.build(graph, [], recs, runs, virgil=repo, golden=set())
     assert model["nodes"]["virgil.top"]["changed"] == ["src/virgil/leaf.py"]
     assert model["nodes"]["virgil.leaf"]["changed"] is None  # unchecked itself: no commit of its own
     assert model["changed"] == 1
+
+    # 2. Leaf re-tested on new commit (so leaf itself is clean), while top remains tested on old commit:
+    # top must still report leaf.py changed since top's own evidence commit
+    path_leaf_new = evidence(tmp_path, "e_new.jsonl", [record("t::leaf", "virgil.leaf")], date="2026-10-07", commit=new)
+    runs, recs = trust.load_evidence([path, path_leaf_new], virgil=repo)
+    model = trust.build(graph, [], recs, runs, virgil=repo, golden=set())
+    assert model["nodes"]["virgil.leaf"]["changed"] == []
+    assert model["nodes"]["virgil.top"]["changed"] == ["src/virgil/leaf.py"]
+
+    # 3. Unreachable commit SHA must report None ("unknown"), never [] ("clean")
+    path_bad = evidence(tmp_path, "e_bad.jsonl", [record("t::top_bad", "virgil.top")], commit="0" * 40)
+    runs, recs = trust.load_evidence([path_bad], virgil=repo)
+    model = trust.build(graph, [], recs, runs, virgil=repo, golden=set())
+    assert model["nodes"]["virgil.top"]["changed"] is None
+
+
+def test_module_via_tracks_registered_virgil_bridge_references_only(tmp_path):
+    from evidence import plugin
+
+    test_file = tmp_path / "test_sample_via.py"
+    test_file.write_text(
+        "import virgil_bridge.alma as vba\n"
+        "from virgil_bridge import mpol, binary\n"
+        "import virgil_bridge.alma_lambda_report as rep\n"
+        "from crosscheck.sky import vis_point\n"
+        "from external_bridge import _subprocess\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    got = plugin._module_via(str(test_file))
+    assert got == ("crosscheck.sky", "virgil_bridge.alma", "virgil_bridge.mpol")
 
 
 def test_pipeline_with_failing_step_is_failing_while_bug_step_keeps_passes(trust, tmp_path):

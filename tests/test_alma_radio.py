@@ -583,12 +583,11 @@ def test_chi2_by_ddid_of_a_held_out_fold_matches_numpy(problem):
 @pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["statistics", "casa"], tier="B", headline="max_abs_sigma_diff")
 @pytest.mark.skipif(not _have_casa("alma"), reason="CASA not installed (scripts/setup_external.sh alma)")
 def test_sigma_fit_on_casa_noise_is_one_and_matches_the_successive_difference_estimate(ms_noisy):
-    """On the noisy synthetic MS (1 mJy simplenoise on each of XX and YY, so w = 2e6 Jy^-2 is
-    the right weight), with the sky held at CASA's two point sources, `virgil.fit` of
-    `cal.sigma` (and the total flux) matches the exact sample RMS of `(V - M)` to 1e-4, gives
-    s_d = 1 within 3.5 standard errors, s/(2 sqrt N) (CASA's default RNG seed lands at -3.20 SE
-    on macOS libc++ and -1.18 SE on Linux libstdc++), and agrees with
-    `crosscheck.alma.successive_difference_sigma` within the errors of both."""
+    """On the noisy synthetic MS (1 mJy simplenoise on each of XX and YY, seeded deterministically
+    in ``alma_worker.simulate_ms``, so w = 2e6 Jy^-2 is the right weight), with the sky held at
+    CASA's two point sources, `virgil.fit` of `cal.sigma` (and the total flux) matches the exact
+    sample RMS of `(V - M)` to 1e-4, gives s_d = 1 within three standard errors, s/(2 sqrt N), and
+    agrees with `crosscheck.alma.successive_difference_sigma` within the errors of both."""
     from virgil import fit
 
     ms, tmp = ms_noisy
@@ -617,7 +616,7 @@ def test_sigma_fit_on_casa_noise_is_one_and_matches_the_successive_difference_es
         record(f"s_successive_difference_{d}", sd["s"])
         max_diff = max(max_diff, float(abs(s[d] - sd["s"])))
         assert s[d] == pytest.approx(emp_s, rel=1e-4)
-        assert abs(s[d] - 1.0) < 3.5 * se[d]
+        assert abs(s[d] - 1.0) < 3 * se[d]
         assert abs(s[d] - sd["s"]) < 3 * np.hypot(se[d], se_sd)
     record("max_abs_sigma_diff", max_diff)
 

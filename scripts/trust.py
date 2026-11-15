@@ -473,24 +473,30 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                     prop_roots_all[prop] |= s_
             weak |= w_ | (s_ if r["kind"] not in agreeing else set())
         strong, weak = sorted(strong), sorted(weak - set(strong))
+        all_roots = set(strong) | blocked_roots
         need = node.get("roots", 1)
         if failing:
             status = "failing"
         elif name in open_findings:
             status = "bug"
-        elif len(strong) >= need and not external_open.get(name) and properties_short(name, prop_roots):
-            status = "partly"  # agreement overall, but a property needs more independent roots
-        elif len(strong) >= need and not external_open.get(name) and unconfirmed_conventions(name, prop_roots):
-            status = "convention"
-        elif len(strong) >= need and not external_open.get(name):
+        elif (
+            len(strong) >= need
+            and not external_open.get(name)
+            and not properties_short(name, prop_roots)
+            and not unconfirmed_conventions(name, prop_roots)
+        ):
             status = "ok"
-        elif len(set(strong) | blocked_roots) >= need and not external_open.get(name):
-            if properties_short(name, prop_roots_all):
-                status = "partly"
-            elif unconfirmed_conventions(name, prop_roots_all):
-                status = "convention"
-            else:
-                status = "ok-via"  # its checks pass, but through reference code not yet verified
+        elif (
+            len(all_roots) >= need
+            and not external_open.get(name)
+            and not properties_short(name, prop_roots_all)
+            and not unconfirmed_conventions(name, prop_roots_all)
+        ):
+            status = "ok-via"  # its checks pass, but through reference code not yet verified
+        elif len(all_roots) >= need and not external_open.get(name) and properties_short(name, prop_roots_all):
+            status = "partly"  # agreement overall, but a property needs more independent roots
+        elif len(all_roots) >= need and not external_open.get(name) and unconfirmed_conventions(name, prop_roots_all):
+            status = "convention"
         elif strong or weak or blocked_roots:
             status = "partly"
         else:
@@ -552,18 +558,35 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             found |= problems(dep, seen)
         return found
 
-    def changed_below(name, seen, caller_commits=()):
-        """virgil files changed under this part or anything it relies on."""
-        found = set(own[name]["changed"] or [])
+    diff_cache = {}
+
+    def cached_changed_files(commit, paths):
+        key = (commit, paths)
+        if key not in diff_cache:
+            diff_cache[key] = changed_files(virgil, commit, list(paths))
+        return diff_cache[key]
+
+    def transitive_sources(name, seen=None):
+        """Union of virgil ``source`` paths on ``name`` and every part it relies on."""
+        seen = set() if seen is None else seen
+        seen.add(name)
+        paths = set(nodes[name].get("source", []))
         for dep in nodes[name].get("depends", []):
             if dep in nodes and dep not in seen:
-                seen.add(dep)
-                if own[dep]["changed"] is None and not own[dep]["commits"] and caller_commits:
-                    dep_changes = [changed_files(virgil, c, nodes[dep].get("source", [])) for c in caller_commits]
-                    if dep_changes and not any(c is None for c in dep_changes):
-                        found |= {f for c in dep_changes for f in c}
-                found |= changed_below(dep, seen, caller_commits)
-        return found
+                paths |= set(transitive_sources(dep, seen))
+        return tuple(sorted(paths))
+
+    def changed_below(name):
+        """virgil files changed under this part or anything it relies on, evaluated
+        against this part's own evidence commits (``None`` when unknown or unreachable)."""
+        commits = own[name]["commits"]
+        if not commits:
+            return None
+        all_paths = transitive_sources(name)
+        diffs = [cached_changed_files(c, all_paths) for c in commits]
+        if any(d is None for d in diffs):
+            return None
+        return sorted({f for d in diffs for f in d})
 
     out_nodes = {}
     for name, node in nodes.items():
@@ -593,7 +616,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "depends": node.get("depends", []), "dependents": dependents,
             "properties": o["properties"], "unconfirmed": o["unconfirmed"],
             "checks": o["checks"], "commits": o["commits"],
-            "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set(), o["commits"])),
+            "changed": changed_below(name),
             "skipped": o["skipped"],
             "source": node.get("source", []),
         }
