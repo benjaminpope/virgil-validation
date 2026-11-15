@@ -1701,3 +1701,228 @@ def test_cross_module_dynamic_import_helpers_propagate_and_fail_closed(tmp_path)
         assert plugin._UNRESOLVED_IMPORT in plugin._item_via(str(bf), "test_b", None, ()), (idx, bad_src)
         assert plugin._UNRESOLVED_IMPORT in plugin._module_via(str(bf)), (idx, bad_src)
 
+
+def test_item_via_conftest_top_helpers_pytest_hooks_and_usefixtures(tmp_path):
+    from evidence import plugin
+
+    tests_dir = tmp_path / "tests"
+    sub_dir = tests_dir / "sub"
+    sub_dir.mkdir(parents=True)
+
+    # Root conftest.py calls a local helper at import time AND defines a pytest_* hook calling another helper,
+    # while also defining an unused fixture (whose name matches a hook parameter to check hook args are not fixtures)
+    (tests_dir / "conftest.py").write_text(
+        "import pytest\n"
+        "from external_bridge import _subprocess as sp\n"
+        "\n"
+        "def _make_shared():\n"
+        "    from crosscheck import alma\n"
+        "    sp.run('mpol', 'mpol_worker.py', {})\n"
+        "    return alma\n"
+        "\n"
+        "SHARED = _make_shared()\n"
+        "\n"
+        "def _hook_helper():\n"
+        "    from crosscheck import chi2\n"
+        "    return chi2\n"
+        "\n"
+        "def pytest_runtest_setup(item):\n"
+        "    return _hook_helper()\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def item():\n"
+        "    from external_bridge import pmoired_models\n"
+        "    return pmoired_models\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def mod_uf():\n"
+        "    from crosscheck import limb\n"
+        "    return limb\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def cls_uf():\n"
+        "    from crosscheck import radial\n"
+        "    return radial\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def chained_uf():\n"
+        "    from virgil_bridge import alma as vb_alma\n"
+        "    return vb_alma\n"
+        "\n"
+        "@pytest.fixture\n"
+        "@pytest.mark.usefixtures('chained_uf')\n"
+        "def fn_uf():\n"
+        "    from crosscheck import sky\n"
+        "    return sky\n",
+        encoding="utf-8",
+    )
+
+    tfile = sub_dir / "test_marks.py"
+    tfile.write_text(
+        "import pytest\n"
+        "\n"
+        "pytestmark = [pytest.mark.usefixtures('mod_uf')]\n"
+        "\n"
+        "@pytest.mark.usefixtures('cls_uf')\n"
+        "class TestSuite:\n"
+        "    @pytest.mark.usefixtures('fn_uf')\n"
+        "    def test_case(self):\n"
+        "        assert True\n"
+        "\n"
+        "def test_plain():\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+
+    plugin._module_via.cache_clear()
+    # Direct _item_via without pytest-resolved fixture_names=() must still pick up conftest top helpers,
+    # pytest_* hooks, and module/class/function/fixture usefixtures marks (excluding unused `item` fixture)
+    assert plugin._item_via(str(tfile), "test_case", "TestSuite", ()) == (
+        "crosscheck.alma",
+        "crosscheck.chi2",
+        "crosscheck.limb",
+        "crosscheck.radial",
+        "crosscheck.sky",
+        "external_bridge.mpol_worker",
+        "virgil_bridge.alma",
+    )
+    assert plugin._item_via(str(tfile), "test_plain", None, ()) == (
+        "crosscheck.alma",
+        "crosscheck.chi2",
+        "crosscheck.limb",
+        "external_bridge.mpol_worker",
+    )
+
+
+def test_local_helper_packages_from_dot_and_dotted_submodules_preserve_init_via(tmp_path):
+    from evidence import plugin
+
+    tests_dir = tmp_path / "tests"
+    lpkg = tests_dir / "lpkg"
+    sub = lpkg / "sub"
+    sub.mkdir(parents=True)
+
+    (lpkg / "__init__.py").write_text(
+        "import importlib\n"
+        "from crosscheck import limb\n"
+        "from external_bridge import _subprocess as sp\n"
+        "\n"
+        "def pkg_sym():\n"
+        "    from crosscheck import alma\n"
+        "    return alma\n"
+        "\n"
+        "def pkg_sp_wrap(w):\n"
+        "    return sp.run('ehtim', w, {})\n"
+        "\n"
+        "def pkg_imp_wrap(m):\n"
+        "    return importlib.import_module(m)\n",
+        encoding="utf-8",
+    )
+    (sub / "__init__.py").write_text(
+        "from crosscheck import radial\n"
+        "\n"
+        "def sub_sym():\n"
+        "    from crosscheck import chi2\n"
+        "    return chi2\n",
+        encoding="utf-8",
+    )
+    in_pkg = sub / "test_in_pkg.py"
+    in_pkg.write_text(
+        "from .. import pkg_sym, pkg_sp_wrap, pkg_imp_wrap\n"
+        "from . import sub_sym\n"
+        "\n"
+        "def test_rel():\n"
+        "    pkg_sym()\n"
+        "    sub_sym()\n"
+        "    pkg_sp_wrap('ehtim_worker.py')\n"
+        "    pkg_imp_wrap('virgil_bridge.alma')\n",
+        encoding="utf-8",
+    )
+    (sub / "leaf.py").write_text(
+        "from crosscheck import sky\n"
+        "\n"
+        "def leaf_fn():\n"
+        "    return sky\n",
+        encoding="utf-8",
+    )
+    dotted_caller = tests_dir / "test_dotted_pkg.py"
+    dotted_caller.write_text(
+        "import lpkg.sub.leaf\n"
+        "\n"
+        "def test_dotted():\n"
+        "    lpkg.pkg_sym()\n"
+        "    lpkg.pkg_sp_wrap('candid_worker.py')\n"
+        "    lpkg.pkg_imp_wrap('external_bridge.pmoired_models')\n"
+        "    return lpkg.sub.leaf.leaf_fn()\n",
+        encoding="utf-8",
+    )
+    aliased_dotted = tests_dir / "test_aliased_dotted_pkg.py"
+    aliased_dotted.write_text(
+        "import lpkg.sub.leaf as leaf_mod\n"
+        "\n"
+        "def test_aliased():\n"
+        "    return leaf_mod.leaf_fn()\n",
+        encoding="utf-8",
+    )
+    from_dotted = tests_dir / "test_from_dotted_pkg.py"
+    from_dotted.write_text(
+        "from lpkg.sub.leaf import leaf_fn\n"
+        "\n"
+        "def test_from_dotted():\n"
+        "    return leaf_fn()\n",
+        encoding="utf-8",
+    )
+    wild_dot = lpkg / "test_wild_dot.py"
+    wild_dot.write_text(
+        "from . import *\n"
+        "\n"
+        "def test_w():\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    dyn_dot = lpkg / "test_dyn_dot.py"
+    dyn_dot.write_text(
+        "from . import pkg_sp_wrap, pkg_imp_wrap\n"
+        "\n"
+        "def test_d(w, m):\n"
+        "    pkg_sp_wrap(w)\n"
+        "    pkg_imp_wrap(m)\n",
+        encoding="utf-8",
+    )
+
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(in_pkg), "test_rel", None, ()) == (
+        "crosscheck.alma",
+        "crosscheck.chi2",
+        "crosscheck.limb",
+        "crosscheck.radial",
+        "external_bridge.ehtim_worker",
+        "virgil_bridge.alma",
+    )
+    assert plugin._item_via(str(dotted_caller), "test_dotted", None, ()) == (
+        "crosscheck.alma",
+        "crosscheck.chi2",
+        "crosscheck.limb",
+        "crosscheck.radial",
+        "crosscheck.sky",
+        "external_bridge.candid_worker",
+        "external_bridge.pmoired_models",
+    )
+    assert plugin._item_via(str(aliased_dotted), "test_aliased", None, ()) == (
+        "crosscheck.limb",
+        "crosscheck.radial",
+        "crosscheck.sky",
+    )
+    assert plugin._item_via(str(from_dotted), "test_from_dotted", None, ()) == (
+        "crosscheck.limb",
+        "crosscheck.radial",
+        "crosscheck.sky",
+    )
+    wild_via = plugin._item_via(str(wild_dot), "test_w", None, ())
+    assert plugin._UNRESOLVED_WORKER in wild_via
+    assert plugin._UNRESOLVED_IMPORT in wild_via
+    dyn_via = plugin._item_via(str(dyn_dot), "test_d", None, ())
+    assert plugin._UNRESOLVED_WORKER in dyn_via
+    assert plugin._UNRESOLVED_IMPORT in dyn_via
+
+
