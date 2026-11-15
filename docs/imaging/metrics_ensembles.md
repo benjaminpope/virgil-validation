@@ -30,14 +30,20 @@ minimization, `convolve2d`) and against identities.
 
 ## Ensembles
 
-Only the random settings are checked so far: `combine` (the MYTHRA
-selection and the running mean), `run_group`, `ensemble`,
-`reference_starts` and the `Group`, `Member` and `Ensemble` records need
-fits and are not yet covered. On a simulated 7-hole masking dataset (21 V²
-and 35 closure phases, 15 of them independent), 300 groups:
+[`test_ensemble_draws.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_ensemble_draws.py)
+checks the randomized hyperparameter draws on a simulated 7-hole masking dataset
+(21 V² and 35 closure phases, 15 of them independent, 300 groups), and
+[`test_042_lcurve_ensemble_radio.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_042_lcurve_ensemble_radio.py)
+validates `reference_starts`, `run_group`, `GPFit`, `EvidenceGrid`,
+`evidence_grid`, `gp_members`, `combine` (MYTHRA windowing, MAD outlier cut,
+sub-beam alignment, and non-compounding running-mean χ² gate), `ensemble`, and
+the `Group`, `Member`, and `Ensemble` containers on synthetic VLTI datasets:
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `draw_groups`, `Draw`, `EnsembleSpec` | each group's family, start, pixel (`nyquist_pixel_scale` / oversample) and field (`field_of_view` × factor) from the spec; `n_weights` weights, largest first; families and starts each drawn uniformly (χ² tests) | Mathematics | fields within 0.61 pixels |
 | the weights per independent datum | max(w) / high ≤ N ≤ min(w) / low over all draws pins N = 36 (V² plus independent closure phases); log(w / N) uniform on the range (Kolmogorov–Smirnov) | Statistics | N bounds 36 to 36; smallest KS p = 0.03 |
 | reproducibility and ordering | the same key gives the same draws; groups sharing a compilation (family, npix, pixel) are adjacent | Mathematics | exact |
+| `Group`, `Member`, `Ensemble` | `Ensemble.kept` filtering, pixelwise standard deviation across aligned reconstructions, and `summary()` | Mathematics | exact |
+| `reference_starts`, `run_group`, `combine`, `ensemble` | unit-sum `moments`, `flat`, and `dirty` starts (closure-phase datasets raise `ValueError` on `start="dirty"`); end-to-end multi-family ensemble recovers injected off-axis blob with every `trace` step bounded by `trace[0] × (1 + √(2/N_ind))`; 180°-reflected V²-only twin rejected with `reason="mean"` (control) | Mathematics | NCC > 0.80; gate exact |
+| `GPFit`, `EvidenceGrid`, `evidence_grid`, `gp_members` | Laplace `log_evidence` grid over `(sigma, length_mas)` matches direct `imaging.log_evidence` on `grid.best` and pairwise grid differences, and `gp_members` retains only fits within `gp_window_nats` of the peak | Mathematics | 1e-5 nats |
