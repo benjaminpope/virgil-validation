@@ -634,13 +634,13 @@
   title: 'PositionData: astrometric calibration sign and scale (theta_meas = theta_sky + north_angle, rho_meas = plate_scale * rho_sky) is an internal parameter-sign convention checked via properties: {calibration: 1} and wrong-sign controls'
   objects: [virgil.orbits.PositionData]
   ruling: definition
-  kind: 'convention (PositionData.model follows Octofitter''s nuisance parameterization Thompson et al. 2023, AJ 166, 164, adding north_angle to the sky position angle and multiplying separation by plate_scale; defining north_angle with the opposite sign or plate_scale as its reciprocal is an equivalent reparameterization that our wrong-sign controls reject by > 50 sigma, while PositionData''s astrometric log-likelihood is independently confirmed against SciPy, PMOIRED, and CANDID)'
+  kind: 'convention (PositionData.model follows Octofitter''s nuisance parameterization Thompson et al. 2023, AJ 166, 164, adding north_angle to the sky position angle and multiplying separation by plate_scale; defining north_angle with the opposite sign or plate_scale as its reciprocal is an equivalent reparameterization that our wrong-sign controls reject by > 50 sigma, while PositionData''s astrometric log-likelihood is independently confirmed against SciPy and PMOIRED''s profiled OIFITS delta_chi2)'
   referee: mathematics (crosscheck.orbits multi-epoch calibration recovery and wrong-sign controls)
   evidence:
     - tests/test_position_calibration.py::test_position_data_calibration_model_and_recovery
     - tests/test_position_calibration.py::test_position_data_wrong_calibration_sign_and_scale_fail_by_over_50_sigma
   status: documented
-  decision: 'ruled definition / documented (Ben, 2026-11-15): the calibration nuisance sign does not need to be a convention trust-graph blocker; it is an arbitrary parameter-sign convention pinned via properties: {calibration: 1} alongside external PMOIRED and CANDID confirmation of PositionData.loglike.'
+  decision: 'ruled definition / documented (Ben, 2026-11-15): the calibration nuisance sign does not need to be a convention trust-graph blocker; it is an arbitrary parameter-sign convention pinned via properties: {calibration: 1} alongside external PMOIRED confirmation of PositionData.loglike.'
 
 - id: D26
   title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode enters the wrap denominator when Delta != 0'
@@ -658,7 +658,7 @@
   objects: [oimodeler]
   ruling: external:oimodeler
   kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: calling np.rot90(im) before oimComponentImage maps row 0 to South places the hot visible pole at pa + 180 deg instead of pa, inverting every closure phase sign)'
-  referee: mathematics (OIFITS low-spatial-frequency photocentre phase slope); pmoired (rotastar.Vrota)
+  referee: mathematics (translation-invariant first-lobe closure-phase sign against crosscheck.elr.cloud); pmoired (rotastar.Vrota)
   evidence: [tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion]
   status: to-raise
 

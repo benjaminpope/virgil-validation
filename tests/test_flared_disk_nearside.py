@@ -8,7 +8,10 @@ towards the observer (smaller dust scattering angle). Forward-peaked dust
 scattering (or positive near-side ``skew``) therefore brightens the physical
 near-side rim at sky azimuth ``pa + 90 deg`` — for example, at ``(inc = 52 deg,
 pa = 160 deg)``, in the West-Southwest sky quadrant (``dra < 0, ddec < 0``,
-sky PA ``250 deg``).
+sky PA ``250 deg``). These sky-plane photocentre quadrant checks, orthogonal
+baseline ``V^2`` anisotropy checks, and backward-scattering (``g < 0``) negative
+controls complement the pointwise ``crosscheck.disks.brightness`` and
+``scattered_ring`` quadrature checks in ``tests/test_remaining_models.py:119-178``.
 
 Per ledger ``D24`` (Ben's 2026-11-15 ruling), the choice of which half-plane
 corresponds to ``inc in (0, 90)`` deg at a given ``pa`` is an internal

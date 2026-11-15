@@ -17,7 +17,8 @@ are positive checks only. See docs/method/pmoired.md.
 import numpy as np
 import pytest
 
-from crosscheck import simulate, sky
+from crosscheck import elr, simulate, sky
+from evidence.plugin import record
 
 pytest.importorskip("pmoired")
 from external_bridge.pmoired_models import model_minus_data  # noqa: E402
@@ -180,3 +181,56 @@ def test_two_harmonics(observe):
     }
     dv2, dcp, _ = observe(_cloud(ring), params, {"Nr": 1000})
     assert dv2 < 1e-6 and dcp < 1e-3
+
+
+@pytest.mark.validates(
+    "external_bridge.pmoired_models",
+    roots=["pmoired", "mathematics"],
+    kind="reference",
+    headline="max_abs_dV2",
+)
+def test_rotastar_pole_pa_and_roche_omega_convention(tmp_path):
+    """Stage 0 check pinning PMOIRED's rotastar (Vrota) directly against
+    crosscheck.elr.cloud (no virgil): projang is the sky PA of the visible
+    rotational pole (North through East, perpendicular to the equatorial major
+    axis) and omega = Omega / sqrt((8/27) G M / R_pole^3)."""
+    w_pm = 0.95
+    req_over_rp = (3.0 / w_pm) * np.cos((np.pi + np.arccos(w_pm)) / 3.0)
+    w_elr = float(w_pm * np.sqrt((8.0 / 27.0) * req_over_rp**3))
+    stations_rot = 0.85 * np.array([[0.0, 0.0], [110.0, 32.0], [-52.0, 130.0], [70.0, -82.0]])
+    pm_params = {
+        "star,diameq": 3.2,
+        "star,dist": 5.0,
+        "star,Tpole": 9500.0,
+        "star,mass": 2.0,
+        "star,omega": w_pm,
+        "star,incl": 55.0,
+        "star,projang": 33.0,
+        "star,beta": 0.25,
+    }
+
+    def eval_against_elr(pa_elr):
+        cloud = elr.cloud(3.2, w_elr, 55.0, pa_elr, n_theta=120, n_phi=240, t_pole=9500.0, wavel=2.2e-6)
+        path = tmp_path / f"rot_{pa_elr:.1f}.fits"
+        simulate.observe(
+            path,
+            _cloud(cloud),
+            stations_rot,
+            hour_angles_h=np.array([-1.5, 0.5, 2.0]),
+            wavelengths=np.array([2.2e-6]),
+            dec_deg=-35.0,
+            sigma_v2=1e-3,
+            sigma_cp_deg=0.1,
+        )
+        return model_minus_data(path, pm_params)
+
+    dv2, dcp, cp_max = eval_against_elr(33.0)
+    record("max_abs_dV2", float(dv2))
+    record("max_abs_dCP_deg", float(dcp))
+    assert cp_max > 100.0
+    assert dv2 < 0.01
+    assert dcp < 2.5
+
+    for wrong_pa in (33.0 + 90.0, 33.0 + 180.0, -33.0):
+        _, wrong_dcp, _ = eval_against_elr(wrong_pa)
+        assert wrong_dcp > 50.0
