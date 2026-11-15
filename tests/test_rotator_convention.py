@@ -285,26 +285,49 @@ def test_gravity_darkened_star_wrong_pa_fails_against_dlux(dlux_rotator_observab
 def test_p13_oimodeler_fast_rotator_pole_pa_inversion():
     """oimodeler's oimFastRotator(dim=64, pa=33) places the bright visible pole
     at PA + 180 deg = 213 deg (SW instead of NE) because fastRotator calls
-    np.rot90(im) before oimComponentImage maps row 0 to South."""
+    np.rot90(im) before oimComponentImage maps row 0 to South, strictly
+    negating every translation-invariant first-lobe closure phase relative to
+    crosscheck.elr.cloud regardless of even-grid half-pixel centring or P14."""
     oim = pytest.importorskip("oimodeler")
     from oimodeler.oimCustomComponents import oimFastRotator
 
-    fr = oimFastRotator(dim=64, incl=60.0, rot=0.95, Tpole=8500.0, dpole=2.5, pa=33.0, beta=0.25)
-    model = oim.oimModel([fr])
-
-    ccf_short = model.getComplexCoherentFlux(
-        np.array([15.0, 0.0]) / WAVEL_H,
-        np.array([0.0, 15.0]) / WAVEL_H,
-        np.full(2, WAVEL_H),
+    w_elr = _pmoired_to_elr_omega(0.95)
+    req_over_rp = (3.0 / 0.95) * np.cos((np.pi + np.arccos(0.95)) / 3.0)
+    ref_cloud = elr.cloud(
+        2.5 * req_over_rp, w_elr, 60.0, 33.0, n_theta=96, n_phi=192, t_pole=8500.0, wavel=WAVEL_H
     )
-    mas = np.deg2rad(1.0 / 3.6e6)
-    dra_eff = float(-np.angle(ccf_short[0]) / (2.0 * np.pi * (15.0 / WAVEL_H) * mas))
-    ddec_eff = float(-np.angle(ccf_short[1]) / (2.0 * np.pi * (15.0 / WAVEL_H) * mas))
-    pa_eff = float(np.rad2deg(np.arctan2(dra_eff, ddec_eff)) % 360.0)
-    pa_flip_err = abs((pa_eff - 33.0 + 180.0) % 360.0 - 180.0)
-    record("oim_effective_pole_pa_deg", pa_eff)
-    record("oim_pole_pa_error_deg", pa_flip_err)
-    assert pa_flip_err < 5.0
+    fr_33 = oimFastRotator(dim=64, incl=60.0, rot=0.95, Tpole=8500.0, dpole=2.5, pa=33.0, beta=0.25)
+    fr_213 = oimFastRotator(dim=64, incl=60.0, rot=0.95, Tpole=8500.0, dpole=2.5, pa=213.0, beta=0.25)
+    m_33 = oim.oimModel([fr_33])
+    m_213 = oim.oimModel([fr_213])
+
+    triangles = [
+        ((38.0, 14.0), (-19.0, 42.0)),
+        ((44.0, -16.0), (-12.0, -35.0)),
+        ((-41.0, 18.0), (15.0, 36.0)),
+    ]
+    cp_elr, cp_oim_33, cp_oim_213 = [], [], []
+    for (u1, v1), (u2, v2) in triangles:
+        u_arr = np.array([u1, u2, u1 + u2])
+        v_arr = np.array([v1, v2, v1 + v2])
+        v_ref = sky.visibility(ref_cloud, u_arr, v_arr, WAVEL_H)
+        cp_elr.append(float(np.rad2deg(np.angle(v_ref[0] * v_ref[1] * np.conj(v_ref[2])))))
+        c_33 = m_33.getComplexCoherentFlux(u_arr / WAVEL_H, v_arr / WAVEL_H, np.full(3, WAVEL_H))
+        cp_oim_33.append(float(np.rad2deg(np.angle(c_33[0] * c_33[1] * np.conj(c_33[2])))))
+        c_213 = m_213.getComplexCoherentFlux(u_arr / WAVEL_H, v_arr / WAVEL_H, np.full(3, WAVEL_H))
+        cp_oim_213.append(float(np.rad2deg(np.angle(c_213[0] * c_213[1] * np.conj(c_213[2])))))
+
+    cp_elr_arr = np.array(cp_elr)
+    cp_oim_arr = np.array(cp_oim_33)
+    # Closure phases are identically shift-invariant on even dim=64 grids: rotating by 180 deg negates them to rounding
+    assert float(np.max(np.abs(cp_oim_arr + np.array(cp_oim_213)))) < 1e-10
+    assert float(np.min(np.abs(cp_elr_arr))) > 0.15
+    assert float(np.min(np.abs(cp_oim_arr))) > 0.30
+
+    worst_sign_product = float(np.min(cp_oim_arr * cp_elr_arr))
+    record("min_cp_sign_product_deg2", worst_sign_product)
+    record("max_abs_oim_cp_deg", float(np.max(np.abs(cp_oim_arr))))
+    assert np.all(cp_oim_arr * cp_elr_arr > 0.0)
 
 
 @pytest.mark.external

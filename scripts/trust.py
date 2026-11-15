@@ -424,8 +424,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for r in records:
         for obj in r["objects"]:
             by_obj[obj].append(r)
-    open_findings = collections.defaultdict(list)  # unfixed bugs in virgil
-    external_open = collections.defaultdict(list)  # unfixed problems in another package
+    open_findings = collections.defaultdict(list)  # unfixed bugs in virgil or our reference code
+    external_open = collections.defaultdict(list)  # unfixed problems in another package (or test-side on non-reference)
     for e in ledger:
         if e["status"] not in UNFIXED:
             continue
@@ -435,6 +435,12 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         elif e["ruling"].startswith("external"):
             for obj in e["objects"]:
                 external_open[obj].append(e["id"])
+        elif e["ruling"] == "crosscheck":
+            for obj in e["objects"]:
+                if nodes.get(obj, {}).get("layer", "references") == "references":
+                    open_findings[obj].append(e["id"])
+                else:
+                    external_open[obj].append(e["id"])
 
     own = {}
 
@@ -501,7 +507,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             status = "partly"
         else:
             status = "unchecked"
-        return status, strong, weak, need, recs, good, sorted(blocked_by), prop_roots
+        via_out = sorted(blocked_by) if status == "ok-via" else []
+        return status, strong, weak, need, recs, good, via_out, prop_roots
 
     def properties_short(name, prop_roots):
         """Properties of a part with fewer independent roots than it needs."""
@@ -514,7 +521,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
 
     def reference_verdicts():
         """Our reference nodes, decided first: verified only if their own
-        checks pass and every reference they rely on is verified too."""
+        checks pass and every dependency is a verified reference too."""
         refs = [n for n, node in nodes.items() if node.get("layer", "references") == "references"]
         status = {n: own_status(n)[0] for n in refs}
 
@@ -522,7 +529,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             if status.get(n) != "ok":
                 return False
             return all(
-                d in nodes and (d not in status or (d not in seen and ok(d, seen | {d})))
+                d in status and d not in seen and ok(d, seen | {d})
                 for d in nodes[n].get("depends", [])
             )
 
@@ -549,16 +556,32 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         }
 
     # verdicts: a part whose own checks pass is verified only if everything
-    # it relies on is; otherwise name the parts at the bottom of the chain
-    def problems(name, seen):
+    # it relies on is (with no missing targets, cycles, or reference->subject edges)
+    def problems(root):
         found = set()
-        for dep in nodes[name].get("depends", []):
-            if dep in seen or dep not in nodes:
-                continue
-            seen.add(dep)
-            if own[dep]["status"] != "ok":
-                found.add(dep)
-            found |= problems(dep, seen)
+        in_stack = {root}
+        done = set()
+
+        def visit(curr):
+            curr_is_ref = nodes[curr].get("layer", "references") == "references"
+            for dep in nodes[curr].get("depends", []):
+                if dep not in nodes:
+                    found.add(dep)
+                    continue
+                if curr_is_ref and nodes[dep].get("layer", "references") != "references":
+                    found.add(dep)
+                if dep in in_stack:
+                    found.add(dep)
+                    continue
+                if own[dep]["status"] != "ok":
+                    found.add(dep)
+                if dep not in done:
+                    in_stack.add(dep)
+                    visit(dep)
+                    in_stack.remove(dep)
+                    done.add(dep)
+
+        visit(root)
         return found
 
     diff_cache = {}
@@ -595,7 +618,21 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        causes = sorted(problems(name, set()) | set(o["via_blocked"]))
+        via_causes = set()
+        if o["status"] == "ok-via":
+            for v in o["via_blocked"]:
+                if v not in nodes:
+                    via_causes.add(v)
+                else:
+                    sub = problems(v)
+                    via_causes |= sub
+                    if (
+                        nodes[v].get("layer", "references") != "references"
+                        or own[v]["status"] != "ok"
+                        or not sub
+                    ):
+                        via_causes.add(v)
+        causes = sorted(problems(name) | via_causes)
         if verdict == "ok-via":
             verdict = "ok"
         if verdict == "ok":
@@ -605,6 +642,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                 verdict = "relies"
             else:
                 verdict = "relies-unverified"
+        if node.get("layer", "references") == "references" and name not in trusted and verdict == "verified":
+            verdict = "relies-unverified"
         dependents = sorted(n for n, other in nodes.items() if name in other.get("depends", []))
         out_nodes[name] = {
             "id": name,
