@@ -810,3 +810,181 @@ def test_trust_diff_reports_pipeline_status_changes(tmp_path):
     rows = td.diff_rows(before, after)
     assert any("`virgil.a`" in r and "unchecked" in r and "verified" in r for r in rows)
     assert any("`pipeline:contest-imaging`" in r and "passes" in r and "running" in r for r in rows)
+
+
+def test_via_causes_expands_transitive_failing_and_bug_reference_dependencies(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "virgil.x": {"layer": "models"},
+            "crosscheck.mid": {"layer": "references", "depends": ["crosscheck.leaf"]},
+            "crosscheck.leaf": {"layer": "references"},
+        }
+    }
+    # 1. Intermediate reference passes its own check ("ok"), leaf reference fails ("failing"):
+    # virgil.x must become "relies" (not "relies-unverified") and name crosscheck.leaf in because.
+    recs_fail = [
+        record("t::rm", "crosscheck.mid", kind="reference"),
+        record("t::rl", "crosscheck.leaf", kind="reference", outcome="failed"),
+        record("t::vx", "virgil.x", via=["crosscheck.mid"]),
+    ]
+    got, model = verdicts(trust, tmp_path, recs_fail, graph)
+    assert got == {
+        "virgil.x": "relies",
+        "crosscheck.mid": "relies",
+        "crosscheck.leaf": "failing",
+    }
+    assert model["nodes"]["virgil.x"]["because"] == [
+        {"id": "crosscheck.leaf", "findings": [], "status": "failing"},
+    ]
+
+    # 2. Intermediate reference is "unchecked" while leaf has an open crosscheck bug:
+    # both the unchecked intermediate and the buggy leaf surface, and virgil.x is still "relies".
+    ledger_bug = [{"id": "C99", "ruling": "crosscheck", "status": "open", "objects": ["crosscheck.leaf"]}]
+    recs_bug = [
+        record("t::rl_ok", "crosscheck.leaf", kind="reference"),
+        record("t::vx", "virgil.x", via=["crosscheck.mid"]),
+    ]
+    got_bug, model_bug = verdicts(trust, tmp_path, recs_bug, graph, ledger=ledger_bug)
+    assert got_bug["crosscheck.leaf"] == "bug"
+    assert got_bug["virgil.x"] == "relies"
+    assert model_bug["nodes"]["virgil.x"]["because"] == [
+        {"id": "crosscheck.leaf", "findings": ["C99"], "status": "bug"},
+        {"id": "crosscheck.mid", "findings": [], "status": "unchecked"},
+    ]
+
+
+def test_unfixed_crosscheck_ruling_marks_reference_bug_and_blocks_virgil_verified(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "crosscheck.r": {"layer": "references"},
+            "virgil.caller": {"layer": "models"},
+            "virgil.direct": {"layer": "models"},
+        }
+    }
+    recs = [
+        record("t::r_pass", "crosscheck.r", kind="reference"),
+        record("t::r_xfail", "crosscheck.r", kind="finding", outcome="xfailed"),
+        record("t::caller", "virgil.caller", via=["crosscheck.r"]),
+        record("t::direct", "virgil.direct"),
+    ]
+    ledger_open = [
+        {"id": "C10", "ruling": "crosscheck", "status": "open", "objects": ["crosscheck.r"]},
+        {"id": "C11", "ruling": "crosscheck", "status": "open", "objects": ["virgil.direct"]},
+    ]
+    got, model = verdicts(trust, tmp_path, recs, graph, ledger=ledger_open)
+    assert got["crosscheck.r"] == "bug"
+    assert model["nodes"]["crosscheck.r"]["findings"] == ["C10"]
+    assert got["virgil.caller"] == "relies"
+    assert model["nodes"]["virgil.caller"]["because"] == [
+        {"id": "crosscheck.r", "findings": ["C10"], "status": "bug"},
+    ]
+    # Non-reference node with an open test-side ruling cannot be "verified", nor mislabelled "bug"
+    assert got["virgil.direct"] == "partly"
+    assert model["nodes"]["virgil.direct"]["findings"] == ["C11"]
+
+    ledger_fixed = [{**e, "status": "fixed"} for e in ledger_open]
+    got_fixed, _ = verdicts(trust, tmp_path, recs, graph, ledger=ledger_fixed)
+    assert got_fixed == {
+        "crosscheck.r": "verified",
+        "virgil.caller": "verified",
+        "virgil.direct": "verified",
+    }
+
+
+def test_module_via_follows_local_helpers_rejects_shadowed_workers_and_resolves_subpackages(tmp_path, monkeypatch):
+    from evidence import plugin
+
+    # 1. Local sibling tests/ and scripts/ helper imports propagate transitive reference & worker dependencies
+    tests_dir = tmp_path / "tests"
+    scripts_dir = tmp_path / "scripts"
+    tests_dir.mkdir()
+    scripts_dir.mkdir()
+    (scripts_dir / "helper_script.py").write_text(
+        "from crosscheck import alma_maxent\n",
+        encoding="utf-8",
+    )
+    (tests_dir / "helper_test.py").write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "from virgil_bridge import mpol\n"
+        "def run_mpol():\n"
+        "    return sp.run('mpol', 'mpol_worker.py', {})\n",
+        encoding="utf-8",
+    )
+    caller = tests_dir / "test_caller.py"
+    caller.write_text(
+        "import helper_script\n"
+        "from helper_test import run_mpol\n"
+        "from crosscheck import alma_clean\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(caller)) == (
+        "crosscheck.alma_clean",
+        "crosscheck.alma_maxent",
+        "external_bridge.mpol_worker",
+        "virgil_bridge.mpol",
+    )
+
+    # 2. Reassigned module constants, shadowed locals/parameters, and mutated wrapper args emit _UNRESOLVED_WORKER
+    for idx, src in enumerate([
+        # Reassigned in conditional branch at module scope
+        "from external_bridge import _subprocess as sp\n"
+        "WORKER = 'alma_worker.py'\n"
+        "if True:\n"
+        "    WORKER = 'mpol_worker.py'\n"
+        "sp.run('alma', WORKER, {})\n",
+        # Shadowed by local variable inside function
+        "from external_bridge import _subprocess as sp\n"
+        "WORKER = 'alma_worker.py'\n"
+        "def f(dyn):\n"
+        "    WORKER = dyn\n"
+        "    return sp.run('alma', WORKER, {})\n",
+        # Wrapper mutates its parameter before calling sp.run
+        "from external_bridge import _subprocess as sp\n"
+        "def wrap(w):\n"
+        "    w = w + '.py'\n"
+        "    return sp.run('alma', w, {})\n"
+        "wrap('alma_worker')\n",
+    ]):
+        p = tmp_path / f"bad_worker_{idx}.py"
+        p.write_text(src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(p)) == (plugin._UNRESOLVED_WORKER,)
+
+    # 3. Nested subpackages and level >= 2 relative imports resolve at full depth
+    fake_src = tmp_path / "src"
+    (fake_src / "crosscheck" / "sub").mkdir(parents=True)
+    (fake_src / "crosscheck" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "sky.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "limb.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "sub" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "sub" / "baz.py").write_text("", encoding="utf-8")
+    bar_py = fake_src / "crosscheck" / "sub" / "bar.py"
+    bar_py.write_text(
+        "from . import baz\n"
+        "from .. import sky\n"
+        "from ..limb import disk\n",
+        encoding="utf-8",
+    )
+    bad_rel = fake_src / "crosscheck" / "sub" / "escape.py"
+    bad_rel.write_text("from ... import nope\n", encoding="utf-8")
+    ext_caller = tmp_path / "test_subpkg.py"
+    ext_caller.write_text(
+        "import crosscheck.sub.bar\n"
+        "from crosscheck.sub import baz\n"
+        "from crosscheck.sub.missing import fn\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plugin, "_SRC_ROOT", fake_src)
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(bar_py)) == (
+        "crosscheck.limb",
+        "crosscheck.sky",
+        "crosscheck.sub.baz",
+    )
+    assert plugin._module_via(str(bad_rel)) == ("crosscheck.<invalid_relative_import>",)
+    assert plugin._module_via(str(ext_caller)) == (
+        "crosscheck.sub.bar",
+        "crosscheck.sub.baz",
+        "crosscheck.sub.missing",
+    )

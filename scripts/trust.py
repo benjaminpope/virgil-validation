@@ -424,8 +424,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for r in records:
         for obj in r["objects"]:
             by_obj[obj].append(r)
-    open_findings = collections.defaultdict(list)  # unfixed bugs in virgil
-    external_open = collections.defaultdict(list)  # unfixed problems in another package
+    open_findings = collections.defaultdict(list)  # unfixed bugs in virgil or our reference code
+    external_open = collections.defaultdict(list)  # unfixed problems in another package (or test-side on non-reference)
     for e in ledger:
         if e["status"] not in UNFIXED:
             continue
@@ -435,6 +435,12 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         elif e["ruling"].startswith("external"):
             for obj in e["objects"]:
                 external_open[obj].append(e["id"])
+        elif e["ruling"] == "crosscheck":
+            for obj in e["objects"]:
+                if nodes.get(obj, {}).get("layer", "references") == "references":
+                    open_findings[obj].append(e["id"])
+                else:
+                    external_open[obj].append(e["id"])
 
     own = {}
 
@@ -612,7 +618,20 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        via_causes = set(o["via_blocked"]) if o["status"] == "ok-via" else set()
+        via_causes = set()
+        if o["status"] == "ok-via":
+            for v in o["via_blocked"]:
+                if v not in nodes:
+                    via_causes.add(v)
+                else:
+                    sub = problems(v)
+                    via_causes |= sub
+                    if (
+                        nodes[v].get("layer", "references") != "references"
+                        or own[v]["status"] != "ok"
+                        or not sub
+                    ):
+                        via_causes.add(v)
         causes = sorted(problems(name) | via_causes)
         if verdict == "ok-via":
             verdict = "ok"
