@@ -330,9 +330,6 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     lz_arr = np.asarray(res.log_z_replicates, dtype=np.float64)
     assert lz_arr.shape == (n_rep,)
     assert float(res.log_z) == pytest.approx(ref.logmeanexp_ref(lz_arr), abs=1e-13)
-    z_reps = np.exp(lz_arr - float(np.max(lz_arr)))
-    emp_rep_rel_var = float(np.var(z_reps, ddof=1) / (n_rep * (float(np.mean(z_reps)) ** 2)))
-    assert 0.10 < float(res.log_z_variance) / emp_rep_rel_var < 8.0
     mean_lz_err = abs(float(res.log_z) - float(exact["log_z"]))
 
     pooled = np.asarray(res.particles)
@@ -409,35 +406,89 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     assert rel_se < 0.22
     assert abs(single_var_ratio - 1.0) < 3.0 * rel_se
 
-    # Finite non-positive unbiased genealogy variance realization (Du & Guyader 2021):
-    # log_z_variance is finite <= 0, variance_degenerate is True, and log_z_error is NaN
-    r_nonpos = vsmc.tempered_smc(
-        lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
-        lambda th: cy_1d - 0.5 * ((y_1d - d_1d @ th) @ py_1d @ (y_1d - d_1d @ th)),
-        lambda k_rng, n_p: 0.2 + math.sqrt(1.5) * jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
-        key=jax.random.PRNGKey(9003),
-        n_particles=8,
-        replicates=1,
-        steps=1,
-        leapfrogs=2,
-    )
-    assert math.isfinite(float(r_nonpos.log_z_variance)) and float(r_nonpos.log_z_variance) <= 0.0
-    assert r_nonpos.variance_degenerate is True
-    assert math.isnan(float(r_nonpos.log_z_error))
+    # Multi-replicate (replicates=4) Lee & Whiteley (2018) pooling identity across 32 trials:
+    # exp(2 * (log_z - exact_lz_1d)) * log_z_variance has exact expectation Var(Z_bar / Z) = Var(Z_1 / Z) / R,
+    # rejecting factor-of-R pooling errors (> 4 sigma against both 4x and 0.25x mis-scalings).
+    n_rep_mc = 4
+    pooled_lzs = []
+    pooled_vars = []
+    for m_idx in range(32):
+        r_pool = vsmc.tempered_smc(
+            lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
+            lambda th: cy_1d - 0.5 * ((y_1d - d_1d @ th) @ py_1d @ (y_1d - d_1d @ th)),
+            lambda k_rng, n_p: 0.2 + math.sqrt(1.5) * jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
+            key=jax.random.PRNGKey(7000 + m_idx),
+            n_particles=128,
+            replicates=n_rep_mc,
+            steps=1,
+            leapfrogs=2,
+        )
+        vp = float(r_pool.log_z_variance)
+        ep = float(r_pool.log_z_error)
+        assert bool(r_pool.variance_degenerate) == (not (vp > 0.0))
+        if not r_pool.variance_degenerate:
+            assert ep == pytest.approx(math.sqrt(vp), rel=1e-12)
+        pooled_lzs.append(float(r_pool.log_z))
+        pooled_vars.append(vp)
 
-    # Collapsed genealogy (n_particles = 2): single surviving Eve lineage sets variance_degenerate and NaN
-    r_tiny = vsmc.tempered_smc(
-        lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
-        lambda th: cy_1d - 0.5 * ((y_1d - d_1d @ th) @ py_1d @ (y_1d - d_1d @ th)),
-        lambda k_rng, n_p: 0.2 + math.sqrt(1.5) * jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
-        key=jax.random.PRNGKey(5999),
-        n_particles=2,
-        replicates=1,
-        steps=1,
-        leapfrogs=2,
-    )
-    assert r_tiny.variance_degenerate is True
-    assert math.isnan(r_tiny.log_z_variance) and math.isnan(r_tiny.log_z_error)
+    p_lzs = np.asarray(pooled_lzs, dtype=np.float64)
+    p_vars = np.asarray(pooled_vars, dtype=np.float64)
+    p_ok = np.isfinite(p_vars)
+    assert int(np.sum(p_ok)) == 32
+    z_bar_ratios = np.exp(p_lzs[p_ok] - exact_lz_1d)
+    pooled_var_hats = (z_bar_ratios**2) * p_vars[p_ok]
+    est_pooled = float(np.mean(pooled_var_hats))
+    se_pooled = float(np.std(pooled_var_hats, ddof=1) / math.sqrt(pooled_var_hats.size))
+    emp_pooled = float(np.var(z_bar_ratios, ddof=1))
+    target_from_single = emp_var / n_rep_mc
+    rel_se_vs_single = math.sqrt((se_pooled / target_from_single) ** 2 + 2.0 / (var_hats.size - 1))
+    rel_se_vs_emp = math.sqrt((se_pooled / emp_pooled) ** 2 + 2.0 / (pooled_var_hats.size - 1))
+    assert rel_se_vs_single < 0.22
+    assert abs(est_pooled / target_from_single - 1.0) < 3.0 * rel_se_vs_single
+    assert abs(est_pooled / emp_pooled - 1.0) < 2.5 * rel_se_vs_emp
+
+    # Zero-log-likelihood single-stage multinomial resampling over sequential PRNGKey(0)..PRNGKey(15):
+    # exact Var(Z_hat) = 0 and E[log_z_variance] = 0 independent of HMC dynamics, so n_particles=8
+    # hits finite non-positive realizations on ~1/2 of draws and n_particles=2 collapses onto a single
+    # Eve lineage with exact probability 3/4 per trial without scanned magic seeds.
+    saw_nonpos_finite = False
+    saw_pos_finite = False
+    saw_collapsed_nan = False
+    for k_seq in range(16):
+        r8 = vsmc.tempered_smc(
+            lambda th: -0.5 * math.log(2.0 * math.pi) - 0.5 * (th[0] ** 2),
+            lambda th: jnp.zeros((), dtype=th.dtype),
+            lambda k_rng, n_p: jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
+            key=jax.random.PRNGKey(k_seq),
+            n_particles=8,
+            replicates=1,
+            steps=1,
+            leapfrogs=1,
+        )
+        v8, e8, d8 = float(r8.log_z_variance), float(r8.log_z_error), bool(r8.variance_degenerate)
+        assert d8 == (not (v8 > 0.0))
+        if math.isfinite(v8) and v8 <= 0.0:
+            saw_nonpos_finite = True
+            assert d8 is True and math.isnan(e8)
+        elif v8 > 0.0:
+            saw_pos_finite = True
+            assert d8 is False and e8 == pytest.approx(math.sqrt(v8), rel=1e-12)
+
+        r2 = vsmc.tempered_smc(
+            lambda th: -0.5 * math.log(2.0 * math.pi) - 0.5 * (th[0] ** 2),
+            lambda th: jnp.zeros((), dtype=th.dtype),
+            lambda k_rng, n_p: jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
+            key=jax.random.PRNGKey(k_seq),
+            n_particles=2,
+            replicates=1,
+            steps=1,
+            leapfrogs=1,
+        )
+        v2_val, e2_val, d2_val = float(r2.log_z_variance), float(r2.log_z_error), bool(r2.variance_degenerate)
+        assert d2_val is True and math.isnan(e2_val)
+        if math.isnan(v2_val):
+            saw_collapsed_nan = True
+    assert saw_nonpos_finite and saw_pos_finite and saw_collapsed_nan
 
     # Dict particles ({"x": continuous, "k": discrete}) + custom Gibbs move leaving target invariant
     def init_dict(k_rng, n_p):

@@ -253,13 +253,13 @@ nodes:
   virgil.grid_fit.linear_flux_grid:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/_marginal.py]
-    depends: [virgil.likelihood.whitened_residuals]
+    depends: [virgil.likelihood.whitened_residuals, virgil.grid_fit.Gaussian, virgil.grid_fit.LogUniform]
   virgil.grid_fit.Gaussian: {layer: inference, source: [src/virgil/grid_fit.py], doc: inference/grid_limits.md}
   virgil.grid_fit.LogUniform: {layer: inference, source: [src/virgil/grid_fit.py, src/virgil/_marginal.py], doc: inference/grid_limits.md}
   virgil.grid_fit.LinearFluxGrid:
     layer: inference
     source: [src/virgil/grid_fit.py, src/virgil/_marginal.py]
-    depends: [virgil.grid_fit.linear_flux_grid]
+    depends: [virgil.grid_fit.linear_flux_grid, virgil.grid_fit.Gaussian, virgil.grid_fit.LogUniform]
     doc: inference/grid_limits.md
   virgil.grid_fit.optimized_likelihood_grid:
     layer: inference
@@ -323,7 +323,7 @@ nodes:
     doc: inference/helpers.md
   virgil.crossval.cv_task:
     layer: inference
-    source: [src/virgil/crossval.py, src/virgil/_geometry.py]
+    source: [src/virgil/crossval.py, src/virgil/_geometry.py, src/virgil/_precision.py]
     depends: [virgil.crossval.fold_masks, virgil.fitting.fit]
     doc: inference/helpers.md
   virgil.crossval.cross_validate:
@@ -353,7 +353,7 @@ nodes:
     doc: inference/sampling.md
   virgil.svi.variational:
     layer: inference
-    source: [src/virgil/svi.py, src/virgil/_flat.py]
+    source: [src/virgil/svi.py, src/virgil/_precision.py]
     depends: [virgil.likelihood.numpyro_model, virgil.fitting.FitResult, virgil.fitting.gauss_newton_mass]
     doc: inference/sampling.md
   virgil.svi.VariationalResult:

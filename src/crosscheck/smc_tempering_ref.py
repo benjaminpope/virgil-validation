@@ -575,8 +575,9 @@ def linear_flux_gaussian_prior_ref(
     r"""Closed-form posterior mean, posterior SD, and log Bayes factor vs
     :math:`f = 0` for a linearized Gaussian profile likelihood
     :math:`L(f)/L(0) = \exp[(\hat{f}^2 - (f - \hat{f})^2)/(2\sigma_f^2)]`
-    under :math:`f \sim \mathcal{N}(\mu_0, \tau_0^2)` (Luger et al. 2017,
-    *AJ* 154, 237; Wakefield 2009, *Genetic Epidemiology* 33, 79).
+    under :math:`f \sim \mathcal{N}(\mu_0, \tau_0^2)` (Luger, Foreman-Mackey
+    & Hogg 2017, *RNAAS* 1, 7, https://doi.org/10.3847/2515-5172/aa96b5;
+    Wakefield 2009, *Genetic Epidemiology* 33, 79).
     """
     fh = np.asarray(f_hat, dtype=np.float64)
     sf = np.asarray(sigma_f, dtype=np.float64)
