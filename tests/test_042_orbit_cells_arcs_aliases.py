@@ -258,6 +258,98 @@ def test_orbit_cells_ref_flux_box_and_jacobi_quadrature():
     assert mass_err < 1e-15
 
 
+@pytest.mark.validates(
+    "crosscheck.orbit_cells_ref",
+    roots=["mathematics"],
+    kind="reference",
+    headline="gamma_quad_err",
+)
+def test_orbit_cells_ref_polar_disc_mc_kde_and_rescalable_quad(tmp_path):
+    """Verify rescalable scale quadrature against the analytical Gamma closed form, MC KDE normalization, and polar disc convergence."""
+    # 1. Exact Gamma closed form for interior flux (log_flux_box == -ln|ell| to < 1e-15) and wide s_max
+    ell = -9.210340371976184
+    cov5 = np.diag([0.07**2, 0.08**2, 0.25**2, 0.30**2, 0.04**2])
+    n_tot, chi2_tot, dim = 30.0, 42.0, 5
+    s_wide = 1e4
+    got_q = ref.quad_rescalable_outlier_log_density(
+        [12.5], [cov5], [n_tot], [chi2_tot], [-6.2], [-4.5], ell, velocity=True, s_max=s_wide
+    )
+    _, logdet = np.linalg.slogdet(cov5)
+    # Substitution t = 0.5 * chi2 * exp(-2 u) gives int exp(-(n - d) u - 0.5 chi2 exp(-2 u)) du = 0.5 * (0.5 * chi2)^(-(n - d)/2) * Gamma((n - d)/2)
+    closed_q = (
+        12.5
+        + 0.5 * dim * math.log(2.0 * math.pi)
+        + 0.5 * float(logdet)
+        - 6.2
+        - math.log(abs(ell))
+        - math.log(2.0 * math.log(s_wide))
+        + 0.5 * chi2_tot
+        - math.log(2.0)
+        - 0.5 * (n_tot - dim) * math.log(0.5 * chi2_tot)
+        + float(special.gammaln(0.5 * (n_tot - dim)))
+    )
+    gamma_quad_err = abs(got_q - closed_q)
+
+    # 2. Sky-plane normalization of mc_kepler_state_prior_log_density in 3D and 5D
+    r_nodes = np.geomspace(1e-2, 42.0, 56)
+    dr_ln = math.log(r_nodes[1] / r_nodes[0])
+    pts_r = np.column_stack([r_nodes, np.zeros_like(r_nodes), np.zeros_like(r_nodes), np.zeros_like(r_nodes), np.full_like(r_nodes, -2.0)])
+    lp3_r = ref.mc_kepler_state_prior_log_density(pts_r, (5.0, 25.0), (1.0, 20.0), 0.85, ell, velocity=False, n_mc=8192, seed=7)
+    mc_norm_3d_err = abs(float(np.sum(np.exp(lp3_r) * abs(ell) * (2.0 * math.pi) * (r_nodes**2) * dr_ln)) - 1.0)
+
+    v_nodes = np.geomspace(1e-4, 28.0, 44)
+    dv_ln = math.log(v_nodes[1] / v_nodes[0])
+    psi_nodes = np.linspace(0.0, 2.0 * math.pi, 20, endpoint=False)
+    dpsi = 2.0 * math.pi / len(psi_nodes)
+    vv, pp = np.meshgrid(v_nodes, psi_nodes, indexing="ij")
+    # Build one compact query batch of (56 * 44 * 20 = 49,280) points for a single KDE construction
+    rrr, vvv, ppp = np.meshgrid(r_nodes, v_nodes, psi_nodes, indexing="ij")
+    pts_5 = np.column_stack([
+        rrr.ravel(),
+        np.zeros(rrr.size),
+        (vvv * np.cos(ppp)).ravel(),
+        (vvv * np.sin(ppp)).ravel(),
+        np.full(rrr.size, -2.0),
+    ])
+    lp5 = ref.mc_kepler_state_prior_log_density(pts_5, (5.0, 25.0), (1.0, 20.0), 0.85, ell, velocity=True, n_mc=8192, seed=7).reshape(rrr.shape)
+    mc_norm_5d_err = abs(float(np.sum(np.exp(lp5) * abs(ell) * (2.0 * math.pi) * (rrr**2) * (vvv**2) * dr_ln * dv_ln * dpsi)) - 1.0)
+
+    # 3. Polar-disc convergence of broad_disc_marginal_loglike + algebraic checks on remaining helpers
+    p_fits = tmp_path / "ref_disc.fits"
+    simulate.observe(
+        p_fits,
+        lambda u, v, w: (sky.vis_point(u, v, w) + 0.15 * sky.vis_point(u, v, w, 2.0, -1.5)) / 1.15,
+        UTS3 * 0.22,
+        hour_angles_h=[-1.0, 1.0],
+        wavelengths=WAVELENGTHS,
+        sigma_v2=0.015,
+        sigma_cp_deg=1.2,
+        rng=np.random.default_rng(19),
+        phase_noise="triangle",
+    )
+    d_raw = ours_chi2.load(p_fits)
+    b_med = ref.broad_disc_marginal_loglike(d_raw, 4.0, (0.05, 0.35), s_max=10.0, n_r=28, n_theta=56, n_flux=96)
+    b_fine = ref.broad_disc_marginal_loglike(d_raw, 4.0, (0.05, 0.35), s_max=10.0, n_r=40, n_theta=80, n_flux=192)
+    disc_conv_err = abs(b_med - b_fine)
+
+    # Exact Aitken WLS line recovery and ranking / rescaling / period-bound helpers
+    dt = np.array([-0.1, 0.0, 0.15])
+    proj = ref.wls_line_projection(dt, weights=np.array([1.0, 2.0, 1.5]))
+    pv_rec = proj @ (3.2 + 1.8 * dt)
+    assert np.allclose(pv_rec, [3.2, 1.8], atol=1e-14)
+    assert list(ref.quantum_rank_scores([1.0002, np.nan, 1.0004, 0.5], quantum=1e-3)) == [0, 2, 3, 1]
+    assert abs(ref.period_cut_bound([0.0, 20.0], 1.0, 0.1, resolution=2.0) - 40.0) < 1e-14
+    assert ref.period_window_bounds([0.0, 10.0], 0.01, 0.05, resolution=2.0, p_floor=0.3) == (0.3, 40.0)
+
+    record("gamma_quad_err", gamma_quad_err)
+    record("mc_norm_5d_err", mc_norm_5d_err)
+    record("disc_conv_err", disc_conv_err)
+    assert gamma_quad_err < 1e-11
+    assert mc_norm_3d_err < 3e-3
+    assert mc_norm_5d_err < 6e-3
+    assert disc_conv_err < 5e-4
+
+
 # ---------------------------------------------------------------------------
 # 2. virgil.aliases: AliasBand, alias_bands, period_cut, period_window,
 #    position_profile, AliasBandResult, AliasResult
@@ -273,7 +365,7 @@ def test_orbit_cells_ref_flux_box_and_jacobi_quadrature():
     headline="max_edge_err",
 )
 def test_alias_bands_partition_and_period_window_bounds():
-    """Alias bands partition [p_min, p_max] at half-integer cycle counts and match period bounds."""
+    """Alias bands partition [p_min, p_max] and period_cut/period_window cover 2*dt_min, duplicates, p_floor, and night_length."""
     times = np.array([60000.0, 60003.5, 60011.0, 60024.0])
     p_range = (3.2, 65.0)
     bands = va.alias_bands(times, p_range)
@@ -291,13 +383,48 @@ def test_alias_bands_partition_and_period_window_bounds():
     gap_errs = [abs(by_p[i + 1].p_lo - by_p[i].p_hi) for i in range(len(by_p) - 1)]
     max_edge_err = float(max(edge_errs + gap_errs + [abs(by_p[0].p_lo - p_range[0]), abs(by_p[-1].p_hi - p_range[1])]))
 
-    p_cut_vg = va.period_cut(times, field=15.0, night_length=0.2, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
-    p_cut_ref = ref.period_cut_bound(times, 15.0, 0.2, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
-    p_win_vg = va.period_window(times, field=15.0, night_length=0.2, resolution=1.2)
-    p_win_ref = ref.period_window_bounds(times, 15.0, 0.2, resolution=1.2)
-    cut_err = max(abs(p_cut_vg - p_cut_ref), abs(p_win_vg[0] - p_win_ref[0]), abs(p_win_vg[1] - p_win_ref[1]))
+    # (a) Intra-night smearing bound dominates 2 * dt_min (31.416 d > 7.0 d)
+    p_cut_a = va.period_cut(times, field=15.0, night_length=0.2, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    ref_cut_a = ref.period_cut_bound(times, 15.0, 0.2, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    p_win_a = va.period_window(times, field=15.0, night_length=0.2, resolution=1.2)
+    ref_win_a = ref.period_window_bounds(times, 15.0, 0.2, resolution=1.2)
+
+    # (b) Inter-night Nyquist bound 2 * dt_min = 50.0 d strictly exceeds intra-night smearing 31.416 d
+    times_dt = np.array([0.0, 25.0, 62.0]) + T0
+    p_cut_b = va.period_cut(times_dt, field=15.0, night_length=0.2, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    ref_cut_b = ref.period_cut_bound(times_dt, 15.0, 0.2, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    p_win_b = va.period_window(times_dt, field=15.0, night_length=0.2, resolution=1.2)
+    assert p_cut_b > p_win_b[0] + 18.0
+
+    # (c) Duplicate timestamps ignore zero diffs; < 2 unique timestamps fall back to intra-night bound; p_floor binds
+    p_cut_dup = va.period_cut(np.array([0.0, 0.0, 25.0, 62.0]) + T0, field=15.0, night_length=0.2, resolution=1.2)
+    ref_cut_dup = ref.period_cut_bound(np.array([0.0, 0.0, 25.0, 62.0]) + T0, 15.0, 0.2, resolution=1.2)
+    p_cut_one = va.period_cut(np.array([0.0, 0.0]) + T0, field=15.0, night_length=0.2, resolution=1.2)
+    ref_cut_one = ref.period_cut_bound(np.array([0.0, 0.0]) + T0, 15.0, 0.2, resolution=1.2)
+    p_cut_flr = va.period_cut(np.array([0.0, 0.05, 10.0]) + T0, field=0.02, night_length=0.05, resolution=1.2, p_floor=0.4)
+    ref_cut_flr = ref.period_cut_bound(np.array([0.0, 0.05, 10.0]) + T0, 0.02, 0.05, resolution=1.2, p_floor=0.4)
+
+    # (d) Narrow-field regime (2*pi*field < motion_fraction*resolution, night_length=0.6 > p_floor=0.2):
+    # virgil's prose docs (orbit_methods.md) clamp at night_length (0.6 d), whereas API docstrings omit night_length (0.31416 d)
+    t_narrow = np.array([0.0, 0.1, 10.0]) + T0
+    p_win_narrow = va.period_window(t_narrow, field=0.05, night_length=0.6, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    ref_win_narrow = ref.period_window_bounds(t_narrow, 0.05, 0.6, resolution=1.2, motion_fraction=0.5, p_floor=0.2)
+    assert abs(p_win_narrow[0] - 0.6) < 1e-13
+    assert abs(ref_win_narrow[0] - 2.0 * math.pi * 0.05 * 0.6 / 0.6) < 1e-13
+
+    cut_err = max(
+        abs(p_cut_a - ref_cut_a),
+        abs(p_win_a[0] - ref_win_a[0]),
+        abs(p_win_a[1] - ref_win_a[1]),
+        abs(p_cut_b - ref_cut_b),
+        abs(p_cut_dup - ref_cut_dup),
+        abs(p_cut_one - ref_cut_one),
+        abs(p_cut_flr - ref_cut_flr),
+    )
 
     record("max_edge_err", max(max_edge_err, cut_err))
+    record("dt_min_excess_days", float(p_cut_b - p_win_b[0]))
+    record("narrow_field_night_clamp_diff", float(p_win_narrow[0] - ref_win_narrow[0]))
     assert max_edge_err < 1e-13
     assert cut_err < 1e-13
 
@@ -1006,44 +1133,70 @@ def test_epoch_peaks_night_flag_and_sidelobe_flags(tmp_path):
     headline="max_broad_diff",
 )
 def test_broad_loglike_matches_disc_loguniform_quadrature(tmp_path):
-    """broad_loglike matches direct log-mean-exp of marginal_loglike over |p| <= a_max and log-uniform flux."""
-    p = tmp_path / "broad.fits"
+    """broad_loglike at sub-fringe resolution with default coarse_nats matches independent polar-disc quadrature."""
+    uts_compact = UTS3 * 0.22  # finest fringe spacing ~14.4 mas
+    p0 = tmp_path / "broad_bin.fits"
+    p1 = tmp_path / "broad_weak.fits"
     simulate.observe(
-        p,
-        lambda u, v, w: (sky.vis_point(u, v, w) + 0.14 * sky.vis_point(u, v, w, 4.0, -3.0)) / 1.14,
-        UTS3,
+        p0,
+        lambda u, v, w: (sky.vis_point(u, v, w) + 0.18 * sky.vis_point(u, v, w, 2.4, -1.8)) / 1.18,
+        uts_compact,
         hour_angles_h=[-1.5, 0.0, 1.5],
         wavelengths=WAVELENGTHS,
-        sigma_v2=0.01,
-        sigma_cp_deg=0.8,
+        sigma_v2=0.012,
+        sigma_cp_deg=1.0,
         rng=np.random.default_rng(510),
         phase_noise="triangle",
     )
-    d = OIData(str(p))
-    a_max = 6.0
-    step = 3.0
-    n_flux = 5
-    flux_range = (0.05, 0.40)
+    simulate.observe(
+        p1,
+        lambda u, v, w: sky.vis_point(u, v, w),
+        uts_compact,
+        hour_angles_h=[-1.5, 0.0, 1.5],
+        wavelengths=WAVELENGTHS,
+        sigma_v2=0.025,
+        sigma_cp_deg=25.0,
+        rng=np.random.default_rng(511),
+        phase_noise="triangle",
+    )
+    d0, d1 = OIData(str(p0)), OIData(str(p1))
+    r0, r1 = ours_chi2.load(p0), ours_chi2.load(p1)
 
-    got = ve.broad_loglike([d], [np.array([1.0, 1.0])], a_max=a_max, flux_range=flux_range, step=step, coarse_nats=None, n_flux=n_flux)
+    a_max = 4.5
+    flux_range = (0.05, 0.35)
+    dofs = [np.array([1.0, 0.8]), np.array([0.7, 0.9])]
 
-    # Direct quadrature on the exact same Cartesian disc grid and log-spaced fluxes
-    n_half = int(math.ceil(a_max / step))
-    axis = np.linspace(-a_max, a_max, 2 * n_half + 1)
-    fluxes = np.geomspace(flux_range[0], flux_range[1], n_flux)
-    vals = []
-    for x in axis:
-        for y in axis:
-            if x * x + y * y <= a_max * a_max + 1e-12:
-                for f in fluxes:
-                    vals.append(float(ve.marginal_loglike(BinaryModelCartesian(float(x), float(y), float(f)), d)))
-    vals_arr = np.asarray(vals, dtype=float)
-    m = float(np.max(vals_arr))
-    ref_broad = m + math.log(float(np.mean(np.exp(vals_arr - m))))
+    # Sub-fringe step = 0.25 mas (< 1/50 fringe) with default coarse_nats=30.0 screening active
+    got_smax = ve.broad_loglike(
+        [d0, d1], dofs, a_max=a_max, flux_range=flux_range, step=0.25, s_max=10.0, n_flux=41
+    )
+    want_smax = np.array(
+        [
+            ref.broad_disc_marginal_loglike(r0, a_max, flux_range, dof=dofs[0], s_max=10.0),
+            ref.broad_disc_marginal_loglike(r1, a_max, flux_range, dof=dofs[1], s_max=10.0),
+        ],
+        dtype=float,
+    )
 
-    max_broad_diff = abs(float(got[0]) - ref_broad)
+    got_unb = ve.broad_loglike(
+        [d0, d1], dofs, a_max=a_max, flux_range=flux_range, step=0.25, s_max=None, n_flux=41
+    )
+    want_unb = np.array(
+        [
+            ref.broad_disc_marginal_loglike(r0, a_max, flux_range, dof=dofs[0], s_max=None),
+            ref.broad_disc_marginal_loglike(r1, a_max, flux_range, dof=dofs[1], s_max=None),
+        ],
+        dtype=float,
+    )
+
+    err_smax = float(np.max(np.abs(got_smax - want_smax)))
+    err_unb = float(np.max(np.abs(got_unb - want_unb)))
+    max_broad_diff = max(err_smax, err_unb)
+
     record("max_broad_diff", max_broad_diff)
-    assert max_broad_diff < 1e-6
+    record("broad_smax_err", err_smax)
+    record("broad_unbounded_err", err_unb)
+    assert max_broad_diff < 0.025
 
 
 @pytest.mark.validates(
@@ -1180,12 +1333,14 @@ def test_period_domain_anchors_and_cell_prior_mass_conservation():
     headline="max_log_flux_box_err",
 )
 def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
-    """OutlierPrior.log_flux_box matches exact normal-CDF box formula (finite for m_f > 0) and Laplace b_k."""
+    """Verify OutlierPrior normalization/KDE and outlier_log_density (fixed and rescalable=True) without self-calls."""
     summaries = _make_synthetic_summaries(np.array([0.0, 3.0, 9.0, 18.0]) + T0, (11.0, 1.0, 0.2, 40.0, 50.0, 110.0, 8.0))
     dom = voc.period_domain(summaries, p_range=(5.0, 25.0))
-    prior = voc.outlier_prior(dom, a_range=(1.0, 20.0), e_max=0.85, flux_floor=1e-4, n=4096, seed=0)
+    prior = voc.outlier_prior(dom, a_range=(1.0, 20.0), e_max=0.85, flux_floor=1e-4, n=8192, seed=0)
     assert isinstance(prior, voc.OutlierPrior)
+    abs_ell = abs(prior.ln_f_floor)
 
+    # 1. Exact normal-CDF box convolution on [ln_f_floor, 0], including positive m_f > 0
     m_grid = np.array([-8.5, -3.0, -0.05, 0.0, 0.35, 1.1])
     s_grid = np.array([0.2, 0.15, 0.25, 0.3, 0.4, 0.5])
     got_box = np.asarray(prior.log_flux_box(m_grid, s_grid), dtype=float)
@@ -1193,10 +1348,56 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
     max_log_flux_box_err = float(np.max(np.abs(got_box - exp_box)))
     assert np.all(np.isfinite(got_box))
 
-    # Fixed-scale rescalable=False check for outlier_log_density (5D with velocity and 3D single-exposure) + m_f > 0 peak
+    # 2. Independent polar sky-plane normalization of OutlierPrior.log_density (3D and chunked 5D) + MC KDE check
+    r_nodes = np.geomspace(1e-2, 45.0, 60)
+    dr_ln = math.log(r_nodes[1] / r_nodes[0])
+    th_nodes = np.linspace(0.0, 2.0 * math.pi, 24, endpoint=False)
+    dth = 2.0 * math.pi / len(th_nodes)
+    rr, tt = np.meshgrid(r_nodes, th_nodes, indexing="ij")
+    pts_3d = np.column_stack([(rr * np.cos(tt)).ravel(), (rr * np.sin(tt)).ravel(), np.zeros(rr.size), np.zeros(rr.size), np.full(rr.size, -2.0)])
+    lp3_grid = np.asarray(prior.log_density(pts_3d, velocity=False, sigma_f=None), dtype=float).reshape(rr.shape)
+    norm_3d_err = abs(float(np.sum(np.exp(lp3_grid) * abs_ell * (rr**2) * dr_ln * dth)) - 1.0)
+    # Azimuthal rotational invariance across theta
+    assert float(np.max(np.ptp(lp3_grid, axis=1))) < 1e-12
+
+    v_nodes = np.geomspace(1e-4, 30.0, 44)
+    dv_ln = math.log(v_nodes[1] / v_nodes[0])
+    psi_nodes = np.linspace(0.0, 2.0 * math.pi, 20, endpoint=False)
+    dpsi = 2.0 * math.pi / len(psi_nodes)
+    vv, pp = np.meshgrid(v_nodes, psi_nodes, indexing="ij")
+    norm_5d = 0.0
+    for rv_val in r_nodes:
+        pts_slice = np.column_stack([
+            np.full(vv.size, rv_val),
+            np.zeros(vv.size),
+            (vv * np.cos(pp)).ravel(),
+            (vv * np.sin(pp)).ravel(),
+            np.full(vv.size, -2.0),
+        ])
+        lp_slice = np.asarray(prior.log_density(pts_slice, velocity=True, sigma_f=None), dtype=float).reshape(vv.shape)
+        norm_5d += float(np.sum(np.exp(lp_slice) * abs_ell * (2.0 * math.pi) * (rv_val**2) * (vv**2) * dr_ln * dv_ln * dpsi))
+    norm_5d_err = abs(norm_5d - 1.0)
+
+    # Pointwise comparison against independent crosscheck Monte Carlo Keplerian draws + Jacobians
     cov5 = np.diag([0.08**2, 0.09**2, 0.35**2, 0.40**2, 0.30**2])
+    sigma_f1 = math.sqrt(cov5[4, 4])
+    state_pos_mf = np.array([[4.5, -3.2, 0.4, -0.5, +0.25]])
+    state_in_mf = np.array([[4.5, -3.2, 0.4, -0.5, -2.0]])
+
+    mc_lp5_pos = float(ref.mc_kepler_state_prior_log_density(
+        state_pos_mf, (5.0, 25.0), (1.0, 20.0), 0.85, prior.ln_f_floor, velocity=True, sigma_f=np.array([sigma_f1]), n_mc=8192, seed=11
+    )[0])
+    mc_lp3_pos = float(ref.mc_kepler_state_prior_log_density(
+        state_pos_mf, (5.0, 25.0), (1.0, 20.0), 0.85, prior.ln_f_floor, velocity=False, sigma_f=np.array([sigma_f1]), n_mc=8192, seed=11
+    )[0])
+    vg_lp5_pos = float(np.squeeze(prior.log_density(state_pos_mf, velocity=True, sigma_f=np.array([sigma_f1]))))
+    vg_lp3_pos = float(np.squeeze(prior.log_density(state_pos_mf, velocity=False, sigma_f=np.array([sigma_f1]))))
+    kde_3d_err = abs(vg_lp3_pos - mc_lp3_pos)
+    kde_5d_err = abs(vg_lp5_pos - mc_lp5_pos)
+
+    # 3. Fixed-scale (rescalable=False) outlier_log_density against MC reference (zero self-calls)
     pk_pos_mf = vns.NightPeak(
-        mean=np.array([4.5, -3.2, 0.4, -0.5, +0.25]),
+        mean=state_pos_mf[0],
         cov=cov5,
         loglike=75.0,
         n=np.array([20.0]),
@@ -1208,19 +1409,106 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
     ns_3d = vns.NightSummary(t_ref=T0 + 2.0, t_ss=0.0, n_frames=1, blocks=("vis",), peaks=(pk_pos_mf,), loglike_null=-3.5)
     ns_empty = vns.NightSummary(t_ref=T0 + 4.0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(), loglike_null=-4.25)
 
-    bk = voc.outlier_log_density([ns_5d, ns_3d, ns_empty], prior)
-    assert np.all(np.isfinite(bk))
-    assert abs(float(bk[2]) - (-4.25)) < 1e-12
+    bk_fixed = voc.outlier_log_density([ns_5d, ns_3d, ns_empty], prior)
+    assert np.all(np.isfinite(bk_fixed))
+    assert abs(float(bk_fixed[2]) - (-4.25)) < 1e-12
+    ref_b5 = ref.laplace_outlier_log_density_fixed_scale([pk_pos_mf.loglike], [cov5], [mc_lp5_pos], velocity=True)
+    ref_b3 = ref.laplace_outlier_log_density_fixed_scale([pk_pos_mf.loglike], [cov5], [mc_lp3_pos], velocity=False)
+    bk_fixed_mc_err = max(abs(float(bk_fixed[0]) - ref_b5), abs(float(bk_fixed[1]) - ref_b3))
 
-    lp_5d = float(np.squeeze(prior.log_density(pk_pos_mf.mean[None, :], velocity=True, sigma_f=np.array([math.sqrt(cov5[4, 4])]))))
-    lp_3d = float(np.squeeze(prior.log_density(pk_pos_mf.mean[None, :], velocity=False, sigma_f=np.array([math.sqrt(cov5[4, 4])]))))
-    ref_b5 = ref.laplace_outlier_log_density_fixed_scale([pk_pos_mf.loglike], [cov5], [lp_5d], velocity=True)
-    ref_b3 = ref.laplace_outlier_log_density_fixed_scale([pk_pos_mf.loglike], [cov5], [lp_3d], velocity=False)
-    bk_fixed_err = max(abs(float(bk[0]) - ref_b5), abs(float(bk[1]) - ref_b3))
+    # 4. Default rescalable=True scale marginalization vs 1D adaptive quadrature over ln s:
+    # interior mode hat = 1.2 exhibits Laplace + Stirling O((3 d^2 + 6 d + 2) / (12 n)) = 107 / (12 n) convergence
+    # across n = 24, 96, 384, and boundary stationary point at s_max = 2.0 exhibits the half-Gaussian ln(2) shift.
+    mc_lp5_sky = float(ref.mc_kepler_state_prior_log_density(
+        state_in_mf, (5.0, 25.0), (1.0, 20.0), 0.85, prior.ln_f_floor, velocity=True, sigma_f=None, n_mc=8192, seed=11
+    )[0]) + math.log(abs_ell)
+    vg_lp5_sky = float(np.squeeze(prior.log_density(state_in_mf, velocity=True, sigma_f=None))) + math.log(abs_ell)
+    sky_kde_diff = vg_lp5_sky - mc_lp5_sky
 
-    record("max_log_flux_box_err", max(max_log_flux_box_err, bk_fixed_err))
+    laplace_offsets = []
+    for n_val in (24.0, 96.0, 384.0):
+        chi2_val = 1.44 * n_val  # hat = sqrt(chi2 / n) = 1.2 inside [0.1, 10.0]
+        pk_in = vns.NightPeak(
+            mean=state_in_mf[0],
+            cov=cov5,
+            loglike=75.0,
+            n=np.array([n_val]),
+            chi2=np.array([chi2_val]),
+            hessian=np.linalg.inv(cov5)[None, :, :],
+            rescalable=True,
+        )
+        ns_in = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_in,), loglike_null=-50.0)
+        bk_vg = float(voc.outlier_log_density([ns_in], prior, s_max=10.0)[0])
+        bk_quad = ref.quad_rescalable_outlier_log_density(
+            [75.0], [cov5], [n_val], [chi2_val], [mc_lp5_sky], [-2.0], prior.ln_f_floor, velocity=True, s_max=10.0
+        )
+        # Subtract independent sky-KDE difference (vg_lp5 - mc_lp5) to isolate the 1D ln(s) Laplace error
+        laplace_offsets.append((bk_quad - bk_vg) + sky_kde_diff)
+
+    # Check positive-m_f rescalable=True at n = 384 directly against independent MC + quad
+    pk_res_pos = vns.NightPeak(
+        mean=state_pos_mf[0],
+        cov=cov5,
+        loglike=75.0,
+        n=np.array([384.0]),
+        chi2=np.array([1.44 * 384.0]),
+        hessian=np.linalg.inv(cov5)[None, :, :],
+        rescalable=True,
+    )
+    ns_res_pos = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_res_pos,), loglike_null=-50.0)
+    bk_res_pos_vg = float(voc.outlier_log_density([ns_res_pos], prior, s_max=10.0)[0])
+    bk_res_pos_quad = ref.quad_rescalable_outlier_log_density(
+        [75.0], [cov5], [384.0], [1.44 * 384.0], [mc_lp5_sky], [+0.25], prior.ln_f_floor, velocity=True, s_max=10.0
+    )
+    rescalable_n384_err = abs(bk_res_pos_vg - bk_res_pos_quad)
+
+    # Boundary-clipped stationary point: chi2 = (n - 5) * s_max^2 puts exact mode on u = ln(s_max), giving half-Gaussian ln(2)
+    s_clip = 2.0
+    n_clip = 384.0
+    chi2_bdy = (n_clip - 5.0) * (s_clip**2)
+    pk_bdy = vns.NightPeak(
+        mean=state_in_mf[0],
+        cov=cov5,
+        loglike=75.0,
+        n=np.array([n_clip]),
+        chi2=np.array([chi2_bdy]),
+        hessian=np.linalg.inv(cov5)[None, :, :],
+        rescalable=True,
+    )
+    ns_bdy = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis",), peaks=(pk_bdy,), loglike_null=-500.0)
+    bk_bdy_vg = float(voc.outlier_log_density([ns_bdy], prior, s_max=s_clip)[0])
+    bk_bdy_quad = ref.quad_rescalable_outlier_log_density(
+        [75.0], [cov5], [n_clip], [chi2_bdy], [mc_lp5_sky], [-2.0], prior.ln_f_floor, velocity=True, s_max=s_clip
+    )
+    bdy_ln2_err = abs(((bk_bdy_vg - bk_bdy_quad) - sky_kde_diff) - math.log(2.0))
+
+    record("max_log_flux_box_err", max_log_flux_box_err)
+    record("norm_3d_err", norm_3d_err)
+    record("norm_5d_err", norm_5d_err)
+    record("rescalable_n24_offset", laplace_offsets[0])
+    record("rescalable_n384_err", rescalable_n384_err)
     assert max_log_flux_box_err < 1e-12
-    assert bk_fixed_err < 1e-10
+    assert norm_3d_err < 5e-3
+    assert norm_5d_err < 1e-2
+    assert kde_3d_err < 0.05
+    assert kde_5d_err < 0.14
+    assert bk_fixed_mc_err < 0.14
+    # Asymptotic O((3 d^2 + 6 d + 2) / (12 n)) = 107 / (12 n) = 0.3715, 0.0929, 0.0232 nats (exact Gamma diff: 0.4062, 0.0948, 0.0233)
+    for idx, n_val in enumerate((24.0, 96.0, 384.0)):
+        exact_gamma_diff = (
+            float(special.gammaln(0.5 * (n_val - 5.0)))
+            - math.log(2.0)
+            - 0.5 * (n_val - 5.0) * math.log(0.5 * n_val)
+            + 0.5 * n_val
+            - 0.5 * math.log(math.pi / n_val)
+        )
+        assert abs(laplace_offsets[idx] - exact_gamma_diff) < 1e-4
+    assert abs(laplace_offsets[0] - 107.0 / (12.0 * 24.0)) < 0.04
+    assert abs(laplace_offsets[1] - 107.0 / (12.0 * 96.0)) < 0.003
+    assert abs(laplace_offsets[2] - 107.0 / (12.0 * 384.0)) < 0.0005
+    assert rescalable_n384_err < 0.15
+    assert bdy_ln2_err < 0.01
+    assert abs((bk_bdy_vg - bk_bdy_quad) - math.log(2.0)) < 0.10
 
 
 @pytest.mark.validates("virgil.orbit_cells.OutlierPrior", roots=["mathematics"], kind="control")

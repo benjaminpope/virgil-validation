@@ -24,9 +24,11 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from scipy import special
+from scipy import integrate, optimize, special, stats
 
-from crosscheck.orbits import eccentric_anomaly, thiele_innes
+from crosscheck.orbits import _kepler_E, eccentric_anomaly, thiele_innes
+
+_MAS2RAD = math.pi / (180.0 * 3.6e6)
 
 
 def sky_state(t, period, t_peri, ecc, inc, omega, Omega, a):
@@ -384,3 +386,249 @@ def quantum_rank_scores(scores, quantum=1e-3):
     ]
     keys.sort()
     return np.array([k[2] for k in keys], dtype=int)
+
+
+def broad_disc_marginal_loglike(
+    d_raw,
+    a_max,
+    flux_range,
+    *,
+    dof=(1.0, 1.0),
+    s_max=10.0,
+    n_r=30,
+    n_theta=60,
+    n_flux=36,
+    n_s=96,
+):
+    """Log mean scale-marginalized likelihood over uniform disc ``|p| <= a_max`` and log-uniform ``flux_range``.
+
+    Evaluates the OIFITS binary visibility ``(1 + f exp(-2 pi i (u alpha + v delta) / lambda)) / (1 + f)``
+    (Pauls et al. 2005, *PASP* 117, 1255) on an ``n_r``-point Gauss-Legendre radial rule
+    (area weight ``2 r dr / a_max^2``), an ``n_theta``-point uniform azimuthal trapezoid rule,
+    and an ``n_flux``-point midpoint rule in ``ln f``. When ``s_max`` is given, each block's
+    error scale ``u = ln s`` is integrated over ``[-ln s_max, +ln s_max]`` by ``n_s``-point
+    Gauss-Legendre quadrature using Gaussian ``V^2`` and exact von Mises ``T3`` densities;
+    when ``s_max`` is ``None``, the Jeffreys closed form ``-0.5 * dof_b * nu_b * ln(chi2_b)``
+    (Jeffreys 1946; MacKay 1992) is integrated.
+    """
+    radius = float(a_max)
+    xr, wr_leg = special.roots_legendre(int(n_r))
+    r_pts = 0.5 * radius * (xr + 1.0)
+    w_r = 0.5 * (xr + 1.0) * wr_leg  # 2 r dr / R^2 on x in [-1, 1] sums to 1 identically
+    th_pts = 2.0 * np.pi * np.arange(int(n_theta)) / float(n_theta)
+    w_th = np.full(int(n_theta), 1.0 / float(n_theta))
+    rr, tt = np.meshgrid(r_pts, th_pts, indexing="ij")
+    dra_g = (rr * np.sin(tt)).ravel()
+    ddec_g = (rr * np.cos(tt)).ravel()
+    w_pos = (w_r[:, None] * w_th[None, :]).ravel()
+
+    ln_lo, ln_hi = math.log(float(flux_range[0])), math.log(float(flux_range[1]))
+    d_lnf = (ln_hi - ln_lo) / float(n_flux)
+    f_pts = np.exp(ln_lo + (np.arange(int(n_flux)) + 0.5) * d_lnf)
+    w_f = 1.0 / float(n_flux)
+
+    fu_v2 = (np.asarray(d_raw["u"], dtype=float) / np.asarray(d_raw["wl"], dtype=float) * _MAS2RAD).ravel()
+    fv_v2 = (np.asarray(d_raw["v"], dtype=float) / np.asarray(d_raw["wl"], dtype=float) * _MAS2RAD).ravel()
+    ph_v2 = np.exp(-2j * np.pi * (dra_g[:, None] * fu_v2[None, :] + ddec_g[:, None] * fv_v2[None, :]))
+
+    v2_obs = np.asarray(d_raw["v2"], dtype=float).ravel()
+    dv2 = np.asarray(d_raw["dv2"], dtype=float).ravel()
+    has_cp = "cp" in d_raw and np.asarray(d_raw["cp"]).size > 0
+    if has_cp:
+        wl3 = np.asarray(d_raw["wl3"], dtype=float)
+        fu1 = (np.asarray(d_raw["u1"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        fv1 = (np.asarray(d_raw["v1"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        fu2 = (np.asarray(d_raw["u2"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        fv2 = (np.asarray(d_raw["v2_"], dtype=float) / wl3 * _MAS2RAD).ravel()
+        ph1 = np.exp(-2j * np.pi * (dra_g[:, None] * fu1[None, :] + ddec_g[:, None] * fv1[None, :]))
+        ph2 = np.exp(-2j * np.pi * (dra_g[:, None] * fu2[None, :] + ddec_g[:, None] * fv2[None, :]))
+        ph3 = np.exp(-2j * np.pi * (dra_g[:, None] * (fu1 + fu2)[None, :] + ddec_g[:, None] * (fv1 + fv2)[None, :]))
+        cp_obs = np.asarray(d_raw["cp"], dtype=float).ravel()
+        dcp = np.asarray(d_raw["dcp"], dtype=float).ravel()
+
+    dof_v2 = float(dof[0])
+    dof_cp = float(dof[1]) if len(dof) > 1 else dof_v2
+
+    if s_max is not None:
+        xs, ws_leg = special.roots_legendre(int(n_s))
+        half_u = math.log(float(s_max))
+        u_s = half_u * xs
+        s_s = np.exp(u_s)
+        log_w_s = np.log(half_u * ws_leg)
+        const_v2_s = -v2_obs.size * u_s
+        if has_cp:
+            const_cp_s = np.sum(
+                -0.5 * math.log(2.0 * math.pi)
+                + np.log(dcp[None, :])
+                - np.log(special.i0e(1.0 / (s_s[:, None] * dcp[None, :]) ** 2)),
+                axis=1,
+            )
+
+    log_terms = []
+    log_weights = []
+    log_wpf = np.log(w_pos * w_f)
+    for f in f_pts:
+        vis_v2 = (1.0 + f * ph_v2) / (1.0 + f)
+        chi2_v2 = np.sum(((np.abs(vis_v2) ** 2 - v2_obs[None, :]) / dv2[None, :]) ** 2, axis=1)
+        if s_max is not None:
+            lv = dof_v2 * (-0.5 * chi2_v2[:, None] / (s_s[None, :] ** 2) + const_v2_s[None, :]) + log_w_s[None, :]
+            mv = np.max(lv, axis=1, keepdims=True)
+            ll_pf = np.squeeze(mv, axis=1) + np.log(np.sum(np.exp(lv - mv), axis=1))
+        else:
+            ll_pf = -0.5 * dof_v2 * v2_obs.size * np.log(chi2_v2)
+
+        if has_cp:
+            delta = (np.angle(1.0 + f * ph1) + np.angle(1.0 + f * ph2) - np.angle(1.0 + f * ph3)) - cp_obs[None, :]
+            chi2_cp = np.sum((2.0 * np.sin(0.5 * delta) / dcp[None, :]) ** 2, axis=1)
+            if s_max is not None:
+                lc = dof_cp * (-0.5 * chi2_cp[:, None] / (s_s[None, :] ** 2) + const_cp_s[None, :]) + log_w_s[None, :]
+                mc = np.max(lc, axis=1, keepdims=True)
+                ll_pf = ll_pf + np.squeeze(mc, axis=1) + np.log(np.sum(np.exp(lc - mc), axis=1))
+            else:
+                ll_pf = ll_pf - 0.5 * dof_cp * cp_obs.size * np.log(chi2_cp)
+
+        log_terms.append(ll_pf)
+        log_weights.append(log_wpf)
+
+    all_ll = np.concatenate(log_terms) + np.concatenate(log_weights)
+    m_all = float(np.max(all_ll))
+    return float(m_all + math.log(float(np.sum(np.exp(all_ll - m_all)))))
+
+
+def mc_kepler_state_prior_log_density(
+    states,
+    p_range,
+    a_range,
+    e_max,
+    ln_f_floor,
+    *,
+    velocity=True,
+    sigma_f=None,
+    n_mc=16384,
+    seed=12345,
+):
+    """Independent Monte Carlo + Scott Gaussian KDE log density of sky states under the Keplerian prior.
+
+    Draws ``n_mc`` orbits with ``ln P`` uniform on ``ln p_range``, ``ln a`` uniform on
+    ``ln a_range``, ``e`` uniform on ``[0, e_max]``, mean anomaly ``M`` uniform on
+    ``[-pi, pi]``, and isotropic 3D orientation (``cos i`` uniform on ``[-1, 1]``,
+    ``omega`` and ``Omega`` uniform on ``[0, 360)`` deg). By rotational symmetry on the
+    sky plane, ``theta_p = atan2(ddec, dra)`` is uniform on ``[0, 2 pi)`` and only the
+    invariants ``(ln |p|, ln |v|, psi)`` with ``psi = (theta_v - theta_p) mod 2 pi`` carry
+    non-uniform structure. Changing variables from ``(ln |p|, theta_p)`` to Cartesian
+    ``(dra, ddec)`` multiplies by ``1 / (2 pi |p|^2)``; including Cartesian ``(vra, vdec)``
+    multiplies by ``1 / (2 pi |p|^2 |v|^2)`` (Scott 2015, *Multivariate Density Estimation*,
+    2nd ed.).
+    """
+    rng = np.random.default_rng(seed)
+    P_mc = np.exp(rng.uniform(math.log(float(p_range[0])), math.log(float(p_range[1])), int(n_mc)))
+    a_mc = np.exp(rng.uniform(math.log(float(a_range[0])), math.log(float(a_range[1])), int(n_mc)))
+    e_mc = rng.uniform(0.0, float(e_max), int(n_mc))
+    M_mc = rng.uniform(-np.pi, np.pi, int(n_mc))
+    inc_mc = np.degrees(np.arccos(rng.uniform(-1.0, 1.0, int(n_mc))))
+    omega_mc = rng.uniform(0.0, 360.0, int(n_mc))
+    Omega_mc = rng.uniform(0.0, 360.0, int(n_mc))
+
+    E_mc = _kepler_E(M_mc, e_mc)
+    om_e2 = np.sqrt(np.maximum(0.0, 1.0 - e_mc**2))
+    Edot_mc = (2.0 * np.pi / P_mc) / (1.0 - e_mc * np.cos(E_mc))
+    x_mc, y_mc = np.cos(E_mc) - e_mc, om_e2 * np.sin(E_mc)
+    xdot_mc, ydot_mc = -Edot_mc * np.sin(E_mc), om_e2 * Edot_mc * np.cos(E_mc)
+    A_mc, B_mc, F_mc, G_mc = thiele_innes(a_mc, inc_mc, omega_mc, Omega_mc)
+    dra_mc = B_mc * x_mc + G_mc * y_mc
+    ddec_mc = A_mc * x_mc + F_mc * y_mc
+    vra_mc = B_mc * xdot_mc + G_mc * ydot_mc
+    vdec_mc = A_mc * xdot_mc + F_mc * ydot_mc
+
+    ln_r_mc = np.log(np.hypot(dra_mc, ddec_mc))
+    if velocity:
+        ln_v_mc = np.log(np.hypot(vra_mc, vdec_mc))
+        psi_mc = np.mod(np.arctan2(vdec_mc, vra_mc) - np.arctan2(ddec_mc, dra_mc), 2.0 * np.pi)
+        kde = stats.gaussian_kde(np.vstack([ln_r_mc, ln_v_mc, psi_mc]), bw_method="scott")
+    else:
+        kde = stats.gaussian_kde(ln_r_mc, bw_method="scott")
+
+    pts = np.atleast_2d(np.asarray(states, dtype=float))
+    r_q = np.hypot(pts[:, 0], pts[:, 1])
+    ln_r_q = np.log(r_q)
+    if velocity:
+        v_q = np.hypot(pts[:, 2], pts[:, 3])
+        ln_v_q = np.log(v_q)
+        psi_q = np.mod(np.arctan2(pts[:, 3], pts[:, 2]) - np.arctan2(pts[:, 1], pts[:, 0]), 2.0 * np.pi)
+        dens = sum(
+            kde(np.vstack([ln_r_q, ln_v_q, psi_q + shift]))
+            for shift in (-2.0 * np.pi, 0.0, 2.0 * np.pi)
+        )
+        lp_sky = np.log(dens) - math.log(2.0 * math.pi) - 2.0 * ln_r_q - 2.0 * ln_v_q
+    else:
+        dens = kde(ln_r_q)
+        lp_sky = np.log(dens) - math.log(2.0 * math.pi) - 2.0 * ln_r_q
+
+    ell = float(ln_f_floor)
+    m_f = pts[:, 4]
+    if sigma_f is None:
+        in_box = (m_f >= ell) & (m_f <= 0.0)
+        lp_flux = np.where(in_box, -math.log(abs(ell)), -np.inf)
+    else:
+        lp_flux = np.asarray(log_flux_box_exact(m_f, sigma_f, ell), dtype=float)
+    return lp_sky + lp_flux
+
+
+def quad_rescalable_outlier_log_density(
+    peak_loglikes,
+    peak_covs,
+    peak_ns,
+    peak_chi2s,
+    sky_log_priors,
+    peak_m_fs,
+    ln_f_floor,
+    *,
+    velocity=True,
+    s_max=10.0,
+):
+    """Exact 1D adaptive quadrature over ``u = ln s in [-ln s_max, +ln s_max]`` of a night's outlier integral.
+
+    Integrates ``(2 pi)^(d/2) |Sigma_1|^(1/2) / (2 ln s_max) * exp(-(n - d) u - 0.5 chi2 (e^{-2u} - 1))``
+    times ``L_j * pi_sky(m_j) * E_{N(m_f, e^{2u} sigma_f^2)}[pi(ln f)]`` by ``scipy.integrate.quad``
+    around each peak's interior or boundary mode (NIST DLMF sec. 2.3(iii)).
+    """
+    idx = [0, 1, 2, 3, 4] if velocity else [0, 1, 4]
+    dim = len(idx)
+    lo, hi = -math.log(float(s_max)), math.log(float(s_max))
+    log_norm_u = math.log(2.0 * math.log(float(s_max)))
+
+    terms = []
+    for ll, cov, n_tot, chi2_tot, lp_sky, m_f in zip(
+        peak_loglikes, peak_covs, peak_ns, peak_chi2s, sky_log_priors, peak_m_fs
+    ):
+        cov_arr = np.asarray(cov, dtype=float)
+        sub_cov = cov_arr[np.ix_(idx, idx)]
+        sign, logdet = np.linalg.slogdet(sub_cov)
+        if sign <= 0 or not np.isfinite(lp_sky):
+            continue
+        sigma_f1 = math.sqrt(float(cov_arr[4, 4]))
+        n_f = float(n_tot)
+        c_f = float(chi2_tot)
+        const = float(ll) + 0.5 * dim * math.log(2.0 * math.pi) + 0.5 * float(logdet) + float(lp_sky) - log_norm_u
+
+        def log_g(u, const=const, n_f=n_f, c_f=c_f, m_f=float(m_f), sigma_f1=sigma_f1):
+            lfb = float(log_flux_box_exact(m_f, math.exp(u) * sigma_f1, ln_f_floor))
+            return const - (n_f - dim) * u - 0.5 * c_f * (math.exp(-2.0 * u) - 1.0) + lfb
+
+        u_pk = float(optimize.minimize_scalar(lambda u: -log_g(u), bounds=(lo, hi), method="bounded").x)
+        gmax = log_g(u_pk)
+        val, _ = integrate.quad(
+            lambda u: math.exp(log_g(u) - gmax),
+            lo,
+            hi,
+            points=[u_pk] if lo < u_pk < hi else None,
+            epsabs=0.0,
+            epsrel=1e-12,
+            limit=300,
+        )
+        terms.append(gmax + math.log(val))
+
+    if not terms:
+        return -np.inf
+    m = max(terms)
+    return float(m + math.log(sum(math.exp(t - m) for t in terms)))

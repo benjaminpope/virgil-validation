@@ -28,16 +28,16 @@ marginalized scales give different orders.
 
 ## Alias bands, short arcs and night summaries
 
-`tests/test_042_orbit_cells_arcs_aliases.py` checks the position-level and visibility-level orbit search primitives against `crosscheck.orbit_cells_ref` (analytical Kepler sky velocities, [generalized least squares](https://en.wikipedia.org/wiki/Generalized_least_squares) Thiele–Innes [variable projection](https://en.wikipedia.org/wiki/Variable_projection), [Gauss–Jacobi quadrature](https://dlmf.nist.gov/3.5#v) on the Beta outlier-rate prior, and exact normal-CDF box integrals).
+`tests/test_042_orbit_cells_arcs_aliases.py` checks the position-level and visibility-level orbit search primitives against `crosscheck.orbit_cells_ref` (analytical Kepler sky velocities, [generalized least squares](https://en.wikipedia.org/wiki/Generalized_least_squares) Thiele–Innes [variable projection](https://en.wikipedia.org/wiki/Variable_projection), [Gauss–Jacobi quadrature](https://dlmf.nist.gov/3.5#v) on the Beta outlier-rate prior, and exact normal-CDF box integrals). In narrow-field regimes where the circular smearing bound falls below the observing block duration, `virgil`'s `period_window` and `period_cut` also clamp at `night_length` (matching `orbit_methods.md`, whereas the API docstrings state only `p_floor`); both the `2 * dt_min` inter-night Nyquist branch and the `night_length` floor are pinned directly.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
-| `AliasBand`, `alias_bands`, `period_cut`, `period_window` | exact half-integer cycle partition `T / (N + 0.5) <= P <= T / (N - 0.5)` plus long-period band `N = 0` (`P > 2T`), circular intra-night motion bound `period_cut` | Mathematics | 1e-13 |
+| `AliasBand`, `alias_bands`, `period_cut`, `period_window` | exact half-integer cycle partition `T / (N + 0.5) <= P <= T / (N - 0.5)` plus long-period band `N = 0` (`P > 2T`); `2 * dt_min`, duplicate-epoch, `p_floor`, and `night_length` clamp regimes | Mathematics | 1e-13 |
 | `position_profile`, `AliasBandResult`, `AliasResult` | generalized linear Thiele–Innes WLS on `PositionData` (including `sign_free` point reflection), visibility alias fit, JSON `save`/`load` round-trip, and per-night whitened residuals against `crosscheck.chi2` | Mathematics | 1e-8; 1e-10 |
 | `NightMotion`, `night_motion`, `CycleCounts`, `unwrap_cycles`, `arc_profile` | intra-night sky velocity on moving multi-exposure OIFITS nights, cycle-count narrowing across seasonal gaps, and joint position-velocity Thiele–Innes seeding (control: negated velocities fail) | Mathematics | < 2.5 σ; 1e-8 |
 | `NightPeak`, `NightSummary`, `keep_peaks`, `night_summaries` | closed-form block-scale precision and log-likelihood rescaling, Aitken WLS frame projection, independent per-frame jitter (`jitter² / n_frames` and `jitter² / t_ss`), and smallest Gauss–Jacobi `Beta(1, 9)` node peak retention (control: `E[ε] = 0.1` drops boundary peaks) | Mathematics | 1e-12 |
 | `SharedFlux`, `rank_scores`, `OrbitScores`, `score_orbits` | deterministic quantum-rounded tie-breaking (`1e-3` nats, non-finite last) and multi-epoch shared-flux plus chromatic-slope marginalization (control: non-linear or orbit-coupled `f = 0` scenes raise `ValueError`) | Mathematics | exact; 6% flux |
-| `EpochPeaks`, `NightFlag`, `PrimaryDiameter`, `broad_loglike`, `estimate_primary_diameter`, `sidelobe_flags` | uniform-disc by log-uniform-flux outlier quadrature, resolved uniform-disk vs point primary Δln L, and `orbit-prefers-secondary` sidelobe flagging | Mathematics | 1e-6; 0.2 mas |
+| `EpochPeaks`, `NightFlag`, `PrimaryDiameter`, `broad_loglike`, `estimate_primary_diameter`, `sidelobe_flags` | sub-fringe polar-disc Gauss–Legendre by midpoint log-flux quadrature of `crosscheck` Gaussian `V²` and von Mises `T3` block marginals (`s_max=10` and unbounded, default `coarse_nats`), resolved uniform-disk vs point primary Δln L, and `orbit-prefers-secondary` sidelobe flagging | Mathematics | 0.025 nats; 0.2 mas |
 
 ## Orbit cells and outlier densities
 
@@ -48,20 +48,28 @@ $$
 = \ln\!\left[\Phi\!\left(-\frac{m_f}{\sigma_f}\right) - \Phi\!\left(\frac{\ell - m_f}{\sigma_f}\right)\right] - \ln \lvert \ell \rvert.
 $$
 
+On standard rescalable OIFITS nights (`rescalable=True`), `outlier_log_density` expands in `ln s` around the profile-likelihood scale `sqrt(chi2 / n)` with curvature `2n` rather than the marginal stationary point `sqrt(chi2 / (n - d))` where the `s^d` peak-covariance determinant and `s^(-n)` Gaussian normalizer balance. By [Laplace's method](https://dlmf.nist.gov/2.3#iii) (giving the Gaussian asymptotic expansion around an interior mode and half that weight on an integration boundary) combined with [Stirling's series](https://dlmf.nist.gov/5.11#E1) for the exact inverse-gamma scale integral `ln Γ((n - d) / 2)`, expanding at `sqrt(chi2 / n)` introduces three `O(1 / n)` terms—mode shift `d² / (4n)`, curvature ratio `d / (2n)`, and inverse-gamma skewness `1 / (6n)`—totalling `(3 d² + 6 d + 2) / (12 n)` (`107 / (12 n)` nats in `d = 5` dimensions), alongside a `ln 2` (`0.69` nats) half-Gaussian shift when the stationary point sits on `s_max`:
+
+| Effective night data count `n` | Adaptive quadrature minus `outlier_log_density` (nats) | Leading `(3 d² + 6 d + 2) / (12 n)` (nats) |
+| --- | --- | --- |
+| `24` | `0.41` | `0.37` |
+| `96` | `0.095` | `0.093` |
+| `384` | `0.023` | `0.023` |
+
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `PeriodDomain`, `period_domain`, `choose_anchors`, `Cell`, `make_cells` | Jeffreys log-uniform cell masses `ln[ln(p_hi / p_lo) / ln(p_max / p_cut)]` summing to 1 across default half-integer and custom `p_edges` partitions; end-quarter minimum-uncertainty anchors | Mathematics | 1e-14 |
-| `OutlierPrior`, `outlier_prior`, `outlier_log_density` | exact normal-CDF box convolution on `[ln_f_floor, 0]` (finite for `m_f > 0`; control: point indicator cutoff gives `-inf`) and Laplace outlier integral `b_k` for 5D moving and 3D single-exposure nights | Mathematics | 1e-10 |
+| `OutlierPrior`, `outlier_prior`, `outlier_log_density` | sky-plane polar normalization (`3D` and `5D`), independent Monte Carlo Keplerian state KDE with polar-to-Cartesian Jacobians, exact normal-CDF box convolution on `[ln_f_floor, 0]` (control: point indicator gives `-inf` for `m_f > 0`), and `rescalable=False` / `rescalable=True` adaptive quadrature over `ln s` | Mathematics | 1e-12 box; < 5e-3 norm; 0.02 nats (`n = 384`) |
 | `search_plan`, `search_cell`, `position_leg`, `CellFit` | scale-equivariant conditional-MLE start preserving recovered period, physical scale, and inlier count across `ln s` in `{-2.0, 0.0, +0.8}` error rescalings | Mathematics | 1e-3 relative |
 | `fit_jitter`, `position_cells`, `CellsResult`, `decode_particles` | type-II ML astrometric jitter recovery, shared neighbour modes across cell edges, `log_l_sup` negligible-cell upper bound (`omitted_bound < δ`), and blind posterior recovery of eccentric Keplerian elements (control: permuted epochs drop cell evidence to the all-outlier floor) | Mathematics | < 0.08 mas (clean), > 2.5× (noisy); 1% period |
 
 ## Scriptable pipelines
 
-`tests/test_042_pipelines.py` validates the run-folder containers and end-to-end synthetic truth recovery plus deterministic quality-check controls across all five `virgil.pipeline` classes against independent `crosscheck` forward simulations.
+`tests/test_042_pipelines.py` validates the run-folder containers and end-to-end synthetic truth recovery plus named quality-check controls across all five `virgil.pipeline` classes against independent `crosscheck` forward simulations.
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `Check`, `Stage`, `SkyImage`, `Result`, `load` | JSON dictionary round-trip, stage execution contract, pixel flux conservation, and HDF5/OIFITS/JSON run-folder reload without pickles (`ConfigMismatchError` on altered settings) | Mathematics | 1e-15 |
-| `BinaryPipeline`, `StarPipeline`, `DiskPipeline` | synthetic binary `(sep, pa)` recovery, uniform-disk diameter recovery, and inclined Gaussian ring radius recovery; under-quoted or mismatched scenes trigger `warn`/`fail` checks | Mathematics | 0.15 mas; 0.12 mas; 20% ring |
-| `ImagingPipeline`, `OrbitPipeline` | staged regularized ensemble reconstruction (`run_member`) into the injected NE sky quadrant, and blind multi-night Keplerian period recovery (`AliasResult`); companion-free single-star nights fail the `no_orbit` check | Mathematics | NE > SW; 3% period |
+| `BinaryPipeline`, `StarPipeline`, `DiskPipeline` | synthetic binary `(sep, pa)` recovery, uniform-disk `"diam"` recovery, and inclined Gaussian ring `(r_mas, inc_deg, pa_deg)` recovery; controls trip named `detection` (`warn`) + `chi2` (`fail`), `chi2_uniform` (`fail`), and `chi2_reduced` (`fail`) checks | Mathematics | 0.15 mas; 0.12 mas; 10% ring, 5° `(inc, pa)` |
+| `ImagingPipeline`, `OrbitPipeline` | staged regularized ensemble reconstruction (`run_member`) into the injected NE sky quadrant, and blind multi-night Keplerian period recovery (`AliasResult`); controls trip named `chi2_reduced` + `error_scale` and `no_orbit` failure checks | Mathematics | NE > SW; 3% period |
 

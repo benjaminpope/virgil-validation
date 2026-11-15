@@ -255,7 +255,7 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
 
 @pytest.mark.validates("virgil.pipeline.BinaryPipeline", roots=["mathematics"], kind="control")
 def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
-    """Companion-free noisy OIFITS with under-quoted errors triggers non-pass pipeline quality checks (#663/#696)."""
+    """Mismatched calibrator transfer function (V^2 > 1, zero closure phase) fails both detection and chi2 checks."""
     raw = tmp_path / "null_star.fits"
     simulate.observe(
         raw,
@@ -263,12 +263,17 @@ def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
         UTS3,
         hour_angles_h=[-2.0, 0.0, 2.0],
         wavelengths=WAVELENGTHS,
-        sigma_v2=0.04,
-        sigma_cp_deg=3.0,
+        sigma_v2=0.015,
+        sigma_cp_deg=0.5,
         rng=np.random.default_rng(702),
         phase_noise="triangle",
     )
-    bad = _shrink_oifits_errors(raw, tmp_path / "null_star_shrunk.fits", factor=8.0)
+    bad = tmp_path / "null_star_overcal.fits"
+    shutil.copy(raw, bad)
+    with fits.open(bad, mode="update") as hdul:
+        # Passive sky binaries satisfy |V|^2 <= 1, so V^2 ~ 1.35 peaks at f = 0 (no companion) while failing chi2
+        hdul["OI_VIS2"].data["VIS2DATA"] = np.full_like(hdul["OI_VIS2"].data["VIS2DATA"], 1.35)
+        hdul["OI_VIS2"].data["VIS2ERR"] = np.full_like(hdul["OI_VIS2"].data["VIS2ERR"], 0.02)
     res = vp.BinaryPipeline.from_oifits(
         bad,
         output=tmp_path / "run_bin_ctrl",
@@ -282,10 +287,11 @@ def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
         num_chains=2,
         quicklook_execute=False,
     ).run()
-    statuses = [c.status for c in res.checks]
-    n_flagged = sum(s in {"warn", "fail"} for s in statuses)
-    record("n_flagged_checks", n_flagged)
-    assert n_flagged >= 1
+    by_name = {c.name: c.status for c in res.checks}
+    chi2_chk = next(c for c in res.checks if c.name == "chi2")
+    record("chi2_check_value", float(chi2_chk.value))
+    assert by_name["detection"] == "warn"
+    assert by_name["chi2"] == "fail"
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +320,7 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
         phase_noise="triangle",
     )
     run_dir = tmp_path / "run_star"
-    res = vp.StarPipeline.from_oifits(
+    vp.StarPipeline.from_oifits(
         star_path,
         model="uniform",
         output=run_dir,
@@ -332,12 +338,14 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
     record("diam_err_mas", diam_err_mas)
     assert diam_err_mas < 0.12
     assert loaded.model("uniform") is not None
-    assert "diameter" in loaded.model_values("uniform") or len(loaded.model_values("uniform")) >= 1
+    vals_ud = loaded.model_values("uniform")
+    assert "diam" in vals_ud
+    assert abs(float(vals_ud["diam"]) - true_diam) < 0.12
 
 
 @pytest.mark.validates("virgil.pipeline.StarPipeline", roots=["mathematics"], kind="control")
 def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
-    """Fitting a high-SNR equal-flux binary with StarPipeline triggers chi-squared failure checks."""
+    """Fitting a high-SNR equal-flux binary with StarPipeline triggers the chi2_uniform failure check."""
     bin_path = tmp_path / "not_a_single_star.fits"
     simulate.observe(
         bin_path,
@@ -361,9 +369,10 @@ def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
         num_chains=2,
         quicklook_execute=False,
     ).run()
-    n_flagged = sum(c.status in {"warn", "fail"} for c in res.checks)
-    record("n_flagged_checks", n_flagged)
-    assert n_flagged >= 1
+    by_name = {c.name: c.status for c in res.checks}
+    chi2_u = next(c for c in res.checks if c.name == "chi2_uniform")
+    record("chi2_uniform_value", float(chi2_u.value))
+    assert by_name["chi2_uniform"] == "fail"
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +386,7 @@ def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
     headline="ring_radius_rel_err",
 )
 def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
-    """DiskPipeline('rings') recovers the radius and geometry of a synthetic inclined ring."""
+    """DiskPipeline('rings') recovers radius, inclination, and axial position angle of an inclined ring."""
     true_r = 5.5
     true_inc = 42.0
     true_pa = 68.0
@@ -394,7 +403,7 @@ def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
         phase_noise="triangle",
     )
     run_dir = tmp_path / "run_disk"
-    res = vp.DiskPipeline.from_oifits(
+    vp.DiskPipeline.from_oifits(
         disk_path,
         model="rings",
         output=run_dir,
@@ -408,21 +417,27 @@ def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
     ).run()
     loaded = vp.load(run_dir)
     assert isinstance(loaded.model(), System)
-    assert loaded.summary["disk"]["n_rings"] >= 1
-    rings = loaded.summary["disk"]["rings"]
-    # Extract fitted radius of dominant ring (check common key names radius_mas / r_mas / radius)
-    r0_dict = rings[0]
-    r_key = next(k for k in ("radius_mas", "r_mas", "radius", "r") if k in r0_dict)
-    r_fit = float(r0_dict[r_key])
+    disk_sum = loaded.summary["disk"]
+    assert disk_sum["n_rings"] >= 1
+    r_fit = float(disk_sum["rings"][0]["r_mas"])
+    inc_fit = float(disk_sum["inc_deg"])
+    pa_fit = float(disk_sum["pa_deg"])
+
     ring_radius_rel_err = abs(r_fit - true_r) / true_r
+    inc_err_deg = abs(inc_fit - true_inc)
+    pa_err_deg = abs(((pa_fit - true_pa + 90.0) % 180.0) - 90.0)
 
     record("ring_radius_rel_err", ring_radius_rel_err)
-    assert ring_radius_rel_err < 0.20
+    record("inc_err_deg", inc_err_deg)
+    record("pa_err_deg", pa_err_deg)
+    assert ring_radius_rel_err < 0.10
+    assert inc_err_deg < 5.0
+    assert pa_err_deg < 5.0
 
 
 @pytest.mark.validates("virgil.pipeline.DiskPipeline", roots=["mathematics"], kind="control")
 def test_disk_pipeline_corrupted_errors_check_control(tmp_path):
-    """Strong asymmetric binary data with under-quoted errors trips DiskPipeline quality checks."""
+    """Strong asymmetric binary data with under-quoted errors trips DiskPipeline's chi2_reduced failure check."""
     raw = tmp_path / "disk_bad_raw.fits"
     simulate.observe(
         raw,
@@ -448,9 +463,10 @@ def test_disk_pipeline_corrupted_errors_check_control(tmp_path):
         posterior=False,
         quicklook_execute=False,
     ).run()
-    n_flagged = sum(c.status in {"warn", "fail"} for c in res.checks)
-    record("n_flagged_checks", n_flagged)
-    assert n_flagged >= 1
+    by_name = {c.name: c.status for c in res.checks}
+    chi2_r = next(c for c in res.checks if c.name == "chi2_reduced")
+    record("chi2_reduced_value", float(chi2_r.value))
+    assert by_name["chi2_reduced"] == "fail"
 
 
 # ---------------------------------------------------------------------------
@@ -549,9 +565,11 @@ def test_imaging_pipeline_underquoted_errors_check_control(tmp_path):
         max_steps=30,
         quicklook_execute=False,
     ).run()
-    n_flagged = sum(c.status in {"warn", "fail"} for c in res.checks)
-    record("n_flagged_checks", n_flagged)
-    assert n_flagged >= 1
+    by_name = {c.name: c.status for c in res.checks}
+    err_scale = next(c for c in res.checks if c.name == "error_scale")
+    record("error_scale_value", float(err_scale.value))
+    assert by_name["chi2_reduced"] == "fail"
+    assert by_name["error_scale"] == "fail"
 
 
 # ---------------------------------------------------------------------------
