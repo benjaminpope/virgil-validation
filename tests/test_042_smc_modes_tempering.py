@@ -649,10 +649,6 @@ def test_smc_unnormalized_loglike_and_swapped_bridge_controls():
     "virgil.mode_search.Mode",
     "virgil.mode_search.logmeanexp",
     "virgil.mode_search.laplace_log_evidence",
-    roots=["mathematics"],
-    headline="max_laplace_err",
-)
-@pytest.mark.validates(
     "virgil.mode_search.distinct_modes",
     property="two_sided_dedup",
     roots=["mathematics"],
@@ -841,22 +837,12 @@ def test_defensive_mixture_log_density_symmetry_and_sampling():
 
 
 @pytest.mark.validates(
+    "virgil.mode_search.importance_evidence",
     "virgil.mode_search.Evidence",
     "virgil.mode_search.resample_move",
     "virgil.mode_search.Move",
+    property=("is_estimator", "ess_floor"),
     roots=["mathematics", "statistics"],
-    headline="is_log_z_err",
-)
-@pytest.mark.validates(
-    "virgil.mode_search.importance_evidence",
-    property="is_estimator",
-    roots=["mathematics", "statistics"],
-    headline="is_log_z_err",
-)
-@pytest.mark.validates(
-    "virgil.mode_search.importance_evidence",
-    property="ess_floor",
-    roots=["mathematics"],
     headline="is_log_z_err",
 )
 def test_importance_evidence_floor_sentinel_and_resample_move():
@@ -972,22 +958,12 @@ def test_importance_evidence_floor_sentinel_and_resample_move():
 
 
 @pytest.mark.validates(
+    "virgil.tempering.estimate_factors",
     "virgil.tempering.ChannelFactors",
     "virgil.tempering.block_dof",
     "virgil.tempering.out_of_range",
     "virgil.tempering.flat_signature",
-    roots=["mathematics"],
-    headline="max_factor_err",
-)
-@pytest.mark.validates(
-    "virgil.tempering.estimate_factors",
-    property="variance_ratio",
-    roots=["mathematics"],
-    headline="max_factor_err",
-)
-@pytest.mark.validates(
-    "virgil.tempering.estimate_factors",
-    property="fallback_rules",
+    property=("variance_ratio", "fallback_rules"),
     roots=["mathematics"],
     headline="max_factor_err",
 )
@@ -1056,14 +1032,10 @@ def test_tempering_exact_variance_ratio_floor_fallback_and_range_flags():
 
 
 @pytest.mark.validates(
+    "virgil.tempering.estimate_factors",
     "virgil.tempering.flat_signature",
     "virgil.tempering.channel_chains",
     "virgil.tempering.adjacent_channels",
-    roots=["mathematics", "statistics"],
-    headline="ar1_finite_chain_err",
-)
-@pytest.mark.validates(
-    "virgil.tempering.estimate_factors",
     property="variance_ratio",
     roots=["mathematics", "statistics"],
     headline="ar1_finite_chain_err",
