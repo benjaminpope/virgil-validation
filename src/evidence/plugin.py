@@ -618,7 +618,7 @@ def _import_call_kwargs_ok(node, kind):
 
 
 def _is_provably_external_py_suffix(suf, resolved_file):
-    if not suf or "/" not in suf or not suf.endswith(".py"):
+    if not suf or not suf.startswith("/") or not suf.endswith(".py"):
         return False
     rel = suf.lstrip("/")
     parts = rel.split("/")
@@ -1011,7 +1011,9 @@ def _scan_call_imports(
             arg0 = _call_arg_expr(sub, 0, "name" if kind != "importorskip" else "modname")
             pkg_kw = _call_arg_expr(sub, 1, "package") if kind == "import_module" else None
             pkg_const = None
-            pkg_ok = pkg_kw is None or (isinstance(pkg_kw, ast.Constant) and (pkg_kw.value is None or isinstance(pkg_kw.value, str)))
+            pkg_ok = _import_call_kwargs_ok(sub, kind) and (
+                pkg_kw is None or (isinstance(pkg_kw, ast.Constant) and (pkg_kw.value is None or isinstance(pkg_kw.value, str)))
+            )
             if pkg_ok and isinstance(pkg_kw, ast.Constant) and isinstance(pkg_kw.value, str):
                 pkg_const = pkg_kw.value
             if pkg_ok and isinstance(arg0, ast.Name) and arg0.id in all_params:
@@ -1022,8 +1024,10 @@ def _scan_call_imports(
             sub = spec_calls[0]
             loc_arg = _call_arg_expr(sub, 1, "location")
             loader_arg = _call_arg_expr(sub, 2, "loader")
-            loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
-                kw.arg is None for kw in sub.keywords
+            loader_ok = (
+                (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None))
+                and not any(isinstance(a, ast.Starred) for a in sub.args)
+                and not any(kw.arg is None for kw in sub.keywords)
             )
             if loader_ok and loc_arg is not None and _eval_expr(loc_arg, fmap) is None:
                 used_params = _free_names(loc_arg) & all_params
@@ -1140,8 +1144,10 @@ def _scan_call_imports(
                 elif kind == "spec_from_file_location":
                     loc_arg = _call_arg_expr(node, 1, "location")
                     loader_arg = _call_arg_expr(node, 2, "loader")
-                    loader_ok = (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None)) and not any(
-                        kw.arg is None for kw in node.keywords
+                    loader_ok = (
+                        (loader_arg is None or (isinstance(loader_arg, ast.Constant) and loader_arg.value is None))
+                        and not any(isinstance(a, ast.Starred) for a in node.args)
+                        and not any(kw.arg is None for kw in node.keywords)
                     )
                     vals = _eval_expr(loc_arg, active_map, param_bindings) if loader_ok else None
                     if not loader_ok:
@@ -1154,10 +1160,11 @@ def _scan_call_imports(
                         if not _is_provably_external_py_suffix(suf, resolved):
                             extra.add(_UNRESOLVED_IMPORT)
                 elif isinstance(node.func, ast.Name) and node.func.id not in shadowed:
+                    has_kw_unpack = any(kw.arg is None for kw in node.keywords)
                     if node.func.id in import_wrappers:
                         called_imp_wrappers.add(node.func.id)
                         idx, pname, pkg_const, _ = import_wrappers[node.func.id]
-                        warg = _call_arg_expr(node, idx, pname)
+                        warg = None if has_kw_unpack else _call_arg_expr(node, idx, pname)
                         vals = _eval_expr(warg, active_map, param_bindings)
                         if not vals or not all(isinstance(v, str) for v in vals):
                             extra.add(_UNRESOLVED_IMPORT)
@@ -1167,7 +1174,7 @@ def _scan_call_imports(
                     elif node.func.id in spec_wrappers:
                         called_spec_wrappers.add(node.func.id)
                         idx, pname, loc_arg, w_fmap, _ = spec_wrappers[node.func.id]
-                        warg = _call_arg_expr(node, idx, pname)
+                        warg = None if has_kw_unpack else _call_arg_expr(node, idx, pname)
                         vals = _eval_expr(warg, active_map, param_bindings)
                         resolved_locs = _eval_expr(loc_arg, w_fmap, {pname: vals}) if vals else None
                         if resolved_locs:
@@ -1253,8 +1260,8 @@ def _scan_module_via(path, seen):
     seen = seen | {resolved}
     try:
         tree = ast.parse(p.read_text(encoding="utf-8"))
-    except (OSError, SyntaxError):
-        return set()
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return {_UNRESOLVED_IMPORT}
 
     pkg_parts = _reference_pkg_parts(resolved)
     local_dirs = () if pkg_parts is not None else _local_helper_dirs(resolved)
@@ -1298,6 +1305,8 @@ def _scan_module_via(path, seen):
                         wildcard_sp = True
                     elif alias.name == "run":
                         run_aliases.add(alias.asname or "run")
+                    elif alias.name not in _SAFE_SP_ATTRS:
+                        wildcard_sp = True
             return
         if _SRC_ROOT.joinpath(*target_parts).is_dir():
             exports = _init_exports(target_parts)

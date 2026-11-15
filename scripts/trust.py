@@ -566,8 +566,9 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
 
     # verdicts: a part whose own checks pass is verified only if everything
     # it relies on is (with no missing targets, cycles, or reference->subject edges)
-    def problems(root):
+    def _raw_problems(root):
         found = set()
+        structural = set()
         in_stack = {root}
         done = set()
 
@@ -576,11 +577,14 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             for dep in nodes[curr].get("depends", []):
                 if dep not in nodes:
                     found.add(dep)
+                    structural.add(dep)
                     continue
                 if curr_is_ref and nodes[dep].get("layer", "references") != "references":
                     found.add(dep)
+                    structural.add(dep)
                 if dep in in_stack:
                     found.add(dep)
+                    structural.add(dep)
                     continue
                 if own[dep]["status"] != "ok":
                     found.add(dep)
@@ -591,7 +595,40 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                     done.add(dep)
 
         visit(root)
-        return found
+        return found, structural
+
+    def _expand_via_blocked(blocked, _seen=frozenset()):
+        out = set()
+        for v in blocked:
+            if v in _seen:
+                continue
+            next_seen = _seen | {v}
+            if v not in nodes:
+                out.add(v)
+                continue
+            sub = problems(v, next_seen)
+            if own[v]["status"] == "ok-via":
+                out |= sub | _expand_via_blocked(own[v]["via_blocked"], next_seen)
+            else:
+                out |= sub
+                if (
+                    nodes[v].get("layer", "references") != "references"
+                    or own[v]["status"] != "ok"
+                    or not sub
+                ):
+                    out.add(v)
+        return out
+
+    def problems(root, _seen=frozenset()):
+        raw, structural = _raw_problems(root)
+        out = set(structural)
+        next_seen = _seen | {root}
+        for d in raw:
+            if d in nodes and own[d]["status"] == "ok-via":
+                out |= _expand_via_blocked(own[d]["via_blocked"], next_seen)
+            else:
+                out.add(d)
+        return out
 
     deps_cache = {}
     ts_cache = {}
@@ -644,20 +681,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        via_causes = set()
-        if o["status"] == "ok-via":
-            for v in o["via_blocked"]:
-                if v not in nodes:
-                    via_causes.add(v)
-                else:
-                    sub = problems(v)
-                    via_causes |= sub
-                    if (
-                        nodes[v].get("layer", "references") != "references"
-                        or own[v]["status"] != "ok"
-                        or not sub
-                    ):
-                        via_causes.add(v)
+        via_causes = _expand_via_blocked(o["via_blocked"]) if o["status"] == "ok-via" else set()
         causes = sorted(problems(name) | via_causes)
         if verdict == "ok-via":
             verdict = "ok"
@@ -679,8 +703,16 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "verdict_label": VERDICTS[verdict][0],
             "strong": o["strong"], "weak": o["weak"], "need": o["need"],
             "findings": o["findings"],
-            "because": [{"id": c, "findings": own.get(c, {}).get("findings", []),
-                         "status": own.get(c, {}).get("status", "unchecked")} for c in causes],
+            "because": [
+                {
+                    "id": c,
+                    "findings": own.get(c, {}).get("findings", []),
+                    "status": "ok"
+                    if own.get(c, {}).get("status") == "ok-via"
+                    else own.get(c, {}).get("status", "unchecked"),
+                }
+                for c in causes
+            ],
             "depends": node.get("depends", []), "dependents": dependents,
             "properties": o["properties"], "unconfirmed": o["unconfirmed"],
             "checks": o["checks"], "commits": o["commits"],
@@ -690,10 +722,9 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         }
 
     def ref_broken(v):
-        if v not in nodes:
-            return False
-        return own[v]["status"] in {"bug", "failing"} or any(
-            own[d]["status"] in {"bug", "failing"} for d in problems(v) if d in own
+        return any(
+            own.get(c, {}).get("status") in {"bug", "failing"}
+            for c in _expand_via_blocked((v,))
         )
 
     pipelines = []

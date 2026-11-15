@@ -1097,6 +1097,102 @@ def test_module_via_follows_local_helpers_rejects_shadowed_workers_and_resolves_
     )
 
 
+def test_transitive_depends_into_ok_via_expands_broken_reference_to_relies_and_pipeline_failing(trust, tmp_path):
+    spec = importlib.util.spec_from_file_location("trust_diff", ROOT / "scripts" / "trust_diff.py")
+    td = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(td)
+
+    graph = {
+        "nodes": {
+            "crosscheck.bad": {"layer": "references"},
+            "virgil.mid": {"layer": "models"},
+            "virgil.top": {"layer": "models", "depends": ["virgil.mid"]},
+        },
+        "pipelines": {
+            "chain": {"title": "Chain", "steps": ["virgil.top"]},
+        },
+    }
+    # 1. Failing reference -> virgil.mid (ok-via) -> virgil.top (depends, own ok) -> pipeline (steps=[virgil.top])
+    recs_fail = [
+        record("t::ref_fail", "crosscheck.bad", kind="reference", outcome="failed"),
+        record("t::mid", "virgil.mid", via=["crosscheck.bad"]),
+        record("t::top", "virgil.top"),
+        record("t::pipe", "pipeline:chain"),
+    ]
+    got_fail, model_fail = verdicts(trust, tmp_path, recs_fail, graph)
+    assert got_fail == {
+        "crosscheck.bad": "failing",
+        "virgil.mid": "relies",
+        "virgil.top": "relies",
+    }
+    assert model_fail["nodes"]["virgil.top"]["because"] == [
+        {"id": "crosscheck.bad", "findings": [], "status": "failing"},
+    ]
+    assert model_fail["pipelines"][0]["status"] == "failing"
+
+    recs_ok = [
+        record("t::ref_ok", "crosscheck.bad", kind="reference"),
+        record("t::mid", "virgil.mid", via=["crosscheck.bad"]),
+        record("t::top", "virgil.top"),
+        record("t::pipe", "pipeline:chain"),
+    ]
+    _, model_ok = verdicts(trust, tmp_path, recs_ok, graph)
+    assert model_ok["pipelines"][0]["status"] == "validated"
+    diff_lines = td.diff_rows(model_ok, model_fail)
+    assert any("`pipeline:chain`" in r and "failing steps: virgil.top" in r for r in diff_lines)
+
+    # 2. Open crosscheck bug -> virgil.mid (ok-via) -> virgil.top (depends, own ok) -> pipeline ("passes")
+    ledger_bug = [{"id": "C77", "ruling": "crosscheck", "status": "open", "objects": ["crosscheck.bad"]}]
+    got_bug, model_bug = verdicts(trust, tmp_path, recs_ok, graph, ledger=ledger_bug)
+    assert got_bug == {
+        "crosscheck.bad": "bug",
+        "virgil.mid": "relies",
+        "virgil.top": "relies",
+    }
+    assert model_bug["nodes"]["virgil.top"]["because"] == [
+        {"id": "crosscheck.bad", "findings": ["C77"], "status": "bug"},
+    ]
+    assert model_bug["pipelines"][0]["status"] == "passes"
+
+
+def test_module_via_fails_closed_on_parse_errors_unsafe_sp_imports_and_wrapper_kwargs(tmp_path):
+    from evidence import plugin
+
+    # 1. Unreadable, invalid-UTF-8, and SyntaxError files fail closed with _UNRESOLVED_IMPORT
+    missing_file = tmp_path / "does_not_exist.py"
+    bad_utf8 = tmp_path / "bad_utf8.py"
+    bad_utf8.write_bytes(b"import math\n# \xff\xfe invalid utf-8\n")
+    bad_syntax = tmp_path / "bad_syntax.py"
+    bad_syntax.write_text("def broken(:\n", encoding="utf-8")
+    for p in (missing_file, bad_utf8, bad_syntax):
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(p)) == (plugin._UNRESOLVED_IMPORT,)
+
+    # 2. Importing non-_SAFE_SP_ATTRS from external_bridge._subprocess emits _UNRESOLVED_WORKER
+    unsafe_sp = tmp_path / "unsafe_sp.py"
+    unsafe_sp.write_text("from external_bridge._subprocess import subprocess\n", encoding="utf-8")
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(unsafe_sp)) == (plugin._UNRESOLVED_WORKER,)
+
+    safe_sp = tmp_path / "safe_sp.py"
+    safe_sp.write_text("from external_bridge._subprocess import available\n", encoding="utf-8")
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(safe_sp)) == ()
+
+    # 3. Wrapped __import__(..., level=1), wrapped **kwargs, call-site **kwargs, and mid-component suffixes fail closed
+    for idx, src in enumerate([
+        "def wrap(name):\n    return __import__(name, globals(), locals(), (), 1)\nwrap('sky')\n",
+        "import importlib\ndef wrap(name, **kw):\n    return importlib.import_module(name, **kw)\nwrap('crosscheck.sky')\n",
+        "import importlib\ndef wrap(name, extra=None):\n    return importlib.import_module(name)\ndef f(kw):\n    return wrap('crosscheck.sky', **kw)\n",
+        "import importlib.util\nimport pathlib\nD = pathlib.Path(__file__).parent\ndef wrap(name, extra=None):\n    return importlib.util.spec_from_file_location('m', D / f'{name}.py')\ndef f(kw):\n    return wrap('safe_sp', **kw)\n",
+        "import importlib.util\ndef f(pref):\n    return importlib.util.spec_from_file_location('m', f'{pref}k/sky.py')\n",
+    ]):
+        p = tmp_path / f"wrap_kw_{idx}.py"
+        p.write_text(src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(p)) == (plugin._UNRESOLVED_IMPORT,)
+
+
 def test_module_via_resolves_call_imports_and_wrapper_id_shadowing(tmp_path, monkeypatch):
     from evidence import plugin
 
