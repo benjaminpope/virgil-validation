@@ -60,7 +60,7 @@ def test_axisymmetric_profiles_match_our_hankel_transform(name):
     }
     disk, profile = cases[name]
     truth = R.disk_visibility(profile, u, v, inc, pa)
-    got = np.asarray(disk.model(u * wl, v * wl, wl)).real
+    got = np.asarray(disk.model(u * wl, v * wl, wl))
     err = record("max_abs_dV", np.abs(got - truth).max())
     # V1 records 1.3e-9 (Gaussian ring, a floor independent of n_r), 6.7e-12 and 2.8e-12: 1e-8 leaves headroom
     # but would catch a wrong node weight in one panel (about 1e-7)
@@ -80,7 +80,7 @@ def test_exp_tail_reaches_documented_accuracy_at_the_documented_node_count():
     err = {}
     for n_r in (128, 150):
         disk = MultipoleDisk(ExpTail(2 * s, 3 * s), inc=50.0, pa=30.0, n_r=n_r)
-        err[n_r] = record(f"max_abs_dV_n{n_r}", np.abs(np.asarray(disk.model(u * wl, v * wl, wl)).real - truth).max())
+        err[n_r] = record(f"max_abs_dV_n{n_r}", np.abs(np.asarray(disk.model(u * wl, v * wl, wl)) - truth).max())
     assert err[128] < 3e-4 and err[150] < 6e-5  # documented 2e-4 and 4e-5, with margin
 
 
@@ -92,7 +92,7 @@ def test_exp_tail_error_is_the_pinned_size():
     s, wl = 100.0, 1.65e-6
     disk = MultipoleDisk(ExpTail(2 * s, 3 * s), inc=50.0, pa=30.0, n_r=128)
     truth = R.disk_visibility(R.exp_tail(2 * s, 3 * s), u, v, 50.0, 30.0)
-    assert np.abs(np.asarray(disk.model(u * wl, v * wl, wl)).real - truth).max() < 1e-3
+    assert np.abs(np.asarray(disk.model(u * wl, v * wl, wl)) - truth).max() < 1e-3
 
 
 CASES = {  # case name -> attribute of the benchmark module (resolved lazily, see _bf)

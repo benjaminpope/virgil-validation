@@ -39,7 +39,7 @@ def _scene(name):
 
 
 def _virgil(disk, u, v):
-    return np.asarray(disk.model(u * WL, v * WL, WL)).real
+    return np.asarray(disk.model(u * WL, v * WL, WL))
 
 
 def _closed_form_gaussian(sigma_mas, q):

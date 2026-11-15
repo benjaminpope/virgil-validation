@@ -84,13 +84,13 @@ def _modulated_cone_cloud(tip, alpha, s0, length, tilt, pa, az_amps, az_pas, n_s
 
 def _multipole_field_sky_image(
     z, npix, scale, r_min, r_max, sigma, length_r, length_theta, nu_r, nu_theta,
-    inc_deg, pa_deg, dra_mas, ddec_mas, outside, east_sign=1.0,
+    inc_deg, pa_deg, dra_mas, ddec_mas, outside, east_sign=1.0, img_rot_deg=0.0, img_dra=0.0, img_ddec=0.0,
 ):
     """Independent latent-to-sky evaluation of MultipoleField from documented math alone:
     1. Polar grid: radial Matérn Cholesky L_r times circulant periodic-Matérn FFT square root,
-       with origin taper tanh(r / spacing)^|m| when r_min == 0.
-    2. Sky pixel centres (row 0 North, col 0 East) deprojected into disk-plane (r, theta) and
-       bilinearly interpolated with a one-spacing linear ramp to `outside` beyond [r_min, r_max].
+       with resolution-invariant origin taper tanh(r / length_r)^|m| when r_min == 0.
+    2. Sky pixel centres of a (possibly rotated and shifted) Image grid deprojected into
+       disk-plane (r, theta) and bilinearly interpolated with a one-spacing linear ramp to `outside`.
     """
     z_arr = np.asarray(z, dtype=float)
     n_r, n_th = z_arr.shape
@@ -103,12 +103,18 @@ def _multipole_field_sky_image(
     s_th = s_th / s_th.sum()
     modes = sigma * (l_r @ np.fft.fft(z_arr, axis=1))
     if r_min == 0.0:
-        modes = modes * (np.tanh(radii[:, None] / spacing) ** np.abs(freqs[None, :]))
+        modes = modes * (np.tanh(radii[:, None] / lr) ** np.abs(freqs[None, :]))
     polar_vals = np.fft.ifft(modes * np.sqrt(n_th * s_th)[None, :], axis=1).real
 
-    north = ((npix - 1) / 2.0 - np.arange(npix)) * scale - ddec_mas
-    east = east_sign * ((npix - 1) / 2.0 - np.arange(npix)) * scale - dra_mas
-    ee, nn = np.meshgrid(east, north)
+    dy = ((npix - 1) / 2.0 - np.arange(npix)) * scale
+    dx = east_sign * ((npix - 1) / 2.0 - np.arange(npix)) * scale
+    dxx, dyy = np.meshgrid(dx, dy)
+    rot_r = np.deg2rad(img_rot_deg)
+    ee_sky = dxx * np.cos(rot_r) + dyy * np.sin(rot_r) + img_dra
+    nn_sky = -dxx * np.sin(rot_r) + dyy * np.cos(rot_r) + img_ddec
+
+    ee = ee_sky - dra_mas
+    nn = nn_sky - ddec_mas
     p = np.deg2rad(pa_deg)
     a_maj = ee * np.sin(p) + nn * np.cos(p)
     b_min = (ee * np.cos(p) - nn * np.sin(p)) / np.cos(np.deg2rad(inc_deg))
@@ -128,7 +134,7 @@ def _multipole_field_sky_image(
     )
     w_out = np.clip((r_disk - r_max) / spacing, 0.0, 1.0)
     w = np.maximum(w_out, np.clip((r_min - r_disk) / spacing, 0.0, 1.0)) if r_min > 0.0 else w_out
-    return polar_vals, (1.0 - w) * interp + w * outside
+    return polar_vals, (1.0 - w) * interp + w * outside, ee_sky, nn_sky
 
 
 # ------------------------------------------------ parametric radial profiles
@@ -720,8 +726,8 @@ def test_legacy_conversions_distinguish_rim_and_cone_conventions():
 @pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_rel_cov_err")
 def test_multipole_field_polar_covariance_and_origin_regularity():
     """On an annulus (r_min_mas > 0) MultipoleField induces the separable Matérn radial x periodic-azimuthal
-    covariance; with r_min_mas = 0 it pinches m != 0 modes by tanh(r / spacing)^|m| so r = 0 is single-valued
-    with variance sigma^2 * S(0) / sum_m S(m) < sigma^2."""
+    covariance; at r = 0 (r_min_mas = 0) all m != 0 modes vanish so the origin is single-valued with variance
+    sigma^2 * S(0) / sum_m S(m) < sigma^2."""
     n_r, n_th = 9, 12
     r_min, r_max, sigma, lr, lth = 4.0, 20.0, 1.4, 7.0, 0.9
     nu_r, nu_th = 1.5, 2.5
@@ -749,11 +755,11 @@ def test_multipole_field_polar_covariance_and_origin_regularity():
     k_r_ann = _matern_corr(np.abs(radii_ann[:, None] - radii_ann[None, :]), lr, nu_r)
     k_th = np.sum(s_th[None, None, :] * np.cos(freqs[None, None, :] * dtheta[:, :, None]), axis=-1)
     cov_ann_expected = sigma**2 * np.kron(k_r_ann, k_th)
-    rel_err_ann = float(np.max(np.abs(cov_ann - cov_ann_expected)) / sigma**2)
+    rel_err_ann = record("max_rel_cov_err", np.max(np.abs(cov_ann - cov_ann_expected)) / sigma**2)
     assert rel_err_ann < 5e-6
 
-    # 2. Full disk (r_min_mas = 0): tanh(r / spacing)^|m| origin taper and reduced origin variance sigma^2 * s_th[0]
-    cols_0 = []
+    # 2. At r = 0 (r_min_mas = 0, row 0), all m != 0 modes vanish: single-valued with variance sigma^2 * s_th[0] < sigma^2
+    origin_var = 0.0
     for k in range(n_r):
         for j in range(n_th):
             e = np.zeros((n_r, n_th))
@@ -762,72 +768,90 @@ def test_multipole_field_polar_covariance_and_origin_regularity():
                 e, image_shape=(16, 16), r_max_mas=r_max, r_min_mas=0.0,
                 sigma=sigma, length_r=lr, length_theta=lth, nu=nu_r, nu_theta=nu_th,
             )
-            cols_0.append(np.asarray(f.polar_values()).ravel())
-    a_0 = np.column_stack(cols_0)
-    cov_0 = a_0 @ a_0.T
+            pv_e = np.asarray(f.polar_values())
+            assert np.ptp(pv_e[0, :]) < 1e-14
+            origin_var += float(pv_e[0, 0]) ** 2
+    assert origin_var == pytest.approx(sigma**2 * s_th[0], rel=1e-4)
+    assert origin_var < 0.5 * sigma**2
 
-    radii_0 = np.linspace(0.0, r_max, n_r)
-    spacing = r_max / (n_r - 1)  # 2.5 mas != lr (7.0 mas)
-    k_r_0 = _matern_corr(np.abs(radii_0[:, None] - radii_0[None, :]), lr, nu_r)
 
-    def tapered_cov(scale_r):
-        taper = np.tanh(radii_0[:, None] / scale_r) ** np.abs(freqs[None, :])  # (n_r, n_th)
-        weight_m = s_th[None, None, :] * taper[:, None, :] * taper[None, :, :]  # (n_r, n_r, n_th)
-        cos_m = np.cos(freqs[None, None, :] * dtheta[:, :, None])  # (n_th, n_th, n_th)
-        # Assemble ((k, j), (k', j'))
-        block = sigma**2 * k_r_0[:, :, None, None] * np.einsum("abm,ijm->abij", weight_m, cos_m)
-        return block.transpose(0, 2, 1, 3).reshape(n_r * n_th, n_r * n_th)
+@pytest.mark.validates(
+    "virgil.fields.MultipoleField", roots=["mathematics"], kind="finding", headline="max_rel_cov_err_lr"
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F25: at virgil d79696de9d97 MultipoleField(r_min_mas=0) tapers m != 0 modes by radial node spacing "
+        "instead of physical length_r, breaking n_r-refinement invariance (fixed in virgil 5ca955ad6ceb)"
+    ),
+)
+def test_f25_multipole_field_origin_taper_uses_physical_length_r_and_is_grid_invariant():
+    """On a full disk (r_min_mas = 0), MultipoleField must taper order m by tanh(r / length_r)^|m| so the
+    polar prior covariance depends only on physical radius and is invariant when n_r is refined."""
+    r_max, sigma, lr, lth, nu_r, nu_th = 20.0, 1.4, 7.0, 0.9, 1.5, 2.5
+    n_th = 12
+    freqs = np.fft.fftfreq(n_th, d=1.0 / n_th)
+    s_th = _periodic_matern_spectrum(np.abs(freqs), lth, nu_th)
+    s_th = s_th / s_th.sum()
+    dtheta = 2.0 * np.pi * (np.arange(n_th)[:, None] - np.arange(n_th)[None, :]) / n_th
 
-    cov_0_expected = tapered_cov(spacing)
-    rel_err_0 = float(np.max(np.abs(cov_0 - cov_0_expected)) / sigma**2)
-    rel_err = record("max_rel_cov_err", max(rel_err_ann, rel_err_0))
-    assert rel_err < 2e-5
-    # Confusing node spacing (2.5 mas) with length_r (7.0 mas) in the origin taper fails decisively
-    assert np.max(np.abs(cov_0 - tapered_cov(lr))) / sigma**2 > 0.2
+    def induced_polar_cov(n_r_val):
+        cols = []
+        for k in range(n_r_val):
+            for j in range(n_th):
+                e = np.zeros((n_r_val, n_th))
+                e[k, j] = 1.0
+                f = vf.MultipoleField(
+                    e, image_shape=(16, 16), r_max_mas=r_max, r_min_mas=0.0,
+                    sigma=sigma, length_r=lr, length_theta=lth, nu=nu_r, nu_theta=nu_th,
+                )
+                cols.append(np.asarray(f.polar_values()).ravel())
+        a_mat = np.column_stack(cols)
+        return a_mat @ a_mat.T
 
-    # At r = 0 (row 0), all m != 0 modes vanish: single-valued across azimuth with variance sigma^2 * s_th[0] < sigma^2
-    assert cov_0[0, 0] == pytest.approx(sigma**2 * s_th[0], rel=1e-4)
-    assert cov_0[0, 0] < 0.5 * sigma**2
-    rng = np.random.default_rng(51)
-    z0 = rng.normal(size=(n_r, n_th))
-    f0 = vf.MultipoleField(
-        z0, image_shape=(16, 16), r_max_mas=r_max, r_min_mas=0.0,
-        sigma=sigma, length_r=lr, length_theta=lth, nu=nu_r, nu_theta=nu_th,
-    )
-    pv0 = np.asarray(f0.polar_values())
-    assert np.ptp(pv0[0, :]) < 1e-14
+    cov_9 = induced_polar_cov(9)
+    cov_17 = induced_polar_cov(17)
+    # Row k of n_r = 9 sits at r_k = 2.5 * k mas, coinciding exactly with row 2 * k of n_r = 17
+    shared_idx = np.array([2 * k * n_th + j for k in range(9) for j in range(n_th)])
+    cov_17_shared = cov_17[np.ix_(shared_idx, shared_idx)]
+
+    radii_9 = np.linspace(0.0, r_max, 9)
+    k_r_9 = _matern_corr(np.abs(radii_9[:, None] - radii_9[None, :]), lr, nu_r)
+    taper_lr = np.tanh(radii_9[:, None] / lr) ** np.abs(freqs[None, :])
+    weight_m = s_th[None, None, :] * taper_lr[:, None, :] * taper_lr[None, :, :]
+    cos_m = np.cos(freqs[None, None, :] * dtheta[:, :, None])
+    cov_lr_expected = (
+        sigma**2 * k_r_9[:, :, None, None] * np.einsum("abm,ijm->abij", weight_m, cos_m)
+    ).transpose(0, 2, 1, 3).reshape(9 * n_th, 9 * n_th)
+
+    rel_err_lr = record("max_rel_cov_err_lr", np.max(np.abs(cov_9 - cov_lr_expected)) / sigma**2)
+    refinement_drift = record("max_rel_refinement_drift", np.max(np.abs(cov_9 - cov_17_shared)) / sigma**2)
+    assert rel_err_lr < 2e-5
+    assert refinement_drift < 1e-12
 
 
 @pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_abs_dV")
 def test_multipole_field_image_visibility_and_tied_system_geometry():
     """MultipoleField.evaluate and Image(MultipoleField) match an independent latent-to-sky polar interpolation
-    and 2D pixel DFT (for both full disks and annuli), and follow sibling geometry under geometry_from='disk'."""
+    and 2D pixel DFT, and geometry_from='disk' maps sibling disk coordinates into a rotated, shifted Image frame."""
     npix, scale = 48, 1.0
     rng = np.random.default_rng(52)
     z = rng.normal(size=(12, 16)) * 0.6
+    r_min, r_max = 2.5, 15.0
     inc, pa, dra, ddec, outside = 48.0, 35.0, 1.2, -0.8, -25.0
     field = vf.MultipoleField(
-        z, image_shape=(npix, npix), r_max_mas=15.0, sigma=1.1,
+        z, image_shape=(npix, npix), r_max_mas=r_max, r_min_mas=r_min, sigma=1.1,
         length_r=4.0, length_theta=0.8, inc=inc, pa=pa, dra=dra, ddec=ddec, outside=outside,
     )
     eta = np.asarray(field.evaluate(scale))
-    pv_ref, eta_ref = _multipole_field_sky_image(
-        z, npix, scale, 0.0, 15.0, 1.1, 4.0, 0.8, 1.5, 1.5, inc, pa, dra, ddec, outside
+    pv_ref, eta_ref, _, _ = _multipole_field_sky_image(
+        z, npix, scale, r_min, r_max, 1.1, 4.0, 0.8, 1.5, 1.5, inc, pa, dra, ddec, outside
     )
     assert np.max(np.abs(np.asarray(field.polar_values()) - pv_ref)) < 1e-13
     pix_err = record("max_abs_d_eta", np.max(np.abs(eta - eta_ref)))
     assert pix_err < 1e-7
     assert eta[0, 0] == pytest.approx(outside, abs=1e-6) and eta[-1, -1] == pytest.approx(outside, abs=1e-6)
-
-    # Annulus inner-hole fade to `outside` (r_min_mas = 4.0 > 0)
-    field_ann = vf.MultipoleField(
-        z, image_shape=(npix, npix), r_max_mas=15.0, r_min_mas=4.0, sigma=1.1,
-        length_r=4.0, length_theta=0.8, inc=inc, pa=pa, dra=dra, ddec=ddec, outside=outside,
-    )
-    _, eta_ann_ref = _multipole_field_sky_image(
-        z, npix, scale, 4.0, 15.0, 1.1, 4.0, 0.8, 1.5, 1.5, inc, pa, dra, ddec, outside
-    )
-    assert np.max(np.abs(np.asarray(field_ann.evaluate(scale)) - eta_ann_ref)) < 1e-7
 
     img = vm.Image(field, pixel_scale_mas=scale, flux=1.0)
     u, v = R.baselines(100, q_max=2.5e7, seed=53)
@@ -837,20 +861,39 @@ def test_multipole_field_image_visibility_and_tied_system_geometry():
     # Independent pixel-grid DFT built solely from eta_ref (zero virgil calls on the reference side)
     w_pix = np.exp(eta_ref - eta_ref.max())
     ref = sky.visibility(sky.pixel_image(w_pix, scale), u * wl, v * wl, wl)
-    err = record("max_abs_dV", np.abs(got - ref).max())
-    assert err < 1e-9
+    err_img = float(np.abs(got - ref).max())
+    assert err_img < 1e-9
 
-    # Tied geometry via from_disk(..., geometry_from='disk') tracks updates to the sibling disk
+    # Tied geometry via geometry_from='disk' inside a rotated and shifted Image frame, checked against crosscheck
     disk = vm.MultipoleDisk(vm.GaussianRing(8.0, 1.2), inc=30.0, pa=15.0, dra=0.5, ddec=-0.4, flux=0.6)
-    tied = vf.MultipoleField.from_disk(disk, z, image_shape=(npix, npix), r_max_mas=15.0, geometry_from="disk")
-    assert tied.inc is None and tied.pa is None
-    sys_tied = vm.System(disk=disk, env=vm.Image(tied, pixel_scale_mas=scale, flux=0.4)).set(
-        {"disk.inc": 55.0, "disk.pa": 110.0, "disk.dra": -1.1, "disk.ddec": 0.9}
+    tied = vf.MultipoleField.from_disk(
+        disk, z, image_shape=(npix, npix), r_max_mas=r_max, r_min_mas=r_min,
+        sigma=1.1, length_r=4.0, length_theta=0.8, outside=outside, geometry_from="disk",
     )
-    untied_field = vf.MultipoleField.from_disk(sys_tied.disk, z, image_shape=(npix, npix), r_max_mas=15.0)
-    sys_untied = vm.System(disk=sys_tied.disk, env=vm.Image(untied_field, pixel_scale_mas=scale, flux=0.4))
-    err_tie = float(np.abs(np.asarray(sys_tied.model(u * wl, v * wl, wl)) - np.asarray(sys_untied.model(u * wl, v * wl, wl))).max())
-    assert err_tie < 1e-13
+    assert tied.inc is None and tied.pa is None
+    img_rot, img_dra, img_ddec = 22.0, 0.7, -0.5
+    sys_before = vm.System(
+        disk=disk,
+        env=vm.Image(tied, pixel_scale_mas=scale, flux=0.4, rotation_deg=img_rot, dra=img_dra, ddec=img_ddec),
+    )
+    sys_tied = sys_before.set({"disk.inc": 55.0, "disk.pa": 110.0, "disk.dra": -1.1, "disk.ddec": 0.9})
+    v_sys_got = np.asarray(sys_tied.model(u * wl, v * wl, wl))
+    v_sys_before = np.asarray(sys_before.model(u * wl, v * wl, wl))
+    assert np.abs(v_sys_got - v_sys_before).max() > 0.05
+
+    qd_d, _, _ = R.deproject(u, v, 55.0, 110.0)
+    v_disk_ref = R.hankel_quad(R.gaussian_ring(8.0, 1.2), qd_d) * _phasor(u * wl, v * wl, wl, -1.1, 0.9)
+    _, eta_tied_ref, ee_s, nn_s = _multipole_field_sky_image(
+        z, npix, scale, r_min, r_max, 1.1, 4.0, 0.8, 1.5, 1.5,
+        55.0, 110.0, -1.1, 0.9, outside, img_rot_deg=img_rot, img_dra=img_dra, img_ddec=img_ddec,
+    )
+    w_tied = np.exp(eta_tied_ref - eta_tied_ref.max())
+    w_tied = w_tied / w_tied.sum()
+    v_env_ref = sky.visibility(sky.Cloud(ee_s.ravel(), nn_s.ravel(), w_tied.ravel()), u * wl, v * wl, wl)
+    v_sys_ref = 0.6 * v_disk_ref + 0.4 * v_env_ref
+    err_tie = float(np.abs(v_sys_got - v_sys_ref).max())
+    err = record("max_abs_dV", max(err_img, err_tie))
+    assert err < 1e-8
 
 
 @pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], kind="control")
@@ -859,14 +902,14 @@ def test_multipole_field_rejects_rotated_pa_or_flipped_east_axis():
     npix, scale = 40, 1.0
     z = np.zeros((10, 16))
     z[5, 0] = 2.5  # strong azimuthal asymmetry off the sky axes
-    f_right = vf.MultipoleField(z, image_shape=(npix, npix), r_max_mas=14.0, inc=55.0, pa=30.0)
+    f_right = vf.MultipoleField(z, image_shape=(npix, npix), r_max_mas=14.0, r_min_mas=2.0, inc=55.0, pa=30.0)
     u, v = R.baselines(80, q_max=2.5e7, seed=54)
     wl = 2.2e-6
     v_got = np.asarray(vm.Image(f_right, pixel_scale_mas=scale).model(u * wl, v * wl, wl))
 
     def vis_from_ref(pa_deg, east_sign):
-        _, eta_r = _multipole_field_sky_image(
-            z, npix, scale, 0.0, 14.0, 1.0, None, 1.0, 1.5, 1.5, 55.0, pa_deg, 0.0, 0.0, -20.0, east_sign=east_sign
+        _, eta_r, _, _ = _multipole_field_sky_image(
+            z, npix, scale, 2.0, 14.0, 1.0, None, 1.0, 1.5, 1.5, 55.0, pa_deg, 0.0, 0.0, -20.0, east_sign=east_sign
         )
         return sky.visibility(sky.pixel_image(np.exp(eta_r - eta_r.max()), scale), u * wl, v * wl, wl)
 
