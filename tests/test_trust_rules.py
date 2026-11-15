@@ -587,6 +587,25 @@ def test_ok_via_does_not_mask_missing_property_roots_or_unconfirmed_conventions(
     assert [c["id"] for c in model["nodes"]["virgil.conv"]["because"]] == ["crosscheck.r"]
     assert [c["id"] for c in model["nodes"]["virgil.prop_mix"]["because"]] == ["crosscheck.r"]
 
+    # Converse monotonicity: adding a supplementary via-blocked check (even via a failing reference)
+    # must never demote a node already verified by its direct trusted checks alone
+    graph_ok = {
+        "nodes": {
+            "crosscheck.unverified": {"layer": "references"},
+            "crosscheck.bad": {"layer": "references"},
+            "virgil.already_ok": {"layer": "models", "roots": 1, "properties": {"sense": 1}},
+        }
+    }
+    recs_ok = [
+        record("t::ok_direct", "virgil.already_ok", roots=["mathematics"], properties=["sense"]),
+        record("t::ok_extra_unv", "virgil.already_ok", roots=["pmoired"], via=["crosscheck.unverified"], properties=["sense"]),
+        record("t::ok_extra_bad", "virgil.already_ok", roots=["candid"], via=["crosscheck.bad"]),
+        record("t::bad_ref", "crosscheck.bad", kind="reference", outcome="failed"),
+    ]
+    got_ok, model_ok = verdicts(trust, tmp_path, recs_ok, graph_ok)
+    assert got_ok["virgil.already_ok"] == "verified"
+    assert model_ok["nodes"]["virgil.already_ok"]["because"] == []
+
 
 def test_upstream_failing_dependency_marks_dependent_relies_not_relies_unverified(trust, tmp_path):
     graph = {
@@ -645,6 +664,19 @@ def test_changed_below_propagates_through_unchecked_dependencies_and_empty_sourc
     model = trust.build(graph, [], recs, runs, virgil=repo, golden=set())
     assert model["nodes"]["virgil.top"]["changed"] is None
 
+    # 4. Reverse staleness: caller tested on new commit while leaf was only tested on old (or unreachable) commit
+    path_top_new = evidence(tmp_path, "e_top_new.jsonl", [record("t::top_new", "virgil.top")], date="2026-10-08", commit=new)
+    path_leaf_old = evidence(tmp_path, "e_leaf_old.jsonl", [record("t::leaf_old", "virgil.leaf")], date="2026-10-01", commit=old)
+    runs, recs = trust.load_evidence([path_top_new, path_leaf_old], virgil=repo)
+    model = trust.build(graph, [], recs, runs, virgil=repo, golden=set())
+    assert model["nodes"]["virgil.leaf"]["changed"] == ["src/virgil/leaf.py"]
+    assert model["nodes"]["virgil.top"]["changed"] == ["src/virgil/leaf.py"]
+
+    path_leaf_bad = evidence(tmp_path, "e_leaf_bad.jsonl", [record("t::leaf_bad", "virgil.leaf")], commit="0" * 40)
+    runs, recs = trust.load_evidence([path_top_new, path_leaf_bad], virgil=repo)
+    model = trust.build(graph, [], recs, runs, virgil=repo, golden=set())
+    assert model["nodes"]["virgil.top"]["changed"] is None
+
 
 def test_module_via_is_fail_closed_expands_init_and_tracks_subprocess_workers(tmp_path):
     from evidence import plugin
@@ -654,11 +686,15 @@ def test_module_via_is_fail_closed_expands_init_and_tracks_subprocess_workers(tm
         "import virgil_bridge.alma as vba\n"
         "from virgil_bridge import mpol, binary, unregistered_submod\n"
         "import virgil_bridge.alma_lambda_report as rep\n"
+        "import external_bridge._subprocess\n"
         "from external_bridge import _subprocess as sp\n"
+        "EHT_WORKER: str = 'ehtim_worker.py'\n"
         "def _w(s, t):\n"
         "    return sp.run('alma', s, t)\n"
-        "_w('casa_clean_worker.py', {})\n"
-        "sp.run('ehtim', 'ehtim_worker.py', {})\n",
+        "def _w2(s):\n"
+        "    return _w(s, {})\n"
+        "_w2('casa_clean_worker.py')\n"
+        "external_bridge._subprocess.run('ehtim', EHT_WORKER, {})\n",
         encoding="utf-8",
     )
     plugin._module_via.cache_clear()
@@ -668,27 +704,167 @@ def test_module_via_is_fail_closed_expands_init_and_tracks_subprocess_workers(tm
         "crosscheck.sky",
         "external_bridge.casa_clean_worker",
         "external_bridge.ehtim_worker",
+        "virgil_bridge",
         "virgil_bridge.alma",
+        "virgil_bridge.alma_lambda_report",
         "virgil_bridge.mpol",
         "virgil_bridge.unregistered_submod",
     )
 
+    # Dynamic or unresolvable _subprocess.run calls must emit an unregistered sentinel (fail-closed)
+    dyn_file = tmp_path / "test_dyn_via.py"
+    dyn_file.write_text(
+        "import external_bridge._subprocess\n"
+        "WORKERS = {'a': 'alma_worker.py'}\n"
+        "external_bridge._subprocess.run('alma', WORKERS['a'], {})\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(dyn_file)) == (plugin._UNRESOLVED_WORKER,)
+
+    # Reassigned module constant or locally shadowed worker parameter also fails closed
+    rebound = tmp_path / "test_rebound_via.py"
+    rebound.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "W = 'alma_worker.py'\n"
+        "if True:\n"
+        "    W = 'mpol_worker.py'\n"
+        "sp.run('alma', W, {})\n",
+        encoding="utf-8",
+    )
+    shadowed = tmp_path / "test_shadowed_via.py"
+    shadowed.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "W = 'alma_worker.py'\n"
+        "def run_one():\n"
+        "    W = 'mpol_worker.py'\n"
+        "    return sp.run('alma', W, {})\n"
+        "run_one()\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(rebound)) == (plugin._UNRESOLVED_WORKER,)
+    assert plugin._module_via(str(shadowed)) == (plugin._UNRESOLVED_WORKER,)
+
+
+def test_item_via_tracks_local_helper_scripts_and_isolates_function_local_imports(tmp_path):
+    from evidence import plugin
+
+    # 1. Synthetic layout with benchmarks/, scripts/, and tests/ helpers + function-local isolation
+    (tmp_path / "benchmarks" / "ring").mkdir(parents=True)
+    (tmp_path / "scripts").mkdir(parents=True)
+    (tmp_path / "tests").mkdir(parents=True)
+
+    (tmp_path / "benchmarks" / "ring" / "bench_ext.py").write_text(
+        "from crosscheck import simulate\n"
+        "from external_bridge.pmoired_models import model_samples\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "scripts" / "script_clean.py").write_text(
+        "from crosscheck import alma_maxent\n"
+        "def run_helper():\n"
+        "    import virgil_bridge.alma\n"
+        "    return 1\n"
+        "def unused_helper():\n"
+        "    import external_bridge.radial_codes\n"
+        "    return 2\n",
+        encoding="utf-8",
+    )
+    mixed_test = tmp_path / "tests" / "test_mixed.py"
+    mixed_test.write_text(
+        "import pytest\n"
+        "from crosscheck import radial\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def clean_fix():\n"
+        "    from script_clean import run_helper\n"
+        "    return run_helper()\n"
+        "\n"
+        "def test_with_bench_helper():\n"
+        "    import bench_ext\n"
+        "    return bench_ext\n"
+        "\n"
+        "def test_with_script_fixture(clean_fix):\n"
+        "    return clean_fix\n"
+        "\n"
+        "def test_isolated_reference():\n"
+        "    import math\n"
+        "    return math.pi\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(mixed_test), "test_with_bench_helper", None, ()) == (
+        "crosscheck.radial",
+        "crosscheck.simulate",
+        "external_bridge.pmoired_models",
+    )
+    assert plugin._item_via(str(mixed_test), "test_with_script_fixture", None, ("clean_fix",)) == (
+        "crosscheck.alma_maxent",
+        "crosscheck.radial",
+        "virgil_bridge.alma",
+    )
+    assert plugin._item_via(str(mixed_test), "test_isolated_reference", None, ()) == (
+        "crosscheck.radial",
+    )
+
+    # 2. Real repository checks on tests/test_polar_disk_vs_codes.py
+    polar_test = ROOT / "tests" / "test_polar_disk_vs_codes.py"
+    pmoired_via = plugin._item_via(str(polar_test), "test_matches_pmoired_ring_harmonics", None, ("tmp_path",))
+    assert "crosscheck.simulate" in pmoired_via
+    assert "external_bridge.pmoired_models" in pmoired_via
+    frank_ref_via = plugin._item_via(str(polar_test), "test_frank_hankel_matches_closed_form_gaussian", None, ())
+    assert frank_ref_via == ("crosscheck.radial",)
+    assert "external_bridge.radial_codes" not in frank_ref_via
+
 
 def test_reference_depends_cycle_fails_closed(trust, tmp_path):
-    graph = {
+    # 1. Mutual cycle between references: neither reference nor via-caller may be verified
+    graph_cycle = {
         "nodes": {
             "virgil.x": {"layer": "models"},
             "crosscheck.a": {"layer": "references", "depends": ["crosscheck.b"]},
             "crosscheck.b": {"layer": "references", "depends": ["crosscheck.a"]},
         }
     }
-    recs = [
+    recs_cycle = [
         record("t::ra", "crosscheck.a", kind="reference"),
         record("t::rb", "crosscheck.b", kind="reference"),
         record("t::vx", "virgil.x", via=["crosscheck.a"]),
     ]
-    got, _ = verdicts(trust, tmp_path, recs, graph)
-    assert got["virgil.x"] == "relies-unverified"
+    got, _ = verdicts(trust, tmp_path, recs_cycle, graph_cycle)
+    assert got == {
+        "virgil.x": "relies-unverified",
+        "crosscheck.a": "relies-unverified",
+        "crosscheck.b": "relies-unverified",
+    }
+
+    # 2. Reference depending on a missing node fails closed on both the reference and its caller
+    graph_missing = {
+        "nodes": {
+            "virgil.x": {"layer": "models"},
+            "crosscheck.a": {"layer": "references", "depends": ["crosscheck.missing"]},
+        }
+    }
+    got_missing, _ = verdicts(trust, tmp_path, recs_cycle[:1] + recs_cycle[2:], graph_missing)
+    assert got_missing == {
+        "virgil.x": "relies-unverified",
+        "crosscheck.a": "relies-unverified",
+    }
+
+    # 3. Reference depending on a subject (virgil.*) node is never trusted, even if unchecked or ok
+    graph_subj = {
+        "nodes": {
+            "virgil.u": {"layer": "models"},
+            "virgil.x": {"layer": "models"},
+            "crosscheck.a": {"layer": "references", "depends": ["virgil.u"]},
+        }
+    }
+    got_subj, _ = verdicts(trust, tmp_path, recs_cycle[:1] + recs_cycle[2:], graph_subj)
+    assert got_subj == {
+        "virgil.u": "unchecked",
+        "virgil.x": "relies-unverified",
+        "crosscheck.a": "relies-unverified",
+    }
 
 
 def test_pipeline_with_failing_step_is_failing_while_bug_step_keeps_passes(trust, tmp_path):
@@ -696,22 +872,45 @@ def test_pipeline_with_failing_step_is_failing_while_bug_step_keeps_passes(trust
         "nodes": {
             "virgil.fail_step": {"layer": "data"},
             "virgil.bug_step": {"layer": "likelihood"},
+            "virgil.ok_step": {"layer": "models"},
+            "crosscheck.unv": {"layer": "references"},
+            "crosscheck.bad_ref": {"layer": "references"},
         },
         "pipelines": {
             "p_fail": {"title": "Fail step", "steps": ["virgil.fail_step"]},
             "p_bug": {"title": "Bug step", "steps": ["virgil.bug_step"]},
+            "p_ref_fail": {"title": "Ref check fails", "steps": ["virgil.ok_step"]},
+            "p_weak": {"title": "Weak root only", "steps": ["virgil.ok_step"], "state": "running"},
+            "p_via_unv": {"title": "Untrusted via", "steps": ["virgil.ok_step"]},
+            "p_via_fail": {"title": "Failing via", "steps": ["virgil.ok_step"]},
         },
     }
     ledger = [{"id": "F1", "ruling": "virgil", "status": "open", "objects": ["virgil.bug_step"]}]
     recs = [
         record("t::fs", "virgil.fail_step", outcome="failed"),
         record("t::bs", "virgil.bug_step"),
+        record("t::oks", "virgil.ok_step"),
+        record("t::bad_ref", "crosscheck.bad_ref", kind="reference", outcome="failed"),
         record("t::pf", "pipeline:p_fail"),
         record("t::pb", "pipeline:p_bug"),
+        record("t::prf_ok", "pipeline:p_ref_fail"),
+        record("t::prf_bad", "pipeline:p_ref_fail", kind="control", outcome="failed"),
+        record("t::pweak", "pipeline:p_weak", roots=["self-consistency"]),
+        record("t::pvia_u", "pipeline:p_via_unv", via=["crosscheck.unv"]),
+        record("t::pvia_f", "pipeline:p_via_fail", via=["crosscheck.bad_ref"]),
     ]
     _, model = verdicts(trust, tmp_path, recs, graph=graph, ledger=ledger)
-    by_id = {p["id"]: p["status"] for p in model["pipelines"]}
-    assert by_id == {"p_fail": "failing", "p_bug": "passes"}
+    by_id = {p["id"]: p for p in model["pipelines"]}
+    assert {k: p["status"] for k, p in by_id.items()} == {
+        "p_fail": "failing",
+        "p_bug": "passes",
+        "p_ref_fail": "failing",
+        "p_weak": "running",
+        "p_via_unv": "passes",
+        "p_via_fail": "failing",
+    }
+    assert by_id["p_ref_fail"]["failing_checks"] == ["t::prf_bad"]
+    assert by_id["p_via_unv"]["unverified"] == ["crosscheck.unv"]
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
@@ -732,13 +931,496 @@ def test_trust_diff_reports_pipeline_status_changes(tmp_path):
     td = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(td)
     before = {
-        "nodes": {"virgil.a": {"verdict": "unchecked", "strong": []}},
-        "pipelines": [{"id": "contest-imaging", "status": "passes", "unverified": ["virgil.fitting.fit"]}],
+        "nodes": {
+            "virgil.a": {"verdict": "unchecked", "strong": []},
+            "virgil.step": {"verdict": "verified", "strong": ["mathematics"]},
+        },
+        "pipelines": [
+            {"id": "contest-imaging", "status": "passes", "steps": ["virgil.fitting.fit"], "unverified": ["virgil.fitting.fit"]},
+            {"id": "regressed", "status": "validated", "steps": ["virgil.step"], "unverified": []},
+        ],
     }
     after = {
-        "nodes": {"virgil.a": {"verdict": "verified", "strong": ["mathematics"]}},
-        "pipelines": [{"id": "contest-imaging", "status": "running", "unverified": ["virgil.fitting.fit"]}],
+        "nodes": {
+            "virgil.a": {"verdict": "verified", "strong": ["mathematics"]},
+            "virgil.step": {"verdict": "failing", "strong": []},
+        },
+        "pipelines": [
+            {"id": "contest-imaging", "status": "running", "steps": ["virgil.fitting.fit"], "unverified": ["virgil.fitting.fit"]},
+            {"id": "regressed", "status": "failing", "steps": ["virgil.step"], "unverified": ["virgil.step"], "failing_checks": ["t::p"]},
+        ],
     }
     rows = td.diff_rows(before, after)
     assert any("`virgil.a`" in r and "unchecked" in r and "verified" in r for r in rows)
     assert any("`pipeline:contest-imaging`" in r and "passes" in r and "running" in r for r in rows)
+    assert any(
+        "`pipeline:regressed`" in r and "failing checks: t::p" in r and "failing steps: virgil.step" in r
+        for r in rows
+    )
+
+
+def test_via_causes_expands_transitive_failing_and_bug_reference_dependencies(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "virgil.x": {"layer": "models"},
+            "crosscheck.mid": {"layer": "references", "depends": ["crosscheck.leaf"]},
+            "crosscheck.leaf": {"layer": "references"},
+        }
+    }
+    # 1. Intermediate reference passes its own check ("ok"), leaf reference fails ("failing"):
+    # virgil.x must become "relies" (not "relies-unverified") and name crosscheck.leaf in because.
+    recs_fail = [
+        record("t::rm", "crosscheck.mid", kind="reference"),
+        record("t::rl", "crosscheck.leaf", kind="reference", outcome="failed"),
+        record("t::vx", "virgil.x", via=["crosscheck.mid"]),
+    ]
+    got, model = verdicts(trust, tmp_path, recs_fail, graph)
+    assert got == {
+        "virgil.x": "relies",
+        "crosscheck.mid": "relies",
+        "crosscheck.leaf": "failing",
+    }
+    assert model["nodes"]["virgil.x"]["because"] == [
+        {"id": "crosscheck.leaf", "findings": [], "status": "failing"},
+    ]
+
+    # 2. Intermediate reference is "unchecked" while leaf has an open crosscheck bug:
+    # both the unchecked intermediate and the buggy leaf surface, and virgil.x is still "relies".
+    ledger_bug = [{"id": "C99", "ruling": "crosscheck", "status": "open", "objects": ["crosscheck.leaf"]}]
+    recs_bug = [
+        record("t::rl_ok", "crosscheck.leaf", kind="reference"),
+        record("t::vx", "virgil.x", via=["crosscheck.mid"]),
+    ]
+    got_bug, model_bug = verdicts(trust, tmp_path, recs_bug, graph, ledger=ledger_bug)
+    assert got_bug["crosscheck.leaf"] == "bug"
+    assert got_bug["virgil.x"] == "relies"
+    assert model_bug["nodes"]["virgil.x"]["because"] == [
+        {"id": "crosscheck.leaf", "findings": ["C99"], "status": "bug"},
+        {"id": "crosscheck.mid", "findings": [], "status": "unchecked"},
+    ]
+
+
+def test_unfixed_crosscheck_ruling_marks_reference_bug_and_blocks_virgil_verified(trust, tmp_path):
+    graph = {
+        "nodes": {
+            "crosscheck.r": {"layer": "references"},
+            "virgil.caller": {"layer": "models"},
+            "virgil.direct": {"layer": "models"},
+        }
+    }
+    recs = [
+        record("t::r_pass", "crosscheck.r", kind="reference"),
+        record("t::r_xfail", "crosscheck.r", "finding", outcome="xfailed"),
+        record("t::caller", "virgil.caller", via=["crosscheck.r"]),
+        record("t::direct", "virgil.direct"),
+    ]
+    ledger_open = [
+        {"id": "C10", "ruling": "crosscheck", "status": "open", "objects": ["crosscheck.r"]},
+        {"id": "C11", "ruling": "crosscheck", "status": "open", "objects": ["virgil.direct"]},
+    ]
+    got, model = verdicts(trust, tmp_path, recs, graph, ledger=ledger_open)
+    assert got["crosscheck.r"] == "bug"
+    assert model["nodes"]["crosscheck.r"]["findings"] == ["C10"]
+    assert got["virgil.caller"] == "relies"
+    assert model["nodes"]["virgil.caller"]["because"] == [
+        {"id": "crosscheck.r", "findings": ["C10"], "status": "bug"},
+    ]
+    # Non-reference node with an open test-side ruling cannot be "verified", nor mislabelled "bug"
+    assert got["virgil.direct"] == "partly"
+    assert model["nodes"]["virgil.direct"]["findings"] == ["C11"]
+
+    ledger_fixed = [{**e, "status": "fixed"} for e in ledger_open]
+    got_fixed, _ = verdicts(trust, tmp_path, recs, graph, ledger=ledger_fixed)
+    assert got_fixed == {
+        "crosscheck.r": "verified",
+        "virgil.caller": "verified",
+        "virgil.direct": "verified",
+    }
+
+
+def test_module_via_follows_local_helpers_rejects_shadowed_workers_and_resolves_subpackages(tmp_path, monkeypatch):
+    from evidence import plugin
+
+    # 1. Local sibling tests/ and scripts/ helper imports propagate transitive reference & worker dependencies
+    tests_dir = tmp_path / "tests"
+    scripts_dir = tmp_path / "scripts"
+    tests_dir.mkdir()
+    scripts_dir.mkdir()
+    (scripts_dir / "helper_script.py").write_text(
+        "from crosscheck import alma_maxent\n",
+        encoding="utf-8",
+    )
+    (tests_dir / "helper_test.py").write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "from virgil_bridge import mpol\n"
+        "def run_mpol():\n"
+        "    return sp.run('mpol', 'mpol_worker.py', {})\n",
+        encoding="utf-8",
+    )
+    caller = tests_dir / "test_caller.py"
+    caller.write_text(
+        "import helper_script\n"
+        "from helper_test import run_mpol\n"
+        "from crosscheck import alma_clean\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(caller)) == (
+        "crosscheck.alma_clean",
+        "crosscheck.alma_maxent",
+        "external_bridge.mpol_worker",
+        "virgil_bridge.mpol",
+    )
+
+    # 2. Reassigned module constants, shadowed locals/parameters, and mutated wrapper args emit _UNRESOLVED_WORKER
+    for idx, src in enumerate([
+        # Reassigned in conditional branch at module scope
+        "from external_bridge import _subprocess as sp\n"
+        "WORKER = 'alma_worker.py'\n"
+        "if True:\n"
+        "    WORKER = 'mpol_worker.py'\n"
+        "sp.run('alma', WORKER, {})\n",
+        # Shadowed by local variable inside function
+        "from external_bridge import _subprocess as sp\n"
+        "WORKER = 'alma_worker.py'\n"
+        "def f(dyn):\n"
+        "    WORKER = dyn\n"
+        "    return sp.run('alma', WORKER, {})\n",
+        # Wrapper mutates its parameter before calling sp.run
+        "from external_bridge import _subprocess as sp\n"
+        "def wrap(w):\n"
+        "    w = w + '.py'\n"
+        "    return sp.run('alma', w, {})\n"
+        "wrap('alma_worker')\n",
+    ]):
+        p = tmp_path / f"bad_worker_{idx}.py"
+        p.write_text(src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(p)) == (plugin._UNRESOLVED_WORKER,)
+
+    # 3. Nested subpackages and level >= 2 relative imports resolve at full depth
+    fake_src = tmp_path / "src"
+    (fake_src / "crosscheck" / "sub").mkdir(parents=True)
+    (fake_src / "crosscheck" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "sky.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "limb.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "sub" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_src / "crosscheck" / "sub" / "baz.py").write_text("", encoding="utf-8")
+    bar_py = fake_src / "crosscheck" / "sub" / "bar.py"
+    bar_py.write_text(
+        "from . import baz\n"
+        "from .. import sky\n"
+        "from ..limb import disk\n",
+        encoding="utf-8",
+    )
+    bad_rel = fake_src / "crosscheck" / "sub" / "escape.py"
+    bad_rel.write_text("from ... import nope\n", encoding="utf-8")
+    ext_caller = tmp_path / "test_subpkg.py"
+    ext_caller.write_text(
+        "import crosscheck.sub.bar\n"
+        "from crosscheck.sub import baz\n"
+        "from crosscheck.sub.missing import fn\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plugin, "_SRC_ROOT", fake_src)
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(bar_py)) == (
+        "crosscheck.limb",
+        "crosscheck.sky",
+        "crosscheck.sub.baz",
+    )
+    assert plugin._module_via(str(bad_rel)) == ("crosscheck.<invalid_relative_import>",)
+    assert plugin._module_via(str(ext_caller)) == (
+        "crosscheck.sub.bar",
+        "crosscheck.sub.baz",
+        "crosscheck.sub.missing",
+    )
+
+
+def test_module_via_resolves_call_imports_and_wrapper_id_shadowing(tmp_path):
+    from evidence import plugin
+
+    tests_dir = tmp_path / "tests"
+    scripts_dir = tmp_path / "scripts"
+    tests_dir.mkdir()
+    scripts_dir.mkdir()
+    (scripts_dir / "loaded_script.py").write_text(
+        "from crosscheck import informed_starts\n",
+        encoding="utf-8",
+    )
+    (scripts_dir / "param_script.py").write_text(
+        "from crosscheck import preregistration\n",
+        encoding="utf-8",
+    )
+
+    # 1. Resolved call imports: importorskip, import_module, __import__, spec_from_file_location + wrappers
+    ok_file = tests_dir / "test_call_imports.py"
+    ok_file.write_text(
+        "import importlib\n"
+        "import importlib.util\n"
+        "import pathlib\n"
+        "import pytest\n"
+        "vb = pytest.importorskip('virgil_bridge')\n"
+        "sp_mod = __import__('crosscheck.alma_speed', fromlist=['x'])\n"
+        "def _try(name):\n"
+        "    return importlib.import_module(name)\n"
+        "ac = _try('crosscheck.alma_clean')\n"
+        "SCRIPTS = pathlib.Path(__file__).resolve().parents[1] / 'scripts'\n"
+        "def _load(name):\n"
+        "    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f'{name}.py')\n"
+        "    return spec\n"
+        "s1 = _load('loaded_script')\n"
+        "CASES = [('param_script', 1)]\n"
+        "@pytest.mark.parametrize('sname,flag', CASES)\n"
+        "def test_p(sname, flag):\n"
+        "    return _load(sname)\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(ok_file)) == (
+        "crosscheck.alma_clean",
+        "crosscheck.alma_speed",
+        "crosscheck.informed_starts",
+        "crosscheck.limb",
+        "crosscheck.preregistration",
+        "crosscheck.sky",
+        "virgil_bridge",
+    )
+
+    # 2. Fail-closed dynamic import/spec calls and first-class callables emit _UNRESOLVED_IMPORT
+    for idx, src in enumerate([
+        "import importlib\ndef f(x):\n    return importlib.import_module(x)\n",
+        "import pytest\ndef f(x):\n    return pytest.importorskip(x)\n",
+        "import importlib.util\ndef f(d):\n    return importlib.util.spec_from_file_location('m', f'{d}/sky.py')\n",
+        "import importlib\nfn = importlib.import_module\n",
+        "import importlib.util\ndef f(ext, ldr):\n    return importlib.util.spec_from_file_location('m', f'{ext}/no_such_dir_xyz/no_such_mod.py', loader=ldr)\n",
+    ]):
+        bad_p = tests_dir / f"test_bad_call_{idx}.py"
+        bad_p.write_text(src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._module_via(str(bad_p)) == (plugin._UNRESOLVED_IMPORT,)
+
+    # 3. Method or duplicate function sharing a top-level wrapper's name must NOT suppress _UNRESOLVED_WORKER
+    shadow_method = tests_dir / "test_method_wrap.py"
+    shadow_method.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "def run_w(w):\n"
+        "    return sp.run('alma', w, {})\n"
+        "run_w('alma_worker.py')\n"
+        "class Sneaky:\n"
+        "    def run_w(self, dyn):\n"
+        "        return sp.run('alma', dyn, {})\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(shadow_method))
+
+    dup_fn = tests_dir / "test_dup_wrap.py"
+    dup_fn.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "def run_w(w):\n"
+        "    return sp.run('alma', w, {})\n"
+        "def run_w(dyn):\n"
+        "    return sp.run('alma', dyn, {})\n"
+        "run_w('alma_worker.py')\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(dup_fn))
+
+
+def test_item_via_resolves_spec_from_file_location_in_campaign_suites():
+    from evidence import plugin
+
+    plugin._module_via.cache_clear()
+    pull_via = set(
+        plugin._item_via(
+            str(ROOT / "tests" / "test_pull_campaign.py"),
+            "test_pull_campaign_pulls_are_standard_normal",
+            None,
+            (),
+        )
+    )
+    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky", "virgil_bridge"} <= pull_via
+
+    det_via = set(
+        plugin._item_via(
+            str(ROOT / "tests" / "test_detection_campaign.py"),
+            "test_detection_campaign_meets_its_criteria",
+            None,
+            (),
+        )
+    )
+    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky", "crosscheck.chi2"} <= det_via
+
+    sbc1_via = set(
+        plugin._item_via(
+            str(ROOT / "tests" / "test_sbc_numpyro.py"),
+            "test_sbc_ranks_are_uniform",
+            None,
+            (),
+        )
+    )
+    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky"} <= sbc1_via
+
+    sbc2_via = set(
+        plugin._item_via(
+            str(ROOT / "tests" / "test_sbc_v2.py"),
+            "test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy",
+            None,
+            (),
+        )
+    )
+    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky"} <= sbc2_via
+
+    for py in sorted((ROOT / "tests").rglob("test_*.py")):
+        mvia = set(plugin._module_via(str(py)))
+        assert plugin._UNRESOLVED_IMPORT not in mvia, (py, mvia)
+        assert plugin._UNRESOLVED_WORKER not in mvia, (py, mvia)
+
+
+def test_cross_module_subprocess_wrappers_propagate_and_fail_closed(tmp_path):
+    from evidence import plugin
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+
+    # Case A: helper calls its own wrapper internally AND caller calls it via module attribute
+    (tests_dir / "helper_called.py").write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "def _run(worker, task):\n"
+        "    return sp.run('alma', worker, task)\n"
+        "_run('alma_worker.py', {})\n",
+        encoding="utf-8",
+    )
+    mod_caller_ok = tests_dir / "test_mod_caller_ok.py"
+    mod_caller_ok.write_text(
+        "import helper_called\n"
+        "def test_both():\n"
+        "    return helper_called._run('mpol_worker.py', {})\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(mod_caller_ok), "test_both", None, ()) == (
+        "external_bridge.alma_worker",
+        "external_bridge.mpol_worker",
+    )
+
+    for idx, bad_src in enumerate([
+        "import helper_called\ndef test_dyn(w):\n    return helper_called._run(w, {})\n",
+        "import helper_called\ndef test_attr_escape():\n    fn = helper_called._run\n    return fn\n",
+        "import helper_called\ndef test_mod_escape():\n    m = helper_called\n    return m\n",
+    ]):
+        bad_f = tests_dir / f"test_mod_bad_{idx}.py"
+        bad_f.write_text(bad_src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        fn_name = bad_src.split("def ")[1].split("(")[0]
+        assert plugin._UNRESOLVED_WORKER in plugin._item_via(str(bad_f), fn_name, None, ())
+
+    # Case B: helper defines an uncalled wrapper; caller imports symbol directly and passes a static literal
+    (tests_dir / "helper_uncalled.py").write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "def _run(worker, task):\n"
+        "    return sp.run('alma', worker, task)\n",
+        encoding="utf-8",
+    )
+    sym_caller_ok = tests_dir / "test_sym_caller_ok.py"
+    sym_caller_ok.write_text(
+        "from helper_uncalled import _run\n"
+        "def test_static():\n"
+        "    return _run('mpol_worker.py', {})\n"
+        "def test_other():\n"
+        "    return 1\n",
+        encoding="utf-8",
+    )
+    mod_uncalled_ok = tests_dir / "test_mod_uncalled_ok.py"
+    mod_uncalled_ok.write_text(
+        "import helper_uncalled\n"
+        "def test_static():\n"
+        "    return helper_uncalled._run('ehtim_worker.py', {})\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(sym_caller_ok)) == ("external_bridge.mpol_worker",)
+    assert plugin._item_via(str(sym_caller_ok), "test_static", None, ()) == ("external_bridge.mpol_worker",)
+    assert plugin._item_via(str(sym_caller_ok), "test_other", None, ()) == ()
+    assert plugin._item_via(str(mod_uncalled_ok), "test_static", None, ()) == ("external_bridge.ehtim_worker",)
+
+    for idx, bad_sym_src in enumerate([
+        "from helper_uncalled import _run\ndef test_dyn(w):\n    return _run(w, {})\n",
+        "from helper_uncalled import _run\ndef test_escape():\n    f = _run\n    return f\n",
+        "from helper_uncalled import _run\n",
+    ]):
+        bad_sf = tests_dir / f"test_sym_bad_{idx}.py"
+        bad_sf.write_text(bad_sym_src, encoding="utf-8")
+        plugin._module_via.cache_clear()
+        assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(bad_sf))
+
+
+def test_item_via_walks_ancestor_conftest_and_fixture_args(tmp_path):
+    from evidence import plugin
+
+    sub_dir = tmp_path / "tests" / "sub" / "deep"
+    sub_dir.mkdir(parents=True)
+
+    # Root tests/conftest.py has both a top-level reference import and a helper fixture (plus an unused fixture)
+    (tmp_path / "tests" / "conftest.py").write_text(
+        "import pytest\n"
+        "from crosscheck import limb\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def root_helper():\n"
+        "    from crosscheck import sky\n"
+        "    return sky\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def unused_root():\n"
+        "    from external_bridge import pmoired_models\n"
+        "    return pmoired_models\n",
+        encoding="utf-8",
+    )
+    # Intermediate conftest.py has an autouse fixture chaining into root_helper via parameter list
+    (tmp_path / "tests" / "sub" / "conftest.py").write_text(
+        "import pytest\n"
+        "\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def sub_auto(root_helper):\n"
+        "    return root_helper\n",
+        encoding="utf-8",
+    )
+    # Deep test file also chains an in-file autouse fixture into an in-file helper fixture via args
+    deep_test = sub_dir / "test_deep.py"
+    deep_test.write_text(
+        "import pytest\n"
+        "\n"
+        "@pytest.fixture\n"
+        "def local_dep():\n"
+        "    from crosscheck import radial\n"
+        "    return radial\n"
+        "\n"
+        "@pytest.fixture(autouse=True)\n"
+        "def local_auto(local_dep):\n"
+        "    return local_dep\n"
+        "\n"
+        "def test_leaf():\n"
+        "    assert True\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(deep_test), "test_leaf", None, ()) == (
+        "crosscheck.limb",
+        "crosscheck.radial",
+        "crosscheck.sky",
+    )
+
+    # Also verify conftest.py with zero fixtures (c_defs empty) still contributes its top-level imports
+    plain_dir = tmp_path / "plain_suite" / "tests" / "nested"
+    plain_dir.mkdir(parents=True)
+    (tmp_path / "plain_suite" / "tests" / "conftest.py").write_text(
+        "from crosscheck import chi2\n",
+        encoding="utf-8",
+    )
+    plain_test = plain_dir / "test_plain.py"
+    plain_test.write_text("def test_ok():\n    assert 1 == 1\n", encoding="utf-8")
+    plugin._module_via.cache_clear()
+    assert plugin._item_via(str(plain_test), "test_ok", None, ()) == ("crosscheck.chi2",)

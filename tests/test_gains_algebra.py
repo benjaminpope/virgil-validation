@@ -154,20 +154,8 @@ def test_station_phases_cancel_in_our_triangle_algebra():
     assert np.linalg.matrix_rank(T) == 3  # 4 closure phases, 3 independent
 
 
-@pytest.mark.validates(
-    "virgil.gains.closure_offsets", "virgil.oidata.OIData.cp_noise",
-    roots=["mathematics"], headline="abs_dloglike_null",
-)
-def test_offsets_outside_the_span_of_T_do_not_enter(obs):
-    """With four telescopes, n with nᵀ T = 0 is the dependent combination of
-    a frame's closure phases: an offset along n leaves the projected sine
-    likelihood (``scale_penalty=False``) unchanged, while under the default
-    ``scale_penalty=True`` it enters solely through the wrap-penalty denominator
-    ``hypot(σ_i, σ_off,i)``."""
-    d, data = obs
+def _four_ut_left_null_and_live_modes(d):
     nrow, nw = d["cp"].shape
-    model = vm.System(star=vm.UniformDisk(1.45), comp=vm.PointSource(0.04, 6.2, -3.9))
-    base = float(model_loglike(model, data))
     null_modes, live_modes = [], []
     for mjd in np.unique(d["t3_mjd"]):
         rows = np.flatnonzero(d["t3_mjd"] == mjd)
@@ -178,7 +166,24 @@ def test_offsets_outside_the_span_of_T_do_not_enter(obs):
             shape = np.zeros((nrow, nw))
             shape[rows, :] = 0.3 * vec[:, None]
             out.append(shape.ravel())
-    null_arr, live_arr = np.array(null_modes), np.array(live_modes)
+    return np.array(null_modes), np.array(live_modes)
+
+
+@pytest.mark.validates(
+    "virgil.gains.closure_offsets", "virgil.oidata.OIData.cp_noise",
+    roots=["mathematics"], headline="abs_dloglike_null_unscaled",
+)
+def test_offsets_outside_the_span_of_T_do_not_enter_unscaled_and_pin_scaled(obs):
+    """With four telescopes, n with nᵀ T = 0 is the dependent combination of
+    a frame's closure phases: an offset along n leaves the projected sine
+    likelihood (``scale_penalty=False``) unchanged, while under ``virgil`` 0.4.2's
+    ``scale_penalty=True`` its unprojected ``diag(M Mᵀ)`` enters the wrap-penalty
+    denominator ``hypot(σ_i, σ_off,i)`` (pinned here; open finding F26 below)."""
+    d, data = obs
+    nrow, nw = d["cp"].shape
+    model = vm.System(star=vm.UniformDisk(1.45), comp=vm.PointSource(0.04, 6.2, -3.9))
+    base = float(model_loglike(model, data))
+    null_arr, live_arr = _four_ut_left_null_and_live_modes(d)
     null_unscaled = float(model_loglike(model, data.with_closure_offsets(modes=null_arr, scale_penalty=False))) - base
     live_unscaled = float(model_loglike(model, data.with_closure_offsets(modes=live_arr, scale_penalty=False))) - base
 
@@ -194,8 +199,35 @@ def test_offsets_outside_the_span_of_T_do_not_enter(obs):
     sigma_off_sq = np.sum(null_arr**2, axis=0).reshape(nrow, nw)
     want_null_scaled = -0.5 * np.sum(q_pen**2 / (d["dcp"] ** 2 + sigma_off_sq) - q_pen**2 / d["dcp"] ** 2)
     null_scaled = float(model_loglike(model, data.with_closure_offsets(modes=null_arr))) - base
+    live_scaled = float(model_loglike(model, data.with_closure_offsets(modes=live_arr))) - base
 
-    record("abs_dloglike_null", abs(null_unscaled))
+    record("abs_dloglike_null_unscaled", abs(null_unscaled))
+    record("dloglike_null_scaled", null_scaled)
     record("abs_dloglike_null_scaled_err", abs(null_scaled - want_null_scaled))
     assert abs(null_unscaled) < 1e-12 and abs(live_unscaled) > 1e-3
+    assert want_null_scaled > 0.0
     assert abs(null_scaled - want_null_scaled) < 1e-12
+    assert abs(live_scaled) > 1e-3 and abs(live_scaled - null_scaled) > 1e-3
+
+
+@pytest.mark.validates(
+    "virgil.gains.ClosureOffsets", "virgil.gains.closure_offsets",
+    roots=["mathematics"], kind="finding", headline="abs_dloglike_null_scaled",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason="F26: ClosureOffsets(scale_penalty=True) computes sigma_off from unprojected diag(M M^T), "
+           "so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0",
+)
+def test_f26_closure_offsets_scale_penalty_projects_onto_span_of_T(obs):
+    """A 4-telescope closure-of-closures left-null mode (``nᵀ T = 0``) has zero
+    projection onto physical closure phases and must leave ``model_loglike``
+    unchanged under default ``with_closure_offsets(modes=null_arr)``."""
+    d, data = obs
+    model = vm.System(star=vm.UniformDisk(1.45), comp=vm.PointSource(0.04, 6.2, -3.9))
+    base = float(model_loglike(model, data))
+    null_arr, _ = _four_ut_left_null_and_live_modes(d)
+    null_scaled = float(model_loglike(model, data.with_closure_offsets(modes=null_arr))) - base
+    record("abs_dloglike_null_scaled", abs(null_scaled))
+    assert abs(null_scaled) < 1e-10

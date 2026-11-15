@@ -58,19 +58,9 @@ UTS4 = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306
 
 # ------------------------------------------------------- virgil.models.LinearImage
 
-_LINEAR_IMAGE_PARAM_KEY = (
-    "parametrization"
-    if "parametrization" in inspect.signature(vm.LinearImage).parameters
-    else "parametrisation"
-)
-
 
 def _make_linear_image(pixels, *, mode="linear", **kwargs):
-    return vm.LinearImage(pixels, **{_LINEAR_IMAGE_PARAM_KEY: mode}, **kwargs)
-
-
-def _regularized_pixels(img):
-    return getattr(img, "regularized_pixels") if hasattr(img, "regularized_pixels") else img.regularised_pixels
+    return vm.LinearImage(pixels, parametrization=mode, **kwargs)
 
 
 @pytest.mark.validates(
@@ -144,7 +134,7 @@ def test_linear_image_linear_and_sqrt_visibilities_and_system_flux():
         assert float(img.total_flux) == pytest.approx(total_f, rel=1e-14)
         np.testing.assert_allclose(np.asarray(img.fluxes), masked_flux, rtol=1e-14, atol=1e-16)
         np.testing.assert_allclose(np.asarray(img.brightness), masked_flux / total_f, rtol=1e-14, atol=1e-16)
-        np.testing.assert_allclose(np.asarray(_regularized_pixels(img)), masked_flux / 0.8, rtol=1e-14, atol=1e-16)
+        np.testing.assert_allclose(np.asarray(img.regularized_pixels), masked_flux / 0.8, rtol=1e-14, atol=1e-16)
         assert bool(img.is_physical())
 
         # Inside a System, LinearImage contributes weight = sum(fluxes), not 1
@@ -186,6 +176,56 @@ def test_linear_image_linear_and_sqrt_visibilities_and_system_flux():
 
     record("max_abs_dV", worst_dv)
     assert worst_dv < 1e-13
+
+
+@pytest.mark.validates("virgil.models.LinearImage", roots=["mathematics"], headline="max_abs_dV_nufft")
+def test_linear_image_nufft_and_auto_dispatch_on_large_grid():
+    """On a 64 x 64 grid with 600 baselines (above virgil's >= 64 x 64 and >= max(500, 2N)
+    CPU NUFFT dispatch threshold), explicit ``ft='nufft'`` and ``ft='auto'`` match both each
+    other and our direct ``sky.pixel_image`` DFT to float64 NUFFT precision."""
+    rng = np.random.default_rng(105)
+    u, v = rng.uniform(-90.0, 90.0, (2, 600))
+    wavel = rng.uniform(1.5e-6, 2.4e-6, 600)
+
+    nrow = ncol = 64
+    scale = 0.5
+    support = np.ones((nrow, ncol), dtype=bool)
+    support[:4, :] = False
+    raw_flux = rng.uniform(0.0, 0.02, size=(nrow, ncol))
+    sqrt_weights = rng.choice([-1.0, 1.0], size=(nrow, ncol)) * np.sqrt(raw_flux)
+    masked_flux = np.where(support, raw_flux, 0.0)
+
+    dra, ddec, rot = 1.3, -0.9, 21.0
+    cloud = sky.pixel_image(masked_flux, scale).rotated(rot).shifted(dra, ddec)
+    want_vis = sky.visibility(cloud, u, v, wavel)
+
+    img_nufft = vm.LinearImage(
+        raw_flux, parametrization="linear", pixel_scale_mas=scale, support=support,
+        dra=dra, ddec=ddec, rotation_deg=rot, ft="nufft", reference_flux=0.5,
+    )
+    img_auto = vm.LinearImage(
+        raw_flux, parametrization="linear", pixel_scale_mas=scale, support=support,
+        dra=dra, ddec=ddec, rotation_deg=rot, ft="auto", reference_flux=0.5,
+    )
+    img_sqrt_nufft = vm.LinearImage(
+        sqrt_weights, parametrization="sqrt", pixel_scale_mas=scale, support=support,
+        dra=dra, ddec=ddec, rotation_deg=rot, ft="nufft", reference_flux=0.5,
+    )
+
+    got_nufft = np.asarray(img_nufft.model(u, v, wavel))
+    got_auto = np.asarray(img_auto.model(u, v, wavel))
+    got_sqrt = np.asarray(img_sqrt_nufft.model(u, v, wavel))
+
+    auto_vs_nufft = float(np.max(np.abs(got_auto - got_nufft)))
+    worst_nufft = max(
+        float(np.max(np.abs(got_nufft - want_vis))),
+        float(np.max(np.abs(got_auto - want_vis))),
+        float(np.max(np.abs(got_sqrt - want_vis))),
+    )
+    record("auto_vs_nufft_max_abs_dV", auto_vs_nufft)
+    record("max_abs_dV_nufft", worst_nufft)
+    assert auto_vs_nufft < 1e-15
+    assert worst_nufft < 1e-11
 
 
 @pytest.mark.validates(

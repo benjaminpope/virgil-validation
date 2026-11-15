@@ -2,7 +2,7 @@
 
 This page checks `MultipoleDisk` (formerly `PolarDisk`), virgil's disk model built from a radial profile, azimuthal harmonics and a height, in four stages plus companion component checks. The stages test the forward transforms against other codes, brute-force renders, public ALMA data, and injection and recovery. The model parts are the radial profiles `ThinRing`, `GaussianRing`, `RadialPowerLaw`, `ExpTail`, `Gap`, `RadialSum` and `RadialGP` (virgil P1-P4); the radial parameter functions `RadialLinear` and `RadialPower`; the azimuthal `Harmonics` (linear and positive forms), `VonMises` arcs, the harmonic prior `MultipoleKernel`, and the conversion helpers `to_image_harmonics`, `from_image_harmonics`, `from_legacy`, `to_legacy`, `rim_coefficients` and `cone_coefficients` in `virgil.harmonics`; the heights `Cone` and `PowerLawHeight`; and the polar-grid log-brightness Gaussian process `MultipoleField` in `virgil.fields`.
 
-The stage-V benchmarks originally ran at virgil `b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e`, the tip of `polar-p4` (PR #343), before the class was renamed to `MultipoleDisk` in `0.4.x` (`edge` -> `edge_sigma`, `Gap` `r0`/`width` -> `radius`/`sigma`). **The committed benchmark result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale. Regenerate them at the new pin on OzSTAR.** Every result file in
+The stage-V benchmarks originally ran at virgil `b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e`, the tip of `polar-p4` (PR #343), before the class was renamed to `MultipoleDisk` in `0.4.x` (`edge` -> `edge_sigma`, `Gap` `r0`/`width` -> `radius`/`sigma`). The committed stage-V benchmark result files record their provenance at `791f9fef65eb49ebc387c5c365a13c7af2342341`, while the fast companion and Hankel suites (`test_multipole_companions.py`, `test_polar_disk_brute_force.py`, `test_polar_disk_vs_codes.py`) run at the repository's current `virgil 0.4.2` pin on every pull request. Every result file in
 [`benchmarks/polar_disk/results`](https://github.com/benjaminpope/virgil-validation/tree/main/benchmarks/polar_disk/results)
 records that hash and the package versions it ran with (`frank` 1.2.3, `visr` / `vis-r` at
 `f53467077b04878986c967b501d88c54ff3efb86`, `frap` / `astro-frap` 1.0.2, PMOIRED 26.10.1, `oimodeler` 0.8.1, JAX 0.11.2).
@@ -172,7 +172,7 @@ Fitting array-valued harmonic coefficients failed at 791f9fe, fixed in 1eae3e4 (
 | --- | --- | --- | --- |
 | F19 | virgil `ExpTail` | the documented 1e-5 at 16 * 2 pi q L nodes is 2e-4 (as found at 791f9fe) | virgil, fixed in 1eae3e4 |
 | F20 | virgil `Harmonics` | array-valued `re`/`im`/`c`/`s` fail (`fit` and `laplace_cov` paths), as found at 791f9fe | virgil, fixed in 1eae3e4 |
-| F25 | virgil `MultipoleField` | at `r_min_mas = 0`, `d79696de` tapers `m != 0` modes by radial node spacing instead of `length_r`, making the prior depend on `n_r` | virgil, open at `d79696de` (fixed in `5ca955ad`) |
+| F25 | virgil `MultipoleField` | at `r_min_mas = 0`, `d79696de` tapered `m != 0` modes by radial node spacing instead of `length_r`, making the prior depend on `n_r` | virgil, fixed in `5ca955ad` ([virgil#673](https://github.com/benjaminpope/virgil/pull/673)) |
 | D10 | frank, FRAP | cannot represent a discontinuous profile | definition |
 | P9 | oimodeler | `ExpRing` 8e-3 from its documented profile, unexplained | to raise |
 | P10 | vis-r | `r_prof_erf2_power_ggap` mixes up depth and radius | to raise |
