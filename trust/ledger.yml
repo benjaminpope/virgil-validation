@@ -241,9 +241,9 @@
   ruling: definition
   referee: mathematics (ray-radial width matches scenes.spiral to < 1e-13 across the grid while exact Euclidean arm distance differs by > 8% of peak on inner turns and > 3.5% at r >= 16 mas; image_field ceiling-over-floor clipping pinned with wrong-precedence controls)
   evidence:
-    - tests/test_042_scenes_starlet_kkt.py::test_scenes_spiral_ridge_width_sigma_fade_and_rounded_caps
-    - tests/test_042_scenes_starlet_kkt.py::test_scenes_spiral_fwhm_and_unrounded_controls
-    - tests/test_042_scenes_starlet_kkt.py::test_second_moment_fwhm_and_image_field_clipping_and_fallbacks
+    - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_is_sigma_ccw_winding_rounded_cap_and_radial_fade
+    - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_fwhm_and_reversed_winding_controls
+    - tests/test_042_scenes_starlet_kkt.py::test_image_field_and_beam_floor_ceiling_and_restoration
     - tests/test_042_scenes_starlet_kkt.py::test_image_field_unclipped_and_floor_over_ceiling_controls
   status: documented
   decision: 'ruled definition / documented (Ben, 2026-11-15): internal synthetic-scene and field-clipping formula choices do not need to be convention trust-graph blockers; they are pinned via properties and wrong-formula controls.'

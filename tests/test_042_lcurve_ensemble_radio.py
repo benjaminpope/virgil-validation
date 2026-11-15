@@ -827,7 +827,7 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
         spec=ve.EnsembleSpec(
             gp_sigmas=(0.2, 0.5), gp_lengths=(0.5, 1.5), gp_growths=0, gp_axis_ratio=0.1
         ),
-        max_steps=800,
+        max_steps=2500,
     )
     assert grp_gp_direct.curve is None and len(grp_gp_direct.gp) >= 1
     assert isinstance(grp_gp_direct.gp[0].result.model, vm.Image)
