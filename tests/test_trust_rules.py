@@ -587,6 +587,25 @@ def test_ok_via_does_not_mask_missing_property_roots_or_unconfirmed_conventions(
     assert [c["id"] for c in model["nodes"]["virgil.conv"]["because"]] == ["crosscheck.r"]
     assert [c["id"] for c in model["nodes"]["virgil.prop_mix"]["because"]] == ["crosscheck.r"]
 
+    # Converse monotonicity: adding a supplementary via-blocked check (even via a failing reference)
+    # must never demote a node already verified by its direct trusted checks alone
+    graph_ok = {
+        "nodes": {
+            "crosscheck.unverified": {"layer": "references"},
+            "crosscheck.bad": {"layer": "references"},
+            "virgil.already_ok": {"layer": "models", "roots": 1, "properties": {"sense": 1}},
+        }
+    }
+    recs_ok = [
+        record("t::ok_direct", "virgil.already_ok", roots=["mathematics"], properties=["sense"]),
+        record("t::ok_extra_unv", "virgil.already_ok", roots=["pmoired"], via=["crosscheck.unverified"], properties=["sense"]),
+        record("t::ok_extra_bad", "virgil.already_ok", roots=["candid"], via=["crosscheck.bad"]),
+        record("t::bad_ref", "crosscheck.bad", kind="reference", outcome="failed"),
+    ]
+    got_ok, model_ok = verdicts(trust, tmp_path, recs_ok, graph_ok)
+    assert got_ok["virgil.already_ok"] == "verified"
+    assert model_ok["nodes"]["virgil.already_ok"]["because"] == []
+
 
 def test_upstream_failing_dependency_marks_dependent_relies_not_relies_unverified(trust, tmp_path):
     graph = {
@@ -654,11 +673,15 @@ def test_module_via_is_fail_closed_expands_init_and_tracks_subprocess_workers(tm
         "import virgil_bridge.alma as vba\n"
         "from virgil_bridge import mpol, binary, unregistered_submod\n"
         "import virgil_bridge.alma_lambda_report as rep\n"
+        "import external_bridge._subprocess\n"
         "from external_bridge import _subprocess as sp\n"
+        "EHT_WORKER: str = 'ehtim_worker.py'\n"
         "def _w(s, t):\n"
         "    return sp.run('alma', s, t)\n"
-        "_w('casa_clean_worker.py', {})\n"
-        "sp.run('ehtim', 'ehtim_worker.py', {})\n",
+        "def _w2(s):\n"
+        "    return _w(s, {})\n"
+        "_w2('casa_clean_worker.py')\n"
+        "external_bridge._subprocess.run('ehtim', EHT_WORKER, {})\n",
         encoding="utf-8",
     )
     plugin._module_via.cache_clear()
@@ -669,26 +692,71 @@ def test_module_via_is_fail_closed_expands_init_and_tracks_subprocess_workers(tm
         "external_bridge.casa_clean_worker",
         "external_bridge.ehtim_worker",
         "virgil_bridge.alma",
+        "virgil_bridge.alma_lambda_report",
         "virgil_bridge.mpol",
         "virgil_bridge.unregistered_submod",
     )
 
+    # Dynamic or unresolvable _subprocess.run calls must emit an unregistered sentinel (fail-closed)
+    dyn_file = tmp_path / "test_dyn_via.py"
+    dyn_file.write_text(
+        "import external_bridge._subprocess\n"
+        "WORKERS = {'a': 'alma_worker.py'}\n"
+        "external_bridge._subprocess.run('alma', WORKERS['a'], {})\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(dyn_file)) == (plugin._UNRESOLVED_WORKER,)
+
 
 def test_reference_depends_cycle_fails_closed(trust, tmp_path):
-    graph = {
+    # 1. Mutual cycle between references: neither reference nor via-caller may be verified
+    graph_cycle = {
         "nodes": {
             "virgil.x": {"layer": "models"},
             "crosscheck.a": {"layer": "references", "depends": ["crosscheck.b"]},
             "crosscheck.b": {"layer": "references", "depends": ["crosscheck.a"]},
         }
     }
-    recs = [
+    recs_cycle = [
         record("t::ra", "crosscheck.a", kind="reference"),
         record("t::rb", "crosscheck.b", kind="reference"),
         record("t::vx", "virgil.x", via=["crosscheck.a"]),
     ]
-    got, _ = verdicts(trust, tmp_path, recs, graph)
-    assert got["virgil.x"] == "relies-unverified"
+    got, _ = verdicts(trust, tmp_path, recs_cycle, graph_cycle)
+    assert got == {
+        "virgil.x": "relies-unverified",
+        "crosscheck.a": "relies-unverified",
+        "crosscheck.b": "relies-unverified",
+    }
+
+    # 2. Reference depending on a missing node fails closed on both the reference and its caller
+    graph_missing = {
+        "nodes": {
+            "virgil.x": {"layer": "models"},
+            "crosscheck.a": {"layer": "references", "depends": ["crosscheck.missing"]},
+        }
+    }
+    got_missing, _ = verdicts(trust, tmp_path, recs_cycle[:1] + recs_cycle[2:], graph_missing)
+    assert got_missing == {
+        "virgil.x": "relies-unverified",
+        "crosscheck.a": "relies-unverified",
+    }
+
+    # 3. Reference depending on a subject (virgil.*) node is never trusted, even if unchecked or ok
+    graph_subj = {
+        "nodes": {
+            "virgil.u": {"layer": "models"},
+            "virgil.x": {"layer": "models"},
+            "crosscheck.a": {"layer": "references", "depends": ["virgil.u"]},
+        }
+    }
+    got_subj, _ = verdicts(trust, tmp_path, recs_cycle[:1] + recs_cycle[2:], graph_subj)
+    assert got_subj == {
+        "virgil.u": "unchecked",
+        "virgil.x": "relies-unverified",
+        "crosscheck.a": "relies-unverified",
+    }
 
 
 def test_pipeline_with_failing_step_is_failing_while_bug_step_keeps_passes(trust, tmp_path):

@@ -105,11 +105,13 @@ def pytest_configure(config):
 
 # Our reference code: a check that goes through one of these counts only if
 # that module is itself verified (fail-closed across all three packages).
-# _subprocess is the JSON-over-interpreter launcher (the worker script it
-# calls is recorded instead); alma_lambda_report is a plotting/markdown display helper.
+# _subprocess is the JSON-over-interpreter launcher; every _subprocess.run
+# call resolves its concrete worker module (or emits an unregistered sentinel).
 _SRC_ROOT = pathlib.Path(__file__).resolve().parents[2] / "src"
 _REFERENCE_PACKAGES = ("crosscheck", "external_bridge", "virgil_bridge")
-_PLUMBING = frozenset({"external_bridge._subprocess", "virgil_bridge.alma_lambda_report"})
+_PLUMBING = frozenset({"external_bridge._subprocess"})
+_UNRESOLVED_WORKER = "external_bridge.<unresolved_worker>"
+_SAFE_SP_ATTRS = frozenset({"run", "available", "python", "version", "_env", "ROOT"})
 
 
 def _keep_reference(mod):
@@ -156,7 +158,7 @@ def _current_reference_package(path):
 
 
 def _call_arg_expr(call, index, keyword):
-    if index < len(call.args):
+    if index is not None and index < len(call.args):
         return call.args[index]
     for kw in call.keywords:
         if kw.arg == keyword:
@@ -172,48 +174,144 @@ def _resolve_str(expr, const_strings):
     return None
 
 
-def _subprocess_workers(tree, sp_aliases, run_aliases):
-    """Worker scripts invoked through ``external_bridge._subprocess.run`` or local wrappers."""
-    if not sp_aliases and not run_aliases:
+def _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp):
+    """Worker scripts invoked through ``external_bridge._subprocess.run`` or local wrappers.
+
+    Any ``_subprocess.run`` call or dynamic alias usage that cannot be statically resolved
+    to a concrete worker module emits ``_UNRESOLVED_WORKER`` so ``trust.py`` and
+    ``test_trust_graph.py`` fail closed.
+    """
+    if wildcard_sp:
+        return {_UNRESOLVED_WORKER}
+    if not sp_aliases and not run_aliases and not eb_aliases:
         return set()
+
     const_strings = {}
     for stmt in tree.body:
         if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
             for t in stmt.targets:
                 if isinstance(t, ast.Name):
                     const_strings[t.id] = stmt.value.value
+        elif (
+            isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+            and isinstance(stmt.value, ast.Constant)
+            and isinstance(stmt.value.value, str)
+        ):
+            const_strings[stmt.target.id] = stmt.value.value
+
+    def _is_sp_module_expr(expr):
+        return (
+            (isinstance(expr, ast.Name) and expr.id in sp_aliases)
+            or (
+                isinstance(expr, ast.Attribute)
+                and expr.attr == "_subprocess"
+                and isinstance(expr.value, ast.Name)
+                and expr.value.id in eb_aliases
+            )
+        )
 
     def _is_sp_run(func):
         return (
-            (isinstance(func, ast.Attribute) and func.attr == "run"
-             and isinstance(func.value, ast.Name) and func.value.id in sp_aliases)
+            (isinstance(func, ast.Attribute) and func.attr == "run" and _is_sp_module_expr(func.value))
             or (isinstance(func, ast.Name) and func.id in run_aliases)
         )
 
+    fn_nodes = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     wrappers = {}
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            params = [a.arg for a in node.args.args]
-            for sub in ast.walk(node):
-                if isinstance(sub, ast.Call) and _is_sp_run(sub.func):
+    changed = True
+    while changed:
+        changed = False
+        for fn in fn_nodes:
+            if fn.name in wrappers:
+                continue
+            pos_params = [a.arg for a in (*fn.args.posonlyargs, *fn.args.args)]
+            kw_params = {a.arg for a in fn.args.kwonlyargs}
+            all_params = set(pos_params) | kw_params
+            for sub in ast.walk(fn):
+                if not isinstance(sub, ast.Call):
+                    continue
+                wexpr = None
+                if _is_sp_run(sub.func):
                     wexpr = _call_arg_expr(sub, 1, "worker")
-                    if isinstance(wexpr, ast.Name) and wexpr.id in params:
-                        wrappers[node.name] = (params.index(wexpr.id), wexpr.id)
+                elif isinstance(sub.func, ast.Name) and sub.func.id in wrappers:
+                    idx, pname = wrappers[sub.func.id]
+                    wexpr = _call_arg_expr(sub, idx, pname)
+                if isinstance(wexpr, ast.Name) and wexpr.id in all_params:
+                    p_idx = pos_params.index(wexpr.id) if wexpr.id in pos_params else None
+                    wrappers[fn.name] = (p_idx, wexpr.id)
+                    changed = True
+                    break
 
     workers = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        wexpr = None
-        if _is_sp_run(node.func):
-            wexpr = _call_arg_expr(node, 1, "worker")
-        elif isinstance(node.func, ast.Name) and node.func.id in wrappers:
-            idx, pname = wrappers[node.func.id]
-            wexpr = _call_arg_expr(node, idx, pname)
-        script = _resolve_str(wexpr, const_strings)
-        if script:
-            stem = pathlib.Path(script).stem if script.endswith(".py") else script
-            workers.add(f"external_bridge.{stem}")
+    called_wrappers = set()
+    direct_call_funcs = set()
+    attr_parents = {}
+
+    for parent in ast.walk(tree):
+        if isinstance(parent, ast.Call):
+            direct_call_funcs.add(id(parent.func))
+        elif isinstance(parent, ast.Attribute):
+            attr_parents[id(parent.value)] = parent
+
+    def _scan_scope(scope_node, enclosing_wrapper_param):
+        for child in ast.iter_child_nodes(scope_node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                wparam = wrappers[child.name][1] if child.name in wrappers else None
+                _scan_scope(child, wparam)
+                continue
+            if isinstance(child, ast.Call):
+                handled = False
+                wexpr = None
+                if _is_sp_run(child.func):
+                    handled = True
+                    wexpr = _call_arg_expr(child, 1, "worker")
+                elif isinstance(child.func, ast.Name) and child.func.id in wrappers:
+                    handled = True
+                    called_wrappers.add(child.func.id)
+                    idx, pname = wrappers[child.func.id]
+                    wexpr = _call_arg_expr(child, idx, pname)
+                if handled:
+                    if (
+                        enclosing_wrapper_param is not None
+                        and isinstance(wexpr, ast.Name)
+                        and wexpr.id == enclosing_wrapper_param
+                    ):
+                        pass
+                    else:
+                        script = _resolve_str(wexpr, const_strings)
+                        if script:
+                            stem = pathlib.Path(script).stem if script.endswith(".py") else script
+                            workers.add(f"external_bridge.{stem}")
+                        else:
+                            workers.add(_UNRESOLVED_WORKER)
+            elif isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+                if child.id in run_aliases and id(child) not in direct_call_funcs:
+                    workers.add(_UNRESOLVED_WORKER)
+                elif child.id in sp_aliases:
+                    parent_attr = attr_parents.get(id(child))
+                    if parent_attr is None or parent_attr.attr not in _SAFE_SP_ATTRS:
+                        workers.add(_UNRESOLVED_WORKER)
+                    elif parent_attr.attr == "run" and id(parent_attr) not in direct_call_funcs:
+                        workers.add(_UNRESOLVED_WORKER)
+                elif child.id in wrappers and id(child) not in direct_call_funcs:
+                    workers.add(_UNRESOLVED_WORKER)
+            elif (
+                isinstance(child, ast.Attribute)
+                and child.attr == "_subprocess"
+                and isinstance(child.value, ast.Name)
+                and child.value.id in eb_aliases
+            ):
+                parent_attr = attr_parents.get(id(child))
+                if parent_attr is None or parent_attr.attr not in _SAFE_SP_ATTRS:
+                    workers.add(_UNRESOLVED_WORKER)
+                elif parent_attr.attr == "run" and id(parent_attr) not in direct_call_funcs:
+                    workers.add(_UNRESOLVED_WORKER)
+            _scan_scope(child, enclosing_wrapper_param)
+
+    _scan_scope(tree, None)
+    if set(wrappers) - called_wrappers:
+        workers.add(_UNRESOLVED_WORKER)
     return workers
 
 
@@ -235,6 +333,8 @@ def _scan_module_via(path, seen):
     found = set()
     sp_aliases = set()
     run_aliases = set()
+    eb_aliases = set()
+    wildcard_sp = False
 
     def _expand_init(pkg):
         init_py = _SRC_ROOT / pkg / "__init__.py"
@@ -250,12 +350,20 @@ def _scan_module_via(path, seen):
                     if len(parts) >= 2:
                         mod = ".".join(parts[:2])
                         found.add(mod)
-                        if mod == "external_bridge._subprocess" and alias.asname:
-                            sp_aliases.add(alias.asname)
+                        if mod == "external_bridge._subprocess":
+                            if alias.asname:
+                                sp_aliases.add(alias.asname)
+                            else:
+                                eb_aliases.add("external_bridge")
                     else:
                         _expand_init(top)
+                        if top == "external_bridge":
+                            eb_aliases.add(alias.asname or "external_bridge")
                 elif len(parts) == 1 and current_pkg and _is_submodule(current_pkg, top):
-                    found.add(f"{current_pkg}.{top}")
+                    mod = f"{current_pkg}.{top}"
+                    found.add(mod)
+                    if mod == "external_bridge._subprocess":
+                        sp_aliases.add(alias.asname or "_subprocess")
         elif isinstance(node, ast.ImportFrom):
             if node.level == 1 and current_pkg:
                 if node.module:
@@ -264,7 +372,9 @@ def _scan_module_via(path, seen):
                     found.add(mod)
                     if mod == "external_bridge._subprocess":
                         for alias in node.names:
-                            if alias.name == "run":
+                            if alias.name == "*":
+                                wildcard_sp = True
+                            elif alias.name == "run":
                                 run_aliases.add(alias.asname or "run")
                 else:
                     for alias in node.names:
@@ -296,10 +406,12 @@ def _scan_module_via(path, seen):
                     found.add(mod)
                     if mod == "external_bridge._subprocess":
                         for alias in node.names:
-                            if alias.name == "run":
+                            if alias.name == "*":
+                                wildcard_sp = True
+                            elif alias.name == "run":
                                 run_aliases.add(alias.asname or "run")
 
-    found |= _subprocess_workers(tree, sp_aliases, run_aliases)
+    found |= _subprocess_workers(tree, sp_aliases, run_aliases, eb_aliases, wildcard_sp)
     return {m for m in found if _keep_reference(m)}
 
 
