@@ -257,7 +257,7 @@ def test_oimodeler_fourier_components_match_closed_forms():
     inc_deg = float(np.rad2deg(np.arccos(1.0 / elong)))
     qd, _, _ = R.deproject(u, v, inc_deg, PA)
     ring_truth = special.j0(np.pi * d_mas * R.MAS * qd)
-    err_r = float(np.abs(eval_oim(oim.oimEIRing(d=d_mas, pa=PA, elong=elong)).real - ring_truth).max())
+    err_r = float(np.abs(eval_oim(oim.oimEIRing(d=d_mas, pa=PA, elong=elong)) - ring_truth).max())
     err = record("max_abs_dV", max(err_ud, err_g, err_r))
     assert err < 1e-12
 

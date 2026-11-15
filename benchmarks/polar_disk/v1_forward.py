@@ -1,6 +1,6 @@
 """V1: forward transforms, accuracy and speed (design/radial_profiles.md, section 12).
 
-PolarDisk (M = 0, no harmonics) against frank's DiscreteHankelTransform,
+MultipoleDisk (formerly PolarDisk; M = 0, no harmonics) against frank's DiscreteHankelTransform,
 vis-r's ``r_prof_*`` with ``uv_trans`` / ``setup_dht`` (including its Gaussian
 scale-height factor) and FRAP's Hankel matrix (``set_visibility`` without the
 primary beam), for identical profiles and geometry, with our own
@@ -20,10 +20,10 @@ PASS CRITERIA (fixed before the runs; float64, CPU)
       + 1e-6 follows from A1 by the triangle inequality and cannot fail once
       A1 passes; the margin is recorded only to show the gap is vis-r's own
       discretization error. vis-r is therefore not counted as a root for
-      PolarDisk.
+      MultipoleDisk.
   A4  bridge / convention check, NOT a validation of virgil's vertical
       geometry: the same factor exp(-0.5 (2 pi h r0 sin i u_minor)^2) is
-      multiplied onto virgil's visibilities and onto the truth (PolarDisk has
+      multiplied onto virgil's visibilities and onto the truth (MultipoleDisk has
       no scale height), so virgil-vs-truth is just A1 again. What it tests is
       that vis-r's aspect-ratio factor uses the same u_minor as the bridge.
   S   speed, reported only (no pass/fail): median wall time per call at

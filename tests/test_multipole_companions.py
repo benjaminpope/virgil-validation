@@ -3,7 +3,7 @@ Gaussian-process kernels, and MultipoleField.
 
 Every reference value here is computed from first principles using SciPy Bessel
 functions (``scipy.special.j0``, ``j1``, ``iv``, ``kv``, ``gamma``), adaptive
-quadrature (``crosscheck.radial``), or brute-force 2D sky point-cloud Fourier
+quadrature (``crosscheck.radial``), or brute-force 2D/3D sky point-cloud Fourier
 transforms (``crosscheck.polar_images`` and ``crosscheck.sky``). No code is
 shared with virgil.
 """
@@ -55,6 +55,82 @@ def _phasor(u_m, v_m, wl_m, dra_mas, ddec_mas):
     return np.exp(-2j * np.pi * ((u_m / wl_m) * (dra_mas * R.MAS) + (v_m / wl_m) * (ddec_mas * R.MAS)))
 
 
+def _modulated_cone_cloud(tip, alpha, s0, length, tilt, pa, az_amps, az_pas, n_s=240, n_phi=512):
+    """Independent 3D wall point cloud for a circular TruncatedCone with cosine wall modulations.
+
+    The cone axis points towards position angle ``pa`` tilted ``tilt`` out of the sky; the ring
+    azimuth runs from the ``pa + 90`` wall (``across``) towards ``in_plane = across x axis``.
+    """
+    a, b, p = np.deg2rad(alpha), np.deg2rad(tilt), np.deg2rad(pa)
+    axis = np.array([np.sin(p) * np.cos(b), np.cos(p) * np.cos(b), np.sin(b)])
+    across = np.array([np.cos(p), -np.sin(p), 0.0])
+    in_plane = np.cross(across, axis)
+    x_gl, w_gl = special.roots_legendre(n_s)
+    s = s0 + 2.5 * length * (x_gl + 1.0)
+    w_s = w_gl * 2.5 * length
+    phi = 2.0 * np.pi * np.arange(n_phi) / n_phi
+    s_grid, phi_grid = np.meshgrid(s, phi, indexing="ij")
+    rho = s_grid * np.sin(a)
+    centre = (s_grid * np.cos(a) - tip)[..., None] * axis
+    pts = centre + rho[..., None] * (np.cos(phi_grid)[..., None] * across + np.sin(phi_grid)[..., None] * in_plane)
+    phi_wall_deg = (pa + 90.0) + np.rad2deg(phi_grid)
+    mod = np.ones_like(phi_grid)
+    for m_order, (amp, pa_m) in enumerate(zip(az_amps, az_pas), start=1):
+        mod = mod + amp * np.cos(m_order * np.deg2rad(phi_wall_deg - pa_m))
+    weight = (w_s * (s * np.sin(a)) * np.exp(-(s - s0) / length))[:, None] * mod
+    weight = weight / weight.sum()
+    return sky.Cloud(pts[..., 0].ravel(), pts[..., 1].ravel(), weight.ravel())
+
+
+def _multipole_field_sky_image(
+    z, npix, scale, r_min, r_max, sigma, length_r, length_theta, nu_r, nu_theta,
+    inc_deg, pa_deg, dra_mas, ddec_mas, outside, east_sign=1.0,
+):
+    """Independent latent-to-sky evaluation of MultipoleField from documented math alone:
+    1. Polar grid: radial Matérn Cholesky L_r times circulant periodic-Matérn FFT square root,
+       with origin taper tanh(r / spacing)^|m| when r_min == 0.
+    2. Sky pixel centres (row 0 North, col 0 East) deprojected into disk-plane (r, theta) and
+       bilinearly interpolated with a one-spacing linear ramp to `outside` beyond [r_min, r_max].
+    """
+    z_arr = np.asarray(z, dtype=float)
+    n_r, n_th = z_arr.shape
+    radii = np.linspace(r_min, r_max, n_r)
+    spacing = (r_max - r_min) / (n_r - 1)
+    lr = 5.0 * spacing if length_r is None else length_r
+    l_r = np.linalg.cholesky(_matern_corr(np.abs(radii[:, None] - radii[None, :]), lr, nu_r) + 1e-6 * np.eye(n_r))
+    freqs = np.fft.fftfreq(n_th, d=1.0 / n_th)
+    s_th = _periodic_matern_spectrum(np.abs(freqs), length_theta, nu_theta)
+    s_th = s_th / s_th.sum()
+    modes = sigma * (l_r @ np.fft.fft(z_arr, axis=1))
+    if r_min == 0.0:
+        modes = modes * (np.tanh(radii[:, None] / spacing) ** np.abs(freqs[None, :]))
+    polar_vals = np.fft.ifft(modes * np.sqrt(n_th * s_th)[None, :], axis=1).real
+
+    north = ((npix - 1) / 2.0 - np.arange(npix)) * scale - ddec_mas
+    east = east_sign * ((npix - 1) / 2.0 - np.arange(npix)) * scale - dra_mas
+    ee, nn = np.meshgrid(east, north)
+    p = np.deg2rad(pa_deg)
+    a_maj = ee * np.sin(p) + nn * np.cos(p)
+    b_min = (ee * np.cos(p) - nn * np.sin(p)) / np.cos(np.deg2rad(inc_deg))
+    r_disk = np.hypot(a_maj, b_min)
+    th_disk = np.mod(np.arctan2(b_min, a_maj), 2.0 * np.pi)
+
+    u_r = np.clip((r_disk - r_min) / spacing, 0.0, n_r - 1.0)
+    k0 = np.minimum(np.floor(u_r).astype(int), n_r - 2)
+    fr = u_r - k0
+    u_th = th_disk * (n_th / (2.0 * np.pi))
+    j0 = np.floor(u_th).astype(int) % n_th
+    j1 = (j0 + 1) % n_th
+    fth = u_th - np.floor(u_th)
+    interp = (
+        (1.0 - fr) * ((1.0 - fth) * polar_vals[k0, j0] + fth * polar_vals[k0, j1])
+        + fr * ((1.0 - fth) * polar_vals[k0 + 1, j0] + fth * polar_vals[k0 + 1, j1])
+    )
+    w_out = np.clip((r_disk - r_max) / spacing, 0.0, 1.0)
+    w = np.maximum(w_out, np.clip((r_min - r_disk) / spacing, 0.0, 1.0)) if r_min > 0.0 else w_out
+    return polar_vals, (1.0 - w) * interp + w * outside
+
+
 # ------------------------------------------------ parametric radial profiles
 @pytest.mark.validates("virgil.models.ThinRing", roots=["mathematics"], headline="max_abs_dV")
 def test_thin_ring_matches_deprojected_bessel_j0():
@@ -77,8 +153,8 @@ def test_thin_ring_rejects_diameter_or_pa_confusion():
     wl = 1.65e-6
     qd, _, _ = R.deproject(u, v, 50.0, 30.0)
     truth = special.j0(2.0 * np.pi * qd * 7.5 * R.MAS)
-    wrong_diam = np.asarray(vm.MultipoleDisk(vm.ThinRing(15.0), inc=50.0, pa=30.0).model(u * wl, v * wl, wl)).real
-    wrong_pa = np.asarray(vm.MultipoleDisk(vm.ThinRing(7.5), inc=50.0, pa=120.0).model(u * wl, v * wl, wl)).real
+    wrong_diam = np.asarray(vm.MultipoleDisk(vm.ThinRing(15.0), inc=50.0, pa=30.0).model(u * wl, v * wl, wl))
+    wrong_pa = np.asarray(vm.MultipoleDisk(vm.ThinRing(7.5), inc=50.0, pa=120.0).model(u * wl, v * wl, wl))
     assert np.abs(wrong_diam - truth).max() > 0.2
     assert np.abs(wrong_pa - truth).max() > 0.2
 
@@ -86,7 +162,7 @@ def test_thin_ring_rejects_diameter_or_pa_confusion():
 @pytest.mark.validates("virgil.models.GaussianRing", roots=["mathematics"], headline="max_abs_dV")
 def test_gaussian_ring_matches_closed_form_centre_and_quadrature_ring():
     """GaussianRing(0, sigma) equals the closed-form 2D Gaussian exp(-2 pi^2 sigma^2 q'^2) up to its 6-sigma tail;
-    at r_0 > 0 it matches adaptive Hankel quadrature."""
+    at r_0 > 0 it matches adaptive Hankel quadrature (including zero imaginary part)."""
     u, v = R.baselines(250, q_max=6e7, seed=23)
     wl = 1.65e-6
     inc, pa = 42.0, -25.0
@@ -94,17 +170,17 @@ def test_gaussian_ring_matches_closed_form_centre_and_quadrature_ring():
     # 1. r_0 = 0: 2D Gaussian exp(-2 pi^2 sigma^2 q'^2) (6-sigma clip drops exp(-18) ~ 1.5e-8 of tail)
     sigma = 2.4
     disk0 = vm.MultipoleDisk(vm.GaussianRing(0.0, sigma), inc=inc, pa=pa, n_r=64)
-    got0 = np.asarray(disk0.model(u * wl, v * wl, wl)).real
+    got0 = np.asarray(disk0.model(u * wl, v * wl, wl))
     closed0 = np.exp(-2.0 * (np.pi * sigma * R.MAS * qd) ** 2)
     err0 = float(np.abs(got0 - closed0).max())
     assert err0 < 2e-8
     # 2. r_0 > 0: adaptive quadrature via scipy.integrate.quad
     r0, sig_ring = 9.5, 1.3
     disk_r = vm.MultipoleDisk(vm.GaussianRing(r0, sig_ring), inc=inc, pa=pa, n_r=64)
-    got_r = np.asarray(disk_r.model(u * wl, v * wl, wl)).real
+    got_r = np.asarray(disk_r.model(u * wl, v * wl, wl))
     quad_r = R.hankel_quad(R.gaussian_ring(r0, sig_ring), qd)
     err_r = float(np.abs(got_r - quad_r).max())
-    err = record("max_abs_dV", max(err0, err_r))
+    record("max_abs_dV", max(err0, err_r))
     assert err_r < 1e-8
 
 
@@ -118,14 +194,14 @@ def test_gaussian_ring_sigma_is_not_fwhm():
     wrong = np.asarray(
         vm.MultipoleDisk(vm.GaussianRing(8.0, 1.5 * 2.0 * np.sqrt(2.0 * np.log(2.0))), inc=35.0, pa=15.0, n_r=64)
         .model(u * wl, v * wl, wl)
-    ).real
+    )
     assert np.abs(wrong - truth).max() > 0.1
 
 
 @pytest.mark.validates("virgil.models.RadialPowerLaw", roots=["mathematics"], headline="max_abs_dV")
 def test_radial_power_law_matches_airy_annulus_and_soft_edge_quadrature():
     """Sharp RadialPowerLaw(0, R, 0) is an Airy disk, RadialPowerLaw(r_in, r_out, 0) is the analytic uniform annulus,
-    and sloped/soft-edged profiles match adaptive Hankel quadrature."""
+    and sloped/soft-edged profiles match adaptive Hankel quadrature (complex visibilities, Im V == 0)."""
     u, v = R.baselines(200, q_max=6e7, seed=25)
     wl = 1.65e-6
     inc, pa = 48.0, 65.0
@@ -136,18 +212,18 @@ def test_radial_power_law_matches_airy_annulus_and_soft_edge_quadrature():
         return 2.0 * special.j1(x) / x
 
     # 1. Sharp uniform disk
-    got_ud = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(0.0, 6.5, 0.0), inc=inc, pa=pa, n_r=64).model(u * wl, v * wl, wl)).real
+    got_ud = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(0.0, 6.5, 0.0), inc=inc, pa=pa, n_r=64).model(u * wl, v * wl, wl))
     err_ud = float(np.abs(got_ud - airy(6.5)).max())
     # 2. Sharp uniform annulus: (r_out^2 Airy(r_out) - r_in^2 Airy(r_in)) / (r_out^2 - r_in^2)
     r_in, r_out = 3.0, 8.0
     ann_truth = (r_out**2 * airy(r_out) - r_in**2 * airy(r_in)) / (r_out**2 - r_in**2)
-    got_ann = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(r_in, r_out, 0.0), inc=inc, pa=pa, n_r=64).model(u * wl, v * wl, wl)).real
+    got_ann = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(r_in, r_out, 0.0), inc=inc, pa=pa, n_r=64).model(u * wl, v * wl, wl))
     err_ann = float(np.abs(got_ann - ann_truth).max())
     # 3. Sloped soft-edge power law against adaptive quadrature
     got_soft = np.asarray(
         vm.MultipoleDisk(vm.RadialPowerLaw(4.0, 12.0, -1.5, edge_sigma=0.4), inc=inc, pa=pa, n_r=96)
         .model(u * wl, v * wl, wl)
-    ).real
+    )
     soft_truth = R.hankel_quad(R.erf_power(4.0, 12.0, -1.5, 0.4), qd)
     err_soft = float(np.abs(got_soft - soft_truth).max())
     assert err_ud < 1e-12 and err_ann < 1e-12 and err_soft < 1e-8
@@ -159,27 +235,27 @@ def test_radial_power_law_distinguishes_sharp_and_soft_edges_and_slope_sign():
     """Softening edges or flipping the power-law index sign measurably alters RadialPowerLaw visibilities."""
     u, v = R.baselines(120, q_max=8e7, seed=26)
     wl = 1.65e-6
-    sharp = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(4.0, 12.0, -1.5), n_r=96).model(u * wl, v * wl, wl)).real
-    soft = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(4.0, 12.0, -1.5, edge_sigma=0.8), n_r=96).model(u * wl, v * wl, wl)).real
-    pos_idx = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(4.0, 12.0, +1.5), n_r=96).model(u * wl, v * wl, wl)).real
+    sharp = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(4.0, 12.0, -1.5), n_r=96).model(u * wl, v * wl, wl))
+    soft = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(4.0, 12.0, -1.5, edge_sigma=0.8), n_r=96).model(u * wl, v * wl, wl))
+    pos_idx = np.asarray(vm.MultipoleDisk(vm.RadialPowerLaw(4.0, 12.0, +1.5), n_r=96).model(u * wl, v * wl, wl))
     assert np.abs(sharp - soft).max() > 0.02
     assert np.abs(sharp - pos_idx).max() > 0.05
 
 
 @pytest.mark.validates("virgil.models.Gap", roots=["mathematics"], headline="max_abs_dV")
 def test_gap_profile_matches_quadrature_and_reduces_to_base_at_zero_depth():
-    """Gap(base, radius, sigma, depth=0) equals base; at depth > 0 it matches adaptive quadrature on GaussianRing and RadialPowerLaw."""
+    """Gap(base, radius, sigma, depth=0) equals base; at depth > 0 it matches adaptive quadrature on GaussianRing."""
     u, v = R.baselines(200, q_max=7e7, seed=27)
     wl = 1.65e-6
     inc, pa = 44.0, 22.0
     qd, _, _ = R.deproject(u, v, inc, pa)
     base = vm.GaussianRing(9.0, 2.2)
-    v_base = np.asarray(vm.MultipoleDisk(base, inc=inc, pa=pa, n_r=96).model(u * wl, v * wl, wl)).real
-    v_zero = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=9.0, sigma=0.7, depth=0.0), inc=inc, pa=pa, n_r=96).model(u * wl, v * wl, wl)).real
+    v_base = np.asarray(vm.MultipoleDisk(base, inc=inc, pa=pa, n_r=96).model(u * wl, v * wl, wl))
+    v_zero = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=9.0, sigma=0.7, depth=0.0), inc=inc, pa=pa, n_r=96).model(u * wl, v * wl, wl))
     err_zero = float(np.abs(v_base - v_zero).max())
     assert err_zero < 1e-14
 
-    v_gap = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=9.3, sigma=0.7, depth=0.85), inc=inc, pa=pa, n_r=96).model(u * wl, v * wl, wl)).real
+    v_gap = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=9.3, sigma=0.7, depth=0.85), inc=inc, pa=pa, n_r=96).model(u * wl, v * wl, wl))
     truth = R.hankel_quad(R.with_gap(R.gaussian_ring(9.0, 2.2), 9.3, 0.7, 0.85), qd)
     err_gap = float(np.abs(v_gap - truth).max())
     record("max_abs_dV", max(err_zero, err_gap))
@@ -192,8 +268,8 @@ def test_gap_rejects_swapped_radius_and_depth():
     u, v = R.baselines(100, q_max=6e7, seed=28)
     wl = 1.65e-6
     base = vm.RadialPowerLaw(2.0, 14.0, 0.0, edge_sigma=0.3)
-    right = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=8.0, sigma=1.0, depth=0.85), n_r=96).model(u * wl, v * wl, wl)).real
-    swapped = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=0.85, sigma=1.0, depth=8.0), n_r=96).model(u * wl, v * wl, wl)).real
+    right = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=8.0, sigma=1.0, depth=0.85), n_r=96).model(u * wl, v * wl, wl))
+    swapped = np.asarray(vm.MultipoleDisk(vm.Gap(base, radius=0.85, sigma=1.0, depth=8.0), n_r=96).model(u * wl, v * wl, wl))
     assert np.abs(right - swapped).max() > 0.05
 
 
@@ -203,22 +279,27 @@ def test_radial_sum_mixes_unit_flux_normalized_profiles_by_relative_weights():
     u, v = R.baselines(220, q_max=7e7, seed=29)
     wl = 1.65e-6
     inc, pa, dra, ddec = 51.0, -35.0, -0.3, 0.6
-    p_inner = vm.ThinRing(2.5)
-    p_mid = vm.GaussianRing(7.0, 1.1)
-    p_outer = vm.RadialPowerLaw(10.0, 16.0, -1.0, edge_sigma=0.3)
     w1, w2, w3 = 1.0, 2.5, 0.7
     summed = vm.MultipoleDisk(
-        vm.RadialSum(inner=p_inner, mid=(p_mid, w2), outer=(p_outer, w3)),
+        vm.RadialSum(
+            inner=vm.ThinRing(2.5),
+            mid=(vm.GaussianRing(7.0, 1.1), w2),
+            outer=(vm.RadialPowerLaw(10.0, 16.0, -1.0, edge_sigma=0.3), w3),
+        ),
         inc=inc, pa=pa, dra=dra, ddec=ddec, n_r=96,
     )
     assert summed.get("profile.mid.weight") == pytest.approx(w2)
     got = np.asarray(summed.model(u * wl, v * wl, wl))
-    v1 = np.asarray(vm.MultipoleDisk(p_inner, inc=inc, pa=pa, dra=dra, ddec=ddec, n_r=96).model(u * wl, v * wl, wl))
-    v2 = np.asarray(vm.MultipoleDisk(p_mid, inc=inc, pa=pa, dra=dra, ddec=ddec, n_r=96).model(u * wl, v * wl, wl))
-    v3 = np.asarray(vm.MultipoleDisk(p_outer, inc=inc, pa=pa, dra=dra, ddec=ddec, n_r=96).model(u * wl, v * wl, wl))
+
+    # Independent component visibilities from SciPy J_0 and adaptive Hankel quadrature (zero virgil calls)
+    qd, _, _ = R.deproject(u, v, inc, pa)
+    ph = _phasor(u * wl, v * wl, wl, dra, ddec)
+    v1 = special.j0(2.0 * np.pi * qd * 2.5 * R.MAS) * ph
+    v2 = R.hankel_quad(R.gaussian_ring(7.0, 1.1), qd) * ph
+    v3 = R.hankel_quad(R.erf_power(10.0, 16.0, -1.0, 0.3), qd) * ph
     truth = (w1 * v1 + w2 * v2 + w3 * v3) / (w1 + w2 + w3)
     err = record("max_abs_dV", np.abs(got - truth).max())
-    assert err < 1e-13
+    assert err < 1e-8
 
 
 @pytest.mark.validates("virgil.models.RadialSum", roots=["mathematics"], kind="control")
@@ -230,7 +311,7 @@ def test_radial_sum_weights_are_not_raw_peak_intensities():
     summed = vm.MultipoleDisk(
         vm.RadialSum(inner=(vm.GaussianRing(3.0, 0.8), 1.0), outer=(vm.GaussianRing(12.0, 0.8), 1.0)), n_r=64
     )
-    got = np.asarray(summed.model(u * wl, v * wl, wl)).real
+    got = np.asarray(summed.model(u * wl, v * wl, wl))
     raw_profile = (
         lambda r: np.exp(-0.5 * ((r - 3.0) / 0.8) ** 2) + np.exp(-0.5 * ((r - 12.0) / 0.8) ** 2),
         0.0, 18.0, (3.0, 12.0),
@@ -343,7 +424,7 @@ def test_radial_gp_matches_independent_matern_cholesky_and_prior_covariance(nu):
     bessel = special.j0(2.0 * np.pi * qd[:, None] * (r_nodes[None, :] * R.MAS))
     weights = w_nodes * r_nodes * i_nodes
     truth_v = (bessel @ weights) / np.sum(weights)
-    got_v = np.asarray(disk.model(u * wl, v * wl, wl)).real
+    got_v = np.asarray(disk.model(u * wl, v * wl, wl))
     err_v = record("max_abs_dV", np.abs(got_v - truth_v).max())
     assert err_v < 5e-12
 
@@ -370,7 +451,7 @@ def test_radial_gp_distinguishes_kernel_smoothness_and_scale():
 @pytest.mark.parametrize("nu_theta", [1.5, float("inf")])
 def test_multipole_kernel_spectrum_draws_and_disk_visibility(nu_theta):
     """MultipoleKernel matches S(m)/S(1), generates independent radial Matérn draws per harmonic order,
-    and produces MultipoleDisk visibilities matching a brute-force polar point-cloud DFT."""
+    and produces MultipoleDisk visibilities matching an independent Cholesky + linear-interpolation polar cloud."""
     r_in, r_out, r_ref = 2.0, 14.0, 8.0
     ell_r, ell_theta, sigma, n_nodes, degree = 3.5, 4.0, 0.35, 16, 3
     kern = vm.MultipoleKernel(
@@ -389,7 +470,7 @@ def test_multipole_kernel_spectrum_draws_and_disk_visibility(nu_theta):
     var_by_m = draws.var(axis=(0, 1, 3))
     assert np.max(np.abs(var_by_m - sigma**2 * s_rel)) < 0.08 * sigma**2
 
-    # End-to-end MultipoleDisk visibility with deterministic latents z
+    # End-to-end MultipoleDisk visibility with deterministic latents z (zero virgil calls in reference)
     rng = np.random.default_rng(43)
     z = rng.normal(size=(2, degree, n_nodes)) * 0.4
     disk = vm.MultipoleDisk(
@@ -402,7 +483,16 @@ def test_multipole_kernel_spectrum_draws_and_disk_visibility(nu_theta):
     got = np.asarray(disk.model(u * wl, v * wl, wl))
 
     r_q, wt_q = P.panelled_nodes(max(8.0 - 8 * 1.2, 1e-6), 8.0 + 8 * 1.2, lambda r: np.exp(-0.5 * ((r - 8.0) / 1.2) ** 2))
-    c_r, s_r = (np.asarray(x) for x in disk.harmonics.coefficients(r_q))
+    nodes = np.linspace(r_in, r_out, n_nodes)
+    l_chol = np.linalg.cholesky(_matern_corr(np.abs(nodes[:, None] - nodes[None, :]), ell_r, 1.5) + 1e-6 * np.eye(n_nodes))
+    scale_m = sigma * np.sqrt(s_rel)[:, None]
+    c_nodes = scale_m * (z[0] @ l_chol.T)
+    s_nodes = scale_m * (z[1] @ l_chol.T)
+    c_r = np.array([np.interp(r_q, nodes, row) for row in c_nodes])
+    s_r = np.array([np.interp(r_q, nodes, row) for row in s_nodes])
+    c_vir, s_vir = (np.asarray(x) for x in disk.harmonics.coefficients(r_q))
+    assert np.max(np.abs(c_r - c_vir)) < 1e-14 and np.max(np.abs(s_r - s_vir)) < 1e-14
+
     th = np.linspace(0.0, 2.0 * np.pi, 512, endpoint=False)
     rr, tt = np.meshgrid(r_q, th, indexing="ij")
     az = np.ones_like(rr)
@@ -491,40 +581,70 @@ def test_from_image_harmonics_positive_rejects_negative_profile_and_conjugation(
 @pytest.mark.validates("virgil.harmonics.from_legacy", "virgil.harmonics.to_legacy",
                        "virgil.harmonics.rim_coefficients", "virgil.harmonics.cone_coefficients",
                        roots=["mathematics"], headline="max_abs_dV")
-def test_legacy_rim_and_cone_conversions_match_legacy_models():
-    """from_legacy, to_legacy, rim_coefficients, and cone_coefficients map ModulatedGaussianRim and TruncatedCone
-    azimuthal modulations into MultipoleDisk without visibility loss."""
+def test_legacy_rim_and_cone_conversions_match_trigonometry_and_point_clouds():
+    """rim_coefficients, cone_coefficients, from_legacy, and to_legacy match independent trigonometric identities,
+    canonical angle wrapping on [-180/m, 180/m) about the reference axis, and independent crosscheck point clouds."""
     u, v = R.baselines(150, q_max=5e7, seed=46)
     wl = 2.2e-6
 
-    # 1. Rim equivalence: ModulatedGaussianRim vs MultipoleDisk(ThinRing, harmonics=from_legacy(..., kind='rim'))
+    # 1. Rim trigonometry, canonical to_legacy wrapping, and crosscheck.sky.inclined_ring
     amps, pas, pa, inc, diam, fwhm = (0.35, 0.2, 0.12), (75.0, -20.0, 130.0), 32.0, 48.0, 11.0, 1.4
-    rim = vm.ModulatedGaussianRim(diam=diam, fwhm=fwhm, inc=inc, pa=pa, az_amps=amps, az_pas=pas)
-    h_rim = vh.from_legacy(amps, pas, pa=pa, kind="rim")
+    m_rim = np.arange(1, len(amps) + 1)
+    dphi_rim = np.deg2rad(np.asarray(pas) - pa)
+    c_rim_ref = np.asarray(amps) * np.cos(m_rim * dphi_rim)
+    s_rim_ref = np.asarray(amps) * np.sin(m_rim * dphi_rim)
     c_rim, s_rim = vh.rim_coefficients(np.asarray(amps), np.asarray(pas), pa)
-    assert np.max(np.abs(np.asarray(h_rim.c) - np.asarray(c_rim))) < 1e-15
-    assert np.max(np.abs(np.asarray(h_rim.s) - np.asarray(s_rim))) < 1e-15
+    h_rim = vh.from_legacy(amps, pas, pa=pa, kind="rim")
+    coeff_err_rim = float(max(
+        np.max(np.abs(np.asarray(c_rim) - c_rim_ref)),
+        np.max(np.abs(np.asarray(s_rim) - s_rim_ref)),
+        np.max(np.abs(np.asarray(h_rim.c) - c_rim_ref)),
+        np.max(np.abs(np.asarray(h_rim.s) - s_rim_ref)),
+    ))
+    assert coeff_err_rim < 1e-14
+
+    amps_rt, pas_rt = (np.asarray(x) for x in vh.to_legacy(h_rim, pa=pa, kind="rim"))
+    periods_rim = 360.0 / m_rim
+    pas_canon = pa + ((np.asarray(pas) - pa + 0.5 * periods_rim) % periods_rim - 0.5 * periods_rim)
+    assert np.all(amps_rt >= 0.0)
+    assert np.max(np.abs(amps_rt - np.asarray(amps))) < 1e-14
+    assert np.max(np.abs(pas_rt - pas_canon)) < 1e-12
+    # Non-canonical wrapped inputs (shifted by integer multiples of 360/m) map to the identical canonical tuple
+    pas_wrapped = tuple(p + 2.0 * per for p, per in zip(pas, periods_rim))
+    amps_w, pas_w = (np.asarray(x) for x in vh.to_legacy(vh.from_legacy(amps, pas_wrapped, pa=pa, kind="rim"), pa=pa, kind="rim"))
+    assert np.max(np.abs(amps_w - amps_rt)) < 1e-14 and np.max(np.abs(pas_w - pas_rt)) < 1e-12
+
     disk_rim = vm.MultipoleDisk(vm.ThinRing(diam / 2.0), harmonics=h_rim, inc=inc, pa=pa, blur_fwhm=fwhm)
-    err_rim = float(np.abs(np.asarray(rim.model(u * wl, v * wl, wl)) - np.asarray(disk_rim.model(u * wl, v * wl, wl))).max())
+    cloud_rim = sky.inclined_ring(diam, inc=inc, pa=pa, az_amps=amps, az_pas=pas, modulation="disk", n_phi=4096)
+    ref_rim = sky.visibility(cloud_rim, u * wl, v * wl, wl) * sky.in_plane_blur_factor(u * wl, v * wl, wl, fwhm, inc, pa)
+    err_rim = float(np.abs(np.asarray(disk_rim.model(u * wl, v * wl, wl)) - ref_rim).max())
 
-    amps_rt, pas_rt = vh.to_legacy(h_rim, pa=pa, kind="rim")
-    disk_rim_rt = vm.MultipoleDisk(
-        vm.ThinRing(diam / 2.0), harmonics=vh.from_legacy(amps_rt, pas_rt, pa=pa, kind="rim"),
-        inc=inc, pa=pa, blur_fwhm=fwhm,
-    )
-    err_rim_rt = float(np.abs(np.asarray(disk_rim.model(u * wl, v * wl, wl)) - np.asarray(disk_rim_rt.model(u * wl, v * wl, wl))).max())
-
-    # 2. Cone equivalence: full 3D TruncatedCone vs MultipoleDisk(ExpTail(..., cutoff=5), Cone(alpha, tip)) * sky blur
+    # 2. Cone trigonometry, canonical to_legacy wrapping, and independent 3D modulated wall cloud
     alpha, tip, s0, length, width, tilt, cone_pa = 38.0, 3.5, 4.0, 3.2, 0.8, 40.0, 65.0
     c_amps, c_pas = (0.4, 0.22), (115.0, 25.0)
-    cone_legacy = vm.TruncatedCone(
-        tip=tip, alpha=alpha, s0=s0, length=length, width=width,
-        tilt=tilt, pa=cone_pa, ratio=1.0, az_amps=c_amps, az_pas=c_pas, n_rings=48,
-    )
-    h_cone = vh.from_legacy(c_amps, c_pas, pa=cone_pa, kind="cone")
+    m_cone = np.arange(1, len(c_amps) + 1)
+    ph_cone = np.deg2rad(cone_pa + 90.0 - np.asarray(c_pas))
+    sign_m = (-1.0) ** m_cone
+    c_cone_ref = sign_m * np.asarray(c_amps) * np.cos(m_cone * ph_cone)
+    s_cone_ref = -sign_m * np.asarray(c_amps) * np.sin(m_cone * ph_cone)
     c_c, s_c = vh.cone_coefficients(np.asarray(c_amps), np.asarray(c_pas), cone_pa)
-    assert np.max(np.abs(np.asarray(h_cone.c) - np.asarray(c_c))) < 1e-15
-    assert np.max(np.abs(np.asarray(h_cone.s) - np.asarray(s_c))) < 1e-15
+    h_cone = vh.from_legacy(c_amps, c_pas, pa=cone_pa, kind="cone")
+    coeff_err_cone = float(max(
+        np.max(np.abs(np.asarray(c_c) - c_cone_ref)),
+        np.max(np.abs(np.asarray(s_c) - s_cone_ref)),
+        np.max(np.abs(np.asarray(h_cone.c) - c_cone_ref)),
+        np.max(np.abs(np.asarray(h_cone.s) - s_cone_ref)),
+    ))
+    assert coeff_err_cone < 1e-14
+
+    c_amps_rt, c_pas_rt = (np.asarray(x) for x in vh.to_legacy(h_cone, pa=cone_pa, kind="cone"))
+    periods_cone = 360.0 / m_cone
+    ref_wall = cone_pa + 90.0
+    c_pas_canon = ref_wall + ((np.asarray(c_pas) - ref_wall + 0.5 * periods_cone) % periods_cone - 0.5 * periods_cone)
+    assert np.all(c_amps_rt >= 0.0)
+    assert np.max(np.abs(c_amps_rt - np.asarray(c_amps))) < 1e-14
+    assert np.max(np.abs(c_pas_rt - c_pas_canon)) < 1e-12
+
     sin_a = np.sin(np.deg2rad(alpha))
     disk_cone = vm.MultipoleDisk(
         vm.ExpTail(s0 * sin_a, length * sin_a, cutoff=5.0),
@@ -533,17 +653,52 @@ def test_legacy_rim_and_cone_conversions_match_legacy_models():
     )
     sky_blur = sky.gaussian_blur_factor(u * wl, v * wl, wl, width)
     v_cone_disk = np.asarray(disk_cone.model(u * wl, v * wl, wl)) * sky_blur
-    err_cone = float(np.abs(np.asarray(cone_legacy.model(u * wl, v * wl, wl)) - v_cone_disk).max())
+    v_cone_cloud = sky.visibility(
+        _modulated_cone_cloud(tip, alpha, s0, length, tilt, cone_pa, c_amps, c_pas), u * wl, v * wl, wl
+    ) * sky_blur
+    err_cone = float(np.abs(v_cone_disk - v_cone_cloud).max())
 
+    record("max_coeff_err", max(coeff_err_rim, coeff_err_cone))
+    err = record("max_abs_dV", max(err_rim, err_cone))
+    assert err < 1e-6
+
+
+@pytest.mark.validates("virgil.harmonics.from_legacy", "virgil.harmonics.to_legacy",
+                       "virgil.harmonics.rim_coefficients", "virgil.harmonics.cone_coefficients",
+                       roots=["self-consistency"], headline="max_abs_dV")
+def test_legacy_conversions_preserve_rim_and_cone_model_equivalence():
+    """MultipoleDisk with from_legacy/to_legacy reproduces ModulatedGaussianRim and TruncatedCone to machine precision."""
+    u, v = R.baselines(120, q_max=5e7, seed=48)
+    wl = 2.2e-6
+
+    amps, pas, pa, inc, diam, fwhm = (0.35, 0.2, 0.12), (75.0, -20.0, 130.0), 32.0, 48.0, 11.0, 1.4
+    rim = vm.ModulatedGaussianRim(diam=diam, fwhm=fwhm, inc=inc, pa=pa, az_amps=amps, az_pas=pas)
+    h_rim = vh.from_legacy(amps, pas, pa=pa, kind="rim")
+    amps_rt, pas_rt = vh.to_legacy(h_rim, pa=pa, kind="rim")
+    disk_rim = vm.MultipoleDisk(
+        vm.ThinRing(diam / 2.0), harmonics=vh.from_legacy(amps_rt, pas_rt, pa=pa, kind="rim"),
+        inc=inc, pa=pa, blur_fwhm=fwhm,
+    )
+    err_rim = float(np.abs(np.asarray(rim.model(u * wl, v * wl, wl)) - np.asarray(disk_rim.model(u * wl, v * wl, wl))).max())
+
+    alpha, tip, s0, length, width, tilt, cone_pa = 38.0, 3.5, 4.0, 3.2, 0.8, 40.0, 65.0
+    c_amps, c_pas = (0.4, 0.22), (115.0, 25.0)
+    cone_legacy = vm.TruncatedCone(
+        tip=tip, alpha=alpha, s0=s0, length=length, width=width,
+        tilt=tilt, pa=cone_pa, ratio=1.0, az_amps=c_amps, az_pas=c_pas, n_rings=48,
+    )
+    h_cone = vh.from_legacy(c_amps, c_pas, pa=cone_pa, kind="cone")
     c_amps_rt, c_pas_rt = vh.to_legacy(h_cone, pa=cone_pa, kind="cone")
-    disk_cone_rt = vm.MultipoleDisk(
+    sin_a = np.sin(np.deg2rad(alpha))
+    disk_cone = vm.MultipoleDisk(
         vm.ExpTail(s0 * sin_a, length * sin_a, cutoff=5.0),
         harmonics=vh.from_legacy(c_amps_rt, c_pas_rt, pa=cone_pa, kind="cone"),
         height=vm.Cone(alpha=alpha, tip=tip), inc=90.0 - tilt, pa=cone_pa - 90.0, n_r=48,
     )
-    err_cone_rt = float(np.abs(np.asarray(disk_cone.model(u * wl, v * wl, wl)) - np.asarray(disk_cone_rt.model(u * wl, v * wl, wl))).max())
+    v_cone_disk = np.asarray(disk_cone.model(u * wl, v * wl, wl)) * sky.gaussian_blur_factor(u * wl, v * wl, wl, width)
+    err_cone = float(np.abs(np.asarray(cone_legacy.model(u * wl, v * wl, wl)) - v_cone_disk).max())
 
-    err = record("max_abs_dV", max(err_rim, err_rim_rt, err_cone, err_cone_rt))
+    err = record("max_abs_dV", max(err_rim, err_cone))
     assert err < 1e-13
 
 
@@ -564,14 +719,20 @@ def test_legacy_conversions_distinguish_rim_and_cone_conventions():
 # ------------------------------------------------ virgil.fields.MultipoleField
 @pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_rel_cov_err")
 def test_multipole_field_polar_covariance_and_origin_regularity():
-    """On an annulus (r_min_mas > 0) MultipoleField induces the exact separable Matérn radial x periodic-azimuthal
-    covariance; with r_min_mas = 0 it pinches m >= 1 modes by tanh(r / spacing)^|m| so r = 0 is single-valued."""
+    """On an annulus (r_min_mas > 0) MultipoleField induces the separable Matérn radial x periodic-azimuthal
+    covariance; with r_min_mas = 0 it pinches m != 0 modes by tanh(r / spacing)^|m| so r = 0 is single-valued
+    with variance sigma^2 * S(0) / sum_m S(m) < sigma^2."""
     n_r, n_th = 9, 12
-    r_min, r_max, sigma, lr, lth = 4.0, 20.0, 1.4, 5.0, 0.9
+    r_min, r_max, sigma, lr, lth = 4.0, 20.0, 1.4, 7.0, 0.9
     nu_r, nu_th = 1.5, 2.5
 
-    # Extract exact induced polar-grid covariance Sigma = A A^T from unit latent basis vectors
-    cols = []
+    freqs = np.fft.fftfreq(n_th, d=1.0 / n_th)  # integer harmonic orders in [-n_th/2, n_th/2)
+    s_th = _periodic_matern_spectrum(np.abs(freqs), lth, nu_th)
+    s_th = s_th / s_th.sum()
+    dtheta = 2.0 * np.pi * (np.arange(n_th)[:, None] - np.arange(n_th)[None, :]) / n_th
+
+    # 1. Annulus (r_min_mas > 0): exact separable covariance sigma^2 * kron(K_r, K_theta)
+    cols_ann = []
     for k in range(n_r):
         for j in range(n_th):
             e = np.zeros((n_r, n_th))
@@ -580,57 +741,104 @@ def test_multipole_field_polar_covariance_and_origin_regularity():
                 e, image_shape=(16, 16), r_max_mas=r_max, r_min_mas=r_min,
                 sigma=sigma, length_r=lr, length_theta=lth, nu=nu_r, nu_theta=nu_th,
             )
-            cols.append(np.asarray(f.polar_values()).ravel())
-    a_mat = np.column_stack(cols)
-    cov_got = a_mat @ a_mat.T
+            cols_ann.append(np.asarray(f.polar_values()).ravel())
+    a_ann = np.column_stack(cols_ann)
+    cov_ann = a_ann @ a_ann.T
 
-    # Independent separable covariance: sigma^2 * K_r(|r_k - r_k'|) x K_theta(theta_j - theta_j')
-    radii = np.linspace(r_min, r_max, n_r)
-    k_r = _matern_corr(np.abs(radii[:, None] - radii[None, :]), lr, nu_r)
-    freqs = np.fft.fftfreq(n_th, d=1.0 / n_th)  # integer harmonic orders in [-n_th/2, n_th/2)
-    s_th = _periodic_matern_spectrum(np.abs(freqs), lth, nu_th)
-    s_th = s_th / s_th.sum()
-    dtheta = 2.0 * np.pi * (np.arange(n_th)[:, None] - np.arange(n_th)[None, :]) / n_th
+    radii_ann = np.linspace(r_min, r_max, n_r)
+    k_r_ann = _matern_corr(np.abs(radii_ann[:, None] - radii_ann[None, :]), lr, nu_r)
     k_th = np.sum(s_th[None, None, :] * np.cos(freqs[None, None, :] * dtheta[:, :, None]), axis=-1)
-    cov_expected = sigma**2 * np.kron(k_r, k_th)
+    cov_ann_expected = sigma**2 * np.kron(k_r_ann, k_th)
+    rel_err_ann = float(np.max(np.abs(cov_ann - cov_ann_expected)) / sigma**2)
+    assert rel_err_ann < 5e-6
 
-    rel_err = record("max_rel_cov_err", np.max(np.abs(cov_got - cov_expected)) / (sigma**2))
-    assert rel_err < 5e-6  # matches to the 1e-6 radial Cholesky diagonal jitter
+    # 2. Full disk (r_min_mas = 0): tanh(r / spacing)^|m| origin taper and reduced origin variance sigma^2 * s_th[0]
+    cols_0 = []
+    for k in range(n_r):
+        for j in range(n_th):
+            e = np.zeros((n_r, n_th))
+            e[k, j] = 1.0
+            f = vf.MultipoleField(
+                e, image_shape=(16, 16), r_max_mas=r_max, r_min_mas=0.0,
+                sigma=sigma, length_r=lr, length_theta=lth, nu=nu_r, nu_theta=nu_th,
+            )
+            cols_0.append(np.asarray(f.polar_values()).ravel())
+    a_0 = np.column_stack(cols_0)
+    cov_0 = a_0 @ a_0.T
 
-    # With r_min_mas = 0, r = 0 (row 0) must be single-valued across all azimuths, with variance sigma^2
+    radii_0 = np.linspace(0.0, r_max, n_r)
+    spacing = r_max / (n_r - 1)  # 2.5 mas != lr (7.0 mas)
+    k_r_0 = _matern_corr(np.abs(radii_0[:, None] - radii_0[None, :]), lr, nu_r)
+
+    def tapered_cov(scale_r):
+        taper = np.tanh(radii_0[:, None] / scale_r) ** np.abs(freqs[None, :])  # (n_r, n_th)
+        weight_m = s_th[None, None, :] * taper[:, None, :] * taper[None, :, :]  # (n_r, n_r, n_th)
+        cos_m = np.cos(freqs[None, None, :] * dtheta[:, :, None])  # (n_th, n_th, n_th)
+        # Assemble ((k, j), (k', j'))
+        block = sigma**2 * k_r_0[:, :, None, None] * np.einsum("abm,ijm->abij", weight_m, cos_m)
+        return block.transpose(0, 2, 1, 3).reshape(n_r * n_th, n_r * n_th)
+
+    cov_0_expected = tapered_cov(spacing)
+    rel_err_0 = float(np.max(np.abs(cov_0 - cov_0_expected)) / sigma**2)
+    rel_err = record("max_rel_cov_err", max(rel_err_ann, rel_err_0))
+    assert rel_err < 2e-5
+    # Confusing node spacing (2.5 mas) with length_r (7.0 mas) in the origin taper fails decisively
+    assert np.max(np.abs(cov_0 - tapered_cov(lr))) / sigma**2 > 0.2
+
+    # At r = 0 (row 0), all m != 0 modes vanish: single-valued across azimuth with variance sigma^2 * s_th[0] < sigma^2
+    assert cov_0[0, 0] == pytest.approx(sigma**2 * s_th[0], rel=1e-4)
+    assert cov_0[0, 0] < 0.5 * sigma**2
     rng = np.random.default_rng(51)
     z0 = rng.normal(size=(n_r, n_th))
-    f0 = vf.MultipoleField(z0, image_shape=(16, 16), r_max_mas=r_max, r_min_mas=0.0, sigma=sigma, length_r=lr, length_theta=lth)
+    f0 = vf.MultipoleField(
+        z0, image_shape=(16, 16), r_max_mas=r_max, r_min_mas=0.0,
+        sigma=sigma, length_r=lr, length_theta=lth, nu=nu_r, nu_theta=nu_th,
+    )
     pv0 = np.asarray(f0.polar_values())
     assert np.ptp(pv0[0, :]) < 1e-14
 
 
 @pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_abs_dV")
 def test_multipole_field_image_visibility_and_tied_system_geometry():
-    """Image(MultipoleField) matches a direct 2D pixel sky DFT, clips outside r_max_mas to `outside`,
-    and follows a sibling MultipoleDisk's geometry when tied with geometry_from='disk'."""
+    """MultipoleField.evaluate and Image(MultipoleField) match an independent latent-to-sky polar interpolation
+    and 2D pixel DFT (for both full disks and annuli), and follow sibling geometry under geometry_from='disk'."""
     npix, scale = 48, 1.0
     rng = np.random.default_rng(52)
     z = rng.normal(size=(12, 16)) * 0.6
-    inc, pa, dra, ddec = 48.0, 35.0, 1.2, -0.8
+    inc, pa, dra, ddec, outside = 48.0, 35.0, 1.2, -0.8, -25.0
     field = vf.MultipoleField(
         z, image_shape=(npix, npix), r_max_mas=15.0, sigma=1.1,
-        length_r=4.0, length_theta=0.8, inc=inc, pa=pa, dra=dra, ddec=ddec, outside=-25.0,
+        length_r=4.0, length_theta=0.8, inc=inc, pa=pa, dra=dra, ddec=ddec, outside=outside,
     )
     eta = np.asarray(field.evaluate(scale))
-    # Corners sit well outside r_max_mas + spacing (~16.4 mas): log-brightness equals `outside`
-    assert eta[0, 0] == pytest.approx(-25.0, abs=1e-6) and eta[-1, -1] == pytest.approx(-25.0, abs=1e-6)
+    pv_ref, eta_ref = _multipole_field_sky_image(
+        z, npix, scale, 0.0, 15.0, 1.1, 4.0, 0.8, 1.5, 1.5, inc, pa, dra, ddec, outside
+    )
+    assert np.max(np.abs(np.asarray(field.polar_values()) - pv_ref)) < 1e-13
+    pix_err = record("max_abs_d_eta", np.max(np.abs(eta - eta_ref)))
+    assert pix_err < 1e-7
+    assert eta[0, 0] == pytest.approx(outside, abs=1e-6) and eta[-1, -1] == pytest.approx(outside, abs=1e-6)
+
+    # Annulus inner-hole fade to `outside` (r_min_mas = 4.0 > 0)
+    field_ann = vf.MultipoleField(
+        z, image_shape=(npix, npix), r_max_mas=15.0, r_min_mas=4.0, sigma=1.1,
+        length_r=4.0, length_theta=0.8, inc=inc, pa=pa, dra=dra, ddec=ddec, outside=outside,
+    )
+    _, eta_ann_ref = _multipole_field_sky_image(
+        z, npix, scale, 4.0, 15.0, 1.1, 4.0, 0.8, 1.5, 1.5, inc, pa, dra, ddec, outside
+    )
+    assert np.max(np.abs(np.asarray(field_ann.evaluate(scale)) - eta_ann_ref)) < 1e-7
 
     img = vm.Image(field, pixel_scale_mas=scale, flux=1.0)
     u, v = R.baselines(100, q_max=2.5e7, seed=53)
     wl = 2.2e-6
     got = np.asarray(img.model(u * wl, v * wl, wl))
 
-    # Independent pixel-grid DFT: row 0 is North, column 0 is East (sky.pixel_image)
-    w_pix = np.exp(eta - eta.max())
+    # Independent pixel-grid DFT built solely from eta_ref (zero virgil calls on the reference side)
+    w_pix = np.exp(eta_ref - eta_ref.max())
     ref = sky.visibility(sky.pixel_image(w_pix, scale), u * wl, v * wl, wl)
     err = record("max_abs_dV", np.abs(got - ref).max())
-    assert err < 1e-12
+    assert err < 1e-9
 
     # Tied geometry via from_disk(..., geometry_from='disk') tracks updates to the sibling disk
     disk = vm.MultipoleDisk(vm.GaussianRing(8.0, 1.2), inc=30.0, pa=15.0, dra=0.5, ddec=-0.4, flux=0.6)
@@ -650,11 +858,18 @@ def test_multipole_field_rejects_rotated_pa_or_flipped_east_axis():
     """Rotating MultipoleField's PA by 90 deg or flipping the East sky sign breaks visibility agreement."""
     npix, scale = 40, 1.0
     z = np.zeros((10, 16))
-    z[5, 0] = 2.5  # strong azimuthal asymmetry on the major axis
+    z[5, 0] = 2.5  # strong azimuthal asymmetry off the sky axes
     f_right = vf.MultipoleField(z, image_shape=(npix, npix), r_max_mas=14.0, inc=55.0, pa=30.0)
-    f_wrong = vf.MultipoleField(z, image_shape=(npix, npix), r_max_mas=14.0, inc=55.0, pa=120.0)
     u, v = R.baselines(80, q_max=2.5e7, seed=54)
     wl = 2.2e-6
-    v_right = np.asarray(vm.Image(f_right, pixel_scale_mas=scale).model(u * wl, v * wl, wl))
-    v_wrong = np.asarray(vm.Image(f_wrong, pixel_scale_mas=scale).model(u * wl, v * wl, wl))
-    assert np.abs(v_right - v_wrong).max() > 0.05
+    v_got = np.asarray(vm.Image(f_right, pixel_scale_mas=scale).model(u * wl, v * wl, wl))
+
+    def vis_from_ref(pa_deg, east_sign):
+        _, eta_r = _multipole_field_sky_image(
+            z, npix, scale, 0.0, 14.0, 1.0, None, 1.0, 1.5, 1.5, 55.0, pa_deg, 0.0, 0.0, -20.0, east_sign=east_sign
+        )
+        return sky.visibility(sky.pixel_image(np.exp(eta_r - eta_r.max()), scale), u * wl, v * wl, wl)
+
+    assert np.abs(v_got - vis_from_ref(30.0, +1.0)).max() < 1e-9
+    assert np.abs(v_got - vis_from_ref(120.0, +1.0)).max() > 0.05
+    assert np.abs(v_got - vis_from_ref(30.0, -1.0)).max() > 0.05

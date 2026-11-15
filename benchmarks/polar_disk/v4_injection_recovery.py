@@ -1,4 +1,4 @@
-"""V4: optical/IR injection-recovery of PolarDisk scenes (no reference code covers this).
+"""V4: optical/IR injection-recovery of MultipoleDisk scenes (no reference code covers this).
 
 Each injection draws a ring + gap + planet scene with POSITIVE azimuthal harmonics
 (Fejer-Riesz form, M = 1..3) from the prior below, observes it on synthetic NRM

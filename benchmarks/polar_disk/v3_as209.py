@@ -1,4 +1,4 @@
-"""V3b: DSHARP AS 209, frank's documented example, against PolarDisk with a RadialGP profile.
+"""V3b: DSHARP AS 209, frank's documented example, against MultipoleDisk with a RadialGP profile.
 
 Data: frank's ``docs/tutorials/AS209_continuum.npz`` (discsim/frank, 37.4 MB,
 977 774 complex visibilities of the DSHARP AS 209 continuum; fetched with
@@ -12,7 +12,7 @@ N = 250, alpha = 1.05, weights_smooth = 1e-4).
 virgil has no loader for complex visibilities and this benchmark adds none
 (design/radial_profiles.md section 13): the geometry correction and the
 deprojected radial binning (2 klambda bins to 4 Mlambda, real part, summed
-weights) are done here with frank's own ``apply_correction``, and PolarDisk
+weights) are done here with frank's own ``apply_correction``, and MultipoleDisk
 (inc = 0, pa = 0: the data are deprojected) is evaluated on the binned
 baselines. What is compared is therefore the FORWARD MODEL and the recovered
 PROFILE SHAPE, not a posterior from raw data. The fit is a MAP of the RadialGP

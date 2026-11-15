@@ -356,8 +356,8 @@ nodes:
     depends: [virgil.fields.field_spectrum]
   virgil.fields.MultipoleField:
     layer: priors
-    source: [src/virgil/fields.py]
-    depends: [virgil.fields.field_spectrum]
+    source: [src/virgil/fields.py, src/virgil/models.py]
+    depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel]
     doc: models/polar_disk.md
   virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
   virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}

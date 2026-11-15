@@ -1,4 +1,4 @@
-"""V3a: HR 4796 ALMA visibilities, vis-r's example, against PolarDisk.
+"""V3a: HR 4796 ALMA visibilities, vis-r's example, against MultipoleDisk.
 
 Data: vis-r's ``data/hr4796.selfcal.npy`` (drgmk/vis-r, 12.9 MB, 321 322 complex
 visibilities, one SPW group; fetched with
@@ -13,7 +13,7 @@ their MCMC, reproduced below. These are NOT numbers read from the RASTI paper
 Same procedure as vis-r's ``examples/hello_world.py``: reweight so the null
 model has chi^2 = N, bin in (u, v) with ``size_arcsec`` = 4, Gaussian ring
 (dra, ddec, PA, inc, flux, r0, dr, dz) with the vertical Gaussian factor
-exp(-0.5 (2 pi dz r0 sin(i) u_minor)^2). PolarDisk has no scale height, so for
+exp(-0.5 (2 pi dz r0 sin(i) u_minor)^2). MultipoleDisk has no vertical Gaussian scale height, so for
 the virgil model the harness multiplies by the same factor (as in V1/A4).
 
 CONVENTION. vis-r's (dra, ddec) is a phase rotation exp(+2 pi i (u dra + v ddec)) of

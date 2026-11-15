@@ -1,9 +1,9 @@
-"""V2 (other codes): PolarDisk against PMOIRED and oimodeler.
+"""V2 (other codes): MultipoleDisk against PMOIRED and oimodeler.
 
 PMOIRED: a ring with a radial ``profile`` expression and azimuthal harmonics
 (``az ampN``, ``az projangN``; the earlier comparison in docs/method/pmoired.md pinned
 that PMOIRED's azimuth is in the disk plane and ``az projangN`` relative to ``projang``)
-against PolarDisk with linear Harmonics (c_m = A_m cos(m phi_m), s_m = A_m sin(m phi_m)),
+against MultipoleDisk with linear Harmonics (c_m = A_m cos(m phi_m), s_m = A_m sin(m phi_m)),
 on the same OIFITS file, at the coordinates PMOIRED uses. PMOIRED samples the
 radial profile at ``Nr`` points (Nr = 3000 here, trapezoid), and computes rings exactly only
 up to 30 samples per baseline (docs/method/pmoired.md, finding P2): the carrier file has 30.

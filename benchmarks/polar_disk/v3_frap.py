@@ -15,7 +15,7 @@ Fourier-Bessel nodes to r_out = 1.3 arcsec, N = 130 as in FRAP's tutorial)
 with a Gaussian-process MAP written here: I = exp(g), g = c + sigma L z, z ~ N(0, I),
 squared-exponential kernel (FRAP's), sigma = 2, ell = 0.03 arcsec, the same prior
 and statistics as the RadialGP profile; L-BFGS on (z, c). The tutorial's physical
-parameters (fixed T and q, inferred Sigma_d and a_max) are not used. PolarDisk uses
+parameters (fixed T and q, inferred Sigma_d and a_max) are not used. MultipoleDisk uses
 RadialGP(nu = inf, same sigma and ell) on 130 Gauss-Legendre nodes
 (2 mas to 1.3 arcsec), free flux.
 

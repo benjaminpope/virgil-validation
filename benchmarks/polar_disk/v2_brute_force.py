@@ -1,4 +1,4 @@
-"""V2 (brute force): PolarDisk against numpy DFTs of finely rendered scenes.
+"""V2 (brute force): MultipoleDisk against numpy DFTs of finely rendered scenes.
 
 Each scene is rendered in the disk plane at fine resolution and carried to the
 sky by the documented geometry (src/crosscheck/polar_images.py, which imports
