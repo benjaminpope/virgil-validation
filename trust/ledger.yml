@@ -657,17 +657,6 @@
   decision: 'ruled definition / documented (Ben, 2026-11-15): the calibration nuisance sign does not need to be a convention trust-graph blocker; it is an arbitrary parameter-sign convention pinned via properties: {calibration: 1} alongside external PMOIRED confirmation of PositionData.loglike.'
 
 - id: D26
-  title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode enters the wrap denominator when Delta != 0'
-  objects: [virgil.gains.ClosureOffsets, virgil.gains.closure_offsets]
-  ruling: definition
-  kind: 'formulation choice (in virgil 0.4.2, ClosureOffsets defaults to scale_penalty=True, dividing each closure phase''s periodic chord-minus-sine correction 2 sin^2(Delta / 2) by hypot(sigma_i, sigma_off,i) with sigma_off,i^2 = (M M^T)_ii computed per triangle before projecting onto the rank-3 column space of T. On a 4-telescope frame, a supplied mode along the 1D left null vector n with n^T T = 0 contributes zero to the projected sine covariance Q^T R Q + V V^T — leaving model_loglike strictly invariant under scale_penalty=False — whereas under scale_penalty=True its non-zero diagonal entry sigma_off,i^2 softens the unprojected wrap-penalty term whenever model_cp != data_cp)'
-  referee: mathematics (exact dense-Gaussian marginal + periodic wrap-penalty decomposition, tests/test_gains_algebra.py and tests/test_linear_marginals.py)
-  evidence:
-    - tests/test_gains_algebra.py::test_offsets_outside_the_span_of_T_do_not_enter
-    - tests/test_linear_marginals.py::test_closure_offsets_wrap_boundary_near_pi
-  status: documented
-
-- id: D27
   title: 'ArchimedeanSpiral: deprojected sky departure pa, pitch winding sign, and in-plane arc-length fade weight are internal parameter conventions checked via properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} and wrong-convention controls'
   objects: [virgil.models.ArchimedeanSpiral]
   ruling: definition
@@ -681,6 +670,17 @@
     - tests/test_042_spiral_and_smearing.py::test_control_archimedean_spiral_wrong_winding_pa_fade_and_blur_fail
   status: documented
   decision: 'ruled definition / documented (Ben, 2026-11-15): internal model parameter-sign and parameterization choices do not need to be convention trust-graph blockers; they are enforced via properties and wrong-convention controls alongside external dLux and native PMOIRED confirmation.'
+
+- id: F26
+  title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0'
+  objects: [virgil.gains.ClosureOffsets, virgil.gains.closure_offsets]
+  ruling: virgil
+  kind: 'bug (on a 4-telescope frame, the 1D left-null vector n with n^T T = 0 vanishes identically for every physical realization of baseline or closure phases. In virgil 0.4.2, ClosureOffsets defaults to scale_penalty=True and divides each closure phase''s periodic chord-minus-sine correction 2 sin^2(Delta / 2) by hypot(sigma_i, sigma_off,i) with sigma_off,i^2 = (M M^T)_ii computed per triangle before projecting M onto the rank-3 column space of T, so a pure left-null mode with 0.3 rad amplitude shifts model_loglike by +0.025 nats on our 4-UT test scene whenever model_cp != data_cp, whereas scale_penalty=False projects onto col(T) and leaves model_loglike invariant to < 1e-12)'
+  referee: mathematics (closure-of-closures null-space invariance n^T T = 0 and exact dense-Gaussian marginal + periodic wrap decomposition, tests/test_gains_algebra.py)
+  evidence:
+    - tests/test_gains_algebra.py::test_f26_closure_offsets_scale_penalty_projects_onto_span_of_T
+    - tests/test_gains_algebra.py::test_offsets_outside_the_span_of_T_do_not_enter_unscaled_and_pin_scaled
+  status: open
 
 - id: P13
   title: oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90

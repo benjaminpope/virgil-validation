@@ -28,6 +28,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F20">F20</span> | `models.Harmonics` | Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
 | <span id="F25">F25</span> | `fields.MultipoleField` | MultipoleField with r_min_mas = 0 tapers non-zero azimuthal modes by the radial node spacing instead of the physical correlation length length_r, so the prior covariance drifts when n_r is refined | fixed [virgil#673](https://github.com/benjaminpope/virgil/pull/673) |
 | <span id="F23">F23</span> | `fitting.gauss_newton_diag` | gauss_newton_diag's docstring and the radio innovation register give the entropy-pixel diagonal as weight * b; virgil returns weight * b * (1 - b) | fixed [virgil#679](https://github.com/benjaminpope/virgil/pull/679) |
+| <span id="F26">F26</span> | `gains.ClosureOffsets`, `gains.closure_offsets` | ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0 | open |
 
 ## Where codes define things differently
 
@@ -60,8 +61,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D23">D23</span> | `models.smeared_model`, `candid`, `pmoired` | virgil.models.smeared_model washes complex visibilities over a uniform wavenumber boxcar (variance dlambda^2 / 12), whereas CANDID Nsmear = 3 averages V coherently over three equal-weight endpoints (variance dlambda^2 / 6) and PMOIRED 'wl kernel' convolves V^2 incoherently | documented |
 | <span id="D24">D24</span> | `models.FlaredDiskGaussian`, `models.FlaredDiskHG`, `models.FlaredDiskPowerLaw` | FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an internal parameter-sign convention checked via properties: {near_side: 1} and wrong-sign controls | documented |
 | <span id="D25">D25</span> | `orbits.PositionData` | PositionData: astrometric calibration sign and scale (theta_meas = theta_sky + north_angle, rho_meas = plate_scale * rho_sky) is an internal parameter-sign convention checked via properties: {calibration: 1} and wrong-sign controls | documented |
-| <span id="D26">D26</span> | `gains.ClosureOffsets`, `gains.closure_offsets` | ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode enters the wrap denominator when Delta != 0 | documented |
-| <span id="D27">D27</span> | `models.ArchimedeanSpiral` | ArchimedeanSpiral: deprojected sky departure pa, pitch winding sign, and in-plane arc-length fade weight are internal parameter conventions checked via properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} and wrong-convention controls | documented |
+| <span id="D26">D26</span> | `models.ArchimedeanSpiral` | ArchimedeanSpiral: deprojected sky departure pa, pitch winding sign, and in-plane arc-length fade weight are internal parameter conventions checked via properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} and wrong-convention controls | documented |
 
 ## Problems found in other packages
 
