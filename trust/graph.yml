@@ -58,6 +58,22 @@ nodes:
     doc: data/amigo.md
   virgil.coverage.mask_transfer: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
   virgil.coverage.nrm_oidata: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
+  virgil.amigo.is_mixed_disco_record: {layer: data, source: [src/virgil/amigo.py], doc: data/amigo.md}
+  virgil.amigo.validate_mixed_disco_record: {layer: data, source: [src/virgil/amigo.py], doc: data/amigo.md}
+  virgil.amigo.mixed_disco_fields:
+    layer: data
+    source: [src/virgil/amigo.py]
+    depends: [virgil.amigo.validate_mixed_disco_record]
+    doc: data/amigo.md
+  virgil.coverage.ami_grid_record:
+    layer: data
+    source: [src/virgil/coverage.py]
+    depends: [virgil.coverage.mask_transfer]
+    doc: data/amigo.md
+  virgil.oifits.build_hdulist: {layer: data, source: [src/virgil/oifits.py], doc: data/oifits_observables.md}
+  virgil.oidata.closure_phases: {layer: data, source: [src/virgil/oidata.py], doc: data/oifits_observables.md}
+  virgil.oidata.cp_indices: {layer: data, source: [src/virgil/oidata.py], doc: data/oifits_observables.md}
+  virgil.observables.in_ranges: {layer: data, source: [src/virgil/observables.py], doc: data/oifits_observables.md}
 
   # -------------------------------------------------------------- models
   virgil.models.PointSource: {layer: models, source: [src/virgil/models.py]}
@@ -120,6 +136,32 @@ nodes:
   virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.models.Component:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.SourceModel, virgil.spectra.flux_at]
+    doc: models/cones_fields.md
+  virgil.models.ArchimedeanSpiral:
+    layer: models
+    source: [src/virgil/models.py]
+    roots: 2
+    depends: [virgil.models.Component]
+    doc: models/cones_fields.md
+  virgil.models.smeared_model:
+    layer: models
+    source: [src/virgil/models.py]
+    roots: 2
+    depends: [virgil.models.SourceModel, virgil.models.System, virgil.models.Rotated]
+    doc: models/visibilities.md
+  virgil.models.multipole_disk_cvis: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
+  virgil.models.cvis_radial_dirac_delta_modulated: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
+  virgil.models.RadialGPFunction: {layer: models, source: [src/virgil/models.py], doc: models/cones_fields.md}
+  virgil.models.gp_priors:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.RadialGP, virgil.models.RadialGPFunction, virgil.models.MultipoleKernel, virgil.models.Harmonics]
+    doc: models/cones_fields.md
+  virgil.models.circular_support: {layer: models, source: [src/virgil/models.py], doc: models/cones_fields.md}
 
   # ------------------------------------------------------------- radio
   # virgil.radio (instrument-neutral): tests/test_alma_radio.py against crosscheck.sky,
@@ -370,8 +412,21 @@ nodes:
   virgil.fields.MultipoleField:
     layer: priors
     source: [src/virgil/fields.py, src/virgil/models.py]
-    depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel]
+    depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel, virgil.fields.polar_interpolate]
     doc: models/polar_disk.md
+  virgil.fields.multipole_field_priors:
+    layer: priors
+    source: [src/virgil/fields.py]
+    depends: [virgil.fields.MultipoleField]
+    doc: models/cones_fields.md
+  virgil.fields.polar_interpolate: {layer: priors, source: [src/virgil/fields.py], doc: models/cones_fields.md}
+  virgil.angles.is_angle_vector:
+    layer: priors
+    source: [src/virgil/angles.py]
+    depends: [virgil.angles.AngleVector]
+    doc: models/cones_fields.md
+  virgil.angles.vector_angle: {layer: priors, source: [src/virgil/angles.py], doc: models/cones_fields.md}
+  virgil.angles.vector_site: {layer: priors, source: [src/virgil/angles.py], doc: models/cones_fields.md}
   virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
   virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}
   virgil.likelihood.loglike:
@@ -588,6 +643,7 @@ nodes:
     doc: models/rapid_rotators.md
 
   # --------------------------------------------- our references (links)
+  crosscheck.spiral_smearing: {layer: references, depends: [crosscheck.sky], doc: models/cones_fields.md}
   crosscheck.sky: {layer: references}
   crosscheck.limb: {layer: references, depends: [crosscheck.sky]}
   crosscheck.array: {layer: references}

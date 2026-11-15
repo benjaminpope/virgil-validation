@@ -9,6 +9,8 @@ continuum operator against read-back files and closed-form sums
 | `oifits.write_oifits` (V², closure phases, triple amplitudes, `OI_VIS` with `AMPTYP`/`PHITYP`, `OI_FLUX`) | read back with astropy and with our own reader | Standards | exact (float32 `EFF_WAVE`) |
 | `VisibilityAmplitude`, `TripleAmplitude` (`extras=`) | the χ² each adds equals Σ((model − data)/σ)² with our own closed-form visibilities | Mathematics + Standards | 1e-6 |
 | `observables.continuum_operator`, orders 0 and 1 | the least-squares fit of 1, 1/λ over the continuum channels, by the normal equations | Mathematics | 1e-10 |
+| `oifits.build_hdulist`, `oidata.cp_indices`, `oidata.closure_phases`, `observables.in_ranges` (`test_042_data_gains_angles.py`) | OIFITS2 `HDUList` header customization and `OIData` round-trip, oriented triangle-leg indexing (rejecting reversed legs), branch-cut wrapping into `[−π, π)`, and multi-window wavelength selection | Standards + Mathematics | `< 1e-12` |
+| `OIData` `vis_mode="logamp"` and `vis_mode="v2"` (`0.4.2`, `test_042_data_gains_angles.py`) | drops `V² <= 0` with warning, propagates `σ / (2 V²)` and linear `vis_mat @ log\|V\|`, and converts amplitudes to `V²` with exact non-central variance `σ √(4 V² + 2 σ²)` | Mathematics | `< 1e-15` |
 
 `FluxSpectrum` and `DifferentialPhase` are checked under
 [Grey-scaled spectra and differential phases](../likelihood/spectra_phases.md),

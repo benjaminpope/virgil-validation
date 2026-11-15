@@ -17,6 +17,7 @@ physical (u, v), the negative of the stored values.
 | `amigo.load_oi_data`, all filters and one by name | our coefficients and errors | Mathematics | exact |
 | `OIData.model` of four binaries on the loaded data | our closed-form DISCO vector | Mathematics | 1e-12 (found 4e-16) |
 | control | the stored (u, v) read as physical (a mirrored companion) | Mathematics | differs by > 10σ |
+| `coverage.ami_grid_record`, `amigo.is_mixed_disco_record`, `amigo.validate_mixed_disco_record`, `amigo.mixed_disco_fields` (`test_042_data_gains_angles.py`) | SVD-nulled regular-grid record, schema/shape/positivity validation, centroid/piston nulling (`< 1e-9`), and `A_logamp @ log\|V\| + A_phase @ arg V` at negated `(-u, -v)` | Mathematics | `< 1e-14` |
 
 How the DISCO modes are built (the AMIGO pipeline's own work) is outside
 the trust graph.

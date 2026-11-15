@@ -633,3 +633,17 @@
   referee: mathematics (Roche/von Zeipel/ELR11 O(omega^2) centrifugal scaling of equator-on V^2 anisotropy)
   evidence: [tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling]
   status: to-raise
+
+- id: D23
+  title: virgil.models.smeared_model washes complex visibilities over a uniform wavenumber boxcar (variance dlambda^2 / 12), whereas CANDID Nsmear = 3 averages V coherently over three equal-weight endpoints (variance dlambda^2 / 6) and PMOIRED 'wl kernel' convolves V^2 incoherently
+  objects: [virgil.models.smeared_model, candid, pmoired]
+  ruling: definition
+  kind: 'both right, different bandpass quadrature and observable-averaging definitions: virgil.models.smeared_model multiplies each component''s sky-offset phasor by sinc(pi * bandwidth * (u * dra + v * ddec) / wavel^2), the exact coherent integral over a uniform boxcar in wavenumber sigma = 1 / lambda (second moment dlambda^2 / 12 + O(dlambda^4 / lambda^2)). CANDID''s default Nsmear = 3 averages complex V coherently with equal weights (1/3, 1/3, 1/3) at lambda_0 + (-1/2, 0, +1/2) * dwavel (pinned to chi2_r = 7e-8), which puts 2/3 of the weight on the channel edges and doubles the spectral variance to dwavel^2 / 6 (setting dwavel = dlambda / sqrt(2) restores agreement to chi2_r = 0.04, whereas unscaled dwavel = dlambda fails at chi2_r > 15; Nsmear <= 2 disables smearing). PMOIRED''s explicit ''wl kernel'' (with auto=False to avoid P1) convolves T3 bispectra coherently but convolves OI_VIS2[''V2''] incoherently as E[|V|^2], retaining an O(f^2) floor f^2 / (1 + f)^2 when wide-binary fringes wash out; at f << 1 with variance-matched FWHM sqrt(2 ln 2 / 3) * (dlambda / dwl_step), PMOIRED and virgil agree to < 8e-5 in V^2 and < 5e-3 deg in closure phase'
+  referee: mathematics (uniform-wavenumber boxcar quadrature, discrete Gaussian convolution, and 3-endpoint stencil moments); pmoired; candid
+  evidence:
+    - tests/test_042_spiral_and_smearing.py::test_candid_nsmear3_matches_coherent_three_endpoint_rule
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_variance_matched_candid_nsmear3
+    - tests/test_042_spiral_and_smearing.py::test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_pmoired_explicit_wl_kernel
+    - tests/test_042_spiral_and_smearing.py::test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail
+  status: documented

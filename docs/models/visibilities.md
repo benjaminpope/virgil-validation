@@ -43,13 +43,55 @@ round on the sky, is kept as a negative control. The arc agreed only to
 
 ## Closed-form helpers
 
-[`test_models_spectra_extras.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_models_spectra_extras.py), on 200
-random baselines given in wavelengths.
+[`test_models_spectra_extras.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_models_spectra_extras.py) and
+[`test_042_data_gains_angles.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_042_data_gains_angles.py),
+on random baselines given in wavelengths. For azimuthally modulated rings and
+disks, the [Jacobi–Anger expansion](https://en.wikipedia.org/wiki/Jacobi%E2%80%93Anger_expansion)
+guarantees that each azimuthal Fourier harmonic of order $m$ on a thin ring of
+radius $r$ transforms into $(-i)^m J_m(2\pi q r)$ along the deprojected uv
+azimuth.
 
 | virgil | Reference | Agreement |
 | --- | --- | --- |
 | `cvis_uniform_disk`, offset | 2 J₁(x)/x, x = πθ\|u\|, times the shift phase; zero at the first root of J₁ | 4e-16 |
 | `cvis_binary` | (1 + f e^(−2πi(u·dra + v·ddec))) / (1 + f), and the sum of two shifted points | 9e-16 |
+| `multipole_disk_cvis` (inclined, blurred, conical ring `height`, negative `stretch`) | independent SciPy Bessel series with uv deprojection, conical height phase shift, and disk-plane Gaussian envelope | `< 1e-13` |
+| `cvis_radial_dirac_delta_modulated` | SciPy Bessel series and 4096-node azimuthal ring quadrature (North = 0°, East = 90°); $+i^m$ conjugation control fails by `> 0.2` | `< 1e-14` (Bessel), `< 1e-12` (cloud) |
+
+## Bandwidth smearing (`smeared_model`)
+
+Across a finite spectral channel of width $\Delta\lambda$ centred on $\lambda_0$,
+off-axis fringes precess with wavenumber $\sigma = 1 / \lambda$ and wash out at
+separations beyond the coherence envelope $\lambda_0^2 / (B\,\Delta\lambda)$.
+`virgil.models.smeared_model` (and `OIData(..., bandwidth=True)` / `with_bandwidth`)
+accumulates sky offsets down `System` and `Rotated` trees, evaluates each leaf's
+intrinsic shape at $\lambda_0$, and multiplies its offset phasor by the exact
+integral over a uniform boxcar of width $\Delta\sigma = \Delta\lambda / \lambda_0^2$
+in wavenumber (`tests/test_042_spiral_and_smearing.py`):
+
+$$
+V_{\text{smeared}}(u, v, \lambda_0, \Delta\lambda) = \sum_k w_k\,V_k^{\text{centred}}(u, v, \lambda_0)\,e^{-2\pi i \tau_k / \lambda_0}\,\operatorname{sinc}\!\left(\frac{\Delta\lambda\,\tau_k}{\lambda_0^2}\right), \qquad \tau_k = (u\,\mathrm{dra}_k + v\,\mathrm{ddec}_k)\,\text{mas}
+$$
+
+where $\operatorname{sinc}(x) = \sin(\pi x) / (\pi x)$. Because $\sigma = 1/\lambda$
+is nonlinear in $\lambda$, a uniform wavenumber boxcar agrees with a uniform
+wavelength boxcar to $O((\Delta\lambda / \lambda_0)^2)$ (`16.0×` error reduction
+per `4×` bandwidth narrowing). External interferometry packages adopt two
+distinct conventions, recorded as ledger entry [D23](../method/findings.md#D23):
+PMOIRED's `'wl kernel'` convolves `OI_VIS2['V2']` *incoherently* ($\langle|V|^2\rangle$,
+retaining an $f^2 / (1 + f)^2$ floor when fringes wash out), while CANDID's
+default `Nsmear = 3` averages complex $V$ coherently with equal weights
+$(1/3, 1/3, 1/3)$ at $\lambda_0 + (-1/2, 0, +1/2)\,\Delta\lambda$, which doubles
+the spectral variance from $\Delta\lambda^2 / 12$ to $\Delta\lambda^2 / 6$.
+
+| virgil | Reference | Agreement |
+| --- | --- | --- |
+| `smeared_model` on `BinaryModelCartesian`, `BinaryModelAngular`, nested `System` (with `UniformDisk` and `Resolved`), and `Rotated` | 64-node Gauss–Legendre quadrature over uniform wavenumber $\sigma = 1/\lambda$ (`crosscheck.spiral_smearing`) | `< 1e-14` |
+| `smeared_model` vs uniform wavelength quadrature | 64-node Gauss–Legendre quadrature over $[\lambda_0 - \Delta\lambda/2, \lambda_0 + \Delta\lambda/2]$ at $\Delta\lambda/\lambda_0 = 0.008$ vs $0.002$ | $O((\Delta\lambda/\lambda_0)^2)$ ratio `16.0` |
+| `OIData(..., bandwidth=True)`, `with_bandwidth`, `OrbitalBinary` via `at(mjd)`, and `TypeError` on `Image` / direct `OrbitalBinary` | `EFF_BAND` round-trip and per-sample `smeared_model` evaluation | `< 1e-7` (float32 `EFF_BAND`) |
+| `smeared_model` vs PMOIRED (`roots=["pmoired"]`) | explicit `setupFit({'wl kernel': K}, auto=False)` with variance-matched FWHM $K = \sqrt{2\ln 2 / 3}\,(\Delta\lambda / \delta\lambda)$ at $f = 0.02$ | V² `< 8e-5`, CP `< 5e-3°` |
+| `smeared_model` vs CANDID (`roots=["candid", "mathematics"]`) | CANDID `Nsmear = 3` with variance-matched `dwavel = dlambda / sqrt(2)` at $f = 0.15$ | $\chi^2_r = 0.04$ (unsmeared $\chi^2_r > 15$) |
+| definition controls (`kind="control"`, [D23](../method/findings.md#D23)) | incoherent $\langle\|V\|^2\rangle$ floor at $f = 0.45$, and unscaled CANDID `Nsmear = 3` (`dwavel = dlambda`, $2\times$ variance) | both fail (`> 0.077` in V²; $\chi^2_r > 15$) |
 
 ## Pixel images
 

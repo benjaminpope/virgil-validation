@@ -57,6 +57,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D20">D20</span> | `models.BinaryModelCartesian` | HD 45166: the paper's adopted calibrator value (Deshmukh+2025, mean over four calibrations, error their dispersion) is the reference, scored as "adopted" within 1 sigma (scripts/oidb_compare.py CRITERIA["adopted"], cmp_hd45166) | documented [virgil-validation#204](https://github.com/benjaminpope/virgil-validation/issues/204) |
 | <span id="D21">D21</span> | `models.BinaryModelCartesian` | HR 6819 (Be decretion disk): reported, never scored; oidb_compare hardcodes every row NOT-CLEAN (CRITERIA["not_clean"], cmp_hr6819), ruling of Ben 2026-10-07 | documented [virgil-validation#204](https://github.com/benjaminpope/virgil-validation/issues/204) |
 | <span id="D22">D22</span> | `inference.laplace_cov` | Pull campaign: the design hash (scripts/pull_campaign.py design_hash) hashes src/crosscheck/sky.py without the functions arc_curve and arc_curve_gaussian and without blank lines (sky_source_without_arcs) | documented [virgil-validation#207](https://github.com/benjaminpope/virgil-validation/issues/207) |
+| <span id="D23">D23</span> | `models.smeared_model`, `candid`, `pmoired` | virgil.models.smeared_model washes complex visibilities over a uniform wavenumber boxcar (variance dlambda^2 / 12), whereas CANDID Nsmear = 3 averages V coherently over three equal-weight endpoints (variance dlambda^2 / 6) and PMOIRED 'wl kernel' convolves V^2 incoherently | documented |
 
 ## Problems found in other packages
 

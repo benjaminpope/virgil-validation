@@ -37,6 +37,7 @@ The code that calls PMOIRED (`src/external_bridge/`) cannot import virgil.
 | ring, other form | `diam`, `thick`: annulus from `diam` (1 − `thick`) to `diam` | yes | annulus 3–4 mas | 1e-7 at `Nr` = 1000 |
 | blur | `spatial kernel`: Gaussian FWHM, mas | yes | annulus × Gaussian transform | 1e-7 at `Nr` = 1000 |
 | azimuthal modulation | 1 + Σ `az ampN` cos(N(θ − φN)), θ the **in-plane** azimuth, φN = `projang` + `az projangN` (**relative** to `projang`) | relative: yes; in-plane: **no** | all four readings (in-plane/sky × relative/absolute); only in-plane + relative matches, the others miss by 12–65° in closure phase | 1e-8 (V²), 2e-6° (CP) at `Nr` = 3000; m = 1 and 2 |
+| spectral bandwidth smearing | `setupFit({'wl kernel': K}, auto=False)`: discrete Gaussian channel kernel of FWHM `K` channels (`2*int(2*K)+3` taps), convolving `OI_VIS2['V2']` incoherently ($\langle\|V\|^2\rangle$) and `OI_T3` bispectrum coherently | `wl kernel` keyword: yes; incoherent `V2` vs coherent `T3`: **no** | `test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution` (`auto=False` avoids P1) | 1e-9 (V²), < 3e-8° (CP), limited by float32 `EFF_WAVE` |
 
 ### Mapping to virgil (for Stage 1)
 
@@ -54,6 +55,7 @@ The code that calls PMOIRED (`src/external_bridge/`) cannot import virgil.
 | `ModulatedGaussianRim(diam, fwhm, inc, pa, az_amps, az_pas)` (blur isotropic in the rim plane since virgil#139) | unmodulated: exactly a ring with the blurred-ring radial profile `exp(-(R² + r0²)/2σ²) I0(R r0/σ²)` over `diamin`/`diamout` = `diam` ∓ 12σ, with `incl`, `projang` (agree to 1e-9). Modulated: PMOIRED's modulation multiplies the radial profile, while virgil blurs the modulated ring (harmonic m gets I_m in place of I0), a **difference of definition** of order (mσ/r0)²; each matches our quadrature of its own definition, and in the thin-rim limit (`fwhm << diam`) they agree in closure phase to < 1e-4° (`tests/test_sole_checks_hardened.py`). Angles map as `az projangN` = `az_pas[N-1]` − `pa` (virgil absolute, PMOIRED relative). `spatial kernel` blurs isotropically on the sky, so it no longer matches. |
 | `GaussianArc(radius, width, length, pa)` | face-on `ring` (`diamin = 2r − 1e-4`, `diamout = 2r + 1e-4`, `incl = 0`, `projang = 0`, `spatial kernel = width`) with von Mises Fourier–Bessel harmonics `az ampN = 2 I_N(κ) / I_0(κ)`, `az projangN = pa` (`κ = 8 ln 2 (r / length)²`, `N = 1..8`, `Nr = 1000`, `tests/test_arc_pmoired.py`) |
 | `GravityDarkenedStar(diam_eq, omega, inc, pa, t_pole)` | `rotastar.Vrota` (`diameq = diam_eq`, `Tpole = t_pole`, `incl = inc`, `projang = pa`, `omega = ω_PM` related to `ω_ELR` via the spherical-Roche radius ratio `R_eq / R_pole = (3/ω_PM) cos((π + arccos ω_PM)/3)`, `tests/test_rotator_convention.py`) |
+| `smeared_model(scene, dwavel)` | `setupFit({'wl kernel': K}, auto=False)` on a densely sampled wavelength comb with variance-matched FWHM $K = \sqrt{2 \ln 2 / 3}\,(\Delta\lambda / \delta\lambda)$ (`tests/test_042_spiral_and_smearing.py`; coherent vs incoherent `V2` floor $f^2/(1+f)^2$ is [D23](findings.md#D23)) |
 
 Both packages put the modulation in the disk plane. That is virgil's
 behaviour (finding 1) and PMOIRED's, and neither documented it before this
@@ -106,6 +108,7 @@ PMOIRED's conventions against our references; virgil enters at Stage 1.
 | `diamin`/`diamout`, `diam`/`thick` rings | two-Airy annulus | Analytic + PMOIRED | Nr⁻²: 1e-5 at Nr = 100, 1e-8 at 3000 |
 | `spatial kernel` | Gaussian blur transform | Analytic + PMOIRED | 1e-7 |
 | `az ampN`, `az projangN`: in-plane azimuth, relative to `projang` (3 other readings fail) | annulus quadrature | Quadrature + PMOIRED | 1e-8 (V²), 2e-6° (CP) |
+| `setupFit({'wl kernel': K}, auto=False)` spectral smearing | discrete Gaussian channel kernel (incoherent `V2`, coherent `OI_T3`) | Analytic + PMOIRED | 1e-9 (V²), < 3e-8° (CP) |
 
 
 ## virgil vs PMOIRED (Stage 1)
@@ -129,6 +132,7 @@ those coordinates (`tests/test_pmoired_vs_virgil.py`). The carrier file has
 | `ModulatedGaussianRim`, inclined, m = 1, 2 | same profile with `az ampN`, `az projangN` = `az_pas` − `pa` | PMOIRED + Quadrature | a difference of definition, of order (mσ/r0)² (PMOIRED modulates the profile; virgil blurs the modulated ring); PMOIRED matches our quadrature of its own definition to 1e-8, and in the thin-rim limit (`fwhm = 0.001` mas on `diam = 3.2` mas, `tests/test_sole_checks_hardened.py`) matches `ModulatedGaussianRim` directly to < 1e-5 in V² and < 1e-4° on > 15° closure phases |
 | `GaussianArc`, `pa = 37°` (`tests/test_arc_pmoired.py`) | face-on `ring` with von Mises Fourier–Bessel harmonics (`az ampN = 2 I_N(κ)/I_0(κ)`, `az projangN = pa`, `spatial kernel = width`) | PMOIRED | < 1e-5 (V²), < 1e-3° on 15° closure phases; `pa + 90°`, `pa + 180°`, `−pa` controls fail by > 10° |
 | `GravityDarkenedStar`, `pa = 33°`, `incl = 55°`, `T_pole = 9500 K` (`tests/test_rotator_convention.py`) | `rotastar.Vrota` (`projang = 33°`, `ω_PM = 0.95` mapped to `ω_ELR = 0.750`) | PMOIRED | 9.0e-3 (V²), 2.0° on 168° closure phases (residual from von Zeipel β = 0.25 vs ELR11 gravity darkening, ATLAS9 vs Planck spectra, and SATLAS limb darkening); `pa + 90°`, `pa + 180°`, `−pa` controls fail by > 50° |
+| `smeared_model(System(PointSource, PointSource), dwavel)` (`tests/test_042_spiral_and_smearing.py`) | `setupFit({'wl kernel': K}, auto=False)` with variance-matched Gaussian FWHM $K = \sqrt{2 \ln 2 / 3}\,(\Delta\lambda / \delta\lambda)$ | PMOIRED | < 8e-5 (V²), < 5e-3° (CP) at $f = 0.02$; at $f = 0.6$, PMOIRED's incoherent `V2` convolution retains the $f^2/(1+f)^2$ floor (> 0.12 gap, [D23](findings.md#D23)) |
 
 
 ## fits with virgil and PMOIRED (Stage 2)

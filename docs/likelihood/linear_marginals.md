@@ -16,6 +16,7 @@ integration.
 | the same, no companion | quadrature of the true likelihood | Mathematics | 2e-3 (with a strong companion the closed form differs by ~0.4 in log B ~ 100–400, the nonlinearity its docs warn of) |
 | `linear_flux_grid(n_iter=5)` with a bright companion (0.3) | a direct optimiser of our own χ² | Mathematics | 1e-6 |
 | `OIData.with_closure_offsets`: per-baseline (T e), per-triangle and supplied offsets common to a frame's channels, four UTs | the sines over σ, projected on an orthonormal basis of each channel's triangle column space, against 𝒩(y; 0, QᵀRQ + VVᵀ) | Mathematics | 1e-13 |
+| `ClosureOffsets(scale_penalty=True/False)` and `OIData.with_gains(include_extras=True/False)` (`0.4.2`, `test_042_data_gains_angles.py`) | far-hemisphere (`cos Δ < 0`) wrap penalty `(1 − cos Δ) / hypot(σ, σ_off)` vs `(1 − cos Δ) / σ`, and dense SciPy Cholesky Gaussian marginal log-likelihood across `V²`, `VISAMP` (`\|V\| B`), and `T3AMP` (`T3AMP (B₁ + B₂ + B₃)`) | Mathematics | `< 1e-13` (wrap), `< 1e-10` (`Δ log L`) |
 | `RVData.marginal_loglike` and `zero_point_posterior` (three instruments, with and without jitter), given virgil's Keplerian model | 𝒩(m + Aμ, C + AΛAᵀ); the Gaussian conditional of the zero points | Mathematics | 1e-11; 1e-13 |
 
 ## The mode objects
