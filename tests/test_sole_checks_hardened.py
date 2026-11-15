@@ -10,10 +10,11 @@ detection.gaussian_null.
   closure-phase (``phi``) pulls are checked on BOTH a 3-telescope template
   (uncorrelated scalar fallback, ``cp_noise is None``) AND a 4-telescope
   template (``cp_noise is not None``, 4 closure triangles per snapshot/channel
-  with rank-3 covariance and shared-baseline correlation ``+-1/3``), verifying
-  marginal zero mean, unit variance under ``noise_scale`` / ``error_scale``,
-  Kolmogorov-Smirnov normality, and the exact ``+-1/3`` shared-baseline
-  triangle correlation.
+  with rank-3 covariance ``(T @ T.T) / 3``, four ``+1/3`` entries, two ``-1/3``
+  entries, and closure-of-closures null vector ``(1, -1, 1, -1)``), verifying
+  marginal zero mean and unit variance at effective sample size ``3 * G``,
+  Kolmogorov-Smirnov normality, the signed ``4 x 4`` correlation matrix, exact
+  null-space vanishing, and the chi-squared(df=3) Moore-Penrose quadratic form.
 """
 
 import jax
@@ -22,8 +23,8 @@ import numpy as np
 import pytest
 from scipy import stats
 
+from crosscheck import chi2, sky
 from crosscheck import simulate as csim
-from crosscheck import sky
 from evidence.plugin import record
 from external_bridge import pmoired_models as pm
 
@@ -42,6 +43,8 @@ UTS4 = np.array([
     [103.306, 43.999],
 ])
 S2F = 2.0 * np.sqrt(2.0 * np.log(2.0))
+UTS4_TRIS = [(1, 2, 3), (1, 2, 4), (1, 3, 4), (2, 3, 4)]
+CLOSURE_NULL_VEC = np.array([1.0, -1.0, 1.0, -1.0])
 
 
 @pytest.fixture(scope="module")
@@ -78,6 +81,44 @@ def four_tel_template(tmp_path_factory):
     data = OIData(str(path))
     assert data.cp_noise is not None
     return path, data
+
+
+def _check_four_tel_correlated_quads(draws):
+    """Verify marginal moments (with exact effective sample size 3 * G), signed
+    4 x 4 correlation matrix (T @ T.T) / 3, closure-of-closures null space
+    quads @ [1, -1, 1, -1] == 0, and chi-squared(df=3) Moore-Penrose quadratic form."""
+    pulls = draws.ravel()
+    mean_err = float(abs(np.mean(pulls)))
+    std_err = float(abs(np.std(pulls) - 1.0))
+
+    indep_pulls = draws.reshape(80, 5, 4, 5)[:, :, 0, :].ravel()
+    n_eff = 3 * indep_pulls.size
+    ks_p = float(stats.kstest(indep_pulls, "norm").pvalue)
+
+    quads = draws.reshape(80, 5, 4, 5).transpose(0, 1, 3, 2).reshape(-1, 4)
+    t_mat = chi2.triangle_matrix(UTS4_TRIS)
+    want_corr = (t_mat @ t_mat.T) / 3.0
+    corr = np.corrcoef(quads, rowvar=False)
+    corr_err = float(np.max(np.abs(corr - want_corr)))
+
+    null_res = float(np.max(np.abs(quads @ CLOSURE_NULL_VEC)))
+    q_mp = np.einsum("ni,ij,nj->n", quads, np.linalg.pinv(want_corr), quads)
+    chi2_3_p = float(stats.kstest(q_mp, stats.chi2(3).cdf).pvalue)
+    chi2_4_p = float(stats.kstest(q_mp, stats.chi2(4).cdf).pvalue)
+
+    record("max_signed_corr_error", corr_err)
+    record("abs_cp_pull_mean", mean_err)
+    record("abs_cp_pull_std_minus_one", std_err)
+    record("max_closure_null_residual", null_res)
+    record("mean_chi2_per_dof", float(np.mean(q_mp) / 3.0))
+
+    assert mean_err < 4.5 / np.sqrt(n_eff)
+    assert std_err < 4.5 / np.sqrt(2.0 * n_eff)
+    assert ks_p > 1e-3
+    assert corr_err < 0.08
+    assert null_res < 1e-12
+    assert chi2_3_p > 1e-3
+    assert chi2_4_p < 1e-3
 
 
 @pytest.mark.external
@@ -179,18 +220,18 @@ def test_simulate_closure_phase_pulls_are_standard_normal(three_tel_template, sc
 @pytest.mark.validates(
     "virgil.simulate.simulate",
     roots=["mathematics", "statistics"],
-    headline="max_offdiag_corr_error",
+    headline="max_signed_corr_error",
 )
 def test_simulate_correlated_four_tel_closure_phase_pulls_and_covariance(four_tel_template, scale):
     """On a 4-station array (cp_noise is not None, 4 triangles per snapshot and
-    channel), simulate.simulate produces standardized closure-phase pulls with
-    unit marginal variance and shared-baseline off-diagonal correlation |r| = 1/3."""
+    channel), simulate.simulate produces standardized closure-phase pulls matching
+    the signed rank-3 correlation matrix (T @ T.T) / 3, exact closure-of-closures
+    linear dependence, and chi-squared(df=3) Moore-Penrose quadratic form."""
     _, data = four_tel_template
     assert data.cp_noise is not None
     scene = vm.BinaryModelCartesian(4.0, -3.0, 0.05)
     clean_phi = np.asarray(vsim.simulate(scene, data).phi)
     d_phi = np.asarray(data.d_phi)
-    # 80 realizations x 5 HAs x 5 channels = 2000 independent 4-triangle groups
     draws = np.stack([
         np.angle(
             np.exp(
@@ -204,25 +245,7 @@ def test_simulate_correlated_four_tel_closure_phase_pulls_and_covariance(four_te
         / (scale * d_phi)
         for k in range(80)
     ], axis=0)
-    pulls = draws.ravel()
-    mean_err = float(abs(np.mean(pulls)))
-    std_err = float(abs(np.std(pulls) - 1.0))
-    # Marginal normality over one non-redundant triangle per snapshot/channel
-    indep_pulls = draws.reshape(80, 5, 4, 5)[:, :, 0, :].ravel()
-    ks_p = float(stats.kstest(indep_pulls, "norm").pvalue)
-
-    quads = draws.reshape(80, 5, 4, 5).transpose(0, 1, 3, 2).reshape(-1, 4)
-    corr = np.corrcoef(quads, rowvar=False)
-    off_diag = np.abs(corr[~np.eye(4, dtype=bool)])
-    corr_err = float(np.max(np.abs(off_diag - 1.0 / 3.0)))
-
-    record("max_offdiag_corr_error", corr_err)
-    record("abs_cp_pull_mean", mean_err)
-    record("abs_cp_pull_std_minus_one", std_err)
-    assert mean_err < 4.5 / np.sqrt(indep_pulls.size)
-    assert std_err < 4.5 / np.sqrt(2.0 * indep_pulls.size)
-    assert ks_p > 1e-3
-    assert corr_err < 0.08
+    _check_four_tel_correlated_quads(draws)
 
 
 @pytest.mark.parametrize("scale", [1.0, 1.5])
@@ -260,12 +283,12 @@ def test_gaussian_null_closure_phase_pulls_are_standard_normal(three_tel_templat
 @pytest.mark.validates(
     "virgil.detection.gaussian_null",
     roots=["mathematics", "statistics"],
-    headline="max_offdiag_corr_error",
+    headline="max_signed_corr_error",
 )
 def test_gaussian_null_correlated_four_tel_closure_phase_pulls_and_covariance(four_tel_template, scale):
     """On a 4-station array (cp_noise is not None), detection.gaussian_null
-    draws correlated closure phases with unit standardized marginal variance and
-    shared-baseline off-diagonal correlation |r| = 1/3."""
+    draws correlated closure phases matching the signed rank-3 correlation
+    matrix (T @ T.T) / 3, exact closure-of-closures null space, and chi2(df=3)."""
     _, data = four_tel_template
     assert data.cp_noise is not None
     null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
@@ -277,21 +300,4 @@ def test_gaussian_null_correlated_four_tel_closure_phase_pulls_and_covariance(fo
         / (scale * d_phi)
         for k in range(80)
     ], axis=0)
-    pulls = draws.ravel()
-    mean_err = float(abs(np.mean(pulls)))
-    std_err = float(abs(np.std(pulls) - 1.0))
-    indep_pulls = draws.reshape(80, 5, 4, 5)[:, :, 0, :].ravel()
-    ks_p = float(stats.kstest(indep_pulls, "norm").pvalue)
-
-    quads = draws.reshape(80, 5, 4, 5).transpose(0, 1, 3, 2).reshape(-1, 4)
-    corr = np.corrcoef(quads, rowvar=False)
-    off_diag = np.abs(corr[~np.eye(4, dtype=bool)])
-    corr_err = float(np.max(np.abs(off_diag - 1.0 / 3.0)))
-
-    record("max_offdiag_corr_error", corr_err)
-    record("abs_cp_pull_mean", mean_err)
-    record("abs_cp_pull_std_minus_one", std_err)
-    assert mean_err < 4.5 / np.sqrt(indep_pulls.size)
-    assert std_err < 4.5 / np.sqrt(2.0 * indep_pulls.size)
-    assert ks_p > 1e-3
-    assert corr_err < 0.08
+    _check_four_tel_correlated_quads(draws)

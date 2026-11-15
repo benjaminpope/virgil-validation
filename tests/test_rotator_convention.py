@@ -14,8 +14,13 @@ propagation, and oimodeler (ledger P13 and P14).
      exact spherical-Roche ratio ``R_eq / R_pole = (3 / w_pm) cos((pi + arccos w_pm) / 3)``
      matches ``GravityDarkenedStar(..., pa=33)`` across all baselines and
      closure triangles (``max_dv2 < 0.01``, ``max_dcp < 2.5 deg`` on ~168 deg
-     closure phases, the residual coming solely from ``PMOIRED``'s ATLAS9 limb
-     darkening), whereas ``pa + 90``, ``pa + 180``, and ``-pa`` fail by > 50 deg.
+     closure phases). The ~2 deg residual reflects three physical modelling
+     differences between the two codes at ``w_pm = 0.95`` (``w_elr = 0.750``,
+     ``T_pole = 9500 K``): ELR11 barotropic gravity darkening (``T_eq = 7490 K``)
+     versus von Zeipel ``beta = 0.25`` (``T_eq = 6820 K``), Planck ``B_lambda(T)``
+     versus ATLAS9 ``F_lambda(T_eff, log g)`` surface spectra, and isotropic
+     emission versus spherical SATLAS limb darkening. Wrong orientations
+     (``pa + 90``, ``pa + 180``, and ``-pa``) miss by > 50 deg.
 2. Optical wavefront propagation (``roots=["dlux"]``, without claiming
    ``property="pole_pa"`` because ``crosscheck.elr.cloud`` supplies the sky
    rotation):
@@ -23,18 +28,18 @@ propagation, and oimodeler (ledger P13 and P14).
      non-redundant mask reproduces ``GravityDarkenedStar`` across all 21
      baselines and 35 closure phases.
 3. Two independent upstream defects in ``oimodeler.oimFastRotator`` (ledger
-   ``P13`` and ``P14``, each pinned by its own strict upstream xfail at
-   ``dim=64``):
+   ``P13`` and ``P14``, each pinned by its own strict xfail at ``dim=64``):
    * ``P13``: ``fastRotator`` applies ``np.rot90(im)`` before ``oimComponentImage``
      maps row 0 to South, inverting the visible pole's position angle by 180 deg.
    * ``P14``: ``fastRotator`` sets ``a = (2/3) * rot**0.4`` and ``K = sin(1/3) * pi``,
-     giving an ``O(omega^0.4)`` polar-to-equatorial brightness drop at slow
-     rotation (equator-on ``incl = 90 deg``, invariant under ``P13``'s 180 deg
-     flip) instead of the physical ``O(omega^2)`` centrifugal scaling.
+     giving an ``O(omega^0.4)`` equator-on ``V^2`` anisotropy across slow
+     rotation (``incl = 90 deg``, invariant under ``P13``'s 180 deg flip and
+     sub-pixel shift) instead of the physical ``O(omega^2)`` centrifugal scaling.
 """
 
 import itertools
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -72,7 +77,7 @@ def _pmoired_to_elr_omega(w_pm):
     """Exact Roche conversion from w_pm = Omega / sqrt((8/27) G M / R_pole^3)
     to ELR11's w_elr = Omega / sqrt(G M / R_eq^3)."""
     req_over_rp = (3.0 / w_pm) * np.cos((np.pi + np.arccos(w_pm)) / 3.0)
-    return float(w_pm * np.sqrt((8.0 / 27.0) * req_over_rp ** 3))
+    return float(w_pm * np.sqrt((8.0 / 27.0) * req_over_rp**3))
 
 
 @pytest.fixture(scope="module")
@@ -118,8 +123,12 @@ def _compare_virgil_to_pmoired_rotastar(samples, pa_deg):
     v_m = jnp.asarray(samples["v"] * WAVEL_K_UM)
     v2 = np.abs(np.asarray(star.model(u_m, v_m, WAVEL_K))) ** 2
 
-    t1 = np.asarray(star.model(jnp.asarray(samples["u1"] * WAVEL_K_UM), jnp.asarray(samples["v1"] * WAVEL_K_UM), WAVEL_K))
-    t2 = np.asarray(star.model(jnp.asarray(samples["u2"] * WAVEL_K_UM), jnp.asarray(samples["v2_"] * WAVEL_K_UM), WAVEL_K))
+    t1 = np.asarray(
+        star.model(jnp.asarray(samples["u1"] * WAVEL_K_UM), jnp.asarray(samples["v1"] * WAVEL_K_UM), WAVEL_K)
+    )
+    t2 = np.asarray(
+        star.model(jnp.asarray(samples["u2"] * WAVEL_K_UM), jnp.asarray(samples["v2_"] * WAVEL_K_UM), WAVEL_K)
+    )
     t3 = np.asarray(
         star.model(
             jnp.asarray((samples["u1"] + samples["u2"]) * WAVEL_K_UM),
@@ -167,7 +176,8 @@ def test_gravity_darkened_star_wrong_pole_pa_fails_against_pmoired_rotastar(
     pmoired_rotator_samples, label, wrong_pa
 ):
     """Wrong pole orientations (pa + 90, pa + 180, -pa) miss PMOIRED's rotastar
-    closure phases by > 50 deg (> 25x the limb-darkening discrepancy)."""
+    closure phases by > 50 deg (> 25x the gravity-darkening, atmosphere, and
+    limb-darkening modelling offset)."""
     dv2, dcp, _ = _compare_virgil_to_pmoired_rotastar(pmoired_rotator_samples, wrong_pa)
     record(f"control_{label}_dV2", dv2)
     record(f"control_{label}_dCP_deg", dcp)
@@ -197,10 +207,17 @@ def dlux_rotator_observables():
     cp_dlux = np.rad2deg(
         np.angle(vis_fn(u1, v1, WL_NRM) * vis_fn(u2, v2, WL_NRM) * np.conj(vis_fn(u1 + u2, v1 + v2, WL_NRM)))
     )
-    return {
-        "u_bl": u_bl, "v_bl": v_bl, "v2": v2_dlux,
-        "u1": u1, "v1": v1, "u2": u2, "v2_leg": v2, "cp_deg": cp_dlux,
+    yield {
+        "u_bl": u_bl,
+        "v_bl": v_bl,
+        "v2": v2_dlux,
+        "u1": u1,
+        "v1": v1,
+        "u2": u2,
+        "v2_leg": v2,
+        "cp_deg": cp_dlux,
     }
+    jax.clear_caches()
 
 
 def _eval_virgil_on_nrm(obs, pa_deg):
@@ -298,24 +315,32 @@ def test_p13_oimodeler_fast_rotator_pole_pa_inversion():
 )
 @pytest.mark.validates("oimodeler", roots=["mathematics"], kind="upstream")
 def test_p14_oimodeler_fast_rotator_gravity_darkening_scaling():
-    """At equator-on inclination (incl = 90 deg, symmetric under P13's 180 deg
-    flip), physical Roche/ELR11 gravity darkening produces an O(omega^2)
-    polar-to-equatorial brightness drop (log-log slope 2.0 across slow rotators
-    rot = 0.05, 0.10, 0.20), whereas oimFastRotator's a = (2/3) * rot**0.4 and
-    K = sin(1/3) * pi give log-log slope ~ 0.48."""
-    pytest.importorskip("oimodeler")
+    """At equator-on inclination (incl = 90 deg, pa = 0 deg), orthogonal squared
+    visibilities V^2(B/lambda, 0) - V^2(0, B/lambda) obtained through oimodeler's
+    public oimModel.getComplexCoherentFlux API are invariant to P13's 180 deg
+    rotation and to sub-pixel translation, vanish identically for any non-rotating
+    star, and scale as O(omega^2) (log-log slope 2.0 across rot = 0.01, 0.02, 0.04)
+    under physical Roche/von Zeipel/ELR11 centrifugal distortion and gravity
+    darkening; oimFastRotator's a = (2/3) * rot**0.4 and K = sin(1/3) * pi give
+    log-log slope ~ 0.45."""
+    oim = pytest.importorskip("oimodeler")
     from oimodeler.oimCustomComponents import oimFastRotator
 
-    rots = np.array([0.05, 0.10, 0.20])
-    drops = []
+    rots = np.array([0.01, 0.02, 0.04])
+    b_m = 25.0
+    anisotropies = []
     for rot in rots:
         fr = oimFastRotator(dim=64, incl=90.0, rot=float(rot), Tpole=10000.0, dpole=3.0, pa=0.0, beta=0.25)
-        # Mid-IR wavelength slice (index 2, ~3.7 um) of the 64x64 internal image:
-        # centre pixel (32, 32) lies on the equator; max intensity lies at the poles.
-        im = fr._internalImage()[0, 2]
-        drops.append(1.0 - float(im[32, 32]) / float(np.max(im)))
+        model = oim.oimModel([fr])
+        ccf = model.getComplexCoherentFlux(
+            np.array([0.0, b_m, 0.0]) / WAVEL_K,
+            np.array([0.0, 0.0, b_m]) / WAVEL_K,
+            np.full(3, WAVEL_K),
+        )
+        v2 = np.abs(ccf / ccf[0]) ** 2
+        anisotropies.append(float(abs(v2[1] - v2[2])))
 
-    log_slope = float(np.polyfit(np.log(rots), np.log(drops), 1)[0])
+    log_slope = float(np.polyfit(np.log(rots), np.log(anisotropies), 1)[0])
     record("oim_slow_rotator_log_slope", log_slope)
-    record("oim_drop_at_rot_0p05", float(drops[0]))
+    record("oim_dv2_at_rot_0p01", anisotropies[0])
     assert abs(log_slope - 2.0) < 0.2
