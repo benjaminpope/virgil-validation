@@ -10,6 +10,7 @@ from __future__ import annotations
 import gc
 import math
 
+from astropy.io import fits
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -320,11 +321,18 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
         assert float(b_arr[-1]) == 1.0
         assert np.all(np.diff(np.concatenate([[0.0], np.asarray(b_arr)])) > 0.0)
         assert len(e_arr) == len(b_arr)
+    assert math.isfinite(res.log_z_variance) and res.log_z_variance > 0.0
     assert math.isfinite(res.log_z_error) and res.log_z_error > 0.0
+    assert float(res.log_z_error) == pytest.approx(
+        math.sqrt(float(res.log_z_variance)), rel=1e-12
+    )
 
     lz_arr = np.asarray(res.log_z_replicates, dtype=np.float64)
     assert lz_arr.shape == (n_rep,)
     assert float(res.log_z) == pytest.approx(ref.logmeanexp_ref(lz_arr), abs=1e-13)
+    z_reps = np.exp(lz_arr - float(np.max(lz_arr)))
+    emp_rep_rel_var = float(np.var(z_reps, ddof=1) / (n_rep * (float(np.mean(z_reps)) ** 2)))
+    assert 0.10 < float(res.log_z_variance) / emp_rep_rel_var < 8.0
     mean_lz_err = abs(float(res.log_z) - float(exact["log_z"]))
 
     pooled = np.asarray(res.particles)
@@ -347,8 +355,8 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
 
     # Single-run (replicates=1) Lee & Whiteley (2018, Theorem 1) genealogy variance identity
     # across 96 independent trials under multinomial resampling (Du & Guyader 2021):
-    # (Z_hat)^2 * log_z_variance is an unbiased estimator of Var(Z_hat) when all finite
-    # non-degenerate draws (including negative unbiased realizations) are retained.
+    # (Z_hat)^2 * log_z_variance is an unbiased estimator of Var(Z_hat) when all non-collapsed
+    # finite realizations (including finite non-positive draws) are retained.
     c0_1d = -0.5 * math.log(2.0 * math.pi * 1.5)
     cy_1d = -math.log(2.0 * math.pi) - 0.5 * math.log(0.10 * 0.12)
     d_1d = jnp.array([[1.3], [-0.9]], dtype=jnp.float64)
@@ -364,7 +372,6 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     exact_lz_1d = float(ex_1d["log_z"])
     single_lzs = []
     single_vars = []
-    single_deg = []
     for t_idx in range(96):
         r_single = vsmc.tempered_smc(
             lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
@@ -376,20 +383,23 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
             steps=1,
             leapfrogs=2,
         )
+        v_s = float(r_single.log_z_variance)
+        e_s = float(r_single.log_z_error)
+        deg_s = bool(r_single.variance_degenerate)
+        assert deg_s == (not (v_s > 0.0))
+        if deg_s:
+            assert math.isnan(e_s)
+        else:
+            assert e_s == pytest.approx(math.sqrt(v_s), rel=1e-12)
         single_lzs.append(float(r_single.log_z))
-        single_vars.append(float(r_single.log_z_variance))
-        single_deg.append(bool(r_single.variance_degenerate))
-        if not r_single.variance_degenerate and r_single.log_z_variance > 0.0:
-            assert float(r_single.log_z_error) == pytest.approx(
-                math.sqrt(float(r_single.log_z_variance)), rel=1e-12
-            )
+        single_vars.append(v_s)
 
     lzs_1d = np.asarray(single_lzs, dtype=np.float64)
     vars_1d = np.asarray(single_vars, dtype=np.float64)
-    finite_1d = np.isfinite(vars_1d) & (~np.asarray(single_deg, dtype=bool))
-    assert int(np.sum(finite_1d)) >= 90
-    z_ratios = np.exp(lzs_1d[finite_1d] - exact_lz_1d)
-    var_hats = (z_ratios**2) * vars_1d[finite_1d]
+    non_collapsed = np.isfinite(vars_1d)
+    assert int(np.sum(non_collapsed)) >= 92
+    z_ratios = np.exp(lzs_1d[non_collapsed] - exact_lz_1d)
+    var_hats = (z_ratios**2) * vars_1d[non_collapsed]
     est_var = float(np.mean(var_hats))
     se_est = float(np.std(var_hats, ddof=1) / math.sqrt(var_hats.size))
     emp_var = float(np.var(z_ratios, ddof=1))
@@ -398,6 +408,22 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     assert abs(float(np.mean(z_ratios)) - 1.0) < 3.5 * math.sqrt(emp_var / var_hats.size)
     assert rel_se < 0.22
     assert abs(single_var_ratio - 1.0) < 3.0 * rel_se
+
+    # Finite non-positive unbiased genealogy variance realization (Du & Guyader 2021):
+    # log_z_variance is finite <= 0, variance_degenerate is True, and log_z_error is NaN
+    r_nonpos = vsmc.tempered_smc(
+        lambda th: c0_1d - 0.5 * ((th[0] - 0.2) ** 2) / 1.5,
+        lambda th: cy_1d - 0.5 * ((y_1d - d_1d @ th) @ py_1d @ (y_1d - d_1d @ th)),
+        lambda k_rng, n_p: 0.2 + math.sqrt(1.5) * jax.random.normal(k_rng, (n_p, 1), dtype=jnp.float64),
+        key=jax.random.PRNGKey(9003),
+        n_particles=8,
+        replicates=1,
+        steps=1,
+        leapfrogs=2,
+    )
+    assert math.isfinite(float(r_nonpos.log_z_variance)) and float(r_nonpos.log_z_variance) <= 0.0
+    assert r_nonpos.variance_degenerate is True
+    assert math.isnan(float(r_nonpos.log_z_error))
 
     # Collapsed genealogy (n_particles = 2): single surviving Eve lineage sets variance_degenerate and NaN
     r_tiny = vsmc.tempered_smc(
@@ -1246,23 +1272,68 @@ def test_tempering_finite_ar1_common_mode_and_oidata_channel_chains(tmp_path):
     assert a_vis.size == b_vis.size == n_bl * 4
     assert a_phi.size == b_phi.size == n_tri * 4
 
-    # Visibility chains & adjacent pairs: identical physical baseline (u, v), station pair, MJD, and strictly increasing wavelength
+    # Visibility chains & adjacent pairs: index into the unflagged OI_VIS2 rows via oid.vis_index
     u_m_data = np.asarray(oid.u)
     v_m_data = np.asarray(oid.v)
     mjd_data = np.asarray(oid.mjd)
     wl_data = np.asarray(oid.wavel)
     sta_data = np.asarray(oid.stations)
+    vis_sel = slice(None) if oid.vis_index is None else np.asarray(oid.vis_index)
+    u_vis = u_m_data[vis_sel]
+    v_vis = v_m_data[vis_sel]
+    mjd_vis = mjd_data[vis_sel]
+    wl_vis = wl_data[vis_sel]
+    sta_vis = sta_data[vis_sel]
     max_bl_jump = float(
-        np.max(np.hypot(u_m_data[a_vis] - u_m_data[b_vis], v_m_data[a_vis] - v_m_data[b_vis]))
+        np.max(np.hypot(u_vis[a_vis] - u_vis[b_vis], v_vis[a_vis] - v_vis[b_vis]))
     )
     assert max_bl_jump < 1e-6
-    assert np.array_equal(sta_data[a_vis], sta_data[b_vis])
-    assert float(np.max(np.abs(mjd_data[a_vis] - mjd_data[b_vis]))) == 0.0
-    assert bool(np.all(wl_data[a_vis] < wl_data[b_vis]))
+    assert np.array_equal(sta_vis[a_vis], sta_vis[b_vis])
+    assert float(np.max(np.abs(mjd_vis[a_vis] - mjd_vis[b_vis]))) == 0.0
+    assert bool(np.all(wl_vis[a_vis] < wl_vis[b_vis]))
     for c_vis in chains["vis"]:
-        assert np.all(mjd_data[c_vis] == mjd_data[c_vis[0]])
-        assert np.all(sta_data[c_vis] == sta_data[c_vis[0]])
-        assert bool(np.all(np.diff(wl_data[c_vis]) > 0.0))
+        assert np.all(mjd_vis[c_vis] == mjd_vis[c_vis[0]])
+        assert np.all(sta_vis[c_vis] == sta_vis[c_vis[0]])
+        assert bool(np.all(np.diff(wl_vis[c_vis]) > 0.0))
+
+    # Reversed-wavelength OIFITS with flagged OI_VIS2 rows: oid.vis_index is a non-identity
+    # integer index array and channel_chains / adjacent_channels sort into ascending wavelength
+    fits_rev = tmp_path / "tempering_rev_flagged.fits"
+    xsim.observe(
+        fits_rev,
+        lambda u, v, wl: np.ones(np.broadcast(u, v, wl).shape, dtype=np.complex128),
+        uts4,
+        hour_angles_h=[-1.0, 1.0],
+        wavelengths=wavels[::-1],
+        sigma_v2=0.01,
+        sigma_cp_deg=0.5,
+    )
+    with fits.open(fits_rev, mode="update") as hdul:
+        hdul["OI_VIS2"].data["FLAG"][0, :] = True
+        hdul["OI_VIS2"].data["FLAG"][3, 2] = True
+        hdul.flush()
+    oid_rev = OIData(read_oifits(str(fits_rev)))
+    assert oid_rev.vis_index is not None
+    vis_idx_rev = np.asarray(oid_rev.vis_index)
+    assert vis_idx_rev.size < np.asarray(oid_rev.u).size
+    assert not np.array_equal(vis_idx_rev, np.arange(vis_idx_rev.size))
+    chains_rev = vtemp.channel_chains(oid_rev)
+    adj_rev = vtemp.adjacent_channels(oid_rev)
+    u_rev = np.asarray(oid_rev.u)[vis_idx_rev]
+    v_rev = np.asarray(oid_rev.v)[vis_idx_rev]
+    mjd_rev = np.asarray(oid_rev.mjd)[vis_idx_rev]
+    wl_rev = np.asarray(oid_rev.wavel)[vis_idx_rev]
+    sta_rev = np.asarray(oid_rev.stations)[vis_idx_rev]
+    ar_vis, br_vis = adj_rev["vis"]
+    assert float(np.max(np.hypot(u_rev[ar_vis] - u_rev[br_vis], v_rev[ar_vis] - v_rev[br_vis]))) < 1e-6
+    assert np.array_equal(sta_rev[ar_vis], sta_rev[br_vis])
+    assert float(np.max(np.abs(mjd_rev[ar_vis] - mjd_rev[br_vis]))) == 0.0
+    assert bool(np.all(wl_rev[ar_vis] < wl_rev[br_vis]))
+    for c_rev in chains_rev["vis"]:
+        assert bool(np.all(np.diff(wl_rev[c_rev]) > 0.0))
+    wl_phi_rev = np.asarray(oid_rev.wavel)[np.asarray(oid_rev.i_cps1)]
+    ar_phi, br_phi = adj_rev["phi"]
+    assert bool(np.all(wl_phi_rev[ar_phi] < wl_phi_rev[br_phi]))
 
     # Closure-phase chains & adjacent pairs: identical triangle legs (u1, v1, u2, v2, stations), snapshot MJD, and strictly increasing wavelength
     i1 = np.asarray(oid.i_cps1)

@@ -252,7 +252,7 @@ nodes:
     depends: [virgil.likelihood.model_loglike]
   virgil.grid_fit.linear_flux_grid:
     layer: inference
-    source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/_marginal.py]
     depends: [virgil.likelihood.whitened_residuals]
   virgil.grid_fit.Gaussian: {layer: inference, source: [src/virgil/grid_fit.py], doc: inference/grid_limits.md}
   virgil.grid_fit.LogUniform: {layer: inference, source: [src/virgil/grid_fit.py, src/virgil/_marginal.py], doc: inference/grid_limits.md}
@@ -263,7 +263,7 @@ nodes:
     doc: inference/grid_limits.md
   virgil.grid_fit.optimized_likelihood_grid:
     layer: inference
-    source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/_gauss_newton.py]
     depends: [virgil.likelihood.model_loglike]
     doc: inference/grid_limits.md
   virgil.smc.SMCResult: {layer: inference, source: [src/virgil/smc.py], doc: inference/sampling.md}

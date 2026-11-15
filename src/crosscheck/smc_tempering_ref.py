@@ -611,42 +611,78 @@ def linear_flux_loguniform_prior_ref(
     """
     fh = float(f_hat)
     sf = float(sigma_f)
-    u_min = math.log(float(f_min))
-    u_max = math.log(float(f_max))
+    f_min_f = float(f_min)
+    f_max_f = float(f_max)
+    u_min = math.log(f_min_f)
+    u_max = math.log(f_max_f)
     span = u_max - u_min
 
-    # Peak of -(e^u - fh)^2 / (2 sf^2) on [u_min, u_max] for overflow-free quadrature
-    f_star = min(max(fh, float(f_min)), float(f_max))
-    peak_log_rel = 0.5 * (fh / sf) ** 2 - 0.5 * ((f_star - fh) / sf) ** 2
+    # Cancellation-free peak shift and relative log-weight on [u_min, u_max]:
+    #   ln(L(f_*) / L(0)) = f_* (2 fh - f_*) / (2 sf^2),
+    #   ln(L(f) / L(f_*)) = -(f - f_*)(f + f_* - 2 fh) / (2 sf^2),
+    # with boundary-layer support truncation where relative weight drops below exp(-700).
+    f_star = min(max(fh, f_min_f), f_max_f)
+    u_star = math.log(f_star)
+    peak_log_rel = 0.5 * f_star * (2.0 * fh - f_star) / (sf * sf)
+
+    def df_from_star(u: float) -> float:
+        return f_star * math.expm1(u - u_star)
 
     def weight(u: float) -> float:
-        f = math.exp(u)
-        log_rel = 0.5 * (fh / sf) ** 2 - 0.5 * ((f - fh) / sf) ** 2
-        return math.exp(log_rel - peak_log_rel)
+        df = df_from_star(u)
+        log_rel_diff = -0.5 * df * (df + 2.0 * (f_star - fh)) / (sf * sf)
+        return math.exp(log_rel_diff) if log_rel_diff > -745.0 else 0.0
 
-    pts = [u_min, u_max]
-    if fh > f_min and fh < f_max:
-        u_hat = math.log(fh)
-        delta_u = min(8.0 * sf / fh, 0.5 * span)
-        pts = sorted({u_min, max(u_min, u_hat - delta_u), u_hat, min(u_max, u_hat + delta_u), u_max})
+    cut = 1400.0 * sf * sf
+    if fh <= f_min_f:
+        d0 = f_min_f - fh
+        df_cut = cut / (d0 + math.hypot(d0, math.sqrt(cut)))
+        u_lo = u_min
+        u_hi = min(u_max, u_min + math.log1p(df_cut / f_min_f))
+        du = math.log1p(min((sf * sf) / max(d0 * f_min_f, sf * f_min_f), df_cut / f_min_f))
+        pts = sorted(
+            {u_lo, *(u_lo + c * du for c in (0.5, 2.0, 8.0) if u_lo + c * du < u_hi), u_hi}
+        )
+    elif fh >= f_max_f:
+        d0 = fh - f_max_f
+        df_cut = cut / (d0 + math.hypot(d0, math.sqrt(cut)))
+        u_hi = u_max
+        u_lo = max(u_min, u_max + math.log1p(-min(df_cut / f_max_f, 1.0 - 1e-15)))
+        du = -math.log1p(
+            -min((sf * sf) / max(d0 * f_max_f, sf * f_max_f), df_cut / f_max_f, 0.5)
+        )
+        pts = sorted(
+            {u_lo, *(u_hi - c * du for c in (0.5, 2.0, 8.0) if u_hi - c * du > u_lo), u_hi}
+        )
+    else:
+        u_hat = u_star
+        u_lo = max(u_min, math.log(max(f_min_f, fh - 38.0 * sf)))
+        u_hi = min(u_max, math.log(min(f_max_f, fh + 38.0 * sf)))
+        delta_u = min(6.0 * sf / fh, 0.45 * (u_hi - u_lo))
+        pts = sorted(
+            {u_lo, max(u_lo, u_hat - delta_u), u_hat, min(u_hi, u_hat + delta_u), u_hi}
+        )
 
-    z0, _ = integrate.quad(weight, u_min, u_max, points=pts[1:-1], epsabs=1e-14, epsrel=1e-13, limit=300)
-    m1, _ = integrate.quad(
-        lambda u: math.exp(u) * weight(u),
-        u_min,
-        u_max,
+    z0, _ = integrate.quad(
+        weight, u_lo, u_hi, points=pts[1:-1], epsabs=0.0, epsrel=1e-13, limit=300
+    )
+    d1, _ = integrate.quad(
+        lambda u: df_from_star(u) * weight(u),
+        u_lo,
+        u_hi,
         points=pts[1:-1],
-        epsabs=1e-14,
+        epsabs=0.0 if fh <= f_min_f or fh >= f_max_f else 1e-15 * f_star * z0,
         epsrel=1e-13,
         limit=300,
     )
-    mean = m1 / z0
+    mean_offset = d1 / z0
+    mean = f_star + mean_offset
     v2, _ = integrate.quad(
-        lambda u: ((math.exp(u) - mean) ** 2) * weight(u),
-        u_min,
-        u_max,
+        lambda u: ((df_from_star(u) - mean_offset) ** 2) * weight(u),
+        u_lo,
+        u_hi,
         points=pts[1:-1],
-        epsabs=1e-14,
+        epsabs=0.0,
         epsrel=1e-13,
         limit=300,
     )

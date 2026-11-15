@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import gc
 import math
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -145,7 +146,47 @@ def test_smc_tempering_ref_outlier_flux_and_ridge_identities():
         abs(lu_pos["posterior_mean"] - mean_lu_f),
         abs(lu_pos["posterior_sd"] - math.sqrt(v2_lu_f / z_lu_f)),
     )
-    assert err_lu_ref < 1e-12
+    # Boundary-layer LogUniform regimes outside [f_min, f_max] (f_hat / sf = -1000 and (f_hat - f_max) / sf = +300)
+    for fh_ex, sf_ex, f_lo, f_hi in [(-0.10, 1e-4, 1e-4, 0.2), (0.50, 1e-3, 1e-4, 0.2)]:
+        got_ex = ref.linear_flux_loguniform_prior_ref(fh_ex, sf_ex, f_lo, f_hi)
+        f_star = min(max(fh_ex, f_lo), f_hi)
+        peak_rel = 0.5 * f_star * (2.0 * fh_ex - f_star) / (sf_ex * sf_ex)
+        span_ex = math.log(f_hi / f_lo)
+        if fh_ex <= f_lo:
+            sc_t = (sf_ex * sf_ex) / (f_lo - fh_ex)
+            t_cap = min((f_hi - f_lo) / sc_t, 800.0)
+            w_t = lambda t, sc=sc_t, fl=f_lo, sp=span_ex, s=sf_ex: (sc / ((fl + sc * t) * sp)) * math.exp(
+                -t - 0.5 * ((sc * t) / s) ** 2
+            )
+            z0_ex, _ = integrate.quad(w_t, 0.0, t_cap, epsabs=0.0, epsrel=1e-13)
+            d1_ex, _ = integrate.quad(lambda t: (sc_t * t) * w_t(t), 0.0, t_cap, epsabs=0.0, epsrel=1e-13)
+            dm_ex = d1_ex / z0_ex
+            m_ex = f_lo + dm_ex
+            z2_ex, _ = integrate.quad(
+                lambda t: ((sc_t * t - dm_ex) ** 2) * w_t(t), 0.0, t_cap, epsabs=0.0, epsrel=1e-13
+            )
+        else:
+            sc_t = (sf_ex * sf_ex) / (fh_ex - f_hi)
+            t_cap = min((f_hi - f_lo) / sc_t, 800.0)
+            w_t = lambda t, sc=sc_t, fh_b=f_hi, sp=span_ex, s=sf_ex: (sc / ((fh_b - sc * t) * sp)) * math.exp(
+                -t - 0.5 * ((sc * t) / s) ** 2
+            )
+            z0_ex, _ = integrate.quad(w_t, 0.0, t_cap, epsabs=0.0, epsrel=1e-13)
+            d1_ex, _ = integrate.quad(lambda t: (-sc_t * t) * w_t(t), 0.0, t_cap, epsabs=0.0, epsrel=1e-13)
+            dm_ex = d1_ex / z0_ex
+            m_ex = f_hi + dm_ex
+            z2_ex, _ = integrate.quad(
+                lambda t: ((-sc_t * t - dm_ex) ** 2) * w_t(t), 0.0, t_cap, epsabs=0.0, epsrel=1e-13
+            )
+        bf_ex = peak_rel + math.log(z0_ex)
+        sd_ex = math.sqrt(z2_ex / z0_ex)
+        err_lu_ref = max(
+            err_lu_ref,
+            abs(got_ex["log_bayes_factor"] - bf_ex) / max(abs(bf_ex), 1.0),
+            abs(got_ex["posterior_mean"] - m_ex) / m_ex,
+            abs(got_ex["posterior_sd"] - sd_ex) / sd_ex,
+        )
+    assert err_lu_ref < 1e-11
 
     # Ridge K-fold CV across all folds (theta_hat, score, chi2, group_score) + aggregate_cv_ref
     x_mat = rng.normal(size=(12, 3))
@@ -533,6 +574,39 @@ def test_grid_fit_gaussian_loguniform_and_linear_flux_grid(tmp_path):
     want_occam = -math.log(math.log(0.8 / 1e-5) / math.log(0.2 / 1e-4))
     got_occam = float(res_wide.log_bayes_factor[0, 0] - res_lu.log_bayes_factor[0, 0])
     assert abs(got_occam - want_occam) < 1e-9
+
+    # Boundary-clamped high-SNR LogUniform cells: bright companion above f_max ((f_hat - f_max)/sf > 50)
+    # and anti-symmetric closure-phase mirror trough below 0 (f_hat / sf < -50)
+    clamp_fits = tmp_path / "binary_grid_clamp_trough.fits"
+    bright_cloud = _binary_cloud(0.10, 8.0, -5.0)
+    xsim.observe(
+        clamp_fits,
+        lambda u, v, wl: xsky.visibility(bright_cloud, u, v, wl),
+        UTS3,
+        hour_angles_h=[-1.5, -0.5, 0.5, 1.5],
+        wavelengths=np.array([2.0e-6, 2.2e-6]),
+        sigma_v2=0.06,
+        sigma_cp_deg=0.04,
+    )
+    oid_clamp = OIData(read_oifits(str(clamp_fits)))
+    lu_clamp = vgf.LogUniform(1e-4, 0.04)
+    grid_clamp = {"dra": np.array([8.0, -8.0]), "ddec": np.array([-5.0, 5.0]), "flux": np.array([0.01])}
+    res_clamp = vgf.linear_flux_grid(BinaryModelCartesian, oid_clamp, grid_clamp, prior=lu_clamp)
+    assert float((res_clamp.flux[0, 0] - lu_clamp.f_max) / res_clamp.flux_error[0, 0]) > 50.0
+    assert float(res_clamp.flux[1, 1] / res_clamp.flux_error[1, 1]) < -50.0
+    for idx_c in [(0, 0), (1, 1)]:
+        want_c = ref.linear_flux_loguniform_prior_ref(
+            float(res_clamp.flux[idx_c]),
+            float(res_clamp.flux_error[idx_c]),
+            lu_clamp.f_min,
+            lu_clamp.f_max,
+        )
+        err_lu_bf = max(err_lu_bf, abs(float(res_clamp.log_bayes_factor[idx_c]) - want_c["log_bayes_factor"]))
+        err_lu_mean = max(err_lu_mean, abs(float(res_clamp.posterior_mean[idx_c]) - want_c["posterior_mean"]))
+        err_lu_sd = max(err_lu_sd, abs(float(res_clamp.posterior_sd[idx_c]) - want_c["posterior_sd"]))
+    assert err_lu_bf < 1e-7
+    assert err_lu_mean < 1e-7
+    assert err_lu_sd < 1e-7
 
     max_bf_err = max(err_g_bf, err_lu_bf, err_lu_sd)
     record("max_prior_bf_err", max_bf_err)
@@ -1163,6 +1237,64 @@ def test_fit_result_gauss_newton_mass_and_chain_init_params(tmp_path):
     with pytest.raises(ValueError):
         vlike.chain_init_params(posterior, [v_opt], mass=gnm_flat)
 
+    # flat_coordinates=True on a LogUniform flux prior: sigmoid(z) in log-flux replaces NumPyro's
+    # linear-flux sigmoid(z), matching standard logistic prior curvature + logit(log-fraction) init
+    lu_a, lu_b = 1e-4, 0.2
+    priors_lu = {
+        "dra": dist.Normal(8.5, 5.0),
+        "ddec": dist.Normal(-5.5, 5.0),
+        "flux": dist.LogUniform(lu_a, lu_b),
+    }
+    gnm_lu_flat = vfit.gauss_newton_mass(tmpl, priors_lu, oid, v_opt, noise=noise, flat_coordinates=True)
+    gnm_lu_raw = vfit.gauss_newton_mass(tmpl, priors_lu, oid, v_opt, noise=noise, flat_coordinates=False)
+    site_lu = next(iter(gnm_lu_flat["inverse_mass_matrix"].keys()))
+    im_lu_flat = np.asarray(gnm_lu_flat["inverse_mass_matrix"][site_lu], dtype=np.float64)
+    im_lu_raw = np.asarray(gnm_lu_raw["inverse_mass_matrix"][site_lu], dtype=np.float64)
+    assert linalg.norm(im_lu_flat - im_lu_raw) / linalg.norm(im_lu_flat) > 1e-5
+    ln_a, ln_span = math.log(lu_a), math.log(lu_b / lu_a)
+
+    def residual_lu_flat(z_vec: np.ndarray) -> np.ndarray:
+        d = dict(zip(site_lu, z_vec, strict=True))
+        f_val = math.exp(ln_a + ln_span * float(special.expit(d["flux"])))
+        s_val = math.exp(float(d["noise.vis_scale"]))
+        c = _binary_cloud(f_val, float(d["dra"]), float(d["ddec"]))
+        v2_pred = (np.abs(xsky.visibility(c, u_m, v_m, wl_m)) ** 2).ravel()
+        r_data = (v2_pred - v2_obs) / (s_val * dv2_obs)
+        r_scale = np.array([math.sqrt(2.0 * n_data) * math.log(s_val)])
+        return np.concatenate([r_data, r_scale])
+
+    def log_prior_lu_flat(z_vec: np.ndarray) -> float:
+        d = dict(zip(site_lu, z_vec, strict=True))
+        zf = float(d["flux"])
+        zv = float(d["noise.vis_scale"])
+        lp_logistic = -float(np.logaddexp(0.0, -zf) + np.logaddexp(0.0, zf))
+        return (
+            -0.5 * ((float(d["dra"]) - 8.5) / 5.0) ** 2
+            - 0.5 * ((float(d["ddec"]) - (-5.5)) / 5.0) ** 2
+            + lp_logistic
+            - 0.5 * (zv / 0.25) ** 2
+        )
+
+    z_lu_map = {
+        "dra": float(v_opt["dra"]),
+        "ddec": float(v_opt["ddec"]),
+        "flux": float(special.logit((math.log(float(v_opt["flux"])) - ln_a) / ln_span)),
+        "noise.vis_scale": math.log(float(v_opt["noise.vis_scale"])),
+    }
+    gn_lu_ref = ref.gauss_newton_precision_fd_ref(
+        residual_lu_flat,
+        log_prior_lu_flat,
+        np.array([z_lu_map[k] for k in site_lu], dtype=np.float64),
+    )
+    lu_flat_rel_err = float(
+        linalg.norm(im_lu_flat - np.asarray(gn_lu_ref["inverse_mass"]))
+        / linalg.norm(np.asarray(gn_lu_ref["inverse_mass"]))
+    )
+    assert lu_flat_rel_err < 5e-6
+    posterior_lu_flat = vlike.numpyro_model(tmpl, priors_lu, oid, noise=noise, flat_coordinates=True)
+    init_lu_flat = vlike.chain_init_params(posterior_lu_flat, [v_opt], mass=gnm_lu_flat)
+    assert float(init_lu_flat["flux"]) == pytest.approx(z_lu_map["flux"], abs=1e-12)
+
     # Bound detection on FitResult when Uniform box clips the optimum
     fres_clipped = vfit.fit(
         tmpl,
@@ -1590,7 +1722,8 @@ def test_svi_underdispersed_unconverged_guide_flags_khat_control(tmp_path):
     priors = {"dra": dist.Normal(8.0, 5.0), "ddec": dist.Normal(-5.0, 5.0)}
     tmpl = BinaryModelCartesian(8.0, -5.0, 0.02)
 
-    with pytest.warns(RuntimeWarning, match="Pareto"):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", RuntimeWarning)
         vi_bad = vsvi.variational(
             tmpl,
             priors,
@@ -1598,12 +1731,16 @@ def test_svi_underdispersed_unconverged_guide_flags_khat_control(tmp_path):
             guide="mvn",
             dense_start=False,
             init_scale=1e-3,
-            steps=2,
-            window=1,
+            steps=10,
+            window=10,
             learning_rate=1e-8,
             num_samples=1000,
             key=jax.random.PRNGKey(99),
         )
+    msgs = [str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)]
+    assert any("Pareto" in m for m in msgs)
+    assert any("settled" in m for m in msgs)
+    assert vi_bad.converged is False
     khat = float(vi_bad.info["khat"])
     assert khat > 0.7
     record("underdispersed_khat", khat)
