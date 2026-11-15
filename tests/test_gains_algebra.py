@@ -194,8 +194,12 @@ def test_offsets_outside_the_span_of_T_do_not_enter(obs):
     sigma_off_sq = np.sum(null_arr**2, axis=0).reshape(nrow, nw)
     want_null_scaled = -0.5 * np.sum(q_pen**2 / (d["dcp"] ** 2 + sigma_off_sq) - q_pen**2 / d["dcp"] ** 2)
     null_scaled = float(model_loglike(model, data.with_closure_offsets(modes=null_arr))) - base
+    live_scaled = float(model_loglike(model, data.with_closure_offsets(modes=live_arr))) - base
 
     record("abs_dloglike_null", abs(null_unscaled))
+    record("dloglike_null_scaled", null_scaled)
     record("abs_dloglike_null_scaled_err", abs(null_scaled - want_null_scaled))
     assert abs(null_unscaled) < 1e-12 and abs(live_unscaled) > 1e-3
+    assert want_null_scaled > 0.0  # D26: unprojected diag(M M^T) softens wrap penalty when Delta != 0
     assert abs(null_scaled - want_null_scaled) < 1e-12
+    assert abs(live_scaled) > 1e-3 and abs(live_scaled - null_scaled) > 1e-3

@@ -8,6 +8,7 @@ nodes rather than holding them at ``relies-unverified``.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import subprocess
 
@@ -29,6 +30,26 @@ from crosscheck import (
 )
 from evidence.plugin import record
 from external_bridge import _subprocess as ext_sp, npz_compare as npzc
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _clear_jax_caches_around_via_references():
+    """Drop accumulated XLA caches before spawning external worker subprocesses and on teardown."""
+    try:
+        import jax
+
+        jax.clear_caches()
+    except ImportError:
+        pass
+    gc.collect()
+    yield
+    try:
+        import jax
+
+        jax.clear_caches()
+    except ImportError:
+        pass
+    gc.collect()
 
 
 # ------------------------------------------------ 1. crosscheck.radio_innovations
@@ -460,7 +481,7 @@ def test_informed_starts_scales_tiled_peaks_and_diagnostic_checks():
 
 @pytest.mark.validates(
     "crosscheck.orbit_population",
-    roots=["mathematics", "statistics"],
+    roots=["mathematics", "standards"],
     kind="reference",
     headline="ellipse_quadrature_abs_err",
 )
@@ -581,7 +602,7 @@ def test_references_secondary_omega_time_systems_and_catalog_completeness():
 
 @pytest.mark.validates(
     "crosscheck.skyplane",
-    roots=["mathematics", "statistics"],
+    roots=["mathematics"],
     kind="reference",
     headline="twin_rms_mas",
 )
@@ -930,7 +951,7 @@ def _mpol_direct_visibilities(packed_intensity, pixel_mas, u, v, obs, log10_amp,
 
 @pytest.mark.validates(
     "virgil_bridge.mpol",
-    roots=["mathematics", "statistics"],
+    roots=["mathematics"],
     kind="reference",
     headline="nll_vs_mpol_dft_abs_err",
 )
@@ -1597,24 +1618,31 @@ def test_orbitize_worker_ephemeris_and_period_match_kepler_third_law_and_sky_pro
     headline="roundtrip_max_abs_err",
 )
 def test_safe_load_reconstructs_numpy_arrays_and_blocks_arbitrary_globals(tmp_path):
-    """``safe_load.load_pickle`` and ``load_object_npy`` (format 1.0 and 2.0 headers)
-    reconstruct whitelisted NumPy arrays and builtins while rejecting ``os.system`` payloads."""
+    """``safe_load.load_pickle`` and ``load_object_npy`` (format 1.0, 2.0, and 3.0 headers)
+    reconstruct allowlisted NumPy arrays, OrderedDict, and scalar/container builtins while
+    rejecting non-constructor globals across ``os``, ``builtins``, and ``numpy``."""
+    from collections import OrderedDict
     import io
     import pickle
     from external_bridge import safe_load
 
-    payload = {"u": np.linspace(-5.0, 5.0, 9), "meta": ("hr4796", 3)}
+    payload = {
+        "u": np.linspace(-5.0, 5.0, 9),
+        "meta": ("hr4796", 3, frozenset({"Band7"})),
+        "order": OrderedDict([("a", np.float64(1.5)), ("b", np.int64(4))]),
+    }
     pkl_path = tmp_path / "ok.pkl"
     pkl_path.write_bytes(pickle.dumps(payload))
     got_pkl = safe_load.load_pickle(pkl_path)
     err_pkl = float(np.max(np.abs(got_pkl["u"] - payload["u"])))
     assert got_pkl["meta"] == payload["meta"]
+    assert list(got_pkl["order"].items()) == [("a", 1.5), ("b", 4)]
 
     obj_arr = np.empty(2, dtype=object)
     obj_arr[0] = np.array([1.25, -3.5, 4.0])
     obj_arr[1] = {"k": 7}
     err_npy = 0.0
-    for ver, name in (((1, 0), "v1.npy"), ((2, 0), "v2.npy")):
+    for ver, name in (((1, 0), "v1.npy"), ((2, 0), "v2.npy"), ((3, 0), "v3.npy")):
         npy_path = tmp_path / name
         with open(npy_path, "wb") as fh:
             np.lib.format.write_array(fh, obj_arr, version=ver, allow_pickle=True)
@@ -1622,20 +1650,113 @@ def test_safe_load_reconstructs_numpy_arrays_and_blocks_arbitrary_globals(tmp_pa
         err_npy = max(err_npy, float(np.max(np.abs(got_npy[0] - obj_arr[0]))))
         assert got_npy[1] == {"k": 7}
 
-    # Malicious pickle invoking os.system must raise pickle.UnpicklingError
-    bad_bytes = b"cos\nsystem\n(S'echo nope'\ntR."
-    bad_path = tmp_path / "bad.pkl"
-    bad_path.write_bytes(bad_bytes)
-    with pytest.raises(pickle.UnpicklingError, match="blocked global"):
-        safe_load.load_pickle(bad_path)
+    # Non-object .npy and unsupported format versions fail closed with ValueError
+    plain_npy = tmp_path / "plain.npy"
+    np.save(plain_npy, np.arange(4.0))
+    with pytest.raises(ValueError, match="object-dtype"):
+        safe_load.load_object_npy(plain_npy)
+    bad_ver_npy = tmp_path / "v9.npy"
+    bad_ver_npy.write_bytes(b"\x93NUMPY\x09\x00\x00\x00")
+    with pytest.raises(ValueError, match="unsupported .npy format"):
+        safe_load.load_object_npy(bad_ver_npy)
 
-    bad_npy = tmp_path / "bad.npy"
-    buf = io.BytesIO()
-    np.lib.format.write_array_header_1_0(buf, {"descr": "|O", "fortran_order": False, "shape": (1,)})
-    bad_npy.write_bytes(buf.getvalue() + bad_bytes)
-    with pytest.raises(pickle.UnpicklingError, match="blocked global"):
-        safe_load.load_object_npy(bad_npy)
+    # Every non-constructor callable across os, builtins, and numpy must raise UnpicklingError
+    forbidden_payloads = [
+        b"cos\nsystem\n(S'echo nope'\ntR.",
+        b"cbuiltins\ndelattr\n(S'x'\nS'y'\ntR.",
+        b"cbuiltins\nglobals\n(tR.",
+        b"cnumpy\nmemmap\n(S'nope.dat'\ntR.",
+        b"cnumpy\nloadtxt\n(S'nope.txt'\ntR.",
+    ]
+    for idx, bad_bytes in enumerate(forbidden_payloads):
+        bad_path = tmp_path / f"bad_{idx}.pkl"
+        bad_path.write_bytes(bad_bytes)
+        with pytest.raises(pickle.UnpicklingError, match="blocked global"):
+            safe_load.load_pickle(bad_path)
+
+        bad_npy = tmp_path / f"bad_{idx}.npy"
+        buf = io.BytesIO()
+        np.lib.format.write_array_header_1_0(buf, {"descr": "|O", "fortran_order": False, "shape": (1,)})
+        bad_npy.write_bytes(buf.getvalue() + bad_bytes)
+        with pytest.raises(pickle.UnpicklingError, match="blocked global"):
+            safe_load.load_object_npy(bad_npy)
 
     worst = max(err_pkl, err_npy)
     record("roundtrip_max_abs_err", worst)
     assert worst == 0.0
+
+
+@pytest.mark.validates(
+    "virgil_bridge.alma_lambda_report",
+    roots=["mathematics"],
+    kind="reference",
+    headline="blur_kernel_max_abs_err",
+)
+def test_alma_lambda_report_blur_moments_and_gate_checks_match_analytic_beam_and_thresholds():
+    """``alma_lambda_report.blur`` convolves with the exact rotated elliptical Gaussian
+    ``(4 ln 2 / (pi BMAJ BMIN)) dx^2 exp(-4 ln 2 ((da sin PA + dd cos PA)^2 / BMAJ^2 + ...))``,
+    ``moments`` recovers centroid and PA from exact sky-plane second moments, and
+    ``checks_of`` enforces the pre-registered thresholds of ``alma_lambda``."""
+    from virgil_bridge import alma_lambda as vl, alma_lambda_report as rep
+
+    npix = 96
+    px = 10.0
+    bmaj, bmin, pa_deg = 120.0, 65.0, 37.0
+    r0 = npix // 2 - 1
+    delta = np.zeros((npix, npix))
+    delta[r0, r0] = 1.0
+    got_blur = rep.blur(delta, px, (bmaj, bmin, pa_deg))
+
+    rr, cc = np.indices((npix, npix))
+    east = (r0 - cc) * px
+    north = (r0 - rr) * px
+    th = np.deg2rad(pa_deg)
+    along = east * np.sin(th) + north * np.cos(th)
+    across = east * np.cos(th) - north * np.sin(th)
+    ln2 = np.log(2.0)
+    want_blur = (
+        (4.0 * ln2 / (np.pi * bmaj * bmin))
+        * (px**2)
+        * np.exp(-4.0 * ln2 * ((along / bmaj) ** 2 + (across / bmin) ** 2))
+    )
+    blur_err = float(np.max(np.abs(got_blur - want_blur)))
+
+    # Shifted rotated elliptical Gaussian inside the 1.2 arcsec aperture for moments()
+    e_true, n_true, pa_true = 45.0, -30.0, 128.0
+    th2 = np.deg2rad(pa_true)
+    de, dn = east - e_true, north - n_true
+    u_maj = de * np.sin(th2) + dn * np.cos(th2)
+    u_min = de * np.cos(th2) - dn * np.sin(th2)
+    sky_gauss = np.exp(-0.5 * ((u_maj / 45.0) ** 2 + (u_min / 20.0) ** 2))
+    e_got, n_got, pa_got = rep.moments(sky_gauss, px, radius_arcsec=1.2)
+    mom_pos_err = float(max(abs(e_got - e_true), abs(n_got - n_true)))
+    mom_pa_err = float(abs((pa_got - pa_true + 90.0) % 180.0 - 90.0))
+
+    # Pre-registered gate checks_of() pass/fail boundaries
+    w_grid = vl.grid(1.0)
+    pts = [dict(weight=float(w), w_over_s2=float(w), chi2=1e5, m=float(10.0 - 5.0 * i), g=100.0, kkt_w=1e-5, band_limit=0.8) for i, w in enumerate(w_grid)]
+    w_root = float(w_grid[2])
+    rec_ok = dict(
+        sigma=dict(sigma_rel=0.5 * vl.SIGMA_REL_MAX, ref_obs=1, sum_weights=[1.0, 4.0, 2.0], n_vis=1000),
+        d4=dict(bias=1e-4, se_mean=1e-3, s2_injected=1.0, bias_in_se=0.1, bias_rel=1e-4),
+        sweep=dict(
+            s2=1.0, n_rows=1000, n_real=2000, points=pts, crossings=[w_root / 10.0, w_root],
+            crossings_w_over_s2=[w_root / 10.0, w_root], weight=w_root, w_over_s2=w_root,
+            m=0.5, g=100.0, g_se=1.0, n_secant=2, unconverged_fits=[],
+        ),
+        final=dict(
+            kkt_w=0.5 * vl.KKT_W_MAX, band_limit=0.5 * vl.BAND_MAX,
+            nuisances={"cal.gain": dict(edge_frac=[0.5, 0.2], at_edge=[False, False])},
+        ),
+    )
+    checks_pass = rep.checks_of(rec_ok)
+    assert all(c["ok"] is True for c in checks_pass)
+    rec_bad = dict(rec_ok, final=dict(rec_ok["final"], kkt_w=1.5 * vl.KKT_W_MAX))
+    assert [c["item"] for c in rep.checks_of(rec_bad) if c["ok"] is False] == ["6"]
+
+    record("blur_kernel_max_abs_err", blur_err)
+    record("moments_pos_max_err_mas", mom_pos_err)
+    record("moments_pa_err_deg", mom_pa_err)
+    assert blur_err < 1e-14
+    assert mom_pos_err < 1e-10
+    assert mom_pa_err < 1e-10
