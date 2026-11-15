@@ -412,8 +412,9 @@
   evidence:
     - tests/test_multipole_companions.py::test_multipole_field_polar_covariance_and_origin_regularity
     - tests/test_multipole_companions.py::test_f25_multipole_field_origin_taper_uses_physical_length_r_and_is_grid_invariant
-  status: open
-  note: identified by Gemini 4 Carbon adversarial review (session ddbaaa6e) and reproduced numerically on virgil d79696de9d97 vs 0.4.2 main c2be8278a4 by worker batch2-disks.
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/673]
+  note: identified by Gemini 4 Carbon adversarial review (session ddbaaa6e) and reproduced numerically on virgil d79696de9d97 by worker batch2-disks; fixed in virgil 5ca955ad6ceb (merged in virgil#673) and verified at virgil 0.4.2 c2be8278a4 where the strict xfail is removed and the test passes to 2.4e-6 (n_r = 9 vs 17 refinement drift 1e-15).
 
 - id: D10
   title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline)
@@ -443,17 +444,16 @@
   status: to-raise
 
 - id: F22
-  title: the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere"
+  title: closure-phase residuals are undefined where a model visibility crosses zero (phase formulation vs complex bispectrum); whitened_residuals' 0.4.2 docstring drops the "continuous and smooth everywhere" claim
   objects: [virgil.likelihood.whitened_residuals]
-  ruling: virgil
-  kind: 'bug (a model visibility V passing through 0 changes its phase by pi, so every closure phase through that baseline jumps by pi and the chi-squared by ~2/sigma^2 over a step of |V|/|dV/dx|; d(phase)/dx ~ 1/|V|. Reproduced on synthetic 3-telescope data: a flat-start MEM fit ends with a model visibility of 4e-12 and does not converge, AD 6e6 against FD -4e7 at eps 1e-5. V^2 and MaxEntropy terms have AD = FD at the same point)'
-  referee: mathematics (the phase of a complex number is discontinuous at 0; a loss built from it has no bounded gradient there; the bispectrum form is polynomial in V)
-  evidence: []
-  pending: 'its tests are on the branch review/integration (tests/test_mem_null_discontinuity.py, nine tests) and are not yet on main, so no test id can be cited here; cite them when that branch lands'
-  status: open
+  ruling: definition
+  kind: 'formulation choice (a model visibility V passing through 0 changes its phase by pi, so any closure-phase residual built from arg V is singular at |V| = 0 with d(phase)/dx ~ 1/|V|, whereas a complex-bispectrum loss is polynomial in V; flat-start MEM fits that drift onto a visibility null can stall there, tracked as an enhancement in virgil#309. virgil 0.4.2 removed the "continuous and smooth everywhere" claim from whitened_residuals'' docstring)'
+  referee: mathematics (the phase of a complex number is discontinuous at 0; documented alongside eht-imaging in docs/method/ehtim.md)
+  evidence: [tests/test_ehtim_reconstruction.py::test_objective_matches_ehtim]
+  status: documented
   links: [https://github.com/benjaminpope/virgil/issues/309]
-  decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring. Accepted again for virgil 0.4.1 (Ben, 2026-10-23): stated in the 0.4.1 release notes under Known issues, fix tracked in virgil#309; status stays open.'
-  note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
+  decision: 'ruled definition / documented (Ben, 2026-11-15): closure-phase smoothness across |V| = 0 does not need to hold for the phase-residual likelihood (and whitened_residuals'' docstring no longer claims it in 0.4.2), and visibility-null stalling does not need to be a trust-graph blocker; bispectrum support remains tracked in virgil#309.'
+  note: originally recorded on review/integration as F20; tests/test_mem_null_discontinuity.py is intentionally not added as a trust node per Ben's 2026-11-15 ruling.
 
 
 - id: F23
@@ -463,7 +463,9 @@
   kind: 'documentation (through the unit-sum softmax the Skilling-Bryan metric weight * sum db^2/b has diagonal weight * b * (1 - b), which virgil returns to 1e-15; weight * b is its b << 1 limit, 1e-6 off on a million-pixel image and up to 20% on the 6 x 6 test. Nothing is wrong numerically, so there is no strict xfail: the test pins the exact form and fails if the diagonal ever becomes weight * b)'
   referee: mathematics (the metric pulled back through the softmax, dense Jacobian)
   evidence: [tests/test_radio_innovations.py::test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric]
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/679]
+  note: 'fixed in virgil 56e93b7 (merged in virgil#679): gauss_newton_diag''s docstring now states weight * b * (1 - b) explicitly, pinned alongside the numerical check at virgil 0.4.2 c2be8278a4.'
 
 - id: D14
   title: noise-free recovery is judged in units of the statistical error, not at a raw relative tolerance of 1e-6

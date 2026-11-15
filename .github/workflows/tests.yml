@@ -8,9 +8,11 @@ on:
   workflow_dispatch:
 
 env:
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"  # prevent JAX from preallocating 75% of 7 GB GitHub-hosted runner RAM
+
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: d79696de9d970396d9f2d007312bcffc3bcf11e7  # virgil#664 merged: sqrt-pixel LinearImage, L-BFGS-B, kkt_report, LCurve.dof_discrepancy, fit_staged_nuisances (the registered IM Lup lambda rule)
+  VIRGIL_REF: c2be8278a4d6549282b3cf199852101929df0462  # virgil 0.4.2 release candidate (virgil#722)
 
   # The virgil-vlti commit (public; the loader behind tests/test_calibrated_load.py,
   # which skips without it). Bump deliberately; weekly and manual runs use main.
@@ -36,7 +38,7 @@ jobs:
           if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; vlti_ref=main; fi
           echo "Testing virgil at $ref, virgil-vlti at $vlti_ref"
           uv pip install --python .venv/bin/python -e ".[external,polar-disk]" \
-            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@$ref" \
+            "virgil-astro[orbits,radio,pipeline] @ git+https://github.com/benjaminpope/virgil@$ref" \
             "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti@$vlti_ref"
           if [ "$(uname)" = Linux ] && [ "$(uname -m)" = x86_64 ]; then
             # casatools' manylinux_2_34 wheel links Rocky 9's libssl.so.3 (requiring Red Hat's
@@ -180,7 +182,7 @@ jobs:
         run: |
           uv venv --python 3.12 .venv
           uv pip install --python .venv/bin/python -e ".[external]" \
-            "virgil-astro[orbits,radio] @ git+https://github.com/benjaminpope/virgil@main"
+            "virgil-astro[orbits,radio,pipeline] @ git+https://github.com/benjaminpope/virgil@main"
       - name: report
         run: .venv/bin/python scripts/report.py --pulls 200
       - uses: actions/upload-artifact@v4

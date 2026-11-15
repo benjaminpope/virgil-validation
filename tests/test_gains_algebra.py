@@ -17,8 +17,10 @@ Here the objects themselves:
   g_j - g_i and so never reaches a closure phase, T A = 0 for our T and the
   station incidence A (a reference check of our algebra); and with four
   telescopes the one combination of closure phases outside the span of T
-  carries no information, so a closure-offset mode along it leaves virgil's
-  likelihood unchanged.
+  carries no projected-sine information, so a closure-offset mode along it
+  leaves the unscaled sine likelihood (``scale_penalty=False``) unchanged and
+  enters the default likelihood (``scale_penalty=True``) solely through the
+  per-phase wrap-penalty denominator hypot(σ_i, σ_off,i).
 """
 
 import numpy as np
@@ -152,11 +154,16 @@ def test_station_phases_cancel_in_our_triangle_algebra():
     assert np.linalg.matrix_rank(T) == 3  # 4 closure phases, 3 independent
 
 
-@pytest.mark.validates("virgil.gains.closure_offsets", "virgil.oidata.OIData.cp_noise", roots=["mathematics"])
+@pytest.mark.validates(
+    "virgil.gains.closure_offsets", "virgil.oidata.OIData.cp_noise",
+    roots=["mathematics"], headline="abs_dloglike_null",
+)
 def test_offsets_outside_the_span_of_T_do_not_enter(obs):
     """With four telescopes, n with nᵀ T = 0 is the dependent combination of
-    a frame's closure phases; an offset along n, of any size, changes
-    nothing, while one along a column of T does."""
+    a frame's closure phases: an offset along n leaves the projected sine
+    likelihood (``scale_penalty=False``) unchanged, while under the default
+    ``scale_penalty=True`` it enters solely through the wrap-penalty denominator
+    ``hypot(σ_i, σ_off,i)``."""
     d, data = obs
     nrow, nw = d["cp"].shape
     model = vm.System(star=vm.UniformDisk(1.45), comp=vm.PointSource(0.04, 6.2, -3.9))
@@ -171,7 +178,24 @@ def test_offsets_outside_the_span_of_T_do_not_enter(obs):
             shape = np.zeros((nrow, nw))
             shape[rows, :] = 0.3 * vec[:, None]
             out.append(shape.ravel())
-    null = float(model_loglike(model, data.with_closure_offsets(modes=np.array(null_modes)))) - base
-    live = float(model_loglike(model, data.with_closure_offsets(modes=np.array(live_modes)))) - base
-    record("abs_dloglike_null", abs(null))
-    assert abs(null) < 1e-10 and abs(live) > 1e-3
+    null_arr, live_arr = np.array(null_modes), np.array(live_modes)
+    null_unscaled = float(model_loglike(model, data.with_closure_offsets(modes=null_arr, scale_penalty=False))) - base
+    live_unscaled = float(model_loglike(model, data.with_closure_offsets(modes=live_arr, scale_penalty=False))) - base
+
+    def mvis(u, v, w):
+        return (sky.vis_uniform_disk(u, v, w, 1.45) + 0.04 * sky.vis_point(u, v, w, 6.2, -3.9)) / 1.04
+
+    model_cp = (
+        np.angle(mvis(d["u1"], d["v1"], d["wl3"]))
+        + np.angle(mvis(d["u2"], d["v2_"], d["wl3"]))
+        - np.angle(mvis(d["u1"] + d["u2"], d["v1"] + d["v2_"], d["wl3"]))
+    )
+    q_pen = 2.0 * np.sin(0.5 * (model_cp - d["cp"])) ** 2
+    sigma_off_sq = np.sum(null_arr**2, axis=0).reshape(nrow, nw)
+    want_null_scaled = -0.5 * np.sum(q_pen**2 / (d["dcp"] ** 2 + sigma_off_sq) - q_pen**2 / d["dcp"] ** 2)
+    null_scaled = float(model_loglike(model, data.with_closure_offsets(modes=null_arr))) - base
+
+    record("abs_dloglike_null", abs(null_unscaled))
+    record("abs_dloglike_null_scaled_err", abs(null_scaled - want_null_scaled))
+    assert abs(null_unscaled) < 1e-12 and abs(live_unscaled) > 1e-3
+    assert abs(null_scaled - want_null_scaled) < 1e-12

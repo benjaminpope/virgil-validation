@@ -109,11 +109,13 @@ def test_probe_estimate_is_within_its_stated_stochastic_error_of_the_exact_diago
 @pytest.mark.parametrize("weight", [1e-3, 1.0, 1e3])
 def test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric(weight):
     """With MaxEntropy(weight) the diagonal on the image pixels is the data's curvature plus the Skilling-Bryan
-    metric weight * sum db^2/b pulled back through the softmax, which is weight * b * (1 - b). The register writes weight * b, the b << 1
-    limit: a million-pixel image differs by 1e-6, a 6 x 6 one here by up to 20%. Source: Skilling & Bryan
-    1984, 1984MNRAS.211..111S."""
+    metric weight * sum db^2/b pulled back through the softmax, which is weight * b * (1 - b) (documented in
+    gauss_newton_diag since virgil#679, closing F23; the b << 1 limit weight * b differs by 1e-6 on a million-pixel
+    image and up to 20% on the 6 x 6 test here). Source: Skilling & Bryan 1984, 1984MNRAS.211..111S."""
+    import inspect
     from virgil.imaging import MaxEntropy
 
+    assert "weight * b * (1 - b)" in " ".join((inspect.getdoc(fitting.gauss_newton_diag) or "").split())
     p = _imaging_problem(6)
     ref = ri.entropy_metric_diagonal(weight, p["eta"])
     got = _virgil_diag(p, regularizers=[MaxEntropy(weight)])

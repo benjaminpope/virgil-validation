@@ -775,20 +775,10 @@ def test_multipole_field_polar_covariance_and_origin_regularity():
     assert origin_var < 0.5 * sigma**2
 
 
-@pytest.mark.validates(
-    "virgil.fields.MultipoleField", roots=["mathematics"], kind="finding", headline="max_rel_cov_err_lr"
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F25: at virgil d79696de9d97 MultipoleField(r_min_mas=0) tapers m != 0 modes by radial node spacing "
-        "instead of physical length_r, breaking n_r-refinement invariance (fixed in virgil 5ca955ad6ceb)"
-    ),
-)
+@pytest.mark.validates("virgil.fields.MultipoleField", roots=["mathematics"], headline="max_rel_cov_err_lr")
 def test_f25_multipole_field_origin_taper_uses_physical_length_r_and_is_grid_invariant():
-    """On a full disk (r_min_mas = 0), MultipoleField must taper order m by tanh(r / length_r)^|m| so the
-    polar prior covariance depends only on physical radius and is invariant when n_r is refined."""
+    """On a full disk (r_min_mas = 0), MultipoleField tapers order m by tanh(r / length_r)^|m| (F25 fixed in
+    virgil#673) so the polar prior covariance depends only on physical radius and is invariant when n_r is refined."""
     r_max, sigma, lr, lth, nu_r, nu_th = 20.0, 1.4, 7.0, 0.9, 1.5, 2.5
     n_th = 12
     freqs = np.fft.fftfreq(n_th, d=1.0 / n_th)
