@@ -221,6 +221,13 @@ def test_reference_module_imports_are_declared_in_depends():
             missing = sorted(imported_refs - declared)
             if missing:
                 undeclared.append((mod, missing))
+    for py in sorted((ROOT / "tests").rglob("*.py")):
+        rel_test = py.relative_to(ROOT)
+        if any(plugin._is_ignored_repo_part(part) for part in rel_test.parts):
+            continue
+        test_unreg = sorted(set(plugin._module_via(str(py))) - ref_nodes)
+        if test_unreg:
+            unregistered.append((rel_test.as_posix(), test_unreg))
     assert not unregistered, unregistered
     assert not undeclared, undeclared
     cycles = _find_depends_cycles(GRAPH["nodes"])
