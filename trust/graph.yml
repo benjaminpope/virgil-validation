@@ -76,6 +76,7 @@ nodes:
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image.model_on_grid: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image]}
   virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
+  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], doc: models/visibilities.md#pixel-images}
   virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Rotated: {layer: models, source: [src/virgil/models.py], convention: [rotation_sense]}
@@ -115,6 +116,7 @@ nodes:
     doc: models/limb_darkening.md#elliptical-disks
   virgil.spectra.Spectrum: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.flux_at: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
+  virgil.spectra.Scaled: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
@@ -210,6 +212,12 @@ nodes:
     depends: [virgil.likelihood.whitened_residuals]
   virgil.priors.IsotropicInclination: {layer: priors, source: [src/virgil/priors.py]}
   virgil.priors.IsotropicLatitude: {layer: priors, source: [src/virgil/priors.py]}
+  virgil.priors.PopulationScale: {layer: priors, source: [src/virgil/priors.py], doc: likelihood/priors.md}
+  virgil.priors.hierarchical_scales:
+    layer: priors
+    source: [src/virgil/priors.py]
+    depends: [virgil.priors.PopulationScale]
+    doc: likelihood/priors.md
   virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py], doc: likelihood/priors.md}
   virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
   virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
@@ -326,8 +334,17 @@ nodes:
   virgil.limits.contrast_to_flux: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.chi2ppf: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.radial_profile: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
-  # PolarDisk (virgil P1-P4): one disk class, radial profiles x azimuthal harmonics x height
-  virgil.models.PolarDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  # MultipoleDisk (formerly PolarDisk, virgil P1-P4): radial profiles x azimuthal harmonics x height
+  virgil.models.MultipoleDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.models.ThinRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.GaussianRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialPowerLaw: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.Gap: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialSum: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialLinear: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialPower: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialGP: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.MultipoleKernel: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.Harmonics:
     layer: models
     source: [src/virgil/models.py, src/virgil/harmonics.py]
@@ -337,6 +354,12 @@ nodes:
   virgil.models.Cone: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.PowerLawHeight: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.ExpTail: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}  # accuracy beyond the 150-node cap: F19
+  virgil.harmonics.to_image_harmonics: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.from_image_harmonics: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.from_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.to_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.rim_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.cone_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
   virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
@@ -344,6 +367,11 @@ nodes:
     layer: priors
     source: [src/virgil/fields.py]
     depends: [virgil.fields.field_spectrum]
+  virgil.fields.MultipoleField:
+    layer: priors
+    source: [src/virgil/fields.py, src/virgil/models.py]
+    depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel]
+    doc: models/polar_disk.md
   virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
   virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}
   virgil.likelihood.loglike:
@@ -416,6 +444,17 @@ nodes:
     doc: inference/helpers.md
   virgil.inference.gaussian_fisher: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.fisher_projection: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.expected_fisher: {layer: inference, source: [src/virgil/inference.py], depends: [], doc: inference/helpers.md}
+  virgil.inference.objective_laplace_covariance:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.inference.hessian_matrix, virgil.inference.regularized_inverse]
+    doc: inference/helpers.md
+  virgil.inference.observed_information:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.likelihood.model_loglike, virgil.likelihood.build_model]
+    doc: inference/helpers.md
   virgil.inference.laplace_parameter_uncertainty:
     layer: inference
     source: [src/virgil/inference.py]
@@ -521,6 +560,7 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.period_grid: {layer: orbits, source: [src/virgil/orbits.py], doc: orbits/kepler.md}
   virgil.orbits.total_mass:
     layer: orbits
     source: [src/virgil/orbits.py]

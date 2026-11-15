@@ -15,7 +15,7 @@ Fourier-Bessel nodes to r_out = 1.3 arcsec, N = 130 as in FRAP's tutorial)
 with a Gaussian-process MAP written here: I = exp(g), g = c + sigma L z, z ~ N(0, I),
 squared-exponential kernel (FRAP's), sigma = 2, ell = 0.03 arcsec, the same prior
 and statistics as the RadialGP profile; L-BFGS on (z, c). The tutorial's physical
-parameters (fixed T and q, inferred Sigma_d and a_max) are not used. PolarDisk uses
+parameters (fixed T and q, inferred Sigma_d and a_max) are not used. MultipoleDisk uses
 RadialGP(nu = inf, same sigma and ell) on 130 Gauss-Legendre nodes
 (2 mas to 1.3 arcsec), free flux.
 
@@ -40,7 +40,7 @@ from scipy.optimize import minimize
 from common import save
 from external_bridge.radial_codes import Frap
 from external_bridge.safe_load import load_pickle
-from virgil import PolarDisk, RadialGP
+from virgil import MultipoleDisk, RadialGP
 
 DATA = pathlib.Path(os.environ.get("V3_DATA", pathlib.Path.home() / "data" / "polar_disk_v3"))
 R_OUT, N, SIGMA, ELL = 1300.0, 130, 2.0, 30.0  # mas
@@ -79,7 +79,7 @@ def one_band(name):
     t_f = time.time() - t0
     chi2_f = float(np.sum(w * (v - np.asarray(frap_model(jnp.asarray(rf.x)))) ** 2))
 
-    disk0 = PolarDisk(RadialGP(2.0, R_OUT, sigma=SIGMA, ell=ELL, nu=float("inf"), n=N), inc=0.0, pa=0.0, n_r=N)
+    disk0 = MultipoleDisk(RadialGP(2.0, R_OUT, sigma=SIGMA, ell=ELL, nu=float("inf")), inc=0.0, pa=0.0, n_r=N)
     qj = jnp.asarray(q)
     wl, zero = jnp.ones_like(qj), jnp.zeros_like(qj)
 

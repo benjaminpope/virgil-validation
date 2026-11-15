@@ -1,18 +1,17 @@
-# PolarDisk: radial profiles, harmonics and height
+# MultipoleDisk: radial profiles, harmonics and height
 
-This page checks `PolarDisk`, virgil's disk model built from a radial profile, azimuthal harmonics and a height, in four stages. The stages test the forward transforms against other codes, brute-force renders, public ALMA data, and injection and recovery. The model parts are the radial profiles `GaussianRing`, `RadialPowerLaw`, `ExpTail`, `Gap`, `RadialSum` and `RadialGP` (virgil P1-P4); the azimuthal `Harmonics` (linear and positive forms) and `VonMises` arcs; and the heights `Cone` and `PowerLawHeight`.
+This page checks `MultipoleDisk` (formerly `PolarDisk`), virgil's disk model built from a radial profile, azimuthal harmonics and a height, in four stages plus companion component checks. The stages test the forward transforms against other codes, brute-force renders, public ALMA data, and injection and recovery. The model parts are the radial profiles `ThinRing`, `GaussianRing`, `RadialPowerLaw`, `ExpTail`, `Gap`, `RadialSum` and `RadialGP` (virgil P1-P4); the radial parameter functions `RadialLinear` and `RadialPower`; the azimuthal `Harmonics` (linear and positive forms), `VonMises` arcs, the harmonic prior `MultipoleKernel`, and the conversion helpers `to_image_harmonics`, `from_image_harmonics`, `from_legacy`, `to_legacy`, `rim_coefficients` and `cone_coefficients` in `virgil.harmonics`; the heights `Cone` and `PowerLawHeight`; and the polar-grid log-brightness Gaussian process `MultipoleField` in `virgil.fields`.
 
-The code under test is virgil `b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e`, the tip of `polar-p4` (PR #343), which includes `polar-p3` c82e18c and `main`. **The committed result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale. Regenerate them at the new pin on OzSTAR.** They still record the older hash and were not relabelled. Every result file in
+The stage-V benchmarks originally ran at virgil `b6317a10536bf52c3cd7a0565c1096b1c3b0ad6e`, the tip of `polar-p4` (PR #343), before the class was renamed to `MultipoleDisk` in `0.4.x` (`edge` -> `edge_sigma`, `Gap` `r0`/`width` -> `radius`/`sigma`). **The committed benchmark result files were produced at the older pin `791f9fef65eb49ebc387c5c365a13c7af2342341` and are stale. Regenerate them at the new pin on OzSTAR.** Every result file in
 [`benchmarks/polar_disk/results`](https://github.com/benjaminpope/virgil-validation/tree/main/benchmarks/polar_disk/results)
-records that hash and the package versions it ran with (frank 1.2.3, vis-r at
-`f53467077b04878986c967b501d88c54ff3efb86`, astro-frap 1.0.2, PMOIRED 26.10.1, oimodeler 0.8.1, JAX 0.11.2).
-The pass criteria are written at the head of each script before it was run. Results come from the working
-tree on top of this repository's `main` at the time of the PR. Re-run on merge to pin them to a commit.
+records that hash and the package versions it ran with (`frank` 1.2.3, `visr` / `vis-r` at
+`f53467077b04878986c967b501d88c54ff3efb86`, `frap` / `astro-frap` 1.0.2, PMOIRED 26.10.1, `oimodeler` 0.8.1, JAX 0.11.2).
+The pass criteria are written at the head of each script before it was run.
 
 | Stage | What | Script | Outcome |
 | --- | --- | --- | --- |
-| V1 | forward transforms against frank, vis-r, FRAP and our own Hankel transform; speed | `v1_forward.py` | smooth profiles pass (1e-9); `ExpTail` does not (F19) |
-| V2 | brute-force renders; PMOIRED and oimodeler rings; old against new `TruncatedCone` | `v2_brute_force.py`, `v2_external.py`, `v2_cone_old_new.py` | all pass except oimodeler's `ExpRing` (P9) |
+| V1 | forward transforms against `frank`, `visr`, `frap` and our own Hankel transform; speed | `v1_forward.py` | smooth profiles pass (1e-9); `ExpTail` does not (F19) |
+| V2 | brute-force renders; PMOIRED and `oimodeler` rings; old against new `TruncatedCone` | `v2_brute_force.py`, `v2_external.py`, `v2_cone_old_new.py` | all pass except oimodeler's `ExpRing` (P9) |
 | V3 | public data: AS 209 (frank), HR 4796 (vis-r), HD 169142 (FRAP) | `v3_as209.py`, `v3_hr4796.py`, `v3_frap.py` | pass, except the stated forward-model tolerances in two scripts |
 | V4 | injection and recovery on NRM and VLTI coverage | `v4_injection_recovery.py` | laptop configuration run; the full run is for OzSTAR |
 
@@ -22,9 +21,20 @@ Reference values come from other codes or from code written in this repository, 
 `src/crosscheck/radial.py` is a composite Gauss-Legendre Hankel transform, checked against
 `scipy.integrate.quad`. `src/crosscheck/polar_images.py` renders a scene finely in the plane of the disk
 (radius, azimuth, height) and carries it to the sky, where `crosscheck.sky` sums it point by point.
-`src/external_bridge/radial_codes.py` calls frank, vis-r and FRAP as documented.
+`external_bridge.radial_codes` (`src/external_bridge/radial_codes.py`) calls `frank`, `visr` and `frap` as documented, and each external package (`frank`, `frap`, `oimodeler`, `visr`) is independently checked against closed-form analytic Hankel transforms (2D Gaussian, Airy disk, and thin Bessel ring).
 Tests: [`test_polar_disk_brute_force.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_polar_disk_brute_force.py),
-[`test_polar_disk_vs_codes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_polar_disk_vs_codes.py).
+[`test_polar_disk_vs_codes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_polar_disk_vs_codes.py),
+[`test_multipole_companions.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_multipole_companions.py).
+
+## Companion radial profiles, harmonic conversions and polar fields
+
+[`test_multipole_companions.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_multipole_companions.py) validates each radial profile, harmonic conversion, Gaussian-process kernel and polar field individually against SciPy Bessel functions (`scipy.special.j0`, `j1`, `iv`, `kv`), adaptive Hankel quadrature (`crosscheck.radial`) and brute-force 2D sky point clouds (`crosscheck.polar_images` + `crosscheck.sky`), paired with negative controls:
+
+- **Parametric radial profiles**: `ThinRing` against the deprojected zeroth-order Bessel visibility (`scipy.special.j0`) with inclined, rotated sky offsets; `GaussianRing` at zero radius against the closed-form 2D Gaussian transform (up to its 6-sigma quadrature clip) and at positive radius against adaptive Hankel quadrature; `RadialPowerLaw` with sharp edges (Airy disk and analytic uniform annulus) and soft `edge_sigma` error-function edges; `Gap` against adaptive quadrature of the Gaussian-notched base profile (with a negative control catching the `visr` P10 swapped radius/depth bug); and `RadialSum` against the unit-flux normalized component mixture weighted by `w_k / sum(w)`.
+- **Radial parameter functions**: `RadialLinear` and `RadialPower` evaluated both directly at radial nodes and inside `MultipoleDisk` (driving `spectral_index` and radially varying `Harmonics` coefficients) against brute-force 2D polar point-cloud Fourier sums.
+- **Gaussian-process priors on radial profiles and multipoles**: `RadialGP` against an independent [Matérn covariance](https://en.wikipedia.org/wiki/Mat%C3%A9rn_covariance_function) Cholesky factor (`nu` = 0.5, 1.5, 2.5 and `inf`) on Gauss–Legendre nodes across `[r_in, r_out]` (checking node placement, log-normal Hankel visibility and empirical `.draws()` covariance); and `MultipoleKernel` against the normalized periodic azimuthal Matérn spectrum `S(m) / S(1)`, empirical `.draws()` variance decay across harmonic orders, and non-axisymmetric `MultipoleDisk` visibilities.
+- **Harmonic conversions (`virgil.harmonics`)**: `to_image_harmonics` and `from_image_harmonics` across linear, positive and `VonMises` forms — verifying via the [Fejér–Riesz theorem](https://en.wikipedia.org/wiki/Fej%C3%A9r%E2%80%93Riesz_theorem) (which guarantees that every strictly positive trigonometric polynomial factors uniquely as the squared modulus of a minimum-phase polynomial with roots outside the unit circle) that non-minimum-phase inputs reflect cleanly outside the unit circle while negative profiles raise `ValueError`, and matching `VonMises` against modified Bessel Fourier ratios ([NIST DLMF 10.35.2](https://dlmf.nist.gov/10.35#E2)); plus `from_legacy`, `to_legacy`, `rim_coefficients` and `cone_coefficients` checked directly against their trigonometric definitions, canonical angle wrapping in `to_legacy`, independent `crosscheck` point clouds (`sky.inclined_ring` and a modulated 3D cone cloud), and self-consistency with `ModulatedGaussianRim` and `TruncatedCone`.
+- **Polar-grid residual GP (`virgil.fields.MultipoleField`)**: `MultipoleField` checked for exact Kronecker radial-by-azimuthal Matérn covariance on an annulus (`r_min_mas > 0`), single-valued origin regularity at `r = 0` (`r_min_mas = 0`, where nonzero azimuthal modes vanish so the origin has variance `sigma^2 S(0) / sum_m S(m)`), physical `tanh(r / length_r)^|m|` origin tapering and radial grid-refinement invariance across `n_r` (pinned as ledger **F25** against `virgil` `d79696de`, where the taper used the radial node spacing and changed the prior with `n_r`; fixed in `virgil` `5ca955ad`), independent latent-to-sky deprojection, periodic bilinear polar interpolation and one-spacing outer/inner linear fade to `outside` against `.evaluate(pixel_scale_mas)`, `Image(MultipoleField(...))` visibilities against that independent sky image (`crosscheck.sky.pixel_image`), and `geometry_from` tying into a rotated, shifted `Image` frame inside `System`.
 
 ## V1 Forward transforms
 
@@ -111,7 +121,7 @@ rescaled so that the null model has chi2 equal to the number of points, so this 
 **AS 209** (frank `docs/tutorials/AS209_continuum.npz`, 37.4 MB, 977 774 visibilities). With frank's tutorial geometry
 and settings (fixed 34.97 degrees, 85.76 degrees, offsets 1.9 and 2.5 mas; Rmax = 1.6 arcsec, N = 250, alpha = 1.05,
 weights_smooth = 1e-4; 119 s) the visibilities are phase-centred and deprojected with frank's own `apply_correction`,
-binned in radius (2 klambda to 4 Mlambda: 2000 bins) and fitted by `PolarDisk(RadialGP(2 mas, 1.6 arcsec, sigma = 2.5, ell = 30 mas), n_r = 200)` (MAP, free flux; 42 s,
+binned in radius (2 klambda to 4 Mlambda: 2000 bins) and fitted by `MultipoleDisk(RadialGP(2 mas, 1.6 arcsec, sigma = 2.5, ell = 30 mas), n_r = 200)` (MAP, free flux; 42 s,
 reaching the 3000-iteration limit):
 
 | Criterion | Result |
@@ -125,7 +135,7 @@ bin is at 1 klambda and the data do not constrain the missing short baselines.
 
 **HD 169142** (FRAP `example_data/HD169142_band3.pkl`, 6.7 kB, and `band6.pkl`, 23.6 kB; deprojected real visibilities, channel 0 of each band, single-band I(r), no
 radiative-transfer layer). Reference: FRAP's Hankel matrix at its Fourier-Bessel nodes (130 to 1.3 arcsec) with a Gaussian-process MAP written
-here (the same prior as `RadialGP`: squared-exponential, sigma = 2, ell = 30 mas, whitened latents, exp link), against `PolarDisk(RadialGP(nu = inf), n_r = 130)`:
+here (the same prior as `RadialGP`: squared-exponential, sigma = 2, ell = 30 mas, whitened latents, exp link), against `MultipoleDisk(RadialGP(nu = inf), n_r = 130)`:
 
 | Criterion | Band 3 (121 baselines) | Band 6 (232 baselines) |
 | --- | --- | --- |
@@ -162,6 +172,7 @@ Fitting array-valued harmonic coefficients failed at 791f9fe, fixed in 1eae3e4 (
 | --- | --- | --- | --- |
 | F19 | virgil `ExpTail` | the documented 1e-5 at 16 * 2 pi q L nodes is 2e-4 (as found at 791f9fe) | virgil, fixed in 1eae3e4 |
 | F20 | virgil `Harmonics` | array-valued `re`/`im`/`c`/`s` fail (`fit` and `laplace_cov` paths), as found at 791f9fe | virgil, fixed in 1eae3e4 |
+| F25 | virgil `MultipoleField` | at `r_min_mas = 0`, `d79696de` tapers `m != 0` modes by radial node spacing instead of `length_r`, making the prior depend on `n_r` | virgil, open at `d79696de` (fixed in `5ca955ad`) |
 | D10 | frank, FRAP | cannot represent a discontinuous profile | definition |
 | P9 | oimodeler | `ExpRing` 8e-3 from its documented profile, unexplained | to raise |
 | P10 | vis-r | `r_prof_erf2_power_ggap` mixes up depth and radius | to raise |

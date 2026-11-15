@@ -71,7 +71,10 @@ reads its summary, under criteria registered in the script:
   λ our own noiseless χ² (probability integral transform).
 
 Written and smoke-tested on the laptop (3 + 3 + 20 draws, all four checks
-pass); not yet run at full size.
+pass); not yet run at full size. Deterministic Tier-A checks on `DetectionMC`
+and `injection_recovery` run on every pull request in
+`tests/test_detection_tier_a.py` (see
+[Detection statistics](detection.md#monte-carlo-detection-calibration)).
 
 
 ## Limit helpers

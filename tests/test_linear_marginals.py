@@ -184,7 +184,7 @@ def gauss_newton(d, x, y, at=0.0, h=1e-7):
 
 
 @pytest.mark.parametrize("flux", [0.0, 0.01], ids=["no companion", "companion"])
-@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"])
+@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"], headline="max_abs_dlogB_linear_model")
 def test_linear_flux_and_gaussian_prior_evidence(tmp_path, flux):
     """Closed form (no refinement): f = -(g.r0)/(g.g), sigma = (g.g)^-1/2,
     and log B by quadrature over f of the linearised likelihood times the

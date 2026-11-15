@@ -7,6 +7,7 @@
 - **harmonix's maps.** Only virgil's wrapper is checked here; the maps are
   harmonix's to validate.
 - **AMIGO DISCO mode bases.**
+- **Polar-disk GP convenience helpers.** `virgil.fields.polar_interpolate` is validated end to end through `MultipoleField.evaluate` rather than as its own graph node; `virgil.models.RadialGPFunction` and the NumPyro prior-dictionary builders `virgil.models.gp_priors` and `virgil.fields.multipole_field_priors` are not registered separately.
 - **Coarse-to-fine uv cut (innovation register B4).** Each level of a multi-resolution radio fit cuts the uv data to its
   grid's Nyquist radius. Experimental in virgil's `design/radio_imaging_innovations.md` (no precedent found, not yet
   built), so there is nothing to validate yet: not yet validated. The CLEAN start and the staging of nuisance and image

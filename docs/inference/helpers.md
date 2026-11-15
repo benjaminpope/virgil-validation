@@ -16,7 +16,7 @@ predict ourselves.
 | `simulate.bias_test`, Gaussian fitted to a uniform disk (40 draws) | mean = the pseudo-true σ that minimizes our noiseless χ² (White 1982), 0.787 mas | Mathematics | within 4 standard errors (found 1.4) |
 | control | no nonlinear bias: σ = D/4, the zero-baseline match | Mathematics | excluded by > 20 standard errors (found 54) |
 
-`tests/test_inference_joint.py`: the inference helpers on problems with
+`tests/test_inference_joint.py` and `tests/test_standalone_nodes.py`: the inference helpers on problems with
 closed forms, and the joint likelihood over several datasets against our
 own observables on two simulated three-telescope files.
 
@@ -26,6 +26,9 @@ own observables on two simulated three-telescope files.
 | `inference.regularized_inverse` | NumPy's `inv(M + ridge I)`; a `RuntimeWarning` for an indefinite matrix | Mathematics | 1e-12 relative |
 | `inference.laplace_covariance` | exactly (Jᵀ C⁻¹ J)⁻¹ for a model linear in its parameters; control: (Jᵀ J)⁻¹ and (Jᵀ C J)⁻¹ do not match | Mathematics | 1e-10 (ridge 0), 1e-6 (default ridge) |
 | `inference.gaussian_fisher` | Jᵀ Σ⁻¹ J exactly on a linear model; on the joint prediction, J by central differences of our V² and closure phases; control: unweighted Jᵀ J does not match | Mathematics | 1e-12; 1e-6 |
+| `inference.expected_fisher` | Jᵀ Σ⁻¹ J + ridge I against the analytic Jacobian of a nonlinear pytree model, plus flat-vector unravelling; controls: unweighted Jᵀ J and Jᵀ Σ J do not match | Mathematics | 1e-12 relative |
+| `inference.objective_laplace_covariance` | (∇²f)⁻¹ on positive-definite quartic objectives without ridge, and relative diagonal ridge with a `RuntimeWarning` when indefinite; controls: diagonal-only and uninverted Hessians do not match | Mathematics | 1e-12 relative |
+| `inference.observed_information` | the Hessian of ½ our χ² by fourth-order Richardson central differences on 3-telescope uncorrelated and 4-telescope correlated closure-phase OIFITS files (both `System` templates and callable classes), exact agreement with our Gauss–Newton Fisher Jᵀ Σ⁻¹ J on noiseless data at the truth, and nonlinear residual-curvature shift away from the truth; control: unhalved ∇²χ² does not match | Mathematics | 1e-6 relative (3e-10 vs Jᵀ Σ⁻¹ J at truth) |
 | `inference.fisher_projection` | P Pᵀ = F⁻¹ and Pᵀ F P = I; flat directions floored at eps × the largest eigenvalue, with a warning | Mathematics | 1e-10 |
 | `inference.laplace_parameter_uncertainty` | (½ ∂²χ²/∂θ²)^−½ of our χ² by central differences, the others fixed | Mathematics | 1e-5 relative |
 | `likelihood.joint_loglike` | the sum over datasets of SciPy's Gaussian (V²) and von Mises (κ = 1/σ²) log densities, i.e. −½ our χ² plus their normalisations; shared and per-dataset parameters, with and without inflated errors; control: swapped per-dataset parameters do not match | Mathematics | 1e-8 |

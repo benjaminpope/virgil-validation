@@ -289,7 +289,7 @@ def test_gaussian_fisher_is_not_unweighted(pair):
     assert np.max(np.abs(np.asarray(F) - wrong) / np.sqrt(np.outer(np.diag(F), np.diag(F)))) > 0.5
 
 
-@pytest.mark.validates("virgil.inference.fisher_projection", roots=["mathematics"])
+@pytest.mark.validates("virgil.inference.fisher_projection", roots=["mathematics"], headline="max_rel_dPPt")
 def test_fisher_projection_whitens_the_fisher_matrix():
     J, sigma, _ = linear_problem()
     F = J.T @ np.diag(1 / sigma**2) @ J
@@ -369,7 +369,7 @@ def test_joint_loglike_keeps_each_dataset_its_own_parameters(pair):
 
 
 @pytest.mark.validates("virgil.likelihood.joint_prediction", "virgil.likelihood.joint_data",
-                       "virgil.likelihood.joint_errors", roots=["mathematics"])
+                       "virgil.likelihood.joint_errors", roots=["mathematics"], headline="max_abs_dprediction")
 def test_joint_vectors_match_our_files_and_observables(pair):
     obs, loaded = pair
     y, e = np.asarray(likelihood.joint_data(obs)), np.asarray(likelihood.joint_errors(obs))

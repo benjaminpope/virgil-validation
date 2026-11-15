@@ -26,6 +26,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F18">F18</span> | `epochs.marginal_loglike` | marginal_loglike(s_max=...) integrates each scale on a ln s grid that is too coarse where the likelihood falls steeply from a bound, so differences of m between models are wrong by 0.1-0.7 | fixed [virgil#295](https://github.com/benjaminpope/virgil/pull/295) |
 | <span id="F19">F19</span> | `models.ExpTail` | ExpTail's documented accuracy (1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes) is too optimistic | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
 | <span id="F20">F20</span> | `models.Harmonics` | Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
+| <span id="F25">F25</span> | `fields.MultipoleField` | MultipoleField with r_min_mas = 0 tapers non-zero azimuthal modes by the radial node spacing instead of the physical correlation length length_r, so the prior covariance drifts when n_r is refined | open |
 | <span id="F22">F22</span> | `likelihood.whitened_residuals` | the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere" | open [virgil#309](https://github.com/benjaminpope/virgil/issues/309) |
 | <span id="F23">F23</span> | `fitting.gauss_newton_diag` | gauss_newton_diag's docstring and the radio innovation register give the entropy-pixel diagonal as weight * b; virgil returns weight * b * (1 - b) | open |
 
@@ -73,6 +74,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P10">P10</span> | `visr` | vis-r's r_prof_erf2_power_ggap (one Gaussian gap) reads its depth and radius from each other's position in the parameter list | to-raise |
 | <span id="P11">P11</span> | `mpol` | MPoL's log_likelihood docstring writes the normalisation as a sum of w_i, while the code (correctly) uses the sum of ln w_i | to-raise |
 | <span id="P12">P12</span> | `mpol` | MPoL's default NuFFT (torchkbnufft table interpolation) is 6e-4 from the exact transform of its image at 256 pixels, and its taper buffer is float32 | documented |
+| <span id="P13">P13</span> | `oimodeler` | oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90 | to-raise |
+| <span id="P14">P14</span> | `oimodeler` | oimodeler's oimFastRotator parametrizes gravity darkening with rot^0.4 and K = sin(1/3) pi instead of O(omega^2) Roche scaling | to-raise |
 
 ## Mistakes in our own checks
 

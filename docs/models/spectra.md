@@ -27,12 +27,14 @@ its documentation states, evaluated with NumPy and SciPy. Tests:
 
 ## The spectrum interface
 
-[`test_models_spectra_extras.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_models_spectra_extras.py).
+[`test_models_spectra_extras.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_models_spectra_extras.py) and
+[`test_standalone_nodes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_standalone_nodes.py).
 
 | virgil | Reference | Agreement |
 | --- | --- | --- |
 | `flux_at`, `reference_flux` | numbers pass through; a `PowerLaw` gives ratio (λ/λ₀)^index, and `ratio` at `None`; a `BlackBody`'s reference flux is its `ratio` | 1e-14 |
 | `Spectrum`, subclassed by a user with only `_at` and `wavel0` | its value at λ, at `None`, and as a companion's flux in a `System` (the chromatic binary in closed form) | 7e-16 |
+| `Scaled` | `ratio · template(λ) / template()` for power-law and line-plus-continuum templates, frozen template derivatives, and chromatic `System` visibilities; control: unnormalized `ratio · template(λ)` fails | 1e-15 |
 
 ## Chromatic scenes
 

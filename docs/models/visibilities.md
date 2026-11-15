@@ -23,6 +23,7 @@ the brightness by quadrature. Tests:
 | --- | --- | --- |
 | `ModulatedGaussianRim`, inclinations 0°, 50° and 80°, m = 0, 1 and 2 | thin inclined ring by trapezoid quadrature, times a Gaussian isotropic in the rim's plane | 1e-12 |
 | `GaussianArc`, (R, L) = (5, 4), (15, 20) and (5, 40) mas | arc-length quadrature round the full circle, times the Gaussian blur | 1e-5 |
+| `GaussianArc`, `pa = 37°` (`tests/test_arc_pmoired.py`) | `PMOIRED` native `ring` with von Mises Fourier–Bessel harmonics (`az ampN = 2 I_N(κ)/I_0(κ)`, `az projangN = pa`, `spatial kernel = width`); `pa + 90°`, `pa + 180°`, `−pa` controls fail by > 10° | < 1e-5 (V²), < 1e-3° (CP) |
 
 The rim's modulation azimuth is measured in the rim's plane, not on the sky
 ([F1](../index.md#F1)): reading it on the sky gives visibilities 4e-2 away. Its blur
@@ -55,6 +56,7 @@ random baselines given in wavelengths.
 | virgil | Reference | Agreement |
 | --- | --- | --- |
 | `Image`, random 7 × 10 pixels, off-centre | direct transform of the pixel centres (row 0 North, column 0 East) | 3e-16 |
+| `LinearImage`, 7 × 9 pixels in `"linear"` and `"sqrt"` (F = w²) parameterizations (`ft="auto"` and `ft="dft"`), masked, rotated, off-centre, and flux-weighted in a `System`, with `check_grads` pixel derivatives ([`test_standalone_nodes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_standalone_nodes.py)) | direct transform of the masked pixel centres, total-flux `System` weighting, and central finite differences; controls: linear vs squared weights and unit-weight `System` fail | 2e-15 (vis), 1e-5 (grads) |
 
 ## Derivatives
 
