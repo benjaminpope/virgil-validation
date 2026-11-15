@@ -526,7 +526,11 @@ nodes:
     depends: [virgil.fitting.fit, virgil.likelihood.model_loglike, virgil.models.Image, virgil.models.LinearImage, virgil.imaging.MaxEntropy]
     doc: imaging/machinery.md#kkt-optimality-certificates
   virgil.scenes.ring: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
-  virgil.scenes.spiral: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}  # convention: ray-radial cross-section |r - r_arm| with circular Euclidean caps at theta = 0 and 2*pi*turns (see docs/imaging/machinery.md)
+  virgil.scenes.spiral:
+    layer: imaging
+    source: [src/virgil/scenes.py]
+    properties: {arm_cross_section: 1}  # D27: ray-radial cross-section |r - r_arm| with circular Euclidean caps at theta = 0 and 2*pi*turns
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
   virgil.scenes.gaussian_blob: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
   virgil.imaging.dirty_image: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
   virgil.imaging.beam: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
@@ -539,10 +543,11 @@ nodes:
     source: [src/virgil/imaging.py]
     depends: [virgil.oidata.OIData]
     doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
-  virgil.imaging.image_field:  # convention: field_fwhms * FWHM clipped to [inner_elements * lambda/(2*B_max), min(lambda/B_min, largest_mas, aperture_mas)], ceiling winning on crossover
+  virgil.imaging.image_field:
     layer: imaging
     source: [src/virgil/imaging.py]
     depends: [virgil.imaging.second_moment_fwhm, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view]
+    properties: {field_clipping: 1}  # D27: field_fwhms * FWHM clipped to [inner_elements * lambda/(2*B_max), min(lambda/B_min, largest_mas, aperture_mas)], ceiling winning on crossover
     doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
   virgil.imaging.envelope_fwhm:
     layer: imaging
@@ -586,7 +591,7 @@ nodes:
   virgil.ensemble.draw_groups:
     layer: imaging
     source: [src/virgil/ensemble.py, src/virgil/imaging.py]
-    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view, virgil.fitting.fit]
+    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.image_field, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view, virgil.fitting.fit]
     doc: imaging/metrics_ensembles.md#ensembles
   virgil.ensemble.Group:
     layer: imaging

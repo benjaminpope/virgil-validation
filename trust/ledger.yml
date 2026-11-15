@@ -179,6 +179,17 @@
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/203]
 
+- id: F29
+  title: fit_staged_nuisances passes Stage 2's already-minimized calibration nuisances instead of nominal calibration (g = 1) as start= to Stage 3's kkt_report, inflating nuisance grad_rel >> NUISANCE_TOL and forcing StagedFit.kkt['converged'] = False at a stationary joint solution
+  objects: [virgil.radio.fit_staged_nuisances, virgil.radio.StagedFit]
+  ruling: virgil
+  referee: mathematics (Stage 3 image KKT converges with pg_rel < KKT_TOL, zero_violation = 0, and kkt_w < KKT_W_TOL, and raw nuisance grad_norm ~ 5.6e-4 has grad_rel ~ 7.6e-4 < NUISANCE_TOL = 1e-3 relative to nominal g = 1, whereas dividing by Stage 2's post-optimization gradient inflates grad_rel to 1.10 >> NUISANCE_TOL)
+  kind: bug (Stage 3 kkt_report normalizes nuisance gradients against Stage 2 optimum instead of nominal calibration)
+  evidence:
+    - tests/test_042_lcurve_ensemble_radio.py::test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard
+    - tests/test_042_lcurve_ensemble_radio.py::test_f29_fit_staged_nuisances_stage3_kkt_converged_at_joint_optimum
+  status: open
+
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]
@@ -223,6 +234,19 @@
   referee: mathematics (TSV(w) = w (-stv2 + sum b[0,:]^2 + sum b[:,0]^2), exact to 1e-16 on random images)
   evidence: [tests/test_ehtim_reconstruction.py::test_objective_matches_ehtim]
   status: documented
+
+- id: D27
+  title: scenes.spiral evaluates arm width along radial rays |r - r_arm(theta)| with circular Euclidean caps at theta = 0 and 2*pi*turns (differs from exact Euclidean distance to the centreline by cos(psi) = 1 / sqrt(1 + (b/r)^2)), and imaging.image_field clips field_fwhms * FWHM with the outer ceiling winning when inner floor exceeds ceiling
+  objects: [virgil.scenes.spiral, virgil.imaging.image_field]
+  ruling: definition
+  referee: mathematics (ray-radial width matches scenes.spiral to < 1e-13 across the grid while exact Euclidean arm distance differs by > 8% of peak on inner turns and > 3.5% at r >= 16 mas; image_field ceiling-over-floor clipping pinned with wrong-precedence controls)
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_scenes_spiral_ridge_width_sigma_fade_and_rounded_caps
+    - tests/test_042_scenes_starlet_kkt.py::test_scenes_spiral_fwhm_and_unrounded_controls
+    - tests/test_042_scenes_starlet_kkt.py::test_second_moment_fwhm_and_image_field_clipping_and_fallbacks
+    - tests/test_042_scenes_starlet_kkt.py::test_image_field_unclipped_and_floor_over_ceiling_controls
+  status: documented
+  decision: 'ruled definition / documented (Ben, 2026-11-15): internal synthetic-scene and field-clipping formula choices do not need to be convention trust-graph blockers; they are pinned via properties and wrong-formula controls.'
 
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels

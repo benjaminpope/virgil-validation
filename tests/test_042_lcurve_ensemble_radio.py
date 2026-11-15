@@ -6,6 +6,7 @@ time-adjacent noise scales & staged nuisance fits against ``crosscheck.starlet_k
 
 from __future__ import annotations
 
+import dataclasses
 import gc
 import tempfile
 from pathlib import Path
@@ -124,6 +125,23 @@ def test_lcurve_dof_discrepancy_matches_closed_form_tsv_ridge_trace_and_se():
     assert abs(float(choice.m)) <= 3.0 * float(choice.g_se)
     assert choice.h is None  # h diagnostic is MaxEntropy-only
     assert choice.weight_band is not None and len(choice.weight_band) == 2
+    w_hi, w_lo = choice.weight_band
+    want_w_hi, want_w_lo = ref.dof_weight_band_ref(
+        np.asarray(choice.weights, dtype=float),
+        np.asarray(curve.chi2, dtype=float),
+        np.asarray(choice.g_sweep, dtype=float),
+        float(choice.n_real),
+        noise_scale2=1.0,
+        noise_scale_sigma=0.05,
+    )
+    assert w_hi is not None and w_lo is not None
+    assert want_w_hi is not None and want_w_lo is not None
+    assert len(choice.roots) >= 1 and float(w_lo) < float(choice.roots[0]) < float(w_hi)
+    weight_band_err = max(
+        abs(float(w_hi) - float(want_w_hi)),
+        abs(float(w_lo) - float(want_w_lo)),
+    )
+    assert weight_band_err < 1e-12
 
     # Refit at choice.weight to check exact dense Tr[K (K + H_R)^{-1}] and Rademacher SE over free pixels
     chosen_fit = vfit.fit(
@@ -216,13 +234,21 @@ def test_lcurve_dof_discrepancy_maxent_h_diagnostic_and_custom_curvature():
         )
     )
 
-    # Verify BOTH MaxEntropy h(w) = 2 (w / s^2) KL - G AND dense Skilling-Hessian ridge trace Tr[K (K + H_ME)^{-1}]
-    refit_res = vfit.fit(start, priors, data, [vi.MaxEntropy(float(choice.weight), path="env")], max_steps=2500)
-    kl_unweighted = float(vi.MaxEntropy(1.0, path="env").value(refit_res.model))
+    # Verify BOTH MaxEntropy h(w) = 2 (w / s^2) KL - G (using pure-NumPy skilling_kl_ref,
+    # zero virgil.imaging.MaxEntropy.value calls) AND dense Skilling-Hessian ridge trace Tr[K (K + H_ME)^{-1}]
+    refit_res = vfit.fit(
+        start,
+        priors,
+        data,
+        [vi.MaxEntropy(float(choice.weight), path="env")],
+        max_steps=4000,
+        gtol=1e-12,
+    )
+    f_hat = np.asarray(refit_res.model.env.fluxes)
+    kl_unweighted = ref.skilling_kl_ref(f_hat, reference_flux=flux)
     want_h = 2.0 * float(choice.weight) * kl_unweighted - float(choice.g)
     h_err = abs(float(choice.h) - want_h)
 
-    f_hat = np.asarray(refit_res.model.env.fluxes)
     free = f_hat > 0.0
     jac_me = np.asarray(jac_fn(jnp.asarray(f_hat).ravel()))[:, free.ravel()]
     k_me = jac_me.T @ jac_me
@@ -250,7 +276,7 @@ def test_lcurve_dof_discrepancy_maxent_h_diagnostic_and_custom_curvature():
     record("h_diag_err", h_err)
     record("maxent_dof_z_score", me_dof_z)
     record("custom_curvature_g_diff", curv_g_diff)
-    assert h_err < 1e-2
+    assert h_err < 1e-4
     assert me_dof_z < 3.5
     assert curv_g_diff < 1e-7
 
@@ -468,6 +494,14 @@ def test_gp_log_evidence_laplace_samples_and_error_scale_match_mackay_reference(
     cov_fro_err = float(np.linalg.norm(emp_cov - mk["cov"]) / np.linalg.norm(mk["cov"]))
     assert draws["images"].shape == (4000, 12, 12)
     assert np.allclose(np.sum(draws["images"], axis=(1, 2)), 1.0, atol=1e-12)
+    for k in range(5):
+        want_img = np.asarray(
+            done.model.set("env.log_brightness.latent", draws["latents"][k]).render(12, 18.0)
+        )
+        assert float(np.max(np.abs(np.asarray(draws["images"][k]) - want_img))) < 1e-12
+    assert float(np.max(np.std(np.asarray(draws["images"]), axis=0))) > 1e-3
+    with pytest.raises(ValueError):
+        vi.laplace_samples(done, data, 4, jax.random.PRNGKey(1), path="env", npix=12)
 
     # Error scale with 2x inflated error bars: verify BOTH scalar and coupled per-observable
     # fixed-point equations directly against mackay_laplace_gp_ref (and distinguish from s_plugin)
@@ -549,10 +583,11 @@ def test_gp_error_scale_wrong_direction_control():
 )
 def test_chi2_by_observable_short_baseline_residual_and_diagnose():
     npix, scale = 14, 1.5
+    b_true_sb = ref.gaussian_blob_ref(npix, scale, sigma_mas=1.6, dra=0.8, ddec=-0.5)
     truth = vm.System(
         star=vm.PointSource(),
-        env=vm.Image.from_brightness(
-            ref.gaussian_blob_ref(npix, scale, sigma_mas=1.6, dra=0.8, ddec=-0.5),
+        env=vm.Image(
+            np.log(np.clip(b_true_sb, 1e-300, None)),
             scale,
             flux=0.30,
         ),
@@ -585,9 +620,36 @@ def test_chi2_by_observable_short_baseline_residual_and_diagnose():
     gamma_err = abs(float(cbo["n_gamma"]) - want_gamma)
 
     sb_true_mean, sb_se = vi.short_baseline_residual(truth, data4, quantile=0.25)
-    sb_star_mean, _ = vi.short_baseline_residual(vm.PointSource(), data4, quantile=0.25)
-    n_short = int(np.sum(np.hypot(data4.u, data4.v) / data4.wavel <= np.quantile(np.hypot(data4.u, data4.v) / data4.wavel, 0.25)))
-    se_err = abs(float(sb_se) - 1.0 / np.sqrt(n_short))
+    sb_star_mean, sb_star_se = vi.short_baseline_residual(vm.PointSource(), data4, quantile=0.25)
+    east_sb, north_sb = ref.sky_grid_mas(npix, scale)
+    b_true_sb = ref.gaussian_blob_ref(npix, scale, sigma_mas=1.6, dra=0.8, ddec=-0.5)
+    phase_sb = (
+        2j
+        * np.pi
+        * (
+            (data4.u[:, None] / data4.wavel[:, None]) * east_sb.ravel()[None, :]
+            + (data4.v[:, None] / data4.wavel[:, None]) * north_sb.ravel()[None, :]
+        )
+        * ref.MAS_TO_RAD
+    )
+    cvis_true = (1.0 + 0.30 * (np.exp(phase_sb) @ b_true_sb.ravel())) / 1.30
+    want_true_mean, want_se = ref.short_baseline_v2_residual_ref(
+        data4.u, data4.v, data4.wavel, data4.vis, data4.d_vis, cvis_true, quantile=0.25
+    )
+    want_star_mean, want_star_se = ref.short_baseline_v2_residual_ref(
+        data4.u,
+        data4.v,
+        data4.wavel,
+        data4.vis,
+        data4.d_vis,
+        np.ones_like(data4.u, dtype=complex),
+        quantile=0.25,
+    )
+    se_err = max(abs(float(sb_se) - want_se), abs(float(sb_star_se) - want_star_se))
+    sb_mean_err = max(
+        abs(float(sb_true_mean) - want_true_mean),
+        abs(float(sb_star_mean) - want_star_mean),
+    )
 
     disco = vo.OIData(vc.ami_grid_record(wavelength_m=4.8e-6))
     with pytest.raises(ValueError):
@@ -611,9 +673,11 @@ def test_chi2_by_observable_short_baseline_residual_and_diagnose():
 
     record("n_gamma_err", gamma_err)
     record("short_baseline_se_err", se_err)
+    record("short_baseline_mean_err", sb_mean_err)
     record("missing_flux_sb_mean", float(sb_star_mean))
     assert gamma_err < 1e-10
     assert se_err < 1e-12
+    assert sb_mean_err < 1e-12
     assert abs(float(sb_true_mean)) < 3.0 * float(sb_se)
     assert float(sb_star_mean) > 4.0
 
@@ -740,13 +804,33 @@ def test_ensemble_reference_starts_run_group_combine_and_end_to_end():
     assert set(starts_disco.keys()) == {"moments", "flat", "dirty"}
     assert abs(float(np.sum(starts_disco["dirty"].brightness)) - 1.0) < 1e-12
 
-    # Direct run_group check on a single Draw
+    # Direct run_group checks across star=True / star=False and family="tsv" / family="gp"
     direct_draw = ve.Draw(
         0, family="tsv", npix=npix, pixel_scale_mas=scale, start="moments", weights=(50.0, 5.0)
     )
     grp_direct = ve.run_group(disco_data, direct_draw, star=True, starts=starts_disco, max_steps=1500)
     assert isinstance(grp_direct, ve.Group)
     assert grp_direct.curve is not None and len(grp_direct.curve.results) == 2
+    assert isinstance(grp_direct.curve.results[0].model, vm.System)
+
+    grp_unstarred = ve.run_group(disco_data, direct_draw, star=False, max_steps=600)
+    assert grp_unstarred.curve is not None and len(grp_unstarred.curve.results) == 2
+    assert isinstance(grp_unstarred.curve.results[0].model, vm.Image)
+
+    gp_direct_draw = ve.Draw(
+        1, family="gp", npix=8, pixel_scale_mas=48.0, start="flat", weights=()
+    )
+    grp_gp_direct = ve.run_group(
+        disco_data,
+        gp_direct_draw,
+        star=False,
+        spec=ve.EnsembleSpec(
+            gp_sigmas=(0.2, 0.5), gp_lengths=(0.5, 1.5), gp_growths=0, gp_axis_ratio=0.1
+        ),
+        max_steps=800,
+    )
+    assert grp_gp_direct.curve is None and len(grp_gp_direct.gp) >= 1
+    assert isinstance(grp_gp_direct.gp[0].result.model, vm.Image)
 
     spec = ve.EnsembleSpec(
         families=("tsv", "maxent"),
@@ -877,6 +961,17 @@ def test_ensemble_gp_evidence_grid_and_gp_members():
         min_kept=1,
     )
     starts = ve.reference_starts(data, star=True, starts=("flat",))
+    # Without grid growth (gp_growths=0), best sigma hits the upper boundary 0.30 -> interior is False
+    grid_pinned = ve.evidence_grid(
+        data,
+        draw,
+        star=True,
+        starts=starts,
+        spec=dataclasses.replace(spec, gp_growths=0, gp_axis_ratio=0.1),
+        max_steps=300,
+    )
+    assert grid_pinned.interior is False
+
     grid = ve.evidence_grid(data, draw, star=True, starts=starts, spec=spec, max_steps=400)
     assert isinstance(grid, ve.EvidenceGrid)
     assert isinstance(grid.best, ve.GPFit)
@@ -884,6 +979,36 @@ def test_ensemble_gp_evidence_grid_and_gp_members():
     assert len(grid.sigmas["iso"]) == 3 and len(grid.lengths_mas["iso"]) == 3
     assert grid.axis_ratio is not None and float(grid.axis_ratio) < 0.95
     assert grid.pa_deg is not None
+    want_interior = (
+        grid.best.sigma in grid.sigmas[grid.best.variant][1:-1]
+        and grid.best.length_mas in grid.lengths_mas[grid.best.variant][1:-1]
+    )
+    assert grid.interior is bool(want_interior)
+
+    # Bracketed 3x3 grid on a compact circular blob peaks strictly inside both axes -> interior is True
+    blob_truth = vm.System(
+        star=vm.PointSource(),
+        env=vm.Image.from_brightness(
+            ref.gaussian_blob_ref(8, 1.6, sigma_mas=2.2, dra=1.0), 1.6, flux=0.35
+        ),
+    )
+    data_int = _vlti_like_oidata(blob_truth, seed=77, n_telescopes=4, vis_err=0.01, cp_err_deg=0.5)
+    draw_int = ve.Draw(0, family="gp", npix=6, pixel_scale_mas=2.0, start="flat", weights=())
+    spec_int = ve.EnsembleSpec(
+        gp_sigmas=(0.05, 0.6, 4.0),
+        gp_lengths=(0.2, 1.3, 6.0),
+        gp_growths=0,
+        gp_axis_ratio=0.1,
+    )
+    grid_int = ve.evidence_grid(
+        data_int,
+        draw_int,
+        star=True,
+        starts=ve.reference_starts(data_int, star=True, starts=("flat",)),
+        spec=spec_int,
+        max_steps=300,
+    )
+    assert grid_int.interior is True
 
     # Validate EVERY GPFit (both "iso" and "aniso") directly against our independent joint
     # (z, ln flux) Laplace reference in crosscheck.starlet_kkt_ref (zero virgil.imaging.log_evidence calls!)
@@ -1169,7 +1294,7 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
 
     truth_vals = {"pixels": jnp.asarray(shape, dtype=float)}
     model_vis = np.asarray(nominal.model(scene(truth_vals), truth_vals, fixed_nuis))
-    true_gains = np.array([1.12, 1.0, 0.89])
+    true_gains = np.array([1.18, 1.0, 0.84])
     vis = true_gains[obs] * model_vis + (rng.normal(size=npts) + 1j * rng.normal(size=npts)) / np.sqrt(weight)
     radio = vr.ComplexVisData.from_arrays(u, v, vis, weight, np.full(npts, 230e9), obs=obs)
 
@@ -1184,7 +1309,7 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
         bounds={"gain": (0.7, 1.3)},
         weight=50.0,
         max_steps=1500,
-        gtol=1e-6,
+        gtol=8e-7,
     )
     assert isinstance(staged, vr.StagedFit)
     assert len(staged.stages) == 3
@@ -1194,9 +1319,9 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
     assert staged.failed is False
     assert not np.any(staged.edge["cal.gain"])
 
-    # Image block KKT certificate converges cleanly; Stage 3 passes Stage 2's already-minimized
-    # nuisances as `start=` to `kkt_report`, so raw nuisance `grad_norm` is tiny (~1e-3) while
-    # `grad_rel` (measured against Stage 2's near-zero gradient rather than nominal g=1) stays O(1).
+    # Image block KKT certificate converges cleanly, and raw nuisance stationarity holds (< 5e-3)
+    # as well as relative stationarity against nominal calibration (g = 1, flat pixels): grad_rel < NUISANCE_TOL.
+    # (The Stage-3 start= bug that inflates staged.kkt['nuisances']['cal.gain']['grad_rel'] is pinned in F29 below.)
     img_kkt = staged.kkt["images"]["."]
     assert img_kkt["kind"] == "linear"
     assert float(img_kkt["pg_rel"]) < float(vfit.KKT_TOL)
@@ -1204,8 +1329,36 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
     assert float(img_kkt["kkt_w"]) < float(vfit.KKT_W_TOL)
     nuis_kkt = staged.kkt["nuisances"]["cal.gain"]
     assert float(nuis_kkt["grad_norm"]) < 5e-3
-    assert float(nuis_kkt["grad_rel"]) > float(vfit.NUISANCE_TOL)
-    assert staged.kkt["converged"] is False
+
+    nom_nuis = vr.CalibrationNuisance(
+        radio, ref_obs=1, offsets=False, sigmas=False, alpha=False, fit_flux=False
+    )
+
+    def _gain_loss(lin_g, pix):
+        vals = {"pixels": pix, "cal.gain": lin_g}
+        m_vis = radio.model(scene(vals), vals, nom_nuis)
+        diff = vis - m_vis
+        return 0.5 * jnp.sum(weight * (diff.real**2 + diff.imag**2))
+
+    g_cur_lin = np.asarray(
+        jax.grad(_gain_loss)(
+            jnp.asarray(staged.values["cal.gain"], dtype=float),
+            jnp.asarray(staged.values["pixels"], dtype=float),
+        )
+    )
+    g_nom_lin = np.asarray(
+        jax.grad(_gain_loss)(jnp.ones(2, dtype=float), jnp.full((n, n), 1.0 / (n * n), dtype=float))
+    )
+    nom_nuis_ref = ref.kkt_nuisance_grad_rel_ref(
+        g_cur_lin,
+        g_nom_lin,
+        value_cur=np.asarray(staged.values["cal.gain"], dtype=float),
+        value_start=np.ones(2, dtype=float),
+        lower=0.7,
+        upper=1.3,
+    )
+    assert abs(float(nuis_kkt["grad_norm"]) - nom_nuis_ref["grad_norm"]) < 1e-11
+    assert nom_nuis_ref["grad_rel"] < float(vfit.NUISANCE_TOL)
 
     # Verify linear constrained values["cal.gain"] AND log-space box metadata in nuisances["cal.gain"]
     linear_gains = np.asarray(staged.values["cal.gain"], dtype=float)
@@ -1215,7 +1368,7 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
     hi_g = float(np.asarray(nuis_g["upper"]).ravel()[0])
     want_edge_frac = np.minimum(log_g - np.log(0.7), np.log(1.3) - log_g) / np.log(1.3 / 0.7)
 
-    max_gain_err = float(np.max(np.abs(linear_gains - np.array([1.12, 0.89]))))
+    max_gain_err = float(np.max(np.abs(linear_gains - np.array([1.18, 0.84]))))
     log_box_err = max(
         float(np.max(np.abs(log_g - np.log(linear_gains)))),
         abs(lo_g - float(np.log(0.7))),
@@ -1225,11 +1378,78 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
 
     record("max_gain_err", max_gain_err)
     record("log_box_metadata_err", log_box_err)
+    record("nominal_nuisance_grad_rel", nom_nuis_ref["grad_rel"])
     record("image_kkt_w", float(img_kkt["kkt_w"]))
     record("min_edge_frac", float(np.min(nuis_g["edge_frac"])))
     assert max_gain_err < 0.02
     assert log_box_err < 1e-12
     assert "pixels" in staged.values
+
+
+@pytest.mark.validates(
+    "virgil.radio.fit_staged_nuisances",
+    "virgil.radio.StagedFit",
+    roots=["mathematics"],
+    kind="finding",
+    headline="nuisance_grad_rel",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F29: fit_staged_nuisances passes Stage 2's already-minimized calibration "
+        "nuisances instead of nominal calibration (g = 1) as start= to Stage 3's "
+        "kkt_report, inflating nuisance grad_rel >> NUISANCE_TOL and forcing "
+        "kkt['converged'] = False at a stationary joint solution."
+    ),
+)
+def test_f29_fit_staged_nuisances_stage3_kkt_converged_at_joint_optimum():
+    rng = np.random.default_rng(121)
+    n, scale = 6, 35.0
+    shape = ref.gaussian_blob_ref(n, scale, sigma_mas=45.0, dra=10.0, ddec=-8.0)
+    npts = 180
+    max_q = 0.3 / (2.0 * ref.MAS_TO_RAD * scale)
+    radius = max_q * np.sqrt(rng.uniform(0.04, 1.0, npts))
+    ang = rng.uniform(0.0, 2.0 * np.pi, npts)
+    u, v = radius * np.cos(ang), radius * np.sin(ang)
+    obs = np.repeat(np.arange(3), 60)
+    weight = np.repeat([300.0, 4000.0, 1200.0], 60)
+    nominal = vr.ComplexVisData.from_arrays(
+        u, v, np.ones(npts, dtype=complex), weight, np.full(npts, 230e9), obs=obs
+    )
+    fixed_nuis = vr.CalibrationNuisance(
+        nominal, gains=False, offsets=False, alpha=False, sigmas=False, fit_flux=False
+    )
+
+    def scene(values):
+        return vm.LinearImage(
+            values["pixels"], scale, ft="dft", parametrization="linear", reference_flux=1.0
+        )
+
+    truth_vals = {"pixels": jnp.asarray(shape, dtype=float)}
+    model_vis = np.asarray(nominal.model(scene(truth_vals), truth_vals, fixed_nuis))
+    vis = np.array([1.18, 1.0, 0.84])[obs] * model_vis + (
+        rng.normal(size=npts) + 1j * rng.normal(size=npts)
+    ) / np.sqrt(weight)
+    radio = vr.ComplexVisData.from_arrays(u, v, vis, weight, np.full(npts, 230e9), obs=obs)
+
+    box_lin = dist.Uniform(jnp.zeros((n, n)), jnp.full((n, n), 2.0))
+    staged = vr.fit_staged_nuisances(
+        radio,
+        scene,
+        {"pixels": box_lin},
+        [vi.TSV(50.0, beam_mas=scale)],
+        init={"pixels": jnp.full((n, n), 1.0 / (n * n))},
+        nuisance=dict(offsets=False, sigmas=False, alpha=False, fit_flux=False),
+        bounds={"gain": (0.7, 1.3)},
+        weight=50.0,
+        max_steps=1500,
+        gtol=8e-7,
+    )
+    nuis_grad_rel = float(staged.kkt["nuisances"]["cal.gain"]["grad_rel"])
+    record("nuisance_grad_rel", nuis_grad_rel)
+    assert nuis_grad_rel < float(vfit.NUISANCE_TOL)
+    assert staged.kkt["converged"] is True
 
 
 @pytest.mark.validates(

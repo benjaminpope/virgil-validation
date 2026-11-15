@@ -439,6 +439,9 @@ def kkt_simplex_metrics_ref(
     kkt_tol: float = 1e-3,
     peak_lit_frac: float = 1e-3,
     dark_frac: float = 1e-6,
+    start_brightness: np.ndarray | None = None,
+    start_grad_data_b: np.ndarray | None = None,
+    start_grad_pen_b: np.ndarray | None = None,
 ) -> dict[str, float]:
     """Simplex (softmax ``Image``) KKT stationarity & complementary-slackness metrics.
 
@@ -450,8 +453,8 @@ def kkt_simplex_metrics_ref(
 
     - Centered simplex components are ``d_data = g_data - sum(b * g_data)`` and
       ``d_pen = g_pen - sum(b * g_pen)``, with simplex residual ``res_b = d_data + d_pen``
-      and gradient scale ``scale = sqrt(mean(d_data[lit]^2 + d_pen[lit]^2))`` that stays
-      ``O(w)`` even at a converged free-flux optimum where ``d_data + d_pen -> 0``.
+      and gradient scale ``scale = sqrt(mean(d_data[lit]^2 + d_pen[lit]^2))`` (replaced by
+      ``max(scale, scale_start)`` when starting brightness and gradients are supplied).
     - Per-flux residual on lit pixels (``b_i > peak_lit_frac * max(b)``) is
       ``g_I - mu_I = res_b / flux``, normalized by ``weight / flux`` to give ``kkt_w``.
     - Relative stationarity is ``kkt_rel = rms(res_b[lit]) / ((0 if free_flux else |mu|) + scale)``.
@@ -483,6 +486,23 @@ def kkt_simplex_metrics_ref(
     scale = (
         float(np.sqrt(np.mean(d_data[lit] ** 2 + d_pen[lit] ** 2))) if np.any(lit) else 0.0
     )
+    if start_brightness is not None and start_grad_data_b is not None:
+        bs = np.asarray(start_brightness, dtype=float)
+        gds = np.asarray(start_grad_data_b, dtype=float)
+        gps = (
+            np.zeros_like(gds)
+            if start_grad_pen_b is None
+            else np.asarray(start_grad_pen_b, dtype=float)
+        )
+        dds = gds - float(np.sum(bs[sup] * gds[sup]))
+        dps = gps - float(np.sum(bs[sup] * gps[sup]))
+        peaks = float(np.max(bs[sup])) if np.any(sup) else 0.0
+        lits = sup & (bs > float(peak_lit_frac) * peaks)
+        scale_start = (
+            float(np.sqrt(np.mean(dds[lits] ** 2 + dps[lits] ** 2))) if np.any(lits) else 0.0
+        )
+        scale = max(scale, scale_start)
+
     denom = (0.0 if free_flux else abs(mu)) + scale
     kkt_rel = rms_res_b / denom if denom > 0.0 else 0.0
     kkt_w = (
@@ -495,6 +515,75 @@ def kkt_simplex_metrics_ref(
     want_grow = float(np.sum(res_b[dark] < thresh) / max(n_sup, 1)) if np.any(dark) else 0.0
     return {
         "mu": float(mu),
+        "scale": float(scale),
+        "kkt_rel": float(kkt_rel),
+        "kkt_w": float(kkt_w),
+        "want_grow": float(want_grow),
+    }
+
+
+def kkt_sqrt_metrics_ref(
+    sqrt_pixels: np.ndarray,
+    grad_data_f: np.ndarray,
+    grad_pen_f: np.ndarray | None = None,
+    *,
+    support: np.ndarray | None = None,
+    weight: float | None = None,
+    reference_flux: float | None = None,
+    kkt_tol: float = 1e-3,
+    peak_lit_frac: float = 1e-3,
+    dark_frac: float = 1e-6,
+    start_sqrt_pixels: np.ndarray | None = None,
+    start_grad_data_f: np.ndarray | None = None,
+    start_grad_pen_f: np.ndarray | None = None,
+) -> dict[str, float]:
+    """Square-root reparameterized (``f_i = x_i^2``, ``LinearImage("sqrt")``) KKT metrics.
+
+    Nocedal & Wright (2006, ch. 12): because ``f_i = x_i^2 >= 0`` is unconstrained in ``x``
+    with no simplex sum constraint, the equality multiplier vanishes (``mu = 0``),
+    ``dJ / dx_i = 2 x_i (dJ / df_i)`` vanishes identically at ``x_i = 0`` (excluding exact
+    zeros from ``want_grow``), and ``scale`` on lit pixels (``f_i > peak_lit_frac * max(f)``)
+    is ``max(scale_cur, scale_start)`` when starting values are given.
+    """
+    x = np.asarray(sqrt_pixels, dtype=float)
+    f = x * x
+    gd = np.asarray(grad_data_f, dtype=float)
+    gp = np.zeros_like(gd) if grad_pen_f is None else np.asarray(grad_pen_f, dtype=float)
+    g = gd + gp
+    sup = np.ones_like(f, dtype=bool) if support is None else np.asarray(support, dtype=bool)
+    f0 = float(np.sum(f[sup])) if reference_flux is None else float(reference_flux)
+    peak = float(np.max(f[sup])) if np.any(sup) else 0.0
+    lit = sup & (f > float(peak_lit_frac) * peak)
+    dark = sup & (f < float(dark_frac) * peak) & (x != 0.0)
+
+    rms_g = float(np.sqrt(np.mean(g[lit] ** 2))) if np.any(lit) else 0.0
+    scale = float(np.sqrt(np.mean(gd[lit] ** 2 + gp[lit] ** 2))) if np.any(lit) else 0.0
+    if start_sqrt_pixels is not None and start_grad_data_f is not None:
+        xs = np.asarray(start_sqrt_pixels, dtype=float)
+        fs = xs * xs
+        gds = np.asarray(start_grad_data_f, dtype=float)
+        gps = (
+            np.zeros_like(gds)
+            if start_grad_pen_f is None
+            else np.asarray(start_grad_pen_f, dtype=float)
+        )
+        peaks = float(np.max(fs[sup])) if np.any(sup) else 0.0
+        lits = sup & (fs > float(peak_lit_frac) * peaks)
+        scale_start = (
+            float(np.sqrt(np.mean(gds[lits] ** 2 + gps[lits] ** 2))) if np.any(lits) else 0.0
+        )
+        scale = max(scale, scale_start)
+
+    kkt_rel = rms_g / scale if scale > 0.0 else 0.0
+    kkt_w = (
+        rms_g / (float(weight) / f0)
+        if (weight is not None and weight > 0.0 and f0 > 0.0)
+        else np.nan
+    )
+    n_sup = int(np.sum(sup))
+    thresh = -3.0 * scale * max(float(kkt_rel), float(kkt_tol))
+    want_grow = float(np.sum(g[dark] < thresh) / max(n_sup, 1)) if np.any(dark) else 0.0
+    return {
         "scale": float(scale),
         "kkt_rel": float(kkt_rel),
         "kkt_w": float(kkt_w),
@@ -515,6 +604,7 @@ def kkt_nonneg_linear_metrics_ref(
     zero_tol: float = 0.0,
     lower: float = 0.0,
     upper: float = np.inf,
+    start_grad_total: np.ndarray | None = None,
 ) -> dict[str, float]:
     """Box-constrained ``lower <= f <= upper`` KKT metrics (Nocedal & Wright 2006, §16.7 Eq. 16.71).
 
@@ -522,8 +612,9 @@ def kkt_nonneg_linear_metrics_ref(
     - Projected-gradient displacement on support is ``pg = f - clip(f - g, lower, upper)``
       (for ``[0, inf)``, ``pg_i = min(g_i, f_i)``, which equals ``min(g_i, 0)`` at ``f_i = 0``
       and equals ``g_i`` whenever a unit gradient step stays feasible, ``f_i - g_i >= 0``).
-    - Reference infinity-norm scale is ``top = max(||g_data||_inf, ||g_pen||_inf)`` over support,
-      giving ``pg_rel = ||pg||_inf / top``.
+    - Reference infinity-norm scale on support is ``max(||g_data||_inf, ||g_pen||_inf)`` when
+      ``start_grad_total`` is omitted, or ``||g_start||_inf`` when ``start_grad_total`` is
+      supplied, giving ``pg_rel = ||pg||_inf / top``.
     - ``kkt_w`` is the RMS of ``pg`` over active-or-lit pixels
       (``f_i > peak_lit_frac * max(f)`` or ``f_i <= zero_tol`` with ``g_i < 0``) divided by
       ``weight / F_0`` with ``F_0 = sum(f)`` (or ``reference_flux`` if explicitly given).
@@ -546,11 +637,15 @@ def kkt_nonneg_linear_metrics_ref(
         if (weight is not None and weight > 0.0 and f0 > 0.0)
         else np.nan
     )
-    top = (
-        max(float(np.max(np.abs(gd[sup]))), float(np.max(np.abs(gp[sup]))))
-        if np.any(sup)
-        else 0.0
-    )
+    if start_grad_total is not None:
+        gs = np.asarray(start_grad_total, dtype=float)
+        top = float(np.max(np.abs(gs[sup]))) if np.any(sup) else 0.0
+    else:
+        top = (
+            max(float(np.max(np.abs(gd[sup]))), float(np.max(np.abs(gp[sup]))))
+            if np.any(sup)
+            else 0.0
+        )
     pg_inf = float(np.max(np.abs(pg[sup]))) if np.any(sup) else 0.0
     pg_rel = pg_inf / top if top > 0.0 else 0.0
     n_zero = int(np.sum(at_zero))
@@ -564,6 +659,81 @@ def kkt_nonneg_linear_metrics_ref(
         "kkt_w": float(kkt_w),
         "zero_violation": zero_violation,
     }
+
+
+def kkt_nuisance_grad_rel_ref(
+    grad_cur: np.ndarray | float,
+    grad_start: np.ndarray | float,
+    *,
+    value_cur: np.ndarray | float | None = None,
+    value_start: np.ndarray | float | None = None,
+    lower: np.ndarray | float = -np.inf,
+    upper: np.ndarray | float = np.inf,
+) -> dict[str, float]:
+    """Projected-gradient infinity-norm ratio ``grad_rel = ||pg_cur||_inf / ||pg_start||_inf``
+    for non-image parameters in their fitted coordinate (Nocedal & Wright 2006, §16.7).
+    """
+    gc = np.asarray(grad_cur, dtype=float)
+    gs = np.asarray(grad_start, dtype=float)
+    if value_cur is not None:
+        vc_arr = np.asarray(value_cur, dtype=float)
+        pg_cur = vc_arr - np.clip(vc_arr - gc, lower, upper)
+    else:
+        pg_cur = gc
+    if value_start is not None:
+        vs_arr = np.asarray(value_start, dtype=float)
+        pg_start = vs_arr - np.clip(vs_arr - gs, lower, upper)
+    else:
+        pg_start = gs
+    norm_cur = float(np.max(np.abs(pg_cur)))
+    norm_start = float(np.max(np.abs(pg_start)))
+    grad_rel = norm_cur / norm_start if norm_start > 0.0 else np.nan
+    return {
+        "grad_norm": norm_cur,
+        "start_grad_norm": norm_start,
+        "grad_rel": float(grad_rel),
+    }
+
+
+def maxent_band_limit_ref(
+    fluxes: np.ndarray,
+    u_m: np.ndarray,
+    v_m: np.ndarray,
+    wavel_m: np.ndarray | float,
+    pixel_scale_mas: float,
+) -> float:
+    """Windowed super-cutoff Fourier power ratio of ``ln b`` over its hard low-pass.
+
+    Skilling & Bryan (1984, *MNRAS* 211, 111): at a first-order MaxEnt stationary point
+    ``w ln(p / m) = -F_0 (dJ_data / df)``, the log-brightness ``ln b`` is a linear
+    combination of measured Fourier modes ``|q| <= q_max = max(hypot(u, v) / wavel)``
+    (or ``2 q_max`` through squared visibilities). Comparing the 2D Hann-windowed high-frequency
+    power of ``ln b`` strictly above ``q_max`` to that of its hard low-pass projection onto
+    ``|q| <= q_max`` gives ``1.0`` identically for any band-limited ``ln b`` and grows well
+    above unity when unconstrained super-Nyquist structure (such as a checkerboard ripple) is
+    present.
+    """
+    arr = np.asarray(fluxes, dtype=float)
+    b = arr / np.sum(arr)
+    lnb = np.log(np.clip(b, 1e-300, None)) - float(np.mean(np.log(np.clip(b, 1e-300, None))))
+    ny, nx = lnb.shape
+    q_max_cyc_per_mas = float(
+        np.max(np.hypot(np.asarray(u_m, dtype=float), np.asarray(v_m, dtype=float)) / np.asarray(wavel_m, dtype=float))
+        * MAS_TO_RAD
+    )
+    fx = np.fft.fftfreq(nx, d=float(pixel_scale_mas))
+    fy = np.fft.fftfreq(ny, d=float(pixel_scale_mas))
+    qr = np.hypot(fx[None, :], fy[:, None])
+    beyond = qr > q_max_cyc_per_mas
+    if not np.any(beyond):
+        return np.nan
+    wx = np.hanning(nx)
+    wy = np.hanning(ny)
+    w2 = np.outer(wy, wx)
+    lnb_lp = np.fft.ifft2(np.where(~beyond, np.fft.fft2(lnb), 0.0)).real
+    pow_hi = float(np.sum(np.abs(np.fft.fft2(w2 * lnb))[beyond] ** 2))
+    pow_lp = float(np.sum(np.abs(np.fft.fft2(w2 * lnb_lp))[beyond] ** 2))
+    return pow_hi / pow_lp if pow_lp > 0.0 else (1.0 if pow_hi == 0.0 else np.inf)
 
 
 # ---------------------------------------------------------------------------
@@ -673,6 +843,104 @@ def hutchinson_rademacher_estimate(
     mean = float(np.mean(probes))
     se = float(np.std(probes, ddof=1) / np.sqrt(nprobe)) if nprobe > 1 else 0.0
     return mean, se
+
+
+def skilling_kl_ref(
+    fluxes: np.ndarray,
+    *,
+    reference_flux: float | None = None,
+    default_prob: np.ndarray | None = None,
+    support: np.ndarray | None = None,
+) -> float:
+    """Generalized Kullback–Leibler divergence ``sum [p_i ln(p_i / m_i) - (p_i - m_i)]``
+    (Skilling 1989) for positive measure ``p_i = f_i / F_0`` against default ``m_i``.
+    """
+    f = np.asarray(fluxes, dtype=float)
+    sup = np.ones_like(f, dtype=bool) if support is None else np.asarray(support, dtype=bool)
+    f_sup = f[sup]
+    f0 = float(np.sum(f_sup)) if reference_flux is None else float(reference_flux)
+    p = f_sup / f0
+    m = (
+        np.full_like(p, 1.0 / max(p.size, 1))
+        if default_prob is None
+        else np.asarray(default_prob, dtype=float)[sup]
+    )
+    pos = p > 0.0
+    term = np.where(pos, p * np.log(np.where(pos, p, 1.0) / m) - (p - m), m)
+    return float(np.sum(term))
+
+
+def dof_weight_band_ref(
+    weights: np.ndarray,
+    chi2: np.ndarray,
+    g_sweep: np.ndarray,
+    n_real: float,
+    *,
+    noise_scale2: float = 1.0,
+    noise_scale_sigma: float = 0.05,
+) -> tuple[float | None, float | None]:
+    """Interpolate ``±2 * noise_scale_sigma`` Morozov discrepancy crossings ``(w_plus, w_minus)``
+    linearly in ``ln w`` along the sweep (Morozov 1966; Craven & Wahba 1979).
+
+    At shifted noise variance ``s_pm^2 = noise_scale2 +/- 2 * noise_scale_sigma``, finds
+    all sign-change crossings of ``m(w; s_pm^2) = chi2(w) / s_pm^2 - (n_real - G(w))``
+    linearly in ``ln w`` and selects the largest-weight crossing (or ``None`` if ``s_pm^2 <= 0``
+    or no crossing exists). Because larger ``s^2`` lowers ``chi2 / s^2``, ``w_plus > w_minus``
+    on a monotone single-crossing sweep.
+    """
+    w = np.asarray(weights, dtype=float).ravel()
+    c2 = np.asarray(chi2, dtype=float).ravel()
+    g = np.asarray(g_sweep, dtype=float).ravel()
+    order = np.argsort(w)[::-1]  # largest weight first
+    lw = np.log(w[order])
+    c2 = c2[order]
+    g = g[order]
+
+    def _strongest_root(s2: float) -> float | None:
+        if s2 <= 0.0:
+            return None
+        m = c2 / s2 - (float(n_real) - g)
+        roots: list[float] = []
+        for i in range(m.size - 1):
+            m0, m1 = float(m[i]), float(m[i + 1])
+            if not (np.isfinite(m0) and np.isfinite(m1)):
+                continue
+            if m0 == 0.0:
+                roots.append(float(np.exp(lw[i])))
+            elif (m0 > 0.0 and m1 <= 0.0) or (m0 < 0.0 and m1 >= 0.0):
+                frac = -m0 / (m1 - m0)
+                roots.append(float(np.exp(lw[i] + frac * (lw[i + 1] - lw[i]))))
+        return max(roots) if roots else None
+
+    w_plus = _strongest_root(float(noise_scale2) + 2.0 * float(noise_scale_sigma))
+    w_minus = _strongest_root(float(noise_scale2) - 2.0 * float(noise_scale_sigma))
+    return w_plus, w_minus
+
+
+def short_baseline_v2_residual_ref(
+    u_m: np.ndarray,
+    v_m: np.ndarray,
+    wavel_m: np.ndarray | float,
+    vis2_obs: np.ndarray,
+    sigma_vis2: np.ndarray,
+    model_cvis: np.ndarray,
+    *,
+    quantile: float = 0.25,
+) -> tuple[float, float]:
+    """Unweighted mean and unit-normal standard error ``1 / sqrt(n_short)`` of shortest-quantile
+    whitened ``V^2`` residuals ``(|V_model|^2 - V^2_obs) / sigma_{V^2}`` (Ireland, Monnier & Thureau 2006).
+    """
+    q = np.hypot(np.asarray(u_m, dtype=float), np.asarray(v_m, dtype=float)) / np.asarray(
+        wavel_m, dtype=float
+    )
+    q_cut = float(np.quantile(q, float(quantile)))
+    mask = q <= q_cut
+    n_short = int(np.sum(mask))
+    if n_short == 0:
+        raise ValueError("no baselines within quantile")
+    v2_mod = np.abs(np.asarray(model_cvis, dtype=complex)) ** 2
+    r = (v2_mod - np.asarray(vis2_obs, dtype=float)) / np.asarray(sigma_vis2, dtype=float)
+    return float(np.mean(r[mask])), float(1.0 / np.sqrt(n_short))
 
 
 def lcurve_corner_ref(
