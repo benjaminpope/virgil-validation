@@ -918,10 +918,36 @@ def test_alma_lambda_grid_flux_scale_reference_obs_and_white_noise_lag1():
     data_det = radio.ComplexVisData.from_arrays(cat(0), cat(1), vis_det, cat(3), cat(4))
     assert al.flux_scale(data_det, fraction=0.1) == pytest.approx(0.42, rel=1e-14)
 
+    # Problem.chi2 and Problem.curvature HVP vs explicit NumPy Vandermonde Gauss-Newton matrix Re(D^H W D) v
+    npix_c, px_c, flux_c = 6, 12.0, 0.36
+    m_vis = 28
+    u_c = rng.uniform(-2.5e5, 2.5e5, m_vis)
+    v_c = rng.uniform(-2.5e5, 2.5e5, m_vis)
+    w_c = rng.uniform(1.5, 6.0, m_vis)
+    vis_c = rng.normal(0.0, 0.2, m_vis) + 1j * rng.normal(0.0, 0.2, m_vis)
+    data_c = radio.ComplexVisData.from_arrays(u_c, v_c, vis_c, w_c, np.full(m_vis, 230e9))
+    prob = al.build(data_c, npix=npix_c, pixel_mas=px_c, flux=flux_c, ref_obs=0)
+    b0 = rng.uniform(0.004, 0.025, (npix_c, npix_c))
+    vec = rng.normal(0.0, 1.0, npix_c * npix_c)
+
+    mas_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    coords_1d = ((npix_c - 1) / 2.0 - np.arange(npix_c) - 0.5) * px_c * mas_rad
+    east_g, north_g = np.meshgrid(coords_1d, coords_1d)
+    d_mat = np.exp(-2j * np.pi * (u_c[:, None] * east_g.ravel()[None, :] + v_c[:, None] * north_g.ravel()[None, :]))
+    want_chi2 = float(np.sum(w_c * np.abs(vis_c - d_mat @ b0.ravel()) ** 2))
+    got_chi2 = prob.chi2({"pixels": np.sqrt(b0)})
+    assert got_chi2 == pytest.approx(want_chi2, rel=1e-11)
+
+    want_kv = ((d_mat.conj().T * w_c[None, :]) @ d_mat).real @ vec
+    got_kv = prob.curvature(prob.model(pixels=np.sqrt(b0)))(vec)
+    curv_rel_err = float(np.linalg.norm(got_kv - want_kv) / np.linalg.norm(want_kv))
+
     record("lag1_white_noise_abs_bias", float(bias))
     record("lag1_white_noise_r1", float(r1))
+    record("curvature_hvp_rel_err", curv_rel_err)
     assert n_lag > 2000
     assert bias < 3.5 * se_r1
+    assert curv_rel_err < 1e-11
 
 
 # ------------------------------------------------ 11. virgil_bridge.mpol
@@ -1171,22 +1197,42 @@ def test_mpol_losses_match_analytic_entropy_tv_tsv_and_central_differences():
     "virgil_bridge.alma",
     roots=["mathematics"],
     kind="reference",
-    headline="mpol_entropy_dft_rel_err",
+    headline="mpol_entropy_spatial_rel_err",
 )
 def test_virgil_bridge_alma_lambda_scales_ring_geometry_and_mpol_entropy():
-    """``lam_r`` and ``lam_f_equivalent`` satisfy their exact analytical scalings,
-    ``ring_and_blob`` has unit sum and concentrates the blob in the expected sky quadrant,
-    and ``mpol_entropy_jax`` matches an explicit NumPy discrete Fourier Gaussian blur plus
-    Shannon relative entropy."""
+    """``lam_f_equivalent`` gives ``MaxEntropy`` the exact stationary-point gradient pull of
+    untapered ``mpol_entropy_jax`` with respect to ``log_brightness``, ``ring_and_blob`` has unit
+    sum in the expected sky quadrant, and ``mpol_entropy_jax`` matches direct 2D sky-plane spatial
+    Gaussian PSF convolution (no FFTs) plus Shannon relative entropy."""
+    import jax
     import jax.numpy as jnp
 
     pytest.importorskip("virgil.radio")
+    from virgil import Image
+    from virgil.imaging import MaxEntropy
     from virgil_bridge import alma as vba
 
-    assert vba.lam_r(50_000, lam_m=1e-9) == pytest.approx(1e-4, rel=1e-15)
-    assert vba.lam_f_equivalent(1e-4, flux=0.5, pixel_mas=5.0, f_tot=0.25) == pytest.approx(
-        1e-4 * 0.5 / (0.25 * (5.0 / 1000.0) ** 2), rel=1e-15
+    # 1. Stationary-point gradient identity: d/d(eta) [lam_R S_M(eta; taper=0)] == d/d(eta) [MaxEntropy(lam_F)(eta)]
+    rng = np.random.default_rng(61)
+    npix = 31
+    pixel_mas, taper_mas, flux, prior, f_tot = 4.0, 20.0, 0.32, 1e-4, 0.25
+    eta = rng.normal(0.0, 0.8, (npix, npix))
+    eta_j = jnp.asarray(eta)
+
+    lam_r_val = vba.lam_r(50_000, lam_m=1e-9)
+    lam_f_val = vba.lam_f_equivalent(lam_r_val, flux=flux, pixel_mas=pixel_mas, f_tot=f_tot)
+    grad_r = np.asarray(
+        jax.grad(
+            lambda e: lam_r_val * vba.mpol_entropy_jax(e, flux, pixel_mas=pixel_mas, taper_mas=0.0, prior=prior, f_tot=f_tot)
+        )(eta_j),
+        float,
     )
+    grad_f = np.asarray(
+        jax.grad(lambda e: MaxEntropy(lam_f_val).value(Image(e, pixel_scale_mas=pixel_mas)))(eta_j),
+        float,
+    )
+    grad_pull_rel_err = float(np.linalg.norm(grad_r - grad_f) / np.linalg.norm(grad_r))
+    assert grad_pull_rel_err < 1e-12
 
     scene_im = vba.ring_and_blob(npix=33, pixel_mas=20.0, blob=(0.4, 140.0, -160.0, 40.0))
     assert scene_im.shape == (33, 33)
@@ -1195,30 +1241,51 @@ def test_virgil_bridge_alma_lambda_scales_ring_geometry_and_mpol_entropy():
     # Blob at (+140 mas East -> col < 16, -160 mas North -> row > 16): SE quadrant brighter than NW
     assert float(scene_im[17:, :16].sum()) > float(scene_im[:16, 17:].sum())
 
-    rng = np.random.default_rng(61)
-    npix = 16
-    pixel_mas, taper_mas, flux, prior, f_tot = 5.0, 20.0, 0.32, 1e-4, 0.25
-    eta = rng.normal(0.0, 0.8, (npix, npix))
+    # 2. Direct 2D sky-plane spatial Gaussian convolution (zero FFTs) vs mpol_entropy_jax
     got_ent = float(
         vba.mpol_entropy_jax(
-            jnp.asarray(eta), flux, pixel_mas=pixel_mas, taper_mas=taper_mas, prior=prior, f_tot=f_tot
+            eta_j, flux, pixel_mas=pixel_mas, taper_mas=taper_mas, prior=prior, f_tot=f_tot
         )
     )
     dx_arcsec = pixel_mas / 1000.0
-    arcsec_rad = np.pi / (180.0 * 3600.0)
+    fwhm_arcsec = taper_mas / 1000.0
     b = np.exp(eta - eta.max())
     b /= b.sum()
     sb = flux * b / dx_arcsec**2
-    freq = np.fft.fftfreq(npix, d=dx_arcsec * arcsec_rad)
-    q2 = freq[:, None] ** 2 + freq[None, :] ** 2
-    taper_ft = np.exp(-((np.pi * (taper_mas / 1000.0) * arcsec_rad) ** 2) * q2 / (4.0 * np.log(2.0)))
-    sb_tap = np.maximum(np.fft.ifft2(np.fft.fft2(sb) * taper_ft).real, 1e-30)
+    half = npix // 2
+    lags = np.arange(-half, half + 1)
+    dr_g, dc_g = np.meshgrid(lags, lags, indexing="ij")
+    ln2 = np.log(2.0)
+    norm_psf = (4.0 * ln2 / (np.pi * fwhm_arcsec**2)) * (dx_arcsec**2)
+    kernel = np.zeros((npix, npix))
+    for mr in (-1, 0, 1):
+        for mc in (-1, 0, 1):
+            r2_arcsec = (((dr_g + mr * npix) ** 2 + (dc_g + mc * npix) ** 2)) * (dx_arcsec**2)
+            kernel += norm_psf * np.exp(-4.0 * ln2 * r2_arcsec / (fwhm_arcsec**2))
+    sb_tap = np.zeros_like(sb)
+    for ir, lr in enumerate(lags):
+        for ic, lc in enumerate(lags):
+            sb_tap += kernel[ir, ic] * np.roll(sb, (int(lr), int(lc)), axis=(0, 1))
+    sb_tap = np.maximum(sb_tap, 1e-30)
     want_ent = float(np.sum(sb_tap * np.log(sb_tap / prior)) / f_tot)
     ent_rel_err = abs(got_ent / want_ent - 1.0)
+    # Negative control: mistaking FWHM for sigma (factor ~2.355) shifts the tapered entropy substantially
+    wrong_ent = float(
+        vba.mpol_entropy_jax(
+            eta_j,
+            flux,
+            pixel_mas=pixel_mas,
+            taper_mas=taper_mas / (2.0 * np.sqrt(2.0 * ln2)),
+            prior=prior,
+            f_tot=f_tot,
+        )
+    )
+    assert abs(wrong_ent / want_ent - 1.0) > 1e-3
 
-    record("mpol_entropy_dft_rel_err", ent_rel_err)
+    record("mpol_entropy_spatial_rel_err", ent_rel_err)
+    record("lam_f_grad_pull_rel_err", grad_pull_rel_err)
     record("ring_and_blob_sum_abs_err", abs(float(scene_im.sum()) - 1.0))
-    assert ent_rel_err < 1e-13
+    assert ent_rel_err < 1e-9
 
 
 # ------------------------ 14. subprocess workers & safe_load (external_bridge)
@@ -1760,3 +1827,117 @@ def test_alma_lambda_report_blur_moments_and_gate_checks_match_analytic_beam_and
     assert blur_err < 1e-14
     assert mom_pos_err < 1e-10
     assert mom_pa_err < 1e-10
+
+
+# ------------------------ 16. virgil_bridge (__init__.py)
+
+
+@pytest.mark.validates(
+    "virgil_bridge",
+    roots=["mathematics"],
+    kind="reference",
+    headline="scene_vis_max_abs_err",
+)
+def test_virgil_bridge_scenes_analytic_visibilities_and_fit_scene_recovery():
+    """Every ``virgil_bridge`` scene's ``vis(u, v, wavel)`` matches closed-form Bessel / Fourier /
+    Kipping-Hankel integrals computed directly from SciPy without ``crosscheck``, and ``fit_scene``
+    recovers ``flat_truth`` with positive-definite Laplace covariance on noiseless VLTI data."""
+    from scipy.integrate import quad
+    from scipy.special import j0, j1
+
+    vb = pytest.importorskip("virgil_bridge")
+    from virgil.coverage import vlti_oidata
+
+    mas_rad = np.pi / (180.0 * 3600.0 * 1000.0)
+    u = np.array([28.0, -64.0, 95.0, -112.0, 41.0])
+    v = np.array([-35.0, 77.0, 48.0, -53.0, 108.0])
+    wavel = np.full_like(u, 1.65e-6)
+    qu = u / wavel
+    qv = v / wavel
+
+    # 1. binary(sep, pa, flux)
+    sc_bin = vb.binary(sep=6.0, pa=124.0, flux=0.05)
+    dra_b = 6.0 * np.sin(np.deg2rad(124.0)) * mas_rad
+    ddec_b = 6.0 * np.cos(np.deg2rad(124.0)) * mas_rad
+    want_bin = (1.0 + 0.05 * np.exp(-2j * np.pi * (qu * dra_b + qv * ddec_b))) / 1.05
+    err_bin = float(np.max(np.abs(sc_bin.vis(u, v, wavel) - want_bin)))
+
+    # 2. resolved_star_companion(diam, dra, ddec, flux)
+    sc_ud = vb.resolved_star_companion(diam=1.8, dra=-12.0, ddec=8.0, flux=0.02)
+    rho = np.hypot(qu, qv)
+    x_ud = np.pi * (1.8 * mas_rad) * rho
+    vis_ud = 2.0 * j1(x_ud) / x_ud
+    vis_comp = np.exp(-2j * np.pi * (qu * (-12.0 * mas_rad) + qv * (8.0 * mas_rad)))
+    want_ud = (vis_ud + 0.02 * vis_comp) / 1.02
+    err_ud = float(np.max(np.abs(sc_ud.vis(u, v, wavel) - want_ud)))
+
+    # 3. star_envelope(fwhm, ratio, pa, flux)
+    sc_env = vb.star_envelope(fwhm=4.0, ratio=0.5, pa=60.0, flux=0.4)
+    pa_e = np.deg2rad(60.0)
+    q_maj = qu * np.sin(pa_e) + qv * np.cos(pa_e)
+    q_min = qu * np.cos(pa_e) - qv * np.sin(pa_e)
+    fwhm_maj = 4.0 * mas_rad
+    fwhm_min = 0.5 * fwhm_maj
+    vis_env = np.exp(-(np.pi**2) * ((fwhm_maj * q_maj) ** 2 + (fwhm_min * q_min) ** 2) / (4.0 * np.log(2.0)))
+    want_env = (1.0 + 0.4 * vis_env) / 1.4
+    err_env = float(np.max(np.abs(sc_env.vis(u, v, wavel) - want_env)))
+
+    # 4. star_rim(diam, fwhm, inc, pa, amp, az_pa, flux): Jacobi-Anger J0 - i A cos(psi - phi0) J1 * deprojected blur
+    sc_rim = vb.star_rim(diam=6.0, fwhm=1.0, inc=45.0, pa=30.0, amp=0.5, az_pa=120.0, flux=0.8)
+    pa_r, inc_r = np.deg2rad(30.0), np.deg2rad(45.0)
+    q_par = qu * np.sin(pa_r) + qv * np.cos(pa_r)
+    q_perp = (qu * np.cos(pa_r) - qv * np.sin(pa_r)) * np.cos(inc_r)
+    q_dep = np.hypot(q_par, q_perp)
+    psi = np.arctan2(q_perp, q_par)
+    phi0 = np.deg2rad(120.0 - 30.0)
+    rad_rim = 3.0 * mas_rad
+    fwhm_rim = 1.0 * mas_rad
+    blur_rim = np.exp(-(np.pi * fwhm_rim * q_dep) ** 2 / (4.0 * np.log(2.0)))
+    vis_ring = (j0(2.0 * np.pi * q_dep * rad_rim) - 1j * 0.5 * np.cos(psi - phi0) * j1(2.0 * np.pi * q_dep * rad_rim)) * blur_rim
+    want_rim = (1.0 + 0.8 * vis_ring) / 1.8
+    err_rim = float(np.max(np.abs(sc_rim.vis(u, v, wavel) - want_rim)))
+
+    # 5. limb_darkened_star_companion: Kipping (2013) (q1, q2) -> (u1, u2) + continuous Hankel quad integral
+    sc_ld = vb.limb_darkened_star_companion(diam=6.0, q1=0.36, q2=0.29, dra=0.7, ddec=-0.4, comp=(-14.0, 9.0), flux=0.03)
+    u1 = 2.0 * np.sqrt(0.36) * 0.29
+    u2 = np.sqrt(0.36) * (1.0 - 2.0 * 0.29)
+    rad_ld = 3.0 * mas_rad
+    norm_ld = quad(lambda r: r * (1.0 - u1 * (1.0 - np.sqrt(1.0 - r * r)) - u2 * (1.0 - np.sqrt(1.0 - r * r)) ** 2), 0.0, 1.0, epsabs=1e-14, epsrel=1e-14)[0]
+    vis_ld_star = np.array([
+        quad(
+            lambda r, rq=rq_i: r
+            * (1.0 - u1 * (1.0 - np.sqrt(1.0 - r * r)) - u2 * (1.0 - np.sqrt(1.0 - r * r)) ** 2)
+            * j0(2.0 * np.pi * rq * rad_ld * r),
+            0.0,
+            1.0,
+            epsabs=1e-14,
+            epsrel=1e-14,
+        )[0]
+        / norm_ld
+        for rq_i in rho
+    ]) * np.exp(-2j * np.pi * (qu * (0.7 * mas_rad) + qv * (-0.4 * mas_rad)))
+    vis_ld_comp = np.exp(-2j * np.pi * (qu * (-14.0 * mas_rad) + qv * (9.0 * mas_rad)))
+    want_ld = (vis_ld_star + 0.03 * vis_ld_comp) / 1.03
+    err_ld = float(np.max(np.abs(sc_ld.vis(u, v, wavel) - want_ld)))
+
+    max_vis_err = max(err_bin, err_ud, err_env, err_rim, err_ld)
+
+    # 6. fit_scene, flat_truth, and flat_values on noiseless VLTI UT data
+    uts = np.array([[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]])
+    oidata = vlti_oidata(
+        stations=uts,
+        declination_deg=-50.0,
+        hour_angles_h=[-2.0, 0.0, 2.0],
+        wavelengths_m=np.array([1.6e-6, 2.2e-6]),
+    ).with_model(sc_bin.template)
+    fit_res, cov = vb.fit_scene(sc_bin, oidata)
+    truth_vec = vb.flat_truth(sc_bin)
+    got_vec = vb.flat_values(sc_bin, fit_res.values)
+    fit_err = float(np.max(np.abs(got_vec - truth_vec)))
+    eigvals = np.linalg.eigvalsh(cov)
+    assert cov.shape == (3, 3) and np.allclose(cov, cov.T, atol=1e-14) and float(eigvals.min()) > 0.0
+
+    record("scene_vis_max_abs_err", max_vis_err)
+    record("fit_scene_max_param_err", fit_err)
+    assert max_vis_err < 1e-12
+    assert fit_err < 1e-5

@@ -572,6 +572,7 @@ nodes:
   external_bridge.npz_compare: {layer: references, doc: alma_conventions.md}  # channel-rank matched visibility comparison between visread NPZ and virgil read_ms
   external_bridge.cv_folds: {layer: references, depends: [external_bridge.npz_compare], doc: alma_conventions.md}  # asdf points matched to virgil's dartboard fold file (numpy only); tallies and the profiled score of both codes (tests/test_alma_mpol_cv.py, conventions Part 6)
   external_bridge.cv_compare: {layer: references, depends: [external_bridge.cv_folds], doc: alma_conventions.md}  # MPoL's held-out scores beside virgil's, per fold and annulus (numpy only; `alma_imlup_maxent.py cv-compare`)
+  virgil_bridge: {layer: references, depends: [crosscheck.limb, crosscheck.sky], doc: method/index.md}  # scene definitions pairing crosscheck.{sky,limb} truth with virgil models and MAP/Laplace fitting helpers
   virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
   virgil_bridge.alma: {layer: references, depends: [crosscheck.alma, crosscheck.alma_maxent], doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
   virgil_bridge.alma_start: {layer: references, depends: [crosscheck.alma_maxent, crosscheck.preregistration, virgil_bridge.alma], doc: alma_conventions.md}  # IM Lup MaxEnt cold starts: our CLEAN model regridded to the fit grid, the image-fixed stage's gain check

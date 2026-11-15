@@ -183,6 +183,7 @@ def test_reference_module_imports_are_declared_in_depends():
 
     plugin._module_via.cache_clear()
     plugin._init_exports.cache_clear()
+    plugin._has_executable_defs.cache_clear()
     ref_nodes = {
         name for name, node in GRAPH["nodes"].items()
         if (node or {}).get("layer", "references") == "references"
@@ -192,9 +193,19 @@ def test_reference_module_imports_are_declared_in_depends():
     for pkg in plugin._REFERENCE_PACKAGES:
         init_py = ROOT / "src" / pkg / "__init__.py"
         if init_py.is_file():
-            init_unreg = sorted(set(plugin._module_via(str(init_py))) - ref_nodes)
-            if init_unreg:
-                unregistered.append((f"{pkg}.__init__", init_unreg))
+            if plugin._has_executable_defs(init_py):
+                if pkg not in ref_nodes:
+                    unregistered.append(pkg)
+                else:
+                    imported_refs = set(plugin._module_via(str(init_py))) - {pkg}
+                    declared = set(GRAPH["nodes"][pkg].get("depends", []))
+                    missing = sorted(imported_refs - declared)
+                    if missing:
+                        undeclared.append((pkg, missing))
+            else:
+                init_unreg = sorted(set(plugin._module_via(str(init_py))) - ref_nodes)
+                if init_unreg:
+                    unregistered.append((f"{pkg}.__init__", init_unreg))
         for py in sorted((ROOT / "src" / pkg).rglob("*.py")):
             rel = py.relative_to(ROOT / "src")
             if rel.parts == (pkg, "__init__.py"):
