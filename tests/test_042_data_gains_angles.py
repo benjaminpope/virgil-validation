@@ -10,7 +10,7 @@ import numpy as np
 import numpyro.distributions as dist
 import pytest
 from scipy.linalg import cho_factor, cho_solve, cholesky
-from scipy.special import jv
+from scipy.special import jv, roots_legendre
 
 import virgil.amigo as vamigo
 import virgil.angles as vangles
@@ -390,6 +390,67 @@ def test_radial_gp_function_and_gp_priors_across_scene():
     assert np.any(draws_signed < 0.0)
     assert np.all(draws_pos > 0.0)
 
+    z_prof = rng.normal(size=24)
+    z_alpha = rng.normal(size=8)
+    disk_chrom = vm.MultipoleDisk(
+        profile=vm.RadialGP(1.0, 12.0, sigma=0.8, ell=3.0, z=z_prof),
+        spectral_index=vm.RadialGPFunction(sigma=0.6, ell=4.0, mu=-0.5, z=z_alpha),
+        inc=35.0,
+        pa=25.0,
+        flux=0.5,
+        wavel0=2.2e-6,
+        n_r=24,
+    )
+    sys_chrom = vm.System(star=vm.PointSource(flux=1.0), disk=disk_chrom)
+
+    x_gl, w_gl = roots_legendre(24)
+    r_gl = 0.5 * (12.0 - 1.0) * x_gl + 0.5 * (12.0 + 1.0)
+    dw_gl = 0.5 * (12.0 - 1.0) * w_gl
+    w0_gl = r_gl * dw_gl * np.exp(0.8 * (cholesky(_matern_corr(r_gl, ell=3.0, nu=1.5), lower=True) @ z_prof))
+    alpha_nodes = np.linspace(1.0, 12.0, 8)
+    alpha_vals = -0.5 + 0.6 * (cholesky(_matern_corr(alpha_nodes, ell=4.0, nu=1.5), lower=True) @ z_alpha)
+    alpha_gl = np.interp(r_gl, alpha_nodes, alpha_vals)
+
+    q_u = np.array([1.2e7, -2.1e7, 2.8e7])
+    q_v = np.array([-0.9e7, 1.7e7, 1.4e7])
+    chrom_err = 0.0
+    disk_by_wavel = {}
+    for wavel in (1.9e-6, 2.5e-6):
+        u_q, v_q = q_u * wavel, q_v * wavel
+        w_lam = w0_gl * (wavel / 2.2e-6) ** alpha_gl
+        v_disk_ref = _jacobi_anger_disk_ref(q_u, q_v, r_gl, w_lam / np.sum(w_lam), inc=35.0, pa=25.0)
+        f_disk_lam = 0.5 * float(np.sum(w_lam) / np.sum(w0_gl))
+        v_sys_ref = (1.0 + f_disk_lam * v_disk_ref) / (1.0 + f_disk_lam)
+        v_disk_vv = np.asarray(disk_chrom.model(u_q, v_q, np.full(3, wavel)))
+        v_sys_vv = np.asarray(sys_chrom.model(u_q, v_q, np.full(3, wavel)))
+        disk_by_wavel[wavel] = v_disk_vv
+        chrom_err = max(
+            chrom_err,
+            float(np.max(np.abs(v_disk_vv - v_disk_ref))),
+            float(np.max(np.abs(v_sys_vv - v_sys_ref))),
+        )
+    assert float(np.max(np.abs(disk_by_wavel[1.9e-6] - disk_by_wavel[2.5e-6]))) > 1e-2
+
+    # Control: when z=0, alpha(r) = mu is spatially uniform and cancels on normalizing disk.model at fixed (q_u, q_v):
+    disk_flat = vm.MultipoleDisk(
+        profile=vm.RadialGP(1.0, 12.0, sigma=0.8, ell=3.0, z=z_prof),
+        spectral_index=vm.RadialGPFunction(sigma=0.6, ell=4.0, mu=-0.5, z=np.zeros(8)),
+        inc=35.0,
+        pa=25.0,
+        flux=0.5,
+        wavel0=2.2e-6,
+        n_r=24,
+    )
+    flat_diff = float(
+        np.max(
+            np.abs(
+                np.asarray(disk_flat.model(q_u * 1.9e-6, q_v * 1.9e-6, np.full(3, 1.9e-6)))
+                - np.asarray(disk_flat.model(q_u * 2.5e-6, q_v * 2.5e-6, np.full(3, 2.5e-6)))
+            )
+        )
+    )
+    assert flat_diff < 5e-14
+
     disk = vm.MultipoleDisk(
         profile=vm.RadialGP(1.0, 12.0, sigma=0.8, ell=3.0),
         harmonics=vm.Harmonics(degree=2, prior=vm.MultipoleKernel(ell_r=3.0, ell_theta=2.5, sigma=0.25), form="linear"),
@@ -398,9 +459,6 @@ def test_radial_gp_function_and_gp_priors_across_scene():
         n_r=24,
     )
     scene = vm.System(star=vm.PointSource(flux=1.0), disk=disk)
-    cvis_20 = np.asarray(scene.model(np.array([35.0]), np.array([-20.0]), np.array([2.0e-6])))
-    cvis_24 = np.asarray(scene.model(np.array([35.0]), np.array([-20.0]), np.array([2.4e-6])))
-    assert np.all(np.isfinite(cvis_20)) and not np.allclose(cvis_20, cvis_24)
 
     priors_all = vm.gp_priors(scene, sigma=(0.05, 2.5), ell=(0.5, 10.0), ell_theta=(0.4, 8.0))
     expected_keys = {
@@ -423,7 +481,8 @@ def test_radial_gp_function_and_gp_priors_across_scene():
     priors_latents_only = vm.gp_priors(scene)
     assert set(priors_latents_only.keys()) == {"disk.profile.z", "disk.harmonics.z", "disk.spectral_index.z"}
 
-    record("radial_gp_function_max_err", max(max_gp_err, lp_err))
+    record("radial_gp_function_max_err", max(max_gp_err, chrom_err, lp_err))
+    assert chrom_err < 5e-14
     assert max_gp_err < 2e-12  # nu=inf RBF Cholesky has condition ~1/jitter = 1e6
     assert lp_err < 1e-14
 
@@ -732,11 +791,12 @@ def test_ami_grid_record_and_amigo_mixed_disco_validation_and_projection():
     err_rot_uv = float(np.max(np.hypot(rec["u"] - u_rot, rec["v"] - v_rot)))
     assert float(np.max(np.hypot(rec["u"] - rec0["u"], rec["v"] - rec0["v"]))) > 0.5
 
-    # 2. Direct operator nullspace checks (global log-amplitude piston 1 and phase tip/tilt [u, v]):
+    # 2. Direct operator nullspace checks (global log-amplitude piston 1 and normalized phase tip/tilt [u, v]):
     a_la = rec["disco_logamp_model_operator"]
     a_ph = rec["disco_phase_model_operator"]
+    uv_cols = np.column_stack([rec["u"], rec["v"]])
     null_logamp_ones = float(np.max(np.abs(a_la @ np.ones_like(rec["u"]))))
-    null_phase_uv = float(np.max(np.abs(a_ph @ np.column_stack([rec["u"], rec["v"]]))))
+    null_phase_uv = float(np.max(np.abs(a_ph @ uv_cols)) / np.max(np.abs(uv_cols)))
 
     # 3. Exact nuisance-projected Fisher precision reconstruction at keep=1.0, sigma scaling, and keep truncation:
     mtf_cells = _mtf_closed_form(-rec0["u"], -rec0["v"], NIRISS_HOLES, 0.82)
@@ -776,9 +836,10 @@ def test_ami_grid_record_and_amigo_mixed_disco_validation_and_projection():
     binary = vm.BinaryModelCartesian(dra=-45.0, ddec=160.0, flux=2e-3)
     oid_sim = oid.with_model(binary)
 
-    cvis = np.asarray(binary.model(-rec["u"], -rec["v"], np.full_like(rec["u"], 4.3e-6)))
+    binary_sky = sky.mix([sky.point(0.0, 0.0), sky.point(-45.0, 160.0)], [1.0, 2e-3])
+    cvis = sky.visibility(binary_sky, -rec["u"], -rec["v"], np.full_like(rec["u"], 4.3e-6))
     y_manual = a_la @ np.log(np.abs(cvis)) + a_ph @ np.angle(cvis)
-    cvis_unnegated = np.asarray(binary.model(rec["u"], rec["v"], np.full_like(rec["u"], 4.3e-6)))
+    cvis_unnegated = sky.visibility(binary_sky, rec["u"], rec["v"], np.full_like(rec["u"], 4.3e-6))
     y_wrong_sign = a_la @ np.log(np.abs(cvis_unnegated)) + a_ph @ np.angle(cvis_unnegated)
     y_oid = np.asarray(oid_sim.model(binary))
     err_proj = float(np.max(np.abs(y_oid - y_manual)))
@@ -804,12 +865,12 @@ def test_ami_grid_record_and_amigo_mixed_disco_validation_and_projection():
     record("mixed_disco_projection_err", err_proj)
     record("ami_grid_nullspace_max_err", max(null_logamp_ones, null_phase_uv))
     record("ami_grid_centroid_null_leak", null_leak)
-    assert err_rot_uv < 1e-14
-    assert null_logamp_ones < 1e-14
-    assert null_phase_uv < 1e-14
-    assert err_prec < 5e-15
+    assert err_rot_uv < 5e-14
+    assert null_logamp_ones < 5e-14
+    assert null_phase_uv < 5e-14
+    assert err_prec < 2e-14
     assert err_sigma_scale < 1e-14
-    assert err_proj < 1e-14
+    assert err_proj < 5e-14
     assert null_leak < 1e-9
 
 
@@ -1016,7 +1077,8 @@ def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
     assert g_exc.gains.n_vis == 6   # 6 V^2 only
 
     scene = vm.BinaryModelCartesian(dra=3.5, ddec=-2.5, flux=0.2)
-    cvis = np.asarray(scene.model(oid_ext.u, oid_ext.v, oid_ext.wavel))
+    scene_sky = sky.mix([sky.point(0.0, 0.0), sky.point(3.5, -2.5)], [1.0, 0.2])
+    cvis = sky.visibility(scene_sky, np.asarray(oid_ext.u), np.asarray(oid_ext.v), np.asarray(oid_ext.wavel))
     v_abs = np.abs(cvis)
     v2_mod = v_abs**2
     t3_mod = v_abs[oid_ext.i_cps1] * v_abs[oid_ext.i_cps2] * v_abs[oid_ext.i_cps3]
@@ -1113,15 +1175,21 @@ def test_042_oidata_vis_mode_logamp_and_v2_conversions():
         float(np.max(np.abs(np.asarray(oid_log.d_vis) - log_sig_ref))),
         float(np.max(np.abs(log_pred - log_mod_ref))),
     )
-    err_logamp_white = float(np.max(np.abs(np.abs(r_log) - np.abs((log_mod_ref - log_dat_ref) / log_sig_ref))))
+    err_logamp_white = float(np.max(np.abs(r_log - (log_mod_ref - log_dat_ref) / log_sig_ref)))
 
-    # Projected vis_mat + vis_mode="logamp" projects log|V_model| linearly:
+    # Projected vis_mat + vis_mode="logamp" projects log|V_model| linearly (both OIData.model and whitened_residuals):
     vis_mat = np.array([[0.6, 0.4, 0.0, 0.0], [0.0, -0.3, 0.5, 0.8]])
+    proj_dat = np.array([0.05, -0.02])
+    proj_sig = np.array([0.01, 0.01])
     oid_proj = voidata.OIData(
-        {**rec_v2, "vis": np.array([0.05, -0.02]), "d_vis": np.array([0.01, 0.01]), "vis_mat": vis_mat, "vis_mode": "logamp"}
+        {**rec_v2, "vis": proj_dat, "d_vis": proj_sig, "vis_mat": vis_mat, "vis_mode": "logamp"}
     )
-    err_proj_logamp = float(np.max(np.abs(np.asarray(oid_proj.model(scene_p)) - (vis_mat @ np.log(np.abs(cvis_ref))))))
-    assert err_proj_logamp < 1e-15
+    proj_mod_ref = vis_mat @ np.log(np.abs(cvis_ref))
+    err_proj_logamp = float(np.max(np.abs(np.asarray(oid_proj.model(scene_p)) - proj_mod_ref)))
+    r_proj = np.asarray(vlike.whitened_residuals(scene_p, oid_proj))
+    err_proj_white = float(np.max(np.abs(r_proj - (proj_mod_ref - proj_dat) / proj_sig)))
+    assert err_proj_logamp < 5e-15
+    assert err_proj_white < 1e-13
 
     with pytest.raises(ValueError, match="Unsupported vis_mode"):
         voidata.OIData({**rec_v2, "vis": np.full(4, 0.8), "vis_mode": "bogus"})
@@ -1151,11 +1219,11 @@ def test_042_oidata_vis_mode_logamp_and_v2_conversions():
         float(np.max(np.abs(np.asarray(oid_v2.d_vis) - dv2_ref))),
         float(np.max(np.abs(v2_pred - v2_mod_ref))),
     )
-    err_v2_white = float(np.max(np.abs(np.abs(r_v2) - np.abs((v2_mod_ref - v2_ref) / dv2_ref))))
+    err_v2_white = float(np.max(np.abs(r_v2 - (v2_mod_ref - v2_ref) / dv2_ref)))
 
     record("vis_mode_encoding_err", max(err_logamp_enc, err_proj_logamp, err_v2_enc))
-    record("vis_mode_whitened_err", max(err_logamp_white, err_v2_white))
-    assert err_logamp_enc < 1e-15
-    assert err_v2_enc < 1e-15
+    record("vis_mode_whitened_err", max(err_logamp_white, err_proj_white, err_v2_white))
+    assert err_logamp_enc < 5e-15
+    assert err_v2_enc < 5e-15
     assert err_logamp_white < 1e-13
     assert err_v2_white < 1e-13

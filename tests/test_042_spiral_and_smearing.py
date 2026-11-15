@@ -96,12 +96,12 @@ def test_reference_spiral_small_turns_and_arclength_identities():
     theta = 0.5 * theta_max * (x_gl + 1.0)
     quad_len = float(0.5 * theta_max * np.sum(w_gl * np.sqrt(1.0 + theta**2)))
     exact_len = float(0.5 * (theta_max * np.sqrt(1.0 + theta_max**2) + np.arcsinh(theta_max)))
-    err_arclen = abs(quad_len - exact_len)
+    err_arclen = abs(quad_len - exact_len) / exact_len
 
     record("max_err_small_turns_limit", err_limit)
     record("arclength_quadrature_err", err_arclen)
     assert err_limit < 1e-11
-    assert err_arclen < 5e-14
+    assert err_arclen < 1e-14
 
 
 @pytest.mark.validates(

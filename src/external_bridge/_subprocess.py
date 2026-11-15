@@ -16,13 +16,11 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
-def venv_root(name=None):
+def venv_root(name):
     """Checkout holding ``.venv-<name>`` and ``.external``: ``ROOT`` directly,
     or the parent repository when ``ROOT`` is a git worktree without its own
     external virtualenvs."""
-    if name is not None and (ROOT / f".venv-{name}").exists():
-        return ROOT
-    if name is None and (ROOT / ".external").exists():
+    if (ROOT / f".venv-{name}").exists():
         return ROOT
     git_entry = ROOT / ".git"
     if git_entry.is_file():
@@ -36,7 +34,7 @@ def venv_root(name=None):
                 gitdir = (ROOT / gitdir).resolve()
             if gitdir.parent.name == "worktrees" and gitdir.parent.parent.name == ".git":
                 main_root = gitdir.parent.parent.parent
-                if name is None or (main_root / f".venv-{name}").exists():
+                if (main_root / f".venv-{name}").exists():
                     return main_root
     return ROOT
 

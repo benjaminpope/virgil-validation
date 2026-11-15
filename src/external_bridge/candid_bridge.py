@@ -38,8 +38,7 @@ def provenance():
     if out.returncode != 0:
         return None
     version, path = json.loads(out.stdout.strip().splitlines()[-1])
-    interp = pathlib.Path(python())
-    base = interp.parents[2] if len(interp.parents) >= 3 and interp.parents[1].name == ".venv-candid" else ROOT
+    base = _subprocess.venv_root("candid")
     managed = base / ".venv-candid"
     commit = None
     if managed.exists() and pathlib.Path(path).resolve().is_relative_to(managed.resolve()):

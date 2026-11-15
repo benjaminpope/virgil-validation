@@ -114,7 +114,7 @@ _REFERENCE_PACKAGES = ("crosscheck", "external_bridge", "virgil_bridge")
 _PLUMBING = frozenset({"external_bridge._subprocess"})
 _UNRESOLVED_WORKER = "external_bridge.<unresolved_worker>"
 _UNRESOLVED_IMPORT = "crosscheck.<unresolved_dynamic_import>"
-_SAFE_SP_ATTRS = frozenset({"run", "available", "python", "version", "_env", "ROOT"})
+_SAFE_SP_ATTRS = frozenset({"run", "available", "python", "version", "_env", "venv_root", "ROOT"})
 _SKIP_LOCAL_TOPS = frozenset({*_REFERENCE_PACKAGES, "virgil", "drpangloss", "jaxbessel", "evidence"})
 
 

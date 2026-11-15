@@ -88,6 +88,7 @@ the spectral variance from $\Delta\lambda^2 / 12$ to $\Delta\lambda^2 / 6$.
 
 | virgil | Reference | Agreement |
 | --- | --- | --- |
+| `crosscheck.spiral_smearing` (`kind="reference"`, smearing identities) | 64-node wavenumber boxcar quadrature vs closed-form $\sin(\pi x)/(\pi x)$ envelope, and dense washed-fringe incoherent asymptote $(1 + f^2)/(1 + f)^2$ | `< 1e-14` (wavenumber quadrature), `< 5e-4` (washed-fringe asymptote) |
 | `smeared_model` on `BinaryModelCartesian`, `BinaryModelAngular`, nested `System` (with `UniformDisk` and `Resolved`), and `Rotated` | 64-node Gauss–Legendre quadrature over uniform wavenumber $\sigma = 1/\lambda$ and rotated `crosscheck` leaf closed forms (`crosscheck.spiral_smearing`, `crosscheck.sky`) | `< 1e-14` |
 | `smeared_model` vs uniform wavelength quadrature | 64-node Gauss–Legendre quadrature over $[\lambda_0 - \Delta\lambda/2, \lambda_0 + \Delta\lambda/2]$ at $\Delta\lambda/\lambda_0 = 0.008$ vs $0.002$ | $O((\Delta\lambda/\lambda_0)^2)$ ratio `16.0` |
 | `OIData(..., bandwidth=True)`, `with_bandwidth`, `OrbitalBinary` via `at(mjd)`, and `TypeError` on `Image` / direct `OrbitalBinary` | independent `EFF_BAND` read-back via `crosscheck.chi2.load`, `crosscheck.orbits.position(mjd)` + `smeared_offset_phasor` (`1×` and `2×` bandwidth), and `TypeError` checks | `< 1e-7` (float32 `EFF_BAND`) |

@@ -46,7 +46,13 @@ nodes:
   virgil.oidata.OIData:
     layer: data
     source: [src/virgil/oidata.py, src/virgil/_closure.py]
-    depends: [virgil.oifits.read_oifits]
+    depends:
+      - virgil.oifits.read_oifits
+      - virgil.amigo.is_mixed_disco_record
+      - virgil.amigo.mixed_disco_fields
+      - virgil.oidata.cp_indices
+      - virgil.oidata.closure_phases
+      - virgil.models.smeared_model
   virgil.oidata.find_uv_grid:
     layer: data
     source: [src/virgil/_geometry.py]
@@ -85,6 +91,7 @@ nodes:
   virgil.models.ModulatedGaussianRim:
     layer: models
     source: [src/virgil/models.py]
+    depends: [virgil.models.Component, virgil.models.cvis_radial_dirac_delta_modulated]
     roots: 2
     properties: {profile: 2, modulation_sense: 1}  # PMOIRED's rim is modulated differently (D-code control)
     convention: [modulation_sense]
@@ -147,7 +154,7 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     roots: 2
-    # Per 2026-11-15 convention ruling (ledger D27, as on FlaredDisk* D24 / PositionData D25): blur_projection is confirmed
+    # Per 2026-11-15 convention ruling (ledger D26, as on FlaredDisk* D24 / PositionData D25): blur_projection is confirmed
     # externally by native PMOIRED + mathematics and optical propagation by dLux; internal parameter definitions (exponential
     # fade, sky-tangent pa deprojection, 1 px render floor) are pinned via properties + negative controls, not convention:.
     properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1}
@@ -267,7 +274,7 @@ nodes:
     depends: [virgil.priors.PopulationScale]
     doc: likelihood/priors.md
   virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py], doc: likelihood/priors.md}
-  virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
+  virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py], depends: [virgil.oifits.build_hdulist]}
   virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
   virgil.observables.VisibilityAmplitude:
     layer: likelihood
@@ -383,7 +390,11 @@ nodes:
   virgil.limits.chi2ppf: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.radial_profile: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   # MultipoleDisk (formerly PolarDisk, virgil P1-P4): radial profiles x azimuthal harmonics x height
-  virgil.models.MultipoleDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.models.MultipoleDisk:
+    layer: models
+    source: [src/virgil/models.py, src/virgil/harmonics.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis]
+    doc: models/polar_disk.md
   virgil.models.ThinRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.GaussianRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.RadialPowerLaw: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
