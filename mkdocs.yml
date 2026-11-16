@@ -64,6 +64,7 @@ nav:
       - "Post-AGB discs": imaging/postagb.md
       - "IM Lup: virgil against MPoL and CLEAN": imaging/imlup.md
       - "IM Lup: MaxEnt deconvolution with a pre-registered weight rule": imaging/imlup_maxent.md
+      - "DSHARP discs and HL Tau against the public ALMA images": imaging/dsharp.md
   - "Binary orbits": orbits/index.md
   - "Wolf-Rayet survey": wr_gravity/index.md
   - "Function tests":
