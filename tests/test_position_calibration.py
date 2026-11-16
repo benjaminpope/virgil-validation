@@ -7,7 +7,7 @@ profiled OIFITS chi-squared surface.
      ``PositionData.model(orbit, north_angle=delta, plate_scale=m)`` maps true
      sky relative astrometry ``(rho_sky, theta_sky)`` to measured instrument
      astrometry via ``theta_meas = theta_sky + delta`` and ``rho_meas = m * rho_sky``.
-   * Per ledger ``D25`` (Ben's 2026-11-15 ruling), the sign and direction of
+   * Per ledger ``D25`` (confirmed by Ben Pope 2026-11-16, gate G1b), the sign and direction of
      ``north_angle`` and ``plate_scale`` are an internal parameter-sign
      definition enforced via ``properties: {calibration: 1}``
      (``roots=["mathematics"]``) paired with ``-north_angle`` and
