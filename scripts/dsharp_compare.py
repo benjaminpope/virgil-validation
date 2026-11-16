@@ -29,12 +29,15 @@ def central_radius_pix(wcs, arcsec=CENTRAL_ARCSEC):
     return arcsec / px
 
 
-def one(fit_dir, ref_path):
-    """``(ours, ref, wcs, beam, stats)`` for one fit directory and released image."""
-    ours, ref, wcs, beam = ds.our_image_in_beam(pathlib.Path(fit_dir) / "image.fits", ref_path)
+def one(fit_dir, ref_path, pbcor=False):
+    """``(ours, ref, wcs, beam, stats)`` for one fit directory and released image (``pbcor``: the image is primary-beam corrected, see
+    ``ds.our_image_in_beam``). The statistics use only the pixels inside our image's footprint on the released grid."""
+    image = pathlib.Path(fit_dir) / "image.fits"
+    ours, ref, wcs, beam = ds.our_image_in_beam(image, ref_path, pbcor=pbcor)
+    foot = ds.our_footprint(image, ref_path)
     r = central_radius_pix(wcs)
-    stats = dict(whole=ds.compare_stats(ours, ref), central=ds.compare_stats(ours, ref, radius_pix=r), beam_mas_mas_deg=list(beam),
-                 pixel_mas=float(abs(wcs.wcs.cdelt[0]) * 3.6e6))
+    stats = dict(whole=ds.compare_stats(ours, ref, footprint=foot), central=ds.compare_stats(ours, ref, radius_pix=r, footprint=foot),
+                 beam_mas_mas_deg=list(beam), pixel_mas=float(abs(wcs.wcs.cdelt[0]) * 3.6e6), pbcor_applied=bool(pbcor))
     res = pathlib.Path(fit_dir) / "result.json"
     if res.exists():
         j = json.loads(res.read_text())
@@ -84,7 +87,7 @@ def _fig(rows):
 def cmd_compare(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    ours, ref, wcs, beam, stats = one(args.fit, args.ref)
+    ours, ref, wcs, beam, stats = one(args.fit, args.ref, ds.target(args.target)["image"]["pbcor"])
     stats["target"] = args.target
     (out / "compare.json").write_text(json.dumps(stats, indent=1))
     plt, fig, axs = _fig(1)
@@ -100,7 +103,7 @@ def cmd_preview(args):
     plt, fig, axs = _fig(len(rows))
     summary = {}
     for i, (key, fit, ref) in enumerate(rows):
-        ours, rf, wcs, beam, stats = one(fit, ref)
+        ours, rf, wcs, beam, stats = one(fit, ref, ds.target(key)["image"]["pbcor"])
         panels(axs[i], ours, rf, wcs, ds.target(key)["name"])
         summary[key] = stats
     out = pathlib.Path(args.out)

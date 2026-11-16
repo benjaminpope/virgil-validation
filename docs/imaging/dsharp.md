@@ -21,7 +21,8 @@ MPoL is not used here.
 criterion and scored at eps 1e-12.
 
 `scripts/dsharp_compare.py compare` convolves our image (Jy arcsec⁻²) with the released clean beam, multiplies by the beam area to get Jy beam⁻¹, regrids it
-onto the released image grid, and reports the difference statistics inside the central 2″. The panels share one arcsinh stretch with the ALMA image.
+onto the released image grid, and reports the difference statistics inside the central 2″, using only pixels inside our image's footprint and where both images are finite.
+virgil fits the apparent sky, so the primary-beam-corrected Band 7 reference is multiplied by the ALMA 12 m primary beam (a Gaussian of FWHM 1.13 λ/D, about 17″ at 344 GHz) first; `compare.json` records `pbcor_applied`. The panels share one arcsinh stretch with the ALMA image.
 `crosscheck.dsharp` tests the convolution against an analytic Gaussian and a shifted-image control.
 
 ## Results

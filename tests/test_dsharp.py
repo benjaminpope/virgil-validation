@@ -26,7 +26,7 @@ def _script(name):
     return mod
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["literature"], kind="reference")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_campaign_covers_the_five_discs_and_both_hl_tau_bands():
     assert set(ds.CAMPAIGN) == {"imlup", "hltau_b6", "hltau_b7", "hd163296", "rulup", "as209"}
     for k in ds.CAMPAIGN:
@@ -39,7 +39,7 @@ def test_campaign_covers_the_five_discs_and_both_hl_tau_bands():
         ds.target("hd142666")
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["literature"], kind="reference")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_hl_tau_uses_the_released_selfcal_recipe_and_dsharp_does_not():
     for k, tables in (("hltau_b6", ["pcal2", "apcal"]), ("hltau_b7", ["pcal2", "apcal"])):
         t = ds.target(k)
@@ -127,9 +127,9 @@ def test_auto_flux_is_the_weighted_short_baseline_mean():
     assert ds.auto_flux(u, v, vis, np.ones_like(q)) == pytest.approx(0.7, rel=2e-3)
 
 
-def _gauss_fits(path, flux, sigma_mas, px, npix, beam=None, bunit="Jy/arcsec2"):
+def _gauss_fits(path, flux, sigma_mas, px, npix, beam=None, bunit="Jy/arcsec2", restfrq=None):
     """A circular Gaussian of total ``flux`` (Jy) in Jy/arcsec2 (or Jy/beam with ``beam`` = FWHM in mas), written with the repository's writer."""
-    c = (npix - 1) / 2
+    c = npix // 2 - 1  # the phase-centre cell of the repository's layout
     yy, xx = np.indices((npix, npix))
     r2 = ((xx - c) ** 2 + (yy - c) ** 2) * px**2
     dens = flux / (2 * np.pi * (sigma_mas / 1e3) ** 2) * np.exp(-r2 / (2 * sigma_mas**2))  # Jy/arcsec2
@@ -137,7 +137,28 @@ def _gauss_fits(path, flux, sigma_mas, px, npix, beam=None, bunit="Jy/arcsec2"):
     if beam is not None:
         dens = dens * ds.beam_area_arcsec2(beam, beam)
         hdr = dict(BMAJ=beam / 3.6e6, BMIN=beam / 3.6e6, BPA=0.0)
+    if restfrq is not None:
+        hdr["RESTFRQ"] = restfrq
     cx.write_fits(path, dens, px, 100.0, -30.0, bunit=bunit if beam is None else "Jy/beam", **hdr)
+
+
+def _ellipse_ref_fits(path, flux, sigma_src, beam, px, npix, mirror=False):
+    """The analytic answer for a circular Gaussian source (sigma ``sigma_src`` mas) seen with an elliptical beam ``(bmaj, bmin, bpa)``: a Gaussian
+    of covariance sigma_src^2 I + sigma_maj^2 u u^T + sigma_min^2 v v^T in (East, North), u the unit vector at position angle bpa East of North.
+    Written by hand in FITS orientation (East to the left: x_East = -(column - c) px; North up the rows), so the beam convention of the comparison is
+    checked independently. ``mirror`` flips the position angle."""
+    bmaj, bmin, bpa = beam
+    th = np.radians(-bpa if mirror else bpa)
+    u, v = np.array([np.sin(th), np.cos(th)]), np.array([np.cos(th), -np.sin(th)])
+    f = 2 * np.sqrt(2 * np.log(2))
+    cov = sigma_src**2 * np.eye(2) + (bmaj / f) ** 2 * np.outer(u, u) + (bmin / f) ** 2 * np.outer(v, v)  # mas^2
+    c = npix // 2 - 1
+    rows, cols = np.indices((npix, npix))
+    east, north = -(cols - c) * px, (c - rows) * px  # the layout has row 0 North
+    q = np.stack([east.ravel(), north.ravel()], axis=1)
+    quad = np.einsum("ni,ij,nj->n", q, np.linalg.inv(cov), q).reshape(npix, npix)
+    dens = flux / (2 * np.pi * np.sqrt(np.linalg.det(cov)) / 1e6) * np.exp(-0.5 * quad)  # Jy/arcsec2
+    cx.write_fits(path, dens * ds.beam_area_arcsec2(bmaj, bmin), px, 100.0, -30.0, bunit="Jy/beam", BMAJ=bmaj / 3.6e6, BMIN=bmin / 3.6e6, BPA=float(bpa))
 
 
 @pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
@@ -156,15 +177,75 @@ def test_our_image_in_the_released_beam_matches_the_analytic_gaussian(tmp_path):
 
 @pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="control")
 def test_a_shifted_image_is_seen_as_different(tmp_path):
-    """Control: the same comparison with our source 40 mas off the released one is no match."""
-    _gauss_fits(tmp_path / "ours.fits", 0.5, 30.0, 5.0, 128)
-    _gauss_fits(tmp_path / "ref.fits", 0.5, 50.0, 5.0, 128, beam=40.0)
+    """Control: the matched comparison passes, and only our source being 40 mas off the released one (the WCS) makes it fail."""
+    flux, s, bm = 0.5, 30.0, 40.0
+    _gauss_fits(tmp_path / "ours.fits", flux, s, 5.0, 128)
+    _gauss_fits(tmp_path / "ref.fits", flux, np.hypot(s, bm / 2.3548200450309493), 5.0, 128, beam=bm)
+    ours, ref, *_ = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "ref.fits")
+    assert ds.compare_stats(ours, ref, radius_pix=40)["rms_over_peak"] < 6e-3
     from astropy.io import fits
 
     with fits.open(tmp_path / "ours.fits", mode="update") as h:
         h[0].header["CRPIX1"] += 8  # 8 pixels of 5 mas
     ours, ref, *_ = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "ref.fits")
     assert ds.compare_stats(ours, ref, radius_pix=40)["rms_over_peak"] > 0.1
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
+def test_an_elliptical_beam_at_a_position_angle_matches_the_hand_written_ellipse(tmp_path):
+    """A 60 x 30 mas beam at PA 30 deg East of North: the analytic ellipse written by hand in FITS orientation is reproduced (row flip, beam
+    angle convention and regridding); the same ellipse at PA -30 deg (the mirror) is not."""
+    flux, s, beam = 0.5, 30.0, (60.0, 30.0, 30.0)
+    _gauss_fits(tmp_path / "ours.fits", flux, s, 5.0, 128)
+    _ellipse_ref_fits(tmp_path / "ref.fits", flux, s, beam, 5.0, 128)
+    ours, ref, _, b = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "ref.fits")
+    assert b == pytest.approx(beam, rel=1e-6)
+    st = ds.compare_stats(ours, ref, radius_pix=40)
+    assert st["rms_over_peak"] < 6e-3 and st["correlation"] > 0.999 and st["peak_ratio"] == pytest.approx(1.0, abs=2e-3)
+    _ellipse_ref_fits(tmp_path / "mirror.fits", flux, s, beam, 5.0, 128, mirror=True)
+    assert ds.compare_stats(ours, _read(tmp_path / "mirror.fits"), radius_pix=40)["rms_over_peak"] > 1.5e-2
+
+
+def _read(path):
+    return cx.read_fits(path)[0]
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="guard")
+def test_statistics_use_only_our_footprint_and_finite_pixels(tmp_path):
+    """The released image is larger than ours: pixels outside our image hold zeros, not a model, and are left out; NaNs (outside a primary-beam
+    limit) are skipped, not propagated."""
+    flux, s, bm = 0.5, 30.0, 40.0
+    _gauss_fits(tmp_path / "ours.fits", flux, s, 5.0, 64)  # 320 mas across
+    _gauss_fits(tmp_path / "ref.fits", flux, np.hypot(s, bm / 2.3548200450309493), 5.0, 128, beam=bm)  # 640 mas across
+    ours, ref, *_ = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "ref.fits")
+    foot = ds.our_footprint(tmp_path / "ours.fits", tmp_path / "ref.fits")
+    assert 0.2 < foot.mean() < 0.3 and foot[64, 64] and not foot[0, 0]
+    whole = ds.compare_stats(ours, ref, footprint=foot)
+    assert whole["footprint_radius_pix"] < 0.6 * 64 * np.sqrt(2)  # the half-size image's corners, not the released field's
+    assert whole["ours_noise_rms"] > 0 or whole["ref_noise_rms"] >= 0
+    ref_nan = ref.copy()
+    ref_nan[:10] = np.nan
+    st = ds.compare_stats(ours, ref_nan, footprint=foot)
+    assert all(np.isfinite(v) for v in st.values())
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
+def test_primary_beam_correction_is_undone_for_a_pbcor_reference(tmp_path):
+    """A primary-beam-corrected reference is multiplied by the ALMA 12 m beam (a Gaussian of FWHM 1.13 lambda/D) before the comparison. The beam
+    is 1 at the pointing and 1/2 at FWHM/2 from it, and a 0.6 arcsec field (about 17 arcsec FWHM) is multiplied by almost 1."""
+    flux, s, bm = 0.5, 30.0, 40.0
+    _gauss_fits(tmp_path / "ours.fits", flux, s, 5.0, 128)
+    _gauss_fits(tmp_path / "ref.fits", flux, np.hypot(s, bm / 2.3548200450309493), 5.0, 128, beam=bm, restfrq=344e9)
+    ours, ref, wcs, _ = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "ref.fits", pbcor=True)
+    raw = _read(tmp_path / "ref.fits")
+    assert np.all(ref <= raw * (1 + 1e-12)) and ref.max() / raw.max() > 0.9999
+    fwhm = np.degrees(1.13 * 2.99792458e8 / 344e9 / 12.0) * 3600  # arcsec, about 17
+    ra0, dec0 = (float(x) for x in wcs.all_pix2world(0, 0, 0))
+    assert ds.primary_beam(wcs, (1, 1), (ra0, dec0), 344e9)[0, 0] == pytest.approx(1.0)
+    assert ds.primary_beam(wcs, (1, 1), (ra0, dec0 + fwhm / 2 / 3600), 344e9)[0, 0] == pytest.approx(0.5, rel=1e-6)
+    _gauss_fits(tmp_path / "nofreq.fits", flux, 40.0, 5.0, 128, beam=bm)
+    with pytest.raises(ValueError, match="RESTFRQ"):
+        ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "nofreq.fits", pbcor=True)
 
 
 @pytest.mark.validates("crosscheck.dsharp", roots=["literature"], kind="guard")
@@ -182,7 +263,7 @@ def test_compare_and_hl_tau_preview_write_their_files(tmp_path):
         (tmp_path / b).mkdir()
         _gauss_fits(tmp_path / b / "image.fits", 0.4, 40.0, 5.0, 128)
         (tmp_path / b / "result.json").write_text(json.dumps(dict(flux_jy=0.4, chi2n_raw=1.2, converged=True, n=10)))
-        _gauss_fits(tmp_path / f"ref_{b}.fits", 0.4, 45.0, 5.0, 128, beam=35.0)
+        _gauss_fits(tmp_path / f"ref_{b}.fits", 0.4, 45.0, 5.0, 128, beam=35.0, restfrq=344e9)
     comp.main(["compare", "--target", "as209", "--fit", str(tmp_path / "b6"), "--ref", str(tmp_path / "ref_b6.fits"), "--out", str(tmp_path / "c")])
     j = json.loads((tmp_path / "c/compare.json").read_text())
     assert (tmp_path / "c/compare.png").stat().st_size > 1000 and j["central"]["correlation"] > 0.9 and j["fit"]["converged"]

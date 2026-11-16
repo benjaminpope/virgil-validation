@@ -207,9 +207,32 @@ def beam_area_arcsec2(bmaj_mas, bmin_mas):
     return float(np.pi * bmaj_mas * bmin_mas / (4 * np.log(2))) / 1e6
 
 
-def our_image_in_beam(ours_path, ref_path):
+def ref_frequency_hz(hdr):
+    """The observing frequency (Hz) of a released image: ``RESTFRQ``, else the ``FREQ`` axis' reference value."""
+    if "RESTFRQ" in hdr:
+        return float(hdr["RESTFRQ"])
+    for i in (3, 4):
+        if str(hdr.get(f"CTYPE{i}", "")).upper().startswith("FREQ"):
+            return float(hdr[f"CRVAL{i}"])
+    raise ValueError("no RESTFRQ or FREQ axis in the header: cannot size the primary beam")
+
+
+def primary_beam(wcs, shape, centre_deg, freq_hz, dish_m=12.0):
+    """The ALMA 12 m primary beam on an image grid: a Gaussian of FWHM 1.13 lambda/D (ALMA Technical Handbook) centred on ``centre_deg`` (RA, Dec)."""
+    fwhm = np.degrees(1.13 * (2.99792458e8 / freq_hz) / dish_m) * 3600.0  # arcsec
+    yy, xx = np.meshgrid(np.arange(shape[0]), np.arange(shape[1]), indexing="ij")
+    ra, dec = wcs.all_pix2world(xx, yy, 0)
+    dra = (ra - centre_deg[0] + 180.0) % 360.0 - 180.0
+    th2 = ((dra * np.cos(np.radians(centre_deg[1]))) ** 2 + (dec - centre_deg[1]) ** 2) * 3600.0**2
+    return np.exp(-4 * np.log(2) * th2 / fwhm**2)
+
+
+def our_image_in_beam(ours_path, ref_path, pbcor=False):
     """Our image (Jy/arcsec2, from ``virgil.radio``'s fit, written by ``scripts/dsharp_fit.py``) convolved with the beam of the released image,
-    in Jy/beam, on the released image's pixel grid. Returns ``(ours, ref, wcs_ref, beam)``, both in FITS orientation."""
+    in Jy/beam, on the released image's pixel grid. Returns ``(ours, ref, wcs_ref, beam)``, both in FITS orientation.
+
+    virgil fits the apparent sky (sky x primary beam). With ``pbcor=True`` the released image is primary-beam corrected, so it is multiplied by the
+    ALMA 12 m primary beam (a Gaussian, centred on our phase centre) to the same apparent sky before the comparison."""
     from crosscheck import alma_maxent as cx
 
     ours, w_o, h_o = cx.read_fits(ours_path)
@@ -218,21 +241,39 @@ def our_image_in_beam(ours_path, ref_path):
     conv = cx.convolve(ours[::-1], px, *beam)[::-1]  # crosscheck.alma_maxent works with row 0 North
     conv = conv * beam_area_arcsec2(beam[0], beam[1])  # Jy/arcsec2 -> Jy/beam
     on_ref = cx.resample(conv, w_o, w_r, ref.shape)
+    if pbcor:
+        ref = ref * primary_beam(w_r, ref.shape, (h_o["CRVAL1"], h_o["CRVAL2"]), ref_frequency_hz(h_r))
     return on_ref, ref, w_r, beam
 
 
-def compare_stats(ours, ref, radius_pix=None):
+def our_footprint(ours_path, ref_path):
+    """Boolean mask of the released image's pixels that lie inside our image (resample fills the rest with zeros, which are not a model)."""
+    from crosscheck import alma_maxent as cx
+
+    ours, w_o, _ = cx.read_fits(ours_path)
+    ref, w_r, _ = cx.read_fits(ref_path)
+    return cx.resample(np.ones_like(ours), w_o, w_r, ref.shape) > 0.999
+
+
+def compare_stats(ours, ref, radius_pix=None, footprint=None):
     """Differences of two images on one grid (``crosscheck.alma_maxent.difference_stats``), within a centred disc if ``radius_pix`` is given,
-    plus the rms of ``ref`` in the outer 10 per cent of the field (a noise level)."""
+    plus the rms of both in the outer 10 per cent of the field (a noise level). Pixels where either image is not finite, or outside ``footprint``
+    (our image's extent on the grid), are left out everywhere; ``footprint_radius_pix`` is the farthest pixel used from the centre."""
     from crosscheck import alma_maxent as cx
 
     ny, nx = ref.shape
     rr, cc = np.indices(ref.shape)
     r = np.hypot(rr - (ny - 1) / 2, cc - (nx - 1) / 2)
-    region = None if radius_pix is None else r <= radius_pix
+    valid = np.isfinite(ref) & np.isfinite(ours)
+    if footprint is not None:
+        valid &= footprint
+    region = valid if radius_pix is None else valid & (r <= radius_pix)
     out = cx.difference_stats(ours, ref, region=region)
-    out["ref_noise_rms"] = float(np.std(ref[r > 0.9 * r.max()]))
-    out["ours_noise_rms"] = float(np.std(ours[r > 0.9 * r.max()]))
+    rmax = float(r[valid].max())
+    ring = valid & (r > 0.9 * rmax)
+    out["ref_noise_rms"] = float(np.std(ref[ring]))
+    out["ours_noise_rms"] = float(np.std(ours[ring]))
+    out["footprint_radius_pix"] = rmax
     return out
 
 
