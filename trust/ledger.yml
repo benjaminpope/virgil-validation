@@ -190,6 +190,28 @@
     - tests/test_042_lcurve_ensemble_radio.py::test_f29_fit_staged_nuisances_stage3_kkt_converged_at_joint_optimum
   status: open
 
+- id: F30
+  title: kkt_report constructs _Objective(..., boxed=True) on LogUniform parameters fitted in flat ln F, adding +1/F so stationary fit() optima retain grad_norm ~ 1/F and fail NUISANCE_TOL from nearby starts
+  objects: [virgil.fitting.kkt_report]
+  ruling: virgil
+  referee: mathematics (interior gtol=1e-13 fit() optimum on LogUniform(1e-2, 1.0) satisfies |d(-ln L)/dF| ~ 1.1e-4 in fitted flat ln F, matching Uniform(1e-2, 1.0) where grad_norm = 1.1e-4 and grad_rel = 9.4e-8 < NUISANCE_TOL; kkt_report sets boxed=True, adding -d(ln p)/dF = +1/F = 4.63 so grad_rel = 3.87e-3 > NUISANCE_TOL = 1e-3 and converged = False from a 5% nearby start)
+  kind: bug (kkt_report sets boxed=True on flat-coordinate LogUniform parameters, adding +1/F to nuisance gradients at stationary fit() optima)
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate
+    - tests/test_042_scenes_starlet_kkt.py::test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start
+  status: open
+
+- id: F31
+  title: kkt_report scales LinearImage('sqrt') dark-pixel want_grow deadband by sqrt(f_peak / f_i) > 1000 contrary to its docstring, suppressing >3.8e4x negative flux gradients and certifying converged = True
+  objects: [virgil.fitting.kkt_report]
+  ruling: virgil
+  referee: mathematics (kkt_report docstring states LinearImage 'sqrt' uses the same want_grow rule as 'softmax' with g = dJ/dflux and mu = 0, i.e. g_i < -3 * scale * max(kkt_rel, KKT_TOL); _want_grow multiplies that threshold on 0 < f_i < 1e-6 * f_peak by sqrt(f_peak / f_i) >= 1000, so at x_i = 1e-6 * x_peak a starved companion pixel with -g_i = 1012.5 > 3.85e4 * (3 * scale * KKT_TOL) reports want_grow = 0.0 and converged = True instead of 1/64)
+  kind: bug (LinearImage('sqrt') _want_grow multiplies dark-pixel deadband by sqrt(f_peak / f_i) > 1000 contrary to docstring, suppressing starved dark pixels)
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel
+    - tests/test_042_scenes_starlet_kkt.py::test_f31_kkt_report_sqrt_dark_pixel_want_grow_unscaled_deadband
+  status: open
+
 - id: D5
   title: CANDID's and fouriever's closure-phase residual is the plain phase difference; virgil's is the chord 2 sin(delta/2) (independent closure phases), or sin(delta) plus a periodic penalty (correlated ones, since virgil#174)
   objects: [virgil.likelihood.whitened_residuals, external_bridge.candid_bridge]

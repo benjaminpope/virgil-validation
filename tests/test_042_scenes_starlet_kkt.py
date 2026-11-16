@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import gc
+import warnings
 
 import equinox as eqx
 import jax
@@ -295,9 +296,12 @@ def test_ref_hutchinson_variance_and_kkt_simplex_and_box_identities():
     x_sq = np.array([0.0, 1e-5, 0.3, 0.5, 0.4, 0.2])
     gd_sq = np.array([-20.0, -20.0, 0.2, -0.1, 0.15, -0.05])
     gp_sq = np.array([0.0, 0.0, -0.2, 0.1, -0.15, 0.05])
-    sq_rep = ref.kkt_sqrt_metrics_ref(x_sq, gd_sq, gp_sq, weight=0.5)
-    # x_sq[0] == 0 is excluded from want_grow; x_sq[1] = 1e-5 > 0 is dark and violates -> 1/6
+    sq_rep = ref.kkt_sqrt_metrics_ref(x_sq, gd_sq, gp_sq, weight=0.5, reach_mode="flux")
+    sq_rep_sqrt = ref.kkt_sqrt_metrics_ref(x_sq, gd_sq, gp_sq, weight=0.5, reach_mode="sqrt")
+    # x_sq[0] == 0 is excluded from want_grow; x_sq[1] = 1e-5 > 0 violates reach=1 (-> 1/6)
+    # while reach=sqrt(0.25 / 1e-10) = 50,000 suppresses it to 0.0
     assert abs(sq_rep["want_grow"] - 1.0 / 6.0) < 1e-15
+    assert sq_rep_sqrt["want_grow"] == 0.0
     sq_start = ref.kkt_sqrt_metrics_ref(
         x_sq,
         gd_sq,
@@ -347,6 +351,10 @@ def test_ref_hutchinson_variance_and_kkt_simplex_and_box_identities():
         upper=1.0,
     )
     assert abs(nuis_active_bound["grad_norm"] - 0.02) < 1e-15
+    nuis_interior_large = ref.kkt_nuisance_grad_rel_ref(
+        1e-4, 1200.0, value_cur=0.22, value_start=0.23, lower=0.01, upper=1.0
+    )
+    assert abs(nuis_interior_large["grad_rel"] - 1e-4 / 1200.0) < 1e-20
 
     rr, cc = np.meshgrid(np.arange(16), np.arange(16), indexing="ij")
     eta_band = 0.3 * np.cos(2.0 * np.pi * rr / 16.0) + 0.2 * np.sin(2.0 * np.pi * cc / 16.0)
@@ -1292,7 +1300,7 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
         )(jnp.asarray(f_ns))
     )
     want_ns_sq = ref.kkt_sqrt_metrics_ref(
-        s_ns, gd_ns, gp_ns, weight=15.0, kkt_tol=float(vfit.KKT_TOL)
+        s_ns, gd_ns, gp_ns, weight=15.0, kkt_tol=float(vfit.KKT_TOL), reach_mode="sqrt"
     )
     nonstat_sqrt_err = max(
         abs(float(ns_rep["kkt_w"]) - want_ns_sq["kkt_w"]),
@@ -1302,7 +1310,7 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
     assert float(ns_rep["kkt_w"]) > 1.0
     assert nonstat_sqrt_err < 1e-11
 
-    # 2. Converged MaxEntropy fit with start=, band_limit exact/ripple checks, & exact x = 0 pixel
+    # 2. Converged MaxEntropy fit with start=, band_limit fixed-point / ripple / coarse-NaN checks
     init_sqrt = np.sqrt(np.full((n, n), flux / (n * n)))
     start = vm.System(
         star=vm.PointSource(),
@@ -1347,6 +1355,7 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
         gp_opt,
         weight=15.0,
         kkt_tol=float(vfit.KKT_TOL),
+        reach_mode="sqrt",
         start_sqrt_pixels=init_sqrt,
         start_grad_data_f=gd_init,
         start_grad_pen_f=gp_init,
@@ -1356,8 +1365,9 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
     ref_opt_bl = ref.maxent_band_limit_ref(f_opt, data.u, data.v, data.wavel, scale)
 
     # Pure band-limited periodic log-brightness (|q| = 0.125 cyc/mas < q_max ~ 0.382 cyc/mas)
-    # gives band_limit == 1.0 to machine precision on both virgil and starlet_kkt_ref;
-    # injecting a super-Nyquist checkerboard (-1)^(r+c) drives both > BAND_TOL and converged=False.
+    # hits the exact 1.0 band-limited fixed point (low == eta) on both virgil and starlet_kkt_ref;
+    # injecting a super-Nyquist checkerboard (-1)^(r+c) drives both > BAND_TOL (converged=False),
+    # and a coarse pixel scale (q_max >= sqrt(2) / (2 * pixel_scale_mas)) returns NaN on both.
     rr, cc = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
     eta_low = 0.35 * np.cos(2.0 * np.pi * rr / n) + 0.25 * np.sin(2.0 * np.pi * cc / n)
     f_low = flux * np.exp(eta_low) / np.sum(np.exp(eta_low))
@@ -1374,6 +1384,21 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
     ref_low_bl = ref.maxent_band_limit_ref(f_low, data.u, data.v, data.wavel, scale)
     band_limit_low_err = abs(float(low_rep["band_limit"]) - ref_low_bl)
 
+    coarse_scale = 4.0  # corner Nyquist sqrt(2) / 8 = 0.177 cyc/mas < q_max ~ 0.382 cyc/mas
+    coarse_model = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(np.sqrt(f_low), coarse_scale, parametrization="sqrt", reference_flux=flux),
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        coarse_rep = vfit.kkt_report(
+            vfit.FitResult(model=coarse_model, values={"env.pixels": jnp.asarray(np.sqrt(f_low))}, info={}),
+            vi.image_priors(coarse_model),
+            data,
+            reg,
+        )["images"]["env"]
+    ref_coarse_bl = ref.maxent_band_limit_ref(f_low, data.u, data.v, data.wavel, coarse_scale)
+
     x_ripple = np.sqrt(f_opt * np.exp(2.0 * ((-1.0) ** (rr + cc))))
     ripple_res = dataclasses.replace(
         done,
@@ -1386,17 +1411,76 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
     rep_ripple = vfit.kkt_report(ripple_res, priors, data, reg)
     ref_ripple_bl = ref.maxent_band_limit_ref(x_ripple**2, data.u, data.v, data.wavel, scale)
 
-    x_zero = np.asarray(done.model.env.pixels).copy()
-    x_zero[0, 0] = 0.0
-    zero_res = dataclasses.replace(
-        done,
-        model=vm.System(
-            star=vm.PointSource(),
-            env=vm.LinearImage(x_zero, scale, parametrization="sqrt", reference_flux=flux),
-        ),
-        values={**done.values, "env.pixels": jnp.asarray(x_zero)},
+    # 3. Non-vacuous exact x == 0 exclusion at a bright companion peak:
+    #    Fit halo with peak_rc masked out so lit halo pixels are stationary (kkt_rel < 1e-5) while
+    #    -dJ/df at peak_rc is > 1000. At x[peak_rc] = 8e-4 * x_peak (f = 6.4e-7 * f_peak < 1e-6 * f_peak),
+    #    want_grow == 1/n^2 > 0 (converged=False); setting x[peak_rc] = 0.0 flips want_grow to 0.0!
+    halo = ref.gaussian_blob_ref(n, scale, sigma_mas=1.8, dra=-1.0, ddec=0.8) * 0.12
+    spike = np.zeros((n, n))
+    peak_rc = (6, 6)
+    spike[peak_rc] = 0.18
+    truth_pk = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(np.sqrt(halo + spike), scale, parametrization="sqrt", reference_flux=flux),
     )
-    rep_zero = vfit.kkt_report(zero_res, priors, data, tsv_reg)
+    data_pk = _three_ut_oidata(tmp_path / "sqrt_pk.fits", truth_pk, seed=21)
+    sup_mask = np.ones((n, n), dtype=bool)
+    sup_mask[peak_rc] = False
+    m_masked = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(
+            np.where(sup_mask, np.sqrt(flux / (n * n)), 0.0),
+            scale,
+            parametrization="sqrt",
+            reference_flux=flux,
+            support=sup_mask,
+        ),
+    )
+    reg_pk = [vi.TSV(2.0, beam_mas=scale, path="env")]
+    done_pk = vfit.fit(m_masked, vi.image_priors(m_masked), data_pk, reg_pk, method="lbfgs", max_steps=1000, gtol=1e-12)
+    x_base = np.asarray(done_pk.model.env.pixels).copy()
+    x_peak = float(np.max(x_base))
+
+    def _eval_pk(frac: float):
+        xt = x_base.copy()
+        xt[peak_rc] = frac * x_peak
+        mt = vm.System(
+            star=vm.PointSource(),
+            env=vm.LinearImage(xt, scale, parametrization="sqrt", reference_flux=flux),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            rt = vfit.kkt_report(
+                vfit.FitResult(model=mt, values={"env.pixels": jnp.asarray(xt)}, info={}),
+                vi.image_priors(mt),
+                data_pk,
+                reg_pk,
+            )
+        ft = xt**2
+        gd_t = np.asarray(
+            jax.grad(
+                lambda fa: -vl.model_loglike(
+                    vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux)),
+                    data_pk,
+                )
+            )(jnp.asarray(ft))
+        )
+        gp_t = np.asarray(
+            jax.grad(
+                lambda fa: reg_pk[0].value(
+                    vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux))
+                )
+            )(jnp.asarray(ft))
+        )
+        return rt, xt, gd_t, gp_t
+
+    rep_dark_hi, x_hi, gd_hi, gp_hi = _eval_pk(8e-4)
+    rep_zero, x_zero, gd_z, gp_z = _eval_pk(0.0)
+    rep_dark_lo, x_lo, gd_lo, gp_lo = _eval_pk(1e-6)
+    want_hi_sq = ref.kkt_sqrt_metrics_ref(x_hi, gd_hi, gp_hi, weight=2.0, kkt_tol=float(vfit.KKT_TOL), reach_mode="sqrt")
+    want_zero_sq = ref.kkt_sqrt_metrics_ref(x_zero, gd_z, gp_z, weight=2.0, kkt_tol=float(vfit.KKT_TOL), reach_mode="sqrt")
+    want_lo_sq = ref.kkt_sqrt_metrics_ref(x_lo, gd_lo, gp_lo, weight=2.0, kkt_tol=float(vfit.KKT_TOL), reach_mode="sqrt")
+    want_lo_flux = ref.kkt_sqrt_metrics_ref(x_lo, gd_lo, gp_lo, weight=2.0, kkt_tol=float(vfit.KKT_TOL), reach_mode="flux")
 
     record("nonstat_sqrt_kkt_err", nonstat_sqrt_err)
     record("opt_kkt_w_diff", kkt_w_diff)
@@ -1406,7 +1490,10 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
     assert rep["converged"] is True
     assert float(img_rep["band_limit"]) < float(vfit.BAND_TOL)
     assert ref_opt_bl < float(vfit.BAND_TOL)
+    assert abs(float(low_rep["band_limit"]) - 1.0) < 1e-12
     assert band_limit_low_err < 1e-12
+    assert np.isnan(float(coarse_rep["band_limit"]))
+    assert np.isnan(ref_coarse_bl)
     assert rep_ripple["converged"] is False
     assert float(rep_ripple["images"]["env"]["band_limit"]) > float(vfit.BAND_TOL)
     assert ref_ripple_bl > float(vfit.BAND_TOL)
@@ -1414,7 +1501,97 @@ def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path
     assert kkt_rel_start_diff < 1e-11
     assert float(img_rep["kkt_rel"]) < float(vfit.KKT_TOL)
     assert float(img_rep["want_grow"]) == 0.0
+    # Non-vacuous exact-zero proof: same peak_rc pixel flips want_grow from 1/n^2 > 0 at 8e-4*x_peak to 0.0 at x == 0
+    assert abs(float(rep_dark_hi["images"]["env"]["want_grow"]) - 1.0 / (n * n)) < 1e-15
+    assert abs(float(rep_dark_hi["images"]["env"]["want_grow"]) - want_hi_sq["want_grow"]) < 1e-15
+    assert rep_dark_hi["converged"] is False
     assert float(rep_zero["images"]["env"]["want_grow"]) == 0.0
+    assert want_zero_sq["want_grow"] == 0.0
+    assert rep_zero["converged"] is True
+    # Pin virgil 0.4.2's sqrt(f_peak / f_i) scaling at 1e-6*x_peak (F31 strict xfail below tests documented reach=1)
+    assert float(rep_dark_lo["images"]["env"]["want_grow"]) == want_lo_sq["want_grow"] == 0.0
+    assert abs(want_lo_flux["want_grow"] - 1.0 / (n * n)) < 1e-15
+
+
+@pytest.mark.validates(
+    "virgil.fitting.kkt_report",
+    roots=["mathematics"],
+    kind="finding",
+    headline="sqrt_dark_want_grow_err",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F31: kkt_report docstring states LinearImage('sqrt') uses the same want_grow rule as "
+        "'softmax' (reach = 1), whereas _want_grow multiplies the dark-pixel deadband by "
+        "sqrt(f_peak / f_i) > 1000, suppressing >3e4x negative flux gradients to want_grow == 0.0"
+    ),
+)
+def test_f31_kkt_report_sqrt_dark_pixel_want_grow_unscaled_deadband(tmp_path):
+    n, scale, flux = 8, 1.0, 0.30
+    halo = ref.gaussian_blob_ref(n, scale, sigma_mas=1.8, dra=-1.0, ddec=0.8) * 0.12
+    spike = np.zeros((n, n))
+    peak_rc = (6, 6)
+    spike[peak_rc] = 0.18
+    truth_pk = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(np.sqrt(halo + spike), scale, parametrization="sqrt", reference_flux=flux),
+    )
+    data_pk = _three_ut_oidata(tmp_path / "f31_sqrt.fits", truth_pk, seed=21)
+    sup_mask = np.ones((n, n), dtype=bool)
+    sup_mask[peak_rc] = False
+    m_masked = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(
+            np.where(sup_mask, np.sqrt(flux / (n * n)), 0.0),
+            scale,
+            parametrization="sqrt",
+            reference_flux=flux,
+            support=sup_mask,
+        ),
+    )
+    reg_pk = [vi.TSV(2.0, beam_mas=scale, path="env")]
+    done_pk = vfit.fit(m_masked, vi.image_priors(m_masked), data_pk, reg_pk, method="lbfgs", max_steps=1000, gtol=1e-12)
+    x_lo = np.asarray(done_pk.model.env.pixels).copy()
+    x_lo[peak_rc] = 1e-6 * float(np.max(x_lo))  # positive dark pixel: f_i / f_peak = 1e-12 < 1e-6
+    m_lo = vm.System(
+        star=vm.PointSource(),
+        env=vm.LinearImage(x_lo, scale, parametrization="sqrt", reference_flux=flux),
+    )
+    rep_lo = vfit.kkt_report(
+        vfit.FitResult(model=m_lo, values={"env.pixels": jnp.asarray(x_lo)}, info={}),
+        vi.image_priors(m_lo),
+        data_pk,
+        reg_pk,
+    )
+    f_lo = x_lo**2
+    gd_lo = np.asarray(
+        jax.grad(
+            lambda fa: -vl.model_loglike(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux)),
+                data_pk,
+            )
+        )(jnp.asarray(f_lo))
+    )
+    gp_lo = np.asarray(
+        jax.grad(
+            lambda fa: reg_pk[0].value(
+                vm.System(star=vm.PointSource(), env=vm.LinearImage(fa, scale, parametrization="linear", reference_flux=flux))
+            )
+        )(jnp.asarray(f_lo))
+    )
+    want_doc = ref.kkt_sqrt_metrics_ref(
+        x_lo, gd_lo, gp_lo, weight=2.0, kkt_tol=float(vfit.KKT_TOL), reach_mode="flux"
+    )
+    doc_deadband = 3.0 * want_doc["scale"] * max(want_doc["kkt_rel"], float(vfit.KKT_TOL))
+    assert -(gd_lo + gp_lo)[peak_rc] > 1e4 * doc_deadband
+    err = abs(float(rep_lo["images"]["env"]["want_grow"]) - want_doc["want_grow"])
+    record("sqrt_dark_want_grow_err", err)
+    record("virgil_want_grow", float(rep_lo["images"]["env"]["want_grow"]))
+    record("doc_want_grow", want_doc["want_grow"])
+    assert err < 1e-12
+    assert rep_lo["converged"] is False
 
 
 @pytest.mark.validates(
@@ -1652,16 +1829,25 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     assert abs(float(ns_fixed_rep["kkt_rel"]) - wrong_free_flux["kkt_rel"]) > 0.02
     assert nonstat_fixed_err < 1e-11
 
-    # 2. Converged free-flux Image fit + nuisance start= gate
+    # 2. Converged free-flux Image fit (Uniform prior: flat & value space share zero prior slope) + nuisance start= gate
     start = vm.System(star=vm.PointSource(), env=vm.Image(init_eta, scale, flux=0.28, support=support))
-    priors = vi.image_priors(start) | {"env.flux": dist.LogUniform(1e-2, 1.0)}
+    priors = vi.image_priors(start) | {"env.flux": dist.Uniform(1e-2, 1.0)}
     start_vals = {"env.log_brightness": init_eta, "env.flux": 0.28}
     done = vfit.fit(start, priors, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
+    f_env = float(done.values["env.flux"])
+    near_vals = {
+        "env.log_brightness": np.asarray(done.values["env.log_brightness"]),
+        "env.flux": f_env * 1.002,
+    }
 
     rep_opt_only = vfit.kkt_report(done, priors, data, reg)
     rep_ok = vfit.kkt_report(done, priors, data, reg, start=start_vals)
+    rep_near = vfit.kkt_report(done, priors, data, reg, start=near_vals)
     assert rep_ok["converged"] is True
+    assert rep_near["converged"] is True
+    assert float(rep_ok["nuisances"]["env.flux"]["grad_norm"]) < 1e-3
     assert float(rep_ok["nuisances"]["env.flux"]["grad_rel"]) < float(vfit.NUISANCE_TOL)
+    assert float(rep_near["nuisances"]["env.flux"]["grad_rel"]) < float(vfit.NUISANCE_TOL)
 
     def _simplex_grads(eta_arr, flux_val):
         m_cur = vm.System(star=vm.PointSource(), env=vm.Image(eta_arr, scale, flux=flux_val, support=support))
@@ -1693,9 +1879,8 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
         gp_arr = np.where(b_arr > 0.0, ge_arr / np.where(b_arr > 0.0, b_arr, 1.0), 0.0)
         return b_arr, gd_arr, gp_arr
 
-    def _flux_neg_logpost_grad(eta_arr, flux_val):
-        # Under LogUniform(1e-2, 1.0), log_prior(F) = -ln F + const => d(-loglike - log_prior)/dF = d(-loglike)/dF + 1/F
-        g_ll = float(
+    def _flux_neg_loglike_grad(eta_arr, flux_val):
+        return float(
             jax.grad(
                 lambda fv: -vl.model_loglike(
                     vm.System(star=vm.PointSource(flux=1.0), env=vm.Image(eta_arr, scale, flux=fv, support=support)),
@@ -1703,11 +1888,9 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
                 )
             )(jnp.float64(flux_val))
         )
-        return g_ll + 1.0 / float(flux_val)
 
-    b_opt, gd_opt, gp_opt = _simplex_grads(done.values["env.log_brightness"], float(done.values["env.flux"]))
+    b_opt, gd_opt, gp_opt = _simplex_grads(done.values["env.log_brightness"], f_env)
     b_init, gd_init_b, gp_init_b = _simplex_grads(init_eta, 0.28)
-    f_env = float(done.values["env.flux"])
 
     ref_sm = ref.kkt_simplex_metrics_ref(
         b_opt, gd_opt, gp_opt, support=support, flux=f_env, free_flux=True, weight=80.0
@@ -1731,18 +1914,20 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     assert kkt_rel_start_err < 1e-11
     assert float(rep_ok["images"]["env"]["kkt_rel"]) < float(rep_opt_only["images"]["env"]["kkt_rel"])
 
-    # Exact nuisance grad_norm and grad_rel check at converged optimum (L-BFGS optimizes bijected
-    # LogUniform without box bounds, so kkt_report evaluates the unconstrained value-space gradient)
-    g_flux_start = _flux_neg_logpost_grad(init_eta, 0.28)
-    g_flux_opt = _flux_neg_logpost_grad(done.values["env.log_brightness"], f_env)
+    # Exact nuisance grad_norm and grad_rel check at interior Uniform optimum (both distant & nearby starts)
+    g_flux_start = _flux_neg_loglike_grad(init_eta, 0.28)
+    g_flux_near = _flux_neg_loglike_grad(near_vals["env.log_brightness"], near_vals["env.flux"])
+    g_flux_opt = _flux_neg_loglike_grad(done.values["env.log_brightness"], f_env)
     want_nuis_ok = ref.kkt_nuisance_grad_rel_ref(g_flux_opt, g_flux_start)
+    want_nuis_near = ref.kkt_nuisance_grad_rel_ref(g_flux_opt, g_flux_near)
     nuis_ok_err = max(
         abs(float(rep_ok["nuisances"]["env.flux"]["grad_norm"]) - want_nuis_ok["grad_norm"]),
         abs(float(rep_ok["nuisances"]["env.flux"]["grad_rel"]) - want_nuis_ok["grad_rel"]),
+        abs(float(rep_near["nuisances"]["env.flux"]["grad_rel"]) - want_nuis_near["grad_rel"]),
     )
     assert nuis_ok_err < 1e-11
 
-    bad_flux = float(done.values["env.flux"]) * 1.6
+    bad_flux = 0.85
     fixed_flux_start = vm.System(
         star=vm.PointSource(),
         env=vm.Image(done.values["env.log_brightness"], scale, flux=bad_flux, support=support),
@@ -1756,14 +1941,25 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
         values={"env.log_brightness": img_only.values["env.log_brightness"], "env.flux": jnp.asarray(bad_flux)},
     )
     rep_no_start = vfit.kkt_report(perturbed, priors, data, reg)
-    rep_with_start = vfit.kkt_report(perturbed, priors, data, reg, start=start_vals)
+    rep_with_start = vfit.kkt_report(perturbed, priors, data, reg, start=near_vals)
     nuis_grad_rel = float(rep_with_start["nuisances"]["env.flux"]["grad_rel"])
-    g_flux_pert = _flux_neg_logpost_grad(img_only.values["env.log_brightness"], bad_flux)
-    want_nuis_pert = ref.kkt_nuisance_grad_rel_ref(g_flux_pert, g_flux_start)
+    g_flux_pert = _flux_neg_loglike_grad(img_only.values["env.log_brightness"], bad_flux)
+    want_nuis_pert = ref.kkt_nuisance_grad_rel_ref(
+        g_flux_pert, g_flux_near, value_cur=bad_flux, lower=1e-2, upper=1.0
+    )
     nuis_pert_err = max(
         abs(float(rep_with_start["nuisances"]["env.flux"]["grad_norm"]) - want_nuis_pert["grad_norm"]),
         abs(nuis_grad_rel - want_nuis_pert["grad_rel"]),
     )
+
+    # Also pin virgil 0.4.2's boxed=True +1/F value-space evaluation on LogUniform (F30 xfail below)
+    priors_lu = vi.image_priors(start) | {"env.flux": dist.LogUniform(1e-2, 1.0)}
+    done_lu = vfit.fit(start, priors_lu, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
+    f_lu = float(done_lu.values["env.flux"])
+    g_ll_lu = _flux_neg_loglike_grad(done_lu.values["env.log_brightness"], f_lu)
+    rep_lu_far = vfit.kkt_report(done_lu, priors_lu, data, reg, start=start_vals)
+    assert abs(g_ll_lu) < 1e-3  # stationary in flat ln F
+    assert abs(float(rep_lu_far["nuisances"]["env.flux"]["grad_norm"]) - abs(g_ll_lu + 1.0 / f_lu)) < 1e-11
 
     record("nonstat_fixed_flux_kkt_err", nonstat_fixed_err)
     record("softmax_start_kkt_rel_err", kkt_rel_start_err)
@@ -1773,6 +1969,79 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     assert rep_with_start["converged"] is False
     assert nuis_pert_err < 1e-11
     assert nuis_grad_rel > float(vfit.NUISANCE_TOL)
+
+
+@pytest.mark.validates(
+    "virgil.fitting.kkt_report",
+    roots=["mathematics"],
+    kind="finding",
+    headline="loguniform_nuis_grad_rel",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F30: kkt_report constructs _Objective(..., boxed=True) on flat-coordinate LogUniform "
+        "parameters, adding +1/F to d(-loglike)/dF so a stationary gtol=1e-13 fit() optimum "
+        "has grad_norm ~ 1/F and fails NUISANCE_TOL from a nearby start"
+    ),
+)
+def test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start(tmp_path):
+    n, scale = 10, 0.65
+    east, north = ref.sky_grid_mas(n, scale)
+    support = np.hypot(east, north) >= 1.0
+    blob = ref.gaussian_blob_ref(n, scale, sigma_mas=1.3, dra=1.5, ddec=-1.0) * support
+    blob /= blob.sum()
+    init_blob = ref.gaussian_blob_ref(n, scale, sigma_mas=1.8) * support
+    init_blob /= init_blob.sum()
+    init_eta = np.where(support, np.log(np.clip(init_blob, 1e-12, None)), 0.0)
+
+    truth = vm.System(
+        star=vm.PointSource(),
+        env=vm.Image.from_brightness(blob, scale, flux=0.22, support=support),
+    )
+    data = _three_ut_oidata(tmp_path / "f30_softmax.fits", truth, seed=14)
+    reg = [vi.TSV(80.0, beam_mas=scale, path="env")]
+    start = vm.System(star=vm.PointSource(), env=vm.Image(init_eta, scale, flux=0.28, support=support))
+    priors_lu = vi.image_priors(start) | {"env.flux": dist.LogUniform(1e-2, 1.0)}
+    start_vals = {"env.log_brightness": init_eta, "env.flux": 0.28}
+    done_lu = vfit.fit(start, priors_lu, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
+    f_lu = float(done_lu.values["env.flux"])
+    near_lu = {
+        "env.log_brightness": np.asarray(done_lu.values["env.log_brightness"]),
+        "env.flux": f_lu * 1.05,
+    }
+
+    g_ll_opt = float(
+        jax.grad(
+            lambda fv: -vl.model_loglike(
+                vm.System(star=vm.PointSource(flux=1.0), env=vm.Image(done_lu.values["env.log_brightness"], scale, flux=fv, support=support)),
+                data,
+            )
+        )(jnp.float64(f_lu))
+    )
+    g_ll_near = float(
+        jax.grad(
+            lambda fv: -vl.model_loglike(
+                vm.System(star=vm.PointSource(flux=1.0), env=vm.Image(near_lu["env.log_brightness"], scale, flux=fv, support=support)),
+                data,
+            )
+        )(jnp.float64(near_lu["env.flux"]))
+    )
+    want_flat = ref.kkt_nuisance_grad_rel_ref(
+        f_lu * g_ll_opt, near_lu["env.flux"] * g_ll_near
+    )
+    assert want_flat["grad_rel"] < float(vfit.NUISANCE_TOL)
+
+    rep_lu = vfit.kkt_report(done_lu, priors_lu, data, reg, start=near_lu)
+    grad_norm_lu = float(rep_lu["nuisances"]["env.flux"]["grad_norm"])
+    grad_rel_lu = float(rep_lu["nuisances"]["env.flux"]["grad_rel"])
+    record("loguniform_nuis_grad_rel", grad_rel_lu)
+    record("loguniform_nuis_grad_norm", grad_norm_lu)
+    record("flat_nuis_grad_rel", want_flat["grad_rel"])
+    assert grad_norm_lu < 1e-2
+    assert grad_rel_lu < float(vfit.NUISANCE_TOL)
+    assert rep_lu["converged"] is True
 
 
 @pytest.mark.validates(
