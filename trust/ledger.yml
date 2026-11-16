@@ -617,18 +617,18 @@
   links: [https://github.com/benjaminpope/virgil-validation/issues/207]
 
 - id: D24
-  title: 'FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an internal parameter-sign convention checked via properties: {near_side: 1} and wrong-sign controls'
+  title: 'FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an on-sky orientation convention, not yet confirmed by code or results written by other people'
   objects: [virgil.models.FlaredDiskGaussian, virgil.models.FlaredDiskHG, virgil.models.FlaredDiskPowerLaw]
   ruling: definition
-  kind: 'convention (in Blakely et al. 2025 eqs. 2-9, tilting an inclined flared scattering surface z(rho) = h_0 (rho / r_0)^beta with major-axis line of nodes at pa East of North places the near rim at pa + 90 deg; flipping pa -> pa + 180 deg moves the near rim to pa - 90 deg and reverses every first-lobe closure phase. Which half-plane corresponds to inc in (0, 90) deg at a given pa is an internal parameter-sign choice rather than an external physical constant, pinned to < 1e-10 deg against our 3D surface Fourier sum and guarded by wrong-sign controls)'
-  referee: mathematics (3D flared scattering surface Fourier sum and first-lobe closure-phase sign, crosscheck.disks)
+  kind: 'convention (in Blakely et al. 2025 eqs. 2-9, tilting an inclined flared scattering surface z(rho) = h_0 (rho / r_0)^beta with major-axis line of nodes at pa East of North places the near rim at pa + 90 deg; flipping pa -> pa + 180 deg moves the near rim to pa - 90 deg and reverses every first-lobe closure phase. Which half-plane corresponds to inc in (0, 90) deg at a given pa is an on-sky orientation: the near-side rim direction, the photocentre direction and the closure-phase sign all follow from it. Our own 3D surface Fourier sum pins virgil to it at < 1e-10 deg and wrong-sign controls reject the opposite choice, but both are our own transcription of the documented formula)'
+  referee: mathematics (3D flared scattering surface Fourier sum and first-lobe closure-phase sign, crosscheck.disks); this is our own transcription, so it cannot confirm the convention
   evidence:
     - tests/test_flared_disk_nearside.py::test_flared_disk_gaussian_nearside_geometry
     - tests/test_flared_disk_nearside.py::test_flared_disk_hg_nearside_geometry
     - tests/test_flared_disk_nearside.py::test_flared_disk_powerlaw_nearside_geometry
     - tests/test_flared_disk_nearside.py::test_flared_disk_farside_controls_flip_quadrant_and_closure_phase_sign
-  status: documented
-  decision: 'ruled definition / documented (Ben, 2026-11-15): the parameter sign does not need to be a convention trust-graph blocker; it is an arbitrary sign convention pinned via properties: {near_side: 1} and wrong-sign controls.'
+  status: open
+  decision: 'not ruled by Ben as a definition. On 2026-11-16 (gate G1a) Ben confirmed it stays a `convention:` on the FlaredDisk nodes in trust/graph.yml, because an on-sky orientation needs a check written by other people (code or a published result that fixes which side is near for a given pa and inc). Until one exists the nodes show "convention from virgil''s docs". ruling: definition records only that virgil''s sign is a choice, not a bug; status: open means no outside check yet. The wrong-sign control tests stay as regression guards.'
 
 - id: D25
   title: 'PositionData: astrometric calibration sign and scale (theta_meas = theta_sky + north_angle, rho_meas = plate_scale * rho_sky) is an internal parameter-sign convention checked via properties: {calibration: 1} and wrong-sign controls'
@@ -640,7 +640,7 @@
     - tests/test_position_calibration.py::test_position_data_calibration_model_and_recovery
     - tests/test_position_calibration.py::test_position_data_wrong_calibration_sign_and_scale_fail_by_over_50_sigma
   status: documented
-  decision: 'ruled definition / documented (Ben, 2026-11-15): the calibration nuisance sign does not need to be a convention trust-graph blocker; it is an arbitrary parameter-sign convention pinned via properties: {calibration: 1} alongside external PMOIRED confirmation of PositionData.loglike.'
+  decision: 'definition, confirmed by Ben Pope 2026-11-16 (gate G1b); north_angle sign signed 2026-10-06. The calibration nuisance sign is an internal parameterisation, pinned via properties: {calibration: 1} and wrong-sign controls, alongside external PMOIRED confirmation of PositionData.loglike.'
 
 - id: F26
   title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0'
