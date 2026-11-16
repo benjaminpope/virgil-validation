@@ -26,7 +26,7 @@ KNOWN = set(ROOTS) | set(trust.ROOT_NAMES) | set(trust.EXTERNAL) | {trust.GOLDEN
 
 
 def _mark(fn):
-    return pytest.mark.validates("evidence", roots=["standards"], kind="guard")(fn)
+    return pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")(fn)
 
 
 @_mark

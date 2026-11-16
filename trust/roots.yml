@@ -14,7 +14,8 @@
 #
 # `classes:` gives the same text fields for each class. `links:` lists things
 # that appear next to the roots but are not roots and are never counted as
-# roots (docs/method/index.md, principle 2).
+# roots (docs/method/index.md, principle 2). "virgil against itself" is not a
+# link: the engine knows it as the weak root `self-consistency`.
 
 classes:
   mathematics:
@@ -49,7 +50,7 @@ classes:
     cannot_catch: "They are values, not a method: they cannot be rerun on a new case. They check only the cases that were stored, and a source can be wrong or out of date."
   self-consistency:
     name: Self-consistency
-    what: "A check of one part of virgil against another part of virgil, written in this repository. Recorded as the weakest root."
+    what: "virgil against itself: a check of one part of virgil against another part, and virgil's own test suite (its CI records, which the engine counts under \"virgil's own tests\"). Recorded as the weakest root, never counted as a strong one."
     why: "It does catch a part that disagrees with itself: a regression, a broken round trip, a shape or finiteness failure."
     cannot_catch: "Anything the authors got wrong consistently. It is weak evidence and is never enough on its own for a verdict."
 
@@ -60,12 +61,6 @@ links:
     what: "The independent implementations in `crosscheck` and the bridges (`external_bridge`, `virgil_bridge`)."
     why: "A link, not a root: each reference must itself agree with a root by a second route (for example quadrature against a closed form) before it may judge virgil, and it must never import or copy virgil."
     cannot_catch: "Written by agents, so trusted only as far as its own checks. A mistake it shares with its own root passes."
-    reviewed: false
-  virgil-itself:
-    name: virgil against itself
-    what: "Self-consistency and virgil's own test suite (its CI records, counted by the engine under 'virgil's own tests'). Recorded, never counted."
-    why: "It is still useful: it catches regressions and breakage in virgil's own code."
-    cannot_catch: "Anything the authors got wrong consistently. It is written by people and agents who can read the implementation."
     reviewed: false
 
 roots:
@@ -243,8 +238,8 @@ roots:
   - id: self-consistency
     class: self-consistency
     name: virgil itself
-    what: "Tests that check virgil against virgil (round trips, regressions, finiteness). In ROOTS and in `WEAK`: recorded as weak evidence, never counted as a strong root."
-    why: "It still catches a part that disagrees with itself."
+    what: "Tests that check virgil against virgil (round trips, regressions, finiteness) and virgil's own test suite (`VIRGIL_CI`, \"virgil's own tests\"). In ROOTS and in `WEAK`: recorded as weak evidence, never counted as a strong root."
+    why: "It still catches a part that disagrees with itself, and breakage in virgil's own code. It is written by people and agents who can read the implementation."
     cannot_catch: "Anything the authors got wrong consistently. Never enough on its own for a verdict."
     citation: ""
     url: ""
