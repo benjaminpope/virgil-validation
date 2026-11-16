@@ -57,7 +57,8 @@ def test_classes_are_declared_and_have_text():
 @_mark
 def test_entries_have_text_and_review_flag():
     for rid, e in ENTRIES.items():
-        for field in ("name",) + TEXT_FIELDS:
+        assert "name" not in e, f"{rid}: the label comes from ROOT_NAMES, not from this file"
+        for field in TEXT_FIELDS:
             assert isinstance(e.get(field), str) and e[field].strip(), f"{rid}: empty {field}"
         for field in ("citation", "url"):
             assert isinstance(e.get(field, ""), str), f"{rid}: {field} must be a string"
@@ -73,6 +74,20 @@ def test_external_roots_are_other_peoples_code_and_published_results():
     external_classes = {"other-peoples-code", "published-results"}
     from_registry = {rid for rid, e in ENTRIES.items() if e["class"] in external_classes}
     assert from_registry == set(trust.EXTERNAL)
+
+
+# `golden` is the one root with no ROOT_NAMES label: the engine prints its columns as
+# "reference code: <source>". ROOT_NAMES is not ours to edit, so it is exempt here.
+NO_ENGINE_LABEL = {"golden"}
+
+
+@_mark
+def test_roots_are_labelled_by_the_engine():
+    """The Trust page labels every root from ROOT_NAMES, so each root entry needs one."""
+    for rid, e in ENTRIES.items():
+        if "counts_as" not in e and rid not in NO_ENGINE_LABEL:
+            assert rid in trust.ROOT_NAMES, f"{rid} has no ROOT_NAMES label"
+    assert NO_ENGINE_LABEL.isdisjoint(trust.ROOT_NAMES), "golden now has a label: drop the exemption"
 
 
 @_mark

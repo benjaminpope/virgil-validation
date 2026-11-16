@@ -5,9 +5,14 @@
 # the engine's single root for all golden sources (`GOLDEN`, trust/golden.yml).
 # tests/test_roots_registry.py keeps this file and those constants in step.
 #
-# Fields per root: id, class (a key of `classes:`), name, what, why,
+# Fields per root: id, class (a key of `classes:`), what, why,
 # cannot_catch, citation and url (only from a source in this repository, else
-# empty), reviewed. `reviewed: false` means the text is a draft; Ben flips it
+# empty), reviewed. A root has no `name` here: its label on the Trust page is
+# `ROOT_NAMES` in scripts/trust.py, the one source, so a root never shows under
+# two labels. (`classes:` and `links:` have no engine label, so they keep `name`.)
+#
+# `counts_as` marks a root counted under another (`ROOT_ALIAS`).
+# `reviewed: false` means the text is a draft; Ben flips it
 # to true after editing. Text is drafted from what the repository says
 # (docs/method/, docs/models/polar_disk.md, docs/alma_conventions.md,
 # pyproject.toml, scripts/setup_external.sh, trust/golden.yml).
@@ -66,7 +71,6 @@ links:
 roots:
   - id: mathematics
     class: mathematics
-    name: Mathematics
     what: "Closed-form results (Fourier transforms of Gaussians and disks, the shift and convolution theorems, the Airy pattern, quadratures) checked numerically with NumPy, SciPy (Cephes Bessel functions) and mpmath."
     why: "The results are textbook and the libraries that evaluate them are mature. When roots disagree, mathematics decides (docs/method/index.md, principle 4)."
     cannot_catch: "A formula transcribed in the test by an agent. A convention misread the same way on both sides passes, so sky conventions need a second root. The legacy record name 'render' is counted here."
@@ -76,7 +80,6 @@ roots:
 
   - id: standards
     class: standards
-    name: Standards
     what: "Published definitions: OIFITS v1 and v2, position angle North through East, Earth-rotation uv geometry from Thompson, Moran & Swenson."
     why: "The data and the other codes already follow these documents."
     cannot_catch: "Our reading of the text. Where the standard is ambiguous the reading is ours, and it cannot confirm a convention that virgil's own documentation took from elsewhere."
@@ -86,7 +89,6 @@ roots:
 
   - id: statistics
     class: statistics
-    name: Statistics
     what: "Ensembles of simulations whose distribution is known: pulls of fit minus truth over sigma, which must be N(0, 1); rank histograms; credible-interval coverage."
     why: "The simulation sets the truth, so no reference implementation is needed."
     cannot_catch: "A small bias hidden by a wide band on a finite ensemble. Conventions: the simulation and the fit can share one."
@@ -96,7 +98,6 @@ roots:
 
   - id: dlux
     class: other-peoples-code
-    name: dLux
     what: "A differentiable optical-modelling package in JAX. Simulates aperture-masking interferograms independently of virgil."
     why: "Written by other authors; its masking data are compared with a closed-form interferogram, and the two must agree (docs/method/index.md)."
     cannot_catch: "Its own bugs, and any optics convention virgil and dLux share. Installed as a dependency (`dLux>=0.15` in pyproject.toml), not a separate environment."
@@ -106,7 +107,6 @@ roots:
 
   - id: pmoired
     class: other-peoples-code
-    name: PMOIRED
     what: "The OIFITS model-fitting code of A. Mérand. The root for virgil's interferometric models, visibilities and fits."
     why: "Written and used by other people, and pinned (`pmoired==26.10.1` in pyproject.toml). Sharing no code with virgil."
     cannot_catch: "Its own bugs: P1–P3 are documented (docs/method/pmoired.md). When it disagrees with a closed form, mathematics wins."
@@ -116,7 +116,6 @@ roots:
 
   - id: candid
     class: other-peoples-code
-    name: CANDID
     what: "The companion-detection code of A. Mérand and A. Gallenne: `fitMap`, `detectionLimit` (the Absil method). The root for virgil's detection limits and companion search."
     why: "Written and used by other people. It runs in its own environment, called through `src/external_bridge/candid_bridge.py` in a subprocess."
     cannot_catch: "Its own bugs: P4 is documented (docs/method/candid.md). Statistical conventions the two codes share."
@@ -126,7 +125,6 @@ roots:
 
   - id: fouriever
     class: other-peoples-code
-    name: fouriever
     what: "The code of J. Kammerer (Kammerer et al. 2020) whose model of correlated closure phases virgil adopts. The root for `OIData.cp_noise`."
     why: "Written by other authors. It states no licence, so it is pinned (0.4.3) in its own environment and run in a subprocess."
     cannot_catch: "Its own bugs: P5 (raised as fouriever#26) and P8 are documented (docs/method/fouriever.md, trust/ledger.yml). It checks only the part of the likelihood virgil adopted from it."
@@ -136,7 +134,6 @@ roots:
 
   - id: orbitize
     class: other-peoples-code
-    name: orbitize!
     what: "The orbit-fitting package of the direct-imaging community. The root for `virgil.orbits`: ephemerides, radial velocities, the symmetries of visual orbits, and masses and distances from Kepler's third law."
     why: "Written and used by other people. Pinned (3.4.0) in its own environment and run in a subprocess, called and never vendored."
     cannot_catch: "Its own bugs: P7 is documented (docs/method/orbitize.md). It does not check fits to real data, only the forward model and conventions."
@@ -146,7 +143,6 @@ roots:
 
   - id: ehtim
     class: other-peoples-code
-    name: eht-imaging
     what: "The regularised maximum-likelihood imager of the Event Horizon Telescope Collaboration (A. Chael et al.). The root for virgil's image model, image regularisers and RML imaging pipeline."
     why: "Written and used by other people. Pinned (1.3.2) in its own environment and run in a subprocess. Objective values agree to 1e-12 and gradients to 1e-9 in `tests/test_ehtim_reconstruction.py`."
     cannot_catch: "Its own bugs: P6 is documented (docs/method/ehtim.md). It has no OIFITS reader, so the file readers are not checked by it."
@@ -156,7 +152,6 @@ roots:
 
   - id: mpol
     class: other-peoples-code
-    name: MPoL
     what: "Regularised-maximum-likelihood imaging for radio interferometry in PyTorch (Czekala et al.): gridding, Fourier transforms, the log-likelihood. The root for ALMA imaging and visibility conventions."
     why: "Written and used by other people. Pinned (0.3.1) in its own environment and run in a subprocess."
     cannot_catch: "Its own bugs: P11 and P12 are documented (docs/method/findings.md). It is a radio code, so it says nothing about optical-interferometry conventions."
@@ -166,7 +161,6 @@ roots:
 
   - id: casa
     class: other-peoples-code
-    name: CASA
     what: "The NRAO radio-astronomy package (casatools, casatasks). Its `simulator` and `predict` put known sources into a synthetic measurement set, which fixes the sign of u and the conjugation convention."
     why: "Written and used by other people; the standard package for ALMA data. Pinned (casatools 6.7.0.31) in the `alma` environment."
     cannot_catch: "Its own bugs, and the measurement-set definition is read by us (docs/alma_conventions.md): it is the root for what CASA does, not for what the telescope measured."
@@ -176,7 +170,6 @@ roots:
 
   - id: frank
     class: other-peoples-code
-    name: frank
     what: "A discrete Hankel transform of radial brightness profiles (Jennings et al. 2020, with the Baddour & Chouinard 2015 matrix). The root for virgil's radial-profile forward transforms. Counted with FRAP as one root."
     why: "Written and used by other people. Pinned (`frank==1.2.3`, polar-disk extra in pyproject.toml) and called as documented from `src/external_bridge/radial_codes.py`. frank and FRAP agree to about 1e-16 for the same Rmax and N, so together they make one independent root."
     cannot_catch: "It cannot represent a discontinuous profile (D10 in docs/models/polar_disk.md). Sharing one matrix with FRAP, the two cannot check each other's transform."
@@ -186,7 +179,6 @@ roots:
 
   - id: frap
     class: other-peoples-code
-    name: FRAP
     counts_as: frank
     what: "A Fourier-Bessel Hankel matrix code (Yoshida et al., package `astro-frap`). Records under this name are counted under frank (`ROOT_ALIAS`)."
     why: "Written by other people. Pinned (`astro-frap==1.0.2`). It applies the same Baddour-Chouinard matrix on the J0 zeros as frank, so it is not independent of frank."
@@ -197,7 +189,6 @@ roots:
 
   - id: visr
     class: other-peoples-code
-    name: vis-r
     what: "Radial-profile visibility modelling (Kennedy 2025). Builds frank's matrix on a grid of baselines; used for the HR 4796 check and as a forward-transform comparison."
     why: "Written by another author and pinned to a commit (f53467077b04878986c967b501d88c54ff3efb86 in pyproject.toml). Called from `src/external_bridge/radial_codes.py`."
     cannot_catch: "Its own bugs: P10 is documented ('r_prof_erf2_power_ggap' mixes up depth and radius, docs/models/polar_disk.md). It builds on frank, so it is not fully independent of it."
@@ -207,7 +198,6 @@ roots:
 
   - id: oimodeler
     class: other-peoples-code
-    name: oimodeler
     what: "A Fourier-space and image-based model-building package for optical interferometry (Meilland et al.). The root for ring and disk components of the polar-disk models."
     why: "Written and used by other people. Pinned (`oimodeler==0.8.1`, polar-disk extra in pyproject.toml)."
     cannot_catch: "Its own bugs: P9 is documented (its `ExpRing` is 8e-3 from its documented profile, unexplained, docs/models/polar_disk.md). Conventions it shares with virgil."
@@ -217,7 +207,6 @@ roots:
 
   - id: literature
     class: published-results
-    name: Published results
     what: "Numbers reproduced from the authors' own data and published values: orbits, diameters, images. Used by the binary, orbit and contest tests. Engine id `literature`."
     why: "End to end, so it tests the joins between parts that unit checks cannot. A formula we transcribed from a paper is mathematics, not this root."
     cannot_catch: "Papers can be wrong, and agreement is only as fine as the published errors."
@@ -227,7 +216,6 @@ roots:
 
   - id: golden
     class: golden-values
-    name: Reference values from someone's code
     what: "Numbers produced by other people's code and stored here (tests mark them `golden:<name>`). Listed in trust/golden.yml: dholakia (GravityDarkenedStar visibilities and ELR11 fluxes, from jax-interferometry commit 70689ed) and visread (MS reading as MPoL's reader sees it, visread 0.0.5). Engine constant `GOLDEN`; not in `ROOTS`."
     why: "The numbers come from another person's implementation. A golden marker counts only if its source is listed in trust/golden.yml, and every source together counts as one root, because they are values and not an independent method."
     cannot_catch: "Only the stored cases are checked. A source can be wrong, and nothing is rerun on a new case."
@@ -237,7 +225,6 @@ roots:
 
   - id: self-consistency
     class: self-consistency
-    name: virgil itself
     what: "Tests that check virgil against virgil (round trips, regressions, finiteness) and virgil's own test suite (`VIRGIL_CI`, \"virgil's own tests\"). In ROOTS and in `WEAK`: recorded as weak evidence, never counted as a strong root."
     why: "It still catches a part that disagrees with itself, and breakage in virgil's own code. It is written by people and agents who can read the implementation."
     cannot_catch: "Anything the authors got wrong consistently. Never enough on its own for a verdict."
