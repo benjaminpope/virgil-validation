@@ -1396,10 +1396,12 @@ def test_gauss_newton_mass_rejects_constrained_space_jacobian_omission(tmp_path)
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.svi.variational",
     "virgil.svi.VariationalResult",
     roots=["mathematics", "statistics"],
+    tier="B",
     headline="svi_mvn_mean_zscore",
 )
 def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):

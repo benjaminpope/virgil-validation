@@ -247,10 +247,12 @@ def test_smc_tempering_ref_against_quadrature_and_matrix_identities():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.smc.tempered_smc",
     "virgil.smc.SMCResult",
     roots=["mathematics", "statistics"],
+    tier="B",
     headline="abs_mean_log_z_err",
 )
 def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
