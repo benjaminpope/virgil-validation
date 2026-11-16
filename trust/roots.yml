@@ -35,7 +35,7 @@ classes:
     cannot_catch: "We read the standard ourselves. Where its text is ambiguous, the reading is ours."
   other-peoples-code:
     name: Other people's code
-    what: "PMOIRED, CANDID, dLux, fouriever, eht-imaging, MPoL, orbitize!, CASA, frank, oimodeler, each run unmodified in its own environment."
+    what: "PMOIRED, CANDID, dLux, fouriever, eht-imaging, MPoL, orbitize!, CASA, frank, FRAP, vis-r, oimodeler, each run unmodified: some in their own environment and subprocess, some installed beside virgil."
     why: "Written by other people, used in published science, and sharing no code with virgil."
     cannot_catch: "They have bugs too: 12 are documented here (P1–P12). Two codes can share a community-wide mistake."
   published-results:
@@ -100,7 +100,7 @@ roots:
     what: "A differentiable optical-modelling package in JAX. Simulates aperture-masking interferograms independently of virgil."
     why: "Written by other authors; its masking data are compared with a closed-form interferogram, and the two must agree (docs/method/index.md)."
     cannot_catch: "Its own bugs, and any optics convention virgil and dLux share. Installed as a dependency (`dLux>=0.15` in pyproject.toml), not a separate environment."
-    citation: ""
+    citation: "Desdoigts et al. 2023"
     url: "https://github.com/LouisDesdoigts/dLux"
     reviewed: false
 
@@ -110,7 +110,7 @@ roots:
     what: "The OIFITS model-fitting code of A. Mérand. The root for virgil's interferometric models, visibilities and fits."
     why: "Written and used by other people, and pinned (`pmoired==26.10.1` in pyproject.toml). Sharing no code with virgil."
     cannot_catch: "Its own bugs: P1–P3 are documented (docs/method/pmoired.md). When it disagrees with a closed form, mathematics wins."
-    citation: ""
+    citation: "Mérand 2022"
     url: "https://github.com/amerand/PMOIRED"
     reviewed: false
 
@@ -148,7 +148,7 @@ roots:
     class: other-peoples-code
     name: eht-imaging
     what: "The regularised maximum-likelihood imager of the Event Horizon Telescope Collaboration (A. Chael et al.). The root for virgil's image model, image regularisers and RML imaging pipeline."
-    why: "Written and used by other people. Pinned (1.3.2) in its own environment and run in a subprocess. Objective values agree to 1e-15 and gradients to 1e-12 in `tests/test_ehtim_reconstruction.py`."
+    why: "Written and used by other people. Pinned (1.3.2) in its own environment and run in a subprocess. Objective values agree to 1e-12 and gradients to 1e-9 in `tests/test_ehtim_reconstruction.py`."
     cannot_catch: "Its own bugs: P6 is documented (docs/method/ehtim.md). It has no OIFITS reader, so the file readers are not checked by it."
     citation: ""
     url: "https://github.com/achael/eht-imaging"

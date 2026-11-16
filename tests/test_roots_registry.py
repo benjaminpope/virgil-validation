@@ -100,3 +100,11 @@ def test_links_are_not_roots():
         assert lid not in KNOWN and lid not in ENTRIES, f"{lid} is a root, not a link"
         for field in ("name",) + TEXT_FIELDS:
             assert isinstance(link.get(field), str) and link[field].strip(), f"link {lid}: empty {field}"
+        assert isinstance(link.get("reviewed"), bool), f"link {lid}: reviewed must be true or false"
+
+
+@_mark
+def test_virgils_own_tests_are_named_under_self_consistency():
+    """The engine's VIRGIL_CI (virgil's own test suite, weak) is described by the self-consistency root."""
+    assert trust.VIRGIL_CI in ENTRIES["self-consistency"]["what"]
+    assert trust.VIRGIL_CI in CLASSES["self-consistency"]["what"]
