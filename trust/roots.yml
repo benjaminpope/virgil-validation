@@ -40,7 +40,7 @@ classes:
     cannot_catch: "We read the standard ourselves. Where its text is ambiguous, the reading is ours."
   other-peoples-code:
     name: Other people's code
-    what: "PMOIRED, CANDID, dLux, fouriever, eht-imaging, MPoL, orbitize!, CASA, frank, FRAP, vis-r, oimodeler, each run unmodified: some in their own environment and subprocess, some installed beside virgil."
+    what: "PMOIRED, CANDID, dLux, fouriever, eht-imaging, MPoL, orbitize!, CASA, frank, FRAP, vis-r, oimodeler, each run as released: some in their own environment and subprocess, some installed beside virgil (eht-imaging carries a runtime NumPy 2 workaround, P6)."
     why: "Written by other people, used in published science, and sharing no code with virgil."
     cannot_catch: "They have bugs too: 12 are documented here (P1–P12). Two codes can share a community-wide mistake."
   published-results:
@@ -63,7 +63,7 @@ classes:
 links:
   reference-code:
     name: Our reference code
-    what: "The independent implementations in `crosscheck` and the bridges (`external_bridge`, `virgil_bridge`)."
+    what: "The independent implementations in `crosscheck` and `external_bridge`. (`virgil_bridge` is the adapter that calls virgil, not a reference.)"
     why: "A link, not a root: each reference must itself agree with a root by a second route (for example quadrature against a closed form) before it may judge virgil, and it must never import or copy virgil."
     cannot_catch: "Written by agents, so trusted only as far as its own checks. A mistake it shares with its own root passes."
     reviewed: false
@@ -83,7 +83,7 @@ roots:
     what: "Published definitions: OIFITS v1 and v2, position angle North through East, Earth-rotation uv geometry from Thompson, Moran & Swenson."
     why: "The data and the other codes already follow these documents."
     cannot_catch: "Our reading of the text. Where the standard is ambiguous the reading is ours, and it cannot confirm a convention that virgil's own documentation took from elsewhere."
-    citation: ""
+    citation: "Pauls et al. 2005, PASP 117, 1255 (OIFITS); Duvert et al. 2017, A&A 597, A8 (OIFITS v2); Thompson, Moran & Swenson 2017, ch. 4"
     url: ""
     reviewed: false
 
@@ -109,7 +109,7 @@ roots:
     class: other-peoples-code
     what: "The OIFITS model-fitting code of A. Mérand. The root for virgil's interferometric models, visibilities and fits."
     why: "Written and used by other people, and pinned (`pmoired==26.10.1` in pyproject.toml). Sharing no code with virgil."
-    cannot_catch: "Its own bugs: P1–P3 are documented (docs/method/pmoired.md). When it disagrees with a closed form, mathematics wins."
+    cannot_catch: "Its own bugs: P1, P2 and P3 are documented (docs/method/pmoired.md). When it disagrees with a closed form, mathematics wins."
     citation: "Mérand 2022"
     url: "https://github.com/amerand/PMOIRED"
     reviewed: false
@@ -117,9 +117,9 @@ roots:
   - id: candid
     class: other-peoples-code
     what: "The companion-detection code of A. Mérand and A. Gallenne: `fitMap`, `detectionLimit` (the Absil method). The root for virgil's detection limits and companion search."
-    why: "Written and used by other people. It runs in its own environment, called through `src/external_bridge/candid_bridge.py` in a subprocess."
+    why: "Written and used by other people. Pinned to commit c255e90 (version 1.1.0; no PyPI release). It runs in its own environment, called through `src/external_bridge/candid_bridge.py` in a subprocess."
     cannot_catch: "Its own bugs: P4 is documented (docs/method/candid.md). Statistical conventions the two codes share."
-    citation: ""
+    citation: "Absil et al. 2011, A&A 535, A68; Gallenne et al. 2015, A&A 579, A68"
     url: "https://github.com/amerand/CANDID"
     reviewed: false
 
@@ -146,7 +146,7 @@ roots:
     what: "The regularised maximum-likelihood imager of the Event Horizon Telescope Collaboration (A. Chael et al.). The root for virgil's image model, image regularisers and RML imaging pipeline."
     why: "Written and used by other people. Pinned (1.3.2) in its own environment and run in a subprocess. Objective values agree to 1e-12 and gradients to 1e-9 in `tests/test_ehtim_reconstruction.py`."
     cannot_catch: "Its own bugs: P6 is documented (docs/method/ehtim.md). It has no OIFITS reader, so the file readers are not checked by it."
-    citation: ""
+    citation: "Chael et al. 2016, ApJ 829, 11; Chael et al. 2018, ApJ 857, 23"
     url: "https://github.com/achael/eht-imaging"
     reviewed: false
 
@@ -155,13 +155,13 @@ roots:
     what: "Regularised-maximum-likelihood imaging for radio interferometry in PyTorch (Czekala et al.): gridding, Fourier transforms, the log-likelihood. The root for ALMA imaging and visibility conventions."
     why: "Written and used by other people. Pinned (0.3.1) in its own environment and run in a subprocess."
     cannot_catch: "Its own bugs: P11 and P12 are documented (docs/method/findings.md). It is a radio code, so it says nothing about optical-interferometry conventions."
-    citation: ""
+    citation: "Czekala et al. 2025, arXiv:2502.00100; Zawadzki et al. 2023, PASP 135, 064503"
     url: "https://github.com/MPoL-dev/MPoL"
     reviewed: false
 
   - id: casa
     class: other-peoples-code
-    what: "The NRAO radio-astronomy package (casatools, casatasks). Its `simulator` and `predict` put known sources into a synthetic measurement set, which fixes the sign of u and the conjugation convention."
+    what: "The NRAO radio-astronomy package (casatools, casatasks). Its `simulator` and `predict` put known sources into a synthetic measurement set, which fixes the sign of u and the conjugation convention. It is also the root for `virgil.radio.ComplexVisData.read_ms` (against raw `casatools.table` columns) and for `virgil.radio_clean.clean` and `fit_beam` (against `casatasks.tclean`); `casatools` is installed in virgil's interpreter for `read_ms`."
     why: "Written and used by other people; the standard package for ALMA data. Pinned (casatools 6.7.0.31) in the `alma` environment."
     cannot_catch: "Its own bugs, and the measurement-set definition is read by us (docs/alma_conventions.md): it is the root for what CASA does, not for what the telescope measured."
     citation: ""
