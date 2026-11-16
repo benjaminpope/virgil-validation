@@ -137,6 +137,7 @@ def _make_synthetic_summaries(
     ln_scale: float = 0.0,
     outlier_idx: int | None = None,
     extra_scatter_mas: float = 0.0,
+    blocks: tuple[str, ...] = ("vis", "phi"),
     rng_seed: int = 17,
 ):
     """Build synthetic ``NightSummary`` objects from textbook Keplerian states."""
@@ -148,12 +149,20 @@ def _make_synthetic_summaries(
     s_quote = math.exp(ln_scale)
     base_cov = np.diag([pos_sigma**2, pos_sigma**2, vel_sigma**2, vel_sigma**2, flux_sigma**2])
     quoted_cov = base_cov * (s_quote**2)
-    quoted_hess = np.linalg.inv(quoted_cov)[None, :, :]
-    n_obs = 24.0
-    quoted_chi2 = n_obs / (s_quote**2)
-    chi2_null_base = n_obs + 2.0 * float(loglike)
-    quoted_loglike = float(loglike) + ref.rescaled_peak_log_scale([n_obs], [n_obs], s_quote)
-    quoted_loglike_null = ref.rescaled_peak_log_scale([n_obs], [chi2_null_base], s_quote)
+    h_tot = np.linalg.inv(quoted_cov)
+    if len(blocks) == 2:
+        w_vis = np.array([0.65, 0.35, 0.60, 0.40, 0.70], dtype=float)
+        quoted_hess = np.stack([np.diag(w_vis) @ h_tot, np.diag(1.0 - w_vis) @ h_tot], axis=0)
+        n_vec = np.array([12.0, 12.0], dtype=float)
+        quoted_chi2 = n_vec / (s_quote**2)
+        chi2_null_base = n_vec + np.array([1.2, 0.8], dtype=float) * float(loglike)
+    else:
+        quoted_hess = h_tot[None, :, :]
+        n_vec = np.array([24.0], dtype=float)
+        quoted_chi2 = n_vec / (s_quote**2)
+        chi2_null_base = n_vec + 2.0 * float(loglike)
+    quoted_loglike = float(loglike) + ref.rescaled_peak_log_scale(n_vec, n_vec, s_quote)
+    quoted_loglike_null = ref.rescaled_peak_log_scale(n_vec, chi2_null_base, s_quote)
 
     out = []
     for k, t_k in enumerate(times_mjd):
@@ -171,8 +180,8 @@ def _make_synthetic_summaries(
             mean=mean,
             cov=quoted_cov.copy(),
             loglike=quoted_loglike,
-            n=np.array([n_obs]),
-            chi2=np.array([quoted_chi2]),
+            n=n_vec.copy(),
+            chi2=quoted_chi2.copy(),
             hessian=quoted_hess.copy(),
             rescalable=True,
         )
@@ -181,7 +190,7 @@ def _make_synthetic_summaries(
                 t_ref=float(t_k),
                 t_ss=0.05,
                 n_frames=6,
-                blocks=("vis",),
+                blocks=tuple(blocks),
                 peaks=(pk,),
                 loglike_null=quoted_loglike_null,
             )
@@ -300,7 +309,37 @@ def test_orbit_cells_ref_polar_disc_mc_kde_and_rescalable_quad(tmp_path):
         - 0.5 * (n_tot - dim) * math.log(0.5 * chi2_tot)
         + float(special.gammaln(0.5 * (n_tot - dim)))
     )
-    gamma_quad_err = abs(got_q - closed_q)
+
+    # Orthogonal-subspace 2-block closed form for quad_rescalable_outlier_log_density_2block
+    h_diag = 1.0 / np.diag(cov5)
+    h_orth = np.zeros((2, 5, 5), dtype=float)
+    h_orth[0, :3, :3] = np.diag(h_diag[:3])
+    h_orth[1, 3:, 3:] = np.diag(h_diag[3:])
+    n_2b = np.array([18.0, 14.0])
+    c_2b = np.array([25.2, 19.6])
+    s_2b = 5.0
+    got_q2 = ref.quad_rescalable_outlier_log_density_2block(
+        [12.5], [h_orth], [n_2b], [c_2b], [-6.2], [-4.5], ell, velocity=True, s_max=s_2b, n_leg=56
+    )
+
+    def _log_trunc_gamma(n_g: float, d_g: int, c_g: float, sm: float) -> float:
+        a = 0.5 * (n_g - d_g)
+        t_lo = 0.5 * c_g / (sm * sm)
+        t_hi = 0.5 * c_g * (sm * sm)
+        frac = float(special.gammainc(a, t_hi) - special.gammainc(a, t_lo))
+        return 0.5 * c_g - math.log(2.0) - a * math.log(0.5 * c_g) + float(special.gammaln(a)) + math.log(frac)
+
+    closed_q2 = (
+        12.5
+        + 0.5 * dim * math.log(2.0 * math.pi)
+        + 0.5 * float(logdet)
+        - 6.2
+        - math.log(abs(ell))
+        - 2.0 * math.log(2.0 * math.log(s_2b))
+        + _log_trunc_gamma(18.0, 3, 25.2, s_2b)
+        + _log_trunc_gamma(14.0, 2, 19.6, s_2b)
+    )
+    gamma_quad_err = max(abs(got_q - closed_q), abs(got_q2 - closed_q2))
 
     # 2. Sky-plane normalization of mc_kepler_state_prior_log_density in 3D and 5D
     r_nodes = np.geomspace(1e-2, 42.0, 56)
@@ -1728,7 +1767,24 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
     bk_n384_quad = ref.quad_rescalable_outlier_log_density(
         [75.0], [cov5], [384.0], [1.44 * 384.0], [mc_lp5_sky], [-2.0], prior.ln_f_floor, velocity=True, s_max=10.0
     )
-    rescalable_n384_err = abs(bk_n384_vg - bk_n384_quad)
+    h5_tot = np.linalg.inv(cov5)
+    w_vis = np.array([0.65, 0.35, 0.60, 0.40, 0.70], dtype=float)
+    h5_2b = np.stack([np.diag(w_vis) @ h5_tot, np.diag(1.0 - w_vis) @ h5_tot], axis=0)
+    pk_n384_2b = vns.NightPeak(
+        mean=state_in_mf[0],
+        cov=cov5,
+        loglike=75.0,
+        n=np.array([192.0, 192.0]),
+        chi2=np.array([1.44 * 192.0, 1.44 * 192.0]),
+        hessian=h5_2b,
+        rescalable=True,
+    )
+    ns_n384_2b = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis", "phi"), peaks=(pk_n384_2b,), loglike_null=-50.0)
+    bk_n384_2b_vg = float(voc.outlier_log_density([ns_n384_2b], prior, s_max=10.0)[0])
+    bk_n384_2b_quad = ref.quad_rescalable_outlier_log_density_2block(
+        [75.0], [h5_2b], [np.array([192.0, 192.0])], [np.array([1.44 * 192.0, 1.44 * 192.0])], [mc_lp5_sky], [-2.0], prior.ln_f_floor, velocity=True, s_max=10.0
+    )
+    rescalable_n384_err = max(abs(bk_n384_vg - bk_n384_quad), abs(bk_n384_2b_vg - bk_n384_2b_quad))
 
     record("max_log_flux_box_err", max_log_flux_box_err)
     record("norm_3d_err", norm_3d_err)
@@ -1747,7 +1803,7 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="F27: outlier_log_density(rescalable=True) expands around clipped sqrt(chi2/n) with fixed interior width, missing 1D ln(s) quadrature by 0.4-3.5 nats",
+    reason="F27: outlier_log_density(rescalable=True) expands around clipped sqrt(chi2_g/n_g) with fixed interior width, missing bounded ln(s) quadrature by 0.4-6.3 nats",
 )
 @pytest.mark.validates(
     "virgil.orbit_cells.outlier_log_density",
@@ -1756,7 +1812,7 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
     headline="max_rescalable_quad_err",
 )
 def test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature():
-    """F27: rescalable=True outlier_log_density should agree with 1D adaptive quadrature over u = ln s in [-ln s_max, ln s_max]."""
+    """F27: rescalable=True outlier_log_density should agree with 1D/2D bounded quadrature over u_g = ln s_g in [-ln s_max, ln s_max]."""
     summaries = _make_synthetic_summaries(np.array([0.0, 3.0, 9.0, 18.0]) + T0, (11.0, 1.0, 0.2, 40.0, 50.0, 110.0, 8.0))
     dom = voc.period_domain(summaries, p_range=(5.0, 25.0))
     prior = voc.outlier_prior(dom, a_range=(1.0, 20.0), e_max=0.85, flux_floor=1e-4, n=8192, seed=0)
@@ -1789,7 +1845,31 @@ def test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature():
         )
         return got - want
 
-    # (a) Typical interior night: n = 24, chi2 = 34.56, m_f = -2.0 (~ -0.41 nats per block)
+    def _eval_case_2b(cov_c, w_vis_c, n_vec_c, chi2_vec_c, m_f_c: float, s_max_c: float) -> float:
+        mean_c = np.array([4.5, -3.2, 0.4, -0.5, m_f_c], dtype=float)
+        h_tot = np.linalg.inv(cov_c)
+        w1 = np.asarray(w_vis_c, dtype=float)
+        hess_2b = np.stack([np.diag(w1) @ h_tot, np.diag(1.0 - w1) @ h_tot], axis=0)
+        n_arr = np.asarray(n_vec_c, dtype=float)
+        c_arr = np.asarray(chi2_vec_c, dtype=float)
+        pk_c = vns.NightPeak(
+            mean=mean_c,
+            cov=cov_c,
+            loglike=75.0,
+            n=n_arr,
+            chi2=c_arr,
+            hessian=hess_2b,
+            rescalable=True,
+        )
+        ns_c = vns.NightSummary(t_ref=T0, t_ss=0.05, n_frames=5, blocks=("vis", "phi"), peaks=(pk_c,), loglike_null=-500.0)
+        got = float(voc.outlier_log_density([ns_c], prior, s_max=s_max_c)[0])
+        want = ref.quad_rescalable_outlier_log_density_2block(
+            [75.0], [hess_2b], [n_arr], [c_arr], [mc_lp5_sky], [m_f_c], prior.ln_f_floor, velocity=True, s_max=s_max_c
+        )
+        return got - want
+
+    # Single-block (G = 1, blocks=("vis",)) regimes:
+    # (a) Typical interior night: n = 24, chi2 = 34.56, m_f = -2.0 (~ -0.41 nats)
     err_interior_n24 = _eval_case(cov_std, 24.0, 34.56, -2.0, 10.0)
     # (b) Stationary point on s_max: n = 30, s_max = 2.0, chi2 = (30 - 5) * 4 = 100 (~ +0.69 nats)
     err_boundary = _eval_case(cov_std, 30.0, 100.0, -2.0, 2.0)
@@ -1798,13 +1878,32 @@ def test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature():
     # (d) Noisy equal-flux twin (m_f > 0): n = 24, chi2 = 24, m_f = +0.90, sigma_f1 = 0.25 (~ -2.4 to -3.1 nats)
     err_twin_mf = _eval_case(cov_twin, 24.0, 24.0, +0.90, 10.0)
 
+    # Coupled two-block (G = 2, blocks=("vis", "phi")) regimes:
+    w_eq = [0.5, 0.5, 0.5, 0.5, 0.5]
+    w_asym = [0.65, 0.35, 0.60, 0.40, 0.70]
+    # (e) Two coupled 12-datum blocks (d_1 + d_2 = d = 5 by Jacobi's formula): ~ -0.40 nats total
+    err_2b_interior = _eval_case_2b(cov_std, w_eq, [12.0, 12.0], [17.28, 17.28], -2.0, 10.0)
+    # (f) Steep clipped boundary on both blocks (n = (15, 15), s_max = 2.0, chi2_g / n_g = 16): ~ +6.28 nats total
+    err_2b_steep_clip = _eval_case_2b(cov_std, w_asym, [15.0, 15.0], [240.0, 240.0], -2.0, 2.0)
+    # (g) Two-block noisy equal-flux twin (n = (12, 12), m_f = +0.90, sigma_f1 = 0.25): ~ -3.11 nats total
+    err_2b_twin_mf = _eval_case_2b(cov_twin, w_asym, [12.0, 12.0], [12.0, 12.0], +0.90, 10.0)
+
     max_rescalable_quad_err = max(
-        abs(err_interior_n24), abs(err_boundary), abs(err_steep_clip), abs(err_twin_mf)
+        abs(err_interior_n24),
+        abs(err_boundary),
+        abs(err_steep_clip),
+        abs(err_twin_mf),
+        abs(err_2b_interior),
+        abs(err_2b_steep_clip),
+        abs(err_2b_twin_mf),
     )
     record("max_rescalable_quad_err", max_rescalable_quad_err)
     record("interior_n24_diff_nats", err_interior_n24)
+    record("interior_2block_diff_nats", err_2b_interior)
     record("steep_clip_diff_nats", err_steep_clip)
+    record("steep_clip_2block_diff_nats", err_2b_steep_clip)
     record("twin_positive_mf_diff_nats", err_twin_mf)
+    record("twin_2block_diff_nats", err_2b_twin_mf)
     assert max_rescalable_quad_err < 0.15
 
 
@@ -1876,13 +1975,13 @@ def test_scale_equivariant_conditional_mle_invariance():
         dec_mode = voc.decode_particles(dataclasses.replace(fit, draws=np.asarray(modes_direct[0].x)[None, :]))
         recovered_periods.append(float(dec_mode["period"][0]))
         inlier_counts.append(float(modes_direct[0].n_inliers))
-        physical_ln_scales.append(float(np.squeeze(dec_mode["ln_s"])) + ln_s)
+        physical_ln_scales.append(np.asarray(dec_mode["ln_s"][0], dtype=float) + ln_s)
 
     max_scale_period_rel_drift = float(
         (max(recovered_periods) - min(recovered_periods)) / orbit[0]
     )
     inlier_drift = float(max(inlier_counts) - min(inlier_counts))
-    ln_s_phys_drift = float(max(physical_ln_scales) - min(physical_ln_scales))
+    ln_s_phys_drift = float(np.max(np.ptp(np.stack(physical_ln_scales, axis=0), axis=0)))
     record("max_scale_period_rel_drift", max_scale_period_rel_drift)
     record("inlier_drift", inlier_drift)
     record("ln_s_phys_drift", ln_s_phys_drift)

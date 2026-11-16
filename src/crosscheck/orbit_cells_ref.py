@@ -741,3 +741,126 @@ def quad_rescalable_outlier_log_density(
         return -np.inf
     m = max(terms)
     return float(m + math.log(sum(math.exp(t - m) for t in terms)))
+
+
+def _composite_legendre_1d(lo: float, hi: float, center: float, half_width: float, n_leg: int):
+    """Composite 1D Gauss-Legendre nodes and weights refined around ``center`` on ``[lo, hi]``."""
+    cuts = sorted({lo, hi} | {x for x in (center - half_width, center + half_width) if lo < x < hi})
+    x_std, w_std = special.roots_legendre(int(n_leg))
+    nodes, weights = [], []
+    for a, b in zip(cuts[:-1], cuts[1:]):
+        mid = 0.5 * (a + b)
+        half = 0.5 * (b - a)
+        nodes.append(mid + half * x_std)
+        weights.append(half * w_std)
+    return np.concatenate(nodes), np.concatenate(weights)
+
+
+def quad_rescalable_outlier_log_density_2block(
+    peak_loglikes,
+    peak_hessians,
+    peak_ns,
+    peak_chi2s,
+    sky_log_priors,
+    peak_m_fs,
+    ln_f_floor,
+    *,
+    velocity=True,
+    s_max=10.0,
+    n_leg=48,
+):
+    """Exact 2D quadrature over ``(u_1, u_2) in [-ln s_max, +ln s_max]^2`` for two-block ``("vis", "phi")`` nights.
+
+    For two observable blocks with unit-scale ``1/2 chi^2`` Hessians ``(H_1, H_2)``,
+    rescaling block errors by ``(e^{u_1}, e^{u_2})`` produces the coupled precision
+    ``H(u_1, u_2) = e^{-2 u_1} H_1 + e^{-2 u_2} H_2`` whose inverse ``Sigma(u_1, u_2)``
+    determines both the marginal state volume ``|Sigma_sub(u_1, u_2)|^(1/2)`` (with
+    unit-scale log-determinant slopes ``d_g = tr(H^{-1} H_g)`` satisfying ``d_1 + d_2 = d``
+    by Jacobi's formula, Magnus & Neudecker 1999, sec. 8.3) and the log-flux width
+    ``Sigma_{44}(u_1, u_2)^(1/2)``. Evaluated by composite tensor-product Gauss-Legendre
+    quadrature (NIST DLMF sec. 3.5(v)) refined around the 2D mode of each peak.
+    """
+    idx = [0, 1, 2, 3, 4] if velocity else [0, 1, 4]
+    dim = len(idx)
+    lo, hi = -math.log(float(s_max)), math.log(float(s_max))
+    log_norm_u2 = 2.0 * math.log(2.0 * math.log(float(s_max)))
+
+    terms = []
+    for ll, hess, n_vec, chi2_vec, lp_sky, m_f in zip(
+        peak_loglikes, peak_hessians, peak_ns, peak_chi2s, sky_log_priors, peak_m_fs
+    ):
+        if not np.isfinite(lp_sky):
+            continue
+        H = np.asarray(hess, dtype=float)
+        if H.shape != (2, 5, 5):
+            raise ValueError(f"Expected (2, 5, 5) two-block Hessians, got {H.shape}.")
+        H1, H2 = H[0], H[1]
+        n1, n2 = float(n_vec[0]), float(n_vec[1])
+        c1, c2 = float(chi2_vec[0]), float(chi2_vec[1])
+        m_f_f = float(m_f)
+        base_const = float(ll) + 0.5 * dim * math.log(2.0 * math.pi) + float(lp_sky) - log_norm_u2
+
+        def _scalar_neg_log_g(uv):
+            u1, u2 = float(uv[0]), float(uv[1])
+            prec = math.exp(-2.0 * u1) * H1 + math.exp(-2.0 * u2) * H2
+            cov = np.linalg.inv(prec)
+            sign, logdet = np.linalg.slogdet(cov[np.ix_(idx, idx)])
+            if sign <= 0 or cov[4, 4] <= 0.0:
+                return 1e30
+            lfb = float(log_flux_box_exact(m_f_f, math.sqrt(float(cov[4, 4])), ln_f_floor))
+            val = (
+                base_const
+                + 0.5 * float(logdet)
+                - n1 * u1
+                - n2 * u2
+                - 0.5 * c1 * (math.exp(-2.0 * u1) - 1.0)
+                - 0.5 * c2 * (math.exp(-2.0 * u2) - 1.0)
+                + lfb
+            )
+            return -val
+
+        u0 = np.array(
+            [
+                np.clip(0.5 * math.log(max(c1, 1e-12) / max(n1 - 0.5 * dim, 1.0)), lo, hi),
+                np.clip(0.5 * math.log(max(c2, 1e-12) / max(n2 - 0.5 * dim, 1.0)), lo, hi),
+            ],
+            dtype=float,
+        )
+        opt = optimize.minimize(_scalar_neg_log_g, u0, method="L-BFGS-B", bounds=[(lo, hi), (lo, hi)])
+        u1_pk, u2_pk = float(opt.x[0]), float(opt.x[1])
+
+        u1_nodes, w1 = _composite_legendre_1d(lo, hi, u1_pk, 5.0 / math.sqrt(max(n1, 4.0)), n_leg)
+        u2_nodes, w2 = _composite_legendre_1d(lo, hi, u2_pk, 5.0 / math.sqrt(max(n2, 4.0)), n_leg)
+        uu1, uu2 = np.meshgrid(u1_nodes, u2_nodes, indexing="ij")
+        ww = (w1[:, None] * w2[None, :]).ravel()
+        u1_flat = uu1.ravel()
+        u2_flat = uu2.ravel()
+
+        prec_grid = np.exp(-2.0 * u1_flat)[:, None, None] * H1[None, :, :] + np.exp(-2.0 * u2_flat)[:, None, None] * H2[None, :, :]
+        cov_grid = np.linalg.inv(prec_grid)
+        sub_grid = cov_grid[:, idx, :][:, :, idx]
+        signs, logdets = np.linalg.slogdet(sub_grid)
+        valid = (signs > 0) & (cov_grid[:, 4, 4] > 0.0)
+        if not np.any(valid):
+            continue
+
+        sigma_f_grid = np.sqrt(np.maximum(cov_grid[:, 4, 4], 1e-300))
+        lfb_grid = log_flux_box_exact(m_f_f, sigma_f_grid, ln_f_floor)
+        log_g = (
+            base_const
+            + 0.5 * logdets
+            - n1 * u1_flat
+            - n2 * u2_flat
+            - 0.5 * c1 * (np.exp(-2.0 * u1_flat) - 1.0)
+            - 0.5 * c2 * (np.exp(-2.0 * u2_flat) - 1.0)
+            + lfb_grid
+        )
+        log_g = np.where(valid, log_g, -np.inf)
+        gmax = float(np.max(log_g))
+        integral = float(np.sum(ww * np.exp(log_g - gmax)))
+        terms.append(gmax + math.log(integral))
+
+    if not terms:
+        return -np.inf
+    m = max(terms)
+    return float(m + math.log(sum(math.exp(t - m) for t in terms)))

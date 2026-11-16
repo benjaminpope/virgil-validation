@@ -11,6 +11,7 @@ without calling ``virgil``'s forward visibility models.
 from __future__ import annotations
 
 import gc
+import hashlib
 import json
 import math
 import shutil
@@ -19,7 +20,7 @@ import jax
 import numpy as np
 import pytest
 from astropy.io import fits
-from scipy import special
+from scipy import special, stats
 
 from crosscheck import (
     array as carray,
@@ -133,29 +134,35 @@ def _write_moving_binary_night(path, mjd_center: float, orbit_tuple, flux: float
 
 
 # ---------------------------------------------------------------------------
-# 1. Pipeline containers: Check, Stage, SkyImage
+# 1. Pipeline containers: Check and Stage serialization/execution plumbing
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.validates(
     "virgil.pipeline.Check",
     "virgil.pipeline.Stage",
-    "virgil.pipeline.SkyImage",
-    roots=["mathematics"],
+    roots=["self-consistency"],
     headline="dict_roundtrip_err",
 )
-def test_pipeline_check_stage_and_skyimage_containers():
-    """Check round-trips through JSON dicts, Stage holds outputs, and SkyImage preserves pixel flux."""
-    chk = vp.Check(
-        name="chi2_companion",
-        status="warn",
-        value=2.75,
-        threshold=2.0,
-        message="Reduced chi-squared 2.75 exceeds 2.0.",
-    )
-    rebuilt = vp.Check.from_dict(json.loads(json.dumps(chk.to_dict())))
-    assert rebuilt == chk
-    dict_roundtrip_err = abs(float(rebuilt.value) - 2.75)
+def test_pipeline_check_and_stage_containers():
+    """Check round-trips through JSON dicts across statuses and Stage executes its callable contract."""
+    roundtrip_errs = []
+    for name, status, val, thr in (
+        ("chi2_companion", "pass", 1.04, 2.0),
+        ("chi2_companion", "warn", 2.75, 2.0),
+        ("ess", "fail", 42.5, 100.0),
+    ):
+        chk = vp.Check(
+            name=name,
+            status=status,
+            value=val,
+            threshold=thr,
+            message=f"{name}={val} vs {thr}.",
+        )
+        rebuilt = vp.Check.from_dict(json.loads(json.dumps(chk.to_dict())))
+        assert rebuilt == chk
+        roundtrip_errs.append(abs(float(rebuilt.value) - val))
+    dict_roundtrip_err = float(max(roundtrip_errs))
 
     called = {}
     stg = vp.Stage(name="overview", run=lambda p: called.setdefault("ran", p), outputs=("summary.json",))
@@ -163,18 +170,12 @@ def test_pipeline_check_stage_and_skyimage_containers():
     assert stg.outputs == ("summary.json",)
     assert stg.run("sentinel") == "sentinel"
 
-    pix = np.zeros((8, 8), dtype=float)
-    pix[2, 5] = 0.75
-    pix[4, 4] = 0.25
-    img = vp.SkyImage(pixels=pix, pixel_scale_mas=0.5, dra=0.0, ddec=0.0, header={"STARFRAC": 0.2})
-    flux_err = abs(float(np.sum(img.pixels)) - 1.0)
-
-    record("dict_roundtrip_err", max(dict_roundtrip_err, flux_err))
-    assert max(dict_roundtrip_err, flux_err) < 1e-15
+    record("dict_roundtrip_err", dict_roundtrip_err)
+    assert dict_roundtrip_err < 1e-15
 
 
 # ---------------------------------------------------------------------------
-# 2. BinaryPipeline + Result + load + ConfigMismatchError + quality-check control
+# 2. BinaryPipeline + Result + load + Check + Stage + quality-check control
 # ---------------------------------------------------------------------------
 
 
@@ -182,11 +183,13 @@ def test_pipeline_check_stage_and_skyimage_containers():
     "virgil.pipeline.BinaryPipeline",
     "virgil.pipeline.Result",
     "virgil.pipeline.load",
-    roots=["mathematics"],
+    "virgil.pipeline.Check",
+    "virgil.pipeline.Stage",
+    roots=["mathematics", "standards"],
     headline="sep_err_mas",
 )
 def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
-    """BinaryPipeline recovers synthetic binary astrometry/flux, resumes cleanly, and reloads via load()."""
+    """BinaryPipeline recovers synthetic binary astrometry/flux, caches completed stages on resume, and passes NUTS checks."""
     true_sep = 6.2
     true_pa = 54.0
     true_flux = 0.18
@@ -214,8 +217,8 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
         max_grid=25,
         n_flux=12,
         limit_bins=6,
-        num_warmup=60,
-        num_samples=60,
+        num_warmup=250,
+        num_samples=300,
         num_chains=2,
         seed=1,
         quicklook_execute=False,
@@ -223,13 +226,15 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     pipe_part = vp.BinaryPipeline.from_oifits(oifits_path, output=run_dir, **common_kwargs)
     res_part = pipe_part.run(through="search")
     assert res_part.status == "partial"
+    assert set(res_part.run["stages"]) == {"load", "overview", "search"}
+    started_part = {s: info["started"] for s, info in res_part.run["stages"].items()}
 
-    # Resuming with altered configuration must raise ConfigMismatchError
+    # Resuming with altered configuration must raise ConfigMismatchError (stage config-hash invalidation)
     pipe_bad = vp.BinaryPipeline.from_oifits(oifits_path, output=run_dir, **(common_kwargs | {"sigma": 4.5}))
     with pytest.raises(vp.ConfigMismatchError):
         pipe_bad.run(resume=True)
 
-    # Resuming with identical configuration via from_config completes remaining stages
+    # Resuming with identical configuration via from_config skips completed upstream stages and runs downstream ones
     cfg_path = tmp_path / "binary_cfg.json"
     cfg_path.write_text(
         json.dumps({"data": [str(oifits_path)], "output": str(run_dir), "settings": common_kwargs}),
@@ -237,10 +242,20 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     )
     res_full = vp.BinaryPipeline.from_config(cfg_path).run(resume=True)
     assert res_full.status == "complete"
+    for s_done, ts_done in started_part.items():
+        assert res_full.run["stages"][s_done]["started"] == ts_done
+    assert set(res_full.run["stages"]) >= {"load", "overview", "search", "limits", "fit", "posterior", "quicklook"}
 
     loaded = vp.load(run_dir)
     assert isinstance(loaded, vp.Result)
     assert loaded.status == "complete"
+    assert loaded.run["schema"] == "virgil-pipeline-run-v1"
+    for rel_p, sha_hex in loaded.run["files"].items():
+        assert hashlib.sha256((run_dir / rel_p).read_bytes()).hexdigest() == sha_hex
+    with fits.open(oifits_path) as h_in, fits.open(run_dir / "data" / "processed.oifits") as h_proc:
+        assert np.allclose(h_in["OI_VIS2"].data["VIS2DATA"], h_proc["OI_VIS2"].data["VIS2DATA"], atol=1e-12)
+        assert np.allclose(h_in["OI_T3"].data["T3PHI"], h_proc["OI_T3"].data["T3PHI"], atol=1e-12)
+
     assert isinstance(loaded.data(), OIData)
     assert isinstance(loaded.model(), BinaryModelAngular)
     assert len(loaded.checks) >= 1 and all(isinstance(c, vp.Check) for c in loaded.checks)
@@ -249,6 +264,7 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     assert "axes" in loaded.grid()
     samples = loaded.samples()
     assert len(samples) > 0
+    assert np.asarray(samples["flux"]).size == 600
     assert len(loaded.sample_stats()) > 0
     assert loaded.fit_result() is not None
 
@@ -260,6 +276,29 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     flux_rel_err = abs(float(comp["flux"]) - true_flux) / true_flux
     contrast_rel_err = abs(float(comp["contrast"]) - (1.0 / true_flux)) / (1.0 / true_flux)
     dmag_err = abs(float(comp["delta_mag"]) - (-2.5 * math.log10(true_flux)))
+
+    # Independent Check value verification: correlated reduced chi2 and global Monte Carlo significance floor
+    d_raw = ours_chi2.load(oifits_path)
+    best_vals = loaded.model_values()
+    sep_fit, pa_fit, flux_fit = float(best_vals["sep"]), float(best_vals["pa"]), float(best_vals["flux"])
+    dra_fit = sep_fit * math.sin(math.radians(pa_fit))
+    ddec_fit = sep_fit * math.cos(math.radians(pa_fit))
+    ref_chi2 = ours_chi2.chi2(
+        d_raw,
+        lambda u, v, w: (sky.vis_point(u, v, w) + flux_fit * sky.vis_point(u, v, w, dra_fit, ddec_fit)) / (1.0 + flux_fit),
+        correlated=True,
+        sine=True,
+    )
+    ref_chi2_red = float(ref_chi2) / float(loaded.summary["chi2"]["n_independent"])
+    c_chi2 = next(c for c in loaded.checks if c.name == "chi2")
+    c_det = next(c for c in loaded.checks if c.name == "detection")
+    det_val = float(c_det.value[-1]) if isinstance(c_det.value, (list, tuple)) else float(c_det.value)
+    check_chi2_err = abs(float(c_chi2.value) - ref_chi2_red)
+    check_det_err = max(
+        abs(det_val - float(stats.norm.isf(1.0 / (common_kwargs["n_null"] + 1)))),
+        abs(float(loaded.summary["search"]["global_nsigma"]) - float(stats.norm.isf(1.0 / (common_kwargs["n_null"] + 1)))),
+    )
+
     by_name = {c.name: c.status for c in loaded.checks}
 
     record("sep_err_mas", sep_err_mas)
@@ -267,6 +306,7 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     record("flux_rel_err", flux_rel_err)
     record("contrast_rel_err", contrast_rel_err)
     record("dmag_err", dmag_err)
+    record("check_chi2_err", check_chi2_err)
     assert sep_err_mas < 0.15
     assert pa_diff < 2.0
     assert dra_err < 0.15
@@ -274,8 +314,15 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     assert flux_rel_err < 0.05
     assert contrast_rel_err < 0.05
     assert dmag_err < 0.06
+    assert check_chi2_err < 5e-3
+    assert check_det_err < 1e-5
     assert by_name["detection"] == "pass"
     assert by_name["chi2"] == "pass"
+    for k in ("r_hat", "ess", "divergences", "prior_bound"):
+        assert by_name[k] != "fail"
+    assert loaded.summary["worst_check"] != "fail"
+    jax.clear_caches()
+    gc.collect()
 
 
 @pytest.mark.validates("virgil.pipeline.BinaryPipeline", roots=["mathematics"], kind="control")
@@ -351,9 +398,10 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
         output=run_dir,
         n_scan=250,
         max_lobes=3,
-        num_warmup=60,
-        num_samples=60,
+        num_warmup=250,
+        num_samples=300,
         num_chains=2,
+        seed=3,
         quicklook_execute=False,
     ).run()
     loaded = vp.load(run_dir)
@@ -361,16 +409,31 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
     diam_err_mas = abs(diam_fit - true_diam)
     by_name = {c.name: c.status for c in loaded.checks}
 
-    record("diam_err_mas", diam_err_mas)
-    assert diam_err_mas < 0.12
     assert isinstance(loaded.model("uniform"), UniformDisk)
     assert isinstance(loaded.model("limb_darkened"), QuadraticLimbDarkenedDisk)
     vals_ud = loaded.model_values("uniform")
     vals_ld = loaded.model_values("limb_darkened")
+    ld_diam_err_mas = abs(float(vals_ld["diam"]) - true_diam)
+    q1 = float(vals_ld["q1"])
+    q2 = float(vals_ld["q2"])
+    # Kipping (2013) triangular quadratic limb-darkening coefficients u1, u2
+    u1 = 2.0 * math.sqrt(max(q1, 0.0)) * q2
+    u2 = math.sqrt(max(q1, 0.0)) * (1.0 - 2.0 * q2)
+
+    record("diam_err_mas", diam_err_mas)
+    record("ld_diam_err_mas", ld_diam_err_mas)
+    assert diam_err_mas < 0.12
     assert abs(float(vals_ud["diam"]) - true_diam) < 0.12
-    assert "diam" in vals_ld
+    assert ld_diam_err_mas < 0.18
+    assert 0.0 <= q1 <= 1.0 and 0.0 <= q2 <= 1.0
+    assert 0.0 <= u1 <= 1.0 and 0.0 <= u1 + u2 <= 1.0
     assert by_name["chi2_uniform"] == "pass"
     assert by_name["chi2_limb_darkened"] == "pass"
+    for k in ("r_hat", "ess", "divergences", "prior_bound"):
+        assert by_name[k] != "fail"
+    assert loaded.summary["worst_check"] != "fail"
+    jax.clear_caches()
+    gc.collect()
 
 
 @pytest.mark.validates("virgil.pipeline.StarPipeline", roots=["mathematics"], kind="control")
@@ -545,11 +608,12 @@ def test_disk_pipeline_corrupted_errors_check_control(tmp_path):
 
 @pytest.mark.validates(
     "virgil.pipeline.ImagingPipeline",
-    roots=["mathematics"],
+    "virgil.pipeline.SkyImage",
+    roots=["mathematics", "standards"],
     headline="centroid_err_mas",
 )
 def test_imaging_pipeline_staged_members_and_skyimage_recovery(tmp_path):
-    """ImagingPipeline reconstructs a non-diagonal off-axis source at its true world-coordinate centroid."""
+    """ImagingPipeline reconstructs an off-axis source at its true world-coordinate centroid with standard FITS WCS."""
     dra_comp, ddec_comp = 4.2, 1.5
     img_oifits = tmp_path / "img_scene.fits"
     simulate.observe(
@@ -604,18 +668,50 @@ def test_imaging_pipeline_staged_members_and_skyimage_recovery(tmp_path):
     assert w_tot > 0.0
     dra_cent = float(np.sum(w_pix * dra_cols[None, :]) / w_tot)
     ddec_cent = float(np.sum(w_pix * ddec_rows[:, None]) / w_tot)
+
+    # Verify FITS WCS standard header and bottom-up row orientation on images/mean.fits
+    with fits.open(run_dir / "images" / "mean.fits") as hdul:
+        fits_data = np.asarray(hdul[0].data, dtype=float)
+        hdr = hdul[0].header
+    assert hdr["CTYPE1"] == "RA---SIN" and hdr["CTYPE2"] == "DEC--SIN"
+    assert hdr["CUNIT1"] == "deg" and hdr["CUNIT2"] == "deg"
+    assert 0.0 < float(mean_img.header["STARFRAC"]) < 1.0
+    deg_per_pix = float(mean_img.pixel_scale_mas) / 3.6e6
+    fits_reload_err = float(np.max(np.abs(fits_data[::-1] - np.asarray(mean_img.pixels, dtype=float))))
+    wcs_scale_err_mas = 3.6e6 * max(
+        abs(float(hdr["CDELT1"]) - (-deg_per_pix)),
+        abs(float(hdr["CDELT2"]) - (+deg_per_pix)),
+    )
+    assert abs(float(hdr["CRPIX1"]) - 0.5 * (n_col + 1)) < 1e-12
+    assert abs(float(hdr["CRPIX2"]) - 0.5 * (n_row + 1)) < 1e-12
+    # World coordinates directly from 1-indexed FITS WCS (CDELT1 < 0 maps col < CRPIX1 to East +dRA; CDELT2 > 0 maps North +dDec)
+    fits_dra_cols = float(hdr["CRVAL1"]) * 3.6e6 + (np.arange(1, n_col + 1) - float(hdr["CRPIX1"])) * float(hdr["CDELT1"]) * 3.6e6
+    fits_ddec_rows = float(hdr["CRVAL2"]) * 3.6e6 + (np.arange(1, n_row + 1) - float(hdr["CRPIX2"])) * float(hdr["CDELT2"]) * 3.6e6
+    w_fits = np.maximum(fits_data, 0.0)
+    fits_dra_cent = float(np.sum(w_fits * fits_dra_cols[None, :]) / np.sum(w_fits))
+    fits_ddec_cent = float(np.sum(w_fits * fits_ddec_rows[:, None]) / np.sum(w_fits))
+    fits_wcs_err_mas = max(
+        wcs_scale_err_mas,
+        math.hypot(fits_dra_cent - dra_cent, fits_ddec_cent - ddec_cent),
+    )
+
     centroid_err_mas = math.hypot(dra_cent - dra_comp, ddec_cent - ddec_comp)
     transposed_err_mas = math.hypot(dra_cent - ddec_comp, ddec_cent - dra_comp)
     by_name = {c.name: c.status for c in loaded.checks}
 
     record("centroid_err_mas", centroid_err_mas)
     record("transposed_err_mas", transposed_err_mas)
+    record("fits_wcs_err_mas", fits_wcs_err_mas)
+    assert fits_reload_err < 1e-14
+    assert fits_wcs_err_mas < 1e-9
     assert centroid_err_mas < 0.9
     assert transposed_err_mas > 2.5
     assert by_name["chi2_reduced"] == "pass"
     assert by_name["error_scale"] == "pass"
     assert by_name["star"] == "pass"
     assert by_name["orientation"] == "pass"
+    jax.clear_caches()
+    gc.collect()
 
 
 @pytest.mark.validates("virgil.pipeline.ImagingPipeline", roots=["mathematics"], kind="control")
@@ -689,10 +785,10 @@ def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
         max_steps=80,
         n_is=200,
         max_modes=1,
-        num_warmup=40,
-        num_samples=40,
+        num_warmup=250,
+        num_samples=300,
         num_chains=2,
-        posterior_max_tree_depth=5,
+        posterior_max_tree_depth=6,
         seed=2,
         quicklook_execute=False,
     ).run()
@@ -706,11 +802,12 @@ def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
     assert orb_sum["verdict"] == "orbit"
     assert orb_sum["source"] == "posterior"
     assert orb_sum["n"] == 2
+    assert loaded.summary["posterior"]["converged"] is True
     orb_el = orb_sum["elements"]
 
     samples = loaded.samples()
     assert set(samples) >= {"period", "dt_peri", "ecc", "inc", "omega", "Omega", "a_mas", "flux"}
-    assert np.asarray(samples["period"]).size == 80
+    assert np.asarray(samples["period"]).size == 600
 
     p_med = float(orb_el["period"]["median"])
     dtp_med = float(orb_el["dt_peri"]["median"])
@@ -752,6 +849,97 @@ def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
     assert max_sky_pos_err_mas < 0.15
     assert by_name["no_orbit"] == "pass"
     assert by_name["chi2"] == "pass"
+    for k in ("r_hat", "ess", "divergences", "prior_bound"):
+        assert by_name[k] != "fail"
+    assert loaded.summary["worst_check"] != "fail"
+    jax.clear_caches()
+    gc.collect()
+
+
+@pytest.mark.validates(
+    "virgil.pipeline.BinaryPipeline",
+    "virgil.pipeline.OrbitPipeline",
+    "virgil.pipeline.Check",
+    roots=["mathematics"],
+    kind="control",
+)
+def test_pipeline_short_nuts_chain_trips_ess_fail_control(tmp_path):
+    """Short 30-draw NUTS chains on clean binary/orbit data pass chi2/detection yet fail ess and converged."""
+    bin_path = tmp_path / "short_bin.fits"
+    simulate.observe(
+        bin_path,
+        lambda u, v, w: (sky.vis_point(u, v, w) + 0.20 * sky.vis_point(u, v, w, 5.0, 3.6)) / 1.20,
+        UTS4,
+        hour_angles_h=np.linspace(-2.5, 2.5, 5),
+        wavelengths=WAVELENGTHS,
+        sigma_v2=0.008,
+        sigma_cp_deg=0.5,
+        rng=np.random.default_rng(748),
+        phase_noise="baseline",
+    )
+    res_bin = vp.BinaryPipeline.from_oifits(
+        bin_path,
+        output=tmp_path / "run_short_bin",
+        detection_sigma=2.0,
+        n_null=50,
+        max_grid=25,
+        n_flux=12,
+        limit_bins=5,
+        num_warmup=15,
+        num_samples=15,
+        num_chains=2,
+        seed=4,
+        quicklook_execute=False,
+    ).run()
+    bin_by_name = {c.name: c.status for c in res_bin.checks}
+    bin_ess_chk = next(c for c in res_bin.checks if c.name == "ess")
+
+    orbit = (12.0, 1.2, 0.20, 44.0, 38.0, 110.0, 6.0)
+    mjds = [T0 + 0.0, T0 + 2.6, T0 + 6.1, T0 + 11.4, T0 + 24.0]
+    orb_paths = [
+        _write_moving_binary_night(tmp_path / f"short_orb_{k}.fits", mjd_k, orbit, 0.25, seed=760 + k)
+        for k, mjd_k in enumerate(mjds)
+    ]
+    res_orb = vp.OrbitPipeline.from_oifits(
+        orb_paths,
+        output=tmp_path / "run_short_orb",
+        max_grid=41,
+        n_peaks=2,
+        period_range=(9.0, 16.0),
+        a_range=(3.0, 10.0),
+        flux_range=(0.08, 0.5),
+        ecc_max=0.45,
+        primary_diam=None,
+        vis_amp=False,
+        n_candidates=16,
+        n_refine=1,
+        max_steps=50,
+        n_is=100,
+        max_modes=1,
+        num_warmup=15,
+        num_samples=15,
+        num_chains=2,
+        posterior_max_tree_depth=4,
+        seed=4,
+        quicklook_execute=False,
+    ).run()
+    orb_by_name = {c.name: c.status for c in res_orb.checks}
+    orb_ess_chk = next(c for c in res_orb.checks if c.name == "ess")
+
+    short_chain_ess_max = max(float(bin_ess_chk.value), float(orb_ess_chk.value))
+    record("short_chain_ess_max", short_chain_ess_max)
+    assert bin_by_name["detection"] == "pass"
+    assert bin_by_name["chi2"] == "pass"
+    assert bin_by_name["ess"] == "fail"
+    assert res_bin.summary["worst_check"] == "fail"
+    assert orb_by_name["no_orbit"] == "pass"
+    assert orb_by_name["chi2"] == "pass"
+    assert orb_by_name["ess"] == "fail"
+    assert res_orb.summary["posterior"]["converged"] is False
+    assert res_orb.summary["worst_check"] == "fail"
+    assert short_chain_ess_max < 100.0
+    jax.clear_caches()
+    gc.collect()
 
 
 @pytest.mark.validates("virgil.pipeline.OrbitPipeline", roots=["mathematics"], kind="control")

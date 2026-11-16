@@ -288,7 +288,7 @@ nodes:
     doc: orbits/epochs.md
   virgil.aliases.fit_orbit_aliases:
     layer: orbits
-    source: [src/virgil/aliases.py]
+    source: [src/virgil/aliases.py, src/virgil/tempering.py, src/virgil/_geometry.py, src/virgil/_gauss_newton.py]
     depends: [virgil.fitting.fit, virgil.aliases.AliasResult, virgil.aliases.alias_bands,
               virgil.aliases.period_window, virgil.aliases.period_cut, virgil.aliases.position_profile,
               virgil.arcs.night_motion, virgil.arcs.unwrap_cycles, virgil.arcs.arc_profile,
@@ -382,7 +382,9 @@ nodes:
   virgil.arcs.night_motion:
     layer: orbits
     source: [src/virgil/arcs.py, src/virgil/epochs.py, src/virgil/_gauss_newton.py]
-    depends: [virgil.arcs.NightMotion, virgil.epochs.Epochs, virgil.epochs.marginal_loglike, virgil.likelihood.whitened_residuals]
+    depends: [virgil.arcs.NightMotion, virgil.epochs.Epochs, virgil.epochs.EpochPositions,
+              virgil.epochs.marginal_loglike, virgil.likelihood.whitened_residuals,
+              virgil.models.BinaryModelCartesian, virgil.models.System, virgil.models.UniformDisk]
     doc: orbits/epochs.md
   virgil.night_summaries.NightPeak:
     layer: orbits
@@ -400,9 +402,9 @@ nodes:
     doc: orbits/epochs.md
   virgil.night_summaries.night_summaries:
     layer: orbits
-    source: [src/virgil/night_summaries.py, src/virgil/epochs.py, src/virgil/_gauss_newton.py]
+    source: [src/virgil/night_summaries.py, src/virgil/epochs.py, src/virgil/aliases.py, src/virgil/_gauss_newton.py]
     depends: [virgil.night_summaries.NightSummary, virgil.epochs.Epochs, virgil.epochs.EpochPositions,
-              virgil.epochs.marginal_loglike, virgil.likelihood.whitened_residuals]
+              virgil.epochs.marginal_loglike, virgil.likelihood.whitened_residuals, virgil.models.OrbitalBinary]
     doc: orbits/epochs.md
   virgil.orbit_search.SharedFlux:
     layer: orbits
@@ -477,18 +479,22 @@ nodes:
     doc: orbits/epochs.md
   virgil.orbit_cells.search_plan:
     layer: orbits
-    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py, src/virgil/smc.py]
-    depends: [virgil.orbit_cells.Cell]
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
+             src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
+    depends: [virgil.orbit_cells.Cell, virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
     doc: orbits/epochs.md
   virgil.orbit_cells.search_cell:
     layer: orbits
-    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py, src/virgil/smc.py]
-    depends: [virgil.orbit_cells.search_plan]
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
+             src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
+    depends: [virgil.orbit_cells.search_plan, virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
     doc: orbits/epochs.md
   virgil.orbit_cells.position_leg:
     layer: orbits
-    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py, src/virgil/smc.py]
-    depends: [virgil.orbit_cells.CellFit, virgil.orbit_cells.search_plan, virgil.orbit_cells.search_cell]
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
+             src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
+    depends: [virgil.orbit_cells.CellFit, virgil.orbit_cells.search_plan, virgil.orbit_cells.search_cell,
+              virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
     doc: orbits/epochs.md
   virgil.orbit_cells.fit_jitter:
     layer: orbits
@@ -526,10 +532,12 @@ nodes:
     doc: inference/pipelines.md
   virgil.pipeline.BinaryPipeline:
     layer: inference
-    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/binary.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
-    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.models.BinaryModelAngular,
-              virgil.models.BinaryModelCartesian, virgil.detection.detection_statistics,
-              virgil.detection.gaussian_null, virgil.detection.local_nsigma,
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/binary.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/_geometry.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.models.BinaryModelAngular, virgil.models.BinaryModelCartesian,
+              virgil.detection.detection_statistics, virgil.detection.gaussian_null,
+              virgil.detection.local_nsigma, virgil.detection.injection_recovery,
               virgil.grid_fit.laplace_flux_uncertainty_grid, virgil.limits.radial_profile,
               virgil.limits.flux_to_contrast, virgil.limits.flux_to_delta_mag,
               virgil.limits.ruffio_upperlimit, virgil.limits.absil_limits, virgil.fitting.fit,
@@ -537,33 +545,39 @@ nodes:
     doc: inference/pipelines.md
   virgil.pipeline.StarPipeline:
     layer: inference
-    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/star.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
-    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.models.UniformDisk,
-              virgil.models.QuadraticLimbDarkenedDisk, virgil.grid_fit.likelihood_grid,
-              virgil.fitting.fit, virgil.likelihood.numpyro_model]
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/star.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.models.UniformDisk, virgil.models.QuadraticLimbDarkenedDisk,
+              virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.likelihood.numpyro_model]
     doc: inference/pipelines.md
   virgil.pipeline.DiskPipeline:
     layer: inference
-    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/disk.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
-    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.models.System,
-              virgil.models.PointSource, virgil.models.UniformDisk, virgil.models.MultipoleDisk,
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/disk.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/imaging.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.imaging.nyquist_pixel_scale, virgil.models.System, virgil.models.PointSource,
+              virgil.models.UniformDisk, virgil.models.MultipoleDisk, virgil.models.MultipoleKernel,
               virgil.models.GaussianRing, virgil.models.RadialGP, virgil.models.Harmonics,
+              virgil.models.Image, virgil.priors.IsotropicInclination, virgil.angles.AngleVector,
               virgil.spectra.BlackBody, virgil.spectra.PowerLaw, virgil.grid_fit.likelihood_grid,
               virgil.inference.laplace_cov, virgil.fitting.fit, virgil.likelihood.numpyro_model]
     doc: inference/pipelines.md
   virgil.pipeline.ImagingPipeline:
     layer: imaging
     source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/image.py, src/virgil/pipeline/_common.py,
-             src/virgil/pipeline/_core.py, src/virgil/ensemble.py, src/virgil/imaging.py]
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/ensemble.py, src/virgil/imaging.py]
     depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.pipeline.SkyImage,
-             virgil.models.Image, virgil.ensemble.draw_groups, virgil.imaging.beam,
-             virgil.fitting.fit, virgil.likelihood.whitened_residuals]
+              virgil.oifits.write_oifits, virgil.models.PointSource, virgil.models.System,
+              virgil.models.Image, virgil.ensemble.draw_groups, virgil.imaging.beam,
+              virgil.fitting.fit, virgil.likelihood.whitened_residuals]
     doc: inference/pipelines.md
   virgil.pipeline.OrbitPipeline:
     layer: orbits
-    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/orbit.py, src/virgil/pipeline/_common.py, src/virgil/pipeline/_core.py]
-    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.epochs.Epochs,
-              virgil.epochs.epoch_positions, virgil.aliases.fit_orbit_aliases,
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/orbit.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/_geometry.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.epochs.Epochs, virgil.epochs.epoch_positions, virgil.aliases.fit_orbit_aliases,
               virgil.fitting.fit, virgil.likelihood.numpyro_model]
     doc: inference/pipelines.md
   virgil.orbits.AxialVonMises: {layer: orbits, source: [src/virgil/orbits.py]}
