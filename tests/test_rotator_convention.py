@@ -27,14 +27,17 @@ propagation, and oimodeler (ledger P13 and P14).
    * Propagating an inclined ELR11 surface cloud through ``dLux``'s 7-hole
      non-redundant mask reproduces ``GravityDarkenedStar`` across all 21
      baselines and 35 closure phases.
-3. Two independent upstream defects in ``oimodeler.oimFastRotator`` (ledger
+3. Two differences from what we expected in ``oimodeler.oimFastRotator`` (ledger
    ``P13`` and ``P14``, each pinned by its own strict xfail at ``dim=64``):
-   * ``P13``: ``fastRotator`` applies ``np.rot90(im)`` before ``oimComponentImage``
-     maps row 0 to South, inverting the visible pole's position angle by 180 deg.
-   * ``P14``: ``fastRotator`` sets ``a = (2/3) * rot**0.4`` and ``K = sin(1/3) * pi``,
-     giving an ``O(omega^0.4)`` equator-on ``V^2`` anisotropy across slow
-     rotation (``incl = 90 deg``, invariant under ``P13``'s 180 deg flip and
-     sub-pixel shift) instead of the physical ``O(omega^2)`` centrifugal scaling.
+   * ``P13``: the visible pole's position angle lands about 180 deg from the
+     IAU convention we expected; ``fastRotator`` applies ``np.rot90(im)`` before
+     ``oimComponentImage`` maps row 0 to South, which may be the source.
+   * ``P14``: the equator-on ``V^2`` anisotropy across slow rotation
+     (``incl = 90 deg``, invariant under ``P13``'s 180 deg flip and sub-pixel
+     shift) has log-log slope ~0.45, not the ``O(omega^2)`` slope 2 of
+     centrifugal scaling; ``fastRotator`` sets ``a = (2/3) * rot**0.4`` and
+     ``K = sin(1/3) * pi``, which may be the cause. Grid convergence is not
+     checked.
 """
 
 import itertools
@@ -279,15 +282,16 @@ def test_gravity_darkened_star_wrong_pa_fails_against_dlux(dlux_rotator_observab
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="P13: oimodeler oimFastRotator flips pole PA by 180 deg via np.rot90",
+    reason="P13: oimodeler oimFastRotator places the pole PA ~180 deg from the IAU convention we expected",
 )
 @pytest.mark.validates("oimodeler", roots=["mathematics"], kind="upstream")
 def test_p13_oimodeler_fast_rotator_pole_pa_inversion():
     """oimodeler's oimFastRotator(dim=64, pa=33) places the bright visible pole
-    at PA + 180 deg = 213 deg (SW instead of NE) because fastRotator calls
-    np.rot90(im) before oimComponentImage maps row 0 to South, strictly
-    negating every translation-invariant first-lobe closure phase relative to
-    crosscheck.elr.cloud regardless of even-grid half-pixel centring or P14."""
+    about 180 deg from the IAU convention we expected (SW instead of NE),
+    which negates every translation-invariant first-lobe closure phase relative
+    to crosscheck.elr.cloud regardless of even-grid half-pixel centring or P14.
+    fastRotator calls np.rot90(im) before oimComponentImage maps row 0 to
+    South, which may be the source; this test does not isolate it."""
     oim = pytest.importorskip("oimodeler")
     from oimodeler.oimCustomComponents import oimFastRotator
 
@@ -334,7 +338,7 @@ def test_p13_oimodeler_fast_rotator_pole_pa_inversion():
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="P14: oimodeler oimFastRotator uses a=(2/3)*rot**0.4 and K=sin(1/3)*pi instead of O(omega^2) Roche scaling",
+    reason="P14: oimodeler oimFastRotator equator-on V^2 anisotropy does not follow O(omega^2) at dim=64 (log-log slope ~0.45)",
 )
 @pytest.mark.validates("oimodeler", roots=["mathematics"], kind="upstream")
 def test_p14_oimodeler_fast_rotator_gravity_darkening_scaling():
@@ -344,8 +348,9 @@ def test_p14_oimodeler_fast_rotator_gravity_darkening_scaling():
     rotation and to sub-pixel translation, vanish identically for any non-rotating
     star, and scale as O(omega^2) (log-log slope 2.0 across rot = 0.01, 0.02, 0.04)
     under physical Roche/von Zeipel/ELR11 centrifugal distortion and gravity
-    darkening; oimFastRotator's a = (2/3) * rot**0.4 and K = sin(1/3) * pi give
-    log-log slope ~ 0.45."""
+    darkening; oimFastRotator at dim = 64 gives log-log slope ~ 0.45 (its
+    a = (2/3) * rot**0.4 and K = sin(1/3) * pi may be the cause). Grid
+    convergence is not checked, so a pixelization floor is not excluded."""
     oim = pytest.importorskip("oimodeler")
     from oimodeler.oimCustomComponents import oimFastRotator
 

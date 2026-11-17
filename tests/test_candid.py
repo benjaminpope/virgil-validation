@@ -309,7 +309,7 @@ def test_candid_public_limits_are_within_their_interpolation(files):
     assert np.max(np.abs(rel)) < 0.03
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P4: CANDID's Absil limits are ~1 % low (bracketing and linear interpolation)")
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="P4: CANDID's Absil limits sit ~1 % below the exact solution of its own criterion (interpolation error)")
 @pytest.mark.validates("candid", roots=["mathematics"], kind="upstream")
 def test_p4_candid_public_limits_solve_its_criterion(files):
     rel = _public_vs_exact(files[False, True], True)

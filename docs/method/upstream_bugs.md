@@ -1,22 +1,22 @@
 # Upstream bug reports (MWEs)
 
-Cross-checking against external interferometry, imaging, and orbit-fitting packages surfaced thirteen upstream defects or documentation-versus-code mismatches (`P1`–`P11` and `P13`–`P14`) alongside one documented numerical-precision note (`P12`). All fourteen entries are recorded in `trust/ledger.yml` and summarized under [Findings](findings.md#problems-found-in-other-packages).
+Cross-checking against external interferometry, imaging, and orbit-fitting packages surfaced thirteen upstream entries (`P1`–`P11` and `P13`–`P14`): defects, documentation-versus-code mismatches, and differences from a criterion or convention we expected (`P4`, `P13`, `P14`), alongside one documented numerical-precision note (`P12`). All fourteen entries are recorded in `trust/ledger.yml` and summarized under [Findings](findings.md#problems-found-in-other-packages).
 
 !!! important "Upstream reporting policy"
-    Automated agents in this repository **never** open issues or pull requests on external repositories. Every runtime or numerical upstream defect (`P1`–`P10` and `P13`–`P14`) remains pinned locally by a `@pytest.mark.xfail(strict=True)` test (`kind="upstream"`) so that continuous integration alerts us immediately if a version upgrade changes or resolves the behaviour, whereas pure docstring mismatches whose implementation is already exact (`P11`) are pinned numerically by a passing `kind="check"` parity test alongside the standalone inspection snippet below. Filing issues upstream is reserved for human review, using the minimal working examples on this page.
+    Automated agents in this repository **never** open issues or pull requests on external repositories. Every runtime or numerical upstream defect (`P1`–`P3` and `P5`–`P10`) and every difference from an expected criterion or convention (`P4`, `P13`, `P14`) remains pinned locally by a `@pytest.mark.xfail(strict=True)` test (`kind="upstream"`) so that continuous integration alerts us immediately if a version upgrade changes or resolves the behaviour, whereas pure docstring mismatches whose implementation is already exact (`P11`) are pinned numerically by a passing `kind="check"` parity test alongside the standalone inspection snippet below. Filing issues upstream is reserved for human review, using the minimal working examples on this page.
 
 Every Python snippet on this page is completely self-contained: it imports only Python's standard library, `numpy`, `scipy`, `astropy`, `torch`, and the target package's public interface, with zero imports from this validation suite or the code under test and zero copied upstream source.
 
 ## Summary of upstream entries (`P1`–`P14`)
 
-Entries `P1`–`P11` and `P13`–`P14` are upstream defects or documentation mismatches (`P5` is already filed at [`kammerje/fouriever#26`](https://github.com/kammerje/fouriever/issues/26); the remaining twelve are `to-raise`). Entry `P12` (`documented`) is a numerical-precision note included at the bottom of the page for completeness.
+Entries `P1`–`P3`, `P5`–`P11` are upstream defects or documentation mismatches, and `P4`, `P13` and `P14` record differences from a criterion or convention we expected, which the package's authors may have intended (`P5` is already filed at [`kammerje/fouriever#26`](https://github.com/kammerje/fouriever/issues/26); the remaining twelve are `to-raise`). Entry `P12` (`documented`) is a numerical-precision note included at the bottom of the page for completeness.
 
 | ID | Package & version | One-line summary | Status | Pinning test(s) |
 | --- | --- | --- | --- | --- |
 | [P1](#p1) | `pmoired` `26.10.1` | `OI.setupFit(auto=True)` sets `'wl kernel': 0.0` on few-channel OIFITS files, producing silent `NaN` model observables | `to-raise` | `tests/test_pmoired_problems.py::test_p1_default_setup_gives_finite_models` |
 | [P2](#p2) | `pmoired` `26.10.1` | Default radial ring sampling is coarser ($\sim 4\times$ larger $V^2$ error) than the documented `Nr = 100` | `to-raise` | `tests/test_pmoired_problems.py::test_p2_default_nr_is_100` |
 | [P3](#p3) | `pmoired` `26.10.1` | Ring visibilities hit a $\sim 10^{-4}$ precision floor once a baseline exceeds 30 `(epoch × channel)` samples | `to-raise` | `tests/test_pmoired_problems.py::test_p3_rings_exact_up_to_30_samples`, `::test_p3_rings_exact_beyond_30_samples` |
-| [P4](#p4) | `candid` `1.1.0` (`c255e90`) | `detectionLimit` (Absil method) underestimates $3\sigma$ flux limits by up to $1.3\%$ via $1.4\times$ bracketing and linear interpolation | `to-raise` | `tests/test_candid.py::test_candid_public_limits_are_within_their_interpolation`, `::test_p4_candid_public_limits_solve_its_criterion` |
+| [P4](#p4) | `candid` `1.1.0` (`c255e90`) | `detectionLimit` (Absil method) limits lie up to $1.3\%$ below the exact solution of CANDID's own criterion (interpolation error) | `to-raise` | `tests/test_candid.py::test_candid_public_limits_are_within_their_interpolation`, `::test_p4_candid_public_limits_solve_its_criterion` |
 | [P5](#p5) | `fouriever` `0.4.3` | `util.chi2_bin` does not wrap closure-phase residuals modulo $360^\circ$, inflating $\chi^2$ across the $\pm 180^\circ$ branch cut | `raised` ([`fouriever#26`](https://github.com/kammerje/fouriever/issues/26)) | `tests/test_fouriever.py::test_p5_residual_wraps_across_the_phase_cut` |
 | [P6](#p6) | `ehtim` `1.3.2` | `Obsdata.tlist()` and `bllist()` coerce equal-length structured slices into 2-D tuple arrays under NumPy 2, breaking `c_phases()` | `to-raise` | `tests/test_ehtim_reconstruction.py::test_p6_closure_phases_with_equal_time_groups` |
 | [P7](#p7) | `orbitize` `3.4.0` | `System.compute_model` adds the primary's systemic velocity $\gamma$ to companion RVs despite `read_input` documenting companion RVs as barycentric | `to-raise` | `tests/test_orbitize.py::test_radial_velocities_match_orbitize_system`, `::test_p7_companion_rvs_are_barycentric_as_documented` |
@@ -25,8 +25,8 @@ Entries `P1`–`P11` and `P13`–`P14` are upstream defects or documentation mis
 | [P10](#p10) | `vis-r` `0.0.1` (`f534670`) | `r_prof_erf2_power_ggap` swaps its gap depth and gap radius parameter indices relative to its docstring and `r_prof_erf2_power_ggap2` | `to-raise` | `tests/test_polar_disk_vs_codes.py::test_vis_r_single_gap_profile_matches_its_two_gap_form` |
 | [P11](#p11) | `mpol` `0.3.1` | `losses.log_likelihood` docstring writes $+\sum_i w_i$ instead of $+\sum_i \ln w_i$ for the Gaussian log-normalization | `to-raise` | `tests/test_alma_mpol.py::test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol` |
 | [P12](#p12) | `mpol` `0.3.1` | Precision note: default `NuFFT` table interpolation ($6.3 \times 10^{-4}$ relative $L_2$) and `float32` `GaussConvFourier.taper_2D` buffer under `float64` | `documented` | `tests/test_alma_mpol.py::test_mpol_virgil_and_the_exact_dft_agree_on_the_forward_model`, `::test_mpol_with_its_accurate_nufft_agrees_to_1e_5` |
-| [P13](#p13) | `oimodeler` `0.8.1` | `oimFastRotator` flips the visible pole's sky position angle by $180^\circ$ via `np.rot90` | `to-raise` | `tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion` |
-| [P14](#p14) | `oimodeler` `0.8.1` | `oimFastRotator` replaces quadratic centrifugal gravity darkening with an unphysical `rot**0.4` power law | `to-raise` | `tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling` |
+| [P13](#p13) | `oimodeler` `0.8.1` | `oimFastRotator` places the bright pole about $180^\circ$ from the `pa` input, relative to the IAU convention we expected | `to-raise` | `tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion` |
+| [P14](#p14) | `oimodeler` `0.8.1` | `oimFastRotator` equator-on $V^2$ anisotropy does not follow $\mathcal{O}(\omega^2)$ over `rot = 0.01`–`0.04` (log–log slope $0.45$ at `dim = 64`) | `to-raise` | `tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling` |
 
 ---
 
@@ -170,10 +170,10 @@ n_samples=35: max |dV2| at Nr=3000 = 2.47e-05
 * **Upstream repository**: [`https://github.com/amerand/CANDID`](https://github.com/amerand/CANDID) (see [CANDID conventions](candid.md))
 * **Tested environment**: `candid 1.1.0 | 2023/07/20` (commit `c255e908f721a99c8ecdd5576f949a6fe0efee83`), Python `3.12.12`, NumPy `2.5.3`, SciPy `1.18.1`, Astropy `8.0.1`
 
-### P4: `detectionLimit` (Absil method) underestimates $3\sigma$ flux limits via $1.4\times$ bracketing and linear interpolation { #p4 }
+### P4: `detectionLimit` (Absil method) limits lie below the exact solution of CANDID's own criterion { #p4 }
 
 * **Status**: `to-raise`
-* **Mechanism & diagnosis**: Under the [Absil et al. (2011)](https://doi.org/10.1051/0004-6361/201117719) detection-limit criterion – which converts the chi-squared tail probability between the single-star null and a fixed-position binary model into a two-sided Gaussian significance – `candid.Open.detectionLimit(methods=["Absil"])` brackets the $3\sigma$ flux ratio by stepping candidate companion fluxes in multiplicative factors of $1.4$ and linearly interpolating `candid._nSigmas` across the crossing. Because `_nSigmas(f)` is convex in companion flux $f$ (curving upward as $\Delta\chi^2$ grows quadratically with $f$ when $\Delta\chi^2 \ll N$), the linear secant chord lies above the curve and crosses $3\sigma$ at a lower flux than the exact root found by [Brent's method](https://en.wikipedia.org/wiki/Brent%27s_method) (which combines root bracketing, bisection, and inverse quadratic interpolation to machine precision). On 3-telescope multi-epoch observations (7 hour angles across 6 spectral channels, $N = 168$, chosen so closure phases have no 4-telescope closure redundancy), the secant underestimate averages $-0.78\%$ and reaches $-1.16\%$ on the unresolved-star MWE below, and averages $-1.0\%$ (reaching $-1.3\%$, $\sim 0.01\text{ mag}$ optimistic) on the resolved-primary 3-UT test in `tests/test_candid.py`.
+* **Mechanism & diagnosis**: Under the [Absil et al. (2011)](https://doi.org/10.1051/0004-6361/201117719) detection-limit criterion – which converts the chi-squared tail probability between the single-star null and a fixed-position binary model into a two-sided Gaussian significance – `candid.Open.detectionLimit(methods=["Absil"])` returns flux-ratio limits that sit slightly below the exact $3\sigma$ root of CANDID's own `_nSigmas` criterion, found here by [Brent's method](https://en.wikipedia.org/wiki/Brent%27s_method). We read this as an interpolation error rather than an error in CANDID's model: as we understand its algorithm, `detectionLimit` brackets the crossing by stepping candidate companion fluxes in multiplicative factors of $1.4$ and linearly interpolating `_nSigmas` across it, and `_nSigmas(f)` is convex in the companion flux $f$ (the secant chord lies above the curve), so the interpolated crossing falls at a lower flux than the exact root. The MWE below measures only the size of the difference, not this mechanism. On 3-telescope multi-epoch observations (7 hour angles across 6 spectral channels, $N = 168$, chosen so closure phases have no 4-telescope closure redundancy), the limits are on average $0.78\%$ below the exact root and at worst $1.16\%$ below it on the unresolved-star MWE, and on average $1.0\%$ (at worst $1.3\%$, $\sim 0.01\text{ mag}$ optimistic) below it on the resolved-primary 3-UT test in `tests/test_candid.py`.
 * **Pinning tests**: `tests/test_candid.py::test_candid_public_limits_are_within_their_interpolation`, `tests/test_candid.py::test_p4_candid_public_limits_solve_its_criterion`
 
 **Standalone MWE**:
@@ -238,7 +238,7 @@ print(f"ndata={ndata}, n_cells={len(diffs)}: mean rel diff={np.mean(diffs):+.3%}
 ndata=168, n_cells=84: mean rel diff=-0.780%, worst rel diff=-1.160%
 ```
 
-* **Expected behaviour**: Interpolating in $f^2$ or refining the $1.4\times$ bracket with a few root-finding steps makes `o.allf3s["Absil"]` solve CANDID's own `_nSigmas == 3.0` criterion to $< 10^{-3}$ relative across both small and large `ndata`.
+* **Comparison target**: `o.allf3s["Absil"]` solving CANDID's own `_nSigmas == 3.0` criterion to $< 10^{-3}$ relative. Interpolating in $f^2$ or refining the $1.4\times$ bracket with a few root-finding steps would plausibly achieve this; we have not tested either.
 
 ---
 
@@ -501,10 +501,10 @@ dim=1024: max |dv|(ln2) = 8.7512e-03, max |dv|(0.692, 8*fwhm) = 8.1478e-03
 
 * **Expected behaviour**: Refining the image grid `dim` from 256 to 1024 should drive the visibility discrepancy monotonically toward zero rather than stalling near $8 \times 10^{-3}$.
 
-### P13: `oimFastRotator` flips the visible pole's sky position angle by $180^\circ$ via `np.rot90` { #p13 }
+### P13: `oimFastRotator` places the bright pole about $180^\circ$ from the `pa` input, relative to the convention we expected { #p13 }
 
 * **Status**: `to-raise`
-* **Mechanism & diagnosis**: Under the OIFITS and IAU convention ($u$ East, $v$ North, position angle measured North through East), placing the bright visible polar cap at `pa = 33.0` degrees puts the short-baseline photocentre in the North-East quadrant ($\Delta\text{RA} > 0$, $\Delta\text{Dec} > 0$). Inside `oimodeler.oimCustomComponents.fastRotator`, the polar cap for positive inclination is constructed in the upper half of the array and then rotated by `np.rot90(im)` before `oimComponentImage` maps row 0 to South, landing the bright pole in the South-West quadrant near $\text{PA} + 180^\circ$ (`220.9°` on a `dim = 64` grid at $B = 15\text{ m}$). Every short-baseline visibility phase and closure phase consequently carries the opposite sign from the requested IAU position angle.
+* **Mechanism & diagnosis**: We expected `pa` to follow the OIFITS and IAU convention ($u$ East, $v$ North, position angle measured North through East), which for `pa = 33.0` degrees would put the short-baseline photocentre of the bright visible polar cap in the North-East quadrant ($\Delta\text{RA} > 0$, $\Delta\text{Dec} > 0$). For `oimFastRotator` the photocentre instead lands in the South-West quadrant, at `220.9°` on a `dim = 64` grid at $B = 15\text{ m}$, about $180^\circ$ from the input (the extra $\sim 8^\circ$ is not explained here). Reading `oimodeler.oimCustomComponents.fastRotator`, we see that the image is passed through `np.rot90(im)` before `oimComponentImage` maps row 0 to South, which may be the source of the offset; the MWE does not isolate it. We have not checked `oimodeler`'s documentation for the intended `pa` convention, so this may be a convention we have not matched rather than an error. If it is a different convention, short-baseline visibility phases and closure phases carry the opposite sign from those of a model built with the IAU one.
 * **Pinning test**: `tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion`
 
 **Standalone MWE**:
@@ -523,21 +523,21 @@ ccf = oim.oimModel([fr]).getComplexCoherentFlux(
 dra_mas = -np.angle(ccf[0]) / (2 * np.pi * (B / wl) * mas)
 ddec_mas = -np.angle(ccf[1]) / (2 * np.pi * (B / wl) * mas)
 pa_photocentre = np.rad2deg(np.arctan2(dra_mas, ddec_mas)) % 360.0
-print(f"input pa = 33.0 deg -> photocentre PA = {pa_photocentre:.1f} deg (flipped by 180 deg)")
+print(f"input pa = 33.0 deg -> photocentre PA = {pa_photocentre:.1f} deg (expected near 33 deg under the IAU convention)")
 ```
 
 **Observed output**:
 
 ```text
-input pa = 33.0 deg -> photocentre PA = 220.9 deg (flipped by 180 deg)
+input pa = 33.0 deg -> photocentre PA = 220.9 deg (expected near 33 deg under the IAU convention)
 ```
 
-* **Expected behaviour**: For `pa = 33.0` degrees, the photocentre position angle of the hot visible polar cap should lie near `33.0` degrees (North-East) rather than `~213–221` degrees (South-West).
+* **Comparison target**: Under the IAU convention, the photocentre position angle of the hot visible polar cap for `pa = 33.0` degrees lies near `33.0` degrees (North-East); `oimFastRotator` gives `~213–221` degrees (South-West).
 
-### P14: `oimFastRotator` replaces quadratic Roche gravity darkening with an unphysical `rot**0.4` power law { #p14 }
+### P14: `oimFastRotator` equator-on $V^2$ anisotropy does not follow $\mathcal{O}(\omega^2)$ { #p14 }
 
 * **Status**: `to-raise`
-* **Mechanism & diagnosis**: Under Roche equipotential geometry with either [von Zeipel's theorem (1924)](https://doi.org/10.1093/mnras/84.9.665) (emergent radiative flux proportional to local effective surface gravity $g_{\text{eff}}^{\,4\beta}$) or [Espinosa Lara & Rieutord (2011)](https://doi.org/10.1051/0004-6361/201117252) radiative-flux conservation, the centrifugal perturbation to both equatorial radius and polar-to-equatorial brightness scales quadratically as $\mathcal{O}(\omega^2)$ in the slow-rotation limit ($\omega \ll 1$). Consequently, the equator-on (`incl = 90°`, `pa = 0°`) squared-visibility anisotropy $|V^2_{\text{E}} - V^2_{\text{N}}|$ between East–West and North–South baselines must scale with log–log slope $2.0$ as rotation approaches zero. Instead, `fastRotator` hardcodes `a = 2./3 * (rot)**0.4` and `K = np.sin(1./3) * np.pi`, yielding an empirical log–log slope of $0.45$ across `rot = [0.01, 0.02, 0.04]` and over-predicting slow-rotator gravity darkening by more than two orders of magnitude.
+* **Mechanism & diagnosis**: Under Roche equipotential geometry with either [von Zeipel's theorem (1924)](https://doi.org/10.1093/mnras/84.9.665) (emergent radiative flux proportional to local effective surface gravity $g_{\text{eff}}^{\,4\beta}$) or [Espinosa Lara & Rieutord (2011)](https://doi.org/10.1051/0004-6361/201117252) radiative-flux conservation, the centrifugal perturbation to both equatorial radius and polar-to-equatorial brightness scales quadratically as $\mathcal{O}(\omega^2)$ in the slow-rotation limit ($\omega \ll 1$). Consequently, we expect the equator-on (`incl = 90°`, `pa = 0°`) squared-visibility anisotropy $|V^2_{\text{E}} - V^2_{\text{N}}|$ between East–West and North–South baselines to scale with log–log slope $2.0$ as rotation approaches zero. In `oimodeler` $0.8.1$ the measured log–log slope is $0.45$ across `rot = [0.01, 0.02, 0.04]` at `dim = 64`. Reading `fastRotator`, we see that it sets `a = 2./3 * (rot)**0.4` and `K = np.sin(1./3) * np.pi`, which would give a shallower power law than $\mathcal{O}(\omega^2)$; the MWE does not isolate these lines as the cause. It also does not test grid convergence: at `dim = 64` a pixelization floor in the anisotropy (the anisotropy is $5.6\times 10^{-4}$ at `rot = 0.01`) could contribute to the shallow slope, and we have not repeated the measurement at larger `dim`. The result is therefore that the anisotropy over this range does not follow $\mathcal{O}(\omega^2)$ at this grid size, not a demonstration of how large the resulting error in gravity darkening is.
 * **Pinning test**: `tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling`
 
 **Standalone MWE**:
@@ -559,17 +559,17 @@ for rot in rots:
     aniso.append(abs(float(v2[1] - v2[2])))
 slope = np.polyfit(np.log(rots), np.log(aniso), 1)[0]
 print("equator-on |V2_E - V2_N| at rot=[0.01, 0.02, 0.04]:", np.round(aniso, 6))
-print(f"log-log slope = {slope:.2f} (expected 2.00 from O(omega^2) centrifugal gravity)")
+print(f"log-log slope = {slope:.2f} (O(omega^2) centrifugal gravity would give 2.00; dim=64 only)")
 ```
 
 **Observed output**:
 
 ```text
 equator-on |V2_E - V2_N| at rot=[0.01, 0.02, 0.04]: [0.000562 0.000765 0.001055]
-log-log slope = 0.45 (expected 2.00 from O(omega^2) centrifugal gravity)
+log-log slope = 0.45 (O(omega^2) centrifugal gravity would give 2.00; dim=64 only)
 ```
 
-* **Expected behaviour**: In the slow-rotation regime (`rot` $\ll 1$), equator-on visibility anisotropy and polar-to-equatorial flux contrast should vanish quadratically with log–log slope $2.00$.
+* **Comparison target**: In the slow-rotation regime (`rot` $\ll 1$), physical Roche scaling gives an equator-on visibility anisotropy that vanishes quadratically (log–log slope $2.00$). To show that the shallow slope is not a grid artefact, repeat the MWE at several `dim` values and check that the slope converges.
 
 ---
 
