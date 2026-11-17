@@ -268,3 +268,58 @@ All cells converged. Night-level errors of the measured widths drive the evidenc
 Under the bounds, all six bounded B1 picks sit on a bound: ℓ_r = 1 beam and σ = 2 on five targets, and σ = 2 on IRAS 15469. The
 images are set by the prior, not by the data. They are not yet figure quality: AI Sco still breaks into blobs, and PS Gem has an
 arc at the field edge with its peak 1.3 mas from the star.
+
+## 11. Chromatic mismatch: the second test (pre-registered, Ben: "Run chromatic test")
+
+**Hypothesis.** The SPARCO scene has a grey environment: one image times one power law. If the real disc's spectrum changes with
+radius (a hot inner rim, cooler dust further out), or the star's index is not the fixed ORGANIC SIND1, a grey model cannot fit
+the colour-dependent visibilities. The evidence might then pay for small-scale structure that absorbs this (the σ = 4, short-ℓ_r
+corner). Stage C cannot test this: its truth is grey SPARCO, so the model is right by construction (diagnosis §a).
+
+**Prior expectation: rejection.** The diagnosis projected the real residuals onto Legendre orders across the six channels. Most of
+the excess over the published model is in the channel mean (c0² 2–12), not in the slope (c1² 0.6–2.6). Only AI Sco removes as
+much slope as mean, and the largest slope excess is in the control IRAS 15469, which does not pick the corner. A chromatic error
+mostly shows up in the slope, so this test should fail unless the slope is doing more than the diagnosis found.
+
+**Sim arm `calibrate --arm chrom`** (capped, seeds 0–2, AI Sco, EN TrA, HD 95767, PS Gem; 12 tasks):
+* Truth: the stage C representable truth, with two changes.
+  * The ring's spectral index falls with radius: α(r) = d + s (r − r_t), with s = −Δα / (2w) and Δα = 2. The index is 2 higher
+    one ring width inside the centre than one width outside. Here d is the fitted environment index, r_t the ring radius, w its
+    width. This is virgil's chromatic `MultipoleDisk` (`spectral_index=RadialLinear`), with the same F_λ ∝ λ^α convention as
+    `PowerLaw`.
+  * The star's index is SIND1 − 1 (towards Rayleigh–Jeans, −4).
+* Noise: white, at the MacKay factor, as in the white arm, so only the spectrum differs.
+* Fit: unchanged, the grey SPARCO scene with the star at SIND1.
+
+**Why these sizes** (from blackbody physics and the published model, not from virgil picks):
+* ORGANIC's environment indices (SIND0 0.4–0.9) correspond to H-band dust at about 1500–1700 K. The local F_λ index at 1.65 µm is
+  0.5 at 1600 K and 2.1 at 1230 K.
+* With T ∝ r^−1/2, a ring from r − w to r + w (w/r about 0.25) spans a temperature ratio of about 1.3, so Δα ≈ 1.6. Δα = 2 is the
+  strong end of physical, chosen so that a null result means something.
+* A star offset of 1 is about the gap between the paper's SIND1 (−2.1 to −3.2) and a pure photosphere (−4). That is the error
+  if SIND1 has absorbed hot dust emission.
+
+**Real counterpart: B1 gp-polar `--chrom --unbounded`** (6 targets). The scene gains:
+* a chromatic ring `rim`: a `MultipoleDisk(GaussianRing)` with no harmonics, inc and PA fixed at the scale-stage geometry.
+  * radius LogUniform(0.5, field radius), width LogUniform(0.1, 12) mas, both started at the scale geometry;
+  * flux LogUniform(10⁻³, 5);
+  * index α(r) = value + slope (r − r_0), with r_0 the starting radius; value Uniform(−6, 6), as the environment index;
+  * slope Uniform(±4 / (2 w_0)): up to twice the sim's Δα across ±w_0, where w_0 = max(starting width, half a beam);
+* a free star index, Uniform(SIND1 − 2, SIND1 + 2).
+
+The grey GP image keeps the rest. The grid, its axes and the evidence are as in B1. Output files carry `_chrom`.
+
+**Decision rule.** Chromatic mismatch is confirmed as the cause only if all three hold:
+1. The chrom sims reproduce the corner: `at_corner` in ≥ 2 of 3 seeds on ≥ 3 of the 4 targets.
+2. Under `--chrom --unbounded`, the real picks move inside the bounds (ℓ_r ≥ 1 beam and σ ≤ 2) on ≥ 3 of the 4 failing targets.
+3. On those targets the fit actually uses the chromatic terms: the ring carries ≥ 1 % of the flux with |Δα| = |2 slope w| ≥ 0.5,
+   or the star index moves ≥ 0.5 from SIND1. Otherwise the picks moved for some other reason (for example the extra flux
+   component), not because of colour.
+
+**Outcomes.**
+* All three hold: the chromatic scene replaces the §8 bounds. B1 is rerun bounded with `--chrom` for the paper figure, and the two
+  picks should agree.
+* 1 holds and 2 fails: colour errors can make the corner, but they are not what these data have. The bounds stay.
+* 1 fails: a strong but physical colour error does not make the corner. Rejected.
+* If the cause is rejected here as well as in §10, no third cause test is planned. The §8 bounds are the final selector, and the
+  paper says plainly that the picks sit on the bounds: the resolution of these images is set by the prior.
