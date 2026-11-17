@@ -238,7 +238,24 @@ is next.
 rendered images carry 44–80 % of their non-axisymmetric power above m = 3 (diagnosis §c), and `test_the_cap_reaches_the_rendered_image`
 checks the log-field at σ = 1 only. The §8 ceiling σ ≤ 2 limits this; the cap is a statement about the log-field.
 
-## 10. §9 result (jobs 21074145 / 21074149 / 21074152, vv c14cb93, virgil 6fa8afe): not confirmed
+## 10. §9 result (jobs 21074145 / 21074149 / 21074152, vv c14cb93, virgil 6fa8afe): confounded, not a rejection
+
+**Correction (2026-11-18), after an independent review (virgil-paper `reports/postagb-five-targets-review.md` §1, §3).** This test
+changed two things at once, so its failure does not reject the night-level cause:
+* `--noise night` builds on the `vlti` model. That multiplies the quoted V² errors by 0.31–0.61 and the closure errors by
+  0.64–0.89, where the B1 run multiplies by 0.95–1.34. With white errors 2–4 times smaller, every spectral wiggle within a
+  baseline becomes significant, and χ² at the pick is 1.1–3.4.
+* The night gain width for EN TrA was 0 (`postagb_night_widths.py`: with 2–3 frames per cell, frame scatter swamps the
+  between-night term), so EN TrA had no gain term. The method-of-moments widths are probably too small elsewhere too.
+* The sim arm did reproduce the corner on AI Sco in 3 of 3 seeds.
+
+The review refitted three cells per target with the white errors left at the MacKay scale and night terms of 3 % (gain) and
+2° (closure) marginalised. The corner preference collapses on AI Sco, EN TrA and HD 95767, and ln Z rises by 240–300; on
+EN TrA the smoothest cell wins. Its other two findings: PS Gem's 5 mas field cuts off most of the environment (with a 15 mas
+field the smoothest cell wins), and IW Car goes to the corner only under the m ≤ 3 cap. So the night cause is open, not
+rejected. A clean rerun changes only the night terms (MacKay white errors kept, widths fixed in advance) and runs the full grid.
+The original text follows, unchanged.
+
 
 **Criterion 1 fails (1 of 4).** Evidence pick in the night-arm simulations, per seed (`at_corner`, rank fraction, ℓ_r in beams, σ):
 
@@ -321,5 +338,5 @@ The grey GP image keeps the rest. The grid, its axes and the evidence are as in 
   picks should agree.
 * 1 holds and 2 fails: colour errors can make the corner, but they are not what these data have. The bounds stay.
 * 1 fails: a strong but physical colour error does not make the corner. Rejected.
-* If the cause is rejected here as well as in §10, no third cause test is planned. The §8 bounds are the final selector, and the
+* (Superseded by the §10 correction: §10 did not reject the night cause, so this outcome no longer follows.) * If the cause is rejected here as well as in §10, no third cause test is planned. The §8 bounds are the final selector, and the
   paper says plainly that the picks sit on the bounds: the resolution of these images is set by the prior.
