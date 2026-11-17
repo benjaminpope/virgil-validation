@@ -1,8 +1,8 @@
 """crosscheck.oifits_writer, checked before it judges virgil: the file has the columns,
 keywords and units that the OIFITS v2 standard (Duvert et al. 2017, Table 1-7) requires.
-The file is written through crosscheck.simulate, the only caller of the writer: so this
-check goes through simulate, which depends on the writer (a genuine cycle, in the PR that
-split tests/test_references.py)."""
+The file is written through crosscheck.simulate, the only caller of the writer: so this check
+goes through simulate. tests/test_reference_oifits_writer_direct.py checks the writer called
+directly, so that the writer does not rest on simulate, which depends on it."""
 
 import numpy as np
 import pytest
