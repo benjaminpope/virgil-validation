@@ -48,7 +48,8 @@ whose chi2 per point is closest to 1, ties broken by the Laplace evidence;
 V^2 and closure-phase errors scaled by kind, gains per telescope and baseline, closure-phase offsets; no bandwidth smearing, which virgil does not support for pixel Images) and
 ``--mean flat`` gives the GaussianField / MultipoleField a flat template inside the support instead of the Gaussian start blob;
 outputs carry ``_vlti`` / ``_flat`` in their names. ``--noise night`` adds calibration terms shared by the frames of a night
-(``night_noise``; outputs ``_night``), and ``--unbounded`` lifts gp-polar's prior bounds (outputs ``_unbounded``). The geometry of the polar GP still comes from the ``scale`` stage (current noise).
+(``night_noise``; outputs ``_night``), and ``--unbounded`` lifts gp-polar's prior bounds (outputs ``_unbounded``). ``--chrom`` adds a chromatic ring (index linear in radius) and frees the star index
+(design/gp_polar_hyperparameters.md §11; outputs ``_chrom``). The geometry of the polar GP still comes from the ``scale`` stage (current noise).
 ``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
 """
 
@@ -90,7 +91,8 @@ from virgil.imaging import (  # noqa: E402
     starting_image, whitened_residuals,
 )
 from virgil.models import (  # noqa: E402
-    GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, Resolved, System, UniformDisk,
+    GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, RadialLinear, Resolved, System,
+    UniformDisk,
 )
 from virgil.spectra import PowerLaw  # noqa: E402
 
@@ -577,6 +579,41 @@ HEADLINE = "gp-polar"
 GP_FRACS = (0.25, 0.5, 1.0, 2.0)  # GP lengths in units of the comparison beam's FWHM, lambda_min / (2 B_max)
 
 
+CHROM_DALPHA_MAX = 4.0  # --chrom: the ring's index may change by up to this across +-w0 (twice the chrom arm's CAL_CHROM_DALPHA)
+CHROM_STAR_WINDOW = 2.0  # --chrom: the star's index is free within SIND1 +- this (twice the chrom arm's offset)
+
+
+def chromatic_ring(cfg, geo, unit):
+    """``--chrom``'s extra component (design §11): a Gaussian ring with no harmonics whose spectral index varies linearly with
+    radius, inclination and position angle fixed at the scale stage's ``geo``, radius and width started there, and its priors (with
+    a free star index). Returns ``(rim, priors)``; the grey image keeps everything else."""
+    r0 = float(np.clip(geo.get("radius_mas", 2.0), 0.5, float(cfg["half_mas"])))
+    w0 = float(np.clip(geo.get("width_mas", 0.4 * r0), 0.1, 12.0))
+    rim = MultipoleDisk(GaussianRing(r0, w0), inc=float(geo["inc_deg"]), pa=float(geo["pa_deg"]), n_r=48, flux=0.1,
+                        spectral_index=RadialLinear(float(cfg.get("env_index0", 0.9)), 0.0, r0), wavel0=L0)
+    smax = CHROM_DALPHA_MAX / (2.0 * max(w0, 0.5 * unit))
+    s0 = float(cfg.get("img_star_index", -4.0))
+    priors = {"rim.flux": dist.LogUniform(1e-3, 5.0), "rim.profile.radius": dist.LogUniform(0.5, float(cfg["half_mas"])),
+              "rim.profile.sigma": dist.LogUniform(0.1, 12.0), "rim.spectral_index.value": dist.Uniform(-6.0, 6.0),
+              "rim.spectral_index.slope": dist.Uniform(-smax, smax),
+              "star.flux.index": dist.Uniform(s0 - CHROM_STAR_WINDOW, s0 + CHROM_STAR_WINDOW)}
+    return rim, priors
+
+
+def chromatic_summary(model, cfg):
+    """The fitted chromatic terms of a ``--chrom`` scene, and whether the fit uses them (rule 3 of design §11)."""
+    w = float(np.asarray(model.rim.profile.sigma))
+    d_alpha = -2.0 * float(np.asarray(model.rim.spectral_index.slope)) * w
+    f_rim = float(np.asarray(model.rim.flux))
+    star = float(np.asarray(model.star.flux.index))
+    s0 = float(cfg.get("img_star_index", -4.0))
+    tot = 1.0 + f_rim + sum(float(np.asarray(getattr(model, k).flux.ratio)) for k in ("env", "sec", "bg") if hasattr(model, k))
+    used = bool((f_rim / tot >= 0.01 and abs(d_alpha) >= 0.5) or abs(star - s0) >= 0.5)
+    return dict(chrom_rim_flux_pct=100.0 * f_rim / tot, chrom_rim_radius_mas=float(np.asarray(model.rim.profile.radius)), chrom_rim_width_mas=w,
+                chrom_rim_index=float(np.asarray(model.rim.spectral_index.value)), chrom_rim_d_alpha=d_alpha, chrom_star_index=star,
+                chrom_star_shift=star - s0, chrom_used=used)
+
+
 def scene_priors(cfg, scene, env_fixed_geometry=False):
     """Priors shared by every strategy: the SPARCO fluxes and indices of the environment, the grey background and the secondary."""
     priors = {"env.flux.ratio": dist.LogUniform(0.01, 20.0), "env.flux.index": dist.Uniform(-6.0, 6.0)}
@@ -618,7 +655,7 @@ def grid_setup(cfg, data, args, rot=0.0):
         env = Image.from_brightness(np.pad(b0, pad, constant_values=0.0), start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
         start = System(star=start.star, env=env)
     half = start.env.log_brightness.shape[0] * float(start.env.pixel_scale_mas) / 2
-    if half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # the saved field and support radii are config values, so check the grid itself
+    if not args.smoke and half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # smoke halves the field on purpose; the saved field and support radii are config values, so check the grid itself
         raise SystemExit(f"{cfg['key']}: the grid reaches only +-{half:.1f} mas but the support radius is {cfg['mask_mas']:.1f} mas; raise fov_override")
     support, hole_mas = hole_mask(cfg, start.env, data, rot)
     return start, support, hole_mas
@@ -1278,6 +1315,7 @@ def per_strategy(fn, args, out, *extra):
         # a one-off star-index or background-index run, and every non-default noise or mean, is named apart and never overwrites the headline files
         sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")
         sfx += noise_tag(args.noise) + ("" if args.mean == DEFAULT_MEAN else f"_{args.mean}")
+        sfx += "_chrom" if getattr(args, "chrom", False) else ""
         sfx += "_unbounded" if getattr(args, "unbounded", False) else ""
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
@@ -1394,14 +1432,18 @@ def image_one(args, out, strat):
     print(strat, "grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; hole radius", f"{hole_mas:.3f}", "mas;",
           f"error scale {s:.3f}", flush=True)
     f_env0 = float(np.asarray(env.flux))
-    scene = sparco_scene(cfg, env, f_env=f_env0)
+    chrom = getattr(args, "chrom", False)
+    if chrom and strat != "gp-polar":
+        raise SystemExit("--chrom is for gp-polar only (design §11)")
+    rim, chrom_pri = chromatic_ring(cfg, geo, compare_beam(data_s).minor_mas) if chrom else (None, {})
+    scene = sparco_scene(cfg, env, f_env=f_env0, extra=dict(rim=rim) if chrom else None)
     warm, warm_src = warm_params(out, cfg, strat, args)
     if warm and strat != "disc+res":
         for k_, v_ in warm.items():
             scene = scene.set(k_, v_)
     if warm:
         print("warm start from", warm_src, {k_: round(v_, 3) for k_, v_ in warm.items()}, flush=True)
-    priors = image_priors(scene) | scene_priors(cfg, scene)
+    priors = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri
     has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
     if strat == "mem":
         model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data_s, args)
@@ -1422,6 +1464,8 @@ def image_one(args, out, strat):
                  star_index_source=cfg.get("star_index_source", "SPARCO convention (-4)"), sec_index_source=cfg.get("sec_index_source"),
                  warm_start=bool(warm) and strat != "disc+res", warm_source=warm_src if strat != "disc+res" else None,
                  field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", np.shape(env.log_brightness)[0] * pix_ / 2))) | extra_gp
+    if chrom:
+        extra |= dict(chrom=True) | chromatic_summary(model, cfg)
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
@@ -1476,8 +1520,10 @@ def image_one(args, out, strat):
 CAL_LR_BEAMS = (0.5, 1.0, 2.0)
 CAL_LT = (0.0625, 0.25, 1.0)
 CAL_SIGMAS = (0.5, 1.0, 2.0, 4.0)
-CAL_ARMS = ("white", "corr", "smear", "geo", "night")
+CAL_ARMS = ("white", "corr", "smear", "geo", "night", "chrom")
 CAL_GEO_ERROR_DEG = (8.0, 8.0)  # geo arm: the polar GP deprojects with (inc, PA) this far off the truth's, a typical error of the real ring fits
+CAL_CHROM_DALPHA = 2.0  # chrom arm: the ring's index is this much higher one width inside its centre than one width outside (§11)
+CAL_CHROM_STAR = -1.0  # chrom arm: the truth's star index is SIND1 plus this (towards Rayleigh-Jeans); the fit keeps SIND1
 
 
 def calib_tag(arm, m_max, seed=0):
@@ -1507,10 +1553,11 @@ def simulate(cfg, files, s, truth, arm, key):
     * ``smear``: white noise as for ``white``, but the truth seen through PIONIER's spectral channels (bandwidth smearing), which
       the pixel-image fits leave out.
     * ``geo``: noise as for ``white``; the caller fits with a wrong disc geometry (``CAL_GEO_ERROR_DEG``).
+    * ``chrom``: noise as for ``white``; the caller makes the truth chromatic (``chromatic_truth``) and fits it grey.
     * ``night``: as ``corr``, plus the night terms of ``night_noise`` (a gain per (night, baseline), a closure offset per
       (night, triangle)), fitted the same way."""
     data0 = OIData(read_oifits(files))
-    if arm in ("white", "geo"):
+    if arm in ("white", "geo", "chrom"):
         return data0.with_error_scale(s).with_model(truth, key=key), s
     if arm == "smear":
         sim = OIData(read_oifits(files, bandwidth=True)).with_error_scale(s).with_model(truth, key=key)
@@ -1532,6 +1579,17 @@ def representable_truth(g, geo, r_min, r_max, unit):
                        fit_radius_mas=float(g.values["env.profile.radius"]), fit_width_mas=float(g.values["env.profile.sigma"]),
                        h_re=float(np.ravel(g.values["env.harmonics.re"])[0]), h_im=float(np.ravel(g.values["env.harmonics.im"])[0]),
                        f_env=float(np.asarray(truth.env.flux.ratio)))
+
+
+def chromatic_truth(truth, info, star_index, d_alpha=CAL_CHROM_DALPHA, d_star=CAL_CHROM_STAR):
+    """The ``chrom`` arm's truth (design §11): ``truth``'s ring with an index falling linearly with radius, ``d_alpha`` higher one
+    ring width inside its centre than one width outside (virgil's chromatic ``MultipoleDisk``, same F_lambda convention as
+    ``PowerLaw``), about the ring's own index at its centre; and the star's index ``star_index + d_star``."""
+    env, r, w = truth.env, float(info["radius_mas"]), float(info["width_mas"])
+    disk = MultipoleDisk(env.profile, harmonics=env.harmonics, inc=env.inc, pa=env.pa, n_r=env.n_r, flux=float(np.asarray(env.flux.ratio)),
+                         spectral_index=RadialLinear(float(np.asarray(env.flux.index)), -d_alpha / (2.0 * w), r), wavel0=L0)
+    return truth.set("env", disk).set("star.flux.index", float(star_index) + d_star), dict(
+        d_alpha=d_alpha, index_slope_per_mas=-d_alpha / (2.0 * w), star_index_truth=float(star_index) + d_star, star_index_fit=float(star_index))
 
 
 def calibrate_stage(args, out):
@@ -1560,6 +1618,9 @@ def calibrate_stage(args, out):
     g = geometry_fit(cfg, real, out, hole_mas, args)
     unit, pix = compare_beam(real).minor_mas, float(start.env.pixel_scale_mas)
     truth, truth_info = representable_truth(g, geo, hole_mas, float(cfg["half_mas"]), unit)
+    if args.arm == "chrom":  # the fit below stays grey, with the star at cfg's index
+        truth, chrom = chromatic_truth(truth, truth_info, cfg.get("img_star_index", -4.0))
+        truth_info |= dict(chromatic=chrom)
     print("truth:", json.dumps(truth_info), flush=True)
     geo_fit = dict(geo)  # the geometry the polar GP deprojects with: the truth's, except in the geo arm
     if args.arm == "geo":
@@ -2251,6 +2312,8 @@ def main():
                    help="error model: current (independent errors, MacKay error_scale), vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
                         "gains per telescope and baseline, closure offsets) or night (vlti plus a gain per (night, baseline) and a closure "
                         "offset per (night, triangle)); written as <target>_<strategy>_<noise>_*")
+    p.add_argument("--chrom", action="store_true",
+                   help="gp-polar: add a chromatic ring (index linear in radius) and free the star index (design §11); written as ..._chrom_*")
     p.add_argument("--unbounded", action="store_true",
                    help="gp-polar: the evidence over the whole grid, without the prior bounds (diagnostic); written as ..._unbounded_*")
     p.add_argument("--mean", default="blob", choices=("blob", "flat"),
