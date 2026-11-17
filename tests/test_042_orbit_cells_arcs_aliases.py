@@ -1803,7 +1803,7 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="F27: outlier_log_density(rescalable=True) expands around clipped sqrt(chi2_g/n_g) with fixed interior width, missing bounded ln(s) quadrature by 0.4-6.3 nats",
+    reason="F27: Laplace approximation error in outlier_log_density(rescalable=True) against our own bounded ln(s) quadrature: large at the clip boundary (+3 to +6 nats), small in the interior (about -0.4 nats at n = 24)",
 )
 @pytest.mark.validates(
     "virgil.orbit_cells.outlier_log_density",
@@ -1812,7 +1812,14 @@ def test_outlier_prior_log_flux_box_and_laplace_outlier_density():
     headline="max_rescalable_quad_err",
 )
 def test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature():
-    """F27: rescalable=True outlier_log_density should agree with 1D/2D bounded quadrature over u_g = ln s_g in [-ln s_max, ln s_max]."""
+    """F27: Laplace approximation error in rescalable=True outlier_log_density.
+
+    The reference is our own 1D/2D bounded quadrature of the same integrand over u_g = ln s_g in
+    [-ln s_max, ln s_max], not an independent implementation. The gap is large at the clip boundary
+    (+3 to +6 nats when the scale is clipped) and small in the interior (about -0.4 nats at n = 24,
+    comparable to expected Laplace error). Wording confirmed by Ben Pope 2026-11-16 (gate G2b);
+    whether virgil changes is undecided (G2c), so the strict xfail stays.
+    """
     summaries = _make_synthetic_summaries(np.array([0.0, 3.0, 9.0, 18.0]) + T0, (11.0, 1.0, 0.2, 40.0, 50.0, 110.0, 8.0))
     dom = voc.period_domain(summaries, p_range=(5.0, 25.0))
     prior = voc.outlier_prior(dom, a_range=(1.0, 20.0), e_max=0.85, flux_floor=1e-4, n=8192, seed=0)
