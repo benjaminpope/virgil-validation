@@ -90,7 +90,7 @@ def test_missing_cohort_and_resampled_grid(tmp_path):
     assert out["mean"].sum() == pytest.approx(1.0)
 
 
-@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"])
+@pytest.mark.validates("pipeline:contest-imaging", roots=["mathematics"], kind="reference")
 def test_resampling_keeps_a_point_at_its_sky_position():
     n = 129
     image = np.zeros((n, n))

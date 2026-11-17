@@ -29,7 +29,11 @@ telescope and triangle algebra (`crosscheck.chi2.triangle_matrix`).
 | `GainModes` from `gain_modes` (telescope, baseline and chromatic groups) | each block's shapes, times its group's width, scattered onto the samples: UUᵀ equals ours (per frame an indicator per telescope on its baselines; one per baseline; one per baseline shaped (λ_ref/λ)²), and the number of modes | Mathematics | exact |
 | `ClosureOffsets` from `closure_offsets` (baseline, triangle, both) | the modes scattered onto the closure phases through `cp_noise.groups`: Σ τ² m mᵀ equals τ² (T Tᵀ) ⊗ 1 1ᵀ for baseline offsets (T e), τ² I ⊗ 1 1ᵀ for triangle offsets, the offsets being common to all channels of a frame | Mathematics | exact |
 | station phases (our algebra) | a phase gᵢ per telescope shifts baseline (i, j) by gⱼ − gᵢ, which T annihilates: T A = 0; rank T = 3 for four telescopes | Mathematics | exact |
-| an offset mode along the left null vector of T (the dependent closure-phase combination of four telescopes), 0.3 rad | leaves the log-likelihood unchanged; one along a column of T does not | Mathematics | 0 |
+| an offset mode along the left null vector of T (the dependent closure-phase combination of four telescopes), 0.3 rad | leaves the projected-sine log-likelihood (`scale_penalty=False`) unchanged (`0`), whereas under `0.4.2`'s default `scale_penalty=True` its unprojected `diag(M Mᵀ)` enters the wrap-penalty denominator `hypot(σ, σ_off)` when `Δ ≠ 0` (open finding **F26**); a mode along a column of T shifts both | Mathematics | `< 1e-12` (`0` unscaled; **F26** on default) |
+
+Supplied `modes` spanning multiple frames populate `OIData.phase_offsets.spanning` and are whitened after the per-frame blocks; both `scale_penalty=True` and `scale_penalty=False` — including non-nominal fitted `phi_offset_baseline`, `phi_offset_triangle` and `phi_offset_modes` noise terms (where the projected sine covariance uses `widths_for(terms)` while `scale_penalty=True` divides the wrap-penalty rows at the nominal `widths`) — are checked against the dense-Gaussian plus periodic wrap reference at small residuals and right across the `±180°` branch cut (`|Δ| ≈ π`, where `sin Δ ≈ 0` and `q_pen = 2 sin²(Δ/2) ≈ 2` carries the entire restoring penalty).
+
+![Periodic closure-phase wrap penalty under scale_penalty=True vs False and 4-telescope left-null vs column-space offset modes](../assets/closure_offsets_wrap_penalty.png)
 
 The `OI_FLUX` grey scale and differential phases are on
 [Flux spectra and differential phases](spectra_phases.md); the continuum

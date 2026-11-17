@@ -95,7 +95,7 @@ def rel(a, b):
 
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.TSV", roots=["ehtim"])
+@pytest.mark.validates("virgil.imaging.TSV", roots=["ehtim"], headline="rel_value")
 def test_tsv_matches_ehtim(scene):
     eta, support, b = scene
     e = sp.run("ehtim", "ehtim_worker.py", {"task": "regularisers", "images": [b.tolist()],
@@ -137,7 +137,7 @@ def test_normalised_weights_match_ehtim_norm_reg(scene, beam):
 
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.TV", roots=["ehtim"])
+@pytest.mark.validates("virgil.imaging.TV", roots=["ehtim"], headline="rel_value")
 def test_tv_matches_ehtim(scene):
     eta, support, b = scene
     eps = EPS_FRACTION / b.size
@@ -179,7 +179,7 @@ def test_max_entropy_matches_ehtim(scene):
 
 @needs_mpol
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.TSV", "virgil.imaging.TV", roots=["mpol"])
+@pytest.mark.validates("virgil.imaging.TSV", "virgil.imaging.TV", roots=["mpol"], headline="rel_tv_value")
 def test_tsv_and_tv_match_mpol(scene):
     eta, support, b = scene
     eps = EPS_FRACTION / b.size
@@ -248,7 +248,7 @@ def starlet_reference(image, scales):
 
 
 @pytest.mark.parametrize("scales", [1, 3, 4])
-@pytest.mark.validates("virgil.imaging.StarletL1", roots=["mathematics"])
+@pytest.mark.validates("virgil.imaging.StarletL1", roots=["mathematics"], headline="rel_value")
 def test_starlet_l1_matches_the_a_trous_transform(scene, scales):
     eta, support, b = scene
     details, coarse = starlet_reference(b, scales)

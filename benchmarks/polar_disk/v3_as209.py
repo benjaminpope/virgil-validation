@@ -1,4 +1,4 @@
-"""V3b: DSHARP AS 209, frank's documented example, against PolarDisk with a RadialGP profile.
+"""V3b: DSHARP AS 209, frank's documented example, against MultipoleDisk with a RadialGP profile.
 
 Data: frank's ``docs/tutorials/AS209_continuum.npz`` (discsim/frank, 37.4 MB,
 977 774 complex visibilities of the DSHARP AS 209 continuum; fetched with
@@ -12,7 +12,7 @@ N = 250, alpha = 1.05, weights_smooth = 1e-4).
 virgil has no loader for complex visibilities and this benchmark adds none
 (design/radial_profiles.md section 13): the geometry correction and the
 deprojected radial binning (2 klambda bins to 4 Mlambda, real part, summed
-weights) are done here with frank's own ``apply_correction``, and PolarDisk
+weights) are done here with frank's own ``apply_correction``, and MultipoleDisk
 (inc = 0, pa = 0: the data are deprojected) is evaluated on the binned
 baselines. What is compared is therefore the FORWARD MODEL and the recovered
 PROFILE SHAPE, not a posterior from raw data. The fit is a MAP of the RadialGP
@@ -40,7 +40,7 @@ from scipy.optimize import minimize
 from scipy.signal import find_peaks
 
 from common import save
-from virgil import PolarDisk, RadialGP
+from virgil import MultipoleDisk, RadialGP
 
 DATA = pathlib.Path(os.environ.get("V3_DATA", pathlib.Path.home() / "data" / "polar_disk_v3"))
 GEOM = (34.97, 85.76, 1.9e-3, 2.5e-3)  # inc, PA (deg), dRA, dDec (arcsec)
@@ -87,7 +87,7 @@ def main():
     i_frank = np.asarray(sol.mean)  # Jy / sr
     flux_frank = 2 * np.pi * np.trapezoid(i_frank * r_frank, r_frank) * (np.pi / 180 / 3600) ** 2
 
-    disk0 = PolarDisk(RadialGP(2.0, RMAX * 1e3, sigma=SIGMA, ell=ELL, n=N_R), inc=0.0, pa=0.0, n_r=N_R)
+    disk0 = MultipoleDisk(RadialGP(2.0, RMAX * 1e3, sigma=SIGMA, ell=ELL), inc=0.0, pa=0.0, n_r=N_R)
     qj = jnp.asarray(qb)
     wl, zero = jnp.ones_like(qj), jnp.zeros_like(qj)
 

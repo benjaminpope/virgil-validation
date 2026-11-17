@@ -1,4 +1,4 @@
-"""V2 (old against new): ``TruncatedCone`` before and after it became a ``PolarDisk``.
+"""V2 (old against new): ``TruncatedCone`` before and after Gauss-Legendre subsumption alongside ``MultipoleDisk``.
 
 The pre-subsumption cone (virgil main a1dae85, midpoint rule in slant distance,
 second-order in ``n_rings``) runs in its own environment (.venv-old: ``uv venv

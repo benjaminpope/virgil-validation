@@ -26,8 +26,9 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F18">F18</span> | `epochs.marginal_loglike` | marginal_loglike(s_max=...) integrates each scale on a ln s grid that is too coarse where the likelihood falls steeply from a bound, so differences of m between models are wrong by 0.1-0.7 | fixed [virgil#295](https://github.com/benjaminpope/virgil/pull/295) |
 | <span id="F19">F19</span> | `models.ExpTail` | ExpTail's documented accuracy (1e-5 with about 16 * 2 pi q L Gauss-Laguerre nodes) is too optimistic | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
 | <span id="F20">F20</span> | `models.Harmonics` | Harmonics given array-valued c, s, re or im (the array path of fit and laplace_cov) fails in Harmonics._at | fixed [virgil#343](https://github.com/benjaminpope/virgil/pull/343) |
-| <span id="F22">F22</span> | `likelihood.whitened_residuals` | the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere" | open [virgil#309](https://github.com/benjaminpope/virgil/issues/309) |
-| <span id="F23">F23</span> | `fitting.gauss_newton_diag` | gauss_newton_diag's docstring and the radio innovation register give the entropy-pixel diagonal as weight * b; virgil returns weight * b * (1 - b) | open |
+| <span id="F25">F25</span> | `fields.MultipoleField` | MultipoleField with r_min_mas = 0 tapers non-zero azimuthal modes by the radial node spacing instead of the physical correlation length length_r, so the prior covariance drifts when n_r is refined | fixed [virgil#673](https://github.com/benjaminpope/virgil/pull/673) |
+| <span id="F23">F23</span> | `fitting.gauss_newton_diag` | gauss_newton_diag's docstring and the radio innovation register give the entropy-pixel diagonal as weight * b; virgil returns weight * b * (1 - b) | fixed [virgil#679](https://github.com/benjaminpope/virgil/pull/679) |
+| <span id="F26">F26</span> | `gains.ClosureOffsets`, `gains.closure_offsets` | ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0 | open |
 
 ## Where codes define things differently
 
@@ -44,6 +45,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D8">D8</span> | `limits.injection_limits` | CANDID's and fouriever's injection limits refit the primary's uniform-disk diameter to the injected data; virgil's hold every parameter but the flux | documented |
 | <span id="D9">D9</span> | `imaging.TSV` | eht-imaging's squared TV (stv2) counts only the steps out of the last row and column; virgil's TSV counts the steps across all four edges | documented |
 | <span id="D10">D10</span> | `frank`, `frap` | frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline) | documented |
+| <span id="F22">F22</span> | `likelihood.whitened_residuals` | closure-phase residuals are undefined where a model visibility crosses zero (phase formulation vs complex bispectrum); whitened_residuals' 0.4.2 docstring drops the "continuous and smooth everywhere" claim | documented [virgil#309](https://github.com/benjaminpope/virgil/issues/309) |
 | <span id="D14">D14</span> | `fitting.fit` | noise-free recovery is judged in units of the statistical error, not at a raw relative tolerance of 1e-6 | documented [virgil#443](https://github.com/benjaminpope/virgil/pull/443) |
 | <span id="D11">D11</span> | `mpol`, `models.Image` | MPoL's image centre is pixel N/2 of the unpacked cube; virgil's is ((N-1)/2, (N-1)/2), so the two scenes differ by half a pixel in both axes | documented |
 | <span id="D12">D12</span> | `mpol`, `imaging.MaxEntropy` | MPoL's entropy is of the tapered image in Jy/arcsec^2 against a constant prior 1e-4, normalised by F_tot; virgil's MaxEntropy is of the unit-sum untapered image | documented |
@@ -56,6 +58,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="D20">D20</span> | `models.BinaryModelCartesian` | HD 45166: the paper's adopted calibrator value (Deshmukh+2025, mean over four calibrations, error their dispersion) is the reference, scored as "adopted" within 1 sigma (scripts/oidb_compare.py CRITERIA["adopted"], cmp_hd45166) | documented [virgil-validation#204](https://github.com/benjaminpope/virgil-validation/issues/204) |
 | <span id="D21">D21</span> | `models.BinaryModelCartesian` | HR 6819 (Be decretion disk): reported, never scored; oidb_compare hardcodes every row NOT-CLEAN (CRITERIA["not_clean"], cmp_hr6819), ruling of Ben 2026-10-07 | documented [virgil-validation#204](https://github.com/benjaminpope/virgil-validation/issues/204) |
 | <span id="D22">D22</span> | `inference.laplace_cov` | Pull campaign: the design hash (scripts/pull_campaign.py design_hash) hashes src/crosscheck/sky.py without the functions arc_curve and arc_curve_gaussian and without blank lines (sky_source_without_arcs) | documented [virgil-validation#207](https://github.com/benjaminpope/virgil-validation/issues/207) |
+| <span id="D24">D24</span> | `models.FlaredDiskGaussian`, `models.FlaredDiskHG`, `models.FlaredDiskPowerLaw` | FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an on-sky orientation convention, not yet confirmed by code or results written by other people | open |
+| <span id="D25">D25</span> | `orbits.PositionData` | PositionData: astrometric calibration sign and scale (theta_meas = theta_sky + north_angle, rho_meas = plate_scale * rho_sky) is an internal parameter-sign convention checked via properties: {calibration: 1} and wrong-sign controls | documented |
 
 ## Problems found in other packages
 
@@ -73,6 +77,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P10">P10</span> | `visr` | vis-r's r_prof_erf2_power_ggap (one Gaussian gap) reads its depth and radius from each other's position in the parameter list | to-raise |
 | <span id="P11">P11</span> | `mpol` | MPoL's log_likelihood docstring writes the normalisation as a sum of w_i, while the code (correctly) uses the sum of ln w_i | to-raise |
 | <span id="P12">P12</span> | `mpol` | MPoL's default NuFFT (torchkbnufft table interpolation) is 6e-4 from the exact transform of its image at 256 pixels, and its taper buffer is float32 | documented |
+| <span id="P13">P13</span> | `oimodeler` | oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90 | to-raise |
+| <span id="P14">P14</span> | `oimodeler` | oimodeler's oimFastRotator parametrizes gravity darkening with rot^0.4 and K = sin(1/3) pi instead of O(omega^2) Roche scaling | to-raise |
 
 ## Mistakes in our own checks
 

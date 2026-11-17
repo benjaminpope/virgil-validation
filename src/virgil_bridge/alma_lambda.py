@@ -1,6 +1,6 @@
 """The pre-registered regulariser-weight rule of the IM Lup deconvolutions (``lambda_selection`` in ``design/alma_imlup_gate_criteria.yml``, items 1-9 and D1-D6).
 
-Primary arm only: maximum entropy on sqrt(I) pixels (``LinearImage(parametrisation="sqrt")``, ``MaxEntropy``, L-BFGS-B), the weight w the root of the
+Primary arm only: maximum entropy on sqrt(I) pixels (``LinearImage(parametrization="sqrt")``, ``MaxEntropy``, L-BFGS-B), the weight w the root of the
 degrees-of-freedom-corrected discrepancy m(w) = chi2_q / s^2 - (n_real - G(w)). Stages, each writing one JSON and ending the run with a written reason when it fails::
 
     sigma  -> sigma.json    s^2 from the data scatter (full data), its error, raw chi^2/N, lag-1 correlation; fails if sigma_s / s^2 > 2e-3
@@ -233,7 +233,7 @@ def build(data, *, npix, pixel_mas, flux, ref_obs, chunk_size=None):
     shift = -pixel_mas / 2.0
 
     def scene(values):
-        return LinearImage(values["pixels"], pixel_mas, dra=shift, ddec=shift, ft="auto", parametrisation="sqrt", reference_flux=flux)
+        return LinearImage(values["pixels"], pixel_mas, dra=shift, ddec=shift, ft="auto", parametrization="sqrt", reference_flux=flux)
 
     nuis = CalibrationNuisance(data, ref_obs=ref_obs, alpha=False, gains=False, offsets=False, sigmas=False, fit_flux=False)
     term = data.term(scene, nuis, chi2="toeplitz")

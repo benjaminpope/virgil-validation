@@ -119,7 +119,7 @@ def test_best_fits_agree_on_noisy_data(tmp_path, maker, mode):
     assert np.all(np.abs(diff) < 0.25), diff
 
 
-@pytest.mark.validates("virgil.inference.laplace_cov", roots=["pmoired"])
+@pytest.mark.validates("virgil.inference.laplace_cov", roots=["pmoired"], headline="max_abs_sigma_ratio_minus_1")
 @pytest.mark.parametrize("maker", SCENES, ids=lambda m: m.__name__)
 def test_uncertainties_agree_without_closure_redundancy(tmp_path, maker):
     """Three telescopes: one closure phase per snapshot, nothing to
