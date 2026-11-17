@@ -13,12 +13,14 @@ baseline ``V^2`` anisotropy checks, and backward-scattering (``g < 0``) negative
 controls complement the pointwise ``crosscheck.disks.brightness`` and
 ``scattered_ring`` quadrature checks in ``tests/test_remaining_models.py:119-178``.
 
-Per ledger ``D24`` (Ben's 2026-11-15 ruling), the choice of which half-plane
-corresponds to ``inc in (0, 90)`` deg at a given ``pa`` is an internal
-parameter-sign definition rather than an external physical constant, enforced
-via ``properties: {near_side: 1}`` on ``FlaredDiskGaussian``, ``FlaredDiskHG``,
-and ``FlaredDiskPowerLaw`` using literal per-class ``@pytest.mark.validates``
-decorators (``roots=["mathematics"]``) paired with wrong-sign negative controls.
+Which half-plane corresponds to ``inc in (0, 90)`` deg at a given ``pa`` is an
+on-sky orientation, so per ledger ``D24`` (gate G1a, 2026-11-16) it stays
+``convention: [near_side]`` on ``FlaredDiskGaussian``, ``FlaredDiskHG`` and
+``FlaredDiskPowerLaw``. These literal per-class ``@pytest.mark.validates``
+checks (``roots=["mathematics"]``) and the wrong-sign negative controls pin virgil
+to the documented sign, but they are our own transcription of it, so the nodes
+stay "convention from virgil's docs" until code or a published result written by
+other people confirms the near side.
 """
 
 import jax.numpy as jnp
