@@ -186,3 +186,54 @@ summary (`gp_at_bound`) along with the bounds themselves (`gp_lr_min_mas`, `gp_s
 Applied to the stage C runs (simulations only), the bounded evidence passes `white`, `corr` and `smear` on all six targets
 (median rank fraction ≤ 0.14, beam-convolved error ≤ 1.13 × the best cell). `geo` still fails on AI Sco and EN TrA (0.25 and
 0.28, error ≤ 1.10 × best). An 8° geometry error remains a known limitation of the deprojected field.
+
+## 9. Night-level calibration errors: the decisive test (pre-registered)
+
+Diagnosis (virgil-paper `reports/postagb-corner-diagnosis.md`): on all four failing targets the V² channel-mean residual of the
+corner fit is coherent per (night, baseline). The ANOVA share is 0.50–0.73, against 0.19–0.42 after shuffling. On the controls the
+fit absorbs it. Stage C simulated only per-frame gains, so it could not reproduce this.
+
+**Model** (`--noise night`, `night_noise`): the vlti terms, plus a gain on log|V| per (night, baseline) and a closure-phase
+offset per (night, triangle). Each spans every frame of its night, and the likelihood marginalises them (virgil's spanning
+modes). A night runs from MJD .65 to the next.
+
+**Widths, fixed before any night fit or pick was looked at** (`scripts/postagb_night_widths.py`, written to
+`scripts/postagb_night_widths.json`):
+* Residuals are taken against the *published* SPARCO + ORGANIC model (`pub_v2`, `pub_t3` of the compare stage, vv 0e4377c), never
+  against a virgil image.
+* A two-level method-of-moments ANOVA follows: channel means per (frame, baseline) or (frame, triangle), then the between-cell
+  component over (night, baseline) or (night, triangle). Frames are the replicates, so per-frame gains and white noise are not
+  counted twice.
+* Published-model misfit shared by a night also lands in τ, so these are upper estimates.
+* A target missing from the table gets the median of the others.
+
+| target | nights | gain per (night, baseline), log\|V\| | closure offset per (night, triangle) |
+|---|---|---|---|
+| AI Sco | 10 | 0.025 | 1.33° |
+| EN TrA | 7 | 0.000 | 0.91° |
+| HD 95767 | 7 | 0.012 | 1.03° |
+| PS Gem | 5 | 0.0035 | 0.09° |
+| IW Car | 8 | 0.012 | 0.75° |
+| IRAS 15469 | 5 | 0.023 | 1.27° |
+
+EN TrA's night-to-night V² offsets do not exceed what its frame-to-frame scatter predicts with 2–3 frames per cell, and PS Gem's
+are small. On those two the night arm is close to `corr`.
+
+**Runs:**
+* `calibrate --arm night` (capped, the stage C grid, three seeds) on AI Sco, EN TrA, HD 95767 and PS Gem. It simulates the
+  night terms and fits as the real data are fitted: independent errors with a pilot MacKay factor.
+* B1 gp-polar `--noise night --unbounded` on all six targets. It is unbounded because, under the §8 bounds, the picks are inside by
+  construction and could not move.
+
+**Decision rule.** The night errors are confirmed as the cause if both hold:
+1. The night-arm simulations reproduce the corner: `at_corner` in ≥ 2 of 3 seeds on ≥ 3 of the 4 targets.
+2. Under `--noise night --unbounded` the real picks move inside the bounds (ℓ_r ≥ 1 beam and σ ≤ 2) on ≥ 3 of the 4 failing
+   targets.
+
+If both hold, the night model replaces the §8 bounds as the fix, and B1 is rerun with `--noise night` (bounded and unbounded should
+then agree). If either fails, the cause is not established, the §8 bounds stay, and the chromatic test of the diagnosis (item 3)
+is next.
+
+**Also noted:** `LowOrderField` caps the log-brightness field at m ≤ 3. The brightness exp(field) is not capped. At σ = 4 the
+rendered images carry 44–80 % of their non-axisymmetric power above m = 3 (diagnosis §c), and `test_the_cap_reaches_the_rendered_image`
+checks the log-field at σ = 1 only. The §8 ceiling σ ≤ 2 limits this; the cap is a statement about the log-field.

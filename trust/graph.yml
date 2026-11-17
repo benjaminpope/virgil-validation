@@ -568,6 +568,7 @@ nodes:
   virgil_bridge.alma_synth: {layer: references, doc: alma_conventions.md}  # IM Lup synthetic truth: smooth disk, real uv and weights, dots/NRMSE scoring (`alma_imlup_synth.py`)
   virgil_bridge.alma_replica: {layer: references, doc: alma_conventions.md}  # MPoL replica: softplus pixels, in-model blur, AdamW, MPoL step counts; replica-vs-MPoL bands (`alma_imlup_maxent.py fit --workflow mpol-replica`)
   postagb_imaging.LowOrderField: {layer: references}  # post-AGB gp-polar: MultipoleField low-passed to azimuthal orders m <= m_max, sigma kept per node (scripts/postagb_imaging.py; design/gp_polar_hyperparameters.md)
+  postagb_imaging.night_noise: {layer: references}  # post-AGB --noise night: vlti terms plus a log|V| gain per (night, baseline) and a closure offset per (night, triangle), widths from scripts/postagb_night_widths.py
   virgil_bridge.alma_lambda: {layer: references, doc: alma_conventions.md}  # the registered IM Lup lambda rule: scatter s^2 (sigma, D4), MEM on sqrt pixels over the D1 grid, dof-corrected discrepancy root, staged nuisances (`alma_imlup_maxent.py lambda-rule`)
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison

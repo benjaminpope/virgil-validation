@@ -19,7 +19,7 @@ Stages (each writes into OUTDIR and the later ones read the earlier ones):
                  position angle and azimuthal asymmetry, and the reduced chi2 of the
                  published image on our data.
 * ``calibrate``  does the gp-polar hyperparameter choice recover a smooth known disc on this target's own (u,v)?
-                 ``--arm {white,corr,smear}``, ``--m-max`` (design/gp_polar_hyperparameters.md).
+                 ``--arm {white,corr,smear,geo,night}``, ``--m-max``, ``--seed`` (design/gp_polar_hyperparameters.md).
 * ``replot``     redraw every figure from the saved results (no fitting).
 * ``table``      markdown parameter table: De Prins et al. PMOIRED fit | virgil | difference in sigma.
 
@@ -47,7 +47,8 @@ whose chi2 per point is closest to 1, ties broken by the Laplace evidence;
 ``--noise vlti`` swaps the independent errors and MacKay ``error_scale`` for virgil-vlti's PIONIER error model (``VLTI_NOISE``:
 V^2 and closure-phase errors scaled by kind, gains per telescope and baseline, closure-phase offsets; no bandwidth smearing, which virgil does not support for pixel Images) and
 ``--mean flat`` gives the GaussianField / MultipoleField a flat template inside the support instead of the Gaussian start blob;
-outputs carry ``_vlti`` / ``_flat`` in their names. The geometry of the polar GP still comes from the ``scale`` stage (current noise).
+outputs carry ``_vlti`` / ``_flat`` in their names. ``--noise night`` adds calibration terms shared by the frames of a night
+(``night_noise``; outputs ``_night``), and ``--unbounded`` lifts gp-polar's prior bounds (outputs ``_unbounded``). The geometry of the polar GP still comes from the ``scale`` stage (current noise).
 ``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
 """
 
@@ -660,12 +661,72 @@ def vlti_noise(data, widths=VLTI_NOISE):
     return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"]).with_closure_offsets(triangle=np.radians(n["t3_offset_deg"]))
 
 
+# ``--noise night``: the vlti model plus calibration errors shared by every frame of one night (a night's calibrators and
+# transfer function): a gain on log|V| per (night, baseline) and a closure-phase offset per (night, triangle), marginalised by the
+# likelihood like the per-frame terms (virgil's spanning modes). Widths per target in postagb_night_widths.json, measured on the
+# residuals against the published model before any night fit was looked at (scripts/postagb_night_widths.py,
+# design/gp_polar_hyperparameters.md §9). A night runs from MJD .65 (15:36 UT, local noon at Paranal) to the next.
+NIGHT_SPLIT_MJD = 0.65
+_NIGHT_FILE = Path(__file__).with_name("postagb_night_widths.json")
+NIGHT_WIDTHS = json.load(open(_NIGHT_FILE))["targets"] if _NIGHT_FILE.exists() else {}
+NIGHT_KEYS = ("night_gain_baseline", "night_t3_offset_deg")
+
+
+def night_widths(cfg):
+    """This target's night widths (``NIGHT_KEYS``); a target the table does not have gets the median of the others."""
+    row = NIGHT_WIDTHS.get(cfg.get("data_key", cfg["key"]))
+    if row is None:
+        return {k: float(np.median([r[k] for r in NIGHT_WIDTHS.values()])) for k in NIGHT_KEYS}
+    return {k: row[k] for k in NIGHT_KEYS}
+
+
+def night_labels(data):
+    """Night, (night, baseline) cell and frame of every sample: ``u_*`` per sample of ``data.u``, ``v2_*`` per V^2 (``data.vis``),
+    ``t3_*`` per closure phase (``data.phi``; its night and frame are those of its first baseline, its triangle the three stations)."""
+    mjd = float(data.t_ref) + np.asarray(data.dt, float)
+    night = np.floor(mjd - NIGHT_SPLIT_MJD).astype(int)
+    st = np.sort(np.asarray(data.stations, int), axis=1)
+    frame = np.asarray(data.frame, int)
+    base = np.unique(st, axis=0, return_inverse=True)[1].ravel()
+    cell_u = np.unique(np.stack([night, base], 1), axis=0, return_inverse=True)[1].ravel()
+    vi = data.vis_index
+    vi = np.arange(mjd.size) if vi is None or np.ndim(vi) == 0 else np.asarray(vi)
+    i1, i2, i3 = (np.asarray(i, int) for i in (data.i_cps1, data.i_cps2, data.i_cps3))
+    tri = np.unique(np.sort(np.concatenate([st[i1], st[i2], st[i3]], 1), axis=1), axis=0, return_inverse=True)[1].ravel()
+    cell_t = np.unique(np.stack([night[i1], tri], 1), axis=0, return_inverse=True)[1].ravel()
+    return dict(u_night=night, u_cell=cell_u, v2_night=night[vi], v2_cell=cell_u[vi], v2_frame=frame[vi],
+                t3_night=night[i1], t3_cell=cell_t, t3_frame=frame[i1])
+
+
+def night_noise(data, widths=VLTI_NOISE, night=None):
+    """``data`` under the vlti error model (``vlti_noise``) plus the night terms: one mode per (night, baseline) on log|V| of
+    width ``night["night_gain_baseline"]`` over that night's samples on that baseline, and one per (night, triangle) on the
+    closure phases of width ``night["night_t3_offset_deg"]``. A zero width leaves its group out."""
+    lab, n = night_labels(data), widths
+    gw, ow = night["night_gain_baseline"], np.radians(night["night_t3_offset_deg"])
+    g = o = None
+    if gw > 0:
+        g = np.zeros((lab["u_cell"].max() + 1, lab["u_cell"].size))
+        g[lab["u_cell"], np.arange(lab["u_cell"].size)] = gw
+    if ow > 0:
+        o = np.zeros((lab["t3_cell"].max() + 1, lab["t3_cell"].size))
+        o[lab["t3_cell"], np.arange(lab["t3_cell"].size)] = ow
+    data = data.with_error_scale({"vis": n["v2_white"], "phi": n["t3_white"]})
+    return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"], modes=g).with_closure_offsets(
+        triangle=np.radians(n["t3_offset_deg"]), modes=o)
+
+
+def modelled_noise(data, cfg, noise):
+    """``data`` under a correlated error model: ``vlti`` or ``night``."""
+    return night_noise(data, noise_widths(cfg), night_widths(cfg)) if noise == "night" else vlti_noise(data, noise_widths(cfg))
+
+
 def load_scaled(cfg, args, out):
     """The target's data under the chosen noise model: ``--noise current`` rescales the errors by the MacKay factor stored by the
     ``scale`` stage (1 if absent); ``--noise vlti`` applies ``vlti_noise`` (no bandwidth smearing, which virgil does not support for pixel Images; factor reported as 1)."""
-    if getattr(args, "noise", "current") == "vlti":
+    if getattr(args, "noise", "current") in ("vlti", "night"):
         data, files = load(cfg, args.files)  # no bandwidth smearing: virgil does not support it for pixel Images
-        return vlti_noise(data, noise_widths(cfg)), data, 1.0, files
+        return modelled_noise(data, cfg, args.noise), data, 1.0, files
     data, files = load(cfg, args.files)
     f = scale_file(out, cfg, "current")
     s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
@@ -714,14 +775,14 @@ def scale_stage(args, out):
     ``error_scale`` (MacKay), then a parametric ``MultipoleDisk`` (Gaussian ring + first harmonic) on the rescaled data gives the
     disc's inclination and position angle for the anisotropic and polar GPs and the disc strategy."""
     cfg = cfg_of(args)
-    vlti = args.noise == "vlti"
+    vlti = args.noise in ("vlti", "night")
     data, files = load(cfg, args.files)
     start, support, hole_mas = grid_setup(cfg, data, args)
     env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
     scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
     priors = image_priors(scene) | scene_priors(cfg, scene)
     if vlti:  # no MacKay rescaling: virgil's error_scale refuses gains; the noise model sets the errors
-        s, pilot_chi2, data_s = 1.0, None, vlti_noise(data, noise_widths(cfg))
+        s, pilot_chi2, data_s = 1.0, None, modelled_noise(data, cfg, args.noise)
     else:
         s, pilot_chi2 = pilot_error_scale(scene, start, support, priors, data, args)
         data_s = data.with_error_scale(s)
@@ -1036,9 +1097,10 @@ def polar_cells(cfg, scene, start_env, support, priors, data, args, geo, r_min, 
     past a bound. Explicit ``axes`` (the calibration's fixed grid) are used as given. Returns ``grid_search``'s tuple; each cell is
     ``(fit, log Z, chi2/pt, record)`` with the record of ``fit_cell``."""
     unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
-    lr_min, sg_max = polar_bounds(unit_, pix_)
+    lr_min, sg_max = (pix_, np.inf) if getattr(args, "unbounded", False) else polar_bounds(unit_, pix_)
     if axes is None:
-        lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", POLAR_LR_BEAMS) if m * unit_ >= lr_min * (1 - 1e-9)]
+        lr_beams = (0.5, *POLAR_LR_BEAMS) if getattr(args, "unbounded", False) else POLAR_LR_BEAMS  # unbounded: the grid before §8
+        lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", lr_beams) if m * unit_ >= lr_min * (1 - 1e-9)]
         axes = [lens_r, list(POLAR_LT if m_max is not None else POLAR_LT_UNCAPPED), [s for s in POLAR_SIGMAS if s <= sg_max]]
     if args.smoke:
         axes = [a[:1] for a in axes]
@@ -1087,12 +1149,15 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
                   gp_xlabel="ℓ_θ (rad)", gp_ylabel="ℓ_r (mas)", chosen=np.array([bi, bj]), mp_log_z=log_z, mp_chi2=chi2,
                   mp_sigmas=np.asarray(sigmas), mp_cells=json.dumps(cell_records(cells, (lens_r, lens_t, sigmas))))
     rec = cells[blr, blt, bsg][3]
-    lr_min, sg_max = polar_bounds(compare_beam(data).minor_mas, float(start_env.pixel_scale_mas))
-    at_bound = [n for n, hit in (("length_r", np.isclose(blr, lr_min)), ("sigma", np.isclose(bsg, sg_max))) if hit]
+    unbounded = getattr(args, "unbounded", False)
+    lr_min, sg_max = (float(start_env.pixel_scale_mas), np.inf) if unbounded else polar_bounds(compare_beam(data).minor_mas,
+                                                                                               float(start_env.pixel_scale_mas))
+    at_bound = [] if unbounded else [n for n, hit in (("length_r", np.isclose(blr, lr_min)), ("sigma", np.isclose(bsg, sg_max))) if hit]
     return best.model, arrays, dict(
         regulariser="MultipoleField" if m_max is None else f"MultipoleField, azimuthal orders <= {m_max}", mp_m_max=m_max,
-        weight_rule=f"Laplace evidence within prior bounds (length_r >= {POLAR_LR_MIN_BEAMS:g} beam, sigma <= {POLAR_SIGMA_MAX:g})",
-        gp_lr_min_mas=float(lr_min), gp_sigma_max=float(sg_max), gp_at_bound=at_bound, cell_start="cold", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(bsg),
+        weight_rule="Laplace evidence, unbounded (diagnostic)" if unbounded else
+        f"Laplace evidence within prior bounds (length_r >= {POLAR_LR_MIN_BEAMS:g} beam, sigma <= {POLAR_SIGMA_MAX:g})",
+        gp_lr_min_mas=None if unbounded else float(lr_min), gp_sigma_max=None if unbounded else float(sg_max), gp_at_bound=at_bound, cell_start="cold", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(bsg),
         gp_length_r_mas=float(blr), gp_length_theta=float(blt), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"],
         mp_r_min_mas=r_min, mp_r_max_mas=float(cfg["half_mas"]), log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge,
         gp_grid_extended=extended, gp_converged=bool(best.info.get("converged", True)), gp_steps=rec["steps"], gp_stop=rec["stop"],
@@ -1213,6 +1278,7 @@ def per_strategy(fn, args, out, *extra):
         # a one-off star-index or background-index run, and every non-default noise or mean, is named apart and never overwrites the headline files
         sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")
         sfx += noise_tag(args.noise) + ("" if args.mean == DEFAULT_MEAN else f"_{args.mean}")
+        sfx += "_unbounded" if getattr(args, "unbounded", False) else ""
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
             fn(args, out, strat, *extra)
@@ -1348,7 +1414,7 @@ def image_one(args, out, strat):
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
-    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=noise_widths(cfg) if args.noise == "vlti" else None, error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else noise_widths(cfg) | (night_widths(cfg) if args.noise == "night" else {}), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
                  bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
@@ -1410,7 +1476,7 @@ def image_one(args, out, strat):
 CAL_LR_BEAMS = (0.5, 1.0, 2.0)
 CAL_LT = (0.0625, 0.25, 1.0)
 CAL_SIGMAS = (0.5, 1.0, 2.0, 4.0)
-CAL_ARMS = ("white", "corr", "smear", "geo")
+CAL_ARMS = ("white", "corr", "smear", "geo", "night")
 CAL_GEO_ERROR_DEG = (8.0, 8.0)  # geo arm: the polar GP deprojects with (inc, PA) this far off the truth's, a typical error of the real ring fits
 
 
@@ -1440,14 +1506,16 @@ def simulate(cfg, files, s, truth, arm, key):
       the MacKay factor of a pilot GP (``pilot_error_scale``, run by the caller: returned scale None).
     * ``smear``: white noise as for ``white``, but the truth seen through PIONIER's spectral channels (bandwidth smearing), which
       the pixel-image fits leave out.
-    * ``geo``: noise as for ``white``; the caller fits with a wrong disc geometry (``CAL_GEO_ERROR_DEG``)."""
+    * ``geo``: noise as for ``white``; the caller fits with a wrong disc geometry (``CAL_GEO_ERROR_DEG``).
+    * ``night``: as ``corr``, plus the night terms of ``night_noise`` (a gain per (night, baseline), a closure offset per
+      (night, triangle)), fitted the same way."""
     data0 = OIData(read_oifits(files))
     if arm in ("white", "geo"):
         return data0.with_error_scale(s).with_model(truth, key=key), s
     if arm == "smear":
         sim = OIData(read_oifits(files, bandwidth=True)).with_error_scale(s).with_model(truth, key=key)
         return data0.with_error_scale(s).set(["vis", "phi"], [sim.vis, sim.phi]), s
-    sim = vlti_noise(data0, noise_widths(cfg)).with_model(truth, key=key)
+    sim = modelled_noise(data0, cfg, "night" if arm == "night" else "vlti").with_model(truth, key=key)
     return data0.set(["vis", "phi"], [sim.vis, sim.phi]), None
 
 
@@ -1504,9 +1572,9 @@ def calibrate_stage(args, out):
     env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
     scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
     priors = image_priors(scene) | scene_priors(cfg, scene)
-    if sets["all"][1] is None:  # corr: the MacKay factor of a pilot GP on the simulated data, as the real pipeline does
+    if sets["all"][1] is None:  # corr, night: the MacKay factor of a pilot GP on the simulated data, as the real pipeline does
         s_c, pilot_chi2 = pilot_error_scale(scene, start, support, priors, sets["all"][0], args)
-        print(f"corr arm: pilot chi2/pt {pilot_chi2:.3f}, error scale {s_c:.3f}", flush=True)
+        print(f"{args.arm} arm: pilot chi2/pt {pilot_chi2:.3f}, error scale {s_c:.3f}", flush=True)
         sets = {k: (d.with_error_scale(s_c), s_c) for k, (d, _) in sets.items()}
     data, s_fit = sets["all"]
 
@@ -1868,7 +1936,7 @@ def reg_label(out, cfg):
         return f"GP, σ = {j['gp_sigma']:g}, ℓ = {j['gp_length_mas']:.2f} mas"
     if j.get("regulariser") == "MultipoleDisk":
         return f"disc + residual GP, σ = {j['gp_sigma']:g}, ℓ = {j['gp_length_mas']:.2f} mas"
-    if j.get("regulariser") == "MultipoleField":
+    if str(j.get("regulariser", "")).startswith("MultipoleField"):  # capped fields read "MultipoleField, azimuthal orders <= m"
         return f"polar GP, σ = {j['gp_sigma']:g}, ℓ_r = {j['gp_length_r_mas']:g} mas, ℓ_θ = {j['gp_length_theta']:g} rad"
     return "MaxEntropy, discrepancy"
 
@@ -2179,9 +2247,12 @@ def main():
     p.add_argument("--strategy", default="all", choices=("all",) + STRATEGIES, help="imaging strategy for the image and compare stages")
     p.add_argument("--star-index", type=float, default=None, help="one-off: stellar power-law index of the image scene (default -4), written as <target>_si<n>_*")
     p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")
-    p.add_argument("--noise", default="current", choices=("current", "vlti"),
-                   help="error model: current (independent errors, MacKay error_scale) or vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
-                        "gains per telescope and baseline, closure offsets); written as <target>_<strategy>_vlti_*")
+    p.add_argument("--noise", default="current", choices=("current", "vlti", "night"),
+                   help="error model: current (independent errors, MacKay error_scale), vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
+                        "gains per telescope and baseline, closure offsets) or night (vlti plus a gain per (night, baseline) and a closure "
+                        "offset per (night, triangle)); written as <target>_<strategy>_<noise>_*")
+    p.add_argument("--unbounded", action="store_true",
+                   help="gp-polar: the evidence over the whole grid, without the prior bounds (diagnostic); written as ..._unbounded_*")
     p.add_argument("--mean", default="blob", choices=("blob", "flat"),
                    help="GaussianField / MultipoleField mean: the Gaussian start blob, or flat inside the support; written as ..._flat_*")
     p.add_argument("--cold", action="store_true", help="never warm-start the scene parameters from an earlier <target>_image.json")

@@ -251,3 +251,46 @@ def test_polar_cells_never_pick_or_extend_past_the_prior_bounds(monkeypatch):
     assert min(axes[0]) == pytest.approx(1.2) and max(axes[2]) == P.POLAR_SIGMA_MAX
     assert best[0] == pytest.approx(1.2) and best[2] == P.POLAR_SIGMA_MAX
     assert not [e for e in extended if (e[0], e[1]) in ((0, "lower"), (2, "upper"))]
+
+
+@needs_multipole
+def test_unbounded_polar_cells_reach_below_one_beam_and_above_sigma_two(monkeypatch):
+    def fake_fit(scene, priors, data, init=None, progress=None, **kw):
+        info = dict(
+            steps=1, stop="gtol", converged=True, loss=0.0, grad_norm=0.0, chi2_red=1.0
+        )
+        return type("F", (), dict(info=info, model=None, vals=scene))()
+
+    monkeypatch.setattr(P, "fit", fake_fit)
+    monkeypatch.setattr(P, "log_evidence", lambda f, d: f.vals[0] - f.vals[1])
+    monkeypatch.setattr(
+        P, "polar_scene_fn", lambda *a: (lambda sg, lr, lt: (sg, lr, lt))
+    )
+    monkeypatch.setattr(P, "image_priors", lambda sc: {})
+    monkeypatch.setattr(
+        P, "compare_beam", lambda d: type("B", (), dict(minor_mas=1.2))()
+    )
+    args = type("A", (), dict(smoke=False, unbounded=True))()
+    start_env = type("E", (), dict(pixel_scale_mas=0.25))()
+    _, axes, best, _, _ = P.polar_cells(
+        {}, None, start_env, None, {}, None, args, {}, 1.0
+    )
+    assert (
+        best[0] < 1.2 and best[2] > P.POLAR_SIGMA_MAX
+    )  # the diagnostic grid is the one before the bounds
+
+
+def test_reg_label_names_a_capped_polar_field(tmp_path):
+    import json
+
+    cfg = dict(key="X_gp-polar")
+    json.dump(
+        dict(
+            regulariser="MultipoleField, azimuthal orders <= 3",
+            gp_sigma=2.0,
+            gp_length_r_mas=1.2,
+            gp_length_theta=0.5,
+        ),
+        open(tmp_path / "X_gp-polar_image.json", "w"),
+    )
+    assert P.reg_label(tmp_path, cfg).startswith("polar GP")
