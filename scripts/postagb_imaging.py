@@ -179,10 +179,10 @@ TARGETS["PS_Gem"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(
 TARGETS["HR4049"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
 # Field sizes (Ben): the support is a disc (mask_mas) in every target. PS Gem's emission is within ~5 mas; HR 4049's ORGANIC halo extends
-# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
+# past 20 mas (24 % of its flux lies beyond 30 mas) and was clipped by the old +-18 mas square, so its grid grows to +-40.5 mas (232 px of 0.35 mas) with a disc of 40 mas. Other pixel scales are the paper's.
 TARGETS["PS_Gem"].update(fov_override=11.0, half_mas=5.0, half_cmp_mas=5.0, mask_mas=5.0, hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
-# The grid must contain the 25 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and a 51 mas field, 146 pixels.
-TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=51.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=25.0)
+# The grid must contain the 40 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and an 81 mas field, 232 pixels; the plots and the comparison stay at 25 mas.
+TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=81.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=40.0)
 
 for _k, _v in TARGETS.items():
     _v["bg"] = _k != "IRAS08544"  # De Prins+2026 images account for an over-resolved flux; Hillen's image scene has none
@@ -598,6 +598,30 @@ def scene_priors(cfg, scene, env_fixed_geometry=False):
     return priors
 
 
+def continue_blob(b0, n_want):
+    """``b0`` (the start image: a circular Gaussian about the array centre plus a floor) on an ``n_want`` grid with the same centre.
+
+    Fits A exp(-r^2 / 2 s^2) + floor to ``b0`` and evaluates it on the whole grid, then puts ``b0`` itself back inside its own
+    footprint: positive everywhere and smooth across the old edge (no zero pad)."""
+    from scipy.optimize import least_squares
+    n0 = b0.shape[0]
+
+    def r2(n):
+        d = (np.arange(n) - (n - 1) / 2.0) ** 2
+        return d[:, None] + d[None, :]
+
+    scale = float(b0.max())
+    y = b0 / scale
+    model = lambda p, r: p[0] * np.exp(-0.5 * r / p[1] ** 2) + p[2]
+    r0 = r2(n0)
+    fit = least_squares(lambda p: ((model(p, r0) - y) / (y + y.min())).ravel(), [1.0, n0 / 6.0, float(y.min())],
+                        bounds=([0.0, 0.5, 0.0], [10.0, 10.0 * n0, 1.0]))
+    out = model(fit.x, r2(n_want)) * scale
+    pad = (n_want - n0) // 2
+    out[pad:pad + n0, pad:pad + n0] = b0
+    return out
+
+
 def grid_setup(cfg, data, args, rot=0.0):
     """The paper's pixel grid, the window around the star(s), and the Gaussian start image."""
     # the paper's pixel, or the finer of that and a quarter of the comparison beam (lambda_min / 2 B_max), so that the beam spans four pixels or more
@@ -611,7 +635,10 @@ def grid_setup(cfg, data, args, rot=0.0):
     if n_want > n0:
         b0 = np.exp(np.asarray(start.env.log_brightness))
         pad = (n_want - n0) // 2
-        env = Image.from_brightness(np.pad(b0, pad, constant_values=0.0), start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
+        # HR 4049 (fov_override) continues the blob analytically: zero padding left a hard template edge at the data's field of view.
+        # Every other target keeps the zero pad, so its GP template, and the published fits built on it, do not change.
+        b1 = continue_blob(b0, n_want) if cfg.get("fov_override") else np.pad(b0, pad, constant_values=0.0)
+        env = Image.from_brightness(b1, start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
         start = System(star=start.star, env=env)
     half = start.env.log_brightness.shape[0] * float(start.env.pixel_scale_mas) / 2
     if half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # the saved field and support radii are config values, so check the grid itself
@@ -1299,7 +1326,14 @@ def published_image(cfg):
     # FITS: CDELT1 < 0 so x runs East to West (column 0 is East already); CDELT2 > 0 so y runs
     # South to North, i.e. row 0 is South: flip the rows.
     assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
-    return im[::-1, :] / im.sum(), noise[::-1, :], abs(hdr["CDELT1"]), hdr
+    # The Zenodo files (CRPIX = 64 on 128 pixels) have the star at 0-indexed pixel CRPIX (measured against our data, design/hr4049_diagnosis.md),
+    # not at the array centre (n - 1) / 2 = 63.5: move it there by a sub-pixel shift (rows after the flip), or the whole image sits half a
+    # pixel off the star.
+    ny, nx = im.shape
+    shift = ((ny - 1) / 2.0 - (ny - 1 - hdr["CRPIX2"]), (nx - 1) / 2.0 - hdr["CRPIX1"])
+    move = lambda a: ndimage.shift(a[::-1, :], shift, order=1, mode="constant", cval=0.0)
+    img = move(im)
+    return img / img.sum(), move(noise), abs(hdr["CDELT1"]), hdr
 
 
 def published_scene(cfg):

@@ -191,3 +191,35 @@ def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_p
     assert rec["kept_file"] == "t_image.json" and rec["kept_sha256"] == hashlib.sha256(prev.read_bytes()).hexdigest()
     assert rec["reason"] == "converged, interior of its grid" and rec["utc"]
     assert json.loads(prev.read_text()) == _previous_result()  # the kept result is untouched
+
+
+@needs_multipole
+def test_published_image_puts_the_crpix_pixel_at_the_centre(monkeypatch):
+    """The Zenodo FITS put the star at 0-indexed pixel CRPIX-1 = 64 of 128; it must render at virgil's centre (n-1)/2 (no half-pixel offset)."""
+    n = 128
+    im = np.zeros((n, n))
+    im[64, 64] = 1.0  # FITS row 64 is counted from the South
+    hdr = dict(CDELT1=-0.5, CDELT2=0.5, CRPIX1=64, CRPIX2=64)
+    monkeypatch.setattr(P, "zenodo_header", lambda cfg: (hdr, im, im.copy()))
+    img, noise, scale, _ = P.published_image({})
+    yy, xx = np.mgrid[:n, :n]
+    for a in (img, noise):
+        cy, cx = (a * yy).sum() / a.sum(), (a * xx).sum() / a.sum()
+        assert (cy, cx) == pytest.approx(((n - 1) / 2, (n - 1) / 2), abs=1e-9)
+    assert img.sum() == pytest.approx(1.0)
+
+
+@needs_multipole
+def test_continue_blob_is_positive_smooth_and_keeps_the_interior():
+    n0, nw = 41, 91
+    d = (np.arange(n0) - (n0 - 1) / 2.0) ** 2
+    b0 = np.exp(-0.5 * (d[:, None] + d[None, :]) / 6.0 ** 2) + 1e-3  # circular Gaussian plus floor
+    out = P.continue_blob(b0, nw)
+    pad = (nw - n0) // 2
+    assert out.shape == (nw, nw) and out.min() > 0
+    assert np.array_equal(out[pad:pad + n0, pad:pad + n0], b0)
+    c = (nw - 1) / 2.0
+    dd = (np.arange(nw) - c) ** 2
+    exact = np.exp(-0.5 * (dd[:, None] + dd[None, :]) / 6.0 ** 2) + 1e-3  # the continuation is the analytic blob, also outside b0's footprint
+    assert out == pytest.approx(exact, rel=1e-3)
+    assert np.abs(np.diff(np.log(out[nw // 2]))).max() < 0.5  # no step at the old edge
