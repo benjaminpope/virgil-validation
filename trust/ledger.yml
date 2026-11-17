@@ -261,14 +261,14 @@
   title: scenes.spiral evaluates arm width along radial rays |r - r_arm(theta)| with circular Euclidean caps at theta = 0 and 2*pi*turns (differs from exact Euclidean distance to the centreline by cos(psi) = 1 / sqrt(1 + (b/r)^2)), and imaging.image_field clips field_fwhms * FWHM with the outer ceiling winning when inner floor exceeds ceiling
   objects: [virgil.scenes.spiral, virgil.imaging.image_field]
   ruling: definition
-  referee: mathematics (ray-radial width matches scenes.spiral to < 1e-13 across the grid while exact Euclidean arm distance differs by > 8% of peak on inner turns and > 3.5% at r >= 16 mas; image_field ceiling-over-floor clipping pinned with wrong-precedence controls)
+  referee: 'self-consistency (conformance to a specification, not an independent derivation: the checks compare scenes.spiral and image_field against reference formulas written to virgil''s own documentation; the ray-radial width matches scenes.spiral to < 1e-13 across the grid while exact Euclidean arm distance differs by > 8% of peak on inner turns and > 3.5% at r >= 16 mas; image_field ceiling-over-floor clipping is pinned with wrong-precedence controls)'
   evidence:
     - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_is_sigma_ccw_winding_rounded_cap_and_radial_fade
     - tests/test_042_scenes_starlet_kkt.py::test_spiral_width_fwhm_and_reversed_winding_controls
     - tests/test_042_scenes_starlet_kkt.py::test_image_field_and_beam_floor_ceiling_and_restoration
     - tests/test_042_scenes_starlet_kkt.py::test_image_field_unclipped_and_floor_over_ceiling_controls
   status: documented
-  decision: 'ruled definition / documented (Ben, 2026-11-15): internal synthetic-scene and field-clipping formula choices do not need to be convention trust-graph blockers; they are pinned via properties and wrong-formula controls.'
+  decision: 'definition, confirmed by Ben Pope 2026-11-16 (gate G1d): scenes.spiral and imaging.image_field are internal synthetic-scene and field-clipping formula choices, kept as definitions rather than convention trust-graph blockers. The checks are conformance to a specification, not an independent derivation: they compare against reference formulas written to virgil''s own documentation, and wrong-formula controls pin the documented choices.'
 
 - id: P1
   title: PMOIRED setupFit(auto=True) gives NaN models on files with few channels
