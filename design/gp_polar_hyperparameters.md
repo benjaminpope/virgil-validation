@@ -338,5 +338,5 @@ The grey GP image keeps the rest. The grid, its axes and the evidence are as in 
   picks should agree.
 * 1 holds and 2 fails: colour errors can make the corner, but they are not what these data have. The bounds stay.
 * 1 fails: a strong but physical colour error does not make the corner. Rejected.
-* (Superseded by the §10 correction: §10 did not reject the night cause, so this outcome no longer follows.) * If the cause is rejected here as well as in §10, no third cause test is planned. The §8 bounds are the final selector, and the
+* (Superseded by the §10 correction: §10 did not reject the night cause, so this outcome no longer follows.) If the cause is rejected here as well as in §10, no third cause test is planned. The §8 bounds are the final selector, and the
   paper says plainly that the picks sit on the bounds: the resolution of these images is set by the prior.
