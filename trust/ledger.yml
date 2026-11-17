@@ -403,6 +403,19 @@
   links: [https://github.com/benjaminpope/virgil/pull/343]
   note: fixed in virgil 1eae3e4 (1eae3e4b08b452cc29d1ec29b5e883b3982882f4), merged to virgil main in #343; found at 791f9fe. The kind and numbers above are the finding as made. The strict xfail on the F20 evidence test is gone (it passes at virgil main 127cc64); the F19 fix was the docstring, and its test now checks the numbers the docstring states.
 
+- id: F25
+  title: MultipoleField with r_min_mas = 0 tapers non-zero azimuthal modes by the radial node spacing instead of the physical correlation length length_r, so the prior covariance drifts when n_r is refined
+  objects: [virgil.fields.MultipoleField]
+  ruling: virgil
+  kind: 'discretization (at virgil d79696de9d97, MultipoleField(r_min_mas=0) multiplies harmonic order m by tanh(r / spacing)^|m| with spacing = r_max_mas / (n_r - 1) instead of tanh(r / length_r)^|m|; at r_max_mas = 20, length_r = 7, doubling the grid from n_r = 9 to 17 shifts the induced polar covariance at identical physical radii by 0.275 sigma^2 and misses the length_r-tapered covariance by 0.402 sigma^2. Fixed upstream in virgil 5ca955ad6ceb, where the test passes to 1e-6 and n_r = 9 vs 17 agrees to 1e-15; flip status to fixed when VIRGIL_REF advances past 5ca955ad6ceb)'
+  referee: mathematics (resolution-invariant polar Gaussian-process covariance with physical length_r Zernike-type origin regularity)
+  evidence:
+    - tests/test_multipole_companions.py::test_multipole_field_polar_covariance_and_origin_regularity
+    - tests/test_multipole_companions.py::test_f25_multipole_field_origin_taper_uses_physical_length_r_and_is_grid_invariant
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/673]
+  note: identified by Gemini 4 Carbon adversarial review (session ddbaaa6e) and reproduced numerically on virgil d79696de9d97 by worker batch2-disks; fixed in virgil 5ca955ad6ceb (merged in virgil#673) and verified at virgil 0.4.2 c2be8278a4 where the strict xfail is removed and the test passes to 2.4e-6 (n_r = 9 vs 17 refinement drift 1e-15).
+
 - id: D10
   title: frank's and FRAP's discrete Hankel transforms do not represent a discontinuous profile (a sharp-edged exponential tail), to 5e-3 at Rmax = 18 000 mas, N = 300 (band limit above every baseline)
   objects: [frank, frap]
@@ -431,17 +444,16 @@
   status: to-raise
 
 - id: F22
-  title: the closure-phase residual is singular where a model visibility is zero, so image (MEM) fits that drift to a visibility null stall with AD != FD; whitened_residuals' docstring says the chi-squared is "continuous and smooth everywhere"
+  title: closure-phase residuals are undefined where a model visibility crosses zero (phase formulation vs complex bispectrum); whitened_residuals' 0.4.2 docstring drops the "continuous and smooth everywhere" claim
   objects: [virgil.likelihood.whitened_residuals]
-  ruling: virgil
-  kind: 'bug (a model visibility V passing through 0 changes its phase by pi, so every closure phase through that baseline jumps by pi and the chi-squared by ~2/sigma^2 over a step of |V|/|dV/dx|; d(phase)/dx ~ 1/|V|. Reproduced on synthetic 3-telescope data: a flat-start MEM fit ends with a model visibility of 4e-12 and does not converge, AD 6e6 against FD -4e7 at eps 1e-5. V^2 and MaxEntropy terms have AD = FD at the same point)'
-  referee: mathematics (the phase of a complex number is discontinuous at 0; a loss built from it has no bounded gradient there; the bispectrum form is polynomial in V)
-  evidence: []
-  pending: 'its tests are on the branch review/integration (tests/test_mem_null_discontinuity.py, nine tests) and are not yet on main, so no test id can be cited here; cite them when that branch lands'
-  status: open
+  ruling: definition
+  kind: 'formulation choice (a model visibility V passing through 0 changes its phase by pi, so any closure-phase residual built from arg V is singular at |V| = 0 with d(phase)/dx ~ 1/|V|, whereas a complex-bispectrum loss is polynomial in V; flat-start MEM fits that drift onto a visibility null can stall there, tracked as an enhancement in virgil#309. virgil 0.4.2 removed the "continuous and smooth everywhere" claim from whitened_residuals'' docstring)'
+  referee: mathematics (the phase of a complex number is discontinuous at 0; documented alongside eht-imaging in docs/method/ehtim.md)
+  evidence: [tests/test_ehtim_reconstruction.py::test_objective_matches_ehtim]
+  status: documented
   links: [https://github.com/benjaminpope/virgil/issues/309]
-  decision: 'accepted for virgil 0.4.0 (Ben, 2026-10-18) as a known limitation; release-notes line: "closure-phase image fits can stall where a model visibility crosses zero (virgil#309)". Fix proposed upstream: fit the complex bispectrum, as BSMEM and MiRA do, or floor the model amplitude on closure baselines, and correct the docstring. Accepted again for virgil 0.4.1 (Ben, 2026-10-23): stated in the 0.4.1 release notes under Known issues, fix tracked in virgil#309; status stays open.'
-  note: found on the review/integration branch as F20 (its number collides with the Harmonics entry above, fixed in virgil#343); its nine tests (tests/test_mem_null_discontinuity.py) land with that branch, so this entry names none yet.
+  decision: 'ruled definition / documented (Ben, 2026-11-15): closure-phase smoothness across |V| = 0 does not need to hold for the phase-residual likelihood (and whitened_residuals'' docstring no longer claims it in 0.4.2), and visibility-null stalling does not need to be a trust-graph blocker; bispectrum support remains tracked in virgil#309.'
+  note: originally recorded on review/integration as F20; tests/test_mem_null_discontinuity.py is intentionally not added as a trust node per Ben's 2026-11-15 ruling.
 
 
 - id: F23
@@ -451,7 +463,9 @@
   kind: 'documentation (through the unit-sum softmax the Skilling-Bryan metric weight * sum db^2/b has diagonal weight * b * (1 - b), which virgil returns to 1e-15; weight * b is its b << 1 limit, 1e-6 off on a million-pixel image and up to 20% on the 6 x 6 test. Nothing is wrong numerically, so there is no strict xfail: the test pins the exact form and fails if the diagonal ever becomes weight * b)'
   referee: mathematics (the metric pulled back through the softmax, dense Jacobian)
   evidence: [tests/test_radio_innovations.py::test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric]
-  status: open
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/679]
+  note: 'fixed in virgil 56e93b7 (merged in virgil#679): gauss_newton_diag''s docstring now states weight * b * (1 - b) explicitly, pinned alongside the numerical check at virgil 0.4.2 c2be8278a4.'
 
 - id: D14
   title: noise-free recovery is judged in units of the statistical error, not at a raw relative tolerance of 1e-6
@@ -601,3 +615,58 @@
   evidence: [tests/test_pull_campaign.py::test_no_pull_campaign_scene_reaches_an_arc_function, tests/test_pull_campaign_design_hash.py::test_only_the_arc_functions_and_blank_lines_are_stripped, tests/test_pull_campaign_design_hash.py::test_any_other_edit_to_sky_py_changes_the_hash_input]
   status: documented
   links: [https://github.com/benjaminpope/virgil-validation/issues/207]
+
+- id: D24
+  title: 'FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an on-sky orientation convention, not yet confirmed by code or results written by other people'
+  objects: [virgil.models.FlaredDiskGaussian, virgil.models.FlaredDiskHG, virgil.models.FlaredDiskPowerLaw]
+  ruling: definition
+  kind: 'convention (in Blakely et al. 2025 eqs. 2-9, tilting an inclined flared scattering surface z(rho) = h_0 (rho / r_0)^beta with major-axis line of nodes at pa East of North places the near rim at pa + 90 deg; flipping pa -> pa + 180 deg moves the near rim to pa - 90 deg and reverses every first-lobe closure phase. Which half-plane corresponds to inc in (0, 90) deg at a given pa is an on-sky orientation: the near-side rim direction, the photocentre direction and the closure-phase sign all follow from it. Our own 3D surface Fourier sum pins virgil to it at < 1e-10 deg and wrong-sign controls reject the opposite choice, but both are our own transcription of the documented formula)'
+  referee: mathematics (3D flared scattering surface Fourier sum and first-lobe closure-phase sign, crosscheck.disks); this is our own transcription, so it cannot confirm the convention
+  evidence:
+    - tests/test_flared_disk_nearside.py::test_flared_disk_gaussian_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_hg_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_powerlaw_nearside_geometry
+    - tests/test_flared_disk_nearside.py::test_flared_disk_farside_controls_flip_quadrant_and_closure_phase_sign
+  status: open
+  decision: 'not ruled by Ben as a definition. On 2026-11-16 (gate G1a) Ben confirmed it stays a `convention:` on the FlaredDisk nodes in trust/graph.yml, because an on-sky orientation needs a check written by other people (code or a published result that fixes which side is near for a given pa and inc). Until one exists the nodes show "convention from virgil''s docs". ruling: definition records only that virgil''s sign is a choice, not a bug; status: open means no outside check yet. The wrong-sign control tests stay as regression guards.'
+
+- id: D25
+  title: 'PositionData: astrometric calibration sign and scale (theta_meas = theta_sky + north_angle, rho_meas = plate_scale * rho_sky) is an internal parameter-sign convention checked via properties: {calibration: 1} and wrong-sign controls'
+  objects: [virgil.orbits.PositionData]
+  ruling: definition
+  kind: 'convention (PositionData.model follows Octofitter''s nuisance parameterization Thompson et al. 2023, AJ 166, 164, adding north_angle to the sky position angle and multiplying separation by plate_scale; defining north_angle with the opposite sign or plate_scale as its reciprocal is an equivalent reparameterization that our wrong-sign controls reject by > 50 sigma, while PositionData''s astrometric log-likelihood is independently confirmed against SciPy and PMOIRED''s profiled OIFITS delta_chi2)'
+  referee: mathematics (crosscheck.orbits multi-epoch calibration recovery and wrong-sign controls)
+  evidence:
+    - tests/test_position_calibration.py::test_position_data_calibration_model_and_recovery
+    - tests/test_position_calibration.py::test_position_data_wrong_calibration_sign_and_scale_fail_by_over_50_sigma
+  status: documented
+  decision: 'definition, confirmed by Ben Pope 2026-11-16 (gate G1b); north_angle sign signed 2026-10-06. The calibration nuisance sign is an internal parameterisation, pinned via properties: {calibration: 1} and wrong-sign controls, alongside external PMOIRED confirmation of PositionData.loglike.'
+
+- id: F26
+  title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0'
+  objects: [virgil.gains.ClosureOffsets, virgil.gains.closure_offsets]
+  ruling: virgil
+  kind: 'bug (on a 4-telescope frame, the 1D left-null vector n with n^T T = 0 vanishes identically for every physical realization of baseline or closure phases. In virgil 0.4.2, ClosureOffsets defaults to scale_penalty=True and divides each closure phase''s periodic chord-minus-sine correction 2 sin^2(Delta / 2) by hypot(sigma_i, sigma_off,i) with sigma_off,i^2 = (M M^T)_ii computed per triangle before projecting M onto the rank-3 column space of T, so a pure left-null mode with 0.3 rad amplitude shifts model_loglike by +0.025 nats on our 4-UT test scene whenever model_cp != data_cp, whereas scale_penalty=False projects onto col(T) and leaves model_loglike invariant to < 1e-12)'
+  referee: mathematics (closure-of-closures null-space invariance n^T T = 0 and exact dense-Gaussian marginal + periodic wrap decomposition, tests/test_gains_algebra.py)
+  evidence:
+    - tests/test_gains_algebra.py::test_f26_closure_offsets_scale_penalty_projects_onto_span_of_T
+    - tests/test_gains_algebra.py::test_offsets_outside_the_span_of_T_do_not_enter_unscaled_and_pin_scaled
+  status: open
+
+- id: P13
+  title: oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90
+  objects: [oimodeler]
+  ruling: external:oimodeler
+  kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: calling np.rot90(im) before oimComponentImage maps row 0 to South places the hot visible pole at pa + 180 deg instead of pa, inverting every closure phase sign)'
+  referee: mathematics (translation-invariant first-lobe closure-phase sign against crosscheck.elr.cloud); pmoired (rotastar.Vrota)
+  evidence: [tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion]
+  status: to-raise
+
+- id: P14
+  title: oimodeler's oimFastRotator parametrizes gravity darkening with rot^0.4 and K = sin(1/3) pi instead of O(omega^2) Roche scaling
+  objects: [oimodeler]
+  ruling: external:oimodeler
+  kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: setting a = (2/3) rot^0.4 and K = sin(1/3) pi gives an O(omega^0.4) slow-rotation equator-on V^2 anisotropy across rot = 0.01..0.04 instead of the physical O(omega^2) Roche/ELR11 centrifugal scaling, over-predicting slow-rotator anisotropy by >100x at rot = 0.01)'
+  referee: mathematics (Roche/von Zeipel/ELR11 O(omega^2) centrifugal scaling of equator-on V^2 anisotropy)
+  evidence: [tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling]
+  status: to-raise

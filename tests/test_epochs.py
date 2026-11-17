@@ -406,7 +406,7 @@ def curvature(d, x, h):
     return H
 
 
-@pytest.mark.validates("virgil.epochs.epoch_positions", "virgil.epochs.EpochPositions", roots=["mathematics"])
+@pytest.mark.validates("virgil.epochs.epoch_positions", "virgil.epochs.EpochPositions", roots=["mathematics"], headline="max_abs_position_mas")
 def test_epoch_positions_refined_maximum_of_m(nights, positions):
     """The refined position and flux maximise our m (SciPy, from the best
     grid point); the covariance is the position block of the inverse of the full
@@ -588,7 +588,7 @@ def our_chain_starts(ds, trials, n, min_distance):
 
 
 @pytest.mark.validates("virgil.epochs.chain_starts", "virgil.epochs.RankedOrbits", "virgil.epochs.Epochs",
-                       roots=["mathematics"])
+                       roots=["mathematics"], headline="max_abs_position_mas_n3")
 def test_chain_starts_cover_both_modes(orbit_epochs):
     """Two clusters of trial orbits: two chains start one in each (the best
     of each, by our own χ²), never on the mirror of the truth, and a third

@@ -54,7 +54,7 @@ def _vg(term, values):
     return eqx.filter_value_and_grad(lambda x: vg.term_loss(term, x))(values)
 
 
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"])
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], headline="gp_toeplitz_grad_rel_diff_max")
 def test_the_multipole_field_through_the_toeplitz_chi2_equals_the_direct_chi2_in_value_and_gradient(syn):
     """Stage 0 of the GP plan: ``Image(MultipoleField)`` (no taper, gains, offsets and per-ddid sigma free, reference observation fixed) at a random latent: the
     Toeplitz loss equals the direct one to 1e-8 relative, and so does every gradient leaf (latent, sigma, flux, gains, offsets, sigmas) to 1e-8 of its own largest component."""

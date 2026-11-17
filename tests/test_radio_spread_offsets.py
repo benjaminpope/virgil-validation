@@ -131,7 +131,7 @@ def _tolerances(case, values):
 
 
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_grad_relative_error")
 @pytest.mark.parametrize("point", ["start", "moved", "edge"])
 def test_spread_offsets_chi2_and_gradient_equal_the_exact_reference_within_the_documented_error(point):
     """Per-ddid chi-squared and the gradient of the chi-squared in every fitted site (image logits, flux,
@@ -167,14 +167,17 @@ def test_spread_offsets_chi2_and_gradient_equal_the_exact_reference_within_the_d
     assert np.abs(chi2_got / chi2_ref - 1).max() < 1e-8
     reference = {"log_brightness": ref["eta"], "cal.flux": np.array(ref["flux"]), "cal.gain": ref["gain"][1:],
                  "cal.offset": ref["offset"][1:]}
+    max_grad_rel = 0.0
     for site, exact in reference.items():
         diff = np.linalg.norm(np.asarray(got[site]) - exact)
         norm = np.linalg.norm(exact)
+        max_grad_rel = max(max_grad_rel, float(diff / norm))
         record(f"spread_grad_error_over_tolerance_{site}_{point}", float(diff / tol[site]))
         record(f"spread_grad_relative_error_{site}_{point}", float(diff / norm))
         assert norm > 1.0, (site, norm)  # a gradient of order one or more on a loss of ~3e4: not a stationary point
         assert diff < tol[site], (site, diff, tol[site])
         assert diff / norm < 1e-8, (site, diff / norm)
+    record("max_grad_relative_error", max_grad_rel)
 
 
 # ------------------------------------------------------------------ B5 (2): the fit recovers injected offsets
@@ -184,7 +187,7 @@ TRUE_OFFSETS = np.array([[0.0, 0.0], [3.1, -2.2], [-1.7, 4.4]])
 
 
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["statistics", "mathematics"])
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["statistics", "mathematics"], headline="recovery_max_abs_z")
 def test_fitted_offsets_recover_injected_offsets_within_the_fisher_scatter():
     """Simulate (numpy, exact DFT, Gaussian noise of variance 1/w in each of Re and Im, so that exp(-chi2/2) is
     the likelihood) 600 visibilities of a 16 x 16 image in three observations with injected offsets (3.1, -2.2)
@@ -261,7 +264,7 @@ def _bound_case(offsets, max_offset_mas=BOUND):
 
 
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="at_bound_offset_gradient_error_over_tolerance")
 @pytest.mark.parametrize("offsets", [[[BOUND, -BOUND], [-BOUND, BOUND]], [[0.0, BOUND], [-BOUND, 0.0]]],
                          ids=["corners", "axes"])
 def test_offsets_exactly_at_the_bound_evaluate_and_equal_the_reference(offsets):

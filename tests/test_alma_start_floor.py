@@ -143,7 +143,7 @@ def test_gaussian_visibility_is_the_dft_of_the_rendered_image():
     record("dft_max_abs_diff_over_flux", float(np.max(np.abs(dft - vs.gaussian_visibility(u, v, *pars))) / pars[0]))
 
 
-@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"])
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["mathematics"], headline="flux_rel_error")
 def test_fit_gaussian_recovers_an_elliptical_gaussian_and_orders_the_axes(tmp_path):
     """Noisy visibilities of a known elliptical Gaussian (flux 0.3 Jy, 200 mas East and -150 mas North, 2200 x 1300 mas FWHM at PA 35 deg): the fit gets the flux,
     centroid, FWHMs and PA back (also when started with the axes swapped: major >= minor and PA in [0, 180)), and chi^2 per point is about 1."""

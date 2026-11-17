@@ -12,10 +12,17 @@
 #   properties: {name: n}, for parts whose checks test different things:
 #             each property needs n independent roots of its own, counted
 #             from checks marked property="name".
-#   convention: properties defined only by virgil's own documentation. The
-#             part stays "convention from virgil's docs" until a check from
-#             another code or published result confirms each one (a
-#             sign-off does not count).
+#   convention: external sky/data conventions defined only by virgil's own
+#             documentation. The part stays "convention from virgil's docs"
+#             until a check from another code or published result confirms
+#             each one (a sign-off does not count); internal parameter-sign
+#             choices explicitly ruled `definition` in `trust/ledger.yml` are
+#             enforced via `properties:` and wrong-sign controls instead.
+#             On-sky orientations stay `convention:` (example: FlaredDisk
+#             `near_side`, D24: the near-side rim at pa + 90 deg, a photocentre
+#             direction and a closure-phase sign); only internal
+#             parameterisations ruled `definition` use `properties:` plus
+#             wrong-convention controls.
 #             Roots come from one pool (src/evidence/__init__.py): mathematics,
 #             standards, statistics, literature, and the trusted packages
 #             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!). Any of
@@ -76,6 +83,7 @@ nodes:
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image.model_on_grid: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image]}
   virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
+  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], doc: models/visibilities.md#pixel-images}
   virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Rotated: {layer: models, source: [src/virgil/models.py], convention: [rotation_sense]}
@@ -115,6 +123,7 @@ nodes:
     doc: models/limb_darkening.md#elliptical-disks
   virgil.spectra.Spectrum: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.flux_at: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
+  virgil.spectra.Scaled: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
@@ -131,7 +140,10 @@ nodes:
     doc: alma_conventions.md
   virgil.radio.ComplexVisData.dirty_image: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
   virgil.radio.ComplexVisData.dirty_beam: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
-  virgil.radio_clean.clean: {layer: imaging, source: [src/virgil/radio_clean.py], depends: [virgil.radio.ComplexVisData, virgil.radio.ComplexVisData.dirty_image, virgil.radio.ComplexVisData.model]}
+  virgil.radio_clean.fit_beam: {layer: imaging, source: [src/virgil/radio_clean.py], doc: alma_conventions.md}
+  virgil.radio_clean.restore: {layer: imaging, source: [src/virgil/radio_clean.py], doc: alma_conventions.md}
+  virgil.radio_clean.clean: {layer: imaging, source: [src/virgil/radio_clean.py], depends: [virgil.radio.ComplexVisData, virgil.radio.ComplexVisData.dirty_image, virgil.radio.ComplexVisData.model, virgil.radio_clean.fit_beam, virgil.radio_clean.restore], doc: alma_conventions.md}
+  virgil.radio_clean.RadioCleanResult: {layer: imaging, source: [src/virgil/radio_clean.py], depends: [virgil.radio_clean.clean], doc: alma_conventions.md}
   virgil.radio.CalibrationNuisance: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
   virgil._antenna_gains.marginal: {layer: likelihood, source: [src/virgil/_antenna_gains.py], depends: [virgil.radio.CalibrationNuisance], doc: alma_conventions.md}  # B7 Stage 1 (Laplace): tests/test_radio_trust_numpy.py against Gauss-Hermite quadrature
   virgil.radio.ComplexVisData.model:
@@ -154,10 +166,12 @@ nodes:
   virgil.fitting.gauss_newton_diag: {layer: imaging, source: [src/virgil/fitting.py], depends: [virgil.fitting.fit, virgil.imaging.MaxEntropy, virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   crosscheck.radio_trust: {layer: references, doc: alma_conventions.md}  # numpy dirty image/beam sums, Briggs weights, gain-marginal quadrature (virgil#533)
-  crosscheck.radio_offsets: {layer: references, doc: alma_conventions.md}  # B5 free offsets: exact phase-ramp chi2, analytic gradient, Fisher information (numpy only); tests/test_radio_spread_offsets.py
-  crosscheck.radio_exact: {layer: references, doc: alma_conventions.md}  # G2: numpy-only direct-sum chi2, loss, gradients and the derived round-off budget (design/toeplitz_reexam_042.md)
-  crosscheck.toeplitz_scenes: {layer: references, doc: alma_conventions.md}  # G2: held-out synthetic scenes and coverages, seeds from hashed names
+  crosscheck.radio_offsets: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # B5 free offsets: exact phase-ramp chi2, analytic gradient, Fisher information (numpy only); tests/test_radio_spread_offsets.py
+  crosscheck.radio_exact: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: numpy-only direct-sum chi2, loss, gradients and the derived round-off budget (design/toeplitz_reexam_042.md)
+  crosscheck.toeplitz_scenes: {layer: references, depends: [crosscheck.radio_exact, crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: held-out synthetic scenes and coverages, seeds from hashed names
+  crosscheck.radio_innovations: {layer: references, doc: alma_conventions.md}  # B2, B5: numpy softmax image, Gauss-Newton diagonal, entropy metric, direct DDID chi2
   crosscheck.radio_innovations.DeltaProblem: {layer: references, doc: alma_conventions.md}  # B6, float32 linear-delta-V loss: the method alone, virgil has no code for it yet
+  crosscheck.preregistration: {layer: references, doc: alma_conventions.md}  # pre-registered gate criteria commit pinning and dirty/untracked refusal
 
   # ----------------------------------------------------------- likelihood
   virgil.oidata.OIData.cp_noise:  # correlated closure phases (Kammerer et al. 2020)
@@ -205,6 +219,12 @@ nodes:
     depends: [virgil.likelihood.whitened_residuals]
   virgil.priors.IsotropicInclination: {layer: priors, source: [src/virgil/priors.py]}
   virgil.priors.IsotropicLatitude: {layer: priors, source: [src/virgil/priors.py]}
+  virgil.priors.PopulationScale: {layer: priors, source: [src/virgil/priors.py], doc: likelihood/priors.md}
+  virgil.priors.hierarchical_scales:
+    layer: priors
+    source: [src/virgil/priors.py]
+    depends: [virgil.priors.PopulationScale]
+    doc: likelihood/priors.md
   virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py], doc: likelihood/priors.md}
   virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
   virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
@@ -321,8 +341,17 @@ nodes:
   virgil.limits.contrast_to_flux: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.chi2ppf: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.radial_profile: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
-  # PolarDisk (virgil P1-P4): one disk class, radial profiles x azimuthal harmonics x height
-  virgil.models.PolarDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  # MultipoleDisk (formerly PolarDisk, virgil P1-P4): radial profiles x azimuthal harmonics x height
+  virgil.models.MultipoleDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.models.ThinRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.GaussianRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialPowerLaw: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.Gap: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialSum: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialLinear: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialPower: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.RadialGP: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
+  virgil.models.MultipoleKernel: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.Harmonics:
     layer: models
     source: [src/virgil/models.py, src/virgil/harmonics.py]
@@ -332,6 +361,12 @@ nodes:
   virgil.models.Cone: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.PowerLawHeight: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.ExpTail: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}  # accuracy beyond the 150-node cap: F19
+  virgil.harmonics.to_image_harmonics: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.from_image_harmonics: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.from_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.to_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.rim_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.harmonics.cone_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
   virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
@@ -339,6 +374,11 @@ nodes:
     layer: priors
     source: [src/virgil/fields.py]
     depends: [virgil.fields.field_spectrum]
+  virgil.fields.MultipoleField:
+    layer: priors
+    source: [src/virgil/fields.py, src/virgil/models.py]
+    depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel]
+    doc: models/polar_disk.md
   virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
   virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}
   virgil.likelihood.loglike:
@@ -411,6 +451,17 @@ nodes:
     doc: inference/helpers.md
   virgil.inference.gaussian_fisher: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.fisher_projection: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.expected_fisher: {layer: inference, source: [src/virgil/inference.py], depends: [], doc: inference/helpers.md}
+  virgil.inference.objective_laplace_covariance:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.inference.hessian_matrix, virgil.inference.regularized_inverse]
+    doc: inference/helpers.md
+  virgil.inference.observed_information:
+    layer: inference
+    source: [src/virgil/inference.py]
+    depends: [virgil.likelihood.model_loglike, virgil.likelihood.build_model]
+    doc: inference/helpers.md
   virgil.inference.laplace_parameter_uncertainty:
     layer: inference
     source: [src/virgil/inference.py]
@@ -484,10 +535,10 @@ nodes:
   virgil.ensemble.draw_groups:
     layer: imaging
     source: [src/virgil/ensemble.py, src/virgil/imaging.py]
-    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view]
+    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view, virgil.fitting.fit]
     doc: imaging/metrics_ensembles.md#ensembles
   # regularised imaging: natural roots are eht-imaging and MPoL
-  virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals], doc: imaging/machinery.md#clean}
+  virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals, virgil.fitting.fit], doc: imaging/machinery.md#clean}
   virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.TV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.MaxEntropy: {layer: imaging, source: [src/virgil/imaging.py]}
@@ -516,6 +567,7 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit]
+  virgil.orbits.period_grid: {layer: orbits, source: [src/virgil/orbits.py], doc: orbits/kepler.md}
   virgil.orbits.total_mass:
     layer: orbits
     source: [src/virgil/orbits.py]
@@ -528,8 +580,7 @@ nodes:
     layer: orbits
     source: [src/virgil/orbits.py]
     depends: [virgil.orbits.KeplerOrbit]
-    properties: {likelihood: 1, calibration: 1}
-    convention: [calibration]  # the sign of north_angle is virgil's definition
+    properties: {likelihood: 1, calibration: 1}  # sign of north_angle is virgil's internal definition, pinned with control
     doc: orbits/kepler.md
   virgil.orbits.RVData:
     layer: orbits
@@ -545,31 +596,39 @@ nodes:
 
   # --------------------------------------------- our references (links)
   crosscheck.sky: {layer: references}
-  crosscheck.limb: {layer: references}
+  crosscheck.limb: {layer: references, depends: [crosscheck.sky]}
   crosscheck.array: {layer: references}
   crosscheck.chi2: {layer: references}
   crosscheck.astrometry: {layer: references, doc: method/index.md}
   crosscheck.oifits_writer: {layer: references}
   crosscheck.simulate: {layer: references, depends: [crosscheck.array, crosscheck.oifits_writer]}
   crosscheck.orbits: {layer: references}
+  crosscheck.orbit_population: {layer: references, depends: [crosscheck.array, crosscheck.oifits_writer, crosscheck.orbits, crosscheck.sky], doc: orbits/epochs.md}
+  crosscheck.references: {layer: references, doc: orbits/epochs.md}
+  crosscheck.skyplane: {layer: references, depends: [crosscheck.orbits], doc: orbits/epochs.md}
   crosscheck.disks: {layer: references}
-  crosscheck.elr: {layer: references}
-  crosscheck.nrm: {layer: references}
+  crosscheck.elr: {layer: references, depends: [crosscheck.sky]}
+  crosscheck.nrm: {layer: references, depends: [crosscheck.sky]}
   crosscheck.image_metrics: {layer: references}
+  crosscheck.informed_starts: {layer: references, doc: imaging/metrics_ensembles.md}
   crosscheck.alma: {layer: references, doc: alma_conventions.md}  # incl. the exact DFT image_visibilities and its adjoint
   external_bridge.alma_worker: {layer: references, doc: alma_conventions.md}
-  external_bridge.mpol_worker: {layer: references, doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4) and the cross-validation tasks export_fold_asdf, score_fold (tests/test_alma_mpol_cv.py, conventions Part 6)
-  external_bridge.cv_folds: {layer: references, doc: alma_conventions.md}  # asdf points matched to virgil's dartboard fold file (numpy only); tallies and the profiled score of both codes (tests/test_alma_mpol_cv.py, conventions Part 6)
-  external_bridge.cv_compare: {layer: references, doc: alma_conventions.md}  # MPoL's held-out scores beside virgil's, per fold and annulus (numpy only; `alma_imlup_maxent.py cv-compare`)
+  external_bridge.casa_clean_worker: {layer: references, doc: alma_conventions.md}
+  external_bridge.mpol_worker: {layer: references, depends: [external_bridge.cv_folds, external_bridge.npz_compare], doc: alma_conventions.md}  # MPoL's own Net, loss and autograd, in .venv-mpol; also the reference-run tasks export_checkpoint, objective_full, asdf_vs_npz (tests/test_alma_mpol_ref.py, conventions Part 4) and the cross-validation tasks export_fold_asdf, score_fold (tests/test_alma_mpol_cv.py, conventions Part 6)
+  external_bridge.npz_compare: {layer: references, doc: alma_conventions.md}  # channel-rank matched visibility comparison between visread NPZ and virgil read_ms
+  external_bridge.cv_folds: {layer: references, depends: [external_bridge.npz_compare], doc: alma_conventions.md}  # asdf points matched to virgil's dartboard fold file (numpy only); tallies and the profiled score of both codes (tests/test_alma_mpol_cv.py, conventions Part 6)
+  external_bridge.cv_compare: {layer: references, depends: [external_bridge.cv_folds], doc: alma_conventions.md}  # MPoL's held-out scores beside virgil's, per fold and annulus (numpy only; `alma_imlup_maxent.py cv-compare`)
+  virgil_bridge: {layer: references, depends: [crosscheck.limb, crosscheck.sky], doc: method/index.md}  # scene definitions pairing crosscheck.{sky,limb} truth with virgil models and MAP/Laplace fitting helpers
   virgil_bridge.mpol: {layer: references, doc: alma_conventions.md}  # virgil.radio in MPoL's parametrisation (the map)
-  virgil_bridge.alma: {layer: references, doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
-  virgil_bridge.alma_start: {layer: references, doc: alma_conventions.md}  # IM Lup MaxEnt cold starts: our CLEAN model regridded to the fit grid, the image-fixed stage's gain check
-  virgil_bridge.alma_gp: {layer: references, doc: alma_conventions.md}  # IM Lup GP image: Image(MultipoleField) with config R's nuisances through the Toeplitz chi^2; stage 1 holds the nuisances (`alma_imlup_gp.py`)
-  virgil_bridge.alma_synth: {layer: references, doc: alma_conventions.md}  # IM Lup synthetic truth: smooth disk, real uv and weights, dots/NRMSE scoring (`alma_imlup_synth.py`)
-  virgil_bridge.alma_replica: {layer: references, doc: alma_conventions.md}  # MPoL replica: softplus pixels, in-model blur, AdamW, MPoL step counts; replica-vs-MPoL bands (`alma_imlup_maxent.py fit --workflow mpol-replica`)
+  virgil_bridge.alma: {layer: references, depends: [crosscheck.alma, crosscheck.alma_maxent], doc: alma_conventions.md}  # IM Lup P3: R objective (MPoL's entropy term), folds, scoring
+  virgil_bridge.alma_start: {layer: references, depends: [crosscheck.alma_maxent, crosscheck.preregistration, virgil_bridge.alma], doc: alma_conventions.md}  # IM Lup MaxEnt cold starts: our CLEAN model regridded to the fit grid, the image-fixed stage's gain check
+  virgil_bridge.alma_gp: {layer: references, depends: [crosscheck.alma_maxent, virgil_bridge.alma, virgil_bridge.alma_start], doc: alma_conventions.md}  # IM Lup GP image: Image(MultipoleField) with config R's nuisances through the Toeplitz chi^2; stage 1 holds the nuisances (`alma_imlup_gp.py`)
+  virgil_bridge.alma_synth: {layer: references, depends: [crosscheck.alma_maxent, virgil_bridge.alma, virgil_bridge.alma_start], doc: alma_conventions.md}  # IM Lup synthetic truth: smooth disk, real uv and weights, dots/NRMSE scoring (`alma_imlup_synth.py`)
+  virgil_bridge.alma_replica: {layer: references, depends: [virgil_bridge.alma, virgil_bridge.alma_gp, virgil_bridge.alma_start], doc: alma_conventions.md}  # MPoL replica: softplus pixels, in-model blur, AdamW, MPoL step counts; replica-vs-MPoL bands (`alma_imlup_maxent.py fit --workflow mpol-replica`)
+  virgil_bridge.alma_lambda: {layer: references, depends: [virgil_bridge.alma_start, virgil_bridge.alma_synth], doc: alma_conventions.md}  # the registered IM Lup lambda rule: scatter s^2 (sigma, D4), MEM on sqrt pixels over the D1 grid, dof-corrected discrepancy root, staged nuisances (`alma_imlup_maxent.py lambda-rule`)
+  virgil_bridge.alma_lambda_report: {layer: references, depends: [crosscheck.alma_maxent, virgil_bridge.alma_lambda, virgil_bridge.alma_start], doc: alma_conventions.md}  # IM Lup lambda-rule report: Gaussian beam FFT blur, sky moments/PA, WCS regrid, pre-registered check evaluation (`alma_imlup_maxent.py lambda-report`)
   postagb_imaging.LowOrderField: {layer: references, doc: imaging/postagb.md#how-the-images-were-made}  # post-AGB gp-polar: MultipoleField low-passed to azimuthal orders m <= m_max, sigma kept per node (scripts/postagb_imaging.py; design/gp_polar_hyperparameters.md)
   postagb_imaging.night_noise: {layer: references, doc: imaging/postagb.md#how-the-images-were-made}  # post-AGB --noise night: vlti terms plus a log|V| gain per (night, baseline) and a closure offset per (night, triangle), widths from scripts/postagb_night_widths.py
-  virgil_bridge.alma_lambda: {layer: references, doc: alma_conventions.md}  # the registered IM Lup lambda rule: scatter s^2 (sigma, D4), MEM on sqrt pixels over the D1 grid, dof-corrected discrepancy root, staged nuisances (`alma_imlup_maxent.py lambda-rule`)
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
   crosscheck.alma_speed: {layer: references, doc: alma_conventions.md}  # virgil's L-BFGS against MPoL's AdamW on IM Lup: objective vs wall time, time to target, cost per pass (numpy only; `alma_imlup_maxent.py speed`)
@@ -578,14 +637,18 @@ nodes:
   evidence: {layer: references}
   pmoired: {layer: references}  # the external package itself (problems P1-P3)
   orbitize: {layer: references}  # the external package itself (problem P7)
-  external_bridge.orbitize_bridge: {layer: references}
+  external_bridge.orbitize_worker: {layer: references, doc: method/orbitize.md}
+  external_bridge.orbitize_bridge: {layer: references, depends: [external_bridge.orbitize_worker], doc: method/orbitize.md}
   candid: {layer: references}  # the external package itself (problem P4)
-  external_bridge.candid_bridge: {layer: references}
+  external_bridge.candid_worker: {layer: references, doc: method/candid.md}
+  external_bridge.candid_bridge: {layer: references, depends: [external_bridge.candid_worker], doc: method/candid.md}
   external_bridge.fouriever_worker: {layer: references}
   fouriever: {layer: references}  # the external package itself (problem P5)
+  external_bridge.ehtim_worker: {layer: references, doc: method/ehtim.md}
   ehtim: {layer: references}  # the external package itself (problem P6)
+  external_bridge.safe_load: {layer: references, doc: method/index.md}
   crosscheck.radial: {layer: references, doc: models/polar_disk.md}
-  crosscheck.polar_images: {layer: references, doc: models/polar_disk.md}
+  crosscheck.polar_images: {layer: references, depends: [crosscheck.sky], doc: models/polar_disk.md}
   external_bridge.radial_codes: {layer: references, doc: models/polar_disk.md}
   frank: {layer: references, doc: models/polar_disk.md}  # the external package itself
   visr: {layer: references, doc: models/polar_disk.md}  # vis-r (its ggap profile: P10)

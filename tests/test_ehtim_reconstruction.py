@@ -218,6 +218,7 @@ def ehtim_objective(rows, images, n_amp, n_cp, weight):
 
 @pytest.mark.validates(
     "virgil.imaging.TSV", "virgil.models.Image", "virgil.likelihood.whitened_residuals", roots=["ehtim"],
+    headline="worst_rel_value_difference",
 )
 def test_objective_matches_ehtim(well_posed):
     """The mapping, term by term, on random images of unit flux.
