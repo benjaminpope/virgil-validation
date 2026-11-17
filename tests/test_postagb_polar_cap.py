@@ -216,3 +216,38 @@ def test_polar_cells_start_every_cell_cold_and_record_its_loss_history(monkeypat
         and rec[0]["stop"] == "gtol"
         and rec[0]["converged"]
     )
+
+
+@needs_multipole
+def test_polar_cells_never_pick_or_extend_past_the_prior_bounds(monkeypatch):
+    """An evidence that always prefers more contrast and shorter radial lengths (the real-data failure) stops at the bounds:
+    length_r = 1 beam and sigma = 2, with no extension past either."""
+
+    def fake_fit(scene, priors, data, init=None, progress=None, **kw):
+        info = dict(
+            steps=1, stop="gtol", converged=True, loss=0.0, grad_norm=0.0, chi2_red=1.0
+        )
+        return type("F", (), dict(info=info, model=None, vals=scene))()
+
+    monkeypatch.setattr(P, "fit", fake_fit)
+    monkeypatch.setattr(
+        P, "log_evidence", lambda f, d: f.vals[0] - f.vals[1]
+    )  # sigma - length_r
+    monkeypatch.setattr(
+        P, "polar_scene_fn", lambda *a: (lambda sg, lr, lt: (sg, lr, lt))
+    )
+    monkeypatch.setattr(P, "image_priors", lambda sc: {})
+    monkeypatch.setattr(
+        P, "compare_beam", lambda d: type("B", (), dict(minor_mas=1.2))()
+    )
+    args = type("A", (), dict(smoke=False))()
+    start_env = type("E", (), dict(pixel_scale_mas=0.3))()
+    cfg = dict(
+        polar_lr_beams=(0.5, 1.0, 2.0)
+    )  # a per-target grid below the bound is trimmed to it
+    _, axes, best, _, extended = P.polar_cells(
+        cfg, None, start_env, None, {}, None, args, {}, 1.0
+    )
+    assert min(axes[0]) == pytest.approx(1.2) and max(axes[2]) == P.POLAR_SIGMA_MAX
+    assert best[0] == pytest.approx(1.2) and best[2] == P.POLAR_SIGMA_MAX
+    assert not [e for e in extended if (e[0], e[1]) in ((0, "lower"), (2, "upper"))]

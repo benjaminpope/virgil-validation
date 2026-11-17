@@ -988,7 +988,13 @@ POLAR_M_MAX = 3
 POLAR_SIGMAS = (0.125, 0.25, 0.5, 1.0, 2.0)
 POLAR_LT = (0.25, 0.5, 1.0, 2.0)
 POLAR_LT_UNCAPPED = (0.125, 0.25, 0.5, 1.0, 2.0)  # the grid before the cap (m_max None), kept for the calibration's uncapped arm
-POLAR_LR_BEAMS = (0.5, 1.0, 2.0, 4.0)
+POLAR_LR_BEAMS = (1.0, 2.0, 4.0)
+# Prior bounds on the evidence's choice (Ben: "bound by prior"), fixed from the stage-C calibration before they were applied to the
+# real targets (design/gp_polar_hyperparameters.md §8). l_r >= 1 beam: the data do not constrain radial structure below the beam, and
+# the truth's best cell was 2 beams in 65 of 72 calibration runs. sigma <= 2 (rms log-contrast per node, e^2 ~ 7x): the truth needed
+# sigma = 4 in 5 of 72. The grid is never extended past them; a pick on a bound is reported (gp_at_bound).
+POLAR_LR_MIN_BEAMS = 1.0
+POLAR_SIGMA_MAX = 2.0
 POLAR_MAX_STEPS = 3000  # every cell starts cold, from the same point, so it needs more LM steps than a warm-started chain
 
 
@@ -1018,15 +1024,22 @@ def polar_scene_fn(cfg, scene, start_env, support, args, geo, r_min, m_max):
     return mp_scene
 
 
+def polar_bounds(unit, pix):
+    """The prior bounds of the gp-polar choice: (smallest length_r in mas, largest sigma)."""
+    return max(POLAR_LR_MIN_BEAMS * unit, pix), POLAR_SIGMA_MAX
+
+
 def polar_cells(cfg, scene, start_env, support, priors, data, args, geo, r_min, m_max=POLAR_M_MAX, axes=None, extend=True):
     """Fit the gp-polar grid: every cell from the same cold start (the scene's own parameters, zero latents), so that no cell's
     evidence depends on the order the grid is visited in. ``axes`` = (length_r mas, length_theta rad, sigma) lists, by default the
-    POLAR_* grid; with ``extend`` an edge pick is extended once (``grid_search``). Returns ``grid_search``'s tuple; each cell is
+    POLAR_* grid within the prior bounds (``polar_bounds``); with ``extend`` an edge pick is extended once (``grid_search``), never
+    past a bound. Explicit ``axes`` (the calibration's fixed grid) are used as given. Returns ``grid_search``'s tuple; each cell is
     ``(fit, log Z, chi2/pt, record)`` with the record of ``fit_cell``."""
     unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
+    lr_min, sg_max = polar_bounds(unit_, pix_)
     if axes is None:
-        lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", POLAR_LR_BEAMS) if m * unit_ >= pix_]
-        axes = [lens_r, list(POLAR_LT if m_max is not None else POLAR_LT_UNCAPPED), list(POLAR_SIGMAS)]
+        lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", POLAR_LR_BEAMS) if m * unit_ >= lr_min * (1 - 1e-9)]
+        axes = [lens_r, list(POLAR_LT if m_max is not None else POLAR_LT_UNCAPPED), [s for s in POLAR_SIGMAS if s <= sg_max]]
     if args.smoke:
         axes = [a[:1] for a in axes]
     mp_scene = polar_scene_fn(cfg, scene, start_env, support, args, geo, r_min, m_max)
@@ -1042,11 +1055,11 @@ def polar_cells(cfg, scene, start_env, support, priors, data, args, geo, r_min, 
               f"({rec['stop']}), {rec['seconds']:.0f} s", flush=True)
         return f_, lz, c2, rec
 
-    # lengths in radius go down by halves to one pixel (below that a GP is white noise) and up by doubles; in azimuth, 2 rad is nearly
-    # one lobe, so an upper edge is a constant ring, and under the cap a shorter length than the grid's adds nothing
+    # lengths in radius go up by doubles and never below the bound; in azimuth, 2 rad is nearly one lobe, so an upper edge is a
+    # constant ring, and under the cap a shorter length than the grid's adds nothing; sigma goes down by halves, never above its bound
     lt_lower = None if m_max is not None else (lambda v: v / 2.0)
-    extenders = [(lambda v: v / 2.0 if v / 2.0 >= pix_ else None, lambda v: 2.0 * v), (lt_lower, lambda v: 2.0 * v),
-                 (lambda v: v / 2.0, lambda v: 2.0 * v)]
+    extenders = [(lambda v: v / 2.0 if v / 2.0 >= lr_min * (1 - 1e-9) else None, lambda v: 2.0 * v), (lt_lower, lambda v: 2.0 * v),
+                 (lambda v: v / 2.0, lambda v: 2.0 * v if 2.0 * v <= sg_max else None)]
     return grid_search(axes, run, extenders, smoke=args.smoke or not extend)
 
 
@@ -1062,7 +1075,8 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
     """Polar-GP image (``virgil.fields.MultipoleField``, azimuthal orders capped by ``LowOrderField``): a Matern kernel in the disc's
     radius times a periodic one in azimuth, deprojected by the inclination and position angle of our own parametric disc fit
     (``geo``); the polar grid starts at the hole radius. (sigma, length_r, length_theta) from the Laplace evidence on the rescaled
-    data, every cell from the same cold start (``polar_cells``)."""
+    data, every cell from the same cold start (``polar_cells``), within the prior bounds ``POLAR_LR_MIN_BEAMS`` and
+    ``POLAR_SIGMA_MAX``."""
     m_max = cfg.get("polar_m_max", POLAR_M_MAX)
     cells, (lens_r, lens_t, sigmas), (blr, blt, bsg), edge, extended = polar_cells(cfg, scene, start_env, support, priors, data, args,
                                                                                    geo, r_min, m_max=m_max)
@@ -1073,9 +1087,12 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
                   gp_xlabel="ℓ_θ (rad)", gp_ylabel="ℓ_r (mas)", chosen=np.array([bi, bj]), mp_log_z=log_z, mp_chi2=chi2,
                   mp_sigmas=np.asarray(sigmas), mp_cells=json.dumps(cell_records(cells, (lens_r, lens_t, sigmas))))
     rec = cells[blr, blt, bsg][3]
+    lr_min, sg_max = polar_bounds(compare_beam(data).minor_mas, float(start_env.pixel_scale_mas))
+    at_bound = [n for n, hit in (("length_r", np.isclose(blr, lr_min)), ("sigma", np.isclose(bsg, sg_max))) if hit]
     return best.model, arrays, dict(
         regulariser="MultipoleField" if m_max is None else f"MultipoleField, azimuthal orders <= {m_max}", mp_m_max=m_max,
-        weight_rule="Laplace evidence", cell_start="cold", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(bsg),
+        weight_rule=f"Laplace evidence within prior bounds (length_r >= {POLAR_LR_MIN_BEAMS:g} beam, sigma <= {POLAR_SIGMA_MAX:g})",
+        gp_lr_min_mas=float(lr_min), gp_sigma_max=float(sg_max), gp_at_bound=at_bound, cell_start="cold", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(bsg),
         gp_length_r_mas=float(blr), gp_length_theta=float(blt), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"],
         mp_r_min_mas=r_min, mp_r_max_mas=float(cfg["half_mas"]), log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge,
         gp_grid_extended=extended, gp_converged=bool(best.info.get("converged", True)), gp_steps=rec["steps"], gp_stop=rec["stop"],

@@ -1,7 +1,7 @@
 # gp-polar hyperparameters: why four discs break into dots, and how to choose them
 
-Status: the azimuthal cap and cold, logged grid cells are in place (`scripts/postagb_imaging.py`). How to pick σ and ℓ_r waits on the
-calibration run (stage C of `postagb_noise`, §4). This note replaces the floors of PR #264.
+Status: the azimuthal cap, cold logged grid cells and a bounded evidence selector (§8) are in place (`scripts/postagb_imaging.py`). The
+calibration that chose the bounds is §4 and §7. This note replaces the floors of PR #264.
 
 ## 1. The failure
 
@@ -170,3 +170,19 @@ What the run does settle:
 So the real data contain something none of the four arms simulate: real compact structure, or a systematic outside the error
 models tested (the parametric fits reach χ²/pt only 1.3–4.8). Choosing between "the evidence is right about the data" and "cap σ
 or ℓ_r by prior" is a science call for Ben, not something this calibration can make.
+
+## 8. The selector: the evidence within prior bounds (Ben: "bound by prior")
+
+Fixed here from the stage C runs alone, before the bounds were applied to any real target:
+
+* **ℓ_r ≥ 1 beam** (`POLAR_LR_MIN_BEAMS`). The data do not constrain radial structure below the beam. The truth's best cell was
+  2 beams in 65 of the 72 capped runs. The evidence's one `white` failure (PS Gem) came from picking 0.5 beam.
+* **σ ≤ 2** (`POLAR_SIGMA_MAX`), an rms log-contrast per node of e² ≈ 7×. The truth needed σ = 4 in only 5 of the 72 runs.
+* **ℓ_θ unchanged.** The m ≤ 3 cap already bounds the azimuthal structure, and the grid stays {0.25, 0.5, 1, 2} rad.
+
+Within these bounds the evidence still chooses. The grid is never extended past a bound, and a pick on one is reported in the
+summary (`gp_at_bound`) along with the bounds themselves (`gp_lr_min_mas`, `gp_sigma_max`).
+
+Applied to the stage C runs (simulations only), the bounded evidence passes `white`, `corr` and `smear` on all six targets
+(median rank fraction ≤ 0.14, beam-convolved error ≤ 1.13 × the best cell). `geo` still fails on AI Sco and EN TrA (0.25 and
+0.28, error ≤ 1.10 × best). An 8° geometry error remains a known limitation of the deprojected field.
