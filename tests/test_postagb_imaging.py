@@ -191,3 +191,89 @@ def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_p
     assert rec["kept_file"] == "t_image.json" and rec["kept_sha256"] == hashlib.sha256(prev.read_bytes()).hexdigest()
     assert rec["reason"] == "converged, interior of its grid" and rec["utc"]
     assert json.loads(prev.read_text()) == _previous_result()  # the kept result is untouched
+
+
+def _low_order(m_max, latent, **kw):
+    return P.LowOrderField(latent, image_shape=(24, 24), r_max_mas=6.0, r_min_mas=1.0, m_max=m_max, length_r=1.0, **kw)
+
+
+@needs_multipole
+@pytest.mark.parametrize("m_max", [0, 2, 3])
+def test_low_order_field_keeps_only_orders_up_to_its_cap(m_max):
+    latent = np.random.default_rng(1).standard_normal((10, 32))
+    spec = np.abs(np.fft.fft(np.asarray(_low_order(m_max, latent, length_theta=0.0625, sigma=2.0).polar_values()), axis=1))
+    m = np.minimum(np.arange(32), 32 - np.arange(32))
+    assert np.all(spec[:, m > m_max] < 1e-9 * spec.max())
+    assert np.all(spec[:, m <= m_max].max(axis=0) > 1e-3 * spec.max())
+
+
+@needs_multipole
+@pytest.mark.parametrize("length_theta", [0.0625, 0.5, 2.0])
+def test_low_order_field_keeps_sigma_as_the_rms_contrast(length_theta):
+    # the kept orders are rescaled, so the variance per node is sigma^2 with the cap as without it (a white azimuthal prior
+    # would otherwise lose 25/32 of its variance at m_max = 3)
+    rng = np.random.default_rng(2)
+    sigma, n = 1.5, 400
+    capped = np.stack([np.asarray(_low_order(3, rng.standard_normal((10, 32)), length_theta=length_theta, sigma=sigma).polar_values())
+                       for _ in range(n)])
+    free = np.stack([np.asarray(P.MultipoleField(rng.standard_normal((10, 32)), (24, 24), 6.0, r_min_mas=1.0, length_r=1.0,
+                                                 length_theta=length_theta, sigma=sigma).polar_values()) for _ in range(n)])
+    assert capped.var() == pytest.approx(free.var(), rel=0.08)
+
+
+@needs_multipole
+def test_low_order_field_matches_the_uncapped_field_when_the_cap_removes_nothing_of_weight():
+    # at l_theta = 4 rad the orders above 3 carry < 1e-6 of the variance, so the cap changes nothing visible
+    latent = np.random.default_rng(3).standard_normal((10, 32))
+    kw = dict(r_min_mas=1.0, length_r=1.0, length_theta=4.0, sigma=1.0, nu_theta=np.inf)
+    free = np.asarray(P.MultipoleField(latent, (24, 24), 6.0, **kw).polar_values())
+    capped = np.asarray(P.LowOrderField(latent, (24, 24), 6.0, m_max=3, **kw).polar_values())
+    assert np.allclose(capped, free, atol=1e-4 * np.abs(free).max())
+
+
+@needs_multipole
+def test_low_order_field_renders_through_an_image_and_keeps_its_cap_when_untied():
+    field = _low_order(2, np.zeros((10, 32)), length_theta=0.5, inc=40.0, pa=30.0)
+    img = P.Image(field, 0.5, flux=0.3)
+    assert np.all(np.isfinite(np.asarray(img.brightness)))
+    assert field.with_geometry(10.0, 20.0, 0.0, 0.0).m_max == 2
+    with pytest.raises(ValueError, match="m_max"):
+        _low_order(16, np.zeros((10, 32)))
+
+
+@needs_multipole
+def test_image_errors_are_zero_for_the_truth_and_grow_with_dots():
+    yy, xx = np.mgrid[:48, :48] - 23.5
+    r, th = np.hypot(xx, yy) * 0.25, np.arctan2(yy, xx)
+    ring = np.exp(-0.5 * ((r - 3.0) / 0.6) ** 2) * (1 + 0.3 * np.cos(th))
+    dots = ring * (np.cos(16 * th) > 0.8)  # the same ring broken into 16 dots
+    mask = r < 5.5
+    from virgil.imaging import Beam  # noqa: PLC0415
+
+    bm = Beam(1.0, 1.0, 0.0)
+    same = P.image_errors(ring, ring, 0.25, bm, mask)
+    assert same["nrmse_raw"] == pytest.approx(0.0, abs=1e-12) and same["ncc_beam"] == pytest.approx(1.0)
+    worse = P.image_errors(dots, ring, 0.25, bm, mask)
+    assert worse["nrmse_raw"] > 0.5 and worse["nrmse_raw"] > worse["nrmse_beam"]
+
+
+@needs_multipole
+def test_polar_cells_start_every_cell_cold_and_record_its_loss_history(monkeypatch):
+    starts = []
+
+    def fake_fit(scene, priors, data, init=None, progress=None, **kw):
+        starts.append(init)
+        progress(dict(steps=10, loss=5.0, grad_norm=1.0, elapsed=0.1))
+        return type("F", (), dict(info=dict(steps=10, stop="gtol", converged=True, loss=5.0, grad_norm=1e-5, chi2_red=0.9), model=None))()
+
+    monkeypatch.setattr(P, "fit", fake_fit)
+    monkeypatch.setattr(P, "log_evidence", lambda f, d: -1.0)
+    monkeypatch.setattr(P, "polar_scene_fn", lambda *a: (lambda sg, lr, lt: None))
+    monkeypatch.setattr(P, "image_priors", lambda sc: {})
+    monkeypatch.setattr(P, "compare_beam", lambda d: type("B", (), dict(minor_mas=1.0))())
+    args = type("A", (), dict(smoke=False))()
+    start_env = type("E", (), dict(pixel_scale_mas=0.25))()
+    cells = P.polar_cells({}, None, start_env, None, {}, None, args, {}, 1.0, axes=[[0.5, 1.0], [0.25, 1.0], [1.0, 2.0]], extend=False)[0]
+    assert len(cells) == 8 and starts == [None] * 8  # no cell is warm-started from another
+    rec = P.cell_records(cells, [[0.5, 1.0], [0.25, 1.0], [1.0, 2.0]])
+    assert rec[0]["history"] == [[10, 5.0, 1.0]] and rec[0]["stop"] == "gtol" and rec[0]["converged"]
