@@ -2244,3 +2244,31 @@ def test_depth_is_the_longest_depends_chain_and_nodes_list_their_depends(trust, 
     assert model["nodes"]["virgil.leaf"]["depends"] == []
     assert {p["id"]: (p["steps"], p["depth"]) for p in model["pipelines"]} == {
         "p": (["virgil.mid", "virgil.top"], 3), "q": ([], 1)}
+
+
+def test_a_part_depending_on_one_checked_through_a_reference_cycle_is_not_verified(trust, tmp_path):
+    """The cycle of references is the cause for whatever depends on it, not just for what is checked through it."""
+    graph = {"nodes": {
+        "crosscheck.a": {"layer": "references"},
+        "crosscheck.b": {"layer": "references"},
+        "crosscheck.c": {"layer": "references", "depends": ["crosscheck.a"]},
+        "virgil.x": {"layer": "models"},
+        "virgil.y": {"layer": "models", "depends": ["virgil.x"]},
+        "virgil.z": {"layer": "models"},
+    }}
+    recs = [
+        record("t::a", "crosscheck.a", kind="reference", via=["crosscheck.b"]),
+        record("t::b", "crosscheck.b", kind="reference", via=["crosscheck.a"]),
+        record("t::c", "crosscheck.c", kind="reference"),
+        record("t::x", "virgil.x", via=["crosscheck.a"]),
+        record("t::y", "virgil.y"),
+        record("t::z", "virgil.z", via=["crosscheck.c"]),
+    ]
+    got, model = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.x"] == got["virgil.y"] == got["virgil.z"] == "relies-unverified"
+    assert got["crosscheck.c"] == "relies-unverified"
+    assert [b["id"] for b in model["nodes"]["virgil.y"]["because"]] == ["virgil.x"]
+    # whatever the graph, nothing verified may depend on something that is not
+    for node in model["nodes"].values():
+        assert node["verdict"] != "verified" or all(
+            model["nodes"][d]["verdict"] == "verified" for d in node["depends"])

@@ -756,7 +756,9 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         next_seen = _seen | {root}
         for d in raw:
             if d in nodes and own[d]["status"] == "ok-via":
-                out |= _expand_via_blocked(own[d]["via_blocked"], next_seen)
+                # if the walk below it finds nothing (its references only vouch for each other
+                # in a cycle) the dependency itself is the cause
+                out |= _expand_via_blocked(own[d]["via_blocked"], next_seen) or {d}
             else:
                 out.add(d)
         return out
