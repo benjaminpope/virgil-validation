@@ -237,3 +237,34 @@ is next.
 **Also noted:** `LowOrderField` caps the log-brightness field at m ≤ 3. The brightness exp(field) is not capped. At σ = 4 the
 rendered images carry 44–80 % of their non-axisymmetric power above m = 3 (diagnosis §c), and `test_the_cap_reaches_the_rendered_image`
 checks the log-field at σ = 1 only. The §8 ceiling σ ≤ 2 limits this; the cap is a statement about the log-field.
+
+## 10. §9 result (jobs 21074145 / 21074149 / 21074152, vv c14cb93, virgil 6fa8afe): not confirmed
+
+**Criterion 1 fails (1 of 4).** Evidence pick in the night-arm simulations, per seed (`at_corner`, rank fraction, ℓ_r in beams, σ):
+
+| target | seed 0 | seed 1 | seed 2 | corner |
+|---|---|---|---|---|
+| AI Sco | yes, 0.97, 0.5, 4 | yes, 1.00, 0.5, 4 | yes, 1.00, 0.5, 4 | 3/3 |
+| EN TrA | no, 0.06, 2, 2 | yes, 0.83, 0.5, 4 | no, 0.39, 2, 2 | 1/3 |
+| HD 95767 | no, 0.67, 0.5, 2 | yes, 0.92, 0.5, 4 | no, 0.67, 0.5, 2 | 1/3 |
+| PS Gem | no, 0.33, 0.5, 1 | no, 0.22, 0.5, 1 | no, 0.19, 0.5, 1 | 0/3 |
+
+All cells converged. Night-level errors of the measured widths drive the evidence to the corner only on AI Sco.
+
+**Criterion 2 fails (0 of 4).** Under `--noise night --unbounded`, the real picks go further from the bounds, not inside them:
+
+| target | ℓ_r (beams) | σ | χ² | bounded B1 (§8): ℓ_r, σ, χ² |
+|---|---|---|---|---|
+| AI Sco | 0.5 | 4 | 1.89 | 1, 2, 1.20 |
+| EN TrA | 0.25 | 4 | 1.49 | 1, 2, 1.04 |
+| HD 95767 | 0.25 | 2 | 1.09 | 1, 2, 0.99 |
+| PS Gem | 0.25 | 4 | 3.38 | 1, 2, 1.12 |
+| IW Car | 0.25 | 4 | 1.53 | 1, 2, 1.31 |
+| IRAS 15469 | 1 | 2 | 1.03 | 2, 2, 1.04 |
+
+ℓ_r = 0.25 beam is one pixel. With the night terms marginalised, the evidence prefers even rougher fields, and the χ² worsens.
+
+**Consequence (as pre-registered).** The night errors are not the cause. The §8 bounds stay and the chromatic test is next.
+Under the bounds, all six bounded B1 picks sit on a bound: ℓ_r = 1 beam and σ = 2 on five targets, and σ = 2 on IRAS 15469. The
+images are set by the prior, not by the data. They are not yet figure quality: AI Sco still breaks into blobs, and PS Gem has an
+arc at the field edge with its peak 1.3 mas from the star.
