@@ -191,3 +191,24 @@ def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_p
     assert rec["kept_file"] == "t_image.json" and rec["kept_sha256"] == hashlib.sha256(prev.read_bytes()).hexdigest()
     assert rec["reason"] == "converged, interior of its grid" and rec["utc"]
     assert json.loads(prev.read_text()) == _previous_result()  # the kept result is untouched
+
+
+@needs_multipole
+def test_polar_grid_respects_the_floors_and_the_cap():
+    lens_r, lens_t, sigmas = P.polar_grid(1.2, 0.3, (0.5, 1.0, 2.0, 4.0))  # a stale 0.5-beam entry is lifted to the floor
+    assert min(lens_r) == pytest.approx(1.2) and lens_r == sorted(set(lens_r))
+    assert min(lens_t) >= 2.5 * P.POLAR_THETA_NODE and min(lens_t) >= 0.5
+    assert max(sigmas) <= 2.0
+    assert P.polar_grid(0.1, 0.3)[0][0] >= 0.3  # never below a pixel
+
+
+@needs_multipole
+def test_polar_edge_pick_is_flagged():
+    assert P.polar_bounds(1.2, 0.5, 2.0, 1.2, 0.3) == dict(length_r=True, length_theta=True, sigma=True)
+    assert P.polar_bounds(2.4, 1.0, 1.0, 1.2, 0.3) == dict(length_r=False, length_theta=False, sigma=False)
+    # the floors and cap are immovable in the search, so a pick on them survives as a reported edge
+    lens_r, lens_t, sigmas = P.polar_grid(1.2, 0.3)
+    _, axes, best, on_edge, ext = P.grid_search([lens_r, lens_t, sigmas], lambda v: (None, -v[1] + v[2] - v[0], 1.0),
+                                                [(None, lambda v: 2.0 * v), (None, lambda v: 2.0 * v), (lambda v: v / 2.0, None)])
+    assert best[1] == P.POLAR_LT_FLOOR and best[2] == P.POLAR_SIGMA_CAP and on_edge
+    assert axes[1][0] == P.POLAR_LT_FLOOR and max(axes[2]) == P.POLAR_SIGMA_CAP
