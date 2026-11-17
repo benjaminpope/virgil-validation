@@ -1012,7 +1012,18 @@ def test_042_closure_offsets_scale_penalty_and_gains_include_extras(tmp_path):
     """Pin 0.4.2 ClosureOffsets(scale_penalty=True/False) periodic wrap-penalty
     scaling (1 - cos Delta) / hypot(sigma, sigma_off) vs (1 - cos Delta) / sigma,
     and OIData.with_gains(include_extras=True/False) exact Gaussian marginal
-    log-likelihood across V^2, VISAMP, and T3AMP."""
+    log-likelihood across V^2, VISAMP, and T3AMP.
+
+    Ledger F26 is open: ``ClosureOffsets(scale_penalty=True)`` divides the wrap
+    penalty by the unprojected ``hypot(sigma, sigma_off)`` from ``diag(M M^T)``, so
+    on a 4-telescope frame an offset along the left-null vector of T (n^T T = 0)
+    changes ``model_loglike`` when Delta != 0. This test does not cover that case:
+    it uses a 3-telescope frame (one closure triangle, so T has full column rank
+    and there is no left-null mode) and a single per-triangle offset, and its
+    ``scale_penalty=True`` reference ``(1 - cos Delta) / hypot(sigma, sigma_off)``
+    is the current unprojected formula, so it pins today's behaviour rather than
+    confirming it is correct. The F26 null-mode check is
+    tests/test_gains_algebra.py::test_f26_closure_offsets_scale_penalty_projects_onto_span_of_T."""
     wls = np.array([2.1e-6, 2.3e-6], dtype=np.float32)
     tables = {
         "OI_WAVELENGTH": {"EFF_WAVE": wls, "EFF_BAND": np.full(2, 0.05e-6, dtype=np.float32)},

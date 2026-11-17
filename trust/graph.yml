@@ -18,6 +18,11 @@
 #             each one (a sign-off does not count); internal parameter-sign
 #             choices explicitly ruled `definition` in `trust/ledger.yml` are
 #             enforced via `properties:` and wrong-sign controls instead.
+#             On-sky orientations stay `convention:` (example: FlaredDisk
+#             `near_side`, D24: the near-side rim at pa + 90 deg, a photocentre
+#             direction and a closure-phase sign); only internal
+#             parameterisations ruled `definition` use `properties:` plus
+#             wrong-convention controls.
 #             Roots come from one pool (src/evidence/__init__.py): mathematics,
 #             standards, statistics, literature, and the trusted packages
 #             (dLux, PMOIRED, CANDID, fouriever, eht-imaging, MPoL, orbitize!). Any of
@@ -137,9 +142,9 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     depends: [virgil.models.cvis_limb_darkened_disk]
-  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], properties: {near_side: 1}}
-  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], properties: {near_side: 1}}
-  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], properties: {near_side: 1}}
+  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
+  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
+  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
   virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md#the-harmonix-wrapper}
   virgil.models.FlaredDisk: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md}
   virgil.models.cvis_uniform_disk: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md#closed-form-helpers}
@@ -164,10 +169,13 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     roots: 2
-    # Per 2026-11-15 convention ruling (ledger D26, as on FlaredDisk* D24 / PositionData D25): blur_projection is confirmed
-    # externally by native PMOIRED + mathematics and optical propagation by dLux; internal parameter definitions (exponential
-    # fade, sky-tangent pa deprojection, 1 px render floor) are pinned via properties + negative controls, not convention:.
+    # Ledger D26, gate G1c (Ben Pope, 2026-11-16): the internal parameterisation (exponential fade, sky-tangent pa
+    # deprojection, 1 px render floor) is a definition, pinned via properties + wrong-convention controls; blur_projection is
+    # confirmed externally by native PMOIRED + mathematics and optical propagation by dLux. The on-sky winding sense (pitch > 0
+    # counter-clockwise, pitch < 0 clockwise) is an orientation, so it stays a convention until another package or a published
+    # result confirms it (as FlaredDisk near_side, D24).
     properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1}
+    convention: [winding_sense]
     depends: [virgil.models.Component]
     doc: models/cones_fields.md
   virgil.models.smeared_model:

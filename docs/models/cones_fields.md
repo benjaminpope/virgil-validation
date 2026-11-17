@@ -27,11 +27,17 @@ isotropically in the arm plane by a Gaussian of full width at half maximum
 validates 2D Fraunhofer wavefront propagation of the extended plume, and native
 `PMOIRED` (`{'fwhm', 'incl', 'projang'}` with no `crosscheck` point cloud)
 confirms the inclined FWHM Gaussian projection `(width, inc, node)` in the
-`turns -> 0+` limit—while `virgil`'s internal parameter definitions (`pitch < 0`
-winding clockwise on the sky as in WR 104 vs `pitch > 0` counter-clockwise,
-exponential `fade` weighted by polar arc length, sky-tangent `pa` deprojection,
-and the 1 px `render` floor) are pinned via graph `properties` and negative
-controls (`tests/test_042_spiral_and_smearing.py`):
+`turns -> 0+` limit—while `virgil`'s internal parameterisation (exponential
+`fade` weighted by polar arc length, sky-tangent `pa` deprojection, and the 1 px
+`render` floor) is a definition (ledger **D26**, gate G1c, confirmed by Ben Pope
+2026-11-16), pinned via graph `properties` and negative controls
+(`tests/test_042_spiral_and_smearing.py`). The on-sky winding sense (`pitch < 0`
+winding clockwise through West as in WR 104 vs `pitch > 0` counter-clockwise
+through East) is an orientation, so it stays a `convention: [winding_sense]`:
+our spiral quadrature and render assertions are our own transcription of it,
+PMOIRED has no spiral model, and the `dLux` check propagates our own point cloud,
+so the node reads "convention from virgil's docs" until code or a published
+result written by other people confirms the winding direction.
 
 1. **Arc-length weighting.** Uniform emission per unit physical length along
    $r(\theta) = (|p| / 2\pi)\,\theta$ weights polar angle $\theta \in [0, 2\pi\,\text{turns}]$
