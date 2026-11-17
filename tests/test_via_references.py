@@ -1127,7 +1127,7 @@ def test_control_virgil_bridge_mpol_rejects_missing_half_pixel_or_unflipped_axes
 )
 @pytest.mark.validates(
     "external_bridge.mpol_worker",
-    roots=["mpol", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_grad_fd_rel_err",
 )
@@ -1474,7 +1474,7 @@ def test_alma_worker_simulate_and_read_match_analytic_two_source_visibilities_an
 @pytest.mark.external
 @pytest.mark.validates(
     "external_bridge.ehtim_worker",
-    roots=["ehtim", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_ft_abs_err",
 )
@@ -1545,7 +1545,7 @@ def test_ehtim_worker_ft_and_cphase_chisq_match_analytic_pixel_sum_and_chord_for
 @pytest.mark.external
 @pytest.mark.validates(
     "external_bridge.candid_worker",
-    roots=["candid", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_nsigma_rel_err",
 )
@@ -1612,7 +1612,7 @@ def test_candid_worker_chi2_and_nsigma_match_analytic_binary_and_chi2_tail(tmp_p
 @pytest.mark.external
 @pytest.mark.validates(
     "external_bridge.orbitize_worker",
-    roots=["orbitize", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_pos_over_sma_err",
 )
