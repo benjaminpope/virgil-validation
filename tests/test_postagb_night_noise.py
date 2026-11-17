@@ -81,6 +81,10 @@ def test_night_labels_group_samples_by_night_and_baseline_or_triangle():
 
 def test_night_noise_adds_one_spanning_mode_per_cell_and_none_for_zero_width():
     d = toy_data()
+    try:
+        d.with_closure_offsets(modes=np.ones((1, d.phi.size)))
+    except ValueError as e:  # virgil before closure modes could span frames (the CI pin); the jobs pin virgil 6fa8afe, which has them
+        pytest.skip(f"this virgil has no frame-spanning closure modes: {e}")
     nd = P.night_noise(
         d, P.VLTI_NOISE, dict(night_gain_baseline=0.02, night_t3_offset_deg=1.0)
     )
