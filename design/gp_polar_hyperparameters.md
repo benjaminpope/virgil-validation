@@ -340,3 +340,61 @@ The grey GP image keeps the rest. The grid, its axes and the evidence are as in 
 * 1 fails: a strong but physical colour error does not make the corner. Rejected.
 * (Superseded by the §10 correction: §10 did not reject the night cause, so this outcome no longer follows.) If the cause is rejected here as well as in §10, no third cause test is planned. The §8 bounds are the final selector, and the
   paper says plainly that the picks sit on the bounds: the resolution of these images is set by the prior.
+
+## 12. The binary: does freeing it fix the corner? (pre-registered, Ben: "the priority here is ... solving the binarity")
+
+**De Prins's setup** (paper §4.1–4.3.2, Zenodo headers). For each component, f_j(λ) = f_j0 (λ/1.65 µm)^d_j in F_λ, with
+absolute indices.
+* Primary: a UD at the origin, d fixed at SIND1 from the SED (−2.1 to −3.2); flux and diameter free.
+* Secondary: a grey point source, d = 0 (about a 1750 K blackbody at 1.65 µm, dust-like, not stellar); position fixed from
+  the geometric fit, flux free. "Chromatic companions did not improve the BIC".
+* Disc: one grey image with a fitted index.
+
+Our B1 scene matches theirs, except that the secondary's position has a PMOIRED prior. The window is 2–9 % of the period. The
+review measures HD 95767's secondary moving about 0.1 mas between epoch groups, and AI Sco's (+0.08, +0.17) mas.
+
+**Hypothesis.** A secondary fixed and static, with an imposed colour, is wrong in position, in time (orbital motion within the
+window) or in spectrum. The evidence then buys sub-beam structure near the stars to absorb the misfit. The disc is circumbinary,
+so in a frame centred on the primary the primary also moves against the disc (reflex motion). That matters for PS Gem, whose
+companion is dark (a₁ sin i 1.51 AU).
+
+**Models compared** (`--binary`, gp-polar, current noise as in B1, unbounded, every cell cold):
+
+| mode | secondary | primary | extra parameters |
+|---|---|---|---|
+| `paper` | as B1: PMOIRED position prior, index 0, static | static at origin, index SIND1 | none |
+| `free` | position Normal(sec0, 1 mas), flux LogUniform(10⁻³, 1), index Uniform(−5, 2) | as `paper` | 1 (index) |
+| `motion` | `free` plus linear motion (v_E, v_N) | linear motion against the disc | 4 velocities |
+| `epoch` | `free` plus a position offset per night | an offset per night | 2 per night per star |
+
+The primary's index stays at SIND1 and the disc keeps its own power law throughout.
+
+**Priors, from the orbits and the review, not from picks.**
+* Velocities Normal(0, 0.02 mas/day) per axis. Twice the fastest companion expected, 2π·sep/P = 0.011 mas/day for AI Sco
+  (sep 1.75 mas, P 977 d); EN TrA 0.008, HD 95767 0.003.
+* Per-night offsets Normal(0, 0.2 mas): the review's measured shifts are 0.1–0.2 mas.
+* Time and night are as in `night_labels` (night = floor(MJD − 0.65)); velocities refer to the mid-time of the data.
+* Targets without a secondary (PS Gem, IRAS 15469) get only the primary's terms. Their `free` equals `paper`, so it is skipped.
+
+**Decision rule.** The binary is confirmed as the cause of the corner if, on ≥ 3 of the 4 failing targets (AI Sco, EN TrA,
+HD 95767, PS Gem):
+1. the best of `free`, `motion` and `epoch` beats `paper` by Δln Z ≥ 5, each at its own evidence pick on the same grid; and
+2. under that mode the pick moves inside the §8 bounds (ℓ_r ≥ 1 beam and σ ≤ 2);
+
+and, against overfitting:
+
+3. the control IRAS 15469 gains Δln Z < 5 from `motion` or `epoch`. If it gains as much, the gain is generic flexibility, not
+   binarity.
+
+IW Car (corner only under the cap) is reported but not counted.
+
+**Spectral reading (Ben's question; reported, not part of the rule).** Under `free`, a fitted secondary index within 1 of SIND1
+reads as photospheric light (a stellar companion). Within 1 of 0 or of the disc's index, it reads as circumcompanion or
+accretion dust. In that case the companion and the disc share a colour, and the grey disc image can trade flux with the
+companion.
+
+**Outcomes.**
+* All three hold: the binary model replaces the §8 bounds for those targets, and B1 is rerun bounded with it for the figure.
+* 1 holds, 2 fails: the binary model is better but not the cause of the corner. Keep it in the scene and look at the night
+  terms (§10 correction) next.
+* 3 fails: the gain is flexibility. Report it, and keep the bounds.
