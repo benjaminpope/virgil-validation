@@ -60,7 +60,8 @@ at σ = 4 leaves a factor of 2.2. Only a hard cap removes them. The options were
   along the azimuth to orders m ≤ `POLAR_M_MAX` = 3 (per target: `polar_m_max`). It keeps n_θ = 32, so an m ≤ 3 field is sampled at
   10 or more nodes per period and interpolates smoothly. It rescales the kept orders, using virgil's documented spectrum, so that
   σ is still the rms contrast per node. The removed latents have zero Jacobian, stay at zero, and add nothing to the evidence, so
-  cells of one cap compare fairly. It needs no virgil change; tests in `tests/test_postagb_imaging.py`.
+  cells of one cap compare fairly. It needs no virgil change; tests in `tests/test_postagb_polar_cap.py`, including one that the rendered image has no
+  power above m = 3.
   A documented `m_max=` argument on virgil's `MultipoleField` would be the cleaner long-term home: a short, separate virgil PR,
   proposed and not started.
 
@@ -80,7 +81,7 @@ Also done:
 
 ## 4. Calibration (stage C, to run)
 
-`postagb_imaging.py calibrate --arm {white,corr,smear} --m-max {-1,3}` runs, for each of AI Sco, EN TrA, HD 95767, PS Gem and the
+`postagb_imaging.py calibrate --arm {white,corr,smear,geo} --m-max {-1,3} --seed N` runs, for each of AI Sco, EN TrA, HD 95767, PS Gem and the
 controls IW Car and IRAS 15469:
 
 * **Truth.** The target's own parametric scene (stars, fluxes and indices from `geometry_fit` on the real data). Its Gaussian ring
@@ -92,22 +93,36 @@ controls IW Car and IRAS 15469:
   * `corr`: the target's virgil-vlti error model (per-frame telescope and baseline gains, closure offsets, pair-test widths),
     fitted as the real data are: independent errors with a pilot's MacKay factor.
   * `smear`: white noise, but the truth seen through the spectral channels (bandwidth smearing), fitted without smearing.
-* **Grid.** A fixed grid with no extension: ℓ_r ∈ {0.5, 1, 2} beams, ℓ_θ ∈ {0.0625, 0.25, 1} rad and σ ∈ {0.5, 1, 2, 4}, every
-  cell cold. It is run uncapped (`-1`) and capped (m ≤ 3). Each cell is also fitted on the even-numbered files and scored by
-  χ²/pt on the odd ones (cross-validation over exposures, which respects per-frame correlation).
+  * `geo`: white noise, but the polar GP deprojects with an inclination and a position angle each 8° off the truth's
+    (`CAL_GEO_ERROR_DEG`, a typical error of the real ring fits). A wrong geometry shows up in the polar frame as m = 2 and
+    higher structure, which the evidence could buy with large σ and short ℓ_θ (item 4). The other arms give the GP the
+    truth's own geometry, so they cannot test this.
+* **Grid.** A fixed grid with no extension: ℓ_r ∈ {0.5, 1, 2} beams (those at or above one pixel), ℓ_θ ∈ {0.0625, 0.25, 1} rad
+  and σ ∈ {0.5, 1, 2, 4}, every cell cold. That is 36 cells, or 24 where half a beam is below a pixel. It runs with three noise
+  seeds capped (m ≤ 3) and one seed uncapped (`-1`), as a diagnostic. Each cell is also fitted on the even-numbered files and
+  scored by χ²/pt on the odd ones (cross-validation over exposures, which respects per-frame correlation).
 * **Scoring.** Each cell's error against the truth: relative rms of the unit-sum images, raw and convolved with the comparison
   beam, plus NCC. For three selectors (evidence, CV and the truth's own best), the run reports the picked cell and its rank
   against the truth. Figure: truth, the three picks, and ln Z against image error.
 
-**Decision rule** (capped arm). The evidence passes on an arm if, on all six targets, its pick ranks among the best five of the
-36 cells by beam-convolved error and is not at the σ = 4 / ℓ_r = 0.5 beam corner.
+**Decision rule.** Fixed here before stage C runs. It is judged on the capped runs, three seeds per target and arm. A selector
+passes an arm if, on all six targets, both hold:
+* the median over seeds of its pick's rank fraction (rank by beam-convolved error ÷ number of cells; `rank_fraction` in the json)
+  is ≤ 0.14, which is the best 5 of 36;
+* it picks the failure corner (the smallest ℓ_r in the grid with σ = 4; `at_corner`) in at most one of the three seeds.
 
-| white | corr | smear | conclusion | change |
-|---|---|---|---|---|
-| pass | pass | pass | the cap was the fix; the real-data picks reflect the data | keep the evidence; report edge picks |
-| pass | fail | – | correlated channel errors drive the pick (item 1) | select by CV over exposures (implemented in `calibrate`; move into `fit_polar`) |
-| pass | – | fail | missing smearing creates structure (item 4) | needs smearing for pixel Images in virgil (separate issue); meanwhile CV |
-| fail | – | – | the Laplace selector is biased under the exp link (item 2) | CV, or a fixed prior (σ = 1, ℓ_r = 1 beam, ℓ_θ = 1 rad) if CV also fails; whichever recovers the truth best |
+The same rule is applied to the evidence and to CV.
+
+| white | corr | smear | geo | conclusion | change |
+|---|---|---|---|---|---|
+| pass | pass | pass | pass | the cap was the fix; the real-data picks reflect the data | keep the evidence; report edge picks |
+| pass | fail | – | – | correlated channel errors drive the pick (item 1) | select by CV over exposures (implemented in `calibrate`; move into `fit_polar`) |
+| pass | – | fail | – | missing smearing creates structure (item 4) | needs smearing for pixel Images in virgil (separate issue); meanwhile CV |
+| pass | – | – | fail | geometry error is bought as structure (item 4) | fit inc / PA with the field, or select by CV; whichever passes `geo` |
+| fail | – | – | – | the Laplace selector is biased under the exp link (item 2) | CV, or a fixed prior (σ = 1, ℓ_r = 1 beam, ℓ_θ = 1 rad) if CV also fails; whichever recovers the truth best |
+
+Where several rows apply, the change has to pass every failing arm. A change chosen from these results is rerun as stage C before
+it becomes the default.
 
 The uncapped arm shows whether the cap alone changes the evidence's preferences. Comparing it with the real uncapped picks shows
 whether the old warm-started chain contributed.
@@ -115,7 +130,7 @@ whether the old warm-started chain contributed.
 ## 5. Runs
 
 Submit blocks are in the PR. They chain stage A (`--array=0,4,5,6,7,8`, which rebuilds the scale files in this commit's
-`out/<pins>/`) into stage C (`--array=0-35`) and into the B1 rerun of gp-polar with the cap (`--array=66,80,94,122,10,108`). If
+`out/<pins>/`) into stage C (`--array=0-95`) and into the B1 rerun of gp-polar with the cap (`--array=66,80,94,122,10,108`). If
 the calibration changes the selector, B1 is run again from that commit.
 
 ## 6. PR #264

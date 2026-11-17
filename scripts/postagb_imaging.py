@@ -1393,11 +1393,12 @@ def image_one(args, out, strat):
 CAL_LR_BEAMS = (0.5, 1.0, 2.0)
 CAL_LT = (0.0625, 0.25, 1.0)
 CAL_SIGMAS = (0.5, 1.0, 2.0, 4.0)
-CAL_ARMS = ("white", "corr", "smear")
+CAL_ARMS = ("white", "corr", "smear", "geo")
+CAL_GEO_ERROR_DEG = (8.0, 8.0)  # geo arm: the polar GP deprojects with (inc, PA) this far off the truth's, a typical error of the real ring fits
 
 
-def calib_tag(arm, m_max):
-    return f"calib_{arm}_m{'all' if m_max is None else m_max}"
+def calib_tag(arm, m_max, seed=0):
+    return f"calib_{arm}_m{'all' if m_max is None else m_max}_s{seed}"
 
 
 def image_errors(img, truth, pix, bm, mask):
@@ -1421,9 +1422,10 @@ def simulate(cfg, files, s, truth, arm, key):
       baseline, closure-phase offsets; widths from its own pair test), fitted as the real data are: independent quoted errors with
       the MacKay factor of a pilot GP (``pilot_error_scale``, run by the caller: returned scale None).
     * ``smear``: white noise as for ``white``, but the truth seen through PIONIER's spectral channels (bandwidth smearing), which
-      the pixel-image fits leave out."""
+      the pixel-image fits leave out.
+    * ``geo``: noise as for ``white``; the caller fits with a wrong disc geometry (``CAL_GEO_ERROR_DEG``)."""
     data0 = OIData(read_oifits(files))
-    if arm == "white":
+    if arm in ("white", "geo"):
         return data0.with_error_scale(s).with_model(truth, key=key), s
     if arm == "smear":
         sim = OIData(read_oifits(files, bandwidth=True)).with_error_scale(s).with_model(truth, key=key)
@@ -1450,17 +1452,20 @@ def representable_truth(g, geo, r_min, r_max, unit):
 def calibrate_stage(args, out):
     """Hyperparameter calibration of gp-polar on a smooth known disc with this target's own (u,v), errors and scene.
 
-    The truth is ``representable_truth``: the stars of ``geometry_fit`` on the real (rescaled) data and a Gaussian ring with a first harmonic, so nothing in it
+    The truth is ``representable_truth``: the stars of ``geometry_fit`` on the real (rescaled) data and a Gaussian ring with a first
+    harmonic, so nothing in it
     is above azimuthal order 1. ``--arm`` sets the noise (``simulate``); ``--m-max`` the azimuthal cap (negative: no cap, the
     pre-cap grid). Every cell of a fixed grid (CAL_*: lengths from half a beam, l_theta from below the node spacing, sigma to 4) is
     fitted cold, on all the files and, for a cross-validation score, on the even-numbered files alone with chi2/pt on the odd ones.
-    Written: ``<target>_calib_<arm>_m<cap>.json`` (every cell: log Z, chi2, CV chi2, image errors against the truth, fit record and
+    Written: ``<target>_calib_<arm>_m<cap>_s<seed>.json`` (every cell: log Z, chi2, CV chi2, image errors against the truth, fit record and
     loss history; the picks of the evidence, of CV and of the truth itself), an ``.npz`` of the images and a figure."""
     cfg = cfg_of(args)
     m_max = None if args.m_max is not None and args.m_max < 0 else (POLAR_M_MAX if args.m_max is None else args.m_max)
-    tag = calib_tag(args.arm, m_max)
+    tag = calib_tag(args.arm, m_max, args.seed)
     sc_file = scale_file(out, cfg, "current")
-    sc = json.load(open(sc_file)) if sc_file.exists() and not args.smoke else dict(error_scale=1.0, geometry=dict(inc_deg=45.0, pa_deg=90.0))
+    if not sc_file.exists() and not args.smoke:  # never a made-up error scale or geometry in a real run
+        raise SystemExit(f"calibrate needs the scale stage's output ({sc_file.name}) in OUTDIR")
+    sc = json.load(open(sc_file)) if not args.smoke else dict(error_scale=1.0, geometry=dict(inc_deg=45.0, pa_deg=90.0))
     s, geo = float(sc["error_scale"]), sc["geometry"]
     files = load_files(cfg, args.files)
     real = OIData(read_oifits(files)).with_error_scale(s)
@@ -1471,6 +1476,9 @@ def calibrate_stage(args, out):
     unit, pix = compare_beam(real).minor_mas, float(start.env.pixel_scale_mas)
     truth, truth_info = representable_truth(g, geo, hole_mas, float(cfg["half_mas"]), unit)
     print("truth:", json.dumps(truth_info), flush=True)
+    geo_fit = dict(geo)  # the geometry the polar GP deprojects with: the truth's, except in the geo arm
+    if args.arm == "geo":
+        geo_fit = dict(geo, inc_deg=float(min(geo["inc_deg"] + CAL_GEO_ERROR_DEG[0], 85.0)), pa_deg=float(geo["pa_deg"] + CAL_GEO_ERROR_DEG[1]))
 
     keys = jax.random.split(jax.random.PRNGKey(args.seed), 3)
     sets = {}
@@ -1487,8 +1495,8 @@ def calibrate_stage(args, out):
 
     axes = [[m * unit for m in CAL_LR_BEAMS if m * unit >= pix], list(CAL_LT), list(CAL_SIGMAS)]
     common = (cfg, scene, start.env, support, priors)
-    cells, axes = polar_cells(*common, data, args, geo, hole_mas, m_max=m_max, axes=axes, extend=False)[:2]  # smoke trims the axes
-    cells_cv = polar_cells(*common, sets["even"][0], args, geo, hole_mas, m_max=m_max, axes=axes, extend=False)[0]
+    cells, axes = polar_cells(*common, data, args, geo_fit, hole_mas, m_max=m_max, axes=axes, extend=False)[:2]  # smoke trims the axes
+    cells_cv = polar_cells(*common, sets["even"][0], args, geo_fit, hole_mas, m_max=m_max, axes=axes, extend=False)[0]
 
     n = np.shape(env.log_brightness)[0]
     truth_img = np.asarray(truth.env.render(npix=n, fov_mas=n * pix))
@@ -1506,12 +1514,14 @@ def calibrate_stage(args, out):
                  truth=int(np.argmin([r["nrmse_beam"] for r in rows])))
     order = np.argsort([r["nrmse_beam"] for r in rows])
     rank = {int(i): k + 1 for k, i in enumerate(order)}  # 1 = closest to the truth
-    summary = {k: dict(cell=i, rank_vs_truth=rank[i], **{q: rows[i][q] for q in ("length_r_mas", "length_theta", "sigma", "log_z", "chi2",
+    corner = (min(axes[0]), max(axes[2]))  # the failure corner of the real fits: the smallest l_r with the largest sigma
+    summary = {k: dict(cell=i, rank_vs_truth=rank[i], rank_fraction=rank[i] / len(rows),
+                       at_corner=bool((rows[i]["length_r_mas"], rows[i]["sigma"]) == corner), **{q: rows[i][q] for q in ("length_r_mas", "length_theta", "sigma", "log_z", "chi2",
                                                                                    "cv_chi2", "nrmse_beam", "nrmse_raw", "ncc_beam")})
                for k, i in picks.items()}
     res = dict(target=cfg["key"], arm=args.arm, m_max=m_max, seed=args.seed, error_scale_real=s, error_scale_fit=s_fit,
                beam_mas=unit, pixel_mas=pix, axes=dict(length_r_mas=axes[0], length_theta=axes[1], sigma=axes[2]),
-               truth=truth_info, truth_fit=geometry_of(g, real), n_cells=len(rows), n_unconverged=int(sum(not r["converged"] for r in rows)),
+               truth=truth_info, truth_fit=geometry_of(g, real), geometry_fitted_with=geo_fit, n_cells=len(rows), n_unconverged=int(sum(not r["converged"] for r in rows)),
                picks=summary, cells=rows, smoke=args.smoke)
     json.dump(res, open(path(out, cfg, f"{tag}.json"), "w"), indent=1)
     np.savez(path(out, cfg, f"{tag}.npz"), truth=truth_img, pixel_mas=pix,
