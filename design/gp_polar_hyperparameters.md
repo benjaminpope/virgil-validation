@@ -137,3 +137,36 @@ the calibration changes the selector, B1 is run again from that commit.
 
 Superseded. Its ℓ_θ ≥ 0.5 rad floor leaves 17 % of the azimuthal variance above m = 3 (table in §3). Its ℓ_r ≥ 1 beam and σ ≤ 2 bounds
 are untested guesses until stage C reports; they come back only if the calibration selects them.
+
+## 7. Stage C result (jobs 21054315 → 21054318, vv 0e4377c, virgil 6fa8afe)
+
+All 96 tasks finished, every cell converged (36 cells per run). Median rank fraction of the pick over the three capped seeds,
+with the number of seeds at the failure corner in brackets (pass: ≤ 0.14 and ≤ 1):
+
+| target | evidence: white | corr | smear | geo | CV: white | corr | smear | geo |
+|---|---|---|---|---|---|---|---|---|
+| AI Sco | 0.06 (0) | 0.08 (0) | 0.06 (0) | **0.25** (0) | 0.11 (0) | **0.36** (0) | 0.08 (0) | **0.61** (1) |
+| EN TrA | 0.08 (0) | 0.14 (1) | 0.08 (0) | **0.28** (0) | 0.14 (0) | 0.11 (0) | 0.14 (0) | **0.53** (1) |
+| HD 95767 | 0.03 (0) | 0.03 (0) | 0.03 (0) | 0.03 (0) | **0.25** (0) | 0.03 (0) | **0.22** (0) | 0.08 (0) |
+| PS Gem | **0.19** (0) | **0.33** (0) | **0.19** (0) | **0.28** (0) | **0.42** (0) | 0.14 (0) | **0.42** (0) | **0.67** (1) |
+| IW Car | 0.06 (0) | 0.11 (0) | 0.06 (0) | 0.06 (0) | 0.06 (0) | 0.08 (0) | 0.06 (0) | 0.06 (0) |
+| IRAS 15469 | 0.03 (0) | 0.11 (0) | 0.03 (0) | 0.06 (0) | 0.11 (0) | 0.14 (0) | 0.11 (0) | **0.17** (1) |
+
+The fixed prior (σ = 1, ℓ_r = 1 beam, ℓ_θ = 1 rad) scores 0.06–0.39, failing IW Car on every arm and AI Sco / EN TrA under `geo`.
+
+**By the rule as written, no selector passes any arm.** The evidence fails `white` only through PS Gem: it always picks ℓ_r = 0.5
+beam, where the truth's best is 2 beams (beam-convolved error 1.26 × the best cell). It fails `geo` on AI Sco, EN TrA and PS Gem
+(error ≤ 1.10 × best on the first two). CV does worse than the evidence everywhere except PS Gem `corr`. The fixed prior is
+worse than the evidence on 17 of 24 target-arms.
+
+What the run does settle:
+* **On a smooth truth the evidence does not run to the corner.** It picked σ = 4 / smallest ℓ_r in 1 of 72 capped runs and none
+  of the 24 uncapped ones, under white, correlated, smeared and mis-deprojected noise alike. Items 1–3 of §2 do not by themselves
+  produce the real-data failure.
+* **On the real data it still does.** The capped B1 rerun (job 21054320) picks σ = 4, the upper edge, on AI Sco, EN TrA,
+  HD 95767, PS Gem and now IW Car, with ℓ_r = 0.25 beam (the downward extension) on four of them. Only IRAS 15469 sits inside
+  (σ = 2, ℓ_r = 2 beams, ℓ_θ = 1 rad). The cap turns the chains of dots into short arcs and blobs, but the blobs remain.
+
+So the real data contain something none of the four arms simulate: real compact structure, or a systematic outside the error
+models tested (the parametric fits reach χ²/pt only 1.3–4.8). Choosing between "the evidence is right about the data" and "cap σ
+or ℓ_r by prior" is a science call for Ben, not something this calibration can make.
