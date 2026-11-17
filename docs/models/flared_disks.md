@@ -24,11 +24,13 @@ At `(inc = 52°, pa = 160°)`, forward-peaked dust scattering brightens the near
 rim at `pa + 90° = 250°` (West-Southwest, `ΔRA < 0, ΔDec < 0`), while negative
 controls (`pa = 340°` or backward Henyey–Greenstein `g < 0`) move the
 photocentre to East-Northeast (`70°`) and reverse every first-lobe closure
-phase sign. Because no external 3D flared scattered-light package or archival
-scattered-light OIFITS dataset is bundled in CI, these checks claim
-`roots=["mathematics"]` only, leaving `FlaredDiskGaussian`, `FlaredDiskHG` and
-`FlaredDiskPowerLaw` marked `convention` on the Trust page until confirmed
-against archival scattered-light data or an external radiative-transfer code.
+phase sign. Which half-plane corresponds to `inc ∈ (0°, 90°)` at a given `pa`
+is an on-sky orientation, so per ledger **D24** (gate G1a, 2026-11-16) it stays a
+`convention: [near_side]` on `FlaredDiskGaussian`, `FlaredDiskHG` and
+`FlaredDiskPowerLaw`. Our 3D surface Fourier sum (`roots=["mathematics"]`) and the
+wrong-sign negative controls pin virgil to the documented sign, but they are our own
+transcription of it, so these parts read "convention from virgil's docs" until code or
+a published result written by other people confirms which side is near.
 
 ![Rendered sky brightness and first-lobe closure-phase sign check for FlaredDiskHG](../assets/flared_disk_nearside.png)
 

@@ -46,8 +46,32 @@ def diff_rows(before_doc, after_doc):
             continue
         if x["status"] != y["status"]:
             why = []
-            if y.get("unverified"):
-                why.append("unverified steps: " + ", ".join(y["unverified"]))
+            if y.get("failing_checks"):
+                why.append("failing checks: " + ", ".join(y["failing_checks"]))
+            after_nodes = after_doc.get("nodes", {})
+            failing_steps = [
+                s for s in y.get("steps", [])
+                if after_nodes.get(s, {}).get("verdict") == "failing"
+                or any(c.get("status") == "failing" for c in after_nodes.get(s, {}).get("because", []))
+            ]
+            if failing_steps:
+                why.append("failing steps: " + ", ".join(failing_steps))
+            step_set = set(y.get("steps", []))
+            failing_via = [
+                v for v in y.get("unverified", [])
+                if v not in step_set and (
+                    after_nodes.get(v, {}).get("verdict") in {"failing", "bug"}
+                    or any(c.get("status") in {"failing", "bug"} for c in after_nodes.get(v, {}).get("because", []))
+                )
+            ]
+            if failing_via:
+                why.append("failing via: " + ", ".join(failing_via))
+            rem_unverified = [
+                u for u in y.get("unverified", [])
+                if u not in set(failing_steps) and u not in set(failing_via)
+            ]
+            if rem_unverified:
+                why.append("unverified steps: " + ", ".join(rem_unverified))
             rows.append(f"| `pipeline:{pid}` | {x['status']} | {y['status']} | {'; '.join(why)} |")
     return rows
 

@@ -1,7 +1,9 @@
 # Detection statistics and injection limits
 
-`tests/test_detection.py`, against our own χ² (`crosscheck.chi2`) on
-three-telescope files with and without a companion.
+`tests/test_detection.py` and `tests/test_sole_checks_hardened.py`, against our
+own χ² (`crosscheck.chi2`) and sky observables (`crosscheck.sky`) on three- and
+four-telescope OIFITS files (including correlated four-station `gaussian_null`
+closure-phase pulls around asymmetric binaries and `sim_null(key, scene=...)`).
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
@@ -9,7 +11,7 @@ three-telescope files with and without a companion.
 | `detection.detection_statistics`: `delta_chi2`, `log_bayes_factor`, `max_snr` on a 7 × 7 × 60 grid | each rebuilt from our χ²: the best improvement with flux ≥ 0; a log-sum-exp with trapezoid weights in each axis's index; best flux over its curvature error | Mathematics | 1e-5; 1e-8; 1e-3 |
 | `detection.local_nsigma` | the one-sided tail of ½χ²₁, √Δχ² | Mathematics | 1e-9 |
 | `linear_flux_grid` with `LogUniform(f_min, f_max)` (the Jeffreys prior on a flux ratio) | the evidence ratio and posterior mean and sd by adaptive quadrature in ln f (not virgil's fixed 256-node rule), two bounds, with and without a companion | Mathematics | 1e-6; 1e-5 |
-| `detection.gaussian_null`, error scale 1 and 1.5 | simulated minus predicted, over the errors, is 𝒩(0, scale²) (mean, sd, KS) | Statistics | within 4σ |
+| `detection.gaussian_null`, error scale 1 and 1.5 | simulated minus `crosscheck` predicted (`V²` and 3-/4-station correlated closure phases on asymmetric binaries and `sim_null(key, scene=...)`), over the errors, is 𝒩(0, scale²) with signed rank-3 `(T Tᵀ)/3` correlation and `χ²(df=3)` KS | Mathematics + Statistics | within 4σ |
 | `limits.flux_to_contrast`, `flux_to_delta_mag` and inverses | their formulae | Mathematics | 1e-14 |
 
 ## Monte Carlo detection calibration

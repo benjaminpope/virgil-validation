@@ -8,16 +8,19 @@ towards the observer (smaller dust scattering angle). Forward-peaked dust
 scattering (or positive near-side ``skew``) therefore brightens the physical
 near-side rim at sky azimuth ``pa + 90 deg`` — for example, at ``(inc = 52 deg,
 pa = 160 deg)``, in the West-Southwest sky quadrant (``dra < 0, ddec < 0``,
-sky PA ``250 deg``).
+sky PA ``250 deg``). These sky-plane photocentre quadrant checks, orthogonal
+baseline ``V^2`` anisotropy checks, and backward-scattering (``g < 0``) negative
+controls complement the pointwise ``crosscheck.disks.brightness`` and
+``scattered_ring`` quadrature checks in ``tests/test_remaining_models.py:119-178``.
 
-Because no external Python package in CI implements a 3D flared scattered-light
-ring and no public archival scattered-light OIFITS dataset is bundled in the
-repository, these checks declare ``roots=["mathematics"]`` ONLY (using literal
-per-class ``@pytest.mark.validates`` decorators so static trust-graph and marker
-inventory tools inspect every node). Under ``scripts/trust.py``, ``mathematics``
-alone does not confirm a ``convention`` property, keeping ``FlaredDiskGaussian``,
-``FlaredDiskHG``, and ``FlaredDiskPowerLaw`` honestly at ``convention`` until
-confirmed against public archival data or an external 3D radiative-transfer code.
+Which half-plane corresponds to ``inc in (0, 90)`` deg at a given ``pa`` is an
+on-sky orientation, so per ledger ``D24`` (gate G1a, 2026-11-16) it stays
+``convention: [near_side]`` on ``FlaredDiskGaussian``, ``FlaredDiskHG`` and
+``FlaredDiskPowerLaw``. These literal per-class ``@pytest.mark.validates``
+checks (``roots=["mathematics"]``) and the wrong-sign negative controls pin virgil
+to the documented sign, but they are our own transcription of it, so the nodes
+stay "convention from virgil's docs" until code or a published result written by
+other people confirms the near side.
 """
 
 import jax.numpy as jnp

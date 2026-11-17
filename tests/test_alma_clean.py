@@ -15,6 +15,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _clear_jax_caches_after_alma_clean():
+    yield
+    try:
+        import gc
+        import jax
+
+        jax.clear_caches()
+        gc.collect()
+    except ImportError:
+        pass
+
+
 def _psf(n=129, bmaj=7.0, bmin=4.0, pa=30.0, side=0.1, cos=True):
     """A Gaussian main lobe plus a ring-like sidelobe pattern of known amplitude (the Gaussian is exact inside the lobe)."""
     c = (n - 1) / 2
