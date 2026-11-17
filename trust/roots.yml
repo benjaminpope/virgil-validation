@@ -200,7 +200,7 @@ roots:
     class: other-peoples-code
     what: "A Fourier-space and image-based model-building package for optical interferometry (Meilland et al.). The root for ring and disk components of the polar-disk models."
     why: "Written and used by other people. Pinned (`oimodeler==0.8.1`, polar-disk extra in pyproject.toml)."
-    cannot_catch: "Its own bugs: P9 is documented (its `ExpRing` is 8e-3 from its documented profile, unexplained, docs/models/polar_disk.md); P13 and P14 are documented for its `oimFastRotator` (see P13 and P14, trust/ledger.yml). Conventions it shares with virgil."
+    cannot_catch: "Its own bugs: P9 is documented (its `ExpRing` is 8e-3 from its documented profile, unexplained, docs/models/polar_disk.md); P13 and P14 are documented for its `oimFastRotator` (docs/models/rapid_rotators.md). Conventions it shares with virgil."
     citation: "Meilland et al."
     url: ""
     reviewed: false
