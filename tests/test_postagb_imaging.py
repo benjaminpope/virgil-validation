@@ -195,13 +195,18 @@ def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_p
 
 @needs_multipole
 def test_published_image_puts_the_crpix_pixel_at_the_centre(monkeypatch):
-    """The Zenodo FITS put the star at 0-indexed pixel CRPIX-1 = 64 of 128; it must render at virgil's centre (n-1)/2 (no half-pixel offset)."""
+    """With ``star_at_crpix`` (HR 4049: star at 0-indexed pixel CRPIX = 64 of 128), a point at pixel 64 renders at virgil's centre (n-1)/2.
+
+    This checks the shift's arithmetic only; that the star is at CRPIX is the measurement of design/hr4049_diagnosis.md (see the real-file test).
+    Without the flag the image is only flipped (every other target)."""
     n = 128
     im = np.zeros((n, n))
     im[64, 64] = 1.0  # FITS row 64 is counted from the South
     hdr = dict(CDELT1=-0.5, CDELT2=0.5, CRPIX1=64, CRPIX2=64)
     monkeypatch.setattr(P, "zenodo_header", lambda cfg: (hdr, im, im.copy()))
-    img, noise, scale, _ = P.published_image({})
+    plain, _, _, _ = P.published_image({})
+    assert np.array_equal(plain, im[::-1] / im.sum())  # no flag: no shift
+    img, noise, scale, _ = P.published_image({"star_at_crpix": True})
     yy, xx = np.mgrid[:n, :n]
     for a in (img, noise):
         cy, cx = (a * yy).sum() / a.sum(), (a * xx).sum() / a.sum()
@@ -223,3 +228,14 @@ def test_continue_blob_is_positive_smooth_and_keeps_the_interior():
     exact = np.exp(-0.5 * (dd[:, None] + dd[None, :]) / 6.0 ** 2) + 1e-3  # the continuation is the analytic blob, also outside b0's footprint
     assert out == pytest.approx(exact, rel=1e-3)
     assert np.abs(np.diff(np.log(out[nw // 2]))).max() < 0.5  # no step at the old edge
+
+
+@needs_multipole
+def test_hr4049_zenodo_file_has_crpix_64_on_128_pixels():
+    """The shift in published_image assumes HR 4049's file is 128 px with CRPIX = 64 (skipped without the Zenodo data)."""
+    cfg = P.TARGETS["HR4049"]
+    if not (P.ZENODO / "fits" / cfg["fits"]).exists():
+        pytest.skip("Zenodo FITS not present")
+    hdr, im, _ = P.zenodo_header(cfg)
+    assert im.shape == (128, 128) and hdr["CRPIX1"] == hdr["CRPIX2"] == 64
+    assert cfg["star_at_crpix"] and cfg["cmp_mask_mas"] == 25.0 and cfg["mask_mas"] == 40.0
