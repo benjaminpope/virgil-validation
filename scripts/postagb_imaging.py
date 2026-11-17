@@ -91,8 +91,8 @@ from virgil.imaging import (  # noqa: E402
     starting_image, whitened_residuals,
 )
 from virgil.models import (  # noqa: E402
-    GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, RadialLinear, Resolved, System,
-    UniformDisk,
+    Component, GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, RadialLinear, Resolved,
+    System, UniformDisk,
 )
 from virgil.spectra import PowerLaw  # noqa: E402
 
@@ -612,6 +612,105 @@ def chromatic_summary(model, cfg):
     return dict(chrom_rim_flux_pct=100.0 * f_rim / tot, chrom_rim_radius_mas=float(np.asarray(model.rim.profile.radius)), chrom_rim_width_mas=w,
                 chrom_rim_index=float(np.asarray(model.rim.spectral_index.value)), chrom_rim_d_alpha=d_alpha, chrom_star_index=star,
                 chrom_star_shift=star - s0, chrom_used=used)
+
+
+BINARY_MODES = ("paper", "free", "motion", "epoch")
+BINARY_POS_SIGMA_MAS = 1.0  # --binary free: the secondary's position prior about sec0 (design §12)
+BINARY_V_SIGMA = 0.02  # mas/day per axis: twice the fastest companion expected, 2 pi sep / P = 0.011 (AI Sco)
+BINARY_OFFSET_SIGMA_MAS = 0.2  # per-night position offsets: the review's measured shifts, 0.1-0.2 mas
+MAS2RAD = np.pi / 180.0 / 3600.0 / 1000.0
+
+
+class MovingComponent(Component):
+    """A star whose sky position changes with time against the disc (design §12): ``(dra, ddec)`` at the data's mid-time, plus
+    a linear motion ``(vra, vdec)`` in mas/day and an offset per night ``(off_ra, off_dec)``. ``shape`` gives the visibility
+    (its own flux and offset are not used). ``dt`` (days from the mid-time) and ``group`` (night index) are per sample of the
+    data's ``u``, so the component evaluates only on that data's (u, v): any other sampling raises."""
+
+    shape: Component
+    vra: jax.Array
+    vdec: jax.Array
+    off_ra: jax.Array
+    off_dec: jax.Array
+    dt: tuple = eqx.field(static=True)
+    group: tuple = eqx.field(static=True)
+
+    def __init__(self, shape, dt, group, flux=1.0, dra=0.0, ddec=0.0, vra=0.0, vdec=0.0, off_ra=None, off_dec=None):
+        self._place(flux, dra, ddec)
+        self.shape = shape
+        self.dt, self.group = tuple(float(x) for x in dt), tuple(int(g) for g in group)
+        k = max(self.group) + 1
+        self.vra, self.vdec = np.asarray(vra, float), np.asarray(vdec, float)
+        self.off_ra = np.zeros(k) if off_ra is None else np.asarray(off_ra, float)
+        self.off_dec = np.zeros(k) if off_dec is None else np.asarray(off_dec, float)
+
+    def positions(self):
+        """``(dra, ddec)`` per sample, in mas."""
+        dt, g = jnp.asarray(self.dt), jnp.asarray(self.group)
+        return (self.dra + self.vra * dt + jnp.asarray(self.off_ra)[g], self.ddec + self.vdec * dt + jnp.asarray(self.off_dec)[g])
+
+    def model(self, u, v, wavel):
+        if np.shape(u) != (len(self.dt),):
+            raise ValueError(f"MovingComponent is labelled for {len(self.dt)} samples, evaluated on {np.shape(u)}: it only "
+                             "evaluates on the data it was built for")
+        uu, vv = u / wavel, v / wavel
+        ra, dec = self.positions()
+        arg = 2.0 * jnp.pi * MAS2RAD * (uu * ra + vv * dec)
+        return self.shape._centred_cvis(uu, vv) * jax.lax.complex(jnp.cos(arg), -jnp.sin(arg))
+
+    def _centred_cvis(self, uu, vv):
+        return self.shape._centred_cvis(uu, vv)
+
+    def _centred_image(self, xx, yy, pixel_scale_mas):
+        return self.shape._centred_image(xx, yy, pixel_scale_mas)
+
+    def _shape_checks(self):
+        return self.shape._shape_checks()
+
+
+def binary_scene(scene, cfg, data, mode):
+    """``scene`` with the binary of ``--binary mode`` (design §12) and the priors to add. ``paper`` changes nothing. ``free``
+    frees the secondary's position (Normal about sec0), flux and index. ``motion`` and ``epoch`` also move both stars against the
+    disc, linearly or by an offset per night (a star absent from the scene is skipped). The primary's index stays at SIND1."""
+    if mode == "paper":
+        return scene, {}
+    has_sec = hasattr(scene, "sec")
+    pri = {}
+    if has_sec:
+        s0 = cfg.get("sec0") or (float(scene.sec.dra), float(scene.sec.ddec))
+        pri |= {"sec.dra": dist.Normal(float(s0[0]), BINARY_POS_SIGMA_MAS), "sec.ddec": dist.Normal(float(s0[1]), BINARY_POS_SIGMA_MAS),
+                "sec.flux.ratio": dist.LogUniform(1e-3, 1.0), "sec.flux.index": dist.Uniform(-5.0, 2.0)}
+    if mode == "free":
+        return scene, pri
+    mjd = float(data.t_ref) + np.asarray(data.dt, float)
+    dt = mjd - 0.5 * (mjd.min() + mjd.max())
+    group = np.unique(night_labels(data)["u_night"], return_inverse=True)[1].ravel()
+    k = int(group.max()) + 1
+    for name in ("star", "sec") if has_sec else ("star",):
+        c = getattr(scene, name)
+        scene = scene.set(name, MovingComponent(c, dt, group, flux=c.flux, dra=float(c.dra), ddec=float(c.ddec)))
+        if mode == "motion":
+            pri |= {f"{name}.vra": dist.Normal(0.0, BINARY_V_SIGMA), f"{name}.vdec": dist.Normal(0.0, BINARY_V_SIGMA)}
+        else:
+            pri |= {f"{name}.off_ra": dist.Normal(jnp.zeros(k), BINARY_OFFSET_SIGMA_MAS), f"{name}.off_dec": dist.Normal(jnp.zeros(k), BINARY_OFFSET_SIGMA_MAS)}
+    return scene, pri
+
+
+def binary_summary(model, mode, cfg):
+    """The fitted binary terms of a ``--binary`` scene, and how the secondary's colour reads (design §12)."""
+    out = dict(binary=mode)
+    if hasattr(model, "sec"):
+        d = float(np.asarray(model.sec.flux.index))
+        s1 = float(cfg.get("img_star_index", -4.0))
+        env = float(np.asarray(model.env.flux.index))
+        out |= dict(bin_sec_index=d, bin_sec_dra=float(model.sec.dra), bin_sec_ddec=float(model.sec.ddec),
+                    bin_sec_colour="photospheric" if abs(d - s1) <= 1.0 else ("dust-like" if min(abs(d), abs(d - env)) <= 1.0 else "neither"))
+    for name in ("star", "sec"):
+        c = getattr(model, name, None)
+        if isinstance(c, MovingComponent):
+            out |= {f"bin_{name}_v_mas_per_day": [float(c.vra), float(c.vdec)],
+                    f"bin_{name}_offsets_mas": np.stack([np.asarray(c.off_ra), np.asarray(c.off_dec)], 1).round(4).tolist()}
+    return out
 
 
 def scene_priors(cfg, scene, env_fixed_geometry=False):
@@ -1316,6 +1415,7 @@ def per_strategy(fn, args, out, *extra):
         sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")
         sfx += noise_tag(args.noise) + ("" if args.mean == DEFAULT_MEAN else f"_{args.mean}")
         sfx += "_chrom" if getattr(args, "chrom", False) else ""
+        sfx += "" if getattr(args, "binary", "paper") == "paper" else f"_bin{args.binary}"
         sfx += "_unbounded" if getattr(args, "unbounded", False) else ""
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
@@ -1443,7 +1543,11 @@ def image_one(args, out, strat):
             scene = scene.set(k_, v_)
     if warm:
         print("warm start from", warm_src, {k_: round(v_, 3) for k_, v_ in warm.items()}, flush=True)
-    priors = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri
+    binary = getattr(args, "binary", "paper")
+    if binary != "paper" and strat != "gp-polar":
+        raise SystemExit("--binary is for gp-polar only (design §12)")
+    scene, bin_pri = binary_scene(scene, cfg, data_s, binary)
+    priors = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri | bin_pri
     has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
     if strat == "mem":
         model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data_s, args)
@@ -1466,6 +1570,8 @@ def image_one(args, out, strat):
                  field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", np.shape(env.log_brightness)[0] * pix_ / 2))) | extra_gp
     if chrom:
         extra |= dict(chrom=True) | chromatic_summary(model, cfg)
+    if binary != "paper":
+        extra |= binary_summary(model, binary, cfg)
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
@@ -2312,6 +2418,8 @@ def main():
                    help="error model: current (independent errors, MacKay error_scale), vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
                         "gains per telescope and baseline, closure offsets) or night (vlti plus a gain per (night, baseline) and a closure "
                         "offset per (night, triangle)); written as <target>_<strategy>_<noise>_*")
+    p.add_argument("--binary", default="paper", choices=BINARY_MODES,
+                   help="gp-polar: the binary model (design §12): paper (B1), free (secondary position, flux and index), motion (plus linear motion of both stars against the disc), epoch (plus an offset per night); written as ..._bin<mode>_*")
     p.add_argument("--chrom", action="store_true",
                    help="gp-polar: add a chromatic ring (index linear in radius) and free the star index (design §11); written as ..._chrom_*")
     p.add_argument("--unbounded", action="store_true",
