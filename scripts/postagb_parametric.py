@@ -12,8 +12,7 @@ Delta ln Z >= 5 and Delta BIC <= -10 under N2.
     python scripts/postagb_parametric.py jackknife OUT --target AI_Sco
 
 Each stage writes its files in ``OUT/<target>/`` and ``<stage>.DONE`` last. Only the names of ``postagb_imaging`` that are the same on ``main`` and on
-the gp-polar branch are used (``cfg_of, sparco_scene, scene_priors, load, load_files, chi2r, residual_stats, observables, TARGETS, L0``); the night modes
-are rebuilt here (``night_modes``) because ``night_noise`` is absent from ``main``. The one private virgil import (``_residual_jacobian``, ``_log_norm``)
+the gp-polar branch are used (``cfg_of, sparco_scene, scene_priors, load, load_files, chi2r, residual_stats, observables, TARGETS, L0``); the data layer and the night modes come from ``postagb_noise`` (virgil-vlti: ``to_oidata`` and ``with_night_terms``). The one private virgil import (``_residual_jacobian``, ``_log_norm``)
 is in ``_private``.
 """
 
@@ -34,7 +33,7 @@ import numpy as np  # noqa: E402
 import numpyro.distributions as dist  # noqa: E402
 from numpyro.infer.util import log_density  # noqa: E402
 from scipy.special import gammaln, logsumexp  # noqa: E402
-from virgil import OIData, read_oifits  # noqa: E402
+from postagb_noise import NIGHTW, NIGHT_SPLIT_MJD, load_pionier, night_labels, night_modes, night_widths, pionier_noise  # noqa: E402,F401
 from virgil import harmonics as vh  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
 from virgil.likelihood import numpyro_model, whitened_residuals  # noqa: E402
@@ -42,8 +41,6 @@ from virgil.models import GaussianRing, Harmonics, MultipoleDisk  # noqa: E402
 from virgil.priors import IsotropicInclination  # noqa: E402
 from virgil.spectra import PowerLaw  # noqa: E402
 
-NIGHT_SPLIT_MJD = 0.65  # a night runs from MJD .65 (15:36 UT, local noon at Paranal) to the next
-NIGHTW = dict(night_gain_baseline=0.03, night_t3_offset_deg=2.0)  # N2: 3 % on log|V| per (night, baseline), 2 deg per (night, triangle)
 ARMS = ("N0", "N1", "N2")
 SELECTION_ARM = "N2"
 R_RANGE, SIGMA_RANGE = (0.6, 25.0), (0.1, 10.0)  # mas; fixed for every target (design section 3)
@@ -84,33 +81,6 @@ def _private():
 # noise arms
 
 
-def night_labels(data):
-    """Night, (night, baseline) cell and (night, triangle) cell of every sample (copied from the gp-polar branch's ``night_labels``)."""
-    mjd = float(data.t_ref) + np.asarray(data.dt, float)
-    night = np.floor(mjd - NIGHT_SPLIT_MJD).astype(int)
-    st = np.sort(np.asarray(data.stations, int), axis=1)
-    base = np.unique(st, axis=0, return_inverse=True)[1].ravel()
-    cell_u = np.unique(np.stack([night, base], 1), axis=0, return_inverse=True)[1].ravel()
-    i1, i2, i3 = (np.asarray(i, int) for i in (data.i_cps1, data.i_cps2, data.i_cps3))
-    tri = np.unique(np.sort(np.concatenate([st[i1], st[i2], st[i3]], 1), axis=1), axis=0, return_inverse=True)[1].ravel()
-    cell_t = np.unique(np.stack([night[i1], tri], 1), axis=0, return_inverse=True)[1].ravel()
-    return dict(u_night=night, u_cell=cell_u, t3_cell=cell_t)
-
-
-def night_modes(data, gain=NIGHTW["night_gain_baseline"], t3_deg=NIGHTW["night_t3_offset_deg"]):
-    """The N2 night modes: ``(g, o)``, one row per (night, baseline) on log|V| of width ``gain`` and one per (night, triangle) on the closure
-    phases of width ``t3_deg`` (degrees, returned in radians); a zero width gives ``None`` for its group."""
-    lab = night_labels(data)
-    g = o = None
-    if gain > 0:
-        g = np.zeros((lab["u_cell"].max() + 1, lab["u_cell"].size))
-        g[lab["u_cell"], np.arange(lab["u_cell"].size)] = gain
-    if t3_deg > 0:
-        o = np.zeros((lab["t3_cell"].max() + 1, lab["t3_cell"].size))
-        o[lab["t3_cell"], np.arange(lab["t3_cell"].size)] = np.radians(t3_deg)
-    return g, o
-
-
 def stored_error_scale(cfg):
     """``(s, source, stored)``: the MacKay error scale of the stored gp-polar ``image.json`` (noise ``current``), else the design table's.
 
@@ -125,7 +95,7 @@ def stored_error_scale(cfg):
     return MACKAY_S[key], "design table (stored image.json not found)", None
 
 
-def noise_arm(data, cfg, arm, s=None):
+def noise_arm(data, cfg, arm, s=None, night=NIGHTW):
     """``data`` under noise arm ``arm``: N0 as read; N1 the errors scaled by the MacKay factor ``s`` (``--noise current`` of gp-polar);
     N2 N1 plus night modes (``--noise nightw``). ``s`` defaults to the stored gp-polar factor of the target."""
     if arm == "N0":
@@ -133,10 +103,8 @@ def noise_arm(data, cfg, arm, s=None):
     s = stored_error_scale(cfg)[0] if s is None else float(s)
     if arm == "N1":
         return data.with_error_scale(s) if s != 1.0 else data
-    if arm == "N2":
-        g, o = night_modes(data)
-        d = data.with_error_scale({"vis": s, "phi": s})
-        return d.with_gains(telescope=0.0, baseline=0.0, modes=g).with_closure_offsets(triangle=np.radians(0.0), modes=o)
+    if arm == "N2":  # N1 plus night terms of ``night`` (NIGHTW: 3 % and 2 deg, as pre-registered; ``night_widths(cfg)`` has the per-target pair-test widths)
+        return pionier_noise(data, white=s, night=night)
     raise ValueError(f"unknown noise arm {arm!r}")
 
 
@@ -829,10 +797,10 @@ def jackknife_sd(values, centre, circular=False):
 def night_subsets(files, load=None):
     """``{night: callable}``: each callable reads the data of ``files`` without that night (a night runs from MJD .65 to the next; a file belongs
     to the night of its mean MJD). The input of ``jackknife``."""
-    load = load or (lambda fs: OIData(read_oifits(fs)))
+    load = load or load_pionier
     nights = {}
     for f in files:
-        mjd = float(np.mean(np.asarray(OIData(read_oifits([f])).mjd, float)))
+        mjd = float(np.mean(np.asarray(load_pionier([f]).mjd, float)))
         nights.setdefault(int(np.floor(mjd - NIGHT_SPLIT_MJD)), []).append(f)
     return {n: (lambda n=n: load([f for m, fs in nights.items() if m != n for f in fs])) for n in nights}, {n: len(fs) for n, fs in nights.items()}
 

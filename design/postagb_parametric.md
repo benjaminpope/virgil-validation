@@ -79,9 +79,11 @@ Build all starts of one (model, arm) with the same model structure so the compil
 | N1 | `data.with_error_scale(s)`, s = `error_scale` of the stored gp-polar `image.json` (fact table) | same data object as gp-polar `--noise current` |
 | N2 (**selection arm**) | N1 plus one gain mode per (night, baseline) on log\|V\| of width 0.03 and one offset per (night, triangle) of 2° | same as gp-polar `--noise nightw`; the likelihood recommended for the paper. Known to count the night scatter twice (s was derived without night terms), so it under-selects |
 
-The script builds the night modes itself in `night_modes(data, gain, t3_deg)`, copying `night_labels`/`night_noise` (MJD
-floor at 0.65; `with_gains(modes=g).with_closure_offsets(modes=o)`); it must not import them (absent on main). A test compares
-it with `P.night_noise` when that exists. ln Z is compared only within one arm.
+The data are loaded with `virgil_vlti.to_oidata` and the night modes come from `virgil_vlti.with_night_terms`, through
+`scripts/postagb_noise.py`, which the gp-polar script uses too (one definition of the night: it starts at 12 UT, which gives the same night
+as the earlier MJD 0.65 split for every INSPIRING file). N2 keeps the pre-registered global widths (`NIGHTW`); the per-target night widths
+of the gp-polar `night` arm exist as `noise_arm(..., night=night_widths(cfg))` and are not used in the pre-registered ladder. A test
+(`tests/test_postagb_vlti.py`) checks the shared construction against the earlier local one on AI Sco. ln Z is compared only within one arm.
 
 ## 5. Evidence, checks and selection rules (fixed now)
 

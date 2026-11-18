@@ -83,7 +83,12 @@ import numpy as np  # noqa: E402
 import numpyro.distributions as dist  # noqa: E402
 from astropy.io import fits  # noqa: E402
 from scipy import ndimage  # noqa: E402
-from virgil import OIData, read_oifits
+from virgil import OIData  # noqa: F401
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from postagb_noise import (  # noqa: E402  (the PIONIER data layer and noise model, on virgil-vlti)
+    NIGHT_KEYS, NIGHT_SPLIT_MJD, NIGHT_WIDTHS, NIGHTW, NOISE_WIDTHS, VLTI_NOISE, load_pionier, night_labels, night_noise, night_widths,
+    noise_widths, pionier_noise, vlti_noise,
+)
 from virgil.oidata import closure_phases  # noqa: E402
 from virgil.fitting import fit  # noqa: E402
 from virgil import gp_priors  # noqa: E402
@@ -352,7 +357,7 @@ def load_files(cfg, n=None):
 
 def load(cfg, n=None, bandwidth=False):
     files = load_files(cfg, n)
-    return OIData(read_oifits(files, bandwidth=bandwidth)), files
+    return load_pionier(files, bandwidth=bandwidth), files
 
 
 def paper_log_mjds(cfg):
@@ -898,88 +903,10 @@ def scale_file(out, cfg, noise=DEFAULT_NOISE):
     return out / f"{cfg.get('data_key', cfg['key'])}_scale{noise_tag(noise)}.json"
 
 
-# ``--noise vlti``: the PIONIER error model of virgil-vlti (design/pionier_systematics.md, measured on IW Car with the pair test:
-# 11 disjoint pairs of consecutive exposures, model subtracted). V^2 errors are 0.32 white; the rest is a gain per (frame, telescope)
-# and per (frame, baseline) shared by the six channels, widths on log|V| (half the 1.1 % and 0.9 % on V^2); closure-phase errors are
-# 0.65 white, plus an offset per (frame, triangle) of 0.21 deg. The MacKay ``error_scale`` is skipped: virgil refuses it with gains.
-# Each target has its own widths in postagb_noise_widths.json (the same pair test on its own exposures; fewer than five pairs: the
-# median of the others).
-VLTI_NOISE = dict(v2_white=0.32, t3_white=0.65, gain_telescope=0.0055, gain_baseline=0.0045, t3_offset_deg=0.21)  # IW Car
-NOISE_WIDTHS = json.load(open(Path(__file__).with_name("postagb_noise_widths.json")))["targets"]
-
-
-def noise_widths(cfg):
-    """The vlti error-model widths of this target (``VLTI_NOISE`` for a target the table does not have)."""
-    row = NOISE_WIDTHS.get(cfg.get("data_key", cfg["key"]))
-    return VLTI_NOISE if row is None else {k: row[k] for k in VLTI_NOISE}
-
-
-def vlti_noise(data, widths=VLTI_NOISE):
-    """``data`` under the virgil-vlti PIONIER error model (``widths``, see ``noise_widths``).
-
-    Per-observable white scaling goes first (``with_error_scale`` by kind: ``vis`` is the V^2 here, ``phi`` the closure phases), then
-    gains on log|V| and closure-phase offsets, which the likelihood marginalizes analytically."""
-    n = widths
-    data = data.with_error_scale({"vis": n["v2_white"], "phi": n["t3_white"]})
-    return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"]).with_closure_offsets(triangle=np.radians(n["t3_offset_deg"]))
-
-
-# ``--noise night``: the vlti model plus calibration errors shared by every frame of one night (a night's calibrators and
-# transfer function): a gain on log|V| per (night, baseline) and a closure-phase offset per (night, triangle), marginalised by the
-# likelihood like the per-frame terms (virgil's spanning modes). Widths per target in postagb_night_widths.json, measured on the
-# residuals against the published model before any night fit was looked at (scripts/postagb_night_widths.py,
-# design/gp_polar_hyperparameters.md §9). A night runs from MJD .65 (15:36 UT, local noon at Paranal) to the next.
-NIGHT_SPLIT_MJD = 0.65
-# ``--noise nightw``: the MacKay white errors of ``--noise current`` plus night terms of fixed width, no per-frame gains or offsets
-# (the setting of the 18 Nov review of §10, design §12): 3 % on log|V| per (night, baseline), 2 deg per (night, triangle)
-NIGHTW = dict(night_gain_baseline=0.03, night_t3_offset_deg=2.0)
-_NIGHT_FILE = Path(__file__).with_name("postagb_night_widths.json")
-NIGHT_WIDTHS = json.load(open(_NIGHT_FILE))["targets"] if _NIGHT_FILE.exists() else {}
-NIGHT_KEYS = ("night_gain_baseline", "night_t3_offset_deg")
-
-
-def night_widths(cfg):
-    """This target's night widths (``NIGHT_KEYS``); a target the table does not have gets the median of the others."""
-    row = NIGHT_WIDTHS.get(cfg.get("data_key", cfg["key"]))
-    if row is None:
-        return {k: float(np.median([r[k] for r in NIGHT_WIDTHS.values()])) for k in NIGHT_KEYS}
-    return {k: row[k] for k in NIGHT_KEYS}
-
-
-def night_labels(data):
-    """Night, (night, baseline) cell and frame of every sample: ``u_*`` per sample of ``data.u``, ``v2_*`` per V^2 (``data.vis``),
-    ``t3_*`` per closure phase (``data.phi``; its night and frame are those of its first baseline, its triangle the three stations)."""
-    mjd = float(data.t_ref) + np.asarray(data.dt, float)
-    night = np.floor(mjd - NIGHT_SPLIT_MJD).astype(int)
-    st = np.sort(np.asarray(data.stations, int), axis=1)
-    frame = np.asarray(data.frame, int)
-    base = np.unique(st, axis=0, return_inverse=True)[1].ravel()
-    cell_u = np.unique(np.stack([night, base], 1), axis=0, return_inverse=True)[1].ravel()
-    vi = data.vis_index
-    vi = np.arange(mjd.size) if vi is None or np.ndim(vi) == 0 else np.asarray(vi)
-    i1, i2, i3 = (np.asarray(i, int) for i in (data.i_cps1, data.i_cps2, data.i_cps3))
-    tri = np.unique(np.sort(np.concatenate([st[i1], st[i2], st[i3]], 1), axis=1), axis=0, return_inverse=True)[1].ravel()
-    cell_t = np.unique(np.stack([night[i1], tri], 1), axis=0, return_inverse=True)[1].ravel()
-    return dict(u_night=night, u_cell=cell_u, v2_night=night[vi], v2_cell=cell_u[vi], v2_frame=frame[vi],
-                t3_night=night[i1], t3_cell=cell_t, t3_frame=frame[i1])
-
-
-def night_noise(data, widths=VLTI_NOISE, night=None):
-    """``data`` under the vlti error model (``vlti_noise``) plus the night terms: one mode per (night, baseline) on log|V| of
-    width ``night["night_gain_baseline"]`` over that night's samples on that baseline, and one per (night, triangle) on the
-    closure phases of width ``night["night_t3_offset_deg"]``. A zero width leaves its group out."""
-    lab, n = night_labels(data), widths
-    gw, ow = night["night_gain_baseline"], np.radians(night["night_t3_offset_deg"])
-    g = o = None
-    if gw > 0:
-        g = np.zeros((lab["u_cell"].max() + 1, lab["u_cell"].size))
-        g[lab["u_cell"], np.arange(lab["u_cell"].size)] = gw
-    if ow > 0:
-        o = np.zeros((lab["t3_cell"].max() + 1, lab["t3_cell"].size))
-        o[lab["t3_cell"], np.arange(lab["t3_cell"].size)] = ow
-    data = data.with_error_scale({"vis": n["v2_white"], "phi": n["t3_white"]})
-    return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"], modes=g).with_closure_offsets(
-        triangle=np.radians(n["t3_offset_deg"]), modes=o)
+# The noise models live in postagb_noise.py (virgil-vlti): ``--noise vlti`` is the pair-test error model of design/pionier_systematics.md
+# (the MacKay ``error_scale`` is skipped: virgil refuses it with gains), ``--noise night`` adds a gain per (night, baseline) and a
+# closure-phase offset per (night, triangle) at the measured widths of postagb_night_widths.json, ``--noise nightw`` keeps the MacKay
+# white errors and adds night terms of ``NIGHTW`` (3 % and 2 deg, the 18 Nov review of design section 12).
 
 
 def modelled_noise(data, cfg, noise):
@@ -997,8 +924,7 @@ def load_scaled(cfg, args, out):
     f = scale_file(out, cfg, "current")
     s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
     if getattr(args, "noise", "current") == "nightw":  # MacKay white errors, then the night terms on top
-        white = dict(v2_white=s, t3_white=s, gain_telescope=0.0, gain_baseline=0.0, t3_offset_deg=0.0)
-        return night_noise(data, white, NIGHTW), data, s, files
+        return pionier_noise(data, white=s, night=NIGHTW), data, s, files
     return data.with_error_scale(s) if s != 1.0 else data, data, s, files
 
 
@@ -1807,11 +1733,11 @@ def simulate(cfg, files, s, truth, arm, key):
     * ``chrom``: noise as for ``white``; the caller makes the truth chromatic (``chromatic_truth``) and fits it grey.
     * ``night``: as ``corr``, plus the night terms of ``night_noise`` (a gain per (night, baseline), a closure offset per
       (night, triangle)), fitted the same way."""
-    data0 = OIData(read_oifits(files))
+    data0 = load_pionier(files)
     if arm in ("white", "geo", "chrom"):
         return data0.with_error_scale(s).with_model(truth, key=key), s
     if arm == "smear":
-        sim = OIData(read_oifits(files, bandwidth=True)).with_error_scale(s).with_model(truth, key=key)
+        sim = load_pionier(files, bandwidth=True).with_error_scale(s).with_model(truth, key=key)
         return data0.with_error_scale(s).set(["vis", "phi"], [sim.vis, sim.phi]), s
     sim = modelled_noise(data0, cfg, "night" if arm == "night" else "vlti").with_model(truth, key=key)
     return data0.set(["vis", "phi"], [sim.vis, sim.phi]), None
@@ -1862,7 +1788,7 @@ def calibrate_stage(args, out):
     sc = json.load(open(sc_file)) if not args.smoke else dict(error_scale=1.0, geometry=dict(inc_deg=45.0, pa_deg=90.0))
     s, geo = float(sc["error_scale"]), sc["geometry"]
     files = load_files(cfg, args.files)
-    real = OIData(read_oifits(files)).with_error_scale(s)
+    real = load_pionier(files).with_error_scale(s)
     start, support, hole_mas = grid_setup(cfg, real, args)
     if not path(out, cfg, "parametric.json").exists():
         raise SystemExit("calibrate needs the parametric stage's output (parametric.json) in OUTDIR")
