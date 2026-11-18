@@ -533,7 +533,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         usable_roots, broken_roots = set(), set()
         usable_blocked_by, broken_blocked_by = set(), set()
         blocked_checks = []  # display only: counted checks held back by an unverified via reference
-        prop_roots =collections.defaultdict(set)
+        prop_roots = collections.defaultdict(set)
         prop_roots_usable = collections.defaultdict(set)
         prop_roots_all = collections.defaultdict(set)
         for r in good:
@@ -549,7 +549,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                     prop_roots_all[prop] |= s_
             elif r["kind"] in agreeing:
                 blocked_checks.append({"test": r["test"], "via": sorted(untrusted)})
-                is_broken =is_broken_ref is not None and any(is_broken_ref(v) for v in untrusted)
+                is_broken = is_broken_ref is not None and any(is_broken_ref(v) for v in untrusted)
                 if not is_broken:
                     usable_roots |= s_
                     usable_blocked_by |= untrusted
