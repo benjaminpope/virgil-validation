@@ -993,7 +993,7 @@ from trust_render import (  # noqa: E402,F401
     ICON, ORDER, COLOURS, _bar, _legend, _value, _pipeline_card, _chain, _tooltip, layers, _fails_badge, _map,
     _matrix, _link_label, _ledger, FINDING_GROUPS, render_findings, render_coverage, LAYER_SECTION, test_sections,
     render_tests, _precision, _tables, SHOWCASE, _headline_html, _headline_by_order_html, _fails_elsewhere_html,
-    render,
+    render, render_roots,
 )
 e = trust_render.e  # not in the import above: build() uses `e` as a loop variable, which ruff flags against an import
 
@@ -1016,6 +1016,7 @@ def main():
     ap.add_argument("--json", default=None)
     ap.add_argument("--findings", default=None, help="also write the Findings page here (docs/method/findings.md)")
     ap.add_argument("--coverage", default=None, help="also write the Not yet covered page here (docs/method/coverage.md)")
+    ap.add_argument("--roots", default=None, help="also write the Roots page here (docs/method/roots.md)")
     ap.add_argument("--tests", default=None, help="also write the Function tests landing page here (docs/tests/index.md)")
     args = ap.parse_args()
     graph = yaml.safe_load(open(args.graph))
@@ -1034,6 +1035,8 @@ def main():
         pathlib.Path(args.findings).write_text(render_findings(ledger))
     if args.coverage:
         pathlib.Path(args.coverage).write_text(render_coverage(model))
+    if args.roots:
+        pathlib.Path(args.roots).write_text(render_roots())
     if args.tests:
         pathlib.Path(args.tests).parent.mkdir(parents=True, exist_ok=True)
         pathlib.Path(args.tests).write_text(render_tests(model))

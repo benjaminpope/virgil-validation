@@ -100,20 +100,21 @@ def _roots_fold(class_id, registry, names, cols):
 
 
 def _class_row(class_id, entry, registry, names, counts):
-    cells = "".join(f"<td>{_inline(entry.get(key))}</td>" for key, _ in FIELDS)
+    cells = "".join(f'<td data-label="{label}">{_inline(entry.get(key))}</td>' for key, label in FIELDS)
     if counts is None:
         numbers = ""
     elif counts.get(class_id) is None:
-        numbers = f'<td class="n" title="weak root: never counted">{NOT_COUNTED}</td>' * 2
+        numbers = "".join(f'<td class="n" data-label="{label}" title="weak root: never counted">{NOT_COUNTED}</td>'
+                          for label in ("Parts", "Alone"))
     else:
         parts, alone = counts[class_id]
-        numbers = f'<td class="n">{parts}</td><td class="n">{alone}</td>'
+        numbers = f'<td class="n" data-label="Parts">{parts}</td><td class="n" data-label="Alone">{alone}</td>'
     return f'<tr><th scope="row">{html.escape(entry["name"], quote=False)}{_marker(entry)}</th>{cells}{numbers}</tr>'
 
 
 def _link_row(entry, counts):
-    cells = "".join(f"<td>{_inline(entry.get(key))}</td>" for key, _ in FIELDS)
-    numbers = "" if counts is None else f'<td class="n">{NOT_COUNTED}</td><td class="n">{NOT_COUNTED}</td>'
+    cells = "".join(f'<td data-label="{label}">{_inline(entry.get(key))}</td>' for key, label in FIELDS)
+    numbers = "" if counts is None else f'<td class="n" data-label="Parts">{NOT_COUNTED}</td><td class="n" data-label="Alone">{NOT_COUNTED}</td>'
     return f'<tr class="vt-link"><th scope="row">{html.escape(entry["name"], quote=False)}{_marker(entry)}</th>{cells}{numbers}</tr>'
 
 

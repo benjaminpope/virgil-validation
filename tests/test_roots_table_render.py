@@ -146,3 +146,22 @@ def test_unknown_counted_root_is_an_error():
     model = {"nodes": {"virgil.x": _node("virgil.x", ["not-a-root"])}}
     with pytest.raises(KeyError, match="virgil.x"):
         table.class_counts(model, REGISTRY)
+
+
+def test_trust_page_and_method_page_carry_the_table(tmp_path):
+    graph = {"nodes": {"virgil.a": {"layer": "models"}}}
+    path = tmp_path / "latest.jsonl"
+    rec = {"record": "test", "test": "t::x", "objects": ["virgil.a"], "roots": ["mathematics"], "kind": "check",
+           "tier": "A", "outcome": "passed", "metrics": {}}
+    head = {"record": "run", "date": "2026-10-06T00:00:00+00:00", "virgil": {"commit": "c" * 40}, "runner": "test"}
+    path.write_text("\n".join(__import__("json").dumps(x) for x in [head, rec]) + "\n")
+    runs, records = trust.load_evidence([path])
+    model = trust.build(graph, [], records, runs, None, golden=set())
+    model["docs"] = {}
+    page = trust.render(model)
+    assert page.count('<table class="vt-roots">') == 1 and "Who checks what" in page
+    assert ">draft<" in page  # the shipped registry is still a draft
+    method = trust.render_roots()
+    assert method.startswith("<!-- Generated") and "# The roots of trust" in method
+    assert 'class="n"' not in method  # no counts on the method page
+    assert "(index.md)" in method or "[How trust is built](index.md)" in method
