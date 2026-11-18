@@ -1,0 +1,106 @@
+# Predeclared cases, settings and metrics for the imaging comparison (virgil vs eht-imaging 1.3.2). Plan section 6.
+# Committed before any measured run. A later change is a new commit with a line in CHANGES.md giving the reason; no
+# setting is changed in response to a timing or to which code is ahead.
+
+comparison: imaging
+other_code: eht-imaging 1.3.2 (EHTIM_PYTHON, direct transform; NFFT is not installed)
+virgil_pin: read from ~/.cache/virgil-bench/VIRGIL_REF (recorded in every row)
+
+data:
+  generator: make_data.py (crosscheck.simulate.observe_visibilities; deterministic; manifest.json committed)
+  seed: 1
+  sigma: 0.002            # on each of Re and Im of the visibility
+  field_mas: 12.0
+  wavelengths_um: [1.5, 2.4]
+  dec_deg: -50.0
+  datasets:
+    sim-well:  {stations: UTS3, hour_angles: 13, channels: 6,  scene: "two 0.8 mas Gaussians, 0.3 relative flux at (3, -2) mas"}
+    sim-ring:  {stations: UTS3, hour_angles: 13, channels: 6,  scene: "ring diameter 5 mas, width (FWHM) 0.8 mas, 20 % azimuthal asymmetry (cos(theta - 90 deg), theta from North), flux 1"}
+    sim-large: {stations: UTS4, hour_angles: 25, channels: 30, scene: "as sim-well; closure triangles = eht-imaging's minimal set (c_phases(count='min')), written to OI_T3"}
+
+cases:
+  I-sim-24:    {dataset: sim-well,  npix: 24,  pixel_mas: 0.5,   priority: 2}
+  I-sim-48:    {dataset: sim-well,  npix: 48,  pixel_mas: 0.25,  priority: 2}
+  I-sim-96:    {dataset: sim-well,  npix: 96,  pixel_mas: 0.125, priority: 3}
+  I-sim-ring:  {dataset: sim-ring,  npix: 48,  pixel_mas: 0.25,  priority: 3, native_only: false}
+  I-sim-large: {dataset: sim-large, npix: 48,  pixel_mas: 0.25,  priority: 6, gated: true}
+
+dropped:
+  real-data: "eht-imaging 1.3.2 has no OIFITS reader and derives closure phases from complex visibilities, which V2 + T3 data do not provide (plan R10)"
+
+# --- matched problem ------------------------------------------------------------------------------------------------
+matched:
+  data_terms: "amplitude + closure phase; eht-imaging alpha_d = N_d / 2, debias=False; virgil 1/2 sum r^2 (closure-phase residual = chord 2 sin(delta/2)/sigma, as eht-imaging's 1 - cos)"
+  regulariser:
+    ehtim: {name: tv2, norm_reg: false, beta: 7.5e5}   # beta = the validated WEIGHT_HI of tests/test_ehtim_reconstruction.py, same on every grid
+    virgil: "TSV(7.5e5 * (p/B)^4, beam_mas=B) with B = 3 mas (the vv test's mapping); the edge-term difference of vv ledger D9 stays in and is quantified by the neutral scorer"
+  image:
+    ehtim: {transform: [log], flux_term_weight: 1.0e6}
+    virgil: "softmax of the log-brightness (flux exactly 1)"
+  transform: {ehtim: "ttype=direct", virgil: "Image(ft='dft'): the exact direct sum"}
+  start: "circular Gaussian, FWHM 4 mas, centred, total flux 1, identical pixels in both codes (make_data.start_image)"
+  optimiser:
+    ehtim: "Imager.make_image_I: SciPy L-BFGS-B, maxcor=50, maxls=40 (the package's own constants)"
+    virgil: "fit(method='lbfgsb', lbfgs_memory=50); lbfgs_memory is set to 50 to equal eht-imaging's maxcor (virgil's default is 10)"
+    virgil_second_row: "fit with the default method (None -> Levenberg-Marquardt for this least-squares-form problem), same budget ladder"
+  common_score:
+    J: "1/2 sum r_amp^2 + 1/2 sum r_cp^2 + 7.5e5 * sum (db)^2 on the unit-flux image, eht-imaging's edge convention for the difference term (neutral.image_objective(edges='ehtim', sign=-1))"
+    note: "neither code's internal objective value is used for comparison"
+
+ladder:
+  budgets: [25, 50, 100, 200, 400, 800, 1600, 3200]     # ehtim maxit; virgil max_steps
+  ehtim_stop: 1.0e-14                                    # SciPy ftol and gtol (ehtim uses one value for both), so the budget binds
+  virgil_gtol: 0.0                                       # smallest accepted: the tolerance floor is sqrt(eps) of the starting gradient; stop reason recorded per budget
+  reps_by_size: {tiny: 1, full: 5}                       # warm repeats per budget (common.repeat_plan applies in WP-R)
+  budgets_tiny: [25, 50]
+  time_to_target:
+    reference: "lowest J reached by either code at any budget (matched, lbfgsb row for virgil)"
+    rule: "wall time (median warm) at which J first lies within 1e-3 relative of that lowest J, linearly interpolated between budgets; not_reached with the best J otherwise"
+
+stopping_rows:       # each code once under a stopping rule (config in parentheses)
+  default:           # (config matched, task stop_default)
+    ehtim: {maxit: 200, stop: 1.0e-6}      # eht-imaging 1.3.2 Imager defaults
+    virgil: {method: lbfgsb, gtol: 1.0e-4, max_steps: 20000}   # fit defaults for L-BFGS-B
+  tight:             # (config tight, task stop_tight)
+    ehtim: {maxit: 5000, stop: 1.0e-12}
+    virgil: {method: lbfgsb, gtol: 1.0e-8, max_steps: 5000}
+
+per_evaluation: {calls: 50, note: "eht-imaging objfunc + objgrad (after init_imager); virgil jitted value-and-grad of the loss over the logits; at the common start; t_warm entries are per-call means over the calls"}
+
+# --- native ---------------------------------------------------------------------------------------------------------
+native:
+  ehtim:
+    source: "examples/example_im_closure.py of eht-imaging v1.3.2 (commit c8c7a89ea96da0c3f0217e95c41ce8d3e7ca8765), https://github.com/achael/eht-imaging/blob/v1.3.2/examples/example_im_closure.py"
+    recipe: "three rounds; data weights amp 50 / cphase 100 (rounds 1-2) then amp 10 / cphase 20; regularisers simple=1 (round 1) then tv=1; flux 100; cm 50; maxit=500; each later round starts from the previous image blurred with obs.res() (then res/2); Gaussian prior = the common start; ttype=direct"
+    amp: [50, 10]
+    cphase: [100, 20]
+    simple: 1
+    tv: 1
+    flux: 100
+    cm: 50
+    maxit: 500
+    notes: "the example's imgr.maxi_next = 1000 is a misspelt attribute (no effect), so maxit stays 500; averaging of closure quantities (avg_time) is not applied because the simulated snapshots are already one per time"
+  virgil:
+    source: "docs/imaging_rml.md of virgil at the pinned commit (the page of that name in the virgil documentation)"
+    recipe: "starting_image(data, star=False, largest_mas=12, start='moments'), image_priors, fit(start, priors, data, [MaxEntropy(100)]) with the default method and tolerances; the page's weight (100) is used as given"
+    start: moments
+    weight: 100
+  notes: "same data, same 12 mas field; virgil's starting_image sizes its own grid from the data, recorded as grid_npix / grid_pixel_mas, and the truth is rendered on that grid for scoring; J is not applicable to native rows (different objectives)"
+  scored_by: "crosscheck.image_metrics: ncc after integer-pixel registration, rms(relative=True) after convolution of both images with the nominal beam lambda / (2 B_max), plus data chi2 per term from neutral.py"
+
+# --- gate -----------------------------------------------------------------------------------------------------------
+gate:
+  points: [start, truth]
+  quantity: "ehtim: objective task (flux term excluded) -> sum alpha_d (chi2_d - 1) + beta tv2, plus the constants alpha_d, equals J(edges=ehtim); virgil: loss = 1/2 sum r^2 + TSV, equals J(edges=virgil)"
+  tolerance_rel: 1.0e-9
+  on_failure: "finding; matched rows of that case get status gate_failed with the measured mismatch; native rows still run"
+
+# --- accuracy -------------------------------------------------------------------------------------------------------
+accuracy:
+  matched_cross_code: "relative L2 difference and correlation of the two final images at the largest budget"
+  matched_tolerance: "the two codes' J agree within 1e-3 relative at the largest budget; otherwise a finding"
+
+limits:
+  - "eht-imaging with ttype=direct (NFFT not installed): a limitation of this benchmark, not of the package"
+  - "one laptop CPU; 1 thread primary, 2 threads at most; no GPU row"
+  - "simulated data only"
