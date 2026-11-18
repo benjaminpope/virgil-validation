@@ -95,10 +95,10 @@ nodes:
   virgil.observables.in_ranges: {layer: data, source: [src/virgil/observables.py], doc: data/oifits_observables.md}
 
   # -------------------------------------------------------------- models
-  virgil.models.PointSource: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.GaussianDisk: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.EllipticalGaussian: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.UniformDisk: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.PointSource: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Component]}
+  virgil.models.GaussianDisk: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Component]}
+  virgil.models.EllipticalGaussian: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Component]}
+  virgil.models.UniformDisk: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Component]}
   virgil.models.ModulatedGaussianRim:
     layer: models
     source: [src/virgil/models.py, src/virgil/harmonics.py]
@@ -129,21 +129,21 @@ nodes:
   virgil.models.GravityDarkenedStar:
     layer: models
     source: [src/virgil/models.py, src/virgil/_elr.py]
-    depends: [virgil._elr]
+    depends: [virgil._elr, virgil.models.Component]
     convention: [pole_pa]  # the pole's position angle on the sky
   virgil.models.cvis_limb_darkened_disk: {layer: models, source: [src/virgil/models.py]}
   virgil.models.LimbDarkenedDisk:
     layer: models
     source: [src/virgil/models.py]
-    depends: [virgil.models.cvis_limb_darkened_disk]
+    depends: [virgil.models.cvis_limb_darkened_disk, virgil.models.Component]
   virgil.models.QuadraticLimbDarkenedDisk:
     layer: models
     source: [src/virgil/models.py]
-    depends: [virgil.models.cvis_limb_darkened_disk]
+    depends: [virgil.models.cvis_limb_darkened_disk, virgil.models.Component]
   virgil.models.SquareRootLimbDarkenedDisk:
     layer: models
     source: [src/virgil/models.py]
-    depends: [virgil.models.cvis_limb_darkened_disk]
+    depends: [virgil.models.cvis_limb_darkened_disk, virgil.models.Component]
   virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
   virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
   virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
@@ -154,7 +154,7 @@ nodes:
   virgil.models.EllipticalLimbDarkenedDisk:
     layer: models
     source: [src/virgil/models.py]
-    depends: [virgil.models.cvis_limb_darkened_disk]
+    depends: [virgil.models.cvis_limb_darkened_disk, virgil.models.Component]
     doc: models/limb_darkening.md#elliptical-disks
   virgil.spectra.Spectrum: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.flux_at: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
@@ -184,7 +184,7 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     roots: 2
-    depends: [virgil.models.SourceModel, virgil.models.System, virgil.models.Rotated]
+    depends: [virgil.models.SourceModel, virgil.models.System, virgil.models.Rotated, virgil.spectra.flux_at]
     doc: models/visibilities.md
   virgil.models.multipole_disk_cvis: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
   virgil.models.cvis_radial_dirac_delta_modulated: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
@@ -278,7 +278,7 @@ nodes:
   virgil.fitting.fit:
     layer: likelihood
     source: [src/virgil/fitting.py, src/virgil/_precision.py]
-    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site]
+    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site, virgil.models.RadialGPFunction]
     doc: data/long_baseline.md
   virgil.tempering.block_dof: {layer: likelihood, source: [src/virgil/tempering.py], doc: likelihood/spectra_phases.md}
   virgil.tempering.ChannelFactors:
