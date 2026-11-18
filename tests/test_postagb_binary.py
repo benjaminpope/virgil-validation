@@ -102,8 +102,64 @@ def test_binary_scene_frees_what_each_mode_says(monkeypatch):
 
 
 def test_binary_summary_reads_the_secondary_colour():
-    cfg = dict(img_star_index=-2.8)
+    cfg = dict(img_star_index=-2.1)  # AI Sco's SIND1: the windows are absolute, not about the primary's index
+    s, sd = scene(), {"sec.flux.index": 0.2}
+    read = lambda d, sd_=sd: P.binary_summary(s.set("sec.flux.index", d), "free", cfg, sd_)["bin_sec_colour"]  # noqa: E731
+    assert read(-3.3) == "photospheric" and read(-2.5) == "photospheric"
+    assert read(0.3) == "dust-like" and read(-1.2) == "neither" and read(1.9) == "neither"
+    assert read(-3.0, {"sec.flux.index": 0.8}) == "unconstrained" and read(-3.0, None) == "unconstrained"
+    out = P.binary_summary(s, "free", cfg, sd)
+    assert out["bin_sec_index_sd"] == 0.2
+
+
+def test_binary_summary_reports_the_relative_velocity():
     s = scene()
-    assert P.binary_summary(s.set("sec.flux.index", -2.5), "free", cfg)["bin_sec_colour"] == "photospheric"
-    assert P.binary_summary(s.set("sec.flux.index", 0.3), "free", cfg)["bin_sec_colour"] == "dust-like"
-    assert P.binary_summary(s.set("sec.flux.index", 1.9), "free", cfg)["bin_sec_colour"] == "neither"
+    m = s.set("sec", P.MovingComponent(s.sec, DT, GROUP, flux=s.sec.flux, dra=-1.0, ddec=-1.4, vra=0.01, vdec=-0.004)).set(
+        "star", P.MovingComponent(s.star, DT, GROUP, flux=s.star.flux, vra=-0.002, vdec=0.001))
+    out = P.binary_summary(m, "motion", dict(img_star_index=-2.8), {"sec.vra-star.vra": 3e-4, "sec.vdec-star.vdec": 4e-4, "sec.flux.index": 0.2})
+    np.testing.assert_allclose(out["bin_rel_v_mas_per_day"], [0.012, -0.005])
+    assert out["bin_rel_v_sd"] == [3e-4, 4e-4] and np.shape(out["bin_sec_offsets_sd"]) == (3, 2)
+
+
+def test_scene_evidence_integrates_the_scene_parameters_with_their_prior_precision():
+    """Flat priors: virgil's log_evidence(priors=) and scene_evidence agree. A Normal prior of width s on one scene parameter
+    lowers scene_evidence by ln(1 + sd_flat^2 / s^2) / 2 (the rank-one update of the Hessian), which log_evidence leaves out."""
+    import jax
+    import numpyro.distributions as dist
+    from virgil.coverage import ami_grid_record
+    from virgil.fields import GaussianField
+    from virgil.fitting import fit
+    from virgil.oidata import OIData
+
+    scene = P.System(star=P.PointSource(dra=0.5), env=P.Image(GaussianField(np.zeros((8, 8)), 1.5, 24.0), 12.0, flux=0.3))
+    data = OIData(ami_grid_record(pitch_m=0.5)).with_model(scene, key=jax.random.PRNGKey(9))
+    flat = P.image_priors(scene) | {"star.dra": dist.Uniform(-20.0, 20.0)}
+    result = fit(scene, flat, data, max_steps=5)
+    z_flat, sd = P.scene_evidence(result, data, flat)
+    assert np.isfinite(z_flat) and sd["star.dra"] > 0
+    np.testing.assert_allclose(z_flat, float(P.log_evidence(result, data, priors=flat)), rtol=0, atol=1e-6)
+    s = 0.5 * sd["star.dra"]
+    normal = flat | {"star.dra": dist.Normal(float(result.model.star.dra), s)}
+    z_normal, _ = P.scene_evidence(result, data, normal)
+    assert np.isfinite(z_normal)
+    log_p_shift = float(normal["star.dra"].log_prob(result.model.star.dra) - flat["star.dra"].log_prob(result.model.star.dra))
+    np.testing.assert_allclose(z_normal - z_flat - log_p_shift, -0.5 * np.log1p(sd["star.dra"] ** 2 / s**2), atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "opts, tag",
+    [
+        (dict(binary="paper", noise="current"), "AI_Sco_gp-polar_unbounded"),  # paper keeps the earlier unbounded names (job 21054320)
+        (dict(binary="motion", noise="current"), "AI_Sco_gp-polar_binmotion_unbounded"),
+        (dict(binary="motion", noise="nightw"), "AI_Sco_gp-polar_nightw_binmotion_unbounded"),
+        (dict(binary="epoch", noise="current", wide_field=True), "AI_Sco_gp-polar_binepoch_unbounded_wide"),
+    ],
+)
+def test_binary_night_and_wide_runs_are_named_apart(opts, tag):
+    import types
+
+    args = types.SimpleNamespace(target="AI_Sco", strategy="gp-polar", star_index=None, bg_index=None, mean=P.DEFAULT_MEAN,
+                                 unbounded=True, **opts)
+    seen = []
+    P.per_strategy(lambda a, out, strat: seen.append(P.TARGETS[a.target]["key"]), args, None)
+    assert seen == [tag]

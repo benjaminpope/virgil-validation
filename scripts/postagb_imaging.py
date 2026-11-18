@@ -49,7 +49,9 @@ V^2 and closure-phase errors scaled by kind, gains per telescope and baseline, c
 ``--mean flat`` gives the GaussianField / MultipoleField a flat template inside the support instead of the Gaussian start blob;
 outputs carry ``_vlti`` / ``_flat`` in their names. ``--noise night`` adds calibration terms shared by the frames of a night
 (``night_noise``; outputs ``_night``), and ``--unbounded`` lifts gp-polar's prior bounds (outputs ``_unbounded``). ``--chrom`` adds a chromatic ring (index linear in radius) and frees the star index
-(design/gp_polar_hyperparameters.md §11; outputs ``_chrom``). The geometry of the polar GP still comes from the ``scale`` stage (current noise).
+(design/gp_polar_hyperparameters.md §11; outputs ``_chrom``). ``--binary free|motion|epoch`` frees the secondary and moves the stars against the disc (design §12; outputs ``_bin<mode>``);
+``--noise nightw`` keeps the MacKay white errors and adds night terms of 3 % and 2 deg (``NIGHTW``; outputs ``_nightw``), and ``--wide-field`` sets the field half-widths
+to 15 mas (PS Gem: 5; outputs ``_wide``). The geometry of the polar GP still comes from the ``scale`` stage (current noise).
 ``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
 """
 
@@ -90,6 +92,7 @@ from virgil.imaging import (  # noqa: E402
     MaxEntropy, beam, convolve_beam, error_scale, image_priors, l_curve, log_evidence, nyquist_pixel_scale,
     starting_image, whitened_residuals,
 )
+from virgil.imaging import _evidence_latents, _log_norm, _residual_jacobian  # noqa: E402  (scene_evidence; private, so pinned)
 from virgil.models import (  # noqa: E402
     Component, GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, RadialLinear, Resolved,
     System, UniformDisk,
@@ -237,8 +240,14 @@ def secondary_defaults(cfg, target):
         cfg["sec_prior"] = dict(dra=cfg["sec0"][0], ddec=cfg["sec0"][1], pos_sigma=0.1)
 
 
+WIDE_FIELD_MAS = 15.0  # --wide-field: image, support and comparison half-widths (PS Gem's stock field is 5 mas, its cause per the 18 Nov review)
+
+
 def cfg_of(args):
     cfg = TARGETS[args.target]
+    if getattr(args, "wide_field", False):  # design §12: PS Gem at 15 mas, not 5 (the data's own field would be 19)
+        cfg = {k: v for k, v in cfg.items() if k != "fov_mas"} | dict(half_mas=WIDE_FIELD_MAS, half_cmp_mas=WIDE_FIELD_MAS, mask_mas=WIDE_FIELD_MAS,
+                                                                fov_override=2.0 * WIDE_FIELD_MAS / 0.95)
     if "fov_mas" not in cfg:
         setup(cfg)
     if "sec_index0" not in cfg and "img_star_index" not in cfg:
@@ -696,21 +705,84 @@ def binary_scene(scene, cfg, data, mode):
     return scene, pri
 
 
-def binary_summary(model, mode, cfg):
-    """The fitted binary terms of a ``--binary`` scene, and how the secondary's colour reads (design §12)."""
-    out = dict(binary=mode)
+BINARY_STELLAR_INDEX = (-3.8, -2.0)  # a stellar companion at 1.65 um: F_lambda index -2.5 (cool) to -3.3 (hot), +- 0.5
+BINARY_INDEX_SD_MAX = 0.5  # a secondary index with a larger posterior sd is not read at all
+
+
+def binary_summary(model, mode, cfg, sd=None, data=None):
+    """The fitted binary terms of a ``--binary`` scene, and how the secondary's colour reads (design §12). ``sd`` holds the
+    Laplace posterior sds of ``scene_evidence``; the colour is read against absolute windows (a stellar companion's index does not
+    depend on the primary's SIND1), and only when the index is constrained."""
+    out, sd = dict(binary=mode), sd or {}
     if hasattr(model, "sec"):
         d = float(np.asarray(model.sec.flux.index))
-        s1 = float(cfg.get("img_star_index", -4.0))
         env = float(np.asarray(model.env.flux.index))
-        out |= dict(bin_sec_index=d, bin_sec_dra=float(model.sec.dra), bin_sec_ddec=float(model.sec.ddec),
-                    bin_sec_colour="photospheric" if abs(d - s1) <= 1.0 else ("dust-like" if min(abs(d), abs(d - env)) <= 1.0 else "neither"))
+        d_sd = sd.get("sec.flux.index")
+        if mode == "paper":
+            colour = "fixed"
+        elif d_sd is None or d_sd > BINARY_INDEX_SD_MAX:
+            colour = "unconstrained"
+        elif BINARY_STELLAR_INDEX[0] <= d <= BINARY_STELLAR_INDEX[1]:
+            colour = "photospheric"
+        else:
+            colour = "dust-like" if min(abs(d), abs(d - env)) <= 1.0 else "neither"
+        out |= dict(bin_sec_index=d, bin_sec_index_sd=d_sd, bin_sec_dra=float(model.sec.dra), bin_sec_ddec=float(model.sec.ddec),
+                    bin_sec_colour=colour)
     for name in ("star", "sec"):
         c = getattr(model, name, None)
         if isinstance(c, MovingComponent):
             out |= {f"bin_{name}_v_mas_per_day": [float(c.vra), float(c.vdec)],
-                    f"bin_{name}_offsets_mas": np.stack([np.asarray(c.off_ra), np.asarray(c.off_dec)], 1).round(4).tolist()}
+                    f"bin_{name}_v_sd": [sd.get(f"{name}.vra"), sd.get(f"{name}.vdec")],
+                    f"bin_{name}_offsets_mas": np.stack([np.asarray(c.off_ra), np.asarray(c.off_dec)], 1).round(4).tolist(),
+                    f"bin_{name}_offsets_sd": [[sd.get(f"{name}.off_ra[{i}]"), sd.get(f"{name}.off_dec[{i}]")] for i in range(np.size(c.off_ra))]}
+    if isinstance(getattr(model, "sec", None), MovingComponent) and isinstance(model.star, MovingComponent):
+        out |= dict(bin_rel_v_mas_per_day=[float(model.sec.vra - model.star.vra), float(model.sec.vdec - model.star.vdec)],
+                    bin_rel_v_sd=[sd.get("sec.vra-star.vra"), sd.get("sec.vdec-star.vdec")])
+    if data is not None:  # the night of each offset, so that offsets can be regressed on time
+        mjd = float(data.t_ref) + np.asarray(data.dt, float)
+        night = night_labels(data)["u_night"]
+        out |= dict(bin_night_mjd=[round(float(mjd[night == n].mean()), 3) for n in np.unique(night)], bin_mid_mjd=float(0.5 * (mjd.min() + mjd.max())))
     return out
+
+
+def scene_evidence(fit_result, data, priors):
+    """Laplace evidence with the scene parameters integrated as well as the field latents, and their posterior sds.
+
+    ``log_evidence(fit, data)`` (the grid's selector) conditions on every non-latent parameter at its MAP, so it cannot compare
+    scenes with different numbers of parameters: a per-night offset lowers chi2 and pays nothing. Here every path of ``priors``
+    that is not a latent is integrated too: ln Z = -chi2/2 - L - |z|^2/2 + sum_e [ln p(theta_e) + ln(2 pi)/2] - ln det(J^T J + Lambda)/2,
+    with Lambda = 1 for the latents, 1/sigma^2 for a Normal prior and 0 for the flat ones. (virgil's ``log_evidence(priors=)``
+    leaves Lambda out for the scene parameters, which overstates the evidence of parameters the prior, not the data, constrains.)
+    Returns ``(ln Z, {path or path[i]: sd})``; the sds include ``sec.vra-star.vra`` and ``sec.vdec-star.vdec`` when both stars move."""
+    model = fit_result.model
+    lat = tuple(_evidence_latents(model, "env", "scene_evidence"))
+    extra = tuple(p for p in priors if p not in lat and not p.endswith("_vec") and not p.startswith("env.log_brightness"))
+    r, jac = _residual_jacobian(model, data, lat + extra, on_device=True)
+    r, jac = np.asarray(r, float), np.asarray(jac, float)
+    n_z = sum(int(np.size(model.get(p))) for p in lat)
+    lam, names, log_p = [np.ones(n_z)], [], 0.0
+    for p in extra:
+        val = np.asarray(model.get(p), float)
+        pr = priors[p]
+        normal = type(pr).__name__ == "Normal"
+        lam.append(np.broadcast_to(1.0 / np.asarray(pr.scale, float) ** 2, val.shape).ravel() if normal else np.zeros(val.size))
+        names += [p] if val.ndim == 0 else [f"{p}[{i}]" for i in range(val.size)]
+        log_p += float(np.sum(np.asarray(pr.log_prob(val), float))) + 0.5 * val.size * np.log(2.0 * np.pi)
+    lam = np.concatenate(lam)
+    if jac.shape[1] != lam.size:
+        raise ValueError(f"scene_evidence: the Jacobian has {jac.shape[1]} columns for {lam.size} parameters")
+    hess = jac.T @ jac + np.diag(lam)
+    sign, logdet = np.linalg.slogdet(hess)
+    if sign <= 0:
+        return float("-inf"), {}
+    z2 = sum(float(np.sum(np.asarray(model.get(p), float) ** 2)) for p in lat)
+    cov = np.linalg.inv(hess)[n_z:, n_z:]
+    sd = {k: float(v) for k, v in zip(names, np.sqrt(np.clip(np.diag(cov), 0.0, None)))}
+    for ax in ("vra", "vdec"):  # the relative (orbital) velocity is far better measured than either star's against the disc
+        if f"sec.{ax}" in names and f"star.{ax}" in names:
+            i, j = names.index(f"sec.{ax}"), names.index(f"star.{ax}")
+            sd[f"sec.{ax}-star.{ax}"] = float(np.sqrt(max(cov[i, i] + cov[j, j] - 2.0 * cov[i, j], 0.0)))
+    return float(-0.5 * (r @ r) - _log_norm(model, data) - 0.5 * z2 + log_p - 0.5 * logdet), sd
 
 
 def scene_priors(cfg, scene, env_fixed_geometry=False):
@@ -803,6 +875,9 @@ def vlti_noise(data, widths=VLTI_NOISE):
 # residuals against the published model before any night fit was looked at (scripts/postagb_night_widths.py,
 # design/gp_polar_hyperparameters.md §9). A night runs from MJD .65 (15:36 UT, local noon at Paranal) to the next.
 NIGHT_SPLIT_MJD = 0.65
+# ``--noise nightw``: the MacKay white errors of ``--noise current`` plus night terms of fixed width, no per-frame gains or offsets
+# (the setting of the 18 Nov review of §10, design §12): 3 % on log|V| per (night, baseline), 2 deg per (night, triangle)
+NIGHTW = dict(night_gain_baseline=0.03, night_t3_offset_deg=2.0)
 _NIGHT_FILE = Path(__file__).with_name("postagb_night_widths.json")
 NIGHT_WIDTHS = json.load(open(_NIGHT_FILE))["targets"] if _NIGHT_FILE.exists() else {}
 NIGHT_KEYS = ("night_gain_baseline", "night_t3_offset_deg")
@@ -866,6 +941,9 @@ def load_scaled(cfg, args, out):
     data, files = load(cfg, args.files)
     f = scale_file(out, cfg, "current")
     s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
+    if getattr(args, "noise", "current") == "nightw":  # MacKay white errors, then the night terms on top
+        white = dict(v2_white=s, t3_white=s, gain_telescope=0.0, gain_baseline=0.0, t3_offset_deg=0.0)
+        return night_noise(data, white, NIGHTW), data, s, files
     return data.with_error_scale(s) if s != 1.0 else data, data, s, files
 
 
@@ -1297,7 +1375,8 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
         gp_length_r_mas=float(blr), gp_length_theta=float(blt), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"],
         mp_r_min_mas=r_min, mp_r_max_mas=float(cfg["half_mas"]), log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge,
         gp_grid_extended=extended, gp_converged=bool(best.info.get("converged", True)), gp_steps=rec["steps"], gp_stop=rec["stop"],
-        gp_cells_unconverged=int(sum(not c[3]["converged"] for c in cells.values())))
+        gp_cells_unconverged=int(sum(not c[3]["converged"] for c in cells.values()))) | dict(
+        zip(("log_evidence_scene", "scene_sd"), scene_evidence(best, data, {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")})))
 
 
 def rendered_chi2_disc(model, shape, pix, data):
@@ -1417,6 +1496,7 @@ def per_strategy(fn, args, out, *extra):
         sfx += "_chrom" if getattr(args, "chrom", False) else ""
         sfx += "" if getattr(args, "binary", "paper") == "paper" else f"_bin{args.binary}"
         sfx += "_unbounded" if getattr(args, "unbounded", False) else ""
+        sfx += "_wide" if getattr(args, "wide_field", False) else ""
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
             fn(args, out, strat, *extra)
@@ -1560,7 +1640,7 @@ def image_one(args, out, strat):
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
-    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else noise_widths(cfg) | (night_widths(cfg) if args.noise == "night" else {}), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else (NIGHTW if args.noise == "nightw" else noise_widths(cfg) | (night_widths(cfg) if args.noise == "night" else {})), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
                  bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
@@ -1571,7 +1651,7 @@ def image_one(args, out, strat):
     if chrom:
         extra |= dict(chrom=True) | chromatic_summary(model, cfg)
     if binary != "paper":
-        extra |= binary_summary(model, binary, cfg)
+        extra |= binary_summary(model, binary, cfg, extra.get("scene_sd"), data_s)
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
@@ -2414,7 +2494,7 @@ def main():
     p.add_argument("--strategy", default="all", choices=("all",) + STRATEGIES, help="imaging strategy for the image and compare stages")
     p.add_argument("--star-index", type=float, default=None, help="one-off: stellar power-law index of the image scene (default -4), written as <target>_si<n>_*")
     p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")
-    p.add_argument("--noise", default="current", choices=("current", "vlti", "night"),
+    p.add_argument("--noise", default="current", choices=("current", "vlti", "night", "nightw"),
                    help="error model: current (independent errors, MacKay error_scale), vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
                         "gains per telescope and baseline, closure offsets) or night (vlti plus a gain per (night, baseline) and a closure "
                         "offset per (night, triangle)); written as <target>_<strategy>_<noise>_*")
@@ -2422,6 +2502,9 @@ def main():
                    help="gp-polar: the binary model (design §12): paper (B1), free (secondary position, flux and index), motion (plus linear motion of both stars against the disc), epoch (plus an offset per night); written as ..._bin<mode>_*")
     p.add_argument("--chrom", action="store_true",
                    help="gp-polar: add a chromatic ring (index linear in radius) and free the star index (design §11); written as ..._chrom_*")
+    p.add_argument("--wide-field", action="store_true",
+                   help="image, support and comparison half-widths of WIDE_FIELD_MAS (15 mas) in place of the target's own "
+                        "(PS Gem: 5 mas; design §12); written as <target>_<strategy>_..._wide_*")
     p.add_argument("--unbounded", action="store_true",
                    help="gp-polar: the evidence over the whole grid, without the prior bounds (diagnostic); written as ..._unbounded_*")
     p.add_argument("--mean", default="blob", choices=("blob", "flat"),

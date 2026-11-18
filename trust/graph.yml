@@ -630,7 +630,7 @@ nodes:
   postagb_imaging.LowOrderField: {layer: references, doc: imaging/postagb.md#how-the-images-were-made}  # post-AGB gp-polar: MultipoleField low-passed to azimuthal orders m <= m_max, sigma kept per node (scripts/postagb_imaging.py; design/gp_polar_hyperparameters.md)
   postagb_imaging.night_noise: {layer: references, doc: imaging/postagb.md#how-the-images-were-made}  # post-AGB --noise night: vlti terms plus a log|V| gain per (night, baseline) and a closure offset per (night, triangle), widths from scripts/postagb_night_widths.py
   postagb_imaging.chromatic: {layer: references, doc: imaging/postagb.md#how-the-images-were-made}  # post-AGB chromatic test (design §11): calibrate --arm chrom truth (ring index linear in radius, star SIND1 - 1) and --chrom fitted ring
-  postagb_imaging.binary: {layer: references, doc: imaging/postagb.md#how-the-images-were-made}  # post-AGB binary test (design §12): --binary free/motion/epoch, MovingComponent (stars moving against the disc)
+  postagb_imaging.binary: {layer: references, doc: imaging/postagb.md#how-the-images-were-made}  # post-AGB binary test (design §12): --binary free/motion/epoch, MovingComponent, scene_evidence (scene parameters integrated), --wide-field, --noise nightw
   crosscheck.alma_clean: {layer: references, doc: alma_conventions.md}  # numpy multi-scale minor cycles, beam fit, restore, uv taper for the IM Lup CLEAN
   crosscheck.alma_maxent: {layer: references, doc: alma_conventions.md}  # numpy taper, S_M, WCS and FITS for the MaxEnt comparison
   crosscheck.alma_speed: {layer: references, doc: alma_conventions.md}  # virgil's L-BFGS against MPoL's AdamW on IM Lup: objective vs wall time, time to target, cost per pass (numpy only; `alma_imlup_maxent.py speed`)

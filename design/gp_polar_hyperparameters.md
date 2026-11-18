@@ -343,6 +343,11 @@ The grey GP image keeps the rest. The grid, its axes and the evidence are as in 
 
 ## 12. The binary: does freeing it fix the corner? (pre-registered, Ben: "the priority here is ... solving the binarity")
 
+*Revised 18 Nov 2026, before anything was run, after the Fable plan review
+(virgil-paper `reports/postagb-binary-plan-review.md`). The first version (88c923d) compared modes with an evidence that held the scene
+parameters at their MAP. On simulated static binaries that version passes criterion 1 (`epoch` − `paper` +11 to +19), so its rule
+could not test the claim. The model is unchanged; the evidence, the rule, PS Gem's field and the night arms are new.*
+
 **De Prins's setup** (paper §4.1–4.3.2, Zenodo headers). For each component, f_j(λ) = f_j0 (λ/1.65 µm)^d_j in F_λ, with
 absolute indices.
 * Primary: a UD at the origin, d fixed at SIND1 from the SED (−2.1 to −3.2); flux and diameter free.
@@ -351,14 +356,20 @@ absolute indices.
 * Disc: one grey image with a fitted index.
 
 Our B1 scene matches theirs, except that the secondary's position has a PMOIRED prior. The window is 2–9 % of the period. The
-review measures HD 95767's secondary moving about 0.1 mas between epoch groups, and AI Sco's (+0.08, +0.17) mas.
+review's per-night positions shift by 0.1–0.2 mas, but against a fixed image; with the field free the per-night position sd is
+0.08–0.18 mas, so those shifts are not detections.
 
 **Hypothesis.** A secondary fixed and static, with an imposed colour, is wrong in position, in time (orbital motion within the
 window) or in spectrum. The evidence then buys sub-beam structure near the stars to absorb the misfit. The disc is circumbinary,
 so in a frame centred on the primary the primary also moves against the disc (reflex motion). That matters for PS Gem, whose
 companion is dark (a₁ sin i 1.51 AU).
 
-**Models compared** (`--binary`, gp-polar, current noise as in B1, unbounded, every cell cold):
+**Prior expectation: the binary model is better, and the corner stays.** In the review's local simulations, a secondary moving
+at the orbital rate costs 11–31 in ln Z under `paper`, and `motion` recovers it. But it changes the corner-minus-bounded evidence
+by only 2–9, where the real data have +14 to +63. So the likely outcome is rule 1 without rule 2. That is why the night arms run
+in the same job.
+
+**Models compared** (`--binary`, gp-polar, unbounded, every cell cold):
 
 | mode | secondary | primary | extra parameters |
 |---|---|---|---|
@@ -369,32 +380,74 @@ companion is dark (a₁ sin i 1.51 AU).
 
 The primary's index stays at SIND1 and the disc keeps its own power law throughout.
 
-**Priors, from the orbits and the review, not from picks.**
+**Priors, from the orbits, not from picks.**
 * Velocities Normal(0, 0.02 mas/day) per axis. Twice the fastest companion expected, 2π·sep/P = 0.011 mas/day for AI Sco
   (sep 1.75 mas, P 977 d); EN TrA 0.008, HD 95767 0.003.
-* Per-night offsets Normal(0, 0.2 mas): the review's measured shifts are 0.1–0.2 mas.
+* Per-night offsets Normal(0, 0.2 mas): about the largest orbital displacement from the mid-time (AI Sco ±0.18 mas).
 * Time and night are as in `night_labels` (night = floor(MJD − 0.65)); velocities refer to the mid-time of the data.
 * Targets without a secondary (PS Gem, IRAS 15469) get only the primary's terms. Their `free` equals `paper`, so it is skipped.
 
-**Decision rule.** The binary is confirmed as the cause of the corner if, on ≥ 3 of the 4 failing targets (AI Sco, EN TrA,
-HD 95767, PS Gem):
-1. the best of `free`, `motion` and `epoch` beats `paper` by Δln Z ≥ 5, each at its own evidence pick on the same grid; and
-2. under that mode the pick moves inside the §8 bounds (ℓ_r ≥ 1 beam and σ ≤ 2);
+**Arms** (stage BN, one job, pins in the hand-over):
+* Binary: the four modes on IW Car, AI Sco, EN TrA, HD 95767, IRAS 15469 and PS Gem, under `--noise current` (stage A's MacKay
+  factor, the same in every mode; `binary_scene` does not touch the data, so the §10 confound is held fixed).
+* PS Gem wide: `paper`, `motion` and `epoch` with `--wide-field` (15 mas half-widths in place of 5; the review found the 5 mas
+  field to be PS Gem's cause). Stage A's error scale and geometry are reused.
+* Night (Ben, 18 Nov): `paper` and `motion` on the six targets under `--noise nightw`: the MacKay white errors plus a gain of
+  3 % per (night, baseline) on log|V| and an offset of 2° per (night, triangle), marginalised in the likelihood (the review's
+  setting for the §10 correction).
 
-and, against overfitting:
+**Evidence between modes.** The grid's `log_evidence` holds the scene parameters at their MAP, so it picks the cell within a
+mode and nothing else. Between modes and arms the rule uses `log_evidence_scene` at each run's own pick: the Laplace evidence
+with the scene parameters integrated too (`scene_evidence`; Λ = 1/σ² for Normal priors, 0 for flat ones). The night terms are
+marginalised in the likelihood, so the night arms' evidences compare with the binary arms' on the same data. `paper` must
+reproduce the unbounded picks of job 21054320 to within 1 in grid ln Z (AI Sco −965.7, EN TrA −653.7, HD 95767 −1071.3,
+PS Gem −388.3, IW Car −944.5, all at σ = 4; IRAS 15469 −685.1 at σ = 2, ℓ_r = 2 beams). If it does not, the baseline has
+moved and the test stops there.
 
-3. the control IRAS 15469 gains Δln Z < 5 from `motion` or `epoch`. If it gains as much, the gain is generic flexibility, not
-   binarity.
+**Ladder, per target.** Δ_free = `free` − `paper` (a static error in position, flux or colour). Δ_motion = `motion` − `free`
+(linear motion; `motion` − `paper` where there is no secondary). Δ_epoch = `epoch` − `motion` (night-to-night change beyond
+linear motion). A step counts at Δ ≥ 5.
 
-IW Car (corner only under the cap) is reported but not counted.
+**Decision rule.** On one target the binary is confirmed as the cause of the corner if all three hold:
+1. Δ_free ≥ 5 or Δ_motion ≥ 5;
+2. under the better of `free` and `motion` the pick is inside the §8 bounds (ℓ_r ≥ 1 beam and σ ≤ 2);
+3. if Δ_motion is the step that counts, the motion is orbital in size: the speed of the secondary relative to the primary
+   (`bin_rel_v_mas_per_day`) is 0.3–2 times 2π·sep/P (AI Sco 0.0113, EN TrA 0.0076, HD 95767 0.0028 mas/day), and no binary
+   parameter sits on a prior bound (`bound_warnings`). The velocity of either star against the disc is not used: it is
+   measured no better than the reflex speed expected (0.0015–0.0038 mas/day).
 
-**Spectral reading (Ben's question; reported, not part of the rule).** Under `free`, a fitted secondary index within 1 of SIND1
-reads as photospheric light (a stellar companion). Within 1 of 0 or of the disc's index, it reads as circumcompanion or
-accretion dust. In that case the companion and the disc share a colour, and the grey disc image can trade flux with the
-companion.
+`epoch` is a diagnostic and cannot confirm the binary. Δ_epoch ≥ 5 says the nights disagree beyond linear motion. Per-night
+offsets fit calibration errors as well as motion, so that outcome is recorded as "night-level, origin open", and the night
+arms decide it.
 
-**Outcomes.**
-* All three hold: the binary model replaces the §8 bounds for those targets, and B1 is rerun bounded with it for the figure.
-* 1 holds, 2 fails: the binary model is better but not the cause of the corner. Keep it in the scene and look at the night
-  terms (§10 correction) next.
-* 3 fails: the gain is flexibility. Report it, and keep the bounds.
+The claim "binarity explains the corner" needs confirmation on at least 2 of the 3 companion binaries, AI Sco, EN TrA and
+HD 95767 (Ben, 18 Nov). PS Gem is judged on its own, on the wide field: rule 1 with Δ_motion (`motion` − `paper`, both wide),
+rule 2, and a primary speed of 0.3–3 times 0.0038 mas/day, since sin i is unknown (simulated sd 0.0006–0.0017 mas/day). The
+stock-field PS Gem runs are reported beside them, to separate the field from the reflex motion. IW Car is reported, not counted.
+A null on EN TrA says little: its expected motion reaches only +3.1 in the simulations (a 6 % companion over 28 days).
+
+**Night arms** (reported per target beside the binary verdict, so that "night-level, origin open" gets an answer):
+* The night terms explain the corner on a target if `paper` under `nightw` beats `paper` under `current` by ≥ 5 in
+  `log_evidence_scene` and its pick is inside the §8 bounds.
+* The binary signal survives the night terms if `motion` − `paper` under `nightw` is ≥ 5 and passes rule 3. If Δ_motion counts
+  under `current` but not under `nightw`, the motion was absorbing calibration errors.
+
+**Controls.** IRAS 15469: Δ_motion < 5 and Δ_epoch < 5. Simulated static truths on the (u,v) of AI Sco, EN TrA, HD 95767,
+PS Gem and IRAS 15469 give Δ_free −0.5 to −4, Δ_motion −5 to −10 and Δ_epoch −17 to +3 (one seed, one cell; review of
+18 Nov), so a static binary does not pass. Ben accepted these local simulations in place of a simulation arm on the cluster.
+
+**Spectral reading (Ben's question; reported, not part of the rule).** Under `free`, a fitted secondary index between −3.8 and
+−2.0 reads as photospheric light (a stellar companion at 1.65 µm, −2.5 to −3.3 ± 0.5). This window does not depend on the
+primary's SIND1. Within 1 of 0 or of the disc's index, it reads as circumcompanion or accretion dust. An index with a posterior
+sd above 0.5 is "unconstrained" and is not read. On HD 95767, whose companion is 0.7 beam from the primary, the index correlates
+with the disc's (0.4–0.8) and carries a systematic error of about 0.5. A dust-like companion and the disc share a colour, and
+the grey disc image can trade flux with the companion.
+
+**Verdicts.** Each target gets one line: Δ_free, Δ_motion, Δ_epoch with the pick of each mode; rule 1–3; the relative velocity
+against 2π·sep/P; the colour; the two night-arm results. Then the overall outcome:
+* Confirmed on ≥ 2 of 3: the binary scene replaces the §8 bounds on those targets, and B1 is rerun bounded with it for the figure.
+* Rule 1 holds, rule 2 fails: the binary model is better but is not the cause of the corner. Keep it in the scene; the night
+  arms say whether calibration is.
+* Only Δ_epoch counts, and the `epoch` pick is inside the bounds: night-level inconsistency is the cause; the night arms say
+  whether it is motion or calibration.
+* Nothing counts: the binary as modelled is rejected as the cause. The §8 bounds stay, and the night arms are the answer.
