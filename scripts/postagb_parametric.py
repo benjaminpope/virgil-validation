@@ -926,8 +926,9 @@ def select_stage(args, out):
         row["gp_polar"] = gp_polar_block(cfg, sel2["selected"], lad, dict(s=s))
     with open(out / f"{cfg['key']}_param_selected.json", "w") as f:
         json.dump(_jsonable(row), f, indent=1)
-    if sel2 and sel2.get("best") and not args.no_residuals:
-        write_residuals(out, cfg, sel2["selected"], sel2["best"]["values"])
+    selr = sel2 or sels.get("N1")  # residuals of the N2 selection (a smoke run with N1 only falls back to N1)
+    if selr and selr.get("best") and not args.no_residuals:
+        write_residuals(out, cfg, selr["selected"], selr["best"]["values"])
     _done(out, "select")
     for a, v in sels.items():
         print(a, "selected", v["selected"], [(c["child"], c["accepted"], c.get("d_lnZ"), c.get("d_bic")) for c in v["chain"]])
