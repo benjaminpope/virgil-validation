@@ -184,7 +184,10 @@ Within these bounds the evidence still chooses. The grid is never extended past 
 summary (`gp_at_bound`) along with the bounds themselves (`gp_lr_min_mas`, `gp_sigma_max`).
 
 Applied to the stage C runs (simulations only), the bounded evidence passes `white`, `corr` and `smear` on all six targets
-(median rank fraction ≤ 0.14, beam-convolved error ≤ 1.13 × the best cell). `geo` still fails on AI Sco and EN TrA (0.25 and
+(median rank fraction ≤ 0.14, beam-convolved error ≤ 1.13 × the best cell). The rank fraction is the bounded pick's image-error rank among all
+36 cells of the capped grid, divided by 36: the same denominator as the unbounded selector, so the bounded pick competes with
+cells it cannot choose (≤ 0.14 is the top 5 of 36). Every stage C cell is fitted cold and independently, so re-selecting within
+the bounds on the existing cells gives exactly the runs a bounded stage C would; that is the rerun §4 requires. `geo` still fails on AI Sco and EN TrA (0.25 and
 0.28, error ≤ 1.10 × best). An 8° geometry error remains a known limitation of the deprojected field.
 
 ## 9. Night-level calibration errors: the decisive test (pre-registered)
@@ -281,7 +284,7 @@ All cells converged. Night-level errors of the measured widths drive the evidenc
 
 ℓ_r = 0.25 beam is one pixel. With the night terms marginalised, the evidence prefers even rougher fields, and the χ² worsens.
 
-**Consequence (as pre-registered).** The night errors are not the cause. The §8 bounds stay and the chromatic test is next.
+**Consequence (as pre-registered; superseded by the correction at the head of this section).** As run, the night errors were not the cause. The §8 bounds stay and the chromatic test is next.
 Under the bounds, all six bounded B1 picks sit on a bound: ℓ_r = 1 beam and σ = 2 on five targets, and σ = 2 on IRAS 15469. The
 images are set by the prior, not by the data. They are not yet figure quality: AI Sco still breaks into blobs, and PS Gem has an
 arc at the field edge with its peak 1.3 mas from the star.

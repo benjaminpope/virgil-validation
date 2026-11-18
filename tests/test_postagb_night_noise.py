@@ -19,8 +19,7 @@ pytestmark = [
     ),
     # guards our own bookkeeping: which samples share a night term, and a method-of-moments estimate checked on draws with a
     # known answer; no standard or external code is involved
-    pytest.mark.validates(
-        "postagb_imaging.night_noise", roots=["statistics"], kind="guard"
+    pytest.mark.validates("evidence", roots=["statistics"], kind="guard"
     ),
 ]
 

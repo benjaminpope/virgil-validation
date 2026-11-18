@@ -18,8 +18,7 @@ pytestmark = [
     ),
     # guards our own construction of the chromatic truth and ring: the index gradient and star offset are checked against their
     # definitions, and the grey limit against PowerLaw; no standard or external code is involved
-    pytest.mark.validates(
-        "postagb_imaging.chromatic", roots=["mathematics"], kind="guard"
+    pytest.mark.validates("evidence", roots=["mathematics"], kind="guard"
     ),
 ]
 

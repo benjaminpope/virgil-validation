@@ -18,8 +18,7 @@ needs_multipole = pytest.mark.skipif(
 
 # Guards our own script: a spectral low-pass and its variance, checked against the Fourier series and MultipoleField's documented
 # sigma, and the bookkeeping of the grid; no standard or external code is involved.
-pytestmark = pytest.mark.validates(
-    "postagb_imaging.LowOrderField", roots=["mathematics"], kind="guard"
+pytestmark = pytest.mark.validates("evidence", roots=["mathematics"], kind="guard"
 )
 
 

@@ -18,8 +18,7 @@ pytestmark = [
     ),
     # guards our own moving-star component against virgil's static PointSource / UniformDisk at the same per-sample positions;
     # no standard or external code is involved
-    pytest.mark.validates(
-        "postagb_imaging.binary", roots=["mathematics"], kind="guard"
+    pytest.mark.validates("evidence", roots=["mathematics"], kind="guard"
     ),
 ]
 

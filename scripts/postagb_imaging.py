@@ -626,7 +626,7 @@ def chromatic_summary(model, cfg):
 BINARY_MODES = ("paper", "free", "motion", "epoch")
 BINARY_POS_SIGMA_MAS = 1.0  # --binary free: the secondary's position prior about sec0 (design §12)
 BINARY_V_SIGMA = 0.02  # mas/day per axis: twice the fastest companion expected, 2 pi sep / P = 0.011 (AI Sco)
-BINARY_OFFSET_SIGMA_MAS = 0.2  # per-night position offsets: the review's measured shifts, 0.1-0.2 mas
+BINARY_OFFSET_SIGMA_MAS = 0.2  # per-night position offsets: about the largest orbital displacement from the mid-time (AI Sco +-0.18 mas)
 MAS2RAD = np.pi / 180.0 / 3600.0 / 1000.0
 
 
@@ -1579,6 +1579,8 @@ def skip_clean_reason(out, cfg, strat, args):
         return None  # fitted before the default secondary treatment (PMOIRED prior, fixed index, no window inside the primary hole)
     if strat == "mem":
         return "mem does not use the GP grids"
+    if strat == "gp-polar" and (j.get("cell_start") != "cold" or j.get("mp_m_max") != cfg.get("polar_m_max", POLAR_M_MAX)):
+        return None  # fitted before the azimuthal cap, or with warm-started cells: rerun
     if j.get("gp_on_edge") is not False:
         return None
     if strat == "disc+res" and not (j.get("render_ok") and j.get("d_env_shared") is not None and j.get("n_r") == 192):
@@ -1650,8 +1652,12 @@ def image_one(args, out, strat):
                  field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", np.shape(env.log_brightness)[0] * pix_ / 2))) | extra_gp
     if chrom:
         extra |= dict(chrom=True) | chromatic_summary(model, cfg)
+        extra["star_index"] = extra["chrom_star_index"]  # fitted under --chrom (star_index_source keeps the window's centre)
     if binary != "paper":
         extra |= binary_summary(model, binary, cfg, extra.get("scene_sd"), data_s)
+        extra["sec_treatment"] = (f"--binary {binary}: position Normal(sec0, {BINARY_POS_SIGMA_MAS:g} mas), flux and index free"
+                                  + ("" if binary == "free" else f", both stars moving against the disc ({binary})")) if has_sec else f"--binary {binary}: no secondary"
+        extra["sec_index_source"] = "fitted" if has_sec else None
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
@@ -1684,7 +1690,7 @@ def image_one(args, out, strat):
                  sec_index=float(np.asarray(model.sec.flux.index)) if has_sec else None)
     np.savez(path(out, cfg, "image.npz"), brightness=bright, brightness_grid=bright_grid, rotation_deg=rot, pixel_mas=pix, model_v2=mv2, model_t3=mt3,
              **curve_arrays, stars=json.dumps(stars))
-    tot = 1.0 + stars["f_env"] + f_sec + f_bg
+    tot = 1.0 + stars["f_env"] + f_sec + f_bg + (float(np.asarray(model.rim.flux)) if chrom else 0.0)  # the --chrom ring, as chromatic_summary
     summary = dict(chi2_per_point=c2, chi2_rendered=chi2_rendered, render_ok=render_ok, f_disk=f_disk, f_res=f_res if strat == "disc+res" else None, n_points=n, grid=list(bright.shape), pixel_mas=pix, smoke=args.smoke, seconds=time.time() - t0,
                    f_prim_pct=100 / tot, f_sec_pct=100 * f_sec / tot if has_sec else None, f_env_pct=100 * stars["f_env"] / tot,
                    f_bg_pct=100 * f_bg / tot if cfg.get("bg") else None, f_outer_pct=100 * f_outer / tot,
