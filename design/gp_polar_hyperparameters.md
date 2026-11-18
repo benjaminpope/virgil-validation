@@ -499,3 +499,77 @@ here only so that it is not misread.
 mismatch is rejected as its cause. The §8 bounds stay. §11's last outcome no longer follows, since §10 did not reject the night
 cause. The open causes are the binary (§12, stage BN, job 21123993) and the night terms with MacKay white errors (§12 night
 arms, same job).
+
+## 14. §12 result (jobs 21123990 / 21123993, vv 15b154a, virgil 6fa8afe): the binary does not explain the corner
+
+All Δ below are `log_evidence_scene` (§12). The paper arm reproduces job 21054320's grid ln Z to 0.1 on all six targets.
+
+**The ladder (white errors at the MacKay factor).**
+
+| target | Δ_free | Δ_motion | Δ_epoch | better pick (ℓ_r beams, σ) | rel. speed / 2π·sep/P | secondary colour |
+|---|---|---|---|---|---|---|
+| AI Sco | +26.2 | +141.8 | +135.8 | motion: 0.25, 4 | 0.75 | dust-like (+0.54 ± 0.32) |
+| EN TrA | −8.2 | +122.9 | +129.7 | motion: 0.25, 4 | 0.37 | dust-like |
+| HD 95767 | +36.1 | +177.7 | +21.7 | motion: 0.25, 2 | 1.68 | neither (−4.36 ± 0.43) |
+| IW Car (reported) | −4.4 | +88.9 | +49.6 | motion: 0.25, 2 | — | photospheric (−2.18 ± 0.44) |
+| IRAS 15469 (control) | — | +5.7 | −6.8 | motion: 1, 2 | — | — |
+
+* **Rule 1 holds on all three companion binaries** (Δ_motion ≥ 5; Δ_free also on AI Sco and HD 95767), and rule 3's speed
+  window holds on all three.
+* **Rule 2 fails on all three:** the better of free and motion still picks a sub-beam ℓ_r (0.25 beam, one pixel), with σ = 4 on
+  AI Sco and EN TrA. **Confirmed on 0 of 3; the pass needs 2. The binary model fits better, but it does not cause the corner.**
+* The motion gain is not orbital. The primary drifts against the disc at 0.025 mas/day on AI Sco, 0.021 on EN TrA and 0.008 on
+  HD 95767, which is 7–30 times its reflex speed. The control also gains under motion (+5.7, failing its < 5 rule) with no
+  companion. The epoch arm, a diagnostic only, gains a further +22 to +136 by giving each night its own star offset. Both say
+  that the nights disagree with one static scene, which is the night-level error of §9, not an orbit.
+* **PS Gem (15 mas field):** `paper` already picks inside the bounds (2 beams, σ = 0.5). Motion gains +25.6, but its pick returns
+  to the corner (0.25 beam, σ = 1) and its primary speed is 5.6 times the window. It fails rule 2 and the speed rule. PS Gem's
+  corner was the 5 mas field (§8), not the binary.
+
+**Night arms (`nightw`: MacKay white errors plus 3 % per baseline per night and 2° per triangle per night).** The cost of the
+bound is the grid's Δ ln Z between the unbounded pick and the best cell with ℓ_r ≥ 1 beam and σ ≤ 2. The ≤ 5 criterion and
+the HD 95767 night + motion test (cost ≤ 5, no concentric rings, speed 0.3–2 times 0.0028 mas/day, the two stars moving in
+opposite senses) were fixed in virgil-paper `reports/postagb-next-steps.md` after the interim scores and before AI Sco's night
+arms and HD 95767's night + motion were read. They refine §12's "inside" rule and are labelled as such. χ²/pt is the final fit's
+value on the scaled errors and, after it, on the quoted errors (× s²; the night terms are still whitened).
+
+| run | nightw − current paper | pick (ℓ_r, ℓ_θ, σ) | cost of the bound | motion − paper | χ²/pt scaled → quoted | image |
+|---|---|---|---|---|---|---|
+| AI Sco, paper | +300.4 | 0.25 b, 1, 4 | 9.6 | — | 0.43 → 0.77 | one lobe 2 mas E of the star plus blobs; no disc |
+| AI Sco, motion | — | 0.25 b, 0.25, 4 | 13.4 | +27.0 | 0.38 → 0.68 | one compact clump plus blobs |
+| EN TrA, paper | +246.2 | 0.5 b, 2, 2 | 0.1 | — | 0.33 → 0.54 | arc |
+| EN TrA, motion | — | 2 b, 2, 2 | 0 | −0.6 | 0.32 → 0.52 | arc |
+| HD 95767, paper | +187.7 | 0.25 b, 0.5, 2 | 19.6 | — | 0.44 → 0.40 | thin concentric rings (ringing) |
+| HD 95767, motion | — | 0.25 b, 1, 2 | 5.3 | +24.2 | 0.43 → 0.39 | ring with bright NE rim, one faint outer arc |
+| IW Car, paper | +175.5 | 1 b, 0.25, 2 | 0 | — | 0.47 → 0.47 | ring |
+| IW Car, motion | — | 2 b, 1, 2 | 0 | +22.2 | 0.47 → 0.47 | ring |
+| IRAS 15469, paper | +27.6 | 4 b, 2, 4 | 0.7 | — | 0.59 → 0.39 | crescent (as every arm) |
+| IRAS 15469, motion | — | 1 b, 2, 2 | 0 | −3.2 | 0.58 → 0.38 | crescent |
+| PS Gem 5 mas, paper | +108.3 | 8 b, 0.25, 0.25 | 0 | −0.5 | 0.39 | **degenerate** (flat saturated disc filling the field): not counted |
+
+* **AI Sco:** the night terms cut the cost of the bound from 58.1 to 9.6, but not to ≤ 5 (the expectation was 10–30). Under night
+  terms motion gains +27.0, but at a relative speed of 0.21 times the orbital rate (below the 0.3 floor; sd 0.0055 mas/day, so
+  consistent with zero), while the primary still drifts at 0.023 mas/day. The binary does not survive the night terms, and AI Sco
+  is left for step 3 of the next-steps plan.
+* **HD 95767:** night + motion costs 5.3, a marginal fail. The speed is in the window (1.75 times), and the rings of the night
+  paper image are mostly gone, but the two stars do not move in opposite senses: the primary moves at (−0.0037, +0.0008) and the
+  secondary at (−0.0001, −0.0025) mas/day, at about 100° to each other, with the primary's speed only 1.5 sd from zero. It fails
+  the pre-fixed test, as expected, and goes to "data-limited".
+* **EN TrA and IW Car:** the night terms bring the cost to ≤ 0.1 (EN TrA's sub-beam pick is a tie). IW Car's motion gain (+22.2,
+  pick inside, speed 1.5 times orbital) is the only binary signal that survives the night terms. It is doubtful: the primary drifts
+  at 0.020 mas/day against the disc (about 5 times any reflex), while the "secondary" stays almost fixed in the disc frame. That
+  reads as a disc clump plus a frame drift (next-steps report). IW Car is reported, not counted.
+* **The night arms count the noise twice.** `nightw` keeps the MacKay factor from stage A, which was fitted without night terms
+  and so already absorbs night-level scatter. χ²/pt at the picks falls to 0.32–0.59 on the scaled errors, so part of the
+  smoothing, and of the +28 to +300, may come from errors that are now too large. The noise terms have not been fitted together.
+
+**Post-hoc amendment (after looking at the images; not in §12).** A pick inside the bounds counts only if its image is not
+degenerate, meaning it does not fill or saturate the field. This removes PS Gem's stock-field night arm, whose +108.3 and pick
+inside the bounds come from a flat disc filling the 5 mas field. The PS Gem 15 mas `paper` image is a smooth resolved disc with
+arms, but it extends to about 8 mas against ORGANIC's compact emission within about 2 mas. So it is not claimed to agree.
+
+**Consequence.** §12 fails: the binary, freed in position, flux, colour and motion, does not move the pick out of the corner on
+any of the three companion binaries, and its motion gain is a night-level error, not an orbit. Under night terms the bound costs
+≤ 5 on EN TrA, IW Car and the control, 5.3 on HD 95767, 9.6 on AI Sco and 19.6 on HD 95767 without motion. The night-level
+inconsistency is the leading cause, with the doubled-noise caveat open. The §8 bounds stay the selector, with the cost of the
+bound quoted. Fitting the noise terms together is the next test (next-steps step 1); it is not pre-registered here.
