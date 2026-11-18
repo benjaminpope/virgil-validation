@@ -176,34 +176,32 @@ def _find_depends_cycles(nodes: dict) -> list[list[str]]:
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_reference_module_imports_are_declared_in_depends():
     """Every ``src/{crosscheck,external_bridge,virgil_bridge}/*.py`` module (outside
-    explicit non-reference ``_PLUMBING``) must be registered under ``layer: references``,
+    explicit non-reference ``PLUMBING``) must be registered under ``layer: references``,
     every reference import or subprocess worker call (including via ``__init__.py``) must
     be declared in ``depends``, and ``depends`` must be acyclic."""
-    from evidence import plugin
+    from evidence import via
 
-    plugin._module_via.cache_clear()
-    plugin._init_exports.cache_clear()
-    plugin._has_executable_defs.cache_clear()
+    via.clear_caches()
     ref_nodes = {
         name for name, node in GRAPH["nodes"].items()
         if (node or {}).get("layer", "references") == "references"
     }
     unregistered = []
     undeclared = []
-    for pkg in plugin._REFERENCE_PACKAGES:
+    for pkg in via.REFERENCE_PACKAGES:
         init_py = ROOT / "src" / pkg / "__init__.py"
         if init_py.is_file():
-            if plugin._has_executable_defs(init_py):
+            if via.has_executable_defs(init_py):
                 if pkg not in ref_nodes:
                     unregistered.append(pkg)
                 else:
-                    imported_refs = set(plugin._module_via(str(init_py))) - {pkg}
+                    imported_refs = set(via.file_via(str(init_py))) - {pkg}
                     declared = set(GRAPH["nodes"][pkg].get("depends", []))
                     missing = sorted(imported_refs - declared)
                     if missing:
                         undeclared.append((pkg, missing))
             else:
-                init_unreg = sorted(set(plugin._module_via(str(init_py))) - ref_nodes)
+                init_unreg = sorted(set(via.file_via(str(init_py))) - ref_nodes)
                 if init_unreg:
                     unregistered.append((f"{pkg}.__init__", init_unreg))
         for py in sorted((ROOT / "src" / pkg).rglob("*.py")):
@@ -211,21 +209,21 @@ def test_reference_module_imports_are_declared_in_depends():
             if rel.parts == (pkg, "__init__.py"):
                 continue
             mod = ".".join(rel.parts[:-1]) if py.name == "__init__.py" else ".".join((*rel.parts[:-1], py.stem))
-            if mod in plugin._PLUMBING:
+            if mod in via.PLUMBING:
                 continue
             if mod not in ref_nodes:
                 unregistered.append(mod)
                 continue
-            imported_refs = set(plugin._module_via(str(py))) - {mod}
+            imported_refs = set(via.file_via(str(py))) - {mod}
             declared = set(GRAPH["nodes"][mod].get("depends", []))
             missing = sorted(imported_refs - declared)
             if missing:
                 undeclared.append((mod, missing))
     for py in sorted((ROOT / "tests").rglob("*.py")):
         rel_test = py.relative_to(ROOT)
-        if any(plugin._is_ignored_repo_part(part) for part in rel_test.parts):
+        if any(via.is_ignored_repo_part(part) for part in rel_test.parts):
             continue
-        test_unreg = sorted(set(plugin._module_via(str(py))) - ref_nodes)
+        test_unreg = sorted(set(via.file_via(str(py))) - ref_nodes)
         if test_unreg:
             unregistered.append((rel_test.as_posix(), test_unreg))
     assert not unregistered, unregistered

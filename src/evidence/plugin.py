@@ -13,6 +13,7 @@ import re
 import pytest
 
 from . import KINDS, ROOTS
+from . import via as _via
 from .meta import invocation, run_header
 
 _RECORDS = pytest.StashKey[list]()
@@ -20,6 +21,7 @@ _STAMP = pytest.StashKey[dict]()
 _HEADER = pytest.StashKey[dict]()
 _DESELECTED = pytest.StashKey[list]()
 _CONFIG = {}
+ACCEPTANCE = os.environ.get("VV_VIA_ACCEPTANCE") == "1"  # one-off (B2): also record the old scanner's via as via_old
 
 
 def pytest_addoption(parser):
@@ -91,6 +93,24 @@ def pytest_runtest_call(item):
         _CONFIG["item"] = None
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item):
+    _via.set_item(item.nodeid)
+    try:
+        yield
+    finally:
+        _via.set_item(None)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_fixture_setup(fixturedef, request):
+    _via.push_fixture(fixturedef)
+    try:
+        yield
+    finally:
+        _via.pop_fixture()
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
@@ -102,6 +122,8 @@ def pytest_configure(config):
     config.stash[_RECORDS] = []
     config.stash[_DESELECTED] = []
     _CONFIG["config"] = config
+    _via.install_recorder()
+    _via.install_import_recorder()
 
 
 # Our reference code: a check that goes through one of these counts only if
@@ -3458,12 +3480,13 @@ def _golden_names():
     return frozenset(yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else frozenset()
 
 
-def _claims(item):
+def _claims(item, runtime=frozenset()):
     func_name = getattr(item, "originalname", None) or getattr(getattr(item, "obj", None), "__name__", None)
     cls_obj = getattr(item, "cls", None)
     cls_name = cls_obj.__name__ if cls_obj is not None else None
     fixture_names = tuple(sorted(getattr(item, "fixturenames", ()) or ()))
-    base_via = set(_item_via(str(item.path), func_name, cls_name, fixture_names))
+    base_via = set(_via.static_via(str(item.path))) | set(runtime)
+    old_via = set(_item_via(str(item.path), func_name, cls_name, fixture_names)) if ACCEPTANCE else None
     claims = []
     for mark in item.iter_markers("validates"):
         objects = list(mark.args)
@@ -3488,6 +3511,8 @@ def _claims(item):
         claim = {"objects": objects, "roots": roots, "kind": kind, "tier": tier,
                  "via": sorted(via - set(objects)),
                  "properties": [prop] if isinstance(prop, str) else list(prop)}
+        if old_via is not None:
+            claim["via_old"] = sorted((old_via | set(mark.kwargs.get("via", ()))) - set(objects))
         if headline is not None:
             claim["headline"] = str(headline)
         claims.append(claim)
@@ -3560,7 +3585,7 @@ def metric(record_property):
 def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
-    report.validates = _claims(item)
+    report.validates = _claims(item, _via.recorded_via(item))
     report.validates_where = {**_where(item), **item.stash.get(_STAMP, {})}
     # call phase only: a headline metric recorded in fixture teardown (after a yield) is not yet in user_properties here
     # and would fail with a misleading "not a recorded metric"; record headline metrics in the test body
@@ -3685,7 +3710,12 @@ def pytest_make_collect_report(collector):
     """With ``VV_REQUIRE_VIRGIL_IMPORTS=1`` (set in CI) a test file that skips
     because a ``virgil.*`` module is missing is a collection error, so that a
     renamed or removed virgil module cannot silently remove its tests."""
+    is_module = isinstance(collector, pytest.Module)
+    if is_module:
+        _via.set_collecting(collector.path)
     outcome = yield
+    if is_module:
+        _via.set_collecting(None)
     report = outcome.get_result()
     if (
         report.skipped
