@@ -300,3 +300,47 @@ def test_cli_runs_all_stages(tmp_path):
         assert R.main([stage, str(tmp_path)]) == 0
     assert (tmp_path / "AI_Sco" / "AI_Sco_param_compare.png").exists()
     assert (tmp_path / "postagb_parametric_geometry.json").exists()
+
+
+# --- regression: the core's real output layout (AI Sco, trimmed copy of the fe70d14+d0f7086 files) -------------------
+
+REAL = pathlib.Path(__file__).parent / "fixtures" / "postagb_parametric"
+
+
+def test_real_layout_table_has_no_missing_geometry_cells(tmp_path):
+    """derived lives in ``best["derived"]``: c1, s1, a1, fluxes and d_env must be read, PA wrapped, statuses shown."""
+    R.table_stage(REAL, outdir=tmp_path)
+    ai = json.loads((tmp_path / "postagb_parametric_table.json").read_text())[0]
+    assert ai["selected"] == "M2o"
+    assert ai["pa"] == pytest.approx(171.6005, abs=1e-3)  # wrapped, not the raw -8.4
+    assert ai["c1"] == pytest.approx(-0.98988, abs=1e-4) and ai["s1"] == pytest.approx(-0.10624, abs=1e-4)  # odd order negated by the wrap
+    assert ai["a1"] == pytest.approx(0.99557, abs=1e-4)
+    assert (ai["f_prim_pct"], ai["f_sec_pct"]) == (pytest.approx(69.312, abs=1e-2), pytest.approx(4.296, abs=1e-2))
+    assert ai["f_disc_pct"] == pytest.approx(17.099, abs=1e-2) and ai["f_bg_pct"] == pytest.approx(9.292, abs=1e-2)
+    assert ai["d_env"] == pytest.approx(-1.37856, abs=1e-4)
+    assert ai["bright_pa"] == pytest.approx(353.33, abs=0.01)
+    text = (tmp_path / "postagb_parametric_table.md").read_text()
+    row = next(ln for ln in text.splitlines() if ln.startswith("| AI_Sco"))
+    # the M1 fit ran but has no eligible best: say so, never "not run"
+    n2 = row.split(" | ")[-4]  # lnZ_use N2 column (the fixture holds only the N2 ladder plus M2o under N1)
+    assert n2.startswith("M0 -1056.5 / M1 no eligible fit (bound, Hessian) / M2 -972.9 / M2o -892.7"), n2
+    assert "n/a" not in " | ".join(row.split(" | ")[10:21])  # c1 .. d_env all filled
+
+
+def test_wrap_pa_negates_odd_orders_only_for_odd_shifts():
+    assert R.wrap_pa(-8.4, [0.5, 0.2], [0.1, -0.3]) == (pytest.approx(171.6), [-0.5, 0.2], [-0.1, -0.3])
+    assert R.wrap_pa(200.0, [0.5], [0.1]) == (pytest.approx(20.0), [-0.5], [-0.1])
+    assert R.wrap_pa(-188.4, [0.5], [0.1])[1:] == ([0.5], [0.1])  # two half-turns: unchanged (-188.4 -> 171.6)
+    assert R.wrap_pa(60.0, [0.5], [0.1]) == (60.0, [0.5], [0.1])
+
+
+def test_real_layout_geometry_has_c_s_dra_ddec_d_env(tmp_path):
+    path = R.geometry_stage(REAL, outfile=tmp_path / "geometry.json")
+    g = json.loads(path.read_text())["AI_Sco"]
+    ours = g["ours"]  # usable but elsewhere: De Prins geometry is the entry, our fit is kept beside it
+    assert g["source"] == "De Prins image"
+    for k in ("c", "s", "dra", "ddec", "d_env"):
+        assert ours[k] is not None, k
+    assert ours["pa"] == pytest.approx(171.6005, abs=1e-3)
+    assert ours["c"][0] == pytest.approx(-0.98988, abs=1e-4) and ours["d_env"] == pytest.approx(-1.37856, abs=1e-4)
+    assert (ours["dra"], ours["ddec"]) == (pytest.approx(1.6591, abs=1e-3), pytest.approx(-2.3406, abs=1e-3))

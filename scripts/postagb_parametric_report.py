@@ -105,6 +105,49 @@ def _fmt_na(x, nd=2):
     return "n/a" if x is None else f"{x:.{nd}f}"
 
 
+def _derived(fit):
+    """The core's derived quantities of a model file: ``best["derived"]`` (the real layout), else a top-level ``derived``."""
+    fit = fit or {}
+    return (fit.get("best") or {}).get("derived") or fit.get("derived") or {}
+
+
+def wrap_pa(pa, c=(), s=()):
+    """PA of the major axis wrapped to [0, 180) (the plan's convention), with the odd-order ``c_m, s_m`` negated when the
+    wrap shifts by an odd multiple of 180 deg, so the same model is described. Returns ``(pa, c, s)`` (lists)."""
+    pa = _num(pa)
+    c, s = list(c or []), list(s or [])
+    if pa is None:
+        return None, c, s
+    wrapped = pa % 180.0
+    k = int(round((pa - wrapped) / 180.0))
+    if k % 2:
+        c = [-x if i % 2 == 0 else x for i, x in enumerate(c)]  # index 0 is order 1
+        s = [-x if i % 2 == 0 else x for i, x in enumerate(s)]
+    return wrapped, c, s
+
+
+def _reason_tags(fit):
+    tags = []
+    for m in (fit or {}).get("modes") or []:
+        for w in m.get("why_not") or []:
+            w = str(w)
+            t = "bound" if w.startswith("E2") else "Hessian" if w.startswith("E3") else "ineligible"
+            if t not in tags:
+                tags.append(t)
+    return tags
+
+
+def fit_status(tdata, model, arm, variant=None):
+    """``None`` if the fit has an eligible best; else why not: ``not run`` (no file) or ``no eligible fit (bound, ...)``."""
+    fit = tdata["models"].get((model, arm, variant))
+    if fit is None:
+        return "not run"
+    if (fit.get("best") or {}).get("eligible", True) and fit.get("best"):
+        return None
+    tags = _reason_tags(fit)
+    return "no eligible fit" + (f" ({', '.join(tags)})" if tags else "")
+
+
 def _value(values, path, default=None):
     """A fitted value by path; exact key first, then a key ending in the path."""
     if not values:
@@ -364,7 +407,7 @@ def render_stage(out, target, stored_dir=None, npix=128, pixel_mas=0.3):
     fit = selected_fit(t, "N2")
     if fit is None:
         return None
-    p = ring_params(fit.get("best"), fit.get("derived"))
+    p = ring_params(fit.get("best"), _derived(fit))
     stored = find_stored_compare(stored_dir, target)
     beam = beam_rms = None
     grid_src = "default"
@@ -379,7 +422,7 @@ def render_stage(out, target, stored_dir=None, npix=128, pixel_mas=0.3):
         beam = (1.5 / pixel_mas / 2.355,) * 2 + (0.0,)
     conv = convolve(img, beam)
     conv = conv / conv.sum()
-    d = fit.get("derived") or {}
+    d = _derived(fit)
     best = fit.get("best") or {}
     values = best.get("values") or {}
     secondary = dict(
@@ -551,7 +594,7 @@ def usable_for_gp(tdata):
     if fit is None:
         return False, ["no N2 selected fit"], {}
     best = fit.get("best") or {}
-    derived = fit.get("derived") or {}
+    derived = _derived(fit)
     p = ring_params(best, derived)
     hc = _num(derived.get("hole_contrast"))
     if hc is None and p["sigma"]:
@@ -608,11 +651,11 @@ def geometry_entry(tdata, image):
     ours = None
     if det:
         p = det["params"]
-        d = (selected_fit(tdata, "N2") or {}).get("derived") or {}
-        c = list(p["c"]) if p["c"].size else d.get("c")
-        s = list(p["s"]) if p["s"].size else d.get("s")
+        d = _derived(selected_fit(tdata, "N2"))
+        pa, c, s = wrap_pa(p["pa"], list(p["c"]) if p["c"].size else d.get("c"),
+                           list(p["s"]) if p["s"].size else d.get("s"))
         ours = dict(
-            inc=p["inc"], pa=p["pa"] % 180.0 if p["pa"] is not None else None, r0=p["r0"], sigma=p["sigma"],
+            inc=p["inc"], pa=pa, r0=p["r0"], sigma=p["sigma"],
             c=c, s=s, dra=p["dra"], ddec=p["ddec"], d_env=_num(d.get("d_env")),
         )
     use_ours = bool(usable and ours)
@@ -664,7 +707,9 @@ def _jsonable(o):
 
 def present_targets(out):
     out = pathlib.Path(out)
-    have = {p.name for p in out.iterdir() if p.is_dir()} if out.exists() else set()
+    # only directories holding this campaign's files (a stray backup directory is not a target)
+    have = {p.name for p in out.iterdir() if p.is_dir() and (any(p.glob(f"{p.name}_param_*.json")) or not any(p.iterdir()))} \
+        if out.exists() else set()
     return [T for T in TARGETS if T in have] + sorted(have - set(TARGETS))
 
 
@@ -681,7 +726,7 @@ def table_row(tdata, image, pmoired):
     fit = selected_fit(tdata, "N2")
     model = selected_model(tdata, "N2")
     sel_arms = (tdata["selected"] or {}).get("arms") or {}
-    d = (fit or {}).get("derived") or {}
+    d = _derived(fit)
     p = ring_params((fit or {}).get("best"), d) if fit else None
     jk = jackknife_sds(tdata)
     usable, reasons, det = usable_for_gp(tdata)
@@ -694,9 +739,11 @@ def table_row(tdata, image, pmoired):
         usable_for_gp=bool(usable) if fit else None,
     )
     if fit:
-        c, s = d.get("c") or [], d.get("s") or []
+        pa_w, c, s = wrap_pa(p["pa"], d.get("c") or [], d.get("s") or [])
+        if pa_w is None:
+            pa_w = _num(d.get("pa_mod180"))
         row.update(
-            inc=_num(d.get("inc", p["inc"])), pa=_num(d.get("pa_mod180", p["pa"])),
+            inc=_num(d.get("inc", p["inc"])), pa=pa_w,
             theta_rim=None if p["r0"] is None else 2 * p["r0"],
             sigma_over_r0=None if not p["r0"] else p["sigma"] / p["r0"],
             hole_contrast=_num(d.get("hole_contrast")) if d.get("hole_contrast") is not None else hole_contrast(p),
@@ -714,7 +761,7 @@ def table_row(tdata, image, pmoired):
         f1 = selected_fit(tdata, "N1")
         flagged = "arm_dependent" in _fit_flags(fit)
         if f1:
-            a = ring_params(f1.get("best"), f1.get("derived"))
+            a = ring_params(f1.get("best"), _derived(f1))
             flagged = flagged or sel_n1 != sel_n2
             if p:
                 flagged = flagged or abs(a["inc"] - p["inc"]) > 15 or abs(_angdiff180(a["pa"], p["pa"])) > 25
@@ -723,6 +770,10 @@ def table_row(tdata, image, pmoired):
         arm: {m: _num(_best(tdata["models"].get((m, arm, None)), "lnZ_use")) for m in MODELS
               if (m, arm, None) in tdata["models"]}
         for arm in ("N1", "N2")
+    }
+    row["status"] = {
+        arm: {m: fit_status(tdata, m, arm) for m in MODELS if m in ("M0", "M1", "M2", "M2o") or (m, arm, None) in tdata["models"]}
+        for arm in ("N0", "N1", "N2")
     }
     bic0 = _num(_best(tdata["models"].get(("M0", "N0", None)), "bic"))
     row["dbic_n0"] = {
@@ -765,16 +816,30 @@ def table_stage(out, targets=None, outdir=None):
     return outdir / "postagb_parametric_table.md"
 
 
-def _lnz_cell(d):
-    if not d:
+def _lnz_cell(d, status=None):
+    """``M0 -123.4 / M1 no eligible fit (bound) / ...``; a missing value shows the fit's own status."""
+    status = status or {}
+    models = [m for m in MODELS if m in (d or {}) or m in status]
+    if not models:
         return "not run"
-    return " / ".join(f"{m} {_fmt(v, 1)}" for m, v in d.items())
+    return " / ".join(
+        f"{m} {_fmt(d[m], 1)}" if _num((d or {}).get(m)) is not None else f"{m} {status.get(m) or 'not run'}" for m in models
+    )
 
 
-def _dbic_cell(d):
-    if not d:
+def _dbic_cell(d, status=None):
+    status = status or {}
+    models = [m for m in MODELS if m != "M0" and (m in (d or {}) or m in status)]
+    if not models:
         return "not run"
-    return " / ".join(f"{m} {_fmt(v, 0)}{'*' if _num(v) is not None and v <= -100 else ''}" for m, v in d.items())
+    out = []
+    for m in models:
+        v = _num((d or {}).get(m))
+        if v is not None:
+            out.append(f"{m} {v:.0f}{'*' if v <= -100 else ''}")
+        else:
+            out.append(f"{m} {status.get(m) or (status.get('M0') and 'n/a (M0: ' + status['M0'] + ')') or 'not run'}")
+    return " / ".join(out)
 
 
 def render_markdown(rows):
@@ -803,7 +868,8 @@ def render_markdown(rows):
                 _fmt_na(r.get("s1"), 3), _fmt_na(r.get("a1"), 3), _fmt_na(r.get("bright_pa"), 0), cen,
                 _fmt_na(r.get("f_prim_pct"), 1), _fmt_na(r.get("f_sec_pct"), 1), _fmt_na(r.get("f_disc_pct"), 1),
                 _fmt_na(r.get("f_bg_pct"), 1), _fmt_na(r.get("d_env")), raw, _fmt_na(r.get("own_chi2"), 3),
-                _lnz_cell(r["lnZ_use"]["N1"]), _lnz_cell(r["lnZ_use"]["N2"]), _dbic_cell(r["dbic_n0"]),
+                _lnz_cell(r["lnZ_use"]["N1"], r["status"]["N1"]), _lnz_cell(r["lnZ_use"]["N2"], r["status"]["N2"]),
+                _dbic_cell(r["dbic_n0"], r["status"]["N0"]),
                 _gp_cell(r, "N1"), _gp_cell(r, "N2"),
             ]) + " |"
         )

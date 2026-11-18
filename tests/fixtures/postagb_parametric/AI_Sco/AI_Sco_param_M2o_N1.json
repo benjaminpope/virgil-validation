@@ -1,0 +1,263 @@
+{
+ "target": "AI_Sco",
+ "commits": {
+  "scripts": "fe70d142b7d5847495b417b5d5d16c6e367daae0",
+  "virgil": "d0f7086f662e55e1c1786e4db7b4dfddb3bd2afb",
+  "virgil_version": "0.4.1"
+ },
+ "model": "M2o",
+ "arm": "N1",
+ "variant": null,
+ "k": 14,
+ "n_points": 2184,
+ "modes": [
+  {
+   "values": {
+    "bg.flux.ratio": 0.08742103217624568,
+    "env.ddec": -1.69490648240565,
+    "env.dra": -0.1739858261673751,
+    "env.flux.index": -1.2517598600023856,
+    "env.flux.ratio": 0.31419985759020264,
+    "env.harmonics.im": [
+     -0.15542544739888575
+    ],
+    "env.harmonics.re": [
+     -0.6530228973607263
+    ],
+    "env.inc": 36.9957806087587,
+    "env.pa": -126.29694763009994,
+    "env.profile.radius": 2.802074836046838,
+    "env.profile.sigma": 0.3409979485124562,
+    "sec.ddec": -1.2869308021462103,
+    "sec.dra": -0.9666459798059578,
+    "sec.flux.ratio": 0.08054733992625487
+   },
+   "sd": {
+    "env.flux.ratio": 0.004812418828765794,
+    "env.flux.index": 0.08073092966935645,
+    "bg.flux.ratio": 0.0026263585065003092,
+    "sec.flux.ratio": 0.0013676060314183384,
+    "sec.dra": 0.024430495243826057,
+    "sec.ddec": 0.019191941391491604,
+    "env.inc": 0.7280731205722708,
+    "env.pa": 1.2761083851169115,
+    "env.profile.radius": 0.03126929502952202,
+    "env.profile.sigma": 0.03431458178249327,
+    "env.harmonics.re[0]": 0.02722352403508777,
+    "env.harmonics.im[0]": 0.01739687906599225,
+    "env.dra": 0.02303690405125733,
+    "env.ddec": 0.02702663175660332
+   },
+   "lnZ_lap": -2019.957405615547,
+   "lnZ_scene_rule": -2019.9619177823763,
+   "bic": 4019.3500297683954,
+   "eligible": true,
+   "why_not": [],
+   "flags": [],
+   "n_starts": 19,
+   "start": "grid_i20_p0_r1.4"
+  },
+  {
+   "values": {
+    "bg.flux.ratio": 0.09947642592188916,
+    "env.ddec": -1.5699161868478553,
+    "env.dra": 0.2435084114055783,
+    "env.flux.index": -1.1960986474767035,
+    "env.flux.ratio": 0.3269045159562769,
+    "env.harmonics.im": [
+     0.6046768378026485
+    ],
+    "env.harmonics.re": [
+     -0.347043994915739
+    ],
+    "env.inc": 0.0187572741345625,
+    "env.pa": 149.97662816792626,
+    "env.profile.radius": 2.293171761372907,
+    "env.profile.sigma": 0.49326838552643554,
+    "sec.ddec": -1.2144297012268441,
+    "sec.dra": -0.9104085276312169,
+    "sec.flux.ratio": 0.0803883898261256
+   },
+   "sd": {
+    "env.flux.ratio": 0.004986449988684852,
+    "env.flux.index": 0.0831416631891693,
+    "bg.flux.ratio": 0.0025428272328806567,
+    "sec.flux.ratio": 0.0016398072260046517,
+    "sec.dra": 0.02639981235129551,
+    "sec.ddec": 0.022094617138443226,
+    "env.inc": 0.018757273798779873,
+    "env.pa": 82.08654318896419,
+    "env.profile.radius": 0.017950471487272072,
+    "env.profile.sigma": 0.020263466923343985,
+    "env.harmonics.re[0]": 0.8415545135135584,
+    "env.harmonics.im[0]": 0.5432321698652981,
+    "env.dra": 0.01342623293428606,
+    "env.ddec": 0.022326500619206054
+   },
+   "lnZ_lap": -2099.3049788247586,
+   "lnZ_scene_rule": -2087.6673001388085,
+   "bic": 4152.260008853011,
+   "eligible": false,
+   "why_not": [
+    "E2: env.inc within 1 % of a prior bound"
+   ],
+   "flags": [
+    "pa_unconstrained"
+   ],
+   "n_starts": 1,
+   "start": "grid_i65_p60_r1.4"
+  },
+  {
+   "values": {
+    "bg.flux.ratio": 0.15913876232255764,
+    "env.ddec": -0.6798183866252763,
+    "env.dra": 2.3493595267216985,
+    "env.flux.index": -3.210687216644837,
+    "env.flux.ratio": 0.12033635558737182,
+    "env.harmonics.im": [
+     1.0542008271109828
+    ],
+    "env.harmonics.re": [
+     -0.3815108230557304
+    ],
+    "env.inc": 84.99999999006526,
+    "env.pa": 156.79679212246083,
+    "env.profile.radius": 0.600252295605171,
+    "env.profile.sigma": 1.276037951219582,
+    "sec.ddec": -0.8906916354083261,
+    "sec.dra": -1.4919546409646844,
+    "sec.flux.ratio": 0.10020294978606342
+   },
+   "sd": {
+    "env.flux.ratio": 0.002101146463960186,
+    "env.flux.index": 0.10608369670878316,
+    "bg.flux.ratio": 0.0019072358099445806,
+    "sec.flux.ratio": 0.001568748068432268,
+    "sec.dra": 0.012624833517614807,
+    "sec.ddec": 0.013062482331627802,
+    "env.inc": 3.5675272621195937,
+    "env.pa": 0.8423061767572357,
+    "env.profile.radius": 0.25141870634919017,
+    "env.profile.sigma": 0.11211684784947687,
+    "env.harmonics.re[0]": 0.4212836141151797,
+    "env.harmonics.im[0]": 0.8489712954094528,
+    "env.dra": 0.07390074710842605,
+    "env.ddec": 0.08994294817553601
+   },
+   "lnZ_lap": -3679.36408854821,
+   "lnZ_scene_rule": -3679.4458727715187,
+   "bic": 7199.144431358946,
+   "eligible": false,
+   "why_not": [
+    "E2: at_bound ['env.inc', 'env.profile.radius']",
+    "E2: env.inc within 1 % of a prior bound",
+    "E2: env.profile.radius within 1 % of a prior bound (radius floor: this is M0)"
+   ],
+   "flags": [
+    "full_modulation"
+   ],
+   "n_starts": 1,
+   "start": "stored_gp"
+  }
+ ],
+ "best": {
+  "values": {
+   "bg.flux.ratio": 0.08742103217624568,
+   "env.ddec": -1.69490648240565,
+   "env.dra": -0.1739858261673751,
+   "env.flux.index": -1.2517598600023856,
+   "env.flux.ratio": 0.31419985759020264,
+   "env.harmonics.im": [
+    -0.15542544739888575
+   ],
+   "env.harmonics.re": [
+    -0.6530228973607263
+   ],
+   "env.inc": 36.9957806087587,
+   "env.pa": -126.29694763009994,
+   "env.profile.radius": 2.802074836046838,
+   "env.profile.sigma": 0.3409979485124562,
+   "sec.ddec": -1.2869308021462103,
+   "sec.dra": -0.9666459798059578,
+   "sec.flux.ratio": 0.08054733992625487
+  },
+  "sd": {
+   "env.flux.ratio": 0.004812418828765794,
+   "env.flux.index": 0.08073092966935645,
+   "bg.flux.ratio": 0.0026263585065003092,
+   "sec.flux.ratio": 0.0013676060314183384,
+   "sec.dra": 0.024430495243826057,
+   "sec.ddec": 0.019191941391491604,
+   "env.inc": 0.7280731205722708,
+   "env.pa": 1.2761083851169115,
+   "env.profile.radius": 0.03126929502952202,
+   "env.profile.sigma": 0.03431458178249327,
+   "env.harmonics.re[0]": 0.02722352403508777,
+   "env.harmonics.im[0]": 0.01739687906599225,
+   "env.dra": 0.02303690405125733,
+   "env.ddec": 0.02702663175660332
+  },
+  "raw_chi2": 3.2074226148944107,
+  "raw_chi2_v2": 4.6971180387780365,
+  "raw_chi2_cp": 4.7492353090689186,
+  "own_chi2": 1.7910738292363957,
+  "log_norm": 0.0,
+  "lnZ_lap": -2019.957405615547,
+  "lnZ_scene_rule": -2019.9619177823763,
+  "lnZ_is": -2019.6212212784076,
+  "ess": 269.3806825617727,
+  "frac_outside": 0.0022499999999999742,
+  "lnZ_use": -2019.6212212784076,
+  "lnZ_modes": -2019.957405615547,
+  "bic": 4019.3500297683954,
+  "flags": [],
+  "n_rows": 2184,
+  "n_raw": 2184,
+  "n_independent": 1512,
+  "derived": {
+   "inc": 36.9957806087587,
+   "pa_mod180": 53.703052369900064,
+   "r0": 2.802074836046838,
+   "sigma": 0.3409979485124562,
+   "hole_contrast": 0.9999999999999978,
+   "d_env": -1.2517598600023856,
+   "centre": [
+    -0.1739858261673751,
+    -1.69490648240565
+   ],
+   "f_prim_pct": 67.46872453252686,
+   "f_sec_pct": 5.434426289312293,
+   "f_disc_pct": 21.198663639912553,
+   "f_bg_pct": 5.898185538248287,
+   "c": [
+    -0.8485742257425293
+   ],
+   "s": [
+    0.2019684596363248
+   ],
+   "a1": 0.8722783244368754,
+   "bright_pa": 41.56636963754948
+  },
+  "names": [
+   "env.flux.ratio",
+   "env.flux.index",
+   "bg.flux.ratio",
+   "sec.flux.ratio",
+   "sec.dra",
+   "sec.ddec",
+   "env.inc",
+   "env.pa",
+   "env.profile.radius",
+   "env.profile.sigma",
+   "env.harmonics.re[0]",
+   "env.harmonics.im[0]",
+   "env.dra",
+   "env.ddec"
+  ]
+ },
+ "n_unconverged": 0,
+ "seconds": 47.8669970035553,
+ "error_scale": 1.3382009980304672,
+ "error_scale_source": "/Users/benpope/code/ozstar_scripts-postagb-noise/results/postagb_noise/out/15b154a+6fa8afe/AI_Sco/AI_Sco_gp-polar_unbounded_image.json",
+ "smoke": false
+}
