@@ -454,3 +454,48 @@ against 2π·sep/P; the colour; the two night-arm results. Then the overall outc
 * Only Δ_epoch counts, and the `epoch` pick is inside the bounds: night-level inconsistency is the cause; the night arms say
   whether it is motion or calibration.
 * Nothing counts: the binary as modelled is rejected as the cause. The §8 bounds stay, and the night arms are the answer.
+
+## 13. §11 result (jobs 21112767 / 21112786, vv f41305f, virgil 6fa8afe): chromatic mismatch rejected
+
+**Rule 1 fails (0 of 4 targets).** None of the 12 chromatic simulations picks the corner. The evidence picks ℓ_r = 2 beams and
+σ = 2 on AI Sco, EN TrA and HD 95767 (one HD 95767 seed: 1 beam, σ = 1), next to the truth's best cell (2 beams), with image-error
+rank fractions 0.03–0.14 on AI Sco and EN TrA and 0.36–0.47 on HD 95767. PS Gem picks 0.5 beam and σ = 1 in all three seeds
+(rank 0.14–0.31). That is its known small-field failure (§8, §10 correction), not the corner. A radial colour gradient of
+Δα = 2 across the ring, together with a stellar index wrong by 1, does not make the evidence buy sub-beam structure. The
+model's grey disc absorbs it at the cost of a worse image (HD 95767), not of a rougher field.
+
+**Rule 2 fails too (0 of 4).** Under `--chrom --unbounded` every real pick stays at or past the corner: σ = 4 on all six
+targets, ℓ_r = 0.5 beam on AI Sco and 0.25 beam (one pixel) on EN TrA, HD 95767, PS Gem and IW Car. IRAS 15469 moves to 3.8 beams,
+still at σ = 4.
+
+| target | ℓ_r (beams) | σ | χ² | ring flux | ring Δα | star index − SIND1 | terms at a prior bound |
+|---|---|---|---|---|---|---|---|
+| AI Sco | 0.5 | 4 | 0.75 | 1.0 % | −22 | −0.50 | ring radius (floor), bg flux |
+| EN TrA | 0.25 | 4 | 0.66 | 1.7 % | +4.0 | +0.40 | ring radius (floor), ring index and slope, bg flux |
+| HD 95767 | 0.25 | 4 | 0.59 | 0.1 % | −26 | +2.00 | ring width, star index (+2 bound), bg index |
+| PS Gem | 0.25 | 4 | 0.64 | 7.8 % | −4.8 | +1.90 | ring radius (field edge), ring slope, bg |
+| IW Car | 0.25 | 4 | 0.66 | 1.0 % | −0.1 | +1.43 | ring index |
+| IRAS 15469 | 3.8 | 4 | 0.71 | 9.8 % | −3.3 | −0.02 | none |
+
+Rule 3 is moot. The chromatic terms are not physical: Δα of −22 and −26 come from rings 10–12 mas wide with slopes at their
+bounds, the star index runs to its +2 bound on HD 95767, and two rings sit at the 0.5 mas floor inside the star's hole. The fits
+use the extra freedom to fit noise (χ² 0.59–0.75, below the bounded B1 values of 0.99–1.31 in §10), not to model a colour gradient.
+
+**The grid evidence rises (+7 to +57 over the unbounded grey picks of job 21054320), but that is not evidence for colour.**
+`log_evidence` holds the scene parameters at their MAP (the binary plan review of 18 Nov; §12 and virgil#734), so the ring's
+five parameters and the free star index lower χ² and pay nothing. §11's rule did not use this comparison, and it is recorded
+here only so that it is not misread.
+
+**Caveats.**
+* The ring's radius prior has a 0.5 mas floor, inside the 1.22 mas star hole, and on AI Sco and EN TrA the ring starts there
+  (Carbon review of #265). A ring there can trade flux and colour with the star. This affects only the real arm (rule 2),
+  which fails in any case. The simulations (rule 1) do not fit a ring.
+* The simulated noise is white, at the MacKay factor, as in stage C's `white` arm. The §10 confound (vlti white scaling) does
+  not apply.
+* Even and odd simulation sets are drawn with independent keys (Carbon review). That matters for CV, not for the evidence
+  picks used here.
+
+**Consequence (as pre-registered).** Rule 1 fails: a strong but physical colour error does not make the corner, so chromatic
+mismatch is rejected as its cause. The §8 bounds stay. §11's last outcome no longer follows, since §10 did not reject the night
+cause. The open causes are the binary (§12, stage BN, job 21123993) and the night terms with MacKay white errors (§12 night
+arms, same job).
