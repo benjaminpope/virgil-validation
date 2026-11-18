@@ -52,7 +52,7 @@ def test_hl_tau_uses_the_released_selfcal_recipe_and_dsharp_does_not():
     assert ds.HL_TAU_HEADLINE == ("hltau_b6", "hltau_b7")
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_checksum_is_recorded_then_verified_then_refuses_a_changed_file(tmp_path):
     f, table = tmp_path / "a.bin", tmp_path / "sums.json"
     f.write_bytes(b"abc" * 100)
@@ -66,7 +66,7 @@ def test_checksum_is_recorded_then_verified_then_refuses_a_changed_file(tmp_path
         ds.record_checksum("v", f, 299, table)
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.dsharp", roots=["standards"], kind="reference")
 def test_sha256_of_a_known_string(tmp_path):
     f = tmp_path / "x"
     f.write_bytes(b"abc")
@@ -210,7 +210,7 @@ def _read(path):
     return cx.read_fits(path)[0]
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="guard")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_statistics_use_only_our_footprint_and_finite_pixels(tmp_path):
     """The released image is larger than ours: pixels outside our image hold zeros, not a model, and are left out; NaNs (outside a primary-beam
     limit) are skipped, not propagated."""
@@ -222,7 +222,7 @@ def test_statistics_use_only_our_footprint_and_finite_pixels(tmp_path):
     assert 0.2 < foot.mean() < 0.3 and foot[64, 64] and not foot[0, 0]
     whole = ds.compare_stats(ours, ref, footprint=foot)
     assert whole["footprint_radius_pix"] < 0.6 * 64 * np.sqrt(2)  # the half-size image's corners, not the released field's
-    assert whole["ours_noise_rms"] > 0 or whole["ref_noise_rms"] >= 0
+    assert whole["ours_noise_rms"] > 0 and whole["ref_noise_rms"] > 0
     ref_nan = ref.copy()
     ref_nan[:10] = np.nan
     st = ds.compare_stats(ours, ref_nan, footprint=foot)
@@ -231,31 +231,38 @@ def test_statistics_use_only_our_footprint_and_finite_pixels(tmp_path):
 
 @pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
 def test_primary_beam_correction_is_undone_for_a_pbcor_reference(tmp_path):
-    """A primary-beam-corrected reference is multiplied by the ALMA 12 m beam (a Gaussian of FWHM 1.13 lambda/D) before the comparison. The beam
-    is 1 at the pointing and 1/2 at FWHM/2 from it, and a 0.6 arcsec field (about 17 arcsec FWHM) is multiplied by almost 1."""
-    flux, s, bm = 0.5, 30.0, 40.0
-    _gauss_fits(tmp_path / "ours.fits", flux, s, 5.0, 128)
-    _gauss_fits(tmp_path / "ref.fits", flux, np.hypot(s, bm / 2.3548200450309493), 5.0, 128, beam=bm, restfrq=344e9)
-    ours, ref, wcs, _ = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "ref.fits", pbcor=True)
-    raw = _read(tmp_path / "ref.fits")
-    assert np.all(ref <= raw * (1 + 1e-12)) and ref.max() / raw.max() > 0.9999
+    """A primary-beam-corrected reference is multiplied by the ALMA 12 m beam (a Gaussian of FWHM 1.13 lambda/D) before the comparison. The beam is
+    1 at the pointing and 1/2 at FWHM/2 from it, along Dec and (with the cos(dec) projection) along RA. On a 64 arcsec field the corrected reference
+    A / PB (A the matched analytic image) is brought back to A only when the multiplication is done."""
     fwhm = np.degrees(1.13 * 2.99792458e8 / 344e9 / 12.0) * 3600  # arcsec, about 17
-    ra0, dec0 = (float(x) for x in wcs.all_pix2world(0, 0, 0))
-    assert ds.primary_beam(wcs, (1, 1), (ra0, dec0), 344e9)[0, 0] == pytest.approx(1.0)
-    assert ds.primary_beam(wcs, (1, 1), (ra0, dec0 + fwhm / 2 / 3600), 344e9)[0, 0] == pytest.approx(0.5, rel=1e-6)
+    flux, s, bm, px, npix = 0.5, 3000.0, 4000.0, 500.0, 128
+    _gauss_fits(tmp_path / "ours.fits", flux, s, px, npix)
+    _gauss_fits(tmp_path / "apparent.fits", flux, np.hypot(s, bm / 2.3548200450309493), px, npix, beam=bm, restfrq=344e9)
+    apparent, w, h = cx.read_fits(tmp_path / "apparent.fits")
+    pb = ds.primary_beam(w, apparent.shape, (h["CRVAL1"], h["CRVAL2"]), 344e9)
+    assert pb.min() < 0.1  # the field reaches well past the half-power radius
+    cx.write_fits(tmp_path / "corrected.fits", (apparent / pb)[::-1], px, h["CRVAL1"], h["CRVAL2"], bunit="Jy/beam", BMAJ=bm / 3.6e6, BMIN=bm / 3.6e6, BPA=0.0, RESTFRQ=344e9)
+    ours, ref, *_ = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "corrected.fits", pbcor=True)
+    assert ds.compare_stats(ours, ref, radius_pix=40)["rms_over_peak"] < 6e-3
+    ours, ref, *_ = ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "corrected.fits", pbcor=False)  # control: no multiplication, no match
+    assert ds.compare_stats(ours, ref, radius_pix=40)["rms_over_peak"] > 1.5e-2
+    ra_p, dec_p = (float(v) for v in w.all_pix2world(0, 0, 0))
+    assert ds.primary_beam(w, (1, 1), (ra_p, dec_p), 344e9)[0, 0] == pytest.approx(1.0)
+    assert ds.primary_beam(w, (1, 1), (ra_p, dec_p + fwhm / 2 / 3600), 344e9)[0, 0] == pytest.approx(0.5, rel=1e-6)
+    assert ds.primary_beam(w, (1, 1), (ra_p + fwhm / 2 / 3600 / np.cos(np.radians(dec_p)), dec_p), 344e9)[0, 0] == pytest.approx(0.5, rel=1e-6)
     _gauss_fits(tmp_path / "nofreq.fits", flux, 40.0, 5.0, 128, beam=bm)
     with pytest.raises(ValueError, match="RESTFRQ"):
         ds.our_image_in_beam(tmp_path / "ours.fits", tmp_path / "nofreq.fits", pbcor=True)
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["literature"], kind="guard")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_a_released_image_without_a_beam_is_refused(tmp_path):
     _gauss_fits(tmp_path / "nobeam.fits", 0.1, 30.0, 5.0, 64)
     with pytest.raises(ValueError, match="BMAJ"):
         ds.alma_image(tmp_path / "nobeam.fits")
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_compare_and_hl_tau_preview_write_their_files(tmp_path):
     pytest.importorskip("matplotlib")
     comp = _script("dsharp_compare")
@@ -273,7 +280,7 @@ def test_compare_and_hl_tau_preview_write_their_files(tmp_path):
     assert set(json.loads((tmp_path / "p/hltau.json").read_text())) == {"hltau_b6", "hltau_b7"}
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 def test_the_fit_driver_gauges_on_the_heaviest_observation():
     fit = _script("dsharp_fit")
     obs = np.array([0, 0, 1, 1, 1, 2])
@@ -282,8 +289,80 @@ def test_the_fit_driver_gauges_on_the_heaviest_observation():
     assert fit.jsonable({"a": np.arange(2), "b": np.float64(1.5)}) == {"a": [0, 1], "b": 1.5}
 
 
-@pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="guard")
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
 @pytest.mark.parametrize("name", ["dsharp_fetch", "dsharp_compare", "dsharp_fit", "dsharp_ms_info", "dsharp_hltau_applycal"])
 def test_help_renders_without_casa_or_a_gpu(name):
     r = subprocess.run([sys.executable, str(SCRIPTS / f"{name}.py"), "--help"], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and "usage" in r.stdout.lower()
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_the_field_is_the_one_mains_unflagged_rows_use_not_fields_first_row():
+    info = _script("dsharp_ms_info")
+    assert info.science_field([3, 3, 3, 0], [False, False, False, True]) == 3  # a flagged calibrator row does not count
+    with pytest.raises(SystemExit, match="2 fields"):
+        info.science_field([0, 3, 3], [False, False, False])
+    with pytest.raises(SystemExit, match="0 fields"):
+        info.science_field([1, 1], [True, True])
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_the_plot_extent_follows_crpix_and_cdelt_with_east_left():
+    comp = _script("dsharp_compare")
+    from astropy.wcs import WCS
+
+    w = WCS(naxis=2)
+    w.wcs.ctype, w.wcs.crval, w.wcs.cdelt, w.wcs.crpix = ["RA---SIN", "DEC--SIN"], [100.0, -30.0], [-5.0 / 3.6e6, 5.0 / 3.6e6], [30.0, 50.0]  # off-centre CRPIX (1-based)
+    box = comp._extent(w, (100, 100), 0.1)  # 0.1 arcsec = 20 pixels about pixel (29, 49)
+    assert box == (9, 49, 29, 69)
+    left, right, bottom, top = comp.sky_extent(w, box)
+    assert left == pytest.approx(0.1 + 0.0025) and right == pytest.approx(-0.1 + 0.0025) and left > right  # East (positive RA offset) on the left
+    assert bottom == pytest.approx(-0.1 - 0.0025) and top == pytest.approx(0.1 - 0.0025)
+    rows, cols = np.indices((100, 100))
+    disc = (np.hypot(rows - 49, cols - 29) < 3).astype(float)  # 3 pixels about the reference point
+    r, m = comp.radial_profile(disc, w, rmax_arcsec=0.1, nbins=4)  # rings of 5 pixels
+    assert 0.3 < m[0] < 0.45 and m[-1] == pytest.approx(0.0)
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_a_missing_member_is_reported_with_the_archives_names_and_keeps_the_archive(tmp_path, monkeypatch):
+    (tmp_path / "srv").mkdir()
+    tgz = _tgz(tmp_path / "srv" / "ref.tgz", {"wrapped/dir/ref.image.fits": b"FITS" * 10})
+    t = dict(ds.TARGETS["hltau_b6"], image=dict(url=tgz.as_uri(), bytes=tgz.stat().st_size, etag="", member="ref.image.fits", pbcor=False))
+    monkeypatch.setitem(ds.TARGETS, "hltau_b6", t)
+    with pytest.raises(FileNotFoundError, match="wrapped/dir/ref.image.fits"):
+        ds.fetch_image("hltau_b6", tmp_path / "data", tmp_path / "sums.json")
+    assert (tmp_path / "data" / "hltau_b6" / "ref.tgz").exists()
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_a_download_is_checked_against_the_committed_table_even_when_recording_elsewhere(tmp_path, monkeypatch):
+    (tmp_path / "srv").mkdir()
+    tgz = _tgz(tmp_path / "srv" / "ref.tgz", {"ref.image.fits": b"FITS" * 10})
+    url = tgz.as_uri()
+    t = dict(ds.TARGETS["hltau_b6"], image=dict(url=url, bytes=tgz.stat().st_size, etag="", member="ref.image.fits", pbcor=False))
+    monkeypatch.setitem(ds.TARGETS, "hltau_b6", t)
+    committed = tmp_path / "committed.json"
+    committed.write_text(json.dumps({url: dict(sha256="0" * 64, bytes=tgz.stat().st_size, file="ref.tgz")}))
+    monkeypatch.setattr(ds, "CHECKSUMS", committed)
+    monkeypatch.setattr(ds, "read_checksums", lambda path=committed: json.loads(pathlib.Path(path).read_text()))
+    with pytest.raises(ds.ChecksumMismatch, match="committed"):
+        ds.fetch_image("hltau_b6", tmp_path / "data", tmp_path / "elsewhere.json")
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_images_that_do_not_overlap_are_refused_with_a_reason():
+    a = np.ones((16, 16))
+    with pytest.raises(ValueError, match="do not overlap"):
+        ds.compare_stats(a, a, footprint=np.zeros((16, 16), bool))
+    with pytest.raises(ValueError, match="do not overlap"):
+        ds.compare_stats(a * np.nan, a)
+
+
+@pytest.mark.validates("crosscheck.dsharp", roots=["self-consistency"], kind="guard")
+def test_provenance_names_the_pinned_virgil_snapshot_and_the_job_commit(monkeypatch):
+    fit = _script("dsharp_fit")
+    sha = "a" * 40
+    monkeypatch.setattr("evidence.meta.own_commit", lambda: None)
+    p = fit.provenance({"PIN_VIRGIL_SRC": f"/scratch/code/virgil-snapshots/{sha}/src", "PIN_COMMIT": "b" * 40, "PIN_DESC": "vv@bbbbbbb/virgil@aaaaaaa"})
+    assert p["virgil_commit"] == sha and p["virgil_dirty"] is False and p["validation_commit"] == "b" * 40 and p["pins"].startswith("vv@")

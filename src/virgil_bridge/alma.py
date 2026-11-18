@@ -371,7 +371,7 @@ def nuisance_sites(nuis, data, *, offset_bound_mas=None, ref_obs=0):
 
 def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use=None, chunk_size=10**6, ref_obs=0,
                   alpha_free=None, offset_bound_mas=None, fixed_log_brightness=None, image_only=False, chi2="direct", taper_mas=None, entropy_on="blurred",
-                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat", reg_beam_mas=None, sigmas=True):
+                  blur_mas=None, reg=None, reg_n=None, reg_scale=1.0, reg_prior="flat", reg_beam_mas=None, sigmas=True, f_tot=None):
     """The fit problem of configuration ``config`` ("R" or "F") on ``data``. F fixes alpha at 0 like MPoL unless ``alpha_free`` (default ``FULL["alpha_free"]``).
 
     ``data`` is the full set (it fixes the nuisance sites); ``use`` is the set the likelihood is built on
@@ -398,6 +398,9 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
     TSV on the unblurred pixels, no kernel, so ``lam`` is unused. With ``reg`` the Toeplitz chi^2 is allowed for F (alpha fixed).
 
     ``ref_obs`` is the observation whose gain is 1 and offset 0 (the flux gauge; ``resolve_ref_obs``).
+
+    ``f_tot`` (config R, Jy; default None: MPoL's 0.253 Jy, IM Lup's) is the F_tot of MPoL's entropy, (1/F_tot) sum I ln(I/p). With I = F b/dx^2 the weight on the
+    unit-sum image b scales as F/F_tot, so a brighter or fainter target needs its own F_tot: the DSHARP campaign passes the start flux, which makes lambda_M flux-invariant across discs and bands.
 
     ``sigmas`` False drops the per-ddid error scales from the fit (s = 1; the lambda rule folds its fixed s_k into the data weights instead).
 
@@ -466,7 +469,7 @@ def build_problem(data, config, *, lam, npix=None, pixel_mas=5.0, mask=None, use
         term, chi2_info = toeplitz_term(use, scene, nuis, npix=npix, pixel_mas=pixel_mas, mask=mask, max_offset_mas=None if offset_bound_mas is None else float(offset_bound_mas))
     else:
         term, chi2_info = use.term(scene, nuis, mask=None if mask is None else np.asarray(mask, bool), chunk_size=chunk_size), dict(engine="direct")
-    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, taper_mas=entropy_taper, fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
+    terms = [term] + ([MPoLEntropy(lam, pixel_mas=pixel_mas, taper_mas=entropy_taper, **({} if f_tot is None else dict(f_tot=float(f_tot))), fixed_image=None if fixed_log_brightness is None else jnp.asarray(fixed_log_brightness, float))] if config == "R" else [])
     priors, init, bound = nuisance_sites(nuis, data, offset_bound_mas=offset_bound_mas, ref_obs=ref_obs)
     if fixed_log_brightness is None:
         priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), (npix, npix))

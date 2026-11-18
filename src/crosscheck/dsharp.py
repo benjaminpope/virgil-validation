@@ -178,14 +178,19 @@ def fetch_image(key, root, checksums=CHECKSUMS):
     name = pathlib.PurePosixPath(img["url"]).name
     tmp = root / name
     download(img["url"], tmp, img["bytes"])
+    committed = read_checksums().get(img["url"])  # the table in the repository: checked even when this run records elsewhere
+    if committed and sha256_file(tmp) != committed["sha256"]:
+        raise ChecksumMismatch(f"{tmp.name}: sha256 differs from the one committed in data/dsharp/checksums.json")
     status = record_checksum(img["url"], tmp, img["bytes"], checksums)
     if img["member"] is None:
         return tmp, status
     safe_extract(tmp, root, members=[img["member"]])
-    tmp.unlink()
     out = root / img["member"]
     if not out.exists():
-        raise FileNotFoundError(f"{img['member']} not in {name}")
+        with tarfile.open(tmp) as tf:
+            names = tf.getnames()
+        raise FileNotFoundError(f"{img['member']} is not a member of {name}; it holds {len(names)} members, the first: {names[:20]}")
+    tmp.unlink()
     return out, status
 
 
@@ -268,6 +273,9 @@ def compare_stats(ours, ref, radius_pix=None, footprint=None):
     if footprint is not None:
         valid &= footprint
     region = valid if radius_pix is None else valid & (r <= radius_pix)
+    if not region.any():
+        raise ValueError("no pixel is finite in both images inside the footprint (and the radius): the two images do not overlap on this grid, "
+                         "check that image.fits is at the field's phase centre (dsharp_fit.py --info)")
     out = cx.difference_stats(ours, ref, region=region)
     rmax = float(r[valid].max())
     ring = valid & (r > 0.9 * rmax)

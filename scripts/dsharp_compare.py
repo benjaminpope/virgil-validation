@@ -45,22 +45,50 @@ def one(fit_dir, ref_path, pbcor=False):
     return ours, ref, wcs, beam, stats
 
 
+def _centre(wcs):
+    """The pixel (x, y), 0-based, of the image's reference point (the phase centre), from CRPIX."""
+    return float(wcs.wcs.crpix[0]) - 1.0, float(wcs.wcs.crpix[1]) - 1.0
+
+
 def _extent(wcs, shape, half_arcsec):
-    """The pixel box (x0, x1, y0, y1) of a centred field of half-width ``half_arcsec``."""
+    """The pixel box (x0, x1, y0, y1) of a field of half-width ``half_arcsec`` centred on the reference point (CRPIX)."""
     ny, nx = shape
-    h = half_arcsec / (abs(wcs.wcs.cdelt[0]) * 3600.0)
-    return int(max(nx / 2 - h, 0)), int(min(nx / 2 + h, nx)), int(max(ny / 2 - h, 0)), int(min(ny / 2 + h, ny))
+    cx_, cy_ = _centre(wcs)
+    hx, hy = half_arcsec / (abs(wcs.wcs.cdelt[0]) * 3600.0), half_arcsec / (abs(wcs.wcs.cdelt[1]) * 3600.0)
+    return int(max(round(cx_ - hx), 0)), int(min(round(cx_ + hx), nx)), int(max(round(cy_ - hy), 0)), int(min(round(cy_ + hy), ny))
+
+
+def sky_extent(wcs, box):
+    """``imshow`` extent ``[left, right, bottom, top]`` in arcsec offsets (``origin="lower"``) of the pixel box: the edges of the cut pixels
+    (``x0 - 0.5`` and ``x1 - 0.5``) relative to the reference point, times the signed ``CDELT``, so East is left for the usual negative ``CDELT1``."""
+    x0, x1, y0, y1 = box
+    cx_, cy_ = _centre(wcs)
+    dx, dy = float(wcs.wcs.cdelt[0]) * 3600.0, float(wcs.wcs.cdelt[1]) * 3600.0
+    return [(x0 - 0.5 - cx_) * dx, (x1 - 0.5 - cx_) * dx, (y0 - 0.5 - cy_) * dy, (y1 - 0.5 - cy_) * dy]
+
+
+def radial_profile(img, wcs, rmax_arcsec=CENTRAL_ARCSEC, nbins=40):
+    """``(r_arcsec, mean)``: the azimuthal mean of ``img`` (NaNs skipped) in rings about the reference point."""
+    cx_, cy_ = _centre(wcs)
+    yy, xx = np.indices(img.shape)
+    r = np.hypot((xx - cx_) * abs(wcs.wcs.cdelt[0]), (yy - cy_) * abs(wcs.wcs.cdelt[1])) * 3600.0
+    edges = np.linspace(0.0, rmax_arcsec, nbins + 1)
+    ok = np.isfinite(img)
+    idx = np.digitize(r, edges) - 1
+    mean = np.array([img[ok & (idx == i)].mean() if (ok & (idx == i)).any() else np.nan for i in range(nbins)])
+    return 0.5 * (edges[1:] + edges[:-1]), mean
 
 
 def panels(axs, ours, ref, wcs, title, half_arcsec=CENTRAL_ARCSEC):
-    """Draw ours, the released image and their difference (Jy/beam) on three axes, with a shared arcsinh stretch; north up, east left."""
-    x0, x1, y0, y1 = _extent(wcs, ref.shape, half_arcsec)
+    """Draw ours, the released image and their difference (Jy/beam) on three axes with a shared arcsinh stretch (north up, east left), and on a
+    fourth their azimuthal profiles about the phase centre."""
+    box = _extent(wcs, ref.shape, half_arcsec)
+    x0, x1, y0, y1 = box
     sl = (slice(y0, y1), slice(x0, x1))
     vmax = float(np.nanmax(ref[sl]))
     soft = 0.02 * vmax
     norm = lambda a: np.arcsinh(np.clip(a, 0, None) / soft)  # noqa: E731
-    ext = [(x1 - 0.5 - ref.shape[1] / 2) * abs(wcs.wcs.cdelt[0]) * 3600, (x0 - 0.5 - ref.shape[1] / 2) * abs(wcs.wcs.cdelt[0]) * 3600,
-           (y0 - 0.5 - ref.shape[0] / 2) * abs(wcs.wcs.cdelt[1]) * 3600, (y1 - 0.5 - ref.shape[0] / 2) * abs(wcs.wcs.cdelt[1]) * 3600]
+    ext = sky_extent(wcs, box)
     top = float(norm(np.array(vmax)))
     for ax, img, lab in ((axs[0], ours, "virgil"), (axs[1], ref, "ALMA release")):
         ax.imshow(norm(img[sl]), origin="lower", extent=ext, cmap="inferno", vmin=0, vmax=top)
@@ -69,9 +97,17 @@ def panels(axs, ours, ref, wcs, title, half_arcsec=CENTRAL_ARCSEC):
     lim = float(np.nanmax(np.abs(d))) or 1.0
     axs[2].imshow(d, origin="lower", extent=ext, cmap="RdBu_r", vmin=-lim, vmax=lim)
     axs[2].set_title("virgil - ALMA (Jy/beam)", fontsize=9)
-    for ax in axs:
+    for ax in axs[:3]:
+        ax.set_xlim(max(ext[0], ext[1]), min(ext[0], ext[1]))  # East left whatever the sign of CDELT1
         ax.set_xlabel("RA offset (arcsec)", fontsize=8)
     axs[0].set_ylabel("Dec offset (arcsec)", fontsize=8)
+    for img, lab in ((ours, "virgil"), (ref, "ALMA release")):
+        r, m = radial_profile(img, wcs, half_arcsec)
+        axs[3].plot(r, m, label=lab)
+    axs[3].set_xlabel("radius (arcsec)", fontsize=8)
+    axs[3].set_ylabel("azimuthal mean (Jy/beam)", fontsize=8)
+    axs[3].set_title("radial profile", fontsize=9)
+    axs[3].legend(fontsize=7)
 
 
 def _fig(rows):
@@ -80,7 +116,7 @@ def _fig(rows):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, axs = plt.subplots(rows, 3, figsize=(11, 3.7 * rows), squeeze=False, constrained_layout=True)
+    fig, axs = plt.subplots(rows, 4, figsize=(14.5, 3.7 * rows), squeeze=False, constrained_layout=True)
     return plt, fig, axs
 
 
