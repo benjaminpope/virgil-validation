@@ -146,10 +146,10 @@ def test_making_an_input_worse_never_verifies_anything(trust, kind):
             continue
         tried += 1
         before, after = verified(run(trust, nodes, records, ledger)), verified(run(trust, *worse))
-        if not after <= before or len(after) > len(before):
-            def fails(nd, rc, ld):  # the same kind of worsening, on the smaller graph
-                w = (move(random.Random(0), nd, rc, ld, trust=trust) if kind == "remove-reference-check"
-                     else move(random.Random(0), nd, rc, ld))
+        if not after <= before:
+            def fails(nd, rc, ld):  # the same worsening, drawn with the same seed, on the smaller graph
+                w = (move(random.Random(f"{kind}-{seed}"), nd, rc, ld, trust=trust) if kind == "remove-reference-check"
+                     else move(random.Random(f"{kind}-{seed}"), nd, rc, ld))
                 return w is not None and not verified(run(trust, *w)) <= verified(run(trust, nd, rc, ld))
             small = shrink(fails, nodes, records, ledger) if fails(nodes, records, ledger) else (nodes, records, ledger)
             pytest.fail(f"{kind}, seed {seed}: newly verified {sorted(after - before)}\n{describe(*small)}")
@@ -184,6 +184,29 @@ def test_order_of_nodes_records_and_ledger_does_not_matter(trust):
                 pytest.fail(f"seed {seed}: differs at {bad}\n{describe(*small)}")
 
 
+def reversed_depends(nodes):
+    return {n: dict(v, depends=v["depends"][::-1]) for n, v in nodes.items()}
+
+
+def test_order_of_depends_does_not_change_a_verdict(trust):
+    for seed in range(N_GRAPHS):
+        nodes, records, ledger = make_graph(seed)
+        got = {n: v["verdict"] for n, v in run(trust, reversed_depends(nodes), records, ledger).items()}
+        assert got == {n: v["verdict"] for n, v in run(trust, nodes, records, ledger).items()}, f"seed {seed}"
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "the causes (`because`) of a part in a cycle depend on the order of its `depends` list: _raw_problems names the "
+    "target of whichever back edge its depth-first walk meets first. 79 of 600 random graphs differ; verdicts never do. "
+    "Smallest case: virgil.0 depends [virgil.3, ref.1]; ref.1 depends [virgil.3]; virgil.3 depends [ref.1]; one passing "
+    "check of ref.1. virgil.0.because is [virgil.3] in that order and [ref.1, virgil.3] with virgil.0's depends reversed."))
+def test_order_of_depends_does_not_change_the_causes(trust):
+    for seed in range(N_GRAPHS):
+        nodes, records, ledger = make_graph(seed)
+        assert (signature(run(trust, reversed_depends(nodes), records, ledger))
+                == signature(run(trust, nodes, records, ledger))), f"seed {seed}"
+
+
 # ------------------------------------------------------------------ termination
 
 
@@ -191,21 +214,29 @@ def test_build_ends_on_every_graph_cycles_included(trust):
     def timeout(*_):
         raise TimeoutError("build did not end within 10 s")
     alarm = hasattr(signal, "SIGALRM")
-    if alarm:
-        signal.signal(signal.SIGALRM, timeout)
-    for seed in range(N_GRAPHS):
-        nodes, records, ledger = make_graph(seed)
-        if alarm:
-            signal.alarm(10)
-        try:
-            model = run(trust, nodes, records, ledger)
-        finally:
+    old = signal.signal(signal.SIGALRM, timeout) if alarm else None
+    try:
+        for seed in range(N_GRAPHS):
+            nodes, records, ledger = make_graph(seed)
             if alarm:
-                signal.alarm(0)
-        assert set(model) == set(nodes)
+                signal.alarm(10)
+            try:
+                model = run(trust, nodes, records, ledger)
+            finally:
+                if alarm:
+                    signal.alarm(0)
+            assert set(model) == set(nodes)
+    finally:
+        if alarm:
+            signal.signal(signal.SIGALRM, old)
     # a deliberate cycle: two parts that each rely on the other, and a reference that vouches for itself
     nodes = {"virgil.a": {"layer": "models", "depends": ["virgil.b"]}, "virgil.b": {"layer": "models", "depends": ["virgil.a"]},
              "ref.c": {"layer": "references", "depends": ["ref.c"]}}
-    records = [dict(make_graph(0)[1][0], objects=[n], kind="check", outcome="passed", via=["ref.c"] if n == "virgil.a" else [])
+    records = [{"test": f"t::{n}", "objects": [n], "roots": ["mathematics"], "kind": "check", "outcome": "passed",
+                "via": ["ref.c"] if n == "virgil.a" else [], "_commit": None, "_source": "ours", "metrics": {}, "tier": "A"}
                for n in nodes]
-    assert set(run(trust, nodes, records, [])) == set(nodes)
+    model = run(trust, nodes, records, [])
+    assert set(model) == set(nodes)
+    for n, v in model.items():
+        assert n not in [c["id"] for c in v["because"]], f"{n} is its own cause"  # a cycle never vouches for itself
+        assert v["verdict"] != "verified", f"{n} verified through a cycle"
