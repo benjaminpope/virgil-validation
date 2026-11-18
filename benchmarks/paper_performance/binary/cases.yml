@@ -1,0 +1,103 @@
+# Predeclared cases, settings and metrics for the binary-fitting comparison (virgil vs PMOIRED 26.10.1).
+# Plan: reports/benchmarks-plan.md section 4. Committed before any measured run; a later change is a new commit with a
+# line in CHANGES.md giving the reason. No setting is changed because of a timing or of which code is ahead.
+
+comparison: binary
+other_code: PMOIRED 26.10.1
+virgil_pin: read from ~/.cache/virgil-bench/VIRGIL_REF (recorded in every row)
+sizes:
+  tiny: {channels: 6, grid: 8x8, pull_seeds: 5, warm_repeats: 2, t1_calls: 20}
+  full: {grid: 40x40, pull_seeds: 200, warm_repeats: 5, t1_calls: 100}
+
+data:   # simulated by crosscheck.simulate.observe (make_data.py); files are not committed, manifest.json is
+  common:
+    stations_enu_m: [[-9.925, -20.335], [14.887, 30.502], [44.915, 66.183], [103.306, 43.999]]   # 4 UTs
+    hour_angles_h: [-3, -1.5, 0, 1.5, 3]       # 5 snapshots
+    dec_deg: -50.0
+    wavelength_um: [1.5, 2.4]                  # n channels, linearly spaced
+    sigma_v2: 0.03
+    sigma_cp_deg: 1.0
+    phase_noise: triangle                      # independent noise per closure phase
+    truth: {dra_mas: 6.0, ddec_mas: -4.0, flux_ratio: 0.10}   # companion / primary, x = East, y = North
+  B-sim-6:   {channels: 6,   seed: 11, primary: point}
+  B-sim-60:  {channels: 60,  seed: 12, primary: point}
+  B-sim-600: {channels: 600, seed: 13, primary: point}
+  B-sim-ud:  {channels: 6,   seed: 14, primary: uniform_disk, ud_mas: 1.0}
+  B-pulls-tri:  {base: B-sim-6, seeds: 200, seed0: 1000, phase_noise: triangle}   # accuracy; the loop is timed once as a whole
+  B-pulls-base: {base: B-sim-6, seeds: 200, seed0: 2000, phase_noise: baseline}   # per-baseline phase noise (correlated closure phases)
+  B-real-pionier:
+    target: "NN Del, PIONIER, epoch 2017-07-20"
+    source: "oidb/trackb/nn_del.json (epoch 2017-07-20, its dp_ids resolved through the files block), read unmodified from ~/data/eso_binaries/trackb/nn_del/oifits"
+    reference: {dra_mas: 0.094, ddec_mas: 3.588, flux_ratio: 0.599, sigma_flux_ratio: 0.018}   # Gallenne et al. 2019, A&A 632, A31 (published)
+    swap: "(x, y, f) -> (-x, -y, 1/f) counts as the same solution (recorded as swapped)"
+    dropped: "a GRAVITY HIGH real case (plan R10): files too large for the memory cap"
+
+model:
+  free: [dra, ddec, flux]        # + ud for B-sim-ud (uniform-disk primary)
+  start: {offset_mas: [0.3, -0.3], flux_scale: 1.3, ud_scale: 1.3}   # applied to truth (sim) or reference (real)
+  observables: [V2, closure phase]        # no bandwidth smearing in either code
+  virgil_model: "BinaryModelCartesian(dra, ddec, flux) (point primary); System(star=UniformDisk, comp=PointSource) for B-sim-ud"
+  pmoired_model: "{'A,ud': 0 (free for B-sim-ud), 'A,f': 1.0, 'B,ud': 0, 'B,x', 'B,y', 'B,f'}; OI.setupFit({'obs': ['V2','T3PHI']}, auto=False)"
+  virgil_priors: {dra: "Uniform(-60, 60)", ddec: "Uniform(-60, 60)", flux: "Uniform(0, 1)", ud: "Uniform(0, 5)"}   # as virgil_bridge.binary (10 x separation)
+  pmoired_priors: "PMOIRED's autoPrior default (>= 0 on the flux and size parameters); no other bounds"
+  likelihood:
+    neutral: independent Gaussians, wrapped closure-phase residual (neutral.chi2_v2_cp)
+    pmoired: independent Gaussians, wrapped closure-phase difference
+    virgil: "default: whitened sine-chord closure-phase residual with correlated closure phases whitened as a group (virgil.likelihood._whiten_phases); virgil documents no switch for independent closure-phase errors at this pin, so the default is used and the relative chi2 difference at the truth is recorded as likelihood_mismatch in every virgil row"
+    known_differences: "4-6 % smaller closure-phase errors in PMOIRED with 4 telescopes; sine chord vs wrapped residual; 4 closure phases per snapshot counted as 3 independent by virgil"
+
+gate:   # run first; gate_results.json is written by compare.py --gate and quoted in README.md
+  cases: [B-sim-6, B-sim-ud]
+  model_vs_crosscheck_noise_free: {v2_abs_max: 1.0e-8, cp_abs_max_deg: 1.0e-6}   # both codes, on the noise-free file
+  chi2_at_truth_vs_neutral: {pmoired_rel: 1.0e-6, virgil: "recorded as likelihood_mismatch, not gated"}
+  on_failure: "matched rows of the affected case get status gate_failed with the measured mismatch; native rows still run"
+
+tasks:
+  T1:   # forward model, each code's model-evaluation call
+    virgil: "jitted data.standardize_model(model.model(u, v, wavel)): V2 + closure-phase vector at the data (u, v)"
+    pmoired: "pmoired.oimodels.VmodelOI(oi.data[i], params) (as external_bridge.pmoired_models.model_samples)"
+    note: "PMOIRED's call also fills observables that virgil's does not (all OI_VIS2 / OI_T3 fields); labelled 'each code's model evaluation call'"
+    settings: "same parameter vector (truth); t_cold = first call, t_warm[i] = mean time per call over a batch of 100 calls (20 in tiny)"
+    cases: [B-sim-6, B-sim-60, B-sim-600, B-sim-ud, B-real-pionier]
+  T2:   # local fit (+ covariance)
+    virgil: "fit(model, priors, data, method='lm', gtol=...) then inference.laplace_cov; timed separately and summed"
+    pmoired: "OI.doFit(model, doNotFit=[fixed], verbose=0, ftol=...); covariance comes with the fit; PMOIRED's sqrt(chi2_red) uncertainty scaling undone as external_bridge.pmoired_models.fit does; file load timed separately as t_load"
+    configs:
+      matched: {virgil: {gtol: 1.0e-4}, pmoired: {ftol: 1.0e-5, epsfcn: 1.0e-6, maxfev: 10000}}   # each code's default tolerance
+      native: same as matched (the defaults coincide for this task; WP-R runs matched only and reports it as both)
+      tight: {virgil: {gtol: 1.0e-8}, pmoired: {ftol: 1.0e-10, epsfcn: 1.0e-6, maxfev: 10000}}
+    record: "function evaluations (PMOIRED info.nfev) / steps (virgil info.steps), final chi2 from neutral.py for both"
+    cases: [B-sim-6, B-sim-60, B-sim-600, B-sim-ud, B-real-pionier]
+  T3:   # blind search; task-level comparison (algorithms differ: exhaustive vectorised likelihood grid vs multi-start least squares)
+    box_mas: [-20, 20]
+    configs:
+      matched:
+        starts: "40 x 40 (np.linspace(-20, 20, 40) per axis in both codes), flux start 0.05"
+        virgil: "likelihood_grid(BinaryModelCartesian, data=data, grid={dra, ddec, flux=[0.05]}) + best_grid_point, then the T2 fit (matched tolerance) + laplace_cov from the best point"
+        pmoired: "OI.gridFit(expl={'grid': {'B,x': (-20, 20, step), 'B,y': (-20, 20, step)}}, model=start, fitOnly=['B,x','B,y','B,f'], multi=False, maxfev=5000, ftol=1e-5, epsfcn=1e-6); step = 40/39 x 0.9999 gives exactly 40 points per axis in PMOIRED's int((max - min) / step + 1) rule; its best fit is the answer (gridFit defaults for maxfev / ftol / epsfcn, stated explicitly)"
+      matched-coarse: {starts: "20 x 20 (step = 40/19 x 0.9999 in PMOIRED, linspace(-20, 20, 20) in virgil)", otherwise: as matched}   # fallback if the 40 x 40 PMOIRED grid exceeds the 30 min timeout
+      native:
+        virgil: "documented grid of docs/binary_search.md (likelihood_grid with a dra x ddec x log-flux cube, best_grid_point), scaled to this box: dra, ddec = linspace(-20, 20, 81), flux = 10**linspace(-2, 0, 30); then the T2 fit + laplace_cov"
+        pmoired: "OI.gridFit with the (min, max, step) grid form of its docstring, step 2.0 mas (21 x 21 starts), Nfits not given (all grid points), all other arguments at their defaults, model start B,f = 0.05"
+        note: "no PMOIRED binary-search example with a stated step could be read offline; the step is the predeclared choice, not a cited one. Cite: pmoired/__init__.py OI.gridFit docstring (installed 26.10.1); docs/binary_search.md (virgil)"
+    threads: "1 thread, and a 2-worker pass (PMOIRED multi=2, MAX_THREADS=2; JAX 2 threads)"
+    cases: [B-sim-6, B-sim-60, B-real-pionier]
+  pulls:
+    seeds: 200
+    fit: "T2 fit from the offset start, matched tolerances; the loop (read file, fit, covariance) is timed once as a whole"
+    metrics: "mean and sd of (fit - truth) / sigma per parameter, per code, per noise model; ratio of reported sigmas; sd standard error 0.05 at N = 200"
+    cases: [B-pulls-tri, B-pulls-base]
+
+accuracy:
+  per_case: "best fit and 1-sigma from each code; the difference between codes in combined sigma; the difference from truth (sim) or reference (real) in sigma; chi2 and reduced chi2 at each optimum from neutral.py"
+  T3: "boolean per code: global optimum within 3 sigma of truth/reference (swapped solution counted, recorded as swapped)"
+  tolerance: "on simulated cases the two codes' optima agree within 0.1 combined sigma in tight; anything else is a finding, not tuned away"
+
+documentation:   # sources of every setting
+  - "https://github.com/amerand/PMOIRED (README; installed source pmoired 26.10.1: OI.doFit, OI.gridFit, OI.setupFit, oimodels.VmodelOI)"
+  - "docs/method/pmoired.md (vv): conventions pinned (x East, y North, f total flux, ud 0 for a point), uncertainties scaled by sqrt(chi2_red), P1-P3 avoided"
+  - "src/external_bridge/pmoired_models.py (vv): fit() and model_samples() mapping, mirrored here, not edited"
+  - "virgil docs: docs/binary_search.md, docs/common_arguments.md#fit-stopping (fit: method, gtol, max_steps), docs/likelihood/closure_phases.md"
+  - "virgil source at the pin: virgil.fitting.fit, virgil.inference.laplace_cov, virgil.grid_fit.likelihood_grid and best_grid_point"
+
+estimated_runtime_full: "about 1.5 h at 1 thread, about 2 h with the 2-thread pass (see README.md)"
