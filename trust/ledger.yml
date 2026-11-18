@@ -699,3 +699,26 @@
   referee: mathematics (Roche/von Zeipel/ELR11 O(omega^2) centrifugal scaling of equator-on V^2 anisotropy)
   evidence: [tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling]
   status: to-raise
+
+- id: F27
+  title: 'Laplace approximation error in outlier_log_density(rescalable=True): large at the clip boundary (+3 to +6 nats when the scale is clipped), small in the interior (about -0.4 nats at n = 24, comparable to expected Laplace error)'
+  objects: [virgil.orbit_cells.outlier_log_density]
+  ruling: virgil
+  kind: 'numerics (Laplace approximation error; the reference is our own quadrature of the same integrand, not an independent implementation. On rescalable OIFITS nights, scaling block errors by s_g = exp(u_g) across G observable blocks inverts sum_g exp(-2 u_g) H_g for the d-dimensional peak covariance Sigma (unit-scale determinant slopes d_g = tr(H^-1 H_g) summing to d = 5 by Jacobi''s formula) and widens the Gaussian-convolved log-flux box to Sigma_44^(1/2). In virgil 0.4.2, outlier_log_density instead evaluates at hat_g = clip(sqrt(chi2_g / n_g), 1 / s_max, s_max) and unconditionally adds the interior Gaussian width 0.5 ln(pi / n_g) - ln(2 ln s_max), a Laplace approximation. Against our bounded 1D (G = 1) and 2D (G = 2, blocks=("vis", "phi")) quadrature over u_g = ln s_g in [-ln s_max, +ln s_max] it differs by -0.41 nats (single 24-datum block) and -0.40 nats (two coupled 12-datum blocks) in the interior, which is small and comparable to the expected Laplace error at this n, so not convincing on its own; the convincing gap is at the clipped boundary, +0.69 nats per boundary on s_max and +2.9 to +3.5 nats (single block) and +6.3 nats (both blocks clipped at s_max = 2, chi2_g / n_g = 16) via Watson''s lemma. Noisy equal-flux twins (m_f = +0.90, sigma_f1 = 0.25) differ by -2.4 to -3.1 nats from the same quadrature and are not separately ruled)'
+  referee: mathematics (1D adaptive and 2D composite Gauss-Legendre quadrature over u_g = ln s_g in [-ln s_max, +ln s_max] with exact normal-CDF log-flux box convolution, crosscheck.orbit_cells_ref.quad_rescalable_outlier_log_density and quad_rescalable_outlier_log_density_2block)
+  evidence:
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_outlier_prior_log_flux_box_and_laplace_outlier_density
+  decision: 'wording confirmed by Ben Pope 2026-11-16 (gate G2b); whether virgil changes is undecided (G2c).'
+  status: open
+
+- id: F28
+  title: 'period_window and period_cut API docstrings omit the night_length lower floor applied in code and documented in orbit_methods.md'
+  objects: [virgil.aliases.period_window, virgil.aliases.period_cut]
+  ruling: virgil
+  kind: 'documentation (the API docstrings of virgil.aliases.period_window and virgil.aliases.period_cut state p_min = max(2 pi field night_length / (motion_fraction resolution), p_floor) without clamping at night_length, whereas virgil 0.4.2''s implementation and prose orbit_methods.md apply max(..., night_length, p_floor): in the narrow-field regime field = 0.05 mas, night_length = 0.6 d, resolution = 1.2 mas, p_floor = 0.2 d, virgil returns 0.600 d vs 0.314 d from the API docstring formula)'
+  referee: mathematics (circular-speed within-night smearing bound crosscheck.orbit_cells_ref.period_window_bounds and period_cut_bound vs virgil API docstrings)
+  evidence:
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_f28_period_window_and_cut_match_api_docstring_without_night_length_clamp
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_alias_bands_partition_and_period_window_bounds
+  status: open
