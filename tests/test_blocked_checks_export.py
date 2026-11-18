@@ -57,3 +57,21 @@ def test_nothing_is_blocked_once_the_reference_is_verified(trust, tmp_path):
     nodes = build(trust, tmp_path, recs, GRAPH)
     assert nodes["virgil.b"]["verdict"] == "verified"
     assert nodes["virgil.b"]["blocked_checks"] == [] and nodes["virgil.b"]["blocked_by_references"] == []
+
+
+def test_coverage_page_says_waiting_not_checked_against_itself(trust, tmp_path):
+    graph = {"nodes": {"virgil.a": {"layer": "models", "roots": 2}, "virgil.c": {"layer": "models", "roots": 2},
+                       "crosscheck.r": {"layer": "references"}}}
+    recs = [record("t::via", "virgil.a", via=["crosscheck.r"]),                       # all its checks wait
+            record("t::own", "virgil.c", kind="regression")]                          # only virgil's own checks
+    path = tmp_path / "latest.jsonl"
+    head = {"record": "run", "date": "2026-10-06T00:00:00+00:00", "virgil": {"commit": "c" * 40}, "runner": "test"}
+    path.write_text("\n".join(json.dumps(x) for x in [head, *recs]) + "\n")
+    runs, records = trust.load_evidence([path])
+    model = trust.build(graph, [], records, runs, None, golden=set())
+    assert model["nodes"]["virgil.a"]["verdict"] == "partly" and model["nodes"]["virgil.a"]["strong"] == []
+    page = trust.render_coverage(model, extra=None)
+    row = {line.split("|")[1].strip(): line for line in page.splitlines() if line.startswith("| `")}
+    assert "waiting on an unverified reference (`crosscheck.r`)" in row["`a`"]
+    assert "checked against itself" not in row["`a`"]
+    assert "only checked against itself" in row["`c`"]
