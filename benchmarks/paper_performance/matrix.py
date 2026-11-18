@@ -32,6 +32,7 @@ BUDGET_S = 7 * 3600
 PY = os.environ.get("BENCH_PYTHON", sys.executable)
 JULIA_PROJECT = HERE / "orbit" / "julia"
 ORBIT_RUNS = Path.home() / ".cache" / "virgil-bench" / "runs" / "orbit" / "measured"
+TEST = {"tiny": False, "no_wrapper": False, "out": None}   # test-only switches (--tiny, --no-wrapper, --out-dir); never used for a measured run
 
 B_CASES = ["B-sim-6", "B-sim-60", "B-sim-600", "B-sim-ud", "B-real-pionier"]
 B_T3 = ["B-sim-6", "B-sim-60", "B-real-pionier"]
@@ -122,8 +123,8 @@ def est_min(sp):
         if t.startswith("pulls"):
             return 2.5
         if sp.code == "virgil":
-            return 0.8 * thr
-        return {"T3/matched": 3.7, "T3/matched-coarse": 8.3, "T3/native": 8.3}[t] * thr
+            return 1.5 * thr
+        return {"T3/matched": 11.0, "T3/matched-coarse": 25.0, "T3/native": 27.0}[t] * thr
     if c == "orbit":
         big = {"O-B-sim": 8.0, "O-A-sim-pulls": 15.0}.get(sp.case)
         if big:
@@ -329,20 +330,28 @@ def run_one(sp):
     before = set(RAW.glob("*.json")) if RAW.exists() else set()
     if sp.runner == "untimed":
         r = subprocess.run(sp.argv, capture_output=True, text=True)
-        (HERE / "results" / "gates").mkdir(parents=True, exist_ok=True)
-        (HERE / "results" / "gates" / f"{sp.comp}.log").write_text(r.stdout + "\n" + r.stderr)
+        (RAW.parent / "gates").mkdir(parents=True, exist_ok=True)
+        (RAW.parent / "gates" / f"{sp.comp}.log").write_text(r.stdout + "\n" + r.stderr)
         return []
     if sp.runner == "orbit":
         code, case, config, threads, rounds = sp.argv
         cmd, out = o_cmd(code, case, config, threads, ORBIT_RUNS / f"{case}_{config}_t{threads}_{code}",
                          rounds if code == "octofitter" else None)
-        res = common.timed_process(cmd, threads=threads, timeout=1800, wrapper="pyslot")
+        res = common.timed_process(cmd, threads=threads, timeout=1800, wrapper=None if TEST["no_wrapper"] else "pyslot")
         row = common.row_from_process(res, case=case, comparison="orbit", code=code, config=config, threads=threads,
                                       size="full")
         row["settings"].update({"task": "orbit-" + config, "case_id": case})
         common.write_row(row, RAW)
     else:
-        r = subprocess.run(sp.argv, capture_output=True, text=True)
+        argv = list(sp.argv)
+        if TEST["no_wrapper"] and "--wrapper" in argv:
+            i = argv.index("--wrapper")
+            del argv[i:i + 2]
+        if TEST["tiny"]:
+            argv += ["--size", "tiny"]
+        if TEST["out"]:
+            argv += ["--out-dir" if sp.comp == "imaging" else "--out", str(TEST["out"])]
+        r = subprocess.run(argv, capture_output=True, text=True)
         if r.returncode != 0:
             print(r.stderr[-400:], file=sys.stderr)
     return [str(p) for p in newest_rows(before)]
@@ -358,43 +367,66 @@ def write_not_run(sp, reason):
 def execute(specs):
     t0 = time.time()
     RAW.mkdir(parents=True, exist_ok=True)
-    done_marker = HERE / "results" / "DONE"
+    done_marker = RAW.parent / "DONE"
+    if TEST["tiny"] or TEST["no_wrapper"]:
+        (RAW.parent).mkdir(parents=True, exist_ok=True)
+        (RAW.parent / "TEST_RUN_BYPASSES").write_text(f"test-only run (tiny={TEST['tiny']}, no_wrapper={TEST['no_wrapper']}); idle, AC and pyslot checks were NOT applied; rows are not measurements\n")
     done_marker.unlink(missing_ok=True)
     log = LOG.open("a")
     produced = {}
+    # blocks of consecutive specs of one (comparison, case, task/config, threads): processes alternate between the
+    # codes of a block (virgil, other, virgil, other, ...) so drift affects both alike
+    blocks, cur = [], []
     for sp in specs:
-        if sp.runner == "not_run":
-            write_not_run(sp, sp.not_run_reason)
-            continue
-        if time.time() - t0 > BUDGET_S:
-            if sp.runner != "untimed":
-                write_not_run(sp, "budget")
-            log.write(json.dumps({"key": sp.key, "status": "not_run", "reason": "budget"}) + "\n")
-            continue
-        paths, n_proc = [], 3
-        i = 0
-        while i < n_proc:
-            ts = time.time()
-            got = run_one(sp)
-            paths += got
-            log.write(json.dumps({"key": sp.key, "proc": i, "wall_s": time.time() - ts, "rows": got,
-                                  "elapsed_h": (time.time() - t0) / 3600}) + "\n")
-            log.flush()
-            if sp.runner == "untimed" or sp.code == "both":
-                break
-            if i == 0 and got:
-                r = json.loads(Path(got[0]).read_text())
-                call = r.get("t_cold") or 0
-                if r.get("t_warm"):
-                    call = max(call, sorted(r["t_warm"])[len(r["t_warm"]) // 2]) if "pulls" not in sp.label else call
-                n_proc = common.repeat_plan(call)["processes"]
-                if r.get("status") in ("timeout", "oom", "error", "gate_failed"):
-                    n_proc = 1
-            i += 1
-        produced[sp.key] = paths
+        k = (sp.comp, sp.case, sp.label.split("/")[0], sp.threads, sp.prio)
+        if cur and (k != cur[0][0] or sp.runner in ("untimed", "not_run")):
+            blocks.append([x for _, x in cur]); cur = []
+        cur.append((k, sp))
+        if sp.runner in ("untimed", "not_run"):
+            blocks.append([x for _, x in cur]); cur = []
+    if cur:
+        blocks.append([x for _, x in cur])
+    for blk in blocks:
+        n_proc = {}
+        for sp in blk:
+            produced[sp.key] = []
+            n_proc[sp.key] = 3
+            if sp.runner == "not_run":
+                write_not_run(sp, sp.not_run_reason)
+        for i in range(3):
+            for sp in blk:
+                if sp.runner == "not_run" or i >= n_proc[sp.key]:
+                    continue
+                if time.time() - t0 > BUDGET_S:
+                    if i == 0:
+                        if sp.runner != "untimed":
+                            write_not_run(sp, "budget")
+                        log.write(json.dumps({"key": sp.key, "status": "not_run", "reason": "budget"}) + "\n")
+                    n_proc[sp.key] = 0
+                    continue
+                ts = time.time()
+                got = run_one(sp)
+                produced[sp.key] += got
+                log.write(json.dumps({"key": sp.key, "proc": i, "wall_s": time.time() - ts, "rows": got,
+                                      "elapsed_h": (time.time() - t0) / 3600}) + "\n")
+                log.flush()
+                if sp.runner == "untimed" or sp.code == "both":
+                    n_proc[sp.key] = 0
+                elif i == 0 and got:
+                    r = json.loads(Path(got[0]).read_text())
+                    call = r.get("t_cold") or 0
+                    if r.get("t_warm") and "pulls" not in sp.label:
+                        call = max(call, sorted(r["t_warm"])[len(r["t_warm"]) // 2])
+                    n_proc[sp.key] = common.repeat_plan(call)["processes"]
+                    if r.get("status") in ("timeout", "oom", "error", "gate_failed") or "pulls" in sp.label:
+                        n_proc[sp.key] = 1   # a failed row is not repeated; a pull loop is timed once as a whole
     # one rerun, only for noisy / threads_not_held rows
     rows = {p: json.loads(Path(p).read_text()) for ps in produced.values() for p in ps}
+    for p, r in rows.items():
+        r["language"] = "julia" if r["code"] == "octofitter" else "python"
     common.flag_noisy(list(rows.values()))
+    for p, r in rows.items():             # persist the noisy flag (t_calib vs the session median per language)
+        Path(p).write_text(json.dumps(r, indent=1, default=float) + "\n")
     for sp in specs:
         if time.time() - t0 > BUDGET_S:
             break
@@ -409,8 +441,19 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--run", action="store_true")
+    ap.add_argument("--only", nargs="*", default=None, help="TEST ONLY: run just the specs whose key contains one of these")
+    ap.add_argument("--tiny", action="store_true", help="TEST ONLY: --size tiny for binary/imaging runners")
+    ap.add_argument("--no-wrapper", action="store_true", help="TEST ONLY: no pyslot wrapper (run inside pyquick)")
+    ap.add_argument("--out-dir", default=None, help="TEST ONLY: rows/log/marker go here instead of results/")
     a = ap.parse_args()
+    global RAW, LOG
+    if a.out_dir:
+        RAW, LOG = Path(a.out_dir) / "raw", Path(a.out_dir) / "matrix_log.jsonl"
+        TEST["out"] = RAW
+    TEST.update(tiny=a.tiny, no_wrapper=a.no_wrapper)
     specs = ordered(finalise(build()))
+    if a.only:
+        specs = [x for x in specs if any(o in x.key for o in a.only)]
     if a.dry_run:
         dry_run(specs)
     elif a.run:
