@@ -250,7 +250,7 @@ def accuracy_cell(key, v, o):
 def tex_table(groups, ttt):
     idx = {}
     for (key, code, variant), g in groups.items():
-        if variant in (None, "lbfgsb"):
+        if variant in (None, "lbfgsb", "native"):
             idx[(key[0], key[1], key[2], key[3], key[4], code)] = g
     hdr = [
         "% performance_table.tex: tabular only (no caption). All rows 1 thread, laptop CPU, no GPU; times in seconds,",

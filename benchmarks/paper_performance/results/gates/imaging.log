@@ -1,0 +1,166 @@
+{
+ "case": "I-sim-24",
+ "points": {
+  "start": {
+   "loss": 2855667.8509764243,
+   "n": 312
+  },
+  "truth": {
+   "loss": 5640.857497863554,
+   "n": 312
+  }
+ }
+}
+{
+ "case": "I-sim-24",
+ "n_amp": 234,
+ "n_cphase": 78,
+ "points": {
+  "start": {
+   "cost": 2855511.832813341,
+   "J": 2855667.832813341,
+   "tv2": 0.0005919004546529572
+  },
+  "truth": {
+   "cost": 5484.854265752718,
+   "J": 5640.854265752718,
+   "tv2": 0.007351199867814354
+  }
+ },
+ "n_amp_file": 234,
+ "n_cphase_file": 78
+}
+{
+ "case": "I-sim-48",
+ "points": {
+  "start": {
+   "loss": 2855112.643785771,
+   "n": 312
+  },
+  "truth": {
+   "loss": 484.99310296034184,
+   "n": 312
+  }
+ }
+}
+{
+ "case": "I-sim-48",
+ "n_amp": 234,
+ "n_cphase": 78,
+ "points": {
+  "start": {
+   "cost": 2854956.642413602,
+   "J": 2855112.642413602,
+   "tv2": 3.729779348022267e-05
+  },
+  "truth": {
+   "cost": 328.9929682909559,
+   "J": 484.9929682909559,
+   "tv2": 0.0004767046791249336
+  }
+ },
+ "n_amp_file": 234,
+ "n_cphase_file": 78
+}
+{
+ "case": "I-sim-96",
+ "points": {
+  "start": {
+   "loss": 2855050.8259361577,
+   "n": 312
+  },
+  "truth": {
+   "loss": 150.0212242590351,
+   "n": 312
+  }
+ }
+}
+{
+ "case": "I-sim-96",
+ "n_amp": 234,
+ "n_cphase": 78,
+ "points": {
+  "start": {
+   "cost": 2854894.8258033586,
+   "J": 2855050.8258033586,
+   "tv2": 2.335957416235391e-06
+  },
+  "truth": {
+   "cost": -5.978785283465104,
+   "J": 150.0212147165349,
+   "tv2": 3.0072014383268857e-05
+  }
+ },
+ "n_amp_file": 234,
+ "n_cphase_file": 78
+}
+{
+ "case": "I-sim-ring",
+ "points": {
+  "start": {
+   "loss": 1196558.9811149286,
+   "n": 312
+  },
+  "truth": {
+   "loss": 776.1843467180745,
+   "n": 312
+  }
+ }
+}
+{
+ "case": "I-sim-ring",
+ "n_amp": 234,
+ "n_cphase": 78,
+ "points": {
+  "start": {
+   "cost": 1196402.9797427608,
+   "J": 1196558.9797427608,
+   "tv2": 3.729779348022267e-05
+  },
+  "truth": {
+   "cost": 620.1843467180748,
+   "J": 776.1843467180748,
+   "tv2": 0.0008637285840544585
+  }
+ },
+ "n_amp_file": 234,
+ "n_cphase_file": 78
+}
+{
+ "case": "I-sim-large",
+ "points": {
+  "start": {
+   "loss": 52026474.1543922,
+   "n": 9000
+  },
+  "truth": {
+   "loss": 3626.007927354485,
+   "n": 9000
+  }
+ }
+}
+{
+ "case": "I-sim-large",
+ "n_amp": 4500,
+ "n_cphase": 2250,
+ "points": {
+  "start": {
+   "cost": 51906091.078912504,
+   "J": 51909466.078912504,
+   "tv2": 3.729779348022267e-05
+  },
+  "truth": {
+   "cost": 319.3530306503286,
+   "J": 3694.3530306503285,
+   "tv2": 0.0004767046791249336
+  }
+ },
+ "n_amp_file": 4500,
+ "n_cphase_file": 2250
+}
+I-sim-24 PASS worst rel diff 3.331e-16 {'start': {'neutral_J_ehtim_edges': 2855667.8328133402, 'ehtim_J': 2855667.832813341, 'rel_diff_ehtim': 2.220446049250313e-16, 'neutral_J_virgil_edges': 2855667.850976425, 'virgil_loss': 2855667.8509764243, 'rel_diff_virgil': 3.3306690738754696e-16}, 'truth': {'neutral_J_ehtim_edges': 5640.854265752717, 'ehtim_J': 5640.854265752718, 'rel_diff_ehtim': 2.220446049250313e-16, 'neutral_J_virgil_edges': 5640.857497863556, 'virgil_loss': 5640.857497863554, 'rel_diff_virgil': 3.3306690738754696e-16}}
+I-sim-48 PASS worst rel diff 6.550e-15 {'start': {'neutral_J_ehtim_edges': 2855112.6424136003, 'ehtim_J': 2855112.642413602, 'rel_diff_ehtim': 6.661338147750939e-16, 'neutral_J_virgil_edges': 2855112.6437857696, 'virgil_loss': 2855112.643785771, 'rel_diff_virgil': 4.440892098500626e-16}, 'truth': {'neutral_J_ehtim_edges': 484.9929682909591, 'ehtim_J': 484.9929682909559, 'rel_diff_ehtim': 6.5503158452884236e-15, 'neutral_J_virgil_edges': 484.99310296034037, 'virgil_loss': 484.99310296034184, 'rel_diff_virgil': 3.1086244689504383e-15}}
+I-sim-96 PASS worst rel diff 2.753e-14 {'start': {'neutral_J_ehtim_edges': 2855050.8258033567, 'ehtim_J': 2855050.8258033586, 'rel_diff_ehtim': 6.661338147750939e-16, 'neutral_J_virgil_edges': 2855050.825936158, 'virgil_loss': 2855050.8259361577, 'rel_diff_virgil': 1.1102230246251565e-16}, 'truth': {'neutral_J_ehtim_edges': 150.02121471653078, 'ehtim_J': 150.0212147165349, 'rel_diff_ehtim': 2.7533531010703882e-14, 'neutral_J_virgil_edges': 150.021224259036, 'virgil_loss': 150.0212242590351, 'rel_diff_virgil': 5.88418203051333e-15}}
+I-sim-ring PASS worst rel diff 6.661e-16 {'start': {'neutral_J_ehtim_edges': 1196558.97974276, 'ehtim_J': 1196558.9797427608, 'rel_diff_ehtim': 6.661338147750939e-16, 'neutral_J_virgil_edges': 1196558.981114929, 'virgil_loss': 1196558.9811149286, 'rel_diff_virgil': 4.440892098500626e-16}, 'truth': {'neutral_J_ehtim_edges': 776.1843467180748, 'ehtim_J': 776.1843467180748, 'rel_diff_ehtim': 0.0, 'neutral_J_virgil_edges': 776.1843467180748, 'virgil_loss': 776.1843467180745, 'rel_diff_virgil': 4.440892098500626e-16}}
+I-sim-large FAIL worst rel diff 1.850e-02 {'start': {'neutral_J_ehtim_edges': 51909466.07891248, 'ehtim_J': 51909466.078912504, 'rel_diff_ehtim': 4.440892098500626e-16, 'neutral_J_virgil_edges': 51909466.080284655, 'virgil_loss': 52026474.1543922, 'rel_diff_virgil': 0.0022540797072845287}, 'truth': {'neutral_J_ehtim_edges': 3694.353030650393, 'ehtim_J': 3694.3530306503285, 'rel_diff_ehtim': 1.7430501486614958e-14, 'neutral_J_virgil_edges': 3694.3531653197742, 'virgil_loss': 3626.007927354485, 'rel_diff_virgil': 0.018499919987853497}}
+

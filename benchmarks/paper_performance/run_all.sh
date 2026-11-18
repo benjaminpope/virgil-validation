@@ -15,4 +15,4 @@ if ~/.claude/bin/pyslot --status 2>&1 | grep -q "pid="; then
 fi
 mkdir -p results/raw
 rm -f results/DONE
-exec caffeinate -i -s "$BENCH_PYTHON" matrix.py --run
+exec caffeinate -i -s "$BENCH_PYTHON" matrix.py --run "$@"

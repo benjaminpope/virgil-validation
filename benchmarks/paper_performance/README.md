@@ -88,3 +88,51 @@ Self-test of the scorers, tests, and a dummy row (each under `pyquick`):
 One laptop CPU, no GPU row; 1 thread primary and 2 at most, nothing on all cores; eht-imaging without NFFT; Octofitter
 interferometry on simulated point-source data only; the HD 224974 orbit case is period-informed; PMOIRED and Octofitter
 parallel modes not run beyond 2 workers; versions and commits as recorded in each row.
+
+## Results (WP-R, measured run of 2026-11-19)
+
+Outputs: `results/results.csv` (one row per case x task x config x threads x code), `results/raw/*.json` (every process),
+`results/performance_table.tex` (tabular only), `results/performance.pdf` / `.png`, `results/summary.json`,
+`results/matrix_log.jsonl`, `results/gates/`. Rebuild with `python summarise.py`; `python summarise.py --check` validates
+schema and coverage. The run is `./run_all.sh` (`matrix.py`): serial, one process at a time, under `caffeinate`, every measured
+process through `pyslot` with `PYSLOT_MEM=6G`, machine idle and on AC power at the start, 7 h cap (it finished at 7.24 h
+elapsed including one restart; rows not reached are `not_run`, reason `budget`).
+
+Rows in which each code was faster (paired groups with a time for both codes; ratio = other / virgil of medians):
+
+| Basis | virgil faster | other code faster | not paired / no time |
+| --- | --- | --- | --- |
+| warm | 27 | 13 | 33 |
+| cold | 10 | 32 | 31 |
+
+These counts include the default-method virgil imaging rows paired with the same eht-imaging row. The numbers are what the
+runs gave; no row was repeated or dropped because of its value.
+
+### Findings
+
+* I-sim-large gate fails (eht-imaging objective vs neutral, worst relative difference 1.85e-2), and I-sim-large rows were not reached by the budget anyway.
+* virgil's chi2 differs from the neutral reference (4-telescope closure-phase whitening): `likelihood_mismatch` is -18 % on binary T2 (B-sim-6) and 2.4e-2 on orbit Level B (independent form; default 0.20). Flagged, not gated.
+* O-A-real matched, virgil: `error`. `starting_orbits` seeds are rejected by NumPyro (`Cannot find valid initial parameters`) with the period-informed prior; not repaired. Octofitter ran the same case.
+* O-B-sim native, Octofitter (Pigeons, 8 rounds, 1 thread): `timeout` at the 30 min per-call limit.
+* eht-imaging `time-to-target` is `not_reached` for I-sim-24/48/96 (it did not come within 1e-3 of the lowest J reached by either code at any budget); best J values are in the ladder rows.
+* PMOIRED T3 B-sim-6 matched took about 130-140 s per call (the WP-B estimate was 650 s).
+
+### Flags (all rows)
+
+`threads_not_held` 83 rows (virgil only: binary 13 groups, imaging 13, orbit 3; cpu/wall above 1.2 at 1 thread, JAX/XLA background threads), `likelihood_mismatch` 45, `noisy` 16 rows, `warm_recompiled` 11, `mem_children_not_summed` 4. Flagged rows were rerun once (`matrix.py`) and both rows kept.
+
+### Not run
+
+Budget: the 2-thread native passes for most cases, binary T2 `tight`, T3 `matched-coarse`, imaging `stop_tight`, the I-sim-ring ladder, all I-sim-large rows, O-A-real native, O-B-sim 2-thread. `matched-truthstart`: no documented route for user start values in Octofitter's `initialize!` recorded.
+
+### Run log
+
+The first launch crashed at the first orbit row (a tuple-unpack bug in `matrix.py`) and the orbit gate step used the wrong command line; both were fixed in `matrix.py` and the run resumed (`--resume`) from `results/matrix_log.jsonl` without repeating finished rows. No `cases.yml` was changed. Binary and imaging gates ran before the crash and are unchanged.
+
+### CHANGES entries
+
+`binary/CHANGES.md`, `imaging/CHANGES.md`, `orbit/CHANGES.md`: see those files (orbit: the `likelihood_mismatch` flag on virgil Level B rows, dense mass matrix, Kepler constants).
+
+### Consistency with the paper (flag, no proposed wording)
+
+`main.tex` l.157 says virgil outperforms all other packages in speed (crediting JAX and GPU acceleration). Rows in which virgil is slower than the other code, and the absence of any GPU row, are listed in `results/results.csv` (columns `ratio_warm`, `ratio_cold`; ratios below 1 mean virgil slower).

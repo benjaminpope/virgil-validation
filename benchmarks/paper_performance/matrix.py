@@ -32,6 +32,7 @@ BUDGET_S = 7 * 3600
 PY = os.environ.get("BENCH_PYTHON", sys.executable)
 JULIA_PROJECT = HERE / "orbit" / "julia"
 ORBIT_RUNS = Path.home() / ".cache" / "virgil-bench" / "runs" / "orbit" / "measured"
+RESUME = False
 TEST = {"tiny": False, "no_wrapper": False, "out": None}   # test-only switches (--tiny, --no-wrapper, --out-dir); never used for a measured run
 
 B_CASES = ["B-sim-6", "B-sim-60", "B-sim-600", "B-sim-ud", "B-real-pionier"]
@@ -162,7 +163,8 @@ def build():
                       f"{PY} {HERE}/imaging/run_{c}.py gate --case {k}" for k in I_FACTOR for c in ("virgil", "ehtim"))
                    + f" && {PY} {HERE}/imaging/compare.py gate-report"], runner="untimed"))
     s.append(Spec(1, "orbit", "all", "both", "gate", 300, 0, 1,
-                  [PY, str(HERE / "orbit" / "gates.py")], runner="untimed"))
+                  ["bash", "-c", f"cd {HERE}/orbit && {PY} gates.py prepare && julia -t 1 --project=julia gate_octofitter.jl "
+                   f"&& {PY} gates.py virgil && {PY} gates.py compare"], runner="untimed"))
 
     # ---- binary building blocks ----
     def b_t2(prio, cfg, cases):
@@ -335,7 +337,7 @@ def run_one(sp):
         return []
     if sp.runner == "orbit":
         code, case, config, threads, rounds = sp.argv
-        cmd, out = o_cmd(code, case, config, threads, ORBIT_RUNS / f"{case}_{config}_t{threads}_{code}",
+        cmd = o_cmd(code, case, config, threads, ORBIT_RUNS / f"{case}_{config}_t{threads}_{code}",
                          rounds if code == "octofitter" else None)
         res = common.timed_process(cmd, threads=threads, timeout=1800, wrapper=None if TEST["no_wrapper"] else "pyslot")
         row = common.row_from_process(res, case=case, comparison="orbit", code=code, config=config, threads=threads,
@@ -365,7 +367,16 @@ def write_not_run(sp, reason):
 
 
 def execute(specs):
-    t0 = time.time()
+    done_keys, prev_h, prev_rows = set(), 0.0, {}
+    if RESUME and LOG.exists():     # continue after a crash: skip specs already logged, keep the elapsed time
+        for l in LOG.read_text().splitlines():
+            d = json.loads(l)
+            if "proc" in d:
+                prev_rows.setdefault(d["key"], []).extend(d["rows"])
+            if "proc" in d or d.get("status") == "not_run":
+                done_keys.add(d["key"])
+            prev_h = max(prev_h, d.get("elapsed_h", 0.0))
+    t0 = time.time() - prev_h * 3600
     RAW.mkdir(parents=True, exist_ok=True)
     done_marker = RAW.parent / "DONE"
     if TEST["tiny"] or TEST["no_wrapper"]:
@@ -390,7 +401,9 @@ def execute(specs):
         n_proc = {}
         for sp in blk:
             produced[sp.key] = []
-            n_proc[sp.key] = 3
+            n_proc[sp.key] = 0 if sp.key in done_keys else 3
+            if sp.key in done_keys:
+                produced[sp.key] = prev_rows.get(sp.key, [])
             if sp.runner == "not_run":
                 write_not_run(sp, sp.not_run_reason)
         for i in range(3):
@@ -441,17 +454,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--run", action="store_true")
+    ap.add_argument("--resume", action="store_true", help="continue a crashed run: skip specs already in the log")
     ap.add_argument("--only", nargs="*", default=None, help="TEST ONLY: run just the specs whose key contains one of these")
     ap.add_argument("--tiny", action="store_true", help="TEST ONLY: --size tiny for binary/imaging runners")
     ap.add_argument("--no-wrapper", action="store_true", help="TEST ONLY: no pyslot wrapper (run inside pyquick)")
     ap.add_argument("--out-dir", default=None, help="TEST ONLY: rows/log/marker go here instead of results/")
     a = ap.parse_args()
-    global RAW, LOG
+    global RAW, LOG, RESUME
     if a.out_dir:
         RAW, LOG = Path(a.out_dir) / "raw", Path(a.out_dir) / "matrix_log.jsonl"
         TEST["out"] = RAW
     TEST.update(tiny=a.tiny, no_wrapper=a.no_wrapper)
     specs = ordered(finalise(build()))
+    if a.resume:
+        RESUME = True
     if a.only:
         specs = [x for x in specs if any(o in x.key for o in a.only)]
     if a.dry_run:
