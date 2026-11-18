@@ -50,7 +50,8 @@ the checks can and cannot show, how the evidence is recorded, and how the
    PMOIRED's ring precision, [P3](pmoired.md)).
 5. **Disagreements are findings, never tolerances.** We never loosen a
    tolerance to hide one. Each is kept as a test (pinned behaviour plus a
-   strict `xfail` for the fix), fixed in virgil by a PR, or reported upstream.
+   strict `xfail` for the fix), fixed in virgil by a PR, or reported upstream
+   (with standalone reproducers in [Upstream bug reports (MWEs)](upstream_bugs.md)).
 6. **Reviews are checked like findings.** An adversarial review (by a
    person or a model) is a list of claims, not verdicts. Reproduce each
    claim, with a test or a number, before ruling on it. Anything high-stakes
@@ -81,7 +82,8 @@ Four guards reduce the risk:
 
 External packages written by other people (PMOIRED, CANDID, fouriever,
 orbitize!, eht-imaging, MPoL) are a stronger check still. Each has its own
-page under Method.
+page under Method, and defects found in those packages are collected with
+copy-pasteable minimal working examples in [Upstream bug reports (MWEs)](upstream_bugs.md).
 
 ## Two kinds of grounding
 

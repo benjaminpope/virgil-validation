@@ -1,17 +1,14 @@
 ## Outside the trust graph
 
-- **Bandwidth smearing.** virgil models it (`virgil.models.smeared_model`,
-  documented in its `spectro_observables.md`), but nothing here checks that
-  model independently: not independently validated. PMOIRED and CANDID model
-  smearing too, and fouriever can; none has been compared with virgil's here.
 - **harmonix's maps.** Only virgil's wrapper is checked here; the maps are
   harmonix's to validate.
 - **AMIGO DISCO mode bases.**
-- **Polar-disk GP convenience helpers.** `virgil.fields.polar_interpolate` is validated end to end through `MultipoleField.evaluate` rather than as its own graph node; `virgil.models.RadialGPFunction` and the NumPyro prior-dictionary builders `virgil.models.gp_priors` and `virgil.fields.multipole_field_priors` are not registered separately.
 - **Coarse-to-fine uv cut (innovation register B4).** Each level of a multi-resolution radio fit cuts the uv data to its
   grid's Nyquist radius. Experimental in virgil's `design/radio_imaging_innovations.md` (no precedent found, not yet
-  built), so there is nothing to validate yet: not yet validated. The CLEAN start and the staging of nuisance and image
-  fits (B4's other parts) are published practice and have no independent check here either.
+  built), so there is nothing to validate yet: not yet validated. B4's published parts are now independently checked here:
+  the multi-scale CLEAN cold start (`tests/test_alma_clean.py`, `tests/test_radio_trust_casa.py`) and three-stage
+  calibration-nuisance plus image fitting (`virgil.radio.fit_staged_nuisances` / `StagedFit` in
+  `tests/test_042_lcurve_ensemble_radio.py`, with Stage 3's `kkt_report` nuisance normalization recorded as open finding `F29`).
 - **Non-scientific, CLI, plotting, and legacy surfaces.** Plotting helpers (`virgil.plotting.*`, matplotlib styling `STYLE`),
   command-line entry points (`virgil.pipeline.cli`), the deprecated `oifits_implaneia` compatibility shim
   (`virgil.legacy.oifits_implaneia.*`), static scalar/tuple constants and schema/tolerance registries (`GAIN_GROUPS`,
