@@ -19,14 +19,28 @@ pr:
   - test: tests/test_alma_radio.py::test_read_ms_agrees_with_our_reader_on_im_lup_at_stride_1000
     because: data
     why: the DSHARP IM Lup measurement set (~/data/alma_imlup/ms/IMLup_continuum.ms, several GB, not downloaded in CI)
-    message: IM Lup MS missing
+    message: the IM Lup MS is not here
   - test: tests/test_no_private_ids.py::test_private_collection_id_not_in_tracked_tree
     because: data
-    why: the check reads the private-collections list, which lives outside the repository and not in CI
+    why: nothing to check; the hash list PRIVATE_SHA256 is deliberately empty in the public repo (the one L2 collection was cleared 2026-10-13), so this guard skips everywhere until a private id is added; tests/test_no_private_ids.py::test_the_scan_catches_a_listed_id covers the machinery
     message: no private collection is listed
   - test: tests/test_trackb_astrometry.py::test_every_comparable_epoch_has_a_valid_covariance
     because: data
     why: the Track B ESO binaries (~/data/eso_binaries/trackb) are local; CI has no copy
     message: Track B data are local
 
-weekly: []
+# The weekly run has everything the PR run lacks and adds the slow tests; start from the PR list and add what a
+# weekly run (manual dispatch of this branch) shows, with its recorded reason.
+weekly:
+  - test: tests/test_alma_radio.py::test_read_ms_agrees_with_our_reader_on_im_lup_at_stride_1000
+    because: data
+    why: the DSHARP IM Lup measurement set (~/data/alma_imlup/ms/IMLup_continuum.ms, several GB, not downloaded in CI)
+    message: the IM Lup MS is not here
+  - test: tests/test_no_private_ids.py::test_private_collection_id_not_in_tracked_tree
+    because: data
+    why: nothing to check; the hash list PRIVATE_SHA256 is deliberately empty in the public repo (the one L2 collection was cleared 2026-10-13), so this guard skips everywhere until a private id is added; tests/test_no_private_ids.py::test_the_scan_catches_a_listed_id covers the machinery
+    message: no private collection is listed
+  - test: tests/test_trackb_astrometry.py::test_every_comparable_epoch_has_a_valid_covariance
+    because: data
+    why: the Track B ESO binaries (~/data/eso_binaries/trackb) are local; CI has no copy
+    message: Track B data are local

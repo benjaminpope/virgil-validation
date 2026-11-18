@@ -9,7 +9,7 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-pytestmark = pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+pytestmark = pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
 
 
 @pytest.fixture(scope="module")
@@ -27,7 +27,7 @@ def evidence(tmp_path, *records):
     return path
 
 
-def rec(test, outcome="skipped", reason="", **extra):
+def rec(test, outcome="skipped", reason="the data file is missing", **extra):
     return {"record": "test", "test": test, "objects": ["virgil.a"], "roots": ["mathematics"], "kind": "check",
             "outcome": outcome, **({"reason": reason} if reason else {}), **extra}
 
@@ -38,8 +38,8 @@ def allowlist(tmp_path, pr=(), weekly=()):
     return path
 
 
-def entry(test, because="data", why="the file is not in CI", **extra):
-    return {"test": test, "because": because, "why": why, **extra}
+def entry(test, because="data", why="the file is not in CI", message="file is missing", **extra):
+    return {"test": test, "because": because, "why": why, "message": message, **extra}
 
 
 def run(cs, tmp_path, records, pr=(), weekly=(), job="pr", capsys=None):
@@ -59,7 +59,7 @@ def test_passed_failed_and_xfailed_checks_are_not_skips(cs, tmp_path, capsys):
 
 
 def test_a_listed_skip_passes(cs, tmp_path, capsys):
-    code, out = run(cs, tmp_path, [rec("t.py::test_a", reason="data missing")], pr=[entry("t.py::test_a")], capsys=capsys)
+    code, out = run(cs, tmp_path, [rec("t.py::test_a")], pr=[entry("t.py::test_a")], capsys=capsys)
     assert code == 0 and "1 on the pr allow-list" in out
 
 
@@ -85,7 +85,7 @@ def test_an_entry_that_states_a_message_covers_only_a_skip_that_says_it(cs, tmp_
     assert run(cs, tmp_path, [rec("t.py::test_a", reason="casatools or the IM Lup MS missing")], pr=listed, capsys=capsys)[0] == 0
     code, out = run(cs, tmp_path, [rec("t.py::test_a", reason="No module named 'casatasks'")], pr=listed, capsys=capsys)
     assert code == 1 and "No module named" in out
-    assert run(cs, tmp_path, [rec("t.py::test_a")], pr=listed, capsys=capsys)[0] == 1  # no recorded reason: not covered
+    assert run(cs, tmp_path, [rec("t.py::test_a", reason="")], pr=listed, capsys=capsys)[0] == 1  # no recorded reason: not covered
 
 
 def test_a_test_with_several_claims_counts_once(cs, tmp_path, capsys):
@@ -105,10 +105,16 @@ def test_a_stale_entry_is_reported_but_does_not_fail(cs, tmp_path, capsys):
         entry("t.py::test_a", because="slow"),
         entry("t.py::test_a", because="it is flaky"),
         entry("t.py::test_a", why=""),
-        {"test": "t.py::test_a", "because": "data"},
+        {"test": "t.py::test_a", "because": "data", "message": "missing"},
+        entry("t.py::test_a", message=""),
+        entry("*"),  # covers every skip
+        entry("tests/*"),
+        entry("t.py::*"),
+        entry("*::test_a"),
+        entry("t.py"),
     ],
 )
-def test_an_entry_needs_an_allowed_reason_and_a_why(cs, tmp_path, bad):
+def test_an_entry_needs_an_allowed_reason_a_why_a_message_and_a_test_that_is_named(cs, tmp_path, bad):
     with pytest.raises(ValueError):
         cs.load_allowlist(allowlist(tmp_path, pr=[bad]), "pr")
 

@@ -15,8 +15,8 @@ An allow-list entry has
               literal, so a parametrized id such as ``test_x[True]`` is written as is)
     because:  ``package`` (CI does not install it) or ``data`` (CI does not have it): nothing else
     why:      one line saying which package or file, and how CI would get it
-    message:  optional text the recorded skip reason must contain, so that a test allowed
-              because a file is absent cannot go on skipping for another reason unnoticed
+    message:  text the recorded skip reason must contain, so that a test allowed because a file
+              is absent cannot go on skipping for another reason unnoticed (required)
 
 A skip that is not covered is a gap: either CI should run the check (fix the environment or the
 test), or it belongs on the list with a reason. Entries that no longer match a skip are listed
@@ -50,9 +50,15 @@ def load_allowlist(path, job):
         raise ValueError(f"{path}: unknown section(s) {sorted(unknown)}; the sections are {list(JOBS)}")
     entries = data.get(job) or []
     for entry in entries:
-        missing = [k for k in ("test", "because", "why") if not str(entry.get(k) or "").strip()]
+        missing = [k for k in ("test", "because", "why", "message") if not str(entry.get(k) or "").strip()]
         if missing:
             raise ValueError(f"{path}: {job} entry {entry.get('test')!r} lacks {missing}")
+        file_part, sep, name_part = str(entry["test"]).partition("::")
+        if not sep or not file_part.replace("*", "") or not name_part.replace("*", ""):
+            raise ValueError(
+                f"{path}: {job} entry {entry['test']!r} is too loose: name a test file and a test (path.py::test_name), "
+                "with * only inside either part"
+            )
         if entry["because"] not in BECAUSE:
             raise ValueError(
                 f"{path}: {job} entry {entry['test']!r}: because is {entry['because']!r}; the only allowed reasons are {list(BECAUSE)}"

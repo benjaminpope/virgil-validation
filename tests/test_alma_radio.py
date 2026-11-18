@@ -153,9 +153,8 @@ def test_read_ms_agrees_with_our_reader_on_the_synthetic_ms(which, ms_clean, ms_
 
 
 @pytest.mark.validates("virgil.radio.ComplexVisData.read_ms", roots=["casa"], tier="B", headline="max_rel_vis")
-@pytest.mark.skipif(
-    not _have_casa("alma") or _virgil_casatools() is None or not IMLUP_MS.exists(), reason="casatools or the IM Lup MS missing"
-)
+@pytest.mark.skipif(not _have_casa("alma") or _virgil_casatools() is None, reason="casatools missing here or in .venv-alma")
+@pytest.mark.skipif(not IMLUP_MS.exists(), reason="the IM Lup MS is not here")  # its own reason, so that a broken CASA is not read as absent data
 def test_read_ms_agrees_with_our_reader_on_im_lup_at_stride_1000(tmp_path):
     """The same on the 26 ddids and 7 observations of DSHARP IM Lup, stride 1000
     (42,424 points); `DATA_DESC_ID` k is label k, and each is in one observation."""
