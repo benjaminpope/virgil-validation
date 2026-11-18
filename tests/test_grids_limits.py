@@ -95,12 +95,11 @@ def test_nsigma_uses_the_ratio_to_the_true_chi2(true):
 
 
 @pytest.mark.validates("virgil.inference.laplace_cov", roots=["mathematics"])
+@pytest.mark.parametrize("dataset", ["companion"], indirect=True)  # with no companion the point is not a minimum
 def test_laplace_cov_is_the_inverse_hessian_of_half_chi2(dataset):
     """laplace_cov of the binary at (dra, ddec, flux) against the inverse of
     the Hessian of chi2/2 from our own chi-squared, by central differences."""
     which, data, d = dataset
-    if which != "companion":
-        pytest.skip("with no companion this point is not a minimum, and the Hessian is not positive-definite")
     from virgil.inference import laplace_cov
 
     x0 = np.array([DRA, DDEC, FLUX])
@@ -145,12 +144,11 @@ def test_best_flux_and_its_curvature_at_fixed_positions(dataset):
 
 
 @pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"])
+@pytest.mark.parametrize("dataset", ["none"], indirect=True)  # limits are for companion-free data
 def test_absil_limits_by_root_finding(dataset):
     """At each position, the flux f at which nsigma(chi2(f)/chi2(0)) = 3,
     with the number of data points as degrees of freedom (as documented)."""
     kind, data, d = dataset
-    if kind != "none":
-        pytest.skip("limits are for companion-free data")
     xs = np.array([-12.0, -3.0, 5.0, 11.0])
     ys = np.array([-9.0, 2.0, 8.0])
     samples = {"dra": xs, "ddec": ys, "flux": np.logspace(-4, -1, 8)}
@@ -173,6 +171,7 @@ def test_absil_limits_by_root_finding(dataset):
 
 @pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"])
 @pytest.mark.parametrize("start", [1e-6, 0.5, 0.95], ids=["far-below", "far-above", "saturated"])
+@pytest.mark.parametrize("dataset", ["none"], indirect=True)  # limits are for companion-free data
 def test_absil_limits_from_a_single_bad_start(dataset, start):
     """The flux axis only sets the start (virgil#191): a single value far
     below or far above the limit, where the significance saturates (a
@@ -180,8 +179,6 @@ def test_absil_limits_from_a_single_bad_start(dataset, start):
     decades, bisects 14 times in log flux and returns the midpoint, so its
     limit is within 10^(1/2^15) - 1 = 7.0e-5 of the root."""
     kind, data, d = dataset
-    if kind != "none":
-        pytest.skip("limits are for companion-free data")
     xs, ys = np.array([-12.0, 5.0]), np.array([-9.0, 8.0])
     samples = {"dra": xs, "ddec": ys, "flux": [start]}
     got = np.asarray(absil_limits(data, vm.BinaryModelCartesian, samples, sigma=3.0))

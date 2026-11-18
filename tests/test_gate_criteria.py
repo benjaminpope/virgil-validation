@@ -8,10 +8,12 @@ This file checks that every gate script is wired to it and that nothing of the e
 import argparse
 import importlib.util
 import json
+import os
 import pathlib
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 import yaml
@@ -198,7 +200,8 @@ def test_the_radio_trust_gate(tmp_path):
 
 def test_gate_scripts_have_no_undefined_names():
     """A blanket edit once left ``regime`` undefined in sbc_v2.run, which the refusal tests never reach."""
-    ruff = shutil.which("ruff")
+    # the interpreter's own bin first: CI runs .venv/bin/python without activating the environment
+    ruff = shutil.which("ruff", path=f"{pathlib.Path(sys.executable).parent}:{os.environ.get('PATH', '')}")
     if ruff is None:
         pytest.skip("ruff is not installed")
     files = [f"scripts/{n}.py" for n in [*GATES, "trackb_summary"]]  # the aggregator is a script of its own

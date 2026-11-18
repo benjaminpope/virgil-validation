@@ -1,0 +1,32 @@
+# Checks (tests with a `validates` marker) that CI may skip, and why.
+#
+# scripts/check_skips.py reads the evidence file of a CI run and fails when a skipped check is
+# not covered here. A skip is allowed only because
+#   package: CI does not install a package the check needs, or
+#   data:    CI does not have a file the check needs.
+# Anything else (a skip for a parameter combination, a check disabled by an environment variable,
+# an import that fails in CI) is a gap: fix the check or the environment, do not add it here.
+#
+# Entry: test (an id, or a glob where * matches any run of characters; brackets are literal),
+# because (package | data), why (one line: what is missing and how CI would get it), message
+# (optional: text the recorded skip reason must contain, so the check cannot start skipping
+# for another reason unnoticed).
+#
+# pr:     the fast tests (-m "not slow"), on pull requests and pushes, against the pinned virgil
+# weekly: the full suite, weekly and on manual runs, against virgil's main
+
+pr:
+  - test: tests/test_alma_radio.py::test_read_ms_agrees_with_our_reader_on_im_lup_at_stride_1000
+    because: data
+    why: the DSHARP IM Lup measurement set (~/data/alma_imlup/ms/IMLup_continuum.ms, several GB, not downloaded in CI)
+    message: IM Lup MS missing
+  - test: tests/test_no_private_ids.py::test_private_collection_id_not_in_tracked_tree
+    because: data
+    why: the check reads the private-collections list, which lives outside the repository and not in CI
+    message: no private collection is listed
+  - test: tests/test_trackb_astrometry.py::test_every_comparable_epoch_has_a_valid_covariance
+    because: data
+    why: the Track B ESO binaries (~/data/eso_binaries/trackb) are local; CI has no copy
+    message: Track B data are local
+
+weekly: []
