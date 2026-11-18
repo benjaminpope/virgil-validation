@@ -20,33 +20,47 @@ Pinned by `tests/test_candid.py`.
 | primary | uniform disk, `diam*` (mas), fitted before mapping | any model; here `UniformDisk` |
 | Fourier sign | exp(−2πi(ux + vy)/λ) | the same (OIFITS) |
 | observables | V², closure phase and T3 amplitude by default | V² and closure phase |
-| bandwidth smearing | on, from `EFF_BAND` (3-point top hat or Gaussian) | off |
-| smearing average (†) | `Nsmear` = 3: λ + (−½, 0, +½) Δλ, end points included; V² is the mean of \|V\|², T3 the mean bispectrum over the three | virgil's `smeared_model` (not independently validated here); `scripts/oidb_fit.py` `Smeared`: complex V averaged over 7 mid-points of the top hat, then \|·\|² and the closure phase of the mean |
-| resolved flux (†) | `fres`, percent of the primary, in the normalisation only: V = (V* + f V_c) / (1 + f + fres) | no virgil model; `scripts/oidb_fit.py` `CandidBinary`: `resolved`, the same, as a fraction |
+| bandwidth smearing | on, from `EFF_BAND` (`dwavel` in µm; disabled when `Nsmear <= 2`) | off by default; `OIData(..., bandwidth=True)` or `virgil.models.smeared_model` |
+| smearing average | `Nsmear` = 3 (default): coherent equal-weight average $\overline{V} = \frac{1}{3}\sum_{s \in \{-1/2, 0, +1/2\}} V(\lambda_0 + s\,\Delta\lambda)$ (pinned via `candid_bridge.chi2` to $\chi^2_r = 7\times 10^{-8}$ in `test_042_spiral_and_smearing.py`), then $\|\overline{V}\|^2$ and $\arg(\overline{V}_{12}\overline{V}_{23}\overline{V}_{13}^*)$; spectral variance $\Delta\lambda^2 / 6$ | `virgil.models.smeared_model`: exact coherent uniform-wavenumber boxcar $\sin(\pi x)/(\pi x)$ (`np.sinc(x)`) with $x = \Delta\lambda\,(u\,\Delta\alpha + v\,\Delta\delta)/\lambda_0^2$ and spectral variance $\Delta\lambda^2 / 12$ (ledger [D23](findings.md#D23)) |
+| resolved flux (†) | `fres`, percent of the primary, in the normalisation only: V = (V* + f V_c) / (1 + f + fres) | `virgil.models.Resolved` inside a `System`, as a flux ratio |
 | χ²_r | mean of squared normalised residuals | χ² / number of data points |
 | closure-phase residual | plain difference Δ | chord 2 sin(Δ/2) |
 | significance | χ² tail (`chi2.sf`, then `chdtri`), two-sided Gaussian | the same (`gammaincc`, then `ndtri`); saturates instead of `inf` |
 | degrees of freedom (Absil) | number of data points | the same |
 | fit uncertainties | scaled by √χ²_r, χ²_r = χ²/(N − n_fit + 1) | not scaled |
 
-(†) Read from CANDID's source at `c255e90` (`_VbinSlow` and the Cython
-`_V2binFast`/`_T3binFast`), not pinned by a test. The resolved flux is
-defined as ours. The smearing is not: averaging V² and the bispectrum is not
-the same as averaging V, so the O1 comparison scores De Furio et al.'s
-CANDID flux and resolved-flux values under the 2σ parametric rule, not the
-0.25σ per-epoch rule.
+(†) `fres` is read from CANDID's documentation and `c255e90` behaviour. For
+bandwidth smearing ([D23](findings.md#D23)), CANDID's equal-weight 3-endpoint
+stencil places $2/3$ of the weight on the channel edges $\pm\Delta\lambda/2$,
+giving spectral variance $\Delta\lambda^2 / 6$—twice the $\Delta\lambda^2 / 12$
+variance of a continuous uniform boxcar. Passing variance-matched
+`dwavel = dlambda / sqrt(2)` aligns CANDID `Nsmear = 3` with
+`virgil.models.smeared_model` to $\chi^2_r = 0.04$, whereas unscaled
+`dwavel = dlambda` over-smears ($\chi^2_r > 15$). For that reason, the O1
+comparison scores De Furio et al.'s CANDID flux and resolved-flux values under
+the 2σ parametric rule rather than the 0.25σ per-epoch rule.
 
-The bridge switches CANDID to V² and closure phases, zero channel width (no
-smearing) and one core. With those settings, the only difference of
-definition left is the closure-phase residual (ledger D5). On V²-only files
-the two codes agree to the float32 precision of the file.
+The bridge switches CANDID to V² and closure phases, zero channel width by
+default (`dwavel_um=0.0`, unless `dwavel_um` and optional `n_smear` are passed
+explicitly to `candid_bridge.chi2`) and one core. With those default unsmeared
+settings, the only difference of definition left is the closure-phase residual
+(ledger [D5](findings.md#D5)); with smearing enabled, see ledger
+[D23](findings.md#D23). On unsmeared V²-only files the two codes agree to the
+float32 precision of the file.
 
 ## Differences that are not errors
 
-* **D5, closure-phase residual.** The plain difference and the chord agree
+* **D5, closure-phase residual ([D5](findings.md#D5)).** The plain difference and the chord agree
   to O(Δ³). Near a good fit the two χ² values match to ~1e-6. Far from the
   data, where model closure phases are tens of degrees off, they differ by
   up to 1e-3.
+* **D23, bandwidth smearing ([D23](findings.md#D23)).** CANDID's default
+  `Nsmear = 3` averages complex visibilities coherently over three equal-weight
+  endpoints ($\lambda_0 - \Delta\lambda/2, \lambda_0, \lambda_0 + \Delta\lambda/2$,
+  spectral variance $\Delta\lambda^2 / 6$), whereas `virgil.models.smeared_model`
+  integrates analytically over a continuous uniform wavenumber boxcar
+  (variance $\Delta\lambda^2 / 12$). Matching variances (`dwavel = dlambda / sqrt(2)`)
+  or using dense `Nsmear` reconciles them to leading order in $\Delta\lambda / \lambda_0$.
 * **Significance at the float64 limit.** Both take the two-sided Gaussian
   equivalent of the χ² tail and agree to 1e-12 relative up to 27σ. Beyond
   ~37σ, where the tail probability underflows, CANDID returns `inf` (as
