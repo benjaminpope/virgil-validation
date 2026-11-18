@@ -165,3 +165,32 @@ def test_trust_page_and_method_page_carry_the_table(tmp_path):
     assert method.startswith("<!-- Generated") and "# The roots of trust" in method
     assert 'class="n"' not in method  # no counts on the method page
     assert "(index.md)" in method or "[How trust is built](index.md)" in method
+
+
+def _skyline():
+    """``scripts/trust_skyline.py`` (the Trust page's skyline), or skip until it is on this branch."""
+    path = ROOT / "scripts" / "trust_skyline.py"
+    if not path.exists():
+        pytest.skip("scripts/trust_skyline.py is not on this branch yet")
+    sky = _load("trust_skyline")
+    if not hasattr(sky, "foundation_counts"):
+        pytest.skip("trust_skyline.foundation_counts is not on this branch yet")
+    return sky
+
+
+def test_parts_equal_the_skyline_foundation_counts_over_parts_layers():
+    """The table's Parts and the skyline's per-layer counts are one number: the skyline's, summed over the
+    layers of virgil (not ``references``), is the table's Parts for the same model."""
+    sky = _skyline()
+    layers = {"virgil.a": "models", "virgil.b": "inference", "virgil.c": "inference", "virgil.d": "models",
+              "crosscheck.ref": "references"}
+    model = {"nodes": {k: {**v, "layer": layers[k]} for k, v in MODEL["nodes"].items()}}
+    registry = table.load_registry(ROOT / "trust" / "roots.yml")
+    counts = table.class_counts(model, registry)
+    found = sky.foundation_counts(model, registry, trust.ROOT_ALIAS)
+    for class_id, value in counts.items():
+        if value is None:  # the weak class is counted nowhere
+            assert class_id not in found
+            continue
+        per_layer = found.get(class_id, {})
+        assert value[0] == sum(n for layer, n in per_layer.items() if layer != "references"), class_id
