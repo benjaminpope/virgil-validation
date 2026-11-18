@@ -2315,3 +2315,64 @@ def test_the_causes_walk_visits_each_node_once_not_once_per_route(trust, tmp_pat
     got, model = verdicts(trust, tmp_path, recs, {"nodes": nodes})
     assert got["virgil.top"] == "relies-unverified"
     assert {b["id"] for b in model["nodes"]["virgil.top"]["because"]} == {"crosscheck.l0_0", "crosscheck.l0_1"}
+
+
+def test_a_cycle_through_via_and_depends_blames_the_other_member_not_itself(trust, tmp_path):
+    """Review of #266: ``a`` is checked via ``b``, and ``b`` depends on ``a``. Neither may list itself as its cause."""
+    graph = {"nodes": {
+        "crosscheck.a": {"layer": "references"},
+        "crosscheck.b": {"layer": "references", "depends": ["crosscheck.a"]},
+    }}
+    recs = [
+        record("t::a", "crosscheck.a", kind="reference", via=["crosscheck.b"]),
+        record("t::b", "crosscheck.b", kind="reference"),
+    ]
+    got, model = verdicts(trust, tmp_path, recs, graph)
+    assert got["crosscheck.a"] == "relies-unverified" and got["crosscheck.b"] == "relies-unverified"
+    for name in ("crosscheck.a", "crosscheck.b"):
+        assert name not in {b["id"] for b in model["nodes"][name]["because"]}
+    assert [b["id"] for b in model["nodes"]["crosscheck.a"]["because"]] == ["crosscheck.b"]
+
+
+def test_a_reference_cycle_is_listed_beside_an_unchecked_dependency(trust, tmp_path):
+    """A part with an unchecked dependency and a check through a reference cycle lists both causes."""
+    graph = {"nodes": {
+        "crosscheck.a": {"layer": "references"},
+        "crosscheck.b": {"layer": "references"},
+        "virgil.u": {"layer": "models"},
+        "virgil.x": {"layer": "models", "depends": ["virgil.u"]},
+    }}
+    recs = [
+        record("t::a", "crosscheck.a", kind="reference", via=["crosscheck.b"]),
+        record("t::b", "crosscheck.b", kind="reference", via=["crosscheck.a"]),
+        record("t::x", "virgil.x", via=["crosscheck.a"]),
+    ]
+    got, model = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.x"] == "relies-unverified"
+    cause = {b["id"] for b in model["nodes"]["virgil.x"]["because"]}
+    assert "virgil.u" in cause and cause & {"crosscheck.a", "crosscheck.b"}
+
+
+def test_verdicts_do_not_depend_on_the_order_the_nodes_are_listed(trust, tmp_path):
+    """The broken targets are a least fixed point: the same graph in any listing order gives the same verdicts."""
+    nodes = {
+        "crosscheck.a": {"layer": "references"},
+        "crosscheck.b": {"layer": "references", "depends": ["crosscheck.a"]},
+        "crosscheck.bad": {"layer": "references"},
+        "virgil.x": {"layer": "models", "depends": ["crosscheck.b"]},
+        "virgil.y": {"layer": "models"},
+        "virgil.z": {"layer": "models", "depends": ["virgil.y"]},
+    }
+    recs = [
+        record("t::a", "crosscheck.a", kind="reference", via=["crosscheck.b"]),
+        record("t::b", "crosscheck.b", kind="reference"),
+        record("t::bad", "crosscheck.bad", kind="reference", outcome="failed"),
+        record("t::x", "virgil.x"),
+        record("t::y", "virgil.y", via=["crosscheck.bad"]),
+        record("t::z", "virgil.z"),
+    ]
+    results = []
+    for order in (list(nodes), list(reversed(list(nodes))), sorted(nodes, key=lambda k: k[::-1])):
+        got, model = verdicts(trust, tmp_path, recs, {"nodes": {k: nodes[k] for k in order}})
+        results.append((got, {k: [b["id"] for b in v["because"]] for k, v in model["nodes"].items()}))
+    assert results[0] == results[1] == results[2]

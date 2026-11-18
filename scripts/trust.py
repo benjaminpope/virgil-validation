@@ -848,7 +848,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         verdict = o["status"]
         walk = _new_walk(name)
         via_causes = _expand_via_blocked(o["via_blocked"], walk) if o["status"] == "ok-via" else set()
-        causes = sorted(problems(name, walk) | via_causes)
+        causes = sorted((problems(name, walk) | via_causes) - {name})  # never its own cause (a via + depends cycle)
         if o["status"] == "ok-via" and not causes:
             # its checks stand on references that are not verified, yet the walk found nothing
             # wrong below them (they only vouch for each other in a cycle): they are the cause
