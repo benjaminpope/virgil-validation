@@ -92,6 +92,7 @@ nav:
           - "Detection statistics": inference/detection.md
           - "Sampling": inference/sampling.md
           - "Small helpers": inference/helpers.md
+          - "Pipelines": inference/pipelines.md
       - Orbits:
           - "Kepler orbits": orbits/kepler.md
           - "Against orbitize!": orbits/orbitize.md
@@ -104,6 +105,7 @@ nav:
   - Method:
       - "How trust is built": method/index.md
       - "Findings": method/findings.md
+      - "Upstream bug reports (MWEs)": method/upstream_bugs.md
       - "Not yet covered": method/coverage.md
       - "The roots of trust": method/roots.md
       - "External packages":
