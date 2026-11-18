@@ -72,7 +72,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P1">P1</span> | `pmoired` | PMOIRED setupFit(auto=True) gives NaN models on files with few channels | to-raise |
 | <span id="P2">P2</span> | `pmoired` | PMOIRED's default ring sampling is not its documented Nr = 100 | to-raise |
 | <span id="P3">P3</span> | `pmoired` | PMOIRED's rings stop at ~1e-4 precision beyond 30 samples per baseline | to-raise |
-| <span id="P4">P4</span> | `candid` | CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation) | to-raise |
+| <span id="P4">P4</span> | `candid` | CANDID's Absil detection limits sit ~1 % below the exact solution of its own criterion (interpolation error) | to-raise |
 | <span id="P5">P5</span> | `fouriever` | fouriever's closure-phase residual is not wrapped, so data straddling +-180 deg give a ~2 pi residual at the true parameters | raised [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 | <span id="P6">P6</span> | `ehtim` | eht-imaging's Obsdata.tlist/bllist return tuples under NumPy 2 when every time group has the same size, so closure phases fail | to-raise |
 | <span id="P7">P7</span> | `orbitize` | orbitize! adds the fitted gamma to companion RVs when primary RVs are present, though its docs say companion RVs are relative to the barycentre | to-raise |
@@ -81,8 +81,8 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="P10">P10</span> | `visr` | vis-r's r_prof_erf2_power_ggap (one Gaussian gap) reads its depth and radius from each other's position in the parameter list | to-raise |
 | <span id="P11">P11</span> | `mpol` | MPoL's log_likelihood docstring writes the normalisation as a sum of w_i, while the code (correctly) uses the sum of ln w_i | to-raise |
 | <span id="P12">P12</span> | `mpol` | MPoL's default NuFFT (torchkbnufft table interpolation) is 6e-4 from the exact transform of its image at 256 pixels, and its taper buffer is float32 | documented |
-| <span id="P13">P13</span> | `oimodeler` | oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90 | to-raise |
-| <span id="P14">P14</span> | `oimodeler` | oimodeler's oimFastRotator parametrizes gravity darkening with rot^0.4 and K = sin(1/3) pi instead of O(omega^2) Roche scaling | to-raise |
+| <span id="P13">P13</span> | `oimodeler` | oimodeler's oimFastRotator places the bright pole about 180 deg from the pa input, relative to the IAU convention we expected | to-raise |
+| <span id="P14">P14</span> | `oimodeler` | oimodeler's oimFastRotator equator-on V^2 anisotropy does not follow O(omega^2) over rot = 0.01..0.04 (log-log slope 0.45 at dim = 64) | to-raise |
 
 ## Mistakes in our own checks
 

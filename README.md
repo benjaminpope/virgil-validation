@@ -127,13 +127,13 @@ Differences with other packages (all in the [Findings](docs/method/findings.md))
 | D6 | fouriever | With unequal closure-phase errors within a group, different generalised inverses of the singular covariance (virgil's is the better calibrated) | definition |
 | D10 | frank, FRAP | Their discrete Hankel transforms (N = 300) are 5e-3 off for a sharp-edged exponential tail, which is not band-limited | definition |
 | P1–P3 | PMOIRED | NaN models with `auto`, ring sampling not the documented Nr, a ~1e-4 ring precision floor ([notes](docs/method/pmoired.md)) | to raise |
-| P4 | CANDID | Absil limits from `detectionLimit` ~1 % low against its own criterion solved exactly ([notes](docs/method/candid.md)) | to raise |
+| P4 | CANDID | Absil limits from `detectionLimit` sit ~1 % below the exact solution of CANDID's own criterion (interpolation error) ([notes](docs/method/candid.md)) | to raise |
 | P5 | fouriever | Closure-phase residual not wrapped: data straddling ±180° give a ~2π residual at the true binary ([notes](docs/method/fouriever.md)) | raised, [fouriever#26](https://github.com/kammerje/fouriever/issues/26) |
 | P6 | eht-imaging | Under NumPy 2, closure phases fail when every time has the same baselines (all simulated data); worked around in our worker | to raise |
 | P7 | orbitize! | Its `read_input` asks for companion RVs relative to the barycentre, but `System.compute_model` adds the fitted γ to them whenever primary RVs from the same instrument are present (and not otherwise): the companion's model moves by γ ([notes](docs/method/orbitize.md)) | to raise |
 | P9 | oimodeler | The image-based `ExpRing` is 8e-3 from the exact transform of its own documented profile at every grid size (virgil's `ExpTail` agrees with the exact value to 1e-14) | to raise (unexplained) |
 | P10 | vis-r | `r_prof_erf2_power_ggap` (one gap) reads depth and radius from each other's place in the parameter list; `..._ggap2` is correct | to raise |
-| P13–P14 | oimodeler | `oimFastRotator` flips the visible pole's PA by 180° via `np.rot90` and scales gravity darkening as `rot^0.4` instead of physical `O(ω²)` Roche scaling ([notes](docs/models/rapid_rotators.md)) | to raise |
+| P13–P14 | oimodeler | `oimFastRotator` places the bright pole about 180° from the `pa` input, relative to the IAU convention we expected (P13), and its equator-on `V²` anisotropy does not follow `O(ω²)` over `rot = 0.01–0.04` at `dim = 64` (P14, grid convergence not checked) ([notes](docs/models/rapid_rotators.md)) | to raise |
 
 Nothing else disagreed: every primitive, convention (East, North, position
 angle, OIFITS sign, T3 orientation), the OIFITS reader, the fitter, the

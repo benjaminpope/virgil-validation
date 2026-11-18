@@ -268,7 +268,7 @@
   status: fixed
 
 - id: P4
-  title: CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation)
+  title: CANDID's Absil detection limits sit ~1 % below the exact solution of its own criterion (interpolation error)
   objects: [candid]
   ruling: external:candid
   kind: numerics (optimistic by ~0.01 mag; negligible in practice)
@@ -683,19 +683,19 @@
   status: open
 
 - id: P13
-  title: oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90
+  title: oimodeler's oimFastRotator places the bright pole about 180 deg from the pa input, relative to the IAU convention we expected
   objects: [oimodeler]
   ruling: external:oimodeler
-  kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: calling np.rot90(im) before oimComponentImage maps row 0 to South places the hot visible pole at pa + 180 deg instead of pa, inverting every closure phase sign)'
+  kind: 'convention difference (oimodeler 0.8.1: the hot visible pole lands about 180 deg from pa under the IAU convention we expected, which inverts every closure phase sign relative to that convention; fastRotator calls np.rot90(im) before oimComponentImage maps row 0 to South, which may be the source; oimodeler''s documented pa convention not checked)'
   referee: mathematics (translation-invariant first-lobe closure-phase sign against crosscheck.elr.cloud); pmoired (rotastar.Vrota)
   evidence: [tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion]
   status: to-raise
 
 - id: P14
-  title: oimodeler's oimFastRotator parametrizes gravity darkening with rot^0.4 and K = sin(1/3) pi instead of O(omega^2) Roche scaling
+  title: oimodeler's oimFastRotator equator-on V^2 anisotropy does not follow O(omega^2) over rot = 0.01..0.04 (log-log slope 0.45 at dim = 64)
   objects: [oimodeler]
   ruling: external:oimodeler
-  kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: setting a = (2/3) rot^0.4 and K = sin(1/3) pi gives an O(omega^0.4) slow-rotation equator-on V^2 anisotropy across rot = 0.01..0.04 instead of the physical O(omega^2) Roche/ELR11 centrifugal scaling, over-predicting slow-rotator anisotropy by >100x at rot = 0.01)'
+  kind: 'numerics (oimodeler 0.8.1, dim = 64 only: log-log slope 0.45 across rot = 0.01..0.04 where Roche/ELR11 centrifugal scaling gives 2; fastRotator sets a = (2/3) rot^0.4 and K = sin(1/3) pi, which may be the cause; grid convergence not checked, so a pixelization floor is not excluded)'
   referee: mathematics (Roche/von Zeipel/ELR11 O(omega^2) centrifugal scaling of equator-on V^2 anisotropy)
   evidence: [tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling]
   status: to-raise
