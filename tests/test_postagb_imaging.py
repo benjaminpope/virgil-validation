@@ -241,3 +241,14 @@ def test_hr4049_zenodo_file_has_crpix_64_on_128_pixels():
     assert z["data"].shape == (128, 128) and hdr["CRPIX1"] == hdr["CRPIX2"] == 64
     assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
     assert cfg["star_at_crpix"] and cfg["cmp_mask_mas"] == 25.0 and cfg["mask_mas"] == 40.0
+
+
+@needs_multipole
+def test_fit_radius_covers_the_whole_support_through_the_inclination():
+    """The polar/disc grids reach mask_mas on the sky along the minor axis too (HR 4049: 40 mas support, 25 mas plot extent)."""
+    cfg = dict(mask_mas=40.0, half_mas=25.0)
+    r = P.fit_radius_mas(cfg, 43.8)
+    assert r * np.cos(np.radians(43.8)) == pytest.approx(40.0) and r > cfg["half_mas"]
+    assert P.fit_radius_mas(cfg, 0.0) == pytest.approx(40.0)
+    assert P.fit_radius_mas(cfg, 89.0) == pytest.approx(40.0 / np.cos(np.radians(75.0)))  # capped
+    assert P.fit_radius_mas(dict(half_mas=18.0), 0.0) == 18.0  # no support radius: the plot extent

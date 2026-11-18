@@ -599,6 +599,12 @@ def scene_priors(cfg, scene, env_fixed_geometry=False):
     return priors
 
 
+def fit_radius_mas(cfg, inc_deg):
+    """Radius of the polar / radial-profile grids of ``fit_polar`` and ``fit_disc_at``: the circular sky support (``mask_mas``)
+    seen through the disc's inclination is an ellipse of semi-minor axis r cos(i), so r = mask_mas / cos(i) covers it (i capped at 75 deg)."""
+    return float(cfg.get("mask_mas", cfg["half_mas"])) / np.cos(np.radians(min(float(inc_deg), 75.0)))
+
+
 def continue_blob(b0, n_want):
     """``b0`` (the start image: a circular Gaussian about the array centre plus a floor) on an ``n_want`` grid with the same centre.
 
@@ -630,17 +636,14 @@ def grid_setup(cfg, data, args, rot=0.0):
     fov = cfg["fov_mas"] * (0.5 if args.smoke else 1.0)
     start = starting_image(data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov)
     # starting_image never exceeds the interferometric field of view (lambda / B_min), whatever ``largest_mas`` says, so a larger
-    # requested field (HR 4049: 34 mas against 81 mas) is padded here, keeping the star at the centre: zeros, except for ``fov_override``
-    # targets (HR 4049), whose blob is continued analytically (``continue_blob``).
+    # requested field (HR 4049: 34 mas against 81 mas) is padded here, keeping the star at the centre, with the blob continued
+    # analytically (``continue_blob``).
     n0, n_want = start.env.log_brightness.shape[0], int(np.ceil(fov / scale))
     n_want += (n_want - n0) % 2
     if n_want > n0:
         b0 = np.exp(np.asarray(start.env.log_brightness))
-        pad = (n_want - n0) // 2
-        # HR 4049 (fov_override) continues the blob analytically: zero padding left a hard template edge at the data's field of view.
-        # Every other target keeps the zero pad, so its GP template, and the published fits built on it, do not change.
-        b1 = continue_blob(b0, n_want) if cfg.get("fov_override") else np.pad(b0, pad, constant_values=0.0)
-        env = Image.from_brightness(b1, start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
+        # The blob is continued analytically (every padded target): zero padding left a hard template edge at the data's field of view.
+        env = Image.from_brightness(continue_blob(b0, n_want),start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
         start = System(star=start.star, env=env)
     half = start.env.log_brightness.shape[0] * float(start.env.pixel_scale_mas) / 2
     if half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # the saved field and support radii are config values, so check the grid itself
@@ -963,7 +966,7 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
         sigmas, lens_r, lens_t = sigmas[:1], lens_r[:1], lens_t[:1]
     mean = field_mean(start_env, support, args)
     pix = float(start_env.pixel_scale_mas)
-    r_max = float(cfg["half_mas"])
+    r_max = fit_radius_mas(cfg, geo["inc_deg"])
     n_r, n_th = 40, 32
     opts = dict(max_steps=15) if args.smoke else {}
 
@@ -1025,7 +1028,7 @@ def fit_disc_at(cfg, data, args, geo, r_in, f_env0, d_env, pix, npix):
     lens = pixel_floor_lengths(float(pix), unit, mults=(0.5, 1.0, 2.0, 4.0))
     if args.smoke:
         sigmas, lens = sigmas[:1], lens[:1]
-    r_out = float(cfg["half_mas"])
+    r_out = fit_radius_mas(cfg, geo["inc_deg"])
     opts = dict(max_steps=15) if args.smoke else {}
 
     probe = MultipoleDisk(RadialGP(r_in, r_out, sigma=1.0, ell=unit), harmonics=Harmonics(re=0.0, im=0.0), inc=geo["inc_deg"], pa=geo["pa_deg"], n_r=48)
@@ -1284,7 +1287,7 @@ def image_one(args, out, strat):
     f_disk = f_env if strat == "disc+res" else None
     n_ = bright.shape[0]
     yy, xx = np.mgrid[:n_, :n_]
-    outer = np.hypot(xx - (n_ - 1) / 2, yy - (n_ - 1) / 2) * pix > 0.8 * cfg["half_mas"]  # env flux near the field edge
+    outer = np.hypot(xx - (n_ - 1) / 2, yy - (n_ - 1) / 2) * pix > 0.8 * cfg.get("mask_mas", cfg["half_mas"])  # env flux near the edge of the support
     f_outer = (f_env + f_res) * float(bright[outer].sum() / bright.sum()) if bright.sum() > 0 else 0.0
     stars = dict(ud=float(cfg["ud_fix"]), f_env=f_env + f_res, env_index=float(np.asarray(model.env.flux.index)), f_sec=f_sec,
                  f_bg=f_bg, bg_index=float(np.asarray(model.bg.flux.index)) if cfg.get("bg") else None,
