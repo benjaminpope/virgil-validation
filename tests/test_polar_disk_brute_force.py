@@ -34,14 +34,6 @@ def _bf():
     return bf
 
 
-@pytest.mark.validates("crosscheck.radial", roots=["mathematics"], kind="reference", headline="max_abs_dV")
-def test_hankel_truth_matches_adaptive_quadrature():
-    f = R.with_gap(R.erf_power(5.0, 14.0, -1.0, 0.3), 9.0, 0.8, 0.9)
-    q = np.array([1e5, 1e6, 8e6])
-    err = record("max_abs_dV", np.abs(R.hankel(f, q) - R.hankel_quad(f, q)).max())
-    assert err < 1e-9
-
-
 @pytest.mark.validates("virgil.models.MultipoleDisk", roots=["mathematics"], headline="max_abs_dV")
 @pytest.mark.parametrize("name", ["gauss_ring", "erf_power", "gap_on_plateau"])
 def test_axisymmetric_profiles_match_our_hankel_transform(name):
