@@ -370,7 +370,8 @@ def test_virgil_radio_clean_result_invariants_and_model_visibilities(tmp_path):
             if suffix == "image":
                 assert hdul[0].header["BMAJ"] * 3.6e6 == pytest.approx(res.beam[0], rel=1e-5)
                 assert hdul[0].header["BMIN"] * 3.6e6 == pytest.approx(res.beam[1], rel=1e-5)
-            # docs/alma_conventions.md (FITS export): BPA in degrees East of North, BUNIT Jy/beam on image and
+            # docs/alma_conventions.md (FITS export): BPA equals res.beam[2] (the header copies the fitted beam; the East-of-North
+            # orientation itself is not checked here), BUNIT Jy/beam on image and
             # residual, Jy/pixel on model (the PSF has no documented unit). BPA is compared modulo 180 deg.
             assert (hdul[0].header["BPA"] - res.beam[2] + 90.0) % 180.0 - 90.0 == pytest.approx(0.0, abs=1e-8)
             if suffix != "psf":
