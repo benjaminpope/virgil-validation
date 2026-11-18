@@ -23,6 +23,7 @@ Reference values come from other codes or from code written in this repository, 
 (radius, azimuth, height) and carries it to the sky, where `crosscheck.sky` sums it point by point.
 `external_bridge.radial_codes` (`src/external_bridge/radial_codes.py`) calls `frank`, `visr` and `frap` as documented, and each external package (`frank`, `frap`, `oimodeler`, `visr`) is independently checked against closed-form analytic Hankel transforms (2D Gaussian, Airy disk, and thin Bessel ring).
 Tests: [`test_polar_disk_brute_force.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_polar_disk_brute_force.py),
+[`test_reference_radial.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_reference_radial.py) (`crosscheck.radial` against adaptive quadrature),
 [`test_polar_disk_vs_codes.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_polar_disk_vs_codes.py),
 [`test_multipole_companions.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_multipole_companions.py).
 

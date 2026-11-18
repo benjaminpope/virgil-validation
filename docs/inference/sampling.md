@@ -59,3 +59,39 @@ The ranks are uniform despite the divergences, but a calibration resting on
 unhealthy chains is weak. The second campaign changes the mass matrix and the
 ring width to remove them, starts chains away from the truth, and adds faint
 companions.
+
+## Tempered SMC, mode search, Gauss–Newton mass and variational inference
+
+`tests/test_042_smc_modes_tempering.py` and `tests/test_042_svi_cv_likelihood.py`
+validate `virgil.smc`, `virgil.mode_search`, `virgil.svi`,
+`virgil.fitting.gauss_newton_mass`, and `virgil.likelihood.chain_init_params`
+against `crosscheck.smc_tempering_ref` (`scipy`/`numpy` closed forms and
+2D numerical quadrature).
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `smc.tempered_smc`, `smc.SMCResult`, `smc.bridge_smc` | closed-form conjugate Gaussian `ln Z`, posterior moments, 96-trial single-run (`replicates=1`) and 32-trial pooled (`replicates=4`) [Lee & Whiteley (2018)](https://arxiv.org/abs/1509.00394) multinomial genealogy variance identities, sequential zero-log-likelihood (`PRNGKey(0..15)`) finite non-positive (`n_particles=8`) and collapsed (`n_particles=2`) `variance_degenerate` branches, dict particles with custom Gibbs `moves`, 2D bimodal Gaussian-mixture `ln Z` and mode weights, and unweighted + importance-weighted `bridge_smc` `ln(Z₂ / Z₁)`; controls: unnormalized `loglike` biases `ln Z` and swapped bridge negates `ln(Z₂ / Z₁)` | Mathematics, statistics | within 4 SE (conjugate), variance ratio within 3 Monte Carlo SE, < 0.08 nats (bimodal / bridge) |
+| `mode_search.Mode`, `logmeanexp`, `laplace_log_evidence`, `distinct_modes` | Tierney–Kadane Laplace `ln Z` and two-sided Mahalanobis deduplication at documented squared distance 1.0 preserving sharp needle modes inside broad outlier footprints; control: one-sided Mahalanobis swallows needle modes | Mathematics | 1e-14 |
+| `mode_search.DefensiveMixture`, `importance_evidence`, `Evidence`, `resample_move`, `Move` | SciPy multivariate Student-t + prior log-density, symmetry images, Kish ESS and delta-method SE, `at_floor`, `undersampled`, and `n_nonfinite` sentinels, `log_q` agreement, and HMC rejuvenation (`cov=` mass override) preserving bimodal target moments | Mathematics, statistics | 1e-13 (log q), < 0.03 nats (ln Z) |
+| `fitting.FitResult`, `gauss_newton_mass`, `GaussNewtonMass`, `likelihood.chain_init_params` | unconstrained central-difference Gauss–Newton precision (including the Gaussian error-scale Fisher row for `vis_scale` and the `flat_coordinates=True` logistic log-flux reparameterization on `LogUniform`), correlation condition number, and multi-chain unconstrained initialization; control: measured ratio vs constrained-space finite-difference variance shows omitting the log-flux Jacobian mis-scales flux variance > 1000× | Mathematics | < 5e-6 relative |
+| `svi.variational`, `svi.VariationalResult` | `"laplace"` (`log_joint`, `elbo is None`, unconstrained mean and 3 × 3 covariance) and warm-start + cold-start (`start=None`) `"mvn"` guides vs Gauss–Newton posterior (k̂ < 0.5), and `"bnaf"` / `"iaf"` normalizing flows on a genuinely skewed ~2.3σ faint-companion 2D posterior vs 2D Simpson quadrature means, asymmetric quantiles, and 2 × 2 covariance (k̂ < 0.65); control: under-dispersed unconverged guide (`converged is False`) emits ELBO and PSIS warnings and flags k̂ > 0.7 | Mathematics, statistics | < 0.20 σ and < 12% cov (3D), < 0.28 σ and < 20% cov (2D flows) |
+
+### Genealogy variance identity under multinomial resampling
+
+`virgil.smc.tempered_smc` resamples particles multinomially at each tempering stage (`bridge_smc` uses systematic resampling once when bootstrapping unweighted input draws). By Theorem 1 of [Lee & Whiteley (2018)](https://arxiv.org/abs/1509.00394) — which proves that tracking root-ancestor ("Eve") lineages yields an exact unbiased estimator of the normalizing-constant variance under multinomial SMC — and the non-asymptotic positivity analysis of [Du & Guyader (2021)](https://arxiv.org/abs/1909.13602) — which characterizes when finite-sample unbiased variance realizations can take negative values before converging — the product of `exp(2 * log_z)` and `SMCResult.log_z_variance` is unbiased for the variance of the normalizing-constant estimator across both single-replicate (`replicates=1`) and pooled multi-replicate (`replicates=4`, scaling as `1 / R`) runs when all non-collapsed (`isfinite(log_z_variance)`) realizations, including finite non-positive draws, are retained. Over sequential keys `PRNGKey(0..15)` on a constant zero log-likelihood (`Var(Z_hat) = 0`), `variance_degenerate` flags both degenerate regimes without HMC dependence: single-lineage collapse at `n_particles=2` (exact probability `3 / 4` per draw, returning `NaN` for both `log_z_variance` and `log_z_error`) and finite non-positive realizations `log_z_variance <= 0` at `n_particles=8` (keeping `log_z_variance` finite while returning `NaN` for `log_z_error`).
+
+![Tempered SMC Lee–Whiteley genealogy variance calibration](../assets/batch6_smc_genealogy_calibration.png)
+
+### Skewed faint-companion 2D posterior (`"mvn"` vs `"bnaf"` and `"iaf"`)
+
+At ~2.3σ companion SNR (`flux = 0.010`, `sigma_v2 = 0.025`, `sigma_cp_deg = 2.2` on the 3-telescope `UTS3` VLTI array), the unconstrained `ln(flux)` likelihood is strongly asymmetric: above the peak, the interferometric perturbation grows exponentially and hits a steep chi-squared wall, whereas below the peak the companion signal vanishes below the noise floor and relaxes into the broad log-normal prior tail (`(q50 - q16) / (q84 - q50) = 1.37`). A Gaussian `"mvn"` guide in `(dra, ln flux)` is forced to remain symmetric (`skew = 1.00`), cutting off the faint-flux tail (`0.26 σ` quantile error, `30%` covariance error, and marginal `k̂ = 0.70`), whereas `"bnaf"` and `"iaf"` warp the base Gaussian to recover both the asymmetric marginal quantiles and the teardrop 68%/95% HPD contours:
+
+| Posterior / guide | ΔRA q16 / q50 / q84 (mas) | ln(flux) q16 / q50 / q84 | Left/right ln(flux) width ratio | σ(ΔRA) (mas) | σ(ln flux) | Cov rel. error | Pareto k̂ |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Exact 2D Simpson quadrature | 7.44 / 7.91 / 8.41 | −5.72 / −5.20 / −4.82 | 1.37 | 0.48 | 0.49 | — | — |
+| `"mvn"` (`VariationalResult`) | 7.45 / 7.92 / 8.36 | −5.60 / −5.22 / −4.84 | 0.99 | 0.46 | 0.38 | 30% | 0.70 |
+| `"bnaf"` (`VariationalResult`) | 7.53 / 8.00 / 8.48 | −5.76 / −5.20 / −4.80 | 1.39 | 0.48 | 0.48 | 11% | 0.52 |
+| `"iaf"` (`VariationalResult`) | 7.40 / 7.90 / 8.42 | −5.74 / −5.21 / −4.83 | 1.42 | 0.51 | 0.46 | 8.6% | 0.60 |
+
+![2D skewed faint-companion SVI posterior contours and marginals](../assets/batch6_svi_flows_contours.png)
+
