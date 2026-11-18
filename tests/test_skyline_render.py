@@ -80,8 +80,12 @@ def test_one_square_per_node_with_name_verdict_and_depth():
 def test_columns_follow_layers_and_height_follows_depth():
     _, tree = render()
     by_label = {title_of(r).split(" · ")[0]: r for r in squares(tree)}
-    x = lambda label: float(by_label[label].get("x"))
-    y = lambda label: float(by_label[label].get("y"))
+    def x(label):
+        return float(by_label[label].get("x"))
+
+    def y(label):
+        return float(by_label[label].get("y"))
+
     # references stand leftmost, then data, models, likelihood and imaging as in LAYER_ORDER read bottom-up
     assert x("pmoired.fit") < x("oidata.read") < x("models.Disk") < x("likelihood.loglike") < x("imaging.tsv")
     # deeper squares sit higher (smaller y); a part is in the column of its layer whatever its depth
@@ -90,7 +94,7 @@ def test_columns_follow_layers_and_height_follows_depth():
     assert x("oidata.read") <= x("oidata.OIData") < x("models.Disk")
     # depth 0 squares of different layers share a baseline band, above the ground line
     ground = max(float(r.get("y")) for r in tree.iter("rect") if r.get("height") == "3")
-    assert all(y(l) + 11 <= ground for l in by_label)
+    assert all(y(label) + 11 <= ground for label in by_label)
     assert abs(y("pmoired.fit") - y("models.Ring")) <= 3 * sky.PITCH
 
 
@@ -166,3 +170,18 @@ def test_depth_labels_run_from_ground_up():
 def test_empty_model():
     out = sky.skyline_html({"nodes": {}}, ROOTS)
     ET.fromstring(out)
+
+
+def test_trust_page_draws_the_skyline_and_keeps_the_chips_in_a_fold():
+    graph = {"nodes": {"virgil.a.A": {"layer": "data"}, "virgil.b.B": {"layer": "models", "depends": ["virgil.a.A"]}},
+             "pipelines": {}}
+    records = [{"test": "tests/t.py::t", "objects": ["virgil.a.A"], "roots": ["standards"], "kind": "check", "tier": "A",
+                "outcome": "passed", "metrics": {}, "_commit": None, "_source": "ours", "line": 1, "doc": ""}]
+    model = trust.build(graph, [], records, [])
+    model["docs"] = {"virgil.a.A": "tests/a.md#a"}
+    page = trust.render(model, "../")
+    start = page.index('<h2 id="parts">')
+    assert page.index('class="vt-sky"', start) < page.index('<details class="vt-fold" id="parts-list">', start)
+    assert page.index('<details class="vt-fold" id="parts-list">') < page.index('class="vt-map"') < page.index("</details>", start)
+    assert 'href="../tests/a/#a"' in page
+    assert page.count('class="sq ') == 2

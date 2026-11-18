@@ -147,13 +147,16 @@ def _legend(counts, order, icons, words):
     return '<div class="vt-sky-legend">' + "".join(items) + "</div>"
 
 
-def skyline_html(model, roots, base=""):
+def skyline_html(model, roots, base="", names=None):
     """The skyline and foundation as one HTML string (no blank lines, so Markdown keeps it as one block).
 
     ``model`` is the dict written to ``docs/assets/trust.json``; ``roots`` the parsed
-    ``trust/roots.yml``; ``base`` the relative prefix the page's function-test links need.
+    ``trust/roots.yml``; ``base`` the relative prefix the page's function-test links need. ``names``
+    is the object that holds ``COLOURS``, ``ICON``, ``ORDER``, ``VERDICTS``, ``LAYER_ORDER``,
+    ``ROOT_ALIAS`` and ``doc_url`` (``trust_render`` passes itself); by default they are read from
+    ``scripts/trust.py``, loaded on demand.
     """
-    t = _trust()
+    t = names if names is not None else _trust()
     nodes = model["nodes"]
     if not nodes:
         return '<div class="vt-sky"><p class="vt-muted">No parts to draw.</p></div>'
