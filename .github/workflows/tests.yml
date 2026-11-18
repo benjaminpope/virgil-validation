@@ -68,7 +68,7 @@ jobs:
         run: |
           bash scripts/setup_external.sh ehtim mpol fouriever orbitize alma
           echo "CASASITECONFIG=$GITHUB_WORKSPACE/.venv-alma/casasiteconfig.py" >> "$GITHUB_ENV"
-      - name: casatasks in .venv-alma (diagnostic: tests/test_radio_trust_casa.py skips when this import fails)
+      - name: "casatasks in .venv-alma (diagnostic; tests/test_radio_trust_casa.py skips when this import fails)"
         continue-on-error: true
         run: .venv-alma/bin/python -c "import casatasks, casatools; print(casatasks.__file__, casatools.version_string())"
       - name: verify casatools in .venv
