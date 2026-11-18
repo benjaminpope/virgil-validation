@@ -29,6 +29,7 @@ import ast
 import collections
 import functools
 import pathlib
+import sys
 
 REFERENCE_PACKAGES = ("crosscheck", "external_bridge", "virgil_bridge")
 PLUMBING = frozenset({"external_bridge._subprocess"})  # starts other code, is not itself a reference
@@ -38,6 +39,7 @@ IGNORED_REPO_DIRS = frozenset({
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
+_REPO_PREFIX = str(REPO_ROOT)
 _NOT_LOCAL = frozenset({*REFERENCE_PACKAGES, "virgil", "drpangloss", "jaxbessel", "evidence"})
 
 
@@ -301,6 +303,26 @@ def _import_nodes(name, fromlist):
     return frozenset(_ref_nodes_of_import(tuple(name.split(".")), fromlist))
 
 
+def _local_module_via(name):
+    """The reference nodes a local helper module (``tests/``, ``scripts/``, ``benchmarks/``) imports, by the
+    file scan, when an import statement names it. Its own import statements ran when it was first imported,
+    possibly for an earlier test; each test that imports it again relies on what it imports."""
+    module = sys.modules.get(name)
+    file = getattr(module, "__file__", None)
+    if not file or not file.endswith(".py") or not file.startswith(_REPO_PREFIX):
+        return frozenset()
+    return _local_file_via(file)
+
+
+@functools.lru_cache(maxsize=None)
+def _local_file_via(file):
+    path = pathlib.Path(file).resolve()
+    rel = path.relative_to(REPO_ROOT.resolve()) if path.is_relative_to(REPO_ROOT.resolve()) else None
+    if rel is None or any(is_ignored_repo_part(part) for part in rel.parts) or rel.parts[0] == "src":
+        return frozenset()
+    return file_via(str(path))
+
+
 def install_import_recorder():
     """Wrap ``builtins.__import__`` (idempotent) to note the reference nodes every import statement executed
     while a test, fixture or collection runs names, wherever that statement is: in a script that a test loads
@@ -314,8 +336,13 @@ def install_import_recorder():
         return
 
     def recording_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if level == 0 and name.startswith(REFERENCE_PACKAGES):
-            note(_import_nodes(name, tuple(fromlist or ())))
+        if level == 0:
+            if name.startswith(REFERENCE_PACKAGES):
+                note(_import_nodes(name, tuple(fromlist or ())))
+            else:
+                result = original(name, globals, locals, fromlist, level)
+                note(_local_module_via(name))
+                return result
         return original(name, globals, locals, fromlist, level)
 
     recording_import._vv_recording = True

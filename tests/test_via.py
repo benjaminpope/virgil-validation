@@ -89,6 +89,28 @@ def test_import_recorder_notes_reference_imports_each_time_the_statement_runs():
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_import_recorder_notes_what_an_already_imported_local_helper_imports(tmp_path, monkeypatch):
+    """A helper imported by an earlier test does not run its own ``from crosscheck import ...`` again, but a
+    later test that imports it still relies on it. (Local = inside the repository, outside ``src/``.)"""
+    via.clear_caches()
+    helper = _write(ROOT / "tests" / "_via_probe_helper.py", "from crosscheck import radial\n")
+    try:
+        monkeypatch.syspath_prepend(str(helper.parent))
+        via.install_import_recorder()
+        for nodeid in ("tests/test_fake.py::first", "tests/test_fake.py::second"):
+            via.set_item(nodeid)
+            try:
+                import _via_probe_helper  # noqa: F401  (the second import is served from sys.modules)
+            finally:
+                via.set_item(None)
+            assert via._BY_ITEM[nodeid] == {"crosscheck.radial"}, nodeid
+    finally:
+        sys.modules.pop("_via_probe_helper", None)
+        helper.unlink()
+        via.clear_caches()
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_worker_recorder_wraps_the_single_choke_point_and_notes_the_worker_node(monkeypatch):
     """Every worker start is noted for the running test, positional or keyword, and still runs."""
     from external_bridge import _subprocess as sp
