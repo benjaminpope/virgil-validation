@@ -1328,7 +1328,7 @@ def published_image(cfg):
     # FITS: CDELT1 < 0 so x runs East to West (column 0 is East already); CDELT2 > 0 so y runs
     # South to North, i.e. row 0 is South: flip the rows.
     assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
-    # HR 4049's file has the star at 0-indexed pixel CRPIX = 64 (measured against our data, design/hr4049_diagnosis.md), not at the array
+    # HR 4049's file has the star at 0-indexed pixel CRPIX = 64 (measured against our data, design/hr4049_diagnosis.md on branch claude/hr4049-diag-a5dd04, not yet on main), not at the array
     # centre (n - 1) / 2 = 63.5: ``star_at_crpix`` moves it there by a sub-pixel shift (rows after the flip). Opt-in per target: the published
     # model's chi2 on our data gets worse with this shift for AI Sco, EN TrA, HD 95767, IRAS 15469, HD 108015, IW Car and PS Gem, and
     # better only for HR 4049, so the other files are taken at the centre as before.
@@ -1550,6 +1550,7 @@ def compare_one(args, out):
         best_shift_pixels=dict(dy=best[0], dx=best[1]), pixel_mas=pub_scale, beam=dict(
             major_mas=bm.major_mas, minor_mas=bm.minor_mas, pa_deg=bm.pa_deg),
         beam_convention="circular Gaussian, FWHM lambda_min / (2 B_max)",
+        comparison_radius_mas=float(cfg.get("cmp_mask_mas", cfg["mask_mas"])),  # the NCC and disc-moment aperture (HR 4049: 25 mas, the fit support is 40)
         virgil_data_beam=dict(major_mas=beam(data).major_mas, minor_mas=beam(data).minor_mas, pa_deg=beam(data).pa_deg),
         ours=m_ours, published=m_pub, chi2_per_point_published_on_our_data=c2_pub,
         chi2_per_point_ours=json.load(open(path(out, cfg, "image.json")))["chi2_per_point"], n_points=n_pts,

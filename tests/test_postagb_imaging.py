@@ -232,10 +232,12 @@ def test_continue_blob_is_positive_smooth_and_keeps_the_interior():
 
 @needs_multipole
 def test_hr4049_zenodo_file_has_crpix_64_on_128_pixels():
-    """The shift in published_image assumes HR 4049's file is 128 px with CRPIX = 64 (skipped without the Zenodo data)."""
+    """The shift in published_image assumes HR 4049's file is 128 px with CRPIX = 64: checked on the in-repo copy of the header."""
+    import json
+
     cfg = P.TARGETS["HR4049"]
-    if not (P.ZENODO / "fits" / cfg["fits"]).exists():
-        pytest.skip("Zenodo FITS not present")
-    hdr, im, _ = P.zenodo_header(cfg)
-    assert im.shape == (128, 128) and hdr["CRPIX1"] == hdr["CRPIX2"] == 64
+    z = np.load(pathlib.Path(__file__).resolve().parents[1] / "docs/imaging/postagb/literature/HR4049_organic.npz", allow_pickle=True)
+    hdr = json.loads(str(z["header"]))
+    assert z["data"].shape == (128, 128) and hdr["CRPIX1"] == hdr["CRPIX2"] == 64
+    assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
     assert cfg["star_at_crpix"] and cfg["cmp_mask_mas"] == 25.0 and cfg["mask_mas"] == 40.0
