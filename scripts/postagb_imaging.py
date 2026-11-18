@@ -923,19 +923,40 @@ def fit_gp(cfg, scene, start_env, support, priors, data, args, geo=None, aniso=F
         gp_on_edge=edge, gp_grid_extended=extended, gp_converged=bool(best.info.get("converged", True)))
 
 
+POLAR_N_R, POLAR_N_TH = 40, 32  # the polar latent grid of fit_polar
+POLAR_THETA_NODE = 2.0 * np.pi / POLAR_N_TH  # azimuthal node spacing, 0.196 rad
+POLAR_LT_FLOOR = 0.5  # rad: at least 2.5 azimuthal nodes, else the azimuthal prior is white noise and softmax breaks the ring into dots
+POLAR_LR_FLOOR_BEAMS = 1.0  # a radial length below one beam (lambda_min / 2 B_max, the NCC's beam) is white noise to the data
+POLAR_SIGMA_CAP = 2.0  # exp positivity: sigma 4 is a dynamic range of e^4 per unit latent
+assert POLAR_LT_FLOOR >= 2.5 * POLAR_THETA_NODE
+
+
+def polar_grid(unit, pix, lr_beams=(1.0, 2.0, 4.0)):
+    """Hyperparameter axes of ``fit_polar``: (lens_r in mas, lens_theta in rad, sigmas), each respecting its floor or cap
+    (``POLAR_LR_FLOOR_BEAMS`` x ``unit``, ``POLAR_LT_FLOOR``, ``POLAR_SIGMA_CAP``)."""
+    lr_floor = max(POLAR_LR_FLOOR_BEAMS * unit, pix)
+    lens_r = sorted({max(m * unit, lr_floor) for m in lr_beams})
+    return lens_r, [POLAR_LT_FLOOR, 1.0, 2.0], [0.5, 1.0, POLAR_SIGMA_CAP]
+
+
+def polar_bounds(lr, lt, sg, unit, pix):
+    """Which of the floors and the cap the chosen cell sits on (a pick there says the evidence wanted to go further)."""
+    return dict(length_r=bool(lr <= max(POLAR_LR_FLOOR_BEAMS * unit, pix) * (1 + 1e-9)), length_theta=bool(lt <= POLAR_LT_FLOOR * (1 + 1e-9)),
+                sigma=bool(sg >= POLAR_SIGMA_CAP * (1 - 1e-9)))
+
+
 def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
     """Polar-GP image (``virgil.fields.MultipoleField``): a Matern kernel in the disc's radius times a periodic one in azimuth,
     deprojected by the inclination and position angle of our own parametric disc fit (``geo``); the polar grid starts at the hole
     radius. (sigma, length_r, length_theta) from the Laplace evidence on the rescaled data."""
-    sigmas, lens_t = [0.125, 0.25, 0.5, 1.0, 2.0], [0.125, 0.25, 0.5, 1.0, 2.0]  # HR 4049 chose the 0.25 edge of [0.25, 2]
     unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
-    lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", (0.5, 1.0, 2.0, 4.0)) if m * unit_ >= pix_]
+    lens_r, lens_t, sigmas = polar_grid(unit_, pix_, cfg.get("polar_lr_beams", (1.0, 2.0, 4.0)))
     if args.smoke:
         sigmas, lens_r, lens_t = sigmas[:1], lens_r[:1], lens_t[:1]
     mean = field_mean(start_env, support, args)
     pix = float(start_env.pixel_scale_mas)
     r_max = float(cfg["half_mas"])
-    n_r, n_th = 40, 32
+    n_r, n_th = POLAR_N_R, POLAR_N_TH
     opts = dict(max_steps=15) if args.smoke else {}
 
     def mp_scene(sigma, lr, lt):
@@ -955,15 +976,19 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
         print(f"length_r {lr:.2f} mas, length_theta {lt:g} rad, sigma {sg}: log Z {lz:.1f}, chi2/pt {c2:.3f}", flush=True)
         return f_, lz, c2
 
-    # lengths in radius go down by halves to one pixel (below that a GP is white noise) and up by doubles; in azimuth, 2 rad is nearly
-    # one lobe, so an upper edge is a constant ring
+    # the floors and the cap do not move (None): a pick on one is reported (gp_polar_on_bound), not chased. Lengths go up by doubles
+    # (in azimuth 2 rad is nearly one lobe, so an upper edge is a constant ring); sigma may fall below 0.5 by halves.
     cells, (lens_r, lens_t, sigmas), (blr, blt, bsg), edge, extended = grid_search(
-        [lens_r, lens_t, sigmas], run, [(lambda v: v / 2.0 if v / 2.0 >= pix_ else None, lambda v: 2.0 * v),
-                                       (lambda v: v / 2.0, lambda v: 2.0 * v), (lambda v: v / 2.0, lambda v: 2.0 * v)],
+        [lens_r, lens_t, sigmas], run, [(None, lambda v: 2.0 * v), (None, lambda v: 2.0 * v), (lambda v: v / 2.0, None)],
         smoke=args.smoke)
     log_z, chi2 = cube(cells, (lens_r, lens_t, sigmas), 1), cube(cells, (lens_r, lens_t, sigmas), 2)
     bi, bj, bk = lens_r.index(blr), lens_t.index(blt), sigmas.index(bsg)
     best = cells[blr, blt, bsg][0]
+    bound = polar_bounds(blr, blt, bsg, unit_, pix_)
+    if any(bound.values()):
+        print("WARNING gp-polar: the evidence pick sits on " + ", ".join(k for k, v in bound.items() if v)
+              + " (floor/cap): the hyperparameter is set by the bound, not by the data", flush=True)
+    hist = best.info.get("loss_history")  # LM fits do not store one in virgil today; Adam does
     arrays = dict(gp_log_z=log_z[:, :, bk], gp_chi2=chi2[:, :, bk], gp_sigmas=np.asarray(lens_t), gp_lengths_mas=np.asarray(lens_r),
                   gp_xlabel="ℓ_θ (rad)", gp_ylabel="ℓ_r (mas)", chosen=np.array([bi, bj]), mp_log_z=log_z, mp_chi2=chi2,
                   mp_sigmas=np.asarray(sigmas))
@@ -971,7 +996,8 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
         regulariser="MultipoleField", weight_rule="Laplace evidence", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(bsg),
         gp_length_r_mas=float(blr), gp_length_theta=float(blt), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"],
         mp_r_min_mas=r_min, mp_r_max_mas=r_max, log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge, gp_grid_extended=extended,
-        gp_converged=bool(best.info.get("converged", True)))
+        gp_polar_on_bound=bound, gp_polar_bounds=dict(length_theta_floor=POLAR_LT_FLOOR, length_r_floor_mas=float(lens_r[0]), sigma_cap=POLAR_SIGMA_CAP),
+        gp_loss_history=None if hist is None else [float(x) for x in hist], gp_converged=bool(best.info.get("converged", True)))
 
 
 def rendered_chi2_disc(model, shape, pix, data):
