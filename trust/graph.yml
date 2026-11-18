@@ -1,4 +1,4 @@
-# The trust graph (docs/method/index.md, "Making it traceable").
+# The trust graph (docs/method/index.md, "Making it traceable and auditable").
 #
 # nodes: virgil objects (and our own references). For each:
 #   layer:    for the chart (models, orbits, data, likelihood, inference, imaging, references)
@@ -116,7 +116,9 @@ nodes:
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image.model_on_grid: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image]}
   virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
-  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], doc: models/visibilities.md#pixel-images}
+  # LinearImage and Image are siblings of _BrightnessImage (models.py), whose transforms they share; `Image`
+  # is the node whose checks cover that shared code.
+  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image], doc: models/visibilities.md#pixel-images}
   virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Rotated: {layer: models, source: [src/virgil/models.py], convention: [rotation_sense]}
@@ -724,14 +726,16 @@ nodes:
     layer: orbits
     source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
              src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
-    depends: [virgil.orbit_cells.search_plan, virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
+    depends: [virgil.orbit_cells.search_plan, virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit,
+              virgil.mode_search.distinct_modes, virgil.mode_search.Mode]
     doc: orbits/epochs.md
   virgil.orbit_cells.position_leg:
     layer: orbits
     source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
              src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
     depends: [virgil.orbit_cells.CellFit, virgil.orbit_cells.search_plan, virgil.orbit_cells.search_cell,
-              virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
+              virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit,
+              virgil.mode_search.DefensiveMixture, virgil.mode_search.importance_evidence, virgil.mode_search.resample_move]
     doc: orbits/epochs.md
   virgil.orbit_cells.fit_jitter:
     layer: orbits
@@ -861,7 +865,13 @@ nodes:
   virgil.models.MultipoleDisk:
     layer: models
     source: [src/virgil/models.py, src/virgil/harmonics.py]
-    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.RadialGPFunction]
+    # profile, harmonics, height and spectral_index are polymorphic: MultipoleDisk calls profile.quadrature(),
+    # harmonics.coefficients(r), height(r) and, through _with_gp_range, any MultipoleKernel/RadialGPFunction in them.
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.RadialGPFunction,
+              virgil.models.ThinRing, virgil.models.GaussianRing, virgil.models.RadialPowerLaw, virgil.models.ExpTail,
+              virgil.models.Gap, virgil.models.RadialSum, virgil.models.RadialGP,
+              virgil.models.RadialLinear, virgil.models.RadialPower, virgil.models.MultipoleKernel,
+              virgil.models.Harmonics, virgil.models.VonMises, virgil.models.Cone, virgil.models.PowerLawHeight]
     doc: models/polar_disk.md
   virgil.models.ThinRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.GaussianRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
@@ -899,7 +909,11 @@ nodes:
     depends: [virgil.fields.field_spectrum]
   virgil.fields.MultipoleField:
     layer: priors
-    source: [src/virgil/fields.py, src/virgil/models.py]
+    # Calls polar_interpolate, and the pixel-grid helpers of _geometry.py (pixel_offsets, safe_radius, safe_azimuth,
+    # undo_elliptical_transf_coord). The radial Matern factor and periodic azimuthal spectrum are its own
+    # (_radial_factor, _azimuthal_filter) on helpers shared with RadialGP and MultipoleKernel (_gp_factor,
+    # _log_azimuthal_spectrum in models.py), so those two nodes are edges and not field_spectrum.
+    source: [src/virgil/fields.py, src/virgil/models.py, src/virgil/_geometry.py, src/virgil/_utils.py]
     depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel, virgil.fields.polar_interpolate]
     doc: models/polar_disk.md
   virgil.fields.multipole_field_priors:
@@ -985,8 +999,10 @@ nodes:
     source: [src/virgil/inference.py]
     depends: [virgil.inference.hessian_matrix, virgil.inference.regularized_inverse]
     doc: inference/helpers.md
-  virgil.inference.gaussian_fisher: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  virgil.inference.gaussian_fisher: {layer: inference, source: [src/virgil/inference.py], depends: [virgil.inference.expected_fisher], doc: inference/helpers.md}  # deprecated alias: deprecated_name("gaussian_fisher", expected_fisher)
   virgil.inference.fisher_projection: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
+  # expected_fisher calls only jax (jacfwd, ravel_pytree) and the private _add_ridge; no other node. Its only caller in
+  # virgil is the deprecated alias gaussian_fisher.
   virgil.inference.expected_fisher: {layer: inference, source: [src/virgil/inference.py], depends: [], doc: inference/helpers.md}
   virgil.inference.objective_laplace_covariance:
     layer: inference
