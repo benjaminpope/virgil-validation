@@ -78,13 +78,30 @@ jobs:
         env:
           VV_REQUIRE_VLTI: "1"  # tests/test_calibrated_load.py must not skip silently
           VV_REQUIRE_VIRGIL_IMPORTS: "1"  # a missing virgil module is a collection error, not a silent skip
-        run: .venv/bin/python -m pytest -m "not slow" -v --evidence evidence.jsonl
+        run: |
+          # memory logger (one line a minute: used/free/available MB, biggest python RSS MB)
+          ( while true; do echo "$(date +%T) $(free -m | sed -n 2p) pyRSS_MB=$(ps -C python -o rss= | sort -n | tail -1 | awk '{print int($1/1024)}')"; sleep 60; done ) > mem.log 2>&1 &
+          memlog=$!
+          trap 'kill $memlog 2>/dev/null || true' EXIT
+          .venv/bin/python -m pytest -m "not slow" -v --durations=60 --evidence evidence.jsonl
       - name: all tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"
           VV_REQUIRE_VIRGIL_IMPORTS: "1"
-        run: .venv/bin/python -m pytest -v --evidence evidence.jsonl
+        run: |
+          # memory logger (one line a minute: used/free/available MB, biggest python RSS MB)
+          ( while true; do echo "$(date +%T) $(free -m | sed -n 2p) pyRSS_MB=$(ps -C python -o rss= | sort -n | tail -1 | awk '{print int($1/1024)}')"; sleep 60; done ) > mem.log 2>&1 &
+          memlog=$!
+          trap 'kill $memlog 2>/dev/null || true' EXIT
+          .venv/bin/python -m pytest -v --durations=60 --evidence evidence.jsonl
+      - name: memory log
+        # free -m: total used free shared buff/cache available
+        if: always()
+        run: |
+          [ -f mem.log ] || exit 0
+          cat mem.log
+          awk '{split($NF,a,"="); if (a[2]+0>r) r=a[2]+0; if (min==""||$8+0<min) min=$8+0} END {print "PEAK python RSS MB:", r, "  MIN available MB:", min}' mem.log
       - name: virgil's own evidence
         # weekly and manual runs: the JUnit evidence from virgil's latest
         # successful CI run on main (the float64 Linux job)
@@ -162,6 +179,7 @@ jobs:
             evidence.jsonl
             virgil-evidence.jsonl
             evidence.md
+            mem.log
             trust.md
             trust.json
           if-no-files-found: ignore
