@@ -105,6 +105,7 @@ nav:
       - "How trust is built": method/index.md
       - "Findings": method/findings.md
       - "Not yet covered": method/coverage.md
+      - "The roots of trust": method/roots.md
       - "External packages":
           - PMOIRED: method/pmoired.md
           - CANDID: method/candid.md

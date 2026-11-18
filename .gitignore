@@ -11,6 +11,7 @@ site/
 .external/
 .venv-*/
 docs/method/coverage.md
+docs/method/roots.md
 docs/orbits/index.md
 build/
 docs/assets/orbits.json

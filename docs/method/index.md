@@ -160,6 +160,10 @@ the graph may be validated against whichever root suits it, and no stage needs
 every package. A node asks only for a number of *distinct* roots. Conventions
 need two, because a single reference could share a mistake.
 
+### What each root is, and what it cannot catch
+
+[The roots of trust](roots.md) states, for every root, what it is, why we believe it and what it cannot catch.
+
 ### Units and pipelines
 
 Most evidence is **unit** evidence: one object against one root. It says
