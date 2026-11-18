@@ -40,3 +40,16 @@ own observables on two simulated three-telescope files.
 | `detection.injection_grid` | every separation and flux in the documented order; angles of (dra, ddec) uniform on [0°, 360°) (Kolmogorov–Smirnov; this does not pin the PA sign convention) | Mathematics, statistics | 1e-12; p > 1e-3 |
 | `detection.bootstrap_null` | sign flip: each whitened residual about our prediction keeps its magnitude (phases wrapped), also about another scene, with about half flipped; resample: residuals drawn only from their own block | Mathematics, statistics | 1e-8; within 4σ |
 
+## Hierarchical outlier mixture and K-fold cross-validation
+
+`tests/test_042_svi_cv_likelihood.py` checks the exact Jeffreys
+`Beta(1/2, 1/2)` group outlier mixture and generic K-fold cross-validation
+against `crosscheck.smc_tempering_ref`.
+
+| virgil | Reference | Tag | Agreement |
+| --- | --- | --- | --- |
+| `likelihood.group_outlier_mixture`, `likelihood.group_outlier_probabilities` | continuous trigonometric SciPy `quad` over [0, π] and quadrature-free 2^K combinatorial Beta-function expansion for K in {1, 4, 9, 14}, plus exact derivative of `ln Z` wrt `outlier_loglikes`; control: informative `Beta(1, 9)` differs by > 3.0 nats | Mathematics | < 1e-12 |
+| `crossval.fold_masks`, `save_record`, `load_records`, `aggregate`, `aggregate_files` | exact fold partition, JSON round-trip, sample SD (`ddof = 1`), standard error, minimum-mean `best`, Breiman et al. (1984) `one_se` rule (`larger_is_simpler` both ways), boundary `edge` flag, string settings, `chi2 = None`, and `NaN` fold warning | Mathematics | 1e-14 |
+| `crossval.cv_task`, `crossval.cross_validate` | closed-form weighted linear ridge regression held-out score, raw χ², per-group breakdown, and `m = 2` complex-visibility residual accounting (`unit_scale = None`); control: unmasked data leakage selects zero regularization on pure noise | Mathematics, statistics | < 1e-5 |
+
+

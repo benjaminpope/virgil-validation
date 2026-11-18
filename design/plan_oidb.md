@@ -149,7 +149,7 @@ downloaded for this plan.
 | Same files, virgil vs CANDID or PMOIRED re-run through the bridge (`candid`, `pmoired`) | best fits within 0.25σ (as `pmoired-identical-fits`), once conventions are pinned |
 | Orbit vs a published posterior | paper's priors and data set (above); percentiles of each element within 0.15 posterior sd (as `orbitize-posterior`) |
 | Orbit, virgil's headline fit (Jeffreys priors) | reported, not a pass/fail against the paper; out-of-sample positions within 2σ_pred |
-| Detection limits (`literature`) | virgil's 5σ contrast curve within 0.1 mag of the published one (CANDID's Absil limits run ~1% low, P4) |
+| Detection limits (`literature`) | virgil's 5σ contrast curve within 0.1 mag of the published one (CANDID's Absil limits sit ~1% below the exact solution of its own criterion, P4) |
 | Injection controls on the same files | a companion injected 0.5 mag above the published limit is detected; one 0.5 mag below is not |
 | Diameter / parametric | within 2σ_pub; raw χ²/N reported |
 | Image | the baseline is the best-fit `LimbDarkenedDisk` (step 1). The reconstruction must beat it in raw χ²/N on the given errors by a stated margin (fixed per target before the run), and the *residual* images (image − best-fit disk, both convolved to one beam) must have normalised cross-correlation ≥ 0.5 with the published residual; named features (below) recovered. Raw χ²/N also ≤ the published reconstruction's where stated |

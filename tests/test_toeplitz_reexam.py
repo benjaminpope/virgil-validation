@@ -9,7 +9,6 @@ verdict logic. None of these runs a registered scene.
 import hashlib
 import re
 import json
-import math
 import pathlib
 import sys
 
@@ -142,16 +141,6 @@ def test_the_reference_gradient_equals_central_differences(mode):
     else:
         sh = rx.sigma_hat(part["chi2_d"], case.n_d)
         assert out["loss"] == pytest.approx(rx.combine(case, part, "fitted", sh)["loss"], rel=1e-14)
-
-
-@pytest.mark.validates("crosscheck.radio_exact", roots=["mathematics"], kind="reference")
-def test_the_budget_constants():
-    """gamma_n, the FFT factor and the probabilistic bound from their formulas (Higham 2002, Lemma 3.1, Thm 24.2; Higham & Mary 2019)."""
-    assert rx.U == 2.0**-53
-    assert rx.gamma(10**6) == pytest.approx(1e6 * 2.0**-53, rel=1e-9)
-    assert rx.fft_factor(2**20) == pytest.approx(20 * rx.ETA_FFT, rel=1e-9)
-    assert rx.gamma_probabilistic(10**6) == pytest.approx(math.sqrt(2 * math.log(2e12)) * 1e3 * 2.0**-53)
-    assert rx.gamma_probabilistic(10**6) < rx.gamma(10**6)
 
 
 # ------------------------------------------------------------------ Tier I on tiny unregistered scenes

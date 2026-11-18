@@ -11,6 +11,7 @@ is flat ("Priors and the MAP" in virgil's conventions).
 | their flat coordinates | the CDF is affine in cos i and in sin lat | Mathematics | 1e-12 |
 | `AngleVector`: uniform, von Mises and axial, two ring widths | normalised over the plane; the angle's marginal is the stated density (SciPy's von Mises); half the squared residuals is −log p up to a constant; samples' angles and radii (KS) | Mathematics + Statistics | 1e-6 (quadrature), 1e-10 |
 | `PopulationScale`, `hierarchical_scales` | centred (`log s_k ~ 𝒩(log median, spread²)`) and non-centred (`s_k = median · exp(spread · z_k)`, zero population `log_prior`) parameterizations, `curvature_rows` Gauss–Newton Fisher block, quadrature normalization, and KS on 6 000 samples; controls: unlogged `median` and double-counted `z_k` density fail | Mathematics + Statistics | 1e-14 (density), 1e-13 (curvature), 1e-11 (norm) |
+| `is_tied`, `tied_log_prior` (`tests/test_042_svi_cv_likelihood.py`) | distinguishes callable tied `PopulationScale` specs from standard distributions/scalars, sums distinct population `log_prior` densities across epochs, and counts a tied term shared across `vis_scale` and `phi_scale` once; control: undeduplicated sum double-counts by > 0.5 nats | Mathematics | 1e-14 |
 | `fit` with `LogUniform` priors on a diameter and a flux | the likelihood maximum by direct (Nelder–Mead) search on the same residuals | Mathematics | MAP within 1e-3 σ of it |
 | control: a tight `Normal` prior | — | Mathematics | moves the MAP, as it should (no flat coordinate) |
 

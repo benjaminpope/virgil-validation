@@ -9,6 +9,8 @@ Ruffio et al. (2018), written with SciPy and mpmath.
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `likelihood_grid` (9 × 9 positions) | −½ χ² from our own reading of the file | Mathematics | 5e-12 in log-likelihood |
+| `optimized_likelihood_grid` (`tests/test_042_svi_cv_likelihood.py`) | 1D Brent maximization of −½ `crosscheck.chi2` + Gaussian normalization over signed companion flux on V²-only and 4-UT V² + correlated closure-phase datasets (including negative-flux noise troughs and `ValueError` on negative `grid["flux"]` seeds); control: unoptimized fixed flux falls > 25 nats short | Mathematics | 1e-5 in log-likelihood |
+| `LinearFluxGrid`, `Gaussian`, `LogUniform` (`tests/test_042_svi_cv_likelihood.py`) | closed-form [Luger, Foreman-Mackey & Hogg (2017)](https://doi.org/10.3847/2515-5172/aa96b5) Gaussian and boundary-layer adaptive SciPy `quad` LogUniform `posterior_mean`, `posterior_sd`, and `log_bayes_factor` (including negative-flux mirror troughs `f_hat / σ_f < −50` and bright-clamped cells `(f_hat − f_max) / σ_f > 50`), NumPyro `Normal` / `LogUniform` coercion, and exact Occam bound-widening shift in `ln(ln(f_max / f_min))` | Mathematics | 1e-11 (`Gaussian`), 1e-7 (`LogUniform`), 1e-9 (Occam shift) |
 | `nsigma` | χ² upper tail as a two-sided Gaussian significance (SciPy, in log space) | Mathematics | 2e-13 σ |
 | `optimized_flux_grid`, `laplace_flux_uncertainty_grid` | our best flux (Brent) and the curvature of our χ² | Mathematics | < 1e-3 σ and 0.1 % |
 | `absil_limits` (3σ, companion-free data, 12 positions) | root of nsigma(χ²(f)/χ²(0)) = 3 with the number of data points as degrees of freedom | Mathematics | 1e-4 (bisection precision since virgil#191) |
@@ -34,7 +36,7 @@ V²-only files test the shared definition exactly.
 | `nsigma` (eight cases, 1–27σ) | `_nSigmas` | CANDID | 1e-12 relative |
 | `likelihood_grid` as χ²(binary)/χ²(star) over a 32 × 32 map, 2–12 mas | `chi2Map` at 3 % (its fitted diameter) | CANDID | 1.6e-7 (V²), 8e-4 (with closure phases, D5); same minimum, East = +x |
 | `absil_limits` (3σ, six positions) | CANDID's Absil criterion solved exactly with its own χ² and nσ | CANDID | 6e-5, virgil's bisection precision since virgil#191 (2e-7 and 4e-6 before) |
-| — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (problem P4) |
+| — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (interpolation error, P4) |
 | `fit` and `laplace_cov` (diameter, position, flux) | `fitMap`, with its √χ²_r scaling of the errors undone | CANDID | best fits 4e-4 σ apart; errors within 1.6 % |
 | `injection_limits` (3σ, six positions, V² and V² + CP) | CANDID's injection criterion (`_detectLimit`: its `_injectCompanionData`, then nσ(χ²_UD / χ²_BIN)) solved exactly, the diameter held as virgil holds it; also with no flux bounds (virgil#235) | CANDID | 1.2e-7 (V²), 5.8e-6 (with closure phases) |
 | — | the same criterion with the diameter refitted to the injected data, as CANDID does | CANDID | limits 20–34 % higher (definition D8: a refitted disk absorbs part of the companion's V² signal) |

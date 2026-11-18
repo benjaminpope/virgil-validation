@@ -417,6 +417,58 @@ UNFIXED = {"open", "to-raise", "raised"}
 EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature",
             "frank", "visr", "frap", "oimodeler"}
 
+def depends_depths(nodes):
+    """Length of the longest ``depends`` chain below each node: 0 for a node with no
+    ``depends``, else 1 + the largest depth among those it depends on. Targets that
+    are not nodes are ignored. Nodes on a ``depends`` cycle share one depth, counted
+    from the edges that leave the cycle (a cycle has no bottom, and is reported
+    elsewhere as a structural problem), so the result does not depend on the order
+    the nodes are listed in."""
+    deps = {n: [d for d in node.get("depends", []) if d in nodes and d != n] for n, node in nodes.items()}
+    # strongly connected components (Tarjan, iterative)
+    index, low, on_stack, stack, comp, order = {}, {}, set(), [], {}, []
+    for start in nodes:
+        if start in index:
+            continue
+        work = [(start, iter(deps[start]))]
+        index[start] = low[start] = len(index)
+        stack.append(start)
+        on_stack.add(start)
+        while work:
+            n, it = work[-1]
+            for d in it:
+                if d not in index:
+                    index[d] = low[d] = len(index)
+                    stack.append(d)
+                    on_stack.add(d)
+                    work.append((d, iter(deps[d])))
+                    break
+                if d in on_stack:
+                    low[n] = min(low[n], index[d])
+            else:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[n])
+                if low[n] == index[n]:
+                    while True:
+                        m = stack.pop()
+                        on_stack.discard(m)
+                        comp[m] = n
+                        if m == n:
+                            break
+                    order.append(n)
+    # ``order`` lists components dependencies first, so each component's depth is final
+    # by the time a component that depends on it is reached
+    members = collections.defaultdict(list)
+    for n, c in comp.items():
+        members[c].append(n)
+    depth = {}
+    for c in order:
+        below = [depth[comp[d]] for n in members[c] for d in deps[n] if comp[d] != c]
+        depth[c] = 1 + max(below) if below else 0
+    return {n: depth[comp[n]] for n in nodes}
+
+
 def build(graph, ledger, records, runs, virgil=None, golden=None):
     nodes = graph["nodes"]
     golden = load_golden() if golden is None else golden
@@ -460,10 +512,11 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             or name in open_findings
         )
 
-    def own_status(name, trusted_references=None, is_broken_ref=None):
-        """A part's own verdict from its own checks. For parts of virgil,
-        a check that went through our reference code (its ``via``) counts
-        only if every such reference is in ``trusted_references``; checks
+    def own_status(name, trusted_references, is_broken_ref=None):
+        """A part's own verdict from its own checks. A check that went through
+        our reference code (its ``via``) counts only if every such reference is
+        in ``trusted_references``, for reference nodes as much as for parts of
+        virgil (``reference_verdicts`` finds that set); checks
         blocked that way are stratified into usable vs broken ``via`` tiers so
         adding a supplementary check via a broken reference never demotes a
         ``relies-unverified`` part to ``relies``."""
@@ -487,10 +540,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             s_, w_ = roots_of(r, golden)
             untrusted = set()
             if r["kind"] in agreeing:
-                if trusted_references is not None:
-                    untrusted = {v for v in r.get("via", []) if v not in trusted_references}
-                else:
-                    untrusted = {v for v in r.get("via", []) if v not in ref_set}
+                untrusted = {v for v in r.get("via", []) if v not in trusted_references}
             if r["kind"] in agreeing and not untrusted:
                 strong |= s_
                 for prop in r.get("properties", []):
@@ -517,6 +567,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         all_roots = set(strong) | blocked_roots
         need = node.get("roots", 1)
         via_out = []
+        shown = prop_roots  # the property roots of the tier that decided the status
         if failing:
             status = "failing"
         elif name in open_findings:
@@ -536,6 +587,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         ):
             status = "ok-via"  # its checks pass through usable (non-broken) reference code not yet verified
             via_out = sorted(usable_blocked_by)
+            shown = prop_roots_usable
         elif (
             len(all_roots) >= need
             and not external_open.get(name)
@@ -544,31 +596,43 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         ):
             status = "ok-via"  # its checks pass, relying on reference code with a known bug or failing check
             via_out = sorted(usable_blocked_by | broken_blocked_by)
+            shown = prop_roots_all
         elif len(all_roots) >= need and not external_open.get(name) and properties_short(name, prop_roots_all):
             status = "partly"  # agreement overall, but a property needs more independent roots
+            shown = prop_roots_all
         elif len(all_roots) >= need and not external_open.get(name) and unconfirmed_conventions(name, prop_roots_all):
             status = "convention"
+            shown = prop_roots_all
         elif strong or weak or blocked_roots:
             status = "partly"
+            shown = prop_roots_all
         else:
             status = "unchecked"
-        return status, strong, weak, need, recs, good, via_out, prop_roots
+        return status, strong, weak, need, recs, good, via_out, shown
 
     def reference_verdicts():
-        """Our reference nodes, decided first: verified only if their own
-        checks pass and every dependency is a verified reference too."""
-        refs = [n for n, node in nodes.items() if node.get("layer", "references") == "references"]
-        status = {n: own_status(n)[0] for n in refs}
-
-        def ok(n, seen):
-            if status.get(n) != "ok":
-                return False
-            return all(
-                d in status and d not in seen and ok(d, seen | {d})
-                for d in nodes[n].get("depends", [])
-            )
-
-        return {n for n in refs if ok(n, {n})}
+        """Our reference nodes that are verified: the least fixed point of
+        "its own checks pass, counting only checks whose ``via`` references are
+        already in the set, and every ``depends`` is in the set". Starting from
+        the empty set and growing it, so a reference checked only through a
+        failing, unchecked or untrusted reference stays out, and so does a cycle
+        of references that vouch only for each other. The step is monotone (a
+        larger set only lets more checks count), so the loop ends within
+        ``len(refs) + 1`` passes."""
+        refs = [n for n in nodes if n in ref_set]
+        trusted_refs = set()
+        for _ in range(len(refs) + 1):
+            grown = {
+                n for n in refs
+                if all(d in trusted_refs for d in nodes[n].get("depends", []))
+                and own_status(n, trusted_refs)[0] == "ok"
+            }
+            if grown == trusted_refs:
+                break
+            trusted_refs = grown
+        else:  # pragma: no cover - a monotone step cannot get here
+            raise RuntimeError("trusted references did not converge")
+        return trusted_refs
 
     diff_cache = {}
 
@@ -579,41 +643,42 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         return diff_cache[key]
 
     trusted = reference_verdicts()
-    own_status_cache = {}
-    in_own_status = set()
 
-    def _is_broken_target(v, _seen=frozenset()):
-        if v in _seen or v not in nodes:
-            return False
-        if _node_is_direct_broken(v):
-            return True
-        nxt = _seen | {v}
-        if any(_is_broken_target(d, nxt) for d in nodes[v].get("depends", [])):
-            return True
-        if v not in in_own_status:
-            st_v, *_, via_v, _ = _eval_own_status(v)
-            if st_v == "ok-via":
-                return any(_is_broken_target(u, nxt) for u in via_v)
-        return False
+    def broken_targets():
+        """Nodes that cannot back a check: the least fixed point of "has an open
+        finding or a failing check, or relies on (``depends``) a broken node, or
+        its own verdict is ``ok-via`` through a broken reference". Built up from
+        the empty set, so the answer does not depend on which node is asked about
+        first, and a cycle is broken only if one of its members is broken for a
+        reason of its own. Monotone: a larger set can only move a check from the
+        usable to the broken tier, and both tiers are ``ok-via``, so a node's
+        verdict never leaves ``ok-via`` as the set grows."""
+        broken = set()
+        # a node with no check that goes through untrusted references has the
+        # same status for every ``broken``; the others are re-evaluated each pass
+        status = {n: own_status(n, trusted, broken.__contains__) for n in nodes}
+        for _ in range(len(nodes) + 1):
+            grown = set()
+            for n in nodes:
+                if status[n][0] == "ok-via":
+                    status[n] = own_status(n, trusted, broken.__contains__)
+                if (
+                    _node_is_direct_broken(n)
+                    or any(d in broken for d in nodes[n].get("depends", []))
+                    or (status[n][0] == "ok-via" and any(u in broken for u in status[n][6]))
+                ):
+                    grown.add(n)
+            if grown == broken:
+                return status  # each node's own status at the converged broken set
+            broken = grown
+        raise RuntimeError("broken targets did not converge")  # pragma: no cover
 
-    def _eval_own_status(name):
-        if name not in own_status_cache:
-            in_own_status.add(name)
-            try:
-                ref_node = nodes[name].get("layer", "references") == "references"
-                own_status_cache[name] = own_status(
-                    name,
-                    None if ref_node else trusted,
-                    _is_broken_target,
-                )
-            finally:
-                in_own_status.discard(name)
-        return own_status_cache[name]
+    own_status_cache = broken_targets()
 
     for name in [n for n in nodes if n in ref_set] + [n for n in nodes if n not in ref_set]:
         node = nodes[name]
         reference_node = name in ref_set
-        status, strong, weak, need, recs, good, blocked_by, prop_roots = _eval_own_status(name)
+        status, strong, weak, need, recs, good, blocked_by, prop_roots = own_status_cache[name]
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         commits = sorted({r["_commit"] for r in good if r["_commit"]})
         src_paths = tuple(sorted(set(node.get("source", []))))
@@ -632,7 +697,14 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
 
     # verdicts: a part whose own checks pass is verified only if everything
     # it relies on is (with no missing targets, cycles, or reference->subject edges)
+    raw_cache = {}
+
     def _raw_problems(root):
+        if root not in raw_cache:
+            raw_cache[root] = _raw_problems_uncached(root)
+        return raw_cache[root]
+
+    def _raw_problems_uncached(root):
         found = set()
         structural = set()
         in_stack = {root}
@@ -663,35 +735,61 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         visit(root)
         return found, structural
 
-    def _expand_via_blocked(blocked, _seen=frozenset()):
-        out = set()
-        for v in blocked:
-            if v in _seen:
-                continue
-            next_seen = _seen | {v}
-            if v not in nodes:
-                out.add(v)
-                continue
-            sub = problems(v, next_seen)
-            if own[v]["status"] == "ok-via":
-                out |= sub | _expand_via_blocked(own[v]["via_blocked"], next_seen)
-            else:
-                out |= sub
-                if (
-                    nodes[v].get("layer", "references") != "references"
-                    or own[v]["status"] != "ok"
-                    or not sub
-                ):
-                    out.add(v)
+    def _new_walk(*active):
+        """State of one walk for the causes of one part: the nodes being walked (an ancestor
+        reached again contributes nothing, so cycles end), the result already found for each
+        node walked (so a node reachable along many routes is walked once, not once per route),
+        and the ancestors cut in the node being walked (``hit``)."""
+        return {"active": set(active), "done": {True: {}, False: {}}, "hit": set()}
+
+    def _expand_node(v, walk, named):
+        """Causes below one reference ``v``. ``named``: the walk is down a part's own chain of
+        checks, where a cycle of references that vouch only for each other is itself the cause and
+        is named by the node at which the cycle closes; below a dependency a cycle names nothing
+        (the dependency is the cause)."""
+        memo = walk["done"][named]
+        if v in memo:
+            return memo[v]
+        if v in walk["active"]:
+            if named:
+                walk["hit"].add(v)
+            return set()
+        walk["active"].add(v)
+        outer_hit, walk["hit"] = walk["hit"], set()
+        sub = problems(v, walk)
+        out = set(sub)
+        if own[v]["status"] == "ok-via":
+            out |= _expand_via_blocked(own[v]["via_blocked"], walk, named)
+            if named and not out and not walk["hit"] - {v}:
+                out = {v}  # the cycle closes here: it names itself (a node cut at an ancestor leaves it to that)
+        elif nodes[v].get("layer", "references") != "references" or own[v]["status"] != "ok" or not sub:
+            out.add(v)
+        inner = walk["hit"] - {v}
+        walk["active"].discard(v)
+        walk["hit"] = outer_hit | inner
+        if not (named and inner):  # a result that stood on an ancestor still being walked is not final
+            memo[v] = out
         return out
 
-    def problems(root, _seen=frozenset()):
+    def _expand_via_blocked(blocked, walk=None, named=True):
+        walk = walk if walk is not None else _new_walk()
+        out = set()
+        for v in blocked:
+            if v not in nodes:
+                out.add(v)
+            else:
+                out |= _expand_node(v, walk, named)
+        return out
+
+    def problems(root, walk=None):
+        walk = walk if walk is not None else _new_walk(root)
         raw, structural = _raw_problems(root)
         out = set(structural)
-        next_seen = _seen | {root}
         for d in raw:
             if d in nodes and own[d]["status"] == "ok-via":
-                out |= _expand_via_blocked(own[d]["via_blocked"], next_seen)
+                # if the walk below it finds nothing (its references only vouch for each other
+                # in a cycle) the dependency itself is the cause
+                out |= _expand_via_blocked(own[d]["via_blocked"], walk, False) or {d}
             else:
                 out.add(d)
         return out
@@ -743,12 +841,18 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             return None
         return sorted({f for d in diffs for f in d})
 
+    depth = depends_depths(nodes)
     out_nodes = {}
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        via_causes = _expand_via_blocked(o["via_blocked"]) if o["status"] == "ok-via" else set()
-        causes = sorted(problems(name) | via_causes)
+        walk = _new_walk(name)
+        via_causes = _expand_via_blocked(o["via_blocked"], walk) if o["status"] == "ok-via" else set()
+        causes = sorted((problems(name, walk) | via_causes) - {name})  # never its own cause (a via + depends cycle)
+        if o["status"] == "ok-via" and not causes:
+            # its checks stand on references that are not verified, yet the walk found nothing
+            # wrong below them (they only vouch for each other in a cycle): they are the cause
+            causes = sorted(o["via_blocked"])
         if verdict == "ok-via":
             verdict = "ok"
         if verdict == "ok":
@@ -779,7 +883,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                 }
                 for c in causes
             ],
-            "depends": node.get("depends", []), "dependents": dependents,
+            "depends": node.get("depends", []), "dependents": dependents, "depth": depth[name],
             "properties": o["properties"], "unconfirmed": o["unconfirmed"],
             "checks": o["checks"], "commits": o["commits"],
             "changed": changed_below(name),
@@ -790,7 +894,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     def ref_broken(v):
         return any(
             own.get(c, {}).get("status") in {"bug", "failing"}
-            for c in _expand_via_blocked((v,))
+            for c in _expand_via_blocked((v,), named=False)
         )
 
     pipelines = []
@@ -830,6 +934,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "id": name, "title": p["title"], "data": p.get("data", "simulated"),
             "dataset": p.get("dataset"), "reference": p.get("reference"), "url": p.get("url"),
             "headline": p.get("headline"), "page": p.get("page"), "status": status, "steps": p["steps"],
+            "depth": 1 + max((depth.get(s, 0) for s in p["steps"]), default=0),
             "unverified": unverified, "failing_checks": [r["test"] for r in bad],
             "checks": [_check(r) for r in recs],
         })

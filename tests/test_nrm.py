@@ -4,21 +4,19 @@ Each scene's point cloud is imaged through a NIRISS-like 7-hole mask, both
 by dLux and by the closed-form interferogram (Airy envelope x fringes). The
 two imagers must agree with each other and, once calibrated by a point
 source, with the scene's exact visibility. The dLux observables then go
-through our OIFITS writer to virgil, which must recover the scene.
+through our OIFITS writer to virgil, which must recover the scene
+(tests/test_nrm_injection.py; it goes through crosscheck.simulate). The calibrated-visibility
+comparison on each scene is in tests/test_nrm_calibrated.py (the scenes come from virgil_bridge);
+the checks of crosscheck.nrm below use neither, so what they went through is only crosscheck.nrm.
 """
 
 import numpy as np
 import pytest
 
-from crosscheck import array, nrm, simulate, sky
-from evidence.plugin import record
-
-vb = pytest.importorskip("virgil_bridge")
+from _nrm_common import PIX, UV, WL
+from crosscheck import nrm, sky
 
 pytestmark = pytest.mark.x64
-WL = float(np.float32(4.8e-6))  # as OIFITS will store it
-PIX = 30.0
-UV = array.pupil_uv(nrm.HOLES)
 
 
 @pytest.mark.validates("crosscheck.nrm", roots=["mathematics"], kind="reference")
@@ -39,71 +37,3 @@ def test_dlux_orientation():
     want = sky.vis_point(*UV, WL, 40.0, -25.0)
     # a flipped axis would give O(1) errors; the small field leaves ~1e-2
     assert np.max(np.abs(got - want)) < 3e-2
-
-
-@pytest.fixture(scope="module")
-def images():
-    """Calibrator and science images, dLux and analytic, per scene."""
-    optics = nrm.dlux_optics(npix=256)
-    out = {
-        "cal": (
-            nrm.image_dlux(sky.point(), WL, optics),
-            nrm.image_analytic(sky.point(), WL, npix=256),
-        )
-    }
-    for scene in vb.masking_scenes():
-        out[scene.name] = (
-            nrm.image_dlux(scene.cloud, WL, optics),
-            nrm.image_analytic(scene.cloud, WL, npix=256),
-        )
-    return out
-
-
-def _scene_ids():
-    return [s.name for s in vb.masking_scenes()]
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("k", range(4), ids=_scene_ids())
-@pytest.mark.validates("crosscheck.nrm", roots=["dlux", "mathematics"], kind="reference", tier="B")
-def test_calibrated_visibilities(images, k):
-    scene = vb.masking_scenes()[k]
-    exact = scene.vis(*UV, WL)
-    cal_d, cal_a = images["cal"]
-    sci_d, sci_a = images[scene.name]
-    v_d = nrm.calibrated_vis_fn(sci_d, cal_d, WL, PIX)(*UV, WL)
-    v_a = nrm.calibrated_vis_fn(sci_a, cal_a, WL, PIX)(*UV, WL)
-    # the point cloud is the scene
-    assert np.max(np.abs(sky.visibility(scene.cloud, *UV, WL) - exact)) < 1e-8
-    # light lost beyond a 7.7" field limits both imagers to 1e-4 - 8e-4
-    # (largest for the rim, the most extended scene)
-    assert np.max(np.abs(v_d - exact)) < 1e-3
-    assert np.max(np.abs(v_a - exact)) < 1e-3
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize("k", range(4), ids=_scene_ids())
-@pytest.mark.validates("pipeline:dlux-masking-fit", "virgil.fitting.fit", "virgil.models.System", roots=["dlux"], tier="B")
-def test_dlux_injection_recovery(images, tmp_path, k):
-    """Noise-free dLux observables, fitted by virgil: the bias left by the
-    field edge must be far below realistic errors (1 deg closure phases,
-    0.02 in V^2): under 0.1 of those Laplace sigmas (0.05 at most so far,
-    for the rim)."""
-    scene = vb.masking_scenes()[k]
-    cal_d, _ = images["cal"]
-    sci_d, _ = images[scene.name]
-    vis = nrm.calibrated_vis_fn(sci_d, cal_d, WL, PIX)
-    path = tmp_path / "nrm.fits"
-    simulate.observe(
-        path, vis, nrm.HOLES, hour_angles_h=[0.0], wavelengths=[WL],
-        fixed_uv=UV, sigma_v2=0.02, sigma_cp_deg=1.0,
-    )
-    data = vb.load(path)
-    result, cov = vb.fit_scene(scene, data)
-    got = vb.flat_values(scene, result.values)
-    truth = vb.flat_truth(scene)
-    # judged in units of virgil's own uncertainty: a weakly constrained
-    # parameter (the rim's fwhm, sigma ~ 80 mas) may be off by a few
-    # per cent and still be negligibly biased
-    bias = record("max_abs_bias_sigma", np.max(np.abs((got - truth) / np.sqrt(np.diag(cov)))))
-    assert bias < 0.1, (got, truth)
