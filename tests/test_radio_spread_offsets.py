@@ -187,7 +187,8 @@ TRUE_OFFSETS = np.array([[0.0, 0.0], [3.1, -2.2], [-1.7, 4.4]])
 
 
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["statistics", "mathematics"], headline="recovery_max_abs_z")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["statistics", "mathematics"], headline="recovery_max_abs_z", tier="B")
 def test_fitted_offsets_recover_injected_offsets_within_the_fisher_scatter():
     """Simulate (numpy, exact DFT, Gaussian noise of variance 1/w in each of Re and Im, so that exp(-chi2/2) is
     the likelihood) 600 visibilities of a 16 x 16 image in three observations with injected offsets (3.1, -2.2)
