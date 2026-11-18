@@ -24,7 +24,7 @@ import yaml
 
 import trust_roots_table
 
-ROOT =pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # set by attach() from trust.py
 GOOD = LAYER_ORDER = ROOT_NAMES = UNFIXED = VERDICTS = doc_url = slugify = None
@@ -297,10 +297,12 @@ def render_coverage(model, extra=ROOT / "trust" / "not_covered.md"):
                                      "independent references" for p in short))
             elif verdict == "partly" and not why:
                 waiting = ", ".join(f"`{r.removeprefix('virgil.')}`" for r in n["blocked_by_references"])
-                if n["strong"]:
-                    why.append(f"{len(n['strong'])} of {n['need']} independent references")
-                elif waiting:  # its counted checks all go through a reference that is not yet verified
-                    why.append(f"its checks are waiting on an unverified reference ({waiting})")
+                if n["strong"] or waiting:
+                    # the count is always shown: a held-back check may still leave the part short of `need`
+                    text = f"{len(n['strong'])} of {n['need']} independent references"
+                    if waiting:
+                        text += f"; further checks go through a reference not yet verified ({waiting})"
+                    why.append(text)
                 else:
                     why.append("only checked against itself")
             name = n["id"].removeprefix("virgil.")

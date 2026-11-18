@@ -3,7 +3,8 @@
     python scripts/trust.py --evidence trust/evidence/latest.jsonl \\
         [--evidence trust/evidence/virgil.jsonl] [--virgil ~/code/drpangloss] \\
         [--out docs/index.md] [--json docs/assets/trust.json]
-        [--findings docs/method/findings.md] [--coverage docs/method/coverage.md] [--tests docs/tests/index.md]
+        [--findings docs/method/findings.md] [--coverage docs/method/coverage.md] \\
+        [--roots docs/method/roots.md] [--tests docs/tests/index.md]
 
 Two questions are kept apart:
 

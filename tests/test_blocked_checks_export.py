@@ -62,8 +62,11 @@ def test_nothing_is_blocked_once_the_reference_is_verified(trust, tmp_path):
 def test_coverage_page_says_waiting_not_checked_against_itself(trust, tmp_path):
     graph = {"nodes": {"virgil.a": {"layer": "models", "roots": 2}, "virgil.c": {"layer": "models", "roots": 2},
                        "crosscheck.r": {"layer": "references"}}}
+    graph["nodes"]["virgil.d"] = {"layer": "models", "roots": 3}
     recs = [record("t::via", "virgil.a", via=["crosscheck.r"]),                       # all its checks wait
-            record("t::own", "virgil.c", kind="regression")]                          # only virgil's own checks
+            record("t::own", "virgil.c", kind="regression"),                          # only virgil's own checks
+            record("t::d", "virgil.d", via=["crosscheck.r"]),                         # one held-back check, need 3
+            record("t::d2", "virgil.d", roots=["standards"])]                         # and one counted root
     path = tmp_path / "latest.jsonl"
     head = {"record": "run", "date": "2026-10-06T00:00:00+00:00", "virgil": {"commit": "c" * 40}, "runner": "test"}
     path.write_text("\n".join(json.dumps(x) for x in [head, *recs]) + "\n")
@@ -72,6 +75,8 @@ def test_coverage_page_says_waiting_not_checked_against_itself(trust, tmp_path):
     assert model["nodes"]["virgil.a"]["verdict"] == "partly" and model["nodes"]["virgil.a"]["strong"] == []
     page = trust.render_coverage(model, extra=None)
     row = {line.split("|")[1].strip(): line for line in page.splitlines() if line.startswith("| `")}
-    assert "waiting on an unverified reference (`crosscheck.r`)" in row["`a`"]
+    # the count is always shown, so the line cannot promise that verifying the reference would be enough
+    assert "0 of 2 independent references; further checks go through a reference not yet verified (`crosscheck.r`)" in row["`a`"]
     assert "checked against itself" not in row["`a`"]
+    assert "1 of 3 independent references; further checks go through a reference not yet verified" in row["`d`"]
     assert "only checked against itself" in row["`c`"]
