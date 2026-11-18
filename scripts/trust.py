@@ -669,11 +669,11 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                 ):
                     grown.add(n)
             if grown == broken:
-                return broken, status
+                return status  # each node's own status at the converged broken set
             broken = grown
         raise RuntimeError("broken targets did not converge")  # pragma: no cover
 
-    broken, own_status_cache = broken_targets()
+    own_status_cache = broken_targets()
 
     for name in [n for n in nodes if n in ref_set] + [n for n in nodes if n not in ref_set]:
         node = nodes[name]
@@ -697,7 +697,14 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
 
     # verdicts: a part whose own checks pass is verified only if everything
     # it relies on is (with no missing targets, cycles, or reference->subject edges)
+    raw_cache = {}
+
     def _raw_problems(root):
+        if root not in raw_cache:
+            raw_cache[root] = _raw_problems_uncached(root)
+        return raw_cache[root]
+
+    def _raw_problems_uncached(root):
         found = set()
         structural = set()
         in_stack = {root}
@@ -728,37 +735,61 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         visit(root)
         return found, structural
 
-    def _expand_via_blocked(blocked, _seen=frozenset()):
-        out = set()
-        for v in blocked:
-            if v in _seen:
-                continue
-            next_seen = _seen | {v}
-            if v not in nodes:
-                out.add(v)
-                continue
-            sub = problems(v, next_seen)
-            if own[v]["status"] == "ok-via":
-                out |= sub | _expand_via_blocked(own[v]["via_blocked"], next_seen)
-            else:
-                out |= sub
-                if (
-                    nodes[v].get("layer", "references") != "references"
-                    or own[v]["status"] != "ok"
-                    or not sub
-                ):
-                    out.add(v)
+    def _new_walk(*active):
+        """State of one walk for the causes of one part: the nodes being walked (an ancestor
+        reached again contributes nothing, so cycles end), the result already found for each
+        node walked (so a node reachable along many routes is walked once, not once per route),
+        and the ancestors cut in the node being walked (``hit``)."""
+        return {"active": set(active), "done": {True: {}, False: {}}, "hit": set()}
+
+    def _expand_node(v, walk, named):
+        """Causes below one reference ``v``. ``named``: the walk is down a part's own chain of
+        checks, where a cycle of references that vouch only for each other is itself the cause and
+        is named by the node at which the cycle closes; below a dependency a cycle names nothing
+        (the dependency is the cause)."""
+        memo = walk["done"][named]
+        if v in memo:
+            return memo[v]
+        if v in walk["active"]:
+            if named:
+                walk["hit"].add(v)
+            return set()
+        walk["active"].add(v)
+        outer_hit, walk["hit"] = walk["hit"], set()
+        sub = problems(v, walk)
+        out = set(sub)
+        if own[v]["status"] == "ok-via":
+            out |= _expand_via_blocked(own[v]["via_blocked"], walk, named)
+            if named and not out and not walk["hit"] - {v}:
+                out = {v}  # the cycle closes here: it names itself (a node cut at an ancestor leaves it to that)
+        elif nodes[v].get("layer", "references") != "references" or own[v]["status"] != "ok" or not sub:
+            out.add(v)
+        inner = walk["hit"] - {v}
+        walk["active"].discard(v)
+        walk["hit"] = outer_hit | inner
+        if not (named and inner):  # a result that stood on an ancestor still being walked is not final
+            memo[v] = out
         return out
 
-    def problems(root, _seen=frozenset()):
+    def _expand_via_blocked(blocked, walk=None, named=True):
+        walk = walk if walk is not None else _new_walk()
+        out = set()
+        for v in blocked:
+            if v not in nodes:
+                out.add(v)
+            else:
+                out |= _expand_node(v, walk, named)
+        return out
+
+    def problems(root, walk=None):
+        walk = walk if walk is not None else _new_walk(root)
         raw, structural = _raw_problems(root)
         out = set(structural)
-        next_seen = _seen | {root}
         for d in raw:
             if d in nodes and own[d]["status"] == "ok-via":
                 # if the walk below it finds nothing (its references only vouch for each other
                 # in a cycle) the dependency itself is the cause
-                out |= _expand_via_blocked(own[d]["via_blocked"], next_seen) or {d}
+                out |= _expand_via_blocked(own[d]["via_blocked"], walk, False) or {d}
             else:
                 out.add(d)
         return out
@@ -815,8 +846,9 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        via_causes = _expand_via_blocked(o["via_blocked"]) if o["status"] == "ok-via" else set()
-        causes = sorted(problems(name) | via_causes)
+        walk = _new_walk(name)
+        via_causes = _expand_via_blocked(o["via_blocked"], walk) if o["status"] == "ok-via" else set()
+        causes = sorted(problems(name, walk) | via_causes)
         if o["status"] == "ok-via" and not causes:
             # its checks stand on references that are not verified, yet the walk found nothing
             # wrong below them (they only vouch for each other in a cycle): they are the cause
@@ -862,7 +894,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     def ref_broken(v):
         return any(
             own.get(c, {}).get("status") in {"bug", "failing"}
-            for c in _expand_via_blocked((v,))
+            for c in _expand_via_blocked((v,), named=False)
         )
 
     pipelines = []

@@ -2272,3 +2272,46 @@ def test_a_part_depending_on_one_checked_through_a_reference_cycle_is_not_verifi
     for node in model["nodes"].values():
         assert node["verdict"] != "verified" or all(
             model["nodes"][d]["verdict"] == "verified" for d in node["depends"])
+
+
+def test_a_reference_cycle_is_named_beside_another_cause_and_at_the_end_of_a_chain(trust, tmp_path):
+    """Review of #266: a reference cycle is a cause even when the part has another cause too, and on a chain
+    ``virgil.x -> top -> a <-> b`` the cause is the cycle, not the hop ``top`` that merely passes it on."""
+    graph = {"nodes": {
+        "crosscheck.a": {"layer": "references"},
+        "crosscheck.b": {"layer": "references"},
+        "crosscheck.top": {"layer": "references"},
+        "crosscheck.empty": {"layer": "references"},  # no checks at all
+        "virgil.x": {"layer": "models"},
+        "virgil.y": {"layer": "models"},
+    }}
+    recs = [
+        record("t::a", "crosscheck.a", kind="reference", via=["crosscheck.b"]),
+        record("t::b", "crosscheck.b", kind="reference", via=["crosscheck.a"]),
+        record("t::top", "crosscheck.top", kind="reference", via=["crosscheck.a"]),
+        record("t::x", "virgil.x", via=["crosscheck.top"]),
+        record("t::y", "virgil.y", via=["crosscheck.empty", "crosscheck.a"]),
+    ]
+    got, model = verdicts(trust, tmp_path, recs, graph)
+    assert got["virgil.x"] == got["virgil.y"] == "relies-unverified"
+    cause_x = {b["id"] for b in model["nodes"]["virgil.x"]["because"]}
+    assert cause_x and cause_x <= {"crosscheck.a", "crosscheck.b"}
+    cause_y = {b["id"] for b in model["nodes"]["virgil.y"]["because"]}
+    assert "crosscheck.empty" in cause_y and cause_y & {"crosscheck.a", "crosscheck.b"}
+
+
+def test_the_causes_walk_visits_each_node_once_not_once_per_route(trust, tmp_path):
+    """A layered lattice in which every reference is checked through both references of the layer below has
+    2**layers routes to the bottom; the walk must not enumerate them (it did, and trust.py did not finish on the
+    CI evidence)."""
+    layers = 40
+    nodes = {f"crosscheck.l{i}_{j}": {"layer": "references"} for i in range(layers) for j in (0, 1)}
+    nodes["virgil.top"] = {"layer": "models"}
+    recs = [record(f"t::l{i}_{j}", f"crosscheck.l{i}_{j}", kind="reference",
+                   via=[f"crosscheck.l{i - 1}_0", f"crosscheck.l{i - 1}_1"] if i else [])
+            for i in range(layers) for j in (0, 1)]
+    recs[0]["kind"] = recs[1]["kind"] = "guard"  # the bottom layer is not checked: everything above relies on it
+    recs.append(record("t::top", "virgil.top", via=[f"crosscheck.l{layers - 1}_0"]))
+    got, model = verdicts(trust, tmp_path, recs, {"nodes": nodes})
+    assert got["virgil.top"] == "relies-unverified"
+    assert {b["id"] for b in model["nodes"]["virgil.top"]["because"]} == {"crosscheck.l0_0", "crosscheck.l0_1"}

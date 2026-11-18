@@ -7,7 +7,6 @@ import pytest
 from scipy import integrate
 
 from crosscheck import disks, sky
-from evidence.plugin import record
 
 
 @pytest.mark.validates("crosscheck.disks", roots=["mathematics"], kind="reference")
