@@ -644,3 +644,19 @@ halo. That belongs to the noise fit (stage F1), not to the field.
 **What this changes.** Every earlier PS Gem gp-polar result used the truncated field: §7's calibration notes, §10, §13 (rule 2's
 PS Gem row), §12's 5 mas arms and §14's PS Gem rows. §12's verdict for PS Gem already rested on the 15 mas field and stands.
 The BN outputs on disk keep their 5 mas images; a rerun with the fix is a cluster job, not done here.
+
+**A second check: the polar field's own radius (AI Sco).** gp-polar's field ends at `half_mas` in the disc plane (the figure
+extent), not at the support. For AI Sco that is 8.47 mas at inclination 63.5°, only 3.8 mas on the sky along the minor axis, below
+the data's 10.7 mas floor (HD 95767: 9.31 mas, floor 10.2). AI Sco also has the highest edge band outside PS Gem (0.10–0.20). A
+local test widened AI Sco's field to cover the whole 14 mas support (r_out = 31.3 mas in the disc plane), with stage BN's MacKay
+factor (1.338), so its ln Z compares directly with job 21123993:
+
+| AI Sco | ln Z_scene, 8.47 mas field (BN) | ln Z_scene, field covering the support | pick | cost of the bound | edge band |
+|---|---|---|---|---|---|
+| current noise | −989.4 | −931.1 (+58.3) | 0.25 beam, σ = 4 | 58.1 → 83.0 | 0.10 → 0.03 |
+| night terms | −689.0 | −689.1 (0.0) | 0.25 beam, σ = 4 | 9.6 → 10.6 | 0.14 → 0.00 |
+
+The wider field fits the white-error data better by 58 and removes the edge flux, but the pick stays in the corner and the cost
+of the bound does not fall. Under night terms nothing changes. So AI Sco's field was short, but that is not why it picks the
+corner. Whether gp-polar's field should always cover the support (it would change AI Sco and HD 95767 under current noise) is
+left for Ben; `check_support` checks only the support.
