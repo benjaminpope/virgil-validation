@@ -4,7 +4,7 @@
 draws what they decided (the map, the matrix, the pipeline cards, the ledger, and the Findings, Not yet covered
 and Function tests pages). Every name here is also importable from ``trust``.
 
-The few constants and helpers of ``trust.py`` that rendering reads (``VERDICTS``, ``ROOT_NAMES``, ``GOOD``,
+The few constants and helpers of ``trust.py`` that rendering reads (``VERDICTS``, ``ROOT_NAMES``, ``ROOT_ALIAS``, ``GOOD``,
 ``LAYER_ORDER``, ``UNFIXED``, ``slugify``, ``doc_url``) are handed over by ``trust_render.attach``, which ``trust.py``
 calls once its own definitions are in place. That keeps one copy of them, whether ``trust.py`` was run as a
 script or loaded by file path, and means this module never imports ``trust`` back.
@@ -319,8 +319,8 @@ def render_tests(model, mkdocs=ROOT / "mkdocs.yml", about=ROOT / "trust" / "test
              "# Function tests\n",
              "virgil, part by part. Each page below checks a group of virgil's functions against mathematics, "
              "published standards or other people's code, and explains how. The bar shows how many of the parts "
-             "explained on that page are verified. To find one part, select it in the "
-             "[map on the Overview](../index.md#parts).\n",
+             "explained on that page are verified. To find one part, look for its square in the "
+             "[skyline on the Overview](../index.md#parts), or search the list under it.\n",
              '<div class="vt">']
     for section, pages in test_sections(mkdocs):
         lines.append(f'<h2 id="{slugify(section)}">{e(section)}</h2>')

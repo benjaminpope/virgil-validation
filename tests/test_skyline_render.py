@@ -8,7 +8,7 @@ import pytest
 
 pytestmark = pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 
-ROOT =pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("trust_skyline", ROOT / "scripts" / "trust_skyline.py")
 sky = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sky)
@@ -100,8 +100,18 @@ def test_columns_follow_layers_and_height_follows_depth():
 
 def test_squares_do_not_overlap():
     _, tree = render()
-    spots = [(r.get("x"), r.get("y")) for r in squares(tree)]
-    assert len(set(spots)) == len(spots)
+    boxes = [(float(r.get("x")), float(r.get("y"))) for r in squares(tree)]
+    for i, (x1, y1) in enumerate(boxes):
+        for x2, y2 in boxes[i + 1:]:
+            assert abs(x1 - x2) >= sky.CELL or abs(y1 - y2) >= sky.CELL, ((x1, y1), (x2, y2))
+
+
+def test_every_square_is_inside_the_viewbox():
+    _, tree = render()
+    w, h = (float(v) for v in next(s for s in tree.iter("svg") if s.get("role") == "group").get("viewBox").split()[2:])
+    for r in squares(tree):
+        x, y = float(r.get("x")), float(r.get("y"))
+        assert 0 <= x and x + sky.CELL <= w and 0 <= y and y + sky.CELL <= h
 
 
 def test_each_square_links_to_its_function_test_page():
@@ -147,7 +157,7 @@ def test_unlisted_root_is_not_lost():
 
 def test_legend_has_the_verdict_words_icons_and_counts():
     out, tree = render()
-    for v, n in {"verified": 4, "unchecked": 1, "relies-unverified": 1, "bug": 1}.items():
+    for v, n in {"verified": 3, "unchecked": 1, "relies-unverified": 1, "bug": 1}.items():
         assert f"{trust.VERDICTS[v][0]} ({n})" in out
         assert trust.ICON[v] in out
     assert trust.VERDICTS["partly"][0] not in out  # only verdicts that occur
@@ -187,8 +197,33 @@ def test_trust_page_draws_the_skyline_and_keeps_the_chips_in_a_fold():
     assert page.count('class="sq ') == 2
 
 
-def test_references_column_is_headed_as_our_own_code_and_depth_zero_claims_no_roots():
+def test_references_column_keeps_its_layer_name_and_depth_zero_claims_no_roots():
     out, tree = render()
     headings = [t.text for t in tree.iter("text")]
-    assert "our references" in headings and "references" not in headings
+    assert "references" in headings and "our references" not in headings
     assert "depth 0 relies on no other part" in out and "stands on the roots" not in out
+
+
+def test_legend_counts_parts_of_virgil_not_reference_nodes():
+    out, _ = render()
+    assert f"{trust.VERDICTS['verified'][0]} (3)" in out  # pmoired.fit is a reference node, not counted
+    assert "1 reference nodes" in out
+
+
+def test_render_alias_folds_into_the_foundation():
+    # trust_render receives ROOT_ALIAS from trust.py: aliased roots count under their target's class
+    assert trust.trust_render.ROOT_ALIAS == trust.ROOT_ALIAS
+    model = {"nodes": {"a": node("a", "data", "verified", 0, ["frap"]) | {"id": "a"}}}
+    assert sky.foundation_counts(model, ROOTS, {"frap": "frank"}) == {"other-peoples-code": {"data": 1}}
+
+
+def test_corner_marks_show_changed_and_fails_elsewhere():
+    n = node("a", "data", "verified", 0, ["standards"]) | {"changed": ["x.py"], "fails_elsewhere": True}
+    m = node("b", "data", "verified", 0)
+    out, tree = render({"nodes": {n["id"]: n, m["id"]: m}})
+    tips = {title_of(r) for r in squares(tree)}
+    assert "a · Verified · depth 0 · virgil has changed this since its evidence was measured · fails on another virgil commit" in tips
+    assert "b · Verified · depth 0" in tips
+    assert len(list(tree.iter("circle"))) >= 2 and out.count('class="mk') >= 4  # two on the square, one each in the legend keys
+    assert "corner mark: virgil has changed it since its evidence (1)" in out
+    assert "corner mark" not in render()[0]

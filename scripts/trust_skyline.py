@@ -6,12 +6,13 @@ an inline SVG inside a container that scrolls sideways on a small screen. Nothin
 
 Reading the figure:
 
-* Columns are the layers of virgil. ``references`` is our own reference code (the independent
-  implementations in crosscheck and external_bridge). It is a link and not a root: written by
-  agents, it is trusted only as far as its own checks (``links: reference-code`` in
-  ``trust/roots.yml``). Its column is headed "our references" and stands leftmost behind a dashed
-  line, because the other layers are compared with it; it is not a layer above or below. The other layers follow
-  in the order ``LAYER_ORDER`` gives, bottom layer first. The layers are not strictly stacked
+* Columns are the layers of virgil. ``references`` is the reference side: our own independent
+  implementations in crosscheck and external_bridge, the adapters, and the packages we compare
+  with (pmoired, candid, ...). It is a link and not a root (``links: reference-code`` in
+  ``trust/roots.yml``): trusted only as far as its own checks. Its column keeps the layer name
+  and stands leftmost behind a dashed line, because the other layers are compared with it; it is
+  not a layer above or below. The other layers follow in the order ``LAYER_ORDER`` gives, bottom
+  layer first. The layers are not strictly stacked
   (imaging and inference depend on each other), which is why height is depth and not layer.
 * Height is ``depth``: the length of the longest chain of ``depends`` beneath a part. Depth 0
   stands directly on the ground line and relies on no other part.
@@ -24,7 +25,7 @@ Reading the figure:
   (frap into frank) and every golden source into ``golden``. Virgil checked against itself is a weak
   root that never counts, so the matrix leaves it out.
 
-Colour is the only thing a square's fill says; the verdict word is in its tooltip and the legend
+Two corner marks carry what the verdict leaves out: a white dot (virgil has changed this part since its evidence was measured) and a black triangle (a check of it fails on another virgil commit). Colour is the only thing a square's fill says; the verdict word is in its tooltip and the legend
 gives each word its icon. Text and lines use ``currentColor`` so the figure follows the site's
 light and dark schemes.
 """
@@ -39,10 +40,11 @@ import sys
 PITCH, CELL = 13, 11  # a square is CELL wide on a PITCH grid
 GRID_ROWS = 4  # a layer's cell is about this many squares tall before it widens
 MIN_COLS = 3
+HEADING_PX = 6.4  # width of a column heading per character at 11.5 px, so a heading never spills over the divider
 LEFT, GAP, TOP, RIGHT = 150, 20, 46, 12
 BAND_PAD = 4  # blank space under each depth band
 MROW = 24  # foundation row height
-COLUMN_HEADING = {"references": "our references"}  # not other people's code: see the module docstring
+MAX_R = MROW / 2 - 2  # radius of the largest foundation circle
 WEAK_CLASSES = {"self-consistency"}  # a weak root never counts, so it has no row in the matrix
 
 
@@ -112,7 +114,7 @@ def layout(nodes, columns, verdict_order):
     cols = {}
     for layer in columns:
         biggest = max((len(v) for (lay, _), v in cell.items() if lay == layer), default=1)
-        cols[layer] = max(MIN_COLS, -(-biggest // GRID_ROWS))
+        cols[layer] = max(MIN_COLS, -(-biggest // GRID_ROWS), -int(-len(layer) * HEADING_PX // PITCH))
     band_rows = [max([1] + [-(-len(cell.get((layer, d), [])) // cols[layer]) for layer in columns]) for d in range(max_depth + 1)]
     slots = {}
     for (layer, d), group in cell.items():
@@ -131,6 +133,7 @@ def _style(colours):
         ".vt-sky a:hover rect.sq,.vt-sky a:focus-visible rect.sq{stroke-opacity:1;stroke-width:1.6}"
         ".vt-sky a:focus-visible{outline:none}"
         ".vt-sky .mut{opacity:.68}"
+        ".vt-sky .mk{fill:#fff;stroke:#000;stroke-width:.7;pointer-events:none}.vt-sky .mf{fill:#000;stroke:#fff}"
         ".vt-sky-legend{display:flex;flex-wrap:wrap;gap:.3rem 1rem;font-size:.75rem;margin:.3rem 0 .5rem}"
         ".vt-sky-key{display:inline-flex;align-items:center;gap:.35em}"
         ".vt-sky-key svg{display:inline-block;margin:0;width:.9rem;height:.9rem}"
@@ -138,7 +141,8 @@ def _style(colours):
     )
 
 
-def _legend(counts, order, icons, words):
+def _legend(counts, order, icons, words, n_marks=(0, 0)):
+    """Verdict keys (counts are parts of virgil only), then a key for each corner mark that occurs."""
     items = []
     for v in order:
         if counts.get(v):
@@ -147,6 +151,11 @@ def _legend(counts, order, icons, words):
                 f'<rect class="sw k-{_e(v)}" width="{CELL}" height="{CELL}" rx="2"/></svg>'
                 f'<span aria-hidden="true">{_e(icons.get(v, ""))}</span> {_e(words[v])} ({counts[v]})</span>'
             )
+    for n, shape, text in zip(n_marks, ('<circle class="mk" cx="8.5" cy="2.5" r="1.8"/>', '<path class="mk mf" d="M.5,10.5h5l-5,-5z"/>'),
+                              ("virgil has changed it since its evidence", "fails on another virgil commit")):
+        if n:
+            items.append(f'<span class="vt-sky-key"><svg viewBox="0 0 {CELL} {CELL}" aria-hidden="true"><rect class="sw k-unchecked" '
+                         f'width="{CELL}" height="{CELL}" rx="2"/>{shape}</svg> corner mark: {_e(text)} ({n})</span>')
     return '<div class="vt-sky-legend">' + "".join(items) + "</div>"
 
 
@@ -196,7 +205,7 @@ def skyline_html(model, roots, base="", names=None):
             out.append(f'<line x1="{LEFT - 8}" x2="{width - RIGHT}" y1="{ly:.1f}" y2="{ly:.1f}" stroke="currentColor" stroke-opacity=".12" stroke-width=".6"/>')
     out.append(
         f'<text x="14" y="{TOP + sky_h / 2:.1f}" font-size="10.5" class="mut" fill="currentColor" text-anchor="middle" '
-        f'transform="rotate(-90 14 {TOP + sky_h / 2:.1f})">dependency depth: further from the roots</text>'
+        f'transform="rotate(-90 14 {TOP + sky_h / 2:.1f})">depth</text>'
     )
     # column headings and squares
     verdict_words = {v: t.VERDICTS[v][0] for v in t.VERDICTS}
@@ -204,7 +213,7 @@ def skyline_html(model, roots, base="", names=None):
         members = [n for n in nodes.values() if n["layer"] == layer]
         ok = sum(1 for n in members if n["verdict"] == "verified")
         cx = col_x[layer] + cols[layer] * PITCH / 2
-        out.append(f'<text x="{cx:.1f}" y="17" text-anchor="middle" font-size="11.5" font-weight="500" fill="currentColor">{_e(COLUMN_HEADING.get(layer, layer))}</text>')
+        out.append(f'<text x="{cx:.1f}" y="17" text-anchor="middle" font-size="11.5" font-weight="500" fill="currentColor">{_e(layer)}</text>')
         out.append(f'<text x="{cx:.1f}" y="31" text-anchor="middle" font-size="10" class="mut" fill="currentColor">{ok}/{len(members)}</text>')
     out.append(f'<text x="{LEFT - 14}" y="31" text-anchor="end" font-size="10" class="mut" fill="currentColor">verified / parts</text>')
     for n in sorted(nodes.values(), key=lambda n: slots[n["id"]]):
@@ -213,8 +222,15 @@ def skyline_html(model, roots, base="", names=None):
         sy = band_bottom[d] - BAND_PAD - (i // cols[layer] + 1) * PITCH
         word = verdict_words.get(n["verdict"], n["verdict"])
         title = f'{n["label"]} · {word} · depth {_depth(n)}'
+        marks = ""
+        if n.get("changed"):
+            title += " · virgil has changed this since its evidence was measured"
+            marks += f'<circle class="mk" cx="{sx + CELL - 2.5}" cy="{sy + 2.5:.1f}" r="1.8"/>'
+        if n.get("fails_elsewhere"):
+            title += " · fails on another virgil commit"
+            marks += f'<path class="mk mf" d="M{sx + .5},{sy + CELL - .5:.1f}h5l-5,-5z"/>'
         sq = (f'<rect class="sq k-{_e(n["verdict"])}" x="{sx}" y="{sy:.0f}" width="{CELL}" height="{CELL}" rx="2">'
-              f'<title>{_e(title)}</title></rect>')
+              f'<title>{_e(title)}</title></rect>{marks}')
         doc = docs.get(n["id"])
         if doc:
             sq = f'<a href="{_e(base + t.doc_url(doc))}" aria-label="{_e(title)}">{sq}</a>'
@@ -226,6 +242,7 @@ def skyline_html(model, roots, base="", names=None):
         dx = col_x["references"] + cols["references"] * PITCH + GAP / 2
         out.append(f'<line x1="{dx:.1f}" x2="{dx:.1f}" y1="6" y2="{height - 6}" stroke="currentColor" stroke-opacity=".3" stroke-dasharray="3 3"/>')
     # foundation matrix
+    biggest = max([1] + [n for per in found.values() for n in per.values()])
     for k, c in enumerate(rows):
         yy = ground + 26 + k * MROW
         out.append(f'<text x="{LEFT - 14}" y="{yy + 4}" text-anchor="end" font-size="11" fill="currentColor">{_e(names[c])}</text>')
@@ -234,14 +251,17 @@ def skyline_html(model, roots, base="", names=None):
             if not count:
                 continue
             cx = col_x[layer] + cols[layer] * PITCH / 2
-            r = max(3.0, count ** 0.5 * 1.45)
+            r = max(3.0, MAX_R * (count / biggest) ** 0.5)  # area follows the count, the largest filling MAX_R
             tip = f'{count} {layer} part{"s" if count != 1 else ""} with a counted check against {names[c].lower()}'
             out.append(f'<g><title>{_e(tip)}</title><circle cx="{cx - 12:.1f}" cy="{yy}" r="{r:.1f}" fill="currentColor" fill-opacity=".55"/>'
-                       f'<text x="{cx + 2:.1f}" y="{yy + 4}" font-size="10.5" class="mut" fill="currentColor">{count}</text></g>')
+                       f'<text x="{cx - 12 + r + 4:.1f}" y="{yy + 4}" font-size="10.5" class="mut" fill="currentColor">{count}</text></g>')
 
-    verdict_counts = collections.Counter(n["verdict"] for n in nodes.values())
-    desc = (f"{len(nodes)} parts of virgil, one square each, in columns by layer and stacked by dependency depth, "
-            "standing on a matrix of the classes of root each layer was checked against.")
+    # the legend counts parts of virgil only, as the headline and the bar at the top of the page do
+    ours = [n for n in nodes.values() if n["id"].startswith("virgil.")]
+    verdict_counts = collections.Counter(n["verdict"] for n in ours)
+    n_marks = (sum(1 for n in ours if n.get("changed")), sum(1 for n in ours if n.get("fails_elsewhere")))
+    desc = (f"{len(ours)} parts of virgil and {len(nodes) - len(ours)} reference nodes, one square each, in columns by layer "
+            "and stacked by dependency depth, standing on a matrix of the classes of root each layer was checked against.")
     svg = (
         f'<svg viewBox="0 0 {width} {height:.0f}" width="{width}" height="{height:.0f}" role="group" '
         f'aria-labelledby="vt-sky-t vt-sky-d" style="min-width:{int(width * 0.75)}px;max-width:{width}px;width:100%;height:auto">'
@@ -250,10 +270,10 @@ def skyline_html(model, roots, base="", names=None):
     )
     return (
         '<div class="vt-sky">' + _style(t.COLOURS)
-        + _legend(verdict_counts, t.ORDER, t.ICON, verdict_words)
+        + _legend(verdict_counts, t.ORDER, t.ICON, verdict_words, n_marks)
         + '<div class="vt-sky-scroll" role="region" aria-label="Skyline of every part; scrolls sideways on a small screen" tabindex="0">'
         + svg + "</div>"
-        '<p class="vt-muted">One square per part, linked to the page that checks it. Columns are layers; height is dependency depth, '
+        '<p class="vt-muted">One square per part, linked to the page that checks it; the counts above are parts of virgil, and the references column is counted in the headline. Columns are layers; height is dependency depth, '
         "the longest chain of parts beneath it, so depth 0 relies on no other part. Under the ground line, the number of parts in each "
         "layer with at least one counted check against that class of root.</p></div>"
     )

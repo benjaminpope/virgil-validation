@@ -47,7 +47,10 @@
       panel.innerHTML = html;
     }
     document.querySelectorAll(".vt [data-node]").forEach(function (el) {
-      el.addEventListener("click", function () { select(el.getAttribute("data-node")); });
+      el.addEventListener("click", function () {
+        select(el.getAttribute("data-node"));
+        if (!el.closest(".vt-map")) panel.scrollIntoView({block: "nearest"});  // a chain step: show its panel in the fold
+      });
     });
   }
   if (typeof document$ !== "undefined") document$.subscribe(init); else document.addEventListener("DOMContentLoaded", init);
