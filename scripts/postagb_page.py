@@ -97,7 +97,7 @@ def headline_label(i):
 
 def reg_text(i):
     r = i["regulariser"]
-    if r == "MultipoleField":
+    if str(r).startswith("MultipoleField"):  # capped fields read "MultipoleField, azimuthal orders <= m"
         return (f"the polar Gaussian-process prior (σ = {i['gp_sigma']:g}, ℓ_r = {i['gp_length_r_mas']:.2f} mas, ℓ_θ = {i['gp_length_theta']:g} rad), "
                 "our recommended model")
     if r == "GaussianField":
@@ -539,7 +539,7 @@ def gen_model(key):
     out.append(f"**Model.** SPARCO (Methods note): {scene_text(key, i)}. Headline strategy {headline_label(i)}: {reg_text(i)}"
                + (f", selected by the Laplace evidence (ln Z = {i['log_evidence']:.0f})" if i.get("log_evidence") is not None else "")
                + (", at the edge of its hyperparameter grid" if i.get("gp_on_edge") else "")
-               + (f", on a polar grid deprojected by the parametric disc's inclination {i['mp_inc_deg']:.0f}° and PA {i['mp_pa_deg']:.0f}°" if i.get("mp_inc_deg") is not None and i["regulariser"] == "MultipoleField" else "")
+               + (f", on a polar grid deprojected by the parametric disc's inclination {i['mp_inc_deg']:.0f}° and PA {i['mp_pa_deg']:.0f}°" if i.get("mp_inc_deg") is not None and str(i["regulariser"]).startswith("MultipoleField") else "")
                + ". ORGANIC differs: a GAN generator as its regulariser, with the primary's parameters tuned with pyBADS. Neither is a ground truth.")
     orient = (f" Flipping the published image East-West or North-South gives χ² {flips['mirrored_East-West']:.1f} and {flips['mirrored_North-South']:.1f} "
               f"against {flips['as_published']:.2f} as published, so the published orientation is the better one.") if flips else ""
@@ -663,7 +663,7 @@ def gen_methods(_):
         i = imgs[k]
         if not i:
             continue
-        if i["regulariser"] == "MultipoleField":
+        if str(i["regulariser"]).startswith("MultipoleField"):
             gp = f"σ = {i['gp_sigma']:g}, ℓ_r = {i['gp_length_r_mas']:.2f} mas, ℓ_θ = {i['gp_length_theta']:g} rad"
         elif i["regulariser"] == "GaussianField":
             gp = f"σ = {i['gp_sigma']:g}, ℓ = {i['gp_length_mas']:.2f} mas"
@@ -674,7 +674,7 @@ def gen_methods(_):
     de = [imgs[k] for k in DE_PRINS if imgs[k]]
     sidx = [i["star_index"] for i in de if i.get("star_index") is not None]
     scl = [i["error_scale"] for i in de if i.get("error_scale") is not None]
-    chis = [i["chi2_per_point"] for i in de if i.get("regulariser") == "MultipoleField"]
+    chis = [i["chi2_per_point"] for i in de if str(i.get("regulariser", "")).startswith("MultipoleField")]
     ps, hr = imgs.get("PS_Gem"), imgs.get("HR4049")
     # strategy-level facts
     allst = {k: strategies(k) for k in DE_PRINS}

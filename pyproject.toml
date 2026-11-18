@@ -13,7 +13,7 @@ polar-disk = ["frank==1.2.3", "vis-r @ git+https://github.com/drgmk/vis-r@f53467
 # Alias bands and plots (pinned to the virgil 0.4.2 CI commit; plots need corner).
 orbit-aliases = ["virgil-astro[orbits] @ git+https://github.com/benjaminpope/virgil@c2be8278a4d6549282b3cf199852101929df0462", "corner"]
 # Post-AGB imaging scripts (MultipoleField/MultipoleDisk, pinned to the virgil 0.4.2 CI commit).
-postagb = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@c2be8278a4d6549282b3cf199852101929df0462"]
+postagb = ["virgil-astro @ git+https://github.com/benjaminpope/virgil@6fa8afee575059fcb7068db8d526920b858bac1c"]
 docs = ["mkdocs<2", "mkdocs-material", "zensical>=0.0.62,<0.1"]  # built with Zensical, as virgil is
 
 # The evidence plugin loads whenever the package is installed, so its options

@@ -18,6 +18,8 @@ Stages (each writes into OUTDIR and the later ones read the earlier ones):
                  to the PIONIER beam: normalised cross-correlation, rim radius,
                  position angle and azimuthal asymmetry, and the reduced chi2 of the
                  published image on our data.
+* ``calibrate``  does the gp-polar hyperparameter choice recover a smooth known disc on this target's own (u,v)?
+                 ``--arm {white,corr,smear,geo,night}``, ``--m-max``, ``--seed`` (design/gp_polar_hyperparameters.md).
 * ``replot``     redraw every figure from the saved results (no fitting).
 * ``table``      markdown parameter table: De Prins et al. PMOIRED fit | virgil | difference in sigma.
 
@@ -45,7 +47,11 @@ whose chi2 per point is closest to 1, ties broken by the Laplace evidence;
 ``--noise vlti`` swaps the independent errors and MacKay ``error_scale`` for virgil-vlti's PIONIER error model (``VLTI_NOISE``:
 V^2 and closure-phase errors scaled by kind, gains per telescope and baseline, closure-phase offsets; no bandwidth smearing, which virgil does not support for pixel Images) and
 ``--mean flat`` gives the GaussianField / MultipoleField a flat template inside the support instead of the Gaussian start blob;
-outputs carry ``_vlti`` / ``_flat`` in their names. The geometry of the polar GP still comes from the ``scale`` stage (current noise).
+outputs carry ``_vlti`` / ``_flat`` in their names. ``--noise night`` adds calibration terms shared by the frames of a night
+(``night_noise``; outputs ``_night``), and ``--unbounded`` lifts gp-polar's prior bounds (outputs ``_unbounded``). ``--chrom`` adds a chromatic ring (index linear in radius) and frees the star index
+(design/gp_polar_hyperparameters.md §11; outputs ``_chrom``). ``--binary free|motion|epoch`` frees the secondary and moves the stars against the disc (design §12; outputs ``_bin<mode>``);
+``--noise nightw`` keeps the MacKay white errors and adds night terms of 3 % and 2 deg (``NIGHTW``; outputs ``_nightw``), and ``--wide-field`` sets the field half-widths
+to 15 mas (outputs ``_wide``; PS Gem's field was 5 mas until 18 Nov 2026, now the paper's, 19 mas). A support below the data's field (``check_support``) is refused, and an image that is flat or piled at the support edge (``image_degeneracy``) is flagged and not scored. The geometry of the polar GP still comes from the ``scale`` stage (current noise).
 ``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
 """
 
@@ -64,6 +70,7 @@ from pathlib import Path
 os.environ.setdefault("XLA_FLAGS", "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=2")
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 
+import equinox as eqx  # noqa: E402
 import jax  # noqa: E402
 
 jax.config.update("jax_enable_x64", True)
@@ -85,8 +92,10 @@ from virgil.imaging import (  # noqa: E402
     MaxEntropy, beam, convolve_beam, error_scale, image_priors, l_curve, log_evidence, nyquist_pixel_scale,
     starting_image, whitened_residuals,
 )
+from virgil.imaging import _evidence_latents, _log_norm, _residual_jacobian  # noqa: E402  (scene_evidence; private, so pinned)
 from virgil.models import (  # noqa: E402
-    GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, Resolved, System, UniformDisk,
+    Component, GaussianRing, Harmonics, Image, ModulatedGaussianRim, MultipoleDisk, MultipoleKernel, PointSource, RadialGP, RadialLinear, Resolved,
+    System, UniformDisk,
 )
 from virgil.spectra import PowerLaw  # noqa: E402
 
@@ -178,9 +187,13 @@ TARGETS["PS_Gem"]["log_weights"] = (2, -4)  # the MaxEntropy sweep, kept for the
 TARGETS["PS_Gem"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))
 TARGETS["HR4049"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
-# Field sizes (Ben): the support is a disc (mask_mas) in every target. PS Gem's emission is within ~5 mas; HR 4049's ORGANIC halo extends
-# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
-TARGETS["PS_Gem"].update(fov_override=11.0, half_mas=5.0, half_cmp_mas=5.0, mask_mas=5.0, hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
+# Field sizes (Ben): the support is a disc (mask_mas) in every target. HR 4049's ORGANIC halo extends past 20 mas and was clipped by the
+# old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
+# PS Gem had a hand-set 5 mas support (fov_override=11, half/half_cmp/mask 5 mas) until 18 Nov 2026. That cut off emission that the shortest
+# baselines (9.9 m) still see: up to 47 % of the disc's flux sat in the outer 15 % of the support radius, the over-resolved background took
+# 6-10 % of the flux (0-0.7 % on a 15 mas field) and under night terms the disc fell to 1.6 % and a flat image. It now takes the paper's
+# field like the other targets, and `check_support` refuses a support smaller than the data's own field.
+TARGETS["PS_Gem"].update(hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
 # The grid must contain the 25 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and a 51 mas field, 146 pixels.
 TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=51.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=25.0)
 
@@ -231,8 +244,65 @@ def secondary_defaults(cfg, target):
         cfg["sec_prior"] = dict(dra=cfg["sec0"][0], ddec=cfg["sec0"][1], pos_sigma=0.1)
 
 
+WIDE_FIELD_MAS = 15.0  # --wide-field: image, support and comparison half-widths (design §12, when PS Gem's stock field was 5 mas)
+
+# check_support: emission at radius r keeps a ring visibility J0(2 pi B r / lambda) on a baseline B. Outside the support it can only go to the
+# over-resolved background (visibility 0), which is wrong where the shortest baseline still sees it at more than a half: J0(x) = 0.5 at x = 1.52.
+SUPPORT_J0_HALF_X = 1.52
+
+
+def support_floor_mas(data):
+    """The smallest support radius (mas) the data allow: a ring just outside it is at visibility <= 0.5 on the shortest baseline, at the
+    longest wavelength."""
+    b = np.hypot(np.asarray(data.u), np.asarray(data.v))
+    b_min = float(b[b > 0].min())
+    return SUPPORT_J0_HALF_X / (2 * np.pi) * float(np.max(np.asarray(data.wavel))) / b_min * 180 / np.pi * 3.6e6
+
+
+def check_support(cfg, data):
+    """Refuse a support disc smaller than ``support_floor_mas``: the disc would be truncated and its outer flux pushed into the background
+    (PS Gem's 5 mas support, 18 Nov 2026). Returns the floor."""
+    floor = support_floor_mas(data)
+    if cfg.get("mask_mas") is not None and cfg["mask_mas"] < floor:
+        raise SystemExit(f"{cfg['key']}: support radius {cfg['mask_mas']:.1f} mas is below the data's field ({floor:.1f} mas: a ring there "
+                         "is still at visibility > 0.5 on the shortest baseline); widen mask_mas")
+    return floor
+
+
+# image_degeneracy: an image that is the prior's shape, not the data's, is flagged and not scored. The edge is the image's own field
+# boundary (gp-polar's field ends on an inclined ellipse inside the circular support), and the band is 0.15 of the field's half-width
+# (22-27 % of its area). Calibrated on the 40 gp-polar BN images (job 21123993): outside PS Gem's 5 mas support, flat <= 0.04 and
+# edge <= 0.20 (AI Sco's highest); PS Gem's 5 mas support gave edge 0.28-0.59 and, under night terms, flat 0.97.
+DEGENERATE_FLAT_FRAC = 0.5  # flat: more than this fraction of the field (outside the hole) above half the image's peak
+DEGENERATE_EDGE_FRAC = 0.25  # edge-piled: more than this fraction of the disc's flux in the band along the field's boundary
+
+
+def image_degeneracy(bright, pix, support_mas, hole_mas):
+    """Flatness and edge-piling of a rendered disc image (``bright``, square, centred, ``pix`` mas): ``dict(img_flat_frac,
+    img_edge_frac, image_degenerate)``, the last a list of reasons (empty when the image is usable). The field is where the image is
+    non-zero inside the support disc, with the stellar hole filled in."""
+    b = np.clip(np.asarray(bright, float), 0.0, None)
+    if b.max() <= 0:
+        return dict(img_flat_frac=None, img_edge_frac=None, image_degenerate=["empty"])
+    n = b.shape[0]
+    yy, xx = np.mgrid[:n, :n]
+    r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * pix
+    field = (r <= support_mas) & ndimage.binary_fill_holes(b > 1e-6 * b.max())
+    depth = ndimage.distance_transform_edt(field) * pix  # distance to the field's boundary
+    use = field & (r >= hole_mas)
+    bs = b[use]
+    flat = float(np.mean(bs > 0.5 * bs.max()))
+    edge = float(bs[depth[use] < 0.15 * depth.max()].sum() / bs.sum())
+    why = ([f"flat ({flat:.2f} of the field above half the peak)"] if flat > DEGENERATE_FLAT_FRAC else []) + (
+        [f"edge-piled ({edge:.2f} of the flux along the field's boundary)"] if edge > DEGENERATE_EDGE_FRAC else [])
+    return dict(img_flat_frac=flat, img_edge_frac=edge, image_degenerate=why)
+
+
 def cfg_of(args):
     cfg = TARGETS[args.target]
+    if getattr(args, "wide_field", False):  # design §12: PS Gem at 15 mas, when its stock field was 5 (now the paper's, 19)
+        cfg = {k: v for k, v in cfg.items() if k != "fov_mas"} | dict(half_mas=WIDE_FIELD_MAS, half_cmp_mas=WIDE_FIELD_MAS, mask_mas=WIDE_FIELD_MAS,
+                                                                fov_override=2.0 * WIDE_FIELD_MAS / 0.95)
     if "fov_mas" not in cfg:
         setup(cfg)
     if "sec_index0" not in cfg and "img_star_index" not in cfg:
@@ -257,7 +327,7 @@ def setup(cfg):
     o = np.argsort(rad.ravel())
     r90 = float(rad.ravel()[o][np.searchsorted(np.cumsum(im.ravel()[o]) / im.sum(), 0.9)])
     scale = cfg.get("pixel_override") or scale  # per-target pixel (HR 4049: finer than the paper's 0.635 mas)
-    fov = cfg.get("fov_override") or n * scale  # per-target field override (PS Gem smaller, HR 4049 larger); grid_setup pads the start image to it
+    fov = cfg.get("fov_override") or n * scale  # per-target field override (HR 4049 larger); grid_setup pads the start image to it
     half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * fov / 2))  # per-target override: the paper's figure extent
     has_sec = hdr["SFLU2"] > 0
     cfg.update(
@@ -573,6 +643,203 @@ HEADLINE = "gp-polar"
 GP_FRACS = (0.25, 0.5, 1.0, 2.0)  # GP lengths in units of the comparison beam's FWHM, lambda_min / (2 B_max)
 
 
+CHROM_DALPHA_MAX = 4.0  # --chrom: the ring's index may change by up to this across +-w0 (twice the chrom arm's CAL_CHROM_DALPHA)
+CHROM_STAR_WINDOW = 2.0  # --chrom: the star's index is free within SIND1 +- this (twice the chrom arm's offset)
+
+
+def chromatic_ring(cfg, geo, unit):
+    """``--chrom``'s extra component (design §11): a Gaussian ring with no harmonics whose spectral index varies linearly with
+    radius, inclination and position angle fixed at the scale stage's ``geo``, radius and width started there, and its priors (with
+    a free star index). Returns ``(rim, priors)``; the grey image keeps everything else."""
+    r0 = float(np.clip(geo.get("radius_mas", 2.0), 0.5, float(cfg["half_mas"])))
+    w0 = float(np.clip(geo.get("width_mas", 0.4 * r0), 0.1, 12.0))
+    rim = MultipoleDisk(GaussianRing(r0, w0), inc=float(geo["inc_deg"]), pa=float(geo["pa_deg"]), n_r=48, flux=0.1,
+                        spectral_index=RadialLinear(float(cfg.get("env_index0", 0.9)), 0.0, r0), wavel0=L0)
+    smax = CHROM_DALPHA_MAX / (2.0 * max(w0, 0.5 * unit))
+    s0 = float(cfg.get("img_star_index", -4.0))
+    priors = {"rim.flux": dist.LogUniform(1e-3, 5.0), "rim.profile.radius": dist.LogUniform(0.5, float(cfg["half_mas"])),
+              "rim.profile.sigma": dist.LogUniform(0.1, 12.0), "rim.spectral_index.value": dist.Uniform(-6.0, 6.0),
+              "rim.spectral_index.slope": dist.Uniform(-smax, smax),
+              "star.flux.index": dist.Uniform(s0 - CHROM_STAR_WINDOW, s0 + CHROM_STAR_WINDOW)}
+    return rim, priors
+
+
+def chromatic_summary(model, cfg):
+    """The fitted chromatic terms of a ``--chrom`` scene, and whether the fit uses them (rule 3 of design §11)."""
+    w = float(np.asarray(model.rim.profile.sigma))
+    d_alpha = -2.0 * float(np.asarray(model.rim.spectral_index.slope)) * w
+    f_rim = float(np.asarray(model.rim.flux))
+    star = float(np.asarray(model.star.flux.index))
+    s0 = float(cfg.get("img_star_index", -4.0))
+    tot = 1.0 + f_rim + sum(float(np.asarray(getattr(model, k).flux.ratio)) for k in ("env", "sec", "bg") if hasattr(model, k))
+    used = bool((f_rim / tot >= 0.01 and abs(d_alpha) >= 0.5) or abs(star - s0) >= 0.5)
+    return dict(chrom_rim_flux_pct=100.0 * f_rim / tot, chrom_rim_radius_mas=float(np.asarray(model.rim.profile.radius)), chrom_rim_width_mas=w,
+                chrom_rim_index=float(np.asarray(model.rim.spectral_index.value)), chrom_rim_d_alpha=d_alpha, chrom_star_index=star,
+                chrom_star_shift=star - s0, chrom_used=used)
+
+
+BINARY_MODES = ("paper", "free", "motion", "epoch")
+BINARY_POS_SIGMA_MAS = 1.0  # --binary free: the secondary's position prior about sec0 (design §12)
+BINARY_V_SIGMA = 0.02  # mas/day per axis: twice the fastest companion expected, 2 pi sep / P = 0.011 (AI Sco)
+BINARY_OFFSET_SIGMA_MAS = 0.2  # per-night position offsets: about the largest orbital displacement from the mid-time (AI Sco +-0.18 mas)
+MAS2RAD = np.pi / 180.0 / 3600.0 / 1000.0
+
+
+class MovingComponent(Component):
+    """A star whose sky position changes with time against the disc (design §12): ``(dra, ddec)`` at the data's mid-time, plus
+    a linear motion ``(vra, vdec)`` in mas/day and an offset per night ``(off_ra, off_dec)``. ``shape`` gives the visibility
+    (its own flux and offset are not used). ``dt`` (days from the mid-time) and ``group`` (night index) are per sample of the
+    data's ``u``, so the component evaluates only on that data's (u, v): any other sampling raises."""
+
+    shape: Component
+    vra: jax.Array
+    vdec: jax.Array
+    off_ra: jax.Array
+    off_dec: jax.Array
+    dt: tuple = eqx.field(static=True)
+    group: tuple = eqx.field(static=True)
+
+    def __init__(self, shape, dt, group, flux=1.0, dra=0.0, ddec=0.0, vra=0.0, vdec=0.0, off_ra=None, off_dec=None):
+        self._place(flux, dra, ddec)
+        self.shape = shape
+        self.dt, self.group = tuple(float(x) for x in dt), tuple(int(g) for g in group)
+        k = max(self.group) + 1
+        self.vra, self.vdec = np.asarray(vra, float), np.asarray(vdec, float)
+        self.off_ra = np.zeros(k) if off_ra is None else np.asarray(off_ra, float)
+        self.off_dec = np.zeros(k) if off_dec is None else np.asarray(off_dec, float)
+
+    def positions(self):
+        """``(dra, ddec)`` per sample, in mas."""
+        dt, g = jnp.asarray(self.dt), jnp.asarray(self.group)
+        return (self.dra + self.vra * dt + jnp.asarray(self.off_ra)[g], self.ddec + self.vdec * dt + jnp.asarray(self.off_dec)[g])
+
+    def model(self, u, v, wavel):
+        if np.shape(u) != (len(self.dt),):
+            raise ValueError(f"MovingComponent is labelled for {len(self.dt)} samples, evaluated on {np.shape(u)}: it only "
+                             "evaluates on the data it was built for")
+        uu, vv = u / wavel, v / wavel
+        ra, dec = self.positions()
+        arg = 2.0 * jnp.pi * MAS2RAD * (uu * ra + vv * dec)
+        return self.shape._centred_cvis(uu, vv) * jax.lax.complex(jnp.cos(arg), -jnp.sin(arg))
+
+    def _centred_cvis(self, uu, vv):
+        return self.shape._centred_cvis(uu, vv)
+
+    def _centred_image(self, xx, yy, pixel_scale_mas):
+        return self.shape._centred_image(xx, yy, pixel_scale_mas)
+
+    def _shape_checks(self):
+        return self.shape._shape_checks()
+
+
+def binary_scene(scene, cfg, data, mode):
+    """``scene`` with the binary of ``--binary mode`` (design §12) and the priors to add. ``paper`` changes nothing. ``free``
+    frees the secondary's position (Normal about sec0), flux and index. ``motion`` and ``epoch`` also move both stars against the
+    disc, linearly or by an offset per night (a star absent from the scene is skipped). The primary's index stays at SIND1."""
+    if mode == "paper":
+        return scene, {}
+    has_sec = hasattr(scene, "sec")
+    pri = {}
+    if has_sec:
+        s0 = cfg.get("sec0") or (float(scene.sec.dra), float(scene.sec.ddec))
+        pri |= {"sec.dra": dist.Normal(float(s0[0]), BINARY_POS_SIGMA_MAS), "sec.ddec": dist.Normal(float(s0[1]), BINARY_POS_SIGMA_MAS),
+                "sec.flux.ratio": dist.LogUniform(1e-3, 1.0), "sec.flux.index": dist.Uniform(-5.0, 2.0)}
+    if mode == "free":
+        return scene, pri
+    mjd = float(data.t_ref) + np.asarray(data.dt, float)
+    dt = mjd - 0.5 * (mjd.min() + mjd.max())
+    group = np.unique(night_labels(data)["u_night"], return_inverse=True)[1].ravel()
+    k = int(group.max()) + 1
+    for name in ("star", "sec") if has_sec else ("star",):
+        c = getattr(scene, name)
+        scene = scene.set(name, MovingComponent(c, dt, group, flux=c.flux, dra=float(c.dra), ddec=float(c.ddec)))
+        if mode == "motion":
+            pri |= {f"{name}.vra": dist.Normal(0.0, BINARY_V_SIGMA), f"{name}.vdec": dist.Normal(0.0, BINARY_V_SIGMA)}
+        else:
+            pri |= {f"{name}.off_ra": dist.Normal(jnp.zeros(k), BINARY_OFFSET_SIGMA_MAS), f"{name}.off_dec": dist.Normal(jnp.zeros(k), BINARY_OFFSET_SIGMA_MAS)}
+    return scene, pri
+
+
+BINARY_STELLAR_INDEX = (-3.8, -2.0)  # a stellar companion at 1.65 um: F_lambda index -2.5 (cool) to -3.3 (hot), +- 0.5
+BINARY_INDEX_SD_MAX = 0.5  # a secondary index with a larger posterior sd is not read at all
+
+
+def binary_summary(model, mode, cfg, sd=None, data=None):
+    """The fitted binary terms of a ``--binary`` scene, and how the secondary's colour reads (design §12). ``sd`` holds the
+    Laplace posterior sds of ``scene_evidence``; the colour is read against absolute windows (a stellar companion's index does not
+    depend on the primary's SIND1), and only when the index is constrained."""
+    out, sd = dict(binary=mode), sd or {}
+    if hasattr(model, "sec"):
+        d = float(np.asarray(model.sec.flux.index))
+        env = float(np.asarray(model.env.flux.index))
+        d_sd = sd.get("sec.flux.index")
+        if mode == "paper":
+            colour = "fixed"
+        elif d_sd is None or d_sd > BINARY_INDEX_SD_MAX:
+            colour = "unconstrained"
+        elif BINARY_STELLAR_INDEX[0] <= d <= BINARY_STELLAR_INDEX[1]:
+            colour = "photospheric"
+        else:
+            colour = "dust-like" if min(abs(d), abs(d - env)) <= 1.0 else "neither"
+        out |= dict(bin_sec_index=d, bin_sec_index_sd=d_sd, bin_sec_dra=float(model.sec.dra), bin_sec_ddec=float(model.sec.ddec),
+                    bin_sec_colour=colour)
+    for name in ("star", "sec"):
+        c = getattr(model, name, None)
+        if isinstance(c, MovingComponent):
+            out |= {f"bin_{name}_v_mas_per_day": [float(c.vra), float(c.vdec)],
+                    f"bin_{name}_v_sd": [sd.get(f"{name}.vra"), sd.get(f"{name}.vdec")],
+                    f"bin_{name}_offsets_mas": np.stack([np.asarray(c.off_ra), np.asarray(c.off_dec)], 1).round(4).tolist(),
+                    f"bin_{name}_offsets_sd": [[sd.get(f"{name}.off_ra[{i}]"), sd.get(f"{name}.off_dec[{i}]")] for i in range(np.size(c.off_ra))]}
+    if isinstance(getattr(model, "sec", None), MovingComponent) and isinstance(model.star, MovingComponent):
+        out |= dict(bin_rel_v_mas_per_day=[float(model.sec.vra - model.star.vra), float(model.sec.vdec - model.star.vdec)],
+                    bin_rel_v_sd=[sd.get("sec.vra-star.vra"), sd.get("sec.vdec-star.vdec")])
+    if data is not None:  # the night of each offset, so that offsets can be regressed on time
+        mjd = float(data.t_ref) + np.asarray(data.dt, float)
+        night = night_labels(data)["u_night"]
+        out |= dict(bin_night_mjd=[round(float(mjd[night == n].mean()), 3) for n in np.unique(night)], bin_mid_mjd=float(0.5 * (mjd.min() + mjd.max())))
+    return out
+
+
+def scene_evidence(fit_result, data, priors):
+    """Laplace evidence with the scene parameters integrated as well as the field latents, and their posterior sds.
+
+    ``log_evidence(fit, data)`` (the grid's selector) conditions on every non-latent parameter at its MAP, so it cannot compare
+    scenes with different numbers of parameters: a per-night offset lowers chi2 and pays nothing. Here every path of ``priors``
+    that is not a latent is integrated too: ln Z = -chi2/2 - L - |z|^2/2 + sum_e [ln p(theta_e) + ln(2 pi)/2] - ln det(J^T J + Lambda)/2,
+    with Lambda = 1 for the latents, 1/sigma^2 for a Normal prior and 0 for the flat ones. (virgil's ``log_evidence(priors=)``
+    leaves Lambda out for the scene parameters, which overstates the evidence of parameters the prior, not the data, constrains.)
+    Returns ``(ln Z, {path or path[i]: sd})``; the sds include ``sec.vra-star.vra`` and ``sec.vdec-star.vdec`` when both stars move."""
+    model = fit_result.model
+    lat = tuple(_evidence_latents(model, "env", "scene_evidence"))
+    extra = tuple(p for p in priors if p not in lat and not p.endswith("_vec") and not p.startswith("env.log_brightness"))
+    r, jac = _residual_jacobian(model, data, lat + extra, on_device=True)
+    r, jac = np.asarray(r, float), np.asarray(jac, float)
+    n_z = sum(int(np.size(model.get(p))) for p in lat)
+    lam, names, log_p = [np.ones(n_z)], [], 0.0
+    for p in extra:
+        val = np.asarray(model.get(p), float)
+        pr = priors[p]
+        normal = type(pr).__name__ == "Normal"
+        lam.append(np.broadcast_to(1.0 / np.asarray(pr.scale, float) ** 2, val.shape).ravel() if normal else np.zeros(val.size))
+        names += [p] if val.ndim == 0 else [f"{p}[{i}]" for i in range(val.size)]
+        log_p += float(np.sum(np.asarray(pr.log_prob(val), float))) + 0.5 * val.size * np.log(2.0 * np.pi)
+    lam = np.concatenate(lam)
+    if jac.shape[1] != lam.size:
+        raise ValueError(f"scene_evidence: the Jacobian has {jac.shape[1]} columns for {lam.size} parameters")
+    hess = jac.T @ jac + np.diag(lam)
+    sign, logdet = np.linalg.slogdet(hess)
+    if sign <= 0:
+        return float("-inf"), {}
+    z2 = sum(float(np.sum(np.asarray(model.get(p), float) ** 2)) for p in lat)
+    cov = np.linalg.inv(hess)[n_z:, n_z:]
+    sd = {k: float(v) for k, v in zip(names, np.sqrt(np.clip(np.diag(cov), 0.0, None)))}
+    for ax in ("vra", "vdec"):  # the relative (orbital) velocity is far better measured than either star's against the disc
+        if f"sec.{ax}" in names and f"star.{ax}" in names:
+            i, j = names.index(f"sec.{ax}"), names.index(f"star.{ax}")
+            sd[f"sec.{ax}-star.{ax}"] = float(np.sqrt(max(cov[i, i] + cov[j, j] - 2.0 * cov[i, j], 0.0)))
+    return float(-0.5 * (r @ r) - _log_norm(model, data) - 0.5 * z2 + log_p - 0.5 * logdet), sd
+
+
 def scene_priors(cfg, scene, env_fixed_geometry=False):
     """Priors shared by every strategy: the SPARCO fluxes and indices of the environment, the grey background and the secondary."""
     priors = {"env.flux.ratio": dist.LogUniform(0.01, 20.0), "env.flux.index": dist.Uniform(-6.0, 6.0)}
@@ -614,7 +881,7 @@ def grid_setup(cfg, data, args, rot=0.0):
         env = Image.from_brightness(np.pad(b0, pad, constant_values=0.0), start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
         start = System(star=start.star, env=env)
     half = start.env.log_brightness.shape[0] * float(start.env.pixel_scale_mas) / 2
-    if half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # the saved field and support radii are config values, so check the grid itself
+    if not args.smoke and half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # smoke halves the field on purpose; the saved field and support radii are config values, so check the grid itself
         raise SystemExit(f"{cfg['key']}: the grid reaches only +-{half:.1f} mas but the support radius is {cfg['mask_mas']:.1f} mas; raise fov_override")
     support, hole_mas = hole_mask(cfg, start.env, data, rot)
     return start, support, hole_mas
@@ -657,47 +924,102 @@ def vlti_noise(data, widths=VLTI_NOISE):
     return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"]).with_closure_offsets(triangle=np.radians(n["t3_offset_deg"]))
 
 
+# ``--noise night``: the vlti model plus calibration errors shared by every frame of one night (a night's calibrators and
+# transfer function): a gain on log|V| per (night, baseline) and a closure-phase offset per (night, triangle), marginalised by the
+# likelihood like the per-frame terms (virgil's spanning modes). Widths per target in postagb_night_widths.json, measured on the
+# residuals against the published model before any night fit was looked at (scripts/postagb_night_widths.py,
+# design/gp_polar_hyperparameters.md §9). A night runs from MJD .65 (15:36 UT, local noon at Paranal) to the next.
+NIGHT_SPLIT_MJD = 0.65
+# ``--noise nightw``: the MacKay white errors of ``--noise current`` plus night terms of fixed width, no per-frame gains or offsets
+# (the setting of the 18 Nov review of §10, design §12): 3 % on log|V| per (night, baseline), 2 deg per (night, triangle)
+NIGHTW = dict(night_gain_baseline=0.03, night_t3_offset_deg=2.0)
+_NIGHT_FILE = Path(__file__).with_name("postagb_night_widths.json")
+NIGHT_WIDTHS = json.load(open(_NIGHT_FILE))["targets"] if _NIGHT_FILE.exists() else {}
+NIGHT_KEYS = ("night_gain_baseline", "night_t3_offset_deg")
+
+
+def night_widths(cfg):
+    """This target's night widths (``NIGHT_KEYS``); a target the table does not have gets the median of the others."""
+    row = NIGHT_WIDTHS.get(cfg.get("data_key", cfg["key"]))
+    if row is None:
+        return {k: float(np.median([r[k] for r in NIGHT_WIDTHS.values()])) for k in NIGHT_KEYS}
+    return {k: row[k] for k in NIGHT_KEYS}
+
+
+def night_labels(data):
+    """Night, (night, baseline) cell and frame of every sample: ``u_*`` per sample of ``data.u``, ``v2_*`` per V^2 (``data.vis``),
+    ``t3_*`` per closure phase (``data.phi``; its night and frame are those of its first baseline, its triangle the three stations)."""
+    mjd = float(data.t_ref) + np.asarray(data.dt, float)
+    night = np.floor(mjd - NIGHT_SPLIT_MJD).astype(int)
+    st = np.sort(np.asarray(data.stations, int), axis=1)
+    frame = np.asarray(data.frame, int)
+    base = np.unique(st, axis=0, return_inverse=True)[1].ravel()
+    cell_u = np.unique(np.stack([night, base], 1), axis=0, return_inverse=True)[1].ravel()
+    vi = data.vis_index
+    vi = np.arange(mjd.size) if vi is None or np.ndim(vi) == 0 else np.asarray(vi)
+    i1, i2, i3 = (np.asarray(i, int) for i in (data.i_cps1, data.i_cps2, data.i_cps3))
+    tri = np.unique(np.sort(np.concatenate([st[i1], st[i2], st[i3]], 1), axis=1), axis=0, return_inverse=True)[1].ravel()
+    cell_t = np.unique(np.stack([night[i1], tri], 1), axis=0, return_inverse=True)[1].ravel()
+    return dict(u_night=night, u_cell=cell_u, v2_night=night[vi], v2_cell=cell_u[vi], v2_frame=frame[vi],
+                t3_night=night[i1], t3_cell=cell_t, t3_frame=frame[i1])
+
+
+def night_noise(data, widths=VLTI_NOISE, night=None):
+    """``data`` under the vlti error model (``vlti_noise``) plus the night terms: one mode per (night, baseline) on log|V| of
+    width ``night["night_gain_baseline"]`` over that night's samples on that baseline, and one per (night, triangle) on the
+    closure phases of width ``night["night_t3_offset_deg"]``. A zero width leaves its group out."""
+    lab, n = night_labels(data), widths
+    gw, ow = night["night_gain_baseline"], np.radians(night["night_t3_offset_deg"])
+    g = o = None
+    if gw > 0:
+        g = np.zeros((lab["u_cell"].max() + 1, lab["u_cell"].size))
+        g[lab["u_cell"], np.arange(lab["u_cell"].size)] = gw
+    if ow > 0:
+        o = np.zeros((lab["t3_cell"].max() + 1, lab["t3_cell"].size))
+        o[lab["t3_cell"], np.arange(lab["t3_cell"].size)] = ow
+    data = data.with_error_scale({"vis": n["v2_white"], "phi": n["t3_white"]})
+    return data.with_gains(telescope=n["gain_telescope"], baseline=n["gain_baseline"], modes=g).with_closure_offsets(
+        triangle=np.radians(n["t3_offset_deg"]), modes=o)
+
+
+def modelled_noise(data, cfg, noise):
+    """``data`` under a correlated error model: ``vlti`` or ``night``."""
+    return night_noise(data, noise_widths(cfg), night_widths(cfg)) if noise == "night" else vlti_noise(data, noise_widths(cfg))
+
+
 def load_scaled(cfg, args, out):
     """The target's data under the chosen noise model: ``--noise current`` rescales the errors by the MacKay factor stored by the
     ``scale`` stage (1 if absent); ``--noise vlti`` applies ``vlti_noise`` (no bandwidth smearing, which virgil does not support for pixel Images; factor reported as 1)."""
-    if getattr(args, "noise", "current") == "vlti":
+    if getattr(args, "noise", "current") in ("vlti", "night"):
         data, files = load(cfg, args.files)  # no bandwidth smearing: virgil does not support it for pixel Images
-        return vlti_noise(data, noise_widths(cfg)), data, 1.0, files
+        return modelled_noise(data, cfg, args.noise), data, 1.0, files
     data, files = load(cfg, args.files)
     f = scale_file(out, cfg, "current")
     s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
+    if getattr(args, "noise", "current") == "nightw":  # MacKay white errors, then the night terms on top
+        white = dict(v2_white=s, t3_white=s, gain_telescope=0.0, gain_baseline=0.0, t3_offset_deg=0.0)
+        return night_noise(data, white, NIGHTW), data, s, files
     return data.with_error_scale(s) if s != 1.0 else data, data, s, files
 
 
-def scale_stage(args, out):
-    """Error rescaling and geometry, once per target: an isotropic GP pilot on the errors as given gives
-    ``error_scale`` (MacKay), then a parametric ``MultipoleDisk`` (Gaussian ring + first harmonic) on the rescaled data gives the
-    disc's inclination and position angle for the anisotropic and polar GPs and the disc strategy."""
+def pilot_error_scale(scene, start, support, priors, data, args):
+    """MacKay's error scale from an isotropic GP pilot at the middle of the (sigma, length) grid, on ``data`` with its errors as
+    given (``error_scale`` needs a GaussianField). Returns ``(s, the pilot's chi2/pt on those errors)``."""
+    unit = compare_beam(data).minor_mas
+    mean = np.asarray(start.env.brightness)
+    pilot_sc = scene.set("env", Image(GaussianField(np.zeros(mean.shape), 1.0, unit, mean=mean), float(start.env.pixel_scale_mas),
+                                      support=support, flux=scene.env.flux))
+    pilot_pri = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}
+    pilot = fit(pilot_sc, image_priors(pilot_sc) | pilot_pri, data, **(dict(max_steps=15) if args.smoke else {})).model
+    return float(error_scale(pilot, data)), float(chi2r(pilot, data)[0])
+
+
+def geometry_fit(cfg, data_s, out, hole_mas, args):
+    """A parametric ``MultipoleDisk`` (Gaussian ring + first harmonic) with the star(s), started from virgil's own blind rim fit
+    (parametric stage), never the paper's values. Its inclination and position angle are the polar GP's geometry (``geometry_of``);
+    the whole fitted model is the smooth truth of the ``calibrate`` stage."""
     from virgil.priors import IsotropicInclination  # noqa: PLC0415
 
-    cfg = cfg_of(args)
-    vlti = args.noise == "vlti"
-    data, files = load(cfg, args.files)
-    start, support, hole_mas = grid_setup(cfg, data, args)
-    env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
-    scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
-    priors = image_priors(scene) | scene_priors(cfg, scene)
-    if vlti:  # no MacKay rescaling: virgil's error_scale refuses gains; the noise model sets the errors
-        s, pilot_chi2, data_s = 1.0, None, vlti_noise(data, noise_widths(cfg))
-    else:
-        # pilot: an isotropic GP at the middle of the (sigma, length) grid on the errors as given; MacKay's error_scale needs a GaussianField
-        unit = compare_beam(data).minor_mas
-        mean = np.asarray(start.env.brightness)
-        pilot_sc = scene.set("env", Image(GaussianField(np.zeros(mean.shape), 1.0, unit, mean=mean), float(start.env.pixel_scale_mas),
-                                          support=support, flux=scene.env.flux))
-        pilot_pri = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}
-        pf = fit(pilot_sc, image_priors(pilot_sc) | pilot_pri, data, **(dict(max_steps=15) if args.smoke else {}))
-        pilot = pf.model
-        s = float(error_scale(pilot, data))
-        data_s = data.with_error_scale(s)
-        pilot_chi2 = float(chi2r(pilot, data)[0])
-        print(f"pilot GP: chi2/pt {pilot_chi2:.3f}; error scale s = {s:.3f}", flush=True)
-    # geometry: a parametric disc, started from virgil's own blind rim fit (parametric stage), never the paper's values
     par = json.load(open(path(out, cfg, "parametric.json")))
     r0 = max(0.5 * par["rim_diam_mas"], 1.5 * hole_mas)
     disk = MultipoleDisk(GaussianRing(r0, 0.4 * r0), harmonics=Harmonics(re=0.1, im=0.1), inc=min(max(par["rim_inc_deg"], 5.0), 80.0),
@@ -706,11 +1028,35 @@ def scale_stage(args, out):
     gp = scene_priors(cfg, sc) | {
         "env.inc": IsotropicInclination(0, 85), "env.pa": dist.Uniform(-90.0, 180.0), "env.profile.radius": dist.LogUniform(0.5, 60.0),
         "env.profile.sigma": dist.LogUniform(0.1, 12.0), "env.harmonics.re": dist.Uniform(-1.0, 1.0), "env.harmonics.im": dist.Uniform(-1.0, 1.0)}
-    g = fit(sc, gp, data_s, **(dict(max_steps=15) if args.smoke else {}))
+    return fit(sc, gp, data_s, **(dict(max_steps=15) if args.smoke else {}))
+
+
+def geometry_of(g, data_s):
+    """The disc geometry of a ``geometry_fit`` result, as stored in the scale file."""
     v = g.values
-    geo = dict(inc_deg=float(v["env.inc"]), pa_deg=float(v["env.pa"]) % 180.0, radius_mas=float(v["env.profile.radius"]),
-               width_mas=float(v["env.profile.sigma"]), h_re=float(np.ravel(v["env.harmonics.re"])[0]), h_im=float(np.ravel(v["env.harmonics.im"])[0]),
-               chi2_per_point=float(chi2r(g.model, data_s)[0]), converged=bool(g.info.get("converged", True)))
+    return dict(inc_deg=float(v["env.inc"]), pa_deg=float(v["env.pa"]) % 180.0, radius_mas=float(v["env.profile.radius"]),
+                width_mas=float(v["env.profile.sigma"]), h_re=float(np.ravel(v["env.harmonics.re"])[0]), h_im=float(np.ravel(v["env.harmonics.im"])[0]),
+                chi2_per_point=float(chi2r(g.model, data_s)[0]), converged=bool(g.info.get("converged", True)))
+
+
+def scale_stage(args, out):
+    """Error rescaling and geometry, once per target: an isotropic GP pilot on the errors as given gives
+    ``error_scale`` (MacKay), then a parametric ``MultipoleDisk`` (Gaussian ring + first harmonic) on the rescaled data gives the
+    disc's inclination and position angle for the anisotropic and polar GPs and the disc strategy."""
+    cfg = cfg_of(args)
+    vlti = args.noise in ("vlti", "night")
+    data, files = load(cfg, args.files)
+    start, support, hole_mas = grid_setup(cfg, data, args)
+    env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
+    scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
+    priors = image_priors(scene) | scene_priors(cfg, scene)
+    if vlti:  # no MacKay rescaling: virgil's error_scale refuses gains; the noise model sets the errors
+        s, pilot_chi2, data_s = 1.0, None, modelled_noise(data, cfg, args.noise)
+    else:
+        s, pilot_chi2 = pilot_error_scale(scene, start, support, priors, data, args)
+        data_s = data.with_error_scale(s)
+        print(f"pilot GP: chi2/pt {pilot_chi2:.3f}; error scale s = {s:.3f}", flush=True)
+    geo = geometry_of(geometry_fit(cfg, data_s, out, hole_mas, args), data_s)
     print("geometry", json.dumps(geo), flush=True)
     json.dump(dict(error_scale=s, noise=args.noise, pilot_chi2_per_point=pilot_chi2, hole_mas=hole_mas,
                    geometry=geo, smoke=args.smoke), open(scale_file(out, cfg, args.noise), "w"), indent=1)
@@ -923,55 +1269,169 @@ def fit_gp(cfg, scene, start_env, support, priors, data, args, geo=None, aniso=F
         gp_on_edge=edge, gp_grid_extended=extended, gp_converged=bool(best.info.get("converged", True)))
 
 
-def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
-    """Polar-GP image (``virgil.fields.MultipoleField``): a Matern kernel in the disc's radius times a periodic one in azimuth,
-    deprojected by the inclination and position angle of our own parametric disc fit (``geo``); the polar grid starts at the hole
-    radius. (sigma, length_r, length_theta) from the Laplace evidence on the rescaled data."""
-    sigmas, lens_t = [0.125, 0.25, 0.5, 1.0, 2.0], [0.125, 0.25, 0.5, 1.0, 2.0]  # HR 4049 chose the 0.25 edge of [0.25, 2]
-    unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
-    lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", (0.5, 1.0, 2.0, 4.0)) if m * unit_ >= pix_]
-    if args.smoke:
-        sigmas, lens_r, lens_t = sigmas[:1], lens_r[:1], lens_t[:1]
+def azimuthal_log_spectrum(m, length_theta, nu):
+    """Log variance of azimuthal order ``m`` under the periodic Matérn of ``MultipoleKernel`` (virgil's documented spectrum,
+    ``[1 + (m l)^2 / (2 nu)]^(-nu - 1/2)``, Gaussian for ``nu`` = inf), up to a constant."""
+    x = (jnp.asarray(m, float) * length_theta) ** 2
+    return -0.5 * x if np.isinf(nu) else -(nu + 0.5) * jnp.log1p(x / (2.0 * nu))
+
+
+class LowOrderField(MultipoleField):
+    """A ``MultipoleField`` whose azimuthal orders above ``m_max`` are removed (a low-pass along the azimuth of the polar grid).
+
+    Within the cap the orders keep the periodic Matérn spectrum in ``m * length_theta``; the kept orders are rescaled so that the
+    field's variance per node is still ``sigma^2``, so ``sigma`` means the same rms log-brightness contrast with or without the
+    cap. The latents of the removed orders do not reach the image: their Jacobian is zero, the fit leaves them at zero and they add
+    nothing to the Laplace evidence, so cells of one cap compare fairly. Why a cap: ``design/gp_polar_hyperparameters.md``. With
+    ``n_theta`` = 32 nodes a field of order 3 or less is sampled at ten or more nodes per period, so the bilinear interpolation onto
+    the pixels is smooth (a cap at ``n_theta`` = 8 nodes would draw polygons instead)."""
+
+    m_max: int = eqx.field(static=True)
+
+    def __init__(self, latent, image_shape, r_max_mas, m_max=3, **kwargs):
+        super().__init__(latent, image_shape, r_max_mas, **kwargs)
+        n_theta = int(np.shape(latent)[1])
+        if not 0 <= int(m_max) < n_theta // 2:
+            raise ValueError(f"m_max must be in [0, n_theta/2) = [0, {n_theta // 2}), not {m_max}")
+        self.m_max = int(m_max)
+
+    def with_geometry(self, inc, pa, dra, ddec):
+        """This field untied, with the given geometry (as ``MultipoleField.with_geometry``), keeping its cap."""
+        return LowOrderField(self.latent, self.image_shape, self.r_max_mas, m_max=self.m_max, r_min_mas=self.r_min_mas, sigma=self.sigma,
+                             length_r=self.length_r, length_theta=self.length_theta, inc=inc, pa=pa, dra=dra, ddec=ddec, nu=self.nu,
+                             mean=self.mean, mean_floor=self.mean_floor, outside=self.outside, nu_theta=self.nu_theta)
+
+    def polar_values(self):
+        field = super().polar_values()
+        n_theta = field.shape[1]
+        j = jnp.arange(n_theta)
+        m = jnp.minimum(j, n_theta - j)
+        log_s = azimuthal_log_spectrum(m, self.length_theta, self.nu_theta)
+        keep = m <= self.m_max
+        gain = jnp.exp(0.5 * (jax.scipy.special.logsumexp(log_s) - jax.scipy.special.logsumexp(jnp.where(keep, log_s, -jnp.inf))))
+        return jnp.real(jnp.fft.ifft(jnp.where(keep, gain, 0.0) * jnp.fft.fft(field, axis=1), axis=1))
+
+
+# gp-polar grid. Azimuthal orders are capped at POLAR_M_MAX (Ben: none of these discs should go to high azimuthal order); within
+# the cap l_theta = 0.25 rad already gives the orders 0-3 nearly equal variance, so shorter lengths add nothing and are not searched.
+POLAR_M_MAX = 3
+POLAR_SIGMAS = (0.125, 0.25, 0.5, 1.0, 2.0)
+POLAR_LT = (0.25, 0.5, 1.0, 2.0)
+POLAR_LT_UNCAPPED = (0.125, 0.25, 0.5, 1.0, 2.0)  # the grid before the cap (m_max None), kept for the calibration's uncapped arm
+POLAR_LR_BEAMS = (1.0, 2.0, 4.0)
+# Prior bounds on the evidence's choice (Ben: "bound by prior"), fixed from the stage-C calibration before they were applied to the
+# real targets (design/gp_polar_hyperparameters.md §8). l_r >= 1 beam: the data do not constrain radial structure below the beam, and
+# the truth's best cell was 2 beams in 65 of 72 calibration runs. sigma <= 2 (rms log-contrast per node, e^2 ~ 7x): the truth needed
+# sigma = 4 in 5 of 72. The grid is never extended past them; a pick on a bound is reported (gp_at_bound).
+POLAR_LR_MIN_BEAMS = 1.0
+POLAR_SIGMA_MAX = 2.0
+POLAR_MAX_STEPS = 3000  # every cell starts cold, from the same point, so it needs more LM steps than a warm-started chain
+
+
+def fit_cell(scene, priors, data, opts):
+    """One fit with its loss history (from virgil's ``progress`` reports, one per LM chunk) and stopping record."""
+    hist, t0 = [], time.time()
+    f_ = fit(scene, priors, data, progress=lambda r: hist.append([int(r["steps"]), float(r["loss"]), float(r["grad_norm"])]), **opts)
+    i = f_.info
+    return f_, dict(steps=int(i.get("steps", -1)), stop=str(i.get("stop")), converged=bool(i.get("converged", True)),
+                    loss=float(i.get("loss", np.nan)), grad_norm=float(i.get("grad_norm", np.nan)), seconds=round(time.time() - t0, 1),
+                    history=hist)
+
+
+def polar_scene_fn(cfg, scene, start_env, support, args, geo, r_min, m_max):
+    """``(sigma, length_r, length_theta) -> scene`` with the polar field as its environment (``LowOrderField`` unless ``m_max`` is None)."""
     mean = field_mean(start_env, support, args)
     pix = float(start_env.pixel_scale_mas)
     r_max = float(cfg["half_mas"])
     n_r, n_th = 40, 32
-    opts = dict(max_steps=15) if args.smoke else {}
 
     def mp_scene(sigma, lr, lt):
-        field = MultipoleField(np.zeros((n_r, n_th)), image_shape=mean.shape, r_max_mas=r_max, r_min_mas=r_min, sigma=sigma, length_r=lr,
-                               length_theta=lt, inc=geo["inc_deg"], pa=geo["pa_deg"], mean=mean)
+        kw = dict(image_shape=mean.shape, r_max_mas=r_max, r_min_mas=r_min, sigma=sigma, length_r=lr, length_theta=lt,
+                  inc=geo["inc_deg"], pa=geo["pa_deg"], mean=mean)
+        field = MultipoleField(np.zeros((n_r, n_th)), **kw) if m_max is None else LowOrderField(np.zeros((n_r, n_th)), m_max=m_max, **kw)
         return scene.set("env", Image(field, pix, support=support, flux=scene.env.flux))
 
+    return mp_scene
+
+
+def polar_bounds(unit, pix):
+    """The prior bounds of the gp-polar choice: (smallest length_r in mas, largest sigma)."""
+    return max(POLAR_LR_MIN_BEAMS * unit, pix), POLAR_SIGMA_MAX
+
+
+def polar_cells(cfg, scene, start_env, support, priors, data, args, geo, r_min, m_max=POLAR_M_MAX, axes=None, extend=True):
+    """Fit the gp-polar grid: every cell from the same cold start (the scene's own parameters, zero latents), so that no cell's
+    evidence depends on the order the grid is visited in. ``axes`` = (length_r mas, length_theta rad, sigma) lists, by default the
+    POLAR_* grid within the prior bounds (``polar_bounds``); with ``extend`` an edge pick is extended once (``grid_search``), never
+    past a bound. Explicit ``axes`` (the calibration's fixed grid) are used as given. Returns ``grid_search``'s tuple; each cell is
+    ``(fit, log Z, chi2/pt, record)`` with the record of ``fit_cell``."""
+    unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
+    lr_min, sg_max = (pix_, np.inf) if getattr(args, "unbounded", False) else polar_bounds(unit_, pix_)
+    if axes is None:
+        lr_beams = (0.5, *POLAR_LR_BEAMS) if getattr(args, "unbounded", False) else POLAR_LR_BEAMS  # unbounded: the grid before §8
+        lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", lr_beams) if m * unit_ >= lr_min * (1 - 1e-9)]
+        axes = [lens_r, list(POLAR_LT if m_max is not None else POLAR_LT_UNCAPPED), [s for s in POLAR_SIGMAS if s <= sg_max]]
+    if args.smoke:
+        axes = [a[:1] for a in axes]
+    mp_scene = polar_scene_fn(cfg, scene, start_env, support, args, geo, r_min, m_max)
     priors = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}
-    state = dict(previous=None)
+    opts = dict(max_steps=15) if args.smoke else dict(max_steps=POLAR_MAX_STEPS)
 
     def run(vals):
         lr, lt, sg = vals
         sc = mp_scene(sg, lr, lt)
-        prev = state["previous"]
-        f_ = state["previous"] = fit(sc, image_priors(sc) | priors, data, init=None if prev is None else prev.values, **opts)
+        f_, rec = fit_cell(sc, image_priors(sc) | priors, data, opts)
         lz, c2 = float(log_evidence(f_, data)), float(f_.info["chi2_red"])
-        print(f"length_r {lr:.2f} mas, length_theta {lt:g} rad, sigma {sg}: log Z {lz:.1f}, chi2/pt {c2:.3f}", flush=True)
-        return f_, lz, c2
+        print(f"length_r {lr:.2f} mas, length_theta {lt:g} rad, sigma {sg}: log Z {lz:.1f}, chi2/pt {c2:.3f}, {rec['steps']} steps "
+              f"({rec['stop']}), {rec['seconds']:.0f} s", flush=True)
+        return f_, lz, c2, rec
 
-    # lengths in radius go down by halves to one pixel (below that a GP is white noise) and up by doubles; in azimuth, 2 rad is nearly
-    # one lobe, so an upper edge is a constant ring
-    cells, (lens_r, lens_t, sigmas), (blr, blt, bsg), edge, extended = grid_search(
-        [lens_r, lens_t, sigmas], run, [(lambda v: v / 2.0 if v / 2.0 >= pix_ else None, lambda v: 2.0 * v),
-                                       (lambda v: v / 2.0, lambda v: 2.0 * v), (lambda v: v / 2.0, lambda v: 2.0 * v)],
-        smoke=args.smoke)
+    # lengths in radius go up by doubles and never below the bound; in azimuth, 2 rad is nearly one lobe, so an upper edge is a
+    # constant ring, and under the cap a shorter length than the grid's adds nothing; sigma goes down by halves, never above its bound
+    lt_lower = None if m_max is not None else (lambda v: v / 2.0)
+    extenders = [(lambda v: v / 2.0 if v / 2.0 >= lr_min * (1 - 1e-9) else None, lambda v: 2.0 * v), (lt_lower, lambda v: 2.0 * v),
+                 (lambda v: v / 2.0, lambda v: 2.0 * v if 2.0 * v <= sg_max else None)]
+    return grid_search(axes, run, extenders, smoke=args.smoke or not extend)
+
+
+def cell_records(cells, axes):
+    """JSON-ready list of every cell: its values, log Z, chi2/pt and fit record (loss history included)."""
+    import itertools  # noqa: PLC0415
+
+    return [dict(length_r_mas=float(v[0]), length_theta=float(v[1]), sigma=float(v[2]), log_z=cells[v][1], chi2=cells[v][2], **cells[v][3])
+            for v in itertools.product(*axes)]
+
+
+def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
+    """Polar-GP image (``virgil.fields.MultipoleField``, azimuthal orders capped by ``LowOrderField``): a Matern kernel in the disc's
+    radius times a periodic one in azimuth, deprojected by the inclination and position angle of our own parametric disc fit
+    (``geo``); the polar grid starts at the hole radius. (sigma, length_r, length_theta) from the Laplace evidence on the rescaled
+    data, every cell from the same cold start (``polar_cells``), within the prior bounds ``POLAR_LR_MIN_BEAMS`` and
+    ``POLAR_SIGMA_MAX``."""
+    m_max = cfg.get("polar_m_max", POLAR_M_MAX)
+    cells, (lens_r, lens_t, sigmas), (blr, blt, bsg), edge, extended = polar_cells(cfg, scene, start_env, support, priors, data, args,
+                                                                                   geo, r_min, m_max=m_max)
     log_z, chi2 = cube(cells, (lens_r, lens_t, sigmas), 1), cube(cells, (lens_r, lens_t, sigmas), 2)
     bi, bj, bk = lens_r.index(blr), lens_t.index(blt), sigmas.index(bsg)
     best = cells[blr, blt, bsg][0]
     arrays = dict(gp_log_z=log_z[:, :, bk], gp_chi2=chi2[:, :, bk], gp_sigmas=np.asarray(lens_t), gp_lengths_mas=np.asarray(lens_r),
                   gp_xlabel="ℓ_θ (rad)", gp_ylabel="ℓ_r (mas)", chosen=np.array([bi, bj]), mp_log_z=log_z, mp_chi2=chi2,
-                  mp_sigmas=np.asarray(sigmas))
+                  mp_sigmas=np.asarray(sigmas), mp_cells=json.dumps(cell_records(cells, (lens_r, lens_t, sigmas))))
+    rec = cells[blr, blt, bsg][3]
+    unbounded = getattr(args, "unbounded", False)
+    lr_min, sg_max = (float(start_env.pixel_scale_mas), np.inf) if unbounded else polar_bounds(compare_beam(data).minor_mas,
+                                                                                               float(start_env.pixel_scale_mas))
+    at_bound = [] if unbounded else [n for n, hit in (("length_r", np.isclose(blr, lr_min)), ("sigma", np.isclose(bsg, sg_max))) if hit]
     return best.model, arrays, dict(
-        regulariser="MultipoleField", weight_rule="Laplace evidence", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(bsg),
+        regulariser="MultipoleField" if m_max is None else f"MultipoleField, azimuthal orders <= {m_max}", mp_m_max=m_max,
+        weight_rule="Laplace evidence, unbounded (diagnostic)" if unbounded else
+        f"Laplace evidence within prior bounds (length_r >= {POLAR_LR_MIN_BEAMS:g} beam, sigma <= {POLAR_SIGMA_MAX:g})",
+        gp_lr_min_mas=None if unbounded else float(lr_min), gp_sigma_max=None if unbounded else float(sg_max), gp_at_bound=at_bound, cell_start="cold", gp_chi2=float(chi2[bi, bj, bk]), gp_sigma=float(bsg),
         gp_length_r_mas=float(blr), gp_length_theta=float(blt), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"],
-        mp_r_min_mas=r_min, mp_r_max_mas=r_max, log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge, gp_grid_extended=extended,
-        gp_converged=bool(best.info.get("converged", True)))
+        mp_r_min_mas=r_min, mp_r_max_mas=float(cfg["half_mas"]), log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge,
+        gp_grid_extended=extended, gp_converged=bool(best.info.get("converged", True)), gp_steps=rec["steps"], gp_stop=rec["stop"],
+        gp_cells_unconverged=int(sum(not c[3]["converged"] for c in cells.values()))) | dict(
+        zip(("log_evidence_scene", "scene_sd"), scene_evidence(best, data, {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")})))
 
 
 def rendered_chi2_disc(model, shape, pix, data):
@@ -1088,6 +1548,10 @@ def per_strategy(fn, args, out, *extra):
         # a one-off star-index or background-index run, and every non-default noise or mean, is named apart and never overwrites the headline files
         sfx = ("" if args.star_index is None else f"_si{abs(args.star_index):g}") + ("" if args.bg_index is None else f"_bg{args.bg_index:g}")
         sfx += noise_tag(args.noise) + ("" if args.mean == DEFAULT_MEAN else f"_{args.mean}")
+        sfx += "_chrom" if getattr(args, "chrom", False) else ""
+        sfx += "" if getattr(args, "binary", "paper") == "paper" else f"_bin{args.binary}"
+        sfx += "_unbounded" if getattr(args, "unbounded", False) else ""
+        sfx += "_wide" if getattr(args, "wide_field", False) else ""
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
             fn(args, out, strat, *extra)
@@ -1136,7 +1600,7 @@ def warm_params(out, cfg, strat, args):
     if args.smoke or args.cold or not f.exists():
         return None, None
     j = json.load(open(f))
-    clean = j.get("gp_converged", True) is not False and 0.2 < j.get("chi2_per_point", 9.0) < 3.0 and not j.get("smoke")
+    clean = j.get("gp_converged", True) is not False and 0.2 < j.get("chi2_per_point", 9.0) < 3.0 and not j.get("smoke") and not j.get("image_degenerate")
     if strat == "disc+res":
         clean = clean and bool(j.get("render_ok")) and j.get("d_env_shared") is not None
     if not clean or not j.get("f_prim_pct"):
@@ -1161,7 +1625,7 @@ def skip_clean_reason(out, cfg, strat, args):
     if args.smoke or not args.reuse_converged or not f.exists() or cfg.get("fov_override"):
         return None
     j = json.load(open(f))
-    if j.get("smoke") or not (0.2 < j.get("chi2_per_point", 9.0) < 3.0) or j.get("gp_converged", True) is False:
+    if j.get("smoke") or not (0.2 < j.get("chi2_per_point", 9.0) < 3.0) or j.get("gp_converged", True) is False or j.get("image_degenerate"):
         return None
     if j.get("f_sec_pct") and j["f_sec_pct"] / j["f_prim_pct"] > 0.28:
         return None  # pinned at the old 0.3 bound of the secondary's flux ratio
@@ -1170,6 +1634,8 @@ def skip_clean_reason(out, cfg, strat, args):
         return None  # fitted before the default secondary treatment (PMOIRED prior, fixed index, no window inside the primary hole)
     if strat == "mem":
         return "mem does not use the GP grids"
+    if strat == "gp-polar" and (j.get("cell_start") != "cold" or j.get("mp_m_max") != cfg.get("polar_m_max", POLAR_M_MAX)):
+        return None  # fitted before the azimuthal cap, or with warm-started cells: rerun
     if j.get("gp_on_edge") is not False:
         return None
     if strat == "disc+res" and not (j.get("render_ok") and j.get("d_env_shared") is not None and j.get("n_r") == 192):
@@ -1189,6 +1655,7 @@ def image_one(args, out, strat):
                   open(path(out, cfg, f"{strat}_reused.json"), "w"), indent=1)
         return
     data_s, data0, s, files = load_scaled(cfg, args, out)
+    support_floor = check_support(cfg, data0) if not args.smoke else None
     geo_file = scale_file(out, cfg, args.noise)
     if not geo_file.exists() and not args.smoke and strat in ("gp-aniso", "gp-polar", "disc+res"):
         geo_file = scale_file(out, cfg, DEFAULT_NOISE)  # a noise model without its own geometry fit uses the default's
@@ -1203,14 +1670,22 @@ def image_one(args, out, strat):
     print(strat, "grid", env.log_brightness.shape, "pixel", env.pixel_scale_mas, "mas; hole radius", f"{hole_mas:.3f}", "mas;",
           f"error scale {s:.3f}", flush=True)
     f_env0 = float(np.asarray(env.flux))
-    scene = sparco_scene(cfg, env, f_env=f_env0)
+    chrom = getattr(args, "chrom", False)
+    if chrom and strat != "gp-polar":
+        raise SystemExit("--chrom is for gp-polar only (design §11)")
+    rim, chrom_pri = chromatic_ring(cfg, geo, compare_beam(data_s).minor_mas) if chrom else (None, {})
+    scene = sparco_scene(cfg, env, f_env=f_env0, extra=dict(rim=rim) if chrom else None)
     warm, warm_src = warm_params(out, cfg, strat, args)
     if warm and strat != "disc+res":
         for k_, v_ in warm.items():
             scene = scene.set(k_, v_)
     if warm:
         print("warm start from", warm_src, {k_: round(v_, 3) for k_, v_ in warm.items()}, flush=True)
-    priors = image_priors(scene) | scene_priors(cfg, scene)
+    binary = getattr(args, "binary", "paper")
+    if binary != "paper" and strat != "gp-polar":
+        raise SystemExit("--binary is for gp-polar only (design §12)")
+    scene, bin_pri = binary_scene(scene, cfg, data_s, binary)
+    priors = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri | bin_pri
     has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
     if strat == "mem":
         model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data_s, args)
@@ -1223,7 +1698,7 @@ def image_one(args, out, strat):
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
-    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=noise_widths(cfg) if args.noise == "vlti" else None, error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else (NIGHTW if args.noise == "nightw" else noise_widths(cfg) | (night_widths(cfg) if args.noise == "night" else {})), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
                  bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
@@ -1231,6 +1706,14 @@ def image_one(args, out, strat):
                  star_index_source=cfg.get("star_index_source", "SPARCO convention (-4)"), sec_index_source=cfg.get("sec_index_source"),
                  warm_start=bool(warm) and strat != "disc+res", warm_source=warm_src if strat != "disc+res" else None,
                  field_radius_mas=float(cfg["half_mas"]), grid_half_mas=float(np.shape(env.log_brightness)[0] * pix_ / 2), support_radius_mas=float(cfg.get("mask_mas", np.shape(env.log_brightness)[0] * pix_ / 2))) | extra_gp
+    if chrom:
+        extra |= dict(chrom=True) | chromatic_summary(model, cfg)
+        extra["star_index"] = extra["chrom_star_index"]  # fitted under --chrom (star_index_source keeps the window's centre)
+    if binary != "paper":
+        extra |= binary_summary(model, binary, cfg, extra.get("scene_sd"), data_s)
+        extra["sec_treatment"] = (f"--binary {binary}: position Normal(sec0, {BINARY_POS_SIGMA_MAS:g} mas), flux and index free"
+                                  + ("" if binary == "free" else f", both stars moving against the disc ({binary})")) if has_sec else f"--binary {binary}: no secondary"
+        extra["sec_index_source"] = "fitted" if has_sec else None
     c2, n = chi2r(model, data_s)
     pix = float(env.pixel_scale_mas)
     bright_grid = render_env(model, strat, np.shape(env.log_brightness), pix)
@@ -1261,13 +1744,16 @@ def image_one(args, out, strat):
                  f_bg=f_bg, bg_index=float(np.asarray(model.bg.flux.index)) if cfg.get("bg") else None,
                  sec_dra=float(model.sec.dra) if has_sec else None, sec_ddec=float(model.sec.ddec) if has_sec else None,
                  sec_index=float(np.asarray(model.sec.flux.index)) if has_sec else None)
+    degen = image_degeneracy(bright_grid, pix, float(cfg.get("mask_mas", n_ * pix / 2)), hole_mas)
+    if degen["image_degenerate"]:
+        print("DEGENERATE IMAGE (flagged, not scored):", "; ".join(degen["image_degenerate"]), flush=True)
     np.savez(path(out, cfg, "image.npz"), brightness=bright, brightness_grid=bright_grid, rotation_deg=rot, pixel_mas=pix, model_v2=mv2, model_t3=mt3,
              **curve_arrays, stars=json.dumps(stars))
-    tot = 1.0 + stars["f_env"] + f_sec + f_bg
+    tot = 1.0 + stars["f_env"] + f_sec + f_bg + (float(np.asarray(model.rim.flux)) if chrom else 0.0)  # the --chrom ring, as chromatic_summary
     summary = dict(chi2_per_point=c2, chi2_rendered=chi2_rendered, render_ok=render_ok, f_disk=f_disk, f_res=f_res if strat == "disc+res" else None, n_points=n, grid=list(bright.shape), pixel_mas=pix, smoke=args.smoke, seconds=time.time() - t0,
                    f_prim_pct=100 / tot, f_sec_pct=100 * f_sec / tot if has_sec else None, f_env_pct=100 * stars["f_env"] / tot,
                    f_bg_pct=100 * f_bg / tot if cfg.get("bg") else None, f_outer_pct=100 * f_outer / tot,
-                   f_overresolved_pct=100 * (f_bg + f_outer) / tot, resid=resid, **extra,
+                   f_overresolved_pct=100 * (f_bg + f_outer) / tot, resid=resid, support_floor_mas=support_floor, **degen, **extra,
                    **{k_: v for k_, v in stars.items() if k_ in ("ud", "env_index", "bg_index", "sec_dra", "sec_ddec", "sec_index")})
     if has_sec:
         summary |= dict(sec_sep_mas=float(np.hypot(stars["sec_dra"], stars["sec_ddec"])),
@@ -1276,6 +1762,196 @@ def image_one(args, out, strat):
     json.dump(summary, open(path(out, cfg, "image.json"), "w"), indent=1)
     plot_lcurve(out, cfg)
 
+
+
+
+# ----------------------------------------------------------------------------
+# calibrate: does the gp-polar hyperparameter selection recover a known smooth disc? (design/gp_polar_hyperparameters.md)
+
+CAL_LR_BEAMS = (0.5, 1.0, 2.0)
+CAL_LT = (0.0625, 0.25, 1.0)
+CAL_SIGMAS = (0.5, 1.0, 2.0, 4.0)
+CAL_ARMS = ("white", "corr", "smear", "geo", "night", "chrom")
+CAL_GEO_ERROR_DEG = (8.0, 8.0)  # geo arm: the polar GP deprojects with (inc, PA) this far off the truth's, a typical error of the real ring fits
+CAL_CHROM_DALPHA = 2.0  # chrom arm: the ring's index is this much higher one width inside its centre than one width outside (§11)
+CAL_CHROM_STAR = -1.0  # chrom arm: the truth's star index is SIND1 plus this (towards Rayleigh-Jeans); the fit keeps SIND1
+
+
+def calib_tag(arm, m_max, seed=0):
+    return f"calib_{arm}_m{'all' if m_max is None else m_max}_s{seed}"
+
+
+def image_errors(img, truth, pix, bm, mask):
+    """Shape errors of a reconstruction against the truth, both normalised to unit sum on ``mask``: relative rms error of the raw
+    images and of both convolved with the comparison beam ``bm``, and the normalised cross-correlation of the convolved ones."""
+    a, b = img / img[mask].sum(), truth / truth[mask].sum()
+    ac, bc = np.asarray(convolve_beam(a, pix, bm)), np.asarray(convolve_beam(b, pix, bm))
+
+    def rel(x, y):
+        return float(np.linalg.norm((x - y)[mask]) / np.linalg.norm(y[mask]))
+
+    return dict(nrmse_raw=rel(a, b), nrmse_beam=rel(ac, bc), ncc_beam=ncc(ac, bc, mask))
+
+
+def simulate(cfg, files, s, truth, arm, key):
+    """Simulated data from ``truth`` on ``files``' (u,v), errors and closure triangles, and the error scale to fit them with.
+
+    * ``white``: Gaussian noise at the quoted errors times the target's MacKay factor ``s``, fitted with those errors (right by
+      construction).
+    * ``corr``: the target's virgil-vlti error model (white parts scaled by kind, per-frame gains on log|V| per telescope and
+      baseline, closure-phase offsets; widths from its own pair test), fitted as the real data are: independent quoted errors with
+      the MacKay factor of a pilot GP (``pilot_error_scale``, run by the caller: returned scale None).
+    * ``smear``: white noise as for ``white``, but the truth seen through PIONIER's spectral channels (bandwidth smearing), which
+      the pixel-image fits leave out.
+    * ``geo``: noise as for ``white``; the caller fits with a wrong disc geometry (``CAL_GEO_ERROR_DEG``).
+    * ``chrom``: noise as for ``white``; the caller makes the truth chromatic (``chromatic_truth``) and fits it grey.
+    * ``night``: as ``corr``, plus the night terms of ``night_noise`` (a gain per (night, baseline), a closure offset per
+      (night, triangle)), fitted the same way."""
+    data0 = OIData(read_oifits(files))
+    if arm in ("white", "geo", "chrom"):
+        return data0.with_error_scale(s).with_model(truth, key=key), s
+    if arm == "smear":
+        sim = OIData(read_oifits(files, bandwidth=True)).with_error_scale(s).with_model(truth, key=key)
+        return data0.with_error_scale(s).set(["vis", "phi"], [sim.vis, sim.phi]), s
+    sim = modelled_noise(data0, cfg, "night" if arm == "night" else "vlti").with_model(truth, key=key)
+    return data0.set(["vis", "phi"], [sim.vis, sim.phi]), None
+
+
+def representable_truth(g, geo, r_min, r_max, unit):
+    """The smooth truth: the ``geometry_fit`` scene (stars, fluxes, spectral indices, first harmonic), its Gaussian ring moved
+    where the polar GP can draw it. The real fits put some rings at their prior floor (AI Sco, EN TrA: radius 0.5 mas, a central
+    blob), with flux inside the blanked hole, which no image of the pipeline can hold; a truth like that would test the model
+    mismatch, not the hyperparameter choice. So the width is between half a beam and 0.15 of the polar grid's radial span, and the
+    radius at least 2.5 widths from the hole and from ``r_max``; inclination and position angle are the polar GP's (``geo``)."""
+    w = min(max(float(g.values["env.profile.sigma"]), 0.5 * unit), 0.15 * (r_max - r_min))
+    r = float(np.clip(float(g.values["env.profile.radius"]), r_min + 2.5 * w, r_max - 2.5 * w))
+    truth = g.model.set("env.profile.radius", r).set("env.profile.sigma", w).set("env.inc", geo["inc_deg"]).set("env.pa", geo["pa_deg"])
+    return truth, dict(radius_mas=r, width_mas=w, inc_deg=geo["inc_deg"], pa_deg=geo["pa_deg"],
+                       fit_radius_mas=float(g.values["env.profile.radius"]), fit_width_mas=float(g.values["env.profile.sigma"]),
+                       h_re=float(np.ravel(g.values["env.harmonics.re"])[0]), h_im=float(np.ravel(g.values["env.harmonics.im"])[0]),
+                       f_env=float(np.asarray(truth.env.flux.ratio)))
+
+
+def chromatic_truth(truth, info, star_index, d_alpha=CAL_CHROM_DALPHA, d_star=CAL_CHROM_STAR):
+    """The ``chrom`` arm's truth (design §11): ``truth``'s ring with an index falling linearly with radius, ``d_alpha`` higher one
+    ring width inside its centre than one width outside (virgil's chromatic ``MultipoleDisk``, same F_lambda convention as
+    ``PowerLaw``), about the ring's own index at its centre; and the star's index ``star_index + d_star``."""
+    env, r, w = truth.env, float(info["radius_mas"]), float(info["width_mas"])
+    disk = MultipoleDisk(env.profile, harmonics=env.harmonics, inc=env.inc, pa=env.pa, n_r=env.n_r, flux=float(np.asarray(env.flux.ratio)),
+                         spectral_index=RadialLinear(float(np.asarray(env.flux.index)), -d_alpha / (2.0 * w), r), wavel0=L0)
+    return truth.set("env", disk).set("star.flux.index", float(star_index) + d_star), dict(
+        d_alpha=d_alpha, index_slope_per_mas=-d_alpha / (2.0 * w), star_index_truth=float(star_index) + d_star, star_index_fit=float(star_index))
+
+
+def calibrate_stage(args, out):
+    """Hyperparameter calibration of gp-polar on a smooth known disc with this target's own (u,v), errors and scene.
+
+    The truth is ``representable_truth``: the stars of ``geometry_fit`` on the real (rescaled) data and a Gaussian ring with a first
+    harmonic, so nothing in it
+    is above azimuthal order 1. ``--arm`` sets the noise (``simulate``); ``--m-max`` the azimuthal cap (negative: no cap, the
+    pre-cap grid). Every cell of a fixed grid (CAL_*: lengths from half a beam, l_theta from below the node spacing, sigma to 4) is
+    fitted cold, on all the files and, for a cross-validation score, on the even-numbered files alone with chi2/pt on the odd ones.
+    Written: ``<target>_calib_<arm>_m<cap>_s<seed>.json`` (every cell: log Z, chi2, CV chi2, image errors against the truth, fit record and
+    loss history; the picks of the evidence, of CV and of the truth itself), an ``.npz`` of the images and a figure."""
+    cfg = cfg_of(args)
+    m_max = None if args.m_max is not None and args.m_max < 0 else (POLAR_M_MAX if args.m_max is None else args.m_max)
+    tag = calib_tag(args.arm, m_max, args.seed)
+    sc_file = scale_file(out, cfg, "current")
+    if not sc_file.exists() and not args.smoke:  # never a made-up error scale or geometry in a real run
+        raise SystemExit(f"calibrate needs the scale stage's output ({sc_file.name}) in OUTDIR")
+    sc = json.load(open(sc_file)) if not args.smoke else dict(error_scale=1.0, geometry=dict(inc_deg=45.0, pa_deg=90.0))
+    s, geo = float(sc["error_scale"]), sc["geometry"]
+    files = load_files(cfg, args.files)
+    real = OIData(read_oifits(files)).with_error_scale(s)
+    start, support, hole_mas = grid_setup(cfg, real, args)
+    if not path(out, cfg, "parametric.json").exists():
+        raise SystemExit("calibrate needs the parametric stage's output (parametric.json) in OUTDIR")
+    g = geometry_fit(cfg, real, out, hole_mas, args)
+    unit, pix = compare_beam(real).minor_mas, float(start.env.pixel_scale_mas)
+    truth, truth_info = representable_truth(g, geo, hole_mas, float(cfg["half_mas"]), unit)
+    if args.arm == "chrom":  # the fit below stays grey, with the star at cfg's index
+        truth, chrom = chromatic_truth(truth, truth_info, cfg.get("img_star_index", -4.0))
+        truth_info |= dict(chromatic=chrom)
+    print("truth:", json.dumps(truth_info), flush=True)
+    geo_fit = dict(geo)  # the geometry the polar GP deprojects with: the truth's, except in the geo arm
+    if args.arm == "geo":
+        geo_fit = dict(geo, inc_deg=float(min(geo["inc_deg"] + CAL_GEO_ERROR_DEG[0], 85.0)), pa_deg=float(geo["pa_deg"] + CAL_GEO_ERROR_DEG[1]))
+
+    keys = jax.random.split(jax.random.PRNGKey(args.seed), 3)
+    sets = {}
+    for name, fs, k in (("all", files, keys[0]), ("even", files[0::2], keys[1]), ("odd", files[1::2], keys[2])):
+        sets[name] = simulate(cfg, fs, s, truth, args.arm, k)
+    env = Image(start.env.log_brightness, start.env.pixel_scale_mas, support=support, flux=start.env.flux)
+    scene = sparco_scene(cfg, env, f_env=float(np.asarray(env.flux)))
+    priors = image_priors(scene) | scene_priors(cfg, scene)
+    if sets["all"][1] is None:  # corr, night: the MacKay factor of a pilot GP on the simulated data, as the real pipeline does
+        s_c, pilot_chi2 = pilot_error_scale(scene, start, support, priors, sets["all"][0], args)
+        print(f"{args.arm} arm: pilot chi2/pt {pilot_chi2:.3f}, error scale {s_c:.3f}", flush=True)
+        sets = {k: (d.with_error_scale(s_c), s_c) for k, (d, _) in sets.items()}
+    data, s_fit = sets["all"]
+
+    axes = [[m * unit for m in CAL_LR_BEAMS if m * unit >= pix], list(CAL_LT), list(CAL_SIGMAS)]
+    common = (cfg, scene, start.env, support, priors)
+    cells, axes = polar_cells(*common, data, args, geo_fit, hole_mas, m_max=m_max, axes=axes, extend=False)[:2]  # smoke trims the axes
+    cells_cv = polar_cells(*common, sets["even"][0], args, geo_fit, hole_mas, m_max=m_max, axes=axes, extend=False)[0]
+
+    n = np.shape(env.log_brightness)[0]
+    truth_img = np.asarray(truth.env.render(npix=n, fov_mas=n * pix))
+    mask = np.asarray(support, bool)
+    bm = compare_beam(real)
+    import itertools  # noqa: PLC0415
+
+    keys_ = list(itertools.product(*axes))
+    rows = cell_records(cells, axes)
+    for row, v in zip(rows, keys_):
+        row |= image_errors(render_env(cells[v][0].model, "gp-polar", (n, n), pix), truth_img, pix, bm, mask)
+        row["cv_chi2"] = float(chi2r(cells_cv[v][0].model, sets["odd"][0])[0])
+        row["cv_record"] = {k: cells_cv[v][3][k] for k in ("steps", "stop", "converged", "seconds")}
+    picks = dict(evidence=int(np.argmax([r["log_z"] for r in rows])), cv=int(np.argmin([r["cv_chi2"] for r in rows])),
+                 truth=int(np.argmin([r["nrmse_beam"] for r in rows])))
+    order = np.argsort([r["nrmse_beam"] for r in rows])
+    rank = {int(i): k + 1 for k, i in enumerate(order)}  # 1 = closest to the truth
+    corner = (min(axes[0]), max(axes[2]))  # the failure corner of the real fits: the smallest l_r with the largest sigma
+    summary = {k: dict(cell=i, rank_vs_truth=rank[i], rank_fraction=rank[i] / len(rows),
+                       at_corner=bool((rows[i]["length_r_mas"], rows[i]["sigma"]) == corner), **{q: rows[i][q] for q in ("length_r_mas", "length_theta", "sigma", "log_z", "chi2",
+                                                                                   "cv_chi2", "nrmse_beam", "nrmse_raw", "ncc_beam")})
+               for k, i in picks.items()}
+    res = dict(target=cfg["key"], arm=args.arm, m_max=m_max, seed=args.seed, error_scale_real=s, error_scale_fit=s_fit,
+               beam_mas=unit, pixel_mas=pix, axes=dict(length_r_mas=axes[0], length_theta=axes[1], sigma=axes[2]),
+               truth=truth_info, truth_fit=geometry_of(g, real), geometry_fitted_with=geo_fit, n_cells=len(rows), n_unconverged=int(sum(not r["converged"] for r in rows)),
+               picks=summary, cells=rows, smoke=args.smoke)
+    json.dump(res, open(path(out, cfg, f"{tag}.json"), "w"), indent=1)
+    np.savez(path(out, cfg, f"{tag}.npz"), truth=truth_img, pixel_mas=pix,
+             **{f"pick_{k}": render_env(cells[keys_[i]][0].model, "gp-polar", (n, n), pix) for k, i in picks.items()})
+    print(json.dumps(dict(picks=summary, n_unconverged=res["n_unconverged"]), indent=1), flush=True)
+    plot_calibration(out, cfg, tag)
+
+
+def plot_calibration(out, cfg, tag):
+    """Truth | the evidence's pick | CV's pick | the cell closest to the truth (raw images), and log Z against the image error."""
+    res, z = json.load(open(path(out, cfg, f"{tag}.json"))), np.load(path(out, cfg, f"{tag}.npz"))
+    pix, n = float(z["pixel_mas"]), z["truth"].shape[0]
+    ext = [n * pix / 2, -n * pix / 2, -n * pix / 2, n * pix / 2]
+    fig, ax = plt.subplots(1, 5, figsize=(20, 4))
+    for a, (k, title) in zip(ax, (("truth", "truth"), ("pick_evidence", "evidence"), ("pick_cv", "cross-validation"), ("pick_truth", "closest to truth"))):
+        a.imshow(z[k] / z[k].max(), origin="upper", extent=ext, cmap="inferno")
+        p = res["picks"].get(k.removeprefix("pick_")) if k != "truth" else None
+        a.set_title(title if p is None else f"{title}: σ {p['sigma']:g}, ℓ_r {p['length_r_mas']:.2f}, ℓ_θ {p['length_theta']:g}\n"
+                                              f"error {p['nrmse_beam']:.2f} (rank {p['rank_vs_truth']})", fontsize=9)
+        a.set_xlim(cfg["half_mas"], -cfg["half_mas"])
+        a.set_ylim(-cfg["half_mas"], cfg["half_mas"])
+    cells = res["cells"]
+    lz = np.array([c["log_z"] for c in cells])
+    sc = ax[4].scatter([c["nrmse_beam"] for c in cells], lz - lz.max(), c=np.log2([c["sigma"] for c in cells]), cmap="viridis")
+    ax[4].set_xlabel("image error (beam-convolved)")
+    ax[4].set_ylabel("ln Z − max")
+    ax[4].set_yscale("symlog")
+    fig.colorbar(sc, ax=ax[4], label="log2 σ")
+    orders = "all" if res["m_max"] is None else f"<= {res['m_max']}"
+    fig.suptitle(f"{cfg['name']}: {res['arm']} noise, azimuthal orders {orders}")
+    fig.tight_layout()
+    fig.savefig(path(out, cfg, f"{tag}.png"), dpi=110)
+    plt.close(fig)
 
 # ----------------------------------------------------------------------------
 # compare
@@ -1572,7 +2248,7 @@ def reg_label(out, cfg):
         return f"GP, σ = {j['gp_sigma']:g}, ℓ = {j['gp_length_mas']:.2f} mas"
     if j.get("regulariser") == "MultipoleDisk":
         return f"disc + residual GP, σ = {j['gp_sigma']:g}, ℓ = {j['gp_length_mas']:.2f} mas"
-    if j.get("regulariser") == "MultipoleField":
+    if str(j.get("regulariser", "")).startswith("MultipoleField"):  # capped fields read "MultipoleField, azimuthal orders <= m"
         return f"polar GP, σ = {j['gp_sigma']:g}, ℓ_r = {j['gp_length_r_mas']:g} mas, ℓ_θ = {j['gp_length_theta']:g} rad"
     return "MaxEntropy, discrepancy"
 
@@ -1867,7 +2543,7 @@ def table_stage(args, out):
     path(out, cfg, "table.md").write_text(text + "\n")
 
 
-STAGES = dict(inspect=inspect_stage, parametric=parametric_stage, scale=scale_stage, image=image_stage,
+STAGES = dict(inspect=inspect_stage, parametric=parametric_stage, scale=scale_stage, image=image_stage, calibrate=calibrate_stage,
               compare=compare_stage, select=select_stage, replot=replot_stage, table=table_stage)
 
 
@@ -1883,13 +2559,26 @@ def main():
     p.add_argument("--strategy", default="all", choices=("all",) + STRATEGIES, help="imaging strategy for the image and compare stages")
     p.add_argument("--star-index", type=float, default=None, help="one-off: stellar power-law index of the image scene (default -4), written as <target>_si<n>_*")
     p.add_argument("--bg-index", type=float, default=None, help="one-off: fix the over-resolved background's index (default free), written as <target>_<strategy>_bg<n>_*")
-    p.add_argument("--noise", default="current", choices=("current", "vlti"),
-                   help="error model: current (independent errors, MacKay error_scale) or vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
-                        "gains per telescope and baseline, closure offsets); written as <target>_<strategy>_vlti_*")
+    p.add_argument("--noise", default="current", choices=("current", "vlti", "night", "nightw"),
+                   help="error model: current (independent errors, MacKay error_scale), vlti (virgil-vlti PIONIER: V2 x 0.32, T3 x 0.65, "
+                        "gains per telescope and baseline, closure offsets) or night (vlti plus a gain per (night, baseline) and a closure "
+                        "offset per (night, triangle)); written as <target>_<strategy>_<noise>_*")
+    p.add_argument("--binary", default="paper", choices=BINARY_MODES,
+                   help="gp-polar: the binary model (design §12): paper (B1), free (secondary position, flux and index), motion (plus linear motion of both stars against the disc), epoch (plus an offset per night); written as ..._bin<mode>_*")
+    p.add_argument("--chrom", action="store_true",
+                   help="gp-polar: add a chromatic ring (index linear in radius) and free the star index (design §11); written as ..._chrom_*")
+    p.add_argument("--wide-field", action="store_true",
+                   help="image, support and comparison half-widths of WIDE_FIELD_MAS (15 mas) in place of the target's own "
+                        "(design §12, when PS Gem's was 5 mas); written as <target>_<strategy>_..._wide_*")
+    p.add_argument("--unbounded", action="store_true",
+                   help="gp-polar: the evidence over the whole grid, without the prior bounds (diagnostic); written as ..._unbounded_*")
     p.add_argument("--mean", default="blob", choices=("blob", "flat"),
                    help="GaussianField / MultipoleField mean: the Gaussian start blob, or flat inside the support; written as ..._flat_*")
     p.add_argument("--cold", action="store_true", help="never warm-start the scene parameters from an earlier <target>_image.json")
     p.add_argument("--files", type=int, default=None, help="use only the first N files")
+    p.add_argument("--arm", default="white", choices=CAL_ARMS, help="calibrate: noise of the simulated data (see simulate)")
+    p.add_argument("--m-max", type=int, default=None, help=f"calibrate: azimuthal cap of the polar GP (default {POLAR_M_MAX}; negative: none)")
+    p.add_argument("--seed", type=int, default=0, help="calibrate: noise seed")
     args = p.parse_args()
     if args.smoke and args.files is None:
         args.files = 3
