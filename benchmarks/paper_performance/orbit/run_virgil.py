@@ -328,6 +328,9 @@ def main():
             t0 = time.perf_counter()
             run_mcmc(model, init, a.warmup, a.draws, a.chains, a.seed + 1, mcmc=mcmc)
             t_warm_list.append(time.perf_counter() - t0)
+    if kind == "B":
+        # gate 3 (gates_result.json): independent-CP likelihood differs from neutral by 2.4e-2 (default 0.20); flagged, not gated
+        flags.append("likelihood_mismatch")
     sw.times["t_init"] = t_init_total
     sw.times["t_cold"] = t_cold_total
     for t in t_warm_list:
@@ -344,7 +347,7 @@ def main():
             onp.savez(out / "pulls_samples.npz", **{f"seed{k:02d}_{key}": v for k, (_, r) in enumerate(results)
                                                      for key, v in r.items() if key in ("P", "e", "a_mas", "A", "B", "F", "G")})
     first = results[0][1]
-    acc = {"n_divergent": int(first["diverging"].sum()), "mean_steps_per_iteration": float(first["num_steps"].mean())}
+    acc = {"likelihood_mismatch_rel": 0.02383627411791079 if kind == "B" else None, "n_divergent": int(first["diverging"].sum()), "mean_steps_per_iteration": float(first["num_steps"].mean())}
     settings = {"config": a.config, "phase_parameter": phase, "warmup": a.warmup, "draws": a.draws, "chains": a.chains,
                 "chain_method": "sequential", "target_accept": 0.8, "max_tree_depth": a.max_tree_depth,
                 "mass_matrix": "dense (matches Octofitter: AdvancedHMC DenseEuclideanMetric, sampling.jl)", "case": a.case, "versions": ver,
