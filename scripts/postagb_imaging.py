@@ -269,27 +269,32 @@ def check_support(cfg, data):
     return floor
 
 
-# image_degeneracy: an image that is the prior's shape, not the data's, is flagged and not scored. Calibrated on the 40 gp-polar BN images
-# (job 21123993): every image outside PS Gem's 5 mas support has flat <= 0.04 and edge <= 0.03; PS Gem's 5 mas support gave edge 0.13-0.47
-# and, under night terms, flat 0.82.
-DEGENERATE_FLAT_FRAC = 0.5  # flat: more than this fraction of the support (outside the hole) above half the image's peak
-DEGENERATE_EDGE_FRAC = 0.1  # edge-piled: more than this fraction of the disc's flux beyond 0.85 of the support radius (0.28 of its area)
+# image_degeneracy: an image that is the prior's shape, not the data's, is flagged and not scored. The edge is the image's own field
+# boundary (gp-polar's field ends on an inclined ellipse inside the circular support), and the band is 0.15 of the field's half-width
+# (22-27 % of its area). Calibrated on the 40 gp-polar BN images (job 21123993): outside PS Gem's 5 mas support, flat <= 0.04 and
+# edge <= 0.20 (AI Sco's highest); PS Gem's 5 mas support gave edge 0.28-0.59 and, under night terms, flat 0.97.
+DEGENERATE_FLAT_FRAC = 0.5  # flat: more than this fraction of the field (outside the hole) above half the image's peak
+DEGENERATE_EDGE_FRAC = 0.25  # edge-piled: more than this fraction of the disc's flux in the band along the field's boundary
 
 
 def image_degeneracy(bright, pix, support_mas, hole_mas):
     """Flatness and edge-piling of a rendered disc image (``bright``, square, centred, ``pix`` mas): ``dict(img_flat_frac,
-    img_edge_frac, image_degenerate)``, the last a list of reasons (empty when the image is usable)."""
-    n = bright.shape[0]
+    img_edge_frac, image_degenerate)``, the last a list of reasons (empty when the image is usable). The field is where the image is
+    non-zero inside the support disc, with the stellar hole filled in."""
+    b = np.clip(np.asarray(bright, float), 0.0, None)
+    if b.max() <= 0:
+        return dict(img_flat_frac=None, img_edge_frac=None, image_degenerate=["empty"])
+    n = b.shape[0]
     yy, xx = np.mgrid[:n, :n]
     r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * pix
-    sup = (r <= support_mas) & (r >= hole_mas)
-    b = np.clip(np.asarray(bright, float)[sup], 0.0, None)
-    if b.sum() <= 0:
-        return dict(img_flat_frac=None, img_edge_frac=None, image_degenerate=["empty"])
-    flat = float(np.mean(b > 0.5 * b.max()))
-    edge = float(b[r[sup] > 0.85 * support_mas].sum() / b.sum())
-    why = ([f"flat ({flat:.2f} of the support above half the peak)"] if flat > DEGENERATE_FLAT_FRAC else []) + (
-        [f"edge-piled ({edge:.2f} of the flux beyond 0.85 of the support radius)"] if edge > DEGENERATE_EDGE_FRAC else [])
+    field = (r <= support_mas) & ndimage.binary_fill_holes(b > 1e-6 * b.max())
+    depth = ndimage.distance_transform_edt(field) * pix  # distance to the field's boundary
+    use = field & (r >= hole_mas)
+    bs = b[use]
+    flat = float(np.mean(bs > 0.5 * bs.max()))
+    edge = float(bs[depth[use] < 0.15 * depth.max()].sum() / bs.sum())
+    why = ([f"flat ({flat:.2f} of the field above half the peak)"] if flat > DEGENERATE_FLAT_FRAC else []) + (
+        [f"edge-piled ({edge:.2f} of the flux along the field's boundary)"] if edge > DEGENERATE_EDGE_FRAC else [])
     return dict(img_flat_frac=flat, img_edge_frac=edge, image_degenerate=why)
 
 

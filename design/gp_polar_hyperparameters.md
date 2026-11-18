@@ -566,10 +566,81 @@ value on the scaled errors and, after it, on the quoted errors (× s²; the nigh
 **Post-hoc amendment (after looking at the images; not in §12).** A pick inside the bounds counts only if its image is not
 degenerate, meaning it does not fill or saturate the field. This removes PS Gem's stock-field night arm, whose +108.3 and pick
 inside the bounds come from a flat disc filling the 5 mas field. The PS Gem 15 mas `paper` image is a smooth resolved disc with
-arms, but it extends to about 8 mas against ORGANIC's compact emission within about 2 mas. So it is not claimed to agree.
+arms, extending to about 8 mas. (Corrected in §15: an earlier version said ORGANIC's emission was compact, within about 2 mas.
+That was read off a peak-scaled plot. ORGANIC's own image has 58 % of its disc flux beyond 5 mas, and the 15 mas image matches
+its radial profile.)
 
 **Consequence.** §12 fails: the binary, freed in position, flux, colour and motion, does not move the pick out of the corner on
 any of the three companion binaries, and its motion gain is a night-level error, not an orbit. Under night terms the bound costs
 ≤ 5 on EN TrA, IW Car and the control, 5.3 on HD 95767, 9.6 on AI Sco and 19.6 on HD 95767 without motion. The night-level
 inconsistency is the leading cause, with the doubled-noise caveat open. The §8 bounds stay the selector, with the cost of the
 bound quoted. Fitting the noise terms together is the next test (next-steps step 1); it is not pre-registered here.
+
+**Evidence across error scales (added 18 Nov, after the Fable review of the parametric-disc plan).** virgil's `_log_norm` is
+½ ln det of the marginalised gain and offset factors only. It leaves out −Σ ln σᵢ, so ln Z compared across different white
+error scales favours the larger scale. Nothing in this section is affected: the grid picks, the ladder, nightw − current and the
+cost of the bound all hold the white errors fixed (the MacKay factor of stage A), and the night terms enter through the gain
+factors that `_log_norm` does carry. §10's "ln Z rises by 240–300" is affected only if it was measured against the vlti-scaled
+§10 runs (white errors 2–4 times smaller), and that has not been checked. A scan of the white scale by evidence (next-steps
+stage F1) needs the term added first.
+
+## 15. PS Gem's support (18 Nov, Ben: "there's something wrong here. Think about it carefully and fix it.")
+
+**The fault.** PS Gem was imaged in a hand-set 5 mas support (`fov_override=11`, half, comparison and mask radii of 5 mas), set
+in October from the belief that its emission lies within about 5 mas. Every other target uses the paper's field (14–25 mas). The
+data see further than 5 mas: a ring at radius r has visibility J0(2π B r / λ) on a baseline B. On PS Gem's shortest baseline
+(9.9 m), that is above 0.5 out to r = 8.9 mas, and virgil's own `field_of_view(data)` is 36.6 mas across. Emission outside the
+support can only go to the over-resolved background, whose visibility is 0 on every baseline. The numbers:
+
+| run (job 21123993 unless stated) | support | disc flux | background | flux in the band at the field's edge | flat fraction |
+|---|---|---|---|---|---|
+| current noise, `paper` | 5 mas | 4.0 % | 7.6 % | 0.59 | 0.00 |
+| current noise, `motion` | 5 mas | 5.5 % | 6.1 % | 0.54 | 0.02 |
+| night terms, `paper` | 5 mas | 1.6 % | 9.8 % | 0.18 | **0.97** |
+| night terms, `motion` | 5 mas | 2.4 % | 9.1 % | 0.48 | 0.01 |
+| current noise, `paper`, `--wide-field` | 15 mas | 11.0 % | 0.7 % | 0.03 | 0.04 |
+| current noise, `paper` (local, after the fix) | 18.9 mas | 11.8 % | 0.1 % | 0.01 | 0.00 |
+| night terms, `paper` (local, after the fix) | 18.9 mas | 8.8 % | 2.7 % | 0.10 | 0.03 |
+
+(Band: the flux within 0.15 of the field's half-width of its boundary, 22–27 % of its area; the gp-polar field ends on an
+inclined ellipse. The flat fraction is the share of the field above half the image's peak. The other 35 gp-polar BN images have
+band ≤ 0.20 and flat ≤ 0.04.)
+
+* The 5 mas support truncated the disc in every arm, not only under night terms. With room the disc takes 11–12 % of the flux and
+  the background falls to its lower bound. On the same data and errors (s = 1.059), the 15 mas field beats the 5 mas field by
+  117 in grid ln Z (−271.6 against −388.3).
+* ORGANIC agrees with the wide field. Its image has 86 % of the disc flux beyond 2 mas, 58 % beyond 5 mas and 31 % beyond 8 mas.
+  The 18.9 mas current-noise image has 93 %, 63 % and 30 %, while the 5 mas one had 0 % beyond 5 mas by construction.
+* Under night terms the truncated disc fell to 1.6 % with its index at the +6 bound. The night gains (3 % per baseline and night)
+  are as large as such a disc's whole V² signature, so the evidence chose the smoothest cell (σ = 0.25, ℓ_r 8 beams) and the image
+  was the prior's flat shape. It is not a plotting artefact: the flatness is measured on the brightness array. The peak-scaled
+  colour map only made a 1.6 % plateau look saturated.
+* The background is not the cause. Without a background component (local test, same errors) the 18.9 mas fits are unchanged:
+  current noise 11.9 % disc, the same radial profile, ln Z_scene −397.3 against −399.0 with it; night terms 11.6 % disc, −389.2
+  against −387.1.
+* MacKay factor: the pilot GP on the 18.9 mas field gives s = 0.861, against 1.059 on the 5 mas field. The truncated pilot left
+  structure in the residuals, which the factor absorbed. So ln Z of the new PS Gem runs must not be compared with the old ones.
+
+**The fix (postagb_imaging).**
+* PS Gem takes the paper's field like the other targets: support radius 18.9 mas; the hole stays at the UD (0.37 mas).
+* `check_support` refuses a support radius below `support_floor_mas`: the radius at which a ring is at visibility 0.5 on the
+  shortest baseline at the longest wavelength. Floors: 8.3–11.0 mas; every other target's support (14–25 mas) passes.
+* `image_degeneracy` writes `img_flat_frac`, `img_edge_frac` and `image_degenerate` (the reasons) into every image JSON. An image
+  is degenerate if more than 0.5 of its field lies above half its peak (flat), or if more than 0.25 of its flux lies in the band
+  at the field's boundary (edge-piled). A degenerate run is printed as such, never reused as a warm start or a converged result,
+  and is not scored. On the 40 BN gp-polar images it flags exactly the five 5 mas PS Gem runs.
+
+**After the fix** (local, virgil d0f7086, MacKay factor refitted; figure `design/postagb_noise/ps_gem_support_before_after.png`):
+
+| run | pick (ℓ_r, ℓ_θ, σ) | cost of the bound | χ²/pt | image |
+|---|---|---|---|---|
+| current noise | 0.25 beam, 0.25, 2 | 4.5 | 0.64 | arcs and spiral-like rings to about 12 mas; not degenerate |
+| night terms | 0.5 beam, 0.25, 1 | 0.5 | 0.51 | the same arcs on a faint plateau that fills the field (31 % of the flux beyond 12 mas, ORGANIC 16 %); not degenerate |
+
+So on the right field PS Gem is no longer a corner case: the cost of the bound is 4.5 under current noise and 0.5 under night
+terms, both ≤ 5. The night-terms image is more extended than ORGANIC's, and the per-night gains may be standing in for a faint
+halo. That belongs to the noise fit (stage F1), not to the field.
+
+**What this changes.** Every earlier PS Gem gp-polar result used the truncated field: §7's calibration notes, §10, §13 (rule 2's
+PS Gem row), §12's 5 mas arms and §14's PS Gem rows. §12's verdict for PS Gem already rested on the 15 mas field and stands.
+The BN outputs on disk keep their 5 mas images; a rerun with the fix is a cluster job, not done here.

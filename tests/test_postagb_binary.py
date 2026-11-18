@@ -187,9 +187,15 @@ def test_image_degeneracy_flags_flat_and_edge_piled_images():
     r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * pix
     ring = np.exp(-0.5 * ((r - 3.0) / 0.6) ** 2)
     flat = (r <= rs).astype(float)
-    edge = np.exp(-0.5 * ((r - 8.6) / 0.3) ** 2)
+    edge = np.exp(-0.5 * ((r - 8.6) / 0.3) ** 2) + 1e-3 * (r <= rs)  # a faint field to the support edge, flux piled on it
     ok = P.image_degeneracy(ring, pix, rs, hole)
-    assert ok["image_degenerate"] == [] and ok["img_flat_frac"] < 0.2 and ok["img_edge_frac"] < 0.01
+    assert ok["image_degenerate"] == [] and ok["img_flat_frac"] < 0.3 and ok["img_edge_frac"] < 0.01
+    re = np.hypot(xx - (n - 1) / 2, 2 * (yy - (n - 1) / 2)) * pix  # elliptical radius: a polar field inclined by 60 deg
+    inside = re <= 6.0
+    ellipse = (ring + 1e-3) * inside  # the field is an ellipse, well inside the support circle
+    ell_edge = (ellipse + np.exp(-0.5 * ((re - 5.8) / 0.2) ** 2)) * inside
+    assert P.image_degeneracy(ellipse, pix, rs, hole)["image_degenerate"] == []
+    assert P.image_degeneracy(ell_edge, pix, rs, hole)["image_degenerate"][-1].startswith("edge-piled")  # inside the support circle
     assert P.image_degeneracy(flat, pix, rs, hole)["image_degenerate"][0].startswith("flat")
     assert any(w.startswith("edge-piled") for w in P.image_degeneracy(edge, pix, rs, hole)["image_degenerate"])
     assert P.image_degeneracy(0 * ring, pix, rs, hole)["image_degenerate"] == ["empty"]
