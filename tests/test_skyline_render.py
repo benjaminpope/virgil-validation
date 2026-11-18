@@ -185,3 +185,10 @@ def test_trust_page_draws_the_skyline_and_keeps_the_chips_in_a_fold():
     assert page.index('<details class="vt-fold" id="parts-list">') < page.index('class="vt-map"') < page.index("</details>", start)
     assert 'href="../tests/a/#a"' in page
     assert page.count('class="sq ') == 2
+
+
+def test_references_column_is_headed_as_our_own_code_and_depth_zero_claims_no_roots():
+    out, tree = render()
+    headings = [t.text for t in tree.iter("text")]
+    assert "our references" in headings and "references" not in headings
+    assert "depth 0 relies on no other part" in out and "stands on the roots" not in out

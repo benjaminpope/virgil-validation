@@ -16,6 +16,7 @@
     function select(id) {
       var n = nodes[id];
       if (!n) return;
+      var fold = document.getElementById("parts-list"); if (fold) fold.open = true;  // the detail panel sits in this fold
       document.querySelectorAll(".vt-sel, .vt-up, .vt-down").forEach(function (el) { el.classList.remove("vt-sel", "vt-up", "vt-down"); });
       document.querySelectorAll('[data-node="' + CSS.escape(id) + '"]').forEach(function (el) { el.classList.add("vt-sel"); });
       n.depends.forEach(function (d) { document.querySelectorAll('[data-node="' + CSS.escape(d) + '"]').forEach(function (el) { el.classList.add("vt-down"); }); });

@@ -6,9 +6,11 @@ an inline SVG inside a container that scrolls sideways on a small screen. Nothin
 
 Reading the figure:
 
-* Columns are the layers of virgil. ``references`` (other people's code that virgil's parts are
-  compared with) stands leftmost, behind a dashed line: everything else is checked against it, so
-  it reads as the ground-level neighbour, not as a layer above or below. The other layers follow
+* Columns are the layers of virgil. ``references`` is our own reference code (the independent
+  implementations in crosscheck and external_bridge). It is a link and not a root: written by
+  agents, it is trusted only as far as its own checks (``links: reference-code`` in
+  ``trust/roots.yml``). Its column is headed "our references" and stands leftmost behind a dashed
+  line, because the other layers are compared with it; it is not a layer above or below. The other layers follow
   in the order ``LAYER_ORDER`` gives, bottom layer first. The layers are not strictly stacked
   (imaging and inference depend on each other), which is why height is depth and not layer.
 * Height is ``depth``: the length of the longest chain of ``depends`` beneath a part. Depth 0
@@ -40,6 +42,7 @@ MIN_COLS = 3
 LEFT, GAP, TOP, RIGHT = 150, 20, 46, 12
 BAND_PAD = 4  # blank space under each depth band
 MROW = 24  # foundation row height
+COLUMN_HEADING = {"references": "our references"}  # not other people's code: see the module docstring
 WEAK_CLASSES = {"self-consistency"}  # a weak root never counts, so it has no row in the matrix
 
 
@@ -201,7 +204,7 @@ def skyline_html(model, roots, base="", names=None):
         members = [n for n in nodes.values() if n["layer"] == layer]
         ok = sum(1 for n in members if n["verdict"] == "verified")
         cx = col_x[layer] + cols[layer] * PITCH / 2
-        out.append(f'<text x="{cx:.1f}" y="17" text-anchor="middle" font-size="11.5" font-weight="500" fill="currentColor">{_e(layer)}</text>')
+        out.append(f'<text x="{cx:.1f}" y="17" text-anchor="middle" font-size="11.5" font-weight="500" fill="currentColor">{_e(COLUMN_HEADING.get(layer, layer))}</text>')
         out.append(f'<text x="{cx:.1f}" y="31" text-anchor="middle" font-size="10" class="mut" fill="currentColor">{ok}/{len(members)}</text>')
     out.append(f'<text x="{LEFT - 14}" y="31" text-anchor="end" font-size="10" class="mut" fill="currentColor">verified / parts</text>')
     for n in sorted(nodes.values(), key=lambda n: slots[n["id"]]):
@@ -251,6 +254,6 @@ def skyline_html(model, roots, base="", names=None):
         + '<div class="vt-sky-scroll" role="region" aria-label="Skyline of every part; scrolls sideways on a small screen" tabindex="0">'
         + svg + "</div>"
         '<p class="vt-muted">One square per part, linked to the page that checks it. Columns are layers; height is dependency depth, '
-        "the longest chain of parts beneath it, so depth 0 stands on the roots alone. Under the ground line, the number of parts in each "
+        "the longest chain of parts beneath it, so depth 0 relies on no other part. Under the ground line, the number of parts in each "
         "layer with at least one counted check against that class of root.</p></div>"
     )
