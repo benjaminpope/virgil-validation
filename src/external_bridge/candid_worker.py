@@ -9,8 +9,9 @@ Settings common to every task, so CANDID computes what virgil documents:
 
 * observables V² and closure phase (CANDID also uses T3 amplitudes by
   default; virgil does not), or V² alone with "observables": ["v2"];
-* no bandwidth smearing: every instrument's channel width set to zero
-  (CANDID then averages identical monochromatic models);
+* no bandwidth smearing by default: every instrument's channel width set to
+  zero unless ``dwavel_um`` (channel width in µm) and optional ``n_smear``
+  (CANDID ``CONFIG["Nsmear"]``, default 3) are passed explicitly;
 * one core, no progress bar, no run-time guard.
 """
 
@@ -30,16 +31,18 @@ candid.CONFIG.update({"Ncores": 1, "long exec warning": None, "progress bar": Fa
 
 
 def _open(task):
+    candid.CONFIG["Nsmear"] = int(task.get("n_smear", 3))
     o = candid.Open(task["path"], rmin=task.get("rmin"), rmax=task.get("rmax"))
     o.observables = list(task.get("observables", ["v2", "cp"]))
-    o.dwavel = {k: 0.0 for k in o.dwavel}
+    dw = float(task.get("dwavel_um", 0.0))
+    o.dwavel = {k: dw for k in o.dwavel}
     return o
 
 
 def _params(o, p):
     out = {"x": 0.0, "y": 0.0, "f": 0.0, "diam*": 0.0, "alpha*": 0.0, **p}
-    for k in o.dwavel:
-        out["dwavel;" + k] = 0.0
+    for k, dw in o.dwavel.items():
+        out.setdefault("dwavel;" + k, float(dw))
     return out
 
 

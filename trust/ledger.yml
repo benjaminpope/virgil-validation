@@ -314,7 +314,7 @@
   status: fixed
 
 - id: P4
-  title: CANDID's Absil detection limits are ~1 % low against its own criterion (bracketing by factors of 1.4, then linear interpolation)
+  title: CANDID's Absil detection limits sit ~1 % below the exact solution of its own criterion (interpolation error)
   objects: [candid]
   ruling: external:candid
   kind: numerics (optimistic by ~0.01 mag; negligible in practice)
@@ -662,6 +662,20 @@
   status: documented
   links: [https://github.com/benjaminpope/virgil-validation/issues/207]
 
+- id: D23
+  title: virgil.models.smeared_model washes complex visibilities over a uniform wavenumber boxcar (variance dlambda^2 / 12), whereas CANDID Nsmear = 3 averages V coherently over three equal-weight endpoints (variance dlambda^2 / 6) and PMOIRED 'wl kernel' convolves V^2 incoherently
+  objects: [virgil.models.smeared_model, candid, pmoired]
+  ruling: definition
+  kind: 'both right, different bandpass quadrature and observable-averaging definitions: virgil.models.smeared_model multiplies each component''s sky-offset phasor by sin(pi * x) / (pi * x) == np.sinc(x) with x = bandwidth * (u * dra + v * ddec) * MAS / wavel^2, the exact coherent integral over a uniform boxcar in wavenumber sigma = 1 / lambda (second moment dlambda^2 / 12 + O(dlambda^4 / lambda^2)). CANDID''s default Nsmear = 3 averages complex V coherently with equal weights (1/3, 1/3, 1/3) at lambda_0 + (-1/2, 0, +1/2) * dwavel (pinned to chi2_r = 7e-8), which puts 2/3 of the weight on the channel edges and doubles the spectral variance to dwavel^2 / 6 (setting dwavel = dlambda / sqrt(2) restores agreement to chi2_r = 0.04, whereas unscaled dwavel = dlambda fails at chi2_r > 15; Nsmear <= 2 disables smearing). PMOIRED''s explicit ''wl kernel'' (with auto=False to avoid P1) convolves T3 bispectra coherently but convolves OI_VIS2[''V2''] incoherently as E[|V|^2], retaining an O(f^2) floor f^2 / (1 + f)^2 when wide-binary fringes wash out; at f << 1 with variance-matched FWHM sqrt(2 ln 2 / 3) * (dlambda / dwl_step), PMOIRED and virgil agree to < 8e-5 in V^2 and < 5e-3 deg in closure phase'
+  referee: mathematics (uniform-wavenumber boxcar quadrature, discrete Gaussian convolution, and 3-endpoint stencil moments); pmoired; candid
+  evidence:
+    - tests/test_042_spiral_and_smearing.py::test_candid_nsmear3_matches_coherent_three_endpoint_rule
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_variance_matched_candid_nsmear3
+    - tests/test_042_spiral_and_smearing.py::test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution
+    - tests/test_042_spiral_and_smearing.py::test_smeared_model_matches_pmoired_explicit_wl_kernel
+    - tests/test_042_spiral_and_smearing.py::test_control_smearing_incoherent_v2_and_unscaled_candid_nsmear3_fail
+  status: documented
+
 - id: D24
   title: 'FlaredDiskGaussian, FlaredDiskHG, and FlaredDiskPowerLaw: near-side rim orientation (pa + 90 deg) is an on-sky orientation convention, not yet confirmed by code or results written by other people'
   objects: [virgil.models.FlaredDiskGaussian, virgil.models.FlaredDiskHG, virgil.models.FlaredDiskPowerLaw]
@@ -688,6 +702,21 @@
   status: documented
   decision: 'definition, confirmed by Ben Pope 2026-11-16 (gate G1b); north_angle sign signed 2026-10-06. The calibration nuisance sign is an internal parameterisation, pinned via properties: {calibration: 1} and wrong-sign controls, alongside external PMOIRED confirmation of PositionData.loglike.'
 
+- id: D26
+  title: 'ArchimedeanSpiral: the internal parameterisation (departure pa deprojection, in-plane arc-length fade weight, pitch magnitude) is a definition checked via properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} and wrong-convention controls; the on-sky winding sense (pitch > 0 counter-clockwise vs pitch < 0 clockwise) stays a convention until code or a published result written by other people confirms it'
+  objects: [virgil.models.ArchimedeanSpiral]
+  ruling: definition
+  kind: 'convention (PMOIRED''s native inclined Gaussian in the turns -> 0+ limit confirms FWHM width, cos(inc) foreshortening, and the North-through-East node independently of virgil, and dLux''s 7-hole Fraunhofer propagation of our own spiral_cloud_2d confirms the optical propagation of the extended plume but not the spiral''s parameter conventions, whereas parameterizing departure pa on the sky via tan(phi_0) = tan(pa - node) / cos(inc) and fade as exp(-fade * theta / (2 pi)) * sqrt(1 + theta^2) dtheta are internal model-parameter choices pinned via properties and rejected by wrong-convention controls. Separately, which way the arm winds on the sky for a given pitch sign (pitch > 0 counter-clockwise through East, pitch < 0 clockwise through West, quoted from Tuthill et al. 2008 ApJ 675, 698 for WR 104) is an on-sky orientation: our own tests transcribe it (crosscheck.spiral_smearing and the render assertion in test_archimedean_spiral_cvis_convergence_and_gradients), PMOIRED has no spiral and the dLux check propagates our own cloud, so no check written by other people fixes it)'
+  referee: mathematics (continuous Gauss-Legendre arc-length quadrature, WR 104 ballistic sense, and pixel-DFT consistency, crosscheck.spiral_smearing); dlux; pmoired; this is our own transcription for the winding sense, so it cannot confirm that convention
+  evidence:
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_cvis_convergence_and_gradients
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_pmoired_native_blur_projection
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_render_and_one_pixel_width_floor
+    - tests/test_042_spiral_and_smearing.py::test_archimedean_spiral_dlux_wavefront_propagation
+    - tests/test_042_spiral_and_smearing.py::test_control_archimedean_spiral_wrong_winding_pa_fade_and_blur_fail
+  status: open
+  decision: 'split. (1) Internal parameterisation: definition, confirmed by Ben Pope 2026-11-16 (gate G1c); it stays under properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1} with the wrong-convention controls. (2) On-sky winding sense: Ben confirmed on 2026-11-16 (gate G1c) that it is a `convention: [winding_sense]` on the node in trust/graph.yml, because an on-sky orientation needs a check written by other people (code or a published result that fixes the winding direction for a given pitch sign). Until one exists the node shows "convention from virgil''s docs". ruling: definition records only that virgil''s sign is a choice, not a bug; status: open means no outside check of the winding sense yet. The wrong-winding control (neg_pitch) stays as a regression guard.'
+
 - id: F26
   title: 'ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0'
   objects: [virgil.gains.ClosureOffsets, virgil.gains.closure_offsets]
@@ -700,19 +729,42 @@
   status: open
 
 - id: P13
-  title: oimodeler's oimFastRotator flips the visible pole's position angle by 180 deg via np.rot90
+  title: oimodeler's oimFastRotator places the bright pole about 180 deg from the pa input, relative to the IAU convention we expected
   objects: [oimodeler]
   ruling: external:oimodeler
-  kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: calling np.rot90(im) before oimComponentImage maps row 0 to South places the hot visible pole at pa + 180 deg instead of pa, inverting every closure phase sign)'
+  kind: 'convention difference (oimodeler 0.8.1: the hot visible pole lands about 180 deg from pa under the IAU convention we expected, which inverts every closure phase sign relative to that convention; fastRotator calls np.rot90(im) before oimComponentImage maps row 0 to South, which may be the source; oimodeler''s documented pa convention not checked)'
   referee: mathematics (translation-invariant first-lobe closure-phase sign against crosscheck.elr.cloud); pmoired (rotastar.Vrota)
   evidence: [tests/test_rotator_convention.py::test_p13_oimodeler_fast_rotator_pole_pa_inversion]
   status: to-raise
 
 - id: P14
-  title: oimodeler's oimFastRotator parametrizes gravity darkening with rot^0.4 and K = sin(1/3) pi instead of O(omega^2) Roche scaling
+  title: oimodeler's oimFastRotator equator-on V^2 anisotropy does not follow O(omega^2) over rot = 0.01..0.04 (log-log slope 0.45 at dim = 64)
   objects: [oimodeler]
   ruling: external:oimodeler
-  kind: 'bug (oimodeler 0.8.1, oimCustomComponents.fastRotator: setting a = (2/3) rot^0.4 and K = sin(1/3) pi gives an O(omega^0.4) slow-rotation equator-on V^2 anisotropy across rot = 0.01..0.04 instead of the physical O(omega^2) Roche/ELR11 centrifugal scaling, over-predicting slow-rotator anisotropy by >100x at rot = 0.01)'
+  kind: 'numerics (oimodeler 0.8.1, dim = 64 only: log-log slope 0.45 across rot = 0.01..0.04 where Roche/ELR11 centrifugal scaling gives 2; fastRotator sets a = (2/3) rot^0.4 and K = sin(1/3) pi, which may be the cause; grid convergence not checked, so a pixelization floor is not excluded)'
   referee: mathematics (Roche/von Zeipel/ELR11 O(omega^2) centrifugal scaling of equator-on V^2 anisotropy)
   evidence: [tests/test_rotator_convention.py::test_p14_oimodeler_fast_rotator_gravity_darkening_scaling]
   status: to-raise
+
+- id: F27
+  title: 'Laplace approximation error in outlier_log_density(rescalable=True): large at the clip boundary (+3 to +6 nats when the scale is clipped), small in the interior (about -0.4 nats at n = 24, comparable to expected Laplace error)'
+  objects: [virgil.orbit_cells.outlier_log_density]
+  ruling: virgil
+  kind: 'numerics (Laplace approximation error; the reference is our own quadrature of the same integrand, not an independent implementation. On rescalable OIFITS nights, scaling block errors by s_g = exp(u_g) across G observable blocks inverts sum_g exp(-2 u_g) H_g for the d-dimensional peak covariance Sigma (unit-scale determinant slopes d_g = tr(H^-1 H_g) summing to d = 5 by Jacobi''s formula) and widens the Gaussian-convolved log-flux box to Sigma_44^(1/2). In virgil 0.4.2, outlier_log_density instead evaluates at hat_g = clip(sqrt(chi2_g / n_g), 1 / s_max, s_max) and unconditionally adds the interior Gaussian width 0.5 ln(pi / n_g) - ln(2 ln s_max), a Laplace approximation. Against our bounded 1D (G = 1) and 2D (G = 2, blocks=("vis", "phi")) quadrature over u_g = ln s_g in [-ln s_max, +ln s_max] it differs by -0.41 nats (single 24-datum block) and -0.40 nats (two coupled 12-datum blocks) in the interior, which is small and comparable to the expected Laplace error at this n, so not convincing on its own; the convincing gap is at the clipped boundary, +0.69 nats per boundary on s_max and +2.9 to +3.5 nats (single block) and +6.3 nats (both blocks clipped at s_max = 2, chi2_g / n_g = 16) via Watson''s lemma. Noisy equal-flux twins (m_f = +0.90, sigma_f1 = 0.25) differ by -2.4 to -3.1 nats from the same quadrature and are not separately ruled)'
+  referee: mathematics (1D adaptive and 2D composite Gauss-Legendre quadrature over u_g = ln s_g in [-ln s_max, +ln s_max] with exact normal-CDF log-flux box convolution, crosscheck.orbit_cells_ref.quad_rescalable_outlier_log_density and quad_rescalable_outlier_log_density_2block)
+  evidence:
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_f27_outlier_log_density_rescalable_matches_bounded_scale_quadrature
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_outlier_prior_log_flux_box_and_laplace_outlier_density
+  decision: 'wording confirmed by Ben Pope 2026-11-16 (gate G2b); whether virgil changes is undecided (G2c).'
+  status: open
+
+- id: F28
+  title: 'period_window and period_cut API docstrings omit the night_length lower floor applied in code and documented in orbit_methods.md'
+  objects: [virgil.aliases.period_window, virgil.aliases.period_cut]
+  ruling: virgil
+  kind: 'documentation (the API docstrings of virgil.aliases.period_window and virgil.aliases.period_cut state p_min = max(2 pi field night_length / (motion_fraction resolution), p_floor) without clamping at night_length, whereas virgil 0.4.2''s implementation and prose orbit_methods.md apply max(..., night_length, p_floor): in the narrow-field regime field = 0.05 mas, night_length = 0.6 d, resolution = 1.2 mas, p_floor = 0.2 d, virgil returns 0.600 d vs 0.314 d from the API docstring formula)'
+  referee: mathematics (circular-speed within-night smearing bound crosscheck.orbit_cells_ref.period_window_bounds and period_cut_bound vs virgil API docstrings)
+  evidence:
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_f28_period_window_and_cut_match_api_docstring_without_night_length_clamp
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_alias_bands_partition_and_period_window_bounds
+  status: open

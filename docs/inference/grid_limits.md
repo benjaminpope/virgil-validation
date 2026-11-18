@@ -36,7 +36,7 @@ V²-only files test the shared definition exactly.
 | `nsigma` (eight cases, 1–27σ) | `_nSigmas` | CANDID | 1e-12 relative |
 | `likelihood_grid` as χ²(binary)/χ²(star) over a 32 × 32 map, 2–12 mas | `chi2Map` at 3 % (its fitted diameter) | CANDID | 1.6e-7 (V²), 8e-4 (with closure phases, D5); same minimum, East = +x |
 | `absil_limits` (3σ, six positions) | CANDID's Absil criterion solved exactly with its own χ² and nσ | CANDID | 6e-5, virgil's bisection precision since virgil#191 (2e-7 and 4e-6 before) |
-| — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (problem P4) |
+| — | CANDID's public `detectionLimit` against that exact solution | Mathematics | 1.0 % low on average (interpolation error, P4) |
 | `fit` and `laplace_cov` (diameter, position, flux) | `fitMap`, with its √χ²_r scaling of the errors undone | CANDID | best fits 4e-4 σ apart; errors within 1.6 % |
 | `injection_limits` (3σ, six positions, V² and V² + CP) | CANDID's injection criterion (`_detectLimit`: its `_injectCompanionData`, then nσ(χ²_UD / χ²_BIN)) solved exactly, the diameter held as virgil holds it; also with no flux bounds (virgil#235) | CANDID | 1.2e-7 (V²), 5.8e-6 (with closure phases) |
 | — | the same criterion with the diameter refitted to the injected data, as CANDID does | CANDID | limits 20–34 % higher (definition D8: a refitted disk absorbs part of the companion's V² signal) |

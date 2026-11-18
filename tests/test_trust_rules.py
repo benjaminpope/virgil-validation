@@ -1650,6 +1650,27 @@ def test_cross_module_subprocess_wrappers_propagate_and_fail_closed(tmp_path):
         plugin._module_via.cache_clear()
         assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(bad_sf))
 
+    sp_ok = tests_dir / "test_sp_venv_root_ok.py"
+    sp_ok.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "def test_root():\n"
+        "    return sp.venv_root('candid')\n",
+        encoding="utf-8",
+    )
+    sp_bad = tests_dir / "test_sp_unknown_bad.py"
+    sp_bad.write_text(
+        "from external_bridge import _subprocess as sp\n"
+        "def test_bad():\n"
+        "    return sp.unknown_attr('candid')\n",
+        encoding="utf-8",
+    )
+    plugin._module_via.cache_clear()
+    assert plugin._module_via(str(sp_ok)) == ()
+    assert plugin._UNRESOLVED_WORKER not in plugin._module_via(
+        str(ROOT / "src" / "external_bridge" / "candid_bridge.py")
+    )
+    assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(sp_bad))
+
 
 def test_item_via_walks_ancestor_conftest_and_fixture_args(tmp_path):
     from evidence import plugin
