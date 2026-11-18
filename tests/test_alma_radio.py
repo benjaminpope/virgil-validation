@@ -66,16 +66,6 @@ def _version_code(v):
 # ---------------------------------------------------------------- fixtures
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _clear_jax_caches_after_alma_radio():
-    yield
-    import gc
-    import jax
-
-    jax.clear_caches()
-    gc.collect()
-
-
 @pytest.fixture(scope="module")
 def ms_clean(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("radio_clean")

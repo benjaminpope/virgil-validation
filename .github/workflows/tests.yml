@@ -21,6 +21,7 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 90  # a stalled or thrashing run fails with its log instead of 'lost communication' at 6 h
     steps:
       - uses: actions/checkout@v4
         with:
