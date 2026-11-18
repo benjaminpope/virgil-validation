@@ -5,9 +5,12 @@ draws what they decided (the map, the matrix, the pipeline cards, the ledger, an
 and Function tests pages). Every name here is also importable from ``trust``.
 
 The few constants and helpers of ``trust.py`` that rendering reads (``VERDICTS``, ``ROOT_NAMES``, ``GOOD``,
-``LAYER_ORDER``, ``UNFIXED``, ``slugify``, ``doc_url``) are handed over by ``trust.attach``, which ``trust.py``
+``LAYER_ORDER``, ``UNFIXED``, ``slugify``, ``doc_url``) are handed over by ``trust_render.attach``, which ``trust.py``
 calls once its own definitions are in place. That keeps one copy of them, whether ``trust.py`` was run as a
 script or loaded by file path, and means this module never imports ``trust`` back.
+
+The names are copied once, so a test that replaces one for rendering (``SHOWCASE``, ``VERDICTS``, ...) must patch it
+here, as ``trust_render.X``; patching ``trust.X`` reaches only ``trust.py`` and the ``trust._showcase`` wrapper.
 """
 
 import collections
