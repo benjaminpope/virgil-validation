@@ -168,3 +168,21 @@ Nothing is selected by NCC or by eye.
 * **Q3**: the table of §5; a list per target of whether gp-polar, ORGANIC and the ring agree on θ_rim, i, PA and the side of
   the brightness maximum.
 
+
+## Implementation notes (not part of the pre-registration)
+
+Written with `scripts/postagb_parametric.py`; none of this changes a rule above.
+
+* **The rows of `chi2r`.** `P.chi2r` divides by virgil's `n_residuals`. For 4-telescope data the closure phases are correlated (three independent of
+  four triangles), so virgil whitens them to independent combinations and adds one periodic penalty row per closure phase, which is about zero at a
+  good fit. On AI Sco, 2184 = 1008 V² + 504 whitened independent closure-phase combinations + 672 penalty rows (`data.n_independent` = 1512;
+  the plan's "672 closure phases + 504 further rows" is the same count labelled the other way round). N below is the 2184 of gp-polar's `n_points`;
+  χ² per row under any likelihood is therefore about n_independent / N = 0.69 of χ² per independent observable at a good fit. Both counts are stored
+  (`n_rows`, `n_independent`). virgil's `info["chi2_red"]` divides by `n_independent`; the scripts use χ² / N throughout so that they match gp-polar.
+* **Schema keys the report stage reads.** Selection chain rows: `pair` ("M1/M0"), `dlnZ`, `dbic`, `verdict`, `flags` (plus `d_lnZ`, `d_bic`, `basis`).
+  `gp_polar.<arm>`: `delta`, `mismatch`. Jackknife: sd of `inc, pa, r0, sigma, c1, s1, f_env, f_bg`. `<T>_param_residuals.npz` (written by `select`).
+* **Selected model and the jackknife.** Run `select`, then `jackknife` (it reads the N2 selection), then `select` again so that `selected.json` carries
+  the jackknife sds.
+* **M3 / M3o, M5.** `--models M3` means the selected model plus m = 2 (`M3o` if M2o was selected). M5 (outer ring) is not in WP1.
+* **Selection when M0 has no eligible fit** (for example f_bg on its 0 bound, as in the IRAS 15469 smoke): the first rung with an eligible fit is
+  accepted by default and the row says so.
