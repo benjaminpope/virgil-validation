@@ -400,7 +400,8 @@ def test_r3_folds_are_disjoint_covering_and_hermitian_closed(syn, tmp_path):
     assert np.array_equal(f2[:n], f2[n:]) and np.array_equal(a2[:n], a2[n:])
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_r3_cv_task_and_aggregate_on_two_lambdas_and_two_folds(syn, tmp_path):
     """R3 (the sweep). F at 64^2: a joint fit, then ``cv-task`` for 2 lambda x 2 folds from it, then ``cv-aggregate``: the
     held-out and training counts add to N, the held-out scores of the folds are each finite and the summary, plots and

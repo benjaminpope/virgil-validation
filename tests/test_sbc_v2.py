@@ -110,7 +110,8 @@ def _run(*dirs):
                           capture_output=True, text=True)
 
 
-@pytest.mark.validates("evidence", roots=["statistics"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("evidence", roots=["statistics"], kind="guard", tier="B")
 def test_sbc_v2_aggregate_passes_uniform_ranks_and_fails_bias_and_ill_health(tmp_path, monkeypatch):
     """Uniform ranks in both regimes pass; a biased flux rank in the low
     regime is rejected under Holm; a regime with 10% unhealthy replicates

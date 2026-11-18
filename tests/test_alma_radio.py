@@ -740,6 +740,7 @@ def _free_image_fit(data, nuis, nu0, brightness, truth, sigma, init):
     return f"free image: stop={result.info.get('stop')}, {time.time() - t0:.0f} s, max |pull| {np.abs(pull).max():.1f}, median {np.median(np.abs(pull)):.1f}, total-variation distance to truth {err}\n" + _table(truth, result.values, sigma)
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["statistics"], tier="B", headline="max_abs_pull")
 @pytest.mark.skipif(not SUBSAMPLE.exists(), reason="IM Lup subsample missing (scripts/alma_imlup_subsample.py)")
 def test_nuisances_are_recovered_within_three_sigma_on_im_lups_uv_coverage():
