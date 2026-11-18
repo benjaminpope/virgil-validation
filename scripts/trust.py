@@ -533,7 +533,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         strong, weak = set(), set()
         usable_roots, broken_roots = set(), set()
         usable_blocked_by, broken_blocked_by = set(), set()
-        prop_roots = collections.defaultdict(set)
+        blocked_checks = []  # display only: counted checks held back by an unverified via reference
+        prop_roots =collections.defaultdict(set)
         prop_roots_usable = collections.defaultdict(set)
         prop_roots_all = collections.defaultdict(set)
         for r in good:
@@ -548,7 +549,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                     prop_roots_usable[prop] |= s_
                     prop_roots_all[prop] |= s_
             elif r["kind"] in agreeing:
-                is_broken = is_broken_ref is not None and any(is_broken_ref(v) for v in untrusted)
+                blocked_checks.append({"test": r["test"], "via": sorted(untrusted)})
+                is_broken =is_broken_ref is not None and any(is_broken_ref(v) for v in untrusted)
                 if not is_broken:
                     usable_roots |= s_
                     usable_blocked_by |= untrusted
@@ -608,7 +610,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             shown = prop_roots_all
         else:
             status = "unchecked"
-        return status, strong, weak, need, recs, good, via_out, shown
+        return status, strong, weak, need, recs, good, via_out, shown, blocked_checks
 
     def reference_verdicts():
         """Our reference nodes that are verified: the least fixed point of
@@ -678,7 +680,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for name in [n for n in nodes if n in ref_set] + [n for n in nodes if n not in ref_set]:
         node = nodes[name]
         reference_node = name in ref_set
-        status, strong, weak, need, recs, good, blocked_by, prop_roots = own_status_cache[name]
+        status, strong, weak, need, recs, good, blocked_by, prop_roots, blocked_checks = own_status_cache[name]
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         commits = sorted({r["_commit"] for r in good if r["_commit"]})
         src_paths = tuple(sorted(set(node.get("source", []))))
@@ -690,6 +692,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "findings": open_findings.get(name, []) + external_open.get(name, []),
             "skipped": sum(1 for r in recs if r["outcome"] == "skipped" and r["kind"] in agreeing),
             "via_blocked": blocked_by,
+            "blocked_checks": blocked_checks,
             "properties": {p: {"need": n, "roots": sorted(prop_roots.get(p, ()))}
                            for p, n in (node.get("properties") or {}).items()},
             "unconfirmed": unconfirmed_conventions(name, prop_roots),
@@ -888,6 +891,10 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "checks": o["checks"], "commits": o["commits"],
             "changed": changed_below(name),
             "skipped": o["skipped"],
+            # display only: counted checks held back by a reference that is not verified, and which
+            # references (the same set for every status, unlike ``via_blocked`` above of an ok-via part)
+            "blocked_checks": o["blocked_checks"],
+            "blocked_by_references": sorted({v for c in o["blocked_checks"] for v in c["via"]}),
             "source": node.get("source", []),
         }
 
