@@ -194,24 +194,25 @@ def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_p
 
 
 @needs_multipole
-def test_published_image_puts_the_crpix_pixel_at_the_centre(monkeypatch):
-    """With ``star_at_crpix`` (HR 4049: star at 0-indexed pixel CRPIX = 64 of 128), a point at pixel 64 renders at virgil's centre (n-1)/2.
+def test_published_image_puts_the_star_at_the_centre(monkeypatch):
+    """The Zenodo files (128 px, CRPIX = 64) have the star at FITS column CRPIX1-1 = 63 and row CRPIX2 = 64 (0-indexed), the position a chi2
+    scan of the published model on our data picks for seven of the eight targets (PR #268); a point there renders at virgil's centre (n-1)/2.
 
-    This checks the shift's arithmetic only; that the star is at CRPIX is the measurement of design/hr4049_diagnosis.md (see the real-file test).
-    Without the flag the image is only flipped (every other target)."""
+    This checks the shift's arithmetic; the position itself is the scan's. ``star_off_centre=False`` (IW Car) only flips the image."""
     n = 128
     im = np.zeros((n, n))
-    im[64, 64] = 1.0  # FITS row 64 is counted from the South
+    im[64, 63] = 1.0  # FITS row 64 is counted from the South
     hdr = dict(CDELT1=-0.5, CDELT2=0.5, CRPIX1=64, CRPIX2=64)
     monkeypatch.setattr(P, "zenodo_header", lambda cfg: (hdr, im, im.copy()))
-    plain, _, _, _ = P.published_image({})
-    assert np.array_equal(plain, im[::-1] / im.sum())  # no flag: no shift
-    img, noise, scale, _ = P.published_image({"star_at_crpix": True})
+    plain, _, _, _ = P.published_image({"star_off_centre": False})
+    assert np.array_equal(plain, im[::-1] / im.sum())  # IW Car: no shift
+    img, noise, scale, _ = P.published_image({})
     yy, xx = np.mgrid[:n, :n]
     for a in (img, noise):
         cy, cx = (a * yy).sum() / a.sum(), (a * xx).sum() / a.sum()
         assert (cy, cx) == pytest.approx(((n - 1) / 2, (n - 1) / 2), abs=1e-9)
     assert img.sum() == pytest.approx(1.0)
+    assert P.star_shift_px({}, hdr, im.shape) == (0.5, 0.5)
 
 
 @needs_multipole
@@ -240,7 +241,7 @@ def test_hr4049_zenodo_file_has_crpix_64_on_128_pixels():
     hdr = json.loads(str(z["header"]))
     assert z["data"].shape == (128, 128) and hdr["CRPIX1"] == hdr["CRPIX2"] == 64
     assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
-    assert cfg["star_at_crpix"] and cfg["cmp_mask_mas"] == 25.0 and cfg["mask_mas"] == 40.0
+    assert cfg["cmp_mask_mas"] == 25.0 and cfg["mask_mas"] == 40.0
 
 
 @needs_multipole

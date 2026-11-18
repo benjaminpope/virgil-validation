@@ -108,7 +108,7 @@ TARGETS = {
         fov_mas=44.8,
         pixel_mas=0.35,
         sec0=(1.12, -1.90),  # secondary from the paper's Gaussian fit to the image (Table 2)
-        half_mas=18.0, mask_mas=20.0, half_cmp_mas=15.0, ud0=0.5, ud_fix=0.5,
+        half_mas=18.0, mask_mas=20.0, half_cmp_mas=15.0, ud0=0.5, ud_fix=0.5, star_off_centre=False,  # IW Car: the published star is at the array centre (chi2 scan)
         inner_rim_max_mas=5.0,  # inner arcs lie inside this radius, the outer arc beyond (paper Sect. 5.3.7)
         regions=dict(inner=(0.0, 5.0), outer=(5.0, 20.0)),
         paper=dict(
@@ -182,7 +182,7 @@ TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
 # past 20 mas (24 % of its flux lies beyond 30 mas) and was clipped by the old +-18 mas square, so its grid grows to +-40.5 mas (235 px of 0.3469 mas) with a disc of 40 mas. Other pixel scales are the paper's.
 TARGETS["PS_Gem"].update(fov_override=11.0, half_mas=5.0, half_cmp_mas=5.0, mask_mas=5.0, hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
 # The grid must contain the 40 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and an 81 mas field, 235 pixels (grid_setup takes min(0.35, beam/4) = 0.3469 mas); the plots and the comparison stay at 25 mas.
-TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=81.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=40.0, cmp_mask_mas=25.0, star_at_crpix=True)
+TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=81.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=40.0, cmp_mask_mas=25.0)
 
 for _k, _v in TARGETS.items():
     _v["bg"] = _k != "IRAS08544"  # De Prins+2026 images account for an over-resolved flux; Hillen's image scene has none
@@ -1323,31 +1323,40 @@ def to_grid(img, scale_in, scale_out, npix_out):
     xs = c_in_x + (xx - c_out) * scale_out / scale_in
     r = ndimage.map_coordinates(img, [ys, xs], order=1, mode="constant", cval=0.0)
     return r * (scale_out / scale_in) ** 2  # per-pixel flux scales with pixel area
+def star_shift_px(cfg, hdr, shape):
+    """(rows, columns) by which the row-flipped ORGANIC array must move to put its star at virgil's centre (n - 1) / 2, in pixels.
+
+    A chi2 scan of the published model on our data (eight targets, +-1.5 px on a 0.5 px grid; PR #268 review) puts the star at FITS column
+    CRPIX1 - 1 and row CRPIX2 (0-indexed; 63 and 64 for the Zenodo files, 128 px, CRPIX = 64), half a pixel from the centre 63.5 in both axes:
+    (+0.5, +0.5) after the flip. IW Car's file prefers the centre (``star_off_centre=False``)."""
+    if not cfg.get("star_off_centre", True):
+        return 0.0, 0.0
+    ny, nx = shape
+    return (ny - 1) / 2.0 - (ny - 1 - hdr["CRPIX2"]), (nx - 1) / 2.0 - (hdr["CRPIX1"] - 1)
 
 
-def published_image(cfg):
-    """The ORGANIC environment image in virgil's orientation (row 0 North, column 0 East), unit sum."""
+def published_image(cfg, resample=True):
+    """The ORGANIC environment image in virgil's orientation (row 0 North, column 0 East), unit sum.
+
+    ``resample`` moves the star to the centre by a linear sub-pixel shift (``star_shift_px``); ``published_scene`` leaves the pixels alone and
+    shifts the Image exactly with ``dra`` / ``ddec`` instead."""
     hdr, im, noise = zenodo_header(cfg)
     # FITS: CDELT1 < 0 so x runs East to West (column 0 is East already); CDELT2 > 0 so y runs
     # South to North, i.e. row 0 is South: flip the rows.
     assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
-    # HR 4049's file has the star at 0-indexed pixel CRPIX = 64 (measured against our data, design/hr4049_diagnosis.md on branch claude/hr4049-diag-a5dd04, not yet on main), not at the array
-    # centre (n - 1) / 2 = 63.5: ``star_at_crpix`` moves it there by a sub-pixel shift (rows after the flip). Opt-in per target: the published
-    # model's chi2 on our data gets worse with this shift for AI Sco, EN TrA, HD 95767, IRAS 15469, HD 108015, IW Car and PS Gem, and
-    # better only for HR 4049, so the other files are taken at the centre as before.
-    ny, nx = im.shape
-    shift = ((ny - 1) / 2.0 - (ny - 1 - hdr["CRPIX2"]), (nx - 1) / 2.0 - hdr["CRPIX1"]) if cfg.get("star_at_crpix") else (0.0, 0.0)
-    move = lambda a: ndimage.shift(a[::-1, :], shift, order=1, mode="constant", cval=0.0) if cfg.get("star_at_crpix") else a[::-1, :]
+    shift = star_shift_px(cfg, hdr, im.shape)
+    move = lambda a: ndimage.shift(a[::-1, :], shift, order=1, mode="constant", cval=0.0) if resample and any(shift) else a[::-1, :]
     img = move(im)
     return img / img.sum(), move(noise), abs(hdr["CDELT1"]), hdr
 
 
 def published_scene(cfg):
     """The published SPARCO + ORGANIC model as a virgil scene (for chi2 on our data)."""
-    img, _, scale, h = published_image(cfg)
+    img, _, scale, h = published_image(cfg, resample=False)
+    drow, dcol = star_shift_px(cfg, h, img.shape)
     f1, f2 = h["SFLU1"], h["SFLU2"]
     f_env = 1.0 - f1 - f2 - h.get("SFLU3", 0.0)
-    env = Image.from_brightness(img, scale, floor=0.0, flux=PowerLaw(f_env / f1, h["SIND0"], h["SWAVE0"]))
+    env = Image.from_brightness(img, scale, floor=0.0, flux=PowerLaw(f_env / f1, h["SIND0"], h["SWAVE0"]), dra=-dcol * scale, ddec=-drow * scale)
     parts = dict(star=UniformDisk(diam=h["SUD1"], flux=PowerLaw(1.0, h["SIND1"], h["SWAVE0"])), env=env)
     if f2 > 0:
         parts["sec"] = PointSource(flux=PowerLaw(f2 / f1, h["SIND2"], h["SWAVE0"]), dra=h["SDEX2"], ddec=h["SDEY2"])
