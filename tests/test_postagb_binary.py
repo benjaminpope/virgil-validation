@@ -162,3 +162,34 @@ def test_binary_night_and_wide_runs_are_named_apart(opts, tag):
     seen = []
     P.per_strategy(lambda a, out, strat: seen.append(P.TARGETS[a.target]["key"]), args, None)
     assert seen == [tag]
+
+
+class _UV:  # what support_floor_mas reads: baselines (m) and wavelengths (m)
+    u = np.array([9.91, 40.0, 130.0])
+    v = np.zeros(3)
+    wavel = np.array([1.5e-6, 1.65e-6, 1.8e-6])
+
+
+def test_the_support_floor_is_where_the_shortest_baseline_halves_a_ring():
+    from scipy.special import j0
+
+    floor = P.support_floor_mas(_UV)
+    x = 2 * np.pi * 9.91 * floor / 206264806.2 / 1.8e-6
+    np.testing.assert_allclose(j0(x), 0.5, atol=2e-3)
+    assert P.check_support(dict(key="t", mask_mas=floor + 0.1), _UV) == floor
+    with pytest.raises(SystemExit, match="below the data's field"):  # PS Gem's old 5 mas support
+        P.check_support(dict(key="PS_Gem", mask_mas=5.0), _UV)
+
+
+def test_image_degeneracy_flags_flat_and_edge_piled_images():
+    n, pix, rs, hole = 64, 0.3, 9.0, 0.4
+    yy, xx = np.mgrid[:n, :n]
+    r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * pix
+    ring = np.exp(-0.5 * ((r - 3.0) / 0.6) ** 2)
+    flat = (r <= rs).astype(float)
+    edge = np.exp(-0.5 * ((r - 8.6) / 0.3) ** 2)
+    ok = P.image_degeneracy(ring, pix, rs, hole)
+    assert ok["image_degenerate"] == [] and ok["img_flat_frac"] < 0.2 and ok["img_edge_frac"] < 0.01
+    assert P.image_degeneracy(flat, pix, rs, hole)["image_degenerate"][0].startswith("flat")
+    assert any(w.startswith("edge-piled") for w in P.image_degeneracy(edge, pix, rs, hole)["image_degenerate"])
+    assert P.image_degeneracy(0 * ring, pix, rs, hole)["image_degenerate"] == ["empty"]

@@ -51,7 +51,7 @@ outputs carry ``_vlti`` / ``_flat`` in their names. ``--noise night`` adds calib
 (``night_noise``; outputs ``_night``), and ``--unbounded`` lifts gp-polar's prior bounds (outputs ``_unbounded``). ``--chrom`` adds a chromatic ring (index linear in radius) and frees the star index
 (design/gp_polar_hyperparameters.md §11; outputs ``_chrom``). ``--binary free|motion|epoch`` frees the secondary and moves the stars against the disc (design §12; outputs ``_bin<mode>``);
 ``--noise nightw`` keeps the MacKay white errors and adds night terms of 3 % and 2 deg (``NIGHTW``; outputs ``_nightw``), and ``--wide-field`` sets the field half-widths
-to 15 mas (PS Gem: 5; outputs ``_wide``). The geometry of the polar GP still comes from the ``scale`` stage (current noise).
+to 15 mas (outputs ``_wide``; PS Gem's field was 5 mas until 18 Nov 2026, now the paper's, 19 mas). A support below the data's field (``check_support``) is refused, and an image that is flat or piled at the support edge (``image_degeneracy``) is flagged and not scored. The geometry of the polar GP still comes from the ``scale`` stage (current noise).
 ``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
 """
 
@@ -187,9 +187,13 @@ TARGETS["PS_Gem"]["log_weights"] = (2, -4)  # the MaxEntropy sweep, kept for the
 TARGETS["PS_Gem"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))
 TARGETS["HR4049"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
-# Field sizes (Ben): the support is a disc (mask_mas) in every target. PS Gem's emission is within ~5 mas; HR 4049's ORGANIC halo extends
-# past 20 mas and was clipped by the old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
-TARGETS["PS_Gem"].update(fov_override=11.0, half_mas=5.0, half_cmp_mas=5.0, mask_mas=5.0, hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
+# Field sizes (Ben): the support is a disc (mask_mas) in every target. HR 4049's ORGANIC halo extends past 20 mas and was clipped by the
+# old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
+# PS Gem had a hand-set 5 mas support (fov_override=11, half/half_cmp/mask 5 mas) until 18 Nov 2026. That cut off emission that the shortest
+# baselines (9.9 m) still see: up to 47 % of the disc's flux sat in the outer 15 % of the support radius, the over-resolved background took
+# 6-10 % of the flux (0-0.7 % on a 15 mas field) and under night terms the disc fell to 1.6 % and a flat image. It now takes the paper's
+# field like the other targets, and `check_support` refuses a support smaller than the data's own field.
+TARGETS["PS_Gem"].update(hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
 # The grid must contain the 25 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and a 51 mas field, 146 pixels.
 TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=51.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=25.0)
 
@@ -240,12 +244,58 @@ def secondary_defaults(cfg, target):
         cfg["sec_prior"] = dict(dra=cfg["sec0"][0], ddec=cfg["sec0"][1], pos_sigma=0.1)
 
 
-WIDE_FIELD_MAS = 15.0  # --wide-field: image, support and comparison half-widths (PS Gem's stock field is 5 mas, its cause per the 18 Nov review)
+WIDE_FIELD_MAS = 15.0  # --wide-field: image, support and comparison half-widths (design §12, when PS Gem's stock field was 5 mas)
+
+# check_support: emission at radius r keeps a ring visibility J0(2 pi B r / lambda) on a baseline B. Outside the support it can only go to the
+# over-resolved background (visibility 0), which is wrong where the shortest baseline still sees it at more than a half: J0(x) = 0.5 at x = 1.52.
+SUPPORT_J0_HALF_X = 1.52
+
+
+def support_floor_mas(data):
+    """The smallest support radius (mas) the data allow: a ring just outside it is at visibility <= 0.5 on the shortest baseline, at the
+    longest wavelength."""
+    b = np.hypot(np.asarray(data.u), np.asarray(data.v))
+    b_min = float(b[b > 0].min())
+    return SUPPORT_J0_HALF_X / (2 * np.pi) * float(np.max(np.asarray(data.wavel))) / b_min * 180 / np.pi * 3.6e6
+
+
+def check_support(cfg, data):
+    """Refuse a support disc smaller than ``support_floor_mas``: the disc would be truncated and its outer flux pushed into the background
+    (PS Gem's 5 mas support, 18 Nov 2026). Returns the floor."""
+    floor = support_floor_mas(data)
+    if cfg.get("mask_mas") is not None and cfg["mask_mas"] < floor:
+        raise SystemExit(f"{cfg['key']}: support radius {cfg['mask_mas']:.1f} mas is below the data's field ({floor:.1f} mas: a ring there "
+                         "is still at visibility > 0.5 on the shortest baseline); widen mask_mas")
+    return floor
+
+
+# image_degeneracy: an image that is the prior's shape, not the data's, is flagged and not scored. Calibrated on the 40 gp-polar BN images
+# (job 21123993): every image outside PS Gem's 5 mas support has flat <= 0.04 and edge <= 0.03; PS Gem's 5 mas support gave edge 0.13-0.47
+# and, under night terms, flat 0.82.
+DEGENERATE_FLAT_FRAC = 0.5  # flat: more than this fraction of the support (outside the hole) above half the image's peak
+DEGENERATE_EDGE_FRAC = 0.1  # edge-piled: more than this fraction of the disc's flux beyond 0.85 of the support radius (0.28 of its area)
+
+
+def image_degeneracy(bright, pix, support_mas, hole_mas):
+    """Flatness and edge-piling of a rendered disc image (``bright``, square, centred, ``pix`` mas): ``dict(img_flat_frac,
+    img_edge_frac, image_degenerate)``, the last a list of reasons (empty when the image is usable)."""
+    n = bright.shape[0]
+    yy, xx = np.mgrid[:n, :n]
+    r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * pix
+    sup = (r <= support_mas) & (r >= hole_mas)
+    b = np.clip(np.asarray(bright, float)[sup], 0.0, None)
+    if b.sum() <= 0:
+        return dict(img_flat_frac=None, img_edge_frac=None, image_degenerate=["empty"])
+    flat = float(np.mean(b > 0.5 * b.max()))
+    edge = float(b[r[sup] > 0.85 * support_mas].sum() / b.sum())
+    why = ([f"flat ({flat:.2f} of the support above half the peak)"] if flat > DEGENERATE_FLAT_FRAC else []) + (
+        [f"edge-piled ({edge:.2f} of the flux beyond 0.85 of the support radius)"] if edge > DEGENERATE_EDGE_FRAC else [])
+    return dict(img_flat_frac=flat, img_edge_frac=edge, image_degenerate=why)
 
 
 def cfg_of(args):
     cfg = TARGETS[args.target]
-    if getattr(args, "wide_field", False):  # design §12: PS Gem at 15 mas, not 5 (the data's own field would be 19)
+    if getattr(args, "wide_field", False):  # design §12: PS Gem at 15 mas, when its stock field was 5 (now the paper's, 19)
         cfg = {k: v for k, v in cfg.items() if k != "fov_mas"} | dict(half_mas=WIDE_FIELD_MAS, half_cmp_mas=WIDE_FIELD_MAS, mask_mas=WIDE_FIELD_MAS,
                                                                 fov_override=2.0 * WIDE_FIELD_MAS / 0.95)
     if "fov_mas" not in cfg:
@@ -272,7 +322,7 @@ def setup(cfg):
     o = np.argsort(rad.ravel())
     r90 = float(rad.ravel()[o][np.searchsorted(np.cumsum(im.ravel()[o]) / im.sum(), 0.9)])
     scale = cfg.get("pixel_override") or scale  # per-target pixel (HR 4049: finer than the paper's 0.635 mas)
-    fov = cfg.get("fov_override") or n * scale  # per-target field override (PS Gem smaller, HR 4049 larger); grid_setup pads the start image to it
+    fov = cfg.get("fov_override") or n * scale  # per-target field override (HR 4049 larger); grid_setup pads the start image to it
     half = cfg.get("half_mas") or float(np.clip(1.5 * r90, 8.0, 0.95 * fov / 2))  # per-target override: the paper's figure extent
     has_sec = hdr["SFLU2"] > 0
     cfg.update(
@@ -1545,7 +1595,7 @@ def warm_params(out, cfg, strat, args):
     if args.smoke or args.cold or not f.exists():
         return None, None
     j = json.load(open(f))
-    clean = j.get("gp_converged", True) is not False and 0.2 < j.get("chi2_per_point", 9.0) < 3.0 and not j.get("smoke")
+    clean = j.get("gp_converged", True) is not False and 0.2 < j.get("chi2_per_point", 9.0) < 3.0 and not j.get("smoke") and not j.get("image_degenerate")
     if strat == "disc+res":
         clean = clean and bool(j.get("render_ok")) and j.get("d_env_shared") is not None
     if not clean or not j.get("f_prim_pct"):
@@ -1570,7 +1620,7 @@ def skip_clean_reason(out, cfg, strat, args):
     if args.smoke or not args.reuse_converged or not f.exists() or cfg.get("fov_override"):
         return None
     j = json.load(open(f))
-    if j.get("smoke") or not (0.2 < j.get("chi2_per_point", 9.0) < 3.0) or j.get("gp_converged", True) is False:
+    if j.get("smoke") or not (0.2 < j.get("chi2_per_point", 9.0) < 3.0) or j.get("gp_converged", True) is False or j.get("image_degenerate"):
         return None
     if j.get("f_sec_pct") and j["f_sec_pct"] / j["f_prim_pct"] > 0.28:
         return None  # pinned at the old 0.3 bound of the secondary's flux ratio
@@ -1600,6 +1650,7 @@ def image_one(args, out, strat):
                   open(path(out, cfg, f"{strat}_reused.json"), "w"), indent=1)
         return
     data_s, data0, s, files = load_scaled(cfg, args, out)
+    support_floor = check_support(cfg, data0) if not args.smoke else None
     geo_file = scale_file(out, cfg, args.noise)
     if not geo_file.exists() and not args.smoke and strat in ("gp-aniso", "gp-polar", "disc+res"):
         geo_file = scale_file(out, cfg, DEFAULT_NOISE)  # a noise model without its own geometry fit uses the default's
@@ -1688,13 +1739,16 @@ def image_one(args, out, strat):
                  f_bg=f_bg, bg_index=float(np.asarray(model.bg.flux.index)) if cfg.get("bg") else None,
                  sec_dra=float(model.sec.dra) if has_sec else None, sec_ddec=float(model.sec.ddec) if has_sec else None,
                  sec_index=float(np.asarray(model.sec.flux.index)) if has_sec else None)
+    degen = image_degeneracy(bright_grid, pix, float(cfg.get("mask_mas", n_ * pix / 2)), hole_mas)
+    if degen["image_degenerate"]:
+        print("DEGENERATE IMAGE (flagged, not scored):", "; ".join(degen["image_degenerate"]), flush=True)
     np.savez(path(out, cfg, "image.npz"), brightness=bright, brightness_grid=bright_grid, rotation_deg=rot, pixel_mas=pix, model_v2=mv2, model_t3=mt3,
              **curve_arrays, stars=json.dumps(stars))
     tot = 1.0 + stars["f_env"] + f_sec + f_bg + (float(np.asarray(model.rim.flux)) if chrom else 0.0)  # the --chrom ring, as chromatic_summary
     summary = dict(chi2_per_point=c2, chi2_rendered=chi2_rendered, render_ok=render_ok, f_disk=f_disk, f_res=f_res if strat == "disc+res" else None, n_points=n, grid=list(bright.shape), pixel_mas=pix, smoke=args.smoke, seconds=time.time() - t0,
                    f_prim_pct=100 / tot, f_sec_pct=100 * f_sec / tot if has_sec else None, f_env_pct=100 * stars["f_env"] / tot,
                    f_bg_pct=100 * f_bg / tot if cfg.get("bg") else None, f_outer_pct=100 * f_outer / tot,
-                   f_overresolved_pct=100 * (f_bg + f_outer) / tot, resid=resid, **extra,
+                   f_overresolved_pct=100 * (f_bg + f_outer) / tot, resid=resid, support_floor_mas=support_floor, **degen, **extra,
                    **{k_: v for k_, v in stars.items() if k_ in ("ud", "env_index", "bg_index", "sec_dra", "sec_ddec", "sec_index")})
     if has_sec:
         summary |= dict(sec_sep_mas=float(np.hypot(stars["sec_dra"], stars["sec_ddec"])),
@@ -2510,7 +2564,7 @@ def main():
                    help="gp-polar: add a chromatic ring (index linear in radius) and free the star index (design §11); written as ..._chrom_*")
     p.add_argument("--wide-field", action="store_true",
                    help="image, support and comparison half-widths of WIDE_FIELD_MAS (15 mas) in place of the target's own "
-                        "(PS Gem: 5 mas; design §12); written as <target>_<strategy>_..._wide_*")
+                        "(design §12, when PS Gem's was 5 mas); written as <target>_<strategy>_..._wide_*")
     p.add_argument("--unbounded", action="store_true",
                    help="gp-polar: the evidence over the whole grid, without the prior bounds (diagnostic); written as ..._unbounded_*")
     p.add_argument("--mean", default="blob", choices=("blob", "flat"),
