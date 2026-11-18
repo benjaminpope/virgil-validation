@@ -1,6 +1,6 @@
 """crosscheck.references: every reference orbit says whose omega it tabulates.
 
-(tests/test_references.py checks our reference *code*; this file checks the reference *data* in oidb/references.)
+(tests/test_reference_*.py check our reference *code*; this file checks the reference *data* in oidb/references.)
 """
 
 import numpy as np
