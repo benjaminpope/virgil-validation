@@ -175,8 +175,9 @@ def _wrap(x):
     return (x + 180.0) % 360.0 - 180.0
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.orbits.starting_orbits", "virgil.models.Attached",
-                       "virgil.fitting.fit", "virgil.likelihood.numpyro_model", roots=["mathematics", "standards"])
+                       "virgil.fitting.fit", "virgil.likelihood.numpyro_model", roots=["mathematics", "standards"], tier="B")
 def test_orbit_from_marginal_start_recovers_elements(of, tmp_path):
     """Five simulated nights of a point binary on a Kepler orbit, each night five
     one-snapshot files an hour apart, the companion moving between them (~0.1 mas/h;
@@ -274,7 +275,8 @@ def test_vis_amp_of_recovers_a_contrast_loss(of, tmp_path):
     record("vis_amp_recovered", a)
 
 
-@pytest.mark.validates("virgil.aliases.fit_orbit_aliases", "virgil.fitting.fit", roots=["mathematics", "standards"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.aliases.fit_orbit_aliases", "virgil.fitting.fit", roots=["mathematics", "standards"], tier="B")
 def test_orbit_search_is_blind_and_a_flagged_night_seeds_no_position(of, tmp_path):
     """No published orbit can enter ``fit_orbit`` (it has no such argument, and reports none). A night in
     ``flagged`` gives no position to the alias search, but its closure phases and V^2 are still data in the

@@ -98,7 +98,8 @@ def test_reg_is_config_f_only_and_toeplitz_equals_direct(syn):
     assert len(pd.terms) == 1 and len(pd.regs) == 2 and pd.nuis.blur_fwhm_mas is None
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_fit_reg_runs_refuses_lam_and_cv_task_takes_reg_and_gp_arms(syn, tmp_path):
     out = tmp_path / "f"
     _call("fit", "--config", "F", "--reg", "mem:1e-9,tsv:1e-4", "--chi2", "toeplitz", "--data", syn, "--out", out, "--npix", 48, "--max-steps", 5, "--no-dirty", "--reg-beam-mas", 30)
@@ -408,7 +409,8 @@ def test_replica_compare_passes_mpols_own_image_on_the_numbers_it_can_and_fails_
     assert vr.steps_for(10_883_819) == 10 * 273 and vr.steps_for(42_421_131) == 10 * 1061
 
 
-@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], tier="B")
 def test_replica_workflow_runs_end_to_end_and_ablation_flags_change_the_run(syn, tmp_path):
     outs = {}
     for name, extra in (("base", []), ("nowd", ["--replica-no-wd"]), ("softmax", ["--replica-softmax"])):
