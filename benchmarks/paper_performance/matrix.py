@@ -420,7 +420,7 @@ def execute(specs):
             prev_h = max(prev_h, d.get("elapsed_h", 0.0))
     t0 = time.time() - prev_h * 3600
     RAW.mkdir(parents=True, exist_ok=True)
-    done_marker = RAW.parent / ("DONE_r2" if RERUN["on"] else "DONE")
+    done_marker = RAW.parent / ("DONE" if os.environ.get("BENCH_RUN_ID", "r1") == "r1" else f"DONE_{os.environ['BENCH_RUN_ID']}")
     if TEST["tiny"] or TEST["no_wrapper"]:
         (RAW.parent).mkdir(parents=True, exist_ok=True)
         (RAW.parent / "TEST_RUN_BYPASSES").write_text(f"test-only run (tiny={TEST['tiny']}, no_wrapper={TEST['no_wrapper']}); idle, AC and pyslot checks were NOT applied; rows are not measurements\n")
@@ -514,6 +514,8 @@ def main():
     ap.add_argument("--resume", action="store_true", help="continue a crashed run: skip specs already in the log")
     ap.add_argument("--rerun", action="store_true", help="the second matrix (BENCH_RUN_ID=r2): only the rows rerun_filter lists, "
                     "plus a populated-cache process per virgil row")
+    ap.add_argument("--run-id", default=None, help="BENCH_RUN_ID of the rows written (r2 = the PR 275 matrix; the cluster "
+                    "stage runs the FULL matrix with --run-id r2)")
     ap.add_argument("--budget-h", type=float, default=None, help="wall-clock cap in hours (default 7; the rerun uses 4)")
     ap.add_argument("--only", nargs="*", default=None, help="TEST ONLY: run just the specs whose key contains one of these")
     ap.add_argument("--tiny", action="store_true", help="TEST ONLY: --size tiny for binary/imaging runners")
@@ -526,6 +528,14 @@ def main():
         LOG = HERE / "results" / "matrix_log_r2.jsonl"
         os.environ["BENCH_RUN_ID"] = "r2"
         BUDGET_S = 4 * 3600
+    if a.run_id:
+        os.environ["BENCH_RUN_ID"] = a.run_id
+        if not a.rerun:
+            LOG = HERE / "results" / f"matrix_log_{a.run_id}.jsonl"
+    if a.run and common.ON_NODE and not (a.tiny or a.no_wrapper):
+        st = common.machine_state()      # the node's own load and exclusivity; there is no bypass
+        if not st["ok"]:
+            raise SystemExit(f"refusing: node not idle: {st['problems']}")
     if a.budget_h:
         BUDGET_S = int(a.budget_h * 3600)
     if a.out_dir:

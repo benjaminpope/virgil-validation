@@ -39,6 +39,10 @@ BENCH_HOME = Path(os.environ.get("VIRGIL_BENCH_HOME", Path.home() / ".cache" / "
 RAW = HERE / "results" / "raw"
 TIME_BIN = "/usr/bin/time"
 PYSLOT = Path.home() / ".claude" / "bin" / "pyslot"
+# BENCH_PLATFORM=slurm: the measured matrix runs inside one exclusive Slurm job on a Linux compute node (the ozstar_scripts
+# stage bench275). There is no pyslot (the job owns the node), no macOS ``time -l`` (rusage comes from ``os.wait4``) and no
+# AC / Low Power Mode (the machine check reads the node's own load and records the node).
+ON_NODE = os.environ.get("BENCH_PLATFORM") == "slurm"
 INNER_TAG = "BENCH_INNER "
 
 STATUSES = ("ok", "timeout", "oom", "error", "gate_failed", "not_run", "unsupported")
@@ -114,8 +118,35 @@ def _run(cmd, timeout=10):
         return ""
 
 
+def _node_state() -> dict:
+    """Slurm node: one exclusive job, load low. ``ok`` is False if the 1-minute load is above ``BENCH_MAX_LOAD`` (default 2:
+    the node is ours alone, so anything higher is a leftover process of ours or an unexpectedly shared node) or if the job
+    does not hold the whole node."""
+    load = os.getloadavg()
+    mem_kb = 0
+    for ln in Path("/proc/meminfo").read_text().splitlines():
+        if ln.startswith("MemTotal:"):
+            mem_kb = int(ln.split()[1])
+    ncpu = os.cpu_count() or 0
+    held = int(os.environ.get("SLURM_CPUS_ON_NODE", "0") or 0)
+    problems = []
+    if load[0] > float(os.environ.get("BENCH_MAX_LOAD", "2")):
+        problems.append(f"node load {load[0]:.1f} above {os.environ.get('BENCH_MAX_LOAD', '2')}")
+    if not os.environ.get("SLURM_JOB_ID"):
+        problems.append("not inside a Slurm job")
+    elif held and ncpu and held < ncpu:
+        problems.append(f"job holds {held} of {ncpu} cpus (not --exclusive)")
+    return {
+        "platform": "slurm", "node": platform.node(), "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "slurm_cpus_on_node": held, "cpu_count": ncpu, "mem_total_gb": round(mem_kb / 1e6, 1), "load_avg": list(load),
+        "on_ac": None, "low_power_mode": None, "pyslot_busy": False, "problems": problems, "ok": not problems,
+    }
+
+
 def machine_state() -> dict:
     """AC power, Low Power Mode, load average, pyslot occupancy. ``ok`` is True only when a measured run may start."""
+    if ON_NODE:
+        return _node_state()
     batt = _run(["pmset", "-g", "batt"])
     on_ac = "AC Power" in batt
     lpm = None
@@ -139,6 +170,10 @@ def machine_state() -> dict:
 
 
 def chip() -> str:
+    if ON_NODE:
+        for ln in Path("/proc/cpuinfo").read_text().splitlines():
+            if ln.startswith("model name"):
+                return ln.split(":", 1)[1].strip()
     return _run(["sysctl", "-n", "machdep.cpu.brand_string"]).strip() or platform.processor()
 
 
@@ -370,6 +405,34 @@ def enable_jax_cache() -> str | None:
     return d
 
 
+def _wait4_run(argv, env, cwd, timeout):
+    """Linux: run ``argv`` and return (stdout, stderr, returncode, wall, user, sys, peak_rss_mb, timed_out) from ``os.wait4``
+    (the rusage of the process and the descendants it waited for; ``ru_maxrss`` is in kB). Output goes through temp files so
+    nothing but the child is scheduled while it runs."""
+    import tempfile
+
+    with tempfile.TemporaryFile("w+b") as fo, tempfile.TemporaryFile("w+b") as fe:
+        t0 = time.perf_counter()
+        p = subprocess.Popen(argv, stdout=fo, stderr=fe, env=env, cwd=cwd, start_new_session=True)
+        timed_out = False
+        while True:
+            pid, st, ru = os.wait4(p.pid, os.WNOHANG)
+            if pid:
+                break
+            if time.perf_counter() - t0 > timeout:
+                timed_out = True
+                os.killpg(p.pid, 9)
+                pid, st, ru = os.wait4(p.pid, 0)
+                break
+            time.sleep(0.02)
+        wall = time.perf_counter() - t0
+        fo.seek(0)
+        fe.seek(0)
+        out, err = fo.read().decode(errors="replace"), fe.read().decode(errors="replace")
+    rc = None if timed_out else os.waitstatus_to_exitcode(st)
+    return out, err, rc, wall, ru.ru_utime, ru.ru_stime, ru.ru_maxrss / 1e3, timed_out
+
+
 def timed_process(cmd, *, threads: int = 1, timeout: float = 1800, wrapper: str | None = None,
                   pyslot_mem: str = "6G", env: dict | None = None, cwd=None, cache_key: str | None = None) -> dict:
     """Run ``cmd`` once in a fresh process under ``/usr/bin/time -l`` and return its measurements.
@@ -384,6 +447,8 @@ def timed_process(cmd, *, threads: int = 1, timeout: float = 1800, wrapper: str 
     cache_env, cache_mode = jax_cache_env(cache_key)
     full_env = {**os.environ, **thread_env(threads), **cache_env, **(env or {})}
     argv = [TIME_BIN, "-l", *cmd]
+    if ON_NODE and wrapper == "pyslot":
+        wrapper = None   # the Slurm job owns the node: there is no pyslot
     if wrapper == "pyslot":
         full_env["PYSLOT_MEM"] = pyslot_mem
         argv = [str(PYSLOT), *argv]
@@ -391,18 +456,25 @@ def timed_process(cmd, *, threads: int = 1, timeout: float = 1800, wrapper: str 
         raise ValueError(f"unknown wrapper {wrapper!r}")
     t0 = time.perf_counter()
     status = "ok"
-    try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=full_env, cwd=cwd)
-        stdout, stderr, rc = p.stdout, p.stderr, p.returncode
-    except subprocess.TimeoutExpired as e:
-        stdout = (e.stdout.decode() if isinstance(e.stdout, bytes) else e.stdout) or ""
-        stderr = (e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr) or ""
-        rc, status = None, "timeout"
-    wall_outer = time.perf_counter() - t0
-    parsed = parse_time_l(stderr)
+    if ON_NODE:
+        stdout, stderr, rc, w, u, sy, rss, timed_out = _wait4_run(cmd, full_env, cwd, timeout)
+        status = "timeout" if timed_out else "ok"
+        wall_outer = time.perf_counter() - t0
+        parsed = {"wall": w, "user": u, "sys": sy, "peak_rss_mb": rss, "peak_footprint_mb": rss,
+                  "cpu_ratio": (u + sy) / w if w else None}
+    else:
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=full_env, cwd=cwd)
+            stdout, stderr, rc = p.stdout, p.stderr, p.returncode
+        except subprocess.TimeoutExpired as e:
+            stdout = (e.stdout.decode() if isinstance(e.stdout, bytes) else e.stdout) or ""
+            stderr = (e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr) or ""
+            rc, status = None, "timeout"
+        wall_outer = time.perf_counter() - t0
+        parsed = parse_time_l(stderr)
     inner = parse_inner(stdout)
     if status == "ok":
-        if rc == 137 or "memory footprint exceeded" in stderr:
+        if rc in (137, -9) or "memory footprint exceeded" in stderr:
             status = "oom"
         elif rc == 124 and "exceeded" in stderr:
             status = "timeout"
@@ -569,7 +641,7 @@ def check_rows(raw_dir=None) -> dict[str, list[str]]:
 
 def check_environment() -> dict:
     """Quick report of what a work package needs: interpreters, disk, virgil pin. For ``README`` troubleshooting."""
-    free = int(_run(["df", "-g", "/"]).splitlines()[-1].split()[3])
+    free = int(_run(["df", "-g" if sys.platform == "darwin" else "-BG", "/"]).splitlines()[-1].split()[3].rstrip("G"))
     return {
         "bench_python": os.environ.get("BENCH_PYTHON"), "ehtim_python": os.environ.get("EHTIM_PYTHON"),
         "virgil_pin": virgil_ref(), "free_disk_gb": free, "machine": machine_state(),
