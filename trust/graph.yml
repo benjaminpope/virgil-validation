@@ -113,12 +113,12 @@ nodes:
     convention: [orientation]
   virgil.models.BinaryModelCartesian: {layer: models, source: [src/virgil/models.py], roots: 2}
   virgil.models.BinaryModelAngular: {layer: models, source: [src/virgil/models.py]}
-  virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
+  virgil.models.Image: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Component]}
   virgil.models.Image.model_on_grid: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image]}
   virgil.models.Image.from_model: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.Image]}
   # LinearImage and Image are siblings of _BrightnessImage (models.py), whose transforms they share; `Image`
   # is the node whose checks cover that shared code.
-  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image], doc: models/visibilities.md#pixel-images}
+  virgil.models.LinearImage: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Image, virgil.models.Component], doc: models/visibilities.md#pixel-images}
   virgil.models.SourceModel.render: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Resolved: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Rotated: {layer: models, source: [src/virgil/models.py], convention: [rotation_sense]}
@@ -144,11 +144,11 @@ nodes:
     layer: models
     source: [src/virgil/models.py]
     depends: [virgil.models.cvis_limb_darkened_disk, virgil.models.Component]
-  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
-  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
-  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], convention: [near_side]}
+  virgil.models.FlaredDiskGaussian: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.FlaredDisk], convention: [near_side]}
+  virgil.models.FlaredDiskHG: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.FlaredDisk], convention: [near_side]}
+  virgil.models.FlaredDiskPowerLaw: {layer: models, source: [src/virgil/models.py], depends: [virgil.models.FlaredDisk], convention: [near_side]}
   virgil.models.HarmonixModel: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md#the-harmonix-wrapper}
-  virgil.models.FlaredDisk: {layer: models, source: [src/virgil/models.py], doc: models/flared_disks.md}
+  virgil.models.FlaredDisk: {layer: models, source: [src/virgil/models.py, src/virgil/_geometry.py], depends: [virgil.models.Component], doc: models/flared_disks.md}
   virgil.models.cvis_uniform_disk: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md#closed-form-helpers}
   virgil.models.cvis_binary: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md#closed-form-helpers}
   virgil.models.EllipticalLimbDarkenedDisk:
@@ -278,7 +278,7 @@ nodes:
   virgil.fitting.fit:
     layer: likelihood
     source: [src/virgil/fitting.py, src/virgil/_precision.py]
-    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site, virgil.models.RadialGPFunction]
+    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site]
     doc: data/long_baseline.md
   virgil.tempering.block_dof: {layer: likelihood, source: [src/virgil/tempering.py], doc: likelihood/spectra_phases.md}
   virgil.tempering.ChannelFactors:

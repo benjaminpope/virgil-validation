@@ -9,11 +9,11 @@ visual-binary projection) and SciPy. orbitize! covers `KeplerOrbit`,
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
 | `KeplerOrbit.relative`, three orbits (e = 0 to 0.75, i near 90°, retrograde) | `crosscheck.orbits` | Mathematics | 1e-12 of a |
-| `AxialVonMises` | exp(κ cos 2(θ − μ))/(360 I₀(κ)); θ and θ + 180° equal; normalised; KS on samples | Mathematics + Statistics | 1e-12 relative (density), 1e-12 absolute (θ vs θ + 180°, log density), 1e-10 absolute (integral − 1); KS p > 1e-3 |
+| `AxialVonMises` | exp(κ cos 2(θ − μ))/(360 I₀(κ)); θ and θ + 180° equal; normalised; KS on samples | Mathematics + Statistics | 1e-12 relative (density), 1e-12 absolute plus numpy default rtol 1e-7 (θ vs θ + 180°, log density; about 4.4e-6 at κ = 20), 1e-10 absolute (integral − 1); KS p > 1e-3 |
 | `orientation_from_varpi`, `orientation_priors` | ϖ = Ω + ω; Ω in [0°, 180°) from 2Ω; the documented keys (`Mathematics`); isotropic `inc` has E[cos² i] = 1/3 and uniform cos i (KS, `Mathematics + Statistics`) | Mathematics + Statistics | 1e-9° (angle wrap, absolute); 1e-6 relative (Ω passthrough); E[cos² i] − 1/3 within 4σ (σ = √(4/45/N), N = 40000, about 6e-3); KS p > 1e-3 |
 | `position_angle_log_jacobian` | log\|∂M/∂θ\| by finite differences of our projection; integral over a turn is 2π | Mathematics | 1e-6 absolute (plus numpy's default rtol 1e-7) on log\|∂M/∂θ\|; 1e-8 absolute on (integral − 2π) |
 | `starting_orbits` | each grid point's χ² equals our own weighted least squares in the unit orbit (X, Y); the best orbit is the one the positions came from | Mathematics | 1e-8 relative (χ², denominator max(1, χ²)). The best orbit is checked at grid resolution: the grid period exactly, e within 1e-6 relative, t_peri within one phase step (P/36), best χ² < 6 × the number of positions |
-| `period_grid` | uniform spacing in frequency 1/P from `p_min` to `p_max` with Δ(1/P) ≤ 1/(kT), bounding phase drift over baseline T to ≤ 1/k cycles | Mathematics | 1e-11 relative (uniform Δ(1/P)); 1e-14 relative (endpoints); Δ(1/P)·T ≤ 1/k + 1e-14 cycles |
+| `period_grid` | uniform spacing in frequency 1/P from `p_min` to `p_max` with Δ(1/P) ≤ 1/(kT), bounding phase drift over baseline T to ≤ 1/k cycles | Mathematics | 1e-11 relative (uniform Δ(1/P)); 1e-12 absolute (endpoints; the `pytest.approx` default floor, since `rel=1e-14` is below it for 5 ≤ P ≤ 80); Δ(1/P)·T ≤ 1/k + 1e-14 cycles |
 | `models.Attached` (a companion on an orbit) | the static binary with the companion at our orbit position, at three times | Mathematics | 1e-12 |
 
 ## The position angle prior
