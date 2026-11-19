@@ -9,10 +9,10 @@ import pytest
 pytestmark = pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("trust_skyline", ROOT / "scripts" / "trust_skyline.py")
-sky = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(sky)
-trust = sky._trust()
+spec = importlib.util.spec_from_file_location("trust", ROOT / "scripts" / "trust.py")
+trust = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(trust)
+import trust_skyline as sky  # noqa: E402  (scripts/ is on sys.path once trust.py is loaded)
 
 
 def node(name, layer, verdict, depth, strong=(), depends=()):
@@ -49,7 +49,7 @@ ROOTS = {
 
 
 def render(model=MODEL, base="../"):
-    out = sky.skyline_html(model, ROOTS, base)
+    out = sky.skyline_html(model, ROOTS, base, names=trust)
     return out, ET.fromstring(out)  # raises if the output is not well-formed XML
 
 
@@ -178,7 +178,7 @@ def test_depth_labels_run_from_ground_up():
 
 
 def test_empty_model():
-    out = sky.skyline_html({"nodes": {}}, ROOTS)
+    out = sky.skyline_html({"nodes": {}}, ROOTS, names=trust)
     ET.fromstring(out)
 
 

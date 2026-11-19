@@ -32,10 +32,6 @@ light and dark schemes.
 
 import collections
 import html
-import importlib
-import importlib.util
-import pathlib
-import sys
 
 PITCH, CELL = 13, 11  # a square is CELL wide on a PITCH grid
 GRID_ROWS = 4  # a layer's cell is about this many squares tall before it widens
@@ -46,18 +42,6 @@ BAND_PAD = 4  # blank space under each depth band
 MROW = 24  # foundation row height
 MAX_R = MROW / 2 - 2  # radius of the largest foundation circle
 WEAK_CLASSES = {"self-consistency"}  # a weak root never counts, so it has no row in the matrix
-
-
-def _trust():
-    """scripts/trust.py (and its names), imported the way the tests import it when it is not already loaded."""
-    if "trust" in sys.modules:
-        return sys.modules["trust"]
-    path = pathlib.Path(__file__).resolve().with_name("trust.py")
-    spec = importlib.util.spec_from_file_location("trust", path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["trust"] = mod
-    spec.loader.exec_module(mod)
-    return mod
 
 
 def _e(text):
@@ -159,16 +143,15 @@ def _legend(counts, order, icons, words, n_marks=(0, 0)):
     return '<div class="vt-sky-legend">' + "".join(items) + "</div>"
 
 
-def skyline_html(model, roots, base="", names=None):
+def skyline_html(model, roots, base="", *, names):
     """The skyline and foundation as one HTML string (no blank lines, so Markdown keeps it as one block).
 
     ``model`` is the dict written to ``docs/assets/trust.json``; ``roots`` the parsed
     ``trust/roots.yml``; ``base`` the relative prefix the page's function-test links need. ``names``
     is the object that holds ``COLOURS``, ``ICON``, ``ORDER``, ``VERDICTS``, ``LAYER_ORDER``,
-    ``ROOT_ALIAS`` and ``doc_url`` (``trust_render`` passes itself); by default they are read from
-    ``scripts/trust.py``, loaded on demand.
+    ``ROOT_ALIAS`` and ``doc_url`` (``trust_render`` passes itself; tests pass ``trust``).
     """
-    t = names if names is not None else _trust()
+    t = names
     nodes = model["nodes"]
     if not nodes:
         return '<div class="vt-sky"><p class="vt-muted">No parts to draw.</p></div>'
