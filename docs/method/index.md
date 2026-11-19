@@ -246,8 +246,8 @@ status, so a campaign that was not rerun fails it.
 "unchecked" on the Trust page. After the tests, CI runs `scripts/check_skips.py` over the evidence
 file: a skipped record with a `validates` marker fails the job unless `trust/skip_allowlist.yml`
 lists it (section `pr` for the fast tests, `weekly` for the full suite). An entry may say only that
-CI does not install a package or does not have a data file, gives the reason in one line, and may
-name the text the recorded skip reason must contain. A skip for any other reason is fixed, not listed.
+CI does not install a package or does not have a data file, gives the reason in one line, and names
+the text the recorded skip reason must contain. A skip for any other reason is fixed, not listed.
 
 ### The trust graph
 

@@ -54,10 +54,11 @@ def load_allowlist(path, job):
         if missing:
             raise ValueError(f"{path}: {job} entry {entry.get('test')!r} lacks {missing}")
         file_part, sep, name_part = str(entry["test"]).partition("::")
-        if not sep or not file_part.replace("*", "") or not name_part.replace("*", ""):
+        func = name_part.split("[", 1)[0]
+        if not sep or "*" in file_part or not file_part.endswith(".py") or "*" in func or not func.startswith("test_") or func == "test_":
             raise ValueError(
-                f"{path}: {job} entry {entry['test']!r} is too loose: name a test file and a test (path.py::test_name), "
-                "with * only inside either part"
+                f"{path}: {job} entry {entry['test']!r} is too loose: name one test file and one test function "
+                "(path.py::test_name); * is allowed only inside the [parameter ids]"
             )
         if entry["because"] not in BECAUSE:
             raise ValueError(
@@ -69,23 +70,26 @@ def load_allowlist(path, job):
 
 def skipped_records(evidence):
     """One record per skipped test id (a test with several claims is one test)."""
-    skipped = {}
+    skipped, kinds = {}, set()
     for line in pathlib.Path(evidence).read_text().splitlines():
         if not line.strip():
             continue
         rec = json.loads(line)
+        kinds.add(rec.get("record"))
         if rec.get("record") == "test" and rec.get("outcome") == "skipped":
             skipped.setdefault(rec["test"], rec)
+    if not {"run", "test"} <= kinds:  # an empty or truncated file must not read as "nothing skipped"
+        raise ValueError(f"{evidence}: not a complete evidence file (it needs a run header and at least one test record)")
     return skipped
 
 
 def covers(entry, rec):
-    """Whether an allow-list entry covers a skipped record: the id matches and, if the entry says
-    what the skip should say, the recorded reason says it."""
+    """Whether an allow-list entry covers a skipped record: the id matches and the recorded reason says
+    what the entry's message says (an entry without a message covers nothing)."""
     if not entry["_pattern"].fullmatch(rec["test"]):
         return False
     needed = entry.get("message")
-    return not needed or needed.lower() in str(rec.get("reason", "")).lower()
+    return bool(needed) and needed.lower() in str(rec.get("reason", "")).lower()
 
 
 def check(evidence, entries):

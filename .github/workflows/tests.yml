@@ -68,8 +68,7 @@ jobs:
         run: |
           bash scripts/setup_external.sh ehtim mpol fouriever orbitize alma
           echo "CASASITECONFIG=$GITHUB_WORKSPACE/.venv-alma/casasiteconfig.py" >> "$GITHUB_ENV"
-      - name: "casatasks in .venv-alma (diagnostic; tests/test_radio_trust_casa.py skips when this import fails)"
-        continue-on-error: true
+      - name: "verify casatasks in .venv-alma (tests/test_radio_trust_casa.py skips when this import fails)"
         run: .venv-alma/bin/python -c "import casatasks, casatools; print(casatasks.__file__, casatools.version_string())"
       - name: verify casatools in .venv
         run: .venv/bin/python -c "import casatools; tb = casatools.table(); me = casatools.measures(); loc = me.observatory('ALMA'); assert 'm0' in loc; me.done(); print(casatools.version_string())"
@@ -82,6 +81,7 @@ jobs:
           git clone --quiet --filter=blob:none https://github.com/benjaminpope/virgil "$RUNNER_TEMP/virgil"
           echo "VIRGIL_REPO=$RUNNER_TEMP/virgil" >> "$GITHUB_ENV"
       - name: fast tests
+        id: fast_tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"  # tests/test_calibrated_load.py must not skip silently
@@ -93,9 +93,10 @@ jobs:
           trap 'kill $memlog 2>/dev/null || true' EXIT
           .venv/bin/python -m pytest -m "not slow" -v --durations=60 --evidence evidence.jsonl
       - name: no silent skips (fast tests; trust/skip_allowlist.yml, pr)
-        if: always() && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch' && hashFiles('evidence.jsonl') != ''
+        if: always() && steps.fast_tests.outcome != 'skipped'  # a missing evidence file is an error here, not a reason to skip the check
         run: .venv/bin/python scripts/check_skips.py evidence.jsonl --job pr
       - name: all tests
+        id: all_tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"
@@ -107,7 +108,7 @@ jobs:
           trap 'kill $memlog 2>/dev/null || true' EXIT
           .venv/bin/python -m pytest -v --durations=60 --evidence evidence.jsonl
       - name: no silent skips (all tests; trust/skip_allowlist.yml, weekly)
-        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && hashFiles('evidence.jsonl') != ''
+        if: always() && steps.all_tests.outcome != 'skipped'
         run: .venv/bin/python scripts/check_skips.py evidence.jsonl --job weekly
       - name: memory log
         # free -m: total used free shared buff/cache available

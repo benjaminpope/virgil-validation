@@ -9,7 +9,7 @@
 #
 # Entry: test (an id, or a glob where * matches any run of characters; brackets are literal),
 # because (package | data), why (one line: what is missing and how CI would get it), message
-# (optional: text the recorded skip reason must contain, so the check cannot start skipping
+# (required: text the recorded skip reason must contain, so the check cannot start skipping
 # for another reason unnoticed).
 #
 # pr:     the fast tests (-m "not slow"), on pull requests and pushes, against the pinned virgil

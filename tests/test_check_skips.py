@@ -112,11 +112,32 @@ def test_a_stale_entry_is_reported_but_does_not_fail(cs, tmp_path, capsys):
         entry("t.py::*"),
         entry("*::test_a"),
         entry("t.py"),
+        entry("tests/*::test_*"),  # every test in the repository
+        entry("tests/t.py::test_*"),  # every test in a file
+        entry("tests/*.py::test_a"),
+        entry("tests/t.py::test_"),
+        entry("tests/t.py::test_cases*"),
     ],
 )
 def test_an_entry_needs_an_allowed_reason_a_why_a_message_and_a_test_that_is_named(cs, tmp_path, bad):
     with pytest.raises(ValueError):
         cs.load_allowlist(allowlist(tmp_path, pr=[bad]), "pr")
+
+
+def test_an_empty_or_headless_evidence_file_is_an_error_not_a_pass(cs, tmp_path):
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("")
+    headless = tmp_path / "headless.jsonl"
+    headless.write_text(json.dumps(rec("t.py::test_a", "passed")) + "\n")
+    listed = allowlist(tmp_path)
+    for path in (empty, headless, tmp_path / "missing.jsonl"):
+        with pytest.raises((ValueError, OSError)):
+            cs.main([str(path), "--job", "pr", "--allowlist", str(listed)])
+
+
+def test_covers_fails_closed_without_a_message(cs):
+    e = {"test": "t.py::test_a", "_pattern": cs.glob_to_regex("t.py::test_a"), "message": ""}
+    assert not cs.covers(e, rec("t.py::test_a"))
 
 
 def test_unknown_section_is_an_error(cs, tmp_path):
