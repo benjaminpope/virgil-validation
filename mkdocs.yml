@@ -107,6 +107,7 @@ nav:
       - "Findings": method/findings.md
       - "Upstream bug reports (MWEs)": method/upstream_bugs.md
       - "Not yet covered": method/coverage.md
+      - "The roots of trust": method/roots.md
       - "External packages":
           - PMOIRED: method/pmoired.md
           - CANDID: method/candid.md

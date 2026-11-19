@@ -70,7 +70,8 @@ def test_schema_keys_are_exact():
     """A misspelt key (count_as, reviewd) must not pass silently."""
     assert set(REGISTRY) == {"classes", "links", "roots"}
     for cid, c in CLASSES.items():
-        assert set(c) == {"name", *TEXT_FIELDS}, f"class {cid}: {sorted(c)}"
+        assert set(c) - {"reviewed"} == {"name", *TEXT_FIELDS}, f"class {cid}: {sorted(c)}"
+        assert isinstance(c.get("reviewed", False), bool), f"class {cid}: reviewed must be true or false"
     for lid, link in LINKS.items():
         assert set(link) == {"name", *TEXT_FIELDS, "reviewed"}, f"link {lid}: {sorted(link)}"
     required = {"id", "class", *TEXT_FIELDS, "citation", "url", "reviewed"}
