@@ -279,6 +279,7 @@ def test_unbounded_polar_cells_reach_below_one_beam_and_above_sigma_two(monkeypa
     )  # the diagnostic grid is the one before the bounds
 
 
+@needs_multipole
 def test_reg_label_names_a_capped_polar_field(tmp_path):
     import json
 
