@@ -21,9 +21,11 @@ def _write(path, text):
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
-def test_file_scan_finds_reference_imports_anywhere_in_a_file(tmp_path):
-    """Plain, from- and function-local imports count; ``_subprocess`` is plumbing; a name the package
-    defines itself is the package; other packages are ignored."""
+def test_file_scan_finds_reference_imports_outside_test_bodies(tmp_path):
+    """Plain, from- and helper-local imports count; ``_subprocess`` is plumbing; a name the package
+    defines itself is the package; other packages are ignored. The bodies of ``test_*`` functions are left out
+    (what a test ran is recorded at run time; counting them for every test of the file would join references
+    that are each checked in one file), unless asked for."""
     via.clear_caches()
     f = _write(
         tmp_path / "test_a.py",
@@ -33,15 +35,25 @@ def test_file_scan_finds_reference_imports_anywhere_in_a_file(tmp_path):
         "from external_bridge import _subprocess as sp\n"
         "from virgil_bridge import Scene\n"
         "import numpy, virgil.models\n"
-        "def test_x():\n"
+        "def helper():\n"
         "    from external_bridge.cv_folds import f\n"
         "    vb = pytest.importorskip('virgil_bridge.alma')\n"
         "    importlib.import_module('crosscheck.radial')\n"
-        "    importlib.import_module(name)\n",
+        "    importlib.import_module(name)\n"
+        "def test_x():\n"
+        "    from crosscheck import skyplane\n"
+        "    W = 'mpol_worker.py'\n"
+        "class TestY:\n"
+        "    def test_z(self):\n"
+        "        import crosscheck.toeplitz_scenes\n",
     )
-    assert via.static_via(str(f)) == {
+    outside = {
         "crosscheck.sky", "crosscheck.chi2", "crosscheck.limb", "virgil_bridge", "external_bridge.cv_folds",
         "virgil_bridge.alma", "crosscheck.radial",
+    }
+    assert via.static_via(str(f)) == outside
+    assert via.file_via(str(f), include_tests=True) == outside | {
+        "crosscheck.skyplane", "external_bridge.mpol_worker", "crosscheck.toeplitz_scenes",
     }
 
 
@@ -72,20 +84,27 @@ def test_file_scan_of_reference_sources_resolves_relative_imports():
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_file_scan_of_worker_scripts_resolves_bare_sibling_imports():
+    """Worker scripts run with ``src/external_bridge`` on ``sys.path``, so ``import cv_folds`` there names
+    the sibling module."""
+    via.clear_caches()
+    got = via.file_via(str(ROOT / "src" / "external_bridge" / "mpol_worker.py"))
+    assert {"external_bridge.cv_folds", "external_bridge.npz_compare"} <= got
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
 def test_import_recorder_notes_reference_imports_each_time_the_statement_runs():
     """A script loaded by path that imports a reference names it for the running test, even when the module
     was imported before; other packages are not noted."""
     via.install_import_recorder()
-    via.set_item("tests/test_fake.py::test_two")
-    try:
+    with via.running("tests/test_fake.py::test_two") as got:
         from crosscheck import sky  # noqa: F401
         from crosscheck import sky  # noqa: F401,F811  (imported already: still noted)
         import crosscheck.chi2  # noqa: F401
         import json  # noqa: F401
         from external_bridge import _subprocess  # noqa: F401
-    finally:
-        via.set_item(None)
-    assert via._BY_ITEM["tests/test_fake.py::test_two"] == {"crosscheck.sky", "crosscheck.chi2"}
+    assert got == {"crosscheck.sky", "crosscheck.chi2"}
+    assert "tests/test_fake.py::test_two" not in via._BY_ITEM
 
 
 @pytest.mark.validates("evidence", roots=["standards"], kind="guard")
@@ -98,12 +117,9 @@ def test_import_recorder_notes_what_an_already_imported_local_helper_imports(tmp
         monkeypatch.syspath_prepend(str(helper.parent))
         via.install_import_recorder()
         for nodeid in ("tests/test_fake.py::first", "tests/test_fake.py::second"):
-            via.set_item(nodeid)
-            try:
+            with via.running(nodeid) as got:
                 import _via_probe_helper  # noqa: F401  (the second import is served from sys.modules)
-            finally:
-                via.set_item(None)
-            assert via._BY_ITEM[nodeid] == {"crosscheck.radial"}, nodeid
+            assert got == {"crosscheck.radial"}, nodeid
     finally:
         sys.modules.pop("_via_probe_helper", None)
         helper.unlink()
@@ -118,14 +134,11 @@ def test_worker_recorder_wraps_the_single_choke_point_and_notes_the_worker_node(
     calls = []
     monkeypatch.setattr(sp, "run", lambda name, worker, task, timeout=0: calls.append(worker) or {"ok": 1})
     assert via.install_recorder()
-    via.set_item("tests/test_fake.py::test_one")
-    try:
+    with via.running("tests/test_fake.py::test_one") as got:
         assert sp.run("alma", "alma_worker.py", {}) == {"ok": 1}
         sp.run("mpol", worker="mpol_worker.py", task={})
-    finally:
-        via.set_item(None)
     assert calls == ["alma_worker.py", "mpol_worker.py"]
-    assert via._BY_ITEM["tests/test_fake.py::test_one"] == {"external_bridge.alma_worker", "external_bridge.mpol_worker"}
+    assert got == {"external_bridge.alma_worker", "external_bridge.mpol_worker"}
     # installing twice wraps once
     wrapped = sp.run
     via.install_recorder()

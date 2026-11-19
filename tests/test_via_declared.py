@@ -26,6 +26,10 @@ def _strings(node, bindings):
     return out
 
 
+def _nonempty(value):
+    return not (isinstance(value, (ast.List, ast.Tuple)) and not value.elts)
+
+
 def undeclared_dynamic_loads(source):
     """Lines of calls to importlib's loaders (or ``__import__``) that name a reference package, other than by
     a literal module name (which the file scan reads), when some
@@ -41,14 +45,19 @@ def undeclared_dynamic_loads(source):
             continue
         name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
         if name in DYNAMIC_LOADERS:
-            if name in via.STRING_LOADERS and node.args and isinstance(node.args[0], ast.Constant):
-                continue  # a literal name: the file scan reads it
+            first = node.args[0] if node.args else None
+            if (
+                name in via.STRING_LOADERS
+                and isinstance(first, ast.Constant)
+                and not str(first.value).startswith(".")
+            ):
+                continue  # a literal absolute name: the file scan reads it
             args = [*node.args, *(k.value for k in node.keywords)]
             if any(REFERENCE_NAME.search(s) for a in args for s in _strings(a, bindings)):
                 loads.append(node.lineno)
         elif name == "validates":
             markers.append(node)
-    if loads and any(not any(k.arg == "via" for k in m.keywords) for m in markers):
+    if loads and any(not any(k.arg == "via" and _nonempty(k.value) for k in m.keywords) for m in markers):
         return loads
     return []
 
@@ -66,6 +75,9 @@ def test_guard_sees_dynamic_loads_of_reference_packages_and_accepts_declared_via
     assert undeclared_dynamic_loads(spec + marked.format("")) == [3]
     assert undeclared_dynamic_loads("m = __import__('virgil_bridge.' + x)\n" + marked.format("")) == [1]
     assert undeclared_dynamic_loads("import importlib\nm = importlib.import_module('crosscheck.sky')\n" + marked.format("")) == []
+    assert undeclared_dynamic_loads(loader + marked.format(", via=[]")) == [2]  # an empty ``via`` declares nothing
+    rel = "import importlib\nm = importlib.import_module('.sky', 'crosscheck')\n"
+    assert undeclared_dynamic_loads(rel + marked.format("")) == [2]  # the file scan drops a relative name
     assert undeclared_dynamic_loads("import importlib\nm = importlib.import_module(f'crosscheck.{x}')\n" + marked.format("")) == [2]
     # other packages, and scripts that are not reference code, are not this guard's business
     other = "import importlib\nm = importlib.import_module('virgil.aliases')\n"

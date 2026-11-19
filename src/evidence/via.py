@@ -8,26 +8,38 @@ time. Two sources, then, and no deep static analysis:
 * **Run time (complete):** ``external_bridge._subprocess.run`` is the single
   place a worker script is started. A wrapper installed at ``pytest_configure``
   records the worker's file name, as the node ``external_bridge.<stem>``, for
-  the running test, for every test that uses a fixture that started it, and for
-  every test in a file that started it while being collected.
-* **Imports (complete for what ran):** ``builtins.__import__`` is wrapped likewise, so a reference imported by a
-  script that a test loads by file path (``spec_from_file_location``), or inside any helper, is noted when the
-  statement runs, even if an earlier test already imported the module.
-* **Static backstop (coarse):** every reference module that the test file, its
-  ancestor ``conftest.py`` files and the local helper modules they import
-  (``tests/``, ``scripts/``, ``benchmarks/``) import anywhere, and every string
-  literal naming a worker script. It over-approximates (the whole file counts,
-  used or not); where that wrongly blocks a node, split the test file.
+  the running test, for every test that uses a fixture that started it, and
+  for every test in a file that started it while being collected.
+* **Imports (complete for what ran):** ``builtins.__import__``,
+  ``importlib.import_module`` and ``importlib.util.spec_from_file_location``
+  are wrapped likewise, so a reference imported by a script that a test loads
+  by file path, by a helper, or by name, is noted when the statement runs,
+  even if an earlier test already imported the module. A script loaded by
+  path also counts as what its file scan finds, even if its functions are
+  never called.
+* **Static backstop (coarse):** every reference module that the test file,
+  its ancestor ``conftest.py`` files and the local helper modules they import
+  (``tests/``, ``scripts/``, ``benchmarks/``) import at module level or in
+  helpers, and every string literal naming a worker script there. The bodies
+  of ``test_*`` functions are left out: a test that passed ran its body,
+  which the recorders saw, and counting every test's body for every test in
+  the file would make references that are only checked in one file depend on
+  each other. It still over-approximates (module level and helpers count for
+  the whole file); where that wrongly blocks a node, split the test file.
 
-Explicit ``via=[...]`` on the marker covers what neither sees: a reference
-loaded by name at run time (``importlib``, ``__import__``,
-``spec_from_file_location``). ``tests/test_via_declared.py`` fails when a test
-file does that to a reference package without declaring ``via``.
+Explicit ``via=[...]`` on the marker covers what none of these see: code
+started some other way (a subprocess that is not ``_subprocess.run``).
+``tests/test_via_declared.py`` fails when a test file loads a reference
+package by a computed name without declaring ``via``.
 """
 
 import ast
 import collections
+import contextlib
 import functools
+import importlib
+import importlib.util
+import os
 import pathlib
 import sys
 
@@ -143,10 +155,31 @@ def _worker_nodes(value):
     return set()
 
 
+def _walk(tree, skip_tests):
+    """``ast.walk`` that leaves out the bodies (and decorators) of ``test*`` functions when asked."""
+    todo = [tree]
+    while todo:
+        node = todo.pop()
+        yield node
+        for child in ast.iter_child_nodes(node):
+            if skip_tests and isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test"):
+                continue
+            todo.append(child)
+
+
+def _sibling_nodes(own, parts):
+    """A bare ``import cv_folds`` inside ``src/external_bridge/`` (worker scripts run with that directory on
+    ``sys.path``) names the sibling module ``external_bridge.cv_folds``."""
+    if own and parts and parts[0] not in REFERENCE_PACKAGES and _is_submodule(own[0], parts[0]):
+        return {f"{own[0]}.{parts[0]}"}
+    return set()
+
+
 @functools.lru_cache(maxsize=None)
-def _scan_file(path):
+def _scan_file(path, include_tests=False):
     """(reference nodes this file imports or names, local helper files it imports); a file that cannot be
-    read or parsed contributes nothing (collecting it fails the run anyway)."""
+    read or parsed contributes nothing (collecting it fails the run anyway). The bodies of ``test*``
+    functions outside ``src/`` count only with ``include_tests``."""
     path = pathlib.Path(path)
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -163,17 +196,20 @@ def _scan_file(path):
         if cand is not None and cand != path.resolve():
             helpers.append(cand)
 
-    for node in ast.walk(tree):
+    for node in _walk(tree, skip_tests=own is None and not include_tests):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 parts = tuple(alias.name.split("."))
                 found |= _ref_nodes_of_import(parts, ())
+                found |= _sibling_nodes(own, parts)
                 if own is None:
                     helper(parts)
         elif isinstance(node, ast.ImportFrom):
             parts = tuple((node.module or "").split(".")) if node.module else ()
             names = tuple(a.name for a in node.names if a.name != "*")
             found |= _ref_nodes_of_import(parts, names, own, node.level)
+            if not node.level:
+                found |= _sibling_nodes(own, parts)
             if own is None:
                 if node.level:
                     helper(parts, node.level)
@@ -219,9 +255,10 @@ def ancestor_conftests(path):
 
 
 @functools.lru_cache(maxsize=None)
-def file_via(path):
+def file_via(path, include_tests=False):
     """The reference nodes a file imports or names, with those of the local helper modules it imports
-    (transitively). For a source file under ``src/<reference package>/`` this is what it depends on."""
+    (transitively). For a source file under ``src/<reference package>/`` this is what it depends on.
+    ``include_tests``: the bodies of ``test*`` functions count too (the graph test checks every name)."""
     path = pathlib.Path(path).resolve()
     found, todo, seen = set(), [path], set()
     while todo:
@@ -229,7 +266,7 @@ def file_via(path):
         if cur in seen:
             continue
         seen.add(cur)
-        refs, helpers = _scan_file(str(cur))
+        refs, helpers = _scan_file(str(cur), include_tests)
         found |= refs
         todo.extend(helpers)
     return frozenset(found)
@@ -303,15 +340,18 @@ def _import_nodes(name, fromlist):
     return frozenset(_ref_nodes_of_import(tuple(name.split(".")), fromlist))
 
 
-def _local_module_via(name):
+def _local_module_via(name, fromlist=()):
     """The reference nodes a local helper module (``tests/``, ``scripts/``, ``benchmarks/``) imports, by the
-    file scan, when an import statement names it. Its own import statements ran when it was first imported,
-    possibly for an earlier test; each test that imports it again relies on what it imports."""
-    module = sys.modules.get(name)
-    file = getattr(module, "__file__", None)
-    if not file or not file.endswith(".py") or not file.startswith(_REPO_PREFIX):
-        return frozenset()
-    return _local_file_via(file)
+    file scan, when an import statement names it (or, for ``from pkg import helper``, names a helper of the
+    package). Its own import statements ran when it was first imported, possibly for an earlier test; each
+    test that imports it again relies on what it imports."""
+    found = set()
+    for dotted in (name, *(f"{name}.{sub}" for sub in fromlist or () if isinstance(sub, str))):
+        module = sys.modules.get(dotted)
+        file = getattr(module, "__file__", None)
+        if file and file.endswith(".py"):
+            found |= _local_file_via(file)
+    return frozenset(found)
 
 
 @functools.lru_cache(maxsize=None)
@@ -323,29 +363,88 @@ def _local_file_via(file):
     return file_via(str(path))
 
 
+def _is_reference_name(name):
+    return name.split(".", 1)[0] in REFERENCE_PACKAGES
+
+
+def _absolute_name(name, level, globals):
+    """The absolute dotted name of a relative import made from a module with these globals, else None."""
+    globals = globals or {}
+    package = globals.get("__package__") or globals.get("__name__", "").rpartition(".")[0]
+    if not package:
+        return None
+    bits = package.rsplit(".", level - 1)
+    if len(bits) < level:
+        return None
+    return f"{bits[0]}.{name}" if name else bits[0]
+
+
+def _loaded_file_nodes(location):
+    """What a file loaded by ``spec_from_file_location`` counts as: a reference source file is its node, any
+    other repository file is what its file scan finds (the whole file, not only what runs)."""
+    path = pathlib.Path(os.fspath(location)).resolve()
+    own = _own_pkg_parts(path) if path.is_relative_to(SRC_ROOT.resolve()) else None
+    if own is not None:
+        if path.name == "__init__.py":
+            return frozenset({".".join(own)}) if has_executable_defs(path) else frozenset()
+        return frozenset({".".join((*own, path.stem))}) - PLUMBING
+    return _local_file_via(str(path))
+
+
 def install_import_recorder():
-    """Wrap ``builtins.__import__`` (idempotent) to note the reference nodes every import statement executed
-    while a test, fixture or collection runs names, wherever that statement is: in a script that a test loads
-    by file path, a helper, or the test itself. Statements run again each time a loaded script is executed,
-    so a reference that an earlier test already imported is still noted. (``importlib.import_module`` does not
-    pass through here; a literal one is read by the file scan, any other must declare ``via``.)"""
+    """Wrap ``builtins.__import__``, ``importlib.import_module`` and ``importlib.util.spec_from_file_location``
+    (idempotent) to note the reference nodes every import executed while a test, fixture or collection runs
+    names, wherever the statement is: in a script that a test loads by file path, a helper, or the test
+    itself. Statements run again each time a loaded script is executed, so a reference that an earlier test
+    already imported is still noted. Not seen: code that a test starts in a subprocess other than through
+    ``_subprocess.run`` (declare ``via``)."""
     import builtins
 
     original = builtins.__import__
     if getattr(original, "_vv_recording", False):
         return
+    original_import_module = importlib.import_module
+    original_spec = importlib.util.spec_from_file_location
 
     def recording_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if level == 0:
-            if name.startswith(REFERENCE_PACKAGES):
-                note(_import_nodes(name, tuple(fromlist or ())))
-            else:
-                result = original(name, globals, locals, fromlist, level)
-                note(_local_module_via(name))
-                return result
-        return original(name, globals, locals, fromlist, level)
+        resolved = name if not level else _absolute_name(name, level, globals)
+        if resolved is None:
+            return original(name, globals, locals, fromlist, level)
+        if _is_reference_name(resolved):
+            # inside a reference source file an import is an edge of the graph (``depends``), not the test's
+            if not level or not _is_reference_name((globals or {}).get("__name__", "")):
+                note(_import_nodes(resolved, tuple(fromlist or ())))
+            return original(name, globals, locals, fromlist, level)
+        result = original(name, globals, locals, fromlist, level)
+        note(_local_module_via(resolved, tuple(fromlist or ())))
+        return result
+
+    @functools.wraps(original_import_module)
+    def recording_import_module(name, package=None):
+        try:
+            resolved = importlib.util.resolve_name(name, package) if name.startswith(".") else name
+        except (ValueError, TypeError):
+            resolved = None
+        if resolved is not None and _is_reference_name(resolved):
+            note(_import_nodes(resolved, ()))
+            return original_import_module(name, package)
+        result = original_import_module(name, package)
+        if resolved is not None:
+            note(_local_module_via(resolved))
+        return result
+
+    @functools.wraps(original_spec)
+    def recording_spec(name, location=None, *args, **kwargs):
+        if location is not None:
+            try:
+                note(_loaded_file_nodes(location))
+            except (TypeError, ValueError, OSError):
+                pass
+        return original_spec(name, location, *args, **kwargs)
 
     recording_import._vv_recording = True
+    importlib.import_module = recording_import_module
+    importlib.util.spec_from_file_location = recording_spec
     builtins.__import__ = recording_import
 
 
@@ -353,8 +452,27 @@ def set_item(nodeid):
     _STATE["item"] = nodeid
 
 
+@contextlib.contextmanager
+def running(nodeid):
+    """Run a block as if ``nodeid`` were the running test (for tests of this module): what is recorded for it
+    is yielded as a set and credited to the real running test too, and nothing is left behind."""
+    previous = _STATE["item"]
+    _STATE["item"] = nodeid
+    got = set()
+    try:
+        yield got
+    finally:
+        _STATE["item"] = previous
+        got |= _BY_ITEM.pop(nodeid, set())
+        if previous is not None:
+            _BY_ITEM[previous] |= got
+
+
 def set_collecting(path):
+    """Set the file being collected (None for none); returns what was set before, to restore."""
+    previous = _STATE["collecting"]
     _STATE["collecting"] = None if path is None else str(path)
+    return previous
 
 
 def push_fixture(fixturedef):

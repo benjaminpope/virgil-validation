@@ -201,9 +201,11 @@ def test_reference_module_imports_are_declared_in_depends():
                     if missing:
                         undeclared.append((pkg, missing))
             else:
-                init_unreg = sorted(set(via.file_via(str(init_py))) - ref_nodes)
-                if init_unreg:
-                    unregistered.append((f"{pkg}.__init__", init_unreg))
+                # a package that is not a node must not re-export a reference: ``from pkg import name``
+                # in a test would resolve to no node at all
+                init_refs = sorted(via.file_via(str(init_py)))
+                if init_refs:
+                    unregistered.append((f"{pkg}.__init__", init_refs))
         for py in sorted((ROOT / "src" / pkg).rglob("*.py")):
             rel = py.relative_to(ROOT / "src")
             if rel.parts == (pkg, "__init__.py"):
@@ -223,9 +225,17 @@ def test_reference_module_imports_are_declared_in_depends():
         rel_test = py.relative_to(ROOT)
         if any(via.is_ignored_repo_part(part) for part in rel_test.parts):
             continue
-        test_unreg = sorted(set(via.file_via(str(py))) - ref_nodes)
+        test_unreg = sorted(set(via.file_via(str(py), include_tests=True)) - ref_nodes)
         if test_unreg:
             unregistered.append((rel_test.as_posix(), test_unreg))
+        for call in ast.walk(ast.parse(py.read_text(encoding="utf-8"))):
+            if isinstance(call, ast.Call) and getattr(call.func, "attr", None) == "validates":
+                for kw in call.keywords:
+                    if kw.arg == "via" and isinstance(kw.value, (ast.List, ast.Tuple)):
+                        declared_via = [e.value for e in kw.value.elts if isinstance(e, ast.Constant)]
+                        bad_via = sorted(set(declared_via) - ref_nodes)
+                        if bad_via:
+                            unregistered.append((f"{rel_test.as_posix()}:{call.lineno} via=", bad_via))
     assert not unregistered, unregistered
     assert not undeclared, undeclared
     cycles = _find_depends_cycles(GRAPH["nodes"])

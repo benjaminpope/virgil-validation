@@ -117,7 +117,9 @@ def pytest_configure(config):
         "validates(obj, *more, roots, kind='check', tier='A', headline=None): "
         "the virgil objects (or our references) this test validates, against "
         "which roots of trust, and optionally which recorded metric "
-        "summarises it on the Trust page",
+        "summarises it on the Trust page; via=[...] names reference nodes "
+        "(crosscheck.*, external_bridge.*, virgil_bridge*) the check relies on "
+        "that the recorder cannot see (code started outside _subprocess.run)",
     )
     config.stash[_RECORDS] = []
     config.stash[_DESELECTED] = []
@@ -3711,11 +3713,12 @@ def pytest_make_collect_report(collector):
     because a ``virgil.*`` module is missing is a collection error, so that a
     renamed or removed virgil module cannot silently remove its tests."""
     is_module = isinstance(collector, pytest.Module)
-    if is_module:
-        _via.set_collecting(collector.path)
-    outcome = yield
-    if is_module:
-        _via.set_collecting(None)
+    previous = _via.set_collecting(collector.path) if is_module else None
+    try:
+        outcome = yield
+    finally:
+        if is_module:
+            _via.set_collecting(previous)
     report = outcome.get_result()
     if (
         report.skipped
