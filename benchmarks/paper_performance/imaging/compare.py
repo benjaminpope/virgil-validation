@@ -2,7 +2,7 @@
 virgil nor eht-imaging (the scoring is NumPy: ``neutral.py`` and ``crosscheck.image_metrics``).
 
     python compare.py gate-report [--cases I-sim-24 ...]        # needs the two codes' gate outputs (run_*.py gate)
-    python compare.py time-to-target --virgil ROW.json --ehtim ROW.json
+    python compare.py time-to-precision --virgil ROW.json --ehtim ROW.json [--virgil-lm ROW.json]
     python run_virgil.py gate --case I-sim-24 | run --case I-sim-24 --task ladder --config matched [--size tiny]
     python run_ehtim.py   (same arguments)
 
@@ -149,7 +149,8 @@ def drive(code, case, task, size="full", threads=1, wrapper=None, method=None, t
         raise SystemExit(f"data manifest mismatch: {bad} (run make_data.py)")
     tmp = tempfile.mkdtemp(prefix="imaging-", dir=str(make_data.DATA_DIR))
     args["images_file"] = str(Path(tmp) / "images.npz")
-    res = common.timed_process(_worker_cmd(code, args), threads=threads, timeout=timeout, wrapper=wrapper)
+    res = common.timed_process(_worker_cmd(code, args), threads=threads, timeout=timeout, wrapper=wrapper,
+                                cache_key=f"imaging-{case}-{task}-{method or 'lbfgsb'}-{code}-t{threads}")
     identity = dict(case=case, comparison="imaging", code="virgil" if code == "virgil" else "ehtim", config=config,
                     threads=threads, size=size)
     row = common.row_from_process(res, **identity)
@@ -227,39 +228,79 @@ def gate_report(cases):
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# time to target
+# time to precision (cases.yml: ladder.time_to_precision)
 # ----------------------------------------------------------------------------------------------------------------
 
+RUNGS = (0.1, 0.03, 0.01, 0.003, 0.001)     # relative gap to J_ref (cases.yml)
+HEADLINE_ROUTES = ("virgil", "ehtim")       # the matched optimiser family; the default-method virgil route is reported beside
 
-def curve(row):
-    """(median wall time, J) per budget from a ladder row, sorted by budget."""
+
+def _median(v):
+    import statistics
+
+    v = [x for x in v if x is not None]
+    return statistics.median(v) if v else None
+
+
+def curve(rows):
+    """Per budget: median warm wall time (pooled over the processes) and the neutral scores, from ladder rows of one route."""
+    rows = [r for r in rows if r.get("status") == "ok" and r["accuracy"].get("ladder")]
     pts = []
-    for e in row["accuracy"]["ladder"]:
-        pts.append((e["budget"], float(np.median(e["t_warm"])), e["score"]["J"]))
-    return sorted(pts)
+    for i, e in enumerate(rows[0]["accuracy"]["ladder"]):
+        ts = [x for r in rows for x in r["accuracy"]["ladder"][i]["t_warm"]]
+        sc = e["score"]
+        pts.append({"budget": e["budget"], "t": _median(ts), "J": sc["J"], "rms": sc.get("rms_rel_beam"),
+                    "ncc": sc.get("ncc_registered")})
+    return sorted(pts, key=lambda p: p["budget"])
 
 
-def time_to_target(rows_by_code, rel=1e-3):
-    """Interpolated wall time at which each code's J first comes within ``rel`` of the lowest J reached by any code."""
-    curves = {k: curve(r) for k, r in rows_by_code.items()}
-    j_min = min(j for c in curves.values() for _, _, j in c)
-    target = j_min + rel * abs(j_min)
-    out = {"J_min": j_min, "target": target}
+def cold_overhead(rows):
+    """Fixed cost of a fresh process before the first budget's warm time: import + load + (cold - warm) of the first
+    budget (the compile / set-up part of the first call). Median over the processes."""
+    out = []
+    for r in rows:
+        if r.get("status") != "ok" or r.get("t_cold") is None:
+            continue
+        w = _median(r["t_warm"]) or 0.0
+        out.append((r.get("t_import") or 0.0) + (r.get("t_load") or 0.0) + (r.get("t_init") or 0.0) + max(r["t_cold"] - w, 0.0))
+    return _median(out)
+
+
+def _first_reach(points, target):
+    """(interpolated time, first budget at or past the target, its point) or None. Linear in J between budgets."""
+    prev = None
+    for p in points:
+        if p["J"] <= target:
+            if prev is None:
+                return p["t"], p
+            f = (prev["J"] - target) / (prev["J"] - p["J"]) if prev["J"] != p["J"] else 1.0
+            return prev["t"] + f * (p["t"] - prev["t"]), p
+        prev = p
+    return None
+
+
+def time_to_precision(routes, rungs=RUNGS):
+    """Time for each route to first reach each precision rung, J_ref (1 + gap).
+
+    ``routes``: name -> list of ladder rows (one per process); names "virgil", "ehtim" and optionally "virgil_lm".
+    J_ref is the lowest J any route reaches at any budget. ``headline_gap`` is the tightest rung reached by both
+    ``HEADLINE_ROUTES``. Per route and rung: warm time, cold time (fixed overhead + warm time) and the neutral
+    truth diagnostics (rms_rel_beam, ncc) of the first budget at or past the rung."""
+    curves = {k: curve(r) for k, r in routes.items() if r}
+    j_ref = min(p["J"] for c in curves.values() for p in c)
+    out = {"J_ref": j_ref, "rungs": {str(g): j_ref * (1 + g) for g in rungs}, "routes": {}}
     for k, c in curves.items():
-        res = {"best_J": min(j for _, _, j in c), "time": None, "status": "not_reached"}
-        prev = None
-        for b, t, j in c:
-            if j <= target:
-                if prev is None:
-                    res["time"] = t
-                else:
-                    (b0, t0, j0) = prev
-                    f = (j0 - target) / (j0 - j) if j0 != j else 1.0
-                    res["time"] = t0 + f * (t - t0)
-                res["status"] = "ok"
-                break
-            prev = (b, t, j)
-        out[k] = res
+        over = cold_overhead(routes[k])
+        best = min(p["J"] for p in c)
+        res = {"best_J": best, "best_gap": best / j_ref - 1.0, "cold_overhead": over, "reached": {}}
+        for g in rungs:
+            hit = _first_reach(c, j_ref * (1 + g))
+            res["reached"][str(g)] = None if hit is None else {
+                "time": hit[0], "cold_time": None if over is None else over + hit[0], "budget": hit[1]["budget"],
+                "rms_rel_beam": hit[1]["rms"], "ncc": hit[1]["ncc"]}
+        out["routes"][k] = res
+    both = [g for g in rungs if all(h in out["routes"] and out["routes"][h]["reached"][str(g)] for h in HEADLINE_ROUTES)]
+    out["headline_gap"] = min(both) if both else None
     return out
 
 
@@ -292,14 +333,17 @@ if __name__ == "__main__":
     sub = ap.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("gate-report")
     g.add_argument("--cases", nargs="*", default=list(make_data.CASES))
-    t = sub.add_parser("time-to-target")
+    t = sub.add_parser("time-to-precision")
     t.add_argument("--virgil", required=True)
     t.add_argument("--ehtim", required=True)
+    t.add_argument("--virgil-lm", default=None)
     a = ap.parse_args()
     if a.cmd == "gate-report":
         rep = gate_report(a.cases)
         for case, e in rep["cases"].items():
             print(case, "PASS" if e["passed"] else "FAIL", f"worst rel diff {e['worst_rel_diff']:.3e}", e["points"])
     else:
-        rows = {"virgil": json.loads(Path(a.virgil).read_text()), "ehtim": json.loads(Path(a.ehtim).read_text())}
-        print(json.dumps(time_to_target(rows), indent=1))
+        rows = {"virgil": [json.loads(Path(a.virgil).read_text())], "ehtim": [json.loads(Path(a.ehtim).read_text())]}
+        if a.virgil_lm:
+            rows["virgil_lm"] = [json.loads(Path(a.virgil_lm).read_text())]
+        print(json.dumps(time_to_precision(rows), indent=1))

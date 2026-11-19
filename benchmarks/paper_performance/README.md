@@ -32,6 +32,12 @@ Pin: virgil `c2be8278a4d6549282b3cf199852101929df0462` (the 0.4.2 release candid
 string reads 0.4.1). The paper's `\version` strings (`v0.4.2` in `main.tex`, `v0.4.1` in `numbers.tex`) are listed
 beside it; reconciling them is outside this benchmark. The commit and the version string are recorded in every row.
 
+Run r2 (PR 275 review) pins virgil `09b268521072a83f73bc0a77defa6485db270c7b` (main after #742: opt-in
+`enable_compilation_cache`, fewer eager compiles; also reads 0.4.1). The harness turns the cache on through virgil's own
+`enable_compilation_cache` (cache cleared before each cold measurement; a separate warm-with-cache column). Run r1 rows
+stay at `c2be8278`; every row records its own `virgil_pin`. Every virgil binary and imaging row and the orbit rows are
+rerun at the new pin; r1 rows of the other codes are unchanged. CI still pins `c2be8278` in `tests.yml`.
+
 ## Protocol in brief
 
 * Predeclare, then run: cases, settings and metrics are committed in each `cases.yml` before any measured run; a later

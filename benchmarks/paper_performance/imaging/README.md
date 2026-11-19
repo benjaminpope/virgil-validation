@@ -13,7 +13,7 @@ in `cases.yml` (predeclared; changes are logged in `CHANGES.md`). Nothing here e
 | `make_data.py` | deterministic simulated data (`crosscheck`), `manifest.json` (sha256, committed), shared helpers (start and truth images, eht-imaging rows, neutral data dict) |
 | `run_virgil.py`, `run_ehtim.py` | drivers: `gate` and `run` (one fresh process per row, scored by the neutral scorer outside the measured process) |
 | `ehtim_bench_worker.py` | eht-imaging side, runs in `EHTIM_PYTHON`: timing, `maxit` control, the documented `native` recipe; imports `_imager` / `objective` from the bridge worker |
-| `compare.py` | driver internals, neutral scoring, gate report, time-to-target |
+| `compare.py` | driver internals, neutral scoring, gate report, time-to-precision |
 | `test_imaging.py` | tests of the helpers (`cd benchmarks/paper_performance && pyquick $BENCH_PYTHON -m pytest imaging/test_imaging.py`) |
 | `gate_results.json` | output of `compare.py gate-report` (committed: the gate numbers below) |
 
@@ -33,8 +33,9 @@ process per call, rows in `results/raw/`. Tasks: `ladder` (matched; `--method de
 fit's own default method), `per_eval`, `stop_default` (matched, each code's own stopping rule), `stop_tight` (config
 `tight`), `native`. Gate output is read from `~/.cache/virgil-bench/data/imaging/gate/`; a case whose gate failed gets
 `status: gate_failed` on its `matched` / `tight` rows (measurements kept).
-After the ladder rows of both codes exist, `compare.py time-to-target --virgil ROW.json --ehtim ROW.json` gives the
-interpolated time to target.
+After the ladder rows of both codes exist, `compare.py time-to-precision --virgil ROW.json --ehtim ROW.json [--virgil-lm ROW.json]` gives the
+interpolated time to each precision rung of `cases.yml` (`ladder.time_to_precision`): neutral J within 10 %, 3 %, 1 %, 0.3 %,
+0.1 % of the lowest J either code reaches; the headline is the tightest rung both codes reach.
 
 ## What is measured
 

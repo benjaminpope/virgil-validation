@@ -64,6 +64,11 @@ const PHASE = CONFIG == "matched" ? :M0 : :θ
 period_prior() = CASE == "O-A-real" ?
     truncated(Normal(10.658451, 0.001), 10.658451 - 5 * 0.001, 10.658451 + 5 * 0.001) : Uniform(150.0, 250.0)
 
+# O-A-sim-pulls: one fit per noise seed, as in run_virgil.py (equal work: pull-seeds datasets in both codes); the other
+# cases have a single dataset
+const PULLS = CASE == "O-A-sim-pulls"
+const SEEDS = PULLS ? collect(0:parse(Int, A["pull-seeds"]) - 1) : [0]
+
 function build_system(obs_fn; flux = false)
     A_ = Body(name = "A", variables = @variables begin
         mass ~ Uniform(0.5, 5.0)
@@ -102,8 +107,8 @@ function build_system(obs_fn; flux = false)
                   observing_geometry = CORR, barycentric_lighttime = CORR, variables = sysvars)
 end
 
-function level_a(A_, b)
-    tab = CSV.read(joinpath(DATA, CASE == "O-A-sim-pulls" ? "astrometry_O-A-sim-pulls_seed00.csv" :
+function level_a(A_, b, seed = 0)
+    tab = CSV.read(joinpath(DATA, PULLS ? "astrometry_O-A-sim-pulls_seed$(lpad(seed, 2, '0')).csv" :
                                   "astrometry_$(CASE).csv"), Table)
     tab = Table(epoch = tab.epoch, ra = tab.ra, dec = tab.dec, σ_ra = tab.sigma_ra, σ_dec = tab.sigma_dec, cor = tab.cor)
     return RelAstromObs(tab; target = b, ref = A_, name = "relastrom")
@@ -134,15 +139,11 @@ function write_chain(dir, k, chain)
 end
 
 function main()
-    t_load0 = time_ns()
-    sys = build_system(LEVEL == "A" ? level_a : level_b)
-    model = Octofitter.LogDensityModel(sys)
-    t_load = tsec(t_load0)
     warm = parse(Int, A["warmup"]); draws = parse(Int, A["draws"]); nch = parse(Int, A["chains"])
     seed = parse(Int, A["seed"]); maxd = parse(Int, A["max-depth"])
     use_pigeons = LEVEL == "B" && CONFIG == "native"
 
-    function one_call(seed0)
+    function one_call(model, seed0)
         chains = []
         for k in 1:nch
             rng = Random.Xoshiro(seed0 * 100 + k)
@@ -156,32 +157,45 @@ function main()
         return chains
     end
 
-    # initialisation: Octofitter's own route (global optimisation + Pathfinder), no user guesses
-    t0 = time_ns()
-    init_chain = initialize!(model; verbosity = 0)
-    t_init = tsec(t0)
-
-    t0 = time_ns()
-    chains = one_call(seed)
-    t_cold = tsec(t0)
+    # one dataset per iteration (pulls: one per noise seed, run 1 fitted seed 00 only); load, init and the first sampling
+    # call are summed over the datasets, the warm call is the second call on the first one, as in run_virgil.py
+    t_load = 0.0; t_init = 0.0; t_cold = 0.0
     t_warm = Float64[]
-    if A["no-warm"] != "true"
+    chains = nothing
+    model = nothing
+    for (ids, ds) in enumerate(SEEDS)
         t0 = time_ns()
-        one_call(seed + 1)
-        push!(t_warm, tsec(t0))
+        sys = build_system(LEVEL == "A" ? (A_, b) -> level_a(A_, b, ds) : level_b)
+        model = Octofitter.LogDensityModel(sys)
+        t_load += tsec(t0)
+        # initialisation: Octofitter's own route (global optimisation + Pathfinder), no user guesses
+        t0 = time_ns()
+        initialize!(model; verbosity = 0)
+        t_init += tsec(t0)
+        t0 = time_ns()
+        ch = one_call(model, seed)
+        t_cold += tsec(t0)
+        if ids == 1
+            chains = ch
+            if A["no-warm"] != "true"
+                t0 = time_ns()
+                one_call(model, seed + 1)
+                push!(t_warm, tsec(t0))
+            end
+        end
     end
     if A["out"] != ""
         for (k, c) in enumerate(chains)
             write_chain(A["out"], k, c)
         end
     end
-    flags = (t_warm != Float64[] && t_warm[1] > 0.9 * t_cold) ? ["warm_recompiled"] : String[]
+    flags = (t_warm != Float64[] && t_warm[1] > 0.9 * t_cold / length(SEEDS)) ? ["warm_recompiled"] : String[]
     flags = CORR == false ? flags : vcat(flags, String[])
     out = Dict(
         "t_calib" => T_CALIB, "t_import" => T_IMPORT, "t_load" => t_load, "t_init" => t_init, "t_cold" => t_cold,
         "t_warm" => t_warm, "t_inner_total" => tsec(T_START), "rusage_peak_mb" => Sys.maxrss() / 1e6,
         "thread_env" => Dict("julia_threads" => Threads.nthreads()), "flags" => flags,
-        "n_data" => LEVEL == "A" ? 2 * (CASE == "O-A-real" ? 12 : 10) : 1440, "n_param" => model.D,
+        "n_data" => LEVEL == "A" ? 2 * (CASE == "O-A-real" ? 12 : 10) : 1440, "n_param" => model.D, "n_datasets" => length(SEEDS),
         "iterations" => Dict("sampling_calls" => 1 + length(t_warm)),
         "accuracy" => Dict(),
         "settings" => Dict("config" => CONFIG, "case" => CASE, "phase_parameter" => string(PHASE), "warmup" => warm,

@@ -29,6 +29,7 @@ import common  # noqa: E402
 RAW = HERE / "results" / "raw"
 LOG = HERE / "results" / "matrix_log.jsonl"
 BUDGET_S = 7 * 3600
+RERUN = {"on": False}     # --rerun: the second matrix (run id r2), only the rows the 2026-11-19 review changes (see rerun_filter)
 PY = os.environ.get("BENCH_PYTHON", sys.executable)
 JULIA_PROJECT = HERE / "orbit" / "julia"
 ORBIT_RUNS = Path.home() / ".cache" / "virgil-bench" / "runs" / "orbit" / "measured"
@@ -274,8 +275,48 @@ def finalise(specs):
     return specs
 
 
+def rerun_filter(sp):
+    """Rows of the second matrix (run r2): those the review's fixes change. Orbit rows (virgil: chain_method="vectorized",
+    persistent cache, held threads; Octofitter: the pulls loop now fits every seed, the others alternate with virgil), imaging
+    ladder / per_eval / native rows (cache, held threads; the ladder is rescored as time to precision), binary T1 and T2
+    matched (cache, held threads, like-for-like cold). Every virgil binary and imaging row is rerun at the new pin (09b26852). Not rerun for the other codes: binary T3 and
+    pulls, imaging stop_default / stop_tight, every 2-thread row, the I-sim-ring and I-sim-large ladders, O-B-sim native for Octofitter (it timed out in run 1), the
+    gates, and all rows that were not run in r1. Their r1 rows stay in the tables, labelled run r1."""
+    if sp.runner in ("untimed", "not_run") or sp.threads != 1:
+        return False
+    t = sp.label
+    if sp.comp in ("binary", "imaging") and sp.code == "virgil":
+        return True    # virgil #742 (fewer eager compiles) changes the cold time of every virgil row: rerun them all
+    if sp.comp == "binary":
+        return t in ("T1/matched", "T2/matched")
+    if sp.comp == "imaging":
+        if sp.case == "I-sim-large":
+            return False
+        return (t.startswith("ladder") and sp.case != "I-sim-ring") or t in ("per_eval", "native")
+    if sp.comp == "orbit":
+        if sp.case == "O-B-sim" and t == "native":
+            return sp.code == "virgil"
+        return sp.case in ("O-A-sim", "O-A-real", "O-A-sim-pulls", "O-B-sim") and t in ("matched", "native")
+    return False
+
+
+def rerun_order(sp):
+    """Most important first, so the 4 h cap cuts the least important rows: imaging ladders, orbit matched, the rest."""
+    if sp.comp == "imaging" and sp.label.startswith("ladder"):
+        return 0
+    if sp.comp == "orbit" and sp.label == "matched":
+        return 1
+    if sp.comp == "binary":
+        return 2
+    if sp.comp == "imaging":
+        return 3
+    return 4
+
+
 def ordered(specs):
     """Stable priority order; within a priority keep the construction order (codes alternate inside a case)."""
+    if RERUN["on"]:
+        return sorted([x for x in specs if rerun_filter(x)], key=lambda x: (rerun_order(x), x.prio))
     return sorted(specs, key=lambda x: x.prio)
 
 
@@ -339,7 +380,8 @@ def run_one(sp):
         code, case, config, threads, rounds = sp.argv
         cmd = o_cmd(code, case, config, threads, ORBIT_RUNS / f"{case}_{config}_t{threads}_{code}",
                          rounds if code == "octofitter" else None)
-        res = common.timed_process(cmd, threads=threads, timeout=1800, wrapper=None if TEST["no_wrapper"] else "pyslot")
+        res = common.timed_process(cmd, threads=threads, timeout=1800, wrapper=None if TEST["no_wrapper"] else "pyslot",
+                                   cache_key=f"orbit-{case}-{config}-{code}-t{threads}")
         row = common.row_from_process(res, case=case, comparison="orbit", code=code, config=config, threads=threads,
                                       size="full")
         row["settings"].update({"task": "orbit-" + config, "case_id": case})
@@ -378,7 +420,7 @@ def execute(specs):
             prev_h = max(prev_h, d.get("elapsed_h", 0.0))
     t0 = time.time() - prev_h * 3600
     RAW.mkdir(parents=True, exist_ok=True)
-    done_marker = RAW.parent / "DONE"
+    done_marker = RAW.parent / ("DONE_r2" if RERUN["on"] else "DONE")
     if TEST["tiny"] or TEST["no_wrapper"]:
         (RAW.parent).mkdir(parents=True, exist_ok=True)
         (RAW.parent / "TEST_RUN_BYPASSES").write_text(f"test-only run (tiny={TEST['tiny']}, no_wrapper={TEST['no_wrapper']}); idle, AC and pyslot checks were NOT applied; rows are not measurements\n")
@@ -433,8 +475,23 @@ def execute(specs):
                     n_proc[sp.key] = common.repeat_plan(call)["processes"]
                     if r.get("status") in ("timeout", "oom", "error", "gate_failed") or "pulls" in sp.label:
                         n_proc[sp.key] = 1   # a failed row is not repeated; a pull loop is timed once as a whole
+        # "warm with cache": one more virgil process per row, run on the cache directory the last cold process of that row
+        # filled (BENCH_JAX_CACHE_MODE=populated); reported separately, never pooled with the cold rows
+        if RERUN["on"]:
+            for sp in blk:
+                if sp.code in ("virgil", "virgil2") and sp.runner not in ("untimed", "not_run") and sp.key not in done_keys \
+                        and time.time() - t0 <= BUDGET_S and n_proc.get(sp.key, 0) >= 0 and produced.get(sp.key):
+                    os.environ["BENCH_JAX_CACHE_MODE"] = "populated"
+                    try:
+                        got = run_one(sp)
+                    finally:
+                        os.environ.pop("BENCH_JAX_CACHE_MODE", None)
+                    log.write(json.dumps({"key": sp.key, "cache_populated": True, "rows": got,
+                                          "elapsed_h": (time.time() - t0) / 3600}) + "\n")
+                    log.flush()
     # one rerun, only for noisy / threads_not_held rows
-    rows = {p: json.loads(Path(p).read_text()) for ps in produced.values() for p in ps}
+    rows = {p: json.loads(Path(p).read_text()) for ps in produced.values() for p in ps
+            if json.loads(Path(p).read_text())["settings"].get("jax_cache") != "populated"}
     for p, r in rows.items():
         r["language"] = "julia" if r["code"] == "octofitter" else "python"
     common.flag_noisy(list(rows.values()))
@@ -443,7 +500,7 @@ def execute(specs):
     for sp in specs:
         if time.time() - t0 > BUDGET_S:
             break
-        ps = produced.get(sp.key, [])
+        ps = [p for p in produced.get(sp.key, []) if p in rows]
         if any(("noisy" in rows[p]["flags"] or "threads_not_held" in rows[p]["flags"]) for p in ps):
             got = run_one(sp)
             log.write(json.dumps({"key": sp.key, "rerun": True, "rows": got}) + "\n")
@@ -455,12 +512,22 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--resume", action="store_true", help="continue a crashed run: skip specs already in the log")
+    ap.add_argument("--rerun", action="store_true", help="the second matrix (BENCH_RUN_ID=r2): only the rows rerun_filter lists, "
+                    "plus a populated-cache process per virgil row")
+    ap.add_argument("--budget-h", type=float, default=None, help="wall-clock cap in hours (default 7; the rerun uses 4)")
     ap.add_argument("--only", nargs="*", default=None, help="TEST ONLY: run just the specs whose key contains one of these")
     ap.add_argument("--tiny", action="store_true", help="TEST ONLY: --size tiny for binary/imaging runners")
     ap.add_argument("--no-wrapper", action="store_true", help="TEST ONLY: no pyslot wrapper (run inside pyquick)")
     ap.add_argument("--out-dir", default=None, help="TEST ONLY: rows/log/marker go here instead of results/")
     a = ap.parse_args()
-    global RAW, LOG, RESUME
+    global RAW, LOG, RESUME, BUDGET_S
+    if a.rerun:
+        RERUN["on"] = True
+        LOG = HERE / "results" / "matrix_log_r2.jsonl"
+        os.environ["BENCH_RUN_ID"] = "r2"
+        BUDGET_S = 4 * 3600
+    if a.budget_h:
+        BUDGET_S = int(a.budget_h * 3600)
     if a.out_dir:
         RAW, LOG = Path(a.out_dir) / "raw", Path(a.out_dir) / "matrix_log.jsonl"
         TEST["out"] = RAW

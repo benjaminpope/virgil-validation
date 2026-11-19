@@ -111,6 +111,8 @@ def bench_worker(args):
         import virgil.imaging  # noqa: F401
         import virgil.models  # noqa: F401
         import numpy as np
+
+        common.enable_jax_cache()  # after the virgil import: uses virgil.enable_compilation_cache
     with sw("t_load"):
         pb = Problem(args["case"])
     task, reps = args["task"], int(args["reps"])

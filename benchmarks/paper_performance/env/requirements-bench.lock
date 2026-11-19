@@ -104,7 +104,7 @@ typing-extensions==4.16.0
 typing-inspection==0.4.5
 tzdata==2026.6
 urllib3==2.8.0
-virgil-astro @ git+https://github.com/benjaminpope/virgil@c2be8278a4d6549282b3cf199852101929df0462
+virgil-astro @ git+https://github.com/benjaminpope/virgil@09b268521072a83f73bc0a77defa6485db270c7b
 wadler-lindig==0.1.8
 wcwidth==0.9.4
 webencodings==0.6.1

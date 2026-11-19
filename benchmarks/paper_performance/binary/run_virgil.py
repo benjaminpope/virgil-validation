@@ -43,6 +43,8 @@ def _imports(device):
     from virgil.models import BinaryModelCartesian, PointSource, System, UniformDisk
     from virgil.oidata import OIData
 
+    common.enable_jax_cache()  # after the virgil import: uses virgil.enable_compilation_cache
+
     return SimpleNamespace(
         jax=jax, dist=dist, virgil=virgil, fit=fit, best_grid_point=best_grid_point, likelihood_grid=likelihood_grid,
         laplace_cov=laplace_cov, whitened_residuals=whitened_residuals, Binary=BinaryModelCartesian,

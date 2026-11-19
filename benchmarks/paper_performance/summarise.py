@@ -68,13 +68,30 @@ def med(v):
     return st.median(v) if v else None
 
 
+def run_rank(r):
+    """r1 (the first matrix) < r2 < ...; rows of a group's latest run replace the earlier ones (earlier rows stay in raw/)."""
+    try:
+        return int(str(r["settings"].get("run", "r1")).lstrip("r"))
+    except ValueError:
+        return 1
+
+
+def fresh(r):
+    """Like-for-like cold: import + load + init + first call (the whole of a new session before warm work)."""
+    if r.get("t_cold") is None:
+        return None
+    return (r.get("t_import") or 0.0) + (r.get("t_load") or 0.0) + (r.get("t_init") or 0.0) + r["t_cold"]
+
+
 def group(rows):
-    g = defaultdict(list)
+    g, pop = defaultdict(list), defaultdict(list)
     for r in rows:
         key, variant = ident(r)
-        g[(key, r["code"], variant)].append(r)
+        (pop if r["settings"].get("jax_cache") == "populated" else g)[(key, r["code"], variant)].append(r)
     out = {}
     for (key, code, variant), rs in g.items():
+        latest = max(run_rank(r) for r in rs)
+        rs = [r for r in rs if run_rank(r) == latest]
         ok = [r for r in rs if r["status"] == "ok"]
         warm = [x for r in ok for x in r["t_warm"]]
         flags = sorted({f for r in rs for f in r["flags"]})
@@ -84,9 +101,16 @@ def group(rows):
         init = [r["t_init"] for r in ok if r["t_init"] is not None]
         cold = [r["t_cold"] for r in ok if r["t_cold"] is not None]
         tot = [(r["t_init"] or 0) + r["t_cold"] for r in ok if r["t_cold"] is not None]
+        fr = [fresh(r) for r in ok if fresh(r) is not None]
+        pr_ = [r for r in pop.get((key, code, variant), []) if r["status"] == "ok" and run_rank(r) == latest]
+        pw = [x for r in pr_ for x in r["t_warm"]]
         out[(key, code, variant)] = {
             "key": key, "code": code, "variant": variant, "status": status, "n_proc": len(rs), "n_ok": len(ok),
+            "run": f"r{latest}",
             "t_cold": med(cold), "t_init": med(init), "t_total_cold": med(tot),
+            "t_fresh": med(fr), "fresh_range": (min(fr), max(fr)) if fr else (None, None),
+            "cache": {"t_fresh": med([fresh(r) for r in pr_]), "t_cold": med([r["t_cold"] for r in pr_]),
+                      "t_warm": med(pw), "n": len(pr_)} if pr_ else None,
             "warm": {"median": med(warm), "min": min(warm) if warm else None, "max": max(warm) if warm else None},
             "cold_range": (min(cold), max(cold)) if cold else (None, None),
             "t_import": med([r["t_import"] for r in ok]), "t_process": med([r["t_process"] for r in ok]),
@@ -114,15 +138,18 @@ def pairs(groups):
 def ratios(v, o, basis):
     if basis == "warm":
         return common.ratio_with_spread(o["warm"], v["warm"])
-    mk = lambda g: {"median": g["t_cold"], "min": g["cold_range"][0], "max": g["cold_range"][1]}  # noqa: E731
+    if basis == "fresh":
+        mk = lambda g: {"median": g["t_fresh"], "min": g["fresh_range"][0], "max": g["fresh_range"][1]}  # noqa: E731
+    else:
+        mk = lambda g: {"median": g["t_cold"], "min": g["cold_range"][0], "max": g["cold_range"][1]}  # noqa: E731
     return common.ratio_with_spread(mk(o), mk(v))
 
 
 # ----------------------------------------------------------------------------------------------------------------
-# imaging time to target (compare.time_to_target, loaded by path: its sibling modules share names with other dirs)
+# imaging time to precision (compare.time_to_precision, loaded by path: its sibling modules share names with other dirs)
 # ----------------------------------------------------------------------------------------------------------------
 
-def imaging_ttt(groups):
+def _imaging_compare():
     spec_dir = HERE / "imaging"
     sys.path.insert(0, str(spec_dir))
     try:
@@ -131,16 +158,48 @@ def imaging_ttt(groups):
         spec.loader.exec_module(mod)
     finally:
         sys.path.remove(str(spec_dir))
+    return mod
+
+
+def imaging_ttp(groups):
+    """Per imaging case: time to each precision rung for virgil (L-BFGS-B), virgil (default method) and eht-imaging."""
+    mod = _imaging_compare()
     out = {}
-    for (key, code, variant), g in groups.items():
-        if key[0] == "imaging" and key[2] == "ladder" and code == "virgil" and variant in (None, "lbfgsb"):
-            o = [x for (k, c, v), x in groups.items() if k == key and c == "ehtim"]
-            if o and g["rows"] and o[0]["rows"] and g["status"] == "ok" and o[0]["status"] == "ok":
-                try:
-                    out[key] = mod.time_to_target({"virgil": g["rows"][0], "ehtim": o[0]["rows"][0]})
-                except Exception as e:  # recorded, not hidden
-                    out[key] = {"error": repr(e)}
+    for key in {k for (k, c, v) in groups if k[0] == "imaging" and k[2] == "ladder"}:
+        routes = {}
+        for (k, code, variant), g in groups.items():
+            if k != key or g["status"] != "ok" or not g["rows"]:
+                continue
+            if code == "virgil" and variant in (None, "lbfgsb"):
+                routes["virgil"] = g["rows"]
+            elif code == "virgil":
+                routes["virgil_lm"] = g["rows"]
+            elif code == "ehtim":
+                routes["ehtim"] = g["rows"]
+        if "ehtim" in routes and "virgil" in routes:
+            try:
+                out[key] = mod.time_to_precision(routes)
+            except Exception as e:  # recorded, not hidden
+                out[key] = {"error": repr(e)}
     return out
+
+
+def ttp_pairs(ttp):
+    """[(case key, route, warm ratio, cold ratio, gap)] other / virgil at the headline rung, for both virgil routes."""
+    res = []
+    for key, t in sorted(ttp.items()):
+        gap = t.get("headline_gap")
+        if gap is None:
+            continue
+        o = t["routes"]["ehtim"]["reached"][str(gap)]
+        for route in ("virgil", "virgil_lm"):
+            if route not in t["routes"]:
+                continue
+            v = t["routes"][route]["reached"][str(gap)]
+            if v is None:
+                continue
+            res.append((key, route, o["time"] / v["time"], (o["cold_time"] / v["cold_time"]) if o["cold_time"] and v["cold_time"] else None, gap))
+    return res
 
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -149,7 +208,9 @@ def imaging_ttt(groups):
 
 CSV_COLS = ["comparison", "case", "task", "config", "threads", "code", "variant", "status", "n_proc", "n_ok", "n_data",
             "n_param", "t_cold_median", "t_cold_min", "t_cold_max", "t_warm_median", "t_warm_min", "t_warm_max",
-            "t_init_median", "t_total_cold_median", "t_import_median", "t_process_median", "peak_footprint_mb",
+            "t_init_median", "t_total_cold_median", "t_fresh_median", "t_fresh_min", "t_fresh_max", "t_import_median",
+            "t_cold_cache_populated", "t_fresh_cache_populated", "t_warm_cache_populated", "run", "counted", "ratio_fresh",
+            "ratio_fresh_lo", "ratio_fresh_hi", "t_process_median", "peak_footprint_mb",
             "baseline_mb", "ratio_warm", "ratio_warm_lo", "ratio_warm_hi", "ratio_cold", "ratio_cold_lo",
             "ratio_cold_hi", "flags", "reason"]
 
@@ -157,17 +218,22 @@ CSV_COLS = ["comparison", "case", "task", "config", "threads", "code", "variant"
 def csv_rows(groups):
     pr = {}
     for key, v, o in pairs(groups):
-        pr[(key, v["variant"])] = (ratios(v, o, "warm"), ratios(v, o, "cold"))
+        pr[(key, v["variant"])] = (ratios(v, o, "warm"), ratios(v, o, "cold"), ratios(v, o, "fresh"))
     rows = []
     for (key, code, variant), g in sorted(groups.items(), key=lambda kv: (kv[0][0], kv[0][1] != "virgil", kv[0][2] or "")):
-        rw, rc = pr.get((key, variant), ({}, {})) if code == "virgil" else ({}, {})
+        rw, rc, rf = pr.get((key, variant), ({}, {}, {})) if code == "virgil" else ({}, {}, {})
+        ca = g["cache"] or {}
         rows.append({
             "comparison": key[0], "case": key[1], "task": key[2], "config": key[3], "threads": key[4], "code": code,
             "variant": variant or "", "status": g["status"], "n_proc": g["n_proc"], "n_ok": g["n_ok"],
             "n_data": g["n_data"], "n_param": g["n_param"], "t_cold_median": g["t_cold"],
             "t_cold_min": g["cold_range"][0], "t_cold_max": g["cold_range"][1], "t_warm_median": g["warm"]["median"],
             "t_warm_min": g["warm"]["min"], "t_warm_max": g["warm"]["max"], "t_init_median": g["t_init"],
-            "t_total_cold_median": g["t_total_cold"], "t_import_median": g["t_import"],
+            "t_total_cold_median": g["t_total_cold"], "t_fresh_median": g["t_fresh"], "t_fresh_min": g["fresh_range"][0],
+            "t_fresh_max": g["fresh_range"][1], "t_import_median": g["t_import"],
+            "t_cold_cache_populated": ca.get("t_cold"), "t_fresh_cache_populated": ca.get("t_fresh"),
+            "t_warm_cache_populated": ca.get("t_warm"), "run": g["run"], "counted": counted(key),
+            "ratio_fresh": rf.get("ratio"), "ratio_fresh_lo": rf.get("lo"), "ratio_fresh_hi": rf.get("hi"),
             "t_process_median": g["t_process"], "peak_footprint_mb": g["peak_mb"], "baseline_mb": g["baseline_mb"],
             "ratio_warm": rw.get("ratio"), "ratio_warm_lo": rw.get("lo"), "ratio_warm_hi": rw.get("hi"),
             "ratio_cold": rc.get("ratio"), "ratio_cold_lo": rc.get("lo"), "ratio_cold_hi": rc.get("hi"),
@@ -176,19 +242,48 @@ def csv_rows(groups):
     return rows
 
 
-def faster_counts(groups):
-    c = {"warm": Counter(), "cold": Counter()}
+# Imaging rows that compare unequal work are diagnostics, not counted: the ladder is compared as time to precision
+# (``imaging_ttp``), stop_default pairs different stopping rules, and native pairs virgil's single self-sized grid with
+# eht-imaging on a fixed grid (only the nearest grid, 48 px against 41 px, is counted, with the truth error beside it).
+# Everything else compares the same work in both codes.
+COUNTED_NATIVE = ("I-sim-48", "I-sim-ring")
+
+
+def counted(key):
+    comp, case, task = key[0], key[1], key[2]
+    if comp != "imaging":
+        return True
+    if task == "per_eval":
+        return True            # the same objective and gradient at the same image: equal work by construction
+    if task == "native":
+        return case in COUNTED_NATIVE
+    return False               # ladder (scored as time to precision), stop_default, stop_tight
+
+
+def faster_counts(groups, ttp=None):
+    """Groups in which each code is faster, by basis: warm, cold_first_call (run 1's ``t_cold``) and fresh (import + load +
+    init + first call, the headline cold). Imaging ladder groups enter through ``ttp_pairs`` at the headline rung."""
+    c = {b: Counter() for b in ("warm", "cold_first_call", "fresh")}
+
+    def add(basis, r):
+        if r is None:
+            c[basis]["no_pair_time"] += 1
+        elif r > 1:
+            c[basis]["virgil_faster"] += 1
+        elif r < 1:
+            c[basis]["other_faster"] += 1
+        else:
+            c[basis]["equal"] += 1
+
     for key, v, o in pairs(groups):
-        for basis in ("warm", "cold"):
-            r = ratios(v, o, basis)["ratio"]
-            if r is None:
-                c[basis]["no_pair_time"] += 1
-            elif r > 1:
-                c[basis]["virgil_faster"] += 1
-            elif r < 1:
-                c[basis]["other_faster"] += 1
-            else:
-                c[basis]["equal"] += 1
+        if not counted(key):
+            continue
+        add("warm", ratios(v, o, "warm")["ratio"])
+        add("cold_first_call", ratios(v, o, "cold")["ratio"])
+        add("fresh", ratios(v, o, "fresh")["ratio"])
+    for key, route, rw, rc, gap in ttp_pairs(ttp or {}):
+        add("warm", rw)
+        add("fresh", rc)
     return {k: dict(v) for k, v in c.items()}
 
 
@@ -205,9 +300,9 @@ HEADLINE = [
     ("O-A-sim matched", "orbit", "O-A-sim", "matched", "matched"),
     ("O-A-real matched$^\\dagger$", "orbit", "O-A-real", "matched", "matched"),
     ("O-B-sim matched", "orbit", "O-B-sim", "matched", "matched"),
-    ("I-sim-24 time-to-target", "imaging", "I-sim-24", "ladder", "matched"),
-    ("I-sim-48 time-to-target", "imaging", "I-sim-48", "ladder", "matched"),
-    ("I-sim-96 time-to-target", "imaging", "I-sim-96", "ladder", "matched"),
+    ("I-sim-24 time to precision", "imaging", "I-sim-24", "ladder", "matched"),
+    ("I-sim-48 time to precision", "imaging", "I-sim-48", "ladder", "matched"),
+    ("I-sim-96 time to precision", "imaging", "I-sim-96", "ladder", "matched"),
     ("I-sim-ring native", "imaging", "I-sim-ring", "native", "native"),
 ]
 
@@ -231,7 +326,7 @@ def cell_time(g, field):
         return "not run"
     if g["status"] != "ok":
         return tex_esc(g["status"].replace("_", " "))
-    return f3(g["t_cold"] if field == "cold" else g["warm"]["median"])
+    return f3(g["t_fresh"] if field == "cold" else g["warm"]["median"])
 
 
 def accuracy_cell(key, v, o):
@@ -247,15 +342,15 @@ def accuracy_cell(key, v, o):
     return "---"
 
 
-def tex_table(groups, ttt):
+def tex_table(groups, ttp):
     idx = {}
     for (key, code, variant), g in groups.items():
         if variant in (None, "lbfgsb", "native"):
             idx[(key[0], key[1], key[2], key[3], key[4], code)] = g
     hdr = [
         "% performance_table.tex: tabular only (no caption). All rows 1 thread, laptop CPU, no GPU; times in seconds,",
-        "% footprints in MB (cold/warm = first call including compilation / repeated call; imaging rows give the",
-        "% interpolated time to target in the warm column). Limits:",
+        "% footprints in MB (cold = import + load + init + first call of a fresh process, compilation included; warm =",
+        "% repeated call; imaging ladder rows give the interpolated time to the stated precision, cold and warm). Limits:",
         *[f"%   - {x}" for x in LIMITS],
         "% $^\\dagger$ period-informed prior; not scored.",
         "\\begin{tabular}{lrrrrrrrrrrr}",
@@ -273,20 +368,24 @@ def tex_table(groups, ttt):
         npar = base["n_param"] if base else None
         key = (comp, case, task, config, 1)
         if comp == "imaging" and task == "ladder":
-            t = ttt.get(key, {})
-            tv, to = t.get("virgil", {}), t.get("ehtim", {})
-            def tcell(x, g):
+            t = ttp.get(key, {})
+            gap = t.get("headline_gap")
+            tv, to = t.get("routes", {}).get("virgil"), t.get("routes", {}).get("ehtim")
+            def tcell(x, g, field):
                 if g is not None and g["status"] != "ok":
                     return tex_esc(g["status"].replace("_", " "))
-                if not x:
-                    return "not run"
-                return f3(x["time"]) if x["status"] == "ok" else "not reached"
-            vw, ow = tcell(tv, v), tcell(to, o)
-            ratio = f3(to["time"] / tv["time"]) if tv.get("time") and to.get("time") else "---"
-            row = [label, nd, npar, "---", vw, "---", ow, ratio, "---"]
+                if not x or gap is None:
+                    return "not reached"
+                hit = x["reached"][str(gap)]
+                return f3(hit[field]) if hit else "not reached"
+            pc = lambda f: (f3(to["reached"][str(gap)][f] / tv["reached"][str(gap)][f])  # noqa: E731
+                            if tv and to and gap is not None and tv["reached"][str(gap)] and to["reached"][str(gap)] else "---")
+            lab = f"{label} (J within {gap * 100:g}\\% of best)" if gap is not None else label
+            row = [lab, nd, npar, tcell(tv, v, "cold_time"), tcell(tv, v, "time"), tcell(to, o, "cold_time"),
+                   tcell(to, o, "time"), pc("time"), pc("cold_time")]
         else:
             rw = common.ratio_with_spread(o["warm"], v["warm"]) if (v and o and v["status"] == "ok" and o["status"] == "ok") else {}
-            rc = ratios(v, o, "cold") if (v and o and v["status"] == "ok" and o["status"] == "ok") else {}
+            rc = ratios(v, o, "fresh") if (v and o and v["status"] == "ok" and o["status"] == "ok") else {}
             row = [label, nd, npar, cell_time(v, "cold"), cell_time(v, "warm"), cell_time(o, "cold"),
                    cell_time(o, "warm"), f3(rw.get("ratio")), f3(rc.get("ratio"))]
         row += [f3(v["peak_mb"]) if v and v["status"] == "ok" else "---",
@@ -299,7 +398,7 @@ def tex_table(groups, ttt):
 # figure
 # ----------------------------------------------------------------------------------------------------------------
 
-def figure(groups, ttt, out_dir):
+def figure(groups, ttp, out_dir):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -313,9 +412,9 @@ def figure(groups, ttt, out_dir):
         if w["median"] is not None:
             ax.errorbar([x + dx], [w["median"]], yerr=[[w["median"] - w["min"]], [w["max"] - w["median"]]], fmt=marker,
                         color=color, mfc=color, capsize=2, ms=6)
-        if g["t_cold"] is not None:
-            lo, hi = g["cold_range"]
-            ax.errorbar([x + dx], [g["t_cold"]], yerr=[[g["t_cold"] - lo], [hi - g["t_cold"]]], fmt=marker,
+        if g["t_fresh"] is not None:
+            lo, hi = g["fresh_range"]
+            ax.errorbar([x + dx], [g["t_fresh"]], yerr=[[g["t_fresh"] - lo], [hi - g["t_fresh"]]], fmt=marker,
                         color=color, mfc="none", capsize=2, ms=6)
 
     get = lambda comp, case, task, config, code: next(  # noqa: E731
@@ -336,21 +435,25 @@ def figure(groups, ttt, out_dir):
         plot(ax, i, get("orbit", case, "matched", "matched", "virgil"), C_V, "o", -0.08)
         plot(ax, i, get("orbit", case, "matched", "matched", "octofitter"), C_O, "s", 0.08)
     ax.set_xticks(range(len(names)), names, fontsize=8); ax.set_yscale("log"); ax.set_title("orbit fit (matched)")
-    # imaging: time to target vs pixels
+    # imaging: time to precision (tightest rung both codes reach) vs pixels; warm filled, cold (fresh process) open
     ax = axes[2]
     for case, n in (("I-sim-24", 24), ("I-sim-48", 48), ("I-sim-96", 96)):
-        t = ttt.get(("imaging", case, "ladder", "matched", 1), {})
-        for code, color, marker, dx in (("virgil", C_V, "o", -0.03 * n), ("ehtim", C_O, "s", 0.03 * n)):
-            x = t.get(code, {})
-            if x.get("status") == "ok":
-                ax.plot([n + dx], [x["time"]], marker, color=color, ms=6)
+        t = ttp.get(("imaging", case, "ladder", "matched", 1), {})
+        gap = t.get("headline_gap")
+        if gap is None:
+            continue
+        for route, color, marker, dx in (("virgil", C_V, "o", -0.03 * n), ("ehtim", C_O, "s", 0.03 * n)):
+            hit = t["routes"][route]["reached"][str(gap)]
+            if hit:
+                ax.plot([n + dx], [hit["time"]], marker, color=color, mfc=color, ms=6)
+                ax.plot([n + dx], [hit["cold_time"]], marker, color=color, mfc="none", ms=6)
     ax.set_xscale("log"); ax.set_yscale("log"); ax.set_xlabel("pixels per side"); ax.set_xticks([24, 48, 96], ["24", "48", "96"])
-    ax.minorticks_off(); ax.set_xlim(15, 150); ax.set_title("imaging (time to target)")
+    ax.minorticks_off(); ax.set_xlim(15, 150); ax.set_title("imaging (time to equal precision)")
     from matplotlib.lines import Line2D
     h = [Line2D([], [], marker="o", color=C_V, ls="", label="virgil"),
          Line2D([], [], marker="s", color=C_O, ls="", label="other code"),
          Line2D([], [], marker="o", color="k", mfc="k", ls="", label="warm (median, min-max)"),
-         Line2D([], [], marker="o", color="k", mfc="none", ls="", label="cold (median, min-max)")]
+         Line2D([], [], marker="o", color="k", mfc="none", ls="", label="cold: import + load + init + first call")]
     fig.legend(handles=h, fontsize=7, loc="outside lower center", ncol=4, frameon=False)
     for ext in ("pdf", "png"):
         fig.savefig(Path(out_dir) / f"performance.{ext}", dpi=200, bbox_inches="tight")
@@ -404,15 +507,15 @@ def main():
     rows = load(a.raw)
     Path(a.out).mkdir(parents=True, exist_ok=True)
     groups = group(rows)
-    ttt = imaging_ttt(groups)
+    ttp = imaging_ttp(groups)
     with open(Path(a.out) / "results.csv", "w", newline="") as f:
         w = csv.DictWriter(f, CSV_COLS)
         w.writeheader()
         w.writerows(csv_rows(groups))
-    (Path(a.out) / "performance_table.tex").write_text(tex_table(groups, ttt))
-    figure(groups, ttt, a.out)
-    summary = {"n_rows": len(rows), "n_groups": len(groups), "faster_counts": faster_counts(groups),
-               "time_to_target": {"|".join(map(str, k)): v for k, v in ttt.items()},
+    (Path(a.out) / "performance_table.tex").write_text(tex_table(groups, ttp))
+    figure(groups, ttp, a.out)
+    summary = {"n_rows": len(rows), "n_groups": len(groups), "faster_counts": faster_counts(groups, ttp),
+               "time_to_precision": {"|".join(map(str, k)): v for k, v in ttp.items()},
                "flags": dict(Counter(f for r in rows for f in r["flags"])),
                "status": dict(Counter(r["status"] for r in rows)), "limits": LIMITS}
     (Path(a.out) / "summary.json").write_text(json.dumps(summary, indent=1, default=float))

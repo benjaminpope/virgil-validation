@@ -14,6 +14,7 @@ free_gb=$(df -g / | awk 'NR==2{print $4}')
 if [ "$free_gb" -lt "$MIN_GB" ]; then echo "free disk ${free_gb} GB < ${MIN_GB} GB: stopping" >&2; exit 3; fi
 
 REF=$(grep -E '^\s*VIRGIL_REF:' "$WT/.github/workflows/tests.yml" | head -1 | awk '{print $2}')
+REF="${VIRGIL_BENCH_REF:-$REF}"   # PR 275 reruns pin virgil 09b26852 (#742) here without changing the CI pin
 [ -n "$REF" ] || { echo "VIRGIL_REF not found in tests.yml" >&2; exit 4; }
 echo "VIRGIL_REF=$REF"
 

@@ -46,18 +46,32 @@ def test_start_and_truth_images():
     assert t[ci, cj] > 0.1 * t.max()
 
 
-def test_time_to_target_interpolates_and_flags_not_reached():
-    rows = {
-        "virgil": {"accuracy": {"ladder": [{"budget": 1, "t_warm": [1.0], "score": {"J": 100.0}},
-                                           {"budget": 2, "t_warm": [3.0], "score": {"J": 10.0}}]}},
-        "ehtim": {"accuracy": {"ladder": [{"budget": 1, "t_warm": [1.0], "score": {"J": 500.0}},
-                                          {"budget": 2, "t_warm": [2.0], "score": {"J": 400.0}}]}},
-    }
-    out = compare.time_to_target(rows, rel=0.0)
-    assert out["J_min"] == 10.0 and out["virgil"]["time"] == pytest.approx(3.0)
-    assert out["ehtim"]["status"] == "not_reached" and out["ehtim"]["best_J"] == 400.0
-    out = compare.time_to_target(rows, rel=0.5)  # target J = 15: reached between the two virgil points
-    assert out["virgil"]["time"] == pytest.approx(1.0 + (100 - 15) / (100 - 10) * 2.0)
+def _ladder_row(js, ts, **extra):
+    return {"status": "ok", "t_import": 1.0, "t_load": 0.5, "t_cold": extra.get("cold", ts[0] + 2.0), "t_warm": [ts[0]],
+            "accuracy": {"ladder": [{"budget": 10 * (i + 1), "t_warm": [t], "score": {"J": j, "rms_rel_beam": 0.1, "ncc_registered": 0.9}}
+                                    for i, (j, t) in enumerate(zip(js, ts))]}}
+
+
+def test_time_to_precision_rungs_interpolation_and_headline():
+    routes = {"virgil": [_ladder_row([100.0, 10.0], [1.0, 3.0])],
+              "ehtim": [_ladder_row([500.0, 10.4], [1.0, 2.0])]}      # eht-imaging never gets within 1 % of J_ref = 10
+    out = compare.time_to_precision(routes)
+    assert out["J_ref"] == 10.0
+    v, e = out["routes"]["virgil"], out["routes"]["ehtim"]
+    assert v["reached"]["0.001"]["time"] == pytest.approx(3.0, abs=1e-2)
+    assert e["reached"]["0.01"] is None and e["reached"]["0.1"]["budget"] == 20     # 10.4 is within 10 % but not 1 %
+    assert e["best_gap"] == pytest.approx(0.04)
+    assert out["headline_gap"] == 0.1
+    # target J = 11: eht-imaging interpolated between (J 500, t 1) and (J 10.4, t 2)
+    assert e["reached"]["0.1"]["time"] == pytest.approx(1.0 + (500 - 11) / (500 - 10.4) * 1.0)
+    # cold time = import + load + (cold - warm of the first budget) + warm time
+    assert v["cold_overhead"] == pytest.approx(1.0 + 0.5 + 2.0)
+    assert v["reached"]["0.1"]["cold_time"] == pytest.approx(v["cold_overhead"] + v["reached"]["0.1"]["time"])
+
+
+def test_time_to_precision_no_common_rung_has_no_headline():
+    routes = {"virgil": [_ladder_row([100.0, 10.0], [1.0, 3.0])], "ehtim": [_ladder_row([500.0, 400.0], [1.0, 2.0])]}
+    assert compare.time_to_precision(routes)["headline_gap"] is None
 
 
 def test_task_args_follow_cases_yml():

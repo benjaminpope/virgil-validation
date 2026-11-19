@@ -35,6 +35,9 @@ SIM_PLX = md.TRUTH["plx"]
 SIM_P_RANGE = (150.0, 250.0)
 M_TOT_RANGE = (0.5, 5.0)
 E_MAX = 0.9
+# virgil's documented setting (virgil/pipeline/binary.py, docs/pipeline.md): the chains run in one vectorised program, so the
+# sampling loop is compiled once. "sequential" made NumPyro recompile the loop for every chain (run 1 review).
+CHAIN_METHOD = "vectorized"
 KINDS = {"O-A-sim": "A", "O-A-sim-pulls": "A", "O-A-real": "A", "O-B-sim": "B"}
 
 
@@ -222,7 +225,7 @@ def run_mcmc(model, init, n_warm, n_draw, chains, seed, target_accept=0.8, max_t
 
     if mcmc is None:
         kernel = NUTS(model, target_accept_prob=target_accept, max_tree_depth=max_tree_depth, dense_mass=True)
-        mcmc = MCMC(kernel, num_warmup=n_warm, num_samples=n_draw, num_chains=chains, chain_method="sequential",
+        mcmc = MCMC(kernel, num_warmup=n_warm, num_samples=n_draw, num_chains=chains, chain_method=CHAIN_METHOD,
                     progress_bar=False)
     mcmc.run(jax.random.PRNGKey(seed), init_params=init, extra_fields=("diverging", "num_steps"))
     common.block(mcmc.get_samples(group_by_chain=True))
@@ -272,6 +275,8 @@ def main():
         import virgil  # noqa: F401
         import virgil.epochs, virgil.likelihood, virgil.orbits, virgil.priors  # noqa: E401,F401
         import numpyro  # noqa: F401
+
+        common.enable_jax_cache()  # after the virgil import: uses virgil.enable_compilation_cache
 
     kind, info = KINDS[a.case], case_info(a.case)
     phase = "M0" if a.config == "matched" else "theta"
@@ -349,7 +354,7 @@ def main():
     first = results[0][1]
     acc = {"likelihood_mismatch_rel": 0.02383627411791079 if kind == "B" else None, "n_divergent": int(first["diverging"].sum()), "mean_steps_per_iteration": float(first["num_steps"].mean())}
     settings = {"config": a.config, "phase_parameter": phase, "warmup": a.warmup, "draws": a.draws, "chains": a.chains,
-                "chain_method": "sequential", "target_accept": 0.8, "max_tree_depth": a.max_tree_depth,
+                "chain_method": CHAIN_METHOD, "target_accept": 0.8, "max_tree_depth": a.max_tree_depth,
                 "mass_matrix": "dense (matches Octofitter: AdvancedHMC DenseEuclideanMetric, sampling.jl)", "case": a.case, "versions": ver,
                 "init": "starting_orbits (period_grid over the prior window, n_best = chains)" if kind == "A" else
                         "numpyro default (init_to_uniform)",

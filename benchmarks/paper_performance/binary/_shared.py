@@ -218,7 +218,8 @@ def outer(args, code, script):
         sys.exit(f"task {args.task} is not defined for case {args.case} (cases.yml)")
     cmd = [sys.executable, str(script), "--worker", "--task", args.task, "--case", args.case, "--config",
            args.config, "--size", args.size, "--threads", str(args.threads), "--device", args.device]
-    res = common.timed_process(cmd, threads=args.threads, timeout=args.timeout, wrapper=args.wrapper)
+    res = common.timed_process(cmd, threads=args.threads, timeout=args.timeout, wrapper=args.wrapper,
+                               cache_key=f"binary-{args.case}-{args.task}-{args.config}-{code}-t{args.threads}")
     row = common.row_from_process(
         res, case=f"{args.case}-{args.task}", comparison="binary", code=code, config=args.config,
         threads=args.threads, size=args.size)

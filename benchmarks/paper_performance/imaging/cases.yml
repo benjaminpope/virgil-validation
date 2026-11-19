@@ -53,9 +53,14 @@ ladder:
   virgil_gtol: 0.0                                       # smallest accepted: the tolerance floor is sqrt(eps) of the starting gradient; stop reason recorded per budget
   reps_by_size: {tiny: 1, full: 5}                       # warm repeats per budget (common.repeat_plan applies in WP-R)
   budgets_tiny: [25, 50]
-  time_to_target:
-    reference: "lowest J reached by either code at any budget (matched, lbfgsb row for virgil)"
-    rule: "wall time (median warm) at which J first lies within 1e-3 relative of that lowest J, linearly interpolated between budgets; not_reached with the best J otherwise"
+  time_to_precision:    # replaces time_to_target (run 1, see CHANGES.md): imaging is compared as time to reach one precision, never per step
+    quantity: "neutral J (neutral.image_objective on the unit-flux image, eht-imaging's edge convention), the same function for both codes"
+    reference: "J_ref = lowest J reached by either code at any budget of any matched ladder row (virgil L-BFGS-B, virgil default-method, eht-imaging)"
+    rungs_rel_gap: [0.1, 0.03, 0.01, 0.003, 0.001]    # target_k = J_ref * (1 + gap_k)
+    headline: "the tightest rung that both codes reach at some budget; time to first reach it, linearly interpolated in J between budgets, median warm time per budget"
+    also_reported: "time at every rung each code reaches; cold time to precision = import + load + (cold - warm of the first budget) + warm time; neutral rms against truth (rms_rel_beam, ncc) of the first budget at or past the rung, as a diagnostic (it is not monotone in J)"
+    not_reached: "a rung a code never reaches within the ladder is reported as not_reached with that code's best gap; it is not a speed result"
+    why_changed: "run 1 used one rung, 1e-3 of the lowest J. eht-imaging never reached it on I-sim-24/48/96: its own minimum (log-pixel image, soft flux term at weight 1e6, image not exactly unit flux) lies about 2 % above the J minimum on I-sim-24 (J rises again between budget 1600 and 3200), and on I-sim-48/96 it is still 3-5 % above at budget 3200. The target was set by the lower J that virgil's Levenberg-Marquardt row reaches, which neither the budget nor the optimum of eht-imaging's own objective allows. The ladder itself, budgets and settings are unchanged."
 
 stopping_rows:       # each code once under a stopping rule (config in parentheses)
   default:           # (config matched, task stop_default)

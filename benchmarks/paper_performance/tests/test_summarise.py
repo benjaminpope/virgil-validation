@@ -26,7 +26,23 @@ def test_group_ratio_counts(tmp_path):
     r = summarise.ratios(v, o, "warm")
     assert r["ratio"] == pytest.approx(0.04 / 0.01) and r["lo"] == pytest.approx(0.03 / 0.02)
     c = summarise.faster_counts(g)
-    assert c["warm"] == {"virgil_faster": 1} and c["cold"] == {"other_faster": 1}
+    assert c["warm"] == {"virgil_faster": 1} and c["cold_first_call"] == {"other_faster": 1}
+    assert c["fresh"] == {"other_faster": 1}   # no import/load/init recorded: fresh == t_cold here
+
+
+def test_fresh_adds_import_load_init():
+    r = _row("virgil", 2.0, [0.01], t_import=1.5, t_load=0.25, t_init=0.25)
+    assert summarise.fresh(r) == pytest.approx(4.0)
+    assert summarise.fresh(_row("virgil", None, [], status="timeout")) is None
+
+
+def test_counted_rules():
+    assert summarise.counted(("binary", "B-sim-6", "T2"))
+    assert not summarise.counted(("imaging", "I-sim-24", "ladder"))
+    assert not summarise.counted(("imaging", "I-sim-24", "stop_default"))
+    assert summarise.counted(("imaging", "I-sim-24", "per_eval"))
+    assert summarise.counted(("imaging", "I-sim-48", "native"))
+    assert not summarise.counted(("imaging", "I-sim-96", "native"))
 
 
 def test_failed_row_is_printed_not_dropped():

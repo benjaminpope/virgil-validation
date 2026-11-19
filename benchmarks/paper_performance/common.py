@@ -60,13 +60,28 @@ THREAD_VARS = (
 # ----------------------------------------------------------------------------------------------------------------
 
 
+# Extra XLA CPU flags that stop JAX using more than the stated cores (run 1 showed (user+sys)/wall up to 4.75 at "1
+# thread": the Eigen switch does not cover XLA's parallel code generation, the XNNPACK thread pool or the concurrent
+# scheduler). The set below is what ``thread_probe.py`` found to hold ``(user+sys)/wall`` under 1.2 (see README).
+XLA_HOLD_FLAGS = ("--xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false "
+                  "--xla_cpu_enable_concurrency_optimized_scheduler=false")
+
+
+def xla_flags(n: int, hold: bool = True) -> str:
+    """The ``XLA_FLAGS`` string for ``n`` threads; ``hold`` adds ``XLA_HOLD_FLAGS`` (1 thread only)."""
+    eigen = "true" if n > 1 else "false"
+    flags = f"--xla_cpu_multi_thread_eigen={eigen} intra_op_parallelism_threads={n}"
+    if hold and n == 1:
+        flags += " " + XLA_HOLD_FLAGS
+    return flags
+
+
 def thread_env(n: int = 1) -> dict[str, str]:
     """Environment variables that hold a process to ``n`` threads (plan section 3; ``n`` is 1 or 2, never more)."""
     if n not in (1, 2):
         raise ValueError("benchmarks run on 1 thread (primary) or 2 (second pass), never more")
     env = {v: str(n) for v in THREAD_VARS}
-    eigen = "true" if n > 1 else "false"
-    env["XLA_FLAGS"] = f"--xla_cpu_multi_thread_eigen={eigen} intra_op_parallelism_threads={n}"
+    env["XLA_FLAGS"] = xla_flags(n)
     env["JAX_PLATFORMS"] = "cpu"
     env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     env["JULIA_NUM_THREADS"] = str(n)
@@ -296,17 +311,78 @@ def parse_inner(stdout: str) -> dict | None:
     return found
 
 
+# ----------------------------------------------------------------------------------------------------------------
+# JAX persistent compilation cache (virgil workers only; other codes ignore the variables)
+# ----------------------------------------------------------------------------------------------------------------
+# Mode, from ``BENCH_JAX_CACHE_MODE``: "cold" (default) clears the cache directory of this row before the process, so a
+# cold measurement stays cold (the cache is still on, so repeated programs inside the process are read back); "populated"
+# keeps the directory a preceding cold process of the same row filled (the "warm with cache" measurement); "off" sets
+# nothing. The directory lives under the bench cache, one per row key.
+
+JAX_CACHE_MODES = ("cold", "populated", "off")
+
+
+def jax_cache_mode() -> str:
+    m = os.environ.get("BENCH_JAX_CACHE_MODE", "cold")
+    if m not in JAX_CACHE_MODES:
+        raise ValueError(f"BENCH_JAX_CACHE_MODE {m!r} not in {JAX_CACHE_MODES}")
+    return m
+
+
+def jax_cache_dir(key: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", key)[:120]
+    return BENCH_HOME / "jax_cache" / safe
+
+
+def jax_cache_env(key: str | None, mode: str | None = None) -> tuple[dict, str]:
+    """(environment variables, mode) for one process of the row ``key``; clears the directory in ``cold`` mode."""
+    import shutil
+
+    mode = mode or jax_cache_mode()
+    if mode == "off" or not key:
+        return {}, "off"
+    d = jax_cache_dir(key)
+    if mode == "cold":
+        shutil.rmtree(d, ignore_errors=True)
+    d.mkdir(parents=True, exist_ok=True)
+    return {"BENCH_JAX_CACHE_DIR": str(d)}, mode
+
+
+def enable_jax_cache() -> str | None:
+    """Worker side: call right after ``import virgil``, before any jitted call. Turns the persistent cache on through
+    virgil's own ``enable_compilation_cache`` (virgil >= the commit of PR 742) and falls back to setting JAX's config with
+    the same thresholds (zero) when the installed virgil lacks it or is not imported. No-op without the variable."""
+    d = os.environ.get("BENCH_JAX_CACHE_DIR")
+    if not d:
+        return None
+    import sys
+
+    v = sys.modules.get("virgil")
+    fn = getattr(v, "enable_compilation_cache", None)
+    if fn is not None:
+        fn(d)
+        return d
+    import jax
+
+    jax.config.update("jax_compilation_cache_dir", d)
+    jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+    jax.config.update("jax_persistent_cache_min_entry_size_bytes", 0)
+    return d
+
+
 def timed_process(cmd, *, threads: int = 1, timeout: float = 1800, wrapper: str | None = None,
-                  pyslot_mem: str = "6G", env: dict | None = None, cwd=None) -> dict:
+                  pyslot_mem: str = "6G", env: dict | None = None, cwd=None, cache_key: str | None = None) -> dict:
     """Run ``cmd`` once in a fresh process under ``/usr/bin/time -l`` and return its measurements.
 
     ``wrapper``: None (the caller is already inside pyquick/pyslot), ``"pyslot"`` (as ``run_all.sh`` does, with
-    ``PYSLOT_MEM=pyslot_mem``). The thread environment is set from ``threads``. The result has ``status`` (ok,
-    timeout, oom, error), ``t_process`` (outer wall minus inner total when the worker reports one), the parsed
-    ``time -l`` fields, the worker's ``inner`` dict, and the stdout/stderr tails.
+    ``PYSLOT_MEM=pyslot_mem``). The thread environment is set from ``threads``. ``cache_key`` names the JAX persistent
+    cache directory of this row (see ``jax_cache_env``; the mode comes from ``BENCH_JAX_CACHE_MODE``). The result has
+    ``status`` (ok, timeout, oom, error), ``t_process`` (outer wall minus inner total when the worker reports one), the
+    parsed ``time -l`` fields, the worker's ``inner`` dict, ``jax_cache`` (the mode), and the stdout/stderr tails.
     """
     cmd = [str(c) for c in cmd]
-    full_env = {**os.environ, **thread_env(threads), **(env or {})}
+    cache_env, cache_mode = jax_cache_env(cache_key)
+    full_env = {**os.environ, **thread_env(threads), **cache_env, **(env or {})}
     argv = [TIME_BIN, "-l", *cmd]
     if wrapper == "pyslot":
         full_env["PYSLOT_MEM"] = pyslot_mem
@@ -340,7 +416,7 @@ def timed_process(cmd, *, threads: int = 1, timeout: float = 1800, wrapper: str 
     flags = check_threads(parsed["cpu_ratio"], threads)
     return {
         "status": status, "returncode": rc, "wall_outer": wall_outer, "t_process": t_process, **parsed,
-        "inner": inner, "flags": flags, "stdout_tail": stdout[-2000:], "stderr_tail": stderr[-2000:],
+        "inner": inner, "flags": flags, "jax_cache": cache_mode, "stdout_tail": stdout[-2000:], "stderr_tail": stderr[-2000:],
     }
 
 
@@ -459,7 +535,9 @@ def row_from_process(res: dict, **identity) -> dict:
         baseline_mb=inner.get("baseline_mb"), cpu_ratio=res["cpu_ratio"], flags=flags,
         n_data=inner.get("n_data"), n_param=inner.get("n_param"), iterations=inner.get("iterations", {}),
         accuracy=inner.get("accuracy", {}),
-        settings={**inner.get("settings", {}), **({"reason": res["stderr_tail"][-300:]} if res["status"] != "ok" else {})},
+        settings={**inner.get("settings", {}), "run": os.environ.get("BENCH_RUN_ID", "r1"),
+                  "jax_cache": res.get("jax_cache", "off"),
+                  **({"reason": res["stderr_tail"][-300:]} if res["status"] != "ok" else {})},
         provenance=inner.get("provenance", provenance()), **identity,
     )
 
