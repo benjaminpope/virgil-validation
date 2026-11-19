@@ -15,7 +15,7 @@ try:  # needs virgil main (MultipoleDisk, Harmonics); skipped where the CI pin p
 except ImportError:
     P = Q = None
 
-pytestmark = [pytest.mark.skipif(P is None, reason="virgil without MultipoleDisk (install the postagb extra)"),
+pytestmark = [pytest.mark.skipif(P is None, reason="needs virgil main (MultipoleDisk) and virgil-vlti with virgil_vlti.with_night_terms (install the postagb extra)"),
               pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")]
 
 

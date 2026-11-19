@@ -17,7 +17,7 @@ try:  # needs virgil main (MultipoleDisk, Harmonics); the CI pin of the orbit pa
     from _postagb_parametric_synth import CFG, FLUXES, REFS, make_data, start  # noqa: E402
 except ImportError:
     P = Q = None
-needs_virgil = pytest.mark.skipif(P is None, reason="virgil without MultipoleDisk (install the postagb extra)")
+needs_virgil = pytest.mark.skipif(P is None, reason="needs virgil main (MultipoleDisk) and virgil-vlti with virgil_vlti.with_night_terms (install the postagb extra)")
 
 # Guards our own script's evidence and conventions against closed forms and brute-force quadrature, not virgil against an independent result.
 pytestmark = [needs_virgil, pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")]
@@ -111,10 +111,9 @@ def test_scene_rule_differs_from_lap_when_a_non_normal_prior_has_curvature():
     assert ev["lnZ_lap"] != pytest.approx(ev["lnZ_scene_rule"], abs=1e-9)  # LogUniform and sin i have curvature that the gp-polar rule drops
 
 
-def test_night_modes_reproduce_the_gp_polar_night_noise():
-    """Design test (c): our N2 data have the same chi^2 and log-normaliser as ``P.night_noise`` of the gp-polar branch (skipped on main)."""
-    if not hasattr(P, "night_noise"):
-        pytest.skip("postagb_imaging has no night_noise (main)")
+def test_n2_reproduces_the_frozen_local_night_noise():
+    """Design test (c): our N2 data have the same chi^2 and log-normaliser as the earlier local construction (frozen in test_postagb_vlti.py)."""
+    from test_postagb_vlti import old_noise  # noqa: PLC0415
     from virgil.imaging import _log_norm
     from virgil.likelihood import whitened_residuals
 
@@ -122,8 +121,7 @@ def test_night_modes_reproduce_the_gp_polar_night_noise():
     data = make_data(truth, seed=2)
     s = 1.3
     ours = Q.noise_arm(data, CFG, "N2", s=s)
-    white = dict(v2_white=s, t3_white=s, gain_telescope=0.0, gain_baseline=0.0, t3_offset_deg=0.0)
-    ref = P.night_noise(data, white, P.NIGHTW)
+    ref = old_noise(data, {"vis": s, "phi": s}, None, Q.NIGHTW)
     m = Q.build_scene(CFG, "M2", start(inc=30.0, f_env=0.3))
     r1, r2 = np.asarray(whitened_residuals(m, ours)), np.asarray(whitened_residuals(m, ref))
     assert r1 @ r1 == pytest.approx(r2 @ r2, rel=1e-10)

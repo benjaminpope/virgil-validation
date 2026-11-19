@@ -795,7 +795,7 @@ def jackknife_sd(values, centre, circular=False):
 
 
 def night_subsets(files, load=None):
-    """``{night: callable}``: each callable reads the data of ``files`` without that night (a night runs from MJD .65 to the next; a file belongs
+    """``{night: callable}``: each callable reads the data of ``files`` without that night (a night runs from 12 UT to the next; a file belongs
     to the night of its mean MJD). The input of ``jackknife``."""
     load = load or load_pionier
     nights = {}

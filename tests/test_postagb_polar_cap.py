@@ -13,7 +13,7 @@ try:  # needs virgil main (MultipoleField), as tests/test_postagb_imaging.py
 except ImportError:
     P = None
 needs_multipole = pytest.mark.skipif(
-    P is None, reason="virgil without MultipoleField (install the postagb extra)"
+    P is None, reason="needs virgil main (MultipoleField) and virgil-vlti with virgil_vlti.with_night_terms (install the postagb extra)"
 )
 
 # Guards our own script: a spectral low-pass and its variance, checked against the Fourier series and MultipoleField's documented

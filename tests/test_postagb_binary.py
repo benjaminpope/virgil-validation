@@ -14,7 +14,7 @@ except ImportError:
     P = None
 pytestmark = [
     pytest.mark.skipif(
-        P is None, reason="virgil without MultipoleField (install the postagb extra)"
+        P is None, reason="needs virgil main (MultipoleField) and virgil-vlti with virgil_vlti.with_night_terms (install the postagb extra)"
     ),
     # guards our own moving-star component against virgil's static PointSource / UniformDisk at the same per-sample positions;
     # no standard or external code is involved
@@ -23,7 +23,7 @@ pytestmark = [
 ]
 
 L0 = 1.65e-6
-MJD = np.repeat([100.1, 100.2, 101.1, 108.1], 4)  # four frames on three nights (the MJD .65 split)
+MJD = np.repeat([100.1, 100.2, 101.1, 108.1], 4)  # four frames on three nights (nights start at 12 UT)
 N = MJD.size
 U = np.linspace(20.0, 80.0, N)
 V = np.linspace(-30.0, 40.0, N)

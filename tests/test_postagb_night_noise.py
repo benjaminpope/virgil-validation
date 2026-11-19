@@ -15,7 +15,7 @@ except ImportError:
     P = W = None
 pytestmark = [
     pytest.mark.skipif(
-        P is None, reason="virgil without MultipoleField (install the postagb extra)"
+        P is None, reason="needs virgil main (MultipoleField) and virgil-vlti with virgil_vlti.with_night_terms (install the postagb extra)"
     ),
     # guards our own bookkeeping: which samples share a night term, and a method-of-moments estimate checked on draws with a
     # known answer; no standard or external code is involved
@@ -29,7 +29,7 @@ MJDS = [
     100.2,
     101.1,
     101.2,
-]  # two nights of two frames (UT before the MJD .65 split: the night that began the day before)
+]  # two nights of two frames (UT before 12 UT: the night that began the day before)
 
 
 def toy_data():

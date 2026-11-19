@@ -11,7 +11,7 @@ try:  # needs virgil main (MultipoleField); the CI pin of the orbit pages predat
     import postagb_imaging as P  # noqa: E402
 except ImportError:
     P = None
-needs_multipole = pytest.mark.skipif(P is None, reason="virgil without MultipoleField (install the postagb extra)")
+needs_multipole = pytest.mark.skipif(P is None, reason="needs virgil main (MultipoleField) and virgil-vlti with virgil_vlti.with_night_terms (install the postagb extra)")
 
 # Guards our own script's convention, not virgil against an independent result.
 pytestmark = pytest.mark.validates("evidence", roots=["standards"], kind="guard")

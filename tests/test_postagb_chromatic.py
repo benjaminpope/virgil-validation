@@ -14,7 +14,7 @@ except ImportError:
     P = None
 pytestmark = [
     pytest.mark.skipif(
-        P is None, reason="virgil without MultipoleField (install the postagb extra)"
+        P is None, reason="needs virgil main (MultipoleField) and virgil-vlti with virgil_vlti.with_night_terms (install the postagb extra)"
     ),
     # guards our own construction of the chromatic truth and ring: the index gradient and star offset are checked against their
     # definitions, and the grey limit against PowerLaw; no standard or external code is involved

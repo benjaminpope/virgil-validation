@@ -198,7 +198,7 @@ fit absorbs it. Stage C simulated only per-frame gains, so it could not reproduc
 
 **Model** (`--noise night`, `night_noise`): the vlti terms, plus a gain on log|V| per (night, baseline) and a closure-phase
 offset per (night, triangle). Each spans every frame of its night, and the likelihood marginalises them (virgil's spanning
-modes). A night runs from MJD .65 to the next.
+modes). A night runs from 12 UT (MJD .5) to the next, as virgil-vlti's `Exposure.night`; the earlier MJD .65 split gave the same night for every file.
 
 **Widths, fixed before any night fit or pick was looked at** (`scripts/postagb_night_widths.py`, written to
 `scripts/postagb_night_widths.json`):
@@ -387,7 +387,7 @@ The primary's index stays at SIND1 and the disc keeps its own power law througho
 * Velocities Normal(0, 0.02 mas/day) per axis. Twice the fastest companion expected, 2π·sep/P = 0.011 mas/day for AI Sco
   (sep 1.75 mas, P 977 d); EN TrA 0.008, HD 95767 0.003.
 * Per-night offsets Normal(0, 0.2 mas): about the largest orbital displacement from the mid-time (AI Sco ±0.18 mas).
-* Time and night are as in `night_labels` (night = floor(MJD − 0.65)); velocities refer to the mid-time of the data.
+* Time and night are as in `night_labels` (night = floor(MJD − 0.5), starting at 12 UT; earlier floor(MJD − 0.65), the same nights); velocities refer to the mid-time of the data.
 * Targets without a secondary (PS Gem, IRAS 15469) get only the primary's terms. Their `free` equals `paper`, so it is skipped.
 
 **Arms** (stage BN, one job, pins in the hand-over):
