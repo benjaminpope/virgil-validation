@@ -52,6 +52,13 @@ def test_blocked_checks_are_listed_whatever_the_verdict(trust, tmp_path):
     assert nodes["crosscheck.r"]["blocked_checks"] == []
 
 
+def test_weak_only_check_with_via_is_not_waiting(trust, tmp_path):
+    """A self-consistency check counts for nothing, verified reference or not, so it is never 'blocked'."""
+    recs = [record("t::weak", "virgil.b", roots=["self-consistency"], via=["crosscheck.r"])]
+    nodes = build(trust, tmp_path, recs, GRAPH)
+    assert nodes["virgil.b"]["blocked_checks"] == [] and nodes["virgil.b"]["blocked_by_references"] == []
+
+
 def test_nothing_is_blocked_once_the_reference_is_verified(trust, tmp_path):
     recs = [record("t::via", "virgil.b", via=["crosscheck.r"]), record("t::r", "crosscheck.r", kind="reference")]
     nodes = build(trust, tmp_path, recs, GRAPH)

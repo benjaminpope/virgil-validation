@@ -172,10 +172,7 @@ def _skyline():
     path = ROOT / "scripts" / "trust_skyline.py"
     if not path.exists():
         pytest.skip("scripts/trust_skyline.py is not on this branch yet")
-    sky = _load("trust_skyline")
-    if not hasattr(sky, "foundation_counts"):
-        pytest.skip("trust_skyline.foundation_counts is not on this branch yet")
-    return sky
+    return _load("trust_skyline")  # once the file exists, a renamed foundation_counts must fail, not skip
 
 
 def test_parts_equal_the_skyline_foundation_counts_over_parts_layers():

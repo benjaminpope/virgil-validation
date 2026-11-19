@@ -549,7 +549,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                     prop_roots_usable[prop] |= s_
                     prop_roots_all[prop] |= s_
             elif r["kind"] in agreeing:
-                blocked_checks.append({"test": r["test"], "via": sorted(untrusted)})
+                if s_:  # a weak-only check counts for nothing, so it is not "waiting" on anything
+                    blocked_checks.append({"test": r["test"], "via": sorted(untrusted)})
                 is_broken = is_broken_ref is not None and any(is_broken_ref(v) for v in untrusted)
                 if not is_broken:
                     usable_roots |= s_
