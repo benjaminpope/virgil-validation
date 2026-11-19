@@ -635,8 +635,18 @@ def commits():
             return "unknown"
 
     import virgil  # noqa: PLC0415
+    from importlib import metadata  # noqa: PLC0415
 
-    return dict(scripts=head(Path(__file__).resolve().parent), virgil=head(Path(virgil.__file__).resolve().parents[2]), virgil_version=getattr(virgil, "__version__", None))
+    def installed(dist):  # PEP 610 record of a pip install from git: a git walk from site-packages would find this repository's own HEAD
+        try:
+            return json.loads(metadata.distribution(dist).read_text("direct_url.json") or "{}").get("vcs_info", {}).get("commit_id")
+        except metadata.PackageNotFoundError:
+            return None
+
+    vroot = Path(virgil.__file__).resolve().parents[2]
+    virgil_commit = installed("virgil-astro") or ("unknown" if "site-packages" in str(vroot) else head(vroot))
+    return dict(scripts=head(Path(__file__).resolve().parent), virgil=virgil_commit, virgil_vlti=installed("virgil-vlti") or "unknown",
+                virgil_version=getattr(virgil, "__version__", None))
 
 
 def _jsonable(x):

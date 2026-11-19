@@ -85,11 +85,11 @@ def spanning_closure_ok(data):
         pytest.skip(f"this virgil has no frame-spanning closure modes: {e}")
 
 
-LOAD_ATTRS = ("vis", "d_vis", "phi", "d_phi", "u", "v", "wavel", "mjd", "stations", "frame", "i_cps1", "i_cps2", "i_cps3", "vis_flag", "phi_flag")
+LOAD_ATTRS = ("vis", "d_vis", "phi", "d_phi", "u", "v", "wavel", "mjd", "stations", "frame", "i_cps1", "i_cps2", "i_cps3", "vis_index", "phi_index", "v2_flag", "cp_flag", "bandwidth")
 
 
 def same_attr(a, b, name):
-    x, y = getattr(a, name, None), getattr(b, name, None)
+    x, y = getattr(a, name), getattr(b, name)  # no default: a misspelt attribute must fail, not pass vacuously
     if x is None or y is None:
         assert x is None and y is None, name
         return
@@ -182,3 +182,19 @@ def test_per_target_widths_are_available_and_n2_defaults_to_the_pre_registered_g
     default = Q.noise_arm(data, CFG, "N2", s=1.0)
     own = Q.noise_arm(data, CFG, "N2", s=1.0, night=w)
     assert not np.allclose(np.asarray(default.gains.spanning), np.asarray(own.gains.spanning))
+
+
+@needs_data
+def test_vlti_loader_with_bandwidth_smearing_matches_virgils_reader_on_ai_sco():
+    from virgil import OIData, read_oifits
+
+    ref, new = OIData(read_oifits(AI_SCO, bandwidth=True)), N.load_pionier(AI_SCO, bandwidth=True)
+    assert new.bandwidth is not None and ref.bandwidth is not None
+    for a in ("vis", "phi", "u", "v", "wavel", "bandwidth"):
+        same_attr(new, ref, a)
+
+
+def test_night_noise_defaults_to_the_fixed_night_widths():
+    import inspect
+
+    assert inspect.signature(N.night_noise).parameters["night"].default == N.NIGHTW

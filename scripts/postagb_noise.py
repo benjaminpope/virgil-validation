@@ -56,7 +56,9 @@ def load_pionier(files, bandwidth=False):
     applied by ``pionier_noise``). ``bandwidth`` models bandwidth smearing (``read_oifits(bandwidth=True)``)."""
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="no nuisance modes beside")
-        return to_oidata(files, bandwidth=bandwidth)
+        out = to_oidata(files, bandwidth=bandwidth, use_template=False)  # no sidecar modes: the noise model adds them
+    assert out.gains is None and out.phase_offsets is None, "sidecar nuisance modes found beside the files"
+    return out
 
 
 def pionier_noise(data, white=None, frame=None, night=None):
@@ -78,7 +80,7 @@ def vlti_noise(data, widths=VLTI_NOISE):
     return pionier_noise(data, {"vis": widths["v2_white"], "phi": widths["t3_white"]}, widths)
 
 
-def night_noise(data, widths=VLTI_NOISE, night=None):
+def night_noise(data, widths=VLTI_NOISE, night=NIGHTW):
     """``data`` under ``vlti_noise`` plus the night terms of ``night`` (``NIGHT_KEYS``)."""
     return pionier_noise(data, {"vis": widths["v2_white"], "phi": widths["t3_white"]}, widths, night)
 

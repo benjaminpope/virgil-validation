@@ -31,7 +31,7 @@ def layout(nights=(0, 1, 2), frames=4):
                     u.append(c * d[0] - s * d[1])
                     v.append(s * d[0] + c * d[1])
                     wl.append(w)
-                    mjd.append(60000.9 + night + 0.01 * k)  # after the 0.65 split: night label = floor(mjd - 0.65) = 60000 + night
+                    mjd.append(60000.9 + night + 0.01 * k)  # after 12 UT (MJD .5): night label = floor(mjd - 0.5) = 60000 + night
                     frame.append(f)
                     st.append((i, j))
             f += 1
