@@ -1257,6 +1257,16 @@ def _three_ut_oidata(path, scene, seed: int = 1):
     headline="nonstat_sqrt_kkt_err",
 )
 def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path):
+    """``kkt_report`` on ``LinearImage("sqrt")`` agrees with ``crosscheck.starlet_kkt_ref`` on
+    ``kkt_w``, ``kkt_rel`` and ``want_grow`` at a non-stationary point, on a converged MaxEntropy
+    fit, on the band-limit fixed point, and on the exact-zero-pixel exclusion.
+
+    Basis: the reference is our numpy re-derivation of the same KKT metrics, written from
+    virgil's documented definitions (and from its 0.4.2 sqrt dark-pixel reach, see F31), so
+    agreement shows ``kkt_report`` computes what is documented. It is not an independent
+    definition of ``kkt_w``, ``kkt_rel`` or the ``want_grow`` deadband. The one independent
+    fact used is mathematical: a converged constrained fit is stationary (``kkt_rel`` near 0).
+    """
     n, scale, flux = 8, 1.0, 0.3
     shape = ref.gaussian_blob_ref(n, scale, sigma_mas=1.8, dra=0.8, ddec=-0.6) * flux
     truth = vm.System(

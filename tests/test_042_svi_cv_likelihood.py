@@ -1400,15 +1400,20 @@ def test_gauss_newton_mass_rejects_constrained_space_jacobian_omission(tmp_path)
 @pytest.mark.validates(
     "virgil.svi.variational",
     "virgil.svi.VariationalResult",
-    roots=["mathematics", "statistics"],
+    roots=["self-consistency"],
     tier="B",
     headline="svi_mvn_mean_zscore",
 )
-def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
-    """variational and VariationalResult recover Laplace / Gaussian posteriors
-    under 'laplace' and 'mvn' guides with Pareto khat < 0.5, and 'bnaf' / 'iaf'
-    flow guides match exact 2D Simpson-quadrature moments and quantiles on a
-    skewed low-SNR log-flux posterior."""
+def test_svi_laplace_and_mvn_match_gauss_newton_covariance(tmp_path):
+    """The 'laplace' and 'mvn' guides of variational reproduce the mean and covariance
+    that virgil's own gauss_newton_mass gives at the fitted mode, with Pareto khat < 0.5.
+
+    Basis: self-consistency. The expected mean is the MAP from virgil's fit and the
+    expected covariance is virgil's gauss_newton_mass, so this compares virgil with
+    virgil (SVI against its own Gauss-Newton Laplace). The one independent number is
+    the 'laplace' guide's log joint density at the MAP, compared with a log joint
+    built from the crosscheck chi^2 and scipy priors. The flow guides are checked
+    against exact quadrature in test_svi_normalizing_flows_against_quadrature."""
     fits_path = tmp_path / "svi_high_snr.fits"
     truth = _binary_cloud(0.03, 8.0, -5.0)
     xsim.observe(
@@ -1540,6 +1545,24 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
     max_mvn_z = max(max_mvn_z, cold_z_err)
     max_cov_rel_3d = max(max_cov_rel_3d, cold_cov_rel)
 
+    record("svi_mvn_mean_zscore", max_mvn_z)
+    record("svi_mvn_cov_rel_err", max_cov_rel_3d)
+
+
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.svi.variational",
+    "virgil.svi.VariationalResult",
+    roots=["mathematics", "statistics"],
+    tier="B",
+    headline="svi_flow_mean_zscore",
+)
+def test_svi_normalizing_flows_against_quadrature(tmp_path):
+    """The 'bnaf' and 'iaf' flow guides of variational match the exact 2D quadrature
+    moments and quantiles of a skewed low-SNR (dra, ln flux) posterior, and the symmetric
+    'mvn' guide visibly cannot (the expected posterior is the Simpson-grid reference
+    ``posterior_2d_grid_moments_ref`` of a log posterior cross-checked against the
+    crosscheck chi^2)."""
     # Genuinely skewed ~2.3-sigma faint-companion 2D posterior in (dra, u = ln flux):
     # above the mode, exp(u) hits a steep interferometric chi^2 wall, while below the
     # mode exp(u) -> 0 relaxes into the broad log-normal prior tail (left_w / right_w ~ 1.37).
@@ -1693,8 +1716,6 @@ def test_svi_laplace_mvn_and_normalizing_flows_against_quadrature(tmp_path):
         assert qx_err < 0.25 and qy_err < 0.15
         assert cov_rel_2d < 0.20
 
-    record("svi_mvn_mean_zscore", max_mvn_z)
-    record("svi_mvn_cov_rel_err", max_cov_rel_3d)
     record("svi_flow_mean_zscore", flow_z_err)
     record("svi_flow_cov_rel_err", flow_cov_rel)
 

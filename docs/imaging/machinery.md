@@ -81,7 +81,7 @@ an image, divided by the number of samples, so the dirty beam peaks at 1.
 | control | the binary's components rotated by 180°, no components, or the point in a corner | Mathematics | residual peak > 0.1 |
 | `imaging.clean`, companion beside a uniform-disk base (slow) | the companion's flux and position; nothing at its mirror image | Mathematics | 5 %; 0.5 pixel |
 | `imaging.clean` without a base scene, three and four UTs | χ² finite at every iteration | Regression | finite |
-| `CleanResult.restored`, `imaging.residual_image`, and `rotation_deg="grid"` (`Image`, `dirty_image`, `clean`, `residual_image`) | pure-NumPy squared-visibility Fourier sensitivity map `−(∂(½χ²)/∂f_p) / ‖J e_p‖₂` (`1e-12`, plus 3rd-order 4-point non-negative forward differences on DISCO data to `< 1e-8` and peak localization on an injected off-axis companion) and SciPy rotated elliptical Gaussian restoration in sky coordinates (`pa_deg - rotation_deg`, catching `+rot` sign flips; `test_042_scenes_starlet_kkt.py`) | Mathematics | 1e-12 (V²); < 1e-8 (DISCO FD) |
+| `CleanResult.restored`, `imaging.residual_image`, and `rotation_deg="grid"` (`Image`, `dirty_image`, `clean`, `residual_image`) | pure-NumPy squared-visibility Fourier sensitivity map `−(∂χ²/∂f_p) / ‖J e_p‖₂` (`1e-12`, plus 3rd-order 4-point non-negative forward differences on DISCO data to `< 1e-8` and peak localization on an injected off-axis companion) and SciPy rotated elliptical Gaussian restoration in sky coordinates (`pa_deg - rotation_deg`, catching `+rot` sign flips; `test_042_scenes_starlet_kkt.py`) | Mathematics | 1e-12 (V²); < 1e-8 (DISCO FD) |
 
 The finiteness tests,
 [`test_clean_finite.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_clean_finite.py),
