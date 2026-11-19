@@ -11,15 +11,15 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
 
 
-def _load(name):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+def _exec(spec):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-table = _load("trust_roots_table")
-trust = _load("trust")
+# literal paths, so the via scanner can resolve each import (a computed path is an unresolved dynamic import)
+table = _exec(importlib.util.spec_from_file_location("trust_roots_table", ROOT / "scripts" / "trust_roots_table.py"))
+trust = _exec(importlib.util.spec_from_file_location("trust", ROOT / "scripts" / "trust.py"))
 
 REGISTRY = {
     "classes": {
@@ -167,18 +167,12 @@ def test_trust_page_and_method_page_carry_the_table(tmp_path):
     assert "(index.md)" in method or "[How trust is built](index.md)" in method
 
 
-def _skyline():
-    """``scripts/trust_skyline.py`` (the Trust page's skyline), or skip until it is on this branch."""
-    path = ROOT / "scripts" / "trust_skyline.py"
-    if not path.exists():
-        pytest.skip("scripts/trust_skyline.py is not on this branch yet")
-    return _load("trust_skyline")  # once the file exists, a renamed foundation_counts must fail, not skip
-
-
-def test_parts_equal_the_skyline_foundation_counts_over_parts_layers():
+def test_parts_equal_the_skyline_foundation_counts_over_parts_layers(monkeypatch):
     """The table's Parts and the skyline's per-layer counts are one number: the skyline's, summed over the
     layers of virgil (not ``references``), is the table's Parts for the same model."""
-    sky = _skyline()
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    # skips only while scripts/trust_skyline.py is missing; a renamed foundation_counts then fails (AttributeError)
+    sky = pytest.importorskip("trust_skyline")
     layers = {"virgil.a": "models", "virgil.b": "inference", "virgil.c": "inference", "virgil.d": "models",
               "crosscheck.ref": "references"}
     model = {"nodes": {k: {**v, "layer": layers[k]} for k, v in MODEL["nodes"].items()}}
