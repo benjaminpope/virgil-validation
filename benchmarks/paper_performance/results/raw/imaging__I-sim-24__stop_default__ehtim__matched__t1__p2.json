@@ -1,0 +1,95 @@
+{
+ "case": "I-sim-24",
+ "comparison": "imaging",
+ "code": "ehtim",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.2771792919607834,
+ "t_calib": 0.08732204092666507,
+ "t_import": 1.9964275000384077,
+ "t_load": 0.002166958060115576,
+ "t_init": null,
+ "t_cold": 0.11401095800101757,
+ "t_warm": [
+  0.11042445804923773,
+  0.11104420898482203,
+  0.10939424997195601,
+  0.10765541600994766,
+  0.11005100002512336
+ ],
+ "peak_footprint_mb": 202.965712,
+ "peak_rss_mb": 240.369664,
+ "baseline_mb": null,
+ "cpu_ratio": 0.8161290322580644,
+ "flags": [],
+ "n_data": 312,
+ "n_param": 576,
+ "iterations": {
+  "objfunc": 217,
+  "objgrad": 217
+ },
+ "accuracy": {
+  "flux": 1.0043518403970482,
+  "score": {
+   "J": 5421.3731553136695,
+   "half_chi2_amp": 464.7353220111757,
+   "half_chi2_cp": 59.8368755713706,
+   "tv2": 0.006529067943641498,
+   "flux": 1.0043518403970482,
+   "n_amp": 234,
+   "n_cp": 78,
+   "ncc_registered": 0.9669122968713777,
+   "ncc_shift_rc": [
+    1,
+    0
+   ],
+   "ncc_unregistered": 0.8764223354730569,
+   "rms_rel_beam": 0.06271469031662784,
+   "beam_mas": 1.5448696219530984
+  }
+ },
+ "settings": {
+  "case": "I-sim-24",
+  "task": "stop_default",
+  "reps": 5,
+  "size": "full",
+  "maxit": 200,
+  "stop": 1e-06,
+  "method": null
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": true,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": null,
+   "jax": null,
+   "jaxlib": null,
+   "numpyro": null,
+   "pmoired": null,
+   "ehtim": "1.3.2",
+   "numpy": "2.5.3",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.1"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

@@ -1,0 +1,81 @@
+{
+ "n_rows": 303,
+ "n_groups": 149,
+ "faster_counts": {
+  "warm": {
+   "no_pair_time": 33,
+   "virgil_faster": 27,
+   "other_faster": 13
+  },
+  "cold": {
+   "other_faster": 32,
+   "virgil_faster": 10,
+   "no_pair_time": 31
+  }
+ },
+ "time_to_target": {
+  "imaging|I-sim-24|ladder|matched|1": {
+   "J_min": 4941.572436163311,
+   "target": 4946.514008599474,
+   "virgil": {
+    "best_J": 4941.572436163311,
+    "time": 1.204045148296837,
+    "status": "ok"
+   },
+   "ehtim": {
+    "best_J": 5022.112725173087,
+    "time": null,
+    "status": "not_reached"
+   }
+  },
+  "imaging|I-sim-48|ladder|matched|1": {
+   "J_min": 440.35851245555216,
+   "target": 440.7988709680077,
+   "virgil": {
+    "best_J": 440.35851245555216,
+    "time": 3.3092948934125266,
+    "status": "ok"
+   },
+   "ehtim": {
+    "best_J": 459.61347578730454,
+    "time": null,
+    "status": "not_reached"
+   }
+  },
+  "imaging|I-sim-96|ladder|matched|1": {
+   "J_min": 133.8479710382607,
+   "target": 133.98181900929896,
+   "virgil": {
+    "best_J": 133.8479710382607,
+    "time": 10.074893961478269,
+    "status": "ok"
+   },
+   "ehtim": {
+    "best_J": 137.8040186671221,
+    "time": null,
+    "status": "not_reached"
+   }
+  }
+ },
+ "flags": {
+  "threads_not_held": 83,
+  "likelihood_mismatch": 45,
+  "noisy": 16,
+  "mem_children_not_summed": 4,
+  "warm_recompiled": 11
+ },
+ "status": {
+  "ok": 237,
+  "not_run": 64,
+  "error": 1,
+  "timeout": 1
+ },
+ "limits": [
+  "one laptop CPU (Apple silicon); 1 thread primary, 2 threads at most; no code was run on all cores",
+  "no GPU row exists (CPU only)",
+  "eht-imaging with the direct transform (NFFT not installed), the same transform in virgil",
+  "Octofitter interferometry on simulated point-source data only",
+  "O-A-real is period-informed (prior from the published period) and is not scored",
+  "PMOIRED and Octofitter parallel modes not run beyond 2 workers"
+ ]
+}

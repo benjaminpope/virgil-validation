@@ -1,0 +1,123 @@
+{
+ "case": "B-sim-60-T2",
+ "comparison": "binary",
+ "code": "pmoired",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.28323987499810777,
+ "t_calib": 0.09898479201365262,
+ "t_import": 3.4463687499519438,
+ "t_load": 0.008806125028058887,
+ "t_init": null,
+ "t_cold": 0.013318166951648891,
+ "t_warm": [
+  0.012456667027436197,
+  0.01234287500847131,
+  0.012452916998881847,
+  0.01278866600478068,
+  0.013257999962661415
+ ],
+ "peak_footprint_mb": 172.049032,
+ "peak_rss_mb": 197.083136,
+ "baseline_mb": null,
+ "cpu_ratio": 0.8621553884711779,
+ "flags": [],
+ "n_data": 3000,
+ "n_param": 3,
+ "iterations": {
+  "nfev": 17,
+  "chi2_red_own": 0.9828827076829668,
+  "ndof": 2999,
+  "t_fit_cold": 0.013310874986927956,
+  "t_fit_warm": [
+   0.012456667027436197,
+   0.01234287500847131,
+   0.012452916998881847,
+   0.01278866600478068,
+   0.013257999962661415
+  ]
+ },
+ "accuracy": {
+  "best": {
+   "dra": 5.998033107644212,
+   "ddec": -4.000652733393765,
+   "flux": 0.09988127284521607
+  },
+  "sigma": {
+   "dra": 0.004239112145865368,
+   "ddec": 0.004708677949505272,
+   "flux": 0.00028343591135423916
+  },
+  "reference": {
+   "dra": 6.0,
+   "ddec": -4.0,
+   "flux": 0.1
+  },
+  "dev_from_reference_sigma": {
+   "dra": -0.4639868651991801,
+   "ddec": -0.13862349490975634,
+   "flux": -0.41888536359653133
+  },
+  "chi2_neutral": 2951.5967711719513,
+  "chi2_neutral_v2": 1802.0590395368322,
+  "chi2_neutral_cp": 1149.5377316351191,
+  "chi2_neutral_red": 0.9848504408314819,
+  "chi2_neutral_at_reference": 2952.1173643701886,
+  "n_v2": 1800,
+  "n_cp": 1200
+ },
+ "settings": {
+  "ftol": 1e-05,
+  "epsfcn": 1e-06,
+  "maxfev": 10000,
+  "start": {
+   "dra": 6.3,
+   "ddec": -4.3,
+   "flux": 0.13
+  },
+  "auto": false,
+  "autoPrior": true,
+  "code": "pmoired",
+  "case": "B-sim-60",
+  "config": "matched",
+  "size": "full",
+  "task": "T2",
+  "case_id": "B-sim-60"
+ },
+ "provenance": {
+  "vv_commit": "09de765eebb41a801f3887013ed227ddffc31ffc",
+  "vv_dirty": false,
+  "virgil_pin": "c2be8278a4d6549282b3cf199852101929df0462",
+  "versions": {
+   "virgil-astro": "0.4.1",
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.5",
+   "scipy": "1.18.1",
+   "arviz": "1.3.0",
+   "astropy": "8.0.3"
+  },
+  "python": "3.12.12",
+  "macos": "26.7.2",
+  "chip": "Apple M4",
+  "cpu_count": 10,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "pmoired_version": "26.10.1"
+ },
+ "language": "python"
+}
