@@ -3619,6 +3619,9 @@ def pytest_runtest_logreport(report):
                     **claim,
                     "outcome": outcome,
                     "duration_s": round(decisive.duration, 3),
+                    # why a test skipped, so that scripts/check_skips.py can tell a missing package or
+                    # data file from a check that silently stopped running
+                    **({"reason": _skip_reason(decisive)} if outcome == "skipped" else {}),
                     # the teardown report carries every recorded property
                     "metrics": metrics_of(report.user_properties),
                     **getattr(report, "validates_where", {}),
