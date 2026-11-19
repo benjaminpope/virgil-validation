@@ -28,9 +28,29 @@ pr:
     because: data
     why: the Track B ESO binaries (~/data/eso_binaries/trackb) are local; CI has no copy
     message: Track B data are local
+  - test: tests/test_detection_campaign.py::test_detection_campaign_meets_its_criteria
+    because: data
+    why: the committed detection-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign (job detection_mc_v2) at the release commit
+    message: has no criteria_commit
+  - test: tests/test_pull_campaign.py::test_pull_campaign_pulls_are_standard_normal
+    because: data
+    why: the committed pull-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_numpyro.py::test_sbc_ranks_are_uniform
+    because: data
+    why: the committed SBC summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_v2.py::test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy
+    because: data
+    why: the SBC v2 campaign summary does not exist yet (OzSTAR job sbc_v2 has not run); CI cannot produce it
+    message: SBC v2 campaign has not run
+  - test: tests/test_evidence_pin.py::test_committed_evidence_is_pinned_to_one_commit
+    because: data
+    why: a release gate (VALIDATION_RELEASE=1). It fails by design until trust/evidence is refreshed at one virgil commit (today latest.jsonl and virgil.jsonl name two), so CI cannot run it; tests/test_evidence_pin.py covers the machinery
+    message: release gate
 
-# The weekly run has everything the PR run lacks and adds the slow tests; start from the PR list and add what a
-# weekly run (manual dispatch of this branch) shows, with its recorded reason.
+# The weekly run adds the slow tests and uses virgil's main; its list is the PR list plus whatever a weekly run
+# records as skipped (see the PR that added this file for the run).
 weekly:
   - test: tests/test_alma_radio.py::test_read_ms_agrees_with_our_reader_on_im_lup_at_stride_1000
     because: data
@@ -44,3 +64,23 @@ weekly:
     because: data
     why: the Track B ESO binaries (~/data/eso_binaries/trackb) are local; CI has no copy
     message: Track B data are local
+  - test: tests/test_detection_campaign.py::test_detection_campaign_meets_its_criteria
+    because: data
+    why: the committed detection-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign (job detection_mc_v2) at the release commit
+    message: has no criteria_commit
+  - test: tests/test_pull_campaign.py::test_pull_campaign_pulls_are_standard_normal
+    because: data
+    why: the committed pull-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_numpyro.py::test_sbc_ranks_are_uniform
+    because: data
+    why: the committed SBC summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_v2.py::test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy
+    because: data
+    why: the SBC v2 campaign summary does not exist yet (OzSTAR job sbc_v2 has not run); CI cannot produce it
+    message: SBC v2 campaign has not run
+  - test: tests/test_evidence_pin.py::test_committed_evidence_is_pinned_to_one_commit
+    because: data
+    why: a release gate (VALIDATION_RELEASE=1). It fails by design until trust/evidence is refreshed at one virgil commit (today latest.jsonl and virgil.jsonl name two), so CI cannot run it; tests/test_evidence_pin.py covers the machinery
+    message: release gate
