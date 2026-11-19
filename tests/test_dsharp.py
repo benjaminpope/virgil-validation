@@ -117,6 +117,26 @@ def test_fetch_image_downloads_checks_size_extracts_and_records(tmp_path, monkey
     assert not list((tmp_path / "data").rglob("*.part"))
 
 
+@pytest.mark.validates("crosscheck.dsharp", roots=["standards"], kind="guard")
+def test_fetch_ms_finds_a_set_nested_below_a_leading_directory_and_lists_the_archive_when_it_cannot(tmp_path, monkeypatch):
+    """The HL Tau tarballs need not start at the measurement set: ``top/NAME/table.dat`` is moved to ``NAME``; with no such set the error lists names."""
+    fetch = _script("dsharp_fetch")
+    (tmp_path / "srv").mkdir()
+    tgz = _tgz(tmp_path / "srv" / "b.tgz", {"top/MS.calavg/table.dat": b"t", "top/MS.calavg/x": b"1", "top/calibration/c.tab/table.dat": b"c", "top/junk": b"j"})
+    ms = dict(url=tgz.as_uri(), bytes=tgz.stat().st_size, member="MS.calavg", calibration="calibration")
+    monkeypatch.setitem(ds.TARGETS, "hltau_b6", dict(ds.TARGETS["hltau_b6"], ms=ms))
+    monkeypatch.setattr(ds, "read_checksums", lambda *a, **k: {})
+    args = type("A", (), dict(target="hltau_b6", out=str(tmp_path / "d"), checksums=str(tmp_path / "s.json")))
+    fetch.cmd_ms(args)
+    root = tmp_path / "d" / "hltau_b6"
+    assert (root / "MS.calavg/table.dat").exists() and (root / "calibration/c.tab/table.dat").exists() and not (root / "b.tgz").exists()
+    bad = _tgz(tmp_path / "srv" / "c.tgz", {"other/thing": b"x"})
+    monkeypatch.setitem(ds.TARGETS, "hltau_b6", dict(ds.TARGETS["hltau_b6"], ms=dict(ms, url=bad.as_uri(), bytes=bad.stat().st_size)))
+    (root / "MS.calavg/table.dat").unlink()
+    with pytest.raises(SystemExit, match="other"):
+        fetch.cmd_ms(args)
+
+
 @pytest.mark.validates("crosscheck.dsharp", roots=["mathematics"], kind="reference")
 def test_auto_flux_is_the_weighted_short_baseline_mean():
     rng = np.random.default_rng(0)

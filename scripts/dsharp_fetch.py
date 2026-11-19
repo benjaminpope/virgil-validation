@@ -11,6 +11,7 @@ verify it (``crosscheck.dsharp``; terms in ``DATA_ATTRIBUTION.md``). Nothing dow
 import argparse
 import json
 import pathlib
+import shutil
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -46,9 +47,21 @@ def cmd_ms(args):
         raise SystemExit(f"{tgz}: sha256 differs from data/dsharp/checksums.json")
     print(f"{args.target}: {ds.record_checksum(ms['url'], tgz, ms['bytes'], args.checksums)}", flush=True)
     keep = [ms["member"]] + ([ms["calibration"]] if ms.get("calibration") else [])
-    ds.safe_extract(tgz, root, members=keep)
+    got = ds.safe_extract(tgz, root, members=keep, anywhere=True)
+    for name in keep:  # the release tarballs may nest the set below a leading directory: put each at root/NAME
+        if not (root / name).exists():
+            found = sorted(p for p in root.rglob(name) if p.is_dir() and p != root / name)
+            if found:
+                shutil.move(str(found[0]), str(root / name))
+                print(f"moved {found[0].relative_to(root)} to {name}", flush=True)
     if not done.exists():
-        raise SystemExit(f"no {done} after extracting {tgz}")
+        import tarfile
+
+        with tarfile.open(tgz) as tf:
+            names = [m.name for m in tf.getmembers()]
+        top = sorted({n.lstrip("./").split("/")[0] for n in names})[:40]
+        raise SystemExit(f"no {done} after extracting {tgz}: kept {len(got)} of {len(names)} members; wanted {keep}; top-level names in the archive {top}; "
+                         f"first paths {names[:15]}")
     tgz.unlink()
     print(json.dumps(dict(target=args.target, ms=str(done.parent), calibration=ms.get("calibration"))))
 

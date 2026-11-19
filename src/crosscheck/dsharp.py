@@ -144,9 +144,22 @@ def download(url, dest, expect_bytes=None, chunk=1 << 20):
     return dest
 
 
-def safe_extract(tgz, dest, members=None):
+def _wanted(name, members, anywhere=False):
+    """Whether archive path ``name`` is one of ``members`` or inside one; with ``anywhere`` also when the member sits below leading directories."""
+    name = name.lstrip("./").rstrip("/")
+    for s in members:
+        s = s.rstrip("/")
+        if name == s or name.startswith(s + "/"):
+            return True
+        if anywhere and (name.endswith("/" + s) or f"/{s}/" in f"/{name}/"):
+            return True
+    return False
+
+
+def safe_extract(tgz, dest, members=None, anywhere=False):
     """Unpack a downloaded archive (untrusted) into the new directory ``dest``: regular files and directories only, nothing
-    outside ``dest`` (no absolute path, no ``..``, no link). ``members`` keeps only the members whose path is one of those, or inside one."""
+    outside ``dest`` (no absolute path, no ``..``, no link). ``members`` keeps only the members whose path is one of those, or inside one;
+    with ``anywhere`` a member also matches below leading directories of the archive (``top/NAME/...``)."""
     dest = pathlib.Path(dest).resolve()
     dest.mkdir(parents=True, exist_ok=True)
     keep = []
@@ -157,7 +170,7 @@ def safe_extract(tgz, dest, members=None):
                 raise ValueError(f"{tgz}: member {m.name!r} is not a regular file or directory")
             if dest != p and dest not in p.parents:
                 raise ValueError(f"{tgz}: member {m.name!r} would leave {dest}")
-            if members is None or any(m.name.rstrip("/").lstrip("./") == s or m.name.lstrip("./").startswith(s.rstrip("/") + "/") for s in members):
+            if members is None or _wanted(m.name, members, anywhere):
                 keep.append(m)
         tf.extractall(dest, members=keep, filter="data")  # noqa: S202  (members checked above; filter refuses the rest)
     return [m.name for m in keep]
