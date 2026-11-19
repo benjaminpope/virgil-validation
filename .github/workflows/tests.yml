@@ -191,7 +191,7 @@ jobs:
     # scanner's (VV_VIA_ACCEPTANCE=1); scripts/via_acceptance.py compares them for every test that passed.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 330  # the whole suite (the fast tests alone take over an hour on a runner)
     steps:
       - uses: actions/checkout@v4
         with:

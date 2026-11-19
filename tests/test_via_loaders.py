@@ -2,6 +2,7 @@
 recorded at run time (src/evidence/via.py). The markers here declare ``via`` for what the probes load, as
 ``tests/test_via_declared.py`` demands of a file that loads reference packages by a computed name."""
 
+import shutil
 import sys
 
 import pytest
@@ -52,7 +53,5 @@ def test_loaders_by_name_and_path_are_recorded(tmp_path, monkeypatch):
         for name in [n for n in sys.modules if n == "_via_probe_pkg" or n.startswith("_via_probe_pkg.")]:
             sys.modules.pop(name)
         script.unlink()
-        for f in pkg.iterdir():
-            f.unlink()
-        pkg.rmdir()
+        shutil.rmtree(pkg, ignore_errors=True)
         via.clear_caches()

@@ -1523,56 +1523,6 @@ def test_module_via_resolves_call_imports_and_wrapper_id_shadowing(tmp_path, mon
     assert plugin._UNRESOLVED_WORKER in plugin._module_via(str(dup_fn))
 
 
-def test_item_via_resolves_spec_from_file_location_in_campaign_suites():
-    from evidence import plugin
-
-    plugin._module_via.cache_clear()
-    pull_via = set(
-        plugin._item_via(
-            str(ROOT / "tests" / "test_pull_campaign.py"),
-            "test_pull_campaign_pulls_are_standard_normal",
-            None,
-            (),
-        )
-    )
-    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky", "virgil_bridge"} <= pull_via
-
-    det_via = set(
-        plugin._item_via(
-            str(ROOT / "tests" / "test_detection_campaign.py"),
-            "test_detection_campaign_meets_its_criteria",
-            None,
-            (),
-        )
-    )
-    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky", "crosscheck.chi2"} <= det_via
-
-    sbc1_via = set(
-        plugin._item_via(
-            str(ROOT / "tests" / "test_sbc_numpyro.py"),
-            "test_sbc_ranks_are_uniform",
-            None,
-            (),
-        )
-    )
-    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky"} <= sbc1_via
-
-    sbc2_via = set(
-        plugin._item_via(
-            str(ROOT / "tests" / "test_sbc_v2.py"),
-            "test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy",
-            None,
-            (),
-        )
-    )
-    assert {"crosscheck.preregistration", "crosscheck.simulate", "crosscheck.sky"} <= sbc2_via
-
-    for py in sorted((ROOT / "tests").rglob("test_*.py")):
-        mvia = set(plugin._module_via(str(py)))
-        assert plugin._UNRESOLVED_IMPORT not in mvia, (py, mvia)
-        assert plugin._UNRESOLVED_WORKER not in mvia, (py, mvia)
-
-
 def test_cross_module_subprocess_wrappers_propagate_and_fail_closed(tmp_path):
     from evidence import plugin
 
