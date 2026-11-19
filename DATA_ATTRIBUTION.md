@@ -89,3 +89,21 @@ with published ones. Scripts: `scripts/postagb_data.py`,
 | ORGANIC image reconstructions and observation logs for De Prins et al. 2026, Zenodo record [10.5281/zenodo.20155600](https://doi.org/10.5281/zenodo.20155600) (version 10.5281/zenodo.22839953) | Zenodo, CC-BY-4.0; fetched to `~/data/postagb_pionier/literature/`; only derived arrays and figures are committed | CC-BY-4.0: credit T. De Prins, A. Corporaal, J. Kluska, D. Kamath, H. Van Winckel et al. The images were made by Toon De Prins and his supervisors, who cleared their use (Ben Pope, 2026-10-16) |
 | PIONIER OIFITS of IRAS 08544-4431, ESO programme 094.D-0865 (PI Michel Hillen), nights 2015-01-21, 2015-01-24 and 2015-02-23 (27 observing blocks) | The authors' reduced copy (`pndrs`), kept in `~/code/nuHor/data/ep1/{A,B}`; ESO has no Phase 3 products for this programme; never committed | Based on observations collected at the European Southern Observatory under programme 094.D-0865; cite Hillen et al. (2016). Data are shown only as derived images and fits |
 | Hillen et al. 2016, *Imaging the dust sublimation front of a circumbinary disc*, A&A 588, L1, arXiv:1603.03023 | Figure 4 (upper panel), a raster in the arXiv source, in `docs/imaging/postagb/literature/` with an array recovered from its colour bar | Reproduced from the arXiv version. Ben Pope cleared it (2026-10-16) because Devika Kamath (Macquarie University) is a co-author, and she gives permission for any paper she co-authored. The caption carries the arXiv ID and figure number |
+
+## DSHARP and ALMA HL Tau: public ALMA images and measurement sets
+
+Used by `docs/imaging/dsharp.md`. Scripts: `scripts/dsharp_fetch.py`, `scripts/dsharp_hltau_applycal.py`,
+`scripts/dsharp_ms_info.py`, `scripts/dsharp_fit.py`, `scripts/dsharp_compare.py`; code in
+`src/crosscheck/dsharp.py`.
+
+Nothing from these releases is committed except `data/dsharp/checksums.json`, the SHA-256 of each downloaded tarball.
+The measurement sets (0.7 to 1.9 GB each) and the released images are fetched to `~/data/dsharp/` (and, for the
+fits, to /fred on the cluster) and never enter the repository. The archive publishes no checksums, so they are
+recorded on the first fetch and verified on every later one (trust on first use).
+
+| Item | Source | Terms and acknowledgement |
+|---|---|---|
+| DSHARP continuum measurement sets (self-calibrated; `CORRECTED_DATA`) and fiducial CLEAN images of IM Lup, HD 163296, RU Lup and AS 209 | ALMA large programme 2016.1.00484.L (with the earlier per-target programmes), <https://almascience.eso.org/almadata/lp/DSHARP> | The release states no licence. Cite Andrews et al. 2018, ApJ 869, L41 (DSHARP I). The images are used as the comparison, with the released beam, and are not redistributed here |
+| HL Tau 2014 Long Baseline Campaign science verification: Band 6 and Band 7 calibrated measurement sets (`HLTau_B6cont.calavg`, `HLTau_B7cont.calavg`), the self-calibration tables and the released images | ALMA science verification data, <https://almascience.eso.org/almadata/sciver> | ADS/JAO.ALMA#2011.0.00015.SV. Cite ALMA Partnership et al. 2015, ApJ 808, L3; authors from North America add the NRAO acknowledgement for ALMA data |
+
+The standard ALMA acknowledgement used elsewhere in this file applies, with the project codes above.
