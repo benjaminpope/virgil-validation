@@ -986,7 +986,7 @@ from trust_render import (  # noqa: E402,F401
     ICON, ORDER, COLOURS, _bar, _legend, _value, _pipeline_card, _chain, _tooltip, layers, _fails_badge, _map,
     _matrix, _link_label, _ledger, FINDING_GROUPS, render_findings, render_coverage, LAYER_SECTION, test_sections,
     render_tests, _precision, _tables, SHOWCASE, _headline_html, _headline_by_order_html, _fails_elsewhere_html,
-    render,
+    render, _skyline,
 )
 e = trust_render.e  # not in the import above: build() uses `e` as a loop variable, which ruff flags against an import
 
