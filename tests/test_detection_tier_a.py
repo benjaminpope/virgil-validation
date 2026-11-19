@@ -21,7 +21,7 @@ and virgil.detection.injection_recovery.
   independently via crosscheck.chi2 + crosscheck.sky across all six outputs
   (delta_chi2, log_bayes_factor, max_snr, best_dra, best_ddec, best_flux),
   the same searches with uncertainty=False (the statistics-only path of
-  BinaryPipeline's null searches: all but max_snr agree, max_snr is NaN),
+  BinaryPipeline's null searches: the other four statistics and positions agree, max_snr and flux_peak_steps are NaN),
   noisy 7-hole NRM batch/chunk invariance and draw distinctness, and
   position-matched rejection of off-grid interferometric aliases.
 """
