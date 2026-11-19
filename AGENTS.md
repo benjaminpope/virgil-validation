@@ -63,6 +63,17 @@ versions; `scripts/evidence_table.py` renders them (`docs/evidence.md`, and
 the CI job summary). Roots are listed in `src/evidence/__init__.py`;
 `self-consistency` is the weakest and never enough on its own.
 
+A record's `via` lists the reference nodes (`crosscheck.*`, `external_bridge.*`,
+`virgil_bridge*`) a check went through; a check counts toward its node only
+if every one is verified. `src/evidence/via.py` fills it in at run time (worker
+starts at `external_bridge._subprocess.run`, imports, `import_module`,
+`spec_from_file_location`) and from the module level of the test file, its
+conftests and local helpers. Do not list it by hand unless the code is started
+some other way (a subprocess that is not `_subprocess.run`): then add
+`via=["external_bridge.<worker>"]` to the marker. If a node is wrongly blocked
+because two references are only checked in one file, split the file; never
+exempt it.
+
 **Pin all evidence to one virgil commit before a release.** The headers of
 `trust/evidence/latest.jsonl` and `virgil.jsonl` must both name the release
 commit, from a clean tree: regenerate them rather than mixing commits. There
