@@ -52,6 +52,9 @@ outputs carry ``_vlti`` / ``_flat`` in their names. ``--noise night`` adds calib
 (design/gp_polar_hyperparameters.md §11; outputs ``_chrom``). ``--binary free|motion|epoch`` frees the secondary and moves the stars against the disc (design §12; outputs ``_bin<mode>``);
 ``--noise nightw`` keeps the MacKay white errors and adds night terms of 3 % and 2 deg (``NIGHTW``; outputs ``_nightw``), and ``--wide-field`` sets the field half-widths
 to 15 mas (outputs ``_wide``; PS Gem's field was 5 mas until 18 Nov 2026, now the paper's, 19 mas). A support below the data's field (``check_support``) is refused, and an image that is flat or piled at the support edge (``image_degeneracy``) is flagged and not scored. The geometry of the polar GP still comes from the ``scale`` stage (current noise).
+``--companion {fixed,free} --companion-start E,N`` adds a point companion to gp-polar (flux ratio and index free; position held or free, the chosen cell also
+refitted from the mirror start; outputs ``_comp<arm>``), ``--hole-scale F`` scales the hole (``_holex<F>``), ``--geometry INC,PA`` replaces the scale stage's polar inclination
+and position angle (``_geo<inc>-<pa>``) and ``--white V2,T3`` the pair-test white scales of ``--noise vlti|night`` (``_white<v2>-<t3>``); see reports/postagb-binaries-psgem-review.md in virgil-paper.
 ``scripts/postagb_noise_check.py`` measures the residuals and runs the synthetic evidence check (design/postagb_noise_model.md).
 """
 
@@ -317,10 +320,140 @@ def cfg_of(args):
         cfg["star_index_source"] = "ORGANIC SIND1"
     if getattr(args, "bg_index", None) is not None:
         cfg = cfg | dict(bg_index_fixed=args.bg_index)
+    if getattr(args, "hole_scale", None) is not None:
+        cfg = cfg | dict(hole_scale=args.hole_scale)
     if getattr(args, "star_index", None) is not None:
         cfg = cfg | dict(img_star_index=args.star_index, star_index_source=f"one-off override ({args.star_index:g})")
     secondary_defaults(cfg, args.target)
     return cfg
+
+
+# ----------------------------------------------------------------------------
+# options of the post-AGB binary / PS Gem review (reports/postagb-binaries-psgem-review.md in virgil-paper): a point companion on top of
+# gp-polar, a finer hole, a fixed polar geometry, and white scales set by hand. Each is off by default and leaves the default outputs unchanged.
+
+COMP_FLUX0 = 0.02  # --companion: starting flux ratio to the primary (the HD 95767 / HR 4049 dots carry about 2 %)
+COMP_RATIO_RANGE = (1e-3, 0.3)  # LogUniform prior of its flux ratio
+COMP_INDEX_RANGE = (-5.0, 4.0)  # Uniform prior of its power-law index: photospheric (-3.8 to -2) and dust-like both allowed
+COMP_FREE_RADIUS_MAS = 3.0  # --companion free: Uniform(-3, 3) mas on each offset about the primary
+COMP_NEAR_MAS = 0.75  # image flux within this of the companion counts as the point's flux left in the image
+
+
+def pair_arg(text):
+    """argparse ``type`` of ``a,b``: two finite floats."""
+    try:
+        a, b = (float(x) for x in text.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected two numbers 'a,b', got {text!r}") from None
+    if not (np.isfinite(a) and np.isfinite(b)):
+        raise argparse.ArgumentTypeError(f"expected finite numbers, got {text!r}")
+    return a, b
+
+
+def check_options(args):
+    """Refuse an option combination that would silently do nothing or the wrong thing (SystemExit with the reason)."""
+    white, geo, comp = getattr(args, "white", None), getattr(args, "geometry", None), getattr(args, "companion", None)
+    if white is not None:
+        if min(white) <= 0:
+            raise SystemExit("--white: the scales must be positive")
+        if getattr(args, "noise", "current") not in ("vlti", "night"):
+            raise SystemExit("--white replaces the pair-test white scales of --noise vlti or night; it does nothing under --noise " + str(args.noise))
+    if geo is not None and not 0.0 <= geo[0] <= 90.0:
+        raise SystemExit("--geometry: the inclination must lie in [0, 90] degrees")
+    if getattr(args, "hole_scale", None) is not None and args.hole_scale <= 0:
+        raise SystemExit("--hole-scale must be positive")
+    if (comp is None) != (getattr(args, "companion_start", None) is None):
+        raise SystemExit("--companion and --companion-start go together (the start, or the fixed position, is E,N in mas from the primary)")
+    if (comp or geo is not None) and getattr(args, "strategy", "gp-polar") != "gp-polar":
+        raise SystemExit("--companion and --geometry are for --strategy gp-polar only")
+
+
+def option_suffix(args):
+    """The output-name suffix of the review options (empty when none is set, so default names are unchanged)."""
+    sfx = ""
+    if getattr(args, "companion", None):
+        sfx += f"_comp{args.companion}"
+    if getattr(args, "hole_scale", None) is not None:
+        sfx += f"_holex{args.hole_scale:g}"
+    if getattr(args, "geometry", None) is not None:
+        sfx += f"_geo{args.geometry[0]:g}-{args.geometry[1]:g}"
+    if getattr(args, "white", None) is not None:
+        sfx += f"_white{args.white[0]:g}-{args.white[1]:g}"
+    return sfx
+
+
+def resolve_geometry(args, out, cfg, strat):
+    """The (inc_deg, pa_deg, ...) the image stage deprojects with: ``--geometry`` when given, else the ``scale`` stage's fit for the gp
+    strategies that need one, else a placeholder (the other strategies and ``--smoke``)."""
+    over = getattr(args, "geometry", None)
+    if over is not None:
+        print(f"geometry fixed by --geometry: inc {over[0]:g}, PA {over[1]:g} deg", flush=True)
+        return dict(inc_deg=float(over[0]), pa_deg=float(over[1]) % 180.0)
+    geo_file = scale_file(out, cfg, args.noise)
+    if not geo_file.exists() and not args.smoke and strat in ("gp-aniso", "gp-polar", "disc+res"):
+        geo_file = scale_file(out, cfg, DEFAULT_NOISE)  # a noise model without its own geometry fit uses the default's
+        print("geometry from", geo_file.name, flush=True)
+    return json.load(open(geo_file))["geometry"] if strat in ("gp-aniso", "gp-polar", "disc+res") and not args.smoke else dict(
+        inc_deg=45.0, pa_deg=90.0)
+
+
+def companion_component(args):
+    """The ``--companion`` point source: flux ratio to the primary and index free, at ``--companion-start`` (E, N mas from the primary)."""
+    return PointSource(flux=PowerLaw(COMP_FLUX0, 0.0, L0), dra=float(args.companion_start[0]), ddec=float(args.companion_start[1]))
+
+
+def companion_priors(args):
+    """Priors of the companion: flux ratio and index always free; the position only for ``--companion free`` (Uniform over +-3 mas, a box
+    around the primary)."""
+    pri = {"comp.flux.ratio": dist.LogUniform(*COMP_RATIO_RANGE), "comp.flux.index": dist.Uniform(*COMP_INDEX_RANGE)}
+    if args.companion == "free":
+        pri |= {"comp.dra": dist.Uniform(-COMP_FREE_RADIUS_MAS, COMP_FREE_RADIUS_MAS), "comp.ddec": dist.Uniform(-COMP_FREE_RADIUS_MAS, COMP_FREE_RADIUS_MAS)}
+    return pri
+
+
+def index_colour(d, env, d_sd):
+    """How a secondary's colour reads (design §12): photospheric, dust-like, neither, or unconstrained when its posterior sd is too large."""
+    if d_sd is None or d_sd > BINARY_INDEX_SD_MAX:
+        return "unconstrained"
+    if BINARY_STELLAR_INDEX[0] <= d <= BINARY_STELLAR_INDEX[1]:
+        return "photospheric"
+    return "dust-like" if min(abs(d), abs(d - env)) <= 1.0 else "neither"
+
+
+def companion_summary(model, bright_grid, pix, f_env, sd, tot):
+    """The companion's fitted terms for the JSON: position, flux, index and its reading, and the share of its flux left in the image
+    within ``COMP_NEAR_MAS`` of it (rule 4 of the review's selection). ``bright_grid`` is the environment on the pixel grid (North up,
+    East left, rotation 0); ``sd`` the Laplace sds of ``scene_evidence``; ``tot`` the total flux in units of the primary's."""
+    c, sd = model.comp, sd or {}
+    ratio, index = float(np.asarray(c.flux.ratio)), float(np.asarray(c.flux.index))
+    e, n_ = float(c.dra), float(c.ddec)
+    ny, nx = bright_grid.shape
+    yy, xx = np.mgrid[:ny, :nx]
+    east, north = ((nx - 1) / 2.0 - xx) * pix, ((ny - 1) / 2.0 - yy) * pix
+    near = np.hypot(east - e, north - n_) <= COMP_NEAR_MAS
+    left = f_env * float(bright_grid[near].sum() / bright_grid.sum()) if bright_grid.sum() > 0 else 0.0
+    pos_sd = [sd.get("comp.dra"), sd.get("comp.ddec")]
+    return dict(comp_dra=e, comp_ddec=n_, comp_sep_mas=float(np.hypot(e, n_)), comp_pa_deg=float(np.degrees(np.arctan2(e, n_)) % 360.0),
+                comp_pos_sd_mas=None if None in pos_sd else float(np.hypot(*pos_sd)), comp_flux_ratio=ratio, comp_flux_pct=100 * ratio / tot,
+                comp_flux_ratio_sd=sd.get("comp.flux.ratio"), comp_index=index, comp_index_sd=sd.get("comp.flux.index"),
+                comp_colour=index_colour(index, float(np.asarray(model.env.flux.index)), sd.get("comp.flux.index")),
+                comp_image_near_ratio=left, comp_image_left_frac=left / ratio if ratio > 0 else None, comp_near_mas=COMP_NEAR_MAS)
+
+
+def companion_mirror(cfg, scene, start_env, support, priors, data, args, geo, r_min, m_max, cell, best):
+    """``--companion free``: refit the chosen grid cell with the companion started at the mirror image of ``--companion-start`` through the
+    primary (the closure phases cannot tell a point from its mirror image until the disc is in the model), and return ``(fit, ln Z_scene,
+    record)`` of whichever of the two scene-evidence values is higher. Only the chosen cell is refitted, not the grid."""
+    lr, lt, sg = cell
+    start = polar_scene_fn(cfg, scene, start_env, support, args, geo, r_min, m_max)(sg, lr, lt)
+    start = start.set("comp.dra", -float(args.companion_start[0])).set("comp.ddec", -float(args.companion_start[1]))
+    pri = {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")}
+    f_, rec = fit_cell(start, image_priors(start) | pri, data, dict(max_steps=15) if args.smoke else dict(max_steps=POLAR_MAX_STEPS))
+    lz_m, lz_s = scene_evidence(f_, data, pri)[0], scene_evidence(best, data, pri)[0]
+    rec = dict(comp_mirror_log_z_scene=lz_m, comp_start_log_z_scene=lz_s, comp_mirror_dra=float(f_.model.comp.dra), comp_mirror_ddec=float(f_.model.comp.ddec),
+               comp_mirror_chi2=float(f_.info["chi2_red"]), comp_mirror_better=bool(lz_m > lz_s), comp_mirror_converged=bool(f_.info.get("converged", True)))
+    print(f"companion mirror start: ln Z_scene {lz_m:.1f} against {lz_s:.1f} from the start; kept the {'mirror' if lz_m > lz_s else 'start'}", flush=True)
+    return (f_ if lz_m > lz_s else best), rec
 
 
 def setup(cfg):
@@ -627,7 +760,7 @@ def hole_mask(cfg, env, data, rot_deg=0.0):
     the window follows ``sec0`` too when the secondary is a point source of the scene (``secondary`` true), so that
     only a secondary left in the image (``secondary=False``) is not masked.
     """
-    radius = cfg.get("hole_mas") or max(compare_beam(data).minor_mas, cfg["ud_fix"])
+    radius = (cfg.get("hole_mas") or max(compare_beam(data).minor_mas, cfg["ud_fix"])) * cfg.get("hole_scale", 1.0)  # --hole-scale
     ny, nx = np.shape(env.log_brightness)
     scale = float(env.pixel_scale_mas)
     mask = np.ones((ny, nx), bool) if env.support is None else np.asarray(env.support, bool).copy()
@@ -780,12 +913,8 @@ def binary_summary(model, mode, cfg, sd=None, data=None):
         d_sd = sd.get("sec.flux.index")
         if mode == "paper":
             colour = "fixed"
-        elif d_sd is None or d_sd > BINARY_INDEX_SD_MAX:
-            colour = "unconstrained"
-        elif BINARY_STELLAR_INDEX[0] <= d <= BINARY_STELLAR_INDEX[1]:
-            colour = "photospheric"
         else:
-            colour = "dust-like" if min(abs(d), abs(d - env)) <= 1.0 else "neither"
+            colour = index_colour(d, env, d_sd)
         out |= dict(bin_sec_index=d, bin_sec_index_sd=d_sd, bin_sec_dra=float(model.sec.dra), bin_sec_ddec=float(model.sec.ddec),
                     bin_sec_colour=colour)
     for name in ("star", "sec"):
@@ -909,9 +1038,17 @@ def scale_file(out, cfg, noise=DEFAULT_NOISE):
 # white errors and adds night terms of ``NIGHTW`` (3 % and 2 deg, the 18 Nov review of design section 12).
 
 
-def modelled_noise(data, cfg, noise):
-    """``data`` under a correlated error model: ``vlti`` or ``night``."""
-    return night_noise(data, noise_widths(cfg), night_widths(cfg)) if noise == "night" else vlti_noise(data, noise_widths(cfg))
+def effective_noise_widths(cfg, white=None):
+    """The pair-test widths of this target, with ``--white``'s (V^2, closure) white scales in place of the pair test's when given."""
+    w = noise_widths(cfg)
+    return w if white is None else w | dict(v2_white=float(white[0]), t3_white=float(white[1]))
+
+
+def modelled_noise(data, cfg, noise, white=None):
+    """``data`` under a correlated error model: ``vlti`` or ``night``. ``white`` = ``--white``: (V^2, closure) white scales that replace
+    the pair test's (everything else, the frame gains and the night terms, stays at the measured widths)."""
+    widths = effective_noise_widths(cfg, white)
+    return night_noise(data, widths, night_widths(cfg)) if noise == "night" else vlti_noise(data, widths)
 
 
 def load_scaled(cfg, args, out):
@@ -919,7 +1056,7 @@ def load_scaled(cfg, args, out):
     ``scale`` stage (1 if absent); ``--noise vlti`` applies ``vlti_noise`` (no bandwidth smearing, which virgil does not support for pixel Images; factor reported as 1)."""
     if getattr(args, "noise", "current") in ("vlti", "night"):
         data, files = load(cfg, args.files)  # no bandwidth smearing: virgil does not support it for pixel Images
-        return modelled_noise(data, cfg, args.noise), data, 1.0, files
+        return modelled_noise(data, cfg, args.noise, getattr(args, "white", None)), data, 1.0, files
     data, files = load(cfg, args.files)
     f = scale_file(out, cfg, "current")
     s = json.load(open(f))["error_scale"] if f.exists() and not args.smoke else 1.0
@@ -1344,6 +1481,9 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
                   gp_xlabel="ℓ_θ (rad)", gp_ylabel="ℓ_r (mas)", chosen=np.array([bi, bj]), mp_log_z=log_z, mp_chi2=chi2,
                   mp_sigmas=np.asarray(sigmas), mp_cells=json.dumps(cell_records(cells, (lens_r, lens_t, sigmas))))
     rec = cells[blr, blt, bsg][3]
+    mirror_rec = {}
+    if getattr(args, "companion", None) == "free":
+        best, mirror_rec = companion_mirror(cfg, scene, start_env, support, priors, data, args, geo, r_min, m_max, (blr, blt, bsg), best)
     unbounded = getattr(args, "unbounded", False)
     lr_min, sg_max = (float(start_env.pixel_scale_mas), np.inf) if unbounded else polar_bounds(compare_beam(data).minor_mas,
                                                                                                float(start_env.pixel_scale_mas))
@@ -1356,7 +1496,7 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
         gp_length_r_mas=float(blr), gp_length_theta=float(blt), mp_inc_deg=geo["inc_deg"], mp_pa_deg=geo["pa_deg"],
         mp_r_min_mas=r_min, mp_r_max_mas=float(cfg["half_mas"]), log_evidence=float(log_z[bi, bj, bk]), gp_on_edge=edge,
         gp_grid_extended=extended, gp_converged=bool(best.info.get("converged", True)), gp_steps=rec["steps"], gp_stop=rec["stop"],
-        gp_cells_unconverged=int(sum(not c[3]["converged"] for c in cells.values()))) | dict(
+        gp_cells_unconverged=int(sum(not c[3]["converged"] for c in cells.values()))) | mirror_rec | dict(
         zip(("log_evidence_scene", "scene_sd"), scene_evidence(best, data, {k: v for k, v in priors.items() if not k.startswith("env.log_brightness")})))
 
 
@@ -1478,6 +1618,7 @@ def per_strategy(fn, args, out, *extra):
         sfx += "" if getattr(args, "binary", "paper") == "paper" else f"_bin{args.binary}"
         sfx += "_unbounded" if getattr(args, "unbounded", False) else ""
         sfx += "_wide" if getattr(args, "wide_field", False) else ""
+        sfx += option_suffix(args)
         TARGETS[args.target] = dict(base, key=f"{base['key']}_{strat}{sfx}", data_key=base.get("data_key", base["key"]))
         try:
             fn(args, out, strat, *extra)
@@ -1582,12 +1723,7 @@ def image_one(args, out, strat):
         return
     data_s, data0, s, files = load_scaled(cfg, args, out)
     support_floor = check_support(cfg, data0) if not args.smoke else None
-    geo_file = scale_file(out, cfg, args.noise)
-    if not geo_file.exists() and not args.smoke and strat in ("gp-aniso", "gp-polar", "disc+res"):
-        geo_file = scale_file(out, cfg, DEFAULT_NOISE)  # a noise model without its own geometry fit uses the default's
-        print("geometry from", geo_file.name, flush=True)
-    geo = json.load(open(geo_file))["geometry"] if strat in ("gp-aniso", "gp-polar", "disc+res") and not args.smoke else dict(
-        inc_deg=45.0, pa_deg=90.0)
+    geo = resolve_geometry(args, out, cfg, strat)
     t0 = time.time()
     rot = float(geo["pa_deg"]) if strat == "gp-aniso" else 0.0
     start, support, hole_mas = grid_setup(cfg, data_s, args, rot)
@@ -1600,7 +1736,10 @@ def image_one(args, out, strat):
     if chrom and strat != "gp-polar":
         raise SystemExit("--chrom is for gp-polar only (design §11)")
     rim, chrom_pri = chromatic_ring(cfg, geo, compare_beam(data_s).minor_mas) if chrom else (None, {})
-    scene = sparco_scene(cfg, env, f_env=f_env0, extra=dict(rim=rim) if chrom else None)
+    companion = getattr(args, "companion", None)
+    if companion and strat != "gp-polar":
+        raise SystemExit("--companion is for gp-polar only")
+    scene = sparco_scene(cfg, env, f_env=f_env0, extra=(dict(rim=rim) if chrom else {}) | (dict(comp=companion_component(args)) if companion else {}) or None)
     warm, warm_src = warm_params(out, cfg, strat, args)
     if warm and strat != "disc+res":
         for k_, v_ in warm.items():
@@ -1611,7 +1750,7 @@ def image_one(args, out, strat):
     if binary != "paper" and strat != "gp-polar":
         raise SystemExit("--binary is for gp-polar only (design §12)")
     scene, bin_pri = binary_scene(scene, cfg, data_s, binary)
-    priors = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri | bin_pri
+    priors = image_priors(scene) | scene_priors(cfg, scene) | chrom_pri | bin_pri | (companion_priors(args) if companion else {})
     has_sec = cfg["sec0"] is not None and cfg.get("secondary", True)
     if strat == "mem":
         model, curve_arrays, extra_gp = fit_mem(cfg, scene, priors, data_s, args)
@@ -1624,7 +1763,7 @@ def image_one(args, out, strat):
         d_env = json.load(open(mem_json))["env_index"] if mem_json.exists() else 0.0
         model, curve_arrays, extra_gp = fit_disc(cfg, data_s, args, geo, hole_mas, f_env0, d_env, float(env.pixel_scale_mas), env.log_brightness.shape[0])
 
-    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else (NIGHTW if args.noise == "nightw" else noise_widths(cfg) | (night_widths(cfg) if args.noise == "night" else {})), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
+    extra = dict(strategy=strat, noise=args.noise, gp_mean=args.mean, noise_model=None if args.noise == "current" else (NIGHTW if args.noise == "nightw" else effective_noise_widths(cfg, getattr(args, "white", None)) | (night_widths(cfg) if args.noise == "night" else {})), error_scale=s, rotation_deg=rot, hole_mas=hole_mas, hole_rule="max(lambda_min/(2 B_max), UD diameter)",
                  n_blanked=int((~support).sum()), star_index=cfg.get("img_star_index", -4.0), ud_fixed_mas=cfg["ud_fix"],
                  bound_warnings=bound_warnings(model, priors | ({"res.flux.ratio": dist.LogUniform(1e-3, 0.3 * f_env0)} if strat == "disc+res" else {})),
                  sec_treatment=("PMOIRED position/flux prior, index fixed at the paper's SIND2, no window inside the primary hole"
@@ -1675,12 +1814,22 @@ def image_one(args, out, strat):
         print("DEGENERATE IMAGE (flagged, not scored):", "; ".join(degen["image_degenerate"]), flush=True)
     np.savez(path(out, cfg, "image.npz"), brightness=bright, brightness_grid=bright_grid, rotation_deg=rot, pixel_mas=pix, model_v2=mv2, model_t3=mt3,
              **curve_arrays, stars=json.dumps(stars))
-    tot = 1.0 + stars["f_env"] + f_sec + f_bg + (float(np.asarray(model.rim.flux)) if chrom else 0.0)  # the --chrom ring, as chromatic_summary
+    f_comp = float(np.asarray(model.comp.flux.ratio)) if companion else 0.0
+    tot = 1.0 + stars["f_env"] + f_sec + f_bg + f_comp + (float(np.asarray(model.rim.flux)) if chrom else 0.0)  # the --chrom ring, as chromatic_summary
     summary = dict(chi2_per_point=c2, chi2_rendered=chi2_rendered, render_ok=render_ok, f_disk=f_disk, f_res=f_res if strat == "disc+res" else None, n_points=n, grid=list(bright.shape), pixel_mas=pix, smoke=args.smoke, seconds=time.time() - t0,
                    f_prim_pct=100 / tot, f_sec_pct=100 * f_sec / tot if has_sec else None, f_env_pct=100 * stars["f_env"] / tot,
                    f_bg_pct=100 * f_bg / tot if cfg.get("bg") else None, f_outer_pct=100 * f_outer / tot,
                    f_overresolved_pct=100 * (f_bg + f_outer) / tot, resid=resid, support_floor_mas=support_floor, **degen, **extra,
                    **{k_: v for k_, v in stars.items() if k_ in ("ud", "env_index", "bg_index", "sec_dra", "sec_ddec", "sec_index")})
+    if companion:
+        summary |= dict(companion=companion, companion_start=list(args.companion_start),
+                        **companion_summary(model, bright_grid, pix, f_env + f_res, extra.get("scene_sd"), tot))
+    if getattr(args, "geometry", None) is not None:
+        summary |= dict(geometry_source="--geometry")
+    if getattr(args, "white", None) is not None:
+        summary |= dict(white_override=list(args.white))
+    if getattr(args, "hole_scale", None) is not None:
+        summary |= dict(hole_scale=args.hole_scale)
     if has_sec:
         summary |= dict(sec_sep_mas=float(np.hypot(stars["sec_dra"], stars["sec_ddec"])),
                         sec_pa_deg=float(np.degrees(np.arctan2(stars["sec_dra"], stars["sec_ddec"])) % 360.0))
@@ -2498,6 +2647,18 @@ def main():
                         "(design §12, when PS Gem's was 5 mas); written as <target>_<strategy>_..._wide_*")
     p.add_argument("--unbounded", action="store_true",
                    help="gp-polar: the evidence over the whole grid, without the prior bounds (diagnostic); written as ..._unbounded_*")
+    p.add_argument("--companion", default=None, choices=("fixed", "free"),
+                   help="gp-polar: add a point companion (flux ratio and index free) at --companion-start: held there (fixed) or free within "
+                        f"+-{COMP_FREE_RADIUS_MAS:g} mas, the better of the start and its mirror image kept by scene evidence (free); written as ..._comp<arm>_*")
+    p.add_argument("--companion-start", type=pair_arg, default=None, metavar="E,N",
+                   help="--companion: the position (East, North mas from the primary), fixed or the start")
+    p.add_argument("--hole-scale", type=float, default=None, help="multiply the hole around the star(s) by this (0.5: half); written as ..._holex<f>_*")
+    p.add_argument("--geometry", type=pair_arg, default=None, metavar="INC,PA",
+                   help="gp-polar: deproject with this inclination and position angle (deg) in place of the scale stage's fit (no scale stage "
+                        "needed); written as ..._geo<inc>-<pa>_*")
+    p.add_argument("--white", type=pair_arg, default=None, metavar="V2,T3",
+                   help="--noise vlti|night: the V^2 and closure white error scales, in place of the pair test's lower bounds (measure them from "
+                        "the channel scatter, review section 5); written as ..._white<v2>-<t3>_*")
     p.add_argument("--mean", default="blob", choices=("blob", "flat"),
                    help="GaussianField / MultipoleField mean: the Gaussian start blob, or flat inside the support; written as ..._flat_*")
     p.add_argument("--cold", action="store_true", help="never warm-start the scene parameters from an earlier <target>_image.json")
@@ -2506,6 +2667,7 @@ def main():
     p.add_argument("--m-max", type=int, default=None, help=f"calibrate: azimuthal cap of the polar GP (default {POLAR_M_MAX}; negative: none)")
     p.add_argument("--seed", type=int, default=0, help="calibrate: noise seed")
     args = p.parse_args()
+    check_options(args)
     if args.smoke and args.files is None:
         args.files = 3
     args.outdir.mkdir(parents=True, exist_ok=True)
