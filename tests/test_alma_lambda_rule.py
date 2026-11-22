@@ -174,11 +174,18 @@ def test_sweep_fails_when_a_fast_loop_fit_has_not_converged(data, sigma, monkeyp
     """Item 6 holds on the fast loop: a grid point or secant refit with kkt_w >= 1e-4 ends the run."""
     import functools
 
-    monkeypatch.setattr(vl, "fit_point", functools.partial(vl.fit_point, max_rounds=1))
-    monkeypatch.setattr(vl, "kkt_of", lambda report: (1.0, float("nan")))
+    fits, original = [], vl.fit_point
+
+    def counted(*a, **kw):
+        fits.append(1)
+        return original(*a, max_rounds=1, **kw)
+
+    # the 13 grid fits converge; every later (secant) refit does not, so the post-dof_discrepancy check is the one that fires
+    monkeypatch.setattr(vl, "fit_point", counted)
+    monkeypatch.setattr(vl, "kkt_of", lambda report: (1e-6 if len(fits) <= 13 else 1.0, 0.5))
     with pytest.raises(vl.RuleFailure, match="item 6") as e:
         vl.sweep_stage(data, sigma, npix=NPIX, pixel_mas=PIX, log=lambda *a: None)
-    assert e.value.record["unconverged_fits"]
+    assert e.value.record["unconverged_fits"] and len(fits) > 13 and e.value.record["curvature_step_run"] is True
 
 
 def test_sweep_fails_when_m_stays_above_3_se_after_the_secant_steps(data, sigma, monkeypatch):

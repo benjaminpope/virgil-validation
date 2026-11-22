@@ -372,12 +372,14 @@ def sweep_stage(data, sigma, *, npix, pixel_mas, seed=0, gtol=1e-4, time_limit=N
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         out = curve.dof_discrepancy((), MaxEntropy(1.0), noise_scale2=s2, noise_scale_sigma=sigma_s, nprobe=NPROBE, tol=CG_TOL, maxit=cg_maxit, seed=seed, secant=True, max_secant=MAX_SECANT, curvature=curvature)
+    log(f"curvature step done: {curvature.stats['calls']} calls, {curvature.stats['seconds']:.1f} s")
     kkt = [kkt_of(r) for r in reports]
     table = [dict(weight=float(w), w_over_s2=float(w) / s2, chi2=float(c), m=float(m), g=float(g), kkt_w=k[0], band_limit=k[1]) for w, c, m, g, k in zip(weights, chi2, out.m_sweep, out.g_sweep, kkt)]
     rec = dict(stage="sweep", s2=s2, sigma_s=sigma_s, fingerprint=sigma["fingerprint"], seed=int(seed), n_rows=len(data.u), n_real=n_eff, npix=int(npix), pixel_mas=float(pixel_mas), flux_jy=float(sigma["flux_jy"]),
                ref_obs=int(sigma["ref_obs"]), points=table, crossings=[float(x) for x in out.roots], crossings_w_over_s2=[float(x) / s2 for x in out.roots], nprobe=NPROBE, cg_tol=CG_TOL, cg_maxit=int(cg_maxit),
                weight_band=None if out.weight_band is None else [None if x is None else float(x) for x in out.weight_band], band_note="w at s2 + 2 sigma_s and s2 - 2 sigma_s, from the grid fits alone",
-               secant_trace=[dict(weight=float(a), m=float(b), g_se=float(c)) for a, b, c in out.trace], max_secant=MAX_SECANT, warnings=sorted({str(x.message) for x in caught}), status="ok")
+               secant_trace=[dict(weight=float(a), m=float(b), g_se=float(c)) for a, b, c in out.trace], max_secant=MAX_SECANT, warnings=sorted({str(x.message) for x in caught}), status="ok",
+               curvature_step_run=True, curvature_stats=dict(curvature.stats))
     rec["unconverged_fits"] = unconverged
     if unconverged:
         raise RuleFailure(f"item 6: {len(unconverged)} fast-loop fit(s) ended with kkt_w >= {KKT_W_MAX:g} (e.g. w = {unconverged[0]['weight']:.5g}, kkt_w {unconverged[0]['kkt_w']:.3g}); refit with a smaller --gtol", rec)
