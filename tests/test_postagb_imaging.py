@@ -191,3 +191,168 @@ def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_p
     assert rec["kept_file"] == "t_image.json" and rec["kept_sha256"] == hashlib.sha256(prev.read_bytes()).hexdigest()
     assert rec["reason"] == "converged, interior of its grid" and rec["utc"]
     assert json.loads(prev.read_text()) == _previous_result()  # the kept result is untouched
+
+
+# ---- review options: --companion, --hole-scale, --geometry, --white (reports/postagb-binaries-psgem-review.md)
+
+
+def _opts(**over):
+    import argparse
+
+    base = dict(star_index=None, bg_index=None, noise="night", mean="blob", strategy="gp-polar", target="IW_Car", companion=None,
+                companion_start=None, hole_scale=None, geometry=None, white=None)
+    return argparse.Namespace(**(base | over))
+
+
+@needs_multipole
+def test_pair_arg_parses_two_numbers_and_refuses_the_rest():
+    import argparse
+
+    assert P.pair_arg("0.59,0.84") == (0.59, 0.84) and P.pair_arg("28, 161") == (28.0, 161.0)
+    for bad in ("1", "1,2,3", "a,b", "1,nan", ""):
+        with pytest.raises(argparse.ArgumentTypeError):
+            P.pair_arg(bad)
+
+
+@needs_multipole
+def test_default_options_leave_the_output_names_unchanged():
+    assert P.option_suffix(_opts()) == ""
+    seen = []
+    P.per_strategy(lambda args, out, strat: seen.append(P.TARGETS[args.target]["key"]), _opts(strategy="gp-polar", noise="night"), None)
+    assert seen == ["IW_Car_gp-polar_night"]
+    seen.clear()
+    P.per_strategy(lambda args, out, strat: seen.append(P.TARGETS[args.target]["key"]),
+                   _opts(companion="free", companion_start=(1.0, -1.3), hole_scale=0.5, geometry=(28.0, 161.0), white=(0.59, 0.84)), None)
+    assert seen == ["IW_Car_gp-polar_night_compfree_holex0.5_geo28-161_white0.59-0.84"]
+    assert P.TARGETS["IW_Car"]["key"] == "IW_Car"  # the table is restored
+
+
+@needs_multipole
+def test_options_that_would_do_nothing_are_refused():
+    P.check_options(_opts())
+    P.check_options(_opts(companion="fixed", companion_start=(0.7, -1.5), geometry=(0.0, 0.0), white=(0.59, 0.84), hole_scale=0.5))
+    for bad in (dict(companion="fixed"), dict(companion_start=(1.0, 1.0)),  # the two go together
+                dict(white=(0.59, 0.84), noise="current"), dict(white=(0.59, 0.84), noise="nightw"), dict(white=(0.0, 0.84)),
+                dict(geometry=(95.0, 0.0)), dict(hole_scale=0.0), dict(hole_scale=-1.0),
+                dict(geometry=(28.0, 161.0), strategy="mem"), dict(companion="free", companion_start=(1.0, 1.0), strategy="all")):
+        with pytest.raises(SystemExit):
+            P.check_options(_opts(**bad))
+
+
+@needs_multipole
+def test_white_replaces_only_the_two_white_scales(monkeypatch):
+    cfg = {"key": "PS_Gem"}
+    pair = P.noise_widths(cfg)
+    assert P.effective_noise_widths(cfg) == pair  # no option: the pair test's widths, untouched
+    got = P.effective_noise_widths(cfg, (0.59, 0.84))
+    assert got["v2_white"] == 0.59 and got["t3_white"] == 0.84
+    assert {k: v for k, v in got.items() if k not in ("v2_white", "t3_white")} == {k: v for k, v in pair.items() if k not in ("v2_white", "t3_white")}
+    assert pair["v2_white"] != 0.59  # PS Gem's pair test says 0.31
+    seen = {}
+    monkeypatch.setattr(P, "night_noise", lambda data, widths, night: seen.update(night=widths) or "night")
+    monkeypatch.setattr(P, "vlti_noise", lambda data, widths: seen.update(vlti=widths) or "vlti")
+    assert P.modelled_noise("d", cfg, "night", (0.59, 0.84)) == "night" and seen["night"]["v2_white"] == 0.59
+    assert P.modelled_noise("d", cfg, "vlti", (0.59, 0.84)) == "vlti" and seen["vlti"]["t3_white"] == 0.84
+    P.modelled_noise("d", cfg, "night")
+    assert seen["night"] == pair  # the default path
+
+
+@needs_multipole
+def test_geometry_option_replaces_the_scale_stage_and_needs_no_file(tmp_path):
+    import json
+
+    cfg = {"key": "PS_Gem"}
+    args = _opts(geometry=(28.0, 161.0), smoke=False)
+    assert P.resolve_geometry(args, tmp_path, cfg, "gp-polar") == dict(inc_deg=28.0, pa_deg=161.0)  # no PS_Gem_scale_night.json here
+    assert P.resolve_geometry(_opts(geometry=(0.0, 0.0), smoke=True), tmp_path, cfg, "gp-polar") == dict(inc_deg=0.0, pa_deg=0.0)
+    with pytest.raises(FileNotFoundError):  # without the option the scale stage's file is still required
+        P.resolve_geometry(_opts(smoke=False), tmp_path, cfg, "gp-polar")
+    (tmp_path / "PS_Gem_scale_night.json").write_text(json.dumps(dict(geometry=dict(inc_deg=71.8, pa_deg=127.6))))
+    assert P.resolve_geometry(_opts(smoke=False), tmp_path, cfg, "gp-polar") == dict(inc_deg=71.8, pa_deg=127.6)
+    assert P.resolve_geometry(_opts(smoke=True), tmp_path, cfg, "gp-polar") == dict(inc_deg=45.0, pa_deg=90.0)  # the smoke placeholder
+
+
+@needs_multipole
+def test_hole_scale_scales_the_hole_and_the_default_is_unchanged():
+    from virgil.models import Image
+
+    env = Image(np.zeros((101, 101)), 0.1)
+
+    class Data:
+        u, v, wavel = np.array([30.0]), np.array([0.0]), np.array([1.6e-6])
+
+    cfg = dict(sec0=None, ud0=0.01, ud_fix=0.01, hole_mas=1.2, mask_mas=1e9)
+    m1, r1 = P.hole_mask(cfg, env, Data)
+    m_half, r_half = P.hole_mask(cfg | dict(hole_scale=0.5), env, Data)
+    assert r1 == 1.2 and r_half == pytest.approx(0.6)
+    assert (~m_half).sum() < (~m1).sum() and not (m1 & ~m_half).any()  # the half hole blanks a subset of the full one
+    assert P.cfg_of(_opts(target="PS_Gem", hole_scale=0.5))["hole_scale"] == 0.5
+    assert "hole_scale" not in P.cfg_of(_opts(target="PS_Gem"))
+
+
+@needs_multipole
+def test_companion_priors_fix_or_free_the_position():
+    fixed = P.companion_priors(_opts(companion="fixed", companion_start=(0.7, -1.5)))
+    free = P.companion_priors(_opts(companion="free", companion_start=(0.7, -1.5)))
+    assert set(fixed) == {"comp.flux.ratio", "comp.flux.index"}  # the position has no prior: it is held
+    assert set(free) == set(fixed) | {"comp.dra", "comp.ddec"}
+    assert float(free["comp.dra"].low) == -3.0 and float(free["comp.dra"].high) == 3.0
+    assert (float(fixed["comp.flux.ratio"].low), float(fixed["comp.flux.ratio"].high)) == (1e-3, 0.3)
+    comp = P.companion_component(_opts(companion="fixed", companion_start=(0.7, -1.5)))
+    assert (float(comp.dra), float(comp.ddec)) == (0.7, -1.5)
+
+
+@needs_multipole
+def test_companion_summary_reports_position_flux_and_the_flux_left_in_the_image():
+    from types import SimpleNamespace
+
+    from virgil.models import PointSource
+    from virgil.spectra import PowerLaw
+
+    n, pix = 101, 0.1
+    model = SimpleNamespace(comp=PointSource(flux=PowerLaw(0.02, -3.0, P.L0), dra=1.0, ddec=-1.0),
+                            env=SimpleNamespace(flux=SimpleNamespace(index=2.0)))
+    bright = np.full((n, n), 1e-9)
+    iy, ix = 50 + 10, 50 - 10  # 1 mas East (left of the centre column) and 1 mas South (below the centre row)
+    bright[iy, ix] = 1.0
+    out = P.companion_summary(model, bright, pix, f_env=0.04, sd={"comp.flux.index": 0.2, "comp.dra": 0.1, "comp.ddec": 0.2}, tot=1.1)
+    assert out["comp_dra"] == 1.0 and out["comp_ddec"] == -1.0
+    assert out["comp_sep_mas"] == pytest.approx(np.sqrt(2.0)) and out["comp_pa_deg"] == pytest.approx(135.0)  # South-East
+    assert out["comp_flux_pct"] == pytest.approx(100 * 0.02 / 1.1) and out["comp_pos_sd_mas"] == pytest.approx(np.hypot(0.1, 0.2))
+    assert out["comp_colour"] == "photospheric"
+    assert out["comp_image_left_frac"] == pytest.approx(2.0, rel=1e-3)  # all 0.04 of the environment's flux sits on the point: twice its own 0.02
+    bright[iy, ix] = 1e-9
+    bright[50 - 10, 50 + 10] = 1.0  # the image's flux moves to the mirror position: none left near the point
+    assert P.companion_summary(model, bright, pix, 0.04, {}, 1.1)["comp_image_left_frac"] == pytest.approx(0.0, abs=1e-6)
+    assert P.companion_summary(model, bright, pix, 0.04, {}, 1.1)["comp_pos_sd_mas"] is None  # a held position has no sd
+
+
+@needs_multipole
+@pytest.mark.parametrize("lz_mirror, kept", [(-5.0, "mirror"), (-20.0, "start")])
+def test_companion_mirror_keeps_the_higher_scene_evidence(monkeypatch, lz_mirror, kept):
+    from types import SimpleNamespace
+
+    class Sc:
+        def __init__(self, d=None):
+            self.d = d or {}
+
+        def set(self, k, v):
+            return Sc(self.d | {k: v})
+
+    best = SimpleNamespace(lz=-10.0, model=SimpleNamespace(comp=SimpleNamespace(dra=0.7, ddec=-1.5)))
+    fits = []
+
+    def fake_fit(sc, pri, data, opts):
+        f = SimpleNamespace(lz=lz_mirror, info={"chi2_red": 1.0}, model=SimpleNamespace(comp=SimpleNamespace(dra=sc.d["comp.dra"], ddec=sc.d["comp.ddec"])))
+        fits.append(f)
+        return f, {}
+
+    monkeypatch.setattr(P, "polar_scene_fn", lambda *a: (lambda sg, lr, lt: Sc()))
+    monkeypatch.setattr(P, "image_priors", lambda sc: {})
+    monkeypatch.setattr(P, "fit_cell", fake_fit)
+    monkeypatch.setattr(P, "scene_evidence", lambda f, data, pri: (f.lz, {}))
+    args = _opts(companion="free", companion_start=(0.7, -1.5), smoke=True)
+    chosen, rec = P.companion_mirror({}, None, None, None, {"env.log_brightness": 0, "comp.dra": 1}, None, args, {}, 0.3, 3, (1.0, 0.5, 1.0), best)
+    assert (fits[0].model.comp.dra, fits[0].model.comp.ddec) == (-0.7, 1.5)  # started at the mirror image through the primary
+    assert chosen is (fits[0] if kept == "mirror" else best) and rec["comp_mirror_better"] is (kept == "mirror")
+    assert rec["comp_mirror_log_z_scene"] == lz_mirror and rec["comp_start_log_z_scene"] == -10.0
