@@ -7,7 +7,7 @@ MPoL is not used here.
 
 ## Data
 
-- **DSHARP discs.** The released continuum measurement sets already carry the self-calibration (`CORRECTED_DATA`); the fit reads that column.
+- **DSHARP discs.** The released continuum measurement sets already carry the self-calibration. The prep stage reads `CORRECTED_DATA` where the set has it (IM Lup's) and otherwise `DATA`, and records the column it used in `datacolumn.txt`.
 - **HL Tau.** The released calibrated measurement sets are combined with the released self-calibration tables (`pcal2`, `apcal`) and the flags of the
   release's imaging scripts, then split, so the fit reads the self-calibrated data. Band 6 and Band 7 are both run, and `dsharp_compare.py preview`
   puts our image next to the ALMA image for each band.
