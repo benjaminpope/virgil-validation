@@ -1,0 +1,151 @@
+{
+ "label": "2004_data1_star_in_shell",
+ "task": 0,
+ "family": "star_in_shell",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2004/2004-data1.fits"
+ ],
+ "resolution_mas": 0.8545488911810938,
+ "field_mas": 18.046091827553123,
+ "channels": 1,
+ "chromatic": false,
+ "reference_wavelength_m": null,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.00037443352630361915,
+  "median_phase_error_deg": 0.10199088230729103,
+  "implied_vis_residual": 0.006025796315451026,
+  "implied_phase_residual_deg": 1.6413495043671074
+ },
+ "residual_image": {
+  "chi2_red": 2.814468576521383,
+  "flux_relative_to_model": 1.9999374778407657,
+  "npix": 42,
+  "pixel_scale_mas": 0.4272744455905469,
+  "field_mas": 17.94552671480297,
+  "converged": true,
+  "file": "2004_data1_star_in_shell_rest.npz"
+ },
+ "gp_disk": {
+  "chi2_red": 11.848878958645214,
+  "converged": true,
+  "azimuthal_degree": 2,
+  "starts": 2,
+  "starts_at_best": 1,
+  "r_in_mas": 0.4272744455905469,
+  "r_out_mas": 13.534568870664842,
+  "length_mas": 2.5636466735432815,
+  "values": {
+   "disk.flux": 9.999980300679548,
+   "disk.inc": 13.452645357706118,
+   "disk.pa": 149.9199683606825
+  },
+  "file": "2004_data1_star_in_shell_gp_disk.npz"
+ },
+ "rungs": [
+  {
+   "rung": "star+halo",
+   "k": 2,
+   "n": 325,
+   "chi2": 270665.8883022946,
+   "chi2_red": 832.8181178532142,
+   "bic": 270677.45595265925,
+   "converged": true,
+   "starts": 4,
+   "starts_at_best": 3,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "halo.flux": [
+     9.99999999924291
+    ],
+    "halo.sigma": [
+     2.174442694450313
+    ]
+   }
+  },
+  {
+   "rung": "star+shell",
+   "k": 7,
+   "n": 325,
+   "chi2": 97302.53825313834,
+   "chi2_red": 299.3924253942718,
+   "bic": 97343.02502941464,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 2,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "shell.az_amps": [
+     0.9999965483168572
+    ],
+    "shell.az_pas": [
+     98.67691800900636
+    ],
+    "shell.diam": [
+     4.896376266108612
+    ],
+    "shell.flux": [
+     9.999995159504309
+    ],
+    "shell.fwhm": [
+     3.9327351598663394
+    ],
+    "shell.inc": [
+     44.88097785083622
+    ],
+    "shell.pa": [
+     137.81575498020297
+    ]
+   }
+  },
+  {
+   "rung": "star+shell+halo",
+   "k": 9,
+   "n": 325,
+   "chi2": 84171.06069707933,
+   "chi2_red": 258.9878790679364,
+   "bic": 84223.1151237203,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "halo.flux": [
+     3.117370769121568
+    ],
+    "halo.sigma": [
+     2.36961841394976
+    ],
+    "shell.az_amps": [
+     0.9999981380248466
+    ],
+    "shell.az_pas": [
+     104.38723833468107
+    ],
+    "shell.diam": [
+     4.7308263909234185
+    ],
+    "shell.flux": [
+     9.999995651184378
+    ],
+    "shell.fwhm": [
+     3.800062104189901
+    ],
+    "shell.inc": [
+     50.355119577200014
+    ],
+    "shell.pa": [
+     139.91481887381795
+    ]
+   }
+  }
+ ],
+ "chosen": "star+shell+halo",
+ "elapsed_s": 159.84309005737305,
+ "smoke": false
+}

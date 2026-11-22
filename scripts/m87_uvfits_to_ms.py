@@ -44,25 +44,39 @@ def find_uvfits(day):
     return hits[0]
 
 
-def key(time, a, b):
-    return (round(float(time), 0), min(int(a), int(b)), max(int(a), int(b)))
+def baseline(a, b):
+    return (min(int(a), int(b)), max(int(a), int(b)))
 
 
-def compare(raw, eht, ddid_first=True):
-    """Match the MS samples to eht-imaging's rows and find the convention. Returns a dict (and the matched mask)."""
-    index = {}
+def compare(raw, eht, ddid_first=True, tol_s=0.5):
+    """Match the MS samples to eht-imaging's rows and find the convention. Returns a dict (and the matched mask).
+
+    A row matches the eht-imaging row of the same baseline nearest in time within ``tol_s`` seconds. Raises
+    ``ValueError`` if two eht rows lie within ``tol_s`` of one MS row, or if two MS rows (channels or spectral
+    windows of one ddid file, which eht-imaging's single frequency cannot tell apart) map to one eht row.
+    """
+    by_baseline = {}
     for i, (t, a, b) in enumerate(zip(eht["time"], eht["t1"], eht["t2"])):
-        index.setdefault(key(t, a, b), []).append(i)
+        by_baseline.setdefault(baseline(a, b), []).append((float(t), i))
+    by_baseline = {k: (np.array([t for t, _ in sorted(v)]), np.array([i for _, i in sorted(v)])) for k, v in by_baseline.items()}
     rows, partner, swapped = [], [], []
     for r, (t, a, b) in enumerate(zip(raw["time"], raw["ant1"], raw["ant2"])):
-        cand = index.get(key(t, a, b), [])
-        if len(cand) == 1:
+        times, idx = by_baseline.get(baseline(a, b), (np.empty(0), np.empty(0, int)))
+        near = np.nonzero(np.abs(times - float(t)) <= tol_s)[0]
+        if len(near) > 1:
+            raise ValueError(f"ambiguous: {len(near)} eht-imaging rows of baseline {baseline(a, b)} within {tol_s} s of t={t}")
+        if len(near) == 1:
             rows.append(r)
-            partner.append(cand[0])
-            swapped.append(int(a) != int(eht["t1"][cand[0]]))
+            partner.append(int(idx[near[0]]))
+            swapped.append(int(a) != int(eht["t1"][idx[near[0]]]))
+    if len(set(partner)) != len(partner):
+        raise ValueError("ambiguous: several MS rows (channels or spectral windows) match one eht-imaging row; "
+                         "frequency cannot disambiguate them (eht-imaging carries one rf)")
     rows, partner, swapped = np.array(rows), np.array(partner), np.array(swapped)
     info = {"n_ms": int(len(raw["time"])), "n_eht": int(len(eht["time"])), "n_matched": int(len(rows)),
             "n_order_swapped": int(swapped.sum())}
+    if len(rows) and "rf_hz" in eht:  # the sample frequency against eht-imaging's rf, for the report
+        info["freq_minus_rf_hz_median"] = float(np.median(raw["freq"][rows]) - float(eht["rf_hz"]))
     if len(rows) == 0:
         info["error"] = "no rows matched by (time, baseline)"
         return info, rows, partner

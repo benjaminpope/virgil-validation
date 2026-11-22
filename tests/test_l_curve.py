@@ -108,7 +108,7 @@ def test_every_lcurve_fit_converged(sweep):
     assert_all_converged(fits)
 
 
-@pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])
+@pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"], headline="max_rel_chi2")
 def test_points_match_our_chi2_and_penalty(sweep):
     """Weights largest first; per weight, χ², χ² per point and the penalty
     equal ours of the fitted image (rel. 1e-8)."""
@@ -126,7 +126,7 @@ def test_points_match_our_chi2_and_penalty(sweep):
     assert rel_chi2 < 1e-8 and rel_red < 1e-8 and rel_pen < 1e-8
 
 
-@pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"])
+@pytest.mark.validates("virgil.imaging.l_curve", roots=["mathematics"], headline="max_rel_gradient_left")
 def test_each_point_minimizes_chi2_plus_twice_the_penalty(sweep):
     """At each fitted image our gradients satisfy g_χ² + κ w g_TSV = 0 with
     κ = 2 (to 1 %), and what is left over is below 1e-5 of the gradient

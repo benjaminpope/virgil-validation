@@ -79,7 +79,7 @@ nav:
           - "Limb-darkened disks": models/limb_darkening.md
           - "Rapid rotators": models/rapid_rotators.md
           - "Flared disks and harmonix": models/flared_disks.md
-          - "PolarDisk: profiles, harmonics, height": models/polar_disk.md
+          - "MultipoleDisk: profiles, harmonics, height": models/polar_disk.md
           - "Spectra": models/spectra.md
           - "Cones, fields and invariants": models/cones_fields.md
       - Likelihood:
@@ -92,6 +92,7 @@ nav:
           - "Detection statistics": inference/detection.md
           - "Sampling": inference/sampling.md
           - "Small helpers": inference/helpers.md
+          - "Pipelines": inference/pipelines.md
       - Orbits:
           - "Kepler orbits": orbits/kepler.md
           - "Against orbitize!": orbits/orbitize.md
@@ -104,6 +105,7 @@ nav:
   - Method:
       - "How trust is built": method/index.md
       - "Findings": method/findings.md
+      - "Upstream bug reports (MWEs)": method/upstream_bugs.md
       - "Not yet covered": method/coverage.md
       - "External packages":
           - PMOIRED: method/pmoired.md
@@ -112,5 +114,6 @@ nav:
           - orbitize!: method/orbitize.md
           - eht-imaging: method/ehtim.md
       - "ALMA measurement-set conventions": alma_conventions.md
+      - "EHT M87* conventions": m87_conventions.md
       - "Evidence table": evidence.md
       - "Generated results": results.md

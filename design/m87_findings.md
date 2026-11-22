@@ -29,10 +29,22 @@ V = `virgil.metrics.ring_features`.
 
 - BASIS computes closure invariants with its own code, not the ClosureInvariants package.
 - 3a (≤ 1e-8) is unreachable as pre-registered: BASIS works in complex64 and uses its own arcsec constant
-  (206265). The agreement is 7.6e-8 after matching the constant. Recorded as a pre-registered fail with this reason;
+  (206265). The agreement is 7.6e-8 after matching the constant. Outcome: **3a fails as pre-registered**, for this reason;
   the criterion is not changed.
-- BASIS's `sky_map` places the floor Gaussian with the opposite sign of offset to its documented convention.
+- BASIS's `sky_map` renders the floor Gaussian on the side opposite to its analytic visibilities: ledger P15,
+  strict xfail `tests/test_m87_findings.py` (needs basis.sif). It can bias REX on stage 2 posterior renders.
 - The full covariance C = J Σ Jᵀ is singular (invariants are redundant); stage 3b uses a tangent-space projection.
 - A nested virgil `System` needs `flux=`.
-- `virgil` `read_ms` refuses a Stokes-I-only MS (to be filed as a strict xfail with a coordinator note).
+- virgil's `ComplexVisData.read_ms` refuses a Stokes-I-only MS (documented limitation): ledger F32, strict xfail
+  `tests/test_m87_findings.py`. The checks read per-ddid npz files instead.
 - bilby 2.8.2 does not run with dynesty 3.2.0 (`apply_reflect` removed); dynesty is pinned to 3.1.0.
+
+## Departures from the plan in the stage 3–5 code (to settle before those stages run)
+
+- Stage 5 CLEAN runs on the network-calibrated visibilities with no gain calibration; the plan says "with
+  marginalised gains". The stage 5 summary records this (`clean_gains`). Either the code gains a self-calibration
+  step or the plan changes with a change-log row; neither has been done.
+- MEM uses the start image as its entropy prior (eht-imaging's convention); pixel priors are improper uniform.
+- Both stage 4 models are pinned at the origin (absolute position is a gain-phase gauge).
+- Point χ² in stages 3b and 4 is evaluated at the maximum-posterior particle, not at componentwise medians;
+  angle summaries are circular.

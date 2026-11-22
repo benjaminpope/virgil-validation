@@ -16,6 +16,7 @@ integration.
 | the same, no companion | quadrature of the true likelihood | Mathematics | 2e-3 (with a strong companion the closed form differs by ~0.4 in log B ~ 100–400, the nonlinearity its docs warn of) |
 | `linear_flux_grid(n_iter=5)` with a bright companion (0.3) | a direct optimiser of our own χ² | Mathematics | 1e-6 |
 | `OIData.with_closure_offsets`: per-baseline (T e), per-triangle and supplied offsets common to a frame's channels, four UTs | the sines over σ, projected on an orthonormal basis of each channel's triangle column space, against 𝒩(y; 0, QᵀRQ + VVᵀ) | Mathematics | 1e-13 |
+| `ClosureOffsets(scale_penalty=True/False)` and `OIData.with_gains(include_extras=True/False)` (`0.4.2`, `test_042_data_gains_angles.py`) | far-hemisphere (`cos Δ < 0`) wrap penalty `(1 − cos Δ) / hypot(σ, σ_off)` vs `(1 − cos Δ) / σ`, and dense SciPy Cholesky Gaussian marginal log-likelihood across `V²`, `VISAMP` (`\|V\| B`), and `T3AMP` (`T3AMP (B₁ + B₂ + B₃)`) | Mathematics | `< 1e-13` (wrap), `< 1e-10` (`Δ log L`) |
 | `RVData.marginal_loglike` and `zero_point_posterior` (three instruments, with and without jitter), given virgil's Keplerian model | 𝒩(m + Aμ, C + AΛAᵀ); the Gaussian conditional of the zero points | Mathematics | 1e-11; 1e-13 |
 
 ## The mode objects
@@ -29,7 +30,11 @@ telescope and triangle algebra (`crosscheck.chi2.triangle_matrix`).
 | `GainModes` from `gain_modes` (telescope, baseline and chromatic groups) | each block's shapes, times its group's width, scattered onto the samples: UUᵀ equals ours (per frame an indicator per telescope on its baselines; one per baseline; one per baseline shaped (λ_ref/λ)²), and the number of modes | Mathematics | exact |
 | `ClosureOffsets` from `closure_offsets` (baseline, triangle, both) | the modes scattered onto the closure phases through `cp_noise.groups`: Σ τ² m mᵀ equals τ² (T Tᵀ) ⊗ 1 1ᵀ for baseline offsets (T e), τ² I ⊗ 1 1ᵀ for triangle offsets, the offsets being common to all channels of a frame | Mathematics | exact |
 | station phases (our algebra) | a phase gᵢ per telescope shifts baseline (i, j) by gⱼ − gᵢ, which T annihilates: T A = 0; rank T = 3 for four telescopes | Mathematics | exact |
-| an offset mode along the left null vector of T (the dependent closure-phase combination of four telescopes), 0.3 rad | leaves the log-likelihood unchanged; one along a column of T does not | Mathematics | 0 |
+| an offset mode along the left null vector of T (the dependent closure-phase combination of four telescopes), 0.3 rad | leaves the projected-sine log-likelihood (`scale_penalty=False`) unchanged (`0`), whereas under `0.4.2`'s default `scale_penalty=True` its unprojected `diag(M Mᵀ)` enters the wrap-penalty denominator `hypot(σ, σ_off)` when `Δ ≠ 0` (open finding **F26**); a mode along a column of T shifts both | Mathematics | `< 1e-12` (`0` unscaled; **F26** on default) |
+
+Supplied `modes` spanning multiple frames populate `OIData.phase_offsets.spanning` and are whitened after the per-frame blocks; both `scale_penalty=True` and `scale_penalty=False` — including non-nominal fitted `phi_offset_baseline`, `phi_offset_triangle` and `phi_offset_modes` noise terms (where the projected sine covariance uses `widths_for(terms)` while `scale_penalty=True` divides the wrap-penalty rows at the nominal `widths`) — are checked against the dense-Gaussian plus periodic wrap reference at small residuals and right across the `±180°` branch cut (`|Δ| ≈ π`, where `sin Δ ≈ 0` and `q_pen = 2 sin²(Δ/2) ≈ 2` carries the entire restoring penalty).
+
+![Periodic closure-phase wrap penalty under scale_penalty=True vs False and 4-telescope left-null vs column-space offset modes](../assets/closure_offsets_wrap_penalty.png)
 
 The `OI_FLUX` grey scale and differential phases are on
 [Flux spectra and differential phases](spectra_phases.md); the continuum

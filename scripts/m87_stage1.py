@@ -82,12 +82,13 @@ def main():
         x = ring_features(med, PS)
         per = [ring_features(im, PS) for im in s]
         d = {"input": os.path.relpath(path, DATA), "n_samples": len(s), "X": x,
-             "X_samples": {k: [float(np.mean([p[k] for p in per])), float(np.std([p[k] for p in per]))]
+             "X_samples": {k: [float(np.nanmean([p[k] for p in per])), float(np.nanstd([p[k] for p in per])),
+                               int(np.isfinite([p[k] for p in per]).sum())]
                            for k in ("diameter", "width", "asymmetry", "central_fraction")},
              "table1": TABLE1[day]}
         pas = np.radians([p["pa"] for p in per])
         d["X_samples"]["pa"] = [float(np.degrees(np.angle(np.mean(np.exp(1j * pas)))) % 360),
-                                float(np.degrees(np.sqrt(-2 * np.log(abs(np.mean(np.exp(1j * pas)))))))]
+                                float(np.degrees(np.sqrt(-2 * np.log(max(abs(np.mean(np.exp(1j * pas))), 1e-300))))), len(pas)]
         if vb.has_ring_features():
             d["V"] = vb.ring_features(med, PS)
         t1 = TABLE1[day]
@@ -112,7 +113,7 @@ def main():
                                           "asymmetry": abs(t["asymmetry"] - x["asymmetry"]) <= 0.02}
     summary["vv_commit"] = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True,
                                           text=True).stdout.strip()
-    pathlib.Path(args.out).write_text(json.dumps(summary, indent=1, default=float) + "\n")
+    pathlib.Path(args.out).write_text(json.dumps(summary, indent=1, default=float, allow_nan=False) + "\n")
     for day, d in summary["days"].items():
         print(day, "X d=%.2f w=%.2f pa=%.1f A=%.3f fc=%.3f" % tuple(d["X"][k] for k in
               ("diameter", "width", "pa", "asymmetry", "central_fraction")),

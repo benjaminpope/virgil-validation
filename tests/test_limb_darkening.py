@@ -13,13 +13,13 @@ coded from the paper. virgil's conventions are taken from its docstrings:
 import numpy as np
 import pytest
 
+from _limb_common import LAWS, TOL64, assert_close, uvw_samples
 from crosscheck import limb, simulate, sky
 from evidence.plugin import record
 
 vm = pytest.importorskip("virgil.models")
 vb = pytest.importorskip("virgil_bridge")
 
-TOL64 = 1e-10
 TOL32 = 3e-5
 
 UTS = np.array(
@@ -34,71 +34,14 @@ DEC = -50.0
 def uvw():
     """VLTI-like random baselines, plus a dense radial cut so that every
     null of a 12 mas disk out to 130 m / 1.5 um has samples beside it."""
-    rng = np.random.default_rng(2026)
-    n = 300
-    radial = np.linspace(0.0, 130.0, 1500)
-    pa = np.deg2rad(37.0)
-    return (
-        np.concatenate([rng.uniform(-130, 130, n), radial * np.sin(pa)]),
-        np.concatenate([rng.uniform(-130, 130, n), radial * np.cos(pa)]),
-        np.concatenate([rng.uniform(1.5e-6, 2.4e-6, n), np.full(1500, 1.5e-6)]),
-    )
+    return uvw_samples()
 
 
 def virgil_vis(model, u, v, wl):
     return np.asarray(model.model(u, v, wl), complex)
 
 
-def assert_close(ours, theirs, tol=TOL64):
-    err = record("max_abs_dV", np.max(np.abs(np.asarray(ours) - np.asarray(theirs))))
-    assert err < tol, f"max |dV| = {err:.3e}"
-
-
-LAWS = {
-    "uniform": [],
-    "linear": [0.6],
-    "quadratic": [0.35, 0.25],
-    "cubic": [0.3, 0.2, 0.1],
-    "order-22": list(np.linspace(0.05, 0.01, 22)),  # the highest documented
-}
-
-# ------------------------------------------------ our routes agree first
-
-
-@pytest.mark.parametrize("diam", [3.0, 12.0])
-@pytest.mark.parametrize(
-    "profile",
-    [limb.polynomial(u) for u in LAWS.values()] + [limb.square_root(0.1, 0.6)],
-    ids=list(LAWS) + ["square-root"],
-)
-@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference")
-def test_our_cloud_matches_our_hankel_transform(uvw, profile, diam):
-    u, v, wl = (a[::10] for a in uvw)  # quad is slow; every 10th sample
-    assert_close(
-        sky.visibility(limb.disk(diam, profile, 0.4, -0.7), u, v, wl),
-        limb.vis_hankel(u, v, wl, diam, profile, 0.4, -0.7),
-        tol=1e-12,
-    )
-
-
-@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference")
-def test_our_cloud_matches_hanbury_brown_linear_law(uvw):
-    u, v, wl = uvw
-    assert_close(
-        sky.visibility(limb.disk(12.0, limb.polynomial([0.6]), 0.4, -0.7), u, v, wl),
-        limb.vis_linear_closed_form(u, v, wl, 12.0, 0.6, 0.4, -0.7),
-        tol=1e-12,
-    )
-
-
-@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference")
-def test_our_uniform_limit_is_the_airy_pattern(uvw):
-    u, v, wl = uvw
-    assert_close(
-        sky.visibility(limb.disk(12.0, limb.polynomial([])), u, v, wl),
-        sky.vis_uniform_disk(u, v, wl, 12.0),
-        tol=1e-12,
-    )
+# our own routes agree first: tests/test_reference_limb.py
 
 
 # ------------------------------------------------------- virgil's models
@@ -306,7 +249,7 @@ def test_render_matches_our_image():
 
 
 @pytest.mark.x64
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"], headline="max_abs_dV2")
 def test_pixel_image_through_oifits(tmp_path):
     """Item 2 of Issue #12: our image of an off-centre limb-darkened star
     (8x oversampled pixels) with a companion, written to OIFITS; virgil's

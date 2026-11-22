@@ -71,8 +71,8 @@ def test_central_fraction_and_width_of_a_filled_ring():
 @pytest.mark.parametrize("radius,sigma,a,pa,centre", RINGS)
 @pytest.mark.validates("virgil.metrics.ring_features", roots=["mathematics"])
 def test_virgil_ring_features_match_the_crosscheck(radius, sigma, a, pa, centre):
-    """1c on analytic rings: diameter within 0.5 px, orientation within 2°, asymmetry within 0.02 of ours
-    and of the truth. Width and central fraction use different floors (EHT's 50/5 μas vs Lai et al.'s
+    """1c on analytic rings: diameter within 0.5 px, orientation within 2°, asymmetry within 0.02 of ours;
+    against the truth, the 1d tolerances (diameter 0.5 px, orientation 1°, asymmetry 0.01). Width and central fraction use different floors (EHT's 50/5 μas vs Lai et al.'s
     2 r_pk / 0.2 r_pk) and are not compared."""
     im = ring_image(64, PS, radius, sigma, a=a, pa=pa, centre=centre)
     v, x = vb.ring_features(im, PS), ring_features(im, PS)
@@ -82,6 +82,8 @@ def test_virgil_ring_features_match_the_crosscheck(radius, sigma, a, pa, centre)
     assert dangle(v["pa"], x["pa"]) <= 2.0
     assert abs(v["asymmetry"] - x["asymmetry"]) <= 0.02
     assert abs(v["diameter"] - 2 * radius) <= 0.5 * PS
+    assert dangle(v["pa"], pa) <= 1.0  # 1d tolerances against the truth
+    assert abs(v["asymmetry"] - a / 2) <= 0.01
 
 
 def _summary():
@@ -104,7 +106,7 @@ def test_published_images_reproduce_table1_ring_diameter_and_orientation():
 
 
 @pytest.mark.skipif(not SUMMARY.exists(), reason="stage 1 has not run (scripts/m87_stage1.py)")
-@pytest.mark.validates("virgil.metrics.ring_features", roots=["literature"], tier="C")
+@pytest.mark.validates("virgil.metrics.ring_features", roots=["mathematics"], tier="C")
 def test_virgil_ring_features_on_the_published_images():
     """1c on their images: virgil against our extraction."""
     summary = _summary()

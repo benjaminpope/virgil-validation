@@ -199,28 +199,33 @@ def n_independent_invariants(n_stations):
     return n_stations**2 - 3 * n_stations + 1
 
 
-def build_triangles(time, ant1, ant2, order=None, time_decimals=3):
+def build_triangles(time, ant1, ant2, order=None, time_decimals=3, group=None):
     """The triangles of each scan, pinned on the first station of ``order`` present, as BASIS does.
 
     ``time`` (seconds), ``ant1``, ``ant2`` give one entry per baseline row. A scan is one distinct ``time``
-    (rounded to ``time_decimals``). ``order`` ranks the stations (a sequence of ids in array-table order; default
+    (rounded to ``time_decimals``), or one distinct (``time``, ``group``) when ``group`` (e.g. a ddid/channel
+    code per row) is given. ``order`` ranks the stations (a sequence of ids in array-table order; default
     ascending id): the reference is the first of them present at that time and a < b follow the same order.
-    Where a baseline occurs twice in a scan the last row wins (BASIS's dictionary does the same).
+    Raises ``ValueError`` if a baseline (either direction) occurs twice in one scan.
     """
     time, ant1, ant2 = onp.asarray(time, float), onp.asarray(ant1).astype(int), onp.asarray(ant2).astype(int)
     rank = {int(s): i for i, s in enumerate(order)} if order is not None else None
     key = lambda s: rank[int(s)] if rank is not None else int(s)  # noqa: E731
     tkey = onp.round(time, time_decimals)
-    uniq = onp.unique(tkey)
+    grp = onp.zeros(len(tkey), int) if group is None else onp.asarray(group).astype(int)
+    uniq = sorted({(float(t), int(g)) for t, g in zip(tkey, grp)})
     cols = {k: [] for k in ("i1", "i2", "i3", "c1", "c2", "c3", "scan")}
     labels = []
     keep_times = []
-    for t in uniq:
-        rows = onp.nonzero(tkey == t)[0]
+    for t, g in uniq:
+        rows = onp.nonzero((tkey == t) & (grp == g))[0]
         lookup = {}
         for r in rows:
-            lookup[(int(ant1[r]), int(ant2[r]))] = (r, False)
-            lookup[(int(ant2[r]), int(ant1[r]))] = (r, True)
+            a, b = int(ant1[r]), int(ant2[r])
+            if (a, b) in lookup or (b, a) in lookup:
+                raise ValueError(f"baseline ({a}, {b}) occurs twice in the scan at t={t} (group {g}): pass group=")
+            lookup[(a, b)] = (r, False)
+            lookup[(b, a)] = (r, True)
         stations = sorted({int(s) for s in ant1[rows]} | {int(s) for s in ant2[rows]}, key=key)
         if len(stations) < 3:
             continue
@@ -322,8 +327,9 @@ def whitening(C, ci, tri):
     For scan s with invariants x (length n, unit norm) take Q, an orthonormal basis of x's orthogonal complement
     (n-1 columns); C_red = Q^T C_s Q is positive definite, L its Cholesky factor. Returns (W, logdet, k): the block
     diagonal matrix W (sum(n-1) x 2 n_tri) with W r = L^-1 Q^T r_s stacked over scans, the summed log det C_red and
-    the number k of independent invariants. The Gaussian log likelihood of a residual r (data minus model) is
-    -0.5 (|W r|^2 + logdet + k log 2 pi).
+    the number k of independent invariants. For a small tangent residual r the Gaussian log likelihood is
+    -0.5 (|W r|^2 + logdet + k log 2 pi); ``CIFit.whitened_residual`` replaces the chord x - m by the geodesic
+    (log map) residual so that the misfit grows monotonically up to the antipode.
     """
     import scipy.linalg as sl
 
@@ -368,8 +374,8 @@ class CIFit:
     k: int = 0
 
     @classmethod
-    def from_arrays(cls, u, v, vis, weight, time, ant1, ant2, order=None, sigma=None, full=True):
-        tri = build_triangles(time, ant1, ant2, order=order)
+    def from_arrays(cls, u, v, vis, weight, time, ant1, ant2, order=None, sigma=None, full=True, group=None):
+        tri = build_triangles(time, ant1, ant2, order=order, group=group)
         vis = onp.asarray(vis, complex)
         ci = onp.asarray(ci_vector(vis, tri))
         self = cls(onp.asarray(u, float), onp.asarray(v, float), vis, onp.asarray(weight, float), tri, ci, sigma)
@@ -389,11 +395,44 @@ class CIFit:
         r = (jnp.asarray(self.ci) - self.model_ci(system)) / self.sigma
         return -0.5 * (jnp.sum(r**2) + jnp.sum(jnp.log(2 * jnp.pi * jnp.asarray(self.sigma) ** 2)))
 
-    def loglike_full(self, system):
-        """Log likelihood with the full covariance, on each scan's tangent space."""
+    def whitened_residual(self, mci):
+        """Whitened geodesic residual (length k) of model invariants ``mci`` (unit norm per scan).
+
+        Per scan, with x the data and m the model on the unit sphere, the residual is the log map of m at x,
+        ``theta (m - c x) / |m - c x|`` with ``c = x.m`` and ``theta = arctan2(|m - c x|, c)`` in [0, pi], whitened
+        by ``L^-1 Q^T``. It equals ``W (m - x)`` to first order and grows monotonically with the angle, so the
+        antipode is the worst fit, not a zero-misfit point. Differentiable at ``m = x`` (``theta / sin theta`` is
+        set to its limit 1 there) and finite at the antipode.
+        """
+        import jax
         import jax.numpy as jnp
 
-        r = jnp.asarray(self.W) @ (jnp.asarray(self.ci) - self.model_ci(system))
+        x = jnp.asarray(self.ci)
+        m = jnp.asarray(mci)
+        cscan = onp.concatenate([self.tri.scan, self.tri.scan])
+        n = self.tri.n_scan
+        c = jax.ops.segment_sum(x * m, cscan, num_segments=n)
+        tvec = m - c[cscan] * x
+        s2 = jax.ops.segment_sum(tvec**2, cscan, num_segments=n)
+        big = s2 > 1e-24
+        s = jnp.sqrt(jnp.where(big, s2, 1.0))
+        theta = jnp.arctan2(s, c)
+        f = jnp.where(big, theta / s, 1.0)
+        rscan = onp.concatenate([onp.full(len(ii) - 1, k) for k, ii in enumerate(_scan_index(self.tri))])
+        W = jnp.asarray(self.W)
+        # exactly at the antipode the direction is undefined: use a fixed tangent direction t0 at angle pi
+        t0 = onp.random.default_rng(0).normal(size=len(self.ci))
+        xs = onp.asarray(self.ci)
+        t0 -= onp.bincount(cscan, t0 * xs, n)[cscan] * xs
+        t0 /= onp.sqrt(onp.bincount(cscan, t0**2, n))[cscan]
+        anti = jnp.pi * (W @ jnp.asarray(t0))
+        return jnp.where(big[rscan] | (c[rscan] > 0), f[rscan] * (W @ m), anti)
+
+    def loglike_full(self, system):
+        """Log likelihood with the full covariance, on each scan's tangent space (geodesic residual)."""
+        import jax.numpy as jnp
+
+        r = self.whitened_residual(self.model_ci(system))
         return -0.5 * (jnp.sum(r**2) + self.logdet + self.k * jnp.log(2 * jnp.pi))
 
     def chi2_raw(self, system):
@@ -403,7 +442,7 @@ class CIFit:
 
     def chi2_full(self, system):
         """(chi^2, k): the tangent-space chi^2 with the full covariance and its number of independent invariants."""
-        r = self.W @ (self.ci - onp.asarray(self.model_ci(system)))
+        r = onp.asarray(self.whitened_residual(self.model_ci(system)))
         return float(onp.sum(r**2)), int(self.k)
 
 
@@ -457,7 +496,8 @@ class BoxPrior:
         import jax
         import jax.numpy as jnp
 
-        u = jax.random.uniform(key, (n, self.dim), minval=1e-6, maxval=1 - 1e-6)
+        eps = float(onp.finfo(onp.float64 if jax.config.jax_enable_x64 else onp.float32).eps)  # u = 0, 1 would give +-inf
+        u = jax.random.uniform(key, (n, self.dim), minval=eps, maxval=1 - eps)
         return jnp.log(u) - jnp.log1p(-u)
 
 
@@ -495,19 +535,60 @@ def smc_run(prior, loglike_of_values, key, n_particles=1000, max_seconds=float("
     return res, out
 
 
+def map_particle(prior, loglike_of_values, res):
+    """The maximum-posterior particle of an SMC result: ``(values, log_post)``.
+
+    ``values`` is the dict of constrained scalars (fixed values included) of the particle with the largest
+    ``log L + log prior`` (in the flat coordinate) among those of positive weight. A plug-in model for point
+    chi^2 built from it is a real posterior point, which componentwise medians are not for wrapped angles or
+    label-swapped components.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    z = jnp.asarray(res.particles)
+    lp = jax.lax.map(jax.jit(lambda zi: loglike_of_values(prior.to_values(zi)) + prior.logprior(zi)), z)
+    lp = onp.where(onp.asarray(res.weights) > 0, onp.asarray(lp, float), -onp.inf)
+    i = int(onp.nanargmax(lp))
+    values = {k: float(v) for k, v in prior.to_values(z[i]).items()}
+    return values, float(lp[i])
+
+
+def angle_period(name):
+    """Period of an angle parameter by name: 2 pi for ``phi*``, pi for ``*pa`` (position angle of an ellipse), else None."""
+    base = name.split("_")[-1]
+    if base.startswith("phi"):
+        return 2 * math.pi
+    if base == "pa":
+        return math.pi
+    return None
+
+
 def weighted_summary(samples, weights=None):
-    """``{name: {"median", "sd", "q16", "q84"}}`` of weighted samples (weights sum to 1; None for equal)."""
+    """``{name: {"median", "sd", "q16", "q84"}}`` of weighted samples (weights sum to 1; None for equal).
+
+    Angle parameters (``angle_period``) are summarised circularly: the mean direction mu, then median and
+    quantiles of mu + the wrapped deviations (in [0, period)), and the SD of the deviations.
+    """
     out = {}
     for k, x in samples.items():
         x = onp.asarray(x, float)
         if x.ndim != 1 or len(x) < 2:
             continue
         w = onp.full(len(x), 1.0 / len(x)) if weights is None else onp.asarray(weights, float)
+        period = angle_period(k)
+        mu = 0.0
+        if period is not None:
+            ang = 2 * math.pi * x / period
+            mu = math.atan2(onp.sum(w * onp.sin(ang)), onp.sum(w * onp.cos(ang))) * period / (2 * math.pi)
+            x = (x - mu + period / 2) % period - period / 2  # deviations from the mean direction
         order = onp.argsort(x)
         cw = onp.cumsum(w[order])
         q = lambda p: float(x[order][min(onp.searchsorted(cw, p), len(x) - 1)])  # noqa: E731
         mean = float(onp.sum(w * x))
-        out[k] = {"median": q(0.5), "sd": float(math.sqrt(onp.sum(w * (x - mean) ** 2))), "q16": q(0.16), "q84": q(0.84)}
+        shift = (lambda t: (t + mu) % period) if period is not None else (lambda t: t)
+        out[k] = {"median": shift(q(0.5)), "sd": float(math.sqrt(onp.sum(w * (x - mean) ** 2))),
+                  "q16": shift(q(0.16)), "q84": shift(q(0.84))}
     return out
 
 
@@ -594,9 +675,16 @@ def load_vis(path):
 
 
 def ci_fit_from_data(data, sigma=None, full=True):
-    """``CIFit`` of a ``ComplexVisData`` (needs ``time``, ``ant1``, ``ant2``), stations ranked by id."""
+    """``CIFit`` of a ``ComplexVisData`` (needs ``time``, ``ant1``, ``ant2``), stations ranked by id.
+
+    Rows of different ddids or channels at one time form separate scans (a repeated baseline in one scan raises).
+    """
     a = {k: onp.asarray(getattr(data, k)) for k in ("u", "v", "vis", "weight", "time", "ant1", "ant2")}
-    return CIFit.from_arrays(a["u"], a["v"], a["vis"], a["weight"], a["time"], a["ant1"], a["ant2"], sigma=sigma, full=full)
+    ddid = onp.asarray(data.ddid).astype(int)
+    chan = onp.zeros(len(ddid), int) if getattr(data, "chan", None) is None else onp.asarray(data.chan).astype(int)
+    group = ddid * (int(chan.max()) + 1 if len(chan) else 1) + chan
+    return CIFit.from_arrays(a["u"], a["v"], a["vis"], a["weight"], a["time"], a["ant1"], a["ant2"], sigma=sigma,
+                             full=full, group=group)
 
 
 def match_labels(fit, labels, tol_s=0.5):
@@ -637,8 +725,8 @@ def reorder(values, pick):
 # --------------------------------------------------------------------------------------------------------------
 
 # Priors in micro-arcseconds / fractions: log-uniform scales, uniform angles and bounded shape parameters.
-RING_SPEC = [  # shared by both stage 4 models: ring-like part
-    ("R", 5.0, 40.0, "log"), ("w", 1.0, 20.0, "log"), ("dx", -30.0, 30.0, "uniform"), ("dy", -30.0, 30.0, "uniform"),
+RING_SPEC = [  # the m-ring's own part. Both stage 4 models are pinned at the origin: absolute position is a
+    ("R", 5.0, 40.0, "log"), ("w", 1.0, 20.0, "log"),  # gain-phase gauge (a phase gradient), so no dx, dy.
 ]
 MRING_SPEC = [
     ("beta1", 0.0, 0.5, "uniform"), ("phi1", 0.0, 2 * math.pi, "uniform"),
@@ -699,7 +787,7 @@ def native_scene(model, n_nuis):
             s = (v["beta1"] * jnp.sin(v["phi1"]), v["beta2"] * jnp.sin(v["phi2"]))
             ring = m.MultipoleDisk(
                 m.GaussianRing(radius=v["R"] * UAS, sigma=v["w"] * UAS), harmonics=m.Harmonics(c=c, s=s),
-                dra=v["dx"] * UAS, ddec=v["dy"] * UAS, flux=1.0,
+                flux=1.0,
             )
             parts = dict(ring=ring)
         else:
@@ -825,31 +913,36 @@ def resolution_mas(data):
 
 
 def clean_run(data, start, fov_uas, npix=NPIX, deconvolver="hogbom", niter=2000):
-    """CLEAN of ``data`` on ``npix`` pixels across ``fov_uas``. Returns a dict with ``image`` (Jy per pixel,
-    row 0 North), ``beam`` and the stop reason. CLEAN has no starting image: the start sets the CLEAN window,
-    all of the field for ``flat`` and a disc of radius equal to the Gaussian's FWHM for the others."""
+    """CLEAN of ``data`` on ``npix`` pixels across ``fov_uas``, on the data as given (no gain calibration).
+
+    Returns a dict with ``image`` (the CLEAN model, Jy per pixel, row 0 North), ``restored`` (model convolved
+    with the beam plus the residual, Jy/beam), ``residual``, ``beam`` and the stop reason. CLEAN has no starting
+    image: the start sets the CLEAN window (a user mask), all of the field for ``flat`` and a disc of radius
+    40 or 100 microarcseconds, the Gaussian's FWHM, centred on the field for ``gauss40`` / ``gauss100``.
+    """
     from virgil.radio_clean import clean
 
     scale = fov_uas * UAS / npix
-    mask = None
-    if start != "flat":
-        x = (onp.arange(npix) - (npix - 1) / 2) * fov_uas / npix
+    x = (onp.arange(npix) - (npix - 1) / 2) * fov_uas / npix
+    if start == "flat":
+        mask = onp.ones((npix, npix), bool)
+    else:
         radius = {"gauss40": 40.0, "gauss100": 100.0}[start]
         mask = (x[:, None] ** 2 + x[None, :] ** 2) <= radius**2
     sigma_img = 1.0 / math.sqrt(float(onp.sum(onp.asarray(data.weight))))
-    kw = dict(deconvolver=deconvolver, niter=niter, threshold=3 * sigma_img)
-    if mask is None:
-        kw["usemask"] = "auto-multithresh"
-    else:
-        kw.update(mask=mask, usemask="user")
-    res = clean(data, npix, scale, **kw)
-    return {"image": onp.asarray(res.model), "beam": [float(b) for b in res.beam], "stop": str(res.stop),
-            "iterations": int(res.iterations), "pixel_scale_uas": scale / UAS}
+    res = clean(data, npix, scale, deconvolver=deconvolver, niter=niter, threshold=3 * sigma_img, mask=mask,
+                usemask="user")
+    return {"image": onp.asarray(res.model), "restored": onp.asarray(res.image), "residual": onp.asarray(res.residual),
+            "beam": [float(b) for b in res.beam], "stop": str(res.stop), "iterations": int(res.iterations),
+            "pixel_scale_uas": scale / UAS}
 
 
 def rml_run(data, regularizer, start, fov_uas, npix=NPIX, weight=None, max_steps=5000, seed=0):
     """Regularised maximum likelihood of ``data`` with a pixel ``Image`` ("mem" or "tv"), antenna gains
     marginalised, quoted sigma. Returns ``image`` (Jy per pixel, row 0 North), the raw chi^2/N and fit flags.
+
+    The start image is both the optimiser's initial image and, for MEM, the entropy's default image (the
+    eht-imaging convention); pixels have a flat prior, so only the data and the regulariser constrain them.
 
     ``weight`` is the regulariser's strength (default ``0.1 N`` for MEM and ``0.01 N`` for TV, N real data:
     untuned, so the raw chi^2/N must be read before trusting the image)."""
@@ -863,15 +956,17 @@ def rml_run(data, regularizer, start, fov_uas, npix=NPIX, weight=None, max_steps
     n_real = 2 * len(data)
     scene = lambda values: Image(values["log_brightness"], pixel_scale_mas=scale)  # noqa: E731
     priors = nuis.priors()
-    priors["log_brightness"] = dist.Normal(0.0, 3.0)
+    # flat prior on the log pixels, as virgil.imaging.image_priors: the data and the regulariser alone constrain them
+    priors["log_brightness"] = dist.ImproperUniform(dist.constraints.real, (), event_shape=(npix, npix))
     init = nuis.defaults()
     base = start_image(start, npix, fov_uas)
-    init["log_brightness"] = onp.log(base + 1e-4 * base.max())
+    base = base + 1e-4 * base.max()
+    init["log_brightness"] = onp.log(base)
     flux0 = flux_guess(data)
     init["cal.flux"] = flux0
     term = data.term(scene, nuis, chi2="direct")
     if regularizer == "mem":
-        reg = MaxEntropy((0.1 if weight is None else weight) * n_real)
+        reg = MaxEntropy((0.1 if weight is None else weight) * n_real, prior=base)
     elif regularizer == "tv":
         reg = TV((0.01 if weight is None else weight) * n_real, beam_mas=resolution_mas(data))
     else:

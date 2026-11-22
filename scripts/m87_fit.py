@@ -68,13 +68,12 @@ def find_uvfits(day):
 
 def provenance():
     """Commits of virgil-validation and virgil, and the plan's criteria commit (refuses a dirty plan)."""
-    import virgil
     from crosscheck.preregistration import criteria_commit
+    from virgil_bridge import m87
     from virgil_bridge.m87_fit import git_commit
 
-    vdir = pathlib.Path(virgil.__file__).resolve().parent
-    return {"vv_commit": git_commit(ROOT), "virgil_commit": git_commit(vdir.parent.parent) or None,
-            "virgil_version": getattr(virgil, "__version__", None), "criteria_commit": criteria_commit(PLAN)}
+    # virgil_version, virgil_commit (pip direct_url.json) and virgil_dirty (editable or unknown tree)
+    return {"vv_commit": git_commit(ROOT), **m87.provenance(), "criteria_commit": criteria_commit(PLAN)}
 
 
 def write(out, name, summary):
@@ -188,13 +187,14 @@ def stage_3b(args):
         res, out = mf.smc_run(prior, loglike, jax.random.PRNGKey(args.seed), n_particles=args.particles,
                               max_seconds=args.max_seconds)
         run = {"likelihood": name, "stopped": bool(res.stopped), "undersampled": bool(res.undersampled),
-               "log_z": float(res.log_z), "log_z_error": float(res.log_z_error), "seconds": time.time() - t0,
+               "log_z": float(res.log_z), "log_z_error": float(res.log_z_error),
+               "variance_degenerate": bool(res.variance_degenerate), "seconds": time.time() - t0,
                "n_stages": len(res.betas[0]) if res.betas else None}
         if out is not None:
             w = np.asarray(res.weights)
-            med = {k: v["median"] for k, v in mf.weighted_summary(out, w).items()}
-            med.update(prior.fixed)
-            system = build(med)
+            best, log_post = mf.map_particle(prior, loglike, res)
+            run["point_model"] = {"at": "max-posterior particle", "log_post": log_post, "values": best}
+            system = build(best)
             chi2, n = fit.chi2_raw(system)
             run["chi2_raw"] = {"chi2": chi2, "n": n, "chi2_over_n": chi2 / n}
             if fit.W is not None:
@@ -231,14 +231,16 @@ def stage_4(args):
     res, out = mf.smc_run(prior, loglike_values, jax.random.PRNGKey(args.seed), n_particles=args.particles,
                           max_seconds=args.max_seconds)
     summary.update({"stopped": bool(res.stopped), "undersampled": bool(res.undersampled), "log_z": float(res.log_z),
-                    "log_z_error": float(res.log_z_error), "seconds": time.time() - t0})
+                    "log_z_error": float(res.log_z_error), "variance_degenerate": bool(res.variance_degenerate),
+                    "seconds": time.time() - t0})
     if out is not None:
         w = np.asarray(res.weights)
         stats = mf.weighted_summary(out, w)
-        med = {k: v["median"] for k, v in stats.items()}
+        med, log_post = mf.map_particle(prior, loglike_values, res)  # point model: max-posterior particle
+        summary["point_model"] = {"at": "max-posterior particle", "log_post": log_post, "values": med}
         chi2, n = mf.raw_chi2(term, nuis, med, n_ddid)
         summary["chi2_raw"] = {"chi2": chi2, "n": n, "chi2_over_n": chi2 / n}
-        summary["cal_sigma_median"] = [med[f"cal.sigma_{d}"] for d in range(n_ddid)]
+        summary["cal_sigma_median"] = [stats[f"cal.sigma_{d}"]["median"] for d in range(n_ddid)]
         build = lambda v: scene({k: v[k] for k in v})  # noqa: E731
         summary.update(posterior_block(prior, out, w, build))
         if args.model == "composite":
@@ -264,7 +266,8 @@ def stage_5(args):
     fovs = [args.fov] if args.fov else list(mf.FOVS_UAS)
     starts = [args.start] if args.start else list(mf.STARTS)
     imagers = [args.imager] if args.imager != "all" else ["clean", "mem", "tv"]
-    summary = {"stage": 5, "day": args.day, "n_vis": len(data), "npix": args.npix, **provenance(), "runs": []}
+    summary = {"stage": 5, "day": args.day, "n_vis": len(data), "npix": args.npix, **provenance(),
+               "clean_gains": "none: CLEAN runs on the data as given; only RML marginalises antenna gains", "runs": []}
     images = {}
     for imager in imagers:
         for fov in fovs:
@@ -275,10 +278,7 @@ def stage_5(args):
                 try:
                     if imager == "clean":
                         r = mf.clean_run(data, start, fov, npix=args.npix)
-                        from virgil.radio_clean import restore
-
-                        scale_mas = r["pixel_scale_uas"] * 1e-3
-                        r["restored"] = np.asarray(restore(r["image"], np.zeros_like(r["image"]), r["beam"], scale_mas))
+                        run["converged"] = r["stop"] != "diverged"  # restored image = model * beam + residual
                         run.update({"beam_mas": r["beam"], "stop": r["stop"], "iterations": r["iterations"]})
                         run["rex_restored"] = mf.image_ring(r["restored"], r["pixel_scale_uas"])
                         images[label + "_restored"] = r["restored"]
@@ -292,13 +292,19 @@ def stage_5(args):
                 run["seconds"] = time.time() - t0
                 summary["runs"].append(run)
                 print(label, {k: run.get(k) for k in ("chi2_per_n", "error", "seconds")}, (run.get("rex") or {}).get("diameter"))
-    by = {}
+    by, excluded = {}, []
     for run in summary["runs"]:
         d = (run.get("rex_restored") or run.get("rex") or {}).get("diameter")
-        if d is not None:
-            by.setdefault(run["imager"], []).append(d)
+        if d is None:
+            continue
+        if run.get("converged") is False:  # criterion 5a's spread is over converged runs only
+            excluded.append({"imager": run["imager"], "fov_uas": run["fov_uas"], "start": run["start"], "diameter": d,
+                             "stop": run.get("stop")})
+            continue
+        by.setdefault(run["imager"], []).append(d)
     summary["diameter_spread"] = {k: {"mean": float(np.mean(v)), "sd": float(np.std(v)), "range": [min(v), max(v)], "n": len(v)}
                                   for k, v in by.items()}
+    summary["not_converged"] = excluded  # RML converged False, CLEAN stop "diverged": listed, kept out of the spread
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     tag = f"{args.imager}" + (f"_fov{int(args.fov)}" if args.fov else "") + (f"_{args.start}" if args.start else "")

@@ -19,7 +19,7 @@ pages:
   models/limb_darkening.md: Limb-darkened disks against point clouds, closed forms and Kipping's parametrization.
   models/rapid_rotators.md: The gravity-darkened rapid rotator against an independent surface integration.
   models/flared_disks.md: Flared disks and the harmonix wrapper against direct Fourier sums.
-  models/polar_disk.md: PolarDisk profiles, harmonics and height against other codes, renders and ALMA data.
+  models/polar_disk.md: MultipoleDisk profiles, harmonics and height against other codes, renders and ALMA data.
   models/spectra.md: Each spectrum model against the formula or interpolation it documents.
   models/cones_fields.md: Cones, Gaussian-process fields and visibility identities against direct sums.
   likelihood/closure_phases.md: Correlated closure-phase covariance and χ² against fouriever.

@@ -1,0 +1,212 @@
+{
+ "label": "2006_disk_thin_disk",
+ "task": 2,
+ "family": "thin_disk",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2006/2006-03-03.fits",
+  "2006/2006-03-04.fits",
+  "2006/2006-03-05.fits",
+  "2006/2006-03-06.fits"
+ ],
+ "resolution_mas": 0.8553096666779482,
+ "field_mas": 17.915114496852116,
+ "channels": 24,
+ "chromatic": true,
+ "reference_wavelength_m": 1.654999948641489e-06,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 6.285944255068898e-05,
+  "median_phase_error_deg": 0.7007501721382141,
+  "implied_vis_residual": 0.0010366069477165565,
+  "implied_phase_residual_deg": 11.555980574697028
+ },
+ "residual_image": {
+  "chi2_red": 36.03066452642089,
+  "flux_relative_to_model": 0.7436459122936661,
+  "npix": 42,
+  "pixel_scale_mas": 0.4276548333389741,
+  "field_mas": 17.961503000236913,
+  "converged": false,
+  "file": "2006_disk_thin_disk_rest.npz"
+ },
+ "gp_disk": {
+  "chi2_red": 13418.940168292436,
+  "converged": false,
+  "azimuthal_degree": 2,
+  "starts": 2,
+  "starts_at_best": 1,
+  "r_in_mas": 0.4276548333389741,
+  "r_out_mas": 13.436335872639088,
+  "length_mas": 2.5659290000338446,
+  "values": {
+   "disk.flux.index": -0.3097662979528808,
+   "disk.flux.ratio": 9.999993390845258,
+   "disk.inc": 0.03356687640193693,
+   "disk.pa": 155.21423505188133
+  },
+  "file": "2006_disk_thin_disk_gp_disk.npz"
+ },
+ "rungs": [
+  {
+   "rung": "disk",
+   "k": 5,
+   "n": 3456,
+   "chi2": 939855.124752351,
+   "chi2_red": 271.948820819546,
+   "bic": 939895.8640880006,
+   "converged": false,
+   "starts": 4,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "disk.inc": [
+     27.174910754887826
+    ],
+    "disk.index": [
+     -0.5766721181633305
+    ],
+    "disk.inner": [
+     0.06766151627399321
+    ],
+    "disk.pa": [
+     27.11143326262855
+    ],
+    "disk.r_out": [
+     12.624521437982263
+    ]
+   }
+  },
+  {
+   "rung": "star+disk",
+   "k": 7,
+   "n": 3456,
+   "chi2": 15520459.396189567,
+   "chi2_red": 4490.8736678789255,
+   "bic": 15520516.431259476,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "disk.flux.index": [
+     -0.5035101080492703
+    ],
+    "disk.flux.ratio": [
+     9.999999999999993
+    ],
+    "disk.inc": [
+     52.76676973153652
+    ],
+    "disk.index": [
+     -1.027811565419214
+    ],
+    "disk.inner": [
+     0.1865519842461181
+    ],
+    "disk.pa": [
+     99.70866559988376
+    ],
+    "disk.r_out": [
+     11.910229414533338
+    ]
+   }
+  },
+  {
+   "rung": "star+disk, one azimuthal harmonic",
+   "k": 9,
+   "n": 3456,
+   "chi2": 15520459.38571421,
+   "chi2_red": 4490.873664847862,
+   "bic": 15520532.71651838,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "disk.c1": [
+     1.8159847825716113e-05
+    ],
+    "disk.flux.index": [
+     -0.5034809393042456
+    ],
+    "disk.flux.ratio": [
+     9.999999999999993
+    ],
+    "disk.inc": [
+     52.76680105846167
+    ],
+    "disk.index": [
+     -1.027811838312952
+    ],
+    "disk.inner": [
+     0.18655139700605453
+    ],
+    "disk.pa": [
+     99.70865545570588
+    ],
+    "disk.r_out": [
+     11.910230762493738
+    ],
+    "disk.s1": [
+     3.319595039597001e-05
+    ]
+   }
+  },
+  {
+   "rung": "star+disk, two azimuthal harmonics",
+   "k": 11,
+   "n": 3456,
+   "chi2": 13421465.91229758,
+   "chi2_red": 3883.526016289809,
+   "bic": 13421555.53883601,
+   "converged": false,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "disk.c1": [
+     5.491659358003442e-05
+    ],
+    "disk.c2": [
+     -0.059727691801714
+    ],
+    "disk.flux.index": [
+     -0.5869490055677398
+    ],
+    "disk.flux.ratio": [
+     9.999999999999993
+    ],
+    "disk.inc": [
+     50.88511142597736
+    ],
+    "disk.index": [
+     -1.1149795146026373
+    ],
+    "disk.inner": [
+     0.16840761031244034
+    ],
+    "disk.pa": [
+     115.60851718436842
+    ],
+    "disk.r_out": [
+     12.868084788984262
+    ],
+    "disk.s1": [
+     -3.332440899983524e-05
+    ],
+    "disk.s2": [
+     -0.2457227687070162
+    ]
+   }
+  }
+ ],
+ "chosen": "disk",
+ "elapsed_s": 1464.891343832016,
+ "smoke": false
+}

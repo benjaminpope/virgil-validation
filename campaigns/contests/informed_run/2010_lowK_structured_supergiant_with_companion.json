@@ -1,0 +1,268 @@
+{
+ "label": "2010_lowK_structured_supergiant_with_companion",
+ "task": 16,
+ "family": "structured_supergiant_with_companion",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2010/Mystery-Low_HK.oifits"
+ ],
+ "resolution_mas": 1.1919583645072784,
+ "field_mas": 45.298764510832974,
+ "channels": 20,
+ "chromatic": true,
+ "reference_wavelength_m": 1.9726250002349843e-06,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 9.999999747378752e-05,
+  "median_phase_error_deg": 0.008726646192371845,
+  "implied_vis_residual": 0.007775055589961523,
+  "implied_phase_residual_deg": 0.6785016097365639
+ },
+ "residual_image": {
+  "chi2_red": 4436.49766001688,
+  "flux_relative_to_model": 0.2984846781649227,
+  "npix": 64,
+  "pixel_scale_mas": 0.5959791822536392,
+  "field_mas": 38.14266766423291,
+  "converged": false,
+  "file": "2010_lowK_structured_supergiant_with_companion_rest.npz"
+ },
+ "gp_disk": null,
+ "rungs": [
+  {
+   "rung": "star",
+   "k": 2,
+   "n": 2928,
+   "chi2": 22875726.435801852,
+   "chi2_red": 7812.748099659103,
+   "bic": 22875742.399951603,
+   "converged": false,
+   "starts": 4,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "star.radius": [
+     9.130688714840291
+    ],
+    "star.u": [
+     0.46200872858713055
+    ]
+   }
+  },
+  {
+   "rung": "star+companion",
+   "k": 6,
+   "n": 2928,
+   "chi2": 19020334.24313003,
+   "chi2_red": 6496.0157934187255,
+   "bic": 19020382.13557928,
+   "converged": false,
+   "starts": 11,
+   "starts_at_best": 3,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "companion.ddec": [
+     8.267670041882951
+    ],
+    "companion.dra": [
+     24.820473674460985
+    ],
+    "companion.flux.index": [
+     4.229169013347377
+    ],
+    "companion.flux.ratio": [
+     0.005783572488745184
+    ],
+    "star.radius": [
+     9.074511294837507
+    ],
+    "star.u": [
+     0.4556116719136097
+    ]
+   }
+  },
+  {
+   "rung": "surface degree 1+companion",
+   "k": 9,
+   "n": 2928,
+   "chi2": 18553731.50432936,
+   "chi2_red": 6336.656934538716,
+   "bic": 18553803.343003236,
+   "converged": false,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "companion.ddec": [
+     8.224472262598297
+    ],
+    "companion.dra": [
+     24.427750739789985
+    ],
+    "companion.flux.index": [
+     4.811072311842116
+    ],
+    "companion.flux.ratio": [
+     0.0053640452017661095
+    ],
+    "star.radius": [
+     9.087593690818947
+    ],
+    "star.u": [
+     0.014330676009033603
+    ],
+    "star.y0": [
+     -0.03840439617204635
+    ],
+    "star.y1": [
+     0.46487635116767667
+    ],
+    "star.y2": [
+     -0.09604676114561625
+    ]
+   }
+  },
+  {
+   "rung": "surface degree 2+companion",
+   "k": 14,
+   "n": 2928,
+   "chi2": 18350406.896105304,
+   "chi2_red": 6267.21546998132,
+   "bic": 18350518.645153556,
+   "converged": false,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "companion.ddec": [
+     8.242477149686465
+    ],
+    "companion.dra": [
+     24.414848281039895
+    ],
+    "companion.flux.index": [
+     4.755087866088662
+    ],
+    "companion.flux.ratio": [
+     0.005094766111867377
+    ],
+    "star.radius": [
+     9.10809590045974
+    ],
+    "star.u": [
+     0.013789877998419062
+    ],
+    "star.y0": [
+     -0.013869046201297301
+    ],
+    "star.y1": [
+     0.6053207546710068
+    ],
+    "star.y2": [
+     -0.17188832264051204
+    ],
+    "star.y3": [
+     -0.008869159961422454
+    ],
+    "star.y4": [
+     -0.00796451450859097
+    ],
+    "star.y5": [
+     -0.02890163852521478
+    ],
+    "star.y6": [
+     0.05521055726592959
+    ],
+    "star.y7": [
+     -0.014531288649983267
+    ]
+   }
+  },
+  {
+   "rung": "surface degree 3+companion",
+   "k": 21,
+   "n": 2928,
+   "chi2": 17700196.998512395,
+   "chi2_red": 6045.149248125818,
+   "bic": 17700364.62208477,
+   "converged": false,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "companion.ddec": [
+     8.110331739635868
+    ],
+    "companion.dra": [
+     24.018234212985803
+    ],
+    "companion.flux.index": [
+     5.829248874945195
+    ],
+    "companion.flux.ratio": [
+     0.00448241247905791
+    ],
+    "star.radius": [
+     9.214539380640671
+    ],
+    "star.u": [
+     0.015077637301557319
+    ],
+    "star.y0": [
+     -0.5409996742138764
+    ],
+    "star.y1": [
+     -0.4211293912945087
+    ],
+    "star.y10": [
+     -0.1875392636725886
+    ],
+    "star.y11": [
+     -0.1421840143574097
+    ],
+    "star.y12": [
+     -0.2287482703630572
+    ],
+    "star.y13": [
+     0.012235847582281687
+    ],
+    "star.y14": [
+     -0.03672151103525671
+    ],
+    "star.y2": [
+     -0.7735069368214522
+    ],
+    "star.y3": [
+     -0.020242399267421687
+    ],
+    "star.y4": [
+     0.5071578524673079
+    ],
+    "star.y5": [
+     0.45014586915813926
+    ],
+    "star.y6": [
+     0.6896220262214214
+    ],
+    "star.y7": [
+     -0.02334499242263762
+    ],
+    "star.y8": [
+     -0.01992604169109317
+    ],
+    "star.y9": [
+     0.014827314583994245
+    ]
+   }
+  }
+ ],
+ "chosen": "surface degree 3+companion",
+ "elapsed_s": 704.8446877002716,
+ "smoke": false
+}

@@ -29,12 +29,11 @@ validated when, in addition, every step is verified.
 
 import argparse
 import collections
-import html
 import json
-import math
 import pathlib
 import re
 import subprocess
+import sys
 
 import yaml
 
@@ -207,8 +206,20 @@ def roots_of(record, golden):
 def changed_files(virgil, commit, paths):
     """Files under ``paths`` changed in virgil between ``commit`` and
     origin/main ([] if none, None if that cannot be told)."""
-    if virgil is None or commit is None or not paths:
+    if virgil is None or commit is None:
         return None
+    if not paths:
+        try:
+            ok = all(
+                subprocess.run(
+                    ["git", "-C", str(virgil), "rev-parse", "--verify", f"{ref}^{{commit}}"],
+                    capture_output=True,
+                ).returncode == 0
+                for ref in (commit, "origin/main")
+            )
+        except OSError:
+            return None
+        return [] if ok else None
     try:
         out = subprocess.run(
             ["git", "-C", str(virgil), "diff", "--name-only", commit, "origin/main", "--", *paths],
@@ -405,6 +416,58 @@ UNFIXED = {"open", "to-raise", "raised"}
 EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature",
             "frank", "visr", "frap", "oimodeler"}
 
+def depends_depths(nodes):
+    """Length of the longest ``depends`` chain below each node: 0 for a node with no
+    ``depends``, else 1 + the largest depth among those it depends on. Targets that
+    are not nodes are ignored. Nodes on a ``depends`` cycle share one depth, counted
+    from the edges that leave the cycle (a cycle has no bottom, and is reported
+    elsewhere as a structural problem), so the result does not depend on the order
+    the nodes are listed in."""
+    deps = {n: [d for d in node.get("depends", []) if d in nodes and d != n] for n, node in nodes.items()}
+    # strongly connected components (Tarjan, iterative)
+    index, low, on_stack, stack, comp, order = {}, {}, set(), [], {}, []
+    for start in nodes:
+        if start in index:
+            continue
+        work = [(start, iter(deps[start]))]
+        index[start] = low[start] = len(index)
+        stack.append(start)
+        on_stack.add(start)
+        while work:
+            n, it = work[-1]
+            for d in it:
+                if d not in index:
+                    index[d] = low[d] = len(index)
+                    stack.append(d)
+                    on_stack.add(d)
+                    work.append((d, iter(deps[d])))
+                    break
+                if d in on_stack:
+                    low[n] = min(low[n], index[d])
+            else:
+                work.pop()
+                if work:
+                    low[work[-1][0]] = min(low[work[-1][0]], low[n])
+                if low[n] == index[n]:
+                    while True:
+                        m = stack.pop()
+                        on_stack.discard(m)
+                        comp[m] = n
+                        if m == n:
+                            break
+                    order.append(n)
+    # ``order`` lists components dependencies first, so each component's depth is final
+    # by the time a component that depends on it is reached
+    members = collections.defaultdict(list)
+    for n, c in comp.items():
+        members[c].append(n)
+    depth = {}
+    for c in order:
+        below = [depth[comp[d]] for n in members[c] for d in deps[n] if comp[d] != c]
+        depth[c] = 1 + max(below) if below else 0
+    return {n: depth[comp[n]] for n in nodes}
+
+
 def build(graph, ledger, records, runs, virgil=None, golden=None):
     nodes = graph["nodes"]
     golden = load_golden() if golden is None else golden
@@ -412,8 +475,8 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     for r in records:
         for obj in r["objects"]:
             by_obj[obj].append(r)
-    open_findings = collections.defaultdict(list)  # unfixed bugs in virgil
-    external_open = collections.defaultdict(list)  # unfixed problems in another package
+    open_findings = collections.defaultdict(list)  # unfixed bugs in virgil or our reference code
+    external_open = collections.defaultdict(list)  # unfixed problems in another package (or test-side on non-reference)
     for e in ledger:
         if e["status"] not in UNFIXED:
             continue
@@ -423,58 +486,15 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         elif e["ruling"].startswith("external"):
             for obj in e["objects"]:
                 external_open[obj].append(e["id"])
+        elif e["ruling"] == "crosscheck":
+            for obj in e["objects"]:
+                if nodes.get(obj, {}).get("layer", "references") == "references":
+                    open_findings[obj].append(e["id"])
+                else:
+                    external_open[obj].append(e["id"])
 
     own = {}
-
-    def own_status(name, trusted_references=None):
-        """A part's own verdict from its own checks. For parts of virgil,
-        a check that went through our reference code (its ``via``) counts
-        only if every such reference is in ``trusted_references``; checks
-        blocked that way are returned so the part can say what it relies on."""
-        node = nodes[name]
-        recs = by_obj.get(name, [])
-        reference_node = node.get("layer", "references") == "references"
-        agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
-        counted = [r for r in recs if r["kind"] in agreeing or r["kind"] == "regression"]
-        # xfailed is not in BAD, so an expected failure is fine; a strict XPASS (pytest records it
-        # as failed, with no wasxfail) or a non-strict one (xpassed) means the bug is gone or the
-        # xfail is stale, so finding/upstream records count as failing like any other.
-        failing = [r for r in recs if r["outcome"] in BAD]
-        good = [r for r in counted if r["outcome"] == "passed"]
-        strong, weak, blocked_roots, blocked_by = set(), set(), set(), set()
-        prop_roots = collections.defaultdict(set)
-        for r in good:
-            s_, w_ = roots_of(r, golden)
-            untrusted = set()
-            if trusted_references is not None and r["kind"] in agreeing:
-                untrusted = {v for v in r.get("via", []) if v not in trusted_references}
-            if r["kind"] in agreeing and not untrusted:
-                strong |= s_
-                for prop in r.get("properties", []):
-                    prop_roots[prop] |= s_
-            elif r["kind"] in agreeing:
-                blocked_roots |= s_
-                blocked_by |= untrusted
-            weak |= w_ | (s_ if r["kind"] not in agreeing else set())
-        strong, weak = sorted(strong), sorted(weak - set(strong))
-        need = node.get("roots", 1)
-        if failing:
-            status = "failing"
-        elif name in open_findings:
-            status = "bug"
-        elif len(strong) >= need and not external_open.get(name) and properties_short(name, prop_roots):
-            status = "partly"  # agreement overall, but a property needs more independent roots
-        elif len(strong) >= need and not external_open.get(name) and unconfirmed_conventions(name, prop_roots):
-            status = "convention"
-        elif len(strong) >= need and not external_open.get(name):
-            status = "ok"
-        elif len(set(strong) | blocked_roots) >= need and not external_open.get(name):
-            status = "ok-via"  # its checks pass, but through reference code not yet verified
-        elif strong or weak or blocked_roots:
-            status = "partly"
-        else:
-            status = "unchecked"
-        return status, strong, weak, need, recs, good, sorted(blocked_by), prop_roots
+    ref_set = {n for n, node in nodes.items() if node.get("layer", "references") == "references"}
 
     def properties_short(name, prop_roots):
         """Properties of a part with fewer independent roots than it needs."""
@@ -485,27 +505,183 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         return sorted(p for p in nodes[name].get("convention") or []
                       if not (prop_roots.get(p, set()) & EXTERNAL))
 
+    def _node_is_direct_broken(name):
+        return name in nodes and (
+            any(r["outcome"] in BAD for r in by_obj.get(name, []))
+            or name in open_findings
+        )
+
+    def own_status(name, trusted_references, is_broken_ref=None):
+        """A part's own verdict from its own checks. A check that went through
+        our reference code (its ``via``) counts only if every such reference is
+        in ``trusted_references``, for reference nodes as much as for parts of
+        virgil (``reference_verdicts`` finds that set); checks
+        blocked that way are stratified into usable vs broken ``via`` tiers so
+        adding a supplementary check via a broken reference never demotes a
+        ``relies-unverified`` part to ``relies``."""
+        node = nodes[name]
+        recs = by_obj.get(name, [])
+        reference_node = node.get("layer", "references") == "references"
+        agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
+        counted = [r for r in recs if r["kind"] in agreeing or r["kind"] == "regression"]
+        # xfailed is not in BAD, so an expected failure is fine; a strict XPASS (pytest records it
+        # as failed, with no wasxfail) or a non-strict one (xpassed) means the bug is gone or the
+        # xfail is stale, so finding/upstream records count as failing like any other.
+        failing = [r for r in recs if r["outcome"] in BAD]
+        good = [r for r in counted if r["outcome"] == "passed"]
+        strong, weak = set(), set()
+        usable_roots, broken_roots = set(), set()
+        usable_blocked_by, broken_blocked_by = set(), set()
+        prop_roots = collections.defaultdict(set)
+        prop_roots_usable = collections.defaultdict(set)
+        prop_roots_all = collections.defaultdict(set)
+        for r in good:
+            s_, w_ = roots_of(r, golden)
+            untrusted = set()
+            if r["kind"] in agreeing:
+                untrusted = {v for v in r.get("via", []) if v not in trusted_references}
+            if r["kind"] in agreeing and not untrusted:
+                strong |= s_
+                for prop in r.get("properties", []):
+                    prop_roots[prop] |= s_
+                    prop_roots_usable[prop] |= s_
+                    prop_roots_all[prop] |= s_
+            elif r["kind"] in agreeing:
+                is_broken = is_broken_ref is not None and any(is_broken_ref(v) for v in untrusted)
+                if not is_broken:
+                    usable_roots |= s_
+                    usable_blocked_by |= untrusted
+                    for prop in r.get("properties", []):
+                        prop_roots_usable[prop] |= s_
+                        prop_roots_all[prop] |= s_
+                else:
+                    broken_roots |= s_
+                    broken_blocked_by |= untrusted
+                    for prop in r.get("properties", []):
+                        prop_roots_all[prop] |= s_
+            weak |= w_ | (s_ if r["kind"] not in agreeing else set())
+        strong, weak = sorted(strong), sorted(weak - set(strong))
+        blocked_roots = usable_roots | broken_roots
+        usable_all_roots = set(strong) | usable_roots
+        all_roots = set(strong) | blocked_roots
+        need = node.get("roots", 1)
+        via_out = []
+        shown = prop_roots  # the property roots of the tier that decided the status
+        if failing:
+            status = "failing"
+        elif name in open_findings:
+            status = "bug"
+        elif (
+            len(strong) >= need
+            and not external_open.get(name)
+            and not properties_short(name, prop_roots)
+            and not unconfirmed_conventions(name, prop_roots)
+        ):
+            status = "ok"
+        elif (
+            len(usable_all_roots) >= need
+            and not external_open.get(name)
+            and not properties_short(name, prop_roots_usable)
+            and not unconfirmed_conventions(name, prop_roots_usable)
+        ):
+            status = "ok-via"  # its checks pass through usable (non-broken) reference code not yet verified
+            via_out = sorted(usable_blocked_by)
+            shown = prop_roots_usable
+        elif (
+            len(all_roots) >= need
+            and not external_open.get(name)
+            and not properties_short(name, prop_roots_all)
+            and not unconfirmed_conventions(name, prop_roots_all)
+        ):
+            status = "ok-via"  # its checks pass, relying on reference code with a known bug or failing check
+            via_out = sorted(usable_blocked_by | broken_blocked_by)
+            shown = prop_roots_all
+        elif len(all_roots) >= need and not external_open.get(name) and properties_short(name, prop_roots_all):
+            status = "partly"  # agreement overall, but a property needs more independent roots
+            shown = prop_roots_all
+        elif len(all_roots) >= need and not external_open.get(name) and unconfirmed_conventions(name, prop_roots_all):
+            status = "convention"
+            shown = prop_roots_all
+        elif strong or weak or blocked_roots:
+            status = "partly"
+            shown = prop_roots_all
+        else:
+            status = "unchecked"
+        return status, strong, weak, need, recs, good, via_out, shown
+
     def reference_verdicts():
-        """Our reference nodes, decided first: verified only if their own
-        checks pass and every reference they rely on is verified too."""
-        refs = [n for n, node in nodes.items() if node.get("layer", "references") == "references"]
-        status = {n: own_status(n)[0] for n in refs}
+        """Our reference nodes that are verified: the least fixed point of
+        "its own checks pass, counting only checks whose ``via`` references are
+        already in the set, and every ``depends`` is in the set". Starting from
+        the empty set and growing it, so a reference checked only through a
+        failing, unchecked or untrusted reference stays out, and so does a cycle
+        of references that vouch only for each other. The step is monotone (a
+        larger set only lets more checks count), so the loop ends within
+        ``len(refs) + 1`` passes."""
+        refs = [n for n in nodes if n in ref_set]
+        trusted_refs = set()
+        for _ in range(len(refs) + 1):
+            grown = {
+                n for n in refs
+                if all(d in trusted_refs for d in nodes[n].get("depends", []))
+                and own_status(n, trusted_refs)[0] == "ok"
+            }
+            if grown == trusted_refs:
+                break
+            trusted_refs = grown
+        else:  # pragma: no cover - a monotone step cannot get here
+            raise RuntimeError("trusted references did not converge")
+        return trusted_refs
 
-        def ok(n, seen):
-            if status.get(n) != "ok":
-                return False
-            return all(d not in status or (d in seen or ok(d, seen | {d})) for d in nodes[n].get("depends", []))
+    diff_cache = {}
 
-        return {n for n in refs if ok(n, {n})}
+    def cached_changed_files(commit, paths):
+        key = (commit, paths)
+        if key not in diff_cache:
+            diff_cache[key] = changed_files(virgil, commit, list(paths))
+        return diff_cache[key]
 
     trusted = reference_verdicts()
-    for name, node in nodes.items():
-        reference_node = node.get("layer", "references") == "references"
-        status, strong, weak, need, recs, good, blocked_by, prop_roots = own_status(
-            name, None if reference_node else trusted)
+
+    def broken_targets():
+        """Nodes that cannot back a check: the least fixed point of "has an open
+        finding or a failing check, or relies on (``depends``) a broken node, or
+        its own verdict is ``ok-via`` through a broken reference". Built up from
+        the empty set, so the answer does not depend on which node is asked about
+        first, and a cycle is broken only if one of its members is broken for a
+        reason of its own. Monotone: a larger set can only move a check from the
+        usable to the broken tier, and both tiers are ``ok-via``, so a node's
+        verdict never leaves ``ok-via`` as the set grows."""
+        broken = set()
+        # a node with no check that goes through untrusted references has the
+        # same status for every ``broken``; the others are re-evaluated each pass
+        status = {n: own_status(n, trusted, broken.__contains__) for n in nodes}
+        for _ in range(len(nodes) + 1):
+            grown = set()
+            for n in nodes:
+                if status[n][0] == "ok-via":
+                    status[n] = own_status(n, trusted, broken.__contains__)
+                if (
+                    _node_is_direct_broken(n)
+                    or any(d in broken for d in nodes[n].get("depends", []))
+                    or (status[n][0] == "ok-via" and any(u in broken for u in status[n][6]))
+                ):
+                    grown.add(n)
+            if grown == broken:
+                return status  # each node's own status at the converged broken set
+            broken = grown
+        raise RuntimeError("broken targets did not converge")  # pragma: no cover
+
+    own_status_cache = broken_targets()
+
+    for name in [n for n in nodes if n in ref_set] + [n for n in nodes if n not in ref_set]:
+        node = nodes[name]
+        reference_node = name in ref_set
+        status, strong, weak, need, recs, good, blocked_by, prop_roots = own_status_cache[name]
         agreeing = AGREEING_FOR_REFERENCES if reference_node else AGREEING
         commits = sorted({r["_commit"] for r in good if r["_commit"]})
-        changes = [changed_files(virgil, c, node.get("source", [])) for c in commits]
+        src_paths = tuple(sorted(set(node.get("source", []))))
+        changes = [cached_changed_files(c, src_paths) for c in commits]
         changed = None if not changes or any(c is None for c in changes) else sorted({f for c in changes for f in c})
         own[name] = {
             "status": status, "strong": strong, "weak": weak, "need": need,
@@ -519,41 +695,174 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         }
 
     # verdicts: a part whose own checks pass is verified only if everything
-    # it relies on is; otherwise name the parts at the bottom of the chain
-    def problems(name, seen):
+    # it relies on is (with no missing targets, cycles, or reference->subject edges)
+    raw_cache = {}
+
+    def _raw_problems(root):
+        if root not in raw_cache:
+            raw_cache[root] = _raw_problems_uncached(root)
+        return raw_cache[root]
+
+    def _raw_problems_uncached(root):
         found = set()
-        for dep in nodes[name].get("depends", []):
-            if dep in seen or dep not in nodes:
-                continue
-            seen.add(dep)
-            if own[dep]["status"] != "ok":
-                found.add(dep)
-            found |= problems(dep, seen)
-        return found
+        structural = set()
+        in_stack = {root}
+        done = set()
 
-    def changed_below(name, seen):
-        """virgil files changed under this part or anything it relies on."""
-        found = set(own[name]["changed"] or [])
-        for dep in nodes[name].get("depends", []):
-            if dep in nodes and dep not in seen:
-                seen.add(dep)
-                found |= changed_below(dep, seen)
-        return found
+        def visit(curr):
+            curr_is_ref = nodes[curr].get("layer", "references") == "references"
+            for dep in nodes[curr].get("depends", []):
+                if dep not in nodes:
+                    found.add(dep)
+                    structural.add(dep)
+                    continue
+                if curr_is_ref and nodes[dep].get("layer", "references") != "references":
+                    found.add(dep)
+                    structural.add(dep)
+                if dep in in_stack:
+                    found.add(dep)
+                    structural.add(dep)
+                    continue
+                if own[dep]["status"] != "ok":
+                    found.add(dep)
+                if dep not in done:
+                    in_stack.add(dep)
+                    visit(dep)
+                    in_stack.remove(dep)
+                    done.add(dep)
 
+        visit(root)
+        return found, structural
+
+    def _new_walk(*active):
+        """State of one walk for the causes of one part: the nodes being walked (an ancestor
+        reached again contributes nothing, so cycles end), the result already found for each
+        node walked (so a node reachable along many routes is walked once, not once per route),
+        and the ancestors cut in the node being walked (``hit``)."""
+        return {"active": set(active), "done": {True: {}, False: {}}, "hit": set()}
+
+    def _expand_node(v, walk, named):
+        """Causes below one reference ``v``. ``named``: the walk is down a part's own chain of
+        checks, where a cycle of references that vouch only for each other is itself the cause and
+        is named by the node at which the cycle closes; below a dependency a cycle names nothing
+        (the dependency is the cause)."""
+        memo = walk["done"][named]
+        if v in memo:
+            return memo[v]
+        if v in walk["active"]:
+            if named:
+                walk["hit"].add(v)
+            return set()
+        walk["active"].add(v)
+        outer_hit, walk["hit"] = walk["hit"], set()
+        sub = problems(v, walk)
+        out = set(sub)
+        if own[v]["status"] == "ok-via":
+            out |= _expand_via_blocked(own[v]["via_blocked"], walk, named)
+            if named and not out and not walk["hit"] - {v}:
+                out = {v}  # the cycle closes here: it names itself (a node cut at an ancestor leaves it to that)
+        elif nodes[v].get("layer", "references") != "references" or own[v]["status"] != "ok" or not sub:
+            out.add(v)
+        inner = walk["hit"] - {v}
+        walk["active"].discard(v)
+        walk["hit"] = outer_hit | inner
+        if not (named and inner):  # a result that stood on an ancestor still being walked is not final
+            memo[v] = out
+        return out
+
+    def _expand_via_blocked(blocked, walk=None, named=True):
+        walk = walk if walk is not None else _new_walk()
+        out = set()
+        for v in blocked:
+            if v not in nodes:
+                out.add(v)
+            else:
+                out |= _expand_node(v, walk, named)
+        return out
+
+    def problems(root, walk=None):
+        walk = walk if walk is not None else _new_walk(root)
+        raw, structural = _raw_problems(root)
+        out = set(structural)
+        for d in raw:
+            if d in nodes and own[d]["status"] == "ok-via":
+                # if the walk below it finds nothing (its references only vouch for each other
+                # in a cycle) the dependency itself is the cause
+                out |= _expand_via_blocked(own[d]["via_blocked"], walk, False) or {d}
+            else:
+                out.add(d)
+        return out
+
+    deps_cache = {}
+    ts_cache = {}
+
+    def reachable_deps(name):
+        if name not in deps_cache:
+            seen = {name}
+            stack = [d for d in nodes[name].get("depends", []) if d in nodes and d != name]
+            out = []
+            while stack:
+                d = stack.pop()
+                if d in seen:
+                    continue
+                seen.add(d)
+                out.append(d)
+                for nxt in nodes[d].get("depends", []):
+                    if nxt in nodes and nxt not in seen:
+                        stack.append(nxt)
+            deps_cache[name] = tuple(out)
+        return deps_cache[name]
+
+    def transitive_sources(name):
+        """Union of virgil ``source`` paths on ``name`` and every part it relies on."""
+        if name not in ts_cache:
+            paths = set(nodes[name].get("source", []))
+            for dep in reachable_deps(name):
+                paths.update(nodes[dep].get("source", ()))
+            ts_cache[name] = tuple(sorted(paths))
+        return ts_cache[name]
+
+    def changed_below(name):
+        """virgil files changed under this part or anything it relies on, evaluated
+        against both this part's own evidence commits and each dependency's own
+        evidence commits (``None`` when unknown or unreachable)."""
+        commits = own[name]["commits"]
+        if not commits:
+            return None
+        pairs = [(c, transitive_sources(name)) for c in commits]
+        for dep in reachable_deps(name):
+            dep_commits = own[dep]["commits"]
+            if dep_commits:
+                dep_paths = transitive_sources(dep)
+                pairs.extend((c, dep_paths) for c in dep_commits)
+        diffs = [cached_changed_files(c, p) for c, p in pairs]
+        if any(d is None for d in diffs):
+            return None
+        return sorted({f for d in diffs for f in d})
+
+    depth = depends_depths(nodes)
     out_nodes = {}
     for name, node in nodes.items():
         o = own[name]
         verdict = o["status"]
-        causes = sorted(problems(name, set()) | set(o["via_blocked"]))
+        walk = _new_walk(name)
+        via_causes = _expand_via_blocked(o["via_blocked"], walk) if o["status"] == "ok-via" else set()
+        causes = sorted((problems(name, walk) | via_causes) - {name})  # never its own cause (a via + depends cycle)
+        if o["status"] == "ok-via" and not causes:
+            # its checks stand on references that are not verified, yet the walk found nothing
+            # wrong below them (they only vouch for each other in a cycle): they are the cause
+            causes = sorted(o["via_blocked"])
         if verdict == "ok-via":
             verdict = "ok"
         if verdict == "ok":
             if not causes:
                 verdict = "verified"
-            elif any(own.get(c, {}).get("status") == "bug" for c in causes):
+            elif any(own.get(c, {}).get("status") in {"bug", "failing"} for c in causes):
                 verdict = "relies"
             else:
                 verdict = "relies-unverified"
+        if node.get("layer", "references") == "references" and name not in trusted and verdict == "verified":
+            verdict = "relies-unverified"
         dependents = sorted(n for n, other in nodes.items() if name in other.get("depends", []))
         out_nodes[name] = {
             "id": name,
@@ -563,27 +872,58 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "verdict_label": VERDICTS[verdict][0],
             "strong": o["strong"], "weak": o["weak"], "need": o["need"],
             "findings": o["findings"],
-            "because": [{"id": c, "findings": own.get(c, {}).get("findings", []),
-                         "status": own.get(c, {}).get("status", "unchecked")} for c in causes],
-            "depends": node.get("depends", []), "dependents": dependents,
+            "because": [
+                {
+                    "id": c,
+                    "findings": own.get(c, {}).get("findings", []),
+                    "status": "ok"
+                    if own.get(c, {}).get("status") == "ok-via"
+                    else own.get(c, {}).get("status", "unchecked"),
+                }
+                for c in causes
+            ],
+            "depends": node.get("depends", []), "dependents": dependents, "depth": depth[name],
             "properties": o["properties"], "unconfirmed": o["unconfirmed"],
             "checks": o["checks"], "commits": o["commits"],
-            "changed": o["changed"] if o["changed"] is None else sorted(changed_below(name, set())),
+            "changed": changed_below(name),
             "skipped": o["skipped"],
             "source": node.get("source", []),
         }
 
+    def ref_broken(v):
+        return any(
+            own.get(c, {}).get("status") in {"bug", "failing"}
+            for c in _expand_via_blocked((v,), named=False)
+        )
+
     pipelines = []
     for name, p in graph.get("pipelines", {}).items():
-        recs = [r for r in by_obj.get(f"pipeline:{name}", []) if r["kind"] in AGREEING]
-        bad = [r for r in recs if r["outcome"] in BAD]
+        all_recs = by_obj.get(f"pipeline:{name}", [])
+        recs = [r for r in all_recs if r["kind"] in AGREEING]
+        bad = [r for r in all_recs if r["outcome"] in BAD]
         good = [r for r in recs if r["outcome"] == "passed"]
-        unverified = [s for s in p["steps"] if out_nodes.get(s, {}).get("verdict") != "verified"]
-        if bad:
+        strong_good = [r for r in good if roots_of(r, golden)[0]]
+        usable_good = [r for r in strong_good if not any(ref_broken(v) for v in r.get("via", []))]
+        trusted_good = [r for r in usable_good if not (set(r.get("via", [])) - trusted)]
+        via_failing = bool(strong_good and not usable_good)
+        if via_failing:
+            untrusted_via = sorted({v for r in strong_good for v in r.get("via", []) if v not in trusted})
+        elif not trusted_good:
+            untrusted_via = sorted({v for r in usable_good for v in r.get("via", []) if v not in trusted})
+        else:
+            untrusted_via = []
+        unverified_steps = [s for s in p["steps"] if out_nodes.get(s, {}).get("verdict") != "verified"]
+        unverified = unverified_steps + [v for v in untrusted_via if v not in unverified_steps]
+        step_failing = any(
+            out_nodes.get(s, {}).get("verdict") == "failing"
+            or any(c.get("status") == "failing" for c in out_nodes.get(s, {}).get("because", []))
+            for s in p["steps"]
+        )
+        if bad or step_failing or via_failing:
             status = "failing"
-        elif good and not unverified:
+        elif trusted_good and not unverified:
             status = "validated"
-        elif good:
+        elif usable_good:
             status = "passes"
         elif recs and all(r["outcome"] == "skipped" for r in recs):
             status = "not run"  # its checks exist but none ran, so the hand-written state would mislead
@@ -593,7 +933,9 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             "id": name, "title": p["title"], "data": p.get("data", "simulated"),
             "dataset": p.get("dataset"), "reference": p.get("reference"), "url": p.get("url"),
             "headline": p.get("headline"), "page": p.get("page"), "status": status, "steps": p["steps"],
-            "unverified": unverified, "checks": [_check(r) for r in recs],
+            "depth": 1 + max((depth.get(s, 0) for s in p["steps"]), default=0),
+            "unverified": unverified, "failing_checks": [r["test"] for r in bad],
+            "checks": [_check(r) for r in recs],
         })
 
     fails_elsewhere = _mark_fails_elsewhere(records, out_nodes, pipelines)
@@ -631,480 +973,27 @@ def _mark_fails_elsewhere(records, out_nodes, pipelines):
 
 
 # ------------------------------------------------------------------ render
+# The page is drawn by scripts/trust_render.py. Its names stay importable from here (tests, other scripts), and it
+# is imported here, after the constants above, because it reads some of them (see trust_render.attach).
 
-ICON = {"verified": "✓", "relies": "↧", "relies-unverified": "↧", "bug": "!", "partly": "◐", "convention": "◑",
-        "failing": "✗", "unchecked": "–"}
-ORDER = ["verified", "relies", "relies-unverified", "convention", "partly", "bug", "failing", "unchecked"]
-COLOURS = {  # Okabe–Ito based, readable on light and dark
-    "verified": "#2e9e5b", "relies": "#e0a526", "relies-unverified": "#c9b458", "partly": "#56b4e9",
-    "convention": "#cc79a7",
-    "bug": "#d55e00", "failing": "#b0003a", "unchecked": "#9e9e9e",
-}
+_here = str(pathlib.Path(__file__).resolve().parent)
+if _here not in sys.path:  # a file-path load (importlib.util.spec_from_file_location) has not put scripts/ there
+    sys.path.insert(0, _here)
+import trust_render  # noqa: E402
 
-
-def e(text):
-    return html.escape(str(text), quote=True)
-
-
-def _bar(counts, total):
-    x, parts = 0.0, []
-    for v in ORDER:
-        n = counts.get(v, 0)
-        if not n:
-            continue
-        w = 100.0 * n / total
-        parts.append(f'<rect x="{x:.3f}%" y="0" width="{w:.3f}%" height="10" fill="{COLOURS[v]}"><title>{n} {e(VERDICTS[v][0].lower())}</title></rect>')
-        x += w
-    return f'<svg class="vt-bar" width="100%" height="10" role="img" aria-label="share of parts by verdict">{"".join(parts)}</svg>'
-
-
-def _legend(counts):
-    items = []
-    for v in ORDER:
-        if counts.get(v):
-            items.append(f'<span class="vt-key"><span class="vt-sw vt-{v}" aria-hidden="true">{ICON[v]}</span>{e(VERDICTS[v][0])} ({counts[v]})</span>')
-    return '<div class="vt-legend">' + "".join(items) + "</div>"
-
-
-def _value(v):
-    if v is None:
-        return ""
-    if isinstance(v, str):
-        return v
-    return f"{v:.2g}" if (v != 0 and (abs(v) < 1e-2 or abs(v) >= 1e4)) else f"{v:.3g}"
-
-
-def _pipeline_card(p, nodes):
-    badge = {"validated": "agrees", "passes": "agrees (some steps not yet verified)", "failing": "disagrees",
-             "planned": "planned", "running": "running",
-             "not run": f'not run (all {len(p["checks"])} check{"s" if len(p["checks"]) != 1 else ""} skipped)'}.get(p["status"], p["status"])
-    ref = e(p["reference"]) if p["reference"] else ""
-    if p.get("url") and ref:
-        ref = f'<a href="{e(p["url"])}">{ref}</a>'
-    title = e(p["title"])
-    if p.get("page"):
-        title = f'<a class="vt-card-link" href="{e(p["page"])}">{title}</a>'
-    head = ""
-    good = [c for c in p["checks"] if c["outcome"] in GOOD and c["value"] is not None]
-    if good:
-        head = f'{e(good[0]["headline"])} = {_value(good[0]["value"])}'
-    elif p.get("headline"):
-        head = e(p["headline"])
-    return (
-        f'<div class="vt-card vt-p-{e(p["status"].replace(" ", "-"))}"><div class="vt-card-t">{title}</div>'
-        f'<div class="vt-muted">{e(p["dataset"] or "")}{" · " + ref if ref else ""}</div>'
-        f'<div class="vt-card-h">{head}</div><span class="vt-badge">{e(badge)}</span>{_fails_badge(p)}</div>'
-    )
-
-
-def _chain(p, nodes):
-    steps = []
-    for s in p["steps"]:
-        n = nodes.get(s)
-        v = n["verdict"] if n else "unchecked"
-        steps.append(f'<button type="button" class="vt-step vt-{v}" data-node="{e(s)}" title="{e(s)}: {e(VERDICTS[v][0])}">'
-                     f'<span aria-hidden="true">{ICON[v]}</span> {e(n["label"] if n else s)}</button>')
-    good = [c for c in p["checks"] if c["outcome"] in GOOD and c["value"] is not None]
-    result = e(p.get("headline") or p["status"])
-    if good:
-        result += f'<br><span class="vt-muted">{e(good[0]["headline"])} = {_value(good[0]["value"])}</span>'
-    return (
-        f'<div class="vt-chain"><span class="vt-chain-t">{e(p["title"])}</span>'
-        f'<span class="vt-steps">{" › ".join(steps)}</span><span class="vt-chain-r">{result}{_fails_badge(p)}</span></div>'
-    )
-
-
-def _tooltip(n):
-    lines = [f'{n["id"]}: {VERDICTS[n["verdict"]][0]}']
-    if n["strong"] or n["weak"]:
-        lines.append("checked against " + ", ".join(ROOT_NAMES.get(r, r) for r in n["strong"] + n["weak"]))
-    for b in n["because"]:
-        lines.append(("relies on " if n["verdict"].startswith("relies") else "also relies on ")
-                     + b["id"] + (" (" + ", ".join(b["findings"]) + ")" if b["findings"] else ""))
-    return " · ".join(lines)
-
-
-def layers(nodes):
-    """Every layer in the graph, top first: the known order, then any other."""
-    present = {n["layer"] for n in nodes.values()}
-    return [layer for layer in LAYER_ORDER if layer in present] + sorted(present - set(LAYER_ORDER))
-
-
-def _fails_badge(item):
-    """A badge on a part or pipeline whose passing record hides a failure on another virgil commit."""
-    tests = item.get("fails_elsewhere")
-    if not tests:
-        return ""
-    return (f'<span class="vt-failelse" title="{len(tests)} check(s) of this fail on another virgil commit '
-            f'than the passing record shown: see the notice at the top of the page">⚠ fails on another virgil commit</span>')
-
-
-def _map(nodes, base=""):
-    rows = []
-    for layer in layers(nodes):
-        chips = [n for n in nodes.values() if n["layer"] == layer]
-        if not chips:
-            continue
-        cells = "".join(
-            f'<button type="button" class="vt-chip vt-{n["verdict"]}" data-node="{e(n["id"])}" title="{e(_tooltip(n))}">'
-            f'<span aria-hidden="true">{ICON[n["verdict"]]}</span> {e(n["label"])}'
-            + ('<span class="vt-fresh" title="virgil has changed this since">●</span>' if n["changed"] else "")
-            + _fails_badge(n)
-            + "</button>"
-            for n in chips
-        )
-        label = e(layer)
-        if layer in LAYER_SECTION:
-            label = f'<a href="{base}tests/#{slugify(LAYER_SECTION[layer])}" title="The {e(layer)} tests">{label}</a>'
-        rows.append(f'<div class="vt-row"><div class="vt-layer">{label}</div><div class="vt-chips">{cells}</div></div>')
-    return '<div class="vt-map">' + "".join(rows) + '</div><div class="vt-detail" id="vt-detail" aria-live="polite">Select a part to see what it was checked against.</div>'
-
-
-def _matrix(nodes):
-    roots = collections.Counter(r for n in nodes.values() for r in n["strong"])
-    cols = [r for r in ("mathematics", "standards", "statistics", "literature") if r in roots]
-    cols += sorted(r for r in roots if r not in cols and not r.startswith("golden:"))
-    cols += sorted(r for r in roots if r.startswith("golden:"))
-    head = "".join(f'<th scope="col"><span>{e(ROOT_NAMES.get(c, c.replace("golden:", "reference code: ")))}</span></th>' for c in cols)
-    body = []
-    for layer in reversed(layers(nodes)):
-        for n in (n for n in nodes.values() if n["layer"] == layer and (n["strong"] or n["weak"])):
-            cells = "".join(f'<td>{"●" if c in n["strong"] else ""}</td>' for c in cols)
-            body.append(f'<tr><th scope="row"><span class="vt-sw vt-{n["verdict"]}" title="{e(VERDICTS[n["verdict"]][0])}">{ICON[n["verdict"]]}</span>{e(n["label"])}</th>{cells}</tr>')
-    return f'<div class="vt-matrix-wrap"><table class="vt-matrix"><thead><tr><th></th>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
-
-
-def _link_label(url):
-    """https://github.com/owner/repo/pull/12 -> repo#12."""
-    m = re.match(r"https?://github\.com/[^/]+/([^/]+)/(?:pull|issues)/(\d+)", url)
-    return f"{m.group(1)}#{m.group(2)}" if m else url
-
-
-def _ledger(ledger):
-    groups = [
-        ("Bugs found in virgil", lambda x: x["ruling"] == "virgil"),
-        ("Where codes define things differently", lambda x: x["ruling"] == "definition"),
-        ("Problems found in other packages", lambda x: x["ruling"].startswith("external")),
-        ("Mistakes in our own checks", lambda x: x["ruling"] == "crosscheck"),
-    ]
-    out = []
-    for title, keep in groups:
-        items = [x for x in ledger if keep(x)]
-        if not items:
-            continue
-        cards = []
-        for x in items:
-            links = " ".join(f'<a href="{e(u)}">{e(_link_label(u))}</a>' for u in x.get("links", []))
-            cards.append(f'<div class="vt-finding vt-f-{e(x["status"])}" id="{e(x["id"])}"><span class="vt-fid">{e(x["id"])}</span> '
-                         f'<span class="vt-badge">{e(x["status"])}</span><div>{e(x["title"])}</div>'
-                         f'<div class="vt-muted">{links}</div></div>')
-        unfixed = sum(1 for x in items if x["status"] in UNFIXED)
-        state = f"{unfixed} still open" if unfixed else "all resolved"
-        out.append(f'<details class="vt-fold"><summary><b>{e(title)} ({len(items)})</b> '
-                   f'<span class="vt-muted">· {state}</span></summary><div class="vt-findings">{"".join(cards)}</div></details>')
-    return "".join(out)
-
-
-FINDING_GROUPS = [
-    ("Bugs found in virgil", lambda x: x["ruling"] == "virgil"),
-    ("Where codes define things differently", lambda x: x["ruling"] == "definition"),
-    ("Problems found in other packages", lambda x: x["ruling"].startswith("external")),
-    ("Mistakes in our own checks", lambda x: x["ruling"] == "crosscheck"),
-]
-
-
-def render_findings(ledger, extra=ROOT / "trust" / "definition_changes.md"):
-    """The Findings page: every ledger entry, grouped as on the Trust page."""
-    def cell(text):
-        return str(text).replace("|", "\\|").replace("\n", " ")
-
-    def short(obj):
-        return obj.removeprefix("virgil.")
-
-    out = ["<!-- Generated by scripts/trust.py from trust/ledger.yml. Do not edit. -->",
-           "# Findings\n",
-           "Every disagreement the checks have found, how it was ruled, and where it "
-           "stands. The same list, with the parts each affects, is on the "
-           "[Trust page](../index.md#ledger).\n"]
-    for title, keep in FINDING_GROUPS:
-        items = [x for x in ledger if keep(x)]
-        if not items:
-            continue
-        out += [f"## {title}\n", "| | Part | Finding | Status |", "| --- | --- | --- | --- |"]
-        for x in items:
-            links = " ".join(f"[{_link_label(u)}]({u})" for u in x.get("links", []))
-            parts = ", ".join(f"`{short(o)}`" for o in x.get("objects", []))
-            out.append(f'| <span id="{x["id"]}">{x["id"]}</span> | {cell(parts)} | {cell(x["title"])} | '
-                       f'{cell(x["status"])}{" " + links if links else ""} |')
-        out.append("")
-    if extra and pathlib.Path(extra).exists():
-        out.append(pathlib.Path(extra).read_text())
-    return "\n".join(out) + "\n"
-
-
-def render_coverage(model, extra=ROOT / "trust" / "not_covered.md"):
-    """The Not yet covered page: every part of virgil whose verdict is not
-    verified, with the reason, then what is outside the graph."""
-    out = ["<!-- Generated by scripts/trust.py from trust/graph.yml and the evidence. Do not edit. -->",
-           "# Not yet covered\n",
-           "Parts of virgil that are not yet verified, from the same rules as the "
-           "[Trust page](../index.md).\n"]
-    nodes = [n for n in model["nodes"].values() if n["id"].startswith("virgil.") and n["verdict"] != "verified"]
-    docs = model.get("docs", {})
-    for verdict in VERDICTS:
-        group = sorted((n for n in nodes if n["verdict"] == verdict), key=lambda n: n["id"])
-        if not group:
-            continue
-        out += [f"## {VERDICTS[verdict][0]}\n", "| Part | Why |", "| --- | --- |"]
-        for n in group:
-            why = []
-            if n["findings"]:
-                why.append("open finding " + ", ".join(f"[{f}](findings.md#{f})" for f in n["findings"]))
-            if n["because"]:
-                why.append("relies on " + ", ".join(f"`{b['id'].removeprefix('virgil.')}`" for b in n["because"]))
-            if verdict == "unchecked" and not why:
-                why.append("no check yet")
-            if verdict == "convention":
-                why.append("convention " + ", ".join(f"`{p}`" for p in n["unconfirmed"]) + " from virgil's docs only")
-            short = [p for p, v in n["properties"].items() if len(v["roots"]) < v["need"]]
-            if verdict == "partly" and short:
-                why.append("; ".join(f"`{p}`: {len(n['properties'][p]['roots'])} of {n['properties'][p]['need']} "
-                                     "independent references" for p in short))
-            elif verdict == "partly" and not why:
-                why.append("only checked against itself" if not n["strong"]
-                           else f"{len(n['strong'])} of {n['need']} independent references")
-            name = n["id"].removeprefix("virgil.")
-            doc = docs.get(n["id"])
-            label = f"[`{name}`](../{doc})" if doc and not doc.startswith("method/coverage") else f"`{name}`"
-            out.append(f"| {label} | {'; '.join(why) or VERDICTS[verdict][1]} |")
-        out.append("")
-    if extra and pathlib.Path(extra).exists():
-        out.append(pathlib.Path(extra).read_text())
-    return "\n".join(out) + "\n"
-
-
-# The function-test section of the site that explains each layer of the map.
-LAYER_SECTION = {"data": "Data", "models": "Models", "likelihood": "Likelihood", "priors": "Likelihood",
-                 "inference": "Inference", "orbits": "Orbits", "imaging": "Imaging"}
-
-
-def test_sections(mkdocs=ROOT / "mkdocs.yml"):
-    """[(section, [(title, path)])] from the "Function tests" part of the nav."""
-    for item in yaml.load(open(mkdocs), Loader=yaml.BaseLoader)["nav"]:
-        if isinstance(item, dict) and "Function tests" in item:
-            return [(name, [(t, path) for page in pages for t, path in page.items()])
-                    for sub in item["Function tests"] if isinstance(sub, dict) for name, pages in sub.items()]
-    raise ValueError(f'no "Function tests" section in the nav of {mkdocs}')
-
-
-def render_tests(model, mkdocs=ROOT / "mkdocs.yml", about=ROOT / "trust" / "test_pages.yml"):
-    """The Function tests landing page: each page, what it checks and how many of its parts are verified."""
-    about = yaml.safe_load(open(about)) if pathlib.Path(about).exists() else {}
-    by_page = collections.defaultdict(list)
-    for k, doc in model.get("docs", {}).items():
-        if k.startswith("virgil.") and k in model["nodes"]:
-            by_page[doc.partition("#")[0]].append(model["nodes"][k])
-    lines = ["---\nhide:\n  - toc\n---",
-             "<!-- Generated by scripts/trust.py from mkdocs.yml and trust/test_pages.yml. Do not edit. -->",
-             "# Function tests\n",
-             "virgil, part by part. Each page below checks a group of virgil's functions against mathematics, "
-             "published standards or other people's code, and explains how. The bar shows how many of the parts "
-             "explained on that page are verified. To find one part, select it in the "
-             "[map on the Overview](../index.md#parts).\n",
-             '<div class="vt">']
-    for section, pages in test_sections(mkdocs):
-        lines.append(f'<h2 id="{slugify(section)}">{e(section)}</h2>')
-        if about.get("sections", {}).get(section):
-            lines.append(f'<p class="vt-muted">{e(about["sections"][section])}</p>')
-        rows = []
-        for title, path in pages:
-            nodes = by_page.get(path, [])
-            counts = collections.Counter(n["verdict"] for n in nodes)
-            ok = counts.get("verified", 0)
-            status = (f'{_bar(counts, len(nodes))}<span class="vt-muted">{ok} of {len(nodes)} verified</span>'
-                      if nodes else '<span class="vt-muted">no parts of its own</span>')
-            href = "../" + doc_url(path)
-            rows.append(f'<a class="vt-tp" href="{e(href)}"><span class="vt-tp-t">{e(title)}</span>'
-                        f'<span class="vt-tp-d">{e(about.get("pages", {}).get(path, ""))}</span>'
-                        f'<span class="vt-tp-s">{status}</span></a>')
-        lines.append('<div class="vt-tps">' + "".join(rows) + "</div>")
-    lines.append("</div>\n")
-    return "\n".join(lines)
-
-
-def _precision(nodes):
-    """One dot per check with a numeric agreement in (0, 1), on a log axis."""
-    pts = []
-    for n in nodes.values():
-        for c in n["checks"]:
-            v = c["value"]
-            if c["kind"] in ("check",) and c["outcome"] in GOOD and isinstance(v, (int, float)) and 0 < abs(v) < 1:
-                pts.append((math.log10(abs(v)), n["layer"], n["label"], c))
-    if not pts:
-        return ""
-    lo, hi = -16.5, 0
-    rows = [layer for layer in layers(nodes) if any(p[1] == layer for p in pts)]
-    h = 24 * len(rows) + 30
-    out = [f'<svg class="vt-prec" viewBox="0 0 640 {h}" role="img" aria-label="agreement of each check, log scale">']
-    for k in range(-16, 1, 2):
-        x = 90 + 540 * (k - lo) / (hi - lo)
-        out.append(f'<line x1="{x:.1f}" y1="0" x2="{x:.1f}" y2="{h - 22}" class="vt-grid"/><text x="{x:.1f}" y="{h - 6}" class="vt-tick" text-anchor="middle">{"1" if k == 0 else f"1e{k}"}</text>')
-    for i, layer in enumerate(rows):
-        y = 14 + 24 * i
-        out.append(f'<text x="0" y="{y + 4}" class="vt-tick">{e(layer)}</text>')
-        for lv, lay, label, c in pts:
-            if lay != layer:
-                continue
-            x = 90 + 540 * (max(lv, lo) - lo) / (hi - lo)
-            out.append(f'<circle cx="{x:.1f}" cy="{y}" r="3.5" class="vt-dot"><title>{e(label)}: {e(c["headline"])} = {_value(c["value"])} ({e(c["name"])})</title></circle>')
-    out.append("</svg>")
-    return "".join(out)
-
-
-def _tables(model):
-    lines = ["| part | verdict | independent roots (needed) | virgil changed since | checks |", "| --- | --- | --- | --- | --- |"]
-    for n in model["nodes"].values():
-        changed = "unknown" if n["changed"] is None else (", ".join(f"`{f}`" for f in n["changed"]) or "no")
-        roots = ", ".join(ROOT_NAMES.get(r, r) for r in n["strong"]) or "—"
-        lines.append(f'| `{n["id"]}` | {VERDICTS[n["verdict"]][0]} | {roots} ({n["need"]}) | {changed} | {len(n["checks"])} |')
-    return "\n".join(lines)
-
-
-# Showcase tiles: (page, images, title, text). A tile with several images is a gallery strip. A tile is drawn
-# only once its page and at least one of its images exist under docs/, so a result can be wired in before it is
-# made (IM Lup: design/alma_imlup_gallery.md).
-SHOWCASE = [
-    ("imaging/postagb.md", ["imaging/postagb/HD108015_images.png"], "Disc images",
-     "Dusty discs around nine post-AGB binaries, reconstructed by virgil from VLTI/PIONIER data "
-     "and set beside the published images."),
-    ("orbits/index.md", ["assets/orbit_aliases/gl229/sky.png"], "Binary orbits",
-     "Orbits of close binaries from VLTI/GRAVITY and PIONIER archives, fitted without starting from the "
-     "published orbit and compared with it."),
-    ("imaging/imlup.md", ["imaging/imlup/maxent.png", "imaging/imlup/multipole_gp.png", "imaging/imlup/dsharp.png"],
-     "IM Lup with ALMA", "The DSHARP IM Lup disc imaged by virgil from the measurement sets, beside the DSHARP image."),
-]
+trust_render.attach(globals())
+from trust_render import (  # noqa: E402,F401
+    ICON, ORDER, COLOURS, _bar, _legend, _value, _pipeline_card, _chain, _tooltip, layers, _fails_badge, _map,
+    _matrix, _link_label, _ledger, FINDING_GROUPS, render_findings, render_coverage, LAYER_SECTION, test_sections,
+    render_tests, _precision, _tables, SHOWCASE, _headline_html, _headline_by_order_html, _fails_elsewhere_html,
+    render,
+)
+e = trust_render.e  # not in the import above: build() uses `e` as a loop variable, which ruff flags against an import
 
 
 def _showcase(base, docs=ROOT / "docs"):
-    cards = []
-    for page, imgs, title, text in SHOWCASE:
-        imgs = [i for i in imgs if (docs / i).exists()]
-        if not imgs or not (docs / page).exists():
-            continue
-        pics = "".join(f'<img src="{base}{e(i)}" alt="" loading="lazy">' for i in imgs)
-        if len(imgs) > 1:
-            pics = f'<span class="vt-show-g">{pics}</span>'
-        cards.append(f'<a class="vt-show" href="{base}{e(doc_url(page))}">{pics}'
-                     f'<span class="vt-show-t">{e(title)} →</span><span class="vt-show-d">{e(text)}</span></a>')
-    return f'<div class="vt-shows">{"".join(cards)}</div>'
-
-
-def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
-    """The headline: parts of virgil only, staleness in the count itself."""
-    since = f", {stale} of them since changed in virgil" if stale else ""
-    where = ", ".join(f"<code>{e(c)}</code>" for c in commits)
-    return (f'<div class="vt-head"><div><span class="vt-big">{verified}</span> of {total} parts of virgil verified{since} '
-            f'<span class="vt-muted">(evidence from virgil {where})</span></div>'
-            f'<div class="vt-muted">Our own reference code and the packages we compare with: '
-            f'{refs_ok} of {refs_total} verified.</div></div>')
-
-
-def _headline_by_order_html(tests):
-    """A warning when a check shows a number chosen by recording order, not by its test (no ``headline=``)."""
-    if not tests:
-        return ""
-    names = ", ".join(f"<code>{e(t.rpartition('/')[2])}</code>" for t in tests)  # file basename::function
-    return (f'<details class="vt-muted vt-stale"><summary>Headline chosen by order: {len(tests)} test function(s) '
-            f'record several agreement metrics and name none as their headline, so the number shown is the first one recorded.'
-            f'</summary>{names}</details>')
-
-
-def _fails_elsewhere_html(fails):
-    """A banner listing tests that fail on another virgil commit than the kept (passing) record, with run links."""
-    if not fails:
-        return ""
-    items = "".join(
-        f'<li><code>{e(f["test"])}</code>: {e(f["outcome"])} on virgil <code>{e(f["commit"][:7])}</code>'
-        + (f' (<a href="{e(f["run_url"])}">run</a>)' if f.get("run_url") else "") + "</li>"
-        for f in fails)
-    affected = sorted({o for f in fails for o in f["objects"]})
-    commits = ", ".join(f"<code>{e(c[:7])}</code>" for c in sorted({f["commit"] for f in fails}))
-    return (f'<div class="vt-stale vt-failelse-banner"><strong>{len(fails)} test(s) fail on a different virgil commit '
-            f'({commits}) than the passing result this page shows.</strong> A newer run on another commit passed them, '
-            f'so the page keeps that pass; the failure is shown here and the verdicts are unchanged. '
-            f'Parts and pipelines affected: {", ".join(f"<code>{e(o)}</code>" for o in affected)}.'
-            f'<details><summary>The tests</summary><ul>{items}</ul></details></div>')
-
-
-def render(model, base=""):
-    nodes = model["nodes"]
-    ours_nodes = [n for n in nodes.values() if n["id"].startswith("virgil.")]
-    total = len(ours_nodes)
-    counts = collections.Counter(n["verdict"] for n in ours_nodes)
-    stale = sum(1 for n in ours_nodes if n["verdict"] == "verified" and n["changed"])
-    refs = [n for n in nodes.values() if not n["id"].startswith("virgil.")]
-    refs_ok = sum(1 for n in refs if n["verdict"] == "verified")
-    commits = sorted({r["virgil"][:7] for r in model["runs"] if r.get("virgil")})
-    fresh = ("" if model["changed"] is None else
-             f'<i aria-hidden="true">⏲</i> virgil has changed {model["changed"]} of these parts since; the weekly run refreshes the evidence')
-    real = [p for p in model["pipelines"] if p["data"] == "real"]
-    sim = [p for p in model["pipelines"] if p["data"] != "real"]
-    slim = {k: {f: n[f] for f in ("id", "verdict", "strong", "weak", "findings", "because", "depends", "dependents", "changed")}
-                | {"doc": base + doc_url(model["docs"][k]) if model.get("docs", {}).get(k) else None}
-                | {"checks": [{f: c[f] for f in ("name", "doc", "outcome", "kind", "headline", "value", "url")} for c in n["checks"]]}
-            for k, n in nodes.items()}
-    data = json.dumps({"nodes": slim, "verdicts": {k: list(v) for k, v in VERDICTS.items()}, "roots": ROOT_NAMES},
-                      separators=(",", ":"), default=str).replace("</", "<\\/")
-    parts = [
-        "---\nhide:\n  - toc\n---\n<!-- Generated by scripts/trust.py from trust/graph.yml, trust/ledger.yml and the evidence. Do not edit. -->",
-        "# Can virgil be trusted?\n",
-        "> *ma però che già mai di questo fondo<br>\n"
-        "> non tornò vivo alcun, s’i’ odo il vero,<br>\n"
-        "> sanza tema d’infamia ti rispondo.*\n>\n"
-        "> — Dante, *Inferno*, Canto XXVII, lines 64–66\n",
-        "virgil's calculations, checked part by part against mathematics, published standards and "
-        "independent packages written by other people, then whole chains end to end. "
-        "[How this works](method/index.md).\n",
-        '<div class="vt">',
-        _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
-        _headline_by_order_html(model.get("headline_by_order", [])),
-        _fails_elsewhere_html(model.get("fails_elsewhere", [])),
-        _bar(counts, total),
-        _legend(counts),
-        '<h2 id="showcase">Results on real data</h2>',
-        _showcase(base),
-        '<h2 id="real-data">Does virgil reproduce published results?</h2>',
-        '<div class="vt-cards">' + ("".join(_pipeline_card(p, nodes) for p in real) or '<div class="vt-muted">None yet.</div>') + "</div>",
-        '<h2 id="simulated-data">On simulated data: whole chains, from file to answer</h2>',
-        '<div class="vt-chains">' + "".join(_chain(p, nodes) for p in sim) + "</div>",
-        '<h2 id="parts">Every part, from data up</h2>',
-        '<p class="vt-muted">Each chip is one part of virgil: select it to see how it was checked and read the page that '
-        'explains it. Each layer name opens its <a href="' + base + 'tests/">function tests</a>. '
-        "A dot marks parts virgil has changed since their evidence was measured.</p>",
-        _map(nodes, base),
-        '<h2 id="ledger">What the checks found</h2>',
-        _ledger(model["ledger"]),
-        '<p class="vt-muted">Every finding, with its tests: <a href="' + base + 'method/findings/">Findings</a>.</p>',
-        '<h2 id="roots">Who checks what</h2>',
-        '<details class="vt-fold"><summary>Independent roots behind each part: trust does not rest on one source.</summary>',
-        _matrix(nodes),
-        "</details>",
-        '<h2 id="precision">How precise</h2>',
-        '<details class="vt-fold"><summary>Most checks agree to machine precision; the looser ones are noisy simulations '
-        "or deliberate approximations.</summary>",
-        '<p class="vt-muted">Each dot is one check’s agreement with its reference (hover for which).</p>',
-        _precision(nodes),
-        "</details>",
-        "</div>",
-        f'<script type="application/json" id="vt-data">{data}</script>\n',
-        "## All parts\n",
-        "<details><summary>Table of every part, its verdict and evidence</summary>\n",
-        _tables(model) + "\n",
-        "</details>\n",
-        "Evidence: " + "; ".join(f'{e(r.get("runner"))} on {e(r.get("date"))}, virgil `{e((r.get("virgil") or "unknown")[:10])}`'
-                                 + (f' ([run]({r["run_url"]}))' if r.get("run_url") else "") for r in model["runs"]) + ".\n",
-    ]
-    return "\n".join(parts)
+    """The showcase tiles; ``SHOWCASE`` is looked up here so a replacement of ``trust.SHOWCASE`` is honoured."""
+    return trust_render._showcase(base, docs, SHOWCASE)
 
 
 def main():

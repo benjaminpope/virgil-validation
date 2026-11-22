@@ -1,0 +1,245 @@
+{
+ "label": "2024_obj2_gravity_ringed_disk_with_companions",
+ "task": 15,
+ "family": "ringed_disk_with_companions",
+ "knowledge": "informed: model family from the contest paper; no value",
+ "files": [
+  "2024/Obj2_GRAVITY_2.0-2.5.fits"
+ ],
+ "resolution_mas": 1.021581430949228,
+ "field_mas": 51.3442711628207,
+ "channels": 14,
+ "chromatic": true,
+ "reference_wavelength_m": 2.2404999526770553e-06,
+ "flux_spectra_fitted": 0,
+ "virgil": "0.4.1",
+ "quoted_errors": {
+  "median_vis_error": 0.002229738466653618,
+  "median_phase_error_deg": 0.006852308791587505,
+  "implied_vis_residual": 0.015545800480461848,
+  "implied_phase_residual_deg": 0.04777449324108656
+ },
+ "residual_image": {
+  "chi2_red": 45.27576013076177,
+  "flux_relative_to_model": 0.0036293942164323475,
+  "npix": 64,
+  "pixel_scale_mas": 0.510790715474614,
+  "field_mas": 32.690605790375294,
+  "converged": true,
+  "file": "2024_obj2_gravity_ringed_disk_with_companions_rest.npz"
+ },
+ "gp_disk": {
+  "chi2_red": 264.6015843376838,
+  "converged": true,
+  "azimuthal_degree": 1,
+  "starts": 2,
+  "starts_at_best": 2,
+  "r_in_mas": 0.510790715474614,
+  "r_out_mas": 38.508203372115524,
+  "length_mas": 3.064744292847684,
+  "values": {
+   "companion.ddec": 0.3450439958611753,
+   "companion.dra": -0.7529487157703869,
+   "companion.flux.ratio": 0.9999946462970127,
+   "disk.flux.index": 5.917368128564473,
+   "disk.flux.ratio": 2.6361607808551994,
+   "disk.inc": 53.82991937412875,
+   "disk.pa": 179.99998838406518
+  },
+  "file": "2024_obj2_gravity_ringed_disk_with_companions_gp_disk.npz"
+ },
+ "rungs": [
+  {
+   "rung": "star+one ring",
+   "k": 6,
+   "n": 2394,
+   "chi2": 1904339.1677220229,
+   "chi2_red": 795.4633114962502,
+   "bic": 1904385.8520473395,
+   "converged": true,
+   "starts": 4,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "disk.flux.index": [
+     7.9999999999999964
+    ],
+    "disk.flux.ratio": [
+     1.0999805589662708
+    ],
+    "disk.inc": [
+     59.26906681291322
+    ],
+    "disk.pa": [
+     179.9999919006357
+    ],
+    "disk.profile.a.radius": [
+     0.20434080241852853
+    ],
+    "disk.profile.a.sigma": [
+     5.171581164469128
+    ]
+   }
+  },
+  {
+   "rung": "star+two rings",
+   "k": 9,
+   "n": 2394,
+   "chi2": 348857.47175378207,
+   "chi2_red": 145.72158385705183,
+   "bic": 348927.49824175716,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "disk.flux.index": [
+     3.8271679696802074
+    ],
+    "disk.flux.ratio": [
+     0.9951123234154983
+    ],
+    "disk.inc": [
+     66.08593384641716
+    ],
+    "disk.pa": [
+     22.89204169628584
+    ],
+    "disk.profile.a.radius": [
+     20.79051986110897
+    ],
+    "disk.profile.a.sigma": [
+     2.7321322894537934
+    ],
+    "disk.profile.b.radius": [
+     3.4996962561821334
+    ],
+    "disk.profile.b.sigma": [
+     4.064471919829011
+    ],
+    "disk.profile.b.weight": [
+     8.08546588164244
+    ]
+   }
+  },
+  {
+   "rung": "star+three rings",
+   "k": 12,
+   "n": 2394,
+   "chi2": 233120.1929903931,
+   "chi2_red": 97.3768558857114,
+   "bic": 233213.5616410265,
+   "converged": true,
+   "starts": 5,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "disk.flux.index": [
+     5.790337433312777
+    ],
+    "disk.flux.ratio": [
+     1.9854037824710096
+    ],
+    "disk.inc": [
+     66.56656474983637
+    ],
+    "disk.pa": [
+     21.01484799697172
+    ],
+    "disk.profile.a.radius": [
+     5.744394659097306
+    ],
+    "disk.profile.a.sigma": [
+     2.5251907209330238
+    ],
+    "disk.profile.b.radius": [
+     0.6005867753818502
+    ],
+    "disk.profile.b.sigma": [
+     0.20434848708662592
+    ],
+    "disk.profile.b.weight": [
+     0.5799706599927884
+    ],
+    "disk.profile.c.radius": [
+     0.243940647191391
+    ],
+    "disk.profile.c.sigma": [
+     13.173104146992689
+    ],
+    "disk.profile.c.weight": [
+     0.3399031294898734
+    ]
+   }
+  },
+  {
+   "rung": "star+three rings+companion",
+   "k": 16,
+   "n": 2394,
+   "chi2": 116370.38542436097,
+   "chi2_red": 48.60918355236465,
+   "bic": 116494.87695853885,
+   "converged": true,
+   "starts": 10,
+   "starts_at_best": 1,
+   "failed_starts": 0,
+   "errors": [],
+   "values": {
+    "companion.ddec": [
+     0.3424410934406268
+    ],
+    "companion.dra": [
+     -0.5992558011711111
+    ],
+    "companion.flux.index": [
+     1.1328938749830861
+    ],
+    "companion.flux.ratio": [
+     0.9999838431140543
+    ],
+    "disk.flux.index": [
+     6.308007592766129
+    ],
+    "disk.flux.ratio": [
+     3.3792151251159646
+    ],
+    "disk.inc": [
+     67.66044960104763
+    ],
+    "disk.pa": [
+     21.932875407125668
+    ],
+    "disk.profile.a.radius": [
+     6.231538683296915
+    ],
+    "disk.profile.a.sigma": [
+     2.029587431865531
+    ],
+    "disk.profile.b.radius": [
+     0.6475141412253214
+    ],
+    "disk.profile.b.sigma": [
+     0.2043194254887127
+    ],
+    "disk.profile.b.weight": [
+     0.630222105653923
+    ],
+    "disk.profile.c.radius": [
+     0.270350749582341
+    ],
+    "disk.profile.c.sigma": [
+     12.017588924675835
+    ],
+    "disk.profile.c.weight": [
+     0.5067217200301202
+    ]
+   }
+  }
+ ],
+ "chosen": "star+three rings+companion",
+ "elapsed_s": 1118.2445349693298,
+ "smoke": false
+}
