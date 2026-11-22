@@ -34,6 +34,7 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F26">F26</span> | `gains.ClosureOffsets`, `gains.closure_offsets` | ClosureOffsets(scale_penalty=True) scales periodic wrap-penalty rows by unprojected hypot(sigma, sigma_off) from diag(M M^T), so a 4-telescope left-null mode (n^T T = 0) alters model_loglike when Delta != 0 | open |
 | <span id="F27">F27</span> | `orbit_cells.outlier_log_density` | Laplace approximation error in outlier_log_density(rescalable=True): large at the clip boundary (+3 to +6 nats when the scale is clipped), small in the interior (about -0.4 nats at n = 24, comparable to expected Laplace error) | open |
 | <span id="F28">F28</span> | `aliases.period_window`, `aliases.period_cut` | period_window and period_cut API docstrings omit the night_length lower floor applied in code and documented in orbit_methods.md | open |
+| <span id="F32">F32</span> | `detection.DetectionMC`, `detection.injection_recovery` | DetectionMC on an injection_recovery(uncertainty=False) run: max_snr (all NaN) queries return values instead of raising, and concatenate merges it with uncertainty=True runs | open |
 
 ## Where codes define things differently
 
