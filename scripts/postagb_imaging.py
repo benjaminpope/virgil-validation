@@ -122,7 +122,7 @@ TARGETS = {
         fov_mas=44.8,
         pixel_mas=0.35,
         sec0=(1.12, -1.90),  # secondary from the paper's Gaussian fit to the image (Table 2)
-        half_mas=18.0, mask_mas=20.0, half_cmp_mas=15.0, ud0=0.5, ud_fix=0.5,
+        half_mas=18.0, mask_mas=20.0, half_cmp_mas=15.0, ud0=0.5, ud_fix=0.5, star_off_centre=False,  # IW Car: the published star is at the array centre (chi2 scan)
         inner_rim_max_mas=5.0,  # inner arcs lie inside this radius, the outer arc beyond (paper Sect. 5.3.7)
         regions=dict(inner=(0.0, 5.0), outer=(5.0, 20.0)),
         paper=dict(
@@ -192,15 +192,16 @@ TARGETS["PS_Gem"]["log_weights"] = (2, -4)  # the MaxEntropy sweep, kept for the
 TARGETS["PS_Gem"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))
 TARGETS["HR4049"]["gp"] = dict(sigmas=(0.25, 0.5, 1.0, 2.0, 4.0), length_beams=(0.25, 0.5, 1.0, 2.0))  # MaxEntropy came out too compact
 TARGETS["HR4049"]["half_mas"] = 25.0  # the extent of the paper's Fig. 4 panel
-# Field sizes (Ben): the support is a disc (mask_mas) in every target. HR 4049's ORGANIC halo extends past 20 mas and was clipped by the
-# old +-18 mas square, so its grid grows to +-25.5 mas (146 px of 0.35 mas) with a disc of 25 mas. Other pixel scales are the paper's.
+# Field sizes (Ben): the support is a disc (mask_mas) in every target. HR 4049's ORGANIC halo extends past 20 mas (24 % of its flux lies
+# beyond 30 mas) and was clipped by the old +-18 mas square, so its grid grows to +-40.5 mas (235 px of 0.3469 mas) with a disc of 40 mas.
+# Other pixel scales are the paper's.
 # PS Gem had a hand-set 5 mas support (fov_override=11, half/half_cmp/mask 5 mas) until 18 Nov 2026. That cut off emission that the shortest
 # baselines (9.9 m) still see: up to 47 % of the disc's flux sat in the outer 15 % of the support radius, the over-resolved background took
 # 6-10 % of the flux (0-0.7 % on a 15 mas field) and under night terms the disc fell to 1.6 % and a flat image. It now takes the paper's
 # field like the other targets, and `check_support` refuses a support smaller than the data's own field.
 TARGETS["PS_Gem"].update(hole_mas=0.37)  # hole at the UD only: ORGANIC puts compact emission inside 1.5 mas, the 1.2 mas beam hole blanked it
-# The grid must contain the 25 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and a 51 mas field, 146 pixels.
-TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=51.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=25.0)
+# The grid must contain the 40 mas disc: 0.35 mas pixels (about 4 per lambda/2B beam) and an 81 mas field, 235 pixels (grid_setup takes min(0.35, beam/4) = 0.3469 mas); the plots and the comparison stay at 25 mas.
+TARGETS["HR4049"].update(polar_lr_beams=(0.5, 1.0, 2.0, 4.0, 8.0), gp_mults=(0.5, 1.0, 2.0, 4.0, 8.0), fov_override=81.0, pixel_override=0.35, half_cmp_mas=25.0, mask_mas=40.0, cmp_mask_mas=25.0)
 
 for _k, _v in TARGETS.items():
     _v["bg"] = _k != "IRAS08544"  # De Prins+2026 images account for an over-resolved flux; Hillen's image scene has none
@@ -338,8 +339,9 @@ def setup(cfg):
     cfg.update(
         fov_mas=fov, pixel_mas=scale, sec0=(hdr["SDEX2"], hdr["SDEY2"]) if has_sec else None,
         ud_fix=hdr["SUD1"],  # the paper's fixed stellar diameter
-        ud0=max(hdr["SUD1"], 0.3), half_mas=half, mask_mas=cfg.get("mask_mas") or 0.95 * fov / 2, half_cmp_mas=cfg.get("half_cmp_mas") or 0.85 * half,
-        regions=dict(disc=(0.0, cfg.get("mask_mas") or 0.95 * fov / 2)), inner_rim_max_mas=None, paper_header=dict(
+        ud0=max(hdr["SUD1"], 0.3), half_mas=half, mask_mas=cfg.get("mask_mas") or 0.95 * fov / 2,
+        cmp_mask_mas=cfg.get("cmp_mask_mas") or cfg.get("mask_mas") or 0.95 * fov / 2, half_cmp_mas=cfg.get("half_cmp_mas") or 0.85 * half,
+        regions=dict(disc=(0.0, cfg.get("cmp_mask_mas") or cfg.get("mask_mas") or 0.95 * fov / 2)), inner_rim_max_mas=None, paper_header=dict(
             ud=hdr["SUD1"], f_prim_pct=100 * hdr["SFLU1"], f_sec_pct=100 * hdr["SFLU2"],
             sec=(hdr["SDEX2"], hdr["SDEY2"]), image_index=hdr["SIND0"], star_index=hdr["SIND1"], sec_index=hdr["SIND2"]),
     )
@@ -870,6 +872,36 @@ def scene_priors(cfg, scene, env_fixed_geometry=False):
     return priors
 
 
+def fit_radius_mas(cfg, inc_deg):
+    """Radius of the polar / radial-profile grids of ``fit_polar`` and ``fit_disc_at``: the circular sky support (``mask_mas``)
+    seen through the disc's inclination is an ellipse of semi-minor axis r cos(i), so r = mask_mas / cos(i) covers it (i capped at 75 deg)."""
+    return float(cfg.get("mask_mas", cfg["half_mas"])) / np.cos(np.radians(min(float(inc_deg), 75.0)))
+
+
+def continue_blob(b0, n_want):
+    """``b0`` (the start image: a circular Gaussian about the array centre plus a floor) on an ``n_want`` grid with the same centre.
+
+    Fits A exp(-r^2 / 2 s^2) + floor to ``b0`` and evaluates it on the whole grid, then puts ``b0`` itself back inside its own
+    footprint: positive everywhere and smooth across the old edge (no zero pad)."""
+    from scipy.optimize import least_squares
+    n0 = b0.shape[0]
+
+    def r2(n):
+        d = (np.arange(n) - (n - 1) / 2.0) ** 2
+        return d[:, None] + d[None, :]
+
+    scale = float(b0.max())
+    y = b0 / scale
+    model = lambda p, r: p[0] * np.exp(-0.5 * r / p[1] ** 2) + p[2]
+    r0 = r2(n0)
+    fit = least_squares(lambda p: ((model(p, r0) - y) / (y + y.min())).ravel(), [1.0, n0 / 6.0, float(y.min())],
+                        bounds=([0.0, 0.5, 0.0], [10.0, 10.0 * n0, 1.0]))
+    out = model(fit.x, r2(n_want)) * scale
+    pad = (n_want - n0) // 2
+    out[pad:pad + n0, pad:pad + n0] = b0
+    return out
+
+
 def grid_setup(cfg, data, args, rot=0.0):
     """The paper's pixel grid, the window around the star(s), and the Gaussian start image."""
     # the paper's pixel, or the finer of that and a quarter of the comparison beam (lambda_min / 2 B_max), so that the beam spans four pixels or more
@@ -877,13 +909,14 @@ def grid_setup(cfg, data, args, rot=0.0):
     fov = cfg["fov_mas"] * (0.5 if args.smoke else 1.0)
     start = starting_image(data, star=True, oversample=nyquist_pixel_scale(data) / scale, largest_mas=fov)
     # starting_image never exceeds the interferometric field of view (lambda / B_min), whatever ``largest_mas`` says, so a larger
-    # requested field (HR 4049: 36 mas against 51 mas) is padded here with the start image's own floor, keeping the star at the centre.
+    # requested field (HR 4049: 34 mas against 81 mas) is padded here, keeping the star at the centre, with the blob continued
+    # analytically (``continue_blob``).
     n0, n_want = start.env.log_brightness.shape[0], int(np.ceil(fov / scale))
     n_want += (n_want - n0) % 2
     if n_want > n0:
         b0 = np.exp(np.asarray(start.env.log_brightness))
-        pad = (n_want - n0) // 2
-        env = Image.from_brightness(np.pad(b0, pad, constant_values=0.0), start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
+        # The blob is continued analytically (every padded target): zero padding left a hard template edge at the data's field of view.
+        env = Image.from_brightness(continue_blob(b0, n_want),start.env.pixel_scale_mas, floor=1e-3, flux=start.env.flux)
         start = System(star=start.star, env=env)
     half = start.env.log_brightness.shape[0] * float(start.env.pixel_scale_mas) / 2
     if not args.smoke and half < cfg.get("mask_mas", half) - float(start.env.pixel_scale_mas):  # smoke halves the field on purpose; the saved field and support radii are config values, so check the grid itself
@@ -1268,7 +1301,7 @@ def polar_scene_fn(cfg, scene, start_env, support, args, geo, r_min, m_max):
     """``(sigma, length_r, length_theta) -> scene`` with the polar field as its environment (``LowOrderField`` unless ``m_max`` is None)."""
     mean = field_mean(start_env, support, args)
     pix = float(start_env.pixel_scale_mas)
-    r_max = float(cfg["half_mas"])
+    r_max = fit_radius_mas(cfg, geo["inc_deg"])
     n_r, n_th = 40, 32
 
     def mp_scene(sigma, lr, lt):
@@ -1382,7 +1415,7 @@ def fit_disc_at(cfg, data, args, geo, r_in, f_env0, d_env, pix, npix):
     lens = pixel_floor_lengths(float(pix), unit, mults=(0.5, 1.0, 2.0, 4.0))
     if args.smoke:
         sigmas, lens = sigmas[:1], lens[:1]
-    r_out = float(cfg["half_mas"])
+    r_out = fit_radius_mas(cfg, geo["inc_deg"])
     opts = dict(max_steps=15) if args.smoke else {}
 
     probe = MultipoleDisk(RadialGP(r_in, r_out, sigma=1.0, ell=unit), harmonics=Harmonics(re=0.0, im=0.0), inc=geo["inc_deg"], pa=geo["pa_deg"], n_r=48)
@@ -1664,7 +1697,7 @@ def image_one(args, out, strat):
     f_disk = f_env if strat == "disc+res" else None
     n_ = bright.shape[0]
     yy, xx = np.mgrid[:n_, :n_]
-    outer = np.hypot(xx - (n_ - 1) / 2, yy - (n_ - 1) / 2) * pix > 0.8 * cfg["half_mas"]  # env flux near the field edge
+    outer = np.hypot(xx - (n_ - 1) / 2, yy - (n_ - 1) / 2) * pix > 0.8 * cfg.get("mask_mas", cfg["half_mas"])  # env flux near the edge of the support
     f_outer = (f_env + f_res) * float(bright[outer].sum() / bright.sum()) if bright.sum() > 0 else 0.0
     stars = dict(ud=float(cfg["ud_fix"]), f_env=f_env + f_res, env_index=float(np.asarray(model.env.flux.index)), f_sec=f_sec,
                  f_bg=f_bg, bg_index=float(np.asarray(model.bg.flux.index)) if cfg.get("bg") else None,
@@ -1893,23 +1926,40 @@ def to_grid(img, scale_in, scale_out, npix_out):
     xs = c_in_x + (xx - c_out) * scale_out / scale_in
     r = ndimage.map_coordinates(img, [ys, xs], order=1, mode="constant", cval=0.0)
     return r * (scale_out / scale_in) ** 2  # per-pixel flux scales with pixel area
+def star_shift_px(cfg, hdr, shape):
+    """(rows, columns) by which the row-flipped ORGANIC array must move to put its star at virgil's centre (n - 1) / 2, in pixels.
+
+    A chi2 scan of the published model on our data (eight targets, +-1.5 px on a 0.5 px grid; PR #268 review) puts the star at FITS column
+    CRPIX1 - 1 and row CRPIX2 (0-indexed; 63 and 64 for the Zenodo files, 128 px, CRPIX = 64), half a pixel from the centre 63.5 in both axes:
+    (+0.5, +0.5) after the flip. IW Car's file prefers the centre (``star_off_centre=False``)."""
+    if not cfg.get("star_off_centre", True):
+        return 0.0, 0.0
+    ny, nx = shape
+    return (ny - 1) / 2.0 - (ny - 1 - hdr["CRPIX2"]), (nx - 1) / 2.0 - (hdr["CRPIX1"] - 1)
 
 
-def published_image(cfg):
-    """The ORGANIC environment image in virgil's orientation (row 0 North, column 0 East), unit sum."""
+def published_image(cfg, resample=True):
+    """The ORGANIC environment image in virgil's orientation (row 0 North, column 0 East), unit sum.
+
+    ``resample`` moves the star to the centre by a linear sub-pixel shift (``star_shift_px``); ``published_scene`` leaves the pixels alone and
+    shifts the Image exactly with ``dra`` / ``ddec`` instead."""
     hdr, im, noise = zenodo_header(cfg)
     # FITS: CDELT1 < 0 so x runs East to West (column 0 is East already); CDELT2 > 0 so y runs
     # South to North, i.e. row 0 is South: flip the rows.
     assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
-    return im[::-1, :] / im.sum(), noise[::-1, :], abs(hdr["CDELT1"]), hdr
+    shift = star_shift_px(cfg, hdr, im.shape)
+    move = lambda a: ndimage.shift(a[::-1, :], shift, order=1, mode="constant", cval=0.0) if resample and any(shift) else a[::-1, :]
+    img = move(im)
+    return img / img.sum(), move(noise), abs(hdr["CDELT1"]), hdr
 
 
 def published_scene(cfg):
     """The published SPARCO + ORGANIC model as a virgil scene (for chi2 on our data)."""
-    img, _, scale, h = published_image(cfg)
+    img, _, scale, h = published_image(cfg, resample=False)
+    drow, dcol = star_shift_px(cfg, h, img.shape)
     f1, f2 = h["SFLU1"], h["SFLU2"]
     f_env = 1.0 - f1 - f2 - h.get("SFLU3", 0.0)
-    env = Image.from_brightness(img, scale, floor=0.0, flux=PowerLaw(f_env / f1, h["SIND0"], h["SWAVE0"]))
+    env = Image.from_brightness(img, scale, floor=0.0, flux=PowerLaw(f_env / f1, h["SIND0"], h["SWAVE0"]), dra=-dcol * scale, ddec=-drow * scale)
     parts = dict(star=UniformDisk(diam=h["SUD1"], flux=PowerLaw(1.0, h["SIND1"], h["SWAVE0"])), env=env)
     if f2 > 0:
         parts["sec"] = PointSource(flux=PowerLaw(f2 / f1, h["SIND2"], h["SWAVE0"]), dra=h["SDEX2"], ddec=h["SDEY2"])
@@ -2086,7 +2136,7 @@ def compare_one(args, out):
     pub_c = np.asarray(convolve_beam(pub, pub_scale, bm))
     yy, xx = np.mgrid[:n, :n]
     rad = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) * pub_scale
-    mask = rad < cfg["mask_mas"]
+    mask = rad < cfg.get("cmp_mask_mas", cfg["mask_mas"])  # the comparison radius, not the fit support (HR 4049: 25 against 40 mas)
     shifts = {}
     for dy in range(-3, 4):
         for dx in range(-3, 4):
@@ -2115,6 +2165,7 @@ def compare_one(args, out):
         best_shift_pixels=dict(dy=best[0], dx=best[1]), pixel_mas=pub_scale, beam=dict(
             major_mas=bm.major_mas, minor_mas=bm.minor_mas, pa_deg=bm.pa_deg),
         beam_convention="circular Gaussian, FWHM lambda_min / (2 B_max)",
+        comparison_radius_mas=float(cfg.get("cmp_mask_mas", cfg["mask_mas"])),  # the NCC and disc-moment aperture (HR 4049: 25 mas, the fit support is 40)
         virgil_data_beam=dict(major_mas=beam(data).major_mas, minor_mas=beam(data).minor_mas, pa_deg=beam(data).pa_deg),
         ours=m_ours, published=m_pub, chi2_per_point_published_on_our_data=c2_pub,
         chi2_per_point_ours=json.load(open(path(out, cfg, "image.json")))["chi2_per_point"], n_points=n_pts,

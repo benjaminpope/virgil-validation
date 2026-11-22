@@ -8,7 +8,6 @@ nodes rather than holding them at ``relies-unverified``.
 
 from __future__ import annotations
 
-import gc
 import hashlib
 import subprocess
 
@@ -24,26 +23,6 @@ from external_bridge import _subprocess as ext_sp
 # The crosscheck reference modules and external_bridge.npz_compare are imported inside the test that checks
 # each, not here: evidence.plugin stamps every module-level import onto every check in a file, which made
 # each of them look checked through all the others (a false cycle, scripts/trust.py).
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _clear_jax_caches_around_via_references():
-    """Drop accumulated XLA caches before spawning external worker subprocesses and on teardown."""
-    try:
-        import jax
-
-        jax.clear_caches()
-    except ImportError:
-        pass
-    gc.collect()
-    yield
-    try:
-        import jax
-
-        jax.clear_caches()
-    except ImportError:
-        pass
-    gc.collect()
 
 
 # ------------------------------------------------ 1. crosscheck.radio_innovations

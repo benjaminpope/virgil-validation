@@ -224,6 +224,22 @@ nodes:
   virgil.radio.ComplexVisData.chi2_by_ddid: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData.model], doc: alma_conventions.md}
   virgil.radio.primary_beam: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.models.Image], doc: alma_conventions.md}
   virgil.radio.dartboard_folds: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil.radio.SigmaScale: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil.radio.ComplexVisData.sigma_scale:
+    layer: likelihood
+    source: [src/virgil/radio.py]
+    depends: [virgil.radio.ComplexVisData, virgil.radio.SigmaScale]
+    doc: alma_conventions.md
+  virgil.radio.fit_staged_nuisances:
+    layer: inference
+    source: [src/virgil/radio.py]
+    depends: [virgil.fitting.fit, virgil.fitting.kkt_report, virgil.radio.CalibrationNuisance, virgil.radio.ComplexVisData.term]
+    doc: alma_conventions.md
+  virgil.radio.StagedFit:
+    layer: inference
+    source: [src/virgil/radio.py]
+    depends: [virgil.radio.fit_staged_nuisances]
+    doc: alma_conventions.md
   # Register items B2, B5, B6 (virgil design/radio_imaging_innovations.md): tests/test_radio_innovations.py; B5's spread offsets (chi2, gradient, fit, bound) also tests/test_radio_spread_offsets.py. These need
   # virgil after 0.4.0 (gauss_newton_diag, radio_toeplitz); CI's pin has both since the F6 bump (virgil#533).
   # tests/test_radio_trust_numpy.py (tier A, numpy references) and tests/test_radio_trust_casa.py (tier B, real casatools and
@@ -232,6 +248,7 @@ nodes:
   virgil.fitting.gauss_newton_diag: {layer: imaging, source: [src/virgil/fitting.py], depends: [virgil.fitting.fit, virgil.imaging.MaxEntropy, virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   crosscheck.radio_trust: {layer: references, doc: alma_conventions.md}  # numpy dirty image/beam sums, Briggs weights, gain-marginal quadrature (virgil#533)
+  crosscheck.starlet_kkt_ref: {layer: references, doc: imaging/machinery.md#kkt-optimality-certificates}  # numpy/scipy scenes, B3 starlet, KKT, DoF discrepancy, L-curve corner, Laplace GP, MYTHRA & radio differencing (every helper self-checked in test_042_scenes_starlet_kkt.py)
   crosscheck.radio_offsets: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # B5 free offsets: exact phase-ramp chi2, analytic gradient, Fisher information (numpy only); tests/test_radio_spread_offsets.py
   crosscheck.radio_exact: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: numpy-only direct-sum chi2, loss, gradients and the derived round-off budget (design/toeplitz_reexam_042.md)
   crosscheck.toeplitz_scenes: {layer: references, depends: [crosscheck.radio_exact, crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: held-out synthetic scenes and coverages, seeds from hashed names
@@ -1027,11 +1044,55 @@ nodes:
     doc: inference/helpers.md
 
   # -------------------------------------------------------------- imaging
+  virgil.fitting.kkt_report:
+    layer: inference
+    source: [src/virgil/fitting.py]
+    depends: [virgil.fitting.fit, virgil.likelihood.model_loglike, virgil.models.Image, virgil.models.LinearImage, virgil.imaging.MaxEntropy]
+    doc: imaging/machinery.md#kkt-optimality-certificates
+  virgil.scenes.ring: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
+  virgil.scenes.spiral:
+    layer: imaging
+    source: [src/virgil/scenes.py]
+    properties: {arm_cross_section: 1}  # D27: ray-radial cross-section |r - r_arm| with circular Euclidean caps at theta = 0 and 2*pi*turns
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.scenes.gaussian_blob: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
   virgil.imaging.dirty_image: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
   virgil.imaging.beam: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
+  virgil.imaging.Beam: {layer: imaging, source: [src/virgil/imaging.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
   virgil.imaging.nyquist_pixel_scale: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.field_of_view: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.convolve_beam: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.second_moment_fwhm:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.oidata.OIData]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.image_field:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.second_moment_fwhm, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view]
+    properties: {field_clipping: 1}  # D27: field_fwhms * FWHM clipped to [inner_elements * lambda/(2*B_max), min(lambda/B_min, largest_mas, aperture_mas)], ceiling winning on crossover
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.envelope_fwhm:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.fitting.fit, virgil.imaging.second_moment_fwhm]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.starting_image:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.fitting.fit, virgil.imaging.envelope_fwhm, virgil.imaging.image_field, virgil.imaging.dirty_image, virgil.models.Image]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.image_priors:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.models.Image, virgil.models.LinearImage, virgil.fields.GaussianField]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.Centroid:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.models.Image, virgil.models.LinearImage]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
   # image-recovery metrics (imaging contests) and randomized ensembles
   virgil.metrics.ncc: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
   virgil.metrics.l1_score: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
@@ -1054,21 +1115,138 @@ nodes:
   virgil.ensemble.draw_groups:
     layer: imaging
     source: [src/virgil/ensemble.py, src/virgil/imaging.py]
-    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view, virgil.fitting.fit]
+    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.image_field, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view, virgil.fitting.fit]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.Group:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.Draw]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.Member:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.Draw]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.Ensemble:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.models.Image, virgil.ensemble.Member, virgil.ensemble.Group]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.reference_starts:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.imaging.starting_image, virgil.models.Image]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.GPFit:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.fitting.fit, virgil.imaging.log_evidence]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.EvidenceGrid:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.GPFit, virgil.imaging.log_evidence]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.evidence_grid:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.fitting.fit, virgil.imaging.log_evidence, virgil.imaging.image_priors,
+              virgil.imaging.Centroid, virgil.fields.GaussianField, virgil.ensemble.EvidenceGrid,
+              virgil.ensemble.reference_starts]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.gp_members:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.evidence_grid, virgil.ensemble.Group, virgil.ensemble.EnsembleSpec]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.run_group:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.imaging.l_curve, virgil.ensemble.gp_members, virgil.ensemble.reference_starts,
+              virgil.imaging.image_priors, virgil.imaging.Centroid, virgil.ensemble.Group]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.combine:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.ensemble.Ensemble, virgil.ensemble.Member,
+              virgil.ensemble.Group, virgil.ensemble.EnsembleSpec, virgil.imaging.beam, virgil.metrics.align]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.ensemble:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.draw_groups, virgil.ensemble.run_group, virgil.ensemble.combine,
+              virgil.ensemble.reference_starts, virgil.ensemble.EnsembleSpec]
     doc: imaging/metrics_ensembles.md#ensembles
   # regularised imaging: natural roots are eht-imaging and MPoL
   virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals, virgil.fitting.fit], doc: imaging/machinery.md#clean}
+  virgil.imaging.CleanResult:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.clean, virgil.imaging.Beam, virgil.imaging.beam, virgil.imaging.convolve_beam]
+    doc: imaging/machinery.md#clean
   virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.TV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.MaxEntropy: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.Laplacian: {layer: imaging, source: [src/virgil/imaging.py]}
-  virgil.imaging.StarletL1: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.starlet: {layer: imaging, source: [src/virgil/imaging.py], doc: imaging/machinery.md#regularisers}
+  virgil.imaging.StarletL1: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.imaging.starlet]}
   virgil.imaging.LogSum: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.l_curve:
     layer: imaging
     source: [src/virgil/imaging.py]
     depends: [virgil.fitting.fit]
     doc: imaging/machinery.md#l-curve
+  virgil.imaging.DofDiscrepancy:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.models.LinearImage]
+    doc: imaging/machinery.md#l-curve
+  virgil.imaging.LCurve:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.l_curve, virgil.imaging.DofDiscrepancy, virgil.imaging.MaxEntropy]
+    doc: imaging/machinery.md#l-curve
+  virgil.imaging.log_evidence:
+    layer: inference
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.fields.GaussianField]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.laplace_samples:
+    layer: inference
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.fields.GaussianField]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.error_scale:
+    layer: inference
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.chi2_by_observable:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.short_baseline_residual:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.residual_image:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.imaging.dirty_image, virgil.models.Image, virgil.models.LinearImage]
+    doc: imaging/machinery.md#clean
+  virgil.imaging.diagnose:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.imaging.chi2_by_observable,
+              virgil.imaging.short_baseline_residual, virgil.imaging.Centroid, virgil.imaging.nyquist_pixel_scale]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.Diagnosis:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.diagnose]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
 
   # -------------------------------------------------------------- orbits
   # Grounded on orbitize! (Blunt et al. 2020, 2024) and on mathematics (the

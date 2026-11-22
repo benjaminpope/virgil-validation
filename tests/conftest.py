@@ -1,3 +1,4 @@
+import gc
 import warnings
 
 import jax
@@ -21,3 +22,14 @@ def _precision(request):
     else:
         with jax.enable_x64(True):
             yield
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _release_memory_after_module():
+    """Drop JAX's compilation caches and collect garbage after each test
+    module. One pytest process runs the whole suite, and compiled XLA
+    executables and their buffers otherwise accumulate for its lifetime
+    (CI runners with 7 GB were being lost late in the run)."""
+    yield
+    jax.clear_caches()
+    gc.collect()

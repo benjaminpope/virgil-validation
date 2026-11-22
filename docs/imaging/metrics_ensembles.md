@@ -3,7 +3,7 @@
 `virgil.metrics` scores a reconstruction against a known truth with the
 figures of merit of the interferometric imaging contests;
 `virgil.ensemble` draws, fits and averages randomized reconstructions after
-Drevon et al. (2025). Tests:
+Drevon et al. (2026). Tests:
 [`test_metrics.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_metrics.py) and
 [`test_ensemble_draws.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_ensemble_draws.py).
 
@@ -30,14 +30,20 @@ minimization, `convolve2d`) and against identities.
 
 ## Ensembles
 
-Only the random settings are checked so far: `combine` (the MYTHRA
-selection and the running mean), `run_group`, `ensemble`,
-`reference_starts` and the `Group`, `Member` and `Ensemble` records need
-fits and are not yet covered. On a simulated 7-hole masking dataset (21 V²
-and 35 closure phases, 15 of them independent), 300 groups:
+[`test_ensemble_draws.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_ensemble_draws.py)
+checks the randomized hyperparameter draws on a simulated 7-hole masking dataset
+(21 V² and 35 closure phases, 15 of them independent, 300 groups), and
+[`test_042_lcurve_ensemble_radio.py`](https://github.com/benjaminpope/virgil-validation/blob/main/tests/test_042_lcurve_ensemble_radio.py)
+validates `reference_starts`, `run_group`, `GPFit`, `EvidenceGrid`,
+`evidence_grid`, `gp_members`, `combine` (MYTHRA windowing, MAD outlier cut,
+sub-beam alignment, and non-compounding running-mean χ² gate), `ensemble`, and
+the `Group`, `Member`, and `Ensemble` containers on synthetic VLTI datasets:
 
 | virgil | Reference | Tag | Agreement |
 | --- | --- | --- | --- |
-| `draw_groups`, `Draw`, `EnsembleSpec` | each group's family, start, pixel (`nyquist_pixel_scale` / oversample) and field (`field_of_view` × factor) from the spec; `n_weights` weights, largest first; families and starts each drawn uniformly (χ² tests) | Mathematics | fields within 0.61 pixels |
+| `draw_groups`, `Draw`, `EnsembleSpec` | each group's family, start, pixel (`nyquist_pixel_scale` / oversample) and field (`image_field(data)` × factor, capped at `field_of_view(data)`, or `field_mas` × factor when overridden) from the spec; `n_weights` weights, largest first; families and starts each drawn uniformly (χ² tests) | Mathematics | fields within 0.61 pixels |
 | the weights per independent datum | max(w) / high ≤ N ≤ min(w) / low over all draws pins N = 36 (V² plus independent closure phases); log(w / N) uniform on the range (Kolmogorov–Smirnov) | Statistics | N bounds 36 to 36; smallest KS p = 0.03 |
 | reproducibility and ordering | the same key gives the same draws; groups sharing a compilation (family, npix, pixel) are adjacent | Mathematics | exact |
+| `Group`, `Member`, `Ensemble` | `Ensemble.kept` filtering, whole-sky normalized `mean.flux` and `mean.brightness`, pixelwise `ddof=0` standard deviation `Ensemble.std` across kept members, and `summary()` | Mathematics | 1e-13 |
+| `reference_starts`, `run_group`, `combine`, `ensemble` | unit-sum `moments`, `flat`, and `dirty` starts (closure-phase datasets raise `ValueError` on `starts=("dirty",)`), direct `run_group` sweeps across `star=True`/`star=False` and `family="tsv"`/`family="gp"`, `star=False` sub-beam alignment (`aligned_std < 0.05 × unaligned_std`), full deterministic MYTHRA cascade (`"window"`, `"diverged"`, `"chi2"`, `"outlier"`), end-to-end multi-family ensemble with every `trace` step bounded by `trace[0] × (1 + √(2/N_ind))`, and 180°-reflected V²-only twin rejected with `reason="mean"` (control) | Mathematics | NCC > 0.80; cascade & gate exact |
+| `GPFit`, `EvidenceGrid`, `evidence_grid`, `gp_members` | adaptive edge growth (`gp_growths=1`, `2×2 → 3×3`), `EvidenceGrid.interior` (`False` on boundary-pinned grids, `True` on strictly interior optima), and automatic `"aniso"` grid when fitted Gaussian `axis_ratio < gp_axis_ratio`; every `"iso"` and `"aniso"` `GPFit.log_evidence` matches independent joint `(z, ln flux)` Cholesky Laplace integration (`crosscheck.starlet_kkt_ref.mackay_laplace_gp_ref`), and `gp_members` retains only fits within `gp_window_nats` of the peak | Mathematics | 1e-9 nats |

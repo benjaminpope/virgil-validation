@@ -191,3 +191,65 @@ def test_a_reused_result_leaves_a_record_naming_the_kept_file_and_its_hash(tmp_p
     assert rec["kept_file"] == "t_image.json" and rec["kept_sha256"] == hashlib.sha256(prev.read_bytes()).hexdigest()
     assert rec["reason"] == "converged, interior of its grid" and rec["utc"]
     assert json.loads(prev.read_text()) == _previous_result()  # the kept result is untouched
+
+
+@needs_multipole
+def test_published_image_puts_the_star_at_the_centre(monkeypatch):
+    """The Zenodo files (128 px, CRPIX = 64) have the star at FITS column CRPIX1-1 = 63 and row CRPIX2 = 64 (0-indexed), the position a chi2
+    scan of the published model on our data picks for seven of the eight targets (PR #268); a point there renders at virgil's centre (n-1)/2.
+
+    This checks the shift's arithmetic; the position itself is the scan's. ``star_off_centre=False`` (IW Car) only flips the image."""
+    n = 128
+    im = np.zeros((n, n))
+    im[64, 63] = 1.0  # FITS row 64 is counted from the South
+    hdr = dict(CDELT1=-0.5, CDELT2=0.5, CRPIX1=64, CRPIX2=64)
+    monkeypatch.setattr(P, "zenodo_header", lambda cfg: (hdr, im, im.copy()))
+    plain, _, _, _ = P.published_image({"star_off_centre": False})
+    assert np.array_equal(plain, im[::-1] / im.sum())  # IW Car: no shift
+    img, noise, scale, _ = P.published_image({})
+    yy, xx = np.mgrid[:n, :n]
+    for a in (img, noise):
+        cy, cx = (a * yy).sum() / a.sum(), (a * xx).sum() / a.sum()
+        assert (cy, cx) == pytest.approx(((n - 1) / 2, (n - 1) / 2), abs=1e-9)
+    assert img.sum() == pytest.approx(1.0)
+    assert P.star_shift_px({}, hdr, im.shape) == (0.5, 0.5)
+
+
+@needs_multipole
+def test_continue_blob_is_positive_smooth_and_keeps_the_interior():
+    n0, nw = 41, 91
+    d = (np.arange(n0) - (n0 - 1) / 2.0) ** 2
+    b0 = np.exp(-0.5 * (d[:, None] + d[None, :]) / 6.0 ** 2) + 1e-3  # circular Gaussian plus floor
+    out = P.continue_blob(b0, nw)
+    pad = (nw - n0) // 2
+    assert out.shape == (nw, nw) and out.min() > 0
+    assert np.array_equal(out[pad:pad + n0, pad:pad + n0], b0)
+    c = (nw - 1) / 2.0
+    dd = (np.arange(nw) - c) ** 2
+    exact = np.exp(-0.5 * (dd[:, None] + dd[None, :]) / 6.0 ** 2) + 1e-3  # the continuation is the analytic blob, also outside b0's footprint
+    assert out == pytest.approx(exact, rel=1e-3)
+    assert np.abs(np.diff(np.log(out[nw // 2]))).max() < 0.5  # no step at the old edge
+
+
+@needs_multipole
+def test_hr4049_zenodo_file_has_crpix_64_on_128_pixels():
+    """The shift in published_image assumes HR 4049's file is 128 px with CRPIX = 64: checked on the in-repo copy of the header."""
+    import json
+
+    cfg = P.TARGETS["HR4049"]
+    z = np.load(pathlib.Path(__file__).resolve().parents[1] / "docs/imaging/postagb/literature/HR4049_organic.npz", allow_pickle=True)
+    hdr = json.loads(str(z["header"]))
+    assert z["data"].shape == (128, 128) and hdr["CRPIX1"] == hdr["CRPIX2"] == 64
+    assert hdr["CDELT1"] < 0 < hdr["CDELT2"]
+    assert cfg["cmp_mask_mas"] == 25.0 and cfg["mask_mas"] == 40.0
+
+
+@needs_multipole
+def test_fit_radius_covers_the_whole_support_through_the_inclination():
+    """The polar/disc grids reach mask_mas on the sky along the minor axis too (HR 4049: 40 mas support, 25 mas plot extent)."""
+    cfg = dict(mask_mas=40.0, half_mas=25.0)
+    r = P.fit_radius_mas(cfg, 43.8)
+    assert r * np.cos(np.radians(43.8)) == pytest.approx(40.0) and r > cfg["half_mas"]
+    assert P.fit_radius_mas(cfg, 0.0) == pytest.approx(40.0)
+    assert P.fit_radius_mas(cfg, 89.0) == pytest.approx(40.0 / np.cos(np.radians(75.0)))  # capped
+    assert P.fit_radius_mas(dict(half_mas=18.0), 0.0) == 18.0  # no support radius: the plot extent
