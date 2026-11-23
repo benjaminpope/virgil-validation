@@ -213,3 +213,19 @@ reuses one `MCMC(jit_model_args=True)` across the seeds, so the compile is paid 
 
 Octofitter's global optimisation and Pathfinder are paid in `t_init` and their payoff (starts near the mode, a dense metric from the
 draws) in `t_cold` and `t_warm`: compare warm ratios together with `t_init`, not alone.
+
+## Warm-orbit profile (CPU, one thread, one EPYC 7543 node; matched config, 4 chains, 1000 + 1000)
+
+Per-call cost of the log density and gradient (median of 500 calls) and the warm NUTS call, from `orbit/profile_virgil.py` and
+`orbit/profile_octofitter.jl` (job 21406771 for the Level A cases, 21458449 for virgil O-B-sim). Raw JSON in `results/profile/`.
+
+| case | gradient, virgil | gradient, Octofitter | leapfrog steps (draws, all chains), virgil | same, Octofitter | warm call, virgil | warm call, Octofitter |
+|---|---|---|---|---|---|---|
+| O-A-sim | 71 µs | 6.1 µs | 108 k | 92 k | 40.7 s | 1.9 s |
+| O-A-sim-pulls (seed 00) | 72 µs | 6.2 µs | 101 k | 93 k | 40.0 s | 1.9 s |
+| O-B-sim | 358 µs | 161 µs | 389 k | 755 k | 172.9 s | 279.2 s |
+
+Reading: on Level A the two samplers take about the same number of steps, so Octofitter's warm advantage there is the cost of one
+gradient (about 12x), not the sampler. On Level B the gradient gap is 2.2x, but virgil needs half the steps, so it is the faster code
+warm. These timings were taken at the start rule of vv 4cd4a8f; the warm numbers of the matrix rerun supersede any figure here.
+No NUTS XProf trace was taken (a traced NUTS run needs more than 250 GB on O-B-sim); `--trace-nuts` is opt-in.
