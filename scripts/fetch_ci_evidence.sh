@@ -3,7 +3,7 @@
 # newest finished validation run on main that has an evidence artefact (fast
 # tests, on the pinned virgil) and of the newest such weekly or manual run
 # (every test, on virgil's main, with virgil's own CI evidence). A run that
-# was cancelled or timed out uploads nothing; it is skipped, with a line on
+# was cancelled or timed out has no evidence.jsonl in its artefact; it is skipped, with a line on
 # stderr, for the next older of the last 10 runs. Evidence measured on a
 # laptop is not published.
 #
@@ -30,11 +30,13 @@ candidates() {  # ids of the last finished runs of tests.yml on main for the giv
   done | sort -r | sed -n "1,${runs}p" | cut -d' ' -f2
 }
 
-fetch() {  # fetch RUN's evidence artefact into DIR; 1 if it has none
+fetch() {  # fetch RUN's evidence artefact into DIR; 1 if it has none or no evidence.jsonl
   local run=$1 dir=$2 name
   name=$(gh api "repos/$repo/actions/runs/$run/artifacts" --jq '.artifacts[] | select(.name | startswith("evidence-")) | .name' | head -n 1)
   [ -n "$name" ] || return 1
   gh run download "$run" -R "$repo" -n "$name" -D "$dir"
+  # a cancelled run still uploads its artefact (mem.log, no evidence.jsonl): that is no evidence
+  [ -f "$dir/evidence.jsonl" ] || { rm -rf "$dir"; return 1; }
   echo "$dir: $name (https://github.com/$repo/actions/runs/$run)"
 }
 
