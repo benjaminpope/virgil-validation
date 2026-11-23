@@ -4,7 +4,7 @@
 draws what they decided (the map, the matrix, the pipeline cards, the ledger, and the Findings, Not yet covered
 and Function tests pages). Every name here is also importable from ``trust``.
 
-The few constants and helpers of ``trust.py`` that rendering reads (``VERDICTS``, ``ROOT_NAMES``, ``GOOD``,
+The few constants and helpers of ``trust.py`` that rendering reads (``VERDICTS``, ``ROOT_NAMES``, ``ROOT_ALIAS``, ``GOOD``,
 ``LAYER_ORDER``, ``UNFIXED``, ``slugify``, ``doc_url``) are handed over by ``trust_render.attach``, which ``trust.py``
 calls once its own definitions are in place. That keeps one copy of them, whether ``trust.py`` was run as a
 script or loaded by file path, and means this module never imports ``trust`` back.
@@ -19,6 +19,7 @@ import json
 import math
 import pathlib
 import re
+import sys
 
 import yaml
 
@@ -27,12 +28,12 @@ import trust_roots_table
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 # set by attach() from trust.py
-GOOD = LAYER_ORDER = ROOT_NAMES = UNFIXED = VERDICTS = doc_url = slugify = None
+GOOD = LAYER_ORDER = ROOT_ALIAS = ROOT_NAMES = UNFIXED = VERDICTS = doc_url = slugify = None
 
 
 def attach(namespace):
     """Take the constants and helpers of ``trust.py`` that rendering reads from its namespace."""
-    for name in ("GOOD", "LAYER_ORDER", "ROOT_NAMES", "UNFIXED", "VERDICTS", "doc_url", "slugify"):
+    for name in ("GOOD", "LAYER_ORDER", "ROOT_ALIAS", "ROOT_NAMES", "UNFIXED", "VERDICTS", "doc_url", "slugify"):
         globals()[name] = namespace[name]
 
 
@@ -162,6 +163,13 @@ def _map(nodes, base=""):
             label = f'<a href="{base}tests/#{slugify(LAYER_SECTION[layer])}" title="The {e(layer)} tests">{label}</a>'
         rows.append(f'<div class="vt-row"><div class="vt-layer">{label}</div><div class="vt-chips">{cells}</div></div>')
     return '<div class="vt-map">' + "".join(rows) + '</div><div class="vt-detail" id="vt-detail" aria-live="polite">Select a part to see what it was checked against.</div>'
+
+
+def _skyline(model, base="", roots=ROOT / "trust" / "roots.yml"):
+    """Every part as a square by layer and depth, on the foundation of root classes (scripts/trust_skyline.py)."""
+    import trust_skyline  # scripts/ is on sys.path once trust.py is loaded
+
+    return trust_skyline.skyline_html(model, yaml.safe_load(open(roots)), base, names=sys.modules[__name__])
 
 
 def _matrix(nodes):
@@ -341,8 +349,8 @@ def render_tests(model, mkdocs=ROOT / "mkdocs.yml", about=ROOT / "trust" / "test
              "# Function tests\n",
              "virgil, part by part. Each page below checks a group of virgil's functions against mathematics, "
              "published standards or other people's code, and explains how. The bar shows how many of the parts "
-             "explained on that page are verified. To find one part, select it in the "
-             "[map on the Overview](../index.md#parts).\n",
+             "explained on that page are verified. To find one part, look for its square in the "
+             "[skyline on the Overview](../index.md#parts), or search the list under it.\n",
              '<div class="vt">']
     for section, pages in test_sections(mkdocs):
         lines.append(f'<h2 id="{slugify(section)}">{e(section)}</h2>')
@@ -510,10 +518,13 @@ def render(model, base=""):
         '<h2 id="simulated-data">On simulated data: whole chains, from file to answer</h2>',
         '<div class="vt-chains">' + "".join(_chain(p, nodes) for p in sim) + "</div>",
         '<h2 id="parts">Every part, from data up</h2>',
+        _skyline(model, base),
+        '<details class="vt-fold" id="parts-list"><summary>The same parts as a searchable list, by layer</summary>',
         '<p class="vt-muted">Each chip is one part of virgil: select it to see how it was checked and read the page that '
         'explains it. Each layer name opens its <a href="' + base + 'tests/">function tests</a>. '
         "A dot marks parts virgil has changed since their evidence was measured.</p>",
         _map(nodes, base),
+        "</details>",
         '<h2 id="ledger">What the checks found</h2>',
         _ledger(model["ledger"]),
         '<p class="vt-muted">Every finding, with its tests: <a href="' + base + 'method/findings/">Findings</a>.</p>',
