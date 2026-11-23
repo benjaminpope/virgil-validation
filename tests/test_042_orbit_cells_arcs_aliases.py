@@ -2046,9 +2046,8 @@ def test_position_cells_marginal_jitter_recovers_extra_astrometric_scatter():
     """With ``jitter=None`` ``position_cells`` marginalizes one between-night sigma_J over 1 uas..3 mas
     (virgil#733); ``CellsResult.jitter`` is its posterior median. On the scattered system it must recover the
     injected 0.35 mas inside the old type-II ML band 0.12..0.65 mas, with no failed cell. (Not tested on the
-    zero-scatter system: its sharp posterior leaves the true N = 2 cell flagged unreliable by the importance
-    sampler, with ``jitter=0`` as well as ``None``, so ``CellsResult.jitter`` is NaN there; the clean arm is in
-    test_reference_jitter_recovers_extra_astrometric_scatter.)"""
+    zero-scatter system: finding F36, test_f36_position_cells_zero_scatter_jitter_is_readable; the clean arm
+    and the ratio to it are in test_reference_jitter_recovers_extra_astrometric_scatter.)"""
     _, dom, op, injected, _, noisy = _jitter_sims()
     bk = voc.outlier_log_density(noisy, op)
     res = voc.position_cells(
@@ -2065,6 +2064,43 @@ def test_position_cells_marginal_jitter_recovers_extra_astrometric_scatter():
     assert not np.any(res.failed)
     record("marginal_jitter_err_mas", abs(float(res.jitter) - injected))
     assert 0.12 <= float(res.jitter) <= 0.65
+
+
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.orbit_cells.position_cells",
+    roots=["mathematics"],
+    kind="finding",
+    tier="B",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F36: on the zero-scatter system the marginalized sigma_J of position_cells (virgil#733) cannot be "
+        "read: the true N = 2 cell is flagged unreliable by the importance sampler (also with jitter=0.0 and at "
+        "the default n_is = 4000), so CellsResult.failed is True and CellsResult.jitter is NaN; the type-II ML "
+        "fit_jitter it replaced returned a small value here"
+    ),
+)
+def test_f36_position_cells_zero_scatter_jitter_is_readable():
+    """F36: on the zero-scatter circular system (the clean arm of the old fit_jitter test) position_cells
+    with ``jitter=None`` should return a finite, small ``CellsResult.jitter`` (< 0.08 mas) and no failed cell."""
+    _, dom, op, _, clean, _ = _jitter_sims()
+    bk = voc.outlier_log_density(clean, op)
+    res = voc.position_cells(
+        clean,
+        dom,
+        jax.random.PRNGKey(3),
+        log_outlier=bk,
+        outlier=op,
+        n_is=400,
+        a_range=(2.0, 20.0),
+        e_max=0.8,
+        flux_floor=1e-3,
+    )
+    assert not np.any(res.failed)
+    assert np.isfinite(res.jitter) and float(res.jitter) < 0.08
 
 
 @pytest.mark.validates(

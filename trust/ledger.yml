@@ -198,7 +198,7 @@
   kind: bug (kkt_report sets boxed=True on flat-coordinate LogUniform parameters, adding +1/F to nuisance gradients at stationary fit() optima)
   evidence:
     - tests/test_042_scenes_starlet_kkt.py::test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start
-  decision: 'fixed in virgil#750 (625f9161, "kkt_report boxes each parameter separately": the objective is boxed only for an L-BFGS-B fit, so a LogUniform nuisance of an lm fit is measured in its fitted flat ln F and the +1/F is gone); verified on virgil main 25394917 (grad_norm 9.7e-5, converged from a 5% nearby start). The fix introduced F34 (Uniform nuisances of the same fits). test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate no longer pins F30; it is evidence for F34.'
+  decision: 'fixed in virgil#750 (625f9161, "kkt_report boxes each parameter separately": the objective is boxed only for an L-BFGS-B fit, so a LogUniform nuisance of an lm fit is measured in its fitted unconstrained coordinate, z = logit of its CDF position, and the +1/F is gone); verified on virgil main 25394917 (grad_norm 9.7e-5, converged from a 5% nearby start). The fix introduced F34 (Uniform nuisances of the same fits). Pinned off the optimum (flux 50% away, where the gradient is about 2.3e3) against the chain-rule gradient of our independent dL/dF, F dL/dF ln(hi/lo) u (1-u), to 1e-9 relative; a +1/F term or a zero would fail. Reproduced by the vv B6 pr-worker session (Claude Sonnet 5.5) on virgil main 25394917; no second reviewer yet (the PR review bot is the same model family), so the close is for Ben to confirm per AGENTS.md Verifying reviews.'
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/750]
 
@@ -780,7 +780,7 @@
     - tests/test_detection_tier_a.py::test_f32_statistics_only_max_snr_queries_raise
     - tests/test_detection_tier_a.py::test_f32_concatenate_refuses_mixed_uncertainty
     - tests/test_detection_tier_a.py::test_injection_recovery_without_uncertainty_matches_independent_grid_search
-  decision: 'raised by Carbon review of vv#282, reproduced here. Fixed in virgil#770 (fa61d957): max_snr queries on an uncertainty=False run and DetectionMC.concatenate of runs that differ in uncertainty now raise ValueError; verified on virgil main 25394917.'
+  decision: 'raised by Carbon review of vv#282, reproduced here. Fixed in virgil#770 (fa61d957): max_snr queries on an uncertainty=False run and DetectionMC.concatenate of runs that differ in uncertainty now raise ValueError; verified on virgil main 25394917, reproduced by the vv B6 pr-worker session (Claude Sonnet 5.5); no second reviewer yet (the PR review bot is the same model family), so the close is for Ben to confirm per AGENTS.md Verifying reviews.'
   status: fixed
   links: [https://github.com/benjaminpope/virgil/pull/770]
 
@@ -791,8 +791,8 @@
   referee: 'mathematics (fit() with method=lm on Uniform(1e-2, 1.0) env.flux stops at F = 0.21594 with fit grad_norm 5.7e-7; the loss gradient of the unboxed objective in the fitted coordinate z = -1.33689 of env.flux is 7.2e-5; kkt_report builds that same objective, then projects with x - clip(x - g, 0.01, 1.0) using the value-space Uniform bounds from _box, so grad_norm = 1.34689 = |z| + 0.01 whatever g is; grad_rel = 0.166 from a start 0.2% off in flux, against NUISANCE_TOL = 1e-3)'
   kind: 'bug (introduced with the F30 fix, virgil 625f9161 / #750: kkt_report boxes only L-BFGS-B fits, but _box still returns Uniform value bounds for the unboxed lm coordinates; before it, the objective was always boxed and the Uniform case passed)'
   evidence:
-    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate
-  decision: 'found on the bump of the pin to virgil main 25394917 (vv B6); the test is unchanged and is now a strict xfail until virgil is fixed. Not raised on virgil yet: for Ben.'
+    - tests/test_042_scenes_starlet_kkt.py::test_f34_kkt_report_uniform_nuisance_stationary_under_lm_fit
+  decision: 'found on the bump of the pin to virgil main 25394917 (vv B6); the assertions are those of the nuisance start-gate half of test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate, moved unchanged into this test, now a strict xfail until virgil is fixed. Not raised on virgil yet: for Ben.'
   status: open
 
 - id: F35
@@ -800,8 +800,19 @@
   objects: [virgil.detection.injection_recovery]
   ruling: virgil
   referee: 'mathematics (on a 4-residual bootstrap_null file, 24 null draws on a 4 x 4 position grid, 4 of the 24 draws report converged_fraction 0.9375 on virgil main 25394917, 1.0 at the 0.4.2 RC c2be8278; the rest of test_injection_recovery_without_uncertainty_matches_independent_grid_search still passes, so delta_chi2, log_bayes_factor, best_flux and best position of every draw equal the crosscheck.chi2 plus crosscheck.sky grid search to 1e-5: the flag, not the answer, changed)'
-  kind: 'numerics (convergence flag only; probably virgil#750 / 707#13.1, where the grid-fit _flux_converged is given -1/2 chi2 and converged flags near the tolerance may change; not isolated to the cells or to that commit)'
+  kind: 'bug? (unruled, convergence flag only, so it stays visible to release criterion 3 until Ben rules it a definition or fixes it; probably virgil#750 / 707#13.1, where the grid-fit _flux_converged is given -1/2 chi2 and converged flags near the tolerance may change; not isolated to the cells or to that commit)'
   evidence:
     - tests/test_detection_tier_a.py::test_f35_noisy_bootstrap_null_grid_fits_flag_converged
   decision: 'found on the bump of the pin to virgil main 25394917 (vv B6). If the new flag is the intended contract, rule this definition and replace the assertion; if the flagged cells are converged, it is a virgil bug. Not raised on virgil yet: for Ben.'
+  status: open
+
+- id: F36
+  title: position_cells with the marginalized sigma_J flags the true cell unreliable on a zero-scatter system, so CellsResult.jitter is NaN where the type-II ML fit_jitter returned a small value
+  objects: [virgil.orbit_cells.position_cells]
+  ruling: virgil
+  referee: 'mathematics (7 nights, circular 12 d orbit, 0.05 mas quoted errors, no extra scatter: position_cells with jitter=None flags the true N = 2 cell unreliable and the sampler ESS check fails the system at n_is = 400 and at the default 4000, and with jitter = 0.0 as well, so the failure is the sharpness of the posterior for the importance sampler, not the marginalization; CellsResult.jitter is NaN; reference_jitter on the same data gives 0.001)'
+  kind: 'bug? (unruled: documented behaviour for an unreliable cell, but the clean arm of the old fit_jitter test cannot be run through position_cells; Ben to rule bug or definition)'
+  evidence:
+    - tests/test_042_orbit_cells_arcs_aliases.py::test_f36_position_cells_zero_scatter_jitter_is_readable
+  decision: 'found on the bump of the pin to virgil main 25394917 (vv B6), as a review point on vv#290. Not raised on virgil yet: for Ben.'
   status: open
