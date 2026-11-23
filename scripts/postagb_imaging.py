@@ -364,7 +364,11 @@ def check_options(args):
         raise SystemExit("--hole-scale must be positive")
     if (comp is None) != (getattr(args, "companion_start", None) is None):
         raise SystemExit("--companion and --companion-start go together (the start, or the fixed position, is E,N in mas from the primary)")
-    if (comp or geo is not None) and getattr(args, "strategy", "gp-polar") != "gp-polar":
+    if getattr(args, "companion_box", None) is not None and (comp != "free" or args.companion_box <= 0):
+        raise SystemExit("--companion-box is the positive half-width of the free companion's position box: it needs --companion free")
+    if getattr(args, "min_length_r", None) is not None and args.min_length_r <= 0:
+        raise SystemExit("--min-length-r must be positive (beams)")
+    if (comp or geo is not None or getattr(args, "min_length_r", None) is not None) and getattr(args, "strategy", "gp-polar") != "gp-polar":
         raise SystemExit("--companion and --geometry are for --strategy gp-polar only")
 
 
@@ -373,6 +377,10 @@ def option_suffix(args):
     sfx = ""
     if getattr(args, "companion", None):
         sfx += f"_comp{args.companion}"
+    if getattr(args, "companion_box", None) is not None:
+        sfx += f"_box{args.companion_box:g}"
+    if getattr(args, "min_length_r", None) is not None:
+        sfx += f"_minlr{args.min_length_r:g}"
     if getattr(args, "hole_scale", None) is not None:
         sfx += f"_holex{args.hole_scale:g}"
     if getattr(args, "geometry", None) is not None:
@@ -407,7 +415,12 @@ def companion_priors(args):
     around the primary)."""
     pri = {"comp.flux.ratio": dist.LogUniform(*COMP_RATIO_RANGE), "comp.flux.index": dist.Uniform(*COMP_INDEX_RANGE)}
     if args.companion == "free":
-        pri |= {"comp.dra": dist.Uniform(-COMP_FREE_RADIUS_MAS, COMP_FREE_RADIUS_MAS), "comp.ddec": dist.Uniform(-COMP_FREE_RADIUS_MAS, COMP_FREE_RADIUS_MAS)}
+        box = getattr(args, "companion_box", None)
+        if box:  # --companion-box: a box of half-width ``box`` about --companion-start, so the fit can say whether the source stays there
+            (e0, n0) = args.companion_start
+            pri |= {"comp.dra": dist.Uniform(e0 - box, e0 + box), "comp.ddec": dist.Uniform(n0 - box, n0 + box)}
+        else:
+            pri |= {"comp.dra": dist.Uniform(-COMP_FREE_RADIUS_MAS, COMP_FREE_RADIUS_MAS), "comp.ddec": dist.Uniform(-COMP_FREE_RADIUS_MAS, COMP_FREE_RADIUS_MAS)}
     return pri
 
 
@@ -1430,6 +1443,8 @@ def polar_cells(cfg, scene, start_env, support, priors, data, args, geo, r_min, 
     ``(fit, log Z, chi2/pt, record)`` with the record of ``fit_cell``."""
     unit_, pix_ = compare_beam(data).minor_mas, float(start_env.pixel_scale_mas)
     lr_min, sg_max = (pix_, np.inf) if getattr(args, "unbounded", False) else polar_bounds(unit_, pix_)
+    if getattr(args, "min_length_r", None) is not None:  # --min-length-r: no radial length below this many beams (a smooth image cannot hold a point)
+        lr_min = max(lr_min, args.min_length_r * unit_)
     if axes is None:
         lr_beams = (0.5, *POLAR_LR_BEAMS) if getattr(args, "unbounded", False) else POLAR_LR_BEAMS  # unbounded: the grid before §8
         lens_r = [m * unit_ for m in cfg.get("polar_lr_beams", lr_beams) if m * unit_ >= lr_min * (1 - 1e-9)]
@@ -1482,7 +1497,7 @@ def fit_polar(cfg, scene, start_env, support, priors, data, args, geo, r_min):
                   mp_sigmas=np.asarray(sigmas), mp_cells=json.dumps(cell_records(cells, (lens_r, lens_t, sigmas))))
     rec = cells[blr, blt, bsg][3]
     mirror_rec = {}
-    if getattr(args, "companion", None) == "free":
+    if getattr(args, "companion", None) == "free" and getattr(args, "companion_box", None) is None:  # a box about the start has no mirror in it
         best, mirror_rec = companion_mirror(cfg, scene, start_env, support, priors, data, args, geo, r_min, m_max, (blr, blt, bsg), best)
     unbounded = getattr(args, "unbounded", False)
     lr_min, sg_max = (float(start_env.pixel_scale_mas), np.inf) if unbounded else polar_bounds(compare_beam(data).minor_mas,
@@ -1830,6 +1845,10 @@ def image_one(args, out, strat):
         summary |= dict(white_override=list(args.white))
     if getattr(args, "hole_scale", None) is not None:
         summary |= dict(hole_scale=args.hole_scale)
+    if getattr(args, "companion_box", None) is not None:
+        summary |= dict(companion_box_mas=args.companion_box)
+    if getattr(args, "min_length_r", None) is not None:
+        summary |= dict(min_length_r_beams=args.min_length_r)
     if has_sec:
         summary |= dict(sec_sep_mas=float(np.hypot(stars["sec_dra"], stars["sec_ddec"])),
                         sec_pa_deg=float(np.degrees(np.arctan2(stars["sec_dra"], stars["sec_ddec"])) % 360.0))
@@ -2652,6 +2671,12 @@ def main():
                         f"+-{COMP_FREE_RADIUS_MAS:g} mas, the better of the start and its mirror image kept by scene evidence (free); written as ..._comp<arm>_*")
     p.add_argument("--companion-start", type=pair_arg, default=None, metavar="E,N",
                    help="--companion: the position (East, North mas from the primary), fixed or the start")
+    p.add_argument("--companion-box", type=float, default=None, metavar="MAS",
+                   help="--companion free: confine the position to +-MAS about --companion-start (no mirror refit: start a second run at the mirror "
+                        "position); written as ..._box<mas>_*")
+    p.add_argument("--min-length-r", type=float, default=None, metavar="BEAMS",
+                   help="gp-polar: no radial length below this many beams, so the image is smooth and a compact source needs a companion; "
+                        "written as ..._minlr<beams>_*")
     p.add_argument("--hole-scale", type=float, default=None, help="multiply the hole around the star(s) by this (0.5: half); written as ..._holex<f>_*")
     p.add_argument("--geometry", type=pair_arg, default=None, metavar="INC,PA",
                    help="gp-polar: deproject with this inclination and position angle (deg) in place of the scale stage's fit (no scale stage "

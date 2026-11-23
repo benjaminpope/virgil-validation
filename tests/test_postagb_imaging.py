@@ -356,3 +356,22 @@ def test_companion_mirror_keeps_the_higher_scene_evidence(monkeypatch, lz_mirror
     assert (fits[0].model.comp.dra, fits[0].model.comp.ddec) == (-0.7, 1.5)  # started at the mirror image through the primary
     assert chosen is (fits[0] if kept == "mirror" else best) and rec["comp_mirror_better"] is (kept == "mirror")
     assert rec["comp_mirror_log_z_scene"] == lz_mirror and rec["comp_start_log_z_scene"] == -10.0
+
+
+@needs_multipole
+def test_companion_box_confines_the_free_position_about_the_start():
+    pri = P.companion_priors(_opts(companion="free", companion_start=(1.4, 0.0), companion_box=0.5))
+    assert (float(pri["comp.dra"].low), float(pri["comp.dra"].high)) == pytest.approx((0.9, 1.9))
+    assert (float(pri["comp.ddec"].low), float(pri["comp.ddec"].high)) == (-0.5, 0.5)
+
+
+@needs_multipole
+def test_companion_box_and_min_length_r_are_checked_and_named():
+    P.check_options(_opts(companion="free", companion_start=(1.0, 0.0), companion_box=0.5, min_length_r=2.0))
+    for bad in (dict(companion="fixed", companion_start=(1.0, 0.0), companion_box=0.5), dict(companion="free", companion_start=(1.0, 0.0), companion_box=0.0),
+                dict(min_length_r=0.0), dict(min_length_r=2.0, strategy="gp-aniso")):
+        with pytest.raises(SystemExit):
+            P.check_options(_opts(**bad))
+    sfx = P.option_suffix(_opts(companion="free", companion_start=(1.0, 0.0), companion_box=0.5, min_length_r=2.0))
+    assert sfx == "_compfree_box0.5_minlr2"
+    assert P.option_suffix(_opts()) == ""
