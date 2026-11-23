@@ -163,8 +163,9 @@ def test_tier1_rows_pass_on_tiny_unregistered_scenes(spec):
     assert opt and opt[0]["rel"] > 1e-8  # what the 2026-10-23 relative criterion would have called a failure
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="control")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="control", tier="B")
 def test_a_kernel_looser_than_documented_fails_the_budget():
     """The precompute at eps 1e-7 instead of the documented 1e-14: the budget (which assumes 1e-14) must catch it."""
     rows, _ = tr.tier1_scene(SMOKE[0], dict(TCFG, modes=["fixed"]), toeplitz_eps=1e-7)

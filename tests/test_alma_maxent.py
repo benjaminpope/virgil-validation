@@ -105,7 +105,8 @@ def test_entropy_of_the_tapered_image_equals_the_numpy_formula():
     assert abs(bare - ref) > 1e-4 * abs(ref)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_lambda_conversion_gives_virgils_maxentropy_the_same_pull_on_the_shape():
     """C11: for images of one flux, S_M(b1) - S_M(b2) = F / (F_tot dx^2) [K(b1) - K(b2)] exactly (untapered), with K the
     relative entropy of virgil's `MaxEntropy` against a flat image: lam_F = lam_R F / (F_tot dx^2) has the same difference."""
@@ -210,8 +211,7 @@ def _virgil_side(npix, pts, theta, lam_m):
     return data, prob, values, sc, lam
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil_bridge.alma", roots=["mpol", "mathematics"], headline="rel_error_objective_lam_m_1e-05", tier="B")
+@pytest.mark.validates("virgil_bridge.alma", roots=["mpol", "mathematics"], headline="rel_error_objective_lam_m_1e-05")
 @pytest.mark.skipif(not sp.available("mpol", "mpol"), reason="MPoL not installed (scripts/setup_external.sh mpol)")
 @pytest.mark.skipif(tm._example_commit() != tm.EXAMPLES_COMMIT, reason="MPoL-dev/examples not cloned at the pinned commit")
 def test_r1_the_r_objective_equals_2n_times_mpols_loss(tmp_path):

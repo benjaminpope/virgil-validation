@@ -826,11 +826,13 @@ def test_starlet_exact_reconstruction_linearity_and_zero_padded_edges():
     assert int(np.argmax(broad_energies)) >= 2
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.imaging.starlet",
     roots=["mathematics"],
     kind="control",
     headline="reflect_boundary_diff",
+    tier="B",
 )
 def test_starlet_reflect_boundary_control():
     edge_img = np.ones((16, 16), dtype=float)
@@ -1975,11 +1977,13 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     assert nuis_grad_rel > float(vfit.NUISANCE_TOL)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
     kind="finding",
     headline="loguniform_nuis_grad_rel",
+    tier="B",
 )
 @pytest.mark.xfail(
     strict=True,
@@ -2048,11 +2052,13 @@ def test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start(tmp_pat
     assert rep_lu["converged"] is True
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
     kind="control",
     headline="short_kkt_rel",
+    tier="B",
 )
 def test_kkt_report_two_step_and_zero_violation_controls(tmp_path):
     n, scale, flux = 8, 1.0, 0.3

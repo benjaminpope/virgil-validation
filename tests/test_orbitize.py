@@ -295,7 +295,8 @@ def test_relative_astrometry_matches_orbitize(grid):
     assert pos < TOL_POS and sep < TOL_POS and pa < TOL_POS
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", "external_bridge.orbitize_bridge", roots=["orbitize"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", "external_bridge.orbitize_bridge", roots=["orbitize"], kind="control", tier="B")
 def test_wrong_mappings_fail(grid):
     """The mappings a reader could plausibly get wrong are wrong by the size
     of the orbit: the primary's argument of periastron (omega + 180°, as in
@@ -502,7 +503,8 @@ def test_p7_companion_rvs_are_barycentric_as_documented(runs):
 # ------------------------------------------------------------------ symmetries
 
 
-@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.orbits.RVData", roots=["orbitize", "mathematics"], headline="max_rel_rate")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.orbits.KeplerOrbit", "virgil.orbits.RVData", roots=["orbitize", "mathematics"], headline="max_rel_rate", tier="B")
 def test_symmetries_in_both_codes(grid, runs):
     """The documented symmetries, in each code separately, on the grid's
     orbits with e <= 0.6 and 0.01° < i < 89°:

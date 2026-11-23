@@ -123,7 +123,8 @@ def test_clean_start_is_positive_floored_flux_consistent_and_reads_back_through_
         vs.clean_start(model, px, None, npix=32, pixel_mas=5.0, beam_frac=1.0)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_a_held_image_is_no_free_site_and_gives_the_same_objective(tmp_path):
     """``build_problem(fixed_log_brightness=...)``: no ``log_brightness`` prior, and the data term and MPoL's entropy at the same values equal the
     free problem's, to 1e-12 (the held image is used by both)."""
@@ -219,7 +220,8 @@ def test_selfcal_check_is_in_obs0s_gauge_whatever_the_reference_observation():
     assert vs.selfcal_check({"cal.gain": naive, "cal.flux": 0.27, "cal.offset": off})["gain_outside_reference"]
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_r_objective_compares_in_one_gauge_whatever_the_reference_observation(tmp_path):
     """-ln L is invariant under g -> g / g_k, flux -> flux g_k; S_M is not. ``r_objective(entropy_flux=...)`` gives the ref-k fit the entropy
     of the same image in obs 0's gauge, so its objective equals the ref-0 parametrisation's; without it the entropies differ."""
@@ -265,7 +267,8 @@ def test_selfcal_check_flags_a_gain_outside_the_reference_range():
 # ------------------------------------------------------------------ image-first staging, the offset bound and the reference observation
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_image_only_problem_has_only_the_image_and_flux_free_and_the_same_objective_at_g1(tmp_path):
     """``image_only``: the fit's sites are the image and the flux; its data term equals the full problem's at gains 1, offsets 0, s = 1 (1e-12)."""
     syn = synthetic_dir(tmp_path / "s")
@@ -402,7 +405,8 @@ def test_lam_m_resolves_to_lam_r_and_a_lam_r_below_1e_4_is_refused():
         script.lam_of(ns(lam=0.05, lam_m=1e-9), n)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_entropy_on_base_is_the_untapered_entropy_while_the_model_keeps_the_kernel(tmp_path):
     """``entropy_on="base"`` (MEM's intrinsic correlation function, Gull 1989): the entropy term is ``mpol_entropy_jax(taper_mas=0)`` of the base image, the data term is that of the default problem (the
     model keeps its 30 mas kernel, so the model visibilities are unchanged), and the default ``"blurred"`` is the entropy of the blurred image, as before; with ``taper_mas=0`` the two coincide."""

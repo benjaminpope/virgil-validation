@@ -85,8 +85,9 @@ def test_loglike_and_whitening_match_a_dense_gaussian(kw, method):
     assert abs(float(log_norm) - 0.5 * np.linalg.slogdet(C)[1]) < 1e-10
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("method", ["cholesky", "rank_one"])
-@pytest.mark.validates(NODE, roots=["mathematics"])
+@pytest.mark.validates(NODE, roots=["mathematics"], tier="B")
 def test_whitening_is_a_square_root_of_the_inverse_covariance(method):
     """u = M r is linear in r: M^T M must equal (D + A Lambda A^T)^-1, so
     that u is whitened for every r, not just its norm for one."""
@@ -97,7 +98,8 @@ def test_whitening_is_a_square_root_of_the_inverse_covariance(method):
     np.testing.assert_allclose(M.T @ M, np.linalg.inv(C), atol=1e-12)
 
 
-@pytest.mark.validates(NODE, roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates(NODE, roots=["mathematics"], tier="B")
 def test_blocks_with_spanning_columns_match_the_dense_covariance():
     """Blocks of rows with their own columns, plus columns spanning every
     block: the whitened norm and the summed per-row log-normalisation
@@ -172,7 +174,8 @@ def test_broad_prior_is_flat_only_up_to_its_width():
     assert gaps[-1] < 1e-6
 
 
-@pytest.mark.validates(NODE, roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates(NODE, roots=["mathematics"], tier="B")
 def test_rank_one_gradients_are_smooth_at_degenerate_columns_and_zero_width():
     """The documented reason for the rank-one method: gradients with
     respect to the prior widths stay finite and equal finite differences

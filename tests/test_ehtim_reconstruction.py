@@ -373,8 +373,9 @@ def test_reconstruction_matches_ehtim_in_one_basin(problem, ehtim_image):
     assert corr > 1 - 1e-6
 
 
+@pytest.mark.slow
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason="P6: eht-imaging's tlist returns tuples under NumPy 2 for equal-sized time groups")
-@pytest.mark.validates("ehtim", roots=["mathematics"], kind="upstream")
+@pytest.mark.validates("ehtim", roots=["mathematics"], kind="upstream", tier="B")
 def test_p6_closure_phases_with_equal_time_groups():
     """Unpatched eht-imaging: three sites at two times (equal-sized time
     groups) should give two closure phases. Under NumPy 2 it raises

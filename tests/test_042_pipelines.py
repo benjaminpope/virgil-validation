@@ -372,12 +372,10 @@ def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.StarPipeline",
     roots=["mathematics"],
     headline="diam_err_mas",
-    tier="B",
 )
 def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
     """StarPipeline fits both uniform and limb-darkened stellar models and passes chi2 checks."""
@@ -439,7 +437,8 @@ def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.StarPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.StarPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
     """Fitting a high-SNR equal-flux binary with StarPipeline triggers the chi2_uniform failure check."""
     bin_path = tmp_path / "not_a_single_star.fits"
@@ -476,12 +475,10 @@ def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.DiskPipeline",
     roots=["mathematics"],
     headline="ring_radius_rel_err",
-    tier="B",
 )
 def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
     """DiskPipeline recovers ring geometry/flux/width ('rings') and RadialGP orientation/flux ('gp')."""
@@ -572,7 +569,8 @@ def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
     assert by_name_gp["error_scale"] == "pass"
 
 
-@pytest.mark.validates("virgil.pipeline.DiskPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.DiskPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_disk_pipeline_corrupted_errors_check_control(tmp_path):
     """Strong asymmetric binary data with under-quoted errors trips DiskPipeline's chi2_reduced failure check."""
     raw = tmp_path / "disk_bad_raw.fits"
@@ -760,12 +758,10 @@ def test_imaging_pipeline_underquoted_errors_check_control(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.OrbitPipeline",
     roots=["mathematics"],
     headline="rel_period_err",
-    tier="B",
 )
 def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
     """OrbitPipeline blindly recovers a multi-night synthetic Keplerian orbit and saves AliasResult."""
@@ -952,7 +948,8 @@ def test_pipeline_short_nuts_chain_trips_ess_fail_control(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.OrbitPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.OrbitPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_orbit_pipeline_companion_free_noise_control(tmp_path):
     """Companion-free single-star nights trip OrbitPipeline's no_orbit / detection quality checks."""
     paths = []

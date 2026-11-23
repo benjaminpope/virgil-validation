@@ -34,7 +34,8 @@ def _bf():
     return bf
 
 
-@pytest.mark.validates("virgil.models.MultipoleDisk", roots=["mathematics"], headline="max_abs_dV")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.MultipoleDisk", roots=["mathematics"], headline="max_abs_dV", tier="B")
 @pytest.mark.parametrize("name", ["gauss_ring", "erf_power", "gap_on_plateau"])
 def test_axisymmetric_profiles_match_our_hankel_transform(name):
     from virgil import Gap, GaussianRing, MultipoleDisk, RadialPowerLaw
@@ -147,7 +148,8 @@ def test_rendered_inclined_ring_matches_the_bessel_closed_form():
     assert np.abs(got.real - thin).max() < 1e-4
 
 
-@pytest.mark.validates("virgil.models.Harmonics", roots=["mathematics"], kind="check")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.Harmonics", roots=["mathematics"], kind="check", tier="B")
 def test_harmonic_coefficients_accept_array_paths():
     """F20 (fixed in virgil 1eae3e4): Harmonics.re/im/c/s given as arrays, as the fit and laplace_cov paths
     like 'disk.harmonics.re' require, used to fail in Harmonics._at ('if not entries' on an array)."""

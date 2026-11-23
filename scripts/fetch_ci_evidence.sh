@@ -23,32 +23,42 @@ repo=${GITHUB_REPOSITORY:-benjaminpope/virgil-validation}
 
 runs=${EVIDENCE_RUNS:-10}  # how many finished runs per event to look through
 
+# Everything below runs inside `if` or `||`, where set -e is off, so every gh call is checked by hand:
+# a failed lookup or download stops the script (it never reads as "no run" or "no artefact").
 candidates() {  # ids of the last finished runs of tests.yml on main for the given events, newest first
+  local event out all=
   for event in "$@"; do
-    gh run list -R "$repo" -w tests.yml -b main -e "$event" -s completed -L "$runs" \
-      --json databaseId,createdAt --jq '.[] | "\(.createdAt) \(.databaseId)"'
-  done | sort -r | sed -n "1,${runs}p" | cut -d' ' -f2
+    out=$(gh run list -R "$repo" -w tests.yml -b main -e "$event" -s completed -L "$runs" \
+      --json databaseId,createdAt --jq '.[] | "\(.createdAt) \(.databaseId)"') || return 1
+    all+=$out$'\n'
+  done
+  printf '%s' "$all" | sed '/^$/d' | sort -r | sed -n "1,${runs}p" | cut -d' ' -f2
 }
 
-fetch() {  # fetch RUN's evidence artefact into DIR; 1 if it has none or no evidence.jsonl
+fetch() {  # fetch RUN's evidence artefact into DIR; 1 if it has none (or no evidence.jsonl), 3 if gh failed
   local run=$1 dir=$2 name
-  name=$(gh api "repos/$repo/actions/runs/$run/artifacts" --jq '.artifacts[] | select(.name | startswith("evidence-")) | .name' | head -n 1)
+  name=$(gh api "repos/$repo/actions/runs/$run/artifacts" \
+    --jq 'first(.artifacts[] | select((.name | startswith("evidence-")) and (.expired | not)) | .name)') || return 3
   [ -n "$name" ] || return 1
-  # fetch runs inside an `if`, where set -e is off: a failed download must stop the script, not read as success
-  gh run download "$run" -R "$repo" -n "$name" -D "$dir" || { echo "downloading $name of run $run failed" >&2; exit 1; }
+  rm -rf "$dir"  # gh run download refuses to overwrite, and an older run's file must not survive
+  gh run download "$run" -R "$repo" -n "$name" -D "$dir" || { echo "downloading $name of run $run failed" >&2; return 3; }
   # a cancelled run still uploads its artefact (mem.log, no evidence.jsonl): that is no evidence
   [ -f "$dir/evidence.jsonl" ] || { rm -rf "$dir"; return 1; }
   echo "$dir: $name (https://github.com/$repo/actions/runs/$run)"
 }
 
-fetch_newest() {  # fetch_newest DIR EVENT...: the newest run with an evidence artefact; 2 if there is no run at all
-  local dir=$1 run ids
+fetch_newest() {  # fetch_newest DIR EVENT...: the newest run with an evidence artefact; 2 if there is no run, 3 if gh failed
+  local dir=$1 run ids rc
   shift
-  ids=$(candidates "$@")
+  ids=$(candidates "$@") || { echo "listing the runs of ($*) failed" >&2; return 3; }
   [ -n "$ids" ] || return 2
   for run in $ids; do
-    if fetch "$run" "$dir"; then return 0; fi
-    echo "run $run has no evidence artefact; using an older run" >&2
+    rc=0; fetch "$run" "$dir" || rc=$?
+    case $rc in
+      0) return 0 ;;
+      1) echo "run $run has no evidence artefact; using an older run" >&2 ;;
+      *) echo "looking up the artefacts of run $run failed" >&2; return 3 ;;
+    esac
   done
   echo "none of the last $runs finished runs ($*) has an evidence artefact" >&2
   return 1

@@ -104,8 +104,9 @@ def test_probe_estimate_is_within_its_stated_stochastic_error_of_the_exact_diago
     assert abs(rel.mean()) < 0.5 * stated  # unbiased: a uniform scale error above 2% fails
 
 
+@pytest.mark.slow
 @needs_diag
-@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"], headline="max_rel_error_entropy_metric")
+@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"], headline="max_rel_error_entropy_metric", tier="B")
 @pytest.mark.parametrize("weight", [1e-3, 1.0, 1e3])
 def test_entropy_metric_replaces_the_data_curvature_with_the_pulled_back_skilling_bryan_metric(weight):
     """With MaxEntropy(weight) the diagonal on the image pixels is the data's curvature plus the Skilling-Bryan

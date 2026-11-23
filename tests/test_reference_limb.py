@@ -19,13 +19,14 @@ def uvw():
 # ------------------------------------------------ our routes agree first
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("diam", [3.0, 12.0])
 @pytest.mark.parametrize(
     "profile",
     [limb.polynomial(u) for u in LAWS.values()] + [limb.square_root(0.1, 0.6)],
     ids=list(LAWS) + ["square-root"],
 )
-@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference")
+@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference", tier="B")
 def test_our_cloud_matches_our_hankel_transform(uvw, profile, diam):
     u, v, wl = (a[::10] for a in uvw)  # quad is slow; every 10th sample
     assert_close(
@@ -35,7 +36,8 @@ def test_our_cloud_matches_our_hankel_transform(uvw, profile, diam):
     )
 
 
-@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("crosscheck.limb", roots=["mathematics"], kind="reference", tier="B")
 def test_our_cloud_matches_hanbury_brown_linear_law(uvw):
     u, v, wl = uvw
     assert_close(

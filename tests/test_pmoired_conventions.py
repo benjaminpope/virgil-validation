@@ -147,11 +147,12 @@ def test_spatial_kernel_is_a_gaussian_blur(observe):
     assert dv2 < 1e-6
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "modulation,relative,match",
     [("disk", True, True), ("disk", False, False), ("sky", True, False), ("sky", False, False)],
 )
-@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference")
+@pytest.mark.validates("external_bridge.pmoired_models", roots=["pmoired", "mathematics"], kind="reference", tier="B")
 def test_azimuthal_modulation_convention(observe, modulation, relative, match):
     """'az projangN' is an in-plane azimuth measured from the global
     projang: the same convention as virgil's ModulatedGaussianRim, except
@@ -183,11 +184,13 @@ def test_two_harmonics(observe):
     assert dv2 < 1e-6 and dcp < 1e-3
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "external_bridge.pmoired_models",
     roots=["pmoired", "mathematics"],
     kind="reference",
     headline="max_abs_dV2",
+    tier="B",
 )
 def test_rotastar_pole_pa_and_roche_omega_convention(tmp_path):
     """Stage 0 check pinning PMOIRED's rotastar (Vrota) directly against

@@ -138,8 +138,7 @@ def test_simulate_noiseless_and_noisy(dataset):
         assert stats.kstest(pulls / scale, "norm").pvalue > 1e-3
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil.simulate.bias_test", roots=["self-consistency"], tier="B")
+@pytest.mark.validates("virgil.simulate.bias_test", roots=["self-consistency"])
 def test_bias_test_bookkeeping(dataset):
     data, _ = dataset
     scene = vm.BinaryModelCartesian(*TRUTH)

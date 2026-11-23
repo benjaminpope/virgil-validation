@@ -64,9 +64,8 @@ def _within(value, sigma, truth, n=4.0):
     return abs(value - truth) <= n * sigma
 
 
-@pytest.mark.slow
 @pytest.mark.validates("virgil.models.BinaryModelCartesian", "virgil.fitting.fit", "virgil.inference.laplace_cov",
-                       "virgil.oifits.read_oifits", roots=["mathematics", "standards"], tier="B")
+                       "virgil.oifits.read_oifits", roots=["mathematics", "standards"])
 def test_epoch_fit_recovers_a_point_binary(of, tmp_path):
     truth = dict(dra=3.0, ddec=-4.0, flux=0.3)
     path = _observe(tmp_path / "b.fits", _binary(**truth))
@@ -155,9 +154,8 @@ def test_candid_binary_without_smearing_misses_the_flux(of, tmp_path):
     assert not _within(*e["values"]["flux"], truth["flux"]) or e["chi2_raw"]["all"]["chi2_red"] > 2.0
 
 
-@pytest.mark.slow
 @pytest.mark.validates("virgil.models.UniformDisk", "virgil.fitting.fit", "virgil.oifits.read_oifits",
-                       roots=["mathematics", "standards"], tier="B")
+                       roots=["mathematics", "standards"])
 def test_pi1gru_recipe_recovers_a_uniform_disk(of, tmp_path):
     """The pi1 Gru recipe end to end (file discovery, the chi2 scan, both variants) on a
     simulated 18 mas disk observed in three H channels."""

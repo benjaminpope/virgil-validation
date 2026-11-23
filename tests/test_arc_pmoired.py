@@ -98,13 +98,11 @@ def _compare_arc_to_pmoired(samples, pa_deg):
     return dv2, dcp, cp_peak
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.models.GaussianArc",
     roots=["pmoired"],
     property="orientation",
     headline="max_abs_dV2",
-    tier="B",
 )
 def test_gaussian_arc_orientation_matches_pmoired_ring(pmoired_arc_samples):
     """GaussianArc(5.0, 1.5, 12.0, pa=37.0) matches PMOIRED's native modulated

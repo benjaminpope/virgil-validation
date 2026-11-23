@@ -307,9 +307,10 @@ def test_asdf_vs_npz_agrees_on_an_export_of_the_subsample(reference):
     record("asdf_vs_npz worst |du| (lambda), synthetic asdf", res["worst"]["u_max_abs"])
 
 
+@pytest.mark.slow
 @needs_subsample
 @needs_asdf
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 def test_asdf_vs_npz_reports_a_conjugation_and_does_not_fix_it(reference):
     """The same export with V conjugated: the visibilities differ by up to twice the amplitude and
     ``vis_conj_max_abs`` is zero (the signature of a conjugation); u and v are untouched."""
@@ -319,9 +320,10 @@ def test_asdf_vs_npz_reports_a_conjugation_and_does_not_fix_it(reference):
         assert r["vis_conj_max_abs"] < 1e-12 and r["u_max_rel"] < 1e-12 and r["v_max_abs"] < 1e-6
 
 
+@pytest.mark.slow
 @needs_subsample
 @needs_asdf
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 def test_asdf_vs_npz_summary_flags_a_missing_ddid(reference, tmp_path):
     """With one ddid's npz absent, ``worst`` lists it in ``n_mismatch_ddids`` instead of looking clean."""
     import shutil

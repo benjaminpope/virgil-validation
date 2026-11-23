@@ -233,8 +233,7 @@ def test_c8_needs_100_steps_and_a_bad_round_is_not_saved(monkeypatch):
     assert va.run_fit_c8(None, {}, max_steps=100, time_limit=0.0)[3] == "time_limit"
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], tier="B")
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"])
 def test_virgils_real_time_stop_is_spelled_time(syn):
     data = va.load_dir(syn)
     prob = va.build_problem(data, "F", lam=1000.0, npix=32)  # F needs more than a 200-step chunk, where the time test runs

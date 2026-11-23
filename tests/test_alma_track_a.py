@@ -53,7 +53,8 @@ def test_parse_reg_and_its_refusals():
             va.parse_reg(bad)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["mathematics"], tier="B")
 def test_reg_mem_is_mpols_lambda_m_pull_and_tsv_is_the_zero_padded_squared_difference():
     """Evaluated, not read back: with a flat prior, the change of virgil's ``MaxEntropy(smoothed=False)`` between two unit-sum images equals ``2 n L`` times the change of MPoL's entropy
     ``(1/F) sum I ln(I/p)`` (I = F b / dx^2, F = 0.253 Jy; the prior only adds a flux-only term, which cancels); ``TSV`` equals weight x the numpy squared steps of the zero-padded image. The training
@@ -167,7 +168,8 @@ def _stages(good=True):
     return [lb, adam]
 
 
-@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard", tier="B")
 def test_better_than_mpol_passes_only_when_all_five_do(monkeypatch):
     _pinned(monkeypatch)
     r = _cells(nrmse={"0.5": 0.20, "1": 0.06}, n_eff_ratio=0.12, base_dead_in_disk_1e4=0.5)
@@ -313,8 +315,7 @@ def _truth(npix=64):
     return vy.truth_image(np.exp(-0.5 * ((rr - 120) / 20) ** 2) + 0.02, PIX, blur_mas=15.0)
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil_bridge.alma_synth", roots=["mathematics"], tier="B")
+@pytest.mark.validates("virgil_bridge.alma_synth", roots=["mathematics"])
 def test_truth_flux_and_model_visibilities_match_an_independent_dft(syn):
     """The synthetic data's forward model against ``crosscheck.sky`` (a numpy pixel DFT built from the documented conventions: row 0 North, half-pixel shift -dx/2), to 1e-10: a wrong half pixel,
     row order or Fourier sign in the model that makes the data would otherwise cancel in every arm."""
@@ -345,8 +346,7 @@ def test_score_image_separates_truth_from_dotted_and_zero_error_for_itself():
     assert s1["n_eff_ratio"] < 0.5 < s0["n_eff_ratio"] and s1["nrmse"]["0.5"] > 0.05
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil_bridge.alma_synth", roots=["self-consistency"], tier="B")
+@pytest.mark.validates("virgil_bridge.alma_synth", roots=["self-consistency"])
 def test_synthetic_truth_has_no_dots_in_the_mem_arm_but_r_with_a_wide_blur_has_fewer_effective_pixels(syn, tmp_path):
     """The CI regression of Track A: smooth truth at the toy uv; the MEM arm (config F, ``--reg mem``) keeps the image's N_eff ratio >= 0.7, and R with a 30 mas kernel in the model (the dot
     mechanism) ends clearly lower."""
@@ -587,7 +587,8 @@ def test_old_virgil_is_refused_with_the_required_version(monkeypatch):
 # ------------------------------------------------------------------ the replica's minibatch mode (--replica-minibatch)
 
 
-@pytest.mark.validates("virgil_bridge.alma_replica", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["mathematics"], tier="B")
 def test_replica_epoch_batches_cover_every_point_once_and_reshuffle():
     n, b = 10_007, 4_000
     for epoch in (0, 1):

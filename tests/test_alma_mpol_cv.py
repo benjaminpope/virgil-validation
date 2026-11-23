@@ -215,7 +215,8 @@ def test_score_fold_checks_the_training_asdf_is_the_folds_own(cv, tmp_path):
         tr._run(dict(base, train_asdf=cv["asdf"]), tmp_path)
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 @needs_env
 def test_export_fold_asdf_refuses_an_npz_that_is_not_the_asdfs_data(cv, tmp_path):
     """The fold file of one dataset against the asdf of another (other times and baselines) raises instead of writing a mask."""

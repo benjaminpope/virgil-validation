@@ -4,6 +4,7 @@ stderr for each run it skips, and fail only when none has one."""
 
 import os
 import pathlib
+import shutil
 import stat
 import subprocess
 
@@ -19,14 +20,17 @@ STUB = r"""#!/usr/bin/env bash
 case "$1 $2" in
   "run list")
     while [ $# -gt 0 ]; do [ "$1" = -e ] && event=$2; [ "$1" = -L ] && limit=$2; shift; done
+    [ "$event" = "$FAKE_LIST_FAILS" ] && exit 1
     var=FAKE_RUNS_$event
     printf '%s\n' "${!var}" | sed '/^$/d' | sort -r | sed -n "1,${limit}p" ;;
   "api repos/"*)
     run=${2#*/runs/}; run=${run%/artifacts}
+    [ "$run" = "$FAKE_API_FAILS" ] && exit 1
     for ok in $FAKE_WITH_ARTEFACT; do [ "$ok" = "$run" ] && echo "evidence-push-$run"; done ;;
   "run download")
     run=$3; while [ $# -gt 0 ]; do [ "$1" = -D ] && dir=$2; shift; done
     [ "$run" = "$FAKE_DOWNLOAD_FAILS" ] && exit 1
+    [ -e "$dir/mem.log" ] && exit 1  # the real gh refuses to overwrite
     mkdir -p "$dir"; echo mem > "$dir/mem.log"
     for ok in $FAKE_WITH_EVIDENCE; do [ "$ok" = "$run" ] && echo "run $run" > "$dir/evidence.jsonl"; done ;;
 esac
@@ -42,15 +46,20 @@ def run_script(tmp_path):
     gh.write_text(STUB)
     gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
 
-    def run(*args, push=(), full=(), with_artefact=(), cancelled=(), download_fails=None):
+    def run(*args, push=(), full=(), with_artefact=(), cancelled=(), download_fails=None, list_fails=None, api_fails=None, stale=False):
         env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "GITHUB_REPOSITORY": "o/r",
                "FAKE_RUNS_push": "\n".join(push),
                "FAKE_RUNS_schedule": "\n".join(full),
                "FAKE_RUNS_workflow_dispatch": "",
                "FAKE_WITH_ARTEFACT": " ".join(map(str, [*with_artefact, *cancelled])),
                "FAKE_DOWNLOAD_FAILS": str(download_fails),
+               "FAKE_LIST_FAILS": str(list_fails), "FAKE_API_FAILS": str(api_fails),
                "FAKE_WITH_EVIDENCE": " ".join(map(str, with_artefact))}
         out = tmp_path / "ci"
+        if stale:  # an OUTDIR left by an earlier fetch
+            (out / "push").mkdir(parents=True)
+            (out / "push" / "mem.log").write_text("old")
+            (out / "push" / "evidence.jsonl").write_text("old")
         proc = subprocess.run(["bash", str(SCRIPT), *args, str(out)], env=env, capture_output=True, text=True)
         return proc, out
 
@@ -120,3 +129,22 @@ def test_a_failed_download_stops_the_script_instead_of_reading_as_success(run_sc
     assert proc.returncode != 0
     assert "downloading evidence-push-300 of run 300 failed" in proc.stderr
     assert not (out / "push" / "evidence.jsonl").exists()
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_a_failed_run_list_or_artefact_lookup_is_an_error_not_no_run_or_no_artefact(run_script):
+    proc, out = run_script(push=PUSH, full=FULL, with_artefact=[300, 40], list_fails="schedule")
+    assert proc.returncode != 0 and "listing the runs of (schedule workflow_dispatch) failed" in proc.stderr
+    assert "no weekly or manual run yet" not in proc.stderr
+    shutil.rmtree(out)  # the first call fetched push evidence before it failed on the weekly lookup
+    proc, out = run_script(push=PUSH, full=FULL, with_artefact=[200], api_fails=300)
+    assert proc.returncode != 0 and "looking up the artefacts of run 300 failed" in proc.stderr
+    assert not (out / "push" / "evidence.jsonl").exists()  # it did not fall back to run 200
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_an_outdir_from_an_earlier_fetch_is_replaced_not_mixed(run_script):
+    proc, out = run_script(push=PUSH, with_artefact=[200], cancelled=[300], stale=True)
+    assert proc.returncode == 0, proc.stderr
+    assert (out / "push" / "evidence.jsonl").read_text() == "run 200\n"
+    assert not (out / "push" / "mem.log").read_text().startswith("old")

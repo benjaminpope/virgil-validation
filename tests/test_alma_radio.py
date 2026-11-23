@@ -138,6 +138,7 @@ def _record_reader(worst, n, ours_ct):
     record("n_points", n)
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.radio.ComplexVisData.read_ms", roots=["casa"], tier="B", headline="max_rel_vis")
 @pytest.mark.skipif(not _have_casa("alma") or _virgil_casatools() is None, reason="casatools missing here or in .venv-alma")
 @pytest.mark.parametrize("which", ["clean", "noisy"])
@@ -317,7 +318,8 @@ def _ref(problem, **kw):
 # ----------------------------------------------- 2. model against the DFT (A)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mathematics"], headline="max_pointwise_rel_error_dft")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mathematics"], headline="max_pointwise_rel_error_dft", tier="B")
 def test_model_matches_the_float64_dft_of_the_pixel_image_with_every_nuisance_set(problem):
     """F, per-observation gains and offsets, a spectral index, the Gaussian taper and a
     point source on top of a random 64 x 64 image, 5000 uv points in four ddids and
@@ -407,7 +409,8 @@ def test_primary_beam_is_the_gaussian_with_half_power_at_half_the_fwhm(name, fre
         assert got[c - 10, c] == pytest.approx(-np.log(2.0), rel=1e-12)
 
 
-@pytest.mark.validates("virgil.radio.primary_beam", "virgil.radio.ComplexVisData.model", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.primary_beam", "virgil.radio.ComplexVisData.model", roots=["mathematics"], tier="B")
 def test_adding_the_beam_to_the_log_brightness_gives_the_visibilities_of_image_times_beam():
     """Image(eta + beam) is softmax(eta + beam) = image x beam / sum: its visibilities
     (flux 1, through `data.model`) equal the DFT of that product from `crosscheck.sky`."""
@@ -583,6 +586,7 @@ def test_chi2_by_ddid_of_a_held_out_fold_matches_numpy(problem):
 # ------------------------------------- 6. sigma factor on CASA's noise (B)
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["statistics", "casa"], tier="B", headline="max_abs_sigma_diff")
 @pytest.mark.skipif(not _have_casa("alma"), reason="CASA not installed (scripts/setup_external.sh alma)")
 def test_sigma_fit_on_casa_noise_is_one_and_matches_the_successive_difference_estimate(ms_noisy):
@@ -785,8 +789,9 @@ def test_nuisances_are_recovered_within_three_sigma_on_im_lups_uv_coverage():
     assert np.abs(pull).max() < 3.0, np.round(pull, 2)
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _have_casa("alma") or _virgil_casatools() is None, reason="casatools missing here or in .venv-alma")
-@pytest.mark.validates("external_bridge.alma_worker", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("external_bridge.alma_worker", roots=["self-consistency"], kind="guard", tier="B")
 def test_read_records_the_datacolumn_and_refuses_a_column_the_ms_lacks(ms_clean):
     """The column is an explicit, recorded choice: the result names it (upper case), and a column the
     MS lacks is an error, not a silent fall back to DATA."""

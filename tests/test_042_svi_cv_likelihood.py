@@ -613,12 +613,10 @@ def test_grid_fit_gaussian_loguniform_and_linear_flux_grid(tmp_path):
     record("occam_shift_err", abs(got_occam - want_occam))
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.grid_fit.optimized_likelihood_grid",
     roots=["mathematics"],
     headline="max_opt_ll_err",
-    tier="B",
 )
 def test_optimized_likelihood_grid_matches_independent_brent_profile(tmp_path):
     """optimized_likelihood_grid matches independent 1D Brent optimization of
@@ -763,6 +761,7 @@ def test_optimized_likelihood_grid_matches_independent_brent_profile(tmp_path):
     record("max_opt_ll_err", max(max_err, max_cp_err))
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.grid_fit.Gaussian",
     "virgil.grid_fit.LogUniform",
@@ -770,6 +769,7 @@ def test_optimized_likelihood_grid_matches_independent_brent_profile(tmp_path):
     roots=["mathematics"],
     kind="control",
     headline="unoptimized_ll_shortfall",
+    tier="B",
 )
 def test_grid_fit_priors_and_unoptimized_flux_controls(tmp_path):
     """Control: holding flux fixed instead of optimizing misses the profile peak
@@ -933,13 +933,11 @@ def test_crossval_fold_masks_io_and_breiman_one_se_aggregation(tmp_path):
     record("max_agg_err", max(err_mean, err_se, err_chi2))
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.crossval.cv_task",
     "virgil.crossval.cross_validate",
     roots=["mathematics"],
     headline="max_ridge_cv_score_err",
-    tier="B",
 )
 def test_cv_task_and_cross_validate_match_closed_form_ridge_regression():
     """cv_task and cross_validate reproduce the exact closed-form K-fold ridge
@@ -1060,12 +1058,14 @@ def test_cv_task_and_cross_validate_match_closed_form_ridge_regression():
     record("max_ridge_cv_chi2_err", chi2_err)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.crossval.cv_task",
     "virgil.crossval.cross_validate",
     roots=["mathematics", "statistics"],
     kind="control",
     headline="leakage_score_drop",
+    tier="B",
 )
 def test_crossval_in_sample_leakage_overfits_zero_regularization_control():
     """Control: if make_term ignores the training mask (leaking held-out points
@@ -1315,11 +1315,13 @@ def test_fit_result_gauss_newton_mass_and_chain_init_params(tmp_path):
     record("gn_cond_rel_err", cond_rel_err)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.fitting.gauss_newton_mass",
     roots=["mathematics"],
     kind="control",
     headline="missing_jacobian_factor",
+    tier="B",
 )
 def test_gauss_newton_mass_rejects_constrained_space_jacobian_omission(tmp_path):
     """Control: omitting the unconstrained bijection Jacobian dx/dz = f on a

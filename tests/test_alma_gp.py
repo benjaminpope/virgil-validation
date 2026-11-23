@@ -54,8 +54,7 @@ def _vg(term, values):
     return eqx.filter_value_and_grad(lambda x: vg.term_loss(term, x))(values)
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], headline="gp_toeplitz_grad_rel_diff_max", tier="B")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["self-consistency"], headline="gp_toeplitz_grad_rel_diff_max")
 def test_the_multipole_field_through_the_toeplitz_chi2_equals_the_direct_chi2_in_value_and_gradient(syn):
     """Stage 0 of the GP plan: ``Image(MultipoleField)`` (no taper, gains, offsets and per-ddid sigma free, reference observation fixed) at a random latent: the
     Toeplitz loss equals the direct one to 1e-8 relative, and so does every gradient leaf (latent, sigma, flux, gains, offsets, sigmas) to 1e-8 of its own largest component."""
@@ -106,7 +105,8 @@ def test_the_toeplitz_comparison_fails_when_the_engine_is_given_wrong_nuisances(
             assert value > 1e-8 or grad > 1e-8, (what, value, grad)
 
 
-@pytest.mark.validates("virgil_bridge.alma_gp", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_gp", roots=["self-consistency"], kind="guard", tier="B")
 def test_held_nuisances_give_the_full_problems_loss_and_latent_gradient(syn):
     """Stage 1 holds gains, offsets and sigmas: its term at (latent, sigma, flux) equals the free problem's at the same values with those held, in loss and in the
     gradient of the fitted sites; the held sites are not parameters."""

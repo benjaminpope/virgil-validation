@@ -168,7 +168,8 @@ def test_fit_gaussian_recovers_an_elliptical_gaussian_and_orders_the_axes(tmp_pa
         vs.fit_gaussian(d.u, d.v, d.vis, d.weight, q_max=1.0)
 
 
-@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_start", roots=["self-consistency"], kind="guard", tier="B")
 def test_the_fitted_gaussian_start_is_the_image_virgils_model_sees_not_its_mirror(tmp_path):
     """End to end through virgil's own forward model: the start image rendered from the fitted parameters (``gaussian_log_image`` on the fit's grid, East towards
     column 0) gives a chi^2 on the data far below the same image mirrored East-West, North-South or through the centre (the point reflection a Fourier-sign error makes); the conventions of the image, the sign of u and the PA agree."""

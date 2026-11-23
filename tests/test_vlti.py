@@ -141,8 +141,7 @@ def test_laplace_cov_with_array_parameters(tmp_path):
     assert np.all(np.linalg.eigvalsh(cov) > 0)
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"], tier="B")
+@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"])
 @pytest.mark.parametrize("wrap", ["expand", "expand_to_event"])
 def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path, wrap):
     """fit documents LM as the default whenever the objective has a
@@ -167,8 +166,9 @@ def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path, wrap):
     assert fit(scene.template, priors, vb.load(path)).info["method"] == "lm"
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("method", ["lm", "lbfgs"])
-@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], tier="B")
 def test_fit_from_the_exact_optimum_converges(tmp_path, method):
     """A fit started exactly at a zero-residual optimum is converged at
     once (finding 6, fixed in virgil#144)."""

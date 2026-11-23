@@ -116,7 +116,8 @@ def test_gains_match_a_dense_gaussian_on_v2(v2_file, groups):
     assert abs(got - want) < 1e-9 * max(1.0, abs(want))
 
 
-@pytest.mark.validates("virgil.gains.gain_modes", "virgil.likelihood.model_loglike", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.gains.gain_modes", "virgil.likelihood.model_loglike", roots=["mathematics"], tier="B")
 def test_supplied_modes_are_in_sample_order(v2_file):
     """Supplied modes, one value per sample in the order of the file's
     (row, channel) samples (virgil's ``u``)."""
@@ -234,7 +235,8 @@ def test_gaussian_prior_evidence_is_the_true_one_without_a_companion(tmp_path):
     assert worst < 0.01
 
 
-@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.grid_fit.linear_flux_grid", roots=["mathematics"], tier="B")
 def test_gauss_newton_refinement_reaches_the_optimum(tmp_path):
     """A bright companion (0.3): with 5 Gauss-Newton steps, the flux at each
     position is the minimiser of our own chi-squared."""
@@ -382,8 +384,10 @@ def test_closure_offsets_match_a_dense_gaussian(cp_file, kw):
     assert err < 1e-10
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
-    "virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"], headline="max_abs_dloglike"
+    "virgil.gains.closure_offsets", "virgil.likelihood.model_loglike", roots=["mathematics"], headline="max_abs_dloglike",
+    tier="B",
 )
 def test_supplied_closure_offset_modes(cp_file):
     """Supplied modes in ``data.phi`` sample order: both within-frame modes and

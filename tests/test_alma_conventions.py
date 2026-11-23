@@ -100,6 +100,7 @@ def test_visibilities_are_the_conjugate_of_the_data_column_at_plus_uvw(clean_rea
     assert worst < 1e-6  # float32 rounding of 15 mJy is 1e-9
 
 
+@pytest.mark.slow
 @pytest.mark.validates("crosscheck.alma", "external_bridge.alma_worker", kind="control", **VALIDATES)
 def test_control_unconjugated_data_puts_the_sources_at_minus_their_position(clean, clean_read, tmp_path):
     """The wrong mapping, V = DATA at +u (conjugate=False), mirrors the

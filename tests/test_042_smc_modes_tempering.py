@@ -560,12 +560,10 @@ def test_tempered_smc_conjugate_gaussian_evidence_se_and_flags():
     record("posterior_cov_rel_err", cov_rel_err)
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.smc.tempered_smc",
     roots=["mathematics", "statistics"],
     headline="bimodal_log_z_err",
-    tier="B",
 )
 def test_tempered_smc_bimodal_gaussian_mixture_posterior():
     """tempered_smc captures both modes, relative mode weights, and total log Z
@@ -625,12 +623,10 @@ def test_tempered_smc_bimodal_gaussian_mixture_posterior():
     record("bimodal_mean_err", mean_err)
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.smc.bridge_smc",
     roots=["mathematics", "statistics"],
     headline="bridge_log_bf_err",
-    tier="B",
 )
 def test_bridge_smc_exact_linear_gaussian_bayes_factor():
     """bridge_smc recovers the closed-form log Bayes factor ln(Z_2 / Z_1)
@@ -716,12 +712,14 @@ def test_bridge_smc_exact_linear_gaussian_bayes_factor():
     record("bridge_cycle_err", cycle_err)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.smc.tempered_smc",
     "virgil.smc.bridge_smc",
     roots=["mathematics", "statistics"],
     kind="control",
     headline="unnormalized_loglike_bias",
+    tier="B",
 )
 def test_smc_unnormalized_loglike_and_swapped_bridge_controls():
     """Control: shifting loglike by +2.5 nats (omitting Gaussian normalization)

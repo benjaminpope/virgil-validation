@@ -585,12 +585,10 @@ def test_multipole_field_priors_bounds_and_log_uniform_scaling():
     assert max_err < 1e-14
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.fields.MultipoleField",
     roots=["mathematics", "statistics"],
     headline="origin_non_m0_std",
-    tier="B",
 )
 def test_multipole_field_042_origin_taper_analytical_variance_and_nr_invariance():
     """In 0.4.2, MultipoleField(r_min_mas=0) multiplies azimuthal order m by

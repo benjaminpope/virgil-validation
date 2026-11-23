@@ -1305,7 +1305,8 @@ def test_score_orbits_shared_flux_and_chromatic_slope_recovery(tmp_path):
     assert float(scores.score[0] - scores.score[1]) > 30.0
 
 
-@pytest.mark.validates("virgil.orbit_search.score_orbits", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.orbit_search.score_orbits", roots=["mathematics"], kind="control", tier="B")
 def test_score_orbits_nonlinear_model_control(tmp_path):
     """score_orbits rejects scene callables that violate flux linearity or zero-flux orbit independence."""
     p = _write_moving_night(

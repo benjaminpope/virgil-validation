@@ -137,10 +137,9 @@ def test_normalised_weights_match_ehtim_norm_reg(scene, beam):
         assert rel(grad, want_grad) < 1e-12
 
 
-@pytest.mark.slow
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.TV", roots=["ehtim"], headline="rel_value", tier="B")
+@pytest.mark.validates("virgil.imaging.TV", roots=["ehtim"], headline="rel_value")
 def test_tv_matches_ehtim(scene):
     eta, support, b = scene
     eps = EPS_FRACTION / b.size
@@ -156,10 +155,9 @@ def test_tv_matches_ehtim(scene):
     assert rel(grad, want_grad) < 1e-12
 
 
-@pytest.mark.slow
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.MaxEntropy", roots=["ehtim"], tier="B")
+@pytest.mark.validates("virgil.imaging.MaxEntropy", roots=["ehtim"])
 def test_max_entropy_matches_ehtim(scene):
     """Against a flat default image over the support (virgil's default)
     and a random positive one."""

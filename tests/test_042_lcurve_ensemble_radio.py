@@ -80,13 +80,11 @@ def _vlti_like_oidata(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.imaging.LCurve",
     "virgil.imaging.DofDiscrepancy",
     roots=["mathematics", "statistics"],
     headline="dof_z_score",
-    tier="B",
 )
 def test_lcurve_dof_discrepancy_matches_closed_form_tsv_ridge_trace_and_se():
     n, scale, flux = 6, 1.5, 0.35
@@ -1058,11 +1056,13 @@ def test_ensemble_gp_evidence_grid_and_gp_members():
     assert max_logz_err < 1e-9
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.ensemble.combine",
     roots=["mathematics"],
     kind="control",
     headline="flipped_member_rejected",
+    tier="B",
 )
 def test_ensemble_combine_rejects_corrupted_member_from_running_mean_control():
     n, scale = 9, 1.5
@@ -1275,13 +1275,11 @@ def test_radio_sigma_scale_smooth_drift_upper_bound_and_lag_ratio_control():
     assert lag > 5.0
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.radio.fit_staged_nuisances",
     "virgil.radio.StagedFit",
     roots=["mathematics"],
     headline="max_gain_err",
-    tier="B",
 )
 def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
     rng = np.random.default_rng(121)
@@ -1394,12 +1392,14 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
     assert "pixels" in staged.values
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.radio.fit_staged_nuisances",
     "virgil.radio.StagedFit",
     roots=["mathematics"],
     kind="finding",
     headline="nuisance_grad_rel",
+    tier="B",
 )
 @pytest.mark.xfail(
     strict=True,

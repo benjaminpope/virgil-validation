@@ -146,14 +146,12 @@ def _compare_virgil_to_pmoired_rotastar(samples, pa_deg):
     return dv2, dcp, cp_peak
 
 
-@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.validates(
     "virgil.models.GravityDarkenedStar",
     roots=["pmoired"],
     property="pole_pa",
     headline="max_abs_dV2",
-    tier="B",
 )
 def test_gravity_darkened_star_pole_pa_matches_pmoired_rotastar(pmoired_rotator_samples):
     """GravityDarkenedStar(..., pa=33.0) matches PMOIRED's independent rotastar
@@ -280,13 +278,14 @@ def test_gravity_darkened_star_wrong_pa_fails_against_dlux(dlux_rotator_observab
     assert dcp > 5.0
 
 
+@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
     reason="P13: oimodeler oimFastRotator places the pole PA ~180 deg from the IAU convention we expected",
 )
-@pytest.mark.validates("oimodeler", roots=["mathematics"], kind="upstream")
+@pytest.mark.validates("oimodeler", roots=["mathematics"], kind="upstream", tier="B")
 def test_p13_oimodeler_fast_rotator_pole_pa_inversion():
     """oimodeler's oimFastRotator(dim=64, pa=33) places the bright visible pole
     about 180 deg from the IAU convention we expected (SW instead of NE),

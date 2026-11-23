@@ -87,7 +87,6 @@ def test_kipping_square_root(uvw, q1, q2):
     )
 
 
-@pytest.mark.slow
 @pytest.mark.x64
 @pytest.mark.parametrize(
     "coeffs, powers",
@@ -99,7 +98,7 @@ def test_kipping_square_root(uvw, q1, q2):
     ],
     ids=["uniform", "sqrt-law", "fractional", "edge-powers"],
 )
-@pytest.mark.validates("virgil.models.cvis_limb_darkened_disk", roots=["mathematics"], tier="B")
+@pytest.mark.validates("virgil.models.cvis_limb_darkened_disk", roots=["mathematics"])
 def test_cvis_any_powers(uvw, coeffs, powers):
     u, v, wl = uvw
 
@@ -252,8 +251,9 @@ def test_render_matches_our_image():
     assert err < 1e-12
 
 
+@pytest.mark.slow
 @pytest.mark.x64
-@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"], headline="max_abs_dV2")
+@pytest.mark.validates("virgil.models.QuadraticLimbDarkenedDisk", "virgil.models.System", roots=["mathematics"], headline="max_abs_dV2", tier="B")
 def test_pixel_image_through_oifits(tmp_path):
     """Item 2 of Issue #12: our image of an off-centre limb-darkened star
     (8x oversampled pixels) with a companion, written to OIFITS; virgil's

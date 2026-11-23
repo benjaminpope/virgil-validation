@@ -259,8 +259,9 @@ def our_fisher(loaded, p, unravel, flat, h=1e-6):
     return F
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.inference.gaussian_fisher", "virgil.likelihood.joint_prediction",
-                       "virgil.likelihood.joint_errors", roots=["mathematics"])
+                       "virgil.likelihood.joint_errors", roots=["mathematics"], tier="B")
 def test_gaussian_fisher_of_the_joint_prediction(pair):
     obs, loaded = pair
 
@@ -332,7 +333,8 @@ def test_laplace_parameter_uncertainty_is_the_curvature_of_our_chi2(pair):
 # --------------------------------------------------------------- likelihood
 
 
-@pytest.mark.validates("virgil.likelihood.joint_loglike", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.likelihood.joint_loglike", roots=["mathematics"], tier="B")
 def test_joint_loglike_is_the_sum_of_independent_gaussians(pair):
     obs, loaded = pair
     worst = 0.0

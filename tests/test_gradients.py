@@ -158,7 +158,8 @@ def test_model_visibility_gradients(name):
     _check(template, paths)
 
 
-@pytest.mark.validates("virgil.models.Image", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.Image", roots=["mathematics"], tier="B")
 def test_image_pixel_gradients():
     """Derivatives with respect to the log-brightness of every pixel (the
     softmax normalisation couples them all)."""

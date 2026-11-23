@@ -757,13 +757,11 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
     assert worst_flux < 1e-5
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
     property="statistics_only_path",
     roots=["mathematics"],
     headline="max_rel_ddelta_chi2_stats_only",
-    tier="B",
 )
 def test_injection_recovery_without_uncertainty_matches_independent_grid_search(tmp_path):
     """``injection_recovery(uncertainty=False)``, the path BinaryPipeline's null
@@ -1080,12 +1078,10 @@ def test_f32_concatenate_refuses_mixed_uncertainty(tmp_path):
     )
 
 
-@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
     roots=["self-consistency"],
     headline="max_rel_dbatch",
-    tier="B",
 )
 def test_injection_recovery_nrm_batch_and_chunk_invariance():
     """On a noisy 7-hole NRM UV template (n_null=24, n_inject=16),

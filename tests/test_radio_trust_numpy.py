@@ -125,7 +125,8 @@ def test_dirty_image_and_beam_are_the_direct_sums_with_briggs_weights_and_the_ga
         assert got_b[c, c] == pytest.approx(1.0, abs=1e-9)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", "virgil.radio.ComplexVisData.dirty_beam", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.dirty_image", "virgil.radio.ComplexVisData.dirty_beam", roots=["mathematics"], kind="control", tier="B")
 def test_control_the_wrong_sign_or_a_flipped_axis_of_the_reference_misses_by_order_one():
     """The agreement above is orientation-sensitive: the reference with exp(-2 pi i ...) (sign), with columns
     reversed (East on the right) or with the image transposed does not match at 1e-2 of the peak, so the
@@ -200,8 +201,7 @@ def _flat(values):
     return np.concatenate([np.ravel(values[k]) for k in ("cal.flux", "cal.gain", "cal.offset", "cal.sigma", "cal.alpha")])
 
 
-@pytest.mark.slow
-@pytest.mark.validates("virgil.radio.CalibrationNuisance", "virgil.radio.ComplexVisData.term", roots=["statistics"], headline="max_abs_pull", tier="B")
+@pytest.mark.validates("virgil.radio.CalibrationNuisance", "virgil.radio.ComplexVisData.term", roots=["statistics"], headline="max_abs_pull")
 def test_joint_default_fit_of_every_nuisance_is_unbiased_to_the_fisher_errors():
     """F2: with the defaults (flux, 2 gains, 2 offsets, 6 per-ddid error scales and the spectral index all
     fitted at once, default priors, cold start) on 900 synthetic points of a known scene, injected with
@@ -289,8 +289,9 @@ def _has_gn_diag():
     return hasattr(fitting, "gauss_newton_diag")
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _has_gn_diag(), reason="virgil.fitting.gauss_newton_diag not installed")
-@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"], headline="max_rel_error_entropy_metric")
+@pytest.mark.validates("virgil.fitting.gauss_newton_diag", roots=["mathematics"], headline="max_rel_error_entropy_metric", tier="B")
 def test_data_diagonal_is_the_finite_difference_diagonal_of_jtj_and_the_entropy_metric_is_w_b_one_minus_b():
     """6 x 6 image of softmax logits: (a) the data diagonal of J^T J, J the central finite-difference
     Jacobian (step 1e-6) of the weighted residual sqrt(w) [Re M, Im M] with respect to the logits, M my own
@@ -376,7 +377,8 @@ def test_laplace_antenna_gain_marginal_matches_gauss_hermite_quadrature_and_impr
     assert errs[1] < errs[0] / 2
 
 
-@pytest.mark.validates("virgil._antenna_gains.marginal", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil._antenna_gains.marginal", roots=["mathematics"], kind="control", tier="B")
 def test_control_a_reference_with_the_wrong_prior_widths_misses_the_laplace_value():
     """Doubling both prior widths in the quadrature reference moves it by far more than the tolerance of the
     test above (so that test does pin the prior widths and their normalisation)."""
