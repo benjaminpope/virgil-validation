@@ -43,6 +43,7 @@ PYSLOT = Path.home() / ".claude" / "bin" / "pyslot"
 # stage bench275). There is no pyslot (the job owns the node), no macOS ``time -l`` (rusage comes from ``os.wait4``) and no
 # AC / Low Power Mode (the machine check reads the node's own load and records the node).
 ON_NODE = os.environ.get("BENCH_PLATFORM") == "slurm"
+DEVICE = os.environ.get("BENCH_DEVICE", "cpu")      # "gpu": virgil rows only, warm timings on one GPU (BENCH_GPU_NAME records the model)
 INNER_TAG = "BENCH_INNER "
 
 STATUSES = ("ok", "timeout", "oom", "error", "gate_failed", "not_run", "unsupported")
@@ -86,7 +87,7 @@ def thread_env(n: int = 1) -> dict[str, str]:
         raise ValueError("benchmarks run on 1 thread (primary) or 2 (second pass), never more")
     env = {v: str(n) for v in THREAD_VARS}
     env["XLA_FLAGS"] = xla_flags(n)
-    env["JAX_PLATFORMS"] = "cpu"
+    env["JAX_PLATFORMS"] = "cuda" if DEVICE == "gpu" else "cpu"
     env["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
     env["JULIA_NUM_THREADS"] = str(n)
     env["PYTHONHASHSEED"] = "0"
@@ -100,7 +101,7 @@ def thread_env_seen() -> dict[str, str | None]:
 
 def check_threads(cpu_ratio: float | None, threads: int) -> list[str]:
     """``(user+sys)/wall`` above 1.2 in a 1-thread row, or 2.3 in a 2-thread row, gives ``threads_not_held``."""
-    if cpu_ratio is None:
+    if cpu_ratio is None or DEVICE == "gpu":      # on the GPU arm the host thread count is not the quantity held
         return []
     limit = 1.2 if threads == 1 else 2.3
     return ["threads_not_held"] if cpu_ratio > limit else []
@@ -134,7 +135,7 @@ def _node_state() -> dict:
         problems.append(f"node load {load[0]:.1f} above {os.environ.get('BENCH_MAX_LOAD', '2')}")
     if not os.environ.get("SLURM_JOB_ID"):
         problems.append("not inside a Slurm job")
-    elif held and ncpu and held < ncpu:
+    elif held and ncpu and held < ncpu and DEVICE != "gpu":      # the GPU arm asks for one GPU and a few cores, not the whole node
         problems.append(f"job holds {held} of {ncpu} cpus (not --exclusive)")
     return {
         "platform": "slurm", "node": platform.node(), "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
@@ -609,6 +610,7 @@ def row_from_process(res: dict, **identity) -> dict:
         accuracy=inner.get("accuracy", {}),
         settings={**inner.get("settings", {}), "run": os.environ.get("BENCH_RUN_ID", "r1"),
                   "jax_cache": res.get("jax_cache", "off"),
+                  "device": DEVICE, **({"gpu": os.environ.get("BENCH_GPU_NAME", "")} if DEVICE == "gpu" else {}),
                   **({"reason": res["stderr_tail"][-300:]} if res["status"] != "ok" else {})},
         provenance=inner.get("provenance", provenance()), **identity,
     )

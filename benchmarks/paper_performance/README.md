@@ -89,6 +89,22 @@ Self-test of the scorers, tests, and a dummy row (each under `pyquick`):
 ~/.claude/bin/pyquick $BENCH_PYTHON benchmarks/paper_performance/common.py --dummy-row /tmp/dummy-row
 ```
 
+## Follow-up stages (rerun, GPU arm, profiling)
+
+* **Rerun of the budget-cut rows.** `matrix.py --run --run-id r2 --missing-from <r2 log> --exclude-case O-A-real --shard K/N`
+  runs only the specs the r2 log records as `not_run`, split into `N` balanced shards of whole blocks (per-row estimates;
+  each shard writes `matrix_log_r2_s<K>.jsonl` and `DONE_r2_s<K>`). The rows replace the `not_run` rows of the same name.
+  O-A-real is excluded until its start failure is fixed (its rows stay `not_run`).
+* **GPU arm.** `BENCH_DEVICE=gpu` (set by the OzSTAR GPU stage) keeps only virgil's one-thread specs, runs them with
+  `JAX_PLATFORMS=cuda` and records `settings.device = "gpu"` and `settings.gpu` (the model). The GPU rows never enter the CPU
+  tables: `summarise.py` writes them to `results/gpu_results.csv` beside the CPU virgil and other-code warm times of the same group.
+  Other codes stay on the CPU.
+* **Profiling the warm orbit fits** (`orbit/profile_virgil.py`, `orbit/profile_octofitter.jl`, `jaxprof.py`): the time of
+  one log-density call, one gradient call and the 4-chain vmapped gradient in each code, the warm call's wall time per leapfrog
+  step, an XProf trace (`xplane.pb`) of virgil's warm NUTS call and of a gradient loop (`JAX_PROFILE_DIR`), and a Julia flat
+  profile of Octofitter's gradient. Compare "time per step" with "time per gradient": a large ratio means the cost is outside
+  the gradient (sampler loop, lock-step chains, dispatch).
+
 ## Limits (stated in every output)
 
 One CPU (r1 laptop; r2 one 64-core EPYC node), no GPU row; 1 thread primary and 2 at most, nothing on all cores; eht-imaging without NFFT; Octofitter

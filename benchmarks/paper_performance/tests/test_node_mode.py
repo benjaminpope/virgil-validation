@@ -33,3 +33,31 @@ def test_node_state_rules(monkeypatch):
     assert common.machine_state()["ok"]
     monkeypatch.setenv("BENCH_MAX_LOAD", "-1")
     assert "node load" in common.machine_state()["problems"][0]
+
+
+def test_select_missing_exclude_shard(tmp_path, monkeypatch):
+    import argparse
+    import json
+
+    import matrix
+
+    specs = matrix.ordered(matrix.finalise(matrix.build()))
+    keys = [s.key for s in specs if s.runner not in ("untimed", "not_run")][:12]
+    log = tmp_path / "log.jsonl"
+    log.write_text("\n".join(json.dumps({"key": k, "status": "not_run"}) for k in keys[:6]) + "\n"
+                   + json.dumps({"key": keys[6], "proc": 1}) + "\n")
+    ns = dict(missing_from=str(log), exclude_case=[], shard=None)
+    got = matrix.select(specs, argparse.Namespace(**ns))
+    assert {s.key for s in got} == set(keys[:6])                      # only the not_run keys, not the ones that ran
+    ns["exclude_case"] = [got[0].case]
+    assert all(s.case != got[0].case for s in matrix.select(specs, argparse.Namespace(**ns)))
+    ns["exclude_case"] = []
+    parts = []
+    for k in (1, 2, 3):
+        ns["shard"] = f"{k}/3"
+        parts.append({s.key for s in matrix.select(specs, argparse.Namespace(**ns))})
+    assert set().union(*parts) == set(keys[:6]) and sum(len(p) for p in parts) == 6      # a partition: every spec in exactly one shard
+    monkeypatch.setattr(common, "DEVICE", "gpu")
+    ns.update(missing_from=None, shard=None)
+    gpu = matrix.select(specs, argparse.Namespace(**ns))
+    assert gpu and all(s.code.startswith("virgil") and s.threads == 1 for s in gpu)

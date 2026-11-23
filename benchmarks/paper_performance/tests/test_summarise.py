@@ -57,3 +57,19 @@ def test_check_coverage(tmp_path):
     rows, problems = summarise.check(tmp_path, tmp_path, strict_outputs=False)
     assert len(rows) == 2
     assert any("B-sim-60 virgil" in p for p in problems) and not any("B-sim-6 virgil" in p for p in problems)
+
+
+def test_gpu_rows_are_separate(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    cpu = _row("virgil", 2.0, [0.02])
+    gpu = _row("virgil", 3.0, [0.01])
+    gpu["settings"] = {**gpu["settings"], "device": "gpu", "gpu": "NVIDIA A100"}
+    for i, r in enumerate((cpu, gpu)):
+        (raw / f"r{i}.json").write_text(json.dumps(r))
+    assert [r["settings"].get("device") for r in summarise.load(raw)] == [cpu["settings"].get("device")]
+    assert [r["settings"]["device"] for r in summarise.load(raw, gpu=True)] == ["gpu"]
+    out = tmp_path / "gpu.csv"
+    summarise.write_gpu_csv(summarise.group(summarise.load(raw, gpu=True)), summarise.group(summarise.load(raw)), out)
+    text = out.read_text()
+    assert "NVIDIA A100" in text and "t_warm_gpu" in text

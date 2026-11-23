@@ -420,7 +420,7 @@ def execute(specs):
             prev_h = max(prev_h, d.get("elapsed_h", 0.0))
     t0 = time.time() - prev_h * 3600
     RAW.mkdir(parents=True, exist_ok=True)
-    done_marker = RAW.parent / ("DONE" if os.environ.get("BENCH_RUN_ID", "r1") == "r1" else f"DONE_{os.environ['BENCH_RUN_ID']}")
+    done_marker = RAW.parent / ("DONE" if os.environ.get("BENCH_RUN_ID", "r1") == "r1" else f"DONE_{os.environ['BENCH_RUN_ID']}") if not os.environ.get("BENCH_SHARD_TAG") else RAW.parent / f"DONE_{os.environ['BENCH_RUN_ID']}{os.environ['BENCH_SHARD_TAG']}"
     if TEST["tiny"] or TEST["no_wrapper"]:
         (RAW.parent).mkdir(parents=True, exist_ok=True)
         (RAW.parent / "TEST_RUN_BYPASSES").write_text(f"test-only run (tiny={TEST['tiny']}, no_wrapper={TEST['no_wrapper']}); idle, AC and pyslot checks were NOT applied; rows are not measurements\n")
@@ -507,6 +507,32 @@ def execute(specs):
     done_marker.write_text(f"finished after {(time.time() - t0) / 3600:.2f} h\n")
 
 
+def select(specs, a):
+    """--missing-from / --exclude-case / --shard / GPU arm: narrow the spec list. Shards are whole blocks (the alternation of the codes inside
+    a case is kept), assigned longest first to the least loaded shard, so the split is deterministic for a given N."""
+    if a.missing_from:
+        miss = {json.loads(l)["key"] for l in Path(a.missing_from).read_text().splitlines() if l.strip() and json.loads(l).get("status") == "not_run"}
+        specs = [x for x in specs if x.key in miss]
+    if a.exclude_case:
+        specs = [x for x in specs if x.case not in a.exclude_case]
+    if common.DEVICE == "gpu":      # the GPU arm: virgil rows only, one thread, no gates or other codes
+        specs = [x for x in specs if x.code.startswith("virgil") and x.threads == 1 and x.runner not in ("untimed", "not_run")]
+    if a.shard:
+        k, n = (int(v) for v in a.shard.split("/"))
+        blocks = {}
+        for x in specs:
+            blocks.setdefault((x.comp, x.case, x.label.split("/")[0], x.threads, x.prio), []).append(x)
+        load = [0.0] * n
+        mine = set()
+        for bk, xs in sorted(blocks.items(), key=lambda kv: -sum(total_est(s) for s in kv[1])):
+            i = load.index(min(load))
+            load[i] += sum(total_est(s) for s in xs)
+            if i == k - 1:
+                mine.add(bk)
+        specs = [x for x in specs if (x.comp, x.case, x.label.split("/")[0], x.threads, x.prio) in mine]
+        print(f"shard {k}/{n}: {len(specs)} specs, est {load[k - 1] / 3600:.1f} h (all shards: {[round(v / 3600, 1) for v in load]})", file=sys.stderr)
+    return specs
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -517,6 +543,9 @@ def main():
     ap.add_argument("--run-id", default=None, help="BENCH_RUN_ID of the rows written (r2 = the PR 275 matrix; the cluster "
                     "stage runs the FULL matrix with --run-id r2)")
     ap.add_argument("--budget-h", type=float, default=None, help="wall-clock cap in hours (default 7; the rerun uses 4)")
+    ap.add_argument("--missing-from", default=None, help="a matrix log: run only the specs it records as not_run (the resumable rerun of the budget-cut groups)")
+    ap.add_argument("--exclude-case", nargs="*", default=[], help="drop these case ids (O-A-real while its init failure is debugged)")
+    ap.add_argument("--shard", default=None, help="K/N: this array task takes the K-th of N balanced shards of whole blocks (cases of one task), so each node runs a share of the rows")
     ap.add_argument("--only", nargs="*", default=None, help="TEST ONLY: run just the specs whose key contains one of these")
     ap.add_argument("--tiny", action="store_true", help="TEST ONLY: --size tiny for binary/imaging runners")
     ap.add_argument("--no-wrapper", action="store_true", help="TEST ONLY: no pyslot wrapper (run inside pyquick)")
@@ -532,6 +561,9 @@ def main():
         os.environ["BENCH_RUN_ID"] = a.run_id
         if not a.rerun:
             LOG = HERE / "results" / f"matrix_log_{a.run_id}.jsonl"
+    if a.shard:
+        os.environ["BENCH_SHARD_TAG"] = "_s" + a.shard.split("/")[0]
+        LOG = LOG.with_name(LOG.stem + os.environ["BENCH_SHARD_TAG"] + ".jsonl")
     if a.run and common.ON_NODE and not (a.tiny or a.no_wrapper):
         st = common.machine_state()      # the node's own load and exclusivity; there is no bypass
         if not st["ok"]:
@@ -543,6 +575,7 @@ def main():
         TEST["out"] = RAW
     TEST.update(tiny=a.tiny, no_wrapper=a.no_wrapper)
     specs = ordered(finalise(build()))
+    specs = select(specs, a)
     if a.resume:
         RESUME = True
     if a.only:

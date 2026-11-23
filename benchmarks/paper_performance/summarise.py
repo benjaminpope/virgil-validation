@@ -43,11 +43,14 @@ LIMITS = [
 # grouping
 # ----------------------------------------------------------------------------------------------------------------
 
-def load(raw):
+def load(raw, gpu=False):
+    """Rows of the CPU matrix; ``gpu=True`` returns the GPU-arm rows (virgil only) instead."""
     rows = []
     for p in sorted(Path(raw).glob("*.json")):
         r = json.loads(p.read_text())
         if "comparison" in r and "code" in r:       # skips compare_*.json and other non-row files
+            if (r.get("settings", {}).get("device") == "gpu") != gpu:
+                continue
             r["_file"] = p.name
             rows.append(r)
     return rows
@@ -491,6 +494,22 @@ def check(raw, out_dir, strict_outputs):
     return rows, problems
 
 
+def write_gpu_csv(gg, cpu, path):
+    """GPU arm (virgil only): one line per group with the GPU times beside the CPU virgil and other-code times of the same group."""
+    cols = ["comparison", "case", "task", "config", "threads", "variant", "gpu", "status", "n_ok", "t_cold_gpu", "t_warm_gpu", "t_fresh_gpu", "t_warm_cpu_virgil", "t_warm_cpu_other", "warm_speedup_vs_cpu_virgil", "warm_ratio_other_over_gpu"]
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(cols)
+        for (key, code, variant), g in sorted(gg.items(), key=str):
+            cv = cpu.get((key, code, variant))
+            co = next((c for (k, cd, v), c in cpu.items() if k == key and not cd.startswith("virgil")), None)
+            tw = g["warm"]["median"]
+            cw = cv["warm"]["median"] if cv else None
+            ow = co["warm"]["median"] if co else None
+            gname = (g["rows"][0]["settings"].get("gpu") if g["rows"] else "") or ""
+            w.writerow([*key, variant or "", gname, g["status"], g["n_ok"], g["t_cold"], tw, g["t_fresh"], cw, ow,
+                        (cw / tw) if cw and tw else "", (ow / tw) if ow and tw else ""])
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw", default=str(HERE / "results" / "raw"))
@@ -518,6 +537,9 @@ def main():
                "time_to_precision": {"|".join(map(str, k)): v for k, v in ttp.items()},
                "flags": dict(Counter(f for r in rows for f in r["flags"])),
                "status": dict(Counter(r["status"] for r in rows)), "limits": LIMITS}
+    gpu_rows = load(a.raw, gpu=True)
+    if gpu_rows:
+        write_gpu_csv(group(gpu_rows), groups, Path(a.out) / "gpu_results.csv")
     (Path(a.out) / "summary.json").write_text(json.dumps(summary, indent=1, default=float))
     print(json.dumps({k: summary[k] for k in ("n_rows", "n_groups", "faster_counts", "status", "flags")}, indent=1))
 

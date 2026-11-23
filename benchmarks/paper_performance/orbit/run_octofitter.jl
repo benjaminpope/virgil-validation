@@ -32,7 +32,7 @@ const T_CALIB = calibrate()
 function parse_args(args)
     d = Dict("case" => "O-A-sim", "config" => "matched", "draws" => "1000", "warmup" => "1000", "chains" => "4",
              "seed" => "1", "out" => "", "pull-seeds" => "20", "max-depth" => "10", "no-warm" => "false",
-             "corrections" => "off", "pigeons-rounds" => "8", "level-b-sampler" => "nuts")
+             "corrections" => "off", "pigeons-rounds" => "8", "level-b-sampler" => "nuts", "calls" => "500", "julia-profile" => "0")
     i = 1
     while i <= length(args)
         k = lstrip(args[i], '-')
