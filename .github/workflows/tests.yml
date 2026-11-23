@@ -109,6 +109,10 @@ jobs:
           .venv/bin/python -m pytest -v --durations=60 --evidence evidence.jsonl
       - name: no silent skips (all tests; trust/skip_allowlist.yml, weekly)
         if: always() && steps.all_tests.outcome != 'skipped'
+        # Not enforcing yet: the `weekly` list has not been filled from a real weekly run (the full suite
+        # has hit the job timeout). It becomes enforcing (drop this line) once the list is filled from the
+        # first weekly run after the timeout is lifted. The pr check above stays enforcing.
+        continue-on-error: true
         run: .venv/bin/python scripts/check_skips.py evidence.jsonl --job weekly
       - name: memory log
         # free -m: total used free shared buff/cache available

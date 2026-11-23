@@ -147,6 +147,11 @@ def test_unknown_section_is_an_error(cs, tmp_path):
         cs.load_allowlist(path, "pr")
 
 
+@pytest.mark.parametrize("because", ["package", "data", "campaign", "release"])
+def test_the_four_allowed_reasons_load(cs, tmp_path, because):
+    assert cs.load_allowlist(allowlist(tmp_path, pr=[entry("tests/t.py::test_a", because=because)]), "pr")
+
+
 def test_the_committed_allowlist_is_well_formed(cs):
     for job in cs.JOBS:
         for e in cs.load_allowlist(cs.ALLOWLIST, job):

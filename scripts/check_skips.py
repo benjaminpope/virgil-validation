@@ -13,7 +13,9 @@ An allow-list entry has
 
     test:     a test id, or a glob in which ``*`` matches any run of characters (brackets are
               literal, so a parametrized id such as ``test_x[True]`` is written as is)
-    because:  ``package`` (CI does not install it) or ``data`` (CI does not have it): nothing else
+    because:  ``package`` (CI does not install it), ``data`` (CI does not have it), ``campaign`` (it reads the
+              output of a campaign that runs on OzSTAR, which CI does not produce) or ``release`` (it runs
+              only at a release): nothing else
     why:      one line saying which package or file, and how CI would get it
     message:  text the recorded skip reason must contain, so that a test allowed because a file
               is absent cannot go on skipping for another reason unnoticed (required)
@@ -34,7 +36,7 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ALLOWLIST = ROOT / "trust" / "skip_allowlist.yml"
 JOBS = ("pr", "weekly")
-BECAUSE = ("package", "data")
+BECAUSE = ("package", "data", "campaign", "release")
 
 
 def glob_to_regex(pattern):
@@ -118,7 +120,7 @@ def main(argv=None):
     for rec in sorted(uncovered, key=lambda r: r["test"]):
         print(f"  {rec['test']}\n      reason: {rec.get('reason', '(none recorded)')}")
     print(
-        "\nA check that never runs verifies nothing. Make CI run it, or, if the package or data it needs is "
+        "\nA check that never runs verifies nothing. Make CI run it, or, if the package, data, campaign output or release step it needs is "
         "really not in CI, add it to the list with that reason. Do not skip, xfail or mark it slow to pass."
     )
     return 1
