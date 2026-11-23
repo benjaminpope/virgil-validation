@@ -52,6 +52,7 @@ def main():
     ap.add_argument("--draws", type=int, default=1000)
     ap.add_argument("--chains", type=int, default=4)
     ap.add_argument("--calls", type=int, default=500, help="timed calls per microbenchmark")
+    ap.add_argument("--trace-nuts", action="store_true", help="also XProf-trace a short warm NUTS run (memory hungry; off by default)")
     ap.add_argument("--out", default=None, help="write the JSON here as well")
     a = ap.parse_args()
 
@@ -103,12 +104,15 @@ def main():
     t0 = time.perf_counter()
     mcmc = rv.run_mcmc(model, init, a.warmup, a.draws, a.chains, 1)
     t_cold = time.perf_counter() - t0
-    with jaxprof.maybe_profile("virgil_nuts_" + a.case, host_level=1):
-        t0 = time.perf_counter()
-        rv.run_mcmc(model, init, a.warmup, a.draws, a.chains, 2, mcmc=mcmc)
-        t_warm = time.perf_counter() - t0
+    t0 = time.perf_counter()        # the timed warm call is NOT traced: a trace of a full NUTS run holds every op event in memory (it OOM-killed O-B-sim at 249 GB)
+    rv.run_mcmc(model, init, a.warmup, a.draws, a.chains, 2, mcmc=mcmc)
+    t_warm = time.perf_counter() - t0
     steps = onp.asarray(mcmc.get_extra_fields(group_by_chain=True)["num_steps"])      # (chains, warmup-free draws) of the warm call
     total, longest = int(steps.sum()), int(steps.max(axis=0).sum())                   # all chains vs the slowest chain per draw
+    if a.trace_nuts and jaxprof.profile_dir("x"):      # opt-in: even a 20+20-draw NUTS trace needs > 5 GB (every while-loop op is an event); the per-step times above and the gradient-loop trace are the default evidence
+        short = rv.run_mcmc(model, init, 20, 20, a.chains, 3)
+        with jaxprof.maybe_profile("virgil_nuts_" + a.case, host_level=1):
+            rv.run_mcmc(model, init, 20, 20, a.chains, 4, mcmc=short)
     out = {
         "case": a.case, "config": a.config, "device": common.DEVICE, "jax_devices": [str(d) for d in jax.devices()],
         "versions": {"virgil": virgil.__version__, "jax": jax.__version__},
