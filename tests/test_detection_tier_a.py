@@ -902,6 +902,7 @@ def test_injection_recovery_without_uncertainty_matches_independent_grid_search(
     for part in (mc_noisy.null, mc_noisy.injected):
         assert np.all(np.isnan(np.asarray(part["max_snr"])))
         assert np.all(np.isnan(np.asarray(part["flux_peak_steps"])))
+        assert np.all(np.asarray(part["converged_fraction"]) == 1.0)
 
     def states(d_clean):
         for signs in itertools.product((-1.0, 1.0), repeat=4):
@@ -967,66 +968,6 @@ def test_injection_recovery_without_uncertainty_matches_independent_grid_search(
     assert worst_dc2 < 1e-5
     assert worst_logb < 1e-5
     assert worst_flux < 1e-5
-
-
-@pytest.mark.validates(
-    "virgil.detection.injection_recovery",
-    roots=["mathematics"],
-    kind="finding",
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F35: on virgil main (after virgil#750, 707#13.1: the grid-fit _flux_converged now reads -1/2 chi2) "
-        "some bootstrap_null null draws flag 1 of 16 grid cells not converged (converged_fraction 0.9375), "
-        "although every draw's delta_chi2, log_bayes_factor, best_flux and position still equal our independent "
-        "grid search to 1e-5; at the 0.4.2 RC every cell was flagged converged"
-    ),
-)
-def test_f35_noisy_bootstrap_null_grid_fits_flag_converged(tmp_path):
-    """F35: the noisy ``bootstrap_null`` run of the statistics-only path
-    (4-residual file, 16 grid positions) has converged_fraction == 1 on every
-    draw, as its results agree with an independent exhaustive grid search."""
-    boot_kw = dict(
-        hour_angles_h=np.array([0.5]),
-        wavelengths=np.array([1.8e-6, 2.2e-6]),
-        dec_deg=-45.0,
-        sigma_v2=0.015,
-        sigma_cp_deg=0.8,
-    )
-    noisy_b = tmp_path / "boot_noisy.fits"
-    simulate.observe(noisy_b, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=np.random.default_rng(2026), **boot_kw)
-    with fits.open(noisy_b, mode="update") as hdul:
-        hdul["OI_VIS2"].data["VIS2DATA"][:, 1] = 1.0
-        hdul["OI_T3"].data["T3PHI"][:, 1] = 0.0
-    null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
-    grid_b = {
-        "dra": np.linspace(-8.0, 8.0, 4),
-        "ddec": np.linspace(-8.0, 8.0, 4),
-        "flux": np.geomspace(2e-4, 2e-1, 35),
-    }
-    inj_b = {
-        "dra": np.array([8.0, -4.2]),
-        "ddec": np.array([-8.0, 3.8]),
-        "flux": np.array([2.5e-2, 4e-2]),
-    }
-    boot_oi = OIData(str(noisy_b))
-    mc_noisy = det.injection_recovery(
-        vm.BinaryModelCartesian,
-        null_scene,
-        boot_oi,
-        grid_b,
-        12345,
-        n_null=24,
-        injections=inj_b,
-        noise=det.bootstrap_null(null_scene, boot_oi),
-        draw_batch=4,
-        uncertainty=False,
-        progress=False,
-    )
-    for part in (mc_noisy.null, mc_noisy.injected):
-        assert np.all(np.asarray(part["converged_fraction"]) == 1.0)
 
 
 def _tiny_statistics_only_runs(tmp_path):

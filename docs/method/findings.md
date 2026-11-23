@@ -36,7 +36,6 @@ Every disagreement the checks have found, how it was ruled, and where it stands.
 | <span id="F28">F28</span> | `aliases.period_window`, `aliases.period_cut` | period_window and period_cut API docstrings omit the night_length lower floor applied in code and documented in orbit_methods.md | open |
 | <span id="F32">F32</span> | `detection.DetectionMC`, `detection.injection_recovery` | DetectionMC on an injection_recovery(uncertainty=False) run: max_snr (all NaN) queries return values instead of raising, and concatenate merges it with uncertainty=True runs | fixed [virgil#770](https://github.com/benjaminpope/virgil/pull/770) |
 | <span id="F34">F34</span> | `fitting.kkt_report` | kkt_report on an lm fit applies the Uniform prior's value-space bounds to the unconstrained coordinate, so a stationary Uniform nuisance reports grad_norm = \|z\| + lower (1.35) instead of ~0 and converged = False from a nearby start | open |
-| <span id="F35">F35</span> | `detection.injection_recovery` | injection_recovery(uncertainty=False) with bootstrap_null flags 1 of 16 grid fits not converged on some null draws whose results equal an independent grid search to 1e-5 | open |
 | <span id="F36">F36</span> | `orbit_cells.position_cells` | position_cells with the marginalized sigma_J flags the true cell unreliable on a zero-scatter system, so CellsResult.jitter is NaN where the type-II ML fit_jitter returned a small value | open |
 
 ## Where codes define things differently

@@ -795,17 +795,6 @@
   decision: 'found on the bump of the pin to virgil main 25394917 (vv B6); the assertions are those of the nuisance start-gate half of test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate, moved unchanged into this test, now a strict xfail until virgil is fixed. Not raised on virgil yet: for Ben.'
   status: open
 
-- id: F35
-  title: injection_recovery(uncertainty=False) with bootstrap_null flags 1 of 16 grid fits not converged on some null draws whose results equal an independent grid search to 1e-5
-  objects: [virgil.detection.injection_recovery]
-  ruling: virgil
-  referee: 'mathematics (on a 4-residual bootstrap_null file, 24 null draws on a 4 x 4 position grid, 4 of the 24 draws report converged_fraction 0.9375 on virgil main 25394917, 1.0 at the 0.4.2 RC c2be8278; the rest of test_injection_recovery_without_uncertainty_matches_independent_grid_search still passes, so delta_chi2, log_bayes_factor, best_flux and best position of every draw equal the crosscheck.chi2 plus crosscheck.sky grid search to 1e-5: the flag, not the answer, changed)'
-  kind: 'bug? (unruled, convergence flag only, so it stays visible to release criterion 3 until Ben rules it a definition or fixes it; probably virgil#750 / 707#13.1, where the grid-fit _flux_converged is given -1/2 chi2 and converged flags near the tolerance may change; not isolated to the cells or to that commit)'
-  evidence:
-    - tests/test_detection_tier_a.py::test_f35_noisy_bootstrap_null_grid_fits_flag_converged
-  decision: 'found on the bump of the pin to virgil main 25394917 (vv B6). If the new flag is the intended contract, rule this definition and replace the assertion; if the flagged cells are converged, it is a virgil bug. Not raised on virgil yet: for Ben.'
-  status: open
-
 - id: F36
   title: position_cells with the marginalized sigma_J flags the true cell unreliable on a zero-scatter system, so CellsResult.jitter is NaN where the type-II ML fit_jitter returned a small value
   objects: [virgil.orbit_cells.position_cells]
