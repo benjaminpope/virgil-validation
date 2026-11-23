@@ -205,3 +205,32 @@ def test_slow():
     assert invocation["keyword"] == ""
     assert invocation["deselected"] == 1
     assert "not slow" in invocation["argv"]
+
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_a_skip_at_run_time_records_its_reason_and_other_outcomes_record_none(pytester):
+    """scripts/check_skips.py tells a missing file from a check that stopped running by this reason."""
+    pytester.makepyfile(
+        test_run='''
+import pytest
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+@pytest.mark.skipif(True, reason="the data file is missing")
+def test_marked_skip():
+    pass
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_called_skip():
+    pytest.skip("not applicable here")
+
+@pytest.mark.validates("evidence", roots=["self-consistency"], kind="guard")
+def test_passes():
+    pass
+'''
+    )
+    result = pytester.runpytest_subprocess("--evidence", "ev.jsonl")
+    assert result.ret == 0
+    by_test = {r["test"]: r for r in _records(pytester.path / "ev.jsonl")[1:]}
+    assert by_test["test_run.py::test_marked_skip"]["reason"] == "the data file is missing"
+    assert by_test["test_run.py::test_called_skip"]["reason"] == "not applicable here"
+    assert "reason" not in by_test["test_run.py::test_passes"]

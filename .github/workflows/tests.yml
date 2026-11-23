@@ -38,7 +38,7 @@ jobs:
           vlti_ref="$VLTI_REF"
           if [ "${{ github.event_name }}" = schedule ] || [ "${{ github.event_name }}" = workflow_dispatch ]; then ref=main; vlti_ref=main; fi
           echo "Testing virgil at $ref, virgil-vlti at $vlti_ref"
-          uv pip install --python .venv/bin/python -e ".[external,polar-disk]" \
+          uv pip install --python .venv/bin/python -e ".[external,polar-disk,lint]" \
             "virgil-astro[orbits,radio,pipeline] @ git+https://github.com/benjaminpope/virgil@$ref" \
             "virgil-vlti @ git+https://github.com/benjaminpope/virgil-vlti@$vlti_ref"
           if [ "$(uname)" = Linux ] && [ "$(uname -m)" = x86_64 ]; then
@@ -68,13 +68,20 @@ jobs:
         run: |
           bash scripts/setup_external.sh ehtim mpol fouriever orbitize alma
           echo "CASASITECONFIG=$GITHUB_WORKSPACE/.venv-alma/casasiteconfig.py" >> "$GITHUB_ENV"
+      - name: "verify casatasks in .venv-alma (tests/test_radio_trust_casa.py skips when this import fails)"
+        run: .venv-alma/bin/python -c "import casatasks, casatools; print(casatasks.__file__, casatools.version_string())"
       - name: verify casatools in .venv
         run: .venv/bin/python -c "import casatools; tb = casatools.table(); me = casatools.measures(); loc = me.observatory('ALMA'); assert 'm0' in loc; me.done(); print(casatools.version_string())"
       - name: orbit page (generated, git-ignored; the docs-link tests and the Trust page read it)
         run: |
           .venv/bin/python scripts/orbit_gallery.py render --out build/orbit_gallery.md --json docs/assets/orbits.json
           .venv/bin/python scripts/build_orbits_page.py
+      - name: virgil history (tests/test_orbit_population.py reads a commit of it; outside the checkout, which must stay clean)
+        run: |
+          git clone --quiet --filter=blob:none https://github.com/benjaminpope/virgil "$RUNNER_TEMP/virgil"
+          echo "VIRGIL_REPO=$RUNNER_TEMP/virgil" >> "$GITHUB_ENV"
       - name: fast tests
+        id: fast_tests
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"  # tests/test_calibrated_load.py must not skip silently
@@ -85,7 +92,11 @@ jobs:
           memlog=$!
           trap 'kill $memlog 2>/dev/null || true' EXIT
           .venv/bin/python -m pytest -m "not slow" -v --durations=60 --evidence evidence.jsonl
+      - name: no silent skips (fast tests; trust/skip_allowlist.yml, pr)
+        if: always() && steps.fast_tests.outcome != 'skipped'  # a missing evidence file is an error here, not a reason to skip the check
+        run: .venv/bin/python scripts/check_skips.py evidence.jsonl --job pr
       - name: all tests
+        id: all_tests
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"
@@ -96,6 +107,13 @@ jobs:
           memlog=$!
           trap 'kill $memlog 2>/dev/null || true' EXIT
           .venv/bin/python -m pytest -v --durations=60 --evidence evidence.jsonl
+      - name: no silent skips (all tests; trust/skip_allowlist.yml, weekly)
+        if: always() && steps.all_tests.outcome != 'skipped'
+        # Not enforcing yet: the `weekly` list has not been filled from a real weekly run (the full suite
+        # has hit the job timeout). It becomes enforcing (drop this line) once the list is filled from the
+        # first weekly run after the timeout is lifted. The pr check above stays enforcing.
+        continue-on-error: true
+        run: .venv/bin/python scripts/check_skips.py evidence.jsonl --job weekly
       - name: memory log
         # free -m: total used free shared buff/cache available
         if: always()

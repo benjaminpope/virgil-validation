@@ -1,0 +1,89 @@
+# Checks (tests with a `validates` marker) that CI may skip, and why.
+#
+# scripts/check_skips.py reads the evidence file of a CI run and fails when a skipped check is
+# not covered here. A skip is allowed only because
+#   package:  CI does not install a package the check needs,
+#   data:     CI does not have a file the check needs,
+#   campaign: the check reads the output of a campaign that runs on OzSTAR (Tier C); CI does not produce it,
+#   release:  the check is a gate that runs only at a release.
+# Anything else (a skip for a parameter combination, a check disabled by an environment variable,
+# an import that fails in CI) is a gap: fix the check or the environment, do not add it here.
+#
+# Entry: test (an id, or a glob where * matches any run of characters; brackets are literal),
+# because (package | data | campaign | release), why (one line: what is missing and how CI would get it), message
+# (required: text the recorded skip reason must contain, so the check cannot start skipping
+# for another reason unnoticed).
+#
+# pr:     the fast tests (-m "not slow"), on pull requests and pushes, against the pinned virgil
+# weekly: the full suite, weekly and on manual runs, against virgil's main
+
+pr:
+  - test: tests/test_alma_radio.py::test_read_ms_agrees_with_our_reader_on_im_lup_at_stride_1000
+    because: data
+    why: the DSHARP IM Lup measurement set (~/data/alma_imlup/ms/IMLup_continuum.ms, several GB, not downloaded in CI)
+    message: the IM Lup MS is not here
+  - test: tests/test_no_private_ids.py::test_private_collection_id_not_in_tracked_tree
+    because: data
+    why: nothing to check; the hash list PRIVATE_SHA256 is deliberately empty in the public repo (the one L2 collection was cleared 2026-10-13), so this guard skips everywhere until a private id is added; tests/test_no_private_ids.py::test_the_scan_catches_a_listed_id covers the machinery
+    message: no private collection is listed
+  - test: tests/test_trackb_astrometry.py::test_every_comparable_epoch_has_a_valid_covariance
+    because: data
+    why: the Track B ESO binaries (~/data/eso_binaries/trackb) are local; CI has no copy
+    message: Track B data are local
+  - test: tests/test_detection_campaign.py::test_detection_campaign_meets_its_criteria
+    because: campaign
+    why: the committed detection-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign (job detection_mc_v2) at the release commit
+    message: has no criteria_commit
+  - test: tests/test_pull_campaign.py::test_pull_campaign_pulls_are_standard_normal
+    because: campaign
+    why: the committed pull-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_numpyro.py::test_sbc_ranks_are_uniform
+    because: campaign
+    why: the committed SBC summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_v2.py::test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy
+    because: campaign
+    why: the SBC v2 campaign summary does not exist yet (OzSTAR job sbc_v2 has not run); CI cannot produce it
+    message: SBC v2 campaign has not run
+  - test: tests/test_evidence_pin.py::test_committed_evidence_is_pinned_to_one_commit
+    because: release
+    why: a release gate (VALIDATION_RELEASE=1). It fails by design until trust/evidence is refreshed at one virgil commit (today latest.jsonl and virgil.jsonl name two), so CI cannot run it; tests/test_evidence_pin.py covers the machinery
+    message: release gate
+
+# The weekly list is a starting point (the PR list), not yet filled from a real weekly run: the full suite has
+# hit the job timeout. Its check step in tests.yml is therefore not enforcing (continue-on-error); it becomes
+# enforcing once this list is filled from the first weekly run after the timeout is lifted.
+weekly:
+  - test: tests/test_alma_radio.py::test_read_ms_agrees_with_our_reader_on_im_lup_at_stride_1000
+    because: data
+    why: the DSHARP IM Lup measurement set (~/data/alma_imlup/ms/IMLup_continuum.ms, several GB, not downloaded in CI)
+    message: the IM Lup MS is not here
+  - test: tests/test_no_private_ids.py::test_private_collection_id_not_in_tracked_tree
+    because: data
+    why: nothing to check; the hash list PRIVATE_SHA256 is deliberately empty in the public repo (the one L2 collection was cleared 2026-10-13), so this guard skips everywhere until a private id is added; tests/test_no_private_ids.py::test_the_scan_catches_a_listed_id covers the machinery
+    message: no private collection is listed
+  - test: tests/test_trackb_astrometry.py::test_every_comparable_epoch_has_a_valid_covariance
+    because: data
+    why: the Track B ESO binaries (~/data/eso_binaries/trackb) are local; CI has no copy
+    message: Track B data are local
+  - test: tests/test_detection_campaign.py::test_detection_campaign_meets_its_criteria
+    because: campaign
+    why: the committed detection-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign (job detection_mc_v2) at the release commit
+    message: has no criteria_commit
+  - test: tests/test_pull_campaign.py::test_pull_campaign_pulls_are_standard_normal
+    because: campaign
+    why: the committed pull-campaign summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_numpyro.py::test_sbc_ranks_are_uniform
+    because: campaign
+    why: the committed SBC summary predates the criteria-commit scheme; CI cannot rerun the OzSTAR campaign at the release commit
+    message: has no criteria_commit
+  - test: tests/test_sbc_v2.py::test_sbc_v2_ranks_are_uniform_and_the_sampler_healthy
+    because: campaign
+    why: the SBC v2 campaign summary does not exist yet (OzSTAR job sbc_v2 has not run); CI cannot produce it
+    message: SBC v2 campaign has not run
+  - test: tests/test_evidence_pin.py::test_committed_evidence_is_pinned_to_one_commit
+    because: release
+    why: a release gate (VALIDATION_RELEASE=1). It fails by design until trust/evidence is refreshed at one virgil commit (today latest.jsonl and virgil.jsonl name two), so CI cannot run it; tests/test_evidence_pin.py covers the machinery
+    message: release gate
