@@ -186,7 +186,7 @@ def bench_worker(args):
         raise ValueError(task)
 
     n_data = int(pb.data.vis.size + pb.data.phi.size)
-    n_param = int(pb.npix**2)
+    n_param = int(pb.npix**2)   # native: the grid virgil solved is recorded in accuracy (grid_npix) and may differ from the case grid
     out_npz = None
     if images:
         out_npz = args["images_file"]

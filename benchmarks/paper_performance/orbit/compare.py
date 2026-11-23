@@ -5,7 +5,7 @@ cross-code difference of the medians in units of the pooled sd, the sd ratio and
 
 Quantities compared (all invariant to the omega/Omega branch choice): P, M_tot, e, inc, a_mas and the Thiele-Innes
 constants A, B, F, G. The phase is compared as M0 for ``matched`` only through the circular mean resultant length.
-Octofitter's a_mas is derived here with the same Kepler constant as virgil (gate 1 shows the two agree).
+Octofitter's a_mas is derived here with the Kepler constant of this repository (virgil is given a_mas from the same constant; gate 1 checks Octofitter's orbit only).
 
     compare.py --virgil DIR --octofitter DIR --case O-A-sim [--out FILE.json]
     compare.py --pulls ...    (pulls: see ``pulls`` below; needs the per-seed run directories)

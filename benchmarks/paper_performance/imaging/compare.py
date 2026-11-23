@@ -62,7 +62,7 @@ def score_image(case, image, grid=None):
     """Neutral scores of one image: J and its terms (``neutral.image_objective``, eht-imaging's edge convention, the
     OIFITS Fourier sign), the raw flux, and the accuracy against the analytic truth rendered on the image's grid."""
     image = np.asarray(image, float)
-    npix, pixel = image.shape[0], (grid or {}).get("pixel_mas") or make_data.FIELD_MAS / image.shape[0]
+    npix, pixel = image.shape[0], (grid or {}).get("grid_pixel_mas") or make_data.FIELD_MAS / image.shape[0]
     dataset, d, data, _, _ = _case_data(case, npix, pixel)
     t = neutral.image_terms(image, data, sign=-1)
     unit = image / image.sum()

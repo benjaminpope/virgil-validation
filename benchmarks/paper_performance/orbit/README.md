@@ -34,7 +34,7 @@ Plan: `reports/benchmarks-plan.md` section 5. Predeclared settings: `cases.yml`.
 - Level B matched (NUTS) and native (virgil shipped workflow vs `octofit_pigeons`): both codes produce rows; none `unsupported`.
   Octofitter loads the OIFITS files directly (one file per epoch, `use_vis2 = true`), no workaround needed, so the 3 h time-box was not used.
 - Octofitter's Gaussian closure-phase likelihood differs from virgil's von Mises one at large residuals (gate 3); Level B
-  virgil Level B rows should carry `likelihood_mismatch` (the smoke rows do not yet; to be set by the full-run driver).
+  virgil Level B rows carry `likelihood_mismatch` (set by the matrix driver since db0a0c0; 107 flagged rows in run r2). The 2.4e-2 left with independent errors is attributed to von Mises vs wrapped Gaussian; no sine-chord neutral reference confirms it yet.
 
 ## Smoke timings (1 thread, 200 + 200 draws, 4 chains; Level B 30 + 30, 2 chains, native 1 chain; `smoke_rows/`)
 | case, config | code | t_init s | t_cold s | peak MB |

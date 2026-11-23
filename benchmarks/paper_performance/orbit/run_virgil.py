@@ -102,9 +102,12 @@ def make_priors(p_prior, phase):
     return pri
 
 
-def start_values(orbit, plx, phase, t_ref):
+def start_values(orbit, plx, phase, t_ref, p_range=None):
     """Site values (including the angle vectors) at a ``starting_orbits`` orbit, M_tot clipped into its prior."""
     P = float(orbit.period)
+    if p_range is not None:  # the period grid includes the prior bounds, where the Interval transform is infinite: stay strictly inside
+        eps = 1e-6 * (p_range[1] - p_range[0])
+        P = float(onp.clip(P, p_range[0] + eps, p_range[1] - eps))
     M_tot = float(onp.clip(md.KEPLER_K * (float(orbit.a_mas) / plx) ** 3 / P**2, M_TOT_RANGE[0] * 1.001,
                            M_TOT_RANGE[1] * 0.999))
     vals = {"P": P, "M_tot": M_tot, "e": float(onp.clip(float(orbit.ecc), 1e-3, E_MAX * 0.999)),
@@ -317,7 +320,7 @@ def main():
             pos = positions_from(ds[1], t_ref)
             periods = period_grid(ds[1]["epoch"], *info["p_range"])
             starts = starting_orbits(pos, periods, n_best=a.chains)
-            vals = [start_values(o, plx, phase, t_ref) for o, _ in starts]
+            vals = [start_values(o, plx, phase, t_ref, info["p_range"]) for o, _ in starts]
             while len(vals) < a.chains:
                 vals.append(vals[-1])
             init = chain_init_params(model, vals[: a.chains])

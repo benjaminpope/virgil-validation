@@ -402,7 +402,7 @@ def run_one(sp):
 
 
 def write_not_run(sp, reason):
-    for code in (["virgil", sp.other_name] if sp.code == "both" else [sp.code if sp.code == "virgil" else sp.other_name]):
+    for code in (["virgil", sp.other_name] if sp.code == "both" else [sp.code if sp.code.startswith("virgil") else sp.other_name]):
         row = common.new_row(case=sp.case, comparison=sp.comp, code=code, config=sp.label.split("/")[-1],
                              threads=sp.threads, status="not_run", settings={"reason": reason, "task": sp.label})
         common.write_row(row, RAW)
