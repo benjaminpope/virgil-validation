@@ -155,12 +155,14 @@ def _check_four_tel_correlated_quads(raw_diffs, draws):
     assert chi2_4_p < 1e-3
 
 
+@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.validates(
     "virgil.models.ModulatedGaussianRim",
     roots=["pmoired"],
     property="modulation_sense",
     headline="max_abs_dCP_deg",
+    tier="B",
 )
 def test_thin_modulated_gaussian_rim_matches_pmoired_closure_phase_to_1e_4(three_tel_template):
     """When fwhm << diam so (m sigma / r0)^2 < 1e-5 inside the first visibility
@@ -212,11 +214,13 @@ def test_thin_modulated_gaussian_rim_matches_pmoired_closure_phase_to_1e_4(three
     assert dcp < 1e-4
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("scale", [1.0, 2.0])
 @pytest.mark.validates(
     "virgil.simulate.simulate",
     roots=["mathematics", "statistics"],
     headline="abs_cp_pull_mean",
+    tier="B",
 )
 def test_simulate_closure_phase_pulls_are_standard_normal(three_tel_template, scale):
     """Standardized closure-phase residuals centred against independent
@@ -248,11 +252,13 @@ def test_simulate_closure_phase_pulls_are_standard_normal(three_tel_template, sc
     assert ks_p > 1e-3
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("scale", [1.0, 2.0])
 @pytest.mark.validates(
     "virgil.simulate.simulate",
     roots=["mathematics", "statistics"],
     headline="max_signed_corr_error",
+    tier="B",
 )
 def test_simulate_correlated_four_tel_closure_phase_pulls_and_covariance(four_tel_template, scale):
     """On a 4-station array with heterogeneous T3PHIERR and 5 snapshots x 4

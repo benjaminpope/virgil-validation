@@ -214,6 +214,7 @@ def test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution(tmp_pa
     assert cp_err_deg < 1e-7
 
 
+@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.validates(
     "candid",
@@ -222,6 +223,7 @@ def test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution(tmp_pa
     roots=["mathematics"],
     kind="reference",
     headline="candid_nsmear3_chi2r",
+    tier="B",
 )
 def test_candid_nsmear3_matches_coherent_three_endpoint_rule(tmp_path):
     """Pin CANDID's default ``Nsmear = 3`` bandwidth smearing via candid_bridge:
@@ -729,10 +731,12 @@ def _crosscheck_oidata_predictions(d: dict, cvis_fn) -> np.ndarray:
     return np.concatenate([v2_ref.ravel(), cp_ref.ravel()])
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.models.smeared_model",
     roots=["mathematics"],
     headline="oidata_bandwidth_crosscheck_err",
+    tier="B",
 )
 def test_smeared_model_oidata_bandwidth_orbital_binary_and_type_errors(tmp_path):
     """OIData(..., bandwidth=True) reads EFF_BAND, with_bandwidth overrides or

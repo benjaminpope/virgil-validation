@@ -154,7 +154,8 @@ def _run(data, npix=65, pixel_mas=20.0, taper=None, scales=(0, 4), threshold=2e-
     return imager, script.clean(imager, scales_pix=list(scales), mask=mask, gain=0.1, bias=0.6, threshold=threshold, niter=3000, cycleniter=300, cyclefactor=1.0, patch=32, time_limit=0, log=lambda *a: None, **kw)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"], tier="B")
 def test_cotton_schwab_recovers_point_sources():
     """Two point sources on pixel centres: the model puts their fluxes on those pixels (the exact major cycle removes the PSF
     approximation of the minor cycles) and the restored image peaks on them. The flux pins ``ComplexVisData.model``'s scale (the PSF
@@ -175,7 +176,8 @@ def test_cotton_schwab_recovers_point_sources():
     assert res["history"][-1]["peak_residual_jy"] < 2e-3
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.ComplexVisData.dirty_image", roots=["mathematics"], tier="B")
 def test_cotton_schwab_recovers_a_gaussian_with_the_taper():
     """A Gaussian of 5-pixel FWHM through the uv taper: the restored image has the tapered beam, peak and flux of the
     Gaussian convolved with it, and the model carries the source's flux; the loop converges to the threshold, and the beam has the
@@ -399,7 +401,8 @@ def test_virgil_clean_keywords_bind_to_the_installed_signature(monkeypatch):
     assert kw["scales_mas"] == [0.0, 10.0 * args.pixel_mas]
 
 
-@pytest.mark.validates("crosscheck.alma_clean", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("crosscheck.alma_clean", roots=["self-consistency"], kind="guard", tier="B")
 def test_run_writes_npy_pngs_flux_and_dots_for_the_maxent_start_and_the_page(tmp_path):
     """A short ``run`` on small synthetic data writes the restored image, model, residual, PSF and beam as .npy, a PNG of each, and result.json with the model and restored flux and
     ``dots`` (the page and the gate (e) reference read these); clean.json keeps what ``--start`` reads (``model.fits``, ``beam_mas_deg``)."""

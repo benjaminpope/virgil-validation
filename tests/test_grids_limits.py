@@ -94,7 +94,8 @@ def test_nsigma_uses_the_ratio_to_the_true_chi2(true):
     assert abs(float(nsigma(ratio * true, 1.0, ndof)) - want) > 0.5
 
 
-@pytest.mark.validates("virgil.inference.laplace_cov", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.inference.laplace_cov", roots=["mathematics"], tier="B")
 def test_laplace_cov_is_the_inverse_hessian_of_half_chi2(dataset):
     """laplace_cov of the binary at (dra, ddec, flux) against the inverse of
     the Hessian of chi2/2 from our own chi-squared, by central differences."""
@@ -171,7 +172,8 @@ def test_absil_limits_by_root_finding(dataset):
     assert worst < 1e-3
 
 
-@pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"], tier="B")
 @pytest.mark.parametrize("start", [1e-6, 0.5, 0.95], ids=["far-below", "far-above", "saturated"])
 def test_absil_limits_from_a_single_bad_start(dataset, start):
     """The flux axis only sets the start (virgil#191): a single value far

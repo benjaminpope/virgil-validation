@@ -51,7 +51,8 @@ def ehtim_ft(b, scale, u, v, wl):
     return np.array(res["re"]) + 1j * np.array(res["im"])
 
 
-@pytest.mark.validates("virgil.models.Image", roots=["ehtim"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.Image", roots=["ehtim"], tier="B")
 def test_image_visibilities_match_ehtims_transform():
     rng = np.random.default_rng(1)
     u, v = rng.uniform(-80, 80, (2, 40))
@@ -66,7 +67,8 @@ def test_image_visibilities_match_ehtims_transform():
     assert worst < 1e-13
 
 
-@pytest.mark.validates("virgil.models.Image", roots=["ehtim"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.Image", roots=["ehtim"], kind="control", tier="B")
 def test_flipped_images_do_not_match():
     """The orientation is pinned: a flipped image, or the visibility
     without the conjugate, differs."""
@@ -81,7 +83,8 @@ def test_flipped_images_do_not_match():
         assert np.max(np.abs(got - np.conj(ehtim_ft(flipped, PIXEL, u, v, wl)))) > 1e-2
 
 
-@pytest.mark.validates("virgil.likelihood.whitened_residuals", "virgil.models.Image", roots=["ehtim"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", "virgil.models.Image", roots=["ehtim"], tier="B")
 def test_closure_phase_chi2_matches_ehtim(tmp_path):
     """virgil's closure-phase χ² of random images against eht-imaging's
     chisq_cphase on the same three-telescope file (2° closure-phase noise,

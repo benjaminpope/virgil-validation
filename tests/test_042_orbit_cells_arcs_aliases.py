@@ -279,11 +279,13 @@ def test_orbit_cells_ref_flux_box_and_jacobi_quadrature():
     assert mass_err < 1e-15
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "crosscheck.orbit_cells_ref",
     roots=["mathematics"],
     kind="reference",
     headline="gamma_quad_err",
+    tier="B",
 )
 def test_orbit_cells_ref_polar_disc_mc_kde_and_rescalable_quad(tmp_path):
     """Verify rescalable scale quadrature against the analytical Gamma closed form, MC KDE normalization, and polar disc convergence."""
@@ -702,6 +704,7 @@ def test_alias_result_and_band_result_json_roundtrip_and_residuals(tmp_path):
         reloaded.residuals(datasets[:-1])
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.aliases.AliasBandResult",
     "virgil.aliases.AliasResult",
@@ -710,6 +713,7 @@ def test_alias_result_and_band_result_json_roundtrip_and_residuals(tmp_path):
     "virgil.orbit_search.score_orbits",
     roots=["mathematics"],
     headline="max_4ut_chi2_diff",
+    tier="B",
 )
 def test_four_telescope_correlated_closure_phases_across_arcs_summaries_search_and_aliases(tmp_path):
     """4-UT correlated rank-3 closure phases agree across night_motion, night_summaries, score_orbits, and AliasResult."""
@@ -1301,7 +1305,8 @@ def test_score_orbits_shared_flux_and_chromatic_slope_recovery(tmp_path):
     assert float(scores.score[0] - scores.score[1]) > 30.0
 
 
-@pytest.mark.validates("virgil.orbit_search.score_orbits", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.orbit_search.score_orbits", roots=["mathematics"], kind="control", tier="B")
 def test_score_orbits_nonlinear_model_control(tmp_path):
     """score_orbits rejects scene callables that violate flux linearity or zero-flux orbit independence."""
     p = _write_moving_night(
@@ -2106,7 +2111,8 @@ def test_position_cells_blind_eccentric_recovery_bounds_and_boundary_sharing():
     assert total_shared >= 1
 
 
-@pytest.mark.validates("virgil.orbit_cells.position_cells", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.orbit_cells.position_cells", roots=["mathematics"], kind="control", tier="B")
 def test_position_cells_permuted_epochs_control():
     """Permuting sky states across nights destroys single-cell Keplerian evidence in position_cells."""
     times = np.array([0.0, 2.4, 5.8, 11.3, 24.0]) + T0

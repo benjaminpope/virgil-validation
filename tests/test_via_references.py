@@ -1053,11 +1053,13 @@ def test_virgil_bridge_mpol_bijection_parameter_map_and_exact_log_likelihood():
     assert nll_err < 1e-10
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil_bridge.mpol",
     roots=["mathematics"],
     kind="control",
     headline="min_wrong_map_vis_err",
+    tier="B",
 )
 def test_control_virgil_bridge_mpol_rejects_missing_half_pixel_or_unflipped_axes():
     """Dropping the ``-pixel_mas / 2`` half-pixel shift or omitting the ``[::-1, ::-1]`` axis
@@ -1180,11 +1182,13 @@ def test_mpol_losses_match_analytic_entropy_tv_tsv_and_central_differences():
 # ------------------------------------------------ 13. virgil_bridge.alma
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil_bridge.alma",
     roots=["mathematics"],
     kind="reference",
     headline="mpol_entropy_spatial_rel_err",
+    tier="B",
 )
 def test_virgil_bridge_alma_lambda_scales_ring_geometry_and_mpol_entropy():
     """``lam_f_equivalent`` gives ``MaxEntropy`` the exact stationary-point gradient pull of

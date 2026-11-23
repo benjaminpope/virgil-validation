@@ -169,9 +169,11 @@ def _four_ut_left_null_and_live_modes(d):
     return np.array(null_modes), np.array(live_modes)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.gains.closure_offsets", "virgil.oidata.OIData.cp_noise",
     roots=["mathematics"], headline="abs_dloglike_null_unscaled",
+    tier="B",
 )
 def test_offsets_outside_the_span_of_T_do_not_enter_unscaled_and_pin_scaled(obs):
     """With four telescopes, n with nᵀ T = 0 is the dependent combination of

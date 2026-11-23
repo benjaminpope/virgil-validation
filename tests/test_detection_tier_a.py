@@ -515,10 +515,12 @@ def test_detection_mc_concatenate_and_npz_roundtrip(tmp_path):
         det.DetectionMC.load(bad_npz)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
     roots=["mathematics"],
     headline="max_rel_ddelta_chi2",
+    tier="B",
 )
 def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path):
     """On both noiseless and noisy (bootstrap_null sign-flip) 3-telescope VLTI
@@ -1009,12 +1011,14 @@ def _tiny_statistics_only_runs(tmp_path):
     return run(False, 1), run(True, 2)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.DetectionMC",
     "virgil.detection.injection_recovery",
     roots=["mathematics"],
     kind="finding",
     headline="max_snr_fap_on_nan_draws",
+    tier="B",
 )
 @pytest.mark.xfail(
     strict=True,

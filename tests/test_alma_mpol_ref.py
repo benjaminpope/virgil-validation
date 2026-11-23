@@ -116,7 +116,8 @@ def make_checkpoint(path, truth, npix, seed=0, spike=None, forward=False):
 # ------------------------------------------------------------------ export_checkpoint
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="reference", tier="B")
 def test_export_checkpoint_round_trips_a_saved_net(tmp_path):
     """Every parameter of a ``torch.save``d random ``Net`` comes back exactly, the fixed observation is
     inserted as 0, and the per-observation sigma means are ``analyze_scale_factors.py``'s averages. Run at
@@ -142,7 +143,8 @@ def test_export_checkpoint_round_trips_a_saved_net(tmp_path):
     record("export_checkpoint flux (Jy) of the random image", res["flux_jy"])
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 def test_exported_image_axes_are_the_sky_the_forward_model_sees(tmp_path):
     """A base-cube spike at packed (row 3, column 5) is, in the export, the brightest pixel at
     (l, m) = (``l_east_arcsec[col]``, ``m_north_arcsec[row]``), East left and North up. The axes are tied
@@ -234,9 +236,10 @@ def reference(tmp_path_factory):
 # ------------------------------------------------------------------ objective_full
 
 
+@pytest.mark.slow
 @needs_subsample
 @needs_asdf
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 def test_objective_full_equals_the_one_batch_objective(reference):
     """vv#146's ``objective`` (the example's ``forward``, ``adjust_*`` and ``neg_log_likelihood_avg`` on the
     whole sample at once) and ``objective_full`` (batches of 7,000, MPoL's per-batch ``log_likelihood``
@@ -304,9 +307,10 @@ def test_asdf_vs_npz_agrees_on_an_export_of_the_subsample(reference):
     record("asdf_vs_npz worst |du| (lambda), synthetic asdf", res["worst"]["u_max_abs"])
 
 
+@pytest.mark.slow
 @needs_subsample
 @needs_asdf
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 def test_asdf_vs_npz_reports_a_conjugation_and_does_not_fix_it(reference):
     """The same export with V conjugated: the visibilities differ by up to twice the amplitude and
     ``vis_conj_max_abs`` is zero (the signature of a conjugation); u and v are untouched."""
@@ -316,9 +320,10 @@ def test_asdf_vs_npz_reports_a_conjugation_and_does_not_fix_it(reference):
         assert r["vis_conj_max_abs"] < 1e-12 and r["u_max_rel"] < 1e-12 and r["v_max_abs"] < 1e-6
 
 
+@pytest.mark.slow
 @needs_subsample
 @needs_asdf
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control")
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="control", tier="B")
 def test_asdf_vs_npz_summary_flags_a_missing_ddid(reference, tmp_path):
     """With one ddid's npz absent, ``worst`` lists it in ``n_mismatch_ddids`` instead of looking clean."""
     import shutil
