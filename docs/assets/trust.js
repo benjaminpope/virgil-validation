@@ -16,6 +16,7 @@
     function select(id) {
       var n = nodes[id];
       if (!n) return;
+      var fold = document.getElementById("parts-list"); if (fold) fold.open = true;  // the detail panel sits in this fold
       document.querySelectorAll(".vt-sel, .vt-up, .vt-down").forEach(function (el) { el.classList.remove("vt-sel", "vt-up", "vt-down"); });
       document.querySelectorAll('[data-node="' + CSS.escape(id) + '"]').forEach(function (el) { el.classList.add("vt-sel"); });
       n.depends.forEach(function (d) { document.querySelectorAll('[data-node="' + CSS.escape(d) + '"]').forEach(function (el) { el.classList.add("vt-down"); }); });
@@ -46,7 +47,10 @@
       panel.innerHTML = html;
     }
     document.querySelectorAll(".vt [data-node]").forEach(function (el) {
-      el.addEventListener("click", function () { select(el.getAttribute("data-node")); });
+      el.addEventListener("click", function () {
+        select(el.getAttribute("data-node"));
+        if (!el.closest(".vt-map")) panel.scrollIntoView({block: "nearest"});  // a chain step: show its panel in the fold
+      });
     });
   }
   if (typeof document$ !== "undefined") document$.subscribe(init); else document.addEventListener("DOMContentLoaded", init);
