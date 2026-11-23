@@ -51,7 +51,8 @@ def test_embedded_cone_data_is_json_and_closed_under_depends():
     names = {k: [data["order"][i] for i in v] for k, v in data["cones"].items()}
     assert names == {"a": ["a"], "b": ["b", "a"], "p": ["b", "a"]}
     assert data["pipelines"]["p"]["steps"] == ["b"]
-    assert set(data["letters"]) >= {"mathematics", "standards"}
+    assert data["root_class"]["mathematics"] == "mathematics" and data["root_class"]["standards"] == "standards"
+    assert data["lens"]["b"]["chain"] == [data["order"].index(n) for n in ("b", "a")]
+    assert data["lens"]["a"]["ver"] == [0, []] and data["blocks"] == [0, 0]
     assert data["short"]["verified"] == "verified"
-    assert set(data["tag"]) == set(data["short"])  # a short word for every verdict, for the boxes
-    assert all(len(t) <= 20 for t in data["tag"].values())  # it must fit a box
+

@@ -172,9 +172,9 @@ def _skyline(model, base="", roots=ROOT / "trust" / "roots.yml"):
 
 def _cone_panel():
     """The cone panel's frame; docs/assets/trust.js fills it. Without JavaScript only the note shows."""
-    return ('<div class="vt-cone" id="vt-cone"><h3 id="vt-cone-h">The cone of one part or pipeline</h3>'
-            '<p class="vt-muted vt-cone-nojs">Select a square above, or a pipeline, and this panel shows everything it relies on, '
-            "down to the ground, with a sentence that says how far each of those parts is verified. "
+    return ('<div class="vt-cone" id="vt-cone"><h3 id="vt-cone-h">What a part rests on</h3>'
+            '<p class="vt-muted vt-cone-nojs">Select a square above, or a pipeline, and the skyline lights everything it relies on, down to the ground; '
+            "this panel then names the worst part beneath it and what would fix it. "
             "That needs JavaScript. Without it, each square links to the page that checks the part, "
             "and the list below holds every part.</p></div>")
 
@@ -475,7 +475,7 @@ def render(model, base=""):
     import trust_cone  # scripts/ is on sys.path once trust.py is loaded
 
     cone = trust_cone.embed(model, yaml.safe_load(open(ROOT / "trust" / "roots.yml")), ROOT_NAMES, ROOT_ALIAS)
-    cone["icons"] = ICON
+    cone["icons"], cone["colours"] = ICON, COLOURS
     for p in cone["pipelines"].values():
         p["page"] = base + p["page"] if p["page"] else None
     data = json.dumps({"nodes": slim, "verdicts": {k: list(v) for k, v in VERDICTS.items()}, "roots": {**trust_cone.DEFAULT_ROOT_NAMES, **ROOT_NAMES}, "cone": cone},

@@ -11,14 +11,14 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 import trust_cone as tc  # noqa: E402
 
 
-def node(name, verdict, depends=(), depth=0, strong=(), findings=(), because=()):
-    return {"id": name, "label": name, "verdict": verdict, "depends": list(depends), "depth": depth,
+def node(name, verdict, depends=(), depth=0, strong=(), findings=(), because=(), layer="models"):
+    return {"id": name, "label": name, "layer": layer, "verdict": verdict, "depends": list(depends), "depth": depth,
             "strong": list(strong), "weak": [], "findings": list(findings),
             "because": [{"id": b, "findings": [], "status": "unchecked"} for b in because]}
 
 
 NODES = [
-    node("ground", "verified", depth=0, strong=["mathematics", "standards"]),
+    node("ground", "verified", depth=0, strong=["mathematics", "standards"], layer="data"),
     node("ground2", "unchecked", depth=0),
     node("mid", "verified", ["ground"], 1, ["pmoired"]),
     node("buggy", "bug", ["ground2"], 1, ["mathematics"], ["F27"]),
@@ -140,7 +140,8 @@ def test_embed_carries_every_cone_and_sentence_once():
     idx = lambda ids: [e["order"][i] for i in ids]  # noqa: E731
     assert idx(e["cones"]["top"])[0] == "top" and set(idx(e["cones"]["top"])) == set(tc.cone(MODEL, "top")["nodes"])
     assert idx(e["cones"]["pipe"])[:2] == ["mid", "buggy"]  # a pipeline's steps come first, in order
-    assert e["letters"] == {"mathematics": "M", "frank": "C", "frap": "C"}
+    assert e["root_class"] == {"mathematics": "mathematics", "frank": "other-peoples-code", "self-consistency": "self-consistency",
+                               "frap": "other-peoples-code"}
     assert e["pipelines"]["pipe"]["steps"] == ["mid", "buggy", "gone"]
     assert e["sentences"]["top"] == tc.sentence(MODEL, "top", NAMES)
 
@@ -182,3 +183,80 @@ def test_a_golden_root_has_words_even_when_the_caller_gives_none():
 def test_a_pipeline_shadowed_by_a_part_is_not_embedded():
     e = tc.embed(MODEL, {"roots": []}, NAMES)
     assert "top" not in e["pipelines"] and "pipe" in e["pipelines"]
+
+
+# ---- the lens: blocks, critical path, longest chain, fix list
+
+
+def test_blocks_counts_the_not_verified_parts_that_rely_on_a_part():
+    b = tc.blocks(MODEL)
+    assert b["ground2"] == 2   # buggy and top rely on it and are not verified
+    assert b["ground"] == 2    # mid is verified and does not count; top and viamix are not verified
+    assert b["top"] == 0 and b["loneliest"] == 0
+    assert b["a"] == b["b"] == 1  # a cycle ends the walk, and a part never blocks itself
+
+
+def test_critical_path_runs_to_the_worst_part_beneath_the_selection():
+    # buggy (a known bug) is worse than ground2 (not checked), though ground2 blocks more
+    assert tc.critical_path(MODEL, "top") == ["top", "buggy"]
+    # the selection is never its own target: a pipeline's steps are the top, so the path starts at a step
+    assert tc.critical_path(MODEL, "pipe") == ["buggy", "ground2"]
+
+
+def test_a_verified_cone_has_no_critical_path_and_nothing_to_fix():
+    assert tc.critical_path(MODEL, "mid") == [] and tc.fix_list(MODEL, "mid") == []
+    assert tc.critical_path(MODEL, "ground") == [] and tc.fix_list(MODEL, "ground") == []
+
+
+def test_critical_path_ties_go_to_the_part_that_blocks_more_then_to_the_id():
+    ns = [node("r", "relies-unverified", ["x", "y", "z"], 1), node("x", "unchecked"), node("y", "unchecked"),
+          node("z", "unchecked"), node("p", "relies-unverified", ["y"], 1)]
+    m = {"nodes": {n["id"]: n for n in ns}, "pipelines": []}
+    assert tc.critical_path(m, "r") == ["r", "y"]   # y blocks r and p; x and z only r
+    ns[-1]["depends"] = []
+    assert tc.critical_path(m, "r") == ["r", "x"]   # equal blocks: the smaller id
+
+
+def test_critical_path_is_the_shortest_chain():
+    ns = [node("t", "relies-unverified", ["m", "w"], 3), node("m", "relies-unverified", ["w"], 2), node("w", "bug", ["g"], 1),
+          node("g", "verified", depth=0)]
+    ns[0]["depends"] = ["m", "w"]
+    m = {"nodes": {n["id"]: n for n in ns}, "pipelines": []}
+    assert tc.critical_path(m, "t") == ["t", "w"]   # directly, not by way of m
+
+
+def test_longest_chain_follows_the_deepest_part_to_the_ground():
+    assert tc.longest_chain(MODEL, "top") == ["top", "buggy", "ground2"]  # mid and buggy tie on depth: the smaller id
+    assert tc.longest_chain(MODEL, "pipe") == ["buggy", "ground2"]        # from the deepest step
+    assert tc.longest_chain(MODEL, "ground") == ["ground"]
+    assert tc.longest_chain(MODEL, "a") == ["a", "b"]                     # a cycle ends it
+
+
+def test_fix_list_orders_by_what_each_part_blocks_and_drops_a_relies_only_selection():
+    assert tc.fix_list(MODEL, "top") == [("ground2", ""), ("buggy", "")]
+    assert tc.fix_list(MODEL, "loneliest") == [("loneliest", "this part")]  # its own problem stays in its list
+    assert tc.fix_list(MODEL, "buggy")[0] == ("ground2", "")                 # a bug of its own is listed too
+    assert ("buggy", "this part") in tc.fix_list(MODEL, "buggy")
+
+
+def test_fix_list_names_the_reference_parts_a_part_or_pipeline_goes_through():
+    assert tc.fix_list(MODEL, "viaonly") == [("ground2", "via"), ("buggy", "via")]
+    assert tc.fix_list(MODEL, "viapipe") == [("ground2", "via")]  # mid is a step, so already in its cone
+
+
+def test_verified_beneath_is_a_count_by_layer_without_the_selection():
+    assert tc.verified_beneath(MODEL, "top") == (2, [("data", 1), ("models", 1)])
+    assert tc.verified_beneath(MODEL, "ground") == (0, [])
+    assert tc.verified_beneath(MODEL, "pipe")[0] == 2  # mid and ground
+
+
+def test_embed_carries_the_lens_as_indices():
+    e = tc.embed(MODEL, {"roots": []}, NAMES)
+    name = lambda i: e["order"][i]  # noqa: E731
+    lens = e["lens"]["top"]
+    assert [name(i) for i in lens["crit"]] == ["top", "buggy"] and [name(i) for i in lens["chain"]] == ["top", "buggy", "ground2"]
+    assert [(name(i), n) for i, n in lens["fix"]] == [("ground2", 0), ("buggy", 0)]
+    assert lens["ver"] == [2, [["data", 1], ["models", 1]]]
+    assert [e["blocks"][e["order"].index(n)] for n in ("ground2", "top")] == [2, 0]
+    assert [(name(i), n) for i, n in e["lens"]["viaonly"]["fix"]] == [("ground2", 2), ("buggy", 2)]
+    assert set(e["lens"]) == set(e["cones"])

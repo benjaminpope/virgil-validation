@@ -89,12 +89,14 @@
 .vt-fold > .vt-findings { margin-top: .4rem; }
 .vt-failelse { display: inline-block; margin-left: .4em; padding: 0 .4em; font-size: .65rem; border: 1px solid #b0003a; border-radius: 3px; color: #b0003a; }
 .vt-failelse-banner { border-left: 3px solid #b0003a; padding: .4rem .8rem; margin: .6rem 0; font-size: .8rem; }
-/* The cone panel (docs/assets/trust.js draws it from the data scripts/trust_cone.py embeds) */
+/* The lens: the selection lights its cone on the skyline; the panel under the figure says what it means
+   (docs/assets/trust.js draws it from the data scripts/trust_cone.py embeds) */
 .vt { --vt-conv: 204, 121, 167; }
 .vt-convention, .vt-sw.vt-convention { background: rgba(var(--vt-conv), .28); }
 .vt-cone { margin: .8rem 0; padding: .7rem .9rem; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 6px; scroll-margin-top: 4rem; }
 .vt-cone h3 { margin: 0 0 .4rem; }
 .vt-cone h4 { margin: .3rem 0; }
+.vt-cone h5 { margin: .9rem 0 .3rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--md-default-fg-color--light); }
 .vt-cone-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; font-size: .8rem; }
 .vt-cone-bar label { flex: 1 1 22rem; min-width: 0; display: flex; align-items: center; gap: .5rem; }
 .vt-cone-pick { flex: 1 1 auto; min-width: 0; font: inherit; font-size: .8rem; max-width: 100%; color: inherit; background: var(--md-default-bg-color); border: 1px solid var(--md-default-fg-color--lighter); border-radius: 4px; padding: .15rem .3rem; }
@@ -102,37 +104,44 @@
 .vt-cone-clear:hover, .vt-cone-jump:hover, .vt-cone-clear:focus-visible, .vt-cone-jump:focus-visible { border-color: var(--md-default-fg-color); }
 .vt-cone-live { font-size: .85rem; margin-top: .3rem; }
 .vt-cone-live p { margin: .3rem 0; }
-.vt-cone-key { margin: .4rem 0; }
-.vt-cone-key .vt-legend { margin-bottom: .2rem; }
-.vt-key { white-space: nowrap; }
-.vt-cone-scroll { overflow-x: auto; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 6px; padding: .3rem; margin-top: .4rem; }
-.vt-cone-scroll .vt-cone-svg { display: block; margin: 0 auto; font-family: inherit; max-width: none; }
-.vt-cone-edges path { fill: none; stroke: currentColor; stroke-opacity: .3; stroke-width: 1; }
-.vt-cone-svg text { fill: currentColor; font-size: 10px; }
-.vt-cone-svg .l1 { font-size: 10.5px; font-weight: 600; }
-.vt-cone-svg .l2, .vt-cone-svg .l3 { font-size: 9.5px; opacity: .78; }
-.vt-cone-svg .vt-cone-d { font-size: 9.5px; opacity: .6; }
-.vt-cone-svg .bx { fill: var(--md-default-bg-color); stroke: currentColor; stroke-opacity: .35; stroke-width: 1; }
-.vt-cone-svg a { cursor: pointer; text-decoration: none; color: var(--md-default-fg-color); }
-.vt-cone-svg a:hover, .vt-cone-svg a:focus, .vt-cone-svg a:visited { color: var(--md-default-fg-color); text-decoration: none; }
-.vt-cone-svg a text, .vt-cone-svg a tspan { text-decoration: none; fill: currentColor; }
-.vt-cone-svg a:hover .bx, .vt-cone-svg a:focus-visible .bx { stroke-opacity: 1; stroke-width: 1.8; }
-.vt-cone-svg a:hover .l1, .vt-cone-svg a:focus-visible .l1 { text-decoration: underline; }
-.vt-cone-svg a:focus-visible { outline: none; }
-.vt-cone-svg a.sel .bx { stroke-opacity: 1; stroke-width: 2.4; }
-.vt-cone-svg .vt-cone-pipe .bx { stroke-opacity: .7; stroke-width: 1.5; }
-.vt-cone-svg .vt-cone-pipe text { text-anchor: middle; font-size: 11px; font-weight: 600; }
-.vt-cone-ground { fill: currentColor; fill-opacity: .7; }
-.vt-cone-svg .k-verified { fill: rgb(var(--vt-ok)); } .vt-cone-svg .k-relies { fill: rgb(var(--vt-relies)); }
-.vt-cone-svg .k-relies-unverified { fill: rgb(var(--vt-ru)); } .vt-cone-svg .k-partly { fill: rgb(var(--vt-partly)); }
-.vt-cone-svg .k-bug { fill: rgb(var(--vt-bug)); } .vt-cone-svg .k-failing { fill: rgb(var(--vt-fail)); }
-.vt-cone-svg .k-convention { fill: rgb(var(--vt-conv)); } .vt-cone-svg .k-unchecked { fill: rgb(var(--vt-none)); }
-/* selecting a part marks its cone on the skyline */
-.vt-sky.vt-dim [data-node]:not(.vt-in) { opacity: .28; }
-.vt-sky [data-node].vt-in rect.sq { stroke-opacity: .9; }
+.vt-lens-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 1.5rem; }
+@media (max-width: 760px) { .vt-lens-grid { grid-template-columns: minmax(0, 1fr); } }
+.vt-path { font-size: .78rem; color: var(--md-default-fg-color--light); word-break: break-word; }
+.vt-path svg { display: inline-block; vertical-align: middle; margin-right: .3rem; }
+.vt-fix { list-style: none; margin: 0; padding: 0; }
+.vt-fix li { margin: 0 0 .2rem; }
+.vt-fix a { display: grid; grid-template-columns: 1.4rem 1fr auto; gap: .1rem .5rem; align-items: start; padding: .25rem .4rem; border: 1px solid transparent; border-radius: 6px; color: inherit; text-decoration: none; }
+.vt-fix a:hover, .vt-fix a:focus-visible { border-color: var(--md-default-fg-color--lighter); outline: none; }
+.vt-fix .vt-sw { margin: 0; }
+.vt-fx-l { word-break: break-word; }
+.vt-fx-w { font-size: .72rem; color: var(--md-default-fg-color--light); }
+.vt-fx-n { font-size: .72rem; color: var(--md-default-fg-color--light); white-space: nowrap; text-align: right; }
+.vt-fix .vt-fx-w:last-child { grid-column: 2; }
+.vt-fine { border: 1px dashed var(--md-default-fg-color--lighter); border-radius: 6px; padding: .4rem .6rem; color: var(--md-default-fg-color--light); }
+.vt-fine span { font-size: .78rem; }
+/* on the skyline: the cone at full strength, the rest dimmed; paths drawn over the squares */
+.vt-sky.vt-dim [data-node]:not(.vt-in) { opacity: .15; }
+.vt-sky [data-node].vt-in rect.sq { stroke-opacity: .75; }
 .vt-sky [data-node].vt-sel rect.sq { stroke-opacity: 1; stroke-width: 2.4; }
 .vt-sky g[data-node] { cursor: pointer; }
 .vt-sky g[data-node]:hover rect.sq, .vt-sky g[data-node]:focus-visible rect.sq { stroke-opacity: 1; stroke-width: 1.6; }
 .vt-sky g[data-node]:focus-visible { outline: none; }
 .vt-sky [data-node].vt-sel { color: var(--md-default-fg-color); }
-.vt-cone-svg .vt-cone-span { stroke: currentColor; stroke-opacity: .25; stroke-width: 2; }
+.vt-lens { pointer-events: none; }
+.vt-lens path { fill: none; stroke-linecap: round; }
+.vt-lens .vt-halo { stroke: var(--md-default-bg-color); stroke-width: 5.5; }
+.vt-lens .vt-long { stroke: currentColor; stroke-width: 2; stroke-opacity: .85; stroke-dasharray: 1 4; }
+.vt-lens .vt-crit { stroke-width: 3; }
+.vt-lens .vt-target { fill: none; stroke-width: 2.2; }
+.vt-lens .vt-hov path { stroke: currentColor; stroke-width: 1.6; stroke-opacity: .9; }
+.vt-sky.vt-dim g[data-c]:not(.vt-hit) { opacity: .35; }
+.vt-sky .vt-fc { font-weight: 700; fill: currentColor; }
+.vt-sky .vt-fa { opacity: .75; }
+/* the theme dresses every <details> as a blue admonition; the fix list's fold is a plain disclosure */
+.vt-cone details.vt-fold { background: none; border: 0; box-shadow: none; padding: 0; margin: .3rem 0; }
+.vt-cone details.vt-fold > summary { display: list-item; list-style: disclosure-closed inside; background: none; border: 0; padding: .2rem 0; margin: 0; font-size: .8rem; cursor: pointer; color: inherit; }
+.vt-cone details.vt-fold[open] > summary { list-style-type: disclosure-open; }
+.vt-cone details.vt-fold > summary::before, .vt-cone details.vt-fold > summary::after { content: none; display: none; }
+.vt-cone ul.vt-fix, .vt-cone ul.vt-fix li { list-style: none; margin-left: 0; padding-left: 0; }
+.vt-cone ul.vt-fix li { margin-bottom: .2rem; }
+.vt-cone ul.vt-fix li::marker { content: none; }
