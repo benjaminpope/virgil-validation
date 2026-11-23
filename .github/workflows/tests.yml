@@ -12,7 +12,7 @@ env:
 
   # The virgil commit that pull requests and pushes test against. Bump it
   # deliberately; the weekly and manual runs test virgil's main instead.
-  VIRGIL_REF: c2be8278a4d6549282b3cf199852101929df0462  # virgil 0.4.2 release candidate (virgil#722)
+  VIRGIL_REF: 25394917266d7c37b7a0dc0df5e9c68b3af00f31  # virgil main at 2026-11-24 (merge of virgil#769; includes #733, #750, #770)
 
   # The virgil-vlti commit (public; the loader behind tests/test_calibrated_load.py,
   # which skips without it). Bump deliberately; weekly and manual runs use main.

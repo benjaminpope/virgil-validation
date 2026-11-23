@@ -2004,32 +2004,67 @@ def test_scale_equivariant_conditional_mle_invariance():
     assert all(abs(p - orbit[0]) < 0.08 for p in recovered_periods)
 
 
-@pytest.mark.validates(
-    "virgil.orbit_cells.fit_jitter",
-    roots=["mathematics"],
-    headline="jitter_err_mas",
-)
-def test_fit_jitter_type_ii_ml_recovers_extra_astrometric_scatter():
-    """Type-II ML fit_jitter stays small on zero-scatter circular data and rises on injected scatter."""
+def _jitter_sims():
+    """Zero-scatter and 0.35 mas-per-axis-scatter circular systems (the type-II ML test's simulation, kept)."""
     times = np.array([0.0, 2.0, 5.0, 9.0, 14.0, 19.0, 24.0]) + T0
     orbit = (12.0, 0.0, 0.0, 45.0, 0.0, 105.0, 9.0)
     dom = voc.PeriodDomain(p_cut=7.0, p_max=17.0, overridden=True)
     op = voc.outlier_prior(dom, a_range=(2.0, 20.0), e_max=0.8, flux_floor=1e-3, n=2048, seed=4)
-
-    sums_clean = _make_synthetic_summaries(times, orbit, pos_sigma=0.05, extra_scatter_mas=0.0, rng_seed=21)
-    bk_clean = voc.outlier_log_density(sums_clean, op)
-    jit_clean = voc.fit_jitter(sums_clean, bk_clean, dom, (times[0], times[-1]), n_grid=17, n_best=3)
-
     injected = 0.35
-    sums_noisy = _make_synthetic_summaries(times, orbit, pos_sigma=0.05, extra_scatter_mas=injected, rng_seed=21)
-    bk_noisy = voc.outlier_log_density(sums_noisy, op)
-    jit_noisy = voc.fit_jitter(sums_noisy, bk_noisy, dom, (times[0], times[-1]), n_grid=17, n_best=3)
+    clean = _make_synthetic_summaries(times, orbit, pos_sigma=0.05, extra_scatter_mas=0.0, rng_seed=21)
+    noisy = _make_synthetic_summaries(times, orbit, pos_sigma=0.05, extra_scatter_mas=injected, rng_seed=21)
+    return times, dom, op, injected, clean, noisy
 
-    jitter_err_mas = abs(float(jit_noisy) - injected)
-    record("jitter_err_mas", jitter_err_mas)
+
+@pytest.mark.validates(
+    "virgil.orbit_cells.reference_jitter",
+    roots=["mathematics"],
+)
+def test_reference_jitter_recovers_extra_astrometric_scatter():
+    """virgil#733 replaced the type-II ML ``fit_jitter`` by ``reference_jitter``, a robust median excess of the
+    nights' scatter about position-only seed orbits over the quoted errors. Same simulation and tolerances as the
+    old test: small on zero-scatter circular data, and within 0.12..0.65 mas of the injected 0.35 mas, more than
+    2.5x the clean value, on scattered data."""
+    times, dom, _, injected, clean, noisy = _jitter_sims()
+    t_ab = (times[0], times[-1])
+    jit_clean = float(voc.reference_jitter(clean, dom, t_ab))
+    jit_noisy = float(voc.reference_jitter(noisy, dom, t_ab))
     assert jit_clean < 0.08
     assert jit_noisy > 2.5 * jit_clean
     assert 0.12 <= jit_noisy <= 0.65
+
+
+@pytest.mark.slow
+@pytest.mark.validates(
+    "virgil.orbit_cells.position_cells",
+    "virgil.orbit_cells.CellsResult",
+    roots=["mathematics"],
+    headline="marginal_jitter_err_mas",
+    tier="B",
+)
+def test_position_cells_marginal_jitter_recovers_extra_astrometric_scatter():
+    """With ``jitter=None`` ``position_cells`` marginalizes one between-night sigma_J over 1 uas..3 mas
+    (virgil#733); ``CellsResult.jitter`` is its posterior median. On the scattered system it must recover the
+    injected 0.35 mas inside the old type-II ML band 0.12..0.65 mas, with no failed cell. (Not tested on the
+    zero-scatter system: its sharp posterior leaves the true N = 2 cell flagged unreliable by the importance
+    sampler, with ``jitter=0`` as well as ``None``, so ``CellsResult.jitter`` is NaN there; the clean arm is in
+    test_reference_jitter_recovers_extra_astrometric_scatter.)"""
+    _, dom, op, injected, _, noisy = _jitter_sims()
+    bk = voc.outlier_log_density(noisy, op)
+    res = voc.position_cells(
+        noisy,
+        dom,
+        jax.random.PRNGKey(3),
+        log_outlier=bk,
+        outlier=op,
+        n_is=400,
+        a_range=(2.0, 20.0),
+        e_max=0.8,
+        flux_floor=1e-3,
+    )
+    assert not np.any(res.failed)
+    record("marginal_jitter_err_mas", abs(float(res.jitter) - injected))
+    assert 0.12 <= float(res.jitter) <= 0.65
 
 
 @pytest.mark.validates(

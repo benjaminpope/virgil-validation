@@ -1745,8 +1745,19 @@ def test_kkt_report_bounded_linear_image_projected_gradient_and_active_zeros(tmp
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
+    kind="finding",
     headline="nonstat_fixed_flux_kkt_err",
     tier="B",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F34: kkt_report on an lm fit measures a Uniform nuisance in the unconstrained fitted coordinate "
+        "(env.flux z = -1.337) but projects it with the Uniform's value-space bounds (0.01, 1.0), so a stationary "
+        "optimum reports grad_norm = |z| + 0.01 = 1.347 and converged is False from a start 0.2% off in flux "
+        "(grad_rel 0.166 against NUISANCE_TOL 1e-3); the same test passed at the 0.4.2 RC pin, where the objective was always boxed"
+    ),
 )
 def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     n, scale = 10, 0.65
@@ -1958,14 +1969,14 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
         abs(nuis_grad_rel - want_nuis_pert["grad_rel"]),
     )
 
-    # Also pin virgil 0.4.2's boxed=True +1/F value-space evaluation on LogUniform (F30 xfail below)
+    # F30 is fixed (virgil#750): a LogUniform nuisance of an lm fit is measured in its fitted flat ln F
     priors_lu = vi.image_priors(start) | {"env.flux": dist.LogUniform(1e-2, 1.0)}
     done_lu = vfit.fit(start, priors_lu, data, reg, init=start_vals, max_steps=2000, gtol=1e-13)
     f_lu = float(done_lu.values["env.flux"])
     g_ll_lu = _flux_neg_loglike_grad(done_lu.values["env.log_brightness"], f_lu)
     rep_lu_far = vfit.kkt_report(done_lu, priors_lu, data, reg, start=start_vals)
     assert abs(g_ll_lu) < 1e-3  # stationary in flat ln F
-    assert abs(float(rep_lu_far["nuisances"]["env.flux"]["grad_norm"]) - abs(g_ll_lu + 1.0 / f_lu)) < 1e-11
+    assert float(rep_lu_far["nuisances"]["env.flux"]["grad_norm"]) < 1e-3  # no +1/F: stationary in its fitted coordinate
 
     record("nonstat_fixed_flux_kkt_err", nonstat_fixed_err)
     record("softmax_start_kkt_rel_err", kkt_rel_start_err)
@@ -1981,18 +1992,8 @@ def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
-    kind="finding",
     headline="loguniform_nuis_grad_rel",
     tier="B",
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F30: kkt_report constructs _Objective(..., boxed=True) on flat-coordinate LogUniform "
-        "parameters, adding +1/F to d(-loglike)/dF so a stationary gtol=1e-13 fit() optimum "
-        "has grad_norm ~ 1/F and fails NUISANCE_TOL from a nearby start"
-    ),
 )
 def test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start(tmp_path):
     n, scale = 10, 0.65

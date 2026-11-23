@@ -197,9 +197,10 @@
   referee: mathematics (interior gtol=1e-13 fit() optimum on LogUniform(1e-2, 1.0) satisfies |d(-ln L)/dF| ~ 1.1e-4 in fitted flat ln F, matching Uniform(1e-2, 1.0) where grad_norm = 1.1e-4 and grad_rel = 9.4e-8 < NUISANCE_TOL; kkt_report sets boxed=True, adding -d(ln p)/dF = +1/F = 4.63 so grad_rel = 3.87e-3 > NUISANCE_TOL = 1e-3 and converged = False from a 5% nearby start)
   kind: bug (kkt_report sets boxed=True on flat-coordinate LogUniform parameters, adding +1/F to nuisance gradients at stationary fit() optima)
   evidence:
-    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate
     - tests/test_042_scenes_starlet_kkt.py::test_f30_kkt_report_loguniform_nuisance_stationary_from_nearby_start
-  status: open
+  decision: 'fixed in virgil#750 (625f9161, "kkt_report boxes each parameter separately": the objective is boxed only for an L-BFGS-B fit, so a LogUniform nuisance of an lm fit is measured in its fitted flat ln F and the +1/F is gone); verified on virgil main 25394917 (grad_norm 9.7e-5, converged from a 5% nearby start). The fix introduced F34 (Uniform nuisances of the same fits). test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate no longer pins F30; it is evidence for F34.'
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/750]
 
 - id: F31
   title: kkt_report scales LinearImage('sqrt') dark-pixel want_grow deadband by sqrt(f_peak / f_i) > 1000 contrary to its docstring, suppressing >3.8e4x negative flux gradients and certifying converged = True
@@ -779,5 +780,28 @@
     - tests/test_detection_tier_a.py::test_f32_statistics_only_max_snr_queries_raise
     - tests/test_detection_tier_a.py::test_f32_concatenate_refuses_mixed_uncertainty
     - tests/test_detection_tier_a.py::test_injection_recovery_without_uncertainty_matches_independent_grid_search
-  decision: 'raised by Carbon review of vv#282, reproduced here; whether virgil raises or documents the behaviour is for Ben (2026-11-20).'
+  decision: 'raised by Carbon review of vv#282, reproduced here. Fixed in virgil#770 (fa61d957): max_snr queries on an uncertainty=False run and DetectionMC.concatenate of runs that differ in uncertainty now raise ValueError; verified on virgil main 25394917.'
+  status: fixed
+  links: [https://github.com/benjaminpope/virgil/pull/770]
+
+- id: F34
+  title: kkt_report on an lm fit applies the Uniform prior's value-space bounds to the unconstrained coordinate, so a stationary Uniform nuisance reports grad_norm = |z| + lower (1.35) instead of ~0 and converged = False from a nearby start
+  objects: [virgil.fitting.kkt_report]
+  ruling: virgil
+  referee: 'mathematics (fit() with method=lm on Uniform(1e-2, 1.0) env.flux stops at F = 0.21594 with fit grad_norm 5.7e-7; the loss gradient of the unboxed objective in the fitted coordinate z = -1.33689 of env.flux is 7.2e-5; kkt_report builds that same objective, then projects with x - clip(x - g, 0.01, 1.0) using the value-space Uniform bounds from _box, so grad_norm = 1.34689 = |z| + 0.01 whatever g is; grad_rel = 0.166 from a start 0.2% off in flux, against NUISANCE_TOL = 1e-3)'
+  kind: 'bug (introduced with the F30 fix, virgil 625f9161 / #750: kkt_report boxes only L-BFGS-B fits, but _box still returns Uniform value bounds for the unboxed lm coordinates; before it, the objective was always boxed and the Uniform case passed)'
+  evidence:
+    - tests/test_042_scenes_starlet_kkt.py::test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate
+  decision: 'found on the bump of the pin to virgil main 25394917 (vv B6); the test is unchanged and is now a strict xfail until virgil is fixed. Not raised on virgil yet: for Ben.'
+  status: open
+
+- id: F35
+  title: injection_recovery(uncertainty=False) with bootstrap_null flags 1 of 16 grid fits not converged on some null draws whose results equal an independent grid search to 1e-5
+  objects: [virgil.detection.injection_recovery]
+  ruling: virgil
+  referee: 'mathematics (on a 4-residual bootstrap_null file, 24 null draws on a 4 x 4 position grid, 4 of the 24 draws report converged_fraction 0.9375 on virgil main 25394917, 1.0 at the 0.4.2 RC c2be8278; the rest of test_injection_recovery_without_uncertainty_matches_independent_grid_search still passes, so delta_chi2, log_bayes_factor, best_flux and best position of every draw equal the crosscheck.chi2 plus crosscheck.sky grid search to 1e-5: the flag, not the answer, changed)'
+  kind: 'numerics (convergence flag only; probably virgil#750 / 707#13.1, where the grid-fit _flux_converged is given -1/2 chi2 and converged flags near the tolerance may change; not isolated to the cells or to that commit)'
+  evidence:
+    - tests/test_detection_tier_a.py::test_f35_noisy_bootstrap_null_grid_fits_flag_converged
+  decision: 'found on the bump of the pin to virgil main 25394917 (vv B6). If the new flag is the intended contract, rule this definition and replace the assertion; if the flagged cells are converged, it is a virgil bug. Not raised on virgil yet: for Ben.'
   status: open

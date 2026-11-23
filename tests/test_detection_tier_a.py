@@ -902,7 +902,6 @@ def test_injection_recovery_without_uncertainty_matches_independent_grid_search(
     for part in (mc_noisy.null, mc_noisy.injected):
         assert np.all(np.isnan(np.asarray(part["max_snr"])))
         assert np.all(np.isnan(np.asarray(part["flux_peak_steps"])))
-        assert np.all(np.asarray(part["converged_fraction"]) == 1.0)
 
     def states(d_clean):
         for signs in itertools.product((-1.0, 1.0), repeat=4):
@@ -970,6 +969,66 @@ def test_injection_recovery_without_uncertainty_matches_independent_grid_search(
     assert worst_flux < 1e-5
 
 
+@pytest.mark.validates(
+    "virgil.detection.injection_recovery",
+    roots=["mathematics"],
+    kind="finding",
+)
+@pytest.mark.xfail(
+    strict=True,
+    raises=AssertionError,
+    reason=(
+        "F35: on virgil main (after virgil#750, 707#13.1: the grid-fit _flux_converged now reads -1/2 chi2) "
+        "some bootstrap_null null draws flag 1 of 16 grid cells not converged (converged_fraction 0.9375), "
+        "although every draw's delta_chi2, log_bayes_factor, best_flux and position still equal our independent "
+        "grid search to 1e-5; at the 0.4.2 RC every cell was flagged converged"
+    ),
+)
+def test_f35_noisy_bootstrap_null_grid_fits_flag_converged(tmp_path):
+    """F35: the noisy ``bootstrap_null`` run of the statistics-only path
+    (4-residual file, 16 grid positions) has converged_fraction == 1 on every
+    draw, as its results agree with an independent exhaustive grid search."""
+    boot_kw = dict(
+        hour_angles_h=np.array([0.5]),
+        wavelengths=np.array([1.8e-6, 2.2e-6]),
+        dec_deg=-45.0,
+        sigma_v2=0.015,
+        sigma_cp_deg=0.8,
+    )
+    noisy_b = tmp_path / "boot_noisy.fits"
+    simulate.observe(noisy_b, _binary_vis(0.0, 0.0, 0.0), UTS3, rng=np.random.default_rng(2026), **boot_kw)
+    with fits.open(noisy_b, mode="update") as hdul:
+        hdul["OI_VIS2"].data["VIS2DATA"][:, 1] = 1.0
+        hdul["OI_T3"].data["T3PHI"][:, 1] = 0.0
+    null_scene = vm.BinaryModelCartesian(0.0, 0.0, 0.0)
+    grid_b = {
+        "dra": np.linspace(-8.0, 8.0, 4),
+        "ddec": np.linspace(-8.0, 8.0, 4),
+        "flux": np.geomspace(2e-4, 2e-1, 35),
+    }
+    inj_b = {
+        "dra": np.array([8.0, -4.2]),
+        "ddec": np.array([-8.0, 3.8]),
+        "flux": np.array([2.5e-2, 4e-2]),
+    }
+    boot_oi = OIData(str(noisy_b))
+    mc_noisy = det.injection_recovery(
+        vm.BinaryModelCartesian,
+        null_scene,
+        boot_oi,
+        grid_b,
+        12345,
+        n_null=24,
+        injections=inj_b,
+        noise=det.bootstrap_null(null_scene, boot_oi),
+        draw_batch=4,
+        uncertainty=False,
+        progress=False,
+    )
+    for part in (mc_noisy.null, mc_noisy.injected):
+        assert np.all(np.asarray(part["converged_fraction"]) == 1.0)
+
+
 def _tiny_statistics_only_runs(tmp_path):
     """A noisy ``uncertainty=False`` run and an ``uncertainty=True`` one on a
     one-snapshot template (no search comparison here, only container
@@ -1016,66 +1075,34 @@ def _tiny_statistics_only_runs(tmp_path):
     "virgil.detection.DetectionMC",
     "virgil.detection.injection_recovery",
     roots=["mathematics"],
-    kind="finding",
-    headline="max_snr_fap_on_nan_draws",
     tier="B",
 )
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F32: on an uncertainty=False run every max_snr is NaN, yet false_alarm_probability, threshold and completeness "
-        "return a finite 1/(n+1), (nan, nan) and 0.0 instead of raising ValueError, so a significance "
-        "statistic that was never computed reads as 'no detection'."
-    ),
-)
 def test_f32_statistics_only_max_snr_queries_raise(tmp_path):
-    """F32 (a): max_snr is documented NaN on an ``uncertainty=False`` run; querying it
-    must raise rather than return a value built from NaNs (expected: ValueError;
-    virgil returns FAP = 1/(n_null+1))."""
+    """F32 (a), fixed in virgil#770 (fa61d957): max_snr is documented NaN on an
+    ``uncertainty=False`` run; querying it raises ValueError (naming the statistic and the
+    remedy) rather than returning a value built from NaNs."""
     mc_false, _ = _tiny_statistics_only_runs(tmp_path)
     assert np.all(np.isnan(np.asarray(mc_false.null["max_snr"])))
-    fap = mc_false.false_alarm_probability("max_snr", 3.0)[0]
-    record("max_snr_fap_on_nan_draws", float(fap))
     for query in (
         lambda: mc_false.false_alarm_probability("max_snr", 3.0),
         lambda: mc_false.threshold("max_snr", 0.25),
         lambda: mc_false.completeness("max_snr", 0.25),
     ):
-        try:
+        with pytest.raises(ValueError, match="max_snr"):
             query()
-        except ValueError:
-            continue
-        raise AssertionError("a max_snr query on an uncertainty=False run returned instead of raising ValueError")
 
 
 @pytest.mark.validates(
     "virgil.detection.DetectionMC",
     roots=["mathematics"],
-    kind="finding",
-    headline="merged_max_snr_nan_draws",
-)
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "F32: DetectionMC.concatenate merges uncertainty=False with uncertainty=True runs (meta['uncertainty'] "
-        "becomes True of the first) so NaN max_snr draws are scored as -inf and deflate max_snr false-alarm "
-        "probabilities; it should raise ValueError like the other metadata mismatches."
-    ),
 )
 def test_f32_concatenate_refuses_mixed_uncertainty(tmp_path):
-    """F32 (b): runs that differ in ``uncertainty`` do not share a null distribution for
-    max_snr; concatenate must raise ValueError as it does for other mismatched metadata."""
+    """F32 (b), fixed in virgil#770 (fa61d957): runs that differ in ``uncertainty`` do not
+    share a null distribution for max_snr; concatenate raises ValueError, as it does for other
+    mismatched metadata."""
     mc_false, mc_true = _tiny_statistics_only_runs(tmp_path)
-    try:
-        merged = det.DetectionMC.concatenate([mc_true, mc_false])
-    except ValueError:
-        return
-    record("merged_max_snr_nan_draws", float(np.isnan(np.asarray(merged.null["max_snr"])).sum()))
-    raise AssertionError(
-        f"concatenate merged uncertainty=True and uncertainty=False runs into meta uncertainty={merged.meta.get('uncertainty')}"
-    )
+    with pytest.raises(ValueError, match="uncertainty"):
+        det.DetectionMC.concatenate([mc_true, mc_false])
 
 
 @pytest.mark.validates(

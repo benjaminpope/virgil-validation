@@ -733,7 +733,7 @@ nodes:
     depends: [virgil.orbit_cells.CellFit, virgil.orbit_cells.search_plan, virgil.orbit_cells.search_cell,
               virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
     doc: orbits/epochs.md
-  virgil.orbit_cells.fit_jitter:
+  virgil.orbit_cells.reference_jitter:
     layer: orbits
     source: [src/virgil/orbit_cells.py]
     depends: [virgil.aliases.alias_bands, virgil.aliases.position_profile, virgil.orbits.PositionData]
@@ -741,7 +741,7 @@ nodes:
   virgil.orbit_cells.position_cells:
     layer: orbits
     source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py, src/virgil/smc.py]
-    depends: [virgil.orbit_cells.CellsResult, virgil.orbit_cells.choose_anchors, virgil.orbit_cells.fit_jitter,
+    depends: [virgil.orbit_cells.CellsResult, virgil.orbit_cells.choose_anchors, virgil.orbit_cells.reference_jitter,
               virgil.orbit_cells.make_cells, virgil.orbit_cells.outlier_log_density, virgil.orbit_cells.outlier_prior,
               virgil.orbit_cells.position_leg]
     doc: orbits/epochs.md
