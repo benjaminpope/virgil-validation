@@ -190,11 +190,13 @@ def _recover_calibration(pos_data, orbit):
     return float(res.x[0]), float(res.x[1])
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.orbits.PositionData",
     roots=["mathematics"],
     property="calibration",
     headline="max_residual_mas",
+    tier="B",
 )
 def test_position_data_calibration_model_and_recovery():
     """PositionData(..., north_angle=delta, plate_scale=m) maps true sky

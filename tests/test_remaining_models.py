@@ -78,7 +78,8 @@ def test_nodes_reference_flux_is_a_scalar_at_wavel0():
         assert np.isclose(float(spectra.reference_flux(s)), float(s(None)))
 
 
-@pytest.mark.validates("virgil.models.System", "virgil.spectra.BlackBody", "virgil.spectra.PowerLaw", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.System", "virgil.spectra.BlackBody", "virgil.spectra.PowerLaw", roots=["mathematics"], tier="B")
 def test_a_chromatic_system_is_a_flux_weighted_mean_per_channel():
     """A star (flux 1) with a 1500 K companion and a power-law disk: in
     each channel the visibility is the mean weighted by that channel's
@@ -172,7 +173,8 @@ def test_flared_disk_bright_side_follows_the_scattering(name, value):
     assert same > 0.9 and turned < -0.9
 
 
-@pytest.mark.validates("virgil.models.FlaredDiskPowerLaw", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.FlaredDiskPowerLaw", roots=["mathematics"], tier="B")
 def test_flared_disk_sampling_converges():
     """The documented sampling is a numerical choice: on baselines that
     resolve the ring, doubling the pixel density changes the visibilities

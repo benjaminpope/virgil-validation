@@ -9,7 +9,7 @@ virgil is `virgil.radio` from the pinned commit of `virgil_bridge.mpol`.
 The parameter map between the two is in docs/alma_conventions.md ("MPoL and
 virgil.radio"); in float64 throughout.
 
-* test 1, loss normalisation (tier A): MPoL's ``log_likelihood`` and
+* test 1, loss normalisation (tier B, `slow`: the weekly job; its control too): MPoL's ``log_likelihood`` and
   ``neg_log_likelihood_avg`` equal virgil's whitened chi-squared plus its log
   normalisation plus the explicit constant, with s = g s_M; the map s = s_M is
   the control;
@@ -20,11 +20,12 @@ virgil.radio"); in float64 throughout.
 * test 3, objective and gradients (tier A): -ln L and its gradients with
   respect to the pixels and every nuisance, torch autograd against jax, and
   against exact references;
-* test 4, IM Lup scale (tier A, as it runs on every PR): the objective on all 26 ddids and 7
+* test 4, IM Lup scale (tier B, `slow`: the weekly job, as the fast suite's time budget needs): the objective on all 26 ddids and 7
   observations of the stride-1000 subsample.
 
 The module skips only where ``virgil.radio`` or `.venv-mpol` is missing; CI installs
-both, and the IM Lup subsample is committed under data/, so CI runs it.
+both, and the IM Lup subsample is committed under data/, so CI runs it (tests 1 and 4 in the weekly job).
+Which tests are `slow` is read off the decorators, not this list.
 """
 
 import os
@@ -323,7 +324,8 @@ def _mpol_loglike(p, tmp):
     return sp.run("mpol", "mpol_worker.py", _task("loglike", npz=str(tmp / "norm.npz"), npix=8))
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"], headline="rel_error_vs_virgil_loglike")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"], headline="rel_error_vs_virgil_loglike", tier="B")
 def test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol(tmp_path):
     """On random complex data, model and weights, with g != 1 and s_M != 1: MPoL's
     `log_likelihood` = -(1/2 sum r^2 + log_norm) - sum_d (N_d ln 2 pi - sum_k ln w_k), with
@@ -358,7 +360,8 @@ def test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol(tmp_path)
     assert err_loglike < RTOL_NORM
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"], kind="control", tier="B")
 def test_control_the_map_s_equal_s_mpol_does_not_match(tmp_path):
     """The wrong map (virgil s = s_M, forgetting that MPoL also divides the weights by g^2) misses MPoL's
     log likelihood by 2 sum ln g plus a change of chi-squared: far more than rounding, so the 1e-12 test above pins s = g s_M."""
@@ -416,7 +419,8 @@ WRONG_MAPS = {
 }
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.models.Image", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.models.Image", roots=["mpol"], kind="control", tier="B")
 @pytest.mark.parametrize("wrong", sorted(WRONG_MAPS))
 def test_control_a_wrong_pixel_map_misses_mpol_by_far_more_than_the_matched_map_does(case, wrong):
     """Dropping the half-pixel offset, or not reversing the columns (RA increases to the left), the rows,
@@ -481,7 +485,8 @@ def test_gradients_of_the_objective_agree_with_respect_to_the_pixels_and_every_n
         assert rel(gm, gv) < GRADIENT_BOUND[key], key
 
 
-@pytest.mark.validates("virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], tier="B")
 def test_the_sigma_and_gain_gradients_obey_the_chain_rule_of_the_map(case):
     """MPoL's gradient with respect to log10 g of an observation is the sum of virgil's gradients with
     respect to its gain and to the s of every ddid in it (s = g s_M), times g ln 10 for the gain; written out
@@ -507,7 +512,8 @@ def test_the_sigma_and_gain_gradients_obey_the_chain_rule_of_the_map(case):
 IMLUP_SIGMA = [1.12, 1.15, 1.13, 1.13, 1.13, 1.14, 1.14, 1.14, 1.14, 1.13, 1.14, 1.11, 1.10, 1.08, 1.06, 1.13, 1.13, 1.07, 1.67, 1.67, 1.66, 1.75, 1.99, 1.99, 1.99, 2.08]
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], tier="A", headline="rel_mpol_vs_virgil")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], tier="B", headline="rel_mpol_vs_virgil")
 @pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason=f"the stride-1000 subsample is not in {SUBSAMPLE}")
 def test_the_objective_matches_mpol_on_all_26_ddids_and_7_observations_of_im_lup(tmp_path):
     """On the whole stride-1000 subsample (42,424 visibilities, 26 ddids, 7 observations) at MPoL-like
