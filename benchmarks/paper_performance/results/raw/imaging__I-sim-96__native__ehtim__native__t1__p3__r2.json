@@ -1,0 +1,110 @@
+{
+ "case": "I-sim-96",
+ "comparison": "imaging",
+ "code": "ehtim",
+ "config": "native",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.33739655800309265,
+ "t_calib": 0.24968432600144297,
+ "t_import": 1.7821722230000887,
+ "t_load": 0.003336258996569086,
+ "t_init": null,
+ "t_cold": 22.60109110299527,
+ "t_warm": [
+  22.612034654004674,
+  22.67642939799407,
+  22.447747687001538,
+  22.32671855999797,
+  22.5116863689982
+ ],
+ "peak_footprint_mb": 353.096,
+ "peak_rss_mb": 353.096,
+ "baseline_mb": null,
+ "cpu_ratio": 0.9943242873562846,
+ "flags": [],
+ "n_data": 312,
+ "n_param": 9216,
+ "iterations": {},
+ "accuracy": {
+  "flux": 1.0206266400426336,
+  "score": {
+   "J": 3553.5267310672493,
+   "half_chi2_amp": 3408.314128251892,
+   "half_chi2_cp": 24.064022648686397,
+   "tv2": 0.0001615314402222283,
+   "flux": 1.0206266400426336,
+   "n_amp": 234,
+   "n_cp": 78,
+   "ncc_registered": 0.7832129264384011,
+   "ncc_shift_rc": [
+    3,
+    -3
+   ],
+   "ncc_unregistered": 0.5670112906963269,
+   "rms_rel_beam": 0.10441189189245059,
+   "beam_mas": 1.5448696219530984
+  }
+ },
+ "settings": {
+  "case": "I-sim-96",
+  "task": "native",
+  "reps": 5,
+  "size": "full",
+  "native": {
+   "source": "examples/example_im_closure.py of eht-imaging v1.3.2 (commit c8c7a89ea96da0c3f0217e95c41ce8d3e7ca8765), https://github.com/achael/eht-imaging/blob/v1.3.2/examples/example_im_closure.py",
+   "recipe": "three rounds; data weights amp 50 / cphase 100 (rounds 1-2) then amp 10 / cphase 20; regularisers simple=1 (round 1) then tv=1; flux 100; cm 50; maxit=500; each later round starts from the previous image blurred with obs.res() (then res/2); Gaussian prior = the common start; ttype=direct",
+   "amp": [
+    50,
+    10
+   ],
+   "cphase": [
+    100,
+    20
+   ],
+   "simple": 1,
+   "tv": 1,
+   "flux": 100,
+   "cm": 50,
+   "maxit": 500,
+   "notes": "the example's imgr.maxi_next = 1000 is a misspelt attribute (no effect), so maxit stays 500; averaging of closure quantities (avg_time) is not applied because the simulated snapshots are already one per time"
+  },
+  "run": "r2",
+  "jax_cache": "cold",
+  "method": "native"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": null,
+   "jaxlib": null,
+   "numpyro": null,
+   "pmoired": null,
+   "ehtim": "1.3.2",
+   "numpy": "2.5.3",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.1"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "9ff0c4e5432d399dab1b2db62ae15a4b3066af304147876be59a21020f540205"
+ },
+ "language": "python"
+}

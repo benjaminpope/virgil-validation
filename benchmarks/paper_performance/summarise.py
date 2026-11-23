@@ -30,7 +30,7 @@ OTHER = {"binary": "pmoired", "orbit": "octofitter", "imaging": "ehtim"}
 OTHER_LABEL = {"binary": "PMOIRED", "orbit": "Octofitter", "imaging": "eht-imaging"}
 C_V, C_O = "#0072B2", "#E69F00"      # colour-blind-safe pair; one colour per code in all panels
 LIMITS = [
-    "one laptop CPU (Apple silicon); 1 thread primary, 2 threads at most; no code was run on all cores",
+    "one CPU (run r1: Apple-silicon laptop; run r2: one 64-core EPYC 7543 node); 1 thread primary, 2 threads at most; no code was run on all cores",
     "no GPU row exists (CPU only)",
     "eht-imaging with the direct transform (NFFT not installed), the same transform in virgil",
     "Octofitter interferometry on simulated point-source data only",
@@ -348,7 +348,7 @@ def tex_table(groups, ttp):
         if variant in (None, "lbfgsb", "native"):
             idx[(key[0], key[1], key[2], key[3], key[4], code)] = g
     hdr = [
-        "% performance_table.tex: tabular only (no caption). All rows 1 thread, laptop CPU, no GPU; times in seconds,",
+        "% performance_table.tex: tabular only (no caption). All rows 1 thread, one CPU (r2: 64-core EPYC node), no GPU; times in seconds,",
         "% footprints in MB (cold = import + load + init + first call of a fresh process, compilation included; warm =",
         "% repeated call; imaging ladder rows give the interpolated time to the stated precision, cold and warm). Limits:",
         *[f"%   - {x}" for x in LIMITS],

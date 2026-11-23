@@ -1,7 +1,7 @@
-% performance_table.tex: tabular only (no caption). All rows 1 thread, laptop CPU, no GPU; times in seconds,
-% footprints in MB (cold/warm = first call including compilation / repeated call; imaging rows give the
-% interpolated time to target in the warm column). Limits:
-%   - one laptop CPU (Apple silicon); 1 thread primary, 2 threads at most; no code was run on all cores
+% performance_table.tex: tabular only (no caption). All rows 1 thread, one CPU (r2: 64-core EPYC node), no GPU; times in seconds,
+% footprints in MB (cold = import + load + init + first call of a fresh process, compilation included; warm =
+% repeated call; imaging ladder rows give the interpolated time to the stated precision, cold and warm). Limits:
+%   - one CPU (run r1: Apple-silicon laptop; run r2: one 64-core EPYC 7543 node); 1 thread primary, 2 threads at most; no code was run on all cores
 %   - no GPU row exists (CPU only)
 %   - eht-imaging with the direct transform (NFFT not installed), the same transform in virgil
 %   - Octofitter interferometry on simulated point-source data only
@@ -12,16 +12,16 @@
 \hline
 Task & $N_{\rm data}$ & $N_{\rm par}$ & virgil cold & virgil warm & other cold & other warm & ratio warm & ratio cold & peak virgil & peak other & accuracy \\
 \hline
-B-sim-6 T2 & 300 & 3 & 1.29 & 4.31e-3 & 9.24e-3 & 8.34e-3 & 1.93 & 7.18e-3 & 307 & 169 & 0.957 / 1.07 \\
-B-sim-600 T2 & 30000 & 3 & 1.33 & 0.0155 & 0.0712 & 0.0685 & 4.41 & 0.0535 & 344 & 192 & 1.05 / 1.14 \\
-B-sim-6 T3 & 300 & 3 & 1.4 & 8.83e-3 & 130 & 140 & 15797 & 92.7 & 331 & 169 & 0.957 / 1.07 \\
-B-real-pionier T2 & 92 & 3 & 1.41 & 4.45e-3 & 0.0122 & 0.0121 & 2.72 & 8.71e-3 & 295 & 170 & 2.5 / 2.67 \\
-O-A-sim matched & 20 & 7 & 5.32 & 4.53 & 4.1 & 1.6 & 0.353 & 0.771 & 635 & 1911 & --- \\
-O-A-real matched$^\dagger$ & --- & --- & error & error & 4.3 & 1.43 & --- & --- & --- & 1786 & --- \\
-O-B-sim matched & 1440 & 8 & 60.3 & 59.7 & 104 & 103 & 1.72 & 1.73 & 945 & 1765 & --- \\
-I-sim-24 time-to-target & 312 & 576 & --- & 1.2 & --- & not reached & --- & --- & 275 & 205 & --- \\
-I-sim-48 time-to-target & 312 & 2304 & --- & 3.31 & --- & not reached & --- & --- & 275 & 237 & --- \\
-I-sim-96 time-to-target & 312 & 9216 & --- & 10.1 & --- & not reached & --- & --- & 272 & 348 & --- \\
-I-sim-ring native & 312 & 2304 & 5.93 & 3.3 & 1.93 & 1.91 & 0.579 & 0.325 & 337 & 237 & --- \\
+B-sim-6 T2 & 300 & 3 & 6.67 & 0.0138 & 5 & 0.026 & 1.89 & 0.749 & 921 & 194 & 0.957 / 1.07 \\
+B-sim-600 T2 & 30000 & 3 & 6.8 & 0.069 & 5.1 & 0.125 & 1.81 & 0.751 & 955 & 211 & 1.05 / 1.14 \\
+B-sim-6 T3 & 300 & 3 & 6.99 & 0.0213 & 397 & 392 & 18383 & 56.8 & 937 & 201 & 0.957 / 1.07 \\
+B-real-pionier T2 & 92 & 3 & 6.71 & 0.0136 & 4.95 & 0.0362 & 2.65 & 0.737 & 925 & 195 & 2.5 / 2.67 \\
+O-A-sim matched & 20 & 7 & 19.3 & 3.85 & 62.3 & 1.97 & 0.512 & 3.23 & 1311 & 1835 & --- \\
+O-A-real matched$^\dagger$ & --- & --- & error & error & 61.5 & 1.53 & --- & --- & --- & 1819 & --- \\
+O-B-sim matched & 1440 & 8 & 211 & 170 & 262 & 152 & 0.89 & 1.24 & 1642 & 1905 & --- \\
+I-sim-24 time to precision (J within 3\% of best) & 312 & 576 & 5.56 & 0.169 & 2.32 & 0.521 & 3.08 & 0.418 & 854 & 247 & --- \\
+I-sim-48 time to precision (J within 10\% of best) & 312 & 2304 & 6.01 & 0.667 & 4.87 & 3.07 & 4.61 & 0.811 & 861 & 265 & --- \\
+I-sim-96 time to precision (J within 10\% of best) & 312 & 9216 & 9.57 & 4.44 & 22.1 & 20.3 & 4.56 & 2.31 & 962 & 320 & --- \\
+I-sim-ring native & 312 & 2304 & 20 & 10.8 & 5.44 & 3.53 & 0.327 & 0.272 & 1008 & 264 & --- \\
 \hline
 \end{tabular}

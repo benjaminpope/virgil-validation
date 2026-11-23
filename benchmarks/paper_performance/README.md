@@ -1,7 +1,7 @@
 # Paper performance benchmarks (scaffold)
 
 Speed, memory and accuracy of virgil against PMOIRED (binary fits), Octofitter.jl (orbit fits) and eht-imaging (image
-reconstruction), on one Apple-silicon laptop CPU. This directory is the shared scaffold (WP-0); each comparison adds its
+reconstruction), on one CPU (run r1: an Apple-silicon laptop; run r2, the reported results: one OzSTAR EPYC node). This directory is the shared scaffold (WP-0); each comparison adds its
 own subdirectory (`binary/`, `orbit/`, `imaging/`) with its own `cases.yml`, and a final package runs the matrix and
 writes `results/`. Nothing here edits `src/`, `tests/`, `trust/` or `pyproject.toml`.
 
@@ -91,54 +91,93 @@ Self-test of the scorers, tests, and a dummy row (each under `pyquick`):
 
 ## Limits (stated in every output)
 
-One laptop CPU, no GPU row; 1 thread primary and 2 at most, nothing on all cores; eht-imaging without NFFT; Octofitter
+One CPU (r1 laptop; r2 one 64-core EPYC node), no GPU row; 1 thread primary and 2 at most, nothing on all cores; eht-imaging without NFFT; Octofitter
 interferometry on simulated point-source data only; the HD 224974 orbit case is period-informed; PMOIRED and Octofitter
 parallel modes not run beyond 2 workers; versions and commits as recorded in each row.
 
-## Results (WP-R, measured run of 2026-11-19)
+## Results (WP-R run r2: OzSTAR CPU node, supersedes the laptop run r1 of 2026-11-19)
 
-Outputs: `results/results.csv` (one row per case x task x config x threads x code), `results/raw/*.json` (every process),
-`results/performance_table.tex` (tabular only), `results/performance.pdf` / `.png`, `results/summary.json`,
-`results/matrix_log.jsonl`, `results/gates/`. Rebuild with `python summarise.py`; `python summarise.py --check` validates
-schema and coverage. The run is `./run_all.sh` (`matrix.py`): serial, one process at a time, under `caffeinate`, every measured
-process through `pyslot` with `PYSLOT_MEM=6G`, machine idle and on AC power at the start, 7 h cap (it finished at 7.24 h
-elapsed including one restart; rows not reached are `not_run`, reason `budget`).
+**Machine changed from the first digest (2026-11-19, Apple M4 laptop, run r1).** This run (r2) is one OzSTAR/NT job (21374978) on node dave130: AMD EPYC 7543 (Milan, 64 cores allocated of 64, 251 GB), governor performance, ~13.0 h elapsed of the 13 h budget, harness load check on the node (idle at start), 1 thread primary and 2 threads where the plan lists them, no GPU. Every row below is from this one machine. virgil at 09b26852 (opt-in `enable_compilation_cache`, v0.4.2), vv at 5a91ffd, JAX/jaxlib 0.12.0.1, numpyro 0.22.0, PMOIRED 26.10.1, eht-imaging 1.3.2, Octofitter 9.0.0 (Julia 1.12.7); Python codes inside the virgil apptainer image. The laptop rows (r1) stay in `results/raw` but no group is built from them: groups with no r2 row are `not_run`.
 
-Rows in which each code was faster (paired groups with a time for both codes; ratio = other / virgil of medians):
+Columns: fresh = new process, import + load + init + first call (like-for-like cold); cold = first call only (compile included); warm = a second call, same process. Times in seconds, medians. Ratio = other / virgil (above 1: virgil faster).
 
-| Basis | virgil faster | other code faster | not paired / no time |
-| --- | --- | --- | --- |
-| warm | 27 | 13 | 33 |
-| cold | 10 | 32 | 31 |
+## Headline rows (1 thread)
 
-These counts include the default-method virgil imaging rows paired with the same eht-imaging row. The numbers are what the
-runs gave; no row was repeated or dropped because of its value.
+| comparison | case | task | config | thr | virgil fresh | virgil cold | virgil warm | other fresh | other cold | other warm | ratio fresh | ratio cold | ratio warm | flags |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| binary | B-sim-6 | T1 | matched | 1 | 4.3 | 0.0814 | 5.68e-05 | 4.97 | 0.00263 | 0.0022 | 1.16 | 0.0324 | 38.7 |  |
+| binary | B-sim-6 | T2 | matched | 1 | 6.67 | 2.48 | 0.0138 | 5 | 0.0272 | 0.026 | 0.749 | 0.011 | 1.89 | likelihood_mismatch;threads_not_held |
+| binary | B-sim-600 | T2 | matched | 1 | 6.8 | 2.52 | 0.069 | 5.1 | 0.13 | 0.125 | 0.751 | 0.0515 | 1.81 | likelihood_mismatch;threads_not_held |
+| binary | B-sim-6 | T3 | matched | 1 | 6.99 | 2.78 | 0.0213 | 397 | 392 | 392 | 56.8 | 141 | 1.84e+04 | likelihood_mismatch;threads_not_held |
+| binary | B-real-pionier | T2 | matched | 1 | 6.71 | 2.54 | 0.0136 | 4.95 | 0.0372 | 0.0362 | 0.737 | 0.0146 | 2.65 | likelihood_mismatch;threads_not_held |
+| binary | B-real-pionier | T3 | matched | 1 | 7.04 | 2.8 | 0.02 | 253 | 248 | 248 | 36 | 88.8 | 1.24e+04 | likelihood_mismatch;threads_not_held |
+| orbit | O-A-sim | matched | matched | 1 | 19.3 | 12.4 | 3.85 | 62.3 | 7.38 | 1.97 | 3.23 | 0.595 | 0.512 | threads_not_held |
+| orbit | O-A-sim-pulls | matched | matched | 1 | 162 | 144 | 4 | 153 | 43 | 1.88 | 0.945 | 0.299 | 0.468 | threads_not_held |
+| orbit | O-B-sim | matched | matched | 1 | 211 | 194 | 170 | 262 | 152 | 152 | 1.24 | 0.785 | 0.89 | likelihood_mismatch |
+
+## Imaging: time to precision (virgil L-BFGS-B ladder = `virgil`, virgil Levenberg-Marquardt route = `virgil_lm`, vs eht-imaging)
+
+Rung = relative excess of the objective J over J_ref (the lowest J reached by any code on that target). Entry = "t / t_cold": seconds to reach it once the process is up, and the same plus the cold overhead (import + load + init + first call); `—` = not reached within the budget.
+
+| case | route | cold overhead | 10 % | 3 % | 1 % | 0.3 % | 0.1 % |
+|---|---|---|---|---|---|---|---|
+| I-sim-24 | virgil_lm | 6.85 | 0.17 / 7.02 | 0.17 / 7.02 | 0.276 / 7.13 | 0.984 / 7.84 | 3.43 / 10.3 |
+| I-sim-24 | ehtim | 1.8 | 0.249 / 2.05 | 0.521 / 2.32 | — | — | — |
+| I-sim-24 | virgil | 5.39 | 0.0859 / 5.47 | 0.169 / 5.56 | 0.596 / 5.98 | — | — |
+| I-sim-48 | virgil_lm | 6.79 | 0.72 / 7.51 | 1.03 / 7.82 | 2.66 / 9.45 | 9.35 / 16.1 | 23 / 29.8 |
+| I-sim-48 | ehtim | 1.8 | 3.07 / 4.87 | — | — | — | — |
+| I-sim-48 | virgil | 5.34 | 0.667 / 6.01 | 1.49 / 6.84 | 4.43 / 9.77 | — | — |
+| I-sim-96 | ehtim | 1.82 | 20.3 / 22.1 | — | — | — | — |
+| I-sim-96 | virgil | 5.13 | 4.44 / 9.57 | 8.15 / 13.3 | 13.5 / 18.6 | 15.9 / 21.1 | 16.7 / 21.8 |
+
+## Which code was faster (paired groups with times for both)
+
+| Basis | virgil faster | other faster | unpaired / no time |
+|---|---|---|---|
+| warm | 30 | 8 | 25 |
+| cold_first_call | 14 | 22 | 22 |
+| fresh | 24 | 17 | 22 |
+
+Geometric mean of ratio (other / virgil), r2 rows, all virgil routes:
+
+| comparison | basis | n | geo-mean | min | max | virgil faster | geo-mean, threads-held rows only (n) |
+|---|---|---|---|---|---|---|---|
+| binary | fresh | 23 | 4.16 | 0.632 | 124 | 18 | 2.75 (7) |
+| binary | cold | 23 | 1.25 | 0.00857 | 300 | 13 | 0.315 (7) |
+| binary | warm | 20 | 74.7 | 1.48 | 1.84e+04 | 20 | 143 (7) |
+| orbit | fresh | 6 | 2.23 | 0.945 | 4.08 | 5 | 2.45 (3) |
+| orbit | cold | 6 | 0.743 | 0.299 | 3.88 | 1 | 1.2 (3) |
+| orbit | warm | 6 | 0.799 | 0.468 | 3.82 | 1 | 1.25 (3) |
+| imaging | fresh | 20 | 0.296 | 0.107 | 1.24 | 2 | 0.318 (2) |
+| imaging | cold | 20 | 0.0744 | 0.00277 | 1.47 | 2 | 0.00871 (2) |
+| imaging | warm | 20 | 0.506 | 0.0235 | 10.9 | 9 | 0.926 (2) |
+
+All paired groups: `results/results.csv`, and the digest `reports/benchmarks-results.md` of virgil-paper.
 
 ### Findings
 
-* I-sim-large gate fails (eht-imaging objective vs neutral, worst relative difference 1.85e-2), and I-sim-large rows were not reached by the budget anyway.
-* virgil's chi2 differs from the neutral reference (4-telescope closure-phase whitening): `likelihood_mismatch` is -18 % on binary T2 (B-sim-6) and 2.4e-2 on orbit Level B (independent form; default 0.20). Flagged, not gated.
-* O-A-real matched, virgil: `error`. `starting_orbits` seeds are rejected by NumPyro (`Cannot find valid initial parameters`) with the period-informed prior; not repaired. Octofitter ran the same case.
-* O-B-sim native, Octofitter (Pigeons, 8 rounds, 1 thread): `timeout` at the 30 min per-call limit.
-* eht-imaging `time-to-target` is `not_reached` for I-sim-24/48/96 (it did not come within 1e-3 of the lowest J reached by either code at any budget); best J values are in the ladder rows.
-* PMOIRED T3 B-sim-6 matched took about 130-140 s per call (the WP-B estimate was 650 s).
+- Binary, warm call (ratio other / virgil, 1 thread, matched): T1 21-90 (B-sim-6 38.7, B-sim-60 21.4, B-real-pionier 90.5); T2 1.8-2.7; T3 1.2e4-1.8e4 (PMOIRED 250-390 s per fit at B-sim-6 and B-real-pionier, 880 s at B-sim-60, against virgil 0.02-0.06 s). All 20 binary warm ratios favour virgil (min 1.48, geo-mean 74.7).
+- Binary, first call (cold) and fresh process: virgil pays 2.5 s compile on T2/T3 and has about 4.3 s of import + init; T1 and T2 fresh ratios are 1.16 and 0.74-0.75 (PMOIRED faster on T2 fresh); T3 fresh 36-124 (virgil faster).
+- Orbit, warm (Octofitter faster in all three matched Level A/B groups): O-A-sim 3.85 s vs 1.97 s (ratio 0.51), O-A-sim-pulls 4.0 vs 1.88 (0.47), O-B-sim 170 vs 152 (0.89). Fresh (process incl. Julia / JAX start-up): ratios 3.2, 0.95, 1.24 (virgil faster or level).
+- O-A-real: virgil row `error` in both configs (matched t1, native t2): NumPyro `Cannot find valid initial parameters` in `chain_init_params` after `starting_orbits`. Same failure as the laptop run (r1); reproduced on the Mac with the pinned virgil 09b26852 (`orbit/run_virgil.py --case O-A-real --warmup 5 --draws 5 --chains 4 --no-warm`). Octofitter ran the case (matched t1 warm 1.53 s, fresh 61.5 s; native t2 warm 2.50 s, fresh 69.0 s).
+- Imaging, time to precision (seconds to J within 10 % of the span to J_ref / including the fresh overhead): I-sim-24 virgil L-BFGS-B 0.086 / 5.5, virgil LM 0.17 / 7.0, eht-imaging 0.25 / 2.05; I-sim-48 0.667 / 6.0, 0.72 / 7.5, 3.07 / 4.9; I-sim-96 4.44 / 9.6 (L-BFGS-B), eht-imaging 20.3 / 22.1. eht-imaging does not reach the 3 % rung on any target within the budget; virgil LM reaches 0.1 % on I-sim-24 (3.4 s) and I-sim-48 (23 s); virgil L-BFGS-B reaches 0.1 % on I-sim-96 (16.7 s). Cold overhead: virgil 5.1-6.9 s, eht-imaging 1.8 s, so for a single short run from a fresh process eht-imaging is ahead on I-sim-24 and I-sim-48 at 10 % only when the overhead is counted (2.05 s vs 5.5 s and 4.9 s vs 6.0 s).
+- Which code was faster (groups with both times): warm virgil 30, other 8; first-call cold virgil 14, other 22; fresh process virgil 24, other 17.
+- virgil chi2 differs from the neutral reference (closure-phase whitening, 4 telescopes): flag `likelihood_mismatch` on 22 r2 groups (107 rows; binary T2/T3 and orbit Level B); flagged, not gated.
+- Threads: 199 `threads_not_held` rows (virgil rows: cpu/wall above 1.2 at 1 thread; orbit virgil rows measured 1.09-1.42 cores). `thread_probe.py` was not run, so the XLA hold flags are not confirmed to bind on this node; both runs of every flagged row were kept. Rows from threads-held groups only: binary warm geo-mean 143 (7 groups), orbit warm 1.25 (3), imaging warm 0.93 (2).
+- Timeouts (3 rows): PMOIRED B-sim-60 T3 matched 2 threads (1 of 3 processes), virgil I-sim-96 ladder default-method (1 process), Octofitter O-B-sim native 1 thread (1 process); the other processes of those groups are kept.
 
-### Flags (all rows)
+### Not run (status not_run, reason budget; 40 matrix entries, 64 groups)
 
-`threads_not_held` 83 rows (virgil only: binary 13 groups, imaging 13, orbit 3; cpu/wall above 1.2 at 1 thread, JAX/XLA background threads), `likelihood_mismatch` 45, `noisy` 16 rows, `warm_recompiled` 11, `mem_children_not_summed` 4. Flagged rows were rerun once (`matrix.py`) and both rows kept.
+The 13 h budget ended before: binary T2 `tight` and T3 `matched-coarse` (all cases), imaging `stop_tight` (I-sim-24/48/96/ring), the I-sim-ring ladder rows and `native` 2-thread, all I-sim-large rows, orbit O-A-real native 1 thread. Rows not measured in r2 are `not_run`; the r1 laptop values for them are not used.
 
-### Not run
+### Limits
 
-Budget: the 2-thread native passes for most cases, binary T2 `tight`, T3 `matched-coarse`, imaging `stop_tight`, the I-sim-ring ladder, all I-sim-large rows, O-A-real native, O-B-sim 2-thread. `matched-truthstart`: no documented route for user start values in Octofitter's `initialize!` recorded.
+One 64-core EPYC 7543 node, 1 thread primary, 2 threads where listed (nothing on all cores); no GPU row; eht-imaging with the direct transform (no NFFT); Octofitter interferometry on simulated point-source data only; O-A-real period-informed and not scored; JAX/XLA thread hold not confirmed (see above); Python codes inside the virgil apptainer image (JAX 0.12.0.1); PMOIRED and Octofitter parallel modes not beyond 2 workers; imaging precision targets differ from the first digest (time-to-precision rungs).
 
-### Run log
+### Consistency flag: main.tex l.157
 
-The first launch crashed at the first orbit row (a tuple-unpack bug in `matrix.py`) and the orbit gate step used the wrong command line; both were fixed in `matrix.py` and the run resumed (`--resume`) from `results/matrix_log.jsonl` without repeating finished rows. No `cases.yml` was changed. Binary and imaging gates ran before the crash and are unchanged.
+l.157 states that virgil outperforms all other packages in speed, crediting JAX and GPU acceleration. On this machine the statement does not hold unqualified: Octofitter is faster warm on all three matched orbit groups (ratios 0.47-0.89); eht-imaging is faster per call and, counting the 5-7 s start-up, ahead at the 10 % precision rung on I-sim-24 and I-sim-48 for a single fresh run; PMOIRED is faster on a fresh process for binary T2 (ratio 0.74-0.75) and on the first call for T1/T2 (compile time); first-call (cold) ratios favour the other code in 22 of 36 paired groups. It does hold, with large margins, for warm binary fits (20 of 20), PMOIRED T3, and imaging time to a tight precision (eht-imaging does not reach 3 % in the budget). The GPU clause has no measured row (CPU only).
 
-### CHANGES entries
+### Files of the node run
 
-`binary/CHANGES.md`, `imaging/CHANGES.md`, `orbit/CHANGES.md`: see those files (orbit: the `likelihood_mismatch` flag on virgil Level B rows, dense mass matrix, Kepler constants).
-
-### Consistency with the paper (flag, no proposed wording)
-
-`main.tex` l.157 says virgil outperforms all other packages in speed (crediting JAX and GPU acceleration). Rows in which virgil is slower than the other code, and the absence of any GPU row, are listed in `results/results.csv` (columns `ratio_warm`, `ratio_cold`; ratios below 1 mean virgil slower).
+Outputs: `results/results.csv` (one row per case x task x config x threads x code), `results/raw/*.json` (every process; r1 laptop rows keep their names, r2 node rows end `__r2.json`), `results/performance_table.tex`, `results/performance.pdf` / `.png`, `results/summary.json`, `results/cluster-09b2685+vv5a91ffd/` (node report `node.txt`, `matrix_log_r2.jsonl`, `DONE_r2`). Rebuild with `python summarise.py`; `python summarise.py --check` validates schema and coverage. The run is the OzSTAR stage `bench275` (jobs repo `scripts/bench275`): one 64-CPU EPYC 7543 node, serial `matrix.py --run --run-id r2 --budget-h 13` (about 13 h), results tarred per task. Submissions 21371877 and 21372673 (wrong node type, stopped by the stage guard) and the earlier set-up failures contributed no rows.

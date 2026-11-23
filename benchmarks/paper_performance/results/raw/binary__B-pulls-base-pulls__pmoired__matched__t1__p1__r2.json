@@ -1,0 +1,109 @@
+{
+ "case": "B-pulls-base-pulls",
+ "comparison": "binary",
+ "code": "pmoired",
+ "config": "matched",
+ "threads": 1,
+ "size": "full",
+ "status": "ok",
+ "t_process": 0.501806663996831,
+ "t_calib": 0.25994202199944993,
+ "t_import": 4.924365212995326,
+ "t_load": null,
+ "t_init": null,
+ "t_cold": 10.644376231000933,
+ "t_warm": [],
+ "peak_footprint_mb": 193.372,
+ "peak_rss_mb": 193.372,
+ "baseline_mb": null,
+ "cpu_ratio": 0.9876665406615643,
+ "flags": [],
+ "n_data": 300,
+ "n_param": 3,
+ "iterations": {
+  "seeds": 200
+ },
+ "accuracy": {
+  "n": 200,
+  "names": [
+   "dra",
+   "ddec",
+   "flux"
+  ],
+  "pull_mean": [
+   0.043768519249559684,
+   0.01465480045330101,
+   -0.08677977969756111
+  ],
+  "pull_sd": [
+   1.1306673034257626,
+   1.0844176414492197,
+   1.0242910192103871
+  ],
+  "sigma_mean": [
+   0.013180415971915336,
+   0.014692983403849707,
+   0.0008993816545485947
+  ],
+  "bias": [
+   0.0005633791672368105,
+   0.0001961712251610237,
+   -7.663182568899696e-05
+  ],
+  "pull_sd_stderr": 0.05012547071170855,
+  "n_failed": 0,
+  "noise_model": "baseline"
+ },
+ "settings": {
+  "ftol": 1e-05,
+  "epsfcn": 1e-06,
+  "maxfev": 10000,
+  "start": {
+   "dra": 6.3,
+   "ddec": -4.3,
+   "flux": 0.13
+  },
+  "code": "pmoired",
+  "case": "B-pulls-base",
+  "config": "matched",
+  "size": "full",
+  "run": "r2",
+  "jax_cache": "cold",
+  "task": "pulls",
+  "case_id": "B-pulls-base"
+ },
+ "provenance": {
+  "vv_commit": null,
+  "vv_dirty": false,
+  "virgil_pin": "09b268521072a83f73bc0a77defa6485db270c7b",
+  "versions": {
+   "virgil-astro": null,
+   "jax": "0.12.0.1",
+   "jaxlib": "0.12.0.1",
+   "numpyro": "0.22.0",
+   "pmoired": "26.10.1",
+   "ehtim": null,
+   "numpy": "2.5.4",
+   "scipy": "1.18.1",
+   "arviz": null,
+   "astropy": "8.0.2"
+  },
+  "python": "3.12.7",
+  "macos": "",
+  "chip": "AMD EPYC 7543 32-Core Processor",
+  "cpu_count": 64,
+  "thread_env": {
+   "OMP_NUM_THREADS": "1",
+   "OPENBLAS_NUM_THREADS": "1",
+   "VECLIB_MAXIMUM_THREADS": "1",
+   "MKL_NUM_THREADS": "1",
+   "NUMEXPR_NUM_THREADS": "1",
+   "XLA_FLAGS": "--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1 --xla_cpu_parallel_codegen_split_count=1 --xla_cpu_use_xnnpack=false --xla_cpu_enable_concurrency_optimized_scheduler=false",
+   "JAX_PLATFORMS": "cpu",
+   "JULIA_NUM_THREADS": "1"
+  },
+  "data_manifest_sha256": "b3051f797e7f8c24d24ca53c6f52ab3898e1d574a612c2aa97ea8b0051ba8b60",
+  "pmoired_version": "26.10.1"
+ },
+ "language": "python"
+}
