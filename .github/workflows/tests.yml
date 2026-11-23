@@ -21,7 +21,8 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 90  # a stalled or thrashing run fails with its log instead of 'lost communication' at 6 h
+    # pull requests and pushes (fast tests, about 45 min); the weekly and manual run is every test and may take hours
+    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 360 || 90 }}  # a stalled or thrashing run fails with its log instead of 'lost communication' at 6 h
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +79,7 @@ jobs:
         if: github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"  # tests/test_calibrated_load.py must not skip silently
+          PYTHONUNBUFFERED: "1"  # a cancelled run shows the test that was running
           VV_REQUIRE_VIRGIL_IMPORTS: "1"  # a missing virgil module is a collection error, not a silent skip
         run: |
           # memory logger (one line a minute: used/free/available MB, biggest python RSS MB)
@@ -89,6 +91,7 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           VV_REQUIRE_VLTI: "1"
+          PYTHONUNBUFFERED: "1"
           VV_REQUIRE_VIRGIL_IMPORTS: "1"
         run: |
           # memory logger (one line a minute: used/free/available MB, biggest python RSS MB)

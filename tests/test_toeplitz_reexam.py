@@ -146,8 +146,9 @@ def test_the_reference_gradient_equals_central_differences(mode):
 # ------------------------------------------------------------------ Tier I on tiny unregistered scenes
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"])
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], tier="B")
 @pytest.mark.parametrize("spec", SMOKE, ids=[s["name"] for s in SMOKE])
 def test_tier1_rows_pass_on_tiny_unregistered_scenes(spec):
     """Every mode and point: loss, chi2 per ddid (fixed mode), each gradient site within the derived budget; the optimum's fitted
@@ -162,8 +163,9 @@ def test_tier1_rows_pass_on_tiny_unregistered_scenes(spec):
     assert opt and opt[0]["rel"] > 1e-8  # what the 2026-10-23 relative criterion would have called a failure
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="control")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], kind="control", tier="B")
 def test_a_kernel_looser_than_documented_fails_the_budget():
     """The precompute at eps 1e-7 instead of the documented 1e-14: the budget (which assumes 1e-14) must catch it."""
     rows, _ = tr.tier1_scene(SMOKE[0], dict(TCFG, modes=["fixed"]), toeplitz_eps=1e-7)
@@ -173,8 +175,9 @@ def test_a_kernel_looser_than_documented_fails_the_budget():
 # ------------------------------------------------------------------ Tier II and the summary on a tiny IM Lup-like set
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_tier2_and_summary_on_a_tiny_set(tmp_path, monkeypatch):
     """Tier II agreement on a 32^2 config-R problem passes its budget; on a CPU the performance rows are NOT EVALUATED, so with no
     Tier I files the verdict is INCOMPLETE, never ACCEPTED; every JSON records the hash and the virgil commit."""

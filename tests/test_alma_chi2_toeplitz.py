@@ -48,7 +48,8 @@ def _rel(a, b):
     return float(jnp.max(jnp.abs(a - b)) / jnp.max(jnp.abs(b)))
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 @pytest.mark.parametrize("use_sb", [False, True])
 def test_toeplitz_and_direct_terms_of_the_fit_problem_give_the_same_loss_and_gradient(syn, use_sb):
     """The two engines of ``build_problem`` at one set of off-start parameters (all data, and the SB-stage subset with a mask): loss to 1e-10 and every
@@ -92,7 +93,8 @@ def syn7(tmp_path_factory):
     return synthetic_dir(tmp_path_factory.mktemp("syn7"), n=150)  # 7 observations, so the SB stage (obs 0-4) exists
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_fit_chi2_toeplitz_records_engine_precompute_and_at_bound_and_the_compare_notes_show_them(syn7, tmp_path):
     """A short two-stage fit with ``--chi2 toeplitz``: result.json holds the engine, a precompute per stage, its total time and array size, and
     ``at_bound``; the direct fit says ``direct`` with none; ``compare``'s notes carry both."""

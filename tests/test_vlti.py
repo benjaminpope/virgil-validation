@@ -64,8 +64,9 @@ def test_wavelengths_and_closure_triangles_match_ours():
     assert err < 1e-9 and np.max(np.abs(want)) > 0.1  # a scene with real closure phases
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
-@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"])
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], tier="B")
 def test_file_reproduces_virgil_model(tmp_path, make):
     """virgil's reader + model reproduce what we wrote, sample by sample:
     the OIFITS sign of u, v, the T3 orientation and the units agree."""
@@ -81,8 +82,9 @@ def test_file_reproduces_virgil_model(tmp_path, make):
     assert np.max(np.abs(np.asarray(observed) - np.asarray(model))) < 1e-12
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
-@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", roots=["mathematics"], tier="B")
 def test_noise_free_recovery(tmp_path, make):
     scene = make()
     path = tmp_path / "s.fits"
@@ -164,8 +166,9 @@ def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path, wrap):
     assert fit(scene.template, priors, vb.load(path)).info["method"] == "lm"
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("method", ["lm", "lbfgs"])
-@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.validates("virgil.fitting.fit", roots=["mathematics"], tier="B")
 def test_fit_from_the_exact_optimum_converges(tmp_path, method):
     """A fit started exactly at a zero-residual optimum is converged at
     once (finding 6, fixed in virgil#144)."""

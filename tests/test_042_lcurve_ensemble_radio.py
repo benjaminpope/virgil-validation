@@ -189,11 +189,13 @@ def test_lcurve_dof_discrepancy_matches_closed_form_tsv_ridge_trace_and_se():
     assert 0.45 < se_ratio < 1.85
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.imaging.LCurve",
     "virgil.imaging.DofDiscrepancy",
     roots=["mathematics"],
     headline="h_diag_err",
+    tier="B",
 )
 def test_lcurve_dof_discrepancy_maxent_h_diagnostic_and_custom_curvature():
     n, scale, flux = 6, 1.5, 0.3
@@ -321,10 +323,12 @@ def test_lcurve_dof_discrepancy_no_crossing_returns_none_control():
     assert len(choice.roots) == 0
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.imaging.LCurve",
     roots=["mathematics"],
     headline="classic_maxent_rel_err",
+    tier="B",
 )
 def test_lcurve_corner_discrepancy_and_classic_maxent():
     n, scale = 6, 1.5
@@ -1052,11 +1056,13 @@ def test_ensemble_gp_evidence_grid_and_gp_members():
     assert max_logz_err < 1e-9
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.ensemble.combine",
     roots=["mathematics"],
     kind="control",
     headline="flipped_member_rejected",
+    tier="B",
 )
 def test_ensemble_combine_rejects_corrupted_member_from_running_mean_control():
     n, scale = 9, 1.5
@@ -1386,12 +1392,14 @@ def test_radio_fit_staged_nuisances_recovers_gains_ref_obs_and_box_edge_guard():
     assert "pixels" in staged.values
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.radio.fit_staged_nuisances",
     "virgil.radio.StagedFit",
     roots=["mathematics"],
     kind="finding",
     headline="nuisance_grad_rel",
+    tier="B",
 )
 @pytest.mark.xfail(
     strict=True,
@@ -1452,12 +1460,14 @@ def test_f29_fit_staged_nuisances_stage3_kkt_converged_at_joint_optimum():
     assert staged.kkt["converged"] is True
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.radio.fit_staged_nuisances",
     "virgil.radio.StagedFit",
     roots=["mathematics"],
     kind="control",
     headline="min_edge_frac",
+    tier="B",
 )
 def test_radio_fit_staged_nuisances_box_edge_failure_control():
     rng = np.random.default_rng(127)

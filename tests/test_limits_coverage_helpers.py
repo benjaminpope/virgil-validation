@@ -48,8 +48,9 @@ def test_chi2ppf_is_scipys_for_one_degree_of_freedom():
     _chi2ppf_against_scipy(1)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("df", [2, 3, 10])
-@pytest.mark.validates("virgil.limits.chi2ppf", roots=["statistics"])
+@pytest.mark.validates("virgil.limits.chi2ppf", roots=["statistics"], tier="B")
 def test_f17_chi2ppf_works_for_several_degrees_of_freedom(df):
     """chi2ppf for df != 1 agrees with SciPy (F17: the documented fallback,
     numpyro's gammaincinv, raised ImportError for tensorflow_probability

@@ -384,7 +384,8 @@ def prior_reference(tables, params, widths):
     return out
 
 
-@pytest.mark.validates("virgil.observables.DifferentialPhase", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.observables.DifferentialPhase", roots=["mathematics"], tier="B")
 def test_differential_phase_with_finite_priors_is_a_dense_gaussian(written):
     tables, path = written
     base = OIData(str(path))
