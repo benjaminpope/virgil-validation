@@ -168,3 +168,13 @@ def test_function_tests_section_missing_is_an_error(tmp_path):
     (tmp_path / "mkdocs.yml").write_text("nav:\n  - Overview: index.md\n")
     with pytest.raises(ValueError):
         trust.test_sections(tmp_path / "mkdocs.yml")
+
+
+@pytest.mark.validates("evidence", roots=["standards"], kind="guard")
+def test_page_says_which_weekly_run_supplied_the_slow_tests_or_that_there_is_none(model):
+    assert "Weekly evidence" not in trust.render(model) and "No weekly evidence" not in trust.render(model)  # not asked
+    page = trust.render({**model, "weekly": {"run_id": 50, "date": "2026-11-23T03:00:00Z", "vv_commit": "beef050",
+                                              "url": "https://github.com/o/r/actions/runs/50"}})
+    assert 'Weekly evidence from 2026-11-23, <a href="https://github.com/o/r/actions/runs/50">run 50</a>.' in page
+    page = trust.render({**model, "weekly": {"run_id": None, "max_age_days": 8}})
+    assert "No weekly evidence within 8 days: the tests that run only weekly show as unchecked." in page

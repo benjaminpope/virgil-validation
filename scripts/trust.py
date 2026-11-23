@@ -30,6 +30,7 @@ validated when, in addition, every step is verified.
 import argparse
 import collections
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -1021,7 +1022,7 @@ from trust_render import (  # noqa: E402,F401
     ICON, ORDER, COLOURS, _bar, _legend, _value, _pipeline_card, _chain, _tooltip, layers, _fails_badge, _map,
     _matrix, _link_label, _ledger, FINDING_GROUPS, render_findings, render_coverage, LAYER_SECTION, test_sections,
     render_tests, _precision, _tables, SHOWCASE, _headline_html, _headline_by_order_html, _fails_elsewhere_html,
-    render, _skyline,
+    _weekly_html, render, _skyline,
 )
 e = trust_render.e  # not in the import above: build() uses `e` as a loop variable, which ruff flags against an import
 
@@ -1039,6 +1040,9 @@ def main():
     ap.add_argument("--virgil", type=pathlib.Path, default=None)
     ap.add_argument("--strict-provenance", action="store_true",
                     help="leave out runs on uncommitted code or on commits outside this branch (the published page)")
+    ap.add_argument("--weekly-source", default=None,
+                    help="source.json that scripts/fetch_ci_evidence.sh wrote for the weekly run (CI ci/full/source.json); "
+                         "if it does not exist the page says there is no weekly evidence. Omit locally: the page says nothing.")
     ap.add_argument("--out", default=ROOT / "docs" / "index.md")
     ap.add_argument("--index", default=None, help="also write the page here (the site's home page)")
     ap.add_argument("--json", default=None)
@@ -1052,6 +1056,11 @@ def main():
     runs, records = load_evidence(args.evidence, strict=args.strict_provenance, virgil=virgil)
     model = build(graph, ledger, records, runs, virgil)
     model["docs"] = resolve_docs(graph)
+    model["weekly"] = None  # not asked: the page says nothing (display only; no verdict reads it)
+    if args.weekly_source:
+        src = pathlib.Path(args.weekly_source)
+        model["weekly"] = (json.loads(src.read_text()) if src.is_file()
+                           else {"run_id": None, "max_age_days": int(os.environ.get("FULL_MAX_AGE_DAYS", "8"))})
     out, index = pathlib.Path(args.out), pathlib.Path(args.index) if args.index else None
     docs_root = ROOT / "docs"
     for path in [out] + ([index] if index else []):

@@ -2,11 +2,13 @@
 evidence artefact, so the script must fall back to the newest older run that has one, say so on
 stderr for each run it skips, and fail only when none has one."""
 
+import json
 import os
 import pathlib
 import shutil
 import stat
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -46,7 +48,7 @@ def run_script(tmp_path):
     gh.write_text(STUB)
     gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
 
-    def run(*args, push=(), full=(), with_artefact=(), cancelled=(), download_fails=None, list_fails=None, api_fails=None, stale=False):
+    def run(*args, push=(), full=(), with_artefact=(), cancelled=(), download_fails=None, list_fails=None, api_fails=None, stale=False, max_age="36500"):
         env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "GITHUB_REPOSITORY": "o/r",
                "FAKE_RUNS_push": "\n".join(push),
                "FAKE_RUNS_schedule": "\n".join(full),
@@ -54,7 +56,8 @@ def run_script(tmp_path):
                "FAKE_WITH_ARTEFACT": " ".join(map(str, [*with_artefact, *cancelled])),
                "FAKE_DOWNLOAD_FAILS": str(download_fails),
                "FAKE_LIST_FAILS": str(list_fails), "FAKE_API_FAILS": str(api_fails),
-               "FAKE_WITH_EVIDENCE": " ".join(map(str, with_artefact))}
+               "FAKE_WITH_EVIDENCE": " ".join(map(str, with_artefact)),
+               "FULL_MAX_AGE_DAYS": max_age}  # the fixed dates of PUSH and FULL are long past: no limit unless a test sets one
         out = tmp_path / "ci"
         if stale:  # an OUTDIR left by an earlier fetch
             (out / "push").mkdir(parents=True)
@@ -162,3 +165,54 @@ def test_a_failed_run_without_evidence_is_skipped_like_a_cancelled_one(run_scrip
     proc, out = run_script(push=push, with_artefact=[300, 200])
     assert proc.returncode == 0, proc.stderr
     assert (out / "push" / "evidence.jsonl").read_text() == "run 300\n"
+
+
+def _ago(days):  # an ISO timestamp the way gh prints createdAt
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_a_weekly_run_older_than_the_limit_is_ignored_and_a_fresh_one_is_used(run_script):
+    # 2026-11-23: the weekly run was cancelled, and a week-old run (older vv) became the slow tests' only evidence
+    push = [f"{_ago(0)} 300 abc300"]
+    old = [f"{_ago(10)} 40 f938988"]
+    proc, out = run_script(push=push, full=old, with_artefact=[300, 40], max_age="8")
+    assert proc.returncode == 0, proc.stderr
+    assert "ignoring run 40 (schedule workflow_dispatch): 10 days old, limit 8 days" in proc.stderr
+    assert proc.stderr.count("ignoring run") == 1
+    assert not (out / "full").exists()
+    assert (out / "push" / "evidence.jsonl").read_text() == "run 300\n"
+    # the same run is used under a longer limit
+    proc, out = run_script(push=push, full=old, with_artefact=[300, 40], max_age="11")
+    assert (out / "full" / "evidence.jsonl").read_text() == "run 40\n"
+    # a fresh run is used, and source.json says which
+    fresh = [f"{_ago(3)} 50 beef050", *old]
+    proc, out = run_script(push=push, full=fresh, with_artefact=[300, 50, 40], max_age="8")
+    assert proc.returncode == 0, proc.stderr
+    assert "ignoring" not in proc.stderr
+    assert (out / "full" / "evidence.jsonl").read_text() == "run 50\n"
+    src = json.loads((out / "full" / "source.json").read_text())
+    assert src == {"run_id": 50, "date": fresh[0].split()[0], "vv_commit": "beef050",
+                   "url": "https://github.com/o/r/actions/runs/50"}
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_a_fresh_cancelled_weekly_run_does_not_let_an_old_one_stand_in(run_script):
+    # this week's run was cancelled (no evidence): the next older one is last week's, past the limit
+    push = [f"{_ago(0)} 300 abc300"]
+    full = [f"{_ago(1)} 60 aaa060", f"{_ago(9)} 40 f938988"]
+    proc, out = run_script(push=push, full=full, with_artefact=[300, 40], cancelled=[60], max_age="8")
+    assert proc.returncode == 0, proc.stderr
+    assert "run 60 has no evidence artefact; using an older run" in proc.stderr
+    assert "ignoring run 40" in proc.stderr and "9 days old" in proc.stderr
+    assert not (out / "full").exists()
+
+
+@pytest.mark.validates("evidence", roots=["mathematics"], kind="guard")
+def test_an_old_weekly_run_removes_the_full_dir_of_an_earlier_fetch(run_script, tmp_path):
+    stale = tmp_path / "ci" / "full"
+    stale.mkdir(parents=True)
+    (stale / "evidence.jsonl").write_text("old")
+    proc, out = run_script(push=[f"{_ago(0)} 300 abc300"], full=[f"{_ago(20)} 40 f938988"], with_artefact=[300, 40], max_age="8")
+    assert proc.returncode == 0, proc.stderr
+    assert not (out / "full").exists()

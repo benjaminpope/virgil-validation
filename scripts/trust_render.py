@@ -419,6 +419,19 @@ def _headline_html(verified, total, stale, commits, refs_ok, refs_total):
             f'{refs_ok} of {refs_total} verified.</div></div>')
 
 
+def _weekly_html(weekly):
+    """Which weekly or manual run supplied the slow tests' evidence; None (not asked) prints nothing."""
+    if weekly is None:
+        return ""
+    if not weekly.get("run_id"):
+        return (f'<div class="vt-muted">No weekly evidence within {e(weekly.get("max_age_days", 8))} days: '
+                f'the tests that run only weekly show as unchecked.</div>')
+    run = f'run {e(weekly["run_id"])}'
+    if weekly.get("url"):
+        run = f'<a href="{e(weekly["url"])}">{run}</a>'
+    return f'<div class="vt-muted">Weekly evidence from {e(str(weekly.get("date", ""))[:10])}, {run}.</div>'
+
+
 def _headline_by_order_html(tests):
     """A warning when a check shows a number chosen by recording order, not by its test (no ``headline=``)."""
     if not tests:
@@ -477,6 +490,7 @@ def render(model, base=""):
         "[How this works](method/index.md).\n",
         '<div class="vt">',
         _headline_html(counts.get("verified", 0), total, stale, commits, refs_ok, len(refs)),
+        _weekly_html(model.get("weekly")),
         _headline_by_order_html(model.get("headline_by_order", [])),
         _fails_elsewhere_html(model.get("fails_elsewhere", [])),
         _bar(counts, total),
