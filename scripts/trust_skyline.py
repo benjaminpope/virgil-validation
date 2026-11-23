@@ -215,8 +215,12 @@ def skyline_html(model, roots, base="", *, names):
         sq = (f'<rect class="sq k-{_e(n["verdict"])}" x="{sx}" y="{sy:.0f}" width="{CELL}" height="{CELL}" rx="2">'
               f'<title>{_e(title)}</title></rect>{marks}')
         doc = docs.get(n["id"])
+        # data-node lets docs/assets/trust.js select the part's cone; a square with no page is a bare <g> that the
+        # script makes focusable, so without JavaScript it is only a coloured square with a tooltip
         if doc:
-            sq = f'<a href="{_e(base + t.doc_url(doc))}" aria-label="{_e(title)}">{sq}</a>'
+            sq = f'<a href="{_e(base + t.doc_url(doc))}" aria-label="{_e(title)}" data-node="{_e(n["id"])}">{sq}</a>'
+        else:
+            sq = f'<g data-node="{_e(n["id"])}" aria-label="{_e(title)}">{sq}</g>'
         out.append(sq)
     # ground line and the dashed divider after the references column
     out.append(f'<rect x="{LEFT - 8}" y="{ground}" width="{width - LEFT - RIGHT + 8}" height="3" fill="currentColor" fill-opacity=".75"/>')
