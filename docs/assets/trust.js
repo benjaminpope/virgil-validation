@@ -13,7 +13,7 @@
     var map = document.querySelector(".vt-map");
     var sky = document.querySelector(".vt-sky");
     var cone = document.getElementById("vt-cone");
-    var current = null, expanded = {};
+    var current = null;
     function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
     function fmt(v) {
       if (v == null || typeof v !== "number") return esc(v);
@@ -79,7 +79,7 @@
       n.strong.forEach(function (r) { seen[C.letters[r] || (r.indexOf("golden") === 0 ? "G" : "?")] = true; });
       return C.letter_order.split("").filter(function (l) { return seen[l]; }).concat(seen["?"] ? ["?"] : []);
     }
-    var BW = 156, BH = 48, GX = 12, RH = 76, PAD = 14, LEFT = 50, MAXROW = 12;
+    var BH = 48, RH = 76, PAD = 14, LINE = 58, DGAP = 30;   // box height, pipeline row, margin, one line of boxes, gap between depths
 
     function drawCone(id) {
       var pipe = C.pipelines[id] && !nodes[id] ? C.pipelines[id] : null;
@@ -88,78 +88,66 @@
       var rows = {};
       ids.forEach(function (m) { (rows[nodes[m].depth] = rows[nodes[m].depth] || []).push(m); });
       var depths = Object.keys(rows).map(Number).sort(function (a, b) { return b - a; });
-      var rank = {}; Object.keys(verdicts).forEach(function (v, i) { rank[v] = v === "verified" ? 99 : i; });
-      var more = {}, vis = {};   // hidden ids of a collapsed row; visible ids of each row
-      depths.forEach(function (d) {
-        var row = rows[d].slice();
-        if (row.length > MAXROW && !expanded[d]) {
-          row.sort(function (a, b) { return (rank[nodes[a].verdict] - rank[nodes[b].verdict]) || (nodes[a].label < nodes[b].label ? -1 : 1); });
-          more[d] = row.slice(MAXROW - 1); row = row.slice(0, MAXROW - 1);
-        }
-        vis[d] = row;
-      });
-      var widest = Math.max.apply(null, depths.map(function (d) { return vis[d].length + (more[d] ? 1 : 0); }).concat([pipe ? 1 : 0, 2]));
-      var Wc = LEFT + PAD + widest * (BW + GX), cx = LEFT + (Wc - LEFT) / 2;
-      var y = {}, yy = PAD + (pipe ? RH : 0);
-      depths.forEach(function (d) { y[d] = yy; yy += RH; });
-      var Hc = yy - RH + BH + PAD + 8;
-      var x = {}, where = {};     // x of each drawn box; where[id] is the box that stands for it
+      // the drawing is as wide as its frame, never wider: a depth with more parts than fit across wraps onto further lines
+      var avail = Math.floor(body.scroll.clientWidth - 14) || 900;
+      var narrow = avail < 560, LEFT = narrow ? 26 : 56, GX = narrow ? 8 : 12, BW = 156;
+      if (avail - LEFT - PAD < 2 * (BW + GX)) BW = Math.max(96, Math.floor((avail - LEFT - PAD) / 2) - GX);
+      var cap = Math.max(1, Math.floor((avail - LEFT - PAD) / (BW + GX)));
+      var chars = Math.max(8, Math.floor((BW - 22) / 6.2));
+      var Wc = Math.max(avail, LEFT + PAD + 2 * (BW + GX)), cx = LEFT + (Wc - LEFT) / 2;
+      var ydep = {}, yy = PAD + (pipe ? RH : 0), lines = {};
+      depths.forEach(function (d) { lines[d] = Math.ceil(rows[d].length / cap); ydep[d] = yy; yy += (lines[d] - 1) * LINE + BH + DGAP; });
+      var Hc = yy - DGAP + PAD + 8;
+      var x = {}, ny = {};     // x and y (top) of each box
       var parents = {};
       ids.forEach(function (m) { nodes[m].depends.forEach(function (b) { if (members[b]) (parents[b] = parents[b] || []).push(m); }); });
-      function at(m) { return where[m] != null ? x[where[m]] : null; }
+      function at(m) { return x[m] != null ? x[m] : null; }
       if (pipe) { x["pipe"] = cx; }
+      function pe(m) { return pipe && pipe.steps.indexOf(m) >= 0; }
       depths.forEach(function (d) {
-        var row = vis[d].slice();
+        var row = rows[d].slice();
         var bary = function (m) {
           var ps = (parents[m] || []).map(at).filter(function (v) { return v != null; });
-          if (pe(m) && pipe) ps.push(cx);
+          if (pe(m)) ps.push(cx);
           return ps.length ? ps.reduce(function (s, v) { return s + v; }, 0) / ps.length : cx;
         };
-        function pe(m) { return pipe && pipe.steps.indexOf(m) >= 0; }
-        row.sort(function (a, b) { return (bary(a) - bary(b)) || (nodes[a].label < nodes[b].label ? -1 : 1); });
-        var items = row.map(function (m) { return {id: m}; });
-        if (more[d]) items.push({more: d});
-        items.forEach(function (it, j) {
-          var key = it.more != null ? "more:" + d : it.id;
-          x[key] = cx + (j - (items.length - 1) / 2) * (BW + GX);
-          if (it.id) where[it.id] = key; else more[d].forEach(function (m) { where[m] = key; });
+        var b = {}; row.forEach(function (m) { b[m] = bary(m); });
+        row.sort(function (p, q) { return (b[p] - b[q]) || (nodes[p].label < nodes[q].label ? -1 : 1); });
+        // fill the lines evenly (7, 7, 6 rather than 12, 1), left to right in barycentre order
+        var per = Math.ceil(row.length / lines[d]);
+        row.forEach(function (m, i) {
+          var ln = Math.floor(i / per), first = ln * per, count = Math.min(per, row.length - first);
+          x[m] = cx + ((i - first) - (count - 1) / 2) * (BW + GX);
+          ny[m] = ydep[d] + ln * LINE;
         });
-        vis[d] = items;
       });
       // edges, first so that the boxes sit on top
       var edges = [], seen = {};
-      function edge(a, b, ya, yb) {   // a, b are box keys
+      function edge(a, b, ya, yb) {
         var k = a + ">" + b; if (seen[k] || a === b) return; seen[k] = 1;
         var x1 = x[a], x2 = x[b], my = (ya + yb) / 2;
         edges.push('<path d="M' + x1 + "," + ya + " C" + x1 + "," + my + " " + x2 + "," + my + " " + x2 + "," + yb + '"/>');
       }
       ids.forEach(function (m) {
-        nodes[m].depends.forEach(function (b) { if (members[b]) edge(where[m], where[b], y[nodes[m].depth] + BH, y[nodes[b].depth]); });
+        nodes[m].depends.forEach(function (b) { if (members[b]) edge(m, b, ny[m] + BH, ny[b]); });
       });
-      if (pipe) pipe.steps.forEach(function (s) { if (members[s]) edge("pipe", where[s], PAD + 34, y[nodes[s].depth]); });
-      var out = ['<svg class="vt-cone-svg" data-cx="' + cx + '" viewBox="0 0 ' + Wc + " " + Hc + '" width="' + Wc + '" height="' + Hc +
+      if (pipe) pipe.steps.forEach(function (s) { if (members[s]) edge("pipe", s, PAD + 34, ny[s]); });
+      var out = ['<svg class="vt-cone-svg" viewBox="0 0 ' + Wc + " " + Hc + '" width="' + Wc + '" height="' + Hc +
         '" role="group" aria-label="Cone of ' + esc(pipe ? pipe.title : nodes[id].label) + ": " + ids.length + " parts in " + depths.length +
-        ' rows, from the selected part at the top to the ground at the bottom">', '<g class="vt-cone-edges">' + edges.join("") + "</g>"];
+        ' depths, from the selected part at the top to the ground at the bottom">', '<g class="vt-cone-edges">' + edges.join("") + "</g>"];
       depths.forEach(function (d) {
-        out.push('<text class="vt-cone-d" x="' + (LEFT - 8) + '" y="' + (y[d] + BH / 2 + 4) + '" text-anchor="end">depth ' + d + "</text>");
-        vis[d].forEach(function (it) {
-          if (it.more != null) {
-            var hid = more[it.more], bx = x["more:" + it.more] - BW / 2;
-            out.push('<g class="vt-cone-more" tabindex="0" role="button" data-more="' + it.more + '" aria-label="Show ' + hid.length + " more parts at depth " + it.more + '">' +
-              "<title>" + hid.length + " more parts at depth " + it.more + " (the unverified ones are shown first)</title>" +
-              '<rect class="bx" x="' + bx + '" y="' + y[it.more] + '" width="' + BW + '" height="' + BH + '" rx="5"/>' +
-              '<text x="' + (bx + BW / 2) + '" y="' + (y[it.more] + BH / 2 + 4) + '" text-anchor="middle">+' + hid.length + " more</text></g>");
-            return;
-          }
-          var n = nodes[it.id], bx = x[it.id] - BW / 2, by = y[d], v = verdicts[n.verdict][0], L = lettersOf(n);
-          var word = (C.short[n.verdict] || n.verdict), sel = it.id === id ? " sel" : "";
-          out.push('<a class="vt-cone-box' + sel + '" href="#' + encodeURIComponent(it.id) + '" data-cone-node="' + esc(it.id) + '" aria-label="' +
+        out.push('<text class="vt-cone-d" x="' + (LEFT - 8) + '" y="' + (ydep[d] + BH / 2 + 4) + '" text-anchor="end">' + (narrow ? d : "depth " + d) + "</text>");
+        if (lines[d] > 1) out.push('<line class="vt-cone-span" x1="' + (LEFT - 4) + '" x2="' + (LEFT - 4) + '" y1="' + ydep[d] + '" y2="' + (ydep[d] + (lines[d] - 1) * LINE + BH) + '"/>');
+        rows[d].forEach(function (mid) {
+          var n = nodes[mid], bx = x[mid] - BW / 2, by = ny[mid], v = verdicts[n.verdict][0], L = lettersOf(n);
+          var word = (C.short[n.verdict] || n.verdict), sel = mid === id ? " sel" : "";
+          out.push('<a class="vt-cone-box' + sel + '" href="#' + encodeURIComponent(mid) + '" data-cone-node="' + esc(mid) + '" aria-label="' +
             esc(n.label + ": " + v + ". " + (L.length ? "Checked against " + L.map(function (l) { return C.letter_names[l] || "an unlisted root"; }).join(", ") : "No root yet")) + '">' +
             "<title>" + esc(n.id + " · " + v + " · depth " + n.depth + " · " + (n.strong.length ? "checked against " + n.strong.map(function (r) { return roots[r] || r; }).join(", ") : "no counted root")) + "</title>" +
             '<rect class="bx" x="' + bx + '" y="' + by + '" width="' + BW + '" height="' + BH + '" rx="5"/>' +
             '<rect class="st k-' + n.verdict + '" x="' + bx + '" y="' + by + '" width="7" height="' + BH + '" rx="3"/>' +
-            '<text class="l1" x="' + (bx + 14) + '" y="' + (by + 15) + '"><tspan class="ic">' + esc(data.cone.icons[n.verdict] || "") + "</tspan> " + esc(trunc(n.label, 22)) + "</text>" +
-            '<text class="l2" x="' + (bx + 14) + '" y="' + (by + 28) + '">' + esc(trunc(word, 28)) + "</text>" +
+            '<text class="l1" x="' + (bx + 14) + '" y="' + (by + 15) + '"><tspan class="ic">' + esc(data.cone.icons[n.verdict] || "") + "</tspan> " + esc(trunc(n.label, chars)) + "</text>" +
+            '<text class="l2" x="' + (bx + 14) + '" y="' + (by + 28) + '">' + esc(trunc(word, chars + 4)) + "</text>" +
             '<text class="l3" x="' + (bx + 14) + '" y="' + (by + 41) + '">' + (L.length ? esc(L.join(" ")) : "no root") + "</text></a>");
         });
       });
@@ -187,11 +175,15 @@
       return '<div class="vt-legend">' + vs + "</div>" + (ls ? '<div>Root letters in this cone: ' + ls + ".</div>" : "");
     }
 
-    function draw(id) {   // the drawing is wider than a phone: scroll its container so the top part is in view
-      body.scroll.innerHTML = drawCone(id); body.scroll.hidden = false;
-      var svg = body.scroll.firstChild;
-      body.scroll.scrollLeft = Math.max(0, +svg.getAttribute("data-cx") - body.scroll.clientWidth / 2);
+    function draw(id) {   // the frame must be visible to be measured: the drawing is made to fit its width
+      body.scroll.hidden = false;
+      body.scroll.innerHTML = drawCone(id);
     }
+    var resizeTimer = null;
+    window.addEventListener("resize", function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () { if (current && cone && !body.scroll.hidden) draw(current); }, 150);
+    });
     function showCone(id) {
       var pipe = !nodes[id];
       var n = pipe ? null : nodes[id], p = pipe ? C.pipelines[id] : null;
@@ -229,7 +221,7 @@
     function select(id, o) {
       o = o || {};
       if (!C.cones[id]) return false;
-      current = id; expanded = {};
+      current = id;
       if (nodes[id]) {
         detail(nodes[id]);
         if (o.fold) { var fold = document.getElementById("parts-list"); if (fold) fold.open = true; }
@@ -282,13 +274,7 @@
     if (cone) {
       cone.addEventListener("click", function (ev) {
         var box = ev.target.closest && ev.target.closest("[data-cone-node]");
-        if (box) { ev.preventDefault(); select(box.getAttribute("data-cone-node"), {}); return; }
-        var m = ev.target.closest && ev.target.closest("[data-more]");
-        if (m) { expanded[m.getAttribute("data-more")] = true; draw(current); var first = body.scroll.querySelector("a"); if (first) first.focus({preventScroll: true}); }
-      });
-      cone.addEventListener("keydown", function (ev) {
-        var m = ev.target.closest && ev.target.closest("[data-more]");
-        if (m && (ev.key === "Enter" || ev.key === " ")) { ev.preventDefault(); m.dispatchEvent(new MouseEvent("click", {bubbles: true})); }
+        if (box) { ev.preventDefault(); select(box.getAttribute("data-cone-node"), {}); }
       });
     }
     if (onHash) window.removeEventListener("hashchange", onHash);

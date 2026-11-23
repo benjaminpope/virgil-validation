@@ -105,7 +105,7 @@
 .vt-cone-key { margin: .4rem 0; }
 .vt-cone-key .vt-legend { margin-bottom: .2rem; }
 .vt-key { white-space: nowrap; }
-.vt-cone-scroll { overflow: auto; max-height: 40rem; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 6px; padding: .3rem; margin-top: .4rem; }
+.vt-cone-scroll { overflow-x: auto; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 6px; padding: .3rem; margin-top: .4rem; }
 .vt-cone-scroll .vt-cone-svg { display: block; margin: 0 auto; font-family: inherit; max-width: none; }
 .vt-cone-edges path { fill: none; stroke: currentColor; stroke-opacity: .3; stroke-width: 1; }
 .vt-cone-svg text { fill: currentColor; font-size: 10px; }
@@ -113,13 +113,9 @@
 .vt-cone-svg .l2, .vt-cone-svg .l3 { font-size: 9.5px; opacity: .78; }
 .vt-cone-svg .vt-cone-d { font-size: 9.5px; opacity: .6; }
 .vt-cone-svg .bx { fill: var(--md-default-bg-color); stroke: currentColor; stroke-opacity: .35; stroke-width: 1; }
-.vt-cone-svg a, .vt-cone-svg .vt-cone-more { cursor: pointer; text-decoration: none; color: var(--md-default-fg-color); }
-.vt-cone-svg a:hover .bx, .vt-cone-svg a:focus-visible .bx, .vt-cone-svg .vt-cone-more:hover .bx, .vt-cone-svg .vt-cone-more:focus-visible .bx { stroke-opacity: 1; stroke-width: 1.8; }
-.vt-cone-svg a:focus-visible, .vt-cone-svg .vt-cone-more:focus-visible { outline: none; }
 .vt-cone-svg a.sel .bx { stroke-opacity: 1; stroke-width: 2.4; }
 .vt-cone-svg .vt-cone-pipe .bx { stroke-opacity: .7; stroke-width: 1.5; }
 .vt-cone-svg .vt-cone-pipe text { text-anchor: middle; font-size: 11px; font-weight: 600; }
-.vt-cone-svg .vt-cone-more text { font-size: 11px; }
 .vt-cone-ground { fill: currentColor; fill-opacity: .7; }
 .vt-cone-svg .k-verified { fill: rgb(var(--vt-ok)); } .vt-cone-svg .k-relies { fill: rgb(var(--vt-relies)); }
 .vt-cone-svg .k-relies-unverified { fill: rgb(var(--vt-ru)); } .vt-cone-svg .k-partly { fill: rgb(var(--vt-partly)); }
@@ -133,3 +129,4 @@
 .vt-sky g[data-node]:hover rect.sq, .vt-sky g[data-node]:focus-visible rect.sq { stroke-opacity: 1; stroke-width: 1.6; }
 .vt-sky g[data-node]:focus-visible { outline: none; }
 .vt-sky [data-node].vt-sel { color: var(--md-default-fg-color); }
+.vt-cone-svg .vt-cone-span { stroke: currentColor; stroke-opacity: .25; stroke-width: 2; }
