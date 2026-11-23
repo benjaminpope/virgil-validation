@@ -658,5 +658,5 @@ factor (1.338), so its ln Z compares directly with job 21123993:
 
 The wider field fits the white-error data better by 58 and removes the edge flux, but the pick stays in the corner and the cost
 of the bound does not fall. Under night terms nothing changes. So AI Sco's field was short, but that is not why it picks the
-corner. Whether gp-polar's field should always cover the support (it would change AI Sco and HD 95767 under current noise) is
-left for Ben; `check_support` checks only the support.
+corner. Main has since made gp-polar's field cover the support in every target (8dd4095, `fit_radius_mas` = mask_mas / cos i),
+which is what this test did; this PR takes that change in its merge of main.

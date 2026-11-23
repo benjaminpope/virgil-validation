@@ -51,20 +51,48 @@ nodes:
   virgil.oidata.OIData:
     layer: data
     source: [src/virgil/oidata.py, src/virgil/_closure.py]
-    depends: [virgil.oifits.read_oifits]
+    depends:
+      - virgil.oifits.read_oifits
+      - virgil.amigo.is_mixed_disco_record
+      - virgil.amigo.mixed_disco_fields
+      - virgil.oidata.cp_indices
+      - virgil.oidata.closure_phases
+      - virgil.models.smeared_model
+      - virgil.observables.in_ranges
   virgil.oidata.find_uv_grid:
     layer: data
     source: [src/virgil/_geometry.py]
   virgil.coverage.vlti_oidata:
     layer: data
     source: [src/virgil/coverage.py]
+    depends: [virgil.oidata.OIData, virgil.oidata.cp_indices]
   virgil.amigo.load_oi_data:
     layer: data
     source: [src/virgil/amigo.py]
     depends: [virgil.oidata.OIData]
     doc: data/amigo.md
   virgil.coverage.mask_transfer: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
-  virgil.coverage.nrm_oidata: {layer: data, source: [src/virgil/coverage.py], doc: data/masking.md#mask-geometry}
+  virgil.coverage.nrm_oidata:
+    layer: data
+    source: [src/virgil/coverage.py]
+    depends: [virgil.oidata.OIData, virgil.oidata.cp_indices]
+    doc: data/masking.md#mask-geometry
+  virgil.amigo.is_mixed_disco_record: {layer: data, source: [src/virgil/amigo.py], doc: data/amigo.md}
+  virgil.amigo.validate_mixed_disco_record: {layer: data, source: [src/virgil/amigo.py], doc: data/amigo.md}
+  virgil.amigo.mixed_disco_fields:
+    layer: data
+    source: [src/virgil/amigo.py]
+    depends: [virgil.amigo.validate_mixed_disco_record]
+    doc: data/amigo.md
+  virgil.coverage.ami_grid_record:
+    layer: data
+    source: [src/virgil/coverage.py]
+    depends: [virgil.coverage.mask_transfer]
+    doc: data/amigo.md
+  virgil.oifits.build_hdulist: {layer: data, source: [src/virgil/oifits.py], doc: data/oifits_observables.md}
+  virgil.oidata.closure_phases: {layer: data, source: [src/virgil/oidata.py], doc: data/oifits_observables.md}
+  virgil.oidata.cp_indices: {layer: data, source: [src/virgil/oidata.py], doc: data/oifits_observables.md}
+  virgil.observables.in_ranges: {layer: data, source: [src/virgil/observables.py], doc: data/oifits_observables.md}
 
   # -------------------------------------------------------------- models
   virgil.models.PointSource: {layer: models, source: [src/virgil/models.py]}
@@ -73,11 +101,16 @@ nodes:
   virgil.models.UniformDisk: {layer: models, source: [src/virgil/models.py]}
   virgil.models.ModulatedGaussianRim:
     layer: models
-    source: [src/virgil/models.py]
+    source: [src/virgil/models.py, src/virgil/harmonics.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.harmonics.rim_coefficients]
     roots: 2
     properties: {profile: 2, modulation_sense: 1}  # PMOIRED's rim is modulated differently (D-code control)
     convention: [modulation_sense]
-  virgil.models.GaussianArc: {layer: models, source: [src/virgil/models.py], convention: [orientation]}
+  virgil.models.GaussianArc:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.VonMises]
+    convention: [orientation]
   virgil.models.BinaryModelCartesian: {layer: models, source: [src/virgil/models.py], roots: 2}
   virgil.models.BinaryModelAngular: {layer: models, source: [src/virgil/models.py]}
   virgil.models.Image: {layer: models, source: [src/virgil/models.py]}
@@ -127,6 +160,39 @@ nodes:
   virgil.spectra.reference_flux: {layer: models, source: [src/virgil/spectra.py], doc: models/spectra.md#the-spectrum-interface}
   virgil.spectra.PowerLaw: {layer: models, source: [src/virgil/spectra.py]}
   virgil.spectra.BlackBody: {layer: models, source: [src/virgil/spectra.py]}
+  virgil.models.Component:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.SourceModel, virgil.spectra.flux_at]
+    doc: models/cones_fields.md
+  virgil.models.ArchimedeanSpiral:
+    layer: models
+    source: [src/virgil/models.py]
+    roots: 2
+    # Ledger D26, gate G1c (Ben Pope, 2026-11-16): the internal parameterisation (exponential fade, sky-tangent pa
+    # deprojection, 1 px render floor) is a definition, pinned via properties + wrong-convention controls; blur_projection is
+    # confirmed externally by native PMOIRED + mathematics and optical propagation by dLux. The on-sky winding sense (pitch > 0
+    # counter-clockwise, pitch < 0 clockwise) is an orientation, so it stays a convention until another package or a published
+    # result confirms it (as FlaredDisk near_side, D24).
+    properties: {blur_projection: 2, plume_geometry: 1, render_fourier: 1}
+    convention: [winding_sense]
+    depends: [virgil.models.Component]
+    doc: models/cones_fields.md
+  virgil.models.smeared_model:
+    layer: models
+    source: [src/virgil/models.py]
+    roots: 2
+    depends: [virgil.models.SourceModel, virgil.models.System, virgil.models.Rotated]
+    doc: models/visibilities.md
+  virgil.models.multipole_disk_cvis: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
+  virgil.models.cvis_radial_dirac_delta_modulated: {layer: models, source: [src/virgil/models.py], doc: models/visibilities.md}
+  virgil.models.RadialGPFunction: {layer: models, source: [src/virgil/models.py], doc: models/cones_fields.md}
+  virgil.models.gp_priors:
+    layer: models
+    source: [src/virgil/models.py]
+    depends: [virgil.models.RadialGP, virgil.models.RadialGPFunction, virgil.models.MultipoleKernel, virgil.models.Harmonics]
+    doc: models/cones_fields.md
+  virgil.models.circular_support: {layer: models, source: [src/virgil/models.py], doc: models/cones_fields.md}
 
   # ------------------------------------------------------------- radio
   # virgil.radio (instrument-neutral): tests/test_alma_radio.py against crosscheck.sky,
@@ -158,6 +224,22 @@ nodes:
   virgil.radio.ComplexVisData.chi2_by_ddid: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData.model], doc: alma_conventions.md}
   virgil.radio.primary_beam: {layer: imaging, source: [src/virgil/radio.py], depends: [virgil.models.Image], doc: alma_conventions.md}
   virgil.radio.dartboard_folds: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil.radio.SigmaScale: {layer: likelihood, source: [src/virgil/radio.py], depends: [virgil.radio.ComplexVisData], doc: alma_conventions.md}
+  virgil.radio.ComplexVisData.sigma_scale:
+    layer: likelihood
+    source: [src/virgil/radio.py]
+    depends: [virgil.radio.ComplexVisData, virgil.radio.SigmaScale]
+    doc: alma_conventions.md
+  virgil.radio.fit_staged_nuisances:
+    layer: inference
+    source: [src/virgil/radio.py]
+    depends: [virgil.fitting.fit, virgil.fitting.kkt_report, virgil.radio.CalibrationNuisance, virgil.radio.ComplexVisData.term]
+    doc: alma_conventions.md
+  virgil.radio.StagedFit:
+    layer: inference
+    source: [src/virgil/radio.py]
+    depends: [virgil.radio.fit_staged_nuisances]
+    doc: alma_conventions.md
   # Register items B2, B5, B6 (virgil design/radio_imaging_innovations.md): tests/test_radio_innovations.py; B5's spread offsets (chi2, gradient, fit, bound) also tests/test_radio_spread_offsets.py. These need
   # virgil after 0.4.0 (gauss_newton_diag, radio_toeplitz); CI's pin has both since the F6 bump (virgil#533).
   # tests/test_radio_trust_numpy.py (tier A, numpy references) and tests/test_radio_trust_casa.py (tier B, real casatools and
@@ -166,9 +248,11 @@ nodes:
   virgil.fitting.gauss_newton_diag: {layer: imaging, source: [src/virgil/fitting.py], depends: [virgil.fitting.fit, virgil.imaging.MaxEntropy, virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   virgil.radio_toeplitz.ToeplitzVisData: {layer: likelihood, source: [src/virgil/radio_toeplitz.py, src/virgil/_nufft_spread.py], depends: [virgil.radio.ComplexVisData.term], doc: alma_conventions.md}
   crosscheck.radio_trust: {layer: references, doc: alma_conventions.md}  # numpy dirty image/beam sums, Briggs weights, gain-marginal quadrature (virgil#533)
+  crosscheck.starlet_kkt_ref: {layer: references, doc: imaging/machinery.md#kkt-optimality-certificates}  # numpy/scipy scenes, B3 starlet, KKT, DoF discrepancy, L-curve corner, Laplace GP, MYTHRA & radio differencing (every helper self-checked in test_042_scenes_starlet_kkt.py)
   crosscheck.radio_offsets: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # B5 free offsets: exact phase-ramp chi2, analytic gradient, Fisher information (numpy only); tests/test_radio_spread_offsets.py
   crosscheck.radio_exact: {layer: references, depends: [crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: numpy-only direct-sum chi2, loss, gradients and the derived round-off budget (design/toeplitz_reexam_042.md)
   crosscheck.toeplitz_scenes: {layer: references, depends: [crosscheck.radio_exact, crosscheck.radio_innovations], doc: alma_conventions.md}  # G2: held-out synthetic scenes and coverages, seeds from hashed names
+  crosscheck.smc_tempering_ref: {layer: references, doc: inference/sampling.md}  # conjugate/bimodal SMC, two-sided Mahalanobis, finite-chain tempering, Jeffreys outlier mixture, ridge CV
   crosscheck.radio_innovations: {layer: references, doc: alma_conventions.md}  # B2, B5: numpy softmax image, Gauss-Newton diagonal, entropy metric, direct DDID chi2
   crosscheck.radio_innovations.DeltaProblem: {layer: references, doc: alma_conventions.md}  # B6, float32 linear-delta-V loss: the method alone, virgil has no code for it yet
   crosscheck.preregistration: {layer: references, doc: alma_conventions.md}  # pre-registered gate criteria commit pinning and dirty/untracked refusal
@@ -192,8 +276,49 @@ nodes:
   virgil.fitting.fit:
     layer: likelihood
     source: [src/virgil/fitting.py, src/virgil/_precision.py]
-    depends: [virgil.likelihood.model_loglike]
+    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site]
     doc: data/long_baseline.md
+  virgil.tempering.block_dof: {layer: likelihood, source: [src/virgil/tempering.py], doc: likelihood/spectra_phases.md}
+  virgil.tempering.ChannelFactors:
+    layer: likelihood
+    source: [src/virgil/tempering.py]
+    depends: [virgil.tempering.block_dof]
+    doc: likelihood/spectra_phases.md
+  virgil.tempering.channel_chains:
+    layer: likelihood
+    source: [src/virgil/tempering.py]
+    depends: [virgil.oidata.OIData]
+    doc: likelihood/spectra_phases.md
+  virgil.tempering.adjacent_channels:
+    layer: likelihood
+    source: [src/virgil/tempering.py]
+    depends: [virgil.tempering.channel_chains]
+    doc: likelihood/spectra_phases.md
+  # Internal virgil diagnostic/API thresholds (flat_signature 0.15 & 3/sqrt(N),
+  # out_of_range (0.5, 2.0), MIN_CHAINS = 10 pooling fallback) have no external
+  # interferometry package counterpart in scripts/trust.py EXTERNAL; per Ben's
+  # 2026-11-15 Ruling 2 (convention: reserved for external sky/coordinate
+  # conventions), they are pinned via properties: and boundary/negative controls.
+  virgil.tempering.flat_signature: {layer: likelihood, source: [src/virgil/tempering.py], doc: likelihood/spectra_phases.md}
+  virgil.tempering.out_of_range: {layer: likelihood, source: [src/virgil/tempering.py], doc: likelihood/spectra_phases.md}
+  virgil.tempering.estimate_factors:
+    layer: likelihood
+    source: [src/virgil/tempering.py]
+    depends: [virgil.tempering.ChannelFactors, virgil.tempering.flat_signature]
+    properties: {variance_ratio: 1, fallback_rules: 1}
+    doc: likelihood/spectra_phases.md
+  virgil.likelihood.is_tied: {layer: priors, source: [src/virgil/likelihood.py], doc: likelihood/priors.md}
+  virgil.likelihood.tied_log_prior:
+    layer: priors
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.is_tied]
+    doc: likelihood/priors.md
+  virgil.likelihood.group_outlier_mixture: {layer: likelihood, source: [src/virgil/likelihood.py], doc: inference/helpers.md}
+  virgil.likelihood.group_outlier_probabilities:
+    layer: likelihood
+    source: [src/virgil/likelihood.py]
+    depends: [virgil.likelihood.group_outlier_mixture]
+    doc: inference/helpers.md
 
   # ------------------------------------------------------------ inference
   virgil.inference.laplace_cov:
@@ -215,8 +340,115 @@ nodes:
     depends: [virgil.likelihood.model_loglike]
   virgil.grid_fit.linear_flux_grid:
     layer: inference
-    source: [src/virgil/grid_fit.py, src/virgil/_grid.py]
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/_marginal.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.grid_fit.Gaussian, virgil.grid_fit.LogUniform]
+  virgil.grid_fit.Gaussian: {layer: inference, source: [src/virgil/grid_fit.py], doc: inference/grid_limits.md}
+  virgil.grid_fit.LogUniform: {layer: inference, source: [src/virgil/grid_fit.py, src/virgil/_marginal.py], doc: inference/grid_limits.md}
+  virgil.grid_fit.LinearFluxGrid:
+    layer: inference
+    source: [src/virgil/grid_fit.py, src/virgil/_marginal.py]
+    depends: [virgil.grid_fit.linear_flux_grid, virgil.grid_fit.Gaussian, virgil.grid_fit.LogUniform]
+    doc: inference/grid_limits.md
+  virgil.grid_fit.optimized_likelihood_grid:
+    layer: inference
+    source: [src/virgil/grid_fit.py, src/virgil/_grid.py, src/virgil/_gauss_newton.py]
+    depends: [virgil.likelihood.model_loglike]
+    doc: inference/grid_limits.md
+  virgil.smc.SMCResult: {layer: inference, source: [src/virgil/smc.py], doc: inference/sampling.md}
+  virgil.smc.tempered_smc:
+    layer: inference
+    source: [src/virgil/smc.py]
+    depends: [virgil.smc.SMCResult]
+    doc: inference/sampling.md
+  virgil.smc.bridge_smc:
+    layer: inference
+    source: [src/virgil/smc.py]
+    depends: [virgil.smc.SMCResult]
+    doc: inference/sampling.md
+  virgil.mode_search.Mode: {layer: inference, source: [src/virgil/mode_search.py], doc: inference/sampling.md}
+  virgil.mode_search.Evidence: {layer: inference, source: [src/virgil/mode_search.py], doc: inference/sampling.md}
+  virgil.mode_search.Move: {layer: inference, source: [src/virgil/mode_search.py], doc: inference/sampling.md}
+  virgil.mode_search.logmeanexp: {layer: inference, source: [src/virgil/mode_search.py], doc: inference/sampling.md}
+  virgil.mode_search.laplace_log_evidence:
+    layer: inference
+    source: [src/virgil/mode_search.py]
+    depends: [virgil.mode_search.Mode]
+    doc: inference/sampling.md
+  # Two-sided Mahalanobis threshold (MAHAL = 1.0) and inlier-floor sentinel
+  # (at_floor) are internal virgil API specifications without an external
+  # interferometry package counterpart (Ben's 2026-11-15 Ruling 2: pinned via
+  # properties: + boundary/one-sided negative controls rather than convention:).
+  virgil.mode_search.distinct_modes:
+    layer: inference
+    source: [src/virgil/mode_search.py]
+    depends: [virgil.mode_search.Mode]
+    properties: {two_sided_dedup: 1}
+    doc: inference/sampling.md
+  virgil.mode_search.DefensiveMixture:
+    layer: inference
+    source: [src/virgil/mode_search.py]
+    depends: [virgil.mode_search.Mode, virgil.mode_search.laplace_log_evidence]
+    doc: inference/sampling.md
+  virgil.mode_search.importance_evidence:
+    layer: inference
+    source: [src/virgil/mode_search.py, src/virgil/night_summaries.py]
+    depends: [virgil.mode_search.DefensiveMixture, virgil.mode_search.Evidence, virgil.mode_search.laplace_log_evidence, virgil.mode_search.logmeanexp]
+    properties: {is_estimator: 1, ess_floor: 1}
+    doc: inference/sampling.md
+  virgil.mode_search.resample_move:
+    layer: inference
+    source: [src/virgil/mode_search.py]
+    depends: [virgil.mode_search.Evidence, virgil.mode_search.Move]
+    doc: inference/sampling.md
+  virgil.crossval.fold_masks: {layer: inference, source: [src/virgil/crossval.py], doc: inference/helpers.md}
+  virgil.crossval.save_record: {layer: inference, source: [src/virgil/crossval.py], doc: inference/helpers.md}
+  virgil.crossval.load_records: {layer: inference, source: [src/virgil/crossval.py], doc: inference/helpers.md}
+  virgil.crossval.aggregate: {layer: inference, source: [src/virgil/crossval.py], doc: inference/helpers.md}
+  virgil.crossval.aggregate_files:
+    layer: inference
+    source: [src/virgil/crossval.py]
+    depends: [virgil.crossval.aggregate, virgil.crossval.load_records]
+    doc: inference/helpers.md
+  virgil.crossval.cv_task:
+    layer: inference
+    source: [src/virgil/crossval.py, src/virgil/_geometry.py, src/virgil/_precision.py]
+    depends: [virgil.crossval.fold_masks, virgil.fitting.fit]
+    doc: inference/helpers.md
+  virgil.crossval.cross_validate:
+    layer: inference
+    source: [src/virgil/crossval.py]
+    depends: [virgil.crossval.cv_task, virgil.crossval.aggregate]
+    doc: inference/helpers.md
+  virgil.fitting.FitResult:
+    layer: inference
+    source: [src/virgil/fitting.py]
+    depends: [virgil.fitting.fit]
+    doc: inference/sampling.md
+  virgil.fitting.gauss_newton_mass:
+    layer: inference
+    source: [src/virgil/fitting.py, src/virgil/_flat.py, src/virgil/_precision.py]
     depends: [virgil.likelihood.whitened_residuals]
+    doc: inference/sampling.md
+  virgil.fitting.GaussNewtonMass:
+    layer: inference
+    source: [src/virgil/fitting.py, src/virgil/_flat.py, src/virgil/_precision.py]
+    depends: [virgil.fitting.gauss_newton_mass]
+    doc: inference/sampling.md
+  virgil.likelihood.chain_init_params:
+    layer: inference
+    source: [src/virgil/likelihood.py, src/virgil/_flat.py]
+    depends: [virgil.likelihood.numpyro_model]
+    doc: inference/sampling.md
+  virgil.svi.variational:
+    layer: inference
+    source: [src/virgil/svi.py, src/virgil/_precision.py]
+    depends: [virgil.likelihood.numpyro_model, virgil.fitting.FitResult, virgil.fitting.gauss_newton_mass]
+    doc: inference/sampling.md
+  virgil.svi.VariationalResult:
+    layer: inference
+    source: [src/virgil/svi.py]
+    depends: [virgil.svi.variational]
+    doc: inference/sampling.md
   virgil.priors.IsotropicInclination: {layer: priors, source: [src/virgil/priors.py]}
   virgil.priors.IsotropicLatitude: {layer: priors, source: [src/virgil/priors.py]}
   virgil.priors.PopulationScale: {layer: priors, source: [src/virgil/priors.py], doc: likelihood/priors.md}
@@ -226,7 +458,7 @@ nodes:
     depends: [virgil.priors.PopulationScale]
     doc: likelihood/priors.md
   virgil.angles.AngleVector: {layer: priors, source: [src/virgil/angles.py], doc: likelihood/priors.md}
-  virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py]}
+  virgil.oifits.write_oifits: {layer: data, source: [src/virgil/oifits.py], depends: [virgil.oifits.build_hdulist]}
   virgil.observables.continuum_operator: {layer: data, source: [src/virgil/observables.py]}
   virgil.observables.VisibilityAmplitude:
     layer: likelihood
@@ -268,7 +500,7 @@ nodes:
   virgil.epochs.EpochPositions:
     layer: orbits
     source: [src/virgil/epochs.py]
-    depends: [virgil.epochs.epoch_positions]
+    depends: [virgil.epochs.epoch_positions, virgil.epochs.EpochPeaks, virgil.epochs.NightFlag]
     doc: orbits/epochs.md
   virgil.epochs.rank_orbits:
     layer: orbits
@@ -293,14 +525,298 @@ nodes:
     doc: orbits/epochs.md
   virgil.aliases.fit_orbit_aliases:
     layer: orbits
-    source: [src/virgil/aliases.py]
-    depends: [virgil.fitting.fit]
+    source: [src/virgil/aliases.py, src/virgil/tempering.py, src/virgil/_geometry.py, src/virgil/_gauss_newton.py]
+    depends: [virgil.fitting.fit, virgil.aliases.AliasResult, virgil.aliases.alias_bands,
+              virgil.aliases.period_window, virgil.aliases.period_cut, virgil.aliases.position_profile,
+              virgil.arcs.night_motion, virgil.arcs.unwrap_cycles, virgil.arcs.arc_profile,
+              virgil.epochs.broad_loglike, virgil.epochs.estimate_primary_diameter, virgil.epochs.sidelobe_flags]
     doc: orbits/index.md#period-aliases
   virgil.epochs.OrbitStart:
     layer: orbits
     source: [src/virgil/epochs.py]
     depends: [virgil.epochs.start_from_positions]
     doc: orbits/epochs.md
+  virgil.epochs.EpochPeaks:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    doc: orbits/epochs.md
+  virgil.epochs.NightFlag:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    doc: orbits/epochs.md
+  virgil.epochs.PrimaryDiameter:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    doc: orbits/epochs.md
+  virgil.epochs.broad_loglike:
+    layer: likelihood
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.marginal_loglike]
+    doc: orbits/epochs.md
+  virgil.epochs.estimate_primary_diameter:
+    layer: orbits
+    source: [src/virgil/epochs.py, src/virgil/_gauss_newton.py]
+    depends: [virgil.epochs.Epochs, virgil.epochs.EpochPositions, virgil.epochs.PrimaryDiameter,
+              virgil.epochs.marginal_loglike, virgil.models.UniformDisk]
+    doc: orbits/epochs.md
+  virgil.epochs.sidelobe_flags:
+    layer: orbits
+    source: [src/virgil/epochs.py]
+    depends: [virgil.epochs.NightFlag, virgil.epochs.EpochPositions, virgil.epochs.marginal_loglike]
+    doc: orbits/epochs.md
+  virgil.aliases.AliasBand:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    doc: orbits/epochs.md
+  virgil.aliases.alias_bands:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.AliasBand]
+    doc: orbits/epochs.md
+  virgil.aliases.period_window:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    doc: orbits/epochs.md
+  virgil.aliases.period_cut:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.period_window]
+    doc: orbits/epochs.md
+  virgil.aliases.position_profile:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.AliasBand, virgil.orbits.period_grid, virgil.orbits.starting_orbits]
+    doc: orbits/epochs.md
+  virgil.aliases.AliasBandResult:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.models.OrbitalBinary, virgil.orbits.KeplerOrbit, virgil.likelihood.whitened_residuals]
+    doc: orbits/epochs.md
+  virgil.aliases.AliasResult:
+    layer: orbits
+    source: [src/virgil/aliases.py]
+    depends: [virgil.aliases.AliasBandResult]
+    doc: orbits/epochs.md
+  virgil.arcs.CycleCounts:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    depends: [virgil.aliases.AliasBand]
+    doc: orbits/epochs.md
+  virgil.arcs.NightMotion:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    doc: orbits/epochs.md
+  virgil.arcs.unwrap_cycles:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    depends: [virgil.arcs.CycleCounts, virgil.arcs.NightMotion, virgil.orbits.period_grid]
+    doc: orbits/epochs.md
+  virgil.arcs.arc_profile:
+    layer: orbits
+    source: [src/virgil/arcs.py]
+    depends: [virgil.arcs.NightMotion, virgil.orbits.ThieleInnesOrbit, virgil.orbits.period_grid, virgil.orbits.starting_orbits]
+    doc: orbits/epochs.md
+  virgil.arcs.night_motion:
+    layer: orbits
+    source: [src/virgil/arcs.py, src/virgil/epochs.py, src/virgil/_gauss_newton.py]
+    depends: [virgil.arcs.NightMotion, virgil.epochs.Epochs, virgil.epochs.EpochPositions,
+              virgil.epochs.marginal_loglike, virgil.likelihood.whitened_residuals,
+              virgil.models.BinaryModelCartesian, virgil.models.System, virgil.models.UniformDisk]
+    doc: orbits/epochs.md
+  virgil.night_summaries.NightPeak:
+    layer: orbits
+    source: [src/virgil/night_summaries.py]
+    doc: orbits/epochs.md
+  virgil.night_summaries.NightSummary:
+    layer: orbits
+    source: [src/virgil/night_summaries.py]
+    depends: [virgil.night_summaries.NightPeak]
+    doc: orbits/epochs.md
+  virgil.night_summaries.keep_peaks:
+    layer: orbits
+    source: [src/virgil/night_summaries.py]
+    depends: [virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.night_summaries.night_summaries:
+    layer: orbits
+    source: [src/virgil/night_summaries.py, src/virgil/epochs.py, src/virgil/aliases.py, src/virgil/_gauss_newton.py]
+    depends: [virgil.night_summaries.NightSummary, virgil.epochs.Epochs, virgil.epochs.EpochPositions,
+              virgil.epochs.marginal_loglike, virgil.likelihood.whitened_residuals, virgil.models.OrbitalBinary]
+    doc: orbits/epochs.md
+  virgil.orbit_search.SharedFlux:
+    layer: orbits
+    source: [src/virgil/orbit_search.py]
+    doc: orbits/epochs.md
+  virgil.orbit_search.rank_scores:
+    layer: orbits
+    source: [src/virgil/orbit_search.py]
+    doc: orbits/epochs.md
+  virgil.orbit_search.OrbitScores:
+    layer: orbits
+    source: [src/virgil/orbit_search.py]
+    depends: [virgil.orbit_search.rank_scores]
+    doc: orbits/epochs.md
+  virgil.orbit_search.score_orbits:
+    layer: orbits
+    source: [src/virgil/orbit_search.py, src/virgil/_marginal.py]
+    depends: [virgil.orbit_search.OrbitScores, virgil.orbit_search.SharedFlux, virgil.epochs.Epochs,
+              virgil.epochs.marginal_loglike, virgil.likelihood.whitened_residuals]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.PeriodDomain:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.Cell:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.OutlierPrior:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.CellFit:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.Cell]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.CellsResult:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.PeriodDomain, virgil.orbit_cells.CellFit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.period_domain:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.PeriodDomain, virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.choose_anchors:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.make_cells:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.Cell, virgil.aliases.alias_bands]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.outlier_prior:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py]
+    depends: [virgil.orbit_cells.OutlierPrior, virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.outlier_log_density:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.orbit_cells.OutlierPrior, virgil.night_summaries.NightSummary]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.decode_particles:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py]
+    depends: [virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.search_plan:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
+             src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
+    depends: [virgil.orbit_cells.Cell, virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.search_cell:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
+             src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
+    depends: [virgil.orbit_cells.search_plan, virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.position_leg:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py,
+             src/virgil/smc.py, src/virgil/night_summaries.py, src/virgil/orbits.py]
+    depends: [virgil.orbit_cells.CellFit, virgil.orbit_cells.search_plan, virgil.orbit_cells.search_cell,
+              virgil.night_summaries.NightSummary, virgil.orbits.KeplerOrbit]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.fit_jitter:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py]
+    depends: [virgil.aliases.alias_bands, virgil.aliases.position_profile, virgil.orbits.PositionData]
+    doc: orbits/epochs.md
+  virgil.orbit_cells.position_cells:
+    layer: orbits
+    source: [src/virgil/orbit_cells.py, src/virgil/_orbit_coordinates.py, src/virgil/mode_search.py, src/virgil/smc.py]
+    depends: [virgil.orbit_cells.CellsResult, virgil.orbit_cells.choose_anchors, virgil.orbit_cells.fit_jitter,
+              virgil.orbit_cells.make_cells, virgil.orbit_cells.outlier_log_density, virgil.orbit_cells.outlier_prior,
+              virgil.orbit_cells.position_leg]
+    doc: orbits/epochs.md
+  virgil.pipeline.Check:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_checks.py]
+    doc: inference/pipelines.md
+  virgil.pipeline.Stage:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_core.py]
+    doc: inference/pipelines.md
+  virgil.pipeline.SkyImage:
+    layer: imaging
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_io.py]
+    doc: inference/pipelines.md
+  virgil.pipeline.Result:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_io.py]
+    depends: [virgil.pipeline.Check, virgil.pipeline.SkyImage, virgil.aliases.AliasResult, virgil.oidata.OIData]
+    doc: inference/pipelines.md
+  virgil.pipeline.load:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/_io.py]
+    depends: [virgil.pipeline.Result]
+    doc: inference/pipelines.md
+  virgil.pipeline.BinaryPipeline:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/binary.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/_geometry.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.models.BinaryModelAngular, virgil.models.BinaryModelCartesian,
+              virgil.detection.detection_statistics, virgil.detection.gaussian_null,
+              virgil.detection.local_nsigma, virgil.detection.injection_recovery,
+              virgil.grid_fit.laplace_flux_uncertainty_grid, virgil.limits.radial_profile,
+              virgil.limits.flux_to_contrast, virgil.limits.flux_to_delta_mag,
+              virgil.limits.ruffio_upperlimit, virgil.limits.absil_limits, virgil.fitting.fit,
+              virgil.likelihood.numpyro_model]
+    doc: inference/pipelines.md
+  virgil.pipeline.StarPipeline:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/star.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.models.UniformDisk, virgil.models.QuadraticLimbDarkenedDisk,
+              virgil.grid_fit.likelihood_grid, virgil.fitting.fit, virgil.likelihood.numpyro_model]
+    doc: inference/pipelines.md
+  virgil.pipeline.DiskPipeline:
+    layer: inference
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/disk.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/imaging.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.imaging.nyquist_pixel_scale, virgil.models.System, virgil.models.PointSource,
+              virgil.models.UniformDisk, virgil.models.MultipoleDisk, virgil.models.MultipoleKernel,
+              virgil.models.GaussianRing, virgil.models.RadialGP, virgil.models.Harmonics,
+              virgil.models.Image, virgil.priors.IsotropicInclination, virgil.angles.AngleVector,
+              virgil.spectra.BlackBody, virgil.spectra.PowerLaw, virgil.grid_fit.likelihood_grid,
+              virgil.inference.laplace_cov, virgil.fitting.fit, virgil.likelihood.numpyro_model]
+    doc: inference/pipelines.md
+  virgil.pipeline.ImagingPipeline:
+    layer: imaging
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/image.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/ensemble.py, src/virgil/imaging.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.pipeline.SkyImage,
+              virgil.oifits.write_oifits, virgil.models.PointSource, virgil.models.System,
+              virgil.models.Image, virgil.ensemble.draw_groups, virgil.imaging.beam,
+              virgil.fitting.fit, virgil.likelihood.whitened_residuals]
+    doc: inference/pipelines.md
+  virgil.pipeline.OrbitPipeline:
+    layer: orbits
+    source: [src/virgil/pipeline/__init__.py, src/virgil/pipeline/orbit.py, src/virgil/pipeline/_common.py,
+             src/virgil/pipeline/_core.py, src/virgil/pipeline/_quicklook.py, src/virgil/_geometry.py]
+    depends: [virgil.pipeline.Stage, virgil.pipeline.Result, virgil.oifits.write_oifits,
+              virgil.epochs.Epochs, virgil.epochs.epoch_positions, virgil.aliases.fit_orbit_aliases,
+              virgil.fitting.fit, virgil.likelihood.numpyro_model]
+    doc: inference/pipelines.md
   virgil.orbits.AxialVonMises: {layer: orbits, source: [src/virgil/orbits.py]}
   virgil.orbits.orientation_priors: {layer: orbits, source: [src/virgil/orbits.py], depends: [virgil.angles.AngleVector]}
   virgil.orbits.orientation_from_varpi: {layer: orbits, source: [src/virgil/orbits.py]}
@@ -332,7 +848,9 @@ nodes:
   virgil.detection.injection_recovery:
     layer: inference
     source: [src/virgil/detection.py]
-    depends: [virgil.detection.detection_statistics, virgil.detection.gaussian_null, virgil.detection.DetectionMC]
+    depends: [virgil.detection.detection_statistics, virgil.detection.gaussian_null, virgil.detection.bootstrap_null,
+              virgil.detection.DetectionMC]
+    properties: {statistics_only_path: 1}  # uncertainty=False, the path BinaryPipeline's null searches use
     doc: inference/grid_limits.md#false-alarm-and-contrast-calibration-campaign
   virgil.detection.DetectionMC: {layer: inference, source: [src/virgil/detection.py]}
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
@@ -342,7 +860,11 @@ nodes:
   virgil.limits.chi2ppf: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   virgil.limits.radial_profile: {layer: inference, source: [src/virgil/limits.py], doc: inference/grid_limits.md#limit-helpers}
   # MultipoleDisk (formerly PolarDisk, virgil P1-P4): radial profiles x azimuthal harmonics x height
-  virgil.models.MultipoleDisk: {layer: models, source: [src/virgil/models.py, src/virgil/harmonics.py], doc: models/polar_disk.md}
+  virgil.models.MultipoleDisk:
+    layer: models
+    source: [src/virgil/models.py, src/virgil/harmonics.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.RadialGPFunction]
+    doc: models/polar_disk.md
   virgil.models.ThinRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.GaussianRing: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
   virgil.models.RadialPowerLaw: {layer: models, source: [src/virgil/models.py], doc: models/polar_disk.md}
@@ -367,7 +889,10 @@ nodes:
   virgil.harmonics.to_legacy: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
   virgil.harmonics.rim_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
   virgil.harmonics.cone_coefficients: {layer: models, source: [src/virgil/harmonics.py], doc: models/polar_disk.md}
-  virgil.models.TruncatedCone: {layer: models, source: [src/virgil/models.py]}  # tilt's sign: not observable (optically thin)
+  virgil.models.TruncatedCone:  # tilt's sign: not observable (optically thin)
+    layer: models
+    source: [src/virgil/models.py, src/virgil/harmonics.py]
+    depends: [virgil.models.Component, virgil.models.multipole_disk_cvis, virgil.models.Cone, virgil.models.ExpTail, virgil.harmonics.cone_coefficients]
   virgil.models.SourceModel: {layer: models, source: [src/virgil/models.py]}
   virgil.fields.field_spectrum: {layer: priors, source: [src/virgil/fields.py]}
   virgil.fields.GaussianField:
@@ -377,8 +902,21 @@ nodes:
   virgil.fields.MultipoleField:
     layer: priors
     source: [src/virgil/fields.py, src/virgil/models.py]
-    depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel]
+    depends: [virgil.models.RadialGP, virgil.models.MultipoleKernel, virgil.fields.polar_interpolate]
     doc: models/polar_disk.md
+  virgil.fields.multipole_field_priors:
+    layer: priors
+    source: [src/virgil/fields.py]
+    depends: [virgil.fields.MultipoleField]
+    doc: models/cones_fields.md
+  virgil.fields.polar_interpolate: {layer: priors, source: [src/virgil/fields.py], doc: models/cones_fields.md}
+  virgil.angles.is_angle_vector:
+    layer: priors
+    source: [src/virgil/angles.py]
+    depends: [virgil.angles.AngleVector]
+    doc: models/cones_fields.md
+  virgil.angles.vector_angle: {layer: priors, source: [src/virgil/angles.py], doc: models/cones_fields.md}
+  virgil.angles.vector_site: {layer: priors, source: [src/virgil/angles.py], doc: models/cones_fields.md}
   virgil.grid_fit.best_grid_point: {layer: inference, source: [src/virgil/grid_fit.py]}
   virgil.likelihood.build_model: {layer: likelihood, source: [src/virgil/likelihood.py]}
   virgil.likelihood.loglike:
@@ -402,13 +940,13 @@ nodes:
   virgil.observables.FluxSpectrum:
     layer: likelihood
     source: [src/virgil/observables.py, src/virgil/_linear.py]
-    depends: [virgil.oidata.OIData, virgil._linear]
+    depends: [virgil.oidata.OIData, virgil.observables.in_ranges, virgil._linear]
   virgil.oidata.OIData.with_flux_scale: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.FluxSpectrum], doc: likelihood/spectra_phases.md}
   virgil.observables.DifferentialPhase:
     layer: likelihood
     # recheck when virgil#232 (cached Cholesky) lands
     source: [src/virgil/observables.py, src/virgil/_linear.py]
-    depends: [virgil.oidata.OIData, virgil.observables.continuum_operator, virgil._linear]
+    depends: [virgil.oidata.OIData, virgil.observables.continuum_operator, virgil.observables.in_ranges, virgil._linear]
   virgil.oidata.OIData.with_continuum: {layer: data, source: [src/virgil/oidata.py], depends: [virgil.observables.DifferentialPhase], doc: likelihood/spectra_phases.md}
   virgil._linear:  # analytic marginalisation of linear parameters: LinearMarginal, posterior, whiten_*
     layer: likelihood
@@ -440,8 +978,8 @@ nodes:
     depends: [virgil.grid_fit.optimized_flux_grid, virgil.grid_fit.laplace_flux_uncertainty_grid]
   virgil.likelihood.numpyro_model:
     layer: inference
-    source: [src/virgil/likelihood.py]
-    depends: [virgil.likelihood.model_loglike]
+    source: [src/virgil/likelihood.py, src/virgil/_flat.py]
+    depends: [virgil.likelihood.model_loglike, virgil.angles.is_angle_vector, virgil.angles.vector_angle, virgil.angles.vector_site]
   virgil.inference.hessian_matrix: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.regularized_inverse: {layer: inference, source: [src/virgil/inference.py], doc: inference/helpers.md}
   virgil.inference.laplace_covariance:
@@ -508,11 +1046,55 @@ nodes:
     doc: inference/helpers.md
 
   # -------------------------------------------------------------- imaging
+  virgil.fitting.kkt_report:
+    layer: inference
+    source: [src/virgil/fitting.py]
+    depends: [virgil.fitting.fit, virgil.likelihood.model_loglike, virgil.models.Image, virgil.models.LinearImage, virgil.imaging.MaxEntropy]
+    doc: imaging/machinery.md#kkt-optimality-certificates
+  virgil.scenes.ring: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
+  virgil.scenes.spiral:
+    layer: imaging
+    source: [src/virgil/scenes.py]
+    properties: {arm_cross_section: 1}  # D27: ray-radial cross-section |r - r_arm| with circular Euclidean caps at theta = 0 and 2*pi*turns
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.scenes.gaussian_blob: {layer: imaging, source: [src/virgil/scenes.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
   virgil.imaging.dirty_image: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
   virgil.imaging.beam: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.oidata.OIData]}
+  virgil.imaging.Beam: {layer: imaging, source: [src/virgil/imaging.py], doc: imaging/machinery.md#synthetic-scenes-and-field-sizing}
   virgil.imaging.nyquist_pixel_scale: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.field_of_view: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.convolve_beam: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.second_moment_fwhm:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.oidata.OIData]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.image_field:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.second_moment_fwhm, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view]
+    properties: {field_clipping: 1}  # D27: field_fwhms * FWHM clipped to [inner_elements * lambda/(2*B_max), min(lambda/B_min, largest_mas, aperture_mas)], ceiling winning on crossover
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.envelope_fwhm:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.fitting.fit, virgil.imaging.second_moment_fwhm]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.starting_image:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.fitting.fit, virgil.imaging.envelope_fwhm, virgil.imaging.image_field, virgil.imaging.dirty_image, virgil.models.Image]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.image_priors:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.models.Image, virgil.models.LinearImage, virgil.fields.GaussianField]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
+  virgil.imaging.Centroid:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.models.Image, virgil.models.LinearImage]
+    doc: imaging/machinery.md#synthetic-scenes-and-field-sizing
   # image-recovery metrics (imaging contests) and randomized ensembles
   virgil.metrics.ncc: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
   virgil.metrics.l1_score: {layer: imaging, source: [src/virgil/metrics.py], doc: imaging/metrics_ensembles.md#metrics}
@@ -535,21 +1117,138 @@ nodes:
   virgil.ensemble.draw_groups:
     layer: imaging
     source: [src/virgil/ensemble.py, src/virgil/imaging.py]
-    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view, virgil.fitting.fit]
+    depends: [virgil.ensemble.EnsembleSpec, virgil.imaging.image_field, virgil.imaging.nyquist_pixel_scale, virgil.imaging.field_of_view, virgil.fitting.fit]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.Group:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.Draw]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.Member:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.Draw]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.Ensemble:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.models.Image, virgil.ensemble.Member, virgil.ensemble.Group]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.reference_starts:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.imaging.starting_image, virgil.models.Image]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.GPFit:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.fitting.fit, virgil.imaging.log_evidence]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.EvidenceGrid:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.GPFit, virgil.imaging.log_evidence]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.evidence_grid:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.fitting.fit, virgil.imaging.log_evidence, virgil.imaging.image_priors,
+              virgil.imaging.Centroid, virgil.fields.GaussianField, virgil.ensemble.EvidenceGrid,
+              virgil.ensemble.reference_starts]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.gp_members:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.evidence_grid, virgil.ensemble.Group, virgil.ensemble.EnsembleSpec]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.run_group:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.imaging.l_curve, virgil.ensemble.gp_members, virgil.ensemble.reference_starts,
+              virgil.imaging.image_priors, virgil.imaging.Centroid, virgil.ensemble.Group]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.combine:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.ensemble.Ensemble, virgil.ensemble.Member,
+              virgil.ensemble.Group, virgil.ensemble.EnsembleSpec, virgil.imaging.beam, virgil.metrics.align]
+    doc: imaging/metrics_ensembles.md#ensembles
+  virgil.ensemble.ensemble:
+    layer: imaging
+    source: [src/virgil/ensemble.py]
+    depends: [virgil.ensemble.draw_groups, virgil.ensemble.run_group, virgil.ensemble.combine,
+              virgil.ensemble.reference_starts, virgil.ensemble.EnsembleSpec]
     doc: imaging/metrics_ensembles.md#ensembles
   # regularised imaging: natural roots are eht-imaging and MPoL
   virgil.imaging.clean: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.likelihood.whitened_residuals, virgil.fitting.fit], doc: imaging/machinery.md#clean}
+  virgil.imaging.CleanResult:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.clean, virgil.imaging.Beam, virgil.imaging.beam, virgil.imaging.convolve_beam]
+    doc: imaging/machinery.md#clean
   virgil.imaging.TSV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.TV: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.MaxEntropy: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.Laplacian: {layer: imaging, source: [src/virgil/imaging.py]}
-  virgil.imaging.StarletL1: {layer: imaging, source: [src/virgil/imaging.py]}
+  virgil.imaging.starlet: {layer: imaging, source: [src/virgil/imaging.py], doc: imaging/machinery.md#regularisers}
+  virgil.imaging.StarletL1: {layer: imaging, source: [src/virgil/imaging.py], depends: [virgil.imaging.starlet]}
   virgil.imaging.LogSum: {layer: imaging, source: [src/virgil/imaging.py]}
   virgil.imaging.l_curve:
     layer: imaging
     source: [src/virgil/imaging.py]
     depends: [virgil.fitting.fit]
     doc: imaging/machinery.md#l-curve
+  virgil.imaging.DofDiscrepancy:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.models.LinearImage]
+    doc: imaging/machinery.md#l-curve
+  virgil.imaging.LCurve:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.l_curve, virgil.imaging.DofDiscrepancy, virgil.imaging.MaxEntropy]
+    doc: imaging/machinery.md#l-curve
+  virgil.imaging.log_evidence:
+    layer: inference
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.fields.GaussianField]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.laplace_samples:
+    layer: inference
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.fields.GaussianField]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.error_scale:
+    layer: inference
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.chi2_by_observable:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.short_baseline_residual:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.residual_image:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.imaging.dirty_image, virgil.models.Image, virgil.models.LinearImage]
+    doc: imaging/machinery.md#clean
+  virgil.imaging.diagnose:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.likelihood.whitened_residuals, virgil.imaging.chi2_by_observable,
+              virgil.imaging.short_baseline_residual, virgil.imaging.Centroid, virgil.imaging.nyquist_pixel_scale]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
+  virgil.imaging.Diagnosis:
+    layer: imaging
+    source: [src/virgil/imaging.py]
+    depends: [virgil.imaging.diagnose]
+    doc: imaging/machinery.md#laplace-gp-evidence-and-imaging-diagnostics
 
   # -------------------------------------------------------------- orbits
   # Grounded on orbitize! (Blunt et al. 2020, 2024) and on mathematics (the
@@ -595,6 +1294,7 @@ nodes:
     doc: models/rapid_rotators.md
 
   # --------------------------------------------- our references (links)
+  crosscheck.spiral_smearing: {layer: references, depends: [crosscheck.sky], doc: models/cones_fields.md}
   crosscheck.sky: {layer: references}
   crosscheck.limb: {layer: references, depends: [crosscheck.sky]}
   crosscheck.array: {layer: references}
@@ -606,6 +1306,7 @@ nodes:
   crosscheck.orbit_population: {layer: references, depends: [crosscheck.array, crosscheck.oifits_writer, crosscheck.orbits, crosscheck.sky], doc: orbits/epochs.md}
   crosscheck.references: {layer: references, doc: orbits/epochs.md}
   crosscheck.skyplane: {layer: references, depends: [crosscheck.orbits], doc: orbits/epochs.md}
+  crosscheck.orbit_cells_ref: {layer: references, depends: [crosscheck.orbits], doc: orbits/epochs.md}
   crosscheck.disks: {layer: references}
   crosscheck.elr: {layer: references, depends: [crosscheck.sky]}
   crosscheck.nrm: {layer: references, depends: [crosscheck.sky]}

@@ -8,7 +8,6 @@ nodes rather than holding them at ``relies-unverified``.
 
 from __future__ import annotations
 
-import gc
 import hashlib
 import subprocess
 
@@ -18,38 +17,12 @@ from scipy.special import j1
 from scipy.stats import chi2 as chi2_dist
 from scipy.stats import norm
 
-from crosscheck import (
-    informed_starts as ist,
-    orbit_population as opop,
-    preregistration as prereg,
-    radio_innovations as ri,
-    radio_trust as rt,
-    references as refs,
-    skyplane as sp_sky,
-    toeplitz_scenes as ts,
-)
 from evidence.plugin import record
-from external_bridge import _subprocess as ext_sp, npz_compare as npzc
+from external_bridge import _subprocess as ext_sp
 
-
-@pytest.fixture(scope="module", autouse=True)
-def _clear_jax_caches_around_via_references():
-    """Drop accumulated XLA caches before spawning external worker subprocesses and on teardown."""
-    try:
-        import jax
-
-        jax.clear_caches()
-    except ImportError:
-        pass
-    gc.collect()
-    yield
-    try:
-        import jax
-
-        jax.clear_caches()
-    except ImportError:
-        pass
-    gc.collect()
+# The crosscheck reference modules and external_bridge.npz_compare are imported inside the test that checks
+# each, not here: evidence.plugin stamps every module-level import onto every check in a file, which made
+# each of them look checked through all the others (a false cycle, scripts/trust.py).
 
 
 # ------------------------------------------------ 1. crosscheck.radio_innovations
@@ -65,6 +38,7 @@ def test_radio_innovations_softmax_gn_and_entropy_metric():
     """``softmax_image`` is shift-invariant with unit sum, ``gn_diagonal`` matches a central
     finite-difference Jacobian ``J^T J`` of the whitened DFT residuals, and
     ``entropy_metric_diagonal`` equals the Skilling-Bryan pullback ``w * b * (1 - b)``."""
+    from crosscheck import radio_innovations as ri
     rng = np.random.default_rng(101)
     eta = rng.normal(0.0, 1.2, (5, 5))
     b = ri.softmax_image(eta)
@@ -118,6 +92,7 @@ def test_radio_innovations_softmax_gn_and_entropy_metric():
 def test_radio_innovations_direct_chi2_by_ddid_against_two_point_interference():
     """``direct_chi2_by_ddid`` reproduces the analytical two-point interference visibility
     with per-observation amplitude gains and sky-plane phase ramps."""
+    from crosscheck import radio_innovations as ri
     brightness = np.zeros((3, 3))
     # Row 0 North, Col 0 East; centre is (1, 1); (1, 0) is +pixel East, (0, 1) is +pixel North
     brightness[1, 0] = 0.75
@@ -157,6 +132,7 @@ def test_radio_innovations_direct_chi2_by_ddid_against_two_point_interference():
 def test_delta_problem_zero_step_and_weight_homogeneity():
     """At ``z == z_ref``, ``DeltaProblem`` gives identically zero difference and scale;
     for ``z != z_ref``, ``delta_chi2_float32`` scales linearly with the visibility weights."""
+    from crosscheck import radio_innovations as ri
     rng = np.random.default_rng(12)
     east, north = ri.pixel_positions(4, 6.0)
     u, v = rng.normal(0.0, 2e5, 30), rng.normal(0.0, 2e5, 30)
@@ -190,6 +166,7 @@ def test_preregistration_criteria_commit_and_aggregator_rules(tmp_path, monkeypa
     ``CRITERIA_COMMIT`` inside a git repo, rejects dirty or untracked files with ``CriteriaError``,
     uses ``CRITERIA_COMMIT`` only outside git (archive snapshots), and ``require_same_commit``
     rejects mismatched or missing SHAs."""
+    from crosscheck import preregistration as prereg
     repo = tmp_path / "repo"
     repo.mkdir()
     def git(*args):
@@ -257,6 +234,7 @@ def test_npz_compare_matches_channels_by_frequency_rank_and_handles_zero_u():
     """``compare_ddid`` aligns channels by ascending frequency rank regardless of whether
     either input stores channels in increasing or decreasing frequency order, avoids 0/0
     at ``u = 0`` via ``U_FLOOR = 1.0``, flags conjugation mismatches, and refuses missing ``freq``."""
+    from external_bridge import npz_compare as npzc
     freqs_asc = np.array([230.0e9, 230.5e9, 231.0e9])
     rows = []
     for t in (100.0, 200.0):
@@ -351,6 +329,7 @@ def test_informed_starts_moments_recover_analytic_elliptical_gaussian():
     ``moment_model_v2`` match the 2D Fourier integral, ``second_moments`` recovers the exact
     covariance eigenvalues and PA from ``-ln V^2``, and ``moment_fit`` recovers
     ``(compact, extended, fwhm, ratio, pa)`` of a point-plus-Gaussian sky."""
+    from crosscheck import informed_starts as ist
     rng = np.random.default_rng(19)
     u = rng.uniform(-3.0e7, 3.0e7, 80)
     v = rng.uniform(-3.0e7, 3.0e7, 80)
@@ -404,6 +383,7 @@ def test_informed_starts_control_rejects_mirrored_position_angle():
     """Negative control: mirroring the sky position angle (``180 - pa``) flips the sign of the
     ``u * v`` cross-term in Fourier space and is strongly separated from ``pa`` by both
     ``moment_model_v2`` and ``moment_fit``."""
+    from crosscheck import informed_starts as ist
     rng = np.random.default_rng(29)
     q = np.geomspace(4.0e6, 1.2e8, 100)
     phi = rng.uniform(0.0, 2.0 * np.pi, 100)
@@ -436,6 +416,7 @@ def test_informed_starts_scales_tiled_peaks_and_diagnostic_checks():
     """``scales_of`` enforces Nyquist sampling and ``MAX_PIXELS`` coarsening, ``tiled_map`` +
     ``map_peaks`` separate local maxima while respecting origin exclusion, and the section-5
     diagnostic predicates enforce bound, nesting, agreement, completeness, and collapse thresholds."""
+    from crosscheck import informed_starts as ist
     b_max, b_min = 1.0e8, 2.0e6
     sc = ist.scales_of(b_max, b_min, moments={"fwhm": 50.0, "short_v2": 0.5, "at_upper_edge": False, "extended": 0.6})
     want_res = 1.0 / (2.0 * b_max) / ist.MAS
@@ -490,6 +471,7 @@ def test_orbit_population_stream_isolation_elliptical_disk_and_band_laws(tmp_pat
     matches 2D numerical quadrature over the sky ellipse and the circular Airy formula,
     ``band_of`` and ``p_cut`` satisfy their analytical definitions, and ``write_system``
     produces readable OIFITS files."""
+    from crosscheck import orbit_population as opop
     from astropy.io import fits
 
     rng1, noise1 = opop.system_streams("A", 3)
@@ -556,6 +538,7 @@ def test_references_secondary_omega_time_systems_and_catalog_completeness():
     """``secondary_omega`` shifts primary omega by +180 deg mod 360 and refuses missing
     conventions, ``missing_omega_of`` validates all committed ``oidb/references/*.json``
     files, and ``trackb_reference`` converts JD, BJD-2400000, and HJD-2445000 to MJD."""
+    from crosscheck import references as refs
     assert refs.secondary_omega(25.0, "primary") == pytest.approx(205.0)
     assert refs.secondary_omega(250.0, "primary") == pytest.approx(70.0)
     assert refs.secondary_omega(250.0, "secondary") == pytest.approx(250.0)
@@ -611,6 +594,7 @@ def test_skyplane_twin_invariance_point_reflection_and_verdict_rules():
     (``SAME-SKY-ORBIT`` with samples, ``INCOMPLETE`` without), a single ``omega + 180``
     point reflection gives ``UNEXPLAINED-FLIP`` unless ``flipped`` or ``labels_free`` is set,
     and ``good_fit`` separates ``REFERENCE-DISAGREES`` from ``DIFFERENT`` via ``chi2.sf``."""
+    from crosscheck import skyplane as sp_sky
     mjd = np.linspace(60000.0, 60045.0, 12)
     ref = dict(P=18.5, t_peri=60003.2, ecc=0.35, inc=52.0, omega=40.0, Omega=75.0, a_mas=8.0)
     meta = dict(mjd=mjd, reference=ref)
@@ -674,6 +658,7 @@ def test_radio_trust_dirty_briggs_taper_image_model_and_closed_triangle_gain_mar
     matches analytic pixel phase ramps on both even and odd ``npix`` grids, and
     ``gain_marginal_brute_force`` matches exact integrals at ``M = 0`` and on a closed 3-antenna
     triangle in both coupled phase-closure and coupled 3-antenna log-amplitude limits."""
+    from crosscheck import radio_trust as rt
     # Dirty beam & off-centre point source
     u = np.array([1.0e5, -2.0e5, 3.0e5])
     v = np.array([0.5e5, 1.5e5, -1.0e5])
@@ -822,6 +807,8 @@ def test_toeplitz_scenes_hash_seed_unit_brightness_nyquist_reach_and_points():
     """``seed`` matches SHA-256, all three held-out ``image`` families are non-negative with
     unit sum, ``coverage`` places its longest baseline at ``reach`` of Nyquist, and
     ``make_case`` / ``points`` preserve the reference observation and ``+-0.9 * bound`` edge offsets."""
+    from crosscheck import toeplitz_scenes as ts
+    from crosscheck import radio_innovations as ri
     want_seed = int(hashlib.sha256(b"toeplitz-reexam-042/ringed/truth").hexdigest()[:8], 16)
     assert ts.seed("ringed", "truth") == want_seed
 
@@ -1127,7 +1114,7 @@ def test_control_virgil_bridge_mpol_rejects_missing_half_pixel_or_unflipped_axes
 )
 @pytest.mark.validates(
     "external_bridge.mpol_worker",
-    roots=["mpol", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_grad_fd_rel_err",
 )
@@ -1474,7 +1461,7 @@ def test_alma_worker_simulate_and_read_match_analytic_two_source_visibilities_an
 @pytest.mark.external
 @pytest.mark.validates(
     "external_bridge.ehtim_worker",
-    roots=["ehtim", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_ft_abs_err",
 )
@@ -1545,7 +1532,7 @@ def test_ehtim_worker_ft_and_cphase_chisq_match_analytic_pixel_sum_and_chord_for
 @pytest.mark.external
 @pytest.mark.validates(
     "external_bridge.candid_worker",
-    roots=["candid", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_nsigma_rel_err",
 )
@@ -1612,7 +1599,7 @@ def test_candid_worker_chi2_and_nsigma_match_analytic_binary_and_chi2_tail(tmp_p
 @pytest.mark.external
 @pytest.mark.validates(
     "external_bridge.orbitize_worker",
-    roots=["orbitize", "mathematics"],
+    roots=["mathematics"],
     kind="reference",
     headline="max_pos_over_sma_err",
 )

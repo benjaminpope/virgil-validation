@@ -42,7 +42,7 @@ classes:
     name: Other people's code
     what: "PMOIRED, CANDID, dLux, fouriever, eht-imaging, MPoL, orbitize!, CASA, frank, FRAP, vis-r, oimodeler, each run as released: some in their own environment and subprocess, some installed beside virgil (eht-imaging carries a runtime NumPy 2 workaround, P6)."
     why: "Written by other people, used in published science, and sharing no code with virgil."
-    cannot_catch: "They have bugs too: 12 are documented here (P1–P12). Two codes can share a community-wide mistake."
+    cannot_catch: "They have bugs too: 14 are documented here (P1–P14). Two codes can share a community-wide mistake."
   published-results:
     name: Published results
     what: "Numbers reproduced from the authors' own data: an orbit, a diameter, an image."
@@ -200,7 +200,7 @@ roots:
     class: other-peoples-code
     what: "A Fourier-space and image-based model-building package for optical interferometry (Meilland et al.). The root for ring and disk components of the polar-disk models."
     why: "Written and used by other people. Pinned (`oimodeler==0.8.1`, polar-disk extra in pyproject.toml)."
-    cannot_catch: "Its own bugs: P9 is documented (its `ExpRing` is 8e-3 from its documented profile, unexplained, docs/models/polar_disk.md). Conventions it shares with virgil."
+    cannot_catch: "Its own bugs: P9 is documented (its `ExpRing` is 8e-3 from its documented profile, unexplained, docs/models/polar_disk.md); P13 and P14 are documented for its `oimFastRotator` (docs/models/rapid_rotators.md). Conventions it shares with virgil."
     citation: "Meilland et al."
     url: ""
     reviewed: false
