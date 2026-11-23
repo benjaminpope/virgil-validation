@@ -152,8 +152,24 @@ def _via(model, extras):
 
 
 def _ground(model, c):
-    n = sum(1 for p in c["nodes"] if not model["nodes"][p].get("depends"))
+    """How many parts of the cone stand on the ground (rely on no other part in it; a self-loop is not a reliance)."""
+    relied = {a for a, b in c["edges"] if a != b}
+    n = sum(1 for p in c["nodes"] if p not in relied)
+    if not n:
+        return "Its cone has no ground part: the parts in it rely on one another in a loop."
     return f"Its cone reaches the ground in {_plural(n, 'part')}."
+
+
+# Words for roots that the caller's ``root_names`` does not cover (``golden`` has no entry in trust.ROOT_NAMES).
+DEFAULT_ROOT_NAMES = {"golden": "golden values"}
+
+
+def _root_word(r, names):
+    if r in names:
+        return names[r]
+    if r in DEFAULT_ROOT_NAMES:
+        return DEFAULT_ROOT_NAMES[r]
+    return "reference code: " + r[len("golden:"):] if r.startswith("golden:") else r
 
 
 def sentence(model, id, root_names=None):
@@ -178,15 +194,15 @@ def sentence(model, id, root_names=None):
     word = _name(n)
     opening = OPENING.get(n["verdict"], "{n}: " + str(n["verdict"]) + ".")
     out = [opening.format(n=word, f=(" (" + ", ".join(n["findings"]) + ")") if n.get("findings") else "")]
-    strong = [names.get(r, r) for r in n.get("strong", [])]
+    strong = [_root_word(r, names) for r in n.get("strong", [])]
     if strong:
         out.append(f"Its own checks agree with {_list(strong)}.")
     elif n["verdict"] != "unchecked":
         out.append("None of its checks counts yet as agreement with a root.")
     extras = _extras(model, c, [b["id"] for b in n.get("because", [])])
     if len(c["nodes"]) == 1:
-        out.append("It relies on no other part."
-                   if extras else "It relies on no other part, so it stands directly on the roots.")
+        out.append("It relies on no other part, so it stands directly on the roots."
+                   if n["verdict"] == "verified" and not extras else "It relies on no other part.")
     else:
         out.append(f"It relies on {_plural(len(c['nodes']) - 1, 'part')}, "
                    + _reliance(model, c, exclude=(id,)) + ".")
@@ -225,5 +241,5 @@ def embed(model, roots, root_names=None, alias=None):
         "sentences": {i: sentence(model, i, root_names) for i in ids},
         "letters": root_letters(roots, alias), "letter_names": LETTER_NAMES, "letter_order": LETTER_ORDER, "short": SHORT, "tag": TAG,
         "pipelines": {p["id"]: {k: p.get(k) for k in ("title", "status", "steps", "data", "page")}
-                      for p in model.get("pipelines", [])},
+                      for p in model.get("pipelines", []) if p["id"] not in model["nodes"]},
     }

@@ -10,6 +10,7 @@
     if (!holder || !panel) return;
     var data = JSON.parse(holder.textContent);
     var nodes = data.nodes, verdicts = data.verdicts, roots = data.roots, C = data.cone;
+    function rootName(r) { return roots[r] || (r.indexOf("golden:") === 0 ? "reference code: " + r.slice(7) : r); }
     var map = document.querySelector(".vt-map");
     var sky = document.querySelector(".vt-sky");
     var cone = document.getElementById("vt-cone");
@@ -33,7 +34,7 @@
         return "<code>" + esc(b.id) + "</code>" + (b.findings.length ? " (" + b.findings.map(function (f) { return '<a href="#' + esc(f) + '">' + esc(f) + "</a>"; }).join(", ") + ")" : "");
       }).join(", ") + (n.verdict.indexOf("relies") === 0 ? "; it counts as verified once that is fixed." : "; fixing that alone would not verify it.") + "</div>";
       var rs = n.strong.concat(n.weak);
-      html += "<div>Checked against: " + (rs.length ? rs.map(function (r) { return '<span class="vt-root">' + esc(roots[r] || r) + "</span>"; }).join("") : "nothing yet") + "</div>";
+      html += "<div>Checked against: " + (rs.length ? rs.map(function (r) { return '<span class="vt-root">' + esc(rootName(r)) + "</span>"; }).join("") : "nothing yet") + "</div>";
       if (n.changed && n.changed.length) html += '<div class="vt-muted">virgil has changed ' + n.changed.map(function (f) { return "<code>" + esc(f) + "</code>"; }).join(", ") + " since this evidence.</div>";
       var checks = n.checks.filter(function (c) { return c.kind !== "guard" && c.outcome !== "skipped"; });
       if (checks.length) {
@@ -143,7 +144,7 @@
           var word = (C.tag[n.verdict] || n.verdict), sel = mid === id ? " sel" : "";
           out.push('<a class="vt-cone-box' + sel + '" href="#' + encodeURIComponent(mid) + '" data-cone-node="' + esc(mid) + '" aria-label="' +
             esc(n.label + ": " + v + ". " + (L.length ? "Checked against " + L.map(function (l) { return C.letter_names[l] || "an unlisted root"; }).join(", ") : "No root yet")) + '">' +
-            "<title>" + esc(n.id + " · " + v + " · depth " + n.depth + " · " + (n.strong.length ? "checked against " + n.strong.map(function (r) { return roots[r] || r; }).join(", ") : "no counted root")) + "</title>" +
+            "<title>" + esc(n.id + " · " + v + " · depth " + n.depth + " · " + (n.strong.length ? "checked against " + n.strong.map(function (r) { return rootName(r); }).join(", ") : "no counted root")) + "</title>" +
             '<rect class="bx" x="' + bx + '" y="' + by + '" width="' + BW + '" height="' + BH + '" rx="5"/>' +
             '<rect class="st k-' + n.verdict + '" x="' + bx + '" y="' + by + '" width="7" height="' + BH + '" rx="3"/>' +
             '<text class="l1" x="' + (bx + 14) + '" y="' + (by + 15) + '"><tspan class="ic">' + esc(data.cone.icons[n.verdict] || "") + "</tspan> " + esc(trunc(n.label, chars)) + "</text>" +
@@ -261,6 +262,7 @@
       var inSky = !!el.closest(".vt-sky"), inMap = !!el.closest(".vt-map");
       if (inSky && el.tagName.toLowerCase() === "g") { el.setAttribute("tabindex", "0"); el.setAttribute("role", "button"); }
       el.addEventListener("click", function (ev) {
+        if (ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;   // open in a new tab, as a link does
         if (inSky) ev.preventDefault();
         select(el.getAttribute("data-node"), inMap ? {fold: true} : {scroll: true});
       });
@@ -274,7 +276,13 @@
     if (cone) {
       cone.addEventListener("click", function (ev) {
         var box = ev.target.closest && ev.target.closest("[data-cone-node]");
-        if (box) { ev.preventDefault(); select(box.getAttribute("data-cone-node"), {}); }
+        if (!box || ev.button || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        ev.preventDefault();
+        var target = box.getAttribute("data-cone-node");
+        select(target, {});
+        // the drawing was rebuilt: keep the keyboard where it was
+        var again = body.scroll.querySelector('[data-cone-node="' + (window.CSS && CSS.escape ? CSS.escape(target) : target) + '"]');
+        if (again) again.focus({preventScroll: true});
       });
     }
     if (onHash) window.removeEventListener("hashchange", onHash);

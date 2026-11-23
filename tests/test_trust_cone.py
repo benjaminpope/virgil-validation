@@ -100,8 +100,20 @@ def test_sentence_when_everything_beneath_is_verified():
 
 def test_sentence_for_a_bug_and_for_an_unchecked_part():
     assert tc.sentence(MODEL, "buggy").startswith("buggy has a known bug, fix pending (F27). ")
-    assert tc.sentence(MODEL, "loneliest").startswith("loneliest has no independent check yet. It relies on no other part")
+    assert tc.sentence(MODEL, "loneliest") == (
+        "loneliest has no independent check yet. It relies on no other part.")  # not "stands on the roots": nothing verifies it
     assert "None of its checks counts yet" in tc.sentence(MODEL, "a")
+
+
+def test_a_cone_that_is_a_loop_has_no_ground_and_says_so():
+    s = tc.sentence(MODEL, "a")
+    assert "Its cone has no ground part" in s and "in 0 parts" not in s
+
+
+def test_ground_counts_only_edges_inside_the_cone():
+    # a part whose only dependency is not in the model stands on the ground; a self-loop is not a reliance
+    m = {"nodes": {"x": node("x", "verified", ["missing", "x"]), "y": node("y", "verified", ["x"], 1)}, "pipelines": []}
+    assert tc.sentence(m, "y").endswith("Its cone reaches the ground in 1 part.")
 
 
 def test_sentence_for_a_pipeline():
@@ -160,3 +172,13 @@ def test_the_most_serious_unverified_parts_are_named_first():
     m = {"nodes": {n["id"]: n for n in deep}, "pipelines": []}
     s = tc.sentence(m, "root")
     assert "(failer: check failing; deepbug: known bug, F1; g1: not yet checked; and 3 more)" in s
+
+
+def test_a_golden_root_has_words_even_when_the_caller_gives_none():
+    m = {"nodes": {"g": node("g", "verified", strong=["golden", "golden:pmoired.foo"])}, "pipelines": []}
+    assert tc.sentence(m, "g").startswith("g is verified. Its own checks agree with golden values and reference code: pmoired.foo.")
+
+
+def test_a_pipeline_shadowed_by_a_part_is_not_embedded():
+    e = tc.embed(MODEL, {"roots": []}, NAMES)
+    assert "top" not in e["pipelines"] and "pipe" in e["pipelines"]
