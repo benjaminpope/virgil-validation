@@ -93,9 +93,10 @@ def rel(a, b):
 # -------------------------------------------------------------- eht-imaging
 
 
+@pytest.mark.slow
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.TSV", roots=["ehtim"], headline="rel_value")
+@pytest.mark.validates("virgil.imaging.TSV", roots=["ehtim"], headline="rel_value", tier="B")
 def test_tsv_matches_ehtim(scene):
     eta, support, b = scene
     e = sp.run("ehtim", "ehtim_worker.py", {"task": "regularisers", "images": [b.tolist()],
@@ -109,9 +110,10 @@ def test_tsv_matches_ehtim(scene):
     assert rel(grad, want_grad) < 1e-12
 
 
+@pytest.mark.slow
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.TSV", "virgil.imaging.TV", roots=["ehtim"])
+@pytest.mark.validates("virgil.imaging.TSV", "virgil.imaging.TV", roots=["ehtim"], tier="B")
 @pytest.mark.parametrize("beam", [0.4, 2.5])
 def test_normalised_weights_match_ehtim_norm_reg(scene, beam):
     """B != p: eht-imaging's own norm_reg=True (flux 1, pixel 1 mas, beam_size B), with n_data omitted (default 1) and then 3."""
@@ -135,9 +137,10 @@ def test_normalised_weights_match_ehtim_norm_reg(scene, beam):
         assert rel(grad, want_grad) < 1e-12
 
 
+@pytest.mark.slow
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.TV", roots=["ehtim"], headline="rel_value")
+@pytest.mark.validates("virgil.imaging.TV", roots=["ehtim"], headline="rel_value", tier="B")
 def test_tv_matches_ehtim(scene):
     eta, support, b = scene
     eps = EPS_FRACTION / b.size
@@ -153,9 +156,10 @@ def test_tv_matches_ehtim(scene):
     assert rel(grad, want_grad) < 1e-12
 
 
+@pytest.mark.slow
 @needs_ehtim
 @pytest.mark.external
-@pytest.mark.validates("virgil.imaging.MaxEntropy", roots=["ehtim"])
+@pytest.mark.validates("virgil.imaging.MaxEntropy", roots=["ehtim"], tier="B")
 def test_max_entropy_matches_ehtim(scene):
     """Against a flat default image over the support (virgil's default)
     and a random positive one."""

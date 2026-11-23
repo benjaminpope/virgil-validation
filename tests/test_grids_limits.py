@@ -171,7 +171,8 @@ def test_absil_limits_by_root_finding(dataset):
     assert worst < 1e-3
 
 
-@pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.limits.absil_limits", roots=["mathematics"], tier="B")
 @pytest.mark.parametrize("start", [1e-6, 0.5, 0.95], ids=["far-below", "far-above", "saturated"])
 def test_absil_limits_from_a_single_bad_start(dataset, start):
     """The flux axis only sets the start (virgil#191): a single value far

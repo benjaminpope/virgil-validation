@@ -9,7 +9,8 @@ from scipy import integrate
 from crosscheck import disks, sky
 
 
-@pytest.mark.validates("crosscheck.disks", roots=["mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("crosscheck.disks", roots=["mathematics"], kind="reference", tier="B")
 def test_scattered_ring_render():
     """Isotropic scattering, or a face-on ring, gives a centrosymmetric image
     (real visibilities); forward scattering brightens the near side, at

@@ -130,8 +130,9 @@ def _tolerances(case, values):
     return np.array(chi2_tol), tol
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_grad_relative_error")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_grad_relative_error", tier="B")
 @pytest.mark.parametrize("point", ["start", "moved", "edge"])
 def test_spread_offsets_chi2_and_gradient_equal_the_exact_reference_within_the_documented_error(point):
     """Per-ddid chi-squared and the gradient of the chi-squared in every fitted site (image logits, flux,

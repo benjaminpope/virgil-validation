@@ -211,9 +211,11 @@ def test_likelihood_gradients(which):
     check_grads(f, (x0,), order=1, modes=("fwd", "rev"))
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.likelihood.model_loglike", "virgil.inference.laplace_cov",
     roots=["mathematics"],
+    tier="B",
 )
 def test_hessian_of_the_likelihood():
     """Laplace covariances and Fisher matrices use second derivatives.

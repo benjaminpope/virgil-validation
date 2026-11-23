@@ -319,7 +319,8 @@ def test_p4_candid_public_limits_solve_its_criterion(files):
 # -------------------------------------------------------------------- fits
 
 
-@pytest.mark.validates("virgil.fitting.fit", "virgil.inference.laplace_cov", roots=["candid"], headline="max_abs_dbest_over_sigma")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", "virgil.inference.laplace_cov", roots=["candid"], headline="max_abs_dbest_over_sigma", tier="B")
 def test_fit_matches_candid_fitmap(files):
     """CANDID's fitMap (fits started on a grid, best kept) against virgil's
     MAP fit and Laplace errors. CANDID scales its errors by sqrt(chi2r)

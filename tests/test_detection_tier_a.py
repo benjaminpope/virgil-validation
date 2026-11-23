@@ -515,10 +515,12 @@ def test_detection_mc_concatenate_and_npz_roundtrip(tmp_path):
         det.DetectionMC.load(bad_npz)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
     roots=["mathematics"],
     headline="max_rel_ddelta_chi2",
+    tier="B",
 )
 def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path):
     """On both noiseless and noisy (bootstrap_null sign-flip) 3-telescope VLTI
@@ -755,11 +757,13 @@ def test_injection_recovery_matches_independent_crosscheck_grid_search(tmp_path)
     assert worst_flux < 1e-5
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
     property="statistics_only_path",
     roots=["mathematics"],
     headline="max_rel_ddelta_chi2_stats_only",
+    tier="B",
 )
 def test_injection_recovery_without_uncertainty_matches_independent_grid_search(tmp_path):
     """``injection_recovery(uncertainty=False)``, the path BinaryPipeline's null
@@ -1009,12 +1013,14 @@ def _tiny_statistics_only_runs(tmp_path):
     return run(False, 1), run(True, 2)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.DetectionMC",
     "virgil.detection.injection_recovery",
     roots=["mathematics"],
     kind="finding",
     headline="max_snr_fap_on_nan_draws",
+    tier="B",
 )
 @pytest.mark.xfail(
     strict=True,
@@ -1074,10 +1080,12 @@ def test_f32_concatenate_refuses_mixed_uncertainty(tmp_path):
     )
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.detection.injection_recovery",
     roots=["self-consistency"],
     headline="max_rel_dbatch",
+    tier="B",
 )
 def test_injection_recovery_nrm_batch_and_chunk_invariance():
     """On a noisy 7-hole NRM UV template (n_null=24, n_inject=16),

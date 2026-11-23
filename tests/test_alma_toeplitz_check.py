@@ -19,7 +19,8 @@ import alma_imlup_toeplitz_check as chk  # noqa: E402
 from test_alma_maxent import synthetic_dir  # noqa: E402
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_toeplitz_check_agrees_with_the_direct_term_and_writes_the_acceptance_table(tmp_path):
     """R at 32^2 with fitted-looking nuisances: chi^2, loss and every gradient leaf of the Toeplitz term equal the direct term's, and the
     summary carries a PASS/FAIL row for each acceptance limit and an overall verdict."""

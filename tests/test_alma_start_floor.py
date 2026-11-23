@@ -64,7 +64,8 @@ def test_dead_pixel_report_flags_the_bare_gaussian_and_passes_the_floored_start(
     record("dead_fraction_bare_gaussian", bare["frac_below_1e-6_peak"])
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 @pytest.mark.parametrize("floor", [None, 0.0])
 def test_fit_p3_records_the_floor_start_by_default_and_the_dead_pixels(tmp_path, floor):
     """``fit`` raises the p3 start to the entropy floor by default (recorded in result.json and the first stage) and reports the dead pixels;
@@ -194,7 +195,8 @@ def test_the_fitted_gaussian_start_is_the_image_virgils_model_sees_not_its_mirro
     record("chi2n_mirrored_start", min(flip_ew, flip_ns, flip_both))
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_fit_start_gauss_fit_records_the_fitted_gaussian_and_is_refused_where_there_is_another_start(tmp_path):
     """``fit --start gauss-fit`` on the p3 workflow: the fitted Gaussian (parameters, n used, source) is in result.json and the first stage, the start is then floored,
     and the default (``--start gauss``) records none; --workflow mpol, clean and --init refuse it."""

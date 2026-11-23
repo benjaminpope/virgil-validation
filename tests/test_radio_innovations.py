@@ -181,8 +181,9 @@ def margin():
     return tdata.margin
 
 
+@pytest.mark.slow
 @needs_toeplitz
-@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_rel_error")
+@pytest.mark.validates("virgil.radio_toeplitz.ToeplitzVisData", roots=["mathematics"], headline="max_rel_error", tier="B")
 @pytest.mark.parametrize("where", ["half", "at_margin"])
 @pytest.mark.parametrize("offsets", [[[3.1, -2.2], [-1.7, 4.4]], [[20.0, 0.0], [0.0, -20.0]], [[14.1, 14.1], [-14.1, 14.1]]],
                          ids=["few_mas", "axis_bound", "diagonal_bound"])

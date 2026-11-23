@@ -114,8 +114,9 @@ def virgil_limits(path, method):
 POSITIONS = [[float(x), float(y)] for x in XS for y in YS]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("name,cov", [("uts3", False), ("uts4", True)], ids=["3UT", "4UT-correlated"])
-@pytest.mark.validates("virgil.limits.absil_limits", "virgil.limits.injection_limits", roots=["fouriever"], headline="max_rel_absil")
+@pytest.mark.validates("virgil.limits.absil_limits", "virgil.limits.injection_limits", roots=["fouriever"], headline="max_rel_absil", tier="B")
 def test_limits_match_fouriever_exactly(files, name, cov):
     """With the same degrees of freedom. fouriever counts every closure
     phase as one (definition D7); virgil counts the independent ones

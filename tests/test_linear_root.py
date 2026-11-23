@@ -64,9 +64,10 @@ CASES = [
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("method", ["cholesky", "rank_one"])
 @pytest.mark.parametrize("kw", CASES, ids=lambda kw: "-".join(f"{k}{v}" for k, v in kw.items()))
-@pytest.mark.validates(NODE, roots=["mathematics"])
+@pytest.mark.validates(NODE, roots=["mathematics"], tier="B")
 def test_loglike_and_whitening_match_a_dense_gaussian(kw, method):
     """The log density, the whitened residual's squared norm (the
     Mahalanobis distance) and the log-normalisation, for diagonal and full

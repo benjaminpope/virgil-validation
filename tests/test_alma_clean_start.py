@@ -146,7 +146,8 @@ def test_a_held_image_is_no_free_site_and_gives_the_same_objective(tmp_path):
         va.build_problem(data, "F", lam=0.5, npix=24, fixed_log_brightness=eta)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_workflow_clean_runs_selfcal_then_all_from_the_clean_image_and_records_it(tmp_path):
     """``fit --workflow clean`` on synthetic data: stages selfcal (the image held: no ``log_brightness`` moves) then all, the start is the CLEAN
     image (no C9 Gaussian, no MPoL start), result.json holds the start's numbers, the self-calibration check and the usual report."""
@@ -174,7 +175,8 @@ def test_workflow_clean_runs_selfcal_then_all_from_the_clean_image_and_records_i
         _call("fit", "--config", "R", "--workflow", "clean", "--sb-only", "--clean-dir", d, "--data", syn, "--out", tmp_path / "z")
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_the_selfcal_stage_holds_the_image_exactly_and_all_starts_from_it(tmp_path, monkeypatch):
     """Spy on ``run_fit_c8``: the selfcal stage's problem has no ``log_brightness`` site, its nuisances move off their start, and the next
     stage starts from exactly the CLEAN start's image (``eta``) and the self-calibrated nuisances, then frees the image."""
@@ -279,7 +281,8 @@ def test_image_only_problem_has_only_the_image_and_flux_free_and_the_same_object
     assert np.max(np.abs(a - b)) < 1e-12 * np.max(np.abs(a))
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 @pytest.mark.parametrize("workflow, names", [("mpol", ["image", "all"]), ("p3", ["image", "sb", "all"])])
 def test_image_first_runs_an_image_stage_then_the_workflows_own_stages(tmp_path, workflow, names):
     syn = synthetic_dir(tmp_path / "s")
@@ -324,7 +327,8 @@ def test_gauge_to_obs0_leaves_the_model_amplitudes_unchanged():
     assert np.allclose(g0[1:], gain) and np.allclose(o0[1:], offset) and f0 == flux
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_fit_with_ref_obs_records_it_the_bound_report_and_the_beam_bounds(tmp_path):
     """``--ref-obs auto --offset-bound-mas 100``: result.json holds the resolved reference observation and its weights, the 3-beam proxy bound of
     every observation against the bound in force; the saved fit reports again (``report``) in the same gauge."""
@@ -357,7 +361,8 @@ def test_cv_task_refuses_an_init_fitted_with_another_reference_observation(tmp_p
               "--out", tmp_path / "cv")
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_release_arm_flag_combinations_clean_start_adam_toeplitz_and_classic_mem(tmp_path):
     """The flags of the release arms are accepted together: the CLEAN start (``--workflow clean``) with Adam, Toeplitz chi^2 and a decaying lr schedule, and the classic-MEM arm
     (``--taper-mas 0``) with Adam and Toeplitz, all on small synthetic data; Adam's lr schedule needs virgil#562, so those runs are skipped without it."""

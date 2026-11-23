@@ -214,6 +214,7 @@ def test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution(tmp_pa
     assert cp_err_deg < 1e-7
 
 
+@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.validates(
     "candid",
@@ -222,6 +223,7 @@ def test_pmoired_explicit_wl_kernel_matches_discrete_gaussian_convolution(tmp_pa
     roots=["mathematics"],
     kind="reference",
     headline="candid_nsmear3_chi2r",
+    tier="B",
 )
 def test_candid_nsmear3_matches_coherent_three_endpoint_rule(tmp_path):
     """Pin CANDID's default ``Nsmear = 3`` bandwidth smearing via candid_bridge:
@@ -305,11 +307,13 @@ def test_candid_nsmear3_matches_coherent_three_endpoint_rule(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.models.ArchimedeanSpiral",
     roots=["mathematics"],
     property=("plume_geometry", "blur_projection"),
     headline="max_cvis_err_dense_nodes",
+    tier="B",
 )
 def test_archimedean_spiral_cvis_convergence_and_gradients():
     """ArchimedeanSpiral visibilities match independent Gauss-Legendre arc-length
@@ -520,10 +524,12 @@ def test_archimedean_spiral_render_and_one_pixel_width_floor():
     assert diff_unfloored > 2e-3
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.models.ArchimedeanSpiral",
     roots=["dlux"],
     headline="dlux_spiral_v2_err",
+    tier="B",
 )
 def test_archimedean_spiral_dlux_wavefront_propagation():
     """Propagate an independent inclined fading Archimedean spiral + central
@@ -931,11 +937,13 @@ def test_smeared_model_matches_pmoired_explicit_wl_kernel(tmp_path):
     assert max_dcp_deg < 5e-3
 
 
+@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.validates(
     "virgil.models.smeared_model",
     roots=["candid"],
     headline="candid_variance_matched_chi2r",
+    tier="B",
 )
 def test_smeared_model_matches_variance_matched_candid_nsmear3(tmp_path):
     """Because CANDID's 3-endpoint stencil ``{-1/2, 0, +1/2} * dwavel`` has

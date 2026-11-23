@@ -116,8 +116,9 @@ def test_vis_r_difference_is_vis_rs_own_discretization_error():
     assert np.abs((got - ref) - (truth - ref)).max() < 1e-8
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.models.MultipoleDisk", "virgil.models.Harmonics", roots=["pmoired"],
-                       headline="max_abs_dV2")
+                       headline="max_abs_dV2", tier="B")
 def test_matches_pmoired_ring_harmonics(tmp_path):
     pytest.importorskip("pmoired")
     import v2_external as ext
@@ -131,8 +132,9 @@ def test_matches_pmoired_ring_harmonics(tmp_path):
     record("max_abs_dV2", worst)
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.models.MultipoleDisk", "virgil.models.Harmonics", roots=["oimodeler"],
-                       headline="max_abs_dV")
+                       headline="max_abs_dV", tier="B")
 def test_matches_oimodeler_rings():
     pytest.importorskip("oimodeler")
     import v2_external as ext

@@ -116,7 +116,8 @@ def make_checkpoint(path, truth, npix, seed=0, spike=None, forward=False):
 # ------------------------------------------------------------------ export_checkpoint
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol"], kind="reference", tier="B")
 def test_export_checkpoint_round_trips_a_saved_net(tmp_path):
     """Every parameter of a ``torch.save``d random ``Net`` comes back exactly, the fixed observation is
     inserted as 0, and the per-observation sigma means are ``analyze_scale_factors.py``'s averages. Run at
@@ -142,7 +143,8 @@ def test_export_checkpoint_round_trips_a_saved_net(tmp_path):
     record("export_checkpoint flux (Jy) of the random image", res["flux_jy"])
 
 
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.slow
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 def test_exported_image_axes_are_the_sky_the_forward_model_sees(tmp_path):
     """A base-cube spike at packed (row 3, column 5) is, in the export, the brightest pixel at
     (l, m) = (``l_east_arcsec[col]``, ``m_north_arcsec[row]``), East left and North up. The axes are tied
@@ -234,9 +236,10 @@ def reference(tmp_path_factory):
 # ------------------------------------------------------------------ objective_full
 
 
+@pytest.mark.slow
 @needs_subsample
 @needs_asdf
-@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference")
+@pytest.mark.validates("external_bridge.mpol_worker", roots=["mpol", "mathematics"], kind="reference", tier="B")
 def test_objective_full_equals_the_one_batch_objective(reference):
     """vv#146's ``objective`` (the example's ``forward``, ``adjust_*`` and ``neg_log_likelihood_avg`` on the
     whole sample at once) and ``objective_full`` (batches of 7,000, MPoL's per-batch ``log_likelihood``

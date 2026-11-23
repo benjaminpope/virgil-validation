@@ -282,7 +282,8 @@ class _Cloud:
         return sky.visibility(self.cloud, u, v, wl)
 
 
-@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.ModulatedGaussianRim", roots=["pmoired", "mathematics"], kind="control", tier="B")
 def test_modulated_rim_definitions_differ(vlti_file, request):
     """With modulation the two packages define different things, both
     exactly. PMOIRED multiplies the radial profile by (1 + A cos m phi);

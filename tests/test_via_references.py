@@ -962,11 +962,13 @@ def _mpol_direct_visibilities(packed_intensity, pixel_mas, u, v, obs, log10_amp,
     return gains[obs] * vis_sky * np.exp(1j * phase_off)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil_bridge.mpol",
     roots=["mathematics"],
     kind="reference",
     headline="nll_vs_mpol_dft_abs_err",
+    tier="B",
 )
 def test_virgil_bridge_mpol_bijection_parameter_map_and_exact_log_likelihood():
     """``unpack``/``pack`` map MPoL's ``(c - N/2, r - N/2)`` unpacked sky coordinates onto
@@ -1401,6 +1403,7 @@ def test_control_casa_clean_worker_transpose_without_y_flip_inverts_north_south(
     assert miss > 1.0
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(
     not ext_sp.available("alma", "casatools"),
     reason="CASA not installed (scripts/setup_external.sh alma)",
@@ -1411,6 +1414,7 @@ def test_control_casa_clean_worker_transpose_without_y_flip_inverts_north_south(
     roots=["casa", "mathematics"],
     kind="reference",
     headline="max_two_source_vis_abs_err",
+    tier="B",
 )
 def test_alma_worker_simulate_and_read_match_analytic_two_source_visibilities_and_weights(tmp_path):
     """``alma_worker`` simulates two point sources in CASA and reads ``u = +UVW[0] * nu / c``,

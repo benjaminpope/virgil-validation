@@ -143,9 +143,11 @@ def _gradients(b, data, weight):
     return np.asarray(jax.grad(data_term)(logits)), np.asarray(jax.grad(reg_term)(logits))
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.imaging.TSV", "virgil.models.Image", "virgil.likelihood.whitened_residuals", "pipeline:rml-imaging",
     roots=["ehtim"], kind="regression",
+    tier="B",
 )
 def test_ehtim_minimum_on_the_faint_scene(problem, ehtim_image):
     """Recorded, not a check: on this scene the data are at about 1 sigma
@@ -216,9 +218,11 @@ def ehtim_objective(rows, images, n_amp, n_cp, weight):
     })
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.imaging.TSV", "virgil.models.Image", "virgil.likelihood.whitened_residuals", roots=["ehtim"],
     headline="worst_rel_value_difference",
+    tier="B",
 )
 def test_objective_matches_ehtim(well_posed):
     """The mapping, term by term, on random images of unit flux.
@@ -334,7 +338,8 @@ def test_stationarity_controls(well_posed, ehtim_converged):
     assert at_w_scored_2w > 0.1
 
 
-@pytest.mark.validates("virgil.fitting.fit", "virgil.imaging.TSV", "virgil.models.Image", roots=["ehtim"], kind="regression")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", "virgil.imaging.TSV", "virgil.models.Image", roots=["ehtim"], kind="regression", tier="B")
 def test_both_codes_from_the_common_start(problem, ehtim_image):
     """Both from the smooth start: the losses and the images, recorded."""
     data, _, start, _, _ = problem
@@ -345,7 +350,8 @@ def test_both_codes_from_the_common_start(problem, ehtim_image):
     assert np.all(np.isfinite(image_v))
 
 
-@pytest.mark.validates("virgil.fitting.fit", "virgil.imaging.TSV", "virgil.models.Image", roots=["ehtim"], kind="regression")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", "virgil.imaging.TSV", "virgil.models.Image", roots=["ehtim"], kind="regression", tier="B")
 def test_reconstruction_matches_ehtim_in_one_basin(problem, ehtim_image):
     data = problem[0]
     image_e = ehtim_image

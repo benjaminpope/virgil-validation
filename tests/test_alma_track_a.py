@@ -83,7 +83,8 @@ def test_reg_mem_is_mpols_lambda_m_pull_and_tsv_is_the_zero_padded_squared_diffe
     assert float(jnp.max(jnp.abs(g_v - g_m)) / jnp.max(jnp.abs(g_m))) < 1e-5
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_reg_is_config_f_only_and_toeplitz_equals_direct(syn):
     data = va.load_dir(syn)
     with pytest.raises(ValueError):
@@ -312,7 +313,8 @@ def _truth(npix=64):
     return vy.truth_image(np.exp(-0.5 * ((rr - 120) / 20) ** 2) + 0.02, PIX, blur_mas=15.0)
 
 
-@pytest.mark.validates("virgil_bridge.alma_synth", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_synth", roots=["mathematics"], tier="B")
 def test_truth_flux_and_model_visibilities_match_an_independent_dft(syn):
     """The synthetic data's forward model against ``crosscheck.sky`` (a numpy pixel DFT built from the documented conventions: row 0 North, half-pixel shift -dx/2), to 1e-10: a wrong half pixel,
     row order or Fourier sign in the model that makes the data would otherwise cancel in every arm."""
@@ -343,7 +345,8 @@ def test_score_image_separates_truth_from_dotted_and_zero_error_for_itself():
     assert s1["n_eff_ratio"] < 0.5 < s0["n_eff_ratio"] and s1["nrmse"]["0.5"] > 0.05
 
 
-@pytest.mark.validates("virgil_bridge.alma_synth", roots=["self-consistency"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_synth", roots=["self-consistency"], tier="B")
 def test_synthetic_truth_has_no_dots_in_the_mem_arm_but_r_with_a_wide_blur_has_fewer_effective_pixels(syn, tmp_path):
     """The CI regression of Track A: smooth truth at the toy uv; the MEM arm (config F, ``--reg mem``) keeps the image's N_eff ratio >= 0.7, and R with a 30 mas kernel in the model (the dot
     mechanism) ends clearly lower."""
@@ -422,7 +425,8 @@ def test_replica_workflow_runs_end_to_end_and_ablation_flags_change_the_run(syn,
     assert not np.allclose(outs["base"], outs["nowd"]) and not np.allclose(outs["base"], outs["softmax"])
 
 
-@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], kind="guard", tier="B")
 def test_replica_offsets_may_leave_the_default_toeplitz_box_but_not_the_replicas(syn):
     """MPoL's offsets are free (AdamW at lr 1e-2 arcsec: 10 mas a step), so the replica's Toeplitz box must contain wherever they go (job 19396964 died on the 100 mas box). From a start with
     offsets of 0.5 arcsec, past both the 20 mas default and the old 100 mas box, steps run in the replica's box with the peak reported, and a 20 mas box raises."""
@@ -446,7 +450,8 @@ def test_replica_offsets_may_leave_the_default_toeplitz_box_but_not_the_replicas
         run(va.TOEPLITZ_OFFSET_BOUND_MAS)
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_cv_task_gp_arm_runs_on_the_same_folds_and_keys_the_grid_by_length(syn, tmp_path):
     """The GP in cross-validation: ``--config G`` with a hyperparameter point, from a start of the problem's own defaults; cv.json carries length_r as ``lam`` and both lengths in ``key``."""
     gp = dict(length_r=20.0, length_theta=1.0, npix=48, pixel_mas=PIX, n_r=10, n_theta=16, r_max_mas=120.0)
@@ -466,7 +471,8 @@ def test_cv_task_gp_arm_runs_on_the_same_folds_and_keys_the_grid_by_length(syn, 
     assert r["lam"] == 20.0 and r["key"] == "lr20_lt1" and r["arm"]["n_r"] == 10 and np.isfinite(r["heldout"]["nll"])
 
 
-@pytest.mark.validates("virgil_bridge.alma_synth", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_synth", roots=["self-consistency"], kind="guard", tier="B")
 def test_synth_script_make_run_score_and_the_better_and_replica_compare_commands(syn, tmp_path):
     import alma_imlup_synth as synth
 
@@ -512,7 +518,8 @@ def test_synth_script_make_run_score_and_the_better_and_replica_compare_commands
         _call("replica-compare", "--fit", fit, "--mpol", mp, "--out", tmp_path / "rc2")
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_cv_aggregate_refuses_a_mix_of_arms_even_with_distinct_grid_points(syn, tmp_path):
     folds = tmp_path / "folds.npz"
     _call("folds", "--data", syn, "--out", folds, "--k", 2)
@@ -536,7 +543,8 @@ def test_replica_compare_warns_when_the_export_is_not_the_p3a_run():
     assert res["warning"] and res["mpol"]["export_in_band"]["peak_base"] is False and "Warning" in "\n".join(vr.replica_markdown(res))
 
 
-@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma", roots=["self-consistency"], kind="guard", tier="B")
 def test_blur_mas_alias_zero_and_none_and_the_flag_conflict(syn, tmp_path):
     data = va.load_dir(syn)
     assert va.build_problem(data, "R", lam=1e-5, npix=48, blur_mas=0).nuis.blur_fwhm_mas is None  # 0: classic MEM, no kernel
@@ -599,7 +607,8 @@ def _toy_term_problem(syn):
     return data, prob
 
 
-@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], tier="B")
 def test_replica_batch_loss_is_mpols_per_batch_normalisation(syn):
     """A batch's loss is -ln L_b / (2 n_b) + lambda S (``neg_log_likelihood_avg`` is ``-ln L / (2 N)`` of the batch it is given): compared with the formula written out from the batch's own term."""
     data, prob = _toy_term_problem(syn)
@@ -624,7 +633,8 @@ def test_replica_batch_loss_is_mpols_per_batch_normalisation(syn):
     assert losses[0] != pytest.approx(float(vr.replica_loss(jax_tree32(params), t0, n_points=len(data.u), **kw)), rel=1e-2)  # not the full-N normalisation
 
 
-@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil_bridge.alma_replica", roots=["self-consistency"], kind="control", tier="B")
 def test_replica_minibatch_stage_takes_the_extra_step_per_epoch(syn):
     """``steps`` batch steps over two epochs plus one extra optimizer.step() after each full epoch: replayed by hand with the same batches and optimiser, the parameters agree; without the extra steps they would not."""
     import optax

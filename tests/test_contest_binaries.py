@@ -90,9 +90,11 @@ def _fit(data, sep, pa, flux, diams):
     return sep_fit, pa_fit, f, _chi2(result.model, data), _chi2(mirrored.model, data)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.oifits.read_oifits", "virgil.oidata.OIData", "virgil.fitting.fit",
     roots=["literature"],
+    tier="B",
 )
 @pytest.mark.parametrize("year", sorted(BINARIES))
 def test_contest_binary_matches_published_parameters(year):

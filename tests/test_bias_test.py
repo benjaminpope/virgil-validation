@@ -52,7 +52,8 @@ def model_v2(d, vis, p):
     return np.abs(vis(d["u"], d["v"], d["wl"], p)) ** 2
 
 
-@pytest.mark.validates("virgil.simulate.bias_test", roots=["statistics", "mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.simulate.bias_test", roots=["statistics", "mathematics"], tier="B")
 def test_correct_model_scatters_about_the_truth(template):
     """Mean within 4 standard errors of truth + Box bias; sample variance
     consistent with the Fisher variance (chi-squared test, p > 1e-3)."""

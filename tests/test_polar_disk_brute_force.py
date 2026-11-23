@@ -112,8 +112,9 @@ def test_brute_force_render(name):
     assert row["max_abs_Im_V"] > 0.05  # sensitive to the asymmetry (a non-zero imaginary part)
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.models.MultipoleDisk", "virgil.models.RadialLinear", roots=["mathematics"],
-                       headline="max_abs_dV")
+                       headline="max_abs_dV", tier="B")
 def test_chromatic_system_weight():
     bf = _bf()
     u, v = bf.baselines(60)

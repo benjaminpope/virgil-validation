@@ -323,7 +323,8 @@ def _mpol_loglike(p, tmp):
     return sp.run("mpol", "mpol_worker.py", _task("loglike", npz=str(tmp / "norm.npz"), npix=8))
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"], headline="rel_error_vs_virgil_loglike")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.CalibrationNuisance", roots=["mpol"], headline="rel_error_vs_virgil_loglike", tier="B")
 def test_mpol_log_likelihood_equals_virgil_with_s_equal_g_times_s_mpol(tmp_path):
     """On random complex data, model and weights, with g != 1 and s_M != 1: MPoL's
     `log_likelihood` = -(1/2 sum r^2 + log_norm) - sum_d (N_d ln 2 pi - sum_k ln w_k), with
@@ -416,7 +417,8 @@ WRONG_MAPS = {
 }
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.models.Image", roots=["mpol"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.models.Image", roots=["mpol"], kind="control", tier="B")
 @pytest.mark.parametrize("wrong", sorted(WRONG_MAPS))
 def test_control_a_wrong_pixel_map_misses_mpol_by_far_more_than_the_matched_map_does(case, wrong):
     """Dropping the half-pixel offset, or not reversing the columns (RA increases to the left), the rows,
@@ -507,6 +509,7 @@ def test_the_sigma_and_gain_gradients_obey_the_chain_rule_of_the_map(case):
 IMLUP_SIGMA = [1.12, 1.15, 1.13, 1.13, 1.13, 1.14, 1.14, 1.14, 1.14, 1.13, 1.14, 1.11, 1.10, 1.08, 1.06, 1.13, 1.13, 1.07, 1.67, 1.67, 1.66, 1.75, 1.99, 1.99, 1.99, 2.08]
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.radio.ComplexVisData.term", "virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mpol", "mathematics"], tier="A", headline="rel_mpol_vs_virgil")
 @pytest.mark.skipif(len(list(SUBSAMPLE.glob("ddid_*.npz"))) != 26, reason=f"the stride-1000 subsample is not in {SUBSAMPLE}")
 def test_the_objective_matches_mpol_on_all_26_ddids_and_7_observations_of_im_lup(tmp_path):

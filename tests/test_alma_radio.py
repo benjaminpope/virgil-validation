@@ -333,7 +333,8 @@ def test_model_matches_the_float64_dft_of_the_pixel_image_with_every_nuisance_se
     assert pointwise < 1e-10
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mathematics"], headline="rel_l2_error")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.model", "virgil.radio.CalibrationNuisance", roots=["mathematics"], headline="rel_l2_error", tier="B")
 @pytest.mark.parametrize("eps", [1e-12, 1e-6])
 def test_model_with_the_nufft_is_within_three_eps_of_the_dft(problem, eps):
     """The same product with ft='nufft' at eps_f64 = 1e-12 and 1e-6: the relative l2
@@ -461,7 +462,8 @@ def _two_parameter_sets():
     return [a, b]
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", roots=["statistics"], headline="diff_half_chi2_plus_log_norm")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", roots=["statistics"], headline="diff_half_chi2_plus_log_norm", tier="B")
 @pytest.mark.parametrize("which", [0, 1])
 def test_half_chi2_plus_log_norm_is_the_negative_scipy_log_density_up_to_a_constant(problem, which):
     """1/2 sum(r^2) + log_norm(values) = -sum norm.logpdf(Re, Im; sigma = s_d/sqrt(w)) minus
@@ -489,7 +491,8 @@ def test_half_chi2_plus_log_norm_is_the_negative_scipy_log_density_up_to_a_const
     assert len(res) == 2 * len(vis)
 
 
-@pytest.mark.validates("virgil.radio.ComplexVisData.term", roots=["statistics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.radio.ComplexVisData.term", roots=["statistics"], tier="B")
 def test_masked_points_drop_out_of_chi2_and_the_normalisation(problem):
     """With a 0/1 mask, the masked points change neither 1/2 chi^2 nor log_norm: they equal the
     scipy sums over the unmasked points, and corrupting the masked data changes nothing."""

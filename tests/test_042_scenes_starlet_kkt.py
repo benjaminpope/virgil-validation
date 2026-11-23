@@ -1251,10 +1251,12 @@ def _three_ut_oidata(path, scene, seed: int = 1):
     return vo.OIData(str(path))
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
     headline="nonstat_sqrt_kkt_err",
+    tier="B",
 )
 def test_kkt_report_sqrt_linear_image_stationarity_and_exact_zero_pixel(tmp_path):
     n, scale, flux = 8, 1.0, 0.3
@@ -1737,10 +1739,12 @@ def test_kkt_report_bounded_linear_image_projected_gradient_and_active_zeros(tmp
     assert float(img_rep["pg_rel"]) < float(vfit.KKT_TOL)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.fitting.kkt_report",
     roots=["mathematics"],
     headline="nonstat_fixed_flux_kkt_err",
+    tier="B",
 )
 def test_kkt_report_softmax_image_multiplier_and_nuisance_start_gate(tmp_path):
     n, scale = 10, 0.65

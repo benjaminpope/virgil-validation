@@ -325,7 +325,8 @@ def test_binary_pipeline_recovery_resume_and_load_roundtrip(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.BinaryPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.BinaryPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
     """Mismatched calibrator transfer function (V^2 > 1, zero closure phase) fails both detection and chi2 checks."""
     raw = tmp_path / "null_star.fits"
@@ -371,10 +372,12 @@ def test_binary_pipeline_nondetection_and_bad_chi2_checks_control(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.StarPipeline",
     roots=["mathematics"],
     headline="diam_err_mas",
+    tier="B",
 )
 def test_star_pipeline_recovers_uniform_disk_angular_diameter(tmp_path):
     """StarPipeline fits both uniform and limb-darkened stellar models and passes chi2 checks."""
@@ -473,10 +476,12 @@ def test_star_pipeline_mismatched_binary_chi2_check_control(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.DiskPipeline",
     roots=["mathematics"],
     headline="ring_radius_rel_err",
+    tier="B",
 )
 def test_disk_pipeline_recovers_inclined_gaussian_ring(tmp_path):
     """DiskPipeline recovers ring geometry/flux/width ('rings') and RadialGP orientation/flux ('gp')."""
@@ -714,7 +719,8 @@ def test_imaging_pipeline_staged_members_and_skyimage_recovery(tmp_path):
     gc.collect()
 
 
-@pytest.mark.validates("virgil.pipeline.ImagingPipeline", roots=["mathematics"], kind="control")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.pipeline.ImagingPipeline", roots=["mathematics"], kind="control", tier="B")
 def test_imaging_pipeline_underquoted_errors_check_control(tmp_path):
     """Severe noise with tenfold under-quoted error bars trips ImagingPipeline fit checks."""
     raw = tmp_path / "img_noisy.fits"
@@ -754,10 +760,12 @@ def test_imaging_pipeline_underquoted_errors_check_control(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.OrbitPipeline",
     roots=["mathematics"],
     headline="rel_period_err",
+    tier="B",
 )
 def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
     """OrbitPipeline blindly recovers a multi-night synthetic Keplerian orbit and saves AliasResult."""
@@ -856,12 +864,14 @@ def test_orbit_pipeline_blind_keplerian_recovery(tmp_path):
     gc.collect()
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.pipeline.BinaryPipeline",
     "virgil.pipeline.OrbitPipeline",
     "virgil.pipeline.Check",
     roots=["mathematics"],
     kind="control",
+    tier="B",
 )
 def test_pipeline_short_nuts_chain_trips_ess_fail_control(tmp_path):
     """Short 30-draw NUTS chains on clean binary/orbit data pass chi2/detection yet fail ess and converged."""

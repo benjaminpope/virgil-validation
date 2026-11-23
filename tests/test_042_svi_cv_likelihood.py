@@ -613,10 +613,12 @@ def test_grid_fit_gaussian_loguniform_and_linear_flux_grid(tmp_path):
     record("occam_shift_err", abs(got_occam - want_occam))
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.grid_fit.optimized_likelihood_grid",
     roots=["mathematics"],
     headline="max_opt_ll_err",
+    tier="B",
 )
 def test_optimized_likelihood_grid_matches_independent_brent_profile(tmp_path):
     """optimized_likelihood_grid matches independent 1D Brent optimization of
@@ -931,11 +933,13 @@ def test_crossval_fold_masks_io_and_breiman_one_se_aggregation(tmp_path):
     record("max_agg_err", max(err_mean, err_se, err_chi2))
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.crossval.cv_task",
     "virgil.crossval.cross_validate",
     roots=["mathematics"],
     headline="max_ridge_cv_score_err",
+    tier="B",
 )
 def test_cv_task_and_cross_validate_match_closed_form_ridge_regression():
     """cv_task and cross_validate reproduce the exact closed-form K-fold ridge

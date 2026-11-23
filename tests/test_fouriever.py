@@ -95,7 +95,8 @@ def fouriever(path, ps, cov=True):
     return sp.run("fouriever", "fouriever_worker.py", {"task": "chi2", "path": path, "params": ps, "cov": cov})
 
 
-@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"], property="correlation")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.oidata.OIData.cp_noise", roots=["fouriever", "mathematics"], property="correlation", tier="B")
 def test_closure_phase_correlation_matches_fouriever(files):
     """virgil's correlation matrix of the closure phases, fouriever's
     (its CPCOV divided by the errors) and ours (T T^T / 3 per snapshot and

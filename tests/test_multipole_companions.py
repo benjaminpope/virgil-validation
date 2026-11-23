@@ -453,7 +453,8 @@ def test_radial_gp_distinguishes_kernel_smoothness_and_scale():
     assert np.abs(np.asarray(d_rough.model(u * wl, v * wl, wl)) - np.asarray(d_smooth.model(u * wl, v * wl, wl))).max() > 0.02
 
 
-@pytest.mark.validates("virgil.models.MultipoleKernel", roots=["mathematics", "statistics"], headline="max_abs_dV")
+@pytest.mark.slow
+@pytest.mark.validates("virgil.models.MultipoleKernel", roots=["mathematics", "statistics"], headline="max_abs_dV", tier="B")
 @pytest.mark.parametrize("nu_theta", [1.5, float("inf")])
 def test_multipole_kernel_spectrum_draws_and_disk_visibility(nu_theta):
     """MultipoleKernel matches S(m)/S(1), generates independent radial Matérn draws per harmonic order,
@@ -584,9 +585,10 @@ def test_from_image_harmonics_positive_rejects_negative_profile_and_conjugation(
     assert np.abs(np.asarray(d1.model(u * 2e-6, v * 2e-6, 2e-6)) - np.asarray(d2.model(u * 2e-6, v * 2e-6, 2e-6))).max() > 0.1
 
 
+@pytest.mark.slow
 @pytest.mark.validates("virgil.harmonics.from_legacy", "virgil.harmonics.to_legacy",
                        "virgil.harmonics.rim_coefficients", "virgil.harmonics.cone_coefficients",
-                       roots=["mathematics"], headline="max_abs_dV")
+                       roots=["mathematics"], headline="max_abs_dV", tier="B")
 def test_legacy_rim_and_cone_conversions_match_trigonometry_and_point_clouds():
     """rim_coefficients, cone_coefficients, from_legacy, and to_legacy match independent trigonometric identities,
     canonical angle wrapping on [-180/m, 180/m) about the reference axis, and independent crosscheck point clouds."""

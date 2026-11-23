@@ -413,12 +413,14 @@ def test_supplied_closure_offset_modes(cp_file):
     record("max_abs_dloglike", worst)
 
 
+@pytest.mark.slow
 @pytest.mark.validates(
     "virgil.gains.ClosureOffsets",
     "virgil.gains.closure_offsets",
     "virgil.likelihood.model_loglike",
     roots=["mathematics"],
     headline="max_abs_dloglike_wrap",
+    tier="B",
 )
 def test_closure_offsets_wrap_boundary_near_pi(tmp_path):
     """Across the +-180 deg phase-wrap cut (|Delta| ~ pi, where sin(Delta) ~ 0 and

@@ -155,12 +155,14 @@ def _check_four_tel_correlated_quads(raw_diffs, draws):
     assert chi2_4_p < 1e-3
 
 
+@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.validates(
     "virgil.models.ModulatedGaussianRim",
     roots=["pmoired"],
     property="modulation_sense",
     headline="max_abs_dCP_deg",
+    tier="B",
 )
 def test_thin_modulated_gaussian_rim_matches_pmoired_closure_phase_to_1e_4(three_tel_template):
     """When fwhm << diam so (m sigma / r0)^2 < 1e-5 inside the first visibility

@@ -80,8 +80,9 @@ def cone_reference(u, v, c, dra=0.0, ddec=0.0):
     return sky.visibility(cloud, u, v, WL) * sky.gaussian_blur_factor(u, v, WL, c["width"])
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("c", CONES, ids=["side", "wide-negative-tilt", "down-axis", "in-sky"])
-@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"])
+@pytest.mark.validates("virgil.models.TruncatedCone", roots=["mathematics"], tier="B")
 def test_truncated_cone_against_a_3d_cloud(c):
     u, v = baselines()
     want = cone_reference(u, v, c, dra=1.5, ddec=-2.0)

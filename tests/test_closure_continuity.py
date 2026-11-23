@@ -62,14 +62,16 @@ def _file(tmp_path, stations):
     return path
 
 
-@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"], tier="B")
 def test_three_telescope_chi2_is_continuous(tmp_path):
     ratio = _largest_step_ratio(_file(tmp_path, UTS[:3]))
     record("max_step_over_median_3t", ratio)
     assert ratio < 200
 
 
-@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.likelihood.whitened_residuals", roots=["mathematics"], tier="B")
 def test_four_telescope_chi2_is_continuous(tmp_path):
     """Finding F11: correlated closure-phase chords jumped at Δ = ±π;
     fixed in virgil#174 (sines whitened together, plus a periodic penalty)."""

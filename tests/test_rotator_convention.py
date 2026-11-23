@@ -146,12 +146,14 @@ def _compare_virgil_to_pmoired_rotastar(samples, pa_deg):
     return dv2, dcp, cp_peak
 
 
+@pytest.mark.slow
 @pytest.mark.external
 @pytest.mark.validates(
     "virgil.models.GravityDarkenedStar",
     roots=["pmoired"],
     property="pole_pa",
     headline="max_abs_dV2",
+    tier="B",
 )
 def test_gravity_darkened_star_pole_pa_matches_pmoired_rotastar(pmoired_rotator_samples):
     """GravityDarkenedStar(..., pa=33.0) matches PMOIRED's independent rotastar

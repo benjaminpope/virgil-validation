@@ -64,8 +64,9 @@ def test_wavelengths_and_closure_triangles_match_ours():
     assert err < 1e-9 and np.max(np.abs(want)) > 0.1  # a scene with real closure phases
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
-@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"])
+@pytest.mark.validates("virgil.oifits.read_oifits", "virgil.oidata.OIData", roots=["standards"], tier="B")
 def test_file_reproduces_virgil_model(tmp_path, make):
     """virgil's reader + model reproduce what we wrote, sample by sample:
     the OIFITS sign of u, v, the T3 orientation and the units agree."""
@@ -81,8 +82,9 @@ def test_file_reproduces_virgil_model(tmp_path, make):
     assert np.max(np.abs(np.asarray(observed) - np.asarray(model))) < 1e-12
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("make", vb.SCENES, ids=lambda f: f.__name__)
-@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", roots=["mathematics"])
+@pytest.mark.validates("pipeline:synthetic-vlti-fit", "virgil.fitting.fit", roots=["mathematics"], tier="B")
 def test_noise_free_recovery(tmp_path, make):
     scene = make()
     path = tmp_path / "s.fits"
@@ -139,7 +141,8 @@ def test_laplace_cov_with_array_parameters(tmp_path):
     assert np.all(np.linalg.eigvalsh(cov) > 0)
 
 
-@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"])
+@pytest.mark.slow
+@pytest.mark.validates("virgil.fitting.fit", roots=["self-consistency"], tier="B")
 @pytest.mark.parametrize("wrap", ["expand", "expand_to_event"])
 def test_fit_uses_lm_for_expanded_uniform_priors(tmp_path, wrap):
     """fit documents LM as the default whenever the objective has a
