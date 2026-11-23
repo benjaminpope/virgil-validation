@@ -35,7 +35,7 @@ V = `virgil.metrics.ring_features`.
   strict xfail `tests/test_m87_findings.py` (needs basis.sif). It can bias REX on stage 2 posterior renders.
 - The full covariance C = J Σ Jᵀ is singular (invariants are redundant); stage 3b uses a tangent-space projection.
 - A nested virgil `System` needs `flux=`.
-- virgil's `ComplexVisData.read_ms` refuses a Stokes-I-only MS (documented limitation): ledger F32, strict xfail
+- virgil's `ComplexVisData.read_ms` refuses a Stokes-I-only MS (documented limitation): ledger F33, strict xfail
   `tests/test_m87_findings.py`. The checks read per-ddid npz files instead.
 - bilby 2.8.2 does not run with dynesty 3.2.0 (`apply_reflect` removed); dynesty is pinned to 3.1.0.
 

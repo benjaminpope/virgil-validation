@@ -66,7 +66,7 @@ ROOT_NAMES = {
     "mathematics": "mathematics", "standards": "standards", "statistics": "statistics",
     "literature": "published result", "dlux": "dLux", "pmoired": "PMOIRED", "candid": "CANDID",
     "fouriever": "fouriever", "frank": "frank / FRAP (one root)", "visr": "vis-r", "frap": "FRAP", "oimodeler": "oimodeler",
-    "ehtim": "eht-imaging", "mpol": "MPoL", "casa": "CASA", "orbitize": "orbitize!",
+    "ehtim": "eht-imaging", "mpol": "MPoL", "casa": "CASA", "orbitize": "orbitize!", "basis": "BASIS",
     "self-consistency": "virgil itself",
 }
 # metric names that state a difference or error (raw statistics such as a
@@ -414,7 +414,7 @@ UNFIXED = {"open", "to-raise", "raised"}
 # or results written by other people. Mathematics and standards are our own
 # transcriptions of the documented formula, so they cannot.
 EXTERNAL = {"pmoired", "candid", "fouriever", "orbitize", "ehtim", "mpol", "casa", "dlux", "literature",
-            "frank", "visr", "frap", "oimodeler"}
+            "frank", "visr", "frap", "oimodeler", "basis"}
 
 def depends_depths(nodes):
     """Length of the longest ``depends`` chain below each node: 0 for a node with no
@@ -703,11 +703,51 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
             raw_cache[root] = _raw_problems_uncached(root)
         return raw_cache[root]
 
+    def _cyclic_below(reached):
+        """Members of the dependency cycles among ``reached``: those of a strongly connected component of
+        more than one node, or with a self-loop, found by an iterative Tarjan walk over sorted edges. The
+        caller leaves ``root`` out of ``reached``, so a cycle through ``root`` alone names nothing (no part
+        is its own cause) and the answer does not depend on the order of any ``depends`` list."""
+        edges = {n: sorted(d for d in set(nodes[n].get("depends", [])) if d in reached) for n in reached}
+        index, low, on_stack, stack, cyclic = {}, {}, set(), [], set()
+        for start in sorted(reached):
+            if start in index:
+                continue
+            index[start] = low[start] = len(index)
+            stack.append(start)
+            on_stack.add(start)
+            work = [(start, iter(edges[start]))]
+            while work:
+                node, it = work[-1]
+                for nxt in it:
+                    if nxt not in index:
+                        index[nxt] = low[nxt] = len(index)
+                        stack.append(nxt)
+                        on_stack.add(nxt)
+                        work.append((nxt, iter(edges[nxt])))
+                        break
+                    if nxt in on_stack:
+                        low[node] = min(low[node], index[nxt])
+                else:
+                    work.pop()
+                    if work:
+                        low[work[-1][0]] = min(low[work[-1][0]], low[node])
+                    if low[node] == index[node]:
+                        comp = []
+                        while True:
+                            member = stack.pop()
+                            on_stack.discard(member)
+                            comp.append(member)
+                            if member == node:
+                                break
+                        if len(comp) > 1 or node in edges[node]:
+                            cyclic.update(comp)
+        return cyclic
+
     def _raw_problems_uncached(root):
         found = set()
         structural = set()
-        in_stack = {root}
-        done = set()
+        seen = {root}
 
         def visit(curr):
             curr_is_ref = nodes[curr].get("layer", "references") == "references"
@@ -719,20 +759,15 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
                 if curr_is_ref and nodes[dep].get("layer", "references") != "references":
                     found.add(dep)
                     structural.add(dep)
-                if dep in in_stack:
-                    found.add(dep)
-                    structural.add(dep)
-                    continue
                 if own[dep]["status"] != "ok":
                     found.add(dep)
-                if dep not in done:
-                    in_stack.add(dep)
+                if dep not in seen:
+                    seen.add(dep)
                     visit(dep)
-                    in_stack.remove(dep)
-                    done.add(dep)
 
         visit(root)
-        return found, structural
+        cyclic = _cyclic_below(seen - {root})
+        return found | cyclic, structural | cyclic
 
     def _new_walk(*active):
         """State of one walk for the causes of one part: the nodes being walked (an ancestor
@@ -773,7 +808,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
     def _expand_via_blocked(blocked, walk=None, named=True):
         walk = walk if walk is not None else _new_walk()
         out = set()
-        for v in blocked:
+        for v in sorted(blocked):
             if v not in nodes:
                 out.add(v)
             else:
@@ -784,7 +819,7 @@ def build(graph, ledger, records, runs, virgil=None, golden=None):
         walk = walk if walk is not None else _new_walk(root)
         raw, structural = _raw_problems(root)
         out = set(structural)
-        for d in raw:
+        for d in sorted(raw):
             if d in nodes and own[d]["status"] == "ok-via":
                 # if the walk below it finds nothing (its references only vouch for each other
                 # in a cycle) the dependency itself is the cause
@@ -986,7 +1021,7 @@ from trust_render import (  # noqa: E402,F401
     ICON, ORDER, COLOURS, _bar, _legend, _value, _pipeline_card, _chain, _tooltip, layers, _fails_badge, _map,
     _matrix, _link_label, _ledger, FINDING_GROUPS, render_findings, render_coverage, LAYER_SECTION, test_sections,
     render_tests, _precision, _tables, SHOWCASE, _headline_html, _headline_by_order_html, _fails_elsewhere_html,
-    render,
+    render, _skyline,
 )
 e = trust_render.e  # not in the import above: build() uses `e` as a loop variable, which ruff flags against an import
 

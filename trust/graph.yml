@@ -848,7 +848,9 @@ nodes:
   virgil.detection.injection_recovery:
     layer: inference
     source: [src/virgil/detection.py]
-    depends: [virgil.detection.detection_statistics, virgil.detection.gaussian_null, virgil.detection.DetectionMC]
+    depends: [virgil.detection.detection_statistics, virgil.detection.gaussian_null, virgil.detection.bootstrap_null,
+              virgil.detection.DetectionMC]
+    properties: {statistics_only_path: 1}  # uncertainty=False, the path BinaryPipeline's null searches use
     doc: inference/grid_limits.md#false-alarm-and-contrast-calibration-campaign
   virgil.detection.DetectionMC: {layer: inference, source: [src/virgil/detection.py]}
   virgil.limits.flux_to_contrast: {layer: inference, source: [src/virgil/limits.py]}
@@ -1312,9 +1314,10 @@ nodes:
   crosscheck.image_metrics: {layer: references}
   crosscheck.ring_extraction: {layer: references, doc: m87_conventions.md}  # Lai et al. 2026 eqs 4-9 (EHT Paper IV REX); design/m87_replication.md
   external_bridge.m87_worker: {layer: references, doc: m87_conventions.md}  # Lai et al.'s own RingFit (GenDIReCT archive), in .venv-basis
-  virgil_bridge.m87_fit: {layer: references, doc: m87_conventions.md}  # M87* stages 3-5: JAX closure invariants (N^2-3N+1 per scan), xsringauss-equivalent System, full-covariance CI likelihood, native models, RML/CLEAN runners
+  virgil_bridge.m87: {layer: references, doc: m87_conventions.md}  # virgil.metrics.ring_features on the published images; provenance of the installed virgil
+  virgil_bridge.m87_fit: {layer: references, depends: [crosscheck.ring_extraction, virgil_bridge.alma, virgil_bridge.m87], doc: m87_conventions.md}  # M87* stages 3-5: JAX closure invariants (N^2-3N+1 per scan), xsringauss-equivalent System, full-covariance CI likelihood, native models, RML/CLEAN runners
   external_bridge.basis_worker: {layer: references, doc: m87_conventions.md}  # Lai et al.'s BASIS (xsringauss + gauss + gauss, closure-invariant likelihood, bilby) in .venv-basis
-  external_bridge.basis_bridge: {layer: references, doc: m87_conventions.md}
+  external_bridge.basis_bridge: {layer: references, depends: [external_bridge.basis_worker], doc: m87_conventions.md}
   external_bridge.m87_casa_worker: {layer: references, doc: m87_conventions.md}  # casatools importuvfits of the EHT UVFITS, in .venv-alma
   crosscheck.informed_starts: {layer: references, doc: imaging/metrics_ensembles.md}
   crosscheck.alma: {layer: references, doc: alma_conventions.md}  # incl. the exact DFT image_visibilities and its adjoint

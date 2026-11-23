@@ -1,4 +1,4 @@
-"""Findings from the M87* replication (Lai et al. 2026) kept as strict xfails (trust/ledger.yml F32, P15)."""
+"""Findings from the M87* replication (Lai et al. 2026) kept as strict xfails (trust/ledger.yml F33, P15)."""
 
 import sys
 import types
@@ -33,10 +33,10 @@ class _FakeTable:
 
 
 @pytest.mark.xfail(strict=True, raises=ValueError,
-                   reason="F32: ComplexVisData.read_ms needs a parallel-hand pair; a Stokes-I-only MS is refused")
+                   reason="F33: ComplexVisData.read_ms needs a parallel-hand pair; a Stokes-I-only MS is refused")
 @pytest.mark.validates("virgil.radio.ComplexVisData.read_ms", roots=["mathematics"], kind="finding")
-def test_f32_read_ms_accepts_a_stokes_i_measurement_set(monkeypatch):
-    """F32: the EHT UVFITS give a Stokes-I-only MS after importuvfits; read_ms raises before reading any row."""
+def test_f33_read_ms_accepts_a_stokes_i_measurement_set(monkeypatch):
+    """F33: the EHT UVFITS give a Stokes-I-only MS after importuvfits; read_ms raises before reading any row."""
     from virgil.radio import ComplexVisData
 
     monkeypatch.setitem(sys.modules, "casatools", types.SimpleNamespace(table=_FakeTable))

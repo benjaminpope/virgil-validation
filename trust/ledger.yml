@@ -770,12 +770,25 @@
   status: open
 
 - id: F32
+  title: 'DetectionMC on an injection_recovery(uncertainty=False) run: max_snr (all NaN) queries return values instead of raising, and concatenate merges it with uncertainty=True runs'
+  objects: [virgil.detection.DetectionMC, virgil.detection.injection_recovery]
+  ruling: virgil
+  referee: 'mathematics (the documented contract: uncertainty=False leaves max_snr and flux_peak_steps NaN; a statistic that was never computed has no false-alarm probability, threshold or completeness, and runs with different statistics do not share a null distribution; behaviour measured on virgil origin/main 09b2685)'
+  kind: 'bug (false_alarm_probability("max_snr", 3.0) on an n_null = 6 uncertainty=False run returns 1/7 = 0.143, threshold returns (nan, nan), completeness returns 0.0, and DetectionMC.concatenate([mc_true, mc_false]) succeeds with meta uncertainty = True and NaN max_snr draws; none raises. BinaryPipeline''s null searches use uncertainty=False, so their containers carry the NaNs)'
+  evidence:
+    - tests/test_detection_tier_a.py::test_f32_statistics_only_max_snr_queries_raise
+    - tests/test_detection_tier_a.py::test_f32_concatenate_refuses_mixed_uncertainty
+    - tests/test_detection_tier_a.py::test_injection_recovery_without_uncertainty_matches_independent_grid_search
+  decision: 'raised by Carbon review of vv#282, reproduced here; whether virgil raises or documents the behaviour is for Ben (2026-11-20).'
+  status: open
+
+- id: F33
   title: ComplexVisData.read_ms refuses a Stokes-I-only measurement set (the EHT UVFITS after importuvfits)
   objects: [virgil.radio.ComplexVisData.read_ms]
   ruling: virgil
   kind: 'missing feature (documented: read_ms needs a parallel-hand pair XX/YY or RR/LL and raises "no XX/YY or RR/LL polarization pair in CORR_TYPE (1,)" on a Stokes I MS; the M87* checks read the visibilities from per-ddid npz files instead)'
   referee: mathematics (a Stokes I correlation is already the quantity read_ms forms from the pair)
-  evidence: [tests/test_m87_findings.py::test_f32_read_ms_accepts_a_stokes_i_measurement_set]
+  evidence: [tests/test_m87_findings.py::test_f33_read_ms_accepts_a_stokes_i_measurement_set]
   status: open
 
 - id: P15

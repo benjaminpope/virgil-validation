@@ -10,7 +10,8 @@ Task ``ring_features``: for each image (ny, nx, row 0 North, column 0 East, as e
 from the unpacked Zenodo archive; it is not copied here (MIT, Lai et al.).
 """
 
-import importlib.util
+import runpy
+import types
 import json
 import sys
 
@@ -19,10 +20,8 @@ import numpy as np
 
 
 def _load(path):
-    spec = importlib.util.spec_from_file_location("lai_ringfitting", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    """Their ringFitting.py (outside this repo), run as a script; its globals as attributes."""
+    return types.SimpleNamespace(**runpy.run_path(str(path), run_name="lai_ringfitting"))
 
 
 def _plain(v):
